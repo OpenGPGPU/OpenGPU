@@ -20,6 +20,7 @@ static int native_mmio_enable_mmu(struct opengpu_device *,u64);
 static int native_mmio_invalidate(struct opengpu_device *,const struct opengpu_buffer *);
 static int native_mmio_fence_wait(struct opengpu_device *,struct dma_fence *,unsigned,bool);
 static void native_mmio_progress(struct opengpu_device *);
+static void native_mmio_dma_wmb(void);
 #define OPENGPU_MMU_TEST_HW_EXTRA \
     void *native_mmio; \
     bool compute_texture_transport,compute_storage_transport,compute_image_transport; \
@@ -36,10 +37,13 @@ static void native_mmio_progress(struct opengpu_device *);
 #define OPENGPU_MMU_TEST_FLUSH_ASID(g,a) native_mmio_flush_asid(g,a)
 #define OPENGPU_MMU_TEST_ACTIVATE_VM(g,v) native_mmio_activate_vm(g,v)
 #define OPENGPU_MMU_TEST_ENABLE_MMU(g,r) native_mmio_enable_mmu(g,r)
+#define OPENGPU_MMU_TEST_DMA_WMB() native_mmio_dma_wmb()
 #define OPENGPU_PRIVATE_SNAPSHOT_INVALIDATE(g,b) native_mmio_invalidate(g,b)
 #else
 #include <unistd.h>
 #include <sys/stat.h>
+#include <fcntl.h>
+#include <time.h>
 #include "../opengpu_tlb_flush.h"
 #include "../opengpu_unified_completion.h"
 struct opengpu_kernel_launch {
@@ -53,11 +57,18 @@ struct opengpu_kernel_launch {
 };
 struct opengpu_command_events {u32 flags,wait_event,signal_event;};
 struct native_mmio_action {u32 kind,address,value,mask;};
+struct native_mmio_pte_shadow {
+    struct native_mmio_pte_shadow *next;u64 physical;size_t size;u32 *words;
+};
 struct native_mmio_state {
     u32 regs[1024];struct native_mmio_action *actions;size_t count,capacity,start;
     bool native_waiting,receipt_loaded,exported;
     unsigned native_submissions,invalidates,pops;u64 allocation_signature;
+    struct native_mmio_pte_shadow *pte;
+    char *cleanup_directory;size_t cleanup_start;unsigned cleanup_sequence;
+    int cleanup_error;bool cleanup_active,cleanup_done;
 };
+static int native_mmio_cleanup_sync(struct opengpu_device *);
 static struct native_mmio_state *native_mmio_state(struct opengpu_device *gpu)
 {
     struct native_mmio_state *m=gpu->hw.native_mmio;
@@ -69,7 +80,7 @@ static struct native_mmio_state *native_mmio_state(struct opengpu_device *gpu)
 }
 static void native_mmio_action(struct native_mmio_state *m,u32 kind,u32 a,u32 v,u32 mask)
 {
-    assert(!(a&3) && a<0x1000);
+    assert(!(a&3) && (kind==4 || a<0x1000));
     if(m->count==m->capacity){size_t n=m->capacity?m->capacity*2:1024;
         void *p=realloc(m->actions,n*sizeof(*m->actions));assert(p);m->actions=p;m->capacity=n;}
     m->actions[m->count++]=(struct native_mmio_action){kind,a,v,mask};
@@ -111,6 +122,10 @@ static void opengpu_reg_write(struct opengpu_device *gpu,u32 address,u32 value)
     }else if(address==GPU_REG_IRQ){
         m->regs[address/4]=(m->regs[address/4]&~(value&6u)&~1u)|(value&1u);
     }else m->regs[address/4]=value;
+    /* A successful shootdown must reach this same live DUT before the actual
+     * MMU function can return and release the original/private backing. */
+    if(address==GPU_REG_UCMD_TLB_FLUSH && m->cleanup_active && !m->cleanup_error)
+        m->cleanup_error=native_mmio_cleanup_sync(gpu);
 }
 static u32 opengpu_mmio_read_callback(void *gpu,u32 address){return opengpu_reg_read(gpu,address);}
 static void opengpu_mmio_write_callback(void *gpu,u32 address,u32 value){opengpu_reg_write(gpu,address,value);}
@@ -155,12 +170,29 @@ typedef int irqreturn_t;
 #define opengpu_hw_enable_mmu native_mmio_enable_mmu
 #include "native_mmio_enable_under_test.inc"
 #undef opengpu_hw_enable_mmu
-#define opengpu_hw_flush_tlbs native_mmio_flush_tlbs
+#define opengpu_hw_flush_tlbs native_mmio_flush_tlbs_actual
 #include "native_mmio_flush_under_test.inc"
 #undef opengpu_hw_flush_tlbs
-#define opengpu_hw_flush_tlb_asid native_mmio_flush_asid
+#define opengpu_hw_flush_tlb_asid native_mmio_flush_asid_actual
 #include "native_mmio_flush_asid_under_test.inc"
 #undef opengpu_hw_flush_tlb_asid
+/* Preserve the production function bodies. A failed remote MMIO transport is
+ * surfaced through their existing int error boundary, so actual MMU rollback
+ * and owner quarantine run before backing can be released. */
+static int native_mmio_flush_tlbs(struct opengpu_device *gpu)
+{
+    struct native_mmio_state *m=native_mmio_state(gpu);
+    if(m->cleanup_error)return m->cleanup_error;
+    int error=native_mmio_flush_tlbs_actual(gpu);
+    return error?error:m->cleanup_error;
+}
+static int native_mmio_flush_asid(struct opengpu_device *gpu,u32 asid)
+{
+    struct native_mmio_state *m=native_mmio_state(gpu);
+    if(m->cleanup_error)return m->cleanup_error;
+    int error=native_mmio_flush_asid_actual(gpu,asid);
+    return error?error:m->cleanup_error;
+}
 #include "native_mmio_submit_under_test.inc"
 #define opengpu_hw_invalidate_buffer_locked native_mmio_invalidate
 #include "native_mmio_invalidate_under_test.inc"
@@ -211,6 +243,126 @@ static int native_mmio_close(FILE *f,const char *path,char *temporary)
     if(remove(temporary) && !error)error=-errno;
     free(temporary);return error;
 }
+static int native_mmio_shadow_pte(void *opaque,dma_addr_t physical,const void *bytes,size_t size)
+{
+    struct native_mmio_state *m=opaque;
+    struct native_mmio_pte_shadow *p=calloc(1,sizeof(*p));if(!p)return -ENOMEM;
+    p->words=malloc(size);if(!p->words){free(p);return -ENOMEM;}
+    memcpy(p->words,bytes,size);p->physical=physical;p->size=size;p->next=m->pte;m->pte=p;
+    return 0;
+}
+static int native_mmio_diff_pte(void *opaque,dma_addr_t physical,const void *bytes,size_t size)
+{
+    struct native_mmio_state *m=opaque;struct native_mmio_pte_shadow *p=m->pte;
+    while(p && p->physical!=physical)p=p->next;
+    if(!p || p->size!=size)return -EIO;
+    const u32 *current=bytes;
+    for(size_t n=0;n<size/4;n++)if(current[n]!=p->words[n]){
+        /* Cleanup only revokes existing mappings. Rollback after transport
+         * failure stays local and can never produce a successful receipt. */
+        if(current[n] || !(p->words[n]&1) || physical+4*n>UINT32_MAX)return -EIO;
+        native_mmio_action(m,4,(u32)(physical+4*n),0,p->words[n]);p->words[n]=0;
+    }
+    return 0;
+}
+static void native_mmio_dma_wmb(void)
+{
+    if(!running || !running->gpu.hw.native_mmio)return;
+    struct native_mmio_state *m=running->gpu.hw.native_mmio;
+    if(m->cleanup_active && !m->cleanup_error)
+        m->cleanup_error=fixture_mmu_visit_pte_pages(&running->gpu,native_mmio_diff_pte,m);
+}
+static char *native_mmio_cleanup_path(const struct native_mmio_state *m,const char *suffix,unsigned sequence)
+{
+    size_t size=strlen(m->cleanup_directory)+80;char *path=malloc(size);if(!path)return NULL;
+    if(sequence==UINT32_MAX)snprintf(path,size,"%s/%s",m->cleanup_directory,suffix);
+    else snprintf(path,size,"%s/cleanup-%u.%s",m->cleanup_directory,sequence,suffix);
+    return path;
+}
+static int native_mmio_read_le(FILE *f,u32 *value)
+{
+    *value=0;for(unsigned n=0;n<4;n++){int c=fgetc(f);if(c==EOF)return -EIO;*value|=(u32)c<<(8*n);}return 0;
+}
+static int native_mmio_cleanup_ack(const char *path,unsigned sequence)
+{
+    struct stat before,st;if(lstat(path,&before) || !S_ISREG(before.st_mode))return -EINVAL;
+    int flags=O_RDONLY;
+#ifdef O_NOFOLLOW
+    flags|=O_NOFOLLOW;
+#endif
+    int fd=open(path,flags);if(fd<0)return -errno;
+    if(fstat(fd,&st) || !S_ISREG(st.st_mode) || st.st_size!=28 ||
+        before.st_dev!=st.st_dev || before.st_ino!=st.st_ino){close(fd);return -EINVAL;}
+    FILE *f=fdopen(fd,"rb");if(!f){close(fd);return -EIO;}
+    char magic[8];u32 v[5];int error=fread(magic,1,8,f)!=8 || memcmp(magic,"OGCLA001",8)?-EINVAL:0;
+    for(unsigned n=0;n<5 && !error;n++)error=native_mmio_read_le(f,&v[n]);
+    if(!error && (v[0]!=sequence || v[1]!=GPU_UCMD_STATUS_READY || v[2]!=GPU_IRQ_ENABLE || v[3] || v[4]!=1))error=-EINVAL;
+    if(fclose(f) && !error)error=-EIO;
+    return error;
+}
+static int native_mmio_cleanup_sync(struct opengpu_device *gpu)
+{
+    struct native_mmio_state *m=native_mmio_state(gpu);struct stat st;
+    if(!m->cleanup_active || m->cleanup_done || m->cleanup_error || m->cleanup_sequence==UINT32_MAX)return -EINVAL;
+    unsigned sequence=m->cleanup_sequence;
+    char *trace=native_mmio_cleanup_path(m,"trace",sequence),*ack=native_mmio_cleanup_path(m,"observed",sequence);
+    char *failed=native_mmio_cleanup_path(m,"error",UINT32_MAX),*temporary=NULL;
+    if(!trace || !ack || !failed){free(trace);free(ack);free(failed);return -ENOMEM;}
+    int error=0;
+    if(!lstat(ack,&st) || errno!=ENOENT){error=-EEXIST;goto out;}
+    if(m->count-m->cleanup_start>UINT32_MAX){error=-ERANGE;goto out;}
+    FILE *f=native_mmio_file(trace,&temporary);if(!f){error=-EIO;goto out;}
+    fwrite("OGCLN001",1,8,f);native_mmio_le(f,m->count-m->cleanup_start,4);
+    native_mmio_actions(f,m,m->cleanup_start);error=native_mmio_close(f,trace,temporary);if(error)goto out;
+#ifdef OPENGPU_NATIVE_MMIO_CLEANUP_TEST_PEER
+    /* Explicit CPU regression peer only; never enabled by the Mesa producer. */
+    OPENGPU_NATIVE_MMIO_CLEANUP_TEST_PEER(gpu,m->cleanup_directory,sequence);
+#endif
+    struct timespec start,now,pause={.tv_nsec=10000000};
+    if(clock_gettime(CLOCK_MONOTONIC,&start)){error=-EIO;goto out;}
+    for(;;){
+        if(!lstat(ack,&st)){error=native_mmio_cleanup_ack(ack,sequence);break;}
+        if(errno!=ENOENT){error=-errno;break;}
+        if(!lstat(failed,&st)){error=-EIO;break;}
+        if(clock_gettime(CLOCK_MONOTONIC,&now)){error=-EIO;break;}
+        if(now.tv_sec-start.tv_sec>=300){error=-ETIMEDOUT;break;}
+        if(nanosleep(&pause,NULL) && errno!=EINTR){error=-errno;break;}
+    }
+    if(!error){++m->cleanup_sequence;m->cleanup_start=m->count;}
+out:
+    free(trace);free(ack);free(failed);return error;
+}
+int native_kernel_begin_cleanup(struct native_kernel_session *s,const char *directory)
+{
+    struct stat st;if(!s || !directory || lstat(directory,&st) || !S_ISDIR(st.st_mode))return -EINVAL;
+    struct native_mmio_state *m=native_mmio_state(&s->gpu);
+    if(!m->exported || !m->pte || m->cleanup_active || m->cleanup_done || m->cleanup_error ||
+        m->native_waiting || s->gpu.hw.unified_fence || s->gpu.hw.active_fence || s->gpu.hw.wedged)return -EBUSY;
+    for(struct native_kernel_record *r=s->records;r;r=r->next)if(!r->verified || r->freed)return -EBUSY;
+    m->cleanup_directory=strdup(directory);if(!m->cleanup_directory)return -ENOMEM;
+    char *path=native_mmio_cleanup_path(m,"cleanup.begin",UINT32_MAX),*temporary=NULL;
+    if(!path){free(m->cleanup_directory);m->cleanup_directory=NULL;return -ENOMEM;}
+    FILE *f=native_mmio_file(path,&temporary);if(!f){free(path);free(m->cleanup_directory);m->cleanup_directory=NULL;return -EIO;}
+    fwrite("OGCLB001",1,8,f);native_mmio_le(f,s->record_count,4);
+    int error=native_mmio_close(f,path,temporary);free(path);
+    if(error){free(m->cleanup_directory);m->cleanup_directory=NULL;return error;}
+    m->cleanup_start=m->count;m->cleanup_active=true;return 0;
+}
+int native_kernel_end_cleanup(struct native_kernel_session *s)
+{
+    if(!s)return -EINVAL;
+    struct native_mmio_state *m=native_mmio_state(&s->gpu);
+    if(!m->cleanup_active || m->cleanup_done || m->cleanup_error || s->count || s->gpu.hw.wedged)return -EBUSY;
+    if(m->count!=m->cleanup_start)m->cleanup_error=native_mmio_cleanup_sync(&s->gpu);
+    if(m->cleanup_error)return m->cleanup_error;
+    if(!m->cleanup_sequence)return -EINVAL;
+    char *path=native_mmio_cleanup_path(m,"cleanup.done",UINT32_MAX),*temporary=NULL;
+    if(!path)return -ENOMEM;
+    FILE *f=native_mmio_file(path,&temporary);if(!f){free(path);return -EIO;}
+    fwrite("OGCLD001",1,8,f);native_mmio_le(f,m->cleanup_sequence,4);
+    int error=native_mmio_close(f,path,temporary);free(path);
+    if(!error){m->cleanup_active=false;m->cleanup_done=true;}return error;
+}
 static int native_mmio_buffer_compare(const void *a,const void *b)
 {
     const struct fixture_buffer_record *x=*(const struct fixture_buffer_record * const *)a;
@@ -241,6 +393,7 @@ int native_kernel_export_memory(struct native_kernel_session *s,const char *path
         native_mmio_le(f,buffers[i]->dma+offset,8);fwrite((const u8 *)buffers[i]->cpu+offset,1,4096,f);
     }
     free(buffers);int error=native_mmio_close(f,path,temporary);
+    if(!error)error=fixture_mmu_visit_pte_pages(&s->gpu,native_mmio_shadow_pte,m);
     if(!error){m->exported=true;m->allocation_signature=native_mmio_allocation_signature();}return error;
 }
 int opengpu_hw_native_binned_async(struct opengpu_device *,struct opengpu_private_snapshot *,
@@ -326,7 +479,9 @@ int native_kernel_drain_held(struct native_kernel_session *s,unsigned index,
 static void native_mmio_release(struct native_kernel_session *s)
 {
     struct native_mmio_state *m=s->gpu.hw.native_mmio;
-    if(m){assert(!s->gpu.hw.unified_fence && !s->gpu.hw.active_fence);free(m->actions);free(m);s->gpu.hw.native_mmio=NULL;}
+    if(m){assert(!s->gpu.hw.unified_fence && !s->gpu.hw.active_fence);
+        while(m->pte){struct native_mmio_pte_shadow *p=m->pte;m->pte=p->next;free(p->words);free(p);}
+        free(m->cleanup_directory);free(m->actions);free(m);s->gpu.hw.native_mmio=NULL;}
     for(struct native_kernel_record *r=s->records;r;r=r->next){free(r->mmio_state);r->mmio_state=NULL;}
 }
 #endif
