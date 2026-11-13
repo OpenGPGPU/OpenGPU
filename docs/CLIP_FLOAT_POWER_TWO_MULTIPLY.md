@@ -30,9 +30,52 @@ These are arithmetic-service measurements. They establish no complete-frame
 benefit, area, whole-host clock or FPS result. Complete product execution and
 physical qualification must use the changed source.
 
+## Streaming consumer comparison
+
+Five four-context streaming cases pass in each explicit multiplication mode
+(ten RTL executions). Both keep maximum 16 varyings, 64 components, sixteen
+preparation services, the same component bank, setup reuse and finite-zero
+shortcuts. Only `powerTwoMultiplyShortcut` differs. All twelve profile pairs
+have identical complete final quad and completion data and pass the independent
+sample/centroid/FP32 oracle. Held output, cancellation, reset and healthy reuse
+without reset pass in both modes.
+
+| Profile | Total clocks, control → fast | Steady four-quad period |
+| --- | ---: | ---: |
+| Full 64-component baseline | 1839 → 1659 | 357 → 312 |
+| One active slot | 1163 → 983 | 233 → 188 |
+| Two active slots | 1191 → 1011 | 237 → 192 |
+| Four active slots | 1247 → 1067 | 245 → 200 |
+| Eight active slots | 1359 → 1179 | 261 → 216 |
+| Sixteen active slots | 1583 → 1419 | 293 → 256 |
+| Product-like two slots, 4× samples | 2363 → 1895 | 530 → 413 |
+| Low centroid mask | 2691 → 2115 | 615 → 471 |
+| High centroid mask | 3111 → 2535 | 675 → 531 |
+| Mixed flat/centroid masks | 2715 → 2139 | 618 → 474 |
+| Two slots, W=1/equal depth, 1× | 1119 → 1011 | 219 → 192 |
+| Same plane, 4× samples | 2003 → 1895 | 440 → 413 |
+
+Each profile processes sixteen quads under independent output and completion
+stalls. The original profiles use reciprocal W values 1, 0.5 and 0.25; the two
+plane profiles use W=1 and constant depth. Their measured gains do not establish
+the benefit for the original six complete frame recipes or a physical clock.
+
+Default CI compares multiplication modes for full64 and independently compares
+finite-zero and multiplication modes for the active profiles. Per-experiment,
+per-profile digests keep these comparisons separate. Explicit setup, finite-zero
+and multiplication qualification properties are mutually exclusive.
+
+## Reproduction
+
 Reproduce with the full `ClipFloatArithmeticSpec` command and GPU-internal
 temporary/cache settings in [the arithmetic validation instructions](CLIP_FLOAT_FINITE_ZERO.md#reproduction).
 The default test suite runs both multiplication modes; no property is required.
+For streaming, use the same resource options, nine-source selection and five
+test filters in the [streaming reproduction command](CLIP_FLOAT_FINITE_ZERO.md#reproduction),
+replacing `-Dopengpu.fragmentZeroQualification` with
+`-Dopengpu.fragmentMultiplyQualification`. Run `control` and `fast` separately;
+do not also select a setup or finite-zero experiment. The default streaming
+suite exercises the automatic CI comparison branches.
 Run `python3 -B scripts/test_changed_test_suites.py` for test-selection coverage,
 with `TMPDIR` inside the GPU worktree. Remove models, caches and logs once their
 processes and other consumers have ended.

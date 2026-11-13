@@ -10,17 +10,23 @@ class Fp32StreamingFragmentInterpolatorSpec extends AnyFlatSpec {
   import FragmentInterpolationReference.{Data => Values,Sample,lane}
   import TriangleRasterReference.{base,primitive,zero}
   private val p=VertexShaderStageConfig()
-  // Explicit A/B selection changes only pure numerical setup reuse. Both
+  // Each explicit A/B selection changes one numerical optimization. All
   // variants retain the same raw owners and physical component bank.
   private val setupQualification=sys.props.get("opengpu.fragmentSetupQualification")
   require(setupQualification.forall(Set("control","cached")), "unknown fragment setup qualification mode")
   private val zeroQualification=sys.props.get("opengpu.fragmentZeroQualification")
   require(zeroQualification.forall(Set("control","fast")), "unknown fragment finite-zero qualification mode")
-  require(setupQualification.isEmpty || zeroQualification.isEmpty, "select one fragment qualification experiment")
+  private val multiplyQualification=sys.props.get("opengpu.fragmentMultiplyQualification")
+  require(multiplyQualification.forall(Set("control","fast")), "unknown fragment multiply qualification mode")
+  private val qualificationMode=multiplyQualification.orElse(zeroQualification).orElse(setupQualification)
+  require(Seq(setupQualification,zeroQualification,multiplyQualification).count(_.nonEmpty)<=1,
+    "select one fragment qualification experiment")
   private val reuseSetup= !setupQualification.contains("control")
   private val finiteZeroShortcut= !zeroQualification.contains("control")
-  private def owner(contexts: Int=4, zeroShortcut: Boolean=finiteZeroShortcut)=
-    new Fp32StreamingFragmentInterpolator(p,g,contexts,reuseSetup,zeroShortcut)
+  private val powerTwoMultiplyShortcut= !multiplyQualification.contains("control")
+  private def owner(contexts: Int=4, zeroShortcut: Boolean=finiteZeroShortcut,
+      multiplyShortcut: Boolean=powerTwoMultiplyShortcut)=
+    new Fp32StreamingFragmentInterpolator(p,g,contexts,reuseSetup,zeroShortcut,multiplyShortcut)
   private val g=GraphicsConfig(screenWidth=8,screenHeight=8)
   private val samples=Vector.tabulate(4)(i=>Sample(Vector(3-i,1+i,2).map(BigInt(_)),6,
     if(i==3)0 else 1,i&1,i>>1))
@@ -49,9 +55,9 @@ class Fp32StreamingFragmentInterpolatorSpec extends AnyFlatSpec {
         digest.clone().asInstanceOf[java.security.MessageDigest].digest().map(b=>f"${b&255}%02x").mkString
       (hex(quadDigest),hex(completionDigest))
     }
-    def qualification(profile: String="full64"): Unit=if(setupQualification.nonEmpty || zeroQualification.nonEmpty){
-      val prefix=if(zeroQualification.nonEmpty)"ZERO_STREAM"else"SETUP_STREAM"
-      val mode=zeroQualification.orElse(setupQualification).get
+    def qualification(profile: String="full64"): Unit=if(qualificationMode.nonEmpty){
+      val prefix=if(multiplyQualification.nonEmpty)"MULTIPLY_STREAM"else if(zeroQualification.nonEmpty)"ZERO_STREAM"else"SETUP_STREAM"
+      val mode=qualificationMode.get
       val (quadHash,completionHash)=fingerprints
       info(s"$prefix mode=$mode totalClocks=$cycle outputClocks=${outputCycles.mkString(",")} completionClocks=${completionCycles.mkString(",")} quadSha256=$quadHash completionSha256=$completionHash profile=$profile activeSlots=$activeSlots sampleMode=$sampleMode flatMask=${activeFlat.toString(16)} centroidMask=${centroidQualifiers.toString(16)} orthographicPlane=$orthographicPlane")
     }
@@ -104,7 +110,9 @@ class Fp32StreamingFragmentInterpolatorSpec extends AnyFlatSpec {
     }
   }
   it should "own four raw quads before output and recycle credits in order under independent stalls" in {
-    simulate(owner()){d=>val t=new Driver(d)
+    val modes=if(qualificationMode.nonEmpty)Seq(powerTwoMultiplyShortcut)else Seq(false,true)
+    var expected=Option.empty[(String,String)]
+    for(shortcut<-modes)simulate(owner(multiplyShortcut=shortcut)){d=>val t=new Driver(d)
       for(id<-1 to 4)t.offer(id)
       assert(t.cycle==4,"four preparation owners did not admit successive raw quads")
       d.io.in.ready.expect(false.B);t.until(d.io.out.valid.peek().litToBoolean)
@@ -119,6 +127,8 @@ class Fp32StreamingFragmentInterpolatorSpec extends AnyFlatSpec {
       val groupPeriods=(4 until 12).map(i=>t.outputCycles(i+4)-t.outputCycles(i))
       assert(groupPeriods.forall(_<=400),s"four-lane preparation rate regressed: $groupPeriods")
       info(s"STREAMING_FRAGMENT quads=16 componentsPerQuad=64 consecutiveAdmission=4 preparationServices=16 orderedRetirement=true steadyFourQuadPeriodMax=${groupPeriods.max} rateBound=400")
+      expected.foreach(bits=>assert(bits==t.fingerprints,"power-of-two full64 output/completion mismatch"))
+      expected=Some(t.fingerprints)
       t.qualification()
     }
   }
@@ -134,12 +144,14 @@ class Fp32StreamingFragmentInterpolatorSpec extends AnyFlatSpec {
       .map{case(name,slots,mode,flat,centroid)=>(name,slots,mode,flat,centroid,false)} ++ Seq(
         ("plane2",2,0,BigInt(0),BigInt(0),true),
         ("plane2x4",2,2,BigInt(0),BigInt(0),true))
-    // Required CI exercises both algorithms. Explicit experiments retain one
-    // chosen mode so the old setup-reuse and zero-service comparisons stay
-    // independent and produce one record per profile.
-    val modes=if(setupQualification.nonEmpty || zeroQualification.nonEmpty)Seq(finiteZeroShortcut)else Seq(false,true)
-    val expected=mutable.Map.empty[String,(String,String)]
-    for(shortcut<-modes)simulate(owner(zeroShortcut=shortcut)){d=>
+    // CI independently compares zero service and multiplication, never two
+    // changing knobs together. Explicit experiments retain one chosen mode
+    // and one record per profile, with the other optimizations fixed enabled.
+    val modes=if(qualificationMode.nonEmpty)Seq(("explicit",finiteZeroShortcut,powerTwoMultiplyShortcut))else
+      Seq(("zero",false,true),("zero",true,true),("multiply",true,false),("multiply",true,true))
+    val expected=mutable.Map.empty[(String,String),(String,String)]
+    for((experiment,zeroShortcut,multiplyShortcut)<-modes)
+      simulate(owner(zeroShortcut=zeroShortcut,multiplyShortcut=multiplyShortcut)){d=>
       for((name,slots,mode,flat,centroid,plane)<-profiles){
         val t=new Driver(d) // identical cold reset before each independent A/B
         t.activeSlots=slots;t.activeFlat=flat;t.sampleMode=mode;t.centroidQualifiers=centroid;t.rasterSamples=true;t.orthographicPlane=plane
@@ -154,9 +166,10 @@ class Fp32StreamingFragmentInterpolatorSpec extends AnyFlatSpec {
         t.until(t.completions.size==16);d.io.busy.expect(false.B)
         assert(t.outputs.toVector==(1 to 16).toVector && t.completions.toVector==(1 to 16).toVector)
         val periods=(4 until 12).map(i=>t.outputCycles(i+4)-t.outputCycles(i))
-        info(s"SETUP_ACTIVE profile=$name maximumSlots=16 contexts=4 activeSlots=$slots sampleMode=$mode orthographicPlane=$plane steadyFourQuadPeriodMax=${periods.max}")
-        expected.get(name).foreach(bits=>assert(bits==t.fingerprints,s"finite-zero final output mismatch: $name"))
-        expected(name)=t.fingerprints
+        info(s"SETUP_ACTIVE profile=$name maximumSlots=16 contexts=4 activeSlots=$slots sampleMode=$mode orthographicPlane=$plane steadyFourQuadPeriodMax=${periods.max} experiment=$experiment finiteZero=$zeroShortcut powerTwoMultiply=$multiplyShortcut")
+        val key=(experiment,name)
+        expected.get(key).foreach(bits=>assert(bits==t.fingerprints,s"$experiment final output/completion mismatch: $name"))
+        expected(key)=t.fingerprints
         t.qualification(name)
       }
     }

@@ -13,7 +13,7 @@ import chisel3.experimental.hierarchy.Instantiate
   */
 class Fp32FragmentPreparation(p: VertexShaderStageConfig = VertexShaderStageConfig(),
     g: GraphicsConfig = GraphicsConfig(), parallelLanes: Boolean = true, reuseSetup: Boolean = true,
-    finiteZeroShortcut: Boolean = true) extends Module {
+    finiteZeroShortcut: Boolean = true, powerTwoMultiplyShortcut: Boolean = true) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new FragmentInterpolationRequest(p, g)))
     val out = Decoupled(new PreparedFragmentInterpolation(p, g))
@@ -24,7 +24,7 @@ class Fp32FragmentPreparation(p: VertexShaderStageConfig = VertexShaderStageConf
   // has private registers and ports; neither owner capacity nor lane II changes.
   if(!parallelLanes) {
     val preparation = Instantiate(new Fp32FragmentInterpolator(p, g, false, true, None, false,
-      false, finiteZeroShortcut))
+      false, finiteZeroShortcut, powerTwoMultiplyShortcut))
     preparation.io.in <> io.in
     io.out <> preparation.io.prepared.get
     preparation.io.out.ready := false.B
@@ -40,7 +40,7 @@ class Fp32FragmentPreparation(p: VertexShaderStageConfig = VertexShaderStageConf
       snapshot := io.in.bits
     }
     val lanes = Seq.tabulate(4)(i => Instantiate(new Fp32FragmentInterpolator(p, g,
-      false, true, Some(i), true, reuseSetup, finiteZeroShortcut)))
+      false, true, Some(i), true, reuseSetup, finiteZeroShortcut, powerTwoMultiplyShortcut)))
     val ready = VecInit(lanes.map(_.io.in.ready)).asUInt.andR
     val valid = VecInit(lanes.map(_.io.prepared.get.valid)).asUInt.andR
     val prepared = lanes.map(_.io.prepared.get.bits)
