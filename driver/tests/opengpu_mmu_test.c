@@ -70,6 +70,16 @@ static unsigned flushes, barriers;
 static int global_flush_failures;
 static dma_addr_t next_dma = 0x100000;
 static void (*allocation_complete)(struct opengpu_device *);
+/* Actual primitive allocations, also usable by a captured-owner host fixture.
+ * No device address is invented independently of buffer_alloc's result. */
+struct fixture_buffer_record {
+    struct fixture_buffer_record *next;
+    void *cpu;
+    dma_addr_t dma;
+    size_t size;
+};
+static struct fixture_buffer_record *fixture_buffers;
+
 static int opengpu_buffer_alloc(struct opengpu_device *gpu,
                                struct opengpu_buffer *b, size_t size)
 {
@@ -84,6 +94,11 @@ static int opengpu_buffer_alloc(struct opengpu_device *gpu,
     b->size = size;
     b->dma = next_dma;
     next_dma += size;
+    {
+        struct fixture_buffer_record *record=malloc(sizeof(*record));assert(record);
+        record->cpu=b->cpu;record->dma=b->dma;record->size=b->size;
+        record->next=fixture_buffers;fixture_buffers=record;
+    }
     live_allocations++;
     if(allocation_complete){void (*done)(struct opengpu_device *)=allocation_complete;allocation_complete=NULL;done(gpu);}
     return 0;
@@ -93,6 +108,9 @@ static void opengpu_buffer_free(struct opengpu_device *gpu,
 {
     (void)gpu;
     if (b->cpu) {
+        struct fixture_buffer_record **link=&fixture_buffers,*record;
+        while(*link && (*link)->cpu!=b->cpu)link=&(*link)->next;
+        assert(*link);record=*link;*link=record->next;free(record);
         free(b->cpu);
         b->cpu = NULL;
         live_allocations--;
@@ -1017,6 +1035,8 @@ int main(void)
     assert(opengpu_mmu_vm_create(&gpu,&after_shutdown)==-ENODEV);
     gpu.hw.capabilities=0;
     assert(opengpu_mmu_vm_create(&gpu,&after_shutdown)==-EOPNOTSUPP && !live_allocations);
+    opengpu_mmu_fini(&gpu);
+    assert(!live_allocations && !fixture_buffers);
     puts("MMU allocation, rollback, range and lock-scope tests passed");
     return 0;
 }
