@@ -19,7 +19,9 @@ both command forms with distinct publications. The [Linux compute submission
 path](COMPUTE_ATOMIC_COUNTER_SUBMISSION.md) admits a bounded, disjoint counter
 view; one-CU current-RTL Linux guests check operations, faults and recovery,
 including a fenced counter/texture/storage/image job with disjoint backings.
-Broader resource qualification, compiler integration and full H7 remain open.
+The later [bounded real Mesa counter frontend](GALLIUM_ATOMIC_COUNTERS.md) adds
+actual ESSL/TGSI lowering and independent-source two-CU/L2 execution. Broader
+resource qualification, full compiler/API integration and H7 remain open.
 
 ```sh
 sbt 'testOnly opengpu.core.memory.AtomicCounterCuServiceSpec opengpu.core.memory.AtomicCounterVectorExecuteUnitSpec opengpu.core.memory.CheckedAtomicCounterSpec'

@@ -21,7 +21,7 @@ struct build {
     unsigned declared[CS_TEMPS], reg[CS_TEMPS][4], next_reg;
     unsigned sys_mask[CS_SYSTEMS], sys_name[CS_SYSTEMS], buffers;
     unsigned const_mask[13], const_first[13], const_last[13];
-    unsigned address_declared, address_defined;
+    unsigned address_declared, address_defined, counter_address;
     unsigned counters;
     uint32_t samplers, sampler_views;
     const unsigned *texture_observed;
@@ -87,7 +87,7 @@ static void splat(struct build *b, unsigned reg, uint32_t value)
 }
 
 /* Validate packet extents before the real Mesa parser touches optional fields.
- * Only canonical CONST + ADDR0.x indirection and static CB dimensions reach
+ * Only canonical CONST + ADDR0.x and HW_ATOMIC + ADDR2.x indirection reach
  * its extension-token readers. Other shapes fail before parsing extensions. */
 static int packets(const struct tgsi_token *t)
 {
@@ -174,7 +174,8 @@ static int packets(const struct tgsi_token *t)
                     struct tgsi_ind_register ind;
                     if ((src.File != TGSI_FILE_CONSTANT && src.File != TGSI_FILE_HW_ATOMIC) || ++q >= pos + n) return -1;
                     memcpy(&ind, t + q, 4);
-                    if (ind.File != TGSI_FILE_ADDRESS || ind.Index || ind.Swizzle || ind.ArrayID) return -1;
+                    if (ind.File != TGSI_FILE_ADDRESS || ind.Index != (src.File == TGSI_FILE_HW_ATOMIC ? 2 : 0) ||
+                        ind.Swizzle || ind.ArrayID) return -1;
                 }
                 if (src.File == TGSI_FILE_CONSTANT || src.File == TGSI_FILE_HW_ATOMIC) {
                     struct tgsi_dimension dim;
@@ -248,8 +249,9 @@ static int declaration(struct build *b, const struct tgsi_full_declaration *d)
         return 0;
     }
     case TGSI_FILE_ADDRESS:
-        if (first || last || !(mask & 1) || d->Declaration.Semantic || b->address_declared) return -1;
-        b->address_declared = 1;
+        if (first || (last != 0 && last != 2) || !(mask & 1) ||
+            d->Declaration.Semantic || b->address_declared || (last == 2 && !b->counters)) return -1;
+        b->address_declared = last == 2 ? 5 : 1;
         return 0;
     case TGSI_FILE_CONSTANT:
         i = d->Dim.Index2D;
@@ -379,7 +381,7 @@ static int source(struct build *b, const struct tgsi_full_src_register *full,
         if (slot > 12 || !(b->const_mask[slot] & (1u << c)) ||
             i < b->const_first[slot] || i > b->const_last[slot]) return -1;
         if (s->Indirect) {
-            if (!b->address_defined) return -1;
+            if (!(b->address_defined & 1)) return -1;
             /* v30 retains the complete UARL value across other sources and
              * TEMP rewrites. Check it before <<4 or base addition; invalid
              * lanes use an aligned offset beyond every supported CB view. */
@@ -717,10 +719,10 @@ static int atomic_counter(struct build *b, const struct tgsi_full_instruction *i
     while (last < 7 && (b->counters & (1u << (last + 1)))) last++;
     splat(b, 25, (unsigned)s->Index);
     if (s->Indirect) {
-        if (!b->address_defined) return -1;
-        word(b, vec(0, 0, 25, 25, 30));
+        if (!(b->address_defined & 4) || !b->counter_address) return -1;
+        word(b, vec(0, 0, 25, 25, b->counter_address));
         splat(b, 31, 8); scalar(b, last - (unsigned)s->Index);
-        word(b, vec(0x1c, 4, 0, 10, 30));
+        word(b, vec(0x1c, 4, 0, 10, b->counter_address));
         word(b, vec(0x17, 0, 25, 25, 31) & ~(1u << 25));
     }
     resource_word(b, function, 0, 26, 25, 0);
@@ -776,9 +778,6 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
     if ((mem || op == TGSI_OPCODE_RESQ) &&
         (op == TGSI_OPCODE_STORE ? d->File : in->Src[0].Register.File) == TGSI_FILE_IMAGE)
         return image(b, in);
-    if ((mem || op == TGSI_OPCODE_RESQ) &&
-        (op == TGSI_OPCODE_STORE ? d->File : in->Src[0].Register.File) == TGSI_FILE_IMAGE)
-        return image(b, in);
     if(storage_atomic_operation(op)>=0)
         return storage_atomic(b,in,(unsigned)storage_atomic_operation(op));
     if (i->Texture) return -1;
@@ -814,11 +813,15 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
     }
     if (i->Memory) return -1;
     if (op == TGSI_OPCODE_UARL) {
-        if (!b->address_declared || i->NumSrcRegs != 1 ||
-            d->File != TGSI_FILE_ADDRESS || d->Index || d->WriteMask != 1 ||
+        if ((d->Index != 0 && d->Index != 2) || !(b->address_declared & (1u << d->Index)) ||
+            i->NumSrcRegs != 1 || d->File != TGSI_FILE_ADDRESS || d->WriteMask != 1 ||
             source(b, &in->Src[0], 0, 22)) return -1;
-        copy(b, 30, 22);
-        b->address_defined = 1;
+        if (d->Index == 2 && !b->counter_address) {
+            if (b->next_reg > 21) return -1;
+            b->counter_address = b->next_reg++;
+        }
+        copy(b, d->Index == 2 ? b->counter_address : 30, 22);
+        b->address_defined |= 1u << d->Index;
         return 0;
     }
     switch (op) {

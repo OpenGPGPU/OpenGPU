@@ -62,7 +62,8 @@ held precise fault/completion, and healthy reuse without reset in each
 consumer mode. The bounded R32UI buffer-image/texture paths do not establish
 general image formats/layouts, all legal aliasing, graphics attachments, DMA,
 API scheduling/visibility, default product capacity, throughput or physical
-timing. Real Mesa atomic-counter lowering remains open. Shared SRAM remains
+timing. The separate [Mesa atomic-counter path](GALLIUM_ATOMIC_COUNTERS.md) qualifies
+bounded real lowering and counter-service execution. Shared SRAM remains
 workgroup private; this image result does not qualify its separate cross-warp
 barrier contract. H7 and the full API/resource matrix remain open.
 
