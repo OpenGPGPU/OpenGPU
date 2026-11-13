@@ -1,5 +1,8 @@
 # Checked compute storage words
 
+The real Mesa compute lowering and its two-CU, all-operation L2 qualification
+are described in [Gallium checked storage atomics](GALLIUM_STORAGE_ATOMICS.md).
+
 The checked descriptor and word-access composition accepts a 128 MiB view
 ending exactly at 4 GiB. A bounded test reads and writes its final word,
 rejects the next word, an oversized view and a denied write, then succeeds

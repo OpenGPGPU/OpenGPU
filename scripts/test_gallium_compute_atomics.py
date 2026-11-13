@@ -29,6 +29,10 @@ def write_sources(out):
     (out / "past-end.comp").write_text(source(kind, expression, "33554432u"))
     (out / "branch.comp").write_text(source(kind, expression).replace(
         "outputData.v[id]=", "if((id&1u)!=0u)outputData.v[id]="))
+    (out / "compare-inputs.comp").write_text(source("uint",
+        "atomicCompSwap(target.v[outputData.v[id]&3u],"
+        "params.value[outputData.v[id]&3u].x,params.value[outputData.v[id]&3u].y)").replace(
+            "void main()", "layout(std140,binding=0) uniform Parameters {uvec4 value[4];} params;\nvoid main()"))
 
 
 if __name__ == "__main__":
