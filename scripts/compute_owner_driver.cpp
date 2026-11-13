@@ -2,8 +2,25 @@
 // producer supplies the original memory; an independent byte oracle is required.
 #include "compute_owner_capture.hpp"
 #include "native_owner_runtime.hpp"
+#include <cstdlib>
 
 namespace compute_owner {
+// Match the live producer/controller wall-clock contract. This is separate
+// from the captured DUT cycle budget and does not relax a command or oracle.
+inline std::chrono::milliseconds compute_response_timeout(
+    const char *value=std::getenv("OPENGPU_COMPUTE_HOST_TIMEOUT")) {
+  if(!value)return std::chrono::seconds(300);
+  require(*value,"empty compute host timeout");
+  uint32_t seconds=0;
+  for(;*value;value++) {
+    require(*value>='0' && *value<='9',"compute host timeout must be decimal seconds");
+    const auto digit=uint32_t(*value-'0');
+    require(seconds<=(604800u-digit)/10u,"compute host timeout exceeds 604800 seconds");
+    seconds=seconds*10u+digit;
+  }
+  require(seconds,"compute host timeout must be positive");
+  return std::chrono::seconds(seconds);
+}
 struct ComputeResult {
   uint32_t completion=0,legacy=0,status=0,irq=0,retired_status=0,retired_irq=0;
   uint64_t processed_bytes=0,cycles=0,read_bytes=0,write_bytes=0;
@@ -96,7 +113,7 @@ inline void compute_json(std::ostream &out,const ComputeResult &r,uint32_t comma
 template<class Sim>
 void active_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
     const ComputeCapture &capture,const std::filesystem::path &output,const std::filesystem::path &session,
-    std::chrono::milliseconds timeout=std::chrono::minutes(5)) {
+    std::chrono::milliseconds timeout=compute_response_timeout()) {
   PtePages pte;pte.observe_tables(memory,capture.trace);
   auto held=hold_compute(sim,agent,bus,memory,capture);
   // Keep the original post-completion RAM image, including writable outputs,
@@ -116,6 +133,7 @@ void active_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
 int main(int argc,char **argv) {
   try {
     using namespace compute_owner;
+    const auto response_timeout=compute_response_timeout();
     if(argc==3 && std::string(argv[1])=="--probe-profile") {
       require(!std::filesystem::exists(argv[2]),"compute profile output already exists");
       Memory memory;Simulation sim(argc,argv);sim.reset();Agent agent(memory);ReplayBus<Simulation> bus(sim,agent,100000);
@@ -127,11 +145,11 @@ int main(int argc,char **argv) {
     const std::filesystem::path output=argv[3],session=argv[4];
     require(std::filesystem::is_directory(session) && !std::filesystem::is_symlink(session),"invalid compute session directory");
     require(!std::filesystem::exists(output),"compute output already exists");
-    wait_input(session/"record-0.capture",session);
+    wait_input(session/"record-0.capture",session,response_timeout);
     const auto capture=ComputeCapture::read((session/"record-0.capture").string());
     Memory memory=Memory::read(argv[2]);verify_readonly(memory,memory,capture.writable);
     require(std::filesystem::create_directory(output),"cannot create compute output directory");
     Simulation sim(argc,argv);sim.reset();Agent agent(memory);ReplayBus<Simulation> bus(sim,agent,100000);
-    active_compute(sim,agent,bus,memory,capture,output,session);sim.model->final();return 0;
+    active_compute(sim,agent,bus,memory,capture,output,session,response_timeout);sim.model->final();return 0;
   }catch(const std::exception &e) {std::cerr<<"compute owner replay failed: "<<e.what()<<'\n';return 1;}
 }
