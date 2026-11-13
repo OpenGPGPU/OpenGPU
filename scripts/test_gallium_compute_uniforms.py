@@ -125,7 +125,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         extra = ["-I" + str(path) for path in (kernel, native_kernel / "driver", native_kernel / "driver/tests",
             native_kernel / "driver/tests/private_snapshot_stubs", native_kernel / "driver/tests/mmu_stubs",
             native_kernel / "driver/tests/compute_submit_stubs", ROOT / "userspace/tests")]
-        for relative in ("userspace/tests/graphics_native_kernel.c", "userspace/tests/native_graphics_uniform_source.c"):
+        for relative in ("userspace/tests/graphics_native_kernel.c", "userspace/tests/native_graphics_uniform_source.c",
+                         "userspace/tests/graphics_native_owner_ipc.c"):
             source = ROOT / relative
             obj = out / (source.stem + ".o")
             run(cc + common + extra + san + ["-MMD", "-MF", obj.with_suffix(".d"), "-c", source, "-o", obj],

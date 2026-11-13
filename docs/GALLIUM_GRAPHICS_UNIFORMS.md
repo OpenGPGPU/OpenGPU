@@ -172,6 +172,16 @@ The color record contains the original GEM `handle`, actual allocation-lookup
 `preserve` entries give prior GEM handles and physical allocations. No user VA
 or reconstructed private allocation may substitute for the actual lookup.
 
+The active-owner qualification transport has a separate CPU protocol gate.
+Its strict little-endian codec carries all 96 actual discovery words plus five
+actual registers (ID, capabilities, bin capability pointer, live quota and
+shader configuration). It preserves every raw GNX word and 64-bit telemetry,
+rejects malformed/duplicate discovery inputs and keeps output unchanged on
+rejection. Held observations and per-record execution responses cannot authorize
+owner release. Only the separate final response follows both independent image
+and guard checks. Five Python/C protocol tests pass with ASan/UBSan; these tests
+do not establish the complete active driver-to-DUT handshake or device execution.
+
 Native validator C coverage checks every input/output/tail slice across full
 and empty runtime layouts, VS versions 1/2, FS versions 1–5, capability guards,
 canonical fences and the unchanged 512-word ceiling. Existing compute, image,
@@ -242,6 +252,7 @@ python3 scripts/test_gallium_graphics_uniforms.py --build .artifacts/graphics-un
 python3 scripts/test_driver.py
 python3 scripts/test_test_selection.py
 python3 scripts/native_graphics_uniform_oracle.py --self-test
+OPENGPU_TEST_SANITIZERS=1 python3 scripts/test_native_graphics_owner_bridge.py
 ```
 
 With the actual private-owner implementation present in the same source tree,
