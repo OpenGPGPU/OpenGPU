@@ -82,7 +82,7 @@ class SequenceFixtureTests(unittest.TestCase):
                 for suffix in ('.memory','.commands'):
                     (out/'fixtures'/(name+suffix)).write_text('CPU guard placeholder; no GPU executes')
             manifest=owner_tests.OwnerInputTests().manifest()
-            manifest.update(rtlEmitted=False,workloadProduct=False,workloadWidth=32,
+            manifest.update(rtlEmitted=False,workloadProduct=False,workloadWidth=32,workloadTileLog2=3,
                             workloadHeight=32,scenes=q.common.SCENES)
             path=out/'owner-fixture-manifest.json'; path.write_text(q.json.dumps(manifest))
             runner=q.OwnerRunner(out,False,ROOT,api_capacity=True,two_cu_vga=True,alignment_v2=True)
@@ -98,6 +98,7 @@ class SequenceFixtureTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError): runner.prepared()
                 missing.write_bytes(contents)
                 for key,value in (('workloadProduct',True),('workloadWidth',640),
+                                  ('workloadTileLog2',4),('workloadTileLog2',True),
                                   ('scenes',q.common.SCENES[::-1]),('rtlEmitted',True)):
                     changed=copy.deepcopy(manifest); changed[key]=value; path.write_text(q.json.dumps(changed))
                     with self.assertRaises(RuntimeError): runner.prepared()

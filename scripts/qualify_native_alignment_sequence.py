@@ -105,14 +105,14 @@ class Runner(flash.Runner):
             'scripts/qualify_native_alignment_sequence.py']
 
     def run(self):
+        for name in ('sequence-execution.json', 'sequence-qualification.json'):
+            (self.out / name).unlink(missing_ok=True)
         prepared = self.prepared()
         self.checked_build(prepared)
         directory = self.out / 'sequence-output'
         directory.mkdir(exist_ok=True)
         # Invalidate a previous success before any command can fail. Outputs
         # from an incomplete run cannot satisfy the ordered metrics gate.
-        for name in ('sequence-execution.json', 'sequence-qualification.json'):
-            (self.out / name).unlink(missing_ok=True)
         self.execute('compute-native-sequence', [str(self.out / self.executable_name),
                      str(self.out / 'fixtures'), str(directory)], self.out / 'sequence-execution.log')
         rows = [json.loads(line) for line in (self.out / 'sequence-execution.log').read_text().splitlines()]
@@ -159,14 +159,22 @@ class OwnerRunner(Runner):
     """Add original fixtures to one prepared owner DUT without emitting another."""
     owner_profile = True
 
+    def __init__(self, *args, tile_log2=3, **kwargs):
+        if type(tile_log2) is not int or tile_log2 not in (3, 4):
+            raise ValueError('Owner fixtures require 8x8 or 16x16 tiles')
+        self.tile_log2 = tile_log2
+        super().__init__(*args, **kwargs)
+
     def fixture_manifest(self):
         manifest = json.loads((self.out / 'owner-fixture-manifest.json').read_text())
         owner.check_manifest(manifest, rtl_emitted=False)
-        expected = dict(workloadProduct=False, workloadWidth=32, workloadHeight=32,
+        width, height = common.frame_size(self.product, True)
+        expected = dict(workloadProduct=self.product, workloadWidth=width, workloadHeight=height,
+                        workloadTileLog2=self.tile_log2,
                         scenes=common.SCENES)
         if any(type(manifest.get(k)) is not type(v) or manifest[k] != v
                for k, v in expected.items()):
-            raise RuntimeError('Owner sequence requires six original ordered 32x32 recipes')
+            raise RuntimeError('Owner fixtures differ from the selected six original recipes')
 
     def fixture_inputs(self):
         files = common.tree_hashes(self.out / 'fixtures')
@@ -194,11 +202,13 @@ class OwnerRunner(Runner):
             if (self.out / name).exists():
                 raise RuntimeError('Owner sequence preparation requires fresh fixtures')
         log = self.out / 'sequence-prepare.log'
+        mode = '--product' if self.product else '--smoke'
+        width, height = common.frame_size(self.product, True)
         self.execute('prepare-owner-sequence-fixtures', self.sbt(
-            'opengpu.system.PrepareNativeOwnerFixtures --smoke --output ' +
-            json.dumps(str(self.out)), '3G'), log)
+            'opengpu.system.PrepareNativeOwnerFixtures ' + mode + ' --output ' +
+            json.dumps(str(self.out)) + ' --tile-log2 ' + str(self.tile_log2), '3G'), log)
         common.verify_prepare_completion(log,
-            'NATIVE_OWNER_FIXTURES scenes=6 frame=32x32 words=96 rtlEmitted=false gpuExecution=false')
+            f'NATIVE_OWNER_FIXTURES scenes=6 frame={width}x{height} words=96 rtlEmitted=false gpuExecution=false')
         if owner.prepared(self.out) != record:
             raise RuntimeError('Owner DUT changed during sequence fixture preparation')
         self.fixture_manifest()
