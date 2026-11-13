@@ -74,7 +74,8 @@ static void kref_put(struct kref *k,void (*release)(struct kref *))
 static void *idr_find(struct idr *map,u32 id){return id<512?map->entries[id]:NULL;}
 static int idr_alloc(struct idr *map,void *value,int first,int last,int flags)
 {(void)flags;if(!last || last>512)last=512;
- for(int i=first;i<last;i++)if(!map->entries[i]){map->entries[i]=value;return i;}return -ENOSPC;}
+ for(int i=first;i<last;i++)if(!map->entries[i]){map->entries[i]=value;return i;}
+ return -ENOSPC;}
 static void *idr_remove(struct idr *map,u32 id)
 {void *value=idr_find(map,id);if(id<512)map->entries[id]=NULL;return value;}
 #define DRM_SCHED_PRIORITY_NORMAL 0

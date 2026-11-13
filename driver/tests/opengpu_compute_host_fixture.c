@@ -293,10 +293,18 @@ static void compute_original_drop(struct compute_original *o)
 }}
 int compute_host_original_close(struct compute_host_session *s,uint32_t handle)
 {struct compute_original *o=s && handle<512?s->render.originals[handle]:NULL;
- if(!o || o->closed)return -ENOENT;o->closed=true;compute_original_drop(o);return 0;}
+ if(!o || o->closed)return -ENOENT;
+ o->closed=true;compute_original_drop(o);return 0;}
 int compute_host_query(struct compute_host_session *s,uint32_t param,uint64_t *value)
 {if(!s || !value)return -EINVAL;struct drm_opengpu_param request={.param=param};
  int error=opengpu_compute_get_param_ioctl(&s->drm,&request,&s->file);if(!error)*value=request.value;return error;}
+int compute_host_context_destroy(struct compute_host_session *s,uint32_t id)
+{if(!s || (s->exported && !compute_mmio_state(&s->gpu)->cleanup_done))return -EBUSY;
+ struct drm_opengpu_context request={.id=id};compute_running=s;
+ int error=opengpu_compute_context_destroy_ioctl(&s->drm,&request,&s->file);
+ if(!error && s->gpu.hw.wedged)return -EIO;
+ if(!error && id==s->context_id)s->context=NULL;
+ return error;}
 int compute_host_context_create(struct compute_host_session *s,uint32_t *id)
 {if(!s || !id || s->head || s->exported)return -EBUSY;
  struct drm_opengpu_context request={0};compute_running=s;
@@ -465,7 +473,7 @@ int compute_host_capture(struct compute_host_session *s,const char *path,uint64_
 int compute_host_drain_held(struct compute_host_session *s,const struct compute_host_held_receipt *held,const char *path)
 {
  if(!s || !held || !s->captured || s->drained || held->command_id!=s->gpu.hw.unified_command_id ||
-  held->completion!=(0x8000u|held->command_id) || held->processed_bytes ||
+  held->completion!=(0x8000u|held->command_id) || held->processed_bytes || held->legacy_status ||
   !(held->status&GPU_UCMD_STATUS_COMPLETION) || held->irq!=(GPU_IRQ_ENABLE|GPU_IRQ_PENDING) ||
   held->irq_asserted!=1 || !s->hardware || dma_fence_is_signaled(s->hardware))return -EINVAL;
  struct compute_mmio_state *m=compute_mmio_state(&s->gpu);
@@ -555,14 +563,16 @@ int compute_host_destroy(struct compute_host_session *s)
  for(unsigned h=1;h<512;h++)if(s->render.originals[h]){
   struct compute_original *o=s->render.originals[h];
   if(!o->closed){if(o->refs!=1)return -EBUSY;o->closed=true;compute_original_drop(o);}
-  if(o->refs || o->backing.cpu)return -EBUSY;free(o);
+  if(o->refs || o->backing.cpu)return -EBUSY;
+  free(o);
  }
  opengpu_admission_fini(&s->gpu);
  struct compute_mmio_state *m=s->gpu.hw.compute_mmio;if(m){
   while(m->pte){struct compute_mmio_pte_shadow *p=m->pte;m->pte=p->next;free(p->words);free(p);}
   free(m->cleanup_directory);free(m->actions);free(m);
  }
- for(unsigned i=0;i<3;i++)dma_fence_put(s->sync[i].fence);compute_running=NULL;
+ for(unsigned i=0;i<3;i++)dma_fence_put(s->sync[i].fence);
+ compute_running=NULL;
  free(s->profile);free(s);return 0;
 }
 #ifdef OPENGPU_COMPUTE_HOST_TEST_MAIN
@@ -582,7 +592,7 @@ static void compute_host_test_cleanup_peer(struct opengpu_device *gpu,const char
  struct compute_mmio_state *m=compute_mmio_state(gpu);assert(m->cleanup_active && m->pte);
  char path[4096];assert(snprintf(path,sizeof(path),"%s/cleanup-%u.observed",directory,sequence)>0);
  FILE *f=fopen(path,"wx");assert(f);assert(fwrite("OGCLA001",1,8,f)==8);
- int phase=compute_running->context?(compute_running->context->refcount.refs?1:2):3;
+ int phase=!gpu->mmu.vms?3:compute_running->context && !compute_running->context->refcount.refs?2:1;
  bool bad=test_fail_phase==phase && !test_failure_injected;
  if(bad)test_failure_injected=true;
  compute_mmio_le(f,sequence+(bad && test_bad_kind==1?1:0),4);
@@ -632,6 +642,11 @@ int main(int argc,char **argv)
 
  for(unsigned active=0;active<2;active++){
  session=compute_host_create(7,test_profile,ARRAY_SIZE(test_profile));assert(session);
+ /* Gallium owns a graphics context and a separate compute context on the
+  * same DRM file. Keep other accepted, empty VMs through final cleanup. */
+ u32 second=0,third=0;
+ assert(!compute_host_context_create(session,&second) && second==2);
+ assert(!compute_host_context_create(session,&third) && third==3);
  u32 *code=compute_host_original_allocate(session,1,4096);assert(code);
  const u32 program[]={(7u<<25)|(5u<<7)|0x0bu,0x0050a023u,0xc1087057u,
   0x5e003157u,(7u<<26)|(1u<<25)|(2u<<20)|(2u<<15)|(3u<<7)|0x2bu,OPENGPU_SHADER_CEASE};
@@ -685,7 +700,7 @@ int main(int argc,char **argv)
   assert(compute_host_capture(session,path,1000000,37)==-EINVAL);
   assert(snprintf(path,sizeof(path),"%s/record-0.retire",argv[1])>0);
   struct compute_host_held_receipt held={.command_id=session->gpu.hw.unified_command_id,
-   .completion=0x8000u|session->gpu.hw.unified_command_id,.legacy_status=GPU_STATUS_DONE,
+   .completion=0x8000u|session->gpu.hw.unified_command_id,.legacy_status=0,
    .status=GPU_UCMD_STATUS_COMPLETION|GPU_UCMD_STATUS_VM_BUSY,.irq=GPU_IRQ_ENABLE|GPU_IRQ_PENDING,.irq_asserted=1};
   struct compute_host_held_receipt bad=held;bad.command_id^=1;
   assert(compute_host_drain_held(session,&bad,path)==-EINVAL && !dma_fence_is_signaled(session->hardware));
@@ -707,7 +722,8 @@ int main(int argc,char **argv)
    }
    if(test_fail_phase<=2){
     assert(session->context && session->context->vm.enabled && session->context->vm.root.cpu);
-    assert(session->gpu.mmu.vms==&session->context->vm && session->context->vm.asid);
+    bool linked=false;for(struct opengpu_vm *vm=session->gpu.mmu.vms;vm;vm=vm->next)if(vm==&session->context->vm)linked=true;
+    assert(linked && session->context->vm.asid);
     if(test_fail_phase==2)assert(!session->head && session->context->refcount.refs==0);
    }else assert(!session->context && !session->gpu.mmu.vms);
    assert(session->gpu.mmu.enabled && session->gpu.mmu.root.cpu);

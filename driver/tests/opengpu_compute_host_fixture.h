@@ -12,6 +12,7 @@ struct compute_host_session *compute_host_create(uint32_t context,
     const struct compute_host_profile_word *,size_t count);
 int compute_host_query(struct compute_host_session *,uint32_t param,uint64_t *value);
 int compute_host_original_close(struct compute_host_session *,uint32_t handle);
+int compute_host_context_destroy(struct compute_host_session *,uint32_t id);
 int compute_host_context_create(struct compute_host_session *,uint32_t *id);
 int compute_host_submit_storage(struct compute_host_session *,const struct drm_opengpu_compute_storage *);
 uint32_t compute_host_context_id(const struct compute_host_session *);

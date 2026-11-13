@@ -80,11 +80,12 @@ def profile_bytes(profile):
 
 def held_payload(value):
     required_flags(value, dict(schema='opengpu-compute-owner-held-v1', phase='held', record=0,
-        sourceQualificationRequired=True, heldCompletionDrained=True, readOnlyGuards=True))
+        sourceQualificationRequired=True, heldCompletionDrained=True, readOnlyGuards=True,
+        independentBytesRequired=True, resetCount=1, clockQualified=False, fpsQualified=False))
     command = uint(value.get('commandId'))
     completion, processed = uint(value.get('completion')), uint(value.get('processedBytes'), 64)
     legacy, status, irq = (uint(value.get(key)) for key in ('heldLegacyStatus', 'heldStatus', 'heldIrq'))
-    if not 0 < command < 256 or completion != 0x8000 | command or processed or not status & 2:
+    if not 0 < command < 256 or completion != 0x8000 | command or processed or legacy or not status & 2 or status & (4 | 8 | 16):
         raise ValueError('wrong compute completion or identity')
     if type(value.get('heldIrqAsserted')) is not bool or not value['heldIrqAsserted'] or irq != 3:
         raise ValueError('held completion IRQ required')
@@ -99,7 +100,8 @@ def held_bytes(value):
 
 def retired_bytes(value, held):
     required_flags(value, dict(schema='opengpu-compute-owner-retired-v1', phase='retired', record=0,
-        sourceQualificationRequired=True, externalDrained=True))
+        sourceQualificationRequired=True, externalDrained=True, independentBytesRequired=True,
+        resetCount=1, clockQualified=False, fpsQualified=False))
     for key in ('commandId', 'completion', 'processedBytes', 'heldLegacyStatus', 'heldStatus',
                 'heldIrq', 'heldIrqAsserted'):
         if type(value.get(key)) is not type(held.get(key)) or value[key] != held[key]:

@@ -24,8 +24,9 @@ def profile():
 
 def held():
     return dict(schema='opengpu-compute-owner-held-v1', phase='held', record=0, commandId=11,
-        completion=0x800b, processedBytes=0, heldLegacyStatus=2, heldStatus=34, heldIrq=3,
-        heldIrqAsserted=True, sourceQualificationRequired=True, heldCompletionDrained=True, readOnlyGuards=True)
+        completion=0x800b, processedBytes=0, heldLegacyStatus=0, heldStatus=34, heldIrq=3,
+        heldIrqAsserted=True, sourceQualificationRequired=True, heldCompletionDrained=True, readOnlyGuards=True, independentBytesRequired=True,
+        resetCount=1, clockQualified=False, fpsQualified=False)
 
 
 class Protocol(unittest.TestCase):
@@ -65,7 +66,8 @@ class Protocol(unittest.TestCase):
                        retiredStatus=1, retiredIrq=1, retiredIrqAsserted=False, externalDrained=True)
         self.assertEqual(len(retired_bytes(retired, first)), 56)
         for key, bad in [('completion', 0x870b), ('processedBytes', 1), ('heldIrqAsserted', 1),
-                         ('gnx', [0]*12), ('retiredStatus', 1), ('commandId', True)]:
+                         ('gnx', [0]*12), ('retiredStatus', 1), ('commandId', True), ('heldLegacyStatus', 2),
+                         ('clockQualified', True), ('fpsQualified', True), ('resetCount', 2), ('independentBytesRequired', False)]:
             wrong = dict(first, **{key: bad})
             with self.assertRaises(ValueError): held_bytes(wrong)
         for key, bad in [('completion', 0x800c), ('externalDrained', False), ('retiredIrqAsserted', 0),
