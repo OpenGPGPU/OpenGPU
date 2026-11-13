@@ -4,6 +4,7 @@
 This does not execute a shader or qualify a DUT. All temporary outputs are
 created inside this GPU checkout and removed at terminal completion.
 """
+import argparse
 import os
 from pathlib import Path
 import shlex
@@ -36,6 +37,7 @@ def write_bodies(out):
     (out / 'compute_host_memory_under_test.inc').write_text('\n'.join(
         line for line in memory.splitlines() if not line.startswith('#include ')))
     units = {
+        'query': between(source, 'int opengpu_compute_get_param_ioctl(', 'int opengpu_compute_get_fault_ioctl('),
         'run': between(source, 'int opengpu_job_track_mapping(', '    if (job->type == OPENGPU_SCHED_BLIT)') + '    return ERR_PTR(-EINVAL);\n}\n',
         'events': between(source, 'static int opengpu_command_events_init(\n', '/* Virtual mappings used by queued DMA jobs'),
         'lookup': between(source, 'static struct opengpu_resource_binding *\nopengpu_binding_lookup(', 'static int opengpu_resolve_bindings('),
@@ -102,6 +104,10 @@ def write_bodies(out):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--canonical-root', type=Path,
+                        help='fixed checkout providing the actual compute capture C++ parser')
+    args = parser.parse_args()
     parent = ROOT / '.artifacts'
     parent.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='compute-host-', dir=parent) as temporary:
@@ -113,6 +119,8 @@ def main():
         include = [out, ROOT / 'driver', ROOT / 'driver/tests/mmu_stubs',
                    ROOT / 'driver/tests/compute_submit_stubs']
         env = dict(os.environ, TMPDIR=temporary)
+        env["UBSAN_OPTIONS"] = "halt_on_error=1"
+        env["ASAN_OPTIONS"] = "halt_on_error=1"
         subprocess.run(shlex.split(os.environ.get('CC', 'cc')) + flags +
                        ['-I' + str(p) for p in include] +
                        [str(ROOT / 'driver/tests/opengpu_compute_host_fixture.c'),
@@ -123,6 +131,17 @@ def main():
                        ['-I' + str(p) for p in include] + ['-c', str(ROOT / 'driver/tests/opengpu_compute_host_fixture.c'),
                         '-o', str(out / 'producer-boundary.o')], env=env, check=True)
         subprocess.run([str(out / 'test'), str(out)], env=env, check=True)
+        if args.canonical_root:
+            canonical = args.canonical_root.resolve(strict=True)
+            source = canonical / 'scripts/test_compute_owner.cpp'
+            cppflags = ['-std=c++17', '-O1', '-Wall', '-Wextra', '-Werror']
+            if os.environ.get('OPENGPU_TEST_SANITIZERS') == '1':
+                cppflags += ['-fsanitize=address,undefined', '-fno-omit-frame-pointer']
+            binary = out / 'canonical-parser'
+            subprocess.run(shlex.split(os.environ.get('CXX', 'c++')) + cppflags +
+                           ['-I' + str(canonical / 'scripts/test_stubs/native_host'),
+                            '-I' + str(canonical / 'scripts'), str(source), '-o', str(binary)], env=env, check=True)
+            subprocess.run([str(binary), str(out / 'union.memory'), str(out / 'record-0.capture')], env=env, check=True)
         for phase in range(1, 4):
             for kind in range(1, 3):
                 negative = out / ('negative-%s-%s' % (phase, kind))
