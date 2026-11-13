@@ -187,13 +187,18 @@ def validate_metrics(rows, product, two_cu_vga=False):
             raise RuntimeError('Incomplete native execution metrics')
 
 
-def verify_prepare_marker(log, product, two_cu_vga=False):
-    width, height = frame_size(product, two_cu_vga)
+def verify_prepare_completion(log, expected):
+    prefix = expected.split()[0]
     markers = [line for line in log.read_text().splitlines()
-               if line.startswith('NATIVE_COMPILED_INPUTS')]
-    expected = f'NATIVE_COMPILED_INPUTS scenes=6 frame={width}x{height} rtlEmitted=true'
+               if line.startswith(prefix)]
     if markers != [expected]:
         raise RuntimeError('Complete native RTL/fixture preparation is missing')
+
+
+def verify_prepare_marker(log, product, two_cu_vga=False):
+    width, height = frame_size(product, two_cu_vga)
+    verify_prepare_completion(log,
+        f'NATIVE_COMPILED_INPUTS scenes=6 frame={width}x{height} rtlEmitted=true')
 
 
 def verify_marker(log, product, two_cu_vga=False):
