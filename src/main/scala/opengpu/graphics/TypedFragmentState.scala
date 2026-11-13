@@ -37,7 +37,7 @@ object TypedFragmentStateLayout {
       ShaderTextureResources.fields(126,"fragment.resources.",d.fragment.resources)++
       ShaderUniformResources.fields(118,"fragment.uniforms.",d.fragment.uniforms)
   }
-  def errors(d: TypedFragmentState,arena: PrimitiveStateDescriptor,f: FragmentShaderConfig,g: GraphicsConfig,c: GpuConfig,imageAvailable: Boolean=false): (Bool,Bool)={
+  def errors(d: TypedFragmentState,arena: PrimitiveStateDescriptor,f: FragmentShaderConfig,g: GraphicsConfig,c: GpuConfig,imageAvailable: Boolean=false,nativeAdvanced: Boolean=false): (Bool,Bool)={
     val checks=(0 until engines).map{e=>val view=scratch(d,e);val shader=WireDefault(d.fragment);shader.scratch:=view
       val (invalid,bounds)=FragmentShaderDescriptor.errors(shader,f,g,c)
       val alias=view.base<arena.limit && view.limit>arena.base
@@ -48,8 +48,9 @@ object TypedFragmentStateLayout {
       a.U<d.engineCount && b.U<d.engineCount && x.base<y.limit && x.limit>y.base
     }).reduce(_ || _)
     val unused=d.scratch.zipWithIndex.map{case(v,i)=>(i+1).U<d.engineCount || !v.asUInt.orR}.reduce(_ && _)
-    val invalid= !ShaderImagePublication.legal(d.image) || (!imageAvailable.B && d.image.asUInt.orR) || !TypedBlendState.legalDrawVersion(d.version,d.blend) || d.engineCount===0.U || d.engineCount>engines.U || d.tests.version=/=1.U ||
-      TypedBlendState.invalidDraw(d.blend) || d.fragment.identity.asUInt=/=arena.identity.asUInt || !unused || aliases || checks.map(_._1).reduce(_ || _)
+    val invalid= !ShaderImagePublication.legal(d.image) || (!imageAvailable.B && d.image.asUInt.orR) || !TypedBlendState.legalFragmentStateVersion(d.version,d.blend,nativeAdvanced) || d.engineCount===0.U || d.engineCount>engines.U || d.tests.version=/=1.U ||
+      TypedBlendState.invalidDraw(d.blend,nativeAdvanced) || !(if(nativeAdvanced)TypedBlendState.advancedOutputTypes(d.blend,d.fragment.colorTypes) else true.B) ||
+      d.fragment.identity.asUInt=/=arena.identity.asUInt || !unused || aliases || checks.map(_._1).reduce(_ || _)
     (invalid,checks.map(_._2).reduce(_ || _))
   }
 }
@@ -67,7 +68,7 @@ private class TypedFragmentStateHeader extends Bundle {val capacity=UInt(32.W);v
   * Invalidate at every pass binding, including same-address/generation reuse.
   * An invalidate during a fill prevents that fill from becoming a cache entry.
   */
-class TypedFragmentStateReader(config: GpuConfig=GpuConfig(),f: FragmentShaderConfig=FragmentShaderConfig(),g: GraphicsConfig=GraphicsConfig(),imageAvailable: Boolean=false) extends Module {
+class TypedFragmentStateReader(config: GpuConfig=GpuConfig(),f: FragmentShaderConfig=FragmentShaderConfig(),g: GraphicsConfig=GraphicsConfig(),imageAvailable: Boolean=false,nativeAdvanced: Boolean=false) extends Module {
   require(config.xLen==32 && f.colors==4)
   val io=IO(new Bundle {
     val lookup=Flipped(Decoupled(new TypedFragmentStateLookup));val result=Decoupled(new TypedFragmentStateResult(f))
@@ -125,7 +126,7 @@ class TypedFragmentStateReader(config: GpuConfig=GpuConfig(),f: FragmentShaderCo
     }
     is(State.fetch){when((stop || issued===8.U) && !live.asUInt.orR && !offered){phase:=Mux(stop,State.finish,State.verify)}}
     is(State.verify){
-      val (invalid,bounds)=TypedFragmentStateLayout.errors(snapshot,descriptor.arena,f,g,config,imageAvailable)
+      val (invalid,bounds)=TypedFragmentStateLayout.errors(snapshot,descriptor.arena,f,g,config,imageAvailable,nativeAdvanced)
       val legacyPadding=snapshot.version===1.U && snapshot.blend.buffers.asUInt.orR
       val unsupportedImage= !imageAvailable.B && snapshot.image.asUInt.orR
       when(!stop){when(badEncoding || legacyPadding || unsupportedImage || header.capacity=/=TypedFragmentStateLayout.engines.U || header.identity.asUInt=/=descriptor.arena.identity.asUInt || header.handle=/=descriptor.handle){status:=7.U}

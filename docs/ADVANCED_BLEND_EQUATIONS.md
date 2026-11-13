@@ -2,8 +2,10 @@
 
 Status: the serialized service and opt-in serial and parallel typed tile
 storage paths have directed tests. Internal native pixel ownership routes
-advanced work to the parallel general path. Native draw packet admission,
-render-pipeline integration and driver/API exposure remain open.
+advanced work to the parallel general path. The separate opt-in
+[native transport contract](NATIVE_ADVANCED_BLEND_ABI.md) defines draw/GFS
+payload admission and safe discovery. GLES/API exposure and product
+qualification remain open.
 
 `TypedAdvancedColorBlend` evaluates every separable
 `KHR_blend_equation_advanced` mode on premultiplied source and destination
@@ -161,11 +163,12 @@ factors and equations must be zero; blend constants remain shared. Integer
 advanced attachments and malformed controls are rejected for the entire quad
 before its first write, including when an earlier MRT would otherwise be legal.
 
-Version 3 is **not a native draw packet ABI**. Ordinary descriptor validation,
-scalar selection and all native draw versions reject it; only the explicitly
-enabled typed tile owner accepts and resolves it. Version 2 keeps its reserved
-high-bit checks. Native/render-pipeline admission and discovery advertise no new
-capability.
+Internal blend-state version 3 alone does not enable a native packet ABI.
+Scalar selection and legacy draw/GFS payload versions continue rejecting it.
+The independent `nativeAdvancedDraws` opt-in requires the explicitly defined
+native payload version and protected parallel owner; its GCR/GAB discovery
+contract is separate from the frozen GDB1 words. Version 2 retains its reserved
+high-bit checks. Default profiles keep the new admission and discovery disabled.
 
 A quad retains its state through gather, arithmetic, encode and masked writes.
 Cancellation drains offered reads and child arithmetic and suppresses new
@@ -227,8 +230,8 @@ Completion waits for both arithmetic routes, codec and word owners to drain.
 `NativeTypedSamplePixelBackend` sends internal version 3 quads to the parallel
 general owner. It drains an older native cohort before that handoff and drains
 the general owner before the next native cohort. Advanced state never becomes
-ordinary native sample-packet arithmetic. This change exposes no native draw
-packet, capability word or driver API.
+ordinary native sample-packet arithmetic. Native packet admission additionally
+requires the separate [versioned transport](NATIVE_ADVANCED_BLEND_ABI.md).
 
 The four-MRT fixtures test internal state isolation. A future GLES API must
 enforce the single color-output-zero restriction and matching fragment-shader
@@ -279,7 +282,7 @@ sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
 ## Remaining work
 
 Full GLES blending conformance, including precision, exceptional inputs and
-the complete equation-by-format matrix, remains unqualified. Native
-draw/render-pipeline admission, native blend-barrier ordering, driver/API
-exposure, physical timing and product qualification remain open.
-This internal tile integration does not close H8.
+the complete equation-by-format matrix, remains unqualified. Complete native
+job/product qualification, native blend-barrier API ordering, GLES frontend
+exposure and physical timing remain open. The opt-in transport and typed tile
+integration do not close H8.

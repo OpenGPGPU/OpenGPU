@@ -5,7 +5,10 @@ import chisel3.util._
 import opengpu.core.memory.L2SramArray
 
 case class TypedTileColorConfig(bytes: Int=32768,parallelLanes: Boolean=false,
-    parallelDepth: Boolean=false,nativeSamples: Boolean=false,streamingWordPorts: Int=4,advancedBlend: Boolean=false) {
+    parallelDepth: Boolean=false,nativeSamples: Boolean=false,streamingWordPorts: Int=4,advancedBlend: Boolean=false,
+    nativeAdvancedDraws: Boolean=false) {
+  require(!nativeAdvancedDraws || (advancedBlend && nativeSamples && parallelLanes && parallelDepth),
+    "native advanced draw admission requires the real parallel native/general owner")
   require(bytes>=1024 && bytes<=65536 && isPow2(bytes))
   require(!parallelDepth || parallelLanes,"parallel depth shares the parallel typed word service")
   require(!nativeSamples || (bytes==32768 && parallelDepth),"native samples share the 32 KiB parallel depth/color policy")

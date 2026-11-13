@@ -19,10 +19,20 @@ class TypedBlendState extends Bundle {
 }
 object TypedBlendState {
   val indexedVersion=2
-  /** Internal opt-in tile state; never a native draw-packet version. */
+  /** Internal state version; native payload admission has its own opt-in ABI. */
   val advancedIndexedVersion=3
-  def legalDrawVersion(version: UInt,s: TypedBlendState): Bool=
-    (version===1.U && s.version=/=indexedVersion.U && s.version=/=advancedIndexedVersion.U) || (version===2.U && s.version===indexedVersion.U)
+  private def legalPayloadVersion(version: UInt,s: TypedBlendState,advancedVersion: Int,nativeAdvanced: Boolean): Bool=
+    (version===1.U && s.version=/=indexedVersion.U && s.version=/=advancedIndexedVersion.U) ||
+      (version===2.U && s.version===indexedVersion.U) ||
+      (nativeAdvanced.B && version===advancedVersion.U &&
+        s.version===NativeAdvancedBlendCapabilities.blendStateVersion.U)
+  def legalDrawVersion(version: UInt,s: TypedBlendState,nativeAdvanced: Boolean=false): Bool=
+    legalPayloadVersion(version,s,NativeAdvancedBlendCapabilities.drawPayloadVersion,nativeAdvanced)
+  def legalFragmentStateVersion(version: UInt,s: TypedBlendState,nativeAdvanced: Boolean=false): Bool=
+    legalPayloadVersion(version,s,NativeAdvancedBlendCapabilities.fragmentStatePayloadVersion,nativeAdvanced)
+  /** Reject incompatible shader output types before any shader can run. */
+  def advancedOutputTypes(s: TypedBlendState,types: Vec[UInt]): Bool=
+    types.zipWithIndex.map{case(t,c)=> !advanced(s,c.U) || t===0.U}.reduce(_ && _)
   def header(prefix: String): String={
     val result=new StringBuilder
     result.append(NativeDrawBufferBlendCapabilities.header(prefix))

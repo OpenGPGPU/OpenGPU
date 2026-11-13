@@ -65,7 +65,7 @@ struct opengpu_device {
     struct { int scheduler; } compute;
     struct { struct mutex submit_lock; u32 capabilities, tessellation_engines;
         bool wedged, tessellation_transport, tessellation_feedback_transport,
-             tessellation_virtual_images; } hw;
+             tessellation_virtual_images, native_advanced_blend_transport; } hw;
     struct opengpu_mmu mmu;
 };
 struct dma_fence { u64 seqno; int refs; };
@@ -1068,6 +1068,55 @@ int main(int argc, char **argv)
                 make_patch_input(draws, domain, patch.va);
                 make_bound_frame(frame, frame_binding.va, image_base, 4);
                 make_fragment_state(states, frame, 4, 0);
+                /* New native advanced GFS admission happens before enqueue.
+                 * Failures cannot publish fences, retain objects or kick GPU
+                 * work. Exercise all three patch domains and image modes. */
+                {
+                    const int allocations = live_allocations, submissions = pushed, executions = kicks;
+                    const u32 vm_tables = context.vm.l1_count, global_tables = gpu.mmu.l1_count;
+                    const int patch_fences = patch_resv.fences, frame_fences = frame_resv.fences;
+                    const u32 version_word = OPENGPU_NATIVE_ADVANCED_BLEND_GFS_PAYLOAD_VERSION_WORD;
+                    const u32 blend_word = OPENGPU_NATIVE_ADVANCED_BLEND_GFS_BLEND_VERSION_WORD;
+                    const u32 control_word = OPENGPU_NATIVE_ADVANCED_BLEND_GFS_BUFFER0_WORD;
+                    const u32 type_word = OPENGPU_NATIVE_ADVANCED_BLEND_GFS_COLOR_TYPE0_WORD;
+                    put(states, version_word, 3); put(states, blend_word, 3);
+                    put(states, control_word, (1u << 27) | (15u << 23) | 1u);
+                    gpu.hw.native_advanced_blend_transport = false;
+                    for (u32 bad = 0; bad < 7; ++bad) {
+                        gpu.hw.native_advanced_blend_transport = bad != 0;
+                        if (bad == 1) put(states, version_word, 1);
+                        if (bad == 2) put(states, version_word, 2);
+                        if (bad == 3) put(states, blend_word, 2);
+                        if (bad == 4) put(states, control_word, (15u << 28) | (1u << 27) | 1u);
+                        if (bad == 5) put(states, type_word, 1);
+                        if (bad == 6) put(frame, OPENGPU_NATIVE_ADVANCED_BLEND_FRAME_COLOR_FORMAT0_WORD, 9);
+                        assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
+                        assert(live_allocations == allocations && pushed == submissions && kicks == executions);
+                        assert(!patch_object.refs && !frame_object.refs && context.refs == 1);
+                        assert(patch_resv.fences == patch_fences && frame_resv.fences == frame_fences);
+                        put(states, version_word, 3); put(states, blend_word, 3); put(states, type_word, 0);
+                        put(states, control_word, (1u << 27) | (15u << 23) | 1u);
+                        put(frame, OPENGPU_NATIVE_ADVANCED_BLEND_FRAME_COLOR_FORMAT0_WORD, 0);
+                    }
+                    for (u32 equation = 0; equation <= 14; equation += 14) {
+                        put(states, control_word, (equation << 28) | (1u << 27) | (15u << 23) | 1u);
+                        assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL));
+                        queued = last_job;
+                        assert(tess_word(queued->tess_states.cpu, control_word) ==
+                               ((equation << 28) | (1u << 27) | (15u << 23) | 1u));
+                        assert(opengpu_sched_run_job(&queued->base) == &hardware_fence);
+                        const dma_addr_t state_va = queued->tess_states_va, state_dma = queued->tess_states.dma;
+                        busy = 0; opengpu_sched_free_job(&queued->base);
+                        /* First use may retain empty context-owned page-table
+                         * pages. Every job allocation and live PTE must retire. */
+                        assert(live_allocations == allocations + (int)(context.vm.l1_count - vm_tables) +
+                               (int)(gpu.mmu.l1_count - global_tables));
+                        assert(!patch_object.refs && !frame_object.refs && context.refs == 1);
+                        assert(verify(&gpu, &context.vm, state_va, state_dma, 512u) == -EACCES);
+                    }
+                    gpu.hw.native_advanced_blend_transport = false;
+                    make_fragment_state(states, frame, 4, 0);
+                }
                 before = live_allocations;
                 int before_push = pushed;
                 input.states_size--;

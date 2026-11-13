@@ -617,6 +617,14 @@ def changed_suites(root, changed, *, test_index=None):
                   "driver/opengpu_compute_resource_abi.h", "docs/abi/compute-resource-v1.json"}:
         for suite in ("ShaderImageCommandAbiSpec", "StorageCommandAbiSpec", "ComputeUniformCommandAbiSpec"):
             affected.add(f"src/test/scala/opengpu/graphics/{suite}.scala")
+    if changed & {"src/main/scala/opengpu/graphics/NativeAdvancedBlendCapabilities.scala",
+                  "src/main/scala/opengpu/elaboration/EmitNativeAdvancedBlendAbi.scala",
+                  "driver/opengpu_native_advanced_blend_abi.h", "driver/opengpu_native_advanced_blend_features.h",
+                  "driver/opengpu_native_advanced_blend_gfs.h", "driver/tests/opengpu_native_advanced_blend_gfs_test.c",
+                  "driver/tests/opengpu_native_advanced_blend_kernel_abi_test.c",
+                  "driver/tests/opengpu_native_advanced_blend_discovery_test.c"}:
+        affected.add("src/test/scala/opengpu/graphics/NativeAdvancedBlendAbiSpec.scala")
+        affected.add("src/test/scala/opengpu/system/NativeAdvancedBlendCapabilitiesAxiSpec.scala")
     texture_image_abi_paths = {
         f"src/main/scala/opengpu/elaboration/Emit{name}Abi.scala"
         for name in ("ShaderImage", "TextureImageBinding", "TextureImageLevel", "TextureImageFormat")

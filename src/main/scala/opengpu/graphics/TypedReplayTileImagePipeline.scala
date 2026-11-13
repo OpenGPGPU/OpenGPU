@@ -65,7 +65,7 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
   private val readerBusy=Wire(Bool());private val readerCancel=Wire(Bool())
   private val admittedImage=WireDefault(0.U.asTypeOf(new ShaderImageTask))
   if(fragmentImageAvailable){
-    val reader=Module(new TypedFragmentImageStateReader(config,f,g))
+    val reader=Module(new TypedFragmentImageStateReader(config,f,g,nativeAdvanced=storage.nativeAdvancedDraws))
     reader.io.in.valid:=readerLookup.valid;reader.io.in.bits.state:=readerLookup.bits;readerLookup.ready:=reader.io.in.ready
     readerResult.valid:=reader.io.out.valid;readerResult.bits:=0.U.asTypeOf(readerResult.bits)
     readerResult.bits.status:=reader.io.out.bits.status;readerResult.bits.stateValid:=reader.io.out.bits.stateValid
@@ -75,7 +75,7 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
     readerRequest<>reader.io.memoryRequest;reader.io.memoryResponse<>readerResponse
     reader.io.cancel:=readerCancel;reader.io.invalidate:=io.begin.fire;readerBusy:=reader.io.busy
   }else{
-    val reader=Module(new TypedFragmentStateReader(config,f,g))
+    val reader=Module(new TypedFragmentStateReader(config,f,g,nativeAdvanced=storage.nativeAdvancedDraws))
     reader.io.lookup<>readerLookup;readerResult<>reader.io.result
     readerRequest<>reader.io.memoryRequest;reader.io.memoryResponse<>readerResponse
     reader.io.cancel:=readerCancel;reader.io.invalidate:=io.begin.fire;readerBusy:=reader.io.busy

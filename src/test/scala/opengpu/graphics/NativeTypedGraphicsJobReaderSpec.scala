@@ -185,6 +185,43 @@ class NativeTypedGraphicsJobReaderSpec extends AnyFlatSpec {
       info("NATIVE_STAGED_IMAGE_ADMISSION cancelBeforeChild=true privateValidatorDrained=true noPartialBegin=true healthyReuse=true")
     }
   }
+  for(enabled<-Seq(false,true))
+  it should s"admit native advanced draw payloads only after strict immutable validation enabled=$enabled" in {
+    val storage=TypedTileColorConfig(parallelLanes=true,parallelDepth=true,nativeSamples=true,advancedBlend=true,nativeAdvancedDraws=enabled)
+    simulate(new NativeTypedGraphicsJobReader(p=p,f=f,storage=storage)){d=>val t=new Driver(d)
+      def install(equation: Int=0,change: Map[String,BigInt]=Map.empty): Unit={
+        t.prepare(1);t.drawValues++=Map[String,BigInt]("version"->3,"blend.version"->3,"blend.enable"->0,"blend.srcRGB"->0,
+          "blend.buffer0"->((BigInt(equation)<<28)|(BigInt(1)<<27)|(BigInt(15)<<23)|1))++change
+        t.put(0x4000,drawWords,drawMagic,drawFields(d.io.draw.bits),t.drawValues)
+      }
+      for(equation<-0 until 15){
+        install(equation);t.blockDraw=true;t.submit()
+        if(enabled){
+          t.until(d.io.draw.valid.peek().litToBoolean);val held=d.io.draw.bits.peek().litValue
+          t.memory(0x4000+604*4)=0
+          for(_<-0 until 7){t.tick();assert(d.io.draw.bits.peek().litValue==held)}
+          t.blockDraw=false;t.complete(0,1)
+        }else{t.blockDraw=false;t.complete(1);assert(t.acceptedDraws==0)}
+      }
+      for(change<-Seq(
+        Map("version"->BigInt(1)),Map("version"->BigInt(2)),Map("version"->BigInt(4)),
+        Map("blend.version"->BigInt(1)),Map("blend.version"->BigInt(2)),Map("blend.enable"->BigInt(1)),
+        Map("fragment.colorType0"->BigInt(1)),Map("fragment.colorType0"->BigInt(2)),
+        Map("blend.buffer0"->((BigInt(15)<<28)|(BigInt(1)<<27)|1)),
+        Map("blend.buffer0"->(BigInt(1)<<27)),Map("blend.buffer0"->((BigInt(1)<<27)|3)),
+        Map("blend.buffer1"->(BigInt(1)<<31)))){
+        install(change=change);t.submit();t.complete(1);assert(t.acceptedDraws==0)
+      }
+      if(enabled){
+        install();t.blockDraw=true;t.submit();t.until(d.io.draw.valid.peek().litToBoolean)
+        val held=d.io.draw.bits.peek().litValue;t.cancel()
+        for(_<-0 until 4){t.tick();d.io.draw.valid.expect(true.B);assert(d.io.draw.bits.peek().litValue==held)}
+        t.blockDraw=false;t.complete(4,1)
+      }
+      t.prepare(1);t.submit();t.complete(0,1)
+      info(s"NATIVE_ADVANCED_GTD profile=$enabled equations=15 payloadVersionIndependent=true immutableHeldOffer=true invalidBeforeShaderOffer=true singlePulseCancel=true legacyReuse=true")
+    }
+  }
   it should "retain version two indexed blend controls in held native draw offers and reject invalid states before launch" in {
     simulate(new NativeTypedGraphicsJobReader(p=p,f=f)){d=>val t=new Driver(d)
       val controls=Vector[BigInt]((15L<<23)|(1L<<1)|(1L<<9),

@@ -52,6 +52,51 @@ class TypedFragmentStateReaderSpec extends AnyFlatSpec {
     def invalidate(): Unit={d.io.invalidate.poke(true.B);tick();d.io.invalidate.poke(false.B)}
   }
   behavior of "TypedFragmentStateReader"
+  for(enabled<-Seq(false,true))
+  it should s"admit independent native advanced GFS payloads only with the explicit profile enabled=$enabled" in {
+    simulate(new TypedFragmentStateReader(cfg,f,g,nativeAdvanced=enabled)){d=>val t=new Driver(d)
+      def values(equation: Int=0): Map[String,BigInt]=t.contents++Map[String,BigInt](
+        "version"->3,"blend.version"->3,"blend.enable"->0,"blend.srcRGB"->0,"blend.srcAlpha"->0,
+        "blend.buffers[0]"->((BigInt(equation)<<28)|(BigInt(1)<<27)|(BigInt(15)<<23)|1))
+      for(equation<-0 until 15){
+        val expected=values(equation);t.invalidate();t.install(values=expected);t.lookup()
+        if(enabled){
+          t.until(d.io.result.valid.peek().litToBoolean);t.check(expected)
+          val held=d.io.result.bits.peek().litValue
+          t.memory.putWord(0x2000+8*4,0);d.io.cancel.poke(true.B)
+          for(_<-0 until 4){t.tick();assert(d.io.result.bits.peek().litValue==held)}
+          t.result(0);d.io.cancel.poke(false.B);t.lookup();t.until(d.io.result.valid.peek().litToBoolean)
+          t.check(expected);t.result(0,hit=true)
+        }else t.result(1)
+      }
+      for(change<-Seq(
+        Map("version"->BigInt(1)),Map("version"->BigInt(2)),Map("version"->BigInt(4)),
+        Map("blend.version"->BigInt(1)),Map("blend.version"->BigInt(2)),
+        Map("blend.enable"->BigInt(1)),Map("blend.srcAlpha"->BigInt(1)),
+        Map("fragment.colorTypes[0]"->BigInt(1)),Map("fragment.colorTypes[0]"->BigInt(2)),
+        Map("blend.buffers[0]"->((BigInt(15)<<28)|(BigInt(1)<<27)|1)),
+        Map("blend.buffers[0]"->(BigInt(1)<<27)),
+        Map("blend.buffers[0]"->((BigInt(1)<<27)|3)),
+        Map("blend.buffers[1]"->(BigInt(1)<<31)))){
+        t.invalidate();t.install(values=values()++change);t.lookup()
+        // Version-one indexed words remain a canonical-padding error, ahead
+        // of semantic admission, exactly as in the original GFS1 contract.
+        withClue(s"advanced GFS change=$change: "){t.result(if(change.get("version").contains(BigInt(1)))7 else 1)}
+      }
+      if(enabled){
+        t.invalidate();t.install(values=values());t.memory.faultAt=Set(BigInt(0x20c0));t.lookup();t.result(3)
+        t.memory.faultAt=Set.empty;t.lookup();t.until(d.io.result.valid.peek().litToBoolean);t.check(values());t.result(0)
+      }
+      // A single cancellation pulse with a held read must drain, not cache.
+      t.invalidate();t.install(values=values());t.memory.holdRequests=true;t.lookup()
+      t.until(d.io.memoryRequest.valid.peek().litToBoolean);val offered=d.io.memoryRequest.bits.peek().litValue
+      d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+      for(_<-0 until 4){t.tick();d.io.memoryRequest.valid.expect(true.B);assert(d.io.memoryRequest.bits.peek().litValue==offered)}
+      t.memory.holdRequests=false;t.result(4)
+      t.install();t.lookup();t.until(d.io.result.valid.peek().litToBoolean);t.check();t.result(0)
+      info(s"NATIVE_ADVANCED_GFS profile=$enabled equations=15 oldPayloadsRejectAdvanced=true integerOutputsRejected=true immutableCache=true heldResultCancelStable=true singlePulseHeldReadCancel=true legacyReuse=true")
+    }
+  }
   it should "snapshot version two indexed buffer controls and reject ambiguous legacy or malformed blend encodings" in {
     simulate(new TypedFragmentStateReader(cfg,f,g)){d=>val t=new Driver(d)
       val controls=Vector[BigInt]((15L<<23)|(1L<<1)|(1L<<9),
