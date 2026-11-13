@@ -206,8 +206,9 @@ int pipe_opengpu_launch_grid_storage(struct pipe_opengpu_context *ctx,
 
 /* Private, synchronous checked-storage GPU framebuffer pass. The versioned
  * descriptor is in opengpu_framebuffer_blit.h. No user compute state is rebound.
- * Only nearest RGBA/BGRA/RGBX/BGRX is admitted initially; same-GEM views remain
- * unsupported. Returns 1 only for an unsupported operand before any GPU work,
+ * Versions 1/2 retain their nearest contracts. Version 3 adds Q16 LINEAR color;
+ * version 2/3 permit matching depth/stencil and proven disjoint same-GEM views.
+ * Returns 1 only for an unsupported operand before any GPU work,
  * 0 for success, -1 for an error. Errors must not be retried by CPU fallback. */
 int pipe_opengpu_screen_framebuffer_blit(const struct pipe_opengpu_screen *screen);
 int pipe_opengpu_try_framebuffer_blit(struct pipe_opengpu_screen *screen,

@@ -17,7 +17,7 @@ static void inspect_blit(const struct drm_opengpu_compute_storage *p,
     assert(p->bindings[0].access==1 && p->bindings[1].access==3 && p->bindings[2].access==1);
     assert(!p->bindings[3].slot && !p->bindings[3].access);
     const uint32_t *maps=(const void *)bos[c->b[37].handle].data;
-    assert(maps[0]==2 && maps[1]==sizeof(struct opengpu_framebuffer_blit));
+    assert(maps[0]==3 && maps[1]==sizeof(struct opengpu_framebuffer_blit));
     blit_captures++;
 }
 
@@ -40,15 +40,15 @@ int main(void)
         PIPE_FORMAT_R8G8B8X8_UNORM,PIPE_FORMAT_B8G8R8X8_UNORM};
     unsigned graphics_context=next_context-1;struct context original=contexts[graphics_context];
     submission_capture=inspect_blit;
-    for(unsigned i=0;i<16;i++) {
+    for(unsigned filter=0;filter<2;filter++)for(unsigned i=0;i<16;i++) {
         struct pipe_blit_info b={0};
         src->format=b.src.format=formats[i/4];dst->format=b.dst.format=formats[i%4];
-        b.src.resource=src;b.dst.resource=dst;b.filter=PIPE_TEX_FILTER_NEAREST;b.mask=PIPE_MASK_RGBA;
+        b.src.resource=src;b.dst.resource=dst;b.filter=filter?PIPE_TEX_FILTER_LINEAR:PIPE_TEX_FILTER_NEAREST;b.mask=PIPE_MASK_RGBA;
         b.src.box=(struct pipe_box){.x=4,.y=0,.width=-4,.height=4,.depth=1};
         b.dst.box=(struct pipe_box){.x=-1,.y=0,.width=6,.height=3,.depth=1};
         b.scissor_enable=1;b.scissor=(struct pipe_scissor_state){.minx=1,.maxx=3,.miny=0,.maxy=2};
         memset(output,0xa5,(size_t)db);
-        unsigned before=computes;p->blit(p,&b);assert(computes==before+1 && blit_captures==i+1);
+        unsigned before=computes;p->blit(p,&b);assert(computes==before+1 && blit_captures==filter*16+i+1);
         /* Independent fixed affine pixel-centre oracle for this cropped,
          * flipped 4-to-6 by 4-to-3 case; retain pitch/padding sentinels. */
         for(unsigned y=0;y<4;y++)for(unsigned x=0;x<dp;x++) {
@@ -59,7 +59,16 @@ int main(void)
                 unsigned sbgra=i/4==1 || i/4==3,dbgra=i%4==1 || i%4==3;
                 unsigned canonical=channel==0&&dbgra?2:channel==2&&dbgra?0:channel;
                 unsigned sch=canonical==0&&sbgra?2:canonical==2&&sbgra?0:canonical;
-                if(canonical!=3 || i%4<2)expected=canonical==3 && i/4>=2?255:input[sy*sp+sx*4+sch];
+                if(canonical!=3 || i%4<2) {
+                    if(canonical==3 && i/4>=2)expected=255;
+                    else if(!filter)expected=input[sy*sp+sx*4+sch];
+                    else {
+                        uint64_t wx=pixel==1?54613:10923,wy=y==0?10923:32768,sum=0;
+                        for(unsigned j=0;j<2;j++)for(unsigned k=0;k<2;k++)
+                            sum+=(uint64_t)input[(y+j)*sp+(1+k)*4+sch]*(k?wx:65536-wx)*(j?wy:65536-wy);
+                        expected=(uint8_t)((sum+UINT64_C(0x80000000))>>32);
+                    }
+                }
             }
             assert(output[y*dp+x]==expected);
         }
@@ -91,7 +100,7 @@ int main(void)
         .destination_width=4,.destination_height=4,.destination_pitch=dp,
         .source_w=4,.source_h=4,.destination_w=2,.destination_h=2};
     unsigned before=computes,created=next_context,calls=ioctl_calls;
-    d.version=3;assert(pipe_opengpu_try_framebuffer_blit(opengpu_screen_gpu(s),gd,gs,&d,1000)==-1);
+    d.version=4;assert(pipe_opengpu_try_framebuffer_blit(opengpu_screen_gpu(s),gd,gs,&d,1000)==-1);
     assert(computes==before && next_context==created && ioctl_calls==calls);d.version=1;
     /* A held ACK cannot turn into CPU replay or reuse the abandoned context.
      * The screen retains the original fence until a later safe reap. */
@@ -128,6 +137,6 @@ int main(void)
     assert(computes==before && ioctl_calls==calls);
     free(source_copy);pipe_resource_reference(&src,NULL);pipe_resource_reference(&dst,NULL);
     p->destroy(p);s->destroy(s);no_leaks();
-    puts("GPU framebuffer blit CPU callbacks: actual Gallium/private pipe/ioctl/validator,16 format pairs,permissions/guards/held-ACK/fault/reuse PASS");
+    puts("GPU framebuffer blit CPU callbacks: actual Gallium/private pipe/ioctl/validator,2 filters x16 format pairs,depth/stencil,same-GEM,permissions/guards/held-ACK/fault/reuse PASS");
     return 0;
 }

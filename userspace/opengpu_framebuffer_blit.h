@@ -12,7 +12,9 @@
  * rejected before allocating a context or touching an image. */
 #define OPENGPU_FRAMEBUFFER_BLIT_VERSION 1u
 #define OPENGPU_FRAMEBUFFER_BLIT_VERSION_2 2u
+#define OPENGPU_FRAMEBUFFER_BLIT_VERSION_3 3u
 #define OPENGPU_FRAMEBUFFER_BLIT_SCISSOR 1u
+#define OPENGPU_FRAMEBUFFER_BLIT_LINEAR 2u
 #define OPENGPU_FRAMEBUFFER_BLIT_D24S8 5u
 #define OPENGPU_FRAMEBUFFER_BLIT_D24X8 6u
 #define OPENGPU_FRAMEBUFFER_BLIT_MAX_AXIS 16384u
@@ -30,6 +32,37 @@ struct opengpu_framebuffer_blit_plan {
     uint32_t x, y, width, height, map_words;
     uint32_t source_bytes, destination_bytes;
 };
+
+static inline unsigned opengpu_blit_map_step(const struct opengpu_framebuffer_blit *d)
+{ return d->version==3 && (d->flags&OPENGPU_FRAMEBUFFER_BLIT_LINEAR) ? 4u : 1u; }
+
+static inline int64_t opengpu_blit_clamp(int64_t value,int64_t lower,int64_t upper)
+{ return value<lower ? lower : value>=upper ? upper-1 : value; }
+
+static inline void opengpu_blit_linear_axis(int32_t source,int32_t extent,
+    int32_t destination,int32_t destination_extent,int64_t pixel,uint32_t limit,
+    uint32_t stride,uint32_t result[4])
+{
+    uint64_t sw=extent<0 ? -(int64_t)extent : extent;
+    uint64_t dw=destination_extent<0 ? -(int64_t)destination_extent : destination_extent;
+    uint64_t offset=destination_extent<0 ? (int64_t)destination-pixel-1 : pixel-destination;
+    uint64_t n=(2*offset+1)*sw,d=2*dw,r=n%d;
+    int64_t integral=extent<0 ? (int64_t)source-(int64_t)(n/d)-(r!=0) : (int64_t)source+(int64_t)(n/d);
+    if(extent<0 && r)r=d-r;
+    /* Subtract half a texel without a signed remainder. Quantize only the
+     * fractional coordinate, to nearest 16-bit fixed point. */
+    uint64_t fraction;
+    if(2*r<d){integral--;fraction=2*r+d;}
+    else fraction=2*r-d;
+    uint32_t weight=(uint32_t)((fraction*65536+d)/(2*d));
+    int64_t lower=extent<0 ? (int64_t)source+extent : source;
+    int64_t upper=extent<0 ? source : (int64_t)source+extent;
+    if(lower<0)lower=0;
+    if(upper>limit)upper=limit;
+    result[0]=(uint32_t)opengpu_blit_clamp(integral,lower,upper)*stride;
+    result[1]=(uint32_t)opengpu_blit_clamp(integral+1,lower,upper)*stride;
+    result[2]=weight;result[3]=65536-weight;
+}
 
 /* Exact integral pixel-centre selection, including reversed endpoints. All
  * signed endpoints are widened before subtraction/absolute value. The largest
@@ -57,8 +90,9 @@ static inline int opengpu_framebuffer_blit_plan_make(
     struct opengpu_framebuffer_blit_plan p = {0};
     uint32_t starts[2]={0}, counts[2]={0};
     if (!d || !out || !maps ||
-        (d->version != OPENGPU_FRAMEBUFFER_BLIT_VERSION && d->version != OPENGPU_FRAMEBUFFER_BLIT_VERSION_2) ||
-        d->bytes != sizeof(*d) || (d->flags & ~OPENGPU_FRAMEBUFFER_BLIT_SCISSOR) ||
+        (d->version < OPENGPU_FRAMEBUFFER_BLIT_VERSION || d->version > OPENGPU_FRAMEBUFFER_BLIT_VERSION_3) ||
+        d->bytes != sizeof(*d) || (d->flags & ~(OPENGPU_FRAMEBUFFER_BLIT_SCISSOR |
+            (d->version==3 ? OPENGPU_FRAMEBUFFER_BLIT_LINEAR : 0))) ||
         !d->source_width || !d->source_height || !d->destination_width || !d->destination_height ||
         d->source_width > OPENGPU_FRAMEBUFFER_BLIT_MAX_AXIS ||
         d->source_height > OPENGPU_FRAMEBUFFER_BLIT_MAX_AXIS ||
@@ -72,7 +106,7 @@ static inline int opengpu_framebuffer_blit_plan_make(
     unsigned depth=d->source_format==OPENGPU_FRAMEBUFFER_BLIT_D24S8 ||
         d->source_format==OPENGPU_FRAMEBUFFER_BLIT_D24X8;
     if(depth) {
-        if(d->version!=2 || d->source_format!=d->destination_format ||
+        if(d->version<2 || (d->flags&OPENGPU_FRAMEBUFFER_BLIT_LINEAR) || d->source_format!=d->destination_format ||
             (d->mask&~48u) || (d->source_format==OPENGPU_FRAMEBUFFER_BLIT_D24X8 && (d->mask&32)))return -1;
     } else if((d->mask&~15u) || d->source_format<OPENGPU_FORMAT_RGBA8 ||
         d->source_format>OPENGPU_FORMAT_BGRX8 || d->destination_format<OPENGPU_FORMAT_RGBA8 ||
@@ -82,7 +116,7 @@ static inline int opengpu_framebuffer_blit_plan_make(
     if (sb > source_allocation || db > destination_allocation ||
         sb > UINT32_MAX || db > UINT32_MAX ||
         capacity_words < OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS+
-            (size_t)d->destination_width+d->destination_height) return -1;
+            ((size_t)d->destination_width+d->destination_height)*opengpu_blit_map_step(d)) return -1;
     p.source_bytes=(uint32_t)sb; p.destination_bytes=(uint32_t)db;
     memset(maps,0,OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS*4);
     memcpy(maps,d,sizeof(*d));
@@ -112,13 +146,16 @@ static inline int opengpu_framebuffer_blit_plan_make(
             if (value < 0 || value >= source_limit) { if (counts[axis]) ended=1; continue; }
             if (ended) return -1; /* An affine map cannot create an interior hole. */
             if (!counts[axis]) starts[axis]=(uint32_t)i;
-            size_t index=OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS+counts[0]*axis+counts[axis];
-            maps[index]=(uint32_t)value*(axis ? d->source_pitch : 4u);
+            size_t index=OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS+
+                (counts[0]*axis+counts[axis])*opengpu_blit_map_step(d);
+            if(opengpu_blit_map_step(d)==4)
+                opengpu_blit_linear_axis(src,sw,dst,dw,i,source_limit,axis?d->source_pitch:4u,maps+index);
+            else maps[index]=(uint32_t)value*(axis ? d->source_pitch : 4u);
             counts[axis]++;
         }
     }
     p.x=starts[0];p.y=starts[1];p.width=counts[0];p.height=counts[1];
-    p.map_words=OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS+p.width+p.height;
+    p.map_words=OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS+(p.width+p.height)*opengpu_blit_map_step(d);
     *out=p;return 0;
 }
 
@@ -132,13 +169,31 @@ static inline int opengpu_framebuffer_blit_disjoint(
     const uint32_t *maps)
 {
     if(!p->width || !p->height)return 1;
+    unsigned step=opengpu_blit_map_step(d);
     uint32_t low=UINT32_MAX,high=0;
-    for(unsigned i=0;i<p->width;i++) {
-        uint32_t v=maps[OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS+i];
+    for(unsigned i=0;i<p->width;i++)for(unsigned tap=0;tap<(step==4?2u:1u);tap++) {
+        uint32_t v=maps[OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS+i*step+tap];
         if(v<low)low=v;
         if(v>high)high=v;
     }
-    const uint32_t *rows=maps+OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS+p->width;
+    const uint32_t *rows=maps+OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS+p->width*step;
+    if(step==4) {
+        uint32_t first=UINT32_MAX,last=0;
+        for(unsigned i=0;i<p->height;i++)for(unsigned tap=0;tap<2;tap++) {
+            uint32_t row=rows[i*step+tap];
+            if(row<first)first=row;
+            if(row>last)last=row;
+        }
+        uint64_t row=first;unsigned b=0;
+        while(row<=last && b<p->height) {
+            uint64_t a0=row+low,a1=row+high+4;
+            uint64_t b0=(uint64_t)(p->y+b)*d->destination_pitch+p->x*4u,b1=b0+p->width*4u;
+            if(a0<b1 && b0<a1)return 0;
+            if(a1<=b0)row+=d->source_pitch;
+            else b++;
+        }
+        return 1;
+    }
     unsigned reversed=rows[0]>rows[p->height-1],a=0,b=0;
     while(a<p->height && b<p->height) {
         uint64_t source=(uint64_t)rows[reversed?p->height-1-a:a]+low;
@@ -152,7 +207,7 @@ static inline int opengpu_framebuffer_blit_disjoint(
     return 1;
 }
 
-struct opengpu_blit_program { uint32_t code[128]; unsigned words, overflow; };
+struct opengpu_blit_program { uint32_t code[512]; unsigned words, overflow; };
 static inline void opengpu_blit_emit(struct opengpu_blit_program *p,uint32_t word)
 {
     if(p->words<sizeof(p->code)/sizeof(p->code[0]))p->code[p->words++]=word;
@@ -176,6 +231,52 @@ static inline void opengpu_blit_load(struct opengpu_blit_program *p,unsigned rd,
     opengpu_blit_splat(p,24,binding);
     opengpu_blit_emit(p,15u<<26|1u<<25|offset<<20|24u<<15|rd<<7|0x2bu);
 }
+static inline void opengpu_blit_axis_load(struct opengpu_blit_program *p,
+    unsigned id,uint32_t base,unsigned first,unsigned second,unsigned weight,unsigned inverse,unsigned linear)
+{
+    opengpu_blit_splat(p,6,linear?16:4);opengpu_blit_op(p,0x25,2,5,id,6);
+    opengpu_blit_splat(p,6,base);opengpu_blit_op(p,0,0,5,5,6);
+    opengpu_blit_load(p,first,5,2);
+    if(linear) {
+        const unsigned registers[3]={second,weight,inverse};
+        for(unsigned i=0;i<3;i++) {
+            opengpu_blit_splat(p,6,4);opengpu_blit_op(p,0,0,5,5,6);
+            opengpu_blit_load(p,registers[i],5,2);
+        }
+    }
+}
+static inline void opengpu_blit_channel(struct opengpu_blit_program *p,unsigned to,unsigned from,unsigned shift)
+{
+    opengpu_blit_splat(p,6,shift);opengpu_blit_op(p,0x28,0,to,6,from);
+    opengpu_blit_splat(p,6,255);opengpu_blit_op(p,9,0,to,to,6);
+}
+/* A/B/C/D bytes in v20..23; exact 16x16 fixed-point bilinear sum, rounded
+ * only once at the end. Split products into 16-bit limbs so all operations
+ * remain existing checked-storage uint32 instructions. No 40-bit product is
+ * truncated and no new validator or multiply opcode is needed. */
+static inline void opengpu_blit_bilinear(struct opengpu_blit_program *p)
+{
+    opengpu_blit_op(p,0x25,2,20,20,25);opengpu_blit_op(p,0x25,2,21,21,14);
+    opengpu_blit_op(p,0,0,20,20,21);
+    opengpu_blit_op(p,0x25,2,22,22,25);opengpu_blit_op(p,0x25,2,23,23,14);
+    opengpu_blit_op(p,0,0,22,22,23);
+    opengpu_blit_splat(p,6,65535);
+    opengpu_blit_op(p,9,0,7,20,6);opengpu_blit_op(p,9,0,8,22,6);
+    opengpu_blit_op(p,0x25,2,7,7,26);opengpu_blit_op(p,0x25,2,8,8,16);
+    opengpu_blit_splat(p,6,16);
+    opengpu_blit_op(p,0x28,0,20,6,20);opengpu_blit_op(p,0x28,0,22,6,22);
+    opengpu_blit_op(p,0x25,2,20,20,26);opengpu_blit_op(p,0x25,2,22,22,16);
+    opengpu_blit_op(p,0,0,20,20,22);
+    opengpu_blit_splat(p,6,65535);
+    opengpu_blit_op(p,9,0,13,7,6);opengpu_blit_op(p,9,0,15,8,6);
+    opengpu_blit_op(p,0,0,13,13,15);
+    opengpu_blit_splat(p,6,16);
+    opengpu_blit_op(p,0x28,0,13,6,13);
+    opengpu_blit_op(p,0x28,0,7,6,7);opengpu_blit_op(p,0x28,0,8,6,8);
+    opengpu_blit_op(p,0,0,20,20,13);opengpu_blit_op(p,0,0,20,20,7);opengpu_blit_op(p,0,0,20,20,8);
+    opengpu_blit_splat(p,6,32768);opengpu_blit_op(p,0,0,20,20,6);
+    opengpu_blit_splat(p,6,16);opengpu_blit_op(p,0x28,0,12,6,20);
+}
 /* One invocation per destination pixel; x2/x3 are the hardware block IDs.
  * Existing resource instructions check the exact source/destination/map views.
  * No pixel load/store uses ordinary vector memory or a supplied raw pointer. */
@@ -187,13 +288,16 @@ static inline struct opengpu_blit_program opengpu_framebuffer_blit_program(
     opengpu_blit_op(&p,0x17,4,2,2,0); /* x */
     opengpu_blit_op(&p,0x17,4,3,3,0); /* y */
     opengpu_blit_splat(&p,4,2);
-    opengpu_blit_op(&p,0x25,0,5,4,2); /* x*4 */
-    opengpu_blit_splat(&p,6,OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS*4);
-    opengpu_blit_op(&p,0,0,5,5,6);opengpu_blit_load(&p,7,5,2);
-    opengpu_blit_op(&p,0x25,0,5,4,3);
-    opengpu_blit_splat(&p,6,(OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS+plan->width)*4);
-    opengpu_blit_op(&p,0,0,5,5,6);opengpu_blit_load(&p,8,5,2);
+    unsigned linear=opengpu_blit_map_step(d)==4;
+    opengpu_blit_axis_load(&p,2,OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS*4,7,13,14,25,linear);
+    opengpu_blit_axis_load(&p,3,(OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS+
+        plan->width*opengpu_blit_map_step(d))*4,8,15,16,26,linear);
     opengpu_blit_op(&p,0,0,5,7,8);opengpu_blit_load(&p,9,5,0);
+    if(linear) {
+        opengpu_blit_op(&p,0,0,5,13,8);opengpu_blit_load(&p,17,5,0);
+        opengpu_blit_op(&p,0,0,5,7,15);opengpu_blit_load(&p,18,5,0);
+        opengpu_blit_op(&p,0,0,5,13,15);opengpu_blit_load(&p,19,5,0);
+    }
     opengpu_blit_splat(&p,6,plan->y);
     opengpu_blit_op(&p,0,0,5,3,6);
     opengpu_blit_splat(&p,6,d->destination_pitch);
@@ -216,6 +320,11 @@ static inline struct opengpu_blit_program opengpu_framebuffer_blit_program(
         unsigned ds=(c==0 && destination_bgra)?2:(c==2 && destination_bgra)?0:c;
         mask|=255u<<(ds*8);
         if(c==3 && !source_alpha)opengpu_blit_splat(&p,12,255);
+        else if(linear) {
+            opengpu_blit_channel(&p,20,9,ss*8);opengpu_blit_channel(&p,21,17,ss*8);
+            opengpu_blit_channel(&p,22,18,ss*8);opengpu_blit_channel(&p,23,19,ss*8);
+            opengpu_blit_bilinear(&p);
+        }
         else {
             opengpu_blit_splat(&p,6,ss*8);opengpu_blit_op(&p,0x28,0,12,6,9);
             opengpu_blit_splat(&p,6,255);opengpu_blit_op(&p,9,0,12,12,6);
