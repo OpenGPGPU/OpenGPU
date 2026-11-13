@@ -43,6 +43,12 @@ class VGpuHostSystemAxi {
   std::map<uint32_t,uint32_t> registers;
   uint32_t io_s_axi_aclk = 0, io_s_axi_aresetn = 1, macroModelsPresent = 1;
   uint32_t io_m_irq = 0, io_performance_activeComputeUnits = 0;
+  uint64_t io_performance_system_cycles = 0, io_performance_system_activeCuCycles = 0;
+  uint64_t io_performance_fragmentPhaseWorkerCycles_0 = 0, io_performance_fragmentPhaseWorkerCycles_1 = 0;
+  uint64_t io_performance_fragmentPhaseWorkerCycles_2 = 0, io_performance_fragmentPhaseWorkerCycles_3 = 0;
+  uint64_t io_performance_fragmentPhaseWorkerCycles_4 = 0, io_performance_fragmentPhaseWorkerCycles_5 = 0;
+  uint64_t io_performance_stagingOutstandingCycles = 0, io_performance_stagingBlockedCycles = 0;
+  uint64_t io_performance_fragmentOutputBlockedCycles = 0, io_performance_payloadSpills = 0;
   uint32_t io_s_axi_awvalid = 0, io_s_axi_wvalid = 0, io_s_axi_wlast = 0, io_s_axi_bready = 0;
   uint32_t io_s_axi_arvalid = 0, io_s_axi_rready = 0, io_s_axi_awaddr = 0, io_s_axi_awlen = 0;
   uint32_t io_s_axi_awsize = 0, io_s_axi_awburst = 0, io_s_axi_wdata = 0, io_s_axi_wstrb = 0;

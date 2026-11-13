@@ -98,4 +98,74 @@ struct Fixture {
     return f;
   }
 };
+
+inline uint32_t product_word(const Memory &memory, uint32_t base, unsigned word) {
+  const uint64_t address = uint64_t(base) + 4 * word;
+  require(address + 4 <= Memory::limit, "product job word escapes RV32");
+  uint32_t value = 0;
+  for (unsigned n = 0; n < 4; ++n) value |= uint32_t(memory.byte(address + n)) << (8 * n);
+  return value;
+}
+
+inline uint32_t product_job_address(const Fixture &fixture) {
+  unsigned sources = 0, submits = 0, identifiers = 0, opcodes = 0;
+  uint32_t base = 0;
+  for (const auto &write : fixture.writes) {
+    if (write.address == 0x0f4) { ++sources; base = write.value; }
+    if (write.address == 0x11c) { ++submits; require(write.value == 1, "invalid product submit"); }
+    if (write.address == 0x0c4) { ++identifiers; require(write.value == fixture.id, "wrong product command id"); }
+    if (write.address == 0x0c8) { ++opcodes; require(write.value == 7, "wrong product opcode"); }
+  }
+  require(sources == 1 && submits == 1 && identifiers == 1 && opcodes == 1 && !(base & 63),
+          "product launch requires exactly one identified native command");
+  return base;
+}
+
+inline std::array<uint32_t, 12> expected_product_completion(const Fixture &fixture,
+                                                          const Memory &initial) {
+  const auto base = product_job_address(fixture);
+  require(initial.contains_line(base) && initial.contains_line(uint64_t(base) + 64),
+          "product job identity is outside its original allocation");
+  require(product_word(initial, base, 0) == 0x474e4a01 && product_word(initial, base, 1) == 512,
+          "product completion requires the original GNJ1 input");
+  std::array<uint32_t, 12> expected{};
+  expected[0] = 0x474e5801;
+  // Published GNJ1 words: context=24, generation=25, pass=26.
+  expected[6] = product_word(initial, base, 24);
+  expected[7] = product_word(initial, base, 26);
+  expected[8] = product_word(initial, base, 25);
+  return expected;
+}
+
+// GNX1 contains fault/identity fields, not completed draw/primitive counters.
+template<class Sim>
+std::array<uint32_t, 12> read_product_completion(Sim &sim, const Fixture &fixture,
+                                               const std::array<uint32_t, 12> &expected) {
+  require(fixture.checks.size() == 13, "product completion check set is incomplete");
+  std::array<uint32_t, 12> words{};
+  for (unsigned n = 0; n < 13; ++n) {
+    const auto &check = fixture.checks[n];
+    require(check.address == (n == 0 ? 0x124u : 0x180u + 4 * (n - 1)),
+            "product completion check order changed");
+    const auto value = sim.read(check.address);
+    require((value & check.mask) == check.expected, "native completion or GNX1 check failed");
+    if (n == 0) require(value == (0x8700u | fixture.id), "unexpected native completion metadata");
+    else words[n - 1] = value;
+  }
+  require(words == expected, "native GNX1 fault or job identity differs");
+  return words;
+}
+
+template<class Sim>
+void retire_product_completion(Sim &sim, const Fixture &fixture) {
+  require(fixture.finish.size() == 2 && fixture.finish[0].address == 0x130 &&
+          fixture.finish[0].value == 1 && fixture.finish[1].address == 0x00c &&
+          fixture.finish[1].value == 3, "product retirement requires exactly one pop and IRQ acknowledgement");
+  for (const auto &write : fixture.finish) sim.write(write.address, write.value);
+  require(!(sim.read(0x120) & 2) && !sim.model->io_m_irq,
+          "product completion did not retire exactly once");
+  const auto requests = sim.requests();
+  require(!requests.arvalid && !requests.awvalid && !requests.wvalid,
+          "product retirement offered new external traffic");
+}
 } // namespace native_frame

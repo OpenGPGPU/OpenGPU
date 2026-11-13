@@ -80,6 +80,7 @@ python3 scripts/test_qualify_native_api_compiled.py
 python3 scripts/test_qualify_native_api_parallel.py
 python3 scripts/test_native_alignment_discovery.py
 python3 scripts/test_native_alignment_sequence.py
+python3 scripts/test_native_product_observation.py
 python3 scripts/test_qualify_native_owner_product.py
 python3 scripts/test_native_owner.py
 python3 scripts/test_compute_owner.py

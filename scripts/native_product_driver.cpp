@@ -49,10 +49,13 @@ int main(int argc, char **argv) {
         "mixed native resolution or execution profiles");
       if (!selected.empty() && id != selected) continue;
       auto memory = Memory::read((fixtures / (id + ".memory")).string());
+      const auto expected_completion = expected_product_completion(fixture, memory);
+      const auto frame_begin = sim.clock_cycles;
       sim.reset();
       for (const auto &r : fixture.resources) require(sim.read(r.address) == r.value, "native hardware resource contract differs");
       for (const auto &w : fixture.writes) sim.write(w.address, w.value);
       Agent agent(memory); uint64_t cycles = 0;
+      const auto service_begin_gpu_cycles = sim.model->io_performance_system_cycles;
       const auto start = std::chrono::steady_clock::now();
       auto counters = [&]() { return product_progress_counters(cycles, *sim.model, agent.traffic); };
       progress.begin(id, index, names.size(), fixture.max_cycles, counters(), start);
@@ -61,20 +64,38 @@ int main(int argc, char **argv) {
         if ((cycles & 255u) == 0) progress.update(counters());
       }
       const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+      const auto irq_gpu_cycles = sim.model->io_performance_system_cycles;
+      const auto requests = sim.requests();
+      require(!requests.arvalid && !requests.awvalid && !requests.wvalid,
+              "product completion left external requests offered");
       sim.pause_memory(); memory.write((output / (id + ".memory")).string());
       require(cycles < fixture.max_cycles, "native scene exceeded its cycle bound");
       require(agent.drained(), "native completion leaked external traffic");
       require(agent.traffic.read_faults == 0 && agent.traffic.write_faults == 0, "native scene accessed an unmapped line");
-      for (const auto &check : fixture.checks)
-        require((sim.read(check.address) & check.mask) == check.expected, "native completion or GNX1 check failed");
+      const auto gnx = read_product_completion(sim, fixture, expected_completion);
       auto &d = *sim.model;
+      // Retain the historical gpuCycles sampling point after thirteen reads.
+      const auto checked_gpu_cycles = d.io_performance_system_cycles;
       const std::array<uint64_t, 6> phases{d.io_performance_fragmentPhaseWorkerCycles_0,
         d.io_performance_fragmentPhaseWorkerCycles_1, d.io_performance_fragmentPhaseWorkerCycles_2,
         d.io_performance_fragmentPhaseWorkerCycles_3, d.io_performance_fragmentPhaseWorkerCycles_4,
         d.io_performance_fragmentPhaseWorkerCycles_5};
+      const auto final_counters = counters();
+      retire_product_completion(sim, fixture);
+      require(agent.drained(), "product retirement leaked external traffic");
+      const auto frame_cycles = sim.clock_cycles - frame_begin;
       std::cout << "{\"scene\":\"" << id << "\",\"frameWidth\":" << width
         << ",\"frameHeight\":" << height << ",\"samples\":" << fixture.samples
-        << ",\"serviceCycles\":" << cycles << ",\"gpuCycles\":" << d.io_performance_system_cycles
+        << ",\"serviceCycles\":" << cycles << ",\"gpuCycles\":" << checked_gpu_cycles
+        << ",\"cycleScopeVersion\":2,\"serviceCycleScope\":\"post-submit-to-irq\""
+        << ",\"frameCycleScope\":\"reset-through-verified-retirement\",\"frameCycles\":" << frame_cycles
+        << ",\"gpuCyclesAtServiceBegin\":" << service_begin_gpu_cycles
+        << ",\"gpuCyclesAtIrq\":" << irq_gpu_cycles
+        << ",\"submittedCommands\":1,\"successfulCompletions\":1,\"retiredCompletions\":1"
+        << ",\"completionCountSource\":\"observed-command-retirement\",\"drawCompletionCountAvailable\":false"
+        << ",\"gnx\":[";
+      for (unsigned n = 0; n < gnx.size(); ++n) std::cout << (n ? "," : "") << gnx[n];
+      std::cout << "]"
         << ",\"readBusBytes\":" << agent.traffic.read_bus_bytes
         << ",\"writeBusBytes\":" << agent.traffic.write_bus_bytes
         << ",\"enabledWriteBytes\":" << agent.traffic.enabled_write_bytes
@@ -89,8 +110,6 @@ int main(int argc, char **argv) {
         std::cout << ",\"resourceDiscoveryWords\":" << fixture.resources.size()
           << ",\"computeFeatureFlags\":" << fixture.resources[2].value;
       std::cout << ",\"trafficDrained\":true,\"imageVerificationRequired\":true,\"clockQualified\":false,\"fpsQualified\":false}" << std::endl;
-      const auto final_counters = counters();
-      for (const auto &w : fixture.finish) sim.write(w.address, w.value);
       progress.finish(final_counters);
     }
     sim.model->final(); return 0;
