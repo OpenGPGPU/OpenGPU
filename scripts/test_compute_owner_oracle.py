@@ -25,6 +25,57 @@ def memory(path, output=None, corrupt=()):
 
 
 class OracleTests(unittest.TestCase):
+    def test_all_original_uniform_sources_and_four_outputs(self):
+        parent = ROOT / '.artifacts'; parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='compute-uniform-oracle-', dir=parent) as temporary:
+            root = Path(temporary)
+            initial, returned = root / 'initial', root / 'returned'
+            allocations, cursor = [], 0x1000
+            for binding, size in [(0, 4096)] + [(i + 24, 16384) for i in range(12)] + [(i, 8192) for i in range(4)]:
+                data = bytearray(struct.pack('<I', 0xdeadbeef) * (size // 4))
+                if len(allocations) < 13:
+                    data[:] = b''.join(struct.pack('<I', (cursor * 17 + i * 0x1234567) & 0xffffffff)
+                                     for i in range(size // 4))
+                allocations.append((cursor, data, dict(globalBinding=binding, allocationPhysical=cursor,
+                    allocationBytes=size, offset=0, bytes=size)))
+                cursor += size
+            description = dict(schema='opengpu-compute-uniform-oracle-v1', viewBytes=8192, groups=4,
+                local=128, guard=0xdeadbeef, defaults=allocations[0][2],
+                blocks=[a[2] for a in allocations[1:13]], outputs=[a[2] for a in allocations[13:]])
+            def emit(path, compute=False, corrupt=None):
+                accumulator = struct.unpack_from('<I', allocations[0][1], 8)[0] ^ struct.unpack_from('<I', allocations[0][1], 4092)[0]
+                for _, data, _ in allocations[1:13]:
+                    accumulator = ((accumulator * 33) ^ struct.unpack_from('<I', data)[0] ^ struct.unpack_from('<I', data, 16380)[0]) & 0xffffffff
+                pages = []
+                for index, (address, original, _) in enumerate(allocations):
+                    data = bytearray(original)
+                    if compute and index >= 13:
+                        data[:2048] = b''.join(struct.pack('<I', accumulator ^ lane ^ ((index - 13) * 0x10203)) for lane in range(512))
+                    if corrupt and index == corrupt[0]:
+                        data[corrupt[1]] ^= 1
+                    pages.extend((address + offset, data[offset:offset + 4096]) for offset in range(0, len(data), 4096))
+                with path.open('wb') as stream:
+                    stream.write(b'OGMEM001' + struct.pack('<II', len(allocations), len(pages)))
+                    for address, data, _ in allocations:
+                        stream.write(struct.pack('<QQII', address, address + len(data), 0, 0))
+                    for address, page in pages:
+                        stream.write(struct.pack('<Q', address) + page)
+            emit(initial); emit(returned, True)
+            with SparseMemory(initial) as before, SparseMemory(returned) as after:
+                verify(before, after, description)
+            for computed, corruption in ((False, None), (True, (0, 0)), (True, (12, 16380)),
+                                        (True, (13, 0)), (True, (16, 8191))):
+                emit(returned, computed, corruption)
+                with SparseMemory(initial) as before, SparseMemory(returned) as after:
+                    with self.assertRaises(ValueError):
+                        verify(before, after, description)
+            emit(returned, True)
+            for key, replacement in (('blocks', description['blocks'][:-1]), ('outputs', description['outputs'][:-1]),
+                                     ('blocks', list(reversed(description['blocks'])))):
+                with SparseMemory(initial) as before, SparseMemory(returned) as after:
+                    with self.assertRaises(ValueError):
+                        verify(before, after, dict(description, **{key: replacement}))
+
     def test_full_shared_and_every_other_byte_guard(self):
         parent = ROOT / '.artifacts'; parent.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='compute-oracle-', dir=parent) as temporary:
