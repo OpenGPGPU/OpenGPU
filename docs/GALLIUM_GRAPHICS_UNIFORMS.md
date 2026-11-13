@@ -180,8 +180,16 @@ actual registers (ID, capabilities, bin capability pointer, live quota and
 shader configuration). It preserves every raw GNX word and 64-bit telemetry,
 rejects malformed/duplicate discovery inputs and keeps output unchanged on
 rejection. Held observations and per-record execution responses cannot authorize
-owner release. Only the separate final response follows both independent image
-and guard checks. Five Python/C protocol tests pass with ASan/UBSan; these tests
+owner release. After both independent image and guard checks, a distinct
+`cleanup.authorize.bin` (`OGCBA001` plus the two-record count) starts cleanup.
+The C producer registers cleanup, releases each owner through synchronous
+live-DUT TLB-flush acknowledgements, and waits for the final response. The
+controller sends that response only after `--active-owner-series` reports
+actual cleanup with preserved images, no reset/RAM replacement, drained memory
+and nonzero PTE-clear/shootdown telemetry, then exits successfully. Session
+destruction follows that final response. Six Python/C protocol tests pass with
+ASan/UBSan, including missing/malformed authorization and cleanup-result refusal;
+these tests
 do not establish the complete active driver-to-DUT handshake or device execution.
 The codec also carries the actual legacy status read by the IRQ handler; held
 records contain 84 bytes and retired records 100 bytes, excluding their common
@@ -246,8 +254,9 @@ Its simulated retirement is only a CPU qualification mode. Final execution must
 keep both real owners, mappings and references alive until the complete two-CU
 host finishes its series, the independent image/guard oracle passes and actual
 completion/drain observations permit retirement. Final PTE unmapping and TLB
-shootdown still need replay and observation on that same live DUT before owner
-release; CPU cleanup is not that proof. Production device discovery,
+shootdown use a distinct synchronous cleanup phase on that same live DUT before
+owner release. Its frontend is connected; complete hardware validation remains
+open, and CPU cleanup is not that proof. Production device discovery,
 typed attachment execution and this same complete host still need integration
 and execution qualification. Complete API/compiler support and the 36-UBO/48-texture
 cross-stage aggregate resource contract remain open. These bounded programs do

@@ -114,6 +114,13 @@ int graphics_native_execution_wait(const char *directory,unsigned record,unsigne
     snprintf(name,sizeof(name),"record-%u.response.bin",record);
     return response(directory,name,record,1,timeout_seconds,output);
 }
+int graphics_native_cleanup_wait(const char *directory,unsigned timeout_seconds)
+{
+    uint8_t bytes[12];
+    int ret=wait_exact(directory,"cleanup.authorize.bin",timeout_seconds,bytes,sizeof(bytes));
+    if(ret)return ret;
+    return memcmp(bytes,"OGCBA001",8) || read32(bytes+8)!=2?-EINVAL:0;
+}
 int graphics_native_final_wait(const char *directory,unsigned timeout_seconds,
     struct graphics_native_observation output[2])
 {

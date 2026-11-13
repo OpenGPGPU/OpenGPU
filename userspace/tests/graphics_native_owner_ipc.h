@@ -22,8 +22,11 @@ int graphics_native_held_wait(const char *directory, unsigned record, unsigned t
  * permission to release private mappings, leases, job references or storage. */
 int graphics_native_execution_wait(const char *directory, unsigned record, unsigned timeout_seconds,
     struct graphics_native_observation *output);
-/* Only the separate final two-record response follows both image/guard checks.
- * The caller must still use its real driver's observed-retirement contract. */
+/* Separate authorization follows both images and all execution observations.
+ * Execution responses and the final response cannot grant this permission. */
+int graphics_native_cleanup_wait(const char *directory, unsigned timeout_seconds);
+/* The final two-record response follows actual live-DUT cleanup and executor
+ * success. The caller may destroy its session only after this response. */
 int graphics_native_final_wait(const char *directory, unsigned timeout_seconds,
     struct graphics_native_observation output[2]);
 #endif
