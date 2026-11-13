@@ -6,6 +6,7 @@ bridge argv JSON may use {ipc}; no shell is used. A CPU protocol peer is not an
 execution qualification. All temporary process data is deleted on exit.
 """
 import argparse
+import fcntl
 import os
 from pathlib import Path
 import subprocess
@@ -54,6 +55,25 @@ def stop(process):
             process.wait()
 
 
+def lock_owner(qualification):
+    record = strict_json(qualification)
+    require(record.get('schema') == 'opengpu-owner-executor-v1' and record.get('kind') == 'compute',
+            'wrong owner lock qualification kind')
+    require(type(record.get('owner_output')) is str, 'missing prepared owner directory')
+    owner = Path(record['owner_output']).resolve(strict=True)
+    require(qualification.resolve(strict=True) == owner / 'executors/compute/qualification.json',
+            'qualification does not name the prepared owner')
+    path = owner / '.lock'
+    require(not path.is_symlink(), 'owner lock must not be aliased')
+    lock = path.open('a')
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BaseException:
+        lock.close()
+        raise
+    return lock
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--executor', type=Path, required=True)
@@ -70,8 +90,10 @@ def main():
     require(type(command) is list and command and all(type(x) is str and x for x in command),
             'bridge command must be a nonempty argv array')
     require(any('{ipc}' in x for x in command), 'bridge command must consume the active IPC directory')
-    executor = args.executor.resolve(strict=True)
-    qualification = args.executor_qualification.resolve(strict=True)
+    executor = args.executor.absolute()
+    qualification = args.executor_qualification.absolute()
+    require(executor.is_file() and not executor.is_symlink() and qualification.is_file() and not qualification.is_symlink(),
+            'executor/qualification must be original regular files')
     checker = args.executor_checker.resolve(strict=True)
     checker_python = args.executor_checker_python.resolve(strict=True)
     def qualified(env, log):
@@ -84,9 +106,13 @@ def main():
     with tempfile.TemporaryDirectory(prefix='c', dir=parent) as temporary:
         directory = Path(temporary)
         env = dict(os.environ, TMPDIR=temporary)
-        bridge = running = None
+        bridge = running = owner_lock = None
         try:
             with (directory / 'probe.log').open('w') as log:
+                qualified(env, log)
+                owner_lock = lock_owner(qualification)
+                # The first read-only check locates the owner. Recheck after
+                # taking the exact shared product/build lock, before any probe.
                 qualified(env, log)
                 subprocess.run([executor, '--probe-profile', directory / 'profile.json'], env=env,
                     stdout=log, stderr=subprocess.STDOUT, timeout=args.timeout, check=True)
@@ -134,6 +160,8 @@ def main():
         finally:
             stop(running)
             stop(bridge)
+            if owner_lock is not None:
+                owner_lock.close()
 
 
 if __name__ == '__main__':

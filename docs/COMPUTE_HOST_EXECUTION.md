@@ -113,3 +113,10 @@ checker into the bridge checkout or reinterpret its source/model/binary guards.
 A native executor record or any stale/changed source, tool, model or binary must
 fail that independent check. The bridge's qualification does not become valid
 merely because its byte protocol was accepted.
+
+After the initial read-only executor check, the controller takes the prepared
+owner's existing `.lock` with an exclusive lock and rechecks qualification. It
+holds the same product/build lock through probing, live C ownership, execution,
+oracles, synchronous cleanup and final response. A concurrent model/executor
+rebuild cannot replace the active inputs; the lock is released only after both
+processes have completed or stopped.
