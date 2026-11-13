@@ -456,6 +456,68 @@ static void cleanup_parser() {
   auto corrupt=memory;memory_word(corrupt,0x1010,0x400001);rejects([&]{PtePages missing;missing.observe(corrupt,capture);});
   corrupt=memory;memory_word(corrupt,0x1010,0x1407);rejects([&]{PtePages leaf;leaf.observe(corrupt,capture);});
 }
+static void response_deadlines(int argc,char **argv) {
+  const char *saved=std::getenv("OPENGPU_NATIVE_HOST_TIMEOUT");
+  struct Restore {
+    bool present;std::string value;
+    ~Restore(){if(present)setenv("OPENGPU_NATIVE_HOST_TIMEOUT",value.c_str(),1);else unsetenv("OPENGPU_NATIVE_HOST_TIMEOUT");}
+  } restore{saved!=nullptr,saved?saved:""};
+  unsetenv("OPENGPU_NATIVE_HOST_TIMEOUT");
+  require(native_response_timeout()==std::chrono::minutes(5),"native response default changed");
+  for(const char *valid:{"1","300","3600","86400","0001"}) {
+    setenv("OPENGPU_NATIVE_HOST_TIMEOUT",valid,1);
+    require(native_response_timeout()==std::chrono::seconds(std::stoul(valid)),"native response timeout lost configured seconds");
+  }
+  for(const char *invalid:{"","0","-1","+1"," 1","1 ","1x","86401","4294967297","18446744073709551616"}) {
+    setenv("OPENGPU_NATIVE_HOST_TIMEOUT",invalid,1);
+    rejects([&]{native_response_timeout();});
+    std::ostringstream error;auto *previous=std::cerr.rdbuf(error.rdbuf());
+    const auto result=owner_driver_entry(argc,argv);std::cerr.rdbuf(previous);
+    require(result==1 && error.str().find("OPENGPU_NATIVE_HOST_TIMEOUT")!=std::string::npos,
+      "native driver touched arguments or inputs before rejecting its deadline");
+  }
+  setenv("OPENGPU_NATIVE_HOST_TIMEOUT","1",1);
+  const auto timeout=native_response_timeout();
+  const auto base=std::filesystem::path(std::getenv("TMPDIR"))/"native-response-deadlines";
+  require(std::filesystem::create_directory(base),"cannot create deadline test directory");
+  Memory memory;memory.ranges={{0x1000,0x4000,0xa7}};
+  const auto first=base/"first";std::filesystem::create_directory(first);
+  const auto input=base/"input.memory",output=base/"output";memory.write(input.string());
+  std::vector<std::string> arguments={"native-owner-cpu","--active-owner-series",input.string(),output.string(),first.string(),"2"};
+  std::vector<char*> pointers;for(auto &argument:arguments)pointers.push_back(argument.data());pointers.push_back(nullptr);
+  std::ostringstream error;auto *previous=std::cerr.rdbuf(error.rdbuf());
+  const auto started=std::chrono::steady_clock::now();
+  const auto result=owner_driver_entry(int(arguments.size()),pointers.data());std::cerr.rdbuf(previous);
+  require(result==1 && error.str().find("session response timed out")!=std::string::npos &&
+    std::chrono::steady_clock::now()-started>=timeout && !std::filesystem::exists(output),
+    "first capture did not use the configured native response timeout");
+  auto expires=[&](auto action,const std::string &message) {
+    const auto began=std::chrono::steady_clock::now();bool rejected=false;
+    try{action();}catch(const std::runtime_error &failure){
+      rejected=std::string(failure.what()).find(message)!=std::string::npos;
+    }
+    require(rejected && std::chrono::steady_clock::now()-began>=timeout,"native response phase did not enforce its deadline");
+  };
+  auto capture=fixture();capture.finish.clear();capture.writable={{0x2000,0x2040}};
+  capture.discovery.push_back({GPU_REG_ID,GPU_ABI_COMPUTE_RESOURCE_VERSION});
+  capture.discovery.push_back({GPU_REG_CAPABILITIES,GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE|GPU_CAP_SHADER_CONFIG_INFO|GPU_CAP_COMPUTE_SCALAR_FPU|GPU_CAP_NATIVE_PIXEL_FORMATS|(128u<<GPU_CAP_FRAGMENT_BATCH_SHIFT)});
+  capture.discovery.push_back({GPU_REG_BIN_CAPABILITY_PTR,GPU_REG_BIN_CAPABILITIES});capture.discovery.push_back({0x320,128});
+  capture.discovery.push_back({GPU_REG_SHADER_CONFIG,0x02040810});capture.validate(true);
+  const std::vector<Capture> captures{capture};ControlPeer sim(argc,argv,memory,captures);
+  sim.reset();sim.model->issue_read=false;Agent agent(memory);ReplayBus<ControlPeer> bus(sim,agent,100000);
+  const auto held=base/"held";std::filesystem::create_directory(held);
+  const auto records=held/"output";std::filesystem::create_directory(records);std::ostringstream report;
+  expires([&]{active_records(sim,agent,bus,memory,records,held,capture,1,report,timeout);},"session response timed out");
+  require(std::filesystem::exists(held/"record-0.held.json") &&
+    !std::filesystem::exists(held/"record-0.retired.json") && sim.submitted==1 && sim.resets==1,
+    "missing native retirement produced a receipt or reset the session");
+  const auto cleanup=base/"cleanup";std::filesystem::create_directory(cleanup);PtePages pte;
+  expires([&]{cleanup_records(sim,agent,bus,memory,cleanup,pte,1,timeout);},"session response timed out");
+  atomic_json(cleanup/"cleanup.begin",[](auto &out){out.write("OGCLB001",8);write_le(out,1,4);});
+  expires([&]{cleanup_records(sim,agent,bus,memory,cleanup,pte,1,timeout);},"cleanup batch timed out");
+  require(!std::filesystem::exists(cleanup/"cleanup.json"),"timed-out native cleanup authorized release");
+  std::filesystem::remove_all(base);
+}
 int main() {
   const auto c=fixture();
   require(c.discovery.size()==96,"complete native capture requires all 96 mandatory discovery words");
@@ -537,5 +599,6 @@ int main() {
   retirement_parser();cleanup_parser();active_series(argc,argv);
   active_series(argc,argv,true);
   rejects([&]{active_series(argc,argv,true,false);});
+  response_deadlines(argc,argv);
   std::cout<<"native owner capture CPU protocol/guard checks: PASS\n";
 }
