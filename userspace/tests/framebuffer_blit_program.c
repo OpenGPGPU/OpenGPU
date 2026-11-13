@@ -42,12 +42,40 @@ static void check(struct opengpu_framebuffer_blit d)
         for(unsigned c=0;c<4;c++)if((d.mask&(1u<<c)) && (c!=3 || d.destination_format<3)) {
             unsigned from=c==0&&sb?2:c==2&&sb?0:c;
             unsigned to=c==0&&db?2:c==2&&db?0:c;
-            t[to]=c==3&&d.source_format>=3?255:s[from];
+            if(c==3&&d.source_format>=3)t[to]=255;
+            else if(d.flags&OPENGPU_FRAMEBUFFER_BLIT_LINEAR) {
+                long double cx=d.source_x+u*d.source_w-0.5L,cy=d.source_y+v*d.source_h-0.5L;
+                int64_t ix=(int64_t)floorl(cx),iy=(int64_t)floorl(cy);
+                long double fx=cx-floorl(cx),fy=cy-floorl(cy);
+                int64_t lx=d.source_w<0?(int64_t)d.source_x+d.source_w:d.source_x;
+                int64_t hx=d.source_w<0?d.source_x:(int64_t)d.source_x+d.source_w;
+                int64_t ly=d.source_h<0?(int64_t)d.source_y+d.source_h:d.source_y;
+                int64_t hy=d.source_h<0?d.source_y:(int64_t)d.source_y+d.source_h;
+                if(lx<0)lx=0;
+                if(ly<0)ly=0;
+                if(hx>d.source_width)hx=d.source_width;
+                if(hy>d.source_height)hy=d.source_height;
+                uint64_t wx=(uint64_t)floorl(fx*65536+0.5L),wy=(uint64_t)floorl(fy*65536+0.5L),sum=0;
+                long double ideal=0;
+                for(unsigned j=0;j<2;j++)for(unsigned k=0;k<2;k++) {
+                    int64_t xx=ix+k,yy=iy+j;
+                    if(xx<lx)xx=lx;
+                    if(xx>=hx)xx=hx-1;
+                    if(yy<ly)yy=ly;
+                    if(yy>=hy)yy=hy-1;
+                    uint8_t byte=((const uint8_t *)src)[yy*d.source_pitch+xx*4+from];
+                    sum+=(uint64_t)byte*(k?wx:65536-wx)*(j?wy:65536-wy);
+                    ideal+=byte*(k?fx:1-fx)*(j?fy:1-fy);
+                }
+                unsigned value=(unsigned)((sum+UINT64_C(0x80000000))>>32);
+                assert(fabsl((long double)value-floorl(ideal+0.5L))<=1);
+                t[to]=(uint8_t)value;
+            } else t[to]=s[from];
         }
     }
     if(p.width && p.height) {
         struct opengpu_blit_program program=opengpu_framebuffer_blit_program(&d,&p);
-        assert(program.words<=128 && !program.overflow);
+        assert(program.words<=512 && !program.overflow);
         assert(opengpu_compute_shader_validate_words_storage(program.code,program.words,64,1,0));
         struct cs_vm_view memory[4]={{src,p.source_bytes,1},{dst,p.destination_bytes,3},{maps,p.map_words*4u,1},{0}};
         uint32_t grid[3]={p.width,p.height,1},local[3]={1,1,1};
@@ -81,6 +109,7 @@ int main(void)
         d.destination_y=flip&8?5:0;d.destination_h=flip&8?-5:5;
         d.flags=0;check(d);
         d.flags=1;d.scissor_x0=1;d.scissor_x1=5;d.scissor_y0=1;d.scissor_y1=4;check(d);
+        d.version=3;d.flags=2;check(d);d.flags=3;check(d);d.version=1;
     }
     /* Clipping retains the original affine map, rather than stretching the
      * clipped source. Both large signed endpoint directions are bounded. */
@@ -99,7 +128,7 @@ int main(void)
     d.source_w=5;d.source_h=4;d.destination_w=6;d.destination_h=5;
     const struct opengpu_framebuffer_blit valid=d;
     #define BAD(field,value) do { d=valid;d.field=(value);assert(opengpu_framebuffer_blit_plan_make(&d,192,192,&p,maps,128)==-1); } while(0)
-    BAD(version,0);BAD(version,3);BAD(bytes,sizeof(d)-4);BAD(flags,2);BAD(mask,16);
+    BAD(version,0);BAD(version,4);BAD(bytes,sizeof(d)-4);BAD(flags,2);BAD(mask,16);
     BAD(source_format,0);BAD(source_format,5);BAD(destination_format,0);BAD(destination_format,5);
     BAD(source_width,0);BAD(source_height,16385);BAD(destination_width,16385);
     BAD(source_pitch,19);BAD(destination_pitch,20);BAD(source_pitch,UINT_MAX-3);
@@ -126,6 +155,37 @@ int main(void)
     assert(opengpu_framebuffer_blit_plan_make(&d,192,192,&p,maps,128)==-1);
     d.source_format=6;d.mask=32;
     assert(opengpu_framebuffer_blit_plan_make(&d,192,192,&p,maps,128)==-1);
-    printf("GPU framebuffer blit CPU program: %u affine/format/mask/scissor cases, strict admission, full guards PASS\n",cases);
+    d.version=3;d.flags=OPENGPU_FRAMEBUFFER_BLIT_LINEAR;d.mask=16;
+    assert(opengpu_framebuffer_blit_plan_make(&d,192,192,&p,maps,128)==-1);
+    /* Full 40-bit weighted sum against an independent uint64 oracle. Include
+     * both endpoint weights, all-ones products and low-limb carry boundaries. */
+    d=(struct opengpu_framebuffer_blit){.version=3,.bytes=sizeof(d),.flags=2,.mask=15,
+        .source_format=1,.destination_format=1,.source_width=2,.source_height=2,.source_pitch=8,
+        .destination_width=1,.destination_height=1,.destination_pitch=4,
+        .source_w=2,.source_h=2,.destination_w=1,.destination_h=1};
+    p=(struct opengpu_framebuffer_blit_plan){.width=1,.height=1,.map_words=40,.source_bytes=16,.destination_bytes=4};
+    struct opengpu_blit_program program=opengpu_framebuffer_blit_program(&d,&p);
+    assert(!program.overflow && opengpu_compute_shader_validate_words_storage(program.code,program.words,64,1,0));
+    uint32_t pixels[4],pixel,coordinate[40]={0},seed=0x137ac953u;
+    const uint32_t weights[]={0,1,16383,32768,49153,65535,65536};
+    for(unsigned n=0;n<4145;n++) {
+        for(unsigned i=0;i<4;i++){seed=seed*1664525u+1013904223u;pixels[i]=n<7?(n&1?UINT32_MAX:0):seed;}
+        seed=seed*1664525u+1013904223u;
+        uint32_t wx=n<49?weights[n%7]:seed%65537;
+        seed=seed*1664525u+1013904223u;
+        uint32_t wy=n<49?weights[n/7]:seed%65537;
+        coordinate[32]=0;coordinate[33]=4;coordinate[34]=wx;coordinate[35]=65536-wx;
+        coordinate[36]=0;coordinate[37]=8;coordinate[38]=wy;coordinate[39]=65536-wy;
+        struct cs_vm_view memory[4]={{pixels,16,1},{&pixel,4,3},{coordinate,160,1},{0}};
+        uint32_t grid[3]={1,1,1},group[3]={0},local[3]={1,1,1};pixel=0;
+        cs_vm_group(program.code,program.words,grid,group,local,memory);
+        for(unsigned c=0;c<4;c++) {
+            uint64_t sum=0;
+            for(unsigned y=0;y<2;y++)for(unsigned x=0;x<2;x++)
+                sum+=(uint64_t)((pixels[y*2+x]>>(c*8))&255)*(x?wx:65536-wx)*(y?wy:65536-wy);
+            assert(((pixel>>(c*8))&255)==((sum+UINT64_C(0x80000000))>>32));
+        }
+    }
+    printf("GPU framebuffer blit CPU program: %u affine/format/mask/scissor cases +4145 full bilinear products, strict admission, full guards PASS\n",cases);
     return 0;
 }

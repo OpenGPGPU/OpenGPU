@@ -1,6 +1,6 @@
 # Native framebuffer blit
 
-The Gallium nearest blit callback now has a checked-storage GPU implementation
+The Gallium blit callback now has a checked-storage GPU implementation
 for its four existing RGBA8/BGRA8/RGBX8/BGRX8 formats. Scaling, source flips,
 destination clipping, scissor and channel masks run through a private compute
 context. The CPU prepares coordinate offsets; it never reads or converts source
@@ -26,22 +26,36 @@ different object handles is not the backing proof; unknown imports remain subjec
 to the kernel's existing rejection.
 
 The old CPU implementation remains available only before GPU work is admitted:
-LINEAR, unsupported depth view combinations, overlapping same-GEM operations, views beyond the checked-storage
+unsupported depth view combinations, overlapping same-GEM operations, views beyond the checked-storage
 128 MiB window, incomplete physical line tails and devices without byte views.
 It preserves the existing API capacity; it does not qualify those operations as
 GPU features. Version 1 also accepts reversed destination endpoints in the direct
 winsys descriptor; the existing Gallium callback requires a positive destination
 box. Hardware capacities and the public kernel command ABI are unchanged.
 
-CPU validation passes 8,222 affine/format/mask/scissor cases against an independent
+Version 3 adds LINEAR filtering for these normalized color formats. Each axis
+uses a clamped two-tap coordinate with Q16 weights. The GPU reads all four pixels
+and computes the complete bilinear sum using 16-bit limbs and existing uint32
+instructions, preserving the full 40-bit intermediate product and rounding only
+once at the end. No extra arithmetic opcode or relaxed shader validator is used.
+The coordinate weight error can change an ideal rounded 8-bit component by at
+most one level; quantized results match the independent full uint64 sum exactly.
+Versions 1/2 reject the LINEAR flag. Depth/stencil LINEAR and mismatched depth
+formats remain invalid descriptors. The source-region clamp follows the allowed
+region-clamped policy; framebuffer edges always clamp.
+
+CPU validation passes 16,414 affine/format/mask/scissor cases against an independent
 direct pixel oracle and instruction decoder, including full source/map/destination
 guards and signed endpoint boundaries. Every generated program passes the real
 kernel shader validator. The actual Gallium/private winsys/lib-ioctl CPU fixture
-passes all 16 format pairs, read/write permission checks, held coordinate and
+passes both filters across all 16 format pairs, read/write permission checks, held coordinate and
 compute acknowledgments, rejected new work before late retirement, compute fault
 and healthy reuse, with graphics bindings unchanged. Both gates use ASan/UBSan.
 The caller also verifies all supported depth/stencil selections, legal same-GEM
 disjoint copy and pre-submission rejection of overlapping read/write spans.
+Another 4,145 random/boundary bilinear products match a full uint64 oracle,
+including zero/full weights, all-ones values and low-limb carries. The image
+cases also compare against ideal long-double filtering within one 8-bit level.
 The existing transfer/depth/viewport/sampler/attachment and winsys range/unbind
 CPU regressions also pass. Linux ioctls and device scheduling are modeled in the
 CPU fixture; these results do not prove actual RTL execution.
@@ -57,5 +71,6 @@ Actual two-CU/Sv32/L2 execution, fault/reset drain and completion retirement rem
 required. This implementation currently launches one workgroup per destination
 pixel; full-frame cost has not been measured. No blit throughput, product frame
 rate or whole-host physical clock is qualified. F08 and the full H6 target remain
-open, including GPU LINEAR and actual native/API qualification of the new paths.
+open, including actual native/API qualification of these paths and broader
+pixel-transfer layouts and framebuffer formats.
 The GLES contract is described in [OpenGL ES 3.0.6, §4.3.3](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf).

@@ -4211,13 +4211,14 @@ static int blit_image(struct pipe_context *pipe, const struct pipe_blit_info *in
     struct pipe_opengpu_resource *gpu_dst=opengpu_resource(dst)->gpu;
     bool gpu_depth=depth_stencil && info->src.format==info->dst.format &&
         src->format==info->src.format && dst->format==info->dst.format;
-    if ((!depth_stencil || gpu_depth) && info->filter==PIPE_TEX_FILTER_NEAREST &&
+    if ((!depth_stencil || gpu_depth) &&
         pipe_opengpu_screen_framebuffer_blit(gpu_screen)) {
         uint32_t depth_format=info->src.format==PIPE_FORMAT_Z24_UNORM_S8_UINT ?
             OPENGPU_FRAMEBUFFER_BLIT_D24S8 : OPENGPU_FRAMEBUFFER_BLIT_D24X8;
         struct opengpu_framebuffer_blit descriptor={
-            .version=OPENGPU_FRAMEBUFFER_BLIT_VERSION_2,.bytes=sizeof(descriptor),
-            .flags=info->scissor_enable ? OPENGPU_FRAMEBUFFER_BLIT_SCISSOR : 0,
+            .version=OPENGPU_FRAMEBUFFER_BLIT_VERSION_3,.bytes=sizeof(descriptor),
+            .flags=(info->scissor_enable ? OPENGPU_FRAMEBUFFER_BLIT_SCISSOR : 0) |
+                (info->filter==PIPE_TEX_FILTER_LINEAR ? OPENGPU_FRAMEBUFFER_BLIT_LINEAR : 0),
             .mask=info->mask,.source_format=depth_stencil ? depth_format : (uint32_t)opengpu_format(info->src.format),
             .destination_format=depth_stencil ? depth_format : (uint32_t)opengpu_format(info->dst.format),
             .source_width=src->width0,.source_height=src->height0,

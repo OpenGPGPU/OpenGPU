@@ -1681,7 +1681,7 @@ int pipe_opengpu_try_framebuffer_blit(struct pipe_opengpu_screen *screen,
         d->destination_height != destination->height || d->destination_pitch != destination->pitch) {
         errno=EINVAL;return -1;
     }
-    const size_t capacity=OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS+2*OPENGPU_FRAMEBUFFER_BLIT_MAX_AXIS;
+    const size_t capacity=OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS+8*OPENGPU_FRAMEBUFFER_BLIT_MAX_AXIS;
     maps=calloc(capacity,4);
     if (!maps) return -1;
     if (opengpu_framebuffer_blit_plan_make(d,source->buffer.size,destination->buffer.size,&plan,maps,capacity)) {
@@ -1692,7 +1692,7 @@ int pipe_opengpu_try_framebuffer_blit(struct pipe_opengpu_screen *screen,
      * window or without complete physical cache-line tails. This decision is
      * made before any context, memory request or accepted device operation. */
     if ((source->buffer.handle==destination->buffer.handle &&
-            (d->version!=2 || !opengpu_framebuffer_blit_disjoint(d,&plan,maps))) ||
+            (d->version<2 || !opengpu_framebuffer_blit_disjoint(d,&plan,maps))) ||
         plan.source_bytes>0x8000000u || plan.destination_bytes>0x8000000u ||
         ((plan.source_bytes+63ull)&~63ull)>source->buffer.size ||
         ((plan.destination_bytes+63ull)&~63ull)>destination->buffer.size) {ret=1;goto done;}
