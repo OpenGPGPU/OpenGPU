@@ -520,6 +520,28 @@ static void word_results(unsigned stage,const struct opengpu_native_uniform_prog
         }
     }
 }
+static const struct opengpu_native_submit_sources *native_transport_source;
+static unsigned native_transport_calls, native_transport_fail;
+/* Transport assembly only. This hook will be replaced by the actual kernel
+ * handler bridge for protected-owner execution qualification; it is not a
+ * kernel admission or hardware success oracle. */
+static int native_transport(unsigned long request,void *arg)
+{
+    const struct opengpu_native_submit_sources *source=native_transport_source;
+    struct drm_opengpu_submit_native_binned *command=arg;
+    assert(request==DRM_IOCTL_OPENGPU_SUBMIT_NATIVE_BINNED&&source);
+    assert(command->version==1&&!command->flags&&!command->pad&&!command->fence_seqno&&
+        !command->reserved[0]&&!command->reserved[1]&&command->out_syncobj==source->out_syncobj&&
+        command->in_syncobj==source->in_syncobj&&command->job==(uintptr_t)source->job&&
+        command->frame==(uintptr_t)&source->frame->frame&&command->draws==(uintptr_t)source->draws&&
+        command->draws_bytes==2048&&command->states==(uintptr_t)source->states&&command->states_bytes==512&&
+        command->plans==(uintptr_t)source->plans&&command->plan_count==1&&command->plan_stride==792&&
+        command->resources==(uintptr_t)source->frame->resources&&command->resource_count==8&&command->resource_stride==32&&
+        command->context_id==source->job->words[OPENGPU_NATIVE_BINNED_JOB_JOB_IDENTITY_CONTEXT_WORD]);
+    command->fence_seqno=0xf00d12345678ull;native_transport_calls++;
+    if(native_transport_fail){errno=EIO;return -1;}
+    return 0;
+}
 static void native_metadata(struct pipe_context *pipe, const struct opengpu_native_graphics_sources *sources,
     struct pipe_resource *input, unsigned color_type, const char *directory)
 {
@@ -573,6 +595,28 @@ static void native_metadata(struct pipe_context *pipe, const struct opengpu_nati
         char path[4096];assert(snprintf(path,sizeof(path),"%s/%s",directory,names[i])>0);
         FILE *stream=fopen(path,"wx");assert(stream&&fwrite(records[i],1,sizes[i],stream)==sizes[i]&&!fclose(stream));
     }
+    unsigned sync;assert(!opengpu_sync_create(pipe_opengpu_screen_fd(screen),&sync));
+    struct opengpu_native_submit_sources submission={.runtime=&sources->runtime,.job=&job,.frame=&frame,
+        .draws=&encoded.draw,.states=&encoded.state,.plans=&encoded.plan,.draw_count=1,.state_count=1,.out_syncobj=sync};
+    uint64_t sequence=0x53a75c1d23ull;
+    native_transport_source=&submission;resource_ioctl=native_transport;
+    unsigned calls=native_transport_calls;
+    assert(opengpu_native_submit(pipe_opengpu_screen_fd(screen),NULL,&sequence)<0&&errno==EINVAL&&
+        sequence==0x53a75c1d23ull&&native_transport_calls==calls);
+    uint64_t previous_features=features;features&=~OPENGPU_DRIVER_FEATURE_NATIVE_BINNED;
+    assert(opengpu_native_graphics_submit(pipe,&submission,&sequence)<0&&errno==ENOTSUP&&
+        sequence==0x53a75c1d23ull&&native_transport_calls==calls);
+    features=previous_features;submission.draw_count=2;
+    assert(opengpu_native_graphics_submit(pipe,&submission,&sequence)<0&&errno==EINVAL&&
+        sequence==0x53a75c1d23ull&&native_transport_calls==calls);
+    submission.draw_count=1;native_transport_fail=1;
+    assert(opengpu_native_graphics_submit(pipe,&submission,&sequence)<0&&errno==EIO&&
+        sequence==0x53a75c1d23ull&&native_transport_calls==calls+1);
+    native_transport_fail=0;
+    assert(!opengpu_native_graphics_submit(pipe,&submission,&sequence)&&sequence==0xf00d12345678ull&&
+        native_transport_calls==calls+2);
+    resource_ioctl=NULL;native_transport_source=NULL;
+    assert(!opengpu_sync_destroy(pipe_opengpu_screen_fd(screen),sync));
     request.attributes[1].enabled=1;
     assert(opengpu_native_draw_encode(&request,&encoded)<0&&!memcmp(&encoded,&saved,sizeof(encoded)));
     request.attributes[1].enabled=0;request.vertex_scratch.bytes-=64;

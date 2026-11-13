@@ -150,3 +150,32 @@ int opengpu_native_draw_encode(const struct opengpu_native_draw_request *r,
     e.plan.vertex_uniforms=s->uniforms[0];e.plan.fragment_uniforms=s->uniforms[1];
     *output=e;return 0;
 }
+
+int opengpu_native_graphics_submit(struct pipe_context *pipe,
+    const struct opengpu_native_submit_sources *source, uint64_t *fence_sequence)
+{
+    struct opengpu_native_runtime actual;
+    if (!pipe || !source || !fence_sequence || !source->runtime || !source->job || !source->frame ||
+        !source->state_count || !source->states || !source->out_syncobj ||
+        (source->draw_count && (!source->draws || !source->plans)) ||
+        (uint64_t)source->draw_count*OPENGPU_NATIVE_BINNED_DRAW_BYTES>SIZE_MAX ||
+        (uint64_t)source->state_count*OPENGPU_TYPED_FRAGMENT_STATE_BYTES>SIZE_MAX ||
+        source->frame->resource_count>OPENGPU_NATIVE_FRAME_MAX_RESOURCES) { errno=EINVAL;return -1; }
+    struct pipe_opengpu_screen *screen=opengpu_screen_gpu(pipe->screen);
+    unsigned context_id=opengpu_native_graphics_context_id(pipe);
+    if (!context_id) { errno=ENOTSUP;return -1; }
+    if (opengpu_native_runtime_query(pipe_opengpu_screen_fd(screen),&actual)) return -1;
+    if (memcmp(&actual,source->runtime,sizeof(actual))) { errno=EPROTO;return -1; }
+    const uint32_t *job=source->job->words;
+    if (job[OPENGPU_NATIVE_BINNED_JOB_JOB_IDENTITY_CONTEXT_WORD]!=context_id ||
+        job[OPENGPU_NATIVE_BINNED_JOB_JOB_DRAWCOUNT_WORD]!=source->draw_count) { errno=EINVAL;return -1; }
+    const struct drm_opengpu_submit_native_binned command={
+        .version=1,.context_id=context_id,.in_syncobj=source->in_syncobj,.out_syncobj=source->out_syncobj,
+        .job=(uintptr_t)source->job,.frame=(uintptr_t)&source->frame->frame,
+        .draws=(uintptr_t)source->draws,.draws_bytes=(uint64_t)source->draw_count*OPENGPU_NATIVE_BINNED_DRAW_BYTES,
+        .states=(uintptr_t)source->states,.states_bytes=(uint64_t)source->state_count*OPENGPU_TYPED_FRAGMENT_STATE_BYTES,
+        .plans=(uintptr_t)source->plans,.plan_count=source->draw_count,.plan_stride=sizeof(*source->plans),
+        .resources=(uintptr_t)source->frame->resources,.resource_count=source->frame->resource_count,
+        .resource_stride=sizeof(*source->frame->resources)};
+    return opengpu_native_submit(pipe_opengpu_screen_fd(screen),&command,fence_sequence);
+}
