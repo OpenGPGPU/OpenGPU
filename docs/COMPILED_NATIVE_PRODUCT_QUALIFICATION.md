@@ -205,6 +205,66 @@ tessellation commands, establish complete feature/API coverage, render
 640×480 product frames, or qualify whole-host timing and 60 FPS. CPU fixture,
 parser and oracle tests alone do not establish RTL execution.
 
+### Native tile decomposition comparison
+
+`PrepareNativeTileComparison` emits explicit 8×8 and 16×16 alternatives for
+the same six 32×32 scenes. Geometry, programs, state records, image allocations,
+texture inputs and the full 65,536-entry directory allocation are identical;
+only the GNF tile dimensions/count and resident attachment offsets change.
+The ordinary product encoder still uses 8×8. Both tile sizes are already
+advertised by the complete target; RGBA8 plus D24S8 at four samples occupies
+8 KiB with 16×16 tiles, within the original 32 KiB resident store.
+
+On the assertion-enabled frozen v1 model at `3059d0c65`, both alternatives
+passed all six independent stored-image, sample and guard oracles. Each scene
+used a fresh model. The original qualified model/generator/reshard identities
+were checked before and after execution, and output/source bytes were unchanged
+across verification.
+
+| Scene | 8×8 service cycles | 16×16 service cycles |
+| --- | ---: | ---: |
+| Desktop composition | 90,223 | 66,779 |
+| Textured 3D | 118,352 | 100,932 |
+| Opaque overdraw | 123,913 | 102,422 |
+| Transparent layers | 121,265 | 101,654 |
+| Small triangles | 41,490 | 42,264 |
+| 4× MSAA | 148,326 | 125,051 |
+
+Five scenes use fewer cycles; small triangles regress by 1.9%. Larger tiles
+are therefore a workload-dependent choice, not an unconditional throughput
+improvement. This smoke comparison does not qualify v2, full-frame cycles,
+physical timing or FPS, and does not replace the mandatory 8×8 grid/capacity
+qualification. Wider formats and MRT combinations must fit resident storage
+without dropping attachments or samples.
+
+To repeat, first qualify a complete assertion-enabled v1 model with the normal
+`--smoke --two-cu-vga` runner. Keep its source and model bytes fixed, then
+prepare the alternatives from the matching input/shader ABI:
+
+```sh
+sbt -J-Xmx3G -Dopengpu.fullHostQualification=1 \
+  -Dopengpu.productQualification=0 -Dopengpu.productTwoCuVga=1 \
+  -Dopengpu.productApiCapacity=1 -Dopengpu.apiExtentQualification=1 \
+  "Test / runMain opengpu.system.PrepareNativeTileComparison --output $PROBE"
+for side in 8 16; do
+  mkdir -p "$PROBE/tile$side/output"
+  while IFS= read -r scene; do
+    "$MODEL/native_product_driver" "$PROBE/tile$side/fixtures" \
+      "$PROBE/tile$side/output" --scene "$scene"
+  done < "$PROBE/tile$side/fixtures/suite.txt"
+  sbt -J-Xmx3G -Dopengpu.fullHostQualification=1 \
+    -Dopengpu.productQualification=0 -Dopengpu.productTwoCuVga=1 \
+    -Dopengpu.productApiCapacity=1 -Dopengpu.apiExtentQualification=1 \
+    "Test / runMain opengpu.system.VerifyCompiledNativeProduct --smoke --output $PROBE/tile$side/output"
+done
+```
+
+`PROBE` must be a temporary directory under this repository's `.artifacts/`.
+Keep JVM/native temporary paths inside the GPU checkout; on macOS sbt appends
+roughly 51 bytes to its temporary directory for a Unix socket, so choose a
+unique absolute temporary path no longer than 52 bytes. Delete the comparison
+inputs, outputs and logs once verification/diagnosis ends.
+
 With shared MSHR, fragment, raster and texture-address definitions, the complete
 target passed raw elaboration and FIRRTL conversion in
 one JVM capped at 10 GiB. It retained two 16-lane/eight-warp CUs, sixteen
