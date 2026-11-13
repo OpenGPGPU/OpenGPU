@@ -2,6 +2,8 @@ package opengpu.system
 
 import chisel3._
 import chisel3.reflect.DataMirror
+import java.nio.file.{Files, Paths}
+import scala.jdk.CollectionConverters._
 import opengpu.config.GpuConfig
 import opengpu.core.memory.StorageDescriptorLayout
 import opengpu.testutil.GpuSim._
@@ -22,9 +24,24 @@ class GpuSystemStoragePublicationSpec extends AnyFlatSpec {
   }
 
   it should "publish in both directions between storage and ordinary memory on polling CUs with delayed acknowledgements and reuse" in {
+    val cuCount=sys.props.get("opengpu.storagePublicationCus").map(_.toInt).getOrElse(4)
+    require(Set(2,4)(cuCount),"publication qualification supports two or four CUs")
+    val compiledInputs=sys.props.get("opengpu.galliumComputeBarrierPublicationInputs").map(Paths.get(_))
+    require(compiledInputs.isEmpty || sys.props.get("opengpu.galliumComputeBarrierQualification").contains("1"),
+      "actual Mesa producer inputs require explicit local qualification")
+    val compiledProducers=compiledInputs.map { directory =>
+      (1 to 2).map { epoch =>
+        val lines=Files.readAllLines(directory.resolve(s"publication-$epoch.native.words")).asScala.toVector
+        require(lines.nonEmpty && lines.size<=512 && lines.forall(_.matches("[0-9a-f]{8}")))
+        val code=lines.map(BigInt(_,16))
+        require(code.last==BigInt("30500073",16) && code.count(_==BigInt("0330000f",16))>=4)
+        require(code.count(w=>(w&127)==0x2b && (w>>26)==16)==2)
+        epoch -> code
+      }.toMap
+    }
     // Preserve architectural lanes/warps and four L2 banks. Bounded caches
     // keep this an ordering check, not a product capacity/rate qualification.
-    simulate(new GpuSystem(GpuConfig(lanes=4, warps=2, l2Sets=8, l2Ways=2), numComputeUnits=4,
+    simulate(new GpuSystem(GpuConfig(lanes=4, warps=2, l2Sets=8, l2Ways=2), numComputeUnits=cuCount,
       storageAvailable=true, transactionsPerCu=16,
       instructionCacheSets=4, instructionCacheWays=1,
       vectorCacheSets=4, vectorCacheWays=1)) { d =>
@@ -80,8 +97,9 @@ class GpuSystemStoragePublicationSpec extends AnyFlatSpec {
         val dataWrite = if(storageProducer) Seq(BigInt("c100f057",16),
           vector(23,3,2,0),vector(23,3,3,epoch*7),vector(23,3,4,4),
           storage(14,3),storage(16,2,4)) else Seq(addi(6,epoch*7),store(4))
-        program(epoch*0x2000+0x1000,Seq(base) ++ dataWrite ++
-          Seq(fence,addi(6,epoch),store(68),cease))
+        val compiledProducer=if(storageProducer)compiledProducers.map(_(epoch))else None
+        program(epoch*0x2000+0x1000,compiledProducer.getOrElse(Seq(base) ++ dataWrite ++
+          Seq(fence,addi(6,epoch),store(68),cease)))
       }
       for(address <- Seq(0x90000L,0x90040L)) {
         put(address,0x11223344); put(address+4,0); put(address+8,0x55667788)
@@ -114,7 +132,7 @@ class GpuSystemStoragePublicationSpec extends AnyFlatSpec {
           val i=pending.lastIndexWhere { r =>
             val producerFetch=epoch>0 && r.address==epoch*0x2000L+0x1000
             r.due<=cycle && (!producerFetch ||
-              (oldData.size==3 && oldFlag.size==3 && pollCounts.values.forall(_>=2)))
+              (oldData.size==cuCount-1 && oldFlag.size==cuCount-1 && pollCounts.values.forall(_>=2)))
           }
           if(i>=0) held=Some(pending.remove(i))
         }
@@ -141,7 +159,7 @@ class GpuSystemStoragePublicationSpec extends AnyFlatSpec {
           for(i <- 0 until 64 if mask.testBit(i)) memory(address+i)=((data>>(8*i))&255).toInt
           writeAcks+=1
         }
-        for(cu <- 0 until 4) {
+        for(cu <- 0 until cuCount) {
           d.io.trap(cu).valid.expect(false.B)
           val vectorWb=d.io.committedVectorWriteback(cu)
           if(!storageProducer && vectorWb.valid.peek().litToBoolean &&
@@ -151,7 +169,7 @@ class GpuSystemStoragePublicationSpec extends AnyFlatSpec {
             newData+=cu
           }
           val wb=d.io.committedWriteback(cu)
-          if(wb.valid.peek().litToBoolean) {
+          if(wb.valid.peek().litToBoolean && !(compiledInputs.nonEmpty && storageProducer && epoch>0 && cu==cuCount-1)) {
             val rd=wb.bits.rd.peek().litValue.toInt
             val value=wb.bits.data.peek().litValue
             if(rd==11) {
@@ -178,9 +196,9 @@ class GpuSystemStoragePublicationSpec extends AnyFlatSpec {
         if(d.io.commandCompletion.valid.peek().litToBoolean && d.io.commandCompletion.ready.peek().litToBoolean) {
           val c=d.io.commandCompletion.bits
           val id=c.commandId.peek().litValue.toInt
-          assert(id>=0 && id<4 && !completed(id))
+          assert(id>=0 && id<cuCount && !completed(id))
           c.success.expect(true.B); c.status.expect(0.U); completed+=id
-          if(epoch>0 && id==3) assert(flagAcknowledged,"producer completed before flag acknowledgement")
+          if(epoch>0 && id==cuCount-1) assert(flagAcknowledged,"producer completed before flag acknowledgement")
         }
         val q=d.io.memoryRequest
         heldRequest.foreach { bits => q.valid.expect(true.B); assert(q.bits.peek().litValue==bits) }
@@ -212,7 +230,7 @@ class GpuSystemStoragePublicationSpec extends AnyFlatSpec {
         oldData.clear(); oldFlag.clear(); newFlag.clear(); newData.clear(); completed.clear()
         pollCounts.clear()
         d.io.vmContextIdle.expect(true.B)
-        for(id <- 0 until 4) {
+        for(id <- 0 until cuCount) {
           d.io.command.bits.poke(0.U.asTypeOf(d.io.command.bits))
           d.io.command.bits.commandId.poke(id.U)
           val task=d.io.command.bits.storage.get
@@ -220,7 +238,7 @@ class GpuSystemStoragePublicationSpec extends AnyFlatSpec {
           task.table.base.poke(0xa000.U); task.table.limit.poke(0xa100.U)
           task.table.identity.context.poke(7.U); task.table.identity.pass.poke(11.U)
           task.table.identity.generation.poke(13.U)
-          val pc=if(epoch==0)0x1000 else epoch*0x2000+(if(id==3)0x1000 else 0)
+          val pc=if(epoch==0)0x1000 else epoch*0x2000+(if(id==cuCount-1)0x1000 else 0)
           d.io.command.bits.launch.kernelPc.poke(pc.U)
           for(i <- 0 until 3) {
             d.io.command.bits.launch.gridSize(i).poke(1.U)
@@ -230,7 +248,7 @@ class GpuSystemStoragePublicationSpec extends AnyFlatSpec {
           until("submit")(d.io.command.ready.peek().litToBoolean)
           tick(); d.io.command.valid.poke(false.B)
         }
-        until("all four CUs active")(d.io.busyComputeUnits.peek().litValue==15)
+        until("all CUs active")(d.io.busyComputeUnits.peek().litValue==((1<<cuCount)-1))
         allowReplies=true
         until("held public completion")(d.io.commandCompletion.valid.peek().litToBoolean)
         val completion=d.io.commandCompletion.bits.peek().litValue
@@ -240,13 +258,13 @@ class GpuSystemStoragePublicationSpec extends AnyFlatSpec {
           d.io.vmContextIdle.expect(false.B); tick(); heldCompletionCycles+=1
         }
         d.io.commandCompletion.ready.poke(true.B)
-        until("four completions")(completed.size==4)
+        until("all completions")(completed.size==cuCount)
         d.io.commandCompletion.ready.poke(false.B)
         until("context drain")(d.io.vmContextIdle.peek().litToBoolean)
         assert(pending.isEmpty && held.isEmpty && heldRequest.isEmpty)
-        if(epoch==0)assert(oldData.size==4 && oldFlag.size==4 && writeRequests==0)
+        if(epoch==0)assert(oldData.size==cuCount && oldFlag.size==cuCount && writeRequests==0)
         else {
-          assert(oldData.size==3 && oldData==oldFlag && oldData==newFlag && oldData==newData)
+          assert(oldData.size==cuCount-1 && oldData==oldFlag && oldData==newFlag && oldData==newData)
           assert(dataAcknowledged && flagAcknowledged && writeRequests==epoch*2 && writeAcks==epoch*2)
           assert(word(0x90004)==epoch*7 && word(0x90044)==epoch)
         }
@@ -254,7 +272,7 @@ class GpuSystemStoragePublicationSpec extends AnyFlatSpec {
           assert(word(address)==BigInt(0x11223344) && word(address+8)==BigInt(0x55667788))
       }
       assert(delayedDataCycles>=140 && heldCompletionCycles==27)
-      info(s"MULTICU_STORAGE_PUBLICATION PASS storageProducer=$storageProducer CUs=4 lanes=4 warps=2 kernels=12 publications=2 consumers=6 delayedDataAck=true realL1L2=true exactGuards=true heldCompletion=true ownerReuse=true cycles=$cycle productCapacityQualified=false clockQualified=false FPSQualified=false")
+      info(s"MULTICU_STORAGE_PUBLICATION PASS storageProducer=$storageProducer CUs=$cuCount lanes=4 warps=2 kernels=${cuCount*3} publications=2 consumers=${(cuCount-1)*2} actualMesaProducer=${compiledInputs.nonEmpty && storageProducer} delayedDataAck=true realL1L2=true exactGuards=true heldCompletion=true ownerReuse=true cycles=$cycle productCapacityQualified=false clockQualified=false FPSQualified=false")
       }
     }
   }

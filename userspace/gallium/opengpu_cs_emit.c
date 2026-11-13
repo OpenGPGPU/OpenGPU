@@ -620,17 +620,27 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
     int mem = op == TGSI_OPCODE_LOAD || op == TGSI_OPCODE_STORE;
     if (op == TGSI_OPCODE_END)
         return !i->NumSrcRegs && !i->NumDstRegs && !i->Memory ? 1 : -1;
-    if (op == TGSI_OPCODE_BARRIER || op == TGSI_OPCODE_MEMBAR) {
-        if (!b->shared || !b->shared_declared || b->cf || i->NumDstRegs ||
-            i->NumSrcRegs != (op == TGSI_OPCODE_MEMBAR ? 1u : 0u) || i->Memory || i->Texture || i->Label) return -1;
-        if (op == TGSI_OPCODE_MEMBAR) {
-            struct shared_expr flags = expression(b, &in->Src[0], 0);
-            if (flags.kind != EXPR_CONSTANT || flags.offset != TGSI_MEMBAR_SHARED) return -1;
-        }
+    if (op == TGSI_OPCODE_MEMBAR) {
+        const struct tgsi_src_register *s = &in->Src[0].Register;
+        const unsigned allowed = TGSI_MEMBAR_SHADER_BUFFER | TGSI_MEMBAR_ATOMIC_BUFFER |
+            TGSI_MEMBAR_SHADER_IMAGE | TGSI_MEMBAR_SHARED | TGSI_MEMBAR_THREAD_GROUP;
+        if (i->NumDstRegs || i->NumSrcRegs != 1 || i->Memory || i->Texture || i->Label ||
+            s->File != TGSI_FILE_IMMEDIATE || s->Index < 0 || (unsigned)s->Index >= b->nimm ||
+            s->Indirect || s->Dimension || (b->imm[s->Index][swizzle(s, 0)] & ~allowed)) return -1;
+        /* One unresolved instruction per warp: resource stores/AMOs retire
+         * only after their acknowledgements, and texture/image loads retire
+         * with their result. The full native fence orders every admitted
+         * client, a conservative superset of the requested TGSI domains.
+         * THREAD_GROUP scopes memory; it is not an execution rendezvous and
+         * must not publish the initialized-shared proof below. */
         word(b, 0x0330000fu);
-        if (op == TGSI_OPCODE_BARRIER) {
-            word(b, 0x0000000bu); b->shared_visible = b->shared_written;
-        }
+        return 0;
+    }
+    if (op == TGSI_OPCODE_BARRIER) {
+        if (!b->shared || !b->shared_declared || b->cf || i->NumDstRegs ||
+            i->NumSrcRegs || i->Memory || i->Texture || i->Label) return -1;
+        word(b, 0x0330000fu);
+        word(b, 0x0000000bu); b->shared_visible = b->shared_written;
         return 0;
     }
     if (i->NumDstRegs != 1 || !d->WriteMask) return -1;
