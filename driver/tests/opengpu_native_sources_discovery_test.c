@@ -28,6 +28,18 @@ int main(void)
     struct opengpu_native_source_limits out,before;
     valid();assert(probe(0x47550002,flags,caps,0x500,&out));
     assert(out.available && out.capacity==128 && out.engines==4 && out.frame.words[7]==0x902);
+    assert(out.lanes==16 && out.warps==8);
+    assert(opengpu_native_source_shader_config_valid(&out,caps|GPU_CAP_SHADER_CONFIG_INFO,0x02020810));
+    assert(!opengpu_native_source_shader_config_valid(&out,caps,0x02020810));
+    assert(!opengpu_native_source_shader_config_valid(&out,caps|GPU_CAP_SHADER_CONFIG_INFO,0x02021008)); /* same product, swapped dimensions */
+    for(unsigned byte=0;byte<4;byte++)for(unsigned value=0;value<256;value++){
+        u32 shader=(0x02020810u&~(255u<<(8*byte)))|(value<<(8*byte));
+        bool expected=byte==2?value!=0:value==((0x02020810u>>(8*byte))&255);
+        assert(opengpu_native_source_shader_config_valid(&out,caps|GPU_CAP_SHADER_CONFIG_INFO,shader)==expected);
+    }
+    assert(!opengpu_native_source_shader_config_valid(NULL,caps,0));
+    struct opengpu_native_source_limits disabled={0};
+    assert(opengpu_native_source_shader_config_valid(&disabled,0,0));
     for(unsigned which=0;which<3;++which){
         u32 base=which==0?0x4e0:which==1?0x3a0:0x300,count=which==1?16:8;
         for(unsigned word=0;word<count;++word)for(unsigned bit=0;bit<32;++bit){
