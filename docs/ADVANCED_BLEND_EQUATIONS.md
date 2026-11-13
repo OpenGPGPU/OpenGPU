@@ -140,6 +140,18 @@ RGB channels before blending; the store encodes the linear result back to sRGB
 and applies attachment and indexed component masks. Each selected MSAA sample
 uses its own resident or refilled destination. It does not resolve samples.
 
+Before advanced arithmetic, UNORM and sRGB source RGBA components use the same
+clamp as ordinary typed blending: NaNs and negative values become zero, values
+above one become one. Floating-point targets retain their unclamped sources.
+The source is already linear; only the destination decode and final encoding
+perform sRGB conversion. This follows the source/destination distinction in
+[OpenGL ES 3.2, section 15.1.5](https://registry.khronos.org/OpenGL/specs/es/3.2/es_spec_3.2.pdf).
+`TypedTileBlendSpec` checks 92 requests across all nine normalized and eight
+floating-point internal formats, including RGB/alpha boundaries, NaN/Inf,
+discriminating unclamped/incorrect-source-gamma alternatives, ordinary scalar
+references and immutable accepted state. A second case checks three
+single-cycle cancellation cuts, held-result immutability and immediate reuse.
+
 This internal tile interface uses `TypedBlendState.version=3`. Each buffer
 retains version 2's bits 0..26, adds advanced enable at bit 27 and the equation
 id 0..14 at bits 31..28. An advanced buffer requires blend enable, zero ordinary
@@ -179,6 +191,11 @@ and tile codec/ownership overhead. Ordinary store tests retain their existing
 10,000-clock wait bound. The ordinary 36-format blend and cancellation tests,
 plus indexed MRT serial/four-port/eight-port stores and native sample-packet
 selection, also pass with their original images and semantics.
+Three additional four-MRT groups verify out-of-range RGB/alpha, negative alpha
+and normalized NaN sources against the actual stored words, with unclamped
+floating-point MRT controls. The same masks, independent sample destinations,
+uncovered samples and packed neighbors are checked in the serial, four-port
+and eight-port stores.
 
 The source filter bounds local test compilation to the selected suites and
 their actual shared fixtures; it does not change CI selection.
@@ -251,7 +268,8 @@ Reproduce the parallel storage, native pixel and ordinary regressions with:
 sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'set Test / sources := (Test / sources).value.filter(f => Set("GpuSim.scala", "WindowPrimitiveRecordsSpec.scala", "TypedColorFormatSpec.scala", "TypedColorBlendSpec.scala", "TypedAdvancedColorBlendSpec.scala", "TypedAdvancedHslBlendSpec.scala", "TypedBlendServiceSpec.scala", "TypedTileColorStoreSpec.scala", "IndexedDrawBufferBlendSpec.scala", "StreamingTypedTileColorLanesSpec.scala", "StreamingTypedColorBlendSpec.scala", "TypedTilePixelBackendSpec.scala", "TypedDepthStencilSpec.scala").contains(f.getName))' \
+  'set Test / sources := (Test / sources).value.filter(f => Set("GpuSim.scala", "WindowPrimitiveRecordsSpec.scala", "TypedColorFormatSpec.scala", "TypedColorBlendSpec.scala", "TypedAdvancedColorBlendSpec.scala", "TypedAdvancedHslBlendSpec.scala", "TypedBlendServiceSpec.scala", "TypedTileBlendSpec.scala", "TypedTileColorStoreSpec.scala", "IndexedDrawBufferBlendSpec.scala", "StreamingTypedTileColorLanesSpec.scala", "StreamingTypedColorBlendSpec.scala", "TypedTilePixelBackendSpec.scala", "TypedDepthStencilSpec.scala").contains(f.getName))' \
+  'testOnly opengpu.graphics.TypedTileBlendSpec' \
   'testOnly opengpu.graphics.AdvancedParallelTypedTileColorStoreSpec opengpu.graphics.AdvancedEightPortTypedTileColorStoreSpec opengpu.graphics.AdvancedNativeSampleTypedTilePixelBackendSpec' \
   'testOnly opengpu.graphics.StreamingTypedTileColorLanesSpec' \
   'testOnly opengpu.graphics.StreamingTypedColorBlendSpec -- -z sustain' \
@@ -260,12 +278,8 @@ sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
 
 ## Remaining work
 
-`TypedTileBlend` does not yet clamp fixed-point source components before
-advanced arithmetic. The stored-image tests use bounded premultiplied sources;
-they do not qualify out-of-range inputs. This gap must be fixed before GLES
-API exposure, while floating-point targets retain their unclamped behavior.
-
-The extension's complete precision/clamp rules and format coverage,
-native draw/render-pipeline admission, native blend-barrier ordering,
-driver/API exposure, physical timing and product qualification remain open.
+Full GLES blending conformance, including precision, exceptional inputs and
+the complete equation-by-format matrix, remains unqualified. Native
+draw/render-pipeline admission, native blend-barrier ordering, driver/API
+exposure, physical timing and product qualification remain open.
 This internal tile integration does not close H8.

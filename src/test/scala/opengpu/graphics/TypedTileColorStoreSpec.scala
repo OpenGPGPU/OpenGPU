@@ -406,14 +406,15 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
           val got=t.maintenance(w);assert(got._2 && !got._4 && got._1==t.word(w),s"sample/neighbour mismatch format=${v.name} word=$w")
         }
         val source=Vector(fp(0.125),fp(0.375),fp(0.25),fp(0.5))
-        def packet(equations: Vector[Int],ordinary: Boolean=false): Unit={
+        def packet(equations: Vector[Int],ordinary: Boolean=false,rawSources: Option[Vector[Vector[BigInt]]]=None): Unit={
+          val sources=rawSources.getOrElse(Vector.fill(4)(source))
           val b=d.io.in.bits;zero(b);val q=b.quad;t.identity(q.identity)
           q.sequence.poke(17.U);q.primitiveId.poke(23.U);q.instanceId.poke(29.U)
           q.colorSlots.poke(4.U);q.sampleMode.poke(2.U);b.blend.version.poke(TypedBlendState.advancedIndexedVersion.U)
           for(l<-0 until 4){val r=q.lanes(l);r.x.poke((l%2).S);r.y.poke((l/2).S)
             r.helper.poke((l!=0).B);r.coverageMask.poke((if(l==0)5 else 0).U)
             r.colorMask.poke((if(l==0)15 else 0).U);b.samples(l).poke((if(l==0)5 else 0).U)
-            for(c<-0 until 4)r.colors(c).zip(source).foreach{case(a,v)=>a.poke(v.U)}
+            for(c<-0 until 4)r.colors(c).zip(sources(c)).foreach{case(a,v)=>a.poke(v.U)}
           }
           for((v,c)<-views.zipWithIndex){
             q.colorTypes(c).poke(0.U)
@@ -428,8 +429,10 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
               val a=v.offset+sample*f.bytes
               val old=(0 until f.bytes).foldLeft(BigInt(0))((x,n)=>x|(BigInt(t.model(a+n))<<(8*n)))
               val dst=TypedBlendReference.decode(v.name,old).map(x=>value(x).toFloat)
-              val src=source.map(x=>value(x).toFloat)
-              val out=if(isOrdinary)source else if(equations(c)<11)
+              val values=sources(c)
+              val effective=if(v.name.endsWith("F"))values else values.map(TypedBlendReference.clamp)
+              val src=effective.map(x=>value(x).toFloat)
+              val out=if(isOrdinary)values else if(equations(c)<11)
                 TypedAdvancedColorBlendReference.expected(src,dst,equations(c)) else
                 TypedAdvancedHslBlendReference.expected(src,dst,equations(c)-11)
               val (encoded,mask)=encode(v.name,out,v.mask&indexedMask)
@@ -455,8 +458,18 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
           t.output(expected=Some((10,352,8,2)));t.verify();verifyPixel()
         }
         packet(Vector(4,0,8,14),ordinary=true);t.submit();zero(d.io.in.bits)
-        t.output(expected=Some((10,352,8,2)));t.verify();verifyPixel();t.finish()
-        info(s"ADVANCED_TYPED_TILE equations=15 formats=RGBA8,sRGB,RGBA16F,RGBA32F MRT=4 samples=4 selected=0,2 masks=true independentOrdinary=true destinationRMW=true heldImmutable=true minCycles=${latencies.min} maxCycles=${latencies.max}")
+        t.output(expected=Some((10,352,8,2)));t.verify();verifyPixel()
+        val high=Vector(-0.25,1.25,0.5,1.5).map(fp)
+        val negative=Vector(-0.25,-0.5,-1.0,-0.5).map(fp)
+        val nan=Vector.fill(4)(BigInt("7fc01234",16))
+        val edges=Seq(Vector.fill(4)(high),Vector.fill(4)(negative),
+          Vector.tabulate(4)(c=>if(c<2)nan else high))
+        for(sources<-edges){
+          packet(Vector.fill(4)(0),rawSources=Some(sources));t.submit();zero(d.io.in.bits)
+          t.output(expected=Some((10,352,8,2)));t.verify();verifyPixel()
+        }
+        t.finish()
+        info(s"ADVANCED_TYPED_TILE equations=15 formats=RGBA8,sRGB,RGBA16F,RGBA32F MRT=4 samples=4 selected=0,2 masks=true independentOrdinary=true destinationRMW=true heldImmutable=true sourceClampEdges=3 floatUnclamped=true minCycles=${latencies.min} maxCycles=${latencies.max}")
       }
     }
 
