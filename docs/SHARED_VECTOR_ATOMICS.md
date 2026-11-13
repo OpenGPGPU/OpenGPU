@@ -1,11 +1,10 @@
 # Per-invocation shared word atomics
 
 This opt-in path gives each executing invocation a distinct atomic operation
-and old-word result. Scalar RV32A remains once per warp. The functionality is
-under development: CPU admission/lowering and all sixteen ESSL type/operation cases
-pass. The decoder, real SRAM owner and stock-CU execution gates also pass;
-the sixteen actual ESSL programs still await the explicit CU gate below. It
-does not close H7 or replace complete-host execution.
+and old-word result. Scalar RV32A remains once per warp. CPU admission/lowering,
+the decoder, real SRAM owner, stock-CU tests and all sixteen actual ESSL
+programs pass their gates. This does not close H7 or replace complete-host
+execution.
 
 The operations follow GLSL ES 3.10 section 8.11: exchange, add, XOR, OR, AND,
 signed min/max, unsigned min/max and compare/swap on 32-bit shared words.
@@ -81,8 +80,8 @@ all shared words and guards, two groups and both warp orders. Actual Gallium
 state creation rejects the new program without bit 41 and accepts it with the
 bit and valid shared discovery. The original callback corpus (57 submissions,
 66 waits), two 486-word epochs and 480-word own-stripe case remain passing.
-These ESSL results are CPU results; the actual compiler-produced atomic
-programs have not yet executed on RTL.
+These CPU checks are separate from the actual compiler-produced program
+execution reported below.
 
 ```sh
 OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 \
@@ -102,7 +101,7 @@ python3 scripts/test_gallium_compute_shared.py --build /path/to/private-build --
 Prepared hardware gates are `SharedAtomicVectorExecuteUnitSpec`,
 `SharedAtomicAvailabilityDecodeSpec`, and the explicit stock SRAM/FPU/vector
 `GpuComputeUnitSharedAtomicSpec`. Their actual results are listed below; the separate actual-Mesa qualifier is
-still required before extending the hardware result to those source shaders. Full 96-word host,
+also passes on the real source shaders as reported below. Full 96-word host,
 cross-domain ordering, general shared layouts/CFGs, API and physical H7 gates
 remain open.
 
@@ -142,7 +141,7 @@ sbt -J-Xmx2G -J-Xss6M -J-XX:ActiveProcessorCount=2 \
 The stock suite is `DoNotDiscover`; `testOnly` does not count as its execution.
 
 
-## Explicit actual-Mesa CU gate (not yet executed)
+## Actual-Mesa CU results and reproduction
 
 The CPU command above emits all sixteen `shared-atomic*.native.words` files in
 its private `glsl/` directory only after their compiler/admission/oracle checks
@@ -157,12 +156,20 @@ sbt -Dopengpu.galliumComputeSharedAtomicQualification=1 \
   'Test / runMain opengpu.core.QualifyGalliumComputeSharedAtomic --inputs /path/to/private-build/glsl --input-sha256 PRINTED_SHA256 --reports /path/to/temporary-reports'
 ```
 
-This gate retains the actual 188-word programs, stock sixteen lanes/eight warps,
-16 KiB SRAM, FPU and vector hardware. It checks two groups per type/operation,
-each endpoint's 128 returned old words against an independent source-level
-multiset, actual Sv32 descriptor/data/code traffic, delayed acknowledgements,
-held completion, immutable code/tables/page-table/output guards and reuse
-without reset. It does not synthesize a shader or calculate returned bytes in
-the memory responder. The separate owner and stock-CU tests retain the fault,
-cancellation, reset, helper-mask and SRAM guard checks. The actual-Mesa gate has not yet run; its presence does not establish source
-shader GPU execution or H7 closure.
+The explicit gate passes both tests: input-contract rejection and execution of
+all sixteen actual 188-word programs on stock sixteen lanes/eight warps, 16 KiB
+SRAM, FPU and vector hardware. It executes two groups per type/operation and
+checks each endpoint's 128 returned old words against an independent
+source-level multiset. It validates actual Sv32 descriptor/data/code traffic,
+delayed acknowledgements, held completion, immutable code/table/page-table/
+output guards and reuse without reset. All 32 groups, 256 warp starts, 8192 returned old words and
+8192 acknowledged output writes pass; each case observes all eight warps and
+holds completion for thirteen cycles. It does not synthesize a shader or
+calculate returned bytes in the memory responder. The separate owner and
+stock-CU tests retain the fault, cancellation, reset, helper-mask and SRAM guard
+checks.
+
+This is a CU execution gate with a protocol memory responder. It does not
+establish Linux GEM/producer/context lifetime, complete-host or two-CU product
+execution, general shared layouts/CFG admission, physical timing or H7 closure.
+The current product profiles continue to leave this new feature disabled.
