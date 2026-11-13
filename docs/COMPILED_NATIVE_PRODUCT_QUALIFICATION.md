@@ -80,6 +80,36 @@ Reproduce with the smoke command above and `--scene-jobs 3`. These counts
 describe complete smoke frames on the full two-CU hardware profile; they do
 not measure complete 640×480 product frames.
 
+The same frozen `3059d0c65` v1 host subsequently completed all six **640×480**
+product scenes with assertion-enabled FlashSim. The unchanged independent
+Scala oracle passed every stored image, sample, resolve and guard. Each scene
+used a fresh model; all external traffic drained. Matching RTL, fixtures,
+generator, resharded model, executable and output bytes were checked before
+and after execution and verification.
+
+| Product scene | Service cycles |
+| --- | ---: |
+| Desktop composition | 14,411,950 |
+| Textured 3D | 6,759,137 |
+| Opaque overdraw | 29,074,499 |
+| Transparent layers | 28,835,475 |
+| Small triangles | 11,150,203 |
+| 4× MSAA | 11,398,012 |
+
+This establishes full-frame functional correctness for that v1 configuration.
+Opaque and transparent overdraw exceed the 16,666,666-cycle planning budget at
+1 GHz; no physically qualified clock or 60 FPS result is established. Current
+v2 features, production driver snapshots and whole-host timing still require
+their own matching complete-host qualification. Reproduce on the frozen source
+with the matching assertion-enabled generator/reshard profile:
+
+```sh
+python3 scripts/qualify_native_product_flashsim.py --product --two-cu-vga \
+  --flashsim-dir "$FLASH_GENERATOR" --output "$PRODUCT_RUN" --jobs 3 --scene-jobs 3 \
+  --shards 64 --reshard-dir "$PRODUCT_RESHARDED_DUT" --reshard-tool "$FLASH_RESHARD" \
+  --precompiled-header --shard-opt=-O2 --conservative-alias
+```
+
 These commands establish functional execution only after all scenes pass the
 independent complete-image, sample and guard oracle with external traffic
 drained. The 60 FPS requirement additionally needs every complete frame to fit
