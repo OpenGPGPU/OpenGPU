@@ -98,7 +98,7 @@ class ClipFloatResponse(tagWidth: Int) extends Bundle {
   * Cancellation never flushes accepted arithmetic. Drain its response before
   * publishing an immutable completion and admitting another request.
   */
-class ClipFloatArithmetic(tagWidth: Int=8) extends Module {
+class ClipFloatArithmetic(tagWidth: Int=8,finiteZeroShortcut: Boolean=true) extends Module {
   require(tagWidth>0)
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new ClipFloatRequest(tagWidth)))
@@ -142,11 +142,20 @@ class ClipFloatArithmetic(tagWidth: Int=8) extends Module {
     ((common-a.exponent)>26.S || (common-b.exponent)>26.S)
   private val exactPowerTwoDivide=isDivide && a.special===0.U && !aZero &&
     b.special===0.U && b.significand==="h800000".U
+  // Finite zero multiplication and a zero numerator over a finite nonzero
+  // divisor are exact signed zero, even at the extended exponent boundaries.
+  // Leave zero/zero and every special operand to the existing arithmetic.
+  private val exactFiniteZero=if(finiteZeroShortcut)a.special===0.U && b.special===0.U &&
+    ((request.operation===ClipFloatOperation.multiply.U && (aZero || bZero)) ||
+      (isDivide && aZero && !bZero))else false.B
   private val scaledExponent=a.exponent.pad(14)-b.exponent.pad(14)
   when(phase===prepare) {
     when(!ClipFloat.legal(a) || !ClipFloat.legal(b) || request.operation>ClipFloatOperation.addTowardZero.U) {
       value:=ClipFloat.zero;error:=1.U;phase:=pack
     }.elsewhen(cancelled || io.cancel){value:=ClipFloat.zero;phase:=pack}
+      .elsewhen(exactFiniteZero){
+        value:=ClipFloat.zero;value.negative:=a.negative^b.negative;phase:=pack
+      }
       .elsewhen(exactPowerTwoDivide){
         // Dividing a normalized finite significand by exactly one is exact;
         // only its sign and extended exponent change. Keep the normal pack

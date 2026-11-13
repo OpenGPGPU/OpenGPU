@@ -186,7 +186,121 @@ class ClipFloatArithmeticSpec extends AnyFlatSpec {
       d.io.cancel.poke(true.B);for(_<-0 until 7){t.tick();assert(d.io.out.bits.peek().litValue==held)}
       d.io.cancel.poke(false.B);t.response(value,Some(flags))
       t.run(decode(BigInt("3f800000",16)),decode(BigInt("40400000",16)),3);t.run(a,b,3)
-      info(s"CLIP_POWER_TWO rationalChecks=$checks maxRequestToOutputCycles=$maxLatency signedDivisor=true extendedRangeErrors=true gradualPacking=true zeroAndNaNFallback=true invalidOperandsRejected=true snapshots=true cancelBeforeAndAfterScale=true heldResponse=true healthyGeneralDivide=true")
+      info(s"CLIP_POWER_TWO rationalChecks=$checks maxRequestToOutputCycles=$maxLatency signedDivisor=true extendedRangeErrors=true gradualPacking=true zeroAndNaNExact=true invalidOperandsRejected=true snapshots=true cancelBeforeAndAfterScale=true heldResponse=true healthyGeneralDivide=true")
+    }
+  }
+
+  it should "match the unchanged arithmetic path for finite signed zero and retain every fallback" in {
+    case class Sample(bits: BigInt,clocks: Int,eligible: Boolean,operation: Int)
+    var control=Vector.empty[Sample]
+    var shortcut=Vector.empty[Sample]
+    for(fast<-Seq(false,true)) {
+      simulate(new ClipFloatArithmetic(finiteZeroShortcut=fast)){d=>
+        val t=new Driver(d);val samples=Vector.newBuilder[Sample]
+        def check(a: E,b: E,op: Int,expected: E,flags: Int,error: Int=0,eligible: Boolean=false): Unit={
+          val start=t.cycle;t.offer(a,b,op);t.until(d.io.out.valid.peek().litToBoolean)
+          samples+=Sample(d.io.out.bits.peek().litValue,t.cycle-start,eligible,op)
+          withClue(s"fast=$fast a=$a b=$b op=$op: "){
+            t.response(expected,Some(flags),error,towardZero=op==ClipFloatOperation.addTowardZero)
+          }
+        }
+        def finite(a: E,b: E,op: Int,eligible: Boolean=false): Unit={
+          val (expected,flags)=reference(a,b,op)
+          val range=expected.sig!=0 && (expected.exponent< -512 || expected.exponent>511)
+          check(a,b,op,if(range)E()else expected,flags,if(range)2 else 0,eligible)
+        }
+        val zeros=Seq(E(),E(true))
+        val values=for(exponent<-Seq(-512,-150,-149,-127,-126,-1,0,1,127,128,511);
+          significand<-Seq(0x800000,0x800001,0xffffff);sign<-Seq(false,true))
+          yield E(sign,exponent,significand)
+        for(z<-zeros;v<-values){
+          finite(z,v,ClipFloatOperation.multiply,eligible=true)
+          finite(v,z,ClipFloatOperation.multiply,eligible=true)
+          finite(z,v,ClipFloatOperation.divide,eligible=true)
+        }
+        for(a<-zeros;b<-zeros){
+          finite(a,b,ClipFloatOperation.multiply,eligible=true)
+          for(op<-Seq(ClipFloatOperation.add,ClipFloatOperation.subtract,ClipFloatOperation.addTowardZero))finite(a,b,op)
+          check(a,b,ClipFloatOperation.divide,E(false,0,0x400000,2),16)
+        }
+        // A tiny normalized significand is not zero. Keep rounding, packing,
+        // range errors and the pre-existing exact scaling path unchanged.
+        val one=E(false,0,0x800000);val three=decode(BigInt("40400000",16))
+        for(v<-values){finite(v,one,ClipFloatOperation.multiply);finite(v,three,ClipFloatOperation.divide)}
+        for(a<-values.take(4);b<-zeros)
+          check(a,b,ClipFloatOperation.divide,E(a.sign^b.sign,0,0,1),8)
+        for(sign<-Seq(false,true);z<-zeros){
+          val inf=E(sign,0,0,1);val nan=E(false,0,0x400000,2)
+          check(z,inf,ClipFloatOperation.multiply,nan,16)
+          check(inf,z,ClipFloatOperation.multiply,nan,16)
+          check(z,inf,ClipFloatOperation.divide,E(z.sign^sign),0)
+          // FMA propagates quiet NaN without invalid; the existing divider
+          // reports invalid for any NaN. Preserve each unit's current contract.
+          check(z,nan,ClipFloatOperation.multiply,nan,0)
+          check(z,nan,ClipFloatOperation.divide,nan,16)
+        }
+        val malformed=Seq(E(false,1,0),E(false,0,1),E(false,-513,0x800000),E(false,512,0x800000),
+          E(false,0,1,1),E(false,1,0,1),E(false,0,0,2),E(false,0,0x800001,2),E(false,0,0,3))
+        for(bad<-malformed;z<-zeros;op<-Seq(ClipFloatOperation.multiply,ClipFloatOperation.divide)){
+          check(z,bad,op,E(),0,1);check(bad,z,op,E(),0,1)
+        }
+        for(z<-zeros;op<-5 to 7)check(z,z,op,E(),0,1)
+        finite(one,three,ClipFloatOperation.divide)
+        if(fast)shortcut=samples.result()else control=samples.result()
+      }
+    }
+    assert(control.size==shortcut.size && control.nonEmpty)
+    for((before,after)<-control.zip(shortcut)){
+      assert(after.bits==before.bits,"finite-zero shortcut changed the complete arithmetic response")
+      if(after.eligible){
+        assert(after.clocks<=4,s"finite zero took ${after.clocks} clocks")
+        assert(after.clocks<before.clocks,s"finite zero did not improve ${before.clocks}->${after.clocks}")
+      }else assert(after.clocks==before.clocks,"nonzero, invalid or special fallback timing changed")
+    }
+    for(op<-Seq(ClipFloatOperation.multiply,ClipFloatOperation.divide)){
+      val before=control.filter(s=>s.eligible && s.operation==op).map(_.clocks)
+      val after=shortcut.filter(s=>s.eligible && s.operation==op).map(_.clocks)
+      info(s"CLIP_FINITE_ZERO_CYCLES operation=$op cases=${after.size} controlMin=${before.min} controlMax=${before.max} candidateMin=${after.min} candidateMax=${after.max}")
+    }
+    info(s"CLIP_FINITE_ZERO cases=${shortcut.size} exactResponse=true legacyControl=true rationalFiniteOracle=true signedZero=true exponentEnvelope=true specialFallback=true invalidPriority=true")
+  }
+
+  it should "keep finite zero owned through cancellation reset held replies and no-reset reuse" in {
+    for(fast<-Seq(false,true))simulate(new ClipFloatArithmetic(finiteZeroShortcut=fast)){d=>
+      val t=new Driver(d);val one=decode(BigInt("3f800000",16));val three=decode(BigInt("40400000",16))
+      for(op<-Seq(ClipFloatOperation.multiply,ClipFloatOperation.divide)){
+        val a=E(true);val b=E(false,511,0xffffff);val expected=E(true)
+        val start=t.cycle;t.offer(a,b,op);t.until(d.io.out.valid.peek().litToBoolean)
+        val latency=t.cycle-start;t.response(expected,Some(0))
+        for(cut<-0 to latency+1){
+          t.offer(a,b,op);for(_<-0 until cut)t.tick()
+          val alreadyOffered=d.io.out.valid.peek().litToBoolean
+          val held=if(alreadyOffered)Some(d.io.out.bits.peek().litValue)else None
+          d.io.cancel.poke(true.B);t.until(d.io.out.valid.peek().litToBoolean)
+          val stable=d.io.out.bits.peek().litValue
+          held.foreach(v=>assert(v==stable,"late cancellation changed an offered zero response"))
+          for(_<-0 until 5){t.tick();d.io.in.ready.expect(false.B);assert(d.io.out.bits.peek().litValue==stable)}
+          // The existing prepare-stage cancellation publishes canonical +0.
+          // Once prepared, the accepted signed result drains before completion.
+          t.response(if(cut==0)E()else expected,Some(0),cancelled= !alreadyOffered)
+          d.io.cancel.poke(false.B);t.run(one,three,ClipFloatOperation.divide);t.run(a,b,op)
+        }
+        for(cut<-0 to latency+1){
+          t.offer(a,b,op);for(_<-0 until cut)t.tick()
+          d.reset.poke(true.B);t.tick();d.reset.poke(false.B)
+          for(_<-0 until latency+2){d.io.out.valid.expect(false.B);d.io.busy.expect(false.B);t.tick()}
+          t.run(one,three,ClipFloatOperation.divide);t.run(a,b,op)
+        }
+      }
+      // Descriptor legality retains its original precedence over cancellation,
+      // even when the other operand would otherwise qualify as finite zero.
+      for(op<-Seq(ClipFloatOperation.multiply,ClipFloatOperation.divide);
+          bad<-Seq(E(false,1,0),E(false,512,0x800000))){
+        t.offer(E(true),bad,op);d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+        t.response(E(),Some(0),error=1,cancelled=true)
+        t.run(one,three,ClipFloatOperation.divide)
+      }
+      info(s"CLIP_FINITE_ZERO_DRAIN enabled=$fast allClockCuts=true resetNoGhost=true cancelBeforeAndAfterPrepare=true heldReply=true generalDivideReuse=true")
     }
   }
 
