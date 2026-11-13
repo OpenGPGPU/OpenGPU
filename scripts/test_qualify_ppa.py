@@ -249,7 +249,7 @@ def test_cli_rejects_io_failure_and_preserves_raw_tool_result(tmp_path, monkeypa
         'chipagent.tools': types.ModuleType('chipagent.tools'),
         'chipagent.tools.base': types.SimpleNamespace(ToolContext=types.SimpleNamespace),
         'chipagent.tools.phys_flow_asap7': types.SimpleNamespace(
-            ASAP7PhysicalFlowTool=lambda: types.SimpleNamespace(
+            docker_resource_args=lambda cpus, memory: [], ASAP7PhysicalFlowTool=lambda: types.SimpleNamespace(
                 run=run)),
     }
     for name, module in modules.items():
@@ -293,7 +293,7 @@ def test_cli_rejects_positive_slack_without_constraint_evidence(tmp_path, monkey
         'chipagent.tools': types.ModuleType('chipagent.tools'),
         'chipagent.tools.base': types.SimpleNamespace(ToolContext=types.SimpleNamespace),
         'chipagent.tools.phys_flow_asap7': types.SimpleNamespace(
-            ASAP7PhysicalFlowTool=lambda: types.SimpleNamespace(
+            docker_resource_args=lambda cpus, memory: [], ASAP7PhysicalFlowTool=lambda: types.SimpleNamespace(
                 run=lambda context: types.SimpleNamespace(result=payload))),
     }
     for name, module in modules.items():
@@ -378,7 +378,7 @@ def odb_fixture(tmp_path, route=False):
     results.mkdir(parents=True)
     odb = results / ('6_final.odb' if route else '1_synth.odb')
     odb.write_text('original odb')
-    sdc = results / '1_synth.sdc'
+    sdc = results / ('6_final.sdc' if route else '1_synth.sdc')
     sdc.write_text('original sdc')
     macro_dir = work / 'designs/asap7/Top/macros'
     macro_dir.mkdir(parents=True)
@@ -391,7 +391,7 @@ def odb_fixture(tmp_path, route=False):
     volumes = ['-v', str(work / 'results') + f':{flow}/results/asap7/Top',
                '-v', str(work / 'designs/asap7/Top') + f':{flow}/designs/asap7/Top']
     if route:
-        artifacts = {'final_odb': str(odb)}
+        artifacts = {'final_odb': str(odb), 'final_sdc': str(sdc)}
         command = ['docker', 'run', '--rm', *volumes, IMAGE, 'bash', '-lc', 'make route']
     else:
         sta = output / 'flow/synthesis_sta.tcl'
@@ -402,7 +402,7 @@ def odb_fixture(tmp_path, route=False):
         command = ['docker', 'run', '--rm', *volumes, '-v', str(sta) + ':/tmp/synthesis_sta.tcl',
                    IMAGE, 'openroad', '/tmp/synthesis_sta.tcl']
     return output, work, dict(module_name='Top', artifacts=artifacts, command=command,
-                             reproducibility={'openroad_image': IMAGE}), collateral
+                             reproducibility={'openroad_image': IMAGE, 'parameters': {'corner': 'TC', 'cell_vt': 'SLVT'}}), collateral
 
 
 @pytest.mark.parametrize('route', [False, True])
@@ -505,3 +505,54 @@ def test_interruption_stops_only_the_owned_check_container(monkeypatch, exceptio
     with pytest.raises(exception):
         qualify.run_odb_check(['docker', 'run', '--rm', IMAGE, 'openroad', 'fixture.tcl'], 30, 1)
     assert len(calls) == 2
+
+
+@pytest.mark.parametrize('mutation', ['missing-sdc', 'wrong-sdc', 'wrong-corner'])
+def test_route_rejects_missing_or_wrong_final_constraints_before_launch(tmp_path, monkeypatch, mutation):
+    output, work, result, collateral = odb_fixture(tmp_path, True)
+    if mutation == 'missing-sdc': (work / 'results/base/6_final.sdc').unlink()
+    if mutation == 'wrong-sdc': result['artifacts']['final_sdc'] = str(work / 'results/base/1_synth.sdc')
+    if mutation == 'wrong-corner': result['reproducibility']['parameters']['corner'] = 'WC'
+    monkeypatch.setattr(qualify.subprocess, 'run', lambda *a, **k: pytest.fail('Bad constraints started OpenROAD'))
+    assert not qualify.route_macro_proof(result, output, {M32: 2}, collateral, 30, 1)['passed']
+
+
+@pytest.mark.parametrize('failure', ['sdc-mutation', 'unconstrained', 'unclocked', 'missing-marker'])
+def test_final_route_coverage_cannot_hide_endpoint_or_constraint_failure(tmp_path, monkeypatch, failure):
+    output, work, result, collateral = odb_fixture(tmp_path, True)
+    def run(command, **kwargs):
+        script = (output / 'route_macro_check.tcl').read_text()
+        assert script.count('read_sdc ') == 1 and '/base/6_final.sdc\n' in script
+        assert 'check_setup\n' in script and 'platforms/asap7/lib/NLDM/' in script
+        body = {'unconstrained': 'Warning: There are 2 unconstrained endpoints.\n',
+                'unclocked': 'Warning: There are 2 unclocked register/latch pins.\n'}.get(failure, '')
+        report = '' if failure == 'missing-marker' else 'OPENGPU_CHECK_SETUP_BEGIN\n' + body + 'OPENGPU_CHECK_SETUP_END\n'
+        if failure == 'sdc-mutation': (work / 'results/base/6_final.sdc').write_text('changed')
+        return types.SimpleNamespace(returncode=0, stdout=report + macro_report(f'OPENGPU_SRAM_MACRO {M32} 2 2\n'), stderr='')
+    monkeypatch.setattr(qualify.subprocess, 'run', run)
+    assert not qualify.route_macro_proof(result, output, {M32: 2}, collateral, 30, 1)['passed']
+
+
+@pytest.mark.parametrize('flag', ['--docker-cpus', '--docker-memory-gib'])
+@pytest.mark.parametrize('value', ['0', '-1', 'nan', '1.5'])
+def test_invalid_main_container_budget_never_creates_a_run(tmp_path, monkeypatch, flag, value):
+    output = tmp_path / 'never-created'
+    with pytest.raises(SystemExit):
+        qualify.main([str(tmp_path / 'rtl'), 'Top', '--output', str(output), flag + '=' + value])
+    assert not output.exists()
+
+
+
+def test_coverage_overrides_inherited_sta_limits_without_duplicate_flags(monkeypatch):
+    captured = []
+    def run(command, **kwargs):
+        captured.append(command)
+        assert command.count('--cpus=1') == 1
+        assert command.count('--memory=10g') == 1
+        assert command.count('--memory-swap=10g') == 1
+        assert not set(('--cpus=2', '--memory=12g', '--memory-swap=12g', '--cpus', '2')) & set(command)
+        return types.SimpleNamespace(returncode=0, stdout='', stderr='')
+    monkeypatch.setattr(qualify.subprocess, 'run', run)
+    qualify.run_odb_check(['docker', 'run', '--rm', '--cpus=2', '--cpus', '2',
+                          '--memory=12g', '--memory-swap=12g', IMAGE, 'openroad'], 30, 10)
+    assert len(captured) == 1
