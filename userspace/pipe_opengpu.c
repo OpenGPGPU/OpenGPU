@@ -1045,6 +1045,48 @@ int pipe_opengpu_screen_compute_image_backings(const struct pipe_opengpu_screen 
         (screen->driver_features & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BACKINGS);
 }
 
+int pipe_opengpu_native_uniform_plan(struct pipe_opengpu_screen *screen,
+    const struct pipe_opengpu_uniform_view views[2][13],
+    const unsigned required_bytes[2][13], struct pipe_opengpu_native_uniform_plan *out)
+{
+    struct pipe_opengpu_native_uniform_plan plan = {0};
+    if (!screen || !views || !required_bytes || !out) goto invalid;
+    for (unsigned stage = 0; stage < 2; stage++) for (unsigned slot = 0; slot < 13; slot++) {
+        const struct pipe_opengpu_uniform_view *view = &views[stage][slot];
+        const struct pipe_opengpu_resource *resource;
+        uint64_t size;
+        unsigned need = required_bytes[stage][slot], maximum = slot ? 16384u : 4096u;
+        if (!need) continue;
+        if ((need & 3) || need > maximum || !view->resource) goto invalid;
+        /* Establish membership before dereferencing an opaque resource. */
+        for (resource = screen->resources; resource && resource != view->resource; resource = resource->next) {}
+        if (!resource || !resource->buffer.handle || resource->width || resource->height || resource->pitch) goto invalid;
+        size = resource->buffer.size;
+        /* GUC's 256-byte alignment applies to the copied private target.
+         * The original source view remains a four-byte GEM window. */
+        if ((view->offset & 3) || (view->bytes & 3) ||
+            view->bytes < need || view->bytes > maximum || view->offset > size || view->bytes > size - view->offset)
+            goto invalid;
+        if (!slot) { plan.defaults[stage] = *view; continue; }
+        unsigned index;
+        for (index = 0; index < plan.count; index++) {
+            const struct pipe_opengpu_uniform_view *other = &plan.bindings[index];
+            if (other->resource->buffer.handle == resource->buffer.handle &&
+                other->offset == view->offset && other->bytes == view->bytes) break;
+        }
+        if (index == plan.count) {
+            if (plan.count == 24) goto invalid;
+            plan.bindings[plan.count++] = *view;
+        }
+        plan.stage_mask[index] |= 1u << stage;
+        plan.active_mask[stage] |= 1u << (slot - 1);
+        plan.mapping[stage][slot - 1] = index;
+    }
+    *out = plan; return 0;
+invalid:
+    errno = EINVAL; return -1;
+}
+
 int pipe_opengpu_uniform_view_validate(const struct pipe_opengpu_screen *screen,
     const struct pipe_opengpu_uniform_view *v, unsigned slot)
 {

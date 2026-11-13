@@ -138,6 +138,18 @@ struct pipe_opengpu_uniform_view {
     struct pipe_opengpu_resource *resource;
     uint64_t offset, bytes;
 };
+/* Borrowed source views. The eventual native submission must independently
+ * snapshot data after producer fences and retain its own job references. */
+struct pipe_opengpu_native_uniform_plan {
+    struct pipe_opengpu_uniform_view bindings[24], defaults[2];
+    uint32_t count, stage_mask[24], active_mask[2], mapping[2][12];
+};
+/* Structural admission and aggregate remapping only; this does not discover
+ * native submission support or publish GPU-visible records. Unused bindings
+ * acquire no slot. Failure leaves *out untouched. */
+int pipe_opengpu_native_uniform_plan(struct pipe_opengpu_screen *screen,
+    const struct pipe_opengpu_uniform_view views[2][13],
+    const unsigned required_bytes[2][13], struct pipe_opengpu_native_uniform_plan *out);
 struct pipe_opengpu_buffer_texture {
     struct pipe_opengpu_resource *resource;
     uint64_t binding_bytes; /* complete logical BO, never a shortened view */
