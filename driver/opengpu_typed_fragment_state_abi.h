@@ -3,7 +3,12 @@
  * Engine0 uses fragment.scratch; engines1..3 use scratch[0..2]. */
 #ifndef OPENGPU_TYPED_FRAGMENT_STATE_ABI_H
 #define OPENGPU_TYPED_FRAGMENT_STATE_ABI_H
+#ifdef __KERNEL__
+typedef unsigned int opengpu_fragment_state_word;
+#else
 #include <stdint.h>
+typedef uint32_t opengpu_fragment_state_word;
+#endif
 
 #define OPENGPU_TYPED_FRAGMENT_STATE_FRAGMENT_VERSION_CENTER 1u
 #define OPENGPU_TYPED_FRAGMENT_STATE_FRAGMENT_VERSION_POINT_COORD 2u
@@ -313,6 +318,6 @@
 #define OPENGPU_TYPED_FRAGMENT_STATE_FRAGMENT_UNIFORMS_VERSION_BITS 2u
 #define OPENGPU_TYPED_FRAGMENT_STATE_FRAGMENT_UNIFORMS_ADDRESS_WORD 119u
 #define OPENGPU_TYPED_FRAGMENT_STATE_FRAGMENT_UNIFORMS_ADDRESS_BITS 32u
-struct opengpu_typed_fragment_state { uint32_t words[OPENGPU_TYPED_FRAGMENT_STATE_WORDS]; };
+struct opengpu_typed_fragment_state { opengpu_fragment_state_word words[OPENGPU_TYPED_FRAGMENT_STATE_WORDS]; };
 
 #endif
