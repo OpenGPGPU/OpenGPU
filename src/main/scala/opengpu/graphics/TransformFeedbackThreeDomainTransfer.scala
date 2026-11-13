@@ -27,6 +27,10 @@ class TransformFeedbackThreeDomainTransfer(contexts:Int=8) extends Module {
     val ownerIdle=Input(Vec(3,Bool()))
     val ownerCancel=Output(Vec(3,Bool()))
     val selected=Output(UInt(2.W));val quiesce=Output(Bool());val poisoned=Output(Bool());val busy=Output(Bool())
+    /** No accepted control or held reply remains. A poisoned owner can be
+      * drained while still rejecting all subsequent work until reset.
+      */
+    val drained=Output(Bool())
     val cancel=Input(Bool())
   })
   private object Phase extends ChiselEnum {val idle,externalOffer,externalReply,scan,pauseOffer,pauseReply,
@@ -51,6 +55,9 @@ class TransformFeedbackThreeDomainTransfer(contexts:Int=8) extends Module {
   io.selected:=selected;io.poisoned:=poisoned
   io.quiesce:=phase=/=Phase.idle || io.command.valid || io.switch.valid || resetSeen || poisoned
   io.busy:=phase=/=Phase.idle || resetSeen || poisoned
+  // Unaccepted input offers are not in flight. They may be waiting for an
+  // enclosing job to retire before ownerIdle permits their acceptance.
+  io.drained:=phase===Phase.idle && !resetSeen && !io.ownerReply.map(_.valid).reduce(_ || _)
   io.command.ready:=phase===Phase.idle && !io.switch.valid && !resetSeen && !poisoned && io.ownerIdle.asUInt.andR
   io.switch.ready:=phase===Phase.idle && !resetSeen && !poisoned && io.ownerIdle.asUInt.andR && io.switch.bits<3.U
   io.commandReply.valid:=false.B;io.commandReply.bits:=0.U.asTypeOf(io.commandReply.bits)

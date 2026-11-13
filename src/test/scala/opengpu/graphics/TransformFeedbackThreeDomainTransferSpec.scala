@@ -18,11 +18,12 @@ private class TransformFeedbackThreeDomainTransferHarness(contexts:Int=4) extend
     val memRequest=Vec(3,Decoupled(new ComputeMemoryRequest(cfg,64,2)))
     val memResponse=Flipped(Vec(3,Decoupled(new ComputeMemoryResponse(64,2))))
     val block=Input(Bool());val injectError=Input(Bool());val injectScope=Input(Bool());val cancel=Input(Bool())
-    val selected=Output(UInt(2.W));val quiesce=Output(Bool());val poisoned=Output(Bool());val busy=Output(Bool())
+    val selected=Output(UInt(2.W));val quiesce=Output(Bool());val poisoned=Output(Bool());val busy=Output(Bool());val drained=Output(Bool())
   })
   val owner=Module(new TransformFeedbackThreeDomainTransfer(contexts));val exporters=Seq.fill(3)(Module(new TransformFeedbackExport(cfg,p,contexts)))
   owner.io.command<>io.command;io.commandReply<>owner.io.commandReply;owner.io.switch<>io.switch;io.switchReply<>owner.io.switchReply
   owner.io.cancel:=io.cancel;io.selected:=owner.io.selected;io.quiesce:=owner.io.quiesce;io.poisoned:=owner.io.poisoned;io.busy:=owner.io.busy
+  io.drained:=owner.io.drained
   for((f,i)<-exporters.zipWithIndex){
     f.io.command.valid:=owner.io.ownerCommand(i).valid && !io.block;f.io.command.bits:=owner.io.ownerCommand(i).bits
     owner.io.ownerCommand(i).ready:=f.io.command.ready && !io.block
@@ -54,7 +55,9 @@ class TransformFeedbackThreeDomainTransferSpec extends AnyFlatSpec {
       d.io.switch.bits.poke(2.U);d.io.switch.valid.poke(true.B);until("quad switch")(d.io.switch.ready.peek().litToBoolean)
       d.clock.step();d.io.switch.valid.poke(false.B);d.io.injectError.poke(true.B)
       until("failed switch")(d.io.switchReply.valid.peek().litToBoolean);d.io.switchReply.bits.expect(2.U);d.io.poisoned.expect(true.B)
+      for(_<-0 until 3){d.io.drained.expect(false.B);d.clock.step()}
       d.io.switchReply.ready.poke(true.B);d.clock.step();d.io.switchReply.ready.poke(false.B);d.io.injectError.poke(false.B)
+      d.io.busy.expect(true.B);d.io.drained.expect(true.B)
       d.io.cancel.poke(true.B);d.clock.step();d.io.cancel.poke(false.B);until("reset drain")(!d.io.busy.peek().litToBoolean)
       d.io.poisoned.expect(false.B);d.io.selected.expect(0.U)
       d.io.switch.bits.poke(2.U);d.io.switch.valid.poke(true.B);until("quad reuse")(d.io.switch.ready.peek().litToBoolean)
