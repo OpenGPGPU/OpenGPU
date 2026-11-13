@@ -86,6 +86,7 @@ python3 scripts/test_native_product_observation.py
 python3 scripts/test_native_alignment_sequence.py
 python3 scripts/test_qualify_native_owner_product.py
 python3 scripts/test_native_owner.py
+python3 scripts/test_compute_owner.py
 python3 scripts/test_native_binned_topology_fixture.py
 python3 scripts/test_flashsim_native_adapter.py
 python3 scripts/test_build_native_flashsim.py
