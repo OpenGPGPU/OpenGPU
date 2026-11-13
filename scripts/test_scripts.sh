@@ -52,6 +52,19 @@ python3 scripts/test_qemu_cpu_config.py
 python3 scripts/test_analyze_shared_graphics_trace.py
 python3 scripts/test_yosys_hierarchy.py
 python3 scripts/test_extract_emitted_rtl.py
+python3 scripts/test_report_ppa_sram_inventory.py
+PYTHONDONTWRITEBYTECODE=1 python3 - <<'PY'
+from pathlib import Path
+import tempfile
+import pytest
+temporary = Path('.artifacts')
+temporary.mkdir(exist_ok=True)
+with tempfile.TemporaryDirectory(prefix='ppa-host-tests-', dir=temporary) as directory:
+    result = pytest.main(['-q', '-p', 'no:cacheprovider',
+                          '--basetemp=' + str(Path(directory) / 'fixtures'),
+                          'scripts/test_qualify_ppa.py'])
+raise SystemExit(result)
+PY
 python3 scripts/test_split_yosys_rtlil.py
 python3 scripts/test_verify_yosys_checkpoint.py
 python3 scripts/test_prepare_yosys_abc_checkpoint.py
