@@ -28,6 +28,24 @@ class TypedReplayTileCompletion extends Bundle {
   val image=new TypedTileImageCompletion
 }
 
+/** Complete engine interface, also used when a job owner supplies a shared bank.
+  * Every response and control channel remains bound to the job until it drains.
+  */
+class TypedReplayTileImagePipelineIO(config:GpuConfig,p:VertexShaderStageConfig,sharedConfig:SharedCuShaderConfig,
+    payloadConfig:Option[ShaderPayloadConfig],groupedTexture:Boolean=false,fragmentImageAvailable:Boolean=false) extends Bundle {
+  val grouped=if(groupedTexture)Some(new NativeRgba8TextureRendererPorts(sharedConfig.numComputeUnits,1))else None
+  val begin=Flipped(Decoupled(new TypedReplayTileDescriptor));val in=Flipped(Decoupled(new WindowPrimitiveReplay(p)))
+  val primitiveDone=Decoupled(new TypedReplayPrimitiveCompletion);val end=Flipped(Decoupled(Bool()))
+  val out=Decoupled(new TypedTilePixelQuadCompletion);val completion=Decoupled(new TypedReplayTileCompletion)
+  val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits,imageAvailable=fragmentImageAvailable))
+  val payload=payloadConfig.map(q=>Vec(2,new FragmentPayloadPort(config,q)))
+  val poolPayload=payloadConfig.map(q=>Output(Valid(new ShaderPayloadBinding(config,q))))
+  val payloadPins=payloadConfig.map(q=>Output(Vec(4,Valid(new ShaderPayloadPin(q)))))
+  val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,32));val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,32)))
+  val fragmentEvents=Output(new FragmentPerformanceEvents)
+  val cancel=Input(Bool());val cancelSource=Output(Bool());val busy=Output(Bool())
+}
+
 /** One typed tile-image engine starting at resolved post-transform records.
   * Fetch immutable GFS1 state, select a private per-engine/per-state scratch
   * slot, intersect raster scissor with this tile, then rasterize/shade through
@@ -40,20 +58,7 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
     useSramBlackBoxes: Boolean=false,payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false,
     fragmentImageAvailable: Boolean=false) extends Module {
   require(engine>=0 && engine<4 && p.varyings==f.varyings && f.colors==4)
-  private val sharedConfig=shared;private val payloadConfig=payload
-  val io=IO(new Bundle {
-    val grouped=if(groupedTexture)Some(new NativeRgba8TextureRendererPorts(sharedConfig.numComputeUnits,1))else None
-    val begin=Flipped(Decoupled(new TypedReplayTileDescriptor));val in=Flipped(Decoupled(new WindowPrimitiveReplay(p)))
-    val primitiveDone=Decoupled(new TypedReplayPrimitiveCompletion);val end=Flipped(Decoupled(Bool()))
-    val out=Decoupled(new TypedTilePixelQuadCompletion);val completion=Decoupled(new TypedReplayTileCompletion)
-    val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits,imageAvailable=fragmentImageAvailable))
-    val payload=payloadConfig.map(q=>Vec(2,new FragmentPayloadPort(config,q)))
-    val poolPayload=payloadConfig.map(q=>Output(Valid(new ShaderPayloadBinding(config,q))))
-    val payloadPins=payloadConfig.map(q=>Output(Vec(4,Valid(new ShaderPayloadPin(q)))))
-    val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,32));val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,32)))
-    val fragmentEvents=Output(new FragmentPerformanceEvents)
-    val cancel=Input(Bool());val cancelSource=Output(Bool());val busy=Output(Bool())
-  })
+  val io=IO(new TypedReplayTileImagePipelineIO(config,p,shared,payload,groupedTexture,fragmentImageAvailable))
   private val image=Module(new TypedTileImagePipeline(config,p,f,shared,g,storage=storage,useSramBlackBoxes=useSramBlackBoxes,
     payload=payload,payloadOwner=payloadOwner,preparedGeometry=true,groupedTexture=groupedTexture,fragmentImageAvailable=fragmentImageAvailable))
   if(groupedTexture)io.grouped.get <> image.io.grouped.get

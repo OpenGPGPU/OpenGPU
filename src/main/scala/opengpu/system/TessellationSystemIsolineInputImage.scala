@@ -31,10 +31,12 @@ class TessellationSystemIsolineInputImage(config:GpuConfig,p:VertexShaderStageCo
     shared:SharedCuShaderConfig,g:GraphicsConfig,viewport:Fp32ViewportConfig=Fp32ViewportConfig(),engines:Int=2,
     pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
-    payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false) extends Module {
+    payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false,externalImages:Boolean=false) extends Module {
   private val idWidth=shared.taskIdWidth;private val cus=shared.numComputeUnits;private val payloadConfig=payload
   private val slots=TessellationSystemIsolineImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity)
+  private val replaySharedConfig=shared
   val io=IO(new Bundle {
+    val images=if(externalImages)Some(Flipped(Vec(engines,new TypedReplayTileImagePipelineIO(config,p,replaySharedConfig,payloadConfig))))else None
     val begin=Flipped(Decoupled(new TypedVertexBinImageDescriptor))
     val task=Flipped(Decoupled(new TessellationSystemIsolineInputImageTask(config,p,idWidth)))
     val taskCompletion=Decoupled(new TessellationSystemIsolineInputImageTaskCompletion)
@@ -52,7 +54,8 @@ class TessellationSystemIsolineInputImage(config:GpuConfig,p:VertexShaderStageCo
     val fragmentEvents=Output(new FragmentPerformanceEvents);val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val image=Module(new TessellationSystemIsolineImagePipeline(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,
-    tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback))
+    tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages))
+  if(externalImages)io.images.get<>image.io.images.get
   private val dma=Module(new TessellationPatchInputDma(config))
   val recordBytes=image.recordBytes
   private val frameActive=RegInit(false.B);private val frameCancelled=RegInit(false.B);private val frameFailed=RegInit(false.B)

@@ -15,11 +15,13 @@ class TessellationQuadTranslatedSequenceImage(config:GpuConfig,p:VertexShaderSta
     shared:SharedCuShaderConfig,g:GraphicsConfig,viewport:Fp32ViewportConfig=Fp32ViewportConfig(),engines:Int=2,
     pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
-    payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false) extends Module {
+    payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false,externalImages:Boolean=false) extends Module {
   private val idWidth=shared.taskIdWidth;private val cus=shared.numComputeUnits;private val payloadConfig=payload
   private val renderIds=TessellationSystemQuadImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity)
   private val slots=TessellationInputMemoryFabric.transactions(renderIds)
+  private val replaySharedConfig=shared
   val io=IO(new Bundle {
+    val images=if(externalImages)Some(Flipped(Vec(engines,new TypedReplayTileImagePipelineIO(config,p,replaySharedConfig,payloadConfig))))else None
     val begin=Flipped(Decoupled(new TypedVertexBinImageDescriptor))
     val draw=Flipped(Decoupled(new TessellationQuadPatchSequenceDescriptor(config,p,idWidth)))
     val drawCompletion=Decoupled(new TessellationQuadPatchSequenceCompletion)
@@ -38,7 +40,8 @@ class TessellationQuadTranslatedSequenceImage(config:GpuConfig,p:VertexShaderSta
     val fragmentEvents=Output(new FragmentPerformanceEvents);val cancel=Input(Bool());val busy=Output(Bool());val drained=Output(Bool())
   })
   private val image=Module(new TessellationQuadSequenceImage(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,
-    tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback))
+    tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages))
+  if(externalImages)io.images.get<>image.io.images.get
   private val fabric=Module(new TessellationInputMemoryFabric(config,renderIds))
   val recordBytes=image.recordBytes
   image.io.begin<>io.begin;image.io.draw<>io.draw;io.drawCompletion<>image.io.drawCompletion;image.io.end<>io.end

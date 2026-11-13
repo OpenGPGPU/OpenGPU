@@ -15,13 +15,15 @@ class TessellationNativeTriangleJobImage(config:GpuConfig,p:VertexShaderStageCon
     shared:SharedCuShaderConfig,g:GraphicsConfig,viewport:Fp32ViewportConfig=Fp32ViewportConfig(),engines:Int=2,
     pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
-    payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false) extends Module {
+    payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false,externalImages:Boolean=false) extends Module {
   private val idWidth=shared.taskIdWidth;private val cus=shared.numComputeUnits;private val payloadConfig=payload
   private val renderIds=TessellationSystemTriangleImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity)
   private val inputIds=TessellationInputMemoryFabric.transactions(renderIds)
   private val imageIds=TessellationNativeRecordMemoryFabric.transactions(inputIds)
   private val slots=TessellationNativeJobMemoryFabric.transactions(imageIds)
+  private val replaySharedConfig=shared
   val io=IO(new Bundle {
+    val images=if(externalImages)Some(Flipped(Vec(engines,new TypedReplayTileImagePipelineIO(config,p,replaySharedConfig,payloadConfig))))else None
     val submit=Flipped(Decoupled(new TileJobDescriptorRequest(idWidth)))
     val done=Decoupled(new TessellationNativeTriangleJobCompletion(idWidth,p));def completion=done
     val primitiveDone=Vec(engines,Decoupled(new TypedReplayPrimitiveCompletion))
@@ -41,7 +43,8 @@ class TessellationNativeTriangleJobImage(config:GpuConfig,p:VertexShaderStageCon
   })
   private val job=Module(new TessellationNativeTriangleJobReader(config,p,idWidth,engines))
   private val image=Module(new TessellationNativeTriangleSequenceImage(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,
-    tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback))
+    tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages))
+  if(externalImages)io.images.get<>image.io.images.get
   private val fabric=Module(new TessellationNativeJobMemoryFabric(config,imageIds))
   val recordBytes=image.recordBytes
   private val resetPending=RegInit(false.B);private val feedbackReset=io.feedback.map(_.cancel).getOrElse(false.B)
