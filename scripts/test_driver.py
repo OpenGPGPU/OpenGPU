@@ -23,6 +23,7 @@ def main():
     subprocess.run([sys.executable, str(ROOT / "scripts/test_geometry_uniform_snapshot.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_geometry_program_snapshot.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_geometry_snapshot.py")], check=True)
+    subprocess.run([sys.executable, str(ROOT / "scripts/test_native_layered_abi.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_native_input_snapshot.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_native_job_snapshot.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_native_submit.py")], check=True)

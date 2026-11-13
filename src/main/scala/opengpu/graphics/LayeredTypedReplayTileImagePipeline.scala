@@ -211,7 +211,9 @@ class LayeredTypedReplayTileImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
     is(State.closing){when(drained){phase:=State.finish}}
     is(State.finish){result:=0.U.asTypeOf(result);result.identity:=descriptor.states.identity;result.tile:=descriptor.chain.tile
       result.status:=Mux(status=/=0.U,status,Mux(cancelled || externalCancel,4.U,0.U));result.faultStage:=stage
-      result.replay:=scanResult;result.accepted:=accepted;result.issued:=issued;result.completed:=completed
+      result.replay:=scanResult;result.replay.chain:=descriptor.chain
+      result.replay.identity:=descriptor.records.identity;result.replay.tile:=descriptor.chain.tile
+      result.accepted:=accepted;result.issued:=issued;result.completed:=completed
       result.loadBytes:=loads;result.storedBytes:=stores;result.resolvedBytes:=resolves;phase:=State.complete}
     is(State.complete){when(io.completion.fire){phase:=State.idle}}
   }

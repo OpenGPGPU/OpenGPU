@@ -11,6 +11,7 @@ object NativeBinnedGraphicsCapabilities {
   val physicalMagic=BigInt("474e4301",16)
   val wideMagic=BigInt("474e4303",16)
   val widePhysicalMagic=BigInt("474e4304",16)
+  val layeredMagic=BigInt("474e4305",16) // GNJ2/GNF3/GNY2, full geometry/layer route
   val wordCount=8
   case class Field(name: String,word: Int,shift: Int,bits: Int,unit: String){val mask=((BigInt(1)<<bits)-1)<<shift}
   val fields=Seq(Field("MAGIC",0,0,32,"GNC2/GNC3: virtual images; GNC1/GNC4: physical images; GNC3/GNC4: frame payload v2"),Field("WORD_COUNT",1,0,32,"words"),Field("JOB_MAGIC",2,0,32,"GNJ1"),
@@ -28,9 +29,9 @@ object NativeBinnedGraphicsCapabilities {
     require(cus>0 && cus<256 && g.subPixelBits>=0 && g.subPixelBits<16 && g.maxSampleCount<8)
     require(g.screenWidth>0 && g.screenWidth<65536 && g.screenHeight>0 && g.screenHeight<65536)
     n.payload.foreach(q=>require(q.owners<8 && q.slotLines<2048,"GNC1 payload fields must represent the configured pool"))
-    val discovery=if(n.pagedCapacity==65536){if(n.translateImageViews)wideMagic else widePhysicalMagic}
+    val discovery=if(n.nativeGeometry)layeredMagic else if(n.pagedCapacity==65536){if(n.translateImageViews)wideMagic else widePhysicalMagic}
       else if(n.translateImageViews)magic else physicalMagic
-    Seq(discovery,BigInt(wordCount),NativeBinnedGraphicsLayout.jobMagic,
+    Seq(discovery,BigInt(wordCount),if(n.nativeGeometry)NativeLayeredGraphicsLayout.jobMagic else NativeBinnedGraphicsLayout.jobMagic,
       BigInt(NativeBinnedGraphicsLayout.jobBytes)|(BigInt(NativeBinnedGraphicsLayout.frameBytes)<<16),
       BigInt(NativeBinnedGraphicsLayout.drawBytes)|(BigInt(n.vertex.input.attributes)<<16)|(BigInt(n.vertex.input.bindings)<<21)|(BigInt(n.vertex.varyings)<<26)|(BigInt(1)<<31),
       BigInt(render.screenWidth)|(BigInt(render.screenHeight)<<16),
