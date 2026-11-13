@@ -233,6 +233,18 @@ static struct compute_host_session *compute_running;
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #include "compute_host_query_under_test.inc"
 #pragma GCC diagnostic pop
+unsigned compute_host_timeout_seconds(void)
+{
+ const char *value=getenv("OPENGPU_COMPUTE_HOST_TIMEOUT");if(!value)return 300;
+ if(!*value)return 0;
+ unsigned seconds=0;
+ for(;*value;value++){
+  if(*value<'0' || *value>'9')return 0;
+  unsigned digit=(unsigned)(*value-'0');if(seconds>(604800u-digit)/10u)return 0;
+  seconds=seconds*10u+digit;
+ }
+ return seconds;
+}
 static u32 compute_profile_read(void *opaque,u32 address)
 {struct compute_host_session *s=opaque;
  for(size_t i=0;i<s->profile_count;i++)if(s->profile[i].address==address)return s->profile[i].value;
@@ -240,7 +252,7 @@ static u32 compute_profile_read(void *opaque,u32 address)
 struct compute_host_session *compute_host_create(uint32_t context,
  const struct compute_host_profile_word *words,size_t count)
 {
- if(!context || !words || !count || count>1024)return NULL;
+ if(!context || !words || !count || count>1024 || !compute_host_timeout_seconds())return NULL;
  struct compute_host_session *s=calloc(1,sizeof(*s));if(!s)return NULL;
  s->profile=malloc(count*sizeof(*words));if(!s->profile){free(s);return NULL;}
  memcpy(s->profile,words,count*sizeof(*words));s->profile_count=count;
@@ -604,6 +616,15 @@ static void compute_host_test_cleanup_peer(struct opengpu_device *gpu,const char
 int main(int argc,char **argv)
 {
  assert(argc==2 || argc==4);
+ assert(!unsetenv("OPENGPU_COMPUTE_HOST_TIMEOUT") && compute_host_timeout_seconds()==300);
+ assert(!setenv("OPENGPU_COMPUTE_HOST_TIMEOUT","3600",1) && compute_host_timeout_seconds()==3600);
+ assert(!setenv("OPENGPU_COMPUTE_HOST_TIMEOUT","604800",1) && compute_host_timeout_seconds()==604800);
+ const char *bad_timeouts[]={"","0","604801","99999999999999999999999999999","-1","+1"," 1","1x"};
+ for(unsigned i=0;i<ARRAY_SIZE(bad_timeouts);i++){
+  assert(!setenv("OPENGPU_COMPUTE_HOST_TIMEOUT",bad_timeouts[i],1) && !compute_host_timeout_seconds());
+  assert(!compute_host_create(7,test_profile,ARRAY_SIZE(test_profile)));
+ }
+ assert(!unsetenv("OPENGPU_COMPUTE_HOST_TIMEOUT"));
  if(argc==4){test_fail_phase=atoi(argv[2]);test_bad_kind=atoi(argv[3]);
   assert(test_fail_phase>=1 && test_fail_phase<=3 && test_bad_kind>=1 && test_bad_kind<=2);}
 

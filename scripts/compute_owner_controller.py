@@ -88,7 +88,7 @@ def main():
                         help='new GPU-internal session owned/removed by qualify_compute_owner after container exit')
     parser.add_argument('--timeout', type=int, default=3600)
     args = parser.parse_args()
-    require(args.timeout > 0, 'positive timeout required')
+    require(0 < args.timeout <= 604800, 'timeout must be 1..604800 seconds')
     command = strict_json(args.bridge_command)
     require(type(command) is list and command and all(type(x) is str and x for x in command),
             'bridge command must be a nonempty argv array')
@@ -117,7 +117,7 @@ def main():
         session = tempfile.TemporaryDirectory(prefix='c', dir=parent)
     with session as temporary:
         directory = Path(temporary)
-        env = dict(os.environ, TMPDIR=temporary)
+        env = dict(os.environ, TMPDIR=temporary, OPENGPU_COMPUTE_HOST_TIMEOUT=str(args.timeout))
         bridge = running = owner_lock = None
         try:
             with (directory / 'probe.log').open('w') as log:

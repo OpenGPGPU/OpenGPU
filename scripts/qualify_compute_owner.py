@@ -62,7 +62,8 @@ def producer_command(args, *, gpu, source, ntt, image, name, case):
                '-v', f'{gpu}:{gpu}:ro', '-v', '{ipc}:{ipc}:rw', '-w', str(source)]
     environment = dict(PYTHONDONTWRITEBYTECODE='1', OPENGPU_MESA_DIR=str(args.mesa),
         OPENGPU_MESA_BUILD=str(args.mesa_build), OPENGPU_DRM_INCLUDE=str(args.drm_include),
-        OPENGPU_MESA_LINK_LIBS=args.mesa_link_libs, LD_LIBRARY_PATH=str(args.library_directory), TMPDIR='{ipc}')
+        OPENGPU_MESA_LINK_LIBS=args.mesa_link_libs, LD_LIBRARY_PATH=str(args.library_directory), TMPDIR='{ipc}',
+        OPENGPU_COMPUTE_HOST_TIMEOUT=str(args.timeout))
     for key, value in environment.items():
         command += ['-e', key + '=' + value]
     return command + [image, 'python3', 'scripts/test_gallium_compute_host.py',
@@ -110,7 +111,7 @@ def main():
     parser.add_argument('--case', choices=('both', 'shared', 'uniforms'), default='both')
     parser.add_argument('--timeout', type=int, default=3600)
     args = parser.parse_args()
-    require(args.timeout > 0, 'positive timeout required')
+    require(0 < args.timeout <= 604800, 'timeout must be 1..604800 seconds')
     args.executor = args.executor.absolute(); args.executor_qualification = args.executor_qualification.absolute()
     identity = checked_inputs(args)
     for key in ('executor', 'executor_qualification', 'executor_checker', 'mesa', 'mesa_build', 'drm_include', 'library_directory'):
