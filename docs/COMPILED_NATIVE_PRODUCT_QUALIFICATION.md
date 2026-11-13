@@ -791,7 +791,14 @@ so preceding invalidations retain their actual completion/POP waits.
 Trace predicates describe the real driver's waits, not CPU-stub poll counts.
 Prior submissions must be invalidations and retire before the final native
 GNJ1 enqueue. That last enqueue retains the real enabled Sv32 context, source
-VA and 512-byte size, and ends the trace without popping its completion.
+VA and 512-byte size, and ends the trace without popping its completion. GNJ1
+uses opcode 7 (`GPU_UCMD_OP_NATIVE_BINNED_RENDER`), as routed by
+`TileBinHostCommandPort`; legacy opcode 6 has a different descriptor ABI and
+is rejected. `DESTINATION` plus `PATTERN` bit 0 carry the 33-bit exclusive GNJ
+view limit, with at least 512 bytes after the aligned source and no bound past
+2^32. Other pattern bits and DMA/event flags must be zero. Native feedback
+flags retain their advertised semantics. All these command fields must be
+present in the actual capture rather than inherited from a preceding command.
 The executor checks drain and stable held completion (including all captured
 GNX words), rejects late memory
 traffic, retires the slot, and checks every byte outside the declared writable

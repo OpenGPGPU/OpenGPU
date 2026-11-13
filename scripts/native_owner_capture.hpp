@@ -75,11 +75,18 @@ struct Capture {
         require(a.value==1 && !pending,"captured submission crosses an unretired command");
         const auto op=staged.find(GPU_REG_UCMD_OPCODE);
         require(op!=staged.end(),"captured submission has no opcode");
-        if(op->second==GPU_UCMD_OP_RENDER) {
+        if(op->second==GPU_UCMD_OP_NATIVE_BINNED_RENDER) {
           require(++native==1 && i+1==trace.size(),"native enqueue must end the capture trace");
           auto field=[&](uint32_t key) {auto at=staged.find(key);require(at!=staged.end(),"missing native command field");return at->second;};
           require(field(GPU_REG_UCMD_ID)==command_id && field(GPU_REG_UCMD_BYTES)==512 &&
             !(field(GPU_REG_UCMD_SOURCE)&63),"native GNJ command identity or bounds differ");
+          const uint32_t pattern=field(GPU_REG_UCMD_PATTERN);
+          const uint64_t limit=(uint64_t(pattern&1)<<32)|field(GPU_REG_UCMD_DESTINATION);
+          require(pattern<=1 && limit<=Memory::limit &&
+            uint64_t(field(GPU_REG_UCMD_SOURCE))+512<=limit,
+            "native GNJ command has an invalid exclusive view limit");
+          require(!(field(GPU_REG_UCMD_FLAGS)&~(GPU_UCMD_FLAG_RASTER_DISCARD|GPU_UCMD_FLAG_FEEDBACK_CAPTURE)),
+            "native GNJ command has unsupported DMA/event or reserved flags");
           require((field(GPU_REG_UCMD_VECTOR_SATP)&GPU_SATP_ENABLE) &&
             field(GPU_REG_UCMD_VECTOR_SATP)==field(GPU_REG_UCMD_INSTRUCTION_SATP),
             "production native capture requires the real shared Sv32 context");
@@ -95,7 +102,7 @@ struct Capture {
     auto final=checked.find(GPU_REG_UCMD_COMPLETION);
     require(final!=checked.end() && final->second.mask==0xffffffffu &&
       GPU_UCMD_COMPLETION_ID(final->second.expected)==command_id &&
-      GPU_UCMD_COMPLETION_OPCODE(final->second.expected)==GPU_UCMD_OP_RENDER,"missing exact native completion identity");
+      GPU_UCMD_COMPLETION_OPCODE(final->second.expected)==GPU_UCMD_OP_NATIVE_BINNED_RENDER,"missing exact native completion identity");
     for(unsigned n=0;n<12;++n) require(checked.count(0x180+4*n),"incomplete GNX held-completion checks");
     require(checked.at(0x180).mask==0xffffffffu && checked.at(0x180).expected==0x474e5801,
       "missing GNX completion magic");
