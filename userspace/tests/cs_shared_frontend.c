@@ -170,6 +170,16 @@ int main(int argc,char **argv)
         }
         printf("ESSL %s: %u words, %u shared stores/%u loads, no workgroup barrier (CPU only)\n",
                name[n],own_code.words,writes,reads);
+        if(n==2)for(unsigned order=0;order<2;order++) {
+            uint32_t output[288];for(unsigned j=0;j<288;j++)output[j]=0xfade9876u;
+            for(unsigned group=0;group<2;group++)
+                shared_word_oracle_own(own_code.code,own_code.words,cfg.base,output+16,group,0xa1000000u,order);
+            for(unsigned group=0;group<2;group++)for(unsigned id=0;id<128;id++) {
+                uint32_t sum=0;for(unsigned stripe=0;stripe<32;stripe++)sum+=0xa1000000u+(group<<16)+id+stripe*128;
+                assert(output[16+group*128+id]==sum);
+            }
+            for(unsigned j=0;j<16;j++)assert(output[j]==0xfade9876u&&output[272+j]==0xfade9876u);
+        }
         cs_frontend_destroy(own);
     }
     void *shifted=front(argv[1],"own-shifted","negative");
