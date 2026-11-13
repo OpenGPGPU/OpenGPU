@@ -26,8 +26,12 @@ object ShaderUniformStatus {val ok=0;val invalid=1;val bounds=2;val memory=3;val
   * One physical read credit owns root, binding or data; every offered request
   * and accepted response drains on cancel. No descriptor/data cache is kept.
   */
-class ShaderUniformLoadUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extends Module {
-  require(stage>=0 && stage<=2)
+class ShaderUniformLoadUnit(config: GpuConfig=GpuConfig(),stage: Int=0,
+    geometryAvailable: Boolean=false) extends Module {
+  require(stage>=0 && (stage<=2 || stage==GeometryUniformResources.stage && geometryAvailable),
+    "geometry uniform stage requires its explicit provider")
+  private val geometry=stage==GeometryUniformResources.stage
+  private val resourceVersion=if(geometry)GeometryUniformResources.version else 1
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new ShaderUniformLoadRequest));val out=Decoupled(new ShaderUniformLoadResult)
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,1))
@@ -36,7 +40,8 @@ class ShaderUniformLoadUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extends 
   })
   private object State extends ChiselEnum {val idle,check,readRoot,verifyRoot,readBinding,verifyBinding,address,checkAddress,readData,finish,complete=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new ShaderUniformLoadRequest)
-  private val root=Reg(new ShaderUniformRootRecord(if(stage==2) 2 else 1));private val binding=Reg(new ShaderUniformBindingRecord(if(stage==2) 3 else 2))
+  private val root=Reg(new ShaderUniformRootRecord(if(stage>=2) 2 else 1))
+  private val binding=Reg(new ShaderUniformBindingRecord(if(geometry) 4 else if(stage==2) 3 else 2))
   private val result=Reg(new ShaderUniformLoadResult);private val selectedBinding=Reg(UInt(5.W))
   private val status=RegInit(0.U(3.W));private val source=RegInit(0.U(2.W));private val faultValid=RegInit(false.B)
   private val faultAddress=Reg(UInt(32.W));private val value=Reg(UInt(32.W));private val wideAddress=Reg(UInt(33.W))
@@ -60,8 +65,12 @@ class ShaderUniformLoadUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extends 
   private val rootFields=ShaderUniformRootLayout.fields(root);private val bindingFields=ShaderUniformBindingLayout.fields(binding)
   NativeTypedGraphicsLayout.check(root,rootFields,16);NativeTypedGraphicsLayout.check(binding,bindingFields,16)
   private val receive=io.memoryResponse.fire && !io.memoryResponse.bits.fault && !stop
-  private val badRoot=NativeTypedGraphicsLayout.receive(rootFields,16,ShaderUniformRootLayout.magic,0.U,io.memoryResponse.bits.readData,receive && phase===State.readRoot)
-  private val badBinding=NativeTypedGraphicsLayout.receive(bindingFields,16,ShaderUniformBindingLayout.magic,0.U,io.memoryResponse.bits.readData,receive && phase===State.readBinding)
+  private val badRoot=NativeTypedGraphicsLayout.receive(rootFields,16,
+    if(geometry)GeometryUniformResources.rootMagic else ShaderUniformRootLayout.magic,
+    0.U,io.memoryResponse.bits.readData,receive && phase===State.readRoot,resourceVersion)
+  private val badBinding=NativeTypedGraphicsLayout.receive(bindingFields,16,
+    if(geometry)GeometryUniformResources.bindingMagic else ShaderUniformBindingLayout.magic,
+    0.U,io.memoryResponse.bits.readData,receive && phase===State.readBinding,resourceVersion)
   private def fail(code: UInt,where: UInt,valid: Bool=false.B,address: UInt=0.U): Unit={
     when(status===0.U && !io.cancel){status:=code;source:=where;faultValid:=valid;faultAddress:=address}
   }
@@ -93,7 +102,8 @@ class ShaderUniformLoadUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extends 
       val privateLegal=Mux(request.privateLimit===0.U,request.privateBase===0.U,
         request.privateLimit>request.privateBase && request.privateLimit<=(BigInt(1)<<32).U)
       when(stop){phase:=State.finish}
-        .elsewhen(request.resources.version=/=1.U || !ShaderUniformResources.legal(request.resources) || !privateLegal ||
+        .elsewhen(request.resources.version=/=resourceVersion.U ||
+          !(if(geometry)GeometryUniformResources.legal(request.resources) else ShaderUniformResources.legal(request.resources)) || !privateLegal ||
           !lineLegal(request.resources.address) || (!isDefault && request.block>=12.U)){fail(1.U,1.U);phase:=State.finish}
         .elsewhen(request.offset(1,0)=/=0.U){fail(2.U,3.U);phase:=State.finish}
         .otherwise{beginRead(request.resources.address,State.readRoot)}
@@ -123,7 +133,7 @@ class ShaderUniformLoadUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extends 
         binding.allocationLimit<=(BigInt(1)<<32).U && binding.base>=binding.allocationBase && binding.limit<=binding.allocationLimit &&
         !overlaps(binding.base,binding.limit)
       when(stop){phase:=State.finish}
-        .elsewhen(malformed || binding.identity.asUInt=/=request.identity.asUInt || binding.bindingIndex=/=selectedBinding || !binding.stageMask(stage)){
+        .elsewhen(malformed || binding.identity.asUInt=/=request.identity.asUInt || binding.bindingIndex=/=selectedBinding || !(if(geometry)binding.stageMask===GeometryUniformResources.stageMask.U else binding.stageMask(stage))){
           fail(7.U,2.U);phase:=State.finish
         }.elsewhen(!legal){fail(1.U,2.U);phase:=State.finish}.otherwise{phase:=State.address}
     }

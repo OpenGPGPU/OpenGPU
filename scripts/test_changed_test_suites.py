@@ -80,6 +80,14 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertIn("opengpu.system.TessellationNativeRecordKernelAbiSpec",
                               changed_suites(REPO_ROOT, [path]))
 
+    def test_geometry_uniform_schema_selects_exact_admission_and_abi(self):
+        for path in ("src/main/scala/opengpu/elaboration/EmitGeometryUniformAbi.scala",
+                     "driver/opengpu_geometry_uniform_abi.h", "docs/abi/geometry-uniform-v2.json"):
+            with self.subTest(path=path):
+                selected = set(changed_suites(REPO_ROOT, [path]))
+                self.assertTrue({"opengpu.graphics.ComputeUniformRecordAbiSpec",
+                                 "opengpu.graphics.ShaderUniformLoadUnitSpec"} <= selected)
+
     def test_uniform_header_and_generator_select_existing_schema_check(self):
         for path in ("src/main/scala/opengpu/elaboration/EmitNativeUniformAbi.scala",
                      "driver/opengpu_uniform_abi.h", "docs/abi/native-uniform-v1.json"):

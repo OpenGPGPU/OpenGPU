@@ -22,8 +22,10 @@ object ShaderUniformOpcode {
   * Inactive lanes retain oldVd; any failure suppresses the whole writeback.
   * This adapter has no persistent descriptor or data cache.
   */
-class ShaderUniformExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extends Module {
-  require(stage>=0 && stage<=2)
+class ShaderUniformExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0,
+    geometryAvailable: Boolean=false) extends Module {
+  require(stage>=0 && (stage<=2 || stage==GeometryUniformResources.stage && geometryAvailable),
+    "geometry uniform stage requires its explicit provider")
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new ScalarIssuedInstruction(config)))
     val vectorIn=Flipped(Decoupled(new VectorTextureRequest(config)))
@@ -47,7 +49,7 @@ class ShaderUniformExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0) exten
   private val status=RegInit(0.U(3.W));private val source=RegInit(0.U(2.W))
   private val faultValid=RegInit(false.B);private val faultAddress=Reg(UInt(32.W));private val started=RegInit(false.B)
   private val faultMask=RegInit(0.U(config.lanes.W))
-  private val load=Module(new ShaderUniformLoadUnit(config,stage))
+  private val load=Module(new ShaderUniformLoadUnit(config,stage,geometryAvailable))
   io.memoryRequest<>load.io.memoryRequest;load.io.memoryResponse<>io.memoryResponse
   private val chooseVector=io.vectorIn.valid && (!io.in.valid || preferVector)
   io.in.ready:=phase===State.idle && !io.cancel && !chooseVector
