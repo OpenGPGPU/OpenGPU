@@ -970,3 +970,42 @@ sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
   'testOnly opengpu.graphics.NativeGeometryVertexBinPipelineSpec'
 ```
+
+## Layered attachment admission and view selection
+
+`TypedLayeredImageAdmission` validates an internal immutable binding for 1–256
+layers, six source attachments and six resolve destinations before any image
+memory access. Its new descriptor preserves the existing typed image format,
+sample and allocation fields, adding a layer count and 33-bit plane pitches.
+It checks complete layer extents, permissions, 64-byte allocation coverage and
+the exclusive 4 GiB endpoint. Each prohibited alias pair merges its two ordered
+layer-interval streams; legal interleaved layouts remain usable. The existing
+single-layer load/store/resolve alias policy and memoryless clear/discard are
+preserved. A held result is stable through cancellation.
+
+`TypedLayeredImageSelection` checks the full requested layer before narrowing
+and produces the existing single-layer descriptor, retaining allocation bounds
+and limiting useful bytes to the selected plane. The enclosing owner must retain
+the admitted descriptor and backing resources through all selected image work.
+The admission block itself performs no load, clear, raster, store or resolve.
+
+`TypedLayeredImageAdmissionSpec` passes all 256 selections for all 36 color
+formats at 1/2/4 samples, four RGBA32UI attachments with depth/stencil and all six
+resolve destinations, and a plane ending exactly at 4 GiB. It checks a collision
+first occurring at layer 255, an independent enumerating oracle for 64 random
+interval layouts, twelve mutually interleaved plane streams, source snapshot
+isolation, held cancellation and healthy reuse. The complete twelve-plane merge
+retains a 40,000-cycle bound derived from 66 pairs of at most 511 advances plus
+their admission/control steps. These are numeric metadata tests, not large-frame
+rendering. Reproduce with a short GPU-local JVM temporary directory and:
+
+```sh
+sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'testOnly opengpu.graphics.TypedLayeredImageAdmissionSpec'
+```
+
+No product constructor or published frame ABI enables these blocks. Layer-aware
+bin rescans, per-layer load/clear exactly once including empty tiles, fragment
+builtins, store/resolve ordering, fault/cancel drain and final attachment/VM
+retirement still require a complete owner and actual execution qualification.
