@@ -13,11 +13,15 @@ import qualify_native_product_flashsim as flash
 import qualify_parallel_flashsim_product as parallel
 
 
-def _metric(name, target, product):
+def _metric(name, target, product, two_cu_vga=False):
     lines = (target / 'execution.log').read_text().splitlines()
     if len(lines) != 1:
         raise RuntimeError('Scene returned missing or unexpected metrics: ' + name)
-    row = json.loads(lines[0]); size = (1280, 720) if product else (32, 32)
+    row = json.loads(lines[0]); size = common.frame_size(product, two_cu_vga)
+    if two_cu_vga and any(row.get(k) != v for k, v in
+            {'computeUnits': 2, 'nativeEngines': 4, 'nativeMaxWidth': 2048,
+             'nativeMaxHeight': 2048, 'profile': 'two-cu-vga60-v1'}.items()):
+        raise RuntimeError('Two-CU VGA execution resource profile differs: ' + name)
     if (row.get('scene') != name or (row.get('frameWidth'), row.get('frameHeight')) != size
             or not row.get('trafficDrained') or row.get('serviceCycles', 0) <= 0
             or row.get('gpuCycles', 0) <= 0 or row.get('imageVerificationRequired') is not True
@@ -70,7 +74,7 @@ def run_extra(current, original, output, names, jobs):
                     continue
                 if code:
                     raise RuntimeError(f'Additional scene {name} failed with exit {code}')
-                row = _metric(name, target, current.product)
+                row = _metric(name, target, current.product, current.two_cu_vga)
                 rows[name] = dict(metrics=row, files=common.tree_hashes(target), argv=command, exit_code=code)
                 del running[name]
             if running:
@@ -117,7 +121,7 @@ def witness_original(current, original, run, output, names):
         target = run / 'scenes' / name
         if target.is_symlink() or not target.resolve().is_relative_to((run / 'scenes').resolve()):
             raise RuntimeError('Original scene path is not owned by the run: ' + name)
-        row = _metric(name, target, current.product)
+        row = _metric(name, target, current.product, current.two_cu_vga)
         rows[name] = dict(metrics=row, directory=str(target), files=common.tree_hashes(target))
     if (parallel.guard_model(current, original) != (prepared, old, build, identity)
             or any(item['files'] != common.tree_hashes(Path(item['directory'])) for item in rows.values())):
