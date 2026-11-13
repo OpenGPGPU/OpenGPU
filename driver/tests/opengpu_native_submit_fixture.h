@@ -48,6 +48,10 @@ int native_kernel_observe_retired(struct native_kernel_session *,unsigned record
     const struct native_kernel_observed_receipt *);
 /* Final all-record oracle authorization; does not invent completion or drain. */
 int native_kernel_finish_observed(struct native_kernel_session *,unsigned record);
+/* Distinct final image/source-oracle authorization. Each actual TLB shootdown
+ * blocks until the live DUT acknowledges the preceding PTE revocations. */
+int native_kernel_begin_cleanup(struct native_kernel_session *,const char *session_directory);
+int native_kernel_end_cleanup(struct native_kernel_session *);
 /* Execution/capture and retirement stay separate: pending owners retain their
  * real mappings/leases and every original reference until explicit retirement. */
 int native_kernel_run(struct native_kernel_session *,unsigned record);

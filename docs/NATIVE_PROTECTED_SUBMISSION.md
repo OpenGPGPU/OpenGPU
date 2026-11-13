@@ -67,12 +67,23 @@ POP/ack traces and stable record identities while both owners remain mapped.
 Its exported memory and traces can be checked with the compiled executor
 parsers using `--executor-root <checkout>`; this parser check executes no GPU.
 
+After all image/source oracles authorize cleanup, `native_kernel_begin_cleanup`
+starts a distinct phase. The actual MMU's DMA barriers capture exact coherent
+PTE clears, including their original physical addresses and old words. Every
+real TLB flush blocks for a matching, ordered live-DUT acknowledgment before its
+call can return and release backing. Transport errors enter the existing MMU
+rollback/owner quarantine path. `native_kernel_end_cleanup` publishes the final
+batch count; the producer must still await the executor's final cleanup result
+before destroying the session. CPU ASan/UBSan checks pass for two owners, exact
+exported-PTE replay and stale/busy acknowledgments retaining all backing. This
+CPU peer is excluded from the actual Mesa producer.
+
 The driver feature bit and production native layout/capability queries remain
 disabled while end-to-end qualification is unfinished. The separate test-only
 profile cache consumes an actual DUT probe, including all 96 discovery words
 and five auxiliary registers; it does not substitute a fixed CPU profile for
 runtime discovery. Active execution receipts must preserve both owners through
 the real held-completion, driver IRQ/drain/POP and subsequent DUT checks.
-Final CPU owner cleanup remains a separate scope until its shootdown trace is
-also replayed and checked on the live DUT. This work does not close GLES/KHR,
+Owner cleanup remains unqualified until every shootdown is applied and checked
+on the same live DUT. This work does not close GLES/KHR,
 ordinary native geometry-shader admission, or the VGA/60-FPS product gate.
