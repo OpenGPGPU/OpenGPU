@@ -197,6 +197,18 @@ struct opengpu_display {
 /* Forward declaration: `struct opengpu_mmu` holds a VM registry below. */
 struct opengpu_vm;
 
+/* Driver-private descriptor backing. A producer seals freshly allocated,
+ * unexported pages before publishing their RO mappings. No GEM object or CPU
+ * mapping is exposed; the enclosing job owns this node through VM retirement.
+ * Entries are linked rather than capped by a draw/state-count limit. */
+struct opengpu_snapshot_lease {
+    struct opengpu_snapshot_lease *next;
+    const struct opengpu_vm *owner;
+    dma_addr_t base;
+    size_t size;
+    bool active;
+};
+
 /** ASID-0 identity GPU MMU: one root table of 4 MiB superpages, split into
   * second-level tables on demand so individual 4 KiB pages can carry a
   * non-default cache policy.  `asids` hands out Sv32 ASIDs to per-VM root
@@ -209,6 +221,7 @@ struct opengpu_mmu {
     u32 l1_count;
     struct opengpu_asid_pool asids;
     struct opengpu_vm *vms;
+    struct opengpu_snapshot_lease *snapshot_leases;
     bool enabled;
 };
 
@@ -465,6 +478,16 @@ int opengpu_mmu_vm_map_snapshot(struct opengpu_device *gpu, struct opengpu_vm *v
 int opengpu_mmu_verify_snapshot_locked(struct opengpu_device *gpu,
                                        const struct opengpu_vm *vm,
                                        dma_addr_t va, dma_addr_t pa, size_t size);
+/* Acquire/release under submit_lock. Both wait for hardware idle before
+ * examining all registered VMs. Acquire precedes publication; release follows
+ * every mapping's successful revocation. Failures retain the active lease.
+ * These APIs alone do not revoke arbitrary caller CPU mappings: only private,
+ * unexported producer allocations may be sealed. */
+int opengpu_mmu_snapshot_acquire_locked(struct opengpu_device *gpu,
+    struct opengpu_snapshot_lease *lease, const struct opengpu_vm *owner,
+    dma_addr_t base, size_t size);
+int opengpu_mmu_snapshot_release_locked(struct opengpu_device *gpu,
+    struct opengpu_snapshot_lease *lease);
 /* Immutable executable snapshots require a private VM, R+X without W, exact
  * backing and no writable alias. They never replace an existing mapping. */
 int opengpu_mmu_vm_map_code_snapshot(struct opengpu_device *gpu, struct opengpu_vm *vm,

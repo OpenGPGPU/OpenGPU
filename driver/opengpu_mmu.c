@@ -298,6 +298,7 @@ int opengpu_mmu_init(struct opengpu_device *gpu)
     mutex_init(&mmu->lock);
     opengpu_asid_pool_init(&mmu->asids);
     mmu->vms = NULL;
+    mmu->snapshot_leases = NULL;
     if (!(gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
         return 0; /* No MMU control path; stay in Bare mode. */
 
@@ -401,6 +402,125 @@ enum mmu_private_leaf {
     MMU_CODE_RX,
 };
 
+/* Context roots contain only private 4 KiB leaves. Fail closed if a live root
+ * cannot be resolved through the driver's table registry. ASID-0 identity
+ * traffic is separately deferred by submission while leases are active. */
+static int mmu_snapshot_mapped(struct opengpu_mmu *mmu, u64 start, u64 end)
+{
+    const struct opengpu_vm *vm;
+    u32 region, i;
+
+    for (vm = mmu->vms; vm; vm = vm->next) {
+        if (!vm->enabled || !vm->root.cpu || vm->root.size < MMU_PAGE_SIZE ||
+            vm->l1_count > OPENGPU_VM_MAX_TABLES)
+            return -EFAULT;
+        for (region = 0; region < MMU_ROOT_ENTRIES; ++region) {
+            const struct opengpu_buffer *table;
+            u32 root = ((u32 *)vm->root.cpu)[region];
+            if (!(root & MMU_PTE_V))
+                continue;
+            table = vm_live_l1(vm, region);
+            if (!table)
+                return -EFAULT;
+            for (i = 0; i < MMU_L1_ENTRIES; ++i) {
+                u32 leaf = ((u32 *)table->cpu)[i];
+                u64 pa = (u64)(leaf >> 10) << 12;
+                if ((leaf & MMU_PTE_V) && pa >= start && pa < end)
+                    return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+int opengpu_mmu_snapshot_acquire_locked(struct opengpu_device *gpu,
+    struct opengpu_snapshot_lease *lease, const struct opengpu_vm *owner,
+    dma_addr_t base, size_t size)
+{
+    struct opengpu_mmu *mmu = &gpu->mmu;
+    struct opengpu_snapshot_lease *other;
+    const struct opengpu_vm *vm;
+    u64 end;
+    int ret;
+
+    lockdep_assert_held(&gpu->hw.submit_lock);
+    if (!lease || lease->active || !owner || !size ||
+        (base & (MMU_PAGE_SIZE - 1u)) || (size & (MMU_PAGE_SIZE - 1u)))
+        return -EINVAL;
+    if (check_add_overflow((u64)base, (u64)size, &end) || end > (1ULL << 32))
+        return -ERANGE;
+    if (!mmu->enabled)
+        return -EOPNOTSUPP;
+    ret = opengpu_hw_wait_idle_locked(gpu);
+    if (ret)
+        return ret;
+    mutex_lock(&mmu->lock);
+    for (vm = mmu->vms; vm && vm != owner; vm = vm->next)
+        ;
+    if (!vm || !owner->enabled || !owner->asid) {
+        ret = -EINVAL;
+        goto out;
+    }
+    for (other = mmu->snapshot_leases; other; other = other->next) {
+        if ((u64)base < (u64)other->base + other->size &&
+            (u64)other->base < end) {
+            ret = -EBUSY;
+            goto out;
+        }
+    }
+    ret = mmu_snapshot_mapped(mmu, base, end);
+    if (ret) {
+        if (ret > 0)
+            ret = -EACCES;
+        goto out;
+    }
+    lease->owner = owner;
+    lease->base = base;
+    lease->size = size;
+    lease->next = mmu->snapshot_leases;
+    lease->active = true;
+    mmu->snapshot_leases = lease;
+out:
+    mutex_unlock(&mmu->lock);
+    return ret;
+}
+
+int opengpu_mmu_snapshot_release_locked(struct opengpu_device *gpu,
+    struct opengpu_snapshot_lease *lease)
+{
+    struct opengpu_mmu *mmu = &gpu->mmu;
+    struct opengpu_snapshot_lease **link;
+    int ret;
+
+    lockdep_assert_held(&gpu->hw.submit_lock);
+    if (!lease || !lease->active)
+        return -EINVAL;
+    ret = opengpu_hw_wait_idle_locked(gpu);
+    if (ret)
+        return ret;
+    mutex_lock(&mmu->lock);
+    for (link = &mmu->snapshot_leases; *link && *link != lease;
+         link = &(*link)->next)
+        ;
+    if (!*link) {
+        ret = -EINVAL;
+        goto out;
+    }
+    ret = mmu_snapshot_mapped(mmu, lease->base, (u64)lease->base + lease->size);
+    if (ret) {
+        if (ret > 0)
+            ret = -EBUSY;
+        goto out;
+    }
+    *link = lease->next;
+    lease->active = false;
+    lease->next = NULL;
+    lease->owner = NULL;
+out:
+    mutex_unlock(&mmu->lock);
+    return ret;
+}
+
 /* Atomically map, unmap or replace private leaves, including overlapping
  * ranges and a shortened tail. A zero new size means unmap the old range.
  * All page tables and rollback storage are reserved before leaves change. */
@@ -439,6 +559,17 @@ static int mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
     mutex_lock(&mmu->lock);
     if (!vm->enabled) { ret = -EINVAL; goto out_mmu; }
     old_count = vm->l1_count;
+    if (size) {
+        const struct opengpu_snapshot_lease *lease;
+        for (lease = mmu->snapshot_leases; lease; lease = lease->next) {
+            if ((u64)pa < (u64)lease->base + lease->size &&
+                (u64)lease->base < pa_end &&
+                (lease->owner != vm || kind != MMU_SNAPSHOT_RO)) {
+                ret = -EACCES;
+                goto out_mmu;
+            }
+        }
+    }
     for (p = old_start; p < old_end;) {
         u32 region = (u32)(p / MMU_SUPERPAGE_SIZE);
         struct opengpu_buffer *l1 = vm_l1_find(vm, region);

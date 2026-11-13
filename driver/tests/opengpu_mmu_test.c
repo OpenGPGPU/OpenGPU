@@ -26,6 +26,13 @@ typedef uint64_t dma_addr_t;
 #define OPENGPU_MMU_POLICY_UNCACHED 2u
 struct opengpu_buffer { void *cpu; dma_addr_t dma; size_t size; };
 struct opengpu_vm;
+struct opengpu_snapshot_lease {
+    struct opengpu_snapshot_lease *next;
+    const struct opengpu_vm *owner;
+    dma_addr_t base;
+    size_t size;
+    bool active;
+};
 struct opengpu_mmu {
     struct mutex lock;
     struct opengpu_buffer root;
@@ -34,6 +41,7 @@ struct opengpu_mmu {
     u32 l1_count;
     struct opengpu_asid_pool asids;
     struct opengpu_vm *vms;
+    struct opengpu_snapshot_lease *snapshot_leases;
     bool enabled;
 };
 struct opengpu_vm {
@@ -771,6 +779,82 @@ int main(void)
         assert(!verify_snapshot(&gpu,&vm,va,pa+bytes,bytes));
         assert(verify_snapshot(&gpu,&vm,va,pa,bytes)==-EACCES);
         opengpu_mmu_vm_destroy(&gpu,&vm);assert(live_allocations==live_before);
+    }
+    /* New private descriptor leases exclude pre-existing aliases in any VM,
+     * future writers and executable aliases. Only the owner can publish RO/NX
+     * leaves; a held map, late idle failure or failed shootdown retains backing.
+     * This test exercises the real map/acquire/release implementation. */
+    {
+        struct opengpu_vm first, second;
+        struct opengpu_snapshot_lease a = {0}, b = {0};
+        const u64 pa = 0x72000000ULL, va = 0x50000000ULL;
+        int live_before = live_allocations;
+        assert(!opengpu_mmu_vm_create(&gpu, &first));
+        assert(!opengpu_mmu_vm_create(&gpu, &second));
+        assert(gpu.mmu.vms == &second && second.next == &first);
+        mutex_lock(&gpu.hw.submit_lock);
+        assert(opengpu_mmu_snapshot_acquire_locked(&gpu, &a, NULL, pa,
+                                                   MMU_PAGE_SIZE) == -EINVAL);
+        assert(opengpu_mmu_snapshot_acquire_locked(&gpu, &a, &first, pa + 1,
+                                                   MMU_PAGE_SIZE) == -EINVAL);
+        assert(opengpu_mmu_snapshot_acquire_locked(&gpu, &a, &first,
+                  0xfffff000ULL, 2 * MMU_PAGE_SIZE) == -ERANGE);
+        assert(!a.active && !gpu.mmu.snapshot_leases);
+        mutex_unlock(&gpu.hw.submit_lock);
+        assert(!opengpu_mmu_vm_map(&gpu, &second, va, pa + MMU_PAGE_SIZE,
+                                   MMU_PAGE_SIZE, 2));
+        mutex_lock(&gpu.hw.submit_lock);
+        assert(opengpu_mmu_snapshot_acquire_locked(&gpu, &a, &first, pa,
+                 2 * MMU_PAGE_SIZE) == -EACCES);
+        assert(!a.active && !gpu.mmu.snapshot_leases);
+        mutex_unlock(&gpu.hw.submit_lock);
+        assert(!opengpu_mmu_vm_unmap(&gpu, &second, va, MMU_PAGE_SIZE));
+        mutex_lock(&gpu.hw.submit_lock);
+        idle_error = -ETIMEDOUT;
+        assert(opengpu_mmu_snapshot_acquire_locked(&gpu, &a, &first, pa,
+                 2 * MMU_PAGE_SIZE) == -ETIMEDOUT);
+        assert(!a.active);
+        idle_error = 0;
+        assert(!opengpu_mmu_snapshot_acquire_locked(&gpu, &a, &first, pa,
+                                                   2 * MMU_PAGE_SIZE));
+        assert(opengpu_mmu_snapshot_acquire_locked(&gpu, &b, &second,
+                 pa + MMU_PAGE_SIZE, MMU_PAGE_SIZE) == -EBUSY);
+        assert(a.active && !b.active && gpu.mmu.snapshot_leases == &a);
+        mutex_unlock(&gpu.hw.submit_lock);
+        assert(opengpu_mmu_vm_map(&gpu, &second, va, pa, MMU_PAGE_SIZE, 2) == -EACCES);
+        assert(opengpu_mmu_vm_map(&gpu, &first, va, pa, MMU_PAGE_SIZE, 2) == -EACCES);
+        assert(opengpu_mmu_vm_map_snapshot(&gpu, &second, va, pa,
+                                           MMU_PAGE_SIZE, 2) == -EACCES);
+        assert(opengpu_mmu_vm_map_code_snapshot(&gpu, &first, va, pa,
+                                                MMU_PAGE_SIZE, 2) == -EACCES);
+        assert(!opengpu_mmu_vm_map_snapshot(&gpu, &first, va, pa,
+                                            2 * MMU_PAGE_SIZE, 2));
+        assert(!verify_snapshot(&gpu, &first, va, pa, 2 * MMU_PAGE_SIZE));
+        mutex_lock(&gpu.hw.submit_lock);
+        assert(opengpu_mmu_snapshot_release_locked(&gpu, &a) == -EBUSY);
+        assert(a.active);
+        mutex_unlock(&gpu.hw.submit_lock);
+        asid_flush_failures = 1;
+        assert(opengpu_mmu_vm_unmap(&gpu, &first, va, 2 * MMU_PAGE_SIZE) == -EIO);
+        assert(!verify_snapshot(&gpu, &first, va, pa, 2 * MMU_PAGE_SIZE));
+        assert(a.active);
+        assert(!opengpu_mmu_vm_unmap(&gpu, &first, va, 2 * MMU_PAGE_SIZE));
+        mutex_lock(&gpu.hw.submit_lock);
+        idle_error = -ETIMEDOUT;
+        assert(opengpu_mmu_snapshot_release_locked(&gpu, &a) == -ETIMEDOUT);
+        assert(a.active);
+        idle_error = 0;
+        assert(!opengpu_mmu_snapshot_release_locked(&gpu, &a));
+        assert(!a.active && !gpu.mmu.snapshot_leases && !a.owner && !a.next);
+        assert(!opengpu_mmu_snapshot_acquire_locked(&gpu, &b, &second, pa,
+                                                   2 * MMU_PAGE_SIZE));
+        assert(!opengpu_mmu_snapshot_release_locked(&gpu, &b));
+        mutex_unlock(&gpu.hw.submit_lock);
+        assert(!opengpu_mmu_vm_map(&gpu, &first, va, pa, 2 * MMU_PAGE_SIZE, 2));
+        opengpu_mmu_vm_destroy(&gpu, &second);
+        assert(gpu.mmu.vms == &first && !first.next);
+        opengpu_mmu_vm_destroy(&gpu, &first);
+        assert(!gpu.mmu.vms && live_allocations == live_before);
     }
     assert(!gpu.hw.submit_lock.held && !gpu.mmu.lock.held);
     /* Destruction cannot free PT memory or recycle an ASID on idle/flush

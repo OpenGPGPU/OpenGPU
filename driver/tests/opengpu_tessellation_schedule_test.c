@@ -48,6 +48,13 @@ enum { DMA_RESV_USAGE_KERNEL, DMA_RESV_USAGE_WRITE, DMA_RESV_USAGE_READ,
        DMA_RESV_USAGE_BOOKKEEP };
 
 struct opengpu_buffer { void *cpu; dma_addr_t dma; size_t size; };
+struct opengpu_snapshot_lease {
+    struct opengpu_snapshot_lease *next;
+    const struct opengpu_vm *owner;
+    dma_addr_t base;
+    size_t size;
+    bool active;
+};
 struct opengpu_vm {
     struct opengpu_vm *next;
     struct opengpu_buffer root, l1[OPENGPU_VM_MAX_TABLES];
@@ -60,6 +67,7 @@ struct opengpu_mmu {
     u32 l1_region[OPENGPU_MMU_MAX_TABLES], l1_count;
     struct opengpu_asid_pool asids;
     struct opengpu_vm *vms;
+    struct opengpu_snapshot_lease *snapshot_leases;
     bool enabled;
 };
 struct opengpu_device {
