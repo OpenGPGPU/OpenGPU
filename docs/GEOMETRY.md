@@ -685,6 +685,32 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
 python3 scripts/test_geometry_snapshot.py --sanitize
 ```
 
-GNJ-wide GNG preflight before any VS, GND2 production submission and actual
-native GS execution remain unconnected. Their completion and the full GS
-resource/API contract are still required; no capability is advertised here.
+The opt-in `NativeBinnedGraphicsJobReader(nativeGeometry=true)` scans every
+referenced GND, GFS and GNG before offering the pass `begin`. A later invalid
+geometry node therefore offers neither a pass nor a draw. GND1 retains zero
+reserved words and exact magic/version pairing; only this explicit reader option
+accepts GND2. GFS and GNG serialize through the existing four child tags, and
+execution rereads the accepted metadata under the caller's immutable-publication
+contract. The geometry program is a held sideband of its draw tuple, with one
+shared acceptance; a consumer must route it through GS execution.
+
+The metadata-only integration test passes for mixed ordinary/GS records, all
+six adjacency inputs, 32 invocations, 256 vertices, the separate 1024-component
+limit, distinct VS/FS varying layouts, reordered replies, later malformed
+records and identities, every GNG line fault, alias rejection, single-cycle
+cancellation, held memory and paired draw ownership, and healthy reuse. Existing
+default and advanced whole-job preflight checks also pass. Reproduce with:
+
+```sh
+sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'testOnly opengpu.graphics.NativeBinnedGraphicsJobReaderSpec -- -z "preflight every"'
+```
+
+This component's child acknowledges metadata tuples and executes no shaders.
+No product constructor enables the new option. GND2 production submission,
+physical ownership across the complete protected job graph, actual native GS
+assembly/execution/binning, full stage resource routing and API qualification
+remain required. The existing ordinary assembler has three vertex slots and
+cannot substitute for the required six-vertex adjacency path. No native/API GS
+capability is advertised here.
