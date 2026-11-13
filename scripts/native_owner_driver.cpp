@@ -5,9 +5,11 @@
 #include <filesystem>
 #include <iostream>
 
-#if defined(OPENGPU_FLASHSIM_NATIVE) && defined(OPENGPU_EXPECTED_ASSERTIONS)
-static_assert(GpuHostSystemAxiDut::assertion_count == OPENGPU_EXPECTED_ASSERTIONS &&
-              GpuHostSystemAxiDut::assertion_count > 0,"wrong or assertion-free owner replay DUT");
+#ifdef OPENGPU_FLASHSIM_NATIVE
+static_assert(GpuHostSystemAxiDut::assertion_count > 0,"assertion-free owner replay DUT");
+#ifdef OPENGPU_EXPECTED_ASSERTIONS
+static_assert(GpuHostSystemAxiDut::assertion_count == OPENGPU_EXPECTED_ASSERTIONS,"wrong owner replay assertion model");
+#endif
 #endif
 
 namespace native_owner {
