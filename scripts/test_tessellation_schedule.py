@@ -34,7 +34,9 @@ flush_start = hw.index("int opengpu_hw_flush_tlbs(")
 flush_end = hw.index("\n}\n", hw.index("int opengpu_hw_flush_tlb_asid(")) + 2
 with tempfile.TemporaryDirectory(prefix="opengpu-tess-schedule-") as tmp:
     path = Path(tmp)
-    (path / "tessellation_under_test.inc").write_text(hw[start:end])
+    lock_start = hw.index("int opengpu_hw_snapshot_submission_lock(")
+    lock_end = hw.index("\n}\n", lock_start) + 2
+    (path / "tessellation_under_test.inc").write_text(hw[lock_start:lock_end] + "\n" + hw[start:end])
     (path / "job_track_mapping_under_test.inc").write_text(compute[track:track_end])
     (path / "satp_under_test.inc").write_text(satp_defines + "\n" +
         "typedef u32 opengpu_tlb_u32;\n" + tlb[tlb_start:tlb_end] + "\n" +

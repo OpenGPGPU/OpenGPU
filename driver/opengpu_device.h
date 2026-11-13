@@ -205,8 +205,9 @@ struct opengpu_snapshot_lease {
     struct opengpu_snapshot_lease *next;
     const struct opengpu_vm *owner;
     dma_addr_t base;
+    dma_addr_t va;
     size_t size;
-    bool active;
+    bool active, mapped;
 };
 
 /** ASID-0 identity GPU MMU: one root table of 4 MiB superpages, split into
@@ -450,6 +451,9 @@ int opengpu_hw_flush_tlb_asid(struct opengpu_device *gpu, u32 asid);
 int opengpu_hw_flush_tlb_vpn(struct opengpu_device *gpu, u32 vpn);
 /* Caller holds submit_lock until its page-table update and flush finish. */
 int opengpu_hw_wait_idle_locked(struct opengpu_device *gpu);
+/* Returns with submit_lock held; waits without that lock for previous private
+ * snapshot retirement. The new private publisher seals its first lease here. */
+int opengpu_hw_snapshot_submission_lock(struct opengpu_device *gpu);
 int opengpu_hw_wait_idle(struct opengpu_device *gpu);
 
 int opengpu_mmu_init(struct opengpu_device *gpu);
@@ -475,6 +479,11 @@ int opengpu_mmu_vm_map(struct opengpu_device *gpu, struct opengpu_vm *vm,
  * identity only. */
 int opengpu_mmu_vm_map_snapshot(struct opengpu_device *gpu, struct opengpu_vm *vm,
                                 dma_addr_t va, dma_addr_t pa, size_t size, u32 policy);
+/* Find a free range across the complete private 32-bit VA space and map under
+ * the same submit/MMU lock transaction. No fixed command-slot/count limit. The
+ * result is unchanged on failure, including allocation and shootdown rollback. */
+int opengpu_mmu_vm_map_snapshot_anywhere(struct opengpu_device *gpu,
+    struct opengpu_vm *vm, dma_addr_t pa, size_t size, u32 policy, dma_addr_t *va);
 int opengpu_mmu_verify_snapshot_locked(struct opengpu_device *gpu,
                                        const struct opengpu_vm *vm,
                                        dma_addr_t va, dma_addr_t pa, size_t size);
@@ -487,6 +496,8 @@ int opengpu_mmu_snapshot_acquire_locked(struct opengpu_device *gpu,
     struct opengpu_snapshot_lease *lease, const struct opengpu_vm *owner,
     dma_addr_t base, size_t size);
 int opengpu_mmu_snapshot_release_locked(struct opengpu_device *gpu,
+    struct opengpu_snapshot_lease *lease);
+int opengpu_mmu_snapshot_unmap(struct opengpu_device *gpu,
     struct opengpu_snapshot_lease *lease);
 /* Immutable executable snapshots require a private VM, R+X without W, exact
  * backing and no writable alias. They never replace an existing mapping. */
