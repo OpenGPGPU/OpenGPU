@@ -759,3 +759,35 @@ defines GS per-vertex position, PrimitiveIDIn/InvocationID inputs and
 PrimitiveID/Layer outputs; it does not declare GS point size. A point-size
 extension is outside this initial transport. Actual native execution, all GS
 resource domains and the complete native/API contract remain required.
+
+
+## Shared-CU scalar geometry client
+
+`NativeGeometryPrimitivePipeline` connects the captured six-input task to the
+existing physical shared-CU scheduler, geometry events and output mapper. Its
+stage-3 uniform provider reads the retained GUR2/GUB2 root instead of a VS/FS
+provider. One paired launch/binding queue holds an already offered pool launch
+through cancellation; the client waits for its tagged physical completion,
+uniform requests/writeback and output mapping before its own held result.
+Cancellation reaches a uniform service after the issued instruction transfers,
+and retains already offered memory lines through drain.
+
+The bounded RTL control test passes using an explicit external CU protocol
+peer: 32 ordered invocations alternate between two owned CU ports; 96 real
+uniform-unit root/binding/data reads reach the final word of a 16 KiB UBO at
+logical block 11/native slot 23. It checks full six-input data and output links,
+held mapped outputs, pool-offer cancellation, single-pulse cancellation of a
+held uniform root request, wrong-stage root abort, trap propagation and healthy
+reuse. This test supplies events and tagged completions; it proves neither CU
+instruction execution nor native VS/clip/bin integration. Reproduce with:
+
+```sh
+sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'testOnly opengpu.system.NativeGeometryPrimitivePipelineSpec'
+```
+
+No product constructor enables this client. Its current scalar program profile
+still excludes geometry texture/image/storage resources. Actual CU execution,
+full stage resource routing, production submission and native/API qualification
+remain required.
