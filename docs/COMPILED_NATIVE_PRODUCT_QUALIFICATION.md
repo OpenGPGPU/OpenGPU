@@ -87,18 +87,11 @@ used a fresh model; all external traffic drained. Matching RTL, fixtures,
 generator, resharded model, executable and output bytes were checked before
 and after execution and verification.
 
-| Product scene | Service cycles |
-| --- | ---: |
-| Desktop composition | 14,411,950 |
-| Textured 3D | 6,759,137 |
-| Opaque overdraw | 29,074,499 |
-| Transparent layers | 28,835,475 |
-| Small triangles | 11,150,203 |
-| 4× MSAA | 11,398,012 |
-
 This establishes full-frame functional correctness for that v1 configuration.
-Opaque and transparent overdraw exceed the 16,666,666-cycle planning budget at
-1 GHz; no physically qualified clock or 60 FPS result is established. Current
+The cycle counts appear alongside the independently verified 16×16 alternative
+below. Both variants leave opaque and transparent overdraw above the
+16,666,666-cycle planning budget at 1 GHz; no physically qualified clock or
+60 FPS result is established. Current
 v2 features, production driver snapshots and whole-host timing still require
 their own matching complete-host qualification. Reproduce on the frozen source
 with the matching assertion-enabled generator/reshard profile:
@@ -248,26 +241,29 @@ advertised by the complete target; RGBA8 plus D24S8 at four samples occupies
 8 KiB with 16×16 tiles, within the original 32 KiB resident store.
 
 On the assertion-enabled frozen v1 model at `3059d0c65`, both alternatives
-passed all six independent stored-image, sample and guard oracles. Each scene
-used a fresh model. The original qualified model/generator/reshard identities
-were checked before and after execution, and output/source bytes were unchanged
-across verification.
+passed all six **640×480** independent stored-image, sample/resolve and guard
+oracles: twelve complete images. Each scene used a fresh model. Original
+qualified source/RTL/assertion/generator/reshard/build/executable identities
+were checked before and after execution and verification; outputs and fixtures
+remained unchanged. The 8×8 inputs matched the original qualified product
+fixtures byte for byte. Only the explicit tiling metadata differed for 16×16.
 
 | Scene | 8×8 service cycles | 16×16 service cycles |
 | --- | ---: | ---: |
-| Desktop composition | 90,223 | 66,779 |
-| Textured 3D | 118,352 | 100,932 |
-| Opaque overdraw | 123,913 | 102,422 |
-| Transparent layers | 121,265 | 101,654 |
-| Small triangles | 41,490 | 42,264 |
-| 4× MSAA | 148,326 | 125,051 |
+| Desktop composition | 14,411,950 | 7,799,879 |
+| Textured 3D | 6,759,137 | 3,693,912 |
+| Opaque overdraw | 29,074,499 | 17,640,967 |
+| Transparent layers | 28,835,475 | 17,419,555 |
+| Small triangles | 11,150,203 | 11,401,103 |
+| 4× MSAA | 11,398,012 | 8,412,989 |
 
-Five scenes use fewer cycles; small triangles regress by 1.9%. Larger tiles
-are therefore a workload-dependent choice, not an unconditional throughput
-improvement. This smoke comparison does not qualify v2, full-frame cycles,
-physical timing or FPS, and does not replace the mandatory 8×8 grid/capacity
-qualification. Wider formats and MRT combinations must fit resident storage
-without dropping attachments or samples.
+Five scenes use fewer cycles; small triangles regress by 2.25%. At a hypothetical
+1 GHz the slowest 16×16 scene would reach about 56.7 FPS, so this is still below
+the 60 FPS target even under that unqualified clock assumption. These are
+full-frame v1 results; the complete 96-word owner factory requires its own
+matching execution and physical timing. The ordinary 8×8 encoder and mandatory
+grid/capacity coverage remain. Wider formats and MRT combinations must fit
+resident storage without dropping attachments or samples.
 
 To repeat, first qualify a complete assertion-enabled v1 model with the normal
 `--smoke --two-cu-vga` runner. Keep its source and model bytes fixed, then
