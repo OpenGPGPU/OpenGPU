@@ -21,6 +21,13 @@ rates are unchanged. A two-owner regression checks different request identities
 and depths, a held result during peer cancellation, and independent healthy
 reuse.
 
+The port-only raster engine also caches its complete shader, graphics,
+triangle-mode and interpolation-context constructor tuple. Each materialized
+native product engine retains eight independent interpolation contexts and its own scan,
+arithmetic, offered quads and completion ownership. A two-engine regression
+compares complete quads with the CPU oracle, holds one engine's output while
+the other cancels and drains, then checks independent healthy reuse.
+
 Polygon determinants, signed bounds, raster-origin products, sample gradients
 and edge-conservation checks use explicit register stages. Point/line coverage
 registers sample product partials, carry summaries and projected offsets.
@@ -109,6 +116,7 @@ the whole GPU clock or product frame rate.
 ```sh
 sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'testOnly opengpu.graphics.FragmentPreparationInstanceSpec' \
+  'testOnly opengpu.graphics.PrimitiveRasterInstanceSpec' \
   'testOnly opengpu.graphics.Fp32FragmentPreparationSpec -- -z "all sixty-four"'
 sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 'set Test / parallelExecution := false' \
