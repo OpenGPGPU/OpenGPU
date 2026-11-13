@@ -160,6 +160,8 @@ int opengpu_native_graphics_submit(struct pipe_context *pipe,
         (source->draw_count && (!source->draws || !source->plans)) ||
         (uint64_t)source->draw_count*OPENGPU_NATIVE_BINNED_DRAW_BYTES>SIZE_MAX ||
         (uint64_t)source->state_count*OPENGPU_TYPED_FRAGMENT_STATE_BYTES>SIZE_MAX ||
+        (uint64_t)source->draw_count*OPENGPU_NATIVE_BINNED_DRAW_BYTES>UINT64_C(0x100000000) ||
+        (uint64_t)source->state_count*OPENGPU_TYPED_FRAGMENT_STATE_BYTES>UINT64_C(0x100000000) ||
         source->frame->resource_count>OPENGPU_NATIVE_FRAME_MAX_RESOURCES) { errno=EINVAL;return -1; }
     struct pipe_opengpu_screen *screen=opengpu_screen_gpu(pipe->screen);
     unsigned context_id=opengpu_native_graphics_context_id(pipe);
