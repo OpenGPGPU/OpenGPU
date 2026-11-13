@@ -13,6 +13,13 @@ noncoherent blend barriers and product/precision qualification require their
 own integration. The current alignment-v2 product profile retains advanced
 support disabled and its existing discovery contract.
 
+`NativeAlignmentHostConfig.requiredDiscovery` follows the custom native storage
+configuration: advanced disabled reports 72 words and GCR flags `0x7fff`;
+advanced enabled reports 80 distinct words, flags `0xffff` and the eight GAB1
+words. The frozen `two-cu-vga60-v2` target and its strict product runners retain
+the 72-word contract. An advanced-enabled custom configuration does not qualify
+that product profile; a future product profile requires separate qualification.
+
 ## Safe discovery
 
 Software first checks host ABI version 2 or later and reads the guaranteed
@@ -148,8 +155,8 @@ revoke its PTEs on retirement; the complete suite passes 71 jobs with the
 original 128-fence capacity. Empty context page-table pages may remain owned
 by the VM; job allocations and live mappings retire.
 
-The local regression passes 42 Scala cases: 41 ABI/reader/MMIO cases and one
-real shared-CU render case. The latter uses two CUs with four lanes and two
+The local regression passes 43 Scala cases: 42 ABI/configuration/reader/MMIO
+cases and one real shared-CU render case. The latter uses two CUs with four lanes and two
 warps, an 8x8 screen bound and a 4x4 tile at 4x sampling. It checks exact final
 typed destination words across ordinary, advanced and ordinary draws, accepted
 state snapshots and held results. Draw completion plus canonical readback takes

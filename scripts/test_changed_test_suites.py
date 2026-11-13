@@ -19,6 +19,7 @@ def changed_suites(root, changed):
 class ChangedTestSuitesTest(unittest.TestCase):
     def test_native_advanced_discovery_selects_cpu_contract_and_real_axi_checks(self):
         for path in ("src/main/scala/opengpu/graphics/NativeAdvancedBlendCapabilities.scala",
+                     "src/main/scala/opengpu/system/NativeAlignmentHostProfile.scala",
                      "src/main/scala/opengpu/elaboration/EmitNativeAdvancedBlendAbi.scala",
                      "driver/opengpu_native_advanced_blend_abi.h", "driver/opengpu_native_advanced_blend_features.h",
                      "driver/opengpu_native_advanced_blend_gfs.h", "driver/tests/opengpu_native_advanced_blend_gfs_test.c",

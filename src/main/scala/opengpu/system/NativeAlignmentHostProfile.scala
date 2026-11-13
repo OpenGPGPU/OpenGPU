@@ -31,16 +31,22 @@ final case class NativeAlignmentHostConfig(graphics: GraphicsConfig,
       imageAvailable = true, storageAvailable = true, computeUniformAvailable = true,
       computeTextureAvailable = true, atomicCounterAvailable = true,
       imageAtomicAvailable = true, storageAtomicAvailable = true,
-      tessellationAvailable = true, tessellationFeedbackAvailable = true)) ++
+      tessellationAvailable = true, tessellationFeedbackAvailable = true,
+      nativeAdvancedBlendAvailable = native.storage.nativeAdvancedDraws)) ++
     block(0x160, NativeBinnedGraphicsCapabilities.words(native, computeUnits, graphics)) ++
     block(ComputeIndirectCapabilities.base, ComputeIndirectCapabilities.words(execution)) ++
     block(NativeVisibilityQueryCapabilities.base, NativeVisibilityQueryCapabilities.words) ++
     block(NativeTransformFeedbackCapabilities.base,
       NativeTransformFeedbackCapabilities.words(5 + 4 * native.vertex.varyings)) ++
     block(NativePrimitiveQueryCapabilities.base, NativePrimitiveQueryCapabilities.words) ++
-    block(NativeUniformCapabilities.base, NativeUniformCapabilities.words)
-  require(requiredDiscovery.size == 72 && requiredDiscovery.map(_._1).distinct.size == 72,
-    "the integrated profile requires all 72 distinct discovery words")
+    block(NativeUniformCapabilities.base, NativeUniformCapabilities.words) ++
+    (if (native.storage.nativeAdvancedDraws)
+      block(NativeAdvancedBlendCapabilities.base, NativeAdvancedBlendCapabilities.words)
+    else Vector.empty)
+  private val discoveryWords = if (native.storage.nativeAdvancedDraws) 80 else 72
+  require(requiredDiscovery.size == discoveryWords &&
+    requiredDiscovery.map(_._1).distinct.size == discoveryWords,
+    "the integrated configuration requires its complete distinct discovery words")
 }
 
 object NativeAlignmentHostProfile {
@@ -50,8 +56,9 @@ object NativeAlignmentHostProfile {
     GraphicsConfig(screenWidth = 640, screenHeight = 480),
     GpuConfig(l2Sets = 512, l2StoreEntries = 8), computeUnits = 2,
     native = NativeBinnedGraphicsConfig.fourEngineApiExtent.copy(transformFeedback = true))
-  // CU/patch geometry sidebands exist, but ordinary native GS draw admission
-  // and the native advanced-blend packet/discovery path remain separate work.
+  // This frozen product target leaves ordinary native GS and advanced blend
+  // disabled. An advanced-enabled custom transport configuration is not v2
+  // product qualification and reports its additional GAB1 discovery record.
   // Native fragment images are enabled; patch shader image tasks are not routed.
   val nativeGeometryDraw = false
   val nativeAdvancedBlend = false

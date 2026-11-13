@@ -618,6 +618,7 @@ def changed_suites(root, changed, *, test_index=None):
         for suite in ("ShaderImageCommandAbiSpec", "StorageCommandAbiSpec", "ComputeUniformCommandAbiSpec"):
             affected.add(f"src/test/scala/opengpu/graphics/{suite}.scala")
     if changed & {"src/main/scala/opengpu/graphics/NativeAdvancedBlendCapabilities.scala",
+                  "src/main/scala/opengpu/system/NativeAlignmentHostProfile.scala",
                   "src/main/scala/opengpu/elaboration/EmitNativeAdvancedBlendAbi.scala",
                   "driver/opengpu_native_advanced_blend_abi.h", "driver/opengpu_native_advanced_blend_features.h",
                   "driver/opengpu_native_advanced_blend_gfs.h", "driver/tests/opengpu_native_advanced_blend_gfs_test.c",
