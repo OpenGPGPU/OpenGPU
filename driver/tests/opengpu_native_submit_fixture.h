@@ -51,6 +51,8 @@ int native_kernel_finish_observed(struct native_kernel_session *,unsigned record
 /* Distinct final image/source-oracle authorization. Each actual TLB shootdown
  * blocks until the live DUT acknowledges the preceding PTE revocations. */
 int native_kernel_begin_cleanup(struct native_kernel_session *,const char *session_directory);
+/* Includes VM/ASID destruction and final dual-SATP Bare/full shootdown. Only
+ * successful acknowledgment permits done; later destroy issues no MMIO. */
 int native_kernel_end_cleanup(struct native_kernel_session *);
 /* Execution/capture and retirement stay separate: pending owners retain their
  * real mappings/leases and every original reference until explicit retirement. */

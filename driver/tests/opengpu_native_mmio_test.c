@@ -6,7 +6,7 @@ static void test_cleanup_peer(struct opengpu_device *,const char *,unsigned);
 #define OPENGPU_NATIVE_SUBMIT_FIXTURE_MAIN native_submit_component_regression
 #include "opengpu_native_submit_fixture.c"
 #include <sys/wait.h>
-static unsigned test_cleanup_bad;
+static unsigned test_cleanup_bad,test_cleanup_bad_phase,test_context_flushes,test_final_flushes;
 static void test_cleanup_peer(struct opengpu_device *gpu,const char *directory,unsigned sequence)
 {
     assert(!gpu->hw.wedged);
@@ -14,7 +14,7 @@ static void test_cleanup_peer(struct opengpu_device *gpu,const char *directory,u
     snprintf(path,sizeof(path),"%s/cleanup-%u.trace",directory,sequence);
     FILE *f=fopen(path,"rb");assert(f);char magic[8];u32 count;
     assert(fread(magic,1,8,f)==8 && !memcmp(magic,"OGCLN001",8) && !native_mmio_read_le(f,&count));
-    unsigned clears=0,flushes=0;
+    unsigned clears=0,flushes=0,vector_zero=0,instruction_zero=0;
     for(u32 n=0;n<count;n++){
         u32 a[4];for(unsigned k=0;k<4;k++)assert(!native_mmio_read_le(f,&a[k]));
         if(a[0]==4){
@@ -22,7 +22,12 @@ static void test_cleanup_peer(struct opengpu_device *gpu,const char *directory,u
             for(struct native_mmio_pte_shadow *p=m->pte;p;p=p->next)if(a[1]>=p->physical && (u64)a[1]+4<=p->physical+p->size){
                 assert(!p->words[(a[1]-p->physical)/4]);found=true;break;}
             assert(found);++clears;
-        }else if(a[0]==1){assert(a[1]==GPU_REG_UCMD_TLB_FLUSH);++flushes;}
+        }else if(a[0]==1){
+            if(a[1]==GPU_REG_UCMD_TLB_FLUSH)++flushes;
+            else if(a[1]==GPU_REG_UCMD_VECTOR_SATP)vector_zero=a[2]==0;
+            else if(a[1]==GPU_REG_UCMD_INSTRUCTION_SATP)instruction_zero=a[2]==0;
+            else assert(0);
+        }
     }
     assert(fgetc(f)==EOF && !fclose(f) && flushes<=1);
     assert(!clears || flushes==1);
@@ -35,11 +40,19 @@ static void test_cleanup_peer(struct opengpu_device *gpu,const char *directory,u
         for(struct snapshot_segment *segment=r->job->native_owner->segments;segment;segment=segment->next)
             assert(segment->backing.cpu && segment->lease.active);
     }
-    if(flushes)assert(owner_live);
+    unsigned phase=owner_live?0:gpu->mmu.vms?1:2;
+    if(flushes && phase){
+        assert(running->context.vm.root.cpu || phase==2);
+        assert(gpu->mmu.enabled && gpu->mmu.root.cpu);
+        if(phase==1){++test_context_flushes;assert(!vector_zero && !instruction_zero);}
+        else {++test_final_flushes;assert(vector_zero && instruction_zero);
+            assert(!m->regs[GPU_REG_UCMD_VECTOR_SATP/4] && !m->regs[GPU_REG_UCMD_INSTRUCTION_SATP/4]);}
+    }
+    unsigned bad=(!test_cleanup_bad_phase || phase==test_cleanup_bad_phase)?test_cleanup_bad:0;
     snprintf(path,sizeof(path),"%s/cleanup-%u.observed",directory,sequence);
     f=fopen(path,"wbx");assert(f);fwrite("OGCLA001",1,8,f);
-    native_mmio_le(f,sequence+(test_cleanup_bad==1),4);
-    native_mmio_le(f,test_cleanup_bad==2?GPU_UCMD_STATUS_VM_BUSY:GPU_UCMD_STATUS_READY,4);
+    native_mmio_le(f,sequence+(bad==1),4);
+    native_mmio_le(f,bad==2?GPU_UCMD_STATUS_VM_BUSY:GPU_UCMD_STATUS_READY,4);
     native_mmio_le(f,GPU_IRQ_ENABLE,4);native_mmio_le(f,0,4);native_mmio_le(f,1,4);assert(!fclose(f));
 }
 static void test_failed_cleanup(struct native_kernel_session *s,const char *base,unsigned bad)
@@ -57,6 +70,32 @@ static void test_failed_cleanup(struct native_kernel_session *s,const char *base
         /* A failed CPU-only session deliberately remains quarantined. The
          * child exits without inventing a successful GPU reset/ack/release. */
         _exit(0);
+    }
+    int status;assert(waitpid(child,&status,0)==child && WIFEXITED(status) && !WEXITSTATUS(status));
+}
+static void test_failed_context_cleanup(struct native_kernel_session *s,const char *base,unsigned phase)
+{
+    char directory[4096];snprintf(directory,sizeof(directory),"%s/context-failed-%u",base,phase);
+    assert(!mkdir(directory,0700));pid_t child=fork();assert(child>=0);
+    if(!child){
+        struct native_mmio_state *m=native_mmio_state(&s->gpu);
+        free(m->cleanup_directory);m->cleanup_directory=strdup(directory);assert(m->cleanup_directory);
+        test_cleanup_bad=1;test_cleanup_bad_phase=phase;
+        int allocations=live_allocations;void *vmroot=s->context.vm.root.cpu,*global=s->gpu.mmu.root.cpu;
+        u32 asid=s->context.vm.asid;unsigned tables=s->context.vm.l1_count;
+        assert(native_kernel_end_cleanup(s)==-EINVAL);
+        assert(s->gpu.hw.wedged && !s->context_destroyed && !m->cleanup_done && m->cleanup_active);
+        assert(s->gpu.mmu.enabled && s->gpu.mmu.root.cpu==global);
+        if(phase==1){
+            assert(s->context.vm.enabled && s->gpu.mmu.vms==&s->context.vm);
+            assert(s->context.vm.root.cpu==vmroot && s->context.vm.asid==asid && live_allocations==allocations);
+        }else {
+            assert(!s->context.vm.enabled && !s->gpu.mmu.vms && !s->context.vm.root.cpu);
+            assert(live_allocations==allocations-(int)tables-1);
+        }
+        assert(!s->gpu.mmu.lock.held && !s->gpu.hw.submit_lock.held);
+        assert(native_kernel_session_destroy(s)==-EBUSY);
+        _exit(0); /* Quarantine, without fabricated reset/ACK or host freeing. */
     }
     int status;assert(waitpid(child,&status,0)==child && WIFEXITED(status) && !WEXITSTATUS(status));
 }
@@ -134,7 +173,14 @@ int main(int argc,char **argv)
     assert(native_kernel_begin_cleanup(s,argv[1])==-EBUSY);
     assert(!native_kernel_finish_observed(s,0));assert(a->freed && !a->job && b->job);
     assert(native_session_record(s,1)==b && !native_kernel_finish_observed(s,1));
+    test_failed_context_cleanup(s,argv[1],1);test_failed_context_cleanup(s,argv[1],2);
     assert(!native_kernel_end_cleanup(s));assert(native_kernel_end_cleanup(s)==-EBUSY);
+    assert(s->context_destroyed && !s->context.vm.enabled && !s->context.vm.root.cpu);
+    assert(!s->gpu.mmu.enabled && !s->gpu.mmu.root.cpu && !s->gpu.mmu.vms);
+    assert(test_context_flushes==1 && test_final_flushes==1);
+    size_t actions=native_mmio_state(&s->gpu)->count;
+    /* Final session bookkeeping must issue no unobserved MMIO. */
+    assert(actions==native_mmio_state(&s->gpu)->cleanup_start);
     assert(!native_kernel_session_destroy(s));assert(!live_allocations && !fixture_buffers);
     puts("native MMIO production composition CPU checks: PASS");return 0;
 }
