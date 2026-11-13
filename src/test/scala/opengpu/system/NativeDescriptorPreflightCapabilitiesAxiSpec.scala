@@ -16,14 +16,17 @@ class NativeDescriptorPreflightCapabilitiesAxiSpec extends AnyFlatSpec {
     case u: UInt if DataMirror.directionOf(u)==ActualDirection.Input=>u.poke(0.U)
     case _=>()
   }
-  for((enabled,version,native)<-Seq((true,2,true),(false,2,true),(false,1,true),(false,1,false)))
-  it should s"discover independent native descriptor preflight without aliases enabled=$enabled abi=$version native=$native" in {
+  for((enabled,version,native,sources)<-Seq((true,2,true,false),(false,2,true,false),
+    (false,1,true,false),(false,1,false,false),(true,2,true,true)))
+  it should s"discover independent native descriptor preflight without aliases enabled=$enabled abi=$version native=$native sources=$sources" in {
     val cfg=GpuConfig(lanes=4,warps=2);val modern=version>=2
     simulate(new GpuHostAxi(config=GraphicsConfig(screenWidth=8,screenHeight=8),gpuConfig=cfg,
       unifiedCommandMmio=true,protectVmState=true,externalBinnedRender=true,nativeVertexInput=native,
       version=version,computeResources=if(modern)Some(ComputeResourceProfile(cfg,2,8))else None,
       imageAvailable=modern,storageAvailable=modern,computeUniformAvailable=modern,
-      computeTextureAvailable=modern,atomicCounterAvailable=modern,nativeDescriptorPreflight=enabled)){d=>
+      computeTextureAvailable=modern,atomicCounterAvailable=modern,nativeDescriptorPreflight=enabled,
+      nativeCompletionInfo=sources,nativeUniformResources=sources,shaderExecutionLimits=sources,
+      nativeProtectedSources=sources)){d=>
       zero(d.io);d.io.s_axi_aresetn.poke(false.B);d.clock.step(3);d.io.s_axi_aresetn.poke(true.B)
       d.io.vmContextIdle.get.poke(false.B);d.io.binDrained.foreach(_.poke(true.B));d.io.graphicsDependencyIdle.foreach(_.poke(true.B))
       def until(done: =>Boolean): Unit={var n=0;while(!done && n<100){d.clock.step();n+=1};assert(done)}
@@ -53,7 +56,12 @@ class NativeDescriptorPreflightCapabilitiesAxiSpec extends AnyFlatSpec {
       val frozen=Vector[BigInt](BigInt("47444201",16),8,6,4,0x7fff,0x1f,0x7f,0)
       assert(read(0x400,8)==(if(native)frozen.map(_->BigInt(0))else Vector.fill(8)(invalid)))
       val gcr=read(0x368).head
-      if(modern){assert(gcr._2==0 && gcr._1.testBit(16)==enabled)}else assert(gcr==invalid)
+      if(modern){assert(gcr._2==0 && gcr._1.testBit(16)==enabled && gcr._1.testBit(17)==sources)}else assert(gcr==invalid)
+      if(sources){
+        val gsl=Vector[BigInt](BigInt("47534c01",16),8,31,32,1<<20,BigInt("04051918",16),0x320,0x138)
+        assert(read(0x300,8)==gsl.map(_->BigInt(0)))
+        assert(read(0x3a0,16)==opengpu.graphics.NativeUniformCapabilities.words.map(_->BigInt(0)).toVector)
+      }else assert(read(0x3a0)==Vector(invalid))
       assert(read(0x4e0,8)==expected);assert(read(0x4e0,8,burst=0)==Vector.fill(8)(expected.head))
       assert(read(0x4dc,2)==before++Vector(expected.head));assert(read(0x4e0,9)==expected:+invalid)
       for(i<-0 until 8;s<-Seq(0,1,15)){write(0x4e0+4*i,s);assert(read(0x4e0+4*i)==Vector(expected(i)))}

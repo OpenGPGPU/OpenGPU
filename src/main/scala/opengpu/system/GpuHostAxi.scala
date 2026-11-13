@@ -79,8 +79,13 @@ class GpuHostAxi(
   tessellationHost: Boolean = false,
   imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false,
   tessellationDiscovery: Boolean = false,
-  nativeAdvancedDraws: Boolean = false, nativeDescriptorPreflight: Boolean = false
+  nativeAdvancedDraws: Boolean = false, nativeDescriptorPreflight: Boolean = false,
+  nativeProtectedSources: Boolean = false
 ) extends Module {
+  require(!nativeProtectedSources || (nativeDescriptorPreflight && nativeUniformResources &&
+    shaderExecutionLimits && nativeCompletionInfo && nativeVertexInput && externalBinnedRender &&
+    unifiedCommandMmio && protectVmState && computeResources.nonEmpty && version>=2),
+    "native protected sources require GNP1, GUC1, GSL1 and protected native routing")
   require(!nativeDescriptorPreflight || (nativeVertexInput && externalBinnedRender && unifiedCommandMmio &&
     protectVmState && computeResources.nonEmpty && version>=2),
     "native metadata preflight discovery requires protected native routing and GCR1")
@@ -616,7 +621,7 @@ class GpuHostAxi(
           ((beatAddr-opengpu.command.ComputeIndirectCapabilities.base.U)>>2)(2,0))
       }
       if(computeResources.nonEmpty)when(targetComputeResources) {
-        rdata := VecInit(ComputeResourceCapabilities.words(computeResources.get,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable,atomicCounterAvailable,imageAtomicAvailable,storageAtomicAvailable,tessellationDiscovery,tessellationDiscovery && transformFeedback,nativeAdvancedDraws,nativeDescriptorPreflight).map(_.U(32.W)))(
+        rdata := VecInit(ComputeResourceCapabilities.words(computeResources.get,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable,atomicCounterAvailable,imageAtomicAvailable,storageAtomicAvailable,tessellationDiscovery,tessellationDiscovery && transformFeedback,nativeAdvancedDraws,nativeDescriptorPreflight,nativeProtectedSources).map(_.U(32.W)))(
           ((beatAddr-ComputeResourceCapabilities.base.U)>>2)(3,0))
       }
       if(nativeVertexInput)when(targetBlendResources) {
