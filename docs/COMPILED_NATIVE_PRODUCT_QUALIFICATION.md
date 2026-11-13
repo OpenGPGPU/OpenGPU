@@ -141,6 +141,12 @@ parsers, including every discovery word. CPU regressions reject mutations of
 each discovery address/value and reject mixed v1/v2 profiles. These checks do
 not establish v2 execution, complete-frame cycles, whole-host timing or FPS.
 
+After integrating PR #769, all three profile/connection cases pass with a
+3 GiB heap, including the complete feature connections in the bounded host.
+The seven product/API/parallel/discovery/topology guard suites pass 91 cases
+with no skips. These are connection, parser and orchestration checks; they do
+not execute the complete v2 product frames.
+
 ```sh
 python3 scripts/qualify_native_product_compiled.py --smoke --alignment-v2 \
   --output "$PWD/.artifacts/alignment-v2-smoke" --jobs 2
