@@ -614,3 +614,32 @@ capability. Versioned GND/GS program admission, complete preflight, third-stage
 resource routing, six-vertex adjacency assembly and actual native GS execution
 remain required. Production API submission and complete H8 qualification stay
 open.
+
+## Initial scalar GS program admission
+
+The independent `opengpu_geometry_shader_validate_words` entry requires explicit
+geometry enablement and scalar program version 1. Its private-code helper
+copies the full original view unchanged into RX/no-W memory, validates only
+the entry suffix, and rejects a branch into the unvalidated prefix. Original
+GEM references and producer fences remain the submitter's responsibility.
+Existing compute, VS and FS validators cannot opt into the GS instructions.
+
+This first dialect admits scalar ALU/FPU, checked forward branches, canonical
+fences, task-owned geometry input/output/event operations and, with an owned
+GUR2 root, scalar uniform loads. It rejects ordinary memory access, vector
+instructions, workgroup barriers and the other resource domains. These are
+explicit implementation limits of this initial opt-in dialect, not the final
+GLES geometry resource contract. It does not advertise a native/API capability.
+Full geometry resources, six-vertex adjacency, 32 invocations, 256 output
+vertices and the independent 1024-component bound remain required for H8.
+
+The actual-owner/MMU check passes for all seven geometry operations, disabled
+and wrong-version rejection, old-validator isolation, scalar floating-point
+gating, resource and malformed-instruction rejection, 512-word code, exact RX
+bytes after source overwrite, entry-suffix bounds, allocation/copy failures and
+healthy reuse. The full Linux GCC `-O2` driver suite also passes. Reproduce with:
+
+```sh
+python3 scripts/test_geometry_program_snapshot.py --sanitize
+python3 scripts/test_driver.py
+```

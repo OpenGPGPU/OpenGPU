@@ -21,6 +21,7 @@ def run_driver_tests():
     subprocess.run([sys.executable, str(ROOT / "scripts/test_private_snapshot.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_native_program_snapshot.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_geometry_uniform_snapshot.py")], check=True)
+    subprocess.run([sys.executable, str(ROOT / "scripts/test_geometry_program_snapshot.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_native_input_snapshot.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_native_job_snapshot.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_native_submit.py")], check=True)
