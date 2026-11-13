@@ -663,10 +663,14 @@ counter/body mutations, skipped initialization at a CFG join, a pending
 alternate exit, zero-counter fallthrough, and immutable private RX publication
 of the original 19-word program. The native program owner and the full shader,
 storage, image, atomic and SIMT validator corpora pass ASan/UBSan with the loop
-extension. These checks execute C validation and ownership; actual shader
-execution is a separate native GS qualification.
-The GS and native RX owner sanitizer gates also pass with Linux GCC, along
-with the full Linux GCC `-O2` driver suite and its real Mesa callback tests.
+extension. The GS and native RX owner sanitizer gates also pass with Linux
+GCC, along with the full Linux GCC `-O2` driver suite and its real Mesa callback
+tests. The same 19-word program separately passes direct physical-source
+execution with 256 points and 1024 components in the
+[native GS viewport gate](#native-gs-clipping-and-viewport-component). CPU
+protected validation/private RX ownership and direct physical execution are
+separate passing gates; execution through complete protected submission remains
+unqualified.
 
 ## Bounded GNG1 metadata and private links
 
@@ -906,8 +910,10 @@ four position components before each of 256 actual point emissions in one
 invocation, reaching the 1024-component limit. It repeats that full emission
 with single-pulse cancellation while the 256th viewport output is held, then
 reuses the same GPU and caches without reset. Every point's sequence, input
-primitive, invocation, layer and position is checked. The loop's instruction
-profile and protected publication remain separate qualification boundaries.
+primitive, invocation, layer and position is checked. The same program's
+[bounded instruction validation and private RX ownership](#initial-scalar-gs-program-admission)
+pass separate CPU gates. This physical-source fixture does not execute the
+complete protected submission path.
 
 The same fixture checks layer and shader primitive ID, near/far point culling,
 NaN clipping and zero-W viewport fault attribution, and a six-input adjacency
