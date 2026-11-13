@@ -63,13 +63,7 @@ int graphics_native_host_execute(struct native_kernel_session *session,const cha
 {
     char path[4096],temporary[4096];int ret;
     if(!session || !directory || !records)return -EINVAL;
-    unsigned timeout=3600;
-    const char *configured=getenv("OPENGPU_NATIVE_HOST_TIMEOUT");
-    if(configured) {
-        char *end;errno=0;unsigned long value=strtoul(configured,&end,10);
-        if(errno || !*configured || *end || !value || value>86400)return -EINVAL;
-        timeout=(unsigned)value;
-    }
+    unsigned timeout;ret=native_mmio_timeout_seconds(&timeout);if(ret)return ret;
     for(unsigned index=0;index<2;index++) {
         ret=host_path(path,directory,index?"native-next.source.json":"native.source.json");if(ret)return ret;
         FILE *stream=fopen(path,"wx");if(!stream)return -errno;
