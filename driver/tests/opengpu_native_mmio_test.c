@@ -117,6 +117,19 @@ static struct native_kernel_observed_receipt test_observed(struct native_kernel_
 int main(int argc,char **argv)
 {
     assert(argc==2);char memory[4096],capture[2][4096],retire[2][4096];
+    unsigned timeout;assert(!unsetenv("OPENGPU_NATIVE_HOST_TIMEOUT"));
+    assert(!native_mmio_timeout_seconds(&timeout) && timeout==300);
+    const char *valid[]={"1","3600","86400"};const unsigned expected[]={1,3600,86400};
+    for(unsigned n=0;n<3;n++){
+        assert(!setenv("OPENGPU_NATIVE_HOST_TIMEOUT",valid[n],1));
+        assert(!native_mmio_timeout_seconds(&timeout) && timeout==expected[n]);
+    }
+    const char *invalid[]={"","0","-1","+1"," 1","1 ","1x","86401","999999999999999999999999"};
+    for(unsigned n=0;n<sizeof(invalid)/sizeof(invalid[0]);n++){
+        assert(!setenv("OPENGPU_NATIVE_HOST_TIMEOUT",invalid[n],1));
+        assert(native_mmio_timeout_seconds(&timeout)==-EINVAL);
+    }
+    assert(!unsetenv("OPENGPU_NATIVE_HOST_TIMEOUT"));
     test_path(memory,sizeof(memory),argv[1],"union.memory");
     for(unsigned n=0;n<2;n++){char name[64];snprintf(name,sizeof(name),"record-%u.capture",n);
         test_path(capture[n],sizeof(capture[n]),argv[1],name);snprintf(name,sizeof(name),"record-%u.retire",n);

@@ -312,6 +312,16 @@ static int native_mmio_cleanup_ack(const char *path,unsigned sequence)
     if(fclose(f) && !error)error=-EIO;
     return error;
 }
+static int native_mmio_timeout_seconds(unsigned *seconds)
+{
+    const char *configured=getenv("OPENGPU_NATIVE_HOST_TIMEOUT");*seconds=300;
+    if(!configured)return 0;
+    if(!*configured)return -EINVAL;
+    for(const char *p=configured;*p;p++)if(*p<'0' || *p>'9')return -EINVAL;
+    char *end;errno=0;unsigned long value=strtoul(configured,&end,10);
+    if(errno || *end || !value || value>86400)return -EINVAL;
+    *seconds=(unsigned)value;return 0;
+}
 static int native_mmio_cleanup_sync(struct opengpu_device *gpu)
 {
     struct native_mmio_state *m=native_mmio_state(gpu);struct stat st;
@@ -320,7 +330,7 @@ static int native_mmio_cleanup_sync(struct opengpu_device *gpu)
     char *trace=native_mmio_cleanup_path(m,"trace",sequence),*ack=native_mmio_cleanup_path(m,"observed",sequence);
     char *failed=native_mmio_cleanup_path(m,"error",UINT32_MAX),*temporary=NULL;
     if(!trace || !ack || !failed){free(trace);free(ack);free(failed);return -ENOMEM;}
-    int error=0;
+    unsigned timeout;int error=native_mmio_timeout_seconds(&timeout);if(error)goto out;
     if(!lstat(ack,&st) || errno!=ENOENT){error=-EEXIST;goto out;}
     if(m->count-m->cleanup_start>UINT32_MAX){error=-ERANGE;goto out;}
     FILE *f=native_mmio_file(trace,&temporary);if(!f){error=-EIO;goto out;}
@@ -337,7 +347,7 @@ static int native_mmio_cleanup_sync(struct opengpu_device *gpu)
         if(errno!=ENOENT){error=-errno;break;}
         if(!lstat(failed,&st)){error=-EIO;break;}
         if(clock_gettime(CLOCK_MONOTONIC,&now)){error=-EIO;break;}
-        if(now.tv_sec-start.tv_sec>=300){error=-ETIMEDOUT;break;}
+        if(now.tv_sec-start.tv_sec>=timeout){error=-ETIMEDOUT;break;}
         if(nanosleep(&pause,NULL) && errno!=EINTR){error=-errno;break;}
     }
     if(!error){++m->cleanup_sequence;m->cleanup_start=m->count;}
