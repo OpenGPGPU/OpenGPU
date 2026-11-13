@@ -319,7 +319,10 @@ static void resource_owner_test(struct opengpu_device *gpu,
     puts("private native resources: real RO/RW NX leaves, reserved gaps, metadata relocation, revoke quarantine/cancel and reuse PASS (C only)");
 }
 
-int main(void)
+#ifndef OPENGPU_PRIVATE_SNAPSHOT_TEST_MAIN
+#define OPENGPU_PRIVATE_SNAPSHOT_TEST_MAIN main
+#endif
+int OPENGPU_PRIVATE_SNAPSHOT_TEST_MAIN(void)
 {
     struct opengpu_device gpu = {0};
     struct opengpu_render_context context = {.gpu=&gpu, .references=1};
