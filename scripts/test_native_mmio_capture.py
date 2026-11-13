@@ -91,7 +91,7 @@ int main(int argc,char **argv) {
   unsigned cleared=0;
   for(unsigned n=0;n<batches;n++) {
     const auto batch=Cleanup::read((base/("cleanup-"+std::to_string(n)+".trace")).string());
-    pte.validate_scope(batch);
+    pte.validate_scope(batch,&memory);
     for(const auto &a:batch.actions)if(a.kind==Kind::pte_clear){pte.clear(memory,a);++cleared;}
   }
   require(cleared,"actual cleanup cleared no PTEs");pte.revoked(memory);
