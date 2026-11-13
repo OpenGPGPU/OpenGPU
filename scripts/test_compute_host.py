@@ -94,7 +94,7 @@ def write_bodies(out):
     # The active producer must supply real probe words, never this fixture.
     from prepare_native_owner_flashsim import EXPECTED_WORDS
     rows = [(item["address"], item["value"]) for item in EXPECTED_WORDS]
-    extras = [(0, 0x47550002), (0x60, '(GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE|GPU_CAP_COMPUTE_SCALAR_FPU|GPU_CAP_SHADER_CONFIG_INFO)'),
+    extras = [(0, 0x47550002), (0x60, '(GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE|GPU_CAP_COMPUTE_SCALAR_FPU|GPU_CAP_SHADER_CONFIG_INFO|GPU_CAP_NATIVE_PIXEL_FORMATS|(128u << GPU_CAP_FRAGMENT_BATCH_SHIFT))'),
               (0x68, 0x160), (0x320, 1048576), (0x158, 0x02020810), (0x494, 0x47544d01), (0x43c, 0x47534d01),
               (0x3fc, 0x47494d01), (0x4bc, 0x47414d01), (0x460, 0x47554d01)]
     (out / 'compute_host_test_profile.inc').write_text(

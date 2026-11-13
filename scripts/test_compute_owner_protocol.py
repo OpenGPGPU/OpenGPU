@@ -13,8 +13,10 @@ from prepare_native_owner_flashsim import EXPECTED_WORDS
 def profile():
     abi = (Path(__file__).resolve().parents[1] / 'driver/gpu_abi.h').read_text()
     caps = 0
-    for name in ('UNIFIED_COMMANDS', 'PROTECTED_VM_STATE', 'COMPUTE_SCALAR_FPU', 'SHADER_CONFIG_INFO'):
+    for name in ('UNIFIED_COMMANDS', 'PROTECTED_VM_STATE', 'COMPUTE_SCALAR_FPU', 'SHADER_CONFIG_INFO', 'NATIVE_PIXEL_FORMATS'):
         caps |= 1 << int(re.search(r'^#define GPU_CAP_' + name + r'\s+\(1u << (\d+)\)', abi, re.M).group(1))
+    batch_shift = int(re.search(r'^#define GPU_CAP_FRAGMENT_BATCH_SHIFT\s+(\d+)u', abi, re.M).group(1))
+    caps |= 128 << batch_shift
     values = (0x47550002, caps, 0x160, 1048576, 0x02020810) + MAGICS
     return dict(schema=SCHEMA, words=deepcopy(EXPECTED_WORDS),
                 registers=[dict(address=a, value=v) for a, v in zip(AUXILIARY, values)],
@@ -48,6 +50,21 @@ class Protocol(unittest.TestCase):
         for index in range(96):
             wrong = deepcopy(value); wrong['words'][index]['value'] ^= 1
             with self.assertRaises(ValueError): profile_bytes(wrong)
+
+    def test_shader_resource_capabilities_are_consistent(self):
+        value = profile()
+        for caps in (value['registers'][1]['value'] & ~(255 << 8),
+                     value['registers'][1]['value'] ^ (1 << 8),
+                     value['registers'][1]['value'] & ~(1 << 25)):
+            wrong = deepcopy(value); wrong['registers'][1]['value'] = caps
+            with self.assertRaises(ValueError): profile_bytes(wrong)
+        for banks in (0, 1, 3):
+            wrong = deepcopy(value)
+            wrong['registers'][4]['value'] = (wrong['registers'][4]['value'] & ~(255 << 16)) | (banks << 16)
+            with self.assertRaises(ValueError): profile_bytes(wrong)
+        valid = deepcopy(value)
+        valid['registers'][4]['value'] = (valid['registers'][4]['value'] & ~(255 << 16)) | (4 << 16)
+        profile_bytes(valid)
 
     def test_profile_cannot_relabel_native_or_execution(self):
         for key, bad in [('schema', 'opengpu-native-owner-profile-v1'), ('gpuExecution', True),
