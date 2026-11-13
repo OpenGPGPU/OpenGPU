@@ -503,6 +503,12 @@ def changed_suites(root, changed, *, test_index=None):
     files, nodes = index_test_sources(root) if test_index is None else test_index
 
     affected = set(changed) & files.keys()
+    if changed & {"src/main/scala/opengpu/graphics/Fp32FragmentInterpolator.scala",
+                  "src/main/scala/opengpu/graphics/Fp32FragmentPreparation.scala",
+                  "src/main/scala/opengpu/graphics/Fp32StreamingFragmentInterpolator.scala"}:
+        affected.add("src/test/scala/opengpu/graphics/FragmentSetupCacheSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/FragmentPreparationInstanceSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/Fp32FragmentPreparationSpec.scala")
     if "src/main/scala/opengpu/graphics/TypedFragmentState.scala" in changed:
         affected.add("src/test/scala/opengpu/graphics/TypedFragmentStateReaderSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/TypedFragmentImageStateReaderSpec.scala")

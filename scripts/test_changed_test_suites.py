@@ -17,6 +17,16 @@ def changed_suites(root, changed):
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_fragment_setup_changes_select_exact_key_consumer_and_instance_checks(self):
+        required = {"opengpu.graphics.FragmentSetupCacheSpec",
+                    "opengpu.graphics.FragmentPreparationInstanceSpec",
+                    "opengpu.graphics.Fp32FragmentPreparationSpec",
+                    "opengpu.graphics.Fp32StreamingFragmentDifferentialSpec"}
+        for name in ("Fp32FragmentInterpolator", "Fp32FragmentPreparation", "Fp32StreamingFragmentInterpolator"):
+            with self.subTest(name=name):
+                selected = set(changed_suites(REPO_ROOT, [f"src/main/scala/opengpu/graphics/{name}.scala"]))
+                self.assertTrue(required <= selected, selected)
+
     def test_shared_tessellation_bank_changes_select_owner_and_complete_interface_checks(self):
         expected = {"opengpu.system.TessellationImageBankOwnerSpec",
                     "opengpu.system.TessellationImageBankMuxSpec"}
