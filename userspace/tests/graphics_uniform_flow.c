@@ -10,6 +10,8 @@
 #include "opengpu_native_uniform_emit.h"
 #include "graphics_uniform_word_vm.h"
 #include "opengpu_native_layout.h"
+#include "opengpu_native_runtime.h"
+#include "opengpu_native_graphics.h"
 #include "tgsi/tgsi_parse.h"
 #include "tgsi/tgsi_text.h"
 #include "pipe/p_context.h"
@@ -25,6 +27,70 @@ static uint64_t native_layout_word(unsigned capacity)
 {
     return capacity | UINT64_C(16)<<32 | UINT64_C(16)<<37 | UINT64_C(16)<<42 |
         UINT64_C(4)<<47 | UINT64_C(6)<<50 | UINT64_C(30)<<53;
+}
+static void runtime_discovery(int fd)
+{
+    const uint32_t healthy[8]={0x474e4303,8,0x474e4a01,0x08000200,
+        0xc2100800,0x08000800,0xe4908000,0x8813d902};
+    struct opengpu_native_runtime runtime,saved;
+    uint32_t raw[8],before[8];
+    memset(&runtime,0xa5,sizeof(runtime));saved=runtime;
+    memset(raw,0x53,sizeof(raw));memcpy(before,raw,sizeof(raw));
+    unsigned queries=native_caps_queries;
+    assert(opengpu_native_caps(fd,NULL)<0&&errno==EINVAL&&native_caps_queries==queries);
+    assert(opengpu_native_runtime_query(fd,NULL)<0&&errno==EINVAL&&native_caps_queries==queries);
+    uint64_t original=features;features&=~OPENGPU_DRIVER_FEATURE_NATIVE_BINNED;
+    assert(opengpu_native_runtime_query(fd,&runtime)<0&&errno==ENOTSUP&&
+        !memcmp(&runtime,&saved,sizeof(runtime))&&native_caps_queries==queries);
+    features=original;
+    for(unsigned i=0;i<8;i++)fixture_native_caps[i]=healthy[i];
+    fixture_native_layout=native_layout_word(128);
+    assert(!opengpu_native_runtime_query(fd,&runtime)&&runtime.shader.capacity==128&&
+        !memcmp(runtime.frame.words,healthy,sizeof(healthy)));
+    saved=runtime;
+    for(unsigned word=0;word<8;word++) {
+        fixture_native_caps[word]|=UINT64_C(1)<<32;
+        assert(opengpu_native_caps(fd,raw)<0&&errno==EPROTO&&!memcmp(raw,before,sizeof(raw)));
+        assert(opengpu_native_runtime_query(fd,&runtime)<0&&errno==EPROTO&&!memcmp(&runtime,&saved,sizeof(runtime)));
+        fixture_native_caps[word]=healthy[word];
+        for(unsigned e=0;e<2;e++) {
+            native_caps_fail_word=word;native_caps_error=e?EINVAL:EIO;
+            assert(opengpu_native_caps(fd,raw)<0&&errno==native_caps_error&&!memcmp(raw,before,sizeof(raw)));
+            assert(opengpu_native_runtime_query(fd,&runtime)<0&&errno==native_caps_error&&
+                !memcmp(&runtime,&saved,sizeof(runtime)));
+        }
+        native_caps_fail_word=-1;
+    }
+    for(unsigned word=0;word<8;word++) {
+        fixture_native_caps[word]=0;
+        assert(opengpu_native_runtime_query(fd,&runtime)<0&&!memcmp(&runtime,&saved,sizeof(runtime)));
+        fixture_native_caps[word]=healthy[word];
+    }
+    /* Each overlapping slot field must agree, rather than allowing separately
+     * valid GET8/GNC replies from different configurations. */
+    const unsigned shifts[]={32,37,42,47};
+    for(unsigned i=0;i<4;i++) {
+        fixture_native_layout=native_layout_word(128)-(UINT64_C(1)<<shifts[i]);
+        assert(opengpu_native_runtime_query(fd,&runtime)<0&&errno==EPROTO&&!memcmp(&runtime,&saved,sizeof(runtime)));
+    }
+    fixture_native_layout=native_layout_word(256);
+    assert(opengpu_native_runtime_query(fd,&runtime)<0&&errno==ENOTSUP&&!memcmp(&runtime,&saved,sizeof(runtime)));
+    fixture_native_layout=native_layout_word(128);
+    fixture_native_caps[0]=OPENGPU_NATIVE_BINNED_HOST_PHYSICAL_MAGIC;
+    assert(opengpu_native_runtime_query(fd,&runtime)<0&&errno==ENOTSUP&&!memcmp(&runtime,&saved,sizeof(runtime)));
+    /* A real reduced runtime has independent frame and item capacities, and
+     * payload-free GNC is legal. No profile-sized constants are inferred. */
+    fixture_native_caps[0]=OPENGPU_NATIVE_BINNED_HOST_MAGIC;
+    fixture_native_caps[4]=2048u|3u<<16|7u<<21|5u<<26|1u<<31;
+    fixture_native_caps[6]=(healthy[6]&~OPENGPU_NATIVE_BINNED_HOST_COLORS_MASK)|2u<<21;
+    fixture_native_caps[7]=2u|9u<<8;
+    fixture_native_layout=17u|UINT64_C(3)<<32|UINT64_C(7)<<37|UINT64_C(5)<<42|
+        UINT64_C(2)<<47|UINT64_C(6)<<50|UINT64_C(30)<<53;
+    assert(!opengpu_native_runtime_query(fd,&runtime)&&runtime.shader.capacity==17&&
+        runtime.shader.attributes==3&&runtime.shader.bindings==7&&runtime.shader.varyings==5&&runtime.shader.colors==2);
+    for(unsigned i=0;i<8;i++)fixture_native_caps[i]=healthy[i];
+    fixture_native_layout=native_layout_word(128);
+    assert(!opengpu_native_runtime_query(fd,&runtime));
 }
 static void discovery(void)
 {
@@ -62,6 +128,7 @@ static void discovery(void)
     }
     native_layout_error=0;fixture_native_layout=native_layout_word(128);
     assert(!pipe_opengpu_screen_native_layout(screen,&layout));
+    runtime_discovery(pipe_opengpu_screen_fd(screen));
     pipe_opengpu_screen_destroy(screen);features=original_features;no_leaks();
 }
 
@@ -482,6 +549,56 @@ static void production_constants(void *program)
     }
     struct drm_opengpu_native_uniform_stage records[2],saved[2];
     assert(!opengpu_native_graphics_uniform_sources(pipe,required,records));
+    for(unsigned nth=1;nth<=2;nth++) {
+        unsigned first=next_bo;
+        fail_request=DRM_IOCTL_OPENGPU_CREATE_BUFFER;fail_nth=nth;fail_seen=0;
+        assert(!opengpu_native_graphics_program_create(pipe,graphics_uniform_tokens(program,0),graphics_uniform_tokens(program,1))&&errno==ENOMEM);
+        fail_request=fail_nth=fail_seen=0;
+        for(unsigned handle=first;handle<next_bo;handle++)assert(!bos[handle].data&&!bos[handle].handle&&!bos[handle].maps);
+    }
+    struct tgsi_token absent_varying[128];
+    assert(tgsi_text_translate("VERT\nDCL IN[0]\nDCL OUT[0], POSITION\nMOV OUT[0], IN[0]\nEND\n",absent_varying,128));
+    unsigned first=next_bo;
+    assert(!opengpu_native_graphics_program_create(pipe,absent_varying,graphics_uniform_tokens(program,1))&&errno==EINVAL&&next_bo==first);
+    struct tgsi_token extra_vs[256],small_fs[256];
+    assert(tgsi_text_translate("VERT\nDCL IN[0]\nDCL OUT[0], POSITION\nDCL OUT[1], GENERIC[0]\nDCL OUT[2], GENERIC[1]\nMOV OUT[0], IN[0]\nMOV OUT[1], IN[0]\nMOV OUT[2], IN[0]\nEND\n",extra_vs,256));
+    assert(tgsi_text_translate("FRAG\nDCL IN[0], GENERIC[0], CONSTANT\nDCL OUT[0], COLOR[0]\nMOV OUT[0], IN[0]\nEND\n",small_fs,256));
+    struct opengpu_native_graphics_program *extra=opengpu_native_graphics_program_create(pipe,extra_vs,small_fs);assert(extra);
+    struct opengpu_native_graphics_sources extra_sources;
+    assert(!opengpu_native_graphics_program_sources(pipe,extra,&extra_sources)&&
+        extra_sources.layout[0].varyings==2&&extra_sources.layout[1].varyings==2&&
+        extra_sources.varying_mask[0]==255&&extra_sources.varying_mask[1]==15);
+    uint32_t payload[20*128],original_payload[20*128];
+    for(unsigned i=0;i<20*128;i++)payload[i]=original_payload[i]=0xc350a91du^i;
+    const struct graphics_uniform_view unused_uniforms[13]={0};
+    const struct drm_opengpu_native_program_view *extra_code=&extra_sources.programs[1];
+    assert(!graphics_uniform_word_vm((const uint32_t *)bos[extra_code->handle].data,extra_code->bytes/4,
+        payload,20*128,128,1,unused_uniforms));
+    for(unsigned array=0;array<20;array++)for(unsigned item=0;item<128;item++) {
+        uint32_t expected=original_payload[array*128+item];
+        if(!item&&array>=14&&array<18)expected=original_payload[(array-8)*128];
+        if(!item&&array==19)expected=5;
+        assert(payload[array*128+item]==expected);
+    }
+    opengpu_native_graphics_program_destroy(extra);
+    struct opengpu_native_graphics_program *compiled=opengpu_native_graphics_program_create(pipe,
+        graphics_uniform_tokens(program,0),graphics_uniform_tokens(program,1));assert(compiled);
+    struct opengpu_native_graphics_sources sources,original_sources;
+    assert(!opengpu_native_graphics_program_sources(pipe,compiled,&sources));original_sources=sources;
+    assert(opengpu_native_graphics_program_sources(NULL,compiled,&sources)<0&&errno==EINVAL&&
+        !memcmp(&sources,&original_sources,sizeof(sources)));
+    assert(!memcmp(sources.uniforms,records,sizeof(records))&&sources.runtime.shader.capacity==128&&
+        sources.varying_mask[0]==15&&sources.varying_mask[1]==15&&sources.color_mask==1);
+    for(unsigned stage=0;stage<2;stage++) {
+        const struct drm_opengpu_native_program_view *view=&sources.programs[stage];
+        assert(view->handle&&bos[view->handle].data&&!view->offset&&!view->entry_offset&&!view->pad&&
+            view->bytes==native[stage].words*4&&!memcmp(bos[view->handle].data,native[stage].code,view->bytes));
+    }
+    fixture_native_caps[5]=0;
+    assert(opengpu_native_graphics_program_sources(pipe,compiled,&sources)<0&&
+        !memcmp(&sources,&original_sources,sizeof(sources)));
+    assert(!opengpu_native_graphics_program_create(pipe,graphics_uniform_tokens(program,0),graphics_uniform_tokens(program,1)));
+    fixture_native_caps[5]=0x08000800;
     for(unsigned binding=0;binding<36;binding++)assert(resources[binding]->reference.count==(binding<12||binding>=24?2:1));
     for(unsigned stage=0;stage<2;stage++) {
         struct graphics_uniform_view views[13];
@@ -511,6 +628,8 @@ static void production_constants(void *program)
     pipe->set_constant_buffer(pipe,PIPE_SHADER_FRAGMENT,last_slot,true,&bad);
     assert(resources[35]->reference.count==references);
     assert(opengpu_native_graphics_uniform_sources(pipe,required,records)<0&&!memcmp(records,saved,sizeof(records)));
+    assert(opengpu_native_graphics_program_sources(pipe,compiled,&sources)<0&&
+        !memcmp(&sources,&original_sources,sizeof(sources)));
     graphics_uniform_ubos(program,pipe,resources,offsets,sizes);
     assert(!opengpu_native_graphics_uniform_sources(pipe,required,records));
     /* Rebinding the highest global source preserves the true linked slot and
@@ -522,6 +641,10 @@ static void production_constants(void *program)
     assert(!opengpu_native_graphics_uniform_sources(pipe,required,records));
     assert(records[1].blocks[last_slot-1].handle==pipe_opengpu_resource_handle(opengpu_resource(resources[35])->gpu)&&
         records[1].blocks[last_slot-1].offset==68);
+    assert(!opengpu_native_graphics_program_sources(pipe,compiled,&sources)&&
+        sources.uniforms[1].blocks[last_slot-1].handle==records[1].blocks[last_slot-1].handle&&
+        sources.uniforms[1].blocks[last_slot-1].offset==68&&
+        !memcmp(sources.programs,original_sources.programs,sizeof(sources.programs)));
     pipe_resource_reference(&old,NULL);
     unsigned old_default=records[0].defaults.handle;
     for(unsigned word=0;word<1024;word++)defaults[word]=value(40,word)^0xfedc1234u;
@@ -530,6 +653,9 @@ static void production_constants(void *program)
     assert(records[0].defaults.handle!=old_default&&!bos[old_default].data);
     const uint32_t *new_default=(const uint32_t *)bos[records[0].defaults.handle].data;
     for(unsigned word=0;word<1024;word++)assert(new_default[word]==(value(40,word)^0xfedc1234u));
+    unsigned code_handles[2]={sources.programs[0].handle,sources.programs[1].handle};
+    opengpu_native_graphics_program_destroy(compiled);
+    assert(!bos[code_handles[0]].data&&!bos[code_handles[1]].data);
     pipe->destroy(pipe);
     for(unsigned binding=0;binding<36;binding++) {
         assert(resources[binding]->reference.count==1);pipe_resource_reference(&resources[binding],NULL);
@@ -544,6 +670,7 @@ int main(int argc, char **argv)
     assert(snprintf(fragment, sizeof(fragment), "%s/full.frag", argv[1]) > 0);
     assert(snprintf(prefix, sizeof(prefix), "%s/full", argv[1]) > 0);
     void *program = graphics_uniform_compile(vertex, fragment, prefix); assert(program);
+    assert(graphics_uniform_color_type(program,0)==1);
     discovery();
     tracker_bindings(program);
     production_constants(program);

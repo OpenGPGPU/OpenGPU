@@ -10,7 +10,7 @@ struct opengpu_native_uniform_layout {
 struct opengpu_native_uniform_program {
     uint32_t code[512];
     unsigned words, constant_bytes[13]; /* default, then logical UBOs 0..11 */
-    uint64_t varying_mask;
+    uint64_t varying_mask; /* VS written components; FS actually read components */
     unsigned color_mask;
 };
 /* Straight-line raw MOV and unsigned word ALU. Unsupported shapes fail without

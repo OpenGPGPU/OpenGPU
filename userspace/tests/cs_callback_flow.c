@@ -56,6 +56,9 @@ static unsigned shared_query_error;
 static uint64_t fixture_native_layout;
 static unsigned native_layout_queries;
 static int native_layout_error;
+static uint64_t fixture_native_caps[OPENGPU_PARAM_NATIVE_CAPS_WORDS];
+static unsigned native_caps_queries;
+static int native_caps_fail_word=-1, native_caps_error;
 #endif
 static unsigned fail_request, fail_nth, fail_seen, wait_error, status_error, map_error;
 static unsigned wait_error_kind, status_error_kind;
@@ -215,6 +218,15 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
         request==DRM_IOCTL_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES)) return resource_ioctl(request,arg);
     if(request==DRM_IOCTL_OPENGPU_GET_PARAM){
         struct drm_opengpu_param *p=arg;
+#ifdef OPENGPU_CS_NATIVE_LAYOUT
+        if(p->param>=OPENGPU_PARAM_NATIVE_CAPS_BASE &&
+           p->param<OPENGPU_PARAM_NATIVE_CAPS_BASE+OPENGPU_PARAM_NATIVE_CAPS_WORDS) {
+            unsigned word=p->param-OPENGPU_PARAM_NATIVE_CAPS_BASE;
+            assert(!p->pad);native_caps_queries++;
+            if((int)word==native_caps_fail_word){errno=native_caps_error;return -1;}
+            p->value=fixture_native_caps[word];return 0;
+        }
+#endif
         switch(p->param){
         case OPENGPU_PARAM_CAPABILITIES:p->value=OPENGPU_CAP_NATIVE_PIXEL_FORMATS|OPENGPU_CAP_FRAGMENT_CORE;break;
         case OPENGPU_PARAM_DRIVER_FEATURES:p->value=features;break;
