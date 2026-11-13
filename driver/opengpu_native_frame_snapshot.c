@@ -7,6 +7,7 @@
 #include "opengpu_private_snapshot.h"
 #include "opengpu_native_frame_snapshot.h"
 #include "opengpu_native_binned_abi.h"
+#include "opengpu_typed_fragment_state_abi.h"
 
 #define W(name) OPENGPU_NATIVE_BINNED_FRAME_##name##_WORD
 #define READ OPENGPU_NATIVE_FRAME_RESOURCE_READ
@@ -36,6 +37,13 @@ struct range_words { u32 base, limit; };
 static const struct range_words scratch[4] = {
     RANGE(FRAME_SCRATCH0), RANGE(FRAME_SCRATCH1), RANGE(FRAME_SCRATCH2), RANGE(FRAME_SCRATCH3)
 };
+#define GFS(name) OPENGPU_TYPED_FRAGMENT_STATE_##name##_WORD
+#define GFS_VIEW(name) { GFS(name##_BASE), GFS(name##_LIMIT), GFS(name##_ALLOCATIONBASE), \
+    GFS(name##_ALLOCATIONLIMIT), 0, 0, 0 }
+static const struct view_words state_scratch[4] = {
+    GFS_VIEW(FRAGMENT_SCRATCH), GFS_VIEW(SCRATCH0), GFS_VIEW(SCRATCH1), GFS_VIEW(SCRATCH2)
+};
+#undef GFS_VIEW
 static const struct range_words spills[8] = {
     RANGE(FRAME_BINS_BINS_POOL_SPILLS0), RANGE(FRAME_BINS_BINS_POOL_SPILLS1),
     RANGE(FRAME_BINS_BINS_POOL_SPILLS2), RANGE(FRAME_BINS_BINS_POOL_SPILLS3),
@@ -108,11 +116,53 @@ static int patch_view(struct opengpu_private_snapshot *owner,u32 frame,
     return ret;
 }
 
-int opengpu_native_frame_snapshot_append(struct opengpu_private_snapshot *owner,
+static int check_state_scratch(const struct opengpu_private_snapshot *owner,u32 states,
+                               size_t state_bytes,u32 engines)
+{
+    size_t offset;
+    u32 e,i,value;
+    int ret;
+    for(offset=0;offset<state_bytes;offset+=OPENGPU_TYPED_FRAGMENT_STATE_BYTES){
+        ret=opengpu_private_snapshot_read32(owner,states,offset+4u*GFS(ENGINECOUNT),&value);
+        if(ret)return ret;
+        if(value!=engines)return -EINVAL;
+        for(e=0;e<4;++e){
+            const struct view_words *v=&state_scratch[e];
+            const u32 words[6]={v->base,v->limit,v->limit+1,v->allocation_base,
+                                v->allocation_limit,v->allocation_limit+1};
+            for(i=0;i<6;++i){
+                ret=opengpu_private_snapshot_read32(owner,states,offset+4u*words[i],&value);
+                if(ret)return ret;
+                if(value)return -EINVAL;
+            }
+        }
+    }
+    return 0;
+}
+static int patch_state_scratch(struct opengpu_private_snapshot *owner,u32 states,
+                               size_t state_bytes,u32 stride,u32 engine,
+                               const struct resolved_view *view)
+{
+    const struct view_words *v=&state_scratch[engine];
+    size_t offset;
+    u64 addend=view->delta;
+    int ret;
+    for(offset=0;offset<state_bytes;offset+=OPENGPU_TYPED_FRAGMENT_STATE_BYTES,addend+=stride){
+        u32 word=(u32)(offset/4);
+        ret=frame_relocate(owner,states,word+v->base,view->owner_resource,addend,false);
+        if(!ret)ret=frame_relocate(owner,states,word+v->limit,view->owner_resource,addend+stride,true);
+        if(!ret)ret=frame_relocate(owner,states,word+v->allocation_base,view->owner_resource,addend,false);
+        if(!ret)ret=frame_relocate(owner,states,word+v->allocation_limit,view->owner_resource,addend+stride,true);
+        if(ret)return ret;
+    }
+    return 0;
+}
+
+static int append_frame(struct opengpu_private_snapshot *owner,
     const void *frame,u32 states,size_t state_bytes,
     const struct opengpu_native_frame_resource *plans,u32 count,
     u32 engines,u32 context,u32 pass,u32 generation,
-    opengpu_native_frame_resolve resolve,void *resolve_context,u32 *out)
+    opengpu_native_frame_resolve resolve,void *resolve_context,u32 *out,bool complete)
 {
     struct resolved_view *views;
     const struct resolved_view *roles[7][9]={{0}};
@@ -125,6 +175,10 @@ int opengpu_native_frame_snapshot_append(struct opengpu_private_snapshot *owner,
         get32(frame,0)!=OPENGPU_NATIVE_BINNED_FRAME_MAGIC ||
         get32(frame,1)!=OPENGPU_NATIVE_BINNED_FRAME_BYTES ||
         get32(frame,2)!=OPENGPU_NATIVE_BINNED_VERSION)return -EINVAL;
+    if(complete){
+        int checked=check_state_scratch(owner,states,state_bytes,engines);
+        if(checked)return checked;
+    }
 #define ID(prefix) (get32(frame,W(prefix##_CONTEXT))==context && \
                     get32(frame,W(prefix##_PASS))==pass && \
                     get32(frame,W(prefix##_GENERATION))==generation)
@@ -231,7 +285,10 @@ int opengpu_native_frame_snapshot_append(struct opengpu_private_snapshot *owner,
             (struct range_words){W(FRAME_BINS_PRODUCER_ARENA_BASE),W(FRAME_BINS_PRODUCER_ARENA_LIMIT)},v);break;
         case OPENGPU_NATIVE_FRAME_RESOURCE_DIRECTORY:ret=patch_range(owner,segment,
             (struct range_words){W(FRAME_BINS_BINS_DIRECTORYBASE),W(FRAME_BINS_BINS_DIRECTORYLIMIT)},v);break;
-        default:ret=patch_range(owner,segment,scratch[p->index],v);
+        default:
+            ret=patch_range(owner,segment,scratch[p->index],v);
+            if(!ret && complete)ret=patch_state_scratch(owner,states,state_bytes,
+                get32(frame,W(FRAME_SCRATCHSTRIDE)),p->index,v);
         }
         if(ret)goto done;
     }
@@ -242,7 +299,27 @@ done:
     kvfree(views);
     return ret;
 }
+
+int opengpu_native_frame_snapshot_append(struct opengpu_private_snapshot *owner,
+    const void *frame,u32 states,size_t state_bytes,
+    const struct opengpu_native_frame_resource *plans,u32 count,
+    u32 engines,u32 context,u32 pass,u32 generation,
+    opengpu_native_frame_resolve resolve,void *resolve_context,u32 *out)
+{
+    return append_frame(owner,frame,states,state_bytes,plans,count,engines,context,pass,generation,
+                        resolve,resolve_context,out,false);
+}
+int opengpu_native_frame_snapshot_append_complete(struct opengpu_private_snapshot *owner,
+    const void *frame,u32 states,size_t state_bytes,
+    const struct opengpu_native_frame_resource *plans,u32 count,
+    u32 engines,u32 context,u32 pass,u32 generation,
+    opengpu_native_frame_resolve resolve,void *resolve_context,u32 *out)
+{
+    return append_frame(owner,frame,states,state_bytes,plans,count,engines,context,pass,generation,
+                        resolve,resolve_context,out,true);
+}
 #undef READ
 #undef WRITE
 #undef PAGE
 #undef W
+#undef GFS

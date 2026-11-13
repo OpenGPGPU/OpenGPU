@@ -34,6 +34,93 @@ static void rejected(struct opengpu_device *gpu,struct opengpu_render_context *c
     assert(output==0xfeed1234 && !owner->resources && !gpu->mmu.snapshot_leases && !context->vm.reservations);
     assert(!opengpu_private_snapshot_retire(owner));
 }
+static void state_headers(u32 *words,u32 engines)
+{
+    memset(words,0,1024);
+    for(unsigned h=0;h<2;++h){
+        u32 *w=words+h*128;
+        w[0]=0x47465301;w[1]=512;w[2]=1;w[3]=4;
+        w[4]=7;w[5]=8;w[6]=9;w[7]=h;w[28]=engines;
+    }
+}
+static void complete_rejected(struct opengpu_device *gpu,struct opengpu_render_context *context,
+    const struct opengpu_native_frame_encoding *e,const u32 *words,size_t real_bytes,
+    size_t claimed_bytes,u32 engines,u32 count,int expected)
+{
+    u32 state,output=0xfeed1234;
+    struct opengpu_private_snapshot *owner=opengpu_private_snapshot_create(gpu,context);
+    assert(!IS_ERR(owner));assert(!opengpu_private_snapshot_append(owner,words,real_bytes,&state));
+    resolutions=0;
+    assert(opengpu_native_frame_snapshot_append_complete(owner,&e->frame,state,claimed_bytes,e->resources,count,
+        engines,7,8,9,resolve_original,original,&output)==expected);
+    assert(output==0xfeed1234 && !owner->resources && !gpu->mmu.snapshot_leases && !context->vm.reservations);
+    assert(!opengpu_private_snapshot_retire(owner));
+}
+static void complete_states(struct opengpu_device *gpu,struct opengpu_render_context *context,
+                             const struct opengpu_native_frame_encoding *e,
+                             const struct opengpu_native_frame_request *request)
+{
+    // Literal published GFS offsets, independent of the producer's tables.
+    const u32 fields[4][4]={{51,52,48,49},{60,61,57,58},{66,67,63,64},{72,73,69,70}};
+    u32 words[256],state,frame;
+    struct opengpu_private_snapshot *owner;
+    state_headers(words,4);
+    for(unsigned h=0;h<2;++h)for(unsigned engine=0;engine<4;++engine){
+        const u32 *f=fields[engine];const u32 addresses[6]={f[0],f[1],f[1]+1,f[2],f[3],f[3]+1};
+        for(unsigned i=0;i<6;++i){
+            words[h*128+addresses[i]]=1;
+            complete_rejected(gpu,context,e,words,sizeof(words),sizeof(words),4,27,-EINVAL);
+            words[h*128+addresses[i]]=0;
+        }
+    }
+    for(unsigned h=0;h<2;++h)for(unsigned wrong=0;wrong<=5;++wrong)if(wrong!=4){
+        words[h*128+28]=wrong;
+        complete_rejected(gpu,context,e,words,sizeof(words),sizeof(words),4,27,-EINVAL);
+        words[h*128+28]=4;
+    }
+    complete_rejected(gpu,context,e,words,512,1024,4,27,-ERANGE);
+    complete_rejected(gpu,context,e,words,sizeof(words),sizeof(words),4,26,-EINVAL);
+    {struct opengpu_native_frame_encoding broken=*e;broken.resources[0].role=0;
+     complete_rejected(gpu,context,&broken,words,sizeof(words),sizeof(words),4,27,-EINVAL);}
+    // Even unused GFS engine fields must be zero. A reduced host may not retain
+    // an untrusted address in the slot that a later larger host would consume.
+    state_headers(words,2);words[128+72]=64;
+    complete_rejected(gpu,context,e,words,sizeof(words),sizeof(words),2,25,-EINVAL);
+    state_headers(words,4);
+    // Exercise every allocation gate, including failures partway through GFS
+    // relocation registration. The unpublished owner must always retire cleanly.
+    for(int fail=0;;++fail){
+        u32 output=0xfeed1234;int ret;
+        assert(fail<256);owner=opengpu_private_snapshot_create(gpu,context);assert(!IS_ERR(owner));
+        assert(!opengpu_private_snapshot_append(owner,words,sizeof(words),&state));
+        private_alloc_fail_after=fail;
+        ret=opengpu_native_frame_snapshot_append_complete(owner,&e->frame,state,sizeof(words),e->resources,27,
+            4,7,8,9,resolve_original,original,&output);
+        private_alloc_fail_after=-1;
+        if(ret){assert(ret==-ENOMEM && output==0xfeed1234);assert(!opengpu_private_snapshot_retire(owner));continue;}
+        frame=output;break;
+    }
+    assert(!opengpu_private_snapshot_prepare(owner));assert(!opengpu_private_snapshot_publish(owner));
+    for(unsigned h=0;h<2;++h)for(unsigned engine=0;engine<4;++engine){
+        const u32 *f=fields[engine];u32 first=read_word(owner,frame,(279+engine*3)*4);
+        u32 base=read_word(owner,state,h*512+4*f[0]),end=read_word(owner,state,h*512+4*f[1]);
+        u32 physical=original[request->scratch[engine].handle].dma+request->scratch[engine].offset+h*256;
+        assert(base==first+h*256 && end==base+256);
+        assert(read_word(owner,state,h*512+4*f[2])==base && read_word(owner,state,h*512+4*f[3])==end);
+        assert(!read_word(owner,state,h*512+4*(f[1]+1)) && !read_word(owner,state,h*512+4*(f[3]+1)));
+        assert(translated(&context->vm,base,7)==physical && translated(&context->vm,end-1,7)==physical+255);
+    }
+    for(unsigned h=0;h<2;++h)for(unsigned w=0;w<128;++w){
+        bool patched=false;
+        for(unsigned engine=0;engine<4;++engine){const u32 *f=fields[engine];
+            patched|=w==f[0] || w==f[1] || w==f[1]+1 || w==f[2] || w==f[3] || w==f[3]+1;}
+        if(!patched)assert(read_word(owner,state,h*512+w*4)==words[h*128+w]);
+    }
+    {u32 va;assert(!opengpu_private_snapshot_address(owner,state,&va));
+     translated(&context->vm,va,3); /* Actual private GFS is RO/NX, scratch is RW/NX. */}
+    assert(!opengpu_private_snapshot_retire(owner));
+    assert(context->references==1 && !gpu->mmu.snapshot_leases && !context->vm.reservations);
+}
 int main(void)
 {
     const struct opengpu_native_binned_host_caps caps={{
@@ -69,6 +156,7 @@ int main(void)
 #undef GEM
     assert(handle==27);
     for(unsigned i=1;i<=handle;++i){assert(!opengpu_buffer_alloc(&gpu,&original[i],4096));memset(original[i].cpu,0xa0+i,4096);}
+    for(unsigned i=0;i<4;++i)request.scratch[i].offset=64;
     assert(!opengpu_native_frame_encode(&request,&encoded));assert(encoded.resource_count==27);saved=encoded;
     // Independent original-GEM, role, access and address rejection matrix.
     for(unsigned kind=0;kind<12;++kind){
@@ -94,6 +182,7 @@ int main(void)
     // Same physical page under two distinct handles must still fail alias checks.
     {dma_addr_t saved_dma=original[2].dma;original[2].dma=original[1].dma;
      rejected(&gpu,&context,&encoded,27,-EINVAL);original[2].dma=saved_dma;}
+    complete_states(&gpu,&context,&encoded,&request);
     owner=opengpu_private_snapshot_create(&gpu,&context);assert(!IS_ERR(owner));
     assert(!opengpu_private_snapshot_append(owner,state_bytes,sizeof(state_bytes),&state));
     assert(!opengpu_native_frame_snapshot_append(owner,&encoded.frame,state,sizeof(state_bytes),encoded.resources,27,
