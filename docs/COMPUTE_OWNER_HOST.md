@@ -32,6 +32,14 @@ checks idle/IRQ/drain and unchanged post-completion RAM, writes
 `record-0.memory`, then publishes `record-0.retired.json` with schema
 `opengpu-compute-owner-retired-v1`.
 
+`OPENGPU_COMPUTE_HOST_TIMEOUT` controls every executor IPC wait, including the
+initial capture, retirement and all acknowledged cleanup phases. It uses the
+same decimal 1..604800-second contract as the original producer/controller,
+with a 300-second standalone default. The formal controller passes its chosen
+`--timeout` to both processes. Malformed values fail before a DUT reset or
+probe; the separate captured DUT cycle budget and all byte/completion oracles
+remain unchanged.
+
 An independent oracle must compare all returned result bytes and source/guard
 bytes before authorizing the original producer to release resources. Only
 then may the producer emit `cleanup.begin` (`OGCLB001`, count one). The shared
