@@ -2113,72 +2113,6 @@ out_unlock:
     return ret;
 }
 
-/* The source graph has already been rebuilt by the protected kernel producer.
- * This entry verifies its immutable owner and mappings immediately before cache
- * publication and doorbell. Ordinary/Bare submission gates deliberately do not
- * apply: this command can only access the owner's validated private VM. */
-int opengpu_hw_native_binned_async(struct opengpu_device *gpu,
-    struct opengpu_private_snapshot *owner,
-    const struct opengpu_render_context *context, u32 job_segment,
-    struct dma_fence **out_fence)
-{
-    unsigned long irq_flags;
-    u32 address, pass, generation;
-    u64 limit;
-    int ret;
-
-    if (!out_fence)
-        return -EINVAL;
-    *out_fence = NULL;
-    if (!gpu || !context || !owner || context->gpu != gpu)
-        return -EINVAL;
-    if (!gpu->hw.native_sources.available || !gpu->hw.native_descriptor_preflight)
-        return -EOPNOTSUPP;
-    mutex_lock(&gpu->hw.submit_lock);
-    ret = opengpu_hw_execution_busy(gpu) ? -EBUSY : opengpu_hw_wait_idle_locked(gpu);
-    if (ret)
-        goto out;
-    ret = opengpu_private_snapshot_verify_locked(owner, gpu, context);
-    if (!ret)
-        ret = opengpu_private_snapshot_native_job_address(owner, job_segment, &address);
-    if (!ret)
-        ret = opengpu_private_snapshot_read32(owner, job_segment,
-            4u * OPENGPU_NATIVE_BINNED_JOB_JOB_IDENTITY_PASS_WORD, &pass);
-    if (!ret)
-        ret = opengpu_private_snapshot_read32(owner, job_segment,
-            4u * OPENGPU_NATIVE_BINNED_JOB_JOB_IDENTITY_GENERATION_WORD, &generation);
-    if (ret)
-        goto out;
-    limit = (u64)address + OPENGPU_NATIVE_BINNED_JOB_BYTES;
-    if ((address & 63u) || limit > (1ULL << 32)) {
-        ret = -ERANGE;
-        goto out;
-    }
-    ret = opengpu_private_snapshot_invalidate_locked(owner, gpu, context);
-    if (ret)
-        goto out;
-    /* Publish identity before the final kick; its IRQ may run immediately.
-     * All preceding synchronous invalidates have retired and popped by now. */
-    spin_lock_irqsave(&gpu->hw.fence_lock, irq_flags);
-    gpu->hw.native_pending_owner = owner;
-    gpu->hw.native_context = context->id;
-    gpu->hw.native_pass = pass;
-    gpu->hw.native_generation = generation;
-    spin_unlock_irqrestore(&gpu->hw.fence_lock, irq_flags);
-    ret = opengpu_hw_unified_submit_locked(gpu, NULL, NULL,
-        GPU_UCMD_OP_NATIVE_BINNED_RENDER, address, lower_32_bits(limit),
-        OPENGPU_NATIVE_BINNED_JOB_BYTES, (u32)(limit >> 32), 0,
-        context->id, 0, 0, 0, 0, &context->vm, 0, out_fence);
-    if (ret) {
-        spin_lock_irqsave(&gpu->hw.fence_lock, irq_flags);
-        gpu->hw.native_pending_owner = NULL;
-        spin_unlock_irqrestore(&gpu->hw.fence_lock, irq_flags);
-    }
-out:
-    mutex_unlock(&gpu->hw.submit_lock);
-    return ret;
-}
-
 /* Publish one draw as a unified render command.  The 16-word render descriptor
  * is filled into driver-owned memory and submitted by virtual address, so the
  * device fetches the descriptor and the command buffer through the context VM.
@@ -2323,4 +2257,70 @@ int opengpu_hw_vblank_enable(struct opengpu_device *gpu, bool enable)
         control &= ~GPU_SCANOUT_VBLANK_EN;
     opengpu_reg_write(gpu, GPU_REG_SCANOUT_CONTROL, control);
     return 0;
+}
+
+/* The source graph has already been rebuilt by the protected kernel producer.
+ * This entry verifies its immutable owner and mappings immediately before cache
+ * publication and doorbell. Ordinary/Bare submission gates deliberately do not
+ * apply: this command can only access the owner's validated private VM. */
+int opengpu_hw_native_binned_async(struct opengpu_device *gpu,
+    struct opengpu_private_snapshot *owner,
+    const struct opengpu_render_context *context, u32 job_segment,
+    struct dma_fence **out_fence)
+{
+    unsigned long irq_flags;
+    u32 address, pass, generation;
+    u64 limit;
+    int ret;
+
+    if (!out_fence)
+        return -EINVAL;
+    *out_fence = NULL;
+    if (!gpu || !context || !owner || context->gpu != gpu)
+        return -EINVAL;
+    if (!gpu->hw.native_sources.available || !gpu->hw.native_descriptor_preflight)
+        return -EOPNOTSUPP;
+    mutex_lock(&gpu->hw.submit_lock);
+    ret = opengpu_hw_execution_busy(gpu) ? -EBUSY : opengpu_hw_wait_idle_locked(gpu);
+    if (ret)
+        goto out;
+    ret = opengpu_private_snapshot_verify_locked(owner, gpu, context);
+    if (!ret)
+        ret = opengpu_private_snapshot_native_job_address(owner, job_segment, &address);
+    if (!ret)
+        ret = opengpu_private_snapshot_read32(owner, job_segment,
+            4u * OPENGPU_NATIVE_BINNED_JOB_JOB_IDENTITY_PASS_WORD, &pass);
+    if (!ret)
+        ret = opengpu_private_snapshot_read32(owner, job_segment,
+            4u * OPENGPU_NATIVE_BINNED_JOB_JOB_IDENTITY_GENERATION_WORD, &generation);
+    if (ret)
+        goto out;
+    limit = (u64)address + OPENGPU_NATIVE_BINNED_JOB_BYTES;
+    if ((address & 63u) || limit > (1ULL << 32)) {
+        ret = -ERANGE;
+        goto out;
+    }
+    ret = opengpu_private_snapshot_invalidate_locked(owner, gpu, context);
+    if (ret)
+        goto out;
+    /* Publish identity before the final kick; its IRQ may run immediately.
+     * All preceding synchronous invalidates have retired and popped by now. */
+    spin_lock_irqsave(&gpu->hw.fence_lock, irq_flags);
+    gpu->hw.native_pending_owner = owner;
+    gpu->hw.native_context = context->id;
+    gpu->hw.native_pass = pass;
+    gpu->hw.native_generation = generation;
+    spin_unlock_irqrestore(&gpu->hw.fence_lock, irq_flags);
+    ret = opengpu_hw_unified_submit_locked(gpu, NULL, NULL,
+        GPU_UCMD_OP_NATIVE_BINNED_RENDER, address, lower_32_bits(limit),
+        OPENGPU_NATIVE_BINNED_JOB_BYTES, (u32)(limit >> 32), 0,
+        context->id, 0, 0, 0, 0, &context->vm, 0, out_fence);
+    if (ret) {
+        spin_lock_irqsave(&gpu->hw.fence_lock, irq_flags);
+        gpu->hw.native_pending_owner = NULL;
+        spin_unlock_irqrestore(&gpu->hw.fence_lock, irq_flags);
+    }
+out:
+    mutex_unlock(&gpu->hw.submit_lock);
+    return ret;
 }

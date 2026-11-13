@@ -2,6 +2,8 @@
 /* Shared scheduling, dependency publication and job retirement for every opcode. */
 #include <linux/slab.h>
 #include "opengpu_scheduler.h"
+#include "opengpu_private_snapshot.h"
+#include "opengpu_admission.h"
 
 static struct opengpu_sched_job *
 opengpu_sched_job_from_base(struct drm_sched_job *base)
@@ -30,6 +32,16 @@ static void opengpu_sched_free_job(struct drm_sched_job *base)
     bool revoke_failed = false;
     u32 i;
 
+    if (job->native_owner) {
+        int ret = opengpu_private_snapshot_retire(job->native_owner);
+        if (ret) {
+            WRITE_ONCE(job->gpu->hw.wedged, true);
+            drm_sched_job_cleanup(base);
+            dev_err(job->gpu->dev, "retaining native job and original GEMs after owner revocation failure: %d\n", ret);
+            return;
+        }
+        job->native_owner = NULL;
+    }
     /* Revoke run-time private windows while the ordered free-job worker is
      * still ahead of the next run-job worker, so no live job can still be
      * translating through a VA the next job is about to reuse. */
@@ -71,6 +83,7 @@ static void opengpu_sched_free_job(struct drm_sched_job *base)
     opengpu_buffer_free(job->gpu, &job->render_desc);
     opengpu_buffer_free(job->gpu, &job->commands);
     opengpu_context_put(job->context);
+    opengpu_admission_job_retired(job);
     kfree(job);
 }
 
@@ -80,7 +93,7 @@ static void opengpu_sched_free_job(struct drm_sched_job *base)
  * each dependency reservation and the optional output sync object.  On any
  * failure after job initialization the scheduler job is torn down in place, so
  * callers only free their own staging; on success the scheduler owns the job. */
-int opengpu_sched_job_submit(
+int opengpu_sched_job_submit_locked(
     struct opengpu_file *render_file, struct drm_file *file,
     struct opengpu_render_context *context, struct opengpu_sched_job *job,
     u32 in_syncobj, struct drm_syncobj *out_sync,
@@ -104,7 +117,8 @@ int opengpu_sched_job_submit(
         return ret;
     }
     job->context = context;
-    if (in_syncobj)
+    ret = opengpu_admission_job_prepare(job);
+    if (!ret && in_syncobj)
         ret = drm_sched_job_add_syncobj_dependency(&job->base, file,
                                                     in_syncobj, 0);
     for (i = 0; !ret && i < dep_count; i++)
@@ -112,6 +126,7 @@ int opengpu_sched_job_submit(
                                                    deps[i].object->resv,
                                                    deps[i].wait_usage);
     if (ret) {
+        opengpu_admission_job_abort(job);
         drm_sched_job_cleanup(&job->base);
         kfree(job->objects);
         job->objects = NULL;
@@ -126,6 +141,7 @@ int opengpu_sched_job_submit(
         job->objects[job->object_count++] = deps[i].object;
     }
     drm_sched_job_arm(&job->base);
+    opengpu_admission_job_armed(job);
     fence = dma_fence_get(&job->base.s_fence->finished);
     if (fence_seqno)
         *fence_seqno = fence->seqno;
@@ -139,6 +155,20 @@ int opengpu_sched_job_submit(
     drm_sched_entity_push_job(&job->base);
     dma_fence_put(fence);
     return 0;
+}
+
+int opengpu_sched_job_submit(
+    struct opengpu_file *render_file, struct drm_file *file,
+    struct opengpu_render_context *context, struct opengpu_sched_job *job,
+    u32 in_syncobj, struct drm_syncobj *out_sync,
+    const struct opengpu_sched_dep *deps, u32 dep_count, u64 *fence_seqno)
+{
+    int ret;
+    mutex_lock(&job->gpu->compute.admission_lock);
+    ret=opengpu_sched_job_submit_locked(render_file,file,context,job,
+        in_syncobj,out_sync,deps,dep_count,fence_seqno);
+    mutex_unlock(&job->gpu->compute.admission_lock);
+    return ret;
 }
 
 static const struct drm_sched_backend_ops opengpu_sched_ops = {
@@ -158,10 +188,15 @@ int opengpu_sched_init(struct opengpu_device *gpu)
         .name = "opengpu-render",
         .dev = gpu->dev,
     };
-    return drm_sched_init(&gpu->compute.scheduler, &sched_args);
+    int ret;
+    opengpu_admission_init(gpu);
+    ret=drm_sched_init(&gpu->compute.scheduler, &sched_args);
+    if(ret)opengpu_admission_fini(gpu);
+    return ret;
 }
 
 void opengpu_sched_fini(struct opengpu_device *gpu)
 {
     drm_sched_fini(&gpu->compute.scheduler);
+    opengpu_admission_fini(gpu);
 }

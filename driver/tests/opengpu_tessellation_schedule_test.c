@@ -11,6 +11,7 @@
 
 #define OPENGPU_DEVICE_H
 #define OPENGPU_SCHEDULER_H
+#define OPENGPU_PRIVATE_SNAPSHOT_H
 typedef uint32_t u32;
 typedef uint64_t u64;
 typedef uint64_t dma_addr_t;
@@ -80,7 +81,7 @@ struct opengpu_mmu {
 };
 struct opengpu_device {
     void *dev;
-    struct { int scheduler; } compute;
+    struct { int scheduler; struct mutex admission_lock; } compute;
     struct { struct mutex submit_lock; u32 capabilities, tessellation_engines;
         bool wedged, tessellation_transport, tessellation_feedback_transport,
              tessellation_virtual_images, native_advanced_blend_transport; } hw;
@@ -126,6 +127,7 @@ struct opengpu_sched_job {
     struct drm_sched_job base;
     struct opengpu_device *gpu;
     int type;
+    void *native_owner;
     const struct opengpu_vm *vm;
     struct opengpu_render_context *context;
     struct opengpu_buffer tess_job, tess_frame, tess_draws, tess_states, tess_fragment_code;
@@ -329,6 +331,15 @@ static void drm_sched_entity_push_job(struct drm_sched_job *base)
 { last_job = container_of(base, struct opengpu_sched_job, base); ++pushed; }
 static int drm_sched_init(int *s, const struct drm_sched_init_args *a) { (void)s; (void)a; return 0; }
 static void drm_sched_fini(int *s) { (void)s; }
+/* This tessellation component keeps its original scope. The actual native
+ * admission chains and opaque owner retirement are covered by native_submit. */
+int opengpu_private_snapshot_retire(void *owner){(void)owner;assert(0);return -EINVAL;}
+void opengpu_admission_init(struct opengpu_device *g){mutex_init(&g->compute.admission_lock);}
+void opengpu_admission_fini(struct opengpu_device *g){(void)g;}
+int opengpu_admission_job_prepare(struct opengpu_sched_job *j){(void)j;return 0;}
+void opengpu_admission_job_abort(struct opengpu_sched_job *j){(void)j;}
+void opengpu_admission_job_armed(struct opengpu_sched_job *j){(void)j;}
+void opengpu_admission_job_retired(struct opengpu_sched_job *j){(void)j;}
 #include "../opengpu_scheduler.c"
 
 static void put(void *cpu, unsigned word, u32 value) { tess_put32(cpu, word, value); }

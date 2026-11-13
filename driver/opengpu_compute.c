@@ -344,7 +344,7 @@ static void opengpu_context_free(struct opengpu_file *render_file,
     opengpu_context_put(context);
 }
 
-static struct opengpu_render_context *
+struct opengpu_render_context *
 opengpu_context_lookup(struct opengpu_file *render_file, u32 id)
 {
     if (!id)
@@ -1859,6 +1859,11 @@ struct dma_fence *opengpu_job_run(struct opengpu_sched_job *job)
 
     if (job->type == OPENGPU_SCHED_TESSELLATION)
         return opengpu_tessellation_job_run(job);
+    if (job->type == OPENGPU_SCHED_NATIVE_BINNED) {
+        ret = opengpu_hw_native_binned_async(job->gpu, job->native_owner,
+            job->context, job->native_job_segment, &fence);
+        return ret ? ERR_PTR(ret) : fence;
+    }
     if (job->type == OPENGPU_SCHED_COMPUTE) {
         /* Run the kernel from a private code mapping so instruction fetch
          * translates under this ASID.  Identity leaves are not executable, so
