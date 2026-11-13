@@ -25,13 +25,13 @@ def source_inputs():
         ROOT/'scripts/prepare_native_owner_flashsim.py',ROOT/'scripts/qualify_native_product_compiled.py',
         ROOT/'scripts/qualify_native_product_flashsim.py')}
 
-def check_manifest(manifest):
+def check_manifest(manifest,*,rtl_emitted=True):
     if type(manifest) is not dict:raise RuntimeError('Owner manifest must be an object')
     required={'version':1,'profile':PROFILE,'computeUnits':2,'frameWidth':640,'frameHeight':480,
         'lanes':16,'warps':8,'transactionsPerCu':16,'axiDataBytes':32,'engines':4,
         'nativeMaxWidth':2048,'nativeMaxHeight':2048,'pagedCapacity':65536,'payloadBytes':524288,
         'resourceDiscoveryWords':96,'computeFeatureFlags':0x3ffff,'targetFps':60,
-        'rtlEmitted':True,'sourceQualificationRequired':True,'gpuExecution':False,
+        'rtlEmitted':rtl_emitted,'sourceQualificationRequired':True,'gpuExecution':False,
         'clockQualified':False,'fpsQualified':False}
     if any(type(manifest.get(k)) is not type(v) or manifest[k]!=v for k,v in required.items()):
         raise RuntimeError('Incomplete or mismatched protected owner factory')
