@@ -41,6 +41,15 @@ Original GEM source offsets and sizes need four-byte alignment. GUC's
 256-byte UBO alignment applies to the copied private destination; existing
 64-byte source windows remain valid.
 
+The library also prepares the stable 216-byte per-stage native UAPI records,
+using source GEM handles/offsets/sizes and zeroing every inactive view. This
+requires the native driver feature and strict `GET_PARAM_NATIVE_LAYOUT`
+decoding, with no legacy/compute fallback or truncated physical capacity.
+Unknown/reserved fields, unsupported ABI masks and capacities beyond the
+current validator's eight-bit batch contract are rejected. The qualification
+models these ioctl replies; it does not establish actual hardware discovery or
+enable the not-yet-integrated GNJ submission handler.
+
 ## Native shader admission
 
 The separate native validator derives writable output slices from the actual
@@ -70,6 +79,9 @@ unbound active views, allocation-tail clamping and reference recovery. Planner
 checks include all 24 slots, shared cross-stage views, distinct subranges,
 foreign-screen/image resources, exact allocation endpoints and failure without
 partial output. These use modeled OS/GEM primitives and do not execute a GPU.
+Native-source UAPI checks cover feature absence, malformed/failed layout
+queries, exact stage records, inactive zero records and unchanged outputs on
+rejection.
 
 Native validator C coverage checks every input/output/tail slice across full
 and empty runtime layouts, VS versions 1/2, FS versions 1–5, capability guards,

@@ -34,6 +34,11 @@ int pipe_opengpu_screen_viewport(const struct pipe_opengpu_screen *screen);
 int pipe_opengpu_screen_depth_range(const struct pipe_opengpu_screen *screen);
 int pipe_opengpu_screen_constant_blend(const struct pipe_opengpu_screen *screen);
 uint32_t pipe_opengpu_screen_shader_config(const struct pipe_opengpu_screen *screen);
+struct opengpu_native_shader_layout;
+/* Native bit + strict physical-layout discovery. Old/disabled transports do
+ * not substitute legacy SHADER_CONFIG or compute workgroup limits. */
+int pipe_opengpu_screen_native_layout(struct pipe_opengpu_screen *screen,
+    struct opengpu_native_shader_layout *layout);
 /* Queries only the actual discovered pair, gated by checked storage support. */
 int pipe_opengpu_screen_compute_limits(const struct pipe_opengpu_screen *screen,
                                        uint32_t *items, uint32_t *axis);
@@ -152,6 +157,11 @@ struct pipe_opengpu_native_uniform_plan {
 int pipe_opengpu_native_uniform_plan(struct pipe_opengpu_screen *screen,
     const struct pipe_opengpu_uniform_view views[2][13],
     const unsigned required_bytes[2][13], struct pipe_opengpu_native_uniform_plan *out);
+/* Prepare the stable native UAPI's per-stage source records. This requires
+ * discovered native transport support but does not submit or own a job. */
+int pipe_opengpu_native_uniform_stages(struct pipe_opengpu_screen *screen,
+    const struct pipe_opengpu_uniform_view views[2][13], const unsigned required_bytes[2][13],
+    struct drm_opengpu_native_uniform_stage stages[2]);
 struct pipe_opengpu_buffer_texture {
     struct pipe_opengpu_resource *resource;
     uint64_t binding_bytes; /* complete logical BO, never a shortened view */
