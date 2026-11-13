@@ -233,6 +233,40 @@ int main(int argc,char **argv)
         preserve_program(argv[1],name,&actual);
         cs_frontend_destroy(atomic);
     }
+    /* Compiler/admission coverage only. The independent source-level output
+     * oracle belongs to the explicit REAL-CU qualifier, not a CPU fake READY
+     * or a synthetic execution of these words. Retain the old CPU VM corpus
+     * above unchanged, and preserve these exact original words for the DUT. */
+    for(unsigned variant=0;variant<16;variant++) {
+        const unsigned signed_operations[]={0,1,2,3,4,9};
+        unsigned operation=variant<10?variant:signed_operations[variant-10];
+        char name[64];assert(snprintf(name,sizeof(name),variant<10?"shared-dynamic-%u":"shared-dynamic-i-%u",operation)>0);
+        void *dynamic=front(argv[1],name,"shared-dynamic");
+        struct opengpu_cs_shared cfg=profile;cfg.required_bytes=cs_frontend_shared_bytes(dynamic);
+        struct opengpu_cs_program actual;assert(cfg.required_bytes==16384);
+        assert(!opengpu_cs_emit_shared(cs_frontend_tokens(dynamic),&cfg,&actual));
+        assert(actual.words<=512 && actual.shared_atomics);
+        assert(opengpu_compute_shader_validate_words_shared_atomics(actual.code,actual.words,12,128,
+            false,false,false,true,false,false,false,false,false,cfg.base,cfg.bytes,cfg.lanes,false,true));
+        assert(!admitted(&actual,cfg.base,cfg.bytes,cfg.lanes));
+        unsigned params=0,atomics=0,stores=0,barriers=0,scopes=0;
+        for(unsigned i=0;i<actual.words;i++) {
+            uint32_t w=actual.code[i];unsigned fn=w>>26;
+            params+=(w&127)==0x2b && fn==30;
+            atomics+=(w&127)==0x2b && (fn==31 || fn==32);
+            stores+=(w&127)==0x27;barriers+=w==0xb;
+            scopes+=(w&0x707f)==0x305b;
+        }
+        assert(params==2 && atomics==2 && stores==32 && barriers==2 && scopes==1);
+        printf("SHARED_DYNAMIC_COMPILER actualESSL310 operation=%u words=%u items=128 sharedBytes=16384 activeScope=1 compilerOnly=true noGPU=true\n",operation,actual.words);
+        preserve_program(argv[1],name,&actual);cs_frontend_destroy(dynamic);
+    }
+    for(unsigned n=0;n<3;n++) {
+        const char *name[]={"dynamic-no-barrier","dynamic-uninitialized-tail","dynamic-conditional-init"};
+        void *negative=front(argv[1],name[n],"shared-dynamic-negative");
+        struct opengpu_cs_shared cfg=profile;cfg.required_bytes=cs_frontend_shared_bytes(negative);
+        reject_shared(cs_frontend_tokens(negative),&cfg);cs_frontend_destroy(negative);
+    }
     /* Real Gallium state creation and screen query consume production discovery.
      * No shared submit is routed through the legacy no-shared CPU word VM. */
     limit_shared_base=profile.base;limit_shared_bytes=profile.bytes;limit_shared_lanes=profile.lanes;
