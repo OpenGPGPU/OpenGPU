@@ -893,8 +893,8 @@ handoff.
 First, `--probe-profile NEW_OUTPUT.json` reads the actual device ID/capabilities,
 then GCR before dependent windows, and checks all 96 native profile words. Its
 `opengpu-native-owner-profile-v1` JSON contains `words` (96 address/value pairs)
-and `registers` (ID, capabilities, native capability pointer and live execution
-quota at 0x320). This read-only probe does not execute a GPU job. The original
+and `registers` (ID, capabilities, native capability pointer, live execution
+quota at 0x320 and shader resources at 0x158). This read-only probe does not execute a GPU job. The original
 driver must validate and cache these raw observations; active execution checks
 them again on the same qualified compiled factory before starting its series.
 
@@ -902,8 +902,8 @@ The active session uses atomic files under a fresh GPU-local session directory:
 
 1. The driver writes `record-N.capture`, using `OGCAP001` with an empty finish
    section. Only active mode accepts that prefix; ordinary replay still requires
-   its complete retirement plan. Every active capture includes the four actual
-   identity/quota register values as well as the 96 mandatory discovery words.
+   its complete retirement plan. Every active capture includes the five actual
+   identity/quota/shader register values as well as the 96 mandatory discovery words.
 2. The DUT executes and checks the command, then writes `record-N.held.json`
    with the actual completion, twelve GNX words, 64-bit append telemetry,
    held status/IRQ and drain observation. It does not POP or report retired

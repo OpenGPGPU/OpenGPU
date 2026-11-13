@@ -73,8 +73,8 @@ public:
     ++resets;Simulation::reset();model->mmio_enabled=true;
     for(const auto &r:Capture::profile())model->registers[r.address]=r.value;
     model->registers[GPU_REG_ID]=GPU_ABI_COMPUTE_RESOURCE_VERSION;
-    model->registers[GPU_REG_CAPABILITIES]=GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE;
-    model->registers[GPU_REG_BIN_CAPABILITY_PTR]=GPU_REG_BIN_CAPABILITIES;model->registers[0x320]=128;
+    model->registers[GPU_REG_CAPABILITIES]=GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE|GPU_CAP_SHADER_CONFIG_INFO;
+    model->registers[GPU_REG_BIN_CAPABILITY_PTR]=GPU_REG_BIN_CAPABILITIES;model->registers[0x320]=128;model->registers[GPU_REG_SHADER_CONFIG]=0x02040810;
   }
   template<class Observe> void step(Agent &agent,uint64_t cycle,Observe observe) {
     bool written=false;Command write{};
@@ -190,7 +190,7 @@ static void profile_probe(int argc,char **argv) {
   sim.model->issue_read=false; // CPU control peer only; no synthetic AXI work.
   Agent agent(memory);ReplayBus<ControlPeer> bus(sim,agent,1000);
   const auto profile=probe_profile(sim,agent,bus);
-  require(profile.words.size()==96 && profile.registers.size()==4 && !sim.submitted && sim.resets==1,
+  require(profile.words.size()==96 && profile.registers.size()==5 && !sim.submitted && sim.resets==1,
     "profile probe submitted work or lost words");
   require(sim.read_addresses[0]==GPU_REG_ID && sim.read_addresses[1]==GPU_REG_CAPABILITIES &&
     sim.read_addresses[2]==0x360 && sim.read_addresses[3]==0x364 && sim.read_addresses[4]==0x368,
@@ -211,6 +211,17 @@ static void profile_probe(int argc,char **argv) {
     bad.model->registers[address]=0;Agent peer(memory);ReplayBus<ControlPeer> control(bad,peer,1000);
     rejects([&]{probe_profile(bad,peer,control);});
   }
+  for(uint32_t shader:{0u,0x02040800u,0x02040010u,0x02000810u,0x00040810u,0x04040810u}) {
+    ControlPeer bad(argc,argv,memory,captures);bad.reset();bad.model->issue_read=false;
+    bad.model->registers[GPU_REG_SHADER_CONFIG]=shader;Agent peer(memory);
+    ReplayBus<ControlPeer> control(bad,peer,1000);rejects([&]{probe_profile(bad,peer,control);});
+  }
+  ControlPeer no_shader(argc,argv,memory,captures);no_shader.reset();no_shader.model->issue_read=false;
+  no_shader.model->registers[GPU_REG_CAPABILITIES]&=~GPU_CAP_SHADER_CONFIG_INFO;
+  Agent no_shader_agent(memory);ReplayBus<ControlPeer> no_shader_bus(no_shader,no_shader_agent,1000);
+  rejects([&]{probe_profile(no_shader,no_shader_agent,no_shader_bus);});
+  require(no_shader.read_addresses==std::vector<uint32_t>({GPU_REG_ID,GPU_REG_CAPABILITIES}),
+    "profile probe read shader resources without their advertised capability");
   // Unexpected real external-memory work cannot be called profile-only.
   ControlPeer work(argc,argv,memory,captures);work.reset();Agent busy(memory);
   ReplayBus<ControlPeer> active(work,busy,1000);rejects([&]{probe_profile(work,busy,active);});
@@ -219,8 +230,9 @@ static void active_series(int argc,char **argv) {
   auto a=fixture(),b=a;a.finish.clear();b.finish.clear();
   for(Capture *c:{&a,&b}) {
     c->discovery.push_back({GPU_REG_ID,GPU_ABI_COMPUTE_RESOURCE_VERSION});
-    c->discovery.push_back({GPU_REG_CAPABILITIES,GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE});
+    c->discovery.push_back({GPU_REG_CAPABILITIES,GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE|GPU_CAP_SHADER_CONFIG_INFO});
     c->discovery.push_back({GPU_REG_BIN_CAPABILITY_PTR,GPU_REG_BIN_CAPABILITIES});c->discovery.push_back({0x320,128});
+    c->discovery.push_back({GPU_REG_SHADER_CONFIG,0x02040810});
     c->validate(true);
   }
   rejects([&]{a.validate();});auto bad=a;bad.finish={{GPU_REG_UCMD_COMPLETION_POP,1}};rejects([&]{bad.validate(true);});
