@@ -27,5 +27,11 @@ int main(int argc,char **argv)
     assert(final[0].command_id==12 && final[1].command_id==13 &&
         final[1].append_read_bytes==UINT64_C(0x100000001));
     assert(!memcmp(first.gnx,final[0].gnx,sizeof(first.gnx)));
+    const char *bad_cleanup[]={"no-cleanup","bad-cleanup","wrong-cleanup","tail-cleanup"};
+    for(unsigned i=0;i<sizeof(bad_cleanup)/sizeof(bad_cleanup[0]);i++) {
+        snprintf(path,sizeof(path),"%s/%s",argv[1],bad_cleanup[i]);
+        assert(graphics_native_cleanup_wait(path,1)<0);
+    }
+    assert(!graphics_native_cleanup_wait(argv[1],1));
     puts("Native owner IPC C codec PASS (CPU protocol only)");return 0;
 }

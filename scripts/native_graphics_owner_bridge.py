@@ -4,8 +4,9 @@
 The bridge command is an argv JSON array. Literal {ipc} arguments are replaced
 with the fresh GPU-internal directory, which must be writable in that command's
 environment. No shell is used. The C producer publishes ready.json only after
-preparing both real owners; response.bin authorizes observed retirement only
-after the actual executor and independent original-source oracles succeed.
+preparing both real owners. Independent images authorize a distinct cleanup
+phase; response.bin is sent only after that same live DUT confirms cleanup and
+the actual executor succeeds.
 """
 import argparse
 import json
@@ -128,6 +129,25 @@ def response_bytes(records, first_record=0):
     return bytes(output)
 
 
+def cleanup_authorization(records):
+    require(len(records) == 2, "cleanup requires both execution observations")
+    response_bytes(records)  # Validate the actual completed execution receipts.
+    return b"OGCBA001" + struct.pack("<I", 2)
+
+
+def checked_cleanup(result):
+    require(type(result) is dict and result.get("phase") == "cleanup", "incorrect cleanup phase")
+    for field, expected in (("ownerCleanupObserved", True), ("ramReplaced", False),
+                            ("imagesPreserved", True), ("externalDrained", True),
+                            ("sourceQualificationRequired", True), ("clockQualified", False),
+                            ("fpsQualified", False)):
+        require(result.get(field) is expected, "incorrect cleanup flag " + field)
+    require(uint(result.get("records"), 32, "cleanup record count") == 2, "incorrect cleanup record count")
+    require(uint(result.get("resetCount"), 32, "cleanup reset count") == 1, "cleanup reset the DUT")
+    for field in ("batches", "pteClears", "shootdowns"):
+        require(uint(result.get(field), 64, "cleanup " + field) > 0, "missing actual cleanup " + field)
+
+
 def checked_images(initial, results, sources):
     descriptions = [strict_json(source) for source in sources]
     colors = [expected_color(description) for description in descriptions]
@@ -228,7 +248,7 @@ def main():
                 initial, captures, sources = ready_files(directory)
                 results = directory / "results"
                 with (directory / "executor-series.log").open("w") as executor_log:
-                    running = subprocess.Popen([executor, "--active-series", initial, results, directory, "2"],
+                    running = subprocess.Popen([executor, "--active-owner-series", initial, results, directory, "2"],
                         env=environment, stdout=executor_log, stderr=subprocess.STDOUT)
                     records = []
                     try:
@@ -255,8 +275,13 @@ def main():
                             # only. Both real owners must retain their mappings.
                             atomic_bytes(directory / ("record-%d.response.bin" % index), receipt)
                             records.append(record)
-                        require(running.wait(timeout=args.timeout) == 0, "actual active executor failed")
-                        require(process.poll() is None, "C bridge released owners before final qualification")
+                        # Both image/source/guard oracles ran before cleanup is
+                        # authorized. Do not reuse either execution response.
+                        atomic_bytes(directory / "cleanup.authorize.bin", cleanup_authorization(records))
+                        wait_file(directory / "cleanup.json", process, running, args.timeout)
+                        checked_cleanup(strict_json(directory / "cleanup.json"))
+                        require(running.wait(timeout=args.timeout) == 0, "actual owner executor failed")
+                        require(process.poll() is None, "C bridge exited before final cleanup confirmation")
                         atomic_bytes(directory / "response.bin", response_bytes(records))
                     finally:
                         if running.poll() is None:
@@ -270,7 +295,7 @@ def main():
                 text = (directory / "bridge.log").read_text()
                 require(text.splitlines().count("ACTUAL_GRAPHICS_NATIVE_OWNER_RETIRED records=2 observed=true") == 1,
                         "missing real observed-retirement completion")
-            print("Native graphics owner series PASS: two real snapshots, actual DUT and independent images; no clock/FPS qualification")
+            print("Native graphics owner series PASS: two real snapshots, actual DUT execution/cleanup and independent images; no clock/FPS qualification")
         except BaseException:
             if not (directory / "error").exists():
                 atomic_bytes(directory / "error", b"qualification failed; no owner-release authorization\n")
