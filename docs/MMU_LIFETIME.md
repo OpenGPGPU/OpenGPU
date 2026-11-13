@@ -11,7 +11,9 @@ Global MMU teardown refuses live VMs. After execution becomes idle, it writes
 Bare mode to both SATP registers and performs a full TLB flush before releasing
 the global tables. An idle or flush error retains those tables and backing.
 VM creation rechecks MMU availability under the registry lock, including when
-teardown completes while the creator allocates its unpublished root.
+teardown completes while the creator allocates its unpublished root. A stopped
+unified MMU returns `ENODEV`, so context creation cannot reinterpret shutdown
+as a device that only supports Bare mode.
 
 The host tests cover idle/ASID/global-flush failures, retained table contents and
 ASIDs, live-VM rejection, last-context binding retention, subsequent successful
