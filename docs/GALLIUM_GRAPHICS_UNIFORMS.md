@@ -91,6 +91,14 @@ Gallium kernel context. GLSL color-output types are reflected from real NIR
 before NTT loses type information. The protected kernel must reconstruct and
 validate the graph before execution; encoding does not submit a job.
 
+The explicit native submission frontend assembles the versioned 128-byte ioctl
+from these records, exact array byte counts, 792-byte draw plans and 32-byte
+frame resource plans. It rechecks frozen discovery, uses the real kernel
+context identity and requires a caller-owned completion syncobj. A failed ioctl
+leaves the returned fence sequence unchanged. Current CPU qualification checks
+this transport boundary through an inspection callback, including failure and
+retry; it does not replace the protected kernel handler or prove job admission.
+
 ## Native shader admission
 
 The separate native validator derives writable output slices from the actual
@@ -133,6 +141,9 @@ larger common varying prefix. Published ABI JSON independently decodes actual
 GNJ/GND/GFS encoder output, including identity, runtime stage layout, fixed wire
 capacities, zero addresses and every reserved word/bit. Negative metadata cases
 leave output unchanged and allow a healthy retry.
+The composed 4×4 RGBA32UI frame uses actual GEM windows and the production GNF
+encoder, including primitive/directory/pool storage and four fragment scratch
+views. These are source plans, with no private VA reconstruction or GPU run.
 
 Native validator C coverage checks every input/output/tail slice across full
 and empty runtime layouts, VS versions 1/2, FS versions 1–5, capability guards,

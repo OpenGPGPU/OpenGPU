@@ -42,4 +42,21 @@ int opengpu_native_draw_encode(const struct opengpu_native_draw_request *,
     struct opengpu_native_draw_encoding *);
 int opengpu_native_job_encode(unsigned context, unsigned pass, unsigned generation,
     unsigned draw_count, struct opengpu_native_binned_job *);
+
+struct opengpu_native_submit_sources {
+    const struct opengpu_native_runtime *runtime;
+    const struct opengpu_native_binned_job *job;
+    const struct opengpu_native_frame_encoding *frame;
+    const struct opengpu_native_binned_draw *draws;
+    const struct opengpu_typed_fragment_state *states;
+    const struct drm_opengpu_native_draw_plan *plans;
+    unsigned draw_count, state_count, in_syncobj, out_syncobj;
+};
+/* Protected native transport only. Source objects and metadata stay live until
+ * ioctl returns; successful kernel admission takes its own refs/snapshots.
+ * Caller owns the explicit syncobjs and waits for final completion/drain.
+ * Failure leaves the returned sequence unchanged. This does not enable GL API.
+ */
+int opengpu_native_graphics_submit(struct pipe_context *,
+    const struct opengpu_native_submit_sources *, uint64_t *fence_sequence);
 #endif

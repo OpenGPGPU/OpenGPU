@@ -209,7 +209,8 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
     if(resource_ioctl && (request==DRM_IOCTL_OPENGPU_COMPUTE_STORAGE || request==DRM_IOCTL_OPENGPU_COMPUTE_RESOURCES ||
         request==DRM_IOCTL_OPENGPU_COMPUTE_IMAGE_RESOURCES ||
         request==DRM_IOCTL_OPENGPU_COMPUTE_UNIFORM_RESOURCES ||
-        request==DRM_IOCTL_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES)) return resource_ioctl(request,arg);
+        request==DRM_IOCTL_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES ||
+        request==DRM_IOCTL_OPENGPU_SUBMIT_NATIVE_BINNED)) return resource_ioctl(request,arg);
     if(request==DRM_IOCTL_OPENGPU_GET_PARAM){
         struct drm_opengpu_param *p=arg;
 #ifdef OPENGPU_CS_NATIVE_LAYOUT
