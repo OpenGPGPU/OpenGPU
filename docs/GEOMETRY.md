@@ -564,3 +564,53 @@ admission; the real-CU qualification above stays local.
 Native draw submission, replay into fragment builtins, layered attachment
 ownership and tessellation remain open. This test does not establish product
 frame rate or physical timing; H8 remains open.
+
+## Separate geometry uniform transport
+
+The opt-in `ShaderUniformLoadUnit` and `ShaderUniformExecuteUnit` stage 3 use
+GUR2/GUB2 records (version 2, magics `0x47555202`/`0x47554202`). Their constructor
+requires `geometryAvailable=true`; default construction rejects stage 3.
+Stage 2 remains compute. The existing VS/FS/compute providers still require
+version 1 and reject geometry records before reading their data. GUR2's stage
+is exactly 3 and GUB2's stage mask is exactly 8; unknown mask bits and reserved
+words are rejected. Frozen GUR1/GUB1 words and GUC1 discovery are unchanged.
+
+One GS root supplies twelve block mappings, up to 16 KiB per block, and 1024
+raw default-uniform components. Its separate 24-entry binding table and default
+binding 31 do not consume the VS/FS aggregate table. This transport is not an
+implementation of the context's API binding-point namespace: GLES 3.2 requires
+at least 72 uniform-buffer bindings, with stage and combined block limits
+specified separately. See [GLES 3.2, table 21.50](https://registry.khronos.org/OpenGL/specs/es/3.2/es_spec_3.2.pdf).
+
+`opengpu_geometry_uniform_snapshot_append` builds one kernel-private aggregate
+using the existing opaque snapshot owner. It accepts four-byte-aligned original
+source windows and aligns private UBO data to 256 bytes. The caller retains
+original GEM references and waits producer fences before the copy callback.
+Only exact source windows deduplicate; defaults retain a separate record.
+Root, table and data pointers use checked VA32/LIMIT33 owner relocations, and
+actual mappings are read-only and non-executable. A failed append or relocation
+requires retirement of the unpublished owner; no failed call publishes output.
+
+Local checks pass for scalar/vector raw-bit reads, inactive lanes, all twelve
+block endpoints, all 1024 defaults, old-version rejection, held requests and
+responses through cancellation, first memory faults and healthy reuse. The
+actual-owner/MMU C check independently checks every word of twelve full blocks
+and defaults, copied bytes after original-source overwrite, real RO/NX leaves,
+empty/default-only/partial views, exact-window deduplication and all allocation
+failure gates through success. Both Clang and Linux GCC `-O2` ASan/UBSan checks
+pass, including user and freestanding kernel ABI probes. Reproduce with:
+
+```sh
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  'runMain opengpu.elaboration.EmitGeometryUniformAbi --check' \
+  'testOnly opengpu.graphics.ComputeUniformRecordAbiSpec opengpu.graphics.ShaderUniformLoadUnitSpec opengpu.graphics.ShaderUniformExecuteUnitSpec'
+python3 scripts/test_geometry_uniform_snapshot.py --sanitize
+python3 scripts/test_changed_test_suites.py
+python3 scripts/test_test_selection.py
+```
+
+This provider and encoder do not yet connect a native GS draw or advertise GS
+capability. Versioned GND/GS program admission, complete preflight, third-stage
+resource routing, six-vertex adjacency assembly and actual native GS execution
+remain required. Production API submission and complete H8 qualification stay
+open.
