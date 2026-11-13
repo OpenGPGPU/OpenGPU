@@ -4,7 +4,12 @@
  * Payload fields are zero when LOCAL_PAYLOAD is clear. Slot bytes = SLOT_LINES * 64. */
 #ifndef OPENGPU_NATIVE_BINNED_HOST_ABI_H
 #define OPENGPU_NATIVE_BINNED_HOST_ABI_H
+#ifdef __KERNEL__
+typedef unsigned int opengpu_native_host_word;
+#else
 #include <stdint.h>
+typedef uint32_t opengpu_native_host_word;
+#endif
 
 #define OPENGPU_NATIVE_BINNED_HOST_MAGIC 0x474e4302u
 #define OPENGPU_NATIVE_BINNED_HOST_PHYSICAL_MAGIC 0x474e4301u
@@ -86,7 +91,7 @@
 #define OPENGPU_NATIVE_BINNED_HOST_PAYLOAD_SLOT_LINES_WORD 7u
 #define OPENGPU_NATIVE_BINNED_HOST_PAYLOAD_SLOT_LINES_SHIFT 21u
 #define OPENGPU_NATIVE_BINNED_HOST_PAYLOAD_SLOT_LINES_MASK 0xffe00000u
-struct opengpu_native_binned_host_caps { uint32_t words[OPENGPU_NATIVE_BINNED_HOST_WORDS]; };
+struct opengpu_native_binned_host_caps { opengpu_native_host_word words[OPENGPU_NATIVE_BINNED_HOST_WORDS]; };
 
 /* Read-only GNX1 belongs to the held completion. Empty/non-native slots read zero.
  * POP/reset clear visibility. RECORDED_ADDRESS is a raw owner field; consult stage/valid bits. */
@@ -177,6 +182,6 @@ struct opengpu_native_binned_host_caps { uint32_t words[OPENGPU_NATIVE_BINNED_HO
 #define OPENGPU_NATIVE_BINNED_COMPLETION_RESERVED_WORD 11u
 #define OPENGPU_NATIVE_BINNED_COMPLETION_RESERVED_SHIFT 0u
 #define OPENGPU_NATIVE_BINNED_COMPLETION_RESERVED_MASK 0xffffffffu
-struct opengpu_native_binned_completion_info { uint32_t words[OPENGPU_NATIVE_BINNED_COMPLETION_WORDS]; };
+struct opengpu_native_binned_completion_info { opengpu_native_host_word words[OPENGPU_NATIVE_BINNED_COMPLETION_WORDS]; };
 
 #endif
