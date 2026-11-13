@@ -53,17 +53,25 @@ guards. This CPU oracle checks compilation and publication, not GPU coherence.
 The existing real Mesa buffer, full-shared and atomic-counter CPU regressions
 also pass ASan/UBSan after the helper and fixture changes.
 
+The explicit two-CU hardware run passes 21 kernel launches, three precise
+warp faults, 15 original-consumer values, 2,979 global write attempts (three
+failed), 17 private-cache invalidations and 452,925 cycles. The run uses the
+original actual Mesa words and published resource records for both full shared
+producers and the image/texture consumers.
+
 The hardware fixture models OS/GEM primitives, page tables and external memory
-bytes. Lower reads take seven cycles and writes 73 cycles; every healthy result write
-must be acknowledged before any publication flag is offered. It checks healthy
+bytes. Lower reads take seven cycles and writes 73 cycles; every healthy result
+write must be acknowledged before any publication flag is offered. It checks healthy
 successive epochs, a precise first-result write fault, held traps/completion,
-resource leases, backing guards and healthy recovery without reset. Accepted precise traps retire only the faulting warp; peer warps continue.
+resource leases, backing guards and healthy recovery without reset.
+[Accepted precise traps](SHADER_TRAP_TERMINATION.md) retire only the faulting
+warp; peer warps continue.
 The negative run requires the first warp's 16 data words and flags to stay
 unchanged, the other 112 data acknowledgements to precede the surviving flags,
 the designated first flag to remain unpublished, and completion to fail.
 Partial writes from the peer warps are checked exactly; no whole-kernel
-cancellation or rollback is promised. Full workgroup ownership, warp participation, barrier release and
-quiet teardown are explicit assertions.
+cancellation or rollback is promised. Full workgroup ownership, warp
+participation, barrier release and quiet teardown are explicit assertions.
 
 This bounded chain does not complete H7, enable a complete GLES compute API,
 qualify every alias/coherence domain, establish linked-stage aggregate resource
@@ -73,6 +81,10 @@ capacity, native instruction capacity and API capability gates are unchanged.
 ## Reproduction
 
 Use matching Mesa 22.3.6 objects and the checked uniform/shared NTT source:
+set `TMPDIR` to a fresh short directory under the main GPU repository's
+`.artifacts/` and pass it to the JVM as below. On macOS its complete path must
+be at most 52 bytes to leave room for sbt's Unix socket name. Remove it after
+all development/validation processes exit.
 
 ```sh
 export OPENGPU_MESA_DIR=/path/to/mesa-22.3.6
@@ -80,7 +92,7 @@ export OPENGPU_MESA_BUILD=/path/to/matching-mesa-build
 export OPENGPU_DRM_INCLUDE=/path/to/drm-headers
 python3 scripts/test_gallium_shared_publication.py --build .artifacts/shared-active --sanitize
 
-sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.productQualification=0 \
+sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Djava.io.tmpdir="$TMPDIR" -Dopengpu.productQualification=0 \
   -Dopengpu.galliumSharedPublicationQualification=1 \
   -Dopengpu.galliumSharedPublicationInputs=.artifacts/shared-active/glsl \
   -Dopengpu.sramModels=/path/to/asap7_sram_0p0/generated/verilog \
@@ -91,11 +103,15 @@ sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.productQualification=0 \
   'set Test / sources := (Test / sources).value.filter(f => Set("GpuSim.scala", "QualifyGalliumSharedPublication.scala").contains(f.getName))' \
   'Test/runMain opengpu.core.QualifyGalliumSharedPublication'
 
+python3 scripts/test_gallium_buffer_flow.py --build .artifacts/shared-regression-buffers --sanitize
+python3 scripts/test_gallium_compute_shared.py --build .artifacts/shared-regression-shared --sanitize
+python3 scripts/test_gallium_atomic_counter.py --build .artifacts/shared-regression-counters --sanitize
 python3 scripts/test_test_selection.py
 ```
 
 The runner is excluded from default discovery and requires explicit properties
-and real compiler/publication inputs. Failed tests exit nonzero. Delete private
+and real compiler/publication inputs. Failed tests exit nonzero; omitting the
+input property is checked to exit 1. Delete private
 builds, captures, models, caches and logs when their validation use ends. See
 [shared compute](GALLIUM_SHARED_COMPUTE.md),
 [image ordering](GALLIUM_IMAGE_ORDERING.md), and
