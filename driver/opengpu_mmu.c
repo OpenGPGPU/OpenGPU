@@ -597,7 +597,7 @@ static int mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
                           struct opengpu_vm_reservation *reservation)
 {
     struct opengpu_mmu *mmu = &gpu->mmu;
-    u64 old_start = 0, old_end = 0, new_end = 0, pa_end, p, q;
+    u64 old_start = 0, old_end = 0, new_end = 0, pa_end = 0, p, q;
     size_t old_pages, new_pages, n = 0;
     u32 *saved, old_count, i;
     struct opengpu_snapshot_lease *mapping_lease = NULL;
