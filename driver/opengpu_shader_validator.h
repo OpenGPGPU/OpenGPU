@@ -841,7 +841,7 @@ static inline opengpu_shader_u32 opengpu_shader_io_range_mask(
 /* Optional read/write unions for the first nine fragment SoA slices.
  * Publish only after complete validation; failed or complex accesses retain
  * conservative masks. The six-input API below preserves its existing contract. */
-static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer_images(
+static inline bool opengpu_shader_validate_words_profile_runtime_domains(
     const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
     opengpu_shader_u64 kernarg_size, opengpu_shader_u32 batch_capacity,
     opengpu_shader_u32 output_start_slice,
@@ -853,7 +853,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
     bool image_atomics_enabled, bool storage_atomics_enabled, bool counter_enabled,
     bool uniform_enabled, opengpu_shader_u32 shared_base,
     opengpu_shader_u32 shared_bytes, opengpu_shader_u32 shared_lanes,
-    bool buffer_image_size_enabled)
+    bool buffer_image_size_enabled, bool native_graphics_profile)
 {
     opengpu_shader_u64 stride, output_start, output_end;
     struct opengpu_shader_state state = { 0 };
@@ -878,7 +878,12 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
     /* The advertised fragment batch capacity occupies eight ABI bits. */
     if (!words || !word_count || !batch_capacity || batch_capacity > 255)
         return false;
-    if (uniform_enabled && (!all_kernarg_writable || fragment_ops_enabled))
+    if (native_graphics_profile && (all_kernarg_writable || fragment_ops_enabled ||
+        texture_enabled || word_atomics_enabled || storage_enabled || image_enabled ||
+        image_atomics_enabled || storage_atomics_enabled || counter_enabled ||
+        shared_base || shared_bytes || shared_lanes || buffer_image_size_enabled))
+        return false;
+    if (uniform_enabled && ((!all_kernarg_writable && !native_graphics_profile) || fragment_ops_enabled))
         return false;
     if ((shared_base || shared_bytes || shared_lanes) &&
         (!shared_bytes || !shared_lanes ||
@@ -1044,8 +1049,8 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
             } else return false;
             break;
         }
-        case 0x0f: /* canonical fence rw,rw for compute resource clients */
-            if (insn != 0x0330000fu || !all_kernarg_writable ||
+        case 0x0f: /* canonical fence rw,rw for retained resource clients */
+            if (insn != 0x0330000fu || (!all_kernarg_writable && !native_graphics_profile) ||
                 fragment_ops_enabled)
                 return false;
             break;
@@ -1851,6 +1856,71 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
         }
     }
     return false;
+}
+
+/* Preserve every existing compute/legacy entry point's domain contract. */
+static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer_images(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
+    opengpu_shader_u64 kernarg_size, opengpu_shader_u32 batch_capacity,
+    opengpu_shader_u32 output_start_slice,
+    opengpu_shader_u32 output_end_slice, bool fragment_ops_enabled,
+    bool texture_enabled, bool all_kernarg_writable, bool scalar_fpu_enabled,
+    opengpu_shader_u32 launch_capacity, opengpu_shader_u32 *input_read_mask,
+    opengpu_shader_u32 *output_write_mask, bool word_atomics_enabled,
+    bool texture_backings_disjoint, bool storage_enabled, bool image_enabled,
+    bool image_atomics_enabled, bool storage_atomics_enabled, bool counter_enabled,
+    bool uniform_enabled, opengpu_shader_u32 shared_base,
+    opengpu_shader_u32 shared_bytes, opengpu_shader_u32 shared_lanes,
+    bool buffer_image_size_enabled)
+{
+    return opengpu_shader_validate_words_profile_runtime_domains(
+        words, word_count, kernarg_size, batch_capacity, output_start_slice,
+        output_end_slice, fragment_ops_enabled, texture_enabled,
+        all_kernarg_writable, scalar_fpu_enabled, launch_capacity,
+        input_read_mask, output_write_mask, word_atomics_enabled,
+        texture_backings_disjoint, storage_enabled, image_enabled,
+        image_atomics_enabled, storage_atomics_enabled, counter_enabled,
+        uniform_enabled, shared_base, shared_bytes, shared_lanes,
+        buffer_image_size_enabled, false);
+}
+
+/* Only a GNJ producer that verified the native ABI/capacity and snapshotted
+ * the GUR1/GUB1 source data may enable owned_uniforms. These are private SoA
+ * task views: input flags/built-ins and any tail staging remain read-only.
+ * FS depth and output-control arrays belong to the writable output prefix.
+ * Geometry-input version 5 requires its separate existing stage contract. */
+static inline bool opengpu_native_shader_validate_words(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
+    opengpu_shader_u64 kernarg_size, opengpu_shader_u32 capacity,
+    opengpu_shader_u32 stage, opengpu_shader_u32 version,
+    opengpu_shader_u32 attributes, opengpu_shader_u32 varyings,
+    opengpu_shader_u32 colors, bool scalar_fpu_enabled,
+    bool owned_uniforms, bool geometry_inputs_enabled)
+{
+    opengpu_shader_u32 start, end;
+    if (stage > 1 || attributes > 16 || varyings > 16 || colors > 4 ||
+        !word_count || word_count > OPENGPU_SHADER_MAX_INSTRUCTIONS)
+        return false;
+    if (!stage) {
+        if ((version != 1 && version != 2) || colors)
+            return false;
+        start = 4u * attributes + 3u;
+        end = start + 4u + 4u * varyings + (version == 2);
+    } else {
+        if (attributes || !version || version > 5 ||
+            (version == 5 && !geometry_inputs_enabled))
+            return false;
+        start = 6u + 4u * varyings +
+            ((version == 2 || version == 4 || version == 5) ? 2u : 0u) +
+            (version == 5 ? 2u : 0u);
+        end = start + 4u * colors + 2u;
+    }
+    return opengpu_shader_validate_words_profile_runtime_domains(
+        words, word_count, kernarg_size, capacity, start, end,
+        false, false, false, scalar_fpu_enabled, capacity,
+        (opengpu_shader_u32 *)0, (opengpu_shader_u32 *)0,
+        false, false, false, false, false, false, false,
+        owned_uniforms, 0, 0, 0, false, true);
 }
 
 /* Trusted native callers retain the existing image-instruction contract.

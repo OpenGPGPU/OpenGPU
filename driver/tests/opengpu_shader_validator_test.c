@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include <assert.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "../opengpu_shader_validator.h"
@@ -753,6 +754,65 @@ static void test_compute_uniform_admission(void)
     assert(!uniform_valid(p, 513));
 }
 
+static void test_native_uniform_admission(void)
+{
+    const unsigned capacities[] = {1,16,128,255};
+    for (unsigned stage=0; stage<2; stage++) for (unsigned version=1; version<=(stage?5u:2u); version++)
+    for (unsigned shape=0; shape<3; shape++) for (unsigned trial=0; trial<4; trial++) {
+        unsigned capacity=capacities[trial], attributes=stage?0:(shape==0?0:shape==1?1:16);
+        unsigned varyings=shape==0?0:shape==1?1:16, colors=stage?(shape==0?0:shape==1?1:4):0;
+        unsigned start=stage?6+4*varyings+((version==2||version==4||version==5)?2:0)+(version==5?2:0):4*attributes+3;
+        unsigned end=start+(stage?4*colors+2:4+4*varyings+(version==2));
+        uint64_t bytes=(uint64_t)(end+4)*capacity*4;
+        for (unsigned array=0; array<end+4; array++) {
+            uint32_t code[128]; unsigned n=0;
+            code[n++]=0x01007557u;
+            code[n++]=7u<<25|5u<<7|0x0bu;
+            code[n++]=vector_alu(23,4,2,0,5);
+            n=opengpu_shader_append_address(code,n,1,6,array*capacity*4);
+            code[n++]=vse32(2,6);
+            code[n++]=0x0330000fu;code[n++]=OPENGPU_SHADER_CEASE;
+            bool expected=array>=start && array<end;
+            bool valid=opengpu_native_shader_validate_words(code,n,bytes,capacity,stage,version,
+                attributes,varyings,colors,true,true,true);
+            if(valid!=expected)fprintf(stderr,"native admission stage=%u version=%u a=%u v=%u c=%u capacity=%u array=%u writable=%u..%u got=%u\n",
+                stage,version,attributes,varyings,colors,capacity,array,start,end,valid);
+            assert(valid==expected);
+            assert(!opengpu_native_shader_validate_words(code,n,bytes,capacity,stage,version,
+                attributes,varyings,colors,true,false,true));
+            if (stage&&version==5) assert(!opengpu_native_shader_validate_words(code,n,bytes,capacity,
+                stage,version,attributes,varyings,colors,true,true,false));
+            assert(!opengpu_shader_validate_words(code,n,bytes,capacity,true));
+            assert(!opengpu_vertex_shader_validate_words(code,n,bytes,capacity,true));
+        }
+    }
+    uint32_t p[513]={7u<<25|5u<<7|0x0bu,OPENGPU_SHADER_CEASE};
+#define NATIVE(code,count,bytes,capacity,stage,version,a,v,c,owned) \
+    opengpu_native_shader_validate_words(code,count,bytes,capacity,stage,version,a,v,c,true,owned,false)
+    assert(NATIVE(p,2,15u*512,128,0,1,1,1,0,true));
+    assert(!NATIVE(p,2,15u*512-1,128,0,1,1,1,0,true));
+    assert(!NATIVE(p,2,15u*512,0,0,1,1,1,0,true));
+    assert(!NATIVE(p,2,15u*512,256,0,1,1,1,0,true));
+    assert(!NATIVE(p,2,15u*512,128,0,0,1,1,0,true));
+    assert(!NATIVE(p,2,15u*512,128,0,3,1,1,0,true));
+    assert(!NATIVE(p,2,15u*512,128,0,1,17,1,0,true));
+    assert(!NATIVE(p,2,15u*512,128,0,1,1,17,0,true));
+    assert(!NATIVE(p,2,15u*512,128,0,1,1,1,1,true));
+    assert(!NATIVE(p,2,100000,128,1,1,1,1,1,true));
+    assert(!NATIVE(p,2,100000,128,1,6,0,1,1,true));
+    assert(!NATIVE(p,2,100000,128,1,1,0,1,5,true));
+    assert(!NATIVE(p,2,100000,128,2,1,0,1,1,true));
+    p[0]=0x0330000fu;assert(NATIVE(p,2,15u*512,128,0,1,1,1,0,false));
+    for (unsigned bit=7;bit<32;bit++) {
+        p[0]=0x0330000fu^(1u<<bit);assert(!NATIVE(p,2,15u*512,128,0,1,1,1,0,false));
+    }
+    p[0]=0x0000000bu;assert(!NATIVE(p,2,15u*512,128,0,1,1,1,0,true));
+    for(unsigned i=0;i<513;i++)p[i]=addi(0,0,0);
+    p[511]=OPENGPU_SHADER_CEASE;assert(NATIVE(p,512,15u*512,128,0,1,1,1,0,true));
+    assert(!NATIVE(p,513,15u*512,128,0,1,1,1,0,true));
+#undef NATIVE
+}
+
 static bool shared_valid(const uint32_t *words,unsigned n,unsigned items,
                          uint32_t base,uint32_t bytes,unsigned lanes)
 {
@@ -896,6 +956,7 @@ static void test_texture_gather_admission(void)
 
 int main(void)
 {
+    test_native_uniform_admission();
     test_compute_shared_admission();
     test_compute_uniform_admission();
     test_resource_texture_operands();
