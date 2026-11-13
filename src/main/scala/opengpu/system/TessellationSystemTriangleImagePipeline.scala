@@ -32,14 +32,16 @@ class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:Ver
     g:GraphicsConfig=GraphicsConfig(),viewport:Fp32ViewportConfig=Fp32ViewportConfig(),engines:Int=2,
     pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
-    payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false) extends Module {
+    payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false,externalImages:Boolean=false) extends Module {
   require(engines>=1 && engines<=4 && p.varyings==f.varyings && f.colors==4)
   payload.foreach(q=>require(payloadOwner>=0 && payloadOwner+engines<q.owners))
   private val sharedConfig=shared;private val payloadConfig=payload
   private val idWidth=shared.taskIdWidth;private val cus=shared.numComputeUnits
   private val binSlots=VertexBinPipeline.binTransactions(engines,writeCredits,pagedCapacity)
   val memoryTransactions=TessellationSystemTriangleImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity)
+  private val replaySharedConfig=shared
   val io=IO(new Bundle {
+    val images=if(externalImages)Some(Flipped(Vec(engines,new TypedReplayTileImagePipelineIO(config,p,replaySharedConfig,payloadConfig))))else None
     val begin=Flipped(Decoupled(new TypedVertexBinImageDescriptor))
     val task=Flipped(Decoupled(new TessellationSystemTriangleBinTask(config,p,idWidth)))
     val taskCompletion=Decoupled(new TessellationSystemTriangleBinTaskCompletion)
@@ -67,13 +69,14 @@ class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:Ver
   private val source=Module(new TessellationSystemTriangleBinPass(config,p,idWidth,cus,g,viewport,engines,pageBytes,writeCredits,
     tileSlots,pagedCapacity,useSramBlackBoxes,rendererCredits=true,transformFeedback=transformFeedback))
   val recordBytes=source.recordBytes
-  private val images=Seq.tabulate(engines)(e=>Module(new TypedReplayTileImagePipeline(config,p,f,shared,g,storage,
-    engine=e,useSramBlackBoxes=useSramBlackBoxes,payload=payload,payloadOwner=payloadOwner+e)))
+  private val images:Seq[TypedReplayTileImagePipelineIO]=if(externalImages)io.images.get.toSeq else
+    Seq.tabulate(engines)(e=>Module(new TypedReplayTileImagePipeline(config,p,f,shared,g,storage,
+      engine=e,useSramBlackBoxes=useSramBlackBoxes,payload=payload,payloadOwner=payloadOwner+e)).io)
   for(phase<-0 until 6)io.fragmentEvents.phaseWorkers(phase):=
-    images.map(_.io.fragmentEvents.phaseWorkers(phase)).reduce(_+&_)
-  io.fragmentEvents.stagingOutstanding:=images.map(_.io.fragmentEvents.stagingOutstanding).reduce(_+&_)
-  io.fragmentEvents.stagingBlocked:=images.map(_.io.fragmentEvents.stagingBlocked).reduce(_ || _)
-  io.fragmentEvents.outputBlocked:=images.map(_.io.fragmentEvents.outputBlocked).reduce(_ || _)
+    images.map(_.fragmentEvents.phaseWorkers(phase)).reduce(_+&_)
+  io.fragmentEvents.stagingOutstanding:=images.map(_.fragmentEvents.stagingOutstanding).reduce(_+&_)
+  io.fragmentEvents.stagingBlocked:=images.map(_.fragmentEvents.stagingBlocked).reduce(_ || _)
+  io.fragmentEvents.outputBlocked:=images.map(_.fragmentEvents.outputBlocked).reduce(_ || _)
   private val mux=Module(new GeometryFragmentShaderRouter(config,cus,idWidth,payload,tessellationAvailable=true))
   private val router=Module(new SharedShaderTaskRouter(config,cus,engines,idWidth,shaderPayload=payload))
   source.io.shared<>mux.io.geometry
@@ -114,7 +117,7 @@ class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:Ver
   private val externalCancel=io.cancel || io.feedback.map(_.cancel).getOrElse(false.B) || io.payload.map(v=>VecInit(v.map(_.cancel)).asUInt.orR).getOrElse(false.B)
   private val sourceFailure=(source.io.completion.valid && source.io.completion.bits.status=/=0.U) ||
     (source.io.taskCompletion.valid && source.io.taskCompletion.bits.status=/=0.U)
-  private val imageFailure=images.map(i=>i.io.completion.valid && i.io.completion.bits.status=/=0.U).reduce(_ || _)
+  private val imageFailure=images.map(i=>i.completion.valid && i.completion.bits.status=/=0.U).reduce(_ || _)
   private val stop=status=/=0.U || externalCancel || sourceFailure || imageFailure
   private val running=phase===State.run || phase===State.closing
   private val active=phase=/=State.idle && phase=/=State.complete
@@ -129,7 +132,7 @@ class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:Ver
   private val tileCode=Mux(source.io.tileDone.bits.recordStatus=/=0.U,source.io.tileDone.bits.recordStatus,source.io.tileDone.bits.bins.status)
   private val childPrimary=(source.io.completion.fire && primary(source.io.completion.bits.status)) ||
     (source.io.taskCompletion.valid && primary(source.io.taskCompletion.bits.status)) ||
-    (source.io.tileDone.fire && !stop && primary(tileCode)) || images.map(i=>i.io.completion.fire && primary(i.io.completion.bits.status)).reduce(_ || _)
+    (source.io.tileDone.fire && !stop && primary(tileCode)) || images.map(i=>i.completion.fire && primary(i.completion.bits.status)).reduce(_ || _)
   private val tileSize=1.U(17.W)<<descriptor.bins.producer.tileLog2
   private def fail(code:UInt,stage:Int,tileValid:Bool=false.B,which:UInt=0.U):Unit=
     when(status===0.U && !externalCancel){status:=code;faultStage:=stage.U;faultTileValid:=tileValid;faultTile:=which}
@@ -186,9 +189,9 @@ class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:Ver
   private def tieInputs(d:Data):Unit=d match {
     case r:Record=>r.elements.values.foreach(tieInputs)
     case v:Vec[_]=>v.foreach(tieInputs)
-    case b:Bool if DataMirror.directionOf(b)==ActualDirection.Input=>b:=false.B
-    case s:SInt if DataMirror.directionOf(s)==ActualDirection.Input=>s:=0.S
-    case u:UInt if DataMirror.directionOf(u)==ActualDirection.Input=>u:=0.U
+    case b:Bool if DataMirror.directionOf(b)==(if(externalImages)ActualDirection.Output else ActualDirection.Input)=>b:=false.B
+    case s:SInt if DataMirror.directionOf(s)==(if(externalImages)ActualDirection.Output else ActualDirection.Input)=>s:=0.S
+    case u:UInt if DataMirror.directionOf(u)==(if(externalImages)ActualDirection.Output else ActualDirection.Input)=>u:=0.U
     case _=>()
   }
   payload.foreach{_=>
@@ -224,27 +227,27 @@ class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:Ver
       binResult(e):=source.io.tileDone.bits;haveBin(e):=true.B
       when(!stop && binCode=/=0.U && binCode=/=4.U){failChild(binCode,2,true.B,source.io.tileDone.bits.bins.tile)}
     }
-    image.io.begin.valid:=imageOffered(e);image.io.begin.bits:=imageBinding(e)
-    when(image.io.begin.fire){imageOffered(e):=false.B;imageStarted(e):=true.B}
-    image.io.in.valid:=running && owned(e) && imageStarted(e) && !imageDone(e) && source.io.out(e).valid && !stop
-    image.io.in.bits:=source.io.out(e).bits
-    source.io.out(e).ready:=running && (stop || (owned(e) && imageStarted(e) && !imageDone(e) && image.io.in.ready))
-    when(image.io.in.fire){assert(image.io.in.bits.source.tile===tile(e),"image consumed another tile's record")}
-    image.io.end.valid:=owned(e) && haveBin(e) && imageStarted(e) && !endSent(e) && !stop && image.io.end.ready
-    image.io.end.bits:=true.B;when(image.io.end.fire){endSent(e):=true.B}
-    image.io.cancel:=imageStarted(e) && stop
-    io.primitiveDone(e)<>image.io.primitiveDone;io.out(e)<>image.io.out
-    image.io.completion.ready:=imageStarted(e) && !imageDone(e)
-    when(image.io.completion.fire){imageDone(e):=true.B;imageResult(e):=image.io.completion.bits
-      when(image.io.completion.bits.status=/=0.U){failChild(image.io.completion.bits.status,3,true.B,tile(e))}}
-    router.io.clients(e)<>image.io.shared
+    image.begin.valid:=imageOffered(e);image.begin.bits:=imageBinding(e)
+    when(image.begin.fire){imageOffered(e):=false.B;imageStarted(e):=true.B}
+    image.in.valid:=running && owned(e) && imageStarted(e) && !imageDone(e) && source.io.out(e).valid && !stop
+    image.in.bits:=source.io.out(e).bits
+    source.io.out(e).ready:=running && (stop || (owned(e) && imageStarted(e) && !imageDone(e) && image.in.ready))
+    when(image.in.fire){assert(image.in.bits.source.tile===tile(e),"image consumed another tile's record")}
+    image.end.valid:=owned(e) && haveBin(e) && imageStarted(e) && !endSent(e) && !stop && image.end.ready
+    image.end.bits:=true.B;when(image.end.fire){endSent(e):=true.B}
+    image.cancel:=imageStarted(e) && stop
+    io.primitiveDone(e)<>image.primitiveDone;io.out(e)<>image.out
+    image.completion.ready:=imageStarted(e) && !imageDone(e)
+    when(image.completion.fire){imageDone(e):=true.B;imageResult(e):=image.completion.bits
+      when(image.completion.bits.status=/=0.U){failChild(image.completion.bits.status,3,true.B,tile(e))}}
+    router.io.clients(e)<>image.shared
     payload.foreach{_=>
-      tieInputs(image.io.payload.get(0));io.payload.get(e+1)<>image.io.payload.get(1)
-      image.io.payload.get(1).context:=contexts(e+1);image.io.payload.get(1).cancel:=imageStarted(e) && io.payload.get(e+1).cancel
-      router.io.clientPayload.get(e):=image.io.poolPayload.get
-      for(i<-0 until 4)io.payloadPins.get(4+2*engines+e*4+i):=image.io.payloadPins.get(i)
+      tieInputs(image.payload.get(0));io.payload.get(e+1)<>image.payload.get(1)
+      image.payload.get(1).context:=contexts(e+1);image.payload.get(1).cancel:=imageStarted(e) && io.payload.get(e+1).cancel
+      router.io.clientPayload.get(e):=image.poolPayload.get
+      for(i<-0 until 4)io.payloadPins.get(4+2*engines+e*4+i):=image.payloadPins.get(i)
     }
-    queue.io.enq.valid:=owned(e) && haveBin(e) && !imageOffered(e) && (!imageStarted(e) || (imageDone(e) && !image.io.busy))
+    queue.io.enq.valid:=owned(e) && haveBin(e) && !imageOffered(e) && (!imageStarted(e) || (imageDone(e) && !image.busy))
     queue.io.enq.bits:=0.U.asTypeOf(queue.io.enq.bits);queue.io.enq.bits.engine:=e.U
     queue.io.enq.bits.source:=binResult(e);queue.io.enq.bits.renderStarted:=imageStarted(e);queue.io.enq.bits.image:=imageResult(e)
     queue.io.enq.bits.status:=Mux(binResult(e).recordStatus=/=0.U,binResult(e).recordStatus,
@@ -265,12 +268,12 @@ class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:Ver
   source.io.memoryResponse.bits:=io.memoryResponse.bits
   private val imageReplies=Wire(Vec(engines,Bool()))
   for((image,e)<-images.zipWithIndex){val base=binSlots+32*e;val port=arbiter.io.in(e+1)
-    port.valid:=image.io.memoryRequest.valid;port.bits:=image.io.memoryRequest.bits
-    port.bits.transactionId:=image.io.memoryRequest.bits.transactionId+&base.U;image.io.memoryRequest.ready:=port.ready
+    port.valid:=image.memoryRequest.valid;port.bits:=image.memoryRequest.bits
+    port.bits.transactionId:=image.memoryRequest.bits.transactionId+&base.U;image.memoryRequest.ready:=port.ready
     val selected=io.memoryResponse.bits.transactionId>=base.U && io.memoryResponse.bits.transactionId<(base+32).U
-    image.io.memoryResponse.valid:=io.memoryResponse.valid && selected;image.io.memoryResponse.bits:=io.memoryResponse.bits
-    image.io.memoryResponse.bits.transactionId:=io.memoryResponse.bits.transactionId-base.U
-    imageReplies(e):=selected && image.io.memoryResponse.ready
+    image.memoryResponse.valid:=io.memoryResponse.valid && selected;image.memoryResponse.bits:=io.memoryResponse.bits
+    image.memoryResponse.bits.transactionId:=io.memoryResponse.bits.transactionId-base.U
+    imageReplies(e):=selected && image.memoryResponse.ready
   }
   requests.io.enq<>arbiter.io.out;io.memoryRequest<>requests.io.deq
   io.memoryResponse.ready:=Mux(io.memoryResponse.bits.transactionId<binSlots.U,source.io.memoryResponse.ready,imageReplies.asUInt.orR)
@@ -278,7 +281,7 @@ class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:Ver
   inFlight:=inFlight+io.memoryRequest.fire.asUInt-io.memoryResponse.fire.asUInt
   when(io.memoryResponse.fire){assert(inFlight.orR || io.memoryRequest.fire,"unowned triangle bin image response")}
   private val drained= !sourceOffered && (!sourceStarted || (sourceDone && !source.io.busy)) && !owned.asUInt.orR &&
-    !imageOffered.asUInt.orR && !images.map(_.io.busy).reduce(_ || _) && tileQueues.map(q=> !q.io.deq.valid).reduce(_ && _) &&
+    !imageOffered.asUInt.orR && !images.map(_.busy).reduce(_ || _) && tileQueues.map(q=> !q.io.deq.valid).reduce(_ && _) &&
     !localTaskValid && mux.io.drained && router.io.drained && inFlight===0.U && requests.io.count===0.U
   when(active && externalCancel && status===0.U && !childPrimary){status:=4.U;faultStage:=0.U;faultTileValid:=false.B}
   switch(phase){
