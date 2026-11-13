@@ -135,6 +135,10 @@ The real Gallium callbacks also feed the native-word oracle through their
 exported source records. Checks include transferred-reference rejection/rebind,
 binding 35's shuffled logical slot, copied default data after caller reuse,
 fresh default GEM replacement and exact teardown reference recovery.
+Original source data mixes binding and word index without XOR cancellation.
+Qualification asserts a nonzero combined VS/FS color, sensitivity to each of
+52 original endpoints and a swapped binding, and distinct binding/default
+rebind results. A zero clear or an omitted shader cannot match that result.
 Additional checks read the exact uploaded code GEMs, reject missing VS varying
 definitions, recover partial code allocation and execute a re-emitted FS with a
 larger common varying prefix. Published ABI JSON independently decodes actual
@@ -150,6 +154,22 @@ uploaded words pass native admission and the independent 17-invocation CPU
 oracle across all 128 item/guard positions, including the 64-bit mask's high
 components and the larger SoA prefixes. This supplements the actual linked
 one-attribute ESSL fixture; it is not complete API or RTL qualification.
+
+`scripts/native_graphics_uniform_oracle.py` independently reads OGMEM001 and
+computes the original GLSL hash from global bindings, without consulting native
+remapping, instructions or private snapshot bytes. It checks every RGBA32UI
+pixel plus original-color-GEM prefix/suffix/row padding and, with `--previous`,
+prior-record output allocations. Its parser/negative/guard self-test passes;
+actual protected-owner host output remains unqualified.
+The temporary `--source` JSON has `version:1`, `width`, `height`, `color` and
+two `stages`. Each stage supplies `defaults` and twelve `blocks`; every source
+contains `handle`, `allocation_bytes`, `offset`, `bytes`, `first` and `last`,
+and each block adds its original global `binding`. Sources are observed after
+their producer completes and before the corresponding real snapshot copy.
+The color record contains the original GEM `handle`, actual allocation-lookup
+`physical_base`, `allocation_bytes`, `offset`, `bytes` and `row_pitch`. Optional
+`preserve` entries give prior GEM handles and physical allocations. No user VA
+or reconstructed private allocation may substitute for the actual lookup.
 
 Native validator C coverage checks every input/output/tail slice across full
 and empty runtime layouts, VS versions 1/2, FS versions 1–5, capability guards,
@@ -178,6 +198,15 @@ export OPENGPU_DRM_INCLUDE=/path/to/drm-headers
 python3 scripts/test_gallium_graphics_uniforms.py --build .artifacts/graphics-uniform-active --sanitize
 python3 scripts/test_driver.py
 python3 scripts/test_test_selection.py
+python3 scripts/native_graphics_uniform_oracle.py --self-test
+```
+
+For future actual owner execution, use the initial union memory and each real
+executor output, with source inputs captured at that record's snapshot:
+
+```sh
+python3 scripts/native_graphics_uniform_oracle.py --initial .artifacts/active/union.memory --final .artifacts/active/record-0.memory --source .artifacts/active/source-0.json
+python3 scripts/native_graphics_uniform_oracle.py --initial .artifacts/active/union.memory --final .artifacts/active/record-1.memory --previous .artifacts/active/record-0.memory --source .artifacts/active/source-1.json
 ```
 
 Delete private builds, captures, caches, logs and the temporary directory after
