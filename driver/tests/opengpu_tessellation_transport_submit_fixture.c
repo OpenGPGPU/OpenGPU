@@ -47,6 +47,10 @@ static int opengpu_mmu_verify_code_snapshot_locked(struct opengpu_device *g,
 {
     return opengpu_mmu_verify_snapshot_locked(g, vm, va, pa, size);
 }
+/* This focused writer fixture has no MMU owner. The complete lease-aware gate
+ * is exercised separately by test_snapshot_submission and native_submit. */
+static int opengpu_hw_snapshot_submission_lock(struct opengpu_device *gpu)
+{mutex_lock(&gpu->hw.submit_lock);return 0;}
 #include "tessellation_under_test.inc"
 
 static void put(unsigned char *p, unsigned word, u32 value)
