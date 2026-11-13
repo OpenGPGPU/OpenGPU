@@ -122,12 +122,13 @@ struct opengpu_device { struct {
     struct { struct opengpu_native_completion native; bool native_valid; struct opengpu_tessellation_completion tessellation; bool tessellation_valid; int error; u32 flags,status; } last_fault;
     struct opengpu_compute_local_limits compute_local_limits;
     struct opengpu_compute_shared_limits compute_shared_limits;
-} hw; u32 regs[512],captured[8],active_root; unsigned kicks,pops,uniform_writes,invalidations; };
-enum { OPENGPU_SCHED_COMPUTE=1,OPENGPU_SCHED_TESSELLATION=7 };
+} hw;struct {int admission_lock;} compute; u32 regs[512],captured[8],active_root; unsigned kicks,pops,uniform_writes,invalidations; };
+enum { OPENGPU_SCHED_COMPUTE=1,OPENGPU_SCHED_TESSELLATION=7,OPENGPU_SCHED_NATIVE_BINNED=8 };
 struct opengpu_job_temporary_mapping { u64 va; size_t size; };
 struct opengpu_sched_job {
     struct drm_sched_job base; struct opengpu_device *gpu; const struct opengpu_vm *vm;
     struct opengpu_render_context *context; int type;
+    void *native_owner;u32 native_job_segment;
     struct opengpu_buffer shader,texture_records,storage_records,image_records,counter_records,uniform_snapshot,indirect_snapshot;
     struct opengpu_resource_binding counter_source;
     struct opengpu_buffer depth,vertex_shader,render_desc,commands;
@@ -255,6 +256,14 @@ static int opengpu_mmu_vm_unmap(struct opengpu_device *g,struct opengpu_vm *v,u6
 ;
 static void opengpu_tessellation_job_release(struct opengpu_sched_job *j) { (void)j;assert(0); }
 static struct opengpu_sched_job *opengpu_sched_job_from_base(struct drm_sched_job *b) { return (struct opengpu_sched_job *)b; }
+static int opengpu_private_snapshot_retire(void *owner){(void)owner;assert(0);return -EINVAL;}
+int opengpu_admission_job_prepare(struct opengpu_sched_job *j){(void)j;return 0;}
+void opengpu_admission_job_abort(struct opengpu_sched_job *j){(void)j;}
+void opengpu_admission_job_armed(struct opengpu_sched_job *j){(void)j;}
+void opengpu_admission_job_retired(struct opengpu_sched_job *j){(void)j;}
+static int opengpu_hw_native_binned_async(struct opengpu_device *g,void *o,
+    const struct opengpu_render_context *c,u32 segment,struct dma_fence **f)
+{(void)g;(void)o;(void)c;(void)segment;(void)f;assert(0);return -EINVAL;}
 #include "uniform_retire.inc"
 static int opengpu_mmu_vm_map(struct opengpu_device *g,struct opengpu_vm *v,u64 a,u64 p,size_t z,u32 policy)
 ;

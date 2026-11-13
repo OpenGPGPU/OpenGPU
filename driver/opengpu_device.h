@@ -3,6 +3,7 @@
 #define OPENGPU_DEVICE_H
 
 #include <linux/device.h>
+#include <linux/atomic.h>
 #include <linux/dma-fence.h>
 #include <linux/dma-mapping.h>
 #include <linux/ioport.h>
@@ -173,6 +174,10 @@ struct opengpu_compute {
     struct opengpu_buffer shader;
     struct opengpu_buffer kernarg;
     struct drm_gpu_scheduler scheduler;
+    struct mutex admission_lock;
+    atomic64_t ordinary_pending;
+    u64 admission_context, admission_seqno;
+    struct dma_fence *admission_tail,*execution_tail;
 };
 
 struct opengpu_display {
@@ -597,6 +602,7 @@ void opengpu_compute_drm_postclose(struct drm_device *drm,
                                    struct drm_file *file);
 int opengpu_compute_context_create_ioctl(struct drm_device *drm, void *data,
                                          struct drm_file *file);
+int opengpu_native_binned_ioctl(struct drm_device *drm, void *data, struct drm_file *file);
 int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
                                     struct drm_file *file);
 int opengpu_compute_get_fault_ioctl(struct drm_device *drm, void *data,
