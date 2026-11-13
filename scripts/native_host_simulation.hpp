@@ -9,6 +9,8 @@ class Simulation {
 public:
   VerilatedContext context;
   std::unique_ptr<VGpuHostSystemAxi> model;
+  // Driver-observed rising edges, including reset and control transactions.
+  uint64_t clock_cycles = 0;
   Simulation(int argc, char **argv) {
     context.commandArgs(argc, argv);
     model = std::make_unique<VGpuHostSystemAxi>(&context);
@@ -109,6 +111,7 @@ private:
   void advance_settled() {
     context.timeInc(5);
     model->io_s_axi_aclk = 1; settle(); context.timeInc(5);
+    ++clock_cycles;
     model->io_s_axi_aclk = 0; settle();
     require(!context.gotFinish(), "RTL simulation stopped before qualification completed");
   }
