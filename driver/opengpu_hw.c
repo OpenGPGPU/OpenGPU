@@ -685,6 +685,10 @@ int opengpu_hw_init(struct opengpu_device *gpu, struct platform_device *pdev)
                  opengpu_shader_resource_lanes(cfg), opengpu_shader_resource_warps(cfg),
                  opengpu_shader_resource_banks(cfg), opengpu_shader_resource_cus(cfg));
     }
+    if (!opengpu_native_source_shader_config_valid(&gpu->hw.native_sources,
+            gpu->hw.capabilities, gpu->hw.shader_config))
+        return dev_err_probe(gpu->dev, -EINVAL,
+                             "native and shader resource descriptions disagree\n");
     dev_info(gpu->dev,
              "GPU ABI device=0x%08x version=0x%04x capabilities=0x%08x\n",
              id, id & 0xffff, gpu->hw.capabilities);
