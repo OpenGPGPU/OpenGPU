@@ -35,8 +35,10 @@ sbt -J-Xmx2G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
 Full-capacity host execution and independent stored-image verification are
 required before this becomes a native extent qualification. Actual 2048-axis
 viewport/scissor execution, format/sample
-combinations, whole-host clock, 720p frame rates and H6 acceptance remain open.
-Keep generated inputs, snapshots, logs and intermediate reports in `.artifacts/`.
+combinations, whole-host clock, the two-CU VGA frame-rate target and H6 acceptance
+remain open. Generated inputs, snapshots, logs and intermediate reports under
+`.artifacts/` are temporary; delete them when their active use ends, without
+waiting for PR merge. Keep concise results and reproduction commands.
 The API-extent compiled driver uses the same best-effort
 [`progress.json` reporting](COMPILED_NATIVE_PRODUCT_QUALIFICATION.md) as the
 six-scene runner; a reported scene is not an image-oracle result.

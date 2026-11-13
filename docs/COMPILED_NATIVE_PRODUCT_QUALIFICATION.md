@@ -2,6 +2,11 @@
 
 This explicit local runner executes the same full-profile native host, six input recipes and independent stored-image oracle as `QualifyNativeProductRecipes`. The C++ driver services external AXI transactions inside the Verilator process. Rasterization, shaders, texture sampling, depth/stencil, blending, stores and resolves execute in the generated RTL.
 
+Four-CU runs are optional extended qualifications. The mandatory alignment
+target is two CUs at 640×480 and 60 FPS; it requires a separately checked
+two-CU configuration, complete frames and matching whole-host physical timing.
+The four-CU results below cannot qualify that target.
+
 The hardware profile retains four CUs, sixteen lanes, eight resident warps, four native fragment workers, the original storage capacities, characterized SRAM models and a 256-bit AXI port. Smoke mode renders 32×32 scenes; it does not reduce execution or storage capacities. Product mode renders 1280×720 and explicitly sets `opengpu.productQualification=1` when invoking Scala. Both modes require all six scenes. Neither the RTL build nor these simulations belongs in regular PR/nightly CI.
 
 ## Reproduce
@@ -20,7 +25,7 @@ python3 scripts/qualify_native_product_compiled.py --product \
   --output "$PWD/.artifacts/native-compiled-product" --jobs 2
 ```
 
-`--stage prepare|build|run|verify` operates one stage. Preserve source and output bytes while a stage is live. If a stage fails, inspect its actual exit and log before retrying. An observation timeout does not terminate a build or simulation. The build cache is bound to emitted RTL, hardware profile, driver inputs, compiler/tool versions, flags and executable hash. Preparation, execution and verification reject stale source/model/fixture/output bytes. Raw outputs remain local under `.artifacts/`.
+`--stage prepare|build|run|verify` operates one stage. Preserve source and output bytes while a stage is live. If a stage fails, inspect its actual exit and log before retrying. An observation timeout does not terminate a build or simulation. The build cache is bound to emitted RTL, hardware profile, driver inputs, compiler/tool versions, flags and executable hash. Preparation, execution and verification reject stale source/model/fixture/output bytes. Raw outputs under `.artifacts/` are temporary: delete them when active validation or diagnosis no longer needs them, without waiting for PR merge. Keep concise final results and reproduction commands rather than evidence archives.
 
 Both compiled product and API runners explicitly add generated assertion bind
 layers omitted from CIRCT's `filelist.f`, including their parent include
