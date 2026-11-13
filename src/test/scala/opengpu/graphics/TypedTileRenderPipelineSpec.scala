@@ -10,8 +10,8 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-private class TypedTileRenderHarness(local: Boolean=true,oneSlot: Boolean=false) extends Module {
-  val cfg=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
+private class TypedTileRenderHarness(local: Boolean=true,oneSlot: Boolean=false,nativeAdvanced: Boolean=false) extends Module {
+  val nativeAdvancedEnabled=nativeAdvanced;val cfg=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
   val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2);val f=FragmentShaderConfig(2,4)
   val payload=ShaderPayloadConfig(capacityBytes=if(oneSlot)1024 else 4096,maxPayloadBytes=1024,owners=2,ports=4)
   private val slots=GpuSystem.totalMemoryTransactions(2,4,8)
@@ -31,7 +31,10 @@ private class TypedTileRenderHarness(local: Boolean=true,oneSlot: Boolean=false)
     val launchOffered=Output(Bool());val launchClient=Output(UInt(8.W));val launched=Output(Bool())
     val globalStaging=Output(UInt(2.W));val leases=Output(UInt(2.W));val queuedPins=Output(UInt(4.W));val releasedVertex=Output(Bool())
   })
-  private val stage=Module(new TypedTileRenderPipeline(cfg,p,f,SharedCuShaderConfig(2),g=GraphicsConfig(screenWidth=8,screenHeight=8),payload=if(local)Some(payload)else None))
+  private val storage=if(nativeAdvanced)TypedTileColorConfig(parallelLanes=true,parallelDepth=true,nativeSamples=true,
+    streamingWordPorts=8,advancedBlend=true,nativeAdvancedDraws=true)else TypedTileColorConfig()
+  private val stage=Module(new TypedTileRenderPipeline(cfg,p,f,SharedCuShaderConfig(2),g=GraphicsConfig(screenWidth=8,screenHeight=8),
+    storage=storage,payload=if(local)Some(payload)else None))
   private val system=Module(new GpuSystem(cfg,numComputeUnits=2,enableGraphicsKernels=true,
     graphicsHostTransactions=8,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
     shaderPayload=if(local)Some(payload)else None,producerPayloadPins=if(local)4 else 0))
@@ -159,10 +162,11 @@ class TypedTileRenderPipelineSpec extends AnyFlatSpec {
     val view=View(0,0,4,4,Fp32ViewportReference.fp(0.75),Fp32ViewportReference.fp(0.25))
     var settings=TriangleRasterReference.Settings(width=4,height=4,maxX=4,maxY=4)
     var expected=Vector.empty[FragmentExpected]
-    val names=Vector("RGBA8","RGBA32UI","RGBA8I","RGBA16F");val offsets=Vector(4096,8192,16384,20480)
+    var names=Vector("RGBA8","RGBA32UI","RGBA8I","RGBA16F");val offsets=Vector(4096,8192,16384,20480)
     val initial=mutable.Map.empty[Int,Int];val model=mutable.Map.empty[Int,Int];val changed=mutable.Set.empty[Int]
     var ordinal=0;var func=1;var depthWrite=true;var depthEnable=true;var frontFunction=6;var backFunction=6
     var blendState=TypedBlendReference.State(enable=false);var control=61;var overrideDepth=fp(0.125);var passing=0;var rejected=0
+    var advancedEquation: Option[Int]=None
     def defaultWord(a: Int): BigInt=(0 until 8).foldLeft(BigInt(0))((v,b)=>v|(BigInt(initial.getOrElse(a*8+b,0))<<(8*b)))
     def get(a: Int,n: Int): BigInt=(0 until n).foldLeft(BigInt(0))((v,b)=>v|(BigInt(model.getOrElse(a+b,initial.getOrElse(a+b,0)))<<(8*b)))
     def store(a: Int,n: Int,v: BigInt): Unit={for(b<-0 until n)model(a+b)=((v>>(8*b))&255).toInt;for(w<-a/8 to(a+n-1)/8)changed+=w}
@@ -196,6 +200,7 @@ class TypedTileRenderPipelineSpec extends AnyFlatSpec {
       if(d.io.refill.valid.peek().litToBoolean && d.io.refill.ready.peek().litToBoolean){assert(fill.isEmpty)
         refills+=1;fill=Some(Fill(defaultWord(d.io.refill.bits.address.peek().litValue.toInt),cycle+7,refillFault))}
       d.clock.step();cycle+=1
+      if(d.nativeAdvancedEnabled && cycle%4096==0) println(s"NATIVE_ADVANCED_RENDER_PROGRESS cycle=$cycle outputs=$accepted requests=$requests launches=$vertexLaunches/$fragmentLaunches drawReady=${d.io.draw.ready.peek().litToBoolean} outValid=${d.io.out.valid.peek().litToBoolean} completion=${d.io.completion.valid.peek().litToBoolean} refill=$refills")
     }
     def until(condition: => Boolean): Unit={var n=0;while(!condition && n<1000000){tick();n+=1}
       assert(condition,s"typed tile render stalled cycle=$cycle outputs=$accepted requests=$requests launches=$vertexLaunches/$fragmentLaunches")}
@@ -218,6 +223,7 @@ class TypedTileRenderPipelineSpec extends AnyFlatSpec {
       until(d.io.draw.ready.peek().litToBoolean)
     }
     def descriptor(depthFunction: Int=1,write: Boolean=true,enabled: Boolean=true,front: Int=6,back: Int=6,ctrl: Int=61,blended: Boolean=false): Unit={
+      advancedEquation=None
       accepted=0;held=None;expected=fragmentReference(view,settings);func=depthFunction;depthWrite=write;depthEnable=enabled;frontFunction=front;backFunction=back;control=ctrl
       val all=d.io.draw.bits;zero(all);all.version.poke(1.U);blendState=TypedBlendReference.State(enable=blended);TypedBlendReference.poke(all.blend,blendState);val packet=all.shaders;packet.version.poke(1.U)
       val tests=all.tests;tests.version.poke(1.U);tests.depthEnable.poke(enabled.B);tests.depthWrite.poke(write.B);tests.depthFunction.poke(func.U);tests.stencilEnable.poke(true.B)
@@ -267,7 +273,11 @@ class TypedTileRenderPipelineSpec extends AnyFlatSpec {
           if(next!=old || (pass && depthEnable && depthWrite))store(a,4,next)
           if(pass){passed+=1
             for(c<-names.indices if (control&(1<<(c+2)))!=0){val f=format(names(c));val address=offsets(c)+index*f.bytes
-              val values=TypedBlendReference.blend(names(c),colors(c),get(address,f.bytes),blendState)
+              val values=if(c==0 && advancedEquation.nonEmpty){
+                val source=colors(c).map(TypedBlendReference.clamp).map(x=>TypedColorReference.value(x).toFloat)
+                val destination=TypedBlendReference.decode(names(c),get(address,f.bytes)).map(x=>TypedColorReference.value(x).toFloat)
+                TypedAdvancedColorBlendReference.expected(source,destination,advancedEquation.get).toVector
+              }else TypedBlendReference.blend(names(c),colors(c),get(address,f.bytes),blendState)
               store(address,f.bytes,encode(names(c),values)._1)}
           }
         }
@@ -302,6 +312,50 @@ class TypedTileRenderPipelineSpec extends AnyFlatSpec {
     }
   }
 
+  it should "execute native advanced draw payloads through actual shared CUs and reject invalid state before any shader launch" in {
+    simulate(new TypedTileRenderHarness(nativeAdvanced=true)){d=>val t=new Driver(d)
+      def advanced(): Unit={
+        t.advancedEquation=Some(0);zero(d.io.draw.bits.blend);d.io.draw.bits.version.poke(3.U)
+        d.io.draw.bits.blend.version.poke(3.U)
+        for(c<-0 until 4)d.io.draw.bits.blend.buffers(c).poke(((BigInt(15)<<23)|
+          (if(c==0)(BigInt(1)<<27)|1 else BigInt(0))).U)
+      }
+      t.begin(2)
+      for(isAdvanced<-Seq(false,true,false)){
+        t.descriptor(enabled=false);if(isAdvanced)advanced()
+        if(isAdvanced)t.holdAt=Some(0)
+        val before=t.cycle;t.submit();zero(d.io.draw.bits.blend);d.io.draw.bits.version.poke(1.U)
+        if(isAdvanced){
+          t.until(d.io.out.valid.peek().litToBoolean)
+          val held=d.io.out.bits.peek().litValue
+          for(_<-0 until 7){t.tick();assert(d.io.out.bits.peek().litValue==held);d.io.completion.valid.expect(false.B)}
+          t.holdAt=None
+        }
+        t.finish();t.verify()
+        info(s"NATIVE_ADVANCED_RENDER advanced=$isAdvanced samples=4 exactStoredWords=true cycles=${t.cycle-before}")
+      }
+      assert(t.vertexLaunches>0 && t.fragmentLaunches>0);t.end()
+      val launches=(t.vertexLaunches,t.fragmentLaunches)
+      for(kind<-0 until 5){
+        t.names=if(kind==4)Vector("RGBA32UI","RGBA32UI","RGBA8I","RGBA16F")else Vector("RGBA8","RGBA32UI","RGBA8I","RGBA16F")
+        t.begin(2);t.descriptor(enabled=false);advanced()
+        kind match{
+          case 0=>d.io.draw.bits.version.poke(1.U)
+          case 1=>d.io.draw.bits.version.poke(2.U)
+          case 2=>d.io.draw.bits.blend.version.poke(2.U)
+          case 3=>d.io.draw.bits.blend.buffers(0).poke(((BigInt(15)<<28)|(BigInt(1)<<27)|1).U)
+          case _=>()
+        }
+        t.submit();t.finish(1,1)
+        assert((t.vertexLaunches,t.fragmentLaunches)==launches && t.accepted==0)
+        t.end(1,1,automatic=true)
+      }
+      t.names=Vector("RGBA8","RGBA32UI","RGBA8I","RGBA16F")
+      t.begin(2);t.descriptor(enabled=false);advanced();t.submit();t.finish();t.verify();t.end()
+      assert(t.vertexLaunches>launches._1 && t.fragmentLaunches>launches._2)
+      info("NATIVE_ADVANCED_RENDER CUs=2 samples=4 ordinaryAdvancedOrdinary=true acceptedSnapshot=true heldResult=true actualStoredDestination=true invalidIntegerAndVersionsBeforeShader=true healthyReuse=true")
+    }
+  }
   for(local<-Seq(true,false))
   it should s"retain typed MRT and depth stencil across actual shared CU draws and late shader overrides local=$local" in {
     simulate(new TypedTileRenderHarness(local)){d=>val t=new Driver(d);var total=0

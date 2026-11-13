@@ -108,6 +108,19 @@ python3 scripts/test_changed_test_suites.py
 python3 scripts/test_test_selection.py
 ```
 
+The following source filter bounds local fixture compilation; CI discovery and
+coverage are unchanged. The render case uses two actual CUs and an 8x8 bound.
+
+```sh
+sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'set Test / sources := (Test / sources).value.filter(f => Set("GpuSim.scala", "GraphicsTestResolution.scala", "Fp32ViewportStageSpec.scala", "WindowPrimitiveRecordsSpec.scala", "TypedFragmentStateReaderSpec.scala", "NativeTypedGraphicsJobReaderSpec.scala", "NativeAdvancedBlendAbiSpec.scala", "NativeAdvancedBlendCapabilitiesAxiSpec.scala", "ComputeResourceCapabilitiesAxiSpec.scala", "TypedTileRenderPipelineSpec.scala", "PrimitiveClipStageSpec.scala", "Fp32TriangleRasterStageSpec.scala", "Fp32FragmentInterpolatorSpec.scala", "Fp32SampleDepthSpec.scala", "PointLineRasterizerSpec.scala", "TypedColorFormatSpec.scala", "TypedColorBlendSpec.scala", "TypedDepthStencilSpec.scala", "TypedAdvancedColorBlendSpec.scala").contains(f.getName))' \
+  'testOnly opengpu.graphics.NativeAdvancedBlendAbiSpec opengpu.graphics.TypedFragmentStateReaderSpec opengpu.graphics.NativeTypedGraphicsJobReaderSpec' \
+  'testOnly opengpu.system.NativeAdvancedBlendCapabilitiesAxiSpec opengpu.system.ComputeResourceCapabilitiesAxiSpec' \
+  'testOnly opengpu.graphics.TypedTileRenderPipelineSpec -- -z advanced'
+```
+
 The independent C discovery fixture checks old-profile zero-probe behavior,
 the exact eight-word record and all 256 single-bit corruptions. It removes its
 temporary executable when complete. Hardware regression suites use small tile
@@ -117,9 +130,21 @@ native packet admission.
 The GFS C fixture covers all four locations, fifteen equations and 36 attachment
 formats with an independent numeric format-class oracle, plus integer output
 types, shared controls, reserved bits and version pairing. The production
-scheduler/MMU fixture covers all three patch domains and both image-addressing
-modes. Seven malformed/unsupported cases per combination leave enqueue, GPU
-kicks, object/context references and fences unchanged. Twelve valid advanced
-jobs retain copied state and revoke its PTEs on retirement; the complete suite
-passes 71 jobs with the original 128-fence capacity. Empty context page-table
-pages may remain owned by the VM; job allocations and live mappings retire.
+scheduler/MMU C fixture uses a fake device and covers all three patch domains
+and both image-addressing modes. Seven malformed/unsupported cases per
+combination leave enqueue, GPU kicks, object/context references and fences
+unchanged. Twelve accepted advanced C submissions retain copied state and
+revoke its PTEs on retirement; the complete suite passes 71 jobs with the
+original 128-fence capacity. Empty context page-table pages may remain owned
+by the VM; job allocations and live mappings retire.
+
+The local regression passes 42 Scala cases: 41 ABI/reader/MMIO cases and one
+real shared-CU render case. The latter uses two CUs with four lanes and two
+warps, an 8x8 screen bound and a 4x4 tile at 4x sampling. It checks exact final
+typed destination words across ordinary, advanced and ordinary draws, accepted
+state snapshots and held results. Those draws complete in 37,580, 142,956 and
+37,509 clocks respectively. Five malformed version/equation/integer-attachment
+cases launch no new vertex or fragment shader, close automatically, and permit
+a subsequent healthy advanced draw with exact stored results. The existing
+one-million-clock per-wait bound is unchanged. This fixture does not qualify
+the alignment product's CU topology, VGA throughput or a GLES feature set.
