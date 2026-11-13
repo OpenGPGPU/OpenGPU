@@ -270,8 +270,8 @@ struct PtePages {
       [&](const auto &r){return base>=r.start && base+4096<=r.end;}),"PTE page escapes original physical allocation");
     pages.insert(base);page_asids[base].insert(asid);
   }
-  void observe(const Memory &memory,const Capture &capture) {
-    for(const auto &a:capture.trace)if(a.kind==Kind::write &&
+  void observe_tables(const Memory &memory,const std::vector<Action> &trace) {
+    for(const auto &a:trace)if(a.kind==Kind::write &&
         (a.address==GPU_REG_UCMD_VECTOR_SATP || a.address==GPU_REG_UCMD_INSTRUCTION_SATP) && (a.value&GPU_SATP_ENABLE)) {
       satps.insert(a.value);const uint32_t asid=(a.value>>GPU_SATP_ASID_SHIFT)&GPU_SATP_ASID_MASK;
       const uint64_t root=uint64_t(a.value&0x3fffffu)<<12;page(memory,root,asid);
@@ -296,6 +296,9 @@ struct PtePages {
         }
       }
     }
+  }
+  void observe(const Memory &memory,const Capture &capture) {
+    observe_tables(memory,capture.trace);
     std::map<uint32_t,uint32_t> staged;
     for(const auto &a:capture.trace)if(a.kind==Kind::write)staged[a.address]=a.value;
     const auto satp=staged.at(GPU_REG_UCMD_VECTOR_SATP),va=staged.at(GPU_REG_UCMD_SOURCE);
