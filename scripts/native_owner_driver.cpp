@@ -280,13 +280,14 @@ template<class Sim>
 void active_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
     const std::filesystem::path &output,const std::filesystem::path &session,
     const Capture &first,uint64_t count,std::ostream &report=std::cout,
-    std::chrono::milliseconds response_timeout=std::chrono::minutes(5)) {
+    std::chrono::milliseconds response_timeout=std::chrono::minutes(5),PtePages *pte=nullptr) {
   const auto profile=probe_profile(sim,agent,bus);
   for(uint64_t n=0;n<count;n++) {
     const auto stem="record-"+std::to_string(n);
     if(n)wait_input(session/(stem+".capture"),session,response_timeout);
     const auto capture=n?Capture::read((session/(stem+".capture")).string(),true):first;
     match_profile(capture,profile);verify_readonly(memory,memory,capture.writable);
+    if(pte)pte->observe(memory,capture);
     auto held=hold_record(sim,agent,bus,memory,capture,true);
     atomic_json(session/(stem+".held.json"),[&](auto &out){held_json(out,held.result,n,capture.command_id);});
     wait_input(session/(stem+".retire"),session,response_timeout);
@@ -296,6 +297,64 @@ void active_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
     atomic_json(session/(stem+".retired.json"),[&](auto &out){report_record(result,n,capture.command_id,bus.cycles,out);});
     report_record(result,n,capture.command_id,bus.cycles,report);
   }
+}
+template<class Sim>
+void cleanup_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
+    const std::filesystem::path &session,const PtePages &pte,uint64_t count,
+    std::chrono::milliseconds timeout=std::chrono::minutes(5)) {
+  wait_input(session/"cleanup.begin",session,timeout);
+  {
+    std::ifstream in(session/"cleanup.begin",std::ios::binary);magic(in,"OGCLB001");
+    require(read_le(in,4)==count && in.peek()==EOF,"cleanup authorization lost the complete record set");
+  }
+  Memory expected=memory;const auto traffic=agent.traffic;
+  unsigned sequence=0;uint64_t clears=0,shootdowns=0;
+  for(;;) {
+    const auto stem="cleanup-"+std::to_string(sequence);
+    const auto trace=session/(stem+".trace"),done=session/"cleanup.done";
+    const auto deadline=std::chrono::steady_clock::now()+timeout;
+    while(!std::filesystem::exists(trace) && !std::filesystem::exists(done)) {
+      require(!std::filesystem::exists(session/"error"),"original driver cleanup failed");
+      require(std::chrono::steady_clock::now()<deadline,"original driver cleanup batch timed out");
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if(std::filesystem::exists(done)) {
+      wait_input(done,session,timeout);
+      std::ifstream in(done,std::ios::binary);magic(in,"OGCLD001");
+      require(read_le(in,4)==sequence && sequence && in.peek()==EOF,"cleanup done crossed an unacknowledged batch");
+      require(!std::filesystem::exists(trace),"cleanup left a batch after its final marker");break;
+    }
+    wait_input(trace,session,timeout);const auto batch=Cleanup::read(trace.string());
+    require(agent.drained() && !sim.model->io_m_irq,"cleanup starts before native retirement drained");
+    bus.begin_record(1000000);
+    for(const auto &a:batch.actions) {
+      if(a.kind==Kind::pte_clear){pte.clear(expected,a);pte.clear(memory,a);++clears;}
+      else {
+        if(a.kind==Kind::write && (a.address==GPU_REG_UCMD_VECTOR_SATP || a.address==GPU_REG_UCMD_INSTRUCTION_SATP))
+          require(pte.satps.count(a.value),"cleanup attempted a context absent from the real capture");
+        bus.action(a);
+        shootdowns+=a.kind==Kind::write && a.address==GPU_REG_UCMD_TLB_FLUSH;
+      }
+    }
+    for(unsigned n=0;n<8;n++)bus.step();
+    const auto status=bus.read(GPU_REG_UCMD_STATUS),irq=bus.read(GPU_REG_IRQ);
+    require(status==GPU_UCMD_STATUS_READY && irq==GPU_IRQ_ENABLE && !sim.model->io_m_irq && agent.drained(),
+      "cleanup did not retire idle, drained and IRQ-free on the live DUT");
+    traffic_unchanged(traffic,agent.traffic);
+    require(!agent.traffic.read_faults && !agent.traffic.write_faults,"cleanup encountered external memory faults");
+    atomic_json(session/(stem+".observed"),[&](auto &out) {
+      out.write("OGCLA001",8);for(uint32_t v:{sequence,status,irq,0u,1u})write_le(out,v,4);
+    });
+    require(sequence<65535,"cleanup exceeded its batch bound");++sequence;
+  }
+  require(clears && shootdowns,"cleanup performed no real mapping revocation/shootdown");
+  pte.revoked(memory);verify_readonly(expected,memory,{});
+  atomic_json(session/"cleanup.json",[&](auto &out) {
+    out<<"{\"phase\":\"cleanup\",\"ownerCleanupObserved\":true,\"records\":"<<count
+      <<",\"batches\":"<<sequence<<",\"pteClears\":"<<clears<<",\"shootdowns\":"<<shootdowns
+      <<",\"resetCount\":1,\"ramReplaced\":false,\"imagesPreserved\":true,\"externalDrained\":true,"
+        "\"sourceQualificationRequired\":true,\"clockQualified\":false,\"fpsQualified\":false}\n";
+  });
 }
 } // namespace native_owner
 
@@ -312,8 +371,9 @@ int main(int argc,char **argv) {
       profile_json(output,words);output.close();require(bool(output),"cannot write profile output");
       sim.model->final();return 0;
     }
-    if(argc>1 && std::string(argv[1])=="--active-series") {
-      require(argc==6,"usage: native_owner_driver --active-series UNION.memory NEW_OUTPUT_DIR SESSION_DIR COUNT");
+    if(argc>1 && (std::string(argv[1])=="--active-series" || std::string(argv[1])=="--active-owner-series")) {
+      const bool cleanup=std::string(argv[1])=="--active-owner-series";
+      require(argc==6,"usage: native_owner_driver --active[-owner]-series UNION.memory NEW_OUTPUT_DIR SESSION_DIR COUNT");
       size_t used=0;const auto count=std::stoull(argv[5],&used);
       require(used==std::string(argv[5]).size() && count>=2 && count<=0xffffffffu,"invalid active record count");
       const std::filesystem::path output=argv[3],session=argv[4];
@@ -325,7 +385,9 @@ int main(int argc,char **argv) {
       verify_readonly(memory,memory,first.writable);
       require(std::filesystem::create_directory(output),"cannot create active output directory");
       Simulation sim(argc,argv);sim.reset();Agent agent(memory);ReplayBus<Simulation> bus(sim,agent,100000);
-      active_records(sim,agent,bus,memory,output,session,first,count);
+      PtePages pte;
+      active_records(sim,agent,bus,memory,output,session,first,count,std::cout,std::chrono::minutes(5),cleanup?&pte:nullptr);
+      if(cleanup)cleanup_records(sim,agent,bus,memory,session,pte,count);
       sim.model->final();return 0;
     }
     const bool series=argc>1 && std::string(argv[1])=="--series";
