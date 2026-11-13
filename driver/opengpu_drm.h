@@ -822,6 +822,7 @@ struct drm_opengpu_compute_indirect_resources {
 #define DRM_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES 0x16
 #define DRM_OPENGPU_COMPUTE_INDIRECT_RESOURCES 0x17
 #define DRM_OPENGPU_QUERY 0x18
+#define DRM_OPENGPU_SUBMIT_NATIVE_BINNED 0x19
 #define DRM_IOCTL_OPENGPU_SUBMIT \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_SUBMIT, \
              struct drm_opengpu_submit)
@@ -899,6 +900,9 @@ struct drm_opengpu_compute_indirect_resources {
 #define DRM_IOCTL_OPENGPU_COMPUTE_INDIRECT_RESOURCES \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_COMPUTE_INDIRECT_RESOURCES, \
              struct drm_opengpu_compute_indirect_resources)
+#define DRM_IOCTL_OPENGPU_SUBMIT_NATIVE_BINNED \
+    DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_SUBMIT_NATIVE_BINNED, \
+             struct drm_opengpu_submit_native_binned)
 #define DRM_IOCTL_OPENGPU_QUERY \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_QUERY, \
              struct drm_opengpu_query)
