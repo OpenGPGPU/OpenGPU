@@ -313,6 +313,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     if graphics_uniforms:
         from test_gallium_graphics_uniforms import validate_native_metadata
         validate_native_metadata(sources)
+        from native_graphics_uniform_oracle import self_test
+        self_test(out)
     if artifacts:
         manifest = "format=1\n" + "".join(p.name + ".sha256=" + hashlib.sha256(p.read_bytes()).hexdigest() + "\n"
             for p in sorted(artifacts.iterdir()))
