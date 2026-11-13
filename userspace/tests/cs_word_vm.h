@@ -28,6 +28,7 @@ static void cs_vm_group_resources_checked(const uint32_t *code, unsigned words,
         struct { unsigned pc; uint32_t mask; } stack[8];
         unsigned depth = 0, steps = 0;
         unsigned ended = 0, captured = 0, fences = 0;
+        uint32_t atomic_operand[16]={0},atomic_compare[16]={0},atomic_valid=0;
         uint32_t texture[16][16] = {{0}}, image[16][8] = {{0}}, image_loaded[16][4] = {{0}};
         unsigned texture_valid[16] = {0}, image_valid[16] = {0}, image_read[16] = {0};
         for (unsigned i = 0; i < 3; i++) { x[2+i] = group[i]; x[5+i] = local[i]; }
@@ -135,6 +136,36 @@ static void cs_vm_group_resources_checked(const uint32_t *code, unsigned words,
                 continue;
             }
             assert(opcode == 0x2b && (w & (1u << 25)));
+            if(fn>=24 && fn<=26) {
+                assert(!depth);
+                unsigned operation=fn==26 ? 8+f : f;
+                for(unsigned lane=0;lane<active;lane++)if(control&(1u<<lane)) {
+                    if(fn==24) {
+                        assert(!f&&!rd);atomic_operand[lane]=v[a][lane];
+                        atomic_compare[lane]=v[z][lane];atomic_valid|=1u<<lane;
+                    } else {
+                        unsigned binding=v[a][lane];uint32_t offset=v[z][lane];
+                        assert(operation<=9 && (atomic_valid&(1u<<lane)) && binding<4 &&
+                            memory[binding].data && !(offset&3) && (memory[binding].access&3)==3 &&
+                            offset<=memory[binding].bytes && 4<=memory[binding].bytes-offset);
+                        uint32_t old=memory[binding].data[offset/4],value=atomic_operand[lane],next=old;
+                        switch(operation) {
+                        case 0: next=value;break;
+                        case 1: next=old+value;break;
+                        case 2: next=old^value;break;
+                        case 3: next=old|value;break;
+                        case 4: next=old&value;break;
+                        case 5: if((int32_t)value<(int32_t)old)next=value;break;
+                        case 6: if((int32_t)value>(int32_t)old)next=value;break;
+                        case 7: if(value<old)next=value;break;
+                        case 8: if(value>old)next=value;break;
+                        case 9: if(old==atomic_compare[lane])next=value;break;
+                        }
+                        memory[binding].data[offset/4]=next;v[rd][lane]=old;
+                    }
+                }
+                continue;
+            }
             if (fn == 3 || fn == 5 || fn == 6 || (fn >= 8 && fn <= 11) || fn == 27) {
                 assert(resources);
                 for (unsigned lane = 0; lane < active; lane++) if (control & (1u << lane)) {
