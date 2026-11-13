@@ -84,7 +84,8 @@ static void dynamic_scopes(void)
             10u<<20|11u<<15|11u<<7|0x33u,
             1u<<25|11u<<15|6u<<12|1u<<7|0x27u,
             0x0330000fu,0x0000000bu,
-            vector(0x17,3,4,31,0),vector(0x17,3,5,15,0),
+            0xfff00513u,vector(0x17,4,4,10,0),
+            15u<<20|10u<<7|0x13u,vector(0x17,4,5,10,0),
             vector(9,0,2,5,1),vector(0x25,3,2,2,2),
             branch(3,0,0,10),branch(0,1,5,5),
             0x10000000u|10u<<7|0x37u,
@@ -96,28 +97,44 @@ static void dynamic_scopes(void)
         assert(dynamic_validate(p,n));
         memcpy(q,p,sizeof(p));q[4]=0x13;assert(!dynamic_validate(q,n));
         memcpy(q,p,sizeof(p));q[6]=0x13;assert(!dynamic_validate(q,n));
-        memcpy(q,p,sizeof(p));q[10]=vector(0,3,2,1,2);assert(!dynamic_validate(q,n)); // unaligned
-        memcpy(q,p,sizeof(p));q[9]=vector(0,0,2,4,1);assert(!dynamic_validate(q,n)); // signed/wrap
-        memcpy(q,p,sizeof(p));q[9]=vector(0,3,2,31,1);assert(!dynamic_validate(q,n)); // vi -1 is not +31
-        memcpy(q,p,sizeof(p));q[10]=vector(0x25,3,2,6,2);assert(!dynamic_validate(q,n)); // beyond init
-        memcpy(q,p,sizeof(p));q[10]=vector(0x25,3,2,31,2);assert(!dynamic_validate(q,n)); // overflow
-        memcpy(q,p,sizeof(p));q[14]=0x13;assert(!dynamic_validate(q,n)); // arm-local capture
-        memcpy(q,p,sizeof(p));q[18]=0x13;assert(!dynamic_validate(q,n)); // other arm capture
-        memcpy(q,p,sizeof(p));q[14]=0x0b;assert(!dynamic_validate(q,n)); // divergent barrier
-        memcpy(q,p,sizeof(p));q[15]&=~(1u<<25);assert(!dynamic_validate(q,n)); // explicit VM masked
+        memcpy(q,p,sizeof(p));q[6]=0x0330000f;
+        q[11]=vector(0,4,4,0,4);q[12]=vector(0x25,3,2,2,1);
+        assert(!dynamic_validate(q,n)); // even exact LOCAL in a scope requires publication
+        memcpy(q,p,sizeof(p));q[12]=vector(0,3,2,1,2);assert(!dynamic_validate(q,n)); // unaligned
+        memcpy(q,p,sizeof(p));q[11]=vector(0,0,2,4,1);assert(!dynamic_validate(q,n)); // signed/wrap
+        memcpy(q,p,sizeof(p));q[11]=vector(0,3,2,31,1);assert(!dynamic_validate(q,n)); // vi -1 is not +31
+        memcpy(q,p,sizeof(p));q[12]=vector(0x25,3,2,6,2);assert(!dynamic_validate(q,n)); // beyond init
+        memcpy(q,p,sizeof(p));q[12]=vector(0x25,3,2,31,2);assert(!dynamic_validate(q,n)); // overflow
+        memcpy(q,p,sizeof(p));q[16]=0x13;assert(!dynamic_validate(q,n)); // arm-local capture
+        memcpy(q,p,sizeof(p));q[20]=0x13;assert(!dynamic_validate(q,n)); // other arm capture
+        memcpy(q,p,sizeof(p));q[16]=0x0b;assert(!dynamic_validate(q,n)); // divergent barrier
+        memcpy(q,p,sizeof(p));q[17]&=~(1u<<25);assert(!dynamic_validate(q,n)); // explicit VM masked
         uint32_t short_vl[sizeof(p)/sizeof(*p)+3];
         memcpy(short_vl,p,7*sizeof(*p));
         short_vl[7]=0xc1027057; // VL4
         short_vl[8]=vector(0,4,6,0,1); // defined only in the short prefix
         short_vl[9]=0xc1087057; // restore VL16 cannot authorize stale lanes
         memcpy(short_vl+10,p+7,(n-7)*sizeof(*p));
-        short_vl[15]=branch(0,6,5,5);
+        short_vl[17]=branch(0,6,5,5);
         assert(!dynamic_validate(short_vl,n+3));
-        uint32_t captures[64];unsigned nc=11;memcpy(captures,p,nc*sizeof(*p));
+        uint32_t prefix[sizeof(p)/sizeof(*p)+1];
+        memcpy(prefix,p,13*sizeof(*p));memcpy(prefix+14,p+13,(n-13)*sizeof(*p));
+        prefix[13]=0x00a05073; // valid VXRM CSR, not a shared-init prefix
+        assert(!dynamic_validate(prefix,n+1));
+        prefix[13]=vector(11,3,2,4,2); // aligned vi XOR, outside canonical dialect
+        assert(!dynamic_validate(prefix,n+1));
+        prefix[13]=resource(3,0,0,4,1); // valid texture capture with actual feature enabled
+        assert(!opengpu_compute_shader_validate_words_shared_atomics(prefix,n+1,512,128,
+            false,false,true,true,false,false,false,false,false,0x10000000,16384,16,false,true));
+        prefix[13]=resource(8,0,0,4,1); // valid image capture with actual feature enabled
+        assert(!opengpu_compute_shader_validate_words_shared_atomics(prefix,n+1,512,128,
+            false,false,false,true,true,false,false,false,false,0x10000000,16384,16,false,true));
+        uint32_t captures[64];unsigned nc=13;memcpy(captures,p,nc*sizeof(*p));
         captures[nc++]=vector(0,4,0,0,2); // bounded ordinary value in v0
         captures[nc++]=resource(14,0,0,4,0); // no vector writeback
         captures[nc++]=resource(30,0,0,4,1); // no vector writeback
         captures[nc++]=vector(0,4,2,0,0); // copy v0; rs2=0 means v0 for ADD
+        captures[nc++]=0x10000000u|10u<<7|0x37u;
         captures[nc++]=resource(op<8?31:32,op%8,3,10,2);
         captures[nc++]=0x30500073;
         assert(dynamic_validate(captures,nc));
@@ -128,7 +145,7 @@ static void dynamic_scopes(void)
         /* Both arms define distinct ranges in the SAME physical destination.
          * The post-join AMO requires their union, never their intersection or
          * merely the arm visited last by the validator. */
-        uint32_t joined[64];unsigned k=11;memcpy(joined,p,k*sizeof(*p));
+        uint32_t joined[64];unsigned k=13;memcpy(joined,p,k*sizeof(*p));
         unsigned sync=k++;unsigned condition=k++;
         joined[k++]=64u<<20|10u<<7|0x13u;
         joined[k++]=vector(0,4,2,10,2);

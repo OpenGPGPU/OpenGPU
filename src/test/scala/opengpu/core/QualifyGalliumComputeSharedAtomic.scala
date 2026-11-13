@@ -93,6 +93,7 @@ private[core] object GalliumSharedDynamicArtifacts {
       require(words.take(2) == Vector(BigInt("01007557", 16), BigInt("c1087057", 16)), name)
       require(words.count(_ == BigInt("0000000b", 16)) == 2, name)
       require(words.count(w => (w & 127) == 0x27) == 32, name)
+      require(words.count(w => (w & 127) == 0x07) == 2, name)
       require(words.count(w => (w & 0x707f) == 0x305b) == 1, name)
       require(words.count(w => (w & 127) == 0x2b && (w >> 26) == 30) == 2, name)
       val atomics = words.filter(w => (w & 127) == 0x2b && Set(BigInt(31), BigInt(32))(w >> 26))

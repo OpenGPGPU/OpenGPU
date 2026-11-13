@@ -184,9 +184,9 @@ int main(void)
     }
     printf("shared atomic actual TGSI/emitter/validator: %u programs PASS (CPU only)\n",cases);
     printf("shared atomic bounded address/SIMT: %u programs PASS (CPU only)\n",dynamic_cases);
-    for(unsigned op=0;op<10;op++) {
+    for(unsigned base=0;base<3;base++)for(unsigned op=0;op<10;op++) {
         struct builder b;full_symbolic_program(&b,operations[op]);
-        struct opengpu_cs_shared shared={0x10000000,16384,16,16384};
+        struct opengpu_cs_shared shared={bases[base],16384,16,16384};
         struct opengpu_cs_program p;assert(!opengpu_cs_emit_shared(b.tokens,&shared,&p));
         assert(p.words<=512 && p.shared_atomics);
         assert(opengpu_compute_shader_validate_words_shared_atomics(p.code,p.words,12,128,
@@ -202,6 +202,6 @@ int main(void)
             p.code[i]=saved;
         }
     }
-    puts("shared atomic full 16KiB/32 symbolic stripes/20 registers: 10 programs PASS (CPU only)");
+    puts("shared atomic full 16KiB/32 symbolic stripes/20 registers: 30 programs PASS (CPU only)");
     return 0;
 }

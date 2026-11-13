@@ -154,8 +154,7 @@ static inline bool opengpu_shader_simt_arm_instruction(opengpu_shader_u32 w)
         return rd == 10u && f == 2u && a == 1u &&
             (w >> 20) <= 8u && !(w & (3u << 20));
     if (op == 0x2bu)
-        return unmasked && ((!f && (fn == 7u || (fn >= 14u && fn <= 16u) || fn == 30u)) ||
-            fn == 31u || (fn == 32u && f < 2u)); /* exact feature/proof checks below */
+        return unmasked && !f && (fn == 7u || (fn >= 14u && fn <= 16u));
     if (op != 0x57u || f == 7u) return false; /* no VL/config/CSR changes */
     if (fn == 0x17u)
         return unmasked ? f == 4u : (f == 0u || f == 3u);
@@ -168,6 +167,43 @@ static inline bool opengpu_shader_simt_arm_instruction(opengpu_shader_u32 w)
     if (f == 4u) return fn == 0u || fn == 0x25u;
     if (f == 2u) return fn == 0x25u;
     return f == 6u && (fn == 0x20u || fn == 0x22u);
+}
+
+static inline bool opengpu_shader_shared_simt_arm_instruction(
+    const struct opengpu_shader_state *s, opengpu_shader_u32 w, opengpu_shader_u32 lanes)
+{
+    opengpu_shader_u32 op = w & 127u, fn = w >> 26, f = w >> 12 & 7u;
+    if (!(w & (1u << 25))) return false;
+    if (op == 0x2bu) return (!f && fn == 30u) || fn == 31u || (fn == 32u && f < 2u);
+    /* Pure per-lane shifts used to rematerialize checked byte addresses.
+     * Configuration, predication, CSR and unrelated resource owners are not
+     * part of this opt-in extension. The legacy arm helper stays unchanged. */
+    return op == 0x57u && ((f == 3u && (fn == 0x25u || fn == 0x28u)) ||
+        (f == 4u && fn == 11u && (w >> 15 & 31u) == 10u &&
+         s->values[10].kind == OPENGPU_SHADER_VALUE_CONSTANT &&
+         (opengpu_shader_u32)s->values[10].offset == lanes));
+}
+
+static inline bool opengpu_shader_shared_simt_prefix_instruction(
+    const struct opengpu_shader_state *s, opengpu_shader_u32 w, opengpu_shader_u32 lanes)
+{
+    opengpu_shader_u32 op = w & 127u, rd = w >> 7 & 31u;
+    opengpu_shader_u32 a = w >> 15 & 31u, b = w >> 20 & 31u, f = w >> 12 & 7u;
+    opengpu_shader_s32 imm = (opengpu_shader_s32)w >> 20;
+    if (w == (0xc1007057u | lanes << 15) || w == 0x0000000bu) return true;
+    if (rd == 11u || rd == 12u) {
+        if (op == 0x13u)
+            return (f == 1u && a == 8u && imm == 2) ||
+                (f == 4u && a == rd && imm == 64) ||
+                (!f && a == rd && !(imm & 3));
+        if (op == 0x33u) return !f && !(w >> 25) && a == rd && b == 10u;
+    }
+    if ((a == 11u || a == 12u) && s->vector_length == lanes &&
+        (s->values[a].kind == OPENGPU_SHADER_VALUE_SHARED_LOCAL ||
+         s->values[a].kind == OPENGPU_SHADER_VALUE_SHARED_LOCAL_READ))
+        return (w & 0xfff0707fu) == 0x02006007u ||
+            (w & 0xfff0707fu) == 0x02006027u;
+    return false;
 }
 
 static inline void opengpu_shader_merge_state(
@@ -1084,20 +1120,24 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
          * A prior short-VL or lane-zero-only definition cannot authorize all
          * branch lanes after restoring VLMAX. Track the canonical full-lane
          * integer dialect monotonically without changing legacy programs. */
-        if (!opengpu_shader_simt_arm_instruction(insn) && insn != 0x01007557u) {
-            /* Shared initialization and rendezvous are allowed only outside
-             * scopes. Their ordinary validators still prove actual stores
-             * and converged publication. A short-VL vector definition cannot
-             * authorize lanes after a later VL restore. Legacy stays exact. */
-            bool shared_prefix = shared_atomics_enabled && shared_bytes && !simt_depth;
-            bool vector_write = opengpu_shader_writes_vector(insn);
-            if (!shared_prefix || (vector_write && state.vector_length != shared_lanes))
-                simt_compatible = false;
+        {
+            bool shared_simt = shared_atomics_enabled && shared_bytes;
+            bool arm_instruction = opengpu_shader_simt_arm_instruction(insn) ||
+                (shared_simt && opengpu_shader_shared_simt_arm_instruction(&state, insn, shared_lanes));
+            if (!arm_instruction && insn != 0x01007557u) {
+                /* Shared initialization and rendezvous are allowed only outside
+                 * scopes. Their ordinary validators still prove actual stores
+                 * and converged publication. A short-VL vector definition cannot
+                 * authorize lanes after a later VL restore. Legacy stays exact. */
+                bool shared_prefix = shared_simt && !simt_depth &&
+                    opengpu_shader_shared_simt_prefix_instruction(&state, insn, shared_lanes);
+                bool vector_write = opengpu_shader_writes_vector(insn);
+                if (!shared_prefix || (vector_write && state.vector_length != shared_lanes))
+                    simt_compatible = false;
+            }
+            if (simt_program && !simt_compatible) return false;
+            if (simt_depth && !arm_instruction) return false;
         }
-        if (simt_program && !simt_compatible)
-            return false;
-        if (simt_depth && !opengpu_shader_simt_arm_instruction(insn))
-            return false;
         switch (opcode) {
         case 0x5b: {
             opengpu_shader_u32 branch_pc, taken, marker;
@@ -1770,7 +1810,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
                     if (!r.valid || (r.zero & 3u) != 3u || first > end ||
                         end > shared_bytes || address + r.last + 4ull > 0x100000000ull ||
                         (end > state.shared_visible_prefix &&
-                         !(rs2 && (state.vector_local_bytes & (1u << rs2)) &&
+                         !(!simt_depth && rs2 && (state.vector_local_bytes & (1u << rs2)) &&
                            opengpu_shared_own_contains(state.shared_own,
                             (opengpu_shader_u32)offset, 4u * batch_capacity))))
                         return false;
