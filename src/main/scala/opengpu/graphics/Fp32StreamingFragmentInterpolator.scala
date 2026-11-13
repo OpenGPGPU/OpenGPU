@@ -15,7 +15,7 @@ import chisel3.util._
   */
 class Fp32StreamingFragmentInterpolator(p: VertexShaderStageConfig = VertexShaderStageConfig(),
     g: GraphicsConfig = GraphicsConfig(), contexts: Int = 4, reuseSetup: Boolean = true,
-    finiteZeroShortcut: Boolean = true) extends Module {
+    finiteZeroShortcut: Boolean = true, powerTwoMultiplyShortcut: Boolean = true) extends Module {
   require(contexts >= 2 && contexts <= 8 && isPow2(contexts))
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new FragmentInterpolationRequest(p, g)))
@@ -25,7 +25,8 @@ class Fp32StreamingFragmentInterpolator(p: VertexShaderStageConfig = VertexShade
     val busy = Output(Bool())
   })
   private val preparation = Seq.fill(contexts)(Module(new Fp32FragmentPreparation(p, g,
-    reuseSetup = reuseSetup, finiteZeroShortcut = finiteZeroShortcut)))
+    reuseSetup = reuseSetup, finiteZeroShortcut = finiteZeroShortcut,
+    powerTwoMultiplyShortcut = powerTwoMultiplyShortcut)))
   private val components = Module(new Fp32PreparedQuadInterpolator(p, g, contexts, reservedInputs = true))
   private val allocate = RegInit(0.U(log2Ceil(contexts).W))
   private val transfer = RegInit(0.U(log2Ceil(contexts).W))
