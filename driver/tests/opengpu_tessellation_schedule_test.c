@@ -51,9 +51,9 @@ struct opengpu_buffer { void *cpu; dma_addr_t dma; size_t size; };
 struct opengpu_snapshot_lease {
     struct opengpu_snapshot_lease *next;
     const struct opengpu_vm *owner;
-    dma_addr_t base;
+    dma_addr_t base, va;
     size_t size;
-    bool active;
+    bool active, mapped;
 };
 struct opengpu_vm {
     struct opengpu_vm *next;
@@ -267,6 +267,12 @@ static int opengpu_hw_unified_submit_locked(struct opengpu_device *gpu,
     assert(!opengpu_hw_activate_vm_locked(gpu, vm));
     ++kicks; busy = 1; *out = &hardware_fence; return 0;
 }
+#define READ_ONCE(x) (x)
+#define time_after(a,b) ((long)((a)-(b)) > 0)
+static unsigned long jiffies;
+static void opengpu_hw_progress_tick(struct opengpu_device *gpu)
+{ assert(!gpu->hw.submit_lock.held); ++jiffies; }
+static void cond_resched(void) { }
 #include "tessellation_under_test.inc"
 #include "job_track_mapping_under_test.inc"
 

@@ -477,6 +477,8 @@ int opengpu_mmu_snapshot_acquire_locked(struct opengpu_device *gpu,
     lease->owner = owner;
     lease->base = base;
     lease->size = size;
+    lease->va = 0;
+    lease->mapped = false;
     lease->next = mmu->snapshot_leases;
     lease->active = true;
     mmu->snapshot_leases = lease;
@@ -495,6 +497,8 @@ int opengpu_mmu_snapshot_release_locked(struct opengpu_device *gpu,
     lockdep_assert_held(&gpu->hw.submit_lock);
     if (!lease || !lease->active)
         return -EINVAL;
+    if (lease->mapped)
+        return -EBUSY;
     ret = opengpu_hw_wait_idle_locked(gpu);
     if (ret)
         return ret;
@@ -521,17 +525,65 @@ out:
     return ret;
 }
 
+static int mmu_snapshot_free_va(const struct opengpu_vm *vm, u64 bytes, u64 *va)
+{
+    u64 start = 0, length = 0;
+    u32 region, i;
+
+    if (!vm->root.cpu || vm->root.size < MMU_PAGE_SIZE ||
+        vm->l1_count > OPENGPU_VM_MAX_TABLES)
+        return -EFAULT;
+    for (region = 0; region < MMU_ROOT_ENTRIES; ++region) {
+        const struct opengpu_buffer *table;
+        u64 base = (u64)region * MMU_SUPERPAGE_SIZE;
+        if (!((u32 *)vm->root.cpu)[region]) {
+            u64 first = base ? base : MMU_PAGE_SIZE;
+            if (!length)
+                start = first;
+            length += base + MMU_SUPERPAGE_SIZE - first;
+            if (length >= bytes) {
+                *va = start;
+                return 0;
+            }
+            continue;
+        }
+        table = vm_live_l1(vm, region);
+        if (!table)
+            return -EFAULT;
+        for (i = 0; i < MMU_L1_ENTRIES; ++i) {
+            u64 address = base + (u64)i * MMU_PAGE_SIZE;
+            if (!address)
+                continue;
+            if (((u32 *)table->cpu)[i]) {
+                length = 0;
+                continue;
+            }
+            if (!length)
+                start = address;
+            length += MMU_PAGE_SIZE;
+            if (length >= bytes) {
+                *va = start;
+                return 0;
+            }
+        }
+    }
+    return -ENOSPC;
+}
+
 /* Atomically map, unmap or replace private leaves, including overlapping
  * ranges and a shortened tail. A zero new size means unmap the old range.
  * All page tables and rollback storage are reserved before leaves change. */
 static int mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
                           dma_addr_t va, dma_addr_t pa, size_t size, u32 policy,
-                          dma_addr_t old_va, size_t old_size, enum mmu_private_leaf kind)
+                          dma_addr_t old_va, size_t old_size, enum mmu_private_leaf kind,
+                          dma_addr_t *snapshot_va,
+                          struct opengpu_snapshot_lease *unmap_lease)
 {
     struct opengpu_mmu *mmu = &gpu->mmu;
     u64 old_start = 0, old_end = 0, new_end = 0, pa_end, p, q;
     size_t old_pages, new_pages, n = 0;
     u32 *saved, old_count, i;
+    struct opengpu_snapshot_lease *mapping_lease = NULL;
     int ret;
 
     if (!vm || !vm->enabled) return -EINVAL;
@@ -539,9 +591,12 @@ static int mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
     if (policy > OPENGPU_MMU_POLICY_UNCACHED || (!size && !old_size) ||
         (va & (MMU_PAGE_SIZE - 1)) || (pa & (MMU_PAGE_SIZE - 1)) ||
         (size & (MMU_PAGE_SIZE - 1))) return -EINVAL;
-    if (size && (check_add_overflow((u64)va, (u64)size, &new_end) ||
-        check_add_overflow((u64)pa, (u64)size, &pa_end) ||
-        new_end > (1ULL << 32) || pa_end > (1ULL << 32))) return -ERANGE;
+    if (snapshot_va && (kind != MMU_SNAPSHOT_RO || old_size || !size))
+        return -EINVAL;
+    if (size && ((!snapshot_va &&
+        (check_add_overflow((u64)va, (u64)size, &new_end) || new_end > (1ULL << 32))) ||
+        check_add_overflow((u64)pa, (u64)size, &pa_end) || pa_end > (1ULL << 32)))
+        return -ERANGE;
     if (old_size) {
         if (check_add_overflow((u64)old_va, (u64)old_size, &old_end) ||
             old_end > (1ULL << 32)) return -ERANGE;
@@ -558,16 +613,41 @@ static int mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
     if (ret) goto out_submit;
     mutex_lock(&mmu->lock);
     if (!vm->enabled) { ret = -EINVAL; goto out_mmu; }
+    if (unmap_lease && (!unmap_lease->active || !unmap_lease->mapped ||
+        unmap_lease->owner != vm || size || old_va != unmap_lease->va ||
+        old_size != unmap_lease->size)) {
+        ret = -EINVAL;
+        goto out_mmu;
+    }
+    if (snapshot_va) {
+        u64 chosen;
+        ret = mmu_snapshot_free_va(vm, size, &chosen);
+        if (ret)
+            goto out_mmu;
+        va = (dma_addr_t)chosen;
+        new_end = chosen + size;
+    }
     old_count = vm->l1_count;
-    if (size) {
-        const struct opengpu_snapshot_lease *lease;
+    {
+        struct opengpu_snapshot_lease *lease;
         for (lease = mmu->snapshot_leases; lease; lease = lease->next) {
-            if ((u64)pa < (u64)lease->base + lease->size &&
-                (u64)lease->base < pa_end &&
-                (lease->owner != vm || kind != MMU_SNAPSHOT_RO)) {
+            u64 lease_end = (u64)lease->va + lease->size;
+            if (lease->owner == vm && lease->mapped &&
+                ((size && (u64)va < lease_end && (u64)lease->va < new_end) ||
+                 (old_size && old_start < lease_end && (u64)lease->va < old_end)) &&
+                lease != unmap_lease) {
                 ret = -EACCES;
                 goto out_mmu;
             }
+            if (size && (u64)pa < (u64)lease->base + lease->size &&
+                (u64)lease->base < pa_end &&
+                (lease->owner != vm || kind != MMU_SNAPSHOT_RO || lease->mapped ||
+                 pa != lease->base || size != lease->size)) {
+                    ret = -EACCES;
+                    goto out_mmu;
+            }
+            if (size && pa == lease->base && size == lease->size)
+                mapping_lease = lease;
         }
     }
     for (p = old_start; p < old_end;) {
@@ -617,7 +697,19 @@ static int mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
         ((u32 *)vm->root.cpu)[vm->l1_region[i]] = mmu_link_pte(vm->l1[i].dma);
     dma_wmb();
     ret = opengpu_hw_flush_tlb_asid(gpu, vm->asid);
-    if (!ret) goto out_mmu;
+    if (!ret) {
+        if (mapping_lease) {
+            mapping_lease->va = va;
+            mapping_lease->mapped = true;
+        }
+        if (unmap_lease) {
+            unmap_lease->va = 0;
+            unmap_lease->mapped = false;
+        }
+        if (snapshot_va)
+            *snapshot_va = va;
+        goto out_mmu;
+    }
 
     /* Restore both original ranges, including overlaps, before releasing new
      * tables. A second failed shootdown wedges submission instead of allowing
@@ -652,7 +744,7 @@ int opengpu_mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
                            dma_addr_t va, dma_addr_t pa, size_t size, u32 policy,
                            dma_addr_t old_va, size_t old_size)
 {
-    return mmu_vm_replace(gpu, vm, va, pa, size, policy, old_va, old_size, MMU_PRIVATE_RW);
+    return mmu_vm_replace(gpu, vm, va, pa, size, policy, old_va, old_size, MMU_PRIVATE_RW, NULL, NULL);
 }
 
 /* Map and unmap share replacement's rollback and shootdown discipline. */
@@ -669,7 +761,15 @@ int opengpu_mmu_vm_map_snapshot(struct opengpu_device *gpu, struct opengpu_vm *v
 {
     if (!size)
         return -EINVAL;
-    return mmu_vm_replace(gpu, vm, va, pa, size, policy, 0, 0, MMU_SNAPSHOT_RO);
+    return mmu_vm_replace(gpu, vm, va, pa, size, policy, 0, 0, MMU_SNAPSHOT_RO, NULL, NULL);
+}
+
+int opengpu_mmu_vm_map_snapshot_anywhere(struct opengpu_device *gpu,
+    struct opengpu_vm *vm, dma_addr_t pa, size_t size, u32 policy, dma_addr_t *va)
+{
+    if (!size || !va)
+        return -EINVAL;
+    return mmu_vm_replace(gpu, vm, 0, pa, size, policy, 0, 0, MMU_SNAPSHOT_RO, va, NULL);
 }
 
 int opengpu_mmu_vm_map_code_snapshot(struct opengpu_device *gpu, struct opengpu_vm *vm,
@@ -677,7 +777,16 @@ int opengpu_mmu_vm_map_code_snapshot(struct opengpu_device *gpu, struct opengpu_
 {
     if (!size || !vm || !vm->asid)
         return -EINVAL;
-    return mmu_vm_replace(gpu, vm, va, pa, size, policy, 0, 0, MMU_CODE_RX);
+    return mmu_vm_replace(gpu, vm, va, pa, size, policy, 0, 0, MMU_CODE_RX, NULL, NULL);
+}
+
+int opengpu_mmu_snapshot_unmap(struct opengpu_device *gpu,
+    struct opengpu_snapshot_lease *lease)
+{
+    if (!lease || !lease->active || !lease->mapped || !lease->owner)
+        return -EINVAL;
+    return mmu_vm_replace(gpu, (struct opengpu_vm *)lease->owner, 0, 0, 0,
+        OPENGPU_MMU_POLICY_UNCACHED, lease->va, lease->size, MMU_PRIVATE_RW, NULL, lease);
 }
 
 /* submit_lock excludes VM replacement and submission while these page tables
