@@ -25,6 +25,101 @@ static void usleep_range(unsigned minimum, unsigned maximum)
 { assert(minimum==100 && maximum==200); }
 #include "snapshot_submission_under_test.inc"
 #include "../opengpu_private_snapshot.c"
+typedef uint8_t u8;
+#include "../opengpu_native_uniform_snapshot.c"
+
+static unsigned uniform_copies;
+static int uniform_copy_failure;
+static unsigned char uniform_sources[27][16384+64];
+static int copy_uniform(void *opaque,const struct drm_opengpu_compute_uniform_view *view,void *destination)
+{
+    assert(opaque==uniform_sources && view->handle>=1 && view->handle<=26);
+    assert(view->offset+view->bytes<=sizeof(uniform_sources[0]));
+    ++uniform_copies;
+    if(uniform_copy_failure && uniform_copies==(unsigned)uniform_copy_failure)return -EIO;
+    memcpy(destination,uniform_sources[view->handle]+view->offset,view->bytes);
+    return 0;
+}
+static u32 read_word(struct opengpu_private_snapshot *owner,u32 segment,u32 offset)
+{
+    u32 value=0;assert(!opengpu_private_snapshot_read32(owner,segment,offset,&value));return value;
+}
+static void uniform_snapshot_test(struct opengpu_device *gpu,struct opengpu_render_context *context)
+{
+    struct drm_opengpu_native_uniform_stage stages[2]={0};
+    struct opengpu_native_uniform_roots roots,unchanged;
+    struct opengpu_private_snapshot *owner;
+    u32 address;
+    for(unsigned handle=1;handle<=26;++handle)for(unsigned i=0;i<sizeof(uniform_sources[0]);++i)
+        uniform_sources[handle][i]=(unsigned char)(handle*17+i);
+    for(unsigned stage=0;stage<2;++stage){
+        stages[stage].active_mask=0xfff;
+        for(unsigned block=0;block<12;++block){
+            stages[stage].blocks[block].handle=1+stage*12+block;
+            stages[stage].blocks[block].offset=block%2?4:64;
+            stages[stage].blocks[block].bytes=16384;
+        }
+        stages[stage].defaults.handle=25+stage;stages[stage].defaults.offset=4;stages[stage].defaults.bytes=4096;
+    }
+    owner=opengpu_private_snapshot_create(gpu,context);assert(!IS_ERR(owner));
+    uniform_copies=0;uniform_copy_failure=7;memset(&roots,0x5a,sizeof(roots));unchanged=roots;
+    assert(opengpu_native_uniform_snapshot_append(owner,stages,7,8,9,copy_uniform,uniform_sources,&roots)==-EIO);
+    assert(uniform_copies==7 && !owner->segments && !memcmp(&roots,&unchanged,sizeof(roots)));
+    uniform_copy_failure=0;uniform_copies=0;
+    assert(!opengpu_native_uniform_snapshot_append(owner,stages,7,8,9,copy_uniform,uniform_sources,&roots));
+    assert(uniform_copies==26 && roots.present[0] && roots.present[1] && roots.root_offset[0]==0 && roots.root_offset[1]==64);
+    assert(owner->segments && !owner->segments->next && owner->segments->bytes>=24*16384+2*4096);
+    assert(!opengpu_private_snapshot_prepare(owner));assert(!opengpu_private_snapshot_publish(owner));
+    assert(!opengpu_private_snapshot_address(owner,roots.segment,&address));
+    for(unsigned stage=0;stage<2;++stage){
+        unsigned root=stage*64;
+        assert(read_word(owner,roots.segment,root)==0x47555201);
+        assert(read_word(owner,roots.segment,root+12)==7 && read_word(owner,roots.segment,root+16)==8 && read_word(owner,roots.segment,root+20)==9);
+        assert(read_word(owner,roots.segment,root+24)==stage && read_word(owner,roots.segment,root+28)==0xfff);
+        assert(read_word(owner,roots.segment,root+40)==address+128);
+        assert(read_word(owner,roots.segment,root+44)==address+1664 && read_word(owner,roots.segment,root+48)==0);
+        assert(read_word(owner,roots.segment,root+52)==address+1664+stage*64 && read_word(owner,roots.segment,root+56)==1);
+    }
+    for(unsigned slot=0;slot<26;++slot){
+        unsigned record=slot<24?128+slot*64:1664+(slot-24)*64;
+        u32 base=read_word(owner,roots.segment,record+32),limit=read_word(owner,roots.segment,record+36);
+        unsigned handle=slot+1,offset=slot<24?(slot%12%2?4:64):4;
+        unsigned bytes=slot<24?16384:4096;
+        assert(read_word(owner,roots.segment,record)==0x47554201);
+        assert(read_word(owner,roots.segment,record+24)==(slot<24?slot:31));
+        assert(read_word(owner,roots.segment,record+28)==(slot<12 || slot==24?1:2));
+        assert(!(base&255) && limit-base==bytes && read_word(owner,roots.segment,record+40)==0);
+        assert(read_word(owner,roots.segment,record+44)==base && read_word(owner,roots.segment,record+48)==limit);
+        assert(read_word(owner,roots.segment,record+56)==1 && read_word(owner,roots.segment,record+60)==0);
+        for(unsigned i=0;i<bytes;i+=4){
+            u32 expected=0;for(unsigned b=0;b<4;++b)expected|=(u32)uniform_sources[handle][offset+i+b]<<(8*b);
+            assert(read_word(owner,roots.segment,base-address+i)==expected);
+        }
+    }
+    memset(uniform_sources,0,sizeof(uniform_sources));
+    assert(read_word(owner,roots.segment,read_word(owner,roots.segment,160)-address)!=0);
+    assert(!opengpu_private_snapshot_retire(owner));
+    // Cross-stage identical original views share all twelve slots, while the
+    // independent default bindings retain stage-specific masks and addresses.
+    for(unsigned block=0;block<12;++block)stages[1].blocks[block]=stages[0].blocks[11-block];
+    stages[1].defaults=stages[0].defaults;
+    owner=opengpu_private_snapshot_create(gpu,context);assert(!IS_ERR(owner));uniform_copies=0;
+    assert(!opengpu_native_uniform_snapshot_append(owner,stages,7,8,9,copy_uniform,uniform_sources,&roots));
+    assert(uniform_copies==14);assert(!opengpu_private_snapshot_prepare(owner));
+    for(unsigned slot=0;slot<12;++slot)assert(read_word(owner,roots.segment,128+slot*64+28)==3);
+    assert(read_word(owner,roots.segment,64+32)==((11u)|(10u<<5)|(9u<<10)|(8u<<15)|(7u<<20)|(6u<<25)));
+    assert(read_word(owner,roots.segment,64+36)==((5u)|(4u<<5)|(3u<<10)|(2u<<15)|(1u<<20)));
+    assert(!opengpu_private_snapshot_retire(owner));
+    memset(stages,0,sizeof(stages));owner=opengpu_private_snapshot_create(gpu,context);assert(!IS_ERR(owner));
+    stages[1].blocks[11].handle=1;uniform_copies=0;
+    assert(opengpu_native_uniform_snapshot_append(owner,stages,7,8,9,copy_uniform,uniform_sources,&roots)==-EINVAL);
+    assert(!uniform_copies && !owner->segments);stages[1].blocks[11].handle=0;
+    assert(!opengpu_native_uniform_snapshot_append(owner,stages,7,8,9,copy_uniform,uniform_sources,&roots));
+    assert(!roots.present[0] && !roots.present[1] && !owner->segments);
+    assert(!opengpu_private_snapshot_retire(owner));
+    puts("native uniform snapshot: full 24x16KiB + 2x4096 defaults, real RO leases/relocations, source4B/cross-stage/producer failure/reuse PASS (C only)");
+}
+
 
 static struct opengpu_private_snapshot *new_owner(struct opengpu_device *gpu,
     struct opengpu_render_context *context, u32 *metadata, u32 *data)
@@ -163,6 +258,7 @@ int main(void)
     assert(!opengpu_private_snapshot_publish(owner));
     assert(!opengpu_private_snapshot_retire(owner));
     assert(context.references == 1 && !gpu.mmu.snapshot_leases);
+    uniform_snapshot_test(&gpu, &context);
     opengpu_mmu_vm_destroy(&gpu, &attacker);
     opengpu_mmu_vm_destroy(&gpu, &context.vm);
     opengpu_mmu_fini(&gpu);
