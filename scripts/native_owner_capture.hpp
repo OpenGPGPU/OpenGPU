@@ -24,7 +24,7 @@ struct Capture {
     auto block=[&](uint32_t base, std::initializer_list<uint32_t> values) {
       for(auto value:values) {out.push_back({base,value});base+=4;}
     };
-    block(0x360,{0x47435201,16,0x1ffff,2,16,8,128,128,0xffffffff,16384,16,8,0x10000000,32,131072,4});
+    block(0x360,{0x47435201,16,0x3ffff,2,16,8,128,128,0xffffffff,16384,16,8,0x10000000,32,131072,4});
     block(0x160,{0x474e4303,8,0x474e4a01,0x08000200,0xc2100800,0x08000800,0xe4908000,0x8813d902});
     block(0x340,{0x47434901,8,0x7f,14,12,4,0xffffffff,128});
     block(0x240,{0x47515601,8,0x0b0a0908,0x47514f01,64,8,0x01001001,31});
@@ -33,6 +33,7 @@ struct Capture {
     block(0x3a0,{0x47554301,16,1,0x7f,3,12,24,16384,1024,1024,256,64,0x0e00000b,0x1c00002b,0x1e00002b,31});
     block(0x4c0,{0x47414201,8,8,0x7fff,0xf00001ff,15,7,0});
     block(0x4e0,{0x474e5001,8,512,2048,2048,512,15,0});
+    block(0x300,{0x47534c01,8,31,32,1048576,0x04051918,0x320,0x138});
     return out;
   }
   static void address(uint32_t value) {

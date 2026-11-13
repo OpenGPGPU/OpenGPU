@@ -786,7 +786,11 @@ python3 scripts/test_qualify_native_api_compiled.py
 `OGMEM001` memory image and ordered `OGCAP001` control trace. It never generates
 shader code, descriptor words, virtual addresses or rendered outputs. This
 executor requires the complete two-CU/16-lane/eight-warp/four-engine API profile,
-including GAB1 and GNP1; the older frozen v2 model is intentionally rejected.
+including GAB1, GNP1 and explicit protected-source discovery (GCR bit 17);
+the older frozen v2 model and GNP-only combinations are intentionally rejected.
+The required profile has 96 discovery words, including the eight GSE limits.
+The executor reads and verifies GCR first, regardless of capture-table order,
+before probing GUC, GSE or GNC. GNP by itself does not guarantee those windows.
 MMIO reads and writes service external AXI at the same pre-edge observation,
 so preceding invalidations retain their actual completion/POP waits.
 
@@ -795,7 +799,7 @@ so preceding invalidations retain their actual completion/POP waits.
 | Section, in order | Encoding |
 |---|---|
 | Header | Eight ASCII magic bytes, u64 total cycle budget, u32 held clocks (8..4096), u32 final command ID |
-| Discovery | u32 count, then `{u32 address, u32 expected}`; all 88 required profile words plus any additional captured words |
+| Discovery | u32 count, then `{u32 address, u32 expected}`; all 96 required profile words (GCR flags `0x3ffff`) plus any additional captured words |
 | Writable physical views | u32 count, then `{u64 first, u64 exclusive_end}`; sorted, disjoint, within original allocations |
 | Ordered trace | u32 count, then `{u32 kind, u32 address, u32 value, u32 mask}`; WRITE=1 uses zero mask, POLL=2 retries a predicate, CHECK=3 tests once |
 | Held checks | u32 count, then `{u32 address, u32 mask, u32 expected}`; exact final command identity and all 12 GNX words required |
