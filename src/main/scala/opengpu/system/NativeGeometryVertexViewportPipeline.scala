@@ -51,11 +51,12 @@ class NativeGeometryVertexViewportCompletion extends Bundle {
 class NativeGeometryVertexViewportPipeline(config: GpuConfig,p: VertexShaderStageConfig,
     shared: SharedCuShaderConfig,viewport: Fp32ViewportConfig=Fp32ViewportConfig(),
     useSramBlackBoxes: Boolean=false,payload: Option[ShaderPayloadConfig]=None,
-    payloadOwner: Int=0,groupedTexture: Boolean=false) extends Module {
+    payloadOwner: Int=0,groupedTexture: Boolean=false,allowOrdinary: Boolean=false) extends Module {
   import NativeGeometryVertexViewportPipeline._
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
     val task=Flipped(Decoupled(new NativeGeometryVertexViewportTask(p,sharedConfig.taskIdWidth)))
+    val ordinary=if(allowOrdinary)Some(Input(Bool()))else None
     val out=Decoupled(new GeometryWindowPrimitive(p))
     val completion=Decoupled(new NativeGeometryVertexViewportCompletion)
     val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,
@@ -68,10 +69,12 @@ class NativeGeometryVertexViewportPipeline(config: GpuConfig,p: VertexShaderStag
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val source=Module(new NativeGeometryVertexPipeline(config,p,shared,useSramBlackBoxes,
-    payload,payloadOwner,groupedTexture))
+    payload,payloadOwner,groupedTexture,allowOrdinary))
   private val clip=Module(new PrimitiveClipStage(p,useSramBlackBoxes))
   private val prep=Module(new Fp32ViewportStage(p,viewport))
   private val task=Reg(new NativeGeometryVertexViewportTask(p,shared.taskIdWidth))
+  private val ordinaryTask=if(allowOrdinary)Some(Reg(Bool()))else None
+  if(allowOrdinary)source.io.ordinary.get:=ordinaryTask.get
   private val summary=Reg(new NativeGeometryVertexCompletion)
   private val result=Reg(new NativeGeometryVertexViewportCompletion)
   private val active=RegInit(false.B);private val offered=RegInit(false.B)
@@ -92,6 +95,7 @@ class NativeGeometryVertexViewportPipeline(config: GpuConfig,p: VertexShaderStag
   io.task.ready:= !active && !externalCancel;io.busy:=active
   when(io.task.fire){
     task:=io.task.bits;active:=true.B;started:=false.B;done:=false.B
+    ordinaryTask.foreach(_:=io.ordinary.get)
     counts:=0.U.asTypeOf(counts);summary:=0.U.asTypeOf(summary)
     val legal=Fp32ViewportState.legal(io.task.bits.viewport)
     offered:=legal;sourceDone:= !legal;status:=Mux(legal,0.U,1.U);faultStage:=Mux(legal,0.U,1.U)

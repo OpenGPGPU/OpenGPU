@@ -28,11 +28,14 @@ class NativeGeometryVertexCompletion extends Bundle {
   */
 class NativeGeometryVertexPipeline(config: GpuConfig,p: VertexShaderStageConfig,
     shared: SharedCuShaderConfig,useSramBlackBoxes: Boolean=false,
-    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false) extends Module {
+    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false,
+    allowOrdinary: Boolean=false) extends Module {
   require(shared.taskIdWidth>=1)
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
     val task=Flipped(Decoupled(new NativeGeometryVertexTask(p,sharedConfig.taskIdWidth)))
+    /** Held together with task; an ordinary draw bypasses GS execution. */
+    val ordinary=if(allowOrdinary)Some(Input(Bool()))else None
     val out=Decoupled(new GeometryMappedPrimitive(p))
     val completion=Decoupled(new NativeGeometryVertexCompletion)
     val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits,geometryAvailable=true))
@@ -44,7 +47,7 @@ class NativeGeometryVertexPipeline(config: GpuConfig,p: VertexShaderStageConfig,
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val vertex=Module(new VertexShaderStage(config,p,shared,useSramBlackBoxes,payload,payloadOwner,groupedTexture))
-  private val ordinary=Module(new PrimitiveAssemblyStage(p,flatShading=false))
+  private val ordinary=Module(new PrimitiveAssemblyStage(p,flatShading=allowOrdinary))
   private val adjacent=Module(new GeometryAdjacencyAssemblyStage(p))
   private val geometry=Module(new NativeGeometryPrimitivePipeline(config,p,shared.taskIdWidth,shared.numComputeUnits))
   private val router=Module(new GeometryFragmentShaderRouter(config,shared.numComputeUnits,shared.taskIdWidth,payload))
@@ -57,6 +60,8 @@ class NativeGeometryVertexPipeline(config: GpuConfig,p: VertexShaderStageConfig,
   private object Phase extends ChiselEnum {val idle,validate,argumentOffer,argumentWait,running,report=Value}
   private val phase=RegInit(Phase.idle)
   private val task=Reg(new NativeGeometryVertexTask(p,shared.taskIdWidth))
+  private val ordinaryTask=if(allowOrdinary)Some(RegInit(false.B))else None
+  private val geometryEnabled= !ordinaryTask.getOrElse(false.B)
   private val result=Reg(new NativeGeometryVertexCompletion)
   private val summary=Reg(new PrimitiveAssemblyCompletion)
   private val status=RegInit(0.U(3.W));private val faultStage=RegInit(0.U(2.W))
@@ -70,7 +75,7 @@ class NativeGeometryVertexPipeline(config: GpuConfig,p: VertexShaderStageConfig,
   private val sequence=Reg(UInt(64.W));private val indirectLines=RegInit(0.U(2.W))
   private val payloadContext=payload.map(_=>Reg(UInt(32.W)))
   private val active=phase=/=Phase.idle && phase=/=Phase.report
-  private val useAdjacent=task.draw.topology>=10.U
+  private val useAdjacent=geometryEnabled && task.draw.topology>=10.U
   private val externalCancel=io.cancel || io.payload.map(_.cancel).getOrElse(false.B)
   private val sourceCompletion=Wire(Decoupled(new PrimitiveAssemblyCompletion))
   private val sourceCancel=Mux(useAdjacent,adjacent.io.cancelSource,ordinary.io.cancelSource)
@@ -88,6 +93,7 @@ class NativeGeometryVertexPipeline(config: GpuConfig,p: VertexShaderStageConfig,
   private def fail(code: UInt,stage: Int): Unit=when(status===0.U && !cancelled && !externalCancel){status:=code;faultStage:=stage.U}
   when(io.task.fire){
     task:=io.task.bits;summary:=0.U.asTypeOf(summary);result:=0.U.asTypeOf(result)
+    ordinaryTask.foreach(_:=io.ordinary.get)
     status:=0.U;faultStage:=0.U;cancelled:=false.B;resolved:=false.B
     vertexOffered:=false.B;assemblyOffered:=false.B;vertexStarted:=false.B;assemblyStarted:=false.B
     sourceDone:=false.B;geometryActive:=false.B;sourceFaultPending:=false.B;received:=0.U;submitted:=0.U;invocations:=0.U;emitted:=0.U
@@ -114,7 +120,8 @@ class NativeGeometryVertexPipeline(config: GpuConfig,p: VertexShaderStageConfig,
     !scratchAlias(g.code.base,g.code.limit) && !uniformAlias
   when(phase===Phase.validate){
     when(stop){sourceDone:=true.B;phase:=Phase.running}
-      .elsewhen(!programLegal || vertexErrors._1 || vertexErrors._2 || !IndirectDrawControl.legal(d.indirect,v.input.indexFormat) ||
+      .elsewhen((geometryEnabled && !programLegal) || (!geometryEnabled && d.topology>6.U) ||
+        vertexErrors._1 || vertexErrors._2 || !IndirectDrawControl.legal(d.indirect,v.input.indexFormat) ||
         (d.indirect.mode=/=0.U && scratchAlias(d.indirect.view.base,parameterEnd))){
         fail(VertexInputStatus.invalidDescriptor.U,1);sourceDone:=true.B;phase:=Phase.running
       }.elsewhen(d.indirect.mode=/=0.U && !resolved){phase:=Phase.argumentOffer}
@@ -143,6 +150,7 @@ class NativeGeometryVertexPipeline(config: GpuConfig,p: VertexShaderStageConfig,
   assemblyDraw.version:=1.U;assemblyDraw.identity:=v.input.identity;assemblyDraw.topology:=d.topology
   assemblyDraw.count:=v.input.count;assemblyDraw.instances:=v.input.instances;assemblyDraw.baseInstance:=v.input.baseInstance
   assemblyDraw.varyingSlots:=v.varyingSlots // GS inputs retain raw, pre-flat VS values.
+  if(allowOrdinary)assemblyDraw.flatMask:=Mux(geometryEnabled,0.U,d.flatMask)
   ordinary.io.draw.valid:=assemblyOffered && !useAdjacent;ordinary.io.draw.bits:=assemblyDraw
   adjacent.io.draw.valid:=assemblyOffered && useAdjacent;adjacent.io.draw.bits:=assemblyDraw
   when(ordinary.io.draw.fire || adjacent.io.draw.fire){assemblyOffered:=false.B;assemblyStarted:=true.B}
@@ -176,7 +184,7 @@ class NativeGeometryVertexPipeline(config: GpuConfig,p: VertexShaderStageConfig,
   ordinary.io.out.ready:=assembled.ready && !useAdjacent;adjacent.io.out.ready:=assembled.ready && useAdjacent
   // Admit only into the mapper's private idle slot. No child offer can be
   // stranded by cancellation while a prior physical invocation is draining.
-  geometry.io.task.valid:=active && !stop && !geometryActive && assembled.valid && geometry.io.task.ready
+  geometry.io.task.valid:=active && geometryEnabled && !stop && !geometryActive && assembled.valid && geometry.io.task.ready
   geometry.io.task.bits:=0.U.asTypeOf(geometry.io.task.bits)
   geometry.io.task.bits.input.primitive:=assembled.bits;geometry.io.task.bits.input.program:=g
   geometry.io.task.bits.input.taskId:=task.taskId;geometry.io.task.bits.commandId:=task.commandId
@@ -186,6 +194,16 @@ class NativeGeometryVertexPipeline(config: GpuConfig,p: VertexShaderStageConfig,
   when(geometry.io.task.fire){geometryActive:=true.B;submitted:=submitted+1.U}
   geometry.io.cancel:=geometryActive && stop
   io.out<>geometry.io.primitive
+  if(allowOrdinary){when(!geometryEnabled){
+    io.out.valid:=ordinary.io.out.valid
+    io.out.bits:=0.U.asTypeOf(io.out.bits)
+    io.out.bits.primitive:=ordinary.io.out.bits
+    io.out.bits.inputPrimitiveId:=ordinary.io.out.bits.primitiveId
+    geometry.io.primitive.ready:=false.B
+    // An offered ordinary primitive remains owned through cancellation too.
+    assembled.ready:=io.out.ready
+    when(io.out.fire){sequence:=sequence+1.U}
+  }}
   when(io.out.fire){emitted:=emitted+1.U}
   geometry.io.completion.ready:=active && geometryActive
   when(geometry.io.completion.fire){

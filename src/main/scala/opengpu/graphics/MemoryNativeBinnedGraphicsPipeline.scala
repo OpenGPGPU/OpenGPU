@@ -15,7 +15,7 @@ case class NativeBinnedGraphicsConfig(vertex: VertexShaderStageConfig=VertexShad
     engines: Int=2,pageBytes: Int=4096,writeCredits: Int=8,tileSlots: Int=8,pagedCapacity: Int=16384,
     payload: Option[ShaderPayloadConfig]=Some(ShaderPayloadConfig(maxPayloadBytes=16*1024,owners=3,ports=8)),
     translateImageViews: Boolean=true,groupedTexture: Boolean=false,transformFeedback: Boolean=false,
-    renderTargetExtent: Option[(Int,Int)]=None,preflightDescriptors: Boolean=false) {
+    renderTargetExtent: Option[(Int,Int)]=None,preflightDescriptors: Boolean=false,nativeGeometry:Boolean=false) {
   renderTargetExtent.foreach{case(width,height)=>
     require(width>0 && width<65536 && height>0 && height<65536,
       "native render-target extents must fit positive 16-bit dimensions")}
@@ -29,7 +29,9 @@ case class NativeBinnedGraphicsConfig(vertex: VertexShaderStageConfig=VertexShad
         "native render-target maximum must accommodate the display extent")
       display.copy(screenWidth=width,screenHeight=height)
   }
-  def descriptorPreflight: Boolean=preflightDescriptors || storage.nativeAdvancedDraws
+  def descriptorPreflight: Boolean=preflightDescriptors || storage.nativeAdvancedDraws || nativeGeometry
+  require(!nativeGeometry || (translateImageViews && pagedCapacity==65536 && vertex.varyings==16 &&
+    vertex.input.attributes==16 && vertex.input.bindings==16),"GNJ2/GNF3 retain translated full-capacity native metadata")
   require(engines>=1 && engines<=4 && vertex.varyings==fragment.varyings && fragment.colors==4)
   payload.foreach(q=>require(q.owners>=engines+1,"vertex and fragment engines need distinct payload owners"))
 }
@@ -49,16 +51,42 @@ object NativeBinnedGraphicsConfig {
 object MemoryNativeBinnedGraphicsPipeline {
   val renderBase=16
   def binSlots(n: NativeBinnedGraphicsConfig): Int=VertexBinPipeline.memoryTransactions(n.engines,n.writeCredits,n.pagedCapacity)
-  def renderSlots(n: NativeBinnedGraphicsConfig): Int=TypedVertexBinImagePipeline.memoryTransactions(n.engines,n.writeCredits,n.pagedCapacity)
+  def renderSlots(n: NativeBinnedGraphicsConfig): Int=if(n.nativeGeometry)
+    opengpu.system.NativeLayeredVertexBinImagePipeline.transactions(n.engines,n.writeCredits,n.pagedCapacity)
+    else TypedVertexBinImagePipeline.memoryTransactions(n.engines,n.writeCredits,n.pagedCapacity)
+  def payloadPins(n:NativeBinnedGraphicsConfig):Int=if(n.nativeGeometry)8+6*n.engines else TypedVertexBinImagePipeline.payloadPins(n.engines)
   def transactions(n: NativeBinnedGraphicsConfig): Int=1<<log2Ceil(renderBase+renderSlots(n))
   /** Image transfer IDs are stable in both address-space profiles. */
   def imageTransfer(id: UInt,n: NativeBinnedGraphicsConfig): Bool=(0 until n.engines).map{e=>
-    val base=renderBase+binSlots(n)+32*e
+    val base=if(n.nativeGeometry)renderBase+LayeredWindowPrimitiveBinImagePipeline.imageBase(n.writeCredits,n.pagedCapacity)+64*e+2
+      else renderBase+binSlots(n)+32*e
     id>=(base+8).U && id<(base+16).U
   }.reduce(_ || _)
   /** GNC2 translates every request. GNC1 retains trusted physical image views. */
   def physical(id: UInt,n: NativeBinnedGraphicsConfig): Bool=if(n.translateImageViews)false.B else imageTransfer(id,n)
 }
+
+class NativeBinnedGraphicsPipelineIO(config:GpuConfig,native:NativeBinnedGraphicsConfig,sharedConfig:SharedCuShaderConfig,
+    commandIdWidth:Int,fragmentImageAvailable:Boolean) extends Bundle {
+  private val p=native.vertex;private val engines=native.engines
+  private val memoryTransactions=MemoryNativeBinnedGraphicsPipeline.transactions(native)
+
+    val feedback=if(native.transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
+    val grouped=if(native.groupedTexture)Some(new NativeRgba8TextureRendererPorts(sharedConfig.numComputeUnits,engines+1))else None
+    val submit=Flipped(Decoupled(new TileJobDescriptorRequest(commandIdWidth)))
+    val completion=Decoupled(new NativeBinnedGraphicsCompletion(commandIdWidth,p))
+    val primitiveDone=Vec(engines,Decoupled(new TypedReplayPrimitiveCompletion))
+    val out=Vec(engines,Decoupled(new TypedTilePixelQuadCompletion))
+    val tileDone=Vec(engines,Decoupled(new TypedVertexBinImageTileCompletion))
+    val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits,geometryAvailable=native.nativeGeometry,imageAvailable=fragmentImageAvailable))
+    val payload=native.payload.map(q=>Vec(engines+1,new FragmentPayloadPort(config,q)))
+    val poolPayload=native.payload.map(q=>Output(Valid(new ShaderPayloadBinding(config,q))))
+    val payloadPins=native.payload.map(q=>Output(Vec(MemoryNativeBinnedGraphicsPipeline.payloadPins(native),Valid(new ShaderPayloadPin(q)))))
+    val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,memoryTransactions))
+    val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,memoryTransactions)))
+    val fragmentEvents=Output(new FragmentPerformanceEvents)
+    val cancel=Input(Bool());val busy=Output(Bool())
+  }
 
 /** Native GPU-memory job -> actual shared-CU vertex/bin/image ownership.
   * Descriptor and renderer transactions occupy disjoint tagged ranges. The
@@ -66,7 +94,7 @@ object MemoryNativeBinnedGraphicsPipeline {
   * requests; only GNC1 preserves trusted physical image requests. Allocation,
   * code and VM ownership remain pinned through held completion.
   */
-class MemoryNativeBinnedGraphicsPipeline(config: GpuConfig=GpuConfig(),native: NativeBinnedGraphicsConfig=NativeBinnedGraphicsConfig(),
+private[graphics] class MemoryLegacyNativeBinnedGraphicsPipeline(config: GpuConfig=GpuConfig(),native: NativeBinnedGraphicsConfig=NativeBinnedGraphicsConfig(),
     shared: SharedCuShaderConfig=SharedCuShaderConfig(4),g: GraphicsConfig=GraphicsConfig(),commandIdWidth: Int=8,
     viewport: Fp32ViewportConfig=Fp32ViewportConfig(),useSramBlackBoxes: Boolean=false,
     fragmentImageAvailable: Boolean=false) extends Module {
@@ -77,23 +105,8 @@ class MemoryNativeBinnedGraphicsPipeline(config: GpuConfig=GpuConfig(),native: N
   private val idBits=log2Ceil(memoryTransactions)
   private val renderBase=MemoryNativeBinnedGraphicsPipeline.renderBase
   private val renderSlots=MemoryNativeBinnedGraphicsPipeline.renderSlots(native)
-  val io=IO(new Bundle {
-    val feedback=if(native.transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
-    val grouped=if(native.groupedTexture)Some(new NativeRgba8TextureRendererPorts(sharedConfig.numComputeUnits,engines+1))else None
-    val submit=Flipped(Decoupled(new TileJobDescriptorRequest(commandIdWidth)))
-    val completion=Decoupled(new NativeBinnedGraphicsCompletion(commandIdWidth,p))
-    val primitiveDone=Vec(engines,Decoupled(new TypedReplayPrimitiveCompletion))
-    val out=Vec(engines,Decoupled(new TypedTilePixelQuadCompletion))
-    val tileDone=Vec(engines,Decoupled(new TypedVertexBinImageTileCompletion))
-    val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits,imageAvailable=fragmentImageAvailable))
-    val payload=native.payload.map(q=>Vec(engines+1,new FragmentPayloadPort(config,q)))
-    val poolPayload=native.payload.map(q=>Output(Valid(new ShaderPayloadBinding(config,q))))
-    val payloadPins=native.payload.map(q=>Output(Vec(TypedVertexBinImagePipeline.payloadPins(engines),Valid(new ShaderPayloadPin(q)))))
-    val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,memoryTransactions))
-    val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,memoryTransactions)))
-    val fragmentEvents=Output(new FragmentPerformanceEvents)
-    val cancel=Input(Bool());val busy=Output(Bool())
-  })
+  val io=IO(new NativeBinnedGraphicsPipelineIO(config,native,shared,commandIdWidth,fragmentImageAvailable))
+
   private val reader=Module(new NativeBinnedGraphicsJobReader(config,commandIdWidth,p,engines,native.translateImageViews,
     allowWideTileCount=native.pagedCapacity==65536,preflightDescriptors=native.descriptorPreflight,
     f=f,g=renderGraphics,nativeAdvanced=native.storage.nativeAdvancedDraws,imageAvailable=fragmentImageAvailable))
@@ -146,4 +159,24 @@ class MemoryNativeBinnedGraphicsPipeline(config: GpuConfig=GpuConfig(),native: N
   when(io.memoryResponse.fire){assert(inFlight.orR || io.memoryRequest.fire,"native binned reply without an accepted request")}
   io.busy:=reader.io.busy || image.io.busy || queue.io.count.orR || inFlight.orR
   when(io.completion.valid){assert(!image.io.busy && queue.io.count===0.U && inFlight===0.U,"native binned completion escaped renderer or memory ownership")}
+}
+
+/** Public host entry: the checked configuration selects one complete native
+  * submission/version contract. The ordinary GNJ1/GNF1/2 implementation is
+  * retained unchanged inside its branch; GS uses the actual GNJ2/GNF3/GNY2
+  * source/bin/layered image/writer path.
+  */
+class MemoryNativeBinnedGraphicsPipeline(config:GpuConfig=GpuConfig(),native:NativeBinnedGraphicsConfig=NativeBinnedGraphicsConfig(),
+    shared:SharedCuShaderConfig=SharedCuShaderConfig(4),g:GraphicsConfig=GraphicsConfig(),commandIdWidth:Int=8,
+    viewport:Fp32ViewportConfig=Fp32ViewportConfig(),useSramBlackBoxes:Boolean=false,fragmentImageAvailable:Boolean=false) extends Module {
+  val memoryTransactions=MemoryNativeBinnedGraphicsPipeline.transactions(native)
+  val io=IO(new NativeBinnedGraphicsPipelineIO(config,native,shared,commandIdWidth,fragmentImageAvailable))
+  val recordBytes=WindowPrimitiveRecordLayout.lineCount(new WindowPrimitiveRecord(native.vertex))*64
+  if(native.nativeGeometry){
+    val renderer=Module(new MemoryNativeLayeredGraphicsPipeline(config,native,shared,g,commandIdWidth,viewport,useSramBlackBoxes,fragmentImageAvailable))
+    io<>renderer.io
+  }else{
+    val renderer=Module(new MemoryLegacyNativeBinnedGraphicsPipeline(config,native,shared,g,commandIdWidth,viewport,useSramBlackBoxes,fragmentImageAvailable))
+    io<>renderer.io
+  }
 }
