@@ -74,6 +74,17 @@ class Entry(unittest.TestCase):
             with self.assertRaisesRegex(qualifier.CleanupIncomplete, 'still has active members'):
                 lifetime.stop_group(unittest.mock.Mock(pid=42))
 
+    def test_sigkill_leader_wait_is_bounded_and_failure_preserves_inputs(self):
+        for failure in (subprocess.TimeoutExpired('owned-leader', 10), OSError('exit unknown')):
+            process = unittest.mock.Mock(pid=42)
+            process.wait.side_effect = [subprocess.TimeoutExpired('owned-leader', 10), failure]
+            with patch.object(lifetime.os, 'killpg'), patch.object(lifetime, 'group_dead') as dead:
+                with self.assertRaisesRegex(qualifier.CleanupIncomplete, 'leader exit after SIGKILL'):
+                    lifetime.stop_group(process)
+            self.assertEqual(process.wait.call_args_list,
+                             [unittest.mock.call(timeout=10), unittest.mock.call(timeout=10)])
+            dead.assert_not_called()
+
     def test_already_exited_leader_does_not_hide_a_live_descendant(self):
         code = ('import subprocess,sys; child=subprocess.Popen([sys.executable,"-c",'
                 '"import time; time.sleep(60)"]); print(child.pid,flush=True)')
