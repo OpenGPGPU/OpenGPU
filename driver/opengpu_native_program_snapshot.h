@@ -17,7 +17,8 @@ struct opengpu_native_program_snapshot {
  * those stable original bytes. owned_uniforms requires this job's verified
  * private GUR, not merely advertised uniform hardware. The native validator
  * derives its precise SoA writable prefix from the verified stage layout;
- * staging tails and all input/control slices stay read-only.
+ * staging tails and input flags/built-ins stay read-only. Fragment depth and
+ * shader-owned output-control arrays remain in the writable output prefix.
  *
  * Validate the executable suffix beginning at entry_offset, retaining the
  * validator's branch bounds relative to that suffix. Copy the entire original
