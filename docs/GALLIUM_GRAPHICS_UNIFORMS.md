@@ -239,7 +239,11 @@ lookup supplies each color GEM's physical window. File references may close
 while job references keep the actual storage alive through separate retirement.
 
 The prepared-owner capture mode passes GCC with ASan/UBSan using an immutable
-committed native implementation. It uses the actual hardware MMIO functions
+committed native implementation, including the final context/global-MMU cleanup
+implementation. The complete driver CPU suite, native MMIO/canonical physical
+parser, independent color oracle, seven controller/codec checks and five entry
+checks pass. The actual missing-qualification CLI refuses before creating a
+private directory. These results execute no GPU. It uses the actual hardware MMIO functions
 and exports the real union memory before enqueue. Its independent
 canonical parser checks OGCAP001/OGMEM001, actual Sv32 mappings, metadata RO/NX
 and code RX/no-write permissions, and all uploaded VS/FS bytes. It sends no
@@ -317,9 +321,48 @@ matching the existing Mesa objects:
 python3 scripts/test_gallium_native_capture.py --native-kernel-root /path/to/native-source --native-kernel-revision COMMITTED_SHA --owner-revision OWNER_PARSER_SHA --image ARM64_TOOL_IMAGE --sanitize
 ```
 
+For a compiler image with runtime zlib/expat but no development linker names,
+set `OPENGPU_MESA_LINK_LIBS` to the matching runtime library inputs and
+`OPENGPU_MESA_LIBRARY_PATH` to their directory. Both are forwarded into the
+isolated CPU build; the original Mesa build is unchanged.
+
 It checks the first real capture while both owners remain alive, then stops only
 the isolated CPU OS model without supplying any approving completion receipt.
 Its private build, captures and source copy are removed immediately.
+
+The actual complete-host entry requires an already generated, built and guarded
+native executor. Run it from the clean committed producer tree, preserving the
+original model generation's Python interpreter and CIRCT environment:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/qualify_native_graphics_owner.py \
+  --executor "$OWNER/executors/native/executor" \
+  --executor-qualification "$OWNER/executors/native/qualification.json" \
+  --executor-checker "$INTEGRATION/scripts/prepare_owner_executor.py" \
+  --executor-checker-python /opt/homebrew/opt/python@3.14/bin/python3.14
+```
+
+The original checker must be used from its original checkout. This entry does
+not generate a model or substitute a test profile. It copies only committed CPU
+producer dependencies, privately stages the checked Mesa lowering source and
+runs the real Mesa/Linux producer under a fixed local compiler image with
+2 CPUs and 2 GiB. The GPU/Mesa workspace is read-only; only this managed task
+directory is writable. The default native kernel is the same fixed source
+archive, including bounded cleanup transport waits. An explicit
+`--native-kernel-root`/`--native-kernel-revision` must supply that implementation.
+The CLI timeout is forwarded to all C observation/cleanup waits, within
+1..86400 seconds. Actual process-group and uniquely named container exit must
+be proven before source copies, builds, IPC and logs are removed. An unknown
+consumer state fails and preserves only inputs still potentially in use.
+
+This entry remains unqualified until the full DUT executes both original
+owners, independent images and guards pass, real retirement traces drain,
+and final VM/global MMU cleanup is observed. CPU capture results do not satisfy
+that gate or establish clock/FPS. Run the entry guards with:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_qualify_native_graphics_owner.py
+```
 
 For future actual owner execution, use the initial union memory and each real
 executor output, with source inputs captured at that record's snapshot:
