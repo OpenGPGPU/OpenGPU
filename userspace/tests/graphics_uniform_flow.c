@@ -16,6 +16,8 @@
 #include "pipe/p_screen.h"
 #include "util/u_inlines.h"
 static uint32_t value(unsigned binding, unsigned word);
+static void word_results(unsigned stage, const struct opengpu_native_uniform_program *native,
+    const struct graphics_uniform_view views[13]);
 static void word_oracle(void *program, unsigned stage, const struct opengpu_native_uniform_program *native,
     const struct pipe_opengpu_uniform_view actual[13]);
 
@@ -422,6 +424,11 @@ static void word_oracle(void *program,unsigned stage,const struct opengpu_native
         for(unsigned word=0;word<views[slot].bytes/4;word++)
             if(slot)data[word]=value(binding,word);else assert(data[word]==value(binding,word));
     }
+    word_results(stage,native,views);
+}
+static void word_results(unsigned stage,const struct opengpu_native_uniform_program *native,
+    const struct graphics_uniform_view views[13])
+{
     uint32_t sum=value(40+stage,0)^value(40+stage,1023);
     /* Source order, independent of Mesa's shuffled logical block allocation. */
     for(unsigned block=0;block<12;block++)sum=(sum*33u)^value(stage*24+block,0)^value(stage*24+block,4095);
@@ -445,6 +452,90 @@ static void word_oracle(void *program,unsigned stage,const struct opengpu_native
         }
     }
 }
+static void production_constants(void *program)
+{
+    uint64_t original_features=features;features|=OPENGPU_DRIVER_FEATURE_NATIVE_BINNED;
+    fixture_native_layout=native_layout_word(128);
+    struct pipe_screen *screen=opengpu_drm_screen_create(7,NULL);assert(screen);
+    struct pipe_context *pipe=screen->context_create(screen,NULL,0);assert(pipe);
+    struct opengpu_native_shader_layout physical;
+    assert(!pipe_opengpu_screen_native_layout(opengpu_screen_gpu(screen),&physical)&&physical.capacity==128);
+    struct pipe_resource *resources[36];unsigned offsets[36],sizes[36];
+    for(unsigned binding=0;binding<36;binding++) {
+        resources[binding]=buffer(screen,20480);assert(resources[binding]);
+        offsets[binding]=4+64*(binding%16);sizes[binding]=16384;
+        uint32_t *data=pipe_opengpu_resource_map(opengpu_resource(resources[binding])->gpu);assert(data);
+        for(unsigned word=0;word<20480/4;word++)data[word]=0x3eadbeefu;
+        for(unsigned word=0;word<4096;word++)data[offsets[binding]/4+word]=value(binding,word);
+    }
+    graphics_uniform_ubos(program,pipe,resources,offsets,sizes);
+    uint32_t defaults[1024];unsigned required[2][13];
+    struct opengpu_native_uniform_program native[2];
+    for(unsigned stage=0;stage<2;stage++) {
+        struct opengpu_native_uniform_layout layout;
+        assert(!opengpu_native_uniform_compile(graphics_uniform_tokens(program,stage),stage,
+            physical.capacity,&layout,&native[stage]));
+        memcpy(required[stage],native[stage].constant_bytes,sizeof(required[stage]));
+        for(unsigned word=0;word<1024;word++)defaults[word]=value(40+stage,word);
+        graphics_uniform_defaults(program,pipe,stage,defaults,1024);
+        memset(defaults,0x77,sizeof(defaults));
+    }
+    struct drm_opengpu_native_uniform_stage records[2],saved[2];
+    assert(!opengpu_native_graphics_uniform_sources(pipe,required,records));
+    for(unsigned binding=0;binding<36;binding++)assert(resources[binding]->reference.count==(binding<12||binding>=24?2:1));
+    for(unsigned stage=0;stage<2;stage++) {
+        struct graphics_uniform_view views[13];
+        assert(records[stage].active_mask==4095&&!records[stage].pad);
+        for(unsigned slot=0;slot<13;slot++) {
+            const struct drm_opengpu_compute_uniform_view *view=slot?&records[stage].blocks[slot-1]:&records[stage].defaults;
+            assert(view->handle&&view->handle<N&&bos[view->handle].data&&
+                view->offset<=bos[view->handle].size&&view->bytes<=bos[view->handle].size-view->offset);
+            if(slot) {
+                unsigned binding=graphics_uniform_binding(program,stage,slot-1);
+                assert(view->handle==pipe_opengpu_resource_handle(opengpu_resource(resources[binding])->gpu)&&
+                    view->offset==offsets[binding]&&view->bytes==16384);
+            } else assert(!view->offset&&view->bytes==4096);
+            views[slot]=(struct graphics_uniform_view){(const uint32_t *)(bos[view->handle].data+view->offset),view->bytes};
+            unsigned binding=slot?graphics_uniform_binding(program,stage,slot-1):40+stage;
+            for(unsigned word=0;word<view->bytes/4;word++)assert(views[slot].words[word]==value(binding,word));
+        }
+        word_results(stage,&native[stage],views);
+    }
+    memcpy(saved,records,sizeof(records));
+    unsigned last_slot=0;
+    for(unsigned slot=1;slot<13;slot++)if(graphics_uniform_binding(program,1,slot-1)==35)last_slot=slot;
+    assert(last_slot);
+    int32_t references=resources[35]->reference.count;
+    struct pipe_resource *owned=NULL;pipe_resource_reference(&owned,resources[35]);
+    struct pipe_constant_buffer bad={.buffer=owned,.buffer_offset=20224,.buffer_size=16384};
+    pipe->set_constant_buffer(pipe,PIPE_SHADER_FRAGMENT,last_slot,true,&bad);
+    assert(resources[35]->reference.count==references);
+    assert(opengpu_native_graphics_uniform_sources(pipe,required,records)<0&&!memcmp(records,saved,sizeof(records)));
+    graphics_uniform_ubos(program,pipe,resources,offsets,sizes);
+    assert(!opengpu_native_graphics_uniform_sources(pipe,required,records));
+    /* Rebinding the highest global source preserves the true linked slot and
+     * transfers the old reference without touching another stage's views. */
+    struct pipe_resource *old=resources[35];resources[35]=buffer(screen,20480);assert(resources[35]);
+    offsets[35]=68;
+    graphics_uniform_ubos(program,pipe,resources,offsets,sizes);
+    assert(old->reference.count==1&&resources[35]->reference.count==2);
+    assert(!opengpu_native_graphics_uniform_sources(pipe,required,records));
+    assert(records[1].blocks[last_slot-1].handle==pipe_opengpu_resource_handle(opengpu_resource(resources[35])->gpu)&&
+        records[1].blocks[last_slot-1].offset==68);
+    pipe_resource_reference(&old,NULL);
+    unsigned old_default=records[0].defaults.handle;
+    for(unsigned word=0;word<1024;word++)defaults[word]=value(40,word)^0xfedc1234u;
+    graphics_uniform_defaults(program,pipe,0,defaults,1024);memset(defaults,0x77,sizeof(defaults));
+    assert(!opengpu_native_graphics_uniform_sources(pipe,required,records));
+    assert(records[0].defaults.handle!=old_default&&!bos[old_default].data);
+    const uint32_t *new_default=(const uint32_t *)bos[records[0].defaults.handle].data;
+    for(unsigned word=0;word<1024;word++)assert(new_default[word]==(value(40,word)^0xfedc1234u));
+    pipe->destroy(pipe);
+    for(unsigned binding=0;binding<36;binding++) {
+        assert(resources[binding]->reference.count==1);pipe_resource_reference(&resources[binding],NULL);
+    }
+    screen->destroy(screen);features=original_features;no_leaks();
+}
 int main(int argc, char **argv)
 {
     char vertex[4096], fragment[4096], prefix[4096];
@@ -455,6 +546,7 @@ int main(int argc, char **argv)
     void *program = graphics_uniform_compile(vertex, fragment, prefix); assert(program);
     discovery();
     tracker_bindings(program);
+    production_constants(program);
     alias_and_alu();
     interface_boundaries();
     for (unsigned stage = 0; stage < 2; stage++) {

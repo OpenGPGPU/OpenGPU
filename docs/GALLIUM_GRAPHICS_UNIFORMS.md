@@ -16,6 +16,14 @@ Defaults occupy slot zero and are copied before Mesa reuses its parameter data.
 The fixture's compiler limits are separate from the current device's reported
 graphics limits.
 
+Production Gallium constant callbacks retain thirteen source views per stage
+when native transport discovery succeeds. Default user data receives a new GEM
+at each bind; external buffers retain their own exact view/reference. The source
+exporter uses this real callback state. Legacy constant handling continues, and
+absent native transport does not enable the additional state path. This is
+source ownership; accepted-job immutability still requires the protected kernel
+snapshot producer.
+
 The native helper supports straight-line raw MOV and unsigned word arithmetic
 (add, multiply, bitwise operations and shifts), checked scalar GUR1/GUB1 loads,
 position passthrough, flat varyings and raw color outputs. It rejects other
@@ -82,6 +90,10 @@ partial output. These use modeled OS/GEM primitives and do not execute a GPU.
 Native-source UAPI checks cover feature absence, malformed/failed layout
 queries, exact stage records, inactive zero records and unchanged outputs on
 rejection.
+The real Gallium callbacks also feed the native-word oracle through their
+exported source records. Checks include transferred-reference rejection/rebind,
+binding 35's shuffled logical slot, copied default data after caller reuse,
+fresh default GEM replacement and exact teardown reference recovery.
 
 Native validator C coverage checks every input/output/tail slice across full
 and empty runtime layouts, VS versions 1/2, FS versions 1–5, capability guards,
