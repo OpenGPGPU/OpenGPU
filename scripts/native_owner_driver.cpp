@@ -4,6 +4,7 @@
 #include "native_host_simulation.hpp"
 #include <filesystem>
 #include <iostream>
+#include <limits>
 
 #ifdef OPENGPU_FLASHSIM_NATIVE
 static_assert(GpuHostSystemAxiDut::assertion_count > 0,"assertion-free owner replay DUT");
@@ -20,6 +21,11 @@ template<class Sim> class ReplayBus {
 public:
   uint64_t cycles=0;
   ReplayBus(Sim &s,Agent &a,uint64_t maximum):sim(s),agent(a),limit(maximum) {}
+  void begin_record(uint64_t maximum) {
+    require(maximum && maximum<=std::numeric_limits<uint64_t>::max()-cycles,
+      "invalid captured record cycle budget");
+    limit=cycles+maximum;
+  }
   template<class Observe> void step(Observe observe) {
     require(cycles<limit,"captured owner exceeded its total cycle budget");
     sim.step(agent,cycles++,observe);
@@ -73,44 +79,84 @@ inline void traffic_unchanged(const Traffic &a,const Traffic &b) {
     a.write_beats==b.write_beats && a.acknowledgements==b.acknowledgements,
     "native completion allowed late external memory traffic");
 }
+struct RecordResult { uint64_t cycles, read_bytes, write_bytes; };
+template<class Sim>
+RecordResult replay_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
+                          Memory &memory,const Capture &capture) {
+  capture.validate();
+  require(agent.drained() && !sim.model->io_m_irq,"owner record starts before prior retirement/drain");
+  const Memory initial=memory;
+  verify_readonly(initial,memory,capture.writable);
+  const auto start_cycles=bus.cycles;const auto start_traffic=agent.traffic;
+  bus.begin_record(capture.max_cycles);
+  for(const auto &r:capture.discovery) require(bus.read(r.address)==r.value,"actual DUT differs from captured discovery");
+  require(!(bus.read(GPU_REG_UCMD_STATUS)&GPU_UCMD_STATUS_COMPLETION),
+    "owner record starts with an unretired completion");
+  for(const auto &a:capture.trace)bus.action(a);
+  while(!sim.model->io_m_irq)bus.step();
+  require(agent.drained(),"native completion preceded external memory drain");
+  const auto completed=agent.traffic;
+  const auto completion=bus.read(GPU_REG_UCMD_COMPLETION);
+  std::vector<uint32_t> held;
+  for(const auto &c:capture.checks) {
+    const auto value=bus.read(c.address);
+    require((value&c.mask)==c.expected,"native completion/GNX check differs");held.push_back(value);
+  }
+  for(uint32_t n=0;n<capture.hold_cycles;++n) {
+    require(sim.model->io_m_irq,"native completion IRQ disappeared while held");bus.step();
+    require(agent.drained(),"held native completion leaked external traffic");
+  }
+  require(bus.read(GPU_REG_UCMD_COMPLETION)==completion,"held native completion changed");
+  for(size_t n=0;n<capture.checks.size();++n)
+    require(bus.read(capture.checks[n].address)==held[n],"held native completion/GNX changed");
+  require(sim.model->io_m_irq,"native completion IRQ disappeared before retirement");
+  traffic_unchanged(completed,agent.traffic);
+  for(const auto &w:capture.finish)bus.write(w.address,w.value);
+  require(!(bus.read(GPU_REG_UCMD_STATUS)&GPU_UCMD_STATUS_COMPLETION),"native completion POP did not retire the slot");
+  for(unsigned n=0;n<8;++n)bus.step();
+  traffic_unchanged(completed,agent.traffic);
+  require(agent.drained() && !agent.traffic.read_faults && !agent.traffic.write_faults,
+    "owner replay faulted or left external traffic");
+  require(!sim.model->io_m_irq,"native completion retirement left an asserted IRQ");
+  verify_readonly(initial,memory,capture.writable);
+  return {bus.cycles-start_cycles,agent.traffic.read_bus_bytes-start_traffic.read_bus_bytes,
+    agent.traffic.write_bus_bytes-start_traffic.write_bus_bytes};
+}
+inline void report_record(const RecordResult &r,size_t index,uint32_t command_id,uint64_t cycles) {
+  std::cout<<"{\"ownerReplay\":true,\"record\":"<<index<<",\"commandId\":"<<command_id
+    <<",\"serviceCycles\":"<<r.cycles<<",\"cumulativeServiceCycles\":"<<cycles
+    <<",\"readBusBytes\":"<<r.read_bytes<<",\"writeBusBytes\":"<<r.write_bytes
+    <<",\"resets\":1,\"resetsBetweenRecords\":false,\"heldCompletionDrained\":true,"
+      "\"readOnlyGuards\":true,\"independentImagesRequired\":true,"
+      "\"sourceQualificationRequired\":true,\"clockQualified\":false,\"fpsQualified\":false}\n";
+}
 } // namespace native_owner
 
 int main(int argc,char **argv) {
   try {
     using namespace native_owner;
-    require(argc==4,"usage: native_owner_driver INPUT.memory INPUT.capture OUTPUT.memory");
-    require(!std::filesystem::exists(argv[3]),"owner replay output already exists");
-    const Capture capture=Capture::read(argv[2]);
-    Memory memory=Memory::read(argv[1]);const Memory initial=memory;
-    verify_readonly(initial,memory,capture.writable);
+    const bool series=argc>1 && std::string(argv[1])=="--series";
+    require(series?argc>=6:argc==4,
+      "usage: native_owner_driver INPUT.memory INPUT.capture OUTPUT.memory | --series INPUT.memory OUTPUT_DIR CAPTURE... (at least two)");
+    const std::filesystem::path output=argv[3];
+    require(!std::filesystem::exists(output),"owner replay output already exists");
+    std::vector<Capture> captures;
+    if(series) for(int n=4;n<argc;++n)captures.push_back(Capture::read(argv[n]));
+    else captures.push_back(Capture::read(argv[2]));
+    Memory memory=Memory::read(argv[series?2:1]);
+    for(const auto &c:captures)verify_readonly(memory,memory,c.writable);
+    // All owners must already be prepared and remain mapped/leased in this
+    // single exported physical memory. Never load another RAM image or reset
+    // between records: either would erase prior outputs or cache/coherence state.
+    if(series)require(std::filesystem::create_directory(output),"cannot create owner replay output directory");
     Simulation sim(argc,argv);sim.reset();Agent agent(memory);
-    ReplayBus<Simulation> bus(sim,agent,capture.max_cycles);
-    for(const auto &r:capture.discovery) require(bus.read(r.address)==r.value,"actual DUT differs from captured discovery");
-    for(const auto &a:capture.trace)bus.action(a);
-    while(!sim.model->io_m_irq)bus.step();
-    require(agent.drained(),"native completion preceded external memory drain");
-    const auto completed=agent.traffic;
-    const auto completion=bus.read(GPU_REG_UCMD_COMPLETION);
-    for(uint32_t n=0;n<capture.hold_cycles;++n) {
-      require(sim.model->io_m_irq,"native completion IRQ disappeared while held");bus.step();
-      require(agent.drained(),"held native completion leaked external traffic");
+    ReplayBus<Simulation> bus(sim,agent,captures.front().max_cycles);
+    for(size_t n=0;n<captures.size();++n) {
+      const auto result=replay_record(sim,agent,bus,memory,captures[n]);
+      memory.write(series?(output/("record-"+std::to_string(n)+".memory")).string():output.string());
+      report_record(result,n,captures[n].command_id,bus.cycles);
     }
-    require(bus.read(GPU_REG_UCMD_COMPLETION)==completion,"held native completion changed");
-    for(const auto &c:capture.checks) require((bus.read(c.address)&c.mask)==c.expected,"held native completion/GNX check differs");
-    require(sim.model->io_m_irq,"native completion IRQ disappeared before retirement");
-    traffic_unchanged(completed,agent.traffic);
-    for(const auto &w:capture.finish)bus.write(w.address,w.value);
-    require(!(bus.read(GPU_REG_UCMD_STATUS)&GPU_UCMD_STATUS_COMPLETION),"native completion POP did not retire the slot");
-    for(unsigned n=0;n<8;++n)bus.step();
-    traffic_unchanged(completed,agent.traffic);
-    require(agent.drained() && !agent.traffic.read_faults && !agent.traffic.write_faults,
-      "owner replay faulted or left external traffic");
-    verify_readonly(initial,memory,capture.writable);
-    memory.write(argv[3]);sim.model->final();
-    std::cout<<"{\"ownerReplay\":true,\"serviceCycles\":"<<bus.cycles
-      <<",\"readBusBytes\":"<<agent.traffic.read_bus_bytes<<",\"writeBusBytes\":"<<agent.traffic.write_bus_bytes
-      <<",\"heldCompletionDrained\":true,\"readOnlyGuards\":true,\"independentImagesRequired\":true,"
-        "\"sourceQualificationRequired\":true,\"clockQualified\":false,\"fpsQualified\":false}\n";
+    sim.model->final();
     return 0;
   } catch(const std::exception &e) {
     std::cerr<<"native owner replay failed: "<<e.what()<<'\n';return 1;
