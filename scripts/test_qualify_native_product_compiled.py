@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import resource
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -30,6 +31,95 @@ def metrics():
 
 
 class GuardTests(unittest.TestCase):
+    def test_real_cpp_parser_rejects_mismatched_vga_resources(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory); source = out / 'parse.cpp'; exe = out / 'parse'
+            source.write_text('#include "native_frame_fixture.hpp"\n'
+                'int main(int argc,char** argv){if(argc!=2)return 2;try{'
+                'auto f=native_frame::Fixture::read(argv[1]);return f.two_cu_vga()?0:3;'
+                '}catch(const std::exception&){return 1;}}\n')
+            subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++17', '-O1',
+                '-Wall', '-Wextra', '-Werror', '-I', str(ROOT / 'scripts'),
+                str(source), '-o', str(exe)], check=True, capture_output=True)
+            compute = [0x47435201,16,15,2,16,8,128,128,0xffffffff,16384,16,8,
+                       0x10000000,32,131072,4]
+            native = [0x474e4303,8,0x474e4a01,0x08000200,0xc2100800,
+                      0x08000800,0xe4908000,0x8813d902]
+            resources = [(0x360 + 4 * i, v) for i, v in enumerate(compute)]
+            resources += [(0x160 + 4 * i, v) for i, v in enumerate(native)]
+            def check(values, width=640, height=480):
+                commands = out / 'scene.commands'
+                def pairs(items):
+                    return struct.pack('<I', len(items)) + b''.join(struct.pack('<II', *v) for v in items)
+                commands.write_bytes(b'OGNAT001' + struct.pack('<IIIIQ', width, height, 1, 1,
+                    10000000 if width == 32 else 1000000000) + pairs(values) +
+                    pairs([(0,0)] * 8) + struct.pack('<I', 13) +
+                    struct.pack('<III', 0,0,0) * 13 + pairs([(0,0)] * 2))
+                return subprocess.run([str(exe), str(commands)], capture_output=True).returncode
+            self.assertEqual(check(resources), 0)
+            self.assertEqual(check(resources, 32, 32), 0)
+            for index, pair in [(3, (0x36c, 4)), (4, (0x370, 8)),
+                    (21, (0x174, 0x01e00280)), (22, (0x178, 2 << 27)),
+                    (23, (0x17c, 4)), (16, (0x164, 0x474e4303)),
+                    (20, (0x170, 0xc1100800))]:
+                changed = list(resources); changed[index] = pair
+                with self.subTest(index=index): self.assertEqual(check(changed), 1)
+            self.assertEqual(check(resources[:16]), 1)
+
+    def test_two_cu_vga_requires_complete_capacity_and_rejects_legacy_results(self):
+        candidate = dict(profile(), profile='two-cu-vga60-v1', targetFps=60,
+            computeUnits=2, product=True, frameWidth=640, frameHeight=480,
+            apiCapacity=True, screenWidth=640, screenHeight=480,
+            nativeMaxWidth=2048, nativeMaxHeight=2048, pagedCapacity=65536,
+            engines=4, payloadBytes=524288)
+        q.check_profile(candidate, True, two_cu_vga=True)
+        with self.assertRaises(RuntimeError):
+            q.check_profile(candidate, True, api_capacity=True)
+        for field, value in [('computeUnits', 4), ('frameWidth', 1280),
+                ('frameHeight', 720), ('screenWidth', 32), ('targetFps', 30),
+                ('nativeMaxWidth', 640), ('pagedCapacity', 16384), ('apiCapacity', False),
+                ('profile', 'old-two-cu'), ('engines', 2)]:
+            with self.subTest(field=field), self.assertRaises(RuntimeError):
+                q.check_profile(dict(candidate, **{field: value}), True, two_cu_vga=True)
+        q.check_profile(dict(candidate, product=False, frameWidth=32, frameHeight=32),
+                        False, two_cu_vga=True)
+        rows = [dict(r, frameWidth=640, frameHeight=480, computeUnits=2,
+                     nativeEngines=4, nativeMaxWidth=2048, nativeMaxHeight=2048,
+                     profile='two-cu-vga60-v1') for r in metrics()]
+        q.validate_metrics(rows, True, True)
+        for field, value in [('computeUnits', 4), ('nativeEngines', 2),
+                             ('profile', None), ('nativeMaxHeight', 480)]:
+            changed = copy.deepcopy(rows); changed[2][field] = value
+            with self.subTest(field=field), self.assertRaises(RuntimeError):
+                q.validate_metrics(changed, True, True)
+        with self.assertRaises(RuntimeError):
+            q.validate_metrics(rows, True)
+
+    def test_two_cu_vga_uses_explicit_capacity_flags_without_720p_opt_in(self):
+        import qualify_native_product_flashsim as flash
+        for runner in [q.Runner(Path('.'), True, two_cu_vga=True),
+                flash.Runner(Path('.'), True, Path('.'), two_cu_vga=True)]:
+            command = runner.sbt('example --product', '6G')
+            self.assertIn('-Dopengpu.productTwoCuVga=1', command)
+            self.assertIn('-Dopengpu.productApiCapacity=1', command)
+            self.assertIn('-Dopengpu.apiExtentQualification=1', command)
+            self.assertIn('-Dopengpu.productQualification=0', command)
+        with self.assertRaisesRegex(ValueError, 'boolean'):
+            q.Runner(Path('.'), True, two_cu_vga='1')
+
+    def test_two_cu_image_gate_requires_explicit_profile_and_all_vga_images(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / 'verify.log'
+            final = 'NATIVE_COMPILED_PRODUCT PASS scenes=6 fullExecutionAndStorage=true exactStoredImagesAndGuards=true clockQualified=false fpsQualified=false'
+            marker = 'NATIVE_COMPILED_PROFILE profile=two-cu-vga60-v1 computeUnits=2 engines=4 targetFps=60 clockQualified=false fpsQualified=false'
+            images = [f'NATIVE_COMPILED_IMAGE id={n} frame=640x480 exactStoredImagesAndGuards=true' for n in q.SCENES]
+            log.write_text('\n'.join([*images, final, marker]))
+            q.verify_marker(log, True, True)
+            for lines in [[*images, final], [*images[:-1], final, marker],
+                          [*images, final, marker.replace('computeUnits=2', 'computeUnits=4')]]:
+                log.write_text('\n'.join(lines))
+                with self.assertRaises(RuntimeError): q.verify_marker(log, True, True)
+
     def test_combined_api_capacity_requires_exact_manifest_and_flag(self):
         combined = dict(profile(), apiCapacity=True, screenWidth=640, screenHeight=480,
                         nativeMaxWidth=2048, nativeMaxHeight=2048, pagedCapacity=65536,

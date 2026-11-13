@@ -16,6 +16,29 @@ class CompiledNativeProductCapacitySpec extends AnyFlatSpec {
     (words,input.position())
   }
 
+  it should "encode two-CU VGA commands with full API resources and two-CU discovery" in {
+    val path=Files.createTempFile("native-two-cu-vga-", ".commands")
+    try {
+      val scene=NativeProductWorkloads.suite(16,16).head
+      val input=CompiledNativeProductFixtures.input(scene,twoCuVga=true)
+      CompiledNativeProductFixtures.writeCommands(path,scene,input,1,product=false,
+        apiCapacity=true,twoCuVga=true)
+      val (words,_)=resources(Files.readAllBytes(path))
+      assert(words.size==24)
+      assert(words(3)==(0x36cL,2L))
+      assert((words(23)._2 & 255)==2)
+      assert(((words(22)._2 >> 27) & 7)==4)
+      assert(words(21)._2==0x08000800L)
+      assert(input.frame("frame.version")==2)
+      assert(input.frame("frame.bins.producer.tileLog2")==3)
+      assert(CompiledNativeProductFixtures.frameSize(product=true,twoCuVga=true)==(640,480))
+      assert(CompiledNativeProductFixtures.frameSize(product=false,twoCuVga=true)==(32,32))
+      intercept[IllegalArgumentException] {
+        CompiledNativeProductFixtures.writeCommands(path,scene,input,1,product=false,twoCuVga=true)
+      }
+    } finally Files.deleteIfExists(path)
+  }
+
   it should "preserve product commands and add exact API-capacity discovery checks" in {
     val dir=Files.createTempDirectory("native-combined-capacity-")
     val old=dir.resolve("ordinary.commands");val combined=dir.resolve("combined.commands")

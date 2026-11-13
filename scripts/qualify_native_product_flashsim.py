@@ -155,8 +155,8 @@ def generated_sources(directory, expected_shards=None):
 class Runner(common.Runner):
     def __init__(self, out, product, flashsim, scene_jobs=1, shards=32,
                  reshard=None, reshard_tool=None, precompiled_header=False, shard_opt='-O2',
-                 conservative_alias=False, driver_root=None, api_capacity=False):
-        super().__init__(out, product, 'flat', scene_jobs, api_capacity)
+                 conservative_alias=False, driver_root=None, api_capacity=False, two_cu_vga=False):
+        super().__init__(out, product, 'flat', scene_jobs, api_capacity, two_cu_vga)
         self.flashsim = flashsim.resolve()
         if shards < 1:
             raise ValueError('--shards must be positive')
@@ -328,6 +328,7 @@ def main():
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument('--smoke', action='store_true')
     mode.add_argument('--product', action='store_true')
+    parser.add_argument('--two-cu-vga', action='store_true')
     parser.add_argument('--api-capacity', action='store_true',
                         help='use the four-engine 2048-axis, 65536-entry native API profile')
     parser.add_argument('--flashsim-dir', type=Path, required=True)
@@ -355,7 +356,7 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         runner = Runner(out, args.product, args.flashsim_dir, args.scene_jobs, args.shards,
                         args.reshard_dir, args.reshard_tool, args.precompiled_header, args.shard_opt,
-                        args.conservative_alias, api_capacity=args.api_capacity)
+                        args.conservative_alias, api_capacity=args.api_capacity, two_cu_vga=args.two_cu_vga)
         try:
             if args.stage == 'generate':
                 runner.generate()

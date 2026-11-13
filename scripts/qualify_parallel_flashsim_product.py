@@ -31,7 +31,8 @@ def _one_metric(target, name, expected):
 
 
 def guard_model(current, original):
-    if current.product != original.product or current.api_capacity != original.api_capacity:
+    if (current.product != original.product or current.api_capacity != original.api_capacity
+            or current.two_cu_vga != original.two_cu_vga):
         raise RuntimeError('Preparation and execution profiles differ')
     prepared = current.prepared()
     old_path = original.out / 'preparation.json'
@@ -46,7 +47,7 @@ def guard_model(current, original):
             or old['manifest_sha256'] != common.sha(original.out / 'fixture-manifest.json')):
         raise RuntimeError('Original prepared inputs changed')
     common.check_profile(json.loads((original.out / 'fixture-manifest.json').read_text()),
-                         current.product, current.api_capacity)
+                         current.product, current.api_capacity, current.two_cu_vga)
     build = original.checked_build(prepared)
     identity = dict(preparation_sha256=common.sha(old_path),
                     build_sha256=common.sha(original.out / 'build.json'),
@@ -74,6 +75,7 @@ def guard_batches(current, original, witness_path, extra_path):
     state = witness['controller_state']
     state_hash = hashlib.sha256((json.dumps(state, indent=2) + '\n').encode()).hexdigest()
     if (state_hash != witness['controller_state_sha256'] or state.get('product') != current.product
+            or state.get('two_cu_vga', False) != current.two_cu_vga
             or state.get('scene_execution') != original.scene_execution
             or state.get('stage') not in ('execute-six-scenes-parallel', 'execute-six-scenes-parallel-terminal')):
         raise RuntimeError('Original controller completion witness is invalid')
@@ -108,7 +110,7 @@ def guard_batches(current, original, witness_path, extra_path):
         rows[name] = item['metrics']
         memories[name] = str(_one_metric(target, name, rows[name]))
     ordered = [rows[name] for name in common.SCENES]
-    common.validate_metrics(ordered, current.product)
+    common.validate_metrics(ordered, current.product, current.two_cu_vga)
     execution = dict(mode='independently-orchestrated-fresh-models',
                      original_scene_jobs=original.scene_execution['max_workers'],
                      original_scenes=[name for name in common.SCENES if name in first],
@@ -135,13 +137,13 @@ def verify(current, original, witness_path, extra_path, output):
         current.sbt('opengpu.system.VerifyCompiledNativeProduct ' + mode +
                     ' --output ' + json.dumps(str(output)),
                     common.PRODUCT_JAVA_HEAP if current.product else '3G'), log)
-    common.verify_marker(log, current.product)
+    common.verify_marker(log, current.product, current.two_cu_vga)
     if (before != guard_batches(current, original, witness_path, extra_path)
             or image_hashes != {name: common.sha(output / (name + '.memory')) for name in common.SCENES}
             or verifier != {p: common.sha(Path(p)) for p in verifier}):
         raise RuntimeError('Qualification inputs changed during verification')
     common.write_json(output / 'qualification-parallel.json', dict(
-        passed=True, product=current.product, api_capacity=current.api_capacity, simulator_backend='flashsim',
+        passed=True, product=current.product, api_capacity=current.api_capacity, two_cu_vga=current.two_cu_vga, simulator_backend='flashsim',
         source_sha256=before['prepared']['source_sha256'], scenes=before['scenes'],
         scene_execution=before['execution'],
         bound_assertion_layer_sha256=common.assertion_layer_hashes(before['prepared']['rtl_sha256']),
@@ -157,6 +159,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument('--smoke', action='store_true'); mode.add_argument('--product', action='store_true')
+    parser.add_argument('--two-cu-vga', action='store_true')
     parser.add_argument('--api-capacity', action='store_true')
     parser.add_argument('--prepared-output', type=Path, required=True)
     parser.add_argument('--original-output', type=Path, required=True)
@@ -182,9 +185,9 @@ def main():
     values = (args.product, args.flashsim_dir, args.scene_jobs, args.shards,
               args.reshard_dir, args.reshard_tool, args.precompiled_header, args.shard_opt,
               args.conservative_alias)
-    current = flash.Runner(current_out, *values, api_capacity=args.api_capacity)
+    current = flash.Runner(current_out, *values, api_capacity=args.api_capacity, two_cu_vga=args.two_cu_vga)
     original = flash.Runner(old_out, *values, driver_root=args.original_driver_checkout,
-                            api_capacity=args.api_capacity)
+                            api_capacity=args.api_capacity, two_cu_vga=args.two_cu_vga)
     # The original batch may still be running other scenes. Its completed
     # scene directories are fingerprinted before and after the oracle instead
     # of taking the live run's exclusive lock.

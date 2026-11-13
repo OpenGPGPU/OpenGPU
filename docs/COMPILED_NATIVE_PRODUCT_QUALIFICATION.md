@@ -2,12 +2,47 @@
 
 This explicit local runner executes the same full-profile native host, six input recipes and independent stored-image oracle as `QualifyNativeProductRecipes`. The C++ driver services external AXI transactions inside the Verilator process. Rasterization, shaders, texture sampling, depth/stencil, blending, stores and resolves execute in the generated RTL.
 
-Four-CU runs are optional extended qualifications. The mandatory alignment
-target is two CUs at 640×480 and 60 FPS; it requires a separately checked
-two-CU configuration, complete frames and matching whole-host physical timing.
-The four-CU results below cannot qualify that target.
+The legacy hardware profile retains four CUs, sixteen lanes, eight resident warps, four native fragment workers, the original storage capacities, characterized SRAM models and a 256-bit AXI port. Smoke mode renders 32×32 scenes; it does not reduce execution or storage capacities. Legacy product mode renders 1280×720 and explicitly sets `opengpu.productQualification=1` when invoking Scala. Both modes require all six scenes. Neither the RTL build nor these simulations belongs in regular PR/nightly CI.
 
-The hardware profile retains four CUs, sixteen lanes, eight resident warps, four native fragment workers, the original storage capacities, characterized SRAM models and a 256-bit AXI port. Smoke mode renders 32×32 scenes; it does not reduce execution or storage capacities. Product mode renders 1280×720 and explicitly sets `opengpu.productQualification=1` when invoking Scala. Both modes require all six scenes. Neither the RTL build nor these simulations belongs in regular PR/nightly CI.
+## Two-CU VGA target
+
+The mandatory alignment target is two CUs at 640×480 and 60 FPS. Select
+`--two-cu-vga` with either `--smoke` or `--product` in the compiled or FlashSim
+runner. This explicit profile uses two CUs with sixteen lanes and eight warps
+per CU, four native tile/fragment engines, one shared texture cluster, 128 KiB
+L2, a 512 KiB payload pool and a 256-bit AXI port. It keeps the complete native
+API capacities: 2048×2048 maximum extent, 65,536 directory entries, sixteen
+attribute/binding/varying slots, four color outputs and four samples.
+The engine count is independent of the CU count; the balanced configuration's
+smaller engine count is not substituted for this product profile.
+
+The display stays 640×480 in both modes. Smoke renders six 32×32 frames on the
+same hardware; product renders all six complete 640×480 frames. Both use v2
+frame descriptors and 8×8 tiles through `encodeApiExtent`. The runner enables
+the API-capacity and full-host guards and keeps the legacy 720p opt-in disabled.
+GCR1 and all eight GNC3 capability words are checked against the executing
+hardware before submission. Manifests, execution metrics and the image-oracle
+marker bind results to `two-cu-vga60-v1`; four-CU or reduced-capacity results
+cannot qualify this profile.
+
+```sh
+python3 scripts/qualify_native_product_compiled.py --smoke --two-cu-vga \
+  --output "$PWD/.artifacts/two-cu-vga-smoke" --jobs 2
+python3 scripts/qualify_native_product_compiled.py --product --two-cu-vga \
+  --output "$PWD/.artifacts/two-cu-vga-product" --jobs 2
+```
+
+For FlashSim, use `scripts/qualify_native_product_flashsim.py` with the same
+mode/profile arguments plus `--flashsim-dir /path/to/FlashSim`. The equivalent,
+parallel and extra-scene reverification tools also require `--two-cu-vga`.
+
+These commands establish functional execution only after all scenes pass the
+independent complete-image, sample and guard oracle with external traffic
+drained. The 60 FPS requirement additionally needs every complete frame to fit
+the matching physically qualified whole-host clock. At the 1 GHz planning
+clock, the budget is 16,666,666 service cycles per frame; simulator wall time
+and smoke counts cannot establish FPS. Whole-host timing, full-frame rate and
+the remaining H6–H8 requirements remain open.
 
 ## Reproduce
 
@@ -25,7 +60,7 @@ python3 scripts/qualify_native_product_compiled.py --product \
   --output "$PWD/.artifacts/native-compiled-product" --jobs 2
 ```
 
-`--stage prepare|build|run|verify` operates one stage. Preserve source and output bytes while a stage is live. If a stage fails, inspect its actual exit and log before retrying. An observation timeout does not terminate a build or simulation. The build cache is bound to emitted RTL, hardware profile, driver inputs, compiler/tool versions, flags and executable hash. Preparation, execution and verification reject stale source/model/fixture/output bytes. Raw outputs under `.artifacts/` are temporary: delete them when active validation or diagnosis no longer needs them, without waiting for PR merge. Keep concise final results and reproduction commands rather than evidence archives.
+`--stage prepare|build|run|verify` operates one stage. Preserve source and output bytes while a stage is live. If a stage fails, inspect its actual exit and log before retrying. An observation timeout does not terminate a build or simulation. The build cache is bound to emitted RTL, hardware profile, driver inputs, compiler/tool versions, flags and executable hash. Preparation, execution and verification reject stale source/model/fixture/output bytes. Raw outputs under `.artifacts/` are temporary: delete them when their active validation or diagnosis use ends, without waiting for PR merge. Retain concise final results, limits and reproduction commands rather than evidence archives.
 
 Both compiled product and API runners explicitly add generated assertion bind
 layers omitted from CIRCT's `filelist.f`, including their parent include

@@ -18,6 +18,7 @@ def guard_equivalence(current, original, reference=None):
     if current.out.resolve() == original.out.resolve():
         raise RuntimeError('Use separate current preparation and original execution directories')
     if (current.product != original.product or current.api_capacity != original.api_capacity
+            or current.two_cu_vga != original.two_cu_vga
             or current.scene_execution != original.scene_execution):
         raise RuntimeError('Preparation and execution profiles differ')
     prepared = current.prepared()
@@ -33,7 +34,7 @@ def guard_equivalence(current, original, reference=None):
             or old['manifest_sha256'] != common.sha(original.out / 'fixture-manifest.json')):
         raise RuntimeError('Original prepared inputs changed')
     common.check_profile(json.loads((original.out / 'fixture-manifest.json').read_text()),
-                         current.product, current.api_capacity)
+                         current.product, current.api_capacity, current.two_cu_vga)
     original.checked_build(prepared)
     execution_path = original.out / 'execution.json'
     execution = json.loads(execution_path.read_text())
@@ -47,7 +48,7 @@ def guard_equivalence(current, original, reference=None):
             or execution['build_sha256'] != common.sha(original.out / 'build.json')
             or execution['executable_sha256'] != common.sha(original.out / original.executable_name)):
         raise RuntimeError('Original execution provenance or outputs changed')
-    common.validate_metrics(execution['scenes'], current.product)
+    common.validate_metrics(execution['scenes'], current.product, current.two_cu_vga)
     reference_sha = common.sha(reference) if reference else None
     if reference:
         common.compare_reference(execution['scenes'], json.loads(reference.read_text()), original.scene_execution)
@@ -73,11 +74,11 @@ def verify(current, original, reference=None):
         current.sbt('opengpu.system.VerifyCompiledNativeProduct ' + mode +
                     ' --output ' + json.dumps(before['directory']),
                     common.PRODUCT_JAVA_HEAP if current.product else '3G'), log)
-    common.verify_marker(log, current.product)
+    common.verify_marker(log, current.product, current.two_cu_vga)
     after = guard_equivalence(current, original, reference)
     if before != after or verifier_hashes != {str(p): common.sha(p) for p in verifier_files}:
         raise RuntimeError('Qualification inputs changed during verification')
-    common.write_json(result, dict(passed=True, product=current.product, api_capacity=current.api_capacity,
+    common.write_json(result, dict(passed=True, product=current.product, api_capacity=current.api_capacity, two_cu_vga=current.two_cu_vga,
         simulator_backend='flashsim', source_sha256=before['prepared']['source_sha256'],
         original_preparation_sha256=before['original_preparation_sha256'],
         current_preparation_sha256=before['current_preparation_sha256'],
@@ -96,6 +97,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument('--smoke', action='store_true'); mode.add_argument('--product', action='store_true')
+    parser.add_argument('--two-cu-vga', action='store_true')
     parser.add_argument('--api-capacity', action='store_true')
     parser.add_argument('--prepared-output', type=Path, required=True)
     parser.add_argument('--execution-output', type=Path, required=True)
@@ -118,11 +120,11 @@ def main():
         parser.error('preparation and execution directories must differ')
     current = flash.Runner(current_out, args.product, args.flashsim_dir, args.scene_jobs, args.shards,
                            args.reshard_dir, args.reshard_tool, args.precompiled_header, args.shard_opt,
-                           args.conservative_alias, api_capacity=args.api_capacity)
+                           args.conservative_alias, api_capacity=args.api_capacity, two_cu_vga=args.two_cu_vga)
     original = flash.Runner(old_out, args.product, args.flashsim_dir, args.scene_jobs, args.shards,
                             args.reshard_dir, args.reshard_tool, args.precompiled_header, args.shard_opt,
                             args.conservative_alias, driver_root=args.original_driver_checkout,
-                            api_capacity=args.api_capacity)
+                            api_capacity=args.api_capacity, two_cu_vga=args.two_cu_vga)
     # Lock both roots in a stable order; a live run cannot be requalified.
     first, second = sorted((current_out, old_out))
     with (first / '.lock').open('w') as first_lock, (second / '.lock').open('w') as second_lock:

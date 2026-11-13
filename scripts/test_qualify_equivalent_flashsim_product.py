@@ -24,7 +24,7 @@ class EquivalentQualificationTest(unittest.TestCase):
     def test_cli_passes_conservative_alias_to_both_runners(self):
         argv = ['qualify-equivalent', '--smoke', '--prepared-output', str(self.current),
                 '--execution-output', str(self.old), '--flashsim-dir', self.temp.name,
-                '--conservative-alias', '--api-capacity', '--original-driver-checkout', str(self.old)]
+                '--conservative-alias', '--api-capacity', '--two-cu-vga', '--original-driver-checkout', str(self.old)]
         with patch.object(sys, 'argv', argv), patch.object(equivalent, 'verify') as verify:
             equivalent.main()
         current, original = verify.call_args.args[:2]
@@ -32,11 +32,17 @@ class EquivalentQualificationTest(unittest.TestCase):
         self.assertTrue(original.conservative_alias)
         self.assertTrue(current.api_capacity)
         self.assertTrue(original.api_capacity)
+        self.assertTrue(current.two_cu_vga and original.two_cu_vga)
         self.assertEqual(current.driver_root, flash.ROOT)
         self.assertEqual(original.driver_root, self.old.resolve())
 
     def test_rejects_different_api_capacity_profiles(self):
         self.new.api_capacity = True
+        with self.assertRaisesRegex(RuntimeError, 'profiles differ'):
+            equivalent.guard_equivalence(self.new, self.original)
+
+    def test_rejects_different_cu_profiles_even_with_equal_capacity(self):
+        self.new.two_cu_vga = True
         with self.assertRaisesRegex(RuntimeError, 'profiles differ'):
             equivalent.guard_equivalence(self.new, self.original)
 

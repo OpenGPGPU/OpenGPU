@@ -28,7 +28,7 @@ class ParallelQualificationTest(unittest.TestCase):
         argv = ['qualify-parallel', '--smoke', '--prepared-output', str(self.current),
                 '--original-output', str(self.old), '--witness', str(self.witness_path),
                 '--extra-record', str(self.extra_path), '--output', str(self.extra / 'qualified'),
-                '--flashsim-dir', self.temp.name, '--conservative-alias', '--api-capacity',
+                '--flashsim-dir', self.temp.name, '--conservative-alias', '--api-capacity', '--two-cu-vga',
                 '--original-driver-checkout', str(self.old)]
         with patch.object(sys, 'argv', argv), patch.object(parallel, 'verify') as verify:
             parallel.main()
@@ -37,6 +37,7 @@ class ParallelQualificationTest(unittest.TestCase):
         self.assertTrue(original.conservative_alias)
         self.assertTrue(current.api_capacity)
         self.assertTrue(original.api_capacity)
+        self.assertTrue(current.two_cu_vga and original.two_cu_vga)
         self.assertEqual(current.driver_root, flash.ROOT)
         self.assertEqual(original.driver_root, self.old.resolve())
 
@@ -45,16 +46,22 @@ class ParallelQualificationTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'profiles differ'):
             parallel.guard_model(self.new, self.original)
 
+    def test_rejects_different_cu_profiles_even_with_equal_capacity(self):
+        self.new.two_cu_vga = True
+        with self.assertRaisesRegex(RuntimeError, 'profiles differ'):
+            parallel.guard_model(self.new, self.original)
+
     def test_recorder_cli_passes_original_build_options(self):
         argv = ['record-parallel', 'extra', '--smoke', '--prepared-output', str(self.current),
                 '--original-output', str(self.old), '--output', str(self.extra / 'new'),
                 '--scene', common.SCENES[0], '--flashsim-dir', self.temp.name,
-                '--conservative-alias', '--api-capacity', '--original-driver-checkout', str(self.old)]
+                '--conservative-alias', '--api-capacity', '--two-cu-vga', '--original-driver-checkout', str(self.old)]
         with patch.object(sys, 'argv', argv), patch.object(recorder, 'run_extra') as run:
             recorder.main()
         current, original = run.call_args.args[:2]
         self.assertTrue(current.conservative_alias and original.conservative_alias)
         self.assertTrue(current.api_capacity and original.api_capacity)
+        self.assertTrue(current.two_cu_vga and original.two_cu_vga)
         self.assertEqual(current.driver_root, flash.ROOT)
         self.assertEqual(original.driver_root, self.old.resolve())
 
