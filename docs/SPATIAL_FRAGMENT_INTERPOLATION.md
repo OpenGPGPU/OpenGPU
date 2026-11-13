@@ -13,6 +13,14 @@ lane-major fault prefixes remain ordered. The two native tile engines share the
 four-CU shader pool. Polygon offset has its own scalar service before raster
 launch.
 
+Preparation children use Chisel `Instantiate` with the complete constructor
+parameter tuple. Identical elaboration definitions are cached while every
+hardware owner retains its own ports, registers, cancellation and arithmetic
+service. The four lane parameters remain distinct; owner capacity and issue
+rates are unchanged. A two-owner regression checks different request identities
+and depths, a held result during peer cancellation, and independent healthy
+reuse.
+
 Polygon determinants, signed bounds, raster-origin products, sample gradients
 and edge-conservation checks use explicit register stages. Point/line coverage
 registers sample product partials, carry summaries and projected offsets.
@@ -99,6 +107,9 @@ execution, payload transport and the attachment backend; it cannot qualify
 the whole GPU clock or product frame rate.
 
 ```sh
+sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  'testOnly opengpu.graphics.FragmentPreparationInstanceSpec' \
+  'testOnly opengpu.graphics.Fp32FragmentPreparationSpec -- -z "all sixty-four"'
 sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.Fp32FragmentInterpolatorSpec opengpu.graphics.Fp32FragmentPreparationSpec opengpu.graphics.Fp32StreamingFragmentInterpolatorSpec opengpu.graphics.Fp32StreamingFragmentDifferentialSpec opengpu.graphics.Fp32PrimitiveRasterStageSpec' \

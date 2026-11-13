@@ -2,6 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
+import chisel3.experimental.hierarchy.{instantiable,public}
 import opengpu.util.BlockPrefixAdder
 
 /** RNE conversion of a signed raster edge, including the signed64 minimum.
@@ -88,13 +89,14 @@ class FragmentInterpolationCompletion extends Bundle {
   * scalar service. Centroid smooth components use the lowest covered sample
   * for multisampling; single-sample and helper lanes retain center values.
   */
+@instantiable
 class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfig(),g: GraphicsConfig=GraphicsConfig(),
     externalArithmetic: Boolean=false,prepareOnly: Boolean=false,preparationLane: Option[Int]=None,
     sharedPreparationInput: Boolean=false) extends Module {
   require(preparationLane.isEmpty || (prepareOnly && preparationLane.get>=0 && preparationLane.get<4))
   require(!sharedPreparationInput || (prepareOnly && preparationLane.nonEmpty))
   private val firstLane=preparationLane.getOrElse(0)
-  val io=IO(new Bundle {
+  @public val io=IO(new Bundle {
     val in=Flipped(Decoupled(new FragmentInterpolationRequest(p,g)))
     val out=Decoupled(new Fp32InterpolatedQuad(p,g));val completion=Decoupled(new FragmentInterpolationCompletion)
     val cancel=Input(Bool());val busy=Output(Bool())
