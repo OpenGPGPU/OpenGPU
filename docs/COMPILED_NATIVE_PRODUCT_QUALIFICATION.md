@@ -930,11 +930,38 @@ source/guard checks remain required before authorizing full owner release.
 The CPU control peer passes this delayed two-phase handshake, retirement wire
 rejection and profile-probe checks with ASan/UBSan; it is not GPU evidence.
 
+Use `--active-owner-series` to keep that same DUT alive for final owner
+revocation. After both independent image/source/guard oracles authorize the
+original producer, it publishes `cleanup.begin` (`OGCLB001` plus a u32 record
+count). Each `cleanup-N.trace` has `OGCLN001`, a u32 action count and four-u32
+actions. Kind 4 is an exact coherent CPU PTE clear `{4,physical,0,old_word}`;
+only pages reached from the original captured SATPs are eligible. Other actions
+are the actual idle/SATP/shootdown MMIO operations. Reset, enqueue, completion
+POP, unrelated writes, stale old words and a clear without a following flush
+are rejected. A batch cannot cross a second TLB flush.
+
+The executor applies clears to the existing RAM and executes the real flush.
+It returns `cleanup-N.observed` (`OGCLA001` plus u32 sequence/status/IRQ/pin/
+external-drained) only after the actual DUT is idle and drained. The producer
+blocks inside each flush call until that acknowledgment, before releasing
+backing; failures retain the actual owner through MMU rollback/quarantine.
+After the final `cleanup.done` (`OGCLD001` plus acknowledged batch count), the
+executor requires the captured GNJ mappings revoked and every other memory
+byte preserved, then publishes `cleanup.json`. Its `ownerCleanupObserved`
+result covers owner revocation, with one reset and no RAM replacement; it
+does not qualify a physical clock or FPS. The original session's final teardown
+follows the controller's confirmed final result. CPU ASan/UBSan tests pass for
+ordered two-owner cleanup, exact PTE values, preserved images and rejected
+malformed controls. Actual GPU execution of this lifecycle remains pending.
+
 ```sh
 "$BUILD/native_product_driver" --probe-profile "$NEW_PROFILE_JSON"
 # Start the live original driver bridge with that validated profile and wait
 # for its actual union export and record-0.capture before this invocation:
 "$BUILD/native_product_driver" --active-series "$UNION.memory" \
+  "$NEW_OUTPUT_DIR" "$SESSION_DIR" 2
+# Include synchronized owner revocation after final independent oracles:
+"$BUILD/native_product_driver" --active-owner-series "$UNION.memory" \
   "$NEW_OUTPUT_DIR" "$SESSION_DIR" 2
 ```
 
