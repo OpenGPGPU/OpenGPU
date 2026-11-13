@@ -985,6 +985,7 @@ driver headers, using a separate task build directory:
 ```sh
 python3 scripts/build_native_flashsim.py --dut-dir "$DUT" --build-dir "$BUILD" \
   --driver scripts/native_owner_driver.cpp \
+  --driver-dependency scripts/native_owner_runtime.hpp \
   --driver-dependency scripts/native_owner_capture.hpp \
   --driver-dependency driver/gpu_abi.h \
   --driver-dependency driver/opengpu_formats.h --jobs 1
