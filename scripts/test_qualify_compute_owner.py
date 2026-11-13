@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import qualify_compute_owner as qualifier
+import owner_process_lifetime as lifetime
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -28,7 +29,8 @@ class Entry(unittest.TestCase):
         for case in ('shared', 'uniforms'):
             command = qualifier.producer_command(args, gpu=gpu, source=gpu / '.artifacts/source',
                 ntt=gpu / '.artifacts/ntt.c', image='sha256:' + '1' * 64, name='unique-owned-container', case=case)
-            self.assertIn(f'{gpu}:{gpu}', command)
+            self.assertIn(f'{gpu}:{gpu}:ro', command)
+            self.assertIn('{ipc}:{ipc}:rw', command)
             self.assertIn('TMPDIR={ipc}', command)
             self.assertEqual(command[-2:], ['--case', case])
             self.assertNotIn('--capture-only', command)
@@ -54,6 +56,37 @@ class Entry(unittest.TestCase):
         finally:
             if process.poll() is None:
                 process.kill(); process.wait()
+
+    def test_group_members_not_only_the_joined_leader_are_checked(self):
+        def result(text, code=0):
+            return subprocess.CompletedProcess([], code, stdout=text, stderr='')
+        for text, expected in (('42 S\n43 S\n', False), ('42 Z\n43 S\n', True), ('43 S\n', True)):
+            with patch.object(lifetime.subprocess, 'run', return_value=result(text)):
+                self.assertEqual(lifetime.group_dead(42), expected)
+        for reply in (result('unknown'), result('', 1), result('')):
+            with patch.object(lifetime.subprocess, 'run', return_value=reply):
+                with self.assertRaises(qualifier.CleanupIncomplete):
+                    lifetime.group_dead(42)
+        with patch.object(lifetime.os, 'killpg'), patch.object(lifetime, 'group_dead', return_value=False), \
+             patch.object(lifetime.time, 'monotonic', side_effect=(0, 11)), \
+             patch.object(lifetime.time, 'sleep'):
+            with self.assertRaisesRegex(qualifier.CleanupIncomplete, 'still has active members'):
+                lifetime.stop_group(unittest.mock.Mock(pid=42))
+
+    def test_already_exited_leader_does_not_hide_a_live_descendant(self):
+        code = ('import subprocess,sys; child=subprocess.Popen([sys.executable,"-c",'
+                '"import time; time.sleep(60)"]); print(child.pid,flush=True)')
+        process = subprocess.Popen([sys.executable, '-c', code], start_new_session=True,
+                                   stdout=subprocess.PIPE, text=True)
+        try:
+            self.assertGreater(int(process.stdout.readline()), 0)
+            self.assertEqual(process.wait(timeout=10), 0)
+            qualifier.stop_group(process)
+        finally:
+            try:
+                qualifier.stop_group(process)
+            finally:
+                process.stdout.close()
 
     def test_case_failure_still_removes_its_unique_container(self):
         args = argparse.Namespace(executor=Path('/unused/executor'), executor_qualification=Path('/unused/q'),
