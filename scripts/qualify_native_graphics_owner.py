@@ -69,7 +69,8 @@ def stage_lowering(mesa, source, destination):
     shutil.copy2(mesa / 'src/compiler/nir/nir_lower_io.c', path)
     if sha(path) == BEFORE:
         subprocess.run(['patch', '-p1', '-i', source / 'scripts/patches/mesa-22.3.6-checked-uniform-index.patch'],
-                       cwd=destination, check=True, stdout=subprocess.DEVNULL)
+                       cwd=destination, check=True, stdout=subprocess.DEVNULL,
+                       env=dict(os.environ, TMPDIR=str(destination.parent), PYTHONDONTWRITEBYTECODE='1'))
     require(sha(path) == AFTER, 'unknown private Mesa uniform lowering source')
     return path
 
