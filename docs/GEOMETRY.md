@@ -858,8 +858,48 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   'testOnly opengpu.system.NativeGeometryVertexPipelineSpec'
 ```
 
-This explicit component is not instantiated by a product constructor. Actual
-GS clipping/binning, full stage resource domains, protected production GS
+This explicit component is not instantiated by a product constructor. Product
+integration of GS clipping/binning, full stage resource domains, protected production GS
 submission and native/API qualification remain open. The small physical-CU
 fixture does not qualify the complete 2-CU 16-lane/8-warp product or its frame
 rate.
+
+## Native GS clipping and viewport component
+
+`NativeGeometryVertexViewportPipeline` connects the physical VS/GS source to
+the existing clipping and viewport stages. Input primitive, invocation and
+layer identity remain attached to every clipping fan part. Its held completion
+waits for all three owners and their offers to drain, retains the original
+source error through downstream cancellation, and captures complete clip or
+viewport fault records with the corresponding GS identity. Counters retain
+78-bit mapped inputs, 81-bit expanded parts and 94-bit viewport arithmetic
+totals; this does not change ordinary vertex interfaces or product routing.
+
+`NativeGeometryVertexViewportPipelineSpec` passes with two physical CUs, four
+lanes and one warp per CU, and the full sixteen-slot interfaces. It executes
+32 invocations, and separately executes a 19-word scalar program that rewrites
+four position components before each of 256 actual point emissions in one
+invocation, reaching the 1024-component limit. It repeats that full emission
+with single-pulse cancellation while the 256th viewport output is held, then
+reuses the same GPU and caches without reset. Every point's sequence, input
+primitive, invocation, layer and position is checked. The loop's instruction
+profile and protected publication remain separate qualification boundaries.
+
+The same fixture checks layer and shader primitive ID, near/far point culling,
+NaN clipping and zero-W viewport fault attribution, and a six-input adjacency
+draw whose later input fault arrives while a real viewport output is held.
+Input error 3 remains primary through clip/viewport cancellation and all
+accepted prefix counts balance. Two triangle invocations each produce two
+clipped fan parts; exact rational intersections, viewport coordinates, winding,
+shared diagonal and total area are checked independently. All cases retain the
+original 200,000-cycle per-wait bound. The complete fixture observes thirteen
+VS and forty-four GS launches and CU0 ownership. It proves neither use of both
+CUs nor full product throughput, bin/image integration, full GS resource
+domains, production submission or API completion. Reproduce with a short
+GPU-local JVM temporary directory and:
+
+```sh
+sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'testOnly opengpu.system.NativeGeometryVertexViewportPipelineSpec'
+```
