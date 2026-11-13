@@ -38,8 +38,10 @@ delays. Five CPU fixture checks pass, including strict C11 and ASan/UBSan builds
 The driver saves sparse input/returned memory and completion/read diagnostics
 under the chosen output directory. Its three JSON lines describe this bounded
 case; they do not create a six-scene product or paired API qualification record.
-Whole-host timing, the six 720p workloads, broader native topology/format/sample
-coverage and H6 acceptance remain required.
+Whole-host timing, the six two-CU 640×480/60 FPS workloads, broader native
+topology/format/sample coverage and H6 acceptance remain required. Returned
+memories and diagnostic files are temporary; delete them when validation or
+diagnosis no longer needs them rather than retaining an evidence archive.
 
 ## Reproduce
 
@@ -74,6 +76,28 @@ TRIANGLE_STRIP, TRIANGLE_FAN, a one-byte-short uint32 index view, and healthy
 TRIANGLE_STRIP reuse with new addresses/generation and doubled red output.
 Each renders a 4×4 single-sample image on the complete API-capacity model.
 
+All nine submissions pass on the same partially relinked four-CU/four-engine
+API host described above, without resetting between submissions:
+
+| Submission | Index width | Service cycles | Result |
+| --- | ---: | ---: | --- |
+| POINTS | 8 | 23,529 | Exact image and guards |
+| LINES | 16 | 12,015 | Exact image and guards |
+| LINE_LOOP | 32 | 26,726 | Exact image and guards |
+| LINE_STRIP | 8 | 20,548 | Exact image and guards |
+| TRIANGLES | 16 | 8,887 | Exact image and guards |
+| TRIANGLE_STRIP | 32 | 10,706 | Exact image and guards |
+| TRIANGLE_FAN | 8 | 14,453 | Exact image and guards |
+| One-byte-short triangle index view | 32 | 365 | Bounds status 2 |
+| Healthy TRIANGLE_STRIP reuse | 32 | 10,706 | Exact image and guards, doubled red quantum |
+
+The executable, compiled driver dependencies, model archive, original model
+inputs and all returned memories were checked before and after execution.
+The independent CPU reconstruction passes for every input/image/guard, and
+the driver checks GNX1 identity and fault details, immutable inputs and drained
+AXI ownership for every submission. This qualifies the bounded topology
+matrix, not the two-CU product profile or a frame-rate target.
+
 The seven healthy draws use uint8/uint16/uint32 indices in rotation and a
 width-specific fixed restart value. LINES and TRIANGLE_STRIP split after three
 vertices; the other modes split after four. The strip enables back-face culling
@@ -99,4 +123,4 @@ two-engine JSON layouts omit those reserved-tail fields.
 
 This bounded matrix does not cover every topology/index/sample combination,
 cross-batch assembly, four-engine concurrent rasterization, guard-band or
-precision closure, whole-host timing, the six 720p scenes or H6 acceptance.
+precision closure, whole-host timing, the six two-CU VGA scenes or H6 acceptance.
