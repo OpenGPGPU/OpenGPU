@@ -1,8 +1,9 @@
 # Advanced blend equations
 
-Status: the serialized service and an opt-in serial typed tile storage path
-have directed tests. The native render pipeline, parallel tile implementation
-and driver/API exposure remain open.
+Status: the serialized service and opt-in serial and parallel typed tile
+storage paths have directed tests. Internal native pixel ownership routes
+advanced work to the parallel general path. Native draw packet admission,
+render-pipeline integration and driver/API exposure remain open.
 
 `TypedAdvancedColorBlend` evaluates every separable
 `KHR_blend_equation_advanced` mode on premultiplied source and destination
@@ -133,9 +134,8 @@ reserved codes (`BLEND_BARRIER`).
 ## Typed tile storage integration
 
 `TypedTileColorConfig(advancedBlend=true)` connects packed destination gather,
-`TypedTileBlend`, the existing typed encoder and the serial tile word writer.
-The option requires the serial owner; the default parallel/native capacities
-and throughput configuration are unchanged. Destination decode linearizes sRGB
+`TypedTileBlend`, the existing typed encoder and the tile word writer.
+The default configuration leaves advanced arithmetic disabled. Destination decode linearizes sRGB
 RGB channels before blending; the store encodes the linear result back to sRGB
 and applies attachment and indexed component masks. Each selected MSAA sample
 uses its own resident or refilled destination. It does not resolve samples.
@@ -151,16 +151,17 @@ before its first write, including when an earlier MRT would otherwise be legal.
 
 Version 3 is **not a native draw packet ABI**. Ordinary descriptor validation,
 scalar selection and all native draw versions reject it; only the explicitly
-enabled serial tile owner accepts and resolves it. Version 2 keeps its reserved
+enabled typed tile owner accepts and resolves it. Version 2 keeps its reserved
 high-bit checks. Native/render-pipeline admission and discovery advertise no new
 capability.
 
 A quad retains its state through gather, arithmetic, encode and masked writes.
 Cancellation drains offered reads and child arithmetic and suppresses new
 writes; already committed prefix writes are not rolled back. Held quad results
-remain immutable. End-of-tile admission waits until the quad result retires, so
-it cannot overtake arithmetic, packing or word writes. This storage ordering is
-not yet a native `glBlendBarrier` command path.
+remain immutable. The tile storage owner accepts its end command after the
+quad result retires, so completion cannot overtake arithmetic, packing or word
+writes. An enclosing native owner can retain an earlier EOF until this drain.
+This storage ordering is not yet a native `glBlendBarrier` command path.
 
 `AdvancedTypedTileColorStoreSpec` passes three cases: internal-only admission;
 all fifteen equations across RGBA8, SRGB8_ALPHA8, RGBA16F and RGBA32F in four
@@ -193,9 +194,78 @@ python3 scripts/test_changed_test_suites.py
 python3 scripts/test_test_selection.py
 ```
 
+## Parallel and internal native pixel ownership
+
+The same option enables a separate advanced arithmetic route in
+`StreamingTypedTileColorLanes`. Ordinary candidates continue to feed the
+existing II=1 pipeline; an advanced request waiting for serialized arithmetic
+does not occupy the ordinary offer register. Both routes keep the original
+64 pixel/sample/location owners, four MRTs, 4x samples and tile capacity.
+Four-port and eight-port configurations use the same typed decode/encode and
+masked word ownership rules. A round-robin result merger retires one result
+per clock. A continuously valid route waits at most one competing retirement;
+its held result must retain the complete tuple, including during cancellation.
+Completion waits for both arithmetic routes, codec and word owners to drain.
+
+`NativeTypedSamplePixelBackend` sends internal version 3 quads to the parallel
+general owner. It drains an older native cohort before that handoff and drains
+the general owner before the next native cohort. Advanced state never becomes
+ordinary native sample-packet arithmetic. This change exposes no native draw
+packet, capability word or driver API.
+
+The four-MRT fixtures test internal state isolation. A future GLES API must
+enforce the single color-output-zero restriction and matching fragment-shader
+`blend_support` qualifier, and implement the blend-pass barrier contract.
+See [OpenGL ES 3.2, advanced blending](https://registry.khronos.org/OpenGL/specs/es/3.2/es_spec_3.2.pdf),
+section 15.1.5.3. Internal MRT capacity does not imply that these combinations
+are legal GLES advanced-blend draws.
+
+`AdvancedParallelTypedTileColorStoreSpec` and
+`AdvancedEightPortTypedTileColorStoreSpec` each pass the same three admission,
+stored-image and fault/cancel tests as the serial integration. The fifteen
+equation groups take 4,303–12,367 clocks per eight-blend quad. The advanced
+native pixel suite passes nine cases, including queued native/general/native
+cohorts, held outputs, early EOF, canonical sample words and healthy rebind.
+Its nine-quad mixed cohort takes 33,368 clocks. With advanced arithmetic built
+in, the original ordinary native test still completes 128 consecutive quads
+at intervals of 1, 2 and 4 clocks for 1x, 2x and 4x storage, respectively.
+The original 36-format, masked-neighbor, fault/cancel, four/eight-port and
+bounded-prefix checks also pass. These are component results; advanced
+arithmetic remains serialized and has no product-rate qualification.
+
+The streaming owner suite completes all 64 advanced owners and mixed
+advanced/ordinary owners with reordered held word replies. The mixed fixtures
+take 31,510 and 31,448 clocks for four and eight word ports. Delaying actual
+ordinary destination replies creates two result collisions: each route is
+blocked once and accepts on the next clock. Cancellation on a collision keeps
+the held tuple stable, creates no new writes and permits reuse. Offer, busy
+and returning-result cancellation, word faults and the original ordinary
+36-format/sample/mask regressions also pass. The advanced fixture's
+800,000-clock bound covers 64 owners with fewer than 128 arithmetic steps and
+64 clocks per step, plus codec and memory handshakes. Ordinary fixture bounds
+remain 10,000 clocks.
+
+Reproduce the parallel storage, native pixel and ordinary regressions with:
+
+```sh
+sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'set Test / sources := (Test / sources).value.filter(f => Set("GpuSim.scala", "WindowPrimitiveRecordsSpec.scala", "TypedColorFormatSpec.scala", "TypedColorBlendSpec.scala", "TypedAdvancedColorBlendSpec.scala", "TypedAdvancedHslBlendSpec.scala", "TypedBlendServiceSpec.scala", "TypedTileColorStoreSpec.scala", "IndexedDrawBufferBlendSpec.scala", "StreamingTypedTileColorLanesSpec.scala", "StreamingTypedColorBlendSpec.scala", "TypedTilePixelBackendSpec.scala", "TypedDepthStencilSpec.scala").contains(f.getName))' \
+  'testOnly opengpu.graphics.AdvancedParallelTypedTileColorStoreSpec opengpu.graphics.AdvancedEightPortTypedTileColorStoreSpec opengpu.graphics.AdvancedNativeSampleTypedTilePixelBackendSpec' \
+  'testOnly opengpu.graphics.StreamingTypedTileColorLanesSpec' \
+  'testOnly opengpu.graphics.StreamingTypedColorBlendSpec -- -z sustain' \
+  'testOnly opengpu.graphics.IndexedDrawBufferBlendSpec'
+```
+
 ## Remaining work
 
-The extension's complete precision/clamp rules and format coverage, parallel
-and native tile/render-pipeline admission, native blend-barrier ordering,
+`TypedTileBlend` does not yet clamp fixed-point source components before
+advanced arithmetic. The stored-image tests use bounded premultiplied sources;
+they do not qualify out-of-range inputs. This gap must be fixed before GLES
+API exposure, while floating-point targets retain their unclamped behavior.
+
+The extension's complete precision/clamp rules and format coverage,
+native draw/render-pipeline admission, native blend-barrier ordering,
 driver/API exposure, physical timing and product qualification remain open.
-This bounded serial integration does not close H8.
+This internal tile integration does not close H8.
