@@ -17,6 +17,16 @@ def changed_suites(root, changed):
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_shared_tessellation_bank_changes_select_owner_and_complete_interface_checks(self):
+        expected = {"opengpu.system.TessellationImageBankOwnerSpec",
+                    "opengpu.system.TessellationImageBankMuxSpec"}
+        for name in ("system/TessellationImageBankOwner", "system/TessellationImageBankMux",
+                     "system/TessellationNativeThreeDomainJobImage",
+                     "graphics/TypedReplayTileImagePipeline"):
+            with self.subTest(name=name):
+                selected = set(changed_suites(REPO_ROOT, [f"src/main/scala/opengpu/{name}.scala"]))
+                self.assertTrue(expected <= selected)
+
     def test_native_advanced_discovery_selects_cpu_contract_and_real_axi_checks(self):
         for path in ("src/main/scala/opengpu/graphics/NativeAdvancedBlendCapabilities.scala",
                      "src/main/scala/opengpu/system/NativeAlignmentHostProfile.scala",

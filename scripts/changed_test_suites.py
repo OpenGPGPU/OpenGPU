@@ -714,6 +714,11 @@ def changed_suites(root, changed, *, test_index=None):
     if "src/main/scala/opengpu/system/TessellationNativeThreeDomainJobImage.scala" in changed:
         affected.add("src/test/scala/opengpu/system/TessellationNativeThreeDomainJobImageElaborationSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeJobDomainRouterSpec.scala")
+    if changed & {"src/main/scala/opengpu/system/TessellationImageBankOwner.scala",
+                  "src/main/scala/opengpu/system/TessellationImageBankMux.scala",
+                  "src/main/scala/opengpu/system/TessellationNativeThreeDomainJobImage.scala",
+                  "src/main/scala/opengpu/graphics/TypedReplayTileImagePipeline.scala"}:
+        affected.add("src/test/scala/opengpu/system/TessellationImageBankSpec.scala")
     if "src/main/scala/opengpu/system/TessellationNativeDomainJobImage.scala" in changed:
         affected.add("src/test/scala/opengpu/system/TessellationNativeDomainJobImageAdmissionSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeDomainJobImageElaborationSpec.scala")
