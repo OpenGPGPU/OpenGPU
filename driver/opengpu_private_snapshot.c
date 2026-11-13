@@ -4,6 +4,7 @@
 #include <linux/overflow.h>
 #include <linux/slab.h>
 #include <linux/string.h>
+#include <linux/vmalloc.h>
 #include "opengpu_scheduler.h"
 #include "opengpu_private_snapshot.h"
 
@@ -13,6 +14,8 @@ enum snapshot_phase { SNAPSHOT_BUILD, SNAPSHOT_PREPARED, SNAPSHOT_PUBLISHED,
 struct snapshot_segment {
     struct snapshot_segment *next;
     struct opengpu_buffer backing;
+    void *staging;
+    size_t allocation_bytes;
     struct opengpu_snapshot_lease lease;
     dma_addr_t va;
     size_t bytes;
@@ -99,16 +102,12 @@ static int snapshot_append(struct opengpu_private_snapshot *owner,
     segment = kzalloc(sizeof(*segment), GFP_KERNEL);
     if (!segment)
         return -ENOMEM;
-    ret = opengpu_buffer_alloc(owner->gpu, &segment->backing, rounded);
-    if (ret)
-        goto fail;
-    if ((segment->backing.dma & (OPENGPU_MMU_PAGE_SIZE - 1u)) ||
-        (u64)segment->backing.dma > (1ULL << 32) - rounded) {
-        ret = -ERANGE;
-        goto fail_backing;
-    }
-    memset(segment->backing.cpu, 0, rounded);
-    memcpy(segment->backing.cpu, stable_kernel_bytes, bytes);
+    /* No GPU address exists while producer waits and CPU encoding continue.
+     * prepare allocates/seals DMA pages before this trusted copy reaches them. */
+    segment->staging=kvzalloc(rounded,GFP_KERNEL);
+    if(!segment->staging){ret=-ENOMEM;goto fail;}
+    memcpy(segment->staging,stable_kernel_bytes,bytes);
+    segment->allocation_bytes=rounded;
     segment->bytes = bytes;
     segment->executable = executable;
     segment->id = owner->count++;
@@ -116,8 +115,6 @@ static int snapshot_append(struct opengpu_private_snapshot *owner,
     owner->tail = &segment->next;
     *id = segment->id;
     return 0;
-fail_backing:
-    opengpu_buffer_free(owner->gpu, &segment->backing);
 fail:
     kfree(segment);
     return ret;
@@ -155,7 +152,7 @@ int opengpu_private_snapshot_read32(const struct opengpu_private_snapshot *owner
     segment = snapshot_segment_find(owner, id);
     if (!segment || segment->bytes < 4u || offset > segment->bytes - 4u)
         return -ERANGE;
-    p = (const unsigned char *)segment->backing.cpu + offset;
+    p = (const unsigned char *)(segment->staging ? segment->staging : segment->backing.cpu) + offset;
     *value = (u32)p[0] | ((u32)p[1] << 8) | ((u32)p[2] << 16) | ((u32)p[3] << 24);
     return 0;
 }
@@ -211,10 +208,18 @@ int opengpu_private_snapshot_prepare(struct opengpu_private_snapshot *owner)
         } else {
             mutex_lock(&gpu->hw.submit_lock);
         }
-        ret = snapshot_acquire(owner, segment);
+        ret=opengpu_buffer_alloc(gpu,&segment->backing,segment->allocation_bytes);
+        if(!ret && ((segment->backing.dma&(OPENGPU_MMU_PAGE_SIZE-1u)) ||
+            (u64)segment->backing.dma>(1ULL<<32)-segment->allocation_bytes))ret=-ERANGE;
+        if(!ret)ret=snapshot_acquire(owner,segment);
+        if(!ret){
+            // Existing writers have drained and all new ordinary writers are
+            // excluded before any trusted descriptor/code/uniform bytes copy.
+            memcpy(segment->backing.cpu,segment->staging,segment->allocation_bytes);
+            dma_wmb();kvfree(segment->staging);segment->staging=NULL;
+        }
         mutex_unlock(&gpu->hw.submit_lock);
-        if (ret)
-            return ret;
+        if(ret)return ret;
         if (segment->executable)
             ret = opengpu_mmu_vm_map_code_snapshot_anywhere(gpu, &owner->context->vm,
                 segment->backing.dma, segment->backing.size, OPENGPU_MMU_POLICY_UNCACHED,
@@ -297,16 +302,18 @@ int opengpu_private_snapshot_retire(struct opengpu_private_snapshot *owner)
     if (!owner)
         return 0;
     gpu = owner->gpu;
-    mutex_lock(&gpu->hw.submit_lock);
-    ret = opengpu_hw_wait_idle_locked(gpu);
-    mutex_unlock(&gpu->hw.submit_lock);
-    if (ret)
-        goto quarantine;
+    for(segment=owner->segments;segment && !segment->backing.cpu;segment=segment->next){}
+    if(segment){
+        mutex_lock(&gpu->hw.submit_lock);
+        ret = opengpu_hw_wait_idle_locked(gpu);
+        mutex_unlock(&gpu->hw.submit_lock);
+        if(ret)goto quarantine;
+    }
     /* A failed prepare can leave an unleased allocation. Prove that no VM
      * still maps it before freeing, too; an unexpected pre-existing alias
      * must quarantine the owner rather than become a dangling mapping. */
     for (segment = owner->segments; segment; segment = segment->next) {
-        if (segment->lease.active)
+        if (segment->lease.active || !segment->backing.cpu)
             continue;
         mutex_lock(&gpu->hw.submit_lock);
         ret = snapshot_acquire(owner, segment);
@@ -335,6 +342,7 @@ int opengpu_private_snapshot_retire(struct opengpu_private_snapshot *owner)
     while ((segment = owner->segments)) {
         owner->segments = segment->next;
         opengpu_buffer_free(gpu, &segment->backing);
+        kvfree(segment->staging);
         kfree(segment);
     }
     while ((relocation = owner->relocations)) {
