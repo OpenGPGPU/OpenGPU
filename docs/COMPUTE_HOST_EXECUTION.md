@@ -175,5 +175,9 @@ verifies container exit, then removes CPU builds, archives, captures and logs in
 possibly active inputs for diagnosis instead of deleting a live consumer's
 files. The post-SIGKILL leader wait is also bounded: timeout or an unknown exit
 raises `CleanupIncomplete`, so this failure cannot hang `finally` indefinitely
-or silently authorize input removal. This command has not yet run successfully on a complete DUT; its CPU
-command/refusal/cleanup tests are separate from actual execution qualification.
+or silently authorize input removal. An error in the initial SIGTERM wait still
+requires forced termination, a successful bounded leader wait and independent
+whole-group exit proof. The entry's CPU tests verify that unknown exits retain
+the managed source/session inputs. This command has not yet run successfully
+on a complete DUT; its CPU command/refusal/cleanup tests are separate from
+actual execution qualification.

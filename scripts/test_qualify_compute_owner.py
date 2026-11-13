@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """CPU command/lifetime guards, never a substitute for actual GPU receipts."""
 import argparse
+from contextlib import redirect_stderr, redirect_stdout
+import io
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -75,15 +78,82 @@ class Entry(unittest.TestCase):
                 lifetime.stop_group(unittest.mock.Mock(pid=42))
 
     def test_sigkill_leader_wait_is_bounded_and_failure_preserves_inputs(self):
-        for failure in (subprocess.TimeoutExpired('owned-leader', 10), OSError('exit unknown')):
+        for first in (subprocess.TimeoutExpired('owned-leader', 10), OSError('initial wait unknown')):
+            for failure in (subprocess.TimeoutExpired('owned-leader', 10), OSError('exit unknown')):
+                process = unittest.mock.Mock(pid=42)
+                process.wait.side_effect = [first, failure]
+                with patch.object(lifetime.os, 'killpg'), patch.object(lifetime, 'group_dead') as dead:
+                    with self.assertRaisesRegex(qualifier.CleanupIncomplete, 'leader exit after SIGKILL'):
+                        lifetime.stop_group(process)
+                self.assertEqual(process.wait.call_args_list,
+                                 [unittest.mock.call(timeout=10), unittest.mock.call(timeout=10)])
+                dead.assert_not_called()
+
+    def exercise_managed_cleanup(self, process, *, preserve):
+        """Exercise the formal entry's actual finally policy, without a DUT."""
+        parent = ROOT / '.artifacts'; parent.mkdir(exist_ok=True)
+        temporary = Path(tempfile.mkdtemp(prefix='compute-cleanup-', dir=parent))
+        sentinel = temporary / 'shared-session/original-input.bin'
+        diagnostic = io.StringIO()
+        archive = unittest.mock.Mock(stdout=io.BytesIO(), wait=unittest.mock.Mock(return_value=0))
+        def run_case(*args, **kwargs):
+            sentinel.parent.mkdir()
+            sentinel.write_bytes(b'CPU fixture, never GPU output')
+            lifetime.stop_group(process)
+        def output(command, **kwargs):
+            if command[0] == 'docker':
+                return 'sha256:' + '1' * 64
+            return '' if command[-1] == '--porcelain' else 'fixed-source-commit'
+        argv = ['qualify_compute_owner.py', '--executor', '/unused/executor',
+            '--executor-qualification', '/unused/qualification', '--executor-checker', '/unused/checker',
+            '--executor-checker-python', sys.executable, '--case', 'shared']
+        try:
+            with patch.object(sys, 'argv', argv), patch.object(qualifier, 'checked_inputs', return_value=('q', 'exe')), \
+                 patch.object(qualifier, 'inside', side_effect=lambda path, gpu: Path(path)), \
+                 patch.object(qualifier.subprocess, 'check_output', side_effect=output), \
+                 patch.object(qualifier.subprocess, 'Popen', return_value=archive), \
+                 patch.object(qualifier.subprocess, 'run'), \
+                 patch.object(qualifier.tempfile, 'mkdtemp', return_value=str(temporary)), \
+                 patch.object(qualifier, 'run_case', side_effect=run_case), \
+                 redirect_stderr(diagnostic), redirect_stdout(io.StringIO()):
+                if preserve:
+                    with self.assertRaises(qualifier.CleanupIncomplete):
+                        qualifier.main()
+                else:
+                    qualifier.main()
+            if preserve:
+                self.assertEqual(sentinel.read_bytes(), b'CPU fixture, never GPU output')
+                self.assertIn('preserved their inputs', diagnostic.getvalue())
+            else:
+                self.assertFalse(temporary.exists())
+        finally:
+            # All peers are mocks; no consumer uses the deliberately preserved
+            # private CPU inputs after this assertion.
+            if temporary.exists():
+                shutil.rmtree(temporary)
+
+    def test_unknown_exit_preserves_formal_managed_inputs(self):
+        for first in (OSError('initial unknown'), subprocess.TimeoutExpired('leader', 10)):
+            for last in (OSError('exit unknown'), subprocess.TimeoutExpired('leader', 10)):
+                process = unittest.mock.Mock(pid=42)
+                process.wait.side_effect = [first, last]
+                with patch.object(lifetime.os, 'killpg'), patch.object(lifetime, 'group_dead') as dead:
+                    self.exercise_managed_cleanup(process, preserve=True)
+                dead.assert_not_called()
+
+    def test_initial_wait_error_still_requires_group_proof_before_removal(self):
+        for known_dead in (True, False):
             process = unittest.mock.Mock(pid=42)
-            process.wait.side_effect = [subprocess.TimeoutExpired('owned-leader', 10), failure]
-            with patch.object(lifetime.os, 'killpg'), patch.object(lifetime, 'group_dead') as dead:
-                with self.assertRaisesRegex(qualifier.CleanupIncomplete, 'leader exit after SIGKILL'):
-                    lifetime.stop_group(process)
+            process.wait.side_effect = [OSError('initial unknown'), 0]
+            with patch.object(lifetime.os, 'killpg') as terminate, \
+                 patch.object(lifetime, 'group_dead', return_value=known_dead) as dead, \
+                 patch.object(lifetime.time, 'monotonic', side_effect=(0, 11)), \
+                 patch.object(lifetime.time, 'sleep'):
+                self.exercise_managed_cleanup(process, preserve=not known_dead)
             self.assertEqual(process.wait.call_args_list,
-                             [unittest.mock.call(timeout=10), unittest.mock.call(timeout=10)])
-            dead.assert_not_called()
+                [unittest.mock.call(timeout=10), unittest.mock.call(timeout=10)])
+            self.assertEqual(terminate.call_count, 2)
+            dead.assert_called_once_with(42)
 
     def test_already_exited_leader_does_not_hide_a_live_descendant(self):
         code = ('import subprocess,sys; child=subprocess.Popen([sys.executable,"-c",'

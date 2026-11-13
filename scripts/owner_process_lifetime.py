@@ -44,7 +44,7 @@ def stop_group(process):
         pass
     try:
         process.wait(timeout=10)
-    except subprocess.TimeoutExpired:
+    except (OSError, subprocess.TimeoutExpired):
         pass
     try:
         os.killpg(process.pid, signal.SIGKILL)
@@ -55,9 +55,7 @@ def stop_group(process):
     try:
         process.wait(timeout=10)
     except (OSError, subprocess.TimeoutExpired) as error:
-        # SIGKILL is a request, not proof that the leader exited. In
-        # particular, failed delivery or an uninterruptible wait must not
-        # block finally forever or authorize deletion of live inputs.
+        # A termination request cannot authorize deletion of live inputs.
         raise CleanupIncomplete('cannot prove owned process leader exit after SIGKILL') from error
     deadline = time.monotonic() + 10
     while True:
