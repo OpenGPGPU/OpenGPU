@@ -13,12 +13,13 @@ noncoherent blend barriers and product/precision qualification require their
 own integration. The current alignment-v2 product profile retains advanced
 support disabled and its existing discovery contract.
 
-`NativeAlignmentHostConfig.requiredDiscovery` follows the custom native storage
-configuration: advanced disabled reports 72 words and GCR flags `0x7fff`;
-advanced enabled reports 80 distinct words, flags `0xffff` and the eight GAB1
-words. The frozen `two-cu-vga60-v2` target and its strict product runners retain
-the 72-word contract. An advanced-enabled custom configuration does not qualify
-that product profile; a future product profile requires separate qualification.
+`NativeAlignmentHostConfig.requiredDiscovery` follows the custom native
+configuration. With both advanced blending and descriptor preflight disabled,
+it reports 72 words and GCR flags `0x7fff`. Preflight alone adds GNP1, producing
+80 words and `0x17fff`; advanced binned transport requires preflight and reports
+88 words, `0x1ffff`, GAB1 and GNP1. The frozen `two-cu-vga60-v2` target and strict
+product runners retain the 72-word contract. An advanced-enabled custom
+configuration requires separate product qualification.
 
 ## Safe discovery
 
@@ -96,12 +97,15 @@ GFS1 validates output types before publishing any fragment state. The render
 owner also checks the actual attachment kinds before starting shader work.
 For the direct GTD/render path, an integer advanced attachment fails before
 vertex or fragment shader launch. The Linux tessellation submission gate checks
-its referenced GFS entries before enqueue. A raw hardware binned job reads GFS
-at fragment replay, so this reader gate prevents fragment-state publication
-and fragment shader launch; its bin vertex shader may already have run. A
-complete raw-binned draw/GFS preflight with immutable ownership before any
-shader side effect remains an explicit H8 gap. These per-entry guarantees do
-not establish a global zero-shader-side-effect guarantee. Existing GFS
+its referenced GFS entries before enqueue. Advanced raw binned jobs now force
+[GNP1 whole-job metadata preflight](NATIVE_DESCRIPTOR_PREFLIGHT.md): every GND
+and referenced GFS is checked before the first frame begin/vertex launch.
+Ordinary off-profile jobs retain the legacy replay-time gate. Raw callers still
+must guarantee immutable publication; kernel-owned protected GNJ submission,
+complete resource/code provenance and frontend reachability remain H8 work.
+Indirect resource contents and runtime faults are outside metadata preflight.
+These checks do not establish a global zero-shader-side-effect guarantee for
+all execution errors. Existing GFS
 canonical-padding error precedence remains intact. Fragment-state fetch faults
 and cancellation never publish a partial state or cache entry.
 

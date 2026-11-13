@@ -12,8 +12,9 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
   private val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2)
   // Keep the complete nested result while avoiding the simulator's DPI name
   // length limit. The production interface and all result fields are preserved.
-  private class Harness(virtualImages: Boolean=false,reuseEntries: Int=0,productInputs: Boolean=false,wideTiles: Boolean=false) extends Module {
-    val core=Module(new NativeBinnedGraphicsJobReader(p=if(productInputs)VertexShaderStageConfig()else p.copy(postTransformEntries=reuseEntries),virtualImageViews=virtualImages,allowWideTileCount=wideTiles))
+  private class Harness(virtualImages: Boolean=false,reuseEntries: Int=0,productInputs: Boolean=false,wideTiles: Boolean=false,preflight: Boolean=false,advanced: Boolean=false) extends Module {
+    val core=Module(new NativeBinnedGraphicsJobReader(config=if(preflight || advanced)opengpu.config.GpuConfig(lanes=2,warps=2)else opengpu.config.GpuConfig(),p=if(productInputs)VertexShaderStageConfig()else p.copy(postTransformEntries=reuseEntries),virtualImageViews=virtualImages,allowWideTileCount=wideTiles,preflightDescriptors=preflight,
+      f=FragmentShaderConfig(varyings=2),nativeAdvanced=advanced))
     val io=IO(new Bundle {
       val submit=chiselTypeOf(core.io.submit);val begin=chiselTypeOf(core.io.begin)
       val draw=chiselTypeOf(core.io.draw);val end=chiselTypeOf(core.io.end)
@@ -146,6 +147,94 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
       d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B);d.io.busy.expect(false.B)
     }
     def healthy(): Unit={prepare();submit();complete(0,2);assert(acceptedBegins==1 && acceptedEnds==1 && peak==4 && reordered)}
+  }
+
+  for(advanced<-Seq(false,true))
+  it should s"preflight every referenced draw and state before any child begins advanced=$advanced" in {
+    // advanced=true deliberately leaves the explicit preflight flag false:
+    // raw GNJ1 advanced transport must not bypass the mandatory scan.
+    simulate(new Harness(preflight= !advanced,advanced=advanced)){d=>val t=new Driver(d)
+      val sf=TypedFragmentStateLayout.fields(new TypedFragmentState(FragmentShaderConfig(varyings=2)))
+      val stateBase=BigInt(0x700000)
+      def state(handle: Int): Unit={
+        val values=t.ids("fragment.identity.")++Map[String,BigInt](
+          "version"->(if(advanced)3 else 1),"engineCount"->2,"tests.version"->1,
+          "blend.version"->(if(advanced)3 else 1),
+          "blend.buffers[0]"->(if(advanced)BigInt(1)|(BigInt(15)<<23)|(BigInt(1)<<27)else BigInt(0)),
+          "fragment.version"->1,"fragment.shaderPc"->0x9000,"fragment.varyingSlots"->1,
+          "fragment.colorSlots"->1,"fragment.colorMask"->1,
+          "fragment.scratch.base"->(0x500000+handle*4096),"fragment.scratch.limit"->(0x500000+handle*4096+1024),
+          "fragment.scratch.allocationBase"->(0x500000+handle*4096),"fragment.scratch.allocationLimit"->(0x500000+handle*4096+1024),
+          "scratch[0].base"->(0x600000+handle*4096),"scratch[0].limit"->(0x600000+handle*4096+1024),
+          "scratch[0].allocationBase"->(0x600000+handle*4096),"scratch[0].allocationLimit"->(0x600000+handle*4096+1024))
+        val base=stateBase+handle*512
+        t.put(base,128,TypedFragmentStateLayout.magic,sf,values)
+        t.memory(base+12)=4;t.memory(base+16)=7;t.memory(base+20)=8;t.memory(base+24)=9;t.memory(base+28)=handle
+      }
+      def prepare(n: Int=3): Unit={
+        t.prepare(n)
+        t.frameValues++=Map[String,BigInt]("frame.states.version"->1,"frame.states.limit"->(stateBase+(n+1)*512),
+          "frame.image.pixels.colors.colors[0].enabled"->1)
+        t.put(t.frameBase,frameWords,frameMagic,t.ff,t.frameValues)
+        t.drawValues++=Map[String,BigInt]("draw.vertex.geometry.vertex.version"->1,
+          "draw.vertex.geometry.vertex.shaderPc"->0x9000,"draw.vertex.geometry.vertex.input.version"->1,
+          "draw.vertex.viewport.version"->1,"draw.raster.version"->1,
+          "draw.vertex.geometry.vertex.input.count"->3,"draw.vertex.geometry.vertex.input.instances"->1,
+          "draw.vertex.geometry.vertex.input.bindings[0].base"->0x800000,
+          "draw.vertex.geometry.vertex.input.bindings[0].limit"->0x801000,
+          "draw.vertex.geometry.vertex.input.bindings[0].allocationBase"->0x800000,
+          "draw.vertex.geometry.vertex.input.bindings[0].allocationLimit"->0x801000,
+          "draw.vertex.geometry.vertex.scratch.allocationBase"->0x100000,
+          "draw.vertex.geometry.vertex.scratch.allocationLimit"->0x110000)
+        t.orderedDrawValues=(0 until n).map{i=>t.drawValues+("draw.state"->BigInt(i+1))}.toVector
+        for(i<-0 until n){t.put(t.drawBase+i*4096,drawWords,drawMagic,t.df,t.orderedDrawValues(i));state(i+1)}
+      }
+      def rejected(code: Int): Unit={t.submit();t.complete(code);assert(t.acceptedBegins==0 && t.acceptedDraws==0 && t.acceptedEnds==0)}
+      // A malformed last record/state must prevent even the first draw from
+      // reaching the child, despite earlier valid records and reordered reads.
+      prepare();t.memory(t.drawBase+2*4096)=0;rejected(1)
+      prepare();t.set(t.drawBase+2*4096,t.df,"draw.vertex.geometry.vertex.shaderPc",3);rejected(1)
+      prepare();t.set(t.drawBase+2*4096,t.df,"draw.raster.version",0);rejected(1)
+      prepare();t.set(t.drawBase+2*4096,t.df,"draw.vertex.viewport.version",0);rejected(1)
+      prepare();t.set(t.drawBase+2*4096,t.df,"draw.vertex.geometry.vertex.input.attributes[0].components",0);rejected(1)
+      prepare();t.set(stateBase+3*512,sf,"fragment.shaderPc",3);rejected(1)
+      prepare();t.memory(stateBase+3*512+28)=99;rejected(7)
+      prepare();t.faultAt=Set(stateBase+3*512+128);rejected(3);t.faultAt=Set.empty
+      if(advanced){
+        prepare();t.set(t.frameBase,t.ff,"frame.image.pixels.colors.colors[0].format",9)
+        t.set(stateBase+3*512,sf,"fragment.colorTypes[0]",1);rejected(1)
+      }
+      prepare();t.blockMemory=true;t.submit();t.until(d.io.memoryRequest.valid.peek().litToBoolean)
+      val offered=d.io.memoryRequest.bits.peek().litValue
+      d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+      for(_<-0 until 5){t.tick();d.io.memoryRequest.valid.expect(true.B);assert(d.io.memoryRequest.bits.peek().litValue==offered)}
+      t.blockMemory=false;t.complete(4);assert(t.acceptedBegins==0)
+      prepare();t.submit();t.until(d.io.memoryRequest.valid.peek().litToBoolean &&
+        d.io.memoryRequest.bits.address.peek().litValue>=stateBase &&
+        d.io.memoryRequest.bits.address.peek().litValue<stateBase+2048)
+      t.blockMemory=true;val heldState=d.io.memoryRequest.bits.peek().litValue
+      d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+      for(_<-0 until 5){t.tick();d.io.memoryRequest.valid.expect(true.B);assert(d.io.memoryRequest.bits.peek().litValue==heldState)}
+      t.blockMemory=false;t.complete(4);assert(t.acceptedBegins==0)
+      prepare();t.submit();t.until(t.requests.exists{case(_,a)=>a>=stateBase && a<stateBase+2048})
+      t.blockReply=true;d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+      for(_<-0 until 5){t.tick();d.io.completion.valid.expect(false.B);assert(t.acceptedBegins==0)}
+      t.blockReply=false;t.complete(4);assert(t.acceptedBegins==0)
+      prepare();t.blockBegin=true;t.submit();t.until(d.io.begin.valid.peek().litToBoolean)
+      val heldAfterScan=d.io.begin.bits.peek().litValue
+      d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+      for(_<-0 until 5){t.tick();d.io.begin.valid.expect(true.B);assert(d.io.begin.bits.peek().litValue==heldAfterScan)}
+      t.blockBegin=false;t.complete(4);assert(t.acceptedBegins==1 && t.acceptedDraws==0)
+      prepare();t.blockBegin=true;t.submit();t.until(d.io.begin.valid.peek().litToBoolean)
+      assert(t.acceptedDraws==0)
+      for(i<-0 until 3){
+        assert(t.requests.exists{case(_,a)=>a==t.drawBase+i*4096+drawBytes-64})
+        assert(t.requests.exists{case(_,a)=>a==stateBase+(i+1)*512+448})
+      }
+      for(_<-0 until 5)t.tick()
+      t.blockBegin=false;t.complete(0,3)
+      assert(t.acceptedBegins==1 && t.acceptedDraws==3 && t.acceptedEnds==1)
+    }
   }
 
   for(wide<-Seq(false,true))

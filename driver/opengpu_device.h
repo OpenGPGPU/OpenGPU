@@ -134,6 +134,7 @@ struct opengpu_hw {
     bool constant_blend;
     u32 compute_resource_flags;
     bool native_advanced_blend_transport;
+    bool native_descriptor_preflight;
     struct opengpu_compute_local_limits compute_local_limits;
     struct opengpu_compute_shared_limits compute_shared_limits;
     bool compute_texture_transport;

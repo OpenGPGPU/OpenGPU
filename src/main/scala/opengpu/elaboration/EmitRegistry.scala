@@ -31,6 +31,7 @@ object EmitRegistry {
     e("EmitLegacyInterpolationDivider", EmitLegacyInterpolationDivider.main),
     e("EmitLegacyUvPipeline", EmitLegacyUvPipeline.main),
     e("EmitNativeAdvancedBlendAbi", EmitNativeAdvancedBlendAbi.main),
+    e("EmitNativeDescriptorPreflightAbi", EmitNativeDescriptorPreflightAbi.main),
     e("EmitNativeBinnedGraphicsAbi", EmitNativeBinnedGraphicsAbi.main),
     e("EmitNativeBinnedHostAbi", EmitNativeBinnedHostAbi.main),
     e("EmitNativePrimitiveQueryAbi", EmitNativePrimitiveQueryAbi.main),

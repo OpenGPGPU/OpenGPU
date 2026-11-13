@@ -23,6 +23,7 @@
 #include "opengpu_tlb_flush.h"
 #include "opengpu_compute_features.h"
 #include "opengpu_native_advanced_blend_features.h"
+#include "opengpu_native_preflight_features.h"
 #include "opengpu_graphics_features.h"
 #include "opengpu_compute_uniform_records.h"
 #include "opengpu_compute_indirect_source.h"
@@ -581,6 +582,12 @@ int opengpu_hw_init(struct opengpu_device *gpu, struct platform_device *pdev)
             &gpu->hw.native_advanced_blend_transport))
         return dev_err_probe(gpu->dev, -EINVAL,
                              "invalid native advanced blend transport record\n");
+    if (!opengpu_read_native_preflight_support(id,
+            gpu->hw.compute_resource_flags, gpu->hw.capabilities,
+            gpu->hw.regs_size, gpu, opengpu_mmio_read_callback,
+            &gpu->hw.native_descriptor_preflight))
+        return dev_err_probe(gpu->dev, -EINVAL,
+                             "invalid native descriptor preflight record\n");
     if (!opengpu_read_compute_local_limits(id, gpu->hw.regs_size,
             gpu->hw.compute_resource_flags, gpu, opengpu_mmio_read_callback,
             &gpu->hw.compute_local_limits))
