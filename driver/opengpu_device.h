@@ -197,6 +197,16 @@ struct opengpu_display {
 /* Forward declaration: `struct opengpu_mmu` holds a VM registry below. */
 struct opengpu_vm;
 
+/* Kernel-owned VA envelope, including unmapped gaps between resource views.
+ * This protects address ownership, not CPU immutability of mutable GEM data. */
+struct opengpu_vm_reservation {
+    struct opengpu_vm_reservation *next;
+    struct opengpu_vm *owner;
+    dma_addr_t va;
+    size_t size;
+    bool active;
+};
+
 /* Driver-private descriptor backing. A producer seals freshly allocated,
  * unexported pages before publishing their RO mappings. No GEM object or CPU
  * mapping is exposed; the enclosing job owns this node through VM retirement.
@@ -236,6 +246,7 @@ struct opengpu_mmu {
   * mappings grant a VM access to memory. */
 struct opengpu_vm {
     struct opengpu_vm *next;
+    struct opengpu_vm_reservation *reservations;
     struct opengpu_buffer root;
     u32 asid;
     bool enabled;
@@ -479,6 +490,19 @@ int opengpu_mmu_vm_map(struct opengpu_device *gpu, struct opengpu_vm *vm,
  * identity only. */
 int opengpu_mmu_vm_map_snapshot(struct opengpu_device *gpu, struct opengpu_vm *vm,
                                 dma_addr_t va, dma_addr_t pa, size_t size, u32 policy);
+/* Reserve a complete kernel-owned VA envelope before mapping individual
+ * RO/RW resource segments. Unmapped gaps remain unavailable to every ordinary
+ * map/unmap; only this exact node authorizes changes. All segments must be
+ * unmapped and hardware drained before release. This does not freeze GEM bytes. */
+int opengpu_mmu_vm_reserve(struct opengpu_device *gpu,struct opengpu_vm *vm,
+    size_t size,struct opengpu_vm_reservation *reservation);
+int opengpu_mmu_vm_map_reserved(struct opengpu_device *gpu,
+    struct opengpu_vm_reservation *reservation,size_t offset,dma_addr_t pa,
+    size_t size,u32 policy,bool writable);
+int opengpu_mmu_vm_unmap_reserved(struct opengpu_device *gpu,
+    struct opengpu_vm_reservation *reservation,size_t offset,size_t size);
+int opengpu_mmu_vm_release_reservation(struct opengpu_device *gpu,
+    struct opengpu_vm_reservation *reservation);
 /* Find a free range across the complete private 32-bit VA space and map under
  * the same submit/MMU lock transaction. No fixed command-slot/count limit. The
  * result is unchanged on failure, including allocation and shootdown rollback. */

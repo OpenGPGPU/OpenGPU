@@ -26,6 +26,13 @@ typedef uint64_t dma_addr_t;
 #define OPENGPU_MMU_POLICY_UNCACHED 2u
 struct opengpu_buffer { void *cpu; dma_addr_t dma; size_t size; };
 struct opengpu_vm;
+struct opengpu_vm_reservation {
+    struct opengpu_vm_reservation *next;
+    struct opengpu_vm *owner;
+    dma_addr_t va;
+    size_t size;
+    bool active;
+};
 struct opengpu_snapshot_lease {
     struct opengpu_snapshot_lease *next;
     const struct opengpu_vm *owner;
@@ -46,6 +53,7 @@ struct opengpu_mmu {
 };
 struct opengpu_vm {
     struct opengpu_vm *next;
+    struct opengpu_vm_reservation *reservations;
     struct opengpu_buffer root;
     u32 asid;
     bool enabled;
@@ -897,6 +905,69 @@ int main(void)
         assert(gpu.mmu.vms == &first && !first.next);
         opengpu_mmu_vm_destroy(&gpu, &first);
         assert(!gpu.mmu.vms && live_allocations == live_before);
+    }
+    /* Mutable resources need immutable VA ownership, including unmapped pool
+     * gaps. This reserves the complete envelope without claiming CPU/GEM data
+     * immutability or requiring physical contiguity across spill allocations. */
+    {
+        struct opengpu_vm vm;
+        struct opengpu_vm_reservation envelope={0},other={0},forged;
+        const u64 span=2*MMU_SUPERPAGE_SIZE+3*MMU_PAGE_SIZE,pa=0x75000000;
+        dma_addr_t snapshot=0;
+        int live_before=live_allocations;
+        assert(!opengpu_mmu_vm_create(&gpu,&vm));
+        idle_error=-ETIMEDOUT;
+        assert(opengpu_mmu_vm_reserve(&gpu,&vm,span,&envelope)==-ETIMEDOUT && !envelope.active);
+        idle_error=0;
+        assert(!opengpu_mmu_vm_reserve(&gpu,&vm,span,&envelope));
+        assert(envelope.va==MMU_PAGE_SIZE && envelope.size==span && envelope.active);
+        assert(!opengpu_mmu_vm_reserve(&gpu,&vm,MMU_PAGE_SIZE,&other));
+        assert(other.va==envelope.va+span);
+        assert(opengpu_mmu_vm_map(&gpu,&vm,envelope.va+MMU_PAGE_SIZE,pa,MMU_PAGE_SIZE,2)==-EACCES);
+        assert(opengpu_mmu_vm_map_snapshot(&gpu,&vm,envelope.va+MMU_PAGE_SIZE,pa,MMU_PAGE_SIZE,2)==-EACCES);
+        assert(opengpu_mmu_vm_unmap(&gpu,&vm,envelope.va,MMU_PAGE_SIZE)==-EACCES);
+        forged=envelope;
+        assert(opengpu_mmu_vm_map_reserved(&gpu,&forged,0,pa,MMU_PAGE_SIZE,2,true)==-EACCES);
+        assert(opengpu_mmu_vm_map_reserved(&gpu,&envelope,span,pa,MMU_PAGE_SIZE,2,true)==-EINVAL);
+        assert(!opengpu_mmu_vm_map_snapshot_anywhere(&gpu,&vm,pa,MMU_PAGE_SIZE,2,&snapshot));
+        assert(snapshot==other.va+other.size);
+        assert(!opengpu_mmu_vm_unmap(&gpu,&vm,snapshot,MMU_PAGE_SIZE));
+        allocations_until_failure=0;
+        assert(opengpu_mmu_vm_map_reserved(&gpu,&envelope,0,pa,MMU_PAGE_SIZE,2,true)==-ENOMEM);
+        allocations_until_failure=-1;asid_flush_failures=1;
+        assert(opengpu_mmu_vm_map_reserved(&gpu,&envelope,0,pa,MMU_PAGE_SIZE,2,true)==-EIO);
+        assert(envelope.active && !gpu.hw.wedged);
+        assert(!opengpu_mmu_vm_map_reserved(&gpu,&envelope,0,pa,MMU_PAGE_SIZE,2,true));
+        assert(!opengpu_mmu_vm_map_reserved(&gpu,&envelope,span-MMU_PAGE_SIZE,pa+0x100000,MMU_PAGE_SIZE,2,false));
+        {
+            struct opengpu_buffer *first=vm_l1_find(&vm,(u32)(envelope.va/MMU_SUPERPAGE_SIZE));
+            u64 last=envelope.va+span-MMU_PAGE_SIZE;
+            struct opengpu_buffer *tail=vm_l1_find(&vm,(u32)(last/MMU_SUPERPAGE_SIZE));
+            u32 rw=((u32 *)first->cpu)[(envelope.va%MMU_SUPERPAGE_SIZE)/MMU_PAGE_SIZE];
+            u32 ro=((u32 *)tail->cpu)[(last%MMU_SUPERPAGE_SIZE)/MMU_PAGE_SIZE];
+            assert((rw&(MMU_PTE_R|MMU_PTE_W|MMU_PTE_X))==(MMU_PTE_R|MMU_PTE_W));
+            assert((ro&(MMU_PTE_R|MMU_PTE_W|MMU_PTE_X))==MMU_PTE_R);
+        }
+        assert(opengpu_mmu_vm_release_reservation(&gpu,&envelope)==-EBUSY);
+        assert(opengpu_mmu_vm_map_reserved(&gpu,&envelope,0,pa+0x200000,MMU_PAGE_SIZE,2,true)==-EEXIST);
+        asid_flush_failures=1;
+        assert(opengpu_mmu_vm_unmap_reserved(&gpu,&envelope,0,MMU_PAGE_SIZE)==-EIO);
+        assert(envelope.active && !gpu.hw.wedged);
+        assert(!opengpu_mmu_vm_unmap_reserved(&gpu,&envelope,0,MMU_PAGE_SIZE));
+        assert(!opengpu_mmu_vm_unmap_reserved(&gpu,&envelope,span-MMU_PAGE_SIZE,MMU_PAGE_SIZE));
+        idle_error=-ETIMEDOUT;
+        assert(opengpu_mmu_vm_release_reservation(&gpu,&envelope)==-ETIMEDOUT && envelope.active);
+        idle_error=0;
+        opengpu_mmu_vm_destroy(&gpu,&vm);
+        assert(gpu.hw.wedged && vm.enabled && envelope.active && vm.root.cpu);
+        gpu.hw.wedged=false;
+        assert(!opengpu_mmu_vm_release_reservation(&gpu,&envelope));
+        assert(!envelope.active && !envelope.owner);
+        assert(!opengpu_mmu_vm_map(&gpu,&vm,MMU_PAGE_SIZE,pa,MMU_PAGE_SIZE,2));
+        assert(!opengpu_mmu_vm_unmap(&gpu,&vm,MMU_PAGE_SIZE,MMU_PAGE_SIZE));
+        assert(!opengpu_mmu_vm_release_reservation(&gpu,&other));
+        opengpu_mmu_vm_destroy(&gpu,&vm);
+        assert(!vm.enabled && live_allocations==live_before);
     }
     assert(!gpu.hw.submit_lock.held && !gpu.mmu.lock.held);
     /* Destruction cannot free PT memory or recycle an ASID on idle/flush
