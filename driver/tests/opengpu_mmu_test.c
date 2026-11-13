@@ -33,9 +33,11 @@ struct opengpu_mmu {
     u32 l1_region[OPENGPU_MMU_MAX_TABLES];
     u32 l1_count;
     struct opengpu_asid_pool asids;
+    struct opengpu_vm *vms;
     bool enabled;
 };
 struct opengpu_vm {
+    struct opengpu_vm *next;
     struct opengpu_buffer root;
     u32 asid;
     bool enabled;
@@ -51,6 +53,7 @@ static int allocations_until_failure = -1, live_allocations, idle_error;
 static unsigned flushes, barriers;
 static int global_flush_failures;
 static dma_addr_t next_dma = 0x100000;
+static void (*allocation_complete)(struct opengpu_device *);
 static int opengpu_buffer_alloc(struct opengpu_device *gpu,
                                struct opengpu_buffer *b, size_t size)
 {
@@ -66,6 +69,7 @@ static int opengpu_buffer_alloc(struct opengpu_device *gpu,
     b->dma = next_dma;
     next_dma += size;
     live_allocations++;
+    if(allocation_complete){void (*done)(struct opengpu_device *)=allocation_complete;allocation_complete=NULL;done(gpu);}
     return 0;
 }
 static void opengpu_buffer_free(struct opengpu_device *gpu,
@@ -91,6 +95,11 @@ static int opengpu_hw_flush_tlbs(struct opengpu_device *gpu)
     if (global_flush_failures) { --global_flush_failures; return -EIO; }
     return 0;
 }
+static dma_addr_t detached_root;static u32 detached_asid;static unsigned disables;
+static int opengpu_hw_set_satp(struct opengpu_device *gpu,dma_addr_t root,u32 asid)
+{assert(gpu->hw.submit_lock.held);detached_root=root;detached_asid=asid;return 0;}
+static int opengpu_hw_disable_mmu_locked(struct opengpu_device *gpu)
+{assert(gpu->hw.submit_lock.held && gpu->mmu.lock.held);++disables;return opengpu_hw_flush_tlbs(gpu);}
 static unsigned asid_flushes, vm_activations;
 static int asid_flush_failures;
 static dma_addr_t last_satp_root;
@@ -148,6 +157,8 @@ static int verify_code(struct opengpu_device *gpu, const struct opengpu_vm *vm,
     return ret;
 }
 
+static void finish_while_vm_allocates(struct opengpu_device *gpu)
+{assert(!opengpu_mmu_fini(gpu));}
 int main(void)
 {
     struct opengpu_device gpu = { .hw.capabilities = GPU_CAP_UNIFIED_COMMANDS };
@@ -762,8 +773,50 @@ int main(void)
         opengpu_mmu_vm_destroy(&gpu,&vm);assert(live_allocations==live_before);
     }
     assert(!gpu.hw.submit_lock.held && !gpu.mmu.lock.held);
-    opengpu_mmu_fini(&gpu);
+    /* Destruction cannot free PT memory or recycle an ASID on idle/flush
+     * failure. Other VMs remain linked and the old ASID stays allocated. */
+    {
+        struct opengpu_vm victim, other;
+        assert(!opengpu_mmu_vm_create(&gpu,&victim));
+        assert(!opengpu_mmu_vm_map(&gpu,&victim,0x28000000,0x11223000,4096,0));
+        void *root=victim.root.cpu,*leaf=victim.l1[0].cpu;
+        int allocations=live_allocations;u32 asid=victim.asid;
+        idle_error=-ETIMEDOUT;
+        assert(opengpu_mmu_vm_destroy(&gpu,&victim)==-ETIMEDOUT);
+        idle_error=0;
+        assert(gpu.hw.wedged && victim.enabled && gpu.mmu.vms==&victim);
+        assert(victim.root.cpu==root && victim.l1[0].cpu==leaf && live_allocations==allocations);
+        asid_flush_failures=1;
+        assert(opengpu_mmu_vm_destroy(&gpu,&victim)==-EIO);
+        assert(victim.enabled && victim.asid==asid && victim.root.cpu==root && live_allocations==allocations);
+        assert(opengpu_asid_in_use(&gpu.mmu.asids,asid));
+        assert(!opengpu_mmu_vm_create(&gpu,&other) && other.asid!=asid);
+        assert(opengpu_mmu_fini(&gpu)==-EBUSY && gpu.mmu.enabled && gpu.mmu.root.cpu);
+        assert(!opengpu_mmu_vm_destroy(&gpu,&other));
+        assert(gpu.mmu.vms==&victim && !opengpu_mmu_vm_destroy(&gpu,&victim));
+        assert(!gpu.mmu.vms && !opengpu_asid_in_use(&gpu.mmu.asids,asid));gpu.hw.wedged=false;
+    }
+    {
+        int allocations=live_allocations;void *root=gpu.mmu.root.cpu;
+        idle_error=-ETIMEDOUT;
+        assert(opengpu_mmu_fini(&gpu)==-ETIMEDOUT);
+        idle_error=0;
+        assert(gpu.hw.wedged && gpu.mmu.enabled && gpu.mmu.root.cpu==root && live_allocations==allocations);
+        global_flush_failures=1;
+        assert(opengpu_mmu_fini(&gpu)==-EIO);
+        assert(gpu.mmu.enabled && gpu.mmu.root.cpu==root && live_allocations==allocations);
+        gpu.hw.wedged=false;
+    }
+    assert(detached_root==gpu.mmu.root.dma && !detached_asid);
+    assert(!opengpu_mmu_fini(&gpu) && disables>=2);
     assert(!live_allocations);
+    /* fini may win while create allocates an unpublished root outside the
+     * MMU lock. The creator must recheck enabled before allocating an ASID. */
+    assert(!opengpu_mmu_init(&gpu));
+    struct opengpu_vm after_shutdown;allocation_complete=finish_while_vm_allocates;
+    assert(opengpu_mmu_vm_create(&gpu,&after_shutdown)==-EOPNOTSUPP);
+    assert(!gpu.mmu.enabled && !gpu.mmu.root.cpu && !gpu.mmu.vms);
+    assert(!after_shutdown.enabled && !after_shutdown.root.cpu && !live_allocations);
     puts("MMU allocation, rollback, range and lock-scope tests passed");
     return 0;
 }

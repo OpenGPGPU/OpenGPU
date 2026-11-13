@@ -145,7 +145,7 @@ static int opengpu_submit_test(struct opengpu_device *gpu)
         .depth_write = true,
         .cull_mode = GPU_CULL_NONE,
     };
-    struct opengpu_buffer descriptor;
+    struct opengpu_buffer descriptor = {0};
     struct opengpu_vm *vm = NULL;
     bool vm_ready = false;
     u32 descriptor_va;
@@ -272,12 +272,12 @@ static int opengpu_submit_test(struct opengpu_device *gpu)
         opengpu_hw_abort(gpu, ret);
     dma_fence_put(fence);
 out_descriptor:
-    opengpu_buffer_free(gpu, &descriptor);
 out_vm:
     if (vm_ready) {
-        opengpu_hw_activate_vm(gpu, NULL);
-        opengpu_mmu_vm_destroy(gpu, vm);
+        if (opengpu_mmu_vm_destroy(gpu, vm))
+            return ret ? ret : -EIO; /* Keep the linked VM container live. */
     }
+    opengpu_buffer_free(gpu, &descriptor);
     kfree(vm);
     return ret;
 }
@@ -312,7 +312,8 @@ static void opengpu_context_release(struct kref *ref)
         container_of(ref, struct opengpu_render_context, refcount);
     u32 i;
 
-    opengpu_mmu_vm_destroy(context->gpu, &context->vm);
+    if (opengpu_mmu_vm_destroy(context->gpu, &context->vm))
+        return; /* Quarantine the container and bindings with its live VM. */
     for (i = 0; i < ARRAY_SIZE(context->bindings); i++) {
         if (!context->bindings[i])
             continue;
@@ -602,7 +603,10 @@ int opengpu_compute_context_create_ioctl(struct drm_device *drm, void *data,
     if (!ret)
         return 0;
 
-    opengpu_mmu_vm_destroy(gpu, &context->vm);
+    if (opengpu_mmu_vm_destroy(gpu, &context->vm)) {
+        drm_sched_entity_destroy(&context->entity);
+        return ret; /* The quarantined VM still links this context. */
+    }
 err_entity:
     drm_sched_entity_destroy(&context->entity);
 err_context:
@@ -5396,10 +5400,11 @@ int opengpu_compute_init(struct opengpu_device *gpu)
 err_scheduler:
     opengpu_sched_fini(gpu);
 err_shader:
+err_mmu:
+    if (opengpu_mmu_fini(gpu))
+        return ret ? ret : -EIO;
     opengpu_buffer_free(gpu, &compute->kernarg);
     opengpu_buffer_free(gpu, &compute->shader);
-err_mmu:
-    opengpu_mmu_fini(gpu);
     opengpu_buffer_free(gpu, &compute->depth);
 err_color:
     opengpu_buffer_free(gpu, &compute->color);
@@ -5412,9 +5417,10 @@ void opengpu_compute_fini(struct opengpu_device *gpu)
 {
     misc_deregister(&gpu->compute.misc);
     opengpu_sched_fini(gpu);
+    if (opengpu_mmu_fini(gpu))
+        return; /* Global walkers may still name the retained backing. */
     opengpu_buffer_free(gpu, &gpu->compute.kernarg);
     opengpu_buffer_free(gpu, &gpu->compute.shader);
-    opengpu_mmu_fini(gpu);
     opengpu_buffer_free(gpu, &gpu->compute.depth);
     opengpu_buffer_free(gpu, &gpu->compute.color);
     opengpu_buffer_free(gpu, &gpu->compute.cmd);

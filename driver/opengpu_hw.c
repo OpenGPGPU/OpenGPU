@@ -1724,6 +1724,17 @@ int opengpu_hw_flush_tlbs(struct opengpu_device *gpu)
     return 0;
 }
 
+/* Caller holds submit_lock and the MMU mutation lock and has proved idle.
+ * Stop both page walkers before a full shootdown permits freeing ASID-0 PTs. */
+int opengpu_hw_disable_mmu_locked(struct opengpu_device *gpu)
+{
+    if (!(gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
+        return -EOPNOTSUPP;
+    opengpu_reg_write(gpu, GPU_REG_UCMD_VECTOR_SATP, 0);
+    opengpu_reg_write(gpu, GPU_REG_UCMD_INSTRUCTION_SATP, 0);
+    return opengpu_hw_flush_tlbs(gpu);
+}
+
 /** Invalidate only the TLB entries tagged with `asid`.  Global mappings and
   * entries of other address spaces stay resident, so switching between
   * address spaces does not pay a full-flush refill.  The three graphics word
