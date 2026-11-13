@@ -61,3 +61,13 @@ uniform publication, original-GEM dependencies, complete VA/PA ownership,
 verified native enqueue and retirement, frontend integration and fresh
 qualification of the enabled complete product. Driver bit 40 remains disabled
 until that route is implemented and validated.
+
+The kernel discovery helper probes optional GNC/GUC/GSL records only after the
+new presence bit and exact GNP1 admission. It verifies all sixteen GUC1 words,
+all eight GSL1 words, nonzero live quota, complete virtual GNC2/GNC3 quantities
+and their CU/count agreement with physical GCR lanes and warps. Old profiles
+make no optional reads; malformed records preserve the previous output. The
+cache alone does not enable the native ioctl or bit 40. Its C test passes
+1,024 single-bit GNP/GUC/GSL corruptions, malformed combinations and both
+full/reduced runtime quantities; kernel headers compile without userspace
+standard headers. Run `python3 scripts/test_driver.py` with GPU-local TMPDIR.
