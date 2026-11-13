@@ -55,6 +55,8 @@ uint32_t pipe_opengpu_screen_fs_bank_stride(const struct pipe_opengpu_screen *sc
 
 struct pipe_opengpu_context *pipe_opengpu_context_create(
     struct pipe_opengpu_screen *screen);
+/* Accepted kernel context identity; zero after ownership transfer/orphaning. */
+uint32_t pipe_opengpu_context_id(const struct pipe_opengpu_context *context);
 /* Void final destroy transfers an unresolved context to its screen exactly
  * once. The caller relinquishes the pointer even if recovery is deferred. */
 void pipe_opengpu_context_destroy(struct pipe_opengpu_context *ctx);
@@ -143,6 +145,11 @@ struct pipe_opengpu_uniform_view {
     struct pipe_opengpu_resource *resource;
     uint64_t offset, bytes;
 };
+/* Generic original-GEM byte window for typed native input/scratch plans.
+ * No uniform alignment/size policy is imposed; each role validates its own.
+ * Borrowed source only, with live same-screen membership and exact bounds. */
+int pipe_opengpu_native_source_view(struct pipe_opengpu_screen *screen,
+    const struct pipe_opengpu_uniform_view *view, struct drm_opengpu_compute_uniform_view *output);
 /* Borrowed source views. The eventual native submission must independently
  * snapshot data after producer fences and retain its own job references. */
 struct pipe_opengpu_native_uniform_plan {

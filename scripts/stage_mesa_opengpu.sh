@@ -30,6 +30,7 @@ cp "$GPU_DIR/userspace/pipe_opengpu.c" "$GPU_DIR/userspace/pipe_opengpu.h" "$GPU
     "$GPU_DIR/driver/opengpu_native_frame.c" "$GPU_DIR/driver/opengpu_native_frame.h" \
     "$GPU_DIR/driver/opengpu_native_frame_abi.h" "$GPU_DIR/driver/opengpu_native_binned_abi.h" \
     "$GPU_DIR/driver/opengpu_native_binned_host_abi.h" \
+    "$GPU_DIR/driver/opengpu_typed_fragment_state_abi.h" \
     "$GPU_DIR/driver/opengpu_buffer_view.h" "$GPU_DIR/driver/opengpu_image_format_policy.h" \
     "$GPU_DIR/driver/opengpu_texture_image_format_abi.h" \
     "$GPU_DIR/driver/opengpu_shader_validator.h" "$DEST/"
@@ -271,6 +272,7 @@ libopengpu_gallium = static_library(
     'opengpu_cs_emit.c',
     'opengpu_native_uniform_emit.c',
     'opengpu_native_graphics.c',
+    'opengpu_native_draw.c',
     'opengpu_native_runtime.c',
     'opengpu_native_frame.c',
     'pipe_opengpu.c',

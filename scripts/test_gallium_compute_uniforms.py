@@ -140,6 +140,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     if graphics_uniforms:
         for relative in ("userspace/gallium/opengpu_native_uniform_emit.c",
                          "userspace/gallium/opengpu_native_graphics.c",
+                         "userspace/gallium/opengpu_native_draw.c",
                          "userspace/opengpu_native_runtime.c", "driver/opengpu_native_frame.c"):
             source = ROOT / relative
             obj = out / (source.stem + ".o")
@@ -309,6 +310,9 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         env["ASAN_OPTIONS"] = "detect_leaks=0:abort_on_error=1"
         env["UBSAN_OPTIONS"] = "halt_on_error=1:print_stacktrace=1"
     run([binary, sources], "actual-acceptance", env)
+    if graphics_uniforms:
+        from test_gallium_graphics_uniforms import validate_native_metadata
+        validate_native_metadata(sources)
     if artifacts:
         manifest = "format=1\n" + "".join(p.name + ".sha256=" + hashlib.sha256(p.read_bytes()).hexdigest() + "\n"
             for p in sorted(artifacts.iterdir()))

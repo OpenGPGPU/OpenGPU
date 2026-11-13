@@ -30,5 +30,6 @@ struct pipe_context *opengpu_pipe_context_create(struct pipe_screen *screen,
  * ownership transfer occurs until the protected native producer accepts them. */
 int opengpu_native_graphics_uniform_sources(struct pipe_context *pipe,
     const unsigned required[2][13], struct drm_opengpu_native_uniform_stage stages[2]);
+uint32_t opengpu_native_graphics_context_id(struct pipe_context *);
 
 #endif

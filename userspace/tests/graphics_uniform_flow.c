@@ -12,6 +12,7 @@
 #include "opengpu_native_layout.h"
 #include "opengpu_native_runtime.h"
 #include "opengpu_native_graphics.h"
+#include "opengpu_native_draw.h"
 #include "tgsi/tgsi_parse.h"
 #include "tgsi/tgsi_text.h"
 #include "pipe/p_context.h"
@@ -519,7 +520,84 @@ static void word_results(unsigned stage,const struct opengpu_native_uniform_prog
         }
     }
 }
-static void production_constants(void *program)
+static void native_metadata(struct pipe_context *pipe, const struct opengpu_native_graphics_sources *sources,
+    struct pipe_resource *input, unsigned color_type, const char *directory)
+{
+    struct pipe_opengpu_screen *screen=opengpu_screen_gpu(pipe->screen);
+    struct pipe_opengpu_resource *scratch=pipe_opengpu_resource_create(screen,15*128*4);assert(scratch);
+    struct opengpu_native_draw_request request={.context=pipe,.sources=sources,.pass=11,.generation=13,
+        .state_count=1,.token=0x12345678,.width=4,.height=4,.topology=4,.count=3,.instances=1,
+        .vertex_scratch={scratch,0,15*128*4}};
+    request.attributes[0]=(struct opengpu_native_draw_attribute){.enabled=1,.components=4};
+    request.bindings[0]=(struct opengpu_native_draw_binding){.view={opengpu_resource(input)->gpu,4,48},.stride=16};
+    request.color_types[0]=color_type;
+    struct opengpu_native_draw_encoding encoded,saved;
+    assert(!opengpu_native_draw_encode(&request,&encoded));saved=encoded;
+    assert(encoded.plan.vertex_program.handle==sources->programs[0].handle&&
+        encoded.plan.fragment_program.handle==sources->programs[1].handle&&
+        !memcmp(&encoded.plan.vertex_uniforms,&sources->uniforms[0],216)&&
+        !memcmp(&encoded.plan.fragment_uniforms,&sources->uniforms[1],216)&&
+        encoded.plan.bindings[0].handle==pipe_opengpu_resource_handle(opengpu_resource(input)->gpu)&&
+        encoded.plan.bindings[0].offset==4&&encoded.plan.bindings[0].bytes==48&&
+        encoded.plan.vertex_scratch.handle==pipe_opengpu_resource_handle(scratch)&&
+        encoded.plan.vertex_scratch.bytes==15*128*4);
+    const struct drm_opengpu_compute_uniform_view zero={0};
+    for(unsigned i=1;i<16;i++)assert(!memcmp(&encoded.plan.bindings[i],&zero,sizeof(zero)));
+    assert(!memcmp(&encoded.plan.indices,&zero,sizeof(zero))&&!memcmp(&encoded.plan.indirect,&zero,sizeof(zero)));
+    struct opengpu_native_binned_job job;
+    assert(!opengpu_native_job_encode(opengpu_native_graphics_context_id(pipe),11,13,1,&job));
+    const unsigned allocation_bytes[8]={384,65536,4096,4096,8192,8192,8192,8192};
+    struct pipe_opengpu_resource *frame_objects[8];
+    struct opengpu_native_frame_gem windows[8];
+    for(unsigned i=0;i<8;i++) {
+        frame_objects[i]=pipe_opengpu_resource_create(screen,allocation_bytes[i]);assert(frame_objects[i]);
+        void *mapping=pipe_opengpu_resource_map(frame_objects[i]);assert(mapping);
+        memset(mapping,i?0:0x5a,allocation_bytes[i]);
+        windows[i]=(struct opengpu_native_frame_gem){.handle=pipe_opengpu_resource_handle(frame_objects[i]),.bytes=allocation_bytes[i]};
+    }
+    struct opengpu_native_frame_request frame_request={.caps=&sources->runtime.frame,.width=4,.height=4,
+        .samples=1,.color_mask=1,.context=opengpu_native_graphics_context_id(pipe),.pass=11,.generation=13,
+        .state_count=1,.scratch_stride=8192,.primitives=windows[1],.directory=windows[2]};
+    frame_request.attachments[0]=(struct opengpu_native_frame_attachment){.format=26,.load_op=1,.channel_mask=15,
+        .image={.gem={.handle=windows[0].handle,.offset=64,.bytes=256},.row_pitch=64,.store=1}};
+    frame_request.pool[0]=windows[3];
+    for(unsigned i=0;i<4;i++)frame_request.scratch[i]=windows[4+i];
+    struct opengpu_native_frame_encoding frame;
+    assert(!opengpu_native_frame_encode(&frame_request,&frame)&&frame.resource_count==8);
+    const float triangle[12]={-1,-1,0,1,3,-1,0,1,-1,3,0,1};
+    memcpy((uint8_t *)pipe_opengpu_resource_map(opengpu_resource(input)->gpu)+4,triangle,sizeof(triangle));
+    const void *records[]={&job,&encoded.draw,&encoded.state,&frame.frame};
+    const unsigned sizes[]={sizeof(job),sizeof(encoded.draw),sizeof(encoded.state),sizeof(frame.frame)};
+    const char *names[]={"native.gnj","native.gnd","native.gfs","native.gnf"};
+    for(unsigned i=0;i<4;i++) {
+        char path[4096];assert(snprintf(path,sizeof(path),"%s/%s",directory,names[i])>0);
+        FILE *stream=fopen(path,"wx");assert(stream&&fwrite(records[i],1,sizes[i],stream)==sizes[i]&&!fclose(stream));
+    }
+    request.attributes[1].enabled=1;
+    assert(opengpu_native_draw_encode(&request,&encoded)<0&&!memcmp(&encoded,&saved,sizeof(encoded)));
+    request.attributes[1].enabled=0;request.vertex_scratch.bytes-=64;
+    assert(opengpu_native_draw_encode(&request,&encoded)<0&&!memcmp(&encoded,&saved,sizeof(encoded)));
+    request.vertex_scratch.bytes+=64;request.color_types[0]=3;
+    assert(opengpu_native_draw_encode(&request,&encoded)<0&&!memcmp(&encoded,&saved,sizeof(encoded)));
+    request.color_types[0]=color_type;request.bindings[0].view.offset=20480;
+    assert(opengpu_native_draw_encode(&request,&encoded)<0&&!memcmp(&encoded,&saved,sizeof(encoded)));
+    request.bindings[0].view.offset=4;
+    request.bindings[0].stride=15;
+    assert(opengpu_native_draw_encode(&request,&encoded)<0&&!memcmp(&encoded,&saved,sizeof(encoded)));
+    request.bindings[0].stride=16;request.count=4;
+    assert(opengpu_native_draw_encode(&request,&encoded)<0&&!memcmp(&encoded,&saved,sizeof(encoded)));
+    request.count=3;request.attributes[0].format=20;request.attributes[0].components=3;
+    assert(opengpu_native_draw_encode(&request,&encoded)<0&&!memcmp(&encoded,&saved,sizeof(encoded)));
+    request.attributes[0].format=0;request.attributes[0].components=4;
+    struct pipe_opengpu_uniform_view valid=request.bindings[0].view;
+    request.bindings[0].view.resource=(void *)(uintptr_t)1;
+    assert(opengpu_native_draw_encode(&request,&encoded)<0&&!memcmp(&encoded,&saved,sizeof(encoded)));
+    request.bindings[0].view=valid;
+    assert(!opengpu_native_draw_encode(&request,&encoded));
+    for(unsigned i=0;i<8;i++)pipe_opengpu_resource_destroy(screen,frame_objects[i]);
+    pipe_opengpu_resource_destroy(screen,scratch);
+}
+static void production_constants(void *program, const char *directory)
 {
     uint64_t original_features=features;features|=OPENGPU_DRIVER_FEATURE_NATIVE_BINNED;
     fixture_native_layout=native_layout_word(128);
@@ -594,6 +672,7 @@ static void production_constants(void *program)
         assert(view->handle&&bos[view->handle].data&&!view->offset&&!view->entry_offset&&!view->pad&&
             view->bytes==native[stage].words*4&&!memcmp(bos[view->handle].data,native[stage].code,view->bytes));
     }
+    native_metadata(pipe,&sources,resources[12],graphics_uniform_color_type(program,0),directory);
     fixture_native_caps[5]=0;
     assert(opengpu_native_graphics_program_sources(pipe,compiled,&sources)<0&&
         !memcmp(&sources,&original_sources,sizeof(sources)));
@@ -673,7 +752,7 @@ int main(int argc, char **argv)
     assert(graphics_uniform_color_type(program,0)==1);
     discovery();
     tracker_bindings(program);
-    production_constants(program);
+    production_constants(program,argv[1]);
     alias_and_alu();
     interface_boundaries();
     for (unsigned stage = 0; stage < 2; stage++) {
