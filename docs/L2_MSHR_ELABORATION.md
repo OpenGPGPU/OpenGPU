@@ -48,6 +48,10 @@ retirement retains its original priority over allocation. The cached nonempty
 predicate follows the same update, and late sharers still require directory
 publication before their response.
 
+The product table also retains all three coherent requesters: two CUs and
+the graphics-shader port. The full-capacity emitter includes that third
+requester's sharer bit; a two-requester table cannot substitute for it.
+
 The RTL regression includes a 17-ID namespace with simultaneous same-entry
 and different-entry merge/retirement, held replies, both boundary IDs, fault
 delivery and healthy reuse without reset. Run `L2MshrTableSpec` together with

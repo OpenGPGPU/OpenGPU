@@ -9,7 +9,8 @@ object EmitL2MshrRtl {
     require(args.length == 1, "expected an RTL output directory")
     ChiselStage.emitSystemVerilogFile(new L2MshrTable(
       GpuConfig(lanes = 16, warps = 8, l2Sets = 512, l2Ways = 4),
-      entries = 4, maxOutstanding = 32850, numComputeUnits = 2,
+      // The two-CU host also retains its coherent graphics-shader requester.
+      entries = 4, maxOutstanding = 32850, numComputeUnits = 3,
       lineBytes = 64, sets = 128, ways = 4),
       Array("--target-dir", args(0)),
       Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))

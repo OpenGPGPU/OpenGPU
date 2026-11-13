@@ -141,7 +141,7 @@ class L2MshrTableSpec extends AnyFlatSpec {
 
   it should "keep non-power-of-two waiter edges local through simultaneous allocation and retirement" in {
     simulate(new L2MshrTable(GpuConfig(lanes = 4), entries = 4,
-      maxOutstanding = 17)) { dut =>
+      maxOutstanding = 17, numComputeUnits = 3)) { dut =>
       dut.io.request.valid.poke(false.B)
       dut.io.allocation.ready.poke(true.B)
       dut.io.refill.valid.poke(false.B)
@@ -189,7 +189,7 @@ class L2MshrTableSpec extends AnyFlatSpec {
       // Its committed allocation and the held response then fire together.
       response(0x1000, 0, 0xaa, false); dut.clock.step()
       dut.io.allocation.ready.poke(false.B)
-      request(0x1000, 16, 1, 0)
+      request(0x1000, 16, 2, 0)
       dut.io.allocation.bits.entryId.expect(a.U)
       dut.io.allocation.bits.merged.expect(true.B)
       response(0x1000, 0, 0xaa, false)
@@ -197,7 +197,7 @@ class L2MshrTableSpec extends AnyFlatSpec {
       dut.clock.step(); dut.io.response.ready.poke(false.B)
       dut.io.validEntries.expect(((BigInt(1) << a.toInt) | (BigInt(1) << b.toInt)).U)
       dut.io.fill.valid.expect(true.B); dut.io.fill.bits.entryId.expect(a.U)
-      dut.io.fill.bits.sharerUpdate.expect(true.B); dut.io.fill.bits.sharers.expect(3.U)
+      dut.io.fill.bits.sharerUpdate.expect(true.B); dut.io.fill.bits.sharers.expect(5.U)
       dut.clock.step()
       response(0x1000, 16, 0xaa, false); dut.clock.step()
 
