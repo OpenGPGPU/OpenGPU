@@ -42,7 +42,7 @@ int main(void)
         .color_mask=15,.context=7,.pass=8,.generation=9,.state_count=2,.scratch_stride=256,.spill_count=8};
     struct opengpu_native_frame_encoding encoded,saved;
     struct opengpu_device gpu={0};
-    struct opengpu_render_context context={.gpu=&gpu,.references=1};
+    struct opengpu_render_context context={.gpu=&gpu,.references=1,.id=7};
     unsigned char state_bytes[1024]={0};
     u32 handle=0,state,frame,frame_va;
     struct opengpu_private_snapshot *owner;
