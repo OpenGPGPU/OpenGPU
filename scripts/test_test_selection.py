@@ -172,6 +172,7 @@ for name in ("IsolineGeometryCuRendererSpec", "IsolineGeometryCuClipSpec", "Isol
         assert assigned[suite] == "system-core"
 assert assigned["opengpu.system.GeometryPrimitivePipelineSpec"] == "system-core"
 assert assigned["opengpu.system.NativeGeometryPrimitivePipelineSpec"] == "system-core"
+assert assigned["opengpu.system.NativeGeometrySharedCuSpec"] == "system-core"
 assert assigned["opengpu.system.GeometrySharedShaderClientSpec"] == "system-core"
 assert assigned["opengpu.system.GeometryPrimitiveClipClientSpec"] == "system-core"
 assert assigned["opengpu.system.GeometryPrimitiveViewportClientSpec"] == "system-core"
