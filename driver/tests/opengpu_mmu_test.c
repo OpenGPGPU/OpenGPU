@@ -814,9 +814,12 @@ int main(void)
      * MMU lock. The creator must recheck enabled before allocating an ASID. */
     assert(!opengpu_mmu_init(&gpu));
     struct opengpu_vm after_shutdown;allocation_complete=finish_while_vm_allocates;
-    assert(opengpu_mmu_vm_create(&gpu,&after_shutdown)==-EOPNOTSUPP);
+    assert(opengpu_mmu_vm_create(&gpu,&after_shutdown)==-ENODEV);
     assert(!gpu.mmu.enabled && !gpu.mmu.root.cpu && !gpu.mmu.vms);
     assert(!after_shutdown.enabled && !after_shutdown.root.cpu && !live_allocations);
+    assert(opengpu_mmu_vm_create(&gpu,&after_shutdown)==-ENODEV);
+    gpu.hw.capabilities=0;
+    assert(opengpu_mmu_vm_create(&gpu,&after_shutdown)==-EOPNOTSUPP && !live_allocations);
     puts("MMU allocation, rollback, range and lock-scope tests passed");
     return 0;
 }

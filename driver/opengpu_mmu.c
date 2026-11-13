@@ -345,7 +345,8 @@ int opengpu_mmu_vm_create(struct opengpu_device *gpu, struct opengpu_vm *vm)
     if (!vm)
         return -EINVAL;
     if (!mmu->enabled)
-        return -EOPNOTSUPP;
+        return gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS ?
+            -ENODEV : -EOPNOTSUPP;
     vm->asid = 0;
     vm->enabled = false;
     vm->l1_count = 0;
@@ -359,7 +360,7 @@ int opengpu_mmu_vm_create(struct opengpu_device *gpu, struct opengpu_vm *vm)
     /* Only explicit VM mappings can publish a valid root link. */
     memset(vm->root.cpu, 0, MMU_PAGE_SIZE);
     ret = mmu->enabled ? opengpu_asid_alloc(&mmu->asids, &asid) :
-        -EOPNOTSUPP;
+        -ENODEV;
     if (!ret) {
         vm->asid = asid;
         dma_wmb();
