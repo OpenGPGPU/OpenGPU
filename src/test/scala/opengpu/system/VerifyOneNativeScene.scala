@@ -1,23 +1,21 @@
 package opengpu.system
 
-import java.nio.file.Paths
 import opengpu.graphics.{NativeProductFrameInputs, NativeProductWorkloads}
-import opengpu.testutil.{GraphicsTestResolution, NativeFrameMemoryCodec}
+import opengpu.testutil.NativeFrameMemoryCodec
 
 /** Diagnostic verification of one completed scene; never a six-scene qualification. */
 object VerifyOneNativeScene {
   def main(args: Array[String]): Unit = {
     require(args.length == 3 && Set("--smoke", "--product")(args(0)),
       "usage: --smoke|--product SCENE MEMORY")
-    val product = args(0) == "--product"
-    require(sys.props.get("opengpu.fullHostQualification").contains("1"))
-    require(GraphicsTestResolution.productQualification == product)
-    val width = if (product) 1280 else 32
-    val height = if (product) 720 else 32
+    val (product, memory) = CompiledNativeProductFixtures.mode(
+      Array(args(0), "--output", args(2)))
+    val twoCuVga = CompiledNativeProductFixtures.twoCuVga
+    val (width, height) = CompiledNativeProductFixtures.frameSize(product, twoCuVga)
     val scene = NativeProductWorkloads.suite(width, height).find(_.id == args(1))
       .getOrElse(throw new IllegalArgumentException("unknown product scene"))
-    val input = NativeProductFrameInputs.encode(scene)
-    val actual = NativeFrameMemoryCodec.read(Paths.get(args(2)))
+    val input = CompiledNativeProductFixtures.input(scene, twoCuVga)
+    val actual = NativeFrameMemoryCodec.read(memory)
     require(NativeFrameMemoryCodec.sameAllocations(input.memory, actual),
       s"${scene.id} allocation metadata changed")
     NativeProductFrameInputs.verify(scene, input.copy(memory = actual))
