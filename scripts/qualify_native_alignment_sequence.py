@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute compute/native/compute/native on the complete assertion-enabled v2 host."""
+"""Execute compute/native/compute/native on a complete assertion-enabled host."""
 import argparse
 import fcntl
 import json
@@ -13,6 +13,7 @@ import time
 
 import qualify_native_product_compiled as common
 import qualify_native_product_flashsim as flash
+import prepare_native_owner_flashsim as owner
 
 ROOT = Path(__file__).resolve().parents[1]
 MARKER = ('NATIVE_ALIGNMENT_SEQUENCE PASS scenes=6 commands=24 resets=6 '
@@ -30,12 +31,15 @@ def temporary_root():
     return directory
 
 
-def validate_rows(rows):
+def validate_rows(rows, owner_profile=False):
     expected = [(name, epoch) for name in common.SCENES for epoch in range(2)]
     if [(r.get('scene'), r.get('epoch')) for r in rows] != expected:
         raise RuntimeError('All six scenes and both ordered compute/native epochs are required')
     for row in rows:
         if (type(row.get('epoch')) is not int
+                or row.get('profile') != (owner.PROFILE if owner_profile else 'two-cu-vga60-v2')
+                or type(row.get('resourceDiscoveryWords')) is not int
+                or row['resourceDiscoveryWords'] != (96 if owner_profile else 72)
                 or any(type(row.get(key)) is not int or row[key] <= 0
                 for key in ('computeCycles', 'nativeCycles'))
                 or row.get('resetBetweenCommands') is not False
@@ -55,6 +59,8 @@ def verify_marker(log):
 
 
 class Runner(flash.Runner):
+    owner_profile = False
+
     def execute(self, stage, command, log, cwd=ROOT):
         with tempfile.TemporaryDirectory(prefix='n', dir=temporary_root()) as temporary:
             # Keep JVM and native/Python child fixtures inside this GPU task.
@@ -65,7 +71,8 @@ class Runner(flash.Runner):
                 if command[0] == 'sbt':
                     if sys.platform == 'darwin' and len(os.fsencode(temporary)) + 51 >= 104:
                         raise RuntimeError('GPU temporary path exceeds sbt\'s macOS Unix socket limit')
-                    command = command[:1] + ['-Djava.io.tmpdir=' + temporary] + command[1:]
+                    command = command[:1] + ['-J-Djava.io.tmpdir=' + temporary,
+                                            '-J-XX:ActiveProcessorCount=2'] + command[1:]
                 start = time.monotonic()
                 with log.open('w') as stream:
                     child = subprocess.Popen(command, cwd=cwd, stdout=stream,
@@ -109,7 +116,7 @@ class Runner(flash.Runner):
         self.execute('compute-native-sequence', [str(self.out / self.executable_name),
                      str(self.out / 'fixtures'), str(directory)], self.out / 'sequence-execution.log')
         rows = [json.loads(line) for line in (self.out / 'sequence-execution.log').read_text().splitlines()]
-        validate_rows(rows)
+        validate_rows(rows, self.owner_profile)
         self.prepared()
         self.checked_build(prepared)
         common.write_json(self.out / 'sequence-execution.json', dict(
@@ -129,7 +136,7 @@ class Runner(flash.Runner):
                 or execution['preparation_sha256'] != common.sha(self.out / 'preparation.json')
                 or execution['build_sha256'] != common.sha(self.out / 'build.json')):
             raise RuntimeError('Sequence outputs or executing model changed before verification')
-        validate_rows(execution['rows'])
+        validate_rows(execution['rows'], self.owner_profile)
         identity = common.sha(path)
         log = self.out / 'sequence-verify.log'
         self.execute('verify-compute-native-sequence', self.sbt(
@@ -141,10 +148,62 @@ class Runner(flash.Runner):
             raise RuntimeError('Sequence execution changed during independent verification')
         common.write_json(self.out / 'sequence-qualification.json', dict(
             passed=True, execution_sha256=identity, clockQualified=False, fpsQualified=False,
-            scope='Complete two-CU v2 host, six 32x32 scenes, compute/native/compute/native '
+            profile=owner.PROFILE if self.owner_profile else 'two-cu-vga60-v2',
+            scope='Complete two-CU host, six 32x32 scenes, compute/native/compute/native '
                   'without intervening reset. Exact images, compute outputs and read-only bytes. '
                   'No tessellation execution, complete feature/API, physical timing or FPS claim.'))
         print(MARKER, flush=True)
+
+
+class OwnerRunner(Runner):
+    """Add original fixtures to one prepared owner DUT without emitting another."""
+    owner_profile = True
+
+    def fixture_manifest(self):
+        manifest = json.loads((self.out / 'owner-fixture-manifest.json').read_text())
+        owner.check_manifest(manifest, rtl_emitted=False)
+        expected = dict(workloadProduct=False, workloadWidth=32, workloadHeight=32,
+                        scenes=common.SCENES)
+        if any(type(manifest.get(k)) is not type(v) or manifest[k] != v
+               for k, v in expected.items()):
+            raise RuntimeError('Owner sequence requires six original ordered 32x32 recipes')
+
+    def fixture_inputs(self):
+        files = common.tree_hashes(self.out / 'fixtures')
+        expected = {'suite.txt'} | {n + suffix for n in common.SCENES
+                                   for suffix in ('.memory', '.commands')}
+        if (set(files) != expected or
+                (self.out / 'fixtures/suite.txt').read_text().splitlines() != common.SCENES):
+            raise RuntimeError('Incomplete or reordered owner sequence fixture set')
+        return dict(fixture_sha256=files,
+                    manifest_sha256=common.sha(self.out / 'owner-fixture-manifest.json'),
+                    driver_sha256={n: common.sha(ROOT / n) for n in self.driver_sources()})
+
+    def prepared(self):
+        record = owner.prepared(self.out)
+        self.fixture_manifest()
+        if json.loads((self.out / 'sequence-fixtures.json').read_text()) != self.fixture_inputs():
+            raise RuntimeError('Owner sequence fixtures or driver changed after preparation')
+        return record
+
+    def prepare(self):
+        # Validate full emitted RTL before creating any fixture or changing any
+        # record. A describe-only manifest can never authorize model generation.
+        record = owner.prepared(self.out)
+        for name in ('fixtures', 'owner-fixture-manifest.json', 'sequence-fixtures.json'):
+            if (self.out / name).exists():
+                raise RuntimeError('Owner sequence preparation requires fresh fixtures')
+        log = self.out / 'sequence-prepare.log'
+        self.execute('prepare-owner-sequence-fixtures', self.sbt(
+            'opengpu.system.PrepareNativeOwnerFixtures --smoke --output ' +
+            json.dumps(str(self.out)), '3G'), log)
+        common.verify_prepare_completion(log,
+            'NATIVE_OWNER_FIXTURES scenes=6 frame=32x32 words=96 rtlEmitted=false gpuExecution=false')
+        if owner.prepared(self.out) != record:
+            raise RuntimeError('Owner DUT changed during sequence fixture preparation')
+        self.fixture_manifest()
+        common.write_json(self.out / 'sequence-fixtures.json', self.fixture_inputs())
+        self.prepared()
 
 
 def main():
@@ -158,16 +217,23 @@ def main():
     parser.add_argument('--reshard-tool', type=Path)
     parser.add_argument('--precompiled-header', action='store_true')
     parser.add_argument('--conservative-alias', action='store_true')
+    parser.add_argument('--owner-profile', action='store_true',
+                        help='reuse an already prepared 96-word owner DUT; prepare fixtures only')
     if (args := parser.parse_args()).jobs < 1 or args.shards < 1:
         parser.error('--jobs and --shards must be positive')
-    out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
+    out = args.output.resolve()
+    if not out.is_relative_to(ROOT / '.artifacts'):
+        parser.error('--output must be inside this checkout .artifacts')
+    if args.owner_profile and not out.is_dir():
+        parser.error('--owner-profile requires an already prepared owner DUT directory')
+    out.mkdir(parents=True, exist_ok=True)
     with (out / '.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        runner = Runner(out, False, args.flashsim_dir, shards=args.shards,
+        runner = (OwnerRunner if args.owner_profile else Runner)(out, False, args.flashsim_dir, shards=args.shards,
                         reshard=args.reshard_dir, reshard_tool=args.reshard_tool,
                         precompiled_header=args.precompiled_header,
                         conservative_alias=args.conservative_alias,
-                        api_capacity=True, two_cu_vga=True, alignment_v2=True)
+                        api_capacity=True, two_cu_vga=True, alignment_v2=not args.owner_profile)
         try:
             for stage in ('prepare', 'build', 'run', 'verify'):
                 if args.stage in ('all', stage):
