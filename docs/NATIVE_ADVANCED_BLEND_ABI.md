@@ -60,8 +60,12 @@ immutable GFS entry before enqueue. It binds admission to the discovered
 transport flag, validates version pairing and advanced/ordinary controls, and
 rejects integer output types or enabled integer attachments. The generated
 header obtains the GFS and frame word offsets from the actual Scala layouts.
-This check preserves the legacy validation path and does not establish shader
-or resource provenance. Discard-only jobs retain their existing contract.
+When either tag is 3, an unknown or incompatible other tag fails before enqueue.
+Pairs without tag 3 retain their prior validation path; this extension gate is
+not a complete C semantic preflight for legacy states. Full legacy-state
+semantic preflight before any shader side effect remains required for H8.
+This check does not establish shader or resource provenance. Discard-only jobs
+retain their existing contract.
 
 ## Explicit payload version 3
 
@@ -83,10 +87,16 @@ factors and equations are zero; the four blend constants remain shared.
 Native draw preflight validates output types before offering a shader draw.
 GFS1 validates output types before publishing any fragment state. The render
 owner also checks the actual attachment kinds before starting shader work.
-Thus an integer advanced attachment fails before the resulting shader can
-perform image writes or other side effects. Existing GFS canonical-padding
-error precedence remains intact. Fragment-state fetch faults and cancellation
-never publish a partial state or cache entry.
+For the direct GTD/render path, an integer advanced attachment fails before
+vertex or fragment shader launch. The Linux tessellation submission gate checks
+its referenced GFS entries before enqueue. A raw hardware binned job reads GFS
+at fragment replay, so this reader gate prevents fragment-state publication
+and fragment shader launch; its bin vertex shader may already have run. A
+complete raw-binned draw/GFS preflight with immutable ownership before any
+shader side effect remains an explicit H8 gap. These per-entry guarantees do
+not establish a global zero-shader-side-effect guarantee. Existing GFS
+canonical-padding error precedence remains intact. Fragment-state fetch faults
+and cancellation never publish a partial state or cache entry.
 
 Accepted draws and GFS entries retain immutable private snapshots through held
 offers/results, cancellation and owner drain. Native fast cohorts drain before
@@ -131,7 +141,7 @@ The GFS C fixture covers all four locations, fifteen equations and 36 attachment
 formats with an independent numeric format-class oracle, plus integer output
 types, shared controls, reserved bits and version pairing. The production
 scheduler/MMU C fixture uses a fake device and covers all three patch domains
-and both image-addressing modes. Seven malformed/unsupported cases per
+and both image-addressing modes. Eleven malformed/unsupported cases per
 combination leave enqueue, GPU kicks, object/context references and fences
 unchanged. Twelve accepted advanced C submissions retain copied state and
 revoke its PTEs on retirement; the complete suite passes 71 jobs with the
@@ -142,8 +152,8 @@ The local regression passes 42 Scala cases: 41 ABI/reader/MMIO cases and one
 real shared-CU render case. The latter uses two CUs with four lanes and two
 warps, an 8x8 screen bound and a 4x4 tile at 4x sampling. It checks exact final
 typed destination words across ordinary, advanced and ordinary draws, accepted
-state snapshots and held results. Those draws complete in 37,580, 142,956 and
-37,509 clocks respectively. Five malformed version/equation/integer-attachment
+state snapshots and held results. Draw completion plus canonical readback takes
+37,580, 142,956 and 37,509 clocks respectively. Five malformed version/equation/integer-attachment
 cases launch no new vertex or fragment shader, close automatically, and permit
 a subsequent healthy advanced draw with exact stored results. The existing
 one-million-clock per-wait bound is unchanged. This fixture does not qualify
