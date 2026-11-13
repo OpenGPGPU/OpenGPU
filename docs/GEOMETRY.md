@@ -753,5 +753,9 @@ These are pre-execution components; no product constructor or native/API GS
 capability enables them. A real VS-to-GS-to-clip/bin owner remains to be connected
 and qualified. GNG1 currently maps position and user varyings, with layer and
 primitive-ID output built-ins. Retained VS point-size bits do not establish a GS
-point-size read/write interface. Completing point-size/built-in links, all GS
-resource domains and the complete native/API contract remains required.
+point-size read/write interface. Core GLSL ES 3.20
+[section 7.1.4](https://registry.khronos.org/OpenGL/specs/es/3.2/GLSL_ES_Specification_3.20.html#geometry-shader-special-variables)
+defines GS per-vertex position, PrimitiveIDIn/InvocationID inputs and
+PrimitiveID/Layer outputs; it does not declare GS point size. A point-size
+extension is outside this initial transport. Actual native execution, all GS
+resource domains and the complete native/API contract remain required.
