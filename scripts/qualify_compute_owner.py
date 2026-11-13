@@ -59,7 +59,7 @@ def producer_command(args, *, gpu, source, ntt, image, name, case):
     # The configured Mesa object database uses these original absolute paths.
     # Keep that mount unchanged; all newly generated files live in {ipc}.
     command = ['docker', 'run', '--rm', '--init', '--name', name, '--memory', '2g', '--cpus', '2',
-               '-v', f'{gpu}:{gpu}', '-w', str(source)]
+               '-v', f'{gpu}:{gpu}:ro', '-v', '{ipc}:{ipc}:rw', '-w', str(source)]
     environment = dict(PYTHONDONTWRITEBYTECODE='1', OPENGPU_MESA_DIR=str(args.mesa),
         OPENGPU_MESA_BUILD=str(args.mesa_build), OPENGPU_DRM_INCLUDE=str(args.drm_include),
         OPENGPU_MESA_LINK_LIBS=args.mesa_link_libs, LD_LIBRARY_PATH=str(args.library_directory), TMPDIR='{ipc}')

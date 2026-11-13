@@ -150,6 +150,8 @@ default compiler image is the existing `gpu-gtk-ci-check:latest`, resolved to an
 immutable local image ID before use, with one 2 GiB/two-CPU serial build. Mesa
 source/configured objects and DRM/library inputs default to GPU `depends/`;
 explicit input paths must also stay inside the GPU workspace.
+The GPU workspace, fixed producer archive and Mesa inputs are mounted read-only;
+only the new managed session (including CPU build output) is writable.
 
 This entry requires a clean committed producer checkout, archives that exact
 commit, and runs the original checked private Mesa NTT from that archive. It
@@ -157,6 +159,7 @@ does not pass `--capture-only` or enable the CPU test peer. Each controller uses
 the guarded executor and existing owner lock; qualification and executable
 identity must also remain unchanged between the two cases. The outer process
 owns unique containers and managed IPC directories, stops its process group,
+verifies every remaining group member is absent or a zombie within a bound,
 verifies container exit, then removes CPU builds, archives, captures and logs in
 `finally`. If container exit cannot be established, it fails and retains the
 possibly active inputs for diagnosis instead of deleting a live consumer's
