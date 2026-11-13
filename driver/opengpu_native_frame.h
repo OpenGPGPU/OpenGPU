@@ -22,6 +22,13 @@ struct opengpu_native_tile_layout {
     uint32_t depth_offset, stencil_offset, color_offset[4];
 };
 
+/* Validate the actual eight-word virtual-image GNC2/GNC3 discovery block.
+ * Runtime sizes remain independent of product/profile constants. Callers
+ * reading u64 GET_PARAM values must also reject nonzero upper 32 bits before
+ * assembling this block, and cross-check shader layout against the same device.
+ */
+int opengpu_native_frame_caps_validate(const struct opengpu_native_binned_host_caps *);
+
 /* Returns a negative errno on invalid/unsupported input or insufficient
  * resident storage. A failure never changes the caller's output structure.
  * This plans GNF storage; it does not allocate/pin memory or submit a job.
