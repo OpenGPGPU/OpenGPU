@@ -23,4 +23,17 @@ int opengpu_native_frame_snapshot_append(struct opengpu_private_snapshot *owner,
     u32 engines, u32 context, u32 pass, u32 generation,
     opengpu_native_frame_resolve resolve, void *resolve_context,
     u32 *frame_segment);
+
+/* Complete GFS publication: read the already copied private state segment,
+ * require its exact engine count and zero scratch addresses, then bind each
+ * engine/state to its corresponding stride-sized slot in the same original
+ * scratch resource used by GNF. The caller separately validates GFS semantics,
+ * identity and the shader SoA prefix against scratchStride. Failure has the
+ * same discard-unpublished-owner contract as append above. */
+int opengpu_native_frame_snapshot_append_complete(struct opengpu_private_snapshot *owner,
+    const void *frame, u32 states_segment, size_t states_bytes,
+    const struct opengpu_native_frame_resource *resources, u32 resource_count,
+    u32 engines, u32 context, u32 pass, u32 generation,
+    opengpu_native_frame_resolve resolve, void *resolve_context,
+    u32 *frame_segment);
 #endif
