@@ -1,7 +1,65 @@
 /* Production MMIO composition test. The control peer executes no GPU code. */
 #define OPENGPU_NATIVE_MMIO 1
+struct opengpu_device;
+static void test_cleanup_peer(struct opengpu_device *,const char *,unsigned);
+#define OPENGPU_NATIVE_MMIO_CLEANUP_TEST_PEER(g,d,s) test_cleanup_peer(g,d,s)
 #define OPENGPU_NATIVE_SUBMIT_FIXTURE_MAIN native_submit_component_regression
 #include "opengpu_native_submit_fixture.c"
+#include <sys/wait.h>
+static unsigned test_cleanup_bad;
+static void test_cleanup_peer(struct opengpu_device *gpu,const char *directory,unsigned sequence)
+{
+    assert(!gpu->hw.wedged);
+    struct native_mmio_state *m=native_mmio_state(gpu);char path[4096];
+    snprintf(path,sizeof(path),"%s/cleanup-%u.trace",directory,sequence);
+    FILE *f=fopen(path,"rb");assert(f);char magic[8];u32 count;
+    assert(fread(magic,1,8,f)==8 && !memcmp(magic,"OGCLN001",8) && !native_mmio_read_le(f,&count));
+    unsigned clears=0,flushes=0;
+    for(u32 n=0;n<count;n++){
+        u32 a[4];for(unsigned k=0;k<4;k++)assert(!native_mmio_read_le(f,&a[k]));
+        if(a[0]==4){
+            assert(a[2]==0 && (a[3]&1));bool found=false;
+            for(struct native_mmio_pte_shadow *p=m->pte;p;p=p->next)if(a[1]>=p->physical && (u64)a[1]+4<=p->physical+p->size){
+                assert(!p->words[(a[1]-p->physical)/4]);found=true;break;}
+            assert(found);++clears;
+        }else if(a[0]==1){assert(a[1]==GPU_REG_UCMD_TLB_FLUSH);++flushes;}
+    }
+    assert(fgetc(f)==EOF && !fclose(f) && flushes<=1);
+    assert(!clears || flushes==1);
+    if(flushes)assert(gpu->hw.submit_lock.held && gpu->mmu.lock.held);
+    /* Actual owner backing and original references remain live while the
+     * production MMU call is blocked, before the CPU test peer acknowledges. */
+    bool owner_live=false;
+    for(struct native_kernel_record *r=running->records;r;r=r->next)if(!r->freed){
+        assert(r->job && r->job->native_owner);owner_live=true;
+        for(struct snapshot_segment *segment=r->job->native_owner->segments;segment;segment=segment->next)
+            assert(segment->backing.cpu && segment->lease.active);
+    }
+    if(flushes)assert(owner_live);
+    snprintf(path,sizeof(path),"%s/cleanup-%u.observed",directory,sequence);
+    f=fopen(path,"wbx");assert(f);fwrite("OGCLA001",1,8,f);
+    native_mmio_le(f,sequence+(test_cleanup_bad==1),4);
+    native_mmio_le(f,test_cleanup_bad==2?GPU_UCMD_STATUS_VM_BUSY:GPU_UCMD_STATUS_READY,4);
+    native_mmio_le(f,GPU_IRQ_ENABLE,4);native_mmio_le(f,0,4);native_mmio_le(f,1,4);assert(!fclose(f));
+}
+static void test_failed_cleanup(struct native_kernel_session *s,const char *base,unsigned bad)
+{
+    char directory[4096];snprintf(directory,sizeof(directory),"%s/failed-%u",base,bad);assert(!mkdir(directory,0700));
+    pid_t child=fork();assert(child>=0);
+    if(!child){
+        test_cleanup_bad=bad;int allocations=live_allocations;
+        assert(!native_kernel_begin_cleanup(s,directory));
+        assert(native_kernel_finish_observed(s,0)==-EIO);
+        struct native_kernel_record *r=native_session_record(s,0);
+        assert(s->gpu.hw.wedged && r->job && r->job->native_owner && !r->freed);
+        assert(live_allocations==allocations && !s->gpu.mmu.lock.held && !s->gpu.hw.submit_lock.held);
+        assert(native_kernel_end_cleanup(s)==-EBUSY && native_kernel_session_destroy(s)==-EBUSY);
+        /* A failed CPU-only session deliberately remains quarantined. The
+         * child exits without inventing a successful GPU reset/ack/release. */
+        _exit(0);
+    }
+    int status;assert(waitpid(child,&status,0)==child && WIFEXITED(status) && !WEXITSTATUS(status));
+}
 static void test_path(char *out,size_t size,const char *base,const char *name)
 {int n=snprintf(out,size,"%s/%s",base,name);assert(n>0 && (size_t)n<size);}
 static struct native_kernel_held_receipt test_held(struct native_kernel_session *s,unsigned index)
@@ -70,8 +128,13 @@ int main(int argc,char **argv)
     struct native_kernel_held_receipt h1=test_held(s,1);
     assert(!native_kernel_drain_held(s,1,&h1,retire[1]));
     struct native_kernel_observed_receipt o1=test_observed(h1);assert(!native_kernel_observe_retired(s,1,&o1));
+    assert(native_kernel_finish_observed(s,0)==-EBUSY);
+    test_failed_cleanup(s,argv[1],1);test_failed_cleanup(s,argv[1],2);
+    assert(!native_kernel_begin_cleanup(s,argv[1]));
+    assert(native_kernel_begin_cleanup(s,argv[1])==-EBUSY);
     assert(!native_kernel_finish_observed(s,0));assert(a->freed && !a->job && b->job);
     assert(native_session_record(s,1)==b && !native_kernel_finish_observed(s,1));
+    assert(!native_kernel_end_cleanup(s));assert(native_kernel_end_cleanup(s)==-EBUSY);
     assert(!native_kernel_session_destroy(s));assert(!live_allocations && !fixture_buffers);
     puts("native MMIO production composition CPU checks: PASS");return 0;
 }

@@ -62,10 +62,11 @@ static uint64_t translate(const Memory &m,uint32_t satp,uint32_t va,bool executa
 }
 int main(int argc,char **argv) {
   require(argc==2,"missing actual C fixture directory");const std::filesystem::path base=argv[1];
-  auto memory=Memory::read((base/"union.memory").string());std::set<uint32_t> ids,roots;
+  auto memory=Memory::read((base/"union.memory").string());std::set<uint32_t> ids,roots;PtePages pte;
   for(unsigned n=0;n<2;n++) {
     auto capture=Capture::read((base/("record-"+std::to_string(n)+".capture")).string(),true);
     auto retired=Retirement::read((base/("record-"+std::to_string(n)+".retire")).string());
+    pte.observe(memory,capture);
     require(capture.discovery.size()==101 && ids.insert(capture.command_id).second,"driver lost raw profile or command identity");
     verify_readonly(memory,memory,capture.writable);std::map<uint32_t,uint32_t> regs;unsigned invalidates=0;
     for(const auto &a:capture.trace)if(a.kind==Kind::write){regs[a.address]=a.value;
@@ -84,6 +85,14 @@ int main(int argc,char **argv) {
       if(a.address==GPU_REG_UCMD_COMPLETION_BYTES_HI)hi=a.value==1 && a.mask==0xffffffffu;}
     require(legacy && raw && hi,"real IRQ drain lost legacy status, raw GNX or 64-bit telemetry");
   }
+  std::ifstream done(base/"cleanup.done",std::ios::binary);magic(done,"OGCLD001");
+  const auto batches=read_le(done,4);require(batches && done.peek()==EOF,"actual owner cleanup lost final batch count");
+  unsigned cleared=0;
+  for(unsigned n=0;n<batches;n++) {
+    const auto batch=Cleanup::read((base/("cleanup-"+std::to_string(n)+".trace")).string());
+    for(const auto &a:batch.actions)if(a.kind==Kind::pte_clear){pte.clear(memory,a);++cleared;}
+  }
+  require(cleared,"actual cleanup cleared no PTEs");pte.revoked(memory);
   std::cout<<"actual C capture parser/physical owner checks: PASS\n";
 }
 ''')

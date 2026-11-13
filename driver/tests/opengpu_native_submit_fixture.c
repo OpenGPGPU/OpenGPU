@@ -446,12 +446,15 @@ int native_kernel_finish_observed(struct native_kernel_session *s,unsigned index
         !dma_fence_is_signaled(r->hardware) || r->hardware->error || s->gpu.hw.wedged)return -EINVAL;
     for(struct native_kernel_record *other=s->records;other;other=other->next)
         if(!other->verified)return -EBUSY;
+#ifdef OPENGPU_NATIVE_MMIO
+    if(!native_mmio_state(&s->gpu)->cleanup_active)return -EBUSY;
+#endif
     link=&s->head;while(*link && *link!=&r->job->base)link=&(*link)->next;
     if(!*link)return -ENOENT;
     running=s;copy_gpu=&s->gpu;
     struct drm_sched_job *base=*link,*next=base->next;
-    /* This final CPU/MMU cleanup is separate from verified DUT execution.
-     * A future cleanup receipt must also replay these shootdowns on the DUT. */
+    /* The MMIO transport blocks at each actual shootdown before this real
+     * free_job path can release the corresponding backing. */
     opengpu_sched_free_job(base);
     if(s->gpu.hw.wedged)return -EIO; /* actual free_job quarantined its owner */
     *link=next;if(s->tail==base){s->tail=NULL;for(struct drm_sched_job *p=s->head;p;p=p->next)s->tail=p;}
@@ -462,6 +465,10 @@ int native_kernel_session_destroy(struct native_kernel_session *s)
 {
     if(!s)return -EINVAL;
     if(s->head || s->hardware)return -EBUSY;
+#ifdef OPENGPU_NATIVE_MMIO
+    if(s->gpu.hw.native_mmio && native_mmio_state(&s->gpu)->exported &&
+        !native_mmio_state(&s->gpu)->cleanup_done)return -EBUSY;
+#endif
     running=s;copy_gpu=&s->gpu;
     for(struct native_original *o=s->originals;o;o=o->next)if(o->visible)native_kernel_original_close(s,o->handle);
     for(struct native_original *o=s->originals;o;o=o->next)if(o->refs)return -EBUSY;
