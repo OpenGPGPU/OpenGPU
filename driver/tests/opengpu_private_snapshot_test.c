@@ -10,6 +10,9 @@ struct opengpu_render_context {
     struct opengpu_vm vm;
     unsigned references;
     u32 id;
+#ifdef OPENGPU_PRIVATE_SNAPSHOT_CONTEXT_EXTRA
+    OPENGPU_PRIVATE_SNAPSHOT_CONTEXT_EXTRA
+#endif
 };
 static void opengpu_context_get(struct opengpu_render_context *c)
 { assert(c->references); ++c->references; }
@@ -21,7 +24,11 @@ static void opengpu_context_put(struct opengpu_render_context *c)
 #define time_after(a,b) ((long)((a)-(b)) > 0)
 static unsigned long jiffies;
 static void opengpu_hw_progress_tick(struct opengpu_device *gpu)
-{ assert(!gpu->hw.submit_lock.held); ++jiffies; }
+{ assert(!gpu->hw.submit_lock.held); ++jiffies;
+#ifdef OPENGPU_PRIVATE_SNAPSHOT_PROGRESS
+  OPENGPU_PRIVATE_SNAPSHOT_PROGRESS(gpu);
+#endif
+}
 static void usleep_range(unsigned minimum, unsigned maximum)
 { assert(minimum==100 && maximum==200); }
 #include "snapshot_submission_under_test.inc"
@@ -35,7 +42,12 @@ static int opengpu_hw_invalidate_buffer_locked(struct opengpu_device *gpu,
     for (lease=gpu->mmu.snapshot_leases; lease; lease=lease->next)
         if (lease->active && lease->mapped && lease->base==buffer->dma && lease->size==buffer->size)break;
     assert(lease);++invalidations;
-    return invalidate_failure && invalidations==(unsigned)invalidate_failure ? -EIO : 0;
+    if(invalidate_failure && invalidations==(unsigned)invalidate_failure)return -EIO;
+#ifdef OPENGPU_PRIVATE_SNAPSHOT_INVALIDATE
+    return OPENGPU_PRIVATE_SNAPSHOT_INVALIDATE(gpu,buffer);
+#else
+    return 0;
+#endif
 }
 static struct opengpu_device *copy_gpu;
 static unsigned sealed_dma_copies;
