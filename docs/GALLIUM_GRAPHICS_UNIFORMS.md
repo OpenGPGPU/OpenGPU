@@ -144,6 +144,12 @@ leave output unchanged and allow a healthy retry.
 The composed 4×4 RGBA32UI frame uses actual GEM windows and the production GNF
 encoder, including primitive/directory/pool storage and four fragment scratch
 views. These are source plans, with no private VA reconstruction or GPU run.
+A separate TGSI boundary case passes highest attribute/binding 15, varying 15
+and color 3 through the program object and native draw encoder. The exact
+uploaded words pass native admission and the independent 17-invocation CPU
+oracle across all 128 item/guard positions, including the 64-bit mask's high
+components and the larger SoA prefixes. This supplements the actual linked
+one-attribute ESSL fixture; it is not complete API or RTL qualification.
 
 Native validator C coverage checks every input/output/tail slice across full
 and empty runtime layouts, VS versions 1/2, FS versions 1–5, capability guards,

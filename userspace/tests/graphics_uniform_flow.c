@@ -641,6 +641,59 @@ static void native_metadata(struct pipe_context *pipe, const struct opengpu_nati
     for(unsigned i=0;i<8;i++)pipe_opengpu_resource_destroy(screen,frame_objects[i]);
     pipe_opengpu_resource_destroy(screen,scratch);
 }
+static void native_capacity_metadata(struct pipe_context *pipe, struct pipe_resource *input)
+{
+    struct tgsi_token vs[256],fs[256];
+    assert(tgsi_text_translate("VERT\nDCL IN[15]\nDCL OUT[0], POSITION\nDCL OUT[1], GENERIC[15]\nMOV OUT[0], IN[15]\nMOV OUT[1], IN[15]\nEND\n",vs,256));
+    assert(tgsi_text_translate("FRAG\nDCL IN[0], GENERIC[15], CONSTANT\nDCL OUT[0], COLOR[3]\nMOV OUT[0], IN[0]\nEND\n",fs,256));
+    struct opengpu_native_graphics_program *program=opengpu_native_graphics_program_create(pipe,vs,fs);assert(program);
+    struct opengpu_native_graphics_sources sources;
+    assert(!opengpu_native_graphics_program_sources(pipe,program,&sources)&&
+        sources.layout[0].attributes==16&&sources.layout[0].varyings==16&&sources.layout[1].varyings==16&&
+        sources.layout[1].colors==4&&sources.varying_mask[0]==(UINT64_C(15)<<60)&&
+        sources.varying_mask[1]==(UINT64_C(15)<<60)&&sources.color_mask==8);
+    struct pipe_opengpu_screen *screen=opengpu_screen_gpu(pipe->screen);
+    sparse_next=1;
+    struct pipe_opengpu_resource *scratch=pipe_opengpu_resource_create(screen,135*128*4+128);assert(scratch);
+    memset(pipe_opengpu_resource_map(scratch),0x5a,135*128*4+128);
+    struct opengpu_native_draw_request request={.context=pipe,.sources=&sources,.state_count=1,
+        .width=4,.height=4,.topology=4,.count=3,.instances=1,.vertex_scratch={scratch,64,135*128*4}};
+    request.attributes[15]=(struct opengpu_native_draw_attribute){.enabled=1,.binding=15,.components=4};
+    request.bindings[15]=(struct opengpu_native_draw_binding){.view={opengpu_resource(input)->gpu,4,48},.stride=16};
+    request.color_types[3]=1;
+    struct opengpu_native_draw_encoding encoded;
+    assert(!opengpu_native_draw_encode(&request,&encoded));
+    assert(encoded.draw.words[OPENGPU_NATIVE_BINNED_DRAW_DRAW_VERTEX_GEOMETRY_VERTEX_ATTRIBUTESLOTS_WORD]==16&&
+        encoded.draw.words[OPENGPU_NATIVE_BINNED_DRAW_DRAW_VERTEX_GEOMETRY_VERTEX_VARYINGSLOTS_WORD]==16&&
+        encoded.draw.words[OPENGPU_NATIVE_BINNED_DRAW_DRAW_VERTEX_GEOMETRY_VERTEX_INPUT_ATTRIBUTES15_ENABLED_WORD]==1&&
+        encoded.plan.bindings[15].handle==pipe_opengpu_resource_handle(opengpu_resource(input)->gpu)&&
+        encoded.state.words[OPENGPU_TYPED_FRAGMENT_STATE_FRAGMENT_COLORSLOTS_WORD]==4&&
+        encoded.state.words[OPENGPU_TYPED_FRAGMENT_STATE_FRAGMENT_COLORMASK_WORD]==8&&
+        encoded.state.words[OPENGPU_TYPED_FRAGMENT_STATE_FRAGMENT_COLORTYPES3_WORD]==1);
+    const struct graphics_uniform_view uniforms[13]={0};
+    for(unsigned stage=0;stage<2;stage++) {
+        unsigned arrays=stage?88:135,bytes=arrays*128*4;
+        uint32_t *payload=malloc(bytes),*original=malloc(bytes);assert(payload&&original);
+        for(unsigned i=0;i<arrays*128;i++)payload[i]=original[i]=0x91c352a7u^i;
+        const struct drm_opengpu_native_program_view *code=&sources.programs[stage];
+        const uint32_t *words=(const uint32_t *)bos[code->handle].data;
+        assert(opengpu_native_shader_validate_words(words,code->bytes/4,bytes,128,stage,1,stage?0:16,16,
+            stage?4:0,false,true,false));
+        assert(!graphics_uniform_word_vm(words,code->bytes/4,payload,arrays*128,128,17,uniforms));
+        for(unsigned array=0;array<arrays;array++)for(unsigned item=0;item<128;item++) {
+            uint32_t want=original[array*128+item];
+            if(item<17) {
+                if(!stage&&array>=67&&array<71)want=original[(array-7)*128+item];
+                if(!stage&&array>=131)want=original[(array-71)*128+item];
+                if(stage&&array>=82&&array<86)want=original[(array-16)*128+item];
+                if(stage&&array==87)want=33;
+            }
+            assert(payload[array*128+item]==want);
+        }
+        free(payload);free(original);
+    }
+    pipe_opengpu_resource_destroy(screen,scratch);opengpu_native_graphics_program_destroy(program);
+}
 static void production_constants(void *program, const char *directory)
 {
     uint64_t original_features=features;features|=OPENGPU_DRIVER_FEATURE_NATIVE_BINNED;
@@ -717,6 +770,7 @@ static void production_constants(void *program, const char *directory)
             view->bytes==native[stage].words*4&&!memcmp(bos[view->handle].data,native[stage].code,view->bytes));
     }
     native_metadata(pipe,&sources,resources[12],graphics_uniform_color_type(program,0),directory);
+    native_capacity_metadata(pipe,resources[12]);
     fixture_native_caps[5]=0;
     assert(opengpu_native_graphics_program_sources(pipe,compiled,&sources)<0&&
         !memcmp(&sources,&original_sources,sizeof(sources)));
