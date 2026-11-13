@@ -11,10 +11,11 @@ class TypedTilePixelBackendSpec extends AnyFlatSpec {
   protected def parallelColors: Boolean=false
   protected def parallelDepth: Boolean=false
   protected def nativeSamples: Boolean=false
+  protected def advancedBlend: Boolean=false
   protected def streamingWordPorts: Int=4
   private def model(wordPorts: Int=streamingWordPorts): TypedTilePixelBackend=
     new TypedTilePixelBackend(TypedTileColorConfig(parallelLanes=parallelColors,
-      parallelDepth=parallelDepth,nativeSamples=nativeSamples,streamingWordPorts=wordPorts))
+      parallelDepth=parallelDepth,nativeSamples=nativeSamples,streamingWordPorts=wordPorts,advancedBlend=advancedBlend))
   import TypedColorReference._
   private case class View(f: Int,offset: Int,load: Int=1,z: BigInt=fp(0.75),st: Int=5)
   private case class Face(function: Int=6,reference: Int=7,readMask: Int=255,writeMask: Int=255,fail: Int=0,zfail: Int=0,zpass: Int=0)
@@ -33,6 +34,7 @@ class TypedTilePixelBackendSpec extends AnyFlatSpec {
     var mode=2;var tileLog2=3;var primary=View(4,0);var secondary=View(0,0);var colorNames=Vector("RGBA8");var colorOffsets=Vector(1024)
     val model=mutable.Map.empty[Int,Int];val backing=mutable.Map.empty[Int,Int];val validDS=mutable.Set.empty[Int];val changed=mutable.Set.empty[Int]
     var completedWrites=BigInt(0);var completedFills=BigInt(0);var submittedQuads=0
+    var timeout=20000
     var cycle=0;var refills=0;var blockRefill=false;var fault: Int=>Boolean=_=>false
     var pending: Option[(Int,BigInt,Boolean)]=None;var offered: Option[(BigInt,Boolean)]=None
     def word(map: mutable.Map[Int,Int],address: Int): BigInt=(0 until 8).foldLeft(BigInt(0))((v,b)=>v|(BigInt(map.getOrElse(address*8+b,0))<<(8*b)))
@@ -47,7 +49,7 @@ class TypedTilePixelBackendSpec extends AnyFlatSpec {
         assert(pending.isEmpty && offered.isEmpty);pending=Some((cycle+4,word(backing,a),fault(a)));refills+=1}
       onEdge();d.clock.step();cycle+=1
     }
-    def until(condition: => Boolean): Unit={var n=0;while(!condition && n<20000){tick();n+=1};assert(condition,s"late pixel stalled cycle=$cycle refills=$refills")}
+    def until(condition: => Boolean): Unit={var n=0;while(!condition && n<timeout){tick();n+=1};assert(condition,s"late pixel stalled cycle=$cycle refills=$refills")}
     def identity(q: GraphicsWorkIdentity): Unit={q.context.poke(7.U);q.pass.poke(8.U);q.generation.poke(9.U)}
     def begin(a: View=View(4,0),b: View=View(0,0),m: Int=2,colors: Vector[String]=Vector("RGBA8"),tile: Int=3): Unit={
       prepare(a,b,m,colors,tile);submitBegin()
@@ -90,10 +92,15 @@ class TypedTilePixelBackendSpec extends AnyFlatSpec {
     }
     private def sourceColor(i: Int,l: Int,seed: Int): Vector[BigInt]=if(format(colorNames(i)).kind==0)Vector(fp(0.15*(seed+l+1)),fp(0.5),fp(1),fp(0.75))
       else Vector(BigInt("ffffffff",16),BigInt(0x80000000L+l),BigInt(seed*100+l),BigInt(l+1))
-    def packet(seed: Int=0,state: Tests=Tests(),front: Boolean=true,z: BigInt=fp(0.25),masks: Vector[Int]=Vector(15,1,0,0),allLanes: Boolean=false,apply: Boolean=true,depthValues: Option[Vector[Vector[BigInt]]]=None,overrideDepth: Boolean=true,blendState: Option[TypedBlendReference.State]=None,origin: (Int,Int)=(0,0)): Expected={
+    def packet(seed: Int=0,state: Tests=Tests(),front: Boolean=true,z: BigInt=fp(0.25),masks: Vector[Int]=Vector(15,1,0,0),allLanes: Boolean=false,apply: Boolean=true,depthValues: Option[Vector[Vector[BigInt]]]=None,overrideDepth: Boolean=true,blendState: Option[TypedBlendReference.State]=None,origin: (Int,Int)=(0,0),advancedEquation: Option[Int]=None,colorValues: Option[Vector[BigInt]]=None): Expected={
       val b=d.io.in.bits;zero(b);val q=b.color.quad;identity(q.identity);q.sequence.poke((100+seed).U);q.primitiveId.poke((20+seed).U)
       q.partIndex.poke((seed%7).U);q.instanceId.poke(2.U);q.sampleMode.poke(mode.U);q.colorSlots.poke(colorNames.size.U);q.frontFacing.poke(front.B)
       blendState.foreach(s=>TypedBlendReference.poke(b.color.blend,s))
+      advancedEquation.foreach{eq=>
+        b.color.blend.version.poke(TypedBlendState.advancedIndexedVersion.U)
+        for(c<-colorNames.indices)b.color.blend.buffers(c).poke((BigInt(1)|(BigInt(15)<<23)|(BigInt(1)<<27)|(BigInt(eq)<<28)).U)
+      }
+      def colorSource(i: Int,l: Int): Vector[BigInt]=colorValues.getOrElse(sourceColor(i,l,seed))
       b.state.version.poke(1.U);b.state.depthEnable.poke(state.depth.B);b.state.depthWrite.poke(state.write.B);b.state.depthFunction.poke(state.function.U)
       b.state.stencilEnable.poke(state.stencil.B)
       def face(a: TypedStencilFace,f: Face): Unit={a.function.poke(f.function.U);a.reference.poke(f.reference.U);a.readMask.poke(f.readMask.U)
@@ -112,7 +119,7 @@ class TypedTilePixelBackendSpec extends AnyFlatSpec {
         r.x.poke(x.S);r.y.poke(y.S);r.depth.poke(z.U);r.depthOverride.poke(overrideDepth.B);r.sampleDepthValid.poke(depthValues.nonEmpty.B)
         for(s<-0 until 4)r.sampleDepth(s).poke(depthValues.map(_(l)(s)).getOrElse(BigInt(0)).U);r.helper.poke((coverage==0).B)
         r.coverageMask.poke(coverage.U);r.colorMask.poke((if(coverage==0)0 else(1<<colorNames.size)-1).U);b.color.samples(l).poke(selected.U)
-        for(i<-colorNames.indices)r.colors(i).zip(sourceColor(i,l,seed)).foreach{case(a,b)=>a.poke(b.U)}
+        for(i<-colorNames.indices)r.colors(i).zip(colorSource(i,l)).foreach{case(a,b)=>a.poke(b.U)}
         if(apply)for(s<-0 until(1<<mode) if (selected&(1<<s))!=0){tested+=1;val index=((y*(1<<tileLog2)+x)<<mode)+s
           val primaryAddress=primary.offset+index*TypedDepthReference.bytes(primary.f)
           val stencilAddress=stencilView.offset+index*TypedDepthReference.bytes(stencilView.f)
@@ -135,8 +142,13 @@ class TypedTilePixelBackendSpec extends AnyFlatSpec {
           if(updateZ || (updateS && stencilView==primary)){writes+=1;changed+=primaryAddress/8}
           if(updateS && stencilView!=primary){writes+=1;changed+=stencilAddress/8}
           if(pass){passed+=1
-            for(i<-colorNames.indices){val f=format(colorNames(i));val a=colorOffsets(i)+index*f.bytes;val source=sourceColor(i,l,seed)
-              val value=blendState.map(s=>TypedBlendReference.blend(colorNames(i),source,get(a,f.bytes),s)).getOrElse(source)
+            for(i<-colorNames.indices){val f=format(colorNames(i));val a=colorOffsets(i)+index*f.bytes;val source=colorSource(i,l)
+              val value=advancedEquation.map{eq=>
+                val src=source.map(x=>TypedColorReference.value(x).toFloat)
+                val dst=TypedBlendReference.decode(colorNames(i),get(a,f.bytes)).map(x=>TypedColorReference.value(x).toFloat)
+                if(eq<11)TypedAdvancedColorBlendReference.expected(src,dst,eq)
+                else TypedAdvancedHslBlendReference.expected(src,dst,eq-11)
+              }.orElse(blendState.map(s=>TypedBlendReference.blend(colorNames(i),source,get(a,f.bytes),s))).getOrElse(source)
               put(a,f.bytes,encode(colorNames(i),value)._1)
               for(w<-a/8 to(a+f.bytes-1)/8)changed+=w}
           }
@@ -164,6 +176,7 @@ class TypedTilePixelBackendSpec extends AnyFlatSpec {
     }
   }
 
+  if(!advancedBlend){
   it should "qualify shared typed colors with every depth stencil layout and preserve load padding and face snapshots" in {
     simulate(model()){d=>val t=new Driver(d);var count=0
       val layouts=Vector((View(1,0),View(6,512)),(View(2,0,0),View(6,1024,0)),(View(3,0,0),View(0,0)),
@@ -289,6 +302,59 @@ class TypedTilePixelBackendSpec extends AnyFlatSpec {
       }
     }
   }
+  } // ordinary/backend layout regression suite
+
+  if(advancedBlend){
+    it should "drain native and advanced general cohorts in order through early EOF with exact sample destinations" in {
+      simulate(model()){d=>val t=new Driver(d);t.timeout=400000;t.begin(m=2)
+        val jobs=Vector(None,None,None,Some(8),None,None,Some(14),None,None)
+        def stream(early: Boolean): Int={
+        val expected=mutable.Queue.empty[Expected]
+        var sent=0;var retired=0;var prepared= -1;var clocks=0;var eof=false
+        var held=Option.empty[BigInt]
+        while((retired<jobs.size || (early && !eof)) && clocks<400000){
+          if(sent<jobs.size && prepared!=sent){
+            val colors=if(jobs(sent).nonEmpty)Vector(fp(0.125+(sent%3)*0.0625),fp(0.25),fp(0.375),fp(0.75))
+              else Vector(fp(0.015625),fp(0.03125),fp(0.046875),fp(0.75))
+            // Later ordinary draws accumulate rather than overwrite advanced
+            // results, so final canonical words retain every cohort's effect.
+            val ordinary=if(jobs(sent).isEmpty)Some(TypedBlendReference.State(1,1,0,1))else None
+            val e=t.packet(seed=sent,state=Tests(function=6),allLanes=true,masks=Vector.fill(4)(15),
+              advancedEquation=jobs(sent),blendState=ordinary,colorValues=Some(colors))
+            expected.enqueue(e);prepared=sent
+          }
+          d.io.in.valid.poke((sent<jobs.size).B)
+          val ready=clocks%11>=4;d.io.out.ready.poke(ready.B)
+          d.io.end.valid.poke((early && sent==jobs.size && !eof).B);d.io.end.bits.poke(true.B)
+          if(d.io.end.valid.peek().litToBoolean && d.io.end.ready.peek().litToBoolean)eof=true
+          if(d.io.in.valid.peek().litToBoolean && d.io.in.ready.peek().litToBoolean){sent+=1;t.submittedQuads+=1}
+          held.foreach(v=>{d.io.out.valid.expect(true.B);assert(d.io.out.bits.peek().litValue==v,"cohort result changed under backpressure")})
+          if(d.io.out.valid.peek().litToBoolean){
+            val r=d.io.out.bits;r.sequence.expect((100+retired).U);r.status.expect(0.U)
+            r.testedSamples.expect(16.U);r.passingSamples.expect(16.U);r.depthUpdates.expect(16.U)
+            r.colors.touchedSamples.expect(16.U);r.colors.completedLocations.expect(16.U)
+            r.colors.wordWrites.expect(16.U);r.colors.writtenBits.expect(512.U)
+            if(ready){
+              expected.dequeue();t.completedWrites+=r.dsWrites.peek().litValue;t.completedFills+=r.dsFills.peek().litValue
+              retired+=1;held=None
+            }else held=Some(r.peek().litValue)
+          }
+          if(retired<jobs.size)d.io.completion.valid.expect(false.B)
+          t.tick();clocks+=1
+        }
+        assert(sent==jobs.size && retired==jobs.size && expected.isEmpty && (!early || eof),"mixed cohorts failed to drain")
+        d.io.in.valid.poke(false.B);d.io.end.valid.poke(false.B);d.io.out.ready.poke(false.B)
+        clocks
+        }
+        val clocks=stream(true);t.finish(automatic=true)
+        // Repeat the same queued cohort stream after healthy rebind, and read
+        // the canonical words before EOF closes maintenance access.
+        t.begin(m=2);stream(false);t.verify();t.finish()
+        info(s"ADVANCED_NATIVE_COHORT quads=${jobs.size} samples=4 nativeToGeneralToNative=true softlightAndHSL=true orderedHeldResults=true earlyEOF=true healthyRebind=true exactCanonicalWords=true cycles=$clocks")
+      }
+    }
+  }
+
   if(nativeSamples){
     it should "drain generic packing across cancellation windows and a held color refill fault before healthy reuse" in {
       simulate(model()){d=>val t=new Driver(d)
@@ -573,4 +639,8 @@ class NativeSampleTypedTilePixelBackendSpec extends TypedTilePixelBackendSpec {
   override protected def parallelDepth: Boolean=true
   override protected def nativeSamples: Boolean=true
   override protected def streamingWordPorts: Int=8
+}
+
+class AdvancedNativeSampleTypedTilePixelBackendSpec extends NativeSampleTypedTilePixelBackendSpec {
+  override protected def advancedBlend: Boolean=true
 }

@@ -105,13 +105,16 @@ class NativeTypedSamplePixelBackend(p: TypedTileColorConfig,useBlackBoxes: Boole
   io.busy:=active || passValid || fallback.io.busy
 
   private val head=input.io.deq.bits
-  private val bad=head.state.version=/=1.U || TypedTileColorRules.invalidQuad(head.color,descriptor.colors)
+  private val bad=head.state.version=/=1.U || TypedTileColorRules.invalidQuad(head.color,descriptor.colors,p.advancedBlend)
   private val numeric=TypedDepthFormat.depth(descriptor.depth.format) && head.state.depthEnable &&
     (for(l<-0 until 4;s<-0 until 4)yield {
       val v=head.color.quad.lanes(l)
       head.color.samples(l)(s) && Fp32ViewportState.nan(Mux(v.sampleDepthValid && !v.depthOverride,v.sampleDepth(s),v.depth))
     }).reduce(_ || _)
-  private val eligible=store.samples.eligible && TypedSamplePacketLayout.eligible(head,descriptor)
+  // Version 3 must never be flattened into ordinary packet math. Its complete
+  // quad uses the parallel general owner after the resident cohort drains.
+  private val ordinaryState=if(p.advancedBlend)head.color.blend.version=/=TypedBlendState.advancedIndexedVersion.U else true.B
+  private val eligible=ordinaryState && store.samples.eligible && TypedSamplePacketLayout.eligible(head,descriptor)
   private def emptyResult(q: TypedTilePixelQuad): TypedTilePixelQuadCompletion={
     val r=WireDefault(0.U.asTypeOf(new TypedTilePixelQuadCompletion));val v=q.color.quad
     r.identity:=v.identity;r.sequence:=v.sequence;r.primitiveId:=v.primitiveId;r.instanceId:=v.instanceId;r.partIndex:=v.partIndex
