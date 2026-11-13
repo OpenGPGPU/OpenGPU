@@ -87,7 +87,7 @@ inline void traffic_unchanged(const Traffic &a,const Traffic &b) {
 // must never be substituted for MMIO read results when authorizing release.
 struct RecordResult {
   uint64_t cycles=0, read_bytes=0, write_bytes=0, append_read_bytes=0;
-  uint32_t completion=0, held_status=0, held_irq=0, retired_status=0, retired_irq=0;
+  uint32_t completion=0, held_legacy_status=0, held_status=0, held_irq=0, retired_status=0, retired_irq=0;
   std::array<uint32_t,12> gnx{};
   bool held_irq_asserted=false, retired_irq_asserted=false, external_drained=false;
 };
@@ -161,6 +161,7 @@ HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
   const auto completed=agent.traffic;
   const auto completion=bus.read(GPU_REG_UCMD_COMPLETION);
   auto &result=held_record.result;result.completion=completion;
+  result.held_legacy_status=bus.read(GPU_REG_STATUS);
   result.held_status=bus.read(GPU_REG_UCMD_STATUS);
   result.held_irq=bus.read(GPU_REG_IRQ);result.held_irq_asserted=bool(sim.model->io_m_irq);
   const auto append_lo=bus.read(GPU_REG_UCMD_COMPLETION_BYTES_LO);
@@ -224,7 +225,7 @@ inline void held_json(std::ostream &out,const RecordResult &r,size_t index,uint3
     <<",\"completion\":"<<r.completion<<",\"gnx\":[";
   for(size_t n=0;n<r.gnx.size();++n)out<<(n?",":"")<<r.gnx[n];
   out<<"],\"appendReadBytes\":"<<r.append_read_bytes
-    <<",\"heldStatus\":"<<r.held_status<<",\"heldIrq\":"<<r.held_irq
+    <<",\"heldLegacyStatus\":"<<r.held_legacy_status<<",\"heldStatus\":"<<r.held_status<<",\"heldIrq\":"<<r.held_irq
     <<",\"heldIrqAsserted\":"<<(r.held_irq_asserted?"true":"false")
     <<",\"heldCompletionDrained\":"<<(r.external_drained?"true":"false")
     <<",\"sourceQualificationRequired\":true,\"readOnlyGuards\":true}\n";
@@ -236,7 +237,7 @@ inline void report_record(const RecordResult &r,size_t index,uint32_t command_id
     <<",\"completion\":"<<r.completion<<",\"gnx\":[";
   for(size_t n=0;n<r.gnx.size();++n)out<<(n?",":"")<<r.gnx[n];
   out<<"],\"appendReadBytes\":"<<r.append_read_bytes
-    <<",\"heldStatus\":"<<r.held_status<<",\"heldIrq\":"<<r.held_irq
+    <<",\"heldLegacyStatus\":"<<r.held_legacy_status<<",\"heldStatus\":"<<r.held_status<<",\"heldIrq\":"<<r.held_irq
     <<",\"heldIrqAsserted\":"<<(r.held_irq_asserted?"true":"false")
     <<",\"retiredStatus\":"<<r.retired_status<<",\"retiredIrq\":"<<r.retired_irq
     <<",\"retiredIrqAsserted\":"<<(r.retired_irq_asserted?"true":"false")

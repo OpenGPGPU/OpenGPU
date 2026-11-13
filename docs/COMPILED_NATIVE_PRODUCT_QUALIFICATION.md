@@ -906,12 +906,16 @@ The active session uses atomic files under a fresh GPU-local session directory:
    identity/quota/shader register values as well as the 96 mandatory discovery words.
 2. The DUT executes and checks the command, then writes `record-N.held.json`
    with the actual completion, twelve GNX words, 64-bit append telemetry,
-   held status/IRQ and drain observation. It does not POP or report retired
+   held legacy status, unified status/IRQ and drain observation. It does not POP or report retired
    fields at this point.
 3. The actual driver drain consumes that held receipt and records its actual
    reads and POP/IRQ writes in `record-N.retire`. `OGRTR001` consists of its
    eight-byte magic, a little-endian u32 action count, then four-u32
    `{kind,address,value,mask}` actions with the same kinds as `OGCAP001`.
+   The original IRQ handler also reads legacy status (0x04) before acknowledging
+   IRQ. GNX reader address/draw may use an observation-only zero predicate in
+   the prefix because success retains these raw fields; their complete actual
+   values remain held stable and are checked with full masks during retirement.
    Completion/telemetry and all twelve raw GNX words must be read before the
    unique POP. Reads of their cleared windows after POP and unrelated writes
    are rejected.
