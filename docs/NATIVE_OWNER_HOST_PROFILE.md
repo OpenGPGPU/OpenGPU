@@ -19,8 +19,10 @@ elaboration tests, the input rejection tests and CI suite selection. These
 checks execute no rendered GPU frame and establish no whole-host clock or FPS.
 Fresh assertion-enabled DUT execution, exact stored-image/sample/resolve and
 ownership/fault checks, plus matching physical timing and bandwidth, remain
-required for the two-CU 640×480/60 FPS target. Final driver PTE revocation and
-TLB shootdowns must also be verified on the live DUT.
+required for the two-CU 640×480/60 FPS target. Final driver PTE revocation,
+VM/ASID teardown and global MMU shutdown must also be verified on the live DUT,
+including a full shootdown and readback of both bare SATPs before freeing the
+last page tables.
 
 Reproduce the configuration checks with:
 
