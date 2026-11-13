@@ -173,5 +173,7 @@ verifies every remaining group member is absent or a zombie within a bound,
 verifies container exit, then removes CPU builds, archives, captures and logs in
 `finally`. If container exit cannot be established, it fails and retains the
 possibly active inputs for diagnosis instead of deleting a live consumer's
-files. This command has not yet run successfully on a complete DUT; its CPU
+files. The post-SIGKILL leader wait is also bounded: timeout or an unknown exit
+raises `CleanupIncomplete`, so this failure cannot hang `finally` indefinitely
+or silently authorize input removal. This command has not yet run successfully on a complete DUT; its CPU
 command/refusal/cleanup tests are separate from actual execution qualification.
