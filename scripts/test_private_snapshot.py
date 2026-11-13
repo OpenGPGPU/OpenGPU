@@ -20,6 +20,7 @@ with tempfile.TemporaryDirectory(prefix="opengpu-private-snapshot-", dir=tempora
         "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-I" + temporary,
         "-I" + str(root / "driver/tests/private_snapshot_stubs"),
         "-I" + str(root / "driver/tests/mmu_stubs"),
+        "-I" + str(root / "driver/tests/compute_submit_stubs"),
         str(root / "driver/tests/opengpu_private_snapshot_test.c"), "-o", str(binary)],
         check=True, env=environment)
     subprocess.run([str(binary)], check=True, env=environment)
