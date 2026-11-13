@@ -188,10 +188,14 @@ class TessellationNativeQuadHostAxiImageSpec extends AnyFlatSpec with GpuHostTes
     }
   }
   private val ownedUniforms=ownedCode || sys.props.get("opengpu.tessellationOwnedUniform").contains("1")
+  private val nativeStorage=sys.props.get("opengpu.tessellationNativeStorage").contains("1")
+  require(!nativeStorage || (!ownedTextures && !ownedUniforms),
+    "the native-storage oracle uses the existing three-domain resource fixtures")
   private val witness=if(ownedCode)"execute driver-owned RX fragment code through three translated quad jobs"
     else if(ownedUniforms)"recover relocated driver-owned uniforms through three translated quad jobs"
     else "recover and alternate translated quad, isoline and triangle jobs"
-  for(local<-Seq(true) if !ownedTextures) it should s"$witness through the real host local=$local" in {
+  private val storageWitness=if(nativeStorage)" with native sample storage"else ""
+  for(local<-Seq(true) if !ownedTextures) it should s"$witness through the real host local=$local$storageWitness" in {
     val bytes=TessellationNativeQuadHostFixture.build(withoutSimulation=ownedUniforms)
     val rootedQuad=TessellationRootedHostFixture.prepare(bytes,BigInt(0x3f000000L),BigInt(0x3e800000L),ownedUniforms,
       ownedFragmentCode=ownedCode)
@@ -205,7 +209,9 @@ class TessellationNativeQuadHostAxiImageSpec extends AnyFlatSpec with GpuHostTes
     val graphics=GraphicsConfig(screenWidth=math.min(4,GraphicsTestResolution.width),screenHeight=math.min(4,GraphicsTestResolution.height))
     val isolineCoverage=TessellationRootedHostFixture.isolineCoverage(graphics)
     val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2);val f=FragmentShaderConfig(2,4)
-    val n=NativeBinnedGraphicsConfig(p,f,engines=2,pageBytes=128,writeCredits=2,tileSlots=1,pagedCapacity=8,
+    val n=NativeBinnedGraphicsConfig(p,f,
+      storage=if(nativeStorage)NativeBinnedGraphicsConfig.fourEngine.storage else TypedTileColorConfig(),
+      engines=2,pageBytes=128,writeCredits=2,tileSlots=1,pagedCapacity=8,
       payload=if(local)Some(ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=1024,owners=3,ports=6))else None)
     simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
