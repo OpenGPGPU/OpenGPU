@@ -124,3 +124,48 @@ two-engine JSON layouts omit those reserved-tail fields.
 This bounded matrix does not cover every topology/index/sample combination,
 cross-batch assembly, four-engine concurrent rasterization, guard-band or
 precision closure, whole-host timing, the six two-CU VGA scenes or H6 acceptance.
+
+## Two-CU target-profile result
+
+On 2026-11-13, all nine submissions also passed on the fresh assertion-enabled
+`two-cu-vga60-v1` model: two sixteen-lane/eight-warp CUs, four native engines,
+2048-axis native limits, 65,536 directory entries, 512 KiB payload storage,
+128 KiB L2, characterized SRAM and 256-bit AXI. The nine service-cycle counts
+are identical to the table above. Every returned image and guard matches the
+independent CPU reconstruction, including the short-index bounds fault and
+healthy reuse without reset. GNX1 identity/fault checks, immutable inputs and
+external traffic drain all pass.
+
+The driver was linked to the existing complete model archive, with its compiled
+dependencies, archive, runtime objects, original model driver and executable
+checked before and after execution. Product RTL matched the model's RTL byte
+for byte. No model or build record was relabeled. This is bounded 4×4 topology
+coverage on the full native graphics profile; it does not establish CU/engine
+concurrency, full H7/H8 feature integration, whole-host timing or VGA frame rate.
+
+Select `--two-cu-vga` explicitly. The driver reads the strict 640×480 two-CU
+product fixture and independently checks every word of the actual 16-word
+GCR1 and 8-word GNC3 blocks. The default remains the four-CU API fixture.
+CPU tests reject a one-bit change to each discovery word on both profiles and
+reject substituting a smoke fixture for the two-CU product contract.
+
+```sh
+python3 scripts/test_native_binned_topology_fixture.py
+python3 scripts/qualify_native_product_compiled.py --smoke --two-cu-vga \
+  --output "$MODEL" --stage prepare
+python3 scripts/qualify_native_product_compiled.py --smoke --two-cu-vga \
+  --output "$MODEL" --stage build --jobs 2
+python3 scripts/qualify_native_product_compiled.py --product --two-cu-vga \
+  --output "$PRODUCT" --stage prepare
+# Use MODEL as API in the compile/link recipe above, retaining its matching
+# Verilator installation. Check both preparation records and the model build
+# against current source before and after the run; require identical RTL.
+"$LINE_DRIVER" "$PRODUCT/fixtures" "$NEW_TOPOLOGY_OUTPUT" \
+  --topology-matrix --two-cu-vga
+python3 scripts/test_native_binned_topology_fixture.py --verify-run "$NEW_TOPOLOGY_OUTPUT"
+```
+
+All ten CPU tests, the real two-CU nine-submission run and the separate CPU
+reconstruction pass. Remove generated model, relinked driver and returned-memory
+outputs when their active use ends; retain only source, these results and the
+reproduction commands.
