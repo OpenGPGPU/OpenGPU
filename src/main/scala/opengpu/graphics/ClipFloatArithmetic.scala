@@ -98,7 +98,8 @@ class ClipFloatResponse(tagWidth: Int) extends Bundle {
   * Cancellation never flushes accepted arithmetic. Drain its response before
   * publishing an immutable completion and admitting another request.
   */
-class ClipFloatArithmetic(tagWidth: Int=8,finiteZeroShortcut: Boolean=true) extends Module {
+class ClipFloatArithmetic(tagWidth: Int=8,finiteZeroShortcut: Boolean=true,
+    powerTwoMultiplyShortcut: Boolean=true) extends Module {
   require(tagWidth>0)
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new ClipFloatRequest(tagWidth)))
@@ -149,12 +150,26 @@ class ClipFloatArithmetic(tagWidth: Int=8,finiteZeroShortcut: Boolean=true) exte
     ((request.operation===ClipFloatOperation.multiply.U && (aZero || bZero)) ||
       (isDivide && aZero && !bZero))else false.B
   private val scaledExponent=a.exponent.pad(14)-b.exponent.pad(14)
+  private val exactPowerTwoMultiply=if(powerTwoMultiplyShortcut)
+    request.operation===ClipFloatOperation.multiply.U && a.special===0.U && b.special===0.U &&
+      !aZero && !bZero && (a.significand==="h800000".U || b.significand==="h800000".U)
+    else false.B
+  private val productExponent=a.exponent.pad(14)+b.exponent.pad(14)
   when(phase===prepare) {
     when(!ClipFloat.legal(a) || !ClipFloat.legal(b) || request.operation>ClipFloatOperation.addTowardZero.U) {
       value:=ClipFloat.zero;error:=1.U;phase:=pack
     }.elsewhen(cancelled || io.cancel){value:=ClipFloat.zero;phase:=pack}
       .elsewhen(exactFiniteZero){
         value:=ClipFloat.zero;value.negative:=a.negative^b.negative;phase:=pack
+      }
+      .elsewhen(exactPowerTwoMultiply){
+        // A normalized power-of-two has no fraction to round. Keep the other
+        // significand exactly, including the original range-error and pack
+        // behavior. The general FMA remains available for every other product.
+        value:=Mux(a.significand==="h800000".U,b,a)
+        value.negative:=a.negative^b.negative;value.exponent:=productExponent
+        when(productExponent<(-512).S || productExponent>511.S){value:=ClipFloat.zero;error:=2.U}
+        phase:=pack
       }
       .elsewhen(exactPowerTwoDivide){
         // Dividing a normalized finite significand by exactly one is exact;
