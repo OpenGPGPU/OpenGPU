@@ -1,5 +1,6 @@
 /* Actual Mesa texture state tracker, real callbacks and kernel publication.
  * Included by the existing buffer fixture to share its independent byte VM. */
+#include "tgsi/tgsi_text.h"
 static void namespace_write(const char *directory, const char *name, const char *suffix,
     const void *data, size_t bytes)
 {
@@ -43,12 +44,36 @@ static uint32_t namespace_expected(unsigned epoch, const unsigned *units, unsign
 {
     uint32_t value=0x713a2b09u;
     for(unsigned i=0;i<count;i++)value=(count==32?value:value*33u)^
-        (count==32?units[i]+8:sample(epoch,units[i],item));
+        (count==32?(units[i]+8)<<(i%3==0?1+i%7:0):sample(epoch,units[i],item));
     if(count==32)value=value*33u^sample(epoch,units[31],item);
     return value;
 }
 
 struct namespace_components { unsigned seen, calls; };
+static void namespace_reject(const struct tgsi_token *tokens)
+{
+    struct opengpu_cs_program output,before;memset(&output,0xa5,sizeof(output));before=output;
+    assert(opengpu_cs_emit(tokens,&output)&&!memcmp(&output,&before,sizeof(output)));
+}
+static void namespace_tgsi(const char *text,struct tgsi_token tokens[1024])
+{
+    assert(tgsi_text_translate(text,tokens,1024));
+    struct tgsi_header h;memcpy(&h,tokens,4);
+    for(unsigned pos=2;pos<2u+h.BodySize;) {
+        struct tgsi_token t;memcpy(&t,tokens+pos,4);
+        if(t.Type==TGSI_TOKEN_TYPE_INSTRUCTION) {
+            struct tgsi_instruction i;memcpy(&i,tokens+pos,4);
+            /* Mesa's text assembler omits the typed TXF return field. The
+             * real ESSL/NTT path supplies UINT; use that canonical encoding. */
+            if(i.Opcode==TGSI_OPCODE_TXF) {
+                assert(i.Texture&&!i.Label);
+                struct tgsi_instruction_texture *texture=(struct tgsi_instruction_texture *)(tokens+pos+1);
+                texture->ReturnType=TGSI_RETURN_TYPE_UINT;
+            }
+            pos+=1+i.NrTokens;
+        } else pos+=t.NrTokens;
+    }
+}
 static uint32_t namespace_component(void *opaque,unsigned unit,uint32_t index,unsigned component,int query)
 {
     struct namespace_components *c=opaque;assert(!unit&&!index&&!query&&component<4);
@@ -69,9 +94,9 @@ static void namespace_liveness(const char *directory)
         char text[4096];struct tgsi_token tokens[1024];struct opengpu_cs_program code;
         assert(snprintf(text,sizeof(text),"COMP\nDCL SAMP[0]\nDCL SVIEW[0], BUFFER, UINT\n"
             "DCL BUFFER[0]\nDCL TEMP[0..1]\nIMM[0] UINT32 {0,7,9,0}\n%sEND\n",tests[test].body)>0);
-        assert(tgsi_text_translate(text,tokens,1024)&&!opengpu_cs_emit(tokens,&code));
+        namespace_tgsi(text,tokens);assert(!opengpu_cs_emit(tokens,&code));
         assert(opengpu_compute_shader_validate_words_all_resources(code.code,code.words,
-            12,128,true,false,false,true,false,false,false));
+            12,128,false,false,true,true,false,false,false));
         uint32_t output[8];for(unsigned i=0;i<8;i++)output[i]=0xa5a5a5a5u;
         struct cs_vm_view views[4]={{output,sizeof(output),3},{0},{0},{0}};
         struct namespace_components components={0};
@@ -81,11 +106,30 @@ static void namespace_liveness(const char *directory)
         assert(components.seen==tests[test].mask&&components.calls==__builtin_popcount(tests[test].mask));
         for(unsigned i=0;i<8;i++)assert(output[i]==(i<4?tests[test].result[i]:0xa5a5a5a5u));
         if(test==5) {
+            struct tgsi_token copy[1024];unsigned count=tgsi_num_tokens(tokens),fetch=0;
+            for(unsigned pos=2;pos<count;) {
+                struct tgsi_token t;memcpy(&t,tokens+pos,4);
+                if(t.Type==TGSI_TOKEN_TYPE_INSTRUCTION) {
+                    struct tgsi_instruction i;memcpy(&i,tokens+pos,4);
+                    if(i.Opcode==TGSI_OPCODE_TXF){fetch=pos;break;}
+                    pos+=1+i.NrTokens;
+                } else pos+=t.NrTokens;
+            }
+            assert(fetch);
+            for(unsigned bad=0;bad<3;bad++) {
+                memcpy(copy,tokens,count*4);
+                struct tgsi_dst_register *dst=(struct tgsi_dst_register *)(copy+fetch+2);
+                if(!bad)dst->WriteMask=0;
+                else if(bad==1)dst->Index=2;
+                else dst->File=TGSI_FILE_BUFFER;
+                namespace_reject(copy);
+            }
+            namespace_write(directory,"unused-fetch","shader",code.code,code.words*4);
             /* The actual CU must fault the retained fetch even though every
              * TGSI result channel is overwritten before any source reads it. */
             assert(snprintf(text,sizeof(text),"COMP\nDCL SAMP[0]\nDCL SVIEW[0], BUFFER, UINT\n"
                 "DCL BUFFER[0]\nDCL TEMP[0..1]\nIMM[0] UINT32 {9999,7,9,0}\n%sEND\n",tests[test].body)>0);
-            assert(tgsi_text_translate(text,tokens,1024)&&!opengpu_cs_emit(tokens,&code));
+            namespace_tgsi(text,tokens);assert(!opengpu_cs_emit(tokens,&code));
             namespace_write(directory,"unused-fault","shader",code.code,code.words*4);
         }
     }
@@ -116,7 +160,7 @@ static void texture_namespace_flow(const char *directory)
         memset(data,0x5a,512);
         for(unsigned item=0;item<8;item++)for(unsigned c=0;c<4;c++) {
             uint32_t value=sample(epoch+1,47,item)^(c*0x11557799u);
-            memcpy(data+64+item*16+c*4,&value,4);
+            memcpy(data+63+item*16+c*4,&value,4);
         }
     }
     for(unsigned i=0;i<4;i++)outputs[i]=new_buffer(s,1024);
@@ -127,6 +171,7 @@ static void texture_namespace_flow(const char *directory)
         struct pipe_resource *chosen[2][48];memcpy(chosen,textures,sizeof(chosen));
         if(rgba)for(unsigned epoch=0;epoch<2;epoch++)chosen[epoch][47]=rgba_sources[epoch];
         sizes[47]=rgba?128:55*4;
+        offsets[47]=rgba?63:64;
         assert(snprintf(path,sizeof(path),"%s/%s.comp",directory,name)>0);
         assert(snprintf(prefix,sizeof(prefix),"%s/%s",directory,name)>0);
         void *f=cs_frontend_compile_texture_namespace(path,prefix);assert(f);

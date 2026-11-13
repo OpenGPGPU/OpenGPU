@@ -555,6 +555,8 @@ static int texture(struct build *b, const struct tgsi_full_instruction *in)
     unsigned op = i->Opcode, index = (unsigned)unit->Index;
     struct tgsi_dst_register used_destination = *d;
     if (b->cf || !i->Texture || i->Memory || i->NumDstRegs != 1 || i->NumSrcRegs != 2 ||
+        d->File != TGSI_FILE_TEMPORARY || d->Index < 0 || (unsigned)d->Index >= CS_TEMPS ||
+        !d->WriteMask || (d->WriteMask & ~b->declared[d->Index]) ||
         unit->File != TGSI_FILE_SAMPLER || index >= 32 ||
         !(b->samplers & b->sampler_views & (UINT32_C(1) << index))) return -1;
     /* TGSI size has an integer return type independently of the sampled type;
