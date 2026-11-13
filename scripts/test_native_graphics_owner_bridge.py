@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """CPU protocol guards only; this does not execute a GPU or native owner."""
 import copy
+import json
 import struct
 import os
 import shlex
@@ -9,7 +10,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from native_graphics_owner_bridge import profile_bytes, response_bytes, strict_json, ready_files, held_bytes, cleanup_authorization, checked_cleanup
+from native_graphics_owner_bridge import profile_bytes, response_bytes, strict_json, ready_files, held_bytes, cleanup_authorization, checked_cleanup, lock_owner, wait_file
 
 ROOT = Path(__file__).resolve().parents[1]
 GPU = next(parent for parent in (ROOT, *ROOT.parents) if (parent / '.git').is_dir())
@@ -107,7 +108,7 @@ class Protocol(unittest.TestCase):
         for incomplete in ([], records[:1], list(reversed(records))):
             with self.assertRaises(ValueError):
                 cleanup_authorization(incomplete)
-        result = dict(phase='cleanup', ownerCleanupObserved=True, records=2,
+        result = dict(phase='cleanup', ownerCleanupObserved=True, contextCleanupObserved=True, records=2,
                       batches=3, pteClears=9, shootdowns=2, resetCount=1, ramReplaced=False,
                       imagesPreserved=True, externalDrained=True, sourceQualificationRequired=True,
                       clockQualified=False, fpsQualified=False)
@@ -120,6 +121,7 @@ class Protocol(unittest.TestCase):
             with self.subTest(missing=field), self.assertRaises(ValueError):
                 checked_cleanup(case)
         for field, value in (('phase', 'retired'), ('ownerCleanupObserved', 1),
+                             ('contextCleanupObserved', False), ('contextCleanupObserved', 1),
                              ('records', 1), ('records', True), ('resetCount', 2),
                              ('ramReplaced', True), ('imagesPreserved', False),
                              ('externalDrained', False), ('sourceQualificationRequired', False),
@@ -130,6 +132,27 @@ class Protocol(unittest.TestCase):
                 checked_cleanup(dict(result, **{field: value}))
         with self.assertRaises(ValueError):
             checked_cleanup(receipt(1))
+
+    def test_prepared_owner_lock_and_live_ready_receipts(self):
+        class Process:
+            def __init__(self, code):self.code=code
+            def poll(self):return self.code
+        with tempfile.TemporaryDirectory(prefix='g', dir=GPU / '.artifacts') as temporary:
+            owner = Path(temporary)
+            path = owner / 'executors/native/qualification.json'
+            path.parent.mkdir(parents=True)
+            value = dict(schema='opengpu-owner-executor-v1',kind='native',owner_output=str(owner))
+            path.write_text(json.dumps(value))
+            with lock_owner(path):
+                with self.assertRaises(BlockingIOError):lock_owner(path)
+            with lock_owner(path):pass
+            value['kind']='compute';path.write_text(json.dumps(value))
+            with self.assertRaisesRegex(ValueError,'wrong owner lock'):lock_owner(path)
+            ready = owner / 'held.json';ready.write_text('{}')
+            with self.assertRaisesRegex(ValueError,'C bridge exited'):
+                wait_file(ready,Process(0),Process(None),1)
+            with self.assertRaisesRegex(ValueError,'actual executor exited'):
+                wait_file(owner/'missing',Process(None),Process(0),1)
 
     def test_actual_c_codec(self):
         with tempfile.TemporaryDirectory(prefix='g', dir=GPU / '.artifacts') as temporary:

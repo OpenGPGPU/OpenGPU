@@ -9,10 +9,12 @@ phase; response.bin is sent only after that same live DUT confirms cleanup and
 the actual executor succeeds.
 """
 import argparse
+import fcntl
 import json
 import os
 from pathlib import Path
 import struct
+import signal
 import subprocess
 import tempfile
 import time
@@ -137,7 +139,7 @@ def cleanup_authorization(records):
 
 def checked_cleanup(result):
     require(type(result) is dict and result.get("phase") == "cleanup", "incorrect cleanup phase")
-    for field, expected in (("ownerCleanupObserved", True), ("ramReplaced", False),
+    for field, expected in (("ownerCleanupObserved", True), ("contextCleanupObserved", True), ("ramReplaced", False),
                             ("imagesPreserved", True), ("externalDrained", True),
                             ("sourceQualificationRequired", True), ("clockQualified", False),
                             ("fpsQualified", False)):
@@ -213,11 +215,46 @@ def wait_file(path, bridge, executor, timeout):
         require(time.monotonic() < deadline, "timed out waiting for " + path.name)
         time.sleep(0.1)
     require(not path.is_symlink() and path.is_file(), "invalid active result file")
+    require(bridge.poll() is None, "C bridge exited before live receipt " + path.name)
+
+
+def stop(process):
+    if process is not None and process.poll() is None:
+        os.killpg(process.pid, signal.SIGTERM)
+        try:
+            process.wait(timeout=20)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+
+
+def lock_owner(qualification):
+    record = strict_json(qualification)
+    require(record.get('schema') == 'opengpu-owner-executor-v1' and record.get('kind') == 'native',
+            'wrong owner lock qualification kind')
+    require(type(record.get('owner_output')) is str, 'missing prepared owner directory')
+    owner = Path(record['owner_output']).resolve(strict=True)
+    require(qualification.resolve(strict=True) == owner / 'executors/native/qualification.json',
+            'qualification does not name the prepared owner')
+    path = owner / '.lock'
+    require(not path.is_symlink(), 'owner lock must not be aliased')
+    lock = path.open('a')
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BaseException:
+        lock.close()
+        raise
+    return lock
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--executor", type=Path, required=True)
+    parser.add_argument("--executor-qualification", type=Path, required=True)
+    parser.add_argument("--executor-checker", type=Path, required=True,
+                        help="original prepare_owner_executor.py; keep its original checkout")
+    parser.add_argument("--executor-checker-python", type=Path, required=True,
+                        help="generation-matched Python and CIRCT environment")
     parser.add_argument("--bridge-command", type=Path, required=True, help="JSON argv array, with {ipc} substitution")
     parser.add_argument("--timeout", type=int, default=3600)
     args = parser.parse_args()
@@ -225,7 +262,18 @@ def main():
     command = strict_json(args.bridge_command)
     require(type(command) is list and command and all(type(arg) is str and arg for arg in command),
             "bridge command must be a nonempty argv array")
-    executor = args.executor.resolve(strict=True)
+    require(any('{ipc}' in arg for arg in command), 'bridge command must consume the active IPC directory')
+    executor = args.executor.absolute()
+    qualification = args.executor_qualification.absolute()
+    require(executor.is_file() and not executor.is_symlink() and qualification.is_file() and not qualification.is_symlink(),
+            'executor/qualification must be original regular files')
+    checker = args.executor_checker.resolve(strict=True)
+    checker_python = args.executor_checker_python.resolve(strict=True)
+    def qualified(environment, log):
+        subprocess.run([checker_python, checker, '--stage', 'check', '--kind', 'native',
+                        '--qualification', qualification, '--executor', executor],
+                       env=environment, stdout=log, stderr=subprocess.STDOUT,
+                       timeout=args.timeout, check=True)
     # Use the main GPU's short internal path for macOS socket compatibility.
     gpu = next(parent for parent in (ROOT, *ROOT.parents) if (parent / ".git").is_dir())
     parent = gpu / ".artifacts"
@@ -235,21 +283,27 @@ def main():
         environment = dict(os.environ, TMPDIR=temporary,
                            OPENGPU_NATIVE_HOST_DIRECTORY=temporary,
                            OPENGPU_NATIVE_HOST_PROFILE=str(directory / "profile.bin"))
-        with (directory / "executor-probe.log").open("w") as log:
-            subprocess.run([executor, "--probe-profile", directory / "profile.json"],
-                           env=environment, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=args.timeout)
-        atomic_bytes(directory / "profile.bin", profile_bytes(strict_json(directory / "profile.json")))
-        process = None
+        process = running = owner_lock = None
+        def terminate(_signal, _frame):
+            raise KeyboardInterrupt('native owner session terminated')
+        previous = signal.signal(signal.SIGTERM, terminate)
         try:
+            with (directory / "executor-probe.log").open("w") as log:
+                qualified(environment, log)
+                owner_lock = lock_owner(qualification)
+                qualified(environment, log)
+                subprocess.run([executor, "--probe-profile", directory / "profile.json"],
+                               env=environment, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=args.timeout)
+            atomic_bytes(directory / "profile.bin", profile_bytes(strict_json(directory / "profile.json")))
             argv = [arg.replace("{ipc}", temporary) for arg in command]
             with (directory / "bridge.log").open("w") as log:
-                process = subprocess.Popen(argv, env=environment, stdout=log, stderr=subprocess.STDOUT)
+                process = subprocess.Popen(argv, env=environment, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
                 wait_ready(process, directory, time.monotonic() + args.timeout)
                 initial, captures, sources = ready_files(directory)
                 results = directory / "results"
                 with (directory / "executor-series.log").open("w") as executor_log:
                     running = subprocess.Popen([executor, "--active-owner-series", initial, results, directory, "2"],
-                        env=environment, stdout=executor_log, stderr=subprocess.STDOUT)
+                        env=environment, stdout=executor_log, stderr=subprocess.STDOUT, start_new_session=True)
                     records = []
                     try:
                         for index in range(2):
@@ -282,15 +336,10 @@ def main():
                         checked_cleanup(strict_json(directory / "cleanup.json"))
                         require(running.wait(timeout=args.timeout) == 0, "actual owner executor failed")
                         require(process.poll() is None, "C bridge exited before final cleanup confirmation")
+                        qualified(environment, executor_log)
                         atomic_bytes(directory / "response.bin", response_bytes(records))
                     finally:
-                        if running.poll() is None:
-                            running.terminate()
-                            try:
-                                running.wait(timeout=10)
-                            except subprocess.TimeoutExpired:
-                                running.kill()
-                                running.wait()
+                        stop(running)
                 require(process.wait(timeout=args.timeout) == 0, "C bridge rejected observed retirement")
                 text = (directory / "bridge.log").read_text()
                 require(text.splitlines().count("ACTUAL_GRAPHICS_NATIVE_OWNER_RETIRED records=2 observed=true") == 1,
@@ -301,18 +350,17 @@ def main():
                 atomic_bytes(directory / "error", b"qualification failed; no owner-release authorization\n")
             # Failure never fabricates completion or sends an approving response.
             # The producer's explicit failure teardown owns its OS allocations.
-            if process is not None and process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait()
             for name in ("executor-probe.log", "executor-series.log", "bridge.log"):
                 path = directory / name
                 if path.exists():
                     print(path.read_text(errors="replace")[-6000:])
             raise
+        finally:
+            stop(running)
+            stop(process)
+            if owner_lock is not None:
+                owner_lock.close()
+            signal.signal(signal.SIGTERM, previous)
 
 
 if __name__ == "__main__":

@@ -255,7 +255,15 @@ keep both real owners, mappings and references alive until the complete two-CU
 host finishes its series, the independent image/guard oracle passes and actual
 completion/drain observations permit retirement. Final PTE unmapping and TLB
 shootdown use a distinct synchronous cleanup phase on that same live DUT before
-owner release. Its frontend is connected; complete hardware validation remains
+owner release. Cleanup additionally requires actual context destruction and
+global MMU shutdown, with `contextCleanupObserved:true`; owner-only cleanup
+cannot authorize the final response. The original kernel implementation keeps
+VM/PT/ASID backing until its real acknowledgement, and performs no MMIO after
+the final cleanup window. The controller checks the original qualified native
+executor before probing and before final authorization, holding the prepared
+owner's `.lock` through the complete producer/DUT/oracle/cleanup session. The
+CPU protocol/codec guards pass with ASan/UBSan; complete DUT execution remains
+pending. Its frontend is connected; complete hardware validation remains
 open, and CPU cleanup is not that proof. Production device discovery,
 typed attachment execution and this same complete host still need integration
 and execution qualification. Complete API/compiler support and the 36-UBO/48-texture

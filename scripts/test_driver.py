@@ -9,7 +9,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 
-def main():
+def run_driver_tests():
     with tempfile.TemporaryDirectory(prefix="opengpu-buffer-view-") as directory:
         binary = Path(directory) / "buffer_view"
         subprocess.run(shlex.split(os.environ.get("CC", "cc")) + ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
@@ -188,6 +188,23 @@ def main():
             subprocess.run([str(binary)], check=True)
 
             subprocess.run([sys.executable, str(ROOT / "scripts/test_gallium_compute.py")], check=True)
+
+def main():
+    parent = ROOT / '.artifacts'
+    parent.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='driver-', dir=parent) as temporary:
+        previous_env, previous_cache = os.environ.get('TMPDIR'), tempfile.tempdir
+        os.environ['TMPDIR'] = temporary
+        tempfile.tempdir = temporary
+        try:
+            run_driver_tests()
+        finally:
+            tempfile.tempdir = previous_cache
+            if previous_env is None:
+                os.environ.pop('TMPDIR', None)
+            else:
+                os.environ['TMPDIR'] = previous_env
+
 
 if __name__ == "__main__":
     main()
