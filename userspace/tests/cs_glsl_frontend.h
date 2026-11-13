@@ -10,6 +10,7 @@ extern "C" {
 void *cs_frontend_compile(const char *path, const char *dump_prefix);
 void *cs_frontend_compile_buffers(const char *path, const char *dump_prefix);
 void *cs_frontend_compile_texture_namespace(const char *path, const char *dump_prefix);
+void *cs_frontend_compile_atomic_counters(const char *path, const char *dump_prefix);
 const void *cs_frontend_tokens(void *handle);
 unsigned cs_frontend_default_components(void *handle);
 unsigned cs_frontend_shared_bytes(void *handle);
@@ -21,6 +22,7 @@ void cs_frontend_defaults(void *handle, struct pipe_context *, const uint32_t *,
 void cs_frontend_ubos(void *handle, struct pipe_context *, struct pipe_resource *const [36],
     const unsigned [36], const unsigned [36]);
 void cs_frontend_storage(void *handle, struct pipe_context *, struct pipe_resource *const [4]);
+void cs_frontend_counters(void *handle, struct pipe_context *, struct pipe_resource *, unsigned offset, unsigned bytes);
 void cs_frontend_destroy(void *handle);
 #ifdef __cplusplus
 }

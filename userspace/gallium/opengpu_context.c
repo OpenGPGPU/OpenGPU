@@ -142,6 +142,8 @@ struct opengpu_context {
     struct pipe_opengpu_context *cs_gpu;
     struct opengpu_compute_state *cs, *cs_states;
     struct pipe_shader_buffer cs_buffers[4];
+    struct pipe_shader_buffer cs_counter;
+    int cs_counter_error;
     struct pipe_constant_buffer cs_constants[13];
     unsigned cs_constant_errors;
     unsigned cs_access[4];
@@ -4839,6 +4841,8 @@ static void *create_compute_state(struct pipe_context *pipe,
         FREE(cs); errno = EINVAL; return NULL;
     }
     if ((cs->program.textures && !pipe_opengpu_screen_compute_buffer_textures(opengpu_screen_gpu(pipe->screen))) ||
+        ((cs->program.counter_reads | cs->program.counter_writes) &&
+         !pipe_opengpu_screen_compute_counter_source(opengpu_screen_gpu(pipe->screen))) ||
         (cs->program.storage_atomics && !pipe_opengpu_screen_compute_storage_atomics(opengpu_screen_gpu(pipe->screen))) ||
         ((cs->program.image_reads | cs->program.image_writes | cs->program.image_queries) &&
          !pipe_opengpu_screen_compute_image_backings(opengpu_screen_gpu(pipe->screen)))) {
@@ -4876,6 +4880,30 @@ static void delete_compute_state(struct pipe_context *pipe, void *state)
     if (ctx->cs == cs) { compute_reset(ctx); ctx->cs = NULL; }
     *link = cs->next;
     FREE(cs);
+}
+
+static void set_hw_atomic_buffers(struct pipe_context *pipe, unsigned start, unsigned count,
+    const struct pipe_shader_buffer *buffers)
+{
+    struct opengpu_context *ctx = octx(pipe);
+    struct pipe_shader_buffer next = {0};
+    if (start > 1 || count > 1 - start) goto invalid;
+    if (!count) return;
+    if (buffers) next = buffers[0];
+    if (next.buffer) {
+        if (next.buffer->screen != pipe->screen || next.buffer->target != PIPE_BUFFER ||
+            !pipe_opengpu_screen_compute_counter_source(opengpu_screen_gpu(pipe->screen)) ||
+            (next.buffer_offset & 3u) || (next.buffer_size & 3u) || !next.buffer_size ||
+            next.buffer_offset > next.buffer->width0 ||
+            next.buffer_size > next.buffer->width0 - next.buffer_offset) goto invalid;
+    } else if (next.buffer_offset || next.buffer_size) goto invalid;
+    next.buffer = NULL;
+    pipe_resource_reference(&next.buffer, buffers ? buffers[0].buffer : NULL);
+    pipe_resource_reference(&ctx->cs_counter.buffer, NULL);
+    ctx->cs_counter = next; ctx->cs_counter_error = 0;
+    return;
+invalid:
+    ctx->cs_counter_error = 1; errno = EINVAL; gpu_failed("invalid compute atomic-counter view");
 }
 
 static void set_shader_buffers(struct pipe_context *pipe, enum pipe_shader_type shader,
@@ -5024,29 +5052,27 @@ static void launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *
         buffer_views = 1;
     }
     if (!grid[0] || !grid[1] || !grid[2]) return;
+    /* HW counters have their own binding and retained original GEM. They
+     * never borrow or displace one of the four checked SSBO windows. */
+    struct pipe_opengpu_counter_view counter_view = {0};
+    unsigned counter_mask = ctx->cs->program.counter_reads | ctx->cs->program.counter_writes;
+    if (counter_mask) {
+        if (counter_mask != 1 || ctx->cs_counter_error || !ctx->cs_counter.buffer ||
+            !pipe_opengpu_screen_compute_counter_source(screen) ||
+            ctx->cs_counter.buffer_size < ctx->cs->program.counter_bytes) goto invalid;
+        counter_view.resource = opengpu_resource(ctx->cs_counter.buffer)->gpu;
+        counter_view.offset = ctx->cs_counter.buffer_offset;
+        counter_view.bytes = ctx->cs_counter.buffer_size;
+        counter_view.count = MIN2(ctx->cs_counter.buffer_size / 4u, 8u);
+    }
     if (!ctx->cs_gpu) {
         ctx->cs_gpu = pipe_opengpu_context_create(screen);
         if (!ctx->cs_gpu) goto fail;
         if (pipe_opengpu_bind_cs(ctx->cs_gpu, ctx->cs->program.code,
                                 ctx->cs->program.words * sizeof(uint32_t))) goto reset;
     }
-    /* Atomic counter binding: if the program uses counters, bind the
-     * corresponding buffer as counter slot 0..3 and submit through the
-     * counter-resources ioctl. */
-    struct pipe_opengpu_counter_view counter_view = {0};
-    unsigned counter_mask = ctx->cs->program.counter_reads | ctx->cs->program.counter_writes;
-    unsigned counter_slot = 0;
     if (counter_mask) {
-        while (counter_slot < 4 && !(counter_mask & (1u << counter_slot))) counter_slot++;
-        if (counter_slot >= 4 || !ctx->cs_buffers[counter_slot].buffer) goto invalid;
-        counter_view.resource = opengpu_resource(ctx->cs_buffers[counter_slot].buffer)->gpu;
-        counter_view.offset = ctx->cs_buffers[counter_slot].buffer_offset;
-        counter_view.bytes = ctx->cs_buffers[counter_slot].buffer_size;
-        counter_view.slot = counter_slot;
-        counter_view.count = ctx->cs_buffers[counter_slot].buffer_size / 4u;
-    }
-    if (counter_mask) {
-        if (pipe_opengpu_launch_grid_counter_resources(ctx->cs_gpu, grid, info->block,
+        if (pipe_opengpu_launch_grid_counter_source_resources(ctx->cs_gpu, grid, info->block,
                             views, textures, images, used_constants ? uniforms : NULL,
                             counter_view, ctx->fence_timeout_ms)) goto reset;
     } else if (buffer_views ? pipe_opengpu_launch_grid_buffers(ctx->cs_gpu, grid, info->block,
@@ -5078,6 +5104,7 @@ static void context_destroy(struct pipe_context *pipe)
     pipe_opengpu_context_destroy(ctx->cs_gpu);
     ctx->cs_gpu = NULL;
     for (i = 0; i < 4; i++) pipe_resource_reference(&ctx->cs_buffers[i].buffer, NULL);
+    pipe_resource_reference(&ctx->cs_counter.buffer, NULL);
     for (i = 0; i < 13; i++) pipe_resource_reference(&ctx->cs_constants[i].buffer, NULL);
     for (i = 0; i < 32; i++) pipe_sampler_view_reference(&ctx->cs_sampler_views[i],NULL);
     for (i = 0; i < 4; i++) util_copy_image_view(&ctx->cs_image_views[i],NULL);
@@ -5128,6 +5155,7 @@ struct pipe_context *opengpu_pipe_context_create(struct pipe_screen *screen,
     ctx->base.bind_compute_state = bind_compute_state;
     ctx->base.delete_compute_state = delete_compute_state;
     ctx->base.set_shader_buffers = set_shader_buffers;
+    ctx->base.set_hw_atomic_buffers = set_hw_atomic_buffers;
     ctx->base.launch_grid = launch_grid;
     ctx->base.clear = clear;
     ctx->base.flush = flush;

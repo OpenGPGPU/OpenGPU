@@ -130,6 +130,16 @@ static void uniform_views(struct buffer_job *j, struct cs_vm_view views[13])
 }
 static void *data_address(struct buffer_job *j, uint64_t address, unsigned bytes)
 {
+    if (j->input->with_counter_source) {
+        const struct drm_opengpu_compute_counter_source *s = &j->input->counter_source.source;
+        assert(j->records.counters && j->records.counter_bytes == 64);
+        uint64_t base = get32(j->records.counters, 10), limit = get64(j->records.counters, 11);
+        if (address >= base && address <= limit && bytes <= limit - address) {
+            assert(s->offset + address - base <= bos[s->handle].size &&
+                bytes <= bos[s->handle].size - s->offset - (address - base));
+            return bos[s->handle].data + s->offset + address - base;
+        }
+    }
     for (unsigned slot = 3; slot <= 42; slot++) {
         const struct drm_opengpu_resource *b = &j->input->bindings[slot];
         uint64_t base = j->records.binding_va[slot];
@@ -203,8 +213,13 @@ static int submit_buffers(unsigned long request, void *arg)
         in->command.launch = r->launch; in->command.textures = r->views; in->command.texture_count = r->view_count;
         memcpy(in->command.bindings, r->bindings, sizeof(r->bindings));
     } else {
-        const struct drm_opengpu_compute_uniform_resources *r = arg;
-        in->uniforms = r; in->command.launch = r->resources.launch;
+        const struct drm_opengpu_compute_uniform_resources *r;
+        if (request == DRM_IOCTL_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES) {
+            in->counter_source = *(const struct drm_opengpu_compute_counter_source_resources *)arg;
+            in->with_counter_source = 1; r = &in->counter_source.resources;
+        } else r = arg;
+        if (!in->with_counter_source || r->active_mask || r->defaults.handle) in->uniforms = r;
+        in->command.launch = r->resources.launch;
         in->command.textures = r->resources.textures; in->command.texture_count = r->resources.texture_count;
         memcpy(in->command.bindings, r->resources.bindings, sizeof(r->resources.bindings));
         memcpy(in->command.images, r->resources.images, sizeof(r->resources.images));
@@ -238,6 +253,7 @@ static int submit_buffers(unsigned long request, void *arg)
     retain_job(&jobs[sync], code_handle);
     for (unsigned slot = 2; slot <= 42; slot++) if (in->bindings[slot].handle)
         retain_job(&jobs[sync], in->bindings[slot].handle);
+    if (in->with_counter_source) retain_job(&jobs[sync], in->counter_source.source.handle);
     last_compute_context = context; computes++; buffer_submissions++;
     return 0;
 }
@@ -256,12 +272,22 @@ static void execute_buffers(unsigned sync, int execute)
             storage[b] = (struct cs_vm_view) {data_address(j, base, 4), limit - base,
                 j->input->command.bindings[b].access};
         }
+        struct cs_vm_view counters = {0};
+        if (j->records.counter_bytes) {
+            const void *r = j->records.counters;
+            assert(j->records.counter_bytes == 64 && get32(r, 3) == j->records.context &&
+                get32(r, 7) && get32(r, 8) && get32(r, 9));
+            uint64_t base = get32(r, 10), limit = get64(r, 11);
+            assert(limit > base && limit - base <= 32 && !(base & 3) && !((limit - base) & 3));
+            counters = (struct cs_vm_view) {data_address(j, base, 4), limit - base, 3};
+        }
         const struct cs_vm_resources resources = {j, texture_value, image_value};
         const uint32_t group[3] = {0};
         assert(j->input->command.launch.grid[0] == 1 && j->input->command.launch.grid[1] == 1 &&
             j->input->command.launch.grid[2] == 1);
-        cs_vm_group_resources_checked(j->records.code, (unsigned)j->records.code_bytes / 4,
-            j->input->command.launch.grid, group, j->input->command.launch.local, storage, uniforms, NULL, &resources);
+        cs_vm_group_resources_counters_checked(j->records.code, (unsigned)j->records.code_bytes / 4,
+            j->input->command.launch.grid, group, j->input->command.launch.local, storage, uniforms, NULL, &resources,
+            counters.data ? &counters : NULL);
         buffer_executions++;
     }
     if (j->capture) export_data(j, "after");
@@ -851,6 +877,9 @@ static void first_execution(struct pipe_screen *s, struct pipe_context *p, void 
 #ifdef OPENGPU_CS_IMAGE_ORDERING
 #include "cs_image_ordering_flow.h"
 #endif
+#ifdef OPENGPU_CS_ATOMIC_COUNTER
+#include "cs_atomic_counter_flow.h"
+#endif
 
 int main(int argc, char **argv)
 {
@@ -871,6 +900,12 @@ int main(int argc, char **argv)
 #ifdef OPENGPU_CS_IMAGE_ORDERING
     if (getenv("OPENGPU_IMAGE_ORDERING_QUALIFICATION")) {
         image_ordering_flow(argv[1]);
+        return 0;
+    }
+#endif
+#ifdef OPENGPU_CS_ATOMIC_COUNTER
+    if (getenv("OPENGPU_ATOMIC_COUNTER_QUALIFICATION")) {
+        atomic_counter_flow(argv[1]);
         return 0;
     }
 #endif

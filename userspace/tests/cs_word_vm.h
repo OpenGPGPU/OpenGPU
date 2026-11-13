@@ -15,10 +15,11 @@ struct cs_vm_resources {
                   uint32_t rgba[4], int write, int query);
 };
 
-static void cs_vm_group_resources_checked(const uint32_t *code, unsigned words,
+static void cs_vm_group_resources_counters_checked(const uint32_t *code, unsigned words,
     const uint32_t grid[3], const uint32_t group[3], const uint32_t local[3],
     struct cs_vm_view memory[4], const struct cs_vm_view uniforms[13],
-    struct cs_vm_uniform_trace *trace, const struct cs_vm_resources *resources)
+    struct cs_vm_uniform_trace *trace, const struct cs_vm_resources *resources,
+    const struct cs_vm_view *counters)
 {
     unsigned total = local[0] * local[1] * local[2];
     for (unsigned base = 0; base < total; base += 16) {
@@ -136,6 +137,19 @@ static void cs_vm_group_resources_checked(const uint32_t *code, unsigned words,
                 continue;
             }
             assert(opcode == 0x2b && (w & (1u << 25)));
+            if (fn >= 17 && fn <= 19) {
+                assert(!f && !z && rd && counters && counters->data && (counters->access & 1));
+                if (fn != 17) assert(counters->access & 2);
+                for (unsigned lane = 0; lane < active; lane++) if (control & (1u << lane)) {
+                    uint32_t index = v[a][lane];
+                    assert(index < 8 && (uint64_t)index * 4 + 4 <= counters->bytes);
+                    uint32_t old = counters->data[index], next = old;
+                    if (fn == 18) next++; else if (fn == 19) next--;
+                    if (fn != 17) counters->data[index] = next;
+                    v[rd][lane] = fn == 19 ? next : old;
+                }
+                continue;
+            }
             if(fn>=24 && fn<=26) {
                 assert(!depth);
                 unsigned operation=fn==26 ? 8+f : f;
@@ -262,6 +276,15 @@ static void cs_vm_group_resources_checked(const uint32_t *code, unsigned words,
         assert(ended && fences);
 next_warp:;
     }
+}
+
+static void cs_vm_group_resources_checked(const uint32_t *code, unsigned words,
+    const uint32_t grid[3], const uint32_t group[3], const uint32_t local[3],
+    struct cs_vm_view memory[4], const struct cs_vm_view uniforms[13],
+    struct cs_vm_uniform_trace *trace, const struct cs_vm_resources *resources)
+{
+    cs_vm_group_resources_counters_checked(code, words, grid, group, local,
+        memory, uniforms, trace, resources, NULL);
 }
 
 static void cs_vm_group_uniforms_checked(const uint32_t *code, unsigned words,

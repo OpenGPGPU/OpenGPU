@@ -28,6 +28,7 @@ extern "C" {
 
 static bool buffer_profile;
 static bool texture_namespace_profile;
+static bool atomic_counter_profile;
 
 /* The namespace fixture admits buffer textures only. Unused general-image
  * allocation/sampling must fail, rather than silently acquire fake views. */
@@ -81,6 +82,15 @@ void opengpu_frontend_compiler_limits(gl_context *ctx)
     c.MaxUniformBlocks = 12;
     c.MaxUniformComponents = 1024;
     c.MaxCombinedUniformComponents = 12u * 16384u / 4u + 1024u;
+    if (atomic_counter_profile) {
+        ctx->Extensions.ARB_shader_atomic_counters = true;
+        ctx->Const.MaxAtomicBufferBindings = 1;
+        ctx->Const.MaxAtomicBufferSize = 32;
+        ctx->Const.MaxCombinedAtomicBuffers = 1;
+        ctx->Const.MaxCombinedAtomicCounters = 8;
+        c.MaxAtomicBuffers = 1;
+        c.MaxAtomicCounters = 8;
+    }
     if (buffer_profile) {
         ctx->Extensions.OES_texture_buffer = true;
         ctx->Const.MaxCombinedTextureImageUnits = texture_namespace_profile ? 48 : 32;
@@ -165,6 +175,8 @@ extern "C" void *cs_frontend_compile(const char *path, const char *dump_prefix)
     if (nir->options->lower_uniforms_to_ubo)
         NIR_PASS_V(nir, nir_lower_uniforms_to_ubo, false, false);
     if (buffer_profile) {
+        if (atomic_counter_profile)
+            NIR_PASS_V(nir, gl_nir_lower_atomics, prog, true);
         NIR_PASS_V(nir, gl_nir_lower_samplers, prog);
         /* Match st_nir_assign_uniform_locations for nonbindless images before
          * gl_nir_lower_images converts derefs to program-local unit indices. */
@@ -233,6 +245,14 @@ extern "C" void *cs_frontend_compile_texture_namespace(const char *path, const c
     return result;
 }
 
+extern "C" void *cs_frontend_compile_atomic_counters(const char *path, const char *dump_prefix)
+{
+    assert(!atomic_counter_profile); atomic_counter_profile = true;
+    void *result = cs_frontend_compile_buffers(path, dump_prefix);
+    atomic_counter_profile = false;
+    return result;
+}
+
 extern "C" unsigned cs_frontend_sampler_binding(void *handle, unsigned native_slot)
 {
     auto *f = static_cast<frontend_program *>(handle);
@@ -277,6 +297,23 @@ extern "C" unsigned cs_frontend_textures(void *handle, pipe_context *pipe,
     }
     f->ctx.ComputeProgram._Current = nullptr;
     return bound;
+}
+
+extern "C" void cs_frontend_counters(void *handle, pipe_context *pipe,
+    pipe_resource *resource, unsigned offset, unsigned bytes)
+{
+    auto *f = static_cast<frontend_program *>(handle);
+    gl_buffer_object object = {};
+    object.buffer = resource;
+    auto &binding = f->ctx.AtomicBufferBindings[0];
+    binding.BufferObject = &object; binding.Offset = offset;
+    binding.Size = bytes; binding.AutomaticSize = false;
+    struct st_context st = {};
+    st.ctx = &f->ctx; st.pipe = pipe; st.has_hw_atomics = true;
+    /* Actual Mesa maps its independent counter binding to the real Gallium
+     * callback; it does not bind or rewrite an SSBO slot for this fixture. */
+    st_bind_hw_atomic_buffers(&st);
+    binding.BufferObject = nullptr;
 }
 
 extern "C" const void *cs_frontend_tokens(void *handle)

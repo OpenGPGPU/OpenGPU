@@ -9,14 +9,16 @@ struct cs_buffer_kernel_input {
     struct cs_buffer_bo memory[512];
     struct drm_opengpu_compute_image_resources command;
     const struct drm_opengpu_compute_uniform_resources *uniforms;
+    struct drm_opengpu_compute_counter_source_resources counter_source;
+    unsigned with_counter_source;
     unsigned with_images;
     unsigned storage_only;
 };
 struct cs_buffer_kernel_result {
     void *private_state;
-    const void *textures, *images, *storage, *uniforms, *code;
-    uint64_t texture_bytes, image_bytes, storage_bytes, uniform_bytes, code_bytes;
-    uint32_t texture_root, image_root, storage_root, uniform_root, context;
+    const void *textures, *images, *storage, *uniforms, *counters, *code;
+    uint64_t texture_bytes, image_bytes, storage_bytes, uniform_bytes, counter_bytes, code_bytes;
+    uint32_t texture_root, image_root, storage_root, uniform_root, counter_root, context;
     uint64_t binding_va[43];
     unsigned retained_objects;
 };
