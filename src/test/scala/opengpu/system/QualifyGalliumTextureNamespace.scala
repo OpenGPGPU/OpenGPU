@@ -125,7 +125,8 @@ class GalliumTextureNamespaceQualification extends AnyFlatSpec {
         val level=get(translated(imageTable+76)).toLong
         val texel=get(translated(level+48)).toLong
         val tailV=(texel & ~63L)+64;val tailP=translated(tailV)
-        if(mode=="tail-fault")require((texel&63)==63,"cross-line RGBA fixture required")
+        if(mode=="tail-fault")require((texel&63)==60,
+          "component zero must fit before the line boundary; only later RGBA components cross it")
         val trapped=mutable.Set.empty[Int];val heldTraps=mutable.Map.empty[Int,(BigInt,Int)]
         val written=mutable.Set.empty[(Int,Int)]
         var offered=Option.empty[BigInt];var overlap=false;var writes=0;var faultedReads=0

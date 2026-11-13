@@ -1,5 +1,8 @@
 # Compute texture submission
 
+The real Mesa global-unit mapping and bounded compute emitter integration are
+described in [Gallium global texture bindings](GALLIUM_TEXTURE_NAMESPACE.md).
+
 `DRM_IOCTL_OPENGPU_COMPUTE_TEXTURES` extends the existing compute launch with
 an array of up to 32 texture-unit views. A zero slot leaves that unit unbound;
 other slots name `OPENGPU_RESOURCE_COMPUTE_TEXTURE` bindings in the launch

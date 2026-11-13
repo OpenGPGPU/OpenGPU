@@ -160,7 +160,7 @@ static void texture_namespace_flow(const char *directory)
         memset(data,0x5a,512);
         for(unsigned item=0;item<8;item++)for(unsigned c=0;c<4;c++) {
             uint32_t value=sample(epoch+1,47,item)^(c*0x11557799u);
-            memcpy(data+63+item*16+c*4,&value,4);
+            memcpy(data+60+item*16+c*4,&value,4);
         }
     }
     for(unsigned i=0;i<4;i++)outputs[i]=new_buffer(s,1024);
@@ -171,7 +171,7 @@ static void texture_namespace_flow(const char *directory)
         struct pipe_resource *chosen[2][48];memcpy(chosen,textures,sizeof(chosen));
         if(rgba)for(unsigned epoch=0;epoch<2;epoch++)chosen[epoch][47]=rgba_sources[epoch];
         sizes[47]=rgba?128:55*4;
-        offsets[47]=rgba?63:64;
+        offsets[47]=rgba?60:64;
         assert(snprintf(path,sizeof(path),"%s/%s.comp",directory,name)>0);
         assert(snprintf(prefix,sizeof(prefix),"%s/%s",directory,name)>0);
         void *f=cs_frontend_compile_texture_namespace(path,prefix);assert(f);
