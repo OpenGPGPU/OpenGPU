@@ -564,6 +564,18 @@ static void word_results(unsigned stage,const struct opengpu_native_uniform_prog
 }
 static const struct opengpu_native_submit_sources *native_transport_source;
 static unsigned native_transport_calls, native_transport_fail;
+/* Exact original code-GEM inputs consumed by the explicit program-owner
+ * qualification. These are temporary inputs, removed with its private build. */
+static void native_program_inputs(const struct opengpu_native_graphics_sources *sources,
+    const char *name,const char *directory)
+{
+    for(unsigned stage=0;stage<2;stage++) {
+        const struct drm_opengpu_native_program_view *view=&sources->programs[stage];
+        char path[4096];assert(snprintf(path,sizeof(path),"%s/native-%s-%s.words",directory,name,stage?"fs":"vs")>0);
+        FILE *stream=fopen(path,"wx");assert(stream);
+        assert(fwrite(bos[view->handle].data+view->offset,1,view->bytes,stream)==view->bytes&&!fclose(stream));
+    }
+}
 /* Transport assembly only. This hook will be replaced by the actual kernel
  * handler bridge for protected-owner execution qualification; it is not a
  * kernel admission or hardware success oracle. */
@@ -690,7 +702,7 @@ static void native_metadata(struct pipe_context *pipe, const struct opengpu_nati
     for(unsigned i=0;i<8;i++)pipe_opengpu_resource_destroy(screen,frame_objects[i]);
     pipe_opengpu_resource_destroy(screen,scratch);
 }
-static void native_capacity_metadata(struct pipe_context *pipe, struct pipe_resource *input)
+static void native_capacity_metadata(struct pipe_context *pipe, struct pipe_resource *input,const char *directory)
 {
     struct tgsi_token vs[256],fs[256];
     assert(tgsi_text_translate("VERT\nDCL IN[15]\nDCL OUT[0], POSITION\nDCL OUT[1], GENERIC[15]\nMOV OUT[0], IN[15]\nMOV OUT[1], IN[15]\nEND\n",vs,256));
@@ -712,6 +724,7 @@ static void native_capacity_metadata(struct pipe_context *pipe, struct pipe_reso
     request.color_types[3]=1;
     struct opengpu_native_draw_encoding encoded;
     assert(!opengpu_native_draw_encode(&request,&encoded));
+    native_program_inputs(&sources,"full",directory);
     assert(encoded.draw.words[OPENGPU_NATIVE_BINNED_DRAW_DRAW_VERTEX_GEOMETRY_VERTEX_ATTRIBUTESLOTS_WORD]==16&&
         encoded.draw.words[OPENGPU_NATIVE_BINNED_DRAW_DRAW_VERTEX_GEOMETRY_VERTEX_VARYINGSLOTS_WORD]==16&&
         encoded.draw.words[OPENGPU_NATIVE_BINNED_DRAW_DRAW_VERTEX_GEOMETRY_VERTEX_INPUT_ATTRIBUTES15_ENABLED_WORD]==1&&
@@ -821,7 +834,8 @@ static void production_constants(void *program, const char *directory)
             view->bytes==native[stage].words*4&&!memcmp(bos[view->handle].data,native[stage].code,view->bytes));
     }
     native_metadata(pipe,&sources,resources[12],graphics_uniform_color_type(program,0),directory);
-    native_capacity_metadata(pipe,resources[12]);
+    native_program_inputs(&sources,"real",directory);
+    native_capacity_metadata(pipe,resources[12],directory);
     fixture_native_caps[5]=0;
     assert(opengpu_native_graphics_program_sources(pipe,compiled,&sources)<0&&
         !memcmp(&sources,&original_sources,sizeof(sources)));
