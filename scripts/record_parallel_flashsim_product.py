@@ -105,7 +105,8 @@ def witness_original(current, original, run, output, names):
         raise RuntimeError('Witness must be a new file outside the original run')
     prepared, old, build, identity = parallel.guard_model(current, original)
     state_bytes = (original.out / 'state.json').read_bytes(); state = json.loads(state_bytes)
-    if (state.get('product') != current.product or state.get('scene_execution') != original.scene_execution
+    if (state.get('product') != current.product or state.get('two_cu_vga', False) != current.two_cu_vga
+            or state.get('scene_execution') != original.scene_execution
             or state.get('stage') not in ('execute-six-scenes-parallel', 'execute-six-scenes-parallel-terminal')
             or (state.get('directory') and Path(state['directory']).resolve() != run)
             or not set(names).issubset(state.get('completed', []))
@@ -132,6 +133,7 @@ def main():
     parser.add_argument('action', choices=('extra', 'witness'))
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument('--smoke', action='store_true'); mode.add_argument('--product', action='store_true')
+    parser.add_argument('--two-cu-vga', action='store_true')
     parser.add_argument('--api-capacity', action='store_true')
     parser.add_argument('--prepared-output', type=Path, required=True)
     parser.add_argument('--original-output', type=Path, required=True)
@@ -158,9 +160,9 @@ def main():
     values = (args.product, args.flashsim_dir, args.scene_jobs, args.shards,
               args.reshard_dir, args.reshard_tool, args.precompiled_header, args.shard_opt,
               args.conservative_alias)
-    current = flash.Runner(current_out, *values, api_capacity=args.api_capacity)
+    current = flash.Runner(current_out, *values, api_capacity=args.api_capacity, two_cu_vga=args.two_cu_vga)
     original = flash.Runner(original_out, *values, driver_root=args.original_driver_checkout,
-                            api_capacity=args.api_capacity)
+                            api_capacity=args.api_capacity, two_cu_vga=args.two_cu_vga)
     def terminate(_signum, _frame):
         raise KeyboardInterrupt('recording terminated')
     previous = signal.signal(signal.SIGTERM, terminate)

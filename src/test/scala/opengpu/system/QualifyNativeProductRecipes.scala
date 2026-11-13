@@ -16,12 +16,15 @@ private[system] object NativeProductRecipeHost {
     if(apiCapacity)NativeBinnedGraphicsConfig.fourEngineApiExtent else NativeBinnedGraphicsConfig.fourEngine
 }
 
-private[system] class NativeProductRecipeHost(apiCapacity: Boolean = false) extends GpuHostSystemAxi(
+private[system] class NativeProductRecipeHost(apiCapacity: Boolean = false,
+  twoCuVga: Boolean = false) extends GpuHostSystemAxi(
   GraphicsConfig(screenWidth=GraphicsTestResolution.width,screenHeight=GraphicsTestResolution.height),
-  GpuConfig(l2Sets=512,l2StoreEntries=8),numComputeUnits=4,
+  GpuConfig(l2Sets=512,l2StoreEntries=8),numComputeUnits=if(twoCuVga)2 else 4,
   fragCore=true,sharedGraphics=true,parallelGraphics=true,enableFpuBackend=true,
   memoryAxiDataBytes=32,useBlackBoxes=true,exposePerformance=true,
   nativeBinnedGraphics=Some(NativeProductRecipeHost.native(apiCapacity))) {
+  require(!twoCuVga || apiCapacity && !GraphicsTestResolution.productQualification,
+    "two-CU VGA requires full API capacity and the 640x480 display profile")
   val macroModelsPresent=IO(Output(Bool()))
   withClockAndReset(io.s_axi_aclk,!io.s_axi_aresetn){
     macroModelsPresent:=Module(new NativeFourEngineSramModels).io.present
