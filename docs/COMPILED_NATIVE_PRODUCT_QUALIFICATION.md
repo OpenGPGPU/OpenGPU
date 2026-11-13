@@ -208,7 +208,9 @@ parser and oracle tests alone do not establish RTL execution.
 ### Native tile decomposition comparison
 
 `PrepareNativeTileComparison` emits explicit 8×8 and 16×16 alternatives for
-the same six 32×32 scenes. Geometry, programs, state records, image allocations,
+the same six scenes: 32×32 with `--smoke` (also the default for the legacy
+`--output DIR` syntax), or 640×480 with explicit `--product`. Both modes retain
+the complete two-CU/API profile. Geometry, programs, state records, image allocations,
 texture inputs and the full 65,536-entry directory allocation are identical;
 only the GNF tile dimensions/count and resident attachment offsets change.
 The ordinary product encoder still uses 8×8. Both tile sizes are already
@@ -245,19 +247,30 @@ prepare the alternatives from the matching input/shader ABI:
 sbt -J-Xmx3G -Dopengpu.fullHostQualification=1 \
   -Dopengpu.productQualification=0 -Dopengpu.productTwoCuVga=1 \
   -Dopengpu.productApiCapacity=1 -Dopengpu.apiExtentQualification=1 \
-  "Test / runMain opengpu.system.PrepareNativeTileComparison --output $PROBE"
+  "Test / runMain opengpu.system.PrepareNativeTileComparison --smoke --output $PROBE"
 for side in 8 16; do
   mkdir -p "$PROBE/tile$side/output"
   while IFS= read -r scene; do
     "$MODEL/native_product_driver" "$PROBE/tile$side/fixtures" \
       "$PROBE/tile$side/output" --scene "$scene"
   done < "$PROBE/tile$side/fixtures/suite.txt"
-  sbt -J-Xmx3G -Dopengpu.fullHostQualification=1 \
-    -Dopengpu.productQualification=0 -Dopengpu.productTwoCuVga=1 \
-    -Dopengpu.productApiCapacity=1 -Dopengpu.apiExtentQualification=1 \
-    "Test / runMain opengpu.system.VerifyCompiledNativeProduct --smoke --output $PROBE/tile$side/output"
 done
+sbt -J-Xmx3G -Dopengpu.fullHostQualification=1 \
+  -Dopengpu.productQualification=0 -Dopengpu.productTwoCuVga=1 \
+  -Dopengpu.productApiCapacity=1 -Dopengpu.apiExtentQualification=1 \
+  "Test / runMain opengpu.system.VerifyNativeTileComparison --smoke --output $PROBE"
 ```
+
+For a full VGA comparison, use `--product` in both preparation and verification,
+keeping `productQualification=0` for the mandatory two-CU target. Before reusing
+a qualified model, require the 8×8 inputs and commands to match the original
+640×480 product fixtures byte for byte, and verify its original source, RTL,
+assertion, generator, reshard, build and executable guards before and after use.
+Do not relabel the model as a newer hardware qualification. Verification checks
+all twelve independent images/samples and pitched guards, plus every shader,
+descriptor, vertex and texture byte outside actual writable allocations. CPU
+tests cover partial tiles and deliberately corrupted pixels and read-only data;
+they are not rendered-image evidence.
 
 `PROBE` must be a temporary directory under this repository's `.artifacts/`.
 Keep JVM/native temporary paths inside the GPU checkout; on macOS sbt appends
