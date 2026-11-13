@@ -182,6 +182,17 @@ class GalliumSharedPublicationQualification extends AnyFlatSpec {
           val startInvalidations=invalidations
           val priorActive=Array.fill[BigInt](2)(0);val priorWaiting=Array.fill[BigInt](2)(0)
           val warpStarts=Array.fill(2)(0);val peakWarps=Array.fill(2)(0);val barriersCompleted=Array.fill(2)(0)
+          val survivingWords=(16 until 128).toSet
+          def publicationDataReady(item:Int):Unit={
+            if(fault){
+              // Accepted precise traps retire only their warp. The seven peer
+              // warps remain resident and may complete their own stores/barrier.
+              assert(faultReply&&traps==Set(1)&&item>=144&&dataAcknowledged.toSet==survivingWords,
+                s"$kind/$mode peer publication preceded surviving data acknowledgements")
+              assert((d.io.cu(1).active.peek().litValue&1)==0)
+            }else assert(dataAcknowledged.size==128,
+              s"$kind/$mode epoch=$epoch publication preceded all 128 data acknowledgements")
+          }
           def tick():Unit={
             d.io.holdProducerReplies.poke(false.B)
             d.io.holdConsumerReplies.poke((kind!="ordinary"&&checkpoint&& !producerPublished).B)
@@ -199,7 +210,7 @@ class GalliumSharedPublicationQualification extends AnyFlatSpec {
                   assert(((r.data>>(8*byte))&mask32)==(if(item<128)expected(epoch,item)else BigInt(epoch)))
                   if(r.fault){assert(fault&&item==0);faultReply=true}
                   else if(item<128){assert(!dataAcknowledged(item));dataAcknowledged+=item}
-                  else{assert(dataAcknowledged.size==128&& !fault);flagsAcknowledged+=item-128
+                  else{publicationDataReady(item);flagsAcknowledged+=item-128
                     if(item==128)producerPublished=true}
                 }else{assert(r.at==outputPhysical&& !fault);consumerValues+=1}
                 if(!r.fault)for(i<-0 until 64 if r.mask.testBit(i))memory(r.at+i)=((r.data>>(8*i))&255).toInt
@@ -225,6 +236,7 @@ class GalliumSharedPublicationQualification extends AnyFlatSpec {
               port.trap.ready.poke(false.B)
               if(port.trap.valid.peek().litToBoolean){
                 assert(fault&&cu==1&&faultReply&& !producerPublished)
+                port.trap.bits.warpId.expect(0.U);assert((port.active.peek().litValue&1)!=0)
                 port.trap.bits.pc.expect(faultPc.U);port.trap.bits.cause.expect(7.U);port.trap.bits.tval.expect(producer.va(35).U)
                 port.trap.bits.activeMask.expect(65535.U);port.trap.bits.laneFaultMask.expect(1.U)
                 val previous=heldTraps.getOrElse(cu,(port.trap.bits.peek().litValue,0));assert(port.trap.bits.peek().litValue==previous._1)
@@ -250,7 +262,7 @@ class GalliumSharedPublicationQualification extends AnyFlatSpec {
                 val address=at+byte
                 if(address>=payload&&address<payload+1024){
                   val item=((address-payload)/4).toInt;assert(!writesOffered(item));writesOffered+=item;globalWrites+=1
-                  if(item>=128)assert(dataAcknowledged.size==128&& !fault,"shared publication flag overtook global data acknowledgement")
+                  if(item>=128)publicationDataReady(item)
                   failed=fault&&item==0
                 }else{assert(at==outputPhysical&& !fault&&kind!="ordinary")
                   if(mask==15){assert(!checkpoint&&(data&mask32)==oldValue);checkpoint=true}else assert(mask==0xf0&&producerPublished)}
@@ -282,7 +294,17 @@ class GalliumSharedPublicationQualification extends AnyFlatSpec {
           launch(1);until("complete")(done.size==(if(fault)1 else 2))
           until("drain")(d.io.drained.peek().litToBoolean&&pending.isEmpty&&held.isEmpty&&offered.isEmpty)
           assert(warpStarts(1)==8&&peakWarps(1)==8)
-          if(fault){assert(barriersCompleted(1)>=2);assert(traps==Set(1)&& !producerPublished&&flagsAcknowledged.isEmpty&& !dataAcknowledged(0));faults+=1}
+          if(fault){
+            assert(barriersCompleted(1)==3&&traps==Set(1)&& !producerPublished)
+            assert(dataAcknowledged.toSet==survivingWords&&flagsAcknowledged.toSet==survivingWords)
+            assert(writesOffered.toSet==(survivingWords++survivingWords.map(_+128)+0))
+            for(local<-0 until 128){
+              val writtenEpoch=if(local<16)oldEpoch else epoch
+              assert(get(payload+local*4)==expected(writtenEpoch,local))
+              assert(get(payload+512+local*4)==writtenEpoch)
+            }
+            faults+=1
+          }
           else{
             assert(barriersCompleted(1)==3)
             assert(traps.isEmpty&&producerPublished&&dataAcknowledged.size==128&&flagsAcknowledged.size==128&&writesOffered.size==256)
