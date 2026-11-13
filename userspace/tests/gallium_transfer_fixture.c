@@ -37,6 +37,12 @@ void pipe_opengpu_resource_destroy(struct pipe_opengpu_screen *s, struct pipe_op
 void *pipe_opengpu_resource_map(struct pipe_opengpu_resource *r) { return r->data; }
 uint64_t pipe_opengpu_resource_size(const struct pipe_opengpu_resource *r) { return r->bytes; }
 uint32_t pipe_opengpu_resource_pitch(const struct pipe_opengpu_resource *r) { return r->pitch; }
+int pipe_opengpu_screen_framebuffer_blit(const struct pipe_opengpu_screen *s)
+{ (void)s; return 0; }
+int pipe_opengpu_try_framebuffer_blit(struct pipe_opengpu_screen *s,
+    struct pipe_opengpu_resource *d,struct pipe_opengpu_resource *r,
+    const struct opengpu_framebuffer_blit *b,uint32_t t)
+{ (void)s;(void)d;(void)r;(void)b;(void)t;assert(!"disabled GPU blit was called");return -1; }
 int pipe_opengpu_invalidate(struct pipe_opengpu_context *c, struct pipe_opengpu_resource *r,
                             uint64_t off, uint64_t bytes, struct pipe_opengpu_fence **f)
 {

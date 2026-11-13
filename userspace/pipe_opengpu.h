@@ -12,6 +12,7 @@ struct pipe_opengpu_screen;
 struct pipe_opengpu_context;
 struct pipe_opengpu_resource;
 struct pipe_opengpu_fence;
+struct opengpu_framebuffer_blit;
 
 struct pipe_opengpu_screen *pipe_opengpu_screen_create(const char *path);
 /* dup(fd) and take ownership of the duplicate. Mesa's loader keeps its own fd. */
@@ -202,6 +203,16 @@ int pipe_opengpu_storage_view_validate(const struct pipe_opengpu_screen *screen,
 int pipe_opengpu_launch_grid_storage(struct pipe_opengpu_context *ctx,
     const uint32_t grid[3], const uint32_t local[3],
     const struct pipe_opengpu_storage_view views[4], uint32_t timeout_ms);
+
+/* Private, synchronous checked-storage GPU framebuffer pass. The versioned
+ * descriptor is in opengpu_framebuffer_blit.h. No user compute state is rebound.
+ * Only nearest RGBA/BGRA/RGBX/BGRX is admitted initially; same-GEM views remain
+ * unsupported. Returns 1 only for an unsupported operand before any GPU work,
+ * 0 for success, -1 for an error. Errors must not be retried by CPU fallback. */
+int pipe_opengpu_screen_framebuffer_blit(const struct pipe_opengpu_screen *screen);
+int pipe_opengpu_try_framebuffer_blit(struct pipe_opengpu_screen *screen,
+    struct pipe_opengpu_resource *destination, struct pipe_opengpu_resource *source,
+    const struct opengpu_framebuffer_blit *descriptor, uint32_t timeout_ms);
 
 /* Fill colour GEM with a 32-bit pattern. Offset/bytes must be 64-byte aligned. */
 int pipe_opengpu_clear(struct pipe_opengpu_context *ctx, uint32_t pattern,

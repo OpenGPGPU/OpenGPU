@@ -18,6 +18,7 @@ python3 scripts/test_render_attachment_admission.py
 python3 scripts/test_render_compare_validation.py
 python3 scripts/test_gallium_transfers.py
 python3 scripts/test_pipe_transfer_ranges.py
+python3 scripts/test_framebuffer_blit.py
 python3 scripts/test_gallium_graphics_constants.py
 python3 scripts/test_gallium_index_buffers.py
 python3 scripts/test_gallium_resource_shapes.py
