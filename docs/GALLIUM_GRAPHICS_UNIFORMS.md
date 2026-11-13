@@ -1,9 +1,10 @@
 # Linked graphics uniform frontend
 
 This component connects actual linked Mesa ESSL vertex/fragment programs to
-native SoA instructions and an original-GEM uniform-view planner. It does not
-yet connect production GNJ submission, immutable native snapshots or complete
-host execution. Device API capabilities remain unchanged.
+native code GEMs, real Gallium uniform bindings and canonical native source
+graphs. The guarded submission transport is assembled; protected kernel GNJ
+admission, immutable snapshots and complete host execution remain unqualified.
+Device API capabilities remain unchanged.
 
 ## Compiler and source views
 
