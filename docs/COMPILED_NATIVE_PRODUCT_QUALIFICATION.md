@@ -139,15 +139,53 @@ Run the full-model commands only after selecting the final feature source.
 Build, execute and independently verify that source; do not relabel a v1 model
 or a prior feature revision as v2.
 
-Before the MSHR definition-sharing change in PR #770, the complete integrated
-target passed raw elaboration with a 6 GiB JVM heap
-(19,774 raw modules and 14,157,842 commands), then exhausted that heap in
-Chisel's FIRRTL conversion before any RTL was emitted. The bounded same-feature
-connection test passes full FIRRTL conversion at 3 GiB. Raw elaboration does
-not establish complete RTL generation, simulation or whole-host timing; those
-remain required with the complete target and an adequate explicit resource
-budget. The complete-target probe retained every target capacity; the bounded
-check exercises connections only.
+With the shared MSHR definitions from PR #770 and the fragment/raster definition
+caches, the complete target passed raw elaboration and FIRRTL conversion in
+one JVM capped at 10 GiB. It retained two 16-lane/eight-warp CUs, sixteen
+transactions per CU, four engines, 65,536 directory entries and the 512 KiB
+payload pool, with black boxes and performance ports enabled. Raw elaboration
+contained 19,771 modules and 13,122,056 recursive commands; conversion consumed
+the same elaborated annotations without a second elaboration. The runMain
+completed in 62 seconds with exit zero, excluding compilation.
+
+This result precedes the parallel typed-blend integration in PR #769. It
+establishes complete Chisel/FIRRTL construction for that implementation, with
+no SystemVerilog, model, execution or physical qualification. Subsequent source
+changes require their own matching qualification. An earlier implementation
+before MSHR sharing passed raw elaboration but exhausted a 6 GiB heap during
+conversion; that historical failure does not establish the current minimum
+memory requirement. The bounded same-feature connection test passes conversion
+at 3 GiB and exercises connections only.
+
+To repeat the full-target conversion API check, place this temporary helper at
+`.artifacts/AlignmentConversion.scala`:
+
+```scala
+package opengpu.system
+object AlignmentConversion extends App {
+  val p = NativeAlignmentHostProfile.target
+  require(p.computeUnits == 2 && p.execution.lanes == 16 && p.execution.warps == 8 &&
+    p.transactionsPerCu == 16 && p.native.engines == 4 &&
+    p.native.pagedCapacity == 65536 && p.native.payload.get.capacityBytes == 524288)
+  val raw = new chisel3.stage.phases.Elaborate().transform(Seq(
+    chisel3.stage.ChiselGeneratorAnnotation(() => new NativeAlignmentHostSystemAxi(p,
+      useBlackBoxes = true, exposePerformance = true))))
+  require(raw.exists(_.isInstanceOf[chisel3.stage.ChiselCircuitAnnotation]))
+  val converted = new chisel3.stage.phases.Convert().transform(raw)
+  require(converted.nonEmpty)
+  println("ALIGNMENT_CONVERSION_PASS noRtlEmitted=true noExecutionQualification=true")
+}
+```
+
+```sh
+sbt -J-Xmx10G -J-XX:+ExitOnOutOfMemoryError -J-XX:ActiveProcessorCount=2 \
+  'set Test / unmanagedSources += baseDirectory.value / ".artifacts/AlignmentConversion.scala"' \
+  'Test / runMain opengpu.system.AlignmentConversion'
+```
+
+Require the success marker and exit zero; remove the helper, build outputs and
+logs after active use. This is an explicit full-target resource check outside
+routine CI, and does not emit RTL or replace complete model/image/timing gates.
 
 ## Reproduce
 
