@@ -45,6 +45,7 @@ enum opengpu_sched_job_type {
     OPENGPU_SCHED_RESOLVE,
     OPENGPU_SCHED_INVALIDATE,
     OPENGPU_SCHED_TESSELLATION,
+    OPENGPU_SCHED_NATIVE_BINNED,
 };
 
 /* A render job maps command, code, framebuffer and descriptor windows; a DMA
@@ -79,6 +80,14 @@ struct opengpu_sched_job {
     struct opengpu_command_events events;
     struct opengpu_kernel_launch kernel;
     struct opengpu_job hw;
+    struct opengpu_private_snapshot *native_owner;
+    u32 native_job_segment;
+    /* Only populated on failed pre-enqueue revocation; the entire job and
+     * original reference container are quarantined with the owner. */
+    void *native_quarantine_refs;
+    struct dma_fence *retirement_fence, *admission_chain;
+    struct dma_fence_chain *execution_chain; bool admission_armed;
+    bool ordinary_pending;
     struct opengpu_buffer commands;
     /* 16-word unified render descriptor, filled at run time and submitted by
      * virtual address so the device fetches it through the context VM. */
@@ -169,6 +178,9 @@ struct opengpu_tessellation_job_input {
     struct opengpu_tessellation_scope scope;
 };
 
+struct opengpu_render_context *opengpu_context_lookup(struct opengpu_file *render_file,u32 id);
+int opengpu_native_binned_ioctl(struct drm_device *drm,void *data,struct drm_file *file);
+
 void opengpu_context_get(struct opengpu_render_context *context);
 void opengpu_context_put(struct opengpu_render_context *context);
 int opengpu_sched_init(struct opengpu_device *gpu);
@@ -182,6 +194,11 @@ int opengpu_tessellation_sched_submit(
     struct opengpu_file *render_file, struct drm_file *file,
     struct opengpu_render_context *context,
     const struct opengpu_tessellation_job_input *input,
+    u32 in_syncobj, struct drm_syncobj *out_sync,
+    const struct opengpu_sched_dep *deps, u32 dep_count, u64 *fence_seqno);
+int opengpu_sched_job_submit_locked(
+    struct opengpu_file *render_file, struct drm_file *file,
+    struct opengpu_render_context *context, struct opengpu_sched_job *job,
     u32 in_syncobj, struct drm_syncobj *out_sync,
     const struct opengpu_sched_dep *deps, u32 dep_count, u64 *fence_seqno);
 int opengpu_sched_job_submit(
