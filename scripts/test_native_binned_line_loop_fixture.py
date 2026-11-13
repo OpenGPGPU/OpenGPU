@@ -133,6 +133,60 @@ class NativeLineLoopFixtureTest(unittest.TestCase):
     def tearDownClass(cls):
         cls.temp.cleanup()
 
+    def test_complete_two_and_four_cu_runtime_discovery_contract(self):
+        source = self.directory/'profile.cpp'
+        source.write_text('''#include "native_binned_host_profile.hpp"
+int main(int argc,char **argv) {
+  try {
+    const bool two=std::string(argv[2])=="2";
+    const auto f=native_frame::topology_fixture_contract(argv[1],two);
+    std::map<uint32_t,uint32_t> actual;
+    for(const auto &r:f.resources)
+      native_frame::require(actual.emplace(r.address,r.value).second,"duplicate discovery");
+    native_frame::check_topology_discovery(actual,two);return 0;
+  }catch(const std::exception&){return 1;}
+}
+''')
+        binary = self.directory/'profile'
+        subprocess.run(shlex.split(os.environ.get('CXX', 'c++')) +
+                       ['-std=c++17', '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter',
+                        '-I', str(ROOT/'scripts'), str(source), '-o', str(binary)], check=True)
+        fixture_dir = self.directory/'profiles'
+        fixture_dir.mkdir()
+        # Literal discovery values are independent of the C++ profile helper.
+        compute = [0x47435201,16,15,4,16,8,128,128,0xffffffff,16384,16,8,
+                   0x10000000,32,131072,4]
+        native = [0x474e4303,8,0x474e4a01,0x08000200,0xc2100800,
+                  0x08000800,0xe4908000,0x8813d904]
+
+        def write_profile(units, changed=None, smoke=False):
+            words = list(compute + native)
+            words[3], words[23] = units, 0x8813d900 | units
+            if changed is not None:
+                words[changed] ^= 1
+            addresses = [0x360+4*n for n in range(16)] + [0x160+4*n for n in range(8)]
+            resources = list(zip(addresses, words))
+            def commands(items):
+                return struct.pack('<I',len(items)) + b''.join(struct.pack('<II',*r) for r in items)
+            data = (b'OGNAT001' if units == 2 else b'OGAPI001')
+            data += struct.pack('<IIIIQ',32 if smoke else 640,32 if smoke else 480,
+                                1,1,10000000 if smoke else 1000000000)
+            data += commands(resources) + commands([(0,0)]*8)
+            data += struct.pack('<I',13) + struct.pack('<III',0,0,0)*13
+            data += commands([(0,0)]*2)
+            name = 'desktop-composition.commands' if units == 2 else 'native-api-extent-1x.commands'
+            (fixture_dir/name).write_bytes(data)
+
+        for units in (2,4):
+            write_profile(units)
+            self.assertEqual(subprocess.run([str(binary),str(fixture_dir),str(units)]).returncode,0)
+            for word_index in range(24):
+                write_profile(units,word_index)
+                with self.subTest(units=units,discovery_word=word_index):
+                    self.assertNotEqual(subprocess.run([str(binary),str(fixture_dir),str(units)]).returncode,0)
+        write_profile(2,smoke=True)
+        self.assertNotEqual(subprocess.run([str(binary),str(fixture_dir),'2']).returncode,0)
+
     def test_exact_diamond_literal_and_both_closure_witnesses(self):
         self.assertEqual(coverage(), LITERAL)
         for close, witnesses in (((2, 0), (5, 10, 15)), ((5, 3), (13, 14))):
