@@ -51,6 +51,25 @@ class ParallelQualificationTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'profiles differ'):
             parallel.guard_model(self.new, self.original)
 
+    def test_integrated_selection_reaches_parallel_and_recorder_runners(self):
+        cases=[(parallel, 'verify', ['qualify-parallel','--smoke','--alignment-v2',
+                '--prepared-output',str(self.current),'--original-output',str(self.old),
+                '--witness',str(self.witness_path),'--extra-record',str(self.extra_path),
+                '--output',str(self.extra/'qualified'),'--flashsim-dir',self.temp.name]),
+               (recorder, 'run_extra', ['record-parallel','extra','--smoke','--alignment-v2',
+                '--prepared-output',str(self.current),'--original-output',str(self.old),
+                '--scene',common.SCENES[0],'--output',str(self.extra/'recorded'),
+                '--flashsim-dir',self.temp.name])]
+        for module,method,argv in cases:
+            with patch.object(sys,'argv',argv),patch.object(module,method) as call:
+                module.main()
+            current,original=call.call_args.args[:2]
+            self.assertTrue(current.alignment_v2 and original.alignment_v2)
+            self.assertTrue(current.two_cu_vga and original.two_cu_vga)
+        self.new.alignment_v2=True
+        with self.assertRaisesRegex(RuntimeError,'profiles differ'):
+            parallel.guard_model(self.new,self.original)
+
     def test_recorder_cli_passes_original_build_options(self):
         argv = ['record-parallel', 'extra', '--smoke', '--prepared-output', str(self.current),
                 '--original-output', str(self.old), '--output', str(self.extra / 'new'),
@@ -208,6 +227,14 @@ class ParallelQualificationTest(unittest.TestCase):
             recorder.witness_original(self.new, self.original, self.run, self.extra / 'rejected.json', common.SCENES[:2])
 
     def test_records_vga_product_and_rejects_wrong_size_or_resources(self):
+        self.check_vga_witness(False)
+
+    def test_records_integrated_product_and_rejects_profile_or_discovery_drift(self):
+        self.check_vga_witness(True)
+
+    def check_vga_witness(self, alignment_v2):
+        self.new.alignment_v2 = self.original.alignment_v2 = alignment_v2
+        profile = common.profile_id(True, alignment_v2)
         self.new.product = self.original.product = True
         self.new.two_cu_vga = self.original.two_cu_vga = True
         self.new.api_capacity = self.original.api_capacity = True
@@ -215,9 +242,13 @@ class ParallelQualificationTest(unittest.TestCase):
             path = directory / 'fixture-manifest.json'
             manifest = dict(json.loads(path.read_text()), product=True,
                 frameWidth=640, frameHeight=480, computeUnits=2,
-                profile='two-cu-vga60-v1', targetFps=60, apiCapacity=True,
+                profile=profile, targetFps=60, apiCapacity=True,
                 screenWidth=640, screenHeight=480, nativeMaxWidth=2048,
                 nativeMaxHeight=2048, pagedCapacity=65536, engines=4, payloadBytes=524288)
+            if alignment_v2:
+                manifest.update(integratedHost=True, transactionsPerCu=16,
+                    resourceDiscoveryWords=72, computeFeatureFlags=32767,
+                    nativeGeometryDraw=False, nativeAdvancedBlend=False,nativePatchShaderImages=False)
             common.write_json(path, manifest)
             prep_path = directory / 'preparation.json'
             common.write_json(prep_path, dict(json.loads(prep_path.read_text()),
@@ -225,16 +256,22 @@ class ParallelQualificationTest(unittest.TestCase):
         name = common.SCENES[0]; target = self.run / 'scenes' / name
         row = dict(metric(name), frameWidth=640, frameHeight=480, computeUnits=2,
                    nativeEngines=4, nativeMaxWidth=2048, nativeMaxHeight=2048,
-                   profile='two-cu-vga60-v1')
+                   profile=profile)
+        if alignment_v2:
+            row.update(resourceDiscoveryWords=72, computeFeatureFlags=32767)
         state = json.loads(self.witness_path.read_text())['controller_state']
-        common.write_json(self.old / 'state.json', dict(state, product=True, two_cu_vga=True))
+        common.write_json(self.old / 'state.json', dict(state, product=True, two_cu_vga=True, alignment_v2=alignment_v2))
         (target / 'execution.log').write_text(json.dumps(row) + '\n')
         result = self.extra / 'vga-witness.json'
         recorder.witness_original(self.new, self.original, self.run, result, [name])
         self.assertEqual(json.loads(result.read_text())['scenes'][name]['metrics'], row)
-        for field, value in [('frameWidth', 1280), ('frameHeight', 720),
+        invalid = [('frameWidth', 1280), ('frameHeight', 720),
                 ('computeUnits', 4), ('nativeEngines', 2), ('nativeMaxWidth', 640),
-                ('nativeMaxHeight', 480), ('profile', None)]:
+                ('nativeMaxHeight', 480), ('profile', None)]
+        if alignment_v2:
+            invalid += [('profile','two-cu-vga60-v1'),('resourceDiscoveryWords',24),
+                        ('computeFeatureFlags',15)]
+        for field, value in invalid:
             (target / 'execution.log').write_text(json.dumps(dict(row, **{field: value})) + '\n')
             rejected = self.extra / 'rejected-vga.json'
             with self.subTest(field=field), self.assertRaises(RuntimeError):

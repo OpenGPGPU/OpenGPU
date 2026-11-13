@@ -13,15 +13,18 @@ import qualify_native_product_flashsim as flash
 import qualify_parallel_flashsim_product as parallel
 
 
-def _metric(name, target, product, two_cu_vga=False):
+def _metric(name, target, product, two_cu_vga=False, alignment_v2=False):
     lines = (target / 'execution.log').read_text().splitlines()
     if len(lines) != 1:
         raise RuntimeError('Scene returned missing or unexpected metrics: ' + name)
     row = json.loads(lines[0]); size = common.frame_size(product, two_cu_vga)
     if two_cu_vga and any(row.get(k) != v for k, v in
             {'computeUnits': 2, 'nativeEngines': 4, 'nativeMaxWidth': 2048,
-             'nativeMaxHeight': 2048, 'profile': 'two-cu-vga60-v1'}.items()):
+             'nativeMaxHeight': 2048, 'profile': common.profile_id(True, alignment_v2)}.items()):
         raise RuntimeError('Two-CU VGA execution resource profile differs: ' + name)
+    if alignment_v2 and (not two_cu_vga or row.get('resourceDiscoveryWords') != 72
+                         or row.get('computeFeatureFlags') != 0x7fff):
+        raise RuntimeError('Integrated alignment execution discovery differs: ' + name)
     if (row.get('scene') != name or (row.get('frameWidth'), row.get('frameHeight')) != size
             or not row.get('trafficDrained') or row.get('serviceCycles', 0) <= 0
             or row.get('gpuCycles', 0) <= 0 or row.get('imageVerificationRequired') is not True
@@ -51,6 +54,7 @@ def run_extra(current, original, output, names, jobs):
 
     def state(stage, **fields):
         common.write_json(output / 'state.json', dict(stage=stage, started=started,
+                          alignment_v2=current.alignment_v2,
                           updated=time.time(), **fields))
 
     try:
@@ -74,7 +78,7 @@ def run_extra(current, original, output, names, jobs):
                     continue
                 if code:
                     raise RuntimeError(f'Additional scene {name} failed with exit {code}')
-                row = _metric(name, target, current.product, current.two_cu_vga)
+                row = _metric(name, target, current.product, current.two_cu_vga, current.alignment_v2)
                 rows[name] = dict(metrics=row, files=common.tree_hashes(target), argv=command, exit_code=code)
                 del running[name]
             if running:
@@ -110,6 +114,7 @@ def witness_original(current, original, run, output, names):
     prepared, old, build, identity = parallel.guard_model(current, original)
     state_bytes = (original.out / 'state.json').read_bytes(); state = json.loads(state_bytes)
     if (state.get('product') != current.product or state.get('two_cu_vga', False) != current.two_cu_vga
+            or state.get('alignment_v2', False) != current.alignment_v2
             or state.get('scene_execution') != original.scene_execution
             or state.get('stage') not in ('execute-six-scenes-parallel', 'execute-six-scenes-parallel-terminal')
             or (state.get('directory') and Path(state['directory']).resolve() != run)
@@ -121,7 +126,7 @@ def witness_original(current, original, run, output, names):
         target = run / 'scenes' / name
         if target.is_symlink() or not target.resolve().is_relative_to((run / 'scenes').resolve()):
             raise RuntimeError('Original scene path is not owned by the run: ' + name)
-        row = _metric(name, target, current.product, current.two_cu_vga)
+        row = _metric(name, target, current.product, current.two_cu_vga, current.alignment_v2)
         rows[name] = dict(metrics=row, directory=str(target), files=common.tree_hashes(target))
     if (parallel.guard_model(current, original) != (prepared, old, build, identity)
             or any(item['files'] != common.tree_hashes(Path(item['directory'])) for item in rows.values())):
@@ -137,7 +142,7 @@ def main():
     parser.add_argument('action', choices=('extra', 'witness'))
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument('--smoke', action='store_true'); mode.add_argument('--product', action='store_true')
-    parser.add_argument('--two-cu-vga', action='store_true')
+    common.add_profile_arguments(parser)
     parser.add_argument('--api-capacity', action='store_true')
     parser.add_argument('--prepared-output', type=Path, required=True)
     parser.add_argument('--original-output', type=Path, required=True)
@@ -164,9 +169,9 @@ def main():
     values = (args.product, args.flashsim_dir, args.scene_jobs, args.shards,
               args.reshard_dir, args.reshard_tool, args.precompiled_header, args.shard_opt,
               args.conservative_alias)
-    current = flash.Runner(current_out, *values, api_capacity=args.api_capacity, two_cu_vga=args.two_cu_vga)
+    current = flash.Runner(current_out, *values, api_capacity=args.api_capacity, two_cu_vga=args.two_cu_vga, alignment_v2=args.alignment_v2)
     original = flash.Runner(original_out, *values, driver_root=args.original_driver_checkout,
-                            api_capacity=args.api_capacity, two_cu_vga=args.two_cu_vga)
+                            api_capacity=args.api_capacity, two_cu_vga=args.two_cu_vga, alignment_v2=args.alignment_v2)
     def terminate(_signum, _frame):
         raise KeyboardInterrupt('recording terminated')
     previous = signal.signal(signal.SIGTERM, terminate)

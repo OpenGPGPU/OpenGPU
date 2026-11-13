@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Qualification/AXI guards and an optional tiny bound-check execution probe."""
 import copy
+import argparse
 import json
 import os
 from pathlib import Path
@@ -167,6 +168,54 @@ class GuardTests(unittest.TestCase):
                 changed = list(resources); changed[index] = pair
                 with self.subTest(index=index): self.assertEqual(check(changed), 1)
             self.assertEqual(check(resources[:16]), 1)
+            integrated = list(resources)
+            integrated[2] = (0x368,0x7fff)
+            blocks = [
+                (0x340,[0x47434901,8,0x7f,14,12,4,0xffffffff,128]),
+                (0x240,[0x47515601,8,0x0b0a0908,0x47514f01,64,8,0x01001001,31]),
+                (0x260,[0x47464301,8,0x1003010c,0x47544601,512,0x04400408,69,255]),
+                (0x280,[0x47515001,8,0x0010040d,0x47504f01,64,0x00204008,0x8c88,63]),
+                (0x3a0,[0x47554301,16,1,0x7f,3,12,24,16384]),
+                (0x3c0,[1024,1024,256,64,0x0e00000b,0x1c00002b,0x1e00002b,31])]
+            for base, words in blocks:
+                integrated.extend((base+4*n,v) for n,v in enumerate(words))
+            self.assertEqual(check(integrated),0)
+            self.assertEqual(check(integrated,32,32),0)
+            for index, (address,value) in enumerate(integrated):
+                for changed_word in [(address,value^1),(address^4,value)]:
+                    changed = list(integrated); changed[index] = changed_word
+                    with self.subTest(word=index,changed=changed_word):
+                        self.assertEqual(check(changed),1)
+            for changed in [integrated[:-1],integrated+[integrated[-1]],
+                            integrated[:24],resources+integrated[24:]]:
+                self.assertEqual(check(changed),1)
+
+    def test_integrated_profile_rejects_legacy_host_and_partial_discovery(self):
+        candidate = dict(profile(), profile='two-cu-vga60-v2', targetFps=60,
+            computeUnits=2, product=True, frameWidth=640, frameHeight=480,
+            apiCapacity=True, screenWidth=640, screenHeight=480,
+            nativeMaxWidth=2048, nativeMaxHeight=2048, pagedCapacity=65536,
+            engines=4, payloadBytes=524288, integratedHost=True,
+            transactionsPerCu=16,resourceDiscoveryWords=72,computeFeatureFlags=0x7fff,
+            nativeGeometryDraw=False,nativeAdvancedBlend=False,nativePatchShaderImages=False)
+        q.check_profile(candidate,True,two_cu_vga=True,alignment_v2=True)
+        with self.assertRaises(RuntimeError):
+            q.check_profile(candidate,True,two_cu_vga=True)
+        for key,value in [('profile','two-cu-vga60-v1'),('computeUnits',4),
+                ('integratedHost',False),('transactionsPerCu',4),('resourceDiscoveryWords',24),
+                ('computeFeatureFlags',15),('nativeGeometryDraw',True),('nativeAdvancedBlend',True),
+                ('nativePatchShaderImages',True),('nativePatchShaderImages',0),
+                ('nativeAdvancedBlend',0),('nativeGeometryDraw',None)]:
+            with self.subTest(key=key),self.assertRaises(RuntimeError):
+                q.check_profile(dict(candidate,**{key:value}),True,two_cu_vga=True,alignment_v2=True)
+        rows = [dict(r,frameWidth=640,frameHeight=480,computeUnits=2,nativeEngines=4,
+            nativeMaxWidth=2048,nativeMaxHeight=2048,profile='two-cu-vga60-v2',
+            resourceDiscoveryWords=72,computeFeatureFlags=0x7fff) for r in metrics()]
+        q.validate_metrics(rows,True,True,True)
+        for key,value in [('profile','two-cu-vga60-v1'),('resourceDiscoveryWords',24),('computeFeatureFlags',15)]:
+            changed=copy.deepcopy(rows);changed[0][key]=value
+            with self.subTest(key=key),self.assertRaises(RuntimeError):
+                q.validate_metrics(changed,True,True,True)
 
     def test_two_cu_vga_requires_complete_capacity_and_rejects_legacy_results(self):
         candidate = dict(profile(), profile='two-cu-vga60-v1', targetFps=60,
@@ -209,6 +258,26 @@ class GuardTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'boolean'):
             q.Runner(Path('.'), True, two_cu_vga='1')
 
+    def test_integrated_selector_is_explicit_and_propagates_to_both_backends(self):
+        import qualify_native_product_flashsim as flash
+        for runner in [q.Runner(Path('.'),True,alignment_v2=True),
+                       flash.Runner(Path('.'),True,Path('.'),alignment_v2=True)]:
+            self.assertTrue(runner.alignment_v2 and runner.two_cu_vga and runner.api_capacity)
+            command=runner.sbt('example --product','3G')
+            for flag in ['-Dopengpu.productAlignmentV2=1','-Dopengpu.productTwoCuVga=1',
+                         '-Dopengpu.productApiCapacity=1','-Dopengpu.apiExtentQualification=1',
+                         '-Dopengpu.productQualification=0']:
+                self.assertIn(flag,command)
+        self.assertFalse(q.Runner(Path('.'),True,two_cu_vga=True).alignment_v2)
+        parser=argparse.ArgumentParser();q.add_profile_arguments(parser)
+        selected=parser.parse_args(['--alignment-v2'])
+        self.assertTrue(selected.alignment_v2)
+        self.assertFalse(selected.two_cu_vga)
+        with patch('sys.stderr'),self.assertRaises(SystemExit):
+            parser.parse_args(['--alignment-v2','--two-cu-vga'])
+        with self.assertRaisesRegex(ValueError,'boolean'):
+            q.Runner(Path('.'),True,alignment_v2='1')
+
     def test_two_cu_image_gate_requires_explicit_profile_and_all_vga_images(self):
         with tempfile.TemporaryDirectory() as directory:
             log = Path(directory) / 'verify.log'
@@ -221,6 +290,19 @@ class GuardTests(unittest.TestCase):
                           [*images, final, marker.replace('computeUnits=2', 'computeUnits=4')]]:
                 log.write_text('\n'.join(lines))
                 with self.assertRaises(RuntimeError): q.verify_marker(log, True, True)
+
+    def test_integrated_image_gate_requires_v2_marker_and_every_scene(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / 'verify.log'
+            final = 'NATIVE_COMPILED_PRODUCT PASS scenes=6 fullExecutionAndStorage=true exactStoredImagesAndGuards=true clockQualified=false fpsQualified=false'
+            marker = 'NATIVE_COMPILED_PROFILE profile=two-cu-vga60-v2 computeUnits=2 engines=4 targetFps=60 clockQualified=false fpsQualified=false'
+            images = [f'NATIVE_COMPILED_IMAGE id={n} frame=640x480 exactStoredImagesAndGuards=true' for n in q.SCENES]
+            log.write_text('\n'.join([*images,final,marker]))
+            q.verify_marker(log,True,True,True)
+            for lines in [[*images,final,marker.replace('-v2','-v1')],
+                          [*images[:-1],final,marker],[*images,marker]]:
+                log.write_text('\n'.join(lines))
+                with self.assertRaises(RuntimeError): q.verify_marker(log,True,True,True)
 
     def test_combined_api_capacity_requires_exact_manifest_and_flag(self):
         combined = dict(profile(), apiCapacity=True, screenWidth=640, screenHeight=480,

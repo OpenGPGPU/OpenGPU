@@ -11,6 +11,14 @@ import opengpu.testutil.{GraphicsTestResolution, NativeFrameMemoryCodec}
   * qualification commands, never ordinary discovered simulation cases.
   */
 private[opengpu] object CompiledNativeProductFixtures {
+  def alignmentV2: Boolean = {
+    val requested = sys.props.get("opengpu.productAlignmentV2")
+    require(requested.forall(Set("0", "1")), "opengpu.productAlignmentV2 must be 0 or 1")
+    val enabled = requested.contains("1")
+    require(!enabled || twoCuVga, "integrated alignment v2 requires the explicit two-CU VGA target")
+    enabled
+  }
+
   def twoCuVga: Boolean = {
     val requested = sys.props.get("opengpu.productTwoCuVga")
     require(requested.forall(Set("0", "1")), "opengpu.productTwoCuVga must be 0 or 1")
@@ -43,6 +51,7 @@ private[opengpu] object CompiledNativeProductFixtures {
     require(GraphicsTestResolution.productQualification == (product && !twoCuVga),
       "legacy --product requires productQualification=1; two-CU VGA and smoke require 0 or unset")
     apiCapacity // Check the capacity qualification flag for both preparation and verification.
+    alignmentV2 // Never infer the integrated host from old v1 target/capacity flags.
     (product, Paths.get(args(2)))
   }
 
@@ -53,8 +62,9 @@ private[opengpu] object CompiledNativeProductFixtures {
 
   def writeCommands(path: Path, scene: NativeProductWorkloads.Scene,
     input: NativeProductFrameInputs.Inputs, id: Int, product: Boolean, apiCapacity: Boolean = false,
-    twoCuVga: Boolean = false): Unit = {
+    twoCuVga: Boolean = false, alignmentV2: Boolean = false): Unit = {
     require(!twoCuVga || apiCapacity, "two-CU VGA requires the full API-capacity profile")
+    require(!alignmentV2 || twoCuVga, "integrated alignment v2 requires two-CU VGA")
     val computeUnits = if (twoCuVga) 2 else 4
     opengpu.graphics.NativeProductPrimitiveArena.validate(scene.primitiveCount,
       input.frame("frame.bins.producer.arena.base"), input.frame("frame.bins.producer.arena.limit"))
@@ -71,7 +81,9 @@ private[opengpu] object CompiledNativeProductFixtures {
         NativeBinnedGraphicsCapabilities.words(NativeProductRecipeHost.native(true),computeUnits,display)
           .zipWithIndex.map { case (v, i) => (TileBinHostRegs.CAPABILITIES + i * 4, v.toLong) }
       } else Seq.empty[(Int, Long)]
-      val resources = computeResources.zipWithIndex.map { case (v, i) => (0x360 + i * 4, v) } ++ nativeResources
+      val resources = if (alignmentV2) NativeAlignmentHostProfile.target.requiredDiscovery
+        .map { case (address, value) => (address, value.toLong) }
+        else computeResources.zipWithIndex.map { case (v, i) => (0x360 + i * 4, v) } ++ nativeResources
       put32(out, resources.size)
       resources.foreach { case (address, value) => put32(out, address); put32(out, value) }
       val writes = Vector[(Int, Long)](
@@ -105,8 +117,10 @@ object PrepareCompiledNativeProduct {
     val (product, directory) = CompiledNativeProductFixtures.mode(if (fixturesOnly) args.dropRight(1) else args)
     val apiCapacity = CompiledNativeProductFixtures.apiCapacity
     val twoCuVga = CompiledNativeProductFixtures.twoCuVga
-    val native = NativeProductRecipeHost.native(apiCapacity)
-    val display = GraphicsConfig(screenWidth=GraphicsTestResolution.width,screenHeight=GraphicsTestResolution.height)
+    val alignmentV2 = CompiledNativeProductFixtures.alignmentV2
+    val native = if (alignmentV2) NativeAlignmentHostProfile.target.native else NativeProductRecipeHost.native(apiCapacity)
+    val display = if (alignmentV2) NativeAlignmentHostProfile.target.graphics else
+      GraphicsConfig(screenWidth=GraphicsTestResolution.width,screenHeight=GraphicsTestResolution.height)
     val render = native.renderGraphics(display)
     val (width, height) = CompiledNativeProductFixtures.frameSize(product, twoCuVga)
     val fixtures = directory.resolve("fixtures"); Files.createDirectories(fixtures)
@@ -115,11 +129,13 @@ object PrepareCompiledNativeProduct {
     for ((scene, index) <- scenes.zipWithIndex) {
       val input = CompiledNativeProductFixtures.input(scene, twoCuVga)
       NativeFrameMemoryCodec.write(input.memory, fixtures.resolve(scene.id + ".memory"))
-      CompiledNativeProductFixtures.writeCommands(fixtures.resolve(scene.id + ".commands"), scene, input, index + 1, product, apiCapacity, twoCuVga)
+      CompiledNativeProductFixtures.writeCommands(fixtures.resolve(scene.id + ".commands"), scene,
+        input, index + 1, product, apiCapacity, twoCuVga, alignmentV2)
     }
     Files.writeString(fixtures.resolve("suite.txt"), scenes.map(_.id).mkString("", "\n", "\n"))
     if (!fixturesOnly) {
-      ChiselStage.emitSystemVerilogFile(new NativeProductRecipeHost(apiCapacity, twoCuVga),
+      ChiselStage.emitSystemVerilogFile(if (alignmentV2) new NativeAlignmentProductRecipeHost
+        else new NativeProductRecipeHost(apiCapacity, twoCuVga),
         Array("--target-dir", directory.resolve("rtl").toString),
         Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
       Files.writeString(directory.resolve("rtl/NativeFourEngineSramModels.sv"),
@@ -129,7 +145,10 @@ object PrepareCompiledNativeProduct {
     val capacity = if (apiCapacity)
       s""","apiCapacity":true,"nativeMaxWidth":${render.screenWidth},"nativeMaxHeight":${render.screenHeight},"pagedCapacity":${native.pagedCapacity},"engines":${native.engines},"payloadBytes":${native.payload.map(_.capacityBytes).getOrElse(0)}"""
       else ""
-    val profile = if (twoCuVga) ""","profile":"two-cu-vga60-v1","targetFps":60""" else ""
+    val profile = if (alignmentV2) {
+      val p = NativeAlignmentHostProfile.target
+      s""","profile":"${NativeAlignmentHostProfile.id}","targetFps":60,"integratedHost":true,"transactionsPerCu":${p.transactionsPerCu},"resourceDiscoveryWords":${p.requiredDiscovery.size},"computeFeatureFlags":${p.requiredDiscovery(2)._2},"nativeGeometryDraw":${NativeAlignmentHostProfile.nativeGeometryDraw},"nativeAdvancedBlend":${NativeAlignmentHostProfile.nativeAdvancedBlend},"nativePatchShaderImages":${NativeAlignmentHostProfile.nativePatchShaderImages}"""
+    } else if (twoCuVga) ""","profile":"two-cu-vga60-v1","targetFps":60""" else ""
     val computeUnits = if (twoCuVga) 2 else 4
     Files.writeString(directory.resolve("fixture-manifest.json"),
       s"""{"version":1,"product":$product$capacity$profile,"frameWidth":$width,"frameHeight":$height,"screenWidth":${display.screenWidth},"screenHeight":${display.screenHeight},"computeUnits":$computeUnits,"lanes":16,"warps":8,"axiDataBytes":32,"rtlEmitted":${!fixturesOnly},"scenes":[$ids]}""" + "\n")
@@ -141,6 +160,7 @@ object VerifyCompiledNativeProduct {
   def main(args: Array[String]): Unit = {
     val (product, directory) = CompiledNativeProductFixtures.mode(args)
     val twoCuVga = CompiledNativeProductFixtures.twoCuVga
+    val alignmentV2 = CompiledNativeProductFixtures.alignmentV2
     val (width, height) = CompiledNativeProductFixtures.frameSize(product, twoCuVga)
     for (scene <- NativeProductWorkloads.suite(width, height)) {
       val input = CompiledNativeProductFixtures.input(scene, twoCuVga)
@@ -151,6 +171,9 @@ object VerifyCompiledNativeProduct {
       println(s"NATIVE_COMPILED_IMAGE id=${scene.id} frame=${width}x$height exactStoredImagesAndGuards=true")
     }
     println("NATIVE_COMPILED_PRODUCT PASS scenes=6 fullExecutionAndStorage=true exactStoredImagesAndGuards=true clockQualified=false fpsQualified=false")
-    if (twoCuVga) println("NATIVE_COMPILED_PROFILE profile=two-cu-vga60-v1 computeUnits=2 engines=4 targetFps=60 clockQualified=false fpsQualified=false")
+    if (twoCuVga) {
+      val profile = if (alignmentV2) NativeAlignmentHostProfile.id else "two-cu-vga60-v1"
+      println(s"NATIVE_COMPILED_PROFILE profile=$profile computeUnits=2 engines=4 targetFps=60 clockQualified=false fpsQualified=false")
+    }
   }
 }

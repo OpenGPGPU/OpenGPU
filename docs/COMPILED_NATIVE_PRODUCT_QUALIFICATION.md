@@ -65,6 +65,57 @@ clock, the budget is 16,666,666 service cycles per frame; simulator wall time
 and smoke counts cannot establish FPS. Whole-host timing, full-frame rate and
 the remaining H6–H8 requirements remain open.
 
+## Integrated alignment host v2
+
+`--alignment-v2` selects the separate `two-cu-vga60-v2` host. It implies the
+two-CU/full-capacity guards and is mutually exclusive with `--two-cu-vga`,
+which continues to select the frozen v1 graphics-capacity profile. V1 models
+and results cannot qualify v2.
+
+V2 retains the target dimensions and complete native capacities above. It
+reserves sixteen memory transaction IDs per CU and connects compute images,
+storage, uniforms, textures, atomic counters, image/storage atomics, indirect
+dispatch, native fragment images, visibility/primitive queries, transform
+feedback and the existing native tessellation paths together. Submission
+checks every address and value in 72 distinct discovery words: GCR1, GNC3,
+GCI1, GQV1, GFC1, GQP1 and GUC1. Manifest, metrics, replay guards and the image
+oracle all require the explicit v2 identity and complete discovery contract.
+
+These capabilities describe connected native paths. Ordinary native geometry
+draw admission and native advanced-blend packets remain unavailable, and
+patch shader image routing remains separate work. V2 records
+`nativeGeometryDraw=false`, `nativeAdvancedBlend=false` and
+`nativePatchShaderImages=false`; normal native fragment images remain enabled.
+It does not claim
+GLES conformance or completion of H7/H8.
+
+Local validation passes the target/configuration rejection checks and complete
+FIRRTL conversion of a bounded 4×4 host with the same feature connections,
+two CUs and sixteen transaction IDs per CU. That routine fixture bounds lanes,
+warps, attribute counts and native storage: four lanes, two warps, one native
+engine, eight directory entries and a 4 KiB payload pool. The product factory
+keeps the full capacities listed above.
+All six generated 640×480 product inputs pass the real C++ command and memory
+parsers, including every discovery word. CPU regressions reject mutations of
+each discovery address/value and reject mixed v1/v2 profiles. These checks do
+not establish v2 execution, complete-frame cycles, whole-host timing or FPS.
+
+```sh
+python3 scripts/qualify_native_product_compiled.py --smoke --alignment-v2 \
+  --output "$PWD/.artifacts/alignment-v2-smoke" --jobs 2
+python3 scripts/qualify_native_product_flashsim.py --product --alignment-v2 \
+  --flashsim-dir /path/to/FlashSim \
+  --output "$PWD/.artifacts/alignment-v2-product" --jobs 2
+python3 scripts/test_qualify_native_product_compiled.py
+python3 scripts/test_qualify_equivalent_flashsim_product.py
+python3 scripts/test_qualify_parallel_flashsim_product.py
+sbt -J-Xmx3G 'testOnly opengpu.system.NativeAlignmentHostProfileSpec'
+```
+
+Run the full-model commands only after selecting the final feature source.
+Build, execute and independently verify that source; do not relabel a v1 model
+or a prior feature revision as v2.
+
 ## Reproduce
 
 Initialize the pinned SRAM submodule and install the repository's Scala/C++/Verilator toolchain. Use an absolute output directory under `.artifacts/`:
