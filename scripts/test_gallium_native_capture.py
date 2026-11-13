@@ -77,7 +77,8 @@ def main():
         from apply_mesa_uniform_index_patch import BEFORE, AFTER
         if hashlib.sha256(private.read_bytes()).hexdigest() == BEFORE:
             subprocess.run(['patch', '-p1', '-i', ROOT / 'scripts/patches/mesa-22.3.6-checked-uniform-index.patch'],
-                           cwd=out, check=True, stdout=subprocess.DEVNULL)
+                           cwd=out, check=True, stdout=subprocess.DEVNULL,
+                           env=dict(os.environ, TMPDIR=str(out), PYTHONDONTWRITEBYTECODE='1'))
         if hashlib.sha256(private.read_bytes()).hexdigest() != AFTER:
             raise ValueError('unknown private Mesa lowering source')
         shutil.copy2(private, out / 'nir_lower_io.c')
