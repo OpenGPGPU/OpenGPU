@@ -64,8 +64,10 @@ int main(void)
     put(frame, 74u, ~0u);
     assert(!opengpu_native_advanced_blend_gfs_precheck(frame, sizeof(frame), state, sizeof(state), 1));
     put(frame, 74u, 3u);
-    for (version = 0; version < 5; ++version)
-        for (blend = 0; blend < 5; ++blend)
+    /* This gate owns the new version-3 namespace. All non-3 pairs still use
+     * the caller's prior validation path; a true result is not full admission. */
+    for (version = 0; version < 256; ++version)
+        for (blend = 0; blend < 256; ++blend)
             for (mode = 0; mode < 2; ++mode) {
                 const int expected = version == 3u || blend == 3u ?
                     mode && version == 3u && blend == 3u : 1;

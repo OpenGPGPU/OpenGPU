@@ -1082,7 +1082,7 @@ int main(int argc, char **argv)
                     put(states, version_word, 3); put(states, blend_word, 3);
                     put(states, control_word, (1u << 27) | (15u << 23) | 1u);
                     gpu.hw.native_advanced_blend_transport = false;
-                    for (u32 bad = 0; bad < 7; ++bad) {
+                    for (u32 bad = 0; bad < 11; ++bad) {
                         gpu.hw.native_advanced_blend_transport = bad != 0;
                         if (bad == 1) put(states, version_word, 1);
                         if (bad == 2) put(states, version_word, 2);
@@ -1090,6 +1090,14 @@ int main(int argc, char **argv)
                         if (bad == 4) put(states, control_word, (15u << 28) | (1u << 27) | 1u);
                         if (bad == 5) put(states, type_word, 1);
                         if (bad == 6) put(frame, OPENGPU_NATIVE_ADVANCED_BLEND_FRAME_COLOR_FORMAT0_WORD, 9);
+                        if (bad >= 7) {
+                            static const u32 unknown[][2] = {{3, 0}, {3, 4}, {0, 3}, {4, 3}};
+                            /* Keep the body canonical even for a legacy tag,
+                             * so this rejects unknown versions themselves. */
+                            put(states, control_word, 0);
+                            put(states, version_word, unknown[bad - 7][0]);
+                            put(states, blend_word, unknown[bad - 7][1]);
+                        }
                         assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
                         assert(live_allocations == allocations && pushed == submissions && kicks == executions);
                         assert(!patch_object.refs && !frame_object.refs && context.refs == 1);
