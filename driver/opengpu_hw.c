@@ -595,6 +595,12 @@ int opengpu_hw_init(struct opengpu_device *gpu, struct platform_device *pdev)
             &gpu->hw.native_descriptor_preflight))
         return dev_err_probe(gpu->dev, -EINVAL,
                              "invalid native descriptor preflight record\n");
+    if (!opengpu_read_native_source_limits(id,
+            gpu->hw.compute_resource_flags, gpu->hw.capabilities,
+            gpu->hw.regs_size, gpu, opengpu_mmio_read_callback,
+            &gpu->hw.native_sources))
+        return dev_err_probe(gpu->dev, -EINVAL,
+                             "invalid protected native source profile record\n");
     if (!opengpu_read_compute_local_limits(id, gpu->hw.regs_size,
             gpu->hw.compute_resource_flags, gpu, opengpu_mmio_read_callback,
             &gpu->hw.compute_local_limits))
