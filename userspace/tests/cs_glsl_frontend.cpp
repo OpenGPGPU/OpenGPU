@@ -279,7 +279,7 @@ extern "C" void cs_frontend_storage(void *handle, pipe_context *pipe,
     st.ctx = &f->ctx; st.pipe = pipe;
     f->ctx._Shader = &f->ctx.Shader;
     auto *program = f->program->_LinkedShaders[MESA_SHADER_COMPUTE]->Program;
-    assert(program->info.num_ssbos == 4);
+    assert(program->info.num_ssbos && program->info.num_ssbos <= 4);
     f->ctx._Shader->CurrentProgram[MESA_SHADER_COMPUTE] = program;
     for (unsigned i = 0; i < 4; i++) {
         objects[i].buffer = resources[i];

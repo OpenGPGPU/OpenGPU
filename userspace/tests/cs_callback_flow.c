@@ -288,8 +288,12 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
         unsigned product=p->launch.local[0]*p->launch.local[1]*p->launch.local[2];assert(product && product<=limit_items);
         if(gum) assert(opengpu_compute_shader_validate_words_uniform_resources(
             (uint32_t *)bos[shader->handle].data,shader->size/4,karg->size,product,
-            false,false,false,true,false,false,false,false));
-        else assert(opengpu_compute_shader_validate_words_storage((uint32_t *)bos[shader->handle].data,shader->size/4,karg->size,product,false));
+            false,false,false,true,false,false,
+            !!(features&OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_ATOMICS),false));
+        else assert(opengpu_compute_shader_validate_words_all_resources(
+            (uint32_t *)bos[shader->handle].data,shader->size/4,karg->size,product,
+            false,false,false,true,false,false,
+            !!(features&OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_ATOMICS)));
         assert(!memcmp(bos[karg->handle].data,p->launch.grid,12));
         capture_compute(p,c);
         jobs[s]=(struct job){.live=1,.kind=1,.uniform=!!gum,.context=p->launch.context_id,.compute=*p,.status=status_error? -EIO:0};

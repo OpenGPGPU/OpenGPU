@@ -40,6 +40,7 @@ int pipe_opengpu_screen_compute_limits(const struct pipe_opengpu_screen *screen,
 int pipe_opengpu_screen_compute_shared_limits(const struct pipe_opengpu_screen *screen,
     uint32_t *base, uint32_t *bytes, uint32_t *lanes);
 int pipe_opengpu_screen_compute_uniforms(const struct pipe_opengpu_screen *screen);
+int pipe_opengpu_screen_compute_storage_atomics(const struct pipe_opengpu_screen *screen);
 /* Versioned native transports only; these are not GL/GLES capabilities. */
 int pipe_opengpu_screen_compute_buffer_textures(const struct pipe_opengpu_screen *screen);
 int pipe_opengpu_screen_compute_buffer_images(const struct pipe_opengpu_screen *screen);

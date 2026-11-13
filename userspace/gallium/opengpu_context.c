@@ -4839,6 +4839,7 @@ static void *create_compute_state(struct pipe_context *pipe,
         FREE(cs); errno = EINVAL; return NULL;
     }
     if ((cs->program.textures && !pipe_opengpu_screen_compute_buffer_textures(opengpu_screen_gpu(pipe->screen))) ||
+        (cs->program.storage_atomics && !pipe_opengpu_screen_compute_storage_atomics(opengpu_screen_gpu(pipe->screen))) ||
         ((cs->program.image_reads | cs->program.image_writes | cs->program.image_queries) &&
          !pipe_opengpu_screen_compute_image_backings(opengpu_screen_gpu(pipe->screen)))) {
         FREE(cs); errno = ENOTSUP; return NULL;
@@ -4939,6 +4940,7 @@ static void launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *
     if (!info || !ctx->cs || ctx->cs_binding_error || ctx->cs_sampler_error ||
         ctx->cs_image_error || info->pc || info->input ||
         info->work_dim > 3) goto invalid;
+    if(ctx->cs->program.storage_atomics && !pipe_opengpu_screen_compute_storage_atomics(screen)) goto invalid;
     if (pipe_opengpu_screen_compute_limits(screen, &items, &axis)) goto fail;
     for (i = 0; i < 3; i++) {
         if (info->grid_base[i] || (info->last_block[i] && info->last_block[i] != info->block[i]) ||

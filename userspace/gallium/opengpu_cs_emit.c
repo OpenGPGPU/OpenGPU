@@ -34,6 +34,24 @@ struct build {
     int failed;
 };
 
+/* Existing checked storage word RMW operation IDs, not global pointer AMOs. */
+static int storage_atomic_operation(unsigned op)
+{
+    switch(op) {
+    case TGSI_OPCODE_ATOMXCHG: return 0;
+    case TGSI_OPCODE_ATOMUADD: return 1;
+    case TGSI_OPCODE_ATOMXOR: return 2;
+    case TGSI_OPCODE_ATOMOR: return 3;
+    case TGSI_OPCODE_ATOMAND: return 4;
+    case TGSI_OPCODE_ATOMIMIN: return 5;
+    case TGSI_OPCODE_ATOMIMAX: return 6;
+    case TGSI_OPCODE_ATOMUMIN: return 7;
+    case TGSI_OPCODE_ATOMUMAX: return 8;
+    case TGSI_OPCODE_ATOMCAS: return 9;
+    default: return -1;
+    }
+}
+
 static void word(struct build *b, uint32_t insn)
 {
     if (b->p.words == 512) { b->failed = 1; return; }
@@ -118,7 +136,8 @@ static int packets(const struct tgsi_token *t)
             if ((insn.Label && insn.Opcode != TGSI_OPCODE_UIF && insn.Opcode != TGSI_OPCODE_ELSE) ||
                 insn.Padding || insn.Saturate || (insn.Memory && insn.Texture) ||
                 insn.NumDstRegs > 1 ||
-                insn.NumSrcRegs > (insn.Opcode == TGSI_OPCODE_UCMP ? 3u : 2u)) return -1;
+                insn.NumSrcRegs > (insn.Opcode == TGSI_OPCODE_ATOMCAS ? 4u :
+                    storage_atomic_operation(insn.Opcode) >= 0 || insn.Opcode == TGSI_OPCODE_UCMP ? 3u : 2u)) return -1;
             if (n > end - pos) return -1;
             q = pos + 1;
             if (insn.Label) {
@@ -612,6 +631,30 @@ static int image(struct build *b, const struct tgsi_full_instruction *in)
     return destination(b, d);
 }
 
+static int storage_atomic(struct build *b, const struct tgsi_full_instruction *in, unsigned operation)
+{
+    const struct tgsi_instruction *i=&in->Instruction;
+    const struct tgsi_dst_register *d=&in->Dst[0].Register;
+    const struct tgsi_src_register *resource=&in->Src[0].Register;
+    unsigned binding=(unsigned)resource->Index;
+    if(b->cf || i->NumDstRegs!=1 || i->NumSrcRegs!=(operation==9 ? 4u : 3u) ||
+        d->File!=TGSI_FILE_TEMPORARY || d->WriteMask!=1 || !i->Memory || i->Texture ||
+        in->Memory.Qualifier || in->Memory.Format || in->Memory.Padding ||
+        in->Memory.Texture!=TGSI_TEXTURE_BUFFER || resource->File!=TGSI_FILE_BUFFER ||
+        resource->Index<0 || binding>=4 || !(b->buffers&(1u<<binding))) return -1;
+    /* Preserve every operand before staging native state or overwriting a
+     * destination that aliases a TGSI source. CAS sources are compare,value. */
+    if(source(b,&in->Src[1],0,25) || source(b,&in->Src[operation==9 ? 3 : 2],0,22)) return -1;
+    if(operation==9) { if(source(b,&in->Src[2],0,23))return -1; }
+    else splat(b,23,0);
+    resource_word(b,24,0,0,22,23);
+    splat(b,24,binding);
+    resource_word(b,operation<8 ? 25 : 26,operation%8,26,24,25);
+    b->p.storage_atomics|=1u<<binding;
+    b->p.reads|=1u<<binding;b->p.writes|=1u<<binding;
+    return destination(b,d);
+}
+
 static int instruction(struct build *b, const struct tgsi_full_instruction *in)
 {
     const struct tgsi_instruction *i = &in->Instruction;
@@ -652,24 +695,8 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
     if ((mem || op == TGSI_OPCODE_RESQ) &&
         (op == TGSI_OPCODE_STORE ? d->File : in->Src[0].Register.File) == TGSI_FILE_IMAGE)
         return image(b, in);
-    if ((op == TGSI_OPCODE_ATOMUADD || op == TGSI_OPCODE_ATOMXCHG ||
-         op == TGSI_OPCODE_ATOMCAS || op == TGSI_OPCODE_ATOMAND ||
-         op == TGSI_OPCODE_ATOMOR || op == TGSI_OPCODE_ATOMXOR ||
-         op == TGSI_OPCODE_ATOMUMIN || op == TGSI_OPCODE_ATOMUMAX ||
-         op == TGSI_OPCODE_ATOMIMIN || op == TGSI_OPCODE_ATOMIMAX) &&
-        i->Memory && in->Memory.Texture == TGSI_TEXTURE_BUFFER &&
-        i->NumSrcRegs >= 1 && i->NumDstRegs <= 1 &&
-        in->Src[0].Register.File == TGSI_FILE_MEMORY &&
-        in->Src[0].Register.Index < 4) {
-        binding = in->Src[0].Register.Index;
-        if (!(b->buffers & (1u << binding))) return -1;
-        if (source(b, &in->Src[1], 0, 25)) return -1;
-        splat(b, 24, binding);
-        word(b, vec(0, 4, 23, 10, 25));
-        b->p.counter_reads |= 1u << binding;
-        b->p.counter_writes |= 1u << binding;
-        return destination(b, d);
-    }
+    if(storage_atomic_operation(op)>=0)
+        return storage_atomic(b,in,(unsigned)storage_atomic_operation(op));
     if (i->Texture) return -1;
     if (mem) {
         if ((op == TGSI_OPCODE_LOAD ? in->Src[0].Register.File : d->File) == TGSI_FILE_MEMORY)
