@@ -5,7 +5,8 @@ import chisel3.util._
 import opengpu.core.memory.L2SramArray
 
 case class TypedTileColorConfig(bytes: Int=32768,parallelLanes: Boolean=false,
-    parallelDepth: Boolean=false,nativeSamples: Boolean=false,streamingWordPorts: Int=4) {
+    parallelDepth: Boolean=false,nativeSamples: Boolean=false,streamingWordPorts: Int=4,advancedBlend: Boolean=false) {
+  require(!advancedBlend || !parallelLanes,"advanced blending requires the serial tile owner")
   require(bytes>=1024 && bytes<=65536 && isPow2(bytes))
   require(!parallelDepth || parallelLanes,"parallel depth shares the parallel typed word service")
   require(!nativeSamples || (bytes==32768 && parallelDepth),"native samples share the 32 KiB parallel depth/color policy")
@@ -97,7 +98,7 @@ object TypedTileColorRules {
     d.version=/=1.U || (d.tileLog2=/=3.U && d.tileLog2=/=4.U) || d.sampleMode>2.U || d.tileWidth===0.U || d.tileHeight===0.U ||
       d.tileWidth>edge || d.tileHeight>edge || d.reservedBytes>p.bytes.U || d.reservedBytes(5,0)=/=0.U || !layout || overlap
   }
-  def invalidQuad(input: TypedTileColorQuad,d: TypedTileColorDescriptor): Bool={
+  def invalidQuad(input: TypedTileColorQuad,d: TypedTileColorDescriptor,advancedBlend: Boolean=false): Bool={
     val q=input.quad;val bad=WireDefault(q.identity.asUInt=/=d.identity.asUInt || q.sampleMode=/=d.sampleMode || q.colorSlots>4.U)
     for(c<-0 until 4)when(d.colors(c).enabled && c.U<q.colorSlots && q.colorTypes(c)=/=TypedColorFormat.kind(d.colors(c).format)){bad:=true.B}
     for(l<-0 until 4){val v=q.lanes(l);val x=v.x.pad(33)-d.originX.pad(33);val y=v.y.pad(33)-d.originY.pad(33)
@@ -106,7 +107,11 @@ object TypedTileColorRules {
         (v.colorMask>>q.colorSlots).orR || v.x.pad(33)=/=q.lanes(0).x.pad(33)+(l%2).S || v.y.pad(33)=/=q.lanes(0).y.pad(33)+(l/2).S ||
         (input.samples(l).orR && (x<0.S || y<0.S || x>=d.tileWidth.zext || y>=d.tileHeight.zext))){bad:=true.B}
     }
-    bad || q.lanes(0).x(0) || q.lanes(0).y(0) || TypedBlendState.invalidDraw(input.blend)
+    // Reject unsupported advanced attachment formats before the first write,
+    // even when an earlier MRT would otherwise have been valid.
+    if(advancedBlend)for(c<-0 until 4)when(d.colors(c).enabled && TypedBlendState.advanced(input.blend,c.U) &&
+      TypedColorFormat.kind(d.colors(c).format)=/=0.U){bad:=true.B}
+    bad || q.lanes(0).x(0) || q.lanes(0).y(0) || TypedBlendState.invalidDraw(input.blend,advancedBlend)
   }
 }
 /** Resident raw typed MRT color interface. The late
@@ -157,18 +162,24 @@ private class SerialTypedTileColorStore(p: TypedTileColorConfig,useBlackBoxes: B
   private val writeData=Reg(UInt(64.W));private val writeMask=Reg(UInt(64.W));private val oldData=Reg(UInt(64.W));private val row=Reg(UInt(p.addressBits.W))
   private val quadOwned=RegInit(false.B);private val codecOffered=RegInit(false.B);private val codecPending=RegInit(false.B)
   private val codecRequest=Reg(new TypedColorEncodeRequest);private val codec=Module(new TypedColorEncoder)
-  private val blender=Module(new TypedColorBlend);private val blendOffered=RegInit(false.B);private val blendPending=RegInit(false.B)
+  private val blender=if(p.advancedBlend){
+    val core=Module(new TypedTileBlend)
+    core.advanced:=TypedBlendState.advanced(input.blend,color)
+    core.equation:=TypedBlendState.advancedEquation(input.blend,color)
+    core.io
+  }else Module(new TypedColorBlend).io
+  private val blendOffered=RegInit(false.B);private val blendPending=RegInit(false.B)
   private val destinationWords=Reg(Vec(3,UInt(64.W)));private val blendingRead=RegInit(false.B)
-  private val selectedBlend=TypedBlendState.select(input.blend,color)
-  private val channelMask=descriptor.colors(color).channelMask & TypedBlendState.channelMask(input.blend,color)
+  private val selectedBlend=TypedBlendState.select(input.blend,color,p.advancedBlend)
+  private val channelMask=descriptor.colors(color).channelMask & TypedBlendState.channelMask(input.blend,color,p.advancedBlend)
   private val blendActive=selectedBlend.enable && TypedColorFormat.kind(descriptor.colors(color).format)===0.U
   private val gathered=Cat(destinationWords.reverse)>>(address(2,0)<<3)
-  blender.io.in.valid:=blendOffered;blender.io.in.bits.source:=input.quad.lanes(lane).colors(color)
-  blender.io.in.bits.destination:=gathered(127,0);blender.io.in.bits.format:=descriptor.colors(color).format
-  blender.io.in.bits.state:=selectedBlend;blender.io.in.bits.tag:=color
-  blender.io.out.ready:=blendPending
-  when(blender.io.in.fire){blendOffered:=false.B;blendPending:=true.B}
-  when(blender.io.out.fire){blendPending:=false.B}
+  blender.in.valid:=blendOffered;blender.in.bits.source:=input.quad.lanes(lane).colors(color)
+  blender.in.bits.destination:=gathered(127,0);blender.in.bits.format:=descriptor.colors(color).format
+  blender.in.bits.state:=selectedBlend;blender.in.bits.tag:=color
+  blender.out.ready:=blendPending
+  when(blender.in.fire){blendOffered:=false.B;blendPending:=true.B}
+  when(blender.out.fire){blendPending:=false.B}
   private val refillOffered=RegInit(false.B);private val refillPending=RegInit(false.B)
   private val touched=RegInit(0.U(16.W));private val locations=RegInit(0.U(7.W));private val writes=RegInit(0.U(8.W));private val bits=RegInit(0.U(14.W))
   private val totalQuads=RegInit(0.U(99.W));private val totalWrites=RegInit(0.U(110.W))
@@ -176,7 +187,7 @@ private class SerialTypedTileColorStore(p: TypedTileColorConfig,useBlackBoxes: B
   private val maintenanceOwned=RegInit(false.B)
   private val running=phase=/=State.idle && phase=/=State.complete
   private val stop=passStatus=/=0.U || io.cancel
-  blender.io.cancel:=stop && !blendOffered
+  blender.cancel:=stop && !blendOffered
   private val memoryBanks=Seq.fill((p.words+255)/256)(Module(new L2SramArray(256,64,useBlackBoxes)))
   private val readEnable=WireDefault(false.B);private val writeEnable=WireDefault(false.B)
   private val memoryAddress=WireDefault(row);private val memoryWriteData=WireDefault(writeData)
@@ -254,7 +265,7 @@ private class SerialTypedTileColorStore(p: TypedTileColorConfig,useBlackBoxes: B
         when(io.end.fire){when(!io.end.bits){fail(5.U,0.U)};phase:=State.finish}
       }
       is(State.checkQuad){
-        when(TypedTileColorRules.invalidQuad(input,descriptor)){fail(6.U,0.U);phase:=State.quadDone}
+        when(TypedTileColorRules.invalidQuad(input,descriptor,p.advancedBlend)){fail(6.U,0.U);phase:=State.quadDone}
           .otherwise{lane:=0.U;phase:=State.lane}
       }
       is(State.lane){color:=0.U;phase:=State.nextLocation}
@@ -296,8 +307,8 @@ private class SerialTypedTileColorStore(p: TypedTileColorConfig,useBlackBoxes: B
       is(State.blendGather){destinationWords(word):=oldData
         when(word+1.U===wordCount){phase:=State.blendOffer}.otherwise{word:=word+1.U;phase:=State.blendReadWord}}
       is(State.blendOffer){blendOffered:=true.B;phase:=State.blendWait}
-      is(State.blendWait){when(blender.io.out.fire){assert(blender.io.out.bits.status===0.U)
-        encode(blender.io.out.bits.rgba,descriptor.colors(color).format,channelMask);phase:=State.blendEncode}}
+      is(State.blendWait){when(blender.out.fire){assert(blender.out.bits.status===0.U)
+        encode(blender.out.bits.rgba,descriptor.colors(color).format,channelMask);phase:=State.blendEncode}}
       is(State.blendEncode){when(codec.io.out.fire){assert(codec.io.out.bits.status===0.U)
         encoded:=codec.io.out.bits.value;encodedMask:=codec.io.out.bits.mask;word:=0.U;phase:=State.word}}
       is(State.write){writeEnable:=true.B;memoryWriteData:=(oldData& ~writeMask)|(writeData&writeMask)

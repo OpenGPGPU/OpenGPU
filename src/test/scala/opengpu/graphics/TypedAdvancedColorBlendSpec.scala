@@ -4,13 +4,12 @@ import chisel3._
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
-class TypedAdvancedColorBlendSpec extends AnyFlatSpec {
-  import WindowRecordTest.zero
-  private def bits(v: Float): BigInt=BigInt(java.lang.Float.floatToRawIntBits(v)&0xffffffffL)
+private[graphics] object TypedAdvancedColorBlendReference {
+  def bits(v: Float): BigInt=BigInt(java.lang.Float.floatToRawIntBits(v)&0xffffffffL)
   private def f(b: BigInt): Float=java.lang.Float.intBitsToFloat(b.toInt)
 
   /** Mirrors the hardware micro-operation order exactly. */
-  private def expected(source: Seq[Float],destination: Seq[Float],equation: Int): Seq[BigInt]={
+  def expected(source: Seq[Float],destination: Seq[Float],equation: Int): Seq[BigInt]={
     def unpremultiply(color: Float,alpha: Float): Float=if(alpha==0f)0f else color/alpha
     val as=source(3);val ad=destination(3)
     val mask=0x7fffffffL
@@ -58,6 +57,11 @@ class TypedAdvancedColorBlendSpec extends AnyFlatSpec {
     rgb.toSeq:+bits(alpha)
   }
 
+}
+
+class TypedAdvancedColorBlendSpec extends AnyFlatSpec {
+  import WindowRecordTest.zero
+  import TypedAdvancedColorBlendReference.{bits,expected}
   behavior of "TypedAdvancedColorBlend"
   it should "evaluate every supported separable equation with KHR premultiplied composition" in {
     simulate(new TypedAdvancedColorBlend) { d =>

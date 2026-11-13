@@ -11,15 +11,18 @@ import opengpu.core.execute.fpu.{Fp32FmaLane,Fp32Operation,Fp32Request}
 class TypedBlendState extends Bundle {
   val enable=Bool();val version=UInt(8.W);val srcRGB=UInt(4.W);val dstRGB=UInt(4.W);val srcAlpha=UInt(4.W);val dstAlpha=UInt(4.W)
   val equationRGB=UInt(3.W);val equationAlpha=UInt(3.W);val constant=Vec(4,UInt(32.W))
-  /** Version 2 selects four packed draw-buffer controls. Blend color remains
-    * shared, as in GLES; scalar arithmetic receives a resolved version 1 state.
+  /** Version 2 selects four packed draw-buffer controls. Internal version 3
+    * adds advanced equations only at an explicitly enabled serial tile owner.
+    * Blend color remains shared; scalar arithmetic receives version 1 state.
     */
   val buffers=Vec(4,UInt(32.W))
 }
 object TypedBlendState {
   val indexedVersion=2
+  /** Internal opt-in tile state; never a native draw-packet version. */
+  val advancedIndexedVersion=3
   def legalDrawVersion(version: UInt,s: TypedBlendState): Bool=
-    (version===1.U && s.version=/=indexedVersion.U) || (version===2.U && s.version===indexedVersion.U)
+    (version===1.U && s.version=/=indexedVersion.U && s.version=/=advancedIndexedVersion.U) || (version===2.U && s.version===indexedVersion.U)
   def header(prefix: String): String={
     val result=new StringBuilder
     result.append(NativeDrawBufferBlendCapabilities.header(prefix))
@@ -33,20 +36,26 @@ object TypedBlendState {
     result.toString
   }
   // Bit 0: enable; four 4-bit factors at 1/5/9/13; RGB/alpha equations
-  // at 17/20; component write mask at 23. Bits 27..31 are reserved.
-  def invalid(s: TypedBlendState): Bool=s.buffers.asUInt.orR || s.version===indexedVersion.U ||
+  // at 17/20; component write mask at 23. Version 2 reserves bits 27..31.
+  // Internal version 3 uses bit 27 for advanced and bits 31:28 for its id.
+  def invalid(s: TypedBlendState): Bool=s.buffers.asUInt.orR || (s.version===indexedVersion.U || s.version===advancedIndexedVersion.U) ||
     (s.enable && (s.version=/=1.U || s.srcRGB>14.U || s.dstRGB>14.U || s.srcAlpha>14.U || s.dstAlpha>14.U ||
       s.equationRGB>4.U || s.equationAlpha>4.U))
-  def invalidDraw(s: TypedBlendState): Bool={
+  def invalidDraw(s: TypedBlendState,advanced: Boolean=false): Bool={
     val controls=s.buffers.map(w=>w(31,27).orR || w(4,1)>14.U || w(8,5)>14.U ||
       w(12,9)>14.U || w(16,13)>14.U || w(19,17)>4.U || w(22,20)>4.U).reduce(_ || _)
     val shared=s.enable || s.srcRGB.orR || s.dstRGB.orR || s.srcAlpha.orR || s.dstAlpha.orR ||
       s.equationRGB.orR || s.equationAlpha.orR
-    Mux(s.version===indexedVersion.U,shared || controls,invalid(s))
+    val extended=s.buffers.map{w=>
+      val ordinary=w(4,1)>14.U || w(8,5)>14.U || w(12,9)>14.U || w(16,13)>14.U || w(19,17)>4.U || w(22,20)>4.U
+      Mux(w(27),!w(0) || w(22,1).orR || w(31,28)>14.U,w(31,28).orR || ordinary)
+    }.reduce(_ || _)
+    Mux(s.version===advancedIndexedVersion.U,(!advanced).B || shared || extended,
+      Mux(s.version===indexedVersion.U,shared || controls,invalid(s)))
   }
-  def select(s: TypedBlendState,location: UInt): TypedBlendState={
+  def select(s: TypedBlendState,location: UInt,advanced: Boolean=false): TypedBlendState={
     val result=WireDefault(s);result.buffers:=0.U.asTypeOf(result.buffers)
-    when(s.version===indexedVersion.U){
+    when(s.version===indexedVersion.U || (advanced.B && s.version===advancedIndexedVersion.U)){
       val w=s.buffers(location)
       result.version:=1.U;result.enable:=w(0);result.srcRGB:=w(4,1);result.dstRGB:=w(8,5)
       result.srcAlpha:=w(12,9);result.dstAlpha:=w(16,13)
@@ -54,8 +63,10 @@ object TypedBlendState {
     }
     result
   }
-  def channelMask(s: TypedBlendState,location: UInt): UInt=
-    Mux(s.version===indexedVersion.U,s.buffers(location)(26,23),15.U(4.W))
+  def channelMask(s: TypedBlendState,location: UInt,advanced: Boolean=false): UInt=
+    Mux(s.version===indexedVersion.U || (advanced.B && s.version===advancedIndexedVersion.U),s.buffers(location)(26,23),15.U(4.W))
+  def advanced(s: TypedBlendState,location: UInt): Bool=s.version===advancedIndexedVersion.U && s.buffers(location)(27)
+  def advancedEquation(s: TypedBlendState,location: UInt): UInt=s.buffers(location)(31,28)
   def clamp(x: UInt): UInt=Mux(x(31) || Fp32ViewportState.nan(x),0.U,Mux(x>"h3f800000".U,"h3f800000".U,x))
   def minimum(a: UInt,b: UInt,maximum: Bool=false.B): UInt={
     val bothZero= !a(30,0).orR && !b(30,0).orR

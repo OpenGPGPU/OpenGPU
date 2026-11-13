@@ -1,7 +1,8 @@
 # Advanced blend equations
 
-Status: standalone integrated component with directed tests on local main.
-It is not wired into the typed blend owner or an API path.
+Status: the serialized service and an opt-in serial typed tile storage path
+have directed tests. The native render pipeline, parallel tile implementation
+and driver/API exposure remain open.
 
 `TypedAdvancedColorBlend` evaluates every separable
 `KHR_blend_equation_advanced` mode on premultiplied source and destination
@@ -129,7 +130,72 @@ backpressure until it completes. Reserved command codes are rejected. One
 directed case covers early draw release, barrier waiting, backpressure and
 reserved codes (`BLEND_BARRIER`).
 
+## Typed tile storage integration
+
+`TypedTileColorConfig(advancedBlend=true)` connects packed destination gather,
+`TypedTileBlend`, the existing typed encoder and the serial tile word writer.
+The option requires the serial owner; the default parallel/native capacities
+and throughput configuration are unchanged. Destination decode linearizes sRGB
+RGB channels before blending; the store encodes the linear result back to sRGB
+and applies attachment and indexed component masks. Each selected MSAA sample
+uses its own resident or refilled destination. It does not resolve samples.
+
+This internal tile interface uses `TypedBlendState.version=3`. Each buffer
+retains version 2's bits 0..26, adds advanced enable at bit 27 and the equation
+id 0..14 at bits 31..28. An advanced buffer requires blend enable, zero ordinary
+factors/equations and a non-integer attachment. Non-advanced buffers retain
+ordinary factor/equation semantics and require bits 31..27 zero. Shared enable,
+factors and equations must be zero; blend constants remain shared. Integer
+advanced attachments and malformed controls are rejected for the entire quad
+before its first write, including when an earlier MRT would otherwise be legal.
+
+Version 3 is **not a native draw packet ABI**. Ordinary descriptor validation,
+scalar selection and all native draw versions reject it; only the explicitly
+enabled serial tile owner accepts and resolves it. Version 2 keeps its reserved
+high-bit checks. Native/render-pipeline admission and discovery advertise no new
+capability.
+
+A quad retains its state through gather, arithmetic, encode and masked writes.
+Cancellation drains offered reads and child arithmetic and suppresses new
+writes; already committed prefix writes are not rolled back. Held quad results
+remain immutable. End-of-tile admission waits until the quad result retires, so
+it cannot overtake arithmetic, packing or word writes. This storage ordering is
+not yet a native `glBlendBarrier` command path.
+
+`AdvancedTypedTileColorStoreSpec` passes three cases: internal-only admission;
+all fifteen equations across RGBA8, SRGB8_ALPHA8, RGBA16F and RGBA32F in four
+MRTs with 4x storage, distinct destinations for selected samples 0 and 2,
+independent ordinary blending, masks and exact uncovered-sample/neighbor
+preservation; and integer/invalid-state rejection, cold-refill and arithmetic
+cancellation, refill faults and healthy reuse. Each successful quad checks ten
+word writes, 352 written bits, eight completed locations and two touched
+samples against the final stored words. The fifteen equation groups finish in
+4,506–12,570 clocks per quad before result backpressure; these are eight
+serialized blends per quad, not a frame-rate qualification. The 100,000-clock
+test bound covers eight owners of fewer than 128 arithmetic steps each,
+27-iteration divide/sqrt lanes (under 64 clocks including setup/retirement),
+and tile codec/ownership overhead. Ordinary store tests retain their existing
+10,000-clock wait bound. The ordinary 36-format blend and cancellation tests,
+plus indexed MRT serial/four-port/eight-port stores and native sample-packet
+selection, also pass with their original images and semantics.
+
+The source filter bounds local test compilation to the selected suites and
+their actual shared fixtures; it does not change CI selection.
+
+```sh
+sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'set Test / sources := (Test / sources).value.filter(f => Set("GpuSim.scala", "WindowPrimitiveRecordsSpec.scala", "TypedColorFormatSpec.scala", "TypedColorBlendSpec.scala", "TypedAdvancedColorBlendSpec.scala", "TypedAdvancedHslBlendSpec.scala", "TypedBlendServiceSpec.scala", "TypedTileColorStoreSpec.scala", "IndexedDrawBufferBlendSpec.scala").contains(f.getName))' \
+  'testOnly opengpu.graphics.TypedBlendServiceSpec opengpu.graphics.AdvancedTypedTileColorStoreSpec opengpu.graphics.IndexedDrawBufferBlendSpec' \
+  'testOnly opengpu.graphics.TypedTileColorStoreSpec -- -z blend'
+python3 scripts/test_changed_test_suites.py
+python3 scripts/test_test_selection.py
+```
+
 ## Remaining work
 
-sRGB-aware blending, the extension's precision and clamp rules, tile/render
-pipeline hookup, driver/API exposure and product qualification remain open.
+The extension's complete precision/clamp rules and format coverage, parallel
+and native tile/render-pipeline admission, native blend-barrier ordering,
+driver/API exposure, physical timing and product qualification remain open.
+This bounded serial integration does not close H8.
