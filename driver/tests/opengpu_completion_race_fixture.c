@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <time.h>
 #include "opengpu_tessellation_completion.h"
+#include "opengpu_native_completion.h"
 #include "gpu_abi.h"
 #include "opengpu_unified_completion.h"
 typedef uint64_t u64;
@@ -36,7 +37,12 @@ struct opengpu_device {
         u32 unified_completion_delay_ms, active_completion_delay_ms;
         unsigned int aborting;
         u64 unified_expected_bytes;
+        void *native_pending_owner;
+        struct { bool available; } native_sources;
+        u32 native_context, native_pass, native_generation;
         struct {
+            bool native_valid;
+            struct opengpu_native_completion native;
             bool tessellation_valid;
             struct opengpu_tessellation_completion tessellation;
         } last_fault;
@@ -47,7 +53,8 @@ struct opengpu_device {
     u32 completion_override;
     u64 completion_data;
     u32 recorded_fault_flags;
-    u32 words[12];
+    u32 words[12], native_words[12];
+    unsigned native_reads;
 };
 
 static u32 opengpu_reg_read(struct opengpu_device *g, u32 reg)
@@ -68,6 +75,13 @@ static u32 opengpu_reg_read(struct opengpu_device *g, u32 reg)
         return (u32)g->completion_data;
     if (reg == GPU_REG_UCMD_COMPLETION_BYTES_HI)
         return (u32)(g->completion_data >> 32);
+    if (g->hw.unified_opcode == GPU_UCMD_OP_NATIVE_BINNED_RENDER &&
+        reg >= OPENGPU_NATIVE_BINNED_COMPLETION_BASE &&
+        reg < OPENGPU_NATIVE_BINNED_COMPLETION_BASE + 48) {
+        assert(atomic_load(&g->slot));
+        ++g->native_reads;
+        return g->native_words[(reg - OPENGPU_NATIVE_BINNED_COMPLETION_BASE) / 4];
+    }
     if (reg >= 0x180 && reg < 0x1b0) {
         if (!atomic_load(&g->slot))
             atomic_fetch_add(&g->reads_after_pop, 1);
@@ -105,6 +119,7 @@ static void opengpu_hw_record_fault_locked(struct opengpu_device *g, int error,
     (void)error; (void)actual_id; (void)opcode; (void)expected_id;
     (void)expected_opcode; (void)status; (void)processed; (void)expected;
     g->hw.last_fault.tessellation_valid = false;
+    g->hw.last_fault.native_valid = false;
     g->recorded_fault_flags = flags;
 }
 static void dma_fence_set_error(struct dma_fence *f, int error) { f->error = error; }
@@ -161,6 +176,50 @@ static void *run(void *arg)
 
 int main(void)
 {
+    /* This is the production drain body, including its held-slot lock and POP.
+     * A native source-profile owner is necessary even on a large aperture. */
+    for (unsigned scenario = 0; scenario < 11; ++scenario) {
+        struct opengpu_device g = {0}; struct dma_fence f = {0};
+        assert(!pthread_mutex_init(&g.hw.fence_lock, NULL));
+        g.hw.capabilities = GPU_CAP_UNIFIED_COMMANDS;
+        g.hw.regs_size = 0x500;
+        g.hw.unified_fence = &f; g.hw.unified_command_id = 17;
+        g.hw.unified_opcode = GPU_UCMD_OP_NATIVE_BINNED_RENDER;
+        g.hw.native_pending_owner = &g;
+        g.hw.native_sources.available = true;
+        g.hw.native_context = 7; g.hw.native_pass = 8; g.hw.native_generation = 9;
+        g.native_words[0] = OPENGPU_NATIVE_BINNED_COMPLETION_MAGIC;
+        g.native_words[6] = 7; g.native_words[7] = 8; g.native_words[8] = 9;
+        g.completion_override = 17u | (7u << 8) | (1u << 15);
+        g.completion_data = 128;
+        if (scenario == 1) g.hw.native_pending_owner = NULL; /* old GBJ */
+        if (scenario == 2) g.hw.native_sources.available = false;
+        if (scenario == 3) g.native_words[8] = 10; /* wrong generation */
+        if (scenario == 4) g.completion_data = 65;
+        if (scenario == 5) { /* legal early error can have no decoded identity */
+            g.completion_override = 17u | (7u << 8) | (3u << 11);
+            g.native_words[1] = 3; g.native_words[6] = g.native_words[7] = g.native_words[8] = 0;
+        }
+        if (scenario == 6) g.completion_override = 18u | (7u << 8) | (1u << 15);
+        if (scenario == 7) g.hw.regs_size = OPENGPU_NATIVE_BINNED_COMPLETION_BASE + 44;
+        if (scenario == 8) { g.hw.native_pending_owner = NULL; g.completion_data = 0; }
+        if (scenario == 9) g.native_words[11] = 1;
+        if (scenario == 10) g.completion_data = 1ULL << 33; /* bounded scan+execution telemetry */
+        atomic_store(&g.slot, 1);
+        assert(opengpu_hw_unified_drain(&g));
+        bool success = scenario == 0 || scenario == 8 || scenario == 10;
+        if (f.error != (success ? 0 : -EIO) || f.signals != 1 || f.puts != 1)
+            fprintf(stderr,"native scenario=%u error=%d flags=%u reads=%u signals=%d puts=%d\n",scenario,f.error,g.recorded_fault_flags,g.native_reads,f.signals,f.puts);
+        assert(f.error == (success ? 0 : -EIO) && f.signals == 1 && f.puts == 1);
+        unsigned reads = scenario == 1 || scenario == 2 || scenario == 4 || scenario == 6 ||
+            scenario == 7 || scenario == 8 ? 0 : 12;
+        assert(g.native_reads == reads && atomic_load(&g.pops) == 1);
+        assert(!g.hw.native_pending_owner && !opengpu_hw_unified_drain(&g));
+        assert(g.hw.last_fault.native_valid == (scenario == 5));
+        if (scenario == 5) assert(g.hw.last_fault.native.append_read_bytes == 128 &&
+            g.hw.last_fault.native.info.words[1] == 3);
+        assert(!pthread_mutex_destroy(&g.hw.fence_lock));
+    }
     /* Actual completion drain: successful visibility queries carry flags in
      * the bytes window, unlike ordinary DMA byte counts. */
     for (u32 opcode = GPU_UCMD_OP_QUERY_BEGIN; opcode <= GPU_UCMD_OP_QUERY_RESULT; opcode++) {
@@ -264,7 +323,8 @@ int main(void)
         assert(f.error == (cancel ? -ECANCELED : success ? 0 : -EIO));
         assert(pthread_mutex_destroy(&g.hw.fence_lock) == 0);
     }
-    for (int i = 0; i < 64; i++) {
+    for (int i = 0; i < 128; i++) {
+        bool native = i >= 64;
         struct opengpu_device g = {0};
         struct dma_fence f = {0};
         pthread_t a, b;
@@ -276,8 +336,14 @@ int main(void)
         g.hw.regs_size = 0x1b0;
         g.hw.unified_fence = &f;
         g.hw.unified_command_id = 17;
-        g.hw.unified_opcode = 15;
-        g.hw.unified_completion_delay_ms = i >= 32 ? 50 : 0;
+        g.hw.unified_opcode = native ? 7 : 15;
+        g.hw.unified_completion_delay_ms = (i % 64) >= 32 ? 50 : 0;
+        if (native) {
+            g.hw.native_pending_owner = &g; g.hw.native_sources.available = true;
+            g.native_words[0] = OPENGPU_NATIVE_BINNED_COMPLETION_MAGIC;
+            g.native_words[1] = 3; g.native_words[6] = 42;
+            g.completion_override = 17u | (7u << 8) | (3u << 11);
+        }
         g.words[0] = OPENGPU_NATIVE_TESSELLATION_COMPLETION_MAGIC;
         g.words[1] = 3;
         g.words[6] = 42;
@@ -290,16 +356,17 @@ int main(void)
         assert(pthread_join(a, NULL) == 0);
         assert(pthread_join(b, NULL) == 0);
         if (g.hw.active_fence) {
-            assert(i >= 32 && !y.abort && f.signals == 0 && f.puts == 0);
+            assert((i % 64) >= 32 && !y.abort && f.signals == 0 && f.puts == 0);
             assert(__atomic_load_n(&g.hw.completion_work, __ATOMIC_SEQ_CST) == 50);
             opengpu_hw_complete(&g, 0);
         }
+        bool captured = native ? (g.hw.last_fault.native_valid &&
+            g.hw.last_fault.native.info.words[6] == 42) :
+            (g.hw.last_fault.tessellation_valid && g.hw.last_fault.tessellation.context == 42);
         if (atomic_load(&g.pops) != 1 || atomic_load(&g.reads_after_pop) != 0 ||
             f.signals != 1 || f.puts != 1 || f.error == 0 ||
-            (!y.abort && (!g.hw.last_fault.tessellation_valid ||
-                          g.hw.last_fault.tessellation.context != 42 || x.result == y.result)) ||
-            (y.abort && x.result && (!g.hw.last_fault.tessellation_valid ||
-                                      g.hw.last_fault.tessellation.context != 42))) {
+            (!y.abort && (!captured || x.result == y.result)) ||
+            (y.abort && x.result && !captured)) {
             fprintf(stderr, "FAIL pops=%d reads_after_pop=%d signals=%d puts=%d snapshot=%d results=%d,%d\n",
                 atomic_load(&g.pops), atomic_load(&g.reads_after_pop), f.signals,
                 f.puts, g.hw.last_fault.tessellation_valid, x.result, y.result);

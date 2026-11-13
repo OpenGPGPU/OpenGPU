@@ -19,6 +19,7 @@ def main():
     print("buffer view UAPI layout, complete ranges and request builders: PASS", flush=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_storage_binding.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_private_snapshot.py")], check=True)
+    subprocess.run([sys.executable, str(ROOT / "scripts/test_native_program_snapshot.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_native_completion.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_tessellation_schedule.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/generate_compute_texture_format_info.py"), "--check"], check=True)
