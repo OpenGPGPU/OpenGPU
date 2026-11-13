@@ -171,6 +171,95 @@ static struct opengpu_private_snapshot *new_owner(struct opengpu_device *gpu,
     return owner;
 }
 
+static void resource_owner_test(struct opengpu_device *gpu,
+                                struct opengpu_render_context *context)
+{
+    struct opengpu_buffer first={0}, last={0};
+    struct opengpu_private_snapshot *owner;
+    struct snapshot_resource *resource;
+    u32 metadata, id, value, address;
+    unsigned char descriptor[64]={0};
+    u32 *leaf, saved;
+    int allocations;
+    assert(!opengpu_buffer_alloc(gpu,&first,MMU_PAGE_SIZE));
+    assert(!opengpu_buffer_alloc(gpu,&last,MMU_PAGE_SIZE));
+    memset(first.cpu,0x71,first.size);memset(last.cpu,0x39,last.size);
+    owner=opengpu_private_snapshot_create(gpu,context);assert(!IS_ERR(owner));
+    assert(!opengpu_private_snapshot_append(owner,descriptor,sizeof(descriptor),&metadata));
+    assert(!opengpu_private_snapshot_resource(owner,4*MMU_PAGE_SIZE,&id));
+    assert(!opengpu_private_snapshot_resource_map(owner,id,0,first.dma,first.size,true));
+    assert(!opengpu_private_snapshot_resource_map(owner,id,3*MMU_PAGE_SIZE,last.dma,last.size,false));
+    assert(opengpu_private_snapshot_resource_map(owner,id,0,last.dma,last.size,false)==-EINVAL);
+    assert(opengpu_private_snapshot_resource_map(owner,id,1,last.dma,last.size,false)==-EINVAL);
+    assert(opengpu_private_snapshot_resource_map(owner,id,4*MMU_PAGE_SIZE,last.dma,last.size,false)==-ERANGE);
+    assert(opengpu_private_snapshot_resource_map(owner,id,0,1ULL<<32,last.size,false)==-EINVAL);
+    assert(!opengpu_private_snapshot_relocate_resource(owner,metadata,0,id,64,OPENGPU_PRIVATE_SNAPSHOT_VA32));
+    assert(!opengpu_private_snapshot_relocate_resource(owner,metadata,4,id,4*MMU_PAGE_SIZE,OPENGPU_PRIVATE_SNAPSHOT_LIMIT33));
+    assert(opengpu_private_snapshot_relocate_resource(owner,metadata,8,id,0,OPENGPU_PRIVATE_SNAPSHOT_VA32)==-EINVAL);
+    assert(!context->vm.reservations && !gpu->mmu.snapshot_leases);
+    // No DMA-backed descriptor or mapping exists while producer waits run.
+    assert(!opengpu_hw_snapshot_submission_lock(gpu));mutex_unlock(&gpu->hw.submit_lock);
+    assert(!opengpu_private_snapshot_prepare(owner));
+    assert(!opengpu_private_snapshot_publish(owner));
+    resource=owner->resources;address=(u32)resource->reservation.va;
+    assert(!opengpu_private_snapshot_read32(owner,metadata,0,&value) && value==address+64);
+    assert(!opengpu_private_snapshot_read32(owner,metadata,4,&value) && value==address+4*MMU_PAGE_SIZE);
+    assert(!opengpu_private_snapshot_read32(owner,metadata,8,&value) && !value);
+    assert(opengpu_mmu_vm_map(gpu,&context->vm,address+MMU_PAGE_SIZE,last.dma,last.size,2)==-EACCES);
+    assert(opengpu_mmu_vm_unmap(gpu,&context->vm,address,MMU_PAGE_SIZE)==-EACCES);
+    mutex_lock(&gpu->hw.submit_lock);
+    assert(!opengpu_private_snapshot_verify_locked(owner,gpu,context));
+    leaf=&((u32 *)vm_live_l1(&context->vm,address/MMU_SUPERPAGE_SIZE)->cpu)
+         [(address%MMU_SUPERPAGE_SIZE)/MMU_PAGE_SIZE];
+    saved=*leaf;*leaf|=MMU_PTE_X;
+    assert(opengpu_private_snapshot_verify_locked(owner,gpu,context)==-EACCES);*leaf=saved;
+    *leaf^=1u<<MMU_PTE_POLICY_SHIFT;
+    assert(opengpu_private_snapshot_verify_locked(owner,gpu,context)==-EACCES);*leaf=saved;
+    *leaf^=MMU_PTE_W;
+    assert(opengpu_private_snapshot_verify_locked(owner,gpu,context)==-EACCES);*leaf=saved;
+    assert(!opengpu_private_snapshot_verify_locked(owner,gpu,context));
+    mutex_unlock(&gpu->hw.submit_lock);
+    // A resource revoke fault keeps every descriptor PA lease, allocation and
+    // context; no borrowed original GEM is ever freed by the private owner.
+    assert(!opengpu_mmu_snapshot_unmap(gpu,&owner->segments->lease));owner->segments->mapped=false;
+    allocations=live_allocations;asid_flush_failures=1;
+    assert(opengpu_private_snapshot_retire(owner)==-EIO);
+    assert(gpu->hw.wedged && gpu->mmu.snapshot_leases && context->references==2);
+    assert(context->vm.reservations && allocations==live_allocations);
+    assert(((unsigned char *)first.cpu)[0]==0x71 && ((unsigned char *)last.cpu)[0]==0x39);
+    gpu->hw.wedged=false;
+    assert(!opengpu_private_snapshot_retire(owner));
+    assert(!context->vm.reservations && !gpu->mmu.snapshot_leases && context->references==1);
+    assert(((unsigned char *)first.cpu)[0]==0x71 && ((unsigned char *)last.cpu)[0]==0x39);
+    // Map failure has no publication and rolls back the full envelope on retire.
+    owner=opengpu_private_snapshot_create(gpu,context);assert(!IS_ERR(owner));
+    assert(!opengpu_private_snapshot_append(owner,descriptor,sizeof(descriptor),&metadata));
+    assert(!opengpu_private_snapshot_resource(owner,4*MMU_PAGE_SIZE,&id));
+    assert(!opengpu_private_snapshot_resource_map(owner,id,3*MMU_PAGE_SIZE,last.dma,last.size,false));
+    mmu_fail_private_maps=1;
+    assert(opengpu_private_snapshot_prepare(owner)==-ENOMEM);
+    assert(context->vm.reservations && !gpu->mmu.snapshot_leases);
+    assert(!opengpu_private_snapshot_retire(owner));
+    assert(!context->vm.reservations && context->references==1);
+    // Cancellation before prepare leaves all GPU and VA state untouched.
+    owner=opengpu_private_snapshot_create(gpu,context);assert(!IS_ERR(owner));
+    assert(!opengpu_private_snapshot_append(owner,descriptor,sizeof(descriptor),&metadata));
+    assert(!opengpu_private_snapshot_resource(owner,4*MMU_PAGE_SIZE,&id));
+    assert(!opengpu_private_snapshot_resource_map(owner,id,0,first.dma,first.size,true));
+    idle_error=-ETIMEDOUT;assert(!opengpu_private_snapshot_retire(owner));idle_error=0;
+    assert(!context->vm.reservations && !gpu->mmu.snapshot_leases && context->references==1);
+    // Reuse the same real original pages with a new owner and full mappings.
+    owner=opengpu_private_snapshot_create(gpu,context);assert(!IS_ERR(owner));
+    assert(!opengpu_private_snapshot_append(owner,descriptor,sizeof(descriptor),&metadata));
+    assert(!opengpu_private_snapshot_resource(owner,4*MMU_PAGE_SIZE,&id));
+    assert(!opengpu_private_snapshot_resource_map(owner,id,0,first.dma,first.size,true));
+    assert(!opengpu_private_snapshot_prepare(owner));assert(!opengpu_private_snapshot_publish(owner));
+    mutex_lock(&gpu->hw.submit_lock);assert(!opengpu_private_snapshot_verify_locked(owner,gpu,context));mutex_unlock(&gpu->hw.submit_lock);
+    assert(!opengpu_private_snapshot_retire(owner));
+    opengpu_buffer_free(gpu,&last);opengpu_buffer_free(gpu,&first);
+    puts("private native resources: real RO/RW NX leaves, reserved gaps, metadata relocation, revoke quarantine/cancel and reuse PASS (C only)");
+}
+
 int main(void)
 {
     struct opengpu_device gpu = {0};
@@ -297,6 +386,7 @@ int main(void)
     assert(!opengpu_private_snapshot_retire(owner));
     assert(context.references == 1 && !gpu.mmu.snapshot_leases);
     uniform_snapshot_test(&gpu, &context);
+    resource_owner_test(&gpu, &context);
     opengpu_mmu_vm_destroy(&gpu, &attacker);
     opengpu_mmu_vm_destroy(&gpu, &context.vm);
     opengpu_mmu_fini(&gpu);

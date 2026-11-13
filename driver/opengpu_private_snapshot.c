@@ -26,9 +26,25 @@ struct snapshot_segment {
 struct snapshot_relocation {
     struct snapshot_relocation *next;
     struct snapshot_segment *source, *target;
+    struct snapshot_resource *resource;
     size_t offset;
     u64 addend;
     enum opengpu_private_snapshot_relocation kind;
+};
+
+struct snapshot_resource_map {
+    struct snapshot_resource_map *next;
+    size_t offset, bytes;
+    dma_addr_t physical;
+    bool writable, mapped;
+};
+
+struct snapshot_resource {
+    struct snapshot_resource *next;
+    struct opengpu_vm_reservation reservation;
+    struct snapshot_resource_map *maps;
+    size_t bytes;
+    u32 id;
 };
 
 struct opengpu_private_snapshot {
@@ -36,9 +52,65 @@ struct opengpu_private_snapshot {
     struct opengpu_render_context *context;
     struct snapshot_segment *segments, **tail;
     struct snapshot_relocation *relocations;
+    struct snapshot_resource *resources;
     enum snapshot_phase phase;
-    u32 count;
+    u32 count, resource_count;
 };
+
+static struct snapshot_resource *snapshot_resource_find(
+    const struct opengpu_private_snapshot *owner, u32 id)
+{
+    struct snapshot_resource *resource;
+    for (resource = owner->resources; resource && resource->id != id;
+         resource = resource->next)
+        ;
+    return resource;
+}
+
+int opengpu_private_snapshot_resource(struct opengpu_private_snapshot *owner,
+    size_t bytes, u32 *id)
+{
+    struct snapshot_resource *resource;
+    if (!owner || owner->phase != SNAPSHOT_BUILD || !id || !bytes ||
+        (bytes & (OPENGPU_MMU_PAGE_SIZE - 1u)) ||
+        (u64)bytes > (1ULL << 32) - OPENGPU_MMU_PAGE_SIZE ||
+        owner->resource_count == (u32)~0u)
+        return -EINVAL;
+    resource = kzalloc(sizeof(*resource), GFP_KERNEL);
+    if (!resource)
+        return -ENOMEM;
+    resource->bytes = bytes;
+    resource->id = owner->resource_count++;
+    resource->next = owner->resources;
+    owner->resources = resource;
+    *id = resource->id;
+    return 0;
+}
+
+int opengpu_private_snapshot_resource_map(struct opengpu_private_snapshot *owner,
+    u32 id, size_t offset, u64 physical, size_t bytes, bool writable)
+{
+    struct snapshot_resource *resource;
+    struct snapshot_resource_map *map, *other;
+    if (!owner || owner->phase != SNAPSHOT_BUILD || !bytes ||
+        ((offset | physical | bytes) & (OPENGPU_MMU_PAGE_SIZE - 1u)) ||
+        (u64)bytes > (1ULL << 32) || physical > (1ULL << 32) - bytes)
+        return -EINVAL;
+    resource = snapshot_resource_find(owner, id);
+    if (!resource || offset > resource->bytes || bytes > resource->bytes - offset)
+        return -ERANGE;
+    for (other = resource->maps; other; other = other->next)
+        if (offset < other->offset + other->bytes && other->offset < offset + bytes)
+            return -EINVAL;
+    map = kzalloc(sizeof(*map), GFP_KERNEL);
+    if (!map)
+        return -ENOMEM;
+    map->offset = offset; map->bytes = bytes; map->physical = physical;
+    map->writable = writable;
+    map->next = resource->maps;
+    resource->maps = map;
+    return 0;
+}
 
 static struct snapshot_segment *snapshot_segment_find(
     const struct opengpu_private_snapshot *owner, u32 id)
@@ -57,7 +129,8 @@ static void snapshot_put32(unsigned char *p, u32 value)
 
 static int snapshot_apply_relocation(const struct snapshot_relocation *relocation)
 {
-    u64 value = (u64)relocation->target->va + relocation->addend;
+    u64 value = (relocation->resource ? (u64)relocation->resource->reservation.va :
+                 (u64)relocation->target->va) + relocation->addend;
     unsigned char *p = (unsigned char *)relocation->source->backing.cpu + relocation->offset;
     if (value > (1ULL << 32) ||
         (value == (1ULL << 32) && relocation->kind == OPENGPU_PRIVATE_SNAPSHOT_VA32))
@@ -157,21 +230,23 @@ int opengpu_private_snapshot_read32(const struct opengpu_private_snapshot *owner
     return 0;
 }
 
-int opengpu_private_snapshot_relocate(struct opengpu_private_snapshot *owner,
+static int snapshot_relocate(struct opengpu_private_snapshot *owner,
     u32 source_id, size_t offset, u32 target_id, u64 addend,
-    enum opengpu_private_snapshot_relocation kind)
+    enum opengpu_private_snapshot_relocation kind, bool external)
 {
     struct snapshot_segment *source, *target;
+    struct snapshot_resource *resource;
     struct snapshot_relocation *relocation, *other;
     size_t width;
     if (!owner || owner->phase != SNAPSHOT_BUILD || (offset & 3u) ||
         (kind != OPENGPU_PRIVATE_SNAPSHOT_VA32 && kind != OPENGPU_PRIVATE_SNAPSHOT_LIMIT33))
         return -EINVAL;
     source = snapshot_segment_find(owner, source_id);
-    target = snapshot_segment_find(owner, target_id);
+    target = external ? NULL : snapshot_segment_find(owner, target_id);
+    resource = external ? snapshot_resource_find(owner, target_id) : NULL;
     width = kind == OPENGPU_PRIVATE_SNAPSHOT_LIMIT33 ? 8u : 4u;
-    if (!source || !target || source->bytes < width ||
-        offset > source->bytes - width || addend > target->bytes)
+    if (!source || (!target && !resource) || source->bytes < width ||
+        offset > source->bytes - width || addend > (external ? resource->bytes : target->bytes))
         return -ERANGE;
     for (other = owner->relocations; other; other = other->next) {
         size_t other_width = other->kind == OPENGPU_PRIVATE_SNAPSHOT_LIMIT33 ? 8u : 4u;
@@ -183,16 +258,32 @@ int opengpu_private_snapshot_relocate(struct opengpu_private_snapshot *owner,
     if (!relocation)
         return -ENOMEM;
     relocation->source = source; relocation->target = target;
+    relocation->resource = resource;
     relocation->offset = offset; relocation->addend = addend; relocation->kind = kind;
     relocation->next = owner->relocations;
     owner->relocations = relocation;
     return 0;
 }
 
+int opengpu_private_snapshot_relocate(struct opengpu_private_snapshot *owner,
+    u32 source_id, size_t offset, u32 target_id, u64 addend,
+    enum opengpu_private_snapshot_relocation kind)
+{
+    return snapshot_relocate(owner, source_id, offset, target_id, addend, kind, false);
+}
+
+int opengpu_private_snapshot_relocate_resource(struct opengpu_private_snapshot *owner,
+    u32 source_id, size_t offset, u32 target_id, u64 addend,
+    enum opengpu_private_snapshot_relocation kind)
+{
+    return snapshot_relocate(owner, source_id, offset, target_id, addend, kind, true);
+}
+
 int opengpu_private_snapshot_prepare(struct opengpu_private_snapshot *owner)
 {
     struct snapshot_segment *segment;
     struct snapshot_relocation *relocation;
+    struct snapshot_resource *resource;
     struct opengpu_device *gpu;
     int ret;
     if (!owner || owner->phase != SNAPSHOT_BUILD || !owner->segments)
@@ -200,6 +291,26 @@ int opengpu_private_snapshot_prepare(struct opengpu_private_snapshot *owner)
     gpu = owner->gpu;
     /* Close mutation even on failure; the caller must retire partial state. */
     owner->phase = SNAPSHOT_FAILED;
+    /* Producer dependencies have completed. Reserve every envelope, including
+     * its gaps, before installing any descriptor address. These mappings borrow
+     * mutable GEM pages; only the private segments below obtain PA leases. */
+    for (resource = owner->resources; resource; resource = resource->next) {
+        struct snapshot_resource_map *map;
+        if (!resource->maps)
+            return -EINVAL;
+        ret = opengpu_mmu_vm_reserve(gpu, &owner->context->vm,
+            resource->bytes, &resource->reservation);
+        if (ret)
+            return ret;
+        for (map = resource->maps; map; map = map->next) {
+            ret = opengpu_mmu_vm_map_reserved(gpu, &resource->reservation,
+                map->offset, map->physical, map->bytes,
+                OPENGPU_MMU_POLICY_UNCACHED, map->writable);
+            if (ret)
+                return ret;
+            map->mapped = true;
+        }
+    }
     for (segment = owner->segments; segment; segment = segment->next) {
         if (segment == owner->segments) {
             ret = opengpu_hw_snapshot_submission_lock(gpu);
@@ -269,11 +380,28 @@ int opengpu_private_snapshot_verify_locked(const struct opengpu_private_snapshot
     struct opengpu_device *gpu, const struct opengpu_render_context *context)
 {
     const struct snapshot_segment *segment;
+    const struct snapshot_resource *resource;
     int ret;
     if (!owner || owner->gpu != gpu || owner->context != context ||
         owner->phase != SNAPSHOT_PUBLISHED)
         return -EINVAL;
     lockdep_assert_held(&gpu->hw.submit_lock);
+    for (resource = owner->resources; resource; resource = resource->next) {
+        const struct snapshot_resource_map *map;
+        if (!resource->reservation.active ||
+            resource->reservation.owner != &context->vm ||
+            resource->reservation.size != resource->bytes)
+            return -EINVAL;
+        for (map = resource->maps; map; map = map->next) {
+            if (!map->mapped)
+                return -EINVAL;
+            ret = opengpu_mmu_vm_verify_reserved_locked(gpu,
+                &resource->reservation, map->offset, map->physical, map->bytes,
+                OPENGPU_MMU_POLICY_UNCACHED, map->writable);
+            if (ret)
+                return ret;
+        }
+    }
     for (segment = owner->segments; segment; segment = segment->next) {
         if (!segment->mapped || !segment->lease.active || !segment->lease.mapped ||
             segment->lease.owner != &context->vm || segment->lease.va != segment->va ||
@@ -297,13 +425,16 @@ int opengpu_private_snapshot_retire(struct opengpu_private_snapshot *owner)
 {
     struct snapshot_segment *segment;
     struct snapshot_relocation *relocation;
+    struct snapshot_resource *resource;
     struct opengpu_device *gpu;
     int ret;
     if (!owner)
         return 0;
     gpu = owner->gpu;
     for(segment=owner->segments;segment && !segment->backing.cpu;segment=segment->next){}
-    if(segment){
+    for (resource = owner->resources; resource && !resource->reservation.active;
+         resource = resource->next) {}
+    if(segment || resource){
         mutex_lock(&gpu->hw.submit_lock);
         ret = opengpu_hw_wait_idle_locked(gpu);
         mutex_unlock(&gpu->hw.submit_lock);
@@ -330,6 +461,27 @@ int opengpu_private_snapshot_retire(struct opengpu_private_snapshot *owner)
             goto quarantine;
         segment->mapped = false;
     }
+    for (resource = owner->resources; resource; resource = resource->next) {
+        struct snapshot_resource_map *map;
+        for (map = resource->maps; map; map = map->next) {
+            if (!map->mapped)
+                continue;
+            ret = opengpu_mmu_vm_unmap_reserved(gpu, &resource->reservation,
+                map->offset, map->bytes);
+            if (ret)
+                goto quarantine;
+            map->mapped = false;
+        }
+    }
+    /* A resource unmap failure must retain every private lease and backing too.
+     * Release reservations only after all mappings in the owner are revoked. */
+    for (resource = owner->resources; resource; resource = resource->next) {
+        if (!resource->reservation.active)
+            continue;
+        ret = opengpu_mmu_vm_release_reservation(gpu, &resource->reservation);
+        if (ret)
+            goto quarantine;
+    }
     for (segment = owner->segments; segment; segment = segment->next) {
         if (!segment->lease.active)
             continue;
@@ -348,6 +500,15 @@ int opengpu_private_snapshot_retire(struct opengpu_private_snapshot *owner)
     while ((relocation = owner->relocations)) {
         owner->relocations = relocation->next;
         kfree(relocation);
+    }
+    while ((resource = owner->resources)) {
+        struct snapshot_resource_map *map;
+        owner->resources = resource->next;
+        while ((map = resource->maps)) {
+            resource->maps = map->next;
+            kfree(map);
+        }
+        kfree(resource);
     }
     opengpu_context_put(owner->context);
     kfree(owner);

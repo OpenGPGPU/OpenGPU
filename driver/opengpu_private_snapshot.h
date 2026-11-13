@@ -8,6 +8,15 @@ struct opengpu_device;
 struct opengpu_render_context;
 struct opengpu_private_snapshot;
 
+/* Borrowed original-GEM pages; the enclosing job retains their references and
+ * reservation fences. Register complete page-aligned envelopes and disjoint
+ * mapped subranges while building. Unmapped gaps remain reserved. No resource
+ * mapping is executable and none makes CPU-written GEM bytes immutable. */
+int opengpu_private_snapshot_resource(struct opengpu_private_snapshot *owner,
+    size_t envelope_bytes, u32 *resource);
+int opengpu_private_snapshot_resource_map(struct opengpu_private_snapshot *owner,
+    u32 resource, size_t offset, u64 physical, size_t bytes, bool writable);
+
 /* Kernel-only private publication. No CPU pointer, DMA address, GEM handle or
  * mmap/export operation is returned. Segment IDs name copies, not caller
  * buffers. Append keeps kernel-only virtual staging with no GPU address; prepare
@@ -35,6 +44,11 @@ enum opengpu_private_snapshot_relocation {
  * VA32 may not. All relocation writes precede publication. */
 int opengpu_private_snapshot_relocate(struct opengpu_private_snapshot *owner,
     u32 source_segment, size_t source_offset, u32 target_segment, u64 addend,
+    enum opengpu_private_snapshot_relocation kind);
+/* Kernel producer chooses generated fields and validates the logical view;
+ * userspace never supplies this relocation or an arbitrary patch offset. */
+int opengpu_private_snapshot_relocate_resource(struct opengpu_private_snapshot *owner,
+    u32 source_segment, size_t source_offset, u32 resource, u64 addend,
     enum opengpu_private_snapshot_relocation kind);
 int opengpu_private_snapshot_read32(const struct opengpu_private_snapshot *owner,
     u32 segment, size_t byte_offset, u32 *value);
