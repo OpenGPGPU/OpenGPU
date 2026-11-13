@@ -45,7 +45,9 @@ class ChangedTestSuitesTest(unittest.TestCase):
         for path in ("src/main/scala/opengpu/system/ComputeResourceCapabilities.scala",
                      "src/main/scala/opengpu/elaboration/EmitComputeResourceAbi.scala",
                      "driver/opengpu_compute_resource_abi.h", "docs/abi/compute-resource-v1.json"):
-            self.assertEqual(set(changed_suites(root, [path])), expected)
+            selected = expected | ({"opengpu.system.NativeOwnerHostProfileSpec"}
+                if path.endswith("/ComputeResourceCapabilities.scala") else set())
+            self.assertEqual(set(changed_suites(root, [path])), selected)
 
     def test_texture_image_schemas_select_existing_cpu_abi_check(self):
         paths = [f"src/main/scala/opengpu/elaboration/Emit{name}Abi.scala"

@@ -617,6 +617,12 @@ def changed_suites(root, changed, *, test_index=None):
                   "driver/opengpu_compute_resource_abi.h", "docs/abi/compute-resource-v1.json"}:
         for suite in ("ShaderImageCommandAbiSpec", "StorageCommandAbiSpec", "ComputeUniformCommandAbiSpec"):
             affected.add(f"src/test/scala/opengpu/graphics/{suite}.scala")
+    if changed & {"src/main/scala/opengpu/system/NativeOwnerHostProfile.scala",
+                  "src/test/scala/opengpu/system/PrepareNativeOwnerHost.scala",
+                  "src/main/scala/opengpu/system/NativeAlignmentHostProfile.scala",
+                  "src/main/scala/opengpu/system/ComputeResourceCapabilities.scala",
+                  "src/main/scala/opengpu/system/NativeShaderExecutionCapabilities.scala"}:
+        affected.add("src/test/scala/opengpu/system/NativeOwnerHostProfileSpec.scala")
     if changed & {"src/main/scala/opengpu/graphics/NativeAdvancedBlendCapabilities.scala",
                   "src/main/scala/opengpu/system/NativeAlignmentHostProfile.scala",
                   "src/main/scala/opengpu/elaboration/EmitNativeAdvancedBlendAbi.scala",
