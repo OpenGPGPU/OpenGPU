@@ -75,6 +75,7 @@ sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=2 \
 sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-public-frame-vertex-shader .artifacts/vertex-input-rtl'
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/vertex-input-rtl VertexShaderStage --stage synthesis \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/vertex-input-rtl VertexShaderStage) \
   --synthesis-engine yosys --yosys-preserve-hierarchy --period-ps 1000 \
   --io-delay 0.25 --output .artifacts/vertex-input-synthesis
 ```

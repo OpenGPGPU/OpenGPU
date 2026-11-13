@@ -78,6 +78,7 @@ sbt -J-Xmx2G -Dopengpu.productQualification=1 \
 python3 scripts/extract_emitted_rtl.py .artifacts/banked-attachments/emitted DoubleBufferedTileAttachmentStore .artifacts/banked-attachments/complete
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/banked-attachments/complete DoubleBufferedTileAttachmentStore \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/banked-attachments/complete DoubleBufferedTileAttachmentStore) \
   --stage synthesis --synthesis-engine yosys --yosys-preserve-hierarchy \
   --period-ps 1000 --io-delay 0.25 --output .artifacts/banked-attachments/qualification
 ```

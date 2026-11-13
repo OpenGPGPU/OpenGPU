@@ -205,10 +205,12 @@ sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-public-frame-pixel-child .art
 sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-native-early-depth-fragment-shader .artifacts/h3-fragment-rtl'
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/h3-pixel-rtl TypedTilePixelBackend --stage synthesis \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/h3-pixel-rtl TypedTilePixelBackend) \
   --synthesis-engine yosys --yosys-preserve-hierarchy --period-ps 1000 \
   --io-delay 0.25 --output .artifacts/h3-pixel-synthesis
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/h3-fragment-rtl FragmentShaderStage --stage synthesis \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/h3-fragment-rtl FragmentShaderStage) \
   --synthesis-engine yosys --yosys-preserve-hierarchy --period-ps 1000 \
   --io-delay 0.25 --output .artifacts/h3-fragment-synthesis
 ```
@@ -265,6 +267,7 @@ for component in vertex fragment cluster; do
   esac
   CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
     ".artifacts/native-rate-model/${component}-closure" "$module" \
+    $(python3 scripts/report_ppa_sram_inventory.py ".artifacts/native-rate-model/${component}-closure" "$module") \
     --stage synthesis --synthesis-engine yosys --yosys-preserve-hierarchy \
     --period-ps 1000 --io-delay 0.25 --output ".artifacts/h4-${component}-synthesis" || exit
 done

@@ -101,10 +101,18 @@ limiting the synthesis container to the resources above:
 
 ```sh
 python3 scripts/qualify_ppa.py "$RTL" GpuHostSystemAxi \
+  --expected-sram-macro srambank_64x4x32_6t122=728 \
+  --expected-sram-macro srambank_64x4x64_6t122=812 \
   --stage synthesis --synthesis-engine yosys --yosys-preserve-hierarchy \
   --clock io_s_axi_aclk --period-ps 1000 --io-delay 0.25 --timeout 14400 \
   --coverage-timeout 1800 --coverage-memory-gib 10 --output "$PPA_RUN"
 ```
+
+These are the frozen v1 emission's source-instance macro expectations for the
+current count gate. The timed-out historical run preceded that gate; it did
+not establish mapped macro retention. Recompute expectations for another
+emission with `scripts/report_ppa_sram_inventory.py` and require the actual ODB
+comparison to pass.
 
 ## Integrated alignment host v2
 

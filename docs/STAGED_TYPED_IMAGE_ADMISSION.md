@@ -66,9 +66,11 @@ sbt -J-Xmx4G \
   'runMain opengpu.elaboration.EmitPpaRtl mobile-typed-image-transfer .artifacts/image-transfer-rtl'
 CHIPAGENT_DIR="$PWD/../chipagent" ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/image-admission-rtl StagedTypedImageAdmission --clock clock \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/image-admission-rtl StagedTypedImageAdmission) \
   --period-ps 1000 --io-delay 0.25 --output .artifacts/image-admission-synthesis
 CHIPAGENT_DIR="$PWD/../chipagent" ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/image-transfer-rtl TypedTileImageTransfer --clock clock \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/image-transfer-rtl TypedTileImageTransfer) \
   --period-ps 1000 --io-delay 0.25 --output .artifacts/image-transfer-synthesis
 ```
 
@@ -83,6 +85,7 @@ sbt -J-Xmx3G \
   'runMain opengpu.elaboration.EmitPpaRtl mobile-native-typed-reader .artifacts/native-reader-rtl'
 CHIPAGENT_DIR="$PWD/../chipagent" ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/native-reader-rtl NativeTypedGraphicsJobReader --stage synthesis \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/native-reader-rtl NativeTypedGraphicsJobReader) \
   --period-ps 1000 --io-delay 0.25 --synthesis-engine yosys \
   --yosys-preserve-hierarchy --output .artifacts/native-reader-synthesis
 ```

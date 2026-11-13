@@ -129,6 +129,7 @@ for that complete stage, not an enclosing CU/renderer/host clock qualification.
 sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-vertex-shader-reuse .artifacts/uniform-vertex-stage'
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/uniform-vertex-stage VertexShaderStage --stage synthesis \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/uniform-vertex-stage VertexShaderStage) \
   --period-ps 1000 --io-delay 0.25 --output .artifacts/uniform-vertex-stage-synthesis
 ```
 

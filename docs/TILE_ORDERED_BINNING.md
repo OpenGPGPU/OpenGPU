@@ -90,6 +90,7 @@ sbt -Dopengpu.productQualification=1 \
   'Test / runMain opengpu.graphics.EmitNativeWindowBinTiming .artifacts/native-bin-rtl'
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/native-bin-rtl WindowPrimitiveBinReplayPass --stage synthesis \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/native-bin-rtl WindowPrimitiveBinReplayPass) \
   --synthesis-engine yosys --yosys-preserve-hierarchy --period-ps 1000 \
   --io-delay 0.25 --output .artifacts/native-bin-synthesis
 ```

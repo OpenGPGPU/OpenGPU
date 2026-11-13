@@ -54,6 +54,7 @@ sbt -J-Xmx4G \
   'runMain opengpu.elaboration.EmitPpaRtl vector-memory-coalescer .artifacts/vector-byte-rtl'
 CHIPAGENT_DIR="$PWD/../chipagent" ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/vector-byte-rtl VectorMemoryCoalescer --clock clock \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/vector-byte-rtl VectorMemoryCoalescer) \
   --period-ps 1000 --io-delay 0.25 --output .artifacts/vector-byte-synthesis
 ```
 

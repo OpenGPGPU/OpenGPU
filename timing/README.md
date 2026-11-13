@@ -8,17 +8,44 @@ run is not timing closure.
 
 Emit RTL via `EmitPpaRtl`, then run `scripts/qualify_ppa.py` with ChipAgent
 ASAP7 (ORFS) with a real `clock` port (1000 ps target, TC, SLVT), explicit
-SRAM `.lib`/`.lef`, and a 25% boundary delay budget. Each run directory
-keeps `manifest.json`, `result.json` and ORFS artifacts. Synthesis passes only
+SRAM `.lib`/`.lef`, and a 25% boundary delay budget. Set `CHIPAGENT_DIR` to the
+absolute path of its independent primary checkout and use its Python
+environment, especially from an internal GPU worktree. Run directories contain
+temporary manifests and ORFS artifacts only while in active use; delete them
+after validation or diagnosis. Synthesis passes only
 when mapping, all reported setup paths and a separate `check_setup` on the
 same saved ODB and SDC pass. Missing or incomplete coverage evidence fails the
 gate. Exit code 2 means qualification did not pass.
 
+Every SRAM view requires an explicit `--expected-sram-macro MASTER=COUNT`
+contract, including zero for an unused supplied view. The source-only
+`report_ppa_sram_inventory.py` command traverses every reachable instance,
+rejects uncertain hierarchy and prints the explicit arguments below. Its
+output is an expectation to audit, not mapped proof. The synthesis coverage
+invocation additionally counts actual physical masters in its saved ODB;
+route checks the actual final ODB. Both require exact per-type counts, the
+pinned tool image and unchanged copied LIB/LEF inputs. Missing or replaced
+macros, nonphysical SRAM masters and unknown physical blocks fail. Historical
+results elsewhere in this guide establish only their original gates; no old
+result is retrospectively qualified by this additional check.
+
+CPU coverage is part of `bash scripts/test_scripts.sh`; first install
+`python3 -m pip install -r scripts/requirements-host-tests.txt`. The explicit
+two-type/three-instance OpenDB oracle uses at most one CPU/1 GiB per container
+and removes its tiny databases, scripts and logs on exit:
+
+```sh
+python3 scripts/verify_ppa_sram_macros.py \
+  --image chipagent/openroad:arm64 --sram-root /path/to/pinned/generated
+```
+
 ```sh
 sbt -batch 'runMain opengpu.elaboration.EmitPpaRtl gpu-system generated/qualification/rtl/gpu-system'
 python3 scripts/qualify_ppa.py generated/qualification/rtl/gpu-system GpuSystem \
+  $(python3 scripts/report_ppa_sram_inventory.py generated/qualification/rtl/gpu-system GpuSystem) \
     --output generated/qualification/ppa/gpu-system --stage synthesis
 python3 scripts/qualify_ppa.py generated/qualification/rtl/strided-copy StridedCopyEngine \
+  $(python3 scripts/report_ppa_sram_inventory.py generated/qualification/rtl/strided-copy StridedCopyEngine) \
     --output generated/qualification/ppa/strided-copy --stage route
 ```
 
@@ -42,6 +69,7 @@ Reproduce the small two-module control locally with ChipAgent's Python:
 ```sh
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
     timing/tests HierarchyProbe --synthesis-engine yosys --yosys-preserve-hierarchy \
+    $(python3 scripts/report_ppa_sram_inventory.py timing/tests HierarchyProbe) \
     --clock clock --period-ps 1000 --io-delay .25 --timeout 180 \
     --output .artifacts/hierarchy-probe-positive
 ```

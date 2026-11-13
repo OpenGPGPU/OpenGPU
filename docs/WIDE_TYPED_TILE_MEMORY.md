@@ -33,6 +33,7 @@ sbt -J-Xmx6G -Dopengpu.simJobs=1 'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.BankedTypedTileMemorySpec'
 sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-wide-typed-memory .artifacts/wide-typed-memory-rtl'
 python scripts/qualify_ppa.py .artifacts/wide-typed-memory-rtl BankedTypedTileMemory \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/wide-typed-memory-rtl BankedTypedTileMemory) \
   --stage synthesis --period-ps 1000 --io-delay 0.25 \
   --output .artifacts/wide-typed-memory-synthesis
 ```

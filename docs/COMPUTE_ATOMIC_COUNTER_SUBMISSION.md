@@ -78,6 +78,7 @@ external atomic translator/L2, and is not a routed or whole-CU timing result.
 sbt 'Test/runMain opengpu.core.memory.EmitAtomicCounterCuServiceTiming .artifacts/counter-service-rtl'
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/counter-service-rtl AtomicCounterCuService --stage synthesis \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/counter-service-rtl AtomicCounterCuService) \
   --synthesis-engine yosys --yosys-preserve-hierarchy --period-ps 1000 \
   --io-delay 0.25 --output .artifacts/counter-service-synthesis
 ```

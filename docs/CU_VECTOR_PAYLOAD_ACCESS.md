@@ -98,6 +98,7 @@ RTL hashes remain unchanged through qualification.
 sbt 'Test / runMain opengpu.core.memory.EmitCuShaderPayloadAccessTiming .artifacts/cu-payload-rtl'
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/cu-payload-rtl CuShaderPayloadAccess --stage synthesis \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/cu-payload-rtl CuShaderPayloadAccess) \
   --synthesis-engine yosys --yosys-preserve-hierarchy --period-ps 1000 \
   --io-delay 0.25 --timeout 7200 --output .artifacts/cu-payload-synthesis
 ```
