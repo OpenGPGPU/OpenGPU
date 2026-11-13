@@ -133,7 +133,21 @@ def frame_size(product, two_cu_vga=False):
     return ((640, 480) if two_cu_vga else (1280, 720)) if product else (32, 32)
 
 
-def check_profile(manifest, product, api_capacity=False, two_cu_vga=False):
+def profile_id(two_cu_vga, alignment_v2=False):
+    return ('two-cu-vga60-v2' if alignment_v2 else 'two-cu-vga60-v1') if two_cu_vga else None
+
+
+def add_profile_arguments(parser):
+    profiles = parser.add_mutually_exclusive_group()
+    profiles.add_argument('--two-cu-vga', action='store_true',
+                          help='native graphics capacity profile v1; product is 640x480')
+    profiles.add_argument('--alignment-v2', action='store_true',
+                          help='integrated two-CU compute/query/feedback/tessellation host profile v2')
+
+
+def check_profile(manifest, product, api_capacity=False, two_cu_vga=False, alignment_v2=False):
+    if alignment_v2 and not two_cu_vga:
+        raise RuntimeError('Integrated alignment requires the two-CU VGA target')
     api_capacity = api_capacity or two_cu_vga
     expected = frame_size(product, two_cu_vga)
     if (manifest.get('version') != 1 or manifest.get('product') != product
@@ -142,8 +156,16 @@ def check_profile(manifest, product, api_capacity=False, two_cu_vga=False):
             or any(manifest.get(k) != v for k, v in
                    {'computeUnits': 2 if two_cu_vga else 4, 'lanes': 16, 'warps': 8, 'axiDataBytes': 32}.items())):
         raise RuntimeError('Incomplete or mismatched native product profile')
-    if (manifest.get('profile') == 'two-cu-vga60-v1') != two_cu_vga:
+    if manifest.get('profile') != profile_id(two_cu_vga, alignment_v2):
         raise RuntimeError('Two-CU VGA profile differs')
+    if manifest.get('integratedHost', False) is not alignment_v2:
+        raise RuntimeError('Integrated alignment host selection differs')
+    if alignment_v2 and (any(manifest.get(k) != v for k, v in
+            {'transactionsPerCu': 16, 'resourceDiscoveryWords': 72,
+             'computeFeatureFlags': 0x7fff}.items()) or any(
+             manifest.get(k) is not False for k in ('nativeGeometryDraw',
+                 'nativeAdvancedBlend', 'nativePatchShaderImages'))):
+        raise RuntimeError('Incomplete integrated alignment discovery contract')
     if two_cu_vga and manifest.get('targetFps') != 60:
         raise RuntimeError('Two-CU VGA target must be 60 FPS')
     if manifest.get('apiCapacity', False) is not api_capacity:
@@ -157,12 +179,12 @@ def check_profile(manifest, product, api_capacity=False, two_cu_vga=False):
             raise RuntimeError('Incomplete combined product/API-capacity profile')
 
 
-def guard_prepared(out, product, api_capacity=False, two_cu_vga=False):
+def guard_prepared(out, product, api_capacity=False, two_cu_vga=False, alignment_v2=False):
     record = json.loads((out / 'preparation.json').read_text())
     if record['exit_code'] != 0 or record['source_sha256'] != rtl_inputs():
         raise RuntimeError('Prepared RTL/fixtures do not match the current source')
     manifest = json.loads((out / 'fixture-manifest.json').read_text())
-    check_profile(manifest, product, api_capacity, two_cu_vga)
+    check_profile(manifest, product, api_capacity, two_cu_vga, alignment_v2)
     if (record['manifest_sha256'] != sha(out / 'fixture-manifest.json')
             or record['rtl_sha256'] != tree_hashes(out / 'rtl')
             or record['fixture_sha256'] != tree_hashes(out / 'fixtures')):
@@ -170,15 +192,18 @@ def guard_prepared(out, product, api_capacity=False, two_cu_vga=False):
     return record
 
 
-def validate_metrics(rows, product, two_cu_vga=False):
+def validate_metrics(rows, product, two_cu_vga=False, alignment_v2=False):
     width, height = frame_size(product, two_cu_vga)
     if [r.get('scene') for r in rows] != SCENES:
         raise RuntimeError('All six native scenes must complete in order')
     for row in rows:
         if two_cu_vga and any(row.get(k) != v for k, v in
                 {'computeUnits': 2, 'nativeEngines': 4, 'nativeMaxWidth': 2048,
-                 'nativeMaxHeight': 2048, 'profile': 'two-cu-vga60-v1'}.items()):
+                 'nativeMaxHeight': 2048, 'profile': profile_id(True, alignment_v2)}.items()):
             raise RuntimeError('Two-CU VGA execution resource profile differs')
+        if alignment_v2 and (not two_cu_vga or row.get('resourceDiscoveryWords') != 72
+                             or row.get('computeFeatureFlags') != 0x7fff):
+            raise RuntimeError('Integrated alignment execution discovery differs')
         if ((row.get('frameWidth'), row.get('frameHeight')) != (width, height)
                 or not row.get('trafficDrained') or row.get('serviceCycles', 0) <= 0
                 or row.get('imageVerificationRequired') is not True
@@ -201,11 +226,12 @@ def verify_prepare_marker(log, product, two_cu_vga=False):
         f'NATIVE_COMPILED_INPUTS scenes=6 frame={width}x{height} rtlEmitted=true')
 
 
-def verify_marker(log, product, two_cu_vga=False):
+def verify_marker(log, product, two_cu_vga=False, alignment_v2=False):
     expected = 'NATIVE_COMPILED_PRODUCT PASS scenes=6 fullExecutionAndStorage=true exactStoredImagesAndGuards=true clockQualified=false fpsQualified=false'
     text = log.read_text()
     width, height = frame_size(product, two_cu_vga)
-    profile = 'NATIVE_COMPILED_PROFILE profile=two-cu-vga60-v1 computeUnits=2 engines=4 targetFps=60 clockQualified=false fpsQualified=false'
+    profile = ('NATIVE_COMPILED_PROFILE profile=' + str(profile_id(two_cu_vga, alignment_v2))
+               + ' computeUnits=2 engines=4 targetFps=60 clockQualified=false fpsQualified=false')
     if two_cu_vga and profile not in text:
         raise RuntimeError('Two-CU VGA independent verification profile is missing')
     images = re.findall(r'NATIVE_COMPILED_IMAGE id=([a-z0-9-]+) frame=(\d+)x(\d+) exactStoredImagesAndGuards=true', text)
@@ -236,7 +262,7 @@ class Runner:
         return DRIVER
 
     def prepared(self):
-        return guard_prepared(self.out, self.product, self.api_capacity, self.two_cu_vga)
+        return guard_prepared(self.out, self.product, self.api_capacity, self.two_cu_vga, self.alignment_v2)
 
     def checked_build(self, prepared):
         return guard_build(self.out, prepared, self.hierarchy_profile,
@@ -246,23 +272,27 @@ class Runner:
         return 'verilator'
 
     def __init__(self, out, product, hierarchy_profile='flat', scene_jobs=1, api_capacity=False,
-                 two_cu_vga=False):
+                 two_cu_vga=False, alignment_v2=False):
         if not 1 <= scene_jobs <= len(SCENES):
             raise ValueError('--scene-jobs must be between 1 and 6')
         if not isinstance(api_capacity, bool):
             raise ValueError('api_capacity must be boolean')
         if not isinstance(two_cu_vga, bool):
             raise ValueError('two_cu_vga must be boolean')
+        if not isinstance(alignment_v2, bool):
+            raise ValueError('alignment_v2 must be boolean')
         self.out, self.product = out, product
-        self.two_cu_vga = two_cu_vga
-        self.api_capacity = api_capacity or two_cu_vga
+        self.alignment_v2 = alignment_v2
+        self.two_cu_vga = two_cu_vga or alignment_v2
+        self.api_capacity = api_capacity or self.two_cu_vga
         self.hierarchy_profile = hierarchy_profile
         self.scene_execution = dict(mode=SHARED_MODEL if scene_jobs == 1 else FRESH_MODELS,
                                     max_workers=scene_jobs)
 
     def state(self, stage, **fields):
         write_json(self.out / 'state.json', dict(timestamp=datetime.now(timezone.utc).isoformat(),
-            pid=os.getpid(), stage=stage, product=self.product, two_cu_vga=self.two_cu_vga, **fields))
+            pid=os.getpid(), stage=stage, product=self.product, two_cu_vga=self.two_cu_vga,
+            alignment_v2=self.alignment_v2, **fields))
 
     def execute(self, stage, command, log, cwd=ROOT):
         start = time.monotonic()
@@ -283,6 +313,8 @@ class Runner:
                 '-Dopengpu.productQualification=' + ('1' if self.product and not self.two_cu_vga else '0')]
         if self.two_cu_vga:
             command += ['-Dopengpu.productTwoCuVga=1']
+        if self.alignment_v2:
+            command += ['-Dopengpu.productAlignmentV2=1']
         if self.api_capacity:
             command += ['-Dopengpu.productApiCapacity=1', '-Dopengpu.apiExtentQualification=1']
         return command + ['Test / runMain ' + main]
@@ -301,7 +333,7 @@ class Runner:
             raise RuntimeError('Source changed during RTL/fixture preparation')
         verify_prepare_marker(self.out / 'prepare.log', self.product, self.two_cu_vga)
         manifest = json.loads((self.out / 'fixture-manifest.json').read_text())
-        check_profile(manifest, self.product, self.api_capacity, self.two_cu_vga)
+        check_profile(manifest, self.product, self.api_capacity, self.two_cu_vga, self.alignment_v2)
         if manifest.get('rtlEmitted') is not True:
             raise RuntimeError('Native preparation must emit RTL, not fixtures only')
         write_json(self.out / 'preparation.json', dict(version=1, exit_code=0,
@@ -428,7 +460,7 @@ class Runner:
             rows = [json.loads(line) for line in (directory / 'execution.log').read_text().splitlines() if line.strip()]
         else:
             rows = self.run_parallel_scenes(executable, directory)
-        validate_metrics(rows, self.product, self.two_cu_vga)
+        validate_metrics(rows, self.product, self.two_cu_vga, self.alignment_v2)
         self.prepared()
         self.checked_build(prepared)
         write_json(self.out / 'execution.json', dict(exit_code=0, directory=str(directory), scenes=rows,
@@ -450,7 +482,7 @@ class Runner:
                 or execution['build_sha256'] != sha(self.out / 'build.json')
                 or execution['executable_sha256'] != sha(self.out / 'native_product_driver')):
             raise RuntimeError('Native output bytes changed before independent verification')
-        validate_metrics(execution['scenes'], self.product, self.two_cu_vga)
+        validate_metrics(execution['scenes'], self.product, self.two_cu_vga, self.alignment_v2)
         reference_sha256 = sha(reference) if reference else None
         if reference:
             compare_reference(execution['scenes'], json.loads(reference.read_text()), self.scene_execution)
@@ -458,7 +490,7 @@ class Runner:
         self.execute('verify-all-stored-images', self.sbt('opengpu.system.VerifyCompiledNativeProduct '
                      + mode + ' --output ' + json.dumps(str(directory)),
                      PRODUCT_JAVA_HEAP if self.product else '3G'), self.out / 'verify.log')
-        verify_marker(self.out / 'verify.log', self.product, self.two_cu_vga)
+        verify_marker(self.out / 'verify.log', self.product, self.two_cu_vga, self.alignment_v2)
         self.prepared()
         self.checked_build(prepared)
         if execution['output_sha256'] != tree_hashes(directory):
@@ -467,6 +499,7 @@ class Runner:
             raise RuntimeError('Native reference changed during independent verification')
         write_json(self.out / 'qualification.json', dict(passed=True, product=self.product,
             api_capacity=self.api_capacity, two_cu_vga=self.two_cu_vga,
+            alignment_v2=self.alignment_v2,
             simulator_backend=self.backend(),
             scene_execution=self.scene_execution,
             scenes=execution['scenes'], source_sha256=prepared['source_sha256'],
@@ -486,8 +519,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument('--smoke', action='store_true'); mode.add_argument('--product', action='store_true')
-    parser.add_argument('--two-cu-vga', action='store_true',
-                        help='two CUs, four engines, full API capacity; product frame is 640x480, target 60 FPS')
+    add_profile_arguments(parser)
     parser.add_argument('--api-capacity', action='store_true',
                         help='use the four-engine 2048-axis, 65536-entry native API profile')
     parser.add_argument('--output', type=Path, required=True)
@@ -505,7 +537,8 @@ def main():
     out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
     with (out / '.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        runner = Runner(out, args.product, args.hierarchy_profile, args.scene_jobs, args.api_capacity, args.two_cu_vga)
+        runner = Runner(out, args.product, args.hierarchy_profile, args.scene_jobs,
+                        args.api_capacity, args.two_cu_vga, args.alignment_v2)
         try:
             for stage in ['prepare', 'build', 'run', 'verify']:
                 if args.stage in ['all', stage]:

@@ -33,13 +33,18 @@ int main(int argc, char **argv) {
     require(names.size() == 6, "native qualification requires the complete six-scene fixture suite");
     require(selected.empty() || unique.count(selected) == 1, "selected native scene is absent from the complete suite");
     Simulation sim(argc, argv); ExecutionProgress progress(output);
-    unsigned index = 0; uint32_t width = 0, height = 0; bool two_cu_vga = false;
+    unsigned index = 0; uint32_t width = 0, height = 0;
+    bool two_cu_vga = false, alignment_v2 = false;
     for (const auto &id : names) {
       const auto fixture = Fixture::read((fixtures / (id + ".commands")).string());
       require(fixture.id == ++index, "native scene order changed");
-      if (index == 1) { width = fixture.width; height = fixture.height; two_cu_vga = fixture.two_cu_vga(); }
-      require(fixture.width == width && fixture.height == height && fixture.two_cu_vga() == two_cu_vga,
-        "mixed native resolution or CU profiles");
+      if (index == 1) {
+        width = fixture.width; height = fixture.height;
+        two_cu_vga = fixture.two_cu_vga(); alignment_v2 = fixture.alignment_v2();
+      }
+      require(fixture.width == width && fixture.height == height &&
+        fixture.two_cu_vga() == two_cu_vga && fixture.alignment_v2() == alignment_v2,
+        "mixed native resolution or execution profiles");
       if (!selected.empty() && id != selected) continue;
       auto memory = Memory::read((fixtures / (id + ".memory")).string());
       sim.reset();
@@ -75,7 +80,11 @@ int main(int argc, char **argv) {
         << ",\"phaseWorkerCycles\":[";
       for (unsigned n = 0; n < phases.size(); ++n) std::cout << (n ? "," : "") << phases[n];
       std::cout << "]";
-      if (two_cu_vga) std::cout << ",\"profile\":\"two-cu-vga60-v1\",\"computeUnits\":2,\"nativeEngines\":4,\"nativeMaxWidth\":2048,\"nativeMaxHeight\":2048";
+      if (two_cu_vga) std::cout << ",\"profile\":\""
+        << (fixture.alignment_v2() ? "two-cu-vga60-v2" : "two-cu-vga60-v1")
+        << "\",\"computeUnits\":2,\"nativeEngines\":4,\"nativeMaxWidth\":2048,\"nativeMaxHeight\":2048";
+      if (fixture.alignment_v2())
+        std::cout << ",\"resourceDiscoveryWords\":72,\"computeFeatureFlags\":" << fixture.resources[2].value;
       std::cout << ",\"trafficDrained\":true,\"imageVerificationRequired\":true,\"clockQualified\":false,\"fpsQualified\":false}" << std::endl;
       const auto final_counters = counters();
       for (const auto &w : fixture.finish) sim.write(w.address, w.value);

@@ -31,6 +31,15 @@ private[system] class NativeProductRecipeHost(apiCapacity: Boolean = false,
   }
 }
 
+/** Explicit v2 integration host; v1's executing model remains a separate profile. */
+private[system] class NativeAlignmentProductRecipeHost extends NativeAlignmentHostSystemAxi(
+  NativeAlignmentHostProfile.target, useBlackBoxes=true, exposePerformance=true) {
+  val macroModelsPresent=IO(Output(Bool()))
+  withClockAndReset(io.s_axi_aclk,!io.s_axi_aresetn){
+    macroModelsPresent:=Module(new NativeFourEngineSramModels).io.present
+  }
+}
+
 @DoNotDiscover
 class NativeProductRecipesQualification extends AnyFlatSpec with GpuHostTestSupport {
   it should "execute all six native product recipes and verify complete stored images" in {

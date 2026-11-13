@@ -46,6 +46,18 @@ class EquivalentQualificationTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'profiles differ'):
             equivalent.guard_equivalence(self.new, self.original)
 
+    def test_integrated_selection_reaches_both_runners_and_cannot_relabel_v1(self):
+        argv=['qualify-equivalent','--smoke','--alignment-v2','--prepared-output',str(self.current),
+              '--execution-output',str(self.old),'--flashsim-dir',self.temp.name]
+        with patch.object(sys,'argv',argv),patch.object(equivalent,'verify') as verify:
+            equivalent.main()
+        current,original=verify.call_args.args[:2]
+        self.assertTrue(current.alignment_v2 and original.alignment_v2)
+        self.assertTrue(current.two_cu_vga and original.two_cu_vga)
+        self.new.alignment_v2=True
+        with self.assertRaisesRegex(RuntimeError,'profiles differ'):
+            equivalent.guard_equivalence(self.new,self.original)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
