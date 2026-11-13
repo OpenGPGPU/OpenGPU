@@ -111,13 +111,13 @@ static inline void opengpu_ll_shader(struct opengpu_ll_fixture *f)
     code[n++]=0x30500073;f->fragment_words=n;
     for(unsigned i=0;i<n;i++) opengpu_ll_put(f->memory+OPENGPU_LL_FS,i,code[i]);
 }
-static inline int opengpu_ll_build(struct opengpu_ll_fixture *f,unsigned submission)
+static inline int opengpu_ll_build_at(struct opengpu_ll_fixture *f,unsigned submission,unsigned address_slot)
 {
-    if(!f || submission>2) return -1;
+    if(!f || submission>2 || address_slot>100) return -1;
     memset(f,0,sizeof(*f));f->memory=(uint8_t *)calloc(1,OPENGPU_LL_MEMORY_BYTES);
     if(!f->memory) return -1;
-    f->base=0x100000u+submission*0x200000u;f->generation=9+submission;
-    f->command_id=41+submission;f->expected_status=submission==1?2:0;
+    f->base=0x100000u+address_slot*0x200000u;f->generation=9+address_slot;
+    f->command_id=41+address_slot;f->expected_status=submission==1?2:0;
     f->red_quantum=submission==2?64:32;
     uint8_t *j=f->memory,*p=f->memory+OPENGPU_LL_FRAME,*d=f->memory+OPENGPU_LL_DRAW,*s=f->memory+OPENGPU_LL_STATE;
 #define J(name,v) opengpu_ll_put(j,OPENGPU_NATIVE_BINNED_JOB_##name##_WORD,(v))
@@ -185,6 +185,8 @@ static inline int opengpu_ll_build(struct opengpu_ll_fixture *f,unsigned submiss
 #undef A
     return 0;
 }
+static inline int opengpu_ll_build(struct opengpu_ll_fixture *f,unsigned submission)
+{ return opengpu_ll_build_at(f,submission,submission); }
 static inline void opengpu_ll_destroy(struct opengpu_ll_fixture *f)
 { free(f->memory);f->memory=NULL; }
 #endif

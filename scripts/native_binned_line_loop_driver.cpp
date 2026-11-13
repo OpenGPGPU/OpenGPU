@@ -3,6 +3,7 @@
 #include "native_host_simulation.hpp"
 #include "native_api_frame_fixture.hpp"
 #include "opengpu_native_binned_line_loop_fixture.h"
+#include "opengpu_native_binned_topology_fixture.h"
 #include "gpu_abi.h"
 #include <filesystem>
 #include <iostream>
@@ -14,7 +15,9 @@ namespace fs = std::filesystem;
 
 int main(int argc, char **argv) {
   try {
-    require(argc == 3, "usage: native_binned_line_loop_driver API_FIXTURES OUTPUT_DIR");
+    require(argc == 3 || (argc==4 && std::string(argv[3])=="--topology-matrix"),
+      "usage: native_binned_line_loop_driver API_FIXTURES OUTPUT_DIR [--topology-matrix]");
+    const bool topologies=argc==4;
     const fs::path fixtures(argv[1]), output(argv[2]);
     require(!fs::exists(output), "output exists"); fs::create_directories(output);
     const auto contract=ApiFixture::read((fixtures/"native-api-extent-1x.commands").string(),true);
@@ -37,8 +40,9 @@ int main(int argc, char **argv) {
       ((storage>>27)&7)==4 && (payload&255)==4 && ((payload>>16)&31)==19 &&
       ((payload>>12)&7)==5 && ((payload>>15)&1),"full native storage and interface profile required");
     sim.write(GPU_REG_IRQ,1);
-    for(unsigned index=0;index<3;++index){
-      opengpu_ll_fixture f{};require(!opengpu_ll_build(&f,index),"fixture allocation failed");
+    for(unsigned index=0;index<(topologies?OPENGPU_TOPOLOGY_SUBMISSIONS:3u);++index){
+      opengpu_ll_fixture f{};
+      require(!(topologies?opengpu_topology_build(&f,index):opengpu_ll_build(&f,index)),"fixture allocation failed");
       // Retain the full four-engine host and provide all four disjoint scratch views.
       auto *frame=f.memory+OPENGPU_LL_FRAME,*state=f.memory+OPENGPU_LL_STATE;
       opengpu_ll_put(state,OPENGPU_TYPED_FRAGMENT_STATE_ENGINECOUNT_WORD,4);
@@ -100,7 +104,7 @@ int main(int argc, char **argv) {
       require(GPU_UCMD_COMPLETION_SUCCESS(completion)==(f.expected_status==0),"success bit differs");
       require(details[0]==0x474e5801u&&(details[1]&7)==f.expected_status&&details[11]==0,"native detail status differs");
       require(details[6]==7&&details[7]==8&&details[8]==f.generation,"native identity differs");
-      if(index==1){
+      if(f.expected_status==2){
         require(((details[1]>>3)&3)==3&&details[2]==f.base+OPENGPU_LL_INDICES&&details[3]==0,"bounds attribution differs");
         for(const auto a:reads)require(!(a>=f.base+0x4000&&a<f.base+0x5080),"invalid index view reached source data");
       }else{
@@ -110,7 +114,10 @@ int main(int argc, char **argv) {
       for(const auto &r:opengpu_ll_regions)if(!r.writable)for(unsigned n=0;n<r.bytes;++n)
         require(memory.byte(f.base+r.offset+n)==f.memory[r.offset+n],"read-only input changed");
       for(unsigned n=0;n<OPENGPU_LL_IMAGE_BYTES;++n)require(memory.byte(f.base+OPENGPU_LL_IMAGE+n)==f.expected_image[n],"pixel or guard differs");
-      std::cout<<"{\"submission\":"<<index<<",\"serviceCycles\":"<<cycles<<",\"status\":"<<f.expected_status<<",\"exactImageAndGuards\":true,\"trafficDrained\":true,\"computeUnits\":4,\"nativeEngines\":4}"<<std::endl;
+      std::cout<<"{\"submission\":"<<index<<",\"topology\":"
+        <<opengpu_ll_get(f.memory+OPENGPU_LL_DRAW,OPENGPU_NATIVE_BINNED_DRAW_DRAW_VERTEX_GEOMETRY_TOPOLOGY_WORD)
+        <<",\"indexFormat\":"<<opengpu_ll_get(f.memory+OPENGPU_LL_DRAW,OPENGPU_NATIVE_BINNED_DRAW_DRAW_VERTEX_GEOMETRY_VERTEX_INPUT_INDEXFORMAT_WORD)
+        <<",\"serviceCycles\":"<<cycles<<",\"status\":"<<f.expected_status<<",\"exactImageAndGuards\":true,\"trafficDrained\":true,\"computeUnits\":4,\"nativeEngines\":4}"<<std::endl;
       sim.write(GPU_REG_UCMD_COMPLETION_POP,1);sim.write(GPU_REG_IRQ,3);
       for(unsigned n=0;n<12;++n)require(sim.read(0x180+4*n)==0,"completion detail not released");
       opengpu_ll_destroy(&f);
