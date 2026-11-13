@@ -708,7 +708,7 @@ static int atomic_counter(struct build *b, const struct tgsi_full_instruction *i
         function = value == 1 ? 18 : 19;
     }
     /* NTT supplies a redundant byte-offset operand for HW_ATOMIC. Its actual
-     * address is the dimensioned word index (plus ADDR0 for indirect access),
+     * address is the dimensioned word index (plus canonical ADDR[2].x for indirect access),
      * as in Mesa's hardware-counter backend. Never add that byte offset twice. */
     const struct tgsi_src_register *offset = &in->Src[1].Register;
     if (offset->Indirect || offset->Dimension || offset->Index < 0 ||
