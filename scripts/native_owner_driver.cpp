@@ -324,7 +324,7 @@ void cleanup_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
     require(read_le(in,4)==count && in.peek()==EOF,"cleanup authorization lost the complete record set");
   }
   Memory expected=memory;const auto traffic=agent.traffic;
-  unsigned sequence=0;uint64_t clears=0,shootdowns=0;
+  unsigned sequence=0;uint64_t clears=0,shootdowns=0;bool context_closed=false;
   for(;;) {
     const auto stem="cleanup-"+std::to_string(sequence);
     const auto trace=session/(stem+".trace"),done=session/"cleanup.done";
@@ -340,7 +340,9 @@ void cleanup_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
       require(read_le(in,4)==sequence && sequence && in.peek()==EOF,"cleanup done crossed an unacknowledged batch");
       require(!std::filesystem::exists(trace),"cleanup left a batch after its final marker");break;
     }
-    wait_input(trace,session,timeout);const auto batch=Cleanup::read(trace.string());pte.validate_scope(batch);
+    require(!context_closed,"cleanup issued work after its final context shutdown");
+    wait_input(trace,session,timeout);const auto batch=Cleanup::read(trace.string());pte.validate_scope(batch,&memory);
+    const bool closing=batch.closes_context();
     require(agent.drained() && !sim.model->io_m_irq,"cleanup starts before native retirement drained");
     bus.begin_record(1000000);
     for(const auto &a:batch.actions) {
@@ -354,6 +356,11 @@ void cleanup_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
     const auto status=bus.read(GPU_REG_UCMD_STATUS),irq=bus.read(GPU_REG_IRQ);
     require(status==GPU_UCMD_STATUS_READY && irq==GPU_IRQ_ENABLE && !sim.model->io_m_irq && agent.drained(),
       "cleanup did not retire idle, drained and IRQ-free on the live DUT");
+    if(closing) {
+      require(!bus.read(GPU_REG_UCMD_VECTOR_SATP) && !bus.read(GPU_REG_UCMD_INSTRUCTION_SATP),
+        "final context shutdown did not publish both bare SATPs on the actual DUT");
+      context_closed=true;
+    }
     traffic_unchanged(traffic,agent.traffic);
     require(!agent.traffic.read_faults && !agent.traffic.write_faults,"cleanup encountered external memory faults");
     atomic_json(session/(stem+".observed"),[&](auto &out) {
@@ -361,10 +368,10 @@ void cleanup_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
     });
     require(sequence<65535,"cleanup exceeded its batch bound");++sequence;
   }
-  require(clears && shootdowns,"cleanup performed no real mapping revocation/shootdown");
+  require(clears && shootdowns && context_closed,"cleanup lacks real owner revocation or final context shutdown");
   pte.revoked(memory);verify_readonly(expected,memory,{});
   atomic_json(session/"cleanup.json",[&](auto &out) {
-    out<<"{\"phase\":\"cleanup\",\"ownerCleanupObserved\":true,\"records\":"<<count
+    out<<"{\"phase\":\"cleanup\",\"ownerCleanupObserved\":true,\"contextCleanupObserved\":true,\"records\":"<<count
       <<",\"batches\":"<<sequence<<",\"pteClears\":"<<clears<<",\"shootdowns\":"<<shootdowns
       <<",\"resetCount\":1,\"ramReplaced\":false,\"imagesPreserved\":true,\"externalDrained\":true,"
         "\"sourceQualificationRequired\":true,\"clockQualified\":false,\"fpsQualified\":false}\n";
