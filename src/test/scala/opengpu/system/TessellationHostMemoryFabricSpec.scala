@@ -7,6 +7,66 @@ import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
 class TessellationHostMemoryFabricSpec extends AnyFlatSpec {
+  for((hostIds,tessellationIds)<-Seq((8,4),(4096,8192)))
+  it should s"retain both complete ID namespaces through held faults, release and reset ($hostIds/$tessellationIds)" in {
+    simulate(new TessellationHostMemoryFabric(GpuConfig(lanes=4,warps=2),hostIds,tessellationIds)){d=>
+      val io=d.io
+      io.hostRequest.valid.poke(false.B);io.hostRequest.bits.poke(0.U.asTypeOf(io.hostRequest.bits))
+      io.tessellationRequest.valid.poke(false.B);io.tessellationRequest.bits.poke(0.U.asTypeOf(io.tessellationRequest.bits))
+      io.hostResponse.ready.poke(true.B);io.tessellationResponse.ready.poke(true.B)
+      io.memoryRequest.ready.poke(true.B);io.memoryResponse.valid.poke(false.B)
+      io.memoryResponse.bits.poke(0.U.asTypeOf(io.memoryResponse.bits))
+      d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      def issue(host:Boolean,id:Int):Unit={
+        val request=if(host)io.hostRequest else io.tessellationRequest
+        request.valid.poke(true.B);request.bits.transactionId.poke(id.U)
+        request.bits.address.poke((0x10000+id*64).U);request.bits.sizeLog2.poke(6.U)
+        var cycles=0
+        while(!request.ready.peek().litToBoolean && cycles<16){d.clock.step();cycles+=1}
+        assert(cycles<16);d.clock.step();request.valid.poke(false.B)
+        cycles=0
+        while(!io.memoryRequest.valid.peek().litToBoolean && cycles<16){d.clock.step();cycles+=1}
+        assert(cycles<16);io.memoryRequest.bits.transactionId.expect((if(host)id else hostIds+id).U);d.clock.step()
+      }
+      def ids(count:Int):Vector[Int]=if(count<=8)(0 until count).toVector else
+        (Vector(0,1,31,32,63,64,255,256,1023,1024,2047,2048,count-2,count-1)).distinct
+      val active=ids(hostIds).map(true->_)++ids(tessellationIds).map(false->_)
+      active.foreach{case(host,id)=>issue(host,id)}
+      io.hostDrained.expect(false.B);io.tessellationDrained.expect(false.B)
+      for((host,id)<-active.reverse){
+        val response=if(host)io.hostResponse else io.tessellationResponse
+        val request=if(host)io.hostRequest else io.tessellationRequest
+        val peer=if(host)io.tessellationResponse else io.hostResponse
+        val global=if(host)id else hostIds+id
+        io.memoryResponse.valid.poke(true.B);io.memoryResponse.bits.transactionId.poke(global.U)
+        io.memoryResponse.bits.readData.poke((0x81000000L+global).U);io.memoryResponse.bits.fault.poke((id%2==0).B)
+        response.ready.poke(false.B);request.valid.poke(true.B);request.bits.transactionId.poke(id.U)
+        val held=response.bits.peek().litValue
+        for(_<-0 until 3){
+          response.valid.expect(true.B);peer.valid.expect(false.B);response.bits.transactionId.expect(id.U)
+          assert(response.bits.peek().litValue==held);request.ready.expect(false.B)
+          io.memoryResponse.ready.expect(false.B);io.drained.expect(false.B);d.clock.step()
+        }
+        response.ready.poke(true.B)
+        // Unlike NativeJob's image port, this fabric blocks occupied-ID
+        // reacquisition even on the public response retirement clock.
+        request.ready.expect(false.B);d.clock.step();io.memoryResponse.valid.poke(false.B)
+        request.ready.expect(true.B);request.valid.poke(false.B)
+      }
+      d.clock.step();io.drained.expect(true.B)
+      for((host,id)<-Seq(true->(hostIds-1),false->(tessellationIds-1))){
+        issue(host,id);io.memoryResponse.valid.poke(true.B)
+        io.memoryResponse.bits.transactionId.poke((if(host)id else hostIds+id).U)
+        d.clock.step();io.memoryResponse.valid.poke(false.B);d.clock.step();io.drained.expect(true.B)
+      }
+      issue(true,hostIds-1);issue(false,tessellationIds-1)
+      d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B);io.drained.expect(true.B)
+      issue(false,tessellationIds-1);io.memoryResponse.valid.poke(true.B)
+      io.memoryResponse.bits.transactionId.poke((hostIds+tessellationIds-1).U)
+      d.clock.step();io.memoryResponse.valid.poke(false.B);d.clock.step();io.drained.expect(true.B)
+    }
+  }
+
   it should "retain the carry when the tessellation ID range exceeds the host range" in {
     simulate(new TessellationHostMemoryFabric(GpuConfig(lanes = 4, warps = 2), 4, 8)) { d =>
       val io = d.io

@@ -30,8 +30,8 @@ class TessellationHostMemoryFabric(config: GpuConfig, hostIds: Int, tessellation
     val drained = Output(Bool())
   })
 
-  private val hostLive = RegInit(VecInit(Seq.fill(hostIds)(false.B)))
-  private val tessellationLive = RegInit(VecInit(Seq.fill(tessellationIds)(false.B)))
+  private val hostLive = RegInit(0.U(hostIds.W))
+  private val tessellationLive = RegInit(0.U(tessellationIds.W))
   private val arbiter = Module(new RRArbiter(new ComputeMemoryRequest(config, 64, slots), 2))
   private val requests = Module(new Queue(new ComputeMemoryRequest(config, 64, slots), 2, pipe = true))
   private val hostTag = io.hostRequest.bits.transactionId
@@ -70,16 +70,22 @@ class TessellationHostMemoryFabric(config: GpuConfig, hostIds: Int, tessellation
     when(hostReply) { assert(responseHostOwned, "host response lacks an owner") }
     when(tessellationReply) { assert(responseTessellationOwned, "tessellation response lacks an owner") }
   }
-  for (i <- 0 until hostIds) {
-    when(io.hostRequest.fire && hostTag === i.U) { hostLive(i) := true.B }
-    when(io.hostResponse.fire && responseTag === i.U) { hostLive(i) := false.B }
+  private val hostAcquired = Mux(io.hostRequest.fire, UIntToOH(hostTag, hostIds), 0.U(hostIds.W))
+  private val hostReleased = Mux(io.hostResponse.fire, UIntToOH(responseTag, hostIds), 0.U(hostIds.W))
+  private val tessellationAcquired = Mux(io.tessellationRequest.fire,
+    UIntToOH(tessellationTag, tessellationIds), 0.U(tessellationIds.W))
+  private val tessellationReleased = Mux(io.tessellationResponse.fire,
+    UIntToOH(localTessellationTag, tessellationIds), 0.U(tessellationIds.W))
+  // The original per-ID assignments placed response release last. Preserve
+  // that priority, and retain the occupied-ID request gating above unchanged.
+  when(io.hostRequest.fire || io.hostResponse.fire) {
+    hostLive := (hostLive | hostAcquired) & ~hostReleased
   }
-  for (i <- 0 until tessellationIds) {
-    when(io.tessellationRequest.fire && tessellationTag === i.U) { tessellationLive(i) := true.B }
-    when(io.tessellationResponse.fire && localTessellationTag === i.U) { tessellationLive(i) := false.B }
+  when(io.tessellationRequest.fire || io.tessellationResponse.fire) {
+    tessellationLive := (tessellationLive | tessellationAcquired) & ~tessellationReleased
   }
-  io.hostDrained := !hostLive.asUInt.orR && !io.hostRequest.valid && !(io.memoryResponse.valid && hostReply)
-  io.tessellationDrained := !tessellationLive.asUInt.orR && !io.tessellationRequest.valid &&
+  io.hostDrained := !hostLive.orR && !io.hostRequest.valid && !(io.memoryResponse.valid && hostReply)
+  io.tessellationDrained := !tessellationLive.orR && !io.tessellationRequest.valid &&
     !(io.memoryResponse.valid && tessellationReply)
   io.drained := io.hostDrained && io.tessellationDrained && !requests.io.deq.valid && !io.memoryResponse.valid
 }
