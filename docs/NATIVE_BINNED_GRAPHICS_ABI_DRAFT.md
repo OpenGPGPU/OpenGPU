@@ -48,3 +48,38 @@ Probe GVI1 word 2 bits 31:24 first. The [indirect draw contract](INDIRECT_DRAW_S
 covers argument resolution, GPU publication, alias checks and cancellation.
 Mode zero requires the whole view to be zero. Existing fields and the
 512-word draw size remain unchanged.
+
+## Userspace frame metadata encoding
+
+`driver/opengpu_native_frame.h` provides the GNF encoder and resident tile
+planner. It retains all advertised extents, four color attachments, separate
+depth/stencil, 1/2/4 samples, six image/resolve slots and eight bin spill
+segments. Automatic tile selection chooses the largest advertised tile that
+fits every attachment; callers can explicitly request 8x8 or 16x16. This is a
+storage policy, not a claim that larger tiles improve every workload.
+
+`opengpu_native_frame_encode` returns canonical 2048-byte GNF metadata and up to
+27 typed GEM resource plans. All device addresses remain zero, including the
+private GFS state view. Image plans describe exact byte views, including
+unaligned payload starts and row pitch; their encompassing 64-byte lines must
+belong to the original GEM. Read/write permissions follow load/store/resolve
+use. A failed encode leaves the caller's result untouched.
+
+Pool role index zero names the initial segment; indices 1..8 name ordered
+fallback segments. A zero initial segment is allowed when fallback segments
+exist. The protected kernel producer must reserve the complete private VA
+envelope, patch its overall and segment bounds, and retain all backing objects.
+It must independently validate original GEM bounds, physical aliases,
+dependencies, actual copied state count, and every relocation before submission.
+This helper does not enable a capability or implement that protected producer.
+
+CPU validation passes all 36 color formats at each sample count, the 65536-tile
+v2 count, maximum resource/spill plans, zero-initial fallback, pitched endpoints,
+original-GEM overlap rejection, and failure atomicity. An independent decode
+through the published Scala-generated JSON checks field values, every address
+and all reserved words. These checks do not execute RTL or establish FPS.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 OPENGPU_TEST_SANITIZERS=1 \
+  python3 scripts/test_native_frame.py
+```

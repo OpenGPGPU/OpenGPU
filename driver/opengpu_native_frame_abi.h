@@ -18,7 +18,7 @@ typedef uint64_t opengpu_native_frame_u64;
 #define OPENGPU_NATIVE_FRAME_RESOURCE_IMAGE       1u /* index 0..5 */
 #define OPENGPU_NATIVE_FRAME_RESOURCE_RESOLVE     2u /* index 0..5 */
 #define OPENGPU_NATIVE_FRAME_RESOURCE_PRIMITIVES  3u /* index 0 */
-#define OPENGPU_NATIVE_FRAME_RESOURCE_POOL        4u /* index 0 */
+#define OPENGPU_NATIVE_FRAME_RESOURCE_POOL        4u /* initial 0, spill 1..8 */
 #define OPENGPU_NATIVE_FRAME_RESOURCE_DIRECTORY   5u /* index 0 */
 #define OPENGPU_NATIVE_FRAME_RESOURCE_SCRATCH     6u /* index 0..engines-1 */
 #define OPENGPU_NATIVE_FRAME_RESOURCE_READ  1u
