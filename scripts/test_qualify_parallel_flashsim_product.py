@@ -207,6 +207,40 @@ class ParallelQualificationTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'not completed'):
             recorder.witness_original(self.new, self.original, self.run, self.extra / 'rejected.json', common.SCENES[:2])
 
+    def test_records_vga_product_and_rejects_wrong_size_or_resources(self):
+        self.new.product = self.original.product = True
+        self.new.two_cu_vga = self.original.two_cu_vga = True
+        self.new.api_capacity = self.original.api_capacity = True
+        for directory in (self.current, self.old):
+            path = directory / 'fixture-manifest.json'
+            manifest = dict(json.loads(path.read_text()), product=True,
+                frameWidth=640, frameHeight=480, computeUnits=2,
+                profile='two-cu-vga60-v1', targetFps=60, apiCapacity=True,
+                screenWidth=640, screenHeight=480, nativeMaxWidth=2048,
+                nativeMaxHeight=2048, pagedCapacity=65536, engines=4, payloadBytes=524288)
+            common.write_json(path, manifest)
+            prep_path = directory / 'preparation.json'
+            common.write_json(prep_path, dict(json.loads(prep_path.read_text()),
+                                             manifest_sha256=common.sha(path)))
+        name = common.SCENES[0]; target = self.run / 'scenes' / name
+        row = dict(metric(name), frameWidth=640, frameHeight=480, computeUnits=2,
+                   nativeEngines=4, nativeMaxWidth=2048, nativeMaxHeight=2048,
+                   profile='two-cu-vga60-v1')
+        state = json.loads(self.witness_path.read_text())['controller_state']
+        common.write_json(self.old / 'state.json', dict(state, product=True, two_cu_vga=True))
+        (target / 'execution.log').write_text(json.dumps(row) + '\n')
+        result = self.extra / 'vga-witness.json'
+        recorder.witness_original(self.new, self.original, self.run, result, [name])
+        self.assertEqual(json.loads(result.read_text())['scenes'][name]['metrics'], row)
+        for field, value in [('frameWidth', 1280), ('frameHeight', 720),
+                ('computeUnits', 4), ('nativeEngines', 2), ('nativeMaxWidth', 640),
+                ('nativeMaxHeight', 480), ('profile', None)]:
+            (target / 'execution.log').write_text(json.dumps(dict(row, **{field: value})) + '\n')
+            rejected = self.extra / 'rejected-vga.json'
+            with self.subTest(field=field), self.assertRaises(RuntimeError):
+                recorder.witness_original(self.new, self.original, self.run, rejected, [name])
+            self.assertFalse(rejected.exists())
+
     def test_runs_real_separate_processes_and_records_immutable_outputs(self):
         executable = self.old / 'native_product_driver'
         executable.write_text('''#!/usr/bin/env python3
