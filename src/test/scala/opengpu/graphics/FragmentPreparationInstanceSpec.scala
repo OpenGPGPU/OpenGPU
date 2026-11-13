@@ -65,6 +65,15 @@ class FragmentPreparationInstanceSpec extends AnyFlatSpec {
       submit(1,84,0.125);await(1)
       d.io.out(1).bits.preparationStatus.expect(0.U);d.io.out(1).bits.quad.sequence.expect(84.U)
       assert(d.io.out(0).bits.peek().litValue==held)
+      retire(1);submit(1,85,0.125);await(1) // exact numerical key hit
+      d.io.out(1).bits.quad.sequence.expect(85.U)
+      for(lane<-0 until 4)d.io.out(1).bits.quad.lanes(lane).windowDepth.expect(fp(0.125).U)
+      assert(d.io.out(0).bits.peek().litValue==held)
+      val peer=d.io.out(1).bits.peek().litValue
+      retire(0);submit(0,42,0.25);await(0)
+      d.io.out(0).bits.quad.sequence.expect(42.U)
+      for(lane<-0 until 4)d.io.out(0).bits.quad.lanes(lane).windowDepth.expect(fp(0.25).U)
+      assert(d.io.out(1).bits.peek().litValue==peer)
       retire(0);retire(1)
     }
   }

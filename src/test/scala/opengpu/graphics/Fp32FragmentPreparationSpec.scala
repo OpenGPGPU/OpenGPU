@@ -169,16 +169,21 @@ abstract class FragmentPreparationChecks(streaming: Boolean) extends AnyFlatSpec
         d.io.out.ready.poke(true.B);d.clock.step();d.io.out.ready.poke(false.B)
         d.io.busy.expect(false.B);d.io.in.ready.expect(true.B)
       }
-      submit();val latency=awaitResult();d.io.out.bits.preparationStatus.expect(0.U)
+      submit();val coldLatency=awaitResult();d.io.out.bits.preparationStatus.expect(0.U)
       val healthy=d.io.out.bits.peek().litValue;retire()
-      for(cut<-0 until latency){
+      submit();val warmLatency=awaitResult();d.io.out.bits.preparationStatus.expect(0.U)
+      assert(d.io.out.bits.peek().litValue==healthy);retire()
+      assert(warmLatency<coldLatency)
+      for(warm<-Seq(false,true);cut<-0 until (if(warm)warmLatency else coldLatency)){
+        if(!warm){d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)}
+        else if(cut==0){submit();awaitResult();retire()} // prime after the cold sweep
         submit();d.clock.step(cut);d.io.out.valid.expect(false.B)
         d.io.cancel.poke(true.B);d.clock.step();d.io.cancel.poke(false.B)
         awaitResult();d.io.out.bits.preparationStatus.expect(4.U)
         d.io.out.bits.quad.sequence.expect(17.U);retire()
       }
       submit();awaitResult();assert(d.io.out.bits.peek().litValue==healthy,"cancelled scratch leaked into healthy reuse");retire()
-      info(s"FRAGMENT_PREPARATION sampledCancelCuts=$latency sharedInputStable=true heldResults=true exactHealthyReuse=true")
+      info(s"FRAGMENT_PREPARATION coldCancelCuts=$coldLatency warmCancelCuts=$warmLatency sharedInputStable=true heldResults=true exactHealthyReuse=true")
     }
   }
   it should "retain the minimum one-slot one-sample preparation interface" in {
@@ -192,9 +197,11 @@ abstract class FragmentPreparationChecks(streaming: Boolean) extends AnyFlatSpec
   it should "compose all sixty-four perspective components and exact scalar accounting" in {
     simulate(new FragmentPreparationPair(p,g,streaming)){d=>val t=new Driver(d)
       t.prepare();t.submit();t.finish()
+      t.prepare(triangle(7));t.submit();t.finish()
       val reversed=triangle(1).copy(coords=Vector(triangle(1).coords(0),triangle(1).coords(2),triangle(1).coords(1)))
       t.prepare(reversed);t.submit();t.finish()
       t.prepare(triangle(2).copy(values=triangle(2).values.copy(slots=0,flat=0)));t.submit();t.finish()
+      if(streaming)for(i<-0 until 4){t.prepare(triangle(10+i));t.submit();t.finish()}
       info("FRAGMENT_PREPARATION fullComponents=64 nonUnitW=true windings=2 exactAllFields=true exactOperationAndFlagAccounting=true emptyVaryings=true")
     }
   }
@@ -204,6 +211,14 @@ abstract class FragmentPreparationChecks(streaming: Boolean) extends AnyFlatSpec
       t.prepare(mode=2,centroid=qualifiers);t.submit();t.finish()
       t.prepare(triangle(3),mode=1,centroid=qualifiers,offset=Some(E(exponent = -12,sig=0x800000)),towardZero=true)
       t.submit();t.finish()
+      t.prepare(triangle(4));t.submit();t.finish() // hit: centroid on -> off
+      t.prepare(triangle(5),mode=2,centroid=BigInt(1)<<63);t.submit();t.finish()
+      // Wrap every real streaming owner and exercise warm cache entries while
+      // current centroid qualifiers switch on/off independently.
+      if(streaming)for(i<-0 until 4){
+        t.prepare(triangle(20+i),mode=if(i%2==0)2 else 0,centroid=if(i%2==0)BigInt(1)<<63 else BigInt(0))
+        t.submit();t.finish()
+      }
     }
   }
   it should "preserve coherent covered-sample fallback across a perspective pole" in {
@@ -225,7 +240,9 @@ abstract class FragmentPreparationChecks(streaming: Boolean) extends AnyFlatSpec
       val values=triangle().values.copy(inv=Vector(E(exponent=400,sig=0x800000),E(sig=0x800000),E(sig=0x800000)),
         flat=0,values=Vector.tabulate(3,64)((v,c)=>if(v==0 && c==0)BigInt("7f7fffff",16)else fp(1)))
       val samples=Vector.tabulate(4)(i=>Sample(if(i==1)Vector(-1,2,2).map(BigInt(_))else Vector.fill(3)(BigInt(1)),3,1,i&1,i>>1))
-      t.prepare(triangle().copy(values=values),samples=Some(samples));t.submit();t.finish(7)
+      for(_<-0 until (if(streaming)5 else 2)){
+        t.prepare(triangle().copy(values=values),samples=Some(samples));t.submit();t.finish(7)
+      }
       t.prepare();t.submit();t.finish()
     }
   }
