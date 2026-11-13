@@ -167,7 +167,7 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
     simulate(new Harness(geometryEnabled=true)){d=>val t=new Driver(d)
       val stateBase=BigInt(0x700000);val nodeBase=BigInt(0xb00000)
       val sf=TypedFragmentStateLayout.fields(new TypedFragmentState(FragmentShaderConfig(varyings=2)))
-      def prepare(mixed: Boolean=false): Unit={
+      def prepare(mixed: Boolean=false,geometryFragment: Boolean=false): Unit={
         t.prepare(3)
         t.frameValues++=Map[String,BigInt]("frame.states.version"->1,"frame.states.limit"->(stateBase+2048),
           "frame.image.pixels.colors.colors[0].enabled"->1)
@@ -187,7 +187,7 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
           t.put(draw,drawWords,if(gs)NativeGeometryDrawLayout.magic else drawMagic,t.df,t.orderedDrawValues(i))
           if(gs){t.memory(draw+8)=2;t.memory(draw+508*4)=1;t.memory(draw+509*4)=nodeBase+i*1024;t.memory(draw+510*4)=nodeBase+(i+1)*1024}
           val state=t.ids("fragment.identity.")++Map[String,BigInt]("version"->1,"engineCount"->2,"tests.version"->1,"blend.version"->1,
-            "fragment.version"->1,"fragment.shaderPc"->0x9000,"fragment.varyingSlots"->(if(gs)2 else 1),
+            "fragment.version"->(if(gs && geometryFragment)5 else 1),"fragment.shaderPc"->0x9000,"fragment.varyingSlots"->(if(gs)2 else 1),
             "fragment.colorSlots"->1,"fragment.colorMask"->1,
             "fragment.scratch.base"->(0x500000+handle*4096),"fragment.scratch.limit"->(0x500000+handle*4096+1024),
             "fragment.scratch.allocationBase"->(0x500000+handle*4096),"fragment.scratch.allocationLimit"->(0x500000+handle*4096+1024),
@@ -211,6 +211,15 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
       assert(t.requests.count{case(_,a)=>a>=nodeBase && a<nodeBase+3072}==48)
       t.blockBegin=false;t.complete(0,3)
       prepare(mixed=true);t.submit();t.complete(0,3)
+      prepare(geometryFragment=true);t.submit();t.complete(0,3)
+      prepare(mixed=true,geometryFragment=true);t.submit();t.complete(0,3)
+      // The final GFS is individually valid under the opt-in reader but is
+      // incompatible with an ordinary final GND. No earlier draw may start.
+      prepare(geometryFragment=true);val ordinaryLast=t.drawBase+8192
+      t.memory(ordinaryLast)=drawMagic;t.memory(ordinaryLast+8)=1
+      for(word<-508 until 512)t.memory(ordinaryLast+word*4)=0
+      t.set(ordinaryLast,t.df,"draw.vertex.geometry.topology",4)
+      t.set(stateBase+3*512,sf,"fragment.varyingSlots",1);rejected(1)
       for((word,value,code)<-Seq[(Int,BigInt,Int)]((0,BigInt(0),1),(3,BigInt(99),7),(7,BigInt(33),1),(9,BigInt(257),1),(11,BigInt(5),1),
             (13,BigInt(2),1),(14,BigInt(1),1),(23,BigInt(1),1),(255,BigInt(1),1))){
         prepare();t.memory(nodeBase+2048+word*4)=value;rejected(code)
@@ -293,6 +302,7 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
       prepare();t.set(t.drawBase+2*4096,t.df,"draw.vertex.viewport.version",0);rejected(1)
       prepare();t.set(t.drawBase+2*4096,t.df,"draw.vertex.geometry.vertex.input.attributes[0].components",0);rejected(1)
       prepare();t.set(stateBase+3*512,sf,"fragment.shaderPc",3);rejected(1)
+      prepare();t.set(stateBase+3*512,sf,"fragment.version",5);rejected(1)
       prepare();t.memory(stateBase+3*512+28)=99;rejected(7)
       prepare();t.faultAt=Set(stateBase+3*512+128);rejected(3);t.faultAt=Set.empty
       if(advanced){
