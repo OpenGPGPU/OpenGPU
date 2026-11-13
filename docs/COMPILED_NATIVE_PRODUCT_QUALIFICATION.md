@@ -2,7 +2,7 @@
 
 This explicit local runner executes the same full-profile native host, six input recipes and independent stored-image oracle as `QualifyNativeProductRecipes`. The C++ driver services external AXI transactions inside the Verilator process. Rasterization, shaders, texture sampling, depth/stencil, blending, stores and resolves execute in the generated RTL.
 
-The legacy hardware profile retains four CUs, sixteen lanes, eight resident warps, four native fragment workers, the original storage capacities, characterized SRAM models and a 256-bit AXI port. Smoke mode renders 32×32 scenes; it does not reduce execution or storage capacities. Legacy product mode renders 1280×720 and explicitly sets `opengpu.productQualification=1` when invoking Scala. Both modes require all six scenes. Neither the RTL build nor these simulations belongs in regular PR/nightly CI.
+The legacy hardware profile retains four CUs, sixteen lanes, eight resident warps, four native fragment workers, the original storage capacities, characterized SRAM models and a 256-bit AXI port. Smoke mode renders 32×32 scenes; it does not reduce execution or storage capacities. The mandatory two-CU product profile is selected explicitly below. Both modes require all six scenes. Neither the RTL build nor these simulations belongs in regular PR/nightly CI.
 
 ## Two-CU VGA target
 
@@ -19,7 +19,7 @@ smaller engine count is not substituted for this product profile.
 The display stays 640×480 in both modes. Smoke renders six 32×32 frames on the
 same hardware; product renders all six complete 640×480 frames. Both use v2
 frame descriptors and 8×8 tiles through `encodeApiExtent`. The runner enables
-the API-capacity and full-host guards and keeps the legacy 720p opt-in disabled.
+the API-capacity and full-host guards and sets `opengpu.productQualification=0`.
 GCR1 and all eight GNC3 capability words are checked against the executing
 hardware before submission. Manifests, execution metrics and the image-oracle
 marker bind results to `two-cu-vga60-v1`; four-CU or reduced-capacity results
@@ -130,14 +130,14 @@ check exercises connections only.
 Initialize the pinned SRAM submodule and install the repository's Scala/C++/Verilator toolchain. Use an absolute output directory under `.artifacts/`:
 
 ```sh
-python3 scripts/qualify_native_product_compiled.py --smoke \
+python3 scripts/qualify_native_product_compiled.py --smoke --two-cu-vga \
   --output "$PWD/.artifacts/native-compiled-smoke" --jobs 2
 ```
 
 Run a deliberate product qualification separately:
 
 ```sh
-python3 scripts/qualify_native_product_compiled.py --product \
+python3 scripts/qualify_native_product_compiled.py --product --two-cu-vga \
   --output "$PWD/.artifacts/native-compiled-product" --jobs 2
 ```
 
@@ -209,10 +209,6 @@ image/guard verification (`passed=true`, `product=false`,
 | small-triangles | 35,748 |
 | msaa-4x | 114,444 |
 
-The product `--stage prepare` also succeeds with the 1280×720 fixture
-manifest (`frameWidth=1280`, `frameHeight=720`, product true). The 720p
-execution, whole-host clock and FPS qualification were not run here, so this
-note does not establish a 720p product result, clock or frame rate.
 
 ## Bounded scene parallelism
 
@@ -223,7 +219,7 @@ Choose a limit that fits local CPU and memory availability; three is a useful
 starting point. `--jobs` still controls model compilation only.
 
 ```sh
-python3 scripts/qualify_native_product_compiled.py --product \
+python3 scripts/qualify_native_product_compiled.py --product --two-cu-vga \
   --output "$PWD/.artifacts/native-product-parallel" --jobs 2 --scene-jobs 3
 ```
 
@@ -258,7 +254,7 @@ independent Scala image and guard oracles. The same selected-scene driver is
 used by these controls. Fresh `small-triangles` takes 41,286 service cycles
 versus 41,287 on the historical shared model; original RTL reproduces this
 startup difference. This is a startup-mode control on that frozen hardware,
-not current-main 720p, clock or FPS qualification. The 19 product-tool checks,
+not current-main product, clock or FPS qualification. The 19 product-tool checks,
 seven API-tool checks and complete `bash scripts/test_scripts.sh` entry point
 also pass; routine CI adds no full-model or product-frame run.
 
@@ -272,10 +268,10 @@ generator, CIRCT libraries, driver and executable to the build record.
 Use Python 3.10 or newer with a FlashSim checkout and its CIRCT frontend:
 
 ```sh
-python3 scripts/qualify_native_product_flashsim.py --smoke \
+python3 scripts/qualify_native_product_flashsim.py --smoke --two-cu-vga \
   --flashsim-dir /path/to/FlashSim --output "$PWD/.artifacts/flashsim-smoke" --jobs 2
-# Explicit 720p qualification, outside the PR/nightly lanes:
-python3 scripts/qualify_native_product_flashsim.py --product \
+# Explicit 640×480 two-CU qualification, outside the PR/nightly lanes:
+python3 scripts/qualify_native_product_flashsim.py --product --two-cu-vga \
   --flashsim-dir /path/to/FlashSim --output "$PWD/.artifacts/flashsim-product" --jobs 2
 ```
 
@@ -304,7 +300,7 @@ On GPU snapshot `e9715d78`, an assertion-enabled FlashSim model with the
 full 4-CU/16-lane/8-warp host completed the six sequential 32×32 development
 scenes. All stored images, guards and AXI drain checks passed with 8,096 bound
 assertions. This used FlashSim `6861c42`, a locally modified experimental
-CIRCT, resharded C++ and `-O0`; it does not qualify current RTL, 720p, a
+CIRCT, resharded C++ and `-O0`; it does not qualify current RTL, complete product frames, a
 whole-host clock or FPS. The CIRCT changes are not part of the GPU repository.
 
 To build a similarly resharded model, use Python 3.10+, Clang and compatible
@@ -317,14 +313,14 @@ export PYTHONPATH="$FLASH_GENERATOR"
 export CIRCT_VERILOG=/path/to/compatible/circt-verilog
 export FLASHSIM_CIRCT_SERIAL=1
 out="$PWD/.artifacts/flashsim-smoke"
-python3 scripts/qualify_native_product_flashsim.py --smoke --stage prepare \
+python3 scripts/qualify_native_product_flashsim.py --smoke --two-cu-vga --stage prepare \
   --flashsim-dir "$FLASH_GENERATOR" --output "$out"
-python3 scripts/qualify_native_product_flashsim.py --smoke --stage generate \
+python3 scripts/qualify_native_product_flashsim.py --smoke --two-cu-vga --stage generate \
   --flashsim-dir "$FLASH_GENERATOR" --output "$out"
 PYTHONPATH="$FLASH_RESHARD" python3 -m flashsim.reshard create \
   --source "$out/flashsim-dut" --output "$out/resharded" --max-mib 16 --commit-parts 16
 for stage in build run verify; do
-  python3 scripts/qualify_native_product_flashsim.py --smoke --stage "$stage" \
+  python3 scripts/qualify_native_product_flashsim.py --smoke --two-cu-vga --stage "$stage" \
     --flashsim-dir "$FLASH_GENERATOR" --output "$out" --jobs 2 \
     --reshard-dir "$out/resharded" --reshard-tool "$FLASH_RESHARD" \
     --precompiled-header --shard-opt=-O0
@@ -339,76 +335,15 @@ that exact run requires the same local compiler build and setting.
 The experimental CIRCT branch contains local changes to hierarchical reference
 routing and LLHD liveness in addition to the uncommitted canonicalizer; it links
 the official LLVM/MLIR 1.158 libraries and does not modify OpenGPU's LLVM branch.
-The official CIRCT 1.158 frontend rejected a separate 720p product RTL import
-with an unsupported port in `ShaderTextureFetchUnit`. An unmodified end-to-end
-CIRCT flow has not been demonstrated for this model.
-
 The optional `--conservative-alias` compiles optimized shards with
 `-fno-strict-aliasing`. Use the same setting for build, run and verify,
 including the equivalent verifier and parallel recorder/verifier: it is part
 of the build identity, including the precompiled-header flags. The default is unchanged.
-On the assertion-enabled 720p model from GPU `b93ea509` and
-FlashSim `063ee61`, one 2.5 MiB resharded memory/commit shard took about
-2,216 seconds to compile with Apple Clang 16 at `-O2` in an earlier run. With
-conservative aliasing, its matching precompiled header took 92.5 seconds and
-peaked at 8.1 GiB; the shard then took 21.2 seconds. Machine load differed
-between runs, and this is one shard, not a full-build speed claim. Replacing
-only this object matched complete memory, traffic and trace data for two
-65,536-cycle desktop and textured prefixes; it is not a full-frame or FPS
-qualification. This model used the locally modified experimental CIRCT.
-
-For the retained, 16 MiB resharded model with localized store helpers, the
-conservative single-shard compilation can be repeated with Clang using:
-
-```sh
-cd "$RESHARDED_MODEL"
-c++ -std=gnu++17 -fPIC -fPIE -w -Wno-parentheses-equality -fbracket-depth=4096 \
-  -I. -fno-strict-aliasing -O2 -x c++-header dut.h -o "$PCH"
-c++ -std=gnu++17 -fPIC -fPIE -w -Wno-parentheses-equality -fbracket-depth=4096 \
-  -I. -fno-strict-aliasing -include-pch "$PCH" -O2 -c dut_extra_0_0008.cpp -o "$OBJECT"
-```
-
-On the retained assertion-enabled 720p FlashSim model, the independent image
-and guard oracle passed small-triangles, textured-3d, 4x MSAA and desktop
-composition, with drained AXI traffic. They used 30,076,743, 10,031,350,
-24,477,881 and 22,183,782 service cycles respectively. These are four separate
-scene checks on the recorded RTL snapshot; opaque overdraw, transparent layers,
-whole-host clock and FPS are not yet qualified.
-
-A fresh product preparation at `0bb86f48`, after the source-alpha-saturate
-correction, produced identical bytes for all 1,517 emitted RTL files, all 13
-fixture files and the fixture manifest. The parallel qualification guard also
-rehashes the original generated model, build inputs and executable. This carries
-the four scene results to that byte-identical RTL; it does not qualify the other
-scenes or the whole-host clock.
-
-The standalone image check can be repeated for any completed scene with:
-
-```sh
-sbt -J-Xmx24G -Dopengpu.fullHostQualification=1 -Dopengpu.productQualification=1 \
-  "Test / runMain opengpu.system.VerifyOneNativeScene --product textured-3d $MEMORY"
-```
-
-Replace `textured-3d` with `small-triangles`, `msaa-4x` or
-`desktop-composition` for the corresponding memory. This verifies the selected
-stored image, allocation metadata and guards; it does not by itself verify the
-model's provenance, traffic drain or the remaining scenes. The bounded oracle
-test below checks 4x sample, resolve and guard corruption:
-
-```sh
-sbt 'testOnly opengpu.graphics.NativeProductFrameInputsSpec'
-```
-
-The same assertion-enabled 720p model was also tested with FlashSim's
-commit-block specialization. A relink replaced 17 commit objects and added
-one helper while retaining 251 unchanged sources. Its complete
-small-triangles scene matched the reference's full stored memory, all six
-fragment-phase counters and AXI byte counts; the independent image and guard
-oracle passed. It used 30,076,743 service cycles and drained traffic. This is
-one scene, not a six-scene, full-build, clock or FPS result.
-
-To apply the same source transformation to a separately generated product
-model, use a FlashSim checkout that supports `--commit-blocks`:
+Complete-frame performance and compiler speed must be measured on the current
+selected source and profile after a full build. Partial relinks and short
+prefix comparisons cannot qualify a product frame or FPS. An optional source
+transformation can be prepared with a FlashSim checkout that supports
+`--commit-blocks`:
 
 ```sh
 PYTHONPATH="$FLASH_RESHARD" python3 -m flashsim.reshard create \
@@ -416,9 +351,9 @@ PYTHONPATH="$FLASH_RESHARD" python3 -m flashsim.reshard create \
   --commit-parts 16 --local-store-helpers --commit-blocks
 ```
 
-Then use the preceding build/run/verify stages with `--product`,
-`--reshard-dir "$out/resharded"` and `--shard-opt=-O2`. The observed scene
-used an audited partial relink; a fresh complete build is a separate run.
+Use the preceding strict build/run/verify stages with the same explicit
+profile and all matching generator, reshard and compiler options. All six
+independent stored-image checks remain required.
 
 If source changes after a completed run, a fresh `--stage prepare` may be
 requalified without repeating execution only when every emitted RTL file,
@@ -435,7 +370,7 @@ use the current checkout. A historical driver checkout cannot build a new model.
 Use the original generation environment and build options, for example:
 
 ```sh
-python3 scripts/qualify_equivalent_flashsim_product.py --product \
+python3 scripts/qualify_equivalent_flashsim_product.py --product --two-cu-vga \
   --prepared-output "$CURRENT_PREPARATION" --execution-output "$COMPLETED_RUN" \
   --flashsim-dir "$FLASH_GENERATOR" --scene-jobs 2 \
   --reshard-dir "$FLASH_RESHARDED" --reshard-tool "$FLASH_RESHARD" \
@@ -458,7 +393,7 @@ two-scene batch still running, launch the other scenes and record the original
 completed scenes in a second shell:
 
 ```bash
-args=(--product --prepared-output "$CURRENT_PREPARATION" --original-output "$ORIGINAL_RUN"
+args=(--product --two-cu-vga --prepared-output "$CURRENT_PREPARATION" --original-output "$ORIGINAL_RUN"
   --flashsim-dir "$FLASH_GENERATOR" --scene-jobs 2 --reshard-dir "$FLASH_RESHARDED"
   --reshard-tool "$FLASH_RESHARD" --precompiled-header --shard-opt=-O0)
 python3 scripts/record_parallel_flashsim_product.py extra "${args[@]}" \
@@ -469,7 +404,7 @@ python3 scripts/record_parallel_flashsim_product.py witness "${args[@]}" \
   --run-directory "$ORIGINAL_SCENE_RUN" --output "$ADDITIONAL_BATCH/first-two-witness.json" \
   --scene desktop-composition --scene textured-3d
 # After both batches finish:
-python3 scripts/qualify_parallel_flashsim_product.py --product \
+python3 scripts/qualify_parallel_flashsim_product.py --product --two-cu-vga \
   --prepared-output "$CURRENT_PREPARATION" --original-output "$ORIGINAL_RUN" \
   --witness "$ADDITIONAL_BATCH/first-two-witness.json" \
   --extra-record "$ADDITIONAL_BATCH/extra-execution.json" \
@@ -499,7 +434,7 @@ python3 scripts/test_flashsim_native_adapter.py
 
 These checks validate the adapter boundary. Actual full-host assertion
 coverage, native trace parity and all six independent stored-image checks
-remain required; they do not establish a 720p result, clock or FPS.
+remain required; they do not establish a product-frame result, clock or FPS.
 
 ## Reusing unchanged native compilation shards
 
@@ -572,12 +507,12 @@ Scala cycle/traffic reference was supplied for this run.
 Reproduce locally with the pinned SRAM submodule initialized:
 
 ```sh
-python3 scripts/qualify_native_product_compiled.py --smoke \
+python3 scripts/qualify_native_product_compiled.py --smoke --two-cu-vga \
   --hierarchy-profile fp32 --jobs 2 --output "$PWD/.artifacts/native-current-smoke"
 ```
 
 These are small-frame correctness and traffic measurements. They do not
-qualify a 720p frame, a whole-host clock, FPS or H6 acceptance.
+qualify a product frame, a whole-host clock, FPS or H6 acceptance.
 
 ## Matched hierarchy result, 2026-10-28
 
@@ -601,16 +536,16 @@ guard/protocol tests and a passing full host-script entry point.
 The qualified source is `15e2b8f580c0` with hardware base `645a46a506b5`.
 Rebasing/publishing the compiler option does not qualify subsequent RTL changes;
 prepare, build, run and verify fresh models for that hardware. This comparison
-establishes no current whole-host clock, 720p FPS or H0–H8 completion. Raw
-logs, complete source/build inventories and qualification outputs stay local
-under `.artifacts/`.
+establishes no current whole-host clock, product FPS or H0–H8 completion. Raw
+logs, complete source/build inventories and qualification outputs are temporary
+under `.artifacts/`; delete them when active validation ends.
 
 Reproduce a matched single-job pair on a fixed source revision:
 
 ```sh
-python3 scripts/qualify_native_product_compiled.py --smoke --jobs 1 \
+python3 scripts/qualify_native_product_compiled.py --smoke --two-cu-vga --jobs 1 \
   --output "$PWD/.artifacts/native-matched-baseline"
-python3 scripts/qualify_native_product_compiled.py --smoke --jobs 1 \
+python3 scripts/qualify_native_product_compiled.py --smoke --two-cu-vga --jobs 1 \
   --hierarchy-profile fp32 --output "$PWD/.artifacts/native-matched-fp32"
 ```
 
@@ -628,7 +563,7 @@ scene produced the same 70,908 service cycles, traffic/phase counters,
 change. The original Scala image and guard oracle passed. A single contended
 pair used 170.352 versus 166.180 user-CPU seconds; two balanced 12,000-cycle
 prefix runs per variant averaged 27.047 versus 26.035 seconds. These are
-small local measurements, not a general speed guarantee or a 720p/FPS result.
+small local measurements, not a general speed guarantee or a product FPS result.
 The production-shaped driver separately reproduced the same scene's counters
 and stored memory. All six scenes and the product gates remain required.
 
@@ -653,4 +588,4 @@ All six 32×32 scenes passed with the original Scala stored-image oracle: deskto
 
 The 13 memory/codec checks and seven CPU runner guard checks pass. The latter execute eleven C++ AXI protocol cases, including narrow upper-beat words, held responses, W before AW, concurrent reads/writes, masked traffic and fault replies. The full host-script entry point also passes.
 
-That earlier six-scene result used approximately 49 minutes of simulator loop time on this host with concurrent local validation. Build time is separate. It established correctness of the compiled stimulus path; it did not qualify compiler-profile improvements, a whole-host clock, 720p frame rate or H0–H8 completion.
+That earlier six-scene result used approximately 49 minutes of simulator loop time on this host with concurrent local validation. Build time is separate. It established correctness of the compiled stimulus path; it did not qualify compiler-profile improvements, a whole-host clock, product frame rate or H0–H8 completion.
