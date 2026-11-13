@@ -18,6 +18,40 @@
 #include "pipe/p_context.h"
 #include "pipe/p_screen.h"
 #include "util/u_inlines.h"
+#include "native_graphics_uniform_source.h"
+#ifdef OPENGPU_CS_NATIVE_KERNEL
+#include "graphics_native_kernel.h"
+static struct native_kernel_session *native_session;
+static struct native_graphics_source_record *native_source_record;
+static unsigned native_kernel_records;
+static void *native_allocate_original(unsigned handle,uint64_t bytes)
+{return native_kernel_original_allocate(native_session,handle,bytes);}
+static int native_close_original(unsigned handle)
+{return native_kernel_original_close(native_session,handle);}
+static int native_original_references(unsigned handle)
+{return native_kernel_original_refcount(native_session,handle);}
+static int native_actual_transport(unsigned long request,void *argument)
+{
+    assert(request==DRM_IOCTL_OPENGPU_SUBMIT_NATIVE_BINNED && native_session && native_source_record);
+    int ret=native_kernel_submit(native_session,argument,graphics_native_source_observer,native_source_record);
+    if(ret){errno=-ret;return -1;}
+    native_kernel_records++;return 0;
+}
+static void native_original_inputs(struct native_graphics_source_record *record,
+    struct pipe_resource *const resources[36],const unsigned offsets[36],
+    const struct drm_opengpu_native_uniform_stage uniforms[2])
+{
+    memset(record,0,sizeof(*record));
+    for(unsigned stage=0;stage<2;stage++)for(unsigned source=0;source<13;source++) {
+        unsigned binding=stage*24+(source?source-1:0);
+        const struct drm_opengpu_compute_uniform_view *defaults=&uniforms[stage].defaults;
+        unsigned handle=source?pipe_opengpu_resource_handle(opengpu_resource(resources[binding])->gpu):defaults->handle;
+        record->windows[stage][source]=(struct native_graphics_source_window){.handle=handle,
+            .allocation_bytes=bos[handle].size,.offset=source?offsets[binding]:defaults->offset,
+            .bytes=source?16384u:4096u,.binding=source?binding:0};
+    }
+}
+#endif
 static uint32_t value(unsigned binding, unsigned word);
 static void word_results(unsigned stage, const struct opengpu_native_uniform_program *native,
     const struct graphics_uniform_view views[13]);
@@ -597,7 +631,8 @@ static int native_transport(unsigned long request,void *arg)
     return 0;
 }
 static void native_metadata(struct pipe_context *pipe, const struct opengpu_native_graphics_sources *sources,
-    struct pipe_resource *input, unsigned color_type, const char *directory)
+    struct pipe_resource *input, unsigned color_type, const char *directory,const char *prefix,
+    struct native_graphics_source_record *observation)
 {
     struct pipe_opengpu_screen *screen=opengpu_screen_gpu(pipe->screen);
     struct pipe_opengpu_resource *scratch=pipe_opengpu_resource_create(screen,15*128*4);assert(scratch);
@@ -644,9 +679,9 @@ static void native_metadata(struct pipe_context *pipe, const struct opengpu_nati
     memcpy((uint8_t *)pipe_opengpu_resource_map(opengpu_resource(input)->gpu)+4,triangle,sizeof(triangle));
     const void *records[]={&job,&encoded.draw,&encoded.state,&frame.frame};
     const unsigned sizes[]={sizeof(job),sizeof(encoded.draw),sizeof(encoded.state),sizeof(frame.frame)};
-    const char *names[]={"native.gnj","native.gnd","native.gfs","native.gnf"};
+    const char *names[]={"gnj","gnd","gfs","gnf"};
     for(unsigned i=0;i<4;i++) {
-        char path[4096];assert(snprintf(path,sizeof(path),"%s/%s",directory,names[i])>0);
+        char path[4096];assert(snprintf(path,sizeof(path),"%s/%s.%s",directory,prefix,names[i])>0);
         FILE *stream=fopen(path,"wx");assert(stream&&fwrite(records[i],1,sizes[i],stream)==sizes[i]&&!fclose(stream));
     }
     unsigned sync;assert(!opengpu_sync_create(pipe_opengpu_screen_fd(screen),&sync));
@@ -676,6 +711,20 @@ static void native_metadata(struct pipe_context *pipe, const struct opengpu_nati
     native_transport_fail=0;
     assert(!opengpu_native_graphics_submit(pipe,&submission,&sequence)&&sequence==0xf00d12345678ull&&
         native_transport_calls==calls+2);
+#ifdef OPENGPU_CS_NATIVE_KERNEL
+    assert(observation && native_session);
+    observation->width=observation->height=4;observation->color_handle=windows[0].handle;
+    observation->color_offset=64;observation->color_bytes=256;observation->row_pitch=64;
+    native_source_record=observation;resource_ioctl=native_actual_transport;
+    sequence=0;
+    assert(!opengpu_native_graphics_submit(pipe,&submission,&sequence)&&sequence);
+    char path[4096];assert(snprintf(path,sizeof(path),"%s/%s.source.json",directory,prefix)>0);
+    FILE *stream=fopen(path,"wx");assert(stream);
+    assert(!graphics_native_source_write(native_session,stream,observation)&&!fclose(stream));
+    resource_ioctl=NULL;native_source_record=NULL;
+#else
+    (void)observation;
+#endif
     resource_ioctl=NULL;native_transport_source=NULL;
     assert(!opengpu_sync_destroy(pipe_opengpu_screen_fd(screen),sync));
     request.attributes[1].enabled=1;
@@ -762,6 +811,13 @@ static void production_constants(void *program, const char *directory)
     fixture_native_layout=native_layout_word(128);
     struct pipe_screen *screen=opengpu_drm_screen_create(7,NULL);assert(screen);
     struct pipe_context *pipe=screen->context_create(screen,NULL,0);assert(pipe);
+#ifdef OPENGPU_CS_NATIVE_KERNEL
+    native_session=native_kernel_session_create(opengpu_native_graphics_context_id(pipe));assert(native_session);
+    native_kernel_records=0;
+    native_original_allocate=native_allocate_original;native_original_close=native_close_original;
+    native_original_refcount=native_original_references;
+    struct native_graphics_source_record observations[2];
+#endif
     struct opengpu_native_shader_layout physical;
     assert(!pipe_opengpu_screen_native_layout(opengpu_screen_gpu(screen),&physical)&&physical.capacity==128);
     struct pipe_resource *resources[36];unsigned offsets[36],sizes[36];
@@ -833,7 +889,12 @@ static void production_constants(void *program, const char *directory)
         assert(view->handle&&bos[view->handle].data&&!view->offset&&!view->entry_offset&&!view->pad&&
             view->bytes==native[stage].words*4&&!memcmp(bos[view->handle].data,native[stage].code,view->bytes));
     }
-    native_metadata(pipe,&sources,resources[12],graphics_uniform_color_type(program,0),directory);
+#ifdef OPENGPU_CS_NATIVE_KERNEL
+    native_original_inputs(&observations[0],resources,offsets,records);
+    native_metadata(pipe,&sources,resources[12],graphics_uniform_color_type(program,0),directory,"native",&observations[0]);
+#else
+    native_metadata(pipe,&sources,resources[12],graphics_uniform_color_type(program,0),directory,"native",NULL);
+#endif
     native_program_inputs(&sources,"real",directory);
     native_capacity_metadata(pipe,resources[12],directory);
     fixture_native_caps[5]=0;
@@ -897,19 +958,48 @@ static void production_constants(void *program, const char *directory)
     defaults[0]^=0xfedc1234u;
     graphics_uniform_defaults(program,pipe,0,defaults,1024);memset(defaults,0x77,sizeof(defaults));
     assert(!opengpu_native_graphics_uniform_sources(pipe,required,records));
-    assert(records[0].defaults.handle!=old_default&&!bos[old_default].data);
+    assert(records[0].defaults.handle!=old_default);
+#ifdef OPENGPU_CS_NATIVE_KERNEL
+    assert(bos[old_default].data&&native_original_references(old_default)==1);
+#else
+    assert(!bos[old_default].data);
+#endif
     const uint32_t *new_default=(const uint32_t *)bos[records[0].defaults.handle].data;
     for(unsigned word=0;word<1024;word++)assert(new_default[word]==(value(40,word)^(word?0:0xfedc1234u)));
     uint32_t new_pixel=original_color(resources,offsets,records);
     assert(new_pixel&&new_pixel!=original_pixel&&new_pixel!=rebound_pixel);
+    assert(!opengpu_native_graphics_program_sources(pipe,compiled,&sources)&&
+        sources.uniforms[0].defaults.handle==records[0].defaults.handle);
+#ifdef OPENGPU_CS_NATIVE_KERNEL
+    native_original_inputs(&observations[1],resources,offsets,records);
+    native_metadata(pipe,&sources,resources[12],graphics_uniform_color_type(program,0),directory,"native-next",&observations[1]);
+    assert(native_kernel_records==2);
+#endif
     unsigned code_handles[2]={sources.programs[0].handle,sources.programs[1].handle};
     opengpu_native_graphics_program_destroy(compiled);
+#ifdef OPENGPU_CS_NATIVE_KERNEL
+    assert(native_original_references(code_handles[0])==2 && native_original_references(code_handles[1])==2);
+#else
     assert(!bos[code_handles[0]].data&&!bos[code_handles[1]].data);
+#endif
     pipe->destroy(pipe);
     for(unsigned binding=0;binding<36;binding++) {
         assert(resources[binding]->reference.count==1);pipe_resource_reference(&resources[binding],NULL);
     }
-    screen->destroy(screen);features=original_features;no_leaks();
+    screen->destroy(screen);features=original_features;
+#ifdef OPENGPU_CS_NATIVE_KERNEL
+    /* CPU-only component mode. Final host qualification will instead keep
+     * these real prepared owners alive through actual DUT/receipt IPC. */
+    assert(!native_kernel_run(native_session,0));assert(!native_kernel_retire(native_session,0,0));
+    assert(!native_original_references(old_default));
+    assert(native_original_references(code_handles[0])==1 && native_original_references(code_handles[1])==1);
+    assert(!native_kernel_run(native_session,0));assert(!native_kernel_retire(native_session,0,0));
+    for(unsigned handle=1;handle<next_bo;handle++)if(bos[handle].native_owned)maybe_free(handle);
+    assert(!native_kernel_session_destroy(native_session));native_session=NULL;
+    native_original_allocate=NULL;native_original_close=NULL;native_original_refcount=NULL;
+    puts("ACTUAL_GRAPHICS_NATIVE_HANDLER_PASS realMesa=true realIoctl=true preparedOwners=2 sourceObserver=true sameOriginalGEM=true GPU=false hardwareKick=modeled");
+#endif
+    no_leaks();
 }
 int main(int argc, char **argv)
 {
