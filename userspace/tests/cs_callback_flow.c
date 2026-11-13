@@ -28,6 +28,9 @@
 
 #define N 512u
 #define TOKENS 2048u
+#ifndef OPENGPU_CS_CALLBACK_MAX_GRID_AXIS
+#define OPENGPU_CS_CALLBACK_MAX_GRID_AXIS 2u
+#endif
 static struct bo { unsigned handle, maps, binds, jobs, sparse; uint64_t size; uint8_t *data; } bos[N];
 static struct context { unsigned live, closing; struct drm_opengpu_resource b[OPENGPU_MAX_RESOURCE_BINDINGS + 1]; } contexts[N];
 static struct job {
@@ -50,6 +53,7 @@ static uint32_t limit_items=128, limit_axis=128;
 static uint32_t limit_shared_base, limit_shared_bytes, limit_shared_lanes;
 static unsigned shared_query_error;
 static unsigned fail_request, fail_nth, fail_seen, wait_error, status_error, map_error;
+static unsigned wait_error_kind, status_error_kind;
 static unsigned last_compute_context, canceled, rejected_programs;
 static struct pipe_resource *held_resources[4];
 static unsigned uniform_submissions, uniform_snapshots;
@@ -152,7 +156,9 @@ static void finish_job(unsigned s,int execute)
                     assert(v->offset<65536);m[i].bytes=65536-v->offset;
                 } else assert(v->offset+v->size<=65536);
             }
-            assert(cmd->launch.grid[0]<=2 && cmd->launch.grid[1]<=2 && cmd->launch.grid[2]<=2);
+            assert(cmd->launch.grid[0]<=OPENGPU_CS_CALLBACK_MAX_GRID_AXIS &&
+                cmd->launch.grid[1]<=OPENGPU_CS_CALLBACK_MAX_GRID_AXIS &&
+                cmd->launch.grid[2]<=OPENGPU_CS_CALLBACK_MAX_GRID_AXIS);
             for (uint32_t z=0;z<cmd->launch.grid[2];z++) for(uint32_t y=0;y<cmd->launch.grid[1];y++)
                 for(uint32_t x=0;x<cmd->launch.grid[0];x++) {
                     uint32_t group[3]={x,y,z};
@@ -298,7 +304,8 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
             !!(features&OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_ATOMICS)));
         assert(!memcmp(bos[karg->handle].data,p->launch.grid,12));
         capture_compute(p,c);
-        jobs[s]=(struct job){.live=1,.kind=1,.uniform=!!gum,.context=p->launch.context_id,.compute=*p,.status=status_error? -EIO:0};
+        jobs[s]=(struct job){.live=1,.kind=1,.uniform=!!gum,.context=p->launch.context_id,.compute=*p,
+            .status=status_error && (!status_error_kind || status_error_kind==1)? -EIO:0};
         retain_job(&jobs[s],shader->handle);retain_job(&jobs[s],karg->handle);
         for(unsigned i=0;i<4;i++)if(p->bindings[i].slot){assert(p->bindings[i].slot==35+i);retain_job(&jobs[s],c->b[35+i].handle);}
         if(gum){
@@ -342,7 +349,8 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
         assert(!p->flags && !p->in_syncobj && !p->wait_event && !p->signal_event && !p->pad);
         assert(p->bytes && !(p->offset&63) && !(p->bytes&63));
         assert(p->offset<=bos[p->handle].size && p->bytes<=bos[p->handle].size-p->offset);
-        jobs[s]=(struct job){.live=1,.kind=3,.context=p->context_id,.invalidate=*p,.status=status_error?-EIO:0};
+        jobs[s]=(struct job){.live=1,.kind=3,.context=p->context_id,.invalidate=*p,
+            .status=status_error && (!status_error_kind || status_error_kind==3)?-EIO:0};
         retain_job(&jobs[s],p->handle);invalidates++;return 0;
     }
     if(request==DRM_IOCTL_SYNCOBJ_WAIT){
@@ -355,7 +363,7 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
             for(unsigned i=0;i<4;i++)if(held_resources[i])assert(held_resources[i]->reference.count>=2);
             held_checks++;
         }
-        if(wait_error){errno=ETIME;return -1;}
+        if(wait_error && (!wait_error_kind || jobs[s].kind==wait_error_kind)){errno=ETIME;return -1;}
         finish_job(s,1);return 0;
     }
     if(request==DRM_IOCTL_SYNCOBJ_HANDLE_TO_FD){struct drm_syncobj_handle *p=arg;assert(!jobs[p->handle].live);p->fd=20000+p->handle;exported[p->handle]++;return 0;}

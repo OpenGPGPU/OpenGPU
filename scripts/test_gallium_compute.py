@@ -15,10 +15,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--fixture", choices=("compute", "framebuffer-blit"), default="compute")
     parser.add_argument("--artifacts", type=Path,
                         help="export four real validated callback submissions for explicit RTL qualification")
     args = parser.parse_args()
-    if sys.platform != "linux":
+    if args.artifacts and args.fixture != "compute":
+        parser.error("--artifacts is only supported for the compute fixture")
+    if sys.platform != "linux" and args.fixture == "compute":
         print("Gallium compute lib ioctl fixture: requires Linux sync_file UAPI")
         return
     mesa = Path(os.environ.get("OPENGPU_MESA_DIR", ROOT / "depends/mesa"))
@@ -29,11 +32,19 @@ def main():
     incs = ["-I" + str(p) for p in [ROOT / "userspace/gallium", ROOT / "userspace", ROOT / "driver", drm,
             mesa / "src/gallium/include", mesa / "src/gallium/auxiliary", mesa / "src", mesa / "include"]]
     common = ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
-              "-DHAVE_ENDIAN_H", "-D_POSIX_C_SOURCE=200809L", "-ffunction-sections", "-fdata-sections"]
+              "-D_POSIX_C_SOURCE=200809L", "-ffunction-sections", "-fdata-sections"]
+    if sys.platform == "darwin":
+        common += ["-D__user=", "-D__aligned_u64=__u64", "-D_DARWIN_C_SOURCE"]
+        incs += ["-I" + str(ROOT / "userspace/tests/host_sync_file")]
+    else:
+        common += ["-DHAVE_ENDIAN_H"]
+    if args.fixture == "framebuffer-blit":
+        common += ["-O1", "-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
     primitives = ["-Dioctl=cs_fixture_ioctl", "-Dmmap=cs_fixture_mmap", "-Dmunmap=cs_fixture_munmap",
                   "-Ddup=cs_fixture_dup", "-Dclose=cs_fixture_close"]
     units = [
-        (ROOT / "userspace/tests/cs_callback_flow.c", []),
+        (ROOT / ("userspace/tests/cs_callback_flow.c" if args.fixture == "compute" else
+                 "userspace/tests/framebuffer_blit_callback.c"), []),
         (ROOT / "userspace/tests/cs_graphics_unused_stubs.c", []),
         (ROOT / "userspace/gallium/opengpu_context.c", ["-Wno-sign-compare"]),
         (ROOT / "userspace/gallium/opengpu_screen.c", []),
@@ -45,7 +56,9 @@ def main():
         (mesa / "src/gallium/auxiliary/tgsi/tgsi_parse.c", ["-Wno-sign-compare"]),
         (mesa / "src/gallium/auxiliary/tgsi/tgsi_build.c", ["-Wno-sign-compare"]),
     ]
-    with tempfile.TemporaryDirectory(prefix="opengpu-cs-") as tmp:
+    temporary = ROOT / ".artifacts"
+    temporary.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="opengpu-cs-", dir=temporary) as tmp:
         build = Path(os.environ.get("OPENGPU_COMPUTE_TEST_BUILD", tmp))
         build.mkdir(parents=True, exist_ok=True)
         objects = []
@@ -55,7 +68,9 @@ def main():
                 "-c", str(source), "-o", str(obj)], check=True)
             objects.append(str(obj))
         binary = build / "cs_callback_flow"
-        subprocess.run(compiler + ["-Wl,--gc-sections"] + objects + ["-lm", "-o", str(binary)], check=True)
+        link = ["-Wl,-dead_strip"] if sys.platform == "darwin" else ["-Wl,--gc-sections"]
+        sanitize = ["-fsanitize=address,undefined"] if args.fixture == "framebuffer-blit" else []
+        subprocess.run(compiler + sanitize + link + objects + ["-lm", "-o", str(binary)], check=True)
         env = os.environ.copy()
         # Only this explicit mode adds four CPU submissions. A fresh directory
         # prevents a failed/repeated preparation from silently replacing pins.
