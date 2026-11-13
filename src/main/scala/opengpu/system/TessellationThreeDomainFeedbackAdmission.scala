@@ -25,7 +25,9 @@ class TessellationThreeDomainFeedbackAdmission(idWidth:Int) extends Module {
   io.offerDomain:=target
   for(i<-0 until 3){
     val higher=(i+1 until 3).map(j=>io.submit(j).valid).foldLeft(false.B)(_ || _)
-    io.submit(i).ready:=phase===Phase.idle && !io.cancel && !higher
+    // Classification already owns this irrevocable offer. Accept it even
+    // during cancellation so it can retire as status 4 without a child offer.
+    io.submit(i).ready:=phase===Phase.idle && !higher
     io.render(i).valid:=phase===Phase.offer && target===i.U && !canceled && !io.cancel && !io.poisoned && io.render(i).ready
     io.render(i).bits:=job
   }
@@ -35,7 +37,7 @@ class TessellationThreeDomainFeedbackAdmission(idWidth:Int) extends Module {
   val fired=VecInit(io.submit.map(_.fire))
   when(fired.asUInt.orR){
     assert(PopCount(fired)<=1.U,"only one tessellation domain may be admitted")
-    target:=PriorityEncoder(fired);job:=Mux1H(fired,io.submit.map(_.bits));canceled:=false.B;phase:=Phase.select
+    target:=PriorityEncoder(fired);job:=Mux1H(fired,io.submit.map(_.bits));canceled:=io.cancel;phase:=Phase.select
   }
   when(phase=/=Phase.idle && io.cancel){canceled:=true.B}
   when(phase===Phase.select){
