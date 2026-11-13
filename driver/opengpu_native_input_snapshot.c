@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 #include <linux/errno.h>
+#include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include "opengpu_native_input_snapshot.h"
 #include "opengpu_private_snapshot.h"
