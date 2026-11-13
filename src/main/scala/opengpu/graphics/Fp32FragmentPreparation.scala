@@ -2,6 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
+import chisel3.experimental.hierarchy.Instantiate
 
 /** Privately owns one raw quad through weight, depth, sample and location
   * preparation. Smooth/flat component evaluation is delegated to the spatial
@@ -18,8 +19,10 @@ class Fp32FragmentPreparation(p: VertexShaderStageConfig = VertexShaderStageConf
     val cancel = Input(Bool())
     val busy = Output(Bool())
   })
+  // Cache elaboration by the complete constructor tuple. Every Instance still
+  // has private registers and ports; neither owner capacity nor lane II changes.
   if(!parallelLanes) {
-    val preparation = Module(new Fp32FragmentInterpolator(p, g, prepareOnly = true))
+    val preparation = Instantiate(new Fp32FragmentInterpolator(p, g, false, true, None, false))
     preparation.io.in <> io.in
     io.out <> preparation.io.prepared.get
     preparation.io.out.ready := false.B
@@ -34,8 +37,8 @@ class Fp32FragmentPreparation(p: VertexShaderStageConfig = VertexShaderStageConf
       assert(!io.busy, "shared preparation input changed while lanes still owned it")
       snapshot := io.in.bits
     }
-    val lanes = Seq.tabulate(4)(i => Module(new Fp32FragmentInterpolator(p, g,
-      prepareOnly = true, preparationLane = Some(i), sharedPreparationInput = true)))
+    val lanes = Seq.tabulate(4)(i => Instantiate(new Fp32FragmentInterpolator(p, g,
+      false, true, Some(i), true)))
     val ready = VecInit(lanes.map(_.io.in.ready)).asUInt.andR
     val valid = VecInit(lanes.map(_.io.prepared.get.valid)).asUInt.andR
     val prepared = lanes.map(_.io.prepared.get.bits)
