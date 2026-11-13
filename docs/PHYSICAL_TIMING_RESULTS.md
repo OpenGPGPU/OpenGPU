@@ -88,3 +88,56 @@ physical timing. Reproduce it explicitly with:
 python3 scripts/verify_ppa_sram_macros.py \
   --image chipagent/openroad:arm64 --sram-root /path/to/pinned/generated
 ```
+
+## Protected-owner whole-host flow
+
+The 96-word `two-cu-vga60-owner-v1` host with the shared tessellation bank has
+an exact source-hierarchy contract of 752 `srambank_64x4x32_6t122` and 992
+`srambank_64x4x64_6t122` instances. The source inventory is not mapped retention
+or timing. Use the new owner-specific entry point against its actual prepared
+source checkout; do not apply the earlier 72-word counts or borrow its clock:
+
+```sh
+CHIPAGENT_DIR=/path/to/chipagent PYTHONDONTWRITEBYTECODE=1 \
+  /path/to/chipagent/.venv/bin/python -B scripts/qualify_native_owner_ppa.py \
+  --owner-root "$OWNER_ROOT" --prepared "$OWNER_PREPARED" \
+  --stage synthesis --period-ps 1000 --timeout 14400 \
+  --docker-cpus 2 --docker-memory-gib 12 \
+  --coverage-timeout 1800 --coverage-memory-gib 10 \
+  --output .artifacts/native-owner-synthesis
+```
+
+The wrapper invokes the frozen owner's original preparation checker before and
+after the flow, binding all 96 discovery words, complete Scala/build/SRAM
+inputs, assertions and RTL. It separately binds the current physical scripts,
+ChipAgent Python sources, timing configuration and original SRAM LIB/LEF files.
+Mutation or flow failure removes any success gate. The owner checkout supplies
+the physical SRAM collateral explicitly; a different checkout's source is not
+used to relabel the DUT. ChipAgent must include [PR #2](https://github.com/OpenGPGPU/chipagent/pull/2)
+(main `638d8e9f`).
+
+Both main flow and synthesis STA containers receive their CPU and memory limits
+at creation, with memory-swap equal to memory. Coverage checks use one CPU and
+their separate declared memory limit. A real one-CPU/one-GiB cgroup check confirms
+zero additional swap. These limits are diagnostic budgets, not measured host
+requirements or a guarantee of completion.
+
+After successful synthesis diagnosis, a separately budgeted `--stage route`
+run uses full timing closure without the synthesis-only hierarchy option.
+Acceptance still requires clean global setup/hold, placement, DRC, antenna and
+flow metrics, resolved mapping, and all expected physical macros. The final
+check loads the actual `6_final.odb` with its actual `6_final.sdc` and pinned
+TC/SLVT timing libraries, then runs `check_setup`; missing constraints,
+unclocked registers, unconstrained endpoints or changed inputs fail closed.
+The tiny OpenDB oracle passes both macro gates and final constraint coverage;
+actual missing-clock and missing-I/O-delay variants are rejected. It does not
+synthesize or route the whole host. Whole-host clock and 60 FPS remain open.
+
+Reproduce the CPU guards and the one-CPU/one-GiB OpenDB check with:
+
+```sh
+python -m pytest -q -p no:cacheprovider \
+  scripts/test_qualify_ppa.py scripts/test_qualify_native_owner_ppa.py
+python -B scripts/verify_ppa_sram_macros.py \
+  --image chipagent/openroad:arm64 --sram-root "$OWNER_ROOT/depends/asap7_sram_0p0/generated"
+```

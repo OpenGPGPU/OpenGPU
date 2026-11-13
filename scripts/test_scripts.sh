@@ -63,7 +63,7 @@ temporary.mkdir(exist_ok=True)
 with tempfile.TemporaryDirectory(prefix='ppa-host-tests-', dir=temporary) as directory:
     result = pytest.main(['-q', '-p', 'no:cacheprovider',
                           '--basetemp=' + str(Path(directory) / 'fixtures'),
-                          'scripts/test_qualify_ppa.py'])
+                          'scripts/test_qualify_ppa.py', 'scripts/test_qualify_native_owner_ppa.py'])
 raise SystemExit(result)
 PY
 python3 scripts/test_split_yosys_rtlil.py
