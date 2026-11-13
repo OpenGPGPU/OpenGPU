@@ -391,12 +391,14 @@ void u_default_transfer_flush_region(struct pipe_context *p,struct pipe_transfer
 {(void)p;(void)t;(void)b;assert(!"unexpected generic flush");}
 void u_default_clear_buffer(struct pipe_context *p,struct pipe_resource *r,unsigned o,unsigned n,const void *v,int s)
 {(void)p;(void)r;(void)o;(void)n;(void)v;(void)s;assert(!"unexpected generic clear");}
+#ifndef OPENGPU_CS_REAL_MESA_SURFACES
 void util_resource_copy_region(struct pipe_context *p,struct pipe_resource *d,unsigned dl,unsigned x,unsigned y,unsigned z,
                                struct pipe_resource *s,unsigned sl,const struct pipe_box *b)
 {(void)p;(void)d;(void)dl;(void)x;(void)y;(void)z;(void)s;(void)sl;(void)b;assert(!"unexpected generic copy");}
 void util_clear_render_target(struct pipe_context *p,struct pipe_surface *s,const union pipe_color_union *c,
                               unsigned x,unsigned y,unsigned w,unsigned h)
 {(void)p;(void)s;(void)c;(void)x;(void)y;(void)w;(void)h;assert(!"unexpected generic render-target clear");}
+#endif
 #ifndef OPENGPU_CS_REAL_TGSI_DUMP
 void tgsi_dump(const struct tgsi_token *t,unsigned f){(void)t;(void)f;assert(!"unexpected debug dump");}
 #endif

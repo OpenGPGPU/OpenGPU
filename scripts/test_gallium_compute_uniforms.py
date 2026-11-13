@@ -17,7 +17,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main(control_flow=False, buffer_resources=False, shared_memory=False, memory_barriers=False,
-         storage_atomics=False, texture_namespaces=False, image_ordering=False, atomic_counters=False, shared_publication=False, host_execution=False):
+         storage_atomics=False, texture_namespaces=False, image_ordering=False, atomic_counters=False,
+         shared_publication=False, host_execution=False, graphics_uniforms=False):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--build", type=Path, required=True, help="new private output directory")
     ap.add_argument("--sanitize", action="store_true")
@@ -142,7 +143,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
             "-c", ROOT / "userspace/tests/cs_buffer_kernel.c", "-o", obj], "compile-cs_buffer_kernel")
         objects.append(obj)
     for relative, extra in [
-        ("userspace/tests/compute_host_frontend.c" if host_execution else "userspace/tests/cs_atomic_frontend.c" if storage_atomics else "userspace/tests/cs_barrier_frontend.c" if memory_barriers else "userspace/tests/cs_shared_frontend.c" if shared_memory else "userspace/tests/cs_buffer_flow.c" if buffer_resources else
+        ("userspace/tests/compute_host_frontend.c" if host_execution else "userspace/tests/graphics_uniform_flow.c" if graphics_uniforms else "userspace/tests/cs_atomic_frontend.c" if storage_atomics else "userspace/tests/cs_barrier_frontend.c" if memory_barriers else "userspace/tests/cs_shared_frontend.c" if shared_memory else "userspace/tests/cs_buffer_flow.c" if buffer_resources else
          "userspace/tests/cs_control_flow.c" if control_flow else "userspace/tests/cs_uniform_flow.c",
          ["-DOPENGPU_CS_TEXTURE_NAMESPACE"] if texture_namespaces else
          ["-DOPENGPU_CS_IMAGE_ORDERING"] if image_ordering else
@@ -155,6 +156,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         ("userspace/gallium/opengpu_fs_emit.c", []),
         ("userspace/gallium/opengpu_vs_emit.c", []),
         ("userspace/pipe_opengpu.c", primitives), ("userspace/opengpu.c", primitives)]:
+        if graphics_uniforms and relative == "userspace/tests/cs_graphics_unused_stubs.c":
+            continue  # Graphics uses actual Mesa format/surface helpers.
         source = ROOT / relative
         obj = out / (source.stem + ".o")
         run(cc + common + inc + extra + san + ["-MMD", "-MF", obj.with_suffix(".d"), "-c", source, "-o", obj],
@@ -164,10 +167,16 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         obj = out / 'compute_host_gallium_stubs.o'
         run(cc + common + inc + san + ['-c', ROOT / 'userspace/tests/compute_host_gallium_stubs.c', '-o', obj], 'compile-compute-host-stubs')
         objects.append(obj)
+    if graphics_uniforms:
+        source = ROOT / "userspace/gallium/opengpu_native_uniform_emit.c"
+        obj = out / "opengpu_native_uniform_emit.o"
+        run(cc + common + inc + san + ["-MMD", "-MF", obj.with_suffix(".d"), "-c", source, "-o", obj],
+            "compile-opengpu_native_uniform_emit")
+        objects.append(obj)
     obj = out / "cs_glsl_frontend.o"
     run(cxx + configured_flags("compiler/glsl/standalone.cpp") + ["-UNDEBUG", "-Wall", "-Wextra", "-Werror",
         "-Wno-unused-parameter", "-I" + str(mesa / "src/compiler/nir"), "-I" + str(mb / "src/compiler/nir")] +
-        inc + san + ["-MMD", "-MF", obj.with_suffix(".d"), "-c", ROOT / "userspace/tests/cs_glsl_frontend.cpp", "-o", obj],
+        inc + san + ["-MMD", "-MF", obj.with_suffix(".d"), "-c", ROOT / ("userspace/tests/graphics_uniform_frontend.cpp" if graphics_uniforms else "userspace/tests/cs_glsl_frontend.cpp"), "-o", obj],
         "compile-cs_glsl_frontend")
     objects.append(obj)
     obj = out / "checked-nir-lower-io.o"
@@ -232,7 +241,10 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         ["-ldl", "-lm", "-pthread", "-o", binary], "link")
     sources = out / "glsl"
     sources.mkdir()
-    if shared_publication:
+    if graphics_uniforms:
+        from test_gallium_graphics_uniforms import write_sources
+        write_sources(sources)
+    elif shared_publication:
         from test_gallium_shared_publication import write_sources
         write_sources(sources)
     elif image_ordering:
@@ -351,10 +363,11 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         (artifacts / "manifest.properties").write_text(manifest)
     (out / "result.json").write_text(json.dumps({"status": "PASS", "GPU_execution": False,
         "API_compute_enabled": False, "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
-        "scope": ("real Mesa GLSL/NIR/TGSI, callbacks/lib, extracted kernel resource ioctl/prepare/snapshot/scheduler; "
+        "scope": "actual linked Mesa ESSL/NIR/TGSI, stage-tracker binding, original-GEM view planning and native-word CPU oracle; modeled OS/GEM, no production GNJ submit or GPU execution" if graphics_uniforms else
+                 ("real Mesa GLSL/NIR/TGSI, callbacks/lib, extracted kernel resource ioctl/prepare/snapshot/scheduler; "
                   "independent CPU word/record oracle, modeled OS/GEM/VM/MMIO, no GPU or real page walk") if buffer_resources else
                  "real Mesa GLSL/NIR/TGSI + real callbacks/lib/kernel word validator; modeled kernel OS/GEM boundary"}, indent=2) + "\n")
-    print("Real GLSL compute " + ("shared publication" if shared_publication else "atomic counters" if atomic_counters else "image ordering" if image_ordering else "texture namespaces" if texture_namespaces else "storage atomics" if storage_atomics else "memory barriers" if memory_barriers else "shared memory" if shared_memory else "buffer resources" if buffer_resources else "control-flow" if control_flow else "uniforms") + " CPU acceptance PASS: " + str(out))
+    print(("Real GLSL graphics uniform frontend" if graphics_uniforms else "Real GLSL compute " + ("shared publication" if shared_publication else "atomic counters" if atomic_counters else "image ordering" if image_ordering else "texture namespaces" if texture_namespaces else "storage atomics" if storage_atomics else "memory barriers" if memory_barriers else "shared memory" if shared_memory else "buffer resources" if buffer_resources else "control-flow" if control_flow else "uniforms")) + " CPU acceptance PASS: " + str(out))
 
 
 if __name__ == "__main__":
