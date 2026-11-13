@@ -103,7 +103,9 @@ class CheckpointProvenanceTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             subprocess.run(['git', '-c', 'init.defaultBranch=fixture-test', 'init', '-q', str(root)], check=True)
-            names = ['src/main/A.scala', 'build.sbt', 'scripts/qualify_ppa.py', 'timing/asap7/ram.tcl']
+            names = ['src/main/A.scala', 'build.sbt', 'scripts/qualify_ppa.py',
+                     'scripts/extract_emitted_rtl.py', 'scripts/report_ppa_sram_inventory.py',
+                     'timing/asap7/ram.tcl']
             for name in names:
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)

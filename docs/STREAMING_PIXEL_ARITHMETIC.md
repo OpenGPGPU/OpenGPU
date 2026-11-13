@@ -90,6 +90,7 @@ sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
 sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-clip-float-streaming-divider .artifacts/streaming-divider-rtl'
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/streaming-divider-rtl ClipFloatStreamingDivider --stage synthesis \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/streaming-divider-rtl ClipFloatStreamingDivider) \
   --period-ps 1000 --io-delay 0.25 --output .artifacts/streaming-divider-synthesis
 ```
 
@@ -124,6 +125,7 @@ sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
 sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-clip-float-streaming-add-mul .artifacts/streaming-add-mul-rtl'
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/streaming-add-mul-rtl ClipFloatStreamingAddMul --stage synthesis \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/streaming-add-mul-rtl ClipFloatStreamingAddMul) \
   --period-ps 1000 --io-delay 0.25 --output .artifacts/streaming-add-mul-synthesis
 ```
 
@@ -156,6 +158,7 @@ sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
 sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-clip-float-weighted-component .artifacts/weighted-component-rtl'
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/weighted-component-rtl ClipFloatWeightedComponent --stage synthesis \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/weighted-component-rtl ClipFloatWeightedComponent) \
   --period-ps 1000 --io-delay 0.25 --output .artifacts/weighted-component-synthesis
 ```
 
@@ -196,6 +199,7 @@ sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
 sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-clip-float-quad-component .artifacts/quad-component-rtl'
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/quad-component-rtl ClipFloatQuadComponent --stage synthesis \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/quad-component-rtl ClipFloatQuadComponent) \
   --period-ps 1000 --io-delay 0.25 --output .artifacts/quad-component-synthesis
 ```
 
@@ -246,6 +250,7 @@ sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-fp32-prepared-quads .artifact
   'runMain opengpu.elaboration.EmitPpaRtl mobile-fp32-reserved-prepared-quads .artifacts/reserved-prepared-quads-rtl'
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/prepared-quads-rtl Fp32PreparedQuadInterpolator --stage synthesis \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/prepared-quads-rtl Fp32PreparedQuadInterpolator) \
   --period-ps 1000 --io-delay 0.25 --output .artifacts/prepared-quads-synthesis
 # Repeat synthesis for .artifacts/reserved-prepared-quads-rtl with a separate output.
 ```

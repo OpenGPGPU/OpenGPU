@@ -360,6 +360,7 @@ sbt -J-Xmx2G -J-XX:ActiveProcessorCount=1 \
   'runMain opengpu.elaboration.EmitPpaRtl shared-l2-cache generated/l2-range/rtl'
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   generated/l2-range/rtl SharedL2Cache --stage synthesis \
+  $(python3 scripts/report_ppa_sram_inventory.py generated/l2-range/rtl SharedL2Cache) \
   --synthesis-engine yosys --yosys-preserve-hierarchy \
   --clock clock --period-ps 1000 --io-delay .25 --timeout 7200 \
   --output generated/l2-range/synthesis

@@ -47,8 +47,166 @@ def coverage_memory(value):
         return None
     return positive_integer(value)
 
+
+def expected_sram_macro(value):
+    match = re.fullmatch(r'([A-Za-z_][A-Za-z0-9_$]*)=(0|[1-9]\d*)', value)
+    if not match:
+        raise argparse.ArgumentTypeError('Expected SRAM_MASTER=NONNEGATIVE_COUNT')
+    return match.group(1), int(match.group(2))
+
+
+def sram_macro_gate(report, returncode, expected):
+    """Compare caller-declared physical macro counts with the loaded ODB."""
+    begin, end = 'OPENGPU_SRAM_MACROS_BEGIN\n', 'OPENGPU_SRAM_MACROS_END\n'
+    complete = report.count(begin) == 1 and report.count(end) == 1
+    actual, nonphysical, invalid = {}, {}, []
+    if complete:
+        before, rest = report.split(begin, 1)
+        if end in before:
+            complete = False
+        else:
+            body, _ = rest.split(end, 1)
+            for line in body.splitlines():
+                match = re.fullmatch(r'OPENGPU_SRAM_MACRO ([A-Za-z_][A-Za-z0-9_$]*) ([1-9]\d*) (0|[1-9]\d*)', line)
+                if not match or match[1] in actual:
+                    invalid.append(line)
+                    continue
+                name, count, blocks = match[1], int(match[2]), int(match[3])
+                actual[name] = count
+                if count != blocks:
+                    nonphysical[name] = dict(instances=count, physical_blocks=blocks)
+    valid_expected = isinstance(expected, dict) and all(
+        isinstance(name, str) and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_$]*', name)
+        and isinstance(count, int) and not isinstance(count, bool) and count >= 0
+        for name, count in expected.items())
+    mismatches = ({name: dict(expected=expected.get(name), actual=actual.get(name, 0))
+                   for name in sorted(set(expected) | set(actual))
+                   if name not in expected or expected[name] != actual.get(name, 0)}
+                  if valid_expected else {})
+    errors = bool(re.search(r'(?mi)^\s*(?:\[ERROR\b|ERROR:)', report))
+    return dict(passed=returncode == 0 and complete and valid_expected
+                and not invalid and not mismatches and not nonphysical and not errors,
+                complete=complete, expected=expected, actual=actual,
+                mismatches=mismatches, nonphysical=nonphysical,
+                invalid_rows=invalid, valid_expected=valid_expected,
+                tool_errors=errors, returncode=returncode,
+                scope='Exact physical SRAM master counts in the loaded OpenDB block')
+
+
+def sram_macro_tcl():
+    # Count every physical block, plus SRAM-named instances even when their
+    # master lost its BLOCK classification. Unknown physical macros fail the
+    # caller's exact per-type contract rather than disappearing from the total.
+    return '''puts "OPENGPU_SRAM_MACROS_BEGIN"
+set opengpu_counts [dict create]
+set opengpu_blocks [dict create]
+set opengpu_block [[ord::get_db] getChip]
+set opengpu_block [$opengpu_block getBlock]
+foreach opengpu_inst [$opengpu_block getInsts] {
+  set opengpu_master [$opengpu_inst getMaster]
+  set opengpu_name [$opengpu_master getName]
+  set opengpu_physical [$opengpu_master isBlock]
+  if {$opengpu_physical || [string match "srambank_*" $opengpu_name]} {
+    dict incr opengpu_counts $opengpu_name
+    dict incr opengpu_blocks $opengpu_name $opengpu_physical
+  }
+}
+foreach opengpu_name [lsort [dict keys $opengpu_counts]] {
+  puts "OPENGPU_SRAM_MACRO $opengpu_name [dict get $opengpu_counts $opengpu_name] [dict get $opengpu_blocks $opengpu_name]"
+}
+puts "OPENGPU_SRAM_MACROS_END"
+'''
+
+
+def run_odb_check(command, timeout, memory_gib, name='coverage'):
+    """Bound a named check and stop its owned container on interruption."""
+    command = list(command)
+    container = 'opengpu-' + name + '-' + uuid.uuid4().hex
+    resources = ['--name', container, '--cpus=1']
+    if memory_gib is not None:
+        resources += [f'--memory={memory_gib}g', f'--memory-swap={memory_gib}g']
+    command[3:3] = resources
+
+    def stop():
+        try:
+            stopped = subprocess.run(['docker', 'stop', '--time', '5', container],
+                                     capture_output=True, text=True, timeout=15)
+            return '' if not stopped.returncode else '\nContainer stop did not succeed: ' + stopped.stderr
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return '\nContainer stop could not be confirmed: ' + str(exc)
+
+    try:
+        proc = subprocess.run(command, capture_output=True, text=True, timeout=timeout + 20)
+        report = proc.stdout + ('\n[stderr]\n' + proc.stderr if proc.stderr else '')
+        code = proc.returncode
+    except subprocess.TimeoutExpired as exc:
+        partial = exc.stdout or ''
+        if isinstance(partial, bytes):
+            partial = partial.decode(errors='replace')
+        report, code = 'OpenDB check timed out.\n' + partial + stop(), 124
+    except OSError as exc:
+        report, code = 'OpenDB check could not start: ' + str(exc) + '\n', 1
+    except BaseException:
+        stop()
+        raise
+    return report, code, container, command
+
+
+def macro_collateral_inputs(work, module, expected):
+    """Verify the exact copied LIB/LEF collateral captured before the flow."""
+    paths = {}
+    expected = {} if expected is None else expected
+    if not isinstance(expected, dict):
+        return None
+    for name, digest in expected.items():
+        if (not isinstance(name, str) or not isinstance(digest, str)
+                or not re.fullmatch(r'[A-Za-z0-9_$.-]+\.(?:lib|lef)', name)
+                or not re.fullmatch(r'[0-9a-f]{64}', digest)):
+            return None
+        path = work / 'designs/asap7' / module / 'macros' / name
+        if not path.is_file() or path.is_symlink() or sha(path) != digest:
+            return None
+        paths['macro:' + name] = path
+    return paths
+
+
+def exact_odb_mounts(command, required):
+    """Reject replacement or overlapping mounts of checked inputs."""
+    if any(arg.startswith(('--mount', '--volume', '-v=')) or arg.startswith('-v') and arg != '-v'
+           for arg in command):
+        return False
+    volumes = [command[i + 1] for i, arg in enumerate(command[:-1]) if arg == '-v']
+    if any(volumes.count(v) != 1 for v in required):
+        return False
+    destinations = [v.split(':')[1] for v in required]
+    for volume in volumes:
+        parts = volume.split(':')
+        if len(parts) != 2 or not parts[0].startswith('/') or not parts[1].startswith('/'):
+            return False
+        if volume in required:
+            continue
+        other = parts[1].rstrip('/')
+        if any(other == p or other.startswith(p + '/') or p.startswith(other + '/') for p in destinations):
+            return False
+    return True
+
+
+def valid_check_resources(timeout, memory_gib):
+    return (isinstance(timeout, int) and not isinstance(timeout, bool) and timeout > 0
+            and (memory_gib is None or isinstance(memory_gib, int)
+                 and not isinstance(memory_gib, bool) and memory_gib > 0))
+
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def pin_openroad_image():
+    from chipagent.toolchain import configured_openroad_image
+    image = subprocess.check_output(['docker', 'image', 'inspect', '--format', '{{.Id}}',
+                                     configured_openroad_image()], text=True).strip()
+    if not re.fullmatch(r'sha256:[0-9a-f]{64}', image):
+        raise RuntimeError('Docker did not return a pinned tool image ID')
+    return image
 
 def prepare_hierarchy_image(base_image, output):
     """Pin the tool image and derive only a declared ORFS environment profile."""
@@ -114,7 +272,8 @@ def synthesis_constraint_gate(report, returncode):
                 scope='OpenROAD check_setup constraint coverage; not physical or formal qualification')
 
 
-def synthesis_constraint_proof(result, output, timeout, memory_gib=6):
+def synthesis_constraint_proof(result, output, timeout, memory_gib=6, expected_macros=None,
+                               expected_collateral=None):
     """Run check_setup against the exact ODB/SDC and tool command used for STA."""
     output = Path(output).resolve()
     module = result.get('module_name', '')
@@ -122,26 +281,28 @@ def synthesis_constraint_proof(result, output, timeout, memory_gib=6):
     artifacts = result.get('artifacts') or {}
     image = (result.get('reproducibility') or {}).get('openroad_image')
     flow = '/OpenROAD-flow-scripts/flow'
-    if (not isinstance(timeout, int) or timeout < 1 or
-            (memory_gib is not None and
-             (not isinstance(memory_gib, int) or isinstance(memory_gib, bool) or memory_gib < 1)) or
+    if (not valid_check_resources(timeout, memory_gib) or
             not isinstance(module, str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_$]*', module) or
             not isinstance(command, list) or not all(isinstance(arg, str) for arg in command) or
             len(command) < 5 or command[:3] != ['docker', 'run', '--rm'] or
             command[-2:] != ['openroad', '/tmp/synthesis_sta.tcl'] or
-            not image or command[-3] != image):
+            not isinstance(image, str) or not re.fullmatch(r'sha256:[0-9a-f]{64}', image)
+            or command[-3] != image):
         return dict(passed=False, reason='Missing or unsupported synthesis STA command')
     script = Path(artifacts.get('synthesis_sta.tcl', '')).resolve()
     work = output / 'flow/orfs-work'
+    collateral = macro_collateral_inputs(work, module, expected_collateral)
+    if collateral is None:
+        return dict(passed=False, reason='Missing or changed physical SRAM collateral')
     odb, sdc = work / 'results/base/1_synth.odb', work / 'results/base/1_synth.sdc'
     mount = str(script) + ':/tmp/synthesis_sta.tcl'
     results_mount = str(work / 'results') + f':{flow}/results/asap7/{module}'
-    volumes = [command[index + 1] for index, arg in enumerate(command[:-1]) if arg == '-v']
-    script_mounts = [volume for volume in volumes if volume.endswith(':/tmp/synthesis_sta.tcl')]
-    result_mounts = [volume for volume in volumes if volume.endswith(f':{flow}/results/asap7/{module}')]
+    required_mounts = [mount, results_mount]
+    if collateral:
+        required_mounts.append(str(work / 'designs/asap7' / module) + f':{flow}/designs/asap7/{module}')
     if (script != (output / 'flow/synthesis_sta.tcl').resolve() or
             not script.is_file() or not odb.is_file() or not sdc.is_file() or
-            script_mounts != [mount] or result_mounts != [results_mount]):
+            not exact_odb_mounts(command, required_mounts)):
         return dict(passed=False, reason='Missing or ambiguous synthesis STA inputs')
     sta = script.read_text()
     required = [f'read_db {flow}/results/asap7/{module}/base/1_synth.odb',
@@ -157,50 +318,80 @@ def synthesis_constraint_proof(result, output, timeout, memory_gib=6):
                 h.update(data)
         return h.hexdigest()
 
-    inputs = {name: digest(path) for name, path in [('odb', odb), ('sdc', sdc), ('sta_script', script)]}
+    checked = dict(odb=odb, sdc=sdc, sta_script=script, **collateral)
+    inputs = {name: digest(path) for name, path in checked.items()}
     coverage_script = output / 'constraint_coverage.tcl'
     coverage_log = output / 'constraint_coverage.log'
     replacement = ('puts "OPENGPU_CHECK_SETUP_BEGIN"\ncheck_setup\n'
-                   'puts "OPENGPU_CHECK_SETUP_END"')
+                   'puts "OPENGPU_CHECK_SETUP_END"\n' + sram_macro_tcl())
     with coverage_script.open('x') as stream:
         stream.write(sta.replace(required[-1], replacement))
     inputs['coverage_script'] = digest(coverage_script)
+    checked['coverage_script'] = coverage_script
     coverage_command = list(command)
     coverage_command[coverage_command.index(mount)] = str(coverage_script) + ':/tmp/synthesis_sta.tcl'
     coverage_command[-2:] = ['timeout', str(timeout), 'openroad', '-exit', '-no_init', '-no_splash',
                              '/tmp/synthesis_sta.tcl']
-    container = 'opengpu-coverage-' + uuid.uuid4().hex
-    resources = ['--name', container, '--cpus=1']
-    if memory_gib is not None:
-        resources += [f'--memory={memory_gib}g', f'--memory-swap={memory_gib}g']
-    coverage_command[3:3] = resources
-    try:
-        proc = subprocess.run(coverage_command, capture_output=True, text=True, timeout=timeout + 20)
-        report = proc.stdout + ('\n[stderr]\n' + proc.stderr if proc.stderr else '')
-        code = proc.returncode
-    except subprocess.TimeoutExpired as exc:
-        partial = exc.stdout or ''
-        if isinstance(partial, bytes):
-            partial = partial.decode(errors='replace')
-        report = 'Constraint coverage timed out.\n' + partial
-        code = 124
-        try:
-            stopped = subprocess.run(['docker', 'stop', '--time', '5', container],
-                                     capture_output=True, text=True, timeout=15)
-            if stopped.returncode:
-                report += '\nContainer stop did not succeed: ' + stopped.stderr
-        except (OSError, subprocess.TimeoutExpired) as stop_error:
-            report += '\nContainer stop could not be confirmed: ' + str(stop_error)
-    except OSError as exc:
-        report = 'Constraint coverage could not start: ' + str(exc) + '\n'
-        code = 1
+    report, code, container, coverage_command = run_odb_check(coverage_command, timeout, memory_gib)
     with coverage_log.open('x') as stream:
         stream.write(report)
     gate = synthesis_constraint_gate(report, code)
-    after = {name: digest(path) for name, path in [('odb', odb), ('sdc', sdc),
-             ('sta_script', script), ('coverage_script', coverage_script)]}
+    gate['sram_macros'] = sram_macro_gate(report, code, {} if expected_macros is None else expected_macros)
+    after = {name: digest(path) if path.is_file() else None for name, path in checked.items()}
     gate.update(input_sha256=inputs, inputs_unchanged=inputs == after, image=image,
                 container=container, command=coverage_command,
+                report_sha256=hashlib.sha256(report.encode()).hexdigest())
+    gate['passed'] = gate['passed'] and gate['inputs_unchanged'] and gate['sram_macros']['passed']
+    return gate
+
+
+def route_macro_proof(result, output, expected_macros, expected_collateral, timeout, memory_gib=6):
+    """Read the actual final ODB using the same pinned image and copied libs."""
+    output = Path(output).resolve()
+    work = output / 'flow/orfs-work'
+    module, original = result.get('module_name'), result.get('command')
+    image = (result.get('reproducibility') or {}).get('openroad_image')
+    if (not valid_check_resources(timeout, memory_gib)
+            or not isinstance(module, str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_$]*', module)
+            or not isinstance(image, str) or not re.fullmatch(r'sha256:[0-9a-f]{64}', image)
+            or not isinstance(original, list) or not all(isinstance(x, str) for x in original)
+            or original[:3] != ['docker', 'run', '--rm'] or len(original) < 7
+            or original[-4:-1] != [image, 'bash', '-lc']):
+        return dict(passed=False, reason='Missing or unsupported routed tool command')
+    artifacts = result.get('artifacts') or {}
+    odb = Path(artifacts.get('final_odb', '')).resolve()
+    if odb != (work / 'results/base/6_final.odb').resolve() or not odb.is_file():
+        return dict(passed=False, reason='Missing or mismatched final routed ODB')
+    collateral = macro_collateral_inputs(work, module, expected_collateral)
+    if collateral is None:
+        return dict(passed=False, reason='Missing or changed physical SRAM collateral')
+    flow = '/OpenROAD-flow-scripts/flow'
+    required = [str(work / 'results') + f':{flow}/results/asap7/{module}',
+                str(work / 'designs/asap7' / module) + f':{flow}/designs/asap7/{module}']
+    if not exact_odb_mounts(original, required):
+        return dict(passed=False, reason='Missing or ambiguous routed OpenDB mounts')
+    script, log = output / 'route_macro_check.tcl', output / 'route_macro_check.log'
+    # read_db restores the same physical masters/LEFs. Load only the exact
+    # copied timing libraries whose hashes were captured before this flow.
+    libraries = sorted(p for p in collateral.values() if p.suffix == '.lib')
+    source = ''.join(f'read_liberty {flow}/designs/asap7/{module}/macros/{p.name}\n' for p in libraries)
+    source += f'read_db {flow}/results/asap7/{module}/base/6_final.odb\n' + sram_macro_tcl()
+    with script.open('x') as stream:
+        stream.write(source)
+    checked = dict(odb=odb, script=script, **collateral)
+    before = {name: sha(p) for name, p in checked.items()}
+    command = ['docker', 'run', '--rm']
+    for volume in required:
+        command += ['-v', volume]
+    command += ['-v', str(script) + ':/tmp/route_macro_check.tcl', image,
+                'timeout', str(timeout), 'openroad', '-exit', '-no_init', '-no_splash', '/tmp/route_macro_check.tcl']
+    report, code, container, command = run_odb_check(command, timeout, memory_gib, 'route-macros')
+    with log.open('x') as stream:
+        stream.write(report)
+    gate = sram_macro_gate(report, code, expected_macros)
+    after = {name: sha(p) if p.is_file() else None for name, p in checked.items()}
+    gate.update(input_sha256=before, inputs_unchanged=before == after, image=image,
+                container=container, command=command,
                 report_sha256=hashlib.sha256(report.encode()).hexdigest())
     gate['passed'] = gate['passed'] and gate['inputs_unchanged']
     return gate
@@ -280,6 +471,9 @@ def main():
                         help='Maximum seconds for the constraint-coverage check (default: 600)')
     parser.add_argument('--coverage-memory-gib', type=coverage_memory, default=6,
                         help='Constraint-check memory in GiB, or unlimited (default: 6)')
+    parser.add_argument('--expected-sram-macro', action='append', type=expected_sram_macro, default=[],
+                        metavar='MASTER=COUNT',
+                        help='Explicit physical SRAM count; repeat for every supplied SRAM master, including zero')
     parser.add_argument('--timing-effort', choices=['explore', 'closure', 'closure_no_cts'])
     parser.add_argument('--setup-slack-margin-ps', type=nonnegative_picoseconds, default=0.0,
                         help='Extra setup repair headroom; the final timing gate is unchanged')
@@ -294,7 +488,9 @@ def main():
         parser.error('--abc-clock-period-ps requires --synthesis-engine yosys')
     if args.yosys_preserve_hierarchy and (args.synthesis_engine != 'yosys' or args.stage != 'synthesis'):
         parser.error('--yosys-preserve-hierarchy requires Yosys synthesis-only qualification')
-    args.output.mkdir(parents=True, exist_ok=False)
+    expected_macros = dict(args.expected_sram_macro)
+    if len(expected_macros) != len(args.expected_sram_macro):
+        parser.error('Duplicate --expected-sram-macro master')
     rtl = args.rtl.resolve()
     filelist = rtl / 'filelist.f'
     files = ([rtl / line.strip() for line in filelist.read_text().splitlines()
@@ -307,12 +503,18 @@ def main():
     if not top or not re.search(r'\b' + re.escape(args.clock) + r'\b', top[1]):
         raise SystemExit('Requested clock is absent from the top-level ports')
     sram = ROOT / 'depends/asap7_sram_0p0/generated'
-    macros = sorted(set(re.findall(r'\bsrambank_\w+', source)))
+    from extract_emitted_rtl import code_only
+    macros = sorted(set(re.findall(r'\bsrambank_\w+', code_only(source))))
+    if set(expected_macros) != set(macros):
+        parser.error('--expected-sram-macro must explicitly declare every supplied SRAM master; '
+                     f'expected declarations for {macros}, received {sorted(expected_macros)}')
     libs = [sram / 'LIB' / (name + '.lib') for name in macros]
     lefs = [sram / 'LEF' / (name + '.lef') for name in macros]
     for path in files + libs + lefs:
         if not path.is_file():
             raise SystemExit(f'Missing input: {path}')
+    expected_collateral = {path.name: sha(path) for path in libs + lefs}
+    args.output.mkdir(parents=True, exist_ok=False)
     chipagent = Path(os.environ.get('CHIPAGENT_DIR', ROOT.parent / 'chipagent'))
     sys.path.insert(0, str(chipagent))
     from chipagent.models import TaskObject
@@ -335,7 +537,8 @@ def main():
         macro_placement_tcl=str(ROOT / 'timing/asap7/compute_unit_sram_macro_placement.tcl') if macros else None)
     tracked = subprocess.check_output(['git', 'ls-files', '--cached', '--others', '--exclude-standard',
         'src/main', 'build.sbt',
-        'scripts/qualify_ppa.py', 'timing/asap7'], cwd=ROOT, text=True).splitlines()
+        'scripts/qualify_ppa.py', 'scripts/extract_emitted_rtl.py',
+        'scripts/report_ppa_sram_inventory.py', 'timing/asap7'], cwd=ROOT, text=True).splitlines()
     manifest = dict(timestamp=datetime.now(timezone.utc).isoformat(),
         commit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
         dirty=bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT)),
@@ -344,6 +547,7 @@ def main():
         emitted_sha256={str(p.relative_to(rtl)):sha(p) for p in files},
         macro_sha256={str(p.relative_to(ROOT)):sha(p) for p in libs + lefs},
         scope='synthesis estimate' if args.stage == 'synthesis' else 'post-route; includes IO timing',
+        expected_sram_macros=expected_macros,
         constraint_coverage_resources=dict(memory_gib=args.coverage_memory_gib,
                                            timeout_seconds=min(args.timeout, args.coverage_timeout)),
         inputs=inputs)
@@ -352,11 +556,14 @@ def main():
         from chipagent.toolchain import configured_openroad_image
         hierarchy = prepare_hierarchy_image(configured_openroad_image(), args.output)
         manifest['hierarchy_profile'] = hierarchy
+        image = hierarchy['image_id']
+    else:
+        image = pin_openroad_image()
+    manifest['tool_image_id'] = image
     (args.output / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     previous_image = os.environ.get('CHIPAGENT_OPENROAD_IMAGE')
     try:
-        if hierarchy:
-            os.environ['CHIPAGENT_OPENROAD_IMAGE'] = hierarchy['image_id']
+        os.environ['CHIPAGENT_OPENROAD_IMAGE'] = image
         result = ASAP7PhysicalFlowTool().run(ToolContext(
             task=TaskObject(task_type='physical_flow_asap7', module_name=args.module, description='Current RTL qualification'),
             inputs=inputs))
@@ -373,6 +580,8 @@ def main():
     if status == 'failed' and result.result.get('overview', {}).get('verdict') != 'FAIL':
         raise SystemExit(1)
     mapping = mapping_proof(result.result, args.output)
+    mapping['tool_image_matches'] = (result.result.get('reproducibility') or {}).get('openroad_image') == image
+    mapping['passed'] = mapping['passed'] and mapping['tool_image_matches']
     if args.stage == 'synthesis':
         report_file = result.result.get('artifacts', {}).get('synthesis_sta.log')
         report_path = Path(report_file) if report_file else None
@@ -386,7 +595,7 @@ def main():
         if gate['passed'] and mapping['passed']:
             gate['constraint_coverage'] = synthesis_constraint_proof(
                 result.result, args.output, min(args.timeout, args.coverage_timeout),
-                args.coverage_memory_gib)
+                args.coverage_memory_gib, expected_macros, expected_collateral)
         else:
             gate['constraint_coverage'] = dict(passed=False, reason='Setup or mapping failed before coverage')
         gate['passed'] = gate['passed'] and mapping['passed'] and gate['constraint_coverage']['passed']
@@ -397,7 +606,13 @@ def main():
     else:
         gate = post_route_gate(result.result)
         gate['mapping'] = mapping
-        gate['passed'] = gate['passed'] and mapping['passed']
+        if gate['passed'] and mapping['passed']:
+            gate['sram_macros'] = route_macro_proof(result.result, args.output,
+                expected_macros, expected_collateral, min(args.timeout, args.coverage_timeout),
+                args.coverage_memory_gib)
+        else:
+            gate['sram_macros'] = dict(passed=False, reason='Physical or mapping gates failed before macro checks')
+        gate['passed'] = gate['passed'] and mapping['passed'] and gate['sram_macros']['passed']
         (args.output / 'qualification.json').write_text(json.dumps(gate, indent=2) + '\n')
         print(json.dumps({'post_route_gate': gate}), flush=True)
         if not gate['passed']:

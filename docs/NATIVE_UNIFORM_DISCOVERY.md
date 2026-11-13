@@ -80,6 +80,7 @@ sbt -J-Xmx6G -Dopengpu.simJobs=4 'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.NativeBinnedGraphicsHostAxiSpec -- -z "native uniform roots"'
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/uniform-host-control GpuHostAxi --stage synthesis --clock clock \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/uniform-host-control GpuHostAxi) \
   --period-ps 1000 --io-delay 0.25 --output .artifacts/uniform-host-control-synthesis
 ```
 

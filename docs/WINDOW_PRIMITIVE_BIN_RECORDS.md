@@ -164,6 +164,7 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 \
   'runMain opengpu.elaboration.EmitWindowPrimitiveRecordReadCache /tmp/record-cache-rtl'
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   /tmp/record-cache-rtl WindowPrimitiveRecordReadCache --stage synthesis \
+  $(python3 scripts/report_ppa_sram_inventory.py /tmp/record-cache-rtl WindowPrimitiveRecordReadCache) \
   --synthesis-engine yosys --yosys-preserve-hierarchy --period-ps 1000 \
   --io-delay 0.25 --output /tmp/record-cache-ppa
 ```

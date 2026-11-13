@@ -124,6 +124,7 @@ Reproduce with the configured ChipAgent/ASAP7 tool environment:
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -J-XX:+ExitOnOutOfMemoryError \
   'runMain opengpu.elaboration.EmitPpaRtl mobile-native-early-depth-fragment-shader .artifacts/fragment-credit/rtl'
 python3 scripts/qualify_ppa.py .artifacts/fragment-credit/rtl FragmentShaderStage \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/fragment-credit/rtl FragmentShaderStage) \
   --stage synthesis --synthesis-engine yosys --yosys-preserve-hierarchy \
   --clock clock --period-ps 1000 --io-delay 0.25 --timeout 14400 \
   --output .artifacts/fragment-credit/synthesis

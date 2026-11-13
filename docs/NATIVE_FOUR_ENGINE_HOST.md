@@ -98,6 +98,7 @@ python3 scripts/extract_emitted_rtl.py .artifacts/native-four-engine-host-rtl \
   BankedShaderPayloadStore .artifacts/native-host-payload-rtl
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/native-host-payload-rtl BankedShaderPayloadStore \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/native-host-payload-rtl BankedShaderPayloadStore) \
   --stage synthesis --synthesis-engine yosys --yosys-preserve-hierarchy \
   --period-ps 1000 --io-delay 0.25 --timeout 604800 \
   --output .artifacts/native-host-payload-synthesis
@@ -147,6 +148,7 @@ sbt -J-Xmx10G -Dopengpu.productQualification=1 \
   'runMain opengpu.elaboration.EmitPpaRtl mobile-native-four-engine-product-host .artifacts/native-four-engine-product-host-rtl'
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/native-four-engine-product-host-rtl GpuHostSystemAxi \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/native-four-engine-product-host-rtl GpuHostSystemAxi) \
   --stage synthesis --clock io_s_axi_aclk --period-ps 1000 --io-delay 0.25 \
   --timeout 14400 --coverage-timeout 7200 --coverage-memory-gib unlimited \
   --output .artifacts/native-four-engine-product-host-synthesis

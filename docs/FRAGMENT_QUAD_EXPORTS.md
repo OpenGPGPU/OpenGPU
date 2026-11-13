@@ -82,10 +82,12 @@ python3 scripts/extract_emitted_rtl.py .artifacts/product-host-rtl FragmentShade
 python3 scripts/extract_emitted_rtl.py .artifacts/product-host-rtl VertexShaderStage .artifacts/vertex-stage-rtl
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/fragment-worker-rtl FragmentShaderStage --stage synthesis \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/fragment-worker-rtl FragmentShaderStage) \
   --synthesis-engine yosys --yosys-preserve-hierarchy --period-ps 1000 --io-delay 0.25 \
   --timeout 604800 --output .artifacts/fragment-worker-synthesis
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/vertex-stage-rtl VertexShaderStage --stage synthesis \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/vertex-stage-rtl VertexShaderStage) \
   --synthesis-engine yosys --yosys-preserve-hierarchy --period-ps 1000 --io-delay 0.25 \
   --timeout 604800 --output .artifacts/vertex-stage-synthesis
 ```

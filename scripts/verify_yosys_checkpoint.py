@@ -60,7 +60,9 @@ def within(root, relative):
 
 def verify_sources(root, recorded):
     names = subprocess.check_output(['git', 'ls-files', '--cached', '--others', '--exclude-standard',
-                                     'src/main', 'build.sbt', 'scripts/qualify_ppa.py', 'timing/asap7'],
+                                     'src/main', 'build.sbt', 'scripts/qualify_ppa.py',
+                                     'scripts/extract_emitted_rtl.py', 'scripts/report_ppa_sram_inventory.py',
+                                     'timing/asap7'],
                                     cwd=root, text=True).splitlines()
     require(len(names) == len(set(names)) and set(names) == set(recorded), 'Source inventory differs')
     for name in names:

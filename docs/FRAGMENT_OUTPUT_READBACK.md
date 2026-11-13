@@ -105,6 +105,7 @@ Reproduce the complete-stage timing gate with fresh output directories:
 sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-native-early-depth-fragment-shader .artifacts/fragment-readback-rtl'
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/fragment-readback-rtl FragmentShaderStage --stage synthesis \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/fragment-readback-rtl FragmentShaderStage) \
   --synthesis-engine yosys --yosys-preserve-hierarchy --period-ps 1000 \
   --io-delay 0.25 --output .artifacts/fragment-readback-synthesis
 ```

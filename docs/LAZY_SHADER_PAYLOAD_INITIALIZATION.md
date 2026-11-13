@@ -61,6 +61,7 @@ python3 scripts/extract_emitted_rtl.py .artifacts/lazy-payload/emitted \
   BankedShaderPayloadStore .artifacts/lazy-payload/complete
 python3 scripts/qualify_ppa.py .artifacts/lazy-payload/complete \
   BankedShaderPayloadStore --stage synthesis --synthesis-engine yosys \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/lazy-payload/complete BankedShaderPayloadStore) \
   --yosys-preserve-hierarchy --period-ps 1000 --io-delay 0.25 \
   --timeout 604800 --output .artifacts/lazy-payload/ppa
 ```

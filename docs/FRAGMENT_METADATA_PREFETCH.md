@@ -92,6 +92,7 @@ implementations and the existing 1,000 ps period with 25% I/O constraints:
 sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-native-early-depth-fragment-shader .artifacts/fragment-metadata-rtl'
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/fragment-metadata-rtl FragmentShaderStage --stage synthesis \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/fragment-metadata-rtl FragmentShaderStage) \
   --synthesis-engine yosys --yosys-preserve-hierarchy --period-ps 1000 \
   --io-delay 0.25 --output .artifacts/fragment-metadata-synthesis
 ```

@@ -138,6 +138,7 @@ for ppa_case in \
   sbt "runMain opengpu.elaboration.EmitPpaRtl $ppa_profile .artifacts/$ppa_profile-rtl"
   CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
     ".artifacts/$ppa_profile-rtl" "$ppa_module" --stage synthesis \
+    $(python3 scripts/report_ppa_sram_inventory.py ".artifacts/$ppa_profile-rtl" "$ppa_module") \
     --period-ps 1000 --io-delay 0.25 --timeout 14400 \
     --output ".artifacts/$ppa_profile-synthesis"
 done

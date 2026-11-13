@@ -52,6 +52,8 @@ OPENGPU_QUALIFY_JAVA_HEAP=10G JDK_JAVA_OPTIONS=-XX:ActiveProcessorCount=2 \
   python3 scripts/qualify_native_product_compiled.py --product --alignment-v2 \
   --stage prepare --scene-jobs 3 --output "$RUN"
 python3 scripts/qualify_ppa.py "$RUN/rtl" GpuHostSystemAxi \
+  --expected-sram-macro srambank_64x4x32_6t122=752 \
+  --expected-sram-macro srambank_64x4x64_6t122=1232 \
   --stage synthesis --synthesis-engine yosys --yosys-preserve-hierarchy \
   --clock io_s_axi_aclk --period-ps 1000 --io-delay 0.25 --timeout 14400 \
   --coverage-timeout 1800 --coverage-memory-gib 10 --output "$PPA_RUN"
@@ -71,3 +73,18 @@ For 60 FPS, each complete independently verified product frame must fit
 clock. A requested 1 GHz clock gives a planning budget of 16,666,666 cycles,
 but a requested clock, partial frame or simulator wall-time measurement cannot
 establish this requirement.
+
+The per-master expectations above come from the complete source-instance
+traversal of the fixed v2 emission. Recheck them after a source change with
+`python3 scripts/report_ppa_sram_inventory.py "$RUN/rtl" GpuHostSystemAxi`.
+The source report does not prove mapped retention: synthesis checks the actual
+saved ODB in the same OpenROAD invocation as `check_setup`, and route checks
+the actual final ODB. Missing, retyped, nonphysical or unexpected macro masters
+fail, including equal-total type substitutions. The tiny two-type/multiple-
+instance OpenDB oracle passes both count gates; it establishes no product
+physical timing. Reproduce it explicitly with:
+
+```sh
+python3 scripts/verify_ppa_sram_macros.py \
+  --image chipagent/openroad:arm64 --sram-root /path/to/pinned/generated
+```

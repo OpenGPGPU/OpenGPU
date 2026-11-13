@@ -37,5 +37,6 @@ sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
 sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-typed-tile-memory .artifacts/typed-tile-memory-rtl'
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/typed-tile-memory-rtl BankedTypedTileMemory --stage synthesis \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/typed-tile-memory-rtl BankedTypedTileMemory) \
   --period-ps 1000 --io-delay 0.25 --output .artifacts/typed-tile-memory-synthesis
 ```

@@ -225,6 +225,7 @@ def test_route_cannot_hide_failed_or_invalid_checks_behind_a_pass_verdict(metric
 
 @pytest.mark.parametrize('margin', [0.0, 0.5, 30.0])
 def test_cli_rejects_io_failure_and_preserves_raw_tool_result(tmp_path, monkeypatch, margin):
+    monkeypatch.setattr(qualify, 'pin_openroad_image', lambda: 'sha256:' + 'a' * 64)
     rtl = tmp_path / 'rtl'
     rtl.mkdir()
     (rtl / 'Top.sv').write_text('module Top(input clock); endmodule\n')
@@ -234,6 +235,7 @@ def test_cli_rejects_io_failure_and_preserves_raw_tool_result(tmp_path, monkeypa
     mapping_log.write_text('Export to ODB: created 100 instances\n')
     payload = dict(status='success', overview=dict(verdict='PASS'),
                    artifacts={'synthesis_sta.log': str(report), 'run.log': str(mapping_log)},
+                   reproducibility={'openroad_image': 'sha256:' + 'a' * 64},
                    report_tail='101.675 slack (MET)\n')
     captured_inputs = {}
 
@@ -274,6 +276,7 @@ def test_cli_rejects_io_failure_and_preserves_raw_tool_result(tmp_path, monkeypa
 
 
 def test_cli_rejects_positive_slack_without_constraint_evidence(tmp_path, monkeypatch):
+    monkeypatch.setattr(qualify, 'pin_openroad_image', lambda: 'sha256:' + 'a' * 64)
     rtl = tmp_path / 'rtl'
     rtl.mkdir()
     (rtl / 'Top.sv').write_text('module Top(input clock); endmodule\n')
@@ -282,6 +285,7 @@ def test_cli_rejects_positive_slack_without_constraint_evidence(tmp_path, monkey
     mapping_log = tmp_path / 'synthesis.log'
     mapping_log.write_text('Export to ODB: created 100 instances\n')
     payload = dict(status='success', module_name='Top', overview=dict(verdict='PASS'),
+                   reproducibility={'openroad_image': 'sha256:' + 'a' * 64},
                    artifacts={'synthesis_sta.log': str(report), 'run.log': str(mapping_log)})
     modules = {
         'chipagent': types.ModuleType('chipagent'),
@@ -316,3 +320,188 @@ def test_invalid_repair_margin_cannot_start_a_physical_run(tmp_path, monkeypatch
         qualify.main()
     assert error.value.code == 2
     assert not output.exists()
+
+
+M32, M64 = 'srambank_64x4x32_6t122', 'srambank_64x4x64_6t122'
+IMAGE = 'sha256:' + 'a' * 64
+
+
+def macro_report(rows=''):
+    return 'OPENGPU_SRAM_MACROS_BEGIN\n' + rows + 'OPENGPU_SRAM_MACROS_END\n'
+
+
+def test_macro_counts_are_exact_per_type_and_allow_explicit_zero():
+    assert qualify.expected_sram_macro(M32 + '=0') == (M32, 0)
+    report = macro_report(f'OPENGPU_SRAM_MACRO {M32} 2 2\nOPENGPU_SRAM_MACRO {M64} 1 1\n')
+    assert qualify.sram_macro_gate(report, 0, {M32: 2, M64: 1})['passed']
+    assert qualify.sram_macro_gate(macro_report(), 0, {M32: 0})['passed']
+    assert qualify.sram_macro_gate(macro_report(), 0, {})['passed']
+    assert not qualify.sram_macro_gate(report, 0, {})['passed']
+
+
+@pytest.mark.parametrize('report,code', [
+    ('', 0), ('OPENGPU_SRAM_MACROS_BEGIN\n', 0),
+    (macro_report() * 2, 0),
+    ('OPENGPU_SRAM_MACROS_END\nOPENGPU_SRAM_MACROS_BEGIN\n', 0),
+    (macro_report(), 0),  # both expected macros disappeared
+    (macro_report(f'OPENGPU_SRAM_MACRO {M32} 1 1\n'), 0),
+    (macro_report(f'OPENGPU_SRAM_MACRO {M32} 1 1\nOPENGPU_SRAM_MACRO {M64} 2 2\n'), 0),
+    (macro_report(f'OPENGPU_SRAM_MACRO {M32} 2 1\nOPENGPU_SRAM_MACRO {M64} 1 1\n'), 0),
+    (macro_report(f'OPENGPU_SRAM_MACRO {M32} 2 3\nOPENGPU_SRAM_MACRO {M64} 1 1\n'), 0),
+    (macro_report(f'OPENGPU_SRAM_MACRO {M32} 2 2\nOPENGPU_SRAM_MACRO other_macro 1 1\n'), 0),
+    (macro_report(f'OPENGPU_SRAM_MACRO {M32} 2 2\nOPENGPU_SRAM_MACRO {M32} 2 2\n'), 0),
+    (macro_report(f'OPENGPU_SRAM_MACRO {M32} 0 0\n'), 0),
+    (macro_report(f'OPENGPU_SRAM_MACRO {M32} 2 2 garbage\n'), 0),
+    (macro_report('Warning: incomplete traversal\n'), 0),
+    (macro_report(f'OPENGPU_SRAM_MACRO {M32} 2 2\nOPENGPU_SRAM_MACRO {M64} 1 1\n'), 1),
+    ('[ERROR ODB-0001] failed\n' + macro_report(f'OPENGPU_SRAM_MACRO {M32} 2 2\nOPENGPU_SRAM_MACRO {M64} 1 1\n'), 0),
+])
+def test_missing_dropped_retyped_nonphysical_or_incomplete_macros_fail(report, code):
+    assert not qualify.sram_macro_gate(report, code, {M32: 2, M64: 1})['passed']
+
+
+@pytest.mark.parametrize('expected', [None, [], {M32: True}, {M32: -1}, {M32: '2'}, {'bad name': 2}])
+def test_invalid_macro_contract_cannot_pass(expected):
+    assert not qualify.sram_macro_gate(macro_report(), 0, expected)['passed']
+
+
+@pytest.mark.parametrize('value', ['bad name=1', 'macro=-1', 'macro=1.5', 'macro=true', 'macro=01', 'macro='])
+def test_macro_arguments_reject_ambiguous_counts(value):
+    with pytest.raises(qualify.argparse.ArgumentTypeError):
+        qualify.expected_sram_macro(value)
+
+
+def odb_fixture(tmp_path, route=False):
+    output = tmp_path / 'proof'
+    work = output / 'flow/orfs-work'
+    results = work / 'results/base'
+    results.mkdir(parents=True)
+    odb = results / ('6_final.odb' if route else '1_synth.odb')
+    odb.write_text('original odb')
+    sdc = results / '1_synth.sdc'
+    sdc.write_text('original sdc')
+    macro_dir = work / 'designs/asap7/Top/macros'
+    macro_dir.mkdir(parents=True)
+    collateral = {}
+    for ext in ('lib', 'lef'):
+        p = macro_dir / f'{M32}.{ext}'
+        p.write_text('original ' + ext)
+        collateral[p.name] = qualify.sha(p)
+    flow = '/OpenROAD-flow-scripts/flow'
+    volumes = ['-v', str(work / 'results') + f':{flow}/results/asap7/Top',
+               '-v', str(work / 'designs/asap7/Top') + f':{flow}/designs/asap7/Top']
+    if route:
+        artifacts = {'final_odb': str(odb)}
+        command = ['docker', 'run', '--rm', *volumes, IMAGE, 'bash', '-lc', 'make route']
+    else:
+        sta = output / 'flow/synthesis_sta.tcl'
+        sta.write_text(f'read_db {flow}/results/asap7/Top/base/1_synth.odb\n'
+                       f'read_sdc {flow}/results/asap7/Top/base/1_synth.sdc\n'
+                       'report_checks -path_delay max -digits 3\n')
+        artifacts = {'synthesis_sta.tcl': str(sta)}
+        command = ['docker', 'run', '--rm', *volumes, '-v', str(sta) + ':/tmp/synthesis_sta.tcl',
+                   IMAGE, 'openroad', '/tmp/synthesis_sta.tcl']
+    return output, work, dict(module_name='Top', artifacts=artifacts, command=command,
+                             reproducibility={'openroad_image': IMAGE}), collateral
+
+
+@pytest.mark.parametrize('route', [False, True])
+@pytest.mark.parametrize('mutation', [None, 'odb', 'lib', 'lef', 'script', 'drop', 'retype'])
+def test_actual_odb_proof_binds_counts_collateral_and_inputs(tmp_path, monkeypatch, route, mutation):
+    output, work, result, collateral = odb_fixture(tmp_path, route)
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append(command)
+        assert '--cpus=1' in command and '--memory=1g' in command and '--memory-swap=1g' in command
+        assert IMAGE in command and kwargs['timeout'] == 50
+        script = output / ('route_macro_check.tcl' if route else 'constraint_coverage.tcl')
+        source = script.read_text()
+        assert 'getInsts' in source and 'isBlock' in source
+        assert source.count('OPENGPU_SRAM_MACROS_BEGIN') == 1
+        assert '6_final.odb' in source if route else '1_synth.odb' in source
+        if mutation == 'odb':
+            (work / 'results/base' / ('6_final.odb' if route else '1_synth.odb')).write_text('changed odb')
+        elif mutation == 'lib':
+            (work / f'designs/asap7/Top/macros/{M32}.lib').write_text('changed lib')
+        elif mutation == 'lef':
+            (work / f'designs/asap7/Top/macros/{M32}.lef').write_text('changed lef')
+        elif mutation == 'script':
+            script.write_text(source + '\n# changed script\n')
+        name, count = ('other_macro', 2) if mutation == 'retype' else (M32, 1 if mutation == 'drop' else 2)
+        report = 'OPENGPU_CHECK_SETUP_BEGIN\nOPENGPU_CHECK_SETUP_END\n' + macro_report(f'OPENGPU_SRAM_MACRO {name} {count} {count}\n')
+        return types.SimpleNamespace(returncode=0, stdout=report, stderr='')
+
+    monkeypatch.setattr(qualify.subprocess, 'run', run)
+    if route:
+        gate = qualify.route_macro_proof(result, output, {M32: 2}, collateral, 30, 1)
+    else:
+        gate = qualify.synthesis_constraint_proof(result, output, 30, 1, {M32: 2}, collateral)
+    assert gate['passed'] == (mutation is None)
+    assert len(calls) == 1
+    assert gate['inputs_unchanged'] == (mutation not in ('odb', 'lib', 'lef', 'script'))
+
+
+@pytest.mark.parametrize('route', [False, True])
+@pytest.mark.parametrize('mutation', ['missing-lib', 'changed-lib', 'wrong-image', 'wrong-mount', 'wrong-cfg-mount', 'overlap', 'wrong-odb'])
+def test_odb_proof_rejects_wrong_inputs_before_start(tmp_path, monkeypatch, route, mutation):
+    output, work, result, collateral = odb_fixture(tmp_path, route)
+    lib = work / f'designs/asap7/Top/macros/{M32}.lib'
+    if mutation == 'missing-lib': lib.unlink()
+    elif mutation == 'changed-lib': lib.write_text('replacement lib')
+    elif mutation == 'wrong-image': result['reproducibility']['openroad_image'] = 'sha256:' + 'b' * 64
+    elif mutation == 'wrong-mount': result['command'][4] += '-replacement'
+    elif mutation == 'wrong-cfg-mount': result['command'][6] += '-replacement'
+    elif mutation == 'overlap': result['command'][3:3] = ['-v', '/replacement:/OpenROAD-flow-scripts/flow/results/asap7/Top/base']
+    elif mutation == 'wrong-odb':
+        if route: result['artifacts']['final_odb'] = str(work / 'results/base/1_synth.odb')
+        else: (work / 'results/base/1_synth.odb').unlink()
+    monkeypatch.setattr(qualify.subprocess, 'run', lambda *a, **k: pytest.fail('wrong inputs started Docker'))
+    if route: gate = qualify.route_macro_proof(result, output, {M32: 2}, collateral, 30, 1)
+    else: gate = qualify.synthesis_constraint_proof(result, output, 30, 1, {M32: 2}, collateral)
+    assert not gate['passed']
+
+
+def test_macro_contract_is_required_before_the_flow_starts(tmp_path, monkeypatch):
+    rtl = tmp_path / 'rtl'
+    rtl.mkdir()
+    (rtl / 'Top.sv').write_text(f'module Top(input clock); {M32} memory(); endmodule\n')
+    output = tmp_path / 'never-created'
+    monkeypatch.setattr(qualify.sys, 'argv', ['qualify_ppa.py', str(rtl), 'Top', '--output', str(output)])
+    with pytest.raises(SystemExit) as error:
+        qualify.main()
+    assert error.value.code == 2 and not output.exists()
+
+
+def test_duplicate_macro_contract_cannot_override_an_expectation(tmp_path, monkeypatch):
+    output = tmp_path / 'never-created'
+    monkeypatch.setattr(qualify.sys, 'argv', ['qualify_ppa.py', str(tmp_path), 'Top', '--output', str(output),
+        '--expected-sram-macro', M32 + '=2', '--expected-sram-macro', M32 + '=1'])
+    with pytest.raises(SystemExit) as error:
+        qualify.main()
+    assert error.value.code == 2 and not output.exists()
+
+
+@pytest.mark.parametrize('timeout,memory', [(0, 1), (True, 1), (30, 0), (30, True)])
+@pytest.mark.parametrize('route', [False, True])
+def test_invalid_check_resources_cannot_start_a_container(tmp_path, monkeypatch, timeout, memory, route):
+    output, work, result, collateral = odb_fixture(tmp_path, route)
+    monkeypatch.setattr(qualify.subprocess, 'run', lambda *a, **k: pytest.fail('invalid resource allocation started'))
+    if route: gate = qualify.route_macro_proof(result, output, {M32: 2}, collateral, timeout, memory)
+    else: gate = qualify.synthesis_constraint_proof(result, output, timeout, memory, {M32: 2}, collateral)
+    assert not gate['passed']
+
+
+@pytest.mark.parametrize('exception', [KeyboardInterrupt, SystemExit])
+def test_interruption_stops_only_the_owned_check_container(monkeypatch, exception):
+    calls = []
+    def run(command, **kwargs):
+        calls.append(command)
+        if command[:2] == ['docker', 'stop']:
+            assert command[-1] == calls[0][calls[0].index('--name') + 1]
+            return types.SimpleNamespace(returncode=0, stdout='', stderr='')
+        raise exception()
+    monkeypatch.setattr(qualify.subprocess, 'run', run)
+    with pytest.raises(exception):
+        qualify.run_odb_check(['docker', 'run', '--rm', IMAGE, 'openroad', 'fixture.tcl'], 30, 1)
+    assert len(calls) == 2

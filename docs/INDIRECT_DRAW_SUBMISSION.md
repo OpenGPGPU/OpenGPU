@@ -115,6 +115,7 @@ sbt 'runMain opengpu.elaboration.EmitNativeTypedGraphicsAbi --check' \
   'runMain opengpu.elaboration.EmitNativeBinnedHostAbi --check' \
   'runMain opengpu.elaboration.EmitPpaRtl mobile-indirect-draw .artifacts/indirect-reader-rtl'
 python3 scripts/qualify_ppa.py .artifacts/indirect-reader-rtl IndirectDrawReader \
+  $(python3 scripts/report_ppa_sram_inventory.py .artifacts/indirect-reader-rtl IndirectDrawReader) \
   --stage synthesis --period-ps 1000 --io-delay 0.25 \
   --output .artifacts/indirect-reader-synthesis
 ```
