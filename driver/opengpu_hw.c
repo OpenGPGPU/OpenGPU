@@ -527,6 +527,12 @@ static irqreturn_t opengpu_irq_handler(int irq, void *data)
     return IRQ_HANDLED;
 }
 
+/* Enable device delivery only after Linux has installed its IRQ handler. */
+static void opengpu_hw_enable_irqs(struct opengpu_device *gpu)
+{
+    opengpu_reg_write(gpu, GPU_REG_IRQ, GPU_IRQ_ENABLE);
+}
+
 int opengpu_hw_init(struct opengpu_device *gpu, struct platform_device *pdev)
 {
     struct resource *res;
@@ -691,6 +697,7 @@ int opengpu_hw_init(struct opengpu_device *gpu, struct platform_device *pdev)
                                opengpu_irq_handler, 0, OPENGPU_NAME, gpu);
         if (ret)
             return dev_err_probe(gpu->dev, ret, "cannot request irq\n");
+        opengpu_hw_enable_irqs(gpu);
     }
 
     /* The host-memory job ring is retired: user draws are submitted as unified
