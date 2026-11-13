@@ -14,6 +14,8 @@ struct opengpu_vm;
 struct opengpu_buffer;
 static int native_mmio_wait_idle(struct opengpu_device *);
 static int native_mmio_flush_tlbs(struct opengpu_device *);
+static int native_mmio_set_satp(struct opengpu_device *,u64,u32);
+static int native_mmio_disable_mmu(struct opengpu_device *);
 static int native_mmio_flush_asid(struct opengpu_device *,u32);
 static int native_mmio_activate_vm(struct opengpu_device *,const struct opengpu_vm *);
 static int native_mmio_enable_mmu(struct opengpu_device *,u64);
@@ -33,6 +35,8 @@ static void native_mmio_dma_wmb(void);
     int timeout_work,poll_work,completion_work,reset_work; \
     struct opengpu_fault_snapshot last_fault;
 #define OPENGPU_MMU_TEST_WAIT_IDLE(g) native_mmio_wait_idle(g)
+#define OPENGPU_MMU_TEST_SET_SATP(g,r,a) native_mmio_set_satp(g,r,a)
+#define OPENGPU_MMU_TEST_DISABLE_MMU(g) native_mmio_disable_mmu(g)
 #define OPENGPU_MMU_TEST_FLUSH_TLBS(g) native_mmio_flush_tlbs(g)
 #define OPENGPU_MMU_TEST_FLUSH_ASID(g,a) native_mmio_flush_asid(g,a)
 #define OPENGPU_MMU_TEST_ACTIVATE_VM(g,v) native_mmio_activate_vm(g,v)
@@ -80,6 +84,7 @@ static struct native_mmio_state *native_mmio_state(struct opengpu_device *gpu)
 }
 static void native_mmio_action(struct native_mmio_state *m,u32 kind,u32 a,u32 v,u32 mask)
 {
+    assert(!m->cleanup_done); /* Session destruction is host-only after ACK. */
     assert(!(a&3) && (kind==4 || a<0x1000));
     if(m->count==m->capacity){size_t n=m->capacity?m->capacity*2:1024;
         void *p=realloc(m->actions,n*sizeof(*m->actions));assert(p);m->actions=p;m->capacity=n;}
@@ -158,7 +163,9 @@ typedef int irqreturn_t;
 #include "native_mmio_enable_irqs_under_test.inc"
 #include "native_mmio_quiesce_under_test.inc"
 #include "native_mmio_kick_under_test.inc"
+#define opengpu_hw_set_satp native_mmio_set_satp
 #include "native_mmio_set_satp_under_test.inc"
+#undef opengpu_hw_set_satp
 #include "native_mmio_activate_locked_under_test.inc"
 #include "native_mmio_busy_under_test.inc"
 #define opengpu_hw_wait_idle_locked native_mmio_wait_idle
@@ -193,6 +200,11 @@ static int native_mmio_flush_asid(struct opengpu_device *gpu,u32 asid)
     int error=native_mmio_flush_asid_actual(gpu,asid);
     return error?error:m->cleanup_error;
 }
+#define opengpu_hw_disable_mmu_locked native_mmio_disable_mmu
+#define opengpu_hw_flush_tlbs native_mmio_flush_tlbs
+#include "native_mmio_disable_under_test.inc"
+#undef opengpu_hw_flush_tlbs
+#undef opengpu_hw_disable_mmu_locked
 #include "native_mmio_submit_under_test.inc"
 #define opengpu_hw_invalidate_buffer_locked native_mmio_invalidate
 #include "native_mmio_invalidate_under_test.inc"
@@ -353,6 +365,15 @@ int native_kernel_end_cleanup(struct native_kernel_session *s)
     if(!s)return -EINVAL;
     struct native_mmio_state *m=native_mmio_state(&s->gpu);
     if(!m->cleanup_active || m->cleanup_done || m->cleanup_error || s->count || s->gpu.hw.wedged)return -EBUSY;
+    running=s;copy_gpu=&s->gpu;
+    /* Context teardown and the final Bare/full-flush must be acknowledged by
+     * the still-live DUT before its page tables or ASID can be reclaimed. */
+    if(!s->context_destroyed){
+        int error=opengpu_mmu_vm_destroy(&s->gpu,&s->context.vm);
+        if(!error)error=opengpu_mmu_fini(&s->gpu);
+        if(error)return error;
+        s->context_destroyed=true;
+    }
     if(m->count!=m->cleanup_start)m->cleanup_error=native_mmio_cleanup_sync(&s->gpu);
     if(m->cleanup_error)return m->cleanup_error;
     if(!m->cleanup_sequence)return -EINVAL;

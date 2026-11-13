@@ -72,10 +72,16 @@ starts a distinct phase. The actual MMU's DMA barriers capture exact coherent
 PTE clears, including their original physical addresses and old words. Every
 real TLB flush blocks for a matching, ordered live-DUT acknowledgment before its
 call can return and release backing. Transport errors enter the existing MMU
-rollback/owner quarantine path. `native_kernel_end_cleanup` publishes the final
-batch count; the producer must still await the executor's final cleanup result
+rollback/owner quarantine path. `native_kernel_end_cleanup` also destroys the
+context and its ASID inside this acknowledgment window, then disables both
+SATP registers and performs a final full flush before releasing the global
+page tables. VM/ASID shootdown failures preserve the context, bindings and
+page tables; a final-flush failure preserves the global tables. Only successful
+context teardown publishes the final batch count; the producer must still await the executor's final cleanup result
 before destroying the session. CPU ASan/UBSan checks pass for two owners, exact
-exported-PTE replay and stale/busy acknowledgments retaining all backing. This
+exported-PTE replay, stale/busy acknowledgments, final context/global flush
+failures retaining the relevant tables, and session destruction issuing no
+further MMIO. This
 CPU peer is excluded from the actual Mesa producer.
 
 The driver feature bit and production native layout/capability queries remain

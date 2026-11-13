@@ -90,7 +90,7 @@ static int allocations_until_failure = -1, live_allocations, idle_error;
 static unsigned flushes, barriers;
 static int global_flush_failures;
 static dma_addr_t next_dma = 0x100000;
-static void (*allocation_complete)(struct opengpu_device *);
+static void (*mmu_allocation_complete)(struct opengpu_device *);
 /* Actual primitive allocations, also usable by a captured-owner host fixture.
  * No device address is invented independently of buffer_alloc's result. */
 struct fixture_buffer_record {
@@ -121,7 +121,7 @@ static int opengpu_buffer_alloc(struct opengpu_device *gpu,
         record->next=fixture_buffers;fixture_buffers=record;
     }
     live_allocations++;
-    if(allocation_complete){void (*done)(struct opengpu_device *)=allocation_complete;allocation_complete=NULL;done(gpu);}
+    if(mmu_allocation_complete){void (*done)(struct opengpu_device *)=mmu_allocation_complete;mmu_allocation_complete=NULL;done(gpu);}
     return 0;
 }
 static void opengpu_buffer_free(struct opengpu_device *gpu,
@@ -159,10 +159,24 @@ static int opengpu_hw_flush_tlbs(struct opengpu_device *gpu)
 #endif
 }
 static dma_addr_t detached_root;static u32 detached_asid;static unsigned disables;
-static int opengpu_hw_set_satp(struct opengpu_device *gpu,dma_addr_t root,u32 asid)
-{assert(gpu->hw.submit_lock.held);detached_root=root;detached_asid=asid;return 0;}
+static int opengpu_hw_set_satp(struct opengpu_device *gpu, dma_addr_t root, u32 asid)
+{
+    assert(gpu->hw.submit_lock.held);
+#ifdef OPENGPU_MMU_TEST_SET_SATP
+    return OPENGPU_MMU_TEST_SET_SATP(gpu,root,asid);
+#else
+    detached_root=root;detached_asid=asid;return 0;
+#endif
+}
 static int opengpu_hw_disable_mmu_locked(struct opengpu_device *gpu)
-{assert(gpu->hw.submit_lock.held && gpu->mmu.lock.held);++disables;return opengpu_hw_flush_tlbs(gpu);}
+{
+    assert(gpu->hw.submit_lock.held && gpu->mmu.lock.held);
+#ifdef OPENGPU_MMU_TEST_DISABLE_MMU
+    return OPENGPU_MMU_TEST_DISABLE_MMU(gpu);
+#else
+    ++disables;return opengpu_hw_flush_tlbs(gpu);
+#endif
+}
 static unsigned asid_flushes, vm_activations;
 static int asid_flush_failures;
 static dma_addr_t last_satp_root;
@@ -1143,7 +1157,6 @@ int main(void)
         opengpu_mmu_vm_destroy(&gpu,&vm);
         assert(!vm.enabled && live_allocations==live_before);
     }
-    assert(!gpu.hw.submit_lock.held && !gpu.mmu.lock.held);
     /* Destruction cannot free PT memory or recycle an ASID on idle/flush
      * failure. Other VMs remain linked and the old ASID stays allocated. */
     {
@@ -1178,22 +1191,21 @@ int main(void)
         assert(gpu.mmu.enabled && gpu.mmu.root.cpu==root && live_allocations==allocations);
         gpu.hw.wedged=false;
     }
+    assert(!gpu.hw.submit_lock.held && !gpu.mmu.lock.held);
     assert(detached_root==gpu.mmu.root.dma && !detached_asid);
     assert(!opengpu_mmu_fini(&gpu) && disables>=2);
-    assert(!live_allocations);
-    /* fini may win while create allocates an unpublished root outside the
-     * MMU lock. The creator must recheck enabled before allocating an ASID. */
+    fixture_test_pte_visitor();
+    assert(!live_allocations && !fixture_buffers);
+    /* A global fini winning during unpublished-root allocation must prevent
+     * later ASID allocation/publication into the disabled MMU. */
     assert(!opengpu_mmu_init(&gpu));
-    struct opengpu_vm after_shutdown;allocation_complete=finish_while_vm_allocates;
+    struct opengpu_vm after_shutdown;mmu_allocation_complete=finish_while_vm_allocates;
     assert(opengpu_mmu_vm_create(&gpu,&after_shutdown)==-ENODEV);
     assert(!gpu.mmu.enabled && !gpu.mmu.root.cpu && !gpu.mmu.vms);
-    assert(!after_shutdown.enabled && !after_shutdown.root.cpu && !live_allocations);
+    assert(!after_shutdown.enabled && !after_shutdown.root.cpu && !live_allocations && !fixture_buffers);
     assert(opengpu_mmu_vm_create(&gpu,&after_shutdown)==-ENODEV);
     gpu.hw.capabilities=0;
     assert(opengpu_mmu_vm_create(&gpu,&after_shutdown)==-EOPNOTSUPP && !live_allocations);
-    opengpu_mmu_fini(&gpu);
-    fixture_test_pte_visitor();
-    assert(!live_allocations && !fixture_buffers);
     puts("MMU allocation, rollback, range and lock-scope tests passed");
     return 0;
 }

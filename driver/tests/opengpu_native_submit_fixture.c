@@ -93,7 +93,7 @@ struct native_kernel_record {
     struct native_kernel_observed_receipt observed;
     bool captured,drained,verified,freed;void *mmio_state;
 };
-struct native_kernel_session {struct native_kernel_profile *profile;
+struct native_kernel_session {bool context_destroyed;struct native_kernel_profile *profile;
     struct native_kernel_record *records,*pending_record;unsigned record_count;struct opengpu_device gpu;struct opengpu_render_context context;
     struct opengpu_file render;struct drm_file file;struct drm_device drm;
     struct native_original *originals;struct drm_sched_job *head,*tail;
@@ -467,15 +467,21 @@ int native_kernel_session_destroy(struct native_kernel_session *s)
     if(s->head || s->hardware)return -EBUSY;
 #ifdef OPENGPU_NATIVE_MMIO
     if(s->gpu.hw.native_mmio && native_mmio_state(&s->gpu)->exported &&
-        !native_mmio_state(&s->gpu)->cleanup_done)return -EBUSY;
+        (!native_mmio_state(&s->gpu)->cleanup_done || !s->context_destroyed))return -EBUSY;
 #endif
     running=s;copy_gpu=&s->gpu;
+    for(struct native_original *o=s->originals;o;o=o->next)
+        if(o->refs!=(o->visible?1:0))return -EBUSY;
+    if(!s->context_destroyed){
+        int error=opengpu_mmu_vm_destroy(&s->gpu,&s->context.vm);
+        if(!error)error=opengpu_mmu_fini(&s->gpu);
+        if(error)return error;
+        s->context_destroyed=true;
+    }
     for(struct native_original *o=s->originals;o;o=o->next)if(o->visible)native_kernel_original_close(s,o->handle);
-    for(struct native_original *o=s->originals;o;o=o->next)if(o->refs)return -EBUSY;
     dma_fence_put(s->context.last_fence);
     for(unsigned i=0;i<3;i++)dma_fence_put(s->sync[i].fence);
     opengpu_admission_fini(&s->gpu);
-    opengpu_mmu_vm_destroy(&s->gpu,&s->context.vm);opengpu_mmu_fini(&s->gpu);
 #ifdef OPENGPU_NATIVE_MMIO
     native_mmio_release(s);
 #endif
