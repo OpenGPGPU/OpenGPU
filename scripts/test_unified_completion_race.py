@@ -20,12 +20,18 @@ abort_end = source.index("static void opengpu_timeout_work(", abort_start)
 start = source.index("static bool opengpu_hw_unified_drain(struct opengpu_device *gpu)\n{")
 kick = source.index("static void opengpu_hw_unified_kick(", start)
 end = source.index("static int opengpu_hw_unified_submit_locked(", kick)
-with tempfile.TemporaryDirectory(prefix="opengpu-completion-race-") as tmp:
+temporary_root = ROOT / ".artifacts"
+temporary_root.mkdir(exist_ok=True)
+with tempfile.TemporaryDirectory(prefix="completion-race-", dir=temporary_root) as tmp:
     path = Path(tmp)
     (path / "drain_under_test.inc").write_text(source[complete_start:complete_end] +
         source[abort_start:abort_end] + source[start:end])
     cc = shlex.split(os.environ.get("CC", "cc"))
-    subprocess.run(cc + ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-pthread",
+    flags = ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-pthread"]
+    if os.environ.get("OPENGPU_TEST_SANITIZERS") == "1":
+        flags += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
+    environment = dict(os.environ, TMPDIR=tmp)
+    subprocess.run(cc + flags + [
         "-I", str(ROOT / "driver"), "-I", tmp,
-        str(ROOT / "driver/tests/opengpu_completion_race_fixture.c"), "-o", str(path / "test")], check=True)
-    subprocess.run([str(path / "test")], check=True)
+        str(ROOT / "driver/tests/opengpu_completion_race_fixture.c"), "-o", str(path / "test")], check=True, env=environment)
+    subprocess.run([str(path / "test")], check=True, env=environment)

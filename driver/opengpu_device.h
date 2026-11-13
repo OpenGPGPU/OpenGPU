@@ -25,6 +25,7 @@
 #include "opengpu_storage_command.h"
 #include "opengpu_tessellation_completion.h"
 #include "opengpu_native_sources_features.h"
+#include "opengpu_native_completion.h"
 
 struct platform_device;
 struct drm_device;
@@ -91,6 +92,8 @@ struct opengpu_fault_snapshot {
     u32 flags;
     u32 expected_command_id;
     u32 expected_opcode;
+    bool native_valid;
+    struct opengpu_native_completion native;
     bool tessellation_valid;
     struct opengpu_tessellation_completion tessellation;
 };
@@ -141,6 +144,7 @@ struct opengpu_hw {
     struct opengpu_native_source_limits native_sources;
     /* Immutable identity of the verified native command's held completion. */
     u32 native_context, native_pass, native_generation;
+    struct opengpu_private_snapshot *native_pending_owner;
     struct opengpu_compute_local_limits compute_local_limits;
     struct opengpu_compute_shared_limits compute_shared_limits;
     bool compute_texture_transport;

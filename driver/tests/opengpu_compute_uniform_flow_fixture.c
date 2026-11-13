@@ -25,6 +25,7 @@
 #include "opengpu_compute_uniform_counter_source_program.h"
 #include "opengpu_kernarg_va.h"
 #include "opengpu_tessellation_completion.h"
+#include "opengpu_native_completion.h"
 #include "opengpu_unified_completion.h"
 #include <stddef.h>
 _Static_assert(sizeof(struct drm_opengpu_compute_uniform_view)==16,"uniform UAPI view size");
@@ -109,13 +110,16 @@ struct opengpu_kernel_launch { u32 indirect_base,indirect_bytes,indirect_offset;
     struct opengpu_compute_uniform_command_context uniform;
 };
 struct opengpu_device { struct {
+    void *native_pending_owner;
+    struct { bool available; } native_sources;
+    u32 native_context,native_pass,native_generation;
     bool compute_texture_transport,compute_storage_transport,compute_image_transport,compute_counter_transport,compute_uniform_transport,compute_indirect_transport,wedged,reset_pending;
     u32 capabilities,compute_resource_flags,unified_command_id,unified_opcode,aborting;
     u32 unified_completion_delay_ms,active_completion_delay_ms;
     u64 regs_size,unified_expected_bytes,fence_context,fence_seqno;
     int submit_lock,fence_lock,timeout_work,completion_work;
     struct dma_fence *unified_fence,*active_fence;
-    struct { struct opengpu_tessellation_completion tessellation; bool tessellation_valid; int error; u32 flags,status; } last_fault;
+    struct { struct opengpu_native_completion native; bool native_valid; struct opengpu_tessellation_completion tessellation; bool tessellation_valid; int error; u32 flags,status; } last_fault;
     struct opengpu_compute_local_limits compute_local_limits;
     struct opengpu_compute_shared_limits compute_shared_limits;
 } hw; u32 regs[512],captured[8],active_root; unsigned kicks,pops,uniform_writes,invalidations; };
