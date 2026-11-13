@@ -99,6 +99,28 @@ public:
     }else if(write.address==GPU_REG_IRQ)r[GPU_REG_IRQ]=write.value&1u;
   }
 };
+static void deadline_checks() {
+  require(compute_response_timeout(nullptr)==std::chrono::seconds(300),"changed standalone compute timeout default");
+  for(const auto &item:std::vector<std::pair<const char *,unsigned>>{
+      {"1",1},{"0001",1},{"3600",3600},{"604800",604800}})
+    require(compute_response_timeout(item.first)==std::chrono::seconds(item.second),"lost compute phase timeout");
+  for(const char *value:{"","0","604801","99999999999999999999999999999","-1","+1"," 1","1 ","1x","1.0"})
+    rejects([&]{compute_response_timeout(value);});
+  const char *inherited=std::getenv("OPENGPU_COMPUTE_HOST_TIMEOUT");
+  const bool had_value=inherited;const std::string saved=inherited?inherited:"";
+  require(!setenv("OPENGPU_COMPUTE_HOST_TIMEOUT","3600",1),"cannot configure compute timeout test");
+  require(compute_response_timeout()==std::chrono::hours(1),"executor ignored the actual producer timeout environment");
+  require(!setenv("OPENGPU_COMPUTE_HOST_TIMEOUT","0",1),"cannot configure rejected timeout");
+  std::string program="compute-owner",mode="--probe-profile";
+  std::string profile=(std::filesystem::path(std::getenv("TMPDIR"))/"rejected-timeout-profile.json").string();
+  char *arguments[]={program.data(),mode.data(),profile.data()};
+  std::ostringstream error;auto *previous=std::cerr.rdbuf(error.rdbuf());
+  const auto status=compute_owner_driver_entry(3,arguments);std::cerr.rdbuf(previous);
+  require(status==1 && error.str().find("timeout")!=std::string::npos && !std::filesystem::exists(profile),
+    "malformed timeout reached the DUT profile/reset phase");
+  if(had_value)require(!setenv("OPENGPU_COMPUTE_HOST_TIMEOUT",saved.c_str(),1),"cannot restore compute timeout");
+  else require(!unsetenv("OPENGPU_COMPUTE_HOST_TIMEOUT"),"cannot restore absent compute timeout");
+}
 static void parser_checks() {
   const auto c=fixture();const auto wire=encode(c);std::istringstream input(wire);
   require(ComputeCapture::read(input).discovery.size()==106,"lost compute 96+10 profile");
@@ -177,6 +199,32 @@ static void execution_checks(int argc,char **argv) {
     if(scenario==5)require(!peer.submitted,"bad compute transport executed a kernel");
   }
 }
+static void phase_deadline_checks(int argc,char **argv) {
+  for(unsigned scenario=0;scenario<7;scenario++) {
+    const auto session=std::filesystem::path(std::getenv("TMPDIR"))/("compute-timeout-"+std::to_string(scenario));
+    require(std::filesystem::create_directory(session),"cannot create compute deadline session");
+    const auto output=session/"output";std::filesystem::create_directory(output);
+    const auto timeout=std::chrono::milliseconds(20);
+    rejects([&]{wait_input(session/"record-0.capture",session,timeout);});
+    if(scenario)atomic_json(session/"record-0.retire",[&](auto &out) {
+      if(scenario==1){out.write("OGCMT001",8);write_le(out,1,4);}else out<<encode(retirement());
+    });
+    if(scenario>=3)atomic_json(session/"cleanup.begin",[&](auto &out) {
+      out.write("OGCLB001",8);if(scenario!=3)write_le(out,1,4);
+    });
+    if(scenario==5)atomic_json(session/"cleanup-0.trace",[](auto &out) {
+      out.write("OGCLN001",8);write_le(out,1,4);
+    });
+    if(scenario==6)atomic_json(session/"cleanup.done",[](auto &out){out.write("OGCLD001",8);});
+    auto memory=memory_fixture();ComputePeer sim(argc,argv,memory);sim.reset();
+    Agent agent(memory);ReplayBus<ComputePeer> bus(sim,agent,100000);
+    rejects([&]{active_compute(sim,agent,bus,memory,fixture(),output,session,timeout);});
+    require(!std::filesystem::exists(session/"cleanup.json") && sim.resets==1 &&
+      memory.byte(0x6000)==0x55 && PtePages::word(memory,0x2000)==0x140f && PtePages::word(memory,0x2004)==0x1807,
+      "missing/truncated IPC authorized cleanup, replaced RAM or reset the compute owner");
+    std::filesystem::remove_all(session);
+  }
+}
 static void active_protocol(int argc,char **argv) {
   auto memory=memory_fixture();const auto capture=fixture();ComputePeer sim(argc,argv,memory);sim.reset();
   Agent agent(memory);ReplayBus<ComputePeer> bus(sim,agent,100000);
@@ -222,6 +270,6 @@ static void active_protocol(int argc,char **argv) {
 int main(int argc,char **argv) {
   if(argc==3) {const auto m=Memory::read(argv[1]);const auto c=ComputeCapture::read(argv[2]);
     verify_readonly(m,m,c.writable);PtePages p;p.observe_tables(m,c.trace);return 0;}
-  parser_checks();execution_checks(argc,argv);active_protocol(argc,argv);
+  deadline_checks();parser_checks();execution_checks(argc,argv);phase_deadline_checks(argc,argv);active_protocol(argc,argv);
   std::cout<<"compute owner CPU protocol/guard checks: PASS\n";
 }
