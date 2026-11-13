@@ -98,7 +98,13 @@ struct Capture {
     }
     require(native==1 && pending,"capture has no held final native command");
     std::map<uint32_t,Check> checked;
-    for(const auto &c:checks) {address(c.address);predicate(c.mask,c.expected);
+    for(const auto &c:checks) {address(c.address);
+      // Successful GNX retains raw reader address/draw fields. Their values
+      // are observations, not predeclared predictions; retirement still checks
+      // every raw word with a full mask before POP.
+      if(!c.mask)require((c.address==0x188 || c.address==0x18c) && !c.expected,
+        "only raw GNX reader observations may omit an expected predicate");
+      else predicate(c.mask,c.expected);
       require(checked.emplace(c.address,c).second,"duplicate held-completion check");}
     auto final=checked.find(GPU_REG_UCMD_COMPLETION);
     require(final!=checked.end() && final->second.mask==0xffffffffu &&
@@ -161,7 +167,7 @@ struct Retirement {
         const bool window=a.address==GPU_REG_UCMD_COMPLETION ||
           a.address==GPU_REG_UCMD_COMPLETION_BYTES_LO || a.address==GPU_REG_UCMD_COMPLETION_BYTES_HI ||
           (a.address>=0x180 && a.address<0x1b0);
-        require(window || a.address==GPU_REG_UCMD_STATUS || a.address==GPU_REG_IRQ,
+        require(window || a.address==GPU_REG_STATUS || a.address==GPU_REG_UCMD_STATUS || a.address==GPU_REG_IRQ,
           "retirement read is outside the completion interface");
         require(!pops || !window,"retirement reads cleared completion data after POP");
         if(window){require(a.mask==0xffffffffu,"retirement must preserve complete raw words");read_before_pop.insert(a.address);}

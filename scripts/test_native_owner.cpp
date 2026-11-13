@@ -145,7 +145,7 @@ static void unstable_completion(int argc,char **argv) {
 }
 static void actual_observations(int argc,char **argv) {
   auto c=fixture();c.writable={{0x2000,0x2040}};
-  c.checks[3]={0x188,0xffff0000u,0x12340000u};c.validate();
+  c.checks[3]={0x188,0u,0u};c.validate();
   const std::vector<Capture> captures{c};Memory memory;memory.ranges={{0x1000,0x4000,0xa7}};
   ControlPeer sim(argc,argv,memory,captures);sim.reset();sim.raw_observations=true;
   Agent agent(memory);ReplayBus<ControlPeer> bus(sim,agent,c.max_cycles);
@@ -249,7 +249,7 @@ static void active_series(int argc,char **argv) {
       const auto stem="record-"+std::to_string(n);
       wait_input(base/(stem+".held.json"),base,std::chrono::seconds(5));
       std::ifstream held(base/(stem+".held.json"));std::string json((std::istreambuf_iterator<char>(held)),{});
-      require(json.find("\"phase\":\"held\"")!=std::string::npos && json.find("retired")==std::string::npos,
+      require(json.find("\"phase\":\"held\"")!=std::string::npos && json.find("\"heldLegacyStatus\":0")!=std::string::npos && json.find("retired")==std::string::npos,
         "held receipt falsely claims retirement");
       atomic_json(base/(stem+".retire"),[&](auto &out){out<<encode(retirement_for(captures[n]));});
       wait_input(base/(stem+".retired.json"),base,std::chrono::seconds(5));
@@ -329,6 +329,8 @@ int main() {
   q=c;q.checks[0].expected^=1;rejects([&]{q.validate();});
   for(unsigned n=0;n<13;++n) {q=c;q.checks.erase(q.checks.begin()+n);rejects([&]{q.validate();});}
   q=c;q.checks[2].mask=1;rejects([&]{q.validate();});
+  q=c;q.checks[2].mask=0;rejects([&]{q.validate();});
+  q=c;q.checks[3].mask=0;q.checks[3].expected=1;rejects([&]{q.validate();});
   q=c;q.finish[0].address=GPU_REG_UCMD_RESET;rejects([&]{q.validate();});
   q=c;q.finish.push_back(q.finish[0]);rejects([&]{q.validate();});
   q=c;q.writable[0].end=Memory::limit+1;rejects([&]{q.validate();});
