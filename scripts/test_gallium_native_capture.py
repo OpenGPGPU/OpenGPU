@@ -106,6 +106,8 @@ def main():
                    '-e', 'OPENGPU_MESA_DIR=' + str(mesa),
                    '-e', 'OPENGPU_MESA_BUILD=' + os.environ.get('OPENGPU_MESA_BUILD', str(GPU / 'depends/mesa-build')),
                    '-e', 'OPENGPU_DRM_INCLUDE=' + os.environ.get('OPENGPU_DRM_INCLUDE', str(GPU / 'depends/aarch64-root/include')),
+                   '-e', 'OPENGPU_MESA_LINK_LIBS=' + os.environ.get('OPENGPU_MESA_LINK_LIBS', '-lz -lexpat'),
+                   '-e', 'LD_LIBRARY_PATH=' + os.environ.get('OPENGPU_MESA_LIBRARY_PATH', str(GPU / 'depends/aarch64-root/lib')),
                    args.image, 'python3', '/out/launch.py']
         process = None
         try:

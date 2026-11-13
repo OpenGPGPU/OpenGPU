@@ -63,6 +63,13 @@ int graphics_native_host_execute(struct native_kernel_session *session,const cha
 {
     char path[4096],temporary[4096];int ret;
     if(!session || !directory || !records)return -EINVAL;
+    unsigned timeout=3600;
+    const char *configured=getenv("OPENGPU_NATIVE_HOST_TIMEOUT");
+    if(configured) {
+        char *end;errno=0;unsigned long value=strtoul(configured,&end,10);
+        if(errno || !*configured || *end || !value || value>86400)return -EINVAL;
+        timeout=(unsigned)value;
+    }
     for(unsigned index=0;index<2;index++) {
         ret=host_path(path,directory,index?"native-next.source.json":"native.source.json");if(ret)return ret;
         FILE *stream=fopen(path,"wx");if(!stream)return -errno;
@@ -88,12 +95,12 @@ int graphics_native_host_execute(struct native_kernel_session *session,const cha
     struct graphics_native_observation observed[2];
     for(unsigned index=0;index<2;index++) {
         struct graphics_native_observation held;
-        ret=graphics_native_held_wait(directory,index,300,&held);if(ret)return ret;
+        ret=graphics_native_held_wait(directory,index,timeout,&held);if(ret)return ret;
         struct native_kernel_held_receipt witness=held_receipt(&held);
         char name[64];snprintf(name,sizeof(name),"record-%u.retire",index);
         ret=host_path(path,directory,name);if(ret)return ret;
         ret=native_kernel_drain_held(session,index,&witness,path);if(ret)return ret;
-        ret=graphics_native_execution_wait(directory,index,300,&observed[index]);if(ret)return ret;
+        ret=graphics_native_execution_wait(directory,index,timeout,&observed[index]);if(ret)return ret;
         if(!same_held(&held,&observed[index]))return -EINVAL;
         struct native_kernel_observed_receipt receipt={.held=witness,
             .retired_status=observed[index].retired_status,.retired_irq=observed[index].retired_irq,
@@ -106,14 +113,14 @@ int graphics_native_host_execute(struct native_kernel_session *session,const cha
     }
     /* Image/guard authorization is separate from all execution responses. Each
      * real TLB flush blocks until the same live DUT confirms its cleanup batch. */
-    ret=graphics_native_cleanup_wait(directory,300);if(ret)return ret;
+    ret=graphics_native_cleanup_wait(directory,timeout);if(ret)return ret;
     ret=native_kernel_begin_cleanup(session,directory);if(ret)return ret;
     for(unsigned index=0;index<2;index++) {
         ret=native_kernel_finish_observed(session,index);if(ret)return ret;
     }
     ret=native_kernel_end_cleanup(session);if(ret)return ret;
     struct graphics_native_observation final[2];
-    ret=graphics_native_final_wait(directory,300,final);if(ret)return ret;
+    ret=graphics_native_final_wait(directory,timeout,final);if(ret)return ret;
     for(unsigned index=0;index<2;index++)if(!same_observed(&final[index],&observed[index]))return -EINVAL;
     return 0;
 }
