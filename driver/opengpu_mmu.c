@@ -801,6 +801,48 @@ int opengpu_mmu_vm_unmap_reserved(struct opengpu_device *gpu,
     return mmu_vm_replace(gpu,r->owner,0,0,0,OPENGPU_MMU_POLICY_UNCACHED,r->va+offset,size,
         MMU_PRIVATE_RW,NULL,NULL,r);
 }
+
+int opengpu_mmu_vm_verify_reserved_locked(struct opengpu_device *gpu,
+    const struct opengpu_vm_reservation *r, size_t offset, dma_addr_t pa,
+    size_t size, u32 policy, bool writable)
+{
+    const struct opengpu_vm *vm;
+    u64 address, physical;
+    int ret = 0;
+
+    lockdep_assert_held(&gpu->hw.submit_lock);
+    if (!r || !r->active || !r->owner || !size ||
+        (offset & (MMU_PAGE_SIZE - 1)) || (pa & (MMU_PAGE_SIZE - 1)) ||
+        (size & (MMU_PAGE_SIZE - 1)) || offset > r->size ||
+        size > r->size - offset || (u64)size > (1ULL << 32) ||
+        (u64)pa > (1ULL << 32) - size ||
+        policy > OPENGPU_MMU_POLICY_UNCACHED)
+        return -EINVAL;
+    vm = r->owner;
+    mutex_lock(&gpu->mmu.lock);
+    if (!gpu->mmu.enabled || !vm->enabled || !vm->asid ||
+        !vm_reservation_owned(vm, r)) {
+        ret = -EINVAL;
+        goto out;
+    }
+    for (address = (u64)r->va + offset, physical = pa;
+         address < (u64)r->va + offset + size;
+         address += MMU_PAGE_SIZE, physical += MMU_PAGE_SIZE) {
+        const struct opengpu_buffer *table = vm_live_l1(vm,
+            (u32)(address / MMU_SUPERPAGE_SIZE));
+        u32 expected = writable ? mmu_leaf_pte_private(physical, policy) & ~MMU_PTE_X :
+                                  mmu_leaf_pte_snapshot(physical, policy);
+        if (!table || ((u32 *)table->cpu)[(address % MMU_SUPERPAGE_SIZE) /
+                                        MMU_PAGE_SIZE] != expected) {
+            ret = -EACCES;
+            goto out;
+        }
+    }
+out:
+    mutex_unlock(&gpu->mmu.lock);
+    return ret;
+}
+
 int opengpu_mmu_vm_release_reservation(struct opengpu_device *gpu,struct opengpu_vm_reservation *r)
 {
     struct opengpu_vm_reservation **link;
