@@ -27,15 +27,17 @@ def write_sources(out):
 
     functions = ('atomicExchange', 'atomicAdd', 'atomicXor', 'atomicOr', 'atomicAnd',
                  'atomicMin', 'atomicMax', 'atomicMin', 'atomicMax', 'atomicCompSwap')
-    for op, function in enumerate(functions):
-        signed = op in (5, 6)
+    cases = [(op, op in (5, 6), 'shared-atomic-%d.comp' % op) for op in range(10)]
+    cases += [(op, True, 'shared-atomic-i-%d.comp' % op) for op in (0, 1, 2, 3, 4, 9)]
+    for op, signed, name in cases:
+        function = functions[op]
         typ, seed, operand = ('int', 'int(0x80000000u)', '-1') if signed else ('uint', '0x80000000u', '0xffffffffu')
         atomic_prefix = prefix.replace('shared uint', 'shared ' + typ)
         initialize = ''.join('data[id+%du]=%s;\n' % (r*128, seed) for r in range(32))
         def call(index):
             arguments = 'data[%du],' % index + (seed + ',' if op == 9 else '') + operand
             return 'uint(%s(%s))' % (function, arguments)
-        (out / ('shared-atomic-%d.comp' % op)).write_text(atomic_prefix + initialize +
+        (out / name).write_text(atomic_prefix + initialize +
             'memoryBarrierShared();barrier();\nuint first=' + call(0) + ';uint last=' + call(4095) +
             ';result.v[group*256u+id]=first;result.v[group*256u+128u+id]=last;}\n')
 

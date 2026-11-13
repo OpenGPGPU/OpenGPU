@@ -188,8 +188,10 @@ int main(int argc,char **argv)
     shifted_cfg.required_bytes=cs_frontend_shared_bytes(shifted);
     reject_shared(cs_frontend_tokens(shifted),&shifted_cfg);cs_frontend_destroy(shifted);
     limit_shared_base=profile.base;limit_shared_bytes=profile.bytes;limit_shared_lanes=profile.lanes;
-    for(unsigned operation=0;operation<10;operation++) {
-        char name[64];assert(snprintf(name,sizeof(name),"shared-atomic-%u",operation)>0);
+    for(unsigned variant=0;variant<16;variant++) {
+        const unsigned signed_operations[]={0,1,2,3,4,9};
+        unsigned operation=variant<10?variant:signed_operations[variant-10];
+        char name[64];assert(snprintf(name,sizeof(name),variant<10?"shared-atomic-%u":"shared-atomic-i-%u",operation)>0);
         void *atomic=front(argv[1],name,"shared-atomic");
         struct opengpu_cs_shared cfg=profile;cfg.required_bytes=cs_frontend_shared_bytes(atomic);
         assert(cfg.required_bytes==16384);
