@@ -9,7 +9,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 
-def main():
+def run_driver_tests():
     with tempfile.TemporaryDirectory(prefix="opengpu-buffer-view-") as directory:
         binary = Path(directory) / "buffer_view"
         subprocess.run(shlex.split(os.environ.get("CC", "cc")) + ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
@@ -36,6 +36,7 @@ def main():
     subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_host.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_owner_protocol.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_owner_oracle.py")], check=True)
+    subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_owner_controller.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_local_limits.py")], check=True)
     compiler = shlex.split(os.environ.get("CC", "cc"))
     subprocess.run(compiler + ["-std=c11", "-Wall", "-Wextra", "-Werror", "-D__KERNEL__",
@@ -192,6 +193,25 @@ def main():
 
             subprocess.run([sys.executable, str(ROOT / "scripts/test_gallium_compute.py")], check=True)
             subprocess.run([sys.executable, "-B", str(ROOT / "scripts/test_framebuffer_blit_inputs.py")], check=True)
+
+def main():
+    parent = ROOT / '.artifacts'
+    parent.mkdir(exist_ok=True)
+    # Several legacy child fixtures use tempfile's default directory. Keep
+    # their inherited TMPDIR and this process's cached default inside GPU too.
+    with tempfile.TemporaryDirectory(prefix='driver-', dir=parent) as temporary:
+        previous_env, previous_cache = os.environ.get('TMPDIR'), tempfile.tempdir
+        os.environ['TMPDIR'] = temporary
+        tempfile.tempdir = temporary
+        try:
+            run_driver_tests()
+        finally:
+            tempfile.tempdir = previous_cache
+            if previous_env is None:
+                os.environ.pop('TMPDIR', None)
+            else:
+                os.environ['TMPDIR'] = previous_env
+
 
 if __name__ == "__main__":
     main()

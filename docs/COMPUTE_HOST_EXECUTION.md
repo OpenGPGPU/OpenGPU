@@ -93,7 +93,7 @@ active controller command.
 After independently qualifying the complete factory/source/tool build, run:
 
 ```sh
-python3 scripts/compute_owner_controller.py --executor QUALIFIED_COMPUTE_EXECUTOR --bridge-command BRIDGE_ARGV_JSON
+python3 scripts/compute_owner_controller.py --executor QUALIFIED_COMPUTE_EXECUTOR --executor-qualification EXECUTOR_RECORD --executor-checker ORIGINAL_PREPARE_OWNER_EXECUTOR --executor-checker-python GENERATION_PYTHON --bridge-command BRIDGE_ARGV_JSON
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_compute_owner_oracle.py
 ```
 
@@ -105,3 +105,11 @@ builds, captures and logs at terminal completion. `sourceQualificationRequired`
 is preserved: a protocol peer or stale binary cannot establish the required
 source/tool/factory checks. The actual full-DUT result remains unqualified until
 that path runs on the final model.
+
+The controller invokes the original `prepare_owner_executor.py --stage check`
+before probing and again before its final response, using the generation's
+exact Python interpreter and fixed CIRCT environment. It does not copy that
+checker into the bridge checkout or reinterpret its source/model/binary guards.
+A native executor record or any stale/changed source, tool, model or binary must
+fail that independent check. The bridge's qualification does not become valid
+merely because its byte protocol was accepted.
