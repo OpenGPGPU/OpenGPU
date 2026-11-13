@@ -8,6 +8,7 @@
 #include "opengpu_kernarg_va.h"
 #include "opengpu_tessellation_job_validate.h"
 #include "opengpu_tessellation_texture.h"
+#include "opengpu_native_advanced_blend_gfs.h"
 
 #if OPENGPU_NATIVE_TESSELLATION_SEQUENCE_COUNT_WORD != \
     OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_COUNT_WORD || \
@@ -828,7 +829,10 @@ static int tess_fragment_states_check(const struct opengpu_sched_job *job,
         if (!job->tess_states.cpu ||
             !opengpu_tessellation_fragment_state_precheck(job->tess_frame.cpu,
                 job->tess_frame.size, job->tess_states.cpu, job->tess_states.size,
-                view, engines, handle))
+                view, engines, handle) ||
+            !opengpu_native_advanced_blend_gfs_precheck(job->tess_frame.cpu,
+                job->tess_frame.size, (const unsigned char *)job->tess_states.cpu + (u64)handle * 512u,
+                512u, job->gpu->hw.native_advanced_blend_transport))
             return -EINVAL;
     }
     return 0;

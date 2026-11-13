@@ -127,10 +127,11 @@ object NativeTypedGraphicsLayout {
     case(a: UInt,b: UInt)=>b:=a
     case _=>throw new IllegalArgumentException("incompatible native descriptor")
   }
-  def fit(d: TypedTileRenderDraw,p: VertexShaderStageConfig,f: FragmentShaderConfig): Bool={
+  def fit(d: TypedTileRenderDraw,p: VertexShaderStageConfig,f: FragmentShaderConfig,nativeAdvanced: Boolean=false): Bool={
     val g=d.shaders.vertex.vertex.geometry;val v=g.vertex;val i=v.input
     val active=i.attributes.zipWithIndex.map{case(a,n)=> !a.enabled || (n<p.input.attributes).B && a.bindingIndex<p.input.bindings.U}.reduce(_ && _)
-    TypedBlendState.legalDrawVersion(d.version,d.blend) && !TypedBlendState.invalidDraw(d.blend) &&
+    TypedBlendState.legalDrawVersion(d.version,d.blend,nativeAdvanced) && !TypedBlendState.invalidDraw(d.blend,nativeAdvanced) &&
+      (if(nativeAdvanced)TypedBlendState.advancedOutputTypes(d.blend,d.shaders.fragment.colorTypes) else true.B) &&
       IndirectDrawControl.legal(g.indirect,i.indexFormat) && ShaderTextureResources.legal(v.resources) && ShaderTextureResources.legal(d.shaders.fragment.resources) &&
       ShaderUniformResources.legal(v.uniforms) && ShaderUniformResources.legal(d.shaders.fragment.uniforms) &&
       VertexShaderSampler.legal(v.sampler) && VertexShaderSampler.legal(d.shaders.fragment.sampler) &&

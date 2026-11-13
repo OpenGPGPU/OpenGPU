@@ -202,7 +202,7 @@ class NativeTypedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth:
         (base<job.passBase+&NativeTypedGraphicsLayout.passBytes.U && end>job.passBase) ||
         (job.drawCount=/=0.U && base<arrayEnd && end>job.drawBase)
       val immutable= !aliases(v.scratch.base,vertexEnd) && !aliases(fragment.scratch.base,fragmentEnd)
-      val compatible=fit(draw,p,f) && immutable && input.identity.asUInt===job.identity.asUInt && fragment.identity.asUInt===job.identity.asUInt
+      val compatible=fit(draw,p,f,storage.nativeAdvancedDraws) && immutable && input.identity.asUInt===job.identity.asUInt && fragment.identity.asUInt===job.identity.asUInt
       when(stop || passFinished){phase:=Phase.drain}
         .elsewhen(!compatible){fail(1.U,1.U,fetchBase);phase:=Phase.drain}
         .otherwise{drawOffered:=true.B;phase:=Phase.offerDraw}

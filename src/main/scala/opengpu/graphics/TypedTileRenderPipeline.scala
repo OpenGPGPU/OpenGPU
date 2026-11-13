@@ -178,7 +178,9 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
         hiX.zext<=d.originX.pad(33)+d.tileWidth.zext && hiY.zext<=d.originY.pad(33)+d.tileHeight.zext)
       val matching=f.identity.asUInt===d.identity.asUInt && f.sampleMode===d.sampleMode && r.sampleMode===d.sampleMode
       val types=d.colors.zipWithIndex.map{case(v,i)=> !v.enabled || i.U>=f.colorSlots || f.colorTypes(i)===TypedColorFormat.kind(v.format)}.reduce(_ && _)
-      when(stop){phase:=State.closing}.elsewhen(fragmentImage.map(_.io.invalid).getOrElse(false.B) || !TypedBlendState.legalDrawVersion(draw.version,draw.blend) || draw.tests.version=/=1.U || TypedBlendState.invalidDraw(draw.blend) || !within || !matching || !types){fail(1.U,1.U);phase:=State.closing}
+      val advancedTypes=if(storage.nativeAdvancedDraws)TypedBlendState.advancedOutputTypes(draw.blend,f.colorTypes) &&
+        d.colors.zipWithIndex.map{case(v,i)=> !v.enabled || !TypedBlendState.advanced(draw.blend,i.U) || TypedColorFormat.kind(v.format)===0.U}.reduce(_ && _) else true.B
+      when(stop){phase:=State.closing}.elsewhen(fragmentImage.map(_.io.invalid).getOrElse(false.B) || !TypedBlendState.legalDrawVersion(draw.version,draw.blend,storage.nativeAdvancedDraws) || draw.tests.version=/=1.U || TypedBlendState.invalidDraw(draw.blend,storage.nativeAdvancedDraws) || !within || !matching || !types || !advancedTypes){fail(1.U,1.U);phase:=State.closing}
         .otherwise{sourceOffered:=true.B;phase:=State.drawing}
     }
     is(State.drawing){when(drawDrained){formDrawResult()}}
