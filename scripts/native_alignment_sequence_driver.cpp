@@ -1,4 +1,4 @@
-// Command coexistence qualification on the complete, assertion-enabled v2 DUT.
+// Command coexistence on the complete assertion-enabled v2 or protected owner DUT.
 // The independent Scala oracle checks both saved native images and all compute
 // words/guards. There is one reset per scene, never between its four commands.
 #include "native_host_simulation.hpp"
@@ -124,7 +124,7 @@ uint64_t compute(Simulation &sim, Memory &memory, unsigned epoch) {
 
 int main(int argc, char **argv) {
   try {
-    require(argc == 3, "usage: native_alignment_sequence_driver V2_SMOKE_FIXTURES OUTPUT_DIR");
+    require(argc == 3, "usage: native_alignment_sequence_driver INTEGRATED_SMOKE_FIXTURES OUTPUT_DIR");
     const auto fixtures = std::filesystem::path(argv[1]), output = std::filesystem::path(argv[2]);
     std::filesystem::create_directories(output);
     std::ifstream suite(fixtures / "suite.txt"); require(bool(suite), "missing native fixture suite");
@@ -137,12 +137,12 @@ int main(int argc, char **argv) {
     for (unsigned index = 0; index < names.size(); ++index) {
       const auto &id = names[index];
       const auto fixture = Fixture::read((fixtures / (id + ".commands")).string());
-      require(fixture.alignment_v2() && fixture.width == 32 && fixture.height == 32 && fixture.id == index+1,
-        "command coexistence requires the frozen complete v2 smoke profile");
+      require((fixture.alignment_v2() || fixture.owner_profile()) && fixture.width == 32 && fixture.height == 32 && fixture.id == index+1,
+        "command coexistence requires a complete integrated smoke profile");
       auto memory = Memory::read((fixtures / (id + ".memory")).string());
       alignment_sequence::seed(memory); const Memory initial = memory;
       sim.reset();
-      for (const auto &r : fixture.resources) require(sim.read(r.address) == r.value, "v2 discovery contract differs");
+      for (const auto &r : fixture.resources) require(sim.read(r.address) == r.value, "integrated discovery contract differs");
       sim.write(alignment_sequence::irq,1);
       for (unsigned epoch = 0; epoch < 2; ++epoch) {
         const auto compute_cycles = alignment_sequence::compute(sim,memory,epoch);
@@ -156,6 +156,8 @@ int main(int argc, char **argv) {
         for (const auto &entry : fixture.finish) sim.write(entry.address,entry.value);
         alignment_sequence::drain_idle(sim);
         std::cout << "{\"scene\":\"" << id << "\",\"epoch\":" << epoch
+          << ",\"profile\":\"" << (fixture.owner_profile()?"two-cu-vga60-owner-v1":"two-cu-vga60-v2")
+          << "\",\"resourceDiscoveryWords\":" << fixture.resources.size()
           << ",\"computeCycles\":" << compute_cycles << ",\"nativeCycles\":" << native_cycles
           << ",\"resetBetweenCommands\":false,\"independentImagesRequired\":true,\"fpsQualified\":false}" << std::endl;
       }

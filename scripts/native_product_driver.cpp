@@ -34,16 +34,18 @@ int main(int argc, char **argv) {
     require(selected.empty() || unique.count(selected) == 1, "selected native scene is absent from the complete suite");
     Simulation sim(argc, argv); ExecutionProgress progress(output);
     unsigned index = 0; uint32_t width = 0, height = 0;
-    bool two_cu_vga = false, alignment_v2 = false;
+    bool two_cu_vga = false, alignment_v2 = false, owner_profile = false;
     for (const auto &id : names) {
       const auto fixture = Fixture::read((fixtures / (id + ".commands")).string());
       require(fixture.id == ++index, "native scene order changed");
       if (index == 1) {
         width = fixture.width; height = fixture.height;
         two_cu_vga = fixture.two_cu_vga(); alignment_v2 = fixture.alignment_v2();
+        owner_profile = fixture.owner_profile();
       }
       require(fixture.width == width && fixture.height == height &&
-        fixture.two_cu_vga() == two_cu_vga && fixture.alignment_v2() == alignment_v2,
+        fixture.two_cu_vga() == two_cu_vga && fixture.alignment_v2() == alignment_v2 &&
+        fixture.owner_profile() == owner_profile,
         "mixed native resolution or execution profiles");
       if (!selected.empty() && id != selected) continue;
       auto memory = Memory::read((fixtures / (id + ".memory")).string());
@@ -103,10 +105,11 @@ int main(int argc, char **argv) {
       for (unsigned n = 0; n < phases.size(); ++n) std::cout << (n ? "," : "") << phases[n];
       std::cout << "]";
       if (two_cu_vga) std::cout << ",\"profile\":\""
-        << (fixture.alignment_v2() ? "two-cu-vga60-v2" : "two-cu-vga60-v1")
+        << (owner_profile ? "two-cu-vga60-owner-v1" : fixture.alignment_v2() ? "two-cu-vga60-v2" : "two-cu-vga60-v1")
         << "\",\"computeUnits\":2,\"nativeEngines\":4,\"nativeMaxWidth\":2048,\"nativeMaxHeight\":2048";
-      if (fixture.alignment_v2())
-        std::cout << ",\"resourceDiscoveryWords\":72,\"computeFeatureFlags\":" << fixture.resources[2].value;
+      if (fixture.alignment_v2() || owner_profile)
+        std::cout << ",\"resourceDiscoveryWords\":" << fixture.resources.size()
+          << ",\"computeFeatureFlags\":" << fixture.resources[2].value;
       std::cout << ",\"trafficDrained\":true,\"imageVerificationRequired\":true,\"clockQualified\":false,\"fpsQualified\":false}" << std::endl;
       progress.finish(final_counters);
     }
