@@ -104,15 +104,17 @@ int graphics_native_host_execute(struct native_kernel_session *session,const cha
             ret=native_kernel_capture(session,1,path,UINT64_C(100000000),37);if(ret)return ret;
         }
     }
-    struct graphics_native_observation final[2];
-    ret=graphics_native_final_wait(directory,300,final);if(ret)return ret;
-    for(unsigned index=0;index<2;index++)if(!same_observed(&final[index],&observed[index]))return -EINVAL;
-    /* No simulated run/retire is reachable here. Every execution fence follows
-     * a DUT-verified actual hw-drain trace, and all private owners were retained
-     * until the controller's independent image/guard authorization above. */
+    /* Image/guard authorization is separate from all execution responses. Each
+     * real TLB flush blocks until the same live DUT confirms its cleanup batch. */
+    ret=graphics_native_cleanup_wait(directory,300);if(ret)return ret;
+    ret=native_kernel_begin_cleanup(session,directory);if(ret)return ret;
     for(unsigned index=0;index<2;index++) {
         ret=native_kernel_finish_observed(session,index);if(ret)return ret;
     }
+    ret=native_kernel_end_cleanup(session);if(ret)return ret;
+    struct graphics_native_observation final[2];
+    ret=graphics_native_final_wait(directory,300,final);if(ret)return ret;
+    for(unsigned index=0;index<2;index++)if(!same_observed(&final[index],&observed[index]))return -EINVAL;
     return 0;
 }
 

@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from native_graphics_owner_bridge import profile_bytes, response_bytes, strict_json, ready_files, held_bytes
+from native_graphics_owner_bridge import profile_bytes, response_bytes, strict_json, ready_files, held_bytes, cleanup_authorization, checked_cleanup
 
 ROOT = Path(__file__).resolve().parents[1]
 GPU = next(parent for parent in (ROOT, *ROOT.parents) if (parent / '.git').is_dir())
@@ -101,6 +101,36 @@ class Protocol(unittest.TestCase):
             with self.assertRaises(ValueError):
                 held_bytes(case, 0)
 
+    def test_cleanup_requires_separate_authority_and_actual_receipt(self):
+        records = [receipt(0), receipt(1)]
+        self.assertEqual(cleanup_authorization(records), b'OGCBA001' + struct.pack('<I', 2))
+        for incomplete in ([], records[:1], list(reversed(records))):
+            with self.assertRaises(ValueError):
+                cleanup_authorization(incomplete)
+        result = dict(phase='cleanup', ownerCleanupObserved=True, records=2,
+                      batches=3, pteClears=9, shootdowns=2, resetCount=1, ramReplaced=False,
+                      imagesPreserved=True, externalDrained=True, sourceQualificationRequired=True,
+                      clockQualified=False, fpsQualified=False)
+        checked_cleanup(result)
+        # Missing fields, integer booleans, reset/RAM replacement and empty
+        # cleanup telemetry cannot authorize the final response.
+        for field in result:
+            case = dict(result)
+            del case[field]
+            with self.subTest(missing=field), self.assertRaises(ValueError):
+                checked_cleanup(case)
+        for field, value in (('phase', 'retired'), ('ownerCleanupObserved', 1),
+                             ('records', 1), ('records', True), ('resetCount', 2),
+                             ('ramReplaced', True), ('imagesPreserved', False),
+                             ('externalDrained', False), ('sourceQualificationRequired', False),
+                             ('clockQualified', True), ('fpsQualified', True),
+                             ('batches', 0), ('pteClears', -1), ('shootdowns', True),
+                             ('pteClears', 1 << 64)):
+            with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                checked_cleanup(dict(result, **{field: value}))
+        with self.assertRaises(ValueError):
+            checked_cleanup(receipt(1))
+
     def test_actual_c_codec(self):
         with tempfile.TemporaryDirectory(prefix='g', dir=GPU / '.artifacts') as temporary:
             directory = Path(temporary)
@@ -117,6 +147,15 @@ class Protocol(unittest.TestCase):
             (directory / 'record-1.held.bin').write_bytes(invalid)
             (directory / 'record-0.response.bin').write_bytes(response_bytes(records[:1]))
             (directory / 'response.bin').write_bytes(response_bytes(records))
+            (directory / 'cleanup.authorize.bin').write_bytes(cleanup_authorization(records))
+            for name, data in (('no-cleanup', None), ('bad-cleanup', b'OGCBA001' + struct.pack('<I', 1)),
+                               ('wrong-cleanup', response_bytes(records)),
+                               ('tail-cleanup', cleanup_authorization(records) + b'x')):
+                child = directory / name
+                child.mkdir()
+                (child / 'response.bin').write_bytes(response_bytes(records))
+                if data is not None:
+                    (child / 'cleanup.authorize.bin').write_bytes(data)
             flags = ['-std=c11', '-Wall', '-Wextra', '-Werror', '-D_POSIX_C_SOURCE=200809L']
             if os.environ.get('OPENGPU_TEST_SANITIZERS') == '1':
                 flags += ['-fsanitize=address,undefined', '-fno-omit-frame-pointer']
