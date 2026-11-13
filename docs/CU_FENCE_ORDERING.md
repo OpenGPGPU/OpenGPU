@@ -16,9 +16,15 @@ result words (7, 41, 48), surrounding byte guards and drained responses pass.
 
 The test passed locally with three executed kernels, two expected faults and
 zero skipped cases. The actual test run took approximately fifty seconds,
-including model preparation. Source/class dependency checks and raw results
-remain local under `.artifacts/`. The changed-test PR gate selects this suite;
+including model preparation. Temporary source/class checks and raw results
+are removed after validation. The changed-test PR gate selects this suite;
 it does not require a frame render or product qualification.
+
+The bounded Gallium compute frontend also lowers real Mesa `MEMBAR` operations
+to this fence. Its [compiler and two-CU publication qualification](GALLIUM_COMPUTE_MEMORY_BARRIERS.md)
+connects actual ESSL310 output words to delayed acknowledgements, fault/reuse
+and a consumer that first caches old data. Memory barriers retain their
+separate scope from the converged workgroup execution barrier.
 
 ```sh
 sbt -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
