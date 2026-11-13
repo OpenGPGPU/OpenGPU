@@ -16,6 +16,15 @@ returned-byte oracle are implemented; actual execution on the complete
 96-word DUT, active receipt/cleanup integration and its final result remain open. Native GNJ captures are a separate
 protocol and cannot authorize an opcode-0 compute submission.
 
+The second actual Mesa producer retains twelve 16 KiB UBOs at global bindings
+24..35, all 4096 default-uniform bytes and four SSBOs, with 128 local threads
+and four workgroups. Its GCC ASan/UBSan CPU capture also passes the independent
+C++ capture/PTE parser. Writable intervals retain distinct original allocation
+boundaries even when physical allocations are adjacent. Both source-specific
+oracles reject the untouched guard-filled output; neither producer precomputes
+shader results. Actual returned uniform/shared bytes remain unqualified until
+the complete DUT runs them.
+
 The boundary retains stock two-CU, 16-lane/eight-warp tasks, 16 KiB shared SRAM,
 twelve 16 KiB UBOs plus the full default block and four SSBOs. Source windows,
 descriptors, private code/uniform copies, mappings and physical addresses come
@@ -89,6 +98,11 @@ postimage. Its `--profile-wire` input is the controller's strictly encoded real
 `--capture-only` mode is reserved for CPU build/capture regression and exits
 without any GPU completion or cleanup authorization. Do not use it in the
 active controller command.
+Select `--case shared` (the default) or `--case uniforms` to choose the original
+full-capacity ESSL source; both use the same Linux ownership and controller
+protocol. The independent uniform oracle computes its expectations from the
+original GEM/default source windows in ESSL binding order, independently of
+native UBO remapping, instructions and private snapshots.
 
 After independently qualifying the complete factory/source/tool build, run:
 
