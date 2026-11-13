@@ -36,6 +36,27 @@ For FlashSim, use `scripts/qualify_native_product_flashsim.py` with the same
 mode/profile arguments plus `--flashsim-dir /path/to/FlashSim`. The equivalent,
 parallel and extra-scene reverification tools also require `--two-cu-vga`.
 
+The fresh assertion-enabled Verilator model passed all six 32×32 smoke scenes
+on 2026-11-13, using one fresh model per scene and at most three concurrent
+scenes. Every scene passed the independent complete stored-image, sample and
+guard oracle with external traffic drained. Repeating the complete oracle
+from the integrated source also passed; its emitted RTL, fixtures and profile
+manifest matched the executing model's inputs byte for byte, and the model
+and output bytes were unchanged across verification.
+
+| Smoke scene | Service cycles |
+| --- | ---: |
+| Desktop composition | 90,223 |
+| Textured 3D | 118,352 |
+| Opaque overdraw | 123,913 |
+| Transparent layers | 121,265 |
+| Small triangles | 41,490 |
+| 4× MSAA | 148,326 |
+
+Reproduce with the smoke command above and `--scene-jobs 3`. These counts
+describe complete smoke frames on the full two-CU hardware profile; they do
+not measure complete 640×480 product frames.
+
 These commands establish functional execution only after all scenes pass the
 independent complete-image, sample and guard oracle with external traffic
 drained. The 60 FPS requirement additionally needs every complete frame to fit
