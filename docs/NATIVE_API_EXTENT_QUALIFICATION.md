@@ -115,15 +115,16 @@ python3 scripts/qualify_native_api_compiled.py --api-extent-product --stage veri
 Both commands run locally outside regular PR/nightly lanes and require the
 full host resource budget. The Scala entry points require
 `opengpu.fullHostQualification=1` and `opengpu.apiExtentQualification=1`;
-`opengpu.productQualification` must match the selected mode. CPU parser and
+`opengpu.productQualification` is 1 only for the legacy four-CU product mode;
+integrated two-CU VGA and smoke modes use 0. CPU parser and
 guard tests render no pixels. An earlier 2048×2048 attempt failed before
 rendering because the replay wrapper rejected the complete tile grid; that
 admission limit was subsequently repaired. The 2048-axis tests inspect bounded
 metadata and selected address/oracle coordinates without rendering or traversing
 a 2048×2048 frame. No completed 2048×2048 GPU frame,
 whole-host clock, FPS or H6 acceptance is claimed here. The existing compiled
-product runner still requires all six original scenes together and retains its
-separate 32×32 and explicit 720p profiles.
+product runner still requires all six original scenes together, with separate
+32×32 smoke and 640×480 two-CU product inputs.
 
 API product preparation and verification default to a 24 GiB maximum JVM heap;
 `OPENGPU_QUALIFY_JAVA_HEAP` accepts a different positive size such as `32G`.
@@ -154,8 +155,8 @@ allocation metadata and image oracle as the complete API verifier. It requires
 the original mode's explicit opt-ins and emits `fullSuiteQualified=false`;
 its diagnostic records cannot satisfy the two-frame qualification marker.
 The 4× frame and complete paired verification remain required. This result
-does not qualify 2048×2048 rendering, the 720p workload suite, a whole-host clock
-or FPS.
+does not qualify maximum-extent rendering, the six-scene product suite, a
+whole-host clock or FPS.
 
 ```sh
 sbt -J-Xmx8G -Dopengpu.fullHostQualification=1 -Dopengpu.apiExtentQualification=1 \
@@ -196,67 +197,55 @@ python3 scripts/qualify_native_api_compiled.py --smoke \
   --hierarchy-profile flat --jobs 2 --scene-jobs 2 --output .artifacts/native-api-parallel-smoke
 ```
 
-## Combined 720p display and API-capacity profile
+## Integrated two-CU API profile
 
-The optional `--api-capacity` product-runner profile combines the existing
-four-engine, 512 KiB-payload host with a 2048×2048 native maximum and a
-65,536-entry directory. Product mode uses the 1280×720 display; smoke mode
-uses the 640×480 display and 32×32 recipes. The runner checks all eight GNC3
-capability words before each scene. Prepared manifests, execution and
-reverification distinguish this profile from the original product profile.
-The ordinary command and fixture bytes remain unchanged without the option.
+`--alignment-v2` selects `two-cu-vga60-v2` explicitly. API and six-scene product
+preparation instantiate the same `NativeAlignmentProductRecipeHost` factory:
+two 16-lane/eight-warp CUs, sixteen transactions per CU, four native engines,
+a 65,536-entry directory and the 512 KiB payload pool. The original four-CU
+API profile and `two-cu-vga60-v1` product results remain distinct.
 
-The combined smoke preparation emitted 1,517 RTL files. Against the previously
-prepared 640×480 API-capacity host, nine files differed only in firtool Scala
-source-location comments and all remaining files were byte-identical. This is
-an RTL identity check, not a combined-frame, clock or FPS qualification.
-Configuration/discovery and command-encoding tests pass; the command parser
-accepts the original 16-word contract or the complete 24-word combined
-contract, and rejects malformed GNC3 sequences.
+Before each API frame, the driver reads and compares all 72 discovery words:
+GCR1, GNC3, indirect compute, visibility queries, transform feedback, primitive
+queries and native uniforms. The full GCR feature mask is `0x7fff`. The strict
+parser rejects changed addresses or values, duplicate/missing words, legacy
+feature masks and mismatched profile selectors. Preparation still requires
+fresh matching manifests and the complete final success marker. Parallel
+children, execution records and the complete paired image oracle carry the
+same explicit profile; legacy output cannot qualify v2.
 
-All six 32×32 recipes passed on the retained equivalent assertion-enabled
-API-capacity Verilator model after relinking the product driver. Each ran in
-a fresh process, drained its AXI traffic and passed the independent stored-image
-and guard oracle. Rechecking the retained archive, executable, driver inputs,
-1,517 emitted RTL files and all six output memories preserves the result;
-rerunning the complete independent oracle also passes.
+The profile connects compute image/storage/uniform/texture/counter services,
+image/storage atomics, indirect dispatch, native fragment images, queries,
+transform feedback and tessellation execution. Ordinary native geometry draws,
+advanced native blending and image operations in patch shaders still have
+unconnected admission/routing paths. The manifest records
+`nativeGeometryDraw=false`, `nativeAdvancedBlend=false` and
+`nativePatchShaderImages=false`; GCR capability bits do not establish those
+missing paths or complete GLES conformance.
 
-| Scene | Service cycles |
-| --- | ---: |
-| desktop-composition | 58,341 |
-| textured-3d | 86,072 |
-| opaque-overdraw | 101,355 |
-| transparent-layers | 100,587 |
-| small-triangles | 35,748 |
-| msaa-4x | 114,444 |
+The topology driver also accepts `--alignment-v2`, using the v2 API fixture
+folder and the same strict 72-word hardware discovery check. Its original
+nine no-reset submissions, four-engine scratch views, 4×4 oracle, fault and
+healthy-reuse checks are unchanged. Its legacy `--two-cu-vga` selector continues
+to require v1 product fixtures and rejects v2 fixtures.
 
-This is a complete small-frame recipe check using a partially relinked model.
-It does not establish a fresh complete build, a 720p result, whole-host timing
-or H6 acceptance. The independent oracle can be rerun on the six retained
-memories with:
+The actual Scala-generated 640×480 1×/4× v2 command and sparse-memory inputs
+passed the strict C++ parsers, including every discovery word. Their manifests
+keep `rtlEmitted=false`; the preparation guard rejects them as completed RTL.
 
-```sh
-sbt -J-Xmx4G -Dopengpu.fullHostQualification=1 -Dopengpu.productQualification=0 \
-  -Dopengpu.productApiCapacity=1 -Dopengpu.apiExtentQualification=1 \
-  "Test / runMain opengpu.system.VerifyCompiledNativeProduct --smoke --output $SIX_SCENE_MEMORIES"
-```
+CPU profile/parser/orchestration checks and fixture preparation do not execute
+GPU work or establish frame time. Complete 640×480 1×/4× API frames, all six
+product scenes and matching whole-host physical timing remain required on the
+final integrated source. No v2 rendered-frame, clock, FPS or H6 acceptance is
+claimed here.
 
 ```sh
-sbt 'testOnly opengpu.graphics.NativeWideTileGridEncodingSpec opengpu.graphics.NativeRenderTargetExtentSpec opengpu.system.CompiledNativeProductCapacitySpec'
-python3 -m unittest discover -s scripts -p 'test_qualify_native_*compiled.py'
-python3 -m unittest discover -s scripts -p 'test_qualify_*flashsim_product.py'
-# 32x32 functional smoke, full configured hardware capacity:
-python3 scripts/qualify_native_product_flashsim.py --smoke --api-capacity \
-  --flashsim-dir "$FLASHSIM_DIR" --output .artifacts/combined-api-smoke --scene-jobs 2
-# Explicit 720p product qualification, outside ordinary CI/nightly lanes:
-python3 scripts/qualify_native_product_flashsim.py --product --api-capacity \
-  --flashsim-dir "$FLASHSIM_DIR" --output .artifacts/combined-api-product --scene-jobs 2
-# Emit the corresponding 720p/API-capacity whole-host physical input:
-sbt -J-Xmx24G -Dopengpu.productQualification=1 -Dopengpu.apiExtentQualification=1 \
-  'runMain opengpu.elaboration.EmitPpaRtl mobile-native-four-engine-api-extent-product-host .artifacts/combined-api-product-ppa'
+python3 scripts/test_qualify_native_api_compiled.py
+python3 scripts/test_qualify_native_api_parallel.py
+python3 scripts/test_native_alignment_discovery.py
+# Explicit local complete-host preparation/execution, outside routine lanes:
+python3 scripts/qualify_native_api_compiled.py --api-extent-product --alignment-v2 \
+  --hierarchy-profile flat --scene-jobs 2 --jobs 2 --output .artifacts/alignment-v2-api
+# Use a freshly matching v2 API fixture folder and v2 model for the nine submissions:
+"$V2_TOPOLOGY_DRIVER" "$V2_API_FIXTURES" "$TOPOLOGY_OUTPUT" --topology-matrix --alignment-v2
 ```
-
-The combined profile still requires complete 720p scene execution, independent
-stored-image and guard verification, and matching whole-host physical timing.
-Results from the separate API-capacity and 720p hosts do not establish a
-combined profile or H6 acceptance.

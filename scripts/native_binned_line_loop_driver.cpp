@@ -16,17 +16,18 @@ namespace fs = std::filesystem;
 int main(int argc, char **argv) {
   try {
     require(argc >= 3 && argc <= 5,
-      "usage: native_binned_line_loop_driver FIXTURES OUTPUT_DIR [--topology-matrix] [--two-cu-vga]");
-    bool topologies=false,two_cu_vga=false;
+      "usage: native_binned_line_loop_driver FIXTURES OUTPUT_DIR [--topology-matrix] [--two-cu-vga|--alignment-v2]");
+    bool topologies=false,two_cu_vga=false,alignment_v2=false;
     for(int n=3;n<argc;++n){
       const std::string option(argv[n]);
       if(option=="--topology-matrix"&&!topologies)topologies=true;
-      else if(option=="--two-cu-vga"&&!two_cu_vga)two_cu_vga=true;
+      else if(option=="--two-cu-vga"&&!two_cu_vga&&!alignment_v2)two_cu_vga=true;
+      else if(option=="--alignment-v2"&&!alignment_v2&&!two_cu_vga)alignment_v2=true;
       else throw std::runtime_error("unknown or duplicate topology option");
     }
     const fs::path fixtures(argv[1]), output(argv[2]);
     require(!fs::exists(output), "output exists"); fs::create_directories(output);
-    const auto contract=topology_fixture_contract(fixtures,two_cu_vga);
+    const auto contract=topology_fixture_contract(fixtures,two_cu_vga,alignment_v2);
     Simulation sim(argc,argv); sim.reset();
     std::map<uint32_t,uint32_t> discovery;
     for(const auto &r:contract.resources){
@@ -35,7 +36,7 @@ int main(int argc, char **argv) {
       require(discovery.emplace(r.address,actual).second,"duplicate discovery address");
     }
     // Check every GCR1/GNC3 word independently of the supplied fixture values.
-    check_topology_discovery(discovery,two_cu_vga);
+    check_topology_discovery(discovery,two_cu_vga,alignment_v2);
     sim.write(GPU_REG_IRQ,1);
     for(unsigned index=0;index<(topologies?OPENGPU_TOPOLOGY_SUBMISSIONS:3u);++index){
       opengpu_ll_fixture f{};
@@ -114,7 +115,9 @@ int main(int argc, char **argv) {
       std::cout<<"{\"submission\":"<<index<<",\"topology\":"
         <<opengpu_ll_get(f.memory+OPENGPU_LL_DRAW,OPENGPU_NATIVE_BINNED_DRAW_DRAW_VERTEX_GEOMETRY_TOPOLOGY_WORD)
         <<",\"indexFormat\":"<<opengpu_ll_get(f.memory+OPENGPU_LL_DRAW,OPENGPU_NATIVE_BINNED_DRAW_DRAW_VERTEX_GEOMETRY_VERTEX_INPUT_INDEXFORMAT_WORD)
-        <<",\"serviceCycles\":"<<cycles<<",\"status\":"<<f.expected_status<<",\"exactImageAndGuards\":true,\"trafficDrained\":true,\"computeUnits\":"<<(two_cu_vga?2:4)<<",\"nativeEngines\":4}"<<std::endl;
+        <<",\"serviceCycles\":"<<cycles<<",\"status\":"<<f.expected_status<<",\"exactImageAndGuards\":true,\"trafficDrained\":true,\"computeUnits\":"<<((two_cu_vga||alignment_v2)?2:4)<<",\"nativeEngines\":4";
+      if(alignment_v2)std::cout<<",\"profile\":\"two-cu-vga60-v2\",\"resourceDiscoveryWords\":72,\"computeFeatureFlags\":32767";
+      std::cout<<"}"<<std::endl;
       sim.write(GPU_REG_UCMD_COMPLETION_POP,1);sim.write(GPU_REG_IRQ,3);
       for(unsigned n=0;n<12;++n)require(sim.read(0x180+4*n)==0,"completion detail not released");
       opengpu_ll_destroy(&f);

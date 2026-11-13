@@ -14,7 +14,10 @@ import qualify_native_product_compiled as common
 
 FAKE_DRIVER = r'''#!/usr/bin/env python3
 import json, pathlib, sys, time
-mode, fixtures, output, flag, scene = sys.argv[1:]
+args=sys.argv[1:]
+alignment="--alignment-v2" in args
+if alignment: args.remove("--alignment-v2")
+mode, fixtures, output, flag, scene = args
 assert mode in ('--api-extent-product', '--smoke') and flag == '--scene'
 fixtures, output = pathlib.Path(fixtures), pathlib.Path(output)
 (fixtures / ('started-' + scene)).write_text('started')
@@ -30,6 +33,10 @@ row = dict(scene=scene, frameWidth=640 if mode == '--api-extent-product' else 32
            frameHeight=480 if mode == '--api-extent-product' else 32, samples=4 if scene.endswith('4x') else 1,
            serviceCycles=100, gpuCycles=180, trafficDrained=True, imageVerificationRequired=True,
            phaseWorkerCycles=[1]*6, clockQualified=False, fpsQualified=False)
+if alignment:
+    row.update(profile='two-cu-vga60-v2',computeUnits=2,nativeEngines=4,nativeMaxWidth=2048,
+               nativeMaxHeight=2048,resourceDiscoveryWords=72,computeFeatureFlags=32767)
+    if (fixtures / 'legacy-profile').exists(): row['computeFeatureFlags']=15
 if scene.endswith('1x') and (fixtures / 'bad-one').exists(): row['trafficDrained'] = False
 print(json.dumps(row), flush=True)
 '''
@@ -54,6 +61,22 @@ class ParallelApiTests(unittest.TestCase):
                 local = out / 'result/scenes' / name / (name + '.memory')
                 self.assertEqual(flat.read_bytes(), name.encode())
                 self.assertTrue(os.path.samefile(flat, local))
+
+    def test_integrated_profile_is_carried_to_both_real_children_and_state(self):
+        for invalid in [False,True]:
+            with self.subTest(invalid=invalid), tempfile.TemporaryDirectory() as root:
+                _,driver,out=self.setup_run(root)
+                runner=api.Runner(out,scene_jobs=2,alignment_v2=True)
+                (out/'fixtures/overlap').touch()
+                if invalid: (out/'fixtures/legacy-profile').touch()
+                if invalid:
+                    with self.assertRaises(RuntimeError): runner.run_parallel_frames(driver,out/'result')
+                else:
+                    rows=runner.run_parallel_frames(driver,out/'result')
+                    api.validate_metrics(rows,alignment_v2=True)
+                    state=json.loads((out/'state.json').read_text())
+                    self.assertIs(state['alignment_v2'],True)
+                    with self.assertRaises(RuntimeError): api.validate_metrics(rows)
 
     def test_failed_or_invalid_frame_does_not_terminate_other_frame(self):
         for fault in ('fail-one', 'bad-one'):

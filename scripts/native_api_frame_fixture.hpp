@@ -2,9 +2,9 @@
 #include "native_frame_fixture.hpp"
 
 namespace native_frame {
-// Keep the product fixture parser's strict six-scene 32x32/720p contract.
+// The API pair has its own scene, sample and resolution contract.
 struct ApiFixture : Fixture {
-  static ApiFixture read(const std::string &path, bool product) {
+  static ApiFixture read(const std::string &path, bool product, bool alignment_v2 = false) {
     std::ifstream in(path, std::ios::binary); require(bool(in), "cannot read native API commands");
     magic(in, "OGAPI001"); ApiFixture f;
     f.width = read_le(in, 4); f.height = read_le(in, 4);
@@ -21,8 +21,13 @@ struct ApiFixture : Fixture {
       f.checks.push_back({address, mask, expected});
     }
     f.finish = commands(in);
-    require(f.resources.size() == 24 && f.writes.size() == 8 && f.finish.size() == 2,
+    require(f.resources.size() == (alignment_v2 ? 72u : 24u) && f.writes.size() == 8 && f.finish.size() == 2,
       "incomplete native API launch or GCR1/GNC3 resource contract");
+    require(alignment_v2 || !f.two_cu_vga(), "two-CU API fixtures require the explicit integrated profile");
+    if (alignment_v2) {
+      f.validate_resources();
+      require(f.two_cu_vga(), "integrated API alignment requires two CUs");
+    }
     require(in.peek() == EOF, "trailing native API command data");
     return f;
   }

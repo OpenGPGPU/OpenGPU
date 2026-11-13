@@ -116,6 +116,15 @@ Run the full-model commands only after selecting the final feature source.
 Build, execute and independently verify that source; do not relabel a v1 model
 or a prior feature revision as v2.
 
+The complete integrated target passed raw elaboration with a 6 GiB JVM heap
+(19,774 raw modules and 14,157,842 commands), then exhausted that heap in
+Chisel's FIRRTL conversion before any RTL was emitted. The bounded same-feature
+connection test passes full FIRRTL conversion at 3 GiB. Raw elaboration does
+not establish complete RTL generation, simulation or whole-host timing; those
+remain required with the complete target and an adequate explicit resource
+budget. The complete-target probe retained every target capacity; the bounded
+check exercises connections only.
+
 ## Reproduce
 
 Initialize the pinned SRAM submodule and install the repository's Scala/C++/Verilator toolchain. Use an absolute output directory under `.artifacts/`:

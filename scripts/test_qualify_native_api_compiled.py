@@ -28,6 +28,19 @@ def metrics():
         clockQualified=False, fpsQualified=False) for name, samples in zip(api.SCENES, [1, 4])]
 
 
+def alignment_profile():
+    return dict(profile(), profile='two-cu-vga60-v2', computeUnits=2, targetFps=60,
+        integratedHost=True, transactionsPerCu=16, resourceDiscoveryWords=72,
+        computeFeatureFlags=0x7fff, nativeGeometryDraw=False,
+        nativeAdvancedBlend=False, nativePatchShaderImages=False)
+
+
+def alignment_metrics():
+    return [dict(row, profile='two-cu-vga60-v2', computeUnits=2, nativeEngines=4,
+        nativeMaxWidth=2048, nativeMaxHeight=2048, resourceDiscoveryWords=72,
+        computeFeatureFlags=0x7fff) for row in metrics()]
+
+
 class PreparationTests(unittest.TestCase):
     def seed(self, out):
         for directory, name in [('rtl', 'model.sv'), ('fixtures', 'frame.memory')]:
@@ -67,10 +80,10 @@ class PreparationTests(unittest.TestCase):
                 self.assertEqual((out / 'fixtures/frame.memory').read_text(), 'old bytes')
 
     def test_fresh_api_child_outputs_bind_smoke_and_product_metadata(self):
-        for is_product in [False, True]:
-            with self.subTest(product=is_product), tempfile.TemporaryDirectory() as directory:
-                out = Path(directory); self.seed(out); runner = api.Runner(out, is_product)
-                data = profile()
+        for is_product, alignment in [(False,False),(True,False),(False,True),(True,True)]:
+            with self.subTest(product=is_product, alignment=alignment), tempfile.TemporaryDirectory() as directory:
+                out = Path(directory); self.seed(out); runner = api.Runner(out, is_product, alignment_v2=alignment)
+                data = alignment_profile() if alignment else profile()
                 if not is_product:
                     data.update(product=False, frameWidth=32, frameHeight=32)
                 code = (f'from pathlib import Path; out=Path({str(out)!r}); '
@@ -85,6 +98,56 @@ class PreparationTests(unittest.TestCase):
 
 
 class GuardTests(unittest.TestCase):
+    def test_integrated_api_requires_explicit_factory_and_all_discovery_metadata(self):
+        api.check_profile(alignment_profile(), alignment_v2=True)
+        for data, alignment in [(profile(), True), (alignment_profile(), False)]:
+            with self.assertRaises(RuntimeError):
+                api.check_profile(data, alignment_v2=alignment)
+        for key, value in [('profile','two-cu-vga60-v1'), ('computeUnits',4),
+                ('integratedHost',1), ('transactionsPerCu',4), ('targetFps',30),
+                ('resourceDiscoveryWords',24), ('computeFeatureFlags',15),
+                ('nativeGeometryDraw',True), ('nativeAdvancedBlend',0),
+                ('nativePatchShaderImages',None)]:
+            with self.subTest(key=key), self.assertRaises(RuntimeError):
+                api.check_profile(dict(alignment_profile(), **{key:value}), alignment_v2=True)
+        runner=api.Runner(Path('/unused'), alignment_v2=True)
+        self.assertTrue(runner.two_cu_vga and runner.api_capacity)
+        command=runner.sbt('main','1G')
+        for flag in ['productTwoCuVga','productApiCapacity','productAlignmentV2']:
+            self.assertIn('-Dopengpu.'+flag+'=1',command)
+        self.assertIn('-Dopengpu.productQualification=0',command)
+        self.assertNotIn('-Dopengpu.productQualification=1',command)
+        self.assertEqual(runner.driver_command('/driver','/output',api.SCENES[1]),
+            ['/driver','--api-extent-product','/unused/fixtures','/output','--alignment-v2','--scene',api.SCENES[1]])
+        with self.assertRaises(ValueError):
+            api.Runner(Path('/unused'),alignment_v2='1')
+
+    def test_integrated_api_cannot_relabel_legacy_metrics_or_image_oracles(self):
+        api.validate_metrics(alignment_metrics(), alignment_v2=True)
+        for rows, alignment in [(metrics(), True), (alignment_metrics(), False)]:
+            with self.assertRaises(RuntimeError):
+                api.validate_metrics(rows, alignment_v2=alignment)
+        for key, value in [('computeUnits',4), ('nativeEngines',2), ('nativeMaxWidth',640),
+                ('resourceDiscoveryWords',24), ('computeFeatureFlags',15), ('profile','two-cu-vga60-v1')]:
+            rows=alignment_metrics(); rows[1][key]=value
+            with self.subTest(key=key), self.assertRaises(RuntimeError):
+                api.validate_metrics(rows, alignment_v2=True)
+        with tempfile.TemporaryDirectory() as directory:
+            log=Path(directory)/'oracle.log'
+            images=[f'NATIVE_API_COMPILED_IMAGE id={name} frame=640x480 exactStoredImagesAndGuards=true'
+                    for name in api.SCENES]
+            final=('NATIVE_COMPILED_API PASS frames=2 fullExecutionAndStorage=true '
+                   'exactStoredImagesAndGuards=true clockQualified=false fpsQualified=false')
+            marker=('NATIVE_COMPILED_API_PROFILE profile=two-cu-vga60-v2 computeUnits=2 '
+                    'engines=4 targetFps=60 clockQualified=false fpsQualified=false')
+            log.write_text('\n'.join(images+[marker,final]))
+            api.verify_marker(log,alignment_v2=True)
+            with self.assertRaises(RuntimeError): api.verify_marker(log)
+            for lines in [images+[final],images+[marker.replace('-v2','-v1'),final],
+                          images+[marker,marker,final],images[:1]+[marker,final]]:
+                log.write_text('\n'.join(lines))
+                with self.assertRaises(RuntimeError): api.verify_marker(log,alignment_v2=True)
+
     def test_api_preparation_uses_the_product_heap_only_for_product(self):
         for is_product, expected in [(True, '-J-Xmx24G'), (False, '-J-Xmx6G')]:
             with self.subTest(product=is_product), tempfile.TemporaryDirectory() as directory:

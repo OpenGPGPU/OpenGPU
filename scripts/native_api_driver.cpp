@@ -14,13 +14,19 @@ using namespace native_frame;
 
 int main(int argc, char **argv) {
   try {
-    require(argc == 4 || argc == 6,
-      "usage: native_api_driver --smoke|--api-extent-product FIXTURE_DIR OUTPUT_DIR [--scene SCENE]");
+    require(argc >= 4 && argc <= 7,
+      "usage: native_api_driver --smoke|--api-extent-product FIXTURE_DIR OUTPUT_DIR [--alignment-v2] [--scene SCENE]");
     const std::string mode(argv[1]);
     require(mode == "--smoke" || mode == "--api-extent-product", "invalid native API mode");
-    const std::string selected = argc == 6 ? argv[5] : "";
-    require(argc == 4 || (std::string(argv[4]) == "--scene" &&
-      (selected == "native-api-extent-1x" || selected == "native-api-extent-4x")),
+    bool alignment_v2 = false;
+    std::string selected;
+    for (int n = 4; n < argc; ++n) {
+      const std::string option(argv[n]);
+      if (option == "--alignment-v2" && !alignment_v2) alignment_v2 = true;
+      else if (option == "--scene" && selected.empty() && n + 1 < argc) selected = argv[++n];
+      else throw std::runtime_error("unknown or duplicate native API option");
+    }
+    require(selected.empty() || selected == "native-api-extent-1x" || selected == "native-api-extent-4x",
       "invalid native API scene selection");
     const bool product = mode == "--api-extent-product";
     const auto fixtures = std::filesystem::path(argv[2]), output = std::filesystem::path(argv[3]);
@@ -39,11 +45,11 @@ int main(int argc, char **argv) {
     unsigned index = 0; uint32_t width = 0, height = 0;
     for (const auto &id : names) {
       ++index;
-      if (!selected.empty() && id != selected) continue;
-      const auto fixture = ApiFixture::read((fixtures / (id + ".commands")).string(), product);
+      const auto fixture = ApiFixture::read((fixtures / (id + ".commands")).string(), product, alignment_v2);
       require(fixture.id == index, "native scene order changed");
       if (width == 0) { width = fixture.width; height = fixture.height; }
       require(fixture.width == width && fixture.height == height, "mixed native resolution profiles");
+      if (!selected.empty() && id != selected) continue;
       auto memory = Memory::read((fixtures / (id + ".memory")).string());
       sim.reset();
       for (const auto &r : fixture.resources) require(sim.read(r.address) == r.value, "native hardware resource contract differs");
@@ -82,7 +88,11 @@ int main(int argc, char **argv) {
         d.io_performance_fragmentPhaseWorkerCycles_1, d.io_performance_fragmentPhaseWorkerCycles_2,
         d.io_performance_fragmentPhaseWorkerCycles_3, d.io_performance_fragmentPhaseWorkerCycles_4,
         d.io_performance_fragmentPhaseWorkerCycles_5};
-      std::cout << "{\"scene\":\"" << id << "\",\"frameWidth\":" << width
+      if (alignment_v2) std::cout << "{\"profile\":\"two-cu-vga60-v2\",\"computeUnits\":2,\"nativeEngines\":4,"
+        << "\"nativeMaxWidth\":2048,\"nativeMaxHeight\":2048,\"resourceDiscoveryWords\":" << fixture.resources.size()
+        << ",\"computeFeatureFlags\":" << fixture.resources[2].value << ",";
+      else std::cout << "{";
+      std::cout << "\"scene\":\"" << id << "\",\"frameWidth\":" << width
         << ",\"frameHeight\":" << height << ",\"samples\":" << fixture.samples
         << ",\"serviceCycles\":" << cycles << ",\"gpuCycles\":" << d.io_performance_system_cycles
         << ",\"readBusBytes\":" << agent.traffic.read_bus_bytes
