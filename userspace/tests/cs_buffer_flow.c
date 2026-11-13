@@ -158,13 +158,17 @@ static uint32_t texture_value(void *opaque, unsigned unit, uint32_t index, unsig
     assert(count == get32(level, 25) && get64(image, 29) == get64(level, 26));
     if (query) { actual_txq++; return component ? 0 : count; }
     actual_txf++;
-    assert(get32(image, 8) == OPENGPU_TEXTURE_FORMAT_R32UI && get32(b, 10) == 1 && index < count);
-    uint64_t address = (uint64_t)get32(level, 12) + (uint64_t)index * 4;
-    assert(address >= get32(level, 9) && address + 4 <= get64(level, 10));
-    uint32_t value;
-    memcpy(&value, data_address(j, address, 4), 4);
+    unsigned format=get32(image,8),rgba=format==OPENGPU_TEXTURE_FORMAT_RGBA32UI;
+    assert((rgba||format==OPENGPU_TEXTURE_FORMAT_R32UI) && get32(b,10)==1 && index<count);
+    unsigned stride=rgba?16:4;
+    uint64_t address = (uint64_t)get32(level, 12) + (uint64_t)index * stride;
+    assert(address >= get32(level, 9) && address + stride <= get64(level, 10));
     unsigned selected = get32(image, 23) ? get32(image, 24 + component) : component;
-    return selected == 5 ? 1 : selected == 4 ? 0 : selected == 0 ? value : selected == 3 ? 1 : 0;
+    if(selected==5)return 1;if(selected==4)return 0;
+    uint32_t value;
+    if(rgba){assert(selected<4);memcpy(&value,data_address(j,address+selected*4,4),4);return value;}
+    memcpy(&value, data_address(j, address, 4), 4);
+    return selected == 0 ? value : selected == 3 ? 1 : 0;
 }
 static void image_value(void *opaque, unsigned unit, unsigned controls, uint32_t index,
                         uint32_t rgba[4], int write, int query)
@@ -797,7 +801,9 @@ static void first_execution(struct pipe_screen *s, struct pipe_context *p, void 
             assert(data[byte] == want);
         }
     }
-    assert(actual_txf == 16 && actual_txq == 1 && actual_image_load == 4 && actual_image_store == 4 && actual_image_size == 4);
+    /* GLSL consumes a.x only: one complete typed fetch per lane replaces
+     * four redundant component fetches, retaining full texel validation. */
+    assert(actual_txf == 4 && actual_txq == 1 && actual_image_load == 4 && actual_image_store == 4 && actual_image_size == 4);
     unsigned old_invalidates = invalidates;
     p->memory_barrier(p, PIPE_BARRIER_IMAGE | PIPE_BARRIER_TEXTURE | PIPE_BARRIER_SHADER_BUFFER);
     assert(invalidates == old_invalidates + 5); /* four SSBOs + image3, deduplicated */
@@ -836,6 +842,8 @@ static void first_execution(struct pipe_screen *s, struct pipe_context *p, void 
     for (unsigned i = 0; i < 32; i++) { pipe_sampler_view_reference(&samplers[i], NULL); pipe_resource_reference(&textures[i], NULL); }
     for (unsigned i = 0; i < 4; i++) { pipe_resource_reference(&ssbo[i], NULL); pipe_resource_reference(&images[i], NULL); }
 }
+#include "cs_texture_namespace_flow.h"
+
 int main(int argc, char **argv)
 {
     char path[4096], dump[4096]; assert(argc == 2);
@@ -852,6 +860,10 @@ int main(int argc, char **argv)
         orphan_recovery(); final_screen_ownership(); return 0;
     }
     buffer_artifacts = getenv("OPENGPU_BUFFER_ARTIFACTS");
+    if (getenv("OPENGPU_TEXTURE_NAMESPACE_QUALIFICATION")) {
+        texture_namespace_flow(argv[1]);
+        return 0;
+    }
     assert(snprintf(path, sizeof(path), "%s/buffers.comp", argv[1]) > 0);
     assert(snprintf(dump, sizeof(dump), "%s/buffers", argv[1]) > 0);
     void *front = cs_frontend_compile_buffers(path, dump); assert(front);

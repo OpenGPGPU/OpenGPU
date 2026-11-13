@@ -16,7 +16,8 @@ from apply_mesa_uniform_index_patch import AFTER as CHECKED_NIR_SHA
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def main(control_flow=False, buffer_resources=False, shared_memory=False, memory_barriers=False, storage_atomics=False):
+def main(control_flow=False, buffer_resources=False, shared_memory=False, memory_barriers=False,
+         storage_atomics=False, texture_namespaces=False):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--build", type=Path, required=True, help="new private output directory")
     ap.add_argument("--sanitize", action="store_true")
@@ -152,6 +153,24 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     libraries = [mb / p for p in ("src/compiler/glsl/libglsl.a", "src/compiler/nir/libnir.a", "src/compiler/libcompiler.a",
         "src/compiler/glsl/glcpp/libglcpp.a", "src/gallium/auxiliary/libgallium.a", "src/util/libmesa_util.a",
         "src/util/format/libmesa_format.a", "src/c11/impl/libmesa_util_c11.a")]
+    if texture_namespaces:
+        # Actual mapping, buffer-view creation/cache/refcounts and format
+        # conversion. A relocatable GC link selects their reachable sections
+        # before archive resolution, avoiding unrelated full-context graphics
+        # dependencies. The original Mesa objects remain untouched.
+        texture_objects = [mb / ("src/mesa/libmesa.a.p/state_tracker_" + unit + ".c.o")
+                           for unit in ("st_atom_texture", "st_sampler_view", "st_format",
+                                        "st_context", "st_cb_texture")]
+        texture_objects.append(mb / "src/mesa/libmesa.a.p/main_formats.c.o")
+        for obj in texture_objects:
+            if not obj.is_file():
+                raise RuntimeError("actual Mesa texture state tracker object required: " + str(obj))
+        selected = out / "actual-texture-state-tracker.o"
+        run(cc + ["-r", "-nostdlib", "-Wl,--gc-sections", "-Wl,-u,st_update_compute_textures",
+            "-Wl,-u,st_delete_texture_sampler_views", "-Wl,--wrap=st_finalize_texture",
+            "-Wl,--wrap=st_get_texture_sampler_view_from_stobj"] + texture_objects +
+            ["-o", selected], "select-actual-texture-state-tracker")
+        objects.append(selected)
     if not all(p.is_file() for p in libraries):
         raise RuntimeError("configured real Mesa static libraries required")
     if shared_memory:
@@ -166,13 +185,18 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         run(["ar", "r", archive, obj], "replace-only-shared-NTT")
         libraries[4] = archive
     binary = out / ("cs_atomic_frontend" if storage_atomics else "cs_barrier_frontend" if memory_barriers else "cs_shared_frontend" if shared_memory else "cs_buffer_flow" if buffer_resources else "cs_control_flow" if control_flow else "cs_uniform_flow")
-    run(cxx + san + ["-Wl,--gc-sections", "-Wl,-t,-t", "-Wl,-Map=" + str(out / "link.map")] + objects +
+    namespace_link = (["-Wl,--wrap=st_finalize_texture",
+                       "-Wl,--wrap=st_get_texture_sampler_view_from_stobj"] if texture_namespaces else [])
+    run(cxx + san + namespace_link + ["-Wl,--gc-sections", "-Wl,-t,-t", "-Wl,-Map=" + str(out / "link.map")] + objects +
         ["-Wl,--start-group"] + libraries + ["-Wl,--end-group"] +
         shlex.split(os.environ.get("OPENGPU_MESA_LINK_LIBS", "-lz -lexpat")) +
         ["-ldl", "-lm", "-pthread", "-o", binary], "link")
     sources = out / "glsl"
     sources.mkdir()
-    if storage_atomics:
+    if texture_namespaces:
+        from test_gallium_texture_namespace import write_sources
+        write_sources(sources)
+    elif storage_atomics:
         from test_gallium_compute_atomics import write_sources
         write_sources(sources)
     elif memory_barriers:
@@ -234,6 +258,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     env.pop("OPENGPU_COMPUTE_ARTIFACTS", None)
     env.pop("OPENGPU_CF_ARTIFACTS", None)
     env.pop("OPENGPU_BUFFER_ARTIFACTS", None)
+    if texture_namespaces:
+        env["OPENGPU_TEXTURE_NAMESPACE_QUALIFICATION"] = "1"
     artifacts = args.artifacts.resolve() if (control_flow or buffer_resources) and args.artifacts else None
     if artifacts:
         artifacts.mkdir(parents=True, exist_ok=False)
