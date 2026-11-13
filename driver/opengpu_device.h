@@ -24,6 +24,7 @@
 #include "opengpu_shader_image_command.h"
 #include "opengpu_storage_command.h"
 #include "opengpu_tessellation_completion.h"
+#include "opengpu_native_sources_features.h"
 
 struct platform_device;
 struct drm_device;
@@ -135,6 +136,7 @@ struct opengpu_hw {
     u32 compute_resource_flags;
     bool native_advanced_blend_transport;
     bool native_descriptor_preflight;
+    struct opengpu_native_source_limits native_sources;
     struct opengpu_compute_local_limits compute_local_limits;
     struct opengpu_compute_shared_limits compute_shared_limits;
     bool compute_texture_transport;
