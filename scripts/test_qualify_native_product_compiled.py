@@ -30,6 +30,108 @@ def metrics():
         imageVerificationRequired=True, clockQualified=False, fpsQualified=False) for name in q.SCENES]
 
 
+class PreparationTests(unittest.TestCase):
+    """Execute real child processes against a previously populated output tree."""
+
+    def seed(self, out):
+        for directory, name in [('rtl', 'model.sv'), ('fixtures', 'frame.memory')]:
+            (out / directory).mkdir()
+            (out / directory / name).write_text('old bytes')
+        q.write_json(out / 'fixture-manifest.json', profile())
+        q.write_json(out / 'preparation.json', dict(source_sha256={'source': 'old'}))
+        (out / 'prepare.log').write_text(self.marker())
+
+    def marker(self, product=False):
+        width, height = (640, 480) if product else (32, 32)
+        return f'NATIVE_COMPILED_INPUTS scenes=6 frame={width}x{height} rtlEmitted=true'
+
+    def runner(self, out, backend, product=False):
+        if backend == 'flashsim':
+            import qualify_native_product_flashsim as flash
+            return flash.Runner(out, product, out, two_cu_vga=product)
+        return q.Runner(out, product, two_cu_vga=product)
+
+    def child(self, runner, code):
+        return patch.object(runner, 'sbt', return_value=[sys.executable, '-c', code])
+
+    def manifest_code(self, out, data):
+        return (f'from pathlib import Path; import json; out=Path({str(out)!r}); '
+                f'(out / "fixture-manifest.json").write_text({json.dumps(data)!r}); ')
+
+    def test_zero_exit_background_failure_cannot_relabel_old_outputs(self):
+        code = ('import threading\n'
+                'def worker(): raise RuntimeError("generation did not finish")\n'
+                't=threading.Thread(target=worker); t.start(); t.join()\n')
+        for backend in ['verilator', 'flashsim']:
+            with self.subTest(backend=backend), tempfile.TemporaryDirectory() as directory:
+                out = Path(directory); self.seed(out); runner = self.runner(out, backend)
+                with patch.object(q, 'rtl_inputs', return_value={'source': 'new'}), self.child(runner, code):
+                    with self.assertRaisesRegex(RuntimeError, 'preparation is missing'):
+                        runner.prepare()
+                self.assertEqual(json.loads((out / 'state.json').read_text())['exit_code'], 0)
+                self.assertIn('generation did not finish', (out / 'prepare.log').read_text())
+                self.assertFalse((out / 'preparation.json').exists())
+                self.assertFalse((out / 'fixture-manifest.json').exists())
+                self.assertEqual((out / 'rtl/model.sv').read_text(), 'old bytes')
+                self.assertEqual((out / 'fixtures/frame.memory').read_text(), 'old bytes')
+
+    def test_completion_requires_exactly_one_matching_rtl_receipt(self):
+        correct = self.marker()
+        for lines in [[], [correct.replace('scenes=6', 'scenes=5')],
+                      [correct.replace('32x32', '640x480')],
+                      [correct.replace('true', 'false')], [correct, correct],
+                      [correct, 'NATIVE_COMPILED_INPUTS incomplete']]:
+            with self.subTest(lines=lines), tempfile.TemporaryDirectory() as directory:
+                out = Path(directory); self.seed(out); runner = self.runner(out, 'verilator')
+                code = self.manifest_code(out, profile()) + f'print({chr(10).join(lines)!r})'
+                with patch.object(q, 'rtl_inputs', return_value={'source': 'new'}), self.child(runner, code):
+                    with self.assertRaisesRegex(RuntimeError, 'preparation is missing'):
+                        runner.prepare()
+                self.assertFalse((out / 'preparation.json').exists())
+
+    def test_receipt_cannot_reuse_an_old_manifest_or_accept_fixtures_only(self):
+        for emitted in ['missing', False, 1, 'true']:
+            with self.subTest(emitted=emitted), tempfile.TemporaryDirectory() as directory:
+                out = Path(directory); self.seed(out); runner = self.runner(out, 'verilator')
+                code = '' if emitted == 'missing' else self.manifest_code(out, dict(profile(), rtlEmitted=emitted))
+                code += f'print({self.marker()!r})'
+                with patch.object(q, 'rtl_inputs', return_value={'source': 'new'}), self.child(runner, code):
+                    with self.assertRaises((RuntimeError, FileNotFoundError)):
+                        runner.prepare()
+                self.assertFalse((out / 'preparation.json').exists())
+
+    def test_fresh_complete_child_outputs_bind_both_backends_and_frame_modes(self):
+        for backend in ['verilator', 'flashsim']:
+            for product in [False, True]:
+                with self.subTest(backend=backend, product=product), tempfile.TemporaryDirectory() as directory:
+                    out = Path(directory); self.seed(out); runner = self.runner(out, backend, product)
+                    data = profile()
+                    if product:
+                        data.update(product=True, frameWidth=640, frameHeight=480, computeUnits=2,
+                            profile='two-cu-vga60-v1', targetFps=60, apiCapacity=True,
+                            screenWidth=640, screenHeight=480, nativeMaxWidth=2048, nativeMaxHeight=2048,
+                            pagedCapacity=65536, engines=4, payloadBytes=524288)
+                    code = (self.manifest_code(out, data) +
+                            '(out / "rtl/model.sv").write_text("new RTL"); '
+                            '(out / "fixtures/frame.memory").write_text("new fixtures"); ' +
+                            f'print({self.marker(product)!r})')
+                    with patch.object(q, 'rtl_inputs', return_value={'source': 'new'}), self.child(runner, code):
+                        runner.prepare()
+                        record = runner.prepared()
+                    self.assertEqual(record['source_sha256'], {'source': 'new'})
+                    self.assertEqual(record['rtl_sha256'], {'model.sv': q.sha(out / 'rtl/model.sv')})
+                    self.assertEqual(record['fixture_sha256'], {'frame.memory': q.sha(out / 'fixtures/frame.memory')})
+
+    def test_source_change_during_a_successful_child_invalidates_old_preparation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory); self.seed(out); runner = self.runner(out, 'verilator')
+            code = self.manifest_code(out, profile()) + f'print({self.marker()!r})'
+            with patch.object(q, 'rtl_inputs', side_effect=[{'source': 'old'}, {'source': 'new'}]), self.child(runner, code):
+                with self.assertRaisesRegex(RuntimeError, 'Source changed'):
+                    runner.prepare()
+            self.assertFalse((out / 'preparation.json').exists())
+
+
 class GuardTests(unittest.TestCase):
     def test_real_cpp_parser_rejects_mismatched_vga_resources(self):
         with tempfile.TemporaryDirectory() as directory:

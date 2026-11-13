@@ -83,6 +83,19 @@ python3 scripts/qualify_native_product_compiled.py --product \
 
 `--stage prepare|build|run|verify` operates one stage. Preserve source and output bytes while a stage is live. If a stage fails, inspect its actual exit and log before retrying. An observation timeout does not terminate a build or simulation. The build cache is bound to emitted RTL, hardware profile, driver inputs, compiler/tool versions, flags and executable hash. Preparation, execution and verification reject stale source/model/fixture/output bytes. Raw outputs under `.artifacts/` are temporary: delete them when their active validation or diagnosis use ends, without waiting for PR merge. Retain concise final results, limits and reproduction commands rather than evidence archives.
 
+Each new preparation invalidates the previous preparation record, manifest and
+prepare log before starting. Both simulator runners require a fresh manifest
+with `rtlEmitted: true` and exactly one final `NATIVE_COMPILED_INPUTS` line
+matching all six scenes and the requested frame size. A zero process exit
+without this completion line cannot certify retained RTL or fixture files.
+The regression executes real child processes, including a background worker
+failure that leaves the parent exit code zero, against populated output trees:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts \
+  -p test_qualify_native_product_compiled.py
+```
+
 Both compiled product and API runners explicitly add generated assertion bind
 layers omitted from CIRCT's `filelist.f`, including their parent include
 directories. Their hashes enter the build identity and final reports; older

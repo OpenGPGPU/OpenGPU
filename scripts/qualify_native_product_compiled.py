@@ -187,6 +187,15 @@ def validate_metrics(rows, product, two_cu_vga=False):
             raise RuntimeError('Incomplete native execution metrics')
 
 
+def verify_prepare_marker(log, product, two_cu_vga=False):
+    width, height = frame_size(product, two_cu_vga)
+    markers = [line for line in log.read_text().splitlines()
+               if line.startswith('NATIVE_COMPILED_INPUTS')]
+    expected = f'NATIVE_COMPILED_INPUTS scenes=6 frame={width}x{height} rtlEmitted=true'
+    if markers != [expected]:
+        raise RuntimeError('Complete native RTL/fixture preparation is missing')
+
+
 def verify_marker(log, product, two_cu_vga=False):
     expected = 'NATIVE_COMPILED_PRODUCT PASS scenes=6 fullExecutionAndStorage=true exactStoredImagesAndGuards=true clockQualified=false fpsQualified=false'
     text = log.read_text()
@@ -275,13 +284,21 @@ class Runner:
 
     def prepare(self):
         sources = rtl_inputs()
+        # A zero process exit alone does not prove runMain reached its end.
+        # Never relabel retained artifacts after an incomplete new attempt.
+        for name in ('preparation.json', 'fixture-manifest.json', 'prepare.log'):
+            (self.out / name).unlink(missing_ok=True)
         mode = '--product' if self.product else '--smoke'
         self.execute('prepare', self.sbt('opengpu.system.PrepareCompiledNativeProduct '
                      + mode + ' --output ' + json.dumps(str(self.out)),
                      PRODUCT_JAVA_HEAP if self.product else '6G'), self.out / 'prepare.log')
         if sources != rtl_inputs():
             raise RuntimeError('Source changed during RTL/fixture preparation')
-        check_profile(json.loads((self.out / 'fixture-manifest.json').read_text()), self.product, self.api_capacity, self.two_cu_vga)
+        verify_prepare_marker(self.out / 'prepare.log', self.product, self.two_cu_vga)
+        manifest = json.loads((self.out / 'fixture-manifest.json').read_text())
+        check_profile(manifest, self.product, self.api_capacity, self.two_cu_vga)
+        if manifest.get('rtlEmitted') is not True:
+            raise RuntimeError('Native preparation must emit RTL, not fixtures only')
         write_json(self.out / 'preparation.json', dict(version=1, exit_code=0,
             source_sha256=sources, manifest_sha256=sha(self.out / 'fixture-manifest.json'),
             rtl_sha256=tree_hashes(self.out / 'rtl'), fixture_sha256=tree_hashes(self.out / 'fixtures')))
