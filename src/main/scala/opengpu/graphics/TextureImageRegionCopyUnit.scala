@@ -2,6 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
+import chisel3.experimental.hierarchy.Instantiate
 import opengpu.config.{CachePolicy,GpuConfig}
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse}
 
@@ -60,8 +61,8 @@ class TextureImageRegionCopyUnit(config: GpuConfig=GpuConfig(),p: TextureImageAd
   private val offered=RegInit(false.B);private val pending=RegInit(false.B)
   private val memory=Reg(new ComputeMemoryRequest(config,64,4))
 
-  private val sourceUnit=Module(new TextureImageAddressUnit(p,pipelineBounds=true))
-  private val destinationUnit=Module(new TextureImageAddressUnit(p,pipelineBounds=true))
+  private val sourceUnit=Instantiate(new TextureImageAddressUnit(p,pipelineBounds=true))
+  private val destinationUnit=Instantiate(new TextureImageAddressUnit(p,pipelineBounds=true))
 
   private val active=phase=/=State.idle && phase=/=State.complete
   private val stop=status=/=0.U || io.cancel

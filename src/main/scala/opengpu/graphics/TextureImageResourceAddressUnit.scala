@@ -2,6 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
+import chisel3.experimental.hierarchy.Instantiate
 import opengpu.config.{CachePolicy,GpuConfig}
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse}
 
@@ -111,7 +112,7 @@ class TextureImageResourceAddressUnit(config: GpuConfig=GpuConfig(),p: TextureIm
     memory.sizeLog2:=6.U;memory.byteMask:=Fill(64,1.U(1.W));memory.cachePolicy:=CachePolicy.uncached;memory.transactionId:=freeTag
     live(freeTag):=true.B;lineMap(freeTag):=issued(0);issued:=issued+1.U;offered:=true.B
   }
-  private val address=Module(new TextureImageAddressUnit(p,pipelineBounds=true,pipelineProducts=true))
+  private val address=Instantiate(new TextureImageAddressUnit(p,pipelineBounds=true,pipelineProducts=true))
   address.io.in.valid:=phase===State.offerAddress
   address.io.in.bits.view:=snapshot.view;address.io.in.bits.tag:=request.tag
   address.io.in.bits.x:=request.x;address.io.in.bits.y:=request.y;address.io.in.bits.z:=request.z

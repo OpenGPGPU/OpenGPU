@@ -2,6 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
+import chisel3.experimental.hierarchy.Instantiate
 
 /** A resolved image-unit snapshot. Its parent must obtain the level view from
   * checked, immutable GPU descriptors and retain that snapshot and its VM lease
@@ -93,7 +94,7 @@ class ShaderImageBindingAddress(p: TextureImageAddressConfig = TextureImageAddre
   private val request = Reg(new ShaderImageBindingAddressRequest)
   private val result = Reg(new ShaderImageBindingAddressResult)
   private val status = RegInit(0.U(3.W))
-  private val address = Module(new TextureImageAddressUnit(p, pipelineBounds = true, pipelineProducts = true))
+  private val address = Instantiate(new TextureImageAddressUnit(p, pipelineBounds = true, pipelineProducts = true))
   private val binding = request.imageBinding
   private val view = binding.view
   private val active = phase =/= State.idle && phase =/= State.complete

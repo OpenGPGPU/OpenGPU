@@ -1,8 +1,18 @@
 package opengpu.graphics
 
 import chisel3._
+import chisel3.experimental.hierarchy.Instantiate
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
+
+private class IndependentTextureAddresses(bounds: Boolean,products: Boolean) extends Module {
+  private val units=Seq(
+    Instantiate(new TextureImageAddressUnit(TextureImageAddressConfig(),bounds,products)),
+    Instantiate(new TextureImageAddressUnit(TextureImageAddressConfig(),bounds,products)),
+    Instantiate(new TextureImageAddressUnit(TextureImageAddressConfig(max2D=512,max3D=64,maxLayers=8),bounds,products)))
+  val io=IO(Vec(3,chiselTypeOf(units.head.io)))
+  for(i<-0 until 3)io(i)<>units(i).io
+}
 
 class TextureImageAddressUnitSpec extends AnyFlatSpec {
   private case class View(target: Int=0,level: Int=0,allocationBase: BigInt=0x1000,
@@ -75,7 +85,10 @@ class TextureImageAddressUnitSpec extends AnyFlatSpec {
     else Result(q.tag,v.level,0,v.base+offset,v.bytes,if(blocked)(q.x%blockW).toInt else 0,if(blocked)(q.y%blockH).toInt else 0)
   }
   private def poke(d: TextureImageAddressUnit,q: Request): Unit={
-    val a=d.io.in.bits;val v=a.view;val t=q.view
+    poke(d.io.in.bits,q)
+  }
+  private def poke(a: TextureImageAddressRequest,q: Request): Unit={
+    val v=a.view;val t=q.view
     a.tag.poke(q.tag.U);a.x.poke(q.x.U);a.y.poke(q.y.U);a.z.poke(q.z.U);a.layer.poke(q.layer.U);a.face.poke(q.face.U)
     v.target.poke(t.target.U);v.level.poke(t.level.U);v.allocationBase.poke(t.allocationBase.U)
     v.allocationLimit.poke(t.allocationLimit.U);v.base.poke(t.base.U);v.texWidth.poke(t.width.U);v.texHeight.poke(t.height.U)
@@ -85,7 +98,9 @@ class TextureImageAddressUnitSpec extends AnyFlatSpec {
     v.samples.poke(t.samples.U);v.samplePitch.poke(t.samplePitch.U);a.sample.poke(q.sample.U)
   }
   private def check(d: TextureImageAddressUnit,e: Result): Unit={
-    val a=d.io.out.bits
+    check(d.io.out.bits,e)
+  }
+  private def check(a: TextureImageAddressResult,e: Result): Unit={
     a.tag.expect(e.tag.U);a.level.expect(e.level.U);a.status.expect(e.status.U);a.address.expect(e.address.U)
     a.bytes.expect(e.bytes.U);a.blockX.expect(e.bx.U);a.blockY.expect(e.by.U)
   }
@@ -149,6 +164,55 @@ class TextureImageAddressUnitSpec extends AnyFlatSpec {
       Request(legalView(2,7,4,false),face=6),Request(legalView(2,7,4,false),face=7),
       Request(legalView(4,7,4,false),layer=4),Request(legalView(4,7,4,false),face=6),
       Request(legalView(4,7,4,false),layer=0xffffffffL))
+  }
+  for((bounds,products)<-Seq((false,false),(true,false),(false,true),(true,true)))
+  it should s"isolate cached address pipelines and configured limits through peer faults and held replies bounds=$bounds products=$products" in {
+    simulate(new IndependentTextureAddresses(bounds,products)){d=>
+      PointLineReference.zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      val configs=Vector(TextureImageAddressConfig(),TextureImageAddressConfig(),
+        TextureImageAddressConfig(max2D=512,max3D=64,maxLayers=8))
+      val streams=Vector.tabulate(3){i=>
+        val base=BigInt(0x103b+i*0x2000)
+        val healthy=View(base=base,level=i)
+        val cases=Vector(Request(healthy,x=6,y=4),
+          Request(healthy.copy(width=513,rowPitch=2057),x=512),
+          Request(healthy,x=BigInt(1)<<31),
+          Request(healthy.copy(width=1,height=2,rowPitch=BigInt(1)<<32,allocationLimit=addressSpace)),
+          Request(healthy.copy(target=1,layers=9,layerPitch=256),layer=8),
+          Request(healthy.copy(target=3,width=1,height=1,depth=65,rowPitch=4,slicePitch=4),z=64),
+          Request(healthy.copy(bytes=7)),Request(healthy,x=1,y=1))
+        Vector.tabulate(32)(n=>cases(n%cases.size).copy(tag=7))
+      }
+      val expected=streams.zip(configs).map{case(qs,p)=>qs.map(oracle(_,p))}
+      assert(expected(0)(1).status==0 && expected(2)(1).status==1)
+      assert(expected(0)(4).status==0 && expected(2)(4).status==1)
+      assert(expected(0)(5).status==0 && expected(2)(5).status==1)
+      val sent=Array.fill(3)(0);val retired=Array.fill(3)(0)
+      val held=Array.fill[Option[BigInt]](3)(None)
+      var cycles=0;var peerRetiredWhileHeld=false
+      while(retired.exists(_<32) && cycles<500){
+        for(i<-0 until 3){
+          val port=d.io(i)
+          val ready=if(i==0)retired(1)==32 && retired(2)==32 else (cycles+i)%7<4
+          port.out.ready.poke(ready.B)
+          port.in.valid.poke((sent(i)<32).B)
+          if(sent(i)<32)poke(port.in.bits,streams(i)(sent(i)))else PointLineReference.zero(port.in.bits)
+          held(i).foreach{bits=>port.out.valid.expect(true.B);assert(port.out.bits.peek().litValue==bits)}
+          val valid=port.out.valid.peek().litToBoolean
+          held(i)=if(valid && !ready)Some(port.out.bits.peek().litValue)else None
+          if(valid && ready){
+            check(port.out.bits,expected(i)(retired(i)));retired(i)+=1
+            if(i!=0 && held(0).nonEmpty)peerRetiredWhileHeld=true
+          }
+          if(sent(i)<32 && port.in.ready.peek().litToBoolean)sent(i)+=1
+        }
+        d.clock.step();cycles+=1
+      }
+      assert(retired.toVector==Vector(32,32,32) && sent.toVector==Vector(32,32,32))
+      assert(peerRetiredWhileHeld)
+      for(i<-0 until 3)d.io(i).busy.expect(false.B)
+      info("TEXTURE_ADDRESS_CACHED_INSTANCES replies=96 sameTags=true independentHeldPeer=true faultReuseWithoutReset=true distinctConfiguredLimits=true")
+    }
   }
   it should "address pitched image array cube and volume levels including packed and compressed block boundaries" in {
     simulate(new TextureImageAddressUnit()){d=>initialize(d)

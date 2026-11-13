@@ -2,6 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
+import chisel3.experimental.hierarchy.Instantiate
 import opengpu.config.GpuConfig
 
 /** Use an already admitted immutable GXL1 snapshot. There are no descriptor
@@ -15,7 +16,7 @@ class TextureImageCapturedAddressUnit(config: GpuConfig=GpuConfig(),p: TextureIm
   private val view=Reg(new TextureImageLevelView);private val span=Reg(new TextureImageAddressResult)
   private val result=Reg(new TextureImageResourceAddressResult);private val status=RegInit(0.U(3.W))
   private val active=phase=/=State.idle && phase=/=State.complete;private val stop=status=/=0.U || io.cancel
-  private val address=Module(new TextureImageAddressUnit(p,pipelineBounds=true,pipelineProducts=true))
+  private val address=Instantiate(new TextureImageAddressUnit(p,pipelineBounds=true,pipelineProducts=true))
   io.in.ready:=phase===State.idle && !io.cancel;io.out.valid:=phase===State.complete;io.out.bits:=result;io.busy:=phase=/=State.idle
   io.memoryRequest.valid:=false.B;io.memoryRequest.bits:=0.U.asTypeOf(io.memoryRequest.bits);io.memoryResponse.ready:=false.B
   address.io.in.valid:=phase===State.offer;address.io.in.bits.view:=view;address.io.in.bits.tag:=request.tag

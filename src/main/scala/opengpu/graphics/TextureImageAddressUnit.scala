@@ -2,6 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
+import chisel3.experimental.hierarchy.{instantiable, public}
 import opengpu.util.{BlockPrefixAdder,CarrySaveMultiplier}
 
 case class TextureImageAddressConfig(max2D: Int=16383,max3D: Int=256,maxLayers: Int=256,
@@ -64,9 +65,10 @@ class TextureImageAddressResult extends Bundle {
   * only a successful <=4GiB span may publish a narrowed byte address.
   * This unit has no memory/cache state: owners drain accepted replies on cancel.
   */
+@instantiable
 class TextureImageAddressUnit(p: TextureImageAddressConfig=TextureImageAddressConfig(),pipelineBounds: Boolean=false,pipelineProducts: Boolean=false) extends Module {
   def this(p: TextureImageAddressConfig)=this(p,false,false)
-  val io=IO(new Bundle {
+  @public val io=IO(new Bundle {
     val in=Flipped(Decoupled(new TextureImageAddressRequest))
     val out=Decoupled(new TextureImageAddressResult);val busy=Output(Bool())
   })
