@@ -1691,7 +1691,8 @@ int pipe_opengpu_try_framebuffer_blit(struct pipe_opengpu_screen *screen,
     /* Preserve the existing API fallback for views beyond the checked-storage
      * window or without complete physical cache-line tails. This decision is
      * made before any context, memory request or accepted device operation. */
-    if (source->buffer.handle==destination->buffer.handle ||
+    if ((source->buffer.handle==destination->buffer.handle &&
+            (d->version!=2 || !opengpu_framebuffer_blit_disjoint(d,&plan,maps))) ||
         plan.source_bytes>0x8000000u || plan.destination_bytes>0x8000000u ||
         ((plan.source_bytes+63ull)&~63ull)>source->buffer.size ||
         ((plan.destination_bytes+63ull)&~63ull)>destination->buffer.size) {ret=1;goto done;}

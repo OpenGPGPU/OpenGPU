@@ -16,21 +16,32 @@ completion, cached publication and final context destruction are separate steps.
 An unresolved accepted wait retains its original fence and context as a screen
 orphan. A new blit cannot reuse that context or replay it through the CPU.
 
+Version 2 additionally admits same-format D24S8/D24X8 nearest transfers, with
+independent selected depth/stencil planes and unselected bits retained. A depth
+format mismatch or stencil request on D24X8 fails admission. Version 1 continues
+to reject these formats. Version 2 permits same-GEM copies only after a bounded
+merge walk proves all source row read spans disjoint from all destination row
+write spans, including source reversal and repeated scaled rows. Merely having
+different object handles is not the backing proof; unknown imports remain subject
+to the kernel's existing rejection.
+
 The old CPU implementation remains available only before GPU work is admitted:
-LINEAR, depth/stencil, same-GEM operations, views beyond the checked-storage
+LINEAR, unsupported depth view combinations, overlapping same-GEM operations, views beyond the checked-storage
 128 MiB window, incomplete physical line tails and devices without byte views.
 It preserves the existing API capacity; it does not qualify those operations as
 GPU features. Version 1 also accepts reversed destination endpoints in the direct
 winsys descriptor; the existing Gallium callback requires a positive destination
 box. Hardware capacities and the public kernel command ABI are unchanged.
 
-CPU validation passes 8,198 affine/format/mask/scissor cases against an independent
+CPU validation passes 8,222 affine/format/mask/scissor cases against an independent
 direct pixel oracle and instruction decoder, including full source/map/destination
 guards and signed endpoint boundaries. Every generated program passes the real
 kernel shader validator. The actual Gallium/private winsys/lib-ioctl CPU fixture
 passes all 16 format pairs, read/write permission checks, held coordinate and
 compute acknowledgments, rejected new work before late retirement, compute fault
 and healthy reuse, with graphics bindings unchanged. Both gates use ASan/UBSan.
+The caller also verifies all supported depth/stencil selections, legal same-GEM
+disjoint copy and pre-submission rejection of overlapping read/write spans.
 The existing transfer/depth/viewport/sampler/attachment and winsys range/unbind
 CPU regressions also pass. Linux ioctls and device scheduling are modeled in the
 CPU fixture; these results do not prove actual RTL execution.
@@ -46,5 +57,5 @@ Actual two-CU/Sv32/L2 execution, fault/reset drain and completion retirement rem
 required. This implementation currently launches one workgroup per destination
 pixel; full-frame cost has not been measured. No blit throughput, product frame
 rate or whole-host physical clock is qualified. F08 and the full H6 target remain
-open, including GPU LINEAR/depth/stencil and legal disjoint same-GEM image views.
+open, including GPU LINEAR and actual native/API qualification of the new paths.
 The GLES contract is described in [OpenGL ES 3.0.6, §4.3.3](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf).

@@ -17,7 +17,7 @@ static void inspect_blit(const struct drm_opengpu_compute_storage *p,
     assert(p->bindings[0].access==1 && p->bindings[1].access==3 && p->bindings[2].access==1);
     assert(!p->bindings[3].slot && !p->bindings[3].access);
     const uint32_t *maps=(const void *)bos[c->b[37].handle].data;
-    assert(maps[0]==1 && maps[1]==sizeof(struct opengpu_framebuffer_blit));
+    assert(maps[0]==2 && maps[1]==sizeof(struct opengpu_framebuffer_blit));
     blit_captures++;
 }
 
@@ -67,12 +67,31 @@ int main(void)
         assert(!memcmp(&contexts[graphics_context],&original,sizeof(original)));
     }
     submission_capture=NULL;
+    for(unsigned format=0;format<2;format++)for(unsigned mask=1;mask<4;mask++) {
+        if(format && (mask&2))continue;
+        struct pipe_blit_info b={0};
+        b.src.resource=src;b.dst.resource=dst;
+        src->format=dst->format=b.src.format=b.dst.format=format?PIPE_FORMAT_Z24X8_UNORM:PIPE_FORMAT_Z24_UNORM_S8_UINT;
+        b.src.box=(struct pipe_box){.x=4,.y=0,.width=-4,.height=4,.depth=1};
+        b.dst.box=(struct pipe_box){.width=2,.height=2,.depth=1};
+        b.filter=PIPE_TEX_FILTER_NEAREST;b.mask=(mask&1?PIPE_MASK_Z:0)|(mask&2?PIPE_MASK_S:0);
+        memset(output,0xa5,(size_t)db);unsigned before=computes;
+        p->blit(p,&b);assert(computes==before+1);
+        for(unsigned y=0;y<4;y++)for(unsigned x=0;x<dp;x++) {
+            uint8_t expected=0xa5;
+            if(y<2 && x<8 && (x%4==3?mask&2:mask&1)) {
+                unsigned sx=x/4?1:3,sy=y*2+1;
+                expected=input[sy*sp+sx*4+x%4];
+            }
+            assert(output[y*dp+x]==expected);
+        }
+    }
     struct opengpu_framebuffer_blit d={.version=1,.bytes=sizeof(d),.mask=15,
         .source_format=1,.destination_format=2,.source_width=4,.source_height=4,.source_pitch=sp,
         .destination_width=4,.destination_height=4,.destination_pitch=dp,
         .source_w=4,.source_h=4,.destination_w=2,.destination_h=2};
     unsigned before=computes,created=next_context,calls=ioctl_calls;
-    d.version=2;assert(pipe_opengpu_try_framebuffer_blit(opengpu_screen_gpu(s),gd,gs,&d,1000)==-1);
+    d.version=3;assert(pipe_opengpu_try_framebuffer_blit(opengpu_screen_gpu(s),gd,gs,&d,1000)==-1);
     assert(computes==before && next_context==created && ioctl_calls==calls);d.version=1;
     /* A held ACK cannot turn into CPU replay or reuse the abandoned context.
      * The screen retains the original fence until a later safe reap. */
@@ -99,6 +118,14 @@ int main(void)
     status_error=0;status_error_kind=0;
     assert(!pipe_opengpu_try_framebuffer_blit(opengpu_screen_gpu(s),gd,gs,&d,1000));
     assert(!memcmp(&contexts[graphics_context],&original,sizeof(original)));
+    d.version=2;d.source_format=d.destination_format=1;
+    d.source_w=d.destination_w=2;d.source_h=d.destination_h=1;
+    d.destination_x=2;d.destination_y=0;before=computes;
+    assert(!pipe_opengpu_try_framebuffer_blit(opengpu_screen_gpu(s),gs,gs,&d,1000));
+    assert(computes==before+1 && !memcmp(input,source_copy,8) && !memcmp(input+8,source_copy,8));
+    d.destination_x=1;before=computes;calls=ioctl_calls;
+    assert(pipe_opengpu_try_framebuffer_blit(opengpu_screen_gpu(s),gs,gs,&d,1000)==1);
+    assert(computes==before && ioctl_calls==calls);
     free(source_copy);pipe_resource_reference(&src,NULL);pipe_resource_reference(&dst,NULL);
     p->destroy(p);s->destroy(s);no_leaks();
     puts("GPU framebuffer blit CPU callbacks: actual Gallium/private pipe/ioctl/validator,16 format pairs,permissions/guards/held-ACK/fault/reuse PASS");

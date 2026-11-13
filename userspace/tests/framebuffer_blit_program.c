@@ -32,6 +32,11 @@ static void check(struct opengpu_framebuffer_blit d)
         if(sx<0 || sx>=d.source_width || sy<0 || sy>=d.source_height)continue;
         const unsigned char *s=(const void *)((const char *)src+sy*d.source_pitch+sx*4);
         unsigned char *t=(void *)((char *)expected+y*d.destination_pitch+x*4);
+        if(d.source_format>=5) {
+            if(d.mask&16)memcpy(t,s,3);
+            if(d.mask&32)t[3]=s[3];
+            continue;
+        }
         unsigned sb=d.source_format==2 || d.source_format==4;
         unsigned db=d.destination_format==2 || d.destination_format==4;
         for(unsigned c=0;c<4;c++)if((d.mask&(1u<<c)) && (c!=3 || d.destination_format<3)) {
@@ -94,13 +99,33 @@ int main(void)
     d.source_w=5;d.source_h=4;d.destination_w=6;d.destination_h=5;
     const struct opengpu_framebuffer_blit valid=d;
     #define BAD(field,value) do { d=valid;d.field=(value);assert(opengpu_framebuffer_blit_plan_make(&d,192,192,&p,maps,128)==-1); } while(0)
-    BAD(version,0);BAD(version,2);BAD(bytes,sizeof(d)-4);BAD(flags,2);BAD(mask,16);
+    BAD(version,0);BAD(version,3);BAD(bytes,sizeof(d)-4);BAD(flags,2);BAD(mask,16);
     BAD(source_format,0);BAD(source_format,5);BAD(destination_format,0);BAD(destination_format,5);
     BAD(source_width,0);BAD(source_height,16385);BAD(destination_width,16385);
     BAD(source_pitch,19);BAD(destination_pitch,20);BAD(source_pitch,UINT_MAX-3);
     d=valid;assert(opengpu_framebuffer_blit_plan_make(&d,103,192,&p,maps,128)==-1);
     assert(opengpu_framebuffer_blit_plan_make(&d,192,151,&p,maps,128)==-1);
     assert(opengpu_framebuffer_blit_plan_make(&d,192,192,&p,maps,32)==-1);
+    for(unsigned format=5;format<=6;format++)for(unsigned mask=0;mask<4;mask++)for(unsigned flip=0;flip<4;flip++) {
+        if(format==6 && (mask&2))continue;
+        d=valid;d.version=2;d.source_format=d.destination_format=format;d.mask=mask<<4;
+        d.source_x=flip&1?5:0;d.source_w=flip&1?-5:5;
+        d.source_y=flip&2?4:0;d.source_h=flip&2?-4:4;check(d);
+    }
+    d=valid;d.version=2;d.source_width=d.destination_width=4;
+    d.source_height=d.destination_height=4;d.source_pitch=d.destination_pitch=16;
+    d.source_w=d.destination_w=2;d.source_h=d.destination_h=4;d.destination_x=2;
+    assert(!opengpu_framebuffer_blit_plan_make(&d,64,64,&p,maps,128));
+    assert(opengpu_framebuffer_blit_disjoint(&d,&p,maps)); /* Adjacent columns over four rows. */
+    d.destination_x=1;assert(!opengpu_framebuffer_blit_plan_make(&d,64,64,&p,maps,128));
+    assert(!opengpu_framebuffer_blit_disjoint(&d,&p,maps));
+    d.source_x=2;d.source_w=-2;d.destination_x=2;d.source_y=4;d.source_h=-4;
+    assert(!opengpu_framebuffer_blit_plan_make(&d,64,64,&p,maps,128));
+    assert(opengpu_framebuffer_blit_disjoint(&d,&p,maps)); /* Reversed source rows. */
+    d=valid;d.version=2;d.source_format=5;d.destination_format=6;d.mask=16;
+    assert(opengpu_framebuffer_blit_plan_make(&d,192,192,&p,maps,128)==-1);
+    d.source_format=6;d.mask=32;
+    assert(opengpu_framebuffer_blit_plan_make(&d,192,192,&p,maps,128)==-1);
     printf("GPU framebuffer blit CPU program: %u affine/format/mask/scissor cases, strict admission, full guards PASS\n",cases);
     return 0;
 }
