@@ -88,6 +88,24 @@ clock, the budget is 16,666,666 service cycles per frame; simulator wall time
 and smoke counts cannot establish FPS. Whole-host timing, full-frame rate and
 the remaining H6–H8 requirements remain open.
 
+The frozen v1 whole-host synthesis attempt failed at its 14,400-second timeout
+while Yosys was still in the 4.3 optimization stage. The container had two CPU
+cores, 12 GiB of memory and no additional swap. It produced no completed QoR,
+constraint-coverage or clock result. The 1 ns clock and 25% I/O delay below are
+requested constraints; they are not measured timing. The later coverage check
+was configured for 1,800 seconds and 10 GiB but was not reached. Whole-host
+physical timing remains open.
+
+Reproduce against RTL emitted for the frozen v1 two-CU full-capacity host,
+limiting the synthesis container to the resources above:
+
+```sh
+python3 scripts/qualify_ppa.py "$RTL" GpuHostSystemAxi \
+  --stage synthesis --synthesis-engine yosys --yosys-preserve-hierarchy \
+  --clock io_s_axi_aclk --period-ps 1000 --io-delay 0.25 --timeout 14400 \
+  --coverage-timeout 1800 --coverage-memory-gib 10 --output "$PPA_RUN"
+```
+
 ## Integrated alignment host v2
 
 `--alignment-v2` selects the separate `two-cu-vga60-v2` host. It implies the
