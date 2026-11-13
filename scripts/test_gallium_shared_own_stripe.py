@@ -39,6 +39,12 @@ def main():
                        ['-I' + str(p) for p in includes] + [str(p) for p in sources] +
                        link + ['-o', str(binary)], check=True, env=dict(os.environ, TMPDIR=directory))
         subprocess.run([str(binary)], check=True, env=dict(os.environ, TMPDIR=directory))
+        atomic_binary = Path(directory) / 'atomics'
+        atomic_sources = [ROOT / 'userspace/tests/cs_shared_atomics.c'] + sources[1:]
+        subprocess.run(shlex.split(os.environ.get('CC', 'cc')) + flags +
+                       ['-I' + str(p) for p in includes] + [str(p) for p in atomic_sources] +
+                       link + ['-o', str(atomic_binary)], check=True, env=dict(os.environ, TMPDIR=directory))
+        subprocess.run([str(atomic_binary)], check=True, env=dict(os.environ, TMPDIR=directory))
         register_binary = Path(directory) / 'registers'
         register_sources = [ROOT / 'userspace/tests/cs_shared_registers.c',
                             mesa / 'src/gallium/auxiliary/tgsi/tgsi_build.c',
