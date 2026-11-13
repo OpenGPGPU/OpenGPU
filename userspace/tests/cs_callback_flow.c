@@ -267,6 +267,11 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
         assert(h<N && p->width && p->height && p->bpp==32);
         p->pitch=(p->width*4+63)&~63u;p->size=(uint64_t)p->pitch*p->height;
         if(page_pad_next){p->size=(p->size+4095)&~UINT64_C(4095);page_pad_next=0;}
+#ifdef OPENGPU_CS_NATIVE_LAYOUT
+        /* Real local GEM objects expose page-rounded allocation extents.
+         * Native plans still carry the original exact logical byte windows. */
+        p->size=(p->size+4095)&~UINT64_C(4095);
+#endif
         p->handle=h;p->offset=(uint64_t)h*4096;
         bos[h]=(struct bo){.handle=1,.size=p->size,.sparse=sparse_next};sparse_next=0;
         /* Only the explicit publication case reserves the full virtual BO;
