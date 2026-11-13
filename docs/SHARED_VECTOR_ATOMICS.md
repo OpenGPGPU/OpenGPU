@@ -2,9 +2,10 @@
 
 This opt-in path gives each executing invocation a distinct atomic operation
 and old-word result. Scalar RV32A remains once per warp. The functionality is
-under development: the production source and CPU admission/lowering gates are
-present; the new Scala owner/CU tests and ESSL execution corpus are not yet
-qualified. It does not close H7 or replace complete-host execution.
+under development: CPU admission/lowering and the ten-operation ESSL corpus
+pass; the new Scala owner/CU tests have not run. Additional signed ESSL
+overloads remain unqualified. It does not close H7 or replace complete-host
+execution.
 
 The operations follow GLSL ES 3.10 section 8.11: exchange, add, XOR, OR, AND,
 signed min/max, unsigned min/max and compare/swap on 32-bit shared words.
@@ -66,8 +67,17 @@ corpus. Actual Mesa 22.3.6 TGSI builder/parser, production emitter and Linux
 validator pass 120 atomic programs: all ten operations, zero/ordinary/
 exclusive-4-GiB SRAM windows, same-address and own-stripe access, and destination
 aliases. The original 59 stripe programs and 278-word register-lifetime oracle
-remain passing. The complete kernel-free driver test also passes. These are CPU
-results; the atomic programs have not executed on RTL.
+remain passing. The complete kernel-free driver test also passes.
+
+Actual Mesa ESSL 3.10 lowering additionally passes all ten operations. Each
+188-word program initializes all 4096 shared words, crosses one workgroup
+barrier and executes two actual atomic instructions at the first and last
+word. The independent decoder checks 512 returned old words per program,
+all shared words and guards, two groups and both warp orders. Actual Gallium
+state creation rejects the new program without bit 41 and accepts it with the
+bit and valid shared discovery. The original callback corpus (57 submissions,
+66 waits), two 486-word epochs and 480-word own-stripe case remain passing.
+These are CPU results; the atomic programs have not executed on RTL.
 
 ```sh
 OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 \
@@ -77,8 +87,9 @@ python3 scripts/test_gallium_shared_own_stripe.py
 python3 scripts/test_driver.py
 ```
 
-Prepared execution gates are the full shared ESSL corpus (including both
-original 486-word epochs), `SharedAtomicVectorExecuteUnitSpec`,
+The full ESSL corpus also includes six additional signed overloads of exchange,
+add, bitwise operations and CAS; those additions still require execution.
+Prepared hardware gates are `SharedAtomicVectorExecuteUnitSpec`,
 `SharedAtomicAvailabilityDecodeSpec`, and the explicit stock SRAM/FPU/vector
 `GpuComputeUnitSharedAtomicSpec`. They require actual execution before these
 results can be extended to source shaders or hardware. Full 96-word host,
