@@ -609,6 +609,12 @@ def changed_suites(root, changed, *, test_index=None):
                   "src/main/scala/opengpu/system/TessellationInputMemoryFabric.scala"}:
         affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationTriangleTranslatedSequenceImageAdmissionSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationInputMemoryFabricSpec.scala")
+    if changed & {"src/main/scala/opengpu/elaboration/EmitNativeGeometryAbi.scala",
+                  "src/main/scala/opengpu/graphics/NativeGeometryDescriptors.scala",
+                  "src/main/scala/opengpu/graphics/NativeGeometryProgramReader.scala",
+                  "driver/opengpu_native_geometry_abi.h", "docs/abi/native-geometry-v1.json"}:
+        affected.add("src/test/scala/opengpu/graphics/NativeGeometryProgramSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/NativeBinnedGraphicsJobReaderSpec.scala")
     if changed & {"src/main/scala/opengpu/elaboration/EmitGeometryUniformAbi.scala",
                   "driver/opengpu_geometry_uniform_abi.h", "docs/abi/geometry-uniform-v2.json"}:
         affected.add("src/test/scala/opengpu/graphics/ComputeUniformRecordAbiSpec.scala")

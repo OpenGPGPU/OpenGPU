@@ -34,6 +34,7 @@ object EmitRegistry {
     e("EmitNativeAdvancedBlendAbi", EmitNativeAdvancedBlendAbi.main),
     e("EmitNativeDescriptorPreflightAbi", EmitNativeDescriptorPreflightAbi.main),
     e("EmitNativeBinnedGraphicsAbi", EmitNativeBinnedGraphicsAbi.main),
+    e("EmitNativeGeometryAbi", EmitNativeGeometryAbi.main),
     e("EmitNativeBinnedHostAbi", EmitNativeBinnedHostAbi.main),
     e("EmitNativePrimitiveQueryAbi", EmitNativePrimitiveQueryAbi.main),
     e("EmitNativePrimitiveQueryHosts", EmitNativePrimitiveQueryHosts.main),

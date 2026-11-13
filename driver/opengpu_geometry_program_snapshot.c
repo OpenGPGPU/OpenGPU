@@ -16,6 +16,7 @@ int opengpu_geometry_program_snapshot_append(struct opengpu_private_snapshot *ow
     struct drm_opengpu_compute_uniform_view source;
     u32 *words;
     u8 *bytes;
+    u32 allocation_bytes;
     int ret;
     if(!owner || !view || !profile || !copy_source || !output || !view->handle || view->pad ||
         !view->bytes || view->bytes>4u*OPENGPU_SHADER_MAX_INSTRUCTIONS ||
@@ -24,8 +25,11 @@ int opengpu_geometry_program_snapshot_append(struct opengpu_private_snapshot *ow
         !profile->geometry_enabled || profile->version!=1u)return -EINVAL;
     /* Keep original instruction bytes distinct from host-endian analysis.
      * Neither a nonzero entry nor a big-endian CPU may rewrite the RX copy. */
-    bytes=kvzalloc(view->bytes*2u,GFP_KERNEL);if(!bytes)return -ENOMEM;
-    words=(u32 *)(bytes+view->bytes);
+    /* The GNG code allocation view covers whole cache lines, while its
+     * logical code limit and validated suffix still stop at the original end. */
+    allocation_bytes=(view->bytes+63u)&~63u;
+    bytes=kvzalloc(allocation_bytes+view->bytes,GFP_KERNEL);if(!bytes)return -ENOMEM;
+    words=(u32 *)(bytes+allocation_bytes);
     source=(struct drm_opengpu_compute_uniform_view){.offset=view->offset,.handle=view->handle,.bytes=view->bytes};
     ret=copy_source(copy_context,&source,bytes);
     if(ret)goto done;
@@ -34,7 +38,7 @@ int opengpu_geometry_program_snapshot_append(struct opengpu_private_snapshot *ow
     if(!opengpu_geometry_shader_validate_words(words+view->entry_offset/4,
         (view->bytes-view->entry_offset)/4,profile->version,profile->scalar_fpu,
         profile->owned_uniforms,profile->geometry_enabled)) {ret=-EINVAL;goto done;}
-    ret=opengpu_private_snapshot_append_code(owner,bytes,view->bytes,&result.segment);
+    ret=opengpu_private_snapshot_append_code(owner,bytes,allocation_bytes,&result.segment);
     if(!ret){result.entry_offset=view->entry_offset;*output=result;}
 done:
     kvfree(bytes);return ret;

@@ -80,6 +80,16 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertIn("opengpu.system.TessellationNativeRecordKernelAbiSpec",
                               changed_suites(REPO_ROOT, [path]))
 
+    def test_native_geometry_metadata_selects_new_and_frozen_readers(self):
+        for path in ("src/main/scala/opengpu/elaboration/EmitNativeGeometryAbi.scala",
+                     "src/main/scala/opengpu/graphics/NativeGeometryDescriptors.scala",
+                     "src/main/scala/opengpu/graphics/NativeGeometryProgramReader.scala",
+                     "driver/opengpu_native_geometry_abi.h", "docs/abi/native-geometry-v1.json"):
+            with self.subTest(path=path):
+                selected = set(changed_suites(REPO_ROOT, [path]))
+                self.assertTrue({"opengpu.graphics.NativeGeometryProgramSpec",
+                                 "opengpu.graphics.NativeBinnedGraphicsJobReaderSpec"} <= selected)
+
     def test_geometry_uniform_schema_selects_exact_admission_and_abi(self):
         for path in ("src/main/scala/opengpu/elaboration/EmitGeometryUniformAbi.scala",
                      "driver/opengpu_geometry_uniform_abi.h", "docs/abi/geometry-uniform-v2.json"):
