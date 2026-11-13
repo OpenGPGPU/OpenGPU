@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 #ifndef OPENGPU_SHARED_OWN_PROOF_H
 #define OPENGPU_SHARED_OWN_PROOF_H
+#include "opengpu_shared_range_proof.h"
 #ifdef __KERNEL__
 #include <linux/types.h>
 typedef u32 opengpu_shared_proof_u32;
@@ -21,6 +22,9 @@ typedef uint64_t opengpu_shared_proof_u64;
 struct opengpu_shared_own_proof {
     opengpu_shared_proof_u32 count, span;
     opengpu_shared_proof_u32 offsets[OPENGPU_SHARED_OWN_MAX_STORES];
+    /* Fixed 32-register value analysis, in the existing per-validation heap
+     * workspace, never copied into a large kernel-stack branch frame. */
+    struct opengpu_shared_range vectors[32];
 };
 
 static inline bool opengpu_shared_own_contains(

@@ -3,12 +3,14 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
+#include "../opengpu_shared_own_proof.h"
 
 static unsigned proof_allocations, proof_frees, proof_live;
 static int proof_fail;
 static void *proof_calloc(size_t count,size_t bytes)
 {
-    assert(count==5&&bytes==2056);
+    assert(count==5&&bytes==sizeof(struct opengpu_shared_own_proof));
+    assert(bytes<=2600); /* fixed heap analysis, no shader-sized stack growth */
     ++proof_allocations;
     if(proof_fail)return NULL;
     void *p=calloc(count,bytes);assert(p);++proof_live;return p;
