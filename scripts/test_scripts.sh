@@ -3,7 +3,7 @@
 # QMP screendump protocol, and the driver/test-selection checks. No RTL build,
 # no guest boot. This is the single entry point used by the CI driver job.
 #
-# The Verilator FPU harness (scripts/test_gpu_core_fpu.sh) is intentionally not
+# The Verilator FPU harness (scripts/test_gpu_compute_unit_core_fpu.sh) is intentionally not
 # included: it builds emitted RTL with sbt and runs a C++ simulation.
 set -euo pipefail
 

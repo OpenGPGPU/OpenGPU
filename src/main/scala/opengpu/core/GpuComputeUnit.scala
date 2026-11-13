@@ -136,7 +136,7 @@ class GpuComputeUnit(
 
   private val controller = Module(new SingleCuKernelController(config, gridSlices))
   private val core = Module(
-    new GpuCore(
+    new GpuComputeUnitCore(
       config,
       useBlackBoxes,
       enableFpuBackend,

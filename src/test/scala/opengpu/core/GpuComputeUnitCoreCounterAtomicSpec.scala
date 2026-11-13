@@ -7,7 +7,7 @@ import opengpu.core.memory.AtomicMemoryOp
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
-class GpuCoreCounterAtomicSpec extends AnyFlatSpec {
+class GpuComputeUnitCoreCounterAtomicSpec extends AnyFlatSpec {
   private def zero(data:Data):Unit=data match {
     case r:Record=>r.elements.values.foreach(zero)
     case v:Vec[_]=>v.foreach(zero)
@@ -18,7 +18,7 @@ class GpuCoreCounterAtomicSpec extends AnyFlatSpec {
   }
   for((translated,denied)<-Seq((false,false),(true,false),(true,true))) {
     it should s"route a counter atomic through the core translation owner translated=$translated denied=$denied" in {
-      simulate(new GpuCore(GpuConfig(lanes=4,warps=2),vectorCacheSets=4,vectorCacheWays=1,
+      simulate(new GpuComputeUnitCore(GpuConfig(lanes=4,warps=2),vectorCacheSets=4,vectorCacheWays=1,
         atomicCounterAvailable=true)){d=>
         zero(d.io);d.reset.poke(true.B);d.clock.step(2);d.reset.poke(false.B)
         val satp=if(translated)BigInt("80000090",16)else BigInt(0)

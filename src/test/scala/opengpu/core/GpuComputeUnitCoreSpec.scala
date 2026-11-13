@@ -5,10 +5,10 @@ import opengpu.config.GpuConfig
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
-class GpuCoreSpec extends AnyFlatSpec {
-  behavior of "GpuCore"
+class GpuComputeUnitCoreSpec extends AnyFlatSpec {
+  behavior of "GpuComputeUnitCore"
 
-  private def defaults(dut: GpuCore, lanes: Int): Unit = {
+  private def defaults(dut: GpuComputeUnitCore, lanes: Int): Unit = {
     dut.io.launch.valid.poke(false.B)
     dut.io.launch.bits.warpId.poke(0.U)
     dut.io.scalarInitialize.valid.poke(false.B)
@@ -66,7 +66,7 @@ class GpuCoreSpec extends AnyFlatSpec {
   }
 
   it should "advance fetch from a committed scalar branch" in {
-    simulate(new GpuCore(GpuConfig(lanes = 4, warps = 2))) { dut =>
+    simulate(new GpuComputeUnitCore(GpuConfig(lanes = 4, warps = 2))) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step()
       dut.reset.poke(false.B)
@@ -116,7 +116,7 @@ class GpuCoreSpec extends AnyFlatSpec {
 
   it should "make scalar initialization visible to the first instruction" in {
     val config = GpuConfig(lanes = 4, warps = 1)
-    simulate(new GpuCore(config)) { dut =>
+    simulate(new GpuComputeUnitCore(config)) { dut =>
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
       defaults(dut, config.lanes)
       dut.io.fetchRequest.ready.poke(false.B)
@@ -154,7 +154,7 @@ class GpuCoreSpec extends AnyFlatSpec {
 
   it should "execute vector arithmetic and crossing loads/stores through the integrated core" in {
     val config = GpuConfig(lanes = 4, warps = 2)
-    simulate(new GpuCore(config)) { dut =>
+    simulate(new GpuComputeUnitCore(config)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step()
       dut.reset.poke(false.B)
@@ -404,7 +404,7 @@ class GpuCoreSpec extends AnyFlatSpec {
 
   it should "execute a scalar load through the shared translated cache" in {
     val config = GpuConfig(lanes = 4, warps = 1)
-    simulate(new GpuCore(config)) { dut =>
+    simulate(new GpuComputeUnitCore(config)) { dut =>
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
       defaults(dut, config.lanes)
       dut.io.fetchRequest.ready.poke(false.B)
@@ -460,7 +460,7 @@ class GpuCoreSpec extends AnyFlatSpec {
 
   it should "execute an FP load through the shared translated cache" in {
     val config = GpuConfig(lanes = 4, warps = 1)
-    simulate(new GpuCore(config, enableFpuBackend = true)) { dut =>
+    simulate(new GpuComputeUnitCore(config, enableFpuBackend = true)) { dut =>
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
       defaults(dut, config.lanes)
       dut.io.fetchRequest.ready.poke(false.B)
@@ -523,7 +523,7 @@ class GpuCoreSpec extends AnyFlatSpec {
 
   it should "resume a fault-blocked warp from the commanded PC" in {
     val config = GpuConfig(lanes = 4, warps = 1)
-    simulate(new GpuCore(config)) { dut =>
+    simulate(new GpuComputeUnitCore(config)) { dut =>
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
       defaults(dut, config.lanes)
       dut.io.fetchRequest.ready.poke(false.B)

@@ -9,7 +9,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 /** Exercises the existing external SIMT branch-result port. This is not an
   * instruction-driven vector-branch execution or native-host qualification.
   */
-class GpuCoreSimtOverflowSpec extends AnyFlatSpec {
+class GpuComputeUnitCoreSimtOverflowSpec extends AnyFlatSpec {
   private def zero(data: Data): Unit=data match {
     case r: Record=>r.elements.values.foreach(zero)
     case v: Vec[_]=>v.foreach(zero)
@@ -19,7 +19,7 @@ class GpuCoreSimtOverflowSpec extends AnyFlatSpec {
     case _=>()
   }
   it should "route external SIMT overflow faults without replacing a held peer event and clear only the retired stack" in {
-    simulate(new GpuCore(GpuConfig(lanes=4,warps=2,simtStackDepth=2),vectorCacheSets=4,vectorCacheWays=1)) { d=>
+    simulate(new GpuComputeUnitCore(GpuConfig(lanes=4,warps=2,simtStackDepth=2),vectorCacheSets=4,vectorCacheWays=1)) { d=>
       zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
       def until(p: => Boolean): Unit={var n=0;while(!p && n<60){d.clock.step();n+=1};assert(p)}
       def branch(warp: Int,pc: Int,active: Int,taken: Int): Unit={

@@ -7,7 +7,7 @@ reads or writes a scalar FP register cannot consume a fabricated zero operand
 or discard its FP result when that register file is absent.
 
 `GpuComputeUnit(executionLimits=true)` selects the native execution profile in
-`GpuCore`. It passes actual scalar-FPU availability through the frontend and
+`GpuComputeUnitCore`. It passes actual scalar-FPU availability through the frontend and
 decode pipe. `FullInstructionDecoder` retains its ISA allow-lists and rejects
 scalar FP or vector `readsFloat`/`writesFloat` operations if the corresponding
 backend/RF is absent. Rejection occurs before backend issue or destination

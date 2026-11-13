@@ -205,7 +205,7 @@ class VectorConfigurationUnitSpec extends AnyFlatSpec {
       dut.io.frmByWarp(1).expect(3.U)
       dut.io.state.fflags.expect("h15".U)
 
-      // GpuCore asserts clearWarp when the next kernel launches on this warp.
+      // GpuComputeUnitCore asserts clearWarp when the next kernel launches on this warp.
       dut.io.clearWarp.valid.poke(true.B)
       dut.io.clearWarp.bits.poke(1.U)
       dut.clock.step()

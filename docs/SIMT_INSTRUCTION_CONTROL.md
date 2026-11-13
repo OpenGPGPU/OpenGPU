@@ -16,7 +16,7 @@ that target plus four. Targets must be word-aligned on this implementation.
 No ABI register is reserved or repurposed.
 
 The scope marker and alternate paths occupy the existing physical per-warp
-SIMT stack bank. GpuCore, vector operand issue, branch execution, scheduler
+SIMT stack bank. GpuComputeUnitCore, vector operand issue, branch execution, scheduler
 and WarpSystemControl now execute the complete instruction path. Legacy
 externally supplied branch frames share the bank through exclusive ownership
 and cannot masquerade as instruction scopes. A branch without an established

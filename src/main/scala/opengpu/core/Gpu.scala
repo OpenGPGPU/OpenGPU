@@ -50,7 +50,7 @@ class Gpu(
 
   private val controller = Module(new SingleCuKernelController(config))
   private val core = Module(
-    new GpuCore(
+    new GpuComputeUnitCore(
       config,
       useBlackBoxes = false,
       enableFpuBackend = true,
