@@ -89,7 +89,13 @@ RecordResult replay_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
   verify_readonly(initial,memory,capture.writable);
   const auto start_cycles=bus.cycles;const auto start_traffic=agent.traffic;
   bus.begin_record(capture.max_cycles);
-  for(const auto &r:capture.discovery) require(bus.read(r.address)==r.value,"actual DUT differs from captured discovery");
+  // GCR's explicit protected-source presence guarantee must be checked before
+  // probing GUC/GSE/GNC. A standalone GNP host need not map those windows.
+  const auto profile=Capture::profile();
+  for(unsigned n=0;n<16;++n)
+    require(bus.read(profile[n].address)==profile[n].value,"actual DUT lacks the captured source profile");
+  for(const auto &r:capture.discovery) if(r.address<0x360 || r.address>=0x3a0)
+    require(bus.read(r.address)==r.value,"actual DUT differs from captured discovery");
   require(!(bus.read(GPU_REG_UCMD_STATUS)&GPU_UCMD_STATUS_COMPLETION),
     "owner record starts with an unretired completion");
   for(const auto &a:capture.trace)bus.action(a);
