@@ -289,8 +289,8 @@ class GpuComputeUnitCore(
       service.io.warpStart.valid := io.launch.fire
       service.io.warpStart.bits := io.launch.bits.warpId
       // A forced warp termination cannot abandon a captured SRAM transaction.
-      service.io.cancel := service.io.busy && io.finish.valid &&
-        io.finish.bits === service.io.commit.bits.writeback.warpId
+      service.io.cancel := SharedAtomicVectorOpcode.terminated(service.io.busy,
+        io.finish.valid, io.finish.bits, service.io.commit.bits.writeback.warpId)
       io.vectorTexSample.valid := vector.io.texSample.valid && !selected
       io.vectorTexSample.bits := vector.io.texSample.bits
       vector.io.texSample.ready := Mux(selected, service.io.in.ready, io.vectorTexSample.ready)
