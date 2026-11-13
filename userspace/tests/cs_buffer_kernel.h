@@ -5,6 +5,7 @@
 #include <stdint.h>
 struct cs_buffer_bo { unsigned handle; uint64_t bytes; void *data; };
 struct cs_buffer_kernel_input {
+    uint32_t shared_base, shared_bytes, shared_lanes;
     struct drm_opengpu_resource bindings[43];
     struct cs_buffer_bo memory[512];
     struct drm_opengpu_compute_image_resources command;

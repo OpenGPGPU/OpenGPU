@@ -1265,7 +1265,7 @@ int pipe_opengpu_launch_grid_buffers(struct pipe_opengpu_context *ctx,
     launch->kernarg_slot = PIPE_CS_KERNARG_SLOT;
     memcpy(launch->grid, grid, sizeof(launch->grid)); memcpy(launch->local, local, sizeof(launch->local));
     launch->out_syncobj = fence->handle;
-    command.textures = (uintptr_t)views; command.texture_count = texture_count;
+    command.textures = texture_count ? (uintptr_t)views : 0; command.texture_count = texture_count;
     if (uniforms) {
         memcpy(gum.resources.bindings, command.bindings, sizeof(command.bindings));
         memcpy(gum.resources.images, command.images, sizeof(command.images));
