@@ -12,7 +12,7 @@ import chisel3.experimental.hierarchy.Instantiate
   * is included once and lane prefixes preserve scalar first-error ordering.
   */
 class Fp32FragmentPreparation(p: VertexShaderStageConfig = VertexShaderStageConfig(),
-    g: GraphicsConfig = GraphicsConfig(), parallelLanes: Boolean = true) extends Module {
+    g: GraphicsConfig = GraphicsConfig(), parallelLanes: Boolean = true, reuseSetup: Boolean = true) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new FragmentInterpolationRequest(p, g)))
     val out = Decoupled(new PreparedFragmentInterpolation(p, g))
@@ -38,7 +38,7 @@ class Fp32FragmentPreparation(p: VertexShaderStageConfig = VertexShaderStageConf
       snapshot := io.in.bits
     }
     val lanes = Seq.tabulate(4)(i => Instantiate(new Fp32FragmentInterpolator(p, g,
-      false, true, Some(i), true)))
+      false, true, Some(i), true, reuseSetup)))
     val ready = VecInit(lanes.map(_.io.in.ready)).asUInt.andR
     val valid = VecInit(lanes.map(_.io.prepared.get.valid)).asUInt.andR
     val prepared = lanes.map(_.io.prepared.get.bits)
