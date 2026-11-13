@@ -5,6 +5,31 @@ import org.scalatest.flatspec.AnyFlatSpec
 class NativeProductFrameInputsSpec extends AnyFlatSpec {
   behavior of "native product frame input images"
 
+  it should "change only frame tiling while preserving every workload and full API allocation" in {
+    for(scene<-NativeProductWorkloads.suite(32,32)) {
+      val original=NativeProductFrameInputs.encodeApiExtent(scene)
+      val same=NativeProductFrameInputs.encodeApiExtentTiled(scene,3)
+      val larger=NativeProductFrameInputs.encodeApiExtentTiled(scene,4)
+      assert(opengpu.testutil.NativeFrameMemoryCodec.unchangedOutside(original.memory,same.memory,Nil))
+      assert(original.job==larger.job && original.draws==larger.draws && original.states==larger.states)
+      assert(original.planes==larger.planes && original.regions==larger.regions)
+      val frame=original.job("job.frameBase").toLong
+      val limit=original.job("job.frameLimit").toLong
+      assert(opengpu.testutil.NativeFrameMemoryCodec.unchangedOutside(original.memory,larger.memory,Seq(frame->limit)))
+      assert(original.frame("frame.bins.bins.tileCount")==16)
+      assert(larger.frame("frame.bins.bins.tileCount")==4)
+      assert(larger.frame("frame.bins.producer.tileLog2")==4)
+      assert(larger.frame("frame.image.pixels.colors.tileWidth")==16)
+      assert(larger.frame("frame.image.pixels.colors.reservedBytes")==256*scene.samples*4)
+      assert(larger.frame("frame.image.pixels.colors.colors[0].offset")==256*scene.samples*4)
+      // Both attachments and all samples stay resident in the original 32 KiB.
+      assert(256*scene.samples*8<=32768)
+    }
+    intercept[IllegalArgumentException] {
+      NativeProductFrameInputs.encodeApiExtentTiled(NativeProductWorkloads.scene("msaa-4x",32,32),5)
+    }
+  }
+
   it should "back only complete aligned AXI lines inside the allocated input and image regions" in {
     val input=NativeProductFrameInputs.encode(NativeProductWorkloads.scene("desktop-composition",32,32))
     for(r<-input.regions){
