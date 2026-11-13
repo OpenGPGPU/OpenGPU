@@ -333,6 +333,9 @@ The CPU capture gate also handles termination through its owned process group
 and exact container, capped at two CPUs and 2 GiB without additional swap.
 It removes temporary inputs only after both exit checks succeed; an unknown
 consumer state preserves those inputs and fails the gate.
+Both leader waits use ten-second bounds. A wait error still requires final
+leader and process-group exit proof; failed proof retains private capture
+inputs. The CPU entry tests exercise both timeout and OS-error paths.
 
 The actual complete-host entry requires an already generated, built and guarded
 native executor. Run it from the clean committed producer tree, preserving the
