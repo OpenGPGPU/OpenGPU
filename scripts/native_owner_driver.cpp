@@ -93,7 +93,7 @@ struct RecordResult {
 };
 struct ProfileObservation {std::vector<Command> words,registers;};
 template<class Sim>
-ProfileObservation probe_profile(Sim &sim,Agent &agent,ReplayBus<Sim> &bus) {
+ProfileObservation probe_profile(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,bool compute=false) {
   ProfileObservation observed;
   const auto id=bus.read(GPU_REG_ID),caps=bus.read(GPU_REG_CAPABILITIES);
   const uint32_t required_caps=GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE|GPU_CAP_SHADER_CONFIG_INFO;
@@ -114,14 +114,30 @@ ProfileObservation probe_profile(Sim &sim,Agent &agent,ReplayBus<Sim> &bus) {
   require((shader&0xffu)==16 && ((shader>>8)&0xffu)==8 && ((shader>>16)&0xffu) && (shader>>24)==2,
     "profile probe lacks matching two-CU shader resources");
   observed.registers.push_back({GPU_REG_SHADER_CONFIG,shader});
+  if(compute) {
+    // GCR bits 4..8 advertise these five command transports. These are
+    // expected wire contracts; append only the actual MMIO observations.
+    require((observed.words.at(2).value&0x1f0u)==0x1f0u,
+      "compute transport probe requires advertised command support");
+    const std::array<Command,5> transports{{{0x494,0x47544d01},{0x43c,0x47534d01},
+      {0x3fc,0x47494d01},{0x4bc,0x47414d01},{0x460,0x47554d01}}};
+    for(const auto &transport:transports) {
+      const auto value=bus.read(transport.address);
+      require(value==transport.value,"actual DUT lacks an advertised compute command transport");
+      observed.registers.push_back({transport.address,value});
+    }
+  }
   require(!(bus.read(GPU_REG_UCMD_STATUS)&GPU_UCMD_STATUS_COMPLETION) && !sim.model->io_m_irq,
     "profile-only probe encountered an active completion");
   require(agent.drained() && !agent.traffic.reads && !agent.traffic.writes,
     "profile-only probe encountered external memory work");
   return observed;
 }
-inline void profile_json(std::ostream &out,const ProfileObservation &profile) {
-  out<<"{\"schema\":\"opengpu-native-owner-profile-v1\",\"words\":[";
+inline void profile_json(std::ostream &out,const ProfileObservation &profile,bool compute=false) {
+  require(profile.words.size()==96 && profile.registers.size()==(compute?10u:5u),
+    "profile observations do not match their selected schema");
+  out<<"{\"schema\":\""<<(compute?"opengpu-compute-owner-profile-v1":"opengpu-native-owner-profile-v1")
+    <<"\",\"words\":[";
   const auto &words=profile.words;
   for(size_t n=0;n<words.size();++n)
     out<<(n?",":"")<<"{\"address\":"<<words[n].address<<",\"value\":"<<words[n].value<<"}";
@@ -359,14 +375,15 @@ void cleanup_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
 int main(int argc,char **argv) {
   try {
     using namespace native_owner;
-    if(argc>1 && std::string(argv[1])=="--probe-profile") {
-      require(argc==3,"usage: native_owner_driver --probe-profile NEW_OUTPUT.json");
+    const bool compute_probe=argc>1 && std::string(argv[1])=="--probe-compute-profile";
+    if(argc>1 && (std::string(argv[1])=="--probe-profile" || compute_probe)) {
+      require(argc==3,"usage: native_owner_driver --probe[-compute]-profile NEW_OUTPUT.json");
       require(!std::filesystem::exists(argv[2]),"profile output already exists");
       Memory memory;Simulation sim(argc,argv);sim.reset();Agent agent(memory);
       ReplayBus<Simulation> bus(sim,agent,100000);
-      const auto words=probe_profile(sim,agent,bus);
+      const auto words=probe_profile(sim,agent,bus,compute_probe);
       std::ofstream output(argv[2],std::ios::binary);require(bool(output),"cannot create profile output");
-      profile_json(output,words);output.close();require(bool(output),"cannot write profile output");
+      profile_json(output,words,compute_probe);output.close();require(bool(output),"cannot write profile output");
       sim.model->final();return 0;
     }
     if(argc>1 && (std::string(argv[1])=="--active-series" || std::string(argv[1])=="--active-owner-series")) {

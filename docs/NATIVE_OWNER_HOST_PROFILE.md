@@ -115,3 +115,13 @@ check. CPU rejection tests cover old profiles, partial suites, stale results,
 wrong dimensions/tiling and premature clock/FPS claims. Actual owner product
 execution and a matching qualified physical clock remain pending; choosing
 16×16 tiles alone establishes no performance improvement or 60 FPS result.
+
+`native_owner_driver --probe-compute-profile NEW.json` is a separate read-only
+compute admission probe. It preserves the 96 actual discovery words and the
+five base runtime registers, then reads the advertised GTM1/GSM1/GIM1/GAM1/GUM1
+transport magics at `0x494`, `0x43c`, `0x3fc`, `0x4bc` and `0x460`, respectively.
+GCR command-support bits must be present before those dependent reads. The
+`opengpu-compute-owner-profile-v1` schema has ten auxiliary registers; the
+existing native schema remains at five. Wrong magics, missing prerequisites,
+active completions or external memory work fail the probe. No command is
+submitted and `gpuExecution`, clock and FPS qualification stay false.

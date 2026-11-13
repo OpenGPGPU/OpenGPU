@@ -233,6 +233,34 @@ static void profile_probe(int argc,char **argv) {
   // Unexpected real external-memory work cannot be called profile-only.
   ControlPeer work(argc,argv,memory,captures);work.reset();Agent busy(memory);
   ReplayBus<ControlPeer> active(work,busy,1000);rejects([&]{probe_profile(work,busy,active);});
+
+  const std::array<Command,5> transports{{{0x494,0x47544d01},{0x43c,0x47534d01},
+    {0x3fc,0x47494d01},{0x4bc,0x47414d01},{0x460,0x47554d01}}};
+  for(unsigned broken=0;broken<=transports.size();broken++) {
+    ControlPeer compute(argc,argv,memory,captures);compute.reset();compute.model->issue_read=false;
+    for(const auto &transport:transports)compute.model->registers[transport.address]=transport.value;
+    if(broken<transports.size())compute.model->registers[transports[broken].address]^=1;
+    Agent peer(memory);ReplayBus<ControlPeer> control(compute,peer,1000);
+    if(broken<transports.size()) {rejects([&]{probe_profile(compute,peer,control,true);});continue;}
+    const auto result=probe_profile(compute,peer,control,true);
+    require(result.words.size()==96 && result.registers.size()==10 && !compute.submitted && compute.resets==1,
+      "compute probe submitted work or lost raw observations");
+    for(unsigned n=0;n<transports.size();n++)
+      require(result.registers[5+n].address==transports[n].address &&
+        result.registers[5+n].value==compute.model->registers[transports[n].address] &&
+        compute.read_addresses[compute.read_addresses.size()-6+n]==transports[n].address,
+        "compute profile did not preserve actual transport reads");
+    std::ostringstream json;profile_json(json,result,true);
+    require(json.str().find("opengpu-compute-owner-profile-v1")!=std::string::npos &&
+      json.str().find("\"gpuExecution\":false")!=std::string::npos,"compute profile lost scope");
+    rejects([&]{profile_json(json,result);});
+  }
+  ControlPeer unadvertised(argc,argv,memory,captures);unadvertised.reset();unadvertised.model->issue_read=false;
+  unadvertised.model->registers[0x368]&=~0x1f0u;
+  Agent peer(memory);ReplayBus<ControlPeer> control(unadvertised,peer,1000);
+  rejects([&]{probe_profile(unadvertised,peer,control,true);});
+  require(unadvertised.read_addresses==std::vector<uint32_t>({GPU_REG_ID,GPU_REG_CAPABILITIES,0x360,0x364,0x368}),
+    "unadvertised compute commands were probed");
 }
 static void active_series(int argc,char **argv,bool cleanup=false) {
   auto a=fixture(),b=a;a.finish.clear();b.finish.clear();
