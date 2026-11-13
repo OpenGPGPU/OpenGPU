@@ -611,7 +611,9 @@ static void malformed_buffers(const void *tokens)
             memcpy(copy + fetch, &i, 4);
         } else if (bad == 11) {
             struct tgsi_instruction_memory m; memcpy(&m, copy + store + 1, 4);
-            m.Qualifier = TGSI_MEMORY_COHERENT; memcpy(copy + store + 1, &m, 4);
+            /* COHERENT has an explicit real-image publication contract;
+             * VOLATILE remains unsupported and must not be erased. */
+            m.Qualifier = TGSI_MEMORY_VOLATILE; memcpy(copy + store + 1, &m, 4);
         } else {
             struct tgsi_dst_register d; memcpy(&d, copy + query + 2, 4); d.WriteMask = 4;
             memcpy(copy + query + 2, &d, 4);
@@ -846,6 +848,9 @@ static void first_execution(struct pipe_screen *s, struct pipe_context *p, void 
 #ifdef OPENGPU_CS_TEXTURE_NAMESPACE
 #include "cs_texture_namespace_flow.h"
 #endif
+#ifdef OPENGPU_CS_IMAGE_ORDERING
+#include "cs_image_ordering_flow.h"
+#endif
 
 int main(int argc, char **argv)
 {
@@ -863,6 +868,12 @@ int main(int argc, char **argv)
         orphan_recovery(); final_screen_ownership(); return 0;
     }
     buffer_artifacts = getenv("OPENGPU_BUFFER_ARTIFACTS");
+#ifdef OPENGPU_CS_IMAGE_ORDERING
+    if (getenv("OPENGPU_IMAGE_ORDERING_QUALIFICATION")) {
+        image_ordering_flow(argv[1]);
+        return 0;
+    }
+#endif
 #ifdef OPENGPU_CS_TEXTURE_NAMESPACE
     if (getenv("OPENGPU_TEXTURE_NAMESPACE_QUALIFICATION")) {
         texture_namespace_flow(argv[1]);

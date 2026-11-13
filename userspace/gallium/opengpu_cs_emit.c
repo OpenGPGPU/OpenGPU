@@ -607,7 +607,11 @@ static int image(struct build *b, const struct tgsi_full_instruction *in)
     unsigned index = (unsigned)(store ? d->Index : in->Src[0].Register.Index);
     if (b->cf || !i->Memory || i->Texture || i->NumDstRegs != 1 ||
         i->NumSrcRegs != (query ? 1u : 2u) || index >= 4 || !(b->images & (1u << index)) ||
-        in->Memory.Qualifier || in->Memory.Padding || in->Memory.Texture != TGSI_TEXTURE_BUFFER ||
+        /* Coherent buffer images use the same uncached, acknowledged typed
+         * access and shared-L2 invalidation path. Other qualifier contracts
+         * remain unsupported; do not erase them during lowering. */
+        (in->Memory.Qualifier & ~TGSI_MEMORY_COHERENT) || in->Memory.Padding ||
+        in->Memory.Texture != TGSI_TEXTURE_BUFFER ||
         opengpu_buffer_image_format(in->Memory.Format) != (int)b->p.image_format[index] ||
         (store && (!(b->image_writable & (1u << index)) || d->WriteMask != 15))) return -1;
     unsigned format = b->p.image_format[index];

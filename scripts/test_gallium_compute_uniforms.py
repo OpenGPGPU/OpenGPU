@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main(control_flow=False, buffer_resources=False, shared_memory=False, memory_barriers=False,
-         storage_atomics=False, texture_namespaces=False):
+         storage_atomics=False, texture_namespaces=False, image_ordering=False):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--build", type=Path, required=True, help="new private output directory")
     ap.add_argument("--sanitize", action="store_true")
@@ -118,7 +118,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     for relative, extra in [
         ("userspace/tests/cs_atomic_frontend.c" if storage_atomics else "userspace/tests/cs_barrier_frontend.c" if memory_barriers else "userspace/tests/cs_shared_frontend.c" if shared_memory else "userspace/tests/cs_buffer_flow.c" if buffer_resources else
          "userspace/tests/cs_control_flow.c" if control_flow else "userspace/tests/cs_uniform_flow.c",
-         ["-DOPENGPU_CS_TEXTURE_NAMESPACE"] if texture_namespaces else []),
+         ["-DOPENGPU_CS_TEXTURE_NAMESPACE"] if texture_namespaces else
+         ["-DOPENGPU_CS_IMAGE_ORDERING"] if image_ordering else []),
         ("userspace/tests/cs_graphics_unused_stubs.c", ["-DOPENGPU_CS_REAL_MESA_FORMATS"]),
         ("userspace/gallium/opengpu_context.c", ["-Wno-sign-compare"]),
         ("userspace/gallium/opengpu_screen.c", []),
@@ -194,7 +195,10 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         ["-ldl", "-lm", "-pthread", "-o", binary], "link")
     sources = out / "glsl"
     sources.mkdir()
-    if texture_namespaces:
+    if image_ordering:
+        from test_gallium_image_ordering import write_sources
+        write_sources(sources)
+    elif texture_namespaces:
         from test_gallium_texture_namespace import write_sources
         write_sources(sources)
     elif storage_atomics:
@@ -259,6 +263,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     env.pop("OPENGPU_COMPUTE_ARTIFACTS", None)
     env.pop("OPENGPU_CF_ARTIFACTS", None)
     env.pop("OPENGPU_BUFFER_ARTIFACTS", None)
+    if image_ordering:
+        env["OPENGPU_IMAGE_ORDERING_QUALIFICATION"] = "1"
     if texture_namespaces:
         env["OPENGPU_TEXTURE_NAMESPACE_QUALIFICATION"] = "1"
     artifacts = args.artifacts.resolve() if (control_flow or buffer_resources) and args.artifacts else None
@@ -280,7 +286,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         "scope": ("real Mesa GLSL/NIR/TGSI, callbacks/lib, extracted kernel resource ioctl/prepare/snapshot/scheduler; "
                   "independent CPU word/record oracle, modeled OS/GEM/VM/MMIO, no GPU or real page walk") if buffer_resources else
                  "real Mesa GLSL/NIR/TGSI + real callbacks/lib/kernel word validator; modeled kernel OS/GEM boundary"}, indent=2) + "\n")
-    print("Real GLSL compute " + ("texture namespaces" if texture_namespaces else "storage atomics" if storage_atomics else "memory barriers" if memory_barriers else "shared memory" if shared_memory else "buffer resources" if buffer_resources else "control-flow" if control_flow else "uniforms") + " CPU acceptance PASS: " + str(out))
+    print("Real GLSL compute " + ("image ordering" if image_ordering else "texture namespaces" if texture_namespaces else "storage atomics" if storage_atomics else "memory barriers" if memory_barriers else "shared memory" if shared_memory else "buffer resources" if buffer_resources else "control-flow" if control_flow else "uniforms") + " CPU acceptance PASS: " + str(out))
 
 
 if __name__ == "__main__":
