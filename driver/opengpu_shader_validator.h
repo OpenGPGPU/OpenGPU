@@ -841,7 +841,7 @@ static inline opengpu_shader_u32 opengpu_shader_io_range_mask(
 /* Optional read/write unions for the first nine fragment SoA slices.
  * Publish only after complete validation; failed or complex accesses retain
  * conservative masks. The six-input API below preserves its existing contract. */
-static inline bool opengpu_shader_validate_words_profile_runtime_domains(
+static inline bool opengpu_shader_validate_words_profile_runtime_geometry_domains(
     const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
     opengpu_shader_u64 kernarg_size, opengpu_shader_u32 batch_capacity,
     opengpu_shader_u32 output_start_slice,
@@ -853,7 +853,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_domains(
     bool image_atomics_enabled, bool storage_atomics_enabled, bool counter_enabled,
     bool uniform_enabled, opengpu_shader_u32 shared_base,
     opengpu_shader_u32 shared_bytes, opengpu_shader_u32 shared_lanes,
-    bool buffer_image_size_enabled, bool native_graphics_profile)
+    bool buffer_image_size_enabled, bool native_graphics_profile, bool geometry_profile)
 {
     opengpu_shader_u64 stride, output_start, output_end;
     struct opengpu_shader_state state = { 0 };
@@ -877,6 +877,12 @@ static inline bool opengpu_shader_validate_words_profile_runtime_domains(
 
     /* The advertised fragment batch capacity occupies eight ABI bits. */
     if (!words || !word_count || !batch_capacity || batch_capacity > 255)
+        return false;
+    /* The initial geometry dialect has a single scalar invocation and no
+     * ordinary memory, vector, texture or compute resource instructions. It
+     * must not inherit SoA pointer/range assumptions from the VS/FS validator. */
+    if (geometry_profile && (!native_graphics_profile || batch_capacity != 1u ||
+        launch_capacity || kernarg_size != 4u || output_start_slice || output_end_slice != 1u))
         return false;
     if (native_graphics_profile && (all_kernarg_writable || fragment_ops_enabled ||
         texture_enabled || word_atomics_enabled || storage_enabled || image_enabled ||
@@ -981,6 +987,10 @@ static inline bool opengpu_shader_validate_words_profile_runtime_domains(
         if (simt_program && !simt_compatible)
             return false;
         if (simt_depth && !opengpu_shader_simt_arm_instruction(insn))
+            return false;
+        if (geometry_profile && (opcode == 0x03u || opcode == 0x23u ||
+            opcode == 0x07u || opcode == 0x27u || opcode == 0x2fu ||
+            opcode == 0x57u || opcode == 0x2bu || opcode == 0x5bu))
             return false;
         switch (opcode) {
         case 0x5b: {
@@ -1554,6 +1564,20 @@ static inline bool opengpu_shader_validate_words_profile_runtime_domains(
             break;
         }
         case 0x0b: /* compute workgroup barrier or scalar texture operations */
+            if (geometry_profile && funct7 >= 32u && funct7 <= 38u) {
+                /* GeometryScalarWorker's task-owned input/output/event ops.
+                 * Returned components are values, never address provenance.
+                 * Canonical emit/end carry no unused source operands. */
+                if (funct3 || rd == 1u ||
+                    ((funct7 == 32u || funct7 == 33u) &&
+                     (!scalar_defined[rs1] || !scalar_defined[rs2])) ||
+                    ((funct7 == 34u || funct7 == 37u || funct7 == 38u) &&
+                     (!scalar_defined[rs1] || rs2)) ||
+                    ((funct7 == 35u || funct7 == 36u) && (rs1 || rs2)))
+                    return false;
+                opengpu_shader_define_integer(&state, rd);
+                break;
+            }
             if (insn == 0x0000000bu) {
                 /* Every live path must have reconverged here, and no peer
                  * may have terminated before reaching this generation. */
@@ -1856,6 +1880,52 @@ static inline bool opengpu_shader_validate_words_profile_runtime_domains(
         }
     }
     return false;
+}
+
+/* All existing callers retain the old domain; only the separately gated GS
+ * entry below can enable geometry instructions. */
+static inline bool opengpu_shader_validate_words_profile_runtime_domains(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
+    opengpu_shader_u64 kernarg_size, opengpu_shader_u32 batch_capacity,
+    opengpu_shader_u32 output_start_slice,
+    opengpu_shader_u32 output_end_slice, bool fragment_ops_enabled,
+    bool texture_enabled, bool all_kernarg_writable, bool scalar_fpu_enabled,
+    opengpu_shader_u32 launch_capacity, opengpu_shader_u32 *input_read_mask,
+    opengpu_shader_u32 *output_write_mask, bool word_atomics_enabled,
+    bool texture_backings_disjoint, bool storage_enabled, bool image_enabled,
+    bool image_atomics_enabled, bool storage_atomics_enabled, bool counter_enabled,
+    bool uniform_enabled, opengpu_shader_u32 shared_base,
+    opengpu_shader_u32 shared_bytes, opengpu_shader_u32 shared_lanes,
+    bool buffer_image_size_enabled, bool native_graphics_profile)
+{
+    return opengpu_shader_validate_words_profile_runtime_geometry_domains(
+        words, word_count, kernarg_size, batch_capacity, output_start_slice,
+        output_end_slice, fragment_ops_enabled, texture_enabled,
+        all_kernarg_writable, scalar_fpu_enabled, launch_capacity,
+        input_read_mask, output_write_mask, word_atomics_enabled,
+        texture_backings_disjoint, storage_enabled, image_enabled,
+        image_atomics_enabled, storage_atomics_enabled, counter_enabled,
+        uniform_enabled, shared_base, shared_bytes, shared_lanes,
+        buffer_image_size_enabled, native_graphics_profile, false);
+}
+
+/* Version-one scalar GS transport. This is deliberately not the complete
+ * GLES geometry shader resource dialect. The caller must own and discover an
+ * actual GS worker and GUR2 provider; default/legacy admission stays disabled.
+ * Input/output built-ins use task-owned custom ops, not writable memory. */
+static inline bool opengpu_geometry_shader_validate_words(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
+    opengpu_shader_u32 version, bool scalar_fpu_enabled,
+    bool owned_uniforms, bool geometry_enabled)
+{
+    if (!geometry_enabled || version != 1u || !word_count ||
+        word_count > OPENGPU_SHADER_MAX_INSTRUCTIONS)
+        return false;
+    return opengpu_shader_validate_words_profile_runtime_geometry_domains(
+        words, word_count, 4u, 1u, 0u, 1u, false, false, false,
+        scalar_fpu_enabled, 0u, (opengpu_shader_u32 *)0, (opengpu_shader_u32 *)0,
+        false, false, false, false, false, false, false, owned_uniforms,
+        0u, 0u, 0u, false, true, true);
 }
 
 /* Preserve every existing compute/legacy entry point's domain contract. */
