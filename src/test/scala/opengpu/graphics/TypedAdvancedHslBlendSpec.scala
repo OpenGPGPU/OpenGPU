@@ -4,9 +4,8 @@ import chisel3._
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
-class TypedAdvancedHslBlendSpec extends AnyFlatSpec {
-  import WindowRecordTest.zero
-  private def bits(v: Float): BigInt=BigInt(java.lang.Float.floatToRawIntBits(v)&0xffffffffL)
+private[graphics] object TypedAdvancedHslBlendReference {
+  def bits(v: Float): BigInt=BigInt(java.lang.Float.floatToRawIntBits(v)&0xffffffffL)
   private def max3(c: Seq[Float]): Float=math.max(c(0),math.max(c(1),c(2)))
   private def min3(c: Seq[Float]): Float=math.min(c(0),math.min(c(1),c(2)))
   private def lum(c: Seq[Float]): Float={
@@ -28,7 +27,7 @@ class TypedAdvancedHslBlendSpec extends AnyFlatSpec {
   private def setLum(base: Seq[Float],l: Float): Seq[Float]={
     val lb=lum(base);clipColor(base.map(v=>v+(l-lb)))
   }
-  private def expected(source: Seq[Float],destination: Seq[Float],equation: Int): Seq[BigInt]={
+  def expected(source: Seq[Float],destination: Seq[Float],equation: Int): Seq[BigInt]={
     def unpremultiply(color: Float,alpha: Float): Float=if(alpha==0f)0f else color/alpha
     val as=source(3);val ad=destination(3)
     val cs=(0 until 3).map(c=>unpremultiply(source(c),as)).toSeq
@@ -48,6 +47,11 @@ class TypedAdvancedHslBlendSpec extends AnyFlatSpec {
     rgb.toSeq:+bits(alpha)
   }
 
+}
+
+class TypedAdvancedHslBlendSpec extends AnyFlatSpec {
+  import WindowRecordTest.zero
+  import TypedAdvancedHslBlendReference.{bits,expected}
   behavior of "TypedAdvancedHslBlend"
   it should "evaluate every non-separable KHR blend mode with KHR composition" in {
     simulate(new TypedAdvancedHslBlend) { d =>

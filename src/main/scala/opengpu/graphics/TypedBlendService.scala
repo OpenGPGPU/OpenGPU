@@ -33,26 +33,33 @@ class TypedBlendService extends Module {
   private object State extends ChiselEnum {val idle,run,invalid,respond=Value}
   private val phase=RegInit(State.idle)
   private val request=Reg(new TypedBlendServiceRequest)
+  private val dispatched=RegInit(false.B);private val cancelled=RegInit(false.B)
   private val routeOrdinary=RegInit(false.B);private val routeSep=RegInit(false.B);private val routeHsl=RegInit(false.B)
   private val pending=RegInit(0.U(2.W));private val invalidResult=Reg(new TypedBlendServiceResult)
   private val ordinary=Module(new TypedColorBlend)
   private val sep=Module(new TypedAdvancedColorBlend)
   private val hsl=Module(new TypedAdvancedHslBlend)
   private val requestRouting=WireDefault(0.U(2.W))
-  ordinary.io.in.valid:=phase===State.run && routeOrdinary
+  ordinary.io.in.valid:=phase===State.run && routeOrdinary && !dispatched
   ordinary.io.in.bits:=0.U.asTypeOf(ordinary.io.in.bits)
   ordinary.io.in.bits.source:=request.source;ordinary.io.in.bits.destination:=request.ordinaryDestination
   ordinary.io.in.bits.format:=request.format;ordinary.io.in.bits.state:=request.state;ordinary.io.in.bits.tag:=request.tag
-  sep.io.in.valid:=phase===State.run && routeSep
+  sep.io.in.valid:=phase===State.run && routeSep && !dispatched
   sep.io.in.bits:=0.U.asTypeOf(sep.io.in.bits)
   sep.io.in.bits.source:=request.source;sep.io.in.bits.destination:=request.destination
   sep.io.in.bits.equation:=request.advancedEquation;sep.io.in.bits.tag:=request.tag
-  hsl.io.in.valid:=phase===State.run && routeHsl
+  hsl.io.in.valid:=phase===State.run && routeHsl && !dispatched
   hsl.io.in.bits:=0.U.asTypeOf(hsl.io.in.bits)
   hsl.io.in.bits.source:=request.source;hsl.io.in.bits.destination:=request.destination
-  hsl.io.in.bits.equation:=(request.advancedEquation-TypedAdvancedBlendEquation.softlight.U)(1,0)
+  hsl.io.in.bits.equation:=(request.advancedEquation-TypedAdvancedBlendEquation.supported.U)(1,0)
   hsl.io.in.bits.tag:=request.tag
-  ordinary.io.cancel:=io.cancel;sep.io.cancel:=io.cancel;hsl.io.cancel:=io.cancel
+  // A captured request owns its child offer even when cancellation arrives
+  // before child admission. Latch cancellation and deliver it after admission;
+  // otherwise each child's cancel-gated ready can deadlock the service.
+  private val childCancel=(cancelled || io.cancel) && dispatched
+  ordinary.io.cancel:=childCancel;sep.io.cancel:=childCancel;hsl.io.cancel:=childCancel
+  when(phase===State.run && io.cancel){cancelled:=true.B}
+  when(ordinary.io.in.fire || sep.io.in.fire || hsl.io.in.fire){dispatched:=true.B}
   private val childValid=Mux(routeOrdinary,ordinary.io.out.valid,Mux(routeSep,sep.io.out.valid,hsl.io.out.valid))
   private val childResult=Wire(new TypedBlendServiceResult)
   childResult:=0.U.asTypeOf(childResult)
@@ -74,7 +81,7 @@ class TypedBlendService extends Module {
   io.barrierReady:=pending===0.U
   io.busy:=pending=/=0.U
   when(io.in.fire){
-    request:=io.in.bits
+    request:=io.in.bits;dispatched:=false.B;cancelled:=false.B
     val adv=io.in.bits.advanced;val eq=io.in.bits.advancedEquation
     routeOrdinary := !adv || eq>14.U
     routeSep:=adv && eq<TypedAdvancedBlendEquation.supported.U

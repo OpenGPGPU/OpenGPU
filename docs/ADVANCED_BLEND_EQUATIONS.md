@@ -99,10 +99,26 @@ work. One request may be outstanding at a time, so a later barrier command can
 sample `barrierReady`, which is high only when every accepted blend has
 retired.
 
-`TypedBlendServiceSpec` passes two cases: ordinary add, separable multiply, HSL
-hue and unsupported-equation routing with the barrier gate
-(`BLEND_SERVICE`), and held immutable results keeping the barrier closed until
-retirement (`BLEND_SERVICE_HOLD`).
+`TypedBlendServiceSpec` checks ordinary add, separable multiply, all four HSL
+routes against an independent oracle with distinct source/destination colors,
+and unsupported-equation routing with the barrier gate (`BLEND_SERVICE`).
+The public HSL ids 11..14 map respectively to hue, saturation, color and
+luminosity; subtracting the separable-mode count gives the child id. Distinct
+colors catch a prior permutation that identical-color tests could not detect.
+Held immutable results keep the barrier closed until retirement
+(`BLEND_SERVICE_HOLD`). A single-cycle cancellation immediately after service
+admission also drains on all three routes and permits healthy reuse
+(`BLEND_SERVICE_CANCEL`). The accepted child offer is delivered before the
+latched cancellation, so the child's cancel-gated input cannot deadlock it.
+
+Reproduce these three service tests with:
+
+```sh
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.TypedBlendServiceSpec'
+```
 
 ## Blend barrier commands
 

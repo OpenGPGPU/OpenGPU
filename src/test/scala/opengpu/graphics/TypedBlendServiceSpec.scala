@@ -42,6 +42,15 @@ class TypedBlendServiceSpec extends AnyFlatSpec {
       // HSL hue with identical colors leaves the color unchanged.
       t.submit(Seq(0.5f,0.25f,0.75f,1f),Seq(0.5f,0.25f,0.75f,1f),0,advanced=true,equation=11,tag=3)
       t.expectResult(3,0,Seq(bits(0.5f),bits(0.25f),bits(0.75f),bits(1f)))
+      // Distinct colours are essential: identical inputs hide a permutation
+      // of the four HSL routes. Check all public ids against the HSL oracle.
+      val src=Seq(0.125f,0.375f,0.25f,0.5f);val dst=Seq(0.5f,0.1875f,0.0625f,0.75f)
+      val hslExpected=(0 until 4).map(eq=>TypedAdvancedHslBlendReference.expected(src,dst,eq))
+      assert(hslExpected.distinct.size==4,"the routing regression must distinguish every HSL mode")
+      for(eq<-11 to 14){
+        t.submit(src,dst,0,advanced=true,equation=eq,tag=eq)
+        t.expectResult(eq,0,hslExpected(eq-11))
+      }
       // Unsupported advanced equation is rejected before any child work.
       t.submit(Seq(0.5f,0.25f,0.75f,1f),Seq(0.5f,0.5f,0.5f,1f),0,advanced=true,equation=15,tag=4)
       t.expectResult(4,1,Seq(BigInt(0),BigInt(0),BigInt(0),BigInt(0)))
@@ -61,4 +70,24 @@ class TypedBlendServiceSpec extends AnyFlatSpec {
       info("BLEND_SERVICE_HOLD immutable=true barrierClosesUntilRetire=true singleOutstanding=true")
     }
   }
+  it should "drain cancellation arriving before child admission on every route and accept healthy reuse" in {
+    simulate(new TypedBlendService){d=>val t=new Driver(d)
+      val source=Seq(0.125f,0.375f,0.25f,0.5f);val destination=Seq(0.5f,0.1875f,0.0625f,0.75f)
+      for((advanced,eq)<-Seq((false,0),(true,0),(true,11))){
+        t.submit(source,destination,0,advanced,eq,tag=31)
+        d.io.cancel.poke(true.B);d.clock.step();d.io.cancel.poke(false.B)
+        var n=0;while(!d.io.out.valid.peek().litToBoolean && n<8000){d.clock.step();n+=1}
+        assert(n<8000,s"cancelled blend failed to drain advanced=$advanced eq=$eq")
+        d.io.out.bits.cancelled.expect(true.B);d.io.out.bits.tag.expect(31.U)
+        val held=d.io.out.bits.peek().litValue
+        for(_<-0 until 4){d.clock.step();assert(d.io.out.bits.peek().litValue==held);d.io.barrierReady.expect(false.B)}
+        d.io.out.ready.poke(true.B);d.clock.step();d.io.out.ready.poke(false.B)
+        d.io.barrierReady.expect(true.B)
+        t.submit(source,destination,0,advanced=true,equation=14,tag=32)
+        t.expectResult(32,0,TypedAdvancedHslBlendReference.expected(source,destination,3))
+      }
+      info("BLEND_SERVICE_CANCEL beforeChildAdmission=true allRoutesDrained=true heldImmutable=true healthyReuse=true")
+    }
+  }
+
 }
