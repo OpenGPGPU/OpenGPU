@@ -6,7 +6,8 @@ generated GNC/GNX wire layouts (32/48 bytes) and works in kernel and userspace
 code. Its internal result contains the copied GNX words and 64-bit append-read
 telemetry; it is not a new ioctl or device capability.
 
-The caller checks the native opcode, holds the software completion-slot lock,
+The caller verifies the native GNC profile and pending native submission; opcode
+7 also selects legacy ABIs and alone does not guarantee a GNX window. It holds the software completion-slot lock,
 reads the unified status/byte count, and calls
 `opengpu_native_completion_capture` before issuing POP. The helper performs no
 writes. It rejects invalid arguments or a short aperture without probing MMIO,

@@ -89,8 +89,9 @@ static inline int opengpu_native_completion_decode(
     return 1;
 }
 
-/* Caller first checks the native opcode and owns the held slot (including its
- * software lock) through this capture and the subsequent POP. No register is
+/* Caller first verifies the native GNC profile and pending native submission:
+ * opcode 7 is also used by legacy ABIs and alone does not guarantee GNX1.
+ * It owns the held slot and software lock through capture and subsequent POP. No register is
  * written here. Missing apertures/invalid arguments cause no MMIO access; a
  * different completion magic causes only one read. All twelve words, including
  * successful GNX1 identity, must be copied before POP clears their visibility. */
