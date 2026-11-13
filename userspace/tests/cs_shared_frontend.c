@@ -78,7 +78,7 @@ int main(int argc,char **argv)
         void *f=front(argv[1],"full","original");assert(cs_frontend_shared_bytes(f)==16384);
         memory_binding(cs_frontend_tokens(f),0);cs_frontend_destroy(f);return 0;
     }
-    assert(!old_callback_corpus()); /* Original51 callbacks/guards remain intact. */
+    assert(!old_callback_corpus()); /* Original callback/guard corpus remains intact. */
     void *f=front(argv[1],"full","corrected");const void *tokens=cs_frontend_tokens(f);
     assert(cs_frontend_shared_bytes(f)==16384);memory_binding(tokens,TGSI_MEMORY_TYPE_SHARED);
     struct opengpu_cs_shared profile={.base=0x10000000u,.bytes=16384,.lanes=16,
