@@ -41,22 +41,40 @@ requires `contextCleanupObserved:true`; it preserves outputs, one reset and
 the original RAM. Producer VM/PT/ASID backing must survive until its actual
 DUT acknowledgment. Host bookkeeping after this protocol performs no MMIO.
 
-Build from an already prepared and guarded complete model, keeping all paths
-inside the GPU checkout:
+Build from an already prepared and completely generated owner model, keeping
+all paths inside the GPU checkout. The guarded entry never emits or regenerates
+RTL, and rejects missing or stale `generation.json`, MLIR, assertions or shards:
 
 ```sh
-python3 scripts/build_native_flashsim.py --dut-dir "$DUT" --build-dir "$BUILD" \
-  --driver scripts/compute_owner_driver.cpp \
-  --driver-dependency scripts/compute_owner_capture.hpp \
-  --driver-dependency scripts/native_owner_runtime.hpp \
-  --driver-dependency scripts/native_owner_capture.hpp \
-  --driver-dependency driver/gpu_abi.h \
-  --driver-dependency driver/opengpu_formats.h --jobs 1
-"$BUILD/native_product_driver" --probe-profile "$NEW_PROFILE_JSON"
+python3 scripts/prepare_owner_executor.py --stage build --kind compute \
+  --owner-output "$OWNER" --flashsim-dir "$FLASHSIM" --shards 32 --jobs 1
+EXECUTOR="$OWNER/executors/compute/executor"
+QUALIFICATION="$OWNER/executors/compute/qualification.json"
+python3 scripts/prepare_owner_executor.py --stage check --kind compute \
+  --qualification "$QUALIFICATION" --executor "$EXECUTOR"
+"$EXECUTOR" --probe-profile "$NEW_PROFILE_JSON"
 # Start the original producer with that observed profile; wait for its export.
-"$BUILD/native_product_driver" --active-owner "$INPUT_MEMORY" \
+"$EXECUTOR" --active-owner "$INPUT_MEMORY" \
   "$NEW_OUTPUT_DIR" "$SESSION_DIR"
 ```
+
+The checker binds the original 96-word preparation, generated model/toolchain,
+all driver/adapter/ABI/checker sources, compiler identity/options/SDK environment,
+linked shard set, builder snapshot and executable bytes. Native and compute
+have fixed separate driver/dependency lists. Both reuse the same guarded
+`$OWNER/flashsim-build` object cache and retain their own small executables and
+build snapshots, so building the other driver does not invalidate an existing
+executor. Changing its source, actual model, tool or binary does invalidate it.
+A failed new build removes its previous success record before input validation.
+
+The controller must check qualification before probing and again before final
+release authorization. It holds an exclusive flock on `$OWNER/.lock` throughout
+probe, live producer/executor, oracle and final cleanup; builds and product
+qualification use that same lock. Checks are read-only and take no lock.
+Call the checker from its original source checkout, using the generation's
+Python interpreter and CIRCT/loader environment. Copying the checker into a
+different checkout or relaxing tool identity is not supported. The public
+Python entry is `verify_qualification(path, executor=..., kind='compute')`.
 
 CPU protocol tests pass with ASan/UBSan, including delayed real-producer-shaped
 retirement and cleanup, bad transport/identity/telemetry, readonly corruption,
@@ -65,6 +83,7 @@ late RAM mutation and native-codec/GNX rejection. Run:
 ```sh
 OPENGPU_TEST_SANITIZERS=1 PYTHONDONTWRITEBYTECODE=1 \
   python3 -B scripts/test_compute_owner.py
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_prepare_owner_executor.py
 ```
 
 The CPU peer executes no instruction. Actual full-DUT execution, Mesa producer
