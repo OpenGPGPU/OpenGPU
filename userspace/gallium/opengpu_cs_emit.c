@@ -461,6 +461,33 @@ static int source_register(struct build *b, const struct tgsi_full_src_register 
     return source(b, full, component, scratch);
 }
 
+/* A symbolic TEMP is fully represented by expr and is rematerialized on
+ * every use. Its old physical slot is only a hint, never a live value. Keep
+ * the existing direct-load/copy shape, but reacquire any hinted slot before
+ * turning the TEMP back into a resident value. Counter ADDR2 is an independent
+ * persistent owner even when no ordinary TEMP names that register. */
+static unsigned temporary_register(struct build *b, unsigned hint)
+{
+    if (!b->shared) return b->next_reg <= 21 ? b->next_reg++ : 0;
+    uint32_t used = b->counter_address ? UINT32_C(1) << b->counter_address : 0;
+    for (unsigned t = 0; t < CS_TEMPS; ++t)
+        for (unsigned c = 0; c < 4; ++c)
+            if (!b->expr[t][c].kind && b->reg[t][c]) used |= UINT32_C(1) << b->reg[t][c];
+    if (hint >= 2 && hint <= 21 && !(used & (UINT32_C(1) << hint))) return hint;
+    for (unsigned r = 2; r <= 21; ++r) if (!(used & (UINT32_C(1) << r))) return r;
+    return 0;
+}
+
+static int resident_destination(struct build *b, unsigned t, unsigned c)
+{
+    if (b->shared && b->expr[t][c].kind)
+        b->reg[t][c] = temporary_register(b, b->reg[t][c]);
+    else if (!b->reg[t][c])
+        b->reg[t][c] = b->cf ? b->planned[t][c] : temporary_register(b, 0);
+    b->expr[t][c] = (struct shared_expr){0};
+    return b->reg[t][c] ? 0 : -1;
+}
+
 static int destination(struct build *b, const struct tgsi_dst_register *d)
 {
     unsigned c, i = (unsigned)d->Index;
@@ -469,16 +496,7 @@ static int destination(struct build *b, const struct tgsi_dst_register *d)
     /* Results are staged in v26..29 before any temp is overwritten, preserving
      * parallel TGSI writemasks/swizzles even when destination aliases a source. */
     for (c = 0; c < 4; c++) if (d->WriteMask & (1u << c)) {
-        b->expr[i][c] = (struct shared_expr){0};
-        if (!b->reg[i][c]) {
-            if (b->cf) {
-                if (!b->planned[i][c]) return -1;
-                b->reg[i][c] = b->planned[i][c];
-            } else {
-                if (b->next_reg > 21) return -1;
-                b->reg[i][c] = b->next_reg++;
-            }
-        }
+        if (resident_destination(b, i, c)) return -1;
         copy(b, b->reg[i][c], 26 + c);
     }
     return 0;
@@ -520,8 +538,10 @@ static int shared_memory(struct build *b, const struct tgsi_full_instruction *in
      * even when it previously held that address expression. */
     if (!store && d->File == TGSI_FILE_TEMPORARY && d->Index >= 0 &&
         temp < CS_TEMPS && (b->declared[temp] & 1u) &&
-        b->reg[temp][0] >= 2 && b->reg[temp][0] <= 21)
+        b->reg[temp][0] >= 2 && b->reg[temp][0] <= 21) {
+        if (resident_destination(b, temp, 0)) return -1;
         load_reg = b->reg[temp][0];
+    }
     unsigned peer = address.kind == EXPR_PEER, reg = 11 + peer;
     int64_t delta = (int64_t)address.offset - b->shared_address_offset[peer];
     if (!b->shared_address_valid[peer]) {
@@ -829,8 +849,8 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
             i->NumSrcRegs != 1 || d->File != TGSI_FILE_ADDRESS || d->WriteMask != 1 ||
             source(b, &in->Src[0], 0, 22)) return -1;
         if (d->Index == 2 && !b->counter_address) {
-            if (b->next_reg > 21) return -1;
-            b->counter_address = b->next_reg++;
+            b->counter_address = temporary_register(b, 0);
+            if (!b->counter_address) return -1;
         }
         copy(b, d->Index == 2 ? b->counter_address : 30, 22);
         b->address_defined |= 1u << d->Index;
