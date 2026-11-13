@@ -3,6 +3,7 @@
 #include "native_owner_driver.cpp"
 #undef main
 #include <sstream>
+#include <future>
 
 using namespace native_owner;
 template<class F> static void rejects(F action) {
@@ -42,6 +43,19 @@ static std::string encode(const Capture &c) {
   }
   commands(c.finish);return out.str();
 }
+static Retirement retirement_for(const Capture &capture) {
+  Retirement r;r.actions.push_back({Kind::poll,GPU_REG_UCMD_STATUS,GPU_UCMD_STATUS_COMPLETION,GPU_UCMD_STATUS_COMPLETION});
+  for(const auto &c:capture.checks)r.actions.push_back({Kind::check,c.address,c.expected,0xffffffffu});
+  for(uint32_t address:{GPU_REG_UCMD_COMPLETION_BYTES_LO,GPU_REG_UCMD_COMPLETION_BYTES_HI})
+    r.actions.push_back({Kind::check,address,0,0xffffffffu});
+  r.actions.push_back({Kind::write,GPU_REG_UCMD_COMPLETION_POP,1,0});
+  r.actions.push_back({Kind::write,GPU_REG_IRQ,3,0});r.validate();return r;
+}
+static std::string encode(const Retirement &r) {
+  std::ostringstream out;out.write("OGRTR001",8);write_le(out,r.actions.size(),4);
+  for(const auto &a:r.actions){write_le(out,uint32_t(a.kind),4);write_le(out,a.address,4);write_le(out,a.value,4);write_le(out,a.mask,4);}
+  return out.str();
+}
 // A CPU-only control peer injects completion and scratch bytes. It executes no
 // GPU instruction; it tests retirement, record budgets and persistent RAM using
 // the same MMIO/AXI clock service as the real executor.
@@ -58,6 +72,9 @@ public:
   void reset() {
     ++resets;Simulation::reset();model->mmio_enabled=true;
     for(const auto &r:Capture::profile())model->registers[r.address]=r.value;
+    model->registers[GPU_REG_ID]=GPU_ABI_COMPUTE_RESOURCE_VERSION;
+    model->registers[GPU_REG_CAPABILITIES]=GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE;
+    model->registers[GPU_REG_BIN_CAPABILITY_PTR]=GPU_REG_BIN_CAPABILITIES;model->registers[0x320]=128;
   }
   template<class Observe> void step(Agent &agent,uint64_t cycle,Observe observe) {
     bool written=false;Command write{};
@@ -167,6 +184,101 @@ static void missing_source_profile(int argc,char **argv) {
   require(sim.read_addresses==std::vector<uint32_t>({0x360,0x364,0x368}),
     "owner executor probed dependent windows before protected-source presence");
 }
+static void profile_probe(int argc,char **argv) {
+  const std::vector<Capture> captures;
+  Memory memory;ControlPeer sim(argc,argv,memory,captures);sim.reset();
+  sim.model->issue_read=false; // CPU control peer only; no synthetic AXI work.
+  Agent agent(memory);ReplayBus<ControlPeer> bus(sim,agent,1000);
+  const auto profile=probe_profile(sim,agent,bus);
+  require(profile.words.size()==96 && profile.registers.size()==4 && !sim.submitted && sim.resets==1,
+    "profile probe submitted work or lost words");
+  require(sim.read_addresses[0]==GPU_REG_ID && sim.read_addresses[1]==GPU_REG_CAPABILITIES &&
+    sim.read_addresses[2]==0x360 && sim.read_addresses[3]==0x364 && sim.read_addresses[4]==0x368,
+    "profile probe accessed dependent capability windows first");
+  std::ostringstream out;profile_json(out,profile);
+  require(out.str().find("\"schema\":\"opengpu-native-owner-profile-v1\"")!=std::string::npos &&
+    out.str().find("{\"address\":872,\"value\":262143}")!=std::string::npos &&
+    out.str().find("\"gpuExecution\":false")!=std::string::npos,"profile JSON lost actual words or probe scope");
+  for(const auto &r:Capture::profile()) {
+    ControlPeer bad(argc,argv,memory,captures);bad.reset();bad.model->issue_read=false;
+    bad.model->registers[r.address]^=1;Agent peer(memory);ReplayBus<ControlPeer> control(bad,peer,1000);
+    rejects([&]{probe_profile(bad,peer,control);});
+    if(r.address==0x368)require(bad.read_addresses==std::vector<uint32_t>({GPU_REG_ID,GPU_REG_CAPABILITIES,0x360,0x364,0x368}),
+      "rejected source presence still probed other windows");
+  }
+  for(uint32_t address:{GPU_REG_ID,GPU_REG_CAPABILITIES,GPU_REG_BIN_CAPABILITY_PTR,0x320}) {
+    ControlPeer bad(argc,argv,memory,captures);bad.reset();bad.model->issue_read=false;
+    bad.model->registers[address]=0;Agent peer(memory);ReplayBus<ControlPeer> control(bad,peer,1000);
+    rejects([&]{probe_profile(bad,peer,control);});
+  }
+  // Unexpected real external-memory work cannot be called profile-only.
+  ControlPeer work(argc,argv,memory,captures);work.reset();Agent busy(memory);
+  ReplayBus<ControlPeer> active(work,busy,1000);rejects([&]{probe_profile(work,busy,active);});
+}
+static void active_series(int argc,char **argv) {
+  auto a=fixture(),b=a;a.finish.clear();b.finish.clear();
+  for(Capture *c:{&a,&b}) {
+    c->discovery.push_back({GPU_REG_ID,GPU_ABI_COMPUTE_RESOURCE_VERSION});
+    c->discovery.push_back({GPU_REG_CAPABILITIES,GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE});
+    c->discovery.push_back({GPU_REG_BIN_CAPABILITY_PTR,GPU_REG_BIN_CAPABILITIES});c->discovery.push_back({0x320,128});
+    c->validate(true);
+  }
+  rejects([&]{a.validate();});auto bad=a;bad.finish={{GPU_REG_UCMD_COMPLETION_POP,1}};rejects([&]{bad.validate(true);});
+  a.writable={{0x2000,0x2040}};b.writable={{0x3000,0x3040}};
+  b.command_id=42;b.trace[11].value=42;b.checks[0].expected=0x872a;
+  const std::vector<Capture> captures{a,b};Memory memory;memory.ranges={{0x1000,0x4000,0xa7}};
+  ControlPeer sim(argc,argv,memory,captures);sim.reset();sim.model->issue_read=false;
+  Agent agent(memory);ReplayBus<ControlPeer> bus(sim,agent,100000);std::ostringstream report;
+  const auto base=std::filesystem::path(std::getenv("TMPDIR"))/"active-owner";
+  require(std::filesystem::create_directory(base),"cannot create active CPU test directory");
+  const auto output=base/"output";std::filesystem::create_directory(output);
+  auto producer=std::async(std::launch::async,[&] {
+    for(unsigned n=0;n<2;n++) {
+      const auto stem="record-"+std::to_string(n);
+      wait_input(base/(stem+".held.json"),base,std::chrono::seconds(5));
+      std::ifstream held(base/(stem+".held.json"));std::string json((std::istreambuf_iterator<char>(held)),{});
+      require(json.find("\"phase\":\"held\"")!=std::string::npos && json.find("retired")==std::string::npos,
+        "held receipt falsely claims retirement");
+      atomic_json(base/(stem+".retire"),[&](auto &out){out<<encode(retirement_for(captures[n]));});
+      wait_input(base/(stem+".retired.json"),base,std::chrono::seconds(5));
+      if(!n)atomic_json(base/"record-1.capture",[&](auto &out){out<<encode(b);});
+    }
+  });
+  try {active_records(sim,agent,bus,memory,output,base,a,2,report,std::chrono::seconds(5));}
+  catch(...){producer.get();std::filesystem::remove_all(base);throw;}
+  producer.get();
+  require(sim.resets==1 && sim.submitted==2 && memory.byte(0x2000)==0x51 && memory.byte(0x3000)==0x52,
+    "active handshake reset, replaced RAM or failed to execute both records");
+  const auto first=Memory::read((output/"record-0.memory").string()),second=Memory::read((output/"record-1.memory").string());
+  require(first.byte(0x2000)==0x51 && first.byte(0x3000)==0xa7 && second.byte(0x2000)==0x51 && second.byte(0x3000)==0x52,
+    "active per-record output memories lost prior outputs");
+  require(report.str().find("\"phase\":\"retired\"")!=std::string::npos,"active final receipts were not retired");
+  rejects([&]{atomic_json(base/"record-0.held.json",[](auto &out){out<<"stale";});});
+  std::ofstream(base/"error")<<"driver failure";
+  rejects([&]{wait_input(base/"missing",base,std::chrono::seconds(5));});
+  std::filesystem::remove(base/"error");
+  rejects([&]{wait_input(base/"missing",base,std::chrono::milliseconds(1));});
+  std::filesystem::remove_all(base);
+}
+static void retirement_parser() {
+  const auto original=retirement_for(fixture());const auto wire=encode(original);
+  std::istringstream input(wire);require(Retirement::read(input).actions.size()==original.actions.size(),"lost retirement actions");
+  for(unsigned n=0;n<original.actions.size();n++) {
+    auto bad=original;bad.actions.erase(bad.actions.begin()+n);
+    // Every read, the unique POP and the completion witness are mandatory;
+    // acknowledging the IRQ can be omitted by this wire contract.
+    if(n+1!=original.actions.size())rejects([&]{bad.validate();});
+  }
+  auto bad=original;bad.actions.push_back({Kind::write,GPU_REG_UCMD_COMPLETION_POP,1,0});rejects([&]{bad.validate();});
+  bad=original;bad.actions.push_back({Kind::check,0x180,0x474e5801,0xffffffffu});rejects([&]{bad.validate();});
+  bad=original;bad.actions[1].mask=0xff;bad.actions[1].value&=0xff;rejects([&]{bad.validate();});
+  for(uint32_t address:{GPU_REG_UCMD_SUBMIT,GPU_REG_UCMD_RESET,GPU_REG_UCMD_TLB_FLUSH}) {
+    bad=original;bad.actions.push_back({Kind::write,address,1,0});rejects([&]{bad.validate();});
+  }
+  bad=original;bad.actions[0].kind=Kind(4);rejects([&]{bad.validate();});
+  for(size_t size:{size_t(0),size_t(8),wire.size()-1}) {std::istringstream truncated(wire.substr(0,size));rejects([&]{Retirement::read(truncated);});}
+  std::istringstream trailing(wire+"x");rejects([&]{Retirement::read(trailing);});
+}
 int main() {
   const auto c=fixture();
   require(c.discovery.size()==96,"complete native capture requires all 96 mandatory discovery words");
@@ -242,5 +354,7 @@ int main() {
   unstable_completion(argc,argv);
   actual_observations(argc,argv);unstable_append_telemetry(argc,argv);
   missing_source_profile(argc,argv);
+  profile_probe(argc,argv);
+  retirement_parser();active_series(argc,argv);
   std::cout<<"native owner capture CPU protocol/guard checks: PASS\n";
 }

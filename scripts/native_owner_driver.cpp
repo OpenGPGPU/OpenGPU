@@ -3,9 +3,11 @@
 #include "native_owner_capture.hpp"
 #include "native_host_simulation.hpp"
 #include <array>
+#include <chrono>
 #include <filesystem>
 #include <iostream>
 #include <limits>
+#include <thread>
 
 #ifdef OPENGPU_FLASHSIM_NATIVE
 static_assert(GpuHostSystemAxiDut::assertion_count > 0,"assertion-free owner replay DUT");
@@ -89,14 +91,56 @@ struct RecordResult {
   std::array<uint32_t,12> gnx{};
   bool held_irq_asserted=false, retired_irq_asserted=false, external_drained=false;
 };
+struct ProfileObservation {std::vector<Command> words,registers;};
 template<class Sim>
-RecordResult replay_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
-                          Memory &memory,const Capture &capture) {
-  capture.validate();
+ProfileObservation probe_profile(Sim &sim,Agent &agent,ReplayBus<Sim> &bus) {
+  ProfileObservation observed;
+  const auto id=bus.read(GPU_REG_ID),caps=bus.read(GPU_REG_CAPABILITIES);
+  const uint32_t required_caps=GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE;
+  require((id&0xffffu)>=GPU_ABI_COMPUTE_RESOURCE_VERSION && (caps&required_caps)==required_caps,
+    "profile probe requires a protected unified-command ABI");
+  observed.registers={{GPU_REG_ID,id},{GPU_REG_CAPABILITIES,caps}};
+  // The first three reads establish GCR presence/version/protected sources.
+  // Never probe dependent GUC/GNC/GSE windows after a rejected prerequisite.
+  for(const auto &required:Capture::profile()) {
+    const auto value=bus.read(required.address);
+    require(value==required.value,"actual DUT lacks the complete native source profile");
+    observed.words.push_back({required.address,value});
+  }
+  const auto pointer=bus.read(GPU_REG_BIN_CAPABILITY_PTR),quota=bus.read(0x320);
+  require(pointer==GPU_REG_BIN_CAPABILITIES && quota,"profile probe lacks native discovery/live quota");
+  observed.registers.push_back({GPU_REG_BIN_CAPABILITY_PTR,pointer});observed.registers.push_back({0x320,quota});
+  require(!(bus.read(GPU_REG_UCMD_STATUS)&GPU_UCMD_STATUS_COMPLETION) && !sim.model->io_m_irq,
+    "profile-only probe encountered an active completion");
+  require(agent.drained() && !agent.traffic.reads && !agent.traffic.writes,
+    "profile-only probe encountered external memory work");
+  return observed;
+}
+inline void profile_json(std::ostream &out,const ProfileObservation &profile) {
+  out<<"{\"schema\":\"opengpu-native-owner-profile-v1\",\"words\":[";
+  const auto &words=profile.words;
+  for(size_t n=0;n<words.size();++n)
+    out<<(n?",":"")<<"{\"address\":"<<words[n].address<<",\"value\":"<<words[n].value<<"}";
+  out<<"],\"registers\":[";
+  for(size_t n=0;n<profile.registers.size();++n)
+    out<<(n?",":"")<<"{\"address\":"<<profile.registers[n].address<<",\"value\":"<<profile.registers[n].value<<"}";
+  out<<"],\"resetCount\":1,\"sourceQualificationRequired\":true,\"gpuExecution\":false,"
+    "\"clockQualified\":false,\"fpsQualified\":false}\n";
+}
+struct HeldRecord {
+  RecordResult result;
+  Memory initial;
+  Traffic start_traffic,completed;
+  uint64_t start_cycles;
+};
+template<class Sim>
+HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
+                       Memory &memory,const Capture &capture,bool prefix_only=false) {
+  capture.validate(prefix_only);
   require(agent.drained() && !sim.model->io_m_irq,"owner record starts before prior retirement/drain");
-  const Memory initial=memory;
-  verify_readonly(initial,memory,capture.writable);
-  const auto start_cycles=bus.cycles;const auto start_traffic=agent.traffic;
+  HeldRecord held_record;held_record.initial=memory;
+  verify_readonly(held_record.initial,memory,capture.writable);
+  held_record.start_cycles=bus.cycles;held_record.start_traffic=agent.traffic;
   bus.begin_record(capture.max_cycles);
   // GCR's explicit protected-source presence guarantee must be checked before
   // probing GUC/GSE/GNC. A standalone GNP host need not map those windows.
@@ -112,7 +156,7 @@ RecordResult replay_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
   require(agent.drained(),"native completion preceded external memory drain");
   const auto completed=agent.traffic;
   const auto completion=bus.read(GPU_REG_UCMD_COMPLETION);
-  RecordResult result;result.completion=completion;
+  auto &result=held_record.result;result.completion=completion;
   result.held_status=bus.read(GPU_REG_UCMD_STATUS);
   result.held_irq=bus.read(GPU_REG_IRQ);result.held_irq_asserted=bool(sim.model->io_m_irq);
   const auto append_lo=bus.read(GPU_REG_UCMD_COMPLETION_BYTES_LO);
@@ -137,28 +181,57 @@ RecordResult replay_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
     "held native completion status, IRQ or append telemetry changed");
   require(sim.model->io_m_irq,"native completion IRQ disappeared before retirement");
   traffic_unchanged(completed,agent.traffic);
-  for(const auto &w:capture.finish)bus.write(w.address,w.value);
+  verify_readonly(held_record.initial,memory,capture.writable);
+  held_record.completed=completed;result.external_drained=agent.drained();
+  result.cycles=bus.cycles-held_record.start_cycles;
+  result.read_bytes=agent.traffic.read_bus_bytes-held_record.start_traffic.read_bus_bytes;
+  result.write_bytes=agent.traffic.write_bus_bytes-held_record.start_traffic.write_bus_bytes;
+  return held_record;
+}
+template<class Sim>
+RecordResult retire_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
+    Memory &memory,const Capture &capture,HeldRecord &held_record,const Retirement *retirement=nullptr) {
+  require(sim.model->io_m_irq && agent.drained(),"driver retirement lost held completion ownership");
+  traffic_unchanged(held_record.completed,agent.traffic);
+  auto &result=held_record.result;
+  if(retirement){retirement->validate();for(const auto &a:retirement->actions)bus.action(a);}
+  else {capture.validate();for(const auto &w:capture.finish)bus.write(w.address,w.value);}
   result.retired_status=bus.read(GPU_REG_UCMD_STATUS);
   require(!(result.retired_status&GPU_UCMD_STATUS_COMPLETION),"native completion POP did not retire the slot");
   for(unsigned n=0;n<8;++n)bus.step();
   result.retired_irq=bus.read(GPU_REG_IRQ);result.retired_irq_asserted=bool(sim.model->io_m_irq);
-  traffic_unchanged(completed,agent.traffic);
+  traffic_unchanged(held_record.completed,agent.traffic);
   require(agent.drained() && !agent.traffic.read_faults && !agent.traffic.write_faults,
     "owner replay faulted or left external traffic");
   require(!sim.model->io_m_irq,"native completion retirement left an asserted IRQ");
-  verify_readonly(initial,memory,capture.writable);
-  result.cycles=bus.cycles-start_cycles;
-  result.read_bytes=agent.traffic.read_bus_bytes-start_traffic.read_bus_bytes;
-  result.write_bytes=agent.traffic.write_bus_bytes-start_traffic.write_bus_bytes;
+  verify_readonly(held_record.initial,memory,capture.writable);
+  result.cycles=bus.cycles-held_record.start_cycles;
+  result.read_bytes=agent.traffic.read_bus_bytes-held_record.start_traffic.read_bus_bytes;
+  result.write_bytes=agent.traffic.write_bus_bytes-held_record.start_traffic.write_bus_bytes;
   result.external_drained=agent.drained();return result;
 }
-inline void report_record(const RecordResult &r,size_t index,uint32_t command_id,uint64_t cycles) {
-  std::cout<<"{\"ownerReplay\":true,\"record\":"<<index<<",\"commandId\":"<<command_id
+template<class Sim>
+RecordResult replay_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,const Capture &capture) {
+  auto held=hold_record(sim,agent,bus,memory,capture);
+  return retire_record(sim,agent,bus,memory,capture,held);
+}
+inline void held_json(std::ostream &out,const RecordResult &r,size_t index,uint32_t command_id) {
+  out<<"{\"phase\":\"held\",\"record\":"<<index<<",\"commandId\":"<<command_id
+    <<",\"completion\":"<<r.completion<<",\"gnx\":[";
+  for(size_t n=0;n<r.gnx.size();++n)out<<(n?",":"")<<r.gnx[n];
+  out<<"],\"appendReadBytes\":"<<r.append_read_bytes
+    <<",\"heldStatus\":"<<r.held_status<<",\"heldIrq\":"<<r.held_irq
+    <<",\"heldIrqAsserted\":"<<(r.held_irq_asserted?"true":"false")
+    <<",\"heldCompletionDrained\":"<<(r.external_drained?"true":"false")
+    <<",\"sourceQualificationRequired\":true,\"readOnlyGuards\":true}\n";
+}
+inline void report_record(const RecordResult &r,size_t index,uint32_t command_id,uint64_t cycles,std::ostream &out=std::cout) {
+  out<<"{\"phase\":\"retired\",\"ownerReplay\":true,\"record\":"<<index<<",\"commandId\":"<<command_id
     <<",\"serviceCycles\":"<<r.cycles<<",\"cumulativeServiceCycles\":"<<cycles
     <<",\"readBusBytes\":"<<r.read_bytes<<",\"writeBusBytes\":"<<r.write_bytes
     <<",\"completion\":"<<r.completion<<",\"gnx\":[";
-  for(size_t n=0;n<r.gnx.size();++n)std::cout<<(n?",":"")<<r.gnx[n];
-  std::cout<<"],\"appendReadBytes\":"<<r.append_read_bytes
+  for(size_t n=0;n<r.gnx.size();++n)out<<(n?",":"")<<r.gnx[n];
+  out<<"],\"appendReadBytes\":"<<r.append_read_bytes
     <<",\"heldStatus\":"<<r.held_status<<",\"heldIrq\":"<<r.held_irq
     <<",\"heldIrqAsserted\":"<<(r.held_irq_asserted?"true":"false")
     <<",\"retiredStatus\":"<<r.retired_status<<",\"retiredIrq\":"<<r.retired_irq
@@ -168,11 +241,88 @@ inline void report_record(const RecordResult &r,size_t index,uint32_t command_id
       "\"readOnlyGuards\":true,\"independentImagesRequired\":true,"
       "\"sourceQualificationRequired\":true,\"clockQualified\":false,\"fpsQualified\":false}\n";
 }
+template<class Write>
+void atomic_json(const std::filesystem::path &path,Write write) {
+  auto temporary=path;temporary+=".tmp";
+  require(!std::filesystem::exists(path) && !std::filesystem::exists(temporary),"active response already exists");
+  try {
+    std::ofstream out(temporary,std::ios::binary);require(bool(out),"cannot create active response");
+    write(out);out.close();require(bool(out),"cannot write active response");
+    std::filesystem::rename(temporary,path);
+  }catch(...){std::filesystem::remove(temporary);throw;}
+}
+inline void wait_input(const std::filesystem::path &path,const std::filesystem::path &session,
+                       std::chrono::milliseconds timeout=std::chrono::minutes(5)) {
+  require(!std::filesystem::exists(session/"error"),"original driver session reported an error");
+  const auto deadline=std::chrono::steady_clock::now()+timeout;
+  while(!std::filesystem::exists(path)) {
+    require(!std::filesystem::exists(session/"error"),"original driver session reported an error");
+    require(std::chrono::steady_clock::now()<deadline,"original driver session response timed out");
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  require(!std::filesystem::exists(session/"error"),"original driver session reported an error");
+  require(std::filesystem::is_regular_file(path) && !std::filesystem::is_symlink(path),"active input is not a regular file");
+}
+inline void match_profile(const Capture &capture,const ProfileObservation &profile) {
+  std::map<uint32_t,uint32_t> words;
+  for(const auto &word:capture.discovery)words.emplace(word.address,word.value);
+  for(const auto &word:profile.registers) {
+    const auto at=words.find(word.address);
+    require(at!=words.end() && at->second==word.value,"active capture differs from actual probe identity/quota");
+  }
+}
+template<class Sim>
+void active_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
+    const std::filesystem::path &output,const std::filesystem::path &session,
+    const Capture &first,uint64_t count,std::ostream &report=std::cout,
+    std::chrono::milliseconds response_timeout=std::chrono::minutes(5)) {
+  const auto profile=probe_profile(sim,agent,bus);
+  for(uint64_t n=0;n<count;n++) {
+    const auto stem="record-"+std::to_string(n);
+    if(n)wait_input(session/(stem+".capture"),session,response_timeout);
+    const auto capture=n?Capture::read((session/(stem+".capture")).string(),true):first;
+    match_profile(capture,profile);verify_readonly(memory,memory,capture.writable);
+    auto held=hold_record(sim,agent,bus,memory,capture,true);
+    atomic_json(session/(stem+".held.json"),[&](auto &out){held_json(out,held.result,n,capture.command_id);});
+    wait_input(session/(stem+".retire"),session,response_timeout);
+    const auto retirement=Retirement::read((session/(stem+".retire")).string());
+    const auto result=retire_record(sim,agent,bus,memory,capture,held,&retirement);
+    memory.write((output/(stem+".memory")).string());
+    atomic_json(session/(stem+".retired.json"),[&](auto &out){report_record(result,n,capture.command_id,bus.cycles,out);});
+    report_record(result,n,capture.command_id,bus.cycles,report);
+  }
+}
 } // namespace native_owner
 
 int main(int argc,char **argv) {
   try {
     using namespace native_owner;
+    if(argc>1 && std::string(argv[1])=="--probe-profile") {
+      require(argc==3,"usage: native_owner_driver --probe-profile NEW_OUTPUT.json");
+      require(!std::filesystem::exists(argv[2]),"profile output already exists");
+      Memory memory;Simulation sim(argc,argv);sim.reset();Agent agent(memory);
+      ReplayBus<Simulation> bus(sim,agent,100000);
+      const auto words=probe_profile(sim,agent,bus);
+      std::ofstream output(argv[2],std::ios::binary);require(bool(output),"cannot create profile output");
+      profile_json(output,words);output.close();require(bool(output),"cannot write profile output");
+      sim.model->final();return 0;
+    }
+    if(argc>1 && std::string(argv[1])=="--active-series") {
+      require(argc==6,"usage: native_owner_driver --active-series UNION.memory NEW_OUTPUT_DIR SESSION_DIR COUNT");
+      size_t used=0;const auto count=std::stoull(argv[5],&used);
+      require(used==std::string(argv[5]).size() && count>=2 && count<=0xffffffffu,"invalid active record count");
+      const std::filesystem::path output=argv[3],session=argv[4];
+      require(std::filesystem::is_directory(session) && !std::filesystem::is_symlink(session),"invalid active session directory");
+      require(!std::filesystem::exists(output),"owner replay output already exists");
+      Memory memory=Memory::read(argv[2]);
+      wait_input(session/"record-0.capture",session);
+      auto first=Capture::read((session/"record-0.capture").string(),true);
+      verify_readonly(memory,memory,first.writable);
+      require(std::filesystem::create_directory(output),"cannot create active output directory");
+      Simulation sim(argc,argv);sim.reset();Agent agent(memory);ReplayBus<Simulation> bus(sim,agent,100000);
+      active_records(sim,agent,bus,memory,output,session,first,count);
+      sim.model->final();return 0;
+    }
     const bool series=argc>1 && std::string(argv[1])=="--series";
     require(series?argc>=6:argc==4,
       "usage: native_owner_driver INPUT.memory INPUT.capture OUTPUT.memory | --series INPUT.memory OUTPUT_DIR CAPTURE... (at least two)");
