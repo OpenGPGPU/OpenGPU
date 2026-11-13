@@ -138,11 +138,14 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
             "compile-" + source.stem)
         objects.append(obj)
     if graphics_uniforms:
-        source = ROOT / "userspace/gallium/opengpu_native_uniform_emit.c"
-        obj = out / "opengpu_native_uniform_emit.o"
-        run(cc + common + inc + san + ["-MMD", "-MF", obj.with_suffix(".d"), "-c", source, "-o", obj],
-            "compile-opengpu_native_uniform_emit")
-        objects.append(obj)
+        for relative in ("userspace/gallium/opengpu_native_uniform_emit.c",
+                         "userspace/gallium/opengpu_native_graphics.c",
+                         "userspace/opengpu_native_runtime.c", "driver/opengpu_native_frame.c"):
+            source = ROOT / relative
+            obj = out / (source.stem + ".o")
+            run(cc + common + inc + san + ["-MMD", "-MF", obj.with_suffix(".d"), "-c", source, "-o", obj],
+                "compile-" + source.stem)
+            objects.append(obj)
     obj = out / "cs_glsl_frontend.o"
     run(cxx + configured_flags("compiler/glsl/standalone.cpp") + ["-UNDEBUG", "-Wall", "-Wextra", "-Werror",
         "-Wno-unused-parameter", "-I" + str(mesa / "src/compiler/nir"), "-I" + str(mb / "src/compiler/nir")] +

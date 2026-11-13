@@ -60,6 +60,20 @@ int opengpu_native_layout(int fd, uint64_t *value)
     return 0;
 }
 
+int opengpu_native_caps(int fd, uint32_t words[OPENGPU_PARAM_NATIVE_CAPS_WORDS])
+{
+    uint32_t result[OPENGPU_PARAM_NATIVE_CAPS_WORDS];
+    if (!words) { errno = EINVAL; return -1; }
+    for (unsigned i = 0; i < OPENGPU_PARAM_NATIVE_CAPS_WORDS; i++) {
+        struct drm_opengpu_param param = { .param = OPENGPU_PARAM_NATIVE_CAPS_BASE + i };
+        if (ioctl(fd, DRM_IOCTL_OPENGPU_GET_PARAM, &param) < 0) return -1;
+        if (param.value > UINT32_MAX) { errno = EPROTO; return -1; }
+        result[i] = (uint32_t)param.value;
+    }
+    memcpy(words,result,sizeof(result));
+    return 0;
+}
+
 int opengpu_compute_local_limits(int fd, uint32_t *items, uint32_t *axis)
 {
     struct drm_opengpu_param count = { .param = OPENGPU_PARAM_COMPUTE_LOCAL_ITEMS };
