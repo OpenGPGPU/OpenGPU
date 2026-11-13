@@ -209,8 +209,123 @@ static int opengpu_hw_enable_mmu(struct opengpu_device *gpu, dma_addr_t root)
 static bool snapshot_alloc_fail;
 #define kvcalloc(n, s, flags) (snapshot_alloc_fail ? NULL : calloc((n), (s)))
 #define kvfree(p) free(p)
-#define dma_wmb() (++barriers)
+static void fixture_dma_wmb(void)
+{
+    ++barriers;
+#ifdef OPENGPU_MMU_TEST_DMA_WMB
+    OPENGPU_MMU_TEST_DMA_WMB();
+#endif
+}
+#define dma_wmb() fixture_dma_wmb()
 #include "../opengpu_mmu.c"
+
+/* Caller serializes MMU mutation. Report complete real allocations, including
+ * all bytes of a larger table buffer; never synthesize or truncate PTE pages.
+ * This also works from a dma_wmb hook while the production MMU lock is held. */
+typedef int (*fixture_pte_page_visitor)(void *, dma_addr_t, const void *, size_t);
+static int fixture_visit_pte_buffer(const struct opengpu_buffer *buffer,
+                                   fixture_pte_page_visitor visit, void *opaque)
+{
+    if (!buffer->cpu)
+        return buffer->size ? -EINVAL : 0;
+    if (buffer->size < MMU_PAGE_SIZE ||
+        (buffer->size & (MMU_PAGE_SIZE - 1)) ||
+        (buffer->dma & (MMU_PAGE_SIZE - 1)) ||
+        (u64)buffer->size > (1ULL << 32) ||
+        (u64)buffer->dma > (1ULL << 32) - (u64)buffer->size)
+        return -EINVAL;
+    return visit(opaque, buffer->dma, buffer->cpu, buffer->size);
+}
+static __attribute__((unused)) int fixture_mmu_visit_pte_pages(
+    const struct opengpu_device *gpu, fixture_pte_page_visitor visit, void *opaque)
+{
+    const struct opengpu_vm *vm;
+    u32 i;
+    int ret;
+
+    if (!gpu || !visit || gpu->mmu.l1_count > OPENGPU_MMU_MAX_TABLES)
+        return -EINVAL;
+    ret = fixture_visit_pte_buffer(&gpu->mmu.root, visit, opaque);
+    if (ret)
+        return ret;
+    for (i = 0; i < gpu->mmu.l1_count; ++i) {
+        ret = fixture_visit_pte_buffer(&gpu->mmu.l1[i], visit, opaque);
+        if (ret)
+            return ret;
+    }
+    for (vm = gpu->mmu.vms; vm; vm = vm->next) {
+        if (vm->l1_count > OPENGPU_VM_MAX_TABLES)
+            return -EINVAL;
+        ret = fixture_visit_pte_buffer(&vm->root, visit, opaque);
+        if (ret)
+            return ret;
+        for (i = 0; i < vm->l1_count; ++i) {
+            ret = fixture_visit_pte_buffer(&vm->l1[i], visit, opaque);
+            if (ret)
+                return ret;
+        }
+    }
+    return 0;
+}
+
+struct fixture_pte_visit_check {
+    const struct opengpu_buffer **expected;
+    size_t count, seen, bytes;
+    int fail_at;
+};
+static int fixture_check_pte_page(void *opaque, dma_addr_t physical,
+                                const void *bytes, size_t size)
+{
+    struct fixture_pte_visit_check *check = opaque;
+    const struct opengpu_buffer *expected;
+    assert(check->seen < check->count);
+    expected = check->expected[check->seen];
+    assert(physical == expected->dma && bytes == expected->cpu);
+    assert(size == expected->size);
+    /* Independent endpoint guards catch a cropped multi-page allocation. */
+    assert(((const u32 *)bytes)[0] == 0x10203040u + check->seen);
+    assert(((const u32 *)bytes)[size / sizeof(u32) - 1] ==
+           0x50607080u + check->seen);
+    check->bytes += size;
+    return (int)check->seen++ == check->fail_at ? -EIO : 0;
+}
+static void fixture_test_pte_visitor(void)
+{
+    struct opengpu_device gpu = {0};
+    struct opengpu_vm first = {0}, second = {0};
+    const struct opengpu_buffer *buffers[] = {
+        &gpu.mmu.root, &gpu.mmu.l1[0], &first.root, &first.l1[0],
+        &second.root, &second.l1[0]
+    };
+    struct fixture_pte_visit_check check = {buffers, 6, 0, 0, -1};
+    unsigned i;
+
+    gpu.mmu.l1_count = first.l1_count = second.l1_count = 1;
+    gpu.mmu.vms = &first;
+    first.next = &second;
+    for (i = 0; i < 6; ++i) {
+        struct opengpu_buffer *buffer = (struct opengpu_buffer *)buffers[i];
+        assert(!opengpu_buffer_alloc(&gpu, buffer,
+                                    i ? MMU_PAGE_SIZE : 32768));
+        ((u32 *)buffer->cpu)[0] = 0x10203040u + i;
+        ((u32 *)buffer->cpu)[buffer->size / sizeof(u32) - 1] =
+            0x50607080u + i;
+    }
+    assert(!fixture_mmu_visit_pte_pages(&gpu, fixture_check_pte_page, &check));
+    assert(check.seen == 6 && check.bytes == 32768 + 5 * MMU_PAGE_SIZE);
+    check.seen = check.bytes = 0;
+    check.fail_at = 3;
+    assert(fixture_mmu_visit_pte_pages(&gpu, fixture_check_pte_page, &check) == -EIO);
+    assert(check.seen == 4);
+    check.seen = check.bytes = 0;
+    check.fail_at = -1;
+    second.l1_count = OPENGPU_VM_MAX_TABLES + 1;
+    assert(fixture_mmu_visit_pte_pages(&gpu, fixture_check_pte_page, &check) == -EINVAL);
+    second.l1_count = 1;
+    assert(fixture_mmu_visit_pte_pages(&gpu, NULL, &check) == -EINVAL);
+    for (i = 0; i < 6; ++i)
+        opengpu_buffer_free(&gpu, (struct opengpu_buffer *)buffers[i]);
+}
 
 static int verify_snapshot(struct opengpu_device *gpu, const struct opengpu_vm *vm,
                            dma_addr_t va, dma_addr_t pa, size_t size)
@@ -1077,6 +1192,7 @@ int main(void)
     gpu.hw.capabilities=0;
     assert(opengpu_mmu_vm_create(&gpu,&after_shutdown)==-EOPNOTSUPP && !live_allocations);
     opengpu_mmu_fini(&gpu);
+    fixture_test_pte_visitor();
     assert(!live_allocations && !fixture_buffers);
     puts("MMU allocation, rollback, range and lock-scope tests passed");
     return 0;
