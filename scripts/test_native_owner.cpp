@@ -56,6 +56,14 @@ static std::string encode(const Retirement &r) {
   for(const auto &a:r.actions){write_le(out,uint32_t(a.kind),4);write_le(out,a.address,4);write_le(out,a.value,4);write_le(out,a.mask,4);}
   return out.str();
 }
+static std::string encode(const Cleanup &c) {
+  std::ostringstream out;out.write("OGCLN001",8);write_le(out,c.actions.size(),4);
+  for(const auto &a:c.actions){write_le(out,uint32_t(a.kind),4);write_le(out,a.address,4);write_le(out,a.value,4);write_le(out,a.mask,4);}
+  return out.str();
+}
+static void memory_word(Memory &memory,uint64_t address,uint32_t value) {
+  for(unsigned n=0;n<4;n++)memory.byte(address+n,uint8_t(value>>(8*n)));
+}
 // A CPU-only control peer injects completion and scratch bytes. It executes no
 // GPU instruction; it tests retirement, record budgets and persistent RAM using
 // the same MMIO/AXI clock service as the real executor.
@@ -226,7 +234,7 @@ static void profile_probe(int argc,char **argv) {
   ControlPeer work(argc,argv,memory,captures);work.reset();Agent busy(memory);
   ReplayBus<ControlPeer> active(work,busy,1000);rejects([&]{probe_profile(work,busy,active);});
 }
-static void active_series(int argc,char **argv) {
+static void active_series(int argc,char **argv,bool cleanup=false) {
   auto a=fixture(),b=a;a.finish.clear();b.finish.clear();
   for(Capture *c:{&a,&b}) {
     c->discovery.push_back({GPU_REG_ID,GPU_ABI_COMPUTE_RESOURCE_VERSION});
@@ -238,10 +246,19 @@ static void active_series(int argc,char **argv) {
   rejects([&]{a.validate();});auto bad=a;bad.finish={{GPU_REG_UCMD_COMPLETION_POP,1}};rejects([&]{bad.validate(true);});
   a.writable={{0x2000,0x2040}};b.writable={{0x3000,0x3040}};
   b.command_id=42;b.trace[11].value=42;b.checks[0].expected=0x872a;
-  const std::vector<Capture> captures{a,b};Memory memory;memory.ranges={{0x1000,0x4000,0xa7}};
+  Memory memory;memory.ranges={{0x1000,cleanup?0x7000u:0x4000u,0xa7}};
+  if(cleanup) {
+    // Explicit CPU protocol page tables; this peer executes no GPU shader.
+    for(uint64_t address=0x1000;address<0x2000;address+=4)memory_word(memory,address,0);
+    for(Capture *c:{&a,&b})c->trace[9].value=c->trace[10].value=0x80400001;
+    b.trace[13].value=0x1001000;b.trace[15].value=0x1001200;
+    memory_word(memory,0x1010,0x801);memory_word(memory,0x2000,0x1403);memory_word(memory,0x2004,0x1803);
+    a.writable={{0x3000,0x3040}};b.writable={{0x4000,0x4040}};
+  }
+  const std::vector<Capture> captures{a,b};
   ControlPeer sim(argc,argv,memory,captures);sim.reset();sim.model->issue_read=false;
   Agent agent(memory);ReplayBus<ControlPeer> bus(sim,agent,100000);std::ostringstream report;
-  const auto base=std::filesystem::path(std::getenv("TMPDIR"))/"active-owner";
+  const auto base=std::filesystem::path(std::getenv("TMPDIR"))/(cleanup?"active-owner-cleanup":"active-owner");
   require(std::filesystem::create_directory(base),"cannot create active CPU test directory");
   const auto output=base/"output";std::filesystem::create_directory(output);
   auto producer=std::async(std::launch::async,[&] {
@@ -255,15 +272,42 @@ static void active_series(int argc,char **argv) {
       wait_input(base/(stem+".retired.json"),base,std::chrono::seconds(5));
       if(!n)atomic_json(base/"record-1.capture",[&](auto &out){out<<encode(b);});
     }
+    if(cleanup) {
+      atomic_json(base/"cleanup.begin",[](auto &out){out.write("OGCLB001",8);write_le(out,2,4);});
+      for(unsigned n=0;n<2;n++) {
+        Cleanup batch;batch.actions={{Kind::pte_clear,0x2000+4*n,0,n?0x1803u:0x1403u},
+          {Kind::write,GPU_REG_UCMD_TLB_FLUSH,GPU_TLB_FLUSH_ASID|(1u<<GPU_TLB_FLUSH_ASID_SHIFT),0}};
+        batch.validate();const auto stem="cleanup-"+std::to_string(n);
+        atomic_json(base/(stem+".trace"),[&](auto &out){out<<encode(batch);});
+        wait_input(base/(stem+".observed"),base,std::chrono::seconds(5));
+        std::ifstream ack(base/(stem+".observed"),std::ios::binary);magic(ack,"OGCLA001");
+        require(read_le(ack,4)==n && read_le(ack,4)==GPU_UCMD_STATUS_READY &&
+          read_le(ack,4)==GPU_IRQ_ENABLE && !read_le(ack,4) && read_le(ack,4)==1 && ack.peek()==EOF,
+          "cleanup acknowledged expected rather than actual idle state");
+      }
+      atomic_json(base/"cleanup.done",[](auto &out){out.write("OGCLD001",8);write_le(out,2,4);});
+    }
   });
-  try {active_records(sim,agent,bus,memory,output,base,a,2,report,std::chrono::seconds(5));}
+  PtePages pte;
+  try {
+    active_records(sim,agent,bus,memory,output,base,a,2,report,std::chrono::seconds(5),cleanup?&pte:nullptr);
+    if(cleanup)cleanup_records(sim,agent,bus,memory,base,pte,2,std::chrono::seconds(5));
+  }
   catch(...){producer.get();std::filesystem::remove_all(base);throw;}
   producer.get();
-  require(sim.resets==1 && sim.submitted==2 && memory.byte(0x2000)==0x51 && memory.byte(0x3000)==0x52,
+  require(sim.resets==1 && sim.submitted==2 && memory.byte(a.writable[0].first)==0x51 && memory.byte(b.writable[0].first)==0x52,
     "active handshake reset, replaced RAM or failed to execute both records");
   const auto first=Memory::read((output/"record-0.memory").string()),second=Memory::read((output/"record-1.memory").string());
-  require(first.byte(0x2000)==0x51 && first.byte(0x3000)==0xa7 && second.byte(0x2000)==0x51 && second.byte(0x3000)==0x52,
+  require(first.byte(a.writable[0].first)==0x51 && first.byte(b.writable[0].first)==0xa7 &&
+    second.byte(a.writable[0].first)==0x51 && second.byte(b.writable[0].first)==0x52,
     "active per-record output memories lost prior outputs");
+  if(cleanup) {
+    pte.revoked(memory);require(!PtePages::word(memory,0x2000) && !PtePages::word(memory,0x2004),"cleanup did not preserve actual PTE stores");
+    std::ifstream in(base/"cleanup.json");std::string final((std::istreambuf_iterator<char>(in)),{});
+    require(final.find("\"ownerCleanupObserved\":true")!=std::string::npos &&
+      final.find("\"pteClears\":2")!=std::string::npos && final.find("\"fpsQualified\":false")!=std::string::npos,
+      "cleanup JSON lost observed cleanup or overstated FPS");
+  }
   require(report.str().find("\"phase\":\"retired\"")!=std::string::npos,"active final receipts were not retired");
   rejects([&]{atomic_json(base/"record-0.held.json",[](auto &out){out<<"stale";});});
   std::ofstream(base/"error")<<"driver failure";
@@ -290,6 +334,35 @@ static void retirement_parser() {
   bad=original;bad.actions[0].kind=Kind(4);rejects([&]{bad.validate();});
   for(size_t size:{size_t(0),size_t(8),wire.size()-1}) {std::istringstream truncated(wire.substr(0,size));rejects([&]{Retirement::read(truncated);});}
   std::istringstream trailing(wire+"x");rejects([&]{Retirement::read(trailing);});
+}
+static void cleanup_parser() {
+  Cleanup c;c.actions={{Kind::pte_clear,0x2000,0,0x1403},
+    {Kind::write,GPU_REG_UCMD_TLB_FLUSH,GPU_TLB_FLUSH_ASID|8u,0}};c.validate();
+  const auto wire=encode(c);std::istringstream good(wire);require(Cleanup::read(good).actions.size()==2,"cleanup parser lost actual stores");
+  auto bad=c;bad.actions.pop_back();rejects([&]{bad.validate();});
+  for(uint32_t address:{GPU_REG_UCMD_SUBMIT,GPU_REG_UCMD_COMPLETION_POP,GPU_REG_UCMD_RESET,GPU_REG_IRQ}) {
+    bad=c;bad.actions[1].address=address;rejects([&]{bad.validate();});
+  }
+  bad=c;bad.actions[0].value=1;rejects([&]{bad.validate();});
+  bad=c;bad.actions[0].address++;rejects([&]{bad.validate();});
+  bad=c;bad.actions[0].mask=0;rejects([&]{bad.validate();});
+  bad=c;bad.actions[1].value=GPU_TLB_FLUSH_VPN;rejects([&]{bad.validate();});
+  bad=c;bad.actions.push_back(c.actions[1]);rejects([&]{bad.validate();});
+  bad=c;std::reverse(bad.actions.begin(),bad.actions.end());rejects([&]{bad.validate();});
+  bad=c;bad.actions[0]={Kind::write,GPU_REG_UCMD_VECTOR_SATP,0x80400001,0};bad.validate();
+  bad.actions.pop_back();rejects([&]{bad.validate();});
+  for(size_t size:{size_t(0),size_t(8),wire.size()-1}) {std::istringstream truncated(wire.substr(0,size));rejects([&]{Cleanup::read(truncated);});}
+  std::istringstream trailing(wire+"x");rejects([&]{Cleanup::read(trailing);});
+  Memory memory;memory.ranges={{0x1000,0x7000,0}};auto capture=fixture();
+  capture.trace[9].value=capture.trace[10].value=0x80400001;
+  memory_word(memory,0x1010,0x801);memory_word(memory,0x2000,0x1403);
+  PtePages pte;pte.observe(memory,capture);require(pte.pages.size()==2,"actual SATP page discovery lost tables");
+  rejects([&]{pte.revoked(memory);});
+  for(auto a:std::vector<Action>{{Kind::pte_clear,0x3000,0,0x1403},{Kind::pte_clear,0x2000,0,0x1803},
+      {Kind::pte_clear,0x2000,1,0x1403},{Kind::pte_clear,0x2001,0,0x1403}})rejects([&]{pte.clear(memory,a);});
+  pte.clear(memory,c.actions[0]);pte.revoked(memory);rejects([&]{pte.clear(memory,c.actions[0]);});
+  auto corrupt=memory;memory_word(corrupt,0x1010,0x400001);rejects([&]{PtePages missing;missing.observe(corrupt,capture);});
+  corrupt=memory;memory_word(corrupt,0x1010,0x1407);rejects([&]{PtePages leaf;leaf.observe(corrupt,capture);});
 }
 int main() {
   const auto c=fixture();
@@ -369,6 +442,7 @@ int main() {
   actual_observations(argc,argv);unstable_append_telemetry(argc,argv);
   missing_source_profile(argc,argv);
   profile_probe(argc,argv);
-  retirement_parser();active_series(argc,argv);
+  retirement_parser();cleanup_parser();active_series(argc,argv);
+  active_series(argc,argv,true);
   std::cout<<"native owner capture CPU protocol/guard checks: PASS\n";
 }
