@@ -230,8 +230,9 @@ source hash requires distinct nonzero expected colors, and original allocation
 lookup supplies each color GEM's physical window. File references may close
 while job references keep the actual storage alive through separate retirement.
 
-The prepared-owner capture mode additionally uses the actual hardware MMIO
-functions and exports the real union memory before enqueue. Its independent
+The prepared-owner capture mode passes GCC with ASan/UBSan using an immutable
+committed native implementation. It uses the actual hardware MMIO functions
+and exports the real union memory before enqueue. Its independent
 canonical parser checks OGCAP001/OGMEM001, actual Sv32 mappings, metadata RO/NX
 and code RX/no-write permissions, and all uploaded VS/FS bytes. It sends no
 held/retired receipt and never authorizes owner release. The capture test copies
