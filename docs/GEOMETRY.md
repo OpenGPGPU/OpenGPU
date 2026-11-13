@@ -625,13 +625,26 @@ GEM references and producer fences remain the submitter's responsibility.
 Existing compute, VS and FS validators cannot opt into the GS instructions.
 
 This first dialect admits scalar ALU/FPU, checked forward branches, canonical
-fences, task-owned geometry input/output/event operations and, with an owned
-GUR2 root, scalar uniform loads. It rejects ordinary memory access, vector
+bounded output loops and fences, task-owned geometry input/output/event
+operations and, with an owned GUR2 root, scalar uniform loads. It rejects
+ordinary memory access, vector
 instructions, workgroup barriers and the other resource domains. These are
 explicit implementation limits of this initial opt-in dialect, not the final
 GLES geometry resource contract. It does not advertise a native/API capability.
 Full geometry resources, six-vertex adjacency, 32 invocations, 256 output
 vertices and the independent 1024-component bound remain required for H8.
+
+A bounded output loop contains only register-preserving geometry output writes
+and emits, followed by `addi counter,counter,-1; bne counter,x0,body`. Every
+incoming path must prove a constant remaining count of 0–255 at the first
+backedge, and every body input must remain defined there. No other register
+write, nested/control-flow instruction or pending alternate exit is admitted
+inside this proof. The exit counter is known to be zero. This supports a
+19-word program emitting 256 four-component vertices within the unchanged
+512-word code limit. Unknown bounds and other backward branches remain
+unsupported; general GLSL loops and the full geometry resource contract remain
+required work. Task-owned output/component limits and production enablement
+retain their original checks.
 
 The actual-owner/MMU check passes for all seven geometry operations, disabled
 and wrong-version rejection, old-validator isolation, scalar floating-point
@@ -643,6 +656,14 @@ healthy reuse. The full Linux GCC `-O2` driver suite also passes. Reproduce with
 python3 scripts/test_geometry_program_snapshot.py --sanitize
 python3 scripts/test_driver.py
 ```
+
+The CPU sanitizer gate also covers every loop bound 1–256, malformed bounds,
+counter/body mutations, skipped initialization at a CFG join, a pending
+alternate exit, zero-counter fallthrough, and immutable private RX publication
+of the original 19-word program. The native program owner and the full shader,
+storage, image, atomic and SIMT validator corpora pass ASan/UBSan with the loop
+extension. These checks execute C validation and ownership; actual shader
+execution is a separate native GS qualification.
 
 ## Bounded GNG1 metadata and private links
 

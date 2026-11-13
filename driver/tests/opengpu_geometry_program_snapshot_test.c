@@ -19,6 +19,75 @@ static int gs_code_copy(void *opaque,const struct drm_opengpu_compute_uniform_vi
 }
 static bool gs_validate(const u32 *words,unsigned count,bool uniforms)
 { return opengpu_geometry_shader_validate_words(words,count,1,true,uniforms,true); }
+static u32 gs_addi(unsigned rd,unsigned rs1,int value)
+{ return ((u32)value&4095u)<<20|rs1<<15|rd<<7|0x13u; }
+static u32 gs_branch(unsigned condition,unsigned a,unsigned b,int bytes)
+{
+    u32 n=(u32)bytes&8191u;
+    return (n>>12)<<31|((n>>11)&1u)<<7|((n>>5)&63u)<<25|
+        ((n>>1)&15u)<<8|b<<20|a<<15|condition<<12|0x63u;
+}
+/* The same 19-word physical GS fixture used by the native viewport test.
+ * Each invocation reads a position, then rewrites all four staged components
+ * for every emit; the worker clears staged output after each accepted emit. */
+static void gs_emit_loop(u32 *words,unsigned count)
+{
+    words[0]=gs_addi(2,0,0);
+    for(unsigned c=0;c<4;c++){
+        words[1+c*2]=gs_addi(10+c,0,(int)c);
+        words[2+c*2]=gs_op(32,14+c,2,10+c);
+        words[10+c]=gs_op(33,0,10+c,14+c);
+    }
+    words[9]=gs_addi(20,0,(int)count);
+    words[14]=gs_op(35,0,0,0);words[15]=gs_addi(20,20,-1);
+    words[16]=gs_branch(1,20,0,-24);words[17]=gs_op(36,0,0,0);
+    words[18]=OPENGPU_SHADER_CEASE;
+}
+static void test_gs_emit_loops(void)
+{
+    u32 words[32],saved[32];
+    for(unsigned count=1;count<=256;count++){
+        gs_emit_loop(words,count);assert(gs_validate(words,19,false));
+    }
+    memcpy(saved,words,19*sizeof(*words));
+    assert(!opengpu_compute_shader_validate_words_fpu(words,19,4096,128,true));
+    assert(!opengpu_native_shader_validate_words(words,19,16*128*4,128,0,1,1,1,0,true,true,false));
+    assert(!opengpu_native_shader_validate_words(words,19,16*128*4,128,1,1,0,1,1,true,true,false));
+    assert(!opengpu_geometry_shader_validate_words(words,19,1,true,false,false));
+    const struct {unsigned index;u32 instruction;} rejected[]={
+        {0,gs_addi(1,0,0)}, /* reserved protected-ABI register */
+        {9,gs_addi(20,0,0)},{9,gs_addi(20,0,257)},{9,gs_addi(20,0,-1)},
+        {9,gs_op(32,20,2,10)}, /* runtime input is not a loop bound */
+        {10,gs_op(33,21,10,14)}, /* body must preserve all integer registers */
+        {10,gs_addi(21,0,7)},{10,gs_op(32,21,2,10)},
+        {14,gs_op(35,5,0,0)},
+        {15,gs_addi(20,20,0)},{15,gs_addi(20,20,1)},{15,gs_addi(20,20,-2)},
+        {16,gs_branch(0,20,0,-24)},{16,gs_branch(1,20,2,-24)},
+        {16,gs_branch(1,20,0,0)},{16,gs_branch(1,20,0,-22)},
+        {16,gs_branch(1,20,0,-28)}, /* includes counter initializer */
+        {16,gs_branch(1,20,0,-4)}, /* no output body */
+        {16,gs_branch(1,20,0,-68)}, /* before original entry */
+    };
+    for(unsigned k=0;k<sizeof(rejected)/sizeof(rejected[0]);k++){
+        memcpy(words,saved,19*sizeof(*words));words[rejected[k].index]=rejected[k].instruction;
+        assert(!gs_validate(words,19,false));
+    }
+    /* A path entering at BNE skips x22 initialization. Its known counter
+     * agrees at the join, so only the independent live-input proof rejects it. */
+    const u32 skipped[]={gs_addi(20,0,255),gs_branch(1,2,0,24),gs_addi(22,0,7),
+        gs_addi(20,0,256),gs_op(33,0,0,22),gs_op(35,0,0,0),gs_addi(20,20,-1),
+        gs_branch(1,20,0,-12),OPENGPU_SHADER_CEASE};
+    assert(!gs_validate(skipped,9,false));
+    /* A still-pending alternate exit must not borrow this loop's proof. */
+    memcpy(words,saved,19*sizeof(*words));words[0]=gs_branch(1,2,0,68);
+    assert(!gs_validate(words,19,false));
+    /* Actual fallthrough counter=0 makes a following negative initializer
+     * unbounded. Retaining the first-visit value 255 would incorrectly admit it. */
+    memcpy(words,saved,19*sizeof(*words));words[17]=gs_addi(21,20,-254);
+    words[18]=gs_op(35,0,0,0);words[19]=gs_addi(21,21,-1);
+    words[20]=gs_branch(1,21,0,-8);words[21]=OPENGPU_SHADER_CEASE;
+    assert(!gs_validate(words,22,false));
+}
 static void gs_program_reject(struct opengpu_private_snapshot *o,struct drm_opengpu_native_program_view v,
     struct opengpu_geometry_program_profile p,int error)
 {
@@ -51,6 +120,7 @@ static void gs_program_accept(struct opengpu_device *gpu,struct opengpu_render_c
 int main(void)
 {
     u32 words[513];
+    test_gs_emit_loops();
     for(unsigned function=32;function<=38;function++){
         words[0]=gs_op(function,5,0,0);words[1]=OPENGPU_SHADER_CEASE;
         assert(gs_validate(words,2,false));
@@ -114,6 +184,16 @@ int main(void)
     assert(!opengpu_private_snapshot_retire(o));
     for(unsigned i=0;i<512;i++)gs_code_word(i,i==511?OPENGPU_SHADER_CEASE:0x00000013u);
     view.bytes=2048;view.entry_offset=0;gs_program_accept(&gpu,&ctx,view,p);
+    /* Freeze the original bounded GS loop into private RX storage, then
+     * mutate the producer. An excessive bound must fail before publication. */
+    gs_emit_loop(words,256);
+    for(unsigned i=0;i<19;i++)gs_code_word(i,words[i]);
+    view.bytes=76;gs_program_accept(&gpu,&ctx,view,p);
+    gs_emit_loop(words,257);
+    for(unsigned i=0;i<19;i++)gs_code_word(i,words[i]);
+    o=opengpu_private_snapshot_create(&gpu,&ctx);assert(!IS_ERR(o));
+    gs_program_reject(o,view,p,-EINVAL);
+    assert(!opengpu_private_snapshot_retire(o));
     opengpu_mmu_vm_destroy(&gpu,&ctx.vm);opengpu_mmu_fini(&gpu);
     assert(ctx.references==1 && !live_allocations && !fixture_buffers);
     puts("opt-in scalar GS validator/private RX owner: strict legacy isolation, source suffix/bytes, resource rejection, allocation failures/reuse PASS (CPU only)");
