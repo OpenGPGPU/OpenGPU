@@ -8,7 +8,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define CS_TEMPS 32u
+/* Shared address expressions are rematerialized, not assigned one physical
+ * vector register each. Mesa CSE retains 32 stripe addresses plus ordinary
+ * values across store/load phases. Keep that bounded analysis table separate
+ * from the unchanged legacy declaration and v2..v21 register limits. */
+#define CS_TEMPS 64u
+#define CS_LEGACY_TEMPS 32u
 #define CS_IMMS 32u
 #define CS_LEGACY_IMMS 16u
 #define CS_SYSTEMS 8u
@@ -263,7 +268,7 @@ static int declaration(struct build *b, const struct tgsi_full_declaration *d)
         b->const_last[i] = last;
         return 0;
     case TGSI_FILE_TEMPORARY:
-        if (last >= CS_TEMPS || d->Declaration.Semantic) return -1;
+        if (last >= (b->shared ? CS_TEMPS : CS_LEGACY_TEMPS) || d->Declaration.Semantic) return -1;
         for (i = first; i <= last; i++) {
             if (b->declared[i]) return -1;
             b->declared[i] = mask;

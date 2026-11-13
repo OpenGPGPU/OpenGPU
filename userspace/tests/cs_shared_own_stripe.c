@@ -40,6 +40,7 @@ static void instruction(struct builder *b, unsigned op, unsigned file, unsigned 
 
 static void program(struct builder *b, unsigned offset, unsigned kind)
 {
+    unsigned address_temp=kind==8?63:kind==9?64:0;
     memset(b,0,sizeof(*b));b->header=(struct tgsi_header *)b->tokens;
     *b->header=tgsi_build_header();
     struct tgsi_processor processor=tgsi_build_processor(PIPE_SHADER_COMPUTE,b->header);
@@ -59,7 +60,7 @@ static void program(struct builder *b, unsigned offset, unsigned kind)
             d.Range.First=d.Range.Last=TGSI_MEMORY_TYPE_SHARED;
         } else if(type==1) {
             d.Declaration.Semantic=1;d.Semantic.Name=TGSI_SEMANTIC_THREAD_ID;
-        } else d.Range.Last=1;
+        } else d.Range.Last=address_temp?address_temp:1;
         APPEND(b,tgsi_build_full_declaration,d);
     }
     struct tgsi_full_immediate imm=tgsi_default_full_immediate();
@@ -67,43 +68,43 @@ static void program(struct builder *b, unsigned offset, unsigned kind)
     imm.u[0].Uint=2;imm.u[1].Uint=offset;imm.u[2].Uint=0xabc;imm.u[3].Uint=kind==6?(offset?0:516):kind==7?512:16;
     APPEND(b,tgsi_build_full_immediate,imm);
 #define S source(TGSI_FILE_SYSTEM_VALUE,0,0)
-#define T source(TGSI_FILE_TEMPORARY,0,0)
+#define T source(TGSI_FILE_TEMPORARY,address_temp,0)
 #define I(c) source(TGSI_FILE_IMMEDIATE,0,c)
 #define MEMORY source(TGSI_FILE_MEMORY,TGSI_MEMORY_TYPE_SHARED,0)
-    instruction(b,TGSI_OPCODE_SHL,TGSI_FILE_TEMPORARY,0,S,I(0));
-    instruction(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,0,T,I(1));
+    instruction(b,TGSI_OPCODE_SHL,TGSI_FILE_TEMPORARY,address_temp,S,I(0));
+    instruction(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,address_temp,T,I(1));
     if(kind!=3)instruction(b,TGSI_OPCODE_STORE,TGSI_FILE_MEMORY,TGSI_MEMORY_TYPE_SHARED,T,I(2));
     if(kind==6) {
-        instruction(b,TGSI_OPCODE_SHL,TGSI_FILE_TEMPORARY,0,S,I(0));
-        instruction(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,0,T,I(3));
+        instruction(b,TGSI_OPCODE_SHL,TGSI_FILE_TEMPORARY,address_temp,S,I(0));
+        instruction(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,address_temp,T,I(3));
         instruction(b,TGSI_OPCODE_STORE,TGSI_FILE_MEMORY,TGSI_MEMORY_TYPE_SHARED,T,I(2));
-        instruction(b,TGSI_OPCODE_SHL,TGSI_FILE_TEMPORARY,0,S,I(0));
-        instruction(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,0,T,I(1));
+        instruction(b,TGSI_OPCODE_SHL,TGSI_FILE_TEMPORARY,address_temp,S,I(0));
+        instruction(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,address_temp,T,I(1));
     }
     if(kind==7) {
         for(unsigned stripe=1;stripe<32;stripe++) {
-            instruction(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,0,T,I(3));
+            instruction(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,address_temp,T,I(3));
             instruction(b,TGSI_OPCODE_STORE,TGSI_FILE_MEMORY,TGSI_MEMORY_TYPE_SHARED,T,I(2));
         }
-        instruction(b,TGSI_OPCODE_SHL,TGSI_FILE_TEMPORARY,0,S,I(0));
-        instruction(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,0,T,I(1));
+        instruction(b,TGSI_OPCODE_SHL,TGSI_FILE_TEMPORARY,address_temp,S,I(0));
+        instruction(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,address_temp,T,I(1));
         for(unsigned stripe=0;stripe<31;stripe++) {
             instruction(b,TGSI_OPCODE_LOAD,TGSI_FILE_TEMPORARY,1,MEMORY,T);
-            instruction(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,0,T,I(3));
+            instruction(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,address_temp,T,I(3));
         }
     }
-    if(kind==1)instruction(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,0,T,I(3));
+    if(kind==1)instruction(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,address_temp,T,I(3));
     if(kind==5) {
-        instruction(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,0,T,I(3));
+        instruction(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,address_temp,T,I(3));
         instruction(b,TGSI_OPCODE_STORE,TGSI_FILE_MEMORY,TGSI_MEMORY_TYPE_SHARED,T,I(2));
-        instruction(b,TGSI_OPCODE_SHL,TGSI_FILE_TEMPORARY,0,S,I(0));
-        instruction(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,0,T,I(1));
+        instruction(b,TGSI_OPCODE_SHL,TGSI_FILE_TEMPORARY,address_temp,S,I(0));
+        instruction(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,address_temp,T,I(1));
     }
     if(kind==2 || kind==4) {
         if(kind==4)instruction(b,TGSI_OPCODE_BARRIER,0,0,T,T);
-        instruction(b,TGSI_OPCODE_XOR,TGSI_FILE_TEMPORARY,0,S,I(3));
-        instruction(b,TGSI_OPCODE_SHL,TGSI_FILE_TEMPORARY,0,T,I(0));
-        instruction(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,0,T,I(1));
+        instruction(b,TGSI_OPCODE_XOR,TGSI_FILE_TEMPORARY,address_temp,S,I(3));
+        instruction(b,TGSI_OPCODE_SHL,TGSI_FILE_TEMPORARY,address_temp,T,I(0));
+        instruction(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,address_temp,T,I(1));
     }
     instruction(b,TGSI_OPCODE_LOAD,TGSI_FILE_TEMPORARY,1,MEMORY,T);
     instruction(b,TGSI_OPCODE_END,0,0,T,T);
@@ -120,12 +121,12 @@ int main(void)
     for(unsigned base=0;base<3;base++) {
         shared.base=bases[base];
         for(unsigned offset=0;offset<=15872;offset+=15872) {
-            for(unsigned kind=0;kind<8;kind++) {
+            for(unsigned kind=0;kind<10;kind++) {
                 if(kind==7&&offset)continue;
                 struct builder b;program(&b,offset,kind);
                 struct opengpu_cs_program p,unchanged;
                 memset(&unchanged,0x5a,sizeof(unchanged));p=unchanged;
-                bool accept=kind==0 || kind==6 || kind==7 || (kind==4 && offset==0);
+                bool accept=kind==0 || kind==6 || kind==7 || kind==8 || (kind==4 && offset==0);
                 int result=opengpu_cs_emit_shared(b.tokens,&shared,&p);
                 if(!accept) {assert(result<0&&!memcmp(&p,&unchanged,sizeof(p)));continue;}
                 if(result)fprintf(stderr,"unexpected own-stripe rejection offset=%u kind=%u\n",offset,kind);
@@ -153,6 +154,19 @@ int main(void)
                     shared.base,shared.bytes,shared.lanes));
             }
         }
+    }
+    /* A larger symbolic table must not widen the legacy frontend contract. */
+    for(unsigned last=31;last<=32;last++) {
+        struct builder b={0};b.header=(struct tgsi_header *)b.tokens;*b.header=tgsi_build_header();
+        struct tgsi_processor processor=tgsi_build_processor(PIPE_SHADER_COMPUTE,b.header);
+        memcpy(b.tokens+1,&processor,4);
+        struct tgsi_full_declaration d=tgsi_default_full_declaration();
+        d.Declaration.File=TGSI_FILE_TEMPORARY;d.Declaration.UsageMask=1;d.Range.Last=last;
+        APPEND(&b,tgsi_build_full_declaration,d);
+        instruction(&b,TGSI_OPCODE_END,0,0,source(0,0,0),source(0,0,0));
+        struct opengpu_cs_program p,untouched;memset(&untouched,0x5a,sizeof(untouched));p=untouched;
+        int ret=opengpu_cs_emit(b.tokens,&p);
+        if(last==31)assert(!ret);else assert(ret<0&&!memcmp(&p,&untouched,sizeof(p)));
     }
     puts("shared own-stripe TGSI/emitter/validator: PASS (CPU only, no GPU execution)");
     return 0;
