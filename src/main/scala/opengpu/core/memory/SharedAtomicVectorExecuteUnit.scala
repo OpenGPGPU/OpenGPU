@@ -16,6 +16,8 @@ object SharedAtomicVectorOpcode {
   def atomic(i: UInt): Bool = (function(i,31) || (function(i,32) && i(14,12) < 2.U))
   def operation(i: UInt): UInt = Mux(function(i,32), 8.U + i(14,12), i(14,12))
   def legal(i: UInt): Bool = parameters(i) || atomic(i)
+  def terminated(busy: Bool, finished: Bool, finishedWarp: UInt, owner: UInt): Bool =
+    busy && finished && finishedWarp === owner
 }
 
 class SharedAtomicVectorRequest(config: GpuConfig) extends VectorTextureRequest(config) {

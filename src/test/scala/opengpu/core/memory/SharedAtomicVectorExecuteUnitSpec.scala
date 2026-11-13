@@ -15,6 +15,9 @@ private class SharedAtomicSramHarness(c: GpuConfig) extends Module {
     val memory = Flipped(Decoupled(new VectorMemoryTransaction(c)))
     val result = Decoupled(new VectorMemoryResponse(c))
     val warpStart = Flipped(Valid(UInt(c.warpIdWidth.W)))
+    val finish = Flipped(Valid(UInt(c.warpIdWidth.W)))
+    val scalar = Flipped(Decoupled(new SharedAtomicRequest(c)))
+    val scalarResult = Decoupled(new SharedAtomicResponse(c))
     val cancel = Input(Bool())
     val allowRequest = Input(Bool()); val allowResponse = Input(Bool())
     val offered = Valid(new SharedAtomicRequest(c))
@@ -22,15 +25,22 @@ private class SharedAtomicSramHarness(c: GpuConfig) extends Module {
   })
   val vector = Module(new SharedAtomicVectorExecuteUnit(c))
   val memory = Module(new BankedSharedMemory(c))
+  val arbiter = Module(new CounterAtomicArbiter(c))
   vector.io.in <> io.in; io.commit <> vector.io.commit; io.fault := vector.io.fault
-  vector.io.warpStart := io.warpStart; vector.io.cancel := io.cancel
+  vector.io.warpStart := io.warpStart
+  vector.io.cancel := io.cancel || SharedAtomicVectorOpcode.terminated(vector.io.busy,
+    io.finish.valid, io.finish.bits, vector.io.commit.bits.writeback.warpId)
   memory.io.in <> io.memory; io.result <> memory.io.out
-  memory.io.atomicIn.valid := vector.io.request.valid && io.allowRequest
-  memory.io.atomicIn.bits := vector.io.request.bits
-  vector.io.request.ready := memory.io.atomicIn.ready && io.allowRequest
-  vector.io.response.valid := memory.io.atomicOut.valid && io.allowResponse
-  vector.io.response.bits := memory.io.atomicOut.bits
-  memory.io.atomicOut.ready := vector.io.response.ready && io.allowResponse
+  arbiter.io.in(0) <> io.scalar; io.scalarResult <> arbiter.io.out(0)
+  arbiter.io.satp.foreach(_ := 0.U)
+  arbiter.io.in(1).valid := vector.io.request.valid && io.allowRequest
+  arbiter.io.in(1).bits := vector.io.request.bits
+  vector.io.request.ready := arbiter.io.in(1).ready && io.allowRequest
+  vector.io.response.valid := arbiter.io.out(1).valid && io.allowResponse
+  vector.io.response.bits := arbiter.io.out(1).bits
+  arbiter.io.out(1).ready := vector.io.response.ready && io.allowResponse
+  memory.io.atomicIn <> arbiter.io.request
+  arbiter.io.response <> memory.io.atomicOut
   io.offered.valid := vector.io.request.valid; io.offered.bits := vector.io.request.bits
   io.accepted := memory.io.atomicIn.fire; io.busy := vector.io.busy
 }
@@ -58,6 +68,9 @@ class SharedAtomicVectorExecuteUnitSpec extends AnyFlatSpec {
       d.io.memory.valid.poke(false.B); d.io.memory.bits.poke(0.U.asTypeOf(d.io.memory.bits))
       d.io.result.ready.poke(false.B);d.io.commit.ready.poke(false.B)
       d.io.warpStart.valid.poke(false.B);d.io.warpStart.bits.poke(0.U)
+      d.io.finish.valid.poke(false.B);d.io.finish.bits.poke(0.U)
+      d.io.scalar.valid.poke(false.B);d.io.scalar.bits.poke(0.U.asTypeOf(d.io.scalar.bits))
+      d.io.scalarResult.ready.poke(true.B)
       d.io.cancel.poke(false.B);d.io.allowRequest.poke(true.B);d.io.allowResponse.poke(true.B)
       d.reset.poke(true.B);d.clock.step(2);d.reset.poke(false.B)
       def until(f: => Boolean): Unit = {var n=0;while(!f && n<10000){d.clock.step();n+=1};assert(f)}
@@ -97,6 +110,12 @@ class SharedAtomicVectorExecuteUnitSpec extends AnyFlatSpec {
         d.io.fault.valid.expect(failed.B)
         if(!params && !failed)for(l<-0 until c.lanes)d.io.commit.bits.writeback.data(l).expect(expected(l).U)
         val held=d.io.commit.bits.peek().litValue
+        val heldFault=d.io.fault.bits.peek().litValue
+        // Once commit is offered, a late cancellation belongs after this
+        // immutable result. It cannot turn success into a different payload.
+        d.io.cancel.poke(true.B);d.clock.step();d.io.cancel.poke(false.B)
+        assert(d.io.commit.bits.peek().litValue==held)
+        if(failed)assert(d.io.fault.bits.peek().litValue==heldFault)
         for(_<-0 until 4){d.clock.step();assert(d.io.commit.bits.peek().litValue==held)}
         d.io.commit.ready.poke(true.B);d.clock.step();d.io.commit.ready.poke(false.B)
       }
@@ -119,6 +138,42 @@ class SharedAtomicVectorExecuteUnitSpec extends AnyFlatSpec {
         assert(memory(address,0,false)==expected)
         assert(memory(guard,0,false)==BigInt("a5a5a5a5",16))
       }
+      // Both real clients share the same SRAM and the same round-robin owner
+      // used in the CU. Contention must interleave, never alias responses.
+      val contested=c.sharedMemoryBase
+      memory(contested,0,true)
+      issue(0,word(30,0,0,2,3),Seq.fill(c.lanes)(BigInt(1)),Seq.fill(c.lanes)(BigInt(0)),0,all,all)
+      commit(Nil,params=true)
+      issue(0,word(31,1,4,5,0),Seq.fill(c.lanes)(BigInt(0)),Seq.fill(c.lanes)(BigInt(0)),contested,all,all)
+      d.io.scalar.bits.warpId.poke(1.U);d.io.scalar.bits.address.poke(contested.U)
+      d.io.scalar.bits.operand.poke(1.U);d.io.scalar.bits.compareValue.poke(0.U)
+      d.io.scalar.bits.operation.poke(AtomicMemoryOp.add);d.io.scalar.valid.poke(true.B)
+      var scalarAccepted=0;var scalarOld=Vector.empty[BigInt];var vectorOld=Vector.empty[BigInt]
+      var ticks=0
+      while((scalarOld.size<16 || vectorOld.isEmpty) && ticks<5000) {
+        if(d.io.scalar.valid.peek().litToBoolean && d.io.scalar.ready.peek().litToBoolean)scalarAccepted+=1
+        if(d.io.scalarResult.valid.peek().litToBoolean) {
+          d.io.scalarResult.bits.warpId.expect(1.U);d.io.scalarResult.bits.fault.expect(false.B)
+          scalarOld :+= d.io.scalarResult.bits.oldValue.peek().litValue
+        }
+        if(vectorOld.isEmpty && d.io.commit.valid.peek().litToBoolean)
+          vectorOld=(0 until c.lanes).map(l=>d.io.commit.bits.writeback.data(l).peek().litValue).toVector
+        d.clock.step();ticks+=1
+        if(scalarAccepted==16)d.io.scalar.valid.poke(false.B)
+      }
+      assert(scalarAccepted==16 && scalarOld.size==16 && vectorOld.size==16)
+      assert((scalarOld++vectorOld).sorted==(0 until 32).map(BigInt(_)))
+      assert(vectorOld.exists(_<scalarOld.max) && scalarOld.exists(_<vectorOld.max),
+        "one atomic client exhausted its burst before its peer progressed")
+      commit(vectorOld,params=false);assert(memory(contested,0,false)==32)
+      // A finish for the idle owner's previous warp and acceptance of another
+      // warp's instruction occur on the same edge. The old owner cannot cancel
+      // the new one; the production core uses this exact termination predicate.
+      d.io.finish.valid.poke(true.B);d.io.finish.bits.poke(0.U)
+      issue(1,word(30,0,0,2,3),Seq.fill(c.lanes)(BigInt(1)),Seq.fill(c.lanes)(BigInt(0)),0,all,all)
+      d.io.finish.valid.poke(false.B);commit(Nil,params=true)
+      issue(1,word(31,1,4,5,0),Seq.fill(c.lanes)(BigInt(0)),Seq.fill(c.lanes)(BigInt(0)),contested,all,all)
+      commit((32 until 48).map(BigInt(_)),params=false);assert(memory(contested,0,false)==48)
       // Inactive and helper lanes preserve old vector data and issue no AMO.
       val address=c.sharedMemoryBase
       memory(address,0,true)
@@ -129,6 +184,21 @@ class SharedAtomicVectorExecuteUnitSpec extends AnyFlatSpec {
       val expected=(0 until c.lanes).map(l=>if(selected.testBit(l)){val v=old;old+=1;v}else BigInt(0xfeed))
       issue(0,word(31,1,4,5,0,unmasked=false),Nil.padTo(c.lanes,BigInt(0)),Nil.padTo(c.lanes,BigInt(0)),address,all,selected)
       commit(expected,params=false);assert(memory(address,0,false)==8)
+      d.io.warpStart.valid.poke(true.B);d.io.warpStart.bits.poke(0.U);d.clock.step();d.io.warpStart.valid.poke(false.B)
+      val lower=BigInt(255)
+      issue(0,word(30,0,0,2,3),Seq.fill(c.lanes)(BigInt(1)),Seq.fill(c.lanes)(BigInt(0)),0,lower,0)
+      commit(Nil,params=true) // parameter capture is not a memory side effect
+      issue(0,word(31,1,4,5,0),Seq.fill(c.lanes)(BigInt(0)),Seq.fill(c.lanes)(BigInt(0)),address,all,0)
+      commit(Seq.fill(c.lanes)(BigInt(0xfeed)),params=false);assert(memory(address,0,false)==8)
+      issue(0,word(31,1,4,5,0),Seq.fill(c.lanes)(BigInt(0)),Seq.fill(c.lanes)(BigInt(0)),address,all,all)
+      commit(Nil,params=false,failed=true);assert(memory(address,0,false)==8)
+      issue(0,word(31,1,4,5,0),Seq.fill(c.lanes)(BigInt(0)),Seq.fill(c.lanes)(BigInt(0)),address,all,lower)
+      commit((8 until 16).map(BigInt(_))++Seq.fill(8)(BigInt(0xfeed)),params=false)
+      assert(memory(address,0,false)==16)
+      // Restore all lanes and the known backing for the fault/recovery matrix.
+      memory(address,8,true)
+      issue(0,word(30,0,0,2,3),Seq.fill(c.lanes)(BigInt(1)),Seq.fill(c.lanes)(BigInt(0)),0,all,all)
+      commit(Nil,params=true)
       // An offered request survives cancel and drains, but never publishes data.
       d.io.allowRequest.poke(false.B)
       issue(0,word(31,1,4,5,0),Seq.fill(c.lanes)(BigInt(0)),Seq.fill(c.lanes)(BigInt(0)),address,all,all)
