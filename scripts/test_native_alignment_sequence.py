@@ -31,7 +31,7 @@ class SequenceFixtureTests(unittest.TestCase):
                 else:
                     runner.execute('test', command, log)
                 child = Path(log.read_text().strip())
-                self.assertEqual(child.parent, out)
+                self.assertEqual(child.parent, q.temporary_root())
                 self.assertFalse(child.exists())
                 self.assertEqual(os.environ.get('TMPDIR'), previous)
 
