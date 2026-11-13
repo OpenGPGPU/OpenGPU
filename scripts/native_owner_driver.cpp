@@ -2,6 +2,7 @@
 // output byte is generated here. An independent image oracle remains required.
 #include "native_owner_capture.hpp"
 #include "native_host_simulation.hpp"
+#include <array>
 #include <filesystem>
 #include <iostream>
 #include <limits>
@@ -79,7 +80,15 @@ inline void traffic_unchanged(const Traffic &a,const Traffic &b) {
     a.write_beats==b.write_beats && a.acknowledgements==b.acknowledgements,
     "native completion allowed late external memory traffic");
 }
-struct RecordResult { uint64_t cycles, read_bytes, write_bytes; };
+// Observations from the actual held slot and its retirement. These may be
+// returned to a still-live original driver session; expected capture values
+// must never be substituted for MMIO read results when authorizing release.
+struct RecordResult {
+  uint64_t cycles=0, read_bytes=0, write_bytes=0, append_read_bytes=0;
+  uint32_t completion=0, held_status=0, held_irq=0, retired_status=0, retired_irq=0;
+  std::array<uint32_t,12> gnx{};
+  bool held_irq_asserted=false, retired_irq_asserted=false, external_drained=false;
+};
 template<class Sim>
 RecordResult replay_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
                           Memory &memory,const Capture &capture) {
@@ -103,10 +112,18 @@ RecordResult replay_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
   require(agent.drained(),"native completion preceded external memory drain");
   const auto completed=agent.traffic;
   const auto completion=bus.read(GPU_REG_UCMD_COMPLETION);
+  RecordResult result;result.completion=completion;
+  result.held_status=bus.read(GPU_REG_UCMD_STATUS);
+  result.held_irq=bus.read(GPU_REG_IRQ);result.held_irq_asserted=bool(sim.model->io_m_irq);
+  const auto append_lo=bus.read(GPU_REG_UCMD_COMPLETION_BYTES_LO);
+  const auto append_hi=bus.read(GPU_REG_UCMD_COMPLETION_BYTES_HI);
+  result.append_read_bytes=(uint64_t(append_hi)<<32)|append_lo;
+  require(result.held_status&GPU_UCMD_STATUS_COMPLETION,"native completion status disappeared before capture");
   std::vector<uint32_t> held;
   for(const auto &c:capture.checks) {
     const auto value=bus.read(c.address);
     require((value&c.mask)==c.expected,"native completion/GNX check differs");held.push_back(value);
+    if(c.address>=0x180 && c.address<0x1b0)result.gnx[(c.address-0x180)/4]=value;
   }
   for(uint32_t n=0;n<capture.hold_cycles;++n) {
     require(sim.model->io_m_irq,"native completion IRQ disappeared while held");bus.step();
@@ -115,23 +132,38 @@ RecordResult replay_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
   require(bus.read(GPU_REG_UCMD_COMPLETION)==completion,"held native completion changed");
   for(size_t n=0;n<capture.checks.size();++n)
     require(bus.read(capture.checks[n].address)==held[n],"held native completion/GNX changed");
+  require(bus.read(GPU_REG_UCMD_STATUS)==result.held_status && bus.read(GPU_REG_IRQ)==result.held_irq &&
+    bus.read(GPU_REG_UCMD_COMPLETION_BYTES_LO)==append_lo && bus.read(GPU_REG_UCMD_COMPLETION_BYTES_HI)==append_hi,
+    "held native completion status, IRQ or append telemetry changed");
   require(sim.model->io_m_irq,"native completion IRQ disappeared before retirement");
   traffic_unchanged(completed,agent.traffic);
   for(const auto &w:capture.finish)bus.write(w.address,w.value);
-  require(!(bus.read(GPU_REG_UCMD_STATUS)&GPU_UCMD_STATUS_COMPLETION),"native completion POP did not retire the slot");
+  result.retired_status=bus.read(GPU_REG_UCMD_STATUS);
+  require(!(result.retired_status&GPU_UCMD_STATUS_COMPLETION),"native completion POP did not retire the slot");
   for(unsigned n=0;n<8;++n)bus.step();
+  result.retired_irq=bus.read(GPU_REG_IRQ);result.retired_irq_asserted=bool(sim.model->io_m_irq);
   traffic_unchanged(completed,agent.traffic);
   require(agent.drained() && !agent.traffic.read_faults && !agent.traffic.write_faults,
     "owner replay faulted or left external traffic");
   require(!sim.model->io_m_irq,"native completion retirement left an asserted IRQ");
   verify_readonly(initial,memory,capture.writable);
-  return {bus.cycles-start_cycles,agent.traffic.read_bus_bytes-start_traffic.read_bus_bytes,
-    agent.traffic.write_bus_bytes-start_traffic.write_bus_bytes};
+  result.cycles=bus.cycles-start_cycles;
+  result.read_bytes=agent.traffic.read_bus_bytes-start_traffic.read_bus_bytes;
+  result.write_bytes=agent.traffic.write_bus_bytes-start_traffic.write_bus_bytes;
+  result.external_drained=agent.drained();return result;
 }
 inline void report_record(const RecordResult &r,size_t index,uint32_t command_id,uint64_t cycles) {
   std::cout<<"{\"ownerReplay\":true,\"record\":"<<index<<",\"commandId\":"<<command_id
     <<",\"serviceCycles\":"<<r.cycles<<",\"cumulativeServiceCycles\":"<<cycles
     <<",\"readBusBytes\":"<<r.read_bytes<<",\"writeBusBytes\":"<<r.write_bytes
+    <<",\"completion\":"<<r.completion<<",\"gnx\":[";
+  for(size_t n=0;n<r.gnx.size();++n)std::cout<<(n?",":"")<<r.gnx[n];
+  std::cout<<"],\"appendReadBytes\":"<<r.append_read_bytes
+    <<",\"heldStatus\":"<<r.held_status<<",\"heldIrq\":"<<r.held_irq
+    <<",\"heldIrqAsserted\":"<<(r.held_irq_asserted?"true":"false")
+    <<",\"retiredStatus\":"<<r.retired_status<<",\"retiredIrq\":"<<r.retired_irq
+    <<",\"retiredIrqAsserted\":"<<(r.retired_irq_asserted?"true":"false")
+    <<",\"externalDrained\":"<<(r.external_drained?"true":"false")
     <<",\"resets\":1,\"resetsBetweenRecords\":false,\"heldCompletionDrained\":true,"
       "\"readOnlyGuards\":true,\"independentImagesRequired\":true,"
       "\"sourceQualificationRequired\":true,\"clockQualified\":false,\"fpsQualified\":false}\n";
