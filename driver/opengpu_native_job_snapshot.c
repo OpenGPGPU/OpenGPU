@@ -5,6 +5,7 @@
 #include <linux/vmalloc.h>
 #include "opengpu_native_job_snapshot.h"
 #include "opengpu_native_input_snapshot.h"
+#include "opengpu_native_graph_alias.h"
 #include "opengpu_native_program_snapshot.h"
 #include "opengpu_native_uniform_snapshot.h"
 #include "opengpu_native_advanced_blend_gfs.h"
@@ -66,6 +67,9 @@ int opengpu_native_job_snapshot_build(struct opengpu_private_snapshot *owner,
     for(i=16;i<128;++i)
         if(i!=J(JOB_DRAWCOUNT) && i!=J(JOB_DRAWSTRIDE) && i!=J(JOB_IDENTITY_CONTEXT) &&
            i!=J(JOB_IDENTITY_PASS) && i!=J(JOB_IDENTITY_GENERATION) && get(s->job,i))return -EINVAL;
+    ret=opengpu_native_graph_alias_check(s,copy->resolve,copy->context);
+    if(ret)return ret;
+    ret=-EINVAL;
     if((u64)count*sizeof(*plans)>(u64)(~(size_t)0) ||
         (u64)state_count*sizeof(*first)>(u64)(~(size_t)0))return -ERANGE;
     states=kvzalloc(s->states_bytes,GFP_KERNEL);
