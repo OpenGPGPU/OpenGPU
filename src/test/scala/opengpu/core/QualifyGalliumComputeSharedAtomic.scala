@@ -103,6 +103,23 @@ class GalliumComputeSharedAtomicQualification extends AnyFlatSpec {
     }.sorted
   }
 
+  it should "reject absent inputs, changed input digest and missing explicit qualification before elaboration" in {
+    val directory = Paths.get(sys.props("opengpu.galliumSharedAtomicInputs"))
+    val expected = sys.props("opengpu.galliumSharedAtomicInputSha256")
+    GalliumSharedAtomicArtifacts.load(directory, expected)
+    val wrong = (if (expected.head == '0') "1" else "0") + expected.tail
+    intercept[IllegalArgumentException] { GalliumSharedAtomicArtifacts.load(directory, wrong) }
+    val absent = directory.resolve("missing-qualification-inputs")
+    require(!Files.exists(absent))
+    intercept[java.nio.file.NoSuchFileException] { GalliumSharedAtomicArtifacts.load(absent, expected) }
+    val property = "opengpu.galliumComputeSharedAtomicQualification"
+    val prior = sys.props.remove(property)
+    try {
+      val error = intercept[IllegalArgumentException] { QualifyGalliumComputeSharedAtomic.main(Array.empty) }
+      assert(error.getMessage.contains("explicit local qualification only"))
+    } finally prior.foreach(value => sys.props(property) = value)
+  }
+
   it should "execute all sixteen actual ESSL shared atomics with eight warps, checked storage and held completion" in {
     require(sys.props.get("opengpu.galliumComputeSharedAtomicQualification").contains("1"),
       "explicit local qualification only")
