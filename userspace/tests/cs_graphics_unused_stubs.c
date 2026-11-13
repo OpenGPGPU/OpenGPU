@@ -3,6 +3,7 @@
 #include "util/format/u_format.h"
 #include "util/u_surface.h"
 
+#ifndef OPENGPU_CS_REAL_MESA_FORMATS
 const struct util_format_description *util_format_description(enum pipe_format format)
 {
     (void)format;
@@ -16,6 +17,7 @@ const struct util_format_unpack_description *util_format_unpack_description(enum
     assert(!"unexpected graphics unpack lookup");
     return NULL;
 }
+#endif
 
 void util_clear_depth_stencil(struct pipe_context *pipe, struct pipe_surface *dst,
                               unsigned clear_flags, double depth, unsigned stencil,
