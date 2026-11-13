@@ -1,6 +1,7 @@
 package opengpu.graphics
 
 import chisel3._
+import chisel3.experimental.hierarchy.Instantiate
 import chisel3.util._
 import chisel3.reflect.DataMirror
 import opengpu.config.GpuConfig
@@ -95,7 +96,7 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     case _=>()
   }
   if(preparedGeometry){
-    val raster=Module(new Fp32PrimitiveRasterEngine(p,g))
+    val raster=Instantiate(new Fp32PrimitiveRasterEngine(p,g,false,8))
     raster.io.in.valid:=vertexDraw.valid;raster.io.in.bits.primitive:=primitive.get;raster.io.in.bits.state:=vertexDraw.bits.raster
     raster.io.in.bits.centroidMask:=centroidMask
     val resolution=PolygonDepthResolution.evaluate(depthFormat,primitive.get.vertices.map(_.windowDepth))
