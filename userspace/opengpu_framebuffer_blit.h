@@ -11,7 +11,10 @@
  * address or pixel value crosses this descriptor. Unknown versions/flags are
  * rejected before allocating a context or touching an image. */
 #define OPENGPU_FRAMEBUFFER_BLIT_VERSION 1u
+#define OPENGPU_FRAMEBUFFER_BLIT_VERSION_2 2u
 #define OPENGPU_FRAMEBUFFER_BLIT_SCISSOR 1u
+#define OPENGPU_FRAMEBUFFER_BLIT_D24S8 5u
+#define OPENGPU_FRAMEBUFFER_BLIT_D24X8 6u
 #define OPENGPU_FRAMEBUFFER_BLIT_MAX_AXIS 16384u
 #define OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS 32u
 struct opengpu_framebuffer_blit {
@@ -53,12 +56,9 @@ static inline int opengpu_framebuffer_blit_plan_make(
 {
     struct opengpu_framebuffer_blit_plan p = {0};
     uint32_t starts[2]={0}, counts[2]={0};
-    if (!d || !out || !maps || d->version != OPENGPU_FRAMEBUFFER_BLIT_VERSION ||
+    if (!d || !out || !maps ||
+        (d->version != OPENGPU_FRAMEBUFFER_BLIT_VERSION && d->version != OPENGPU_FRAMEBUFFER_BLIT_VERSION_2) ||
         d->bytes != sizeof(*d) || (d->flags & ~OPENGPU_FRAMEBUFFER_BLIT_SCISSOR) ||
-        (d->mask & ~15u) || d->source_format < OPENGPU_FORMAT_RGBA8 ||
-        d->source_format > OPENGPU_FORMAT_BGRX8 ||
-        d->destination_format < OPENGPU_FORMAT_RGBA8 ||
-        d->destination_format > OPENGPU_FORMAT_BGRX8 ||
         !d->source_width || !d->source_height || !d->destination_width || !d->destination_height ||
         d->source_width > OPENGPU_FRAMEBUFFER_BLIT_MAX_AXIS ||
         d->source_height > OPENGPU_FRAMEBUFFER_BLIT_MAX_AXIS ||
@@ -69,6 +69,14 @@ static inline int opengpu_framebuffer_blit_plan_make(
         (uint64_t)d->destination_width*4 > d->destination_pitch ||
         ((d->flags & OPENGPU_FRAMEBUFFER_BLIT_SCISSOR) &&
             (d->scissor_x0 > d->scissor_x1 || d->scissor_y0 > d->scissor_y1))) return -1;
+    unsigned depth=d->source_format==OPENGPU_FRAMEBUFFER_BLIT_D24S8 ||
+        d->source_format==OPENGPU_FRAMEBUFFER_BLIT_D24X8;
+    if(depth) {
+        if(d->version!=2 || d->source_format!=d->destination_format ||
+            (d->mask&~48u) || (d->source_format==OPENGPU_FRAMEBUFFER_BLIT_D24X8 && (d->mask&32)))return -1;
+    } else if((d->mask&~15u) || d->source_format<OPENGPU_FORMAT_RGBA8 ||
+        d->source_format>OPENGPU_FORMAT_BGRX8 || d->destination_format<OPENGPU_FORMAT_RGBA8 ||
+        d->destination_format>OPENGPU_FORMAT_BGRX8)return -1;
     uint64_t sb=(uint64_t)(d->source_height-1)*d->source_pitch+d->source_width*4u;
     uint64_t db=(uint64_t)(d->destination_height-1)*d->destination_pitch+d->destination_width*4u;
     if (sb > source_allocation || db > destination_allocation ||
@@ -112,6 +120,36 @@ static inline int opengpu_framebuffer_blit_plan_make(
     p.x=starts[0];p.y=starts[1];p.width=counts[0];p.height=counts[1];
     p.map_words=OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS+p.width+p.height;
     *out=p;return 0;
+}
+
+/* Actual touched source rows versus destination rows, in backing-relative byte
+ * coordinates. Repeated/reversed source rows retain sorted order. A merge walk
+ * is linear in image height, not width*height; row padding is never authority
+ * to overwrite a source texel. Unknown distinct-handle aliases still require
+ * the kernel's backing proof. */
+static inline int opengpu_framebuffer_blit_disjoint(
+    const struct opengpu_framebuffer_blit *d,const struct opengpu_framebuffer_blit_plan *p,
+    const uint32_t *maps)
+{
+    if(!p->width || !p->height)return 1;
+    uint32_t low=UINT32_MAX,high=0;
+    for(unsigned i=0;i<p->width;i++) {
+        uint32_t v=maps[OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS+i];
+        if(v<low)low=v;
+        if(v>high)high=v;
+    }
+    const uint32_t *rows=maps+OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS+p->width;
+    unsigned reversed=rows[0]>rows[p->height-1],a=0,b=0;
+    while(a<p->height && b<p->height) {
+        uint64_t source=(uint64_t)rows[reversed?p->height-1-a:a]+low;
+        uint64_t source_end=(uint64_t)rows[reversed?p->height-1-a:a]+high+4;
+        uint64_t destination=(uint64_t)(p->y+b)*d->destination_pitch+p->x*4u;
+        uint64_t destination_end=destination+p->width*4u;
+        if(source<destination_end && destination<source_end)return 0;
+        if(source_end<=destination)a++;
+        else b++;
+    }
+    return 1;
 }
 
 struct opengpu_blit_program { uint32_t code[128]; unsigned words, overflow; };
@@ -170,7 +208,10 @@ static inline struct opengpu_blit_program opengpu_framebuffer_blit_program(
     unsigned destination_alpha=d->destination_format==OPENGPU_FORMAT_RGBA8 || d->destination_format==OPENGPU_FORMAT_BGRA8;
     uint32_t mask=0;
     opengpu_blit_splat(&p,11,0);
-    for(unsigned c=0;c<4;c++)if((d->mask&(1u<<c)) && (c!=3 || destination_alpha)) {
+    if(d->source_format==OPENGPU_FRAMEBUFFER_BLIT_D24S8 || d->source_format==OPENGPU_FRAMEBUFFER_BLIT_D24X8) {
+        mask=(d->mask&16?0xffffffu:0)|(d->mask&32?0xff000000u:0);
+        opengpu_blit_splat(&p,6,mask);opengpu_blit_op(&p,9,0,11,9,6);
+    } else for(unsigned c=0;c<4;c++)if((d->mask&(1u<<c)) && (c!=3 || destination_alpha)) {
         unsigned ss=(c==0 && source_bgra)?2:(c==2 && source_bgra)?0:c;
         unsigned ds=(c==0 && destination_bgra)?2:(c==2 && destination_bgra)?0:c;
         mask|=255u<<(ds*8);
