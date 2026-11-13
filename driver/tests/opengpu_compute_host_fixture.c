@@ -456,7 +456,9 @@ int compute_host_capture(struct compute_host_session *s,const char *path,uint64_
  unsigned merged=0;
  for(unsigned i=0;i<count;i++){
   if(ranges[i].first>=ranges[i].end || ranges[i].end>(1ull<<32))return -ERANGE;
-  if(merged && ranges[i].first<=ranges[merged-1].end){
+  /* Distinct original allocations can be physically adjacent. Preserve their
+   * exact boundary; only truly overlapping binding aliases need a union. */
+  if(merged && ranges[i].first<ranges[merged-1].end){
    if(ranges[i].end>ranges[merged-1].end)ranges[merged-1].end=ranges[i].end;
   }else ranges[merged++]=ranges[i];
  }
