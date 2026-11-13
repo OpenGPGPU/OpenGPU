@@ -2,8 +2,9 @@
 """CPU-only active-owner liveness and response-file refusal boundaries."""
 from pathlib import Path
 import tempfile
+import json
 import unittest
-from compute_owner_controller import atomic, wait_file
+from compute_owner_controller import atomic, wait_file, lock_owner
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -36,6 +37,23 @@ class Controller(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'pre-existing response'):
                 atomic(response, b'changed response')
             self.assertEqual(response.read_bytes(), b'first authorized response')
+
+    def test_uses_the_product_build_lock_until_the_session_finishes(self):
+        parent = ROOT / '.artifacts'; parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='compute-owner-lock-', dir=parent) as temporary:
+            owner = Path(temporary)
+            path = owner / 'executors/compute/qualification.json'
+            path.parent.mkdir(parents=True)
+            path.write_text(json.dumps(dict(schema='opengpu-owner-executor-v1', kind='compute', owner_output=str(owner))))
+            first = lock_owner(path)
+            try:
+                with self.assertRaises(BlockingIOError):
+                    lock_owner(path)
+                self.assertTrue((owner / '.lock').is_file())
+            finally:
+                first.close()
+            with lock_owner(path):
+                pass
 
 
 if __name__ == '__main__':
