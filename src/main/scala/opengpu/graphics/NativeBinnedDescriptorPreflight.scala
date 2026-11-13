@@ -42,7 +42,8 @@ object NativeBinnedDescriptorPreflight {
     // GNG link metadata; ordinary draws retain exact VS-to-FS equality.
     val varyingLink=geometry.map(gs=>gs || f.varyingSlots===draw.vertex.geometry.vertex.varyingSlots)
       .getOrElse(f.varyingSlots===draw.vertex.geometry.vertex.varyingSlots)
-    state.engineCount===engines.U && varyingLink &&
+    val geometryLink= !FragmentInputAbi.hasGeometry(f.version) || geometry.getOrElse(false.B)
+    state.engineCount===engines.U && varyingLink && geometryLink &&
       f.sampleMode===draw.raster.sampleMode && f.sampleMode===colors.sampleMode && slots && types && advanced
   }
 }
