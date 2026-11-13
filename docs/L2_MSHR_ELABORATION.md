@@ -8,9 +8,10 @@ backpressure are unchanged.
 
 A four-bank elaboration with 32,850 transaction IDs, 64-byte lines and
 128 sets/four ways per bank retains four physical table instances. Reusing
-their definition reduces four table definitions to one and the wrapper's
+their definition reduced four table definitions to one and the wrapper's
 recursive Chisel command count from 1,381,120 to 345,334 (75% fewer). These
-are elaboration results for this memory subsystem, not a whole-host conversion,
+counts were measured before the waiter-update rewrite below. They are
+elaboration results for this memory subsystem, not a whole-host conversion,
 synthesis, clock or frame-rate qualification.
 
 Ten local RTL cases and the production miss-engine CI case pass.
@@ -66,3 +67,16 @@ sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 \
 
 Changing this feedback structure does not establish a cell-count, clock or
 frame-rate improvement; those require measurements of the emitted design.
+
+All 12 directed RTL cases across the six suites above pass with a 2 GiB JVM
+and one native compiler job. Both the reference and updated table elaborate
+and emit with all four 32,850-bit waiter maps and three coherent requester
+bits. Full-capacity Yosys equivalence is not established: candidate preparation
+completed `proc`, `opt_expr` and `opt_clean`, but reached the 300-second limit
+inside `check -assert` under a one-CPU/2-GiB container budget, without an OOM.
+No equivalence or synthesis improvement is inferred from these results.
+Reproduce that preparation from the emitted directory with:
+
+```sh
+yosys -p 'read_verilog -sv -formal L2MshrTable.sv; hierarchy -check -top L2MshrTable; proc; opt_expr; opt_clean; check -assert; stat -width'
+```
