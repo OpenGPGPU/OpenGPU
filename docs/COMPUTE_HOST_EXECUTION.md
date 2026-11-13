@@ -152,6 +152,11 @@ source/configured objects and DRM/library inputs default to GPU `depends/`;
 explicit input paths must also stay inside the GPU workspace.
 The GPU workspace, fixed producer archive and Mesa inputs are mounted read-only;
 only the new managed session (including CPU build output) is writable.
+`--timeout` defaults to 3600 seconds and accepts 1..604800. It is passed as
+`OPENGPU_COMPUTE_HOST_TIMEOUT` to the actual producer's held/retired/final waits
+and each synchronous cleanup acknowledgement; none retains the standalone
+300-second default during formal execution. Malformed, zero or out-of-range
+values reject admission. Every wait remains bounded.
 
 This entry requires a clean committed producer checkout, archives that exact
 commit, and runs the original checked private Mesa NTT from that archive. It

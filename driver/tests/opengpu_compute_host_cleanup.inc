@@ -88,6 +88,7 @@ static int compute_mmio_cleanup_sync(struct opengpu_device *gpu)
     /* Explicit CPU regression peer only; never enabled by the Mesa producer. */
     OPENGPU_COMPUTE_MMIO_CLEANUP_TEST_PEER(gpu,m->cleanup_directory,sequence);
 #endif
+    unsigned timeout=compute_host_timeout_seconds();if(!timeout){error=-EINVAL;goto out;}
     struct timespec start,now,pause={.tv_nsec=10000000};
     if(clock_gettime(CLOCK_MONOTONIC,&start)){error=-EIO;goto out;}
     for(;;){
@@ -95,7 +96,7 @@ static int compute_mmio_cleanup_sync(struct opengpu_device *gpu)
         if(errno!=ENOENT){error=-errno;break;}
         if(!lstat(failed,&st)){error=-EIO;break;}
         if(clock_gettime(CLOCK_MONOTONIC,&now)){error=-EIO;break;}
-        if(now.tv_sec-start.tv_sec>=300){error=-ETIMEDOUT;break;}
+        if(now.tv_sec-start.tv_sec>=(time_t)timeout){error=-ETIMEDOUT;break;}
         if(nanosleep(&pause,NULL) && errno!=EINTR){error=-errno;break;}
     }
     if(!error){++m->cleanup_sequence;m->cleanup_start=m->count;}

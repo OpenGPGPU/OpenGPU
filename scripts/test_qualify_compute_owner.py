@@ -25,13 +25,14 @@ class Entry(unittest.TestCase):
     def test_fixed_paths_real_producer_and_both_full_sources(self):
         gpu = ROOT
         args = argparse.Namespace(mesa=gpu / 'depends/mesa', mesa_build=gpu / 'depends/mesa-build',
-            drm_include=gpu / 'depends/include', mesa_link_libs='-lz -lexpat', library_directory=gpu / 'depends/lib')
+            drm_include=gpu / 'depends/include', mesa_link_libs='-lz -lexpat', library_directory=gpu / 'depends/lib', timeout=3600)
         for case in ('shared', 'uniforms'):
             command = qualifier.producer_command(args, gpu=gpu, source=gpu / '.artifacts/source',
                 ntt=gpu / '.artifacts/ntt.c', image='sha256:' + '1' * 64, name='unique-owned-container', case=case)
             self.assertIn(f'{gpu}:{gpu}:ro', command)
             self.assertIn('{ipc}:{ipc}:rw', command)
             self.assertIn('TMPDIR={ipc}', command)
+            self.assertIn('OPENGPU_COMPUTE_HOST_TIMEOUT=3600', command)
             self.assertEqual(command[-2:], ['--case', case])
             self.assertNotIn('--capture-only', command)
             self.assertNotIn('OPENGPU_COMPUTE_HOST_TEST_MAIN', ' '.join(command))

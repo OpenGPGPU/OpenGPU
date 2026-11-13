@@ -30,6 +30,7 @@ static struct {void *data;uint64_t bytes;unsigned maps,closed;} bos[512];
 static unsigned next_bo=1,next_sync=1,submitted,retired;
 static const char *directory;
 static int capture_only,uniform_case;
+static unsigned host_timeout_seconds;
 static unsigned output_handles[4],uniform_handles[12];
 static struct drm_opengpu_compute_uniform_resources accepted_uniforms;
 static void write_oracle(void);
@@ -42,7 +43,7 @@ static FILE *wait_file(const char *name)
 {struct timespec start,now,pause={.tv_nsec=10000000};assert(!clock_gettime(CLOCK_MONOTONIC,&start));
  for(;;){FILE *f=file(name,"rb");if(f)return f;assert(errno==ENOENT);
   FILE *error=file("error","rb");assert(!error && errno==ENOENT);
-  assert(!clock_gettime(CLOCK_MONOTONIC,&now) && now.tv_sec-start.tv_sec<300);
+  assert(!clock_gettime(CLOCK_MONOTONIC,&now) && now.tv_sec-start.tv_sec<(time_t)host_timeout_seconds);
   assert(!nanosleep(&pause,NULL) || errno==EINTR);}}
 static void magic(FILE *f,const char *expected)
 {char v[8];assert(fread(v,1,8,f)==8 && !memcmp(v,expected,8));}
@@ -143,6 +144,7 @@ static void write_oracle(void)
 int main(int argc,char **argv)
 {
  assert(argc==5 || argc==6);capture_only=argc==6 && !strcmp(argv[5],"--capture-only");assert(argc==5 || capture_only);
+ host_timeout_seconds=compute_host_timeout_seconds();assert(host_timeout_seconds);
  uniform_case=!strcmp(argv[4],"uniforms");assert(uniform_case || !strcmp(argv[4],"shared"));
  directory=argv[2];FILE *f=fopen(argv[1],"rb");assert(f);magic(f,"OGCP0001");assert(read32(f)==96);
  struct compute_host_profile_word words[106];for(unsigned i=0;i<96;i++){words[i].address=read32(f);words[i].value=read32(f);}

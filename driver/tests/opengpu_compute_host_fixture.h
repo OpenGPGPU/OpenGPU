@@ -8,6 +8,9 @@
 #include "../opengpu_drm.h"
 struct compute_host_session;
 struct compute_host_profile_word { uint32_t address,value; };
+/* Strict OPENGPU_COMPUTE_HOST_TIMEOUT seconds, default300, maximum7days.
+ * Zero reports invalid configuration; active launchers pass their CLI bound. */
+unsigned compute_host_timeout_seconds(void);
 struct compute_host_session *compute_host_create(uint32_t context,
     const struct compute_host_profile_word *,size_t count);
 int compute_host_query(struct compute_host_session *,uint32_t param,uint64_t *value);
