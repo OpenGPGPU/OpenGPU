@@ -99,10 +99,17 @@ public:
   // drive() settles the low phase before requests are observed. No model
   // inputs change between that snapshot and the rising edge.
   void step(Agent &agent, uint64_t cycle) {
+    step(agent, cycle, [](const auto &) {});
+  }
+  // Observe control and memory handshakes at the same settled pre-edge point.
+  // Captured driver polls must continue serving external AXI while MMIO waits.
+  template<class ControlObserver>
+  void step(Agent &agent, uint64_t cycle, ControlObserver observe_control) {
     require(model->io_s_axi_aclk == 0, "native AXI step requires a low clock");
     const auto response = agent.drive(cycle);
     drive(response);
     const auto request = requests();
+    observe_control(*model);
     agent.observe(cycle, request, response);
     advance_settled();
   }
