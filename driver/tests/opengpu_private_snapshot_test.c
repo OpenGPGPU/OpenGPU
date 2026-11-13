@@ -62,7 +62,11 @@ static void uniform_snapshot_test(struct opengpu_device *gpu,struct opengpu_rend
         stages[stage].defaults.handle=25+stage;stages[stage].defaults.offset=4;stages[stage].defaults.bytes=4096;
     }
     owner=opengpu_private_snapshot_create(gpu,context);assert(!IS_ERR(owner));
-    uniform_copies=0;uniform_copy_failure=7;memset(&roots,0x5a,sizeof(roots));unchanged=roots;
+    uniform_copies=0;memset(&roots,0x5a,sizeof(roots));unchanged=roots;private_alloc_fail_after=0;
+    assert(opengpu_native_uniform_snapshot_append(owner,stages,7,8,9,copy_uniform,uniform_sources,&roots)==-ENOMEM);
+    assert(!uniform_copies && !owner->segments && !memcmp(&roots,&unchanged,sizeof(roots)));
+    private_alloc_fail_after=-1;
+    uniform_copies=0;uniform_copy_failure=7;
     assert(opengpu_native_uniform_snapshot_append(owner,stages,7,8,9,copy_uniform,uniform_sources,&roots)==-EIO);
     assert(uniform_copies==7 && !owner->segments && !memcmp(&roots,&unchanged,sizeof(roots)));
     uniform_copy_failure=0;uniform_copies=0;

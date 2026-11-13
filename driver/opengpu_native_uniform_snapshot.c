@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 #include <linux/errno.h>
 #include <linux/slab.h>
+#include <linux/vmalloc.h>
 #include <linux/string.h>
 #include "opengpu_native_uniform_snapshot.h"
 #include "opengpu_private_snapshot.h"
@@ -89,7 +90,7 @@ int opengpu_native_uniform_snapshot_append(struct opengpu_private_snapshot *owne
     }
     if(!result.present[0] && !result.present[1]){*output=result;return 0;}
     bytes=(bytes+63u)&~63u;
-    data=kzalloc(bytes,GFP_KERNEL);if(!data)return -ENOMEM;
+    data=kvzalloc(bytes,GFP_KERNEL);if(!data)return -ENOMEM;
     for(u32 stage=0;stage<2 && !ret;++stage){
         u32 base=stage*ROOT_BYTES,low=0,high=0;
         identity(data,base,OPENGPU_UNIFORM_ROOT_MAGIC,context,pass,generation);
@@ -115,7 +116,7 @@ int opengpu_native_uniform_snapshot_append(struct opengpu_private_snapshot *owne
         ret=copy_source(copy_context,&copy->view,data+copy->offset);
     }
     if(!ret)ret=opengpu_private_snapshot_append(owner,data,bytes,&result.segment);
-    kfree(data);if(ret)return ret;
+    kvfree(data);if(ret)return ret;
     for(u32 stage=0;stage<2 && !ret;++stage){
         u32 base=stage*ROOT_BYTES;
         if(stages[stage].active_mask){
