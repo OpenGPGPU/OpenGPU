@@ -39,6 +39,7 @@ class NativeGeometryPrimitivePipeline(config: GpuConfig,p: VertexShaderStageConf
   private val result=Reg(new GeometryPrimitivePipelineResult)
   private val sequence=Reg(UInt(64.W));private val cancelled=RegInit(false.B)
   private val outputFault=RegInit(false.B);private val mapperBusy=RegInit(false.B)
+  private val workerRetired=RegInit(false.B)
   private val input=Module(new NativeGeometryInputMapper(p))
   private val scheduler=Module(new GeometrySharedCuScheduler(config,commandIdWidth,numComputeUnits))
   private val output=Module(new GeometryPrimitiveOutput(p))
@@ -50,7 +51,7 @@ class NativeGeometryPrimitivePipeline(config: GpuConfig,p: VertexShaderStageConf
   input.io.in.bits:=io.task.bits.input
   io.task.ready:=phase===idle && !io.cancel && input.io.in.ready
   when(io.task.fire){
-    saved:=io.task.bits;result:=0.U.asTypeOf(result);cancelled:=false.B;outputFault:=false.B;mapperBusy:=false.B
+    saved:=io.task.bits;result:=0.U.asTypeOf(result);cancelled:=false.B;outputFault:=false.B;mapperBusy:=false.B;workerRetired:=false.B
     sequence:=io.task.bits.firstSequence;result.nextSequence:=io.task.bits.firstSequence
     result.taskId:=io.task.bits.input.taskId;result.inputPrimitiveId:=io.task.bits.input.primitive.primitiveId
     phase:=inputWait
@@ -85,11 +86,17 @@ class NativeGeometryPrimitivePipeline(config: GpuConfig,p: VertexShaderStageConf
   when(launches.io.enq.fire){assert(scheduler.io.geometryTask.valid)}
   io.shared.launch.valid:=launches.io.deq.valid;io.shared.launch.bits:=launches.io.deq.bits.kernel
   launches.io.deq.ready:=io.shared.launch.ready
+  when(launches.io.deq.fire){workerRetired:=false.B}
   io.shared.geometryTask.get.valid:=launches.io.deq.valid;io.shared.geometryTask.get.bits:=launches.io.deq.bits.geometry
   scheduler.io.kernelCompletion<>io.shared.completion;scheduler.io.event<>io.shared.geometryEvent.get
+  when(io.shared.completion.fire){workerRetired:=true.B
+    when(!io.shared.completion.bits.success && !cancelled && !io.cancel){outputFault:=true.B}}
   scheduler.io.owner:=io.shared.owned;scheduler.io.taskIds:=io.shared.taskIds
   io.shared.geometryCancel.get:=scheduler.io.cancelCu
-  io.shared.nativeResources:=false.B
+  // The decoder's captured native-uniform route requires both permissions.
+  // Only the immutable scalar GS profile is admitted by the private code
+  // validator; its other native texture/image/storage operations are rejected.
+  io.shared.nativeResources:=saved.input.program.uniforms.version===GeometryUniformResources.version.U
   io.shared.uniformResources:=saved.input.program.uniforms.version===GeometryUniformResources.version.U
   io.shared.invalidate<>io.invalidate;io.invalidateDone<>io.shared.invalidateDone
 
@@ -108,17 +115,28 @@ class NativeGeometryPrimitivePipeline(config: GpuConfig,p: VertexShaderStageConf
   // service, just as held memory requests and launches must first transfer.
   uniform.io.cancel:=uniform.io.busy && stopping
   io.memoryRequest<>uniform.io.memoryRequest;uniform.io.memoryResponse<>io.memoryResponse
-  uniform.io.commit.ready:=Mux1H((0 until numComputeUnits).map(i=>(client===i.U)->io.shared.texture(i).scalarWriteback.ready))
-  uniform.io.vectorCommit.ready:=Mux1H((0 until numComputeUnits).map(i=>(client===i.U)->io.shared.texture(i).vectorWriteback.ready))
+  private val matchingClient=VecInit((0 until numComputeUnits).map(i=>selected(i) && client===i.U))
+  // A cancelled/faulted worker may retire its physical CU before a held
+  // instruction result drains. Its real tagged completion authorizes local
+  // discard; never send that old result to a later task using the same CU.
+  private val discard=stopping && (workerRetired || io.shared.completion.fire) && !matchingClient.asUInt.orR
+  uniform.io.commit.ready:=discard || Mux1H(matchingClient,io.shared.texture.map(_.scalarWriteback.ready))
+  uniform.io.vectorCommit.ready:=discard || Mux1H(matchingClient,io.shared.texture.map(_.vectorWriteback.ready))
   for(i<-0 until numComputeUnits){val port=io.shared.texture(i)
     port.scalar.ready:=selected(i) && uniform.io.in.ready;port.vector.ready:=selected(i) && uniform.io.vectorIn.ready
-    port.scalarWriteback.valid:=uniform.io.commit.valid && client===i.U;port.scalarWriteback.bits:=uniform.io.commit.bits
-    port.vectorWriteback.valid:=uniform.io.vectorCommit.valid && client===i.U;port.vectorWriteback.bits:=uniform.io.vectorCommit.bits
+    port.scalarWriteback.valid:=uniform.io.commit.valid && matchingClient(i);port.scalarWriteback.bits:=uniform.io.commit.bits
+    port.vectorWriteback.valid:=uniform.io.vectorCommit.valid && matchingClient(i);port.vectorWriteback.bits:=uniform.io.vectorCommit.bits
   }
   when((uniform.io.commit.valid || uniform.io.vectorCommit.valid) && uniform.io.status=/=0.U &&
       uniform.io.status=/=ShaderUniformStatus.cancelled.U){outputFault:=true.B}
   io.shared.trap.ready:=active
-  when(io.shared.trap.fire){assert(io.shared.trap.bits.taskId===saved.commandId);outputFault:=true.B}
+  // The scalar texture backend terminates a cancelled uniform instruction
+  // through its tagged load-fault path (writeRd=false). Drain that physical
+  // trap without upgrading an already cancelled task; faults observed before
+  // cancellation remain latched and retain priority in the held result.
+  private val trapFault=io.shared.trap.fire && !cancelled && !io.cancel
+  when(io.shared.trap.fire){assert(io.shared.trap.bits.taskId===saved.commandId)}
+  when(trapFault){outputFault:=true.B}
 
   output.io.in.valid:=phase===running && scheduler.io.primitive.valid
   scheduler.io.primitive.ready:=phase===running && output.io.in.ready
@@ -141,7 +159,7 @@ class NativeGeometryPrimitivePipeline(config: GpuConfig,p: VertexShaderStageConf
   scheduler.io.completion.ready:=phase===running && !mapperBusy && !output.io.in.valid && !uniform.io.busy && !io.memoryRequest.valid && !launches.io.deq.valid
   when(scheduler.io.completion.fire){
     result.completedInvocations:=scheduler.io.completion.bits.completedInvocations;result.nextSequence:=sequence
-    result.status:=Mux(outputFault || io.shared.trap.fire,GeometryInvocationStatus.workerFault,
+    result.status:=Mux(outputFault || trapFault,GeometryInvocationStatus.workerFault,
       Mux(cancelled || io.cancel,GeometryInvocationStatus.cancelled,scheduler.io.completion.bits.status))
     phase:=report
   }

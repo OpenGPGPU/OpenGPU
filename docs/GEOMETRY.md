@@ -787,7 +787,35 @@ sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   'testOnly opengpu.system.NativeGeometryPrimitivePipelineSpec'
 ```
 
+A separate `NativeGeometrySharedCuSpec` connects this client to a real
+`GpuSystem` with two CUs (two lanes and two warps per CU), not an event or
+completion peer. Its scalar program reads input vertex 5/component 63 and UBO
+block 11/native slot 23, emits a point and terminates on the physical CU. All
+32 invocations and held mapped outputs pass, followed by a real uniform memory
+fault, single-pulse cancellation of a held root request, and two healthy
+invocations after changing the UBO value. The same GPU and caches remain live
+without reset. This fixture observes CU0 ownership; it does not demonstrate
+use of both CUs or product throughput. Admission retains the full six-input,
+64-component, 32-invocation, 256-vertex and 1024-total-component limits.
+
+The GUR2 provider supplies both decoder permissions captured at physical
+launch. Uniform results return only to the retained CU/task tag; a cancelled
+worker's actual completion permits local result drain if that CU has changed
+owners. The scalar backend turns a cancelled non-writing uniform commit into
+a tagged load fault. The client drains that physical trap while preserving an
+earlier cancellation, and retains faults recorded before cancellation. Both
+fault and cancel cases observe the actual uniform instruction PC and load-fault
+cause. The peer test separately blocks an already completed instruction result
+through cancellation and verifies isolation after CU reuse by a foreign tag.
+Reproduce the actual execution gate with:
+
+```sh
+sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'testOnly opengpu.system.NativeGeometrySharedCuSpec'
+```
+
 No product constructor enables this client. Its current scalar program profile
-still excludes geometry texture/image/storage resources. Actual CU execution,
-full stage resource routing, production submission and native/API qualification
-remain required.
+still excludes geometry texture/image/storage resources. Native VS-to-GS,
+clip/bin integration, full stage resource routing, production submission and
+native/API qualification remain required.
