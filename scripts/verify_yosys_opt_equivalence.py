@@ -124,7 +124,7 @@ def compare(rtl, top, image, temporary_root, timeout):
                         rtlil_bytes=sizes, prefix_seconds=base_elapsed,
                         proof_seconds=proof_elapsed, equivalent=True,
                         image_id=image_id, verification_files_guarded=sum('verification/' in p for p in before),
-                        source_unchanged=True, mappedTiming=False, wholeHostQualified=False)
+                        rtl_and_verification_unchanged=True, mappedTiming=False, wholeHostQualified=False)
     finally:
         if snapshot(rtl) != before:
             raise RuntimeError('Input RTL or assertion layers changed during comparison')
