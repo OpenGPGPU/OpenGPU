@@ -7,18 +7,47 @@ the isolated producer while both real owners are retained, after independently
 parsing the actual capture/memory and checking private RX program bytes.
 """
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
 from pathlib import Path
 import runpy
 import shutil
+import signal
 import subprocess
+import sys
 import tempfile
 import time
 
+sys.dont_write_bytecode = True
+from owner_process_lifetime import CleanupIncomplete, stop_group, remove_container
+
 ROOT = Path(__file__).resolve().parents[1]
 GPU = next(parent for parent in (ROOT, *ROOT.parents) if (parent / '.git').is_dir())
+
+
+@contextmanager
+def capture_workspace():
+    """Retain inputs if process/container exit cannot be proven."""
+    def terminate(_signal, _frame):
+        raise KeyboardInterrupt('native CPU capture terminated')
+    previous = signal.signal(signal.SIGTERM, terminate)
+    temporary = None
+    preserve = False
+    try:
+        temporary = tempfile.mkdtemp(prefix='g', dir=GPU / '.artifacts')
+        yield temporary
+    except CleanupIncomplete:
+        preserve = True
+        print('Active consumers could not be excluded; preserved inputs at ' + str(temporary), file=sys.stderr)
+        raise
+    finally:
+        try:
+            if temporary is not None and not preserve:
+                shutil.rmtree(temporary)
+        finally:
+            signal.signal(signal.SIGTERM, previous)
 
 
 def main():
@@ -34,7 +63,7 @@ def main():
                                               cwd=kernel_source, text=True).strip()
     revision = subprocess.check_output(['git', 'rev-parse', '--verify', args.owner_revision + '^{commit}'],
                                        cwd=ROOT, text=True).strip()
-    with tempfile.TemporaryDirectory(prefix='g', dir=GPU / '.artifacts') as temporary:
+    with capture_workspace() as temporary:
         out = Path(temporary)
         # Build only this immutable committed copy; another worktree may rebase
         # while the isolated compiler runs. The source copy is deleted on exit.
@@ -101,7 +130,7 @@ def main():
         launch += 'subprocess.run(' + repr(list(map(str, acceptance))) + ',check=True)\n'
         (out / 'launch.py').write_text(launch)
         name = 'gpu-h7-' + out.name
-        command = ['docker', 'run', '--rm', '--name', name, '--memory', '2g', '--cpus', '2',
+        command = ['docker', 'run', '--rm', '--init', '--name', name, '--memory', '2g', '--memory-swap', '2g', '--cpus', '2',
                    '-v', str(GPU) + ':' + str(GPU) + ':ro', '-v', temporary + ':/out:rw',
                    '-e', 'TMPDIR=/out', '-e', 'CC=gcc', '-e', 'CXX=g++',
                    '-e', 'OPENGPU_MESA_DIR=' + str(mesa),
@@ -113,7 +142,7 @@ def main():
         process = None
         try:
             with (out / 'producer.log').open('w') as log:
-                process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
+                process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
                 deadline = time.monotonic() + 900
                 while not (out / 'ipc/ready.json').exists():
                     if process.poll() is not None:
@@ -143,11 +172,13 @@ def main():
                         print(path.name, content[-10000:])
             raise
         finally:
-            if process is not None and process.poll() is None:
-                # No held/retired observation or release authorization is sent.
-                # Stop the isolated OS model, not a running physical device.
-                subprocess.run(['docker', 'stop', '-t', '1', name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                process.wait(timeout=20)
+            # No held/retired receipt or release authorization is sent. Prove
+            # both the isolated CPU process group and actual container stopped
+            # before removing their private build and captured source inputs.
+            try:
+                stop_group(process)
+            finally:
+                remove_container(name)
         print('Actual Mesa prepared-owner capture CPU integration PASS; no GPU execution or observed retirement')
 
 
