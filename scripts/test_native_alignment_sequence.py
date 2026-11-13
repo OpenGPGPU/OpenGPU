@@ -11,6 +11,7 @@ import unittest
 from unittest.mock import patch
 
 import qualify_native_alignment_sequence as q
+import test_prepare_native_owner_flashsim as owner_tests
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -50,6 +51,7 @@ class SequenceFixtureTests(unittest.TestCase):
 
     def test_complete_ordered_execution_gate(self):
         rows = [dict(scene=name, epoch=epoch, computeCycles=100, nativeCycles=200,
+                     profile='two-cu-vga60-v2', resourceDiscoveryWords=72,
                      resetBetweenCommands=False, independentImagesRequired=True, fpsQualified=False)
                 for name in q.common.SCENES for epoch in range(2)]
         q.validate_rows(rows)
@@ -60,6 +62,55 @@ class SequenceFixtureTests(unittest.TestCase):
                            ('fpsQualified', True)):
             changed = copy.deepcopy(rows); changed[0][key] = value
             with self.assertRaises(RuntimeError): q.validate_rows(changed)
+        owner_rows = copy.deepcopy(rows)
+        for row in owner_rows:
+            row.update(profile=q.owner.PROFILE, resourceDiscoveryWords=96)
+        q.validate_rows(owner_rows, True)
+        for selected, wrong in ((False, owner_rows), (True, rows)):
+            with self.assertRaises(RuntimeError): q.validate_rows(wrong, selected)
+        for key, value in (('resourceDiscoveryWords', True), ('resourceDiscoveryWords', 72),
+                           ('profile', 'two-cu-vga60-v2')):
+            changed=copy.deepcopy(owner_rows); changed[0][key]=value
+            with self.assertRaises(RuntimeError): q.validate_rows(changed, True)
+
+    def test_owner_fixtures_cannot_authorize_rtl_or_mix_changed_inputs(self):
+        parent=ROOT/'.artifacts'; parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='owner-sequence-inputs-',dir=parent) as directory:
+            out=Path(directory); (out/'fixtures').mkdir()
+            fixture=out/'fixtures/suite.txt'; fixture.write_text('\n'.join(q.common.SCENES)+'\n')
+            for name in q.common.SCENES:
+                for suffix in ('.memory','.commands'):
+                    (out/'fixtures'/(name+suffix)).write_text('CPU guard placeholder; no GPU executes')
+            manifest=owner_tests.OwnerInputTests().manifest()
+            manifest.update(rtlEmitted=False,workloadProduct=False,workloadWidth=32,
+                            workloadHeight=32,scenes=q.common.SCENES)
+            path=out/'owner-fixture-manifest.json'; path.write_text(q.json.dumps(manifest))
+            runner=q.OwnerRunner(out,False,ROOT,api_capacity=True,two_cu_vga=True,alignment_v2=True)
+            with self.assertRaises(RuntimeError): q.owner.check_manifest(manifest)
+            with patch.object(q.owner,'prepared',return_value={'real-owner-rtl':'unchanged'}) as guard:
+                q.common.write_json(out/'sequence-fixtures.json',runner.fixture_inputs())
+                self.assertEqual(runner.prepared(),guard.return_value)
+                fixture.write_text('changed')
+                with self.assertRaises(RuntimeError): runner.prepared()
+                fixture.write_text('\n'.join(q.common.SCENES)+'\n')
+                missing=out/'fixtures'/(q.common.SCENES[0]+'.commands')
+                contents=missing.read_bytes(); missing.unlink()
+                with self.assertRaises(RuntimeError): runner.prepared()
+                missing.write_bytes(contents)
+                for key,value in (('workloadProduct',True),('workloadWidth',640),
+                                  ('scenes',q.common.SCENES[::-1]),('rtlEmitted',True)):
+                    changed=copy.deepcopy(manifest); changed[key]=value; path.write_text(q.json.dumps(changed))
+                    with self.assertRaises(RuntimeError): runner.prepared()
+                path.write_text(q.json.dumps(manifest))
+                with patch.object(runner,'driver_sources',return_value=[]):
+                    with self.assertRaises(RuntimeError): runner.prepared()
+                with patch.object(runner,'execute') as execute:
+                    with self.assertRaises(RuntimeError): runner.prepare()
+                    execute.assert_not_called()
+            with patch.object(q.owner,'prepared',side_effect=RuntimeError('stale RTL')), \
+                    patch.object(runner,'execute') as execute:
+                with self.assertRaisesRegex(RuntimeError,'stale RTL'): runner.prepare()
+                execute.assert_not_called()
 
     def test_independent_verification_requires_each_image_and_final_marker(self):
         parent = ROOT / '.artifacts'; parent.mkdir(exist_ok=True)

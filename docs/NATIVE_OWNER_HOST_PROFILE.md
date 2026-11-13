@@ -48,3 +48,37 @@ generator checks retain assertion coverage and reject stale model/tool inputs.
 The preparation/generation commands are not execution qualification and retain
 `gpuExecution`, `clockQualified` and `fpsQualified` as false. Remove their
 working outputs once the development/validation use ends.
+
+The compute/native sequence also accepts this exact 96-word factory. Reuse the
+prepared owner directory; the sequence preparation adds only the six original
+32×32 input recipes and does not emit another DUT:
+
+```sh
+python3 scripts/qualify_native_alignment_sequence.py --owner-profile \
+  --output .artifacts/native-owner-host --flashsim-dir "$FLASHSIM" --stage prepare
+python3 scripts/qualify_native_alignment_sequence.py --owner-profile \
+  --output .artifacts/native-owner-host --flashsim-dir "$FLASHSIM" --stage build
+python3 scripts/qualify_native_alignment_sequence.py --owner-profile \
+  --output .artifacts/native-owner-host --flashsim-dir "$FLASHSIM" --stage run
+python3 scripts/qualify_native_alignment_sequence.py --owner-profile \
+  --output .artifacts/native-owner-host --flashsim-dir "$FLASHSIM" --stage verify
+```
+
+Every scene reads all 96 discovery words from the executing DUT before running
+compute/native/compute/native without an intervening reset. The verifier checks
+stored images, samples/resolve, both compute epochs and read-only bytes against
+independent Scala recipes. Source, assertion, model, fixture and profile checks
+reject a changed preparation or a frozen 72-word v2 model.
+
+Local validation passes the four command/data tests, all six fixture binary
+roundtrips and CPU ASan/UBSan corruption checks. These validate input generation
+and rejection only; this owner sequence has not yet completed on a freshly
+generated full DUT. Reproduce the command/data and CPU checks with:
+
+```sh
+sbt 'testOnly opengpu.system.CompiledNativeProductCapacitySpec opengpu.system.NativeAlignmentSequenceDataSpec'
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_native_alignment_sequence.py
+```
+
+The 32×32 sequence cannot establish the 640×480 performance target or physical
+timing, and all clock/FPS qualification flags remain false.

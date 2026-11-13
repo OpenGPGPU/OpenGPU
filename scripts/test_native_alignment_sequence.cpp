@@ -1,14 +1,39 @@
 #define main alignment_sequence_entry
 #include "native_alignment_sequence_driver.cpp"
 #undef main
+#include "native_owner_capture.hpp"
 
 template<class F> static void rejects(F action) {
   bool rejected=false;
   try { action(); } catch(const std::runtime_error &) { rejected=true; }
   require(rejected,"corrupted sequence fixture was accepted");
 }
-int main() {
+int main(int argc,char **argv) {
+  if(argc>1) {
+    for(int i=1;i<argc;i++) {
+      const auto fixture=native_frame::Fixture::read(argv[i]);
+      native_frame::require(fixture.owner_profile(),"not an owner command fixture");
+      auto path=std::filesystem::path(argv[i]);path.replace_extension(".memory");
+      const auto memory=native_frame::Memory::read(path.string());
+      native_frame::require(!memory.ranges.empty(),"owner recipe has no backing");
+    }
+    std::cout << "owner command roundtrip: PASS\n";
+    return 0;
+  }
   using namespace alignment_sequence;
+  native_frame::Fixture owner{};
+  owner.resources=native_owner::Capture::profile(); owner.validate_resources();
+  require(owner.owner_profile() && !owner.alignment_v2(),"owner and frozen v2 profiles were conflated");
+  for(size_t i=0;i<owner.resources.size();i++)for(bool address:{false,true}) {
+    auto changed=owner;
+    (address?changed.resources[i].address:changed.resources[i].value)^=1;
+    rejects([&] {changed.validate_resources();});
+  }
+  auto legacy=owner;legacy.resources.resize(72);legacy.resources[2].value=0x7fff;
+  legacy.validate_resources();
+  require(legacy.alignment_v2() && !legacy.owner_profile(),"legacy v2 identity changed");
+  rejects([&] {auto bad=owner;bad.resources[2].value=0x7fff;bad.validate_resources();});
+  rejects([&] {auto bad=legacy;bad.resources[2].value=0x3ffff;bad.validate_resources();});
   Memory memory; memory.ranges.push_back({0x1000000,0x1001000,0}); seed(memory);
   const Memory initial=memory;
   for(unsigned epoch=0;epoch<2;++epoch) {
