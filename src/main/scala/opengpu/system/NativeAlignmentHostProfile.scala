@@ -11,13 +11,17 @@ import opengpu.graphics._
   */
 final case class NativeAlignmentHostConfig(graphics: GraphicsConfig,
     execution: GpuConfig, computeUnits: Int, native: NativeBinnedGraphicsConfig,
-    transactionsPerCu: Int = 16, axiDataBytes: Int = 32) {
+    transactionsPerCu: Int = 16, axiDataBytes: Int = 32,
+    nativeProtectedSources: Boolean = false) {
   require(computeUnits > 0 && transactionsPerCu >= 16,
     "the integrated resource paths require sixteen CU transaction IDs")
   require(native.transformFeedback, "primitive queries require native feedback ownership")
   require(native.translateImageViews, "the alignment host requires translated native image views")
   require(native.payload.nonEmpty && native.payload.get.owners == native.engines + 1,
     "native and tessellation renderers require the complete shared payload owner set")
+
+  require(!nativeProtectedSources || native.descriptorPreflight,
+    "protected native source discovery requires complete descriptor preflight")
 
   private def block(base: Int, words: Seq[BigInt]): Vector[(Int, BigInt)] =
     words.zipWithIndex.map { case (word, index) => (base + 4 * index, word) }.toVector
@@ -33,7 +37,8 @@ final case class NativeAlignmentHostConfig(graphics: GraphicsConfig,
       imageAtomicAvailable = true, storageAtomicAvailable = true,
       tessellationAvailable = true, tessellationFeedbackAvailable = true,
       nativeAdvancedBlendAvailable = native.storage.nativeAdvancedDraws,
-      nativeDescriptorPreflightAvailable = native.descriptorPreflight)) ++
+      nativeDescriptorPreflightAvailable = native.descriptorPreflight,
+      nativeProtectedSourcesAvailable = nativeProtectedSources)) ++
     block(0x160, NativeBinnedGraphicsCapabilities.words(native, computeUnits, graphics)) ++
     block(ComputeIndirectCapabilities.base, ComputeIndirectCapabilities.words(execution)) ++
     block(NativeVisibilityQueryCapabilities.base, NativeVisibilityQueryCapabilities.words) ++
@@ -46,8 +51,11 @@ final case class NativeAlignmentHostConfig(graphics: GraphicsConfig,
     else Vector.empty) ++
     (if (native.descriptorPreflight)
       block(NativeDescriptorPreflightCapabilities.base, NativeDescriptorPreflightCapabilities.words)
+    else Vector.empty) ++
+    (if (nativeProtectedSources)
+      block(NativeShaderExecutionCapabilities.base, NativeShaderExecutionCapabilities.words)
     else Vector.empty)
-  private val discoveryWords = 72 + (if (native.storage.nativeAdvancedDraws) 8 else 0) + (if (native.descriptorPreflight) 8 else 0)
+  private val discoveryWords = 72 + (if (native.storage.nativeAdvancedDraws) 8 else 0) + (if (native.descriptorPreflight) 8 else 0) + (if (nativeProtectedSources) 8 else 0)
   require(requiredDiscovery.size == discoveryWords &&
     requiredDiscovery.map(_._1).distinct.size == discoveryWords,
     "the integrated configuration requires its complete distinct discovery words")
@@ -82,4 +90,5 @@ class NativeAlignmentHostSystemAxi(profile: NativeAlignmentHostConfig,
     imageAvailable = true, storageAvailable = true, computeUniformAvailable = true,
     computeTextureAvailable = true, atomicCounterAvailable = true,
     imageAtomicAvailable = true, storageAtomicAvailable = true,
-    nativeFragmentImages = true, tessellationNative = true)
+    nativeFragmentImages = true, tessellationNative = true,
+    nativeProtectedSources = profile.nativeProtectedSources)

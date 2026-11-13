@@ -108,7 +108,8 @@ class GpuHostSystemAxi(
   imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false,
   computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false,
   tessellationNative: Boolean = false,
-  nativeFragmentImages: Boolean = false, imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false
+  nativeFragmentImages: Boolean = false, imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false,
+  nativeProtectedSources: Boolean = false
 ) extends RawModule {
   require(!imageAtomicAvailable || imageAvailable, "image atomics require image execution")
   require(!storageAtomicAvailable || storageAvailable, "storage atomics require storage execution")
@@ -121,6 +122,9 @@ class GpuHostSystemAxi(
   require(!atomicCounterAvailable || transactionsPerCu >= 16, "atomic counter execution reserves sixteen CU transaction IDs")
   private val shaderConfig = graphicsGpuConfig.getOrElse(gpuConfig)
   private val nativeExecutionLimits = typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty
+  require(!nativeProtectedSources || (nativeBinnedGraphics.exists(n => n.descriptorPreflight &&
+    n.translateImageViews) && sharedGraphics && version>=2),
+    "native protected source discovery requires translated preflight and the shared native shader path")
   private val nativeFeedback=typedGraphics.exists(_.transformFeedback) || nativeBinnedGraphics.exists(_.transformFeedback)
   require(!tessellationNative || nativeBinnedGraphics.nonEmpty,
     "internal tessellation host integration requires native binned graphics")
@@ -332,6 +336,7 @@ class GpuHostSystemAxi(
       tessellationHost=tessellationNative,imageAtomicAvailable=imageAtomicAvailable,storageAtomicAvailable=storageAtomicAvailable,
       tessellationDiscovery=tessellationNative && version>=2,
       nativeDescriptorPreflight=nativeBinnedGraphics.exists(_.descriptorPreflight),
+      nativeProtectedSources=nativeProtectedSources,
       nativeAdvancedDraws=typedGraphics.exists(_.storage.nativeAdvancedDraws) || nativeBinnedGraphics.exists(_.storage.nativeAdvancedDraws)))
     val system = Module(new GpuSystem(
       gpuConfig,

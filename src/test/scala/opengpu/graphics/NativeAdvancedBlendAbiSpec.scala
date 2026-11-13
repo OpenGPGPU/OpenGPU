@@ -24,6 +24,30 @@ class NativeAdvancedBlendAbiSpec extends AnyFlatSpec {
     val scanned=off.copy(native=off.native.copy(preflightDescriptors=true))
     assert(scanned.requiredDiscovery.size==80 && scanned.requiredDiscovery.toMap.apply(0x368)==BigInt(0x17fff))
     assert(scanned.requiredDiscovery.drop(72)==on.requiredDiscovery.drop(80))
+    val protectedSources=on.copy(nativeProtectedSources=true)
+    assert(protectedSources.requiredDiscovery.size==96 &&
+      protectedSources.requiredDiscovery.map(_._1).distinct.size==96)
+    assert(protectedSources.requiredDiscovery.toMap.apply(0x368)==BigInt(0x3ffff))
+    assert(protectedSources.requiredDiscovery.take(88).toMap.updated(0x368,BigInt(0x1ffff))==on.requiredDiscovery.toMap)
+    val gsl=Seq[BigInt](BigInt("47534c01",16),8,31,32,1<<20,BigInt("04051918",16),0x320,0x138)
+    assert(protectedSources.requiredDiscovery.drop(88)==gsl.zipWithIndex.map{case(word,index)=>(0x300+4*index,word)})
+    assert(!off.nativeProtectedSources)
+    intercept[IllegalArgumentException](off.copy(nativeProtectedSources=true))
+    intercept[IllegalArgumentException](opengpu.system.ComputeResourceCapabilities.words(
+      opengpu.config.ComputeResourceProfile(off.execution,off.computeUnits,off.axiDataBytes),
+      nativeProtectedSourcesAvailable=true))
+    for(missing<-0 until 9){
+      val cause=intercept[IllegalArgumentException]{
+        circt.stage.ChiselStage.emitCHIRRTL(new opengpu.system.GpuHostAxi(
+          unifiedCommandMmio=missing!=0,protectVmState=missing!=1,externalBinnedRender=missing!=2,
+          nativeVertexInput=missing!=3,nativeCompletionInfo=missing!=4,
+          nativeDescriptorPreflight=missing!=5,nativeUniformResources=missing!=6,
+          shaderExecutionLimits=missing!=7,version=if(missing==8)1 else 2,
+          computeResources=Some(opengpu.config.ComputeResourceProfile(off.execution,off.computeUnits,off.axiDataBytes)),
+          nativeProtectedSources=true))
+      }
+      assert(cause.getMessage.contains("native protected sources require"))
+    }
     assert(opengpu.system.NativeAlignmentHostProfile.id=="two-cu-vga60-v2")
     assert(!opengpu.system.NativeAlignmentHostProfile.nativeAdvancedBlend)
   }

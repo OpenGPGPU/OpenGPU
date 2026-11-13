@@ -31,7 +31,8 @@ object EmitComputeResourceAbi {
       "#define OPENGPU_COMPUTE_RESOURCE_BUFFER_TEXTURE_V1 (1u << 13)\n"+
       "#define OPENGPU_COMPUTE_RESOURCE_BUFFER_IMAGE_SIZE_V1 (1u << 14)\n"+
       "#define OPENGPU_COMPUTE_RESOURCE_NATIVE_ADVANCED_BLEND_V1 (1u << 15)\n"+
-      "#define OPENGPU_COMPUTE_RESOURCE_NATIVE_DESCRIPTOR_PREFLIGHT_V1 (1u << 16)\n#endif\n"
+      "#define OPENGPU_COMPUTE_RESOURCE_NATIVE_DESCRIPTOR_PREFLIGHT_V1 (1u << 16)\n"+
+      "#define OPENGPU_COMPUTE_RESOURCE_NATIVE_PROTECTED_SOURCES_V1 (1u << 17)\n#endif\n"
     val defaults=c.words(ComputeResourceProfile(GpuConfig(),1,8))
     val mobile=c.words(ComputeResourceProfile(GpuConfig(),4,32))
     val json=s"""{
