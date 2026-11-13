@@ -24,6 +24,7 @@ def write_bodies(out):
         'activate':'int opengpu_hw_activate_vm(',
         'enable':'int opengpu_hw_enable_mmu(',
         'flush':'int opengpu_hw_flush_tlbs(',
+        'disable':'int opengpu_hw_disable_mmu_locked(',
         'flush_asid':'int opengpu_hw_flush_tlb_asid(',
         'submit':'static int opengpu_hw_unified_submit_locked(',
         'invalidate':'int opengpu_hw_invalidate_buffer_locked(',

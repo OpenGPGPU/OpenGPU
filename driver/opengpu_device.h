@@ -474,7 +474,7 @@ int opengpu_hw_set_satp(struct opengpu_device *gpu, dma_addr_t root_table,
  * `satp`.  `vm == NULL` restores the global ASID-0 identity map. */
 int opengpu_hw_activate_vm(struct opengpu_device *gpu,
                            const struct opengpu_vm *vm);
-/* Caller holds submit_lock and MMU lock and has proved execution idle. */
+/* Both submit_lock and MMU lock held; caller has proved execution idle. */
 int opengpu_hw_disable_mmu_locked(struct opengpu_device *gpu);
 int opengpu_hw_flush_tlbs(struct opengpu_device *gpu);
 /* Scoped shootdown: drop only the entries for one ASID or one VPN.  Global
@@ -494,7 +494,7 @@ int opengpu_hw_snapshot_submission_lock(struct opengpu_device *gpu);
 int opengpu_hw_wait_idle(struct opengpu_device *gpu);
 
 int opengpu_mmu_init(struct opengpu_device *gpu);
-/* Failure retains global page tables and wedges the device. */
+/* Failure retains global tables and wedges the device; do not free backing. */
 int opengpu_mmu_fini(struct opengpu_device *gpu);
 int opengpu_mmu_set_range_policy(struct opengpu_device *gpu, dma_addr_t base,
                                  size_t size, u32 policy);
@@ -569,7 +569,8 @@ int opengpu_mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
                            dma_addr_t old_va, size_t old_size);
 int opengpu_mmu_vm_unmap(struct opengpu_device *gpu, struct opengpu_vm *vm,
                          dma_addr_t va, size_t size);
-/* Failure retains VM/list/ASID/PTs: keep its containing context and backing. */
+/* Failure retains the linked VM, PTs and ASID. Keep its containing context
+ * and original backing alive; destruction cannot be treated as successful. */
 int opengpu_mmu_vm_destroy(struct opengpu_device *gpu, struct opengpu_vm *vm);
 int opengpu_hw_compute_async(struct opengpu_device *gpu,
                              const struct opengpu_kernel_launch *launch,

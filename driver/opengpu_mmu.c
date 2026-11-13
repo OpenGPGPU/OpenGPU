@@ -1060,7 +1060,7 @@ int opengpu_mmu_vm_destroy(struct opengpu_device *gpu, struct opengpu_vm *vm)
         if(owned){
             WRITE_ONCE(gpu->hw.wedged,true);
             mutex_unlock(&mmu->lock);mutex_unlock(&gpu->hw.submit_lock);
-            return;
+            return -EBUSY;
         }
     }
     vm->enabled = false;
@@ -1090,7 +1090,7 @@ int opengpu_mmu_fini(struct opengpu_device *gpu)
 
     mutex_lock(&gpu->hw.submit_lock);
     mutex_lock(&mmu->lock);
-    if (mmu->vms) {
+    if (mmu->vms || mmu->snapshot_leases) {
         ret = -EBUSY;
         goto out;
     }
