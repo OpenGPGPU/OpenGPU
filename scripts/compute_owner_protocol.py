@@ -57,16 +57,22 @@ def profile_bytes(profile):
     from pathlib import Path
     import re
     abi = (Path(__file__).resolve().parents[1] / 'driver/gpu_abi.h').read_text()
-    names = ('UNIFIED_COMMANDS', 'PROTECTED_VM_STATE', 'COMPUTE_SCALAR_FPU', 'SHADER_CONFIG_INFO')
+    names = ('UNIFIED_COMMANDS', 'PROTECTED_VM_STATE', 'COMPUTE_SCALAR_FPU', 'SHADER_CONFIG_INFO', 'NATIVE_PIXEL_FORMATS')
     required_caps = 0
     for name in names:
         match = re.search(r'^#define GPU_CAP_' + name + r'\s+\(1u << (\d+)\)', abi, re.M)
         if not match:
             raise ValueError('unsupported capability ABI expression')
         required_caps |= 1 << int(match.group(1))
+    batch_shift = re.search(r'^#define GPU_CAP_FRAGMENT_BATCH_SHIFT\s+(\d+)u', abi, re.M)
+    if not batch_shift:
+        raise ValueError('unsupported fragment batch ABI expression')
+    fragment_batch = (caps >> int(batch_shift.group(1))) & 255
+    banks = shader >> 16 & 255
     if (device & 0xffff0000 != 0x47550000 or device & 0xffff < 2 or
             caps & required_caps != required_caps or pointer != 0x160 or quota != 1048576 or
-            shader & 255 != 16 or shader >> 8 & 255 != 8 or not (shader >> 16 & 255) or shader >> 24 != 2 or
+            shader & 255 != 16 or shader >> 8 & 255 != 8 or banks < 2 or banks & 1 or shader >> 24 != 2 or
+            fragment_batch != (shader & 255) * (shader >> 8 & 255) or
             tuple(values[5:]) != MAGICS):
         raise ValueError('incoherent actual compute discovery')
     output = bytearray(b'OGCP0001' + struct.pack('<I', 96))

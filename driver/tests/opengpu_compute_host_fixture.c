@@ -27,6 +27,7 @@
 #include "opengpu_shader_image_command.h"
 #include "opengpu_storage_descriptor.h"
 #include "opengpu_shader_validator.h"
+#include "opengpu_shader_resources.h"
 #include "opengpu_compute_uniform_counter_source_program.h"
 #include "opengpu_kernarg_va.h"
 #include "opengpu_tessellation_completion.h"
@@ -262,8 +263,10 @@ struct compute_host_session *compute_host_create(uint32_t context,
  }
  u32 id=compute_profile_read(s,GPU_REG_ID);s->gpu.hw.capabilities=compute_profile_read(s,GPU_REG_CAPABILITIES);
  if((id&0xffff0000u)!=0x47550000u ||
-    (s->gpu.hw.capabilities&(GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE))!=
-      (GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE) ||
+    (s->gpu.hw.capabilities&(GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE|
+      GPU_CAP_COMPUTE_SCALAR_FPU|GPU_CAP_SHADER_CONFIG_INFO|GPU_CAP_NATIVE_PIXEL_FORMATS))!=
+      (GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE|GPU_CAP_COMPUTE_SCALAR_FPU|
+       GPU_CAP_SHADER_CONFIG_INFO|GPU_CAP_NATIVE_PIXEL_FORMATS) ||
     !opengpu_read_compute_features(id,0x1000,s,compute_profile_read,&s->gpu.hw.compute_resource_flags) ||
     !opengpu_read_compute_local_limits(id,0x1000,s->gpu.hw.compute_resource_flags,s,compute_profile_read,&s->gpu.hw.compute_local_limits) ||
     !opengpu_read_compute_shared_limits(id,0x1000,s->gpu.hw.compute_resource_flags,s,compute_profile_read,&s->gpu.hw.compute_shared_limits) ||
@@ -281,7 +284,8 @@ struct compute_host_session *compute_host_create(uint32_t context,
     compute_profile_read(s,OPENGPU_COMPUTE_RESOURCE_REG_COMPUTE_UNITS)!=2 ||
     compute_profile_read(s,OPENGPU_COMPUTE_RESOURCE_REG_LANES)!=16 ||
     compute_profile_read(s,OPENGPU_COMPUTE_RESOURCE_REG_WARPS)!=8 ||
-    !((shader>>GPU_SHADER_CONFIG_BANKS_SHIFT)&GPU_SHADER_CONFIG_FIELD_MASK) ||
+    !opengpu_shader_resources_valid(shader, (s->gpu.hw.capabilities &
+       GPU_CAP_FRAGMENT_BATCH_MASK) >> GPU_CAP_FRAGMENT_BATCH_SHIFT) ||
     s->gpu.hw.compute_local_limits.items!=128 || !s->gpu.hw.compute_shared_limits.discovered ||
     s->gpu.hw.compute_shared_limits.bytes!=16384 ||
     !s->gpu.hw.compute_texture_transport || !s->gpu.hw.compute_storage_transport ||
@@ -637,6 +641,25 @@ int main(int argc,char **argv)
  }
  for(size_t i=0;i<ARRAY_SIZE(test_profile);i++) {
   struct compute_host_profile_word old=test_profile[i];
+  if(old.address==GPU_REG_CAPABILITIES) {
+   const u32 required[]={GPU_CAP_UNIFIED_COMMANDS,GPU_CAP_PROTECTED_VM_STATE,
+       GPU_CAP_COMPUTE_SCALAR_FPU,GPU_CAP_SHADER_CONFIG_INFO,GPU_CAP_NATIVE_PIXEL_FORMATS};
+   for(unsigned cap=0;cap<ARRAY_SIZE(required);cap++){
+    test_profile[i].value=old.value & ~required[cap];
+    assert(!compute_host_create(7,test_profile,ARRAY_SIZE(test_profile)));test_profile[i]=old;
+   }
+   test_profile[i].value &= ~GPU_CAP_FRAGMENT_BATCH_MASK;
+   assert(!compute_host_create(7,test_profile,ARRAY_SIZE(test_profile)));test_profile[i]=old;
+   test_profile[i].value ^= 1u << GPU_CAP_FRAGMENT_BATCH_SHIFT;
+   assert(!compute_host_create(7,test_profile,ARRAY_SIZE(test_profile)));test_profile[i]=old;
+  }
+  if(old.address==GPU_REG_SHADER_CONFIG) {
+   for(unsigned banks=1;banks<=3;banks+=2){
+    test_profile[i].value=(old.value & ~(GPU_SHADER_CONFIG_FIELD_MASK << GPU_SHADER_CONFIG_BANKS_SHIFT)) |
+       (banks << GPU_SHADER_CONFIG_BANKS_SHIFT);
+    assert(!compute_host_create(7,test_profile,ARRAY_SIZE(test_profile)));test_profile[i]=old;
+   }
+  }
   if(old.address==0x494 || old.address==0x43c || old.address==0x3fc || old.address==0x4bc || old.address==0x460) {
    test_profile[i].value^=1;assert(!compute_host_create(7,test_profile,ARRAY_SIZE(test_profile)));test_profile[i]=old;
    test_profile[i].address=0x5f0;assert(!compute_host_create(7,test_profile,ARRAY_SIZE(test_profile)));test_profile[i]=old;

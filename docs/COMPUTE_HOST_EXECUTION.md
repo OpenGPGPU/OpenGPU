@@ -68,7 +68,12 @@ never be defined when linking an actual Mesa/DUT producer. The source remains
 on a dependent draft topic until the complete execution pipeline is ready.
 
 The independent compute controller codec requires the real 96-word profile and
-ten auxiliary register reads. Native profile/receipt schemas, truncated profiles,
+ten auxiliary register reads. Its actual capabilities must include the native
+pixel-format support required by the existing Gallium screen, with a fragment
+batch equal to the advertised 16 lanes times eight warps. The bank count must
+be at least two and even, matching the existing shader-resource validator.
+Malformed raw data rejects admission; the controller never fills missing fields.
+CPU capture tests use an explicitly separate legal fixture profile. Native profile/receipt schemas, truncated profiles,
 changed completion identities and cleanup without `contextCleanupObserved`
 are rejected. A completion receipt cannot authorize cleanup; a separate
 `OGCMBA01` authorization follows all independent byte/source/guard oracles.
