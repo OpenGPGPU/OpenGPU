@@ -33,6 +33,7 @@ struct build {
     const struct opengpu_cs_shared *shared;
     struct shared_expr expr[CS_TEMPS][4];
     unsigned shared_declared, shared_used, shared_written, shared_visible;
+    unsigned shared_own_store_valid, shared_own_store_offset;
     unsigned shared_address_valid[2], shared_address_offset[2];
     int failed;
 };
@@ -503,7 +504,10 @@ static int shared_memory(struct build *b, const struct tgsi_full_instruction *in
         in->Memory.Texture != TGSI_TEXTURE_BUFFER ||
         (address.kind != EXPR_LOCAL && address.kind != EXPR_PEER) || address.scale != 4 ||
         (address.offset & 3) || end > b->shared->required_bytes ||
-        (store && address.kind != EXPR_LOCAL) || (!store && end > b->shared_visible)) return -1;
+        (store && address.kind != EXPR_LOCAL) ||
+        (!store && end > b->shared_visible &&
+         !(address.kind == EXPR_LOCAL && b->shared_own_store_valid &&
+           address.offset == b->shared_own_store_offset))) return -1;
     if (store && source_register(b, &in->Src[1], 0, 22, &value_reg)) return -1;
     /* A scalar load has no parallel components to preserve. Its address is
      * already captured above; an existing TEMP can receive the value directly
@@ -537,6 +541,8 @@ static int shared_memory(struct build *b, const struct tgsi_full_instruction *in
         return 0;
     }
     if (address.offset <= b->shared_written && end > b->shared_written) b->shared_written = (unsigned)end;
+    b->shared_own_store_valid = 1;
+    b->shared_own_store_offset = address.offset;
     return 0;
 }
 

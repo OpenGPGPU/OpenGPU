@@ -15,10 +15,44 @@ workgroup, straight-line converged barriers, and the checked adjacent-warp
 access. The emitter preserves the shared declaration's typed MEMORY binding,
 proves an initialized prefix before a barrier makes it readable, and emits
 unmasked e32 unit-stride operations using the trusted local-linear warp base.
+It also admits a read of the exact most recent invocation-local store stripe
+without a workgroup barrier. The proof retains that stripe's byte offset,
+separately from the initialized prefix: a shifted read may name another
+invocation's word, even inside that prefix, and still requires publication.
+Peer permutations remain barrier-dependent. Native CFG joins retain the local
+proof only if every incoming path has the same most recent store offset;
+the shared frontend continues to require straight-line control flow.
+Only the most recent stripe is retained: another store drops that local proof
+even when a later read of an older stripe would be legal. Arbitrary
+invocation-local layouts, multiple retained stripes and general CFGs remain
+outside this increment.
+The distinction between an invocation's own accesses and communication with
+other invocations follows [GLSL ES 3.10, shared variables](https://registry.khronos.org/OpenGL/specs/es/3.1/GLSL_ES_Specification_3.10.pdf),
+section 4.3.8.
 The shared lane count must be a power of two representable by `vsetivli`
 (at most 31); the validated device has 16 lanes. Legacy nonshared compilation
 keeps its entry point and program layout, including the 16-vec4 immediate limit.
 The shared parser permits 32 immediate vec4s; the native limit remains 512 words.
+
+The explicit own-stripe CPU test builds 36 programs using the actual Mesa
+22.3.6 TGSI builder/parser and production emitter/validator. The first and last
+128-word stripes are accepted without control barriers; uninitialized,
+shifted, peer and overwritten-stripe proofs are rejected without partial
+output. It covers zero, ordinary and exclusive-4-GiB shared address windows.
+A published peer read remains accepted. Removing the accepted store
+from the actual emitted words makes Linux validation fail. ASan/UBSan and the
+complete native validator corpus pass, including CFG joins and an exclusive
+4 GiB endpoint. This test does not execute a GPU or establish general shared
+layout/barrier semantics. The additional ESSL own-stripe cases in the full
+shared frontend and the existing SRAM CU execution test still require fresh
+qualification before this change is considered complete.
+
+```sh
+OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 \
+OPENGPU_DRM_INCLUDE=/path/to/drm-headers \
+OPENGPU_TEST_SANITIZERS=1 \
+python3 scripts/test_gallium_shared_own_stripe.py
+```
 
 The CPU qualification passed with actual Mesa 22.3.6 ESSL310 → NIR → TGSI, the
 production emitter, discovery callbacks and kernel word validator. Its full

@@ -146,6 +146,28 @@ int main(int argc,char **argv)
         struct opengpu_cs_shared cfg=profile;cfg.required_bytes=cs_frontend_shared_bytes(negative);
         reject_shared(cs_frontend_tokens(negative),&cfg);cs_frontend_destroy(negative);
     }
+    /* A memory fence does not rendezvous with other invocations. These loads
+     * are admitted only because each invocation reads its exact own stripe. */
+    for(unsigned n=0;n<2;n++) {
+        const char *name[]={"own","own-end"};
+        void *own=front(argv[1],name[n],"own-stripe");
+        struct opengpu_cs_shared cfg=profile;cfg.required_bytes=cs_frontend_shared_bytes(own);
+        struct opengpu_cs_program own_code;
+        assert(cfg.required_bytes==16384);
+        assert(!opengpu_cs_emit_shared(cs_frontend_tokens(own),&cfg,&own_code));
+        assert(admitted(&own_code,cfg.base,cfg.bytes,cfg.lanes));
+        unsigned reads=0,writes=0,barriers=0;
+        for(unsigned i=0;i<own_code.words;i++) {
+            reads+=(own_code.code[i]&127u)==0x07u;writes+=(own_code.code[i]&127u)==0x27u;
+            barriers+=own_code.code[i]==0x0000000bu;
+        }
+        assert(reads==1&&writes==1&&!barriers&&own_code.words<=512);
+        cs_frontend_destroy(own);
+    }
+    void *shifted=front(argv[1],"own-shifted","negative");
+    struct opengpu_cs_shared shifted_cfg=profile;
+    shifted_cfg.required_bytes=cs_frontend_shared_bytes(shifted);
+    reject_shared(cs_frontend_tokens(shifted),&shifted_cfg);cs_frontend_destroy(shifted);
     /* Real Gallium state creation and screen query consume production discovery.
      * No shared submit is routed through the legacy no-shared CPU word VM. */
     limit_shared_base=profile.base;limit_shared_bytes=profile.bytes;limit_shared_lanes=profile.lanes;

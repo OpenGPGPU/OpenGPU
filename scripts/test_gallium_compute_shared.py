@@ -16,6 +16,12 @@ def write_sources(out):
     (out / "no-barrier.comp").write_text(full.replace("memoryBarrierShared();barrier();", "memoryBarrierShared();", 1))
     (out / "divergent.comp").write_text(full.replace("memoryBarrierShared();barrier();", "if(id<64u){barrier();}", 1))
     (out / "peer-store.comp").write_text(full.replace("data[id+", "data[(id^16u)+"))
+    for name, offset in (("own", 0), ("own-end", 3968)):
+        (out / (name + ".comp")).write_text(prefix +
+            "data[id+%du]=0xa1000000u+(group<<16u)+id;memoryBarrierShared();\n" % offset +
+            "result.v[group*128u+id]=data[id+%du];}\n" % offset)
+    (out / "own-shifted.comp").write_text(prefix +
+        "data[id]=id;memoryBarrierShared();result.v[group*128u+id]=data[id+1u];}\n")
 
 
 if __name__ == "__main__":
