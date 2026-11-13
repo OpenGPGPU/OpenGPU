@@ -19,6 +19,16 @@ MARKER = ('NATIVE_ALIGNMENT_SEQUENCE PASS scenes=6 commands=24 resets=6 '
           'frame=32x32 clockQualified=false fpsQualified=false')
 
 
+def temporary_root():
+    # sbt's native Unix socket cannot use a long worktree output path on macOS.
+    # Resolve the main GPU checkout without placing files beside that checkout.
+    git = Path(subprocess.check_output(['git', 'rev-parse', '--git-common-dir'],
+                                      cwd=ROOT, text=True).strip())
+    directory = (ROOT / git).resolve().parent / '.artifacts'
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
 def validate_rows(rows):
     expected = [(name, epoch) for name in common.SCENES for epoch in range(2)]
     if [(r.get('scene'), r.get('epoch')) for r in rows] != expected:
@@ -45,7 +55,7 @@ def verify_marker(log):
 
 class Runner(flash.Runner):
     def execute(self, stage, command, log, cwd=ROOT):
-        with tempfile.TemporaryDirectory(prefix='sequence-tmp-', dir=self.out) as temporary:
+        with tempfile.TemporaryDirectory(prefix='n', dir=temporary_root()) as temporary:
             # Keep JVM and native/Python child fixtures inside this GPU task.
             # A unique owned directory also makes cleanup safe after a failure.
             previous = os.environ.get('TMPDIR')
