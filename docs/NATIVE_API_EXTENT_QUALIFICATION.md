@@ -139,6 +139,34 @@ all stored color/depth samples, resolves and guards. The 1× frame completed in
 These are small-frame results. They do not establish execution at the
 2048×2048 target, a qualified whole-host clock, FPS or H6 acceptance.
 
+## Completed 640×480 1× frame
+
+The retained assertion-enabled four-CU/four-engine API-capacity model completed
+the 640×480 1× frame in 1,511,237 service cycles (1,511,336 GPU cycles), with
+drained AXI traffic. The independent oracle checked every stored color/depth
+sample and pitched guard byte. The original model, driver and fixture hashes
+were rechecked before inspecting the retained output.
+
+`VerifyOneNativeApiScene` checks one completed memory using the same recipe,
+allocation metadata and image oracle as the complete API verifier. It requires
+the original mode's explicit opt-ins and emits `fullSuiteQualified=false`;
+its diagnostic records cannot satisfy the two-frame qualification marker.
+The 4× frame and complete paired verification remain required. This result
+does not qualify 2048×2048 rendering, the 720p workload suite, a whole-host clock
+or FPS.
+
+```sh
+sbt -J-Xmx8G -Dopengpu.fullHostQualification=1 -Dopengpu.apiExtentQualification=1 \
+  -Dopengpu.productQualification=1 \
+  "Test / runMain opengpu.system.VerifyOneNativeApiScene --api-extent-product native-api-extent-1x $MEMORY"
+python3 scripts/test_qualify_native_api_compiled.py
+```
+
+For a completed 4× memory, select `native-api-extent-4x`. For 32×32 inputs, use
+`--smoke` and `-Dopengpu.productQualification=0`. This diagnostic checks image
+contents; the runner's model provenance, traffic-drain and paired-frame gates
+remain separate requirements.
+
 ## Independent-process API smoke, 2026-11-12
 
 On an existing assertion-enabled four-CU/four-engine API-capacity model,

@@ -73,6 +73,21 @@ class GuardTests(unittest.TestCase):
                 log.write_text('\n'.join(bad))
                 with self.assertRaises(RuntimeError): api.verify_marker(log)
 
+    def test_single_frame_diagnostics_cannot_qualify_the_pair(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / 'verify.log'
+            for is_product, extent in [(True, '640x480'), (False, '32x32')]:
+                lines = [f'ONE_NATIVE_API_SCENE PASS id={name} frame={extent} samples={samples} '
+                    'exactStoredImagesAndGuards=true fullSuiteQualified=false'
+                    for name, samples in zip(api.SCENES, [1, 4])]
+                final = ('NATIVE_COMPILED_API PASS frames=2 fullExecutionAndStorage=true '
+                    'exactStoredImagesAndGuards=true clockQualified=false fpsQualified=false')
+                for partial in [lines[:1], lines, lines + [final]]:
+                    with self.subTest(product=is_product, records=len(partial)):
+                        log.write_text('\n'.join(partial))
+                        with self.assertRaises(RuntimeError):
+                            api.verify_marker(log, is_product)
+
     def test_preparation_binds_source_fixtures_rtl_and_manifest(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(product, 'rtl_inputs', return_value={'source':'one'}):
             out=Path(directory); (out/'rtl').mkdir(); (out/'fixtures').mkdir()
