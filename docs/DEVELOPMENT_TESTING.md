@@ -222,7 +222,7 @@ qualify_binned_case '-t "should compute FP32 coordinates and sample textures thr
 Both cases render 32×16 images with two tile engines and a 64 KiB payload arena.
 The first checks AXI ownership and queued copies with bounded renderer batches;
 the second exercises a full 128-thread fragment batch and changed textures in
-fresh VMs. These are functional/resource checks, not 720p or FPS qualification.
+fresh VMs. These are functional/resource checks, not two-CU 640×480/60 FPS product qualification.
 
 ## Frame sizes
 
@@ -233,10 +233,17 @@ instead of 3600 tiles at 1280×720. Complete image, byte-count, continuation and
 two-engine assertions still apply to every tested pixel and tile.
 
 The normal PR and nightly workflows set `-Dopengpu.productQualification=0`.
-They retain their existing suite catalogs. Product RTL capacities, Mobile
-resource budgets and the 720p product acceptance target remain unchanged.
-Historical 720p measurements keep their original workload scope; VGA cycle
-counts cannot be presented as new 720p results.
+They retain their existing suite catalogs. The mandatory alignment target is
+**two CUs at 640×480 and 60 FPS**. Product performance qualification remains an
+explicit local task even though its resolution fits the routine render limit:
+all six full scenes, exact stored-image/guard checks and matching complete-host
+timing/memory assumptions are required. Supported RTL/API capacities and
+resource budgets remain separate from the workload size.
+
+Historical four-CU/720p measurements keep their original scope. Neither those
+results nor a four-CU VGA frame qualify the two-CU target. Legacy product
+runners that hard-code four CUs/720p must acquire an explicitly checked two-CU
+640×480 profile before they can qualify this gate.
 
 For example, run a default frame check with:
 
@@ -244,7 +251,7 @@ For example, run a default frame check with:
 sbt 'testOnly opengpu.graphics.TileBinRenderPipelineSpec -- -z "clear and store a complete 640x480 frame"'
 ```
 
-Run 720p deliberately outside the routine CI lanes:
+Optional 720p extension checks run deliberately outside the routine CI lanes:
 
 ```sh
 sbt -Dopengpu.productQualification=1 'testOnly opengpu.graphics.TileBinRenderPipelineSpec -- -z "1280x720"'

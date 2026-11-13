@@ -13,14 +13,34 @@ The device compiler is already underway in a sibling tree, not in this repositor
 
 [Quad-word fragment exports](FRAGMENT_QUAD_EXPORTS.md) pass the 32-clock
 prepared-quad rate checks, six native development scenes and complete actual
-fragment/vertex component synthesis. Whole-host timing and the six 720p frame
+fragment/vertex component synthesis. Whole-host timing and the six 2-CU VGA frame
 budgets remain required.
 
 ## Target and scope
 
 Use Mali-G31 as an older commercial reference class, rather than treating it as the definition of a current entry-level GPU. Arm lists GLES 3.2 support for that device. GLES 3.0 is therefore an intermediate capability target. [Arm Mali-G31](https://support.arm.com/compute-ip/mali-g31)
 
-The initial OpenGPU product target is four shared CUs, with a 720p workload suite targeting 30 FPS first and 60 FPS subsequently at a physically qualified clock. Test desktop composition, textured 3D, opaque overdraw, transparent layers, small triangles, and 4x MSAA separately. These targets do not imply measured performance parity with a particular commercial device.
+The current OpenGPU product target, revised by the user on 2026-11-13, is
+**two shared CUs rendering 640×480 at 60 FPS**, at a physically qualified clock.
+This replaces the previous four-CU, 720p, 30-then-60-FPS product requirement.
+720p and four-CU runs remain optional extensions and historical evidence.
+
+Test desktop composition, textured 3D, opaque overdraw, transparent layers,
+small triangles, and 4x MSAA separately. Each complete scene must meet the
+16.67 ms frame deadline on the same frozen two-CU configuration, including
+geometry, binning, rendering, store/resolve, dependencies and drain. Check exact
+stored samples, resolves, guards and traffic, then use the matching complete-host
+clock and memory assumptions to establish FPS. Small-frame checks, display
+refresh, four-CU results or resolution/CU-count scaling estimates cannot qualify
+this target. These targets do not imply measured parity with a commercial GPU.
+
+GLES feature/API limits, fault and ownership semantics, H0–H8 deliverables and
+physical gates remain in scope. In particular, the 640×480 performance workload
+does not lower API renderbuffer/texture capacity requirements. Existing four-CU
+RTL defaults and legacy 720p runner commands retain their original scope;
+qualification for this target must explicitly select and verify two CUs and
+640×480. Update the product runner/profile and its stale-profile rejection
+before using it for the new acceptance gate.
 
 The [wider pixel arithmetic target](STREAMING_PIXEL_ARITHMETIC.md) specifies four
 streaming component lanes and eight owned quad contexts per raster engine,
@@ -43,7 +63,7 @@ interpolation synthesis at 1000 ps; the expanded owner also passes, at
 +9.550/+477.735 ps core/I/O margin and 475,284 µm² of library area.
 Raw preparation, point/line coverage, triangle coverage and
 scalar arithmetic retain their component qualifications. Complete engine/
-shared-CU/host timing, payload bandwidth, four-CU fragment concurrency and
+shared-CU/host timing, payload bandwidth, target-profile fragment concurrency and
 product renderer rates remain open.
 
 The hardware contract must cover shader execution, geometry, texture resources, rasterization, framebuffer operations, synchronization and faults. Display scanout remains a consumer of completed images. Its refresh rate is separate from rendering throughput.
@@ -107,16 +127,20 @@ A tile engine contains raster work generation, fragment dispatch state, a pixel 
 
 Shader lane count comes only from `GpuConfig`. A raster quad remains four pixels because derivatives use a 2x2 neighborhood. Raster quads, texture taps, SRAM banks and pixel pipelines are throughput resources with different units; none introduces a second shader VLEN.
 
-## Initial four CU sizing
+## Starting resource sizing
 
 Keep these values in one proposed hardware configuration record. Derive transaction IDs, queue indices and SRAM addressing from it. Architectural limits, runtime bindings and elaboration-time capacities must be separate fields.
 
+The product CU count is two. Other resources below retain their independently
+selectable starting budgets; freeze the actual engine/cluster counts for the
+two-CU qualification instead of inferring them from a four-CU result.
+
 | Resource | Initial proposal | Meaning and scaling rule |
 |---|---|---|
-| Shared CUs | 4 CUs, 16 lanes, 8 resident warps per CU | Reuse existing execution profile; retain supported lane/warp parameterization |
-| Tile engines | 2, initially 1 for bring-up | Default `ceil(CUs / 2)` for balanced configurations; independently selectable for isolation experiments |
+| Shared CUs | 2 CUs, 16 lanes, 8 resident warps per CU | Product target; retain supported lane/warp parameterization |
+| Tile engines | 2, initially 1 for bring-up | Independently selectable; `MobileGpuConfig.balanced(2)` selects one engine, so record the actual product choice |
 | Raster output | 1 quad/cycle/engine | Eight candidate pixels/cycle at two engines; coverage and interpolation availability can reduce useful output |
-| Texture clusters | 2 | Initially one per pair of CUs; requests include task, lane, descriptor and destination tags |
+| Texture clusters | 2 | Independently selectable; the balanced two-CU profile selects one cluster. Requests include task, lane, descriptor and destination tags |
 | Texture throughput | 1 RGBA8 bilinear sample/cycle/cluster | Conflict-free resident-data target; four tap words/cycle/cluster. Trilinear requires two bilinear groups |
 | Texture cache | 8 KiB data/cluster, 64-byte lines, at least 4 word banks | Starting point for a capacity/bank sweep, including refill and response bandwidth |
 | Texture outstanding fills | Start at 16 line fills/cluster; sweep 8/16/32 | Final value follows measured miss demand and memory latency; separate line fills from sample/tap credits |
@@ -251,9 +275,10 @@ For a selected workload, calculate a lower bound in cycles:
 Use measured effective rates for the actual instruction/format mix. Add serial phases, launch overhead, dependency latency and pipeline drain to the scheduling model. The maximum of these terms is a lower bound, not a cycle prediction by itself.
 
 The current planning assumption, selected by the user, is 1000 MHz (1 GHz):
-30 FPS permits about 33.33 million service cycles/frame and 60 FPS about
-16.67 million. This assumption does not qualify the whole-host clock or FPS.
-A single RGBA8 1280x720 final store is 3,686,400 bytes/frame, or 221,184,000
+the 60 FPS target permits at most 16,666,666 whole service cycles/frame
+(16.67 ms). Recalculate this budget as `floor(qualifiedClockHz / 60)` at the
+actual qualified frequency. The assumption does not qualify the whole-host
+clock or FPS. A single RGBA8 640×480 final store is 1,228,800 bytes/frame, or 73,728,000
 bytes/second at 60 FPS. This excludes texture, geometry, bin, attachment-load,
 spill and display-read traffic. At the same assumed frequency, the proposed
 two-cluster texture cache-hit bandwidth and a 256-bit AXI read channel each
@@ -268,10 +293,10 @@ Tile storage reduces repeated external attachment traffic by retaining intermedi
 | Texture throughput | Each cluster reaches one bilinear RGBA8 result/cycle on a long conflict-free resident-data stream; separately report trilinear, misses, bank conflicts and dependent samples |
 | Pixel throughput | Each engine reaches four RGBA8+D24S8 sample updates/cycle on a long conflict-free resident stream; include enabled blend/depth/stencil cases and report supported rates per mode |
 | Attachment locality | An eligible clear/discard-start pass avoids old attachment reads; blending/depth intermediates stay on chip; final stores/resolves match the requested outputs |
-| CU scaling | Target at least 3.2x for a specified long shader-bound 1-to-4-CU test with fixed non-CU resources and identical work; attribute the remaining gap with counters |
-| Balanced scaling | Separately test 1/2/4 CUs with proportional texture/tile resources; retain a realistic fixed external-bandwidth case and identify its saturation point |
+| CU scaling | Measure a specified long shader-bound 1-to-2-CU test with fixed non-CU resources and identical work; attribute the remaining gap with counters. The historical 1-to-4-CU target/result remains optional scaling evidence |
+| Balanced scaling | Test 1/2 CUs with proportional texture/tile resources; retain a realistic fixed external-bandwidth case and identify its saturation point. Four-CU sweeps are optional |
 | Physical | Meet setup/hold and I/O constraints at the selected clock, with SRAM assumptions and implementation stage reported; compare area and energy/frame |
-| Product workload | Meet the agreed 720p frame budget on each selected workload at a qualified clock, including binning, geometry, rendering and store/resolve |
+| Product workload | Meet 60 FPS at 640×480 on two CUs for all six selected workloads at a qualified complete-host clock, including binning, geometry, rendering and store/resolve |
 
 The current qualified textured scene is 32,341 cycles on one CU and 11,566 on four, or about 2.80x. It is a retained regression workload, not a general theoretical scaling limit. Qualification handoff
 
@@ -295,7 +320,7 @@ Existing OM screening also failed the 1 GHz timing gate for both baseline and sh
 | H3 | Banked pixel backend, legal early rejection and pipelined hazards | Pixel throughput gate, adversarial same-sample ordering, early/late equivalence and physical timing | `OutputMerger`, tile SRAM, sample expansion and retirement |
 | H4 | Banked texture clusters with general resource descriptors | Cache-hit throughput gate, miss/translation stress, multiple bindings and render-to-texture visibility | `TextureUnit`, `FragmentTextureArbiter`, `BufferedTextureWordPort`, translation routing |
 | H5 | On-chip shader payload/export path and GPU geometry fetching | No mandatory per-fragment global staging in the common path; index/instance reuse, fault drain and task progress verified | `KernelFragStage`, `ParallelKernelFragStage`, shared task router, vertex stages and CU interfaces |
-| H6 | Required format/primitive/resource coverage and product qualification | Hardware feature matrix closed, targeted API integration tests, 720p suite and physical reports | Format, texture, raster, execution, query and synchronization blocks |
+| H6 | Required format/primitive/resource coverage and product qualification | Hardware feature matrix closed, targeted API integration tests, two-CU 640×480/60 FPS six-scene suite and matching physical reports | Format, texture, raster, execution, query and synchronization blocks |
 | H7 | GLES 3.1 hardware closure | Storage/image access, atomics, barriers, indirect work and resource-limit matrix verified | CU memory, descriptor tables, command processor and shared cache/translation fabric |
 | H8 | GLES 3.2 hardware closure | Geometry/tessellation, bounded amplification, stage ordering and remaining feature matrix verified | Shared task scheduling, patch SRAM, primitive generation and graphics backends |
 
@@ -311,8 +336,9 @@ Routine render workloads use at most **640×480**, with smaller images preferred
 for functional checks. Shared frame-scale fixtures select this size by default;
 PR and nightly CI explicitly keep product qualification disabled. Use
 `-Dopengpu.productQualification=1` only for a separate, deliberate 1280×720
-qualification run. This development policy preserves the product's 720p target
-and capacity requirements. Bounded numeric/address boundary checks do not need
+extended qualification run. The mandatory product target is two CUs at
+640×480/60 FPS, while supported RTL and API capacities remain separate from
+workload resolution. Bounded numeric/address boundary checks do not need
 to render a full-size frame. See [development testing](DEVELOPMENT_TESTING.md).
 
 Add counters for tile residency/evictions, attachment bytes by operation, bin allocation/spill, active engines, primitive occupancy, payload traffic, queue stalls, eligible/rejected early tests, texture bank conflicts, useful cache bytes, fill occupancy and per-CU active/helper lanes. Avoid summing overlapping stall counters as if they were exclusive causes.

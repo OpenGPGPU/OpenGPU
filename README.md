@@ -197,7 +197,7 @@ Choose the path that matches what you want to learn or change:
 - **Device compiler (sibling LLVM tree):** [docs/LLVM_TOOLCHAIN_PLAN.md](docs/LLVM_TOOLCHAIN_PLAN.md).
 
 The project is still an active hardware/software co-design effort. The
-mobile-alignment target (H6-H8: product qualification at 720p, GLES 3.1/3.2
+mobile-alignment target (H6-H8: 2-CU product qualification at 640x480/60 FPS, GLES 3.1/3.2
 closure) is tracked in
 [docs/MOBILE_GPU_HARDWARE_ALIGNMENT.md](docs/MOBILE_GPU_HARDWARE_ALIGNMENT.md)
 and [docs/MOBILE_GPU_MILESTONE_ACCEPTANCE.md](docs/MOBILE_GPU_MILESTONE_ACCEPTANCE.md).
