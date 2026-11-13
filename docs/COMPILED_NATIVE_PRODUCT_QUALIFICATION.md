@@ -44,14 +44,37 @@ from the integrated source also passed; its emitted RTL, fixtures and profile
 manifest matched the executing model's inputs byte for byte, and the model
 and output bytes were unchanged across verification.
 
-| Smoke scene | Service cycles |
-| --- | ---: |
-| Desktop composition | 90,223 |
-| Textured 3D | 118,352 |
-| Opaque overdraw | 123,913 |
-| Transparent layers | 121,265 |
-| Small triangles | 41,490 |
-| 4× MSAA | 148,326 |
+| Smoke scene | Service cycles | FlashSim cycles/s | Observed elapsed speedup |
+| --- | ---: | ---: | ---: |
+| Desktop composition | 90,223 | 3,209 | 18.06× |
+| Textured 3D | 118,352 | 6,287 | 35.22× |
+| Opaque overdraw | 123,913 | 2,091 | 11.71× |
+| Transparent layers | 121,265 | 2,154 | 12.69× |
+| Small triangles | 41,490 | 9,792 | 58.39× |
+| 4× MSAA | 148,326 | 5,183 | 31.46× |
+
+The assertion-enabled FlashSim model at source `3059d0c65` also passed all six
+independent stored-image/sample/guard oracles. Both backends used a fresh model
+per scene with at most three concurrent workers. Every service/GPU cycle count,
+read/write/enabled byte count and all six fragment-phase counters matched
+exactly. FlashSim used a verified resharded model, guarded precompiled header,
+64 generation shards, 16 MiB reshard partitions, sixteen commit parts,
+commit-block specialization, `-O2` and conservative aliasing.
+
+The rates and elapsed ratios above are observations on this loaded machine;
+system load was not standardized between backends. They do not predict other
+models, product-frame throughput, whole-host clock or FPS. This is the frozen
+v1 graphics-capacity host and does not qualify the integrated v2 feature set.
+To reproduce with a matching FlashSim/CIRCT/reshard checkout and verified
+resharded directory, use the preparation/generation/resharding steps below and
+keep these build/execution settings consistent:
+
+```sh
+python3 scripts/qualify_native_product_flashsim.py --smoke --two-cu-vga \
+  --flashsim-dir "$FLASH_GENERATOR" --output "$RUN" --jobs 3 --scene-jobs 3 \
+  --shards 64 --reshard-dir "$RESHARDED_DUT" --reshard-tool "$FLASH_RESHARD" \
+  --precompiled-header --shard-opt=-O2 --conservative-alias
+```
 
 Reproduce with the smoke command above and `--scene-jobs 3`. These counts
 describe complete smoke frames on the full two-CU hardware profile; they do
