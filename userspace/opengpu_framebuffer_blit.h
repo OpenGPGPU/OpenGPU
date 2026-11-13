@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+#include <stdlib.h>
 #include "opengpu_formats.h"
 
 /* CPU admission contract for the private checked-storage GPU pass. No raw
@@ -159,50 +160,50 @@ static inline int opengpu_framebuffer_blit_plan_make(
     *out=p;return 0;
 }
 
-/* Actual touched source rows versus destination rows, in backing-relative byte
- * coordinates. Repeated/reversed source rows retain sorted order. A merge walk
- * is linear in image height, not width*height; row padding is never authority
- * to overwrite a source texel. Unknown distinct-handle aliases still require
- * the kernel's backing proof. */
+/* Exact separable tap-set proof. Sort actual X/Y tap offsets; for each
+ * destination row, binary-search the first source row and first source pixel
+ * whose end follows its start. Source rows never overlap because admitted X
+ * offsets fit their pitch. This finds the earliest actual read byte without
+ * filling skipped rows/columns or scanning a full W*H Cartesian image.
+ * Complexity: O((W+H)log(W+H)+H(log W+log H)), bounded scratch 256 KiB.
+ * Unknown distinct-handle aliases still require the kernel backing proof. */
+static inline int opengpu_blit_compare_u32(const void *left,const void *right)
+{
+    uint32_t a=*(const uint32_t *)left,b=*(const uint32_t *)right;
+    return a>b ? 1 : a<b ? -1 : 0;
+}
 static inline int opengpu_framebuffer_blit_disjoint(
     const struct opengpu_framebuffer_blit *d,const struct opengpu_framebuffer_blit_plan *p,
     const uint32_t *maps)
 {
     if(!p->width || !p->height)return 1;
-    unsigned step=opengpu_blit_map_step(d);
-    uint32_t low=UINT32_MAX,high=0;
-    for(unsigned i=0;i<p->width;i++)for(unsigned tap=0;tap<(step==4?2u:1u);tap++) {
-        uint32_t v=maps[OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS+i*step+tap];
-        if(v<low)low=v;
-        if(v>high)high=v;
-    }
-    const uint32_t *rows=maps+OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS+p->width*step;
-    if(step==4) {
-        uint32_t first=UINT32_MAX,last=0;
-        for(unsigned i=0;i<p->height;i++)for(unsigned tap=0;tap<2;tap++) {
-            uint32_t row=rows[i*step+tap];
-            if(row<first)first=row;
-            if(row>last)last=row;
+    if(p->width>OPENGPU_FRAMEBUFFER_BLIT_MAX_AXIS || p->height>OPENGPU_FRAMEBUFFER_BLIT_MAX_AXIS)return 0;
+    unsigned step=opengpu_blit_map_step(d),taps=step==4 ? 2u : 1u;
+    uint32_t xs[OPENGPU_FRAMEBUFFER_BLIT_MAX_AXIS*2],ys[OPENGPU_FRAMEBUFFER_BLIT_MAX_AXIS*2];
+    unsigned nx=p->width*taps,ny=p->height*taps;
+    for(unsigned i=0;i<p->width;i++)for(unsigned tap=0;tap<taps;tap++)
+        xs[i*taps+tap]=maps[OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS+i*step+tap];
+    for(unsigned i=0;i<p->height;i++)for(unsigned tap=0;tap<taps;tap++)
+        ys[i*taps+tap]=maps[OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS+p->width*step+i*step+tap];
+    qsort(xs,nx,sizeof(xs[0]),opengpu_blit_compare_u32);
+    qsort(ys,ny,sizeof(ys[0]),opengpu_blit_compare_u32);
+    for(unsigned destination_row=0;destination_row<p->height;destination_row++) {
+        uint64_t start=(uint64_t)(p->y+destination_row)*d->destination_pitch+p->x*4u;
+        uint64_t end=start+p->width*4u;
+        unsigned lo=0,hi=ny;
+        while(lo<hi) {
+            unsigned mid=lo+(hi-lo)/2;
+            if((uint64_t)ys[mid]+xs[nx-1]+4<=start)lo=mid+1;
+            else hi=mid;
         }
-        uint64_t row=first;unsigned b=0;
-        while(row<=last && b<p->height) {
-            uint64_t a0=row+low,a1=row+high+4;
-            uint64_t b0=(uint64_t)(p->y+b)*d->destination_pitch+p->x*4u,b1=b0+p->width*4u;
-            if(a0<b1 && b0<a1)return 0;
-            if(a1<=b0)row+=d->source_pitch;
-            else b++;
+        if(lo==ny)continue;
+        uint64_t row=ys[lo];lo=0;hi=nx;
+        while(lo<hi) {
+            unsigned mid=lo+(hi-lo)/2;
+            if(row+xs[mid]+4<=start)lo=mid+1;
+            else hi=mid;
         }
-        return 1;
-    }
-    unsigned reversed=rows[0]>rows[p->height-1],a=0,b=0;
-    while(a<p->height && b<p->height) {
-        uint64_t source=(uint64_t)rows[reversed?p->height-1-a:a]+low;
-        uint64_t source_end=(uint64_t)rows[reversed?p->height-1-a:a]+high+4;
-        uint64_t destination=(uint64_t)(p->y+b)*d->destination_pitch+p->x*4u;
-        uint64_t destination_end=destination+p->width*4u;
-        if(source<destination_end && destination<source_end)return 0;
-        if(source_end<=destination)a++;
-        else b++;
+        if(lo<nx && row+xs[lo]<end)return 0;
     }
     return 1;
 }
