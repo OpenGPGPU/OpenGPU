@@ -24,6 +24,10 @@ All source channels are read before an aliased destination is committed. The
 512-word native ceiling remains enforced; failed emission leaves its output
 untouched. Native SoA addresses retain bounded kernarg/local-base provenance,
 including offsets beyond one signed ADDI immediate.
+Interface reflection derives attribute, varying and color slot counts from
+the actual TGSI declarations. It does not assume the fixture's one-attribute,
+one-varying, one-color layout. Capacity remains an explicit input that a
+production caller must obtain from verified native layout discovery.
 
 The borrowed-view planner verifies live source-screen membership, original GEM
 allocation bounds, alignment, active-view completeness and required byte
@@ -57,6 +61,10 @@ the real source-GEM view data and checks every position/varying/color/control
 word and untouched guard for 1, 3, 17 and 128 invocations. Additional native
 lowering cases cover component aliases, partial writes, swizzles, all admitted
 integer ALU operations, malformed inputs and instruction-capacity rejection.
+CPU execution also checks highest attribute 15, varying 15 and color 3,
+including the high four bits of the 64-component varying mask, and admits
+zero-attribute/zero-varying runtime layouts. Reflection/emission failure changes
+neither published layout nor program.
 State-tracker checks cover binding 35, rebind, unused global binding 12,
 unbound active views, allocation-tail clamping and reference recovery. Planner
 checks include all 24 slots, shared cross-stage views, distinct subranges,

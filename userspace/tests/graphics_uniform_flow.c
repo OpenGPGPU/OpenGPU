@@ -75,8 +75,10 @@ static void tracker_bindings(void *program)
     unsigned required[2][13];
     struct opengpu_native_uniform_program native[2];
     for (unsigned stage = 0; stage < 2; stage++) {
-        const struct opengpu_native_uniform_layout layout = {.stage=stage,.capacity=128,.attributes=1,.varyings=1,.colors=1};
-        assert(!opengpu_native_uniform_emit(graphics_uniform_tokens(program,stage),&layout,&native[stage]));
+        struct opengpu_native_uniform_layout layout;
+        assert(!opengpu_native_uniform_compile(graphics_uniform_tokens(program,stage),stage,128,&layout,&native[stage]));
+        assert(layout.capacity==128 && layout.stage==stage && layout.attributes==(stage?0u:1u) &&
+            layout.varyings==1 && layout.colors==(stage?1u:0u));
         assert(opengpu_native_shader_validate_words(native[stage].code,native[stage].words,
             (stage?16u:15u)*128*4,128,stage,1,stage?0u:1u,1,stage?1u:0u,true,true,false));
         memcpy(required[stage],native[stage].constant_bytes,sizeof(required[stage]));
@@ -183,6 +185,10 @@ static void reject(const struct tgsi_token *tokens, const struct opengpu_native_
     memset(&out, 0xa5, sizeof(out)); sentinel = out;
     assert(opengpu_native_uniform_emit(tokens, layout, &out) < 0);
     assert(!memcmp(&out, &sentinel, sizeof(out)));
+    struct opengpu_native_uniform_layout reflected, saved;
+    memset(&reflected,0x5a,sizeof(reflected)); saved=reflected;
+    assert(opengpu_native_uniform_compile(tokens,layout->stage,layout->capacity,&reflected,&out)<0);
+    assert(!memcmp(&out,&sentinel,sizeof(out)) && !memcmp(&reflected,&saved,sizeof(saved)));
 }
 static void admission(const struct tgsi_token *tokens, const struct opengpu_native_uniform_layout *layout)
 {
@@ -277,7 +283,7 @@ static void alias_and_alu(void)
         "AND TEMP[0].y, TEMP[0].yyyy, IMM[0].xxxx\nOR TEMP[0].z, TEMP[0].zzzz, IMM[0].xxxx\n"
         "MOV OUT[0], IN[0]\nMOV OUT[1], TEMP[0].zyxw\nEND\n";
     struct tgsi_token tokens[512]; assert(tgsi_text_translate(text, tokens, 512));
-    struct opengpu_native_uniform_layout layout = {.stage=0,.capacity=128,.attributes=1,.varyings=1,.colors=1};
+    struct opengpu_native_uniform_layout layout = {.stage=0,.capacity=128,.attributes=1,.varyings=1,.colors=0};
     struct opengpu_native_uniform_program native; assert(!opengpu_native_uniform_emit(tokens, &layout, &native));
     uint32_t constants[] = {0x81112223u,0xf1234567u,0x76543210u,0x10293847u};
     struct graphics_uniform_view views[13] = {{constants,16}};
@@ -287,6 +293,59 @@ static void alias_and_alu(void)
     uint32_t expected[]={z,(constants[3]-1u)&0x80000001u,x,constants[0]};
     for (unsigned c=0;c<4;c++) for (unsigned i=0;i<128;i++)
         assert(payload[(11+c)*128+i] == (i<3?expected[c]:0xcafebabeu));
+}
+static void interface_boundaries(void)
+{
+    const char *sources[] = {
+        "VERT\nDCL IN[15]\nDCL OUT[0], POSITION\nDCL OUT[1], GENERIC[15]\n"
+        "MOV OUT[0], IN[15]\nMOV OUT[1], IN[15].wzyx\nEND\n",
+        "FRAG\nDCL IN[0], GENERIC[15], CONSTANT\nDCL OUT[0], COLOR[3]\n"
+        "MOV OUT[0], IN[0].wzyx\nEND\n"
+    };
+    const struct graphics_uniform_view none[13] = {0};
+    for (unsigned stage=0;stage<2;stage++) {
+        struct tgsi_token tokens[512]; assert(tgsi_text_translate(sources[stage],tokens,512));
+        struct opengpu_native_uniform_layout layout;
+        struct opengpu_native_uniform_program native;
+        assert(!opengpu_native_uniform_compile(tokens,stage,128,&layout,&native));
+        assert(layout.attributes==(stage?0u:16u) && layout.varyings==16 && layout.colors==(stage?4u:0u));
+        assert(stage?native.color_mask==8:native.varying_mask==(UINT64_C(15)<<60));
+        unsigned arrays=stage?88:135;
+        assert(opengpu_native_shader_validate_words(native.code,native.words,arrays*128*4,128,stage,1,
+            layout.attributes,layout.varyings,layout.colors,true,false,false));
+        uint32_t *payload=malloc(arrays*128*4),*before=malloc(arrays*128*4);assert(payload&&before);
+        for(unsigned i=0;i<arrays*128;i++)payload[i]=0x77331155u;
+        for(unsigned c=0;c<4;c++)for(unsigned lane=0;lane<128;lane++)
+            payload[((stage?66:60)+c)*128+lane]=0x3f000000u^(c*0x10703u)^(lane*31u);
+        memcpy(before,payload,arrays*128*4);
+        assert(!graphics_uniform_word_vm(native.code,native.words,payload,arrays*128,128,3,none));
+        for(unsigned array=0;array<arrays;array++)for(unsigned lane=0;lane<128;lane++) {
+            uint32_t want=before[array*128+lane];
+            if(lane<3) {
+                if(!stage&&array>=67&&array<71)want=before[(60+array-67)*128+lane];
+                if(!stage&&array>=131&&array<135)want=before[(63-(array-131))*128+lane];
+                if(stage&&array>=82&&array<86)want=before[(69-(array-82))*128+lane];
+                if(stage&&array==87)want=33;
+            }
+            assert(payload[array*128+lane]==want);
+        }
+        free(before);free(payload);
+    }
+    /* Zero attributes/varyings are valid runtime layouts. They do not narrow
+     * the hardware's maximum interface or require dummy user bindings. */
+    const char *empty[] = {
+        "VERT\nDCL OUT[0], POSITION\nIMM[0] FLT32 {0,0,0,1}\nMOV OUT[0], IMM[0]\nEND\n",
+        "FRAG\nDCL OUT[0], COLOR[0]\nIMM[0] UINT32 {1,2,3,4}\nMOV OUT[0], IMM[0]\nEND\n"
+    };
+    for(unsigned stage=0;stage<2;stage++) {
+        struct tgsi_token tokens[512];assert(tgsi_text_translate(empty[stage],tokens,512));
+        struct opengpu_native_uniform_layout layout;
+        struct opengpu_native_uniform_program native;
+        assert(!opengpu_native_uniform_compile(tokens,stage,128,&layout,&native));
+        assert(!layout.attributes&&!layout.varyings&&layout.colors==stage);
+        assert(opengpu_native_shader_validate_words(native.code,native.words,(stage?12u:7u)*128*4,128,
+            stage,1,layout.attributes,layout.varyings,layout.colors,true,false,false));
+    }
 }
 static uint32_t value(unsigned binding,unsigned word)
 {return 0x71005013u^(binding*0x10203u)^(word*0x10001u);}
@@ -334,10 +393,11 @@ int main(int argc, char **argv)
     void *program = graphics_uniform_compile(vertex, fragment, prefix); assert(program);
     tracker_bindings(program);
     alias_and_alu();
+    interface_boundaries();
     for (unsigned stage = 0; stage < 2; stage++) {
-        struct opengpu_native_uniform_layout layout = {.stage=stage,.capacity=128,.attributes=1,.varyings=1,.colors=1};
+        struct opengpu_native_uniform_layout layout;
         struct opengpu_native_uniform_program native;
-        assert(!opengpu_native_uniform_emit(graphics_uniform_tokens(program, stage), &layout, &native));
+        assert(!opengpu_native_uniform_compile(graphics_uniform_tokens(program, stage),stage,128,&layout,&native));
         admission(graphics_uniform_tokens(program, stage), &layout);
         assert(native.words && native.words <= 512);
         for (unsigned c=0;c<13;c++)assert(native.constant_bytes[c] == (c ? 16384u : 4096u));
