@@ -650,7 +650,8 @@ The actual-owner/MMU check passes for all seven geometry operations, disabled
 and wrong-version rejection, old-validator isolation, scalar floating-point
 gating, resource and malformed-instruction rejection, 512-word code, exact RX
 bytes after source overwrite, entry-suffix bounds, allocation/copy failures and
-healthy reuse. The full Linux GCC `-O2` driver suite also passes. Reproduce with:
+healthy reuse. Reproduce the owner check and run the full Linux GCC `-O2`
+driver suite with:
 
 ```sh
 python3 scripts/test_geometry_program_snapshot.py --sanitize
