@@ -2,9 +2,8 @@
 
 This opt-in path gives each executing invocation a distinct atomic operation
 and old-word result. Scalar RV32A remains once per warp. The functionality is
-under development: CPU admission/lowering and the ten-operation ESSL corpus
-pass; the new Scala owner/CU tests have not run. Additional signed ESSL
-overloads remain unqualified. It does not close H7 or replace complete-host
+under development: CPU admission/lowering and all sixteen ESSL type/operation cases
+pass; the new Scala owner/CU tests have not run. It does not close H7 or replace complete-host
 execution.
 
 The operations follow GLSL ES 3.10 section 8.11: exchange, add, XOR, OR, AND,
@@ -69,7 +68,8 @@ exclusive-4-GiB SRAM windows, same-address and own-stripe access, and destinatio
 aliases. The original 59 stripe programs and 278-word register-lifetime oracle
 remain passing. The complete kernel-free driver test also passes.
 
-Actual Mesa ESSL 3.10 lowering additionally passes all ten operations. Each
+Actual Mesa ESSL 3.10 lowering additionally passes sixteen cases covering all
+ten operations and both int/uint overloads where defined. Each
 188-word program initializes all 4096 shared words, crosses one workgroup
 barrier and executes two actual atomic instructions at the first and last
 word. The independent decoder checks 512 returned old words per program,
@@ -87,8 +87,13 @@ python3 scripts/test_gallium_shared_own_stripe.py
 python3 scripts/test_driver.py
 ```
 
-The full ESSL corpus also includes six additional signed overloads of exchange,
-add, bitwise operations and CAS; those additions still require execution.
+For the real ESSL corpus, use a private Mesa build and the exact checked NTT
+patch stages described by `test_gallium_compute_shared.py`:
+
+```sh
+python3 scripts/test_gallium_compute_shared.py --build /path/to/private-build --sanitize
+```
+
 Prepared hardware gates are `SharedAtomicVectorExecuteUnitSpec`,
 `SharedAtomicAvailabilityDecodeSpec`, and the explicit stock SRAM/FPU/vector
 `GpuComputeUnitSharedAtomicSpec`. They require actual execution before these
