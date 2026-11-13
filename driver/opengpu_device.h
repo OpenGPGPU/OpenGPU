@@ -207,7 +207,7 @@ struct opengpu_snapshot_lease {
     dma_addr_t base;
     dma_addr_t va;
     size_t size;
-    bool active, mapped;
+    bool active, mapped, executable;
 };
 
 /** ASID-0 identity GPU MMU: one root table of 4 MiB superpages, split into
@@ -495,6 +495,9 @@ int opengpu_mmu_verify_snapshot_locked(struct opengpu_device *gpu,
 int opengpu_mmu_snapshot_acquire_locked(struct opengpu_device *gpu,
     struct opengpu_snapshot_lease *lease, const struct opengpu_vm *owner,
     dma_addr_t base, size_t size);
+int opengpu_mmu_code_snapshot_acquire_locked(struct opengpu_device *gpu,
+    struct opengpu_snapshot_lease *lease, const struct opengpu_vm *owner,
+    dma_addr_t base, size_t size);
 int opengpu_mmu_snapshot_release_locked(struct opengpu_device *gpu,
     struct opengpu_snapshot_lease *lease);
 int opengpu_mmu_snapshot_unmap(struct opengpu_device *gpu,
@@ -503,6 +506,8 @@ int opengpu_mmu_snapshot_unmap(struct opengpu_device *gpu,
  * backing and no writable alias. They never replace an existing mapping. */
 int opengpu_mmu_vm_map_code_snapshot(struct opengpu_device *gpu, struct opengpu_vm *vm,
                                      dma_addr_t va, dma_addr_t pa, size_t size, u32 policy);
+int opengpu_mmu_vm_map_code_snapshot_anywhere(struct opengpu_device *gpu,
+    struct opengpu_vm *vm, dma_addr_t pa, size_t size, u32 policy, dma_addr_t *va);
 int opengpu_mmu_verify_code_snapshot_locked(struct opengpu_device *gpu,
                                             const struct opengpu_vm *vm,
                                             dma_addr_t va, dma_addr_t pa, size_t size);

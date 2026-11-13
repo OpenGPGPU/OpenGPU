@@ -21,7 +21,8 @@ static void opengpu_context_put(struct opengpu_render_context *c)
 static unsigned long jiffies;
 static void opengpu_hw_progress_tick(struct opengpu_device *gpu)
 { assert(!gpu->hw.submit_lock.held); ++jiffies; }
-static void cond_resched(void) { }
+static void usleep_range(unsigned minimum, unsigned maximum)
+{ assert(minimum==100 && maximum==200); }
 #include "snapshot_submission_under_test.inc"
 #include "../opengpu_private_snapshot.c"
 
@@ -29,6 +30,8 @@ static struct opengpu_private_snapshot *new_owner(struct opengpu_device *gpu,
     struct opengpu_render_context *context, u32 *metadata, u32 *data)
 {
     unsigned char words[64];
+    const u32 code[2] = {0x00700513u,0x00100073u};
+    u32 code_id = 0xdeadbeef;
     struct opengpu_private_snapshot *owner;
     memset(words, 0x5a, sizeof(words));
     owner = opengpu_private_snapshot_create(gpu, context);
@@ -36,6 +39,11 @@ static struct opengpu_private_snapshot *new_owner(struct opengpu_device *gpu,
     assert(!opengpu_private_snapshot_append(owner, words, sizeof(words), metadata));
     words[16] = 0xff;
     assert(!opengpu_private_snapshot_append(owner, words, sizeof(words), data));
+    assert(opengpu_private_snapshot_append_code(owner, code, 5, &code_id)==-EINVAL);
+    assert(code_id==0xdeadbeef);
+    assert(!opengpu_private_snapshot_append_code(owner, code, sizeof(code), &code_id));
+    assert(!opengpu_private_snapshot_relocate(owner, *metadata, 12, code_id, 0,
+                                             OPENGPU_PRIVATE_SNAPSHOT_VA32));
     assert(!opengpu_private_snapshot_relocate(owner, *metadata, 0, *data, 4,
                                              OPENGPU_PRIVATE_SNAPSHOT_VA32));
     assert(!opengpu_private_snapshot_relocate(owner, *metadata, 4, *data, sizeof(words),
@@ -95,6 +103,20 @@ int main(void)
     assert(!opengpu_private_snapshot_read32(owner, metadata, 4, &value));
     assert(value == address + 64);
     assert(!opengpu_private_snapshot_read32(owner, metadata, 8, &value) && !value);
+    {
+        struct snapshot_segment *code = owner->segments->next->next;
+        u32 code_address;
+        assert(code->executable && code->lease.executable);
+        assert(!opengpu_private_snapshot_address(owner, code->id, &code_address));
+        assert(!opengpu_private_snapshot_read32(owner, metadata, 12, &value));
+        assert(value==code_address);
+        assert(!opengpu_private_snapshot_read32(owner, code->id, 0, &value));
+        assert(value==0x00700513u);
+        assert(!verify_code(&gpu, &context.vm, code_address, code->backing.dma, code->bytes));
+        assert(verify_snapshot(&gpu, &context.vm, code_address, code->backing.dma, code->bytes)==-EACCES);
+        assert(opengpu_mmu_vm_map_snapshot(&gpu, &context.vm, 0x60000000,
+            code->backing.dma, code->backing.size, 2)==-EACCES);
+    }
     assert(opengpu_private_snapshot_append(owner, &value, 4, &data) == -EINVAL);
     assert(opengpu_private_snapshot_relocate(owner, metadata, 20, data, 0,
         OPENGPU_PRIVATE_SNAPSHOT_VA32) == -EINVAL);

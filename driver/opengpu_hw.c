@@ -7,6 +7,7 @@
  * Draws may also use the legacy single-job register START path.  The
  * host-memory job ring was retired. */
 #include <linux/dma-fence.h>
+#include <linux/delay.h>
 #include <linux/dma-mapping.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
@@ -738,7 +739,7 @@ int opengpu_hw_snapshot_submission_lock(struct opengpu_device *gpu)
         if (time_after(jiffies, timeout))
             return -ETIMEDOUT;
         opengpu_hw_progress_tick(gpu);
-        cond_resched();
+        usleep_range(100, 200);
     }
 }
 

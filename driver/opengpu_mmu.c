@@ -433,9 +433,9 @@ static int mmu_snapshot_mapped(struct opengpu_mmu *mmu, u64 start, u64 end)
     return 0;
 }
 
-int opengpu_mmu_snapshot_acquire_locked(struct opengpu_device *gpu,
+static int mmu_snapshot_acquire_locked(struct opengpu_device *gpu,
     struct opengpu_snapshot_lease *lease, const struct opengpu_vm *owner,
-    dma_addr_t base, size_t size)
+    dma_addr_t base, size_t size, bool executable)
 {
     struct opengpu_mmu *mmu = &gpu->mmu;
     struct opengpu_snapshot_lease *other;
@@ -479,12 +479,27 @@ int opengpu_mmu_snapshot_acquire_locked(struct opengpu_device *gpu,
     lease->size = size;
     lease->va = 0;
     lease->mapped = false;
+    lease->executable = executable;
     lease->next = mmu->snapshot_leases;
     lease->active = true;
     mmu->snapshot_leases = lease;
 out:
     mutex_unlock(&mmu->lock);
     return ret;
+}
+
+int opengpu_mmu_snapshot_acquire_locked(struct opengpu_device *gpu,
+    struct opengpu_snapshot_lease *lease, const struct opengpu_vm *owner,
+    dma_addr_t base, size_t size)
+{
+    return mmu_snapshot_acquire_locked(gpu, lease, owner, base, size, false);
+}
+
+int opengpu_mmu_code_snapshot_acquire_locked(struct opengpu_device *gpu,
+    struct opengpu_snapshot_lease *lease, const struct opengpu_vm *owner,
+    dma_addr_t base, size_t size)
+{
+    return mmu_snapshot_acquire_locked(gpu, lease, owner, base, size, true);
 }
 
 int opengpu_mmu_snapshot_release_locked(struct opengpu_device *gpu,
@@ -591,7 +606,7 @@ static int mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
     if (policy > OPENGPU_MMU_POLICY_UNCACHED || (!size && !old_size) ||
         (va & (MMU_PAGE_SIZE - 1)) || (pa & (MMU_PAGE_SIZE - 1)) ||
         (size & (MMU_PAGE_SIZE - 1))) return -EINVAL;
-    if (snapshot_va && (kind != MMU_SNAPSHOT_RO || old_size || !size))
+    if (snapshot_va && ((kind != MMU_SNAPSHOT_RO && kind != MMU_CODE_RX) || old_size || !size))
         return -EINVAL;
     if (size && ((!snapshot_va &&
         (check_add_overflow((u64)va, (u64)size, &new_end) || new_end > (1ULL << 32))) ||
@@ -641,7 +656,7 @@ static int mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
             }
             if (size && (u64)pa < (u64)lease->base + lease->size &&
                 (u64)lease->base < pa_end &&
-                (lease->owner != vm || kind != MMU_SNAPSHOT_RO || lease->mapped ||
+                (lease->owner != vm || kind != (lease->executable ? MMU_CODE_RX : MMU_SNAPSHOT_RO) || lease->mapped ||
                  pa != lease->base || size != lease->size)) {
                     ret = -EACCES;
                     goto out_mmu;
@@ -778,6 +793,14 @@ int opengpu_mmu_vm_map_code_snapshot(struct opengpu_device *gpu, struct opengpu_
     if (!size || !vm || !vm->asid)
         return -EINVAL;
     return mmu_vm_replace(gpu, vm, va, pa, size, policy, 0, 0, MMU_CODE_RX, NULL, NULL);
+}
+
+int opengpu_mmu_vm_map_code_snapshot_anywhere(struct opengpu_device *gpu,
+    struct opengpu_vm *vm, dma_addr_t pa, size_t size, u32 policy, dma_addr_t *va)
+{
+    if (!size || !va || !vm || !vm->asid)
+        return -EINVAL;
+    return mmu_vm_replace(gpu, vm, 0, pa, size, policy, 0, 0, MMU_CODE_RX, va, NULL);
 }
 
 int opengpu_mmu_snapshot_unmap(struct opengpu_device *gpu,

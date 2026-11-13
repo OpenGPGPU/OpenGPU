@@ -30,8 +30,8 @@ static void opengpu_hw_progress_tick(struct opengpu_device *g)
     if (g->ticks == g->fault_after)
         g->hw.wedged = true;
 }
-static void cond_resched(void)
-{ assert(!active->hw.submit_lock); ++active->reschedules; }
+static void usleep_range(unsigned minimum, unsigned maximum)
+{ assert(minimum==100 && maximum==200 && !active->hw.submit_lock); ++active->reschedules; }
 #include "snapshot_submission_under_test.inc"
 int main(void)
 {
