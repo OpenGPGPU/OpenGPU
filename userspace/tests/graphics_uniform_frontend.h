@@ -9,6 +9,7 @@ const void *graphics_uniform_tokens(void *program, unsigned stage);
 unsigned graphics_uniform_blocks(void *program, unsigned stage);
 unsigned graphics_uniform_binding(void *program, unsigned stage, unsigned block);
 unsigned graphics_uniform_components(void *program, unsigned stage);
+unsigned graphics_uniform_color_type(void *program, unsigned color);
 struct pipe_context;
 struct pipe_resource;
 void graphics_uniform_ubos(void *program, struct pipe_context *,

@@ -58,6 +58,26 @@ current validator's eight-bit batch contract are rejected. The qualification
 models these ioctl replies; it does not establish actual hardware discovery or
 enable the not-yet-integrated GNJ submission handler.
 
+The production runtime-query helper additionally reads all eight frozen GNC
+words, rejects a nonzero upper 32 bits in any reply, applies the shared strict
+frame-capability validator and cross-checks all four interface slot counts
+against `GET_PARAM_NATIVE_LAYOUT`. Missing native feature support, a failed
+query or inconsistent discovery leaves the caller's output unchanged. Physical
+item capacity comes from GET8; GNC local-payload capacity is measured in bytes.
+They remain separate quantities. Reduced interface sizes and payload-free
+virtual GNC configurations do not require a fixed product profile.
+
+A separate bounded native program object compiles the actual TGSI using that
+runtime capacity and uploads VS/FS into independent source code GEMs. It checks
+runtime interface limits and requires every FS varying component to be defined
+by VS. Source export combines those exact code views with current real Gallium
+uniform bindings; rebinding changes the source records while retaining program
+code. Partial code allocation failures release all created resources. These
+objects remain separate from legacy shader-state and `draw_vbo` callbacks.
+Export does not publish a GNJ or prove accepted-job lifetime: the protected
+kernel producer still must validate, wait, copy into private RX/RO segments and
+hold the owner until completion and response drain.
+
 ## Native shader admission
 
 The separate native validator derives writable output slices from the actual

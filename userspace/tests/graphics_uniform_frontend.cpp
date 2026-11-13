@@ -59,6 +59,7 @@ struct graphics_program {
     standalone_options options;
     gl_shader_program *program;
     const tgsi_token *tokens[2];
+    unsigned color_types[4];
 };
 static int type_size(const glsl_type *type, bool) { return glsl_count_vec4_slots(type, false, false); }
 
@@ -116,6 +117,12 @@ extern "C" void *graphics_uniform_compile(const char *vertex, const char *fragme
         if (stage == MESA_SHADER_VERTEX) nir->info.next_stage = MESA_SHADER_FRAGMENT;
         nir_validate_shader(nir, "actual linked graphics uniform frontend");
         nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir)); shader->Program->info = nir->info;
+        if (stage == MESA_SHADER_FRAGMENT) nir_foreach_shader_out_variable(var, nir) {
+            assert(var->data.driver_location < 4 && glsl_get_components(var->type) <= 4);
+            auto type = glsl_get_base_type(var->type);
+            assert(type == GLSL_TYPE_FLOAT || type == GLSL_TYPE_UINT || type == GLSL_TYPE_INT);
+            f->color_types[var->data.driver_location] = type == GLSL_TYPE_UINT ? 1 : type == GLSL_TYPE_INT ? 2 : 0;
+        }
         f->tokens[i] = static_cast<const tgsi_token *>(nir_to_tgsi(nir, &screen));
         shader->Program->nir = nullptr; assert(f->tokens[i]);
         if (prefix) {
@@ -139,6 +146,8 @@ extern "C" unsigned graphics_uniform_binding(void *p, unsigned stage, unsigned b
 }
 extern "C" unsigned graphics_uniform_components(void *p, unsigned stage)
 { assert(stage < 2); return static_cast<graphics_program *>(p)->program->_LinkedShaders[stages[stage]]->Program->Parameters->NumParameterValues; }
+extern "C" unsigned graphics_uniform_color_type(void *p, unsigned color)
+{ assert(color < 4); return static_cast<graphics_program *>(p)->color_types[color]; }
 extern "C" void graphics_uniform_ubos(void *p, pipe_context *pipe,
     pipe_resource *const resources[36], const unsigned offsets[36], const unsigned sizes[36])
 {

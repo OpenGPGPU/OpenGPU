@@ -182,6 +182,8 @@ static int source(struct build *b, const struct tgsi_full_src_register *s, unsig
         copy(b, to, b->temp[i][c]); return 0;
     case TGSI_FILE_INPUT:
         if (i >= 32 || !(b->input_decl[i] & (1u << c))) return -1;
+        if (b->layout.stage && b->input[i][c] >= 6)
+            b->p.varying_mask |= UINT64_C(1) << (b->input[i][c] - 6);
         load(b, to, b->input[i][c]); return 0;
     case TGSI_FILE_IMMEDIATE:
         if ((unsigned)i >= b->immediates) return -1;
