@@ -80,3 +80,14 @@ Reproduce that preparation from the emitted directory with:
 ```sh
 yosys -p 'read_verilog -sv -formal L2MshrTable.sv; hierarchy -check -top L2MshrTable; proc; opt_expr; opt_clean; check -assert; stat -width'
 ```
+
+Before mapping, `proc; opt_expr; opt_clean; stat -width -json` completes for
+both full-capacity designs. The reference has 164,763 word-level cells and
+1,829,944 wire bits; the update has 164,786 cells and 2,355,390 wire bits.
+Two 32,850-bit three-input `$pmux` cells and one 32,850-bit `$mux` disappear,
+while entry-local operations increase. These are structural counts, not
+standard-cell area or timing. A bit-level comparison with
+`proc; opt -fast; techmap; opt -fast; stat -json` reaches the same 300-second
+budget on the reference's first waiter-register `OPT_DFF` transformation;
+it produces no mapped comparison. Forcing detailed loop checking also reaches
+that budget on the reference, so it does not resolve the equivalence limit.
