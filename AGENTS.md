@@ -4,6 +4,13 @@ These contribution rules apply to the GPU repository only. Do not impose its
 PR, CI or branch-protection requirements on other repositories, including
 worktrees checked out under this repository's `.artifacts/` directory.
 
+Create temporary worktrees and experimental checkouts for GPU tasks only under
+this repository's `.artifacts/worktrees/` directory. Do not create `gpu-*` or
+`FlashSim-*` sibling workspaces under `~/workspace`. Keep independent
+repositories' primary directories in place; their location does not subject
+them to the GPU PR rules. Remove ended outputs and temporary worktrees under
+the cleanup rules below.
+
 All changes must be submitted through a pull request. Work and create commits
 on topic branches; never commit, merge, or push directly to `main` or `master`.
 Keep existing unpublished work intact and submit it from a topic branch.
