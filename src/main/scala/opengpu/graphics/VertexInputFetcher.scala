@@ -80,6 +80,38 @@ class VertexInputDraw(p: VertexInputFetchConfig) extends Bundle {
   val bindings=Vec(p.bindings,new VertexInputBinding)
   val attributes=Vec(p.attributes,new VertexInputAttribute(p))
 }
+/** Static metadata admission, shared by the fetcher and whole-job preflight.
+  * Attribute/index contents and translated resource permissions are checked
+  * during execution; this helper does not read or validate those contents.
+  */
+object VertexInputDescriptor {
+  def validView(v: VertexInputView): Bool=
+    v.allocationBase(5,0)===0.U && v.allocationLimit(5,0)===0.U &&
+      v.allocationLimit<=(BigInt(1)<<32).U && v.allocationLimit>v.allocationBase &&
+      v.base>=v.allocationBase && v.limit>=v.base && v.limit<=v.allocationLimit
+  def errors(draw: VertexInputDraw,p: VertexInputFetchConfig): (Bool,Bool)={
+    val work=draw.count=/=0.U && draw.instances=/=0.U
+    val attributesValid=draw.attributes.map{a=>
+      val b=draw.bindings(Mux(a.bindingIndex<p.bindings.U,a.bindingIndex,0.U))
+      val mask=(1.U(4.W)<<VertexInputFormat.sizeLog2(a.format))-1.U
+      !a.enabled || (a.bindingIndex<p.bindings.U && a.components>=1.U && a.components<=4.U &&
+        a.format<=Mux(draw.version===2.U,VertexInputFormat.fixed16_16.U,VertexInputFormat.sint8.U) &&
+        (!VertexInputFormat.packed(a.format) || a.components===4.U) &&
+        ((b.base+&a.offset)&mask)===0.U && (b.stride&mask)===0.U)
+    }.reduce(_ && _)
+    val bindingsValid=(0 until p.bindings).map{i=>
+      val used=draw.attributes.map(a=>a.enabled && a.bindingIndex===i.U).reduce(_ || _)
+      !used || !work || validView(draw.bindings(i))
+    }.reduce(_ && _)
+    val indexSize=Mux(draw.indexFormat===1.U,0.U(2.W),Mux(draw.indexFormat===2.U,1.U(2.W),2.U(2.W)))
+    val indexMask=(1.U(4.W)<<indexSize)-1.U
+    val layout=(draw.version===1.U || draw.version===2.U) && (!draw.restart || draw.indexFormat=/=0.U) && attributesValid && bindingsValid &&
+      (!(work && draw.indexFormat=/=0.U) || (validView(draw.indices) && (draw.indices.base&indexMask)===0.U))
+    val indexEnd=draw.indices.base+&((draw.firstIndex+&draw.count)<<indexSize)
+    val arraysEnd=draw.firstVertex+&draw.count
+    (!layout,work && Mux(draw.indexFormat===0.U,arraysEnd>(BigInt(1)<<32).U,indexEnd>draw.indices.limit))
+  }
+}
 class VertexInputRecord(p: VertexInputFetchConfig) extends Bundle {
   val identity=new GraphicsWorkIdentity
   val ordinal=UInt(32.W)
@@ -190,10 +222,6 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
     }
     phase:=drain
   }
-  private def validView(v: VertexInputView): Bool=
-    v.allocationBase(5,0)===0.U && v.allocationLimit(5,0)===0.U &&
-      v.allocationLimit<= (BigInt(1)<<32).U && v.allocationLimit>v.allocationBase &&
-      v.base>=v.allocationBase && v.limit>=v.base && v.limit<=v.allocationLimit
   private def nextAttribute(): Unit={
     when(attr===(p.attributes-1).U){phase:=publish}.otherwise{attr:=attr+1.U;phase:=selectAttribute}
   }
@@ -298,26 +326,9 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
     }
     is(validate) {
       val work=draw.count=/=0.U && draw.instances=/=0.U
-      val attributesValid=draw.attributes.map { a=>
-        val b=draw.bindings(Mux(a.bindingIndex<p.bindings.U,a.bindingIndex,0.U))
-        val mask=(1.U(4.W)<<VertexInputFormat.sizeLog2(a.format))-1.U
-        !a.enabled || (a.bindingIndex<p.bindings.U && a.components>=1.U && a.components<=4.U &&
-          a.format<=Mux(draw.version===2.U,VertexInputFormat.fixed16_16.U,VertexInputFormat.sint8.U) &&
-          (!VertexInputFormat.packed(a.format) || a.components===4.U) &&
-          ((b.base+&a.offset)&mask)===0.U && (b.stride&mask)===0.U)
-      }.reduce(_ && _)
-      val bindingsValid=(0 until p.bindings).map { i=>
-        val used=draw.attributes.map(a=>a.enabled && a.bindingIndex===i.U).reduce(_ || _)
-        !used || !work || validView(draw.bindings(i))
-      }.reduce(_ && _)
-      val indexUsed=work && draw.indexFormat=/=0.U
-      val indexMask=(1.U(4.W)<<indexSize)-1.U
-      val layout=(draw.version===1.U || draw.version===2.U) && (!draw.restart || draw.indexFormat=/=0.U) && attributesValid && bindingsValid &&
-        (!indexUsed || (validView(draw.indices) && (draw.indices.base&indexMask)===0.U))
-      val indexEnd=draw.indices.base+&((draw.firstIndex+&draw.count)<<indexSize)
-      val arraysEnd=draw.firstVertex+&draw.count
-      when(!layout){fail(VertexInputStatus.invalidDescriptor,0.U)}
-        .elsewhen(work && Mux(draw.indexFormat===0.U,arraysEnd>(BigInt(1)<<32).U,indexEnd>draw.indices.limit)) {
+      val (invalid,bounds)=VertexInputDescriptor.errors(draw,p)
+      when(invalid){fail(VertexInputStatus.invalidDescriptor,0.U)}
+        .elsewhen(bounds) {
           fail(VertexInputStatus.bounds,draw.indices.base)
         }.otherwise{phase:=Mux(work,vertex,finish)}
     }

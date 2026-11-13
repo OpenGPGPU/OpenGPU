@@ -57,6 +57,33 @@ class VertexShaderDraw(p: VertexShaderStageConfig) extends Bundle {
     * draw resources; no externally visible shader effects or batch dependence. */
   val reuseOutputs=Bool()
 }
+object VertexShaderDescriptor {
+  /** prefixEnd is supplied by the stage's existing prefix adder or by the
+    * metadata scanner. No resources or shader instructions are fetched here.
+    */
+  def errors(draw: VertexShaderDraw,p: VertexShaderStageConfig,config: GpuConfig,
+      prefixEnd: UInt,imageInvalid: Bool=false.B): (Bool,Bool)={
+    val work=draw.input.count=/=0.U && draw.input.instances=/=0.U
+    val s=draw.scratch
+    val view=VertexInputDescriptor.validView(s) && s.base(5,0)===0.U
+    val fields= !imageInvalid && (!draw.reuseOutputs || (p.postTransformEntries>0).B) &&
+      ShaderTextureResources.legal(draw.resources) && ShaderUniformResources.legal(draw.uniforms) &&
+      VertexShaderSampler.legal(draw.sampler) && draw.attributeSlots<=p.input.attributes.U && draw.varyingSlots<=p.varyings.U &&
+      !(draw.varyingMask>>(draw.varyingSlots<<2)).orR &&
+      draw.input.attributes.zipWithIndex.map{case(a,i)=> !a.enabled || i.U<draw.attributeSlots}.reduce(_ && _)
+    def overlap(v: VertexInputView): Bool=s.base<v.limit && prefixEnd>v.base
+    val aliases=(0 until p.input.bindings).map{i=>
+      val used=draw.input.attributes.map(a=>a.enabled && a.bindingIndex===i.U).reduce(_ || _)
+      used && overlap(draw.input.bindings(i))
+    }.reduce(_ || _) || (draw.input.indexFormat=/=0.U && overlap(draw.input.indices))
+    val sharedAlias=s.base<(config.sharedMemoryBase+config.sharedMemoryBytes).U && prefixEnd>config.sharedMemoryBase.U
+    val invalid=(draw.version=/=1.U && draw.version=/=2.U) || !fields ||
+      (work && (!view || draw.shaderPc===0.U || draw.shaderPc(1,0)=/=0.U || aliases || sharedAlias))
+    val bounds=work && (prefixEnd>s.limit || prefixEnd>(BigInt(1)<<32).U ||
+      ((prefixEnd+63.U)&(~63.U(34.W)))>s.allocationLimit)
+    (invalid,bounds)
+  }
+}
 class ShadedVertexRecord(p: VertexShaderStageConfig) extends Bundle {
   val identity=new GraphicsWorkIdentity
   val ordinal=UInt(32.W);val vertexId=UInt(32.W)
@@ -338,7 +365,6 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   io.completion.valid:=phase===complete;io.completion.bits:=result
   when(io.out.fire){outputValid:=false.B}
   private def fail(code: UInt,address: UInt): Unit={when(status===0.U && !externalCancel){status:=code;faultAddress:=address}}
-  private def overlap(a: UInt,end: UInt,b: VertexInputView): Bool=a<b.limit && end>b.base
   private def mask(offset: UInt,bytes: UInt): UInt=((~0.U(64.W))>>(64.U(7.W)-bytes))<<offset
   private def issue(address: UInt,write: Boolean,data: UInt,byteMask: UInt): Unit={
     memRequest:=0.U.asTypeOf(memRequest);memRequest.address:=address
@@ -422,21 +448,11 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
       payloadContext:=io.payload.map(_.context).getOrElse(0.U);phase:=validate
     }}
     is(validate){
-      val work=draw.input.count=/=0.U && draw.input.instances=/=0.U
       val s=draw.scratch
-      val view=s.allocationBase(5,0)===0.U && s.allocationLimit(5,0)===0.U && s.allocationLimit<=(BigInt(1)<<32).U &&
-        s.allocationLimit>s.allocationBase && s.base>=s.allocationBase && s.base(5,0)===0.U && s.limit>=s.base && s.limit<=s.allocationLimit
-      val fields= !imageCapture.map(_.io.invalid).getOrElse(false.B) && (!draw.reuseOutputs || (p.postTransformEntries>0).B) && ShaderTextureResources.legal(draw.resources) && ShaderUniformResources.legal(draw.uniforms) && VertexShaderSampler.legal(draw.sampler) && draw.attributeSlots<=p.input.attributes.U && draw.varyingSlots<=p.varyings.U &&
-        !(draw.varyingMask>>(draw.varyingSlots<<2)).orR &&
-        draw.input.attributes.zipWithIndex.map { case (a,i)=> !a.enabled || i.U<draw.attributeSlots }.reduce(_ && _)
-      val aliases=(0 until p.input.bindings).map { i=>
-        val used=draw.input.attributes.map(a=>a.enabled && a.bindingIndex===i.U).reduce(_ || _)
-        used && overlap(s.base,prefixEnd,draw.input.bindings(i))
-      }.reduce(_ || _) || (draw.input.indexFormat=/=0.U && overlap(s.base,prefixEnd,draw.input.indices))
-      val sharedAlias=s.base<(config.sharedMemoryBase+config.sharedMemoryBytes).U && prefixEnd>config.sharedMemoryBase.U
-      when((draw.version=/=1.U && draw.version=/=2.U) || !fields || (work && (!view || draw.shaderPc===0.U || draw.shaderPc(1,0)=/=0.U || aliases || sharedAlias))) {
+      val (invalid,bounds)=VertexShaderDescriptor.errors(draw,p,config,prefixEnd,imageCapture.map(_.io.invalid).getOrElse(false.B))
+      when(invalid) {
         fail(VertexInputStatus.invalidDescriptor.U,s.base);phase:=drain
-      }.elsewhen(work && (prefixEnd>s.limit || prefixEnd>(BigInt(1)<<32).U || ((prefixEnd+63.U)&(~63.U(34.W)))>s.allocationLimit)) {
+      }.elsewhen(bounds) {
         fail(VertexInputStatus.bounds.U,s.base);phase:=drain
       }.otherwise{inputOffered:=true.B;phase:=collect}
     }
