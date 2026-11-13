@@ -127,3 +127,20 @@ GCR command-support bits must be present before those dependent reads. The
 existing native schema remains at five. Wrong magics, missing prerequisites,
 active completions or external memory work fail the probe. No command is
 submitted and `gpuExecution`, clock and FPS qualification stay false.
+
+Both probes require the original unified-command, protected-VM, scalar-FPU,
+shader-config and native-format capability bits. Raw fragment batch must equal
+the 16-lane × eight-warp product (128), and the raw bank count must be even and
+at least two, using the driver's shared resource validator. The compute wire
+parser enforces the same consistency before accepting a capture. No raw field
+is repaired. Executor source guards also bind that shared validator header.
+Eighteen CPU tests pass, including ASan/UBSan protocol checks, missing capability
+and batch rejection, odd-bank rejection, preserved legal raw bank counts and
+executor include-closure checks. Reproduce with:
+
+```sh
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_owner.py
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_compute_owner.py
+python3 -B scripts/test_prepare_owner_executor.py
+python3 -B scripts/test_build_native_flashsim.py
+```

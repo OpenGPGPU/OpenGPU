@@ -97,8 +97,7 @@ template<class Sim>
 ProfileObservation probe_profile(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,bool compute=false) {
   ProfileObservation observed;
   const auto id=bus.read(GPU_REG_ID),caps=bus.read(GPU_REG_CAPABILITIES);
-  const uint32_t required_caps=GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE|GPU_CAP_SHADER_CONFIG_INFO;
-  require((id&0xffffu)>=GPU_ABI_COMPUTE_RESOURCE_VERSION && (caps&required_caps)==required_caps,
+  require((id&0xffffu)>=GPU_ABI_COMPUTE_RESOURCE_VERSION && (caps&required_owner_caps)==required_owner_caps,
     "profile probe requires a protected unified-command ABI");
   observed.registers={{GPU_REG_ID,id},{GPU_REG_CAPABILITIES,caps}};
   // The first three reads establish GCR presence/version/protected sources.
@@ -112,8 +111,7 @@ ProfileObservation probe_profile(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,bool 
   require(pointer==GPU_REG_BIN_CAPABILITIES && quota,"profile probe lacks native discovery/live quota");
   observed.registers.push_back({GPU_REG_BIN_CAPABILITY_PTR,pointer});observed.registers.push_back({0x320,quota});
   const auto shader=bus.read(GPU_REG_SHADER_CONFIG);
-  require((shader&0xffu)==16 && ((shader>>8)&0xffu)==8 && ((shader>>16)&0xffu) && (shader>>24)==2,
-    "profile probe lacks matching two-CU shader resources");
+  require_owner_shader_profile(caps,shader);
   observed.registers.push_back({GPU_REG_SHADER_CONFIG,shader});
   if(compute) {
     // GCR bits 4..8 advertise these five command transports. These are

@@ -81,7 +81,7 @@ public:
     ++resets;Simulation::reset();model->mmio_enabled=true;
     for(const auto &r:Capture::profile())model->registers[r.address]=r.value;
     model->registers[GPU_REG_ID]=GPU_ABI_COMPUTE_RESOURCE_VERSION;
-    model->registers[GPU_REG_CAPABILITIES]=GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE|GPU_CAP_SHADER_CONFIG_INFO;
+    model->registers[GPU_REG_CAPABILITIES]=GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE|GPU_CAP_SHADER_CONFIG_INFO|GPU_CAP_COMPUTE_SCALAR_FPU|GPU_CAP_NATIVE_PIXEL_FORMATS|(128u<<GPU_CAP_FRAGMENT_BATCH_SHIFT);
     model->registers[GPU_REG_BIN_CAPABILITY_PTR]=GPU_REG_BIN_CAPABILITIES;model->registers[0x320]=128;model->registers[GPU_REG_SHADER_CONFIG]=0x02040810;
   }
   template<class Observe> void step(Agent &agent,uint64_t cycle,Observe observe) {
@@ -219,10 +219,33 @@ static void profile_probe(int argc,char **argv) {
     bad.model->registers[address]=0;Agent peer(memory);ReplayBus<ControlPeer> control(bad,peer,1000);
     rejects([&]{probe_profile(bad,peer,control);});
   }
-  for(uint32_t shader:{0u,0x02040800u,0x02040010u,0x02000810u,0x00040810u,0x04040810u}) {
+  for(uint32_t shader:{0u,0x02040800u,0x02040010u,0x02000810u,0x02010810u,0x02030810u,0x00040810u,0x04040810u}) {
     ControlPeer bad(argc,argv,memory,captures);bad.reset();bad.model->issue_read=false;
     bad.model->registers[GPU_REG_SHADER_CONFIG]=shader;Agent peer(memory);
     ReplayBus<ControlPeer> control(bad,peer,1000);rejects([&]{probe_profile(bad,peer,control);});
+  }
+  for(uint32_t batch:{0u,64u,127u,255u}) {
+    ControlPeer bad(argc,argv,memory,captures);bad.reset();bad.model->issue_read=false;
+    auto &caps=bad.model->registers[GPU_REG_CAPABILITIES];
+    caps=(caps&~GPU_CAP_FRAGMENT_BATCH_MASK)|(batch<<GPU_CAP_FRAGMENT_BATCH_SHIFT);
+    Agent peer(memory);ReplayBus<ControlPeer> control(bad,peer,1000);
+    rejects([&]{probe_profile(bad,peer,control);});require(!bad.submitted,"invalid batch submitted work");
+  }
+  for(uint32_t flag:{GPU_CAP_UNIFIED_COMMANDS,GPU_CAP_PROTECTED_VM_STATE,GPU_CAP_COMPUTE_SCALAR_FPU,
+                     GPU_CAP_SHADER_CONFIG_INFO,GPU_CAP_NATIVE_PIXEL_FORMATS}) {
+    ControlPeer bad(argc,argv,memory,captures);bad.reset();bad.model->issue_read=false;
+    bad.model->registers[GPU_REG_CAPABILITIES]&=~flag;
+    Agent peer(memory);ReplayBus<ControlPeer> control(bad,peer,1000);
+    rejects([&]{probe_profile(bad,peer,control);});
+    require(bad.read_addresses==std::vector<uint32_t>({GPU_REG_ID,GPU_REG_CAPABILITIES}),
+      "profile read dependent windows without required capabilities");
+  }
+  for(uint32_t shader:{0x02020810u,0x02100810u}) {
+    ControlPeer valid(argc,argv,memory,captures);valid.reset();valid.model->issue_read=false;
+    valid.model->registers[GPU_REG_SHADER_CONFIG]=shader;
+    Agent peer(memory);ReplayBus<ControlPeer> control(valid,peer,1000);
+    require(probe_profile(valid,peer,control).registers.back().value==shader && !valid.submitted,
+      "profile changed a legal raw bank count");
   }
   ControlPeer no_shader(argc,argv,memory,captures);no_shader.reset();no_shader.model->issue_read=false;
   no_shader.model->registers[GPU_REG_CAPABILITIES]&=~GPU_CAP_SHADER_CONFIG_INFO;
@@ -266,7 +289,7 @@ static void active_series(int argc,char **argv,bool cleanup=false,bool close_con
   auto a=fixture(),b=a;a.finish.clear();b.finish.clear();
   for(Capture *c:{&a,&b}) {
     c->discovery.push_back({GPU_REG_ID,GPU_ABI_COMPUTE_RESOURCE_VERSION});
-    c->discovery.push_back({GPU_REG_CAPABILITIES,GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE|GPU_CAP_SHADER_CONFIG_INFO});
+    c->discovery.push_back({GPU_REG_CAPABILITIES,GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE|GPU_CAP_SHADER_CONFIG_INFO|GPU_CAP_COMPUTE_SCALAR_FPU|GPU_CAP_NATIVE_PIXEL_FORMATS|(128u<<GPU_CAP_FRAGMENT_BATCH_SHIFT)});
     c->discovery.push_back({GPU_REG_BIN_CAPABILITY_PTR,GPU_REG_BIN_CAPABILITIES});c->discovery.push_back({0x320,128});
     c->discovery.push_back({GPU_REG_SHADER_CONFIG,0x02040810});
     c->validate(true);
