@@ -172,25 +172,30 @@ class L2MshrTable(
       fillSent(allocationEntry) := false.B
       fillInstalled(allocationEntry) := false.B
       lineAddress(allocationEntry) := allocationRequest.lineAddress
-      waiters(allocationEntry) := UIntToOH(
-        allocationRequest.transactionId, maxOutstanding)
-      waiterPresent(allocationEntry) := UIntToOH(
-        allocationRequest.transactionId, maxOutstanding).orR
       sharers(allocationEntry) := Mux(allocationRequest.trackSharer,
         UIntToOH(allocationRequest.requester, numComputeUnits), 0.U)
       victimSet(allocationEntry) := allocationRequest.victimSet
       victimWay(allocationEntry) := allocationRequest.victimWay
     }.otherwise {
-      waiters(allocationEntry) := waiters(allocationEntry) | UIntToOH(
-        allocationRequest.transactionId, maxOutstanding)
-      waiterPresent(allocationEntry) := waiterPresent(allocationEntry) ||
-        UIntToOH(allocationRequest.transactionId, maxOutstanding).orR
       when(allocationRequest.trackSharer) {
         sharers(allocationEntry) := sharers(allocationEntry) | UIntToOH(
           allocationRequest.requester, numComputeUnits)
       }
     }
     allocationValid := false.B
+  }
+  // Keep each full-width bitmap's feedback local to its entry. Reading a
+  // dynamically selected bitmap before writing it back creates a wide
+  // entry-to-entry mux even though only one entry can change on this edge.
+  private val allocationWaiter = UIntToOH(
+    allocationRequest.transactionId, maxOutstanding)
+  for (entry <- 0 until entries) {
+    when(io.allocation.fire && allocationEntry === entry.U) {
+      waiters(entry) := Mux(allocationMerged,
+        waiters(entry) | allocationWaiter, allocationWaiter)
+      waiterPresent(entry) := allocationWaiter.orR ||
+        (allocationMerged && waiterPresent(entry))
+    }
   }
 
   private val refillEntryValid = valid(io.refill.bits.entryId) &&
@@ -259,17 +264,23 @@ class L2MshrTable(
       allocationEntry === responseEntry
     val mergedWaiter = Mux(simultaneousMerge,
       UIntToOH(allocationRequest.transactionId, maxOutstanding), 0.U)
-    val remaining = (waiters(responseEntry) | mergedWaiter) &
-      ~UIntToOH(responseTransaction, maxOutstanding)
-    waiters(responseEntry) := remaining
-    waiterPresent(responseEntry) := remaining.orR
     responseHeld := false.B
-    when(!remaining.orR && !capturedMergeTargetsResponse) {
-      valid(responseEntry) := false.B
-      refilled(responseEntry) := false.B
-      fillSent(responseEntry) := false.B
-      fillInstalled(responseEntry) := false.B
-      sharers(responseEntry) := 0.U
+    for (entry <- 0 until entries) {
+      when(responseEntry === entry.U) {
+        val remaining = (waiters(entry) | mergedWaiter) &
+          ~UIntToOH(responseTransaction, maxOutstanding)
+        // Response retirement retains its original priority over allocation;
+        // a simultaneous committed merge contributes its waiter before clear.
+        waiters(entry) := remaining
+        waiterPresent(entry) := remaining.orR
+        when(!remaining.orR && !capturedMergeTargetsResponse) {
+          valid(entry) := false.B
+          refilled(entry) := false.B
+          fillSent(entry) := false.B
+          fillInstalled(entry) := false.B
+          sharers(entry) := 0.U
+        }
+      }
     }
   }
 

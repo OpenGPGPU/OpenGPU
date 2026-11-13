@@ -36,3 +36,29 @@ sbt -J-Xmx3G -J-XX:+ExitOnOutOfMemoryError -J-XX:ActiveProcessorCount=2 \
 
 The explicit elaboration command emits no RTL or simulation model. Remove
 temporary build outputs, caches and logs after their active use ends.
+
+## Waiter bitmap updates
+
+Allocation and response retirement update each entry's own waiter bitmap
+under its entry-select enable. Neither update reads a dynamically selected
+full-width bitmap back into all entries. All four entries and 32,850 product
+transaction IDs remain present. A held response retiring with a committed
+same-entry merge ORs the new waiter before clearing the old one; response
+retirement retains its original priority over allocation. The cached nonempty
+predicate follows the same update, and late sharers still require directory
+publication before their response.
+
+The RTL regression includes a 17-ID namespace with simultaneous same-entry
+and different-entry merge/retirement, held replies, both boundary IDs, fault
+delivery and healthy reuse without reset. Run `L2MshrTableSpec` together with
+the existing suites above. Emit the full-capacity table for synthesis or
+equivalence comparison, using a GPU-local target directory, with:
+
+```sh
+sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 \
+  'set Test / sources := (Test / sources).value.filter(_.getName == "EmitL2MshrRtl.scala")' \
+  'Test / runMain opengpu.core.memory.EmitL2MshrRtl .artifacts/mshr-rtl'
+```
+
+Changing this feedback structure does not establish a cell-count, clock or
+frame-rate improvement; those require measurements of the emitted design.
