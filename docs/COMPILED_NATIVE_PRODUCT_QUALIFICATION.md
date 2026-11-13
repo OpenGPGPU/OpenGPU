@@ -767,6 +767,59 @@ python3 scripts/test_qualify_native_api_compiled.py
 
 ## Qualification gates and limits
 
+### Captured production owner submission
+
+`native_owner_driver.cpp` replays a production submitter's original physical
+`OGMEM001` memory image and ordered `OGCAP001` control trace. It never generates
+shader code, descriptor words, virtual addresses or rendered outputs. This
+executor requires the complete two-CU/16-lane/eight-warp/four-engine API profile,
+including GAB1 and GNP1; the older frozen v2 model is intentionally rejected.
+MMIO reads and writes service external AXI at the same pre-edge observation,
+so preceding invalidations retain their actual completion/POP waits.
+
+`OGCAP001` is little endian, with no implicit structure padding:
+
+| Section, in order | Encoding |
+|---|---|
+| Header | Eight ASCII magic bytes, u64 total cycle budget, u32 held clocks (8..4096), u32 final command ID |
+| Discovery | u32 count, then `{u32 address, u32 expected}`; all 88 required profile words plus any additional captured words |
+| Writable physical views | u32 count, then `{u64 first, u64 exclusive_end}`; sorted, disjoint, within original allocations |
+| Ordered trace | u32 count, then `{u32 kind, u32 address, u32 value, u32 mask}`; WRITE=1 uses zero mask, POLL=2 retries a predicate, CHECK=3 tests once |
+| Held checks | u32 count, then `{u32 address, u32 mask, u32 expected}`; exact final command identity and all 12 GNX words required |
+| Retirement | u32 count, then `{u32 address, u32 value}`; exactly one completion POP, optional IRQ acknowledgement |
+
+Trace predicates describe the real driver's waits, not CPU-stub poll counts.
+Prior submissions must be invalidations and retire before the final native
+GNJ1 enqueue. That last enqueue retains the real enabled Sv32 context, source
+VA and 512-byte size, and ends the trace without popping its completion.
+The executor checks drain and stable held completion, rejects late memory
+traffic, retires the slot, and checks every byte outside the declared writable
+views, including newly materialized sparse pages. The output still requires an
+independent stored-image/sample/guard oracle and matched-source qualification.
+
+Build with the complete assertion-enabled FlashSim DUT and explicitly tracked
+driver headers, using a separate task build directory:
+
+```sh
+python3 scripts/build_native_flashsim.py --dut-dir "$DUT" --build-dir "$BUILD" \
+  --driver scripts/native_owner_driver.cpp \
+  --driver-dependency scripts/native_owner_capture.hpp \
+  --driver-dependency driver/gpu_abi.h \
+  --driver-dependency driver/opengpu_formats.h --jobs 1
+"$BUILD/native_product_driver" "$INPUT.memory" "$INPUT.capture" "$OUTPUT.memory"
+```
+
+CPU parsing, concurrent MMIO/external-AXI stimulus, malformed trace/capability,
+read-only-byte and exclusive-4-GiB-bound checks pass with ASan/UBSan. Builder
+checks pass for declared relative dependencies, changed headers and shadow
+rejection. These are protocol checks; actual production owner capture, matched
+complete-DUT execution and independent image verification remain pending.
+
+```sh
+OPENGPU_TEST_SANITIZERS=1 python3 scripts/test_native_owner.py
+python3 scripts/test_build_native_flashsim.py
+```
+
 Execution alone does not create a passing qualification. Every scene must complete without unmapped traffic and drain all AXI ownership. Scala then reloads the full output memory and runs the original independent oracle on every stored color, depth/stencil, resolve and guard region. Only successful verification of all six named scenes creates `qualification.json`.
 
 CPU-only AXI protocol and stale-artifact guard tests run through `bash scripts/test_scripts.sh`. They do not replace the complete native image gate. Simulation wall time is separate from GPU cycles. Frame-rate qualification additionally requires a current complete-host clock and matching memory assumptions. This runner by itself closes no feature/resource/coherence, whole-host timing or H0–H8 gate.
