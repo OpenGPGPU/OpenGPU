@@ -178,6 +178,18 @@ canonical fences and the unchanged 512-word ceiling. Existing compute, image,
 atomic, SIMT and output-usage validator regressions pass.
 The complete `scripts/test_driver.py` regression also passes.
 
+The native program snapshot component also passes ASan/UBSan with the actual
+private owner and MMU implementation. It reads original code GEM windows after
+the caller's producer wait, validates the executable suffix at the requested
+entry, and copies the complete original view into a private RX segment. The
+actual Mesa 308-word VS and 301-word FS, and the full 16-slot native programs,
+retain exact bytes after their original GEM is overwritten. Tests check the
+actual RX/no-write PTE, illegal offsets and entry branches into an unverified
+prefix, read-only inputs/tails, missing owned uniforms, insufficient staging,
+copy/allocation/append failures and healthy owner reuse. This is CPU component
+qualification; the production submitter's producer wait and job lifetime still
+need the complete integration below.
+
 Production GNJ/Gallium state admission, owned code/uniform publication, actual
 typed attachments and the same complete two-CU host still need integration and
 execution qualification. Complete API/compiler support and the 36-UBO/48-texture
@@ -201,6 +213,16 @@ python3 scripts/test_driver.py
 python3 scripts/test_test_selection.py
 python3 scripts/native_graphics_uniform_oracle.py --self-test
 ```
+
+With the actual private-owner implementation present in the same source tree,
+run `python3 scripts/test_native_program_snapshot.py --sanitize`. While the
+actual graphics fixture's private build is active, add
+`--programs .artifacts/graphics-uniform-active/glsl` to consume its four original
+code-GEM inputs. An independent integration worktree may be specified with
+`--snapshot-root`; it supplies the actual owner/MMU sources and their existing
+kernel primitive fixture, without changing those files. Missing prerequisites
+or requested actual program inputs fail explicitly. Remove the private build
+and code inputs immediately after this validation finishes.
 
 For future actual owner execution, use the initial union memory and each real
 executor output, with source inputs captured at that record's snapshot:
