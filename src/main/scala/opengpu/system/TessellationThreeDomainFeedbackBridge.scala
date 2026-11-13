@@ -14,7 +14,7 @@ class TessellationThreeDomainFeedbackBridge(config:GpuConfig,contexts:Int=8) ext
     val owners=Vec(3,Flipped(new TransformFeedbackPipelineIO(config)))
     val switch=Flipped(Decoupled(UInt(2.W)));val switchReply=Decoupled(UInt(3.W))
     val ownerIdle=Input(Vec(3,Bool()));val memoryIdle=Input(Bool())
-    val selected=Output(UInt(2.W));val quiesce=Output(Bool());val poisoned=Output(Bool())
+    val selected=Output(UInt(2.W));val quiesce=Output(Bool());val poisoned=Output(Bool());val drained=Output(Bool())
   })
   private val transfer=Module(new TransformFeedbackThreeDomainTransfer(contexts))
   transfer.io.command<>io.feedback.command;io.feedback.commandReply<>transfer.io.commandReply
@@ -36,6 +36,7 @@ class TessellationThreeDomainFeedbackBridge(config:GpuConfig,contexts:Int=8) ext
   }
   private val memoryDrained=io.memoryIdle && !memoryLive.asUInt.orR && !io.feedback.memoryRequest.valid && !io.feedback.memoryResponse.valid
   private val feedbackIdle= !io.owners.map(_.busy).reduce(_ || _) && memoryDrained
+  io.drained:=transfer.io.drained && feedbackIdle
   assert(transfer.io.selected<3.U,"invalid feedback owner")
   for(i<-0 until 3){
     val owner=io.owners(i);val selected=transfer.io.selected===i.U
