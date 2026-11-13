@@ -117,13 +117,14 @@ static void program(struct builder *b, unsigned offset, unsigned kind)
 int main(void)
 {
     struct opengpu_cs_shared shared={0x10000000u,16384,16,16384};
+    unsigned programs=0;
     const uint32_t bases[]={0,0x10000000u,0xffffc000u};
     for(unsigned base=0;base<3;base++) {
         shared.base=bases[base];
         for(unsigned offset=0;offset<=15872;offset+=15872) {
             for(unsigned kind=0;kind<10;kind++) {
                 if(kind==7&&offset)continue;
-                struct builder b;program(&b,offset,kind);
+                ++programs;struct builder b;program(&b,offset,kind);
                 struct opengpu_cs_program p,unchanged;
                 memset(&unchanged,0x5a,sizeof(unchanged));p=unchanged;
                 bool accept=kind==0 || kind==6 || kind==7 || kind==8 || (kind==4 && offset==0);
@@ -157,7 +158,7 @@ int main(void)
     }
     /* A larger symbolic table must not widen the legacy frontend contract. */
     for(unsigned last=31;last<=32;last++) {
-        struct builder b={0};b.header=(struct tgsi_header *)b.tokens;*b.header=tgsi_build_header();
+        ++programs;struct builder b={0};b.header=(struct tgsi_header *)b.tokens;*b.header=tgsi_build_header();
         struct tgsi_processor processor=tgsi_build_processor(PIPE_SHADER_COMPUTE,b.header);
         memcpy(b.tokens+1,&processor,4);
         struct tgsi_full_declaration d=tgsi_default_full_declaration();
@@ -168,6 +169,7 @@ int main(void)
         int ret=opengpu_cs_emit(b.tokens,&p);
         if(last==31)assert(!ret);else assert(ret<0&&!memcmp(&p,&untouched,sizeof(p)));
     }
-    puts("shared own-stripe TGSI/emitter/validator: PASS (CPU only, no GPU execution)");
+    assert(programs==59);
+    puts("shared own-stripe TGSI/emitter/validator: 59 programs PASS (CPU only, no GPU execution)");
     return 0;
 }

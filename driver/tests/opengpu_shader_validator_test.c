@@ -950,6 +950,21 @@ static void test_compute_shared_admission(void)
     multi_cfg[8]=vle32(10,15);assert(!SHARED(multi_cfg,10));
     /* Unreachable writes never become initialization at a later target. */
     multi_cfg[6]=branch(0,0,0,8);assert(!SHARED(multi_cfg,10));
+    /* Both arms write both stripes in opposite orders. Set intersection
+     * preserves both mappings; deleting either arm's producer rejects. */
+    uint32_t orders[]={vsetivli(16),slli(13,8,2),OPG_SHARED_BASE|14u<<7|0x37u,
+        add(13,13,14),addi(15,13,512),branch(0,8,0,16),vse32(1,13),vse32(1,15),
+        branch(0,0,0,12),vse32(1,15),vse32(1,13),vle32(10,13),vle32(10,15),
+        OPENGPU_SHADER_CEASE};
+    assert(SHARED(orders,14));
+    const unsigned arm_stores[]={6,7,9,10};
+    for(unsigned i=0;i<4;i++) {
+        unsigned at=arm_stores[i];uint32_t saved=orders[at];orders[at]=addi(0,0,0);
+        assert(!SHARED(orders,14));orders[at]=saved;
+    }
+    /* One incoming overlapping write destroys the old proof for all paths. */
+    multi_cfg[5]=addi(15,13,4);multi_cfg[6]=branch(0,8,0,8);
+    multi_cfg[8]=vle32(10,13);assert(!SHARED(multi_cfg,10));
     /* A second validation cannot inherit any of the retained proofs. */
     retained[4]=addi(0,0,0);assert(!SHARED(retained,r));
     retained[4]=vse32(1,13);assert(first_retained_read>4);
@@ -1038,6 +1053,7 @@ int main(void)
 {
     test_shared_own_proof_bounds();
     test_compute_shared_admission();
+    unsigned shared_allocations=proof_allocations;
     test_compute_uniform_admission();
     test_resource_texture_operands();
     test_compute_texture_resource_profile();
@@ -3189,6 +3205,6 @@ int main(void)
             assert(!opengpu_compute_shader_validate_words(exit_between, 5, 64, 8));
         }
     }
-    assert(!proof_live&&proof_allocations==proof_frees+1);
+    assert(!proof_live&&proof_allocations==proof_frees+1&&proof_allocations==shared_allocations);
     return 0;
 }
