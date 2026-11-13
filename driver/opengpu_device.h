@@ -503,6 +503,9 @@ int opengpu_mmu_vm_unmap_reserved(struct opengpu_device *gpu,
     struct opengpu_vm_reservation *reservation,size_t offset,size_t size);
 int opengpu_mmu_vm_release_reservation(struct opengpu_device *gpu,
     struct opengpu_vm_reservation *reservation);
+int opengpu_mmu_vm_verify_reserved_locked(struct opengpu_device *gpu,
+    const struct opengpu_vm_reservation *reservation, size_t offset,
+    dma_addr_t pa, size_t size, u32 policy, bool writable);
 /* Find a free range across the complete private 32-bit VA space and map under
  * the same submit/MMU lock transaction. No fixed command-slot/count limit. The
  * result is unchanged on failure, including allocation and shootdown rollback. */
