@@ -194,12 +194,14 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
     ioctl_calls++;
     if(request==DRM_IOCTL_OPENGPU_RESOURCE_BIND || request==DRM_IOCTL_OPENGPU_RESOURCE_UNBIND) binding_attempts++;
     if(request==DRM_IOCTL_OPENGPU_COMPUTE_RESOURCES || request==DRM_IOCTL_OPENGPU_COMPUTE_IMAGE_RESOURCES ||
-        request==DRM_IOCTL_OPENGPU_COMPUTE_UNIFORM_RESOURCES) resource_request_attempts++;
+        request==DRM_IOCTL_OPENGPU_COMPUTE_UNIFORM_RESOURCES ||
+        request==DRM_IOCTL_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES) resource_request_attempts++;
     if(request==DRM_IOCTL_OPENGPU_INVALIDATE){invalidate_attempts++;last_invalidate=*(struct drm_opengpu_invalidate *)arg;}
     if(request==fail_request && ++fail_seen==fail_nth){errno=ENOMEM;return -1;}
     if(resource_ioctl && (request==DRM_IOCTL_OPENGPU_COMPUTE_STORAGE || request==DRM_IOCTL_OPENGPU_COMPUTE_RESOURCES ||
         request==DRM_IOCTL_OPENGPU_COMPUTE_IMAGE_RESOURCES ||
-        request==DRM_IOCTL_OPENGPU_COMPUTE_UNIFORM_RESOURCES)) return resource_ioctl(request,arg);
+        request==DRM_IOCTL_OPENGPU_COMPUTE_UNIFORM_RESOURCES ||
+        request==DRM_IOCTL_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES)) return resource_ioctl(request,arg);
     if(request==DRM_IOCTL_OPENGPU_GET_PARAM){
         struct drm_opengpu_param *p=arg;
         switch(p->param){

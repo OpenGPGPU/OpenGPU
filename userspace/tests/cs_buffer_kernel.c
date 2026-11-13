@@ -1,5 +1,8 @@
 /* SPDX-License-Identifier: MIT */
 #define OPENGPU_FLOW_HANDLES 512
+/* The composed fixture executes decoded native counter words itself; the
+ * standalone driver's illustrative device increment must not run as well. */
+#define OPENGPU_FLOW_REAL_WORD_EXECUTION 1
 #define main original_uniform_kernel_fixture_main
 #include "../../driver/tests/opengpu_compute_uniform_flow_fixture.c"
 #undef main
@@ -43,6 +46,10 @@ int cs_buffer_kernel_begin(const struct cs_buffer_kernel_input *in, struct cs_bu
         OPENGPU_COMPUTE_RESOURCE_BUFFER_TEXTURE_V1 | OPENGPU_COMPUTE_RESOURCE_BUFFER_IMAGE_SIZE_V1;
     s->gpu.hw.compute_texture_transport = s->gpu.hw.compute_storage_transport =
         s->gpu.hw.compute_image_transport = s->gpu.hw.compute_uniform_transport = true;
+    if (in->with_counter_source) {
+        s->gpu.hw.compute_counter_transport = true;
+        s->gpu.hw.compute_resource_flags |= OPENGPU_COMPUTE_RESOURCE_ATOMIC_COUNTER_COMMANDS;
+    }
     s->gpu.hw.compute_local_limits = (struct opengpu_compute_local_limits) {128, 128, true};
     s->gpu.regs[GPU_REG_UCMD_STATUS / 4] = GPU_UCMD_STATUS_READY;
     s->render.context = &s->context; s->drm.dev = &s->gpu; s->file.driver_priv = &s->render;
@@ -81,7 +88,11 @@ int cs_buffer_kernel_begin(const struct cs_buffer_kernel_input *in, struct cs_bu
     struct drm_opengpu_compute_image_resources request = in->command;
     request.launch.in_syncobj = 0; request.launch.out_syncobj = 2;
     int ret;
-    if (in->uniforms) {
+    if (in->with_counter_source) {
+        struct drm_opengpu_compute_counter_source_resources source = in->counter_source;
+        source.resources.resources.launch = request.launch;
+        ret = opengpu_compute_counter_source_resources_ioctl(&s->drm, &source, &s->file);
+    } else if (in->uniforms) {
         struct drm_opengpu_compute_uniform_resources gum = *in->uniforms;
         gum.resources.launch = request.launch;
         ret = opengpu_compute_uniform_resources_ioctl(&s->drm, &gum, &s->file);
@@ -104,9 +115,11 @@ int cs_buffer_kernel_begin(const struct cs_buffer_kernel_input *in, struct cs_bu
     out->images = s->job->image_records.cpu; out->image_bytes = s->job->image_records.size;
     out->storage = s->job->storage_records.cpu; out->storage_bytes = s->job->storage_records.size;
     out->uniforms = s->job->uniform_snapshot.cpu; out->uniform_bytes = s->job->uniform_snapshot.size;
+    out->counters = s->job->counter_records.cpu; out->counter_bytes = s->job->counter_records.size;
     out->code = s->job->shader.cpu; out->code_bytes = s->job->shader.size;
     out->texture_root = s->job->kernel.texture.root; out->image_root = s->job->kernel.image.base;
     out->storage_root = s->job->kernel.storage.base; out->uniform_root = s->job->kernel.uniform.root;
+    out->counter_root = s->job->kernel.counter.base;
     out->retained_objects = s->job->object_count;
     return 0;
 }

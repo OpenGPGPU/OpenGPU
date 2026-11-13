@@ -41,6 +41,7 @@ int pipe_opengpu_screen_compute_shared_limits(const struct pipe_opengpu_screen *
     uint32_t *base, uint32_t *bytes, uint32_t *lanes);
 int pipe_opengpu_screen_compute_uniforms(const struct pipe_opengpu_screen *screen);
 int pipe_opengpu_screen_compute_storage_atomics(const struct pipe_opengpu_screen *screen);
+int pipe_opengpu_screen_compute_counter_source(const struct pipe_opengpu_screen *screen);
 /* Versioned native transports only; these are not GL/GLES capabilities. */
 int pipe_opengpu_screen_compute_buffer_textures(const struct pipe_opengpu_screen *screen);
 int pipe_opengpu_screen_compute_buffer_images(const struct pipe_opengpu_screen *screen);
@@ -163,6 +164,15 @@ int pipe_opengpu_launch_grid_buffers(struct pipe_opengpu_context *ctx,
     const struct pipe_opengpu_uniform_view uniforms[13], uint32_t timeout_ms);
 /* Compute launch with an atomic counter bound to slot 0..3. */
 int pipe_opengpu_launch_grid_counter_resources(struct pipe_opengpu_context *ctx,
+    const uint32_t grid[3], const uint32_t local[3],
+    const struct pipe_opengpu_storage_view storage[4],
+    const struct pipe_opengpu_buffer_texture textures[32],
+    const struct pipe_opengpu_buffer_image images[4],
+    const struct pipe_opengpu_uniform_view uniforms[13],
+    const struct pipe_opengpu_counter_view counter, uint32_t timeout_ms);
+/* Independent original GEM, all four SSBO windows preserved. counter.slot is
+ * zero; its count is 1..8 and offset/count must fit the logical bound bytes. */
+int pipe_opengpu_launch_grid_counter_source_resources(struct pipe_opengpu_context *ctx,
     const uint32_t grid[3], const uint32_t local[3],
     const struct pipe_opengpu_storage_view storage[4],
     const struct pipe_opengpu_buffer_texture textures[32],

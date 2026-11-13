@@ -331,6 +331,7 @@ static u32 word(const void *p,unsigned i) { const u8 *b=(const u8 *)p+4*i;return
 static void release_fence(struct dma_fence **f) { dma_fence_put(*f);*f=NULL; }
 static bool scheduler_ready(struct opengpu_sched_job *j)
 { for(unsigned i=0;i<j->base.wait_count;i++)if(!j->base.waits[i]->signaled)return false;return true; }
+#ifndef OPENGPU_FLOW_REAL_WORD_EXECUTION
 static u32 *mapped_counter_words(struct opengpu_sched_job *j)
 {
     const struct opengpu_resource_binding *s=&j->counter_source;
@@ -345,6 +346,7 @@ static u32 *mapped_counter_words(struct opengpu_sched_job *j)
     }
     assert(!"counter source has no live original-GEM mapping");return NULL;
 }
+#endif
 static void finish(struct opengpu_device *g,struct opengpu_sched_job *j,int error)
 {
     assert(scheduler_ready(j));
@@ -361,6 +363,7 @@ static void finish(struct opengpu_device *g,struct opengpu_sched_job *j,int erro
         assert(found==1);
     }
     unsigned pinned=buffers,refs=j->objects[j->object_count-1]->refs;
+#ifndef OPENGPU_FLOW_REAL_WORD_EXECUTION
     if(j->counter_source.object&&(!j->kernel.indirect_enabled||
         (j->kernel.grid[0]&&j->kernel.grid[1]&&j->kernel.grid[2]))) {
         /* Explicit device-reply model: resolve the actual mapped VA to the
@@ -369,6 +372,7 @@ static void finish(struct opengpu_device *g,struct opengpu_sched_job *j,int erro
         for(unsigned i=0;i<j->counter_source.size/4;i++)values[i]++;
         assert(j->counter_source.object->refs>=2&&!j->base.s_fence->finished.signaled);
     }
+#endif
     for(unsigned n=0;n<7;n++){assert(!opengpu_hw_unified_drain(g));assert(buffers==pinned&&j->objects[j->object_count-1]->refs== (int)refs);}
     g->regs[GPU_REG_UCMD_STATUS/4]|=GPU_UCMD_STATUS_COMPLETION;
     u32 opcode=g->hw.unified_opcode;

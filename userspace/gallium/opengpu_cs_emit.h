@@ -15,8 +15,9 @@ struct opengpu_cs_program {
     unsigned texture_kind[32]; /* native float0/uint1/sint2 return class */
     unsigned image_reads, image_writes, image_queries; /* buffer image indices0..3 */
     unsigned image_format[4]; /* native format qualifier; separate13-format policy */
-    unsigned counter_reads, counter_writes; /* atomic counter indices0..3 */
+    unsigned counter_reads, counter_writes; /* independent HW counter binding0 */
     unsigned storage_atomics; /* checked RMW bindings0..3; requires discovery */
+    unsigned counter_bytes; /* required endpoint within the retained counter view */
 };
 
 /* No partial output on failure. The token header owns the TGSI stream length. */

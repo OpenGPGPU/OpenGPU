@@ -22,6 +22,7 @@ struct build {
     unsigned sys_mask[CS_SYSTEMS], sys_name[CS_SYSTEMS], buffers;
     unsigned const_mask[13], const_first[13], const_last[13];
     unsigned address_declared, address_defined;
+    unsigned counters;
     uint32_t samplers, sampler_views;
     const unsigned *texture_observed;
     unsigned texture_position;
@@ -114,11 +115,11 @@ static int packets(const struct tgsi_token *t)
             memcpy(&d, t + pos, 4);
             if (d.Interpolate || d.Array || d.Atomic || d.Padding ||
                 (d.File == TGSI_FILE_MEMORY ? d.MemType != TGSI_MEMORY_TYPE_SHARED : d.MemType != 0)) return -1;
-            if (d.File == TGSI_FILE_CONSTANT) {
+            if (d.File == TGSI_FILE_CONSTANT || d.File == TGSI_FILE_HW_ATOMIC) {
                 struct tgsi_declaration_dimension dim;
                 if (!d.Dimension || d.Semantic || n != 3 || n > end - pos) return -1;
                 memcpy(&dim, t + pos + 2, 4);
-                if (dim.Padding || dim.Index2D > 12) return -1;
+                if (dim.Padding || dim.Index2D > (d.File == TGSI_FILE_CONSTANT ? 12u : 0u)) return -1;
             } else if (d.File == TGSI_FILE_SAMPLER_VIEW || d.File == TGSI_FILE_IMAGE) {
                 if (d.Dimension || d.Semantic || n != 3 || n > end - pos) return -1;
             } else if ((d.File != TGSI_FILE_TEMPORARY && d.File != TGSI_FILE_BUFFER &&
@@ -171,16 +172,16 @@ static int packets(const struct tgsi_token *t)
                 if (src.Absolute || src.Negate) return -1;
                 if (src.Indirect) {
                     struct tgsi_ind_register ind;
-                    if (src.File != TGSI_FILE_CONSTANT || ++q >= pos + n) return -1;
+                    if ((src.File != TGSI_FILE_CONSTANT && src.File != TGSI_FILE_HW_ATOMIC) || ++q >= pos + n) return -1;
                     memcpy(&ind, t + q, 4);
                     if (ind.File != TGSI_FILE_ADDRESS || ind.Index || ind.Swizzle || ind.ArrayID) return -1;
                 }
-                if (src.File == TGSI_FILE_CONSTANT) {
+                if (src.File == TGSI_FILE_CONSTANT || src.File == TGSI_FILE_HW_ATOMIC) {
                     struct tgsi_dimension dim;
                     if (!src.Dimension || ++q >= pos + n) return -1;
                     memcpy(&dim, t + q, 4);
                     if (dim.Indirect || dim.Dimension || dim.Padding ||
-                        dim.Index < 0 || dim.Index > 12) return -1;
+                        dim.Index < 0 || dim.Index > (src.File == TGSI_FILE_CONSTANT ? 12 : 0)) return -1;
                 } else if (src.Dimension) return -1;
             }
             if (q != pos + n) return -1;
@@ -197,6 +198,15 @@ static int declaration(struct build *b, const struct tgsi_full_declaration *d)
     unsigned mask = d->Declaration.UsageMask;
     if (!mask || first > last) return -1;
     switch (d->Declaration.File) {
+    case TGSI_FILE_HW_ATOMIC:
+        if (last >= 8 || mask != 15 || !d->Declaration.Dimension || d->Dim.Index2D ||
+            d->Declaration.Semantic || b->cf) return -1;
+        for (i = first; i <= last; i++) {
+            if (b->counters & (1u << i)) return -1;
+            b->counters |= 1u << i;
+        }
+        if (b->p.counter_bytes < (last + 1) * 4) b->p.counter_bytes = (last + 1) * 4;
+        return 0;
     case TGSI_FILE_MEMORY:
         if (!b->shared || b->cf || first != TGSI_MEMORY_TYPE_SHARED || last != first || d->Declaration.Semantic ||
             d->Declaration.MemType != TGSI_MEMORY_TYPE_SHARED || b->shared_declared) return -1;
@@ -673,6 +683,59 @@ static int storage_atomic(struct build *b, const struct tgsi_full_instruction *i
     return destination(b,d);
 }
 
+static int atomic_counter(struct build *b, const struct tgsi_full_instruction *in)
+{
+    const struct tgsi_instruction *i = &in->Instruction;
+    const struct tgsi_dst_register *d = &in->Dst[0].Register;
+    const struct tgsi_full_src_register *memory = &in->Src[0];
+    const struct tgsi_src_register *s = &memory->Register;
+    unsigned read = i->Opcode == TGSI_OPCODE_LOAD, function = 17;
+    if (b->cf || i->Texture || i->Label || !i->Memory || i->NumDstRegs != 1 ||
+        i->NumSrcRegs != (read ? 2u : 3u) || d->File != TGSI_FILE_TEMPORARY || d->WriteMask != 1 ||
+        s->File != TGSI_FILE_HW_ATOMIC || !s->Dimension || memory->Dimension.Index ||
+        s->Index < 0 || s->Index >= 8 || !(b->counters & (1u << s->Index)) ||
+        in->Memory.Qualifier || in->Memory.Format || in->Memory.Padding || in->Memory.Texture)
+        return -1;
+    if (!read) {
+        const struct tgsi_src_register *operand = &in->Src[2].Register;
+        if (i->Opcode != TGSI_OPCODE_ATOMUADD || operand->File != TGSI_FILE_IMMEDIATE ||
+            operand->Index < 0 || (unsigned)operand->Index >= b->nimm || operand->Indirect || operand->Dimension)
+            return -1;
+        uint32_t value = b->imm[operand->Index][swizzle(operand, 0)];
+        if (value != 1 && value != UINT32_MAX) return -1;
+        function = value == 1 ? 18 : 19;
+    }
+    /* NTT supplies a redundant byte-offset operand for HW_ATOMIC. Its actual
+     * address is the dimensioned word index (plus ADDR0 for indirect access),
+     * as in Mesa's hardware-counter backend. Never add that byte offset twice. */
+    const struct tgsi_src_register *offset = &in->Src[1].Register;
+    if (offset->Indirect || offset->Dimension || offset->Index < 0 ||
+        !((offset->File == TGSI_FILE_IMMEDIATE && (unsigned)offset->Index < b->nimm) ||
+          (offset->File == TGSI_FILE_TEMPORARY && (unsigned)offset->Index < CS_TEMPS &&
+           b->reg[offset->Index][swizzle(offset, 0)]))) return -1;
+    unsigned last = (unsigned)s->Index;
+    while (last < 7 && (b->counters & (1u << (last + 1)))) last++;
+    splat(b, 25, (unsigned)s->Index);
+    if (s->Indirect) {
+        if (!b->address_defined) return -1;
+        word(b, vec(0, 0, 25, 25, 30));
+        splat(b, 31, 8); scalar(b, last - (unsigned)s->Index);
+        word(b, vec(0x1c, 4, 0, 10, 30));
+        word(b, vec(0x17, 0, 25, 25, 31) & ~(1u << 25));
+    }
+    resource_word(b, function, 0, 26, 25, 0);
+    if (function == 19) {
+        /* Native decrement returns new; TGSI ATOMUADD(-1) returns old.
+         * Mesa's later pre-decrement adjustment must see that genuine old. */
+        scalar(b, 1); word(b, vec(0, 4, 26, 10, 26));
+    }
+    b->p.counter_reads = 1;
+    if (!read) b->p.counter_writes = 1;
+    unsigned bytes = (s->Indirect ? last + 1 : (unsigned)s->Index + 1) * 4;
+    if (b->p.counter_bytes < bytes) b->p.counter_bytes = bytes;
+    return destination(b, d);
+}
+
 static int instruction(struct build *b, const struct tgsi_full_instruction *in)
 {
     const struct tgsi_instruction *i = &in->Instruction;
@@ -707,6 +770,9 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
     if (i->NumDstRegs != 1 || !d->WriteMask) return -1;
     if (op == TGSI_OPCODE_TXF || op == TGSI_OPCODE_TXF_LZ || op == TGSI_OPCODE_TXQ)
         return texture(b, in);
+    if ((op == TGSI_OPCODE_LOAD || storage_atomic_operation(op) >= 0) &&
+        in->Src[0].Register.File == TGSI_FILE_HW_ATOMIC)
+        return atomic_counter(b, in);
     if ((mem || op == TGSI_OPCODE_RESQ) &&
         (op == TGSI_OPCODE_STORE ? d->File : in->Src[0].Register.File) == TGSI_FILE_IMAGE)
         return image(b, in);

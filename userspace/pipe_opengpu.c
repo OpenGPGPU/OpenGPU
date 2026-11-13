@@ -90,7 +90,7 @@ struct pipe_opengpu_context {
     struct {
         struct pipe_opengpu_resource *resource;
         uint64_t bytes;
-    } cs_pending_writes[8];
+    } cs_pending_writes[9]; /* four storage, four images, independent counter */
     unsigned cs_pending_count;
     struct pipe_opengpu_fence *cs_failure_fence;
     uint32_t cs_timeout_ms;
@@ -1018,6 +1018,13 @@ int pipe_opengpu_screen_compute_storage_atomics(const struct pipe_opengpu_screen
     return screen && (screen->driver_features & need)==need;
 }
 
+int pipe_opengpu_screen_compute_counter_source(const struct pipe_opengpu_screen *screen)
+{
+    const uint64_t need = OPENGPU_DRIVER_FEATURE_COMPUTE_ATOMIC_COUNTERS |
+        OPENGPU_DRIVER_FEATURE_COMPUTE_COUNTER_SOURCE;
+    return screen && (screen->driver_features & need) == need;
+}
+
 int pipe_opengpu_screen_compute_buffer_textures(const struct pipe_opengpu_screen *screen)
 {
     const uint64_t need=OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE |
@@ -1066,7 +1073,9 @@ static int remember_compute_write(struct pipe_opengpu_context *ctx,
             if (ctx->cs_pending_writes[i].bytes < bytes) ctx->cs_pending_writes[i].bytes = bytes;
             return 0;
         }
-    if (ctx->cs_pending_count == 8) { errno = EOVERFLOW; return -1; }
+    if (ctx->cs_pending_count == sizeof(ctx->cs_pending_writes) / sizeof(ctx->cs_pending_writes[0])) {
+        errno = EOVERFLOW; return -1;
+    }
     __atomic_add_fetch(&resource->references, 1, __ATOMIC_RELAXED);
     ctx->cs_pending_writes[ctx->cs_pending_count].resource = resource;
     ctx->cs_pending_writes[ctx->cs_pending_count++].bytes = bytes;
@@ -1296,22 +1305,21 @@ poisoned:
     return -1;
 }
 
-/* Compute launch with an atomic counter bound to slot 0..3. Mirrors
+/* Checked legacy-binding or independent-source counter launch. Mirrors
  * pipe_opengpu_launch_grid_buffers validation and resource binding, then
- * submits through DRM_IOCTL_OPENGPU_COMPUTE_COUNTER_RESOURCES so the counter
- * view is disjoint from every other job resource. */
-int pipe_opengpu_launch_grid_counter_resources(struct pipe_opengpu_context *ctx,
+ * submits the selected counter transport with the matching retained source. */
+static int launch_grid_counter_resources(struct pipe_opengpu_context *ctx,
     const uint32_t grid[3], const uint32_t local[3],
     const struct pipe_opengpu_storage_view storage[4],
     const struct pipe_opengpu_buffer_texture textures[32],
     const struct pipe_opengpu_buffer_image images[4],
     const struct pipe_opengpu_uniform_view uniforms[13],
-    const struct pipe_opengpu_counter_view counter, uint32_t timeout_ms)
+    const struct pipe_opengpu_counter_view counter, uint32_t timeout_ms, int independent)
 {
     struct drm_opengpu_compute_counter_resources command = {0};
     struct drm_opengpu_compute_uniform_resources gum = {0};
     struct drm_opengpu_compute_texture_view views[32] = {{0}};
-    struct drm_opengpu_compute *launch = uniforms ? &gum.resources.launch : &command.launch;
+    struct drm_opengpu_compute *launch = uniforms || independent ? &gum.resources.launch : &command.launch;
     uint32_t items, axis, texture_count = 0, image_mask = 0, resource_flags = 0;
     uint64_t product = 1;
     struct pipe_opengpu_fence *fence = NULL;
@@ -1321,6 +1329,9 @@ int pipe_opengpu_launch_grid_counter_resources(struct pipe_opengpu_context *ctx,
         errno = EINVAL; return -1;
     }
     if (ctx->cs_storage_failed) { errno = EIO; return -1; }
+    if (independent && !pipe_opengpu_screen_compute_counter_source(ctx->screen)) {
+        errno = ENOTSUP; return -1;
+    }
     if (reap_screen_contexts(ctx->screen)) return -1;
     ctx->cs_timeout_ms = timeout_ms;
     if (pipe_opengpu_screen_compute_limits(ctx->screen, &items, &axis)) return -1;
@@ -1331,15 +1342,31 @@ int pipe_opengpu_launch_grid_counter_resources(struct pipe_opengpu_context *ctx,
     if (counter.resource) {
         if (counter.slot > 3 || !live_buffer(ctx->screen, counter.resource, counter.bytes) ||
             counter.bytes > OPENGPU_STORAGE_VA_MAX_BYTES || counter.offset & 3u) goto invalid;
-        command.counter.offset = counter.offset;
-        command.counter.slot = counter.slot;
-        command.counter.count = counter.count;
-        resource_flags |= OPENGPU_COMPUTE_UNIFORM_RESOURCE_COUNTERS;
-    }
+        if (independent) {
+            uint64_t size = pipe_opengpu_resource_size(counter.resource);
+            if (counter.slot || !counter.count || counter.count > 8 ||
+                counter.offset > size || counter.bytes > size - counter.offset ||
+                (uint64_t)counter.count * 4 > counter.bytes) goto invalid;
+            for (unsigned i = 0; i < 32; i++)
+                if (textures[i].resource && textures[i].resource->buffer.handle == counter.resource->buffer.handle)
+                    goto invalid;
+            for (unsigned i = 0; i < 4; i++)
+                if ((storage[i].resource && storage[i].resource->buffer.handle == counter.resource->buffer.handle) ||
+                    (images[i].resource && images[i].resource->buffer.handle == counter.resource->buffer.handle)) goto invalid;
+            if (uniforms) for (unsigned i = 0; i < 13; i++)
+                if (uniforms[i].resource && uniforms[i].resource->buffer.handle == counter.resource->buffer.handle) goto invalid;
+        } else {
+            command.counter.offset = counter.offset;
+            command.counter.slot = counter.slot;
+            command.counter.count = counter.count;
+            resource_flags |= OPENGPU_COMPUTE_UNIFORM_RESOURCE_COUNTERS;
+        }
+    } else if (independent) goto invalid;
     for (unsigned i = 0; i < 4; i++) {
         const struct pipe_opengpu_buffer_image *v = &images[i];
         struct drm_opengpu_compute_image_view expected;
         if (pipe_opengpu_storage_view_validate(ctx->screen, &storage[i])) return -1;
+        if (independent && storage[i].resource) resource_flags |= OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE;
         if (!v->resource) {
             static const struct drm_opengpu_compute_image_view empty;
             if (v->binding_bytes || memcmp(&v->view, &empty, sizeof(empty))) goto invalid;
@@ -1386,7 +1413,7 @@ int pipe_opengpu_launch_grid_counter_resources(struct pipe_opengpu_context *ctx,
             OPENGPU_DRIVER_FEATURE_COMPUTE_RESOURCES;
         if (!(ctx->screen->driver_features & combined)) { errno = ENOTSUP; return -1; }
     }
-    if (counter.resource) resource_flags |= OPENGPU_COMPUTE_UNIFORM_RESOURCE_COUNTERS;
+    if (counter.resource && !independent) resource_flags |= OPENGPU_COMPUTE_UNIFORM_RESOURCE_COUNTERS;
     if (uniforms) {
         unsigned any = 0;
         if (!pipe_opengpu_screen_compute_uniforms(ctx->screen)) { errno = ENOTSUP; return -1; }
@@ -1406,6 +1433,10 @@ int pipe_opengpu_launch_grid_counter_resources(struct pipe_opengpu_context *ctx,
     } else {
         command.resource_flags = resource_flags |
             (image_mask ? OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES : 0);
+    }
+    if (independent) {
+        gum.version = OPENGPU_COMPUTE_UNIFORM_VERSION;
+        gum.resources.resource_flags = resource_flags | (image_mask ? OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES : 0);
     }
     if (!grid[0] || !grid[1] || !grid[2]) return 0;
     if (pipe_opengpu_compute_barrier(ctx, timeout_ms)) return -1;
@@ -1446,17 +1477,24 @@ int pipe_opengpu_launch_grid_counter_resources(struct pipe_opengpu_context *ctx,
     launch->kernarg_slot = PIPE_CS_KERNARG_SLOT;
     memcpy(launch->grid, grid, sizeof(launch->grid)); memcpy(launch->local, local, sizeof(launch->local));
     launch->out_syncobj = fence->handle;
-    command.textures = (uintptr_t)views; command.texture_count = texture_count;
-    if (uniforms) {
+    command.textures = texture_count ? (uintptr_t)views : 0; command.texture_count = texture_count;
+    if (uniforms || independent) {
         memcpy(gum.resources.bindings, command.bindings, sizeof(command.bindings));
         memcpy(gum.resources.images, command.images, sizeof(command.images));
         gum.resources.textures = command.textures; gum.resources.texture_count = texture_count;
-        ret = opengpu_compute_uniform_resources(ctx->screen->fd, &gum);
+        if (independent) {
+            struct drm_opengpu_compute_counter_source_resources source = {
+                .resources = gum, .version = OPENGPU_COMPUTE_COUNTER_SOURCE_VERSION,
+                .source = {.offset = counter.offset, .handle = counter.resource->buffer.handle, .count = counter.count}};
+            ret = opengpu_compute_counter_source_resources(ctx->screen->fd, &source);
+        } else ret = opengpu_compute_uniform_resources(ctx->screen->fd, &gum);
     } else {
         ret = opengpu_compute_counter_resources(ctx->screen->fd, &command);
     }
     accepted = !ret;
     if (!ret) {
+        if (independent && remember_compute_write(ctx, counter.resource,
+                counter.offset + (uint64_t)counter.count * 4)) goto poisoned;
         for (unsigned i = 0; i < 4; i++) {
             if (storage[i].resource && (storage[i].access & OPENGPU_COMPUTE_STORAGE_WRITE) &&
                 remember_compute_write(ctx, storage[i].resource, storage[i].offset + storage[i].bytes)) goto poisoned;
@@ -1478,6 +1516,30 @@ poisoned:
     ctx->cs_storage_failed = 1;
     errno = saved;
     return -1;
+}
+
+int pipe_opengpu_launch_grid_counter_resources(struct pipe_opengpu_context *ctx,
+    const uint32_t grid[3], const uint32_t local[3],
+    const struct pipe_opengpu_storage_view storage[4],
+    const struct pipe_opengpu_buffer_texture textures[32],
+    const struct pipe_opengpu_buffer_image images[4],
+    const struct pipe_opengpu_uniform_view uniforms[13],
+    const struct pipe_opengpu_counter_view counter, uint32_t timeout_ms)
+{
+    return launch_grid_counter_resources(ctx, grid, local, storage, textures, images,
+        uniforms, counter, timeout_ms, 0);
+}
+
+int pipe_opengpu_launch_grid_counter_source_resources(struct pipe_opengpu_context *ctx,
+    const uint32_t grid[3], const uint32_t local[3],
+    const struct pipe_opengpu_storage_view storage[4],
+    const struct pipe_opengpu_buffer_texture textures[32],
+    const struct pipe_opengpu_buffer_image images[4],
+    const struct pipe_opengpu_uniform_view uniforms[13],
+    const struct pipe_opengpu_counter_view counter, uint32_t timeout_ms)
+{
+    return launch_grid_counter_resources(ctx, grid, local, storage, textures, images,
+        uniforms, counter, timeout_ms, 1);
 }
 
 static int launch_grid_resources(struct pipe_opengpu_context *ctx,
