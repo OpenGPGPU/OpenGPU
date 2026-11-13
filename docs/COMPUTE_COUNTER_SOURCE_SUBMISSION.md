@@ -95,3 +95,8 @@ bash scripts/test_scripts.sh
 make -C "$LINUX_BUILD" M="$PWD/driver" ARCH=arm64 \
   CROSS_COMPILE=aarch64-linux-gnu- -j1 gpu_drv.ko
 ```
+
+The [bounded Mesa hardware-counter frontend](GALLIUM_ATOMIC_COUNTERS.md) adds
+real ESSL/TGSI lowering, independent Gallium counter bindings, nine distinct
+write owners and actual two-CU execution of the published records. Its small
+component qualification retains its own limits; it does not enable the GL API.
