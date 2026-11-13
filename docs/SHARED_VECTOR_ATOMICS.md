@@ -2,8 +2,9 @@
 
 This opt-in path gives each executing invocation a distinct atomic operation
 and old-word result. Scalar RV32A remains once per warp. CPU admission/lowering,
-the decoder, real SRAM owner, stock-CU tests and all sixteen actual ESSL
-programs pass their gates. This does not close H7 or replace complete-host
+the decoder, real SRAM owner, stock-CU tests and all sixteen straight-line ESSL
+endpoint programs pass their gates. The bounded-address/SIMT extension below
+still requires its separate actual ESSL and CU gates. This does not close H7 or replace complete-host
 execution.
 
 The operations follow GLSL ES 3.10 section 8.11: exchange, add, XOR, OR, AND,
@@ -50,8 +51,33 @@ The shared TGSI path handles constant shared offsets and trusted invocation
 offsets (`localID * 4 + constant`). Atomic reads require a barrier-visible
 initialized prefix or a retained exact invocation-local store stripe. A store
 prefix alone does not prove communication. Atomics do not create initialization
-proofs or publish a prefix. Unknown addresses, peer permutations, arbitrary
-shared layouts and frontend CFGs retain their existing restrictions.
+proofs or publish a prefix.
+
+The bounded-address extension also admits canonical forward if/else AMOs when
+real converged shared stores and a workgroup barrier dominate the operation.
+Those stores remain outside every SIMT arm. A fixed 32-register heap analysis
+tracks unsigned nonwrapping intervals and known-zero alignment bits through
+copies, AND, OR, XOR, additions, products and shifts. An AND mask can bound
+defined data with unknown values; an unknown unmasked address cannot gain a
+bound. Signed/overflowing addition and shifts that might overflow lose the
+proof. Branch joins widen intervals and intersect known-zero bits. Predicate
+conditions do not narrow a range. Masked/short-VL and unsupported definitions
+discard the destination's proof; source/destination aliases use the input
+epoch. The five heap snapshots total at most 13 KiB, while the existing
+kernel-stack state limit remains 384 bytes.
+
+Every dynamic or permuted address must be aligned and wholly inside both
+Mesa's declared allocation and the barrier-visible initialized prefix. The
+16 KiB physical bound alone grants no initialization credit. Permutations and
+dynamic expressions never earn the exact-LOCAL own-store shortcut. A capture
+from another arm or before the split cannot authorize an AMO. Parameters are
+captured in each executing arm, and hardware still suppresses helper lanes.
+Scalar control state and capture validity are discarded at scope boundaries.
+Symbolic TEMP values live across a split only after materialization into their
+stable planned slots; dead initialization addresses consume no persistent
+slot. Loops, arbitrary shared layouts, conditional initialization/barriers,
+general shared loads in arms and unbounded addresses remain outside this
+admission contract.
 
 The 16 KiB SRAM, 128 resident invocations, 20 persistent vector registers and
 512-word program limit are unchanged. All ten operations use the same MEMORY
@@ -70,6 +96,15 @@ remain passing. The complete kernel-free driver test also passes. The actual
 feature-query ioctl passes its original corpus plus sixteen combinations of
 scalar-AMO support, new owner flag, unified commands and checked shared
 presence under ASan/UBSan; scalar-AMO support alone never exposes bit 41.
+
+The bounded-address/SIMT CPU tests pass 150 additional actual Mesa TGSI
+builder/parser-to-emitter-to-validator cases, all ten operations over three
+SRAM base windows, with peer permutations, AND-bounded offsets and rejection
+without publication, for unaligned addresses and divergent barriers. Native
+tests cover differing per-arm ranges at joins, missing per-arm captures,
+negative immediates, wrap/overflow and reads beyond the initialized prefix.
+Five thousand unsigned interval samples are checked against concrete 32-bit
+arithmetic for all seven range operations. The original corpora stay intact.
 
 Actual Mesa ESSL 3.10 lowering additionally passes sixteen cases covering all
 ten operations and both int/uint overloads where defined. Each
@@ -173,3 +208,20 @@ This is a CU execution gate with a protocol memory responder. It does not
 establish Linux GEM/producer/context lifetime, complete-host or two-CU product
 execution, general shared layouts/CFG admission, physical timing or H7 closure.
 The current product profiles continue to leave this new feature disabled.
+
+The new sixteen `shared-dynamic*.native.words` cases have a separate explicit
+entry point. It checks source-level conditional/permuted old words, sixteen
+bounded dynamic contention buckets, final shared values, all output guards,
+held completion and no-reset reuse on the same full stock CU. The memory
+responder only acknowledges actual DUT requests. Actual ESSL compilation and
+this CU execution are still pending; this command is not a recorded pass:
+
+```sh
+sbt -Dopengpu.galliumComputeSharedDynamicQualification=1 \
+  'Test / runMain opengpu.core.QualifyGalliumComputeSharedDynamic --inputs /path/to/private-build/glsl --input-sha256 PRINTED_DYNAMIC_SHA256 --reports /path/to/temporary-reports'
+```
+
+The ESSL CPU script prints `ACTUAL_MESA_SHARED_DYNAMIC_INPUT_SHA256` separately
+from the original sixteen-program digest. Missing or changed inputs and an
+absent explicit property fail before elaboration. Keep only inputs needed by
+an active consumer, then delete them along with models and reports.

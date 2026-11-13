@@ -69,9 +69,49 @@ private[core] object GalliumSharedAtomicArtifacts {
   }
 }
 
+private[core] object GalliumSharedDynamicArtifacts {
+  val names = GalliumSharedAtomicArtifacts.names.map { case (name, op) =>
+    (name.replace("shared-atomic-", "shared-dynamic-"), op)
+  }
+  def digest(directory: Path): String = {
+    val hash = MessageDigest.getInstance("SHA-256")
+    names.foreach { case (name, _) =>
+      hash.update((name + "\n").getBytes(java.nio.charset.StandardCharsets.US_ASCII))
+      hash.update(Files.readAllBytes(directory.resolve(name + ".native.words")))
+    }
+    hash.digest().map(b => f"${b & 255}%02x").mkString
+  }
+  def load(directory: Path, expected: String): Vector[(Vector[BigInt], Int, String)] = {
+    require(expected.matches("[a-f0-9]{64}") && digest(directory) == expected,
+      "actual CPU-qualified shared dynamic words changed or are incomplete")
+    names.map { case (name, operation) =>
+      val text = Files.readAllLines(directory.resolve(name + ".native.words")).asScala.toVector
+      require(text.size == 512 && text.forall(_.matches("[a-f0-9]{8}")), name)
+      val words = text.map(BigInt(_, 16))
+      val codeWords = words.indexOf(BigInt("30500073", 16)) + 1
+      require(codeWords > 2 && codeWords <= 512 && words.drop(codeWords).forall(_ == 0), name)
+      require(words.take(2) == Vector(BigInt("01007557", 16), BigInt("c1087057", 16)), name)
+      require(words.count(_ == BigInt("0000000b", 16)) == 2, name)
+      require(words.count(w => (w & 127) == 0x27) == 32, name)
+      require(words.count(w => (w & 0x707f) == 0x305b) == 1, name)
+      require(words.count(w => (w & 127) == 0x2b && (w >> 26) == 30) == 2, name)
+      val atomics = words.filter(w => (w & 127) == 0x2b && Set(BigInt(31), BigInt(32))(w >> 26))
+      require(atomics.size == 2 && atomics.forall(w =>
+        (if ((w >> 26) == 31) ((w >> 12) & 7).toInt else 8 + ((w >> 12) & 7).toInt) == operation), name)
+      (words, operation, name)
+    }
+  }
+}
+
 /** Manual compiler-to-CU qualification; never discovered in regular CI. */
-@DoNotDiscover
-class GalliumComputeSharedAtomicQualification extends AnyFlatSpec {
+abstract class SharedAtomicQualificationBase(dynamicQualification: Boolean) extends AnyFlatSpec {
+  private val qualificationProperty = if (dynamicQualification)
+    "opengpu.galliumComputeSharedDynamicQualification" else "opengpu.galliumComputeSharedAtomicQualification"
+  private val inputProperty = if (dynamicQualification) "opengpu.galliumSharedDynamicInputs" else "opengpu.galliumSharedAtomicInputs"
+  private val digestProperty = if (dynamicQualification) "opengpu.galliumSharedDynamicInputSha256" else "opengpu.galliumSharedAtomicInputSha256"
+  private def load(directory: Path, expected: String): Vector[(Vector[BigInt], Int, String)] =
+    if (dynamicQualification) GalliumSharedDynamicArtifacts.load(directory, expected)
+    else GalliumSharedAtomicArtifacts.load(directory, expected)
   private def zero(d: Data): Unit = d match {
     case r: Record => r.elements.values.foreach(zero)
     case v: Vec[_] => v.foreach(zero)
@@ -83,11 +123,8 @@ class GalliumComputeSharedAtomicQualification extends AnyFlatSpec {
   private val mask32 = (BigInt(1) << 32) - 1
   // Derived only from the source-level seed/operand/CAS comparison. No native
   // instruction decoding or simulated output supplies the expected old values.
-  private def oldWords(operation: Int): Vector[BigInt] = {
-    var current = BigInt("80000000", 16)
-    Vector.tabulate(128) { _ =>
-      val old = current
-      current = (operation match {
+  private def advance(operation: Int, old: BigInt): BigInt =
+    (operation match {
         case 0 => mask32
         case 1 => old - 1
         case 2 => old ^ mask32
@@ -98,33 +135,42 @@ class GalliumComputeSharedAtomicQualification extends AnyFlatSpec {
         case 7 => old // min(0x80000000, UINT_MAX)
         case 8 => mask32
         case 9 => if (old == BigInt("80000000", 16)) mask32 else old
-      }) & mask32
+    }) & mask32
+  private def oldWords(operation: Int, count: Int = 128): Vector[BigInt] = {
+    var current = BigInt("80000000", 16)
+    Vector.tabulate(count) { _ =>
+      val old = current
+      current = advance(operation, old)
       old
     }.sorted
   }
 
   it should "reject absent inputs, changed input digest and missing explicit qualification before elaboration" in {
-    val directory = Paths.get(sys.props("opengpu.galliumSharedAtomicInputs"))
-    val expected = sys.props("opengpu.galliumSharedAtomicInputSha256")
-    GalliumSharedAtomicArtifacts.load(directory, expected)
+    val directory = Paths.get(sys.props(inputProperty))
+    val expected = sys.props(digestProperty)
+    load(directory, expected)
     val wrong = (if (expected.head == '0') "1" else "0") + expected.tail
-    intercept[IllegalArgumentException] { GalliumSharedAtomicArtifacts.load(directory, wrong) }
+    intercept[IllegalArgumentException] { load(directory, wrong) }
     val absent = directory.resolve("missing-qualification-inputs")
     require(!Files.exists(absent))
-    intercept[java.nio.file.NoSuchFileException] { GalliumSharedAtomicArtifacts.load(absent, expected) }
-    val property = "opengpu.galliumComputeSharedAtomicQualification"
+    intercept[java.nio.file.NoSuchFileException] { load(absent, expected) }
+    val property = qualificationProperty
     val prior = sys.props.remove(property)
     try {
-      val error = intercept[IllegalArgumentException] { QualifyGalliumComputeSharedAtomic.main(Array.empty) }
+      val error = intercept[IllegalArgumentException] {
+        if (dynamicQualification) QualifyGalliumComputeSharedDynamic.main(Array.empty)
+        else QualifyGalliumComputeSharedAtomic.main(Array.empty)
+      }
       assert(error.getMessage.contains("explicit local qualification only"))
     } finally prior.foreach(value => sys.props(property) = value)
   }
 
   it should "execute all sixteen actual ESSL shared atomics with eight warps, checked storage and held completion" in {
-    require(sys.props.get("opengpu.galliumComputeSharedAtomicQualification").contains("1"),
+    require(sys.props.get(qualificationProperty).contains("1"),
       "explicit local qualification only")
-    val programs = GalliumSharedAtomicArtifacts.load(Paths.get(sys.props("opengpu.galliumSharedAtomicInputs")),
-      sys.props("opengpu.galliumSharedAtomicInputSha256"))
+    val programs = load(Paths.get(sys.props(inputProperty)), sys.props(digestProperty))
+    val planes = if (dynamicQualification) 4 else 2
+    val outputBytes = 2 * planes * 128 * 4
     simulate(new GalliumSharedAtomicComputeHarness) { top =>
       val d = top.io.compute
       zero(top.io); top.reset.poke(true.B); top.clock.step(2); top.reset.poke(false.B)
@@ -166,13 +212,13 @@ class GalliumComputeSharedAtomicQualification extends AnyFlatSpec {
         blank(tableP, 256)
         Seq[(Int, BigInt)](0 -> StorageDescriptorLayout.magic, 1 -> 64, 2 -> 1,
           3 -> (epoch + 1), 4 -> 7, 5 -> (epoch + 1), 6 -> 0, 7 -> 1, 8 -> 1, 9 -> 1,
-          10 -> outputV, 11 -> (outputV + 2048), 13 -> outputV, 14 -> (outputV + 4096))
+          10 -> outputV, 11 -> (outputV + outputBytes), 13 -> outputV, 14 -> (outputV + 4096))
           .foreach { case (i, v) => put(tableP + 4 * i, v) }
         for (i <- -64 until 4160) memory(outputP + i) = 0xa5
         map(iRoot, pc, codeP, 0x4b); map(vRoot, kernargV, kernargP, 0x43)
         map(vRoot, tableV, tableP, 0x43); map(vRoot, outputV, outputP, 0xc7)
-        val expectedAddresses = (for (group <- 0 until 2; plane <- 0 until 2; local <- 0 until 128)
-          yield outputP + 4 * (group * 256 + plane * 128 + local)).toSet
+        val expectedAddresses = (for (group <- 0 until 2; plane <- 0 until planes; local <- 0 until 128)
+          yield outputP + 4 * (group * planes * 128 + plane * 128 + local)).toSet
         val returned = mutable.Map.empty[BigInt, BigInt]
         val frozen = memory.toMap
         case class Reply(id: BigInt, address: BigInt, value: BigInt, due: Int,
@@ -292,9 +338,30 @@ class GalliumComputeSharedAtomicQualification extends AnyFlatSpec {
           walks > 0 && codeReads > 0 && requestStalls > 0)
         assert(written.toSet == expectedAddresses && acknowledged.toSet == expectedAddresses &&
           descriptorAddresses.toSet == Set(tableP))
-        for (group <- 0 until 2; plane <- 0 until 2) {
+        if (!dynamicQualification) for (group <- 0 until 2; plane <- 0 until 2) {
           val actual = (0 until 128).map(local => returned(outputP + 4 * (group * 256 + plane * 128 + local))).sorted
           assert(actual == oldWords(operation), s"$name group=$group plane=$plane returned old-word multiset")
+        }
+        else for (group <- 0 until 2) {
+          val seed = BigInt("80000000", 16)
+          def result(plane: Int, local: Int): BigInt = returned(outputP + 4 * (group * 512 + plane * 128 + local))
+          // Source-level parity, permutation and sixteen buckets; never infer
+          // expected bytes from native registers, addresses or CPU replies.
+          val once = advance(operation, seed)
+          val afterEight = (0 until 8).foldLeft(seed)((value, _) => advance(operation, value))
+          for (local <- 0 until 128) {
+            assert(result(0, local) == (if ((local & 1) == 0) seed else BigInt("feedface", 16)),
+              s"$name source conditional old word group=$group local=$local")
+            assert(result(2, local) == (if ((local & 1) == 0) once else seed),
+              s"$name source permuted final word group=$group local=$local")
+            assert(result(3, local) == (if (local >= 112) afterEight else seed),
+              s"$name bounded dynamic final word group=$group local=$local")
+          }
+          for (bucket <- 0 until 16) {
+            val actual = (0 until 128).filter(local => ((local ^ group) & 15) == bucket)
+              .map(local => result(1, local)).sorted
+            assert(actual == oldWords(operation, 8), s"$name source dynamic bucket=$bucket group=$group old words")
+          }
         }
         val golden = mutable.Map.empty[BigInt, Int] ++ frozen
         returned.foreach { case (a, v) => for (i <- 0 until 4) golden(a + i) = ((v >> (8 * i)) & 255).toInt }
@@ -311,13 +378,20 @@ class GalliumComputeSharedAtomicQualification extends AnyFlatSpec {
         for (_ <- 0 until 16) { tick(); d.active.expect(0.U); d.barrierWaiting.expect(0.U); assert(drained) }
         assert(memory.toMap == golden.toMap)
         totalWarpStarts += warpStarts
-        info(s"GALLIUM_SHARED_ATOMIC_CU case=$name PASS codeWords=188 groups=2 local=128 warpStarts=$warpStarts peakWarps=$peakWarps sharedBytes=16384 outputWords=${written.size} acks=${acknowledged.size} walks=$walks codeReads=$codeReads maxBarrierWaiting=$maxBarrierWaiting requestStalls=$requestStalls responseStalls=$responseStalls heldCompletion=13 quietTail=16 cycles=$cycles")
+        val codeWords = words.indexOf(BigInt("30500073", 16)) + 1
+        info(s"GALLIUM_SHARED_ATOMIC_CU case=$name PASS codeWords=$codeWords dynamic=$dynamicQualification groups=2 local=128 warpStarts=$warpStarts peakWarps=$peakWarps sharedBytes=16384 outputWords=${written.size} acks=${acknowledged.size} walks=$walks codeReads=$codeReads maxBarrierWaiting=$maxBarrierWaiting requestStalls=$requestStalls responseStalls=$responseStalls heldCompletion=13 quietTail=16 cycles=$cycles")
       }
       assert(totalWarpStarts == 256)
-      info(s"GALLIUM_SHARED_ATOMIC_CU PASS parents=16 groups=32 nativeWarpStarts=256 outputWords=8192 lanes=16 warps=8 sharedBytes=16384 realSram=true fpuRetained=true cycles=$totalCycles hostLinuxAPIQualified=false H7Complete=false")
+      info(s"GALLIUM_SHARED_ATOMIC_CU PASS parents=16 groups=32 nativeWarpStarts=256 outputWords=${programs.size * outputBytes / 4} dynamic=$dynamicQualification lanes=16 warps=8 sharedBytes=16384 realSram=true fpuRetained=true cycles=$totalCycles hostLinuxAPIQualified=false H7Complete=false")
     }
   }
 }
+
+@DoNotDiscover
+class GalliumComputeSharedAtomicQualification extends SharedAtomicQualificationBase(false)
+
+@DoNotDiscover
+class GalliumComputeSharedDynamicQualification extends SharedAtomicQualificationBase(true)
 
 object QualifyGalliumComputeSharedAtomic {
   def main(args: Array[String]): Unit = {
@@ -331,5 +405,20 @@ object QualifyGalliumComputeSharedAtomic {
     require(org.scalatest.tools.Runner.run(Array("-s", classOf[GalliumComputeSharedAtomicQualification].getName,
       "-oD", "-u", args(5))), "Gallium shared atomic qualification failed")
     GalliumSharedAtomicArtifacts.load(Paths.get(args(1)), args(3)) // reject drift during execution
+  }
+}
+
+object QualifyGalliumComputeSharedDynamic {
+  def main(args: Array[String]): Unit = {
+    require(sys.props.get("opengpu.galliumComputeSharedDynamicQualification").contains("1"),
+      "explicit local qualification only")
+    require(args.length == 6 && args(0) == "--inputs" && args(2) == "--input-sha256" && args(4) == "--reports",
+      "usage: --inputs DIRECTORY --input-sha256 SHA256 --reports DIRECTORY")
+    GalliumSharedDynamicArtifacts.load(Paths.get(args(1)), args(3))
+    sys.props("opengpu.galliumSharedDynamicInputs") = args(1)
+    sys.props("opengpu.galliumSharedDynamicInputSha256") = args(3)
+    require(org.scalatest.tools.Runner.run(Array("-s", classOf[GalliumComputeSharedDynamicQualification].getName,
+      "-oD", "-u", args(5))), "Gallium shared dynamic qualification failed")
+    GalliumSharedDynamicArtifacts.load(Paths.get(args(1)), args(3))
   }
 }

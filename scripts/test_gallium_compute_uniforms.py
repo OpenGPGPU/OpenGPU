@@ -304,6 +304,11 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
             digest.update((name + "\n").encode("ascii"))
             digest.update((sources / (name + ".native.words")).read_bytes())
         print("ACTUAL_MESA_SHARED_ATOMIC_INPUT_SHA256=" + digest.hexdigest())
+        digest = hashlib.sha256()
+        for name in [n.replace('shared-atomic-', 'shared-dynamic-') for n in names]:
+            digest.update((name + "\n").encode("ascii"))
+            digest.update((sources / (name + ".native.words")).read_bytes())
+        print("ACTUAL_MESA_SHARED_DYNAMIC_INPUT_SHA256=" + digest.hexdigest())
     if artifacts:
         manifest = "format=1\n" + "".join(p.name + ".sha256=" + hashlib.sha256(p.read_bytes()).hexdigest() + "\n"
             for p in sorted(artifacts.iterdir()))

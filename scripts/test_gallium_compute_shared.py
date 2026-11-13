@@ -40,6 +40,22 @@ def write_sources(out):
         (out / name).write_text(atomic_prefix + initialize +
             'memoryBarrierShared();barrier();\nuint first=' + call(0) + ';uint last=' + call(4095) +
             ';result.v[group*256u+id]=first;result.v[group*256u+128u+id]=last;}\n')
+        def dynamic_call(index):
+            arguments = 'data[' + index + '],' + (seed + ',' if op == 9 else '') + operand
+            return 'uint(%s(%s))' % (function, arguments)
+        dynamic = atomic_prefix + initialize + 'memoryBarrierShared();barrier();\n' + \
+            'uint first=0xfeedfaceu;if((id&1u)==0u){first=' + dynamic_call('id^16u') + ';}\n' + \
+            'uint last=' + dynamic_call('4080u+((id^group)&15u)') + ';barrier();\n' + \
+            'result.v[group*512u+id]=first;result.v[group*512u+128u+id]=last;\n' + \
+            'result.v[group*512u+256u+id]=uint(data[id]);\n' + \
+            'result.v[group*512u+384u+id]=uint(data[3968u+id]);}\n'
+        (out / name.replace('shared-atomic-', 'shared-dynamic-')).write_text(dynamic)
+        if op == 1 and not signed:
+            (out / 'dynamic-no-barrier.comp').write_text(dynamic.replace('memoryBarrierShared();barrier();', '', 1))
+            (out / 'dynamic-uninitialized-tail.comp').write_text(dynamic.replace(initialize,
+                'data[id]=0x80000000u;\n', 1))
+            (out / 'dynamic-conditional-init.comp').write_text(dynamic.replace(initialize,
+                'if(id<64u){' + initialize + '}\n', 1))
 
 
 if __name__ == "__main__":
