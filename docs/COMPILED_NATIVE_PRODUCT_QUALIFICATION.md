@@ -171,6 +171,40 @@ Run the full-model commands only after selecting the final feature source.
 Build, execute and independently verify that source; do not relabel a v1 model
 or a prior feature revision as v2.
 
+### Compute/native command reuse
+
+`scripts/qualify_native_alignment_sequence.py` uses that complete v2 hardware
+with six 32×32 workloads. Each scene resets once, then executes
+compute → native draw → compute → native draw without another reset. Both
+compute epochs dispatch four 128-item groups and require both CUs active
+together. The checker compares all 1,024 vector results, 64 scalar FP results,
+their allocation guards, and all twelve stored native images against the
+independent Scala oracle. Native shaders, descriptors, textures, vertices,
+compute code and inputs must remain byte-identical. The existing native frame
+clear operations initialize attachments again for the second draw; the driver
+does not replace GPU results with software images.
+
+```sh
+python3 scripts/qualify_native_alignment_sequence.py \
+  --flashsim-dir "$FLASH_GENERATOR" \
+  --output "$PWD/.artifacts/alignment-sequence" --jobs 1
+python3 scripts/test_native_alignment_sequence.py
+sbt -J-Xmx3G 'testOnly opengpu.system.NativeAlignmentSequenceDataSpec opengpu.testutil.NativeFrameMemoryCodecSpec'
+```
+
+The runner also supports `--stage prepare|generate|build|run|verify` and the
+same verified resharding, precompiled-header and conservative-alias options as
+the product runner. Preparation emits the full target with all assertion bind
+layers. Build and verification reject changed source, RTL, discovery profile,
+generator, driver, executable or output bytes. Use a separate output directory
+from the ordinary six-frame product run. Delete temporary outputs once their
+active validation use ends.
+
+This is a functional command-reuse qualification. It does not execute the
+tessellation commands, establish complete feature/API coverage, render
+640×480 product frames, or qualify whole-host timing and 60 FPS. CPU fixture,
+parser and oracle tests alone do not establish RTL execution.
+
 With shared MSHR, fragment, raster and texture-address definitions, the complete
 target passed raw elaboration and FIRRTL conversion in
 one JVM capped at 10 GiB. It retained two 16-lane/eight-warp CUs, sixteen

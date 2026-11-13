@@ -73,6 +73,23 @@ object NativeFrameMemoryCodec {
   def sameAllocations(left: PagedFrameMemory, right: PagedFrameMemory): Boolean =
     left.mappedRanges == right.mappedRanges
 
+  /** Compare every explicit page, including new pages outside allocations.
+    * Matching allocation metadata also fixes all unallocated page defaults.
+    */
+  def unchangedOutside(left: PagedFrameMemory, right: PagedFrameMemory,
+      writable: Seq[(Long, Long)]): Boolean = {
+    require(writable.forall { case (start,end) => start >= 0 && start < end && end <= NativeFrameMemory.AddressLimit })
+    if (!sameAllocations(left,right)) return false
+    val pages = scala.collection.mutable.Set.empty[Long]
+    left.visitPages((address,_) => pages += address)
+    right.visitPages((address,_) => pages += address)
+    pages.forall { page => (0 until pageBytes).forall { offset =>
+      val address = page + offset
+      writable.exists { case (start,end) => address >= start && address < end } ||
+        left.readByte(address) == right.readByte(address)
+    }}
+  }
+
   def write(memory: PagedFrameMemory, path: Path): Unit = {
     val out = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(path)))
     try write(memory, out) finally out.close()
