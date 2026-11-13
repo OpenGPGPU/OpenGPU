@@ -24,7 +24,11 @@ static void opengpu_context_put(struct opengpu_render_context *c)
 #define time_after(a,b) ((long)((a)-(b)) > 0)
 static unsigned long jiffies;
 static void opengpu_hw_progress_tick(struct opengpu_device *gpu)
-{ assert(!gpu->hw.submit_lock.held); ++jiffies;
+{
+#ifndef OPENGPU_NATIVE_MMIO
+ assert(!gpu->hw.submit_lock.held);
+#endif
+ ++jiffies;
 #ifdef OPENGPU_PRIVATE_SNAPSHOT_PROGRESS
   OPENGPU_PRIVATE_SNAPSHOT_PROGRESS(gpu);
 #endif

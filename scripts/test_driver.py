@@ -22,6 +22,8 @@ def main():
     subprocess.run([sys.executable, str(ROOT / "scripts/test_native_program_snapshot.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_native_input_snapshot.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_native_job_snapshot.py")], check=True)
+    subprocess.run([sys.executable, str(ROOT / "scripts/test_native_submit.py")], check=True)
+    subprocess.run([sys.executable, str(ROOT / "scripts/test_native_mmio_capture.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_native_completion.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_tessellation_schedule.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/generate_compute_texture_format_info.py"), "--check"], check=True)
