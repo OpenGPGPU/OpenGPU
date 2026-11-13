@@ -40,8 +40,11 @@ int main() {
   const auto expected=expected_product_completion(fixture,initial);
   require(expected[6]==0x12345678 && expected[7]==0x87654321 && expected[8]==0xabcdef01,
     "job identity was reordered or truncated");
-  auto control=[&](){Control c;c.registers[0x124]=0x8706;c.registers[0x120]=2;
-    for(unsigned n=0;n<12;++n)c.registers[0x180+4*n]=expected[n];return c;};
+  auto control=[&](){
+    Control c;c.registers[0x124]=0x8706;c.registers[0x120]=2;
+    for(unsigned n=0;n<12;++n)c.registers[0x180+4*n]=expected[n];
+    return c;
+  };
   auto c=control();require(read_product_completion(c,fixture,expected)==expected,"valid completion differs");
   require(c.reads.size()==13 && c.reads.front()==0x124 && c.reads.back()==0x1ac,"historical read interval changed");
   // Snapshot the original identity before a later memory mutation.
