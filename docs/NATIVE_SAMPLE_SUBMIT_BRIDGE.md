@@ -44,12 +44,17 @@ creates a live capture for each ordinary program and verifies that an unrelated
 compute receipt is rejected without retirement or cleanup success. These CPU
 checks do not execute either shader.
 
-The seven original ESSL sources in `userspace/tests/native_sample_essl/` (compiler
-source commits `4fc44ecab` and `5428c38f3`) passed this integration under ASan/UBSan: 21 ordinary
-protected submissions and 21 live captures, with all 21 ABI7 entries rejected
-without a GS owner. The five local parser, cache/layout, RX lifetime and live
-IPC tests also pass. The old OGCAP001/101 physical-memory/parser/cleanup regression
-passes. Temporary compiler outputs and captures are removed after consumption.
+The compiler's real ESSL coverage and reproduction are documented separately in
+`NATIVE_SAMPLE_ESSL_BRIDGE.md`. The current bridge's seven ASan/UBSan CPU tests
+cover parsing, cache/layout rejection, RX lifetime, actual Linux-generated
+`OGCAP002` read by the fixed C++ `SampleCapture::read`, and the independent
+preflight oracle at 1x/2x/4x. The CPU packets in these tests are explicitly
+synthetic; no Mesa rebuild or shader execution is performed. A missing
+128-thread capability batch fails before READY. Both depth-policy values are
+checked in the actual rewritten GFS; clearing `allowDepthOverride` in a copied
+depth case must fail the independent preflight. Exact image view sizes cover
+only their logical pixels/samples while their original 4096-byte GEM backing
+and suffix guards remain intact. Temporary captures are removed after use.
 
 ## Live actual-DUT entry
 

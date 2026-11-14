@@ -67,10 +67,10 @@ static void make_record(struct native_kernel_session *s,struct native_test_recor
     for(unsigned c=0;c<4;c++){
         req.attachments[c].format=35;req.attachments[c].channel_mask=15;req.attachments[c].load_op=1;
         for(unsigned k=0;k<4;k++)req.attachments[c].clear[k]=0x3e800000;
-        req.attachments[c].image=(struct opengpu_native_frame_image){.gem=test_gem(s,4096),.row_pitch=4*16*samples,.store=1};
+        req.attachments[c].image=(struct opengpu_native_frame_image){.gem=test_gem(s,4*4*16*samples),.row_pitch=4*16*samples,.store=1};
     }
     req.attachments[4].format=3;req.attachments[4].load_op=1;req.attachments[4].clear[0]=0x3f800000;
-    req.attachments[4].image=(struct opengpu_native_frame_image){.gem=test_gem(s,4096),.row_pitch=4*4*samples,.store=1};
+    req.attachments[4].image=(struct opengpu_native_frame_image){.gem=test_gem(s,4*4*4*samples),.row_pitch=4*4*samples,.store=1};
     req.primitives=test_gem(s,4096);req.directory=test_gem(s,64);req.pool[0]=test_gem(s,4096);
     for(unsigned e=0;e<4;e++)req.scratch[e]=test_gem(s,49152);
     assert(!opengpu_native_frame_encode(&req,&r->encoded));
@@ -83,7 +83,7 @@ static void make_record(struct native_kernel_session *s,struct native_test_recor
     struct opengpu_native_frame_gem vs_scratch=test_gem(s,40960);
     r->plan.vertex_scratch=(struct drm_opengpu_compute_uniform_view){.handle=vs_scratch.handle,.bytes=40960};
     r->state[82]=1;r->state[83]=7;r->state[84]=1;
-    r->state[30]=15;r->state[31]=4;r->state[32]=0;r->state[55]=16;r->state[56]=6;
+    r->state[29]=p->meta[7];r->state[30]=15;r->state[31]=4;r->state[32]=0;r->state[55]=16;r->state[56]=6;
     *plan=(struct drm_opengpu_native_layered_draw_plan){.draw=r->plan};
     plan->draw.fragment_program=(struct drm_opengpu_native_program_view){.handle=3,.bytes=p->meta[14]*4};
     memset(&plan->draw.fragment_uniforms,0,sizeof(plan->draw.fragment_uniforms));
@@ -136,6 +136,7 @@ int OPENGPU_NATIVE_SAMPLE_CPU_ENTRY(int argc,char **argv)
         struct opengpu_sched_job *job=native_record(s,0);u32 va;assert(job);
         assert(!opengpu_private_snapshot_native_layered_job_address(job->native_owner,job->native_job_segment,&va));
         u32 frame=test_read_va(s,va+21*4),states=test_read_va(s,frame+292*4),pc=test_read_va(s,states+54*4);
+        assert(test_read_va(s,states+29*4)==p.meta[7]);
         assert(test_read_va(s,va)==0x474e4a02 && test_read_va(s,frame)==0x474e4603 && test_read_va(s,states+56*4)==6);
         assert(test_read_va(s,va+49*4)-test_read_va(s,va+48*4)==16384);assert_rx(s,pc,&p);
         memset(fs,0,p.meta[14]*4);assert(!native_kernel_original_close(s,3));assert_rx(s,pc,&p);
