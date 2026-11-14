@@ -708,6 +708,7 @@ def changed_suites(root, changed, *, test_index=None):
         affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationTriangleSequenceImageAdmissionSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationTrianglePatchSequenceSpec.scala")
     if changed & {"src/main/scala/opengpu/system/TessellationTriangleTranslatedSequenceImage.scala",
+                  "src/main/scala/opengpu/system/TessellationVertexMemoryAdapter.scala",
                   "src/main/scala/opengpu/system/TessellationInputMemoryFabric.scala"}:
         affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationTriangleTranslatedSequenceImageAdmissionSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationInputMemoryFabricSpec.scala")
