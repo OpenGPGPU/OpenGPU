@@ -151,6 +151,8 @@ assert "opengpu.graphics.NativeShaderTextureQualificationSpec" in local_only
 assert assigned["opengpu.system.GeometrySharedCuSchedulerSpec"] == "system-core"
 assert assigned["opengpu.system.IsolineGeometryCuExecutorSpec"] == "system-core"
 assert assigned["opengpu.system.TessellationQuadCuEvaluatorSpec"] == "system-core"
+assert assigned["opengpu.system.TessellationUniformAbiSpec"] == "system-core"
+assert assigned["opengpu.system.TessellationUniformCuServiceSpec"] == "system-core"
 assert assigned["opengpu.system.TessellationQuadPatchCuEvaluationSpec"] == "system-core"
 assert assigned["opengpu.system.ControlledIsolineSharedCuViewportAdmissionSpec"] == "system-core"
 assert "opengpu.system.ControlledIsolineSharedCuViewportQualificationSpec" in local_only

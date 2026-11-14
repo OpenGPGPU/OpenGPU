@@ -630,6 +630,30 @@ def changed_suites(root, changed, *, test_index=None):
                   "driver/opengpu_native_geometry_abi.h", "docs/abi/native-geometry-v1.json"}:
         affected.add("src/test/scala/opengpu/graphics/NativeGeometryProgramSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/NativeBinnedGraphicsJobReaderSpec.scala")
+    if changed & {
+        "src/main/scala/opengpu/graphics/ShaderUniformResources.scala",
+        "src/main/scala/opengpu/graphics/ShaderUniformLoadUnit.scala",
+        "src/main/scala/opengpu/graphics/ShaderUniformExecuteUnit.scala",
+        "src/main/scala/opengpu/system/TessellationUniformCuService.scala",
+        "src/main/scala/opengpu/system/TessellationUniformSequenceLayout.scala",
+        "src/main/scala/opengpu/elaboration/EmitTessellationUniformAbi.scala",
+        "src/main/scala/opengpu/elaboration/EmitTessellationUniformSequenceAbi.scala",
+        "driver/opengpu_tessellation_uniform_abi.h",
+        "driver/opengpu_tessellation_uniform_sequence_abi.h",
+        "docs/abi/tessellation-uniform-v3.json",
+        "docs/abi/tessellation-uniform-sequence.json",
+    } or any(path in changed for domain in ("Isoline", "Triangle", "Quad")
+             for path in (f"src/main/scala/opengpu/system/TessellationCu{domain}SystemClient.scala",
+                          f"src/main/scala/opengpu/system/TessellationSystem{domain}ImagePipeline.scala")):
+        for suite in ("opengpu.graphics.ShaderUniformLoadUnitSpec",
+                      "opengpu.graphics.ShaderUniformExecuteUnitSpec",
+                      "opengpu.system.TessellationUniformAbiSpec",
+                      "opengpu.system.TessellationUniformCuServiceSpec",
+                      "opengpu.system.TessellationNativeSequenceReaderSpec",
+                      "opengpu.system.TessellationNativeTriangleSequenceReaderSpec",
+                      "opengpu.system.TessellationNativeQuadSequenceReaderSpec",
+                      "opengpu.system.TessellationCuIsolineSystemClientSpec"):
+            affected.add("src/test/scala/" + suite.replace(".", "/") + ".scala")
     if changed & {"src/main/scala/opengpu/elaboration/EmitGeometryUniformAbi.scala",
                   "driver/opengpu_geometry_uniform_abi.h", "docs/abi/geometry-uniform-v2.json"}:
         affected.add("src/test/scala/opengpu/graphics/ComputeUniformRecordAbiSpec.scala")

@@ -117,6 +117,18 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertTrue({"opengpu.graphics.NativeGeometryProgramSpec",
                                  "opengpu.graphics.NativeBinnedGraphicsJobReaderSpec"} <= selected)
 
+    def test_tessellation_uniform_changes_keep_real_cu_and_frozen_abi_checks(self):
+        for path in ("src/main/scala/opengpu/system/TessellationUniformCuService.scala",
+                     "driver/opengpu_tessellation_uniform_abi.h",
+                     "docs/abi/tessellation-uniform-sequence.json"):
+            with self.subTest(path=path):
+                self.assertTrue({"opengpu.graphics.ShaderUniformLoadUnitSpec",
+                                 "opengpu.graphics.ShaderUniformExecuteUnitSpec",
+                                 "opengpu.system.TessellationUniformAbiSpec",
+                                 "opengpu.system.TessellationNativeSequenceReaderSpec",
+                                 "opengpu.system.TessellationCuIsolineSystemClientSpec"}
+                                <= set(changed_suites(REPO_ROOT, [path])))
+
     def test_geometry_uniform_schema_selects_exact_admission_and_abi(self):
         for path in ("src/main/scala/opengpu/elaboration/EmitGeometryUniformAbi.scala",
                      "driver/opengpu_geometry_uniform_abi.h", "docs/abi/geometry-uniform-v2.json"):

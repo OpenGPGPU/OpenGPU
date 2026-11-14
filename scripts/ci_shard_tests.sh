@@ -128,7 +128,7 @@ system_shard_for() {
       printf '%s\n' system-core ;;
     TessellationHostPayloadOwnerSpec.scala|TessellationThreeDomainPayloadOwnerSpec.scala|TessellationThreeDomainFeedbackAdmissionSpec.scala|TessellationFeedbackPayloadAdmissionSpec.scala|TessellationThreeDomainSampleMuxSpec.scala|TessellationNativeHostElaborationSpec.scala|TessellationNativeCompletionInfoSpec.scala|TessellationFeedbackAdmissionSpec.scala|TessellationQuadCuEvaluatorSpec.scala|TessellationQuadPatchCuEvaluationSpec.scala|TessellationQuadPatchSequenceSpec.scala)
       printf '%s\n' system-core ;;
-    TessellationInputMemoryFabricSpec.scala)
+    TessellationInputMemoryFabricSpec.scala|TessellationUniformAbiSpec.scala|TessellationUniformCuServiceSpec.scala)
       printf '%s\n' system-core ;;
     TessellationTrianglePatchCuEvaluationSpec.scala|TessellationTriangleCuEvaluatorSpec.scala|TessellationCuIsolineSharedEvaluatorSpec.scala|ControlledIsolineSharedCuViewportAdmissionSpec.scala|ControlledIsolineSharedCuClipAdmissionSpec.scala|ControlledIsolineSharedCuRendererAdmissionSpec.scala|ControlledIsolineWindowBinAdmissionSpec.scala|IsolinePatchSharedCuAdmissionSpec.scala|IsolinePatchInputReaderSpec.scala|IsolineGeometryCuExecutorSpec.scala|IsolineGeometryCuRendererSpec.scala|IsolineGeometryCuClipSpec.scala|IsolineGeometryCuViewportSpec.scala)
       printf '%s\n' system-core ;;

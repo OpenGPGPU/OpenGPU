@@ -40,6 +40,7 @@ python3 scripts/test_gallium_index_buffers.py
 python3 scripts/test_gallium_resource_shapes.py
 python3 scripts/test_linear_image_allocation.py
 python3 scripts/test_native_frame.py
+python3 -B scripts/test_tessellation_uniform_abi.py
 python3 scripts/test_tessellation_canonical.py
 python3 scripts/test_tessellation_transport_submit.py
 python3 scripts/test_arti_small_smoke_args.py
