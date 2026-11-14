@@ -14,7 +14,7 @@
 - P01 的完整主机脚本已通过；104/112 初始化修复的六项 ASan/UBSan 补充检查也已通过。
   P02、P03 的代码已有实现和限定范围的测试，仍须独立交付验证。
 - P07 atomic counter 的首条 increment 路径已通过真实 Mesa CPU 构建/capture、严格输入检查和 C++ capture parser；其余操作和实际 DUT 验收仍未完成。
-- 当前开放的 alignment PR 为 **0**。创建 PR 后把真实链接填入对应行。
+- 当前开放的 alignment PR 为 **1**：P01 / [PR #819](https://github.com/OpenGPGPU/OpenGPU/pull/819)。
 
 这里的 0/38 只统计本次列出的剩余工作，不是整个项目的历史完成率。
 现有源码和组件证据不因列入闭合任务而被当作从零开始，也不会据此推算
@@ -74,7 +74,7 @@ Yosys 正式版本见 [`gpu-physical-pinned-v1`](https://github.com/OpenGPGPU/yo
 
 | 编号 | PR 范围 | 验收条件 | 依赖 | 当前状态 / PR |
 |---|---|---|---|---|
-| P01 | GS、layered/sample、104/112 protected factory 与 compute 语料的源码交付 | 保留 main 修复和原逻辑提交；完整 host regression、GNC5/GNJ2 生产初始化检查、Scala/相关 CI 通过 | #818 | 本地验证通过，待建 PR |
+| P01 | GS、layered/sample、104/112 protected factory 与 compute 语料的源码交付 | 保留 main 修复和原逻辑提交；完整 host regression、GNC5/GNJ2 生产初始化检查、Scala/相关 CI 通过 | #818 | [#819](https://github.com/OpenGPGPU/OpenGPU/pull/819)；本地验证通过，CI/合入待完成 |
 | P02 | 原 Mesa/native96 与 sample ABI6/7 编译、保护提交、资格及生命周期源码交付 | 单独重放前45个逻辑补丁和必要 merge-resolution；源码并集、链接/协议/拒绝检查与 CI 通过 | P01 | 已有实现，待独立交付 |
 | P03 | tess sample/image 路由、ordinary112 双 owner oracle/controller、LIVE 反例及独立112 blit 入口源码交付 | 交付后39个补丁；保留 cleanup 退出竞态修复、真实 C 拒绝检查、43包 blit 守卫；与完整开发树逐路径核对并通过 CI | P02 | 已有实现，待独立交付 |
 
