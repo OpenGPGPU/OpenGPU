@@ -6,7 +6,7 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-private[graphics] object WindowRecordTest {
+private[opengpu] object WindowRecordTest {
   def zero(d: Data): Unit=d match {
     case r: Record=>r.elements.values.foreach(zero)
     case v: Vec[_]=>v.foreach(zero)
