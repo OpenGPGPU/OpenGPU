@@ -21,8 +21,10 @@ whose source passes raw GS/ordinary output through
 `GeometryTransformFeedbackStage` before flat shading and clipping. The
 existing tessellation/feedback ownership router remains connected. Preparation
 checks every new discovery word and rejects old tables, wrong capacities and
-premature execution labels. Existing native/compute executors reject this new
-factory until their GNJ2 execution contract is implemented.
+premature execution labels. Native-v1 replay still rejects this new factory.
+Distinct fixed compute executors now accept opcode 0 on the exact 104-word
+geometry or 112-word sample factory, with new probe/wire/capture contracts;
+see [complete owner compute executors](COMPLETE_OWNER_COMPUTE_EXECUTOR.md).
 
 CPU ASan/UBSan validation covers the merged GS and shared-atomic validators,
 original layered snapshots/submission and combined geometry discovery.
@@ -102,10 +104,12 @@ the existing 512-word program limit without reducing initialized shared memory,
 local items or output planes.
 
 This extension changes the userspace compiler/producer and CPU oracle, not the
-hardware factory, discovery, Scala/RTL resources or hardware dependencies. Those
-hardware inputs are unchanged from `9a41cb046`; the earlier structural RTL result
-does not qualify a new producer/model/executor pairing. A fresh actual execution
-still requires its original source, preparation and assertion checks.
+hardware factory, discovery, Scala/RTL resources or hardware dependencies. The
+original compute-stage hardware inputs are unchanged from `9a41cb046`; the
+earlier structural RTL result does not qualify a new producer/model/executor
+pairing. Geometry/sample factories require their own fresh source/model checks.
+A fresh actual execution still requires its original source, preparation and
+assertion checks.
 
 Prepare a new complete host with all assertion layers and the characterized
 SRAM models:
@@ -119,8 +123,9 @@ python3 scripts/prepare_native_owner_flashsim.py --stage check \
 
 The factory is deliberately separate from the frozen owner-v1 executor.
 `qualify_compute_owner.py --case mandatory-compute` requires a matching
-`two-cu-vga60-owner-v2-compute-stage` executor qualification before creating a
-producer. `prepare_owner_executor.py` selects its distinct
+shared-enabled executor qualification before creating a producer. The original
+compute-stage contract remains separate from the two complete geometry/sample
+contracts. `prepare_owner_executor.py` selects the stage's distinct
 `compute_stage_owner_driver.cpp` from the strictly checked preparation manifest.
 The qualification binds that factory, source wrapper, complete include closure,
 compiler, generated model and executable. A v1 record, driver or model cannot
@@ -168,17 +173,18 @@ python3 scripts/test_prepare_owner_executor.py
 ```
 
 Actual Mesa 22.3.6 ESSL/NIR/TGSI, Gallium/library submission and the original
-Linux ioctl/scheduler/MMU capture passed all nineteen dynamic atomic sources
-with GCC ASan/UBSan on the final compiler source. The complete shared compiler
-regression also passes, including its existing CPU tests and all nineteen
-original dynamic shader admission cases within the unchanged 512-word limit.
-All nineteen untouched original-memory outputs failed the independent oracle
-as required. These are CPU capture results, without a GPU
+Linux ioctl/scheduler/MMU capture now pass all 21 original sources (two legacy
+and nineteen dynamic) through the distinct v3/112-word sample profile and
+`OGCMP002` parser with GCC ASan/UBSan, within the unchanged 512-word shader limit.
+All 21 untouched original-memory outputs fail the independent oracle as
+required. The complete shared compiler regression also passes on the original
+compiler extension. These are CPU capture results, without a GPU
 completion, returned image, frame-rate result or hardware cleanup receipt.
 
-Reproduce a source capture with the independently checked compute-stage
-profile wire, the configured Mesa dependencies described in the owner guide,
-and a fresh private build/session directory per case:
+Reproduce a source capture with an explicitly CPU-only profile wire, the
+configured Mesa dependencies described in the owner guide, and a fresh private
+build/session directory per case. The complete executor document gives the
+v3/112-word fixture, 512 MiB container limit and canonical parser commands:
 
 ```sh
 python3 scripts/test_gallium_compute_host.py --sanitize --capture-only \
