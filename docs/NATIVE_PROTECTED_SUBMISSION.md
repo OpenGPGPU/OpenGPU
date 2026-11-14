@@ -44,9 +44,14 @@ references, cross-entity ordinary/native ordering, cancellation, bounded
 timeouts, fault recovery and allocation/copy/lookup failures. The complete
 ARM64 kernel module also builds against the configured ARTI Linux 7.2 tree
 with GCC 15.2.0: all eighteen production objects, modpost and the final
-`gpu_drv.ko` link pass. The kernel source and configured build directories are
-read-only dependencies; module outputs belong in a temporary GPU-local
-directory. These checks do not demonstrate GPU shader execution.
+`gpu_drv.ko` link pass. The combined native/shared-atomic validator retains all
+four software branch scopes, eight physical SIMT entries and 255-entry native
+capacity. Packed state flags and a separate kernel range-transfer helper keep
+the complete module build free of frame-size warnings with
+`KCFLAGS=-Werror=frame-larger-than=2048`. The largest analyzer's GCC static stack
+usage, including saved registers, is 2144 bytes. The kernel source and configured
+build directories are read-only dependencies; module outputs belong in a
+temporary GPU-local directory. These checks do not demonstrate GPU execution.
 
 Reproduce the component checks with:
 
@@ -67,7 +72,8 @@ compiler as the configured kernel:
 /opt/homebrew/bin/gmake \
   -C /Users/duckdonald/workspace/arti-work/arti-linux-build \
   M=<GPU-local-archived-driver-directory> ARCH=arm64 \
-  CROSS_COMPILE=/opt/homebrew/bin/aarch64-linux-gnu- -j2 gpu_drv.ko
+  CROSS_COMPILE=/opt/homebrew/bin/aarch64-linux-gnu- \
+  KCFLAGS='-fstack-usage -Werror=frame-larger-than=2048' -j2 gpu_drv.ko
 ```
 
 Remove the temporary module directory after the command finishes.
