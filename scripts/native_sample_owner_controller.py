@@ -9,6 +9,7 @@ import fcntl
 import hashlib
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import subprocess
@@ -103,8 +104,12 @@ def main():
     require(type(command) is list and command and all(type(x) is str and x for x in command) and
             any('{ipc}' in x for x in command), 'bridge command must consume exact active IPC directory')
     docker = Path(command[0]).name == 'docker'
-    require(not docker or (args.bridge_container_name and '--name' in command and
-            command[command.index('--name') + 1] == args.bridge_container_name), 'Docker bridge requires its exact owned container name')
+    require(not docker or (args.bridge_container_name and
+            re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', args.bridge_container_name) and
+            len(command) > 3 and command[1] == 'run' and command.count('--name') == 1 and
+            not any(x.startswith('--name=') for x in command) and
+            command.index('--name') + 1 < len(command) and
+            command[command.index('--name') + 1] == args.bridge_container_name), 'Docker bridge requires one exact owned container name')
     require(not args.bridge_container_name or docker, 'container cleanup requires direct Docker bridge argv')
     gpu = next(p for p in (ROOT, *ROOT.parents) if (p / '.git').is_dir())
     parent = gpu / '.artifacts'; parent.mkdir(exist_ok=True)
