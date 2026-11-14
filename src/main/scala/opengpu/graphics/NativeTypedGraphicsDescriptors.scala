@@ -18,7 +18,7 @@ object NativeTypedGraphicsLayout {
   val vertex=VertexShaderStageConfig();val fragment=FragmentShaderConfig()
   case class Field(name: String,word: Int,value: Data){
     val width=value.getWidth;val words=(width+31)/32
-    require(width>0 && width<=64 && word%16+words<=16)
+    require(width>0 && width<=512 && word%16+words<=16)
   }
   private def fields(base: Int,prefix: String,values: (String,Data)*): Seq[Field]={
     var word=base
