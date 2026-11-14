@@ -17,7 +17,20 @@ COMPUTE_WORDS = [dict(word, value=word['value'] | (1 << 18))
 # GNJ2/GNF3/GNY2 is a different packet factory. In particular the actual layered
 # memory namespaces use 11 native transaction-ID bits instead of the old nine.
 FULL_STAGE = 'geometry-compute'
+FULL_COMPUTE_SCHEMA = 'opengpu-compute-owner-profile-v3'
 FULL_WORDS = [dict(word, value={0x368: 0xfffff, 0x160: 0x474e4305,
     0x168: 0x474e4a02, 0x17c: 0x8813db02}.get(word['address'], word['value']))
     for word in V1_WORDS] + [dict(address=0x500+4*i, value=value) for i,value in enumerate(
         (0x47475301, 8, 31, 0x474e4a02, 0x474e4603, 0x474e5902, 0xff840206, 0x04001000))]
+
+# Sample inputs require their own complete factory; the 104-word target stays
+# frozen. Neither contract is a statement of execution or full API qualification.
+SAMPLE_PROFILE = PROFILE + '-sample-stage'
+SAMPLE_STAGE = 'geometry-compute-sample'
+SAMPLE_WORDS = [dict(word, value=0x1fffff if word['address'] == 0x368 else word['value'])
+    for word in FULL_WORDS] + [dict(address=0x520+4*i, value=value) for i,value in enumerate(
+        (0x47535301, 8, 1, 31, 0xc0, 0x4d041004, 0x7ff, 7))]
+FULL_COMPUTE_CONTRACTS = {
+    PROFILE: (FULL_STAGE, FULL_WORDS),
+    SAMPLE_PROFILE: (SAMPLE_STAGE, SAMPLE_WORDS),
+}
