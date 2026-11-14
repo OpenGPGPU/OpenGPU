@@ -7,7 +7,7 @@ SCHEMA = 'opengpu-compute-counter-oracle-v1'
 CASE = 'counter-increment'
 FIELDS = {'schema', 'sourceCase', 'groups', 'local', 'viewBytes', 'guard', 'seed', 'index',
           'count', 'counterHandle', 'context', 'descriptorPhysical', 'descriptorRoot',
-          'kernargPhysical', 'kernargBytes', 'counter', 'outputs'}
+          'kernargPhysical', 'kernargBytes', 'counter', 'outputs', 'storageBindings'}
 
 
 def require(ok, message):
@@ -21,6 +21,9 @@ def recipe(memory, value):
     required_flags(value, dict(schema=SCHEMA, sourceCase=CASE, groups=4, local=4, viewBytes=8192,
                               guard=0xdeadbeef, seed=0xfffffffe, index=7, count=8))
     require(0 < uint(value['counterHandle']) < 512 and 0 < uint(value['context']), 'invalid original counter owner')
+    bindings=value['storageBindings']
+    require(type(bindings) is list and all(type(i) is int for i in bindings) and sorted(bindings)==[0,1,2,3],
+            'actual Mesa storage bindings must be a complete permutation')
     source = allocation_window(memory, value['counter'], 32, 0)
     required_flags(value['counter'], dict(offset=4080, allocationBytes=8192))
     require(type(value['outputs']) is list and len(value['outputs']) == 4, 'four original SSBOs required')
@@ -126,15 +129,16 @@ def ready(memory, description, data):
     expected_descriptor = (0x47534201, 64, 1, context, 0, 0, 0, 1, 1, 1, va, va + 32, 0,
                            va & ~63, (va + 95) & ~63, 0)
     require(memory.read(physical, 64) == struct.pack('<16I', *expected_descriptor), 'counter GSB1 permissions/bounds differ')
-    require(translate(memory, satp, r.get(0xd0, 0), 7) == arg, 'counter kernarg mapping differs')
+    require(translate(memory, satp, r.get(0xd0, 0), 15) == arg, 'counter kernarg mapping differs')
     # Four actual GSM1 output descriptors must map the declared original GEMs.
     table = r.get(0x424, 0)
     require([r.get(0x420 + 4*i) for i in range(7)] == [257, table, table + 256, 0, context, 0, 0],
             'counter four-storage command context differs')
-    for binding, output in enumerate(outputs):
+    for binding, global_binding in enumerate(description['storageBindings']):
+        output=outputs[global_binding]
         record = struct.unpack('<16I', memory.read(translate(memory, satp, table + 64*binding, 15), 64))
         base = 0xcfffc000 + binding * (128*1024*1024 + 4096)
         expected_record = (0x47534201, 64, 1, context, 0, 0, binding, 1, 1, 1,
                            base, base + 8192, 0, base, base + 8192, 0)
-        require(record == expected_record and translate(memory, satp, base, 7) == output and
-                translate(memory, satp, base + 8191, 7) == output + 8191, 'counter SSBO descriptor/source mapping differs')
+        require(record == expected_record and translate(memory, satp, base, 15) == output and
+                translate(memory, satp, base + 8191, 15) == output + 8191, 'counter SSBO descriptor/source mapping differs')

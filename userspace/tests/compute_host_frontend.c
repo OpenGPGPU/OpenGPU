@@ -33,7 +33,7 @@ static int capture_only,uniform_case,dynamic_case,address_case,counter_case;
 static unsigned dynamic_operation,dynamic_signed;
 static unsigned address_kind;
 static unsigned host_timeout_seconds;
-static unsigned output_handles[4],uniform_handles[12],counter_handle;
+static unsigned output_handles[4],uniform_handles[12],counter_handle,counter_storage_bindings[4];
 static struct drm_opengpu_compute_counter_source_resources accepted_counter;
 static struct drm_opengpu_compute_uniform_resources accepted_uniforms;
 static void write_oracle(void);
@@ -144,7 +144,7 @@ static void write_oracle(void)
    (unsigned long long)snap.kernarg_physical,(unsigned long long)snap.kernarg_bytes);
   source_window(f,counter_handle,4080,32,0);fputs(",\"outputs\":[",f);
   for(unsigned i=0;i<4;i++){if(i)fputc(',',f);source_window(f,output_handles[i],0,8192,i);}
-  fputs("]}\n",f);
+  fprintf(f,"],\"storageBindings\":[%u,%u,%u,%u]}\n",counter_storage_bindings[0],counter_storage_bindings[1],counter_storage_bindings[2],counter_storage_bindings[3]);
  }else if(address_case){
   const char *names[]={"shared-address-add","shared-address-cas-match","shared-address-cas-miss"};
   uint64_t physical,bytes;assert(!compute_host_original_physical(session,output_handles[0],&physical,&bytes));
@@ -201,6 +201,7 @@ int main(int argc,char **argv)
   output_handles[binding]=pipe_opengpu_resource_handle(opengpu_resource(output[binding])->gpu);
   uint32_t *data=pipe_opengpu_resource_map(opengpu_resource(output[binding])->gpu);for(unsigned i=0;i<2048;i++)data[i]=0xdeadbeefu;}
  cs_frontend_storage(frontend,p,output);
+ if(counter_case)for(unsigned i=0;i<4;i++)counter_storage_bindings[i]=cs_frontend_storage_binding(frontend,i);
  struct pipe_resource *ub[36]={0};unsigned offsets[36]={0},sizes[36]={0};
  if(uniform_case){
   assert(cs_frontend_default_components(frontend)==1024);uint32_t defaults[1024];

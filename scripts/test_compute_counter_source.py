@@ -37,16 +37,16 @@ def fixture():
     d = dict(schema=SCHEMA, sourceCase='counter-increment', groups=4, local=4, viewBytes=8192,
         guard=0xdeadbeef, seed=0xfffffffe, index=7, count=8, counterHandle=4, context=2,
         descriptorPhysical=0x40000, descriptorRoot=descriptor_root, kernargPhysical=0x42000, kernargBytes=64,
-        counter=view(0x20000, 0, 4080, 32), outputs=[view(a, i) for i,a in enumerate((0x30000,0x32000,0x34000,0x36000))])
+        counter=view(0x20000, 0, 4080, 32), storageBindings=[0,1,2,3], outputs=[view(a, i) for i,a in enumerate((0x30000,0x32000,0x34000,0x36000))])
     record = [0x47534201,64,1,2,0,0,0,1,1,1,counter_va,counter_va+32,0,counter_va&~63,(counter_va+95)&~63,0]
     for i,w in enumerate(record): word(0x40000+i*4,w)
     map_page(descriptor_root,0x40000,15);map_page(counter_va,0x20000,15);map_page(counter_va+31,0x21000,15)
-    map_page(storage_root,0x41000,15);map_page(0x80800000,0x42000,7)
+    map_page(storage_root,0x41000,15);map_page(0x80800000,0x42000,15)
     for i,pa in enumerate((0x30000,0x32000,0x34000,0x36000)):
         va=0xcfffc000+i*(128*1024*1024+4096)
         record=[0x47534201,64,1,2,0,0,i,1,1,1,va,va+8192,0,va,va+8192,0]
         for j,w in enumerate(record):word(0x41000+i*64+j*4,w)
-        map_page(va,pa,7);map_page(va+4096,pa+4096,7)
+        map_page(va,pa,15);map_page(va+4096,pa+4096,15)
     discovery=[(w['address'],w['value']) for w in SAMPLE_WORDS]+[(0,0x47550002),
         (0x60,(1<<6)|(1<<22)|(1<<23)|(1<<25)|(1<<29)|(128<<8)),(0x68,0x160),
         (0x320,1048576),(0x158,0x02020810),(0x494,0x47544d01),(0x43c,0x47534d01),
@@ -112,7 +112,7 @@ class Counter(unittest.TestCase):
                 with SparseMemory(path) as m:ready(m,description,cap() if data is None else data)
             check()
             for key,value in (('groups',1),('local',128),('index',6),('count',7),('seed',0),
-                ('counterHandle',0),('context',3),('descriptorRoot',0xb1400040),('descriptorPhysical',0x41000),
+                ('counterHandle',0),('storageBindings',[0,0,2,3]),('storageBindings',[3,2,0,1]),('context',3),('descriptorRoot',0xb1400040),('descriptorPhysical',0x41000),
                 ('kernargPhysical',0x42004),('extra',1)):
                 wrong=copy.deepcopy(d);wrong[key]=value
                 with self.subTest(key=key),self.assertRaises(ValueError):check(description=wrong)

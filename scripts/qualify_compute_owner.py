@@ -65,8 +65,9 @@ def producer_command(args, *, gpu, source, ntt, image, name, case):
     require(case in CASES, 'unknown original compute source')
     # The configured Mesa object database uses these original absolute paths.
     # Keep that mount unchanged; all newly generated files live in {ipc}.
-    command = ['docker', 'run', '--rm', '--init', '--name', name, '--memory', '2g', '--memory-swap', '2g',
-               '--cpus', '2', '--network=none', '--read-only',
+    counter = case == COUNTER_CASE
+    command = ['docker', 'run', '--rm', '--init', '--name', name, '--memory', '512m' if counter else '2g',
+               '--memory-swap', '512m' if counter else '2g', '--cpus', '1' if counter else '2', '--network=none', '--read-only',
                '-v', f'{gpu}:{gpu}:ro', '-v', '{ipc}:{ipc}:rw', '-w', str(source)]
     environment = dict(PYTHONDONTWRITEBYTECODE='1', OPENGPU_MESA_DIR=str(args.mesa),
         OPENGPU_MESA_BUILD=str(args.mesa_build), OPENGPU_DRM_INCLUDE=str(args.drm_include),

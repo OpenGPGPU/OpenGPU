@@ -8,7 +8,7 @@ import subprocess
 import sys
 from native_sample_graphics_inputs import (snapshot as base_snapshot, dependency_inputs,
     generated_inputs, unchanged, regular)
-from native_sample_compiler_inputs import sha256, MESA_UNITS
+from native_sample_compiler_inputs import sha256, MESA_UNITS, MESA_LIBRARIES
 from compute_owner_protocol import strict_json
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -56,7 +56,17 @@ def guarded(request_path, builder_argv):
     units.update(str(paths['mesa']/'src'/name) for name in MESA_UNITS[1:])
     units.update((str(out/'standalone-profile.cpp'),str(paths['mesa']/'src/compiler/nir/nir_lower_io.c'),str(paths['ntt'])))
     actual_run=subprocess.run
-    products={}
+    products={};objects=[]
+    libraries=[str(paths['build']/name) for name in MESA_LIBRARIES]
+    libraries[4]=str(out/'libgallium.a')
+    def expected_link():
+        trackers=[str(paths['build']/'src/mesa/libmesa.a.p'/('state_tracker_st_atom_'+n+'.c.o'))
+                  for n in ('constbuf','storagebuf','atomicbuf')]
+        return ['c++','-fsanitize=address,undefined','-fno-omit-frame-pointer',
+            '-Wl,--gc-sections','-Wl,-t,-t','-Wl,-Map='+str(out/'link.map'),*objects,*trackers,
+            '-Wl,--start-group',*libraries,'-Wl,--end-group','-l:libz.so.1',
+            str(paths['libraries']/'libexpat.so.1.6.7'),'-ldl','-lm','-pthread','-o',str(out/'compute_host_frontend')]
+
     def run(command,*args,**kwargs):
         nonlocal compiled
         command=list(map(str,command))
@@ -66,6 +76,7 @@ def guarded(request_path, builder_argv):
             require(unit in units and unit not in seen and '-fsanitize=address,undefined' in command,
                     'unexpected/repeated/unsanitized producer translation unit')
             seen.add(unit)
+            if unit != str(paths['ntt']):objects.append(command[command.index('-o')+1])
             fresh=generated_inputs(out)
             if generated:unchanged(generated)
             generated.update(fresh)
@@ -73,6 +84,8 @@ def guarded(request_path, builder_argv):
             dependency_inputs(Path(command[command.index('-MF')+1]),cpu=out,source=ROOT,
                 bound=dependencies,qualified=qualified,generated=generated)
             return result
+        if '-o' in command and command[command.index('-o')+1] == str(out/'compute_host_frontend'):
+            require(command == expected_link(), 'actual counter link has unbound/replaced objects or libraries')
         if command[0]==str(out/'compute_host_frontend'):
             require(seen==units, 'incomplete actual host compiler closure')
             external();unchanged(generated)
