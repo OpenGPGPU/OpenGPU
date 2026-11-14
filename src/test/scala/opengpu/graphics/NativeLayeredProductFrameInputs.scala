@@ -72,10 +72,20 @@ object NativeLayeredProductFrameInputs {
     require(commandId >= 1 && commandId <= 6)
     require(input.frame("frame.version") == 3 && input.frame("layered.layers") == 1 &&
       input.memory.readWord(input.jobBase) == NativeLayeredGraphicsLayout.jobMagic)
-    val mutableNames = Set("vertex-scratch", "fragment-scratch", "primitive-arena", "bin-pool", "bin-directory")
-    val writable = input.regions.filter(r => mutableNames(r.name) || r.name.startsWith("image-"))
+    def view(values: Map[String, BigInt], prefix: String): (Long, Long) =
+      values(prefix + "base").toLong -> values(prefix + "limit").toLong
+    // Backing contains unbound slots and space beyond the submitted views.
+    // Those bytes remain guards even when the AXI agent can address their page.
+    val scratch = input.draws.map(view(_, "draw.vertex.geometry.vertex.scratch.")) ++
+      input.states.flatMap(state => view(state, "fragment.scratch.") +:
+        (0 until 3).map(engine => view(state, s"scratch[$engine].")))
+    val bins = Seq(view(input.frame, "frame.bins.producer.arena."),
+      view(input.frame, "frame.bins.bins.pool."),
+      input.frame("frame.bins.bins.directoryBase").toLong ->
+        input.frame("frame.bins.bins.directoryLimit").toLong)
+    val writable = (scratch ++ bins ++ input.regions.filter(_.name.startsWith("image-"))
       .map(r => (r.base, r.limit)) :+ (input.completionBase ->
-        (input.completionBase + NativeLayeredGraphicsLayout.completionBytes))
+        (input.completionBase + NativeLayeredGraphicsLayout.completionBytes))).distinct
     require(NativeFrameMemoryCodec.unchangedOutside(input.memory, actual, writable),
       s"${scene.id} changed immutable data, allocation metadata or a GNY2 guard")
     NativeProductFrameInputs.verifyWith(scene, input.copy(memory = actual),
