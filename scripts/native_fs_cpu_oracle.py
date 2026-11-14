@@ -118,7 +118,7 @@ def verify(path, name, samples):
                 put(destination, 6 + 4 * 15 + c, lane, bits(lane + c / 4))
         if name == 'sample':
             colors = {0: (sample, px, py, mask)}
-        elif name == 'mask-depth':
+        elif name in ('mask-depth', 'mask-depth-keep'):
             colors = {0: (px, py, .25, 1)}
         elif name == 'mrt':
             colors = {i: (px, py, sample + i, 1) for i in range(4)}
@@ -135,9 +135,10 @@ def verify(path, name, samples):
             for c, component in enumerate(components):
                 put(expected, first + 4 * mrt + c, lane, bits(float(component)))
         control = 1 | (sum(1 << mrt for mrt in colors) << 2)
-        if name == 'mask-depth':
+        if name in ('mask-depth', 'mask-depth-keep'):
             put(expected, first + 16, lane, bits(.5))
-            control |= 2 | 64 | (((mask & 15) ^ (1 << sample)) << 7)
+            shader_mask = (mask & 15) ^ (1 << sample) if name == 'mask-depth' else mask & (1 << sample)
+            control |= 2 | 64 | ((shader_mask & 15) << 7)
         put(expected, first + 17, lane, control)
     for base in range(0, 128, 16):
         execute(code, memory, base)
