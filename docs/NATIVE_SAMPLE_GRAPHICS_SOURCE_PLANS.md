@@ -149,8 +149,8 @@ snapshots with explicitly synthetic compiler words/reflection. They cover each
 original/private uniform window, every GUR/GUB word, both RX images, PTE and
 metadata faults, source pointer/identity/bounds mutations, record/reflection/ABI
 isolation and synthetic image/guard mutations. The three existing private112
-admission/old96 isolation tests also
-pass. The source test is in both common CPU lanes and checks the new include
+admission/old96 isolation tests also pass. The source test is in both common
+CPU lanes and checks the new include
 in actual compiler-generated make dependencies:
 
 ```sh
@@ -158,10 +158,29 @@ OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_sample_graphics_source.
 OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_gallium_sample_graphics_bridge.py
 ```
 
-The explicit actual-Mesa entry now requires this full source preflight after
-capture. That new sidecar path has not yet been rerun with actual Mesa. These
-checks establish CPU source/oracle behavior only; they do not execute shaders,
-publish or validate GNY2 counters, implement the future two-owner live protocol,
-or authorize a hardware cleanup ACK. The optional image test supplies synthetic
-returned pixels and is not GPU evidence. No container, JVM or model was started
-for this source-proof slice.
+The explicit actual-Mesa entry requires this full source preflight after
+capture. It passed on fixed source `a098992fb` with original Mesa22.3.6 and
+actual Linux protected snapshots: original VS308/FS301 words, two owners with
+26 windows each, real non-declaration-order linked reflection, all GUR/GUB
+records through binding index23, actual private RX and reachable descriptor
+links, eight frame resource roles and separate 16384-byte completion views.
+The OGNP0002 observations were explicitly synthetic CPU inputs. Reproduce with
+the actual-Mesa CPU entry and environment above; no Mesa library is rebuilt.
+
+This run used immutable image `cc860b33283c`, one CPU, 512MiB memory with equal
+swap limit, no network and read-only original sources/libraries. Immediately
+before C execution it bound all 8098 Mesa/DRM/library inputs plus both actual
+state-tracker link objects, 1017 frozen GPU inputs including Python and the
+three ABI schemas, all 28 compiler-generated dependency units and 388 execution
+inputs including generated files and the binary. The actual dependencies
+included the new source-plan include. Every identity matched after C returned
+and after the complete independent Python preflight. The container and all
+child processes ended; private builds, source copies and raw outputs were
+removed.
+
+These checks establish CPU source/oracle behavior only; they do not execute
+shaders, publish or validate GNY2 counters, implement the future two-owner live
+protocol, or authorize a hardware cleanup ACK. The optional image test supplies
+synthetic returned pixels and is not GPU evidence. No JVM or model was started
+for this source-proof slice. Complete canonical descriptor/GNY2 validation and
+actual image execution remain unfinished.
