@@ -18,7 +18,7 @@ def between(source, first, last):
     return source[start:source.index(last, start)]
 
 
-def write_bodies(out):
+def write_bodies(out, compute_stage=False):
     source = (ROOT / 'driver/opengpu_compute.c').read_text()
     # Preserve complete production bind/unbind bodies and every reachable map
     # helper. Omit the unrelated queued-DMA job helper between these ranges.
@@ -93,7 +93,8 @@ def write_bodies(out):
     # Explicit CPU-shaped discovery data for rejection/admission tests only.
     # The active producer must supply real probe words, never this fixture.
     from prepare_native_owner_flashsim import EXPECTED_WORDS
-    rows = [(item["address"], item["value"]) for item in EXPECTED_WORDS]
+    from owner_resource_contract import COMPUTE_WORDS
+    rows = [(item["address"], item["value"]) for item in (COMPUTE_WORDS if compute_stage else EXPECTED_WORDS)]
     extras = [(0, 0x47550002), (0x60, '(GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE|GPU_CAP_COMPUTE_SCALAR_FPU|GPU_CAP_SHADER_CONFIG_INFO|GPU_CAP_NATIVE_PIXEL_FORMATS|(128u << GPU_CAP_FRAGMENT_BATCH_SHIFT))'),
               (0x68, 0x160), (0x320, 1048576), (0x158, 0x02020810), (0x494, 0x47544d01), (0x43c, 0x47534d01),
               (0x3fc, 0x47494d01), (0x4bc, 0x47414d01), (0x460, 0x47554d01)]
@@ -107,12 +108,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--canonical-root', type=Path,
                         help='fixed checkout providing the actual compute capture C++ parser')
+    parser.add_argument('--compute-stage', action='store_true',
+                        help='exercise the distinct shared-enabled CPU profile and matching parser')
     args = parser.parse_args()
     parent = ROOT / '.artifacts'
     parent.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='compute-host-', dir=parent) as temporary:
         out = Path(temporary)
-        write_bodies(out)
+        write_bodies(out, args.compute_stage)
         flags = ['-DOPENGPU_COMPUTE_HOST_TEST_MAIN=1', '-D_POSIX_C_SOURCE=200809L', '-std=c11', '-O1', '-Wall', '-Wextra', '-Werror', '-Wno-unused-function']
         if os.environ.get('OPENGPU_TEST_SANITIZERS') == '1':
             flags += ['-fsanitize=address,undefined', '-fno-omit-frame-pointer']
@@ -135,6 +138,8 @@ def main():
             canonical = args.canonical_root.resolve(strict=True)
             source = canonical / 'scripts/test_compute_owner.cpp'
             cppflags = ['-std=c++17', '-O1', '-Wall', '-Wextra', '-Werror']
+            if args.compute_stage:
+                cppflags += ['-DOPENGPU_OWNER_COMPUTE_STAGE=1']
             if os.environ.get('OPENGPU_TEST_SANITIZERS') == '1':
                 cppflags += ['-fsanitize=address,undefined', '-fno-omit-frame-pointer']
             binary = out / 'canonical-parser'
