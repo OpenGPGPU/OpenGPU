@@ -155,11 +155,13 @@ class TessellationSystemIsolineImageSharedSystemSpec extends AnyFlatSpec {
       code+=image(9,rd=10,vs1=4,vs2=16) // imageLoad(unit0,SampleID,0)
       for(c<-1 until 4)code+=image(11,pair=c,rd=10+c)
       for(c<-0 until 4)write(87+c,10+c) // MRT3, before pair0 invalidates the load snapshot
-      // Distinct helper rows make a missing invocation side-effect mask
-      // observable in RW backing. Only the fixed 4x4 line is qualified.
-      code+=vector(0x28,3,14,22,8);code+=vector(0x09,3,14,1,14) // (rawX>>22)&1
-      code+=vector(0x28,3,15,23,9);code+=vector(0x09,3,15,3,15) // (rawY>>23)&3
-      code+=vector(0x25,3,17,2,4);code+=vector(0,0,15,17,15) // 4*SampleID+rowClass
+      // Real vfcvt.rtz.xu.f.v maps every nonnegative 4x4 FragCoord to
+      // its pixel, including x=1 at the independently perturbed line edge.
+      // Each sample gets four distinct rows; helper pixels cannot alias a
+      // covered pixel and a missing side-effect mask changes guard texels.
+      code+=TessellationSampleImageRecipe.floorToUnsigned(14,8)
+      code+=TessellationSampleImageRecipe.floorToUnsigned(15,9)
+      code+=vector(0x25,3,17,2,4);code+=vector(0,0,15,17,15) // 4*SampleID+floorY
       code+=vector(23,3,2,1);code+=image(8,vs1=2,vs2=3) // unit1
       code+=image(8,pair=1,vs1=16,vs2=16)
       code+=image(8,pair=2,vs1=4,vs2=5);code+=image(8,pair=3,vs1=6,vs2=7)
@@ -417,10 +419,9 @@ class TessellationSystemIsolineImageSharedSystemSpec extends AnyFlatSpec {
           d.g,PointLineReference.Sizes(line=1)).flatten
           .flatMap(p=>(0 until(1<<sampleMode)).filter(s=>(p.mask&(1<<s))!=0).map(s=>(p.x,p.y,s))).toSet
         for((x,y,s)<-covered){
-          assert(y==1 && (x==2 || x==3),"the independent fixed-line recipe changed")
           val rgba=Vector[BigInt](s,fp(if(sampleMode==0)0.5 else if((s&1)!=0)0.75 else 0.25),
             fp(if(sampleMode==0)0.5 else if((s&(if(sampleMode==1)1 else 2))!=0)0.75 else 0.25),1<<s)
-          val address=BigInt(0x71003f)+(4*s+3)*128+(x-2)*16
+          val address=TessellationSampleImageRecipe.rwAddress(x,y,s)
           for(c<-0 until 4;b<-0 until 4)expectedRw(address+c*4+b)=((rgba(c)>>(8*b))&255).toInt
         }
         expectedRw.foreach{case(address,value)=>
