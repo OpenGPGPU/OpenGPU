@@ -57,6 +57,7 @@ def main():
                 'publication-bypass': ('!s->invalid && s->emitted && s->ended', 'true'),
                 'ignore-uniform-ownership': ('p->owned_uniforms &&', 'true &&'),
                 'raw-memory-admission': ('else goto done; /* No raw memory', 'else if(op==0x03 || op==0x23){}else goto done; /* No raw memory'),
+                'ignore-combined-patch-capacity': ('p->output_vertices*p->output_components+p->patch_components<=2048 &&', ''),
                 'short-output-as-vl': ('s->x[9].value==p->lanes*p->warps', 's->x[9].value==p->output_vertices'),
             }
             for name, (before, after) in mutations.items():

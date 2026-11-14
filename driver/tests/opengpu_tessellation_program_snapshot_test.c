@@ -22,7 +22,7 @@ static struct opengpu_tessellation_program_profile policy(u32 stage)
 {
     struct opengpu_tessellation_program_profile p={.version=1,.stage=stage,.lanes=16,.warps=8,
         .output_components=64,.available=true,.owned_uniforms=true,.scalar_fpu=true};
-    if(stage==4){p.input_vertices=32;p.input_components=64;p.output_vertices=32;p.patch_components=120;}
+    if(stage==4){p.input_vertices=32;p.input_components=64;p.output_vertices=32;p.output_components=60;p.patch_components=120;}
     else p.patch_words=61;
     return p;
 }
@@ -46,6 +46,16 @@ static void program_tests(void)
         case 10:bad.patch_components=121;break;case 11:bad.patch_words=1;break;case 12:bad.input_components=65;break;}
         INVALID(simple,bad);
     }
+    /* The physical patch RAM bounds the coupled layout, not just each field. */
+    bad=c;bad.output_components=64;bad.patch_components=0;VALID(simple,bad); /* 2048 */
+    bad.patch_components=1;INVALID(simple,bad); /* 2049 */
+    bad.output_components=60;bad.patch_components=120;VALID(simple,bad); /* 2040 */
+    bad.output_components=61;INVALID(simple,bad); /* 2072 */
+    bad.patch_components=96;VALID(simple,bad); /* 2048 with nonzero patch data */
+    bad.patch_components=97;INVALID(simple,bad); /* 2049 */
+    bad.output_components=64;bad.patch_components=120;INVALID(simple,bad); /* 2168 */
+    bad.output_components=60;bad.patch_components=120;bad.input_vertices=33;INVALID(simple,bad);
+    bad=c;bad.input_components=65;INVALID(simple,bad);
     u32 load[]={ti(10,0,31),ti(11,0,0),tg(7,12,10,11),0x0104f057,tv(23,3,2,0,0,true),tv(23,3,3,0,0,true),tp(7,4,2,3,true),OPENGPU_SHADER_CEASE};
     VALID(load,c);bad=c;bad.owned_uniforms=false;INVALID(load,bad);
     u32 no_vl[]={tp(7,4,1,1,true),OPENGPU_SHADER_CEASE};INVALID(no_vl,c);
@@ -131,7 +141,7 @@ static void snapshot_tests(void)
     gpu.hw.capabilities=GPU_CAP_UNIFIED_COMMANDS;assert(!opengpu_mmu_init(&gpu) && !opengpu_mmu_vm_create(&gpu,&ctx.vm));copy_gpu=&gpu;
     struct drm_opengpu_native_program_view view={.handle=71,.offset=64,.bytes=24,.entry_offset=16};
     struct opengpu_tessellation_program_profile p=policy(4);struct opengpu_native_program_snapshot out,saved;
-    for(unsigned fault=0;fault<11;fault++){
+    for(unsigned fault=0;fault<12;fault++){
         code_init();struct opengpu_private_snapshot *o=opengpu_private_snapshot_create(&gpu,&ctx);assert(!IS_ERR(o));
         struct drm_opengpu_native_program_view bad=view;struct opengpu_tessellation_program_profile q=p;
         int error=-EINVAL;
@@ -139,7 +149,8 @@ static void snapshot_tests(void)
         case 3:bad.offset=~(u64)3;break;case 4:bad.pad=1;break;case 5:q.available=false;break;
         case 6:tc_code_ready=false;error=-EAGAIN;break;case 7:tc_code_retained=false;error=-ENOENT;break;
         case 8:tc_code_error=-EIO;error=-EIO;break;case 9:private_alloc_fail_after=0;error=-ENOMEM;break;
-        case 10:word(tc_code,80,tb(0x63,0,8,0,-4));break;}
+        case 10:word(tc_code,80,tb(0x63,0,8,0,-4));break;
+        case 11:q.output_vertices=32;q.output_components=64;q.patch_components=120;break;}
         out=(struct opengpu_native_program_snapshot){0x5a,0x27};saved=out;
         assert(opengpu_tessellation_program_snapshot_append(o,&bad,&q,program_copy,tc_code,&out)==error);
         private_alloc_fail_after=-1;assert(!memcmp(&out,&saved,sizeof(out)) && !o->segments);

@@ -54,7 +54,10 @@ The profile is an internal caller obligation, **not** permission conveyed by
 untrusted stage metadata. Version 1 accepts GPU stage 4 (TCS) and 5 (TES), lanes
 1/2/4/8/16 and warps 2/4/8, retaining the mandatory 16-lane, eight-warp capacity.
 TCS checks the actual input/output vertex and component layout (32 vertices,
-64 components and 120 patch components maximum). TES authorizes only the current
+64 components and 120 patch components maximum). It also enforces the physical
+2048-word input RAM bound and the coupled 2048-word output-vertex plus patch
+bound: 32×64+0 and 32×60+120 are accepted; 32×61+120 and 32×64+120 are rejected.
+TES authorizes only the current
 single-point, vertex-zero transport: three TessCoord words followed by at most
 61 explicitly selected patch words. This is not a general dynamic `gl_in[]`
 contract. Future P40 full-patch service/ISA needs a separate matched permission
@@ -159,9 +162,9 @@ branch merges, SIMT convergence, malformed patch access, physical-capacity VL,
 barrier/early-exit rejection and TES single-point publication. Exact source and
 caller-profile mutation, source-reference/producer readiness failures, allocation
 failures, RX/no-W PA alias exclusion, timeout/shootdown quarantine and healthy
-reuse exercise the real private owner/MMU. Seven isolated validator mutations
+reuse exercise the real private owner/MMU. Eight isolated validator mutations
 are rejected by semantic assertions, covering definedness, masked parameters,
-barrier drain, publication, uniform ownership, raw memory and wrong VL capacity.
+barrier drain, publication, uniform ownership, raw memory, coupled patch capacity and wrong VL capacity.
 Original ESSL compiled by the real Mesa frontend and the independent P17
 emitter also passes this validator/RX/MMU path: TCS 228 words with exact layout
 (input vertices/components 2/4, output vertices/components 2/8, patch components

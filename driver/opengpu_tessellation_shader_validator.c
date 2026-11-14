@@ -26,7 +26,9 @@ bool opengpu_tessellation_program_profile_valid(const struct opengpu_tessellatio
         p->warps<2 || p->warps>8 || (p->warps&(p->warps-1)))return false;
     if(p->stage==4)return p->input_vertices>=1 && p->input_vertices<=32 &&
         p->output_vertices>=1 && p->output_vertices<=32 && p->output_vertices<=p->lanes*p->warps &&
-        p->input_components<=64 && p->output_components<=64 && p->patch_components<=120 && !p->patch_words;
+        p->input_components<=64 && p->output_components<=64 && p->patch_components<=120 &&
+        p->input_vertices*p->input_components<=2048 &&
+        p->output_vertices*p->output_components+p->patch_components<=2048 && !p->patch_words;
     return !p->input_vertices && !p->input_components && !p->output_vertices &&
         !p->patch_components && p->patch_words<=61 && p->output_components<=64;
 }
