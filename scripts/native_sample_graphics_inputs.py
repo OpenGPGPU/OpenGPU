@@ -16,7 +16,7 @@ import sys
 
 from apply_mesa_uniform_index_patch import AFTER as LOWERING_SHA
 from native_sample_compiler_inputs import (MESA_LIBRARIES, MESA_UNITS,
-    input_tree, sha256, snapshot as mesa_snapshot)
+    sha256, snapshot as mesa_snapshot)
 from native_sample_owner_protocol import strict_json
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,15 +47,41 @@ def regular(path):
     return path
 
 
+def drm_inputs(root, gpu):
+    """Bind SDK directory aliases as resolutions, not permissive exclusions.
+
+    Installed libdrm normally exposes include/drm -> libdrm/drm. Preserve that
+    actual alias identity and every reachable file; reject cycles and escapes.
+    The old compiler-tree policy remains unchanged for Mesa and LD inputs.
+    """
+    require(root.is_dir() and not root.is_symlink(),'missing/aliased DRM include root')
+    result = {}
+    def visit(directory, ancestors):
+        resolved = directory.resolve(strict=True)
+        require(resolved.is_relative_to(gpu) and resolved not in ancestors,'DRM include escape/cycle')
+        if directory.is_symlink():result[str(directory)] = [str(resolved),'directory']
+        for path in sorted(directory.iterdir()):
+            target = path.resolve(strict=True)
+            require(target.is_relative_to(gpu),'DRM include escaped GPU workspace')
+            if target.is_dir():visit(path,(*ancestors,resolved))
+            else:
+                require(target.is_file(),'invalid DRM include input')
+                identity = [str(target),sha256(target)]
+                result[str(path)] = identity
+                result[str(target)] = identity
+    visit(root,())
+    return result
+
+
 def snapshot(mesa, build, libraries, drm, gpu):
     result = mesa_snapshot(mesa, build, libraries, gpu)
     paths = [build/'src/mesa/libmesa.a.p'/('state_tracker_st_atom_'+s+'.c.o')
              for s in ('constbuf', 'storagebuf')]
-    paths.extend(input_tree(drm))
     for path in paths:
         resolved = path.resolve(strict=True)
         require(resolved.is_file() and resolved.is_relative_to(gpu), 'external input escaped GPU workspace')
         result[str(path)] = [str(resolved), sha256(resolved)]
+    result.update(drm_inputs(drm,gpu))
     require(sha256(mesa/'src/compiler/nir/nir_lower_io.c') == LOWERING_SHA,
             'stage the exact checked Mesa lowering postimage before qualification')
     # JSON round-trips must not change tuple/list identity at the build boundary.

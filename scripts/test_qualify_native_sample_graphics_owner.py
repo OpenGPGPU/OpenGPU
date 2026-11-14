@@ -131,6 +131,21 @@ class OrdinaryQualificationTests(unittest.TestCase):
         generated.write_bytes(b'changed after compile')
         with self.assertRaisesRegex(ValueError,'before compilation'):inputs.dependency_inputs(dep,**kwargs)
 
+    def test_installed_drm_directory_alias_is_bound_and_escape_cycle_or_retarget_rejects(self):
+        drm=self.out/'drm';target=drm/'libdrm/drm';target.mkdir(parents=True)
+        header=target/'drm.h';header.write_bytes(b'original installed DRM header')
+        alias=drm/'drm';alias.symlink_to('libdrm/drm',target_is_directory=True)
+        bound=inputs.drm_inputs(drm,self.out)
+        self.assertEqual(bound[str(alias)],[str(target),'directory'])
+        self.assertEqual(bound[str(alias/'drm.h')],[str(header),inputs.sha256(header)])
+        other=drm/'other';other.mkdir();(other/'drm.h').write_bytes(header.read_bytes())
+        alias.unlink();alias.symlink_to('other',target_is_directory=True)
+        self.assertNotEqual(bound,inputs.drm_inputs(drm,self.out))
+        alias.unlink();alias.symlink_to('..',target_is_directory=True)
+        with self.assertRaisesRegex(ValueError,'cycle'):inputs.drm_inputs(drm,self.out)
+        alias.unlink();alias.symlink_to('/tmp',target_is_directory=True)
+        with self.assertRaisesRegex(ValueError,'escaped'):inputs.drm_inputs(drm,self.out)
+
     def planned_build(self):
         cpu=self.out/'cpu';producer=cpu/'producer';source=self.out/'source';producer.mkdir(parents=True);source.mkdir()
         a=self.args;a.mesa.mkdir();a.mesa_build.mkdir();a.library_directory.mkdir()
