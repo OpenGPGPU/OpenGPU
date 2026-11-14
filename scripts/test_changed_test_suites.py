@@ -1281,6 +1281,42 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertIn("opengpu.graphics.ControlledIsolineWindowBinTypedImagePipelineSpec", actual)
         self.assertNotIn("opengpu.graphics.tessellation.TessellationSystemIsolineImageSharedSystemSpec", actual)
 
+    def test_sample_image_opt_in_aliases_select_bounded_checks_without_full_cus(self):
+        aliases={"opengpu.graphics.tessellation.TessellationSampleImageSharedSystemSpec",
+                 "opengpu.graphics.tessellation.TessellationSampleImageOpsSharedSystemSpec"}
+        common={"opengpu.system.NativeOwnerHostProfileSpec",
+                "opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec",
+                "opengpu.system.TessellationHostShaderRouterSpec",
+                "opengpu.system.TessellationImageBankOwnerSpec",
+                "opengpu.system.TessellationImageBankMuxSpec",
+                "opengpu.graphics.TypedFragmentImageStateReaderSpec",
+                "opengpu.graphics.FragmentShaderAbiSpec",
+                "opengpu.graphics.FragmentSampleVariableUnitSpec",
+                "opengpu.graphics.FragmentSampleShadingSchedulerSpec",
+                "opengpu.graphics.tessellation.TessellationSampleImageRecipeSpec",
+                "opengpu.graphics.tessellation.TessellationSystemIsolineImageAdmissionSpec",
+                "opengpu.graphics.ControlledIsolineWindowBinTypedImagePipelineSpec"}
+        operations={"opengpu.graphics.ShaderImageExecuteUnitSpec",
+                    "opengpu.graphics.ShaderImagePublicationReaderSpec",
+                    "opengpu.graphics.ShaderImageStoreEncoderSpec",
+                    "opengpu.core.frontend.decode.ImageExecutionAvailabilityDecodeSpec",
+                    "opengpu.core.frontend.decode.FullInstructionDecoderSpec"}
+        for suite in aliases:
+            path="src/test/scala/"+suite.replace(".","/")+".scala"
+            with self.subTest(suite=suite):
+                actual=set(changed_suites(REPO_ROOT,[path]))
+                self.assertTrue(common <= actual, common-actual)
+                self.assertFalse(aliases & actual)
+                if "Ops" in suite:
+                    self.assertTrue(operations <= actual, operations-actual)
+        for path in ("src/test/scala/opengpu/graphics/tessellation/TessellationSystemIsolineImageSharedSystemSpec.scala",
+                     "src/test/scala/opengpu/graphics/tessellation/TessellationSampleImageRecipeSpec.scala",
+                     "src/main/scala/opengpu/system/TessellationSystemIsolineImagePipeline.scala"):
+            with self.subTest(parent=path):
+                actual=set(changed_suites(REPO_ROOT,[path]))
+                self.assertTrue(common | operations <= actual, (common|operations)-actual)
+                self.assertFalse(aliases & actual)
+
     def test_tessellation_shader_routing_selects_owner_checks(self):
         root = Path(__file__).resolve().parents[1]
         actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/SharedShaderTaskRouter.scala"]))

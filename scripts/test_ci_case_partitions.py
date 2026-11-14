@@ -228,7 +228,9 @@ class CasePartitionsTest(unittest.TestCase):
 
     def test_typed_image_and_renderer_qualifications_are_local_only(self):
         for suite in ("opengpu.graphics.TypedTileImagePipelineSpec",
-                      "opengpu.graphics.TypedTileRenderPipelineSpec"):
+                      "opengpu.graphics.TypedTileRenderPipelineSpec",
+                      "opengpu.graphics.tessellation.TessellationSampleImageSharedSystemSpec",
+                      "opengpu.graphics.tessellation.TessellationSampleImageOpsSharedSystemSpec"):
             with self.subTest(suite=suite):
                 with self.assertRaisesRegex(ValueError, "Local-only qualification cannot run in CI"):
                     plan([suite], {suite: ["representative case"]})
