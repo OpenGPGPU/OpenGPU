@@ -133,6 +133,16 @@ def check_result(result):
         sourceQualificationRequired=True, clockQualified=False, fpsQualified=False)
     require(all(type(result.get(k)) is type(v) and result[k] == v for k, v in required.items()) and
         type(result.get("cases")) is list and len(result["cases"]) == len(NAMES), "incomplete blit host result")
+    require(not any(k in result for k in ('full112Profile', 'executorKind', 'profile',
+        'ownerResourceVersion', 'ownerResourceStage', 'resourceDiscoveryWords', 'computeFeatureFlags')),
+        'frozen owner blit cannot carry a different factory identity')
+    check_observations(result)
+
+
+def check_observations(result):
+    """Shared observed cycles/fault/reset census; authorizes no factory/schema."""
+    require(type(result.get('cases')) is list and len(result['cases']) == len(NAMES),
+            'blit requires all 43 original caller observations')
     for n, case in enumerate(result["cases"]):
         require(type(case) is dict and set(case) == {"inputIndex", "coordinateInvalidateCycles", "computeThroughRetirementCycles",
             "publicationInvalidateCycles"} and type(case["inputIndex"]) is int and case["inputIndex"] == n and

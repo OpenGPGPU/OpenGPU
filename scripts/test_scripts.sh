@@ -20,6 +20,7 @@ python3 scripts/test_gallium_transfers.py
 python3 scripts/test_pipe_transfer_ranges.py
 python3 scripts/test_framebuffer_blit.py
 python3 -B scripts/test_framebuffer_blit_host.py
+python3 -B scripts/test_framebuffer_blit_sample_host.py
 python3 scripts/test_gallium_graphics_constants.py
 python3 scripts/test_gallium_sample_graphics_bridge.py
 python3 scripts/test_native_sample_graphics_source.py
