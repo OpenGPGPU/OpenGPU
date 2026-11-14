@@ -82,5 +82,3 @@ def remove_container(name):
                 raise CleanupIncomplete('cannot exclude a live task container: ' + name)
     except (OSError, subprocess.TimeoutExpired) as error:
         raise CleanupIncomplete('cannot verify task container exit: ' + name) from error
-
-
