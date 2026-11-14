@@ -62,14 +62,3 @@ Do not append running progress diaries or commit generated process data or
 frozen evidence JSONs (formerly `docs/performance/`). Documentation records only
 final results, limits and reproduction commands; keep raw data only when the
 user explicitly requests it.
-
-# Development test resolution
-
-Routine rendering tests must use frame sizes no larger than 640x480; prefer
-smaller images when they cover the behavior. Use `GraphicsTestResolution` for
-frame-scale fixtures. Run 1280x720 only as an explicit extended qualification
-with `-Dopengpu.productQualification=1`, outside the regular PR/nightly lanes.
-Keep supported RTL capacities. The mandatory GPU alignment product target is
-2 CUs at 640x480 and 60 FPS; 720p and four-CU profiles are optional extensions.
-Large numeric/address inputs for bounded arithmetic or metadata boundary tests
-are allowed when they do not render or exhaustively traverse a large frame.
