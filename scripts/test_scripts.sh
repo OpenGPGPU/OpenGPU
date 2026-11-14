@@ -96,6 +96,7 @@ python3 scripts/test_native_owner.py
 python3 scripts/test_native_sample_owner.py
 python3 scripts/test_native_sample_gny2_oracle.py
 python3 scripts/test_native_sample_owner_oracle.py
+python3 scripts/test_qualify_native_sample_owner.py
 python3 scripts/test_native_sample_owner_recipe.py
 python3 scripts/test_compute_owner.py
 python3 scripts/test_native_binned_topology_fixture.py
