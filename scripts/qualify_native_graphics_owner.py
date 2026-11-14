@@ -53,7 +53,10 @@ def checked_inputs(args):
 def archive_source(root, revision, destination):
     destination.mkdir()
     # Only CPU producer dependencies; no copied RTL, models, logs or caches.
-    archive = subprocess.Popen(['git', '-C', root, 'archive', revision, 'driver', 'scripts', 'userspace'],
+    # The actual Mesa metadata checker decodes these published wire schemas.
+    # Keep them beside the fixed producer source, without borrowing live files.
+    archive = subprocess.Popen(['git', '-C', root, 'archive', revision, 'driver', 'scripts', 'userspace',
+        'docs/abi/native-binned-graphics-v1.json', 'docs/abi/typed-fragment-state-v1.json'],
                                stdout=subprocess.PIPE)
     try:
         subprocess.run(['tar', '-x', '-C', destination], stdin=archive.stdout, check=True)
