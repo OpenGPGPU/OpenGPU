@@ -1040,6 +1040,14 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertIn("opengpu.graphics.TessellationVertexPatchPublisherSpec", selected)
         self.assertIn("opengpu.graphics.TessellationVertexPatchSourceSpec", selected)
 
+    def test_original_vertex_patch_ranges_select_retirement_and_order_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        for source in ("system/TessellationVertexPatchSequence", "system/TessellationVertexPatchSource",
+                       "graphics/VertexInputSlice"):
+            with self.subTest(source=source):
+                selected = changed_suites(root, [f"src/main/scala/opengpu/{source}.scala"])
+                self.assertIn("opengpu.graphics.TessellationVertexPatchSequenceSpec", selected)
+
     def test_early_render_qualification_stays_local_while_shader_owner_checks_remain_required(self):
         root = Path(__file__).resolve().parents[1]
         local = "opengpu.graphics.EarlyDepthRenderQualificationSpec"
