@@ -226,8 +226,11 @@ lifetimes remain the production submitter's responsibility. These typed-wire
 component tests do not establish Mesa-to-driver-to-GPU input execution.
 
 An explicit actual-handler CPU integration passes ASan/UBSan using the linked
-308-word VS and 301-word FS. Gallium/lib sends its unchanged native request to
-the production Linux ioctl, scheduler, private owner and MMU bodies. Original
+308-word VS and 301-word FS in a single-CPU Linux container capped at 512 MiB
+without additional swap. All 26 compile units and their 275 actual make
+dependencies are bound to unchanged original inputs. Gallium/lib sends its
+unchanged native request to the production Linux ioctl, scheduler, private owner
+and MMU bodies. Original
 GEM backing comes directly from the same allocator used by that OS fixture;
 there is no imported copy, guessed physical address or reconstructed page table.
 Two submissions have distinct mutable frame/scratch GEMs and retain shared
@@ -241,8 +244,8 @@ while job references keep the actual storage alive through separate retirement.
 The prepared-owner capture mode passes GCC with ASan/UBSan using an immutable
 committed native implementation, including the final context/global-MMU cleanup
 implementation. The complete driver CPU suite, native MMIO/canonical physical
-parser, independent color oracle, seven controller/codec checks and five entry
-checks pass. The actual missing-qualification CLI refuses before creating a
+parser, independent color oracle, controller/codec checks and entry guards
+pass. The actual missing-qualification CLI refuses before creating a
 private directory. These results execute no GPU. It uses the actual hardware MMIO functions
 and exports the real union memory before enqueue. Its independent
 canonical parser checks OGCAP001/OGMEM001, actual Sv32 mappings, metadata RO/NX
@@ -351,7 +354,9 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/qualify_native_graphics_owner.py \
 
 The original checker must be used from its original checkout. This entry does
 not generate a model or substitute a test profile. It copies only committed CPU
-producer dependencies, privately stages the checked Mesa lowering source and
+producer dependencies, including both native-graphics and typed-fragment ABI
+schemas consumed by the metadata reader, privately stages the checked Mesa
+lowering source and
 runs the real Mesa/Linux producer under a fixed local compiler image with
 2 CPUs and 2 GiB. The GPU/Mesa workspace is read-only; only this managed task
 directory is writable. The default native kernel is the same fixed source
