@@ -160,6 +160,7 @@ def main():
     parser.add_argument('--reshard-dir', type=Path)
     parser.add_argument('--reshard-tool', type=Path)
     parser.add_argument('--precompiled-header', action='store_true')
+    parser.add_argument('--shard-opt', choices=('-O0', '-O1', '-O2', '-O3'), default='-O2')
     parser.add_argument('--conservative-alias', action='store_true')
     args = parser.parse_args()
     if args.jobs < 1 or args.shards < 1:
@@ -170,7 +171,8 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         runner = Runner(out, args.product, args.flashsim_dir, args.scene_jobs, args.shards,
             reshard=args.reshard_dir, reshard_tool=args.reshard_tool,
-            precompiled_header=args.precompiled_header, conservative_alias=args.conservative_alias,
+            precompiled_header=args.precompiled_header, shard_opt=args.shard_opt,
+            conservative_alias=args.conservative_alias,
             api_capacity=True, two_cu_vga=True, tile_log2=args.tile_log2)
         try:
             for stage in ('prepare', 'build', 'run', 'verify'):

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """CPU-only stale/incomplete owner product qualification rejection checks."""
 import copy
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -10,6 +11,25 @@ import qualify_native_owner_product as q
 
 
 class OwnerProductTests(unittest.TestCase):
+    def test_cli_preserves_the_exact_product_build_options(self):
+        parent=q.ROOT/'.artifacts';parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='owner-product-cli-',dir=parent) as d:
+            out=Path(d)
+            for extra,opt in (([], '-O2'), (['--shard-opt=-O0'], '-O0')):
+                argv=['owner-product', '--product', '--stage', 'build', '--output', d,
+                      '--flashsim-dir', d, '--tile-log2', '4', '--jobs', '2', '--shards', '32',
+                      '--precompiled-header', '--conservative-alias', *extra]
+                with patch.object(sys,'argv',argv), \
+                     patch.object(q.sequence,'checked_owner_output',return_value=out), \
+                     patch.object(q,'Runner') as runner:
+                    q.main()
+                    runner.assert_called_once_with(out, True, out, 1, 32,
+                        reshard=None, reshard_tool=None, precompiled_header=True,
+                        shard_opt=opt, conservative_alias=True, api_capacity=True,
+                        two_cu_vga=True, tile_log2=4)
+                    runner.return_value.build.assert_called_once_with(2)
+                    runner.return_value.run.assert_not_called()
+
     def rows(self, product):
         width, height = q.common.frame_size(product, True)
         return [dict(scene=name, profile=q.owner.PROFILE, computeUnits=2, nativeEngines=4,
