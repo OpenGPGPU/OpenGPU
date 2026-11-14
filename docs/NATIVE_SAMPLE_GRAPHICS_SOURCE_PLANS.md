@@ -94,8 +94,8 @@ covers the new producer. Reproduce the host regression with a managed temporary
 directory and plain host compiler:
 
 ```sh
-TMPDIR="$OUT" OPENGPU_TEST_SANITIZERS=1 CC=cc \\
-  OPENGPU_MESA_DIR="$MESA" OPENGPU_DRM_INCLUDE="$DRM_INCLUDE" \\
+TMPDIR="$OUT" OPENGPU_TEST_SANITIZERS=1 CC=cc \
+  OPENGPU_MESA_DIR="$MESA" OPENGPU_DRM_INCLUDE="$DRM_INCLUDE" \
   python3 -B scripts/test_driver.py
 ```
 
