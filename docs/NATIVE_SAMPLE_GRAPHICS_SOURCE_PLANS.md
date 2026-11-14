@@ -158,29 +158,62 @@ OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_sample_graphics_source.
 OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_gallium_sample_graphics_bridge.py
 ```
 
-The explicit actual-Mesa entry requires this full source preflight after
-capture. It passed on fixed source `a098992fb` with original Mesa22.3.6 and
-actual Linux protected snapshots: original VS308/FS301 words, two owners with
-26 windows each, real non-declaration-order linked reflection, all GUR/GUB
-records through binding index23, actual private RX and reachable descriptor
-links, eight frame resource roles and separate 16384-byte completion views.
-The OGNP0002 observations were explicitly synthetic CPU inputs. Reproduce with
-the actual-Mesa CPU entry and environment above; no Mesa library is rebuilt.
+The explicit actual-Mesa entry requires the full source preflight after
+capture. Fixed source `39775cfa1` passed with original Mesa22.3.6 and actual
+Linux protected snapshots: original VS308/FS301 words, two owners with 26
+windows each, real non-declaration-order linked reflection, all GUR/GUB records
+through binding index23, both private RX images, eight frame resource roles
+and separate 16384-byte completion views. Both complete canonical descriptor
+recipes passed. The independent owner preflight accepted the actual first C
+capture, and its capture-identity check accepted the actual second capture,
+including job bounds, SATP, context, canonical GNX predicates and exact writable
+page envelopes. The OGNP0002 observations were explicitly synthetic CPU inputs,
+with an explicitly supplied two-bank shader configuration. Neither capture is
+a DUT receipt.
 
-This run used immutable image `cc860b33283c`, one CPU, 512MiB memory with equal
-swap limit, no network and read-only original sources/libraries. Immediately
-before C execution it bound all 8098 Mesa/DRM/library inputs plus both actual
-state-tracker link objects, 1017 frozen GPU inputs including Python and the
-three ABI schemas, all 28 compiler-generated dependency units and 388 execution
-inputs including generated files and the binary. The actual dependencies
-included the new source-plan include. Every identity matched after C returned
-and after the complete independent Python preflight. The container and all
-child processes ended; private builds, source copies and raw outputs were
+Reproduce with the actual-Mesa CPU entry and environment above; no Mesa library
+is rebuilt. After that entry completes, use the separate compiler words,
+reflection, source plans and explicitly synthetic profile JSON for these checks:
+
+```sh
+PYTHONPATH="$TOPIC/scripts" python3 -B - <<'PY'
+import json, os
+from pathlib import Path
+from compute_owner_oracle import SparseMemory
+from native_sample_graphics_recipe import verify
+from native_sample_graphics_owner_oracle import preflight, capture_identity
+p = Path(os.environ["OUT"]) / "build/glsl"
+profile = json.loads(Path(os.environ["CPU_PROFILE_JSON"]).read_text())
+programs = [(p / ("native-real-" + stage + ".words")).read_bytes()
+            for stage in ("vs", "fs")]
+reflection = json.loads((p / "compiler-reflection.json").read_text())
+records = [json.loads((p / ("record-%d.source-plan.json" % i)).read_text())
+           for i in range(2)]
+captures = [(p / ("record-%d.capture" % i)).read_bytes() for i in range(2)]
+with SparseMemory(p / "union.memory") as memory:
+    for record in records:
+        verify(memory, record, programs, reflection)
+    first = preflight(memory, records, programs, reflection, profile, captures[0])
+    second = capture_identity(captures[1], profile, records[1])
+    assert first != second
+PY
+```
+
+The validation used immutable image `cc860b33283c`, one CPU, 512MiB memory with
+equal swap limit, no network and read-only original sources/libraries. The
+execution-scoped input binding covered all 10045 external Mesa/DRM/library
+files, including both actual state-tracker objects, 3198 frozen GPU inputs
+including Python and the three ABI schemas, all 28 actual compiler-generated
+dependency units with 328 dependencies and the source-plan/internal-frame
+includes, generated inputs and the binary. All 13336 bound inputs matched after
+C execution and after the complete independent preflight. The container and
+all child processes ended; private builds, source copies and raw outputs were
 removed.
 
-These checks establish CPU source/oracle behavior only; they do not execute
-shaders, publish or validate GNY2 counters, implement the future two-owner live
-protocol, or authorize a hardware cleanup ACK. The optional image test supplies
-synthetic returned pixels and is not GPU evidence. No JVM or model was started
-for this source-proof slice. Complete canonical descriptor/GNY2 validation and
-actual image execution remain unfinished.
+These checks establish CPU source, canonical descriptor and capture/oracle
+interoperability only. The control/retirement/cleanup peer remains modeled CPU
+behavior. No shader or JVM/model ran, no returned image/GNY2 was supplied, and
+`verify_result` was not called. Actual two-owner live execution, full returned
+GNY2/image validation, observed cleanup and product qualification remain
+unfinished. The optional synthetic image/GNY2 tests are CPU oracle tests and
+are not GPU evidence.
