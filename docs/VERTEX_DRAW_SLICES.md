@@ -99,6 +99,10 @@ Its native instruction fixture copies fetched attributes and original IDs;
 the test independently reads every patch word after completion, holds replies
 and retains the patch until explicit release before healthy reuse. These new
 Scala cases have passed syntax parsing only and remain unexecuted.
+The full 32×64 case is a publisher peer; the actual-CU test source uses one
+varying slot and patches of two or three vertices. Its seal acceptor is the
+harness, not `TessellationPatchContext`. Actual context seal/cancel/drain and
+full-capacity VS-to-patch execution remain separate pending validation.
 
 The existing protected PR test selector maps all three slice/fetch/stage source
 files to the fetcher and focused actual-CU cases. Publisher source edits select
