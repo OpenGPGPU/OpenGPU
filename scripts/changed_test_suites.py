@@ -593,6 +593,19 @@ def changed_suites(root, changed, *, test_index=None):
                   "src/main/scala/opengpu/graphics/VertexShaderStage.scala",
                   "src/main/scala/opengpu/graphics/VertexInputSlice.scala"}:
         affected.add("src/test/scala/opengpu/graphics/TessellationVertexPatchOwnerSpec.scala")
+    if changed & {"src/main/scala/opengpu/system/TessellationVertexInputImageControl.scala",
+                  "src/main/scala/opengpu/system/TessellationSystemIsolineVertexInputImage.scala",
+                  "src/main/scala/opengpu/system/TessellationSystemTriangleVertexInputImage.scala",
+                  "src/main/scala/opengpu/system/TessellationSystemQuadVertexInputImage.scala",
+                  "src/main/scala/opengpu/system/TessellationVertexPatchOwner.scala",
+                  "src/main/scala/opengpu/system/TessellationVertexPatchSource.scala",
+                  "src/main/scala/opengpu/graphics/VertexShaderStage.scala",
+                  "src/main/scala/opengpu/graphics/VertexInputSlice.scala",
+                  "src/main/scala/opengpu/graphics/VertexInputFetcher.scala",
+                  "src/main/scala/opengpu/graphics/tessellation/TessellationPatchStore.scala",
+                  "src/main/scala/opengpu/graphics/tessellation/TessellationPatchContext.scala",
+                  "src/main/scala/opengpu/graphics/ShaderUniformResources.scala"}:
+        affected.add("src/test/scala/opengpu/graphics/TessellationVertexInputImageSpec.scala")
     if changed & {"src/main/scala/opengpu/system/TessellationVertexSourceReader.scala",
                   "src/main/scala/opengpu/system/TessellationVertexPatchSource.scala",
                   "src/main/scala/opengpu/graphics/tessellation/TessellationPatchStore.scala",
