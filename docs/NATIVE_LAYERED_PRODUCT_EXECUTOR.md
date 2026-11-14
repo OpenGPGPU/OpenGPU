@@ -62,3 +62,15 @@ the same real traffic/completion/publication/retirement checks and unchanged
 original ABI1 recipes; it does not qualify SampleID/Position builtins. Its
 exact manifest, row and runner contract is described in
 `NATIVE_LAYERED_PRODUCT_QUALIFICATION.md`.
+
+The shared execution header participates in both fixed runners' fixture and
+build source hashes and the FlashSim builder's explicit dependency hashes.
+The CPU regression below compiles both actual wrapper sources against the
+host stub, then proves cross-magic and mixed-table inputs fail before memory
+loading. It also rejects an unrecorded include, opposite-wrapper build records
+and a mutated shared header at fixture, compiled-build and FlashSim-build hash
+boundaries. These negative checks do not execute a GPU or qualify an image.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_sample_layered_driver_guards.py
+```
