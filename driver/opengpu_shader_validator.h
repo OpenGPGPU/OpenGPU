@@ -58,16 +58,18 @@ struct opengpu_shader_state {
     opengpu_shader_u32 vector_packet_indexed;
     opengpu_shader_u32 vector_local_packets;
     unsigned char vector_packet_sources[32];
-    opengpu_shader_u32 vector_length;
+    /* VL is bounded by the 255-entry ABI. Pack resource-result flags into
+     * its spare bits so each of the five branch states stays compact. */
+    opengpu_shader_u32 vector_length:28;
+    opengpu_shader_u32 image_result_valid:1;
+    opengpu_shader_u32 storage_values_valid:1;
+    opengpu_shader_u32 storage_atomic_values_valid:1;
+    opengpu_shader_u32 shared_atomic_values_valid:1;
     opengpu_shader_u32 texture_parameter_pairs;
     opengpu_shader_u32 image_parameter_pairs;
     opengpu_shader_u32 shared_written_prefix;
     opengpu_shader_u32 shared_visible_prefix;
     struct opengpu_shared_own_proof *shared_own;
-    bool image_result_valid;
-    bool storage_values_valid;
-    bool storage_atomic_values_valid;
-    bool shared_atomic_values_valid;
 };
 
 struct opengpu_shader_branch_state {
@@ -934,7 +936,14 @@ static inline bool opengpu_shader_writes_vector(opengpu_shader_u32 w)
         fn != 16u && fn != 24u && fn != 30u;
 }
 
-static inline struct opengpu_shared_range opengpu_shader_vector_range(
+/* Keep range transfer outside the large branch-state frame on kernel builds.
+ * Its by-value operands otherwise add spill slots to every analyzer instance. */
+#ifdef __KERNEL__
+static __attribute__((__noinline__)) struct opengpu_shared_range
+#else
+static inline struct opengpu_shared_range
+#endif
+opengpu_shader_vector_range(
     const struct opengpu_shader_state *s, opengpu_shader_u32 w,
     opengpu_shader_u32 lanes)
 {
