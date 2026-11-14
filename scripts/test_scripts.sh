@@ -22,6 +22,7 @@ python3 scripts/test_framebuffer_blit.py
 python3 -B scripts/test_framebuffer_blit_host.py
 python3 scripts/test_gallium_graphics_constants.py
 python3 scripts/test_gallium_sample_graphics_bridge.py
+python3 scripts/test_native_sample_graphics_source.py
 python3 scripts/test_native_sample_graphics.py
 python3 scripts/test_native_graphics_owner_bridge.py
 python3 scripts/test_qualify_native_graphics_owner.py
