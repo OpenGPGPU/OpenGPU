@@ -12,12 +12,7 @@ struct Writable { uint64_t first, end; };
 constexpr uint32_t required_owner_caps=GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE|
   GPU_CAP_COMPUTE_SCALAR_FPU|GPU_CAP_SHADER_CONFIG_INFO|GPU_CAP_NATIVE_PIXEL_FORMATS;
 inline void require_owner_shader_profile(uint32_t caps,uint32_t shader) {
-  const auto batch=(caps&GPU_CAP_FRAGMENT_BATCH_MASK)>>GPU_CAP_FRAGMENT_BATCH_SHIFT;
-  require((caps&required_owner_caps)==required_owner_caps &&
-    opengpu_shader_resources_valid(shader,batch) &&
-    opengpu_shader_resource_lanes(shader)==16 && opengpu_shader_resource_warps(shader)==8 &&
-    opengpu_shader_resource_cus(shader)==2,
-    "owner profile has inconsistent capabilities, batch or two-CU shader resources");
+  require_product_owner_shader_profile(caps,shader);
 }
 struct Capture {
   uint64_t max_cycles;

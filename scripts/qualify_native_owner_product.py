@@ -20,6 +20,13 @@ def validate_rows(rows, product):
                     resourceDiscoveryWords=96, computeFeatureFlags=0x3ffff,
                     frameWidth=width, frameHeight=height, trafficDrained=True,
                     imageVerificationRequired=True, clockQualified=False, fpsQualified=False)
+    expected.update(cycleScopeVersion=2, serviceCycleScope='post-submit-to-irq',
+                    frameCycleScope='reset-through-verified-retirement',
+                    submittedCommands=1, successfulCompletions=1, retiredCompletions=1,
+                    completionCountSource='observed-command-retirement',
+                    drawCompletionCountAvailable=False, primitiveCompletionCountAvailable=False,
+                    liveProfilePreflight=True,
+                    idleBeforeSubmit=True, shaderInputSource='native-product-hand-encoded')
     for row in rows:
         if (any(type(row.get(k)) is not type(v) or row[k] != v for k, v in expected.items())
                 or row.get('samples') != (4 if row['scene'] == 'msaa-4x' else 1)
@@ -32,6 +39,29 @@ def validate_rows(rows, product):
                 or len(row['phaseWorkerCycles']) != 6
                 or any(type(v) is not int or not 0 <= v < 2**64 for v in row['phaseWorkerCycles'])):
             raise RuntimeError('Incomplete or mismatched full owner execution metrics')
+        intervals = ('gpuCyclesAtServiceBegin', 'gpuCyclesAtIrq', 'frameCycles')
+        if (any(type(row.get(k)) is not int or not 0 < row[k] < 2**64 for k in intervals)
+                or row['gpuCyclesAtIrq'] - row['gpuCyclesAtServiceBegin'] != row['serviceCycles']
+                or not row['gpuCyclesAtIrq'] <= row['gpuCycles'] < row['frameCycles']):
+            raise RuntimeError('Owner service and reset-through-retirement intervals differ')
+        expected_gnx = [0x474e5801, 0, 0, 0, 0, 0, 7, 8, 9, 0, 0, 0]
+        if (not isinstance(row.get('gnx'), list) or len(row['gnx']) != 12
+                or any(type(v) is not int for v in row['gnx']) or row['gnx'] != expected_gnx):
+            raise RuntimeError('Owner completion lacks complete original GNX fault and identity observations')
+        registers = row.get('profileRegisters')
+        if (not isinstance(registers, list) or len(registers) != 5
+                or any(type(r) is not dict or set(r) != {'address', 'value'}
+                       or type(r['address']) is not int or r['address'] != address
+                       or type(r['value']) is not int or not 0 <= r['value'] < 2**32
+                       for r, address in zip(registers, (0, 0x60, 0x68, 0x320, 0x158)))):
+            raise RuntimeError('Owner live profile register observations are incomplete')
+        device, caps, pointer, quota, shader = (r['value'] for r in registers)
+        required_caps = (1 << 6) | (1 << 22) | (1 << 23) | (1 << 25) | (1 << 29)
+        lanes, warps, banks, cus = (shader >> shift & 255 for shift in (0, 8, 16, 24))
+        if (device & 0xffff < 2 or caps & required_caps != required_caps
+                or pointer != 0x160 or not quota or (lanes, warps, cus) != (16, 8, 2)
+                or banks < 2 or banks & 1 or lanes * warps != (caps >> 8 & 255)):
+            raise RuntimeError('Owner live profile contradicts the complete two-CU contract')
 
 
 class Runner(sequence.OwnerRunner):
@@ -130,18 +160,19 @@ def main():
     parser.add_argument('--reshard-dir', type=Path)
     parser.add_argument('--reshard-tool', type=Path)
     parser.add_argument('--precompiled-header', action='store_true')
+    parser.add_argument('--shard-opt', choices=('-O0', '-O1', '-O2', '-O3'), default='-O2')
     parser.add_argument('--conservative-alias', action='store_true')
     args = parser.parse_args()
     if args.jobs < 1 or args.shards < 1:
         parser.error('--jobs and --shards must be positive')
-    out = args.output.resolve()
-    if not out.is_relative_to(ROOT / '.artifacts') or not out.is_dir():
-        parser.error('--output must be an already prepared owner DUT inside this checkout .artifacts')
+    try:out=sequence.checked_owner_output(args.output)
+    except RuntimeError as error:parser.error(str(error))
     with (out / '.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         runner = Runner(out, args.product, args.flashsim_dir, args.scene_jobs, args.shards,
             reshard=args.reshard_dir, reshard_tool=args.reshard_tool,
-            precompiled_header=args.precompiled_header, conservative_alias=args.conservative_alias,
+            precompiled_header=args.precompiled_header, shard_opt=args.shard_opt,
+            conservative_alias=args.conservative_alias,
             api_capacity=True, two_cu_vga=True, tile_log2=args.tile_log2)
         try:
             for stage in ('prepare', 'build', 'run', 'verify'):

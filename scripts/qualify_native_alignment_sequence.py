@@ -31,6 +31,22 @@ def temporary_root():
     return directory
 
 
+def checked_owner_output(path):
+    """Reuse one exact-source owner across worktrees in this GPU repository.
+
+    The current original preparer still checks every Scala/build/SRAM/helper
+    byte, all discovery words, all RTL and assertion bytes. Changing a driver
+    script never authorizes relabeling a different factory or hardware source.
+    """
+    out = Path(path).resolve()
+    if not out.is_dir() or not out.is_relative_to(temporary_root()):
+        raise RuntimeError('Owner output must be an existing prepared DUT inside this GPU repository .artifacts')
+    owner.prepared(out)
+    if (out / '.lock').is_symlink():
+        raise RuntimeError('Owner build/execution lock must not be aliased')
+    return out
+
+
 def validate_rows(rows, owner_profile=False):
     expected = [(name, epoch) for name in common.SCENES for epoch in range(2)]
     if [(r.get('scene'), r.get('epoch')) for r in rows] != expected:
@@ -232,10 +248,11 @@ def main():
     if (args := parser.parse_args()).jobs < 1 or args.shards < 1:
         parser.error('--jobs and --shards must be positive')
     out = args.output.resolve()
-    if not out.is_relative_to(ROOT / '.artifacts'):
+    if args.owner_profile:
+        try:out=checked_owner_output(out)
+        except RuntimeError as error:parser.error(str(error))
+    elif not out.is_relative_to(ROOT / '.artifacts'):
         parser.error('--output must be inside this checkout .artifacts')
-    if args.owner_profile and not out.is_dir():
-        parser.error('--owner-profile requires an already prepared owner DUT directory')
     out.mkdir(parents=True, exist_ok=True)
     with (out / '.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
