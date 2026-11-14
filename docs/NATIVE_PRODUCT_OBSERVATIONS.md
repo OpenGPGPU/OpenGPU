@@ -84,24 +84,27 @@ also fails. This permits driver-tool development around one original model
 without duplicating or relabeling it. Every run retains the original output
 lock; finish existing generation and executor work before starting these stages.
 
-For the same source-qualified owner, after its original generation completes:
+For the same source-qualified owner, after its original generation and previous
+executor finish and release the original lock, run all six full frames serially:
 
 ```sh
-python3 scripts/qualify_native_owner_product.py --product --stage prepare \
-  --output "$OWNER" --flashsim-dir "$ORIGINAL_FLASHSIM"
-python3 scripts/qualify_native_owner_product.py --product --stage build \
-  --output "$OWNER" --flashsim-dir "$ORIGINAL_FLASHSIM" --jobs 2
-python3 scripts/qualify_native_owner_product.py --product --stage run \
-  --output "$OWNER" --flashsim-dir "$ORIGINAL_FLASHSIM"
-python3 scripts/qualify_native_owner_product.py --product --stage verify \
-  --output "$OWNER" --flashsim-dir "$ORIGINAL_FLASHSIM"
+for stage in prepare build run verify; do
+  "$ORIGINAL_PYTHON" -B scripts/qualify_native_owner_product.py --product \
+    --stage "$stage" --output "$OWNER" --flashsim-dir "$ORIGINAL_FLASHSIM" \
+    --tile-log2 4 --jobs 2 --scene-jobs 1 --shards 32 \
+    --shard-opt=-O0 --precompiled-header --conservative-alias || break
+done
 ```
 
 Use the generation-matched Python/CIRCT/FlashSim environment and build options
-for every stage. All six independent 640×480 image/sample/resolve/guard checks
+for every stage. The product CLI passes the selected shard optimization to the
+original builder and exact build-identity guard; its default remains `-O2`.
+The example selects `-O0` to reuse matching generated-model shards. A different
+optimization requires its own guarded build and never relabels a previous
+executor. All six independent 640×480 image/sample/resolve/guard checks
 remain required. These entries neither qualify a different compute-stage or
 geometry factory nor transfer a v1 clock/FPS result to that later profile.
 
 Reproduce path, exact-source refusal, fixture and independent-verification
 checks with `python3 -B scripts/test_qualify_native_owner_product.py` and
-`python3 -B scripts/test_native_alignment_sequence.py` (eleven cases total).
+`python3 -B scripts/test_native_alignment_sequence.py` (twelve cases total).
