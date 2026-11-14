@@ -69,7 +69,15 @@ x5..7 local sizes, x8 linear base, x9 physical CU capacity, and only v1 initiali
 Other scalar, vector and FP registers start undefined. x1 may be overwritten as
 data; no register value grants raw memory authority. Full E32/M1 VL uses verified
 physical capacity or VLMAX, never output vertex count. Forward scalar branches
-and bounded structured TCS SIMT merge definite register/parameter state. Backward
+and bounded structured TCS SIMT merge lane-private vector definitions. Scalar
+and FP registers are warp-shared, not restored by a SIMT mask stack. Inside a
+scope, scalar writes are restricted to x10 LUI/ADDI constant scratch and checked
+uniform results into x10 (or discarded x0); other scalar/FP writes and CSR/VL
+changes are rejected. Every push, arm switch and JOIN clears x10, FP, v0/mask
+and captured-parameter authority. Each arm must rematerialize its own scalar
+scratch and capture parameters again before storing; a common continuation
+cannot inherit those proofs from a software branch snapshot. Other scalar
+registers are read-only within scopes; per-lane vector FP32 remains available. Backward
 branches, indirect control, short VL, unsafe cross-lane operations, multi-register
 widen/narrow operations and lane-zero extraction inside SIMT are rejected by
 this conservative dialect.
@@ -162,15 +170,16 @@ branch merges, SIMT convergence, malformed patch access, physical-capacity VL,
 barrier/early-exit rejection and TES single-point publication. Exact source and
 caller-profile mutation, source-reference/producer readiness failures, allocation
 failures, RX/no-W PA alias exclusion, timeout/shootdown quarantine and healthy
-reuse exercise the real private owner/MMU. Eight isolated validator mutations
+reuse exercise the real private owner/MMU. Twelve isolated validator mutations
 are rejected by semantic assertions, covering definedness, masked parameters,
-barrier drain, publication, uniform ownership, raw memory, coupled patch capacity and wrong VL capacity.
+barrier drain, publication, uniform ownership, raw memory, coupled patch capacity, wrong VL capacity and shared scalar/FP/mask/parameter branch-state restoration.
 Original ESSL compiled by the real Mesa frontend and the independent P17
-emitter also passes this validator/RX/MMU path: TCS 228 words with exact layout
+emitter also passes this validator/RX/MMU path: baseline TCS/TES 228/149 words, full twelve-block-per-stage programs 292/201
+words, and conditional-uniform programs 340/149 words. All use exact TCS layout
 (input vertices/components 2/4, output vertices/components 2/8, patch components
-0), TES 149 words with eight static patch selections and eight output components,
+0), TES with eight static patch selections and eight output components,
 16 lanes and eight warps, both owned uniform scopes enabled. This validates
-original native bytes and their protected copy; it does not execute the shaders
+original native bytes against the strict shared-RF SIMT rules and their protected copy; it does not execute the shaders
 or validate a GPU-computed result. The TessLevel regression rejects a missing
 perPatch bit and accepts level5 even with zero ordinary patch components.
 

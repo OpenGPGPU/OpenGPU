@@ -91,10 +91,38 @@ static void program_tests(void)
     branch[0]=tb(0x63,0,8,0,-4);INVALID(branch,c);branch[0]=tb(0x63,0,8,0,24);INVALID(branch,c);
     u32 early[]={tb(0x63,0,8,0,8),OPENGPU_SHADER_CEASE,0xb,OPENGPU_SHADER_CEASE};INVALID(early,c);
     u32 skipped[]={tb(0x63,0,0,0,8),0xffffffff,OPENGPU_SHADER_CEASE};VALID(skipped,c);
-    u32 simt[]={0x0104f057,tb(0x5b,3,0,0,24),tb(0x5b,0,1,1,12),tp(20,0,1,0,true),OPENGPU_SHADER_SIMT_JOIN,
-        tp(20,0,1,0,true),OPENGPU_SHADER_SIMT_JOIN,OPENGPU_SHADER_SIMT_JOIN,tv(23,3,3,1,0,true),tp(22,0,1,3,true),0xb,OPENGPU_SHADER_CEASE};
-    VALID(simt,c);simt[5]=tv(23,3,3,1,0,true);INVALID(simt,c);simt[5]=tp(20,0,1,0,true);
-    simt[3]=0xb;INVALID(simt,c);simt[3]=tp(20,0,1,0,true);simt[4]=0x13;INVALID(simt,c);
+    u32 simt[]={0x0104f057,tb(0x5b,3,0,0,24),tb(0x5b,0,1,1,12),tv(23,3,5,0,0,true),OPENGPU_SHADER_SIMT_JOIN,
+        tv(23,3,5,0,0,true),OPENGPU_SHADER_SIMT_JOIN,OPENGPU_SHADER_SIMT_JOIN,tv(23,3,3,1,0,true),
+        tp(20,0,5,0,true),tp(22,0,1,3,true),0xb,OPENGPU_SHADER_CEASE};
+    VALID(simt,c);simt[5]=0x13;INVALID(simt,c);simt[5]=tv(23,3,5,0,0,true);
+    simt[3]=0xb;INVALID(simt,c);simt[3]=tv(23,3,5,0,0,true);simt[4]=0x13;INVALID(simt,c);
+    /* Real RF is shared across arms: an entry snapshot cannot restore x10. */
+    u32 clobber[]={0x0104f057,ti(10,0,0),tb(0x5b,3,0,0,24),tb(0x5b,0,1,1,12),ti(10,0,1),
+        OPENGPU_SHADER_SIMT_JOIN,tv(23,4,3,10,0,true),OPENGPU_SHADER_SIMT_JOIN,OPENGPU_SHADER_SIMT_JOIN,OPENGPU_SHADER_CEASE};
+    INVALID(clobber,c);
+    /* Other scalar registers cannot be mutated in either arm. */
+    clobber[1]=ti(11,0,0);clobber[4]=ti(11,0,1);clobber[6]=tv(23,4,3,11,0,true);INVALID(clobber,c);
+    u32 rematerialize[]={0x0104f057,ti(10,0,0),tb(0x5b,3,0,0,28),tb(0x5b,0,1,1,12),ti(10,0,1),
+        OPENGPU_SHADER_SIMT_JOIN,ti(10,0,2),tv(23,4,3,10,0,true),OPENGPU_SHADER_SIMT_JOIN,OPENGPU_SHADER_SIMT_JOIN,OPENGPU_SHADER_CEASE};
+    VALID(rematerialize,c);rematerialize[6]=ti(10,10,1);INVALID(rematerialize,c);rematerialize[6]=ti(10,0,2);
+    /* Shared scalar FP cannot be restored or clobbered through lane snapshots. */
+    rematerialize[6]=0xf0050553;INVALID(rematerialize,c);rematerialize[6]=ti(10,0,2);
+    u32 nested_scratch[]={0x0104f057,ti(10,0,0),tb(0x5b,3,0,0,56),tb(0x5b,0,1,1,40),
+        tb(0x5b,3,0,0,24),tb(0x5b,0,1,1,12),ti(10,0,1),OPENGPU_SHADER_SIMT_JOIN,ti(10,0,2),
+        OPENGPU_SHADER_SIMT_JOIN,OPENGPU_SHADER_SIMT_JOIN,ti(10,10,1),OPENGPU_SHADER_SIMT_JOIN,
+        ti(10,0,0),tv(23,4,3,10,0,true),OPENGPU_SHADER_SIMT_JOIN,OPENGPU_SHADER_SIMT_JOIN,OPENGPU_SHADER_CEASE};
+    INVALID(nested_scratch,c);nested_scratch[11]=ti(10,0,3);VALID(nested_scratch,c);
+    u32 fp_scope[]={0x0104f057,tb(0x5b,3,0,0,24),tb(0x5b,0,1,1,12),0xf0000553,OPENGPU_SHADER_SIMT_JOIN,
+        0x13,OPENGPU_SHADER_SIMT_JOIN,OPENGPU_SHADER_SIMT_JOIN,OPENGPU_SHADER_CEASE};INVALID(fp_scope,c);
+    fp_scope[3]=tv(0,1,3,1,1,true);VALID(fp_scope,c); /* lane-private FP32 remains supported */
+    /* A common continuation has to recapture parameters; neither arm carries
+     * a warp-global parameters/mask proof across a JOIN. */
+    u32 shared_params[]={0x0104f057,tv(23,3,3,1,0,true),tb(0x5b,3,0,0,24),tb(0x5b,0,1,1,12),tp(20,0,1,0,true),
+        OPENGPU_SHADER_SIMT_JOIN,tp(20,0,1,0,true),OPENGPU_SHADER_SIMT_JOIN,OPENGPU_SHADER_SIMT_JOIN,tp(22,0,1,3,true),OPENGPU_SHADER_CEASE};
+    INVALID(shared_params,c);
+    u32 inherited_mask[]={0x0104f057,tv(23,3,0,31,0,true),tv(23,3,3,1,0,true),tb(0x5b,3,0,0,24),tb(0x5b,0,1,1,12),
+        tp(20,0,1,0,false),OPENGPU_SHADER_SIMT_JOIN,tp(20,0,1,0,false),OPENGPU_SHADER_SIMT_JOIN,OPENGPU_SHADER_SIMT_JOIN,OPENGPU_SHADER_CEASE};
+    INVALID(inherited_mask,c);
     u32 tes[]={ti(10,0,0),ti(11,0,0),tg(32,12,10,11),0x0104f057,tv(23,4,3,12,0,true),
         tv(16,2,13,0,3,true),ti(10,0,0),tg(33,0,10,13),tg(35,0,0,0),tg(36,0,0,0),OPENGPU_SHADER_CEASE};
     VALID(tes,e);INVALID(tes,c);
