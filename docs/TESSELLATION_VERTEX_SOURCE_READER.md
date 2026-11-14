@@ -79,8 +79,10 @@ python3 -B scripts/test_test_selection.py
 rm -r -- "$CHECK_OUT" "$SIM_OUT"
 ```
 
-The outer protected BUILD, production GNT7/8/9 reader wiring, actual original
-GND read/match and memory routing remain pending. They must connect this root
+The separate [original GND reader](TESSELLATION_VERTEX_DRAW_READER.md) captures
+and checks the original VS draw without rebasing inputs. The outer protected
+BUILD, production GNT7/8/9 and GVS/GND reader-to-parent wiring and memory routing
+remain pending. They must connect these captured records
 to the GPU patch/instance range sequencer and real VS source, then retain all
 resources through actual TCS/TES execution and whole-patch retirement. Root
 decoding, CPU owner tests and publisher peers do not close that joint gate.
