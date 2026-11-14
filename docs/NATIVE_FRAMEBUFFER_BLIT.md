@@ -66,11 +66,27 @@ The existing transfer/depth/viewport/sampler/attachment and winsys range/unbind
 CPU regressions also pass. Linux ioctls and device scheduling are modeled in the
 CPU fixture; these results do not prove actual RTL execution.
 
+The actual caller can export 37 bounded original submissions: both filters and
+all 16 color pairs, four depth/stencil selections and a same-GEM copy. Each
+contains the original shader, kernarg, descriptor/maps, complete GEM bytes,
+exact permissions/view bounds and an independently calculated expected GEM.
+Preparation pins the compiler and transitive C/Python source closure before and
+after capture. Reuse requires an external manifest hash and unchanged original
+sources; this CPU receipt cannot qualify a DUT. The C++ reader checks all 37
+against the production emitter/maps and an independent direct affine pixel
+oracle. ASan/UBSan passes these inputs and 27 malformed input rejections.
+The bounded Sv32 fixture retains actual GEM identity, aliases, bytes and exact
+GSB1 permissions; independent walks check every mapped page, while complete
+memory checks include shader, maps, page tables, padding and image guards.
+
 ```sh
 python3 -B scripts/test_framebuffer_blit.py
 OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 \
 OPENGPU_DRM_INCLUDE=/path/to/drm-headers \
   python3 -B scripts/test_gallium_compute.py --fixture framebuffer-blit
+OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 \
+OPENGPU_DRM_INCLUDE=/path/to/drm-headers \
+  python3 -B scripts/test_framebuffer_blit_inputs.py
 ```
 
 Actual two-CU/Sv32/L2 execution, fault/reset drain and completion retirement remain
