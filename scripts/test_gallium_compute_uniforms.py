@@ -28,6 +28,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         ap.add_argument('--profile-wire', type=Path, required=True)
         ap.add_argument('--session', type=Path, required=True)
         ap.add_argument('--capture-only', action='store_true', help='explicit CPU capture only; no DUT execution')
+        ap.add_argument('--capture-counter-matrix', action='store_true',
+                        help='CPU only: reuse one build for all original static/dynamic counter recipes')
     if sample_graphics:
         ap.add_argument("--profile-wire", type=Path, help="CPU mode's strict OGNP0002 observations; label synthetic fixtures explicitly")
         mode = ap.add_mutually_exclusive_group(required=True)
@@ -44,6 +46,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     ap.add_argument("--mesa-shared-ntt", type=Path,
                     help="exact privately staged shared NTT source (shared fixtures only)")
     args = ap.parse_args()
+    if host_execution and args.capture_counter_matrix and (not args.capture_only or args.case != 'counter-increment'):
+        ap.error('--capture-counter-matrix requires --case counter-increment --capture-only')
     if host_execution and args.case in COUNTER_CASES:
         atomic_counters = True
     if args.mesa_shared_ntt and not (shared_memory or shared_publication):
@@ -406,8 +410,15 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         env["UBSAN_OPTIONS"] = "halt_on_error=1:print_stacktrace=1"
     if host_execution:
         args.session.mkdir(parents=True, exist_ok=True)
-        run([binary, args.profile_wire.resolve(), args.session.resolve(), sources / ('full128.comp' if args.case == 'uniforms' else 'full.comp' if args.case == 'shared' else counter_parameters(args.case)['source'] if args.case in COUNTER_CASES else args.case + '.comp'), args.case] +
-            (['--capture-only'] if args.capture_only else []), 'actual-compute-capture', env)
+        cases=COUNTER_CASES if args.capture_counter_matrix else (args.case,)
+        for case in cases:
+            session=args.session/case if args.capture_counter_matrix else args.session
+            if args.capture_counter_matrix:session.mkdir(exist_ok=False)
+            source=('full128.comp' if case=='uniforms' else 'full.comp' if case=='shared' else
+                    counter_parameters(case)['source'] if case in COUNTER_CASES else case+'.comp')
+            run([binary,args.profile_wire.resolve(),session.resolve(),sources/source,case]+
+                (['--capture-only'] if args.capture_only else []),
+                'actual-compute-capture-'+case if args.capture_counter_matrix else 'actual-compute-capture',env)
         print('Actual Mesa/Linux compute ' + ('CPU capture only' if args.capture_only else 'external-DUT protocol') + ' completed: ' + str(out))
         return
     run([binary, sources] + ([args.profile_wire.resolve(strict=True)] if sample_graphics else []), "actual-acceptance", env)

@@ -44,7 +44,11 @@ def guarded(request_path, builder_argv):
     argv=list(builder_argv)
     require('--case' in argv and argv[argv.index('--case')+1] in COUNTER_CASES and '--sanitize' in argv,
             'strict original counter source and sanitized producer required')
-    source_name=counter_parameters(argv[argv.index('--case')+1])['source']
+    case=argv[argv.index('--case')+1]
+    matrix='--capture-counter-matrix' in argv
+    require(not matrix or '--capture-only' in argv, 'counter matrix is CPU capture only')
+    launched=set()
+    expected_cases=set(COUNTER_CASES if matrix else (case,))
     out=Path(argv[argv.index('--build')+1]).absolute()
     generated={};seen=set();compiled=False
     # These are all actual host translation units, not the CPU VM fixture.
@@ -90,13 +94,22 @@ def guarded(request_path, builder_argv):
             require(command == expected_link(), 'actual counter link has unbound/replaced objects or libraries')
         if command[0]==str(out/'compute_host_frontend'):
             require(seen==units, 'incomplete actual host compiler closure')
+            source_case=command[4] if len(command) in (5,6) else None
+            require(source_case in expected_cases and source_case not in launched and
+                    command[3]==str(out/'glsl'/counter_parameters(source_case)['source']),
+                    'counter producer source/recipe repeated or replaced')
+            require(not matrix or command[-1]=='--capture-only', 'counter matrix attempted actual execution')
+            launched.add(source_case)
+            if products:unchanged({str(p):v for p,v in products.items()})
             external();unchanged(generated)
             require(sha256(paths['ntt'])==AFTER, 'NTT changed before actual producer')
             products.update({p:sha256(regular(p)) for p in
-                (out/'compute_host_frontend',out/'glsl'/source_name,out/'commands.json',*out.rglob('*.d'))})
+                (out/'compute_host_frontend',*(out/'glsl').glob('*.comp'),*out.rglob('*.d'))})
+            command_log=sha256(regular(out/'commands.json'))
             compiled=True
         result=actual_run(command,*args,**kwargs)
         if compiled:
+            require(sha256(out/'commands.json')==command_log, 'counter command log changed during producer')
             unchanged({str(p):v for p,v in products.items()});external();unchanged(generated)
         return result
     try:
@@ -104,7 +117,7 @@ def guarded(request_path, builder_argv):
         sys.argv=[str(ROOT/'scripts/test_gallium_compute_host.py'),*argv]
         runpy.run_path(sys.argv[0],run_name='__main__')
     finally:subprocess.run=actual_run
-    require(compiled,'actual producer was never reached')
+    require(compiled and launched==expected_cases,'actual producer matrix was incomplete')
 
 
 if __name__=='__main__':

@@ -29,12 +29,12 @@ static struct compute_host_session *session;
 static struct {void *data;uint64_t bytes;unsigned maps,closed;} bos[512];
 static unsigned next_bo=1,next_sync=1,submitted,retired;
 static const char *directory;
-static int capture_only,uniform_case,dynamic_case,address_case,counter_case;
+static int capture_only,uniform_case,dynamic_case,address_case,counter_case,counter_dynamic;
 static unsigned dynamic_operation,dynamic_signed;
-static unsigned address_kind,counter_operation;
+static unsigned address_kind,counter_operation,counter_index;
 static const char *counter_name;
 static unsigned host_timeout_seconds;
-static unsigned output_handles[4],uniform_handles[12],counter_handle,counter_storage_bindings[4];
+static unsigned output_handles[4],uniform_handles[12],counter_handle,counter_storage_bindings[4],index_uniform_handle;
 static struct drm_opengpu_compute_counter_source_resources accepted_counter;
 static struct drm_opengpu_compute_uniform_resources accepted_uniforms;
 static void write_oracle(void);
@@ -140,12 +140,20 @@ static void write_oracle(void)
   uint64_t physical,bytes;assert(!compute_host_original_physical(session,counter_handle,&physical,&bytes));
   assert(accepted_counter.version==1 && v->handle==counter_handle && v->offset==4080 && v->count==8 &&
    bytes==8192 && snap.counter_physical==physical+4080 && snap.counter_bytes==32 && snap.counter_root);
-  fprintf(f,"{\"schema\":\"opengpu-compute-counter-oracle-v1\",\"sourceCase\":\"%s\",\"groups\":4,\"local\":4,\"viewBytes\":8192,\"guard\":3735928559,\"seed\":%u,\"index\":7,\"count\":8,\"counterHandle\":%u,\"context\":%u,\"descriptorPhysical\":%llu,\"descriptorRoot\":%u,\"kernargPhysical\":%llu,\"kernargBytes\":%llu,\"counter\":",counter_name,counter_operation==2?1u:0xfffffffeu,v->handle,snap.context,
+  fprintf(f,"{\"schema\":\"opengpu-compute-counter-oracle-v1\",\"sourceCase\":\"%s\",\"groups\":%u,\"local\":4,\"viewBytes\":8192,\"guard\":3735928559,\"seed\":%u,\"index\":%u,\"count\":8,\"counterHandle\":%u,\"context\":%u,\"descriptorPhysical\":%llu,\"descriptorRoot\":%u,\"kernargPhysical\":%llu,\"kernargBytes\":%llu,\"counter\":",counter_name,counter_dynamic?(counter_index?1u:2u):4u,counter_operation==2?(counter_dynamic?0u:1u):0xfffffffeu,counter_dynamic?counter_index:7u,v->handle,snap.context,
    (unsigned long long)snap.counter_descriptor_physical,snap.counter_root,
    (unsigned long long)snap.kernarg_physical,(unsigned long long)snap.kernarg_bytes);
   source_window(f,counter_handle,4080,32,0);fputs(",\"outputs\":[",f);
   for(unsigned i=0;i<4;i++){if(i)fputc(',',f);source_window(f,output_handles[i],0,8192,i);}
-  fprintf(f,"],\"storageBindings\":[%u,%u,%u,%u]}\n",counter_storage_bindings[0],counter_storage_bindings[1],counter_storage_bindings[2],counter_storage_bindings[3]);
+  fprintf(f,"],\"storageBindings\":[%u,%u,%u,%u]",counter_storage_bindings[0],counter_storage_bindings[1],counter_storage_bindings[2],counter_storage_bindings[3]);
+  if(counter_dynamic){
+   assert(accepted_counter.resources.active_mask==1 && !accepted_counter.resources.defaults.handle &&
+    accepted_counter.resources.blocks[0].handle==index_uniform_handle && accepted_counter.resources.blocks[0].bytes==16);
+   fputs(",\"indexUniform\":",f);source_window(f,index_uniform_handle,0,16,35);
+   fprintf(f,",\"uniformRoot\":%u,\"uniformPhysical\":%llu,\"uniformBytes\":%llu",snap.uniform_root,
+    (unsigned long long)snap.uniform_physical,(unsigned long long)snap.uniform_bytes);
+  }
+  fputs("}\n",f);
  }else if(address_case){
   const char *names[]={"shared-address-add","shared-address-cas-match","shared-address-cas-miss"};
   uint64_t physical,bytes;assert(!compute_host_original_physical(session,output_handles[0],&physical,&bytes));
@@ -172,8 +180,10 @@ int main(int argc,char **argv)
  assert(argc==5 || argc==6);capture_only=argc==6 && !strcmp(argv[5],"--capture-only");assert(argc==5 || capture_only);
  host_timeout_seconds=compute_host_timeout_seconds();assert(host_timeout_seconds);
  uniform_case=!strcmp(argv[4],"uniforms");
- const char *counter_names[]={"counter-increment","counter-read","counter-decrement"};
- for(unsigned i=0;i<3;i++)if(!strcmp(argv[4],counter_names[i])){counter_case=1;counter_operation=i;counter_name=counter_names[i];}
+ const char *counter_names[]={"counter-increment","counter-read","counter-decrement",
+  "counter-dynamic-increment","counter-dynamic-read","counter-dynamic-decrement",
+  "counter-dynamic-all-increment","counter-dynamic-all-read","counter-dynamic-all-decrement"};
+ for(unsigned i=0;i<9;i++)if(!strcmp(argv[4],counter_names[i])){counter_case=1;counter_operation=i%3;counter_dynamic=i>=3;counter_index=i>=6?0:4;counter_name=counter_names[i];}
  for(unsigned variant=0;variant<16;variant++){
   const unsigned signed_operations[]={0,1,2,3,4,9};unsigned op=variant<10?variant:signed_operations[variant-10];
   char name[64];assert(snprintf(name,sizeof(name),variant<10?"shared-dynamic-%u":"shared-dynamic-i-%u",op)>0);
@@ -218,12 +228,19 @@ int main(int argc,char **argv)
   }
   cs_frontend_ubos(frontend,p,ub,offsets,sizes);
  }
+ if(counter_dynamic){
+  ub[35]=buffer(s,4096);assert(ub[35]);sizes[35]=16;
+  index_uniform_handle=pipe_opengpu_resource_handle(opengpu_resource(ub[35])->gpu);
+  uint32_t *data=pipe_opengpu_resource_map(opengpu_resource(ub[35])->gpu);assert(data);memset(data,0x6d,4096);
+  data[0]=counter_index;data[1]=0x13579bdfu;data[2]=0x2468ace0u;data[3]=0x11223344u;
+  cs_frontend_ubos(frontend,p,ub,offsets,sizes);
+ }
  if(counter_case){
   struct pipe_resource *counter=buffer(s,8192);assert(counter);
   counter_handle=pipe_opengpu_resource_handle(opengpu_resource(counter)->gpu);
   uint8_t *data=pipe_opengpu_resource_map(opengpu_resource(counter)->gpu);assert(data);memset(data,0x5a,8192);
   uint32_t *words=(uint32_t *)(data+4080);
-  uint32_t seed=counter_operation==2?1u:0xfffffffeu;
+  uint32_t seed=counter_operation==2?(counter_dynamic?0u:1u):0xfffffffeu;
   for(unsigned i=0;i<8;i++)words[i]=seed+i*0x10203u;
   words[7]=seed;
   cs_frontend_counters(frontend,p,counter,4080,32);
@@ -231,7 +248,7 @@ int main(int argc,char **argv)
    * the same externally observed retirement/context cleanup as all outputs. */
  }
  struct pipe_grid_info grid={.grid={4,1,1},.block={128,1,1}};
- if(counter_case)grid.block[0]=4;
+ if(counter_case){grid.block[0]=4;if(counter_dynamic)grid.grid[0]=counter_index?1:2;}
  if(uniform_case){grid.block[0]=8;grid.block[1]=4;grid.block[2]=4;}
  p->launch_grid(p,&grid);assert(submitted==1 && retired);
  marker("cleanup_wait","actual compute retired; independent byte/source/guard authorization required\n");

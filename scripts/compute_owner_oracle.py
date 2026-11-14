@@ -179,7 +179,11 @@ def verify(initial, returned, description):
     if [(a, b) for a, b, _ in initial.ranges] != [(a, b) for a, b, _ in returned.ranges]:
         raise ValueError('DUT memory replaced original physical allocations')
     counter = description.get('schema') == 'opengpu-compute-counter-oracle-v1'
-    required_flags(description, dict(viewBytes=8192, groups=4, local=4 if counter else 128, guard=0xdeadbeef))
+    if counter:
+        from compute_owner_cases import counter_parameters
+        groups=counter_parameters(description.get('sourceCase'))['groups']
+    else:groups=4
+    required_flags(description, dict(viewBytes=8192, groups=groups, local=4 if counter else 128, guard=0xdeadbeef))
     if counter:
         from compute_counter_source import returned_outputs
         outputs = returned_outputs(initial, returned, description)

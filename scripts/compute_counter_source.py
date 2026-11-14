@@ -18,8 +18,10 @@ def require(ok, message):
 
 def recipe(memory, value):
     from compute_owner_oracle import allocation_window
-    require(type(value) is dict and set(value) == FIELDS, 'invalid counter source metadata fields')
+    require(type(value) is dict, 'counter source metadata must be an object')
     parameters=counter_parameters(value.get('sourceCase'))
+    fields=FIELDS|({'indexUniform','uniformRoot','uniformPhysical','uniformBytes'} if parameters['dynamic'] else set())
+    require(set(value)==fields, 'invalid counter source metadata fields')
     required_flags(value, dict(schema=SCHEMA, groups=parameters['groups'], local=4, viewBytes=8192,
                               guard=0xdeadbeef, seed=parameters['seed'], index=parameters['index'], count=8))
     require(0 < uint(value['counterHandle']) < 512 and 0 < uint(value['context']), 'invalid original counter owner')
@@ -36,6 +38,14 @@ def recipe(memory, value):
         required_flags(view, dict(offset=0, allocationBytes=8192))
         require(memory.read(first, 8192) == struct.pack('<I', 0xdeadbeef) * 2048, 'counter output precomputed or unguarded')
         outputs.append(first); allocations.append((first, first + 8192))
+    if parameters['dynamic']:
+        uniform=allocation_window(memory,value['indexUniform'],16,35)
+        required_flags(value['indexUniform'],dict(offset=0,allocationBytes=4096))
+        original_uniform=struct.pack('<4I',parameters['index'],0x13579bdf,0x2468ace0,0x11223344)+b'\x6d'*(4096-16)
+        require(memory.read(uniform,4096)==original_uniform, 'dynamic original index UBO or guard differs')
+        allocations.append((uniform,uniform+4096))
+        require(uint(value['uniformRoot'])==0xb1800000 and uint(value['uniformBytes'])==8192 and
+                uint(value['uniformPhysical'])%4096==0, 'dynamic uniform snapshot bounds differ')
     allocations.sort()
     require(all(a[1] <= b[0] for a, b in zip(allocations, allocations[1:])), 'counter original GEM aliases an output')
     original = bytearray(b'\x5a' * 8192)
@@ -52,16 +62,30 @@ def recipe(memory, value):
 
 def returned_outputs(initial, returned, description):
     source, outputs = recipe(initial, description)
-    values = [returned.read(first, 64) for first in outputs]
-    require(all(data == values[0] for data in values), 'four counter SSBOs disagree per invocation')
-    actual = struct.unpack('<16I', values[0])
     parameters=counter_parameters(description['sourceCase']);seed=parameters['seed'];op=parameters['operation']
-    expected = [(seed + i if op == 'increment' else seed-i-1 if op == 'decrement' else seed) & 0xffffffff
-                for i in range(16)]
-    require(sorted(actual) == sorted(expected), 'counter returned ESSL value multiset differs')
-    final=(seed+16 if op=='increment' else seed-16 if op=='decrement' else seed)&0xffffffff
-    require(returned.read(source + 28, 4) == struct.pack('<I', final), 'counter final value/wrap differs')
-    return list(zip(outputs, values)) + [(source + 28, struct.pack('<I', final))]
+    invocations=parameters['groups']*4
+    values = [returned.read(first, invocations*4) for first in outputs]
+    require(all(data == values[0] for data in values), 'four counter SSBOs disagree per invocation')
+    actual = struct.unpack('<%uI'%invocations, values[0])
+    finals=[]
+    if parameters['dynamic']:
+        expected=[]
+        for lane in range(invocations):
+            index=parameters['index']+lane
+            old=seed if index==7 else (seed+index*0x10203)&0xffffffff
+            result=(old-1 if op=='decrement' else old)&0xffffffff
+            final=(old+1 if op=='increment' else old-1 if op=='decrement' else old)&0xffffffff
+            expected.append(result);finals.append((source+index*4,struct.pack('<I',final)))
+        require(list(actual)==expected, 'dynamic original counter index/ESSL return value differs')
+    else:
+        expected = [(seed + i if op == 'increment' else seed-i-1 if op == 'decrement' else seed) & 0xffffffff
+                    for i in range(invocations)]
+        require(sorted(actual) == sorted(expected), 'counter returned ESSL value multiset differs')
+        final=(seed+invocations if op=='increment' else seed-invocations if op=='decrement' else seed)&0xffffffff
+        finals=[(source+28,struct.pack('<I',final))]
+    for address,data in finals:
+        require(returned.read(address,4)==data, 'counter final value/wrap differs')
+    return list(zip(outputs,values))+finals
 
 
 def translate(memory, satp, va, permissions):
@@ -73,7 +97,7 @@ def translate(memory, satp, va, permissions):
     require(first & 1023 == 1, 'counter Sv32 root is not a nonleaf')
     second = word((first >> 10) * 4096 + ((va >> 12) & 1023) * 4)
     # Production private pages are uncached, accessed/dirty, supervisor-only.
-    require(second & 1023 == (0x2c0 | permissions), 'counter Sv32 leaf permissions differ')
+    require(second & 1023 == (0x240 | permissions | (0x80 if permissions&4 else 0)), 'counter Sv32 leaf permissions differ')
     return (second >> 10) * 4096 + (va & 4095)
 
 
@@ -120,8 +144,9 @@ def ready(memory, description, data):
     require(cursor == len(data) and submissions and submissions[-1].get(0xc8) == 0,
             'counter capture must end with actual opcode0')
     r = submissions[-1]
-    require([r.get(0xd4 + 4*i) for i in range(3)] == [4, 1, 1] and
-            [r.get(0xe0 + 4*i) for i in range(3)] == [4, 1, 1], 'counter grid differs from original 16 invocations')
+    parameters=counter_parameters(description['sourceCase'])
+    require([r.get(0xd4 + 4*i) for i in range(3)] == [parameters['groups'], 1, 1] and
+            [r.get(0xe0 + 4*i) for i in range(3)] == [4, 1, 1], 'counter grid differs from original source recipe')
     root, context = description['descriptorRoot'], description['context']
     require([r.get(0x4a0 + 4*i) for i in range(7)] == [257, root, root + 64, 0, context, 0, 0],
             'counter GAM1 context/view was changed')
@@ -148,3 +173,19 @@ def ready(memory, description, data):
                            base, base + 8192, 0, base, base + 8192, 0)
         require(record == expected_record and translate(memory, satp, base, 15) == output and
                 translate(memory, satp, base + 8191, 15) == output + 8191, 'counter SSBO descriptor/source mapping differs')
+
+    if parameters['dynamic']:
+        root=description['uniformRoot'];physical=description['uniformPhysical']
+        argva=r.get(0xd0,0)
+        require([r.get(0x440+4*i) for i in range(8)]==[257,root,context,0,0,argva,argva+argbytes,0],
+                'dynamic GUM1 uniform/private-prefix command differs')
+        require(translate(memory,satp,root,3)==physical and translate(memory,satp,root+8191,3)==physical+8191,
+                'dynamic uniform snapshot is not its read-only original private mapping')
+        expected=bytearray(8192)
+        struct.pack_into('<16I',expected,0,0x47555201,64,1,context,0,0,2,1,0,0,root+64,root+1600,0,0,0,0)
+        struct.pack_into('<16I',expected,64,0x47554201,64,1,context,0,0,0,4,root+4096,root+4112,0,root+4096,root+4160,0,1,0)
+        original=description['indexUniform']['allocationPhysical']
+        expected[4096:4112]=memory.read(original,16)
+        require(memory.read(physical,8192)==expected, 'dynamic GUR1/GUB1/index bytes or reserved padding differ')
+    else:
+        require(r.get(0x440)==0, 'static counter unexpectedly enabled a uniform source')

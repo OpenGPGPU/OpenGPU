@@ -61,6 +61,32 @@ class Entry(unittest.TestCase):
                     else:
                         with self.assertRaisesRegex(ValueError,'exact final112'):qualifier.checked_inputs(args)
 
+    def test_every_counter_recipe_requires_final112_and_matrix_mode_cannot_run_live(self):
+        parent=ROOT/'.artifacts';parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='counter-case-gates-',dir=parent) as d:
+            directory=Path(d);executable=directory/'executor';executable.write_bytes(b'CPU fixture')
+            qualification=directory/'qualification.json'
+            args=argparse.Namespace(executor=executable,executor_qualification=qualification,
+                executor_checker_python=sys.executable,executor_checker=directory/'checker')
+            for case in qualifier.COUNTER_CASES:
+                args.case=case
+                for profile in ('two-cu-vga60-owner-v1',qualifier.COMPUTE_STAGE,*qualifier.FULL_COMPUTE_CONTRACTS):
+                    qualification.write_text(json.dumps(dict(schema='opengpu-owner-executor-v1',kind='compute',profile=profile)))
+                    with patch.object(qualifier.subprocess,'run'):
+                        if profile==qualifier.SAMPLE_PROFILE:qualifier.checked_inputs(args)
+                        else:
+                            with self.assertRaisesRegex(ValueError,'exact final112'):qualifier.checked_inputs(args)
+            for extra in ([],['--capture-only','--case','counter-read']):
+                output=directory/'never-created'
+                command=[sys.executable,str(ROOT/'scripts/test_gallium_compute_host.py'),
+                    '--build',str(output),'--profile-wire',str(directory/'absent-profile'),
+                    '--session',str(directory/'absent-session'),'--capture-counter-matrix',*extra]
+                result=subprocess.run(command,capture_output=True,text=True,
+                    env=dict(__import__('os').environ,PYTHONDONTWRITEBYTECODE='1'))
+                self.assertEqual(result.returncode,2,result.stderr)
+                self.assertIn('requires --case counter-increment --capture-only',result.stderr)
+                self.assertFalse(output.exists())
+
     def test_fixed_paths_real_producer_and_both_full_sources(self):
         gpu = ROOT
         args = argparse.Namespace(mesa=gpu / 'depends/mesa', mesa_build=gpu / 'depends/mesa-build',
