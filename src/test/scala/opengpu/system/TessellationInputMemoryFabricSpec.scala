@@ -29,6 +29,97 @@ private class TessellationInputTranslatedHarness extends Module {
 }
 
 class TessellationInputMemoryFabricSpec extends AnyFlatSpec {
+  it should "grant and drain the source port independently of a held render fault response" in {
+    simulate(new TessellationInputMemoryFabric(GpuConfig(lanes=16,warps=8),8,ownedVertexSource=true)){d=>
+      val io=d.io;zero(io);io.satp.poke("h80000030".U)
+      d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      def until(p: =>Boolean,why:String):Unit={
+        var n=0;while(!p && n<100){d.clock.step();n+=1};assert(p,why)
+      }
+      def external(id:Int,address:Int,data:BigInt,hold:Int=0):Unit={
+        until(io.memoryRequest.valid.peek().litToBoolean,s"external request $id")
+        io.memoryRequest.bits.transactionId.expect(id.U);io.memoryRequest.bits.address.expect(address.U)
+        val bits=io.memoryRequest.bits.peek().litValue
+        for(_<-0 until hold){
+          assert(io.memoryRequest.bits.peek().litValue==bits)
+          io.sourceSelected.get.expect(true.B);io.sourceDrained.get.expect(false.B);d.clock.step()
+        }
+        io.memoryRequest.ready.poke(true.B);d.clock.step();io.memoryRequest.ready.poke(false.B)
+        io.memoryResponse.valid.poke(true.B);io.memoryResponse.bits.transactionId.poke(id.U)
+        io.memoryResponse.bits.readData.poke(data.U)
+        until(io.memoryResponse.ready.peek().litToBoolean,s"external reply $id")
+        d.clock.step();io.memoryResponse.valid.poke(false.B)
+      }
+      // A real failed page walk creates a local renderer reply. Hold that reply
+      // across both VS and legacy traffic, without violating the external
+      // response channel's stable-offer contract or hiding a busy FS client.
+      io.renderRequest.valid.poke(true.B);io.renderRequest.bits.transactionId.poke(2.U)
+      io.renderRequest.bits.address.poke(0x400080.U);io.renderRequest.bits.sizeLog2.poke(6.U)
+      until(io.renderRequest.ready.peek().litToBoolean,"render ingress")
+      d.clock.step();io.renderRequest.valid.poke(false.B)
+      external(17,0x30004,0)
+      until(io.renderResponse.valid.peek().litToBoolean,"held local render fault")
+      io.renderResponse.bits.transactionId.expect(2.U);io.renderResponse.bits.fault.expect(true.B)
+      val renderBits=io.renderResponse.bits.peek().litValue
+      def renderHeld():Unit={
+        io.renderResponse.valid.expect(true.B);assert(io.renderResponse.bits.peek().litValue==renderBits)
+        io.drained.expect(false.B)
+      }
+      val s=io.sourceRequest.get
+      s.valid.poke(true.B);s.bits.address.poke(0x400040.U);s.bits.sizeLog2.poke(6.U)
+      s.bits.transactionId.poke(3.U);io.sourceLive.get.poke(true.B)
+      // This fixed grant deadline is the old-global-drain negative control's
+      // failure oracle; it is independent of the simulator/process timeout.
+      for(_<-0 until 8){renderHeld();if(!s.ready.peek().litToBoolean)d.clock.step()}
+      assert(s.ready.peek().litToBoolean,"source grant must not wait for held render response")
+      d.clock.step();s.valid.poke(false.B)
+      external(18,0x30004,(BigInt(0x800)<<10)|0x43,4)
+      external(12,0x800040,0xabc,4)
+      until(io.sourceResponse.get.valid.peek().litToBoolean,"first VS delivery")
+      io.sourceResponse.get.bits.transactionId.expect(3.U);io.sourceResponse.get.bits.readData.expect(0xabc.U)
+      for(_<-0 until 4){renderHeld();io.sourceDrained.get.expect(false.B);d.clock.step()}
+      io.sourceResponse.get.ready.poke(true.B);d.clock.step();io.sourceResponse.get.ready.poke(false.B)
+      io.sourceDrained.get.expect(true.B);renderHeld()
+      // The second local tag's request and reply retain selection even when
+      // legacy handback is already requested; render stays independently held.
+      s.valid.poke(true.B);s.bits.transactionId.poke(2.U);s.bits.address.poke(0x400080.U)
+      s.ready.expect(true.B);d.clock.step();s.valid.poke(false.B)
+      io.sourceLive.get.poke(false.B)
+      io.inputRequest.valid.poke(true.B);io.inputRequest.bits.address.poke(0x4000c0.U)
+      io.inputRequest.bits.sizeLog2.poke(6.U)
+      external(12,0x800080,0xdef,4)
+      until(io.sourceResponse.get.valid.peek().litToBoolean,"second VS delivery")
+      io.sourceResponse.get.bits.transactionId.expect(2.U);io.sourceResponse.get.bits.readData.expect(0xdef.U)
+      for(_<-0 until 4){
+        renderHeld();io.sourceSelected.get.expect(true.B);io.inputRequest.ready.expect(false.B)
+        io.sourceDrained.get.expect(false.B);d.clock.step()
+      }
+      io.sourceResponse.get.ready.poke(true.B);d.clock.step();io.sourceResponse.get.ready.poke(false.B)
+      until(io.inputRequest.ready.peek().litToBoolean,"legacy handback must not wait for render")
+      io.sourceSelected.get.expect(false.B);d.clock.step();io.inputRequest.valid.poke(false.B)
+      until(io.memoryRequest.valid.peek().litToBoolean,"legacy external request")
+      io.memoryRequest.bits.transactionId.expect(12.U);io.memoryRequest.bits.address.expect(0x8000c0.U)
+      io.memoryRequest.ready.poke(true.B);d.clock.step();io.memoryRequest.ready.poke(false.B)
+      io.memoryResponse.valid.poke(true.B);io.memoryResponse.bits.transactionId.poke(12.U)
+      io.memoryResponse.bits.readData.poke(0x123.U)
+      until(io.inputResponse.valid.peek().litToBoolean,"legacy delivery")
+      io.inputResponse.bits.readData.expect(0x123.U)
+      for(_<-0 until 4){
+        renderHeld();io.sourceDrained.get.expect(false.B);io.memoryResponse.ready.expect(false.B);d.clock.step()
+      }
+      io.inputResponse.ready.poke(true.B);io.memoryResponse.ready.expect(true.B);d.clock.step()
+      io.inputResponse.ready.poke(false.B);io.memoryResponse.valid.poke(false.B)
+      io.sourceDrained.get.expect(true.B);renderHeld()
+      // A global flush deliberately still waits for the renderer, including
+      // its local fault response, rather than using the new per-port signal.
+      io.flush.valid.poke(true.B);d.clock.step();io.flush.valid.poke(false.B)
+      for(_<-0 until 4){renderHeld();io.sourceDrained.get.expect(false.B);d.clock.step()}
+      io.renderResponse.ready.poke(true.B);d.clock.step();io.renderResponse.ready.poke(false.B)
+      until(io.drained.peek().litToBoolean,"global render/flush retirement")
+      io.sourceDrained.get.expect(true.B)
+    }
+  }
+
   it should "serialize four original VS tags through held requests and held replies" in {
     simulate(new TessellationVertexMemoryAdapter(GpuConfig(lanes=16,warps=8))){d=>
       zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
