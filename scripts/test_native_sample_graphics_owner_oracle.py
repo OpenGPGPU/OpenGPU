@@ -70,6 +70,8 @@ class OrdinaryOwnerOracleTests(unittest.TestCase):
             second = synthetic_result(first, self.d[1], 42)
             self.assertEqual(self.result(memory, first), 41)
             self.assertEqual(self.result(memory, second, 1, first), 42)
+            self.assertEqual(oracle.verify_pair(memory,first,second,self.d,self.fixture.programs,
+                self.fixture.reflection,self.profile,self.captures),(41,42))
             for record, returned in enumerate((first, second)):
                 self.assertEqual(returned.ranges, memory.ranges)
                 self.assertEqual(sum(b-a for a,b in oracle.writable_bytes(self.d[record])), 60160)
@@ -157,6 +159,115 @@ class OrdinaryOwnerOracleTests(unittest.TestCase):
             else:changed[1][name][0]['physical']=changed[0][name][0]['physical']
             with self.assertRaises(ValueError):oracle.checked_pair(changed)
         with self.assertRaises(ValueError):oracle.checked_pair(self.d[::-1])
+
+    def test_exclusive_pages_cannot_alias_own_or_other_original_ro_and_pte_pages(self):
+        for source_owner in range(2):
+            for target_owner in range(2):
+                for group in ('programs','uniforms','vertexInput'):
+                    for kind in ('writable','private'):
+                        changed=copy.deepcopy(self.d)
+                        target=(changed[target_owner]['vertexScratch'] if kind=='writable' else
+                                changed[target_owner]['privateSegments'][0])
+                        physical=target['allocationPhysical'] if kind=='writable' else target['physical']
+                        source=(changed[source_owner][group][0] if group!='vertexInput' else
+                                changed[source_owner][group])
+                        source['allocationPhysical']=physical
+                        with self.assertRaisesRegex(ValueError,'read-only source'):
+                            oracle.checked_pair(changed)
+                changed=copy.deepcopy(self.d)
+                target=changed[target_owner]['vertexScratch']['allocationPhysical']
+                changed[source_owner]['pteRanges'].append(dict(first=target,end=target+4096))
+                with self.assertRaisesRegex(ValueError,'PTE allocation'):oracle.checked_pair(changed)
+        changed=copy.deepcopy(self.d)
+        changed[0]['privateSegments'][0]['physical']=changed[0]['vertexScratch']['allocationPhysical']
+        with self.assertRaisesRegex(ValueError,'own private snapshot'):oracle.checked_pair(changed)
+
+    def retarget_vertex_input(self,memory,descriptions,owner,physical,allocation,handle=None):
+        """Coherent same-VA/different-PN input map plus actual leaf bytes."""
+        d=descriptions[owner];view=d['vertexInput']
+        original=memory.read(view['allocationPhysical']+view['offset'],view['bytes'])
+        page=view['viewVA']&~4095
+        mapping=next(m for m in d['resourceMaps'] if m['va']<=page<m['va']+m['bytes'])
+        mapping['physical']=physical
+        view['allocationPhysical']=physical;view['allocationBytes']=allocation
+        if handle is not None:view['handle']=handle
+        entry=next(e for e in d['pteEntries'] if e['va']==page)
+        entry['leafWord']=(physical>>12)<<10 | (entry['leafWord']&1023)
+        return Overlay(memory,[(physical+view['offset'],original),
+                               (entry['leafAddress'],struct.pack('<I',entry['leafWord']))])
+
+    def test_coherent_cross_owner_vertex_ro_alias_is_rejected_before_capture_admission(self):
+        with self.memory() as memory:
+            changed=copy.deepcopy(self.d);target=changed[0]['vertexScratch']
+            alias=self.retarget_vertex_input(memory,changed,1,target['allocationPhysical'],target['allocationBytes'])
+            # Both owners' source, private descriptor and actual Sv32 checks
+            # individually admit this consistent RAM/sidecar. The pair-level
+            # physical ownership check must reject the read/write alias.
+            for d in changed:
+                oracle.verify_records(alias,d,self.fixture.programs,self.fixture.reflection)
+            with self.assertRaisesRegex(ValueError,'read-only source'):
+                self.preflight(alias,changed)
+
+    def test_coherent_own_program_ro_alias_and_actual_writable_root_pte_are_rejected(self):
+        with self.memory() as memory:
+            changed=copy.deepcopy(self.d);target=changed[0]['vertexScratch'];program=changed[0]['programs'][0]
+            program.update(handle=target['handle'],allocationPhysical=target['allocationPhysical'],
+                           allocationBytes=target['allocationBytes'])
+            alias=Overlay(memory,[(target['allocationPhysical'],self.fixture.programs[0])])
+            # The source checker permits the same original handle to name
+            # multiple consistent views. That must not authorize RO/RW alias.
+            for d in changed:
+                oracle.verify_records(alias,d,self.fixture.programs,self.fixture.reflection)
+            with self.assertRaisesRegex(ValueError,'read-only source'):self.preflight(alias,changed)
+
+            changed=copy.deepcopy(self.d);target=changed[0]['vertexScratch']
+            root=target['allocationPhysical'];old_root=changed[0]['rootPhysical']
+            alias=Overlay(memory,[(root,memory.read(old_root,4096))])
+            for d in changed:
+                d['rootPhysical']=root
+                d['satp']=0x80000000 | d['asid']<<22 | root>>12
+                d['pteRanges'].append(dict(first=root,end=root+target['allocationBytes']))
+                for entry in d['pteEntries']:entry['rootAddress']=root+4*(entry['va']>>22)
+                oracle.verify_records(alias,d,self.fixture.programs,self.fixture.reflection)
+            raw=capture(changed[0],self.profile,41)
+            with self.assertRaisesRegex(ValueError,'PTE allocation'):self.preflight(alias,changed,raw)
+
+    def test_coherent_original_readonly_sharing_remains_legal(self):
+        with self.memory() as memory:
+            # Original compiler code/unchanged UBO pages already share across
+            # this actual two-owner fixture. Also share the real vertex input
+            # through a second RO VA/PTE while keeping all private copies apart.
+            self.assertEqual(self.d[0]['programs'][0]['allocationPhysical'],
+                             self.d[1]['programs'][0]['allocationPhysical'])
+            changed=copy.deepcopy(self.d);original=changed[0]['vertexInput']
+            shared=self.retarget_vertex_input(memory,changed,1,original['allocationPhysical'],
+                                              original['allocationBytes'],original['handle'])
+            self.assertEqual(self.preflight(shared,changed),41)
+
+    def test_complete_pair_rejects_the_same_bad_first_gny2_or_guard_in_both_results(self):
+        with self.memory() as memory:
+            first=synthetic_result(memory,self.d[0],41);second=synthetic_result(first,self.d[1],42)
+            completion=oracle.view_interval(self.d[0]['completion'])[0]
+            arena=next(v for v in self.d[0]['resources'] if v['role']==3)
+            tail=oracle.view_interval(arena)[0]+2944
+            for at,message in ((completion,'GNY2'),(tail,'guard changed')):
+                patch=bytes([first.read(at,1)[0]^1])
+                wrong_first=Overlay(first,[(at,patch)]);wrong_second=Overlay(second,[(at,patch)])
+                with self.assertRaisesRegex(ValueError,message):
+                    oracle.verify_pair(memory,wrong_first,wrong_second,self.d,self.fixture.programs,
+                        self.fixture.reflection,self.profile,self.captures)
+
+    def test_pair_requires_unique_and_correctly_bound_capture_commands(self):
+        with self.memory() as memory:
+            first=synthetic_result(memory,self.d[0],41);second=synthetic_result(first,self.d[1],42)
+            same=[self.captures[0],capture(self.d[1],self.profile,41)]
+            with self.assertRaisesRegex(ValueError,'reused a command'):
+                oracle.verify_pair(memory,first,synthetic_result(first,self.d[1],41),self.d,
+                    self.fixture.programs,self.fixture.reflection,self.profile,same)
+            for captures in (self.captures[::-1],self.captures[:1],self.captures+[self.captures[0]],
+                             [self.captures[0],bytearray(self.captures[1])]):
+                with self.assertRaises(ValueError):oracle.verify_pair(memory,first,second,self.d,
+                    self.fixture.programs,self.fixture.reflection,self.profile,captures)
 
 
 if __name__=='__main__':unittest.main()
