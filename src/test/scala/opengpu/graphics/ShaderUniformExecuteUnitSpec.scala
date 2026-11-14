@@ -194,8 +194,8 @@ class ShaderUniformExecuteUnitSpec extends AnyFlatSpec {
       for(vector<-Seq(false,true)){
         val before=t.memory.seen.size
         t.arm(vector,Seq.fill(4)(BigInt(0)),Seq.fill(4)(BigInt(0)),t.all)
-        if(vector)d.io.vectorIn.bits.issued.decode.instruction.poke("h0a00002b".U)
-        else d.io.in.bits.decode.instruction.poke("h0400000b".U)
+        if(vector)d.io.vectorIn.bits.issued.decode.instruction.poke("h0a0003ab".U)
+        else d.io.in.bits.decode.instruction.poke("h0400038b".U)
         t.until(if(vector)d.io.vectorIn.ready.peek().litToBoolean else d.io.in.ready.peek().litToBoolean);t.tick()
         d.io.in.valid.poke(false.B);d.io.vectorIn.valid.poke(false.B);t.finish(1)
         assert(t.memory.seen.size==before);t.healthy()
