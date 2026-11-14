@@ -23,6 +23,12 @@ cp "$GPU_DIR/userspace/gallium/"*.c "$GPU_DIR/userspace/gallium/"*.h "$DEST/"
 cp "$GPU_DIR/userspace/pipe_opengpu.c" "$GPU_DIR/userspace/pipe_opengpu.h" "$GPU_DIR/userspace/opengpu_pixel_format.h" \
    "$GPU_DIR/userspace/opengpu_retry.h" "$GPU_DIR/userspace/opengpu_buffer_texture.h" \
     "$GPU_DIR/userspace/opengpu.c" "$GPU_DIR/userspace/opengpu.h" \
+    "$GPU_DIR/userspace/opengpu_native_sample_graphics.c" "$GPU_DIR/userspace/opengpu_native_sample_graphics.h" \
+    "$GPU_DIR/driver/opengpu_native_sample_transport_features.h" "$GPU_DIR/driver/opengpu_native_sample_transport_abi.h" \
+    "$GPU_DIR/driver/opengpu_native_geometry_transport_features.h" "$GPU_DIR/driver/opengpu_native_geometry_transport_abi.h" \
+    "$GPU_DIR/driver/opengpu_native_sources_features.h" "$GPU_DIR/driver/opengpu_native_preflight_features.h" \
+    "$GPU_DIR/driver/opengpu_native_preflight_abi.h" "$GPU_DIR/driver/opengpu_compute_resource_abi.h" \
+    "$GPU_DIR/driver/opengpu_uniform_abi.h" \
     "$GPU_DIR/userspace/opengpu_native_runtime.c" "$GPU_DIR/userspace/opengpu_native_runtime.h" \
     "$GPU_DIR/driver/opengpu_drm.h" "$GPU_DIR/driver/gpu_abi.h" "$GPU_DIR/driver/opengpu_formats.h" \
     "$GPU_DIR/driver/opengpu_shader_resources.h" "$GPU_DIR/driver/opengpu_kernarg_va.h" \
@@ -274,6 +280,8 @@ libopengpu_gallium = static_library(
     'opengpu_cs_emit.c',
     'opengpu_native_uniform_emit.c',
     'opengpu_native_graphics.c',
+    'opengpu_native_sample_program.c',
+    'opengpu_native_sample_graphics.c',
     'opengpu_native_draw.c',
     'opengpu_native_runtime.c',
     'opengpu_native_frame.c',

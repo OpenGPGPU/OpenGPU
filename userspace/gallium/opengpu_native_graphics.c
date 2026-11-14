@@ -23,16 +23,17 @@ void opengpu_native_graphics_program_destroy(struct opengpu_native_graphics_prog
     free(program);
 }
 
-struct opengpu_native_graphics_program *opengpu_native_graphics_program_create(
-    struct pipe_context *pipe, const void *vertex_tokens, const void *fragment_tokens)
+struct opengpu_native_graphics_program *opengpu_native_graphics_program_create_checked(
+    struct pipe_context *pipe, const void *vertex_tokens, const void *fragment_tokens,
+    const struct opengpu_native_runtime *runtime)
 {
-    if (!pipe || !vertex_tokens || !fragment_tokens) { errno=EINVAL;return NULL; }
+    if (!pipe || !vertex_tokens || !fragment_tokens || !runtime) { errno=EINVAL;return NULL; }
     struct opengpu_native_graphics_program *program=calloc(1,sizeof(*program));
     if (!program) return NULL;
     program->context=pipe;
     struct pipe_opengpu_screen *screen=opengpu_screen_gpu(pipe->screen);
     const void *tokens[2]={vertex_tokens,fragment_tokens};
-    if (opengpu_native_runtime_query(pipe_opengpu_screen_fd(screen),&program->runtime)) goto fail;
+    program->runtime=*runtime;
     for (unsigned stage=0;stage<2;stage++) {
         if (opengpu_native_uniform_compile(tokens[stage],stage,program->runtime.shader.capacity,
                 &program->layout[stage],&program->shader[stage])) { errno=ENOTSUP;goto fail; }
@@ -67,14 +68,15 @@ fail:
     { int saved=errno;opengpu_native_graphics_program_destroy(program);errno=saved;return NULL; }
 }
 
-int opengpu_native_graphics_program_sources(struct pipe_context *pipe,
-    const struct opengpu_native_graphics_program *program, struct opengpu_native_graphics_sources *output)
+int opengpu_native_graphics_program_sources_checked(struct pipe_context *pipe,
+    const struct opengpu_native_graphics_program *program, const struct opengpu_native_runtime *runtime,
+    int (*uniforms)(struct pipe_context *,const unsigned [2][13],struct drm_opengpu_native_uniform_stage [2]),
+    struct opengpu_native_graphics_sources *output)
 {
     struct opengpu_native_graphics_sources result={0};
     unsigned required[2][13];
-    if (!pipe || !program || !output || pipe!=program->context) { errno=EINVAL;return -1; }
-    struct pipe_opengpu_screen *screen=opengpu_screen_gpu(pipe->screen);
-    if (opengpu_native_runtime_query(pipe_opengpu_screen_fd(screen),&result.runtime)) return -1;
+    if (!pipe || !program || !output || !runtime || !uniforms || pipe!=program->context) { errno=EINVAL;return -1; }
+    result.runtime=*runtime;
     if (memcmp(&result.runtime,&program->runtime,sizeof(result.runtime))) { errno=EPROTO;return -1; }
     for (unsigned stage=0;stage<2;stage++) {
         result.layout[stage]=program->layout[stage];
@@ -84,7 +86,24 @@ int opengpu_native_graphics_program_sources(struct pipe_context *pipe,
         result.varying_mask[stage]=program->shader[stage].varying_mask;
     }
     result.color_mask=program->shader[1].color_mask;
-    if (opengpu_native_graphics_uniform_sources(pipe,required,result.uniforms)) return -1;
+    if (uniforms(pipe,required,result.uniforms)) return -1;
     *output=result;
     return 0;
+}
+
+struct opengpu_native_graphics_program *opengpu_native_graphics_program_create(
+    struct pipe_context *pipe,const void *vs,const void *fs)
+{
+    struct opengpu_native_runtime runtime;
+    if(!pipe || !vs || !fs){errno=EINVAL;return NULL;}
+    if(opengpu_native_runtime_query(pipe_opengpu_screen_fd(opengpu_screen_gpu(pipe->screen)),&runtime))return NULL;
+    return opengpu_native_graphics_program_create_checked(pipe,vs,fs,&runtime);
+}
+int opengpu_native_graphics_program_sources(struct pipe_context *pipe,
+    const struct opengpu_native_graphics_program *program,struct opengpu_native_graphics_sources *out)
+{
+    struct opengpu_native_runtime runtime;
+    if(!pipe || !program || !out || pipe!=program->context){errno=EINVAL;return -1;}
+    if(opengpu_native_runtime_query(pipe_opengpu_screen_fd(opengpu_screen_gpu(pipe->screen)),&runtime))return -1;
+    return opengpu_native_graphics_program_sources_checked(pipe,program,&runtime,opengpu_native_graphics_uniform_sources,out);
 }
