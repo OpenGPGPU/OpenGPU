@@ -168,9 +168,9 @@ struct HeldRecord {
   Traffic start_traffic,completed;
   uint64_t start_cycles;
 };
-template<class Sim>
+template<class Sim,class CaptureType>
 HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
-                       Memory &memory,const Capture &capture,bool prefix_only=false) {
+                       Memory &memory,const CaptureType &capture,bool prefix_only=false) {
   capture.validate(prefix_only);
   require(agent.drained() && !sim.model->io_m_irq,"owner record starts before prior retirement/drain");
   HeldRecord held_record;held_record.initial=memory;
@@ -179,7 +179,7 @@ HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
   bus.begin_record(capture.max_cycles);
   // GCR's explicit protected-source presence guarantee must be checked before
   // probing GUC/GSE/GNC. A standalone GNP host need not map those windows.
-  const auto profile=Capture::profile();
+  const auto profile=CaptureType::profile();
   for(unsigned n=0;n<16;++n)
     require(bus.read(profile[n].address)==profile[n].value,"actual DUT lacks the captured source profile");
   for(const auto &r:capture.discovery) if(r.address<0x360 || r.address>=0x3a0)
@@ -224,9 +224,9 @@ HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
   result.write_bytes=agent.traffic.write_bus_bytes-held_record.start_traffic.write_bus_bytes;
   return held_record;
 }
-template<class Sim>
+template<class Sim,class CaptureType>
 RecordResult retire_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
-    Memory &memory,const Capture &capture,HeldRecord &held_record,const Retirement *retirement=nullptr) {
+    Memory &memory,const CaptureType &capture,HeldRecord &held_record,const Retirement *retirement=nullptr) {
   require(sim.model->io_m_irq && agent.drained(),"driver retirement lost held completion ownership");
   traffic_unchanged(held_record.completed,agent.traffic);
   auto &result=held_record.result;
@@ -246,8 +246,8 @@ RecordResult retire_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
   result.write_bytes=agent.traffic.write_bus_bytes-held_record.start_traffic.write_bus_bytes;
   result.external_drained=agent.drained();return result;
 }
-template<class Sim>
-RecordResult replay_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,const Capture &capture) {
+template<class Sim,class CaptureType>
+RecordResult replay_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,const CaptureType &capture) {
   auto held=hold_record(sim,agent,bus,memory,capture);
   return retire_record(sim,agent,bus,memory,capture,held);
 }

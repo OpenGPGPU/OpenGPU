@@ -92,6 +92,7 @@ python3 scripts/test_native_sample_layered_product.py
 python3 scripts/test_qualify_native_sample_layered_product.py
 python3 scripts/test_native_sample_layered_driver_guards.py
 python3 scripts/test_native_owner.py
+python3 scripts/test_native_sample_owner.py
 python3 scripts/test_compute_owner.py
 python3 scripts/test_native_binned_topology_fixture.py
 python3 scripts/test_flashsim_native_adapter.py
