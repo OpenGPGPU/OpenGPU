@@ -186,6 +186,8 @@ def verify(initial, returned, description, program_data, capture_data, observed_
     require(registers.get(0xf4) == description.get('jobVA') and
             registers.get(0x14c) == registers.get(0x150), 'capture did not bind the exact job/address space')
     space = AddressSpace(initial, description, registers.get(0x14c, 0))
+    from native_sample_owner_recipe import verify as verify_recipe
+    verify_recipe(space, description, meta, code)
     job = space.read(uint(description['jobVA']), 512)
     frame_va, draw_va = struct.unpack_from('<I', job, 21 * 4)[0], struct.unpack_from('<I', job, 16 * 4)[0]
     require(struct.unpack_from('<3I', job) == (0x474e4a02, 512, 2) and
