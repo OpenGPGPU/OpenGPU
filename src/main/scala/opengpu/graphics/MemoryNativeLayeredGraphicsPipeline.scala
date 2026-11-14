@@ -15,7 +15,6 @@ class MemoryNativeLayeredGraphicsPipeline(config:GpuConfig,native:NativeBinnedGr
     shared:SharedCuShaderConfig,g:GraphicsConfig,commandIdWidth:Int,viewport:Fp32ViewportConfig,
     useSramBlackBoxes:Boolean,fragmentImageAvailable:Boolean) extends Module {
   require(native.nativeGeometry && native.translateImageViews && native.pagedCapacity==65536)
-  require(!native.transformFeedback,"mixed GS transform-feedback source capture is not yet qualified")
   private val p=native.vertex;private val f=native.fragment;private val engines=native.engines
   private val renderGraphics=native.renderGraphics(g)
   val memoryTransactions=MemoryNativeBinnedGraphicsPipeline.transactions(native)
@@ -24,16 +23,24 @@ class MemoryNativeLayeredGraphicsPipeline(config:GpuConfig,native:NativeBinnedGr
   val io=IO(new NativeBinnedGraphicsPipelineIO(config,native,shared,commandIdWidth,fragmentImageAvailable))
   private val reader=Module(new NativeBinnedGraphicsJobReader(config,commandIdWidth,p,engines,
     virtualImageViews=true,allowWideTileCount=true,preflightDescriptors=true,f=f,g=renderGraphics,
-    nativeAdvanced=native.storage.nativeAdvancedDraws,imageAvailable=fragmentImageAvailable,nativeGeometry=true,nativeLayered=true))
+    nativeAdvanced=native.storage.nativeAdvancedDraws,imageAvailable=fragmentImageAvailable,nativeGeometry=true,nativeLayered=true,
+    preserveChildFaultAfterCancel=native.transformFeedback))
   private val renderer=Module(new NativeLayeredVertexBinImagePipeline(config,p,f,shared,renderGraphics,viewport,
     engines,native.pageBytes,native.writeCredits,native.tileSlots,native.pagedCapacity,native.storage,useSramBlackBoxes,
-    native.payload,native.groupedTexture,fragmentImageAvailable))
+    native.payload,native.groupedTexture,fragmentImageAvailable,transformFeedback=native.transformFeedback))
+  if(native.transformFeedback){
+    val scope=RegInit(0.U.asTypeOf(new TransformFeedbackScope))
+    when(io.submit.fire){scope:=io.feedback.get.scope}
+    TransformFeedbackPipelineIO.forward(io.feedback.get,renderer.io.feedback.get,
+      Mux(io.submit.fire,io.feedback.get.scope,scope), !io.busy)
+  }
   private val writer=Module(new NativeLayeredCompletionWriter(config,p,commandIdWidth))
   private val fullResult=Reg(new NativeLayeredVertexBinImageCompletion(p))
   private val command=Reg(UInt(commandIdWidth.W));private val drawIndex=RegInit(0.U(32.W))
   private val active=RegInit(false.B)
-  reader.io.submit.valid:=io.submit.valid && !active;reader.io.submit.bits:=io.submit.bits
-  io.submit.ready:=reader.io.submit.ready && !active
+  private val admit= !active && !io.feedback.map(f=>f.busy || f.command.valid).getOrElse(false.B)
+  reader.io.submit.valid:=io.submit.valid && admit;reader.io.submit.bits:=io.submit.bits
+  io.submit.ready:=reader.io.submit.ready && admit
   when(io.submit.fire){active:=true.B;command:=io.submit.bits.commandId;drawIndex:=0.U;fullResult:=0.U.asTypeOf(fullResult)}
   renderer.io.begin.valid:=reader.io.begin.valid;renderer.io.begin.bits:=reader.io.layeredBegin.get
   reader.io.begin.ready:=renderer.io.begin.ready

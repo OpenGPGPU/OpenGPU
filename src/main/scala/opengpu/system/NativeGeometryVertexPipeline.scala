@@ -29,7 +29,7 @@ class NativeGeometryVertexCompletion extends Bundle {
 class NativeGeometryVertexPipeline(config: GpuConfig,p: VertexShaderStageConfig,
     shared: SharedCuShaderConfig,useSramBlackBoxes: Boolean=false,
     payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false,
-    allowOrdinary: Boolean=false) extends Module {
+    allowOrdinary: Boolean=false,rawOutputs:Boolean=false) extends Module {
   require(shared.taskIdWidth>=1)
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
@@ -47,9 +47,9 @@ class NativeGeometryVertexPipeline(config: GpuConfig,p: VertexShaderStageConfig,
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val vertex=Module(new VertexShaderStage(config,p,shared,useSramBlackBoxes,payload,payloadOwner,groupedTexture))
-  private val ordinary=Module(new PrimitiveAssemblyStage(p,flatShading=allowOrdinary))
+  private val ordinary=Module(new PrimitiveAssemblyStage(p,flatShading=allowOrdinary && !rawOutputs))
   private val adjacent=Module(new GeometryAdjacencyAssemblyStage(p))
-  private val geometry=Module(new NativeGeometryPrimitivePipeline(config,p,shared.taskIdWidth,shared.numComputeUnits))
+  private val geometry=Module(new NativeGeometryPrimitivePipeline(config,p,shared.taskIdWidth,shared.numComputeUnits,rawOutputs))
   private val router=Module(new GeometryFragmentShaderRouter(config,shared.numComputeUnits,shared.taskIdWidth,payload))
   private val arguments=Module(new IndirectDrawReader(config))
   router.io.geometry<>geometry.io.shared;router.io.fragment<>vertex.io.shared;io.shared<>router.io.pool

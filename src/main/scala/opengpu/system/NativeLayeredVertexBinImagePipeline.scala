@@ -38,13 +38,15 @@ class NativeLayeredVertexBinImagePipeline(config:GpuConfig,p:VertexShaderStageCo
     shared:SharedCuShaderConfig,g:GraphicsConfig=GraphicsConfig(),viewport:Fp32ViewportConfig=Fp32ViewportConfig(),
     engines:Int=4,pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=65536,
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
-    payload:Option[ShaderPayloadConfig]=None,groupedTexture:Boolean=false,fragmentImageAvailable:Boolean=false) extends Module {
+    payload:Option[ShaderPayloadConfig]=None,groupedTexture:Boolean=false,fragmentImageAvailable:Boolean=false,
+    transformFeedback:Boolean=false) extends Module {
   require(g.subPixelBits==viewport.subPixelBits)
   private val sharedConfig=shared;private val payloadConfig=payload
   private val sourceBase=NativeLayeredVertexBinImagePipeline.sourceBase(engines,writeCredits,pagedCapacity)
   val memoryTransactions=NativeLayeredVertexBinImagePipeline.transactions(engines,writeCredits,pagedCapacity)
   val io=IO(new Bundle {
     val begin=Flipped(Decoupled(new LayeredWindowPrimitiveBinImageDescriptor))
+    val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
     val draw=Flipped(Decoupled(new NativeLayeredVertexDraw(p,sharedConfig.taskIdWidth)))
     val drawCompletion=Decoupled(new NativeGeometryVertexBinDrawCompletion);val end=Flipped(Decoupled(Bool()))
     val primitiveDone=Vec(engines,Decoupled(new TypedReplayPrimitiveCompletion))
@@ -63,7 +65,7 @@ class NativeLayeredVertexBinImagePipeline(config:GpuConfig,p:VertexShaderStageCo
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val source=Module(new NativeGeometryVertexViewportPipeline(config,p,shared,viewport,useSramBlackBoxes,
-    payload,0,groupedTexture,allowOrdinary=true))
+    payload,0,groupedTexture,allowOrdinary=true,transformFeedback=transformFeedback))
   private val images=Module(new LayeredWindowPrimitiveBinImagePipeline(config,p,f,shared,g,engines,pageBytes,
     writeCredits,tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,0,groupedTexture,fragmentImageAvailable))
   val recordBytes=images.recordBytes
@@ -93,6 +95,12 @@ class NativeLayeredVertexBinImagePipeline(config:GpuConfig,p:VertexShaderStageCo
   private object State extends ChiselEnum {val idle,start,ready,validate,drawing,emitDraw,closing,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new LayeredWindowPrimitiveBinImageDescriptor)
   private val draw=Reg(new NativeLayeredVertexDraw(p,shared.taskIdWidth))
+  private val feedbackScope=if(transformFeedback)Some(Reg(new TransformFeedbackScope))else None
+  if(transformFeedback){
+    when(io.begin.fire){feedbackScope.get:=io.feedback.get.scope}
+    TransformFeedbackPipelineIO.forward(io.feedback.get,source.io.feedback.get,
+      Mux(io.begin.fire,io.feedback.get.scope,feedbackScope.get),phase===State.idle)
+  }
   private val result=Reg(new NativeLayeredVertexBinImageCompletion(p));private val drawResult=Reg(new NativeGeometryVertexBinDrawCompletion)
   private val sourceResult=Reg(new NativeGeometryVertexViewportCompletion);private val imageResult=Reg(new LayeredWindowPrimitiveBinImageCompletion(p))
   private val imageOffered=RegInit(false.B);private val imageStarted=RegInit(false.B);private val imageDone=RegInit(false.B)
@@ -110,7 +118,8 @@ class NativeLayeredVertexBinImagePipeline(config:GpuConfig,p:VertexShaderStageCo
   private val stop=status=/=0.U || cancelled || externalCancel || sourceFailure || images.io.cancelSource
   private def fail(code:UInt,where:Int):Unit=when(status===0.U && code=/=0.U && code=/=4.U){
     status:=code;stage:=where.U;faultDrawValid:=drawOwned;faultDraw:=draws-1.U}
-  io.begin.ready:=phase===State.idle && !externalCancel;io.busy:=phase=/=State.idle
+  io.begin.ready:=phase===State.idle && !externalCancel && !io.feedback.map(f=>f.busy || f.command.valid).getOrElse(false.B)
+  io.busy:=phase=/=State.idle || io.feedback.map(_.busy).getOrElse(false.B)
   io.draw.ready:=phase===State.ready && !stop;io.end.ready:=phase===State.ready && !io.draw.valid && !stop && images.io.end.ready
   io.drawCompletion.valid:=phase===State.emitDraw;io.drawCompletion.bits:=drawResult
   io.completion.valid:=phase===State.complete;io.completion.bits:=result

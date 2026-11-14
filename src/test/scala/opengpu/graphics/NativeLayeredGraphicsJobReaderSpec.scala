@@ -12,10 +12,10 @@ class NativeLayeredGraphicsJobReaderSpec extends AnyFlatSpec {
   import WindowRecordTest.zero
   import NativeTypedGraphicsLayout.Field
   private val p=VertexShaderStageConfig()
-  private class Harness extends Module {
+  private class Harness(preserveChildFaultAfterCancel:Boolean=false) extends Module {
     val r=Module(new NativeBinnedGraphicsJobReader(GpuConfig(lanes=2,warps=2),p=p,engines=4,
       virtualImageViews=true,allowWideTileCount=true,preflightDescriptors=true,
-      nativeGeometry=true,nativeLayered=true))
+      nativeGeometry=true,nativeLayered=true,preserveChildFaultAfterCancel=preserveChildFaultAfterCancel))
     val io=IO(new Bundle {
       val submit=chiselTypeOf(r.io.submit);val begin=chiselTypeOf(r.io.begin)
       val l=Output(chiselTypeOf(r.io.layeredBegin.get));val geometry=Output(chiselTypeOf(r.io.geometry.get))
@@ -41,6 +41,7 @@ class NativeLayeredGraphicsJobReaderSpec extends AnyFlatSpec {
     val pending=mutable.ArrayBuffer.empty[(Int,Int,BigInt)]
     var response:Option[(Int,BigInt)]=None;var drawReply:Option[Int]=None
     var label="initial";var cycle=0;var begins=0;var draws=0;var ends=0;var holdBegin=false
+    var holdDrawReply=false;var holdPass=false;var drawStatus=0;var passStatus=0
     var fault=Set.empty[BigInt];var held:Option[BigInt]=None
     def id(x:GraphicsWorkIdentity):Unit={x.context.poke(7.U);x.pass.poke(8.U);x.generation.poke(9.U)}
     def ids(prefix:String)=Map[String,BigInt](prefix+"context"->7,prefix+"pass"->8,prefix+"generation"->9)
@@ -54,6 +55,7 @@ class NativeLayeredGraphicsJobReaderSpec extends AnyFlatSpec {
     def prepare():Unit={
       assert(pending.isEmpty && response.isEmpty && drawReply.isEmpty)
       zero(d.io);memory.clear();reads.clear();fault=Set.empty;begins=0;draws=0;ends=0;held=None;holdBegin=false
+      holdDrawReply=false;holdPass=false;drawStatus=0;passStatus=0
       val header=Map[String,BigInt]("header.attributes"->16,"header.bindings"->16,"header.varyings"->16,"header.colors"->4,"header.engineViews"->4)
       put(0x1000,128,NativeLayeredGraphicsLayout.jobMagic,2,jf,header++ids("job.identity.")++Map[String,BigInt](
         "job.frameBase"->0x2000,"job.frameLimit"->0x2800,"job.drawBase"->0x4000,"job.drawLimit"->0x6800,
@@ -111,11 +113,15 @@ class NativeLayeredGraphicsJobReaderSpec extends AnyFlatSpec {
       response.foreach{case(tag,a)=>d.io.reply.bits.transactionId.poke(tag.U);d.io.reply.bits.fault.poke(fault(a).B)
         d.io.reply.bits.readData.poke((0 until 16).foldLeft(BigInt(0))((x,w)=>x|(memory.getOrElse(a+w*4,BigInt(0))<<(w*32))).U)}
       d.io.begin.ready.poke((!holdBegin).B);d.io.draw.ready.poke(true.B);d.io.end.ready.poke(true.B)
-      d.io.dc.valid.poke(drawReply.nonEmpty.B);zero(d.io.dc.bits);id(d.io.dc.bits.identity)
+      d.io.dc.valid.poke((drawReply.nonEmpty && !holdDrawReply).B);zero(d.io.dc.bits);id(d.io.dc.bits.identity)
+      d.io.dc.bits.status.poke(drawStatus.U)
+      d.io.dc.bits.source.source.source.source.faultAddress.poke(0x11112222L.U)
       drawReply.foreach(i=>d.io.dc.bits.ordinal.poke(i.U))
       val cancelled=d.io.cancelCore.peek().litToBoolean
-      d.io.pc.valid.poke(((ends>0 || cancelled) && drawReply.isEmpty).B);zero(d.io.pc.bits);id(d.io.pc.bits.identity)
-      d.io.pc.bits.status.poke((if(cancelled)4 else 0).U)
+      d.io.pc.valid.poke(((ends>0 || cancelled) && drawReply.isEmpty && !holdPass).B);zero(d.io.pc.bits);id(d.io.pc.bits.identity)
+      d.io.pc.bits.status.poke((if(passStatus!=0)passStatus else if(cancelled)4 else 0).U)
+      d.io.pc.bits.source.sourceFaultValid.poke((passStatus!=0).B)
+      d.io.pc.bits.source.sourceFault.source.source.source.faultAddress.poke(0x33334444L.U)
       if(d.io.req.valid.peek().litToBoolean && d.io.req.ready.peek().litToBoolean){val q=d.io.req.bits
         val a=q.address.peek().litValue;val tag=q.transactionId.peek().litValue.toInt
         assert(!pending.exists(_._2==tag) && !response.exists(_._1==tag));q.isWrite.expect(false.B)
@@ -135,6 +141,28 @@ class NativeLayeredGraphicsJobReaderSpec extends AnyFlatSpec {
       assert(d.io.out.bits.status.peek().litValue==status,s"$label status ${d.io.out.bits.status.peek().litValue}, expected $status");assert(begins==expectedBegins,s"$label begins $begins")
       val held=d.io.out.bits.peek().litValue;for(_<-0 until 7){tick();assert(d.io.out.bits.peek().litValue==held)}
       d.io.out.ready.poke(true.B);tick();d.io.out.ready.poke(false.B);assert(pending.isEmpty && response.isEmpty);d.io.busy.expect(false.B)}
+  }
+  it should "keep an acknowledged owned-child fault after cancellation only in the explicit feedback route" in {
+    for(enabled<-Seq(false,true))simulate(new Harness(enabled)){d=>val t=new Driver(d)
+      for(drawFault<-Seq(true,false)){
+        t.prepare();t.holdDrawReply=true;t.holdPass=true;t.submit()
+        t.until("owned original draw")(t.draws==1)
+        d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+        for(_<-0 until 7)t.tick()
+        t.drawStatus=if(drawFault)3 else 0;t.holdDrawReply=false
+        t.until("original draw reply drain")(t.drawReply.isEmpty)
+        t.passStatus=3;t.holdPass=false
+        t.until("coarse fault priority result")(d.io.out.valid.peek().litToBoolean)
+        if(enabled){d.io.out.bits.status.expect(3.U);d.io.out.bits.faultStage.expect(3.U)
+          d.io.out.bits.faultAddress.expect((if(drawFault)0x11112222L else 0x33334444L).U)}
+        t.complete(if(enabled)3 else 4,1)
+      }
+      t.prepare();t.holdPass=true;t.drawStatus=1;t.submit();t.until("first source fault")(t.draws==1)
+      t.until("first source reply")(t.drawReply.isEmpty)
+      d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+      t.passStatus=3;t.holdPass=false;t.complete(1,1)
+      t.prepare();t.submit();t.complete(0,1)
+    }
   }
   it should "preflight mixed GND1 GND2 and all GFS before granting GNY2 ownership and preserve all layer metadata" in {
     simulate(new Harness){d=>val t=new Driver(d)

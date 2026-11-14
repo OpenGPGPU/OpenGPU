@@ -20,7 +20,7 @@ class NativeGeometryPrimitivePipelineTask(p: VertexShaderStageConfig,commandIdWi
   * not implement the remaining texture/image/storage geometry resource ABI.
   */
 class NativeGeometryPrimitivePipeline(config: GpuConfig,p: VertexShaderStageConfig,
-    commandIdWidth: Int,numComputeUnits: Int) extends Module {
+    commandIdWidth: Int,numComputeUnits: Int,rawOutputs:Boolean=false) extends Module {
   require(numComputeUnits>0 && commandIdWidth>0)
   val io=IO(new Bundle {
     val task=Flipped(Decoupled(new NativeGeometryPrimitivePipelineTask(p,commandIdWidth)))
@@ -42,7 +42,7 @@ class NativeGeometryPrimitivePipeline(config: GpuConfig,p: VertexShaderStageConf
   private val workerRetired=RegInit(false.B)
   private val input=Module(new NativeGeometryInputMapper(p))
   private val scheduler=Module(new GeometrySharedCuScheduler(config,commandIdWidth,numComputeUnits))
-  private val output=Module(new GeometryPrimitiveOutput(p))
+  private val output=Module(new GeometryPrimitiveOutput(p,flatShading= !rawOutputs))
   private val uniform=Module(new ShaderUniformExecuteUnit(config,GeometryUniformResources.stage,geometryAvailable=true))
   private val active=phase=/=idle && phase=/=report
   private val stopping=cancelled || io.cancel || outputFault
