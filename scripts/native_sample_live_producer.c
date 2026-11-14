@@ -128,8 +128,14 @@ static void live_inputs(struct native_kernel_session *s,struct native_test_recor
     const struct opengpu_private_snapshot *owner=native_record(s,0)->native_owner;
     fprintf(f,"{\"schema\":\"opengpu-native-sample-inputs-v1\",\"caseId\":\"%s\",\"gpuExecuted\":false,\"width\":4,\"height\":4,\"samples\":%u,\"context\":7,\"pass\":8,\"generation\":9,\"origin\":\"lower-left-half-integer\",\"jobVA\":%u,\"frameVA\":%u,\"drawVA\":%u,\"stateVA\":%u,\"fragmentPC\":%u,\"vertexPC\":%u,\"vertexWords\":%u,\"completionVA\":%u,\"completionBytes\":16384,\"fragmentMetadata\":[",
         case_id,samples,job_va,frame,draw,states,test_read_va(s,states+54*4),test_read_va(s,draw+342*4),vs_words,completion);
-    for(unsigned i=0;i<15;i++)fprintf(f,"%s%u",i?",":"",p->meta[i]);fputs("],\"fragmentWords\":[",f);
-    for(unsigned i=0;i<p->meta[14];i++)fprintf(f,"%s%u",i?",":"",p->code[i]);fputs("],\"images\":[",f);
+    for(unsigned i=0;i<15;i++){
+        fprintf(f,"%s%u",i?",":"",p->meta[i]);
+    }
+    fputs("],\"fragmentWords\":[",f);
+    for(unsigned i=0;i<p->meta[14];i++){
+        fprintf(f,"%s%u",i?",":"",p->code[i]);
+    }
+    fputs("],\"images\":[",f);
     unsigned images=0;
     for(unsigned i=0;i<r->encoded.resource_count;i++)if(r->encoded.resources[i].role==1){
         const struct opengpu_native_frame_resource *v=&r->encoded.resources[i];u64 pa,bytes;
