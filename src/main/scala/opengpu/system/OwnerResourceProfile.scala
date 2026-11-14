@@ -32,4 +32,19 @@ object OwnerResourceProfile {
   }
 
   val computeStage: NativeAlignmentHostConfig = withComputeAtomics(NativeOwnerHostProfile.target)
+
+  /** Complete source composition. Qualification requires fresh RTL and actual
+    * execution; neither earlier owner factory's evidence applies to this host.
+    */
+  val target: NativeAlignmentHostConfig = {
+    val base = NativeOwnerHostProfile.target
+    withComputeAtomics(base.copy(native = base.native.copy(nativeGeometry = true),
+      nativeGeometryTransport = true))
+  }
+  require(target.requiredDiscovery.size == 104 &&
+    target.requiredDiscovery.toMap.apply(0x368) == 0xfffff &&
+    target.native.transformFeedback && target.native.engines == 4 &&
+    target.native.renderTargetExtent.contains((2048,2048)) &&
+    target.native.pagedCapacity == 65536 && target.native.payload.get.capacityBytes == 524288,
+    "complete owner composition retains the full native API and all resource transports")
 }
