@@ -166,7 +166,7 @@ int main(int argc,char **argv) {
     const std::filesystem::path output=argv[1];require(!std::filesystem::exists(output),"blit output already exists");
     // All packets/oracles are admitted before a model is created.
     std::vector<Packet> inputs;for(int n=2;n<argc;n++)inputs.push_back(Packet::read(argv[n]));
-    require(inputs.size()==37,"blit qualification requires all 37 actual-caller inputs");
+    require(inputs.size()==43,"blit qualification requires all 43 actual-caller inputs");
     Simulation sim(argc,argv);sim.reset();Memory memory;
     native_frame::Agent agent(memory);Bus bus(sim,agent,100000);
     const auto profile=native_owner::probe_profile(sim,agent,bus,true);

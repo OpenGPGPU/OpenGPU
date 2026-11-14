@@ -8,7 +8,8 @@ import struct
 
 
 NAMES = tuple([f"{kind}-{i}" for kind in ("nearest", "linear") for i in range(16)] +
-              ["depth-0-1", "depth-0-2", "depth-0-3", "depth-1-1", "same-gem"])
+              ["depth-0-1", "depth-0-2", "depth-0-3", "depth-1-1"] +
+              [f"copy-region-{i}" for i in range(6)] + ["same-gem"])
 
 
 def digest(path):

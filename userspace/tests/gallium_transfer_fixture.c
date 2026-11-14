@@ -1356,7 +1356,7 @@ int main(void)
     for (unsigned i=0;i<sizeof(sb);i++) sb[i]=(uint8_t)i;
     memset(db,0xcc,sizeof(db)); memcpy(expected,db,sizeof(db));
     for (unsigned y=0;y<2;y++) memcpy(expected+(y+1)*40+2*4,sb+(y+1)*32+4,12);
-    util_resource_copy_region(p,&d.base,0,2,1,0,&s.base,0,&box);
+    resource_copy_region(p,&d.base,0,2,1,0,&s.base,0,&box);
     assert(!memcmp(db,expected,sizeof(db)) && invalidations==1 && last_offset==0 && last_bytes==256);
     surf.texture=&d.base; surf.format=d.base.format; surf.width=6; surf.height=4;
     surf.u.tex.first_layer=surf.u.tex.last_layer=0; surf.u.tex.level=0;
@@ -1381,7 +1381,7 @@ int main(void)
         assert(invalidations==4 && last_offset==0 && last_bytes==64);
         memset(other,0x7b,sizeof(other));
         box=(struct pipe_box){.x=5,.y=0,.z=0,.width=11,.height=1,.depth=1};
-        util_resource_copy_region(p,&or.base,0,67,0,0,&br.base,0,&box);
+        resource_copy_region(p,&or.base,0,67,0,0,&br.base,0,&box);
         for (unsigned i=0;i<sizeof(other);i++)
             assert(other[i] == (i>=67 && i<78 ? pat[(i-67)%3] : 0x7b));
         assert(invalidations==5 && last_offset==64 && last_bytes==64);
