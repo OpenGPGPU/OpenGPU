@@ -112,7 +112,11 @@ int main(int argc,char **argv)
     if(!strcmp(mode,"bad-profile"))s->profile->words[0].value^=1;
     if(!strcmp(mode,"bad-rx")){
         struct snapshot_segment *p=native_session_record(s,1)->job->native_owner->segments;
-        while(p && !p->executable)p=p->next;assert(p);((u8 *)p->backing.cpu)[0]^=1;
+        while(p && !p->executable) {
+            p=p->next;
+        }
+        assert(p);
+        ((u8 *)p->backing.cpu)[0]^=1;
     }
     if(!strcmp(mode,"unretained")){
         struct opengpu_native_frame_gem other=test_gem(s,4096);memcpy(original_handle(s,other.handle)->gem.vaddr,
