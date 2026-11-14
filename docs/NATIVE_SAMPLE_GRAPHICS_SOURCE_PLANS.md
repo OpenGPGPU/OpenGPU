@@ -178,8 +178,8 @@ read-only original inputs. All private outputs and containers were removed.
 The control/retirement/cleanup peer in this entry is explicitly modeled CPU
 behavior. No shader ran, no GNY2 publication or image was produced by a DUT, and
 neither sample builtins nor the six 640x480/60FPS product scenes are qualified.
-A future strict two-owner 112 executor, independent full GNY2/image oracle and
-live resource/cleanup protocol remain required. ABI6 uniform/flat lowering and
+Actual qualification of the strict two-owner 112 executor, independent full
+GNY2/image oracle and live resource/cleanup protocol remains required. ABI6 uniform/flat lowering and
 ABI7 with an actual GS owner also remain separate work.
 
 Fast CPU admission tests are in both common CPU lanes:
@@ -190,11 +190,14 @@ OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_gallium_sample_graphics_bridge
 
 They check exact112/old96 isolation, OGNP0002/EOF rejection, legal two/four-bank
 acceptance, odd-bank rejection, unchanged error outputs and CPU-only admission.
-The complete host `test_driver.py` regression also passes with per-fixture
-ASan/UBSan, actual Mesa 22.3.6 and DRM headers, including the old snapshot,
-submission, validator, MMU and Gallium framebuffer paths. The Linux
-`sync_file`-dependent fixture is skipped on macOS; the explicit Linux run above
-covers the new producer. Reproduce the host regression with a managed temporary
+The complete host `test_driver.py` regression passes at source `c079b5f5c`
+with per-fixture ASan/UBSan and actual Mesa22.3.6/DRM headers. It includes the
+new source, canonical recipe, codec, two-owner result, controller and original
+qualification guards alongside the snapshot, submission, validator, MMU and
+Gallium framebuffer paths. The Linux `sync_file`-dependent Gallium compute
+fixture is unavailable on macOS; the separate Linux CPU capture and guarded
+build above retain their stated scopes. No DUT ran. Ended test processes,
+managed builds and logs were removed. Reproduce with a managed temporary
 directory and plain host compiler:
 
 ```sh
