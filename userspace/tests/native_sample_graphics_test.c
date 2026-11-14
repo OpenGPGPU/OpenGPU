@@ -136,7 +136,10 @@ static void jobs_and_plans(void)
     assert(!job.completion.reserved[0] && !job.completion.reserved[1]);
     for(unsigned test=0;test<4;test++){
         struct drm_opengpu_compute_uniform_view bad=completion;
-        if(test==0)bad.bytes=16383;if(test==1)bad.offset=1;if(test==2)bad.handle=0;if(test==3)bad.offset=UINT64_MAX-63;
+        if(test==0){bad.bytes=16383;}
+        if(test==1){bad.offset=1;}
+        if(test==2){bad.handle=0;}
+        if(test==3){bad.offset=UINT64_MAX-63;}
         memset(&job,0xa5,sizeof(job));before=job;
         assert(opengpu_native_sample_job_encode(&runtime,7,11,13,1,&bad,&job)<0 && !memcmp(&job,&before,sizeof(job)));
     }
@@ -155,8 +158,10 @@ static void jobs_and_plans(void)
     for(size_t i=0;i<sizeof(out)-sizeof(plan);i++)assert(!tail[i]);
     for(unsigned test=0;test<5;test++){
         struct drm_opengpu_native_draw_plan bad=plan;
-        if(test==0)bad.fragment_program.bytes=2052;if(test==1)bad.vertex_program.pad=1;
-        if(test==2)bad.fragment_uniforms.active_mask=8191;if(test==3)bad.vertex_uniforms.blocks[11].bytes=16388;
+        if(test==0){bad.fragment_program.bytes=2052;}
+        if(test==1){bad.vertex_program.pad=1;}
+        if(test==2){bad.fragment_uniforms.active_mask=8191;}
+        if(test==3){bad.vertex_uniforms.blocks[11].bytes=16388;}
         if(test==4)bad.fragment_uniforms.defaults.bytes=4100;
         memset(&out,0xa5,sizeof(out));old=out;
         assert(opengpu_native_sample_ordinary_plan(&runtime,&bad,&out)<0 && !memcmp(&out,&old,sizeof(out)));
