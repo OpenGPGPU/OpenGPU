@@ -127,6 +127,7 @@ assert assigned["opengpu.system.ComputeResourceCapabilitiesAxiSpec"] == "system-
 assert assigned["opengpu.system.NativeAdvancedBlendCapabilitiesAxiSpec"] == "system-mem"
 assert assigned["opengpu.system.NativeDescriptorPreflightCapabilitiesAxiSpec"] == "system-mem"
 assert assigned["opengpu.system.NativeGeometryTransportCapabilitiesAxiSpec"] == "system-mem"
+assert assigned["opengpu.system.NativeLayeredProductFixturesSpec"] == "system-core"
 assert assigned["opengpu.system.NativeUniformCapabilitiesAxiSpec"] == "system-mem"
 assert assigned["opengpu.system.NativeRgba8TextureMemoryFabricSpec"] == "system-mem"
 assert assigned["opengpu.system.ComputeResourceFullHostSpec"] == "system-host"

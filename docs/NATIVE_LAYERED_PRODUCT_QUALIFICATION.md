@@ -67,7 +67,33 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=1 \
   'testOnly opengpu.system.NativeLayeredProductFixturesSpec opengpu.graphics.NativeLayeredProductFrameInputsSpec'
 ```
 
-The full-profile executor and actual DUT qualification remain required.
+The separate executor is described in `NATIVE_LAYERED_PRODUCT_EXECUTOR.md`.
+`scripts/qualify_native_layered_product.py` binds its build and each execution
+to the exact emitted `geometry-compute` owner source, assertions, RTL, generator,
+104-word factory, fixtures and current driver. It rejects old 96-word prepared
+models before fixture work. Every execution row must include ordered actual
+resource readback, complete successful GNX, drained traffic, observed retirement
+and service/reset-through-retirement cycle intervals. Independent verification
+requires all six exact image/sample/resolve/guard/GNY2 markers; a coarse IRQ or
+partial GNY2 prefix cannot qualify a frame. Python CPU rejection and model-build
+regressions pass (60 tests, one optional real-FlashSim test skipped).
+
+Run the actual path only after obtaining a fresh complete factory compilation
+and safe resources for emission and model generation:
+
+```sh
+python3 -B scripts/prepare_native_owner_flashsim.py --full-resources \
+  --stage prepare --output .artifacts/layered-owner --java-heap 24G
+python3 -B scripts/qualify_native_layered_product.py --product \
+  --output .artifacts/layered-owner --flashsim-dir /absolute/path/to/FlashSim \
+  --stage all --jobs 2 --shards 32 --precompiled-header --conservative-alias
+```
+
+Fresh full compilation, Scala-to-C++ fixture interoperability, complete model
+generation and actual DUT qualification remain required. These commands have
+not yet completed on this new profile. The existing compute executors also
+continue to reject this distinct factory until their own execution contract is
+implemented and qualified.
 These CPU checks do not execute GNJ2, GS, transform feedback or compute, establish
 whole-host timing, render complete 640x480 frames or qualify 60 FPS. Actual
 qualification must use the same complete two-CU, sixteen-lane/eight-warp host,
