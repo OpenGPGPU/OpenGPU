@@ -62,6 +62,23 @@ PYTHONDONTWRITEBYTECODE=1 OPENGPU_TEST_SANITIZERS=1 python3 scripts/test_compute
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_compute_owner_protocol.py
 ```
 
+The complete host script regression passes on macOS with Python 3.14, actual
+Mesa 22.3.6 and DRM headers, with ASan/UBSan enabled in the fixtures that support
+them. This includes the owner protocols, returned-byte rejection tests,
+controllers, executor identity guards and product qualification entry tests.
+The Linux `sync_file` ioctl fixture and unavailable OpenGPU clang target are
+explicit platform/toolchain skips; this result establishes neither Linux
+sync-file integration nor complete-DUT execution, physical timing or FPS.
+With `scripts/requirements-host-tests.txt` installed and `PRIMARY_GPU` pointing
+to the primary GPU checkout, reproduce the regression from this checkout:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 OPENGPU_TEST_SANITIZERS=1 \
+  OPENGPU_MESA_DIR="$PRIMARY_GPU/depends/mesa" \
+  OPENGPU_DRM_INCLUDE="$PRIMARY_GPU/depends/aarch64-root/include" \
+  bash scripts/test_scripts.sh
+```
+
 The explicit CPU test peer only checks transport/admission and never writes
 shader results. It is guarded by `OPENGPU_COMPUTE_HOST_TEST_MAIN`, which must
 never be defined when linking an actual Mesa/DUT producer. The implemented
