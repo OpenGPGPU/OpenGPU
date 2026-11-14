@@ -673,6 +673,14 @@ def changed_suites(root, changed, *, test_index=None):
                   "driver/opengpu_native_geometry_transport_features.h",
                   "driver/tests/opengpu_native_geometry_transport_discovery_test.c"}:
         affected.add("src/test/scala/opengpu/system/NativeGeometryTransportCapabilitiesAxiSpec.scala")
+    if changed & {"src/main/scala/opengpu/graphics/NativeSampleTransportCapabilities.scala",
+                  "src/main/scala/opengpu/elaboration/EmitNativeSampleTransportAbi.scala",
+                  "driver/opengpu_native_sample_transport_abi.h",
+                  "driver/opengpu_native_sample_transport_features.h",
+                  "driver/tests/opengpu_native_sample_transport_test.c",
+                  "src/test/scala/opengpu/system/PrepareOwnerResourceSampleHost.scala"}:
+        affected.add("src/test/scala/opengpu/system/NativeGeometryTransportCapabilitiesAxiSpec.scala")
+        affected.add("src/test/scala/opengpu/system/NativeOwnerHostProfileSpec.scala")
     texture_image_abi_paths = {
         f"src/main/scala/opengpu/elaboration/Emit{name}Abi.scala"
         for name in ("ShaderImage", "TextureImageBinding", "TextureImageLevel", "TextureImageFormat")
