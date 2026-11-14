@@ -253,3 +253,20 @@ The tests reject a relabeled old factory, any changed discovery word and
 premature execution/performance labels. They do not establish the six complete
 640×480 rendering results, cross-domain coherence, native geometry admission,
 matching physical timing, or H6–H8 acceptance.
+
+The sample factory's GSS1 window at `0x520..0x53c` participates in AXI beat
+validation and is excluded from legacy register requests and writes. Its data
+mux alone cannot authorize a read. The sample/discovery CPU guards pass locally;
+the production routing correction still requires the current-head
+`NativeGeometryTransportCapabilitiesAxiSpec` RTL run, including its six cases
+for enabled/disabled profiles, stalled and cross-window reads, read-only writes,
+aliases and reset. Reproduce those focused checks with:
+
+```sh
+OPENGPU_TEST_SANITIZERS=1 PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_native_sample_transport.py
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_prepare_native_sample_owner.py
+sbt 'testOnly opengpu.system.NativeGeometryTransportCapabilitiesAxiSpec'
+```
+
+These register checks do not establish full112 shader execution or product
+qualification. The RTL rerun is pending until the protected PR CI completes it.
