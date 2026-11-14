@@ -48,6 +48,14 @@ static void native_fixture_progress(struct opengpu_device *);
 #define identity native_graph_identity
 #include "../opengpu_native_job_snapshot.c"
 #undef identity
+#include "../opengpu_tessellation_uniform_snapshot.c"
+#include "../opengpu_tessellation_shader_validator.c"
+#include "../opengpu_tessellation_program_snapshot.c"
+#ifndef OPENGPU_PROTECTED_TESS_SOURCE
+#define OPENGPU_PROTECTED_TESS_SOURCE "../opengpu_protected_tessellation.c"
+#endif
+#include OPENGPU_PROTECTED_TESS_SOURCE
+#include "../opengpu_protected_tessellation_submit.h"
 #define DMA_RESV_USAGE_READ 1
 #define DMA_RESV_USAGE_WRITE 2
 #define DRM_EXEC_INTERRUPTIBLE_WAIT 1
@@ -77,10 +85,10 @@ struct drm_syncobj {struct dma_fence *fence;};
 struct drm_exec {struct dma_resv **locked;u32 count,capacity;};
 struct dma_resv_iter {struct dma_resv *resv;unsigned index;int usage;};
 struct opengpu_sched_dep {struct drm_gem_object *object;int wait_usage,signal_usage;};
-enum {OPENGPU_SCHED_NATIVE_BINNED=8,OPENGPU_SCHED_TESSELLATION=7};
+enum {OPENGPU_SCHED_NATIVE_BINNED=8,OPENGPU_SCHED_TESSELLATION=7,OPENGPU_SCHED_PROTECTED_TESSELLATION=9};
 struct opengpu_sched_job {struct drm_sched_job base;struct opengpu_device *gpu;
     struct opengpu_render_context *context;const struct opengpu_vm *vm;unsigned type;
-    struct opengpu_private_snapshot *native_owner;u32 native_job_segment;void *native_quarantine_refs;
+    struct opengpu_private_snapshot *native_owner;u32 native_job_segment;void *native_quarantine_refs;u32 native_quarantine_refcount;
     struct dma_fence *retirement_fence,*admission_chain;bool ordinary_pending;
     struct dma_fence_chain *execution_chain;bool admission_armed;
     struct drm_gem_object **objects;u32 object_count,temporary_mapping_count;
@@ -108,7 +116,8 @@ struct native_kernel_session {bool context_destroyed;struct native_kernel_profil
     struct native_original *originals;struct drm_sched_job *head,*tail;
     struct drm_syncobj sync[3];u64 next_seq;unsigned count;
     native_kernel_source_observer observer;void *record;struct dma_fence *hardware;
-    int copy_error,wait_error,submit_error;void (*progress)(struct native_kernel_session *);};
+    struct opengpu_sched_job *submission_allocation;
+    int copy_error,wait_error,submit_error,submit_revoke_error;void (*progress)(struct native_kernel_session *);};
 static struct native_kernel_record *native_session_record(struct native_kernel_session *s,unsigned index)
 {if(!s)return NULL;for(struct native_kernel_record *r=s->records;r;r=r->next)if(r->index==index)return r;return NULL;}
 #ifdef OPENGPU_NATIVE_MMIO
@@ -177,7 +186,7 @@ static void *vmemdup_user(const void *p,size_t bytes)
 static void *kcalloc(size_t n,size_t bytes,int flags)
 {if(n>SIZE_MAX/bytes)return NULL;return kzalloc(n*bytes,flags);}
 static int drm_sched_job_init(struct drm_sched_job *j,struct drm_sched_entity *entity,int n,void *owner,u64 client)
-{(void)entity;(void)owner;(void)client;assert(n==1);if(running->submit_error)return running->submit_error;
+{(void)entity;(void)owner;(void)client;assert(n==1);if(running->submit_error){if(running->submit_revoke_error)idle_error=running->submit_revoke_error;return running->submit_error;}
  j->s_fence=calloc(1,sizeof(*j->s_fence));if(!j->s_fence)return -ENOMEM;
  j->s_fence->finished=(struct dma_fence){.refs=1,.seqno=++running->next_seq};return 0;}
 static void drm_sched_job_cleanup(struct drm_sched_job *j){
@@ -217,7 +226,7 @@ static void drm_sched_entity_push_job(struct drm_sched_job *j)
 {
  if(running->tail)running->tail->next=j;else running->head=j;running->tail=j;++running->count;
  struct opengpu_sched_job *job=container_of(j,struct opengpu_sched_job,base);
- if(job->type==OPENGPU_SCHED_NATIVE_BINNED){
+ if(job->type==OPENGPU_SCHED_NATIVE_BINNED || job->type==OPENGPU_SCHED_PROTECTED_TESSELLATION){
   struct native_kernel_record *r=running->pending_record;assert(r && !r->job);
   r->job=job;r->index=running->record_count++;
   struct native_kernel_record **tail=&running->records;while(*tail)tail=&(*tail)->next;*tail=r;
@@ -233,9 +242,15 @@ static void *native_memcpy(void *to,const void *from,size_t bytes)
  if(o->refs && p>=first && p<=last && bytes<=last-p && running->observer){
   assert(o->resv.locked);running->observer(running->record,o->handle,p-first,(u32)bytes,from);break;}}
  return memcpy(to,from,bytes);}
+/* Observe the real OS allocation only, so failure tests can inspect a retained
+ * pre-enqueue quarantine container without changing its production lifetime. */
+static void *native_submission_alloc(size_t bytes,int flags)
+{void *p=kzalloc(bytes,flags);if(p && bytes==sizeof(struct opengpu_sched_job))running->submission_allocation=p;return p;}
+#define kzalloc native_submission_alloc
 #define memcpy native_memcpy
 #include "native_submit_under_test.inc"
 #undef memcpy
+#undef kzalloc
 struct opengpu_kernel_launch;
 struct opengpu_command_events;
 #ifdef OPENGPU_NATIVE_MMIO

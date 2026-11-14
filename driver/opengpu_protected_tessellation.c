@@ -69,7 +69,7 @@ static bool pt_header(const void *p,u32 magic,u32 bytes)
  return pt_zero((const u8 *)p+32,32);
 }
 bool opengpu_protected_tessellation_profile_valid(const struct opengpu_protected_tessellation_profile *p)
-{return p->available && p->patch_zero_initialized && p->version==1 && p->domains==7 && (p->compute_units==2 || p->compute_units==4) &&
+{return p && p->available && p->patch_zero_initialized && p->version==1 && p->domains==7 && (p->compute_units==2 || p->compute_units==4) &&
  p->lanes==16 && p->warps==8 && p->engines>=1 && p->engines<=4;}
 static int pt_reloc(struct opengpu_private_snapshot *o,u32 from,u64 offset,u32 word,u32 to,u64 addend,bool limit)
 {

@@ -61,7 +61,8 @@ int opengpu_admission_job_prepare(struct opengpu_sched_job *job)
     job->admission_chain=&chain->base;
     /* DRM consumes this reference on both success and failure. Native jobs
      * need older execution; ordinary jobs need older complete retirement. */
-    struct dma_fence *previous=job->type==OPENGPU_SCHED_NATIVE_BINNED?
+    struct dma_fence *previous=(job->type==OPENGPU_SCHED_NATIVE_BINNED ||
+        job->type==OPENGPU_SCHED_PROTECTED_TESSELLATION)?
         gpu->compute.execution_tail:gpu->compute.admission_tail;
     ret=previous?drm_sched_job_add_dependency(&job->base,dma_fence_get(previous)):0;
     if(ret)opengpu_admission_job_abort(job);
@@ -85,7 +86,7 @@ void opengpu_admission_job_armed(struct opengpu_sched_job *job)
     job->admission_armed=true;
     dma_fence_put(gpu->compute.execution_tail);
     gpu->compute.execution_tail=dma_fence_get(&job->execution_chain->base);
-    if(job->type!=OPENGPU_SCHED_NATIVE_BINNED){atomic64_inc(&gpu->compute.ordinary_pending);job->ordinary_pending=true;}
+    if(job->type!=OPENGPU_SCHED_NATIVE_BINNED && job->type!=OPENGPU_SCHED_PROTECTED_TESSELLATION){atomic64_inc(&gpu->compute.ordinary_pending);job->ordinary_pending=true;}
     dma_fence_put(gpu->compute.admission_tail);
     gpu->compute.admission_tail=dma_fence_get(job->admission_chain);
 }

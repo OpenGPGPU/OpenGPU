@@ -1857,6 +1857,8 @@ struct dma_fence *opengpu_job_run(struct opengpu_sched_job *job)
     struct dma_fence *fence;
     int ret;
 
+    if (job->type == OPENGPU_SCHED_PROTECTED_TESSELLATION)
+        return opengpu_protected_tessellation_job_run(job);
     if (job->type == OPENGPU_SCHED_TESSELLATION)
         return opengpu_tessellation_job_run(job);
     if (job->type == OPENGPU_SCHED_NATIVE_BINNED) {
