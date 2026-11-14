@@ -87,6 +87,7 @@ int graphics_sample_private_code(struct native_kernel_session *s,unsigned index,
     }
     return 0;
 }
+#include "graphics_sample_source_plan.inc"
 int graphics_sample_cpu_capture(struct native_kernel_session *s,const char *directory,struct native_graphics_source_record records[2])
 {
     char path[4096];sample_path(path,sizeof(path),directory,"union.memory");
