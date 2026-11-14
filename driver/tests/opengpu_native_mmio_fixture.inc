@@ -429,6 +429,19 @@ int native_kernel_export_memory(struct native_kernel_session *s,const char *path
 }
 int opengpu_hw_native_binned_async(struct opengpu_device *,struct opengpu_private_snapshot *,
     const struct opengpu_render_context *,u32,struct dma_fence **);
+/* New private transports must opt in explicitly; old OGCAP001/101 never
+ * widens by inference from a profile, manifest or runtime count. */
+#ifndef OPENGPU_NATIVE_CAPTURE_MAGIC
+#define OPENGPU_NATIVE_CAPTURE_MAGIC "OGCAP001"
+#endif
+#ifndef OPENGPU_NATIVE_CAPTURE_DISCOVERY_WORDS
+#define OPENGPU_NATIVE_CAPTURE_DISCOVERY_WORDS 101
+#endif
+#ifndef OPENGPU_NATIVE_CAPTURE_WORD
+#define OPENGPU_NATIVE_CAPTURE_WORD(session,index) ((session)->profile->words[index])
+#endif
+_Static_assert(OPENGPU_NATIVE_CAPTURE_DISCOVERY_WORDS<=OPENGPU_NATIVE_PROFILE_STORAGE_WORDS,
+    "capture exceeds private profile storage");
 int native_kernel_capture(struct native_kernel_session *s,unsigned index,const char *path,u64 budget,u32 hold)
 {
     struct native_kernel_record *r=native_session_record(s,index);
@@ -458,10 +471,10 @@ int native_kernel_capture(struct native_kernel_session *s,unsigned index,const c
     if(error){fclose(f);remove(temporary);free(temporary);free(ranges);return error;}
     assert(m->native_waiting && r->hardware && !dma_fence_is_signaled(r->hardware));
     if(m->allocation_signature!=native_mmio_allocation_signature()){fclose(f);remove(temporary);free(temporary);free(ranges);return -EIO;}
-    fwrite("OGCAP001",1,8,f);native_mmio_le(f,budget,8);native_mmio_le(f,hold,4);
-    native_mmio_le(f,s->gpu.hw.unified_command_id,4);native_mmio_le(f,101,4);
-    for(unsigned i=0;i<101;i++){
-        native_mmio_le(f,s->profile->words[i].address,4);native_mmio_le(f,s->profile->words[i].value,4);
+    fwrite(OPENGPU_NATIVE_CAPTURE_MAGIC,1,8,f);native_mmio_le(f,budget,8);native_mmio_le(f,hold,4);
+    native_mmio_le(f,s->gpu.hw.unified_command_id,4);native_mmio_le(f,OPENGPU_NATIVE_CAPTURE_DISCOVERY_WORDS,4);
+    for(unsigned i=0;i<OPENGPU_NATIVE_CAPTURE_DISCOVERY_WORDS;i++){
+        native_mmio_le(f,OPENGPU_NATIVE_CAPTURE_WORD(s,i).address,4);native_mmio_le(f,OPENGPU_NATIVE_CAPTURE_WORD(s,i).value,4);
     }
     native_mmio_le(f,merged,4);for(size_t i=0;i<merged;i++){
         native_mmio_le(f,ranges[i].first,8);native_mmio_le(f,ranges[i].end,8);

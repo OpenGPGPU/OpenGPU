@@ -88,7 +88,12 @@ struct opengpu_sched_job {struct drm_sched_job base;struct opengpu_device *gpu;
     struct opengpu_buffer depth,vertex_shader,shader,texture_records,storage_records,image_records,
         counter_records,uniform_snapshot,indirect_snapshot,render_desc,commands;};
 static struct native_kernel_session *running;
-struct native_kernel_profile {struct native_kernel_profile_word words[101];
+/* Private versioned consumers may retain a larger exact discovery table.
+ * The legacy constructor/query contract below remains fixed at 96+5 words. */
+#ifndef OPENGPU_NATIVE_PROFILE_STORAGE_WORDS
+#define OPENGPU_NATIVE_PROFILE_STORAGE_WORDS 101
+#endif
+struct native_kernel_profile {struct native_kernel_profile_word words[OPENGPU_NATIVE_PROFILE_STORAGE_WORDS];
     struct opengpu_native_source_limits limits;u32 capabilities;bool advanced,missing;};
 struct native_kernel_record {
     struct native_kernel_record *next;unsigned index;
