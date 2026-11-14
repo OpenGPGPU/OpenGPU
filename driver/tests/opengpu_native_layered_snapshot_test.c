@@ -154,6 +154,48 @@ static void layered_matrix(struct graph_records *g,struct opengpu_device *gpu,
     assert(failures>850);
     printf("layered graph failure gates: %u copies, %u resolves, %u allocations and legal interleaved physical layer views PASS\n",copies,resolves,failures);
 }
+static void layered_sample_inputs(struct graph_records *g,struct opengpu_device *gpu,
+                                  struct opengpu_render_context *context)
+{
+    const u32 stride=95u*128*4;
+    g->encoded.frame.words[291]=stride;
+    for(u32 r=0;r<g->source.resource_count;r++){
+        struct opengpu_native_frame_resource *v=&g->encoded.resources[r];
+        if(v->role!=6)continue;
+        opengpu_buffer_free(gpu,&graph_original[v->gem_handle]);v->bytes=GRAPH_STATES*stride;
+        assert(!opengpu_buffer_alloc(gpu,&graph_original[v->gem_handle],(v->bytes+8191u)&~4095u));
+    }
+    g->states[56]=6;g->states[128+56]=7;
+    /* Neither the raw version nor enough backing grants sample admission. */
+    graph_reject(gpu,context,&g->source,-EINVAL);
+    g->source.sample_inputs=true;
+    g->states[56]=7;graph_reject(gpu,context,&g->source,-EINVAL);g->states[56]=6;
+    struct opengpu_private_snapshot *owner=opengpu_private_snapshot_create(gpu,context);
+    u32 segment,job;assert(!IS_ERR(owner));
+    assert(!opengpu_native_job_snapshot_build(owner,&g->source,&graph_callbacks,&segment));
+    assert(!opengpu_private_snapshot_prepare(owner) && !opengpu_private_snapshot_publish(owner));
+    assert(!opengpu_private_snapshot_address(owner,segment,&job));
+    u32 frame=graph_read(&context->vm,job+21*4,3),states=graph_read(&context->vm,frame+292*4,3);
+    assert(graph_read(&context->vm,frame+291*4,3)==stride);
+    for(u32 state=0;state<2;state++){
+        assert(graph_read(&context->vm,states+state*512+56*4,3)==6+state);
+        u32 pc=graph_read(&context->vm,states+state*512+54*4,3);
+        assert(graph_read(&context->vm,pc,11)==OPENGPU_SHADER_CEASE);
+        for(u32 engine=0;engine<4;engine++){
+            const u32 base_words[]={51,60,66,72};
+            u32 scratch=graph_read(&context->vm,states+state*512+base_words[engine]*4,3);
+            /* Actual relocated scratch mapping contains the full 95-array prefix. */
+            assert(graph_translate(&context->vm,scratch,7));
+            assert(graph_translate(&context->vm,scratch+stride-1,7));
+        }
+    }
+    assert(!opengpu_private_snapshot_retire(owner));graph_retired(gpu,context);
+    g->source.sample_inputs=false;
+    g->states[56]=1;g->states[128+56]=5;g->encoded.frame.words[291]=92u*128*4;
+    for(u32 r=0;r<g->source.resource_count;r++)
+        if(g->encoded.resources[r].role==6)g->encoded.resources[r].bytes=GRAPH_STATES*92u*128*4;
+    puts("sample graph: explicit gate, ordinary ABI6/GS ABI7, full16/4MRT/128 threads and actual RX/RW mappings PASS (CPU only)");
+}
 int main(void)
 {
     struct opengpu_device gpu={0};struct opengpu_render_context context={.gpu=&gpu,.id=7,.references=1};
@@ -199,6 +241,7 @@ int main(void)
     /* Ordinary and new headers cannot acquire one another's interpretation. */
     g->job[0]=0x474e4a01;graph_reject(&gpu,&context,&g->source,-EINVAL);g->job[0]=0x474e4a02;
     plans[1].geometry_metadata[0]=1;graph_reject(&gpu,&context,&g->source,-EINVAL);plans[1].geometry_metadata[0]=0;
+    layered_sample_inputs(g,&gpu,&context);
     layered_matrix(g,&gpu,&context);
     for(u32 h=1;h<=graph_handles;h++)opengpu_buffer_free(&gpu,&graph_original[h]);
     assert(!opengpu_mmu_vm_destroy(&gpu,&context.vm) && !opengpu_mmu_fini(&gpu));

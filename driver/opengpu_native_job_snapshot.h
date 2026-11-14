@@ -18,6 +18,8 @@ struct opengpu_native_job_source {
     u32 resource_count;
     u32 context, pass, generation, capacity, engines;
     bool scalar_fpu, advanced_blend;
+    /* Only initialized from the kernel's validated GSS1 discovery cache. */
+    bool sample_inputs;
     /* Separate explicit GNJ2/GNF3 publication. These fields are unused and
      * must stay zero for version 1; the old contiguous 792-byte plans remain
      * unchanged. Typed original completion backing is leased RW until drain. */

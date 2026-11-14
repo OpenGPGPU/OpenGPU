@@ -5,6 +5,27 @@ import opengpu.graphics._
 import org.scalatest.flatspec.AnyFlatSpec
 
 class NativeOwnerHostProfileSpec extends AnyFlatSpec {
+  it should "compose the full sample owner under a distinct 112-word identity and retain every capacity" in {
+    val before=OwnerResourceProfile.target
+    val sample=OwnerResourceProfile.sampleStage
+    assert(OwnerResourceProfile.sampleStageId=="two-cu-vga60-owner-v2-sample-stage")
+    assert(OwnerResourceProfile.sampleStageName=="geometry-compute-sample")
+    assert(!before.native.sampleShading && !before.nativeSampleTransport)
+    assert(sample.nativeSampleTransport && sample.native.sampleShading)
+    assert(sample.copy(native=before.native)==before)
+    assert(sample.nativeGeometryTransport && sample.native.transformFeedback && sample.execution.enableSharedVectorAtomics)
+    assert(sample.computeUnits==2 && sample.execution.lanes==16 && sample.execution.warps==8)
+    assert(sample.native.vertex.varyings==16 && sample.native.fragment.colors==4 && sample.native.engines==4)
+    assert(sample.native.payload==before.native.payload && sample.native.payload.get.capacityBytes==524288)
+    assert(sample.native.fragment.prefixBytes(128,16,4,7)==48640)
+    assert(sample.requiredDiscovery.size==112 && before.requiredDiscovery.size==104)
+    assert(sample.requiredDiscovery.take(104).filterNot(_._1==0x368)==before.requiredDiscovery.filterNot(_._1==0x368))
+    assert(sample.requiredDiscovery.toMap.apply(0x368)==0x1fffff && before.requiredDiscovery.toMap.apply(0x368)==0xfffff)
+    assert(sample.requiredDiscovery.takeRight(8)==Seq[BigInt](0x47535301,8,1,31,192,0x4d041004,0x7ff,7)
+      .zipWithIndex.map{case(value,index)=>(0x520+4*index,value)})
+    intercept[IllegalArgumentException] { sample.copy(nativeGeometryTransport=false) }
+  }
+
   it should "compose complete protected geometry, shared atomics and feedback without relabeling either frozen owner" in {
     val p = OwnerResourceProfile.target
     assert(p.nativeGeometryTransport && p.native.nativeGeometry && p.nativeProtectedSources)

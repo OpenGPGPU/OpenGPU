@@ -2253,31 +2253,33 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
  * the GUR1/GUB1 source data may enable owned_uniforms. These are private SoA
  * task views: input flags/built-ins and any tail staging remain read-only.
  * FS depth and output-control arrays belong to the writable output prefix.
- * Geometry-input version 5 requires its separate existing stage contract. */
-static inline bool opengpu_native_shader_validate_words(
+ * Sample inputs require their separately discovered GSS1 contract. */
+static inline bool opengpu_native_shader_validate_words_sample_inputs(
     const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
     opengpu_shader_u64 kernarg_size, opengpu_shader_u32 capacity,
     opengpu_shader_u32 stage, opengpu_shader_u32 version,
     opengpu_shader_u32 attributes, opengpu_shader_u32 varyings,
     opengpu_shader_u32 colors, bool scalar_fpu_enabled,
-    bool owned_uniforms, bool geometry_inputs_enabled)
+    bool owned_uniforms, bool geometry_inputs_enabled, bool sample_inputs_enabled)
 {
     opengpu_shader_u32 start, end;
     if (stage > 1 || attributes > 16 || varyings > 16 || colors > 4 ||
         !word_count || word_count > OPENGPU_SHADER_MAX_INSTRUCTIONS)
         return false;
     if (!stage) {
-        if ((version != 1 && version != 2) || colors)
+        if ((version != 1 && version != 2) || colors || sample_inputs_enabled)
             return false;
         start = 4u * attributes + 3u;
         end = start + 4u + 4u * varyings + (version == 2);
     } else {
-        if (attributes || !version || version > 5 ||
-            (version == 5 && !geometry_inputs_enabled))
+        if (attributes || !version || version > 7 ||
+            ((version == 5 || version == 7) && !geometry_inputs_enabled) ||
+            (version >= 6 && !sample_inputs_enabled))
             return false;
         start = 6u + 4u * varyings +
-            ((version == 2 || version == 4 || version == 5) ? 2u : 0u) +
-            (version == 5 ? 2u : 0u);
+            ((version == 2 || version >= 4) ? 2u : 0u) +
+            ((version == 5 || version == 7) ? 2u : 0u) +
+            (version >= 6 ? 3u : 0u);
         end = start + 4u * colors + 2u;
     }
     return opengpu_shader_validate_words_profile_runtime_features_buffer_images_proofs(
@@ -2286,6 +2288,20 @@ static inline bool opengpu_native_shader_validate_words(
         (opengpu_shader_u32 *)0, (opengpu_shader_u32 *)0,
         false, false, false, false, false, false, false,
         owned_uniforms, 0, 0, 0, false, false, true, false, NULL);
+}
+
+/* Existing callers do not authorize SampleID/Position or sample-mask output. */
+static inline bool opengpu_native_shader_validate_words(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
+    opengpu_shader_u64 kernarg_size, opengpu_shader_u32 capacity,
+    opengpu_shader_u32 stage, opengpu_shader_u32 version,
+    opengpu_shader_u32 attributes, opengpu_shader_u32 varyings,
+    opengpu_shader_u32 colors, bool scalar_fpu_enabled,
+    bool owned_uniforms, bool geometry_inputs_enabled)
+{
+    return opengpu_native_shader_validate_words_sample_inputs(words, word_count,
+        kernarg_size, capacity, stage, version, attributes, varyings, colors,
+        scalar_fpu_enabled, owned_uniforms, geometry_inputs_enabled, false);
 }
 
 /* Trusted native callers retain the existing image-instruction contract.

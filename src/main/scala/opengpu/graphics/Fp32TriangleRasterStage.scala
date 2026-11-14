@@ -38,8 +38,8 @@ class Fp32RasterizedQuad(p: VertexShaderStageConfig,g: GraphicsConfig) extends B
 class Fp32TriangleRasterCompletion extends Bundle {
   val identity=new GraphicsWorkIdentity;val sequence=UInt(64.W);val primitiveId=UInt(32.W);val instanceId=UInt(32.W);val partIndex=UInt(3.W)
   val status=UInt(3.W);val launched=Bool();val culled=Bool();val emptyBounds=Bool()
-  val rasterQuads=UInt(32.W);val discardedQuads=UInt(32.W);val outputQuads=UInt(32.W)
-  val coveredLanes=UInt(34.W);val helperLanes=UInt(34.W);val coveredSamples=UInt(36.W)
+  val rasterQuads=UInt(32.W);val discardedQuads=UInt(32.W);val outputQuads=UInt(34.W)
+  val coveredLanes=UInt(36.W);val helperLanes=UInt(36.W);val coveredSamples=UInt(38.W)
   val arithmeticOperations=UInt(48.W);val arithmeticStatus=UInt(5.W);val packingStatus=UInt(5.W)
   val interpolationFault=Bool();val faultX=SInt(32.W);val faultY=SInt(32.W);val faultLane=UInt(2.W)
 }

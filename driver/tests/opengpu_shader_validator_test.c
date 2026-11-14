@@ -781,11 +781,12 @@ static void test_compute_uniform_admission(void)
 static void test_native_uniform_admission(void)
 {
     const unsigned capacities[] = {1,16,128,255};
-    for (unsigned stage=0; stage<2; stage++) for (unsigned version=1; version<=(stage?5u:2u); version++)
+    for (unsigned stage=0; stage<2; stage++) for (unsigned version=1; version<=(stage?7u:2u); version++)
     for (unsigned shape=0; shape<3; shape++) for (unsigned trial=0; trial<4; trial++) {
         unsigned capacity=capacities[trial], attributes=stage?0:(shape==0?0:shape==1?1:16);
         unsigned varyings=shape==0?0:shape==1?1:16, colors=stage?(shape==0?0:shape==1?1:4):0;
-        unsigned start=stage?6+4*varyings+((version==2||version==4||version==5)?2:0)+(version==5?2:0):4*attributes+3;
+        unsigned start=stage?6+4*varyings+((version==2||version>=4)?2:0)+
+            ((version==5||version==7)?2:0)+(version>=6?3:0):4*attributes+3;
         unsigned end=start+(stage?4*colors+2:4+4*varyings+(version==2));
         uint64_t bytes=(uint64_t)(end+4)*capacity*4;
         for (unsigned array=0; array<end+4; array++) {
@@ -797,11 +798,19 @@ static void test_native_uniform_admission(void)
             code[n++]=vse32(2,6);
             code[n++]=0x0330000fu;code[n++]=OPENGPU_SHADER_CEASE;
             bool expected=array>=start && array<end;
-            bool valid=opengpu_native_shader_validate_words(code,n,bytes,capacity,stage,version,
-                attributes,varyings,colors,true,true,true);
+            bool valid=opengpu_native_shader_validate_words_sample_inputs(code,n,bytes,capacity,stage,version,
+                attributes,varyings,colors,true,true,true,stage&&version>=6);
             if(valid!=expected)fprintf(stderr,"native admission stage=%u version=%u a=%u v=%u c=%u capacity=%u array=%u writable=%u..%u got=%u\n",
                 stage,version,attributes,varyings,colors,capacity,array,start,end,valid);
             assert(valid==expected);
+            if(stage&&version>=6) {
+                assert(!opengpu_native_shader_validate_words(code,n,bytes,capacity,stage,version,
+                    attributes,varyings,colors,true,true,true));
+                assert(!opengpu_native_shader_validate_words_sample_inputs(code,n,bytes,capacity,stage,version,
+                    attributes,varyings,colors,true,true,true,false));
+                if(version==7)assert(!opengpu_native_shader_validate_words_sample_inputs(code,n,bytes,capacity,stage,version,
+                    attributes,varyings,colors,true,true,false,true));
+            }
             assert(!opengpu_native_shader_validate_words(code,n,bytes,capacity,stage,version,
                 attributes,varyings,colors,true,false,true));
             if (stage&&version==5) assert(!opengpu_native_shader_validate_words(code,n,bytes,capacity,

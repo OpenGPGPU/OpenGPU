@@ -11,8 +11,8 @@ import chisel3.experimental.hierarchy.{instantiable,public}
 @instantiable
 class Fp32PrimitiveRasterEngine(p: VertexShaderStageConfig=VertexShaderStageConfig(),
     g: GraphicsConfig=GraphicsConfig(),trianglesOnly: Boolean=false,
-    interpolationContexts: Int=8) extends Module {
-  private val core=Module(new Fp32PrimitiveRasterStage(p,g,trianglesOnly,interpolationContexts))
+    interpolationContexts: Int=8,sampleShading:Boolean=false) extends Module {
+  private val core=Module(new Fp32PrimitiveRasterStage(p,g,trianglesOnly,interpolationContexts,sampleShading))
   @public val io=IO(chiselTypeOf(core.io))
   io<>core.io
 }

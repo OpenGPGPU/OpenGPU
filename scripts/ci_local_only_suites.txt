@@ -188,3 +188,5 @@ opengpu.core.GpuComputeUnitSharedAtomicSpec
 
 # Explicit four-image source/payload component qualification; full API capacity.
 opengpu.graphics.NativeLayeredFourImageSpec
+# Explicit opt-in sample-plane rendering; complete protected profile remains open.
+opengpu.graphics.NativeLayeredSamplePlaneSpec

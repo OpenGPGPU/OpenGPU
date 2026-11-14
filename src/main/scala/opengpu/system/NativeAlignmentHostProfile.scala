@@ -25,6 +25,10 @@ final case class NativeAlignmentHostConfig(graphics: GraphicsConfig,
   require(!nativeGeometryTransport || (nativeProtectedSources && native.nativeGeometry),
     "geometry transport discovery requires the actual protected layered native pipeline")
 
+  val nativeSampleTransport: Boolean = native.sampleShading
+  require(!nativeSampleTransport || nativeGeometryTransport,
+    "sample transport requires the complete protected layered host")
+
   private def block(base: Int, words: Seq[BigInt]): Vector[(Int, BigInt)] =
     words.zipWithIndex.map { case (word, index) => (base + 4 * index, word) }.toVector
 
@@ -41,7 +45,8 @@ final case class NativeAlignmentHostConfig(graphics: GraphicsConfig,
       nativeAdvancedBlendAvailable = native.storage.nativeAdvancedDraws,
       nativeDescriptorPreflightAvailable = native.descriptorPreflight,
       nativeProtectedSourcesAvailable = nativeProtectedSources,
-      nativeGeometryTransportAvailable = nativeGeometryTransport)) ++
+      nativeGeometryTransportAvailable = nativeGeometryTransport,
+      nativeSampleTransportAvailable = nativeSampleTransport)) ++
     block(0x160, NativeBinnedGraphicsCapabilities.words(native, computeUnits, graphics)) ++
     block(ComputeIndirectCapabilities.base, ComputeIndirectCapabilities.words(execution)) ++
     block(NativeVisibilityQueryCapabilities.base, NativeVisibilityQueryCapabilities.words) ++
@@ -60,8 +65,11 @@ final case class NativeAlignmentHostConfig(graphics: GraphicsConfig,
     else Vector.empty) ++
     (if (nativeGeometryTransport)
       block(NativeGeometryTransportCapabilities.base, NativeGeometryTransportCapabilities.words)
+    else Vector.empty) ++
+    (if (nativeSampleTransport)
+      block(NativeSampleTransportCapabilities.base, NativeSampleTransportCapabilities.words)
     else Vector.empty)
-  private val discoveryWords = 72 + (if (native.storage.nativeAdvancedDraws) 8 else 0) + (if (native.descriptorPreflight) 8 else 0) + (if (nativeProtectedSources) 8 else 0) + (if (nativeGeometryTransport) 8 else 0)
+  private val discoveryWords = 72 + (if (native.storage.nativeAdvancedDraws) 8 else 0) + (if (native.descriptorPreflight) 8 else 0) + (if (nativeProtectedSources) 8 else 0) + (if (nativeGeometryTransport) 8 else 0) + (if (nativeSampleTransport) 8 else 0)
   require(requiredDiscovery.size == discoveryWords &&
     requiredDiscovery.map(_._1).distinct.size == discoveryWords,
     "the integrated configuration requires its complete distinct discovery words")
@@ -98,4 +106,5 @@ class NativeAlignmentHostSystemAxi(profile: NativeAlignmentHostConfig,
     imageAtomicAvailable = true, storageAtomicAvailable = true,
     nativeFragmentImages = true, tessellationNative = true,
     nativeProtectedSources = profile.nativeProtectedSources,
-    nativeGeometryTransport = profile.nativeGeometryTransport)
+    nativeGeometryTransport = profile.nativeGeometryTransport,
+    nativeSampleTransport = profile.nativeSampleTransport)
