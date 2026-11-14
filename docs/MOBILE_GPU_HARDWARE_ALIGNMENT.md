@@ -18,6 +18,10 @@ budgets remain required.
 
 ## Target and scope
 
+Remaining work is tracked as individually scoped, dependency-ordered PRs in
+[the alignment PR plan](ALIGNMENT_PR_PLAN.md), including acceptance criteria,
+current implementation/qualification state and the single-open-PR rule.
+
 Use Mali-G31 as an older commercial reference class, rather than treating it as the definition of a current entry-level GPU. Arm lists GLES 3.2 support for that device. GLES 3.0 is therefore an intermediate capability target. [Arm Mali-G31](https://support.arm.com/compute-ip/mali-g31)
 
 The current OpenGPU product target, revised by the user on 2026-11-13, is
