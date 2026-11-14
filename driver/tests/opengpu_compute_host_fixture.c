@@ -722,7 +722,7 @@ int main(int argc,char **argv)
 
 
  for(unsigned active=0;active<(ARRAY_SIZE(test_profile)==122?3u:2u);active++){
- bool counter=active==2;char counter_directory[4096];
+ bool counter=active==2 || (active==1 && getenv("OPENGPU_COMPUTE_HOST_TEST_COUNTER"));char counter_directory[4096];
  assert(snprintf(counter_directory,sizeof(counter_directory),"%s/counter",argv[1])>0);
  const char *directory=counter?counter_directory:argv[1];
  session=compute_host_create(7,test_profile,ARRAY_SIZE(test_profile));assert(session);
@@ -831,6 +831,7 @@ int main(int argc,char **argv)
    assert(compute_host_end_cleanup(session)==-EBUSY && compute_host_destroy(session)<0);
    for(unsigned h=1;h<=19;h++)assert(session->render.originals[h] && session->render.originals[h]->backing.cpu);
    if(test_fail_phase==1){
+    if(counter)assert(session->render.originals[20]->refs && session->render.originals[20]->backing.cpu);
     assert(session->head && job->shader.cpu && job->uniform_snapshot.cpu && job->storage_records.cpu);
     assert(session->context && session->context->refcount.refs==2);
    }

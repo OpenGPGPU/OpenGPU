@@ -28,7 +28,7 @@ def fixture():
         if upper not in tables:
             table = 0x50000+len(tables)*4096; allocations[table] = bytearray(4096); tables[upper] = table
             word(0x1000+upper*4, (table >> 12)*1024+1)
-        word(tables[upper]+((va>>12)&1023)*4, (pa>>12)*1024+flags+192)
+        word(tables[upper]+((va>>12)&1023)*4, (pa>>12)*1024+flags+704)
     def view(a, binding, offset=0, count=8192):
         return dict(globalBinding=binding, allocationPhysical=a, allocationBytes=8192, offset=offset, bytes=count)
     descriptor_root, counter_va, storage_root = 0xb1400000, 0xb1c00ff0, 0xb0c00000
@@ -125,8 +125,12 @@ class Counter(unittest.TestCase):
                 wrong=copy.deepcopy(alloc);wrong[0x40000][i*4]^=1
                 with self.subTest(descriptorWord=i),self.assertRaises(ValueError):check(wrong)
             for va in (0xb1400000,0xb1c00ff0,0xb1c0100f,0xcfffc000,0x80800000):
-                wrong=copy.deepcopy(alloc);wrong[tables[va>>22]][((va>>12)&1023)*4]^=4
-                with self.subTest(pte=va),self.assertRaises(ValueError):check(wrong)
+                for bit in range(10):
+                    wrong=copy.deepcopy(alloc)
+                    offset=((va>>12)&1023)*4
+                    word,=struct.unpack_from('<I',wrong[tables[va>>22]],offset)
+                    struct.pack_into('<I',wrong[tables[va>>22]],offset,word^(1<<bit))
+                    with self.subTest(pte=va,bit=bit),self.assertRaises(ValueError):check(wrong)
             wrong=list(discovery);wrong[0]=(wrong[0][0],wrong[0][1]^1)
             with self.assertRaises(ValueError):check(data=cap(discovery=wrong))
             with self.assertRaises(ValueError):check(data=b'OGCMP001'+cap()[8:])
@@ -194,6 +198,31 @@ class CounterController(unittest.TestCase):
                 path.write_bytes(original)
             path=root/'record-0.capture';original=path.read_bytes();path.unlink();(root/'alias').write_bytes(original);path.symlink_to('alias')
             with self.assertRaisesRegex(ValueError,'aliased'):unchanged_inputs(root,inputs)
+
+
+
+class CounterCompilerDependencies(unittest.TestCase):
+    def test_actual_mmd_rejects_changed_gpu_atomic_object_private_and_unbound_inputs(self):
+        from compute_owner_inputs import dependency_inputs
+        from native_sample_compiler_inputs import sha256
+        parent=ROOT/'.artifacts';parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='counter-mmd-',dir=parent) as t:
+            root=Path(t);cpu=root/'cpu';source=root/'source';external=root/'mesa'
+            for p in (cpu,source,external):p.mkdir()
+            gpu=source/'frontend.h';gpu.write_bytes(b'CPU GPU-header fixture')
+            atom=external/'state_tracker_st_atom_atomicbuf.c.o';atom.write_bytes(b'CPU original-object fixture')
+            private=cpu/'body.inc';private.write_bytes(b'CPU extracted-body fixture')
+            dep=cpu/'unit.d';dep.write_text('object.o: '+' '.join(map(str,(gpu,atom,private)))+'\n')
+            bound={str(atom):[str(atom),sha256(atom)]};qualified={'frontend.h':sha256(gpu)};generated={str(private):sha256(private)}
+            def check():return dependency_inputs(dep,cpu=cpu,source=source,bound=bound,qualified=qualified,generated=generated)
+            self.assertEqual(len(check()),3)
+            for path in (gpu,atom,private):
+                original=path.read_bytes();path.write_bytes(original+b'mutation')
+                with self.subTest(path=path.name),self.assertRaises(ValueError):check()
+                path.write_bytes(original)
+            extra=external/'unbound.h';extra.write_bytes(b'CPU extra dependency')
+            dep.write_text('object.o: '+str(extra)+'\n')
+            with self.assertRaises(ValueError):check()
 
 
 if __name__=='__main__':unittest.main()

@@ -163,6 +163,10 @@ def main():
                 negative = out / ('negative-%s-%s' % (phase, kind))
                 negative.mkdir()
                 subprocess.run([str(out / 'test'), str(negative), str(phase), str(kind)], env=env, check=True)
+                if args.sample_stage and phase == 1:
+                    counter_negative=out/('counter-negative-%s'%kind);counter_negative.mkdir();(counter_negative/'counter').mkdir()
+                    subprocess.run([str(out/'test'),str(counter_negative),str(phase),str(kind)],
+                        env=dict(env,OPENGPU_COMPUTE_HOST_TEST_COUNTER='1'),check=True)
 
 
 if __name__ == '__main__':

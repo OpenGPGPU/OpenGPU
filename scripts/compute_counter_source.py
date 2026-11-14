@@ -65,9 +65,10 @@ def translate(memory, satp, va, permissions):
     def word(pa):
         return struct.unpack('<I', memory.read(pa, 4))[0]
     first = word(root + ((va >> 22) & 1023) * 4)
-    require(first & 15 == 1, 'counter Sv32 root is not a nonleaf')
+    require(first & 1023 == 1, 'counter Sv32 root is not a nonleaf')
     second = word((first >> 10) * 4096 + ((va >> 12) & 1023) * 4)
-    require(second & 15 == permissions, 'counter Sv32 leaf permissions differ')
+    # Production private pages are uncached, accessed/dirty, supervisor-only.
+    require(second & 1023 == (0x2c0 | permissions), 'counter Sv32 leaf permissions differ')
     return (second >> 10) * 4096 + (va & 4095)
 
 
