@@ -44,7 +44,8 @@ struct Packet {
     auto word=[&](){return read_word(in);};
     require(word()==1,"unknown blit capture version");f.context=word();
     require(f.context && f.context<512 && word()==2048 && word()==64,"invalid blit context/program extent");
-    for(auto &v:f.grid)v=word();for(auto &v:f.local)v=word();
+    for(auto &v:f.grid){v=word();}
+    for(auto &v:f.local){v=word();}
     require(f.grid[0] && f.grid[0]<=8 && f.grid[1] && f.grid[1]<=8 && f.grid[2]==1 &&
       f.local==std::array<uint32_t,3>{1,1,1},"invalid blit launch dimensions");
     uint64_t bytes=96+2048+64;
@@ -69,7 +70,8 @@ struct Packet {
     require(in.peek()==EOF,"trailing blit input bytes");
     auto load=[](const auto &data,size_t offset) {
       require(offset+4<=data.size(),"short blit word");uint32_t value=0;
-      for(unsigned b=0;b<4;b++)value|=uint32_t(data[offset+b])<<(8*b);return value;
+      for(unsigned b=0;b<4;b++){value|=uint32_t(data[offset+b])<<(8*b);}
+      return value;
     };
     for(unsigned n=0;n<16;n++)require(load(f.kernarg,n*4)==(n<3?f.grid[n]:0),"captured kernarg differs");
     uint32_t fields[24];for(unsigned n=0;n<24;n++)fields[n]=load(f.coordinates,n*4);
