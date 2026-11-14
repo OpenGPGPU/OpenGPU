@@ -73,6 +73,13 @@ int main(int argc,char **argv)
     p=profile;p.version=3;reject(owner,view,p,-EINVAL);
     p=profile;p.stage=1;p.version=5;p.attributes=0;p.colors=1;reject(owner,view,p,-EINVAL);
     assert(!code_copies); /* cheap metadata rejects never read an original GEM */
+    for(unsigned version=6;version<=7;++version) {
+        p=profile;p.stage=1;p.version=version;p.attributes=0;p.colors=1;
+        p.geometry_inputs=version==7;
+        reject(owner,view,p,-EINVAL);
+        p.sample_inputs=true;p.geometry_inputs=false;
+        if(version==7)reject(owner,view,p,-EINVAL);
+    }
     p=profile;p.staging_bytes--;reject(owner,view,p,-EINVAL);
     code_copy_error=-EIO;reject(owner,view,profile,-EIO);code_copy_error=0;
     private_alloc_fail_after=0;reject(owner,view,profile,-ENOMEM);private_alloc_fail_after=-1;
@@ -91,6 +98,31 @@ int main(int argc,char **argv)
     bad=view;bad.bytes=12;bad.entry_offset=4;accepted(&gpu,&context,bad,profile);
     for(unsigned i=0;i<512;i++)literal_word(64+i*4,i==511?OPENGPU_SHADER_CEASE:0x00000013u);
     bad=view;bad.bytes=2048;accepted(&gpu,&context,bad,profile);
+    for(unsigned version=6;version<=7;++version) {
+        p=profile;p.stage=1;p.version=version;p.attributes=0;p.varyings=16;p.colors=4;
+        p.geometry_inputs=version==7;p.sample_inputs=true;
+        const unsigned first=version==7?77u:75u,last=first+18;
+        p.staging_bytes=(u64)(last+4)*128*4;
+        for(unsigned slice=0;slice<=last;++slice) {
+            unsigned n=64;
+            literal_word(n,0x01007557u);n+=4;
+            literal_word(n,7u<<25|5u<<7|0x0bu);n+=4;
+            literal_word(n,23u<<26|1u<<25|5u<<15|4u<<12|2u<<7|0x57u);n+=4;
+            literal_word(n,1u<<15|6u<<7|0x13u);n+=4;
+            unsigned bytes=slice*512;
+            while(bytes){unsigned step=bytes>2047?2047:bytes;literal_word(n,step<<20|6u<<15|6u<<7|0x13u);n+=4;bytes-=step;}
+            literal_word(n,1u<<25|6u<<15|6u<<12|2u<<7|0x27u);n+=4;
+            literal_word(n,OPENGPU_SHADER_CEASE);n+=4;
+            bad=view;bad.bytes=n-64;
+            if(slice>=first&&slice<last)accepted(&gpu,&context,bad,p);
+            else {owner=opengpu_private_snapshot_create(&gpu,&context);assert(!IS_ERR(owner));
+                reject(owner,bad,p,-EINVAL);assert(!opengpu_private_snapshot_retire(owner));}
+        }
+        owner=opengpu_private_snapshot_create(&gpu,&context);assert(!IS_ERR(owner));
+        p.staging_bytes=(u64)last*128*4-1;
+        literal_word(64,0x0330000fu);literal_word(68,OPENGPU_SHADER_CEASE);bad=view;bad.bytes=8;
+        reject(owner,bad,p,-EINVAL);assert(!opengpu_private_snapshot_retire(owner));
+    }
     /* Actual full-prefix ranges: ordinary input and the first tail slice must
      * remain read-only. fn7 result is broadcast before the attempted store. */
     for(unsigned slice=0;slice<=15;slice++) {

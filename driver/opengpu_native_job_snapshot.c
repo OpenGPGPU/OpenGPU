@@ -77,7 +77,8 @@ int opengpu_native_job_snapshot_build(struct opengpu_private_snapshot *owner,
         (u64)s->states_bytes>(1ULL<<32) || !s->capacity || s->capacity>255 || !s->engines || s->engines>4 ||
         (s->layered ? !layered_header(s->job,OPENGPU_NATIVE_LAYERED_JOB_MAGIC,2,512) :
          !header(s->job,OPENGPU_NATIVE_BINNED_JOB_MAGIC,512)))return -EINVAL;
-    if((s->layered && (s->plans || !s->completion.handle)) ||
+    if((s->sample_inputs && !s->layered) ||
+       (s->layered && (s->plans || !s->completion.handle)) ||
        (!s->layered && (s->layered_plans || !all_zero(&s->completion,sizeof(s->completion)))))return -EINVAL;
     count=get(s->job,J(JOB_DRAWCOUNT));stride=get(s->job,J(JOB_DRAWSTRIDE));
     state_count=s->states_bytes/512;
@@ -135,7 +136,7 @@ int opengpu_native_job_snapshot_build(struct opengpu_private_snapshot *owner,
             get(d,D(VERTEX_GEOMETRY_VERTEX_UNIFORMS_VERSION)) || get(d,D(VERTEX_GEOMETRY_VERTEX_UNIFORMS_ADDRESS)) ||
             get(d,D(VERTEX_GEOMETRY_VERTEX_RESOURCES_VERSION)) || get(d,D(VERTEX_GEOMETRY_VERTEX_RESOURCES_ADDRESS)) ||
             (!gs && (get(d,D(VERTEX_GEOMETRY_VERTEX_VARYINGSLOTS))!=get(f,F(FRAGMENT_VARYINGSLOTS)) ||
-                     get(f,F(FRAGMENT_VERSION))==5)))goto done;
+                     get(f,F(FRAGMENT_VERSION))==5 || get(f,F(FRAGMENT_VERSION))==7)))goto done;
         if(gs){
             if(get(d,OPENGPU_NATIVE_GEOMETRY_DRAW_GEOMETRY_VERSION_WORD)!=1 ||
                get(d,OPENGPU_NATIVE_GEOMETRY_DRAW_GEOMETRY_BASE_WORD) ||
@@ -207,6 +208,7 @@ int opengpu_native_job_snapshot_build(struct opengpu_private_snapshot *owner,
         profile.stage=1;profile.version=get(f,F(FRAGMENT_VERSION));profile.attributes=0;
         profile.varyings=get(f,F(FRAGMENT_VARYINGSLOTS));profile.colors=get(f,F(FRAGMENT_COLORSLOTS));
         profile.staging_bytes=get(s->frame,FW(SCRATCHSTRIDE));profile.owned_uniforms=roots.present[1];profile.geometry_inputs=gs;
+        profile.sample_inputs=s->sample_inputs;
         ret=opengpu_native_program_snapshot_append(owner,&p->fragment_program,&profile,copy->copy,copy->context,&program);
         if(!ret)ret=reloc(owner,state_segment,(u64)p->state_handle*512,F(FRAGMENT_SHADERPC),program.segment,program.entry_offset,false);
         if(!ret && roots.present[1])ret=reloc(owner,state_segment,(u64)p->state_handle*512,
