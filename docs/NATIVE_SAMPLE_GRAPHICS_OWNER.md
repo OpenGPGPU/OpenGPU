@@ -21,14 +21,30 @@ controller must bind that capture to its retained checked source plan before
 publishing admission. A missing, reordered or altered admission never runs the
 second command.
 
-This source entry is not registered as a prepared executor kind yet. A live
-controller, original-Mesa producer integration and
-actual final-host execution remain required before it can qualify work or
-authorize cleanup. The existing CPU Mesa entry still rejects live use. These
-transport functions do not establish descriptor, image or shader correctness;
-the controller must bind external compiler/reflection inputs and run both
-complete canonical/source and independent image/GNY2 oracles before allowing
-the producer to request real PTE revocation.
+The fixed Python controller now performs source preflight before launching the
+executor, binds held/retired receipts to the original capture command and
+context/pass/generation, and grants second-record admission only for the exact
+checked capture bytes. Each independent result check precedes its execution
+response. Before cleanup authorization, the controller revalidates both full
+results in order, including the first GNY2/byte guards, and requires distinct
+original commands. Original inputs, captures and returned snapshots remain
+immutable through the final authorization.
+
+The producer has a separate compile-time LIVE entry; the default CPU entry
+rejects both old and new live environment variables, including empty values.
+The controller requires the distinct `native-sample-graphics` prepared executor
+kind and its original checker. This kind accepts only the exact sample-stage
+factory, binds the GPU producer/compiler/include/checker closure, and retains
+separate build/execution locks. The original three executor kinds keep their
+existing contracts. Seventeen CPU qualification tests reject changed/missing
+sources, undeclared includes, old driver/model relabeling and stale binaries.
+
+The [Linux LIVE producer build](NATIVE_SAMPLE_GRAPHICS_SOURCE_PLANS.md) passes
+ASan/UBSan compilation/linking of all28 units and331 actual dependencies. It
+never starts the producer or executes a GPU command. The original Mesa inputs
+and compiled products are checked before ended build data is removed. Actual
+final-host execution and its matching compiler-input binding remain required;
+no CPU receipt or successful build establishes GPU execution.
 
 The JSON schemas are `opengpu-native-sample-graphics-held-v1` and
 `opengpu-native-sample-graphics-retired-v1`. Each names record0 or record1,
@@ -73,15 +89,29 @@ views. The independent result check remains narrower: two primitive records
 use2944 arena bytes, the directory and pool use64 bytes each, the attachment
 uses256 bytes, and scratch writes stay within the supported ABI1 logical views.
 All other original allocation, RX/uniform/descriptor/PTE bytes and allocation
-tails remain guarded. The second result must preserve the first image, GNY2
+tails remain guarded. Mutable/private pages cannot alias either owner's original
+read-only allocations or actual PTE pages; shared original read-only allocations
+remain legal. The second result must preserve the first image, GNY2
 lease and all non-current-owner bytes in the same original allocations.
 
 The result checker uses the separately derived complete triangle GNY2 oracle
-and independently calculated original-source RGBA32UI color. Six ASan/UBSan
+and independently calculated original-source RGBA32UI color. ASan/UBSan
 CPU tests pass on real Linux canonical snapshots, placeholder CEASE programs,
 synthetic returned images/GNY2, and command/page/guard/identity/order mutants.
+Twelve tests include coherent writable/RO/PTE aliases, legal original RO sharing,
+and identical bad first-result GNY2/guard bytes carried through both snapshots.
 These synthetic results exercise rejection and do not establish GPU execution.
-The actual-Mesa output has not yet been rerun through this complete preflight.
+The [actual Mesa CPU preflight](NATIVE_SAMPLE_GRAPHICS_SOURCE_PLANS.md) also
+passes for frozen39775 source, including canonical records and both actual C
+capture identities; it does not contain returned GPU images or GNY2 results.
+
+Seven controller CPU tests pass with explicit mocked image/GNY2 checks. They
+exercise successful phase order and admission, and reject source/result
+mutation, foreign/swapped receipts, failed per-record or complete-pair checks,
+invalid cleanup, executor failure and changed final qualification. They also
+check that unknown process exit preserves inputs while cleanup still attempts
+all owned consumers. These tests establish controller gating only; the separate
+source/image/GNY2 suites exercise the actual independent oracles.
 
 Reproduce serially:
 
@@ -92,7 +122,8 @@ OPENGPU_TEST_SANITIZERS=1 PYTHONDONTWRITEBYTECODE=1 \
   python3 -B scripts/test_graphics_sample_owner_ipc.py
 OPENGPU_TEST_SANITIZERS=1 PYTHONDONTWRITEBYTECODE=1 \
   python3 -B scripts/test_native_sample_graphics_owner_oracle.py
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_native_sample_graphics_controller.py
 ```
 
-Both tests and the separate canonical descriptor tests are in the common CPU
+These tests and the separate canonical descriptor tests are in the common CPU
 lanes. Their managed outputs are removed when their consumers exit.
