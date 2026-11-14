@@ -144,6 +144,26 @@ class Ordinary112OwnerTests(unittest.TestCase):
         bad = bytearray(final); struct.pack_into('<I', bad, 12+100+96, 0)
         decode('final', bad, valid=False)
 
+    def test_cleanup_requires_both_actual_owners_without_ram_replacement_or_reset(self):
+        value = dict(phase='cleanup', ownerCleanupObserved=True, contextCleanupObserved=True,
+            records=2, resetCount=1, ramReplaced=False, imagesPreserved=True,
+            externalDrained=True, sourceQualificationRequired=True, clockQualified=False,
+            fpsQualified=False, batches=3, pteClears=100, shootdowns=3)
+        protocol.checked_cleanup(value)
+        for key, wrong in [('records',1),('records',True),('resetCount',2),
+                ('ownerCleanupObserved',False),('contextCleanupObserved',False),
+                ('ramReplaced',True),('imagesPreserved',False),('externalDrained',False),
+                ('clockQualified',True),('fpsQualified',True),('batches',0),
+                ('pteClears',0),('shootdowns',0),('batches',True),('pteClears',-1)]:
+            bad=dict(value);bad[key]=wrong
+            with self.assertRaises(ValueError):protocol.checked_cleanup(bad)
+
+    def test_admission_binds_the_complete_second_capture_without_accepting_old_response_wires(self):
+        capture=b'OGCAP002'+bytes(range(256))
+        self.assertEqual(protocol.admission_bytes(capture),b'OGNGA001'+struct.pack('<II',1,len(capture))+capture)
+        for record,data in [(0,capture),(2,capture),(True,capture),(1,b''),(1,bytearray(capture)),(1,bytes(2097153))]:
+            with self.assertRaises(ValueError):protocol.admission_bytes(data,record)
+
 
 if __name__ == '__main__':
     unittest.main()

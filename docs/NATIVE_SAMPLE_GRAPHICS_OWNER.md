@@ -15,9 +15,14 @@ original-driver retirement trace before POP/IRQ acknowledgement. It publishes
 record1 results only after record0 retirement. Both resulting RAM snapshots
 come from the same memory and bus instance. PTE ownership is retained for the
 generic actual-cleanup replay with an exact record count of two.
+Before the second enqueue, `record-1.admit` must contain `OGNGA001`, record1,
+the bounded capture byte count and every exact original capture byte. The
+controller must bind that capture to its retained checked source plan before
+publishing admission. A missing, reordered or altered admission never runs the
+second command.
 
 This source entry is not registered as a prepared executor kind yet. A live
-controller, original-Mesa producer integration, full triangle GNY2 oracle and
+controller, original-Mesa producer integration and
 actual final-host execution remain required before it can qualify work or
 authorize cleanup. The existing CPU Mesa entry still rejects live use. These
 transport functions do not establish descriptor, image or shader correctness;
@@ -50,7 +55,7 @@ including a final response whose second record fails. The cleanup wire is
 separate from execution and final wires; receipt syntax alone cannot grant
 permission to free an owner.
 
-Five ASan/UBSan tests pass for the C++/Python transport and cross-language
+Seven ASan/UBSan tests pass for the C++/Python transport and cross-language
 interoperation. A synthetic CPU MMIO peer executes two enqueue/retire cycles,
 checks one reset and memory/context continuity, and rejects duplicate command
 or job identities, changed contexts, feedback flags, old captures and a missing
@@ -60,6 +65,24 @@ Five additional ASan/UBSan C codec tests cover all truncations, old/phase-mixed
 wires, malformed fields, exact profile isolation, timeouts and error markers.
 These are CPU protocol tests, not original-Mesa or GPU execution results.
 
+`native_sample_graphics_owner_oracle.py` binds the exact capture's private GNJ
+address/512-byte bounds, shared SATP, ordinary flags and all successful GNX
+identity/fault predicates to the complete canonical source plans. Its captured
+page permissions must equal the page envelopes of the original writable
+views. The independent result check remains narrower: two primitive records
+use2944 arena bytes, the directory and pool use64 bytes each, the attachment
+uses256 bytes, and scratch writes stay within the supported ABI1 logical views.
+All other original allocation, RX/uniform/descriptor/PTE bytes and allocation
+tails remain guarded. The second result must preserve the first image, GNY2
+lease and all non-current-owner bytes in the same original allocations.
+
+The result checker uses the separately derived complete triangle GNY2 oracle
+and independently calculated original-source RGBA32UI color. Six ASan/UBSan
+CPU tests pass on real Linux canonical snapshots, placeholder CEASE programs,
+synthetic returned images/GNY2, and command/page/guard/identity/order mutants.
+These synthetic results exercise rejection and do not establish GPU execution.
+The actual-Mesa output has not yet been rerun through this complete preflight.
+
 Reproduce serially:
 
 ```sh
@@ -67,6 +90,8 @@ OPENGPU_TEST_SANITIZERS=1 PYTHONDONTWRITEBYTECODE=1 \
   python3 -B scripts/test_native_sample_graphics_owner.py
 OPENGPU_TEST_SANITIZERS=1 PYTHONDONTWRITEBYTECODE=1 \
   python3 -B scripts/test_graphics_sample_owner_ipc.py
+OPENGPU_TEST_SANITIZERS=1 PYTHONDONTWRITEBYTECODE=1 \
+  python3 -B scripts/test_native_sample_graphics_owner_oracle.py
 ```
 
 Both tests and the separate canonical descriptor tests are in the common CPU

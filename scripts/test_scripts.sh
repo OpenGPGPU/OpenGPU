@@ -26,6 +26,9 @@ python3 scripts/test_native_sample_graphics_source.py
 python3 -B scripts/test_native_sample_graphics_recipe.py
 python3 -B scripts/test_graphics_sample_owner_ipc.py
 python3 -B scripts/test_native_sample_graphics_owner.py
+python3 -B scripts/test_native_sample_graphics_gny2_oracle.py
+python3 -B scripts/test_native_sample_graphics_owner_oracle.py
+python3 -B scripts/test_graphics_sample_live.py
 python3 scripts/test_native_sample_graphics.py
 python3 scripts/test_native_graphics_owner_bridge.py
 python3 scripts/test_qualify_native_graphics_owner.py

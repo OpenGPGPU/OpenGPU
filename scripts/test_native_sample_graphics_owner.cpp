@@ -69,6 +69,11 @@ static void graphics_series(int argc,char **argv,int fault,bool json) {
   if(fault!=6)atomic_json(directory/"record-1.capture",[&](auto &out){
     auto bytes=encode(second);if(fault==5)bytes[7]='1';out.write(bytes.data(),bytes.size());
   });
+  if(fault!=7)atomic_json(directory/"record-1.admit",[&](auto &out){
+    auto bytes=encode(second);if(fault==8)bytes.back()^=1;
+    out.write("OGNGA001",8);write_le(out,fault==9?0:1,4);write_le(out,bytes.size(),4);
+    out.write(bytes.data(),bytes.size());
+  });
   graphics_retirement(directory/"record-0.retire",first);
   graphics_retirement(directory/"record-1.retire",second);
   Memory memory;memory.ranges={{0x1000,0x9000,0}};
@@ -118,7 +123,7 @@ int main(int argc,char **argv) {
   }
   if(present)setenv("OPENGPU_NATIVE_HOST_TIMEOUT",saved.c_str(),1);else unsetenv("OPENGPU_NATIVE_HOST_TIMEOUT");
   graphics_series(argc,argv,0,json);
-  for(int fault=1;fault<=6;fault++)graphics_series(argc,argv,fault,false);
+  for(int fault=1;fault<=9;fault++)graphics_series(argc,argv,fault,false);
   rejects([&]{sample_graphics_receipt_json(std::cout,RecordResult{},2,41,0);});
   if(!json)std::cout<<"ordinary112 two-owner CPU MMIO/guard checks: PASS\n";
 }
