@@ -12,12 +12,13 @@ import opengpu.graphics.{ShaderImageTask, ShaderPayloadConfig, ShaderPayloadPin,
   */
 class TessellationHostShaderRouter(config: GpuConfig, numComputeUnits: Int, taskIdWidth: Int,
     tasksPerClient: Int, payload: Option[ShaderPayloadConfig] = None,
-    imageAvailable: Boolean = false,legacyGeometry:Boolean=false) extends Module {
+    imageAvailable: Boolean = false,legacyGeometry:Boolean=false,tessellationImageAvailable:Boolean=false) extends Module {
+  require(!tessellationImageAvailable || imageAvailable,"tessellation images require the shared image path")
   require(numComputeUnits > 0 && taskIdWidth > 0 && tasksPerClient > 0)
   private val pins = 2 * tasksPerClient + 2
   val io = IO(new Bundle {
     val legacy = new SharedCuGraphicsPort(config, taskIdWidth, numComputeUnits, geometryAvailable=legacyGeometry,imageAvailable=imageAvailable)
-    val tessellation = new SharedCuGraphicsPort(config, taskIdWidth, numComputeUnits, geometryAvailable=true, tessellationAvailable=true)
+    val tessellation = new SharedCuGraphicsPort(config, taskIdWidth, numComputeUnits, geometryAvailable=true, tessellationAvailable=true,imageAvailable=tessellationImageAvailable)
     val pool = Flipped(new SharedCuGraphicsPort(config, taskIdWidth, numComputeUnits,
       geometryAvailable=true, tessellationAvailable=true, imageAvailable=imageAvailable))
     val clientPayload = payload.map(p => Input(Vec(2, Valid(new ShaderPayloadBinding(config,p)))))
@@ -67,9 +68,10 @@ class TessellationHostShaderRouter(config: GpuConfig, numComputeUnits: Int, task
   tessellation.geometryCancel.get := io.tessellation.geometryCancel.get
   tessellation.tessellationBases.get := io.tessellation.tessellationBases.get
   io.tessellation.tessellation.get <> tessellation.tessellation.get
-  // Tessellation jobs do not yet admit image bindings. Never inherit the
-  // previous legacy fragment task's image publication.
-  if (imageAvailable) tessellation.imageTask.get := 0.U.asTypeOf(new ShaderImageTask)
+  // A launch snapshots its own publication, independently of the legacy owner.
+  // Frozen factories retain the explicit disabled publication.
+  if (imageAvailable) tessellation.imageTask.get := (if(tessellationImageAvailable)
+    io.tessellation.imageTask.get else 0.U.asTypeOf(new ShaderImageTask))
   io.pool <> router.io.pool
   if (payload.nonEmpty) {
     router.io.clientPayload.get := io.clientPayload.get

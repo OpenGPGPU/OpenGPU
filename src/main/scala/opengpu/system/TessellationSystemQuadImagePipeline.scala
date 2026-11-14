@@ -32,7 +32,8 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
     g:GraphicsConfig=GraphicsConfig(),viewport:Fp32ViewportConfig=Fp32ViewportConfig(),engines:Int=2,
     pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
-    payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false,externalImages:Boolean=false) extends Module {
+    payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false,externalImages:Boolean=false,
+    fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false) extends Module {
   require(engines>=1 && engines<=4 && p.varyings==f.varyings && f.colors==4)
   payload.foreach(q=>require(payloadOwner>=0 && payloadOwner+engines<q.owners))
   private val sharedConfig=shared;private val payloadConfig=payload
@@ -41,7 +42,7 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
   val memoryTransactions=TessellationSystemQuadImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity)
   private val replaySharedConfig=shared
   val io=IO(new Bundle {
-    val images=if(externalImages)Some(Flipped(Vec(engines,new TypedReplayTileImagePipelineIO(config,p,replaySharedConfig,payloadConfig))))else None
+    val images=if(externalImages)Some(Flipped(Vec(engines,new TypedReplayTileImagePipelineIO(config,p,replaySharedConfig,payloadConfig,fragmentImageAvailable=fragmentImageAvailable))))else None
     val begin=Flipped(Decoupled(new TypedVertexBinImageDescriptor))
     val task=Flipped(Decoupled(new TessellationSystemQuadBinTask(config,p,idWidth)))
     val taskCompletion=Decoupled(new TessellationSystemQuadBinTaskCompletion)
@@ -53,7 +54,7 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
     val opened=Decoupled(UInt(2.W));val load=Flipped(Decoupled(new TessellationPatchAccess))
     val seal=Flipped(Decoupled(Bool()))
     val inspect=Flipped(Decoupled(new TessellationPatchAccess));val reply=Decoupled(new TessellationContextReply)
-    val shared=Flipped(new SharedCuGraphicsPort(config,idWidth,cus,geometryAvailable=true,tessellationAvailable=true))
+    val shared=Flipped(new SharedCuGraphicsPort(config,idWidth,cus,geometryAvailable=true,tessellationAvailable=true,imageAvailable=fragmentImageAvailable))
     /** Owner 0 is reserved so image engine e can use fragment owner e+1, matching
       * TypedVertexBinImagePipeline. Quad tessellation does not consume a payload lease.
       */
@@ -71,15 +72,16 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
   val recordBytes=source.recordBytes
   private val images:Seq[TypedReplayTileImagePipelineIO]=if(externalImages)io.images.get.toSeq else
     Seq.tabulate(engines)(e=>Module(new TypedReplayTileImagePipeline(config,p,f,shared,g,storage,
-      engine=e,useSramBlackBoxes=useSramBlackBoxes,payload=payload,payloadOwner=payloadOwner+e)).io)
+      engine=e,useSramBlackBoxes=useSramBlackBoxes,payload=payload,payloadOwner=payloadOwner+e,fragmentImageAvailable=fragmentImageAvailable,sampleShading=sampleShading)).io)
   for(phase<-0 until 6)io.fragmentEvents.phaseWorkers(phase):=
     images.map(_.fragmentEvents.phaseWorkers(phase)).reduce(_+&_)
   io.fragmentEvents.stagingOutstanding:=images.map(_.fragmentEvents.stagingOutstanding).reduce(_+&_)
   io.fragmentEvents.stagingBlocked:=images.map(_.fragmentEvents.stagingBlocked).reduce(_ || _)
   io.fragmentEvents.outputBlocked:=images.map(_.fragmentEvents.outputBlocked).reduce(_ || _)
-  private val mux=Module(new GeometryFragmentShaderRouter(config,cus,idWidth,payload,tessellationAvailable=true))
-  private val router=Module(new SharedShaderTaskRouter(config,cus,engines,idWidth,shaderPayload=payload))
-  source.io.shared<>mux.io.geometry
+  private val mux=Module(new GeometryFragmentShaderRouter(config,cus,idWidth,payload,tessellationAvailable=true,imageAvailable=fragmentImageAvailable))
+  private val router=Module(new SharedShaderTaskRouter(config,cus,engines,idWidth,shaderPayload=payload,imageAvailable=fragmentImageAvailable))
+  if(fragmentImageAvailable) GeometryFragmentShaderRouter.connectWithoutImages(mux.io.geometry,source.io.shared)
+  else source.io.shared<>mux.io.geometry
   source.io.trap.ready:=true.B;source.io.invalidate.valid:=false.B
   source.io.invalidate.bits:=0.U.asTypeOf(source.io.invalidate.bits);source.io.invalidateDone.ready:=true.B
   for(cu<-0 until cus){

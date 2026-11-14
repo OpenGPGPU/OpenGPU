@@ -44,8 +44,11 @@ object OwnerResourceProfile {
   val sampleStageId = id + "-sample-stage"
   val sampleStageName = "geometry-compute-sample"
   // A new factory with an explicit presence record. The 104-word target remains frozen.
-  val sampleStage: NativeAlignmentHostConfig = target.copy(native = target.native.copy(sampleShading = true))
-  require(sampleStage.nativeSampleTransport && sampleStage.requiredDiscovery.size == 112 &&
+  val sampleStage: NativeAlignmentHostConfig = target.copy(native = target.native.copy(sampleShading = true),
+    tessellationFragmentImages = true, tessellationSampleShading = true)
+  require(sampleStage.tessellationFragmentImages && sampleStage.tessellationSampleShading &&
+    sampleStage.copy(native=target.native,tessellationFragmentImages=false,tessellationSampleShading=false)==target &&
+    sampleStage.nativeSampleTransport && sampleStage.requiredDiscovery.size == 112 &&
     sampleStage.requiredDiscovery.toMap.apply(0x368) == 0x1fffff &&
     sampleStage.native.payload == target.native.payload &&
     sampleStage.execution == target.execution, "sample stage preserves complete owner resources")

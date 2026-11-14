@@ -19,14 +19,15 @@ class TessellationNativeTriangleSequenceImage(config:GpuConfig,p:VertexShaderSta
     shared:SharedCuShaderConfig,g:GraphicsConfig,viewport:Fp32ViewportConfig=Fp32ViewportConfig(),engines:Int=2,
     pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
-    payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false,externalImages:Boolean=false) extends Module {
+    payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false,externalImages:Boolean=false,
+    fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false) extends Module {
   private val idWidth=shared.taskIdWidth;private val cus=shared.numComputeUnits;private val payloadConfig=payload
   private val renderIds=TessellationSystemTriangleImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity)
   private val imageIds=TessellationInputMemoryFabric.transactions(renderIds)
   private val slots=TessellationNativeRecordMemoryFabric.transactions(imageIds)
   private val replaySharedConfig=shared
   val io=IO(new Bundle {
-    val images=if(externalImages)Some(Flipped(Vec(engines,new TypedReplayTileImagePipelineIO(config,p,replaySharedConfig,payloadConfig))))else None
+    val images=if(externalImages)Some(Flipped(Vec(engines,new TypedReplayTileImagePipelineIO(config,p,replaySharedConfig,payloadConfig,fragmentImageAvailable=fragmentImageAvailable))))else None
     val begin=Flipped(Decoupled(new TypedVertexBinImageDescriptor))
     val submit=Flipped(Decoupled(new TessellationNativeTriangleSequenceImageSubmit(idWidth)))
     val submitCompletion=Decoupled(new TessellationNativeTriangleSequenceCompletion(idWidth))
@@ -34,7 +35,7 @@ class TessellationNativeTriangleSequenceImage(config:GpuConfig,p:VertexShaderSta
     val out=Vec(engines,Decoupled(new TypedTilePixelQuadCompletion));val tileDone=Vec(engines,Decoupled(new TypedVertexBinImageTileCompletion))
     val completion=Decoupled(new TessellationSystemTriangleInputImageCompletion(p))
     val inspect=Flipped(Decoupled(new TessellationPatchAccess));val reply=Decoupled(new TessellationContextReply)
-    val shared=Flipped(new SharedCuGraphicsPort(config,idWidth,cus,geometryAvailable=true,tessellationAvailable=true))
+    val shared=Flipped(new SharedCuGraphicsPort(config,idWidth,cus,geometryAvailable=true,tessellationAvailable=true,imageAvailable=fragmentImageAvailable))
     val payload=payloadConfig.map(q=>Vec(engines+1,new FragmentPayloadPort(config,q)))
     val poolPayload=payloadConfig.map(q=>Output(Valid(new ShaderPayloadBinding(config,q))))
     val payloadPins=payloadConfig.map(q=>Output(Vec(TessellationSystemTriangleImagePipeline.payloadPins(engines),Valid(new ShaderPayloadPin(q)))))
@@ -46,7 +47,7 @@ class TessellationNativeTriangleSequenceImage(config:GpuConfig,p:VertexShaderSta
     val fragmentEvents=Output(new FragmentPerformanceEvents);val cancel=Input(Bool());val busy=Output(Bool());val drained=Output(Bool())
   })
   private val image=Module(new TessellationTriangleTranslatedSequenceImage(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,
-    tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages))
+    tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading))
   if(externalImages)io.images.get<>image.io.images.get
   private val reader=Module(new TessellationNativeTriangleSequenceReader(config,p,idWidth))
   private val fabric=Module(new TessellationNativeRecordMemoryFabric(config,imageIds))

@@ -24,7 +24,8 @@ class TessellationNativeThreeDomainJobImage(config:GpuConfig,p:VertexShaderStage
     shared:SharedCuShaderConfig,g:GraphicsConfig,viewport:Fp32ViewportConfig=Fp32ViewportConfig(),engines:Int=2,
     pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
-    payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false) extends Module {
+    payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false,
+    fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false) extends Module {
   private val ids=TessellationNativeThreeDomainJobImage.ownerIds(engines,writeCredits,pagedCapacity)
   private val memoryIds=TessellationThreeDomainMemoryFabric.transactions(ids,ids,ids)
   private val slots=TessellationNativeThreeDomainJobImage.transactions(engines,writeCredits,pagedCapacity)
@@ -44,7 +45,7 @@ class TessellationNativeThreeDomainJobImage(config:GpuConfig,p:VertexShaderStage
       val details=Vec(TessellationNativeCompletionInfo.wordCount,UInt(32.W))
     })
     val out=Vec(engines,Decoupled(new TypedTilePixelQuadCompletion))
-    val shared=Flipped(new SharedCuGraphicsPort(config,idWidth,cus,geometryAvailable=true,tessellationAvailable=true))
+    val shared=Flipped(new SharedCuGraphicsPort(config,idWidth,cus,geometryAvailable=true,tessellationAvailable=true,imageAvailable=fragmentImageAvailable))
     val payload=payloadConfig.map(q=>Vec(engines+1,new FragmentPayloadPort(config,q)))
     val poolPayload=payloadConfig.map(q=>Output(Valid(new ShaderPayloadBinding(config,q))))
     val payloadPins=payloadConfig.map(q=>Output(Vec(TessellationNativeThreeDomainJobImage.payloadPins(engines),Valid(new ShaderPayloadPin(q)))))
@@ -55,18 +56,18 @@ class TessellationNativeThreeDomainJobImage(config:GpuConfig,p:VertexShaderStage
   })
   private val domain=Module(new TessellationNativeJobDomainRouter(config,idWidth,supportQuad=true))
   private val iso=Module(new TessellationNativeJobImage(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,
-    storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages=true))
+    storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages=true,fragmentImageAvailable=fragmentImageAvailable,sampleShading=sampleShading))
   private val tri=Module(new TessellationNativeTriangleJobImage(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,
-    storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages=true))
+    storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages=true,fragmentImageAvailable=fragmentImageAvailable,sampleShading=sampleShading))
   private val quad=Module(new TessellationNativeQuadJobImage(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,
-    storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages=true))
+    storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages=true,fragmentImageAvailable=fragmentImageAvailable,sampleShading=sampleShading))
   // Domains have independent bins, directories, translations and controls.
   // The domain router permits one job at a time, so only its image engines
   // are shared; ordinary native draw retains its separate engine bank.
   private val imageOwner=Module(new TessellationImageBankOwner)
-  private val imageMux=Module(new TessellationImageBankMux(config,p,shared,engines,payload))
+  private val imageMux=Module(new TessellationImageBankMux(config,p,shared,engines,payload,fragmentImageAvailable))
   private val images=Seq.tabulate(engines)(e=>Module(new TypedReplayTileImagePipeline(config,p,f,shared,g,storage,
-    engine=e,useSramBlackBoxes=useSramBlackBoxes,payload=payload,payloadOwner=payloadOwner+e)))
+    engine=e,useSramBlackBoxes=useSramBlackBoxes,payload=payload,payloadOwner=payloadOwner+e,fragmentImageAvailable=fragmentImageAvailable,sampleShading=sampleShading)))
   imageMux.io.clients(0)<>iso.io.images.get;imageMux.io.clients(1)<>tri.io.images.get
   imageMux.io.clients(2)<>quad.io.images.get
   for(e<-0 until engines)imageMux.io.bank(e)<>images(e).io
@@ -85,7 +86,7 @@ class TessellationNativeThreeDomainJobImage(config:GpuConfig,p:VertexShaderStage
   io.memoryRequest<>probeMemory.io.memoryRequest;probeMemory.io.memoryResponse<>io.memoryResponse
   iso.io.satp:=io.satp;iso.io.flush:=io.flush;tri.io.satp:=io.satp;tri.io.flush:=io.flush
   quad.io.satp:=io.satp;quad.io.flush:=io.flush;probeMemory.io.satp:=io.satp;probeMemory.io.flush:=io.flush
-  private val shaders=Module(new SharedShaderTaskRouter(config,cus,3,idWidth,tasks,payload,geometryAvailable=true,tessellationAvailable=true))
+  private val shaders=Module(new SharedShaderTaskRouter(config,cus,3,idWidth,tasks,payload,geometryAvailable=true,tessellationAvailable=true,imageAvailable=fragmentImageAvailable))
   shaders.io.clients(0)<>iso.io.shared;shaders.io.clients(1)<>tri.io.shared;shaders.io.clients(2)<>quad.io.shared;io.shared<>shaders.io.pool
   io.submit<>domain.io.submit;domain.io.cancel:=io.cancel || io.feedback.map(_.cancel).getOrElse(false.B)
   iso.io.cancel:=domain.io.cancelIsoline;tri.io.cancel:=domain.io.cancelTriangle;quad.io.cancel:=domain.io.cancelQuad

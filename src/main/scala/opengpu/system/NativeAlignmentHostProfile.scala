@@ -12,7 +12,8 @@ import opengpu.graphics._
 final case class NativeAlignmentHostConfig(graphics: GraphicsConfig,
     execution: GpuConfig, computeUnits: Int, native: NativeBinnedGraphicsConfig,
     transactionsPerCu: Int = 16, axiDataBytes: Int = 32,
-    nativeProtectedSources: Boolean = false, nativeGeometryTransport: Boolean = false) {
+    nativeProtectedSources: Boolean = false, nativeGeometryTransport: Boolean = false,
+    tessellationFragmentImages: Boolean = false, tessellationSampleShading: Boolean = false) {
   require(computeUnits > 0 && transactionsPerCu >= 16,
     "the integrated resource paths require sixteen CU transaction IDs")
   require(native.transformFeedback, "primitive queries require native feedback ownership")
@@ -28,6 +29,9 @@ final case class NativeAlignmentHostConfig(graphics: GraphicsConfig,
   val nativeSampleTransport: Boolean = native.sampleShading
   require(!nativeSampleTransport || nativeGeometryTransport,
     "sample transport requires the complete protected layered host")
+
+  require(!tessellationSampleShading || native.sampleShading,
+    "tessellation sample shading requires the complete sample transport")
 
   private def block(base: Int, words: Seq[BigInt]): Vector[(Int, BigInt)] =
     words.zipWithIndex.map { case (word, index) => (base + 4 * index, word) }.toVector
@@ -107,4 +111,6 @@ class NativeAlignmentHostSystemAxi(profile: NativeAlignmentHostConfig,
     nativeFragmentImages = true, tessellationNative = true,
     nativeProtectedSources = profile.nativeProtectedSources,
     nativeGeometryTransport = profile.nativeGeometryTransport,
-    nativeSampleTransport = profile.nativeSampleTransport)
+    nativeSampleTransport = profile.nativeSampleTransport,
+    tessellationFragmentImages = profile.tessellationFragmentImages,
+    tessellationSampleShading = profile.tessellationSampleShading)

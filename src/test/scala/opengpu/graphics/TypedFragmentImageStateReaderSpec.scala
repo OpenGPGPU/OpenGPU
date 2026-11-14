@@ -7,10 +7,11 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 class TypedFragmentImageStateReaderSpec extends AnyFlatSpec {
   import WindowRecordTest.{zero, Memory}
-  it should "publish a state and its captured image root only after both validate and drain" in {
-    val f = FragmentShaderConfig(2, 4)
-    simulate(new TypedFragmentImageStateReader(GpuConfig(lanes = 4, warps = 2), f,
-      GraphicsConfig(screenWidth = 16, screenHeight = 16))) { d =>
+  for(abi<-Seq(1,6))
+  it should s"publish ABI$abi state and its captured image root only after both validate and drain" in {
+    val f = FragmentShaderConfig(if(abi==6)16 else 2, 4)
+    simulate(new TypedFragmentImageStateReader(GpuConfig(lanes = if(abi==6)16 else 4, warps = if(abi==6)8 else 2), f,
+      GraphicsConfig(screenWidth = 16, screenHeight = 16),sampleShading=abi==6)) { d =>
       zero(d.io); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
       val mem = new Memory(d.io.memoryRequest.bits, d.io.memoryResponse.bits, d.io.memoryRequest.valid,
         d.io.memoryRequest.ready, d.io.memoryResponse.valid, d.io.memoryResponse.ready)
@@ -18,11 +19,11 @@ class TypedFragmentImageStateReaderSpec extends AnyFlatSpec {
       def until(p: => Boolean): Unit = { var n = 0; while (!p && n < 5000) { tick(); n += 1 }
         assert(p, s"state/image timeout: seen=${mem.seen.map(_.address.toString(16)).mkString(",")} pending=${mem.pending.size} out=${d.io.out.valid.peek().litToBoolean}") }
       val values = Map[String, BigInt](
-        "version" -> 1, "engineCount" -> 1, "fragment.version" -> 1,
+        "version" -> 1, "engineCount" -> 1, "fragment.version" -> abi,
         "fragment.identity.context" -> 7, "fragment.identity.pass" -> 8, "fragment.identity.generation" -> 9,
-        "fragment.shaderPc" -> 0x1000, "fragment.varyingSlots" -> 2, "fragment.colorSlots" -> 4,
-        "fragment.colorMask" -> 15, "fragment.scratch.base" -> 0x100000, "fragment.scratch.limit" -> 0x104000,
-        "fragment.scratch.allocationBase" -> 0x100000, "fragment.scratch.allocationLimit" -> 0x104000,
+        "fragment.shaderPc" -> 0x1000, "fragment.varyingSlots" -> (if(abi==6)16 else 2), "fragment.colorSlots" -> 4,
+        "fragment.colorMask" -> 15, "fragment.scratch.base" -> 0x100000, "fragment.scratch.limit" -> 0x110000,
+        "fragment.scratch.allocationBase" -> 0x100000, "fragment.scratch.allocationLimit" -> 0x110000,
         "tests.version" -> 1)
       val fields = TypedFragmentStateLayout.fields(d.io.out.bits.state)
       def install(early: Boolean = false, enabled: Boolean = true): Unit = {
@@ -94,6 +95,15 @@ class TypedFragmentImageStateReaderSpec extends AnyFlatSpec {
       for (_ <- 0 until 4) { tick(); d.io.out.valid.expect(false.B) }
       mem.holdResponses = false; result(4); d.io.cancel.poke(false.B)
       begin(); result(0, enabled = true)
+      if(abi==6){
+        // The patch producer has no GS primitive/layer metadata. ABI7 is
+        // rejected by actual GFS admission, before any image publication fetch.
+        d.io.invalidate.poke(true.B);tick();d.io.invalidate.poke(false.B)
+        val field=fields.find(_.name=="fragment.version").get
+        mem.putWord(0x2000+4*field.word,7)
+        val roots=mem.seen.count(_.address==0x5000);begin();result(1)
+        assert(mem.seen.count(_.address==0x5000)==roots)
+      }
     }
   }
 }
