@@ -3,6 +3,7 @@
 #define OPENGPU_DEVICE_H
 
 #include <linux/device.h>
+#include <linux/atomic.h>
 #include <linux/dma-fence.h>
 #include <linux/dma-mapping.h>
 #include <linux/ioport.h>
@@ -24,11 +25,15 @@
 #include "opengpu_shader_image_command.h"
 #include "opengpu_storage_command.h"
 #include "opengpu_tessellation_completion.h"
+#include "opengpu_native_sources_features.h"
+#include "opengpu_native_completion.h"
 
 struct platform_device;
 struct drm_device;
 struct drm_file;
 struct opengpu_drm;
+struct opengpu_private_snapshot;
+struct opengpu_render_context;
 
 #define OPENGPU_NAME            "riscv-simt-opengpu"
 #define OPENGPU_COMPUTE_NAME    "opengpu0"
@@ -88,6 +93,8 @@ struct opengpu_fault_snapshot {
     u32 flags;
     u32 expected_command_id;
     u32 expected_opcode;
+    bool native_valid;
+    struct opengpu_native_completion native;
     bool tessellation_valid;
     struct opengpu_tessellation_completion tessellation;
 };
@@ -135,6 +142,10 @@ struct opengpu_hw {
     u32 compute_resource_flags;
     bool native_advanced_blend_transport;
     bool native_descriptor_preflight;
+    struct opengpu_native_source_limits native_sources;
+    /* Immutable identity of the verified native command's held completion. */
+    u32 native_context, native_pass, native_generation;
+    struct opengpu_private_snapshot *native_pending_owner;
     struct opengpu_compute_local_limits compute_local_limits;
     struct opengpu_compute_shared_limits compute_shared_limits;
     bool compute_texture_transport;
@@ -163,6 +174,10 @@ struct opengpu_compute {
     struct opengpu_buffer shader;
     struct opengpu_buffer kernarg;
     struct drm_gpu_scheduler scheduler;
+    struct mutex admission_lock;
+    atomic64_t ordinary_pending;
+    u64 admission_context, admission_seqno;
+    struct dma_fence *admission_tail,*execution_tail;
 };
 
 struct opengpu_display {
@@ -197,6 +212,29 @@ struct opengpu_display {
 /* Forward declaration: `struct opengpu_mmu` holds a VM registry below. */
 struct opengpu_vm;
 
+/* Kernel-owned VA envelope, including unmapped gaps between resource views.
+ * This protects address ownership, not CPU immutability of mutable GEM data. */
+struct opengpu_vm_reservation {
+    struct opengpu_vm_reservation *next;
+    struct opengpu_vm *owner;
+    dma_addr_t va;
+    size_t size;
+    bool active;
+};
+
+/* Driver-private descriptor backing. A producer seals freshly allocated,
+ * unexported pages before publishing their RO mappings. No GEM object or CPU
+ * mapping is exposed; the enclosing job owns this node through VM retirement.
+ * Entries are linked rather than capped by a draw/state-count limit. */
+struct opengpu_snapshot_lease {
+    struct opengpu_snapshot_lease *next;
+    const struct opengpu_vm *owner;
+    dma_addr_t base;
+    dma_addr_t va;
+    size_t size;
+    bool active, mapped, executable;
+};
+
 /** ASID-0 identity GPU MMU: one root table of 4 MiB superpages, split into
   * second-level tables on demand so individual 4 KiB pages can carry a
   * non-default cache policy.  `asids` hands out Sv32 ASIDs to per-VM root
@@ -208,6 +246,8 @@ struct opengpu_mmu {
     u32 l1_region[OPENGPU_MMU_MAX_TABLES];
     u32 l1_count;
     struct opengpu_asid_pool asids;
+    struct opengpu_vm *vms;
+    struct opengpu_snapshot_lease *snapshot_leases;
     bool enabled;
 };
 
@@ -220,6 +260,8 @@ struct opengpu_mmu {
   * when it is destroyed or when its ASID is recycled.  Only explicit private
   * mappings grant a VM access to memory. */
 struct opengpu_vm {
+    struct opengpu_vm *next;
+    struct opengpu_vm_reservation *reservations;
     struct opengpu_buffer root;
     u32 asid;
     bool enabled;
@@ -367,6 +409,13 @@ int opengpu_hw_tessellation_async(struct opengpu_device *gpu,
                                   const struct opengpu_tessellation_scope *scope,
                                   const struct opengpu_vm *vm,
                                   struct dma_fence **fence);
+/* Only the protected kernel producer may call this after rebuilding all GNJ,
+ * GNF, GND and GFS links from retained source plans. The opaque owner remains
+ * alive through completion POP, all translation/memory drain and revocation. */
+int opengpu_hw_native_binned_async(struct opengpu_device *gpu,
+    struct opengpu_private_snapshot *owner,
+    const struct opengpu_render_context *context, u32 job_segment,
+    struct dma_fence **fence);
 void opengpu_hw_abort(struct opengpu_device *gpu, int error);
 void opengpu_hw_progress_tick(struct opengpu_device *gpu);
 int opengpu_hw_fence_wait(struct opengpu_device *gpu, struct dma_fence *fence,
@@ -425,6 +474,8 @@ int opengpu_hw_set_satp(struct opengpu_device *gpu, dma_addr_t root_table,
  * `satp`.  `vm == NULL` restores the global ASID-0 identity map. */
 int opengpu_hw_activate_vm(struct opengpu_device *gpu,
                            const struct opengpu_vm *vm);
+/* Both submit_lock and MMU lock held; caller has proved execution idle. */
+int opengpu_hw_disable_mmu_locked(struct opengpu_device *gpu);
 int opengpu_hw_flush_tlbs(struct opengpu_device *gpu);
 /* Scoped shootdown: drop only the entries for one ASID or one VPN.  Global
  * mappings and other address spaces stay warm in the CU TLBs and the three
@@ -433,10 +484,18 @@ int opengpu_hw_flush_tlb_asid(struct opengpu_device *gpu, u32 asid);
 int opengpu_hw_flush_tlb_vpn(struct opengpu_device *gpu, u32 vpn);
 /* Caller holds submit_lock until its page-table update and flush finish. */
 int opengpu_hw_wait_idle_locked(struct opengpu_device *gpu);
+/* Internal physical cache operation; caller owns submit_lock and the exact
+ * retained backing. Waits for real invalidate completion before returning. */
+int opengpu_hw_invalidate_buffer_locked(struct opengpu_device *gpu,
+    const struct opengpu_buffer *buffer);
+/* Returns with submit_lock held; waits without that lock for previous private
+ * snapshot retirement. The new private publisher seals its first lease here. */
+int opengpu_hw_snapshot_submission_lock(struct opengpu_device *gpu);
 int opengpu_hw_wait_idle(struct opengpu_device *gpu);
 
 int opengpu_mmu_init(struct opengpu_device *gpu);
-void opengpu_mmu_fini(struct opengpu_device *gpu);
+/* Failure retains global tables and wedges the device; do not free backing. */
+int opengpu_mmu_fini(struct opengpu_device *gpu);
 int opengpu_mmu_set_range_policy(struct opengpu_device *gpu, dma_addr_t base,
                                  size_t size, u32 policy);
 /* Per-VM root tables. Create allocates an ASID and an empty root table;
@@ -457,13 +516,51 @@ int opengpu_mmu_vm_map(struct opengpu_device *gpu, struct opengpu_vm *vm,
  * identity only. */
 int opengpu_mmu_vm_map_snapshot(struct opengpu_device *gpu, struct opengpu_vm *vm,
                                 dma_addr_t va, dma_addr_t pa, size_t size, u32 policy);
+/* Reserve a complete kernel-owned VA envelope before mapping individual
+ * RO/RW resource segments. Unmapped gaps remain unavailable to every ordinary
+ * map/unmap; only this exact node authorizes changes. All segments must be
+ * unmapped and hardware drained before release. This does not freeze GEM bytes. */
+int opengpu_mmu_vm_reserve(struct opengpu_device *gpu,struct opengpu_vm *vm,
+    size_t size,struct opengpu_vm_reservation *reservation);
+int opengpu_mmu_vm_map_reserved(struct opengpu_device *gpu,
+    struct opengpu_vm_reservation *reservation,size_t offset,dma_addr_t pa,
+    size_t size,u32 policy,bool writable);
+int opengpu_mmu_vm_unmap_reserved(struct opengpu_device *gpu,
+    struct opengpu_vm_reservation *reservation,size_t offset,size_t size);
+int opengpu_mmu_vm_release_reservation(struct opengpu_device *gpu,
+    struct opengpu_vm_reservation *reservation);
+int opengpu_mmu_vm_verify_reserved_locked(struct opengpu_device *gpu,
+    const struct opengpu_vm_reservation *reservation, size_t offset,
+    dma_addr_t pa, size_t size, u32 policy, bool writable);
+/* Find a free range across the complete private 32-bit VA space and map under
+ * the same submit/MMU lock transaction. No fixed command-slot/count limit. The
+ * result is unchanged on failure, including allocation and shootdown rollback. */
+int opengpu_mmu_vm_map_snapshot_anywhere(struct opengpu_device *gpu,
+    struct opengpu_vm *vm, dma_addr_t pa, size_t size, u32 policy, dma_addr_t *va);
 int opengpu_mmu_verify_snapshot_locked(struct opengpu_device *gpu,
                                        const struct opengpu_vm *vm,
                                        dma_addr_t va, dma_addr_t pa, size_t size);
+/* Acquire/release under submit_lock. Both wait for hardware idle before
+ * examining all registered VMs. Acquire precedes publication; release follows
+ * every mapping's successful revocation. Failures retain the active lease.
+ * These APIs alone do not revoke arbitrary caller CPU mappings: only private,
+ * unexported producer allocations may be sealed. */
+int opengpu_mmu_snapshot_acquire_locked(struct opengpu_device *gpu,
+    struct opengpu_snapshot_lease *lease, const struct opengpu_vm *owner,
+    dma_addr_t base, size_t size);
+int opengpu_mmu_code_snapshot_acquire_locked(struct opengpu_device *gpu,
+    struct opengpu_snapshot_lease *lease, const struct opengpu_vm *owner,
+    dma_addr_t base, size_t size);
+int opengpu_mmu_snapshot_release_locked(struct opengpu_device *gpu,
+    struct opengpu_snapshot_lease *lease);
+int opengpu_mmu_snapshot_unmap(struct opengpu_device *gpu,
+    struct opengpu_snapshot_lease *lease);
 /* Immutable executable snapshots require a private VM, R+X without W, exact
  * backing and no writable alias. They never replace an existing mapping. */
 int opengpu_mmu_vm_map_code_snapshot(struct opengpu_device *gpu, struct opengpu_vm *vm,
                                      dma_addr_t va, dma_addr_t pa, size_t size, u32 policy);
+int opengpu_mmu_vm_map_code_snapshot_anywhere(struct opengpu_device *gpu,
+    struct opengpu_vm *vm, dma_addr_t pa, size_t size, u32 policy, dma_addr_t *va);
 int opengpu_mmu_verify_code_snapshot_locked(struct opengpu_device *gpu,
                                             const struct opengpu_vm *vm,
                                             dma_addr_t va, dma_addr_t pa, size_t size);
@@ -472,7 +569,9 @@ int opengpu_mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
                            dma_addr_t old_va, size_t old_size);
 int opengpu_mmu_vm_unmap(struct opengpu_device *gpu, struct opengpu_vm *vm,
                          dma_addr_t va, size_t size);
-void opengpu_mmu_vm_destroy(struct opengpu_device *gpu, struct opengpu_vm *vm);
+/* Failure retains the linked VM, PTs and ASID. Keep its containing context
+ * and original backing alive; destruction cannot be treated as successful. */
+int opengpu_mmu_vm_destroy(struct opengpu_device *gpu, struct opengpu_vm *vm);
 int opengpu_hw_compute_async(struct opengpu_device *gpu,
                              const struct opengpu_kernel_launch *launch,
                              const struct opengpu_buffer *shader,
@@ -504,6 +603,7 @@ void opengpu_compute_drm_postclose(struct drm_device *drm,
                                    struct drm_file *file);
 int opengpu_compute_context_create_ioctl(struct drm_device *drm, void *data,
                                          struct drm_file *file);
+int opengpu_native_binned_ioctl(struct drm_device *drm, void *data, struct drm_file *file);
 int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
                                     struct drm_file *file);
 int opengpu_compute_get_fault_ioctl(struct drm_device *drm, void *data,

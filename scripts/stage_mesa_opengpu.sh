@@ -27,7 +27,8 @@ cp "$GPU_DIR/userspace/pipe_opengpu.c" "$GPU_DIR/userspace/pipe_opengpu.h" "$GPU
     "$GPU_DIR/driver/opengpu_shader_resources.h" "$GPU_DIR/driver/opengpu_kernarg_va.h" \
     "$GPU_DIR/driver/opengpu_buffer_view.h" "$GPU_DIR/driver/opengpu_image_format_policy.h" \
     "$GPU_DIR/driver/opengpu_texture_image_format_abi.h" \
-    "$GPU_DIR/driver/opengpu_shader_validator.h" "$DEST/"
+    "$GPU_DIR/driver/opengpu_shader_validator.h" \
+    "$GPU_DIR/driver/opengpu_shared_own_proof.h" "$GPU_DIR/driver/opengpu_shared_range_proof.h" "$DEST/"
 python3 - "$DEST" <<'PY'
 import pathlib, sys
 for path in pathlib.Path(sys.argv[1]).glob("*.[ch]"):

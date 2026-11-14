@@ -145,7 +145,7 @@ static int opengpu_submit_test(struct opengpu_device *gpu)
         .depth_write = true,
         .cull_mode = GPU_CULL_NONE,
     };
-    struct opengpu_buffer descriptor;
+    struct opengpu_buffer descriptor = {0};
     struct opengpu_vm *vm = NULL;
     bool vm_ready = false;
     u32 descriptor_va;
@@ -272,12 +272,12 @@ static int opengpu_submit_test(struct opengpu_device *gpu)
         opengpu_hw_abort(gpu, ret);
     dma_fence_put(fence);
 out_descriptor:
-    opengpu_buffer_free(gpu, &descriptor);
 out_vm:
     if (vm_ready) {
-        opengpu_hw_activate_vm(gpu, NULL);
-        opengpu_mmu_vm_destroy(gpu, vm);
+        if (opengpu_mmu_vm_destroy(gpu, vm))
+            return ret ? ret : -EIO; /* Keep the linked VM container live. */
     }
+    opengpu_buffer_free(gpu, &descriptor);
     kfree(vm);
     return ret;
 }
@@ -312,7 +312,8 @@ static void opengpu_context_release(struct kref *ref)
         container_of(ref, struct opengpu_render_context, refcount);
     u32 i;
 
-    opengpu_mmu_vm_destroy(context->gpu, &context->vm);
+    if (opengpu_mmu_vm_destroy(context->gpu, &context->vm))
+        return; /* Quarantine the container and bindings with its live VM. */
     for (i = 0; i < ARRAY_SIZE(context->bindings); i++) {
         if (!context->bindings[i])
             continue;
@@ -343,7 +344,7 @@ static void opengpu_context_free(struct opengpu_file *render_file,
     opengpu_context_put(context);
 }
 
-static struct opengpu_render_context *
+struct opengpu_render_context *
 opengpu_context_lookup(struct opengpu_file *render_file, u32 id)
 {
     if (!id)
@@ -382,6 +383,15 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
 
     if (args->pad)
         return -EINVAL;
+    /* The native UAPI is reserved while its production submitter is being
+     * integrated. Hardware GNP/GAB presence alone must not expose a driver
+     * feature, shader layout or frame capabilities to applications. */
+    if (args->param == OPENGPU_PARAM_NATIVE_LAYOUT ||
+        (args->param >= OPENGPU_PARAM_NATIVE_CAPS_BASE &&
+         args->param < OPENGPU_PARAM_NATIVE_CAPS_BASE + OPENGPU_PARAM_NATIVE_CAPS_WORDS)) {
+        args->value = 0;
+        return 0;
+    }
     switch (args->param) {
     case OPENGPU_PARAM_CAPABILITIES:
         args->value = gpu->hw.capabilities;
@@ -435,6 +445,10 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
             args->value |= OPENGPU_DRIVER_FEATURE_DEPTH_RANGE;
         if (gpu->hw.constant_blend)
             args->value |= OPENGPU_DRIVER_FEATURE_CONSTANT_BLEND;
+        if (gpu->hw.compute_shared_limits.discovered &&
+            (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS) &&
+            (gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_SHARED_VECTOR_ATOMICS_V1))
+            args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_SHARED_ATOMICS;
         if (gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS)
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_WORD_ATOMICS;
         if (gpu->hw.compute_texture_transport &&
@@ -602,7 +616,10 @@ int opengpu_compute_context_create_ioctl(struct drm_device *drm, void *data,
     if (!ret)
         return 0;
 
-    opengpu_mmu_vm_destroy(gpu, &context->vm);
+    if (opengpu_mmu_vm_destroy(gpu, &context->vm)) {
+        drm_sched_entity_destroy(&context->entity);
+        return ret; /* The quarantined VM still links this context. */
+    }
 err_entity:
     drm_sched_entity_destroy(&context->entity);
 err_context:
@@ -1842,6 +1859,11 @@ struct dma_fence *opengpu_job_run(struct opengpu_sched_job *job)
 
     if (job->type == OPENGPU_SCHED_TESSELLATION)
         return opengpu_tessellation_job_run(job);
+    if (job->type == OPENGPU_SCHED_NATIVE_BINNED) {
+        ret = opengpu_hw_native_binned_async(job->gpu, job->native_owner,
+            job->context, job->native_job_segment, &fence);
+        return ret ? ERR_PTR(ret) : fence;
+    }
     if (job->type == OPENGPU_SCHED_COMPUTE) {
         /* Run the kernel from a private code mapping so instruction fetch
          * translates under this ASID.  Identity leaves are not executable, so
@@ -4766,7 +4788,7 @@ static int opengpu_compute_launch_extended(struct drm_device *drm,
                   OPENGPU_SHADER_MAX_INSTRUCTIONS);
     program = (const u32 *)((const u8 *)sched_job->shader.cpu +
                             args->shader_offset);
-    if (!opengpu_compute_shader_validate_words_discovered_resources(
+    if (!opengpu_compute_shader_validate_words_shared_atomics(
             program, words, kernarg->size - args->kernarg_offset, local_items,
             !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU),
             !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS),
@@ -4778,7 +4800,8 @@ static int opengpu_compute_launch_extended(struct drm_device *drm,
             gpu->hw.compute_shared_limits.discovered ? gpu->hw.compute_shared_limits.bytes : 0,
             gpu->hw.compute_shared_limits.discovered ? gpu->hw.compute_shared_limits.lanes : 0,
             opengpu_compute_buffer_images_supported(gpu->hw.compute_resource_flags,
-                gpu->hw.capabilities, gpu->hw.compute_image_transport))) {
+                gpu->hw.capabilities, gpu->hw.compute_image_transport),
+            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_SHARED_VECTOR_ATOMICS_V1))) {
         ret = -EINVAL;
         goto out_job;
     }
@@ -5396,10 +5419,11 @@ int opengpu_compute_init(struct opengpu_device *gpu)
 err_scheduler:
     opengpu_sched_fini(gpu);
 err_shader:
+err_mmu:
+    if (opengpu_mmu_fini(gpu))
+        return ret ? ret : -EIO;
     opengpu_buffer_free(gpu, &compute->kernarg);
     opengpu_buffer_free(gpu, &compute->shader);
-err_mmu:
-    opengpu_mmu_fini(gpu);
     opengpu_buffer_free(gpu, &compute->depth);
 err_color:
     opengpu_buffer_free(gpu, &compute->color);
@@ -5412,9 +5436,10 @@ void opengpu_compute_fini(struct opengpu_device *gpu)
 {
     misc_deregister(&gpu->compute.misc);
     opengpu_sched_fini(gpu);
+    if (opengpu_mmu_fini(gpu))
+        return; /* Global walkers may still name the retained backing. */
     opengpu_buffer_free(gpu, &gpu->compute.kernarg);
     opengpu_buffer_free(gpu, &gpu->compute.shader);
-    opengpu_mmu_fini(gpu);
     opengpu_buffer_free(gpu, &gpu->compute.depth);
     opengpu_buffer_free(gpu, &gpu->compute.color);
     opengpu_buffer_free(gpu, &gpu->compute.cmd);

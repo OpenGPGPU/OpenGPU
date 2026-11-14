@@ -65,6 +65,7 @@ set_output_delay -clock core_clock 250 [all_outputs]
 write_sdc {odb_base}/1_synth.sdc
 write_db {odb_base}/1_synth.odb
 write_db {odb_base}/6_final.odb
+write_sdc {odb_base}/6_final.sdc
 ''' + q.sram_macro_tcl()
     (root / 'create.tcl').write_text(create)
     volumes = ['-v', str(work / 'results') + f':{flow}/results/asap7/Top',
@@ -86,8 +87,8 @@ write_db {odb_base}/6_final.odb
     setup = q.synthesis_constraint_proof(synthesis, output, 60, 1, expected, collateral)
     if not setup['passed']:
         raise RuntimeError('Tiny coverage/macro gate failed:\n' + (output / 'constraint_coverage.log').read_text()[-8000:])
-    routed_fixture = dict(module_name='Top', artifacts={'final_odb': str(results / '6_final.odb')},
-        reproducibility={'openroad_image': image}, command=actual_command)
+    routed_fixture = dict(module_name='Top', artifacts={'final_odb': str(results / '6_final.odb'), 'final_sdc': str(results / '6_final.sdc')},
+        reproducibility={'openroad_image': image, 'parameters': {'corner': 'TC', 'cell_vt': 'SLVT'}}, command=actual_command)
     routed = q.route_macro_proof(routed_fixture, output, expected, collateral, 60, 1)
     if not routed['passed']:
         raise RuntimeError('Tiny final-ODB macro gate failed:\n' + (output / 'route_macro_check.log').read_text()[-8000:])
@@ -95,7 +96,21 @@ write_db {odb_base}/6_final.odb
     actual_report = (output / 'route_macro_check.log').read_text()
     for wrong in ({M32: 1, M64: 1}, {M32: 1, M64: 2}, {M32: 2}, {}):
         assert not q.sram_macro_gate(actual_report, 0, wrong)['passed']
+    final_sdc = results / '6_final.sdc'
+    original_sdc = final_sdc.read_bytes()
+    rejected = []
+    for name, source in (('unclocked', '# deliberately missing clocks and delays\n'),
+                         ('unconstrained', 'create_clock -name core_clock -period 1000 [get_ports clock]\n')):
+        (output / 'route_macro_check.tcl').unlink()
+        (output / 'route_macro_check.log').unlink()
+        final_sdc.write_text(source)
+        negative = q.route_macro_proof(routed_fixture, output, expected, collateral, 60, 1)
+        if negative['passed'] or negative['constraint_coverage']['passed']:
+            raise RuntimeError('Tiny final-ODB gate accepted ' + name + ' endpoints')
+        rejected.append(name)
+    final_sdc.write_bytes(original_sdc)
     return dict(synthesis_macro_counts=setup['sram_macros']['actual'],
+                rejected_final_constraints=rejected,
                 final_odb_macro_counts=routed['actual'],
                 check_setup_passed=True, physical_timing_qualified=False)
 

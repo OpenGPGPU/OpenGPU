@@ -16,6 +16,20 @@ int main(void)
 {
     struct opengpu_device gpu={0};struct drm_device drm={.dev=&gpu};struct drm_file file={0};
     struct drm_opengpu_param p={.param=OPENGPU_PARAM_DRIVER_FEATURES};
+    {
+        struct drm_opengpu_param native={.param=OPENGPU_PARAM_NATIVE_LAYOUT,.value=~0ull};
+        assert(!opengpu_compute_get_param_ioctl(&drm,&native,&file) && !native.value);
+        for(unsigned i=0;i<OPENGPU_PARAM_NATIVE_CAPS_WORDS;++i){
+            native.param=OPENGPU_PARAM_NATIVE_CAPS_BASE+i;native.value=~0ull;
+            assert(!opengpu_compute_get_param_ioctl(&drm,&native,&file) && !native.value);
+        }
+        native.param=OPENGPU_PARAM_NATIVE_CAPS_BASE+OPENGPU_PARAM_NATIVE_CAPS_WORDS;
+        assert(opengpu_compute_get_param_ioctl(&drm,&native,&file)==-EINVAL);
+        native.param=OPENGPU_PARAM_NATIVE_CAPS_BASE;native.pad=1;
+        assert(opengpu_compute_get_param_ioctl(&drm,&native,&file)==-EINVAL);
+        assert(!opengpu_compute_get_param_ioctl(&drm,&p,&file));
+        assert(!(p.value&OPENGPU_DRIVER_FEATURE_NATIVE_BINNED));
+    }
     for (unsigned clip=0; clip<2; ++clip) {
         gpu.hw.clip_depth=clip;
         assert(!opengpu_compute_get_param_ioctl(&drm,&p,&file));
@@ -160,6 +174,22 @@ int main(void)
             (storage&&image&&unified&&vm));
         assert(!!(p.value&OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE)==
             (storage&&image&&unified));
+    }
+    /* A plain scalar-AMO bit never opts into per-invocation instructions.
+     * New source lowering needs the versioned owner and checked shared tuple;
+     * unrelated transport state must not turn either path on accidentally. */
+    for (unsigned mask=0; mask<16; ++mask) {
+        bool owner=mask&1, unified=mask&2, discovered=mask&4, scalar=mask&8;
+        gpu.hw.capabilities=unified?GPU_CAP_UNIFIED_COMMANDS:0;
+        gpu.hw.compute_shared_limits=(struct opengpu_compute_shared_limits){
+            0x10000000,16384,16,discovered};
+        gpu.hw.compute_resource_flags=(owner?OPENGPU_COMPUTE_RESOURCE_SHARED_VECTOR_ATOMICS_V1:0)|
+            (scalar?OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS:0);
+        p.param=OPENGPU_PARAM_DRIVER_FEATURES;p.value=~0ull;
+        assert(!opengpu_compute_get_param_ioctl(&drm,&p,&file));
+        assert(!!(p.value&OPENGPU_DRIVER_FEATURE_COMPUTE_SHARED_ATOMICS)==
+            (owner&&unified&&discovered));
+        assert(!!(p.value&OPENGPU_DRIVER_FEATURE_COMPUTE_WORD_ATOMICS)==scalar);
     }
     gpu.hw.compute_local_limits=(struct opengpu_compute_local_limits){128,128,true};
     gpu.hw.capabilities=GPU_CAP_UNIFIED_COMMANDS;

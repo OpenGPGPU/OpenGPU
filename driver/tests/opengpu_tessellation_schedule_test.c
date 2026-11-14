@@ -11,6 +11,7 @@
 
 #define OPENGPU_DEVICE_H
 #define OPENGPU_SCHEDULER_H
+#define OPENGPU_PRIVATE_SNAPSHOT_H
 typedef uint32_t u32;
 typedef uint64_t u64;
 typedef uint64_t dma_addr_t;
@@ -48,7 +49,23 @@ enum { DMA_RESV_USAGE_KERNEL, DMA_RESV_USAGE_WRITE, DMA_RESV_USAGE_READ,
        DMA_RESV_USAGE_BOOKKEEP };
 
 struct opengpu_buffer { void *cpu; dma_addr_t dma; size_t size; };
+struct opengpu_vm_reservation {
+    struct opengpu_vm_reservation *next;
+    struct opengpu_vm *owner;
+    dma_addr_t va;
+    size_t size;
+    bool active;
+};
+struct opengpu_snapshot_lease {
+    struct opengpu_snapshot_lease *next;
+    const struct opengpu_vm *owner;
+    dma_addr_t base, va;
+    size_t size;
+    bool active, mapped, executable;
+};
 struct opengpu_vm {
+    struct opengpu_vm *next;
+    struct opengpu_vm_reservation *reservations;
     struct opengpu_buffer root, l1[OPENGPU_VM_MAX_TABLES];
     u32 asid, l1_region[OPENGPU_VM_MAX_TABLES], l1_count;
     bool enabled;
@@ -58,11 +75,13 @@ struct opengpu_mmu {
     struct opengpu_buffer root, l1[OPENGPU_MMU_MAX_TABLES];
     u32 l1_region[OPENGPU_MMU_MAX_TABLES], l1_count;
     struct opengpu_asid_pool asids;
+    struct opengpu_vm *vms;
+    struct opengpu_snapshot_lease *snapshot_leases;
     bool enabled;
 };
 struct opengpu_device {
     void *dev;
-    struct { int scheduler; } compute;
+    struct { int scheduler; struct mutex admission_lock; } compute;
     struct { struct mutex submit_lock; u32 capabilities, tessellation_engines;
         bool wedged, tessellation_transport, tessellation_feedback_transport,
              tessellation_virtual_images, native_advanced_blend_transport; } hw;
@@ -108,6 +127,7 @@ struct opengpu_sched_job {
     struct drm_sched_job base;
     struct opengpu_device *gpu;
     int type;
+    void *native_owner;
     const struct opengpu_vm *vm;
     struct opengpu_render_context *context;
     struct opengpu_buffer tess_job, tess_frame, tess_draws, tess_states, tess_fragment_code;
@@ -206,6 +226,9 @@ static void opengpu_reg_write(struct opengpu_device *gpu, u32 address, u32 value
         }
         return;
     }
+    /* Each actual activation/detach writes a complete vector/instruction
+     * pair, including VM destruction and final Bare shutdown. */
+    if(address==0x14c){assert(!satp_write_count || satp_write_count==2);satp_write_count=0;}
     assert(satp_write_count < 2);
     satp_writes[satp_write_count].address = address;
     satp_writes[satp_write_count++].value = value;
@@ -254,6 +277,13 @@ static int opengpu_hw_unified_submit_locked(struct opengpu_device *gpu,
     assert(!opengpu_hw_activate_vm_locked(gpu, vm));
     ++kicks; busy = 1; *out = &hardware_fence; return 0;
 }
+#define READ_ONCE(x) (x)
+#define time_after(a,b) ((long)((a)-(b)) > 0)
+static unsigned long jiffies;
+static void opengpu_hw_progress_tick(struct opengpu_device *gpu)
+{ assert(!gpu->hw.submit_lock.held); ++jiffies; }
+static void usleep_range(unsigned minimum, unsigned maximum)
+{ assert(minimum==100 && maximum==200); }
 #include "tessellation_under_test.inc"
 #include "job_track_mapping_under_test.inc"
 
@@ -301,6 +331,15 @@ static void drm_sched_entity_push_job(struct drm_sched_job *base)
 { last_job = container_of(base, struct opengpu_sched_job, base); ++pushed; }
 static int drm_sched_init(int *s, const struct drm_sched_init_args *a) { (void)s; (void)a; return 0; }
 static void drm_sched_fini(int *s) { (void)s; }
+/* This tessellation component keeps its original scope. The actual native
+ * admission chains and opaque owner retirement are covered by native_submit. */
+int opengpu_private_snapshot_retire(void *owner){(void)owner;assert(0);return -EINVAL;}
+void opengpu_admission_init(struct opengpu_device *g){mutex_init(&g->compute.admission_lock);}
+void opengpu_admission_fini(struct opengpu_device *g){(void)g;}
+int opengpu_admission_job_prepare(struct opengpu_sched_job *j){(void)j;return 0;}
+void opengpu_admission_job_abort(struct opengpu_sched_job *j){(void)j;}
+void opengpu_admission_job_armed(struct opengpu_sched_job *j){(void)j;}
+void opengpu_admission_job_retired(struct opengpu_sched_job *j){(void)j;}
 #include "../opengpu_scheduler.c"
 
 static void put(void *cpu, unsigned word, u32 value) { tess_put32(cpu, word, value); }

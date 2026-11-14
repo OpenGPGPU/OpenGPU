@@ -6,6 +6,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 #define OPENGPU_SCHEDULER_H
+#define OPENGPU_PRIVATE_SNAPSHOT_H
+#define mutex_lock(p) do {assert(!*(p));*(p)=1;}while(0)
+#define mutex_unlock(p) do {assert(*(p));*(p)=0;}while(0)
 #define container_of(p, t, member) ((t *)((char *)(p) - offsetof(t, member)))
 #define DRM_GPU_SCHED_STAT_RESET 1
 #define DRM_SCHED_PRIORITY_COUNT 1
@@ -25,14 +28,14 @@ struct drm_syncobj { int unused; };
 struct drm_file { u64 client_id; };
 struct opengpu_vm { int unused; };
 struct opengpu_buffer { int unused; };
-struct opengpu_device { void *dev; struct { int scheduler; } compute; struct { int wedged; } hw; };
+struct opengpu_device { void *dev; struct { int scheduler,admission_lock; } compute; struct { int wedged; } hw; };
 struct opengpu_render_context { int refs; struct drm_sched_entity entity; struct dma_fence *last_fence; struct opengpu_vm vm; };
 struct opengpu_file { int unused; };
 struct opengpu_job_temporary_mapping { u64 va; size_t size; };
 enum { OPENGPU_SCHED_RENDER, OPENGPU_SCHED_TESSELLATION = 7 };
 struct opengpu_sched_job {
     struct drm_sched_job base; struct opengpu_device *gpu;
-    int type;
+    int type;void *native_owner;
     struct opengpu_render_context *context; struct drm_gem_object **objects; u32 object_count;
     struct opengpu_job_temporary_mapping temporary_mappings[8]; u32 temporary_mapping_count;
     struct opengpu_buffer depth, vertex_shader, shader, texture_records, storage_records, image_records, counter_records, uniform_snapshot, indirect_snapshot, render_desc, commands;
@@ -72,6 +75,13 @@ static void drm_syncobj_replace_fence(struct drm_syncobj *s, struct dma_fence *f
 static void drm_sched_entity_push_job(struct drm_sched_job *j) { (void)j; }
 static int drm_sched_init(int *s, const struct drm_sched_init_args *a) { (void)s; (void)a; return 0; }
 static void drm_sched_fini(int *s) { (void)s; }
+int opengpu_private_snapshot_retire(void *owner){(void)owner;assert(0);return -EINVAL;}
+void opengpu_admission_init(struct opengpu_device *g){g->compute.admission_lock=0;}
+void opengpu_admission_fini(struct opengpu_device *g){(void)g;}
+int opengpu_admission_job_prepare(struct opengpu_sched_job *j){(void)j;return 0;}
+void opengpu_admission_job_abort(struct opengpu_sched_job *j){(void)j;}
+void opengpu_admission_job_armed(struct opengpu_sched_job *j){(void)j;}
+void opengpu_admission_job_retired(struct opengpu_sched_job *j){(void)j;}
 #include "../opengpu_scheduler.c"
 int main(void)
 {
@@ -92,7 +102,7 @@ int main(void)
     for (u32 i = 0; i < 32; i++) assert(objs[i].refs == 0);
     assert(cleanup_count == 1 && free_count == 11 && context.refs == 0 && unmap_count == 1);
     context.refs = 1;
-    job = calloc(1, sizeof(*job)); assert(job);
+    job = calloc(1, sizeof(*job)); assert(job); job->gpu = &gpu;
     test_alloc_fail = 1;
     assert(opengpu_sched_job_submit(&file, &drm, &context, job, 0, NULL, deps, 32, NULL) == -ENOMEM);
     test_alloc_fail = 0; init_error = -EINVAL;

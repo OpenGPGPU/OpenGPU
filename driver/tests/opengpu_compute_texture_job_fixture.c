@@ -12,6 +12,7 @@ typedef uint64_t dma_addr_t;
 typedef uint64_t u64;
 #define OPENGPU_SCHED_COMPUTE 1
 #define OPENGPU_SCHED_TESSELLATION 7
+#define OPENGPU_SCHED_NATIVE_BINNED 8
 #define OPENGPU_MMU_PAGE_SIZE 4096
 #define OPENGPU_MMU_POLICY_UNCACHED 2
 #define upper_32_bits(v) ((uint64_t)(v) >> 32)
@@ -26,6 +27,7 @@ struct opengpu_command_events { int dummy; };
 struct opengpu_device { int dummy; };
 struct opengpu_sched_job {
     int type; struct opengpu_device *gpu; struct opengpu_vm *vm;
+    void *native_owner;uint32_t native_job_segment;
     struct opengpu_render_context *context; struct opengpu_buffer shader, texture_records, storage_records, image_records, counter_records, uniform_snapshot,indirect_snapshot;
     struct opengpu_resource_binding counter_source;
     struct opengpu_kernel_launch kernel; struct opengpu_command_events events;
@@ -50,6 +52,9 @@ static int opengpu_hw_compute_async(struct opengpu_device *g, const struct openg
     const struct opengpu_buffer *s, const struct opengpu_buffer *t, const struct opengpu_buffer *storage, const struct opengpu_buffer *image, const struct opengpu_buffer *counter,
     const struct opengpu_buffer *uniform_snapshot, const struct opengpu_buffer *indirect_snapshot, const struct opengpu_command_events *e, const struct opengpu_vm *v, struct dma_fence **out)
 { (void)g; (void)l; (void)s; (void)t; (void)storage; (void)image; (void)counter; (void)uniform_snapshot; (void)indirect_snapshot; (void)e; (void)v; submits++; *out=&fence; return 0; }
+static int opengpu_hw_native_binned_async(struct opengpu_device *g,void *owner,
+    struct opengpu_render_context *c,uint32_t segment,struct dma_fence **out)
+{(void)g;(void)owner;(void)c;(void)segment;(void)out;assert(0);return -EINVAL;}
 #include "job_under_test.inc"
 int main(void)
 {

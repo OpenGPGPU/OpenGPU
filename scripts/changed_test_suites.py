@@ -503,6 +503,21 @@ def changed_suites(root, changed, *, test_index=None):
     files, nodes = index_test_sources(root) if test_index is None else test_index
 
     affected = set(changed) & files.keys()
+    if "src/main/scala/opengpu/graphics/ClipFloatArithmetic.scala" in changed:
+        # The scalar arithmetic service has four production owners. Its
+        # response latency also reaches the spatial preparation/credit paths.
+        affected.update("src/test/scala/opengpu/graphics/" + name + ".scala" for name in (
+            "ClipFloatArithmeticSpec", "PrimitiveClipStageSpec", "Fp32ViewportStageSpec",
+            "Fp32PrimitiveRasterStageSpec", "PrimitiveRasterInstanceSpec",
+            "Fp32FragmentInterpolatorSpec", "Fp32FragmentPreparationSpec",
+            "Fp32StreamingFragmentInterpolatorSpec", "FragmentSetupCacheSpec",
+            "FragmentPreparationInstanceSpec"))
+    if changed & {"src/main/scala/opengpu/graphics/Fp32FragmentInterpolator.scala",
+                  "src/main/scala/opengpu/graphics/Fp32FragmentPreparation.scala",
+                  "src/main/scala/opengpu/graphics/Fp32StreamingFragmentInterpolator.scala"}:
+        affected.add("src/test/scala/opengpu/graphics/FragmentSetupCacheSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/FragmentPreparationInstanceSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/Fp32FragmentPreparationSpec.scala")
     if "src/main/scala/opengpu/graphics/TypedFragmentState.scala" in changed:
         affected.add("src/test/scala/opengpu/graphics/TypedFragmentStateReaderSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/TypedFragmentImageStateReaderSpec.scala")
@@ -617,7 +632,9 @@ def changed_suites(root, changed, *, test_index=None):
                   "driver/opengpu_compute_resource_abi.h", "docs/abi/compute-resource-v1.json"}:
         for suite in ("ShaderImageCommandAbiSpec", "StorageCommandAbiSpec", "ComputeUniformCommandAbiSpec"):
             affected.add(f"src/test/scala/opengpu/graphics/{suite}.scala")
-    if changed & {"src/main/scala/opengpu/system/NativeOwnerHostProfile.scala",
+    if changed & {"src/main/scala/opengpu/system/OwnerResourceProfile.scala",
+                  "src/test/scala/opengpu/system/PrepareOwnerResourceHost.scala",
+                  "src/main/scala/opengpu/system/NativeOwnerHostProfile.scala",
                   "src/test/scala/opengpu/system/PrepareNativeOwnerHost.scala",
                   "src/main/scala/opengpu/system/NativeAlignmentHostProfile.scala",
                   "src/main/scala/opengpu/system/ComputeResourceCapabilities.scala",

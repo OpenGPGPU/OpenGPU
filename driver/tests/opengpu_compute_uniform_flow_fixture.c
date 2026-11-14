@@ -25,6 +25,7 @@
 #include "opengpu_compute_uniform_counter_source_program.h"
 #include "opengpu_kernarg_va.h"
 #include "opengpu_tessellation_completion.h"
+#include "opengpu_native_completion.h"
 #include "opengpu_unified_completion.h"
 #include <stddef.h>
 _Static_assert(sizeof(struct drm_opengpu_compute_uniform_view)==16,"uniform UAPI view size");
@@ -109,21 +110,25 @@ struct opengpu_kernel_launch { u32 indirect_base,indirect_bytes,indirect_offset;
     struct opengpu_compute_uniform_command_context uniform;
 };
 struct opengpu_device { struct {
+    void *native_pending_owner;
+    struct { bool available; } native_sources;
+    u32 native_context,native_pass,native_generation;
     bool compute_texture_transport,compute_storage_transport,compute_image_transport,compute_counter_transport,compute_uniform_transport,compute_indirect_transport,wedged,reset_pending;
     u32 capabilities,compute_resource_flags,unified_command_id,unified_opcode,aborting;
     u32 unified_completion_delay_ms,active_completion_delay_ms;
     u64 regs_size,unified_expected_bytes,fence_context,fence_seqno;
     int submit_lock,fence_lock,timeout_work,completion_work;
     struct dma_fence *unified_fence,*active_fence;
-    struct { struct opengpu_tessellation_completion tessellation; bool tessellation_valid; int error; u32 flags,status; } last_fault;
+    struct { struct opengpu_native_completion native; bool native_valid; struct opengpu_tessellation_completion tessellation; bool tessellation_valid; int error; u32 flags,status; } last_fault;
     struct opengpu_compute_local_limits compute_local_limits;
     struct opengpu_compute_shared_limits compute_shared_limits;
-} hw; u32 regs[512],captured[8],active_root; unsigned kicks,pops,uniform_writes,invalidations; };
-enum { OPENGPU_SCHED_COMPUTE=1,OPENGPU_SCHED_TESSELLATION=7 };
+} hw;struct {int admission_lock;} compute; u32 regs[512],captured[8],active_root; unsigned kicks,pops,uniform_writes,invalidations; };
+enum { OPENGPU_SCHED_COMPUTE=1,OPENGPU_SCHED_TESSELLATION=7,OPENGPU_SCHED_NATIVE_BINNED=8 };
 struct opengpu_job_temporary_mapping { u64 va; size_t size; };
 struct opengpu_sched_job {
     struct drm_sched_job base; struct opengpu_device *gpu; const struct opengpu_vm *vm;
     struct opengpu_render_context *context; int type;
+    void *native_owner;u32 native_job_segment;
     struct opengpu_buffer shader,texture_records,storage_records,image_records,counter_records,uniform_snapshot,indirect_snapshot;
     struct opengpu_resource_binding counter_source;
     struct opengpu_buffer depth,vertex_shader,render_desc,commands;
@@ -251,6 +256,14 @@ static int opengpu_mmu_vm_unmap(struct opengpu_device *g,struct opengpu_vm *v,u6
 ;
 static void opengpu_tessellation_job_release(struct opengpu_sched_job *j) { (void)j;assert(0); }
 static struct opengpu_sched_job *opengpu_sched_job_from_base(struct drm_sched_job *b) { return (struct opengpu_sched_job *)b; }
+static int opengpu_private_snapshot_retire(void *owner){(void)owner;assert(0);return -EINVAL;}
+int opengpu_admission_job_prepare(struct opengpu_sched_job *j){(void)j;return 0;}
+void opengpu_admission_job_abort(struct opengpu_sched_job *j){(void)j;}
+void opengpu_admission_job_armed(struct opengpu_sched_job *j){(void)j;}
+void opengpu_admission_job_retired(struct opengpu_sched_job *j){(void)j;}
+static int opengpu_hw_native_binned_async(struct opengpu_device *g,void *o,
+    const struct opengpu_render_context *c,u32 segment,struct dma_fence **f)
+{(void)g;(void)o;(void)c;(void)segment;(void)f;assert(0);return -EINVAL;}
 #include "uniform_retire.inc"
 static int opengpu_mmu_vm_map(struct opengpu_device *g,struct opengpu_vm *v,u64 a,u64 p,size_t z,u32 policy)
 ;
@@ -300,6 +313,10 @@ static int opengpu_binding_map_code(struct opengpu_device *g,struct opengpu_rend
 { (void)g;assert(c->vm.enabled&&p&&z&&slot==1);*a=0xc0400000u;return 0; }
 static struct dma_fence *opengpu_tessellation_job_run(struct opengpu_sched_job *j) { (void)j;assert(0);return NULL; }
 static int opengpu_hw_unified_quiesce_timeout(struct opengpu_device *g) { return g->hw.unified_fence||g->hw.active_fence||g->hw.aborting?-EBUSY:0; }
+/* This fixture has no private native owner; actual lease waiting is covered
+ * by the snapshot admission/retirement fixture. */
+static int opengpu_hw_snapshot_submission_lock(struct opengpu_device *g)
+{ mutex_lock(&g->hw.submit_lock); return 0; }
 static int opengpu_hw_wait_idle_locked(struct opengpu_device *g) { assert(g->hw.submit_lock);return 0; }
 static int opengpu_hw_activate_vm_locked(struct opengpu_device *g,const struct opengpu_vm *v) { assert(g->hw.submit_lock&&v&&v->enabled);g->active_root=v->root;return 0; }
 static u32 opengpu_reg_read(struct opengpu_device *g,u32 a) { assert(a/4<ARRAY_SIZE(g->regs));return g->regs[a/4]; }

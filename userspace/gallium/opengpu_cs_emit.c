@@ -4,10 +4,16 @@
 #include "pipe/p_defines.h"
 #include "tgsi/tgsi_parse.h"
 #include "opengpu_buffer_views.h"
+#include "opengpu_shared_own_proof.h"
 #include <stdlib.h>
 #include <string.h>
 
-#define CS_TEMPS 32u
+/* Shared address expressions are rematerialized, not assigned one physical
+ * vector register each. Mesa CSE retains 32 stripe addresses plus ordinary
+ * values across store/load phases. Keep that bounded analysis table separate
+ * from the unchanged legacy declaration and v2..v21 register limits. */
+#define CS_TEMPS 64u
+#define CS_LEGACY_TEMPS 32u
 #define CS_IMMS 32u
 #define CS_LEGACY_IMMS 16u
 #define CS_SYSTEMS 8u
@@ -27,12 +33,14 @@ struct build {
     const unsigned *texture_observed;
     unsigned texture_position;
     unsigned images, image_writable;
-    unsigned cf, planned[CS_TEMPS][4];
+    unsigned cf, cf_depth, cf_count, planned[CS_TEMPS][4];
     uint32_t imm[CS_IMMS][4];
     unsigned nimm;
     const struct opengpu_cs_shared *shared;
     struct shared_expr expr[CS_TEMPS][4];
+    struct opengpu_shared_range ranges[CS_TEMPS][4];
     unsigned shared_declared, shared_used, shared_written, shared_visible;
+    struct opengpu_shared_own_proof shared_own;
     unsigned shared_address_valid[2], shared_address_offset[2];
     int failed;
 };
@@ -209,7 +217,7 @@ static int declaration(struct build *b, const struct tgsi_full_declaration *d)
         if (b->p.counter_bytes < (last + 1) * 4) b->p.counter_bytes = (last + 1) * 4;
         return 0;
     case TGSI_FILE_MEMORY:
-        if (!b->shared || b->cf || first != TGSI_MEMORY_TYPE_SHARED || last != first || d->Declaration.Semantic ||
+        if (!b->shared || first != TGSI_MEMORY_TYPE_SHARED || last != first || d->Declaration.Semantic ||
             d->Declaration.MemType != TGSI_MEMORY_TYPE_SHARED || b->shared_declared) return -1;
         b->shared_declared = 1;
         return 0;
@@ -261,7 +269,7 @@ static int declaration(struct build *b, const struct tgsi_full_declaration *d)
         b->const_last[i] = last;
         return 0;
     case TGSI_FILE_TEMPORARY:
-        if (last >= CS_TEMPS || d->Declaration.Semantic) return -1;
+        if (last >= (b->shared ? CS_TEMPS : CS_LEGACY_TEMPS) || d->Declaration.Semantic) return -1;
         for (i = first; i <= last; i++) {
             if (b->declared[i]) return -1;
             b->declared[i] = mask;
@@ -355,6 +363,41 @@ static struct shared_expr expression_op(unsigned op, struct shared_expr a,
         a.kind = EXPR_PEER; return a;
     }
     return unknown;
+}
+
+static struct opengpu_shared_range source_range(const struct build *b,
+    const struct tgsi_full_src_register *src, unsigned component)
+{
+    struct shared_expr e = expression(b, src, component);
+    if (e.kind == EXPR_CONSTANT) return opengpu_range_constant(e.offset);
+    if (e.kind == EXPR_LOCAL || e.kind == EXPR_PEER) {
+        uint64_t end = (uint64_t)e.offset + (b->p.fixed_block[0] - 1ull) * e.scale;
+        if (end <= UINT32_MAX && b->p.fixed_block[0])
+            return (struct opengpu_shared_range){e.offset, (uint32_t)end,
+                e.scale == 4 ? (~e.offset & 3u) : 0u, 1};
+    }
+    const struct tgsi_src_register *s = &src->Register;
+    if (s->File == TGSI_FILE_TEMPORARY && s->Index >= 0 && (unsigned)s->Index < CS_TEMPS)
+        return b->ranges[s->Index][swizzle(s, component)];
+    return (struct opengpu_shared_range){0};
+}
+
+static struct opengpu_shared_range range_op(unsigned op,
+    struct opengpu_shared_range a, struct opengpu_shared_range z)
+{
+    if (op == TGSI_OPCODE_MOV) return a;
+    unsigned n;
+    switch (op) {
+    case TGSI_OPCODE_UADD: n = OPENGPU_RANGE_ADD; break;
+    case TGSI_OPCODE_UMUL: n = OPENGPU_RANGE_MUL; break;
+    case TGSI_OPCODE_AND: n = OPENGPU_RANGE_AND; break;
+    case TGSI_OPCODE_OR: n = OPENGPU_RANGE_OR; break;
+    case TGSI_OPCODE_XOR: n = OPENGPU_RANGE_XOR; break;
+    case TGSI_OPCODE_SHL: n = OPENGPU_RANGE_SHL; break;
+    case TGSI_OPCODE_USHR: n = OPENGPU_RANGE_SHR; break;
+    default: return (struct opengpu_shared_range){0};
+    }
+    return opengpu_range_eval(n, a, z);
 }
 
 static void materialize(struct build *b, struct shared_expr e, unsigned to)
@@ -454,6 +497,39 @@ static int source_register(struct build *b, const struct tgsi_full_src_register 
     return source(b, full, component, scratch);
 }
 
+/* A symbolic TEMP is fully represented by expr and is rematerialized on
+ * every use. Its old physical slot is only a hint, never a live value. Keep
+ * the existing direct-load/copy shape, but reacquire any hinted slot before
+ * turning the TEMP back into a resident value. Counter ADDR2 is an independent
+ * persistent owner even when no ordinary TEMP names that register. */
+static unsigned temporary_register(struct build *b, unsigned hint)
+{
+    if (!b->shared) return b->next_reg <= 21 ? b->next_reg++ : 0;
+    uint32_t used = b->counter_address ? UINT32_C(1) << b->counter_address : 0;
+    for (unsigned t = 0; t < CS_TEMPS; ++t)
+        for (unsigned c = 0; c < 4; ++c)
+            if (!b->expr[t][c].kind && b->reg[t][c]) used |= UINT32_C(1) << b->reg[t][c];
+    if (hint >= 2 && hint <= 21 && !(used & (UINT32_C(1) << hint))) return hint;
+    for (unsigned r = 2; r <= 21; ++r) if (!(used & (UINT32_C(1) << r))) return r;
+    return 0;
+}
+
+static int resident_destination(struct build *b, unsigned t, unsigned c)
+{
+    if (b->cf) {
+        if (b->shared && !b->planned[t][c] && b->next_reg <= 21)
+            b->planned[t][c] = b->next_reg++;
+        b->reg[t][c] = b->planned[t][c];
+    }
+    else if (b->shared && b->expr[t][c].kind)
+        b->reg[t][c] = temporary_register(b, b->reg[t][c]);
+    else if (!b->reg[t][c])
+        b->reg[t][c] = b->cf ? b->planned[t][c] : temporary_register(b, 0);
+    b->expr[t][c] = (struct shared_expr){0};
+    b->ranges[t][c] = (struct opengpu_shared_range){0};
+    return b->reg[t][c] ? 0 : -1;
+}
+
 static int destination(struct build *b, const struct tgsi_dst_register *d)
 {
     unsigned c, i = (unsigned)d->Index;
@@ -462,16 +538,7 @@ static int destination(struct build *b, const struct tgsi_dst_register *d)
     /* Results are staged in v26..29 before any temp is overwritten, preserving
      * parallel TGSI writemasks/swizzles even when destination aliases a source. */
     for (c = 0; c < 4; c++) if (d->WriteMask & (1u << c)) {
-        b->expr[i][c] = (struct shared_expr){0};
-        if (!b->reg[i][c]) {
-            if (b->cf) {
-                if (!b->planned[i][c]) return -1;
-                b->reg[i][c] = b->planned[i][c];
-            } else {
-                if (b->next_reg > 21) return -1;
-                b->reg[i][c] = b->next_reg++;
-            }
-        }
+        if (resident_destination(b, i, c)) return -1;
         copy(b, b->reg[i][c], 26 + c);
     }
     return 0;
@@ -497,21 +564,26 @@ static int shared_memory(struct build *b, const struct tgsi_full_instruction *in
     unsigned binding = (unsigned)(store ? d->Index : in->Src[0].Register.Index);
     struct shared_expr address = expression(b, &in->Src[store ? 0 : 1], 0);
     uint64_t end = (uint64_t)address.offset + 4ull * b->p.fixed_block[0];
-    if (!b->shared || !b->shared_declared || b->cf || !i->Memory || i->Texture ||
+    if (!b->shared || !b->shared_declared || b->cf_depth || !i->Memory || i->Texture ||
         i->NumDstRegs != 1 || i->NumSrcRegs != 2 || binding != TGSI_MEMORY_TYPE_SHARED || d->WriteMask != 1 ||
         in->Memory.Qualifier || in->Memory.Format || in->Memory.Padding ||
         in->Memory.Texture != TGSI_TEXTURE_BUFFER ||
         (address.kind != EXPR_LOCAL && address.kind != EXPR_PEER) || address.scale != 4 ||
         (address.offset & 3) || end > b->shared->required_bytes ||
-        (store && address.kind != EXPR_LOCAL) || (!store && end > b->shared_visible)) return -1;
+        (store && address.kind != EXPR_LOCAL) ||
+        (!store && end > b->shared_visible &&
+         !(address.kind == EXPR_LOCAL &&
+           opengpu_shared_own_contains(&b->shared_own, address.offset, 4u * b->p.fixed_block[0])))) return -1;
     if (store && source_register(b, &in->Src[1], 0, 22, &value_reg)) return -1;
     /* A scalar load has no parallel components to preserve. Its address is
      * already captured above; an existing TEMP can receive the value directly
      * even when it previously held that address expression. */
     if (!store && d->File == TGSI_FILE_TEMPORARY && d->Index >= 0 &&
         temp < CS_TEMPS && (b->declared[temp] & 1u) &&
-        b->reg[temp][0] >= 2 && b->reg[temp][0] <= 21)
+        b->reg[temp][0] >= 2 && b->reg[temp][0] <= 21) {
+        if (resident_destination(b, temp, 0)) return -1;
         load_reg = b->reg[temp][0];
+    }
     unsigned peer = address.kind == EXPR_PEER, reg = 11 + peer;
     int64_t delta = (int64_t)address.offset - b->shared_address_offset[peer];
     if (!b->shared_address_valid[peer]) {
@@ -537,6 +609,8 @@ static int shared_memory(struct build *b, const struct tgsi_full_instruction *in
         return 0;
     }
     if (address.offset <= b->shared_written && end > b->shared_written) b->shared_written = (unsigned)end;
+    if (!opengpu_shared_own_store(&b->shared_own, address.offset,
+            4u * b->p.fixed_block[0])) return -1;
     return 0;
 }
 
@@ -661,6 +735,42 @@ static int image(struct build *b, const struct tgsi_full_instruction *in)
     return destination(b, d);
 }
 
+static int shared_atomic(struct build *b, const struct tgsi_full_instruction *in, unsigned operation)
+{
+    const struct tgsi_instruction *i = &in->Instruction;
+    const struct tgsi_dst_register *d = &in->Dst[0].Register;
+    const struct tgsi_src_register *resource = &in->Src[0].Register;
+    struct shared_expr address = expression(b, &in->Src[1], 0);
+    unsigned local = address.kind == EXPR_LOCAL && address.scale == 4;
+    uint64_t end = (uint64_t)address.offset + (local ? 4ull * b->p.fixed_block[0] : 4u);
+    struct opengpu_shared_range bound = source_range(b, &in->Src[1], 0);
+    unsigned exact = local || address.kind == EXPR_CONSTANT;
+    if (!exact) end = (uint64_t)bound.last + 4u;
+    if (!b->shared || !b->shared_declared || i->NumDstRegs != 1 ||
+        i->NumSrcRegs != (operation == 9 ? 4u : 3u) || d->File != TGSI_FILE_TEMPORARY ||
+        d->WriteMask != 1 || !i->Memory || i->Texture ||
+        in->Memory.Qualifier || in->Memory.Format || in->Memory.Padding ||
+        in->Memory.Texture != TGSI_TEXTURE_BUFFER || resource->File != TGSI_FILE_MEMORY ||
+        resource->Index != TGSI_MEMORY_TYPE_SHARED ||
+        (!exact && (!bound.valid || (bound.zero & 3u) != 3u)) ||
+        (exact && (address.offset & 3)) ||
+        end > b->shared->required_bytes ||
+        (end > b->shared_visible && !(local && !b->cf_depth && opengpu_shared_own_contains(
+            &b->shared_own, address.offset, 4u * b->p.fixed_block[0])))) return -1;
+    /* Capture all TGSI operands before touching an aliased destination or the
+     * scalar address register. CAS source order is compare, replacement. */
+    if (source(b, &in->Src[operation == 9 ? 3 : 2], 0, 22)) return -1;
+    if (operation == 9) { if (source(b, &in->Src[2], 0, 23)) return -1; }
+    else splat(b, 23, 0);
+    resource_word(b, 30, 0, 0, 22, 23);
+    if (!exact && source(b, &in->Src[1], 0, 25)) return -1;
+    scalar(b, b->shared->base + (exact ? address.offset : 0));
+    if (local) word(b, vec(0x25, 3, 25, 2, 1));
+    resource_word(b, operation < 8 ? 31 : 32, operation % 8, 26, 10, (local || !exact) ? 25 : 0);
+    b->shared_used = 1; b->p.shared_atomics = 1;
+    return destination(b, d);
+}
+
 static int storage_atomic(struct build *b, const struct tgsi_full_instruction *in, unsigned operation)
 {
     const struct tgsi_instruction *i=&in->Instruction;
@@ -763,7 +873,7 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
         return 0;
     }
     if (op == TGSI_OPCODE_BARRIER) {
-        if (!b->shared || !b->shared_declared || b->cf || i->NumDstRegs ||
+        if (!b->shared || !b->shared_declared || b->cf_depth || i->NumDstRegs ||
             i->NumSrcRegs || i->Memory || i->Texture || i->Label) return -1;
         word(b, 0x0330000fu);
         word(b, 0x0000000bu); b->shared_visible = b->shared_written;
@@ -778,6 +888,8 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
     if ((mem || op == TGSI_OPCODE_RESQ) &&
         (op == TGSI_OPCODE_STORE ? d->File : in->Src[0].Register.File) == TGSI_FILE_IMAGE)
         return image(b, in);
+    if(storage_atomic_operation(op)>=0 && in->Src[0].Register.File == TGSI_FILE_MEMORY)
+        return shared_atomic(b,in,(unsigned)storage_atomic_operation(op));
     if(storage_atomic_operation(op)>=0)
         return storage_atomic(b,in,(unsigned)storage_atomic_operation(op));
     if (i->Texture) return -1;
@@ -817,8 +929,8 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
             i->NumSrcRegs != 1 || d->File != TGSI_FILE_ADDRESS || d->WriteMask != 1 ||
             source(b, &in->Src[0], 0, 22)) return -1;
         if (d->Index == 2 && !b->counter_address) {
-            if (b->next_reg > 21) return -1;
-            b->counter_address = b->next_reg++;
+            b->counter_address = temporary_register(b, 0);
+            if (!b->counter_address) return -1;
         }
         copy(b, d->Index == 2 ? b->counter_address : 30, 22);
         b->address_defined |= 1u << d->Index;
@@ -841,7 +953,14 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
     default: return -1;
     }
     if (i->NumSrcRegs != (op == TGSI_OPCODE_MOV ? 1u : op == TGSI_OPCODE_UCMP ? 3u : 2u)) return -1;
-    if (shared_symbolic(b, in)) return 0;
+    struct opengpu_shared_range ranges[4] = {{0}};
+    if (b->shared) for (c = 0; c < 4; ++c) if (d->WriteMask & (1u << c))
+        ranges[c] = range_op(op, source_range(b, &in->Src[0], c),
+            source_range(b, &in->Src[1], c));
+    if (shared_symbolic(b, in)) {
+        for (c = 0; c < 4; ++c) if (d->WriteMask & (1u << c)) b->ranges[d->Index][c] = ranges[c];
+        return 0;
+    }
     for (c = 0; c < 4; c++) if (d->WriteMask & (1u << c)) {
         unsigned left, right, third;
         if (source_register(b, &in->Src[0], c, 22, &left)) return -1;
@@ -868,7 +987,10 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
             } else word(b, vec(fn, f3, 26 + c, right, left));
         }
     }
-    return destination(b, d);
+    if (destination(b, d)) return -1;
+    if (b->shared) for (c = 0; c < 4; ++c) if (d->WriteMask & (1u << c))
+        b->ranges[d->Index][c] = ranges[c];
+    return 0;
 }
 
 #define CS_IF_DEPTH 4u /* two physical stack entries/scope, native depth eight */
@@ -884,6 +1006,50 @@ static uint32_t branch_word(unsigned f, unsigned a, unsigned z, unsigned bytes)
         ((bytes >> 11) & 1u) << 7 | 0x5bu;
 }
 
+/* A symbolic expression is rematerialized from immutable LOCAL, not from its
+ * old register hint. At an arm boundary publish every live expression into
+ * its stable planned slot before snapshotting/merging the register file. A
+ * later arm/definition can then neither change its meaning nor reuse its
+ * slot. Straight-line shared programs retain their existing rematerializer. */
+static int materialize_control_temporaries(struct build *b,
+    const struct cf_instruction *ir, unsigned future)
+{
+    if (!b->shared) return 0;
+    unsigned used[CS_TEMPS] = {0};
+    /* An overapproximation of every remaining arm and join. Do not retain
+     * the 32 dead symbolic initialization addresses just because Mesa CSE
+     * assigned distinct TEMP names to them. Definitions never kill this
+     * conservative future-use set; unknown reuse only retains extra values. */
+    for (unsigned i = future; i < b->cf_count; ++i)
+        for (unsigned s = 0; s < ir[i].in.Instruction.NumSrcRegs; ++s) {
+            const struct tgsi_src_register *src = &ir[i].in.Src[s].Register;
+            if (src->File == TGSI_FILE_TEMPORARY && src->Index >= 0 && (unsigned)src->Index < CS_TEMPS)
+                for (unsigned c = 0; c < 4; ++c) used[src->Index] |= 1u << swizzle(src,c);
+        }
+    for (unsigned t = 0; t < CS_TEMPS; ++t) for (unsigned c = 0; c < 4; ++c)
+        if (b->expr[t][c].kind) {
+            if (!(used[t] & (1u << c))) {
+                b->expr[t][c] = (struct shared_expr){0}; b->reg[t][c] = 0;
+                b->ranges[t][c] = (struct opengpu_shared_range){0};
+                continue;
+            }
+            struct tgsi_full_src_register src = {0};
+            src.Register.File = TGSI_FILE_TEMPORARY; src.Register.Index = t;
+            src.Register.SwizzleX = src.Register.SwizzleY =
+                src.Register.SwizzleZ = src.Register.SwizzleW = c;
+            b->ranges[t][c] = source_range(b, &src, 0);
+            if (!b->planned[t][c] && b->next_reg <= 21) b->planned[t][c] = b->next_reg++;
+            if (!b->planned[t][c]) return -1;
+            materialize(b, b->expr[t][c], b->planned[t][c]);
+            b->reg[t][c] = b->planned[t][c];
+            /* The resident copy is needed if the arms later disagree. Keep
+             * the immutable LOCAL/PEER/constant identity as well: a later
+             * shared LOAD needs exact stripe provenance, not just a numeric
+             * range. span snapshots it and retains only identical arms. */
+        }
+    return b->failed ? -1 : 0;
+}
+
 static int span(struct build *b, const struct cf_instruction *ir, unsigned first, unsigned last)
 {
     for (unsigned i = first; i < last; i++) {
@@ -893,18 +1059,32 @@ static int span(struct build *b, const struct cf_instruction *ir, unsigned first
             continue;
         }
         unsigned before[CS_TEMPS][4], yes[CS_TEMPS][4];
+        struct shared_expr expr_before[CS_TEMPS][4], expr_yes[CS_TEMPS][4];
+        struct opengpu_shared_range range_before[CS_TEMPS][4], range_yes[CS_TEMPS][4];
         unsigned address_before = b->address_defined, address_yes;
+        if (materialize_control_temporaries(b, ir, i)) return -1;
         if (source(b, &node->in.Src[0], 0, 22)) return -1;
         splat(b, 23, 0);
         unsigned sync = b->p.words; word(b, 0); word(b, 0);
         memcpy(before, b->reg, sizeof(before));
+        memcpy(expr_before, b->expr, sizeof(expr_before));
+        memcpy(range_before, b->ranges, sizeof(range_before));
         unsigned yes_end = node->alternative < node->end ? node->alternative : node->end;
-        if (span(b, ir, i + 1, yes_end)) return -1;
+        ++b->cf_depth;
+        if (span(b, ir, i + 1, yes_end) || materialize_control_temporaries(b, ir, yes_end)) return -1;
+        --b->cf_depth;
         word(b, 0x205bu);
         unsigned taken = b->p.words;
         memcpy(yes, b->reg, sizeof(yes)); address_yes = b->address_defined;
+        memcpy(expr_yes, b->expr, sizeof(expr_yes));
+        memcpy(range_yes, b->ranges, sizeof(range_yes));
         memcpy(b->reg, before, sizeof(before)); b->address_defined = address_before;
+        memcpy(b->expr, expr_before, sizeof(expr_before));
+        memcpy(b->ranges, range_before, sizeof(range_before));
+        ++b->cf_depth;
         if (node->alternative < node->end && span(b, ir, node->alternative + 1, node->end)) return -1;
+        if (materialize_control_temporaries(b, ir, node->end)) return -1;
+        --b->cf_depth;
         word(b, 0x205bu);
         unsigned marker = b->p.words; word(b, 0x205bu);
         if (b->failed || sync >= 512 || sync + 1 >= 512) return -1;
@@ -912,15 +1092,25 @@ static int span(struct build *b, const struct cf_instruction *ir, unsigned first
         /* Zero condition takes the textual else; neither VL nor v0 qualifies
          * SIMT comparison. Hardware retains each path's warp active mask. */
         b->p.code[sync + 1] = branch_word(0, 22, 23, (taken - sync - 1) * 4);
-        for (unsigned t = 0; t < CS_TEMPS; t++) for (unsigned c = 0; c < 4; c++)
-            if (!yes[t][c]) b->reg[t][c] = 0;
+        for (unsigned t = 0; t < CS_TEMPS; t++) for (unsigned c = 0; c < 4; c++) {
+            if (!yes[t][c]) {
+                b->reg[t][c] = 0; b->expr[t][c] = (struct shared_expr){0};
+                b->ranges[t][c] = (struct opengpu_shared_range){0};
+            } else {
+                b->ranges[t][c] = opengpu_range_join(b->ranges[t][c], range_yes[t][c]);
+                struct shared_expr a = b->expr[t][c], z = expr_yes[t][c];
+                if (a.kind != z.kind || a.scale != z.scale || a.offset != z.offset)
+                    b->expr[t][c] = (struct shared_expr){0};
+            }
+        }
         b->address_defined &= address_yes;
         i = node->end;
     }
     return b->failed ? -1 : 0;
 }
 
-static int control_program(const void *tokens, struct opengpu_cs_program *out)
+static int control_program(const void *tokens, const struct opengpu_cs_shared *shared,
+                           struct opengpu_cs_program *out)
 {
     struct build b;
     struct tgsi_parse_context p;
@@ -929,6 +1119,7 @@ static int control_program(const void *tokens, struct opengpu_cs_program *out)
     int result = -1;
     if (!ir) return -1;
     memset(&b, 0, sizeof(b)); b.cf = 1; b.next_reg = 2;
+    b.shared = shared;
     if (tgsi_parse_init(&p, tokens) != TGSI_PARSE_OK) goto done;
     while (!tgsi_parse_end_of_tokens(&p)) {
         tgsi_parse_token(&p);
@@ -938,7 +1129,7 @@ static int control_program(const void *tokens, struct opengpu_cs_program *out)
             if (count || declaration(&b, &p.FullToken.FullDeclaration)) goto parsed;
             break;
         case TGSI_TOKEN_TYPE_IMMEDIATE:
-            if (count || b.nimm == CS_LEGACY_IMMS) goto parsed;
+            if (count || b.nimm == (shared ? CS_IMMS : CS_LEGACY_IMMS)) goto parsed;
             for (unsigned c = 0; c < 4; c++) b.imm[b.nimm][c] = p.FullToken.FullImmediate.u[c].Uint;
             b.nimm++;
             break;
@@ -984,7 +1175,7 @@ static int control_program(const void *tokens, struct opengpu_cs_program *out)
                 const struct tgsi_dst_register *d = &node->in.Dst[0].Register;
                 if (d->Index < 0 || (unsigned)d->Index >= CS_TEMPS || !d->WriteMask ||
                     (d->WriteMask & ~b.declared[d->Index])) goto parsed;
-                for (unsigned c = 0; c < 4; c++) if ((d->WriteMask & (1u << c)) && !b.planned[d->Index][c]) {
+                for (unsigned c = 0; c < 4; c++) if (!shared && (d->WriteMask & (1u << c)) && !b.planned[d->Index][c]) {
                     if (b.next_reg > 21) goto parsed;
                     b.planned[d->Index][c] = b.next_reg++;
                 }
@@ -996,10 +1187,14 @@ static int control_program(const void *tokens, struct opengpu_cs_program *out)
         }
     }
     if (!ended || !count || depth) goto parsed;
+    b.cf_count = count;
     word(&b, 0x01007557u);
+    if (shared) word(&b, 0xc1007057u | shared->lanes << 15);
     if (span(&b, ir, 0, count - 1)) goto parsed;
     word(&b, 0x0330000fu); word(&b, 0x30500073u);
-    if (!b.failed) { *out = b.p; result = 0; }
+    if (!b.failed && (!shared || (b.shared_used && b.p.shared_atomics && b.p.fixed_block[0] &&
+        b.p.fixed_block[0] <= 128 && b.p.fixed_block[1] == 1 && b.p.fixed_block[2] == 1 &&
+        !(b.p.fixed_block[0] % shared->lanes)))) { *out = b.p; result = 0; }
 parsed:
     tgsi_parse_free(&p);
 done:
@@ -1045,8 +1240,7 @@ static int emit_program(const void *tokens, const struct opengpu_cs_shared *shar
              p.FullToken.FullInstruction.Instruction.Opcode == TGSI_OPCODE_ELSE ||
              p.FullToken.FullInstruction.Instruction.Opcode == TGSI_OPCODE_ENDIF)) {
             tgsi_parse_free(&p);
-            if (shared) return -1; /* shared barriers require a straight, converged program */
-            return control_program(tokens, out);
+            return control_program(tokens, shared, out);
         }
     }
     tgsi_parse_free(&p);

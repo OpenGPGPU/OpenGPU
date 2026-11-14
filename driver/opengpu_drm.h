@@ -199,6 +199,12 @@ struct drm_opengpu_param {
 #define OPENGPU_PARAM_COMPUTE_SHARED_BASE 5u
 #define OPENGPU_PARAM_COMPUTE_SHARED_BYTES 6u
 #define OPENGPU_PARAM_COMPUTE_SHARED_LANES 7u
+/* Zero until the protected native route is available; see native_layout.h. */
+#define OPENGPU_PARAM_NATIVE_LAYOUT 8u
+/* Eight individually queried, validated GNC words. Upper value bits are zero;
+ * all return zero until DRIVER_FEATURE_NATIVE_BINNED is available. */
+#define OPENGPU_PARAM_NATIVE_CAPS_BASE 0x100u
+#define OPENGPU_PARAM_NATIVE_CAPS_WORDS 8u
 #define OPENGPU_DRIVER_FEATURE_DISCARD_PRIVATE_DEPTH (1u << 0)
 #define OPENGPU_DRIVER_FEATURE_TRANSIENT_FRAGMENT_STAGING (1u << 1)
 /* Relaxed 32-bit AMOs/CAS within a compute submission's bound kernarg. */
@@ -261,6 +267,10 @@ struct drm_opengpu_param {
 #define OPENGPU_DRIVER_FEATURE_CONSTANT_BLEND (1ull << 37)
 #define OPENGPU_DRIVER_FEATURE_BIASED_CLAMP (1ull << 38)
 #define OPENGPU_DRIVER_FEATURE_MIRRORED_REPEAT (1ull << 39)
+/* Protected native descriptors, code/uniform snapshots and whole-job preflight.
+ * This bit is withheld until the production submission path is available. */
+#define OPENGPU_DRIVER_FEATURE_NATIVE_BINNED (1ull << 40)
+#define OPENGPU_DRIVER_FEATURE_COMPUTE_SHARED_ATOMICS (1ull << 41)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u
@@ -670,6 +680,57 @@ struct drm_opengpu_compute_uniform_resources {
     __u32 pad[2];
 };
 
+/* Protected native GNJ submission. All record pointers name userspace bytes
+ * copied exactly once into unexportable kernel storage. Packet GPU addresses
+ * for metadata, code and uniforms must be zero; only the kernel chooses and
+ * patches private addresses. Source GEM producers must complete before copying
+ * program/uniform bytes; those GEM references and writable resources survive
+ * the job's completion, translation drain and private mapping revocation.
+ *
+ * This reserves the ABI shape; support requires DRIVER_FEATURE_NATIVE_BINNED.
+ * It is independent of GLES/KHR feature advertisement. Source uniform windows
+ * need four-byte alignment; copied UBO data is privately realigned to 256 bytes.
+ * CPU writes must not race the initial copy. Later CPU changes do not mutate
+ * already copied metadata, code or uniform bytes.
+ */
+#define OPENGPU_NATIVE_SUBMIT_VERSION 1u
+#define OPENGPU_NATIVE_UNIFORM_BLOCKS 12u
+#define OPENGPU_NATIVE_VERTEX_BINDINGS 16u
+struct drm_opengpu_native_uniform_stage {
+    __u32 active_mask, pad;
+    struct drm_opengpu_compute_uniform_view blocks[OPENGPU_NATIVE_UNIFORM_BLOCKS];
+    struct drm_opengpu_compute_uniform_view defaults;
+};
+struct drm_opengpu_native_program_view {
+    __aligned_u64 offset;
+    __u32 handle, bytes, entry_offset, pad;
+};
+/* One exact GND ordinal and its referenced GFS state. Linked logical UBO block
+ * order is per-stage, never an application global binding index. Reusing a GFS
+ * handle requires identical FS program/uniform plans. A producer may instead
+ * supply distinct state handles; the native state capacity is not reduced.
+ * Input/scratch views name original local GEM objects, not mutable context
+ * binding slots. Unused views must be entirely zero.
+ */
+struct drm_opengpu_native_draw_plan {
+    __u32 draw_index, state_handle;
+    struct drm_opengpu_native_program_view vertex_program, fragment_program;
+    struct drm_opengpu_native_uniform_stage vertex_uniforms, fragment_uniforms;
+    struct drm_opengpu_compute_uniform_view bindings[OPENGPU_NATIVE_VERTEX_BINDINGS];
+    struct drm_opengpu_compute_uniform_view indices, indirect, vertex_scratch;
+};
+struct drm_opengpu_submit_native_binned {
+    __u32 version, context_id, flags, in_syncobj, out_syncobj, pad;
+    __aligned_u64 job, frame, draws, draws_bytes, states, states_bytes, plans;
+    __u32 plan_count, plan_stride;
+    __aligned_u64 fence_seqno;
+    /* Array of opengpu_native_frame_resource from native_frame_abi.h. Roles
+     * choose generated fields; caller-selected relocation offsets are forbidden. */
+    __aligned_u64 resources;
+    __u32 resource_count, resource_stride;
+    __aligned_u64 reserved[2];
+};
+
 /* Version 1 keeps the original counter GEM mutable until job retirement. The
  * nested legacy counter binding and COUNTERS flag must be zero. Uniform views
  * may all be zero; otherwise every nested version-1 uniform rule applies. */
@@ -762,6 +823,7 @@ struct drm_opengpu_compute_indirect_resources {
 #define DRM_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES 0x16
 #define DRM_OPENGPU_COMPUTE_INDIRECT_RESOURCES 0x17
 #define DRM_OPENGPU_QUERY 0x18
+#define DRM_OPENGPU_SUBMIT_NATIVE_BINNED 0x19
 #define DRM_IOCTL_OPENGPU_SUBMIT \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_SUBMIT, \
              struct drm_opengpu_submit)
@@ -839,6 +901,9 @@ struct drm_opengpu_compute_indirect_resources {
 #define DRM_IOCTL_OPENGPU_COMPUTE_INDIRECT_RESOURCES \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_COMPUTE_INDIRECT_RESOURCES, \
              struct drm_opengpu_compute_indirect_resources)
+#define DRM_IOCTL_OPENGPU_SUBMIT_NATIVE_BINNED \
+    DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_SUBMIT_NATIVE_BINNED, \
+             struct drm_opengpu_submit_native_binned)
 #define DRM_IOCTL_OPENGPU_QUERY \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_QUERY, \
              struct drm_opengpu_query)

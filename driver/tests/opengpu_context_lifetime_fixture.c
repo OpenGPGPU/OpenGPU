@@ -32,14 +32,15 @@ static void mutex_lock(int *lock) { assert(!*lock); *lock=1; }
 static void mutex_unlock(int *lock) { assert(*lock); *lock=0; }
 static struct opengpu_render_context *idr_remove(struct idr *id, u32 key)
 { struct opengpu_render_context *c=key==id->id?id->context:NULL; if(c)id->context=NULL; return c; }
+static int destroy_error;
 static int vm_destroys, object_puts, binding_frees, context_frees, entity_destroys;
 static struct opengpu_render_context *test_context;
 static struct opengpu_resource_binding *test_binding;
 static void kref_get(struct kref *r) { assert(r->refs>0); r->refs++; }
 static void kref_put(struct kref *r, void (*release)(struct kref *))
 { assert(r->refs>0); if (--r->refs==0) release(r); }
-static void opengpu_mmu_vm_destroy(struct opengpu_device *g, struct opengpu_vm *v)
-{ assert(g==test_context->gpu && v==&test_context->vm); vm_destroys++; }
+static int opengpu_mmu_vm_destroy(struct opengpu_device *g, struct opengpu_vm *v)
+{ assert(g==test_context->gpu && v==&test_context->vm); vm_destroys++; return destroy_error; }
 static void drm_gem_object_put(struct drm_gem_object *o) { o->refs--; object_puts++; }
 static void kfree(void *p)
 {
@@ -77,6 +78,11 @@ int main(void)
     opengpu_context_put(&context); /* last free-job cleanup has run */
     assert(vm_destroys==1 && object_puts==1 && object.refs==0);
     assert(binding_frees==1 && context_frees==1);
+    context=(struct opengpu_render_context){.refcount={1},.gpu=&gpu};
+    object.refs=1;context.bindings[0]=&binding;destroy_error=-EIO;
+    opengpu_context_put(&context);
+    assert(context.refcount.refs==0 && vm_destroys==2);
+    assert(object.refs==1 && object_puts==1 && binding_frees==1 && context_frees==1);
     puts("context lifetime: actual namespace-delete success/timeout retains VM and bindings until last job PASS");
     return 0;
 }

@@ -30,6 +30,7 @@ python3 scripts/test_unified_completion_race.py
 python3 scripts/test_invalidate_submit_race.py
 python3 scripts/test_fence_wait.py
 python3 scripts/test_vm_idle.py
+python3 scripts/test_snapshot_submission.py
 python3 scripts/test_context_fence_wait.py
 python3 scripts/test_context_lifetime.py
 python3 scripts/test_job_track_mapping.py
@@ -54,6 +55,7 @@ python3 scripts/test_analyze_shared_graphics_trace.py
 python3 scripts/test_yosys_hierarchy.py
 python3 scripts/test_extract_emitted_rtl.py
 python3 scripts/test_report_ppa_sram_inventory.py
+python3 scripts/test_verify_yosys_opt_equivalence.py
 PYTHONDONTWRITEBYTECODE=1 python3 - <<'PY'
 from pathlib import Path
 import tempfile
@@ -63,7 +65,7 @@ temporary.mkdir(exist_ok=True)
 with tempfile.TemporaryDirectory(prefix='ppa-host-tests-', dir=temporary) as directory:
     result = pytest.main(['-q', '-p', 'no:cacheprovider',
                           '--basetemp=' + str(Path(directory) / 'fixtures'),
-                          'scripts/test_qualify_ppa.py'])
+                          'scripts/test_qualify_ppa.py', 'scripts/test_qualify_native_owner_ppa.py'])
 raise SystemExit(result)
 PY
 python3 scripts/test_split_yosys_rtlil.py
@@ -83,6 +85,7 @@ python3 scripts/test_native_alignment_sequence.py
 python3 scripts/test_qualify_native_owner_product.py
 python3 scripts/test_native_owner.py
 python3 scripts/test_compute_owner.py
+python3 scripts/test_native_product_observation.py
 python3 scripts/test_native_binned_topology_fixture.py
 python3 scripts/test_flashsim_native_adapter.py
 python3 scripts/test_build_native_flashsim.py
