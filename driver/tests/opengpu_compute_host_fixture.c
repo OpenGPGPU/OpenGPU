@@ -480,7 +480,8 @@ int compute_host_capture(struct compute_host_session *s,const char *path,uint64_
  }
  count=merged;
  char *temporary=NULL;FILE *f=compute_mmio_file(path,&temporary);if(!f)return -EIO;
- fwrite("OGCMP001",1,8,f);compute_mmio_le(f,budget,8);compute_mmio_le(f,hold,4);
+ fwrite(s->profile_count==114 || s->profile_count==122?"OGCMP002":"OGCMP001",1,8,f);
+ compute_mmio_le(f,budget,8);compute_mmio_le(f,hold,4);
  compute_mmio_le(f,s->gpu.hw.unified_command_id,4);compute_mmio_le(f,s->profile_count,4);
  for(size_t i=0;i<s->profile_count;i++){compute_mmio_le(f,s->profile[i].address,4);compute_mmio_le(f,s->profile[i].value,4);}
  compute_mmio_le(f,count,4);

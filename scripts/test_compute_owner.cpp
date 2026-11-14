@@ -35,7 +35,7 @@ static ComputeCapture fixture() {
   write(GPU_REG_UCMD_SUBMIT,1);c.validate();return c;
 }
 static std::string encode(const ComputeCapture &c) {
-  std::ostringstream out;out.write("OGCMP001",8);write_le(out,c.max_cycles,8);write_le(out,c.hold_cycles,4);write_le(out,c.command_id,4);
+  std::ostringstream out;out.write(compute_capture_magic(),8);write_le(out,c.max_cycles,8);write_le(out,c.hold_cycles,4);write_le(out,c.command_id,4);
   write_le(out,c.discovery.size(),4);for(const auto &r:c.discovery){write_le(out,r.address,4);write_le(out,r.value,4);}
   write_le(out,c.writable.size(),4);for(const auto &r:c.writable){write_le(out,r.first,8);write_le(out,r.end,8);}
   write_le(out,c.trace.size(),4);for(const auto &a:c.trace) {
@@ -124,8 +124,8 @@ static void deadline_checks() {
 }
 static void parser_checks() {
   const auto c=fixture();const auto wire=encode(c);std::istringstream input(wire);
-  require(ComputeCapture::read(input).discovery.size()==106,"lost compute 96+10 profile");
-  for(unsigned n=0;n<96;n++) {
+  require(ComputeCapture::read(input).discovery.size()==c.discovery.size(),"lost complete compute profile");
+  for(unsigned n=0;n<owner_factory_words(compute_owner_factory()).size();n++) {
     auto bad=c;bad.discovery[n].value^=1;rejects([&]{bad.validate();});
   }
   auto wrong_factory=c;wrong_factory.discovery[2].value^=1u<<18;
@@ -172,6 +172,8 @@ static void parser_checks() {
   std::istringstream extra(wire+"x");rejects([&]{ComputeCapture::read(extra);});
   auto native_wire=wire;native_wire.replace(0,8,"OGCAP001");std::istringstream wrong(native_wire);
   rejects([&]{ComputeCapture::read(wrong);});
+  auto other_wire=wire;other_wire.replace(0,8,std::string(compute_capture_magic())=="OGCMP001"?"OGCMP002":"OGCMP001");
+  std::istringstream other_capture(other_wire);rejects([&]{ComputeCapture::read(other_capture);});
   const auto r=retirement();const auto rw=encode(r);std::istringstream rin(rw);ComputeRetirement::read(rin);
   for(unsigned n=0;n<r.actions.size();n++) {auto invalid=r;invalid.actions.erase(invalid.actions.begin()+n);
     if(n!=5)rejects([&]{invalid.validate();});}
@@ -185,15 +187,25 @@ static void profile_checks(int argc,char **argv) {
   auto memory=memory_fixture();ComputePeer sim(argc,argv,memory);sim.reset();
   Agent agent(memory);ReplayBus<ComputePeer> bus(sim,agent,100000);
   const auto profile=probe_profile(sim,agent,bus,true,compute_owner_factory());
-  require(!sim.submitted && profile.words.size()==96 && profile.registers.size()==10,
+  require(!sim.submitted && profile.words.size()==owner_factory_words(compute_owner_factory()).size() && profile.registers.size()==10,
     "compute profile probe submitted work or lost actual observations");
   require(std::vector<uint32_t>(sim.reads.begin(),sim.reads.begin()+5)==
     std::vector<uint32_t>({GPU_REG_ID,GPU_REG_CAPABILITIES,0x360,0x364,0x368}),
     "compute probe read dependent windows before factory presence");
-  const auto legacy=Capture::profile(),selected=owner_factory_words(compute_owner_factory());
-  for(size_t n=0;n<selected.size();n++)require(selected[n].address==legacy[n].address &&
-    selected[n].value==(legacy[n].value|(n==2 && compute_owner_factory()==OwnerFactory::compute_stage?1u<<18:0u)),
-    "compute-stage selection changed the frozen native factory");
+  const auto selected=owner_factory_words(compute_owner_factory());
+  const auto frozen=owner_factory_words(OwnerFactory::v1),legacy=Capture::profile();
+  require(frozen.size()==96 && legacy.size()==frozen.size(),"frozen v1 table changed");
+  for(size_t n=0;n<frozen.size();++n)require(frozen[n].address==legacy[n].address &&
+    frozen[n].value==legacy[n].value,"frozen v1 table changed");
+  for(const auto other:{OwnerFactory::v1,OwnerFactory::compute_stage,
+      OwnerFactory::geometry_compute,OwnerFactory::geometry_compute_sample}) {
+    if(other==compute_owner_factory())continue;
+    auto wrong=fixture();wrong.discovery=owner_factory_words(other);
+    for(const auto &r:ComputeCapture::transports())wrong.discovery.push_back(r);
+    for(size_t n=fixture().discovery.size()-5;n<fixture().discovery.size();++n)
+      wrong.discovery.push_back(fixture().discovery[n]);
+    rejects([&]{wrong.validate();});
+  }
   // Python consumes this actual CPU MMIO peer observation through the same
   // strict profile parser used by the live controller. No GPU executes here.
   atomic_json(std::filesystem::path(std::getenv("TMPDIR"))/"profile.json",

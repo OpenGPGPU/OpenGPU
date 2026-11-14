@@ -34,7 +34,8 @@ struct ComputeCapture {
   void validate() const {
     require(max_cycles && max_cycles<=1000000000 && hold_cycles>=8 && hold_cycles<=4096 && command_id<256,
       "invalid compute capture execution bounds");
-    require(discovery.size()==106,"compute capture requires the actual 96+10 profile");
+    require(discovery.size()==owner_factory_words(compute_owner_factory()).size()+10,
+      "compute capture requires the actual complete factory and ten auxiliary reads");
     std::map<uint32_t,uint32_t> found;
     for(const auto &r:discovery) {
       Capture::address(r.address);require(found.emplace(r.address,r.value).second,"duplicate compute discovery word");
@@ -105,11 +106,12 @@ struct ComputeCapture {
     require(kernels==1 && pending,"compute capture has no held kernel");
   }
   static ComputeCapture read(std::istream &in) {
-    magic(in,"OGCMP001");ComputeCapture c;
+    magic(in,compute_capture_magic());ComputeCapture c;
     c.max_cycles=read_le(in,8);c.hold_cycles=read_le(in,4);c.command_id=read_le(in,4);
     auto count=[&](uint32_t maximum) {const auto n=read_le(in,4);require(n<=maximum,"oversized compute capture section");return n;};
     auto word=[&]() {return uint32_t(read_le(in,4));};
-    auto n=count(106);for(uint64_t i=0;i<n;i++){const auto a=word(),v=word();c.discovery.push_back({a,v});}
+    auto n=count(owner_factory_words(compute_owner_factory()).size()+10);
+    for(uint64_t i=0;i<n;i++){const auto a=word(),v=word();c.discovery.push_back({a,v});}
     n=count(4096);for(uint64_t i=0;i<n;i++){const auto a=read_le(in,8),b=read_le(in,8);c.writable.push_back({a,b});}
     n=count(65536);for(uint64_t i=0;i<n;i++) {
       const auto k=word(),a=word(),v=word(),m=word();c.trace.push_back({Kind(k),a,v,m});

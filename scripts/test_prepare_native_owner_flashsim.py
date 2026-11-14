@@ -32,11 +32,13 @@ class OwnerInputTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):owner.check_manifest(bad)
             bad=self.manifest();bad.update(profile=PROFILE,requiredDiscovery=copy.deepcopy(FULL_WORDS))
             with self.assertRaises(RuntimeError):owner.check_manifest(bad)
-        # The existing native and compute executors have no GNJ2 execution
-        # contract. A new manifest must not silently widen either binary.
+        # Native replay stays frozen. Compute uses a distinct source-selected
+        # wrapper for opcode 0 on this factory; it cannot execute GNJ2 packets.
         import prepare_owner_executor as executor
-        for kind in executor.KINDS:
-            with self.assertRaises(RuntimeError):executor.profile_contract(PROFILE,kind)
+        with self.assertRaises(RuntimeError):executor.profile_contract(PROFILE,'native')
+        self.assertEqual(executor.profile_contract(PROFILE,'compute'),dict(profile=PROFILE,
+            ownerResourceVersion=2,ownerResourceStage=FULL_STAGE,fullResourceQualification=False))
+        self.assertEqual(executor.driver_files('compute',PROFILE)[0],'scripts/geometry_compute_owner_driver.cpp')
 
     def manifest(self):
         return dict(version=1,profile=owner.PROFILE,computeUnits=2,frameWidth=640,frameHeight=480,
