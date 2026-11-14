@@ -186,7 +186,7 @@ int main(int argc,char **argv)
     live_require(opengpu_native_shader_validate_words_sample_inputs(vs,vs_words,40960,128,0,1,1,16,0,true,false,false,false),"vertex shader validation");
     live_require(!native_kernel_submit(s,&r->submit,NULL,NULL),"protected ioctl");
     struct opengpu_sched_job *job=native_record(s,0);u32 va=0;live_require(job && !opengpu_private_snapshot_native_layered_job_address(job->native_owner,job->native_job_segment,&va),"private GNJ2");
-    u32 frame=test_read_va(s,va+21*4),states=test_read_va(s,frame+292*4);assert_rx(s,test_read_va(s,states+54*4),&p);
+    u32 frame=test_read_va(s,va+21*4),states=test_read_va(s,frame+292*4);live_require(test_read_va(s,states+29*4)==p.meta[7],"rewritten GFS depth override policy");assert_rx(s,test_read_va(s,states+54*4),&p);
     live_inputs(s,r,&p,argv[5],samples,va,vs_words);
     char path[4096];live_path(path,"union.memory");live_require(!native_kernel_export_memory(s,path),"union export");
     live_path(path,"record-0.capture");live_require(!native_kernel_capture(s,0,path,1000000000,37),"capture enqueue");
