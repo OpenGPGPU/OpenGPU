@@ -29,8 +29,10 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         ap.add_argument('--session', type=Path, required=True)
         ap.add_argument('--capture-only', action='store_true', help='explicit CPU capture only; no DUT execution')
     if sample_graphics:
-        ap.add_argument("--profile-wire", type=Path, required=True, help="strict OGNP0002 observations; CPU fixtures must be labeled synthetic")
-        ap.add_argument("--cpu-capture-only", action="store_true", required=True, help="modeled control peer only; no GPU or live controller")
+        ap.add_argument("--profile-wire", type=Path, help="CPU mode's strict OGNP0002 observations; label synthetic fixtures explicitly")
+        mode = ap.add_mutually_exclusive_group(required=True)
+        mode.add_argument("--cpu-capture-only", action="store_true", help="modeled control peer only; no GPU or live controller")
+        mode.add_argument("--prepare-live-producer", action="store_true", help="build only; never start the live producer")
     if graphics_uniforms:
         ap.add_argument("--native-kernel-root", type=Path,
                         help="explicit CPU-only actual native Linux handler/owner source fixture")
@@ -50,10 +52,15 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         shared_ntt = args.mesa_shared_ntt.resolve(strict=True)
         if hashlib.sha256(shared_ntt.read_bytes()).hexdigest() != AFTER:
             raise ValueError("exact checked shared NTT postimage required")
-    if sample_graphics and (not args.native_kernel_root or any(name in os.environ for name in (
-            "OPENGPU_NATIVE_HOST_DIRECTORY", "OPENGPU_NATIVE_HOST_PROFILE",
-            "OPENGPU_SAMPLE_GRAPHICS_HOST_DIRECTORY", "OPENGPU_SAMPLE_GRAPHICS_HOST_PROFILE"))):
-        ap.error("sample graphics requires --native-kernel-root and CPU-only mode; live owner protocol is not implemented")
+    if sample_graphics:
+        if not args.native_kernel_root or any(name in os.environ for name in (
+                "OPENGPU_NATIVE_HOST_DIRECTORY", "OPENGPU_NATIVE_HOST_PROFILE",
+                "OPENGPU_SAMPLE_GRAPHICS_HOST_DIRECTORY", "OPENGPU_SAMPLE_GRAPHICS_HOST_PROFILE")):
+            ap.error("sample graphics build requires --native-kernel-root and no live environment")
+        if args.cpu_capture_only and not args.profile_wire:
+            ap.error("--cpu-capture-only requires --profile-wire")
+        if args.prepare_live_producer and args.profile_wire:
+            ap.error("--profile-wire is CPU-only; the controller supplies the live profile at execution")
     out = args.build.resolve()
     out.mkdir(parents=True, exist_ok=False)
     native_kernel = args.native_kernel_root.resolve(strict=True) if graphics_uniforms and args.native_kernel_root else None
@@ -157,10 +164,12 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
             native_kernel / "driver/tests/private_snapshot_stubs", native_kernel / "driver/tests/mmu_stubs",
             native_kernel / "driver/tests/compute_submit_stubs", ROOT / "userspace/tests", ROOT / "userspace")]
         for relative in (("userspace/tests/graphics_sample_kernel.c" if sample_graphics else "userspace/tests/graphics_native_kernel.c"), "userspace/tests/native_graphics_uniform_source.c",
-                         "userspace/tests/graphics_native_owner_ipc.c"):
+                         "userspace/tests/graphics_sample_owner_ipc.c" if sample_graphics and args.prepare_live_producer else "userspace/tests/graphics_native_owner_ipc.c"):
             source = ROOT / relative
             obj = out / (source.stem + ".o")
             active_flags = ["-DOPENGPU_NATIVE_MMIO=1"] if active_host and source.stem == "graphics_native_kernel" else []
+            if sample_graphics and args.prepare_live_producer and source.stem == "graphics_sample_kernel":
+                active_flags += ["-DOPENGPU_NATIVE_SAMPLE_GRAPHICS_LIVE=1"]
             run(cc + common + extra + active_flags + (["-Wno-unused-function"] if sample_graphics else []) + san + ["-MMD", "-MF", obj.with_suffix(".d"), "-c", source, "-o", obj],
                 "compile-" + source.stem)
             objects.append(obj)
@@ -203,6 +212,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
             continue  # Graphics uses actual Mesa format/surface helpers.
         if native_kernel and relative in ("userspace/tests/graphics_uniform_flow.c", "userspace/tests/graphics_sample_flow.c"):
             extra = extra + ["-DOPENGPU_CS_NATIVE_KERNEL"] + (["-Wno-unused-function"] if sample_graphics else []) + (["-DOPENGPU_NATIVE_MMIO=1"] if active_host else [])
+            if sample_graphics and args.prepare_live_producer:
+                extra += ["-DOPENGPU_NATIVE_SAMPLE_GRAPHICS_LIVE=1"]
         source = ROOT / relative
         obj = out / (source.stem + ".o")
         run(cc + common + inc + extra + san + ["-MMD", "-MF", obj.with_suffix(".d"), "-c", source, "-o", obj],
@@ -363,6 +374,11 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         swizzle += "void main(){uvec4 v=defaults.wzyx ^ b.v;uint index=gl_LocalInvocationIndex;"
         swizzle += "".join("o%d.v[index]=v.%s;" % (i, "xyzw"[i]) for i in range(4)) + "}\n"
         (sources / "swizzles.comp").write_text(swizzle)
+    if sample_graphics and args.prepare_live_producer:
+        if not binary.is_file() or not all((sources/name).is_file() for name in ("full.vert", "full.frag")):
+            raise RuntimeError("complete live producer binary and original ESSL sources required")
+        print("Actual Mesa/Linux ordinary112 producer BUILT, execution=false: " + str(out))
+        return
     env = os.environ.copy()
     env.pop("OPENGPU_COMPUTE_ARTIFACTS", None)
     env.pop("OPENGPU_CF_ARTIFACTS", None)
