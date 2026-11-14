@@ -78,6 +78,10 @@ one of the three complete image parents. Full current-source parent
 typechecking/elaboration, actual VS/TCS/TES execution and protected native
 admission remain pending. Component results do not qualify the complete
 VS-to-patch-to-image owner or the 640x480/60 FPS target.
+The three typed-parent source files separately passed Scala 2.13.18 parser
+checks. This establishes syntax only; their full type/build closure includes
+the current image and FP raster dependencies described in
+[the image-routing limits](TESSELLATION_VERTEX_IMAGE_ROUTING.md).
 
 Eight current source files passed Scala/Chisel-plugin compilation, followed by
 both actual component RTL cases. This fresh positive run includes the Owner's
@@ -97,6 +101,8 @@ timeouts. Those controls preceded the independent Owner held-report change;
 the final fresh positive cases were rerun with that change. No claim is made
 that the two mutated models were rerun afterward. All owned processes exited
 and temporary classes, models and logs were removed after consumer checks.
+All 154 test-selector CPU checks and integration/catalog selection checks
+passed, including dependency routing to these component cases.
 
 In an explicitly allocated resource window, compile current
 `ShaderUniformResources`, `VertexInputSlice`, `VertexInputFetcher`,
