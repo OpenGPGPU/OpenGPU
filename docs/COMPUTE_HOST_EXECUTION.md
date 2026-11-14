@@ -64,8 +64,9 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_compute_owner_protocol.py
 
 The explicit CPU test peer only checks transport/admission and never writes
 shader results. It is guarded by `OPENGPU_COMPUTE_HOST_TEST_MAIN`, which must
-never be defined when linking an actual Mesa/DUT producer. The source remains
-on a dependent draft topic until the complete execution pipeline is ready.
+never be defined when linking an actual Mesa/DUT producer. The implemented
+transport and qualification entry are separate from the still-pending
+complete-DUT execution result.
 
 The independent compute controller codec requires the real 96-word profile and
 ten auxiliary register reads. Its actual capabilities must include the native
