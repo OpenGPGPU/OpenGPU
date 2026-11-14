@@ -150,8 +150,9 @@ probing or starting the live producer, and must check actual returned bytes
 before permitting the original owner's cleanup.
 Binding compiler sources in a build record does not establish provenance for
 an arbitrary runtime `OGNSF001` artifact. The low-level controller must bind the
-supplied program bytes to the actual descriptor/private RX and keep original
-ESSL provenance qualification separate until its full compiler entry exists.
+supplied program bytes to the actual descriptor/private RX. The original ESSL
+qualification entry below additionally binds their actual compiler provenance;
+the low-level packet entry alone does not establish that provenance.
 
 ## Original ESSL qualification entry
 
