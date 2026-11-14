@@ -82,6 +82,7 @@ python3 scripts/test_qualify_native_product_flashsim.py
 python3 scripts/test_prepare_native_owner_flashsim.py
 python3 scripts/test_prepare_native_sample_owner.py
 python3 scripts/test_native_sample_transport.py
+python3 scripts/test_native_sample_submit_bridge.py
 python3 scripts/test_prepare_owner_executor.py
 python3 scripts/test_qualify_equivalent_flashsim_product.py
 python3 scripts/test_qualify_parallel_flashsim_product.py
