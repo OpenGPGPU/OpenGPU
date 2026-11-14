@@ -1086,7 +1086,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
     if (native_graphics_profile && (all_kernarg_writable || fragment_ops_enabled ||
         texture_enabled || word_atomics_enabled || storage_enabled || image_enabled ||
         image_atomics_enabled || storage_atomics_enabled || counter_enabled ||
-        shared_base || shared_bytes || shared_lanes || buffer_image_size_enabled))
+        shared_base || shared_bytes || shared_lanes || buffer_image_size_enabled || shared_atomics_enabled))
         return false;
     if (uniform_enabled && ((!all_kernarg_writable && !native_graphics_profile) || fragment_ops_enabled))
         return false;

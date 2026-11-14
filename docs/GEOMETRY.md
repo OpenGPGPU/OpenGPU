@@ -1115,6 +1115,30 @@ This wiring has compiled; its complete four-owner rendering execution is not
 yet qualified. The development route currently rejects transform-feedback
 configuration explicitly; full native GS transform feedback remains required.
 
+`NativeLayeredFourImageSpec` is an explicit local execution fixture for this
+composition. Its submitted frame is 25×1 with two layers and four samples;
+four real image owners consume the original directory chains produced by
+ordinary VS and native VS/GS draws. It retains the 2048-axis API bounds,
+65,536-entry directory, 32 KiB typed storage, 512 KiB payload pool, sixteen
+attribute/varying slots and four MRTs. An independent byte oracle covers all
+six source and resolve planes, both layers and allocation padding. The cancel
+case holds all four actual payload allocation replies, pulses one client's
+cancel, then requires pool drain and healthy reuse without reset.
+
+The fixture has passed Scala syntax and Chisel-plugin compilation; its actual
+simulation has not yet passed. It uses two four-lane/one-warp CUs and physical
+addresses, so even a passing result will not establish protected host execution
+or the sixteen-lane/eight-warp VGA product target. Run it explicitly with the
+GPU-local temporary/cache setup above:
+
+```sh
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simSeparateBuild=1 \
+  -Dopengpu.nativeLayeredFourImageQualification=1 \
+  'testOnly opengpu.graphics.NativeLayeredFourImageSpec'
+python3 -B scripts/test_test_selection.py
+```
+
 GNJ2/GNF3 and GNY2 are distinct versions described in
 [the published layout](abi/native-layered-graphics-v2.json). GNY2 owns a separate
 16 KiB writable view containing every full-width source, restart and image
