@@ -18,6 +18,7 @@ struct opengpu_cs_program {
     unsigned counter_reads, counter_writes; /* independent HW counter binding0 */
     unsigned storage_atomics; /* checked RMW bindings0..3; requires discovery */
     unsigned counter_bytes; /* required endpoint within the retained counter view */
+    unsigned shared_atomics; /* checked per-invocation SRAM atomics; distinct discovery */
 };
 
 /* No partial output on failure. The token header owns the TGSI stream length. */

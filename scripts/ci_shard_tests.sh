@@ -116,7 +116,7 @@ PY
 # A new file must be added here; otherwise CI selection fails closed.
 system_shard_for() {
   case "${1##*/}" in
-    CompiledNativeProductCapacitySpec.scala|NativeAlignmentHostProfileSpec.scala|NativeOwnerHostProfileSpec.scala|TessellationImageBankSpec.scala)
+    CompiledNativeProductCapacitySpec.scala|NativeAlignmentHostProfileSpec.scala|NativeOwnerHostProfileSpec.scala|TessellationImageBankSpec.scala|NativeAlignmentSequenceDataSpec.scala|NativeTileComparisonDataSpec.scala)
       printf '%s\n' system-core ;;
     GpuSystemGraphicsImageSpec.scala|GpuSystemGraphicsImageRoutedSpec.scala|TessellationNativeDomainFeedbackAdmissionSpec.scala|TessellationNativeDomainJobImageAdmissionSpec.scala|TessellationNativeThreeDomainJobImageAdmissionSpec.scala|TessellationNativeThreeDomainFeedbackAdmissionSpec.scala)
       printf '%s\n' SKIP ;;

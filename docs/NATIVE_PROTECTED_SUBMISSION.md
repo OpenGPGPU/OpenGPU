@@ -42,8 +42,16 @@ owner and MMU with modeled OS primitives. They cover full graph links and
 permissions, simultaneous old/new private copies, GEM close while jobs retain
 references, cross-entity ordinary/native ordering, cancellation, bounded
 timeouts, fault recovery and allocation/copy/lookup failures. The complete
-ARM64 kernel module also builds against the configured ARTI Linux tree with
-the cross compiler. These checks do not demonstrate GPU shader execution.
+ARM64 kernel module also builds against the configured ARTI Linux 7.2 tree
+with GCC 15.2.0: all eighteen production objects, modpost and the final
+`gpu_drv.ko` link pass. The combined native/shared-atomic validator retains all
+four software branch scopes, eight physical SIMT entries and 255-entry native
+capacity. Packed state flags and a separate kernel range-transfer helper keep
+the complete module build free of frame-size warnings with
+`KCFLAGS=-Werror=frame-larger-than=2048`. The largest analyzer's GCC static stack
+usage, including saved registers, is 2144 bytes. The kernel source and configured
+build directories are read-only dependencies; module outputs belong in a
+temporary GPU-local directory. These checks do not demonstrate GPU execution.
 
 Reproduce the component checks with:
 
@@ -56,10 +64,19 @@ python3 scripts/test_driver.py
 ```
 
 Set `TMPDIR` to a temporary directory inside the GPU repository. For a complete
-kernel build, copy the driver sources into a temporary module directory inside
-the repository and run the configured kernel's `make ... M=<directory>
-ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- modules`; remove that module directory
-afterwards.
+kernel build, archive the committed driver sources into a temporary module
+directory inside the repository. Use GNU make and the same GCC 15.2.0 cross
+compiler as the configured kernel:
+
+```sh
+/opt/homebrew/bin/gmake \
+  -C /Users/duckdonald/workspace/arti-work/arti-linux-build \
+  M=<GPU-local-archived-driver-directory> ARCH=arm64 \
+  CROSS_COMPILE=/opt/homebrew/bin/aarch64-linux-gnu- \
+  KCFLAGS='-fstack-usage -Werror=frame-larger-than=2048' -j2 gpu_drv.ko
+```
+
+Remove the temporary module directory after the command finishes.
 
 The MMIO component also extracts the actual submit, activation, invalidation,
 IRQ and GNX drain functions. Its control peer verifies two held results, actual

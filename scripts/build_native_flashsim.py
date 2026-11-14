@@ -63,7 +63,11 @@ def generated_digest(path, *, header=False):
 
 def validate_driver_includes(paths, header, dut):
     """Keep the driver's recorded local dependencies complete and unambiguous."""
-    known = {path.name: path.resolve() for path in paths[1:]}
+    known = {}
+    for path in paths[1:]:
+        if path.name in known and known[path.name] != path.resolve():
+            raise ValueError(f"ambiguous driver dependency: {path.name}")
+        known[path.name] = path.resolve()
     known["dut.h"] = header.resolve()
     search = (ADAPTER, ROOT / "scripts", dut)
     for path in paths:
@@ -76,7 +80,7 @@ def validate_driver_includes(paths, header, dut):
                 raise ValueError(f"unsupported driver include in {path}: {directive!r}")
             name = os.fsdecode(parsed[2])
             if parsed[1] == b'"':
-                expected = known.get(name)
+                expected = known.get(Path(name).name)
                 candidates = (path.parent, *search)
                 actual = next(((directory / name).resolve() for directory in candidates
                                if (directory / name).is_file()), None)
@@ -133,13 +137,21 @@ class BuildProgress:
 
 
 def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservative_alias,
-          strict_flex_arrays, progress, precompiled_header=False):
+          strict_flex_arrays, progress, precompiled_header=False, driver_dependencies=()):
     header = dut / "dut.h"
     sources = sorted(dut.glob("dut_*.cpp"), key=lambda path: path.stat().st_size, reverse=True)
     if not header.is_file() or not sources:
         raise ValueError("DUT directory needs dut.h and split dut_*.cpp files")
     if any((dut / name).exists() for name in GENERATED_STANDARD_HEADERS):
         raise ValueError("DUT directory shadows a required standard header")
+    dependencies = [driver, ADAPTER / "VGpuHostSystemAxi.h", ADAPTER / "verilated.h",
+                    ROOT / "scripts/native_host_simulation.hpp", ROOT / "scripts/native_execution_progress.hpp",
+                    ROOT / "scripts/native_frame_axi.hpp", ROOT / "scripts/native_frame_fixture.hpp",
+                    *driver_dependencies]
+    if any(not path.is_file() for path in dependencies):
+        raise ValueError("driver dependency does not exist")
+    validate_driver_includes(dependencies, header, dut)
+    driver_inputs = {str(path): digest(path) for path in dependencies}
     executable = shutil.which(compiler)
     if not executable:
         raise ValueError("C++ compiler not found: " + compiler)
@@ -299,11 +311,6 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
     driver_flags = flags[:-2] + ["-I", str(ADAPTER), "-I", str(ROOT / "scripts"), *flags[-2:]]
     result = output / "native_product_driver"
     temporary = output / "native_product_driver.tmp"
-    dependencies = [driver, ADAPTER / "VGpuHostSystemAxi.h", ADAPTER / "verilated.h",
-                    ROOT / "scripts/native_host_simulation.hpp", ROOT / "scripts/native_execution_progress.hpp",
-                    ROOT / "scripts/native_frame_axi.hpp", ROOT / "scripts/native_frame_fixture.hpp"]
-    validate_driver_includes(dependencies, header, dut)
-    driver_inputs = {str(path): digest(path) for path in dependencies}
     try:
         run_final([*driver_flags, "-O1", "-c", str(driver), "-o", str(driver_tmp)],
                   output / "native-driver.log", "compiling-driver")
@@ -323,7 +330,7 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
         "executable_sha256": digest(result), "dut_header_sha256": context["header_sha256"],
         "dut_sources": {path.name: value for path, value in source_hashes.items()},
         "objects": {path.name: digest(path) for path in sorted(objects)},
-        "driver_inputs": driver_inputs,
+        "driver_source": str(driver), "driver_inputs": driver_inputs,
         "compiler": executable, "compiler_version": version, "base_flags": flags,
         "driver_flags": driver_flags + ["-O1"], "environment": context["environment"],
         "shard_opt": shard_opt,
@@ -339,6 +346,8 @@ def main():
     parser.add_argument("--dut-dir", type=Path, required=True)
     parser.add_argument("--build-dir", type=Path, required=True)
     parser.add_argument("--driver", type=Path, default=ROOT / "scripts/native_product_driver.cpp")
+    parser.add_argument("--driver-dependency", type=Path, action="append", default=[],
+                        help="explicit extra quoted include; recorded and checked before/after build")
     parser.add_argument("--cxx", default=os.environ.get("CXX", "c++"))
     parser.add_argument("--jobs", type=int, default=1)
     parser.add_argument("--shard-opt", choices=("-O0", "-O1", "-O2", "-O3"), default="-O2")
@@ -366,7 +375,8 @@ def main():
             try:
                 result = build(dut, output, driver, args.cxx, args.jobs, args.shard_opt,
                                args.commit_opt, args.conservative_alias, args.strict_flex_arrays,
-                               progress, args.precompiled_header)
+                               progress, args.precompiled_header,
+                               tuple(path.resolve() for path in args.driver_dependency))
             except BaseException as exc:
                 with progress.lock:
                     progress.active.clear()

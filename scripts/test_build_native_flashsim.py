@@ -424,10 +424,51 @@ time.sleep(60)
                 pass
 
 
+def check_declared_relative_driver_dependencies(tmp_path):
+    dut=tmp_path/'dut';dut.mkdir()
+    (dut/'dut.h').write_text('int value();\n')
+    (dut/'dut_0.cpp').write_text('#include "dut.h"\nint value(){return 40;}\n')
+    include=tmp_path/'include';include.mkdir()
+    header=include/'captured.h';header.write_text('#define CAPTURED_VALUE 2\n')
+    driver=tmp_path/'driver.cpp'
+    driver.write_text('#include "dut.h"\n#include "include/captured.h"\n'
+                      '#include <cstdio>\nint main(){std::printf("%d\\n",value()+CAPTURED_VALUE);}\n')
+    output=tmp_path/'build'
+    command=[sys.executable,str(SCRIPT),'--dut-dir',str(dut),'--build-dir',str(output),
+             '--driver',str(driver),'--jobs','1']
+    failed=subprocess.run(command,capture_output=True,text=True)
+    assert failed.returncode and 'unsupported or shadowed driver include' in failed.stderr
+    assert not list(output.glob('dut_*.o'))  # Reject before expensive model compilation.
+    command+=['--driver-dependency',str(header)]
+    subprocess.run(command,check=True,capture_output=True,text=True)
+    assert subprocess.check_output([str(output/'native_product_driver')],text=True).strip()=='42'
+    before=json.loads((output/'native-flashsim-build.json').read_text())
+    assert str(header.resolve()) in before['driver_inputs']
+    header.write_text('#define CAPTURED_VALUE 3\n')
+    result=subprocess.run(command,check=True,capture_output=True,text=True)
+    assert 'dut_0.cpp: cached' in result.stdout
+    assert subprocess.check_output([str(output/'native_product_driver')],text=True).strip()=='43'
+    after=json.loads((output/'native-flashsim-build.json').read_text())
+    assert before['driver_inputs'][str(header.resolve())]!=after['driver_inputs'][str(header.resolve())]
+    other=tmp_path/'other';other.mkdir();(other/'captured.h').write_text('#define CAPTURED_VALUE 9\n')
+    failed=subprocess.run([*command,'--driver-dependency',str(other/'captured.h')],capture_output=True,text=True)
+    assert failed.returncode and 'ambiguous driver dependency' in failed.stderr
+
+
 class BuildNativeFlashSimTest(unittest.TestCase):
     def run_in_temporary_directory(self, check):
-        with tempfile.TemporaryDirectory() as directory:
-            check(Path(directory))
+        parent=SCRIPT.resolve().parents[1]/'.artifacts';parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='native-builder-',dir=parent) as directory:
+            previous=os.environ.get('TMPDIR')
+            try:
+                os.environ['TMPDIR']=directory
+                check(Path(directory))
+            finally:
+                if previous is None:os.environ.pop('TMPDIR',None)
+                else:os.environ['TMPDIR']=previous
+
+    def test_declared_relative_dependencies_are_pinned_and_shadow_safe(self):
+        self.run_in_temporary_directory(check_declared_relative_driver_dependencies)
 
     def test_reuses_only_matching_objects(self):
         self.run_in_temporary_directory(check_builder_reuses_only_matching_objects)

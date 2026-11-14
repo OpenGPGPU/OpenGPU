@@ -62,4 +62,48 @@ class CompiledNativeProductCapacitySpec extends AnyFlatSpec {
       Files.deleteIfExists(old);Files.deleteIfExists(combined);Files.deleteIfExists(dir)
     }
   }
+
+  it should "bind owner fixtures to all 96 words while preserving original scene commands" in {
+    val dir=Files.createTempDirectory("native-owner-capacity-")
+    val old=dir.resolve("v2.commands"); val owner=dir.resolve("owner.commands")
+    try {
+      val scene=NativeProductWorkloads.suite(16,16).head
+      val input=CompiledNativeProductFixtures.input(scene,twoCuVga=true)
+      CompiledNativeProductFixtures.writeCommands(old,scene,input,1,product=false,
+        apiCapacity=true,twoCuVga=true,alignmentV2=true)
+      CompiledNativeProductFixtures.writeCommands(owner,scene,input,1,product=false,
+        apiCapacity=true,twoCuVga=true,nativeOwner=true)
+      val original=Files.readAllBytes(old); val candidate=Files.readAllBytes(owner)
+      val (oldWords,oldTail)=resources(original); val (newWords,newTail)=resources(candidate)
+      assert(oldWords.size==72 && oldWords(2)._2==0x7fffL)
+      assert(newWords==NativeOwnerHostProfile.target.requiredDiscovery.map { case (a,v) =>
+        (a.toLong,v.toLong)
+      })
+      assert(newWords.size==96 && newWords(2)._2==0x3ffffL)
+      assert(original.take(32).sameElements(candidate.take(32)))
+      assert(original.drop(oldTail).sameElements(candidate.drop(newTail)))
+      intercept[IllegalArgumentException] {
+        CompiledNativeProductFixtures.writeCommands(owner,scene,input,1,product=false,
+          apiCapacity=true,twoCuVga=true,alignmentV2=true,nativeOwner=true)
+      }
+    } finally {
+      Files.deleteIfExists(old); Files.deleteIfExists(owner); Files.deleteIfExists(dir)
+    }
+  }
+
+  it should "record explicit owner tiling without changing the full hardware capacity" in {
+    for(log2<-Seq(3,4)) {
+      val manifest=PrepareNativeOwnerHost.manifest(rtlEmitted=false,
+        workload=Some((true,640,480)),workloadTileLog2=log2)
+      assert(manifest.contains(s"\"workloadTileLog2\":$log2"))
+      assert(manifest.contains("\"resourceDiscoveryWords\":96"))
+      assert(manifest.contains("\"nativeMaxWidth\":2048"))
+      assert(manifest.contains("\"workloadWidth\":640"))
+      assert(manifest.contains("\"rtlEmitted\":false"))
+      assert(!PrepareNativeOwnerHost.manifest(rtlEmitted=true).contains("workloadTileLog2"))
+    }
+    intercept[IllegalArgumentException] {
+      PrepareNativeOwnerHost.manifest(rtlEmitted=false,workload=Some((false,32,32)),workloadTileLog2=5)
+    }
+  }
 }

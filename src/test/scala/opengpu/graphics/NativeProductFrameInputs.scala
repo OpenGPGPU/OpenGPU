@@ -38,6 +38,15 @@ object NativeProductFrameInputs {
     encodeWith(scene, tileLog2=3, frameVersion=2, maximumWidth=2048, maximumHeight=2048,
       poolBase=0x40000000L, poolLimit=0x60000000L, directoryCapacity=65536,scissors=scissors)
 
+  /** Explicit tiling experiment: identical geometry/shaders/images and API
+    * capacities. The frozen product recipe above continues to use 8x8 tiles.
+    */
+  def encodeApiExtentTiled(scene: NativeProductWorkloads.Scene,tileLog2: Int): Inputs = {
+    require(tileLog2==3 || tileLog2==4,"native resident images support 8x8 or 16x16 tiles")
+    encodeWith(scene,tileLog2=tileLog2,frameVersion=2,maximumWidth=2048,maximumHeight=2048,
+      poolBase=0x40000000L,poolLimit=0x60000000L,directoryCapacity=65536)
+  }
+
   private def encodeWith(scene: NativeProductWorkloads.Scene, tileLog2: Int, frameVersion: Int,
     maximumWidth: Int, maximumHeight: Int, poolBase: Long, poolLimit: Long, directoryCapacity: Int,
     scissors: Map[Int,NativeProductFrameReference.Scissor]=Map.empty): Inputs = {

@@ -80,6 +80,29 @@ Reproduce with the smoke command above and `--scene-jobs 3`. These counts
 describe complete smoke frames on the full two-CU hardware profile; they do
 not measure complete 640×480 product frames.
 
+The same frozen `3059d0c65` v1 host subsequently completed all six **640×480**
+product scenes with assertion-enabled FlashSim. The unchanged independent
+Scala oracle passed every stored image, sample, resolve and guard. Each scene
+used a fresh model; all external traffic drained. Matching RTL, fixtures,
+generator, resharded model, executable and output bytes were checked before
+and after execution and verification.
+
+This establishes full-frame functional correctness for that v1 configuration.
+The cycle counts appear alongside the independently verified 16×16 alternative
+below. Both variants leave opaque and transparent overdraw above the
+16,666,666-cycle planning budget at 1 GHz; no physically qualified clock or
+60 FPS result is established. Current
+v2 features, production driver snapshots and whole-host timing still require
+their own matching complete-host qualification. Reproduce on the frozen source
+with the matching assertion-enabled generator/reshard profile:
+
+```sh
+python3 scripts/qualify_native_product_flashsim.py --product --two-cu-vga \
+  --flashsim-dir "$FLASH_GENERATOR" --output "$PRODUCT_RUN" --jobs 3 --scene-jobs 3 \
+  --shards 64 --reshard-dir "$PRODUCT_RESHARDED_DUT" --reshard-tool "$FLASH_RESHARD" \
+  --precompiled-header --shard-opt=-O2 --conservative-alias
+```
+
 These commands establish functional execution only after all scenes pass the
 independent complete-image, sample and guard oracle with external traffic
 drained. The 60 FPS requirement additionally needs every complete frame to fit
@@ -170,6 +193,116 @@ sbt -J-Xmx3G 'testOnly opengpu.system.NativeAlignmentHostProfileSpec'
 Run the full-model commands only after selecting the final feature source.
 Build, execute and independently verify that source; do not relabel a v1 model
 or a prior feature revision as v2.
+
+### Compute/native command reuse
+
+`scripts/qualify_native_alignment_sequence.py` uses that complete v2 hardware
+with six 32×32 workloads. Each scene resets once, then executes
+compute → native draw → compute → native draw without another reset. Both
+compute epochs dispatch four 128-item groups and require both CUs active
+together. The checker compares all 1,024 vector results, 64 scalar FP results,
+their allocation guards, and all twelve stored native images against the
+independent Scala oracle. Native shaders, descriptors, textures, vertices,
+compute code and inputs must remain byte-identical. The existing native frame
+clear operations initialize attachments again for the second draw; the driver
+does not replace GPU results with software images.
+
+```sh
+python3 scripts/qualify_native_alignment_sequence.py \
+  --flashsim-dir "$FLASH_GENERATOR" \
+  --output "$PWD/.artifacts/alignment-sequence" --jobs 1
+python3 scripts/test_native_alignment_sequence.py
+sbt -J-Xmx3G 'testOnly opengpu.system.NativeAlignmentSequenceDataSpec opengpu.testutil.NativeFrameMemoryCodecSpec'
+```
+
+The runner also supports `--stage prepare|generate|build|run|verify` and the
+same verified resharding, precompiled-header and conservative-alias options as
+the product runner. Preparation emits the full target with all assertion bind
+layers. Build and verification reject changed source, RTL, discovery profile,
+generator, driver, executable or output bytes. Use a separate output directory
+from the ordinary six-frame product run. Delete temporary outputs once their
+active validation use ends.
+
+This is a functional command-reuse qualification. It does not execute the
+tessellation commands, establish complete feature/API coverage, render
+640×480 product frames, or qualify whole-host timing and 60 FPS. CPU fixture,
+parser and oracle tests alone do not establish RTL execution.
+
+### Native tile decomposition comparison
+
+`PrepareNativeTileComparison` emits explicit 8×8 and 16×16 alternatives for
+the same six scenes: 32×32 with `--smoke` (also the default for the legacy
+`--output DIR` syntax), or 640×480 with explicit `--product`. Both modes retain
+the complete two-CU/API profile. Geometry, programs, state records, image allocations,
+texture inputs and the full 65,536-entry directory allocation are identical;
+only the GNF tile dimensions/count and resident attachment offsets change.
+The ordinary product encoder still uses 8×8. Both tile sizes are already
+advertised by the complete target; RGBA8 plus D24S8 at four samples occupies
+8 KiB with 16×16 tiles, within the original 32 KiB resident store.
+
+On the assertion-enabled frozen v1 model at `3059d0c65`, both alternatives
+passed all six **640×480** independent stored-image, sample/resolve and guard
+oracles: twelve complete images. Each scene used a fresh model. Original
+qualified source/RTL/assertion/generator/reshard/build/executable identities
+were checked before and after execution and verification; outputs and fixtures
+remained unchanged. The 8×8 inputs matched the original qualified product
+fixtures byte for byte. Only the explicit tiling metadata differed for 16×16.
+
+| Scene | 8×8 service cycles | 16×16 service cycles |
+| --- | ---: | ---: |
+| Desktop composition | 14,411,950 | 7,799,879 |
+| Textured 3D | 6,759,137 | 3,693,912 |
+| Opaque overdraw | 29,074,499 | 17,640,967 |
+| Transparent layers | 28,835,475 | 17,419,555 |
+| Small triangles | 11,150,203 | 11,401,103 |
+| 4× MSAA | 11,398,012 | 8,412,989 |
+
+Five scenes use fewer cycles; small triangles regress by 2.25%. At a hypothetical
+1 GHz the slowest 16×16 scene would reach about 56.7 FPS, so this is still below
+the 60 FPS target even under that unqualified clock assumption. These are
+full-frame v1 results; the complete 96-word owner factory requires its own
+matching execution and physical timing. The ordinary 8×8 encoder and mandatory
+grid/capacity coverage remain. Wider formats and MRT combinations must fit
+resident storage without dropping attachments or samples.
+
+To repeat, first qualify a complete assertion-enabled v1 model with the normal
+`--smoke --two-cu-vga` runner. Keep its source and model bytes fixed, then
+prepare the alternatives from the matching input/shader ABI:
+
+```sh
+sbt -J-Xmx3G -Dopengpu.fullHostQualification=1 \
+  -Dopengpu.productQualification=0 -Dopengpu.productTwoCuVga=1 \
+  -Dopengpu.productApiCapacity=1 -Dopengpu.apiExtentQualification=1 \
+  "Test / runMain opengpu.system.PrepareNativeTileComparison --smoke --output $PROBE"
+for side in 8 16; do
+  mkdir -p "$PROBE/tile$side/output"
+  while IFS= read -r scene; do
+    "$MODEL/native_product_driver" "$PROBE/tile$side/fixtures" \
+      "$PROBE/tile$side/output" --scene "$scene"
+  done < "$PROBE/tile$side/fixtures/suite.txt"
+done
+sbt -J-Xmx3G -Dopengpu.fullHostQualification=1 \
+  -Dopengpu.productQualification=0 -Dopengpu.productTwoCuVga=1 \
+  -Dopengpu.productApiCapacity=1 -Dopengpu.apiExtentQualification=1 \
+  "Test / runMain opengpu.system.VerifyNativeTileComparison --smoke --output $PROBE"
+```
+
+For a full VGA comparison, use `--product` in both preparation and verification,
+keeping `productQualification=0` for the mandatory two-CU target. Before reusing
+a qualified model, require the 8×8 inputs and commands to match the original
+640×480 product fixtures byte for byte, and verify its original source, RTL,
+assertion, generator, reshard, build and executable guards before and after use.
+Do not relabel the model as a newer hardware qualification. Verification checks
+all twelve independent images/samples and pitched guards, plus every shader,
+descriptor, vertex and texture byte outside actual writable allocations. CPU
+tests cover partial tiles and deliberately corrupted pixels and read-only data;
+they are not rendered-image evidence.
+
+`PROBE` must be a temporary directory under this repository's `.artifacts/`.
+Keep JVM/native temporary paths inside the GPU checkout; on macOS sbt appends
+roughly 51 bytes to its temporary directory for a Unix socket, so choose a
+unique absolute temporary path no longer than 52 bytes. Delete the comparison
+inputs, outputs and logs once verification/diagnosis ends.
 
 With shared MSHR, fragment, raster and texture-address definitions, the complete
 target passed raw elaboration and FIRRTL conversion in
@@ -672,6 +805,210 @@ python3 scripts/test_qualify_native_api_compiled.py
 ```
 
 ## Qualification gates and limits
+
+### Captured production owner submission
+
+`native_owner_driver.cpp` replays a production submitter's original physical
+`OGMEM001` memory image and ordered `OGCAP001` control trace. It never generates
+shader code, descriptor words, virtual addresses or rendered outputs. This
+executor requires the complete two-CU/16-lane/eight-warp/four-engine API profile,
+including GAB1, GNP1 and explicit protected-source discovery (GCR bit 17);
+the older frozen v2 model and GNP-only combinations are intentionally rejected.
+The required profile has 96 discovery words, including the eight GSE limits.
+The executor reads and verifies GCR first, regardless of capture-table order,
+before probing GUC, GSE or GNC. GNP by itself does not guarantee those windows.
+MMIO reads and writes service external AXI at the same pre-edge observation,
+so preceding invalidations retain their actual completion/POP waits.
+
+`OGCAP001` is little endian, with no implicit structure padding:
+
+| Section, in order | Encoding |
+|---|---|
+| Header | Eight ASCII magic bytes, u64 total cycle budget, u32 held clocks (8..4096), u32 final command ID |
+| Discovery | u32 count, then `{u32 address, u32 expected}`; all 96 required profile words (GCR flags `0x3ffff`) plus any additional captured words |
+| Writable physical views | u32 count, then `{u64 first, u64 exclusive_end}`; sorted, disjoint, within original allocations |
+| Ordered trace | u32 count, then `{u32 kind, u32 address, u32 value, u32 mask}`; WRITE=1 uses zero mask, POLL=2 retries a predicate, CHECK=3 tests once |
+| Held checks | u32 count, then `{u32 address, u32 mask, u32 expected}`; exact final command identity and all 12 GNX words required |
+| Retirement | u32 count, then `{u32 address, u32 value}`; exactly one completion POP, optional IRQ acknowledgement |
+
+Trace predicates describe the real driver's waits, not CPU-stub poll counts.
+Prior submissions must be invalidations and retire before the final native
+GNJ1 enqueue. That last enqueue retains the real enabled Sv32 context, source
+VA and 512-byte size, and ends the trace without popping its completion. GNJ1
+uses opcode 7 (`GPU_UCMD_OP_NATIVE_BINNED_RENDER`), as routed by
+`TileBinHostCommandPort`; legacy opcode 6 has a different descriptor ABI and
+is rejected. `DESTINATION` plus `PATTERN` bit 0 carry the 33-bit exclusive GNJ
+view limit, with at least 512 bytes after the aligned source and no bound past
+2^32. Other pattern bits and DMA/event flags must be zero. Native feedback
+flags retain their advertised semantics. All these command fields must be
+present in the actual capture rather than inherited from a preceding command.
+The executor checks drain and stable held completion (including all captured
+GNX words), rejects late memory
+traffic, retires the slot, and checks every byte outside the declared writable
+views, including newly materialized sparse pages. The output still requires an
+independent stored-image/sample/guard oracle and matched-source qualification.
+
+Each successful record also prints the actual held MMIO `completion`, twelve
+`gnx` words, 64-bit `appendReadBytes`, `heldStatus`, `heldIrq` and IRQ pin, plus
+the status, IRQ register/pin and external-drain observation after POP. Raw GNX
+values preserve bits outside a capture predicate's mask. These values are
+copied before POP and checked across the hold; expected predicates are never
+used as returned observations. A live original driver session must retain its
+owners, mappings and GEM references until actual complete-DUT execution and
+the independent image oracle finish, then use these observations to authorize
+its real completion/retirement path. CPU control-peer results cannot authorize
+that release or establish GPU execution.
+
+`--series` executes at least two captured submissions on one model, memory
+agent and monotonically advancing clock, with exactly one initial reset. Each
+record has its own cycle budget, writable views, held completion and retirement;
+all other bytes are checked against that record's starting memory. Earlier
+outputs remain in RAM and become read-only unless explicitly writable in the
+next record. Records are parsed and their views checked before model creation.
+The output directory must be new; `record-0.memory`, `record-1.memory`, etc. are
+written only after that record passes its drain, completion and byte guards.
+
+Prepare all independent owners before exporting the single initial physical
+memory, keeping their actual mappings, references and leases alive. For a
+source/default rebind test, rebind between the real snapshots: the export must
+contain the original GEM's final contents and both owners' different private
+copies. Do not retire owners on the CPU and reconstruct their PTEs, replace RAM
+between records, reset the model or clear its caches. The independent oracle
+must check every record's image against its corresponding snapshot.
+
+For a live original driver session, use `--active-series` so the second
+submission is not generated by clearing a still-pending first command in a
+CPU model. The same DUT, memory agent, RAM and clock stay alive across records.
+Both owners are prepared before the initial union export; defer their actual
+free-job/revocation until every record and independent image oracle finish.
+Execution-completion dependencies may release the next native job while the
+first owner's mappings remain held; ordinary writers still wait for full
+retirement. No RAM replacement, PTE reconstruction or reset occurs in this
+handoff.
+
+First, `--probe-profile NEW_OUTPUT.json` reads the actual device ID/capabilities,
+then GCR before dependent windows, and checks all 96 native profile words. Its
+`opengpu-native-owner-profile-v1` JSON contains `words` (96 address/value pairs)
+and `registers` (ID, capabilities, native capability pointer, live execution
+quota at 0x320 and shader resources at 0x158). This read-only probe does not execute a GPU job. The original
+driver must validate and cache these raw observations; active execution checks
+them again on the same qualified compiled factory before starting its series.
+
+The active session uses atomic files under a fresh GPU-local session directory:
+
+1. The driver writes `record-N.capture`, using `OGCAP001` with an empty finish
+   section. Only active mode accepts that prefix; ordinary replay still requires
+   its complete retirement plan. Every active capture includes the five actual
+   identity/quota/shader register values as well as the 96 mandatory discovery words.
+2. The DUT executes and checks the command, then writes `record-N.held.json`
+   with the actual completion, twelve GNX words, 64-bit append telemetry,
+   held legacy status, unified status/IRQ and drain observation. It does not POP or report retired
+   fields at this point.
+3. The actual driver drain consumes that held receipt and records its actual
+   reads and POP/IRQ writes in `record-N.retire`. `OGRTR001` consists of its
+   eight-byte magic, a little-endian u32 action count, then four-u32
+   `{kind,address,value,mask}` actions with the same kinds as `OGCAP001`.
+   The original IRQ handler also reads legacy status (0x04) before acknowledging
+   IRQ. GNX reader address/draw may use an observation-only zero predicate in
+   the prefix because success retains these raw fields; their complete actual
+   values remain held stable and are checked with full masks during retirement.
+   Completion/telemetry and all twelve raw GNX words must be read before the
+   unique POP. Reads of their cleared windows after POP and unrelated writes
+   are rejected.
+4. The DUT verifies and applies those actions, checks drain and retired
+   status/IRQ, writes `record-N.memory` in the output directory and atomically
+   publishes `record-N.retired.json` in the session directory. Only then may
+   the driver dispatch the next native job and produce its capture.
+
+A missing response times out; an `error` marker aborts the session. Responses
+cannot overwrite existing files. Both records' independent stored-image and
+source/guard checks remain required before authorizing full owner release.
+The CPU control peer passes this delayed two-phase handshake, retirement wire
+rejection and profile-probe checks with ASan/UBSan; it is not GPU evidence.
+
+Use `--active-owner-series` to keep that same DUT alive for final owner
+revocation. After both independent image/source/guard oracles authorize the
+original producer, it publishes `cleanup.begin` (`OGCLB001` plus a u32 record
+count). Each `cleanup-N.trace` has `OGCLN001`, a u32 action count and four-u32
+actions. Kind 4 is an exact coherent CPU PTE clear `{4,physical,0,old_word}`;
+only pages reached from the original captured SATPs are eligible. Other actions
+are the actual idle/SATP/shootdown MMIO operations. Reset, enqueue, completion
+POP, unrelated writes, stale old words and a clear without a following flush
+are rejected. A batch cannot cross a second TLB flush.
+The full or ASID-scoped shootdown must cover every ASID referencing the changed
+PTE pages; shared tables require a full flush. Global owner mappings are rejected.
+Restoring the captured ASID-0 root before flushing a retiring owner ASID is
+allowed: the revoked PTEs determine the flush scope, not the restored root.
+An uncaptured root remains invalid.
+
+The executor applies clears to the existing RAM and executes the real flush.
+It returns `cleanup-N.observed` (`OGCLA001` plus u32 sequence/status/IRQ/pin/
+external-drained) only after the actual DUT is idle and drained. The producer
+blocks inside each flush call until that acknowledgment, before releasing
+backing; failures retain the actual owner through MMU rollback/quarantine.
+After the final `cleanup.done` (`OGCLD001` plus acknowledged batch count), the
+executor requires all initially valid leaves in the fresh isolated context
+revoked, including code, uniforms and frame resources, and every other memory
+byte preserved. A final separate batch must write both instruction and vector
+SATPs to zero and complete a full TLB flush. The executor reads both SATPs back
+from the DUT, requires idle/drained state and rejects subsequent cleanup batches.
+Only then may `cleanup.done` be accepted and `cleanup.json` published with
+`ownerCleanupObserved` and `contextCleanupObserved` true. The original driver's
+VM and global MMU destruction must finish inside this acknowledged protocol,
+before releasing their page tables or ASID; later host bookkeeping has no MMIO.
+One reset and the original RAM image are preserved. This does not qualify a
+physical clock or FPS. CPU ASan/UBSan tests pass for ordered two-owner cleanup,
+captured global-root restoration, exact PTE values, preserved images and
+rejection of malformed controls and premature owner-only completion. Actual GPU
+execution of this lifecycle remains pending.
+This lifecycle uses a newly created bridge VM containing only its prepared
+owners; a pre-existing unrelated context mapping prevents final acceptance.
+
+```sh
+"$BUILD/native_product_driver" --probe-profile "$NEW_PROFILE_JSON"
+# Start the live original driver bridge with that validated profile and wait
+# for its actual union export and record-0.capture before this invocation:
+"$BUILD/native_product_driver" --active-series "$UNION.memory" \
+  "$NEW_OUTPUT_DIR" "$SESSION_DIR" 2
+# Include synchronized owner revocation after final independent oracles:
+"$BUILD/native_product_driver" --active-owner-series "$UNION.memory" \
+  "$NEW_OUTPUT_DIR" "$SESSION_DIR" 2
+```
+
+Build from an already prepared and completely generated 96-word owner DUT.
+The guarded entry rejects stale source, model, toolchain or executable inputs;
+it does not generate RTL. Keep the original checker checkout/interpreter and
+CIRCT environment, and hold `$OWNER/.lock` across each live execution and
+independent oracle, as described in [the compute owner guide](COMPUTE_OWNER_HOST.md).
+Native and compute share a guarded shard cache and retain separate executables:
+
+```sh
+python3 scripts/prepare_owner_executor.py --stage build --kind native \
+  --owner-output "$OWNER" --flashsim-dir "$FLASHSIM" --shards 32 --jobs 1
+EXECUTOR="$OWNER/executors/native/executor"
+python3 scripts/prepare_owner_executor.py --stage check --kind native \
+  --qualification "$OWNER/executors/native/qualification.json" --executor "$EXECUTOR"
+"$EXECUTOR" "$INPUT.memory" "$INPUT.capture" "$OUTPUT.memory"
+# Separate invocation for two owners prepared together in one initial export:
+"$EXECUTOR" --series "$UNION.memory" "$NEW_OUTPUT_DIR" \
+  "$FIRST.capture" "$SECOND.capture"
+```
+
+CPU parsing, concurrent MMIO/external-AXI stimulus, malformed trace/capability,
+read-only-byte, exclusive-4-GiB-bound and two-record persistent-memory checks
+pass with ASan/UBSan. A CPU control peer tests separate cycle budgets and
+rejects changing held GNX state, changing held append telemetry or a second
+record corrupting the first record's scratch bytes. It preserves unmasked raw
+GNX bits and telemetry above 4 GiB in its result JSON. It does
+not execute GPU instructions or establish owner snapshot correctness. Builder
+checks pass for declared relative dependencies, changed headers and shadow
+rejection. These are protocol checks; actual production owner capture, matched
+complete-DUT execution and independent image verification remain pending.
+
+```sh
+OPENGPU_TEST_SANITIZERS=1 python3 scripts/test_native_owner.py
+python3 scripts/test_build_native_flashsim.py
+```
 
 Execution alone does not create a passing qualification. Every scene must complete without unmapped traffic and drain all AXI ownership. Scala then reloads the full output memory and runs the original independent oracle on every stored color, depth/stencil, resolve and guard region. Only successful verification of all six named scenes creates `qualification.json`.
 

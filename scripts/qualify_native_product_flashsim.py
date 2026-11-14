@@ -176,6 +176,9 @@ class Runner(common.Runner):
     def driver_sources(self):
         return DRIVER
 
+    def driver_path(self):
+        return ROOT / 'scripts/native_product_driver.cpp'
+
     def backend(self):
         return 'flashsim'
 
@@ -283,7 +286,8 @@ class Runner(common.Runner):
         build_dut = self.reshard if reshard else dut
         used = reshard['derived'] if reshard else generated
         build_command = [sys.executable, str(ROOT / 'scripts/build_native_flashsim.py'),
-            '--dut-dir', str(build_dut), '--build-dir', str(build), '--jobs', str(jobs)]
+            '--dut-dir', str(build_dut), '--build-dir', str(build), '--jobs', str(jobs),
+            '--driver', str(self.driver_path())]
         if self.precompiled_header:
             build_command.append('--precompiled-header')
         if self.conservative_alias:

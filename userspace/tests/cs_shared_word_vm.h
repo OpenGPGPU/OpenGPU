@@ -7,8 +7,8 @@
 #include <stdint.h>
 #include <string.h>
 
-static void shared_word_oracle_barriers(const uint32_t *code, unsigned words, uint32_t address,
-                               uint32_t output[256], unsigned group, uint32_t seed, unsigned reverse, unsigned expected_barriers)
+static void shared_word_oracle_mapping(const uint32_t *code, unsigned words, uint32_t address,
+                               uint32_t output[256], unsigned group, uint32_t seed, unsigned reverse, unsigned expected_barriers, unsigned own)
 {
     struct warp { uint32_t x[32], v[32][16], store[16]; unsigned pc, wait, done, vl; } w[8] = {0};
     uint32_t backing[4096+32], visible[4096], initialized[4096] = {0};
@@ -68,10 +68,11 @@ static void shared_word_oracle_barriers(const uint32_t *code, unsigned words, ui
                         if(op==0x27){backing[16+index]=s->v[d][l];initialized[index]=1;}
                         else {
                             unsigned local=(unsigned)(s-w)*16+l, ordinal=read_ordinal[local]++;
-                            unsigned expected=ordinal*128+(local^16u);
-                            assert(ordinal<32&&index==expected&&initialized[index]&&barriers);
-                            assert(visible[index]==seed+(group<<16)+expected);
-                            read_visits[index]++;s->v[d][l]=visible[index];
+                            unsigned expected=ordinal*128+(own?local:(local^16u));
+                            assert(ordinal<32&&index==expected&&initialized[index]&&(own||barriers));
+                            uint32_t value=own?backing[16+index]:visible[index];
+                            assert(value==seed+(group<<16)+expected);
+                            read_visits[index]++;s->v[d][l]=value;
                         }
                     }
                     continue;
@@ -96,6 +97,17 @@ static void shared_word_oracle_barriers(const uint32_t *code, unsigned words, ui
     for(unsigned i=0;i<4096;i++)assert(read_visits[i]==1);
     for(unsigned i=0;i<16;i++)assert(backing[i]==0xdead1234u&&backing[4112+i]==0xdead1234u);
     for(unsigned i=0;i<4096;i++)assert(initialized[i]&&backing[16+i]==seed+(group<<16)+i);
+}
+static inline void shared_word_oracle_barriers(const uint32_t *code, unsigned words,
+    uint32_t address, uint32_t output[256], unsigned group, uint32_t seed,
+    unsigned reverse, unsigned expected_barriers)
+{
+    shared_word_oracle_mapping(code,words,address,output,group,seed,reverse,expected_barriers,0);
+}
+static inline void shared_word_oracle_own(const uint32_t *code, unsigned words,
+    uint32_t address, uint32_t output[256], unsigned group, uint32_t seed, unsigned reverse)
+{
+    shared_word_oracle_mapping(code,words,address,output,group,seed,reverse,0,1);
 }
 static inline void shared_word_oracle(const uint32_t *code, unsigned words, uint32_t address,
     uint32_t output[256], unsigned group, uint32_t seed, unsigned reverse)

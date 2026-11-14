@@ -13,6 +13,24 @@ class OwnerInputTests(unittest.TestCase):
             resourceDiscoveryWords=96,computeFeatureFlags=0x3ffff,targetFps=60,rtlEmitted=True,
             sourceQualificationRequired=True,gpuExecution=False,clockQualified=False,fpsQualified=False,
             requiredDiscovery=copy.deepcopy(owner.EXPECTED_WORDS))
+    def test_shared_atomic_factory_cannot_relabel_the_frozen_owner(self):
+        from owner_resource_contract import COMPUTE_STAGE, COMPUTE_WORDS
+        stage=self.manifest()
+        stage.update(version=2,profile=COMPUTE_STAGE,computeFeatureFlags=0x7ffff,
+            ownerResourceVersion=2,ownerResourceStage='compute',fullResourceQualification=False,
+            requiredDiscovery=copy.deepcopy(COMPUTE_WORDS))
+        owner.check_manifest(stage)
+        for key,bad in [('profile',owner.PROFILE),('version',1),('ownerResourceVersion',True),
+                        ('ownerResourceStage','final'),('fullResourceQualification',True),
+                        ('requiredDiscovery',owner.EXPECTED_WORDS),('computeFeatureFlags',0x3ffff)]:
+            wrong=copy.deepcopy(stage);wrong[key]=bad
+            with self.subTest(key=key),self.assertRaises(RuntimeError):owner.check_manifest(wrong)
+        wrong=self.manifest();wrong['requiredDiscovery']=copy.deepcopy(COMPUTE_WORDS)
+        with self.assertRaises(RuntimeError):owner.check_manifest(wrong)
+        for index in range(len(COMPUTE_WORDS)):
+            wrong=copy.deepcopy(stage);wrong['requiredDiscovery'][index]['value']^=1
+            with self.assertRaises(RuntimeError):owner.check_manifest(wrong)
+
     def test_rejects_every_missing_changed_or_duplicate_wire_word(self):
         owner.check_manifest(self.manifest())
         for malformed in (None,[],True):

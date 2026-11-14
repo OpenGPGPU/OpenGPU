@@ -28,8 +28,10 @@ case class GpuConfig(
   stridedCopyDescriptorQueueDepth: Int = 4,
   enableFpu: Boolean = true,
   enableVector: Boolean = true,
-  l2StoreEntries: Int = 2
+  l2StoreEntries: Int = 2,
+  enableSharedVectorAtomics: Boolean = false
 ) {
+  require(!enableSharedVectorAtomics || enableVector, "per-lane shared atomics require the vector backend")
   require(xLen == 32, "the initial implementation supports RV32 only")
   require(lanes > 0, "a warp must contain at least one lane")
   require(warps > 0, "the core must contain at least one warp")

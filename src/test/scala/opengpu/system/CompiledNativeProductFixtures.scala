@@ -62,9 +62,11 @@ private[opengpu] object CompiledNativeProductFixtures {
 
   def writeCommands(path: Path, scene: NativeProductWorkloads.Scene,
     input: NativeProductFrameInputs.Inputs, id: Int, product: Boolean, apiCapacity: Boolean = false,
-    twoCuVga: Boolean = false, alignmentV2: Boolean = false): Unit = {
+    twoCuVga: Boolean = false, alignmentV2: Boolean = false, nativeOwner: Boolean = false): Unit = {
     require(!twoCuVga || apiCapacity, "two-CU VGA requires the full API-capacity profile")
     require(!alignmentV2 || twoCuVga, "integrated alignment v2 requires two-CU VGA")
+    require(!nativeOwner || (twoCuVga && !alignmentV2),
+      "protected native owner fixtures require their separate two-CU profile")
     val computeUnits = if (twoCuVga) 2 else 4
     opengpu.graphics.NativeProductPrimitiveArena.validate(scene.primitiveCount,
       input.frame("frame.bins.producer.arena.base"), input.frame("frame.bins.producer.arena.limit"))
@@ -81,7 +83,9 @@ private[opengpu] object CompiledNativeProductFixtures {
         NativeBinnedGraphicsCapabilities.words(NativeProductRecipeHost.native(true),computeUnits,display)
           .zipWithIndex.map { case (v, i) => (TileBinHostRegs.CAPABILITIES + i * 4, v.toLong) }
       } else Seq.empty[(Int, Long)]
-      val resources = if (alignmentV2) NativeAlignmentHostProfile.target.requiredDiscovery
+      val resources = if (nativeOwner) NativeOwnerHostProfile.target.requiredDiscovery
+        .map { case (address, value) => (address, value.toLong) }
+        else if (alignmentV2) NativeAlignmentHostProfile.target.requiredDiscovery
         .map { case (address, value) => (address, value.toLong) }
         else computeResources.zipWithIndex.map { case (v, i) => (0x360 + i * 4, v) } ++ nativeResources
       put32(out, resources.size)
