@@ -23,7 +23,8 @@ from framebuffer_blit_fixture import checked_inputs, NAMES
 
 ROOT = Path(__file__).resolve().parents[1]
 OWN = ("scripts/native_framebuffer_blit_driver.cpp", "scripts/native_framebuffer_blit_lease.hpp",
-       "scripts/native_framebuffer_blit_input.hpp", "driver/opengpu_storage_command_abi.h")
+       "scripts/native_framebuffer_blit_input.hpp", "scripts/native_framebuffer_blit_simulation.hpp",
+       "driver/opengpu_storage_command_abi.h")
 TOOLS = ("scripts/qualify_framebuffer_blit_host.py", "scripts/framebuffer_blit_fixture.py")
 OWNER_CHECKERS = ("scripts/prepare_owner_executor.py", "scripts/build_native_flashsim.py",
     "scripts/prepare_native_owner_flashsim.py", "scripts/qualify_native_product_flashsim.py",
@@ -126,8 +127,9 @@ def terminate(_signal, _frame):
 
 
 def check_result(result):
-    required = dict(schema="opengpu-framebuffer-blit-host-v1", resetCount=1, originalCallerInputs=True,
+    required = dict(schema="opengpu-framebuffer-blit-host-v2", resetCount=1, originalCallerInputs=True,
         originalLinuxTrace=False, independentBytes=True, vmAndReadOnlyGuards=True, full96Profile=True,
+        unifiedResetCount=2, partialCancellationBytesChecked=True,
         sourceQualificationRequired=True, clockQualified=False, fpsQualified=False)
     require(all(type(result.get(k)) is type(v) and result[k] == v for k, v in required.items()) and
         type(result.get("cases")) is list and len(result["cases"]) == len(NAMES), "incomplete blit host result")
@@ -136,6 +138,17 @@ def check_result(result):
             "publicationInvalidateCycles"} and type(case["inputIndex"]) is int and case["inputIndex"] == n and
             all(type(case[k]) is int and 0 < case[k] <= 10000000 for k in case if k != "inputIndex"),
             "blit host result lacks complete retirement cycle observations")
+    life = result.get("lifecycle")
+    require(type(life) is dict and set(life) == {"sourceFaultReads", "sourceFaultRetirementCycles",
+        "healthyAfterFaultCycles", "resets"} and
+        all(type(life.get(k)) is int and 0 < life[k] <= 10000000 for k in life if k != "resets") and
+        type(life.get("resets")) is list and len(life["resets"]) == 2,
+        "blit host result lacks actual source fault and healthy reuse")
+    for channel, reset in zip(("R", "B"), life["resets"]):
+        require(type(reset) is dict and set(reset) == {"heldChannel", "heldResponseCycles",
+            "resetThroughRevocationCycles", "healthyIDReuseCycles"} and reset["heldChannel"] == channel and
+            all(type(reset[k]) is int and 0 < reset[k] <= 10000000 for k in reset if k != "heldChannel"),
+            "blit host result lacks delayed response reset/drain/healthy ID reuse")
 
 
 def main():

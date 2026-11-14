@@ -87,7 +87,16 @@ The host executor source admits these original packets before creating a model,
 requires the complete 96-word profile, and stages the original bytes in that
 bounded test VM. It checks held completions, last external ACK, publication
 invalidate, exact retirement and page revocation before the next case without
-reset. Its runtime comes from an explicit owner checkout; producer C checks are
+reset. The lifecycle executor then reuses the original first color packet for
+a physical source-read SLVERR and two unified resets with an actual R response
+or B ACK held. It requires RESET_BUSY and VM ownership to remain asserted while
+held, rejects a racing submission, and checks that reset acknowledgement follows
+external drain with no stale completion or later writes. A healthy launch reuses
+the original command ID after each fault/reset. Cancellation may leave selected
+destination bytes at their original or independently computed values; source,
+unselected bytes, maps, code, page tables and allocation guards remain exact.
+It never substitutes a synthesized shader or resets the model between packets.
+Its runtime comes from an explicit owner checkout; producer C checks are
 separate from the C++ wire reader, so no duplicate cross-checkout ABI header is
 selected. The actual owner's strict driver-include validator and a C++ typecheck
 pass. The typecheck uses declaration-only ports and executes no RTL. A dedicated
@@ -95,8 +104,13 @@ wrapper binds the explicit owner source/modules, complete generated model,
 assertions, generator, all shards, compiler, exact driver dependency closure and
 original input manifest before and after build/execution. It shares only the
 guarded shard cache, uses one compiler job, and removes its temporary result on
-exit. Nine CPU tests cover wrong model/source/flags/compiler, incomplete results,
-incorrect scope and actual interrupted child-process cleanup. This is not yet a
+exit. Eleven CPU tests cover wrong model/source/flags/compiler, incomplete results,
+incorrect scope, required fault/R/B-reset observations and actual interrupted
+child-process cleanup. An ASan/UBSan transport test drives the real memory agent
+through held two-beat reads, source SLVERR, delayed write ACK and healthy read
+reuse; its clock/port shell executes no RTL. The strict owner include validator
+and declaration-only C++ typecheck pass with this lifecycle executor.
+This is not yet a
 qualified executable or a completed GPU test; original Linux MMIO replay and
 actual fault/reset cancellation remain required. Reusing the frozen 96-word DUT would be
 functional diagnosis only. Final H6 qualification requires the newly integrated

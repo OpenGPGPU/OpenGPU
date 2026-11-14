@@ -42,6 +42,7 @@ def main():
     files = [ROOT / "scripts/native_framebuffer_blit_driver.cpp",
              owner / "scripts/native_host_simulation.hpp", runtime]
     own_dependencies = ["scripts/native_framebuffer_blit_lease.hpp", "scripts/native_framebuffer_blit_input.hpp",
+                        "scripts/native_framebuffer_blit_simulation.hpp",
                         "driver/opengpu_storage_command_abi.h"]
     owner_dependencies = ["scripts/native_owner_runtime.hpp", "scripts/native_owner_capture.hpp",
         "driver/gpu_abi.h", "driver/opengpu_formats.h", "driver/opengpu_shader_resources.h",
