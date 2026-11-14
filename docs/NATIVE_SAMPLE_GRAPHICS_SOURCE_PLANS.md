@@ -64,8 +64,8 @@ and the unchanged original ESSL sources: VS308/FS301 words, actual reflection,
 24 UBOs and two 1024-component defaults, a changed original UBO/default for the
 second owner, exact original code in both private RX snapshots, version2
 GS-zero submit plans, two OGCAP002 records, union memory and separate 16384-byte
-completion views. Complete source descriptors and reserved bits plus the
-independent original-source color calculation passed. A final execution-only
+completion views. Source descriptor schemas/reserved bits and the independent
+original-source color calculation passed. A final execution-only
 replay bound all 8098 Mesa/DRM/library inputs, 28 compiler dependency units, GPU
 source/generated inputs and the binary before and after execution. All matched.
 The container used one CPU, 512MiB memory with equal swap limit, no network and
@@ -113,3 +113,55 @@ python3 -B scripts/test_gallium_sample_graphics_uniforms.py \
 
 Keep the original input snapshot and actual compiler-generated `.d` closure
 stable for the execution scope. Remove managed outputs after consumers exit.
+
+The new112 CPU entry also writes two independently versioned
+`record-{0,1}.source-plan.json` sidecars with schema
+`opengpu-native-sample-graphics-source-v1`. The old96 `.source.json` schema is
+unchanged. Each sidecar records the original GEM handle, allocation PA/extent
+and logical offset/bytes for both original programs, all 24 UBOs and two
+defaults, frame resources, vertex input/scratch and the 16KiB completion view.
+It includes both private RX addresses, complete original 308/301-word programs,
+stage layouts, linked binding-to-slot observations, GUR/GUB addresses and 5-bit
+indices, private segment/resource mappings and the actual Sv32 root/leaf words
+and permissions. A separate compiler-reflection file comes from the unchanged
+actual Mesa linked-program accessors before plan construction.
+
+`native_sample_graphics_source_oracle.py` requires the separately supplied
+original compiler bytes and reflection. It checks the full original and private
+26 windows against the fixed input arithmetic and the two second-record XOR
+patches, independently rebuilds every GUR/GUB word and padding byte, checks all
+mapped PTE pages and compares both private RX images. Its ABI1 RGBA32UI image
+oracle follows the ESSL declaration order with uint32 arithmetic, rather than
+the linked slot order. It checks the entire original image allocation against
+the fixed clear/guard recipe. Neither initial memory nor producer endpoint
+values authorize expected source bytes or colors. Passing the same corrupted
+source as initial and returned memory is rejected.
+
+The source checker uses the published ABI schemas to validate actual private
+record headers and identities, GNJ2 draw/frame bounds, GNF3 state bounds and
+both stages' shader PC, ABI1 version and GUR root. This ties the checked code
+and uniform copies to the reachable job, rather than accepting an unused
+sidecar inventory. This narrow cross-link check is not a complete canonical
+GNJ/GNF/GND/GFS or GNY2 oracle.
+
+Six lightweight ASan/UBSan CPU tests pass using two actual Linux protected
+snapshots with explicitly synthetic compiler words/reflection. They cover each
+original/private uniform window, every GUR/GUB word, both RX images, PTE and
+metadata faults, source pointer/identity/bounds mutations, record/reflection/ABI
+isolation and synthetic image/guard mutations. The three existing private112
+admission/old96 isolation tests also
+pass. The source test is in both common CPU lanes and checks the new include
+in actual compiler-generated make dependencies:
+
+```sh
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_sample_graphics_source.py
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_gallium_sample_graphics_bridge.py
+```
+
+The explicit actual-Mesa entry now requires this full source preflight after
+capture. That new sidecar path has not yet been rerun with actual Mesa. These
+checks establish CPU source/oracle behavior only; they do not execute shaders,
+publish or validate GNY2 counters, implement the future two-owner live protocol,
+or authorize a hardware cleanup ACK. The optional image test supplies synthetic
+returned pixels and is not GPU evidence. No container, JVM or model was started
+for this source-proof slice.
