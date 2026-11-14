@@ -137,13 +137,16 @@ three-domain, patch ACK/seal and whole-owner execution evidence.
 `TessellationVertexPatchPublisherSpec` adds protocol-peer cases for all 32×64
 input words, write acknowledgements, actual source-completion gating, empty
 component layouts, held offers, cancellation, late replies, first-error
-preservation, invalid mappings and no-reset reuse. Its peer is not a shader.
+preservation, invalid mappings and no-reset reuse. All three publisher RTL
+cases passed under the same bounded JVM / single native build job, with a
+180-second process-group limit. Its peer is not a shader, so even the full
+32×64 result does not qualify original VS execution.
 `TessellationVertexPatchSourceSpec` instead connects the actual source to two
 physical CUs (16 lanes/eight warps), global staging and an actual patch SRAM.
 Its native instruction fixture copies fetched attributes and original IDs;
 the test independently reads every patch word after completion, holds replies
 and retains the patch until explicit release before healthy reuse. These new
-Scala cases compiled incrementally but remain unexecuted.
+actual-source Scala cases compiled incrementally but remain unexecuted.
 The full 32×64 case is a publisher peer; the actual-CU test source uses one
 varying slot and patches of two or three vertices. Its seal acceptor is the
 harness, not `TessellationPatchContext`. Actual context seal/cancel/drain and
@@ -187,7 +190,7 @@ scalac -J-Xmx128m -J-XX:MaxMetaspaceSize=128m \
 #   opengpu.graphics.VertexShaderStageConfig()))
 # Repeat with VertexShaderStageConfig(VertexInputFetchConfig(1,1),1).
 
-# Executed component RTL cases, using those incrementally compiled classes:
+# Executed component and publisher-peer RTL cases, using those compiled classes:
 SIM_OUT=$(mktemp -d .artifacts/p39-patch-rtl-XXXXXX)
 java -Xmx128m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m \
   -XX:ActiveProcessorCount=1 -XX:+UseSerialGC \
@@ -197,7 +200,8 @@ java -Xmx128m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m \
   -s opengpu.graphics.tessellation.TessellationOwnedPatchStoreSpec \
   -s opengpu.graphics.tessellation.TessellationOwnedPatchContextSpec \
   -s opengpu.graphics.tessellation.TessellationPatchStoreSpec \
-  -s opengpu.graphics.tessellation.TessellationPatchContextSpec
+  -s opengpu.graphics.tessellation.TessellationPatchContextSpec \
+  -s opengpu.graphics.TessellationVertexPatchPublisherSpec
 # After the JVM and native consumers have exited:
 rm -r -- "$CHECK_OUT" "$SIM_OUT"
 
