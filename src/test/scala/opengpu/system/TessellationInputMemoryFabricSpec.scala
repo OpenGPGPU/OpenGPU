@@ -112,6 +112,50 @@ class TessellationInputMemoryFabricSpec extends AnyFlatSpec {
     }
   }
 
+  it should "drain an already offered ungranted source after selection intent is revoked" in {
+    simulate(new TessellationInputMemoryFabric(GpuConfig(lanes=4,warps=2),8,ownedVertexSource=true)){d=>
+      val io=d.io;zero(io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      var waitIndex=0
+      def until(p: =>Boolean):Unit={waitIndex+=1;var n=0;while(!p && n<100){d.clock.step();n+=1};assert(p,s"grant/drain wait $waitIndex")}
+      def offerMemory(address:Int):Unit={
+        until(io.memoryRequest.valid.peek().litToBoolean)
+        io.memoryRequest.bits.transactionId.expect(12.U);io.memoryRequest.bits.address.expect(address.U)
+        io.memoryRequest.ready.poke(true.B);d.clock.step();io.memoryRequest.ready.poke(false.B)
+        io.memoryResponse.valid.poke(true.B);io.memoryResponse.bits.transactionId.poke(12.U)
+        io.memoryResponse.bits.readData.poke(address.U)
+      }
+      def finishMemory():Unit={
+        until(io.memoryResponse.ready.peek().litToBoolean);d.clock.step();io.memoryResponse.valid.poke(false.B)
+      }
+      io.inputRequest.valid.poke(true.B);io.inputRequest.bits.address.poke(0x4000.U);io.inputRequest.bits.sizeLog2.poke(6.U)
+      until(io.inputRequest.ready.peek().litToBoolean);d.clock.step();io.inputRequest.valid.poke(false.B)
+      // The current legacy owner has not received its reply. Recognize an
+      // offered VS packet, then revoke the request before it can be granted.
+      val s=io.sourceRequest.get
+      s.valid.poke(true.B);s.bits.address.poke(0x4040.U);s.bits.sizeLog2.poke(6.U);s.bits.transactionId.poke(2.U)
+      io.sourceLive.get.poke(true.B);d.clock.step();io.sourceLive.get.poke(false.B)
+      offerMemory(0x4000);until(io.inputResponse.valid.peek().litToBoolean)
+      s.ready.expect(false.B);io.sourceSelected.get.expect(false.B)
+      io.inputResponse.ready.poke(true.B);finishMemory();io.inputResponse.ready.poke(false.B)
+      until(s.ready.peek().litToBoolean);io.sourceSelected.get.expect(true.B)
+      d.clock.step();s.valid.poke(false.B)
+      // Symmetric case: a legacy packet was offered for handback, then the
+      // caller requests VS again before legacy can acquire the port.
+      io.inputRequest.valid.poke(true.B);io.inputRequest.bits.address.poke(0x4080.U)
+      d.clock.step();io.sourceLive.get.poke(true.B)
+      offerMemory(0x4040);finishMemory();until(io.sourceResponse.get.valid.peek().litToBoolean)
+      io.sourceResponse.get.bits.transactionId.expect(2.U);io.sourceResponse.get.bits.readData.expect(0x4040.U)
+      io.sourceResponse.get.ready.poke(true.B);d.clock.step();io.sourceResponse.get.ready.poke(false.B)
+      until(io.inputRequest.ready.peek().litToBoolean);io.sourceSelected.get.expect(false.B)
+      d.clock.step();io.inputRequest.valid.poke(false.B)
+      offerMemory(0x4080);until(io.inputResponse.valid.peek().litToBoolean)
+      io.inputResponse.bits.readData.expect(0x4080.U)
+      io.inputResponse.ready.poke(true.B);finishMemory();io.inputResponse.ready.poke(false.B)
+      until(io.drained.peek().litToBoolean);io.sourceSelected.get.expect(true.B)
+      io.sourceLive.get.poke(false.B);until(io.drained.peek().litToBoolean);io.sourceSelected.get.expect(false.B)
+    }
+  }
+
   for(writable<-Seq(false,true))
   it should s"retain owned VS memory through cancel intent, flush and Sv32 writable=$writable" in {
     simulate(new TessellationInputMemoryFabric(GpuConfig(lanes=16,warps=8),8,ownedVertexSource=true)){d=>
