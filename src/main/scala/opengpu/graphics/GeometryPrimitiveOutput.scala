@@ -31,7 +31,8 @@ class GeometryPrimitiveOutputFault extends Bundle {
 /** Serial output mapping for a single primitive. The producer keeps geometry
   * output, its source metadata and link layout together until accepted.
   */
-class GeometryPrimitiveOutput(p: VertexShaderStageConfig = VertexShaderStageConfig()) extends Module {
+class GeometryPrimitiveOutput(p: VertexShaderStageConfig = VertexShaderStageConfig(),
+    flatShading:Boolean=true) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new GeometryPrimitiveOutputRequest(p)))
     val out = Decoupled(new GeometryMappedPrimitive(p))
@@ -46,7 +47,8 @@ class GeometryPrimitiveOutput(p: VertexShaderStageConfig = VertexShaderStageConf
   private val varying = component >= 4.U
   private val flatIndex = (component - 4.U)(5,0)
   private val flat = varying && request.flatMask(flatIndex)
-  private val sourceVertex = Mux(flat, request.geometry.vertexCount - 1.U, vertex)
+  private val sourceVertex = if(flatShading)
+    PrimitiveFlatShading.vertex(vertex,request.geometry.vertexCount-1.U,flat) else vertex
   private val mapping = request.componentSources(component)
   private val mappingValid = !mapping.valid || (mapping.bits < request.outputComponents && mapping.bits < 64.U)
   private val value = Mux(mapping.valid, request.geometry.vertices(sourceVertex).components(mapping.bits(5,0)), 0.U)

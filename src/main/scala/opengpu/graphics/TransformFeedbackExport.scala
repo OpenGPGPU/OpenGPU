@@ -298,11 +298,7 @@ class TransformFeedbackExport(config: GpuConfig=GpuConfig(),
       }.otherwise{mask:=0.U;data:=0.U;phase:=Phase.pack}
   }
   when(phase===Phase.finish){
-    output:=prim
-    for(v<-0 until 3;n<-0 until p.varyings;c<-0 until 4){
-      output.vertices(v).varyings(n)(c):=Mux(v.U<prim.vertexCount && prim.flatMask(n*4+c),
-        prim.vertices(prim.provokingVertex).varyings(n)(c),prim.vertices(v).varyings(n)(c))
-    }
+    output:=PrimitiveFlatShading(prim,p)
     outValid:=result.status===0.U && !packet.rasterDiscard
     resultValid:=true.B;phase:=Phase.drain
   }

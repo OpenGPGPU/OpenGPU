@@ -30,10 +30,12 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
     p: VertexShaderStageConfig=VertexShaderStageConfig(),engines: Int=2,virtualImageViews: Boolean=false,allowWideTileCount: Boolean=false,
     preflightDescriptors: Boolean=false,f: FragmentShaderConfig=FragmentShaderConfig(),g: GraphicsConfig=GraphicsConfig(),
     nativeAdvanced: Boolean=false,imageAvailable: Boolean=false,nativeGeometry: Boolean=false,
-    nativeLayered: Boolean=false) extends Module {
+    nativeLayered: Boolean=false,preserveChildFaultAfterCancel:Boolean=false) extends Module {
   require(config.xLen==32 && commandIdWidth>0 && commandIdWidth<=12 && engines>=1 && engines<=4)
   require(!nativeLayered || (nativeGeometry && virtualImageViews && allowWideTileCount),
     "GNJ2/GNF3 require the geometry, translated-allocation and full-grid route")
+  require(!preserveChildFaultAfterCancel || nativeLayered,
+    "late owned-child fault priority belongs to the explicit layered feedback route")
   private val preflight=preflightDescriptors || nativeAdvanced || nativeGeometry
   val memoryTransactions=if(preflight)8 else 4
   import NativeBinnedGraphicsLayout._
@@ -108,6 +110,16 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
   private def fail(code: UInt,stage: UInt,address: UInt=0.U): Unit=when(status===0.U && !io.cancel){
     status:=code;faultStage:=stage;faultAddress:=address;faultDraw:=index
   }
+  private def childFail(code:UInt,address:UInt):Unit={
+    if(preserveChildFaultAfterCancel){
+      // Called only after the original child identity/ordinal checks. An
+      // accepted feedback store may return its actual fault after draw abort;
+      // preserve that cause in the coarse result as well as the full frame.
+      when((status===0.U || status===4.U) && code=/=0.U && code=/=4.U){
+        status:=code;faultStage:=3.U;faultAddress:=address;faultDraw:=index
+      }.otherwise{fail(code,3.U,address)}
+    }else{fail(code,3.U,address)}
+  }
   private def fetch(next: Phase.Type,base: UInt,lines: Int): Unit={
     assert(drained,"native descriptor fetch must not reuse live line tags")
     fetchBase:=base;lineCount:=lines.U;issued:=0.U;phase:=next
@@ -152,13 +164,13 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
     drawPending:=false.B;completedDraws:=completedDraws+1.U
     val r=io.drawCompletion.bits
     when(r.identity.asUInt=/=job.identity.asUInt || r.ordinal=/=index){fail(7.U,3.U)}
-      .elsewhen(r.status=/=0.U){fail(r.status,3.U,r.source.source.source.source.faultAddress)}
+      .elsewhen(r.status=/=0.U){childFail(r.status,r.source.source.source.source.faultAddress)}
   }
   when(io.passCompletion.fire){
     image:=io.passCompletion.bits;passDone:=true.B;drawOffered:=false.B;endOffered:=false.B
     when(io.passCompletion.bits.identity.asUInt=/=job.identity.asUInt ||
       (io.passCompletion.bits.status===0.U && (!(endAccepted || io.end.fire) || completedDraws=/=job.drawCount))){fail(7.U,3.U)}
-      .elsewhen(io.passCompletion.bits.status=/=0.U){fail(io.passCompletion.bits.status,3.U,Mux(io.passCompletion.bits.source.sourceFaultValid,io.passCompletion.bits.source.sourceFault.source.source.source.faultAddress,0.U))}
+      .elsewhen(io.passCompletion.bits.status=/=0.U){childFail(io.passCompletion.bits.status,Mux(io.passCompletion.bits.source.sourceFaultValid,io.passCompletion.bits.source.sourceFault.source.source.source.faultAddress,0.U))}
   }
 
   descriptorRequest.valid:=offered;descriptorRequest.bits:=request
