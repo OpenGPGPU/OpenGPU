@@ -72,9 +72,11 @@ class TessellationVertexPatchPublisher(p:VertexShaderStageConfig) extends Module
   io.load.valid:=state===State.write
   io.load.bits:=0.U.asTypeOf(io.load.bits)
   io.load.bits.write:=true.B;io.load.bits.vertex:=vertex;io.load.bits.component:=component
-  private val selection=task.components(component)
+  private val selection=task.components(component(5,0))
   private val varying=VecInit(record.varyings.flatMap(_.toSeq))
-  private val safeVarying=Mux(selection.component<(4*p.varyings).U,selection.component,0.U)
+  private def varyingIndex(c:UInt):UInt=
+    Mux(c<(4*p.varyings).U,c,0.U)(log2Ceil(4*p.varyings)-1,0)
+  private val safeVarying=varyingIndex(selection.component)
   io.load.bits.data:=MuxLookup(selection.kind,0.U)(Seq(
     0.U->record.position(selection.component(1,0)),1.U->varying(safeVarying),2.U->record.pointSize))
   io.reply.ready:=state===State.waitReply
@@ -86,7 +88,7 @@ class TessellationVertexPatchPublisher(p:VertexShaderStageConfig) extends Module
   private val l=task.layout
   private val maps=task.components.zipWithIndex.map{case(m,i)=>
     val generic=m.component<(4*p.varyings).U && m.component<(task.draw.varyingSlots<<2) &&
-      task.draw.varyingMask(Mux(m.component<(4*p.varyings).U,m.component,0.U))
+      task.draw.varyingMask(varyingIndex(m.component))
     val valid=(m.kind===0.U && m.component<4.U) || (m.kind===1.U && generic) ||
       (m.kind===2.U && m.component===0.U && task.draw.version===2.U)
     Mux(i.U<l.inputComponents,valid,m.asUInt===0.U)
@@ -157,6 +159,7 @@ class TessellationVertexPatchPublisher(p:VertexShaderStageConfig) extends Module
     is(State.complete){when(io.completion.fire){state:=State.idle}}
   }
   when(io.seal.valid){assert(sourceDone && !io.sourceBusy,"patch sealed before actual VS retirement")}
+  when(io.load.valid){assert(component<l.inputComponents && component<64.U,"patch component outside validated source layout")}
   when(io.completion.valid){assert(!io.sourceBusy,"VS source completion escaped child drain")}
 }
 
@@ -167,19 +170,20 @@ class TessellationVertexPatchPublisher(p:VertexShaderStageConfig) extends Module
 class TessellationVertexPatchSource(config:GpuConfig,p:VertexShaderStageConfig,shared:SharedCuShaderConfig,
     useSramBlackBoxes:Boolean=false,payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0) extends Module {
   private val payloadConfig=payload
+  private val sharedConfig=shared
   val io=IO(new Bundle {
     val task=Flipped(Decoupled(new TessellationVertexPatchTask(p)))
     val completion=Decoupled(new TessellationVertexPatchCompletion)
     val load=Decoupled(new TessellationPatchAccess);val reply=Flipped(Decoupled(new TessellationContextReply))
     val seal=Decoupled(Bool());val cancelPatch=Output(Bool())
-    val shared=Flipped(new SharedCuGraphicsPort(config,shared.taskIdWidth,shared.numComputeUnits))
+    val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits))
     val payload=payloadConfig.map(q=>new FragmentPayloadPort(config,q))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,4))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,4)))
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val publisher=Module(new TessellationVertexPatchPublisher(p))
-  private val vertex=Module(new VertexShaderStage(config,p,shared,useSramBlackBoxes,payload,payloadOwner,drawSlices=true))
+  private val vertex=Module(new VertexShaderStage(config,p,sharedConfig,useSramBlackBoxes,payload,payloadOwner,drawSlices=true))
   publisher.io.task<>io.task;io.completion<>publisher.io.completion
   vertex.io.draw<>publisher.io.sourceDraw;vertex.io.slice.get:=publisher.io.sourceSlice
   publisher.io.sourceOut<>vertex.io.out;publisher.io.sourceCompletion<>vertex.io.completion

@@ -11,9 +11,15 @@ acknowledged patch-input publisher. It does not provide protected slice
 admission, implement patch assembly/restart selection or establish the original
 Mesa VS→TCS/TES chain. P39 remains open.
 The [complete execution gaps](TESSELLATION_EXECUTION_GAPS.md) still apply.
-No Scala type check, elaboration, RTL simulation or actual CU execution has been
-performed for this source revision. The Scala 2.13.18 syntax parser passed with
-a 128 MiB heap and one processor; it does not resolve types or Chisel macros.
+The eight changed Scala files passed incremental compilation with Scala
+2.13.18 and the Chisel 7.15.0 plugin against read-only dependency/test classes
+from frozen source `75899c1856ee0ee0204cbd2e5d1893d6dad11f63`. The publisher
+also passed CHIRRTL elaboration at 16 and one varying slots. These checks used
+a 128MiB heap, 128MiB metaspace, 32MiB code cache and one processor. They found
+and fixed an IO/constructor name-shadowing error and checked dynamic indices
+before narrowing them. They are not a complete build of the current source.
+The source wrapper's bounded elaboration attempt reached the heap limit;
+wrapper elaboration, RTL simulation and actual CU execution remain pending.
 
 ## Captured indices and instanced attributes
 
@@ -98,7 +104,7 @@ physical CUs (16 lanes/eight warps), global staging and an actual patch SRAM.
 Its native instruction fixture copies fetched attributes and original IDs;
 the test independently reads every patch word after completion, holds replies
 and retains the patch until explicit release before healthy reuse. These new
-Scala cases have passed syntax parsing only and remain unexecuted.
+Scala cases compiled incrementally but remain unexecuted.
 The full 32×64 case is a publisher peer; the actual-CU test source uses one
 varying slot and patches of two or three vertices. Its seal acceptor is the
 harness, not `TessellationPatchContext`. Actual context seal/cancel/drain and
@@ -115,8 +121,14 @@ python3 -B scripts/test_changed_test_suites.py
 python3 -B scripts/test_test_selection.py
 git diff --check
 
-# Scala 2.13.18 syntax only:
-scalac -J-Xmx128m -J-XX:ActiveProcessorCount=1 -Ystop-after:parser \
+# Bounded incremental compile only. FROZEN is the unchanged dependency checkout
+# above, with its existing compiled classes and fullClasspath export.
+FROZEN_CP=$(cat "$FROZEN/target/streams/test/fullClasspath/_global/streams/export")
+CHECK_OUT=$(mktemp -d .artifacts/p39-compile-XXXXXX)
+scalac -J-Xmx128m -J-XX:MaxMetaspaceSize=128m \
+  -J-XX:ReservedCodeCacheSize=32m -J-XX:ActiveProcessorCount=1 \
+  -language:reflectiveCalls -Ymacro-annotations -Xplugin:"$CHISEL_PLUGIN_JAR" \
+  -classpath "$FROZEN_CP" -d "$CHECK_OUT" \
   src/main/scala/opengpu/graphics/VertexInputSlice.scala \
   src/main/scala/opengpu/graphics/VertexInputFetcher.scala \
   src/main/scala/opengpu/graphics/VertexShaderStage.scala \
@@ -125,6 +137,12 @@ scalac -J-Xmx128m -J-XX:ActiveProcessorCount=1 -Ystop-after:parser \
   src/main/scala/opengpu/system/TessellationVertexPatchSource.scala \
   src/test/scala/opengpu/graphics/TessellationVertexPatchPublisherSpec.scala \
   src/test/scala/opengpu/graphics/TessellationVertexPatchSourceSpec.scala
+# Remove CHECK_OUT after the compiler and any elaboration consumer have exited.
+
+# Publisher-only CHIRRTL elaboration, using CHECK_OUT before FROZEN_CP:
+# circt.stage.ChiselStage.emitCHIRRTL(new opengpu.system.TessellationVertexPatchPublisher(
+#   opengpu.graphics.VertexShaderStageConfig()))
+# Repeat with VertexShaderStageConfig(VertexInputFetchConfig(1,1),1).
 
 # Pending, once the simulation resource window permits:
 sbt Test/compile
