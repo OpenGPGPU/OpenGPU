@@ -5,6 +5,10 @@
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include "opengpu_native_job_snapshot.h"
+#include "opengpu_native_layered_snapshot.h"
+#include "opengpu_native_layered_abi.h"
+#include "opengpu_native_geometry_abi.h"
+#include "opengpu_geometry_snapshot.h"
 #include "opengpu_native_input_snapshot.h"
 #include "opengpu_native_graph_alias.h"
 #include "opengpu_native_program_snapshot.h"
@@ -35,6 +39,19 @@ static bool header(const void *record,u32 magic,u32 bytes)
     for(;i<16;++i)if(get(record,i))return false;
     return true;
 }
+static bool layered_header(const void *record,u32 magic,u32 version,u32 bytes)
+{
+    if(get(record,0)!=magic || get(record,1)!=bytes || get(record,2)!=version)return false;
+    for(u32 i=3;i<8;++i)if(get(record,i)!=(i<6?16u:4u))return false;
+    for(u32 i=8;i<16;++i)if(get(record,i))return false;
+    return true;
+}
+static bool all_zero(const void *raw,size_t bytes)
+{
+    const u8 *p=raw;
+    for(size_t i=0;i<bytes;++i)if(p[i])return false;
+    return true;
+}
 static bool identity(const void *record,u32 context_word,u32 pass_word,u32 generation_word,
                      const struct opengpu_native_job_source *s)
 {
@@ -58,16 +75,25 @@ int opengpu_native_job_snapshot_build(struct opengpu_private_snapshot *owner,
     if(!owner || !s || !copy || !copy->copy || !copy->resolve || !out ||
         !s->job || !s->frame || !s->states || !s->states_bytes || (s->states_bytes%512) ||
         (u64)s->states_bytes>(1ULL<<32) || !s->capacity || s->capacity>255 || !s->engines || s->engines>4 ||
-        !header(s->job,OPENGPU_NATIVE_BINNED_JOB_MAGIC,512))return -EINVAL;
+        (s->layered ? !layered_header(s->job,OPENGPU_NATIVE_LAYERED_JOB_MAGIC,2,512) :
+         !header(s->job,OPENGPU_NATIVE_BINNED_JOB_MAGIC,512)))return -EINVAL;
+    if((s->layered && (s->plans || !s->completion.handle)) ||
+       (!s->layered && (s->layered_plans || !all_zero(&s->completion,sizeof(s->completion)))))return -EINVAL;
     count=get(s->job,J(JOB_DRAWCOUNT));stride=get(s->job,J(JOB_DRAWSTRIDE));
     state_count=s->states_bytes/512;
     if(stride<2048 || (stride&63) || s->plan_count!=count ||
-        (count && (!s->draws || !s->plans || (u64)(count-1)*stride+2048>s->draws_bytes)) ||
+        (count && (!s->draws || (s->layered ? !s->layered_plans : !s->plans) || (u64)(count-1)*stride+2048>s->draws_bytes)) ||
         (!count && s->draws_bytes) || (u64)s->draws_bytes>(1ULL<<32) ||
         !identity(s->job,J(JOB_IDENTITY_CONTEXT),J(JOB_IDENTITY_PASS),J(JOB_IDENTITY_GENERATION),s))return -EINVAL;
     for(i=16;i<128;++i)
         if(i!=J(JOB_DRAWCOUNT) && i!=J(JOB_DRAWSTRIDE) && i!=J(JOB_IDENTITY_CONTEXT) &&
-           i!=J(JOB_IDENTITY_PASS) && i!=J(JOB_IDENTITY_GENERATION) && get(s->job,i))return -EINVAL;
+           i!=J(JOB_IDENTITY_PASS) && i!=J(JOB_IDENTITY_GENERATION) &&
+           !(s->layered && i==OPENGPU_NATIVE_LAYERED_JOB_COMPLETION_WRITABLE_WORD) && get(s->job,i))return -EINVAL;
+    if(s->layered && get(s->job,OPENGPU_NATIVE_LAYERED_JOB_COMPLETION_WRITABLE_WORD)!=1)return -EINVAL;
+    if(s->layered){
+        ret=opengpu_native_layered_completion_check(s,copy->resolve,copy->context);
+        if(ret)return ret;
+    }
     ret=opengpu_native_graph_alias_check(s,copy->resolve,copy->context);
     if(ret)return ret;
     ret=-EINVAL;
@@ -96,19 +122,36 @@ int opengpu_native_job_snapshot_build(struct opengpu_private_snapshot *owner,
             !opengpu_native_advanced_blend_gfs_precheck(s->frame,2048,f,512,s->advanced_blend))goto done;
     }
     for(i=0;i<count;++i){
-        const struct drm_opengpu_native_draw_plan *p=&s->plans[i];
+        const struct drm_opengpu_native_draw_plan *p=opengpu_native_job_draw_plan(s,i);
         unsigned char *d,*f;
         if(p->draw_index>=count || plans[p->draw_index] || p->state_handle>=state_count)goto done;
         plans[p->draw_index]=p;d=draws+(size_t)p->draw_index*stride;f=states+(size_t)p->state_handle*512;
-        if(!header(d,OPENGPU_NATIVE_BINNED_DRAW_MAGIC,2048) || get(d,D(STATE))!=p->state_handle ||
+        const bool gs=s->layered && get(d,0)==OPENGPU_NATIVE_GEOMETRY_DRAW_MAGIC;
+        if((gs ? !layered_header(d,OPENGPU_NATIVE_GEOMETRY_DRAW_MAGIC,2,2048) :
+            !header(d,OPENGPU_NATIVE_BINNED_DRAW_MAGIC,2048)) || get(d,D(STATE))!=p->state_handle ||
             !identity(d,D(VERTEX_GEOMETRY_VERTEX_INPUT_IDENTITY_CONTEXT),D(VERTEX_GEOMETRY_VERTEX_INPUT_IDENTITY_PASS),
                 D(VERTEX_GEOMETRY_VERTEX_INPUT_IDENTITY_GENERATION),s) ||
             get(d,D(VERTEX_GEOMETRY_VERTEX_SHADERPC)) || get(d,D(VERTEX_GEOMETRY_VERTEX_SAMPLER_BASE)) ||
             get(d,D(VERTEX_GEOMETRY_VERTEX_UNIFORMS_VERSION)) || get(d,D(VERTEX_GEOMETRY_VERTEX_UNIFORMS_ADDRESS)) ||
             get(d,D(VERTEX_GEOMETRY_VERTEX_RESOURCES_VERSION)) || get(d,D(VERTEX_GEOMETRY_VERTEX_RESOURCES_ADDRESS)) ||
-            get(d,D(VERTEX_GEOMETRY_VERTEX_VARYINGSLOTS))!=get(f,F(FRAGMENT_VARYINGSLOTS)))goto done;
+            (!gs && (get(d,D(VERTEX_GEOMETRY_VERTEX_VARYINGSLOTS))!=get(f,F(FRAGMENT_VARYINGSLOTS)) ||
+                     get(f,F(FRAGMENT_VERSION))==5)))goto done;
+        if(gs){
+            if(get(d,OPENGPU_NATIVE_GEOMETRY_DRAW_GEOMETRY_VERSION_WORD)!=1 ||
+               get(d,OPENGPU_NATIVE_GEOMETRY_DRAW_GEOMETRY_BASE_WORD) ||
+               get(d,OPENGPU_NATIVE_GEOMETRY_DRAW_GEOMETRY_LIMIT_WORD) ||
+               get(d,OPENGPU_NATIVE_GEOMETRY_DRAW_GEOMETRY_LIMIT_WORD+1))goto done;
+        }else{
+            for(u32 word=508;word<512;++word)if(get(d,word))goto done;
+            if(s->layered){
+                const struct drm_opengpu_native_layered_draw_plan *g=&s->layered_plans[i];
+                if(!all_zero(&g->geometry_program,sizeof(g->geometry_program)) ||
+                   !all_zero(&g->geometry_uniforms,sizeof(g->geometry_uniforms)) ||
+                   !all_zero(g->geometry_metadata,sizeof(g->geometry_metadata)))goto done;
+            }
+        }
         if(first[p->state_handle]){
-            const struct drm_opengpu_native_draw_plan *previous=&s->plans[first[p->state_handle]-1];
+            const struct drm_opengpu_native_draw_plan *previous=opengpu_native_job_draw_plan(s,first[p->state_handle]-1);
             if(memcmp(&previous->fragment_program,&p->fragment_program,sizeof(p->fragment_program)) ||
                 memcmp(&previous->fragment_uniforms,&p->fragment_uniforms,sizeof(p->fragment_uniforms)))goto done;
         }else first[p->state_handle]=i+1;
@@ -139,19 +182,38 @@ int opengpu_native_job_snapshot_build(struct opengpu_private_snapshot *owner,
             D(VERTEX_GEOMETRY_VERTEX_UNIFORMS_ADDRESS),roots.segment,roots.root_offset[0],false);
         if(ret)goto done;
         /* The input patch verifies these exact CPU bytes already in the array. */
-        ret=opengpu_native_input_snapshot_patch(owner,draw_segment,(u64)i*stride,d,p,s->capacity,copy->resolve,copy->context);
+        const bool gs=s->layered && get(d,0)==OPENGPU_NATIVE_GEOMETRY_DRAW_MAGIC;
+        if(gs){
+            /* draw is the ABI's first member. p already points to that
+             * checked extended record, including with shuffled draw ordinals. */
+            const struct drm_opengpu_native_layered_draw_plan *g=(const void *)p;
+            struct opengpu_geometry_source geometry;
+            u32 geometry_segment;
+            geometry=(struct opengpu_geometry_source){.metadata=g->geometry_metadata,.metadata_bytes=1024,
+                .program=&g->geometry_program,.uniforms=&g->geometry_uniforms,
+                .context=s->context,.pass=s->pass,.generation=s->generation,.geometry_enabled=true,
+                .scalar_fpu=s->scalar_fpu,.topology=get(d,D(VERTEX_GEOMETRY_TOPOLOGY)),
+                .vertex_varyings=get(d,D(VERTEX_GEOMETRY_VERTEX_VARYINGSLOTS)),
+                .fragment_varyings=get(f,F(FRAGMENT_VARYINGSLOTS))};
+            ret=opengpu_geometry_snapshot_append(owner,&geometry,copy->copy,copy->context,&geometry_segment);
+            if(!ret)ret=reloc(owner,draw_segment,(u64)i*stride,OPENGPU_NATIVE_GEOMETRY_DRAW_GEOMETRY_BASE_WORD,geometry_segment,0,false);
+            if(!ret)ret=reloc(owner,draw_segment,(u64)i*stride,OPENGPU_NATIVE_GEOMETRY_DRAW_GEOMETRY_LIMIT_WORD,geometry_segment,1024,true);
+            if(ret)goto done;
+        }
+        ret=gs?opengpu_native_input_snapshot_patch_geometry(owner,draw_segment,(u64)i*stride,d,p,s->capacity,copy->resolve,copy->context):
+            opengpu_native_input_snapshot_patch(owner,draw_segment,(u64)i*stride,d,p,s->capacity,copy->resolve,copy->context);
         if(ret)goto done;
-        if(&s->plans[first[p->state_handle]-1]!=p)continue;
+        if(opengpu_native_job_draw_plan(s,first[p->state_handle]-1)!=p)continue;
         profile.stage=1;profile.version=get(f,F(FRAGMENT_VERSION));profile.attributes=0;
         profile.varyings=get(f,F(FRAGMENT_VARYINGSLOTS));profile.colors=get(f,F(FRAGMENT_COLORSLOTS));
-        profile.staging_bytes=get(s->frame,FW(SCRATCHSTRIDE));profile.owned_uniforms=roots.present[1];
+        profile.staging_bytes=get(s->frame,FW(SCRATCHSTRIDE));profile.owned_uniforms=roots.present[1];profile.geometry_inputs=gs;
         ret=opengpu_native_program_snapshot_append(owner,&p->fragment_program,&profile,copy->copy,copy->context,&program);
         if(!ret)ret=reloc(owner,state_segment,(u64)p->state_handle*512,F(FRAGMENT_SHADERPC),program.segment,program.entry_offset,false);
         if(!ret && roots.present[1])ret=reloc(owner,state_segment,(u64)p->state_handle*512,
             F(FRAGMENT_UNIFORMS_ADDRESS),roots.segment,roots.root_offset[1],false);
         if(ret)goto done;
     }
-    ret=opengpu_native_frame_snapshot_append_complete(owner,s->frame,state_segment,s->states_bytes,
+    ret=(s->layered?opengpu_native_frame_snapshot_append_layered_complete:opengpu_native_frame_snapshot_append_complete)(owner,s->frame,state_segment,s->states_bytes,
         s->resources,s->resource_count,s->engines,s->context,s->pass,s->generation,
         copy->resolve,copy->context,&frame_segment);
     if(ret)goto done;
@@ -160,6 +222,7 @@ int opengpu_native_job_snapshot_build(struct opengpu_private_snapshot *owner,
     if(!ret && count)ret=reloc(owner,job_segment,0,J(JOB_DRAWLIMIT),draw_segment,s->draws_bytes,true);
     if(!ret)ret=reloc(owner,job_segment,0,J(JOB_FRAMEBASE),frame_segment,0,false);
     if(!ret)ret=reloc(owner,job_segment,0,J(JOB_FRAMELIMIT),frame_segment,2048,true);
+    if(!ret && s->layered)ret=opengpu_native_layered_completion_patch(owner,job_segment,s,copy->resolve,copy->context);
     if(!ret)*out=job_segment;
 done:
     kvfree(plans);kvfree(first);kvfree(states);kvfree(draws);

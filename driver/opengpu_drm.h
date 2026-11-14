@@ -718,6 +718,21 @@ struct drm_opengpu_native_draw_plan {
     struct drm_opengpu_compute_uniform_view bindings[OPENGPU_NATIVE_VERTEX_BINDINGS];
     struct drm_opengpu_compute_uniform_view indices, indirect, vertex_scratch;
 };
+/* Explicit protected GNJ2/GNF3/GNY2 graph. The version-1 plan stays 792
+ * bytes and all its reserved/header rules are unchanged. Geometry metadata is
+ * an inline one-time copy, not a nested userspace pointer or raw GPU address.
+ * An ordinary GND1 must supply an entirely zero geometry extension. */
+#define OPENGPU_NATIVE_LAYERED_SUBMIT_VERSION 2u
+struct drm_opengpu_native_completion_view {
+    struct drm_opengpu_compute_uniform_view view;
+    __u32 reserved[2];
+};
+struct drm_opengpu_native_layered_draw_plan {
+    struct drm_opengpu_native_draw_plan draw;
+    struct drm_opengpu_native_program_view geometry_program;
+    struct drm_opengpu_native_uniform_stage geometry_uniforms;
+    __u32 geometry_metadata[256];
+};
 struct drm_opengpu_submit_native_binned {
     __u32 version, context_id, flags, in_syncobj, out_syncobj, pad;
     __aligned_u64 job, frame, draws, draws_bytes, states, states_bytes, plans;
@@ -727,6 +742,10 @@ struct drm_opengpu_submit_native_binned {
      * choose generated fields; caller-selected relocation offsets are forbidden. */
     __aligned_u64 resources;
     __u32 resource_count, resource_stride;
+    /* Version 1: both zero. Version 2: reserved[0] points to a
+     * drm_opengpu_native_completion_view (24 bytes) for exact writable GNY2;
+     * reserved[1] remains zero. No publication is allowed until the actual
+     * GNC5/native-GS/layered route is independently discovered and checked. */
     __aligned_u64 reserved[2];
 };
 
