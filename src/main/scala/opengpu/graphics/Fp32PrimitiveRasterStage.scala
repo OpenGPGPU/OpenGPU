@@ -13,18 +13,21 @@ import chisel3.util._
   * Unrepresentable guard-band coordinates still require reconstruction.
   */
 class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfig(),g: GraphicsConfig=GraphicsConfig(),trianglesOnly: Boolean=false,
-    interpolationContexts: Int=8) extends Module {
+    interpolationContexts: Int=8,sampleShading:Boolean=false) extends Module {
   require(interpolationContexts>=2 && interpolationContexts<=8 && isPow2(interpolationContexts))
   require(g.subPixelBits>=2 && g.subPixelBits<=16)
   require(g.screenWidth>=1 && g.screenWidth<=65535 && g.screenHeight>=1 && g.screenHeight<=65535)
   require((BigInt(g.screenWidth)<<g.subPixelBits)<(BigInt(1)<<31) && (BigInt(g.screenHeight)<<g.subPixelBits)<(BigInt(1)<<31))
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new Fp32TriangleRasterRequest(p)))
+    val perSample=if(sampleShading)Some(Input(Bool()))else None
     val out=Decoupled(new Fp32RasterizedQuad(p,g));val completion=Decoupled(new Fp32TriangleRasterCompletion)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private object State extends ChiselEnum {val idle,validate,bounds,boundsCarries,boundsExpand,boundsCheck,offsetOffer,offsetWait,launch,run,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new Fp32TriangleRasterRequest(p))
+  private val perSample=if(sampleShading)Some(RegInit(false.B))else None
+  when(io.in.fire){perSample.foreach(_:=io.perSample.get)}
   private val boundsMin=Reg(Vec(2,SInt(64.W)));private val boundsMax=Reg(Vec(2,SInt(64.W)))
   private val boundsMargin=Reg(UInt(24.W));private val boundsLimits=Reg(Vec(4,SInt(65.W)))
   private val boundsEmpty=Reg(Bool());private val boundsNarrowed=Reg(Bool())
@@ -48,8 +51,8 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
   }
   private val result=Reg(new Fp32TriangleRasterCompletion);private val status=RegInit(0.U(3.W))
   private val launched=RegInit(false.B);private val empty=RegInit(false.B)
-  private val raw=RegInit(0.U(32.W));private val discarded=RegInit(0.U(32.W));private val exported=RegInit(0.U(32.W))
-  private val covered=RegInit(0.U(34.W));private val helpers=RegInit(0.U(34.W));private val samples=RegInit(0.U(36.W))
+  private val raw=RegInit(0.U(32.W));private val discarded=RegInit(0.U(32.W));private val exported=RegInit(0.U(34.W))
+  private val covered=RegInit(0.U(36.W));private val helpers=RegInit(0.U(36.W));private val samples=RegInit(0.U(38.W))
   private val operations=RegInit(0.U(48.W));private val arithmeticFlags=RegInit(0.U(5.W));private val packingFlags=RegInit(0.U(5.W))
   private val fault=RegInit(false.B);private val faultX=RegInit(0.S(32.W));private val faultY=RegInit(0.S(32.W));private val faultLane=RegInit(0.U(2.W))
   private val coordinates=Module(new Queue(new Bundle {
@@ -107,20 +110,34 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
     rasterReady:=Mux(triangle,raster.io.draw.ready,!r.io.busy)
     rasterFault:=phase===State.run && !triangle && r.io.fault
   }
-  interpolation.io.in.valid:=phase===State.run && !stop && !rasterFault && candidate.valid && interpolation.io.in.ready
-  interpolation.io.in.bits.primitive:=descriptor.primitive;interpolation.io.in.bits.quad:=candidate.bits
+  private val plane=Wire(Decoupled(new FragmentSamplePlane(g)))
+  private val planes=if(sampleShading)Some(Module(new FragmentSamplePlaneSequencer(g)))else None
+  planes match {
+    case Some(owner)=>
+      owner.io.in.valid:=phase===State.run && !stop && !rasterFault && candidate.valid
+      owner.io.in.bits.quad:=candidate.bits;owner.io.in.bits.sampleMode:=settings.sampleMode;owner.io.in.bits.enable:=perSample.get
+      candidate.ready:=phase===State.run && (stop || rasterFault || owner.io.in.ready)
+      plane<>owner.io.out;owner.io.cancel:=active && (stop || rasterFault)
+    case None=>
+      plane.valid:=candidate.valid;plane.bits.quad:=candidate.bits;plane.bits.perSample:=false.B;plane.bits.sampleId:=0.U
+      candidate.ready:=phase===State.run && (stop || rasterFault || plane.ready)
+  }
+  interpolation.io.in.valid:=phase===State.run && !stop && !rasterFault && plane.valid && interpolation.io.in.ready
+  interpolation.io.in.bits.primitive:=descriptor.primitive;interpolation.io.in.bits.quad:=plane.bits.quad
+  interpolation.io.in.bits.sampleLocation.valid:=plane.bits.perSample
+  interpolation.io.in.bits.sampleLocation.bits:=plane.bits.sampleId
+  plane.ready:=phase===State.run && (stop || rasterFault || interpolation.io.in.ready)
   interpolation.io.in.bits.pointSize:=selectedPointSize
-  interpolation.io.in.bits.sampleDepthEnable:=true.B;interpolation.io.in.bits.sampleMode:=settings.sampleMode
-  interpolation.io.in.bits.centroidMask:=descriptor.centroidMask
+  interpolation.io.in.bits.sampleDepthEnable:= !plane.bits.perSample;interpolation.io.in.bits.sampleMode:=settings.sampleMode
+  interpolation.io.in.bits.centroidMask:=Mux(plane.bits.perSample,0.U,descriptor.centroidMask)
   interpolation.io.in.bits.depthRoundTowardZero:=descriptor.depthRoundTowardZero
   interpolation.io.in.bits.depthOffset:=depthOffset
-  candidate.ready:=phase===State.run && (stop || rasterFault || interpolation.io.in.ready)
   interpolation.io.cancel:=active && (stop || rasterFault);interpolation.io.completion.ready:=phase===State.run
   io.out.valid:=interpolation.io.out.valid;io.out.bits.values:=interpolation.io.out.bits;interpolation.io.out.ready:=io.out.ready
   io.out.bits.frontFacing:=Mux(triangle,(raster.io.planeArea>=0.S)===settings.frontFaceCCW,true.B);io.out.bits.sampleMode:=settings.sampleMode
   when(candidate.fire){raw:=raw+1.U;when(stop || rasterFault){discarded:=discarded+1.U}}
   coordinates.io.enq.valid:=interpolation.io.in.fire
-  coordinates.io.enq.bits.x:=candidate.bits.lanes(0).x;coordinates.io.enq.bits.y:=candidate.bits.lanes(0).y
+  coordinates.io.enq.bits.x:=plane.bits.quad.lanes(0).x;coordinates.io.enq.bits.y:=plane.bits.quad.lanes(0).y
   coordinates.io.deq.ready:=interpolation.io.completion.fire
   when(interpolation.io.in.fire){assert(coordinates.io.enq.ready,"interpolation coordinate credit overflow")}
   when(interpolation.io.completion.fire){assert(coordinates.io.deq.valid,"interpolation completion lost coordinates")}
@@ -213,7 +230,7 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
       depthOffset:=r.offset;phase:=Mux(stop || r.status=/=0.U,State.finish,State.launch)
     }}
     is(State.launch){when(raster.io.draw.fire || small.map(_.io.in.fire).getOrElse(false.B)){launched:=true.B;phase:=State.run}}
-    is(State.run){when(rasterReady && !interpolation.io.busy){phase:=State.finish}}
+    is(State.run){when(rasterReady && !interpolation.io.busy && !planes.map(_.io.busy).getOrElse(false.B)){phase:=State.finish}}
     is(State.finish){
       result.identity:=primitive.identity;result.sequence:=primitive.sequence;result.primitiveId:=primitive.primitiveId;result.instanceId:=primitive.instanceId
       result.partIndex:=descriptor.primitive.clipped.partIndex;result.status:=Mux(io.cancel && status===0.U,4.U,status)
@@ -226,7 +243,7 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
   }
   when(active && io.cancel && status===0.U){status:=4.U}
   when(phase===State.finish || phase===State.complete){
-    assert(rasterReady && !interpolation.io.busy && !coordinates.io.deq.valid && !offset.io.busy && !arithmetic.io.busy,"primitive completion escaped raster/interpolation/offset drain")
+    assert(rasterReady && !planes.map(_.io.busy).getOrElse(false.B) && !interpolation.io.busy && !coordinates.io.deq.valid && !offset.io.busy && !arithmetic.io.busy,"primitive completion escaped raster/interpolation/offset drain")
   }
   when(offsetService){assert(!interpolation.io.busy,"polygon setup overlapped live interpolation")}
   io.completion.valid:=phase===State.complete;io.completion.bits:=result

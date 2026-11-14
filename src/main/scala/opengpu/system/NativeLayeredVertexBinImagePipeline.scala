@@ -39,7 +39,7 @@ class NativeLayeredVertexBinImagePipeline(config:GpuConfig,p:VertexShaderStageCo
     engines:Int=4,pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=65536,
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
     payload:Option[ShaderPayloadConfig]=None,groupedTexture:Boolean=false,fragmentImageAvailable:Boolean=false,
-    transformFeedback:Boolean=false) extends Module {
+    transformFeedback:Boolean=false,sampleShading:Boolean=false) extends Module {
   require(g.subPixelBits==viewport.subPixelBits)
   private val sharedConfig=shared;private val payloadConfig=payload
   private val sourceBase=NativeLayeredVertexBinImagePipeline.sourceBase(engines,writeCredits,pagedCapacity)
@@ -67,7 +67,7 @@ class NativeLayeredVertexBinImagePipeline(config:GpuConfig,p:VertexShaderStageCo
   private val source=Module(new NativeGeometryVertexViewportPipeline(config,p,shared,viewport,useSramBlackBoxes,
     payload,0,groupedTexture,allowOrdinary=true,transformFeedback=transformFeedback))
   private val images=Module(new LayeredWindowPrimitiveBinImagePipeline(config,p,f,shared,g,engines,pageBytes,
-    writeCredits,tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,0,groupedTexture,fragmentImageAvailable))
+    writeCredits,tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,0,groupedTexture,fragmentImageAvailable,sampleShading=sampleShading))
   val recordBytes=images.recordBytes
   private val router=Module(new GeometryFragmentShaderRouter(config,shared.numComputeUnits,shared.taskIdWidth,
     payload,imageAvailable=fragmentImageAvailable))
