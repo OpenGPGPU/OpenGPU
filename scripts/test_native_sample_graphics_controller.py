@@ -195,6 +195,20 @@ class ControllerTests(unittest.TestCase):
             self.exercise()
         self.assertEqual(self.events,[])
 
+    def test_only_one_exact_original_live_producer_success_marker_is_accepted(self):
+        path=self.directory/'bridge.log'
+        good=controller.PRODUCER_SUCCESS
+        for value in ('', 'ACTUAL_SAMPLE_GRAPHICS_CPU_CAPTURE_PASS records=2 GPU=false\n',
+                good+' extra\n',good+'\n'+good+'\n'):
+            path.write_text(value)
+            with self.assertRaisesRegex(ValueError,'LIVE producer'):
+                controller.producer_success(self.directory)
+        path.write_text('compiler diagnostic\n'+good+'\n')
+        controller.producer_success(self.directory)
+        original=self.directory/'other.log';path.rename(original);path.symlink_to(original.name)
+        with self.assertRaisesRegex(ValueError,'aliased'):
+            controller.producer_success(self.directory)
+
     def test_cleanup_preserves_inputs_on_unknown_exit_and_attempts_all_consumers(self):
         first,second=object(),object()
         with patch.object(controller,'stop_group',side_effect=[controller.CleanupIncomplete('active'),None]) as stop, \

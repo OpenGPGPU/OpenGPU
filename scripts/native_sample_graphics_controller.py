@@ -28,6 +28,8 @@ from owner_resource_contract import SAMPLE_PROFILE
 
 ROOT = Path(__file__).resolve().parents[1]
 KIND = 'native-sample-graphics'
+PRODUCER_SUCCESS = ('ACTUAL_SAMPLE_GRAPHICS_LIVE_RETIRED records=2 originalMesaABI1=true '
+    'originalGUR=true completionBytes=16384 observed=true')
 READY = dict(schema='opengpu-native-sample-graphics-ready-v1', ownerProfile=SAMPLE_PROFILE,
     recordCount=2, memory='union.memory', captures=['record-0.capture','record-1.capture'],
     sourcePlans=['record-0.source-plan.json','record-1.source-plan.json'],
@@ -142,6 +144,13 @@ def exchange(directory, profile, bridge, start_executor, qualified, timeout):
     return commands
 
 
+def producer_success(directory):
+    """Check the original LIVE C entry before deleting its process log."""
+    lines = regular(directory/'bridge.log').read_text().splitlines()
+    require(lines.count(PRODUCER_SUCCESS) == 1,
+            'actual Mesa LIVE producer did not confirm exactly one two-owner retirement')
+
+
 def lock_owner(qualification):
     record=strict_json(regular(qualification))
     require(record.get('schema') == 'opengpu-owner-executor-v1' and record.get('kind') == KIND and
@@ -228,6 +237,7 @@ def main():
                         stdout=output,stderr=subprocess.STDOUT,start_new_session=True)
                     return running
                 exchange(directory,profile,bridge,start_executor,qualified,args.timeout)
+                producer_success(directory)
         print('Ordinary112 two-owner execution, independent images/GNY2 and actual cleanup PASS; clock/FPS unqualified')
     except BaseException:
         try:
