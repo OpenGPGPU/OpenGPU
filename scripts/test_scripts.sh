@@ -86,6 +86,8 @@ python3 scripts/test_native_product_observation.py
 python3 scripts/test_qualify_native_owner_product.py
 python3 scripts/test_native_layered_product.py
 python3 scripts/test_qualify_native_layered_product.py
+python3 scripts/test_native_sample_layered_product.py
+python3 scripts/test_qualify_native_sample_layered_product.py
 python3 scripts/test_native_owner.py
 python3 scripts/test_compute_owner.py
 python3 scripts/test_native_binned_topology_fixture.py
