@@ -146,10 +146,22 @@ ACK/seal and whole-owner execution evidence.
 `TessellationVertexPatchPublisherSpec` adds protocol-peer cases for all 32×64
 input words, write acknowledgements, actual source-completion gating, empty
 component layouts, held offers, cancellation, late replies, first-error
-preservation, invalid mappings and no-reset reuse. All three publisher RTL
-cases passed under the same bounded JVM / single native build job, with a
-180-second process-group limit. Its peer is not a shader, so even the full
-32×64 result does not qualify original VS execution.
+preservation, invalid mappings and no-reset reuse. The three protocol-peer
+publisher RTL cases passed under the same bounded JVM / single native build
+job, with a 180-second process-group limit. Its peer is not a shader, so even
+the full 32×64 result does not qualify original VS execution.
+
+A fourth RTL case connects the actual publisher, owned-zero-initializing
+`TessellationPatchContext` and SRAM. It publishes all 2048 input words and
+independently reads each through the context's control access path. It checks
+actual output/per-patch/level writes, control completion, inspection and close.
+Cancellation before a held load is accepted produces the real context's
+status-1 drain reply without replacing primary cancellation; cancellation
+after acceptance retains the normal reply. Both retain ownership while that
+reply is held. Cancellation at actual seal acceptance and healthy no-reset
+reuse also pass. The VS stream and control invocations remain peers: this
+composition result executes no shader CU, original ESSL or protected whole-owner
+retirement. The original-VS-to-context production integration remains pending.
 `TessellationVertexPatchSourceSpec` instead connects the actual source to two
 physical CUs (16 lanes/eight warps), global staging and an actual patch SRAM.
 Its native instruction fixture copies fetched attributes and original IDs;
