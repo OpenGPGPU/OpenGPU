@@ -31,7 +31,12 @@ mode.
 
 A pending request from an unselected source may wait for its grant without
 preventing that grant. A selected or already captured offer prevents switching,
-even before downstream acceptance. Pending replies retain their original owner
+even before downstream acceptance. An unselected offer observed while its
+owner requests selection also creates a retained grant debt. Withdrawing
+`sourceLive` cannot revoke that offer: it must be granted, captured and drained
+once before the new intent takes effect. The same rule applies to legacy
+handback. An unrelated unselected valid without selection intent does not
+create a grant debt. Pending replies retain their original owner
 through cancellation intent or an early request to hand ownership back. The
 public `drained` also remains false for unselected waiting offers, selection
 changes or retained flushes, so it cannot authorize releasing their original
@@ -64,12 +69,16 @@ ACK. A subsequent legacy read walks again after flush, then VS can reacquire
 the port after a held legacy response. Specific protocol assertions reject
 legacy writes in both modes and unowned/nonzero serialized replies.
 
-Final local results: seven focused ScalaTest cases passed (nine component
+Final local results: eight focused ScalaTest cases passed (ten component
 simulations, including both legacy assertion modes, two invalid-reply cases and
 the full-width staging-tag narrowing check). A separate queued-offer case
 withdraws `sourceLive` in exactly the cycle the next original VS request is
 offered; that request and its local reply drain before the grant is released.
-The four current adapter/fabric/helper/test sources passed Chisel-plugin
+An additional case withdraws selection intent before an offered VS request
+can acquire the port, then repeats the symmetric legacy handback. Both requests
+are granted and delivered before final drain. With the retained grant debt
+removed, this same case fails its bounded VS-grant assertion after the actual
+legacy reply is delivered. The four current adapter/fabric/helper/test sources passed Chisel-plugin
 incremental compilation, and 147 CPU suite-selector tests passed.
 
 These tests use modeled physical memory peers and execute the real adapter,

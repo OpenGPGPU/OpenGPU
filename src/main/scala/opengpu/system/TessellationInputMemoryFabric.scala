@@ -38,6 +38,15 @@ class TessellationInputMemoryFabric(config:GpuConfig,renderIds:Int,ownedVertexSo
   if(ownedVertexSource){
     val adapter=Module(new TessellationVertexMemoryAdapter(config))
     val selected=RegInit(false.B)
+    // Recognize an offered request while its owner is asking for this port.
+    // Withdrawing selection intent cannot revoke that Decoupled offer: grant
+    // it once after the current owner drains, even if intent has since moved.
+    val sourceOwed=RegInit(false.B)
+    val legacyOwed=RegInit(false.B)
+    when(!selected && io.sourceLive.get && io.sourceRequest.get.valid){sourceOwed:=true.B}
+    when(selected && !io.sourceLive.get && io.inputRequest.valid){legacyOwed:=true.B}
+    when(adapter.io.sourceRequest.fire){sourceOwed:=false.B}
+    when(io.inputRequest.fire){legacyOwed:=false.B}
     adapter.io.sourceRequest.valid:=selected && io.sourceRequest.get.valid
     adapter.io.sourceRequest.bits:=io.sourceRequest.get.bits
     io.sourceRequest.get.ready:=selected && adapter.io.sourceRequest.ready
@@ -70,9 +79,17 @@ class TessellationInputMemoryFabric(config:GpuConfig,renderIds:Int,ownedVertexSo
     fabric.io.flush.valid:=applyFlush;fabric.io.flush.bits:=merged
     when(io.flush.valid){pendingFlush:=true.B;flushBits:=merged}
     when(applyFlush){pendingFlush:=false.B}
-    when(physicallyDrained && !flushRequested){selected:=io.sourceLive.get}
+    when(physicallyDrained && !flushRequested){
+      // Unselected offers do not enter physicallyDrained: they must be able
+      // to acquire the grant. Keep a granted debt until actual acceptance.
+      when(selected && sourceOwed){selected:=true.B}
+        .elsewhen(!selected && legacyOwed){selected:=false.B}
+        .elsewhen(selected && legacyOwed){selected:=false.B}
+        .elsewhen(!selected && sourceOwed){selected:=true.B}
+        .otherwise{selected:=io.sourceLive.get}
+    }
     io.drained:=physicallyDrained && !flushRequested && (selected===io.sourceLive.get) &&
-      !io.sourceRequest.get.valid && !io.inputRequest.valid
+      !sourceOwed && !legacyOwed && !io.sourceRequest.get.valid && !io.inputRequest.valid
   }else{
     fabric.io.stagingRequest(0).valid:=io.inputRequest.valid
     fabric.io.stagingRequest(0).bits:=io.inputRequest.bits
