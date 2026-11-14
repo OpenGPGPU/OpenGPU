@@ -116,6 +116,62 @@ class ExecutorTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):q.verify_qualification(path)
         with self.assertRaises(RuntimeError):q.driver_files('native',q.COMPUTE_STAGE)
 
+    def test_blit112_requires_its_actual_translation_unit_factory_and_include_closure(self):
+        path,record=self.fixture(kind=q.BLIT_KIND,profile=q.SAMPLE_PROFILE)
+        files=q.driver_files(q.BLIT_KIND,q.SAMPLE_PROFILE)
+        self.assertEqual(files[0],'scripts/native_framebuffer_blit_sample_driver.cpp')
+        self.assertIn('scripts/native_framebuffer_blit_driver.cpp',files)
+        q.builder.validate_driver_includes([q.ROOT/name for name in
+            [files[0],*q.DEFAULT_DEPENDENCIES,*files[1:]]],self.out/'flashsim-dut/dut.h',self.out/'flashsim-dut')
+        for profile in (q.owner.PROFILE,q.COMPUTE_STAGE,q.FULL_PROFILE):
+            with self.subTest(profile=profile),self.assertRaises(RuntimeError):q.profile_contract(profile,q.BLIT_KIND)
+        for kind in ('native','compute','native-sample','native-sample-graphics'):
+            with self.subTest(kind=kind),self.assertRaises(RuntimeError):
+                q.verify_qualification(path,executor=path.parent/'executor',kind=kind)
+        built=json.loads((path.parent/'builder.json').read_text())
+        for driver in ('scripts/native_framebuffer_blit_driver.cpp','scripts/native_sample_owner_driver.cpp',
+                       'scripts/native_sample_graphics_driver.cpp'):
+            changed=copy.deepcopy(built);changed['driver_source']=str((q.ROOT/driver).resolve())
+            q.common.write_json(path.parent/'builder.json',changed)
+            bad=copy.deepcopy(record);bad['builder_sha256']=q.common.sha(path.parent/'builder.json')
+            q.common.write_json(path,bad)
+            with self.subTest(driver=driver),self.assertRaises(RuntimeError):q.verify_qualification(path,kind=q.BLIT_KIND)
+        for missing in ('scripts/native_framebuffer_blit_driver.cpp','scripts/native_framebuffer_blit_lease.hpp',
+                        'scripts/native_sample_owner_capture.hpp','driver/opengpu_storage_command_abi.h'):
+            changed=copy.deepcopy(built);del changed['driver_inputs'][str((q.ROOT/missing).resolve())]
+            q.common.write_json(path.parent/'builder.json',changed)
+            bad=copy.deepcopy(record);bad['builder_sha256']=q.common.sha(path.parent/'builder.json')
+            q.common.write_json(path,bad)
+            with self.subTest(missing=missing),self.assertRaises(RuntimeError):q.verify_qualification(path,kind=q.BLIT_KIND)
+        for missing in q.BLIT_CHECKERS:
+            bad=copy.deepcopy(record);del bad['source_sha256'][missing];q.common.write_json(path,bad)
+            with self.subTest(checker=missing),self.assertRaises(RuntimeError):q.verify_qualification(path,kind=q.BLIT_KIND)
+
+    def test_blit112_build_and_check_reject_unregistered_macro_and_external_shadow_includes(self):
+        path,record=self.sample_fixture(q.BLIT_KIND)
+        runtime=q.ROOT/'scripts/native_framebuffer_blit_driver.cpp';original=runtime.read_bytes()
+        external=self.out/'external/native_owner_runtime.hpp';external.parent.mkdir()
+        external.write_text('// external shadow of a declared runtime\n')
+        directives=('#include "unregistered-blit.hpp"', '#include UNKNOWN_BLIT_HEADER',
+                    '#include "'+str(external)+'"')
+        (runtime.parent/'unregistered-blit.hpp').write_text('// omitted actual dependency\n')
+        for directive in directives:
+            runtime.write_bytes(original+('\n'+directive+'\n').encode())
+            # Rehash the declared files: source hashes alone must not authorize
+            # an undeclared dependency or a different actual resolution.
+            forged=copy.deepcopy(record);forged['source_sha256']=q.hashes([
+                *q.driver_files(q.BLIT_KIND,q.SAMPLE_PROFILE),*q.DEFAULT_DEPENDENCIES,*q.checker_files(q.BLIT_KIND)])
+            q.common.write_json(path,forged)
+            with self.subTest(directive=directive),self.assertRaisesRegex(ValueError,'driver include'):
+                q.verify_qualification(path,kind=q.BLIT_KIND)
+            with patch.object(q.subprocess,'Popen') as start:
+                with self.assertRaisesRegex(ValueError,'driver include'):
+                    q.build_executor(self.out,self.flashsim,q.BLIT_KIND,shards=1)
+                start.assert_not_called()
+            self.assertFalse(path.exists())
+        runtime.write_bytes(original)
+        self.assertEqual(q.build_lock_paths(self.out,q.BLIT_KIND),(self.out/'.lock',path.parent/'.lock'))
+
     def test_full_factory_qualifications_bind_distinct_wrappers_and_reject_cross_models(self):
         for name, (stage, words) in q.FULL_COMPUTE_CONTRACTS.items():
             with self.subTest(profile=name):

@@ -1,6 +1,11 @@
 // Bounded actual-caller shader execution on an existing complete 96-word DUT.
 // native_owner_runtime.hpp must come from the explicitly qualified owner root;
 // this executable is a host fixture, not an original Linux MMIO capture replay.
+#ifdef OPENGPU_FRAMEBUFFER_BLIT_SAMPLE_OWNER
+#if OPENGPU_FRAMEBUFFER_BLIT_SAMPLE_OWNER != 1
+#error "112-word blit owner selection must be explicitly one"
+#endif
+#endif
 #include "native_owner_runtime.hpp"
 #include "native_framebuffer_blit_lease.hpp"
 #include "native_framebuffer_blit_simulation.hpp"
@@ -169,9 +174,16 @@ int main(int argc,char **argv) {
     require(inputs.size()==43,"blit qualification requires all 43 actual-caller inputs");
     Simulation sim(argc,argv);sim.reset();Memory memory;
     native_frame::Agent agent(memory);Bus bus(sim,agent,100000);
+#ifdef OPENGPU_FRAMEBUFFER_BLIT_SAMPLE_OWNER
+    const auto profile=native_owner::probe_sample_profile(sim,agent,bus);
+    require(profile.factory==native_owner::OwnerFactory::geometry_compute_sample &&
+      profile.words.size()==112 && profile.words.at(2).value==0x1fffff,
+      "blit requires the exact complete 112-word sample owner profile");
+#else
     const auto profile=native_owner::probe_profile(sim,agent,bus,true);
     require(profile.words.size()==96 && profile.words.at(2).value==0x3ffff,
       "blit requires the complete 96-word owner profile");
+#endif
     require(bus.read(GPU_REG_CAPABILITIES)&GPU_CAP_UNIFIED_RESET,"blit lifecycle requires drain-safe unified reset");
     std::vector<std::array<uint64_t,3>> cycles;
     for(size_t epoch=0;epoch<inputs.size();epoch++) {
@@ -179,7 +191,11 @@ int main(int argc,char **argv) {
     }
     const auto recovery=lifecycle(sim,agent,bus,memory,inputs.front(),unsigned(inputs.size()));
     native_owner::atomic_json(output,[&](auto &out) {
+#ifdef OPENGPU_FRAMEBUFFER_BLIT_SAMPLE_OWNER
+      out<<"{\"schema\":\"opengpu-framebuffer-blit-sample-host-v1\",\"resetCount\":1,\"cases\":[";
+#else
       out<<"{\"schema\":\"opengpu-framebuffer-blit-host-v2\",\"resetCount\":1,\"cases\":[";
+#endif
       for(size_t n=0;n<cycles.size();n++)out<<(n?",":"")<<"{\"inputIndex\":"<<n
         <<",\"coordinateInvalidateCycles\":"<<cycles[n][0]<<",\"computeThroughRetirementCycles\":"<<cycles[n][1]
         <<",\"publicationInvalidateCycles\":"<<cycles[n][2]<<"}";
@@ -190,7 +206,16 @@ int main(int argc,char **argv) {
         <<"\",\"heldResponseCycles\":"<<recovery.held_cycles[n]<<",\"resetThroughRevocationCycles\":"<<recovery.reset_cycles[n]
         <<",\"healthyIDReuseCycles\":"<<recovery.healthy_after_reset[n]<<"}";
       out<<"]},\"unifiedResetCount\":2,\"partialCancellationBytesChecked\":true,\"originalCallerInputs\":true,\"originalLinuxTrace\":false,\"independentBytes\":true,"
-        "\"vmAndReadOnlyGuards\":true,\"full96Profile\":true,\"sourceQualificationRequired\":true,"
+        "\"vmAndReadOnlyGuards\":true,";
+#ifdef OPENGPU_FRAMEBUFFER_BLIT_SAMPLE_OWNER
+      out<<"\"executorKind\":\"framebuffer-blit-sample\",\"profile\":\"two-cu-vga60-owner-v2-sample-stage\","
+        "\"ownerResourceVersion\":2,\"ownerResourceStage\":\"geometry-compute-sample\","
+        "\"resourceDiscoveryWords\":112,\"computeFeatureFlags\":2097151,\"full112Profile\":true,"
+        "\"fullResourceQualification\":false,\"finalProductQualification\":false,";
+#else
+      out<<"\"full96Profile\":true,";
+#endif
+      out<<"\"sourceQualificationRequired\":true,"
         "\"clockQualified\":false,\"fpsQualified\":false}\n";
     });sim.model->final();return 0;
   }catch(const std::exception &error){std::cerr<<"framebuffer blit host failed: "<<error.what()<<'\n';return 1;}

@@ -23,8 +23,10 @@ import qualify_native_product_flashsim as flash
 from owner_resource_contract import COMPUTE_STAGE, FULL_COMPUTE_CONTRACTS, PROFILE as FULL_PROFILE, SAMPLE_PROFILE
 
 ROOT = Path(__file__).resolve().parents[1]
-KINDS = ('native', 'compute', 'native-sample', 'native-sample-graphics')
+BLIT_KIND = 'framebuffer-blit-sample'
+KINDS = ('native', 'compute', 'native-sample', 'native-sample-graphics', BLIT_KIND)
 SAMPLE_KINDS = ('native-sample', 'native-sample-graphics')
+SAMPLE_FACTORY_KINDS = (*SAMPLE_KINDS, BLIT_KIND)
 SHARED = ('scripts/native_owner_runtime.hpp', 'scripts/native_owner_capture.hpp',
           'scripts/owner_factory.hpp',
           'driver/gpu_abi.h', 'driver/opengpu_formats.h', 'driver/opengpu_shader_resources.h')
@@ -84,6 +86,12 @@ GRAPHICS_CHECKERS = (
     'scripts/patches/mesa-22.3.6-checked-uniform-index.patch',
     'docs/abi/native-layered-graphics-v2.json', 'docs/abi/native-binned-graphics-v1.json',
     'docs/abi/typed-fragment-state-v1.json')
+BLIT_CHECKERS = (
+    'scripts/qualify_framebuffer_blit_sample_host.py', 'scripts/qualify_framebuffer_blit_host.py',
+    'scripts/framebuffer_blit_fixture.py', 'scripts/owner_process_lifetime.py',
+    'scripts/test_gallium_compute.py', 'userspace/tests/framebuffer_blit_callback.c',
+    'userspace/gallium/opengpu_context.c', 'userspace/pipe_opengpu.c',
+    'userspace/opengpu_framebuffer_blit.h', 'driver/opengpu_shader_validator.h')
 # These are the actual GPU translation units compiled by the Mesa graphics
 # builder, plus the production bodies used by its generated Linux includes.
 GRAPHICS_PRODUCER_ROOTS = (
@@ -118,7 +126,7 @@ def require(condition, message):
 
 def profile_contract(profile, kind):
     require(kind in KINDS, 'unknown owner executor kind')
-    require((profile == SAMPLE_PROFILE if kind in SAMPLE_KINDS else
+    require((profile == SAMPLE_PROFILE if kind in SAMPLE_FACTORY_KINDS else
              profile == owner.PROFILE or ((profile == COMPUTE_STAGE or profile in FULL_COMPUTE_CONTRACTS) and kind == 'compute')),
             'unsupported factory for the selected owner executor kind')
     fields = dict(profile=profile)
@@ -132,6 +140,12 @@ def profile_contract(profile, kind):
 def driver_files(kind, profile=owner.PROFILE):
     require(kind in KINDS, 'unknown owner executor kind')
     profile_contract(profile, kind)
+    if kind == BLIT_KIND:
+        return ['scripts/native_framebuffer_blit_sample_driver.cpp',
+                'scripts/native_framebuffer_blit_driver.cpp',
+                'scripts/native_framebuffer_blit_lease.hpp', 'scripts/native_framebuffer_blit_input.hpp',
+                'scripts/native_framebuffer_blit_simulation.hpp', 'driver/opengpu_storage_command_abi.h',
+                'scripts/native_sample_owner_runtime.hpp', 'scripts/native_sample_owner_capture.hpp', *SHARED]
     if kind == 'native-sample-graphics':
         return ['scripts/native_sample_graphics_driver.cpp', 'scripts/native_sample_graphics_runtime.hpp',
                 'scripts/native_sample_owner_runtime.hpp', 'scripts/native_sample_owner_capture.hpp', *SHARED]
@@ -220,6 +234,11 @@ def graphics_producer_files():
 
 def checker_files(kind):
     require(kind in KINDS, 'unknown owner executor kind')
+    if kind == BLIT_KIND:
+        for name in BLIT_CHECKERS:
+            path = ROOT / name
+            require(path.is_file() and path.resolve() == path, 'missing/aliased required blit checker: '+name)
+        return tuple(dict.fromkeys((*CHECKERS, *BLIT_CHECKERS)))
     if kind not in SAMPLE_KINDS:
         return CHECKERS
     # Every fixed consumer is mandatory even before it has a valid build. A
@@ -236,7 +255,7 @@ def checker_files(kind):
 def build_lock_paths(directory, kind):
     require(kind in KINDS, 'unknown owner executor kind')
     paths = [directory / '.lock']  # Existing common shard cache stays serialized.
-    if kind in SAMPLE_KINDS:
+    if kind in SAMPLE_FACTORY_KINDS:
         target = directory / 'executors' / kind
         require(target.resolve() == target, 'native sample executor lock must not be aliased')
         target.mkdir(parents=True, exist_ok=True)
@@ -286,7 +305,7 @@ def model_identity(directory, flashsim, shards):
 
 def checked_builder(record, model, kind, options, compiler):
     files = driver_files(kind, model['profile'])
-    if kind in SAMPLE_KINDS:
+    if kind in SAMPLE_FACTORY_KINDS:
         builder.validate_driver_includes([ROOT / name for name in
             [files[0], *DEFAULT_DEPENDENCIES, *files[1:]]],
             Path(model['dut_directory']) / 'dut.h', Path(model['dut_directory']))
@@ -383,6 +402,12 @@ def build_executor(directory, flashsim, kind, *, shards=32, jobs=1,
     model = model_identity(directory, flashsim, shards)
     contract = profile_contract(model['profile'], kind)
     files = driver_files(kind, model['profile'])
+    if kind == BLIT_KIND:
+        # Reject an incomplete/shadowed actual TU before launching the shared
+        # builder, then repeat the same closure check on its returned record.
+        builder.validate_driver_includes([ROOT / name for name in
+            [files[0], *DEFAULT_DEPENDENCIES, *files[1:]]],
+            Path(model['dut_directory']) / 'dut.h', Path(model['dut_directory']))
     checkers = checker_files(kind)
     sources = hashes([*files, *DEFAULT_DEPENDENCIES, *checkers])
     compiler_path = shutil.which('c++')
