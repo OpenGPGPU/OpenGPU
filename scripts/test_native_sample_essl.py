@@ -11,6 +11,7 @@ from pathlib import Path
 import shlex
 import struct
 import subprocess
+from native_sample_compiler_inputs import MESA_LIBRARIES, MESA_UNITS
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -71,15 +72,12 @@ def main():
     standalone = standalone.replace(anchor, anchor + '\n   whole_program->SeparateShader = true;')
     private = out / 'standalone-native-fs.cpp'
     private.write_text('#include "main/mtypes.h"\nextern void opengpu_frontend_compiler_limits(gl_context *);\n' + standalone)
-    units = ['compiler/glsl/standalone.cpp', 'compiler/glsl/standalone_scaffolding.cpp',
-             'compiler/glsl/ir_builder_print_visitor.cpp', 'compiler/glsl/glcpp/pp_standalone_scaffolding.c',
-             'mesa/main/extensions_table.c', 'mesa/program/prog_parameter.c',
-             'mesa/program/symbol_table.c', 'mesa/program/dummy_errors.c']
+    units = MESA_UNITS
     objects = []
     for relative in units:
         obj = out / (relative.replace('/', '_') + '.o')
         run((cxx if relative.endswith('.cpp') else cc) + flags(relative) + ['-UNDEBUG'] + san +
-            ['-c', private if relative.endswith('/standalone.cpp') else mesa / 'src' / relative, '-o', obj], obj.stem)
+            ['-MMD', '-MF', obj.with_suffix('.d'), '-c', private if relative.endswith('/standalone.cpp') else mesa / 'src' / relative, '-o', obj], obj.stem)
         objects.append(obj)
     inc = ['-I' + str(p) for p in (ROOT / 'userspace/tests', ROOT / 'userspace/gallium', ROOT / 'driver',
         mesa / 'src/gallium/include', mesa / 'src/gallium/auxiliary', mesa / 'src', mesa / 'include',
@@ -90,11 +88,9 @@ def main():
         opts = flags('compiler/glsl/standalone.cpp') if relative.endswith('.cpp') else ['-std=c11', '-O1', '-DHAVE_ENDIAN_H', '-D_POSIX_C_SOURCE=200809L']
         run((cxx if relative.endswith('.cpp') else cc) + opts + ['-UNDEBUG', '-Wall', '-Wextra', '-Werror',
             '-Wno-unused-parameter', '-ffunction-sections', '-fdata-sections'] + inc + san +
-            ['-c', ROOT / relative, '-o', obj], obj.stem)
+            ['-MMD', '-MF', obj.with_suffix('.d'), '-c', ROOT / relative, '-o', obj], obj.stem)
         objects.append(obj)
-    libraries = [mb / p for p in ('src/compiler/glsl/libglsl.a', 'src/compiler/nir/libnir.a', 'src/compiler/libcompiler.a',
-        'src/compiler/glsl/glcpp/libglcpp.a', 'src/gallium/auxiliary/libgallium.a', 'src/util/libmesa_util.a',
-        'src/util/format/libmesa_format.a', 'src/c11/impl/libmesa_util_c11.a')]
+    libraries = [mb / p for p in MESA_LIBRARIES]
     binary = out / 'native-fs-compile'
     run(cxx + san + ['-Wl,--gc-sections'] + objects + ['-Wl,--start-group'] + libraries + ['-Wl,--end-group'] +
         shlex.split(os.environ.get('OPENGPU_MESA_LINK_LIBS', '-lz -lexpat')) + ['-ldl', '-lm', '-pthread', '-o', binary], 'link')
