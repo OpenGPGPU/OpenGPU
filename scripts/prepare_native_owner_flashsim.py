@@ -23,26 +23,32 @@ EXPECTED_WORDS=[{'address':base+4*n,'value':value} for base,words in EXPECTED_BL
 def source_inputs():
     return common.rtl_inputs() | {str(p.relative_to(ROOT)):common.sha(p) for p in (
         ROOT/'scripts/prepare_native_owner_flashsim.py',ROOT/'scripts/qualify_native_product_compiled.py',
-        ROOT/'scripts/qualify_native_product_flashsim.py')}
+        ROOT/'scripts/qualify_native_product_flashsim.py',ROOT/'scripts/owner_resource_contract.py')}
 
 def check_manifest(manifest):
     if type(manifest) is not dict:raise RuntimeError('Owner manifest must be an object')
+    from owner_resource_contract import COMPUTE_STAGE, COMPUTE_WORDS
+    compute_stage = manifest.get('profile') == COMPUTE_STAGE
+    expected_words = COMPUTE_WORDS if compute_stage else EXPECTED_WORDS
     required={'version':1,'profile':PROFILE,'computeUnits':2,'frameWidth':640,'frameHeight':480,
         'lanes':16,'warps':8,'transactionsPerCu':16,'axiDataBytes':32,'engines':4,
         'nativeMaxWidth':2048,'nativeMaxHeight':2048,'pagedCapacity':65536,'payloadBytes':524288,
         'resourceDiscoveryWords':96,'computeFeatureFlags':0x3ffff,'targetFps':60,
         'rtlEmitted':True,'sourceQualificationRequired':True,'gpuExecution':False,
         'clockQualified':False,'fpsQualified':False}
+    if compute_stage:
+        required.update(version=2, profile=COMPUTE_STAGE, computeFeatureFlags=0x7ffff,
+                        ownerResourceVersion=2, ownerResourceStage='compute', fullResourceQualification=False)
     if any(type(manifest.get(k)) is not type(v) or manifest[k]!=v for k,v in required.items()):
         raise RuntimeError('Incomplete or mismatched protected owner factory')
     words=manifest.get('requiredDiscovery')
-    addresses=[w['address'] for w in EXPECTED_WORDS]
+    addresses=[w['address'] for w in expected_words]
     if (not isinstance(words,list) or len(words)!=96 or
         any(not isinstance(w,dict) or set(w)!={'address','value'} or
             type(w['address']) is not int or w['address']!=a or
             type(w['value']) is not int or not 0<=w['value']<2**32 for w,a in zip(words,addresses))):
         raise RuntimeError('Incomplete native owner discovery words')
-    if words!=EXPECTED_WORDS:
+    if words!=expected_words:
         raise RuntimeError('Protected owner discovery differs from its factory')
 
 def prepared(out):
@@ -57,7 +63,7 @@ def prepared(out):
         raise RuntimeError('Owner RTL, assertions, factory or sources changed after preparation')
     return record
 
-def prepare(out,heap):
+def prepare(out,heap,compute_stage=False):
     if out.exists():raise RuntimeError('Owner preparation requires a new output directory')
     if not re.fullmatch(r'[1-9][0-9]*[kKmMgG]',heap):raise ValueError('Invalid Java heap size')
     sources=source_inputs()
@@ -65,12 +71,16 @@ def prepare(out,heap):
     temporary=main/'.artifacts';temporary.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='o',dir=temporary) as directory:
         if len(directory.encode())>52:raise RuntimeError('JVM temporary path exceeds Unix-socket limit')
+        entry='PrepareOwnerResourceHost' if compute_stage else 'PrepareNativeOwnerHost'
         command=['sbt','-J-Xmx'+heap,'-J-XX:ActiveProcessorCount=2','-J-Djava.io.tmpdir='+directory,
             '-Dopengpu.fullHostQualification=1',
-            'Test / runMain opengpu.system.PrepareNativeOwnerHost --output '+json.dumps(str(out))]
+            'Test / runMain opengpu.system.'+entry+' --output '+json.dumps(str(out))]
         subprocess.run(command,cwd=ROOT,env=dict(os.environ,TMPDIR=directory),check=True)
     if sources!=source_inputs():raise RuntimeError('Source changed during owner RTL preparation')
-    manifest=out/'owner-manifest.json';check_manifest(json.loads(manifest.read_text()))
+    manifest=out/'owner-manifest.json';description=json.loads(manifest.read_text());check_manifest(description)
+    from owner_resource_contract import COMPUTE_STAGE
+    if description['profile'] != (COMPUTE_STAGE if compute_stage else PROFILE):
+        raise RuntimeError('Emitted owner profile differs from the requested factory')
     rtl=common.tree_hashes(out/'rtl')
     if not common.assertion_layer_hashes(rtl):raise RuntimeError('Owner DUT has no assertion bind layers')
     common.simulation_inputs(out/'rtl')
@@ -86,22 +96,26 @@ class OwnerRunner(flash.Runner):
         self.prepared() # Validate this owner output before retiring old build records.
         return super().generate()
     def state(self,stage,**fields):
-        common.write_json(self.out/'state.json',dict(stage=stage,pid=os.getpid(),profile=PROFILE,**fields))
+        common.write_json(self.out/'state.json',dict(stage=stage,pid=os.getpid(),profile=json.loads((self.out/'owner-manifest.json').read_text())['profile'],**fields))
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output',required=True,type=Path)
     parser.add_argument('--stage',required=True,choices=('prepare','generate','check'))
+    parser.add_argument('--compute-stage',action='store_true',
+                        help='prepare the distinct shared-atomic-enabled intermediate owner factory')
     parser.add_argument('--java-heap',default='24G')
     parser.add_argument('--flashsim-dir',type=Path)
     parser.add_argument('--shards',type=int,default=32)
     args=parser.parse_args();out=args.output.resolve()
     os.environ['PYTHONDONTWRITEBYTECODE']='1'
     if not out.is_relative_to(ROOT/'.artifacts'):parser.error('--output must be inside this checkout .artifacts')
-    if args.stage=='prepare':prepare(out,args.java_heap)
+    if args.compute_stage and args.stage!='prepare':parser.error('--compute-stage selects only a fresh preparation')
+    if args.stage=='prepare':prepare(out,args.java_heap,args.compute_stage)
     elif args.stage=='generate':
         if args.flashsim_dir is None:parser.error('--stage generate requires --flashsim-dir')
         OwnerRunner(out,args.flashsim_dir,args.shards).generate()
     else:prepared(out)
-    print('NATIVE_OWNER_HOST_INPUTS_PASS profile='+PROFILE+' gpuExecution=false clockQualified=false fpsQualified=false')
+    profile=json.loads((out/'owner-manifest.json').read_text())['profile']
+    print('NATIVE_OWNER_HOST_INPUTS_PASS profile='+profile+' gpuExecution=false clockQualified=false fpsQualified=false')
 if __name__=='__main__':main()

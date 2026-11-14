@@ -83,6 +83,49 @@ def expected_shared(group, lane):
                for r in range(32)) & 0xffffffff
 
 
+def atomic_step(operation, old):
+    """Original ESSL seed/operand/CAS arithmetic, never native-word decoding."""
+    mask = 0xffffffff
+    signed = old if old < 1 << 31 else old - (1 << 32)
+    return (mask if operation == 0 else old - 1 if operation == 1 else
+            old ^ mask if operation == 2 else old | mask if operation == 3 else
+            old & mask if operation == 4 else min(signed, -1) if operation == 5 else
+            max(signed, -1) if operation == 6 else min(old, mask) if operation == 7 else
+            max(old, mask) if operation == 8 else mask if old == 0x80000000 else old) & mask
+
+
+def dynamic_output(initial, returned, description):
+    required_flags(description, dict(seed=0x80000000, operand=0xffffffff, compare=0x80000000))
+    operation = uint(description.get('operation'))
+    signed = description.get('signed')
+    if operation > 9 or type(signed) is not bool or (operation in (5, 6) and not signed) or (operation in (7, 8) and signed):
+        raise ValueError('invalid original shared atomic overload')
+    first, size = uint(description.get('outputPhysical')), uint(description.get('allocationBytes'))
+    if first & 4095 or size < 8192 or size & 4095 or (first, first + size) not in [(a, b) for a, b, _ in initial.ranges]:
+        raise ValueError('shared atomic output is not its original GEM allocation')
+    data = returned.read(first, 8192)
+    words = struct.unpack('<2048I', data)
+    seed = 0x80000000
+    history, current = [], seed
+    for _ in range(8):
+        history.append(current)
+        current = atomic_step(operation, current)
+    for group in range(4):
+        result = lambda plane, lane: words[group * 512 + plane * 128 + lane]
+        for lane in range(128):
+            if (result(0, lane) != (seed if not lane & 1 else 0xfeedface) or
+                result(2, lane) != (atomic_step(operation, seed) if not lane & 1 else seed) or
+                result(3, lane) != (current if lane >= 112 else seed)):
+                raise ValueError('conditional old word, inactive lane or final shared value differs')
+        for bucket in range(16):
+            actual = [result(1, lane) for lane in range(128) if (lane ^ group) & 15 == bucket]
+            if sorted(actual) != sorted(history):
+                raise ValueError('dynamic shared atomic returned old-value multiset differs')
+    # All 2048 words were independently checked above. Their nondeterministic
+    # per-bucket return order is allowed only inside this exact output window.
+    return first, data
+
+
 def allocation_window(memory, value, count, binding):
     if type(value) is not dict or set(value) != {'globalBinding', 'allocationPhysical', 'allocationBytes', 'offset', 'bytes'}:
         raise ValueError('invalid original GEM source/view description')
@@ -108,6 +151,8 @@ def verify(initial, returned, description):
         expected = b''.join(struct.pack('<I', expected_shared(group, lane))
                             for group in range(4) for lane in range(128))
         outputs = [(first, expected)]
+    elif description.get('schema') == 'opengpu-compute-shared-dynamic-oracle-v1':
+        outputs = [dynamic_output(initial, returned, description)]
     elif description.get('schema') == 'opengpu-compute-uniform-oracle-v1':
         defaults = allocation_window(initial, description.get('defaults'), 4096, 0)
         blocks, output_views = description.get('blocks'), description.get('outputs')

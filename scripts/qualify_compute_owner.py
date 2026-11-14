@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run both original Mesa compute sources on an already qualified full DUT.
+"""Run original Mesa compute sources on an already qualified full DUT.
 
 This entry never builds a DUT or supplies completion data. The real producer,
 executor, independent byte oracle and synchronous cleanup remain live under
@@ -17,6 +17,8 @@ import sys
 import tempfile
 import uuid
 from compute_owner_protocol import strict_json
+from compute_owner_cases import CASES, DYNAMIC_CASES
+from owner_resource_contract import COMPUTE_STAGE
 from owner_process_lifetime import CleanupIncomplete, stop_group, remove_container
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,18 +53,23 @@ def checked_inputs(args):
     record = strict_json(args.executor_qualification)
     require(record.get('schema') == 'opengpu-owner-executor-v1' and record.get('kind') == 'compute',
             'wrong executor qualification kind')
+    if getattr(args, 'case', None) in (*DYNAMIC_CASES, 'mandatory-compute'):
+        require(record.get('profile') == COMPUTE_STAGE,
+                'shared atomic execution requires the distinct shared-enabled complete owner factory')
     return sha256(args.executor_qualification), sha256(args.executor)
 
 
 def producer_command(args, *, gpu, source, ntt, image, name, case):
-    require(case in ('shared', 'uniforms'), 'unknown original compute source')
+    require(case in CASES, 'unknown original compute source')
     # The configured Mesa object database uses these original absolute paths.
     # Keep that mount unchanged; all newly generated files live in {ipc}.
-    command = ['docker', 'run', '--rm', '--init', '--name', name, '--memory', '2g', '--cpus', '2',
+    command = ['docker', 'run', '--rm', '--init', '--name', name, '--memory', '2g', '--memory-swap', '2g',
+               '--cpus', '2', '--network=none', '--read-only',
                '-v', f'{gpu}:{gpu}:ro', '-v', '{ipc}:{ipc}:rw', '-w', str(source)]
     environment = dict(PYTHONDONTWRITEBYTECODE='1', OPENGPU_MESA_DIR=str(args.mesa),
         OPENGPU_MESA_BUILD=str(args.mesa_build), OPENGPU_DRM_INCLUDE=str(args.drm_include),
         OPENGPU_MESA_LINK_LIBS=args.mesa_link_libs, LD_LIBRARY_PATH=str(args.library_directory), TMPDIR='{ipc}',
+        HOME='{ipc}', XDG_CACHE_HOME='{ipc}/cache', MESA_SHADER_CACHE_DISABLE='true',
         OPENGPU_COMPUTE_HOST_TIMEOUT=str(args.timeout))
     for key, value in environment.items():
         command += ['-e', key + '=' + value]
@@ -108,7 +115,7 @@ def main():
     parser.add_argument('--library-directory', type=Path, default=gpu / 'depends/aarch64-root/lib')
     parser.add_argument('--mesa-link-libs', default='-l:libz.so.1 ' + str(gpu / 'depends/aarch64-root/lib/libexpat.so.1.6.7'))
     parser.add_argument('--compiler-image', default='gpu-gtk-ci-check:latest')
-    parser.add_argument('--case', choices=('both', 'shared', 'uniforms'), default='both')
+    parser.add_argument('--case', choices=('both', 'mandatory-compute', *CASES), default='both')
     parser.add_argument('--timeout', type=int, default=3600)
     args = parser.parse_args()
     require(0 < args.timeout <= 604800, 'timeout must be 1..604800 seconds')
@@ -140,7 +147,8 @@ def main():
                         '--out', temporary / 'checked-ntt'], check=True,
                        env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1', TMPDIR=directory))
         ntt = temporary / 'checked-ntt/src/gallium/auxiliary/nir/nir_to_tgsi.c'
-        for case in (('shared', 'uniforms') if args.case == 'both' else (args.case,)):
+        cases = ('shared', 'uniforms') if args.case == 'both' else CASES if args.case == 'mandatory-compute' else (args.case,)
+        for case in cases:
             require(checked_inputs(args) == identity, 'qualified model/executor changed between source cases')
             run_case(args, gpu=gpu, source=source, temporary=temporary, ntt=ntt, image=image, case=case)
             require(checked_inputs(args) == identity, 'qualified model/executor changed during a source case')

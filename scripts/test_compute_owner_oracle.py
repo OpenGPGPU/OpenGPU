@@ -13,7 +13,9 @@ def memory(path, output=None, corrupt=()):
     pages = {0x1000: bytearray(4096), 0x2000: bytearray(struct.pack('<I', 0xdeadbeef) * 1024),
              0x3000: bytearray(struct.pack('<I', 0xdeadbeef) * 1024)}
     if output is not None:
-        pages[0x2000][:len(output)] = output
+        for offset in range(0, len(output), 4096):
+            chunk = output[offset:offset + 4096]
+            pages[0x2000 + offset][:len(chunk)] = chunk
     for address, value in corrupt:
         pages[address & ~4095][address & 4095] ^= value
     with path.open('wb') as f:
@@ -25,6 +27,42 @@ def memory(path, output=None, corrupt=()):
 
 
 class OracleTests(unittest.TestCase):
+    def test_all_dynamic_shared_overloads_old_values_final_planes_and_guards(self):
+        parent = ROOT / '.artifacts'; parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='atomic-oracle-', dir=parent) as temporary:
+            root = Path(temporary); initial = root / 'initial'; returned = root / 'returned'
+            memory(initial)
+            for operation, signed in [(i, i in (5, 6)) for i in range(10)] + [(i, True) for i in (0, 1, 2, 3, 4, 9)]:
+                seed, mask = 0x80000000, 0xffffffff
+                if operation == 1: history = [seed - i for i in range(8)]; final = seed - 8
+                elif operation == 2: history = [seed, seed ^ mask] * 4; final = seed
+                elif operation in (4, 5, 7): history = [seed] * 8; final = seed
+                else: history = [seed] + [mask] * 7; final = mask
+                words = [0] * 2048
+                for group in range(4):
+                    for lane in range(128):
+                        words[group * 512 + lane] = seed if lane % 2 == 0 else 0xfeedface
+                        words[group * 512 + 256 + lane] = history[1] if lane % 2 == 0 else seed
+                        words[group * 512 + 384 + lane] = final if lane >= 112 else seed
+                    for bucket in range(16):
+                        lanes = [lane for lane in range(128) if (lane ^ group) % 16 == bucket]
+                        # Either legal per-address order must pass, not a CPU
+                        # reconstruction of the CU's chosen arbitration.
+                        for lane, value in zip(lanes, reversed(history)):
+                            words[group * 512 + 128 + lane] = value
+                output = struct.pack('<2048I', *words)
+                description = dict(schema='opengpu-compute-shared-dynamic-oracle-v1',
+                    outputPhysical=0x2000, allocationBytes=8192, viewBytes=8192,
+                    groups=4, local=128, seed=seed, operand=mask, compare=seed,
+                    operation=operation, signed=signed, guard=0xdeadbeef)
+                memory(returned, output)
+                with SparseMemory(initial) as before, SparseMemory(returned) as after:
+                    verify(before, after, description)
+                for address in (0x2000, 0x2004, 0x2200, 0x2400, 0x2404, 0x27fc, 0x1004):
+                    memory(returned, output, corrupt=((address, 1),))
+                    with SparseMemory(initial) as before, SparseMemory(returned) as after:
+                        with self.assertRaises(ValueError): verify(before, after, description)
+
     def test_all_original_uniform_sources_and_four_outputs(self):
         parent = ROOT / '.artifacts'; parent.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='compute-uniform-oracle-', dir=parent) as temporary:

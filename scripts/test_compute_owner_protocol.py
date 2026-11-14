@@ -8,6 +8,7 @@ import unittest
 from compute_owner_protocol import (AUXILIARY, MAGICS, SCHEMA, profile_bytes,
     held_bytes, retired_bytes, cleanup_authorization, checked_cleanup)
 from prepare_native_owner_flashsim import EXPECTED_WORDS
+from owner_resource_contract import COMPUTE_SCHEMA, COMPUTE_STAGE, COMPUTE_WORDS
 
 
 def profile():
@@ -32,6 +33,24 @@ def held():
 
 
 class Protocol(unittest.TestCase):
+    def test_shared_enabled_stage_has_a_distinct_exact_profile_and_wire(self):
+        value = profile()
+        value.update(schema=COMPUTE_SCHEMA, ownerProfile=COMPUTE_STAGE,
+            ownerResourceStage='compute', ownerResourceVersion=2,
+            fullResourceQualification=False, words=deepcopy(COMPUTE_WORDS))
+        wire = profile_bytes(value)
+        self.assertEqual(wire[:12], b'OGCP0002' + struct.pack('<I', len(COMPUTE_WORDS)))
+        self.assertEqual([w for w in COMPUTE_WORDS if w['address'] != 0x368],
+                         [w for w in EXPECTED_WORDS if w['address'] != 0x368])
+        for key, bad in [('schema', SCHEMA), ('ownerProfile', 'two-cu-vga60-owner-v2'),
+                         ('ownerResourceStage', 'final'), ('ownerResourceVersion', True),
+                         ('fullResourceQualification', True), ('words', EXPECTED_WORDS)]:
+            wrong = deepcopy(value); wrong[key] = bad
+            with self.assertRaises(ValueError): profile_bytes(wrong)
+        for index in range(len(COMPUTE_WORDS)):
+            wrong = deepcopy(value); wrong['words'][index]['value'] ^= 1
+            with self.assertRaises(ValueError): profile_bytes(wrong)
+
     def test_actual_profile_shape_and_each_raw_auxiliary(self):
         value = profile()
         data = profile_bytes(value)
