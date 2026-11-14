@@ -25,7 +25,7 @@ def build_bridge(out: Path, sanitize: bool = False, live: bool = False) -> Path:
         write_bodies(out)
     # One source-fixed registry supplies every table word. This compilation
     # input is private qualification scaffolding, never observed DUT discovery.
-    auxiliary = [(0, 0x47550002), (0x60, 'GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE|GPU_CAP_COMPUTE_SCALAR_FPU|GPU_CAP_SHADER_CONFIG_INFO|GPU_CAP_NATIVE_PIXEL_FORMATS'),
+    auxiliary = [(0, 0x47550002), (0x60, 'GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE|GPU_CAP_COMPUTE_SCALAR_FPU|GPU_CAP_SHADER_CONFIG_INFO|GPU_CAP_NATIVE_PIXEL_FORMATS|(128u<<GPU_CAP_FRAGMENT_BATCH_SHIFT)'),
                  (0x68, 0x160), (0x320, 1048576), (0x158, 0x02020810)]
     tables = []
     for name, source in (('sample', SAMPLE_WORDS), ('layered', FULL_WORDS), ('legacy', V1_WORDS)):
@@ -112,16 +112,34 @@ class SampleLiveProducerTests(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory(prefix='sample-live-', dir=ROOT/'.artifacts')
         cls.out = Path(cls.tmp.name)
         cls.binary = build_bridge(cls.out, os.environ.get('OPENGPU_TEST_SANITIZERS') == '1', live=True)
+        source = cls.out/'actual-reader.cpp'
+        source.write_text(r'''#include "native_sample_owner_capture.hpp"
+#include <iostream>
+int main(int argc,char **argv) {
+  try {native_owner::require(argc==2,"missing live capture");
+    auto capture=native_owner::SampleCapture::read(std::string(argv[1]),true);
+    native_owner::require(capture.discovery.size()==117 && capture.checks.size()==13,"incomplete live capture");
+    std::cout<<"actual Linux OGCAP002 -> fixed SampleCapture reader PASS (CPU only)\n";return 0;
+  } catch(const std::exception &e){std::cerr<<e.what()<<"\n";return 2;}
+}
+''')
+        cls.reader = cls.out/'actual-reader'
+        flags = ['-std=c++17','-O1','-Wall','-Wextra','-Werror','-pedantic']
+        if os.environ.get('OPENGPU_TEST_SANITIZERS') == '1':
+            flags += ['-fsanitize=address,undefined','-fno-omit-frame-pointer']
+        subprocess.run([*shlex.split(os.environ.get('CXX','c++')),*flags,
+                        '-I'+str(ROOT/'scripts'),'-I'+str(ROOT/'scripts/test_stubs/native_host'),
+                        str(source),'-o',str(cls.reader)],check=True)
         cls.program = cls.out/'unit.ognsf'
         # CPU capture/IPC unit only. Never represents an actual ESSL compile.
-        cls.program.write_bytes(b'OGNSF001'+struct.pack('<16I', 1,6,75,512,93*512,0,15,0,0,1,0,128,16,4,1,0x30500073))
+        cls.program.write_bytes(b'OGNSF001'+struct.pack('<16I', 1,6,75,512,93*512,7,1,0,0,1,0,128,16,4,1,0x30500073))
 
     @classmethod
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def profile(self, name, words=SAMPLE_WORDS, magic=b'OGNP0002'):
-        auxiliary = [(0,0x47550002),(0x60,(1<<6)|(1<<22)|(1<<23)|(1<<25)|(1<<29)),
+    def profile(self, name, words=SAMPLE_WORDS, magic=b'OGNP0002', batch=128):
+        auxiliary = [(0,0x47550002),(0x60,(1<<6)|(1<<22)|(1<<23)|(1<<25)|(1<<29)|(batch<<8)),
                      (0x68,0x160),(0x320,1048576),(0x158,0x02020810)]
         data = magic+struct.pack('<I',len(words))
         data += b''.join(struct.pack('<II', w['address'],w['value']) for w in words)
@@ -129,9 +147,14 @@ class SampleLiveProducerTests(unittest.TestCase):
         path = self.out/name;path.write_bytes(data);return path
 
     def test_capture_preserves_live_owner_and_rejects_compute_receipt(self):
+        for samples in (1,2,4):
+            with self.subTest(samples=samples):
+                self.capture_preserves_live_owner(samples)
+
+    def capture_preserves_live_owner(self,samples):
         profile = self.profile('sample.ognp')
-        session = self.out/'capture';session.mkdir()
-        process = subprocess.Popen([str(self.binary),str(self.program),str(profile),str(session),'4','sample'],
+        session = self.out/('capture-'+str(samples));session.mkdir()
+        process = subprocess.Popen([str(self.binary),str(self.program),str(profile),str(session),str(samples),'sample'],
                                    stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,
                                    env=dict(os.environ,OPENGPU_NATIVE_HOST_TIMEOUT='15'))
         try:
@@ -151,6 +174,21 @@ class SampleLiveProducerTests(unittest.TestCase):
             self.assertEqual(capture[:8],b'OGCAP002')
             self.assertEqual(struct.unpack_from('<I',capture,24)[0],117)
             self.assertEqual((session/'union.memory').read_bytes()[:8],b'OGMEM001')
+            subprocess.run([str(self.reader),str(session/'record-0.capture')],check=True)
+            from compute_owner_oracle import SparseMemory
+            from native_sample_owner_oracle import verify
+            from test_native_sample_owner import profile as observed
+            actual_profile = observed();actual_profile['registers'][-1]['value']=0x02020810
+            with SparseMemory(session/'union.memory') as memory:
+                self.assertTrue(verify(memory,None,inputs,self.program.read_bytes(),capture,actual_profile))
+            for name, offset, value in [('old-magic',0,None),('missing-batch',28+113*8+4,0)]:
+                invalid = bytearray(capture)
+                if value is None:
+                    invalid[:8]=b'OGCAP001'
+                else:
+                    flags,=struct.unpack_from('<I',invalid,offset);struct.pack_into('<I',invalid,offset,flags&~(255<<8))
+                path = session/(name+'.capture');path.write_bytes(invalid)
+                self.assertNotEqual(subprocess.run([str(self.reader),str(path)],capture_output=True).returncode,0)
             self.assertFalse((session/'record-0.retire').exists())
             self.assertFalse((session/'cleanup.begin').exists())
             # Wrong private receipt fails closed; no synthesized completion,
@@ -162,6 +200,56 @@ class SampleLiveProducerTests(unittest.TestCase):
             self.assertFalse((session/'record-0.retire').exists())
             self.assertFalse((session/'cleanup.done').exists())
             self.assertNotIn('completed',stdout)
+        finally:
+            if process.poll() is None:
+                process.kill();process.communicate()
+
+    def test_missing_batch_rejected_before_ready(self):
+        session = self.out/'missing-batch';session.mkdir()
+        result = subprocess.run([str(self.binary),str(self.program),str(self.profile('missing-batch.ognp',batch=0)),
+                                 str(session),'1','sample'],text=True,capture_output=True)
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('actual profile cache validation',result.stderr)
+        self.assertFalse((session/'READY').exists())
+        self.assertFalse((session/'union.memory').exists())
+
+    def test_rewritten_depth_policy_preflight(self):
+        # Synthetic CEASE instruction tests transport/layout only; it is not
+        # an ESSL compile or a claim that a depth shader ran on the DUT.
+        program = self.out/'depth-unit.ognsf'
+        program.write_bytes(b'OGNSF001'+struct.pack('<16I',1,6,75,512,93*512,7,1,1,1,1,0,128,16,4,1,0x30500073))
+        session = self.out/'depth-capture';session.mkdir()
+        process = subprocess.Popen([str(self.binary),str(program),str(self.profile('depth.ognp')),str(session),'4','mask-depth-keep'],
+                                   stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,
+                                   env=dict(os.environ,OPENGPU_NATIVE_HOST_TIMEOUT='15'))
+        try:
+            deadline=time.monotonic()+15
+            while not (session/'READY').exists() and process.poll() is None and time.monotonic()<deadline:
+                time.sleep(.01)
+            self.assertIsNone(process.poll(),process.communicate() if process.poll() is not None else '')
+            self.assertTrue((session/'READY').exists())
+            subprocess.run([str(self.reader),str(session/'record-0.capture')],check=True)
+            inputs=json.loads((session/'sample-inputs.json').read_text())
+            capture=(session/'record-0.capture').read_bytes()
+            from compute_owner_oracle import SparseMemory
+            from native_sample_owner_oracle import AddressSpace, capture as read_capture, verify
+            from test_native_sample_owner import profile as observed
+            actual_profile=observed();actual_profile['registers'][-1]['value']=0x02020810
+            with SparseMemory(session/'union.memory') as memory:
+                self.assertTrue(verify(memory,None,inputs,program.read_bytes(),capture,actual_profile))
+                _,registers,_=read_capture(capture,actual_profile)
+                address=AddressSpace(memory,inputs,registers[0x14c]).physical(inputs['stateVA'],512)
+                self.assertEqual(struct.unpack('<I',memory.read(address+29*4,4))[0],1)
+                offset=memory.pages[(address+29*4)&~4095]+((address+29*4)&4095)
+            broken=session/'depth-override-disabled.memory'
+            data=bytearray((session/'union.memory').read_bytes());struct.pack_into('<I',data,offset,0);broken.write_bytes(data)
+            with SparseMemory(broken) as memory:
+                with self.assertRaisesRegex(ValueError,'rewritten GFS'):
+                    verify(memory,None,inputs,program.read_bytes(),capture,actual_profile)
+            (session/'record-0.held.response').write_bytes(b'OGCMH001')
+            process.communicate(timeout=5)
+            self.assertNotEqual(process.returncode,0)
+            self.assertFalse((session/'record-0.retire').exists())
         finally:
             if process.poll() is None:
                 process.kill();process.communicate()
@@ -188,7 +276,7 @@ def compiled_directory(directory: Path):
     with tempfile.TemporaryDirectory(prefix='sample-submit-compiled-', dir=ROOT/'.artifacts') as temp:
         binary = build_bridge(Path(temp), os.environ.get('OPENGPU_TEST_SANITIZERS') == '1')
         live_binary = build_bridge(Path(temp), os.environ.get('OPENGPU_TEST_SANITIZERS') == '1', live=True)
-        auxiliary = [(0,0x47550002),(0x60,(1<<6)|(1<<22)|(1<<23)|(1<<25)|(1<<29)),
+        auxiliary = [(0,0x47550002),(0x60,(1<<6)|(1<<22)|(1<<23)|(1<<25)|(1<<29)|(128<<8)),
                      (0x68,0x160),(0x320,1048576),(0x158,0x02020810)]
         profile = Path(temp)/'sample.ognp'
         profile.write_bytes(b'OGNP0002'+struct.pack('<I',112)+b''.join(
