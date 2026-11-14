@@ -66,7 +66,9 @@ def guarded(request_path, builder_argv):
             require(unit in units and unit not in seen and '-fsanitize=address,undefined' in command,
                     'unexpected/repeated/unsanitized producer translation unit')
             seen.add(unit)
-            fresh=generated_inputs(out);unchanged(generated);generated.update(fresh)
+            fresh=generated_inputs(out)
+            if generated:unchanged(generated)
+            generated.update(fresh)
             result=actual_run(command,*args,**kwargs)
             dependency_inputs(Path(command[command.index('-MF')+1]),cpu=out,source=ROOT,
                 bound=dependencies,qualified=qualified,generated=generated)
