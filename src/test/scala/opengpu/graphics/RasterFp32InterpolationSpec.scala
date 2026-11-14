@@ -28,6 +28,7 @@ private class RasterFp32InterpolationHarness(p: VertexShaderStageConfig,g: Graph
   interpolation.io.in.bits:=0.U.asTypeOf(interpolation.io.in.bits)
   interpolation.io.in.valid:=raster.io.quad.valid;interpolation.io.in.bits.primitive:=primitive
   interpolation.io.in.bits.quad:=raster.io.quad.bits;interpolation.io.in.bits.pointSize:=0.U
+  interpolation.io.in.bits.sampleLocation:=0.U.asTypeOf(interpolation.io.in.bits.sampleLocation)
   interpolation.io.in.bits.sampleDepthEnable:=true.B;interpolation.io.in.bits.sampleMode:=io.sampleMode;raster.io.quad.ready:=interpolation.io.in.ready
   interpolation.io.cancel:=false.B;io.out<>interpolation.io.out;io.completion<>interpolation.io.completion
   io.admitted:=interpolation.io.in.fire;io.sample:=interpolation.io.in.bits.quad

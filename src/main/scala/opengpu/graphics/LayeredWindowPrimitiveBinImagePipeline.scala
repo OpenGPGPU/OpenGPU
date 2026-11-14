@@ -39,7 +39,7 @@ class LayeredWindowPrimitiveBinImagePipeline(config:GpuConfig,p:VertexShaderStag
     engines:Int=4,pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=65536,
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
     payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,groupedTexture:Boolean=false,
-    fragmentImageAvailable:Boolean=false) extends Module {
+    fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false) extends Module {
   require(engines>=1 && engines<=4 && p.varyings==f.varyings && f.colors==4)
   private val sharedConfig=shared;private val payloadConfig=payload
   private val metadataId=writeCredits;private val producerId=writeCredits+(if(pagedCapacity>0)1 else 0)
@@ -70,7 +70,7 @@ class LayeredWindowPrimitiveBinImagePipeline(config:GpuConfig,p:VertexShaderStag
   private val scheduler=Module(new LayeredTileChainScheduler(engines))
   private val admission=Module(new TypedLayeredImageAdmission(storage))
   private val images=Seq.tabulate(engines)(e=>Module(new LayeredTypedReplayTileImagePipeline(config,p,f,shared,g,storage,
-    e,pageBytes,useSramBlackBoxes,payload,payloadOwner+e,groupedTexture,fragmentImageAvailable)))
+    e,pageBytes,useSramBlackBoxes,payload,payloadOwner+e,groupedTexture,fragmentImageAvailable,sampleShading=sampleShading)))
   private val router=Module(new SharedShaderTaskRouter(config,shared.numComputeUnits,engines,shared.taskIdWidth,
     shaderPayload=payload,imageAvailable=fragmentImageAvailable))
   private object State extends ChiselEnum {val idle,validate,admit,start,run,closing,finish,complete=Value}

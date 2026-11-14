@@ -24,10 +24,10 @@ class MemoryNativeLayeredGraphicsPipeline(config:GpuConfig,native:NativeBinnedGr
   private val reader=Module(new NativeBinnedGraphicsJobReader(config,commandIdWidth,p,engines,
     virtualImageViews=true,allowWideTileCount=true,preflightDescriptors=true,f=f,g=renderGraphics,
     nativeAdvanced=native.storage.nativeAdvancedDraws,imageAvailable=fragmentImageAvailable,nativeGeometry=true,nativeLayered=true,
-    preserveChildFaultAfterCancel=native.transformFeedback))
+    preserveChildFaultAfterCancel=native.transformFeedback || native.sampleShading,sampleShading=native.sampleShading))
   private val renderer=Module(new NativeLayeredVertexBinImagePipeline(config,p,f,shared,renderGraphics,viewport,
     engines,native.pageBytes,native.writeCredits,native.tileSlots,native.pagedCapacity,native.storage,useSramBlackBoxes,
-    native.payload,native.groupedTexture,fragmentImageAvailable,transformFeedback=native.transformFeedback))
+    native.payload,native.groupedTexture,fragmentImageAvailable,transformFeedback=native.transformFeedback,sampleShading=native.sampleShading))
   if(native.transformFeedback){
     val scope=RegInit(0.U.asTypeOf(new TransformFeedbackScope))
     when(io.submit.fire){scope:=io.feedback.get.scope}
