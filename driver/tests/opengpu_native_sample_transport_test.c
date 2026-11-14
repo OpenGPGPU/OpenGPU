@@ -31,7 +31,8 @@ static bool probe(u32 id,u32 flags,u32 caps,unsigned long long bytes,
 int main(void)
 {
     const u32 caps=GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE|
-        GPU_CAP_COMPUTE_SCALAR_FPU|GPU_CAP_SHADER_CONFIG_INFO|GPU_CAP_NATIVE_PIXEL_FORMATS;
+        GPU_CAP_COMPUTE_SCALAR_FPU|GPU_CAP_SHADER_CONFIG_INFO|GPU_CAP_NATIVE_PIXEL_FORMATS|
+        (128u<<GPU_CAP_FRAGMENT_BATCH_SHIFT);
     struct opengpu_native_source_limits out,before;bool layered=false,sample=false;
     valid();assert(probe(2,0x1fffff,caps,0x540,&out,&layered,&sample));
     assert(layered && sample && out.available && out.capacity==128 && out.engines==4 && sample_reads==8);
@@ -56,6 +57,12 @@ int main(void)
     }
     for(unsigned bit=0;bit<32;++bit)if(caps&(1u<<bit)){
         valid();assert(!probe(2,0x1fffff,caps^(1u<<bit),0x540,&out,&layered,&sample) && !reads);
+    }
+    for(u32 batch=0;batch<256;++batch)if(batch!=128){
+        valid();memset(&out,0x5a,sizeof(out));before=out;layered=false;sample=true;
+        const u32 incoherent=(caps&~GPU_CAP_FRAGMENT_BATCH_MASK)|(batch<<GPU_CAP_FRAGMENT_BATCH_SHIFT);
+        assert(!probe(2,0x1fffff,incoherent,0x540,&out,&layered,&sample) && !reads);
+        assert(!memcmp(&before,&out,sizeof(out)) && !layered && sample);
     }
     for(u32 address=0x500;address<0x520;address+=4){
         valid();registers[address/4]^=1;assert(!probe(2,0x1fffff,caps,0x540,&out,&layered,&sample));
