@@ -3,7 +3,7 @@ package opengpu.system
 import chisel3._
 import chisel3.reflect.DataMirror
 import opengpu.config.{ComputeResourceProfile,GpuConfig}
-import opengpu.graphics.{GraphicsConfig,NativeGeometryTransportCapabilities}
+import opengpu.graphics.{GraphicsConfig,NativeGeometryTransportCapabilities,NativeSampleTransportCapabilities}
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
@@ -11,7 +11,8 @@ class NativeGeometryTransportCapabilitiesAxiSpec extends AnyFlatSpec {
   it should "require explicit protected prerequisites while preserving the default GCR words" in {
     val profile=ComputeResourceProfile(GpuConfig(lanes=4,warps=2),2,8)
     val legacy=ComputeResourceCapabilities.words(profile)
-    assert(!legacy(2).testBit(19))
+    assert(!legacy(2).testBit(19) && !legacy(2).testBit(20))
+    intercept[IllegalArgumentException]{ComputeResourceCapabilities.words(profile,nativeSampleTransportAvailable=true)}
     intercept[IllegalArgumentException]{ComputeResourceCapabilities.words(profile,nativeGeometryTransportAvailable=true)}
     val enabled=ComputeResourceCapabilities.words(profile,nativeDescriptorPreflightAvailable=true,
       nativeProtectedSourcesAvailable=true,nativeGeometryTransportAvailable=true)
@@ -28,14 +29,15 @@ class NativeGeometryTransportCapabilitiesAxiSpec extends AnyFlatSpec {
     case u: UInt if DataMirror.directionOf(u)==ActualDirection.Input=>u.poke(0.U)
     case _=>()
   }
-  for((enabled,version,native,sources)<-Seq((true,2,true,true),(false,2,true,true),(false,1,true,false),(false,1,false,false)))
-  it should s"discover independent geometry/layered transport without aliases enabled=$enabled abi=$version native=$native sources=$sources" in {
+  for((enabled,sample,version,native,sources)<-Seq((true,true,2,true,true),(true,false,2,true,true),
+    (false,false,2,true,true),(false,false,1,true,false),(false,false,1,false,false)))
+  it should s"discover independent geometry/layered transport without aliases enabled=$enabled abi=$version native=$native sources=$sources sample=$sample" in {
     val cfg=GpuConfig(lanes=4,warps=2);val modern=version>=2
     simulate(new GpuHostAxi(config=GraphicsConfig(screenWidth=8,screenHeight=8),gpuConfig=cfg,
       unifiedCommandMmio=true,protectVmState=true,externalBinnedRender=true,nativeVertexInput=native,
       version=version,computeResources=if(modern)Some(ComputeResourceProfile(cfg,2,8))else None,
       imageAvailable=modern,storageAvailable=modern,computeUniformAvailable=modern,
-      computeTextureAvailable=modern,atomicCounterAvailable=modern,nativeDescriptorPreflight=sources,nativeGeometryTransport=enabled,
+      computeTextureAvailable=modern,atomicCounterAvailable=modern,nativeDescriptorPreflight=sources,nativeGeometryTransport=enabled,nativeSampleTransport=sample,
       nativeCompletionInfo=sources,nativeUniformResources=sources,shaderExecutionLimits=sources,
       nativeProtectedSources=sources)){d=>
       zero(d.io);d.io.s_axi_aresetn.poke(false.B);d.clock.step(3);d.io.s_axi_aresetn.poke(true.B)
@@ -67,22 +69,26 @@ class NativeGeometryTransportCapabilitiesAxiSpec extends AnyFlatSpec {
       val frozen=Vector[BigInt](BigInt("47444201",16),8,6,4,0x7fff,0x1f,0x7f,0)
       assert(read(0x400,8)==(if(native)frozen.map(_->BigInt(0))else Vector.fill(8)(invalid)))
       val gcr=read(0x368).head
-      if(modern){assert(gcr._2==0 && gcr._1.testBit(16)==sources && gcr._1.testBit(17)==sources && gcr._1.testBit(19)==enabled)}else assert(gcr==invalid)
+      if(modern){assert(gcr._2==0 && gcr._1.testBit(16)==sources && gcr._1.testBit(17)==sources && gcr._1.testBit(19)==enabled && gcr._1.testBit(20)==sample)}else assert(gcr==invalid)
       if(sources){
         val gsl=Vector[BigInt](BigInt("47534c01",16),8,31,32,1<<20,BigInt("04051918",16),0x320,0x138)
         assert(read(0x300,8)==gsl.map(_->BigInt(0)))
         assert(read(0x3a0,16)==opengpu.graphics.NativeUniformCapabilities.words.map(_->BigInt(0)).toVector)
       }else assert(read(0x3a0)==Vector(invalid))
       assert(read(0x500,8)==expected);assert(read(0x500,8,burst=0)==Vector.fill(8)(expected.head))
-      assert(read(0x4fc,2)==before++Vector(expected.head));assert(read(0x500,9)==expected:+invalid)
+      val sampleWords=Vector[BigInt](BigInt("47535301",16),8,1,31,192,BigInt("4d041004",16),0x7ff,7)
+      val sampleExpected=if(sample)sampleWords.map(_->BigInt(0))else Vector.fill(8)(invalid)
+      assert(read(0x4fc,2)==before++Vector(expected.head));assert(read(0x500,9)==expected:+sampleExpected.head)
+      assert(read(0x520,8)==sampleExpected && read(0x520,9)==sampleExpected:+invalid)
+      for(i<-0 until 8;s<-Seq(0,1,15)){write(0x520+4*i,s);assert(read(0x520+4*i)==Vector(sampleExpected(i)))}
       for(i<-0 until 8;s<-Seq(0,1,15)){write(0x500+4*i,s);assert(read(0x500+4*i)==Vector(expected(i)))}
-      for(a<-Seq(0x501L,0x520L,0x800L,0x1500L)){assert(read(a)==Vector(invalid));write(a,15)}
+      for(a<-Seq(0x501L,0x521L,0x540L,0x800L,0x1500L)){assert(read(a)==Vector(invalid));write(a,15)}
       for(b<-Seq(2,3))assert(read(0x500,4,burst=b)==Vector.fill(4)(invalid))
       for(s<-Seq(0,1,3))assert(read(0x500,size=s)==Vector(invalid))
       assert(read(0xfffffffcL,2)==Vector.fill(2)(invalid));assert(read(0x420,8)==storage);assert(read(0)==device)
       d.io.vmContextIdle.get.poke(true.B);assert(read(0x500,8)==expected)
       d.io.s_axi_aresetn.poke(false.B);d.clock.step(3);d.io.s_axi_aresetn.poke(true.B)
-      assert(read(0x500,8)==expected)
+      assert(read(0x500,8)==expected && read(0x520,8)==sampleExpected)
     }
   }
 }

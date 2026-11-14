@@ -80,8 +80,11 @@ class GpuHostAxi(
   imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false,
   tessellationDiscovery: Boolean = false,
   nativeAdvancedDraws: Boolean = false, nativeDescriptorPreflight: Boolean = false,
-  nativeProtectedSources: Boolean = false, nativeGeometryTransport: Boolean = false
+  nativeProtectedSources: Boolean = false, nativeGeometryTransport: Boolean = false,
+  nativeSampleTransport: Boolean = false
 ) extends Module {
+  require(!nativeSampleTransport || nativeGeometryTransport,
+    "GSS1 discovery requires the protected layered geometry transport")
   require(!nativeGeometryTransport || nativeProtectedSources,
     "GGS1 transport discovery requires protected source routing")
   require(!nativeProtectedSources || (nativeDescriptorPreflight && nativeUniformResources &&
@@ -512,6 +515,9 @@ class GpuHostAxi(
     val targetNativeGeometry = if(nativeGeometryTransport)
       beatAddr >= opengpu.graphics.NativeGeometryTransportCapabilities.base.U &&
         beatAddr < opengpu.graphics.NativeGeometryTransportCapabilities.end.U else false.B
+    val targetNativeSample = if(nativeSampleTransport)
+      beatAddr >= opengpu.graphics.NativeSampleTransportCapabilities.base.U &&
+        beatAddr < opengpu.graphics.NativeSampleTransportCapabilities.end.U else false.B
     val targetImages = if(imageAvailable)
       beatAddr >= opengpu.graphics.ShaderImageCommandMmioRegs.base.U &&
         beatAddr < opengpu.graphics.ShaderImageCommandMmioRegs.end.U else false.B
@@ -626,7 +632,7 @@ class GpuHostAxi(
           ((beatAddr-opengpu.command.ComputeIndirectCapabilities.base.U)>>2)(2,0))
       }
       if(computeResources.nonEmpty)when(targetComputeResources) {
-        rdata := VecInit(ComputeResourceCapabilities.words(computeResources.get,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable,atomicCounterAvailable,imageAtomicAvailable,storageAtomicAvailable,tessellationDiscovery,tessellationDiscovery && transformFeedback,nativeAdvancedDraws,nativeDescriptorPreflight,nativeProtectedSources,nativeGeometryTransport).map(_.U(32.W)))(
+        rdata := VecInit(ComputeResourceCapabilities.words(computeResources.get,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable,atomicCounterAvailable,imageAtomicAvailable,storageAtomicAvailable,tessellationDiscovery,tessellationDiscovery && transformFeedback,nativeAdvancedDraws,nativeDescriptorPreflight,nativeProtectedSources,nativeGeometryTransport,nativeSampleTransport).map(_.U(32.W)))(
           ((beatAddr-ComputeResourceCapabilities.base.U)>>2)(3,0))
       }
       if(nativeVertexInput)when(targetBlendResources) {
@@ -644,6 +650,10 @@ class GpuHostAxi(
       if(nativeGeometryTransport)when(targetNativeGeometry) {
         rdata := VecInit(opengpu.graphics.NativeGeometryTransportCapabilities.words.map(_.U(32.W)))(
           ((beatAddr-opengpu.graphics.NativeGeometryTransportCapabilities.base.U)>>2)(2,0))
+      }
+      if(nativeSampleTransport)when(targetNativeSample) {
+        rdata := VecInit(opengpu.graphics.NativeSampleTransportCapabilities.words.map(_.U(32.W)))(
+          ((beatAddr-opengpu.graphics.NativeSampleTransportCapabilities.base.U)>>2)(2,0))
       }
       if(nativeUniformResources)when(targetUniformResources) {
         rdata := VecInit(opengpu.graphics.NativeUniformCapabilities.words.map(_.U(32.W)))(
