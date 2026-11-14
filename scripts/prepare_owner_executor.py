@@ -23,7 +23,8 @@ import qualify_native_product_flashsim as flash
 from owner_resource_contract import COMPUTE_STAGE, FULL_COMPUTE_CONTRACTS, PROFILE as FULL_PROFILE, SAMPLE_PROFILE
 
 ROOT = Path(__file__).resolve().parents[1]
-KINDS = ('native', 'compute', 'native-sample')
+KINDS = ('native', 'compute', 'native-sample', 'native-sample-graphics')
+SAMPLE_KINDS = ('native-sample', 'native-sample-graphics')
 SHARED = ('scripts/native_owner_runtime.hpp', 'scripts/native_owner_capture.hpp',
           'scripts/owner_factory.hpp',
           'driver/gpu_abi.h', 'driver/opengpu_formats.h', 'driver/opengpu_shader_resources.h')
@@ -73,6 +74,40 @@ SAMPLE_PRODUCER_ROOTS = (
     'userspace/opengpu_native_sample_graphics.c', 'userspace/opengpu_native_sample_graphics.h',
     'driver/opengpu_hw.c', 'driver/opengpu_device.h',
     'driver/opengpu_scheduler.c', 'driver/opengpu_admission.c', 'driver/opengpu_native_submit.c')
+GRAPHICS_CHECKERS = (
+    'scripts/native_sample_graphics_controller.py', 'scripts/native_sample_graphics_protocol.py',
+    'scripts/native_sample_graphics_owner_oracle.py', 'scripts/native_sample_graphics_recipe.py',
+    'scripts/native_sample_graphics_source_oracle.py', 'scripts/native_sample_graphics_gny2_oracle.py',
+    'scripts/test_gallium_compute_uniforms.py', 'scripts/test_gallium_sample_graphics_uniforms.py',
+    'scripts/test_gallium_graphics_uniforms.py', 'scripts/apply_mesa_uniform_index_patch.py',
+    'scripts/patches/mesa-22.3.6-checked-uniform-index.patch',
+    'docs/abi/native-layered-graphics-v2.json', 'docs/abi/native-binned-graphics-v1.json',
+    'docs/abi/typed-fragment-state-v1.json')
+# These are the actual GPU translation units compiled by the Mesa graphics
+# builder, plus the production bodies used by its generated Linux includes.
+GRAPHICS_PRODUCER_ROOTS = (
+    'userspace/tests/graphics_sample_flow.c', 'userspace/tests/graphics_sample_kernel.c',
+    'userspace/tests/graphics_sample_owner_ipc.c', 'userspace/tests/native_graphics_uniform_source.c',
+    'userspace/tests/graphics_uniform_frontend.cpp',
+    'userspace/gallium/opengpu_context.c', 'userspace/gallium/opengpu_screen.c',
+    'userspace/gallium/opengpu_cs_emit.c', 'userspace/gallium/opengpu_fs_emit.c',
+    'userspace/gallium/opengpu_vs_emit.c', 'userspace/pipe_opengpu.c', 'userspace/opengpu.c',
+    'userspace/gallium/opengpu_native_uniform_emit.c', 'userspace/gallium/opengpu_native_graphics.c',
+    'userspace/gallium/opengpu_native_draw.c', 'userspace/opengpu_native_runtime.c',
+    'userspace/gallium/opengpu_native_sample_program.c',
+    *SAMPLE_PRODUCER_ROOTS)
+# Explicit external Mesa headers, not a wildcard exemption for missing GPU
+# quoted includes. Actual Mesa headers/objects must be bound separately by a
+# future execution qualifier; this only qualifies the GPU checkout and executor.
+GRAPHICS_MESA_INCLUDES = frozenset((
+    'compiler/glsl/gl_nir.h', 'compiler/glsl/gl_nir_linker.h',
+    'compiler/glsl/glsl_to_nir.h', 'compiler/glsl/standalone.h', 'compiler/nir/nir.h',
+    'frontend/winsys_handle.h', 'main/mtypes.h', 'nir/nir_to_tgsi.h',
+    'pipe/p_context.h', 'pipe/p_defines.h', 'pipe/p_format.h', 'pipe/p_screen.h', 'pipe/p_state.h',
+    'program/prog_parameter.h', 'state_tracker/st_atom.h', 'state_tracker/st_context.h',
+    'tgsi/tgsi_build.h', 'tgsi/tgsi_dump.h', 'tgsi/tgsi_parse.h', 'tgsi/tgsi_text.h', 'tgsi/tgsi_ureg.h',
+    'util/u_inlines.h', 'util/u_memory.h', 'util/u_pack_color.h', 'util/u_surface.h',
+    'util/u_transfer.h', 'util/u_upload_mgr.h'))
 
 
 def require(condition, message):
@@ -82,7 +117,7 @@ def require(condition, message):
 
 def profile_contract(profile, kind):
     require(kind in KINDS, 'unknown owner executor kind')
-    require((profile == SAMPLE_PROFILE if kind == 'native-sample' else
+    require((profile == SAMPLE_PROFILE if kind in SAMPLE_KINDS else
              profile == owner.PROFILE or ((profile == COMPUTE_STAGE or profile in FULL_COMPUTE_CONTRACTS) and kind == 'compute')),
             'unsupported factory for the selected owner executor kind')
     fields = dict(profile=profile)
@@ -96,6 +131,9 @@ def profile_contract(profile, kind):
 def driver_files(kind, profile=owner.PROFILE):
     require(kind in KINDS, 'unknown owner executor kind')
     profile_contract(profile, kind)
+    if kind == 'native-sample-graphics':
+        return ['scripts/native_sample_graphics_driver.cpp', 'scripts/native_sample_graphics_runtime.hpp',
+                'scripts/native_sample_owner_runtime.hpp', 'scripts/native_sample_owner_capture.hpp', *SHARED]
     if kind == 'native-sample':
         return ['scripts/native_sample_owner_driver.cpp', 'scripts/native_sample_owner_runtime.hpp',
                 'scripts/native_sample_owner_capture.hpp', *SHARED]
@@ -137,23 +175,67 @@ def sample_producer_files():
     return tuple(sorted(str(path.relative_to(ROOT)) for path in observed))
 
 
+def graphics_producer_files():
+    """Conservatively bind all GPU include candidates in actual build paths.
+
+    The flow and kernel units use different include-path orders. Recording
+    their union also binds conditional includes and every possible local
+    shadow; only explicitly named generated bodies and Mesa headers may be
+    absent. Generated bodies are bound through their original production
+    files and the mandatory extraction scripts in SAMPLE_CHECKERS.
+    """
+    search = [ROOT / name for name in ('userspace/tests', 'userspace/gallium', 'userspace',
+        'driver', 'driver/tests', 'driver/tests/private_snapshot_stubs',
+        'driver/tests/mmu_stubs', 'driver/tests/compute_submit_stubs')]
+    pending, observed = [ROOT / name for name in GRAPHICS_PRODUCER_ROOTS], set()
+    while pending:
+        path = pending.pop()
+        require(path.is_file(), 'missing native sample graphics producer: ' + str(path))
+        require(path.resolve(strict=True) == path and path.is_relative_to(ROOT),
+                'aliased native sample graphics producer: ' + str(path))
+        if path in observed:
+            continue
+        observed.add(path)
+        for match in builder.INCLUDE.finditer(path.read_bytes()):
+            directive = re.sub(rb'^[ \t]*#[ \t]*include[ \t]*', b'', match[0]).strip()
+            directive = directive.split(b'//', 1)[0].strip()
+            directive = re.sub(rb'/\*.*?\*/', b'', directive).strip()
+            parsed = re.fullmatch(rb'([<"])([^>"]+)[>"]', directive)
+            require(parsed is not None,
+                    'unsupported native sample graphics producer include in ' + str(path) + ': ' + repr(directive))
+            name = os.fsdecode(parsed[2])
+            require(not Path(name).is_absolute(),
+                    'escaping native sample graphics include: ' + name)
+            candidates = ([path.parent] if parsed[1] == b'"' else []) + search
+            actual = {Path(os.path.abspath(directory / name)) for directory in candidates
+                      if (directory / name).exists() or (directory / name).is_symlink()}
+            if actual:
+                pending.extend(actual)
+            elif parsed[1] == b'"':
+                require(name in SAMPLE_GENERATED_INCLUDES or name in GRAPHICS_MESA_INCLUDES,
+                        'missing native sample graphics producer dependency: ' + name)
+    return tuple(sorted(str(path.relative_to(ROOT)) for path in observed))
+
+
 def checker_files(kind):
     require(kind in KINDS, 'unknown owner executor kind')
-    if kind != 'native-sample':
+    if kind not in SAMPLE_KINDS:
         return CHECKERS
     # Every fixed consumer is mandatory even before it has a valid build. A
     # partially integrated checkout cannot qualify by omitting absent files.
-    for name in SAMPLE_CHECKERS:
+    mandatory = (*SAMPLE_CHECKERS, *(GRAPHICS_CHECKERS if kind == 'native-sample-graphics' else ()))
+    for name in mandatory:
         path = ROOT / name
         require(path.is_file(), 'missing required native sample checker: ' + name)
         require(path.resolve() == path, 'aliased native sample checker source: ' + name)
-    return tuple(dict.fromkeys((*CHECKERS, *SAMPLE_CHECKERS, *sample_producer_files())))
+    producer = graphics_producer_files if kind == 'native-sample-graphics' else sample_producer_files
+    return tuple(dict.fromkeys((*CHECKERS, *mandatory, *producer())))
 
 
 def build_lock_paths(directory, kind):
     require(kind in KINDS, 'unknown owner executor kind')
     paths = [directory / '.lock']  # Existing common shard cache stays serialized.
-    if kind == 'native-sample':
+    if kind in SAMPLE_KINDS:
         target = directory / 'executors' / kind
         require(target.resolve() == target, 'native sample executor lock must not be aliased')
         target.mkdir(parents=True, exist_ok=True)
@@ -203,7 +285,7 @@ def model_identity(directory, flashsim, shards):
 
 def checked_builder(record, model, kind, options, compiler):
     files = driver_files(kind, model['profile'])
-    if kind == 'native-sample':
+    if kind in SAMPLE_KINDS:
         builder.validate_driver_includes([ROOT / name for name in
             [files[0], *DEFAULT_DEPENDENCIES, *files[1:]]],
             Path(model['dut_directory']) / 'dut.h', Path(model['dut_directory']))

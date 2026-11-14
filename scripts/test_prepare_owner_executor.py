@@ -231,11 +231,11 @@ class ExecutorTests(unittest.TestCase):
             record['builder_sha256']=q.common.sha(path.parent/'builder.json');q.common.write_json(path,record)
             with self.subTest(key=key),self.assertRaises(RuntimeError):q.verify_qualification(path)
 
-    def sample_fixture(self):
+    def sample_fixture(self, kind='native-sample'):
         """Private copied source tree: mutate real dependencies without editing
         *any* active original ESSL, producer, driver or shared header."""
-        names = set((*q.driver_files('native-sample', q.SAMPLE_PROFILE),
-                     *q.DEFAULT_DEPENDENCIES, *q.checker_files('native-sample')))
+        names = set((*q.driver_files(kind, q.SAMPLE_PROFILE),
+                     *q.DEFAULT_DEPENDENCIES, *q.checker_files(kind)))
         original = self.out
         source = original / 'private-source'
         for name in names:
@@ -253,7 +253,113 @@ class ExecutorTests(unittest.TestCase):
         patch.object(q, 'ROOT', source).start()
         patch.object(q.builder, 'ROOT', source).start()
         patch.object(q.builder, 'ADAPTER', source / 'scripts/flashsim_native').start()
-        return self.fixture('native-sample', q.SAMPLE_PROFILE)
+        return self.fixture(kind, q.SAMPLE_PROFILE)
+
+    def test_graphics_sample_exact_factory_driver_and_mandatory_producer_closure(self):
+        kind='native-sample-graphics';path,record=self.sample_fixture(kind)
+        self.assertEqual(path,self.out/'executors'/kind/'qualification.json')
+        self.assertEqual(record['ownerResourceStage'],'geometry-compute-sample')
+        files=q.driver_files(kind,q.SAMPLE_PROFILE)
+        self.assertEqual(files[:4],['scripts/native_sample_graphics_driver.cpp',
+            'scripts/native_sample_graphics_runtime.hpp','scripts/native_sample_owner_runtime.hpp',
+            'scripts/native_sample_owner_capture.hpp'])
+        self.assertEqual(q.build_lock_paths(self.out,kind),(self.out/'.lock',path.parent/'.lock'))
+        for other in ('native','compute','native-sample'):
+            with self.assertRaises(RuntimeError):q.verify_qualification(path,kind=other)
+        for profile in (q.owner.PROFILE,q.COMPUTE_STAGE,q.FULL_PROFILE,'renamed-sample'):
+            with self.assertRaises(RuntimeError):q.driver_files(kind,profile)
+        mandatory=(*q.GRAPHICS_CHECKERS,*q.GRAPHICS_PRODUCER_ROOTS,
+            'userspace/tests/graphics_sample_live.inc','userspace/tests/graphics_sample_source_plan.inc',
+            'userspace/tests/graphics_sample_entry.h','userspace/tests/graphics_sample_owner_ipc.h',
+            'userspace/gallium/opengpu_native_graphics_internal.h',
+            'driver/opengpu_native_program_snapshot.c','driver/opengpu_shader_validator.h',
+            'driver/tests/private_snapshot_stubs/linux/slab.h')
+        for name in mandatory:
+            self.assertIn(name,record['source_sha256'])
+        for key,value in (('kind','native-sample'),('profile',q.owner.PROFILE),
+                ('ownerResourceStage','geometry-compute'),('source_sha256',{})):
+            bad=copy.deepcopy(record);bad[key]=value;q.common.write_json(path,bad)
+            with self.subTest(key=key),self.assertRaises(RuntimeError):q.verify_qualification(path,kind=kind)
+        q.common.write_json(path,record)
+        (path.parent/'.lock').symlink_to(path)
+        with self.assertRaises(RuntimeError):q.build_lock_paths(self.out,kind)
+
+    def test_graphics_sample_rejects_changed_real_flow_include_oracle_and_schema_sources(self):
+        kind='native-sample-graphics';path,record=self.sample_fixture(kind)
+        names=(*q.GRAPHICS_CHECKERS,'userspace/tests/graphics_sample_flow.c',
+            'userspace/tests/graphics_sample_kernel.c','userspace/tests/graphics_sample_live.inc',
+            'userspace/tests/graphics_sample_source_plan.inc','userspace/tests/graphics_sample_entry.h',
+            'userspace/tests/graphics_sample_owner_ipc.c','userspace/tests/graphics_sample_owner_ipc.h',
+            'userspace/tests/graphics_uniform_frontend.cpp','userspace/tests/graphics_uniform_flow.c',
+            'userspace/gallium/opengpu_native_sample_program.c','userspace/gallium/opengpu_native_uniform_emit.c',
+            'scripts/native_sample_graphics_driver.cpp','scripts/native_sample_graphics_runtime.hpp')
+        for name in names:
+            item=q.ROOT/name;original=item.read_bytes();item.write_bytes(original+b'\n/* stale CPU source */\n')
+            with self.subTest(name=name),self.assertRaises(RuntimeError):q.verify_qualification(path,kind=kind)
+            item.write_bytes(original)
+        # Missing mandatory consumers cannot yield a smaller accepted closure.
+        for name in (*q.GRAPHICS_CHECKERS,'userspace/tests/graphics_sample_live.inc',
+                'userspace/tests/graphics_sample_source_plan.inc','userspace/tests/graphics_sample_entry.h'):
+            item=q.ROOT/name;original=item.read_bytes();item.unlink()
+            with self.subTest(missing=name),self.assertRaises(RuntimeError):q.verify_qualification(path,kind=kind)
+            item.write_bytes(original)
+        q.verify_qualification(path,kind=kind)
+
+    def test_graphics_sample_new_gpu_includes_cannot_escape_or_be_silently_omitted(self):
+        kind='native-sample-graphics';path,record=self.sample_fixture(kind)
+        item=q.ROOT/'userspace/tests/graphics_sample_live.inc';original=item.read_bytes()
+        for name in ('new-required-graphics.h','pipe/unregistered-mesa-header.h'):
+            item.write_bytes(original+('\n#include "'+name+'"\n').encode())
+            with self.assertRaisesRegex(RuntimeError,'missing native sample graphics producer dependency'):
+                q.verify_qualification(path,kind=kind)
+        local=item.parent/'new-required-graphics.h';local.write_text('// newly added GPU include\n')
+        item.write_bytes(original+b'\n#include "new-required-graphics.h"\n')
+        with self.assertRaises(RuntimeError):q.verify_qualification(path,kind=kind)
+        self.assertIn('userspace/tests/new-required-graphics.h',q.checker_files(kind))
+        local.unlink();local.symlink_to(self.out/'preparation.json')
+        with self.assertRaisesRegex(RuntimeError,'aliased native sample graphics producer'):
+            q.verify_qualification(path,kind=kind)
+        local.unlink();item.write_bytes(original+b'\n#include UNKNOWN_GENERATED_HEADER\n')
+        with self.assertRaisesRegex(RuntimeError,'unsupported native sample graphics producer include'):
+            q.verify_qualification(path,kind=kind)
+        item.write_bytes(original)
+        # A local shadow of an explicitly external Mesa include is still bound.
+        shadow=item.parent/'pipe/p_context.h';shadow.parent.mkdir();shadow.write_text('// local Mesa shadow\n')
+        self.assertIn('userspace/tests/pipe/p_context.h',q.checker_files(kind))
+        with self.assertRaises(RuntimeError):q.verify_qualification(path,kind=kind)
+        shadow.unlink();shadow.symlink_to('missing-external-target.h')
+        with self.assertRaisesRegex(RuntimeError,'missing native sample graphics producer'):
+            q.verify_qualification(path,kind=kind)
+
+    def test_graphics_sample_strict_driver_closure_model_and_failed_build_identity(self):
+        kind='native-sample-graphics';path,record=self.sample_fixture(kind);snapshot=path.parent/'builder.json'
+        original=json.loads(snapshot.read_text())
+        for name in ('scripts/native_sample_graphics_runtime.hpp','scripts/native_sample_owner_runtime.hpp',
+                     'scripts/native_sample_owner_capture.hpp'):
+            bad=copy.deepcopy(original);del bad['driver_inputs'][str(q.ROOT/name)]
+            q.common.write_json(snapshot,bad);record['builder_sha256']=q.common.sha(snapshot);q.common.write_json(path,record)
+            with self.assertRaises(RuntimeError):q.verify_qualification(path,kind=kind)
+        bad=copy.deepcopy(original);bad['driver_source']=str(q.ROOT/'scripts/native_sample_owner_driver.cpp')
+        q.common.write_json(snapshot,bad);record['builder_sha256']=q.common.sha(snapshot);q.common.write_json(path,record)
+        with self.assertRaises(RuntimeError):q.verify_qualification(path,kind=kind)
+        q.common.write_json(snapshot,original);record['builder_sha256']=q.common.sha(snapshot);q.common.write_json(path,record)
+        for name in ('dut.h','dut_0.cpp','hw.mlir'):
+            item=self.out/'flashsim-dut'/name;data=item.read_bytes();item.write_bytes(data+b'\nchanged')
+            with self.subTest(model=name),self.assertRaises(RuntimeError):q.verify_qualification(path,kind=kind)
+            item.write_bytes(data)
+        runtime=q.ROOT/'scripts/native_sample_graphics_runtime.hpp';data=runtime.read_bytes()
+        runtime.write_bytes(data+b'\n#include "new-graphics-runtime.hpp"\n')
+        (runtime.parent/'new-graphics-runtime.hpp').write_text('// omitted build dependency\n')
+        record['source_sha256']=q.hashes([*q.driver_files(kind,q.SAMPLE_PROFILE),
+            *q.DEFAULT_DEPENDENCIES,*q.checker_files(kind)])
+        q.common.write_json(path,record)
+        with self.assertRaisesRegex(ValueError,'unsupported or shadowed driver include'):
+            q.verify_qualification(path,kind=kind)
+        runtime.write_bytes(data)
+        with patch.object(q,'model_identity',side_effect=RuntimeError('stale full model')):
+            with self.assertRaisesRegex(RuntimeError,'stale full model'):
+                q.build_executor(self.out,self.flashsim,kind,shards=1)
+        self.assertFalse(path.exists())
 
     def test_native_sample_has_one_exact_factory_distinct_path_and_include_closure(self):
         path,record=self.sample_fixture()
