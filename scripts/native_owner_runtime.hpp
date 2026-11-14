@@ -390,4 +390,3 @@ void cleanup_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
   });
 }
 } // namespace native_owner
-
