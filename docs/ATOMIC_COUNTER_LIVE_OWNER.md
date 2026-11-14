@@ -112,6 +112,11 @@ The six dynamic recipes use the original `dynamic-increment.comp`,
 | `counter-dynamic-` |4|1×4|4..7|
 | `counter-dynamic-all-` |0|2×4|0..7|
 
+All eight dynamic initial values are distinct: indices0..6 use
+`seed+(i+1)*0x10203` modulo2³², and index7 uses `seed`. Static increment retains
+its original `seed+i*0x10203` initialization unchanged. Explicit0↔7 result/final
+mutants are rejected, including the all-counter recipe.
+
 The nonzero case distinguishes dropping the original UBO addition from using
 `gl_GlobalInvocationID.x` directly. The all-counter case separately covers all
 eight original words. Neither reduces the factory's supported resources or
@@ -127,6 +132,13 @@ both snapshot PTEs. No additional writable interval is granted. Results are
 checked per invocation against its exact selected counter; every unselected
 counter, original UBO, private snapshot and SSBO tail remains unchanged. Read
 requires no source change; decrement requires new values, not TGSI old values.
+
+READY also requires exactly one final opcode0 kernel; preceding submissions
+may only be production opcode5 publication invalidates. Hidden same-opcode or
+opcode14 submissions and actions after the kernel are rejected. Disabling only
+that check makes the hidden-kernel regression pass its malformed input, proving
+the test detects the previous last-register-snapshot gap. The canonical C++
+parser independently enforces the same command shape.
 
 Seven small counter tests and13 qualifier tests pass for static/dynamic math,
 nonzero-index loss, return/index permutations, uniform source/snapshot/padding

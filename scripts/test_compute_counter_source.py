@@ -35,7 +35,7 @@ def fixture(source_case="counter-increment"):
     def view(a, binding, offset=0, count=8192):
         return dict(globalBinding=binding, allocationPhysical=a, allocationBytes=8192, offset=offset, bytes=count)
     descriptor_root, counter_va, storage_root = 0xb1400000, 0xb1c00ff0, 0xb0c00000
-    for i in range(8): word(0x20000+4080+4*i, (seed+i*0x10203)&0xffffffff)
+    for i in range(8): word(0x20000+4080+4*i, (seed+(i+int(dynamic))*0x10203)&0xffffffff)
     word(0x20000+4108, seed)
     d = dict(schema=SCHEMA, sourceCase=source_case, groups=groups, local=4, viewBytes=8192,
         guard=0xdeadbeef, seed=seed, index=index, count=8, counterHandle=4, context=2,
@@ -77,8 +77,8 @@ def fixture(source_case="counter-increment"):
                 if first<=pa<=first+len(data)-4:
                     struct.pack_into('<I',data,pa-first,struct.unpack_from('<I',data,pa-first)[0]&~128)
         registers.update({0x440+4*i:v for i,v in enumerate((257,root,2,0,0,0x80800000,0x80800040,0))})
-    def capture(discovery=discovery, writable=writable, registers=registers):
-        actions=[(1,a,v,0) for a,v in registers.items() if a!=0x11c]+[(1,0x11c,1,0)]
+    def capture(discovery=discovery, writable=writable, registers=registers,prefix=(),suffix=()):
+        actions=list(prefix)+[(1,a,v,0) for a,v in registers.items() if a!=0x11c]+[(1,0x11c,1,0)]+list(suffix)
         return (b'OGCMP002'+struct.pack('<QIII',1000000,37,11,len(discovery))+
             b''.join(struct.pack('<II',*r) for r in discovery)+struct.pack('<I',len(writable))+
             b''.join(struct.pack('<QQ',*r) for r in writable)+struct.pack('<I',len(actions))+
@@ -163,7 +163,7 @@ class Counter(unittest.TestCase):
                     case=prefix+op;alloc,d,cap,*_=fixture(case);emit(before,alloc)
                     with SparseMemory(before) as b:ready(b,d,cap())
                     seed=0 if op=='decrement' else 0xfffffffe
-                    original=[seed if i==7 else (seed+i*0x10203)&0xffffffff for i in range(8)]
+                    original=[seed if i==7 else (seed+(i+1)*0x10203)&0xffffffff for i in range(8)]
                     values=[(original[i]-(op=='decrement'))&0xffffffff for i in range(start,start+count)]
                     good=copy.deepcopy(alloc)
                     for pa in (0x30000,0x32000,0x34000,0x36000):struct.pack_into('<%uI'%count,good[pa],0,*values)
@@ -188,6 +188,16 @@ class Counter(unittest.TestCase):
                         (0x60000,7*4),(0x60000,64+14*4),(0x60000,4096),(0x60000,8191)):
                         wrong=copy.deepcopy(good);wrong[pa][offset]^=1
                         with self.subTest(case=case,pa=pa,offset=offset),self.assertRaises(ValueError):check(wrong)
+                    if start==0:
+                        # All eight initial values differ: the previous equal
+                        # index0/index7 seed could conceal this exact swap.
+                        wrong=copy.deepcopy(good);swapped=list(values);swapped[0],swapped[7]=swapped[7],swapped[0]
+                        for pa in (0x30000,0x32000,0x34000,0x36000):struct.pack_into('<8I',wrong[pa],0,*swapped)
+                        with self.assertRaises(ValueError):check(wrong)
+                        wrong=copy.deepcopy(good)
+                        first,last=struct.unpack_from('<I',wrong[0x20000],4080)[0],struct.unpack_from('<I',wrong[0x20000],4108)[0]
+                        struct.pack_into('<I',wrong[0x20000],4080,last);struct.pack_into('<I',wrong[0x20000],4108,first)
+                        with self.assertRaises(ValueError):check(wrong)
                     # These malformed READY snapshots are rejected before a
                     # DUT can receive a command, including original UBO bytes.
                     for pa,offset in ((0x44000,0),(0x60000,7*4),(0x60000,64+14*4),(0x60000,4096),(0x60000,8191)):
@@ -225,6 +235,23 @@ class Counter(unittest.TestCase):
                     word,=struct.unpack_from('<I',wrong[tables[va>>22]],offset)
                     struct.pack_into('<I',wrong[tables[va>>22]],offset,word^(1<<bit))
                     with self.subTest(pte=va,bit=bit),self.assertRaises(ValueError):check(wrong)
+            for opcode in (0,14):
+                prefix=[(1,0xc8,opcode,0),(1,0x11c,1,0)]
+                with self.subTest(extraOpcode=opcode),self.assertRaisesRegex(ValueError,'one final kernel'):
+                    check(data=cap(prefix=prefix))
+            with self.assertRaisesRegex(ValueError,'one final kernel'):
+                check(data=cap(suffix=[(2,0x120,1,1)]))
+            with self.assertRaisesRegex(ValueError,'publish one command'):
+                check(data=cap(prefix=[(1,0xc8,5,0),(1,0x11c,2,0)]))
+            # Negative control: suppress only the new command-shape check.
+            # The prior last-register snapshot then accepts a hidden kernel.
+            from unittest.mock import patch
+            import compute_counter_source as contract
+            original_require=contract.require
+            def old_shape(ok,message):
+                if 'one final kernel' not in message:original_require(ok,message)
+            with patch.object(contract,'require',side_effect=old_shape):
+                check(data=cap(prefix=[(1,0xc8,0,0),(1,0x11c,1,0)]))
             wrong=list(discovery);wrong[0]=(wrong[0][0],wrong[0][1]^1)
             with self.assertRaises(ValueError):check(data=cap(discovery=wrong))
             with self.assertRaises(ValueError):check(data=b'OGCMP001'+cap()[8:])
