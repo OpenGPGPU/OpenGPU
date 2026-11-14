@@ -122,9 +122,13 @@ isolation, captured image identity, backpressure, cancellation, drain, reuse,
 ABI6 admission and ABI7 rejection without GS metadata. The 25 Python
 preparation/executor/product guard tests also pass.
 
-The real-CU selector has **not run**. Actual image-opcode execution and the
-complete 112-word protected host, clock and FPS remain unqualified. Reproduce
-the CPU checks with:
+The explicit Runner passed all three real-CU builtin-only sample cases: 1x in
+9747, 2x in 11227 and 4x in 14123 fixture cycles. Each completed two patches,
+two primitives and one tile with the independent full four-MRT/sample/guard
+oracle. These are component simulation cycles, not clock or FPS measurements.
+The separate image-op case failed its RW address oracle as described below;
+image-op qualification and the complete 112-word protected host remain open.
+Reproduce the CPU checks with:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p test_prepare_native_sample_owner.py
@@ -156,7 +160,7 @@ sbt -batch -J-Xms256m -J-Xmx2G -J-XX:ActiveProcessorCount=2 \
   'testOnly opengpu.system.TessellationHostShaderRouterSpec opengpu.system.TessellationImageBankOwnerSpec opengpu.system.TessellationImageBankMuxSpec opengpu.graphics.TypedFragmentImageStateReaderSpec'
 ```
 
-The next command is the unexecuted real-CU selector, not a measured resource
+The next command runs the real-CU component selector, not a measured resource
 bound. Run it only in a separately checked memory window. Its two complete CU
 interfaces and real native-sample backend make it substantially larger than
 the router/reader tests. Serial native compilation and heap release avoid
@@ -209,7 +213,15 @@ instructions behind `sampleImageOpcodes=false` by default. The original
 `TessellationSampleImageSharedSystemSpec` keeps its builtin-only shader and
 remains independently selectable. Incremental `Test/compile` passed for the
 additional sources. The sbt selector attempts ran zero tests; neither real-CU
-suite has an execution result yet. No image-op qualification is claimed.
+suite executed in those attempts. The later explicit Runner passed the three
+builtin-only baseline cases. Its image-op 1x case reached the final RW backing
+oracle after the full MRT, immutable RO/publication/table and delayed-ACK
+checks, then failed: the independent diamond coverage includes pixel `(1,1)`,
+which the original coordinate bit mapping aliased with pixel `(3,1)`.
+The corrected test uses real `vfcvt.rtz.xu.f.v` on `FragCoord.xy` and maps
+`(x,y,sample)` to RW texel `(floor(x),4*sample+floor(y))`. The full independent
+coverage set is retained. The corrected image-op test has not been compiled
+or rerun; no image-op qualification is claimed.
 
 The image-op program retains ABI6's 128-thread capacity, 512-byte array stride,
 16 varying slots and four raw MRTs. It loads a nonzero per-sample RGBA32UI tuple
@@ -231,6 +243,20 @@ two configured CUs and one outstanding fragment task window. It does not prove
 that both CUs execute image opcodes, parallel throughput, original ESSL, Sv32
 or the complete protected 112-word host.
 
+`TessellationSampleImageRecipeSpec` is a data-only regression for the unsigned
+RTZ instruction encoding, the independent line coverage (including the 1x
+left-edge pixel), and disjoint texel/byte addresses across every 4x4 pixel,
+helper and 1x/2x/4x sample. Reproduce after compiling the updated test sources:
+
+```sh
+sbt -batch -J-Xms256m -J-Xmx4G -J-XX:ActiveProcessorCount=2 \
+  'testOnly opengpu.graphics.tessellation.TessellationSampleImageRecipeSpec'
+```
+
+The new Scala recipe regression is unexecuted. A lightweight Python check of
+the independent fixed-line coverage and all 112 pixel/sample coordinate and
+address mappings passes; it does not execute the ISA or replace the RTL rerun.
+
 After a fresh compile and a separately checked resource window, use the same
 JDK, short `GPU_TMP` and serial build settings above:
 
@@ -249,6 +275,15 @@ MAKEFLAGS=-j1 "$JAVA_HOME/bin/java" -Xms256m -Xmx4G -XX:ActiveProcessorCount=2 \
 
 Each command above selects exactly one 1x test. Remove `-z sample-images-0` to
 select all three 1x/2x/4x cases in that suite. To run both 1x tests in one fresh
-JVM, set both qualification properties and provide both `-s` suite names with
-one `-z sample-images-0`; require two tests and two completed suites in the
-reported result. Do not use ScalaTest `-P` parallel execution for this run.
+JVM, set both qualification properties and provide each suite's filter directly
+after its name:
+
+```sh
+-s opengpu.graphics.tessellation.TessellationSampleImageSharedSystemSpec -z sample-images-0 \
+-s opengpu.graphics.tessellation.TessellationSampleImageOpsSharedSystemSpec -z sample-images-0
+```
+
+Require two tests and two completed suites in the reported result. A single
+`-z` after both suite names filters only the last suite; the measured run used
+that form and executed three baseline cases plus one image-op case. Do not use
+ScalaTest `-P` parallel execution for this run.
