@@ -6,12 +6,19 @@ oracles. The single-record sample and old96 wires remain separate.
 """
 import struct
 
-from compute_owner_protocol import uint, required_flags, strict_json, checked_cleanup
+from compute_owner_protocol import uint, required_flags, strict_json
 from native_sample_owner_protocol import profile_bytes
 from owner_resource_contract import SAMPLE_PROFILE
 
 RECORDS = 2
 PREFIX = 'opengpu-native-sample-graphics-'
+
+
+def admission_bytes(data, record=1):
+    """Caller must bind this capture to the checked original owner first."""
+    if type(record) is not int or record != 1 or type(data) is not bytes or not 0 < len(data) <= 2097152:
+        raise ValueError('ordinary112 admission requires the bounded second capture')
+    return b'OGNGA001' + struct.pack('<II', record, len(data)) + data
 
 
 def _payload(value, record):
@@ -86,3 +93,13 @@ def _pair(retired, held):
 def final_authorization(retired, held):
     """Encode the final observations only after actual cleanup was checked."""
     return b'OGNGF001' + struct.pack('<I', RECORDS) + b''.join(_pair(retired, held))
+
+
+def checked_cleanup(value):
+    required_flags(value, dict(phase='cleanup', ownerCleanupObserved=True,
+        contextCleanupObserved=True, records=RECORDS, resetCount=1,
+        ramReplaced=False, imagesPreserved=True, externalDrained=True,
+        sourceQualificationRequired=True, clockQualified=False, fpsQualified=False))
+    for key in ('batches', 'pteClears', 'shootdowns'):
+        if uint(value.get(key), 64) == 0:
+            raise ValueError('ordinary112 cleanup has no actual '+key)
