@@ -107,6 +107,21 @@ OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_gallium_sample_graphics_bridge
 OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_graphics_sample_live.py
 ```
 
+The prepare-only command also passed actual Linux ASan/UBSan compilation and
+linking at fixed source `b075f87f7`, using immutable image `cc860b33283c`, one
+CPU, 512MiB memory with equal swap limit, no network and read-only original
+sources/libraries. Both LIVE translation units and the new codec compiled;
+the resulting AArch64 ELF contains the external host-execute entry and excludes
+the default CPU held/cleanup/capture peers. All 28 actual make-dependency units
+and 331 dependencies were checked, including the live, entry, source-plan,
+codec and shared frame headers. All 10045 external and 3200 frozen GPU inputs
+remained unchanged across the build, as did generated compiler inputs and the
+finished binary/ESSL outputs across the final checks. Existing Mesa libraries
+were not rebuilt. The builder returned `BUILT, execution=false`: the producer
+was never started, and no execution result, READY, RAM capture or GPU result
+was produced. The container and child processes ended, and private build,
+source and raw outputs were removed. Actual LIVE execution remains untested.
+
 Bounded Linux ASan/UBSan validation used original Mesa22.3.6 static libraries
 and the unchanged original ESSL sources: VS308/FS301 words, actual reflection,
 24 UBOs and two 1024-component defaults, a changed original UBO/default for the
