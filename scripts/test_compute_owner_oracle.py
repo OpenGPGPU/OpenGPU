@@ -27,6 +27,62 @@ def memory(path, output=None, corrupt=()):
 
 
 class OracleTests(unittest.TestCase):
+    def test_nonuniform_add_and_cas_match_miss_reject_lost_xor_and_permuted_addresses(self):
+        parent = ROOT / '.artifacts'; parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='address-oracle-', dir=parent) as temporary:
+            root = Path(temporary); initial = root / 'initial'; returned = root / 'returned'
+            memory(initial)
+            for kind in ('add', 'cas-match', 'cas-miss'):
+                description = dict(schema='opengpu-compute-shared-address-oracle-v1',
+                    sourceCase='shared-address-' + kind, outputPhysical=0x2000,
+                    allocationBytes=8192, viewBytes=8192, groups=4, local=128,
+                    seedBase=0xa1000000, groupShift=16, addend=257, replaceValue=0xfedcba98,
+                    compareXor=int(kind == 'cas-miss'), guard=0xdeadbeef)
+                def output(wrong=None, reverse=False):
+                    words = [0] * 2048
+                    for group in range(4):
+                        # Derive the synthetic oracle-test bytes directly from
+                        # the authored source, without decoding/evaluating its
+                        # shader or importing the production expected values.
+                        seeds = [0xa1000000 + group * 65536 + address for address in range(4096)]
+                        final = list(seeds)
+                        for lane in range(0, 128, 2):
+                            target = lane ^ 16
+                            if wrong == 'first-permutation': target ^= 2
+                            words[group * 512 + lane] = seeds[target]
+                            if kind == 'add': final[target] += 257
+                            elif kind == 'cas-match': final[target] = 0xfedcba98
+                        for lane in range(1, 128, 2): words[group * 512 + lane] = 0xfeedface
+                        for bucket in range(16):
+                            target = 4080 + (bucket ^ 8 if wrong == 'tail-permutation' else bucket)
+                            lanes = [lane for lane in range(128) if
+                                     (lane ^ (0 if wrong == 'lost-group-xor' else group)) & 15 == bucket]
+                            value = seeds[target]
+                            if kind == 'add':
+                                old = [value + n * 257 for n in range(8)]; final[target] = value + 8 * 257
+                            elif kind == 'cas-match':
+                                final[target] = 0xfedcba98; old = [value] + [final[target]] * 7
+                            else: old = [value] * 8
+                            for lane, value in zip(lanes, reversed(old) if reverse else old):
+                                words[group * 512 + 128 + lane] = value
+                        for lane in range(128):
+                            words[group * 512 + 256 + lane] = final[lane]
+                            words[group * 512 + 384 + lane] = final[3968 + lane]
+                    return struct.pack('<2048I', *words)
+                for reverse in (False, True):
+                    memory(returned, output(reverse=reverse))
+                    with SparseMemory(initial) as before, SparseMemory(returned) as after:
+                        verify(before, after, description)
+                for wrong in ('lost-group-xor', 'tail-permutation', 'first-permutation'):
+                    memory(returned, output(wrong))
+                    with SparseMemory(initial) as before, SparseMemory(returned) as after:
+                        with self.subTest(kind=kind, wrong=wrong), self.assertRaises(ValueError):
+                            verify(before, after, description)
+                for data, corruption in ((None, ()), (output(), ((0x1000, 1),)), (output(), ((0x3fff, 1),))):
+                    memory(returned, data, corruption)
+                    with SparseMemory(initial) as before, SparseMemory(returned) as after:
+                        with self.assertRaises(ValueError): verify(before, after, description)
+
     def test_all_dynamic_shared_overloads_old_values_final_planes_and_guards(self):
         parent = ROOT / '.artifacts'; parent.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='atomic-oracle-', dir=parent) as temporary:

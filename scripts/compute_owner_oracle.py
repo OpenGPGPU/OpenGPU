@@ -126,6 +126,44 @@ def dynamic_output(initial, returned, description):
     return first, data
 
 
+def address_output(initial, returned, description):
+    """Nonuniform original ESSL arithmetic, independent of emitted words."""
+    kind = description.get('sourceCase')
+    if kind not in ('shared-address-add', 'shared-address-cas-match', 'shared-address-cas-miss'):
+        raise ValueError('unknown nonuniform shared source')
+    required_flags(description, dict(seedBase=0xa1000000, groupShift=16, addend=257,
+        replaceValue=0xfedcba98, compareXor=1 if kind.endswith('-miss') else 0))
+    first, size = uint(description.get('outputPhysical')), uint(description.get('allocationBytes'))
+    if first & 4095 or size < 8192 or size & 4095 or (first, first + size) not in [(a, b) for a, b, _ in initial.ranges]:
+        raise ValueError('nonuniform shared output is not its original GEM allocation')
+    data = returned.read(first, 8192)
+    words = struct.unpack('<2048I', data)
+    for group in range(4):
+        # ESSL initializes every address to base+(group<<16)+address.
+        seed = lambda address: 0xa1000000 + (group << 16) + address
+        def history(address, count):
+            value = seed(address)
+            if kind == 'shared-address-add':
+                return [(value + 257 * n) & 0xffffffff for n in range(count + 1)]
+            if kind == 'shared-address-cas-match':
+                return [value] + [0xfedcba98] * count
+            return [value] * (count + 1)
+        result = lambda plane, lane: words[group * 512 + plane * 128 + lane]
+        for lane in range(128):
+            if (result(0, lane) != (seed(lane ^ 16) if not lane & 1 else 0xfeedface) or
+                result(2, lane) != history(lane, 1 if not lane & 1 else 0)[-1] or
+                result(3, lane) != history(3968 + lane, 8 if lane >= 112 else 0)[-1]):
+                raise ValueError('nonuniform conditional old word or final address/group value differs')
+        for bucket in range(16):
+            # Eight original invocations target this exact address. Their
+            # arbitration order is free; moving values to another bucket or
+            # workgroup changes its seed and is never accepted.
+            actual = [result(1, lane) for lane in range(128) if (lane ^ group) & 15 == bucket]
+            if sorted(actual) != sorted(history(4080 + bucket, 8)[:-1]):
+                raise ValueError('nonuniform shared atomic lost original target address/group identity')
+    return first, data
+
+
 def allocation_window(memory, value, count, binding):
     if type(value) is not dict or set(value) != {'globalBinding', 'allocationPhysical', 'allocationBytes', 'offset', 'bytes'}:
         raise ValueError('invalid original GEM source/view description')
@@ -153,6 +191,8 @@ def verify(initial, returned, description):
         outputs = [(first, expected)]
     elif description.get('schema') == 'opengpu-compute-shared-dynamic-oracle-v1':
         outputs = [dynamic_output(initial, returned, description)]
+    elif description.get('schema') == 'opengpu-compute-shared-address-oracle-v1':
+        outputs = [address_output(initial, returned, description)]
     elif description.get('schema') == 'opengpu-compute-uniform-oracle-v1':
         defaults = allocation_window(initial, description.get('defaults'), 4096, 0)
         blocks, output_views = description.get('blocks'), description.get('outputs')
