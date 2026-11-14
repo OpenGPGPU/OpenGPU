@@ -62,16 +62,21 @@ class TessellationVertexPatchOwnerSpec extends AnyFlatSpec {
         d.io.imageCompletion.valid.poke(true.B);until(d.io.imageCompletion.ready.peek().litToBoolean)
         d.clock.step();d.io.imageCompletion.valid.poke(false.B);zero(d.io.imageCompletion.bits)
       }
-      def finish(status:Int,imageStatus:Int=0,published:Int=17):Unit={
+      def finish(status:Int,imageStatus:Int=0,published:Int=17,heldFlush:Boolean=false):Unit={
         until(d.io.completion.valid.peek().litToBoolean)
         d.io.completion.bits.taskId.expect(id.U);d.io.completion.bits.status.expect(status.U)
         d.io.completion.bits.image.status.expect(imageStatus.U);d.io.completion.bits.image.published.expect(published.U)
         d.io.begin.ready.expect(false.B);d.io.drained.expect(true.B)
         val held=d.io.completion.bits.peek().litValue;d.io.cancel.poke(true.B)
+        // A later valid-only flush can lower transport drain after this
+        // immutable report was offered. It cannot revoke the report or imply
+        // that an already completed child has acquired another credit.
+        if(heldFlush)d.io.transportDrained.poke(false.B)
         for(_<-0 until 4){d.clock.step();d.io.completion.valid.expect(true.B)
-          assert(d.io.completion.bits.peek().litValue==held);d.io.drained.expect(true.B)}
+          assert(d.io.completion.bits.peek().litValue==held);d.io.drained.expect((!heldFlush).B)}
         d.io.cancel.poke(false.B);d.io.completion.ready.poke(true.B);d.clock.step()
         d.io.completion.ready.poke(false.B);d.io.busy.expect(false.B)
+        if(heldFlush){d.io.begin.ready.expect(false.B);d.io.transportDrained.poke(true.B)}
       }
 
       // Original task snapshots and separate source, patch and local drain.
@@ -81,7 +86,7 @@ class TessellationVertexPatchOwnerSpec extends AnyFlatSpec {
       acceptSource();sourceComplete();d.clock.step(3);d.io.completion.valid.expect(false.B)
       d.io.transportDrained.poke(false.B);imageComplete()
       for(_<-0 until 4){d.clock.step();d.io.completion.valid.expect(false.B);d.io.drained.expect(false.B)}
-      d.io.transportDrained.poke(true.B);finish(0)
+      d.io.transportDrained.poke(true.B);finish(0,heldFlush=true)
 
       // A real early admission failure does not emit opened or launch VS.
       begin();acceptImage();imageComplete(1,0);d.io.sourceTask.valid.expect(false.B)
