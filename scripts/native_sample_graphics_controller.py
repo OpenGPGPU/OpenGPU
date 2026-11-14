@@ -17,6 +17,7 @@ import shutil
 import signal
 import subprocess
 import tempfile
+import time
 
 from compute_owner_oracle import SparseMemory
 from native_sample_owner_controller import atomic, regular, wait_file
@@ -81,6 +82,30 @@ def bind_receipt(value, command, d, record):
             'actual held/retired command or context differs from original checked owner')
 
 
+def wait_cleanup(path, bridge, executor, timeout):
+    """Only final cleanup may publish its receipt and immediately exit zero."""
+    require(path.name == 'cleanup.json', 'final cleanup wait cannot admit an earlier phase')
+    deadline = time.monotonic() + timeout
+    while True:
+        require(not (path.parent/'error').exists(), 'producer reported active cleanup failure')
+        require(bridge.poll() is None, 'producer exited before final cleanup receipt')
+        published = path.exists() or path.is_symlink()
+        status = executor.poll()
+        require(status is None or status == 0, 'executor rejected final cleanup')
+        if status == 0 and not published:
+            # Publication can occur between the first lookup and poll(). The
+            # executor closes/renames this file before its successful exit.
+            published = path.exists() or path.is_symlink()
+            require(published, 'executor exited without final cleanup receipt')
+        require(time.monotonic() < deadline, 'timeout waiting for cleanup.json')
+        if published:
+            regular(path)
+            require(not (path.parent/'error').exists(), 'producer reported active cleanup failure')
+            require(bridge.poll() is None, 'producer exited before final cleanup receipt')
+            return
+        time.sleep(.05)
+
+
 def exchange(directory, profile, bridge, start_executor, qualified, timeout):
     """Independent checks gate every phase; the caller owns process cleanup."""
     descriptions, programs, reflection, identities = ready_files(directory)
@@ -136,7 +161,7 @@ def exchange(directory, profile, bridge, start_executor, qualified, timeout):
     require(list(checked_commands) == commands, 'complete result pair changed original enqueue identities')
     unchanged(identities)
     atomic(directory/'cleanup.authorize.bin',cleanup_authorization(retired,held))
-    wait_file(directory/'cleanup.json',bridge,running,timeout)
+    wait_cleanup(directory/'cleanup.json',bridge,running,timeout)
     checked_cleanup(strict_json(directory/'cleanup.json'))
     require(running.wait(timeout=timeout) == 0, 'actual executor rejected cleanup')
     require(bridge.poll() is None, 'producer exited before final actual cleanup confirmation')

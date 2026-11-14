@@ -4,6 +4,8 @@ from contextlib import ExitStack
 import copy
 import json
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -122,7 +124,7 @@ class ControllerTests(unittest.TestCase):
             if failure=='late-result-mutation':(directory/'results/record-0.memory').write_bytes(b'changed')
         with ExitStack() as stack:
             for name,value in dict(SparseMemory=memory,preflight=preflight,capture_identity=lambda *args:42,
-                    wait_file=wait,verify_result=verify_result,verify_pair=pair).items():
+                    wait_file=wait,wait_cleanup=wait,verify_result=verify_result,verify_pair=pair).items():
                 stack.enter_context(patch.object(controller,name,value))
             return controller.exchange(directory,self.profile,bridge,start,qualified,1)
 
@@ -250,6 +252,85 @@ class ControllerTests(unittest.TestCase):
             controller.cleanup_inputs(self.directory,first,second)
             self.assertEqual(stop.call_count,2)
         self.assertFalse(self.directory.exists())
+
+
+class CleanupWaitTests(unittest.TestCase):
+    """Real short processes test publication/exit ordering, without a GPU peer."""
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix='ordinary112-cleanup-',dir=ROOT/'.artifacts')
+        self.addCleanup(temporary.cleanup)
+        self.directory = Path(temporary.name)
+
+    def process(self, script, *args):
+        process = subprocess.Popen([sys.executable,'-B','-c',script,*map(str,args)],stdin=subprocess.PIPE)
+        def stop():
+            if process.poll() is None:process.kill()
+            process.wait(timeout=5)
+            process.stdin.close()
+        self.addCleanup(stop)
+        return process
+
+    def publication_window(self, mode, *, earlier=False):
+        directory = self.directory/mode;directory.mkdir()
+        path = directory/'cleanup.json'
+        bridge = self.process('import sys;sys.stdin.read()')
+        executor = self.process('''import os,pathlib,sys
+sys.stdin.read(1)
+path=pathlib.Path(sys.argv[1]);mode=sys.argv[2]
+if mode != 'missing':
+    temporary=path.with_suffix('.tmp');temporary.write_text('{"phase":"cleanup"}')
+    os.replace(temporary,path)
+sys.exit(1 if mode == 'nonzero' else 0)
+''',path,mode)
+        exists = Path.exists
+        intercepted = []
+        def lookup(value):
+            if value == path and not intercepted:
+                self.assertFalse(exists(path))
+                intercepted.append(True)
+                executor.stdin.write(b'x');executor.stdin.flush()
+                self.assertEqual(executor.wait(timeout=5),int(mode == 'nonzero'))
+                return False # Reproduce the lookup immediately before poll().
+            return exists(value)
+        with patch.object(Path,'exists',lookup):
+            if earlier:controller.wait_file(path,bridge,executor,1)
+            else:controller.wait_cleanup(path,bridge,executor,1)
+        self.assertEqual(intercepted,[True])
+        return path
+
+    def test_atomic_publication_followed_by_zero_exit_rechecks_file(self):
+        path = self.publication_window('ok')
+        self.assertEqual(json.loads(path.read_text()),dict(phase='cleanup'))
+
+    def test_nonzero_exit_or_missing_receipt_is_rejected(self):
+        for mode, message in (('nonzero','rejected final cleanup'),('missing','without final cleanup')):
+            with self.subTest(mode=mode):
+                with self.assertRaisesRegex(ValueError,message):self.publication_window(mode)
+
+    def test_earlier_phase_wait_still_rejects_same_exit_window(self):
+        with self.assertRaisesRegex(ValueError,'executor exited before'):
+            self.publication_window('ok',earlier=True)
+
+    def test_producer_exit_error_alias_and_timeout_are_rejected(self):
+        bridge = self.process('import sys;sys.stdin.read()')
+        executor = self.process('import sys;sys.stdin.read()')
+        path = self.directory/'cleanup.json'
+        target = self.directory/'receipt';target.write_text('{}')
+        path.symlink_to(target.name)
+        with self.assertRaisesRegex(ValueError,'aliased'):controller.wait_cleanup(path,bridge,executor,1)
+        path.unlink();path.symlink_to('absent')
+        with self.assertRaisesRegex(ValueError,'aliased'):controller.wait_cleanup(path,bridge,executor,1)
+        path.unlink();path.write_text('{}')
+        error = self.directory/'error';error.write_text('failed')
+        with self.assertRaisesRegex(ValueError,'active cleanup failure'):controller.wait_cleanup(path,bridge,executor,1)
+        error.unlink()
+        bridge.stdin.close();bridge.wait(timeout=5)
+        with self.assertRaisesRegex(ValueError,'producer exited'):controller.wait_cleanup(path,bridge,executor,1)
+        live = self.process('import sys;sys.stdin.read()')
+        path.unlink()
+        with self.assertRaisesRegex(ValueError,'timeout'):controller.wait_cleanup(path,live,executor,0)
+        with self.assertRaisesRegex(ValueError,'earlier phase'):
+            controller.wait_cleanup(self.directory/'record-0.held.json',live,executor,1)
 
 
 if __name__=='__main__':unittest.main()
