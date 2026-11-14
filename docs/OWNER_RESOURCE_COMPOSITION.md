@@ -8,6 +8,13 @@ The original owner-v1 factory and its discovery table remain unchanged.
 
 The new identity is `two-cu-vga60-owner-v2-compute-stage`. Its discovery differs
 from owner-v1 only at GCR flags address `0x368`: `0x3ffff` becomes `0x7ffff`.
+Complete RTL emission and the original preparation/source/assertion checks
+pass. The emitted `GpuSystem` retains two actual `GpuComputeUnit` instances;
+their CU core contains `SharedAtomicVectorExecuteUnit`. All 796 generated
+assertion files and the characterized SRAM model source remain present.
+This establishes complete structural composition, without GPU execution or
+a timing result.
+
 The stage is intermediate: `fullResourceQualification=false` does not qualify
 the final geometry/layered composition, any API, complete GPU execution,
 whole-host clock or 60 FPS. A fresh complete model and matching executor are
@@ -20,8 +27,11 @@ four workgroups of 128 invocations and initializes all 4096 shared words.
 The independent returned-byte oracle checks conditional old values, inactive
 lanes, final shared values and per-address old-value multisets. It permits
 arbitration order only inside each original output bucket and checks every
-other physical allocation byte unchanged. CPU capture never supplies GPU
-results. The legacy shared and full UBO/SSBO sources remain available.
+other physical allocation byte unchanged. All shared words use the same
+initial seed; these programs do not distinguish address permutations that
+preserve their old-value multisets and final outputs. Nonuniform per-address
+and per-group initialization remains a broader addressing qualification.
+CPU capture never supplies GPU results. The legacy shared and full UBO/SSBO sources remain available.
 
 Prepare a new complete host with all assertion layers and the characterized
 SRAM models:
