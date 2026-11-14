@@ -164,7 +164,11 @@ documented in [GALLIUM_COMPUTE.md](GALLIUM_COMPUTE.md). Compute API advertising
 remains disabled until the complete profile is available.
 
 Gallium buffer copies, buffer clears and single-sample render-target clears use
-Mesa's CPU-mapped transfer helpers. Scissored framebuffer clears and rectangular
+Mesa's CPU-mapped transfer helpers. Same-format 2D/rectangle image copies now
+use the checked-storage GPU pass for the existing four color and two depth
+formats, with CPU fallback selected only before GPU admission. Source validation
+and limits are recorded in [NATIVE_FRAMEBUFFER_BLIT.md](NATIVE_FRAMEBUFFER_BLIT.md);
+actual DUT qualification remains pending. Scissored framebuffer clears and rectangular
 Z24S8/Z24X8 clears use the same path; a depth-only or stencil-only Z24S8 clear
 preserves the other component. Whole-attachment clears can still use GPU fills.
 CPU transfers honor resource pitch and publish writes through the existing GPU
@@ -373,7 +377,7 @@ separately copy depth, stencil,
 and both aspects between Z24S8 renderbuffers with a scissored destination; full
 color readback after depth and stencil tests checks both copied and preserved
 values. These cases pass on a one-CU Linux guest with 507 RTL assertions and
-on Mesa llvmpipe. The driver uses CPU-mapped, single-sample copies with
+on Mesa llvmpipe. Those guest runs used CPU-mapped, single-sample copies with
 nearest or linear colour filtering and nearest depth/stencil filtering. Linear
 taps clamp to the clipped source rectangle, one of the choices allowed by the
 [OpenGL ES blit rules](https://registry.khronos.org/OpenGL/specs/es/3.2/es_spec_3.2.pdf).

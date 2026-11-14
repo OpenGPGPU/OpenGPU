@@ -22,6 +22,8 @@
  * sandbox for runtime address generation. Preserve legacy 1024-byte slots. */
 #define PIPE_FS_GEM_BYTES 2048u
 #define PIPE_KERNARG_BYTES 1024u
+#include "opengpu_framebuffer_blit.h"
+
 #define PIPE_CS_SLOT 1u
 #define PIPE_CS_KERNARG_SLOT 2u
 #define PIPE_CS_GEM_BYTES 2048u
@@ -1650,6 +1652,88 @@ int pipe_opengpu_launch_grid_storage(struct pipe_opengpu_context *ctx,
     const struct pipe_opengpu_storage_view views[4], uint32_t timeout_ms)
 {
     return launch_grid_resources(ctx, grid, local, views, NULL, timeout_ms);
+}
+
+int pipe_opengpu_screen_framebuffer_blit(const struct pipe_opengpu_screen *screen)
+{
+    /* Byte-exact views require the newer storage granularity. Do not round
+     * descriptor authority to the legacy whole-line binding granularity. */
+    return screen && (screen->driver_features & OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE) &&
+        pipe_opengpu_screen_storage_alignment(screen) == 256;
+}
+
+int pipe_opengpu_try_framebuffer_blit(struct pipe_opengpu_screen *screen,
+    struct pipe_opengpu_resource *destination, struct pipe_opengpu_resource *source,
+    const struct opengpu_framebuffer_blit *d, uint32_t timeout_ms)
+{
+    struct pipe_opengpu_context *private = NULL;
+    struct pipe_opengpu_resource *coordinates = NULL;
+    struct pipe_opengpu_fence *fence = NULL;
+    struct opengpu_framebuffer_blit_plan plan;
+    struct pipe_opengpu_storage_view views[4] = {{0}};
+    uint32_t local[3] = {1,1,1}, grid[3], *maps = NULL;
+    int ret = -1, saved;
+    if (!pipe_opengpu_screen_framebuffer_blit(screen)) return 1;
+    if (!d || !timeout_ms || !live_buffer(screen,source,1) ||
+        !live_buffer(screen,destination,1) ||
+        d->source_width != source->width || d->source_height != source->height ||
+        d->source_pitch != source->pitch || d->destination_width != destination->width ||
+        d->destination_height != destination->height || d->destination_pitch != destination->pitch) {
+        errno=EINVAL;return -1;
+    }
+    const size_t capacity=OPENGPU_FRAMEBUFFER_BLIT_HEADER_WORDS+8*OPENGPU_FRAMEBUFFER_BLIT_MAX_AXIS;
+    maps=calloc(capacity,4);
+    if (!maps) return -1;
+    if (opengpu_framebuffer_blit_plan_make(d,source->buffer.size,destination->buffer.size,&plan,maps,capacity)) {
+        errno=EINVAL;goto done;
+    }
+    if (!plan.width || !plan.height) { ret=0;goto done; }
+    /* Preserve the existing API fallback for views beyond the checked-storage
+     * window or without complete physical cache-line tails. This decision is
+     * made before any context, memory request or accepted device operation. */
+    if ((source->buffer.handle==destination->buffer.handle &&
+            (d->version<2 || !opengpu_framebuffer_blit_disjoint(d,&plan,maps))) ||
+        plan.source_bytes>0x8000000u || plan.destination_bytes>0x8000000u ||
+        ((plan.source_bytes+63ull)&~63ull)>source->buffer.size ||
+        ((plan.destination_bytes+63ull)&~63ull)>destination->buffer.size) {ret=1;goto done;}
+    /* Every byte-bearing resource stays in kernel retained bindings until
+     * acknowledged completion. Distinct handles are only an early filter:
+     * compute admission proves actual GEM/backing disjointness and READ vs
+     * READ|WRITE permissions before constructing private Sv32 leases. */
+    private=pipe_opengpu_context_create(screen);
+    if (!private) goto done;
+    private->cs_timeout_ms=timeout_ms;
+    uint32_t coordinate_bytes=(plan.map_words*4u+63u)&~63u;
+    coordinates=pipe_opengpu_resource_create(screen,coordinate_bytes);
+    if (!coordinates) goto done;
+    memcpy(coordinates->buffer.map,maps,plan.map_words*4u);
+    struct opengpu_blit_program program=opengpu_framebuffer_blit_program(d,&plan);
+    if(program.overflow){errno=EOVERFLOW;goto done;}
+    if (pipe_opengpu_bind_cs(private,program.code,program.words*4u)) goto done;
+    if (pipe_opengpu_invalidate(private,coordinates,0,coordinate_bytes,&fence)) goto done;
+    if (pipe_opengpu_fence_finish(private,fence,timeout_ms)) {
+        private->cs_storage_failed=1;private->cs_failure_fence=fence;fence=NULL;goto done;
+    }
+    pipe_opengpu_fence_reference(&fence,NULL);
+    views[0]=(struct pipe_opengpu_storage_view){source,0,plan.source_bytes,OPENGPU_COMPUTE_STORAGE_READ};
+    views[1]=(struct pipe_opengpu_storage_view){destination,0,plan.destination_bytes,
+        OPENGPU_COMPUTE_STORAGE_READ|OPENGPU_COMPUTE_STORAGE_WRITE};
+    views[2]=(struct pipe_opengpu_storage_view){coordinates,0,plan.map_words*4u,OPENGPU_COMPUTE_STORAGE_READ};
+    grid[0]=plan.width;grid[1]=plan.height;grid[2]=1;
+    if (pipe_opengpu_launch_grid_storage(private,grid,local,views,timeout_ms) ||
+        pipe_opengpu_compute_barrier(private,timeout_ms)) goto done;
+    /* Namespace deletion can itself fail. Never report a completed blit until
+     * acknowledged publication and final private-context cleanup succeeded. */
+    if (pipe_opengpu_context_destroy_checked(private)) goto done;
+    private=NULL;ret=0;
+done:
+    saved=errno;
+    pipe_opengpu_fence_reference(&fence,NULL);
+    /* Void teardown retains an unresolved accepted job as a screen orphan;
+     * it does not replay it or reuse its VM/shader/kernarg on another blit. */
+    pipe_opengpu_context_destroy(private);
+    if (coordinates) pipe_opengpu_resource_destroy(screen,coordinates);
+    free(maps);errno=saved;return ret;
 }
 
 int pipe_opengpu_launch_grid_uniforms(struct pipe_opengpu_context *ctx,
