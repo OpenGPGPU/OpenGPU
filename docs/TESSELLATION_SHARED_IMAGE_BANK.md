@@ -175,8 +175,21 @@ MAKEFLAGS=-j1 sbt -batch -J-Xms256m -J-Xmx4G -J-XX:ActiveProcessorCount=2 \
   'testOnly opengpu.graphics.tessellation.TessellationSampleImageSharedSystemSpec'
 ```
 
+All eight `TessellationNativeThreeDomainJobImageElaborationSpec` cases pass:
+payload, feedback and sample/image routing are independently disabled/enabled,
+with one or four physical engines. The three native domain frontends retain
+exactly one shared image bank in every case. These bounded four-lane/two-warp
+structural checks do not instantiate the CUs or execute shaders. Reproduce with
+the same JDK and short temporary-directory setup:
+
+```sh
+sbt -batch -J-Xms256m -J-Xmx4G -J-XX:ActiveProcessorCount=2 \\
+  -J-XX:MaxMetaspaceSize=768m -J-XX:ReservedCodeCacheSize=256m \\
+  -J-XX:MaxDirectMemorySize=256m -J-Xss4m -Djava.io.tmpdir="$GPU_TMP" \\
+  'set Test / parallelExecution := false' \\
+  'testOnly opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec'
+```
+
 After verifying that no process or other consumer needs the temporary outputs,
-remove `"$GPU_TMP"` and the ended simulation workspaces. The new enabled
-variants of `TessellationNativeThreeDomainJobImageElaborationSpec` have not run;
-they additionally check that the three domain frontends retain exactly one
-shared image bank. No selector inherits an earlier factory's model results.
+remove `"$GPU_TMP"` and the ended simulation workspaces. No selector inherits an
+earlier factory's model results.
