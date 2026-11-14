@@ -3,7 +3,8 @@
 import json
 import struct
 from prepare_native_owner_flashsim import EXPECTED_WORDS
-from owner_resource_contract import COMPUTE_SCHEMA, COMPUTE_STAGE, COMPUTE_WORDS
+from owner_resource_contract import (COMPUTE_SCHEMA, COMPUTE_STAGE, COMPUTE_WORDS,
+    FULL_COMPUTE_SCHEMA, FULL_COMPUTE_CONTRACTS)
 
 SCHEMA = 'opengpu-compute-owner-profile-v1'
 AUXILIARY = (0, 0x60, 0x68, 0x320, 0x158, 0x494, 0x43c, 0x3fc, 0x4bc, 0x460)
@@ -39,11 +40,23 @@ def required_flags(value, flags):
 def profile_bytes(profile):
     version = 1
     expected_words = EXPECTED_WORDS
-    if type(profile) is dict and profile.get('schema') == COMPUTE_SCHEMA:
+    schema = profile.get('schema') if type(profile) is dict else None
+    if schema == FULL_COMPUTE_SCHEMA:
+        name = profile.get('ownerProfile')
+        if type(name) is not str or name not in FULL_COMPUTE_CONTRACTS:
+            raise ValueError('unknown complete geometry compute factory')
+        stage, expected_words = FULL_COMPUTE_CONTRACTS[name]
+        required_flags(profile, dict(ownerProfile=name, ownerResourceStage=stage,
+                                     ownerResourceVersion=2, fullResourceQualification=False))
+        version = 3
+    elif schema == COMPUTE_SCHEMA:
         required_flags(profile, dict(ownerProfile=COMPUTE_STAGE, ownerResourceStage='compute',
                                      ownerResourceVersion=2, fullResourceQualification=False))
         version, expected_words = 2, COMPUTE_WORDS
-    required_flags(profile, dict(schema=SCHEMA if version == 1 else COMPUTE_SCHEMA, resetCount=1,
+    elif type(profile) is dict and any(key in profile for key in
+            ('ownerProfile', 'ownerResourceStage', 'ownerResourceVersion', 'fullResourceQualification')):
+        raise ValueError('frozen compute profile cannot carry resource factory labels')
+    required_flags(profile, dict(schema={1: SCHEMA, 2: COMPUTE_SCHEMA, 3: FULL_COMPUTE_SCHEMA}[version], resetCount=1,
         sourceQualificationRequired=True, gpuExecution=False,
         clockQualified=False, fpsQualified=False))
     words, registers = profile.get('words'), profile.get('registers')
@@ -82,7 +95,7 @@ def profile_bytes(profile):
             fragment_batch != (shader & 255) * (shader >> 8 & 255) or
             tuple(values[5:]) != MAGICS):
         raise ValueError('incoherent actual compute discovery')
-    output = bytearray((b'OGCP0001' if version == 1 else b'OGCP0002') + struct.pack('<I', len(expected_words)))
+    output = bytearray({1: b'OGCP0001', 2: b'OGCP0002', 3: b'OGCP0003'}[version] + struct.pack('<I', len(expected_words)))
     for item in words:
         output.extend(struct.pack('<II', item['address'], item['value']))
     output.extend(struct.pack('<I', 10))

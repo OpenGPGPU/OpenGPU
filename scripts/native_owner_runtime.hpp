@@ -99,7 +99,7 @@ struct ProfileObservation {
 template<class Sim>
 ProfileObservation probe_profile(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,bool compute=false,
     OwnerFactory factory=OwnerFactory::v1) {
-  require(compute || factory==OwnerFactory::v1,"compute-stage factory requires compute observations");
+  require(compute || factory==OwnerFactory::v1,"resource factory requires compute observations");
   ProfileObservation observed;observed.factory=factory;
   const auto id=bus.read(GPU_REG_ID),caps=bus.read(GPU_REG_CAPABILITIES);
   require((id&0xffffu)>=GPU_ABI_COMPUTE_RESOURCE_VERSION && (caps&required_owner_caps)==required_owner_caps,
@@ -139,16 +139,19 @@ ProfileObservation probe_profile(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,bool 
 }
 inline void profile_json(std::ostream &out,const ProfileObservation &profile,bool compute=false) {
   const bool stage=profile.factory==OwnerFactory::compute_stage;
-  require(compute || !stage,"compute-stage observations cannot use a native profile schema");
+  const bool sample=profile.factory==OwnerFactory::geometry_compute_sample;
+  const bool full=profile.factory==OwnerFactory::geometry_compute || sample;
+  require(compute || (!stage && !full),"resource observations cannot use a native profile schema");
   const auto expected=owner_factory_words(profile.factory);
   require(profile.words.size()==expected.size() && profile.registers.size()==(compute?10u:5u),
     "profile observations do not match their selected schema");
   for(size_t n=0;n<expected.size();++n)
     require(profile.words[n].address==expected[n].address && profile.words[n].value==expected[n].value,
       "profile observations do not match their exact factory");
-  out<<"{\"schema\":\""<<(stage?"opengpu-compute-owner-profile-v2":compute?"opengpu-compute-owner-profile-v1":"opengpu-native-owner-profile-v1")<<'"';
-  if(stage)out<<",\"ownerProfile\":\""<<owner_factory_id(profile.factory)
-    <<"\",\"ownerResourceVersion\":2,\"ownerResourceStage\":\"compute\",\"fullResourceQualification\":false";
+  out<<"{\"schema\":\""<<(full?"opengpu-compute-owner-profile-v3":stage?"opengpu-compute-owner-profile-v2":compute?"opengpu-compute-owner-profile-v1":"opengpu-native-owner-profile-v1")<<'"';
+  if(stage || full)out<<",\"ownerProfile\":\""<<owner_factory_id(profile.factory)
+    <<"\",\"ownerResourceVersion\":2,\"ownerResourceStage\":\""<<(sample?"geometry-compute-sample":full?"geometry-compute":"compute")
+    <<"\",\"fullResourceQualification\":false";
   out<<",\"words\":[";
   const auto &words=profile.words;
   for(size_t n=0;n<words.size();++n)

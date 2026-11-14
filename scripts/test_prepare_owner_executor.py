@@ -115,6 +115,36 @@ class ExecutorTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):q.verify_qualification(path)
         with self.assertRaises(RuntimeError):q.driver_files('native',q.COMPUTE_STAGE)
 
+    def test_full_factory_qualifications_bind_distinct_wrappers_and_reject_cross_models(self):
+        for name, (stage, words) in q.FULL_COMPUTE_CONTRACTS.items():
+            with self.subTest(profile=name):
+                # Remove only this CPU fixture's completed previous executor.
+                target=self.out/'executors/compute'
+                if target.exists():
+                    import shutil
+                    shutil.rmtree(target)
+                path, record=self.fixture(profile=name)
+                files=q.driver_files('compute',name)
+                expected='geometry_compute_sample' if name==q.SAMPLE_PROFILE else 'geometry_compute'
+                self.assertEqual(files[0],f'scripts/{expected}_owner_driver.cpp')
+                q.builder.validate_driver_includes([q.ROOT/n for n in
+                    [files[0],*q.DEFAULT_DEPENDENCIES,*files[1:]]],self.out/'flashsim-dut/dut.h',self.out/'flashsim-dut')
+                for key, value in [('profile',q.COMPUTE_STAGE),('profile',q.owner.PROFILE),
+                        ('ownerResourceStage','compute'),('ownerResourceVersion',True),
+                        ('fullResourceQualification',True),('source_sha256',{})]:
+                    wrong=copy.deepcopy(record);wrong[key]=value;q.common.write_json(path,wrong)
+                    with self.assertRaises(RuntimeError):q.verify_qualification(path)
+                q.common.write_json(path,record)
+                original=json.loads((path.parent/'builder.json').read_text())
+                for driver in ('compute_owner','compute_stage_owner','geometry_compute_owner','geometry_compute_sample_owner'):
+                    if 'scripts/'+driver+'.cpp'==files[0]:continue
+                    wrong=copy.deepcopy(original)
+                    wrong['driver_source']=str((q.ROOT/'scripts'/str(driver+'.cpp')).resolve())
+                    q.common.write_json(path.parent/'builder.json',wrong)
+                    record['builder_sha256']=q.common.sha(path.parent/'builder.json');q.common.write_json(path,record)
+                    with self.assertRaises(RuntimeError):q.verify_qualification(path)
+                with self.assertRaises(RuntimeError):q.driver_files('native',name)
+
     def test_frozen_qualification_cannot_acquire_stage_labels(self):
         path,record=self.fixture()
         for fields in (q.profile_contract(q.COMPUTE_STAGE,'compute'),
