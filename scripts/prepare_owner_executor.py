@@ -110,6 +110,7 @@ def checked_builder(record, model, kind, options, compiler):
                        hashes([files[0], *DEFAULT_DEPENDENCIES, *files[1:]]).items()}
     require(record.get('dut_header_sha256') == model['generated']['files']['dut.h'] and
             record.get('dut_sources') == {n: h for n, h in model['generated']['files'].items() if n != 'dut.h'} and
+            record.get('driver_source') == str((ROOT / files[0]).resolve()) and
             record.get('driver_inputs') == expected_inputs and
             str(Path(record['compiler']).resolve()) == compiler['path'] and
             record.get('compiler_version') == compiler['version'] and

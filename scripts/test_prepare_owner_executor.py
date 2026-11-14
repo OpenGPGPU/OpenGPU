@@ -58,6 +58,7 @@ class ExecutorTests(unittest.TestCase):
         model = q.model_identity(self.out, self.flashsim, 1)
         built = dict(dut_header_sha256=model['generated']['files']['dut.h'],
             dut_sources={n:h for n,h in model['generated']['files'].items() if n!='dut.h'},
+            driver_source=str((q.ROOT/files[0]).resolve()),
             driver_inputs={str((q.ROOT/n).resolve()):h for n,h in
                 q.hashes([files[0], *q.DEFAULT_DEPENDENCIES, *files[1:]]).items()},
             compiler=self.compiler['path'], compiler_version=self.compiler['version'],
@@ -99,6 +100,13 @@ class ExecutorTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):q.verify_qualification(path)
         (self.out/'owner-manifest.json').write_text(json.dumps(dict(profile=q.COMPUTE_STAGE)))
         original=json.loads((path.parent/'builder.json').read_text())
+        # The same complete input set is insufficient: the wrapper must be
+        # the actual translation unit, rather than a declared unused include.
+        swapped=copy.deepcopy(original)
+        swapped['driver_source']=str((q.ROOT/'scripts/compute_owner_driver.cpp').resolve())
+        q.common.write_json(path.parent/'builder.json',swapped)
+        record['builder_sha256']=q.common.sha(path.parent/'builder.json');q.common.write_json(path,record)
+        with self.assertRaises(RuntimeError):q.verify_qualification(path)
         mixed=copy.deepcopy(original)
         mixed['driver_inputs']={str((q.ROOT/n).resolve()):h for n,h in q.hashes(
             [q.driver_files('compute')[0],*q.DEFAULT_DEPENDENCIES,*q.driver_files('compute')[1:]]).items()}
