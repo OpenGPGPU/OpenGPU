@@ -1041,7 +1041,11 @@ static int materialize_control_temporaries(struct build *b,
             if (!b->planned[t][c] && b->next_reg <= 21) b->planned[t][c] = b->next_reg++;
             if (!b->planned[t][c]) return -1;
             materialize(b, b->expr[t][c], b->planned[t][c]);
-            b->reg[t][c] = b->planned[t][c]; b->expr[t][c] = (struct shared_expr){0};
+            b->reg[t][c] = b->planned[t][c];
+            /* The resident copy is needed if the arms later disagree. Keep
+             * the immutable LOCAL/PEER/constant identity as well: a later
+             * shared LOAD needs exact stripe provenance, not just a numeric
+             * range. span snapshots it and retains only identical arms. */
         }
     return b->failed ? -1 : 0;
 }
@@ -1055,6 +1059,7 @@ static int span(struct build *b, const struct cf_instruction *ir, unsigned first
             continue;
         }
         unsigned before[CS_TEMPS][4], yes[CS_TEMPS][4];
+        struct shared_expr expr_before[CS_TEMPS][4], expr_yes[CS_TEMPS][4];
         struct opengpu_shared_range range_before[CS_TEMPS][4], range_yes[CS_TEMPS][4];
         unsigned address_before = b->address_defined, address_yes;
         if (materialize_control_temporaries(b, ir, i)) return -1;
@@ -1062,6 +1067,7 @@ static int span(struct build *b, const struct cf_instruction *ir, unsigned first
         splat(b, 23, 0);
         unsigned sync = b->p.words; word(b, 0); word(b, 0);
         memcpy(before, b->reg, sizeof(before));
+        memcpy(expr_before, b->expr, sizeof(expr_before));
         memcpy(range_before, b->ranges, sizeof(range_before));
         unsigned yes_end = node->alternative < node->end ? node->alternative : node->end;
         ++b->cf_depth;
@@ -1070,8 +1076,10 @@ static int span(struct build *b, const struct cf_instruction *ir, unsigned first
         word(b, 0x205bu);
         unsigned taken = b->p.words;
         memcpy(yes, b->reg, sizeof(yes)); address_yes = b->address_defined;
+        memcpy(expr_yes, b->expr, sizeof(expr_yes));
         memcpy(range_yes, b->ranges, sizeof(range_yes));
         memcpy(b->reg, before, sizeof(before)); b->address_defined = address_before;
+        memcpy(b->expr, expr_before, sizeof(expr_before));
         memcpy(b->ranges, range_before, sizeof(range_before));
         ++b->cf_depth;
         if (node->alternative < node->end && span(b, ir, node->alternative + 1, node->end)) return -1;
@@ -1084,9 +1092,17 @@ static int span(struct build *b, const struct cf_instruction *ir, unsigned first
         /* Zero condition takes the textual else; neither VL nor v0 qualifies
          * SIMT comparison. Hardware retains each path's warp active mask. */
         b->p.code[sync + 1] = branch_word(0, 22, 23, (taken - sync - 1) * 4);
-        for (unsigned t = 0; t < CS_TEMPS; t++) for (unsigned c = 0; c < 4; c++)
-            if (!yes[t][c]) { b->reg[t][c] = 0; b->ranges[t][c] = (struct opengpu_shared_range){0}; }
-            else b->ranges[t][c] = opengpu_range_join(b->ranges[t][c], range_yes[t][c]);
+        for (unsigned t = 0; t < CS_TEMPS; t++) for (unsigned c = 0; c < 4; c++) {
+            if (!yes[t][c]) {
+                b->reg[t][c] = 0; b->expr[t][c] = (struct shared_expr){0};
+                b->ranges[t][c] = (struct opengpu_shared_range){0};
+            } else {
+                b->ranges[t][c] = opengpu_range_join(b->ranges[t][c], range_yes[t][c]);
+                struct shared_expr a = b->expr[t][c], z = expr_yes[t][c];
+                if (a.kind != z.kind || a.scale != z.scale || a.offset != z.offset)
+                    b->expr[t][c] = (struct shared_expr){0};
+            }
+        }
         b->address_defined &= address_yes;
         i = node->end;
     }
