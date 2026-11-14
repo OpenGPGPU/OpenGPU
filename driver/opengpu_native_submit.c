@@ -189,7 +189,8 @@ int opengpu_native_binned_ioctl(struct drm_device *drm,void *data,struct drm_fil
         .resources=records[5],.resource_count=args->resource_count,.context=args->context_id,
         .capacity=gpu->hw.native_sources.capacity,.engines=gpu->hw.native_sources.engines,
         .scalar_fpu=!!(gpu->hw.capabilities&GPU_CAP_COMPUTE_SCALAR_FPU),
-        .advanced_blend=gpu->hw.native_advanced_blend_transport};
+        .advanced_blend=gpu->hw.native_advanced_blend_transport,
+        .sample_inputs=gpu->hw.native_sample_transport};
     if(layered)source.completion=((const struct drm_opengpu_native_completion_view *)records[6])->view;
     /* These identities are checked against every copied record by the builder. */
     source.pass=opengpu_native_advanced_blend_word(records[0],OPENGPU_NATIVE_BINNED_JOB_JOB_IDENTITY_PASS_WORD);

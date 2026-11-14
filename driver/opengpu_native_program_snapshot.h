@@ -11,6 +11,8 @@ struct opengpu_native_program_profile {
     /* Explicit only for a validated GS-to-FS owner. Default native VS/FS
      * publication still rejects version 5 and exposes no geometry inputs. */
     bool geometry_inputs;
+    /* Kernel-discovered GSS1 transport, never supplied by raw user metadata. */
+    bool sample_inputs;
 };
 struct opengpu_native_program_snapshot {
     u32 segment, entry_offset;

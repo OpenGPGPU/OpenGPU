@@ -25,6 +25,7 @@
 #include "opengpu_compute_features.h"
 #include "opengpu_native_advanced_blend_features.h"
 #include "opengpu_native_preflight_features.h"
+#include "opengpu_native_sample_transport_features.h"
 #include "opengpu_graphics_features.h"
 #include "opengpu_compute_uniform_records.h"
 #include "opengpu_compute_indirect_source.h"
@@ -602,11 +603,17 @@ int opengpu_hw_init(struct opengpu_device *gpu, struct platform_device *pdev)
         return dev_err_probe(gpu->dev, -EINVAL,
                              "invalid native descriptor preflight record\n");
     gpu->hw.native_layered_transport = false;
+    gpu->hw.native_sample_transport = false;
+    if ((gpu->hw.compute_resource_flags & OPENGPU_NATIVE_SAMPLE_TRANSPORT_PRESENCE) &&
+        !(gpu->hw.compute_resource_flags & OPENGPU_NATIVE_GEOMETRY_TRANSPORT_PRESENCE))
+        return dev_err_probe(gpu->dev, -EINVAL,
+                             "native sample transport requires geometry transport\n");
     if (gpu->hw.compute_resource_flags & OPENGPU_NATIVE_GEOMETRY_TRANSPORT_PRESENCE) {
-        if (!opengpu_read_native_geometry_transport_limits(id,
+        if (!opengpu_read_native_sample_transport_limits(id,
                 gpu->hw.compute_resource_flags, gpu->hw.capabilities,
                 gpu->hw.regs_size, gpu, opengpu_mmio_read_callback,
-                &gpu->hw.native_sources, &gpu->hw.native_layered_transport))
+                &gpu->hw.native_sources, &gpu->hw.native_layered_transport,
+                &gpu->hw.native_sample_transport))
             return dev_err_probe(gpu->dev, -EINVAL,
                                  "invalid native geometry transport profile record\n");
     } else if (!opengpu_read_native_source_limits(id,

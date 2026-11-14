@@ -75,6 +75,7 @@ struct opengpu_device {
         bool native_advanced_blend_transport;
         bool native_descriptor_preflight;
         bool native_layered_transport;
+        bool native_sample_transport;
         u32 native_context, native_pass, native_generation;
         void *native_pending_owner;
         unsigned fence_lock;
