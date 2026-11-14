@@ -303,7 +303,7 @@ def compiled_directory(directory: Path):
                     ordinary += 1
                     print(program.name, result.stdout.strip())
                     session = Path(temp)/(program.stem+'-'+str(samples));session.mkdir()
-                    process = subprocess.Popen([str(live_binary),str(program),str(profile),str(session),str(samples),program.stem],
+                    process = subprocess.Popen([str(live_binary),str(program),str(profile),str(session),str(samples),program.stem.removesuffix('-abi6')],
                         stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,env=dict(os.environ,OPENGPU_NATIVE_HOST_TIMEOUT='15'))
                     try:
                         deadline = time.monotonic()+15
@@ -316,6 +316,14 @@ def compiled_directory(directory: Path):
                             raise RuntimeError('compiled original bytes differ in live owner')
                         if (session/'record-0.capture').read_bytes()[:8] != b'OGCAP002':
                             raise RuntimeError('wrong live capture schema')
+                        from compute_owner_oracle import SparseMemory
+                        from native_sample_owner_oracle import verify
+                        from test_native_sample_owner import profile as observed
+                        actual_profile=observed()
+                        actual_profile['registers'][-1]['value']=0x02020810  # Match this explicit CPU wire fixture.
+                        with SparseMemory(session/'union.memory') as memory:
+                            verify(memory,None,inputs,program.read_bytes(),
+                                   (session/'record-0.capture').read_bytes(),actual_profile)
                         # A negative control receipt ends this CPU-only test.
                         # No actual-DUT response, native retirement or cleanup
                         # success is synthesized to complete qualification.
