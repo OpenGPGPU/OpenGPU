@@ -122,6 +122,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='compute-host-', dir=parent) as temporary:
         out = Path(temporary)
         write_bodies(out, args.compute_stage, full_profile)
+        (out / 'counter').mkdir()
         flags = ['-DOPENGPU_COMPUTE_HOST_TEST_MAIN=1', '-D_POSIX_C_SOURCE=200809L', '-std=c11', '-O1', '-Wall', '-Wextra', '-Werror', '-Wno-unused-function']
         if os.environ.get('OPENGPU_TEST_SANITIZERS') == '1':
             flags += ['-fsanitize=address,undefined', '-fno-omit-frame-pointer']
@@ -155,6 +156,8 @@ def main():
                            ['-I' + str(canonical / 'scripts/test_stubs/native_host'),
                             '-I' + str(canonical / 'scripts'), str(source), '-o', str(binary)], env=env, check=True)
             subprocess.run([str(binary), str(out / 'union.memory'), str(out / 'record-0.capture')], env=env, check=True)
+            if args.sample_stage:
+                subprocess.run([str(binary), str(out / 'counter/union.memory'), str(out / 'counter/record-0.capture')], env=env, check=True)
         for phase in range(1, 4):
             for kind in range(1, 3):
                 negative = out / ('negative-%s-%s' % (phase, kind))

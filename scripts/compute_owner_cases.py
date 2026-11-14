@@ -3,7 +3,9 @@ LEGACY_DYNAMIC_CASES = tuple('shared-dynamic-%d' % op for op in range(10)) + tup
     'shared-dynamic-i-%d' % op for op in (0, 1, 2, 3, 4, 9))
 ADDRESS_CASES = ('shared-address-add', 'shared-address-cas-match', 'shared-address-cas-miss')
 DYNAMIC_CASES = LEGACY_DYNAMIC_CASES + ADDRESS_CASES
-CASES = ('shared', 'uniforms') + DYNAMIC_CASES
+LEGACY_CASES = ('shared', 'uniforms') + DYNAMIC_CASES
+COUNTER_CASE = 'counter-increment'
+CASES = LEGACY_CASES + (COUNTER_CASE,)
 
 
 def dynamic_case(name):

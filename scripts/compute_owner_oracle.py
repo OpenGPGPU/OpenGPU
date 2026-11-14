@@ -178,8 +178,12 @@ def allocation_window(memory, value, count, binding):
 def verify(initial, returned, description):
     if [(a, b) for a, b, _ in initial.ranges] != [(a, b) for a, b, _ in returned.ranges]:
         raise ValueError('DUT memory replaced original physical allocations')
-    required_flags(description, dict(viewBytes=8192, groups=4, local=128, guard=0xdeadbeef))
-    if description.get('schema') == 'opengpu-compute-shared-oracle-v1':
+    counter = description.get('schema') == 'opengpu-compute-counter-oracle-v1'
+    required_flags(description, dict(viewBytes=8192, groups=4, local=4 if counter else 128, guard=0xdeadbeef))
+    if counter:
+        from compute_counter_source import returned_outputs
+        outputs = returned_outputs(initial, returned, description)
+    elif description.get('schema') == 'opengpu-compute-shared-oracle-v1':
         required_flags(description, dict(seed=0xa1000000))
         first, allocation = uint(description.get('outputPhysical')), uint(description.get('allocationBytes'))
         if first & 4095 or allocation < 8192 or allocation & 4095:
@@ -222,7 +226,7 @@ def verify(initial, returned, description):
     else:
         raise ValueError('unknown original ESSL byte oracle')
     for first, expected in outputs:
-        if initial.read(first, 8192) != struct.pack('<I', 0xdeadbeef) * 2048:
+        if not counter and initial.read(first, 8192) != struct.pack('<I', 0xdeadbeef) * 2048:
             raise ValueError('output was not independently guard-initialized')
         if returned.read(first, len(expected)) != expected:
             raise ValueError('returned original ESSL result differs from independent source arithmetic')

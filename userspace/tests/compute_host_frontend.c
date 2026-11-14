@@ -29,11 +29,12 @@ static struct compute_host_session *session;
 static struct {void *data;uint64_t bytes;unsigned maps,closed;} bos[512];
 static unsigned next_bo=1,next_sync=1,submitted,retired;
 static const char *directory;
-static int capture_only,uniform_case,dynamic_case,address_case;
+static int capture_only,uniform_case,dynamic_case,address_case,counter_case;
 static unsigned dynamic_operation,dynamic_signed;
 static unsigned address_kind;
 static unsigned host_timeout_seconds;
-static unsigned output_handles[4],uniform_handles[12];
+static unsigned output_handles[4],uniform_handles[12],counter_handle;
+static struct drm_opengpu_compute_counter_source_resources accepted_counter;
 static struct drm_opengpu_compute_uniform_resources accepted_uniforms;
 static void write_oracle(void);
 static uint32_t read32(FILE *f)
@@ -102,6 +103,9 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
  if(request==DRM_IOCTL_OPENGPU_COMPUTE_STORAGE){int error=compute_host_submit_storage(session,arg);if(!error)submitted++;return result(error);}
  if(request==DRM_IOCTL_OPENGPU_COMPUTE_UNIFORM_RESOURCES){int error=compute_host_submit_uniforms(session,arg);
   if(!error){accepted_uniforms=*(const struct drm_opengpu_compute_uniform_resources *)arg;submitted++;}return result(error);}
+ if(request==DRM_IOCTL_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES){
+  assert(counter_case);int error=compute_host_submit_counter_source(session,arg);
+  if(!error){accepted_counter=*(const struct drm_opengpu_compute_counter_source_resources *)arg;submitted++;}return result(error);}
  if(request==DRM_IOCTL_SYNCOBJ_CREATE){struct drm_syncobj_create *p=arg;assert(!p->flags && next_sync<3);p->handle=next_sync++;return 0;}
  if(request==DRM_IOCTL_SYNCOBJ_DESTROY)return 0;
  if(request==DRM_IOCTL_SYNCOBJ_WAIT){struct drm_syncobj_wait *p=arg;assert(p->count_handles==1);return wait_execution();}
@@ -129,7 +133,19 @@ static void source_window(FILE *f,unsigned handle,uint64_t offset,unsigned bytes
   (unsigned long long)physical,(unsigned long long)allocation,(unsigned long long)offset,bytes);}
 static void write_oracle(void)
 {FILE *f=file("oracle.json","wx");assert(f);
- if(address_case){
+ if(counter_case){
+  const struct drm_opengpu_compute_counter_source *v=&accepted_counter.source;
+  struct compute_host_snapshot snap;assert(!compute_host_snapshot_get(session,&snap));
+  uint64_t physical,bytes;assert(!compute_host_original_physical(session,counter_handle,&physical,&bytes));
+  assert(accepted_counter.version==1 && v->handle==counter_handle && v->offset==4080 && v->count==8 &&
+   bytes==8192 && snap.counter_physical==physical+4080 && snap.counter_bytes==32 && snap.counter_root);
+  fprintf(f,"{\"schema\":\"opengpu-compute-counter-oracle-v1\",\"sourceCase\":\"counter-increment\",\"groups\":4,\"local\":4,\"viewBytes\":8192,\"guard\":3735928559,\"seed\":4294967294,\"index\":7,\"count\":8,\"counterHandle\":%u,\"context\":%u,\"descriptorPhysical\":%llu,\"descriptorRoot\":%u,\"kernargPhysical\":%llu,\"kernargBytes\":%llu,\"counter\":",v->handle,snap.context,
+   (unsigned long long)snap.counter_descriptor_physical,snap.counter_root,
+   (unsigned long long)snap.kernarg_physical,(unsigned long long)snap.kernarg_bytes);
+  source_window(f,counter_handle,4080,32,0);fputs(",\"outputs\":[",f);
+  for(unsigned i=0;i<4;i++){if(i)fputc(',',f);source_window(f,output_handles[i],0,8192,i);}
+  fputs("]}\n",f);
+ }else if(address_case){
   const char *names[]={"shared-address-add","shared-address-cas-match","shared-address-cas-miss"};
   uint64_t physical,bytes;assert(!compute_host_original_physical(session,output_handles[0],&physical,&bytes));
   fprintf(f,"{\"schema\":\"opengpu-compute-shared-address-oracle-v1\",\"sourceCase\":\"%s\",\"outputPhysical\":%llu,\"allocationBytes\":%llu,\"viewBytes\":8192,\"groups\":4,\"local\":128,\"seedBase\":2701131776,\"groupShift\":16,\"addend\":257,\"replaceValue\":4275878552,\"compareXor\":%u,\"guard\":3735928559}\n",names[address_kind],(unsigned long long)physical,(unsigned long long)bytes,address_kind==2?1u:0u);
@@ -154,7 +170,7 @@ int main(int argc,char **argv)
 {
  assert(argc==5 || argc==6);capture_only=argc==6 && !strcmp(argv[5],"--capture-only");assert(argc==5 || capture_only);
  host_timeout_seconds=compute_host_timeout_seconds();assert(host_timeout_seconds);
- uniform_case=!strcmp(argv[4],"uniforms");
+ uniform_case=!strcmp(argv[4],"uniforms");counter_case=!strcmp(argv[4],"counter-increment");
  for(unsigned variant=0;variant<16;variant++){
   const unsigned signed_operations[]={0,1,2,3,4,9};unsigned op=variant<10?variant:signed_operations[variant-10];
   char name[64];assert(snprintf(name,sizeof(name),variant<10?"shared-dynamic-%u":"shared-dynamic-i-%u",op)>0);
@@ -162,11 +178,12 @@ int main(int argc,char **argv)
  }
  const char *address_names[]={"shared-address-add","shared-address-cas-match","shared-address-cas-miss"};
  for(unsigned i=0;i<3;i++)if(!strcmp(argv[4],address_names[i])){address_case=1;address_kind=i;}
- assert(uniform_case || dynamic_case || address_case || !strcmp(argv[4],"shared"));
+ assert(counter_case || uniform_case || dynamic_case || address_case || !strcmp(argv[4],"shared"));
  directory=argv[2];FILE *f=fopen(argv[1],"rb");assert(f);
  char wire[8];assert(fread(wire,1,8,f)==8 && (!memcmp(wire,"OGCP0001",8) ||
   !memcmp(wire,"OGCP0002",8) || !memcmp(wire,"OGCP0003",8)));
  unsigned version=wire[7]-'0',count=read32(f);
+ if(counter_case)assert(version==3 && count==112);
  assert((version==3 && (count==104 || count==112)) || ((version==1 || version==2) && count==96));
  struct compute_host_profile_word *words=calloc(count+10,sizeof(*words));assert(words);
  for(unsigned i=0;i<count;i++){words[i].address=read32(f);words[i].value=read32(f);}
@@ -175,8 +192,8 @@ int main(int argc,char **argv)
  if(dynamic_case || address_case){uint64_t features=0;assert((version==2 || version==3) && !compute_host_query(session,OPENGPU_PARAM_DRIVER_FEATURES,&features) &&
   (features&OPENGPU_DRIVER_FEATURE_COMPUTE_SHARED_ATOMICS));}
  struct pipe_screen *s=opengpu_drm_screen_create(7,NULL);assert(s);struct pipe_context *p=s->context_create(s,NULL,0);assert(p);
- char dump[4096];path(dump,"actual-shared");void *frontend=cs_frontend_compile(argv[3],dump);assert(frontend);
- assert(cs_frontend_shared_bytes(frontend)==(uniform_case?0u:16384u));
+ char dump[4096];path(dump,"actual-shared");void *frontend=counter_case?cs_frontend_compile_atomic_counters(argv[3],dump):cs_frontend_compile(argv[3],dump);assert(frontend);
+ assert(cs_frontend_shared_bytes(frontend)==((uniform_case || counter_case)?0u:16384u));
  struct pipe_compute_state state={.ir_type=PIPE_SHADER_IR_TGSI,.prog=cs_frontend_tokens(frontend),.req_local_mem=cs_frontend_shared_bytes(frontend)};
  void *cs=p->create_compute_state(p,&state);assert(cs);p->bind_compute_state(p,cs);
  struct pipe_resource *output[4];
@@ -197,7 +214,19 @@ int main(int argc,char **argv)
   }
   cs_frontend_ubos(frontend,p,ub,offsets,sizes);
  }
+ if(counter_case){
+  struct pipe_resource *counter=buffer(s,8192);assert(counter);
+  counter_handle=pipe_opengpu_resource_handle(opengpu_resource(counter)->gpu);
+  uint8_t *data=pipe_opengpu_resource_map(opengpu_resource(counter)->gpu);assert(data);memset(data,0x5a,8192);
+  uint32_t *words=(uint32_t *)(data+4080);
+  for(unsigned i=0;i<8;i++)words[i]=0xfffffffeu+i*0x10203u;
+  words[7]=0xfffffffeu;
+  cs_frontend_counters(frontend,p,counter,4080,32);
+  /* Gallium and the accepted production job retain this original GEM until
+   * the same externally observed retirement/context cleanup as all outputs. */
+ }
  struct pipe_grid_info grid={.grid={4,1,1},.block={128,1,1}};
+ if(counter_case)grid.block[0]=4;
  if(uniform_case){grid.block[0]=8;grid.block[1]=4;grid.block[2]=4;}
  p->launch_grid(p,&grid);assert(submitted==1 && retired);
  marker("cleanup_wait","actual compute retired; independent byte/source/guard authorization required\n");

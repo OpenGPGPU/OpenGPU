@@ -6,6 +6,7 @@ bridge argv JSON may use {ipc}; no shell is used. A CPU protocol peer is not an
 execution qualification. All temporary process data is deleted on exit.
 """
 import argparse
+import hashlib
 from contextlib import nullcontext
 import fcntl
 import os
@@ -75,6 +76,33 @@ def lock_owner(qualification):
     return lock
 
 
+def input_digest(path):
+    require(path.is_file() and not path.is_symlink(), 'counter input missing or aliased')
+    digest=hashlib.sha256()
+    with path.open('rb') as stream:
+        for block in iter(lambda:stream.read(1024*1024),b''):digest.update(block)
+    return digest.hexdigest()
+
+
+def ready_inputs(directory, case):
+    from compute_counter_source import SCHEMA as COUNTER_SCHEMA, ready as counter_ready
+    from compute_owner_cases import COUNTER_CASE
+    description=strict_json(directory/'oracle.json')
+    counter=description.get('schema')==COUNTER_SCHEMA
+    require(counter==(case==COUNTER_CASE), 'counter source requires distinct qualification/case binding')
+    inputs={}
+    if counter:
+        with SparseMemory(directory/'union.memory') as before:
+            counter_ready(before,description,(directory/'record-0.capture').read_bytes())
+        inputs={name:input_digest(directory/name) for name in ('union.memory','record-0.capture','oracle.json')}
+    return description,inputs
+
+
+def unchanged_inputs(directory, inputs):
+    for name,digest in inputs.items():
+        require(input_digest(directory/name)==digest, 'counter immutable READY input changed: '+name)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--executor', type=Path, required=True)
@@ -87,6 +115,8 @@ def main():
     parser.add_argument('--managed-session-directory', type=Path,
                         help='new GPU-internal session owned/removed by qualify_compute_owner after container exit')
     parser.add_argument('--timeout', type=int, default=3600)
+    from compute_owner_cases import COUNTER_CASE
+    parser.add_argument('--case', choices=(COUNTER_CASE,), help='distinct final112 counter source contract')
     args = parser.parse_args()
     require(0 < args.timeout <= 604800, 'timeout must be 1..604800 seconds')
     command = strict_json(args.bridge_command)
@@ -97,6 +127,9 @@ def main():
     qualification = args.executor_qualification.absolute()
     require(executor.is_file() and not executor.is_symlink() and qualification.is_file() and not qualification.is_symlink(),
             'executor/qualification must be original regular files')
+    if args.case == COUNTER_CASE:
+        from owner_resource_contract import SAMPLE_PROFILE
+        require(strict_json(qualification).get('profile') == SAMPLE_PROFILE, 'counter requires exact final112 executor')
     checker = args.executor_checker.resolve(strict=True)
     checker_python = args.executor_checker_python.resolve(strict=True)
     def qualified(env, log):
@@ -135,6 +168,7 @@ def main():
                 wait_file(directory / 'READY', bridge, None, args.timeout)
                 for name in ('union.memory', 'record-0.capture', 'oracle.json'):
                     wait_file(directory / name, bridge, None, args.timeout)
+                description,inputs=ready_inputs(directory,args.case)
                 results = directory / 'results'
                 running = subprocess.Popen([executor, '--active-owner', directory / 'union.memory', results, directory],
                     env=env, stdout=output, stderr=subprocess.STDOUT)
@@ -144,17 +178,20 @@ def main():
                 wait_file(directory / 'record-0.retired.json', bridge, running, args.timeout)
                 returned = strict_json(directory / 'record-0.retired.json')
                 response = retired_bytes(returned, held)
+                unchanged_inputs(directory,inputs)
                 with SparseMemory(directory / 'union.memory') as before, SparseMemory(results / 'record-0.memory') as after:
-                    verify(before, after, strict_json(directory / 'oracle.json'))
+                    verify(before, after, description)
                 atomic(directory / 'record-0.retired.response', response)
                 wait_file(directory / 'cleanup_wait', bridge, running, args.timeout)
                 require(bridge.poll() is None and running.poll() is None, 'owner did not remain live through all oracles')
+                unchanged_inputs(directory,inputs)
                 atomic(directory / 'BEGIN_CLEANUP', cleanup_authorization())
                 wait_file(directory / 'cleanup.json', bridge, running, args.timeout)
                 checked_cleanup(strict_json(directory / 'cleanup.json'))
                 require(running.wait(timeout=args.timeout) == 0, 'DUT executor rejected final context cleanup')
                 require(bridge.poll() is None, 'producer freed resources before successful DUT/context receipt')
                 qualified(env, output)
+                unchanged_inputs(directory,inputs)
                 atomic(directory / 'FINAL_RESPONSE', b'OGCMOK01\x01\x00\x00\x00')
                 require(bridge.wait(timeout=args.timeout) == 0, 'producer rejected observed final cleanup')
             print('actual compute returned bytes, physical guards and observed context cleanup: PASS')

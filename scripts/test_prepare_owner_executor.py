@@ -433,8 +433,11 @@ class ExecutorTests(unittest.TestCase):
         self.assertEqual(files[0],'scripts/native_sample_owner_driver.cpp')
         self.assertIn('scripts/native_sample_owner_runtime.hpp',files)
         self.assertIn('scripts/native_sample_owner_capture.hpp',files)
+        self.assertEqual(q.checker_files('native'),q.CHECKERS)
+        # This private sample-only source copy cannot silently qualify compute.
+        with self.assertRaisesRegex(RuntimeError,'missing/aliased compute checker'):
+            q.checker_files('compute')
         for kind in ('native','compute'):
-            self.assertEqual(q.checker_files(kind),q.CHECKERS)
             with self.assertRaises(RuntimeError):q.verify_qualification(path,kind=kind)
         for profile in (q.owner.PROFILE,q.COMPUTE_STAGE,q.FULL_PROFILE,'another-sample-profile'):
             with self.assertRaises(RuntimeError):q.driver_files('native-sample',profile)

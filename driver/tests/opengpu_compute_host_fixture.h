@@ -30,7 +30,10 @@ struct compute_host_snapshot {
     uint64_t code_bytes,storage_bytes,uniform_bytes;
     uint64_t code_physical,storage_physical,uniform_physical;
     uint32_t storage_root,uniform_root,retained_objects,temporary_mappings;
+    uint64_t counter_physical,counter_bytes,counter_descriptor_physical,kernarg_physical,kernarg_bytes;
+    uint32_t counter_root,context;
 };
+int compute_host_submit_counter_source(struct compute_host_session *,const struct drm_opengpu_compute_counter_source_resources *);
 int compute_host_submit_uniforms(struct compute_host_session *,const struct drm_opengpu_compute_uniform_resources *);
 /* Map the real job windows and record the actual hardware submission. The
  * CPU transport leaves opcode0 pending until an actual-DUT receipt arrives. */
