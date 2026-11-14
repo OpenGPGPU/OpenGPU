@@ -147,7 +147,21 @@ static void live_inputs(struct native_kernel_session *s,struct native_test_recor
         fprintf(f,"%s{\"handle\":%u,\"physical\":%llu,\"bytes\":%llu,\"references\":%u,\"visible\":%s}",originals++?",":"",
             original->handle,(unsigned long long)original->gem.dma_addr,(unsigned long long)original->gem.base.size,
             original->refs,original->visible?"true":"false");
-    fputs("],\"privateSegments\":[",f);unsigned segments=0;
+    fputs("],\"frameResources\":[",f);
+    for(unsigned i=0;i<r->encoded.resource_count;i++){
+        const struct opengpu_native_frame_resource *resource=&r->encoded.resources[i];u64 physical,allocation;
+        live_require(!native_kernel_original_physical(s,resource->gem_handle,&physical,&allocation),"frame plan original backing");
+        fprintf(f,"%s{\"role\":%u,\"index\":%u,\"handle\":%u,\"offset\":%llu,\"viewBytes\":%llu,\"viewVA\":%u,\"allocationPhysical\":%llu,\"allocationBytes\":%llu}",i?",":"",
+            resource->role,resource->index,resource->gem_handle,(unsigned long long)resource->offset,(unsigned long long)resource->bytes,
+            live_resource_va(owner,physical+resource->offset,resource->bytes),(unsigned long long)physical,(unsigned long long)allocation);
+    }
+    const struct drm_opengpu_native_layered_draw_plan *plan=(const void *)(uintptr_t)r->submit.plans;
+    const struct drm_opengpu_compute_uniform_view *scratch=&plan->draw.vertex_scratch;
+    live_require(!native_kernel_original_physical(s,scratch->handle,&pa,&bytes),"vertex scratch original backing");
+    fprintf(f,"],\"vertexScratch\":{\"handle\":%u,\"offset\":%llu,\"viewBytes\":%llu,\"viewVA\":%u,\"allocationPhysical\":%llu,\"allocationBytes\":%llu}",
+        scratch->handle,(unsigned long long)scratch->offset,(unsigned long long)scratch->bytes,live_resource_va(owner,pa+scratch->offset,scratch->bytes),
+        (unsigned long long)pa,(unsigned long long)bytes);
+    fputs(",\"privateSegments\":[",f);unsigned segments=0;
     for(const struct snapshot_segment *segment=owner->segments;segment;segment=segment->next)
         fprintf(f,"%s{\"va\":%llu,\"physical\":%llu,\"bytes\":%llu,\"allocationBytes\":%llu,\"executable\":%s}",segments++?",":"",
             (unsigned long long)segment->va,(unsigned long long)segment->backing.dma,(unsigned long long)segment->bytes,
