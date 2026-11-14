@@ -21,6 +21,8 @@ object EmitRegistry {
     e("EmitComputeTextureCommandAbi", EmitComputeTextureCommandAbi.main),
     e("EmitComputeUniformCommandAbi", EmitComputeUniformCommandAbi.main),
     e("EmitGeometryUniformAbi", EmitGeometryUniformAbi.main),
+    e("EmitTessellationUniformAbi", EmitTessellationUniformAbi.main),
+    e("EmitTessellationUniformSequenceAbi", EmitTessellationUniformSequenceAbi.main),
     e("EmitFp32FmaLaneTimingRtl", EmitFp32FmaLaneTimingRtl.main),
     e("EmitFpuCoreSimulationRtl", EmitFpuCoreSimulationRtl.main),
     e("EmitFpuFaultCancellation", EmitFpuFaultCancellation.main),

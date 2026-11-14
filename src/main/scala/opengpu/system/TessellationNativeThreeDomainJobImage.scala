@@ -12,10 +12,10 @@ import opengpu.graphics._
   * instantiated by `GpuHostSystemAxi` when `tessellationNative` is set.
   */
 object TessellationNativeThreeDomainJobImage {
-  def ownerIds(engines:Int,writeCredits:Int,pagedCapacity:Int):Int=
-    TessellationNativeDomainJobImage.ownerIds(engines,writeCredits,pagedCapacity)
-  def transactions(engines:Int,writeCredits:Int,pagedCapacity:Int):Int={
-    val ids=ownerIds(engines,writeCredits,pagedCapacity)
+  def ownerIds(engines:Int,writeCredits:Int,pagedCapacity:Int,tessellationUniforms:Boolean=false):Int=
+    TessellationNativeDomainJobImage.ownerIds(engines,writeCredits,pagedCapacity,tessellationUniforms)
+  def transactions(engines:Int,writeCredits:Int,pagedCapacity:Int,tessellationUniforms:Boolean=false):Int={
+    val ids=ownerIds(engines,writeCredits,pagedCapacity,tessellationUniforms)
     TessellationNativeJobMemoryFabric.transactions(TessellationThreeDomainMemoryFabric.transactions(ids,ids,ids))
   }
   def payloadPins(engines:Int):Int=3*TessellationSystemIsolineImagePipeline.payloadPins(engines)+3*math.max(2,engines+1)+3
@@ -25,16 +25,16 @@ class TessellationNativeThreeDomainJobImage(config:GpuConfig,p:VertexShaderStage
     pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
     payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false,
-    fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false) extends Module {
-  private val ids=TessellationNativeThreeDomainJobImage.ownerIds(engines,writeCredits,pagedCapacity)
+    fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false,tessellationUniforms:Boolean=false) extends Module {
+  private val ids=TessellationNativeThreeDomainJobImage.ownerIds(engines,writeCredits,pagedCapacity,tessellationUniforms)
   private val memoryIds=TessellationThreeDomainMemoryFabric.transactions(ids,ids,ids)
-  private val slots=TessellationNativeThreeDomainJobImage.transactions(engines,writeCredits,pagedCapacity)
+  private val slots=TessellationNativeThreeDomainJobImage.transactions(engines,writeCredits,pagedCapacity,tessellationUniforms)
   private val tasks=math.max(2,engines+1);private val idWidth=shared.taskIdWidth;private val cus=shared.numComputeUnits
   private val payloadConfig=payload
-  require(TessellationSystemTriangleImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity)==
-    TessellationSystemIsolineImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity))
-  require(TessellationSystemQuadImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity)==
-    TessellationSystemIsolineImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity))
+  require(TessellationSystemTriangleImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity,tessellationUniforms)==
+    TessellationSystemIsolineImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity,tessellationUniforms))
+  require(TessellationSystemQuadImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity,tessellationUniforms)==
+    TessellationSystemIsolineImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity,tessellationUniforms))
   require(TessellationSystemTriangleImagePipeline.payloadPins(engines)==TessellationSystemIsolineImagePipeline.payloadPins(engines) &&
     TessellationSystemQuadImagePipeline.payloadPins(engines)==TessellationSystemIsolineImagePipeline.payloadPins(engines))
   require(payload.forall(_.owners==engines+1))
@@ -56,11 +56,11 @@ class TessellationNativeThreeDomainJobImage(config:GpuConfig,p:VertexShaderStage
   })
   private val domain=Module(new TessellationNativeJobDomainRouter(config,idWidth,supportQuad=true))
   private val iso=Module(new TessellationNativeJobImage(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,
-    storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages=true,fragmentImageAvailable=fragmentImageAvailable,sampleShading=sampleShading))
+    storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages=true,fragmentImageAvailable=fragmentImageAvailable,sampleShading=sampleShading,tessellationUniforms=tessellationUniforms))
   private val tri=Module(new TessellationNativeTriangleJobImage(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,
-    storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages=true,fragmentImageAvailable=fragmentImageAvailable,sampleShading=sampleShading))
+    storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages=true,fragmentImageAvailable=fragmentImageAvailable,sampleShading=sampleShading,tessellationUniforms=tessellationUniforms))
   private val quad=Module(new TessellationNativeQuadJobImage(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,
-    storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages=true,fragmentImageAvailable=fragmentImageAvailable,sampleShading=sampleShading))
+    storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages=true,fragmentImageAvailable=fragmentImageAvailable,sampleShading=sampleShading,tessellationUniforms=tessellationUniforms))
   // Domains have independent bins, directories, translations and controls.
   // The domain router permits one job at a time, so only its image engines
   // are shared; ordinary native draw retains its separate engine bank.

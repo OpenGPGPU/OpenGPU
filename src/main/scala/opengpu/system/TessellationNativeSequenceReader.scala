@@ -12,18 +12,22 @@ import opengpu.graphics._
   */
 object TessellationNativeSequenceLayout {
   val magic=BigInt("474e5401",16);val version=1;val words=512;val bytes=words*4;val lines=bytes/64
+  val uniformMagic=BigInt("474e5404",16);val uniformVersion=4
   case class Field(name:String,word:Int,value:Data) {
     val width=value.getWidth;val words=(width+31)/32
     require(width>0 && words<=16 && word%16+words<=16)
   }
-  def fields(draw:TessellationPatchSequenceDescriptor):Seq[Field]={
+  def fields(draw:TessellationPatchSequenceDescriptor,uniforms:Boolean=false):Seq[Field]={
     var word=16
-    val result=WindowPrimitiveRecordLayout.leaves(draw).map{case(name,value)=>
+    val result=WindowPrimitiveRecordLayout.leaves(draw).filterNot(x=>TessellationUniformSequenceLayout.isUniformField(x._1)).map{case(name,value)=>
       val n=(value.getWidth+31)/32
       if(word%16+n>16)word=(word+15)/16*16
       val f=Field(name,word,value);word+=n;f}
     require(word<=words,"native tessellation record exceeds its fixed size")
-    result
+    if(uniforms){
+      require(word<=TessellationUniformSequenceLayout.firstWord,"old domain fields overlap the uniform extension")
+      result++TessellationUniformSequenceLayout.fields(draw.template.source.viewport.system.uniforms).map{case(n,w,v)=>Field(n,w,v)}
+    }else result
   }
   /** Reject truncation and every nonzero unsupported vector element. */
   def fits(source:Data,target:Data,path:String=""):Bool=(source,target) match {
@@ -58,7 +62,7 @@ class TessellationNativeSequenceCompletion(idWidth:Int) extends Bundle {
   * A terminal frameStopped signal flushes an unaccepted draw only after the
   * frame has stopped accepting work; accepted child work still drains.
   */
-class TessellationNativeSequenceReader(config:GpuConfig,p:VertexShaderStageConfig,idWidth:Int) extends Module {
+class TessellationNativeSequenceReader(config:GpuConfig,p:VertexShaderStageConfig,idWidth:Int,tessellationUniforms:Boolean=false) extends Module {
   require(config.xLen==32 && config.lanes<=16 && config.warps<=8 && idWidth>0 && idWidth<=12)
   private val maxConfig=GpuConfig();private val maxVertex=VertexShaderStageConfig()
   val io=IO(new Bundle {
@@ -76,10 +80,10 @@ class TessellationNativeSequenceReader(config:GpuConfig,p:VertexShaderStageConfi
   private val snapshot=Reg(new TessellationPatchSequenceDescriptor(maxConfig,maxVertex,12))
   private val result=Reg(new TessellationNativeSequenceCompletion(idWidth));private val line=Reg(UInt(log2Ceil(lines).W))
   private val cancelled=RegInit(false.B);private val malformed=RegInit(false.B)
-  private val layoutFields=TessellationNativeSequenceLayout.fields(snapshot);private val occupied=(layoutFields.flatMap(f=>f.word until f.word+f.words)++Seq(0,1,2)).toSet
+  private val layoutFields=TessellationNativeSequenceLayout.fields(snapshot,tessellationUniforms);private val occupied=(layoutFields.flatMap(f=>f.word until f.word+f.words)++Seq(0,1,2)).toSet
   private val raw=io.memoryResponse.bits.readData
   private val invalid=scala.collection.mutable.ArrayBuffer.empty[Bool]
-  for((value,word)<-Seq(magic,BigInt(bytes),BigInt(version)).zipWithIndex)
+  for((value,word)<-Seq(if(tessellationUniforms)uniformMagic else magic,BigInt(bytes),BigInt(if(tessellationUniforms)uniformVersion else version)).zipWithIndex)
     invalid+=line===(word/16).U && raw((word%16)*32+31,(word%16)*32)=/=value.U
   for(word<-0 until words if !occupied(word))
     invalid+=line===(word/16).U && raw((word%16)*32+31,(word%16)*32).orR
@@ -109,6 +113,12 @@ class TessellationNativeSequenceReader(config:GpuConfig,p:VertexShaderStageConfi
   target.template.source.viewport.system.patch.evaluationKernel.invocations.helpers:=repackHelpers(evaluationHelpers)
   private val fixedTag=snapshot.template.source.viewport.system.patch.commandId===0.U
   private val sameIdentity=snapshot.template.source.viewport.identity.asUInt===request.frameIdentity.asUInt
+  private val uniformScope=snapshot.template.source.viewport.system.uniforms
+  private val uniformPresent=uniformScope.control.resources.version=/=0.U || uniformScope.evaluation.resources.version=/=0.U
+  private val uniformLegal=if(tessellationUniforms)TessellationUniformTaskResources.legal(uniformScope) &&
+    !snapshot.template.source.viewport.system.uniformResources &&
+    (!uniformPresent || uniformScope.identity.asUInt===request.frameIdentity.asUInt)
+    else uniformScope.asUInt===0.U
   private val fits=TessellationNativeSequenceLayout.fits(snapshot,target) &&
     !(controlHelpers & unsupportedHelpers).orR && !(evaluationHelpers & unsupportedHelpers).orR
   io.submit.ready:=state===State.idle && !io.cancel && !io.frameStopped
@@ -130,7 +140,7 @@ class TessellationNativeSequenceReader(config:GpuConfig,p:VertexShaderStageConfi
         when(line===(lines-1).U){state:=State.check}.otherwise{line:=line+1.U;state:=State.offer}}}
   when(state===State.check){when(cancelled || io.cancel){result.status:=4.U;state:=State.complete}
     .elsewhen(io.frameStopped){result.status:=1.U;result.frameStopped:=true.B;state:=State.complete}
-    .elsewhen(malformed || !fits || !sameIdentity || !fixedTag){result.status:=1.U;result.faultAddress:=request.view.base;state:=State.complete}
+    .elsewhen(malformed || !fits || !sameIdentity || !fixedTag || !uniformLegal){result.status:=1.U;result.faultAddress:=request.view.base;state:=State.complete}
     .otherwise{state:=State.draw}}
   io.draw.valid:=state===State.draw && !io.frameStopped;io.draw.bits:=target
   when(state===State.draw && io.frameStopped){result.status:=Mux(cancelled || io.cancel,4.U,1.U);result.frameStopped:=true.B;state:=State.complete}
