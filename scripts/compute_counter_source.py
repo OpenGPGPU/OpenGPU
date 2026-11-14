@@ -2,6 +2,7 @@
 import struct
 from compute_owner_protocol import required_flags, uint
 from owner_resource_contract import SAMPLE_WORDS
+from compute_owner_cases import counter_parameters
 
 SCHEMA = 'opengpu-compute-counter-oracle-v1'
 CASE = 'counter-increment'
@@ -18,8 +19,9 @@ def require(ok, message):
 def recipe(memory, value):
     from compute_owner_oracle import allocation_window
     require(type(value) is dict and set(value) == FIELDS, 'invalid counter source metadata fields')
-    required_flags(value, dict(schema=SCHEMA, sourceCase=CASE, groups=4, local=4, viewBytes=8192,
-                              guard=0xdeadbeef, seed=0xfffffffe, index=7, count=8))
+    parameters=counter_parameters(value.get('sourceCase'))
+    required_flags(value, dict(schema=SCHEMA, groups=parameters['groups'], local=4, viewBytes=8192,
+                              guard=0xdeadbeef, seed=parameters['seed'], index=parameters['index'], count=8))
     require(0 < uint(value['counterHandle']) < 512 and 0 < uint(value['context']), 'invalid original counter owner')
     bindings=value['storageBindings']
     require(type(bindings) is list and all(type(i) is int for i in bindings) and sorted(bindings)==[0,1,2,3],
@@ -38,8 +40,8 @@ def recipe(memory, value):
     require(all(a[1] <= b[0] for a, b in zip(allocations, allocations[1:])), 'counter original GEM aliases an output')
     original = bytearray(b'\x5a' * 8192)
     for i in range(8):
-        struct.pack_into('<I', original, 4080 + i * 4, (0xfffffffe + i * 0x10203) & 0xffffffff)
-    struct.pack_into('<I', original, 4080 + 28, 0xfffffffe)
+        struct.pack_into('<I', original, 4080 + i * 4, (parameters['seed'] + i * 0x10203) & 0xffffffff)
+    struct.pack_into('<I', original, 4080 + 28, parameters['seed'])
     require(memory.read(source - 4080, 8192) == original, 'counter original source/guard initialization differs')
     for key in ('descriptorPhysical', 'descriptorRoot', 'kernargPhysical', 'kernargBytes'):
         uint(value[key])
@@ -53,10 +55,13 @@ def returned_outputs(initial, returned, description):
     values = [returned.read(first, 64) for first in outputs]
     require(all(data == values[0] for data in values), 'four counter SSBOs disagree per invocation')
     actual = struct.unpack('<16I', values[0])
-    require(sorted(actual) == sorted((0xfffffffe + i) & 0xffffffff for i in range(16)),
-            'counter returned old-value multiset differs')
-    require(returned.read(source + 28, 4) == struct.pack('<I', 14), 'counter final increment/wrap differs')
-    return list(zip(outputs, values)) + [(source + 28, struct.pack('<I', 14))]
+    parameters=counter_parameters(description['sourceCase']);seed=parameters['seed'];op=parameters['operation']
+    expected = [(seed + i if op == 'increment' else seed-i-1 if op == 'decrement' else seed) & 0xffffffff
+                for i in range(16)]
+    require(sorted(actual) == sorted(expected), 'counter returned ESSL value multiset differs')
+    final=(seed+16 if op=='increment' else seed-16 if op=='decrement' else seed)&0xffffffff
+    require(returned.read(source + 28, 4) == struct.pack('<I', final), 'counter final value/wrap differs')
+    return list(zip(outputs, values)) + [(source + 28, struct.pack('<I', final))]
 
 
 def translate(memory, satp, va, permissions):

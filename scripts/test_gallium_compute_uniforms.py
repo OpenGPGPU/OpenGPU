@@ -23,7 +23,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     ap.add_argument("--build", type=Path, required=True, help="new private output directory")
     ap.add_argument("--sanitize", action="store_true")
     if host_execution:
-        from compute_owner_cases import CASES
+        from compute_owner_cases import CASES, COUNTER_CASES, counter_parameters
         ap.add_argument('--case', choices=CASES, default='shared')
         ap.add_argument('--profile-wire', type=Path, required=True)
         ap.add_argument('--session', type=Path, required=True)
@@ -44,7 +44,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     ap.add_argument("--mesa-shared-ntt", type=Path,
                     help="exact privately staged shared NTT source (shared fixtures only)")
     args = ap.parse_args()
-    if host_execution and args.case == 'counter-increment':
+    if host_execution and args.case in COUNTER_CASES:
         atomic_counters = True
     if args.mesa_shared_ntt and not (shared_memory or shared_publication):
         ap.error("--mesa-shared-ntt requires a shared-memory fixture")
@@ -406,7 +406,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         env["UBSAN_OPTIONS"] = "halt_on_error=1:print_stacktrace=1"
     if host_execution:
         args.session.mkdir(parents=True, exist_ok=True)
-        run([binary, args.profile_wire.resolve(), args.session.resolve(), sources / ('full128.comp' if args.case == 'uniforms' else 'full.comp' if args.case == 'shared' else 'increment.comp' if args.case == 'counter-increment' else args.case + '.comp'), args.case] +
+        run([binary, args.profile_wire.resolve(), args.session.resolve(), sources / ('full128.comp' if args.case == 'uniforms' else 'full.comp' if args.case == 'shared' else counter_parameters(args.case)['source'] if args.case in COUNTER_CASES else args.case + '.comp'), args.case] +
             (['--capture-only'] if args.capture_only else []), 'actual-compute-capture', env)
         print('Actual Mesa/Linux compute ' + ('CPU capture only' if args.capture_only else 'external-DUT protocol') + ' completed: ' + str(out))
         return

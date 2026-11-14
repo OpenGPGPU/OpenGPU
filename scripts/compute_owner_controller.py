@@ -86,12 +86,13 @@ def input_digest(path):
 
 def ready_inputs(directory, case):
     from compute_counter_source import SCHEMA as COUNTER_SCHEMA, ready as counter_ready
-    from compute_owner_cases import COUNTER_CASE
+    from compute_owner_cases import COUNTER_CASES
     description=strict_json(directory/'oracle.json')
     counter=description.get('schema')==COUNTER_SCHEMA
-    require(counter==(case==COUNTER_CASE), 'counter source requires distinct qualification/case binding')
+    require(counter==(case in COUNTER_CASES), 'counter source requires distinct qualification/case binding')
     inputs={}
     if counter:
+        require(description.get('sourceCase')==case, 'counter READY source case differs from qualification')
         with SparseMemory(directory/'union.memory') as before:
             counter_ready(before,description,(directory/'record-0.capture').read_bytes())
         inputs={name:input_digest(directory/name) for name in ('union.memory','record-0.capture','oracle.json')}
@@ -115,8 +116,8 @@ def main():
     parser.add_argument('--managed-session-directory', type=Path,
                         help='new GPU-internal session owned/removed by qualify_compute_owner after container exit')
     parser.add_argument('--timeout', type=int, default=3600)
-    from compute_owner_cases import COUNTER_CASE
-    parser.add_argument('--case', choices=(COUNTER_CASE,), help='distinct final112 counter source contract')
+    from compute_owner_cases import COUNTER_CASES
+    parser.add_argument('--case', choices=COUNTER_CASES, help='distinct final112 counter source contract')
     args = parser.parse_args()
     require(0 < args.timeout <= 604800, 'timeout must be 1..604800 seconds')
     command = strict_json(args.bridge_command)
@@ -127,7 +128,7 @@ def main():
     qualification = args.executor_qualification.absolute()
     require(executor.is_file() and not executor.is_symlink() and qualification.is_file() and not qualification.is_symlink(),
             'executor/qualification must be original regular files')
-    if args.case == COUNTER_CASE:
+    if args.case in COUNTER_CASES:
         from owner_resource_contract import SAMPLE_PROFILE
         require(strict_json(qualification).get('profile') == SAMPLE_PROFILE, 'counter requires exact final112 executor')
     checker = args.executor_checker.resolve(strict=True)

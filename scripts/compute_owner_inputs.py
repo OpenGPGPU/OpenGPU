@@ -10,6 +10,7 @@ from native_sample_graphics_inputs import (snapshot as base_snapshot, dependency
     generated_inputs, unchanged, regular)
 from native_sample_compiler_inputs import sha256, MESA_UNITS, MESA_LIBRARIES
 from compute_owner_protocol import strict_json
+from compute_owner_cases import COUNTER_CASES, counter_parameters
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -41,8 +42,9 @@ def guarded(request_path, builder_argv):
     dependencies=dict(bound)
     dependencies[str(paths['ntt'])]=[str(paths['ntt']),AFTER]
     argv=list(builder_argv)
-    require('--case' in argv and argv[argv.index('--case')+1]=='counter-increment' and '--sanitize' in argv,
+    require('--case' in argv and argv[argv.index('--case')+1] in COUNTER_CASES and '--sanitize' in argv,
             'strict original counter source and sanitized producer required')
+    source_name=counter_parameters(argv[argv.index('--case')+1])['source']
     out=Path(argv[argv.index('--build')+1]).absolute()
     generated={};seen=set();compiled=False
     # These are all actual host translation units, not the CPU VM fixture.
@@ -91,7 +93,7 @@ def guarded(request_path, builder_argv):
             external();unchanged(generated)
             require(sha256(paths['ntt'])==AFTER, 'NTT changed before actual producer')
             products.update({p:sha256(regular(p)) for p in
-                (out/'compute_host_frontend',out/'glsl/increment.comp',out/'commands.json',*out.rglob('*.d'))})
+                (out/'compute_host_frontend',out/'glsl'/source_name,out/'commands.json',*out.rglob('*.d'))})
             compiled=True
         result=actual_run(command,*args,**kwargs)
         if compiled:
