@@ -208,8 +208,9 @@ and simulation used 128 MiB JVM heap, one CPU/native build job and an owned
 the integration/catalog checks. Temporary classes and simulations were removed
 after their processes exited.
 
-These results verify the range generator with a retirement peer. The native
-GVS/GNT reader, actual whole-patch parent connection, original ESSL execution
+These results verify the range generator with a retirement peer. The strict
+[GVS root reader](TESSELLATION_VERTEX_SOURCE_READER.md) has separate bounded
+results. Production GNT/GND source-reader wiring, the whole-patch parent connection, original ESSL execution
 and all three domain pipelines remain pending. The sequencer expects an
 admitted PATCHES draw with restart normalized off. GLES 3.2 section 10.3.4
 permits reporting `PRIMITIVE_RESTART_FOR_PATCHES_SUPPORTED = false`, in which
