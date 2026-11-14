@@ -46,11 +46,52 @@ python3 scripts/prepare_native_owner_flashsim.py --stage check \
 The factory is deliberately separate from the frozen owner-v1 executor.
 `qualify_compute_owner.py --case mandatory-compute` requires a matching
 `two-cu-vga60-owner-v2-compute-stage` executor qualification before creating a
-producer. Until the executor and its actual profile probe support that fresh
-factory, this remains an unfinished integration gate; changing an executor
-record or generating expected bytes cannot satisfy it. See
+producer. `prepare_owner_executor.py` selects its distinct
+`compute_stage_owner_driver.cpp` from the strictly checked preparation manifest.
+The qualification binds that factory, source wrapper, complete include closure,
+compiler, generated model and executable. A v1 record, driver or model cannot
+be relabeled as the compute stage; native-v1 executors retain their exact table.
+The stage is currently supported only by the compute executor. See
 [the actual owner lifecycle](COMPUTE_HOST_EXECUTION.md) for the required
 producer, original-memory oracle and synchronous cleanup protocol.
+
+The stage executor's actual MMIO probe requires `0x7ffff`, every other unchanged
+discovery word and the ten raw auxiliary observations. It publishes
+`opengpu-compute-owner-profile-v2` with the intermediate stage identity, which
+the controller encodes as `OGCP0002`. Both execution admission and capture
+parsing require the same source-selected exact factory; neither chooses a
+weaker profile from incoming data. The opcode-0 capture, held/retired receipt
+and synchronous cleanup protocols retain their existing formats.
+
+After fresh RTL/model generation, build and independently check the executor
+with the original generation interpreter and fixed FlashSim/CIRCT environment:
+
+```sh
+python3 scripts/prepare_owner_executor.py --stage build --kind compute \
+  --owner-output "$PWD/.artifacts/owner-compute-stage" \
+  --flashsim-dir "$FLASHSIM" --shards 32 --jobs 1
+python3 scripts/prepare_owner_executor.py --stage check --kind compute \
+  --qualification "$PWD/.artifacts/owner-compute-stage/executors/compute/qualification.json" \
+  --executor "$PWD/.artifacts/owner-compute-stage/executors/compute/executor"
+```
+
+CPU ASan/UBSan checks pass for both exact factories, all changed discovery
+words, opposite-factory rejection before dependent probes, actual probe JSON
+through the controller wire parser, held/retired observations and final
+owner/context/Bare cleanup. Actual Linux ioctl/scheduler/MMU capture also passes
+the matching canonical C++ parser for both factories, including the six failed
+cleanup-ACK retention cases. Eight executor qualification tests reject mixed
+driver/model factories, altered source/include closures and stale build/tool
+identities. These checks execute no GPU shader and do not qualify returned
+Mesa results. Run them with:
+
+```sh
+OPENGPU_TEST_SANITIZERS=1 python3 scripts/test_compute_owner.py
+OPENGPU_TEST_SANITIZERS=1 python3 scripts/test_native_owner.py
+OPENGPU_TEST_SANITIZERS=1 python3 scripts/test_compute_host.py --canonical-root "$PWD"
+OPENGPU_TEST_SANITIZERS=1 python3 scripts/test_compute_host.py --compute-stage --canonical-root "$PWD"
+python3 scripts/test_prepare_owner_executor.py
+```
 
 Actual Mesa 22.3.6 ESSL/NIR/TGSI, Gallium/library submission and the original
 Linux ioctl/scheduler/MMU capture passed all sixteen dynamic atomic sources

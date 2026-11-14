@@ -25,7 +25,9 @@ class ExecutorTests(unittest.TestCase):
         (dut / 'dut_0.cpp').write_text('#include "dut.h"\nint cpu_fixture(){return 1;}\n')
         (dut / 'hw.mlir').write_text('// CPU fixture; not a GPU model.\n')
         (self.out / 'preparation.json').write_text('{"cpu_fixture":true}')
-        prepared = dict(rtl_sha256={'CpuFixture.sv':'cpu-fixture'}, manifest_sha256='cpu-manifest')
+        (self.out / 'owner-manifest.json').write_text(json.dumps(dict(profile=q.owner.PROFILE)))
+        self.preparation = prepared = dict(rtl_sha256={'CpuFixture.sv':'cpu-fixture'},
+            manifest_sha256=q.common.sha(self.out / 'owner-manifest.json'))
         self.prepared = patch.object(q.owner, 'prepared', return_value=prepared).start()
         self.addCleanup(patch.stopall)
         self.generator = {'source': {'cpu.py': 'fixture'}, 'python': 'cpu-test', 'circt_sha256': 'cpu-tool'}
@@ -40,7 +42,11 @@ class ExecutorTests(unittest.TestCase):
         self.options = dict(shard_opt='-O2', commit_opt='-O0', conservative_alias=False,
                             strict_flex_arrays=False, precompiled_header=False)
 
-    def fixture(self, kind='compute'):
+    def fixture(self, kind='compute', profile=None):
+        profile = profile or q.owner.PROFILE
+        (self.out / 'owner-manifest.json').write_text(json.dumps(dict(profile=profile)))
+        self.preparation['manifest_sha256'] = q.common.sha(self.out / 'owner-manifest.json')
+        files = q.driver_files(kind, profile)
         target = self.out / 'executors' / kind
         target.mkdir(parents=True)
         # An actual tiny CPU binary makes executable/hash checks independent
@@ -53,7 +59,7 @@ class ExecutorTests(unittest.TestCase):
         built = dict(dut_header_sha256=model['generated']['files']['dut.h'],
             dut_sources={n:h for n,h in model['generated']['files'].items() if n!='dut.h'},
             driver_inputs={str((q.ROOT/n).resolve()):h for n,h in
-                q.hashes([q.driver_files(kind)[0], *q.DEFAULT_DEPENDENCIES, *q.driver_files(kind)[1:]]).items()},
+                q.hashes([files[0], *q.DEFAULT_DEPENDENCIES, *files[1:]]).items()},
             compiler=self.compiler['path'], compiler_version=self.compiler['version'],
             environment={k:os.environ.get(k,'') for k in q.builder.ENVIRONMENT},
             executable_sha256=q.common.sha(target/'executor'), **self.options)
@@ -64,16 +70,50 @@ class ExecutorTests(unittest.TestCase):
             '-I',str(q.ROOT/'scripts'),*flags[-2:],'-O1'],
             objects={Path(n).stem+'.o':'0'*64 for n in built['dut_sources']})
         q.common.write_json(target/'builder.json',built)
-        record=dict(schema='opengpu-owner-executor-v1',version=1,kind=kind,profile=q.owner.PROFILE,
+        record=dict(schema='opengpu-owner-executor-v1',version=1,kind=kind,**q.profile_contract(profile, kind),
             executorBuildVerified=True,sourceQualificationRequired=True,gpuExecution=False,
             clockQualified=False,fpsQualified=False,source_root=str(q.ROOT),owner_output=str(self.out),
             flashsim=str(self.flashsim),shards=1,source_sha256=q.hashes(
-                [*q.driver_files(kind),*q.DEFAULT_DEPENDENCIES,*q.CHECKERS]),
+                [*files,*q.DEFAULT_DEPENDENCIES,*q.CHECKERS]),
             model=model,compiler=self.compiler,options=self.options,
             builder_sha256=q.common.sha(target/'builder.json'),executable_sha256=q.common.sha(target/'executor'))
         path=target/'qualification.json';q.common.write_json(path,record)
         q.verify_qualification(path,executor=target/'executor',kind=kind)
         return path,record
+
+    def test_stage_qualification_requires_its_actual_factory_and_distinct_driver(self):
+        path,record=self.fixture(profile=q.COMPUTE_STAGE)
+        files=q.driver_files('compute',q.COMPUTE_STAGE)
+        self.assertEqual(files[0],'scripts/compute_stage_owner_driver.cpp')
+        self.assertIn('scripts/compute_owner_driver.cpp',files)
+        q.builder.validate_driver_includes([q.ROOT/name for name in
+            [files[0],*q.DEFAULT_DEPENDENCIES,*files[1:]]],self.out/'flashsim-dut/dut.h',self.out/'flashsim-dut')
+        for key,value in (('profile',q.owner.PROFILE),('ownerResourceVersion',True),
+                          ('ownerResourceStage','final'),('fullResourceQualification',True)):
+            bad=copy.deepcopy(record);bad[key]=value;q.common.write_json(path,bad)
+            with self.subTest(key=key),self.assertRaises(RuntimeError):q.verify_qualification(path)
+        q.common.write_json(path,record)
+        # Neither a relabeled record nor a changed prepared factory can bind
+        # an old driver/model to the new source contract.
+        (self.out/'owner-manifest.json').write_text(json.dumps(dict(profile=q.owner.PROFILE)))
+        with self.assertRaises(RuntimeError):q.verify_qualification(path)
+        (self.out/'owner-manifest.json').write_text(json.dumps(dict(profile=q.COMPUTE_STAGE)))
+        original=json.loads((path.parent/'builder.json').read_text())
+        mixed=copy.deepcopy(original)
+        mixed['driver_inputs']={str((q.ROOT/n).resolve()):h for n,h in q.hashes(
+            [q.driver_files('compute')[0],*q.DEFAULT_DEPENDENCIES,*q.driver_files('compute')[1:]]).items()}
+        q.common.write_json(path.parent/'builder.json',mixed)
+        record['builder_sha256']=q.common.sha(path.parent/'builder.json');q.common.write_json(path,record)
+        with self.assertRaises(RuntimeError):q.verify_qualification(path)
+        with self.assertRaises(RuntimeError):q.driver_files('native',q.COMPUTE_STAGE)
+
+    def test_frozen_qualification_cannot_acquire_stage_labels(self):
+        path,record=self.fixture()
+        for fields in (q.profile_contract(q.COMPUTE_STAGE,'compute'),
+                       dict(ownerResourceVersion=2),dict(ownerResourceStage='compute'),
+                       dict(fullResourceQualification=False)):
+            bad=copy.deepcopy(record);bad.update(fields);q.common.write_json(path,bad)
+            with self.assertRaises(RuntimeError):q.verify_qualification(path)
 
     def test_distinct_kind_and_exact_dependencies_with_reusable_shared_cache(self):
         for kind in q.KINDS:

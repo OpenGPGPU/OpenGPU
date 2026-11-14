@@ -672,7 +672,7 @@ int main(int argc,char **argv)
  for(unsigned enabled=0;enabled<2;enabled++){
   size_t flags=0;while(flags<ARRAY_SIZE(test_profile) && test_profile[flags].address!=0x368)flags++;
   assert(flags<ARRAY_SIZE(test_profile));u32 saved=test_profile[flags].value;
-  test_profile[flags].value=saved | (enabled?1u<<18:0);
+  test_profile[flags].value=(saved & ~(1u<<18)) | (enabled?1u<<18:0);
   struct compute_host_session *discovery=compute_host_create(7,test_profile,ARRAY_SIZE(test_profile));assert(discovery);
   u64 features=0;assert(!compute_host_query(discovery,OPENGPU_PARAM_DRIVER_FEATURES,&features));
   assert(!!(features&OPENGPU_DRIVER_FEATURE_COMPUTE_SHARED_ATOMICS)==!!enabled);
