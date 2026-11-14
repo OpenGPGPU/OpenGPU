@@ -1322,6 +1322,11 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertIn("opengpu.system.TessellationInputMemoryFabricSpec", actual)
         self.assertNotIn("opengpu.graphics.tessellation.TessellationTranslatedSequenceImageSharedSpec", actual)
 
+    def test_tessellation_vertex_memory_adapter_selects_real_fabric_check(self):
+        root = Path(__file__).resolve().parents[1]
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationVertexMemoryAdapter.scala"]))
+        self.assertIn("opengpu.system.TessellationInputMemoryFabricSpec", actual)
+
     def test_tessellation_native_sequence_selects_schema_check(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/system/TessellationNativeSequenceReader.scala",
