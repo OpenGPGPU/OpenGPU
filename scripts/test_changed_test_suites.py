@@ -69,6 +69,13 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 if path.endswith("/ComputeResourceCapabilities.scala") else set())
             self.assertEqual(set(changed_suites(root, [path])), selected)
 
+    def test_complete_owner_resource_composition_selects_the_actual_host_check(self):
+        for path in ("src/main/scala/opengpu/system/OwnerResourceProfile.scala",
+                     "src/test/scala/opengpu/system/PrepareOwnerResourceHost.scala"):
+            with self.subTest(path=path):
+                self.assertIn("opengpu.system.NativeOwnerHostProfileSpec",
+                              changed_suites(REPO_ROOT,[path]))
+
     def test_texture_image_schemas_select_existing_cpu_abi_check(self):
         paths = [f"src/main/scala/opengpu/elaboration/Emit{name}Abi.scala"
                  for name in ("ShaderImage", "TextureImageBinding", "TextureImageLevel", "TextureImageFormat")]
