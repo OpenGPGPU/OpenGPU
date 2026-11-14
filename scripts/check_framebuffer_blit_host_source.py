@@ -23,8 +23,11 @@ def sha(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--owner-root", required=True, type=Path)
+    parser.add_argument("--sample-owner", action="store_true", help="distinct source-selected protected112 TU; same checkout only")
     args = parser.parse_args()
     owner = args.owner_root.resolve(strict=True)
+    if args.sample_owner and owner != ROOT:
+        parser.error("protected112 typecheck requires its original source checkout")
     gpu = Path(subprocess.check_output(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
                                       cwd=ROOT, text=True).strip()).parent
     if not owner.is_relative_to(gpu / ".artifacts/worktrees"):
@@ -49,6 +52,12 @@ def main():
         "scripts/flashsim_native/VGpuHostSystemAxi.h", "scripts/flashsim_native/verilated.h",
         "scripts/native_host_simulation.hpp", "scripts/native_execution_progress.hpp",
         "scripts/native_frame_axi.hpp", "scripts/native_frame_fixture.hpp"]
+    if (owner / 'scripts/owner_factory.hpp').is_file():
+        owner_dependencies.append('scripts/owner_factory.hpp')
+    if args.sample_owner:
+        files.insert(0, ROOT / 'scripts/native_framebuffer_blit_sample_driver.cpp')
+        own_dependencies.append('scripts/native_framebuffer_blit_driver.cpp')
+        owner_dependencies += ['scripts/native_sample_owner_runtime.hpp', 'scripts/native_sample_owner_capture.hpp']
     closure = [files[0], *(ROOT / name for name in own_dependencies), *(owner / name for name in owner_dependencies)]
     before = {path: sha(path) for path in closure}
     (ROOT / ".artifacts").mkdir(exist_ok=True)
@@ -81,7 +90,8 @@ class VerilatedContext {public:void commandArgs(int,char**){} void timeInc(uint6
         subprocess.run(command, check=True, env=env)
     if before != {path: sha(path) for path in closure}:
         raise RuntimeError("owner/driver source changed during typecheck")
-    print("Framebuffer host C++ source typecheck PASS; declaration-only ports, no DUT build or execution")
+    print("Framebuffer host C++ source typecheck PASS profile=" + ('protected112' if args.sample_owner else 'frozen96') +
+          "; declaration-only ports, no DUT build or execution")
 
 
 if __name__ == "__main__":
