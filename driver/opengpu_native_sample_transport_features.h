@@ -61,7 +61,7 @@ static inline bool opengpu_native_sample_shader_layout(u32 version,u32 varyings,
 {
     struct opengpu_native_sample_shader_layout value={0};
     unsigned long long bytes;
-    if(!out || (version!=6 && version!=7) || varyings>16 || !colors || colors>4 ||
+    if(!out || (version!=6 && version!=7) || varyings>16 || colors>4 ||
         !capacity || capacity>128)return false;
     value.version=version;value.capacity=capacity;value.sample_mask_in_array=5;
     value.sample_id_array=8+4*varyings+(version==7?2:0);

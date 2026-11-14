@@ -87,7 +87,7 @@ int main(void)
         for(u32 colors=0;colors<6;++colors)for(u32 capacity=0;capacity<130;++capacity){
             struct opengpu_native_sample_shader_layout layout,previous;
             memset(&layout,0x6b,sizeof(layout));previous=layout;
-            const bool legal=(version==6 || version==7) && varying<=16 && colors>=1 && colors<=4 && capacity>=1 && capacity<=128;
+            const bool legal=(version==6 || version==7) && varying<=16 && colors<=4 && capacity>=1 && capacity<=128;
             assert(opengpu_native_sample_shader_layout(version,varying,colors,capacity,&layout)==legal);
             if(!legal){assert(!memcmp(&layout,&previous,sizeof(layout)));continue;}
             const u32 first=8+4*varying+(version==7?2:0),inputs=first+3;
