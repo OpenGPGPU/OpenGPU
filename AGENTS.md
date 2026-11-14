@@ -30,6 +30,9 @@ Verify no active process or other worktree needs the data. Preserve unpublished
 source changes, shared tools or artifacts still in use, and data the user
 explicitly wants kept. An unmerged PR alone is not a reason to retain generated
 process data.
+Check symbolic links and cross-worktree artifact references before deleting
+shared outputs. An empty open-file listing alone does not establish that an
+artifact is unused; a later verification step may still need it.
 
 After a PR merges, promptly clean up its temporary local worktrees and local
 topic branches. Verify the worktree is clean and no active process needs it,
