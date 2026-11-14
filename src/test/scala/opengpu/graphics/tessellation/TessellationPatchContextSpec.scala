@@ -101,8 +101,9 @@ class TessellationOwnedPatchContextSpec extends AnyFlatSpec {
       def close():Unit={d.io.close.valid.poke(true.B);until(d.io.close.ready.peek().litToBoolean)
         d.clock.step();d.io.close.valid.poke(false.B);d.io.busy.expect(false.B)}
       submit(32,64,0);d.clock.step(7);d.io.cancel.poke(true.B)
-      for(_<-0 until 5){d.clock.step();d.io.opened.valid.expect(false.B);d.io.busy.expect(true.B);d.io.close.ready.expect(false.B)}
-      opened();d.io.cancel.poke(false.B);result(2);close()
+      d.clock.step();d.io.cancel.poke(false.B)
+      for(_<-0 until 4){d.clock.step();d.io.opened.valid.expect(false.B);d.io.busy.expect(true.B);d.io.close.ready.expect(false.B)}
+      opened();result(2);close()
       submit(2,1,1);opened()
       d.io.sealInput.valid.poke(true.B);until(d.io.sealInput.ready.peek().litToBoolean)
       d.clock.step();d.io.sealInput.valid.poke(false.B)

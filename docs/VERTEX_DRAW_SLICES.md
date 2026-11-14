@@ -108,7 +108,16 @@ bounded JVM settings above: the two legacy store/context cases and the new
 cover all 2048 old input/output words, a 32×60+120 packed output layout, shrinking
 and growing layouts, all six levels, invalid/empty-component layouts, held
 opening/replies, cancellation during initialization, actual context abort and
-healthy reuse without reset. These are SRAM/context component results, without
+healthy reuse without reset. The strengthened owned cases independently read
+back all 4096 nonzero input/output words and all six levels before ownership
+changes. They also cover output-dominated and per-patch-only clearing, nonzero
+per-patch readback, and a single early cancellation pulse withdrawn before
+initialization finishes. Both strengthened RTL cases passed. Four separately
+compiled semantic mutations were rejected by the intended behavioral checks:
+dropped ordinary input writes, dropped ordinary output writes, clearing only
+the shorter input range, and forgetting cancellation during opening. Each
+negative run completed its suite with an assertion failure, without timeout or
+infrastructure failure. These are SRAM/context component results, without
 VS/TCS/TES CU execution or protected whole-owner retirement.
 
 ## Pending execution and reproduction
