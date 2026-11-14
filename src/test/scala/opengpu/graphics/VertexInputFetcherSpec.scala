@@ -205,6 +205,26 @@ class VertexInputFetcherSpec extends AnyFlatSpec {
         driver.start(a,Some(s));driver.summary(0)
         assert(driver.requests.isEmpty && driver.outputs.isEmpty);driver.consume()
       }
+      // The arbitrary-instance setup must retain the carry in baseInstance +
+      // quotient even with zero stride; wrapping to a legal address is unsafe.
+      for((divisor,first)<-Seq[(BigInt,BigInt)]((1,1),(3,3),
+          (BigInt("80000000",16),BigInt("80000000",16)))){
+        for(base<-Seq(u32-1,u32)){
+          val command=a.copy(count=1,baseInstance=base,instanceLimit=Some(first+1),
+            buffers=Vector(Buffer(view(0x2000,256),0,divisor)))
+          val selected=Slice(0,1,first,1)
+          driver.start(command,Some(selected))
+          if(base==u32){
+            val result=driver.summary(VertexInputStatus.bounds)
+            assert(result.attributeValid && result.attribute==0 && result.address==0x2000)
+            assert(driver.requests.isEmpty && driver.outputs.isEmpty)
+          }else{
+            driver.summary(0)
+            assert(driver.outputs.toVector==driver.expected(command,Some(selected)))
+          }
+          driver.consume()
+        }
+      }
       val range=Slice(2,3,37,2)
       driver.start(a,Some(range));for(_<-0 until 10)driver.step()
       d.io.cancel.poke(true.B);driver.summary(4)
