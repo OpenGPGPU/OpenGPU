@@ -6,9 +6,26 @@
 #include "opengpu_native_sample_program.h"
 #include "graphics_sample_kernel.h"
 static struct opengpu_native_sample_runtime sample_cache;
+/* Separate compiler observation, written before private-plan construction.
+ * Uses the unchanged actual Mesa linked-reflection accessors. */
+static int sample_compiler_reflection(void *linked,const char *path)
+{
+    FILE *f=fopen(path,"wx");if(!f)return -1;
+    fputs("{\"schema\":\"opengpu-linked-graphics-reflection-v1\",\"stages\":[",f);
+    for(unsigned stage=0;stage<2;stage++){
+        fprintf(f,"%s{\"stage\":%u,\"defaultComponents\":%u,\"bindings\":[",stage?",":"",stage,graphics_uniform_components(linked,stage));
+        for(unsigned block=0;block<graphics_uniform_blocks(linked,stage);block++)fprintf(f,"%s%u",block?",":"",graphics_uniform_binding(linked,stage,block));
+        fputs("]}",f);
+    }
+    fputs("]}\n",f);int e=ferror(f)?-1:0;
+    if(fclose(f))e=-1;
+    if(e)remove(path);
+    return e;
+}
+
 static void sample_metadata(struct pipe_context *pipe,const struct opengpu_native_graphics_sources *sources,
     struct pipe_resource *input,unsigned color_type,const char *directory,const char *prefix,
-    struct native_graphics_source_record *record)
+    struct native_graphics_source_record *record,const unsigned reflection[2][12])
 {
     struct pipe_opengpu_screen *screen=opengpu_screen_gpu(pipe->screen);unsigned context;
     struct opengpu_native_sample_runtime actual;assert(!opengpu_native_sample_context_runtime(pipe,&actual,&context));
@@ -57,6 +74,16 @@ static void sample_metadata(struct pipe_context *pipe,const struct opengpu_nativ
     record->width=record->height=4;record->color_handle=windows[0].handle;record->color_offset=64;record->color_bytes=256;record->row_pitch=64;
     assert(!opengpu_native_sample_graphics_submit(pipe,&submission,&sequence) && sequence);
     assert(!graphics_sample_private_code(native_session,native_kernel_records-1,sources->programs));
+    struct graphics_sample_source_plan proof={.draw=plan.draw,.completion=job.completion,.resource_count=frame.resource_count};
+    memcpy(proof.resources,frame.resources,frame.resource_count*sizeof(frame.resources[0]));
+    memcpy(proof.bindings,reflection,sizeof(proof.bindings));
+    for(unsigned stage=0;stage<2;stage++){
+        const struct opengpu_native_uniform_layout *l=&sources->layout[stage];
+        unsigned layout[5]={l->stage,l->capacity,l->attributes,l->varyings,l->colors};
+        memcpy(proof.layout[stage],layout,sizeof(layout));
+    }
+    char proof_path[4096];assert(snprintf(proof_path,sizeof(proof_path),"%s/record-%u.source-plan.json",directory,native_kernel_records-1)>0);
+    assert(!graphics_sample_source_plan_write(native_session,native_kernel_records-1,proof_path,&proof));
     resource_ioctl=NULL;native_source_record=NULL;
     assert(!opengpu_sync_destroy(pipe_opengpu_screen_fd(screen),sync));
     request.attributes[1].enabled=1;
@@ -74,6 +101,10 @@ int main(int argc,char **argv)
     assert(snprintf(fragment,sizeof(fragment),"%s/full.frag",argv[1])>0);
     assert(snprintf(prefix,sizeof(prefix),"%s/full",argv[1])>0);
     void *linked=graphics_uniform_compile(vertex,fragment,prefix);assert(linked && graphics_uniform_color_type(linked,0)==1);
+    unsigned reflection[2][12];
+    for(unsigned stage=0;stage<2;stage++)for(unsigned slot=0;slot<12;slot++)reflection[stage][slot]=graphics_uniform_binding(linked,stage,slot);
+    char reflection_path[4096];assert(snprintf(reflection_path,sizeof(reflection_path),"%s/compiler-reflection.json",argv[1])>0);
+    assert(!sample_compiler_reflection(linked,reflection_path));
     uint64_t oldfeatures=features;features&=~OPENGPU_DRIVER_FEATURE_NATIVE_BINNED;
     struct pipe_screen *screen=opengpu_drm_screen_create(7,NULL);assert(screen);
     struct pipe_context *pipe=screen->context_create(screen,NULL,0);assert(pipe);
@@ -124,7 +155,7 @@ int main(int argc,char **argv)
             for(unsigned slot=0;slot<12;slot++)assert(sources.uniforms[stage].blocks[slot].bytes==16384);
         }
         native_original_inputs(&observations[index],resources,offsets,sources.uniforms);
-        sample_metadata(pipe,&sources,resources[12],graphics_uniform_color_type(linked,0),argv[1],index?"native-next":"native",&observations[index]);
+        sample_metadata(pipe,&sources,resources[12],graphics_uniform_color_type(linked,0),argv[1],index?"native-next":"native",&observations[index],reflection);
         if(!index)native_program_inputs(&sources,"real",argv[1]);
     }
     assert(native_kernel_records==2);
