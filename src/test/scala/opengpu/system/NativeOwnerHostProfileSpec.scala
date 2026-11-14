@@ -11,8 +11,10 @@ class NativeOwnerHostProfileSpec extends AnyFlatSpec {
     assert(OwnerResourceProfile.sampleStageId=="two-cu-vga60-owner-v2-sample-stage")
     assert(OwnerResourceProfile.sampleStageName=="geometry-compute-sample")
     assert(!before.native.sampleShading && !before.nativeSampleTransport)
+    assert(sample.tessellationFragmentImages && sample.tessellationSampleShading)
+    assert(!before.tessellationFragmentImages && !before.tessellationSampleShading)
+    assert(sample.copy(native=before.native,tessellationFragmentImages=false,tessellationSampleShading=false)==before)
     assert(sample.nativeSampleTransport && sample.native.sampleShading)
-    assert(sample.copy(native=before.native)==before)
     assert(sample.nativeGeometryTransport && sample.native.transformFeedback && sample.execution.enableSharedVectorAtomics)
     assert(sample.computeUnits==2 && sample.execution.lanes==16 && sample.execution.warps==8)
     assert(sample.native.vertex.varyings==16 && sample.native.fragment.colors==4 && sample.native.engines==4)
@@ -24,6 +26,8 @@ class NativeOwnerHostProfileSpec extends AnyFlatSpec {
     assert(sample.requiredDiscovery.takeRight(8)==Seq[BigInt](0x47535301,8,1,31,192,0x4d041004,0x7ff,7)
       .zipWithIndex.map{case(value,index)=>(0x520+4*index,value)})
     intercept[IllegalArgumentException] { sample.copy(nativeGeometryTransport=false) }
+    intercept[IllegalArgumentException] { before.copy(tessellationSampleShading=true) }
+    assert(!OwnerResourceProfile.computeStage.tessellationFragmentImages && !OwnerResourceProfile.computeStage.tessellationSampleShading)
   }
 
   it should "compose complete protected geometry, shared atomics and feedback without relabeling either frozen owner" in {

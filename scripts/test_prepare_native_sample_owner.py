@@ -17,7 +17,8 @@ class SampleOwnerManifestTests(unittest.TestCase):
             payloadBytes=524288, resourceDiscoveryWords=112, computeFeatureFlags=0x1fffff,
             targetFps=60, nativeGeometryDraw=True, nativeGeometryTransport=True,
             transformFeedback=True, nativeSampleShading=True, nativeSampleTransport=True,
-            nativeFragmentVersions=[6, 7], fullResourceQualification=False,
+            nativeFragmentVersions=[6, 7], tessellationFragmentImages=True,
+            tessellationSampleShading=True, fullResourceQualification=False,
             rtlEmitted=True, sourceQualificationRequired=True, gpuExecution=False,
             clockQualified=False, fpsQualified=False, requiredDiscovery=copy.deepcopy(SAMPLE_WORDS))
 
@@ -58,10 +59,12 @@ class SampleOwnerManifestTests(unittest.TestCase):
         old = self.manifest()
         old.update(profile=PROFILE, ownerResourceStage=FULL_STAGE, resourceDiscoveryWords=104,
                    computeFeatureFlags=0xfffff, requiredDiscovery=copy.deepcopy(FULL_WORDS))
-        for key in ('nativeSampleShading', 'nativeSampleTransport', 'nativeFragmentVersions'):
+        for key in ('nativeSampleShading', 'nativeSampleTransport', 'nativeFragmentVersions',
+                    'tessellationFragmentImages', 'tessellationSampleShading'):
             del old[key]
         owner.check_manifest(old)
-        for key in ('nativeSampleShading', 'nativeSampleTransport', 'nativeFragmentVersions'):
+        for key in ('nativeSampleShading', 'nativeSampleTransport', 'nativeFragmentVersions',
+                    'tessellationFragmentImages', 'tessellationSampleShading'):
             bad = copy.deepcopy(old)
             bad[key] = self.manifest()[key]
             with self.assertRaises(RuntimeError):

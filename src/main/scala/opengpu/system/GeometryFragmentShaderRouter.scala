@@ -6,6 +6,19 @@ import opengpu.config.GpuConfig
 import opengpu.core.memory.ShaderPayloadBinding
 import opengpu.graphics.{GeometryInvocationLaunch,ShaderPayloadConfig,ShaderPayloadPin,SharedShaderTaskRouter}
 
+/** Connect a patch/geometry producer which has no image publication to an
+  * image-capable router. Explicitly clear the publication on every task;
+  * fragment state must never bleed into control/evaluation shader launches.
+  */
+object GeometryFragmentShaderRouter {
+  def connectWithoutImages(destination:SharedCuGraphicsPort,source:SharedCuGraphicsPort):Unit={
+    require(destination.imageTask.nonEmpty && source.imageTask.isEmpty)
+    require(destination.elements.keySet - "imageTask" == source.elements.keySet)
+    source.elements.foreach{case(name,value)=>destination.elements(name)<>value}
+    destination.imageTask.get:=0.U.asTypeOf(destination.imageTask.get)
+  }
+}
+
 /** Share the CU pool between geometry and a fragment stage that has no
   * geometry sidebands. Task tags, texture traffic, traps and payload pins are
   * managed by the existing shared shader router.
