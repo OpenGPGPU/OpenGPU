@@ -21,7 +21,7 @@ private class GeometryFeedbackHarness extends Module {
     val geometryDone=Decoupled(new GeometryOutputCompletion)
     val draw=Flipped(Decoupled(new PrimitiveAssemblyDraw(p)))
     val vertex=Flipped(Decoupled(new ShadedVertexRecord(p)))
-    val end=Flipped(Decoupled(Bool()))
+    val end=Flipped(Decoupled(new VertexShaderCompletion))
     val ordinaryDone=Decoupled(new PrimitiveAssemblyCompletion)
     val out=Decoupled(new GeometryMappedPrimitive(p))
     val feedback=new TransformFeedbackPipelineIO(config)
@@ -69,8 +69,16 @@ class GeometryTransformFeedbackStageSpec extends AnyFlatSpec {
     scope.context.poke(7.U);scope.root.poke(0x80000030L.U);scope.program.poke(9.U)
     scope.mode.poke(1.U);scope.cookie.poke(1.U)
     d.io.geometryDone.ready.poke(true.B);d.io.ordinaryDone.ready.poke(true.B)
+    private def whenOrdinaryCompletion():Unit={
+      if(d.io.ordinaryDone.valid.peek().litToBoolean && d.io.ordinaryDone.ready.peek().litToBoolean){
+        d.io.ordinaryDone.bits.status.expect(0.U);d.io.ordinaryDone.bits.vertices.expect(3.U)
+        d.io.ordinaryDone.bits.restarts.expect(0.U);d.io.ordinaryDone.bits.source.status.expect(0.U)
+        d.io.ordinaryDone.bits.source.vertices.expect(3.U)
+      }
+    }
     def tick():Unit={
       memory.drive();d.io.mappingFault.expect(false.B)
+      whenOrdinaryCompletion()
       held.foreach(value=>{d.io.out.valid.expect(true.B);assert(d.io.out.bits.peek().litValue==value)})
       held=if(d.io.out.valid.peek().litToBoolean && !d.io.out.ready.peek().litToBoolean)
         Some(d.io.out.bits.peek().litValue)else None
@@ -123,7 +131,8 @@ class GeometryTransformFeedbackStageSpec extends AnyFlatSpec {
         for(c<-0 until 4)x.bits.position(c).poke(raw(v,c).U)
         for(c<-0 until 64)x.bits.varyings(c/4)(c%4).poke(raw(v,c+4).U)
         x.valid.poke(true.B);until("ordinary vertex")(x.ready.peek().litToBoolean);tick();x.valid.poke(false.B)}
-      d.io.end.bits.poke(true.B);d.io.end.valid.poke(true.B)
+      zero(d.io.end.bits);identity(d.io.end.bits.identity)
+      d.io.end.bits.vertices.poke(3.U);d.io.end.valid.poke(true.B)
       until("ordinary end")(d.io.end.ready.peek().litToBoolean);tick();d.io.end.valid.poke(false.B)
     }
     def rendered(vertices:Seq[Int],gs:Boolean):Unit={
