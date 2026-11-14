@@ -184,3 +184,6 @@ opengpu.core.GpuComputeUnitImageBarrierSpec
 # Quad/Triangle HostAxiImage variants above, which OOMs the CI heap on a cold
 # sim cache.
 opengpu.graphics.tessellation.TessellationNativeHostAxiImageSpec
+
+# Explicit four-image source/payload component qualification; full API capacity.
+opengpu.graphics.NativeLayeredFourImageSpec
