@@ -1,0 +1,40 @@
+{
+  "schema": "opengpu-tessellation-vertex-sequence-v1",
+  "words": 512,
+  "bytes": 2048,
+  "uniformSchema": "tessellation-uniform-sequence.json",
+  "records": [
+    {
+      "domain": "isoline",
+      "magic": "0x474e5407",
+      "version": 7,
+      "uniformVersion": 4
+    },
+    {
+      "domain": "triangle",
+      "magic": "0x474e5408",
+      "version": 8,
+      "uniformVersion": 5
+    },
+    {
+      "domain": "quad",
+      "magic": "0x474e5409",
+      "version": 9,
+      "uniformVersion": 6
+    }
+  ],
+  "fields": [
+    {
+      "name": "vertexSource.base",
+      "word": 509,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "vertexSource.limit",
+      "word": 510,
+      "bits": 33,
+      "signed": false
+    }
+  ]
+}
