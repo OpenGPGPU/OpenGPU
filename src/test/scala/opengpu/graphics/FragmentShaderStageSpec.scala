@@ -516,15 +516,16 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
       val code=mutable.ArrayBuffer[BigInt](
         (BigInt(2)<<20)|(BigInt(8)<<15)|(BigInt(1)<<12)|(BigInt(7)<<7)|0x13,
         add(7,1,7),(BigInt(3)<<30)|(BigInt(0x10)<<20)|(BigInt(4)<<15)|(BigInt(7)<<12)|0x57)
-      for((in,out)<-Seq((inputs-3,0),(inputs-2,1),(inputs-1,2),(5,3),(13,17))){
+      for((in,out)<-Seq((inputs-3,0),(inputs-2,1),(inputs-1,2),(5,3),(0,4),(1,5),(2,6),(3,7),(13,17))){
         code++=address(5,7,in*t.stride);code+=vectorMemory(5,1,false)
         code++=address(6,7,(inputs+out)*t.stride);code+=vectorMemory(6,1,true)}
       code+=cease;code.zipWithIndex.foreach{case(word,i)=>t.put(0x2000+i*4,word)}
-      for(mode<-0 to 2;id<-0 until (1<<mode)){
+      for(mode<-0 to 2;id<-0 until (1<<mode);(originX,originY)<-Seq((0,0),(-4,-6),(18,22))){
         val previous=t.exports.size;t.descriptor();d.io.draw.bits.version.poke((if(geometry)7 else 6).U)
         d.io.draw.bits.sampleMode.poke(mode.U);d.io.draw.bits.shaderPc.poke(0x2000.U);t.submit();t.input(0)
         d.io.in.bits.sampleMode.poke(mode.U);d.io.in.bits.values.perSample.poke(true.B);d.io.in.bits.values.sampleId.poke(id.U)
         for(i<-0 until 4){val lane=d.io.in.bits.values.lanes(i);val live=i==0 || i==2
+          lane.x.poke((originX+i%2).S);lane.y.poke((originY+i/2).S)
           lane.covered.poke(live.B);lane.coverageMask.poke((if(live)1<<id else 0).U)
           lane.sampleLocationValid.poke(true.B);lane.sampleLocation.poke(id.U)
           val mask=if(i==0)15 else 0 // Cannot enable samples outside this invocation.
@@ -537,9 +538,17 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
         val out=t.exports.last
         for(i<-0 until 4){val lane=out.lanes(i)
           assert(lane.coverage==(if(i==0)BigInt(1)<<id else BigInt(0)))
-          assert(lane.colors(0)==id && lane.colors(1)==fp(if(mode==0)0.5f else if((id&1)==0)0.25f else 0.75f))
-          assert(lane.colors(2)==fp(if(mode==0)0.5f else if((id&(if(mode==1)1 else 2))==0)0.25f else 0.75f))
+          val sampleX=if(mode==0)0.5f else if((id&1)==0)0.25f else 0.75f
+          val sampleY=if(mode==0)0.5f else if((id&(if(mode==1)1 else 2))==0)0.25f else 0.75f
+          assert(lane.colors(0)==id && lane.colors(1)==fp(sampleX) && lane.colors(2)==fp(sampleY))
           assert(lane.colors(3)==(if(i==0 || i==2)BigInt(1)<<id else BigInt(0)))
+          // These are actual shader loads of the packed FragCoord arrays,
+          // copied by real CUs through output readback. SamplePosition alone
+          // cannot catch a 1x coordinate erroneously packed at pixel+.25.
+          assert(lane.x==originX+i%2 && lane.y==originY+i/2)
+          assert(lane.colors(4)==fp(originX+i%2+sampleX),s"FragCoord.x mode=$mode id=$id origin=($originX,$originY) lane=$i")
+          assert(lane.colors(5)==fp(originY+i/2+sampleY),s"FragCoord.y mode=$mode id=$id origin=($originX,$originY) lane=$i")
+          assert(lane.colors(6)==fp(0.5f) && lane.colors(7)==fp(2f))
         }
       }
     }
