@@ -208,7 +208,7 @@ object NativeProductFrameInputs {
     verifyWith(scene,input,NativeProductFrameReference.apiExtent(scene,scissors))
   }
 
-  private def verifyWith(scene: NativeProductWorkloads.Scene,input: Inputs,reference: NativeProductFrameReference): Unit = {
+  private[graphics] def verifyWith(scene: NativeProductWorkloads.Scene,input: Inputs,reference: NativeProductFrameReference): Unit = {
     for (p <- input.planes) {
       val active = !p.resolve || p.location == 0 && scene.samples == 4
       if (active) for (y <- 0 until scene.height; x <- 0 until scene.width; s <- 0 until p.samples) {
