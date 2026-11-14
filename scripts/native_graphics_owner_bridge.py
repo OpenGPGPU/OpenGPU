@@ -1,0 +1,380 @@
+#!/usr/bin/env python3
+"""Keep real native owners alive through external DUT execution and image checks.
+
+The bridge command is an argv JSON array. Literal {ipc} arguments are replaced
+with the fresh GPU-internal directory, which must be writable in that command's
+environment. No shell is used. The C producer publishes ready.json only after
+preparing both real owners. Independent images authorize a distinct cleanup
+phase; response.bin is sent only after that same live DUT confirms cleanup and
+the actual executor succeeds.
+"""
+import argparse
+import contextlib
+import fcntl
+import json
+import os
+from pathlib import Path
+import struct
+import signal
+import subprocess
+import tempfile
+import time
+
+from native_graphics_uniform_oracle import SparseMemory, expected_color, verify
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def require(condition, message):
+    if not condition:
+        raise ValueError(message)
+
+
+def uint(value, bits, label):
+    require(type(value) is int and 0 <= value < 1 << bits, "invalid " + label)
+    return value
+
+
+def strict_loads(text):
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            require(key not in result, "duplicate JSON key: " + key)
+            result[key] = value
+        return result
+    return json.loads(text, object_pairs_hook=unique,
+                      parse_constant=lambda value: (_ for _ in ()).throw(ValueError("invalid JSON " + value)))
+
+
+def strict_json(path):
+    return strict_loads(path.read_text())
+
+def profile_bytes(profile):
+    require(type(profile) is dict, "probe must be a JSON object")
+    require(profile.get("schema") == "opengpu-native-owner-profile-v1", "incorrect probe schema")
+    for field, expected in (("sourceQualificationRequired", True), ("gpuExecution", False),
+                            ("clockQualified", False), ("fpsQualified", False)):
+        require(profile.get(field) is expected, "incorrect probe flag " + field)
+    require(type(profile.get("resetCount")) is int and profile["resetCount"] == 1, "incorrect probe reset count")
+    words = profile.get("words")
+    require(type(words) is list and len(words) == 96, "probe must contain all 96 discovery words")
+    result = bytearray(b"OGPF0001" + struct.pack("<I", len(words)))
+    seen = set()
+    for word in words:
+        require(type(word) is dict and set(word) == {"address", "value"}, "invalid discovery pair")
+        address = uint(word["address"], 32, "discovery address")
+        require(not address & 3 and address not in seen, "unaligned or duplicate discovery address")
+        seen.add(address)
+        result += struct.pack("<II", address, uint(word["value"], 32, "discovery value"))
+    registers = profile.get("registers")
+    require(type(registers) is list and len(registers) == 5, "probe must include five live registers")
+    result += struct.pack("<I", 5)
+    seen = set()
+    for word in registers:
+        require(type(word) is dict and set(word) == {"address", "value"}, "invalid live register pair")
+        address = uint(word["address"], 32, "live register address")
+        require(address in {0, 0x60, 0x68, 0x320, 0x158} and address not in seen, "incorrect live register address")
+        seen.add(address)
+        result += struct.pack("<II", address, uint(word["value"], 32, "live register value"))
+    return bytes(result)
+
+
+def ipc_file(directory, name, required=True):
+    require(type(name) is str and name and Path(name).name == name and name not in {".", ".."},
+            "IPC path must be a single relative filename")
+    path = directory / name
+    require(not path.is_symlink() and (path.is_file() or (not required and not path.exists())), "missing or indirect IPC file: " + name)
+    return path
+
+
+def ready_files(directory):
+    ready = strict_json(ipc_file(directory, "ready.json"))
+    require(ready.get("schema") == "opengpu-native-owner-ready-v1", "incorrect READY schema")
+    require(type(ready.get("captures")) is list and len(ready["captures"]) == 2 and
+            type(ready.get("sources")) is list and len(ready["sources"]) == 2,
+            "READY must contain both actual owners")
+    memory = ipc_file(directory, ready.get("memory"))
+    require(ready["captures"] == ["record-0.capture", "record-1.capture"], "incorrect active capture filenames")
+    captures = [ipc_file(directory, name, required=index == 0) for index, name in enumerate(ready["captures"])]
+    sources = [ipc_file(directory, name) for name in ready["sources"]]
+    require(len(set([memory] + captures + sources)) == 5, "aliased IPC inputs")
+    return memory, captures, sources
+
+
+def response_bytes(records, first_record=0):
+    require(len(records) in (1, 2) and first_record in (0, 1) and len(records) + first_record <= 2,
+            "incorrect execution receipt count")
+    output = bytearray(b"OGRSP001" + struct.pack("<I", len(records)))
+    for index, record in enumerate(records, first_record):
+        require(record.get("phase") == "retired", "receipt must follow actual retirement trace verification")
+        require(type(record) is dict and uint(record.get("record"), 32, "record index") == index,
+                "out-of-order executor receipt")
+        for field, expected in (("ownerReplay", True), ("resetsBetweenRecords", False),
+                                ("heldCompletionDrained", True), ("readOnlyGuards", True),
+                                ("independentImagesRequired", True), ("sourceQualificationRequired", True),
+                                ("clockQualified", False), ("fpsQualified", False), ("externalDrained", True),
+                                ("retiredIrqAsserted", False)):
+            require(record.get(field) is expected, "incorrect executor flag " + field)
+        require(type(record.get("resets")) is int and record["resets"] == 1, "incorrect series reset count")
+        gnx = record.get("gnx")
+        require(type(gnx) is list and len(gnx) == 12, "receipt must retain all 12 raw GNX words")
+        values = [index, uint(record.get("commandId"), 32, "command id"),
+                  uint(record.get("completion"), 32, "completion")]
+        values += [uint(value, 32, "raw GNX word") for value in gnx]
+        output += struct.pack("<15IQ", *values, uint(record.get("appendReadBytes"), 64, "append read bytes"))
+        for field in ("heldLegacyStatus", "heldStatus", "heldIrq", "heldIrqAsserted", "retiredStatus", "retiredIrq",
+                      "retiredIrqAsserted", "externalDrained"):
+            value = record.get(field)
+            if field.endswith("Asserted") or field == "externalDrained":
+                require(type(value) is bool, "invalid receipt boolean " + field)
+                value = int(value)
+            output += struct.pack("<I", uint(value, 32, field))
+    return bytes(output)
+
+
+def cleanup_authorization(records):
+    require(len(records) == 2, "cleanup requires both execution observations")
+    response_bytes(records)  # Validate the actual completed execution receipts.
+    return b"OGCBA001" + struct.pack("<I", 2)
+
+
+def checked_cleanup(result):
+    require(type(result) is dict and result.get("phase") == "cleanup", "incorrect cleanup phase")
+    for field, expected in (("ownerCleanupObserved", True), ("contextCleanupObserved", True), ("ramReplaced", False),
+                            ("imagesPreserved", True), ("externalDrained", True),
+                            ("sourceQualificationRequired", True), ("clockQualified", False),
+                            ("fpsQualified", False)):
+        require(result.get(field) is expected, "incorrect cleanup flag " + field)
+    require(uint(result.get("records"), 32, "cleanup record count") == 2, "incorrect cleanup record count")
+    require(uint(result.get("resetCount"), 32, "cleanup reset count") == 1, "cleanup reset the DUT")
+    for field in ("batches", "pteClears", "shootdowns"):
+        require(uint(result.get(field), 64, "cleanup " + field) > 0, "missing actual cleanup " + field)
+
+
+def checked_images(initial, results, sources):
+    descriptions = [strict_json(source) for source in sources]
+    colors = [expected_color(description) for description in descriptions]
+    require(all(all(color) for color in colors) and colors[0] != colors[1],
+            "original sources must produce different nonzero colors")
+    require(descriptions[0]["color"]["physical_base"] != descriptions[1]["color"]["physical_base"],
+            "simultaneously prepared owners must use distinct mutable color allocations")
+    # This additional oracle input comes exclusively from the previous original
+    # GEM allocation lookup. It never changes a capture, VA, instruction or RAM.
+    descriptions[1]["preserve"] = [descriptions[0]["color"]]
+    with SparseMemory(initial) as before, SparseMemory(results / "record-0.memory") as first, \
+            SparseMemory(results / "record-1.memory") as second:
+        verify(before, first, descriptions[0])
+        verify(before, second, descriptions[1], first)
+
+
+def atomic_bytes(path, data):
+    require(not path.exists() and not path.is_symlink(), "IPC output already exists: " + path.name)
+    temporary = path.with_suffix(path.suffix + ".new")
+    with temporary.open("xb") as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+
+
+def wait_ready(process, directory, deadline):
+    while not (directory / "ready.json").exists():
+        require(not (directory / "error").exists(), "C bridge reported an error")
+        require(process.poll() is None, "C bridge exited before publishing live owners")
+        require(time.monotonic() < deadline, "timed out waiting for prepared owners")
+        time.sleep(0.1)
+    require(process.poll() is None, "C bridge did not keep owners alive")
+
+
+def held_bytes(record, index):
+    require(type(record) is dict and uint(record.get("record"), 32, "held record index") == index,
+            "incorrect held record")
+    for field in ("heldCompletionDrained", "sourceQualificationRequired"):
+        require(record.get(field) is True, "incorrect held flag " + field)
+    require(not any(key.startswith("retired") for key in record),
+            "held observation must not authorize retirement")
+    gnx = record.get("gnx")
+    require(type(gnx) is list and len(gnx) == 12, "held receipt must retain all raw GNX words")
+    asserted = record.get("heldIrqAsserted")
+    require(type(asserted) is bool, "incorrect held IRQ boolean")
+    words = [index, uint(record.get("commandId"), 32, "held command id"),
+             uint(record.get("completion"), 32, "held completion")]
+    words += [uint(word, 32, "raw held GNX word") for word in gnx]
+    return b"OGHLD001" + struct.pack("<I15IQ4I", 1, *words,
+        uint(record.get("appendReadBytes"), 64, "held append read bytes"),
+        uint(record.get("heldLegacyStatus"), 32, "held legacy status"),
+        uint(record.get("heldStatus"), 32, "held status"),
+        uint(record.get("heldIrq"), 32, "held IRQ"), int(asserted))
+
+
+def wait_file(path, bridge, executor, timeout):
+    deadline = time.monotonic() + timeout
+    while not path.exists():
+        require(not (path.parent / "error").exists(), "C bridge reported an active-session error")
+        require(bridge.poll() is None, "C bridge exited with live owners")
+        require(executor.poll() is None, "actual executor exited before " + path.name)
+        require(time.monotonic() < deadline, "timed out waiting for " + path.name)
+        time.sleep(0.1)
+    require(not path.is_symlink() and path.is_file(), "invalid active result file")
+    require(bridge.poll() is None, "C bridge exited before live receipt " + path.name)
+
+
+def stop(process):
+    if process is not None and process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=20)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+
+
+def lock_owner(qualification):
+    record = strict_json(qualification)
+    require(record.get('schema') == 'opengpu-owner-executor-v1' and record.get('kind') == 'native',
+            'wrong owner lock qualification kind')
+    require(type(record.get('owner_output')) is str, 'missing prepared owner directory')
+    owner = Path(record['owner_output']).resolve(strict=True)
+    require(qualification.resolve(strict=True) == owner / 'executors/native/qualification.json',
+            'qualification does not name the prepared owner')
+    path = owner / '.lock'
+    require(not path.is_symlink(), 'owner lock must not be aliased')
+    lock = path.open('a')
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BaseException:
+        lock.close()
+        raise
+    return lock
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--executor", type=Path, required=True)
+    parser.add_argument("--executor-qualification", type=Path, required=True)
+    parser.add_argument("--executor-checker", type=Path, required=True,
+                        help="original prepare_owner_executor.py; keep its original checkout")
+    parser.add_argument("--executor-checker-python", type=Path, required=True,
+                        help="generation-matched Python and CIRCT environment")
+    parser.add_argument("--bridge-command", type=Path, required=True, help="JSON argv array, with {ipc} substitution")
+    parser.add_argument("--timeout", type=int, default=3600)
+    parser.add_argument("--managed-session-directory", type=Path,
+                        help="fresh GPU-internal directory; outer owner proves exit before removing it")
+    args = parser.parse_args()
+    require(0 < args.timeout <= 86400, "timeout must be within 1..86400 seconds")
+    command = strict_json(args.bridge_command)
+    require(type(command) is list and command and all(type(arg) is str and arg for arg in command),
+            "bridge command must be a nonempty argv array")
+    require(any('{ipc}' in arg for arg in command), 'bridge command must consume the active IPC directory')
+    executor = args.executor.absolute()
+    qualification = args.executor_qualification.absolute()
+    require(executor.is_file() and not executor.is_symlink() and qualification.is_file() and not qualification.is_symlink(),
+            'executor/qualification must be original regular files')
+    checker = args.executor_checker.resolve(strict=True)
+    checker_python = args.executor_checker_python.resolve(strict=True)
+    def qualified(environment, log):
+        subprocess.run([checker_python, checker, '--stage', 'check', '--kind', 'native',
+                        '--qualification', qualification, '--executor', executor],
+                       env=environment, stdout=log, stderr=subprocess.STDOUT,
+                       timeout=args.timeout, check=True)
+    # Use the main GPU's short internal path for macOS socket compatibility.
+    gpu = next(parent for parent in (ROOT, *ROOT.parents) if (parent / ".git").is_dir())
+    parent = gpu / ".artifacts"
+    parent.mkdir(exist_ok=True)
+    if args.managed_session_directory:
+        managed = args.managed_session_directory.absolute()
+        require(not managed.exists() and not managed.is_symlink() and
+                managed.parent.resolve(strict=True).is_relative_to(parent),
+                'managed session must be a fresh directory inside GPU .artifacts')
+        managed.mkdir()
+        session = contextlib.nullcontext(str(managed))
+    else:
+        session = tempfile.TemporaryDirectory(prefix="g", dir=parent)
+    with session as temporary:
+        directory = Path(temporary)
+        environment = dict(os.environ, TMPDIR=temporary,
+                           OPENGPU_NATIVE_HOST_DIRECTORY=temporary,
+                           OPENGPU_NATIVE_HOST_PROFILE=str(directory / "profile.bin"),
+                           OPENGPU_NATIVE_HOST_TIMEOUT=str(args.timeout))
+        process = running = owner_lock = None
+        def terminate(_signal, _frame):
+            raise KeyboardInterrupt('native owner session terminated')
+        previous = signal.signal(signal.SIGTERM, terminate)
+        try:
+            with (directory / "executor-probe.log").open("w") as log:
+                qualified(environment, log)
+                owner_lock = lock_owner(qualification)
+                qualified(environment, log)
+                subprocess.run([executor, "--probe-profile", directory / "profile.json"],
+                               env=environment, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=args.timeout)
+            atomic_bytes(directory / "profile.bin", profile_bytes(strict_json(directory / "profile.json")))
+            argv = [arg.replace("{ipc}", temporary) for arg in command]
+            with (directory / "bridge.log").open("w") as log:
+                process = subprocess.Popen(argv, env=environment, stdout=log, stderr=subprocess.STDOUT)
+                wait_ready(process, directory, time.monotonic() + args.timeout)
+                initial, captures, sources = ready_files(directory)
+                results = directory / "results"
+                with (directory / "executor-series.log").open("w") as executor_log:
+                    running = subprocess.Popen([executor, "--active-owner-series", initial, results, directory, "2"],
+                        env=environment, stdout=executor_log, stderr=subprocess.STDOUT)
+                    records = []
+                    try:
+                        for index in range(2):
+                            wait_file(directory / ("record-%d.held.json" % index), process, running, args.timeout)
+                            held = strict_json(directory / ("record-%d.held.json" % index))
+                            atomic_bytes(directory / ("record-%d.held.bin" % index), held_bytes(held, index))
+                            # The C producer records real hw-drain reads/POP/IRQ
+                            # into OGRTR001. Only the live DUT executes them.
+                            wait_file(directory / ("record-%d.retired.json" % index), process, running, args.timeout)
+                            record = strict_json(directory / ("record-%d.retired.json" % index))
+                            receipt = response_bytes([record], index)
+                            for field in ("commandId", "completion", "gnx", "appendReadBytes", "heldLegacyStatus", "heldStatus",
+                                          "heldIrq", "heldIrqAsserted"):
+                                require(record.get(field) == held.get(field),
+                                        "retired observation changed held field " + field)
+                            require(process.poll() is None, "C bridge released owners before observed drain")
+                            if index == 0:
+                                with SparseMemory(initial) as before, SparseMemory(results / "record-0.memory") as after:
+                                    verify(before, after, strict_json(sources[0]))
+                            else:
+                                checked_images(initial, results, sources)
+                            # Per-record response authorizes execution completion
+                            # only. Both real owners must retain their mappings.
+                            atomic_bytes(directory / ("record-%d.response.bin" % index), receipt)
+                            records.append(record)
+                        # Both image/source/guard oracles ran before cleanup is
+                        # authorized. Do not reuse either execution response.
+                        atomic_bytes(directory / "cleanup.authorize.bin", cleanup_authorization(records))
+                        wait_file(directory / "cleanup.json", process, running, args.timeout)
+                        checked_cleanup(strict_json(directory / "cleanup.json"))
+                        require(running.wait(timeout=args.timeout) == 0, "actual owner executor failed")
+                        require(process.poll() is None, "C bridge exited before final cleanup confirmation")
+                        qualified(environment, executor_log)
+                        atomic_bytes(directory / "response.bin", response_bytes(records))
+                    finally:
+                        stop(running)
+                require(process.wait(timeout=args.timeout) == 0, "C bridge rejected observed retirement")
+                text = (directory / "bridge.log").read_text()
+                require(text.splitlines().count("ACTUAL_GRAPHICS_NATIVE_OWNER_RETIRED records=2 observed=true") == 1,
+                        "missing real observed-retirement completion")
+            print("Native graphics owner series PASS: two real snapshots, actual DUT execution/cleanup and independent images; no clock/FPS qualification")
+        except BaseException:
+            if not (directory / "error").exists():
+                atomic_bytes(directory / "error", b"qualification failed; no owner-release authorization\n")
+            # Failure never fabricates completion or sends an approving response.
+            # The producer's explicit failure teardown owns its OS allocations.
+            for name in ("executor-probe.log", "executor-series.log", "bridge.log"):
+                path = directory / name
+                if path.exists():
+                    print(path.read_text(errors="replace")[-6000:])
+            raise
+        finally:
+            stop(running)
+            stop(process)
+            if owner_lock is not None:
+                owner_lock.close()
+            signal.signal(signal.SIGTERM, previous)
+
+
+if __name__ == "__main__":
+    main()

@@ -4,6 +4,7 @@
 #include "opengpu_pixel_format.h"
 #include "opengpu_buffer_texture.h"
 #include "opengpu_kernarg_va.h"
+#include "opengpu_native_layout.h"
 #include <drm/drm.h>
 #include <drm/drm_fourcc.h>
 #include <drm/drm_mode.h>
@@ -346,6 +347,9 @@ static int finish_context_destroy(struct pipe_opengpu_context *ctx)
     release_context_storage(ctx);
     return 0;
 }
+
+uint32_t pipe_opengpu_context_id(const struct pipe_opengpu_context *ctx)
+{ return ctx && !ctx->orphaned ? ctx->context_id : 0; }
 
 int pipe_opengpu_context_destroy_checked(struct pipe_opengpu_context *ctx)
 {
@@ -1050,6 +1054,104 @@ int pipe_opengpu_screen_compute_image_backings(const struct pipe_opengpu_screen 
 {
     return pipe_opengpu_screen_compute_buffer_images(screen) &&
         (screen->driver_features & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BACKINGS);
+}
+
+int pipe_opengpu_screen_native_layout(struct pipe_opengpu_screen *screen,
+    struct opengpu_native_shader_layout *out)
+{
+    struct opengpu_native_shader_layout layout;
+    uint64_t word;
+    if (!screen || !out) { errno = EINVAL; return -1; }
+    if (!(screen->driver_features & OPENGPU_DRIVER_FEATURE_NATIVE_BINNED)) {
+        errno = ENOTSUP; return -1;
+    }
+    if (opengpu_native_layout(screen->fd,&word)) return -1;
+    if (!opengpu_native_layout_decode(word,&layout)) { errno = EPROTO; return -1; }
+    /* The current checked shader profile has an eight-bit batch contract.
+     * Keep the complete discovered capacity; reject unsupported profiles. */
+    if (layout.capacity > 255) { errno = ENOTSUP; return -1; }
+    *out = layout; return 0;
+}
+
+int pipe_opengpu_native_source_view(struct pipe_opengpu_screen *screen,
+    const struct pipe_opengpu_uniform_view *view, struct drm_opengpu_compute_uniform_view *output)
+{
+    const struct pipe_opengpu_resource *resource;
+    if (!screen || !view || !output || !view->resource || !view->bytes || view->bytes>UINT32_MAX) {
+        errno=EINVAL;return -1;
+    }
+    for (resource=screen->resources;resource && resource!=view->resource;resource=resource->next) {}
+    if (!resource || !resource->buffer.handle || resource->width || resource->height || resource->pitch ||
+        view->offset>resource->buffer.size || view->bytes>resource->buffer.size-view->offset) {
+        errno=EINVAL;return -1;
+    }
+    const struct drm_opengpu_compute_uniform_view result={.offset=view->offset,
+        .handle=resource->buffer.handle,.bytes=(uint32_t)view->bytes};
+    *output=result;return 0;
+}
+
+int pipe_opengpu_native_uniform_plan(struct pipe_opengpu_screen *screen,
+    const struct pipe_opengpu_uniform_view views[2][13],
+    const unsigned required_bytes[2][13], struct pipe_opengpu_native_uniform_plan *out)
+{
+    struct pipe_opengpu_native_uniform_plan plan = {0};
+    if (!screen || !views || !required_bytes || !out) goto invalid;
+    for (unsigned stage = 0; stage < 2; stage++) for (unsigned slot = 0; slot < 13; slot++) {
+        const struct pipe_opengpu_uniform_view *view = &views[stage][slot];
+        const struct pipe_opengpu_resource *resource;
+        uint64_t size;
+        unsigned need = required_bytes[stage][slot], maximum = slot ? 16384u : 4096u;
+        if (!need) continue;
+        if ((need & 3) || need > maximum || !view->resource) goto invalid;
+        /* Establish membership before dereferencing an opaque resource. */
+        for (resource = screen->resources; resource && resource != view->resource; resource = resource->next) {}
+        if (!resource || !resource->buffer.handle || resource->width || resource->height || resource->pitch) goto invalid;
+        size = resource->buffer.size;
+        /* GUC's 256-byte alignment applies to the copied private target.
+         * The original source view remains a four-byte GEM window. */
+        if ((view->offset & 3) || (view->bytes & 3) ||
+            view->bytes < need || view->bytes > maximum || view->offset > size || view->bytes > size - view->offset)
+            goto invalid;
+        if (!slot) { plan.defaults[stage] = *view; continue; }
+        unsigned index;
+        for (index = 0; index < plan.count; index++) {
+            const struct pipe_opengpu_uniform_view *other = &plan.bindings[index];
+            if (other->resource->buffer.handle == resource->buffer.handle &&
+                other->offset == view->offset && other->bytes == view->bytes) break;
+        }
+        if (index == plan.count) {
+            if (plan.count == 24) goto invalid;
+            plan.bindings[plan.count++] = *view;
+        }
+        plan.stage_mask[index] |= 1u << stage;
+        plan.active_mask[stage] |= 1u << (slot - 1);
+        plan.mapping[stage][slot - 1] = index;
+    }
+    *out = plan; return 0;
+invalid:
+    errno = EINVAL; return -1;
+}
+
+int pipe_opengpu_native_uniform_stages(struct pipe_opengpu_screen *screen,
+    const struct pipe_opengpu_uniform_view views[2][13], const unsigned required_bytes[2][13],
+    struct drm_opengpu_native_uniform_stage stages[2])
+{
+    struct pipe_opengpu_native_uniform_plan plan;
+    struct opengpu_native_shader_layout layout;
+    struct drm_opengpu_native_uniform_stage prepared[2] = {0};
+    if (!stages) { errno = EINVAL; return -1; }
+    if (pipe_opengpu_native_uniform_plan(screen,views,required_bytes,&plan) ||
+        pipe_opengpu_screen_native_layout(screen,&layout)) return -1;
+    for (unsigned stage = 0; stage < 2; stage++) {
+        prepared[stage].active_mask = plan.active_mask[stage];
+        for (unsigned slot = 0; slot < 13; slot++) if (required_bytes[stage][slot]) {
+            const struct pipe_opengpu_uniform_view *view = &views[stage][slot];
+            struct drm_opengpu_compute_uniform_view *record = slot ? &prepared[stage].blocks[slot-1] : &prepared[stage].defaults;
+            record->handle = view->resource->buffer.handle; record->offset = view->offset;
+            record->bytes = (uint32_t)view->bytes;
+        }
+    }
+    memcpy(stages,prepared,sizeof(prepared)); return 0;
 }
 
 int pipe_opengpu_uniform_view_validate(const struct pipe_opengpu_screen *screen,

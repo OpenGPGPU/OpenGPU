@@ -28,6 +28,16 @@ int opengpu_capabilities(int fd, uint64_t *value);
 int opengpu_shader_config(int fd, uint32_t *value);
 /* Unknown feature query on older drivers is a successful zero-feature result. */
 int opengpu_driver_features(int fd, uint64_t *value);
+int opengpu_native_layout(int fd, uint64_t *value);
+/* Read the complete frozen GNC block. Reject any nonzero upper word and leave
+ * output unchanged if any transport request fails. Semantic validation lives
+ * in opengpu_native_runtime_query, before a native submission is assembled. */
+int opengpu_native_caps(int fd, uint32_t words[OPENGPU_PARAM_NATIVE_CAPS_WORDS]);
+/* Raw transport; the guarded native frontend assembles canonical source plans.
+ * Kernel admission owns all validation, producer waits and private snapshots.
+ * A failed ioctl does not change the caller's returned sequence number. */
+int opengpu_native_submit(int fd, const struct drm_opengpu_submit_native_binned *request,
+    uint64_t *fence_sequence);
 /* Both limits are zero when unknown or compute is unavailable. Older drivers
  * may return EINVAL or ENOTTY for this query. */
 int opengpu_compute_local_limits(int fd, uint32_t *items, uint32_t *axis);

@@ -30,6 +30,7 @@
 #include "opengpu_shader_abi.h"
 #include "opengpu_shader_resources.h"
 #include "opengpu_framebuffer_blit.h"
+#include "opengpu_native_layout.h"
 #include "opengpu_texture_layout.h"
 #include "opengpu_sampler_lowering.h"
 #include "opengpu_vertex_formats.h"
@@ -147,6 +148,10 @@ struct opengpu_context {
     int cs_counter_error;
     struct pipe_constant_buffer cs_constants[13];
     unsigned cs_constant_errors;
+    struct pipe_constant_buffer native_constants[2][13];
+    unsigned native_constant_errors[2];
+    struct opengpu_native_shader_layout native_layout;
+    bool native_layout_valid;
     unsigned cs_access[4];
     int cs_binding_error;
     struct pipe_sampler_view *cs_sampler_views[32];
@@ -4558,6 +4563,85 @@ invalid:
     gpu_failed("invalid exact compute constant view");
 }
 
+/* Borrow incoming resources: set_constant_buffer's existing ownership tail
+ * consumes Mesa's transferred reference exactly once. Defaults receive a new
+ * GEM on every bind, before Mesa may reuse its CPU parameter array. */
+static void set_native_graphics_constant(struct pipe_context *pipe, unsigned stage,
+    unsigned slot, const struct pipe_constant_buffer *buf)
+{
+    struct opengpu_context *ctx = octx(pipe);
+    struct pipe_constant_buffer next = {0};
+    struct pipe_opengpu_uniform_view views[2][13] = {0};
+    unsigned required[2][13] = {0};
+    struct pipe_opengpu_native_uniform_plan plan;
+    bool created = false;
+    int saved = EINVAL;
+    if (slot > 12) goto invalid;
+    if (buf) next = *buf;
+    if (next.user_buffer) {
+        struct pipe_resource templ = {0};
+        uintptr_t address = (uintptr_t)next.user_buffer;
+        const void *source;
+        void *map;
+        if (slot || next.buffer || !next.buffer_size || (next.buffer_size & 3) ||
+            next.buffer_size > 4096 || address > UINTPTR_MAX - next.buffer_offset ||
+            address + next.buffer_offset > UINTPTR_MAX - next.buffer_size) goto invalid;
+        source = (const void *)(address + next.buffer_offset);
+        templ.target = PIPE_BUFFER; templ.format = PIPE_FORMAT_R8_UNORM;
+        templ.bind = PIPE_BIND_CONSTANT_BUFFER; templ.usage = PIPE_USAGE_STREAM;
+        templ.width0 = next.buffer_size; templ.height0 = templ.depth0 = templ.array_size = 1;
+        next.buffer = pipe->screen->resource_create(pipe->screen,&templ);
+        if (!next.buffer) { saved = errno ? errno : ENOMEM; goto invalid; }
+        created = true;
+        map = pipe_opengpu_resource_map(opengpu_resource(next.buffer)->gpu);
+        if (!map) { saved = errno; goto invalid; }
+        memcpy(map,source,next.buffer_size);
+        next.user_buffer = NULL; next.buffer_offset = 0;
+    } else if (next.buffer) {
+        if (next.buffer->screen != pipe->screen || next.buffer->target != PIPE_BUFFER ||
+            !next.buffer_size || next.buffer_offset > next.buffer->width0 ||
+            next.buffer_size > next.buffer->width0 - next.buffer_offset) goto invalid;
+        views[stage][slot] = (struct pipe_opengpu_uniform_view){opengpu_resource(next.buffer)->gpu,next.buffer_offset,next.buffer_size};
+        required[stage][slot] = 4;
+        if (pipe_opengpu_native_uniform_plan(opengpu_screen_gpu(pipe->screen),views,required,&plan)) {
+            saved = errno; goto invalid;
+        }
+        struct pipe_resource *resource = next.buffer;
+        next.buffer = NULL; pipe_resource_reference(&next.buffer,resource);
+    } else if (next.buffer_offset || next.buffer_size) goto invalid;
+    pipe_resource_reference(&ctx->native_constants[stage][slot].buffer,NULL);
+    ctx->native_constants[stage][slot] = next;
+    ctx->native_constant_errors[stage] &= ~((1u << slot) | (1u << 13));
+    return;
+invalid:
+    if (created) pipe_resource_reference(&next.buffer,NULL);
+    ctx->native_constant_errors[stage] |= 1u << (slot < 13 ? slot : 13);
+    errno = saved;
+    gpu_failed("invalid exact native graphics constant view");
+}
+
+uint32_t opengpu_native_graphics_context_id(struct pipe_context *pipe)
+{
+    if (!pipe || !octx(pipe)->native_layout_valid) return 0;
+    return pipe_opengpu_context_id(octx(pipe)->gpu);
+}
+
+int opengpu_native_graphics_uniform_sources(struct pipe_context *pipe,
+    const unsigned required[2][13], struct drm_opengpu_native_uniform_stage stages[2])
+{
+    struct opengpu_context *ctx = octx(pipe);
+    struct pipe_opengpu_uniform_view views[2][13] = {0};
+    if (!pipe || !required || !stages) { errno = EINVAL; return -1; }
+    if (!ctx->native_layout_valid) { errno = ENOTSUP; return -1; }
+    for (unsigned stage = 0; stage < 2; stage++) for (unsigned slot = 0; slot < 13; slot++) {
+        if (!required[stage][slot]) continue;
+        const struct pipe_constant_buffer *cb = &ctx->native_constants[stage][slot];
+        if (ctx->native_constant_errors[stage] & ((1u << slot) | (1u << 13))) { errno = EINVAL; return -1; }
+        if (cb->buffer) views[stage][slot] = (struct pipe_opengpu_uniform_view){opengpu_resource(cb->buffer)->gpu,cb->buffer_offset,cb->buffer_size};
+    }
+    return pipe_opengpu_native_uniform_stages(opengpu_screen_gpu(pipe->screen),views,required,stages);
+}
+
 static void set_constant_buffer(struct pipe_context *pipe,
                                 enum pipe_shader_type shader, unsigned index,
                                 bool take_ownership,
@@ -4571,6 +4655,8 @@ static void set_constant_buffer(struct pipe_context *pipe,
         set_compute_constant(pipe, index, take_ownership, buf);
         return;
     }
+    if (ctx->native_layout_valid && (shader == PIPE_SHADER_VERTEX || shader == PIPE_SHADER_FRAGMENT))
+        set_native_graphics_constant(pipe,shader == PIPE_SHADER_FRAGMENT,index,buf);
 
     if (shader == PIPE_SHADER_VERTEX && index == 0) {
         ctx->mvp_set = 0;
@@ -5183,6 +5269,8 @@ static void context_destroy(struct pipe_context *pipe)
     for (i = 0; i < 4; i++) pipe_resource_reference(&ctx->cs_buffers[i].buffer, NULL);
     pipe_resource_reference(&ctx->cs_counter.buffer, NULL);
     for (i = 0; i < 13; i++) pipe_resource_reference(&ctx->cs_constants[i].buffer, NULL);
+    for (unsigned stage = 0; stage < 2; stage++) for (i = 0; i < 13; i++)
+        pipe_resource_reference(&ctx->native_constants[stage][i].buffer,NULL);
     for (i = 0; i < 32; i++) pipe_sampler_view_reference(&ctx->cs_sampler_views[i],NULL);
     for (i = 0; i < 4; i++) util_copy_image_view(&ctx->cs_image_views[i],NULL);
     if (ctx->base.stream_uploader)
@@ -5225,6 +5313,11 @@ struct pipe_context *opengpu_pipe_context_create(struct pipe_screen *screen,
     ctx->trace_draws = getenv("OPENGPU_TRACE_DRAWS") != NULL &&
                        !strcmp(getenv("OPENGPU_TRACE_DRAWS"), "1");
     ctx->base.screen = screen;
+    {
+        int saved = errno;
+        ctx->native_layout_valid = !pipe_opengpu_screen_native_layout(opengpu_screen_gpu(screen),&ctx->native_layout);
+        errno = saved;
+    }
     ctx->base.priv = priv;
     ctx->base.destroy = context_destroy;
     ctx->base.draw_vbo = draw_vbo;
