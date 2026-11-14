@@ -50,7 +50,9 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         shared_ntt = args.mesa_shared_ntt.resolve(strict=True)
         if hashlib.sha256(shared_ntt.read_bytes()).hexdigest() != AFTER:
             raise ValueError("exact checked shared NTT postimage required")
-    if sample_graphics and (not args.native_kernel_root or os.environ.get("OPENGPU_NATIVE_HOST_DIRECTORY") or os.environ.get("OPENGPU_NATIVE_HOST_PROFILE")):
+    if sample_graphics and (not args.native_kernel_root or any(name in os.environ for name in (
+            "OPENGPU_NATIVE_HOST_DIRECTORY", "OPENGPU_NATIVE_HOST_PROFILE",
+            "OPENGPU_SAMPLE_GRAPHICS_HOST_DIRECTORY", "OPENGPU_SAMPLE_GRAPHICS_HOST_PROFILE"))):
         ap.error("sample graphics requires --native-kernel-root and CPU-only mode; live owner protocol is not implemented")
     out = args.build.resolve()
     out.mkdir(parents=True, exist_ok=False)

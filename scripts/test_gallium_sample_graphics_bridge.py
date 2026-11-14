@@ -29,8 +29,24 @@ class PrivateMesaBridgeTests(unittest.TestCase):
         subprocess.run([*shlex.split(os.environ.get('CC','cc')),*flags,*['-I'+str(p) for p in inc],
             str(ROOT/'userspace/tests/graphics_sample_profile_test.c'),str(ROOT/'userspace/tests/native_graphics_uniform_source.c'),
             str(ROOT/'userspace/opengpu_native_sample_graphics.c'),str(ROOT/'driver/opengpu_native_frame.c'),'-o',str(cls.binary)],check=True)
+        cls.entry=[]
+        for mode in ('cpu','live'):
+            binary=cls.out/('entry-'+mode);cls.entry.append(binary)
+            subprocess.run([*shlex.split(os.environ.get('CC','cc')),*flags,
+                *(['-DOPENGPU_NATIVE_SAMPLE_GRAPHICS_LIVE=1'] if mode=='live' else []),
+                '-MMD','-MF',str(binary.with_suffix('.d')),
+                str(ROOT/'userspace/tests/graphics_sample_entry_test.c'),'-o',str(binary)],check=True)
     @classmethod
     def tearDownClass(cls):cls.tmp.cleanup()
+    def test_cpu_and_live_argument_environment_isolation_before_any_mesa_or_owner_creation(self):
+        for binary in self.entry:
+            subprocess.run([str(binary)],check=True)
+            self.assertIn('graphics_sample_entry.h',binary.with_suffix('.d').read_text())
+    def test_zero_live_build_flag_cannot_select_a_cpu_fallback(self):
+        result=subprocess.run([*shlex.split(os.environ.get('CC','cc')),'-std=c11',
+            '-D_POSIX_C_SOURCE=200809L','-DOPENGPU_NATIVE_SAMPLE_GRAPHICS_LIVE=0','-fsyntax-only',
+            str(ROOT/'userspace/tests/graphics_sample_entry_test.c')],text=True,capture_output=True)
+        self.assertNotEqual(result.returncode,0);self.assertIn('explicit value of one',result.stderr)
     def test_actual_new_kernel_bootstrap_and_old_profile_isolation(self):
         path=self.out/'valid.ognp';path.write_bytes(profile())
         subprocess.run([str(self.binary),str(path),'valid'],check=True,timeout=15)
@@ -46,7 +62,12 @@ class PrivateMesaBridgeTests(unittest.TestCase):
     def test_cpu_entry_rejects_live_or_missing_private_kernel_before_build(self):
         build=self.out/'must-not-create';base=[sys.executable,str(ROOT/'scripts/test_gallium_sample_graphics_uniforms.py'),
             '--build',str(build),'--cpu-capture-only','--profile-wire',str(self.out/'no-profile')]
-        for args,env in [(base,dict(os.environ)),(base+['--native-kernel-root',str(ROOT)],dict(os.environ,OPENGPU_NATIVE_HOST_DIRECTORY='forbidden'))]:
+        cases=[(base,dict(os.environ))]
+        for name in ('OPENGPU_NATIVE_HOST_DIRECTORY','OPENGPU_NATIVE_HOST_PROFILE',
+                     'OPENGPU_SAMPLE_GRAPHICS_HOST_DIRECTORY','OPENGPU_SAMPLE_GRAPHICS_HOST_PROFILE'):
+            for value in ('forbidden',''):
+                cases.append((base+['--native-kernel-root',str(ROOT)],dict(os.environ,**{name:value})))
+        for args,env in cases:
             result=subprocess.run(args,text=True,capture_output=True,env=env)
             self.assertNotEqual(result.returncode,0);self.assertIn('live owner protocol is not implemented',result.stderr);self.assertFalse(build.exists())
 

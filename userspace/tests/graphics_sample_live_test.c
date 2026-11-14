@@ -121,6 +121,12 @@ int main(int argc,char **argv)
     if(!strcmp(mode,"bad-word-file")){
         sample_path(path,sizeof(path),directory,"native-real-vs.words");FILE *f=fopen(path,"r+b");assert(f);assert(fputc(0,f)!=EOF && !fclose(f));
     }
+    if(!strcmp(mode,"closed-inputs")){
+        /* Mirror the Mesa entry: Gallium/context references are gone before
+         * execution, leaving each original code view owned by the two jobs. */
+        for(struct native_original *o=s->originals;o;o=o->next)if(o->visible)assert(!native_kernel_original_close(s,o->handle));
+        for(unsigned i=0;i<2;i++)assert(native_kernel_original_refcount(s,programs[i].handle)==2);
+    }
     int error=graphics_sample_graphics_host_execute(s,directory,programs);
     struct native_mmio_state *m=native_mmio_state(&s->gpu);
     bool early=!strcmp(mode,"bad-profile") || !strcmp(mode,"bad-rx") || !strcmp(mode,"unretained") ||
@@ -129,8 +135,8 @@ int main(int argc,char **argv)
         assert(error<0 && !m->exported && !m->native_submissions);retained(s);
         /* No command/union was ever exposed; ordinary test-only cancellation. */
         assert(!native_kernel_retire(s,0,-ECANCELED) && !native_kernel_retire(s,0,-ECANCELED));destroy_safe(s);
-    }else if(!strcmp(mode,"ok") || !strcmp(mode,"final-bad")){
-        assert(!strcmp(mode,"ok")?!error:error<0);
+    }else if(!strcmp(mode,"ok") || !strcmp(mode,"closed-inputs") || !strcmp(mode,"final-bad")){
+        assert(strcmp(mode,"final-bad")?!error:error<0);
         assert(m->cleanup_done && !m->cleanup_active && !m->cleanup_error && s->context_destroyed && !s->count);
         assert(m->native_submissions==2 && m->count==m->cleanup_start);
         for(unsigned i=0;i<2;i++)assert(native_session_record(s,i)->freed && !native_session_record(s,i)->job);
