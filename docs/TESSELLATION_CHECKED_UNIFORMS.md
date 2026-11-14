@@ -6,8 +6,9 @@ shared-CU source/writeback ports. It defaults to false throughout the three
 image domains and native sequence/job wrappers. Existing host factories,
 discovery tables, GUC1 and public API capabilities do not enable it.
 
-This source implementation has **not been Scala-compiled, elaborated or
-simulated** in this revision. P15 remains unqualified until the pending checks
+This delivery has passed a 128MiB, single-CPU Scala parser check of its 49
+changed Scala sources. It has **not been typechecked, elaborated or simulated**
+on this delivery tree. P15 remains unqualified until the pending checks
 below execute. CPU catalog/selection checks do not prove a CU load, image,
 protected submit, complete-host clock or FPS.
 
@@ -91,16 +92,31 @@ they are not supplied by a trusted scope or this transport.
 ## Validation and reproduction
 
 The bounded CPU checks passed: three public C/schema catalog checks (including
-old/new type coexistence and all three appended layouts), 143 affected-suite
-selection tests, integration/large-PR suite selection, emitter registry and
-`git diff --check`. No generated models, raw evidence or process logs are kept.
+old/new type coexistence and all three appended layouts), 146 affected-suite
+selection tests, integration/large-PR suite selection, emitter registry,
+32 exact partition and four strict runner checks, and `git diff --check`.
+No generated models, raw evidence or process logs are kept.
 
 ```sh
 python3 -B scripts/test_tessellation_uniform_abi.py
 python3 -B scripts/test_changed_test_suites.py
 python3 -B scripts/test_test_selection.py
+python3 -B scripts/test_ci_case_partitions.py
+python3 -B scripts/test_run_ci_partition.py
 python3 -B scripts/check_emit_registry.py
 git diff --check
+```
+
+For the syntax-only check, set `SCALA_COMPILER_CP` to the Scala 2.13.18 compiler,
+library and reflect jars and `SCALA_LIBRARY_JAR` to that same library jar. Use a
+private managed temporary directory and remove it after the process exits:
+
+```sh
+mkdir -p "$GPU_TMP/classes"
+java -Xmx128m -XX:ActiveProcessorCount=1 -Djava.io.tmpdir="$GPU_TMP" \
+  -cp "$SCALA_COMPILER_CP" scala.tools.nsc.Main \
+  -classpath "$SCALA_LIBRARY_JAR" -Ystop-after:parser -d "$GPU_TMP/classes" \
+  $(git diff --name-only 4f78958bf29aa2faa8a6735e72f04c19c9fb8ebb HEAD -- '*.scala')
 ```
 
 Once the resource window permits, a fresh full main+test compile must precede
