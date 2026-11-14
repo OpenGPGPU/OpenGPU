@@ -1,0 +1,619 @@
+{
+  "schema": "opengpu-tessellation-vertex-source-v1",
+  "magic": "0x47565301",
+  "version": 1,
+  "words": 128,
+  "bytes": 512,
+  "fields": [
+    {
+      "name": "header.magic",
+      "word": 0,
+      "bits": 32,
+      "signed": false,
+      "constant": 1196839681
+    },
+    {
+      "name": "header.bytes",
+      "word": 1,
+      "bits": 32,
+      "signed": false,
+      "constant": 512
+    },
+    {
+      "name": "header.version",
+      "word": 2,
+      "bits": 32,
+      "signed": false,
+      "constant": 1
+    },
+    {
+      "name": "header.attributes",
+      "word": 3,
+      "bits": 32,
+      "signed": false,
+      "constant": 16
+    },
+    {
+      "name": "header.bindings",
+      "word": 4,
+      "bits": 32,
+      "signed": false,
+      "constant": 16
+    },
+    {
+      "name": "header.varyings",
+      "word": 5,
+      "bits": 32,
+      "signed": false,
+      "constant": 16
+    },
+    {
+      "name": "header.mapCapacity",
+      "word": 6,
+      "bits": 32,
+      "signed": false,
+      "constant": 64
+    },
+    {
+      "name": "header.patchVertices",
+      "word": 7,
+      "bits": 32,
+      "signed": false,
+      "constant": 32
+    },
+    {
+      "name": "header.lanes",
+      "word": 8,
+      "bits": 32,
+      "signed": false,
+      "constant": 16
+    },
+    {
+      "name": "header.warps",
+      "word": 9,
+      "bits": 32,
+      "signed": false,
+      "constant": 8
+    },
+    {
+      "name": "header.computeUnits",
+      "word": 10,
+      "bits": 32,
+      "signed": false,
+      "constant": 2
+    },
+    {
+      "name": "identity.context",
+      "word": 16,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "identity.pass",
+      "word": 17,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "identity.generation",
+      "word": 18,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "sequenceIndex",
+      "word": 19,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "drawIndex",
+      "word": 20,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "taskIdBase",
+      "word": 21,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "patchCount",
+      "word": 22,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "draw.base",
+      "word": 24,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "draw.limit",
+      "word": 25,
+      "bits": 33,
+      "signed": false
+    },
+    {
+      "name": "code.base",
+      "word": 27,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "code.limit",
+      "word": 28,
+      "bits": 33,
+      "signed": false
+    },
+    {
+      "name": "code.entry",
+      "word": 30,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "slice.version",
+      "word": 32,
+      "bits": 8,
+      "signed": false,
+      "constant": 1
+    },
+    {
+      "name": "slice.firstOrdinal",
+      "word": 33,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "slice.patchesPerInstance",
+      "word": 34,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "slice.firstInstance",
+      "word": 35,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "slice.instanceCount",
+      "word": 36,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "layout.inputVertices",
+      "word": 40,
+      "bits": 6,
+      "signed": false
+    },
+    {
+      "name": "layout.inputComponents",
+      "word": 41,
+      "bits": 7,
+      "signed": false
+    },
+    {
+      "name": "layout.outputVertices",
+      "word": 42,
+      "bits": 6,
+      "signed": false
+    },
+    {
+      "name": "layout.outputComponents",
+      "word": 43,
+      "bits": 7,
+      "signed": false
+    },
+    {
+      "name": "layout.patchComponents",
+      "word": 44,
+      "bits": 7,
+      "signed": false
+    },
+    {
+      "name": "vertexAbi",
+      "word": 45,
+      "bits": 8,
+      "signed": false
+    },
+    {
+      "name": "components[0]",
+      "word": 64,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[1]",
+      "word": 65,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[2]",
+      "word": 66,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[3]",
+      "word": 67,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[4]",
+      "word": 68,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[5]",
+      "word": 69,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[6]",
+      "word": 70,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[7]",
+      "word": 71,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[8]",
+      "word": 72,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[9]",
+      "word": 73,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[10]",
+      "word": 74,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[11]",
+      "word": 75,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[12]",
+      "word": 76,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[13]",
+      "word": 77,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[14]",
+      "word": 78,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[15]",
+      "word": 79,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[16]",
+      "word": 80,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[17]",
+      "word": 81,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[18]",
+      "word": 82,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[19]",
+      "word": 83,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[20]",
+      "word": 84,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[21]",
+      "word": 85,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[22]",
+      "word": 86,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[23]",
+      "word": 87,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[24]",
+      "word": 88,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[25]",
+      "word": 89,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[26]",
+      "word": 90,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[27]",
+      "word": 91,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[28]",
+      "word": 92,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[29]",
+      "word": 93,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[30]",
+      "word": 94,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[31]",
+      "word": 95,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[32]",
+      "word": 96,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[33]",
+      "word": 97,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[34]",
+      "word": 98,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[35]",
+      "word": 99,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[36]",
+      "word": 100,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[37]",
+      "word": 101,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[38]",
+      "word": 102,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[39]",
+      "word": 103,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[40]",
+      "word": 104,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[41]",
+      "word": 105,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[42]",
+      "word": 106,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[43]",
+      "word": 107,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[44]",
+      "word": 108,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[45]",
+      "word": 109,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[46]",
+      "word": 110,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[47]",
+      "word": 111,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[48]",
+      "word": 112,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[49]",
+      "word": 113,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[50]",
+      "word": 114,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[51]",
+      "word": 115,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[52]",
+      "word": 116,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[53]",
+      "word": 117,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[54]",
+      "word": 118,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[55]",
+      "word": 119,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[56]",
+      "word": 120,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[57]",
+      "word": 121,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[58]",
+      "word": 122,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[59]",
+      "word": 123,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[60]",
+      "word": 124,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[61]",
+      "word": 125,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[62]",
+      "word": 126,
+      "bits": 9,
+      "signed": false
+    },
+    {
+      "name": "components[63]",
+      "word": 127,
+      "bits": 9,
+      "signed": false
+    }
+  ],
+  "componentEncoding": {
+    "kindBits": 2,
+    "componentBits": 7,
+    "componentShift": 2,
+    "kinds": {
+      "position": 0,
+      "generic": 1,
+      "pointSize": 2
+    }
+  }
+}
