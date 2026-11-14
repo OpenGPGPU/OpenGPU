@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import check_framebuffer_blit_host_source as source_check
 import qualify_framebuffer_blit_host as old
 import qualify_framebuffer_blit_sample_host as gate
 
@@ -82,6 +83,39 @@ class Blit112Tests(unittest.TestCase):
             with self.assertRaises(subprocess.TimeoutExpired):gate.run_child(command,out,1)
             pid=int(pid_file.read_text())
             with self.assertRaises(ProcessLookupError):os.kill(pid,0)
+
+    def test_source_only_same_checkout_resolves_aliases_without_git(self):
+        with tempfile.TemporaryDirectory(dir=gate.ROOT/'.artifacts',prefix='blit112-root-') as temp:
+            root=Path(temp)/'checkout';root.mkdir()
+            alias=Path(temp)/'alias';alias.symlink_to(root,target_is_directory=True)
+            with patch.object(source_check,'ROOT',root),patch.object(source_check.subprocess,'check_output') as git:
+                git.side_effect=AssertionError('same-source declaration check must not require Git')
+                for candidate in (root,alias):
+                    for sample in (False,True):
+                        self.assertEqual(source_check.validate_owner_location(candidate,sample_owner=sample),root)
+                git.assert_not_called()
+
+    def test_cross_source_requires_related_internal_worktree_and_rejects_escape(self):
+        with tempfile.TemporaryDirectory(dir=gate.ROOT/'.artifacts',prefix='blit112-cross-') as temp:
+            gpu=Path(temp)/'gpu';gpu.mkdir();common=gpu/'.git';common.mkdir()
+            independent=Path(temp)/'independent.git';independent.mkdir()
+            work=gpu/'.artifacts/worktrees/owner';work.mkdir(parents=True)
+            external=Path(temp)/'outside';external.mkdir()
+            alias=gpu/'.artifacts/worktrees/escape';alias.symlink_to(external,target_is_directory=True)
+            with patch.object(source_check,'ROOT',gpu):
+                with patch.object(source_check.subprocess,'check_output',return_value=str(common)) as git:
+                    self.assertEqual(source_check.validate_owner_location(work),work)
+                    self.assertEqual([call.kwargs['cwd'] for call in git.call_args_list],[gpu,work])
+                    for candidate in (external,alias):
+                        with self.assertRaisesRegex(ValueError,'related GPU-internal'):
+                            source_check.validate_owner_location(candidate)
+                with patch.object(source_check.subprocess,'check_output',side_effect=[str(common),str(independent)]):
+                    with self.assertRaisesRegex(ValueError,'related GPU-internal'):
+                        source_check.validate_owner_location(work)
+                with patch.object(source_check.subprocess,'check_output') as git:
+                    with self.assertRaisesRegex(ValueError,'original source checkout'):
+                        source_check.validate_owner_location(work,sample_owner=True)
+                    git.assert_not_called()
 
     def test_real_112_and_legacy_translation_units_typecheck(self):
         for extra in ([],['--sample-owner']):

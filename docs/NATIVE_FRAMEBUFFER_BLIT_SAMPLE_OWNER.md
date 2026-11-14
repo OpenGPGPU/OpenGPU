@@ -54,19 +54,35 @@ both owner and executor locks. Timeout/error cleanup uses bounded process-group
 exit proof; unconfirmed consumers preserve temporary inputs. The old
 `qualify_framebuffer_blit_host.py` remains the separate frozen96 diagnosis entry.
 
-Local CPU checks pass: nineteen executor qualification tests, five new112
+Local CPU checks pass: nineteen executor qualification tests, seven new112
 admission/result/exit/source tests, eleven old96 gate/transport tests, the
 original 43 caller captures and twenty-seven C++/ASan/UBSan input rejection
 cases. The existing two-test sample transport suite also passes with
 ASan/UBSan; its actual MMIO CPU peer rejects changes to all 112 discovery words.
 Both real blit translation units pass declaration-only C++ typechecking.
+The declaration-only source checker accepts its normalized original checkout,
+including a normal CI checkout without Git. Cross-checkout owners must share
+its actual Git common directory and remain within the GPU's internal worktree
+area; protected112 still requires the original source root. A separate
+repository or escaping symlink does not satisfy that boundary. These rules do
+not grant executor qualification or relax the existing DUT owner gates.
+
+GCC/G++13.3.0 passes all seven source/admission tests and nineteen executor
+qualification tests, including both actual declaration-only blit translation
+units with `-Werror`. The cached compiler ran with equal 512MiB memory and
+total memory-plus-swap limits, one CPU, no network, read-only sources and a private temporary overlay.
+The old96 eleven-test gate suite passes separately with the host's real Git
+and Clang16; the cached image lacks Git and cannot run its two Git-dependent
+negative checks. No compiler/tool was installed for these checks.
+
 These checks execute no generated DUT and do not prove the blit fault/reset
 lifecycle on hardware. Actual complete112 execution, original Linux trace
 qualification, six full 640×480 product frames and physical timing remain open.
 
 ```sh
 python3 -B scripts/test_prepare_owner_executor.py
-python3 -B scripts/test_framebuffer_blit_sample_host.py
+CC=gcc CXX=g++ OPENGPU_TEST_SANITIZERS=1 \
+  python3 -B scripts/test_framebuffer_blit_sample_host.py
 python3 -B scripts/test_framebuffer_blit_host.py
 OPENGPU_MESA_DIR="$MESA" OPENGPU_DRM_INCLUDE="$DRM_INCLUDE" \
   python3 -B scripts/test_framebuffer_blit_inputs.py

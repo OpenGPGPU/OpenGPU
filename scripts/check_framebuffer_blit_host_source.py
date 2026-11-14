@@ -20,18 +20,32 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def validate_owner_location(owner, *, sample_owner=False):
+    """Admit this source tree or a related GPU worktree for typechecking only."""
+    owner = owner.resolve(strict=True)
+    if sample_owner and owner != ROOT:
+        raise ValueError("protected112 typecheck requires its original source checkout")
+    if owner == ROOT:
+        # This declaration-only check also runs in a normal CI checkout. It
+        # confers no model/executor qualification and needs no Git executable.
+        return owner
+    command = ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"]
+    common = Path(subprocess.check_output(command, cwd=ROOT, text=True).strip()).resolve(strict=True)
+    owner_common = Path(subprocess.check_output(command, cwd=owner, text=True).strip()).resolve(strict=True)
+    if owner_common != common or not owner.is_relative_to(common.parent / ".artifacts/worktrees"):
+        raise ValueError("owner source must be a related GPU-internal worktree")
+    return owner
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--owner-root", required=True, type=Path)
     parser.add_argument("--sample-owner", action="store_true", help="distinct source-selected protected112 TU; same checkout only")
     args = parser.parse_args()
-    owner = args.owner_root.resolve(strict=True)
-    if args.sample_owner and owner != ROOT:
-        parser.error("protected112 typecheck requires its original source checkout")
-    gpu = Path(subprocess.check_output(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
-                                      cwd=ROOT, text=True).strip()).parent
-    if not owner.is_relative_to(gpu / ".artifacts/worktrees"):
-        parser.error("owner source must be an explicit GPU-internal worktree")
+    try:
+        owner = validate_owner_location(args.owner_root, sample_owner=args.sample_owner)
+    except ValueError as error:
+        parser.error(str(error))
     runtime = owner / "scripts/native_owner_runtime.hpp"
     if not runtime.is_file():
         parser.error("selected checkout lacks the complete owner runtime")
