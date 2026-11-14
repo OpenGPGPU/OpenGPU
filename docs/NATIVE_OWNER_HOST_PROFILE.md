@@ -153,3 +153,20 @@ the CPU session response deadline; captured DUT cycle budgets remain unchanged.
 The ASan/UBSan CPU protocol test checks one-second missing capture, retirement,
 cleanup authorization and cleanup batch deadlines, with no successful retirement
 or cleanup receipt emitted for the timed-out phase.
+
+The complete 96-word owner's bounded synthesis attempt at source baseline
+`75899c1856ee0ee0204cbd2e5d1893d6dad11f63` timed out after 14,400 seconds during
+Yosys optimization, with a two-CPU/12 GiB container limit. It produced no mapped
+timing result or physical qualification. Whole-host clock and FPS remain
+unqualified; this attempt also supplies no qualification for the later
+geometry/compute/sample factories. Reproduce with an independently checked
+owner preparation and a fresh output directory:
+
+```sh
+python3 -B scripts/qualify_native_owner_ppa.py \
+  --owner-root "$OWNER_SOURCE" --prepared "$OWNER_OUTPUT" \
+  --stage synthesis --period-ps 1000 --timeout 14400 \
+  --docker-cpus 2 --docker-memory-gib 12 \
+  --coverage-timeout 1800 --coverage-memory-gib 10 \
+  --output .artifacts/native-owner-synthesis
+```
