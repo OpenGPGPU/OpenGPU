@@ -1129,12 +1129,17 @@ Completion monitors check held valid/bits, identities, statuses and unique
 primitive/pixel/layer/tile retirement. A physical-memory allowlist and VS/FS
 scratch guards reject accesses outside retained allocations or prefixes.
 
-The fixture has passed Scala syntax and Chisel-plugin compilation; its actual
+The fixture has passed Scala syntax, Chisel-plugin compilation, and shader
+program construction within the unchanged 512-word bounds; its actual
 simulation has not yet passed. It uses two four-lane/one-warp CUs and physical
 addresses, so even a passing result will not establish protected host execution
-or the sixteen-lane/eight-warp VGA product target. Runtime sixteen-slot varying
-vectors are zero; this fixture does not prove nonzero varying transport. Run it
-explicitly with the
+or the sixteen-lane/eight-warp VGA product target. The ordinary VS publishes
+sixty-four distinct nonzero varying components; GS maps four nonzero outputs
+across all sixteen linked slots. FS reads every slot into a weighted four-channel
+FP32 checksum checked in MRT0, alongside the real GS primitive ID/layer outputs.
+The periodic weights cannot detect every slot permutation; this does not
+qualify arbitrary GS linker mappings.
+Run it explicitly with the
 GPU-local temporary/cache setup above:
 
 ```sh
