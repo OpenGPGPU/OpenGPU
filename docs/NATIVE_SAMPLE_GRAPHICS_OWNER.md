@@ -28,7 +28,10 @@ checked capture bytes. Each independent result check precedes its execution
 response. Before cleanup authorization, the controller revalidates both full
 results in order, including the first GNY2/byte guards, and requires distinct
 original commands. Original inputs, captures and returned snapshots remain
-immutable through the final authorization.
+immutable through the final authorization. After the producer exits successfully,
+the controller requires exactly one complete LIVE two-owner retirement marker
+before reporting success and deleting the producer log; a CPU marker cannot
+satisfy this gate.
 
 The producer has a separate compile-time LIVE entry; the default CPU entry
 rejects both old and new live environment variables, including empty values.
@@ -105,7 +108,7 @@ The [actual Mesa CPU preflight](NATIVE_SAMPLE_GRAPHICS_SOURCE_PLANS.md) also
 passes for frozen39775 source, including canonical records and both actual C
 capture identities; it does not contain returned GPU images or GNY2 results.
 
-Seven controller CPU tests pass with explicit mocked image/GNY2 checks. They
+Eight controller CPU tests pass with explicit mocked image/GNY2 checks. They
 exercise successful phase order and admission, and reject source/result
 mutation, foreign/swapped receipts, failed per-record or complete-pair checks,
 invalid cleanup, executor failure and changed final qualification. They also
