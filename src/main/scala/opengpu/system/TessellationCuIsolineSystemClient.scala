@@ -134,4 +134,9 @@ class TessellationCuIsolineSystemClient(config: GpuConfig, idWidth: Int, numComp
   }
   io.trap <> io.shared.trap
   io.shared.invalidate <> io.invalidate; io.invalidateDone <> io.shared.invalidateDone
+  // Keep task-local stop/fault state through the actual held report and all
+  // checked-service drain. Clear only on its external retirement; otherwise
+  // these latches hold client.cancel high and block the next task that would
+  // have cleared them. Last assignment also retires any old same-cycle fault.
+  when(io.completion.fire){cancelled:=false.B;serviceFault:=false.B}
 }
