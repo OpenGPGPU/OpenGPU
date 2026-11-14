@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Private raw nativeFS -> protected Linux ioctl/RX CPU bridge; no GPU peer."""
 import argparse
+import json
+import time
 import os
 from pathlib import Path
 import shlex
@@ -15,8 +17,12 @@ from test_native_submit import write_bodies
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def build_bridge(out: Path, sanitize: bool = False) -> Path:
-    write_bodies(out)
+def build_bridge(out: Path, sanitize: bool = False, live: bool = False) -> Path:
+    if live:
+        from test_native_mmio_capture import write_bodies as write_mmio_bodies
+        write_mmio_bodies(out)
+    else:
+        write_bodies(out)
     # One source-fixed registry supplies every table word. This compilation
     # input is private qualification scaffolding, never observed DUT discovery.
     auxiliary = [(0, 0x47550002), (0x60, 'GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE|GPU_CAP_COMPUTE_SCALAR_FPU|GPU_CAP_SHADER_CONFIG_INFO|GPU_CAP_NATIVE_PIXEL_FORMATS'),
@@ -33,9 +39,9 @@ def build_bridge(out: Path, sanitize: bool = False) -> Path:
         flags += ['-fsanitize=address,undefined', '-fno-omit-frame-pointer']
     includes = [out, ROOT/'driver', ROOT/'driver/tests', ROOT/'driver/tests/private_snapshot_stubs',
                 ROOT/'driver/tests/mmu_stubs', ROOT/'driver/tests/compute_submit_stubs']
-    binary = out / 'native-sample-submit-producer'
+    binary = out / ('native-sample-live-producer' if live else 'native-sample-submit-producer')
     subprocess.run([*shlex.split(os.environ.get('CC', 'cc')), *flags,
-                    *['-I'+str(p) for p in includes], str(ROOT/'scripts/native_sample_submit_producer.c'),
+                    *['-I'+str(p) for p in includes], str(ROOT/'scripts'/('native_sample_live_producer.c' if live else 'native_sample_submit_producer.c')),
                     str(ROOT/'driver/opengpu_native_frame.c'), '-o', str(binary)], check=True)
     return binary
 
@@ -99,6 +105,81 @@ class SampleSubmitBridgeTests(unittest.TestCase):
         self.assertIn('protected ioctl program rejected', result.stderr)
 
 
+class SampleLiveProducerTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        (ROOT/'.artifacts').mkdir(exist_ok=True)
+        cls.tmp = tempfile.TemporaryDirectory(prefix='sample-live-', dir=ROOT/'.artifacts')
+        cls.out = Path(cls.tmp.name)
+        cls.binary = build_bridge(cls.out, os.environ.get('OPENGPU_TEST_SANITIZERS') == '1', live=True)
+        cls.program = cls.out/'unit.ognsf'
+        # CPU capture/IPC unit only. Never represents an actual ESSL compile.
+        cls.program.write_bytes(b'OGNSF001'+struct.pack('<16I', 1,6,75,512,93*512,0,15,0,0,1,0,128,16,4,1,0x30500073))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def profile(self, name, words=SAMPLE_WORDS, magic=b'OGNP0002'):
+        auxiliary = [(0,0x47550002),(0x60,(1<<6)|(1<<22)|(1<<23)|(1<<25)|(1<<29)),
+                     (0x68,0x160),(0x320,1048576),(0x158,0x02020810)]
+        data = magic+struct.pack('<I',len(words))
+        data += b''.join(struct.pack('<II', w['address'],w['value']) for w in words)
+        data += struct.pack('<I',5)+b''.join(struct.pack('<II',*w) for w in auxiliary)
+        path = self.out/name;path.write_bytes(data);return path
+
+    def test_capture_preserves_live_owner_and_rejects_compute_receipt(self):
+        profile = self.profile('sample.ognp')
+        session = self.out/'capture';session.mkdir()
+        process = subprocess.Popen([str(self.binary),str(self.program),str(profile),str(session),'4','sample'],
+                                   stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,
+                                   env=dict(os.environ,OPENGPU_NATIVE_HOST_TIMEOUT='15'))
+        try:
+            deadline = time.monotonic()+15
+            while not (session/'READY').exists() and process.poll() is None and time.monotonic()<deadline:
+                time.sleep(.01)
+            self.assertIsNone(process.poll(), process.communicate() if process.poll() is not None else '')
+            self.assertTrue((session/'READY').exists())
+            inputs = json.loads((session/'sample-inputs.json').read_text())
+            self.assertFalse(inputs['gpuExecuted'])
+            self.assertEqual(inputs['fragmentWords'],[0x30500073])
+            self.assertEqual(inputs['vertexWords'],420)
+            self.assertEqual(len(inputs['images']),5)
+            self.assertEqual((inputs['context'],inputs['pass'],inputs['generation']),(7,8,9))
+            self.assertEqual(inputs['completionBytes'],16384)
+            capture = (session/'record-0.capture').read_bytes()
+            self.assertEqual(capture[:8],b'OGCAP002')
+            self.assertEqual(struct.unpack_from('<I',capture,24)[0],117)
+            self.assertEqual((session/'union.memory').read_bytes()[:8],b'OGMEM001')
+            self.assertFalse((session/'record-0.retire').exists())
+            self.assertFalse((session/'cleanup.begin').exists())
+            # Wrong private receipt fails closed; no synthesized completion,
+            # drain, cleanup or owner-success publication is performed.
+            (session/'record-0.held.response').write_bytes(b'OGCMH001'+bytes(100))
+            stdout,stderr = process.communicate(timeout=5)
+            self.assertNotEqual(process.returncode,0)
+            self.assertIn('wrong private wire magic',stderr)
+            self.assertFalse((session/'record-0.retire').exists())
+            self.assertFalse((session/'cleanup.done').exists())
+            self.assertNotIn('completed',stdout)
+        finally:
+            if process.poll() is None:
+                process.kill();process.communicate()
+
+    def test_fixed_profile_cross_entry_rejection(self):
+        variants = [('v1',V1_WORDS,b'OGNP0002'),('full',FULL_WORDS,b'OGNP0002'),
+                    ('oldmagic',SAMPLE_WORDS,b'OGNP0001')]
+        corrupt = [dict(w) for w in SAMPLE_WORDS];corrupt[-1]['value']^=1
+        variants.append(('bad-gss',corrupt,b'OGNP0002'))
+        for name,words,magic in variants:
+            session = self.out/name;session.mkdir()
+            result = subprocess.run([str(self.binary),str(self.program),str(self.profile(name+'.ognp',words,magic)),
+                                     str(session),'1','sample'],text=True,capture_output=True)
+            self.assertNotEqual(result.returncode,0)
+            self.assertFalse((session/'READY').exists())
+            self.assertFalse((session/'union.memory').exists())
+
+
 def compiled_directory(directory: Path):
     files = sorted(directory.glob('*.ognsf'))
     if not files:
@@ -106,6 +187,13 @@ def compiled_directory(directory: Path):
     (ROOT/'.artifacts').mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='sample-submit-compiled-', dir=ROOT/'.artifacts') as temp:
         binary = build_bridge(Path(temp), os.environ.get('OPENGPU_TEST_SANITIZERS') == '1')
+        live_binary = build_bridge(Path(temp), os.environ.get('OPENGPU_TEST_SANITIZERS') == '1', live=True)
+        auxiliary = [(0,0x47550002),(0x60,(1<<6)|(1<<22)|(1<<23)|(1<<25)|(1<<29)),
+                     (0x68,0x160),(0x320,1048576),(0x158,0x02020810)]
+        profile = Path(temp)/'sample.ognp'
+        profile.write_bytes(b'OGNP0002'+struct.pack('<I',112)+b''.join(
+            struct.pack('<II',w['address'],w['value']) for w in SAMPLE_WORDS)+struct.pack('<I',5)+
+            b''.join(struct.pack('<II',*w) for w in auxiliary))
         ordinary = 0
         for program in files:
             data = program.read_bytes()
@@ -120,6 +208,31 @@ def compiled_directory(directory: Path):
                 else:
                     ordinary += 1
                     print(program.name, result.stdout.strip())
+                    session = Path(temp)/(program.stem+'-'+str(samples));session.mkdir()
+                    process = subprocess.Popen([str(live_binary),str(program),str(profile),str(session),str(samples),program.stem],
+                        stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,env=dict(os.environ,OPENGPU_NATIVE_HOST_TIMEOUT='15'))
+                    try:
+                        deadline = time.monotonic()+15
+                        while not (session/'READY').exists() and process.poll() is None and time.monotonic()<deadline:
+                            time.sleep(.01)
+                        if process.poll() is not None or not (session/'READY').exists():
+                            raise RuntimeError('compiled live capture failed: '+str(process.communicate(timeout=1)))
+                        inputs = json.loads((session/'sample-inputs.json').read_text())
+                        if inputs['fragmentWords'] != list(struct.unpack_from('<%dI' % ((len(data)-68)//4),data,68)):
+                            raise RuntimeError('compiled original bytes differ in live owner')
+                        if (session/'record-0.capture').read_bytes()[:8] != b'OGCAP002':
+                            raise RuntimeError('wrong live capture schema')
+                        # A negative control receipt ends this CPU-only test.
+                        # No actual-DUT response, native retirement or cleanup
+                        # success is synthesized to complete qualification.
+                        (session/'record-0.held.response').write_bytes(b'OGCMH001')
+                        stdout,stderr = process.communicate(timeout=5)
+                        if process.returncode == 0 or 'wrong private wire magic' not in stderr or (session/'cleanup.done').exists():
+                            raise RuntimeError('live producer accepted unrelated control receipt')
+                        print(program.name, samples, 'live private capture + pending owner/foreign receipt rejection PASS (CPU only)')
+                    finally:
+                        if process.poll() is None:
+                            process.kill();process.communicate()
         if not ordinary:
             raise SystemExit('no actual ABI6 ESSL program traversed RX')
 
