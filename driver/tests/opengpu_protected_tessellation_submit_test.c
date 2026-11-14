@@ -185,7 +185,8 @@ int main(void)
   assert(opengpu_private_snapshot_retire(q->native_owner)==-EIO && original_handle(s,defaults)->refs==refs &&
    s->context.references==3 && live_allocations==allocations && !dma_fence_is_signaled(retirement));
   s->gpu.hw.wedged=false;assert(!opengpu_private_snapshot_retire(q->native_owner));q->native_owner=NULL;
-  for(u32 i=0;i<q->object_count;++i)drm_gem_object_put(q->objects[i]);kfree(q->objects);
+  for(u32 i=0;i<q->object_count;++i)drm_gem_object_put(q->objects[i]);
+  kfree(q->objects);
   opengpu_context_put(q->context);opengpu_admission_job_retired(q);kfree(q);
   assert(dma_fence_is_signaled(retirement) && original_handle(s,defaults)->refs==0 && s->context.references==1);dma_fence_put(retirement);
   /* Enqueue itself may fail after publication. A failed cleanup must retain

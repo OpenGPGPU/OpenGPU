@@ -135,7 +135,8 @@ static bool tess_vector(struct tess_state *s,u32 insn,u32 pc,const struct opengp
     if((sx || sf || (f==2 && fn<=7) || (f==1 && (fn==1 || fn==3)) || fn==0x0e ||
        ((f==2 || f==6) && (fn==0x29 || fn==0x2b || fn==0x2d || fn==0x2f)) ||
        (fp && fn>=0x28 && fn<=0x2f)) && !s->v[rd].defined)return false;
-    if(xs || pop){if(rd)s->x[rd]=tess_unknown();return true;}
+    if(xs || pop){if(rd)s->x[rd]=tess_unknown();
+        return true;}
     if(fs){if(!p->scalar_fpu)return false;s->fp|=1u<<rd;return true;}
     struct tess_value v=tess_unknown();
     if(move){
@@ -168,7 +169,8 @@ static bool tess_fp(struct tess_state *s,u32 insn,const struct opengpu_tessellat
     }
     if(compare || to_int){
         if(!(s->fp&(1u<<a)) || (compare && !(s->fp&(1u<<b))))return false;
-        if(rd)s->x[rd]=tess_unknown();return true;
+        if(rd)s->x[rd]=tess_unknown();
+        return true;
     }
     if(to_fp){if(!s->x[a].defined)return false;s->fp|=1u<<rd;return true;}
     return false;
@@ -246,7 +248,8 @@ bool opengpu_tessellation_shader_validate_words(const u32 *words,u32 count,
                 displacement=(opengpu_shader_s32)(raw<<11)>>11;
             }
             TESS_REQUIRE(displacement>0 && !(displacement&3) && (u32)displacement/4<count-pc);
-            if(take)TESS_REQUIRE(tess_queue(branches,pc+(u32)displacement/4,s));reachable=fall;
+            if(take)TESS_REQUIRE(tess_queue(branches,pc+(u32)displacement/4,s));
+            reachable=fall;
         }else if(op==0x13 || op==0x33 || op==0x37 || op==0x17){
             struct tess_value value=tess_unknown();
             if(op==0x37)value=tess_constant(insn&0xfffff000u);

@@ -180,6 +180,35 @@ python3 -B scripts/test_tessellation_uniform_abi.py
 git diff --check
 ```
 
+The four new P16 scripts also pass GCC 13.3 with ASan/UBSan and all 31 semantic
+negative controls (5 uniform, 12 validator, 7 builder, 7 Linux). The immutable
+ARM64 image below used 512MiB total memory+swap, one CPU, no network and read-only
+source; all tracked input bytes were unchanged before/after each run. GCC's
+`-Werror=misleading-indentation` findings were fixed by splitting independent
+statements. Production C tokens/guards are unchanged. Containers and private
+outputs were removed at termination. No Mesa/JVM/model build was involved.
+
+```sh
+P16_GCC_OUT=$(mktemp -d "$PWD/.artifacts/p16-gcc-XXXXXX")
+P16_GCC_NAME="p16-gcc-$$"
+mkdir "$P16_GCC_OUT/tmp"
+docker run --rm --init --name "$P16_GCC_NAME" \
+  --memory=512m --memory-swap=512m --cpus=1 --network=none --read-only \
+  -v "$PWD:$PWD:ro" -v "$P16_GCC_OUT:$PWD/.artifacts:rw" -w "$PWD" \
+  -e TMPDIR="$PWD/.artifacts/tmp" -e PYTHONDONTWRITEBYTECODE=1 \
+  -e CC=gcc -e CXX=g++ -e OPENGPU_TEST_SANITIZERS=1 \
+  -e ASAN_OPTIONS=detect_leaks=0:quarantine_size_mb=16 --entrypoint python3 -i \
+  sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72 -B - <<'PY'
+import subprocess, sys
+for name in ("test_tessellation_uniform_snapshot.py", "test_tessellation_program_snapshot.py",
+             "test_protected_tessellation.py", "test_protected_tessellation_submit.py"):
+    subprocess.run([sys.executable, "-B", "scripts/" + name, "--negative-controls"], check=True)
+PY
+# Confirm the container has ended and no other consumer needs this private output.
+test -z "$(docker ps -a --filter "name=^/$P16_GCC_NAME$" --format '{{.Names}}')" && \
+  rm -r -- "$P16_GCC_OUT"
+```
+
 To validate original producer bytes without executing them, additionally run:
 
 ```sh
