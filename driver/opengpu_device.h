@@ -26,6 +26,7 @@
 #include "opengpu_storage_command.h"
 #include "opengpu_tessellation_completion.h"
 #include "opengpu_native_sources_features.h"
+#include "opengpu_native_geometry_transport_features.h"
 #include "opengpu_native_completion.h"
 
 struct platform_device;
