@@ -29,8 +29,9 @@ static struct compute_host_session *session;
 static struct {void *data;uint64_t bytes;unsigned maps,closed;} bos[512];
 static unsigned next_bo=1,next_sync=1,submitted,retired;
 static const char *directory;
-static int capture_only,uniform_case,dynamic_case;
+static int capture_only,uniform_case,dynamic_case,address_case;
 static unsigned dynamic_operation,dynamic_signed;
+static unsigned address_kind;
 static unsigned host_timeout_seconds;
 static unsigned output_handles[4],uniform_handles[12];
 static struct drm_opengpu_compute_uniform_resources accepted_uniforms;
@@ -128,7 +129,11 @@ static void source_window(FILE *f,unsigned handle,uint64_t offset,unsigned bytes
   (unsigned long long)physical,(unsigned long long)allocation,(unsigned long long)offset,bytes);}
 static void write_oracle(void)
 {FILE *f=file("oracle.json","wx");assert(f);
- if(dynamic_case){
+ if(address_case){
+  const char *names[]={"shared-address-add","shared-address-cas-match","shared-address-cas-miss"};
+  uint64_t physical,bytes;assert(!compute_host_original_physical(session,output_handles[0],&physical,&bytes));
+  fprintf(f,"{\"schema\":\"opengpu-compute-shared-address-oracle-v1\",\"sourceCase\":\"%s\",\"outputPhysical\":%llu,\"allocationBytes\":%llu,\"viewBytes\":8192,\"groups\":4,\"local\":128,\"seedBase\":2701131776,\"groupShift\":16,\"addend\":257,\"replaceValue\":4275878552,\"compareXor\":%u,\"guard\":3735928559}\n",names[address_kind],(unsigned long long)physical,(unsigned long long)bytes,address_kind==2?1u:0u);
+ }else if(dynamic_case){
   uint64_t physical,bytes;assert(!compute_host_original_physical(session,output_handles[0],&physical,&bytes));
   fprintf(f,"{\"schema\":\"opengpu-compute-shared-dynamic-oracle-v1\",\"outputPhysical\":%llu,\"allocationBytes\":%llu,\"viewBytes\":8192,\"groups\":4,\"local\":128,\"seed\":2147483648,\"operand\":4294967295,\"compare\":2147483648,\"operation\":%u,\"signed\":%s,\"guard\":3735928559}\n",(unsigned long long)physical,(unsigned long long)bytes,dynamic_operation,dynamic_signed?"true":"false");
  }else if(uniform_case){
@@ -155,7 +160,9 @@ int main(int argc,char **argv)
   char name[64];assert(snprintf(name,sizeof(name),variant<10?"shared-dynamic-%u":"shared-dynamic-i-%u",op)>0);
   if(!strcmp(argv[4],name)){dynamic_case=1;dynamic_operation=op;dynamic_signed=variant>=10 || op==5 || op==6;}
  }
- assert(uniform_case || dynamic_case || !strcmp(argv[4],"shared"));
+ const char *address_names[]={"shared-address-add","shared-address-cas-match","shared-address-cas-miss"};
+ for(unsigned i=0;i<3;i++)if(!strcmp(argv[4],address_names[i])){address_case=1;address_kind=i;}
+ assert(uniform_case || dynamic_case || address_case || !strcmp(argv[4],"shared"));
  directory=argv[2];FILE *f=fopen(argv[1],"rb");assert(f);
  char wire[8];assert(fread(wire,1,8,f)==8 && (!memcmp(wire,"OGCP0001",8) || !memcmp(wire,"OGCP0002",8)));
  unsigned version=wire[7]-'0',count=read32(f);assert(count>=96 && count<=1014 && (version==2 || count==96));
@@ -163,7 +170,7 @@ int main(int argc,char **argv)
  for(unsigned i=0;i<count;i++){words[i].address=read32(f);words[i].value=read32(f);}
  assert(read32(f)==10);for(unsigned i=count;i<count+10;i++){words[i].address=read32(f);words[i].value=read32(f);}end(f);
  session=compute_host_create(1,words,count+10);free(words);assert(session);
- if(dynamic_case){uint64_t features=0;assert(version==2 && !compute_host_query(session,OPENGPU_PARAM_DRIVER_FEATURES,&features) &&
+ if(dynamic_case || address_case){uint64_t features=0;assert(version==2 && !compute_host_query(session,OPENGPU_PARAM_DRIVER_FEATURES,&features) &&
   (features&OPENGPU_DRIVER_FEATURE_COMPUTE_SHARED_ATOMICS));}
  struct pipe_screen *s=opengpu_drm_screen_create(7,NULL);assert(s);struct pipe_context *p=s->context_create(s,NULL,0);assert(p);
  char dump[4096];path(dump,"actual-shared");void *frontend=cs_frontend_compile(argv[3],dump);assert(frontend);

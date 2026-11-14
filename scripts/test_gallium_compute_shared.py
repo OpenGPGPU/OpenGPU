@@ -57,6 +57,25 @@ def write_sources(out):
             (out / 'dynamic-conditional-init.comp').write_text(dynamic.replace(initialize,
                 'if(id<64u){' + initialize + '}\n', 1))
 
+    # Different words and groups have different initial values. Per-address
+    # old values now distinguish a lost group XOR or a permutation of atomic
+    # targets even when every address still receives eight operations.
+    from compute_owner_cases import ADDRESS_CASES
+    for kind in ADDRESS_CASES:
+        def address_call(address):
+            if kind == 'shared-address-add':
+                return 'atomicAdd(data[' + address + '],257u)'
+            expected = '(0xa1000000u+(group<<16u)+' + address + ')'
+            compare = expected + ('^1u' if kind.endswith('-miss') else '')
+            return 'atomicCompSwap(data[' + address + '],' + compare + ',0xfedcba98u)'
+        source = prefix + stores + 'memoryBarrierShared();barrier();\n' + \
+            'uint first=0xfeedfaceu;if((id&1u)==0u){uint target=id^16u;first=' + address_call('target') + ';}\n' + \
+            'uint target=4080u+((id^group)&15u);uint last=' + address_call('target') + ';barrier();\n' + \
+            'result.v[group*512u+id]=first;result.v[group*512u+128u+id]=last;\n' + \
+            'result.v[group*512u+256u+id]=data[id];\n' + \
+            'result.v[group*512u+384u+id]=data[3968u+id];}\n'
+        (out / (kind + '.comp')).write_text(source)
+
 
 if __name__ == "__main__":
     from test_gallium_compute_uniforms import main
