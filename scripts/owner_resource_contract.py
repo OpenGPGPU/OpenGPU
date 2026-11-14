@@ -13,3 +13,11 @@ COMPUTE_STAGE = PROFILE + '-compute-stage'
 COMPUTE_SCHEMA = 'opengpu-compute-owner-profile-v2'
 COMPUTE_WORDS = [dict(word, value=word['value'] | (1 << 18))
                  if word['address'] == 0x368 else dict(word) for word in V1_WORDS]
+
+# GNJ2/GNF3/GNY2 is a different packet factory. In particular the actual layered
+# memory namespaces use 11 native transaction-ID bits instead of the old nine.
+FULL_STAGE = 'geometry-compute'
+FULL_WORDS = [dict(word, value={0x368: 0xfffff, 0x160: 0x474e4305,
+    0x168: 0x474e4a02, 0x17c: 0x8813db02}.get(word['address'], word['value']))
+    for word in V1_WORDS] + [dict(address=0x500+4*i, value=value) for i,value in enumerate(
+        (0x47475301, 8, 31, 0x474e4a02, 0x474e4603, 0x474e5902, 0xff840206, 0x04001000))]
