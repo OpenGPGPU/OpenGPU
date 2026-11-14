@@ -56,7 +56,7 @@ class GpuComputeUnitCore(
   nativeExecutionProfile: Boolean = false,
   textureAvailable: Boolean = true,
   taskTextureAvailability: Boolean = false,
-  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false
+  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false, evaluationPatchAvailable: Boolean = false
 ) extends Module {
   require(!imageAtomicAvailable || imageAvailable, "image atomics require image execution")
   require(!storageAtomicAvailable || storageAvailable, "storage atomics require storage execution")
@@ -66,6 +66,7 @@ class GpuComputeUnitCore(
     val computeUniformEnabled = if(computeUniformAvailable) Some(Input(Bool())) else None
     val geometryEnabled = if(geometryAvailable) Some(Input(Bool())) else None
     val tessellationEnabled = if(tessellationAvailable) Some(Input(Bool())) else None
+    val evaluationPatchEnabled = if(evaluationPatchAvailable) Some(Input(Bool())) else None
     val computeTextureEnabled = if(computeTextureAvailable) Some(Input(Bool())) else None
     val atomicCounterEnabled = if(atomicCounterAvailable) Some(Input(Bool())) else None
     val textureEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
@@ -116,8 +117,8 @@ class GpuComputeUnitCore(
     /** vtex.sample execute-side handoff and vector commit sideband. */
     val vectorTexSample = Decoupled(new VectorTextureRequest(config))
     val vectorTexCommit = Flipped(Decoupled(new VectorCommitRequest(config)))
-    val imageSideEffectMask = if(imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable || atomicCounterAvailable || tessellationAvailable) Some(Output(UInt(config.lanes.W))) else None
-    val imageFault = if(imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable || atomicCounterAvailable || tessellationAvailable) Some(Flipped(Valid(new opengpu.core.memory.VectorMemoryFault(config)))) else None
+    val imageSideEffectMask = if(imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable || atomicCounterAvailable || tessellationAvailable || evaluationPatchAvailable) Some(Output(UInt(config.lanes.W))) else None
+    val imageFault = if(imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable || atomicCounterAvailable || tessellationAvailable || evaluationPatchAvailable) Some(Flipped(Valid(new opengpu.core.memory.VectorMemoryFault(config)))) else None
     val active = Output(UInt(config.warps.W))
     val blocked = Output(UInt(config.warps.W))
     val sharedMemoryIdle = Output(Bool())
@@ -139,12 +140,13 @@ class GpuComputeUnitCore(
   private val frontend = Module(new GpuFrontend(config,
     scalarFpuAvailable = !nativeExecutionProfile || (enableFpuBackend && config.enableFpu),
     instructionSimt = config.enableVector, textureAvailable = textureAvailable,
-    taskTextureAvailability = taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,geometryAvailable=geometryAvailable,computeTextureAvailable=computeTextureAvailable,atomicCounterAvailable=atomicCounterAvailable,tessellationAvailable=tessellationAvailable,imageAtomicAvailable=imageAtomicAvailable,storageAtomicAvailable=storageAtomicAvailable))
+    taskTextureAvailability = taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,geometryAvailable=geometryAvailable,computeTextureAvailable=computeTextureAvailable,atomicCounterAvailable=atomicCounterAvailable,tessellationAvailable=tessellationAvailable,imageAtomicAvailable=imageAtomicAvailable,storageAtomicAvailable=storageAtomicAvailable,evaluationPatchAvailable=evaluationPatchAvailable))
   if(imageAvailable) { frontend.io.imageEnabled.get := io.imageEnabled.get }
   if(storageAvailable) { frontend.io.storageEnabled.get := io.storageEnabled.get }
   if(computeUniformAvailable) { frontend.io.computeUniformEnabled.get := io.computeUniformEnabled.get }
   if(geometryAvailable) { frontend.io.geometryEnabled.get := io.geometryEnabled.get }
   if(tessellationAvailable) { frontend.io.tessellationEnabled.get := io.tessellationEnabled.get }
+  if(evaluationPatchAvailable) { frontend.io.evaluationPatchEnabled.get := io.evaluationPatchEnabled.get }
   if(computeTextureAvailable) { frontend.io.computeTextureEnabled.get := io.computeTextureEnabled.get }
   if(atomicCounterAvailable) { frontend.io.atomicCounterEnabled.get := io.atomicCounterEnabled.get }
   if(taskTextureAvailability) { frontend.io.textureEnabled.get := io.textureEnabled.get }
@@ -153,7 +155,7 @@ class GpuComputeUnitCore(
   private val scalar = Module(new ScalarBackend(config, useBlackBoxes,helperInvocations=true,
     resourceFaultAddress=computeTextureAvailable || computeUniformAvailable))
   private val vector = Module(new VectorBackend(config, useBlackBoxes,helperInvocations=true,
-    instructionSimt=config.enableVector,imageAvailable=config.enableSharedVectorAtomics || imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable || atomicCounterAvailable || tessellationAvailable))
+    instructionSimt=config.enableVector,imageAvailable=config.enableSharedVectorAtomics || imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable || atomicCounterAvailable || tessellationAvailable || evaluationPatchAvailable))
   private val scalarVectorRead =
     Module(new opengpu.core.backend.register.ScalarRegisterFile(config))
   private val scalarFpuRead =
@@ -175,7 +177,7 @@ class GpuComputeUnitCore(
     else invocationPolicies(io.launch.bits.warpId):=io.launch.bits.invocations
   }
   scalar.io.invocations.get:=invocationPolicies;vector.io.invocations.get:=invocationPolicies
-  if(imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable || atomicCounterAvailable || tessellationAvailable) {
+  if(imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable || atomicCounterAvailable || tessellationAvailable || evaluationPatchAvailable) {
     val invocation = opengpu.core.memory.HelperInvocationPolicy.select(invocationPolicies, vector.io.texSample.bits.issued.decode.warpId)
     io.imageSideEffectMask.get := vector.io.texSample.bits.executionMask & ~invocation.helpers
   }
@@ -306,7 +308,7 @@ class GpuComputeUnitCore(
     case None =>
       io.vectorTexSample <> vector.io.texSample
       vector.io.texCommit <> io.vectorTexCommit
-      if(imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable || atomicCounterAvailable || tessellationAvailable)
+      if(imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable || atomicCounterAvailable || tessellationAvailable || evaluationPatchAvailable)
         vector.io.imageFault.get := io.imageFault.get
   }
   io.vector <> vector.io.unimplemented

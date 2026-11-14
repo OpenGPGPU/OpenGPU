@@ -12,8 +12,10 @@ import opengpu.graphics._
   * the isoline executor's correlation tag has only one vertex bit. Only one
   * evaluation is outstanding; accepted requests drain across cancellation.
   */
-class TessellationQuadCuEvaluator(config: GpuConfig, idWidth: Int, numComputeUnits: Int) extends Module {
+class TessellationQuadCuEvaluator(config: GpuConfig, idWidth: Int, numComputeUnits: Int,evaluationPatchAvailable:Boolean=false) extends Module {
   val io = IO(new Bundle {
+    val patchLayout=if(evaluationPatchAvailable)Some(Input(new TessellationPatchLayout))else None
+    val evaluationPatchBinding=if(evaluationPatchAvailable)Some(Output(Valid(new TessellationEvaluationPatchBinding)))else None
     val request = Flipped(Decoupled(new QuadEvaluationRequest)); val response = Decoupled(new QuadEvaluationResponse)
     val count = Input(UInt(6.W)); val selections = Input(Vec(61, new IsolinePatchInputSelection))
     val commandId = Input(UInt(idWidth.W)); val kernel = Input(new KernelLaunch(config)); val outputComponents = Input(UInt(7.W))
@@ -25,7 +27,7 @@ class TessellationQuadCuEvaluator(config: GpuConfig, idWidth: Int, numComputeUni
     val cancelCu = Output(Vec(numComputeUnits, Bool())); val cancel = Input(Bool()); val busy = Output(Bool())
   })
   private val reader = Module(new IsolinePatchInputReader(config, idWidth))
-  private val executor = Module(new IsolineGeometryCuExecutor(config, idWidth, numComputeUnits))
+  private val executor = Module(new IsolineGeometryCuExecutor(config, idWidth, numComputeUnits,evaluationPatchAvailable))
   private val active = RegInit(false.B); private val vertex = Reg(UInt(2.W))
   private val cancelled = RegInit(false.B)
   private val stop = io.cancel || (active && cancelled)
@@ -40,6 +42,7 @@ class TessellationQuadCuEvaluator(config: GpuConfig, idWidth: Int, numComputeUni
   reader.io.count := io.count; reader.io.selections := io.selections
   reader.io.commandId := io.commandId; reader.io.kernel := io.kernel; reader.io.outputComponents := io.outputComponents
   reader.io.cancel := stop; io.inspect <> reader.io.inspect; reader.io.reply <> io.reply
+  if(evaluationPatchAvailable){executor.io.patchLayout.get:=io.patchLayout.get;io.evaluationPatchBinding.get:=executor.io.evaluationPatchBinding.get}
   executor.io.task <> reader.io.task; reader.io.result <> executor.io.response
   // An already offered reader task must be accepted before cancellation reaches
   // the executor; otherwise a held task and an idle executor can deadlock.

@@ -83,17 +83,26 @@ class SharedCuTessellationPort(config: GpuConfig) extends Bundle {
   val cancel = Input(Bool()); val terminal = Input(Bool())
 }
 
+/** Separate, read-only TES lease; never a TCS access/barrier port. */
+class SharedCuEvaluationPatchPort(config:GpuConfig) extends Bundle {
+  val request=Decoupled(new opengpu.graphics.tessellation.TessellationEvaluationPatchRequest(config))
+  val result=Flipped(Decoupled(new opengpu.graphics.tessellation.TessellationWarpPatchResult(config.warps,config.lanes)))
+  val cancel=Input(Bool())
+}
+
 /** Graphics tasks execute on the very same CUs as host compute kernels.
   * The producer must use the pool's lane/warp ABI and retain task metadata
   * and staging storage until its tagged completion is accepted. SATP and TLB
   * controls are currently shared with the system; concurrent address spaces
   * require a separate context scheduling contract.
   */
-class SharedCuGraphicsPort(config: GpuConfig, commandIdWidth: Int, numComputeUnits: Int, geometryAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAvailable: Boolean = false)
+class SharedCuGraphicsPort(config: GpuConfig, commandIdWidth: Int, numComputeUnits: Int, geometryAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAvailable: Boolean = false,evaluationPatchAvailable:Boolean=false)
     extends Bundle {
   /** Native descriptor/captured-operand service for this prospective launch.
     * Routers snapshot it with acceptance, just like other task ownership.
     */
+  val evaluationPatchBinding=if(evaluationPatchAvailable)Some(Input(Valid(new opengpu.graphics.tessellation.TessellationEvaluationPatchBinding)))else None
+  val evaluationPatch=if(evaluationPatchAvailable)Some(Vec(numComputeUnits,new SharedCuEvaluationPatchPort(config)))else None
   val nativeResources = Input(Bool())
   val uniformResources = Input(Bool())
   /** Validated image publication and shader stage, sampled with the launch. */

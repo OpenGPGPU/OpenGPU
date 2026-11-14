@@ -19,8 +19,10 @@ class TessellationCuTriangleSharedTask(config: GpuConfig, idWidth: Int) extends 
   * through completion; launches and accepted traffic must drain on cancellation.
   * The two interfaces can be multiplexed onto the same CU after control ends.
   */
-class TessellationCuTriangleSharedEvaluator(config: GpuConfig, idWidth: Int, numComputeUnits: Int) extends Module {
+class TessellationCuTriangleSharedEvaluator(config: GpuConfig, idWidth: Int, numComputeUnits: Int,evaluationPatchAvailable:Boolean=false) extends Module {
   val io = IO(new Bundle {
+    val evaluationPatch=if(evaluationPatchAvailable)Some(Flipped(Vec(numComputeUnits,new SharedCuEvaluationPatchPort(config))))else None
+    val evaluationPatchBinding=if(evaluationPatchAvailable)Some(Output(Valid(new TessellationEvaluationPatchBinding)))else None
     val task = Flipped(Decoupled(new TessellationCuTriangleSharedTask(config, idWidth)))
     val opened = Decoupled(UInt(2.W)); val load = Flipped(Decoupled(new TessellationPatchAccess))
     val seal = Flipped(Decoupled(Bool())); val inspect = Flipped(Decoupled(new TessellationPatchAccess))
@@ -39,15 +41,19 @@ class TessellationCuTriangleSharedEvaluator(config: GpuConfig, idWidth: Int, num
     val out = Decoupled(new EvaluatedTrianglePrimitive); val completion = Decoupled(new TessellationCuTriangleCompletion)
     val cancel = Input(Bool()); val busy = Output(Bool())
   })
-  private val patch = Module(new TessellationCuTrianglePatch(config))
-  private val evaluator = Module(new TessellationTriangleCuEvaluator(config, idWidth, numComputeUnits))
+  private val patch = Module(new TessellationCuTrianglePatch(config,zeroOnBegin=evaluationPatchAvailable))
+  private val evaluator = Module(new TessellationTriangleCuEvaluator(config, idWidth, numComputeUnits,evaluationPatchAvailable))
   private val active = RegInit(false.B); private val cancelled = RegInit(false.B)
   private val saved = Reg(new TessellationCuTriangleSharedTask(config, idWidth))
   patch.io.task.valid := !active && io.task.valid && !io.cancel; patch.io.task.bits := io.task.bits.control
   io.task.ready := !active && !io.cancel && patch.io.task.ready
   when(io.task.fire) { active := true.B; cancelled := false.B; saved := io.task.bits }
   when(active && io.cancel && !patch.io.completion.valid) { cancelled := true.B }
-  private val stop = active && (io.cancel || cancelled)
+  private val evaluationFault=WireDefault(false.B);private val evaluationBusy=WireDefault(false.B)
+  private val evaluationFailed=RegInit(false.B)
+  when(io.task.fire){evaluationFailed:=false.B}
+  when(evaluationFault){evaluationFailed:=true.B}
+  private val stop = active && (io.cancel || cancelled || evaluationFault || evaluationFailed)
   patch.io.cancel := stop
   io.opened <> patch.io.opened; patch.io.load <> io.load; patch.io.seal <> io.seal
   io.controlKernel <> patch.io.kernel; io.bases := patch.io.bases; patch.io.kernelCompletion <> io.controlCompletion
@@ -55,10 +61,25 @@ class TessellationCuTriangleSharedEvaluator(config: GpuConfig, idWidth: Int, num
   patch.io.access <> io.access; io.accessResult <> patch.io.accessResult
   patch.io.park <> io.park; io.resume <> patch.io.resume; patch.io.finish <> io.finish
 
+  if(evaluationPatchAvailable){
+    val provider=Module(new TessellationEvaluationPatchProvider(config,idWidth,numComputeUnits))
+    val arb=Module(new TessellationInspectionArbiter)
+    provider.io.ports<>io.evaluationPatch.get
+    provider.io.owned:=io.owner;provider.io.taskIds:=io.taskIds;provider.io.commandId:=saved.commandId
+    provider.io.active:=active;provider.io.cancel:=stop
+    evaluator.io.patchLayout.get:=saved.control.patch.context.layout
+    provider.io.scope:=evaluator.io.evaluationPatchBinding.get
+    io.evaluationPatchBinding.get:=evaluator.io.evaluationPatchBinding.get
+    arb.io.in(0)<>evaluator.io.inspect;evaluator.io.reply<>arb.io.replies(0)
+    arb.io.in(1)<>provider.io.inspect;provider.io.reply<>arb.io.replies(1)
+    arb.io.in(2)<>io.inspect;io.reply<>arb.io.replies(2)
+    patch.io.inspect<>arb.io.out;arb.io.reply<>patch.io.reply
+    evaluationFault:=provider.io.fault;evaluationBusy:=provider.io.busy || arb.io.busy
+  }else{
   // Lock stalled offers and route the one outstanding response to its issuer.
-  private val locked = RegInit(false.B); private val lockedInternal = Reg(Bool())
-  private val preferInternal = RegInit(true.B); private val internalReply = RegInit(false.B)
-  private val chooseInternal = Mux(locked, lockedInternal, evaluator.io.inspect.valid && (!io.inspect.valid || preferInternal))
+  val locked = RegInit(false.B); val lockedInternal = Reg(Bool())
+  val preferInternal = RegInit(true.B); val internalReply = RegInit(false.B)
+  val chooseInternal = Mux(locked, lockedInternal, evaluator.io.inspect.valid && (!io.inspect.valid || preferInternal))
   patch.io.inspect.valid := Mux(chooseInternal, evaluator.io.inspect.valid, io.inspect.valid)
   patch.io.inspect.bits := Mux(chooseInternal, evaluator.io.inspect.bits, io.inspect.bits)
   evaluator.io.inspect.ready := chooseInternal && patch.io.inspect.ready
@@ -70,12 +91,17 @@ class TessellationCuTriangleSharedEvaluator(config: GpuConfig, idWidth: Int, num
   io.reply.valid := patch.io.reply.valid && !internalReply; io.reply.bits := patch.io.reply.bits
   patch.io.reply.ready := Mux(internalReply, evaluator.io.reply.ready, io.reply.ready)
   when(evaluator.io.reply.fire) { internalReply := false.B }
+  }
   evaluator.io.request <> patch.io.request
   evaluator.io.count := saved.patchInputCount; evaluator.io.selections := saved.patchInputs
   evaluator.io.commandId := saved.commandId; evaluator.io.kernel := saved.evaluationKernel
   evaluator.io.outputComponents := saved.outputComponents; evaluator.io.cancel := stop
   patch.io.response <> evaluator.io.response
-  io.out <> patch.io.out; io.completion <> patch.io.completion; io.busy := active
+  io.out <> patch.io.out; io.completion.valid:=patch.io.completion.valid && !evaluationBusy
+  io.completion.bits:=patch.io.completion.bits
+  if(evaluationPatchAvailable)when(evaluationFailed && (patch.io.completion.bits.status===0.U || patch.io.completion.bits.status===4.U)){io.completion.bits.status:=3.U}
+  patch.io.completion.ready:=io.completion.ready && !evaluationBusy
+  io.busy := active || evaluationBusy
   when(io.completion.fire) { active := false.B }
   io.launch <> evaluator.io.launch; io.geometryTask := evaluator.io.geometryTask
   evaluator.io.kernelCompletion <> io.kernelCompletion; evaluator.io.event <> io.event

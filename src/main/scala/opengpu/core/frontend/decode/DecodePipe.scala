@@ -7,15 +7,16 @@ import opengpu.config.GpuConfig
 /** One-stage decoupled decode pipe with backpressure. */
 class DecodePipe(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean = true,
   textureAvailable: Boolean = true, taskTextureAvailability: Boolean = false,
-  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false) extends Module {
-  val io = IO(new DecodePipeIO(config, taskTextureAvailability, imageAvailable, storageAvailable, computeUniformAvailable, geometryAvailable, computeTextureAvailable, atomicCounterAvailable, tessellationAvailable))
+  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false, evaluationPatchAvailable: Boolean = false) extends Module {
+  val io = IO(new DecodePipeIO(config, taskTextureAvailability, imageAvailable, storageAvailable, computeUniformAvailable, geometryAvailable, computeTextureAvailable, atomicCounterAvailable, tessellationAvailable,evaluationPatchAvailable))
 
-  val decoder = Module(new FullInstructionDecoder(config, scalarFpuAvailable, textureAvailable, taskTextureAvailability,nativeResourcesAvailable,nativeUniformsAvailable,imageAvailable,storageAvailable,computeUniformAvailable,geometryAvailable,computeTextureAvailable,atomicCounterAvailable,tessellationAvailable,imageAtomicAvailable,storageAtomicAvailable))
+  val decoder = Module(new FullInstructionDecoder(config, scalarFpuAvailable, textureAvailable, taskTextureAvailability,nativeResourcesAvailable,nativeUniformsAvailable,imageAvailable,storageAvailable,computeUniformAvailable,geometryAvailable,computeTextureAvailable,atomicCounterAvailable,tessellationAvailable,imageAtomicAvailable,storageAtomicAvailable,evaluationPatchAvailable))
   if(imageAvailable) { decoder.io.imageEnabled.get := io.imageEnabled.get }
   if(storageAvailable) { decoder.io.storageEnabled.get := io.storageEnabled.get }
   if(computeUniformAvailable) { decoder.io.computeUniformEnabled.get := io.computeUniformEnabled.get }
   if(geometryAvailable) { decoder.io.geometryEnabled.get := io.geometryEnabled.get }
   if(tessellationAvailable) { decoder.io.tessellationEnabled.get := io.tessellationEnabled.get }
+  if(evaluationPatchAvailable) { decoder.io.evaluationPatchEnabled.get := io.evaluationPatchEnabled.get }
   if(computeTextureAvailable) { decoder.io.computeTextureEnabled.get := io.computeTextureEnabled.get }
   if(atomicCounterAvailable) { decoder.io.atomicCounterEnabled.get := io.atomicCounterEnabled.get }
   if(taskTextureAvailability) { decoder.io.textureEnabled.get := io.textureEnabled.get }
