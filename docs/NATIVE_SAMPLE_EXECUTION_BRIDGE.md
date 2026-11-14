@@ -152,3 +152,59 @@ Binding compiler sources in a build record does not establish provenance for
 an arbitrary runtime `OGNSF001` artifact. The low-level controller must bind the
 supplied program bytes to the actual descriptor/private RX and keep original
 ESSL provenance qualification separate until its full compiler entry exists.
+
+## Original ESSL qualification entry
+
+`qualify_native_sample_owner.py` rejects a missing, stale, copied-source or
+cross-kind native-sample qualification before creating an archive, inspecting
+an image, scanning Mesa inputs or starting a CPU build. The existing full112
+guarded executor is mandatory; this entry never emits or generates a model.
+
+After the guard passes, the entry archives the same clean committed checkout
+and checks its qualified source bytes. One immutable local Docker image builds
+all fourteen original programs (seven ESSL sources, ABI6 and ABI7) and the live
+Linux producer once, using 512 MiB memory and memory-swap, one CPU and no network.
+The build container must exit before any live case starts. The compiler input
+identity includes Mesa22.3.6, its compilation database, all eight actual static
+libraries, source/generated headers and runtime libraries. Compiler-generated
+make dependencies must belong to those bound inputs or the fixed private
+build. Every actual archive source/header must match the original executor's
+recorded source hash. ABI7 compilation provides no geometry-owner authorization.
+
+The original qualified checkout's controller then consumes each exact ABI6
+artifact and the same immutable image/producer for all seven cases at 1/2/4
+samples. It retains its model/executor locks and original source-root checks.
+The archive is used for CPU compilation and producer inputs, never as a copied
+controller. CPU builds can write only their private build directory; live
+producers can write only their case IPC directory. The source archive and
+compiled programs are read-only during live execution.
+Source, compiler inputs, programs, producer and executor identities
+are rechecked before and after each case. Temporary inputs are removed only
+after process-group and named-container exit proof; unknown exits preserve them.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_qualify_native_sample_owner.py
+python3 -B scripts/qualify_native_sample_owner.py \
+  --executor "$OWNER_OUTPUT/executors/native-sample/executor" \
+  --executor-qualification "$OWNER_OUTPUT/executors/native-sample/qualification.json" \
+  --executor-checker "$PWD/scripts/prepare_owner_executor.py" \
+  --executor-checker-python "$GENERATION_PYTHON" \
+  --compiler-image gpu-gtk-ci-check:latest
+# Optional bounded selection: --case mask-depth-keep --samples 4
+```
+
+The image tag is resolved once to its immutable image ID. Mesa defaults to the
+main workspace's `depends/mesa`, `depends/mesa-build` and `depends/aarch64-root/lib`;
+explicit inputs must remain inside that workspace. The seven mandatory sources
+are `sample`, `mask-depth`, `mask-depth-keep`, `mrt`, `varying`, `signedness` and
+`truncation` under `userspace/tests/native_sample_essl/`.
+
+Local validation of this entry covers negative guards, source/archive and
+dependency mutations, argv construction and cleanup policy only. It starts no
+compiler, container or DUT. All eight entry tests, thirteen executor guard tests,
+five owner preparation tests and two sample preparation tests pass, including
+mandatory recipe/source/header closure checks. No real full112 model is available for this entry;
+none of its 21 live executions has run. Earlier standalone compiler and Linux
+CPU bridge results do not qualify this new provenance path, returned images,
+GNY2, physical clock or FPS. The mandatory canonical recipe checker must exist
+and match the executor's source identity before any production run.

@@ -42,8 +42,10 @@ CHECKERS = ('scripts/prepare_owner_executor.py', 'scripts/build_native_flashsim.
     'userspace/gallium/opengpu_cs_emit.c',
     'driver/tests/opengpu_compute_host_fixture.c')
 SAMPLE_CHECKERS = (
+    'scripts/qualify_native_sample_owner.py', 'scripts/native_sample_compiler_inputs.py',
     'scripts/native_sample_owner_protocol.py', 'scripts/native_sample_owner_controller.py',
     'scripts/native_sample_owner_oracle.py', 'scripts/native_sample_gny2_oracle.py',
+    'scripts/native_sample_owner_recipe.py',
     'docs/abi/native-layered-graphics-v2.json', 'scripts/owner_process_lifetime.py',
     'scripts/test_native_sample_submit_bridge.py',
     'scripts/test_native_submit.py', 'scripts/test_native_mmio_capture.py',
