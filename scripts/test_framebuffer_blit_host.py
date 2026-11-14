@@ -81,7 +81,7 @@ class HostGateTests(unittest.TestCase):
                 resets=[dict(heldChannel=c, heldResponseCycles=100, resetThroughRevocationCycles=200,
                              healthyIDReuseCycles=200) for c in ("R", "B")]),
             cases=[dict(inputIndex=n, coordinateInvalidateCycles=100, computeThroughRetirementCycles=200,
-                        publicationInvalidateCycles=100) for n in range(37)])
+                        publicationInvalidateCycles=100) for n in range(len(gate.NAMES))])
 
     def test_full_result_keeps_functional_scope(self):
         gate.check_result(self.result())

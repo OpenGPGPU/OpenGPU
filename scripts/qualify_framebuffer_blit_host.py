@@ -215,7 +215,7 @@ def main():
                 binary_hash == sha(executable) and record_hash == sha(snapshot), "blit source/tool/model/build changed")
             checked_inputs(args.inputs, ROOT, args.input_manifest_sha256)
     print("BLIT_HOST_" + args.stage.upper() + "_PASS" +
-          (" cases=37 frozenOwnerFunctionalDiagnosis=true" if args.stage == "run" else " gpuExecution=false") +
+          (f" cases={len(NAMES)} frozenOwnerFunctionalDiagnosis=true" if args.stage == "run" else " gpuExecution=false") +
           " finalProductQualification=false clockQualified=false fpsQualified=false")
 
 

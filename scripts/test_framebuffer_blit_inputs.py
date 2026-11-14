@@ -132,7 +132,7 @@ int main(int argc,char **argv) {
             pass
         else:
             raise RuntimeError("caller inputs accepted a wrong manifest pin")
-        print(f"37 original-caller C++/ASan/UBSan inputs and {len(mutations)} rejection cases PASS; GPU execution pending")
+        print(f"{len(NAMES)} original-caller C++/ASan/UBSan inputs and {len(mutations)} rejection cases PASS; GPU execution pending")
 
 
 if __name__ == "__main__":

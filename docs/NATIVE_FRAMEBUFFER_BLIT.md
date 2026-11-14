@@ -7,6 +7,15 @@ context. The CPU prepares coordinate offsets; it never reads or converts source
 pixels. The emitted GPU program reads source pixels, converts channels, merges
 masked destination bytes and waits for acknowledged writes.
 
+Same-format 2D/rectangle `resource_copy_region` uses the same checked-storage
+pass for all four color formats and D24S8/D24X8. This operation copies every
+storage byte, including RGBX X bytes and D24X8 padding, through an explicit raw
+RGBA8 interpretation. Actual source/destination dimensions, different pitches,
+row offsets and final partial cache-line guards are preserved. Unsupported
+pre-admission copies retain the Mesa transfer helper; an accepted failure keeps
+its original owner and cannot invoke that CPU helper. Buffer/PBO pixel-transfer
+layouts and additional framebuffer formats remain open.
+
 The version-1 descriptor rejects unknown versions, lengths, flags, formats and
 out-of-range image metadata. Whole images retain their actual pitch and exact
 logical byte limits. Source and coordinate views are read-only; destination
@@ -70,13 +79,17 @@ The existing transfer/depth/viewport/sampler/attachment and winsys range/unbind
 CPU regressions also pass. Linux ioctls and device scheduling are modeled in the
 CPU fixture; these results do not prove actual RTL execution.
 
-The actual caller can export 37 bounded original submissions: both filters and
-all 16 color pairs, four depth/stencil selections and a same-GEM copy. Each
+The actual caller can export 43 bounded original submissions: both filters and
+all 16 color pairs, four depth/stencil selections, six raw copy-region formats
+and a same-GEM copy. The copy-region cases use real 5×3 and 4×4 allocations
+with pitches of 20 and 16 bytes and independent checks of every padding byte.
+Held compute acknowledgements also reject fresh copy-region work until late
+retirement, then permit healthy reuse without changing graphics bindings. Each
 contains the original shader, kernarg, descriptor/maps, complete GEM bytes,
 exact permissions/view bounds and an independently calculated expected GEM.
 Preparation pins the compiler and transitive C/Python source closure before and
 after capture. Reuse requires an external manifest hash and unchanged original
-sources; this CPU receipt cannot qualify a DUT. The C++ reader checks all 37
+sources; this CPU receipt cannot qualify a DUT. The C++ reader checks all 43
 against the production emitter/maps and an independent direct affine pixel
 oracle. ASan/UBSan passes these inputs and 27 malformed input rejections.
 The bounded Sv32 fixture retains actual GEM identity, aliases, bytes and exact

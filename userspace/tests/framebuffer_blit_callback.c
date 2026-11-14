@@ -156,6 +156,40 @@ int main(void)
         }
         free(de);free(saved);pipe_resource_reference(&ds,NULL);pipe_resource_reference(&dd,NULL);
     }
+    blit_export_name=NULL;
+    /* Copy-region is a raw storage operation, including RGBX X and depth
+     * padding bytes. Use real allocations with different logical pitches. */
+    for(unsigned format=0;format<6;format++) {
+        struct pipe_resource ct=templ;
+        ct.format=format<4?formats[format]:format==4?PIPE_FORMAT_Z24_UNORM_S8_UINT:PIPE_FORMAT_Z24X8_UNORM;
+        ct.bind=format<4?PIPE_BIND_RENDER_TARGET|PIPE_BIND_SAMPLER_VIEW:PIPE_BIND_DEPTH_STENCIL;
+        ct.width0=5;ct.height0=3;struct pipe_resource *cs=s->resource_create(s,&ct);
+        ct.width0=ct.height0=4;struct pipe_resource *cd=s->resource_create(s,&ct);assert(cs&&cd);
+        struct pipe_opengpu_resource *cgs=opengpu_resource(cs)->gpu,*cgd=opengpu_resource(cd)->gpu;
+        assert(pipe_opengpu_resource_pitch(cgs)==20 && pipe_opengpu_resource_pitch(cgd)==16 &&
+            pipe_opengpu_resource_size(cgs)==64 && pipe_opengpu_resource_size(cgd)==64);
+        uint8_t *ci=pipe_opengpu_resource_map(cgs),*co=pipe_opengpu_resource_map(cgd),ce[64],saved[64];
+        for(unsigned n=0;n<64;n++)ci[n]=(uint8_t)(n*13+11);
+        memcpy(saved,ci,64);memset(co,0xa5,64);memset(ce,0xa5,64);
+        for(unsigned y=0;y<2;y++)memcpy(ce+y*16+8,ci+(y+1)*20+4,8);
+        const struct pipe_box box={.x=1,.y=1,.width=2,.height=2,.depth=1};
+        char name[64];assert(snprintf(name,sizeof(name),"copy-region-%u",format)>0);blit_export_name=name;
+        unsigned before=computes;p->resource_copy_region(p,cd,0,2,0,0,cs,0,&box);
+        assert(computes==before+1 && !memcmp(co,ce,64) && !memcmp(ci,saved,64));
+        export_expected(ce,64);blit_export_name=NULL;
+        assert(!memcmp(&contexts[graphics_context],&original,sizeof(original)));
+        if(!format) {
+            wait_error=1;wait_error_kind=1;before=computes;
+            p->resource_copy_region(p,cd,0,2,0,0,cs,0,&box);
+            unsigned held=last_compute_context;assert(computes==before+1 && live_contexts()==2);
+            p->resource_copy_region(p,cd,0,2,0,0,cs,0,&box);
+            assert(computes==before+1 && contexts[held].live);
+            wait_error=0;wait_error_kind=0;p->resource_copy_region(p,cd,0,2,0,0,cs,0,&box);
+            assert(computes==before+2 && !contexts[held].live && live_contexts()==1);
+            assert(!memcmp(co,ce,64) && !memcmp(ci,saved,64));
+        }
+        pipe_resource_reference(&cs,NULL);pipe_resource_reference(&cd,NULL);
+    }
     submission_capture=NULL;blit_export_name=NULL;
     struct opengpu_framebuffer_blit d={.version=1,.bytes=sizeof(d),.mask=15,
         .source_format=1,.destination_format=2,.source_width=4,.source_height=4,.source_pitch=sp,
@@ -203,6 +237,6 @@ int main(void)
     assert(!blit_export);free(independent_expected);free(source_copy);
     pipe_resource_reference(&src,NULL);pipe_resource_reference(&dst,NULL);
     p->destroy(p);s->destroy(s);no_leaks();
-    puts("GPU framebuffer blit CPU callbacks: actual Gallium/private pipe/ioctl/validator,2 filters x16 format pairs,depth/stencil,same-GEM,permissions/guards/held-ACK/fault/reuse PASS");
+    puts("GPU framebuffer blit CPU callbacks: actual Gallium/private pipe/ioctl/validator,2 filters x16 format pairs,depth/stencil,6 raw image-copy formats,same-GEM,permissions/guards/held-ACK/fault/reuse PASS");
     return 0;
 }

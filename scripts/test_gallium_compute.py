@@ -139,7 +139,7 @@ def main():
                 capturerSha256=digest(binary),
                 cases={name: hashlib.sha256(paths[name].read_bytes()).hexdigest() for name in NAMES})
             (args.artifacts / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-            print("37 actual-caller blit inputs/source dependency closure checked; GPU execution remains pending")
+            print(f"{len(NAMES)} actual-caller blit inputs/source dependency closure checked; GPU execution remains pending")
             print("BLIT_INPUT_MANIFEST_SHA256 " + digest(args.artifacts / "manifest.json"))
         if args.artifacts and args.fixture == "compute":
             cases = {}
