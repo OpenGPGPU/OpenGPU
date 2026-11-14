@@ -19,7 +19,8 @@ class TessellationSystemTriangleImageCompletion(p:VertexShaderStageConfig) exten
 object TessellationSystemTriangleImagePipeline {
   def memoryTransactions(engines:Int,writeCredits:Int,pagedCapacity:Int,tessellationUniforms:Boolean=false):Int=
     1<<log2Ceil(VertexBinPipeline.binTransactions(engines,writeCredits,pagedCapacity)+32*engines+(if(tessellationUniforms)2 else 0))
-  def payloadPins(engines:Int):Int=4+2*engines+4*engines
+  def payloadPins(engines:Int,ownedVertexSource:Boolean=false):Int=
+    4+2*engines+4*engines+(if(ownedVertexSource)4 else 0)
 }
 
 /** Controlled-triangle window-bin records feed independent typed image engines.
@@ -33,7 +34,8 @@ class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:Ver
     pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
     payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false,externalImages:Boolean=false,
-    fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false,tessellationUniforms:Boolean=false,evaluationPatchAvailable:Boolean=false) extends Module {
+    fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false,tessellationUniforms:Boolean=false,evaluationPatchAvailable:Boolean=false,
+    ownedVertexSource:Boolean=false) extends Module {
   require(engines>=1 && engines<=4 && p.varyings==f.varyings && f.colors==4)
   payload.foreach(q=>require(payloadOwner>=0 && payloadOwner+engines<q.owners))
   private val sharedConfig=shared;private val payloadConfig=payload
@@ -55,12 +57,17 @@ class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:Ver
     val seal=Flipped(Decoupled(Bool()))
     val inspect=Flipped(Decoupled(new TessellationPatchAccess));val reply=Decoupled(new TessellationContextReply)
     val shared=Flipped(new SharedCuGraphicsPort(config,idWidth,cus,geometryAvailable=true,tessellationAvailable=true,imageAvailable=fragmentImageAvailable,evaluationPatchAvailable=evaluationPatchAvailable))
+    /** Ordinary VS capability only; admission and the actual producer belong to the parent. */
+    val vertexShared=if(ownedVertexSource)Some(new SharedCuGraphicsPort(config,idWidth,cus))else None
+    /** Inner VS/TCS/TES router credits only, not complete patch or frame retirement. */
+    val vertexRouterDrained=if(ownedVertexSource)Some(Output(Bool()))else None
+    val vertexPayload=if(ownedVertexSource)payloadConfig.map(q=>Flipped(new FragmentPayloadPort(config,q)))else None
     /** Owner 0 is reserved so image engine e can use fragment owner e+1, matching
       * TypedVertexBinImagePipeline. Triangle tessellation does not consume a payload lease.
       */
     val payload=payloadConfig.map(q=>Vec(engines+1,new FragmentPayloadPort(config,q)))
     val poolPayload=payloadConfig.map(q=>Output(Valid(new ShaderPayloadBinding(config,q))))
-    val payloadPins=payloadConfig.map(q=>Output(Vec(TessellationSystemTriangleImagePipeline.payloadPins(engines),Valid(new ShaderPayloadPin(q)))))
+    val payloadPins=payloadConfig.map(q=>Output(Vec(TessellationSystemTriangleImagePipeline.payloadPins(engines,ownedVertexSource),Valid(new ShaderPayloadPin(q)))))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,memoryTransactions))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,memoryTransactions)))
     val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
@@ -80,8 +87,18 @@ class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:Ver
   io.fragmentEvents.outputBlocked:=images.map(_.fragmentEvents.outputBlocked).reduce(_ || _)
   private val mux=Module(new GeometryFragmentShaderRouter(config,cus,idWidth,payload,tessellationAvailable=true,imageAvailable=fragmentImageAvailable,evaluationPatchAvailable=evaluationPatchAvailable))
   private val router=Module(new SharedShaderTaskRouter(config,cus,engines,idWidth,shaderPayload=payload,imageAvailable=fragmentImageAvailable))
-  if(fragmentImageAvailable) GeometryFragmentShaderRouter.connectWithoutImages(mux.io.geometry,source.io.shared)
-  else source.io.shared<>mux.io.geometry
+  private val vertexRouter=if(ownedVertexSource)Some(Module(new TessellationVertexShaderRouter(config,cus,idWidth,payload,
+    tessellationAvailable=true,evaluationPatchAvailable=evaluationPatchAvailable)))else None
+  if(ownedVertexSource){
+    val inner=vertexRouter.get
+    inner.io.patch<>source.io.shared;inner.io.vertex<>io.vertexShared.get
+    if(fragmentImageAvailable)GeometryFragmentShaderRouter.connectWithoutImages(mux.io.geometry,inner.io.pool)
+    else inner.io.pool<>mux.io.geometry
+    io.vertexRouterDrained.get:=inner.io.drained
+  }else{
+    if(fragmentImageAvailable) GeometryFragmentShaderRouter.connectWithoutImages(mux.io.geometry,source.io.shared)
+    else source.io.shared<>mux.io.geometry
+  }
   source.io.trap.ready:=true.B;source.io.invalidate.valid:=false.B
   source.io.invalidate.bits:=0.U.asTypeOf(source.io.invalidate.bits);source.io.invalidateDone.ready:=true.B
   for(cu<-0 until cus){
@@ -197,12 +214,25 @@ class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:Ver
     case _=>()
   }
   payload.foreach{_=>
-    val idle=io.payload.get(0)
-    idle.control.valid:=false.B;idle.control.bits:=0.U.asTypeOf(idle.control.bits)
-    idle.request.valid:=false.B;idle.request.bits:=0.U.asTypeOf(idle.request.bits)
-    idle.controlResponse.ready:=true.B;idle.response.ready:=true.B
-    idle.task.valid:=false.B;idle.task.bits:=0.U.asTypeOf(idle.task.bits)
-    mux.io.clientPayload.get(0):=0.U.asTypeOf(mux.io.clientPayload.get(0))
+    if(ownedVertexSource){
+      val vertex=io.vertexPayload.get;val store=io.payload.get(0);val inner=vertexRouter.get
+      store<>vertex
+      vertex.context:=contexts(0)
+      // Preserve cancellation. The parent must gate producer cancel until its VS task is accepted.
+      vertex.cancel:=store.cancel
+      inner.io.clientPayload.get(0):=0.U.asTypeOf(inner.io.clientPayload.get(0))
+      inner.io.clientPayload.get(1):=vertex.task
+      mux.io.clientPayload.get(0):=inner.io.poolPayload.get
+      val pinBase=TessellationSystemTriangleImagePipeline.payloadPins(engines)
+      for(i<-0 until 4)io.payloadPins.get(pinBase+i):=inner.io.payloadPins.get(i)
+    }else{
+      val idle=io.payload.get(0)
+      idle.control.valid:=false.B;idle.control.bits:=0.U.asTypeOf(idle.control.bits)
+      idle.request.valid:=false.B;idle.request.bits:=0.U.asTypeOf(idle.request.bits)
+      idle.controlResponse.ready:=true.B;idle.response.ready:=true.B
+      idle.task.valid:=false.B;idle.task.bits:=0.U.asTypeOf(idle.task.bits)
+      mux.io.clientPayload.get(0):=0.U.asTypeOf(mux.io.clientPayload.get(0))
+    }
     mux.io.clientPayload.get(1):=router.io.poolPayload.get
     io.poolPayload.get:=mux.io.poolPayload.get
     for(i<-0 until 4)io.payloadPins.get(i):=mux.io.payloadPins.get(i)
@@ -296,7 +326,8 @@ class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:Ver
   when(io.memoryResponse.fire){assert(inFlight.orR || io.memoryRequest.fire,"unowned triangle bin image response")}
   private val drained= !sourceOffered && (!sourceStarted || (sourceDone && !source.io.busy)) && !owned.asUInt.orR &&
     !imageOffered.asUInt.orR && !images.map(_.busy).reduce(_ || _) && tileQueues.map(q=> !q.io.deq.valid).reduce(_ && _) &&
-    !localTaskValid && mux.io.drained && router.io.drained && inFlight===0.U && requests.io.count===0.U
+    !localTaskValid && mux.io.drained && router.io.drained && vertexRouter.map(_.io.drained).getOrElse(true.B) &&
+    inFlight===0.U && requests.io.count===0.U
   when(active && externalCancel && status===0.U && !childPrimary){status:=4.U;faultStage:=0.U;faultTileValid:=false.B}
   switch(phase){
     is(State.idle){when(io.begin.fire){descriptor:=io.begin.bits;status:=0.U;faultStage:=0.U;faultTileValid:=false.B
