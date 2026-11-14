@@ -27,7 +27,8 @@ static void proof_free(void *p)
 #include "../opengpu_shader_validator.h"
 #undef calloc
 #undef free
-_Static_assert(sizeof(struct opengpu_shader_state)<=384,"branch snapshots must stay small");
+_Static_assert(sizeof(struct opengpu_shader_state)<=336,"branch snapshots must stay small");
+_Static_assert(sizeof(struct opengpu_shader_branch_state)<=344,"branch slots must stay small");
 #include "../opengpu_shader_builder.h"
 #include "opengpu_compute_uniform_counter_source_program.h"
 
