@@ -7,6 +7,11 @@ geometry transport fails initialization. The actual native ioctl copies that
 kernel-owned authorization into the GNJ2 builder. User fragment version fields
 alone cannot enable sample inputs.
 
+Sample discovery also requires the encoded fragment batch capacity to equal
+the complete 128-thread owner before optional GSS1 reads. All 255 other encoded
+batch values fail without MMIO reads or changed output parameters. The complete
+kernel-free driver suite and a fresh ARM64 module build pass with this check.
+
 The program snapshot and shader validator admit ordinary ABI6 and GS ABI7 only
 through the explicit sample-aware entry. The original validation entry remains
 closed to both versions. ABI7 additionally requires a real GS draw; ordinary
