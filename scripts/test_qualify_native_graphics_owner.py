@@ -3,6 +3,7 @@
 import argparse
 from contextlib import redirect_stderr
 import io
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -18,6 +19,22 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class Entry(unittest.TestCase):
+    def test_fixed_archive_contains_actual_metadata_reader_schemas(self):
+        revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+        parent = ROOT / '.artifacts'; parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='native-archive-', dir=parent) as temporary:
+            source = Path(temporary) / 'source'
+            qualifier.archive_source(ROOT, revision, source)
+            # Check real git-archive output against the committed inputs used
+            # by validate_native_metadata, rather than mocking archive argv.
+            for name in ('native-binned-graphics-v1.json', 'typed-fragment-state-v1.json'):
+                relative = 'docs/abi/' + name
+                expected = subprocess.check_output(['git', 'show', revision + ':' + relative], cwd=ROOT)
+                self.assertEqual((source / relative).read_bytes(), expected)
+                self.assertIsInstance(json.loads(expected), dict)
+            self.assertTrue((source / 'scripts/test_gallium_graphics_uniforms.py').is_file())
+            self.assertTrue((source / 'driver/opengpu_native_frame.c').is_file())
+
     def test_absent_qualification_stops_before_any_command(self):
         args = argparse.Namespace(executor_qualification=ROOT / '.artifacts/no-native-qualification',
                                   executor=ROOT / '.artifacts/no-native-executor')
