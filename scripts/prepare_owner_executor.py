@@ -36,15 +36,40 @@ DEFAULT_DEPENDENCIES = ('scripts/flashsim_native/VGpuHostSystemAxi.h',
     'scripts/native_frame_fixture.hpp')
 CHECKERS = ('scripts/prepare_owner_executor.py', 'scripts/build_native_flashsim.py',
     'scripts/prepare_native_owner_flashsim.py', 'scripts/qualify_native_product_flashsim.py',
-    'scripts/qualify_native_product_compiled.py', 'scripts/owner_resource_contract.py',
-    'scripts/compute_owner_protocol.py', 'scripts/compute_owner_controller.py',
-    'scripts/compute_owner_oracle.py', 'scripts/compute_owner_cases.py',
-    'scripts/qualify_compute_owner.py', 'scripts/test_gallium_compute_host.py',
-    'scripts/test_gallium_compute_uniforms.py', 'scripts/test_gallium_compute_shared.py',
-    'userspace/tests/compute_host_frontend.c', 'userspace/tests/cs_shared_frontend.c',
-    'userspace/gallium/opengpu_cs_emit.c',
-    'driver/tests/opengpu_compute_host_fixture.c')
+    'scripts/qualify_native_product_compiled.py')
+COMPUTE_CHECKERS = (
+    'scripts/owner_resource_contract.py', 'scripts/compute_owner_protocol.py',
+    'scripts/compute_owner_controller.py', 'scripts/compute_owner_oracle.py',
+    'scripts/compute_owner_cases.py', 'scripts/compute_counter_source.py', 'scripts/compute_owner_inputs.py',
+    'scripts/qualify_compute_owner.py', 'scripts/owner_process_lifetime.py',
+    'scripts/native_sample_compiler_inputs.py', 'scripts/native_sample_graphics_inputs.py',
+    'scripts/native_sample_owner_protocol.py', 'scripts/apply_mesa_uniform_index_patch.py',
+    'scripts/test_gallium_compute_host.py', 'scripts/test_gallium_compute_uniforms.py',
+    'scripts/test_gallium_compute_shared.py', 'scripts/test_gallium_atomic_counter.py',
+    'scripts/test_compute_host.py', 'scripts/stage_mesa_shared_memory.py',
+    'scripts/stage_mesa_buffer_txf_mask.py')
+COMPUTE_PRODUCER_ROOTS = (
+    'userspace/tests/compute_host_frontend.c', 'userspace/tests/compute_host_gallium_stubs.c',
+    'userspace/tests/cs_graphics_unused_stubs.c', 'userspace/tests/cs_glsl_frontend.cpp',
+    'userspace/gallium/opengpu_context.c', 'userspace/gallium/opengpu_screen.c',
+    'userspace/gallium/opengpu_cs_emit.c', 'userspace/gallium/opengpu_fs_emit.c',
+    'userspace/gallium/opengpu_vs_emit.c', 'userspace/pipe_opengpu.c', 'userspace/opengpu.c',
+    'driver/tests/opengpu_compute_host_fixture.c', 'driver/opengpu_compute.c',
+    'driver/opengpu_hw.c', 'driver/opengpu_device.h', 'driver/opengpu_memory.c',
+    'driver/opengpu_scheduler.c', 'driver/opengpu_admission.c', 'driver/opengpu_drm_device.c')
+COMPUTE_GENERATED_INCLUDES = frozenset((
+    'compute_host_test_profile.inc', 'compute_host_fault_under_test.inc',
+    *(f'compute_host_{name}_under_test.inc' for name in
+      ('bind', 'context', 'context_lifetime', 'memory', 'query', 'run', 'events', 'lookup',
+       'wait_reservation', 'ioctl', 'scheduler', 'admission', 'gem')),
+    *(f'compute_host_hw_{name}_under_test.inc' for name in
+      ('fault_record', 'job_id', 'reset_pending', 'result_error', 'drain', 'irq', 'enable_irqs',
+       'quiesce', 'kick', 'set_satp', 'activate_locked', 'busy', 'wait_idle', 'activate', 'enable',
+       'disable', 'flush', 'flush_asid', 'submit', 'invalidate', 'invalidate_validate',
+       'invalidate_sync', 'snapshot_submission', 'compute', 'fence'))))
 SAMPLE_CHECKERS = (
+    'scripts/owner_resource_contract.py', 'scripts/compute_owner_protocol.py',
+    'scripts/compute_owner_oracle.py',
     'scripts/qualify_native_sample_owner.py', 'scripts/native_sample_compiler_inputs.py',
     'scripts/native_sample_owner_protocol.py', 'scripts/native_sample_owner_controller.py',
     'scripts/native_sample_owner_oracle.py', 'scripts/native_sample_gny2_oracle.py',
@@ -118,6 +143,7 @@ GRAPHICS_MESA_INCLUDES = frozenset((
     'frontend/winsys_handle.h', 'main/mtypes.h', 'nir/nir_to_tgsi.h',
     'pipe/p_context.h', 'pipe/p_defines.h', 'pipe/p_format.h', 'pipe/p_screen.h', 'pipe/p_state.h',
     'program/prog_parameter.h', 'state_tracker/st_atom.h', 'state_tracker/st_context.h',
+    'state_tracker/st_sampler_view.h', 'state_tracker/st_texture.h', 'util/format/u_format.h',
     'tgsi/tgsi_build.h', 'tgsi/tgsi_dump.h', 'tgsi/tgsi_parse.h', 'tgsi/tgsi_text.h', 'tgsi/tgsi_ureg.h',
     'util/u_inlines.h', 'util/u_memory.h', 'util/u_pack_color.h', 'util/u_surface.h',
     'util/u_transfer.h', 'util/u_upload_mgr.h'))
@@ -220,7 +246,7 @@ def sample_producer_files():
     return tuple(sorted(str(path.relative_to(ROOT)) for path in observed))
 
 
-def graphics_producer_files():
+def graphics_producer_files(roots=None, generated=None):
     """Conservatively bind all GPU include candidates in actual build paths.
 
     The flow and kernel units use different include-path orders. Recording
@@ -232,7 +258,8 @@ def graphics_producer_files():
     search = [ROOT / name for name in ('userspace/tests', 'userspace/gallium', 'userspace',
         'driver', 'driver/tests', 'driver/tests/private_snapshot_stubs',
         'driver/tests/mmu_stubs', 'driver/tests/compute_submit_stubs')]
-    pending, observed = [ROOT / name for name in GRAPHICS_PRODUCER_ROOTS], set()
+    pending, observed = [ROOT / name for name in (GRAPHICS_PRODUCER_ROOTS if roots is None else roots)], set()
+    generated = SAMPLE_GENERATED_INCLUDES if generated is None else generated
     while pending:
         path = pending.pop()
         require(path.is_file(), 'missing native sample graphics producer: ' + str(path))
@@ -260,7 +287,7 @@ def graphics_producer_files():
             if actual:
                 pending.extend(actual)
             elif parsed[1] == b'"':
-                require(name in SAMPLE_GENERATED_INCLUDES or name in GRAPHICS_MESA_INCLUDES,
+                require(name in generated or name in GRAPHICS_MESA_INCLUDES,
                         'missing native sample graphics producer dependency: ' + name)
     return tuple(sorted(str(path.relative_to(ROOT)) for path in observed))
 
@@ -272,6 +299,12 @@ def checker_files(kind):
             path = ROOT / name
             require(path.is_file() and path.resolve() == path, 'missing/aliased required blit checker: '+name)
         return tuple(dict.fromkeys((*CHECKERS, *BLIT_CHECKERS)))
+    if kind == 'compute':
+        for name in (*CHECKERS, *COMPUTE_CHECKERS):
+            path = ROOT / name
+            require(path.is_file() and path.resolve() == path, 'missing/aliased compute checker: ' + name)
+        return tuple(dict.fromkeys((*CHECKERS, *COMPUTE_CHECKERS,
+            *graphics_producer_files(COMPUTE_PRODUCER_ROOTS, COMPUTE_GENERATED_INCLUDES))))
     if kind not in SAMPLE_KINDS:
         return CHECKERS
     # Every fixed consumer is mandatory even before it has a valid build. A

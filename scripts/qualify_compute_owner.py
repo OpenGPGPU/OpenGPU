@@ -17,8 +17,8 @@ import sys
 import tempfile
 import uuid
 from compute_owner_protocol import strict_json
-from compute_owner_cases import CASES, DYNAMIC_CASES
-from owner_resource_contract import COMPUTE_STAGE, FULL_COMPUTE_CONTRACTS
+from compute_owner_cases import CASES, DYNAMIC_CASES, LEGACY_CASES, COUNTER_CASE
+from owner_resource_contract import COMPUTE_STAGE, FULL_COMPUTE_CONTRACTS, SAMPLE_PROFILE
 from owner_process_lifetime import CleanupIncomplete, stop_group, remove_container
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,6 +53,8 @@ def checked_inputs(args):
     record = strict_json(args.executor_qualification)
     require(record.get('schema') == 'opengpu-owner-executor-v1' and record.get('kind') == 'compute',
             'wrong executor qualification kind')
+    if getattr(args, 'case', None) == COUNTER_CASE:
+        require(record.get('profile') == SAMPLE_PROFILE, 'counter execution requires the exact final112 sample owner factory')
     if getattr(args, 'case', None) in (*DYNAMIC_CASES, 'mandatory-compute'):
         require(record.get('profile') == COMPUTE_STAGE or record.get('profile') in FULL_COMPUTE_CONTRACTS,
                 'shared atomic execution requires the distinct shared-enabled complete owner factory')
@@ -73,12 +75,26 @@ def producer_command(args, *, gpu, source, ntt, image, name, case):
         OPENGPU_COMPUTE_HOST_TIMEOUT=str(args.timeout))
     for key, value in environment.items():
         command += ['-e', key + '=' + value]
-    return command + [image, 'python3', 'scripts/test_gallium_compute_host.py',
+    entry = (['scripts/compute_owner_inputs.py', '--bound-inputs', str(args.counter_inputs)]
+             if case == COUNTER_CASE else ['scripts/test_gallium_compute_host.py'])
+    return command + [image, 'python3', *entry,
         '--build', '{ipc}/build', '--sanitize', '--mesa-shared-ntt', str(ntt),
         '--profile-wire', '{ipc}/profile.bin', '--session', '{ipc}', '--case', case]
 
 
 def run_case(args, *, gpu, source, temporary, ntt, image, case):
+    if case == COUNTER_CASE:
+        from compute_owner_inputs import snapshot
+        bound = snapshot(args.mesa, args.mesa_build, args.library_directory, args.drm_include, gpu)
+        args.counter_inputs = temporary / 'counter-inputs.json'
+        record = strict_json(args.executor_qualification)
+        qualified = record.get('source_sha256')
+        require(type(qualified) is dict, 'counter executor lacks complete producer/checker source inputs')
+        for name, digest in qualified.items():
+            require(sha256(source / name) == digest, 'counter archive differs from its qualified source: ' + name)
+        args.counter_inputs.write_text(json.dumps(dict(bound=bound, qualified=qualified,
+            mesa=str(args.mesa), build=str(args.mesa_build), libraries=str(args.library_directory),
+            drm=str(args.drm_include), gpu=str(gpu), ntt=str(ntt))) + '\n')
     name = 'opengpu-compute-' + uuid.uuid4().hex
     argv = producer_command(args, gpu=gpu, source=source, ntt=ntt, image=image, name=name, case=case)
     command_file = temporary / (case + '.argv.json')
@@ -89,9 +105,13 @@ def run_case(args, *, gpu, source, temporary, ntt, image, case):
             '--executor', args.executor, '--executor-qualification', args.executor_qualification,
             '--executor-checker', args.executor_checker, '--executor-checker-python', args.executor_checker_python,
             '--bridge-command', command_file, '--timeout', str(args.timeout),
+            *(['--case', COUNTER_CASE] if case == COUNTER_CASE else []),
             '--managed-session-directory', temporary / (case + '-session')], start_new_session=True,
             env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1', TMPDIR=str(temporary)))
         require(process.wait() == 0, 'actual compute case failed: ' + case)
+        if case == COUNTER_CASE:
+            require(snapshot(args.mesa, args.mesa_build, args.library_directory, args.drm_include, gpu) == bound,
+                    'original counter compiler inputs changed during execution')
     finally:
         # A terminated Docker client alone does not prove its container exited.
         try:
@@ -147,7 +167,7 @@ def main():
                         '--out', temporary / 'checked-ntt'], check=True,
                        env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1', TMPDIR=directory))
         ntt = temporary / 'checked-ntt/src/gallium/auxiliary/nir/nir_to_tgsi.c'
-        cases = ('shared', 'uniforms') if args.case == 'both' else CASES if args.case == 'mandatory-compute' else (args.case,)
+        cases = ('shared', 'uniforms') if args.case == 'both' else LEGACY_CASES if args.case == 'mandatory-compute' else (args.case,)
         for case in cases:
             require(checked_inputs(args) == identity, 'qualified model/executor changed between source cases')
             run_case(args, gpu=gpu, source=source, temporary=temporary, ntt=ntt, image=image, case=case)

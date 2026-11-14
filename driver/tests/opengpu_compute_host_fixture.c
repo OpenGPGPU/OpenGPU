@@ -367,6 +367,16 @@ int compute_host_submit_uniforms(struct compute_host_session *s,const struct drm
  return error;
 }
 
+int compute_host_submit_counter_source(struct compute_host_session *s,const struct drm_opengpu_compute_counter_source_resources *request)
+{
+ if(!s || !request || s->exported || s->head)return -EBUSY;
+ compute_running=s;struct drm_opengpu_compute_counter_source_resources copy=*request;
+ int error=opengpu_compute_counter_source_resources_ioctl(&s->drm,&copy,&s->file);
+ if(!error){s->submitted=copy.resources;s->context_id=copy.resources.resources.launch.context_id;
+  s->context=opengpu_context_lookup(&s->render,s->context_id);assert(s->context);}
+ return error;
+}
+
 int compute_host_submit_storage(struct compute_host_session *s,const struct drm_opengpu_compute_storage *request)
 {if(!s || !request || s->exported || s->head)return -EBUSY;
  compute_running=s;struct drm_opengpu_compute_storage copy=*request;
@@ -402,6 +412,11 @@ int compute_host_snapshot_get(struct compute_host_session *s,struct compute_host
   .storage_physical=job->storage_records.dma,.storage_root=job->kernel.storage.base,
   .uniforms=job->uniform_snapshot.cpu,.uniform_bytes=job->uniform_snapshot.size,
   .uniform_physical=job->uniform_snapshot.dma,.uniform_root=job->kernel.uniform.root,
+  .counter_physical=job->counter_source.dma,.counter_bytes=job->counter_source.size,
+  .counter_descriptor_physical=job->counter_records.dma,.counter_root=job->kernel.counter.base,
+  .context=s->context_id,
+  .kernarg_physical=s->context->bindings[s->submitted.resources.launch.kernarg_slot-1]->dma,
+  .kernarg_bytes=s->context->bindings[s->submitted.resources.launch.kernarg_slot-1]->size,
   .retained_objects=job->object_count,.temporary_mappings=job->temporary_mapping_count};return 0;
 }
 int compute_host_cancel_unexecuted(struct compute_host_session *s)
@@ -458,7 +473,7 @@ int compute_host_capture(struct compute_host_session *s,const char *path,uint64_
  if(!s || !s->exported || !s->prepared_execution || s->captured || !budget || budget>1000000000 || hold<8 || hold>4096)return -EINVAL;
  struct compute_mmio_state *m=compute_mmio_state(&s->gpu);
  if(!m->kernel_waiting || !s->hardware || dma_fence_is_signaled(s->hardware))return -EBUSY;
- struct compute_writable_range ranges[5];unsigned count=0;
+ struct compute_writable_range ranges[6];unsigned count=0;
  struct opengpu_resource_binding *arg=s->context->bindings[s->submitted.resources.launch.kernarg_slot-1];
  if(!arg)return -EINVAL;
  ranges[count].first=arg->dma;ranges[count++].end=arg->dma+arg->size;
@@ -467,6 +482,13 @@ int compute_host_capture(struct compute_host_session *s,const char *path,uint64_
   if(!slot || slot>OPENGPU_MAX_RESOURCE_BINDINGS)return -EINVAL;
   struct opengpu_resource_binding *b=s->context->bindings[slot-1];if(!b)return -EINVAL;
   ranges[count].first=b->dma;ranges[count++].end=b->dma+b->size;
+ }
+ struct opengpu_sched_job *job=opengpu_sched_job_from_base(s->head);
+ if(job->kernel.counter_enabled){
+  /* Independent original GEM only: exact logical words, never page/line padding. */
+  if(!job->counter_source.object || !job->counter_source.dma || !job->counter_source.size ||
+     job->counter_source.size>32 || (job->counter_source.size&3))return -EOPNOTSUPP;
+  ranges[count].first=job->counter_source.dma;ranges[count++].end=job->counter_source.dma+job->counter_source.size;
  }
  qsort(ranges,count,sizeof(*ranges),compute_writable_compare);
  unsigned merged=0;
@@ -699,7 +721,10 @@ int main(int argc,char **argv)
  assert(!compute_host_destroy(session));assert(!live_allocations && !fixture_buffers);
 
 
- for(unsigned active=0;active<2;active++){
+ for(unsigned active=0;active<(ARRAY_SIZE(test_profile)==122?3u:2u);active++){
+ bool counter=active==2;char counter_directory[4096];
+ assert(snprintf(counter_directory,sizeof(counter_directory),"%s/counter",argv[1])>0);
+ const char *directory=counter?counter_directory:argv[1];
  session=compute_host_create(7,test_profile,ARRAY_SIZE(test_profile));assert(session);
  /* Gallium owns a graphics context and a separate compute context on the
   * same DRM file. Keep other accepted, empty VMs through final cleanup. */
@@ -733,15 +758,41 @@ int main(int argc,char **argv)
  }
  struct dma_fence producer={.refs=1};session->render.originals[3]->resv.write=dma_fence_get(&producer);
  assert(compute_host_submit_uniforms(session,&uniform)==-ETIMEDOUT && !session->head && session->context->refcount.refs==1);
- producer.signaled=true;assert(!compute_host_submit_uniforms(session,&uniform));
+ producer.signaled=true;
+ if(counter){
+  u8 *data=compute_host_original_allocate(session,20,8192);assert(data);memset(data,0x5a,8192);
+  struct drm_opengpu_compute_counter_source_resources request={.version=1,.resources=uniform,
+   .source={.handle=20,.offset=4080,.count=8}};
+  for(unsigned bad=0;bad<5;bad++){
+   struct drm_opengpu_compute_counter_source_resources wrong=request;
+   if(bad==0)wrong.version=2;
+   if(bad==1)wrong.source.handle=16; /* aliases an active original storage GEM */
+   if(bad==2)wrong.source.count=9;
+   if(bad==3)wrong.source.offset=8180;
+   if(bad==4)wrong.source.offset=4081;
+   assert(compute_host_submit_counter_source(session,&wrong)<0 && !session->head);
+  }
+  struct dma_fence *old=session->render.originals[20]->resv.write;
+  session->render.originals[20]->resv.write=dma_fence_get(&producer);producer.signaled=false;
+  assert(compute_host_submit_counter_source(session,&request)==-ETIMEDOUT && !session->head);
+  producer.signaled=true;assert(!compute_host_submit_counter_source(session,&request));
+  dma_fence_put(old);
+  assert(session->render.originals[20]->refs>1);
+  /* Closing the public handle cannot release the accepted original source. */
+  assert(!compute_host_original_close(session,20) && session->render.originals[20]->backing.cpu);
+ }else assert(!compute_host_submit_uniforms(session,&uniform));
  struct compute_host_snapshot snapshot;assert(!compute_host_snapshot_get(session,&snapshot));
- assert(snapshot.uniform_bytes==204800 && snapshot.code_bytes==128 && snapshot.retained_objects==18 && snapshot.storage_bytes==256);
+ assert(snapshot.uniform_bytes==204800 && snapshot.code_bytes==128 && snapshot.retained_objects==(counter?19u:18u) && snapshot.storage_bytes==256);
  assert(!memcmp(snapshot.code,program,sizeof(program)) && !memcmp((u8 *)snapshot.uniforms+4096,
   session->render.originals[3]->gem.vaddr,16384));
  memset(session->render.originals[3]->gem.vaddr,0x73,16384);
  assert(((u32 *)((u8 *)snapshot.uniforms+4096))[0]==0x41000000u);
  assert(compute_host_unbind(session,2)==-ETIMEDOUT && session->context->bindings[1]);
 
+ if(counter){
+  assert(snapshot.counter_bytes==32 && snapshot.counter_physical==session->render.originals[20]->gem.dma_addr+4080);
+  assert(snapshot.counter_root && snapshot.counter_descriptor_physical);
+ }
  if(!active) {
   assert(!compute_host_cancel_unexecuted(session));assert(session->context->refcount.refs==1);
   assert(compute_host_destroy(session)==-ECANCELED);
@@ -751,13 +802,17 @@ int main(int argc,char **argv)
   struct opengpu_sched_job *job=opengpu_sched_job_from_base(session->head);u32 flags;
   assert(translate(&session->context->vm,(u32)job->kernel.kernel_pc,&flags)==job->shader.dma && (flags&15)==15);
   assert(translate(&session->context->vm,job->kernel.uniform.root,&flags)==job->uniform_snapshot.dma && (flags&15)==3);
-  assert(job->temporary_mapping_count==3 && session->context->refcount.refs==2 && !dma_fence_is_signaled(session->hardware));
-  char path[4096];assert(snprintf(path,sizeof(path),"%s/union.memory",argv[1])>0);
+  if(counter){
+   assert(translate(&session->context->vm,job->counter_source.va,&flags)==job->counter_source.dma && (flags&15)==15);
+   assert(translate(&session->context->vm,job->counter_source.va+31,&flags)==job->counter_source.dma+31);
+  }
+  assert(job->temporary_mapping_count==(counter?5u:3u) && session->context->refcount.refs==2 && !dma_fence_is_signaled(session->hardware));
+  char path[4096];assert(snprintf(path,sizeof(path),"%s/union.memory",directory)>0);
   assert(!compute_host_export_memory(session,path));
-  assert(snprintf(path,sizeof(path),"%s/record-0.capture",argv[1])>0);
+  assert(snprintf(path,sizeof(path),"%s/record-0.capture",directory)>0);
   assert(!compute_host_capture(session,path,1000000,37));
   assert(compute_host_capture(session,path,1000000,37)==-EINVAL);
-  assert(snprintf(path,sizeof(path),"%s/record-0.retire",argv[1])>0);
+  assert(snprintf(path,sizeof(path),"%s/record-0.retire",directory)>0);
   struct compute_host_held_receipt held={.command_id=session->gpu.hw.unified_command_id,
    .completion=0x8000u|session->gpu.hw.unified_command_id,.legacy_status=0,
    .status=GPU_UCMD_STATUS_COMPLETION|GPU_UCMD_STATUS_VM_BUSY,.irq=GPU_IRQ_ENABLE|GPU_IRQ_PENDING,.irq_asserted=1};
@@ -768,7 +823,7 @@ int main(int argc,char **argv)
   assert(compute_host_observe_retired(session,&retired)==-EINVAL && !session->head->s_fence->finished.signaled);
   retired.external_drained=1;assert(!compute_host_observe_retired(session,&retired));
   assert(compute_host_destroy(session)==-EBUSY && job->uniform_snapshot.cpu && session->context->refcount.refs==2);
-  assert(!compute_host_begin_cleanup(session,argv[1]));
+  assert(!compute_host_begin_cleanup(session,directory));
   int cleanup=compute_host_finish_observed(session);
   if(test_fail_phase){
    assert(test_failure_injected && cleanup<0 && session->gpu.hw.wedged);

@@ -44,6 +44,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     ap.add_argument("--mesa-shared-ntt", type=Path,
                     help="exact privately staged shared NTT source (shared fixtures only)")
     args = ap.parse_args()
+    if host_execution and args.case == 'counter-increment':
+        atomic_counters = True
     if args.mesa_shared_ntt and not (shared_memory or shared_publication):
         ap.error("--mesa-shared-ntt requires a shared-memory fixture")
     shared_ntt = None
@@ -182,7 +184,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         obj = out / 'actual-compute-kernel.o'
         run(cc + common + san + ['-Wno-unused-function', '-I' + str(ROOT / 'driver/tests/compute_submit_stubs'),
             '-I' + str(ROOT / 'driver/tests/mmu_stubs'), '-I' + str(ROOT / 'driver'), '-I' + str(kernel),
-            '-c', ROOT / 'driver/tests/opengpu_compute_host_fixture.c', '-o', obj], 'compile-actual-compute-kernel')
+            '-MMD', '-MF', obj.with_suffix('.d'), '-c', ROOT / 'driver/tests/opengpu_compute_host_fixture.c', '-o', obj], 'compile-actual-compute-kernel')
         objects.append(obj)
     elif buffer_resources:
         from test_compute_uniform_flow import write_bodies
@@ -221,7 +223,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         objects.append(obj)
     if host_execution:
         obj = out / 'compute_host_gallium_stubs.o'
-        run(cc + common + inc + san + ['-c', ROOT / 'userspace/tests/compute_host_gallium_stubs.c', '-o', obj], 'compile-compute-host-stubs')
+        run(cc + common + inc + san + ['-MMD', '-MF', obj.with_suffix('.d'), '-c', ROOT / 'userspace/tests/compute_host_gallium_stubs.c', '-o', obj], 'compile-compute-host-stubs')
         objects.append(obj)
     if graphics_uniforms:
         for relative in ("userspace/gallium/opengpu_native_uniform_emit.c",
@@ -404,7 +406,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         env["UBSAN_OPTIONS"] = "halt_on_error=1:print_stacktrace=1"
     if host_execution:
         args.session.mkdir(parents=True, exist_ok=True)
-        run([binary, args.profile_wire.resolve(), args.session.resolve(), sources / ('full128.comp' if args.case == 'uniforms' else 'full.comp' if args.case == 'shared' else args.case + '.comp'), args.case] +
+        run([binary, args.profile_wire.resolve(), args.session.resolve(), sources / ('full128.comp' if args.case == 'uniforms' else 'full.comp' if args.case == 'shared' else 'increment.comp' if args.case == 'counter-increment' else args.case + '.comp'), args.case] +
             (['--capture-only'] if args.capture_only else []), 'actual-compute-capture', env)
         print('Actual Mesa/Linux compute ' + ('CPU capture only' if args.capture_only else 'external-DUT protocol') + ' completed: ' + str(out))
         return

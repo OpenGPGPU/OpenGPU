@@ -46,10 +46,25 @@ class Entry(unittest.TestCase):
                             with self.assertRaisesRegex(ValueError,'distinct shared-enabled'):
                                 qualifier.checked_inputs(args)
 
+    def test_counter_requires_exact_sample_factory_and_old_matrix_is_unchanged(self):
+        self.assertEqual(len(qualifier.LEGACY_CASES),21)
+        parent=ROOT/'.artifacts';parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='counter-factory-',dir=parent) as d:
+            directory=Path(d);executable=directory/'executor';executable.write_bytes(b'CPU fixture')
+            qualification=directory/'qualification.json'
+            args=argparse.Namespace(executor=executable,executor_qualification=qualification,
+                executor_checker_python=sys.executable,executor_checker=directory/'checker',case=qualifier.COUNTER_CASE)
+            for profile in ('two-cu-vga60-owner-v1',qualifier.COMPUTE_STAGE,*qualifier.FULL_COMPUTE_CONTRACTS):
+                qualification.write_text(json.dumps(dict(schema='opengpu-owner-executor-v1',kind='compute',profile=profile)))
+                with patch.object(qualifier.subprocess,'run'):
+                    if profile==qualifier.SAMPLE_PROFILE:qualifier.checked_inputs(args)
+                    else:
+                        with self.assertRaisesRegex(ValueError,'exact final112'):qualifier.checked_inputs(args)
+
     def test_fixed_paths_real_producer_and_both_full_sources(self):
         gpu = ROOT
         args = argparse.Namespace(mesa=gpu / 'depends/mesa', mesa_build=gpu / 'depends/mesa-build',
-            drm_include=gpu / 'depends/include', mesa_link_libs='-lz -lexpat', library_directory=gpu / 'depends/lib', timeout=3600)
+            drm_include=gpu / 'depends/include', mesa_link_libs='-lz -lexpat', library_directory=gpu / 'depends/lib', timeout=3600, counter_inputs=gpu / '.artifacts/counter-inputs.json')
         for case in qualifier.CASES:
             command = qualifier.producer_command(args, gpu=gpu, source=gpu / '.artifacts/source',
                 ntt=gpu / '.artifacts/ntt.c', image='sha256:' + '1' * 64, name='unique-owned-container', case=case)
@@ -64,7 +79,7 @@ class Entry(unittest.TestCase):
             self.assertNotIn('--capture-only', command)
             self.assertNotIn('OPENGPU_COMPUTE_HOST_TEST_MAIN', ' '.join(command))
             self.assertIn('{ipc}/profile.bin', command)
-            self.assertIn('scripts/test_gallium_compute_host.py', command)
+            self.assertIn('scripts/compute_owner_inputs.py' if case == qualifier.COUNTER_CASE else 'scripts/test_gallium_compute_host.py', command)
             self.assertIn('--sanitize', command)
 
     def test_container_exit_must_be_proven_and_active_inputs_preserved(self):
