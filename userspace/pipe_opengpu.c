@@ -1132,16 +1132,14 @@ invalid:
     errno = EINVAL; return -1;
 }
 
-int pipe_opengpu_native_uniform_stages(struct pipe_opengpu_screen *screen,
+int pipe_opengpu_native_uniform_stages_checked(struct pipe_opengpu_screen *screen,
     const struct pipe_opengpu_uniform_view views[2][13], const unsigned required_bytes[2][13],
     struct drm_opengpu_native_uniform_stage stages[2])
 {
     struct pipe_opengpu_native_uniform_plan plan;
-    struct opengpu_native_shader_layout layout;
     struct drm_opengpu_native_uniform_stage prepared[2] = {0};
     if (!stages) { errno = EINVAL; return -1; }
-    if (pipe_opengpu_native_uniform_plan(screen,views,required_bytes,&plan) ||
-        pipe_opengpu_screen_native_layout(screen,&layout)) return -1;
+    if (pipe_opengpu_native_uniform_plan(screen,views,required_bytes,&plan)) return -1;
     for (unsigned stage = 0; stage < 2; stage++) {
         prepared[stage].active_mask = plan.active_mask[stage];
         for (unsigned slot = 0; slot < 13; slot++) if (required_bytes[stage][slot]) {
@@ -1152,6 +1150,18 @@ int pipe_opengpu_native_uniform_stages(struct pipe_opengpu_screen *screen,
         }
     }
     memcpy(stages,prepared,sizeof(prepared)); return 0;
+}
+
+int pipe_opengpu_native_uniform_stages(struct pipe_opengpu_screen *screen,
+    const struct pipe_opengpu_uniform_view views[2][13],const unsigned required[2][13],
+    struct drm_opengpu_native_uniform_stage stages[2])
+{
+    struct opengpu_native_shader_layout layout;
+    struct pipe_opengpu_native_uniform_plan plan;
+    if(!stages){errno=EINVAL;return -1;}
+    if(pipe_opengpu_native_uniform_plan(screen,views,required,&plan) ||
+        pipe_opengpu_screen_native_layout(screen,&layout))return -1;
+    return pipe_opengpu_native_uniform_stages_checked(screen,views,required,stages);
 }
 
 int pipe_opengpu_uniform_view_validate(const struct pipe_opengpu_screen *screen,

@@ -152,6 +152,8 @@ struct opengpu_context {
     unsigned native_constant_errors[2];
     struct opengpu_native_shader_layout native_layout;
     bool native_layout_valid;
+    void *native_sample_cache;
+    size_t native_sample_cache_bytes;
     unsigned cs_access[4];
     int cs_binding_error;
     struct pipe_sampler_view *cs_sampler_views[32];
@@ -4620,26 +4622,53 @@ invalid:
     gpu_failed("invalid exact native graphics constant view");
 }
 
+/* Internal storage only. The versioned sample wrapper validates before install
+ * and after every read; no public GET_PARAM or feature bit is substituted. */
+int opengpu_native_sample_cache_install(struct pipe_context *pipe,const void *cache,size_t bytes,
+    const struct opengpu_native_shader_layout *layout)
+{
+    if(!pipe || !cache || !bytes || !layout){errno=EINVAL;return -1;}
+    struct opengpu_context *ctx=octx(pipe);
+    if(ctx->native_layout_valid || ctx->native_sample_cache){errno=EBUSY;return -1;}
+    void *copy=malloc(bytes);if(!copy)return -1;
+    memcpy(copy,cache,bytes);ctx->native_sample_cache=copy;ctx->native_sample_cache_bytes=bytes;
+    ctx->native_layout=*layout;return 0;
+}
+int opengpu_native_sample_cache_read(struct pipe_context *pipe,void *cache,size_t bytes,unsigned *context)
+{
+    if(!pipe || !cache || !context){errno=EINVAL;return -1;}
+    struct opengpu_context *ctx=octx(pipe);
+    if(!ctx->native_sample_cache || ctx->native_sample_cache_bytes!=bytes){errno=ENOTSUP;return -1;}
+    memcpy(cache,ctx->native_sample_cache,bytes);*context=pipe_opengpu_context_id(ctx->gpu);return 0;
+}
 uint32_t opengpu_native_graphics_context_id(struct pipe_context *pipe)
 {
     if (!pipe || !octx(pipe)->native_layout_valid) return 0;
     return pipe_opengpu_context_id(octx(pipe)->gpu);
 }
 
-int opengpu_native_graphics_uniform_sources(struct pipe_context *pipe,
-    const unsigned required[2][13], struct drm_opengpu_native_uniform_stage stages[2])
+static int graphics_uniform_sources(struct pipe_context *pipe,
+    const unsigned required[2][13], struct drm_opengpu_native_uniform_stage stages[2],int sample)
 {
-    struct opengpu_context *ctx = octx(pipe);
     struct pipe_opengpu_uniform_view views[2][13] = {0};
     if (!pipe || !required || !stages) { errno = EINVAL; return -1; }
-    if (!ctx->native_layout_valid) { errno = ENOTSUP; return -1; }
+    struct opengpu_context *ctx = octx(pipe);
+    if (sample ? !ctx->native_sample_cache : !ctx->native_layout_valid) { errno = ENOTSUP; return -1; }
     for (unsigned stage = 0; stage < 2; stage++) for (unsigned slot = 0; slot < 13; slot++) {
         if (!required[stage][slot]) continue;
         const struct pipe_constant_buffer *cb = &ctx->native_constants[stage][slot];
         if (ctx->native_constant_errors[stage] & ((1u << slot) | (1u << 13))) { errno = EINVAL; return -1; }
         if (cb->buffer) views[stage][slot] = (struct pipe_opengpu_uniform_view){opengpu_resource(cb->buffer)->gpu,cb->buffer_offset,cb->buffer_size};
     }
-    return pipe_opengpu_native_uniform_stages(opengpu_screen_gpu(pipe->screen),views,required,stages);
+    return sample ? pipe_opengpu_native_uniform_stages_checked(opengpu_screen_gpu(pipe->screen),views,required,stages) :
+        pipe_opengpu_native_uniform_stages(opengpu_screen_gpu(pipe->screen),views,required,stages);
+}
+int opengpu_native_graphics_uniform_sources(struct pipe_context *pipe,
+    const unsigned required[2][13],struct drm_opengpu_native_uniform_stage stages[2])
+{ return graphics_uniform_sources(pipe,required,stages,0); }
+int opengpu_native_sample_uniform_sources(struct pipe_context *pipe,
+    const unsigned required[2][13],struct drm_opengpu_native_uniform_stage stages[2])
+{ return graphics_uniform_sources(pipe,required,stages,1);
 }
 
 static void set_constant_buffer(struct pipe_context *pipe,
@@ -4655,7 +4684,7 @@ static void set_constant_buffer(struct pipe_context *pipe,
         set_compute_constant(pipe, index, take_ownership, buf);
         return;
     }
-    if (ctx->native_layout_valid && (shader == PIPE_SHADER_VERTEX || shader == PIPE_SHADER_FRAGMENT))
+    if ((ctx->native_layout_valid || ctx->native_sample_cache) && (shader == PIPE_SHADER_VERTEX || shader == PIPE_SHADER_FRAGMENT))
         set_native_graphics_constant(pipe,shader == PIPE_SHADER_FRAGMENT,index,buf);
 
     if (shader == PIPE_SHADER_VERTEX && index == 0) {
@@ -5258,6 +5287,7 @@ reset:
 static void context_destroy(struct pipe_context *pipe)
 {
     struct opengpu_context *ctx = octx(pipe);
+    FREE(ctx->native_sample_cache);
     unsigned i;
 
     compute_reset(ctx);

@@ -166,6 +166,10 @@ int pipe_opengpu_native_uniform_plan(struct pipe_opengpu_screen *screen,
     const unsigned required_bytes[2][13], struct pipe_opengpu_native_uniform_plan *out);
 /* Prepare the stable native UAPI's per-stage source records. This requires
  * discovered native transport support but does not submit or own a job. */
+/* Internal checked view builder; callers independently admit their versioned runtime. */
+int pipe_opengpu_native_uniform_stages_checked(struct pipe_opengpu_screen *,
+    const struct pipe_opengpu_uniform_view [2][13],const unsigned [2][13],
+    struct drm_opengpu_native_uniform_stage [2]);
 int pipe_opengpu_native_uniform_stages(struct pipe_opengpu_screen *screen,
     const struct pipe_opengpu_uniform_view views[2][13], const unsigned required_bytes[2][13],
     struct drm_opengpu_native_uniform_stage stages[2]);
