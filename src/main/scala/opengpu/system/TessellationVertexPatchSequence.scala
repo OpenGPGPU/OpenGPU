@@ -69,10 +69,14 @@ class TessellationVertexPatchSequence(p:VertexShaderStageConfig) extends Module 
     patch:=0.U;instancePatch:=0.U;cancelled:=false.B;childStatus:=0.U;result:=0.U.asTypeOf(result)
     state:=State.check
   }
+  private def completeAfterDrain():Unit={
+    assert(!io.childBusy,"vertex patch sequence escaped whole-patch drain")
+    state:=State.complete
+  }
   when(state===State.check){
-    when(!legal){result.status:=1.U;state:=State.complete}
-      .elsewhen(stop){result.status:=4.U;state:=State.complete}
-      .elsewhen(d.patchCount===0.U){state:=State.complete}
+    when(!legal){result.status:=1.U;when(!io.childBusy){completeAfterDrain()}}
+      .elsewhen(stop){result.status:=4.U;when(!io.childBusy){completeAfterDrain()}}
+      .elsewhen(d.patchCount===0.U){when(!io.childBusy){completeAfterDrain()}}
       .otherwise{state:=State.offer}
   }
   when(io.task.fire){state:=State.waiting}
@@ -81,11 +85,11 @@ class TessellationVertexPatchSequence(p:VertexShaderStageConfig) extends Module 
     state:=State.drain
   }
   when(state===State.drain && !io.childBusy){
-    when(childStatus=/=0.U && childStatus=/=4.U){result.status:=childStatus;result.failedPatch:=patch;state:=State.complete}
-      .elsewhen(stop || childStatus===4.U){result.status:=4.U;result.failedPatch:=patch;state:=State.complete}
+    when(childStatus=/=0.U && childStatus=/=4.U){result.status:=childStatus;result.failedPatch:=patch;completeAfterDrain()}
+      .elsewhen(stop || childStatus===4.U){result.status:=4.U;result.failedPatch:=patch;completeAfterDrain()}
       .otherwise{
         result.completed:=result.completed+1.U
-        when(patch+&1.U===d.patchCount){state:=State.complete}.otherwise{
+        when(patch+&1.U===d.patchCount){completeAfterDrain()}.otherwise{
           patch:=patch+1.U;task.taskId:=task.taskId+1.U
           when(instancePatch+&1.U===d.patchesPerInstance){
             instancePatch:=0.U;task.slice.firstOrdinal:=firstOrdinal
@@ -98,5 +102,6 @@ class TessellationVertexPatchSequence(p:VertexShaderStageConfig) extends Module 
       }
   }
   when(io.completion.fire){state:=State.idle}
-  when(io.completion.valid){assert(!io.childBusy,"vertex patch sequence escaped whole-patch drain")}
+  // Once captured, the held report survives later transport flushes. The
+  // next begin still requires the live childBusy input to be clear.
 }
