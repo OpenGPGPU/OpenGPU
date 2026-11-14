@@ -5,7 +5,7 @@
 #include "opengpu_drm.h"
 struct opengpu_private_snapshot;
 struct opengpu_tessellation_uniform_roots {
-    u32 segment, root_offset[2];
+    u32 segment, root_offset[2], bytes;
     bool present[2];
 };
 /* Independent GUR3/GUB3 publication: stages[0] is TCS (4), stages[1] is TES
