@@ -37,6 +37,7 @@ def run_driver_tests():
     subprocess.run([sys.executable, "-B", str(ROOT / "scripts/test_native_sample_graphics_gny2_oracle.py")], check=True)
     subprocess.run([sys.executable, "-B", str(ROOT / "scripts/test_native_sample_graphics_owner_oracle.py")], check=True)
     subprocess.run([sys.executable, "-B", str(ROOT / "scripts/test_native_sample_graphics_controller.py")], check=True)
+    subprocess.run([sys.executable, "-B", str(ROOT / "scripts/test_qualify_native_sample_graphics_owner.py")], check=True)
     subprocess.run([sys.executable, "-B", str(ROOT / "scripts/test_graphics_sample_live.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_native_sample_graphics.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_native_sample_submit_bridge.py")], check=True)

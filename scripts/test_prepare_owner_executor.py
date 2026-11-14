@@ -269,6 +269,7 @@ class ExecutorTests(unittest.TestCase):
         for profile in (q.owner.PROFILE,q.COMPUTE_STAGE,q.FULL_PROFILE,'renamed-sample'):
             with self.assertRaises(RuntimeError):q.driver_files(kind,profile)
         mandatory=(*q.GRAPHICS_CHECKERS,*q.GRAPHICS_PRODUCER_ROOTS,
+            'scripts/qualify_native_sample_graphics_owner.py','scripts/native_sample_graphics_inputs.py',
             'userspace/tests/graphics_sample_live.inc','userspace/tests/graphics_sample_source_plan.inc',
             'userspace/tests/graphics_sample_entry.h','userspace/tests/graphics_sample_owner_ipc.h',
             'userspace/gallium/opengpu_native_graphics_internal.h',

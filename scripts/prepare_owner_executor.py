@@ -75,6 +75,7 @@ SAMPLE_PRODUCER_ROOTS = (
     'driver/opengpu_hw.c', 'driver/opengpu_device.h',
     'driver/opengpu_scheduler.c', 'driver/opengpu_admission.c', 'driver/opengpu_native_submit.c')
 GRAPHICS_CHECKERS = (
+    'scripts/qualify_native_sample_graphics_owner.py', 'scripts/native_sample_graphics_inputs.py',
     'scripts/native_sample_graphics_controller.py', 'scripts/native_sample_graphics_protocol.py',
     'scripts/native_sample_graphics_owner_oracle.py', 'scripts/native_sample_graphics_recipe.py',
     'scripts/native_sample_graphics_source_oracle.py', 'scripts/native_sample_graphics_gny2_oracle.py',
@@ -98,7 +99,7 @@ GRAPHICS_PRODUCER_ROOTS = (
     *SAMPLE_PRODUCER_ROOTS)
 # Explicit external Mesa headers, not a wildcard exemption for missing GPU
 # quoted includes. Actual Mesa headers/objects must be bound separately by a
-# future execution qualifier; this only qualifies the GPU checkout and executor.
+# execution qualifier; this record qualifies the GPU checkout and executor.
 GRAPHICS_MESA_INCLUDES = frozenset((
     'compiler/glsl/gl_nir.h', 'compiler/glsl/gl_nir_linker.h',
     'compiler/glsl/glsl_to_nir.h', 'compiler/glsl/standalone.h', 'compiler/nir/nir.h',
