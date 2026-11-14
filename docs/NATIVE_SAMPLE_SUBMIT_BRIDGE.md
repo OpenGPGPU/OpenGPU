@@ -132,3 +132,36 @@ GS/ABI7 needs a real GS program and owner, raw GS output and the layered route;
 it cannot borrow an ordinary draw's ABI6 proof. Dynamic interpolation services,
 API enable/minimum policy, full RTL execution and frame/FPS qualification remain
 open. The old ABI1 six-scene product run is a separate qualification.
+
+## Canonical fixed-recipe precheck
+
+`native_sample_owner_recipe.verify(space, description, meta, code)` independently
+reconstructs all 128 GNJ2 words, 512 GNF3 words, 512 GND1 words and 128 GFS words
+from zeroed records, fixed recipe arithmetic and the public ABI catalogs. Every
+unused/reserved word and upper padding bit must match. Tile layout derives from
+the 32KiB store and the full four-RGBA32F-plus-D32F footprint, rather than copied
+frame values. The VS oracle separately encodes all 420 RV32/vector instructions,
+including all 68 position/varying stores and exact distinct float constants.
+Both private VS/FS RX bytes must match their independent source programs.
+
+Dynamic resource VAs come from `frameResources` and `vertexScratch`, emitted
+from the retained original plans. Each role/index/handle is unique and must bind
+to the same retained original GEM, exact logical size, page-rounded allocation,
+actual owner map and actual Sv32 PTE. Addresses in the records being checked do
+not authorize their own expected values. Private job/frame/draw/state/code VAs
+remain explicit distinct mapped views. These additional metadata keys describe
+original inputs; they contain no expected descriptor bytes or rendered output.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_sample_owner_recipe.py
+```
+
+Four CPU tests pass. All three sample modes accept actual Linux captures and
+reject 8,940 descriptor/VS word mutations, covering low and high bits of every
+complete descriptor word and every VS instruction. Same-initial/returned GFS
+magic corruption, color-format corruption and a VS replaced by immediate CEASE
+also fail before both preflight and synthetic healthy-return checks. These are
+synthetic CPU packet/return tests; no Mesa rebuild, shader DUT, actual completion
+or successful GPU cleanup ran. The actual-ESSL consumer uses normalized case IDs
+and the same independent preflight with its explicit CPU profile fixture; its
+fresh compiler run remains a separate reproduction step.
