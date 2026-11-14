@@ -23,10 +23,11 @@ shader invocation sequence required by GLES 3.2 sample shading.
   sample modes are rejected before any invocation. A completion record always
   reports the status and emitted count; invocations and completion are held
   under backpressure and cancellation publishes status 4 after draining.
-- The minimum value is consumed only as zero versus nonzero. ES 3.2 uses a
-  nonzero minimum to require at least one shading invocation per covered
-  sample; fractional granularity between pixel and per-sample shading is not
-  scheduled by this block.
+- The minimum value is consumed only as zero versus nonzero. This standalone
+  block conservatively selects every covered sample for any nonzero minimum;
+  fractional granularity is not scheduled. ES 3.2 requires at least
+  `max(ceil(minimum * samples), 1)` unique input sets, rather than requiring
+  full sample rate for every nonzero minimum.
 
 ## Results
 
@@ -69,3 +70,85 @@ zero. Noncanonical coverage above the sample count and unsupported counts are
 rejected. 300 directed cases plus invalid/empty coverage cover the merge
 (`FRAGMENT_SAMPLE_MERGE`).
 
+## Default-off native layered source implementation
+
+`NativeBinnedGraphicsConfig.sampleShading` is a development constructor option,
+false by default and restricted to the complete native layered route. Fragment
+versions 6 (ordinary) and 7 (internal geometry) request full sample-plane shading;
+versions 1–5 retain their input/output offsets and control-bit checks. Existing
+capability words still advertise versions 1–4. This source is unfinished and has
+not passed a full caller compilation, RTL execution or protected-host/Mesa
+qualification. It inherits no model, source/RTL/assertion or timing result.
+
+The native replay owner retains the original primitive. Before interpolation,
+`FragmentSamplePlaneSequencer` owns each original raw four-pixel quad, emits its
+covered sample planes in order, and makes absent lanes helpers. Posted planes
+stay immutable through cancellation until their actual handshake. The original
+streaming FP32 preparation uses its full-width sample-edge arithmetic to
+recompute weights, reciprocal W, depth and all smooth varying components for
+the selected sample. Point coordinates use the same sample location. Flat
+components keep the existing rule; no post-interpolation value duplication is
+used. Completion waits for the sequencer and all arithmetic/output ownership
+to drain. Per-primitive plane counters include two additional bits; public
+`VertexRasterCompletion`/GNY2 summary fields and serialized layouts are unchanged.
+
+The sample ABI appends SampleID and SamplePosition.xy to the existing input
+prefix after point/geometry inputs; the coverage array supplies SampleMaskIn.
+Actual shared-CU output readback accepts control bit 6 as mask-written and bits
+10:7 as its low four mask bits only for versions 6/7. It intersects that mask with
+the invocation's own coverage and applies discard before the existing typed
+sample/depth/stencil/MRT backend. Old versions still reject bits 31:6. Different
+sample colors are stored independently and resolved by the existing final image
+resolve. No preliminary UNORM8 average is inserted.
+
+At the default 128-lane CU capacity, the largest sample FS prefix is
+`(77 + 16 + 2) * 512 = 48640` bytes. The existing full VS prefix remains the
+maximum 69632-byte reservation; four fragment slots use 278528 bytes and five
+owner slots use 348160 bytes, fitting the existing 512 KiB pool without changing
+slot/handle/owner namespaces. The input coalescer admits 77 input arrays while
+keeping its existing 128-row physical banks, sixteen slots and four MRTs.
+
+Source fixtures include an independent geometric triangle oracle for 1x/2x/4x
+sample interpolation with 64 varying components and helper lanes; real two-CU
+fragment input/mask readback under local and spilled staging; and a
+mixed ordinary/GS, four-image-owner layered renderer fixture with 4-lane/1-warp
+CUs and complete interface/storage capacities. The latter feeds
+SampleID, SamplePosition and recomputed pointCoord into actual shader outputs,
+retains only samples 0/2 with a shader mask, checks every raw sample and final
+resolve, and retains the real held-allocation cancel/no-reset reuse case. These
+fixtures have not executed. The layered fixture uses physical memory services;
+it does not substitute for original ESSL capture and protected-host execution.
+A restricted 384 MiB Scala/Chisel-plugin typecheck of the 38 changed/new
+production and test files passes, using read-only dependency classes. This is
+not a full caller rebuild or an executable class set. CPU test-selection and
+the existing published layered C/kernel ABI regression also pass, together
+with the diff whitespace check. The C check validates the unchanged checked-in wire layout; it is not fresh RTL/ABI emission.
+
+After a safe memory window, a fresh complete caller rebuild is mandatory:
+
+```sh
+sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simSeparateBuild=1 \
+  -Dopengpu.nativeLayeredSamplePlaneQualification=1 \
+  clean 'Test / compile' \
+  'testOnly opengpu.graphics.FragmentSamplePlaneSequencerSpec opengpu.graphics.Fp32FragmentInterpolatorSpec' \
+  'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "real sample inputs"' \
+  'testOnly opengpu.graphics.NativeLayeredSamplePlaneSpec'
+python3 -B scripts/test_test_selection.py
+python3 -B scripts/test_native_layered_abi.py
+```
+
+Remaining E32-04l/m/n work includes actual execution of the complete profile,
+protected driver/compiler publication and builtin lowering, capability exposure,
+API enable/minimum sample fraction and sample-qualifier/static-use linkage,
+coverage/alpha-to-coverage API state, and original Mesa ESSL end-to-end cases.
+Dynamic `interpolateAtSample`/`interpolateAtOffset` still need a real shader
+ISA/service with retained primitive/attribute identity and dynamic operands;
+the standalone location selector does not close that requirement.
+
+The ordering and minimum-rate contract follow
+[OpenGL ES 3.2 §13.4.1 and §14.2](https://registry.khronos.org/OpenGL/specs/es/3.2/es_spec_3.2.pdf#page=374)
+and the [GLSL ES 3.20 fragment builtins](https://registry.khronos.org/OpenGL/specs/es/3.2/GLSL_ES_Specification_3.20.html#fragment-shader-special-variables).
+Static use of SampleID or SamplePosition forces per-sample execution independent
+of the sample-shading enable/minimum. Shader sample-mask bits only clear samples
+belonging to that invocation.
