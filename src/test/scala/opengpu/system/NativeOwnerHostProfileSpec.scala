@@ -5,6 +5,39 @@ import opengpu.graphics._
 import org.scalatest.flatspec.AnyFlatSpec
 
 class NativeOwnerHostProfileSpec extends AnyFlatSpec {
+  it should "compose complete protected geometry, shared atomics and feedback without relabeling either frozen owner" in {
+    val p = OwnerResourceProfile.target
+    assert(p.nativeGeometryTransport && p.native.nativeGeometry && p.nativeProtectedSources)
+    assert(p.native.transformFeedback && p.execution.enableSharedVectorAtomics)
+    assert(p.computeUnits == 2 && p.execution.lanes == 16 && p.execution.warps == 8)
+    assert(p.graphics.screenWidth == 640 && p.graphics.screenHeight == 480)
+    assert(p.transactionsPerCu == 16 && p.axiDataBytes == 32)
+    assert(p.native.engines == 4 && p.native.pagedCapacity == 65536)
+    assert(p.native.renderTargetExtent.contains((2048,2048)))
+    assert(p.native.payload == NativeOwnerHostProfile.target.native.payload)
+    assert(p.native.vertex == NativeOwnerHostProfile.target.native.vertex)
+    assert(p.native.fragment == NativeOwnerHostProfile.target.native.fragment)
+    assert(p.requiredDiscovery.size == 104)
+    val words = p.requiredDiscovery.toMap
+    assert(words(0x368) == 0xfffff && words(0x160) == 0x474e4305 && words(0x168) == 0x474e4a02)
+    assert(words(0x17c) == BigInt("8813db02",16))
+    assert(MemoryNativeBinnedGraphicsPipeline.transactions(p.native) == 2048)
+    assert(p.requiredDiscovery.takeRight(8) == NativeGeometryTransportCapabilities.words.zipWithIndex.map {
+      case (word,index) => (NativeGeometryTransportCapabilities.base+4*index,word)
+    })
+    assert(OwnerResourceProfile.computeStage.requiredDiscovery.size == 96)
+    assert(!OwnerResourceProfile.computeStage.nativeGeometryTransport && !NativeOwnerHostProfile.target.native.nativeGeometry)
+    assert(OwnerResourceProfile.computeStage.requiredDiscovery.toMap.apply(0x368) == 0x7ffff)
+    intercept[IllegalArgumentException] {
+      NativeOwnerHostProfile.target.copy(nativeGeometryTransport = true)
+    }
+    intercept[IllegalArgumentException] {
+      p.copy(nativeProtectedSources = false)
+    }
+    assert(PrepareOwnerResourceFullHost.manifest(false).contains("\"resourceDiscoveryWords\":104"))
+    assert(PrepareOwnerResourceFullHost.manifest(false).contains("\"fullResourceQualification\":false"))
+  }
+
   it should "compose mandatory shared atomics without changing the frozen owner or any other resource" in {
     val before = NativeOwnerHostProfile.target
     val after = OwnerResourceProfile.computeStage

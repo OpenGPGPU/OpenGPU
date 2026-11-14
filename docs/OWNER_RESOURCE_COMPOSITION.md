@@ -1,4 +1,53 @@
-# Complete owner compute resource composition
+# Complete owner resource composition
+
+## Geometry/compute source factory
+
+`OwnerResourceProfile.target` composes shared vector atomics with the protected
+`nativeGeometry` layered renderer and transform feedback on the same two
+16-lane, eight-warp CUs. One `nativeGeometryTransport` configuration field
+drives both manifest discovery and the real AXI wrapper. The four engines,
+2048-axis native API bounds, 65536-entry directory, five payload owners and
+512 KiB pool retain their original capacities. The frozen owner-v1 and
+compute-stage factories remain separate 96-word contracts.
+
+The new `two-cu-vga60-owner-v2` source factory has 104 discovery words: GCR
+flags `0xfffff`, GNC5/GNJ2, eleven native transaction-ID bits and the eight GGS1
+words at `0x500..0x51c`. GNJ2/GNF3 owns the separate 4096-word GNY2 completion
+view. Ordinary GND1 and geometry GND2 draws share this new submission contract;
+an old GNJ1 producer is rejected. GUC1 retains its VS/FS-only stage mask.
+
+The geometry route selects the real `MemoryNativeLayeredGraphicsPipeline`,
+whose source passes raw GS/ordinary output through
+`GeometryTransformFeedbackStage` before flat shading and clipping. The
+existing tessellation/feedback ownership router remains connected. Preparation
+checks every new discovery word and rejects old tables, wrong capacities and
+premature execution labels. Existing native/compute executors reject this new
+factory until their GNJ2 execution contract is implemented.
+
+CPU ASan/UBSan validation covers the merged GS and shared-atomic validators,
+original layered snapshots/submission and combined geometry discovery.
+Preparation and executor guard tests also pass. This composition has not had
+a JVM caller rebuild or fresh full RTL elaboration. Actual combined GS/TF,
+compute atomics, six GNJ2 product frames, clock and FPS remain unqualified;
+earlier model results do not apply. Reproduce the CPU checks with:
+
+```sh
+OPENGPU_TEST_SANITIZERS=1 python3 scripts/test_driver.py
+python3 scripts/test_prepare_native_owner_flashsim.py
+python3 scripts/test_prepare_owner_executor.py
+```
+
+Fresh complete preparation uses the distinct entry point and original SRAM
+models/assertion layers:
+
+```sh
+python3 scripts/prepare_native_owner_flashsim.py --stage prepare --full-resources \
+  --output "$PWD/.artifacts/owner-full-resources"
+python3 scripts/prepare_native_owner_flashsim.py --stage check \
+  --output "$PWD/.artifacts/owner-full-resources"
+```
+
+## Intermediate compute stage
 
 `OwnerResourceProfile.computeStage` adds the checked shared atomic owner to
 both CUs of `NativeOwnerHostProfile.target`. It keeps two CUs, sixteen lanes,

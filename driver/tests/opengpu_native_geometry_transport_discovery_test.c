@@ -68,6 +68,12 @@ int main(void)
     }
     /* Shared-atomic presence is a separate known namespace bit. */
     valid();assert(probe(0x47550002,flags|(1u<<18),caps,0x520,&out,&enabled));
+    /* Full owner composition: all twenty GCR bits plus the real layered
+     * 2048-ID renderer and unchanged five-owner 512 KiB payload pool. */
+    valid();registers[0x17c/4]=0x8813db02;
+    assert(probe(0x47550002,0xfffff,caps,0x520,&out,&enabled));
+    assert(enabled && out.capacity==128 && out.engines==4 && out.frame.words[7]==0x8813db02);
+    assert(((out.frame.words[7]>>8)&15)==11 && ((out.frame.words[7]>>12)&7)==5);
     valid();assert(!probe(2,flags,caps,0x520,0,&enabled) && !reads);
     assert(!probe(2,flags,caps,0x520,&out,0) && !reads);
     puts("GGS1: exact 8-word cache, 1280 bit corruptions, old-profile isolation, safe absent/truncated BAR and atomic failure outputs PASS");

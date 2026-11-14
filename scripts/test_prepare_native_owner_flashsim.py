@@ -6,6 +6,38 @@ from unittest.mock import patch
 import prepare_native_owner_flashsim as owner
 
 class OwnerInputTests(unittest.TestCase):
+    def test_full_geometry_factory_requires_its_new_packets_words_and_scope(self):
+        from owner_resource_contract import PROFILE, FULL_STAGE, FULL_WORDS, COMPUTE_STAGE, COMPUTE_WORDS
+        full=self.manifest()
+        full.update(version=2, profile=PROFILE, computeFeatureFlags=0xfffff,
+            resourceDiscoveryWords=104, ownerResourceVersion=2, ownerResourceStage=FULL_STAGE,
+            nativeGeometryDraw=True, nativeGeometryTransport=True, transformFeedback=True,
+            fullResourceQualification=False, requiredDiscovery=copy.deepcopy(FULL_WORDS))
+        owner.check_manifest(full)
+        # Every identity/quantity/scope field and exact MMIO word is mandatory.
+        for key,value in full.items():
+            if key=='requiredDiscovery':continue
+            bad=copy.deepcopy(full);bad[key]=not value if type(value) is bool else 0
+            with self.subTest(key=key),self.assertRaises(RuntimeError):owner.check_manifest(bad)
+            bad=copy.deepcopy(full);del bad[key]
+            with self.subTest(missing=key),self.assertRaises(RuntimeError):owner.check_manifest(bad)
+        for index in range(104):
+            for key in ('address','value'):
+                bad=copy.deepcopy(full);bad['requiredDiscovery'][index][key]^=1
+                with self.subTest(index=index,key=key),self.assertRaises(RuntimeError):owner.check_manifest(bad)
+            bad=copy.deepcopy(full);del bad['requiredDiscovery'][index]
+            with self.assertRaises(RuntimeError):owner.check_manifest(bad)
+        for profile,words in ((owner.PROFILE,owner.EXPECTED_WORDS),(COMPUTE_STAGE,COMPUTE_WORDS)):
+            bad=copy.deepcopy(full);bad.update(profile=profile,requiredDiscovery=copy.deepcopy(words))
+            with self.assertRaises(RuntimeError):owner.check_manifest(bad)
+            bad=self.manifest();bad.update(profile=PROFILE,requiredDiscovery=copy.deepcopy(FULL_WORDS))
+            with self.assertRaises(RuntimeError):owner.check_manifest(bad)
+        # The existing native and compute executors have no GNJ2 execution
+        # contract. A new manifest must not silently widen either binary.
+        import prepare_owner_executor as executor
+        for kind in executor.KINDS:
+            with self.assertRaises(RuntimeError):executor.profile_contract(PROFILE,kind)
+
     def manifest(self):
         return dict(version=1,profile=owner.PROFILE,computeUnits=2,frameWidth=640,frameHeight=480,
             lanes=16,warps=8,transactionsPerCu=16,axiDataBytes=32,engines=4,
