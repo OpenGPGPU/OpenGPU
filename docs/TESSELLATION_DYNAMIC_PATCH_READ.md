@@ -9,13 +9,13 @@ record or protected-program admission is enabled by this change.
 
 ## Internal instruction and launch contract
 
-This instruction is reserved for the future checked stage-5 program version 2.
+This instruction belongs to the checked stage-5 program version 2.
 Old program version 1 must continue to reject it. The internal launch binding
 has its own **binding version 1**, which is not a program-ABI version.
 
 | Field | Contract |
 | --- | --- |
-| Instruction | CUSTOM-1 opcode `0x2b`, bits 31:26 = 33, funct3 = 0; bit 25 retains ordinary vector mask semantics |
+| Instruction | `opengpu.vtes.patch.read vd,vs1,vs2[,v0.t]`; CUSTOM-1 opcode `0x2b`, bits 31:26 = 33, funct3 = 0; bit 25 retains ordinary vector mask semantics |
 | Sources / result | `vs1` supplies a full uint32 vertex per lane; `vs2` supplies a full uint32 address descriptor; `vd` receives uint32 raw patch words |
 | Address bit 0 | Must be 1: TCS output only; this service cannot read the original input bank or write either bank |
 | Address bits 1 / 2 | Per-patch / tessellation-level selection; a level also requires per-patch selection |
@@ -47,7 +47,10 @@ credit until that issuer accepts its reply. This consumes no external memory
 transaction IDs and does not change P15's two uniform-memory IDs.
 
 Cancellation retains already offered requests and drains accepted inspection
-replies. Failed/canceled instructions suppress VRF writes. Normal retirement
+replies. A failed/canceled instruction suppresses writes before its commit is
+offered. Once commit is offered, Decoupled stability keeps its payload unchanged;
+a later cancellation relies on actual parent kernel/frame cancellation and
+retirement to suppress publication. Normal retirement
 uses the real vector commit arbiter and fault path. If physical kernel
 retirement has already been proven, only the orphaned commit is discarded;
 its patch traffic must still drain. CU completion, shared-owner completion and
@@ -76,9 +79,9 @@ this source change deliberately allocates no magic, word offsets or MMIO bits:
   and instance range, component mapping, and acknowledged patch publication.
   A precomputed CPU patch cannot establish that provenance.
 
-P16's independent validator and immutable snapshots, P17's real Mesa dynamic
-vertex/component/per-patch lowering, and the separate LLVM CUSTOM-1
-instruction declaration are not implemented by this first P40 block.
+The compiler and independent P16 validator now implement the internal v2
+contract described below. Production protected admission and serialized native
+records remain unchanged; the existing getter/BUILD path does not enable v2.
 
 ## Validation and remaining limits
 
@@ -103,8 +106,8 @@ exhaustion. No larger heap or complete image/CU build was attempted.
 TES selects a runtime vertex from TessCoord and reads via CUSTOM-1 fn33, and a
 held actual read result is canceled before reuse. **This CU test has not run.**
 The complete current-source build, all three domain/CU execution paths,
-protected admission, original Mesa ESSL, full-capacity dynamic accesses and
-same-host product qualification remain pending. Scala regression stays disabled.
+protected admission, full-capacity dynamic CU accesses and same-host product
+qualification remain pending. Scala regression stays disabled.
 
 Focused reproduction after an explicitly permitted source-build/resource
 window (no workflow dispatch):
@@ -124,3 +127,103 @@ plugin and a read-only dependency classpath. Their Java limits are
 -Dopengpu.simCache=off`, a private workspace and a 180-second process-group
 limit per run. Incremental checking does not qualify unrelated frozen classes
 or replace a complete source rebuild.
+
+
+## Real Mesa dynamic TES compiler
+
+The opt-in `opengpu_native_tess_dynamic_reflect/emit` API accepts only stage 5,
+program version 2 and a legal captured `tes_patch_layout`. Its five fields describe
+TCS input/output/per-patch storage; the separate `output_components` field still
+describes TES exports. Both the static selection count and all 61 entries stay
+zero. The old reflect/emit and private-context APIs retain their v1 contract and
+do not admit dynamic programs. TCS remains program version 1.
+
+The real linked Mesa 22.3.6 frontend copies NIR variable spans after assigning IO
+locations and before `nir_to_tgsi` discards ArrayID. The owned metadata records
+original variable/matrix/array boundaries and semantic packing, excluding the
+outer per-vertex array. The compiler cross-checks it with actual TGSI declarations;
+it never merges adjacent variables merely because they have the same semantic
+kind. These spans describe compiler semantics and grant no kernel permission.
+
+The emitted fn33 descriptor checks the full original ADDR value before accepting
+shift/add calculations. An out-of-range matrix-column or patch-array offset
+produces an invalid high-bit sentinel rather than borrowing an adjacent variable
+or wrapping into a legal descriptor. Vertex offsets receive the same full-width
+check. Bounds checks are reused only within one TGSI instruction while their
+physical scratch value remains valid. The service independently checks every
+received full-width vertex/descriptor against its captured layout.
+
+Actual Mesa lowers GLSL dynamic vector-component selection to ISLT/UCMP selection
+trees after loading the vector. The v2 emitter preserves that real TGSI behavior;
+this is not a direct dynamic-component token or an additional guarantee for GLSL's
+undefined out-of-range vector indexing. Three-source UCMP remains rejected by the
+legacy v1 parser.
+
+Mesa also emits compact tessellation-level backing placeholders whose numeric
+slots overlap real per-patch variables. The explicit TCS `control_emit` API may
+normalize them only when the actual NIR compact declaration proves the canonical
+four outer or two inner components. Wrong compact kind/index/extent/mask, real
+semantic overlaps and unproven placeholders fail. Semantic inventory is 64 slots;
+physical TEMP/ADDR/VGPR limits, 512 instruction words, 32 vertices, 64 components,
+120 per-patch words and the coupled 2048-word SRAM limit are unchanged.
+
+Final real ESSL compiler results (TCS/TES instruction words):
+
+| Case | Captured input vertices/components; output vertices/components; per-patch | Words |
+| --- | --- | --- |
+| Dynamic vertex, matrix column and per-patch array | 2/4; 2/12; 8 | 300/239 |
+| Adjacent independent matrices and patch arrays | 2/4; 2/20; 16 | 427/354 |
+| Large coupled layout and dynamic 30-slot patch array | 32/4; 32/60; 120 (2040 total) | 360/433 |
+| Exact full bank | 32/4; 32/64; 0 (2048 total) | 288/360 |
+| Dynamic vector component lowered by Mesa | 2/4; 2/4; 0 | 151/154 |
+
+All cases export eight TES components. These tests prove original ESSL compilation,
+declared capacities and code/metadata construction, not execution of any shader
+or correct values from unwritten patch components. They include actual token
+truncations, wrong v2 permission/version, forged/overlapping span metadata and
+output-unchanged-on-error checks. The original v1 uniform/full/conditional ESSL
+cases also passed through the same current frontend, with their original
+228/149, 292/201 and 340/149 instruction counts. The small ASan/UBSan parser test also checks old
+VS/TCS/TES isolation, unused metadata tails and the illegal 2049-word combination.
+A first-instruction UCMP literal TGSI regression requires explicit result-scratch
+initialization; it cannot inherit old-vd definedness from a previous compare.
+The strict independent validator rejected the prior uninitialized form, so the
+emitter now initializes each select from its already-defined false operand.
+No validator guard was relaxed. The original P16 validator/RX/MMU consumer
+accepted all five final original-byte pairs with their exact nested layouts,
+TES exports eight and zero static words. It also accepted the initialized
+76-word literal UCMP program under its separate exports-four profile. These
+checks neither interpret instructions nor prove shader results.
+
+Validation reused immutable configured Mesa libraries in a network-disabled,
+read-only-source container with one CPU and combined memory/swap capped at 512MiB.
+The frontend's 24 translation-unit MMD dependencies plus the alternate legacy
+frontend test unit (25 MMD files total), generated source and binaries,
+GPU sources and 8101 external Mesa/DRM/library inputs were checked around execution.
+Only GPU/frontend units needing changed source/header inputs were rebuilt; Mesa
+libraries were not rebuilt. This is a CPU compiler/source result, not a DUT run.
+
+Reproduce with actual configured Mesa 22.3.6 libraries and DRM headers:
+
+```sh
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_tessellation_uniform_emit.py
+python3 -B scripts/test_tessellation_uniform_frontend.py --dynamic --sanitize --build .artifacts/p40-front-end
+python3 -B scripts/test_tessellation_program_snapshot.py --sanitize --programs .artifacts/p40-front-end/programs/edge --tcs-layout 32 4 32 64 0 --tes-layout 0 8 --tes-program-version 2 --tes-patch-layout 32 4 32 64 0
+```
+
+The frontend command is opt-in and needs the immutable Mesa/DRM/link environment
+and bounded container recipe in [the static frontend instructions](TESSELLATION_MESA_UNIFORMS.md),
+adding `--dynamic` and choosing a fresh output directory. Remove its outputs after consumers finish. The
+independent validator/RX test does not interpret or execute instructions. The LLVM
+MC declaration uses the mnemonic above; complete new-tool roundtrip remains a
+separate qualification. Real three-domain CU execution, native submission/ABI
+assignment, original VS-to-patch provenance and final host qualification remain
+uncompleted dependencies.
+
+
+Source dependencies include the two original P17 compiler/resource-plan commits
+and the P16 validator/RX commits `7f07da63a`, `56a0d9451`, `e031887c1` and
+`41de38440`. Their cherry-picks preserve provenance. The unrelated complete
+`PROTECTED_TESSELLATION_OWNER.md` and absent P16 builder test were not imported
+into this compiler-only dependency tree; the original P16 topic retains them.
+This does not register the complete P16 Linux/native submission path.
