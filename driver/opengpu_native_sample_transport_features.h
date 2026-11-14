@@ -30,7 +30,9 @@ static inline bool opengpu_read_native_sample_transport_limits(u32 id,u32 flags,
         *limits=value;*layered=geometry;*sample=false;return true;
     }
     if((id&0xffffu)<GPU_ABI_COMPUTE_RESOURCE_VERSION || flags!=0x1fffffu ||
-        (caps&required)!=required || !read_reg || mmio_bytes<0x540)return false;
+        (caps&required)!=required ||
+        ((caps&GPU_CAP_FRAGMENT_BATCH_MASK)>>GPU_CAP_FRAGMENT_BATCH_SHIFT)!=128 ||
+        !read_reg || mmio_bytes<0x540)return false;
     for(i=0;i<8;++i){
         words[i]=read_reg(context,OPENGPU_NATIVE_SAMPLE_TRANSPORT_CAPABILITIES+4*i);
         if(words[i]!=expected[i])return false;
