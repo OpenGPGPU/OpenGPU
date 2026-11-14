@@ -85,6 +85,23 @@ Counter read/decrement/dynamic/coexistence cases, image/storage atomics, indirec
 work, cross-domain barriers, full resource-limit combinations and whole-host
 physical/clock/FPS gates remain open.
 
+## Static read and decrement extension
+
+`counter-read` and `counter-decrement` select the original `read.comp` and
+`decrement.comp` through the same production counter-source/owner path. Both
+retain four groups of four invocations and the original full112-only factory.
+Read starts counter7 at0xfffffffe and requires16 identical reads with no changed
+source byte. Decrement starts at1 and requires the16 **new** values
+`{0,0xffffffff,…,0xfffffff1}`, with final counter7=0xfffffff1. This matches ESSL
+pre-decrement, not TGSI add(-1)'s old-value result: Mesa lowers to add(-1) plus a
+result adjustment, and the native emitter preserves that distinction.
+
+Six CPU oracle/controller/source/MMD tests pass, including read mutation,
+decrement-old-value/off-by-one rejection and wraparound. Production lifetime,
+precise views and full-byte guards are shared with increment. These source and
+CPU checks do not constitute actual-DUT execution; subsequent real compiler
+capture and DUT gates remain separate.
+
 ## Reproduction
 
 CPU checks, with temporary outputs removed by each test:

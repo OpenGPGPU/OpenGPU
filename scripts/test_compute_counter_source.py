@@ -12,7 +12,8 @@ from owner_resource_contract import SAMPLE_WORDS
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def fixture():
+def fixture(source_case="counter-increment"):
+    seed=1 if source_case=="counter-decrement" else 0xfffffffe
     allocations = {0x1000: bytearray(4096), 0x20000: bytearray(b'\x5a'*8192)}
     for a in (0x30000, 0x32000, 0x34000, 0x36000):
         allocations[a] = bytearray(struct.pack('<I', 0xdeadbeef)*2048)
@@ -32,10 +33,10 @@ def fixture():
     def view(a, binding, offset=0, count=8192):
         return dict(globalBinding=binding, allocationPhysical=a, allocationBytes=8192, offset=offset, bytes=count)
     descriptor_root, counter_va, storage_root = 0xb1400000, 0xb1c00ff0, 0xb0c00000
-    for i in range(8): word(0x20000+4080+4*i, (0xfffffffe+i*0x10203)&0xffffffff)
-    word(0x20000+4108, 0xfffffffe)
-    d = dict(schema=SCHEMA, sourceCase='counter-increment', groups=4, local=4, viewBytes=8192,
-        guard=0xdeadbeef, seed=0xfffffffe, index=7, count=8, counterHandle=4, context=2,
+    for i in range(8): word(0x20000+4080+4*i, (seed+i*0x10203)&0xffffffff)
+    word(0x20000+4108, seed)
+    d = dict(schema=SCHEMA, sourceCase=source_case, groups=4, local=4, viewBytes=8192,
+        guard=0xdeadbeef, seed=seed, index=7, count=8, counterHandle=4, context=2,
         descriptorPhysical=0x40000, descriptorRoot=descriptor_root, kernargPhysical=0x42000, kernargBytes=64,
         counter=view(0x20000, 0, 4080, 32), storageBindings=[0,1,2,3], outputs=[view(a, i) for i,a in enumerate((0x30000,0x32000,0x34000,0x36000))])
     record = [0x47534201,64,1,2,0,0,0,1,1,1,counter_va,counter_va+32,0,counter_va&~63,(counter_va+95)&~63,0]
@@ -102,6 +103,36 @@ class Counter(unittest.TestCase):
             # Precomputed producer results must fail before execution.
             emit(before,good)
             with self.assertRaises(ValueError):check(good)
+
+    def test_read_and_essl_predecrement_wrap_not_tgsi_old_values(self):
+        parent=ROOT/'.artifacts';parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='counter-essl-math-',dir=parent) as t:
+            before,after=Path(t)/'before',Path(t)/'after'
+            for case in ('counter-read','counter-decrement'):
+                alloc,d,cap,*_=fixture(case);emit(before,alloc)
+                # ESSL atomicCounter reads unchanged; atomicCounterDecrement
+                # returns the value AFTER subtracting one, unlike TGSI add(-1).
+                values=[0xfffffffe]*16 if case=='counter-read' else [0]+[0xffffffff-i for i in range(15)]
+                final=0xfffffffe if case=='counter-read' else 0xfffffff1
+                def returned(values=values,final=final):
+                    result=copy.deepcopy(alloc)
+                    for address in (0x30000,0x32000,0x34000,0x36000):struct.pack_into('<16I',result[address],0,*values)
+                    struct.pack_into('<I',result[0x20000],4108,final)
+                    return result
+                def check(data):
+                    emit(after,data)
+                    with SparseMemory(before) as b,SparseMemory(after) as a:verify(b,a,d)
+                check(returned());check(returned(list(reversed(values))))
+                with SparseMemory(before) as b:ready(b,d,cap())
+                with self.assertRaises(ValueError):check(alloc)
+                wrong_values=[0xffffffff]*16 if case=='counter-read' else [1,0]+[0xffffffff-i for i in range(14)]
+                with self.assertRaises(ValueError):check(returned(wrong_values))
+                with self.assertRaises(ValueError):check(returned(final=final^1))
+                wrong=returned();wrong[0x32000][0]^=1
+                with self.assertRaises(ValueError):check(wrong)
+                for allocation,offset in ((0x20000,4080),(0x20000,4112),(0x40000,0),(0x30000,64)):
+                    wrong=returned();wrong[allocation][offset]^=1
+                    with self.subTest(case=case,allocation=allocation,offset=offset),self.assertRaises(ValueError):check(wrong)
 
     def test_ready_metadata_factory_writable_descriptor_and_pte_mutants(self):
         parent=ROOT/'.artifacts';parent.mkdir(exist_ok=True)

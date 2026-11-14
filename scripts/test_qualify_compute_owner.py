@@ -74,16 +74,16 @@ class Entry(unittest.TestCase):
             self.assertIn('--memory-swap', command)
             self.assertIn('--network=none', command)
             self.assertIn('--read-only', command)
-            expected_memory='512m' if case==qualifier.COUNTER_CASE else '2g'
+            expected_memory='512m' if case in qualifier.COUNTER_CASES else '2g'
             self.assertEqual(command[command.index('--memory')+1],expected_memory)
             self.assertEqual(command[command.index('--memory-swap')+1],expected_memory)
-            self.assertEqual(command[command.index('--cpus')+1],'1' if case==qualifier.COUNTER_CASE else '2')
+            self.assertEqual(command[command.index('--cpus')+1],'1' if case in qualifier.COUNTER_CASES else '2')
             self.assertIn('OPENGPU_COMPUTE_HOST_TIMEOUT=3600', command)
             self.assertEqual(command[-2:], ['--case', case])
             self.assertNotIn('--capture-only', command)
             self.assertNotIn('OPENGPU_COMPUTE_HOST_TEST_MAIN', ' '.join(command))
             self.assertIn('{ipc}/profile.bin', command)
-            self.assertIn('scripts/compute_owner_inputs.py' if case == qualifier.COUNTER_CASE else 'scripts/test_gallium_compute_host.py', command)
+            self.assertIn('scripts/compute_owner_inputs.py' if case in qualifier.COUNTER_CASES else 'scripts/test_gallium_compute_host.py', command)
             self.assertIn('--sanitize', command)
 
     def test_container_exit_must_be_proven_and_active_inputs_preserved(self):
