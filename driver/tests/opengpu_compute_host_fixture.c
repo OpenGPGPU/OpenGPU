@@ -667,6 +667,18 @@ int main(int argc,char **argv)
   if(i){test_profile[i].address=test_profile[0].address;
    assert(!compute_host_create(7,test_profile,ARRAY_SIZE(test_profile)));test_profile[i]=old;}
  }
+ /* The actual GET_PARAM body may expose the per-lane owner only from its
+  * checked hardware presence bit. This CPU discovery test is not a DUT probe. */
+ for(unsigned enabled=0;enabled<2;enabled++){
+  size_t flags=0;while(flags<ARRAY_SIZE(test_profile) && test_profile[flags].address!=0x368)flags++;
+  assert(flags<ARRAY_SIZE(test_profile));u32 saved=test_profile[flags].value;
+  test_profile[flags].value=saved | (enabled?1u<<18:0);
+  struct compute_host_session *discovery=compute_host_create(7,test_profile,ARRAY_SIZE(test_profile));assert(discovery);
+  u64 features=0;assert(!compute_host_query(discovery,OPENGPU_PARAM_DRIVER_FEATURES,&features));
+  assert(!!(features&OPENGPU_DRIVER_FEATURE_COMPUTE_SHARED_ATOMICS)==!!enabled);
+  assert(!compute_host_destroy(discovery));assert(!live_allocations && !fixture_buffers);
+  test_profile[flags].value=saved;
+ }
  struct compute_host_session *session=compute_host_create(7,test_profile,ARRAY_SIZE(test_profile));
  assert(session && compute_host_context_id(session)==1);
  u64 query=0x123456789abcdef0ull;

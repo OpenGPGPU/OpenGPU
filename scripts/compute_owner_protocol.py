@@ -3,6 +3,7 @@
 import json
 import struct
 from prepare_native_owner_flashsim import EXPECTED_WORDS
+from owner_resource_contract import COMPUTE_SCHEMA, COMPUTE_STAGE, COMPUTE_WORDS
 
 SCHEMA = 'opengpu-compute-owner-profile-v1'
 AUXILIARY = (0, 0x60, 0x68, 0x320, 0x158, 0x494, 0x43c, 0x3fc, 0x4bc, 0x460)
@@ -36,13 +37,19 @@ def required_flags(value, flags):
 
 
 def profile_bytes(profile):
-    required_flags(profile, dict(schema=SCHEMA, resetCount=1,
+    version = 1
+    expected_words = EXPECTED_WORDS
+    if type(profile) is dict and profile.get('schema') == COMPUTE_SCHEMA:
+        required_flags(profile, dict(ownerProfile=COMPUTE_STAGE, ownerResourceStage='compute',
+                                     ownerResourceVersion=2, fullResourceQualification=False))
+        version, expected_words = 2, COMPUTE_WORDS
+    required_flags(profile, dict(schema=SCHEMA if version == 1 else COMPUTE_SCHEMA, resetCount=1,
         sourceQualificationRequired=True, gpuExecution=False,
         clockQualified=False, fpsQualified=False))
     words, registers = profile.get('words'), profile.get('registers')
-    if type(words) is not list or len(words) != 96 or type(registers) is not list or len(registers) != 10:
-        raise ValueError('complete 96-word compute profile and ten actual auxiliary reads required')
-    for actual, expected in zip(words, EXPECTED_WORDS):
+    if type(words) is not list or len(words) != len(expected_words) or type(registers) is not list or len(registers) != 10:
+        raise ValueError('complete exact compute resource profile and ten actual auxiliary reads required')
+    for actual, expected in zip(words, expected_words):
         if type(actual) is not dict or set(actual) != {'address', 'value'}:
             raise ValueError('malformed discovery word')
         if uint(actual['address']) != expected['address'] or uint(actual['value']) != expected['value']:
@@ -75,7 +82,7 @@ def profile_bytes(profile):
             fragment_batch != (shader & 255) * (shader >> 8 & 255) or
             tuple(values[5:]) != MAGICS):
         raise ValueError('incoherent actual compute discovery')
-    output = bytearray(b'OGCP0001' + struct.pack('<I', 96))
+    output = bytearray((b'OGCP0001' if version == 1 else b'OGCP0002') + struct.pack('<I', len(expected_words)))
     for item in words:
         output.extend(struct.pack('<II', item['address'], item['value']))
     output.extend(struct.pack('<I', 10))

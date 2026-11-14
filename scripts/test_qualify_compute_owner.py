@@ -3,6 +3,7 @@
 import argparse
 from contextlib import redirect_stderr, redirect_stdout
 import io
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -25,16 +26,35 @@ class Entry(unittest.TestCase):
                 qualifier.checked_inputs(args)
             run.assert_not_called()
 
+    def test_atomic_sources_require_the_new_factory_before_starting_a_producer(self):
+        parent=ROOT/'.artifacts';parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='compute-stage-identity-',dir=parent) as d:
+            directory=Path(d);executable=directory/'executor';executable.write_bytes(b'CPU fixture')
+            qualification=directory/'qualification.json'
+            args=argparse.Namespace(executor=executable,executor_qualification=qualification,
+                executor_checker_python=sys.executable,executor_checker=directory/'checker',case='mandatory-compute')
+            for profile in ('two-cu-vga60-owner-v1','two-cu-vga60-owner-v2',qualifier.COMPUTE_STAGE):
+                qualification.write_text(json.dumps(dict(schema='opengpu-owner-executor-v1',kind='compute',profile=profile)))
+                with patch.object(qualifier.subprocess,'run'):
+                    if profile==qualifier.COMPUTE_STAGE:
+                        qualifier.checked_inputs(args)
+                    else:
+                        with self.assertRaisesRegex(ValueError,'distinct shared-enabled'):
+                            qualifier.checked_inputs(args)
+
     def test_fixed_paths_real_producer_and_both_full_sources(self):
         gpu = ROOT
         args = argparse.Namespace(mesa=gpu / 'depends/mesa', mesa_build=gpu / 'depends/mesa-build',
             drm_include=gpu / 'depends/include', mesa_link_libs='-lz -lexpat', library_directory=gpu / 'depends/lib', timeout=3600)
-        for case in ('shared', 'uniforms'):
+        for case in qualifier.CASES:
             command = qualifier.producer_command(args, gpu=gpu, source=gpu / '.artifacts/source',
                 ntt=gpu / '.artifacts/ntt.c', image='sha256:' + '1' * 64, name='unique-owned-container', case=case)
             self.assertIn(f'{gpu}:{gpu}:ro', command)
             self.assertIn('{ipc}:{ipc}:rw', command)
             self.assertIn('TMPDIR={ipc}', command)
+            self.assertIn('--memory-swap', command)
+            self.assertIn('--network=none', command)
+            self.assertIn('--read-only', command)
             self.assertIn('OPENGPU_COMPUTE_HOST_TIMEOUT=3600', command)
             self.assertEqual(command[-2:], ['--case', case])
             self.assertNotIn('--capture-only', command)
