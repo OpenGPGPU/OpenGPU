@@ -86,10 +86,15 @@ invalidate, exact retirement and page revocation before the next case without
 reset. Its runtime comes from an explicit owner checkout; producer C checks are
 separate from the C++ wire reader, so no duplicate cross-checkout ABI header is
 selected. The actual owner's strict driver-include validator and a C++ typecheck
-pass. The typecheck uses declaration-only ports and executes no RTL. This source
-is not yet a qualified executable or a completed GPU test; original Linux MMIO
-replay, fault/reset cancellation, full-model identity and pre/post execution
-guards remain separate required gates. Reusing the frozen 96-word DUT would be
+pass. The typecheck uses declaration-only ports and executes no RTL. A dedicated
+wrapper binds the explicit owner source/modules, complete generated model,
+assertions, generator, all shards, compiler, exact driver dependency closure and
+original input manifest before and after build/execution. It shares only the
+guarded shard cache, uses one compiler job, and removes its temporary result on
+exit. Nine CPU tests cover wrong model/source/flags/compiler, incomplete results,
+incorrect scope and actual interrupted child-process cleanup. This is not yet a
+qualified executable or a completed GPU test; original Linux MMIO replay and
+actual fault/reset cancellation remain required. Reusing the frozen 96-word DUT would be
 functional diagnosis only. Final H6 qualification requires the newly integrated
 source profile and all six complete 640×480 frames with its whole-host clock.
 
@@ -103,7 +108,17 @@ OPENGPU_DRM_INCLUDE=/path/to/drm-headers \
   python3 -B scripts/test_framebuffer_blit_inputs.py
 python3 -B scripts/check_framebuffer_blit_host_source.py \
   --owner-root /path/to/gpu/.artifacts/worktrees/complete-owner-source
+python3 -B scripts/test_framebuffer_blit_host.py
 ```
+
+For an existing completed owner model, use
+`qualify_framebuffer_blit_host.py --stage build` (then `check` and `run`) with
+explicit `--owner-root`, `--owner-output`, `--flashsim-dir`, `--inputs` and
+`--input-manifest-sha256`. The last argument is the hash printed at actual caller
+preparation, held separately from the mutable input directory. The current
+default is the original 32-shard layout; build optimization/PCH/alias options
+must match when checking or running. These commands have not yet completed on
+an actual DUT and must not be reported as execution results.
 
 Actual two-CU/Sv32/L2 execution, fault/reset drain and completion retirement remain
 required. This implementation currently launches one workgroup per destination
