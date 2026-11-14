@@ -233,8 +233,8 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
     }
     return 0;
 }
-int opengpu_native_uniform_emit(const void *tokens, const struct opengpu_native_uniform_layout *layout,
-    struct opengpu_native_uniform_program *out)
+static int emit_next(const void *tokens, const struct opengpu_native_uniform_layout *layout,
+    struct opengpu_native_uniform_program *out, unsigned next_stage)
 {
     struct build b = {0}; struct tgsi_parse_context parse; int ended = 0;
     if (!tokens || !layout || !out || layout->stage > 1 || !layout->capacity ||
@@ -255,7 +255,7 @@ int opengpu_native_uniform_emit(const void *tokens, const struct opengpu_native_
             for (unsigned c = 0; c < 4; c++) b.immediate[b.immediates][c] = parse.FullToken.FullImmediate.u[c].Uint;
             b.immediates++; break;
         case TGSI_TOKEN_TYPE_PROPERTY:
-            if (parse.FullToken.FullProperty.u[0].Data != PIPE_SHADER_FRAGMENT) ret = -1;
+            if (parse.FullToken.FullProperty.u[0].Data != next_stage) ret = -1;
             break;
         case TGSI_TOKEN_TYPE_INSTRUCTION:
             ret = instruction(&b, &parse.FullToken.FullInstruction); if (ret == 1) { ended = 1; ret = 0; } break;
@@ -273,18 +273,20 @@ int opengpu_native_uniform_emit(const void *tokens, const struct opengpu_native_
     *out = b.p; return 0;
 }
 
-int opengpu_native_uniform_compile(const void *tokens, unsigned stage,
+static int compile_next(const void *tokens, unsigned stage,
     unsigned capacity, struct opengpu_native_uniform_layout *out_layout,
-    struct opengpu_native_uniform_program *out_program)
+    struct opengpu_native_uniform_program *out_program, unsigned next_stage)
 {
     struct opengpu_native_uniform_layout layout = {.stage=stage,.capacity=capacity};
     struct opengpu_native_uniform_program program;
     struct tgsi_parse_context parse;
-    int failed = 0;
+    int failed = 0; unsigned next_count=0;
     if (!tokens || !out_layout || !out_program || stage > 1 || !capacity || packets(tokens,stage) ||
         tgsi_parse_init(&parse,tokens) != TGSI_PARSE_OK) return -1;
     while (!tgsi_parse_end_of_tokens(&parse)) {
         tgsi_parse_token(&parse);
+        if (parse.FullToken.Token.Type == TGSI_TOKEN_TYPE_PROPERTY &&
+            parse.FullToken.FullProperty.Property.PropertyName == TGSI_PROPERTY_NEXT_SHADER) next_count++;
         if (parse.FullToken.Token.Type != TGSI_TOKEN_TYPE_DECLARATION) continue;
         const struct tgsi_full_declaration *d = &parse.FullToken.FullDeclaration;
         unsigned first = d->Range.First, last = d->Range.Last, count, *slots = NULL;
@@ -305,6 +307,19 @@ int opengpu_native_uniform_compile(const void *tokens, unsigned stage,
         }
     }
     tgsi_parse_free(&parse);
-    if (failed || opengpu_native_uniform_emit(tokens,&layout,&program)) return -1;
+    if (failed || (next_stage==PIPE_SHADER_TESS_CTRL && next_count!=1) || emit_next(tokens,&layout,&program,next_stage)) return -1;
     *out_layout = layout; *out_program = program; return 0;
 }
+
+/* Existing VS/FS entry points remain exactly NEXT_SHADER=FRAGMENT. */
+int opengpu_native_uniform_emit(const void *tokens,const struct opengpu_native_uniform_layout *layout,
+    struct opengpu_native_uniform_program *out)
+{ return emit_next(tokens,layout,out,PIPE_SHADER_FRAGMENT); }
+int opengpu_native_uniform_compile(const void *tokens,unsigned stage,unsigned capacity,
+    struct opengpu_native_uniform_layout *layout,struct opengpu_native_uniform_program *out)
+{ return compile_next(tokens,stage,capacity,layout,out,PIPE_SHADER_FRAGMENT); }
+/* Explicit actual linked VS->TCS compiler. Identical VS SoA v1 word layout,
+ * original NEXT_SHADER property retained; no token rewriting or public gate. */
+int opengpu_native_vertex_tess_compile(const void *tokens,unsigned capacity,
+    struct opengpu_native_uniform_layout *layout,struct opengpu_native_uniform_program *out)
+{ return compile_next(tokens,0,capacity,layout,out,PIPE_SHADER_TESS_CTRL); }
