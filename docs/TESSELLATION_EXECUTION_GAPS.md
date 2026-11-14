@@ -2,8 +2,11 @@
 
 Two independent production gaps require P39 and P40 in the alignment PR plan.
 Neither is covered by the P15 checked-uniform implementation, P16 private
-program/resource admission or P17 Mesa lowering. Both remain unimplemented and
+program/resource admission or P17 Mesa lowering. Both remain incomplete and
 unqualified. Preserve the existing work-package IDs and acceptance conditions.
+The bounded original-draw slice, publisher/context and GPU range-generator
+results are recorded in [the source contract](VERTEX_DRAW_SLICES.md); they do
+not close the original-shader or protected whole-pipeline requirements below.
 
 ## P39: execute the original vertex shader before patch publication
 

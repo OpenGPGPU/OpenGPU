@@ -155,7 +155,7 @@ A fourth RTL case connects the actual publisher, owned-zero-initializing
 `TessellationPatchContext` and SRAM. It publishes all 2048 input words and
 independently reads each through the context's control access path. It checks
 actual output/per-patch/level writes, control completion, inspection and close.
-Cancellation before a held load is accepted produces the real context's
+Cancellation before the first offered load is accepted produces the real context's
 status-1 drain reply without replacing primary cancellation; cancellation
 after acceptance retains the normal reply. Both retain ownership while that
 reply is held. Cancellation at actual seal acceptance and healthy no-reset
@@ -179,6 +179,45 @@ the protocol-peer and actual-source cases. The full vertex and texture
 matrix qualifiers retain their existing local scope. CPU suite-selection checks
 passed; they prove routing of tests only. Keep `Scala regression` disabled.
 
+## GPU patch/instance range sequencing
+
+`TessellationVertexPatchSequence` generates successive original-draw-relative
+VS slices on the GPU. Each task keeps the captured original draw, resources,
+linked component map and one-patch layout. It advances the original ordinal by
+`inputVertices` within an instance, restores the original first ordinal at the
+next instance and advances task IDs without rebasing index buffers, base vertex,
+base instance or attribute divisors. Full-width products and endpoints reject
+count, original draw range and task-ID overflow before any task is offered.
+Zero work uses a canonical empty range and launches no VS.
+
+The parent opens each matching owned patch before accepting the task. It must
+acknowledge `retired` only after the complete VS/TCS/TES/patch lifetime, rather
+than after publisher completion. The sequencer waits for both that tagged
+acknowledgement and the parent's `childBusy` to clear. A held task survives
+cancellation; an accepted task drains before completion or reuse. This internal
+interface does not establish GEM authority or provide native admission.
+
+Three bounded RTL cases passed at 16 attribute/binding/varying capacities:
+six patches across two instances with independent draw/ordinal expectations;
+wide overflow, exact u32 endpoints and empty ranges; held cancellation, failed
+and mismatched retirement tags, backpressure and healthy reuse without reset.
+The six current main/test compilation units passed incremental Chisel-plugin
+compilation against the read-only frozen dependency classes. Both compilation
+and simulation used 128 MiB JVM heap, one CPU/native build job and an owned
+180-second process-group limit. Suite-selection checks pass 146 CPU tests and
+the integration/catalog checks. Temporary classes and simulations were removed
+after their processes exited.
+
+These results verify the range generator with a retirement peer. The native
+GVS/GNT reader, actual whole-patch parent connection, original ESSL execution
+and all three domain pipelines remain pending. The sequencer expects an
+admitted PATCHES draw with restart normalized off. GLES 3.2 section 10.3.4
+permits reporting `PRIMITIVE_RESTART_FOR_PATCHES_SUPPORTED = false`, in which
+case PATCHES ignore the restart enable. A matching real frontend/query path is
+still required; rejecting an otherwise valid PATCHES API call merely because
+the global enable is on would not implement that policy. Other primitive modes
+retain their restart behavior. See the [official specification, page 273](https://registry.khronos.org/OpenGL/specs/es/3.2/es_spec_3.2.pdf).
+
 ```sh
 python3 -B scripts/test_changed_test_suites.py
 python3 -B scripts/test_test_selection.py
@@ -200,7 +239,9 @@ scalac -J-Xmx128m -J-XX:MaxMetaspaceSize=128m \
   src/test/scala/opengpu/graphics/VertexInputFetcherSpec.scala \
   src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala \
   src/main/scala/opengpu/system/TessellationVertexPatchSource.scala \
+  src/main/scala/opengpu/system/TessellationVertexPatchSequence.scala \
   src/test/scala/opengpu/graphics/TessellationVertexPatchPublisherSpec.scala \
+  src/test/scala/opengpu/graphics/TessellationVertexPatchSequenceSpec.scala \
   src/test/scala/opengpu/graphics/TessellationVertexPatchSourceSpec.scala \
   src/test/scala/opengpu/graphics/tessellation/TessellationPatchStoreSpec.scala \
   src/test/scala/opengpu/graphics/tessellation/TessellationPatchContextSpec.scala
@@ -222,7 +263,8 @@ java -Xmx128m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m \
   -s opengpu.graphics.tessellation.TessellationOwnedPatchContextSpec \
   -s opengpu.graphics.tessellation.TessellationPatchStoreSpec \
   -s opengpu.graphics.tessellation.TessellationPatchContextSpec \
-  -s opengpu.graphics.TessellationVertexPatchPublisherSpec
+  -s opengpu.graphics.TessellationVertexPatchPublisherSpec \
+  -s opengpu.graphics.TessellationVertexPatchSequenceSpec
 # Executed fetcher-only slice cases; the other fetcher/CU cases are separate:
 java -Xmx128m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m \
   -XX:ActiveProcessorCount=1 -XX:+UseSerialGC \
