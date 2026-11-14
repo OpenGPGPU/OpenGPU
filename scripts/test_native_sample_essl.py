@@ -99,7 +99,7 @@ def main():
     run(cxx + san + ['-Wl,--gc-sections'] + objects + ['-Wl,--start-group'] + libraries + ['-Wl,--end-group'] +
         shlex.split(os.environ.get('OPENGPU_MESA_LINK_LIBS', '-lz -lexpat')) + ['-ldl', '-lm', '-pthread', '-o', binary], 'link')
     prefix = '#version 310 es\n#extension GL_OES_sample_variables : require\nprecision highp float;\nprecision highp int;\n'
-    expected = {'sample': (7, 1, 0, 0), 'mask-depth': (7, 1, 1, 1), 'mrt': (3, 15, 0, 0),
+    expected = {'sample': (7, 1, 0, 0), 'mask-depth': (7, 1, 1, 1), 'mask-depth-keep': (7, 1, 1, 1), 'mrt': (3, 15, 0, 0),
                 'varying': (18, 8, 0, 0), 'signedness': (5, 1, 0, 0), 'truncation': (3, 1, 0, 0)}
     for name in expected:
         source = ROOT / 'userspace/tests/native_sample_essl' / (name + '.frag')
@@ -130,7 +130,7 @@ def main():
         output = artifacts / (name + '.ognsf')
         run([binary, source, output, 6], 'reject-' + name, 4 if name in ('flow', 'flat', 'over-budget') else 3)
         assert not output.exists()
-    print('NATIVE_SAMPLE_ESSL_CPU PASS actualMesa=22.3.6 programs=12 ABI=6,7 oracleCases=36 capacities=128/16/4 gpuExecution=false')
+    print('NATIVE_SAMPLE_ESSL_CPU PASS actualMesa=22.3.6 programs=14 ABI=6,7 oracleCases=42 capacities=128/16/4 gpuExecution=false')
 
 
 if __name__ == '__main__':
