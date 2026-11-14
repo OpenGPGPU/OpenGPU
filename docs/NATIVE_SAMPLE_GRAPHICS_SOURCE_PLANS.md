@@ -95,6 +95,41 @@ The independently checked controller can subsequently start
 `$OUT/build/cs_uniform_flow $OUT/build/glsl` with its two new live environment
 variables. The builder itself does not start or qualify that exchange.
 
+`qualify_native_sample_graphics_owner.py` is the separate guarded two-owner
+qualification entry. It requires an original `native-sample-graphics` executor
+qualification before any archive, image inspection or compiler scan; the old96
+and single-point sample qualifications are rejected. It requires a clean
+committed source tree, checks the complete qualified source archive, and binds
+original Mesa/DRM headers, eight link archives, both actual state-tracker
+objects and every file on the specified runtime library path. The private NIR
+source must match the explicit checked postimage. Generated compiler inputs
+are bound before their actual compilation and checked against all 28 MMD
+units, with the exact LIVE gates and fixed link recipe.
+
+The qualifier builds once in the immutable 512MiB/single-CPU container without
+starting the producer, then rechecks the original source/tool/model,
+compiler/dependency identities and binary/ESSL products before and after the
+ROOT controller starts the binary directly. The controller supplies the real
+112-word profile, checks both images and full GNY2 records, observes cleanup
+and requires the unique LIVE producer marker. A separate PID-bound consumer
+cleanup confirmation gates deletion of outer build inputs; unknown exit
+preserves those inputs. CPU tests cover rejection, source and actual MMD/link
+closure, execution argument separation and cleanup/quarantine behavior:
+
+```sh
+python3 -B scripts/test_qualify_native_sample_graphics_owner.py
+python3 -B scripts/qualify_native_sample_graphics_owner.py \
+  --executor "$EXECUTOR" --executor-qualification "$QUALIFICATION" \
+  --executor-checker "$TOPIC/scripts/prepare_owner_executor.py" \
+  --executor-checker-python "$CHECKER_PYTHON" \
+  --mesa "$MESA" --mesa-build "$MESA_BUILD" \
+  --drm-include "$DRM_INCLUDE" --library-directory "$LD_LIBRARIES"
+```
+
+No final112 executor has qualified or executed this path. CPU construction
+and rejection tests cannot produce a device PASS, hardware ACK or product
+qualification.
+
 Seven fast admission/entry tests and five kernel-lifetime ASan/UBSan tests pass,
 including original handles closed before external execution, retained job
 references, CPU/LIVE argument and environment separation, missing/empty/mixed
