@@ -42,6 +42,13 @@ It must not depend on unrelated fragment work or whole-frame completion.
 The controller's `drained` excludes its held parent report: including that
 report in the range's child-busy input would make report acceptance circular.
 Whole-frame retirement still requires the enclosing image's full drain.
+After a report is offered, a new valid-only flush may lower
+`transportDrained`. The report remains immutable and may transfer; live
+`drained` and the next `begin.ready` still wait for transport to drain again.
+The held-report assertion checks completed children and absence of new offers,
+without treating that later flush as unfinished work from the reported task.
+The enclosing owner retains program, uniform, GEM and MMU resources through
+whole-frame and whole-fabric retirement, including after this task report.
 
 ## Bounded results
 
@@ -61,6 +68,10 @@ opened status, simultaneous completions, report backpressure and reuse
 without reset. Actual negative controls independently failed the expected
 status assertion with the old premature-success controller and the expected
 ready assertion after gating VS completion acceptance on `!sourceBusy`.
+An expanded held-report flush check also reproduced the old retirement
+assertion failure. Recompiling the final Owner and expanded fixture against
+the unchanged current component classes passed the complete protocol RTL test;
+the report stayed stable while live drain and next admission remained blocked.
 
 Compilation and each RTL run used an owned 180-second process group, 128 MiB
 heap, 128 MiB metaspace, 32 MiB code cache, one CPU/native build job,

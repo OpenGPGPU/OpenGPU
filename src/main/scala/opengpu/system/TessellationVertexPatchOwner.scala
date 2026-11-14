@@ -143,5 +143,12 @@ class TessellationVertexPatchOwner[T <: Data](p:VertexShaderStageConfig,imageTyp
   when(active && imageAccepted && io.frameStopped && !imageDone){
     assert(io.imageCompletion.valid,"accepted patch lost its completion before frame stop")
   }
-  when(io.completion.valid){assert(childrenDrained,"vertex patch owner report escaped child drain")}
+  // The report was captured after transport drain. A later valid-only flush
+  // can lower that input while the immutable report is held; it is not a new
+  // child credit. Keep live drain/next-admission guards above, and still forbid
+  // an unfinished child or a new offer from escaping through this report.
+  when(io.completion.valid){
+    assert(!imageOffer && imageDone && !sourceOffer && sourceDone && !io.sourceBusy,
+      "vertex patch owner report escaped child drain")
+  }
 }
