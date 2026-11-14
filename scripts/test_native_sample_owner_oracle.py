@@ -178,6 +178,19 @@ class SampleControllerGuardTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertFalse(launched.exists(), result.stdout + result.stderr)
                 self.assertEqual(set(parent.iterdir()), before)
+            for command in (["docker", "run", "--name", "owned", "--name", "other", "image", "{ipc}"],
+                            ["docker", "run", "--name=owned", "image", "{ipc}"],
+                            ["docker", "exec", "--name", "owned", "image", "{ipc}"]):
+                bridge.write_text(json.dumps(command))
+                result = subprocess.run([sys.executable, ROOT / 'scripts/native_sample_owner_controller.py',
+                    '--executor', fake, '--executor-qualification', qualification,
+                    '--executor-checker', ROOT / 'scripts/prepare_owner_executor.py',
+                    '--executor-checker-python', sys.executable, '--bridge-command', bridge,
+                    '--bridge-container-name', 'owned', '--program', directory / 'absent.ognsf', '--case', 'sample'],
+                    capture_output=True, text=True, timeout=30, env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1'))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('one exact owned container name', result.stderr)
+                self.assertEqual(set(parent.iterdir()), before)
 
 
 if __name__ == '__main__':
