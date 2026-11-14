@@ -339,7 +339,7 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.graphics.ShaderImagePublicationReaderSpec",
         "opengpu.graphics.ShaderImageStoreEncoderSpec",
         "opengpu.core.frontend.decode.ImageExecutionAvailabilityDecodeSpec",
-        "opengpu.core.frontend.decode.FullInstructionDecoderSpec",
+        "opengpu.core.frontend.decode.ExtendedDecoderSpec",
     },
     "opengpu.graphics.TypedGeometryImageQualificationSpec": {
         "opengpu.graphics.TypedTileImageTransferSpec",

@@ -182,9 +182,13 @@ instruction/availability decoder checks. Direct alias edits and changes to the
 shared parent or private recipe keep that coverage. These components do not
 replace the full-CU qualifier or enable either opt-in property automatically.
 
-Selector validation passes 143 tests, the exact partition checks pass 32, and
+Selector validation passes 145 tests, the exact partition checks pass 32, and
 the unchanged strict runner passes four. Integration and complete-suite shard
-catalog checks also pass. Compared with the original selected work, only these
+catalog checks also pass. The decoder dependency names the declared
+`ExtendedDecoderSpec`; its source file is named `FullInstructionDecoderSpec.scala`.
+A source-declaration check covers all 92 local-qualification mappings and their
+143 unique targets, preventing file names from becoming nonexistent suite
+identities. Compared with the original selected work, only these
 two local qualifiers are excluded; every other original partition retains its
 suite members, with additional bounded sample and image checks.
 
