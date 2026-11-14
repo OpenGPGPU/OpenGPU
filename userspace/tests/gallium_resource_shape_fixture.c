@@ -6,13 +6,20 @@
 
 struct pipe_opengpu_resource { uint32_t bytes, pitch; };
 static unsigned allocations;
+static unsigned buffer_allocations, image_allocations, linear_allocations;
 static struct pipe_opengpu_resource backing;
 struct pipe_opengpu_resource *pipe_opengpu_resource_create(struct pipe_opengpu_screen *s, uint32_t bytes)
-{ (void)s; ++allocations; backing.bytes=bytes; backing.pitch=0; return &backing; }
+{ (void)s; ++allocations; ++buffer_allocations; backing.bytes=bytes; backing.pitch=0; return &backing; }
 struct pipe_opengpu_resource *pipe_opengpu_resource_create_2d(struct pipe_opengpu_screen *s, uint32_t w, uint32_t h)
-{ (void)s; ++allocations; backing.bytes=w*h*4; backing.pitch=w*4; return &backing; }
+{ (void)s; ++allocations; ++image_allocations; backing.bytes=w*h*4; backing.pitch=w*4; return &backing; }
 struct pipe_opengpu_resource *pipe_opengpu_resource_create_linear(struct pipe_opengpu_screen *s, uint32_t w, uint32_t h)
-{ return pipe_opengpu_resource_create_2d(s,w,h); }
+{
+    (void)s; ++allocations; ++linear_allocations;
+    /* The real linear allocator owns the final cache line while keeping rows packed. */
+    backing.bytes=(uint32_t)(((uint64_t)w*h*4+63u)&~UINT64_C(63));
+    backing.pitch=w*4;
+    return &backing;
+}
 struct pipe_opengpu_resource *pipe_opengpu_resource_from_handle(struct pipe_opengpu_screen *s, uint32_t w, uint32_t h, uint32_t pitch, uint32_t fd, int is_fd)
 { (void)s; (void)w; (void)h; (void)fd; (void)is_fd; ++allocations; backing.pitch=pitch; return &backing; }
 void pipe_opengpu_resource_destroy(struct pipe_opengpu_screen *s, struct pipe_opengpu_resource *r)
@@ -69,6 +76,7 @@ int main(void)
     bad.bind=PIPE_BIND_SAMPLER_VIEW;
     assert(!resource_create(&screen.base, &bad) && allocations==0);
     r=resource_create(&screen.base,&t); assert(r && allocations==1 && backing.bytes==256);
+    assert(linear_allocations==1 && buffer_allocations==0 && image_allocations==0);
     assert(resource_get_param(&screen.base,NULL,r,0,0,0,PIPE_RESOURCE_PARAM_STRIDE,0,&value) && value==68);
     assert(!resource_get_param(&screen.base,NULL,r,0,1,0,PIPE_RESOURCE_PARAM_STRIDE,0,&value));
     assert(!resource_get_param(&screen.base,NULL,r,0,0,1,PIPE_RESOURCE_PARAM_STRIDE,0,&value));
@@ -92,12 +100,15 @@ int main(void)
     assert(!screen_is_format_supported(&screen.base,t.format,t.target,1,2,t.bind));
     t.target=PIPE_BUFFER; t.width0=65; t.height0=t.depth0=t.array_size=1; t.bind=PIPE_BIND_SHADER_BUFFER;
     r=resource_create(&screen.base,&t); assert(r && backing.bytes==128 && allocations==3); resource_destroy(&screen.base,r);
+    assert(buffer_allocations==1 && linear_allocations==1 && image_allocations==0);
     bad=t; bad.last_level=1; assert(!resource_create(&screen.base,&bad) && allocations==3);
     bad=t; bad.height0=2; assert(!resource_create(&screen.base,&bad) && allocations==3);
     bad=t; bad.nr_storage_samples=2; assert(!resource_create(&screen.base,&bad) && allocations==3);
     t.target=PIPE_TEXTURE_2D; t.width0=17; t.height0=3;
     t.bind=PIPE_BIND_RENDER_TARGET | PIPE_BIND_SAMPLER_VIEW;
     r=resource_create(&screen.base,&t); assert(r && allocations==4);
+    assert(backing.bytes==256 && backing.pitch==68 && linear_allocations==2 &&
+           buffer_allocations==1 && image_allocations==0);
     resource_destroy(&screen.base,r);
     puts("Gallium resource shape fixture: PASS");
     return 0;
