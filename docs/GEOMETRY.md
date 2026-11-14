@@ -1199,3 +1199,39 @@ TMPDIR="$PWD/.artifacts" PYTHONDONTWRITEBYTECODE=1 OPENGPU_TEST_SANITIZERS=1 \
 TMPDIR="$PWD/.artifacts" PYTHONDONTWRITEBYTECODE=1 OPENGPU_TEST_SANITIZERS=1 \
   python3 scripts/test_driver.py
 ```
+
+### Independent geometry transport discovery
+
+GGS1 occupies eight read-only words at `0x500..0x51c`, guarded by GCR bit 19
+and the explicit, default-off `nativeGeometryTransport` constructor setting.
+The enclosing host requires the actual protected layered native pipeline,
+descriptor preflight and native source routing. GUC1 retains its original
+VS/FS-only stage mask. The new driver path accepts GNC5/GNJ2 only through its
+separate strict GGS reader and caches all eight validated words; old source
+helpers continue to reject the new record versions. Driver feature bit 42 is
+reserved and remains unadvertised pending complete execution qualification.
+
+The exact words are `47475301 00000008 0000001f 474e4a02 474e4603 474e5902
+ff840206 04001000`. The final two words describe six input vertices, 32
+invocations, 256 output vertices, sixteen varying slots, layer indices 0..255,
+1,024 total emitted components and a 4,096-word GNY2 completion. These are
+transport limits, not a general GLSL or API geometry capability.
+
+The pure prerequisite check and four real AXI variants pass: enabled ABI2,
+disabled ABI2 and both native/legacy ABI1 configurations. They cover held read
+tuples, incrementing/fixed bursts, malformed accesses, all-word writes including
+zero strobes, reset and unchanged neighboring blocks. CPU discovery rejects
+1,280 individual record-bit corruptions, truncated BARs, missing prerequisites
+and unknown versions without modifying a usable cache or probing absent GGS.
+The original three scheduler regressions also pass with image ownership
+assertions. Their image peer does not prove cancellation reaches a real payload
+lease; that composed gate and actual four-image execution remain required.
+
+```sh
+sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'testOnly opengpu.graphics.LayeredTileChainSchedulerSpec opengpu.system.NativeGeometryTransportCapabilitiesAxiSpec'
+sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 \
+  'runMain opengpu.elaboration.EmitNativeGeometryTransportAbi --check' \
+  'runMain opengpu.elaboration.EmitComputeResourceAbi --check'
+```

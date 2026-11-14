@@ -601,7 +601,15 @@ int opengpu_hw_init(struct opengpu_device *gpu, struct platform_device *pdev)
             &gpu->hw.native_descriptor_preflight))
         return dev_err_probe(gpu->dev, -EINVAL,
                              "invalid native descriptor preflight record\n");
-    if (!opengpu_read_native_source_limits(id,
+    gpu->hw.native_layered_transport = false;
+    if (gpu->hw.compute_resource_flags & OPENGPU_NATIVE_GEOMETRY_TRANSPORT_PRESENCE) {
+        if (!opengpu_read_native_geometry_transport_limits(id,
+                gpu->hw.compute_resource_flags, gpu->hw.capabilities,
+                gpu->hw.regs_size, gpu, opengpu_mmio_read_callback,
+                &gpu->hw.native_sources, &gpu->hw.native_layered_transport))
+            return dev_err_probe(gpu->dev, -EINVAL,
+                                 "invalid native geometry transport profile record\n");
+    } else if (!opengpu_read_native_source_limits(id,
             gpu->hw.compute_resource_flags, gpu->hw.capabilities,
             gpu->hw.regs_size, gpu, opengpu_mmio_read_callback,
             &gpu->hw.native_sources))
