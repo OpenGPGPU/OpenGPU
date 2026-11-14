@@ -241,7 +241,7 @@ int main(int argc,char **argv)
   uint8_t *data=pipe_opengpu_resource_map(opengpu_resource(counter)->gpu);assert(data);memset(data,0x5a,8192);
   uint32_t *words=(uint32_t *)(data+4080);
   uint32_t seed=counter_operation==2?(counter_dynamic?0u:1u):0xfffffffeu;
-  for(unsigned i=0;i<8;i++)words[i]=seed+i*0x10203u;
+  for(unsigned i=0;i<8;i++)words[i]=seed+(i+(counter_dynamic?1u:0u))*0x10203u;
   words[7]=seed;
   cs_frontend_counters(frontend,p,counter,4080,32);
   /* Gallium and the accepted production job retain this original GEM until

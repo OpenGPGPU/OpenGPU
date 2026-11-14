@@ -50,7 +50,7 @@ def recipe(memory, value):
     require(all(a[1] <= b[0] for a, b in zip(allocations, allocations[1:])), 'counter original GEM aliases an output')
     original = bytearray(b'\x5a' * 8192)
     for i in range(8):
-        struct.pack_into('<I', original, 4080 + i * 4, (parameters['seed'] + i * 0x10203) & 0xffffffff)
+        struct.pack_into('<I', original, 4080 + i * 4, (parameters['seed'] + (i+int(parameters['dynamic'])) * 0x10203) & 0xffffffff)
     struct.pack_into('<I', original, 4080 + 28, parameters['seed'])
     require(memory.read(source - 4080, 8192) == original, 'counter original source/guard initialization differs')
     for key in ('descriptorPhysical', 'descriptorRoot', 'kernargPhysical', 'kernargBytes'):
@@ -72,7 +72,7 @@ def returned_outputs(initial, returned, description):
         expected=[]
         for lane in range(invocations):
             index=parameters['index']+lane
-            old=seed if index==7 else (seed+index*0x10203)&0xffffffff
+            old=seed if index==7 else (seed+(index+1)*0x10203)&0xffffffff
             result=(old-1 if op=='decrement' else old)&0xffffffff
             final=(old+1 if op=='increment' else old-1 if op=='decrement' else old)&0xffffffff
             expected.append(result);finals.append((source+index*4,struct.pack('<I',final)))
@@ -133,16 +133,18 @@ def ready(memory, description, data):
     require(writable == expected and all(a[1] <= b[0] for a, b in zip(expected, expected[1:])),
             'counter capture writable windows widened, aliased or missing')
     count, = take('<I'); require(0 < count <= 65536, 'invalid counter MMIO action count')
-    staged, submissions = {}, []
-    for _ in range(count):
+    staged, submissions, last_submit = {}, [], None
+    for action in range(count):
         kind, address, value, mask = take('<IIII')
         if kind == 1:
             require(mask == 0, 'masked counter write')
             staged[address] = value
             if address == 0x11c:
-                submissions.append(dict(staged))
-    require(cursor == len(data) and submissions and submissions[-1].get(0xc8) == 0,
-            'counter capture must end with actual opcode0')
+                require(value==1, 'counter submit must publish one command')
+                submissions.append(dict(staged));last_submit=action
+    require(cursor == len(data) and submissions and submissions[-1].get(0xc8) == 0 and
+            last_submit==count-1 and all(s.get(0xc8)==5 for s in submissions[:-1]),
+            'counter capture requires one final kernel after only publication invalidates')
     r = submissions[-1]
     parameters=counter_parameters(description['sourceCase'])
     require([r.get(0xd4 + 4*i) for i in range(3)] == [parameters['groups'], 1, 1] and
