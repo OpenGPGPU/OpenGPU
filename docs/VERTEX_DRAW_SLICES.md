@@ -62,8 +62,10 @@ successful write acknowledgement before advancing, then waits for the actual
 VS completion and an idle child before offering seal. A held draw, write or seal
 remains stable until accepted, even during cancellation. Accepted patch replies
 and VS output/completion drain before source reuse. Patch failure, VS failure
-and cancellation preserve the first primary error; cancellation can be promoted
-to an actual failure. The parent must cancel a failed patch and must not launch
+and cancellation preserve the first primary error. A real VS failure or a
+malformed reply can promote cancellation to failure; the patch context's
+ordinary nonzero abort acknowledgement preserves cancellation or an already
+latched source failure. The parent must cancel a failed patch and must not launch
 a later stage because a previously held seal was accepted during cancellation.
 
 `TessellationVertexPatchSource` instantiates the actual shared-CU

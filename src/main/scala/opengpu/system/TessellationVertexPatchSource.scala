@@ -131,6 +131,9 @@ class TessellationVertexPatchPublisher(p:VertexShaderStageConfig) extends Module
       val protocol=io.reply.bits.source===0.U && io.reply.bits.invocation===0.U
       when(protocol && io.reply.bits.result.status===0.U){words:=words+1.U}
       when(!protocol){fail(3);state:=State.waitSource}
+        // PatchContext rejects already-held loads with status 1 while aborting.
+        // That drain acknowledgement must not replace the primary cancellation
+        // or source error. A malformed reply remains a protocol failure above.
         .elsewhen(stop){state:=State.waitSource}
         .elsewhen(io.reply.bits.result.status=/=0.U){fail(3);state:=State.waitSource}
         .elsewhen(component+&1.U===l.inputComponents){state:=State.collect}
