@@ -40,6 +40,7 @@ class LayeredTileChainScheduler(engines:Int=4) extends Module {
     val imageCompletion=Vec(engines,Flipped(Decoupled(new LayeredTypedReplayTileCompletion)))
     val imageBusy=Input(Vec(engines,Bool()));val cancelImage=Output(Vec(engines,Bool()))
     val permit=Input(Vec(engines,Bool()));val engineBusy=Output(Vec(engines,Bool()))
+    val imageOwned=Output(Vec(engines,Bool()))
     val tileDone=Decoupled(new LayeredTileChainCompletion)
     val producerDone=Input(Bool());val completion=Decoupled(new LayeredTileChainSummary)
     val cancel=Input(Bool());val cancelSource=Output(Bool());val busy=Output(Bool())
@@ -91,6 +92,7 @@ class LayeredTileChainScheduler(engines:Int=4) extends Module {
   }
   for(e<-0 until engines){
     io.engineBusy(e):=curValid(e) || nextValid(e) || io.imageBusy(e)
+    io.imageOwned(e):=started(e)
     io.chain(e).valid:=offered(e);io.chain(e).bits:=cur(e)
     io.cancelImage(e):=active && started(e) && stop
     io.imageCompletion(e).ready:=active && started(e) && !doneValid(e)
