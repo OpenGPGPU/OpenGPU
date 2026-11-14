@@ -34,10 +34,19 @@ parser and leaves the result unchanged on failure. Unsupported features must
 gain explicit native lowering and tests, never a fallback to the legacy ABI.
 
 The stable qualification sources are
-`userspace/tests/native_sample_essl/{sample,mask-depth,mrt,varying,signedness,truncation}.frag`.
-The first four exercise sample ID/position/coverage, raw depth/sample-mask
-output, all four MRTs, and the final varying slot respectively. The last two
+`userspace/tests/native_sample_essl/{sample,mask-depth,mask-depth-keep,mrt,varying,signedness,truncation}.frag`.
+The original `sample`, `mask-depth`, `mrt` and `varying` exercise sample
+ID/position/coverage, raw depth/sample-mask output, all four MRTs, and the final
+varying slot respectively. `signedness` and `truncation`
 distinguish high-bit unsigned/signed conversion and truncation from rounding.
+The additional `mask-depth-keep` source preserves the current sample with
+`MaskIn & (1u << ID)` while writing depth `.5`. With one-hot per-sample input,
+the original frozen XOR `mask-depth` source removes that sample; it is a kill
+and guard case, not evidence that a depth value was committed to an image.
+The keep source supplies the separate positive depth/color path for subsequent
+actual execution. The CPU oracle deliberately also supplies general coverage
+masks to test instruction semantics; actual per-sample execution must use its
+real one-hot coverage contract and an independent image/depth oracle.
 Raw colors are FP32 words. Control uses the selected ABI6/7 definition: bit0
 emit, bit1 depth override, bits5:2 color mask, bit6 sample-mask-written and
 bits10:7 the low four shader-mask bits. No packed RGBA conversion occurs.
@@ -86,8 +95,8 @@ ESSL resource/flow/qualifier/over-budget programs must be rejected. The addition
 independent RV32/RVV word oracle checks all 128 lanes, every untouched array and
 guards for each compiled source at 1x, 2x and 4x. It is a compiler oracle only.
 
-Local ASan/UBSan CPU validation passed for all twelve compiled programs (six
-original ESSL sources at ABI6 and ABI7), all thirty-six supplemental word-oracle
+Local ASan/UBSan CPU validation passed for all fourteen compiled programs (seven
+original ESSL sources at ABI6 and ABI7), all forty-two supplemental word-oracle
 cases and the rejection checks above. The sequential single-CPU container
 finished within its 512MiB memory/no-extra-swap limit, with no OOM. No larger
 compiler, JVM or model build was launched for this work.
