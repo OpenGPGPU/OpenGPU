@@ -59,3 +59,63 @@ execution result. Reproduce without generation or a JVM:
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_native_sample_gny2_oracle.py
 ```
+
+## Guarded executor build
+
+`prepare_owner_executor.py --kind native-sample` admits only
+`two-cu-vga60-owner-v2-sample-stage` / `geometry-compute-sample`, validated by the
+existing exact112 preparation and complete assertion-enabled model identity.
+It selects `native_sample_owner_driver.cpp` from source, records its complete
+shared include closure, and stores its executable, builder snapshot and
+qualification exclusively under `executors/native-sample`. An independent
+lock in that directory supplements the common lock protecting the shared shard
+cache. Native-v1 remains96-only; the four compute factories keep their separate
+driver and qualification contracts.
+
+The new kind adds mandatory protocol, controller, independent oracle, producer,
+fixture generators, native compiler/frontend and all seven original ESSL
+sources to the existing checker contract. It also binds the actual C producer's
+recursive local include closure, including Linux submit/scheduler/MMU/privateRX
+sources and fixture stubs. Only fixed generated include names may be supplied
+by the registered generators; absent consumers or unresolved local dependencies
+fail qualification, including the independent GNY2 oracle. The C++ builder rechecks declared includes, compiler and
+options, all generated shards, source/RTL/assertion/generation identities,
+builder snapshot and executable hashes. Rehashing a record cannot silently
+omit a new runtime header. These are build guards, not execution results.
+
+CPU guard tests use tiny explicitly modeled binaries and copied source trees;
+source mutation tests never edit an active original ESSL or driver file:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_prepare_owner_executor.py
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_prepare_native_owner_flashsim.py
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_prepare_native_sample_owner.py
+```
+
+Local CPU validation passes all thirteen executor guard tests, five owner
+preparation tests and two sample preparation tests. New negatives cover stale
+or cross-kind models, omitted dependencies, original C/ESSL/compiler changes,
+missing controller/oracles/catalog, changed shared headers and checker aliases.
+All mutation fixtures are private copies and their outputs are removed.
+
+After a fresh complete112 preparation and assertion-enabled generation exist,
+build and recheck the fixed executor with:
+
+```sh
+python3 -B scripts/prepare_owner_executor.py --stage build --kind native-sample \
+  --owner-output "$OWNER_OUTPUT" --flashsim-dir "$FLASHSIM" \
+  --shards 32 --jobs 1 --shard-opt=-O2
+python3 -B scripts/prepare_owner_executor.py --stage check --kind native-sample \
+  --qualification "$OWNER_OUTPUT/executors/native-sample/qualification.json" \
+  --executor "$OWNER_OUTPUT/executors/native-sample/executor"
+```
+
+This integration has not built or executed a real DUT/model. A CPU fixture's
+qualification is never reusable by the actual112 host. The independent
+controller must request `verify_qualification(..., kind='native-sample')` before
+probing or starting the live producer, and must check actual returned bytes
+before permitting the original owner's cleanup.
+Binding compiler sources in a build record does not establish provenance for
+an arbitrary runtime `OGNSF001` artifact. The low-level controller must bind the
+supplied program bytes to the actual descriptor/private RX and keep original
+ESSL provenance qualification separate until its full compiler entry exists.
