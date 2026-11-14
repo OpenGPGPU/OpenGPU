@@ -1122,13 +1122,19 @@ ordinary VS and native VS/GS draws. It retains the 2048-axis API bounds,
 65,536-entry directory, 32 KiB typed storage, 512 KiB payload pool, sixteen
 attribute/varying slots and four MRTs. An independent byte oracle covers all
 six source and resolve planes, both layers and allocation padding. The cancel
-case holds all four actual payload allocation replies, pulses one client's
-cancel, then requires pool drain and healthy reuse without reset.
+case holds all four actual resident payload allocation replies, checks distinct
+handles and the exact reserved-slot total, pulses one client's cancel, then
+requires stable held replies, pool drain and healthy reuse without reset.
+Completion monitors check held valid/bits, identities, statuses and unique
+primitive/pixel/layer/tile retirement. A physical-memory allowlist and VS/FS
+scratch guards reject accesses outside retained allocations or prefixes.
 
 The fixture has passed Scala syntax and Chisel-plugin compilation; its actual
 simulation has not yet passed. It uses two four-lane/one-warp CUs and physical
 addresses, so even a passing result will not establish protected host execution
-or the sixteen-lane/eight-warp VGA product target. Run it explicitly with the
+or the sixteen-lane/eight-warp VGA product target. Runtime sixteen-slot varying
+vectors are zero; this fixture does not prove nonzero varying transport. Run it
+explicitly with the
 GPU-local temporary/cache setup above:
 
 ```sh
