@@ -110,3 +110,48 @@ the real held-completion, driver IRQ/drain/POP and subsequent DUT checks.
 Owner cleanup remains unqualified until every shootdown is applied and checked
 on the same live DUT. This work does not close GLES/KHR,
 ordinary native geometry-shader admission, or the VGA/60-FPS product gate.
+
+## Combined mainline source validation
+
+The combined source retains the shared-atomic/SIMT proof bounds and kernel
+range-transfer helper together with the explicit geometry/layered/sample
+discovery cache and ABI6/7 owner gates. The driver entry keeps managed temporary
+directories and its geometry, layered, sample and compute suites, and also runs
+the mainline framebuffer input suite. The shared-proof bound test runs before
+native admission, preserving the mainline allocation-test initialization order.
+
+Eight core C suites pass ASan/UBSan, covering shared atomics, shader admission,
+SIMT, native/geometry/sample discovery, native layout and MMU. The native
+program/job, geometry graph, layered graph/submission, sample bridge and MMIO
+component suites also pass with sanitizers; the sample bridge has seven cases.
+Its depth-policy negative now matches the mandatory canonical recipe's exact
+GFS word29 rejection. Framebuffer host guards (eleven tests), executor guards
+(thirteen) and original-ESSL entry guards (eight) pass. This merge validation
+runs no Mesa compiler, model, JVM or DUT and does not repeat the kernel build.
+The full driver suite remains a separate integration check.
+
+Reproduce the affected component checks in a managed GPU-local `TMPDIR`:
+
+```sh
+python3 -B scripts/test_native_program_snapshot.py --sanitize
+python3 -B scripts/test_native_job_snapshot.py --sanitize
+python3 -B scripts/test_geometry_snapshot.py --sanitize
+python3 -B scripts/test_native_layered_snapshot.py --sanitize
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_layered_submit.py
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_sample_submit_bridge.py
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_mmio_capture.py
+python3 -B scripts/test_framebuffer_blit_host.py
+python3 -B scripts/test_prepare_owner_executor.py
+python3 -B scripts/test_qualify_native_sample_owner.py
+```
+
+For each core name `shared_atomic_validator`, `shader_validator`,
+`compute_simt_validator`, `native_sources_discovery`,
+`native_geometry_transport_discovery`, `native_sample_transport`,
+`native_layout` and `mmu`, compile `driver/tests/opengpu_<name>_test.c` with
+`-std=c11 -O1 -Wall -Wextra -Werror -fsanitize=address,undefined
+-fno-omit-frame-pointer`, then run it with `ASAN_OPTIONS=detect_leaks=0`.
+Use `-Idriver/tests/mmu_stubs` for MMU,
+`-Idriver/tests/compute_submit_stubs` for native layout and `-Idriver` for the
+other suites. Put executables in a temporary `.artifacts/` directory and remove
+them once the checks end.
