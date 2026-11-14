@@ -52,7 +52,8 @@ class NativeSampleLayeredProductFixturesSpec extends AnyFlatSpec {
       PrepareNativeLayeredProductFixtures.main(Array("--smoke","--output",old.toString,"--tile-log2","4"))
       PrepareNativeSampleLayeredProductFixtures.main(args)
       for(name<-NativeProductWorkloads.ids){
-        assert(Files.mismatch(old.resolve(s"fixtures/$name.memory"),sample.resolve(s"fixtures/$name.memory")) == -1L)
+        assert(java.util.Arrays.equals(Files.readAllBytes(old.resolve(s"fixtures/$name.memory")),
+          Files.readAllBytes(sample.resolve(s"fixtures/$name.memory"))))
         assert(parse(old.resolve(s"fixtures/$name.commands"),sample=false)==
           parse(sample.resolve(s"fixtures/$name.commands"),sample=true))
       }
