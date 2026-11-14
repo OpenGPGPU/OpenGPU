@@ -119,7 +119,7 @@ class VertexShaderCompletion extends Bundle {
 class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig=VertexShaderStageConfig(),
     shared: SharedCuShaderConfig=SharedCuShaderConfig(4),useSramBlackBoxes: Boolean=false,
     payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false,
-    imageAvailable: Boolean=false) extends Module {
+    imageAvailable: Boolean=false,drawSlices:Boolean=false) extends Module {
   require(config.xLen==32 && config.lanes>=4 && config.lanes%4==0)
   private val capacity=config.lanes*config.warps
   require(capacity<=255)
@@ -134,6 +134,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   val io=IO(new Bundle {
     val grouped=if(groupedTexture)Some(new NativeRgba8TextureClientIO)else None
     val draw=Flipped(Decoupled(new VertexShaderDraw(p)))
+    val slice=if(drawSlices)Some(Input(new VertexInputSlice))else None
     val out=Decoupled(new ShadedVertexRecord(p))
     val completion=Decoupled(new VertexShaderCompletion)
     val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits,imageAvailable=imageAvailable))
@@ -143,7 +144,12 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,4)))
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val input=Module(new VertexInputFetcher(config,p.input))
+  private val input=Module(new VertexInputFetcher(config,p.input,drawSlices=drawSlices))
+  if(drawSlices){
+    val slice=Reg(new VertexInputSlice)
+    when(io.draw.fire){slice:=io.slice.get}
+    input.io.slice.get:=slice
+  }
   private val shader=Module(new KernelShaderStage(config,true,Some(shared.copy(shaderPayload=None)),nativeResources=true,nativeUniforms=true,
     imageStage=if(imageAvailable)Some(GraphicsStage.vertex)else None))
   private val imageCapture=if(imageAvailable)Some(Module(new GraphicsImageDrawCapture))else None

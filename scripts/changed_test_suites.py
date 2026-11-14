@@ -2,7 +2,8 @@
 """Select changed Scala tests, fixture consumers, and directly matching specs.
 
 This supplements the bounded smoke catalog; it is not a production dependency
-graph. Resource-heavy integration remains in separately authorized local qualification.
+graph. Resource-heavy integration needs explicitly scoped qualification; the
+Scala regression workflow remains disabled.
 """
 import json
 from pathlib import Path
@@ -557,6 +558,11 @@ def changed_suites(root, changed, *, test_index=None):
         affected.add("src/test/scala/opengpu/graphics/FragmentSetupCacheSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/FragmentPreparationInstanceSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/Fp32FragmentPreparationSpec.scala")
+    if changed & {"src/main/scala/opengpu/graphics/VertexInputSlice.scala",
+                  "src/main/scala/opengpu/graphics/VertexInputFetcher.scala",
+                  "src/main/scala/opengpu/graphics/VertexShaderStage.scala"}:
+        affected.add("src/test/scala/opengpu/graphics/VertexInputFetcherSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala")
     if "src/main/scala/opengpu/graphics/TypedFragmentState.scala" in changed:
         affected.add("src/test/scala/opengpu/graphics/TypedFragmentStateReaderSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/TypedFragmentImageStateReaderSpec.scala")

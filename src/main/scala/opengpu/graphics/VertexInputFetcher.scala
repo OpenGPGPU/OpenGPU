@@ -155,10 +155,12 @@ class VertexInputCompletion extends Bundle {
   * Cancel retains offered memory requests and records through their handshakes
   * and drains every accepted response before a held completion permits reuse.
   */
-class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig=VertexInputFetchConfig()) extends Module {
+class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig=VertexInputFetchConfig(),
+    drawSlices:Boolean=false) extends Module {
   require(config.xLen==32)
   val io=IO(new Bundle {
     val draw=Flipped(Decoupled(new VertexInputDraw(p)))
+    val slice=if(drawSlices)Some(Input(new VertexInputSlice))else None
     val out=Decoupled(new VertexInputRecord(p))
     val completion=Decoupled(new VertexInputCompletion)
     val cancel=Input(Bool())
@@ -167,12 +169,16 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
     val busy=Output(Bool())
   })
   private object Phase extends ChiselEnum {
-    val idle,validate,vertex,prepareIndex,index,waitIndex,decodeIndex,selectAttribute,selectBinding,attribute,middle,multiply,addressBase,
+    val idle,validate,initializeInstance,vertex,prepareIndex,index,waitIndex,decodeIndex,selectAttribute,selectBinding,attribute,middle,multiply,addressBase,
       addressCompute,addressCheck,address,waitAttribute,convertAttribute,waitConversion,publish,emit,advance,drain,finish,complete=Value
   }
   import Phase._
   private val phase=RegInit(idle)
   private val draw=Reg(new VertexInputDraw(p))
+  private val slice=if(drawSlices)Some(Reg(new VertexInputSlice))else None
+  private val firstOrdinal=slice.map(_.firstOrdinal).getOrElse(0.U(32.W))
+  private val work=slice.map(s=>s.count=/=0.U && s.instances=/=0.U)
+    .getOrElse(draw.count=/=0.U && draw.instances=/=0.U)
   private val record=Reg(new VertexInputRecord(p))
   private val result=Reg(new VertexInputCompletion)
   private val status=RegInit(0.U(VertexInputStatus.width.W))
@@ -182,6 +188,13 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
   private val instanceElement=Reg(Vec(p.bindings,UInt(33.W)))
   private val ratePosition=Reg(Vec(p.bindings,UInt(32.W)))
   private val lastRate=Reg(Vec(p.bindings,UInt(32.W)))
+  // Only sliced draws need an arbitrary starting instance. Restore quotient
+  // and remainder in 32 bounded steps, with no combinational divide or walk
+  // through earlier instances. Every binding uses its own original divisor.
+  private val instanceDividend=if(drawSlices)Some(Reg(UInt(32.W)))else None
+  private val instanceStep=if(drawSlices)Some(Reg(UInt(5.W)))else None
+  private val instanceQuotient=if(drawSlices)Some(Reg(Vec(p.bindings,UInt(32.W))))else None
+  private val instanceRemainder=if(drawSlices)Some(Reg(Vec(p.bindings,UInt(33.W))))else None
   private val vertices=RegInit(0.U(64.W));private val restarts=RegInit(0.U(64.W))
   private val indexLines=RegInit(0.U(64.W));private val attributeLines=RegInit(0.U(64.W))
   private val reusedReads=RegInit(0.U(64.W))
@@ -316,6 +329,13 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
       when(io.draw.fire) {
         draw:=io.draw.bits;status:=0.U;ordinal:=0.U;instance:=0.U;attr:=0.U
         lastOrdinal:=io.draw.bits.count-1.U;lastInstance:=io.draw.bits.instances-1.U
+        if(drawSlices){
+          val s=io.slice.get;slice.get:=s
+          ordinal:=s.firstOrdinal;instance:=s.firstInstance
+          lastOrdinal:=s.firstOrdinal+s.count-1.U;lastInstance:=s.firstInstance+s.instances-1.U
+          instanceDividend.get:=s.firstInstance;instanceStep.get:=0.U
+          instanceQuotient.get.foreach(_:=0.U);instanceRemainder.get.foreach(_:=0.U)
+        }
         vertices:=0.U;restarts:=0.U;indexLines:=0.U;attributeLines:=0.U;reusedReads:=0.U
         faultAddress:=0.U;faultAttributeValid:=false.B;faultAttribute:=0.U
         indexValid:=false.B;attrValid:=false.B
@@ -325,13 +345,33 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
       }
     }
     is(validate) {
-      val work=draw.count=/=0.U && draw.instances=/=0.U
       val (invalid,bounds)=VertexInputDescriptor.errors(draw,p)
-      when(invalid){fail(VertexInputStatus.invalidDescriptor,0.U)}
+      val sliceInvalid=if(drawSlices) !VertexInputSlice.legal(slice.get,draw)else false.B
+      when(invalid || sliceInvalid){fail(VertexInputStatus.invalidDescriptor,0.U)}
         .elsewhen(bounds) {
           fail(VertexInputStatus.bounds,draw.indices.base)
-        }.otherwise{phase:=Mux(work,vertex,finish)}
+        }.otherwise{
+          val initialize=if(drawSlices)slice.get.firstInstance=/=0.U else false.B
+          phase:=Mux(work,Mux(initialize,initializeInstance,vertex),finish)
+        }
     }
+    is(initializeInstance){if(drawSlices){
+      for(i<-0 until p.bindings){
+        val divisor=draw.bindings(i).divisor
+        val shifted=Cat(instanceRemainder.get(i)(31,0),instanceDividend.get(31))
+        val subtract=divisor=/=0.U && shifted>=divisor
+        val remainder=Mux(subtract,shifted-divisor,shifted)
+        val quotient=Cat(instanceQuotient.get(i)(30,0),subtract)
+        instanceRemainder.get(i):=remainder;instanceQuotient.get(i):=quotient
+        when(instanceStep.get===31.U){
+          instanceElement(i):=draw.baseInstance+&quotient
+          ratePosition(i):=remainder(31,0)
+        }
+      }
+      instanceDividend.get:=instanceDividend.get<<1
+      instanceStep.get:=instanceStep.get+1.U
+      when(instanceStep.get===31.U){phase:=vertex}
+    }}
     is(vertex) {
       record:=0.U.asTypeOf(record);record.identity:=draw.identity;record.ordinal:=ordinal
       record.instanceId:=instance;record.baseInstance:=draw.baseInstance
@@ -417,7 +457,7 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
       when(ordinal===lastOrdinal) {
         when(instance===lastInstance){phase:=finish}
           .otherwise {
-            instance:=instance+1.U;ordinal:=0.U;phase:=vertex
+            instance:=instance+1.U;ordinal:=firstOrdinal;phase:=vertex
             for(i<-0 until p.bindings) {
               when(draw.bindings(i).divisor=/=0.U) {
                 when(ratePosition(i)===lastRate(i)) {
