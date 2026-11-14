@@ -15,6 +15,16 @@ int pipe_opengpu_screen_compute_uniforms(const struct pipe_opengpu_screen *scree
 int pipe_opengpu_uniform_view_validate(const struct pipe_opengpu_screen *screen,
     const struct pipe_opengpu_uniform_view *view, unsigned slot)
 { (void)screen; (void)view; (void)slot; return 0; }
+/* This fixture deliberately exercises the legacy callback with native layout
+ * disabled. Linking the callback must not silently authorize a native plan. */
+int pipe_opengpu_native_uniform_plan(struct pipe_opengpu_screen *screen,
+    const struct pipe_opengpu_uniform_view views[2][13], const unsigned required[2][13],
+    struct pipe_opengpu_native_uniform_plan *out)
+{
+    (void)screen; (void)views; (void)required; (void)out;
+    assert(!"unexpected native graphics constant plan");
+    return -1;
+}
 uint64_t pipe_opengpu_resource_size(const struct pipe_opengpu_resource *resource)
 { return resource ? resource->size : 0; }
 void *pipe_opengpu_resource_map(struct pipe_opengpu_resource *resource)
