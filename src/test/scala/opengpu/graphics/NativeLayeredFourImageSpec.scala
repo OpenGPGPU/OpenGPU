@@ -12,6 +12,7 @@ import scala.collection.mutable
   */
 @DoNotDiscover
 class NativeLayeredFourImageSpec extends AnyFlatSpec {
+  protected def samplePlaneQualification:Boolean=false
   import WindowRecordTest.{zero,Memory}
   import TypedColorReference.{fp,encode}
   private val names=Vector("RGBA32F","RGBA32UI","RGBA32UI","RGBA8")
@@ -41,7 +42,8 @@ class NativeLayeredFourImageSpec extends AnyFlatSpec {
     Vector(addi(4,0,1),geometry(34,0,4),addi(4,0,93),geometry(38,0,4),geometry(35),geometry(36),BigInt("30500073",16))
   require(gs.size<=512)
   private def fragment(layer:Int):Vector[BigInt]={
-    val inputs=if(layer==0)70 else 74
+    val inputs=if(samplePlaneQualification){if(layer==0)75 else 77}else if(layer==0)70 else 74
+    val sampleInput=if(layer==0)72 else 74
     val code=mutable.ArrayBuffer[BigInt](BigInt("00241393",16),BigInt("007083b3",16),BigInt("c1027057",16))
     def store(array:Int):Unit=code++=Seq(addi(6,7,array*16),vm(6,1,true))
     def constant(bits:BigInt,array:Int):Unit={
@@ -57,14 +59,20 @@ class NativeLayeredFourImageSpec extends AnyFlatSpec {
         for(_<-0 until slot%4)code+=vfadd(1,1,1)
         code+=vfadd(2,2,1)
       }
+      if(samplePlaneQualification){
+        val source=if(c<2)sampleInput+1+c else 70+c-2
+        code++=Seq(addi(5,7,source*16),vm(5,1,false),vfadd(2,2,1))
+      }
       code++=Seq(addi(6,7,(inputs+c)*16),vm(6,2,true))
     }
     for(location<-1 to 2;c<-0 until 4){
-      if(layer==1 && c==0)copy(if(location==1)72 else 73,inputs+location*4+c)
+      if(samplePlaneQualification && location==1 && c==0)copy(sampleInput,inputs+location*4+c)
+      else if(samplePlaneQualification && layer==1 && location==1 && c==1)copy(72,inputs+location*4+c)
+      else if(layer==1 && c==0)copy(if(location==1)72 else 73,inputs+location*4+c)
       else constant(if(c==0){if(location==1)7 else 0}else location*10+c,inputs+location*4+c)
     }
     for(c<-0 until 4)constant(fp(Vector(0.25,0.5,0.75,1.0)(c)),inputs+12+c)
-    copy(2,inputs+16);constant(61,inputs+17)
+    copy(2,inputs+16);constant(if(samplePlaneQualification)61+64+(5<<7) else 61,inputs+17)
     code+=BigInt("30500073",16);require(code.size<=512);code.toVector
   }
   private case class Plane(location:Int,resolve:Boolean,allocation:BigInt) {
@@ -89,6 +97,8 @@ class NativeLayeredFourImageSpec extends AnyFlatSpec {
     private val held=mutable.Map.empty[String,BigInt]
     private val primitiveTuples=mutable.Set.empty[(Int,Int)]
     private val pixelTuples=mutable.Set.empty[(Int,Int)]
+    private val pixelCounts=mutable.Map.empty[(Int,Int),Int].withDefaultValue(0)
+    private val testedCounts=mutable.Map.empty[(Int,Int),Int].withDefaultValue(0)
     private val layerTuples=mutable.Set.empty[(Int,Int)]
     private val tileTuples=mutable.Set.empty[Int]
     private var tileEngines=0;private var checkHealthy=true
@@ -118,9 +128,9 @@ class NativeLayeredFourImageSpec extends AnyFlatSpec {
       allocation(0x300000,0x300000+1216,write=true)
       for(a<-0x300000 until 0x301000){memory.bytes(a)=0x6d;if(a>=0x300000+1200)guards(a)=0x6d}
       for(h<-0 until 2){
-        val prefix=if(h==0)1408 else 1472
+        val prefix=if(samplePlaneQualification){if(h==0)1488 else 1520}else if(h==0)1408 else 1472
         val state=Map[String,BigInt]("version"->2,"engineCount"->4,
-          "fragment.version"->(if(h==0)1 else 5),"fragment.identity.context"->7,
+          "fragment.version"->(if(samplePlaneQualification){if(h==0)6 else 7}else if(h==0)1 else 5),"fragment.identity.context"->7,
           "fragment.identity.pass"->8,"fragment.identity.generation"->9,
           "fragment.shaderPc"->(0x8000+h*4096),"fragment.varyingSlots"->16,
           "fragment.colorSlots"->4,"fragment.colorMask"->15,"fragment.sampleMode"->2,
@@ -180,8 +190,13 @@ class NativeLayeredFourImageSpec extends AnyFlatSpec {
         if(checkHealthy && o.valid.peek().litToBoolean && o.ready.peek().litToBoolean){
           val r=o.bits;val layer=r.layer.peek().litValue.toInt;assert(layer==0 || layer==1)
           checkIdentity(r.pixels.identity);r.pixels.status.expect(0.U)
-          r.pixels.testedSamples.expect(4.U);r.pixels.passingSamples.expect(4.U)
-          assert(pixelTuples.add((e,layer)),"duplicate pixel retirement for an image layer")
+          val key=(e,layer);val tested=r.pixels.testedSamples.peek().litValue.toInt
+          if(samplePlaneQualification){assert(tested==0 || tested==1);r.pixels.passingSamples.expect(tested.U)
+            pixelCounts(key)+=1;testedCounts(key)+=tested;assert(pixelCounts(key)<=4,"duplicate sample-plane retirement")
+            pixelTuples+=key
+          }else{r.pixels.testedSamples.expect(4.U);r.pixels.passingSamples.expect(4.U)
+            assert(pixelTuples.add(key),"duplicate pixel retirement for an image layer")}
+
           val primitive=r.pixels.primitiveId.peek().litValue.toInt
           assert(if(layer==0)primitive>=0 && primitive<4 else primitive==93)
         }
@@ -217,7 +232,7 @@ class NativeLayeredFourImageSpec extends AnyFlatSpec {
       assert(condition,s"$label stalled cycles=${memory.cycle} draws=$ordinal launches=$launches tiles=$tiles layers=$layers")}
     def begin(check:Boolean=true):Unit={
       checkHealthy=check;primitiveTuples.clear();pixelTuples.clear();layerTuples.clear();tileTuples.clear();tileEngines=0
-      ordinal=0;tiles=0;layers=0;stores=0;acknowledgements=0
+      ordinal=0;tiles=0;layers=0;stores=0;acknowledgements=0;pixelCounts.clear();testedCounts.clear()
       val q=d.io.begin.bits;zero(q);q.version.poke(1.U)
       val a=q.bins.producer;val b=q.bins.bins
       a.version.poke(1.U);a.arena.version.poke(1.U);identity(a.arena.identity)
@@ -276,23 +291,36 @@ class NativeLayeredFourImageSpec extends AnyFlatSpec {
     def end():Unit={d.io.end.valid.poke(true.B);d.io.end.bits.poke(true.B)
       until("end")(d.io.end.ready.peek().litToBoolean);tick();d.io.end.valid.poke(false.B)}
     private def clear(i:Int):Vector[BigInt]=if(i==1 || i==2)Vector(0,1,2,3).map(BigInt(_))else Vector.fill(4)(fp(0.125))
-    private def packed(i:Int,layer:Int,x:Int):BigInt={
-      val populated=targets(x)
+    private def packed(i:Int,layer:Int,x:Int,sample:Int,resolve:Boolean):BigInt={
+      def source(s:Int):Vector[BigInt]={
+        val populated=targets(x) && (!samplePlaneQualification || (s&1)==0)
+        if(!populated)clear(i)else i match {
+          // Independent binary-fraction source sum plus actual shader sample
+          // position (xy) and recomputed pointCoord (zw). No shader VM oracle.
+          case 0=>(0 until 4).map{c=>val position=if(c%2==0){if((s&1)==0)0.25 else 0.75}else if((s&2)==0)0.25 else 0.75
+            fp((if(layer==0)17.375 else 45.0)+c*0.46875+(if(samplePlaneQualification)position else 0))}.toVector
+          case 1=>if(samplePlaneQualification)Vector(s,if(layer==0)11 else 93,12,13).map(BigInt(_))else Vector(if(layer==0)7 else 93,11,12,13).map(BigInt(_))
+          case 2=>Vector(layer,21,22,23).map(BigInt(_))
+          case _=>Vector(0.25,0.5,0.75,1.0).map(fp)
+        }
+      }
+      val populated=targets(x) && (!samplePlaneQualification || (sample&1)==0)
       if(i==4){if(populated)fp(0.5)else fp(1)}
       else if(i==5)7
-      else encode(names(i),if(!populated)clear(i)else i match {
-        // Sum weights 1,2,4,8 over each group of four slots. The source's
-        // binary fractions and every intermediate addition are exact FP32.
-        case 0=>(0 until 4).map(c=>fp((if(layer==0)17.375 else 45.0)+c*0.46875)).toVector
-        case 1=>Vector(if(layer==0)7 else 93,11,12,13).map(BigInt(_))
-        case 2=>Vector(layer,21,22,23).map(BigInt(_))
-        case _=>Vector(0.25,0.5,0.75,1.0).map(fp)
-      })._1
+      else if(resolve && i==0){
+        val average=Vector.tabulate(4)(c=>fp((0 until 4).map(s=>TypedColorReference.value(source(s)(c))).sum/4))
+        encode(names(i),average)._1
+      }else if(resolve && i==3){
+        val packedSamples=Vector.tabulate(4)(s=>encode(names(i),source(s))._1)
+        val average=Vector.tabulate(4){c=>val decoded=packedSamples.map(w=>(((w>>(c*8))&255).toDouble/255).toFloat.toDouble)
+          fp(decoded.sum/4)}
+        encode(names(i),average)._1
+      }else encode(names(i),source(sample))._1
     }
     private def checkBacking():Unit={
       for(p<-planes){val expected=mutable.Map.empty[BigInt,Int]
         for(layer<-0 until 2;x<-0 until 25;s<-0 until p.samples;b<-0 until sizes(p.location))
-          expected(p.address(layer,x,s)+b)=((packed(p.location,layer,x)>>(8*b))&255).toInt
+          expected(p.address(layer,x,s)+b)=((packed(p.location,layer,x,s,p.resolve)>>(8*b))&255).toInt
         for(a<-p.allocation until p.end)assert(memory.bytes(a)==expected.getOrElse(a,0xa7),
           s"attachment mismatch location=${p.location} resolve=${p.resolve} address=0x${a.toString(16)} got=${memory.bytes(a)} expected=${expected.getOrElse(a,0xa7)}")
       }
@@ -310,6 +338,8 @@ class NativeLayeredFourImageSpec extends AnyFlatSpec {
         assert(tileTuples.toSet==(0 until 4).toSet && tileEngines==15)
         assert(layerTuples.toSet==(for(tile<-0 until 4;layer<-0 until 2)yield(tile,layer)).toSet)
         assert(pixelTuples.toSet==(for(engine<-0 until 4;layer<-0 until 2)yield(engine,layer)).toSet)
+        if(samplePlaneQualification)for(engine<-0 until 4;layer<-0 until 2){
+          assert(pixelCounts((engine,layer))==4 && testedCounts((engine,layer))==2,"missing or duplicated sample-plane or shader-mask effect")}
         assert(primitiveTuples.toSet==(0 until 8).map(sequence=>(sequence%4,sequence)).toSet)
         checkBacking()}
       val held=r.peek().litValue;for(_<-0 until 7){tick();d.io.completion.valid.expect(true.B);assert(r.peek().litValue==held);d.io.begin.ready.expect(false.B)}
@@ -319,8 +349,8 @@ class NativeLayeredFourImageSpec extends AnyFlatSpec {
     def healthy():Unit={begin();draw(0);draw(1);end();finish()}
   }
   it should "execute mixed VS and GS through four real layered images and retain allocation replies across peer cancellation" in {
-    require(sys.props.get("opengpu.nativeLayeredFourImageQualification").contains("1"),"select this local qualification explicitly")
-    simulate(new NativeLayeredFourImageHarness){d=>val t=new Driver(d);t.install();t.healthy()
+    require(sys.props.get(if(samplePlaneQualification)"opengpu.nativeLayeredSamplePlaneQualification"else "opengpu.nativeLayeredFourImageQualification").contains("1"),"select this local qualification explicitly")
+    simulate(new NativeLayeredFourImageHarness(samplePlaneQualification)){d=>val t=new Driver(d);t.install();t.healthy()
       t.begin(check=false);t.draw(0);t.draw(1)
       for(i<-1 to 4)d.io.holdPayloadReply(i).poke(true.B)
       t.end();t.until("four real held allocation replies")((1 to 4).forall(i=>d.io.payloadReplyHeld(i).peek().litToBoolean))
@@ -328,7 +358,7 @@ class NativeLayeredFourImageSpec extends AnyFlatSpec {
       val replies=(1 to 4).map{i=>val r=d.io.payloadReply(i)
         r.valid.expect(true.B);r.bits.operation.expect(ShaderPayloadControl.allocate.U)
         r.bits.resident.expect(true.B);r.bits.spill.expect(false.B);r.bits.fault.expect(false.B)
-        r.bits.context.expect(7.U);r.bits.bytes.expect(1408.U);r.bits.peek().litValue}
+        r.bits.context.expect(7.U);r.bits.bytes.expect((if(samplePlaneQualification)1488 else 1408).U);r.bits.peek().litValue}
       assert((1 to 4).map(i=>d.io.payloadReply(i).bits.handle.peek().litValue).distinct.size==4,
         "four image owners must hold distinct resident reservations")
       d.io.payloadCancel(2).poke(true.B);t.tick();d.io.payloadCancel(2).poke(false.B)
@@ -338,7 +368,7 @@ class NativeLayeredFourImageSpec extends AnyFlatSpec {
       for(i<-1 to 4)d.io.holdPayloadReply(i).poke(false.B)
       t.finish(4);t.healthy()
       assert(t.geometryLaunches==12)
-      info(s"FOUR_IMAGE_COMPONENT frame=25x1 layers=2 samples=4 MRT=4 slots=16 directory=65536 payload=512KiB actual2CU4x1 cancellationNoResetReuse=true launches=${t.launches}")
+      info(s"FOUR_IMAGE_COMPONENT samplePlanes=$samplePlaneQualification frame=25x1 layers=2 samples=4 MRT=4 slots=16 directory=65536 payload=512KiB actual2CU4x1 cancellationNoResetReuse=true launches=${t.launches}")
     }
   }
 }

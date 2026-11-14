@@ -150,6 +150,31 @@ class Fp32FragmentInterpolatorSpec extends AnyFlatSpec {
       info("FP32_INTERPOLATION directedQuads=7 signed64Areas=true negativeArea=true helperExtrapolation=true flatNaNBits=true inactiveSlotsZero=true reciprocalExponent149=true")
     }
   }
+  it should "recompute complete sample-plane perspective inputs and keep all four spatial helper lanes" in {
+    val full=VertexShaderStageConfig()
+    simulate(new Fp32FragmentInterpolator(full,g)){d=>val t=new Driver(d,full)
+      val values=data(full).copy(inv=Vector(1.0,0.5,2.0).map(x=>decode(fp(x))),
+        depth=Vector(0.125,0.5,0.875).map(fp),values=Vector.tabulate(3,64)((v,c)=>fp((v+1)*(c+1)/64.0)),flat=BigInt("aaaaaaaaaaaaaaaa",16))
+      val area=BigInt(1024)*1024
+      def edges(x:Int,y:Int):Vector[BigInt]=Vector(area-1024*x-1024*y,BigInt(1024)*x,BigInt(1024)*y)
+      for(mode<-0 to 2;id<-0 until (1<<mode)){
+        val centers=Vector.tabulate(4)(i=>Sample(edges(128+(i%2)*256,128+(i/2)*256),area,if(i==3)0 else 1<<id,i%2,i/2))
+        t.prepare(values,centers)
+        val dx=if(mode==0)0 else if((id&1)!=0)64 else -64
+        val dy=if(mode==0)0 else if((id&(if(mode==1)1 else 2))!=0)64 else -64
+        // Independent geometric evaluation at the requested fixed sample point.
+        t.expected=centers.zipWithIndex.map{case(pixel,i)=>lane(values,pixel.copy(edges=edges(128+(i%2)*256+dx,128+(i/2)*256+dy)))}
+        val q=d.io.in.bits;q.sampleMode.poke(mode.U);q.sampleLocation.valid.poke(true.B);q.sampleLocation.bits.poke(id.U)
+        for((xy,i)<-Vector((0,0),(1024,0),(0,1024)).zipWithIndex){
+          q.primitive.vertices(i).screenX.poke(xy._1.S);q.primitive.vertices(i).screenY.poke(xy._2.S)}
+        t.ready=false;t.submit();t.until(d.io.out.valid.peek().litToBoolean)
+        d.io.out.bits.perSample.expect(true.B);d.io.out.bits.sampleId.expect(id.U)
+        for(l<-d.io.out.bits.lanes){l.sampleLocationValid.expect(true.B);l.sampleLocation.expect(id.U);l.sampleDepthValid.expect(false.B)}
+        for(_<-0 until 9)t.tick();t.ready=true;t.finish()
+      }
+      t.run(values) // No-reset return to the original center ABI.
+    }
+  }
   it should "retain exact wide-gradient cancellation and reject overflowing covered-sample edges" in {
     simulate(new Fp32FragmentInterpolator(p,g)) { d=>val t=new Driver(d)
       val minimum= -(BigInt(1)<<63);val maximum=(BigInt(1)<<63)-1
