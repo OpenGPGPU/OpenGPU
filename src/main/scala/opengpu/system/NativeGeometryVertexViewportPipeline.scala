@@ -22,7 +22,7 @@ class NativeGeometryVertexViewportCompletion extends Bundle {
   import NativeGeometryVertexViewportPipeline._
   val identity=new GraphicsWorkIdentity
   val status=UInt(3.W)
-  /** 1=viewport admission, 2=VS/GS source, 3=clip, 4=viewport execution. */
+  /** 1=viewport admission, 2=VS/GS source, 3=clip, 4=viewport execution, 5=feedback. */
   val faultStage=UInt(3.W)
   val source=new NativeGeometryVertexCompletion
   val clipFaultValid=Bool();val clipFault=new PrimitiveClipCompletion
@@ -51,12 +51,14 @@ class NativeGeometryVertexViewportCompletion extends Bundle {
 class NativeGeometryVertexViewportPipeline(config: GpuConfig,p: VertexShaderStageConfig,
     shared: SharedCuShaderConfig,viewport: Fp32ViewportConfig=Fp32ViewportConfig(),
     useSramBlackBoxes: Boolean=false,payload: Option[ShaderPayloadConfig]=None,
-    payloadOwner: Int=0,groupedTexture: Boolean=false,allowOrdinary: Boolean=false) extends Module {
+    payloadOwner: Int=0,groupedTexture: Boolean=false,allowOrdinary: Boolean=false,
+    transformFeedback:Boolean=false) extends Module {
   import NativeGeometryVertexViewportPipeline._
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
     val task=Flipped(Decoupled(new NativeGeometryVertexViewportTask(p,sharedConfig.taskIdWidth)))
     val ordinary=if(allowOrdinary)Some(Input(Bool()))else None
+    val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
     val out=Decoupled(new GeometryWindowPrimitive(p))
     val completion=Decoupled(new NativeGeometryVertexViewportCompletion)
     val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,
@@ -69,7 +71,8 @@ class NativeGeometryVertexViewportPipeline(config: GpuConfig,p: VertexShaderStag
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val source=Module(new NativeGeometryVertexPipeline(config,p,shared,useSramBlackBoxes,
-    payload,payloadOwner,groupedTexture,allowOrdinary))
+    payload,payloadOwner,groupedTexture,allowOrdinary,rawOutputs=transformFeedback))
+  private val feedback=if(transformFeedback)Some(Module(new GeometryTransformFeedbackStage(config,p)))else None
   private val clip=Module(new PrimitiveClipStage(p,useSramBlackBoxes))
   private val prep=Module(new Fp32ViewportStage(p,viewport))
   private val task=Reg(new NativeGeometryVertexViewportTask(p,shared.taskIdWidth))
@@ -84,15 +87,19 @@ class NativeGeometryVertexViewportPipeline(config: GpuConfig,p: VertexShaderStag
   private val clipInputId=Reg(UInt(32.W));private val clipInvocation=Reg(UInt(6.W));private val clipLayer=Reg(UInt(32.W))
   private val prepInputId=Reg(UInt(32.W));private val prepInvocation=Reg(UInt(6.W));private val prepLayer=Reg(UInt(32.W))
   private val payloadContext=payload.map(_=>Reg(UInt(32.W)))
-  private val externalCancel=io.cancel || io.payload.map(_.cancel).getOrElse(false.B)
+  private val feedbackScope=if(transformFeedback)Some(Reg(new TransformFeedbackScope))else None
+  private val externalCancel=io.cancel || io.payload.map(_.cancel).getOrElse(false.B) ||
+    io.feedback.map(_.cancel).getOrElse(false.B)
   private val sourceFault=source.io.completion.valid && source.io.completion.bits.status=/=0.U
   private val clipFault=clip.io.completion.valid && clip.io.completion.bits.status=/=0.U && clip.io.completion.bits.status=/=4.U
   private val prepFault=prep.io.completion.valid && prep.io.completion.bits.status=/=0.U && prep.io.completion.bits.status=/=4.U
-  private val stop=status=/=0.U || externalCancel || sourceFault || clipFault || prepFault
+  private val feedbackFault=feedback.map(f=>f.io.result.valid && f.io.result.bits.status=/=0.U).getOrElse(false.B)
+  private val stop=status=/=0.U || externalCancel || sourceFault || clipFault || prepFault || feedbackFault
   private def fail(code: UInt,stage: Int): Unit=
     when(status===0.U && !externalCancel){status:=code;faultStage:=stage.U}
 
-  io.task.ready:= !active && !externalCancel;io.busy:=active
+  io.task.ready:= !active && !externalCancel && !io.feedback.map(f=>f.busy || f.command.valid).getOrElse(false.B)
+  io.busy:=active || io.feedback.map(_.busy).getOrElse(false.B)
   when(io.task.fire){
     task:=io.task.bits;active:=true.B;started:=false.B;done:=false.B
     ordinaryTask.foreach(_:=io.ordinary.get)
@@ -100,6 +107,7 @@ class NativeGeometryVertexViewportPipeline(config: GpuConfig,p: VertexShaderStag
     val legal=Fp32ViewportState.legal(io.task.bits.viewport)
     offered:=legal;sourceDone:= !legal;status:=Mux(legal,0.U,1.U);faultStage:=Mux(legal,0.U,1.U)
     payload.foreach(_=>payloadContext.get:=io.payload.get.context)
+    feedbackScope.foreach(_:=io.feedback.get.scope)
   }
   source.io.task.valid:=offered;source.io.task.bits:=task.source
   when(source.io.task.fire){offered:=false.B;started:=true.B}
@@ -113,14 +121,34 @@ class NativeGeometryVertexViewportPipeline(config: GpuConfig,p: VertexShaderStag
     source.io.payload.get.cancel:=active && started && stop;io.payloadPins.get:=source.io.payloadPins.get
   }
 
-  clip.io.in.valid:=active && !stop && source.io.out.valid && clip.io.in.ready
-  clip.io.in.bits:=source.io.out.bits.primitive
-  source.io.out.ready:=active && (stop || clip.io.in.ready)
+  private val mapped=Wire(Decoupled(new GeometryMappedPrimitive(p)))
+  feedback match {
+    case Some(f)=>
+      TransformFeedbackPipelineIO.forward(io.feedback.get,f.io.feedback,
+        Mux(io.task.fire,io.feedback.get.scope,feedbackScope.get), !active)
+      f.io.in.valid:=active && !stop && source.io.out.valid && f.io.in.ready
+      f.io.in.bits:=source.io.out.bits
+      source.io.out.ready:=active && (stop || f.io.in.ready)
+      mapped<>f.io.out;f.io.cancel:=active && stop
+    case None=>mapped<>source.io.out
+  }
+  clip.io.in.valid:=active && !stop && mapped.valid && clip.io.in.ready
+  clip.io.in.bits:=mapped.bits.primitive
+  mapped.ready:=active && (stop || clip.io.in.ready)
   when(source.io.out.fire){counts.mappedInputs:=counts.mappedInputs+1.U
-    when(!clip.io.in.fire){counts.droppedMapped:=counts.droppedMapped+1.U}}
+    if(!transformFeedback)when(!clip.io.in.fire){counts.droppedMapped:=counts.droppedMapped+1.U}
+  }
+  if(transformFeedback){
+    val dropped=source.io.out.fire && !feedback.get.io.in.fire
+    val exportDropped=feedback.get.io.dropped
+    val outputDropped=mapped.fire && !clip.io.in.fire
+    when(dropped || exportDropped || outputDropped){
+      counts.droppedMapped:=counts.droppedMapped+dropped.asUInt+exportDropped.asUInt+outputDropped.asUInt
+    }
+  }
   when(clip.io.in.fire){counts.clipInputs:=counts.clipInputs+1.U
-    clipInputId:=source.io.out.bits.inputPrimitiveId;clipInvocation:=source.io.out.bits.invocationId
-    clipLayer:=source.io.out.bits.layer}
+    clipInputId:=mapped.bits.inputPrimitiveId;clipInvocation:=mapped.bits.invocationId
+    clipLayer:=mapped.bits.layer}
   prep.io.in.valid:=active && !stop && clip.io.out.valid && prep.io.in.ready
   prep.io.in.bits.clipped:=clip.io.out.bits;prep.io.in.bits.viewport:=task.viewport
   clip.io.out.ready:=active && (stop || prep.io.in.ready)
@@ -161,7 +189,17 @@ class NativeGeometryVertexViewportPipeline(config: GpuConfig,p: VertexShaderStag
     when(source.io.completion.bits.status=/=0.U &&
       !(source.io.completion.bits.status===4.U && (clipFault || prepFault))){fail(source.io.completion.bits.status,2)}}
   when(active && externalCancel && !done && status===0.U){status:=4.U;faultStage:=0.U}
-  when(active && sourceDone && !offered && !source.io.busy && !clip.io.busy && !prep.io.busy && !done){
+  feedback.foreach{f=>
+    // The accepted store's authoritative memory fault remains primary when
+    // its reply arrives after draw cancellation. Never replace an earlier
+    // non-cancel source/clip/viewport cause with a secondary abort result.
+    val code=f.io.result.bits.status
+    when(f.io.result.valid && code=/=0.U && (status===0.U || (status===4.U && code=/=4.U))){
+      status:=code;faultStage:=5.U
+    }
+  }
+  when(active && sourceDone && !offered && !source.io.busy && !clip.io.busy && !prep.io.busy &&
+    !feedback.map(_.io.busy).getOrElse(false.B) && !done){
     result:=counts;result.identity:=task.source.draw.vertex.input.identity
     result.status:=Mux(externalCancel && status===0.U,4.U,status);result.faultStage:=faultStage
     result.source:=summary;done:=true.B

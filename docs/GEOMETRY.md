@@ -1112,8 +1112,67 @@ retains two original-chain slots per engine and releases a running permit only
 when its public tile result is accepted. Healthy empty chains reach the actual
 image lifecycle; unusable fault-empty chains report without image writes.
 This wiring has compiled; its complete four-owner rendering execution is not
-yet qualified. The development route currently rejects transform-feedback
-configuration explicitly; full native GS transform feedback remains required.
+yet qualified. The independent `nativeGeometry` plus `transformFeedback`
+configuration now connects the real source exporter described below; its
+complete source/host execution still requires qualification.
+
+### Native GS transform-feedback source wiring
+
+The optional mixed source routes ordinary assembled vertices or linked GS
+output primitives through `GeometryTransformFeedbackStage` before clipping.
+Both source mappers retain raw varying values until the original
+`TransformFeedbackExport` finishes its masked stores and receives actual memory
+acknowledgements. Its shared `PrimitiveFlatShading` rule then applies the original
+provoking vertex and flat mask exactly once to the renderer input. GS input
+primitive ID, invocation and layer remain attached to their original primitive
+through backpressure. Discarded and faulted primitives release metadata through
+the real exporter result and drain, without requiring a raster output.
+
+This ordering follows [OpenGL ES 3.2, May 5 2022, §12.2, pp. 336 and 341](https://registry.khronos.org/OpenGL/specs/es/3.2/es_spec_3.2.pdf#page=354):
+feedback captures the last vertex-processing stage's primitive before
+flatshading and clipping. GS output is captured when GS is active; otherwise
+the ordinary source is captured. Strip lines and triangles are recorded as
+individual primitives, including their shared vertices; incomplete primitives
+produce no capture. The production GS strip assembler supplies this ordering,
+and the exporter retains complete-primitive bounds checks and commits cursor
+and primitive/vertex counts only after its final store acknowledgement.
+
+The existing OGTF object/control and selector ABI, command replies, fixed root,
+mode/cookie/program checks, independently translated auxiliary memory client and
+actual recorded-query events are used end to end. Selectors continue to name
+position, linked varying components and point size; this adds no selectors for
+GS layer or primitive ID. Those remain raster metadata. Draw cancellation aborts
+the current operation while retaining peer objects. Object/control cancellation
+resets objects after owned traffic drains. A late memory-fault reply keeps
+priority over a draw cancellation in both the full frame and the coarse job
+result. The reader accepts this priority only from the already-owned, identity-
+checked child on the explicit feedback route and preserves any earlier
+non-cancel cause. End commands and held replies block reuse
+until real acknowledgement; they cannot create a successful peer result.
+The original 32-invocation, 256-emitted-vertex, sixteen-slot and full pool/API
+capacities remain unchanged.
+
+The changed/new production files and the four-case lifecycle fixture pass
+restricted 768 MiB Scala/Chisel-plugin typechecking. The fixture uses the actual
+GS strip assembler/raw mapper, ordinary raw assembler and exporter; it checks
+raw backing bytes separately from flat renderer inputs, held stores, late
+fault/cancel, peer objects, discard, paused bypass, end replies and reuse without
+reset. An additional reader fixture checks controlled child-completion fault
+priority, the unchanged default route and healthy reuse. These RTL tests have
+not run. Restricted compilation uses read-only
+dependency classes and is not a complete caller rebuild or an execution result.
+Fresh main/test compilation is mandatory before simulation because constructor
+signatures changed. No prior owner model, RTL/source/assertion qualification,
+protected host result or product timing/FPS result qualifies this source change.
+After the scheduled memory window, reproduce from this topic checkout with:
+
+```sh
+sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simSeparateBuild=1 \
+  clean 'Test / compile' \
+  'testOnly opengpu.graphics.GeometryTransformFeedbackStageSpec opengpu.graphics.NativeLayeredGraphicsJobReaderSpec opengpu.graphics.GeometryPrimitiveOutputSpec opengpu.graphics.TransformFeedbackExportSpec'
+python3 -B scripts/test_test_selection.py
+```
 
 `NativeLayeredFourImageSpec` is an explicit local execution fixture for this
 composition. Its submitted frame is 25×1 with two layers and four samples;
