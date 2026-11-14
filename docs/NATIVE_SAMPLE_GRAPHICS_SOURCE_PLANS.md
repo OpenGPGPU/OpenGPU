@@ -54,10 +54,41 @@ The legacy APIs still require their old runtime. Public features stay disabled.
 
 The fixed `test_gallium_sample_graphics_uniforms.py` entry is CPU capture only.
 It requires `--cpu-capture-only`, an explicit strict OGNP0002 profile and the
-actual Linux kernel fixture source. It rejects the old live environment before
-building: no two-owner live controller/receipt contract is implemented here.
+actual Linux kernel fixture source. It rejects every live environment before
+building; this builder has no live mode.
 A real bridge must obtain the profile from the final host probe. Synthetic CPU
 observations do not prove discovery or device execution.
+
+A separate C entry is selected only by compiling both
+`graphics_sample_flow.c` and `graphics_sample_kernel.c` with
+`OPENGPU_NATIVE_SAMPLE_GRAPHICS_LIVE=1` and linking
+`graphics_sample_owner_ipc.c`. It accepts one original-ESSL source directory
+and requires `OPENGPU_SAMPLE_GRAPHICS_HOST_DIRECTORY` and
+`OPENGPU_SAMPLE_GRAPHICS_HOST_PROFILE`. The strict112 profile comes from the
+controller probe. Compiler words, reflection and both source plans go to that
+IPC directory with the fixed READY filenames; original ESSL is read unchanged
+from the source directory. The old live environment is rejected. Default CPU
+admission rejects all four old/new live variables, including empty values,
+before building or compiling a program.
+
+The LIVE entry retains both protected original-program views after releasing
+Gallium references, calls `graphics_sample_graphics_host_execute`, and emits
+`ACTUAL_SAMPLE_GRAPHICS_LIVE_RETIRED` only after its observed execution and
+complete external cleanup/final receipt exchange returns successfully. Failed
+exchange returns nonzero without invoking the CPU capture peer. The Python
+actual-Mesa builder remains CPU-only; no LIVE builder option or public feature
+is enabled by this change.
+
+Five fast admission/entry tests and five kernel-lifetime ASan/UBSan tests pass,
+including original handles closed before external execution, retained job
+references, CPU/LIVE argument and environment separation, missing/empty/mixed
+profiles and invalid compile-mode rejection. These tests use synthetic control
+files and CEASE programs, without actual Mesa LIVE or DUT execution:
+
+```sh
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_gallium_sample_graphics_bridge.py
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_graphics_sample_live.py
+```
 
 Bounded Linux ASan/UBSan validation used original Mesa22.3.6 static libraries
 and the unchanged original ESSL sources: VS308/FS301 words, actual reflection,

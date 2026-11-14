@@ -162,7 +162,7 @@ class KernelLiveTransportTests(unittest.TestCase):
     def test_both_owners_survive_missing_authorization_and_bad_or_missing_cleanup_ack(self):
         for mode in ('cleanup-denied','cleanup-bad','cleanup-missing'):self.case(mode)
     def test_all_external_ack_phases_then_exact_final_observation_matching(self):
-        for mode in ('ok','final-bad'):self.case(mode)
+        for mode in ('ok','closed-inputs','final-bad'):self.case(mode)
 
 
 if __name__=='__main__':unittest.main()
