@@ -8,7 +8,7 @@
  * without this presence bit, a complete BAR, ABI2 and all protected prerequisites.
  * Failure preserves every caller cache byte; no partially validated profile is
  * ever usable by the submission path. This is not a GL feature advertisement. */
-static inline bool opengpu_read_native_geometry_transport_limits(u32 id,u32 flags,u32 caps,
+static inline bool opengpu_native_geometry_transport_limits_impl(u32 id,u32 flags,u32 caps,u32 known_flags,
     unsigned long long mmio_bytes,void *context,u32 (*read_reg)(void *,u32),
     struct opengpu_native_source_limits *limits,bool *transport)
 {
@@ -32,7 +32,7 @@ static inline bool opengpu_read_native_geometry_transport_limits(u32 id,u32 flag
         *limits=value;*transport=false;return true;
     }
     if((id&0xffffu)<GPU_ABI_COMPUTE_RESOURCE_VERSION || !read_reg ||
-        (caps&required)!=required || (flags&~0xfffffu) ||
+        (caps&required)!=required || (flags&~known_flags) ||
         (flags&prerequisites)!=prerequisites || mmio_bytes<0x520)return false;
     for(i=0;i<8;++i){
         value.geometry_words[i]=read_reg(context,OPENGPU_NATIVE_GEOMETRY_TRANSPORT_CAPABILITIES+4*i);
@@ -59,5 +59,13 @@ static inline bool opengpu_read_native_geometry_transport_limits(u32 id,u32 flag
     value.lanes=lanes;value.warps=warps;value.capacity=(u32)capacity;
     value.engines=(value.frame.words[6]>>27)&7u;value.available=true;
     *limits=value;*transport=true;return true;
+}
+/* Keep the published old entry point closed to every newer presence bit. */
+static inline bool opengpu_read_native_geometry_transport_limits(u32 id,u32 flags,u32 caps,
+    unsigned long long mmio_bytes,void *context,u32 (*read_reg)(void *,u32),
+    struct opengpu_native_source_limits *limits,bool *transport)
+{
+    return opengpu_native_geometry_transport_limits_impl(id,flags,caps,0xfffffu,
+        mmio_bytes,context,read_reg,limits,transport);
 }
 #endif

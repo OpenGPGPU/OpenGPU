@@ -41,6 +41,15 @@ object OwnerResourceProfile {
     withComputeAtomics(base.copy(native = base.native.copy(nativeGeometry = true),
       nativeGeometryTransport = true))
   }
+  val sampleStageId = id + "-sample-stage"
+  val sampleStageName = "geometry-compute-sample"
+  // A new factory with an explicit presence record. The 104-word target remains frozen.
+  val sampleStage: NativeAlignmentHostConfig = target.copy(native = target.native.copy(sampleShading = true))
+  require(sampleStage.nativeSampleTransport && sampleStage.requiredDiscovery.size == 112 &&
+    sampleStage.requiredDiscovery.toMap.apply(0x368) == 0x1fffff &&
+    sampleStage.native.payload == target.native.payload &&
+    sampleStage.execution == target.execution, "sample stage preserves complete owner resources")
+
   require(target.requiredDiscovery.size == 104 &&
     target.requiredDiscovery.toMap.apply(0x368) == 0xfffff &&
     target.native.transformFeedback && target.native.engines == 4 &&

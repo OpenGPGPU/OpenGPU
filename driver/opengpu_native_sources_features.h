@@ -14,6 +14,7 @@
 struct opengpu_native_source_limits {
     struct opengpu_native_binned_host_caps frame;
     u32 geometry_words[8]; /* Zero for the legacy VS/FS-only source profile. */
+    u32 sample_words[8]; /* Private GSS1 cache, zero for every older factory. */
     u32 capacity, engines, lanes, warps;
     bool available;
 };

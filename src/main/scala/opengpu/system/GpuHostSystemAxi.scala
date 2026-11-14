@@ -109,7 +109,8 @@ class GpuHostSystemAxi(
   computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false,
   tessellationNative: Boolean = false,
   nativeFragmentImages: Boolean = false, imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false,
-  nativeProtectedSources: Boolean = false, nativeGeometryTransport: Boolean = false
+  nativeProtectedSources: Boolean = false, nativeGeometryTransport: Boolean = false,
+  nativeSampleTransport: Boolean = false
 ) extends RawModule {
   require(!imageAtomicAvailable || imageAvailable, "image atomics require image execution")
   require(!storageAtomicAvailable || storageAvailable, "storage atomics require storage execution")
@@ -124,6 +125,9 @@ class GpuHostSystemAxi(
   private val nativeExecutionLimits = typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty
   require(!nativeGeometryTransport || (nativeProtectedSources && nativeBinnedGraphics.exists(_.nativeGeometry)),
     "GGS1 discovery requires the actual protected layered native geometry pipeline")
+  require(nativeSampleTransport == nativeBinnedGraphics.exists(_.sampleShading) &&
+    (!nativeSampleTransport || nativeGeometryTransport),
+    "GSS1 presence must match the actual protected sample-plane pipeline")
   require(!nativeProtectedSources || (nativeBinnedGraphics.exists(n => n.descriptorPreflight &&
     n.translateImageViews) && sharedGraphics && version>=2),
     "native protected source discovery requires translated preflight and the shared native shader path")
@@ -339,6 +343,7 @@ class GpuHostSystemAxi(
       tessellationDiscovery=tessellationNative && version>=2,
       nativeDescriptorPreflight=nativeBinnedGraphics.exists(_.descriptorPreflight),
       nativeProtectedSources=nativeProtectedSources,nativeGeometryTransport=nativeGeometryTransport,
+      nativeSampleTransport=nativeSampleTransport,
       nativeAdvancedDraws=typedGraphics.exists(_.storage.nativeAdvancedDraws) || nativeBinnedGraphics.exists(_.storage.nativeAdvancedDraws)))
     val system = Module(new GpuSystem(
       gpuConfig,
