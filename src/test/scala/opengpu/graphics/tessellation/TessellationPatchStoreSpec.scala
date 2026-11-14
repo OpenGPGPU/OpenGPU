@@ -102,6 +102,27 @@ class TessellationOwnedPatchStoreSpec extends AnyFlatSpec {
         access(true,false,v,c,write=true,data=0x20000000L+v*64+c)
       }
       for(c<-0 until 6)access(true,true,0,c,write=true,data=0x30000000L+c,level=true)
+      // Establish real nonzero prior contents independently of write ACKs.
+      // A broken initialized-mode path that drops ordinary writes must fail.
+      for(v<-0 until 32;c<-0 until 64){
+        access(false,false,v,c,expected=0x10000000L+v*64+c)
+        access(true,false,v,c,expected=0x20000000L+v*64+c)
+      }
+      for(c<-0 until 6)access(true,true,0,c,expected=0x30000000L+c,level=true)
+      end()
+      // Output-dominated initialization must cover its whole range even when
+      // only one input word exists, and when output consists only of perPatch.
+      begin(1,1,32,64,0)
+      access(false,false,0,0);access(true,false,31,63)
+      for(i<-0 until 120){
+        access(true,false,i/64,i%64,write=true,data=0x60000000L+i)
+        access(true,false,i/64,i%64,expected=0x60000000L+i)
+      }
+      end()
+      begin(1,0,1,0,120)
+      for(c<-0 until 120)access(true,true,0,c)
+      access(true,true,0,119,write=true,data=0x70000000L)
+      access(true,true,0,119,expected=0x70000000L)
       end()
       // Full input and coupled output/patch storage, across a layout change.
       begin(32,64,32,60,120)
@@ -109,11 +130,14 @@ class TessellationOwnedPatchStoreSpec extends AnyFlatSpec {
       for(v<-0 until 32;c<-0 until 60)access(true,false,v,c)
       for(c<-0 until 120)access(true,true,0,c)
       for(c<-0 until 6)access(true,true,0,c,level=true)
+      for(c<-0 until 120)access(true,true,0,c,write=true,data=0x50000000L+c)
+      for(c<-0 until 120)access(true,true,0,c,expected=0x50000000L+c)
       end()
       // Growing the output exposes eight old addresses that were unreachable
       // under the previous layout; they must initialize again too.
       begin(32,64,32,64,0)
-      for(c<-56 until 64)access(true,false,31,c)
+      for(v<-30 until 32;c<-0 until 64)access(true,false,v,c)
+      for(c<-0 until 6)access(true,true,0,c,level=true)
       for(c<-0 until 6)access(true,true,0,c,write=true,data=0x40000000L+c,level=true)
       end()
       begin(32,64,32,64,1,status=1);d.io.busy.expect(false.B)
