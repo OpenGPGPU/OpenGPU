@@ -22,10 +22,24 @@ class NativeLayeredFourImageSpec extends AnyFlatSpec {
     (BigInt(1)<<25)|(BigInt(base)<<15)|(BigInt(6)<<12)|(BigInt(v)<<7)|(if(write)0x27 else 7)
   private def geometry(fn:Int,rd:Int=0,rs1:Int=0,rs2:Int=0):BigInt=
     (BigInt(fn)<<25)|(BigInt(rs2)<<20)|(BigInt(rs1)<<15)|(BigInt(rd)<<7)|0x0b
-  private val vs=Vector(BigInt("00241393",16),BigInt("007083b3",16),BigInt("c1027057",16),addi(6,7,112))++
-    (0 until 4).flatMap(c=>Seq(addi(5,7,c*16),vm(5,1,false),vm(6,1,true),addi(6,6,16)))++Vector(BigInt("30500073",16))
+  private def scalarConstant(rd:Int,bits:BigInt):Vector[BigInt]=Vector(
+    ((((bits+0x800)>>12)&0xfffff)<<12)|(BigInt(rd)<<7)|0x37,addi(rd,rd,(bits&4095).toInt))
+  private def vectorScalar(v:Int,x:Int):BigInt=
+    (BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(x)<<15)|(BigInt(4)<<12)|(BigInt(v)<<7)|0x57
+  private def vfadd(vd:Int,vs1:Int,vs2:Int):BigInt=
+    (BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|(BigInt(1)<<12)|(BigInt(vd)<<7)|0x57
+  private val vs={
+    val positions=Vector(BigInt("00241393",16),BigInt("007083b3",16),BigInt("c1027057",16),addi(6,7,112))++
+      (0 until 4).flatMap(c=>Seq(addi(5,7,c*16),vm(5,1,false),vm(6,1,true),addi(6,6,16)))
+    // All sixty-four varying components are distinct nonzero binary fractions.
+    val varyings=(for(slot<-0 until 16;c<-0 until 4)yield
+      scalarConstant(13,fp((slot+1)/32.0+c/128.0))++Vector(vectorScalar(1,13),addi(6,7,(11+slot*4+c)*16),vm(6,1,true))).flatten
+    val code=positions++varyings++Vector(BigInt("30500073",16));require(code.size<=512);code
+  }
   private val gs=(0 until 4).flatMap(c=>Seq(addi(1,0,0),addi(2,0,c),geometry(32,3,1,2),geometry(33,0,2,3))).toVector++
+    (0 until 4).flatMap(c=>scalarConstant(5,fp(0.75+c/128.0))++Vector(addi(2,0,4+c),geometry(33,0,2,5)))++
     Vector(addi(4,0,1),geometry(34,0,4),addi(4,0,93),geometry(38,0,4),geometry(35),geometry(36),BigInt("30500073",16))
+  require(gs.size<=512)
   private def fragment(layer:Int):Vector[BigInt]={
     val inputs=if(layer==0)70 else 74
     val code=mutable.ArrayBuffer[BigInt](BigInt("00241393",16),BigInt("007083b3",16),BigInt("c1027057",16))
@@ -36,7 +50,15 @@ class NativeLayeredFourImageSpec extends AnyFlatSpec {
       store(array)
     }
     def copy(input:Int,output:Int):Unit={code++=Seq(addi(5,7,input*16),vm(5,1,false));store(output)}
-    for(c<-0 until 4)constant(fp(if(layer==0)0.25 else 0.5),inputs+c)
+    for(c<-0 until 4){
+      code+=vectorScalar(2,0)
+      for(slot<-0 until 16){
+        code++=Seq(addi(5,7,(6+slot*4+c)*16),vm(5,1,false))
+        for(_<-0 until slot%4)code+=vfadd(1,1,1)
+        code+=vfadd(2,2,1)
+      }
+      code++=Seq(addi(6,7,(inputs+c)*16),vm(6,2,true))
+    }
     for(location<-1 to 2;c<-0 until 4){
       if(layer==1 && c==0)copy(if(location==1)72 else 73,inputs+location*4+c)
       else constant(if(c==0){if(location==1)7 else 0}else location*10+c,inputs+location*4+c)
@@ -232,16 +254,18 @@ class NativeLayeredFourImageSpec extends AnyFlatSpec {
       q.draw.raster.pointSize.poke(fp(1).U);q.draw.raster.sampleMode.poke(2.U)
       val v=q.draw.vertex.geometry.vertex
       v.version.poke(1.U);v.shaderPc.poke(0x1000.U);v.attributeSlots.poke(1.U);v.varyingSlots.poke(16.U)
+      v.varyingMask.poke(((BigInt(1)<<64)-1).U)
       v.input.version.poke(1.U);identity(v.input.identity);v.input.count.poke(4.U);v.input.instances.poke(1.U)
       view(v.input.bindings(0),0x20000,64);v.input.bindings(0).stride.poke(16.U)
       v.input.attributes(0).enabled.poke(true.B);v.input.attributes(0).components.poke(4.U);v.input.attributes(0).format.poke(VertexInputFormat.float32.U)
       view(v.scratch,0x300000,1200);v.sampler.texWidth.poke(1.U);v.sampler.texHeight.poke(1.U)
       val viewport=q.draw.vertex.viewport;viewport.version.poke(1.U);viewport.extentX.poke(32.U);viewport.extentY.poke(1.U);viewport.farDepth.poke(fp(1).U)
       q.geometry.valid.poke((layer==1).B);val g=q.geometry.bits;identity(g.identity)
-      g.inputVertices.poke(1.U);g.invocations.poke(1.U);g.maxVertices.poke(170.U)
-      g.inputComponents.poke(4.U);g.outputComponents.poke(4.U);g.builtinOutputMask.poke(3.U)
+      g.inputVertices.poke(1.U);g.invocations.poke(1.U);g.maxVertices.poke(1.U)
+      g.inputComponents.poke(4.U);g.outputComponents.poke(8.U);g.builtinOutputMask.poke(3.U)
       g.vertexVaryingSlots.poke(16.U);g.fragmentVaryingSlots.poke(16.U);g.programVersion.poke(1.U);g.pc.poke(0x900000.U);view(g.code,0x900000,gs.size*4)
       for(c<-0 until 4){g.inputSources(c).poke(c.U);g.outputSources(c).valid.poke(true.B);g.outputSources(c).bits.poke(c.U)}
+      for(i<-4 until 68){g.outputSources(i).valid.poke(true.B);g.outputSources(i).bits.poke((4+(i-4)%4).U)}
       d.io.draw.valid.poke(true.B);until("draw")(d.io.draw.ready.peek().litToBoolean);tick();d.io.draw.valid.poke(false.B);zero(q)
       until("draw completion")(d.io.drawCompletion.valid.peek().litToBoolean)
       val r=d.io.drawCompletion.bits;r.status.expect(0.U);r.ordinal.expect(ordinal.U)
@@ -257,7 +281,9 @@ class NativeLayeredFourImageSpec extends AnyFlatSpec {
       if(i==4){if(populated)fp(0.5)else fp(1)}
       else if(i==5)7
       else encode(names(i),if(!populated)clear(i)else i match {
-        case 0=>Vector.fill(4)(fp(if(layer==0)0.25 else 0.5))
+        // Sum weights 1,2,4,8 over each group of four slots. The source's
+        // binary fractions and every intermediate addition are exact FP32.
+        case 0=>(0 until 4).map(c=>fp((if(layer==0)17.375 else 45.0)+c*0.46875)).toVector
         case 1=>Vector(if(layer==0)7 else 93,11,12,13).map(BigInt(_))
         case 2=>Vector(layer,21,22,23).map(BigInt(_))
         case _=>Vector(0.25,0.5,0.75,1.0).map(fp)
