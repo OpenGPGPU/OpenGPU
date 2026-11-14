@@ -38,6 +38,7 @@ private class TessellationSystemIsolineImageSharedHarness(transformFeedback:Bool
     val cancel=Input(Bool());val context=Input(UInt(32.W))
     val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(cfg))else None
     val imageLaunch=Output(Bool());val controlLaunch=Output(Bool());val imageRoot=Output(UInt(32.W))
+    val imageLease=Output(Bool())
     val idle=Output(Bool());val reserved=Output(UInt(32.W));val poolDrained=Output(Bool())
   })
   private val stage=Module(new TessellationSystemIsolineImagePipeline(cfg,p,f,SharedCuShaderConfig(2,taskIdWidth=4),
@@ -64,6 +65,7 @@ private class TessellationSystemIsolineImageSharedHarness(transformFeedback:Bool
   io.tileDone<>stage.io.tileDone;io.completion<>stage.io.completion;stage.io.cancel:=io.cancel
   if(transformFeedback)io.feedback.get<>stage.io.feedback.get
   system.io.graphicsKernels.get<>stage.io.shared
+  io.imageLease:=system.io.imageLease.getOrElse(false.B)
   io.imageLaunch:=false.B;io.controlLaunch:=false.B;io.imageRoot:=0.U
   if(sampleImages){
     io.imageLaunch:=stage.io.shared.launch.fire && stage.io.shared.imageTask.get.enabled
@@ -90,10 +92,11 @@ private class TessellationSystemIsolineImageSharedHarness(transformFeedback:Bool
 
 class TessellationSystemIsolineImageSharedSystemSpec extends AnyFlatSpec {
   protected def sampleImageQualification:Boolean=false
+  protected def sampleImageOpcodes:Boolean=false
   import WindowRecordTest.{zero,Memory}
   import TypedColorReference.fp
-  private def vector(fn:Int,form:Int,rd:Int,vs1:Int):BigInt=
-    (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs1)<<15)|(BigInt(form)<<12)|(BigInt(rd)<<7)|0x57
+  private def vector(fn:Int,form:Int,rd:Int,vs1:Int,vs2:Int=0):BigInt=
+    (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|(BigInt(form)<<12)|(BigInt(rd)<<7)|0x57
   private def patch(fn:Int,vs1:Int=0,vs2:Int=0):BigInt=
     (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|0x2b
   private def geometry(fn:Int,rd:Int=0,rs1:Int=0,rs2:Int=0):BigInt=
@@ -122,6 +125,10 @@ class TessellationSystemIsolineImageSharedSystemSpec extends AnyFlatSpec {
     addi(4,0,0),geometry(33,0,4,3),BigInt("be8001b7",16),addi(4,0,1),geometry(33,0,4,3),
     BigInt("3f8002b7",16),addi(4,0,3),geometry(33,0,4,5),addi(4,0,4),geometry(33,0,4,5),
     geometry(35),geometry(36),BigInt("30500073",16))
+  private def image(fn:Int,pair:Int=0,rd:Int=0,vs1:Int=0,vs2:Int=0):BigInt=
+    (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|
+      (BigInt(pair)<<12)|(BigInt(rd)<<7)|0x2b
+  private def imageConstant(sample:Int,component:Int):BigInt=BigInt(0x53000000)+(sample<<12)+component*0x101
   private def sampleProgram:Vector[BigInt]={
     // Full ABI6: 128 threads, 16 varyings, four raw MRTs. Export SampleID,
     // SamplePosition.xy and SampleMaskIn without float/uint reinterpretation.
@@ -131,16 +138,44 @@ class TessellationSystemIsolineImageSharedSystemSpec extends AnyFlatSpec {
       code+=((BigInt((offset+2048)>>12)<<12)|(BigInt(rd)<<7)|0x37)
       code+=addi(rd,rd,offset&4095);code+=add(rd,7,rd)
     }
-    for(location<-0 until 4;(source,c)<-Seq(72,73,74,5).zipWithIndex){
-      address(5,source);code+=vm(5,1,false);address(6,75+location*4+c);code+=vm(6,1,true)
+    def read(array:Int,v:Int):Unit={address(5,array);code+=vm(5,v,false)}
+    def write(array:Int,v:Int):Unit={address(6,array);code+=vm(6,v,true)}
+    for(location<-0 until(if(sampleImageOpcodes)2 else 4);(source,c)<-Seq(72,73,74,5).zipWithIndex){
+      read(source,1);write(75+location*4+c,1)
     }
-    code+=BigInt("30500073",16);code.toVector
+    if(sampleImageOpcodes){
+      // Actual CUSTOM-1 image ISA from GpuComputeUnitImageSpec. GIU1 unit0
+      // is read-only; return its independently initialized raw uint tuple.
+      for((source,v)<-Seq(72->4,73->5,74->6,5->7,0->8,1->9))read(source,v)
+      code+=vector(23,3,2,0) // unit0
+      val control=(TextureImageFormat.id("RGBA32UI")<<6)|40 // 2D,uint,format-qualified
+      code+=addi(13,0,control);code+=vector(23,4,3,13)
+      code+=vector(23,3,16,0) // z and reserved are zero
+      code+=image(8,vs1=2,vs2=3);code+=image(8,pair=1,vs1=16,vs2=16)
+      code+=image(9,rd=10,vs1=4,vs2=16) // imageLoad(unit0,SampleID,0)
+      for(c<-1 until 4)code+=image(11,pair=c,rd=10+c)
+      for(c<-0 until 4)write(87+c,10+c) // MRT3, before pair0 invalidates the load snapshot
+      // Distinct helper rows make a missing invocation side-effect mask
+      // observable in RW backing. Only the fixed 4x4 line is qualified.
+      code+=vector(0x28,3,14,22,8);code+=vector(0x09,3,14,1,14) // (rawX>>22)&1
+      code+=vector(0x28,3,15,23,9);code+=vector(0x09,3,15,3,15) // (rawY>>23)&3
+      code+=vector(0x25,3,17,2,4);code+=vector(0,0,15,17,15) // 4*SampleID+rowClass
+      code+=vector(23,3,2,1);code+=image(8,vs1=2,vs2=3) // unit1
+      code+=image(8,pair=1,vs1=16,vs2=16)
+      code+=image(8,pair=2,vs1=4,vs2=5);code+=image(8,pair=3,vs1=6,vs2=7)
+      code+=image(10,vs1=14,vs2=15) // real imageStore, helpers suppressed by CU policy
+      code+=image(9,rd=10,vs1=14,vs2=15) // dependent read after the store's ACK
+      for(c<-1 until 4)code+=image(11,pair=c,rd=10+c)
+      for(c<-0 until 4)write(83+c,10+c) // MRT2 proves actual store/load result
+    }
+    code+=BigInt("30500073",16);require(code.size<=512);code.toVector
   }
   for(testMode<-(if(sampleImageQualification)Seq("sample-images-0","sample-images-1","sample-images-2")
     else Seq("baseline","capture","discard","fault","reset","reset_fault")))
   it should s"shade controlled isoline patches into typed images with feedback mode=$testMode" in {
     val sampleImages=sampleImageQualification;val sampleMode=if(sampleImages)testMode.last.asDigit else 0
-    if(sampleImages)require(sys.props.get("opengpu.tessellationSampleImageQualification").contains("1"),
+    require(!sampleImageOpcodes || sampleImages)
+    if(sampleImages)require(sys.props.get(if(sampleImageOpcodes)"opengpu.tessellationSampleImageOpsQualification"else "opengpu.tessellationSampleImageQualification").contains("1"),
       "select the full-capacity component qualification explicitly")
     val enabled= !sampleImages && testMode!="baseline";val fault=testMode=="fault" || testMode=="reset_fault"
     val reset=testMode.startsWith("reset");val discard=testMode=="discard"
@@ -153,6 +188,13 @@ class TessellationSystemIsolineImageSharedSystemSpec extends AnyFlatSpec {
         f.memoryRequest.ready,f.memoryResponse.valid,f.memoryResponse.ready))
       feedbackMemory.foreach{m=>m.delay=24;if(fault)m.faultAt=Set(BigInt(0x700000))}
       var imageLaunches=0;var controlLaunches=0
+      var delayedStore=false;var delayedStoreUntil=0;var heldStoreCycles=0
+      var immutableImageBytes=Map.empty[BigInt,Int]
+      if(sampleImageOpcodes)memory.beforeRequest=r=>{
+        if(!delayedStore && r.write && r.address>=0x710000 && r.address<0x711000){
+          delayedStore=true;delayedStoreUntil=memory.cycle+12;memory.holdResponses=true
+        }
+      }
       var recorded=0;var resetIssued=false;var pendingEnd=false
       controlProgram.zipWithIndex.foreach{case(w,i)=>memory.putWord(0x1000+i*4,w)}
       (if(sampleImages)sampleEvaluationProgram else isolineProgram).zipWithIndex.foreach{case(w,i)=>memory.putWord(0x3000+i*4,w)}
@@ -161,6 +203,15 @@ class TessellationSystemIsolineImageSharedSystemSpec extends AnyFlatSpec {
       val clear=Vector(0.1,0.2,0.3,0.4).map(fp)
       def identity(i:GraphicsWorkIdentity):Unit={i.context.poke(7.U);i.pass.poke(8.U);i.generation.poke(9.U)}
       def tick():Unit={
+        if(sampleImageOpcodes && delayedStore && memory.holdResponses){
+          if(memory.cycle>=delayedStoreUntil)memory.holdResponses=false
+          else {
+            assert(memory.pending.exists(r=>r.write && r.address>=0x710000 && r.address<0x711000),
+              "delayed accepted store lost its response owner")
+            d.io.completion.valid.expect(false.B);d.io.idle.expect(false.B);d.io.imageLease.expect(true.B)
+            heldStoreCycles+=1
+          }
+        }
         memory.drive();feedbackMemory.foreach(_.drive())
         if(sampleImages && d.io.imageLaunch.peek().litToBoolean){imageLaunches+=1;d.io.imageRoot.expect(0x9000.U)}
         if(sampleImages && d.io.controlLaunch.peek().litToBoolean)controlLaunches+=1
@@ -208,6 +259,29 @@ class TessellationSystemIsolineImageSharedSystemSpec extends AnyFlatSpec {
       if(sampleImages){
         for((v,w)<-Vector[BigInt](ShaderImagePublicationLayout.magic,64,1,7,8,9,1,1,0x9000,0x9400,0).zipWithIndex)
           memory.putWord(0x8800+4*w,v)
+      }
+      if(sampleImageOpcodes){
+        val format=TextureImageFormat.id("RGBA32UI")
+        def record(unit:Int,allocation:Int,base:Int,width:Int,height:Int,pitch:Int,writable:Boolean):Unit={
+          val words=Array.fill[BigInt](ShaderImageDescriptorLayout.words)(0)
+          for((word,value)<-Seq[(Int,BigInt)](0->ShaderImageDescriptorLayout.magic,1->256,2->1,
+            3->7,4->8,5->9,6->unit,7->1,8->1,9->2,10->1,11->(if(writable)1 else 0),
+            12->format,13->format,14->1,22->allocation,23->(allocation+4096),25->base,
+            26->width,27->height,28->1,29->1,30->pitch,37->16))words(word)=value
+          words.zipWithIndex.foreach{case(value,word)=>memory.putWord(0x9000+unit*256+word*4,value)}
+        }
+        // Preserve the complete published table allocation, including unused
+        // records. All reserved words remain zero, not Bundle-packed data.
+        for(a<-0x9000 until 0x9400)memory.bytes(a)=0
+        for(unit<-2 until 4;(value,word)<-Vector[BigInt](ShaderImageDescriptorLayout.magic,256,1,7,8,9,unit).zipWithIndex)
+          memory.putWord(0x9000+unit*256+word*4,value) // unaccessed slots; no binding acceptance asserted
+        for(a<-0x700000 until 0x701000)memory.bytes(a)=0xa5
+        for(a<-0x710000 until 0x711000)memory.bytes(a)=0xa5
+        record(0,0x700000,0x70003f,4,1,64,writable=false)
+        record(1,0x710000,0x71003f,4,16,128,writable=true)
+        for(s<-0 until 4;c<-0 until 4)memory.putWord(0x70003f+s*16+c*4,imageConstant(s,c))
+        immutableImageBytes=((0x8800 until 0x8840)++(0x9000 until 0x9400)++(0x700000 until 0x701000))
+          .map(a=>BigInt(a)->memory.bytes.getOrElse(BigInt(a),0)).toMap
       }
       for(field<-fields){val raw=values.getOrElse(field.name,BigInt(0))&((BigInt(1)<<(field.words*32))-1)
         for(w<-0 until field.words)memory.putWord(stateBase+(field.word+w)*4,(raw>>(w*32))&0xffffffffL)}
@@ -323,13 +397,43 @@ class TessellationSystemIsolineImageSharedSystemSpec extends AnyFlatSpec {
           val got=Vector.tabulate(4)(c=>memory.word(address+4*c))
           val px=fp(if(sampleMode==0)0.5 else if((s&1)!=0)0.75 else 0.25)
           val py=fp(if(sampleMode==0)0.5 else if((s&(if(sampleMode==1)1 else 2))!=0)0.75 else 0.25)
-          val expected=if(covered((x,y,s)))Vector[BigInt](s,px,py,1<<s)else Vector.fill(4)(BigInt(0))
+          val expected=if(!covered((x,y,s)))Vector.fill(4)(BigInt(0))
+            else if(sampleImageOpcodes && i==3)Vector.tabulate(4)(c=>imageConstant(s,c))
+            else Vector[BigInt](s,px,py,1<<s)
           assert(got==expected,s"sample MRT=$i ($x,$y,$s): $got expected=$expected")
         }
         for(i<-0 until 4;offset<-( -64 until 0)++(16*16*(1<<sampleMode) until 16*16*(1<<sampleMode)+64))
           assert(memory.bytes(0x600000+i*0x10000+offset)==0xa7,"sample source allocation guard changed")
       }
-      info(s"CONTROLLED_ISOLINE_WINDOW_BIN_TYPED_IMAGE_SHARED patches=2 primitives=$primitives tiles=1 cycles=${memory.cycle}")
+      if(sampleImageOpcodes){
+        assert(delayedStore && heldStoreCycles>=11,"no accepted image store ACK was held")
+        immutableImageBytes.foreach{case(address,value)=>
+          assert(memory.bytes.getOrElse(address,0)==value,s"image source/publication/table changed at 0x${address.toString(16)}")}
+        val expectedRw=mutable.Map.empty[BigInt,Int]
+        for(a<-0x710000 until 0x711000)expectedRw(BigInt(a))=0xa5
+        val unit=BigInt(1)<<d.g.subPixelBits
+        val coords=Vector((2*unit,3*unit/2),(4*unit,3*unit/2),(2*unit,3*unit/2))
+        val covered=PointLineReference.samples(coords,1,TriangleRasterReference.Settings(width=4,height=4,mode=sampleMode),
+          d.g,PointLineReference.Sizes(line=1)).flatten
+          .flatMap(p=>(0 until(1<<sampleMode)).filter(s=>(p.mask&(1<<s))!=0).map(s=>(p.x,p.y,s))).toSet
+        for((x,y,s)<-covered){
+          assert(y==1 && (x==2 || x==3),"the independent fixed-line recipe changed")
+          val rgba=Vector[BigInt](s,fp(if(sampleMode==0)0.5 else if((s&1)!=0)0.75 else 0.25),
+            fp(if(sampleMode==0)0.5 else if((s&(if(sampleMode==1)1 else 2))!=0)0.75 else 0.25),1<<s)
+          val address=BigInt(0x71003f)+(4*s+3)*128+(x-2)*16
+          for(c<-0 until 4;b<-0 until 4)expectedRw(address+c*4+b)=((rgba(c)>>(8*b))&255).toInt
+        }
+        expectedRw.foreach{case(address,value)=>
+          assert(memory.bytes(address)==value,s"image RW/helper/padding guard mismatch at 0x${address.toString(16)}")}
+        for(unit<-0 until 2;line<-0 until 4)assert(memory.seen.exists(r=> !r.write && r.address==0x9000+unit*256+line*64),
+          "real CU image descriptor lines must be fetched")
+        assert(memory.seen.exists(r=> !r.write && r.address>=0x700000 && r.address<0x701000),"RO image load did not reach memory")
+        assert(memory.seen.exists(r=>r.write && r.address>=0x710000 && r.address<0x711000),"RW image store did not reach memory")
+        assert(memory.seen.exists(r=> !r.write && r.address>=0x710000 && r.address<0x711000),"RW image readback did not reach memory")
+        d.io.imageLease.expect(false.B)
+        info("TESSELLATION_IMAGE_OPS physical=true actualISA=true loadStoreReadback=true helperRowsGuarded=true delayedStoreAck=true bothCUsOpcodeQualified=false protected112Qualified=false")
+      }
+      info(s"CONTROLLED_ISOLINE_WINDOW_BIN_TYPED_IMAGE_SHARED imageOpcodes=$sampleImageOpcodes patches=2 primitives=$primitives tiles=1 cycles=${memory.cycle}")
     }
   }
 }
