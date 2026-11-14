@@ -95,6 +95,11 @@ class NativeLayeredProductFrameInputsSpec extends AnyFlatSpec {
     val wide = healthy.snapshot()
     writeField(wide, input, "frame.receivedParts", (BigInt(1) << 128) | 1)
     intercept[IllegalArgumentException](NativeLayeredProductFrameInputs.verify(scene, input, wide, 6))
+    val padding = healthy.snapshot()
+    val unused = byName("frame.images.images.fault.replay.faultLayer")
+    assert(unused.width < 32)
+    padding.writeWord(input.completionBase + unused.word * 4, BigInt(1) << 31)
+    intercept[IllegalArgumentException](NativeLayeredProductFrameInputs.verify(scene, input, padding, 6))
     val color = input.planes.find(p => p.location == 0 && !p.resolve).get
     val resolve = input.planes.find(p => p.location == 0 && p.resolve).get
     for (address <- Seq(input.jobBase, input.states.head("fragment.shaderPc").toLong,

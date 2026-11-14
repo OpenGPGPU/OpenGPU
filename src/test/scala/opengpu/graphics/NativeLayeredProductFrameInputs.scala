@@ -88,6 +88,12 @@ object NativeLayeredProductFrameInputs {
     for (word <- 0 until NativeLayeredGraphicsLayout.completionWords if !used(word))
       require(actual.readWord(input.completionBase + word * 4) == 0, "nonzero reserved GNY2 word")
     def value(name: String): BigInt = completionValue(actual, input, name)
+    for (field <- completionFields if field.width % 32 != 0) {
+      val raw = value(field.name)
+      val negative = field.value.isInstanceOf[chisel3.SInt] && raw.testBit(field.width - 1)
+      val padding = if (negative) (BigInt(1) << (field.words * 32 - field.width)) - 1 else BigInt(0)
+      require((raw >> field.width) == padding, s"noncanonical GNY2 ${field.name} padding")
+    }
     val expected = Map[String, BigInt]("commandId" -> commandId, "status" -> 0, "faultStage" -> 0,
       "faultAddress" -> 0, "faultDraw" -> 0, "issuedDraws" -> scene.draws.size,
       "completedDraws" -> scene.draws.size, "frame.version" -> 1, "frame.status" -> 0,
