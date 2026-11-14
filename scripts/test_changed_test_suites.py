@@ -1029,8 +1029,16 @@ class ChangedTestSuitesTest(unittest.TestCase):
             selected = changed_suites(root, [f"src/main/scala/opengpu/graphics/{name}.scala"])
             self.assertIn("opengpu.graphics.VertexInputFetcherSpec", selected)
             self.assertIn("opengpu.graphics.VertexShaderSliceSpec", selected)
+            self.assertIn("opengpu.graphics.TessellationVertexPatchSourceSpec", selected)
             self.assertNotIn("opengpu.graphics.VertexShaderStageSpec", selected)
             self.assertNotIn("opengpu.graphics.VertexShaderTextureMatrixSpec", selected)
+
+    def test_original_vertex_patch_source_selects_protocol_and_actual_cu_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        selected = changed_suites(root,
+            ["src/main/scala/opengpu/system/TessellationVertexPatchSource.scala"])
+        self.assertIn("opengpu.graphics.TessellationVertexPatchPublisherSpec", selected)
+        self.assertIn("opengpu.graphics.TessellationVertexPatchSourceSpec", selected)
 
     def test_early_render_qualification_stays_local_while_shader_owner_checks_remain_required(self):
         root = Path(__file__).resolve().parents[1]

@@ -563,6 +563,10 @@ def changed_suites(root, changed, *, test_index=None):
                   "src/main/scala/opengpu/graphics/VertexShaderStage.scala"}:
         affected.add("src/test/scala/opengpu/graphics/VertexInputFetcherSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/TessellationVertexPatchSourceSpec.scala")
+    if "src/main/scala/opengpu/system/TessellationVertexPatchSource.scala" in changed:
+        affected.add("src/test/scala/opengpu/graphics/TessellationVertexPatchPublisherSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/TessellationVertexPatchSourceSpec.scala")
     if "src/main/scala/opengpu/graphics/TypedFragmentState.scala" in changed:
         affected.add("src/test/scala/opengpu/graphics/TypedFragmentStateReaderSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/TypedFragmentImageStateReaderSpec.scala")
