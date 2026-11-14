@@ -1180,6 +1180,17 @@ host `test_driver.py` entry also passes. These fixtures model OS primitives and
 the final hardware kick; they do not establish GPU execution or observed GNY
 ACKs. Hardware capability discovery remains closed for this new route.
 
+The production driver also passes an ARM64 Linux 7.2 external-module build with
+GCC 15.2, including module linking. Use a kernel configured with the matching
+compiler; keep its source/build trees read-only and place the archived driver
+and all module outputs in a GPU-local temporary directory:
+
+```sh
+/opt/homebrew/bin/gmake -C /Users/duckdonald/workspace/arti-work/arti-linux-build \
+  M=<GPU-local-archived-driver> ARCH=arm64 \
+  CROSS_COMPILE=/opt/homebrew/bin/aarch64-linux-gnu- -j2 gpu_drv.ko
+```
+
 ```sh
 TMPDIR="$PWD/.artifacts" PYTHONDONTWRITEBYTECODE=1 OPENGPU_TEST_SANITIZERS=1 \
   python3 scripts/test_native_layered_snapshot.py --sanitize
