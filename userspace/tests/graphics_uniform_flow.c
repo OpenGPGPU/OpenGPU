@@ -1044,7 +1044,10 @@ static void production_constants(void *program, const char *directory)
 #endif
     no_leaks();
 }
-int main(int argc, char **argv)
+#ifndef OPENGPU_GRAPHICS_UNIFORM_ENTRY
+#define OPENGPU_GRAPHICS_UNIFORM_ENTRY main
+#endif
+int OPENGPU_GRAPHICS_UNIFORM_ENTRY(int argc, char **argv)
 {
     char vertex[4096], fragment[4096], prefix[4096];
     assert(argc == 2);

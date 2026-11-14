@@ -47,18 +47,17 @@ int opengpu_native_job_encode(unsigned context, unsigned pass, unsigned generati
     *output=result;return 0;
 }
 
-int opengpu_native_draw_encode(const struct opengpu_native_draw_request *r,
-    struct opengpu_native_draw_encoding *output)
+int opengpu_native_draw_encode_checked(const struct opengpu_native_draw_request *r,
+    const struct opengpu_native_runtime *runtime,unsigned context_id,struct opengpu_native_draw_encoding *output)
 {
     struct opengpu_native_draw_encoding e={0};
     struct opengpu_native_runtime actual;
-    if (!r || !output || !r->context || !r->sources ||
+    if (!r || !output || !runtime || !r->context || !r->sources ||
         !r->state_count || r->state_handle>=r->state_count || !r->width || !r->height ||
         r->sample_mode>2 || r->topology>6 || !r->instances) { errno=EINVAL;return -1; }
     struct pipe_opengpu_screen *screen=opengpu_screen_gpu(r->context->screen);
-    unsigned context_id=opengpu_native_graphics_context_id(r->context);
     if (!context_id) { errno=ENOTSUP;return -1; }
-    if (opengpu_native_runtime_query(pipe_opengpu_screen_fd(screen),&actual)) return -1;
+    actual=*runtime;
     const struct opengpu_native_graphics_sources *s=r->sources;
     if (memcmp(&actual,&s->runtime,sizeof(actual))) { errno=EPROTO;return -1; }
     const struct opengpu_native_uniform_layout *vs=&s->layout[0],*fs=&s->layout[1];
@@ -180,4 +179,15 @@ int opengpu_native_graphics_submit(struct pipe_context *pipe,
         .resources=(uintptr_t)source->frame->resources,.resource_count=source->frame->resource_count,
         .resource_stride=sizeof(*source->frame->resources)};
     return opengpu_native_submit(pipe_opengpu_screen_fd(screen),&command,fence_sequence);
+}
+
+int opengpu_native_draw_encode(const struct opengpu_native_draw_request *r,
+    struct opengpu_native_draw_encoding *out)
+{
+    struct opengpu_native_runtime runtime;
+    if(!r || !out || !r->context || !r->sources || !r->state_count ||
+        r->state_handle>=r->state_count || !r->width || !r->height || r->sample_mode>2 ||
+        r->topology>6 || !r->instances){errno=EINVAL;return -1;}
+    if(opengpu_native_runtime_query(pipe_opengpu_screen_fd(opengpu_screen_gpu(r->context->screen)),&runtime))return -1;
+    return opengpu_native_draw_encode_checked(r,&runtime,opengpu_native_graphics_context_id(r->context),out);
 }

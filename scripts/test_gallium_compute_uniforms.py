@@ -18,8 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main(control_flow=False, buffer_resources=False, shared_memory=False, memory_barriers=False,
-         storage_atomics=False, texture_namespaces=False, image_ordering=False, atomic_counters=False,
-         shared_publication=False, host_execution=False, graphics_uniforms=False):
+         storage_atomics=False, texture_namespaces=False, image_ordering=False, atomic_counters=False, shared_publication=False, host_execution=False, graphics_uniforms=False, sample_graphics=False):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--build", type=Path, required=True, help="new private output directory")
     ap.add_argument("--sanitize", action="store_true")
@@ -29,6 +28,9 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         ap.add_argument('--profile-wire', type=Path, required=True)
         ap.add_argument('--session', type=Path, required=True)
         ap.add_argument('--capture-only', action='store_true', help='explicit CPU capture only; no DUT execution')
+    if sample_graphics:
+        ap.add_argument("--profile-wire", type=Path, required=True, help="strict OGNP0002 observations; CPU fixtures must be labeled synthetic")
+        ap.add_argument("--cpu-capture-only", action="store_true", required=True, help="modeled control peer only; no GPU or live controller")
     if graphics_uniforms:
         ap.add_argument("--native-kernel-root", type=Path,
                         help="explicit CPU-only actual native Linux handler/owner source fixture")
@@ -48,10 +50,12 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         shared_ntt = args.mesa_shared_ntt.resolve(strict=True)
         if hashlib.sha256(shared_ntt.read_bytes()).hexdigest() != AFTER:
             raise ValueError("exact checked shared NTT postimage required")
+    if sample_graphics and (not args.native_kernel_root or os.environ.get("OPENGPU_NATIVE_HOST_DIRECTORY") or os.environ.get("OPENGPU_NATIVE_HOST_PROFILE")):
+        ap.error("sample graphics requires --native-kernel-root and CPU-only mode; live owner protocol is not implemented")
     out = args.build.resolve()
     out.mkdir(parents=True, exist_ok=False)
     native_kernel = args.native_kernel_root.resolve(strict=True) if graphics_uniforms and args.native_kernel_root else None
-    active_host = graphics_uniforms and bool(os.environ.get("OPENGPU_NATIVE_HOST_DIRECTORY"))
+    active_host = graphics_uniforms and not sample_graphics and bool(os.environ.get("OPENGPU_NATIVE_HOST_DIRECTORY"))
     if active_host != bool(graphics_uniforms and os.environ.get("OPENGPU_NATIVE_HOST_PROFILE")):
         raise SystemExit("active native qualification requires both profile and IPC directory")
     if active_host and not native_kernel:
@@ -138,7 +142,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     if native_kernel:
         inc += ["-I" + str(native_kernel / "driver/tests")]
         import importlib.util
-        component_path = native_kernel / ("scripts/test_native_mmio_capture.py" if active_host else "scripts/test_native_submit.py")
+        component_path = native_kernel / ("scripts/test_native_mmio_capture.py" if active_host or sample_graphics else "scripts/test_native_submit.py")
         if not component_path.is_file():
             raise SystemExit("actual native MMIO prerequisite missing: " + str(component_path))
         spec = importlib.util.spec_from_file_location("native_submit_component", component_path)
@@ -149,13 +153,13 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         component.write_bodies(kernel)
         extra = ["-I" + str(path) for path in (kernel, native_kernel / "driver", native_kernel / "driver/tests",
             native_kernel / "driver/tests/private_snapshot_stubs", native_kernel / "driver/tests/mmu_stubs",
-            native_kernel / "driver/tests/compute_submit_stubs", ROOT / "userspace/tests")]
-        for relative in ("userspace/tests/graphics_native_kernel.c", "userspace/tests/native_graphics_uniform_source.c",
+            native_kernel / "driver/tests/compute_submit_stubs", ROOT / "userspace/tests", ROOT / "userspace")]
+        for relative in (("userspace/tests/graphics_sample_kernel.c" if sample_graphics else "userspace/tests/graphics_native_kernel.c"), "userspace/tests/native_graphics_uniform_source.c",
                          "userspace/tests/graphics_native_owner_ipc.c"):
             source = ROOT / relative
             obj = out / (source.stem + ".o")
             active_flags = ["-DOPENGPU_NATIVE_MMIO=1"] if active_host and source.stem == "graphics_native_kernel" else []
-            run(cc + common + extra + active_flags + san + ["-MMD", "-MF", obj.with_suffix(".d"), "-c", source, "-o", obj],
+            run(cc + common + extra + active_flags + (["-Wno-unused-function"] if sample_graphics else []) + san + ["-MMD", "-MF", obj.with_suffix(".d"), "-c", source, "-o", obj],
                 "compile-" + source.stem)
             objects.append(obj)
     primitives = ["-D" + name + "=cs_fixture_" + name for name in ("ioctl", "mmap", "munmap", "dup", "close")]
@@ -180,7 +184,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
             "-c", ROOT / "userspace/tests/cs_buffer_kernel.c", "-o", obj], "compile-cs_buffer_kernel")
         objects.append(obj)
     for relative, extra in [
-        ("userspace/tests/compute_host_frontend.c" if host_execution else "userspace/tests/graphics_uniform_flow.c" if graphics_uniforms else "userspace/tests/cs_atomic_frontend.c" if storage_atomics else "userspace/tests/cs_barrier_frontend.c" if memory_barriers else "userspace/tests/cs_shared_frontend.c" if shared_memory else "userspace/tests/cs_buffer_flow.c" if buffer_resources else
+        ("userspace/tests/compute_host_frontend.c" if host_execution else "userspace/tests/graphics_sample_flow.c" if sample_graphics else "userspace/tests/graphics_uniform_flow.c" if graphics_uniforms else "userspace/tests/cs_atomic_frontend.c" if storage_atomics else "userspace/tests/cs_barrier_frontend.c" if memory_barriers else "userspace/tests/cs_shared_frontend.c" if shared_memory else "userspace/tests/cs_buffer_flow.c" if buffer_resources else
          "userspace/tests/cs_control_flow.c" if control_flow else "userspace/tests/cs_uniform_flow.c",
          ["-DOPENGPU_CS_TEXTURE_NAMESPACE"] if texture_namespaces else
          ["-DOPENGPU_CS_IMAGE_ORDERING"] if image_ordering else
@@ -195,8 +199,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         ("userspace/pipe_opengpu.c", primitives), ("userspace/opengpu.c", primitives)]:
         if graphics_uniforms and relative == "userspace/tests/cs_graphics_unused_stubs.c":
             continue  # Graphics uses actual Mesa format/surface helpers.
-        if native_kernel and relative == "userspace/tests/graphics_uniform_flow.c":
-            extra = extra + ["-DOPENGPU_CS_NATIVE_KERNEL"] + (["-DOPENGPU_NATIVE_MMIO=1"] if active_host else [])
+        if native_kernel and relative in ("userspace/tests/graphics_uniform_flow.c", "userspace/tests/graphics_sample_flow.c"):
+            extra = extra + ["-DOPENGPU_CS_NATIVE_KERNEL"] + (["-Wno-unused-function"] if sample_graphics else []) + (["-DOPENGPU_NATIVE_MMIO=1"] if active_host else [])
         source = ROOT / relative
         obj = out / (source.stem + ".o")
         run(cc + common + inc + extra + san + ["-MMD", "-MF", obj.with_suffix(".d"), "-c", source, "-o", obj],
@@ -210,7 +214,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         for relative in ("userspace/gallium/opengpu_native_uniform_emit.c",
                          "userspace/gallium/opengpu_native_graphics.c",
                          "userspace/gallium/opengpu_native_draw.c",
-                         "userspace/opengpu_native_runtime.c", "driver/opengpu_native_frame.c"):
+                         "userspace/opengpu_native_runtime.c", "driver/opengpu_native_frame.c") + (("userspace/gallium/opengpu_native_sample_program.c", "userspace/opengpu_native_sample_graphics.c") if sample_graphics else ()):
             source = ROOT / relative
             obj = out / (source.stem + ".o")
             run(cc + common + inc + san + ["-MMD", "-MF", obj.with_suffix(".d"), "-c", source, "-o", obj],
@@ -384,7 +388,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
             (['--capture-only'] if args.capture_only else []), 'actual-compute-capture', env)
         print('Actual Mesa/Linux compute ' + ('CPU capture only' if args.capture_only else 'external-DUT protocol') + ' completed: ' + str(out))
         return
-    run([binary, sources], "actual-acceptance", env)
+    run([binary, sources] + ([args.profile_wire.resolve(strict=True)] if sample_graphics else []), "actual-acceptance", env)
     if shared_memory:
         # Active compiler-to-CU inputs only. The caller removes this private
         # build after the explicit RTL qualifier has consumed the words.
@@ -401,12 +405,15 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
             digest.update((sources / (name + ".native.words")).read_bytes())
         print("ACTUAL_MESA_SHARED_DYNAMIC_INPUT_SHA256=" + digest.hexdigest())
     if graphics_uniforms:
-        from test_gallium_graphics_uniforms import validate_native_metadata
+        if sample_graphics:
+            from test_gallium_sample_graphics_uniforms import validate_native_metadata
+        else:
+            from test_gallium_graphics_uniforms import validate_native_metadata
         validate_native_metadata(sources)
         from native_graphics_uniform_oracle import self_test
         self_test(out)
         if native_kernel:
-            marker = "ACTUAL_GRAPHICS_NATIVE_OWNER_RETIRED records=2 observed=true" if active_host else ("ACTUAL_GRAPHICS_NATIVE_HANDLER_PASS realMesa=true realIoctl=true preparedOwners=2 "
+            marker = "ACTUAL_SAMPLE_GRAPHICS_CPU_CAPTURE_PASS records=2 originalMesaABI1=true originalGUR=true completionBytes=16384 GPU=false hardwareKick=modeled" if sample_graphics else "ACTUAL_GRAPHICS_NATIVE_OWNER_RETIRED records=2 observed=true" if active_host else ("ACTUAL_GRAPHICS_NATIVE_HANDLER_PASS realMesa=true realIoctl=true preparedOwners=2 "
                       "sourceObserver=true sameOriginalGEM=true GPU=false hardwareKick=modeled")
             if (out / "actual-acceptance.log").read_text().splitlines().count(marker) != 1:
                 raise RuntimeError("actual native handler did not complete both CPU qualification records")
@@ -424,6 +431,11 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
             for p in sorted(artifacts.iterdir()))
         (artifacts / "manifest.properties").write_text(manifest)
     (out / "result.json").write_text(json.dumps({"status": "PASS", "GPU_execution": bool(active_host),
+        **({"ownerProfile": "two-cu-vga60-owner-v2-sample-stage",
+            "ownerResourceStage": "geometry-compute-sample", "resourceDiscoveryWords": 112,
+            "nativeJobVersion": 2, "nativeFrameVersion": 3, "nativeCompletionVersion": 2,
+            "shaderABI": 1, "fullResourceQualification": False, "sampleBuiltinQualification": False,
+            "hardwareKick": "modeled"} if sample_graphics else {}),
         "API_compute_enabled": False, "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
         "scope": ("actual linked Mesa ESSL/NIR/TGSI and callbacks/lib, production native ioctl/private owners, "
                   "actual complete-host active execution and independent original-source image/guard oracles; no clock or FPS qualification") if active_host else
