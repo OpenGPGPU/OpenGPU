@@ -97,7 +97,8 @@ static int pt_capture(struct pt_capture *c,const struct opengpu_protected_tessel
   }
   if(sizes[i]>(u64)(~(size_t)0))return -ERANGE;
   if(sizes[i]){if(!input[i])return -EINVAL;c->owned[i]=kvzalloc((size_t)sizes[i],GFP_KERNEL);
-   if(!c->owned[i])return -ENOMEM;memcpy(c->owned[i],input[i],(size_t)sizes[i]);}
+   if(!c->owned[i])return -ENOMEM;
+   memcpy(c->owned[i],input[i],(size_t)sizes[i]);}
  }
  c->source.job=c->owned[0];c->source.frame=c->owned[1];c->source.sequences=c->owned[2];c->source.states=c->owned[3];
  c->source.plans=c->owned[4];c->source.state_plans=c->owned[5];c->source.resources=c->owned[6];return 0;
@@ -121,13 +122,15 @@ static int pt_span(struct pt_span *spans,size_t *count,u32 handle,u64 offset,u64
 static void pt_swap(struct pt_span *a,struct pt_span *b){struct pt_span t=*a;*a=*b;*b=t;}
 static void pt_sift(struct pt_span *s,size_t root,size_t n)
 {while(root<n/2){size_t child=root*2+1;if(child+1<n && s[child].first<s[child+1].first)child++;
- if(s[root].first>=s[child].first)break;pt_swap(s+root,s+child);root=child;}}
+ if(s[root].first>=s[child].first)break;
+ pt_swap(s+root,s+child);root=child;}}
 static int pt_alias(const struct opengpu_protected_tessellation_source *s,const struct opengpu_native_job_copy *copy)
 {
  u64 max=(u64)s->plan_count*29u+(u64)s->state_plan_count*14u+s->resource_count;
  size_t n=0;struct pt_span *spans;int ret=0;
  if(max>(u64)(~(size_t)0)/sizeof(*spans))return -ERANGE;
- if(!max)return 0;spans=kvzalloc((size_t)max*sizeof(*spans),GFP_KERNEL);if(!spans)return -ENOMEM;
+ if(!max)return 0;
+ spans=kvzalloc((size_t)max*sizeof(*spans),GFP_KERNEL);if(!spans)return -ENOMEM;
 #define PT_SPAN(h,o,b,source,write) do {ret=pt_span(spans,&n,h,o,b,source,write,copy);if(ret)goto done;}while(0)
  for(u32 i=0;i<s->plan_count;i++){
   const struct opengpu_protected_tessellation_plan *p=&s->plans[i];
@@ -273,7 +276,8 @@ int opengpu_protected_tessellation_build(struct opengpu_private_snapshot *owner,
  }
  for(u32 i=0;i<state_count;i++){
   const struct opengpu_protected_tessellation_state_plan *p=&s->state_plans[i];
-  if(p->reserved || p->state_handle>=state_count || state_plans[p->state_handle])goto invalid;state_plans[p->state_handle]=p;
+  if(p->reserved || p->state_handle>=state_count || state_plans[p->state_handle])goto invalid;
+  state_plans[p->state_handle]=p;
   const u8 *f=(const u8 *)s->states+(size_t)p->state_handle*512;
   if(!opengpu_tessellation_canonical_words_n(f,512,opengpu_tessellation_fragment_state_word_rules,128) ||
    pt_get(f,0)!=0x47465301u || pt_get(f,1)!=512 || pt_get(f,2)!=1 || pt_get(f,3)!=4 ||
@@ -304,7 +308,8 @@ int opengpu_protected_tessellation_build(struct opengpu_private_snapshot *owner,
   bool c=p->control_uniforms.active_mask || p->control_uniforms.defaults.handle;
   bool e=p->evaluation_uniforms.active_mask || p->evaluation_uniforms.defaults.handle;
   if(c || e){pt_put(d,496,s->context);pt_put(d,497,s->pass);pt_put(d,498,s->generation);}
-  if(c)pt_put(d,499,3);if(e)pt_put(d,504,3);
+  if(c)pt_put(d,499,3);
+  if(e)pt_put(d,504,3);
  }
 
  ret=opengpu_private_snapshot_append(owner,s->states,s->states_bytes,&states);if(ret)goto done;
@@ -352,7 +357,8 @@ int opengpu_protected_tessellation_build(struct opengpu_private_snapshot *owner,
  if(!ret && count)ret=pt_reloc(owner,job,0,18,sequences,s->sequences_bytes,true);
  if(!ret)ret=pt_reloc(owner,job,0,21,frame,0,false);
  if(!ret)ret=pt_reloc(owner,job,0,22,frame,2048,true);
- if(!ret)*out=job;goto done;
+ if(!ret)*out=job;
+ goto done;
  invalid:ret=-EINVAL;
  done:pt_release(&capture);kvfree(plans);kvfree(state_plans);return ret;
 }

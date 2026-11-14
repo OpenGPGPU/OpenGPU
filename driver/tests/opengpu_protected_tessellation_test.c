@@ -160,7 +160,8 @@ static void pt_negatives(struct pt_records *t,struct opengpu_device *gpu,struct 
   case 54:t->source.resource_count--;break;case 55:t->original.job[127]=1;break;
   case 56:t->source.profile.patch_zero_initialized=false;error=-EOPNOTSUPP;break;
   case 57:d[16]=3;d[17]=0x80000000u;d[l->input_components]=0;
-   for(u32 k=0;k<3;k++)t->plans[k].input=(struct opengpu_protected_tessellation_input){0};break;
+   for(u32 k=0;k<3;k++)t->plans[k].input=(struct opengpu_protected_tessellation_input){0};
+   break;
   }
   pt_expect(gpu,context,&t->source,error);
  }
@@ -169,7 +170,8 @@ static void pt_negatives(struct pt_records *t,struct opengpu_device *gpu,struct 
   * layout catalog, including the independent extension's complete 16 words. */
  for(u32 i=3;i<512;i++){
   u32 bits=i<496?(l->rules[i]&127u):0;
-  if(bits==32)continue;u32 old=t->sequences[i];t->sequences[i]=old^(bits?1u<<bits:1u);
+  if(bits==32)continue;
+  u32 old=t->sequences[i];t->sequences[i]=old^(bits?1u<<bits:1u);
   pt_expect(gpu,context,&t->source,-EINVAL);t->sequences[i]=old;
  }
  /* Source and publication metadata cannot share a physical writer cache line,
@@ -226,7 +228,8 @@ int main(void)
   struct opengpu_private_snapshot *owner=opengpu_private_snapshot_create(&gpu,&context);assert(!IS_ERR(owner));u32 segment=0x5a;
   if(domain==2)pt_mutate=records; /* Changes all original caller graph bytes during first lookup. */
   int ret=opengpu_protected_tessellation_build(owner,&records->source,&pt_copy,&segment);
-  if(ret)fprintf(stderr,"protected domain%u build=%d\\n",domain,ret);assert(!ret);
+  if(ret)fprintf(stderr,"protected domain%u build=%d\n",domain,ret);
+  assert(!ret);
   /* Later original-GEM writes cannot alter captured RX or GUR payloads. */
   for(u32 i=0;i<2;i++)memset(graph_original[graph_code[i]].cpu,0x99,graph_original[graph_code[i]].size);
   for(u32 i=0;i<26;i++)memset(graph_original[graph_ubo[i]].cpu,0x99,graph_original[graph_ubo[i]].size);
