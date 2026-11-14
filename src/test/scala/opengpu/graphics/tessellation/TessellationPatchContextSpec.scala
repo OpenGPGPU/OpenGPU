@@ -80,3 +80,46 @@ class TessellationPatchContextSpec extends AnyFlatSpec {
     }
   }
 }
+
+class TessellationOwnedPatchContextSpec extends AnyFlatSpec {
+  import opengpu.graphics.WindowRecordTest._
+  it should "finish initialization and actual context cancellation before healthy reuse without reset" in {
+    simulate(new TessellationPatchContext(zeroOnBegin=true)){d=>
+      zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      def until(done: =>Boolean):Unit={var n=0;while(!done && n<2100){d.clock.step();n+=1};assert(done,"owned patch context stalled")}
+      def submit(vertices:Int,components:Int,patch:Int):Unit={
+        val b=d.io.begin.bits;zero(b);b.taskId.poke(37.U)
+        b.layout.inputVertices.poke(vertices.U);b.layout.inputComponents.poke(components.U)
+        b.layout.outputVertices.poke(vertices.U);b.layout.outputComponents.poke(components.U);b.layout.patchComponents.poke(patch.U)
+        d.io.begin.valid.poke(true.B);d.io.begin.ready.expect(true.B);d.clock.step();d.io.begin.valid.poke(false.B);zero(b)
+      }
+      def opened():Unit={until(d.io.opened.valid.peek().litToBoolean);d.io.opened.bits.expect(0.U)
+        for(_<-0 until 3){d.clock.step();d.io.opened.valid.expect(true.B);d.io.load.ready.expect(false.B);d.io.close.ready.expect(false.B)}
+        d.io.opened.ready.poke(true.B);d.clock.step();d.io.opened.ready.poke(false.B)}
+      def result(status:Int):Unit={until(d.io.controlResult.valid.peek().litToBoolean)
+        d.io.controlResult.bits.status.expect(status.U);d.io.controlResult.ready.poke(true.B);d.clock.step();d.io.controlResult.ready.poke(false.B)}
+      def close():Unit={d.io.close.valid.poke(true.B);until(d.io.close.ready.peek().litToBoolean)
+        d.clock.step();d.io.close.valid.poke(false.B);d.io.busy.expect(false.B)}
+      submit(32,64,0);d.clock.step(7);d.io.cancel.poke(true.B)
+      for(_<-0 until 5){d.clock.step();d.io.opened.valid.expect(false.B);d.io.busy.expect(true.B);d.io.close.ready.expect(false.B)}
+      opened();d.io.cancel.poke(false.B);result(2);close()
+      submit(2,1,1);opened()
+      d.io.sealInput.valid.poke(true.B);until(d.io.sealInput.ready.peek().litToBoolean)
+      d.clock.step();d.io.sealInput.valid.poke(false.B)
+      for(inv<-0 until 2){d.io.finish.bits.poke(inv.U);d.io.finish.valid.poke(true.B)
+        until(d.io.finish.ready.peek().litToBoolean);d.clock.step();d.io.finish.valid.poke(false.B)}
+      result(0)
+      for((patch,level,v,c)<-Seq((false,false,0,0),(false,false,1,0),(true,false,0,0))++
+          (0 until 6).map(c=>(true,true,0,c))){
+        val a=d.io.inspect.bits;zero(a);a.output.poke(true.B);a.perPatch.poke(patch.B);a.tessLevel.poke(level.B)
+        a.vertex.poke(v.U);a.component.poke(c.U);d.io.inspect.valid.poke(true.B)
+        until(d.io.inspect.ready.peek().litToBoolean);d.clock.step();d.io.inspect.valid.poke(false.B)
+        until(d.io.reply.valid.peek().litToBoolean);d.io.reply.bits.source.expect(2.U)
+        d.io.reply.bits.result.status.expect(0.U);d.io.reply.bits.result.data.expect(0.U)
+        d.io.close.valid.poke(true.B);d.clock.step();d.io.close.ready.expect(false.B);d.io.close.valid.poke(false.B)
+        d.io.reply.ready.poke(true.B);d.clock.step();d.io.reply.ready.poke(false.B)
+      }
+      close()
+    }
+  }
+}

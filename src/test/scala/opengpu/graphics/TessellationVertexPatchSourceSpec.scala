@@ -30,7 +30,7 @@ private class TessellationVertexPatchSourceHarness extends Module {
     val sourceBusy=Output(Bool());val launched=Output(Bool())
   })
   private val source=Module(new TessellationVertexPatchSource(config,p,SharedCuShaderConfig(2)))
-  private val store=Module(new TessellationPatchStore)
+  private val store=Module(new TessellationPatchStore(zeroOnBegin=true))
   private val system=Module(new GpuSystem(config,numComputeUnits=2,enableGraphicsKernels=true,
     graphicsHostTransactions=4,instructionCacheSets=4,instructionCacheWays=1,
     vectorCacheSets=4,vectorCacheWays=1))

@@ -21,7 +21,8 @@ class TessellationContextReply extends Bundle {
   * access or its reply remains outstanding. The issuer must present each
   * invocation's requests in program order.
   */
-class TessellationPatchContext extends Module {
+class TessellationPatchContext(zeroOnBegin:Boolean) extends Module {
+  def this()=this(false)
   val io=IO(new Bundle {
     val begin=Flipped(Decoupled(new TessellationPatchContextTask));val opened=Decoupled(UInt(2.W))
     val load=Flipped(Decoupled(new TessellationPatchAccess));val sealInput=Flipped(Decoupled(Bool()))
@@ -33,7 +34,7 @@ class TessellationPatchContext extends Module {
   })
   private object State extends ChiselEnum {val idle,opening,starting,loading,running,inspection=Value}
   private val state=RegInit(State.idle);private val task=Reg(new TessellationPatchContextTask)
-  private val store=Module(new TessellationPatchStore);private val barrier=Module(new TessellationBarrier)
+  private val store=Module(new TessellationPatchStore(zeroOnBegin));private val barrier=Module(new TessellationBarrier)
   private val outstanding=RegInit(false.B);private val replySource=Reg(UInt(2.W));private val replyInvocation=Reg(UInt(5.W))
   private val blocked=RegInit(0.U(32.W));private val finished=RegInit(0.U(32.W));private val canceled=RegInit(false.B)
   private val resultHeld=RegInit(false.B)
