@@ -144,7 +144,7 @@ export TMPDIR="$GPU_TMP"
 sbt -batch -J-Xms256m -J-Xmx4G -J-XX:ActiveProcessorCount=2 \
   -J-XX:MaxMetaspaceSize=768m -J-XX:ReservedCodeCacheSize=256m \
   -J-XX:MaxDirectMemorySize=256m -J-Xss4m -Djava.io.tmpdir="$GPU_TMP" \
-  'Test/compile'
+  'Test/compile' 'export Test / fullClasspath'
 sbt -batch -J-Xms256m -J-Xmx2G -J-XX:ActiveProcessorCount=2 \
   -Djava.io.tmpdir="$GPU_TMP" -Dopengpu.simWorkspace="$GPU_TMP/sim" \
   -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simSeparateBuild=1 \
@@ -161,18 +161,26 @@ bound. Run it only in a separately checked memory window. Its two complete CU
 interfaces and real native-sample backend make it substantially larger than
 the router/reader tests. Serial native compilation and heap release avoid
 concurrent front-end/native build peaks; they do not guarantee peak memory.
-The three sample modes currently create three sequential models.
+The three sample modes currently create three sequential models. Both explicit
+component suites use `@DoNotDiscover`; sbt `testOnly` does not select them from
+`definedTests`. Two attempted `testOnly` commands reported zero tests and zero
+suites despite exit success. **Zero selected tests are not a passing execution
+result.** Export the compiled Test classpath, then name the suite explicitly in
+ScalaTest Runner. Set `JAVA_HOME` to the same JDK 21 used to compile:
 
 ```sh
-MAKEFLAGS=-j1 sbt -batch -J-Xms256m -J-Xmx4G -J-XX:ActiveProcessorCount=2 \
-  -J-XX:MaxMetaspaceSize=768m -J-XX:ReservedCodeCacheSize=256m \
-  -J-XX:MaxDirectMemorySize=256m -J-Xss4m -Djava.io.tmpdir="$GPU_TMP" \
+GPU_TEST_CP=$(cat target/streams/test/fullClasspath/_global/streams/export)
+test -n "$GPU_TEST_CP"
+MAKEFLAGS=-j1 "$JAVA_HOME/bin/java" -Xms256m -Xmx4G -XX:ActiveProcessorCount=2 \
+  -XX:MaxMetaspaceSize=768m -XX:ReservedCodeCacheSize=256m \
+  -XX:MaxDirectMemorySize=256m -Xss4m -Djava.io.tmpdir="$GPU_TMP" \
   -Dopengpu.simWorkspace="$GPU_TMP/cu-sim" -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simSeparateBuild=1 \
   -Dopengpu.simReleaseHeap=1 -Dopengpu.simCache=off \
   -Dopengpu.tessellationSampleImageQualification=1 \
-  'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.tessellation.TessellationSampleImageSharedSystemSpec'
+  -cp "$GPU_TEST_CP" org.scalatest.tools.Runner -oD \
+  -s opengpu.graphics.tessellation.TessellationSampleImageSharedSystemSpec \
+  -z sample-images-0
 ```
 
 All eight `TessellationNativeThreeDomainJobImageElaborationSpec` cases pass:
@@ -183,10 +191,10 @@ structural checks do not instantiate the CUs or execute shaders. Reproduce with
 the same JDK and short temporary-directory setup:
 
 ```sh
-sbt -batch -J-Xms256m -J-Xmx4G -J-XX:ActiveProcessorCount=2 \\
-  -J-XX:MaxMetaspaceSize=768m -J-XX:ReservedCodeCacheSize=256m \\
-  -J-XX:MaxDirectMemorySize=256m -J-Xss4m -Djava.io.tmpdir="$GPU_TMP" \\
-  'set Test / parallelExecution := false' \\
+sbt -batch -J-Xms256m -J-Xmx4G -J-XX:ActiveProcessorCount=2 \
+  -J-XX:MaxMetaspaceSize=768m -J-XX:ReservedCodeCacheSize=256m \
+  -J-XX:MaxDirectMemorySize=256m -J-Xss4m -Djava.io.tmpdir="$GPU_TMP" \
+  'set Test / parallelExecution := false' \
   'testOnly opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec'
 ```
 
@@ -199,8 +207,9 @@ earlier factory's model results.
 `TessellationSampleImageOpsSharedSystemSpec` adds actual CUSTOM-1 image
 instructions behind `sampleImageOpcodes=false` by default. The original
 `TessellationSampleImageSharedSystemSpec` keeps its builtin-only shader and
-remains independently selectable. The new source has not been compiled or
-executed; no image-op qualification result is claimed.
+remains independently selectable. Incremental `Test/compile` passed for the
+additional sources. The sbt selector attempts ran zero tests; neither real-CU
+suite has an execution result yet. No image-op qualification is claimed.
 
 The image-op program retains ABI6's 128-thread capacity, 512-byte array stride,
 16 varying slots and four raw MRTs. It loads a nonzero per-sample RGBA32UI tuple
@@ -226,13 +235,20 @@ After a fresh compile and a separately checked resource window, use the same
 JDK, short `GPU_TMP` and serial build settings above:
 
 ```sh
-MAKEFLAGS=-j1 sbt -batch -J-Xms256m -J-Xmx4G -J-XX:ActiveProcessorCount=2 \
-  -J-XX:MaxMetaspaceSize=768m -J-XX:ReservedCodeCacheSize=256m \
-  -J-XX:MaxDirectMemorySize=256m -J-Xss4m -Djava.io.tmpdir="$GPU_TMP" \
+MAKEFLAGS=-j1 "$JAVA_HOME/bin/java" -Xms256m -Xmx4G -XX:ActiveProcessorCount=2 \
+  -XX:MaxMetaspaceSize=768m -XX:ReservedCodeCacheSize=256m \
+  -XX:MaxDirectMemorySize=256m -Xss4m -Djava.io.tmpdir="$GPU_TMP" \
   -Dopengpu.simWorkspace="$GPU_TMP/image-ops" -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simSeparateBuild=1 \
   -Dopengpu.simReleaseHeap=1 -Dopengpu.simCache=off \
   -Dopengpu.tessellationSampleImageOpsQualification=1 \
-  'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.tessellation.TessellationSampleImageOpsSharedSystemSpec'
+  -cp "$GPU_TEST_CP" org.scalatest.tools.Runner -oD \
+  -s opengpu.graphics.tessellation.TessellationSampleImageOpsSharedSystemSpec \
+  -z sample-images-0
 ```
+
+Each command above selects exactly one 1x test. Remove `-z sample-images-0` to
+select all three 1x/2x/4x cases in that suite. To run both 1x tests in one fresh
+JVM, set both qualification properties and provide both `-s` suite names with
+one `-z sample-images-0`; require two tests and two completed suites in the
+reported result. Do not use ScalaTest `-P` parallel execution for this run.
