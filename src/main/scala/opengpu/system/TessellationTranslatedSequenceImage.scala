@@ -16,9 +16,9 @@ class TessellationTranslatedSequenceImage(config:GpuConfig,p:VertexShaderStageCo
     pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
     payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false,externalImages:Boolean=false,
-    fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false) extends Module {
+    fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false,tessellationUniforms:Boolean=false) extends Module {
   private val idWidth=shared.taskIdWidth;private val cus=shared.numComputeUnits;private val payloadConfig=payload
-  private val renderIds=TessellationSystemIsolineImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity)
+  private val renderIds=TessellationSystemIsolineImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity,tessellationUniforms)
   private val slots=TessellationInputMemoryFabric.transactions(renderIds)
   private val replaySharedConfig=shared
   val io=IO(new Bundle {
@@ -41,7 +41,7 @@ class TessellationTranslatedSequenceImage(config:GpuConfig,p:VertexShaderStageCo
     val fragmentEvents=Output(new FragmentPerformanceEvents);val cancel=Input(Bool());val busy=Output(Bool());val drained=Output(Bool())
   })
   private val image=Module(new TessellationSequenceImage(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,
-    tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading))
+    tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading,tessellationUniforms))
   if(externalImages)io.images.get<>image.io.images.get
   private val fabric=Module(new TessellationInputMemoryFabric(config,renderIds))
   val recordBytes=image.recordBytes

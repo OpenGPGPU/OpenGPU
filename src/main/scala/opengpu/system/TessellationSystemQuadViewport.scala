@@ -4,7 +4,7 @@ import opengpu.graphics.tessellation._
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
-import opengpu.core.memory.CacheLineInvalidate
+import opengpu.core.memory.{CacheLineInvalidate,ComputeMemoryRequest,ComputeMemoryResponse}
 import opengpu.graphics._
 
 class TessellationSystemQuadViewportTask(config: GpuConfig, p: VertexShaderStageConfig, idWidth: Int) extends Bundle {
@@ -32,7 +32,7 @@ class TessellationSystemQuadViewportCompletion extends Bundle {
   */
 class TessellationSystemQuadViewport(config: GpuConfig, p: VertexShaderStageConfig, idWidth: Int, numComputeUnits: Int,
     viewport: Fp32ViewportConfig = Fp32ViewportConfig(), useSramBlackBoxes: Boolean = false,
-    transformFeedback: Boolean = false) extends Module {
+    transformFeedback: Boolean = false, tessellationUniforms: Boolean = false) extends Module {
   val io = IO(new Bundle {
     val task = Flipped(Decoupled(new TessellationSystemQuadViewportTask(config, p, idWidth)))
     val opened = Decoupled(UInt(2.W)); val load = Flipped(Decoupled(new TessellationPatchAccess))
@@ -43,10 +43,12 @@ class TessellationSystemQuadViewport(config: GpuConfig, p: VertexShaderStageConf
     val feedback = if(transformFeedback) Some(new TransformFeedbackPipelineIO(config)) else None
     val shared = Flipped(new SharedCuGraphicsPort(config, idWidth, numComputeUnits, geometryAvailable = true, tessellationAvailable = true))
     val texture = Vec(numComputeUnits, new SharedCuTexturePort(config))
+    val uniformMemoryRequest=if(tessellationUniforms)Some(Decoupled(new ComputeMemoryRequest(config,64,2)))else None
+    val uniformMemoryResponse=if(tessellationUniforms)Some(Flipped(Decoupled(new ComputeMemoryResponse(64,2))))else None
     val trap = Decoupled(new TaggedGraphicsTrap(config, idWidth, numComputeUnits))
     val invalidate = Flipped(Decoupled(new CacheLineInvalidate(config))); val invalidateDone = Decoupled(new CacheLineInvalidate(config))
   })
-  private val source = Module(new TessellationCuQuadSystemClient(config, idWidth, numComputeUnits))
+  private val source = Module(new TessellationCuQuadSystemClient(config, idWidth, numComputeUnits,tessellationUniforms))
   private val mapper = Module(new TessellationQuadPrimitiveMapper(p,flatShading = !transformFeedback))
   private val feedback = if(transformFeedback) Some(Module(new TransformFeedbackExport(config,p))) else None
   private val clip = Module(new PrimitiveClipStage(p, useSramBlackBoxes))
@@ -54,7 +56,10 @@ class TessellationSystemQuadViewport(config: GpuConfig, p: VertexShaderStageConf
   private val active = RegInit(false.B); private val sourceDone = RegInit(false.B); private val mapBusy = RegInit(false.B)
   private val done = RegInit(false.B); private val task = Reg(new TessellationSystemQuadViewportTask(config, p, idWidth))
   private val result = Reg(new TessellationSystemQuadViewportCompletion)
-  private val legal = Fp32ViewportState.legal(io.task.bits.viewport)
+  private val scope=io.task.bits.system.uniforms
+  private val scopePresent=scope.control.resources.version=/=0.U || scope.evaluation.resources.version=/=0.U
+  private val legal = Fp32ViewportState.legal(io.task.bits.viewport) &&
+    (!scopePresent || scope.identity.asUInt===io.task.bits.identity.asUInt)
   private val feedbackReady=feedback.map(f=> !f.io.busy && !io.feedback.get.command.valid && !io.feedback.get.cancel).getOrElse(true.B)
   source.io.task.valid := io.task.valid && !active && !io.cancel && legal && feedbackReady
   source.io.task.bits := io.task.bits.system
@@ -140,4 +145,7 @@ class TessellationSystemQuadViewport(config: GpuConfig, p: VertexShaderStageConf
   source.io.inspect <> io.inspect; io.reply <> source.io.reply
   io.shared <> source.io.shared; io.texture <> source.io.texture; io.trap <> source.io.trap
   source.io.invalidate <> io.invalidate; io.invalidateDone <> source.io.invalidateDone
+  if(tessellationUniforms){io.uniformMemoryRequest.get<>source.io.uniformMemoryRequest.get
+    source.io.uniformMemoryResponse.get<>io.uniformMemoryResponse.get}
+
 }

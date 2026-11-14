@@ -29,7 +29,7 @@ class TessellationSystemIsolineBinCompletion(p:VertexShaderStageConfig) extends 
 class TessellationSystemIsolineBinPass(config:GpuConfig,p:VertexShaderStageConfig,commandIdWidth:Int,numComputeUnits:Int,
     g:GraphicsConfig=GraphicsConfig(),viewport:Fp32ViewportConfig=Fp32ViewportConfig(),engines:Int=2,
     pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,useSramBlackBoxes:Boolean=false,
-    rendererCredits:Boolean=false,transformFeedback:Boolean=false) extends Module {
+    rendererCredits:Boolean=false,transformFeedback:Boolean=false,tessellationUniforms:Boolean=false) extends Module {
   require(g.subPixelBits==viewport.subPixelBits)
   private val transactions=VertexBinPipeline.binTransactions(engines,writeCredits,pagedCapacity)
   val io=IO(new Bundle {
@@ -43,6 +43,8 @@ class TessellationSystemIsolineBinPass(config:GpuConfig,p:VertexShaderStageConfi
     val inspect=Flipped(Decoupled(new TessellationPatchAccess));val reply=Decoupled(new TessellationContextReply)
     val shared=Flipped(new SharedCuGraphicsPort(config,commandIdWidth,numComputeUnits,geometryAvailable=true,tessellationAvailable=true))
     val texture=Vec(numComputeUnits,new SharedCuTexturePort(config))
+    val uniformMemoryRequest=if(tessellationUniforms)Some(Decoupled(new ComputeMemoryRequest(config,64,2)))else None
+    val uniformMemoryResponse=if(tessellationUniforms)Some(Flipped(Decoupled(new ComputeMemoryResponse(64,2))))else None
     val trap=Decoupled(new TaggedGraphicsTrap(config,commandIdWidth,numComputeUnits))
     val invalidate=Flipped(Decoupled(new CacheLineInvalidate(config)));val invalidateDone=Decoupled(new CacheLineInvalidate(config))
     val rendererPermit=if(rendererCredits)Some(Input(Vec(engines,Bool())))else None
@@ -51,7 +53,7 @@ class TessellationSystemIsolineBinPass(config:GpuConfig,p:VertexShaderStageConfi
     val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val source=Module(new TessellationSystemIsolineViewport(config,p,commandIdWidth,numComputeUnits,viewport,useSramBlackBoxes,transformFeedback))
+  private val source=Module(new TessellationSystemIsolineViewport(config,p,commandIdWidth,numComputeUnits,viewport,useSramBlackBoxes,transformFeedback,tessellationUniforms))
   private val bins=Module(new WindowPrimitiveBinReplayPass(config,p,g,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,useSramBlackBoxes,rendererCredits))
   val recordBytes=bins.recordBytes
   if(rendererCredits)bins.io.rendererPermit.get:=io.rendererPermit.get
@@ -126,4 +128,7 @@ class TessellationSystemIsolineBinPass(config:GpuConfig,p:VertexShaderStageConfi
   source.io.inspect<>io.inspect;io.reply<>source.io.reply
   io.shared<>source.io.shared;io.texture<>source.io.texture;io.trap<>source.io.trap
   source.io.invalidate<>io.invalidate;io.invalidateDone<>source.io.invalidateDone
+  if(tessellationUniforms){io.uniformMemoryRequest.get<>source.io.uniformMemoryRequest.get
+    source.io.uniformMemoryResponse.get<>io.uniformMemoryResponse.get}
+
 }

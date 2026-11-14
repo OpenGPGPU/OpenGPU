@@ -9,9 +9,9 @@ import opengpu.graphics._
 /** Internal GNQ1/GNQ2 job image owner. The submitter pins descriptor contents,
   * translation and every allocation through the selected completion. */
 object TessellationNativeDomainJobImage {
-  def ownerIds(engines:Int,writeCredits:Int,pagedCapacity:Int):Int=
+  def ownerIds(engines:Int,writeCredits:Int,pagedCapacity:Int,tessellationUniforms:Boolean=false):Int=
     TessellationNativeJobMemoryFabric.transactions(TessellationNativeRecordMemoryFabric.transactions(
-      TessellationInputMemoryFabric.transactions(TessellationSystemIsolineImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity))))
+      TessellationInputMemoryFabric.transactions(TessellationSystemIsolineImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity,tessellationUniforms))))
   def transactions(engines:Int,writeCredits:Int,pagedCapacity:Int):Int={
     val ids=ownerIds(engines,writeCredits,pagedCapacity)
     TessellationNativeJobMemoryFabric.transactions(TessellationHostMemoryFabric.transactions(ids,ids))

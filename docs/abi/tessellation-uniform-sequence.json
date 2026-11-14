@@ -1,0 +1,22 @@
+{
+  "schema":"opengpu-tessellation-uniform-sequence-v1",
+  "words":512,"bytes":2048,"extensionFirstWord":496,
+  "records":[
+    {"domain":"isoline","magic":"0x474e5404","version":4,"baseSchema":"native-tessellation-sequence-v1.json"},
+    {"domain":"triangle","magic":"0x474e5405","version":5,"baseSchema":"native-tessellation-triangle-sequence-v2.json"},
+    {"domain":"quad","magic":"0x474e5406","version":6,"baseSchema":"native-tessellation-quad-sequence-v3.json"}
+  ],
+  "fields":[
+    {"name":"template.source.viewport.system.uniforms.identity.context","word":496,"bits":32,"signed":false},
+    {"name":"template.source.viewport.system.uniforms.identity.pass","word":497,"bits":32,"signed":false},
+    {"name":"template.source.viewport.system.uniforms.identity.generation","word":498,"bits":32,"signed":false},
+    {"name":"template.source.viewport.system.uniforms.control.resources.version","word":499,"bits":2,"signed":false},
+    {"name":"template.source.viewport.system.uniforms.control.resources.address","word":500,"bits":32,"signed":false},
+    {"name":"template.source.viewport.system.uniforms.control.privateBase","word":501,"bits":32,"signed":false},
+    {"name":"template.source.viewport.system.uniforms.control.privateLimit","word":502,"bits":33,"signed":false},
+    {"name":"template.source.viewport.system.uniforms.evaluation.resources.version","word":504,"bits":2,"signed":false},
+    {"name":"template.source.viewport.system.uniforms.evaluation.resources.address","word":505,"bits":32,"signed":false},
+    {"name":"template.source.viewport.system.uniforms.evaluation.privateBase","word":506,"bits":32,"signed":false},
+    {"name":"template.source.viewport.system.uniforms.evaluation.privateLimit","word":507,"bits":33,"signed":false}
+  ]
+}

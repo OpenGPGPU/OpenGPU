@@ -16,9 +16,9 @@ class TessellationQuadSequenceImage(config:GpuConfig,p:VertexShaderStageConfig,f
     pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
     payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false,externalImages:Boolean=false,
-    fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false) extends Module {
+    fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false,tessellationUniforms:Boolean=false) extends Module {
   private val idWidth=shared.taskIdWidth;private val cus=shared.numComputeUnits;private val payloadConfig=payload
-  private val slots=TessellationSystemQuadImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity)
+  private val slots=TessellationSystemQuadImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity,tessellationUniforms)
   private val replaySharedConfig=shared
   val io=IO(new Bundle {
     val images=if(externalImages)Some(Flipped(Vec(engines,new TypedReplayTileImagePipelineIO(config,p,replaySharedConfig,payloadConfig,fragmentImageAvailable=fragmentImageAvailable))))else None
@@ -39,7 +39,7 @@ class TessellationQuadSequenceImage(config:GpuConfig,p:VertexShaderStageConfig,f
     val fragmentEvents=Output(new FragmentPerformanceEvents);val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val image=Module(new TessellationSystemQuadInputImage(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,
-    tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading))
+    tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading,tessellationUniforms))
   if(externalImages)io.images.get<>image.io.images.get
   private val sequence=Module(new TessellationQuadPatchSequence(config,p,idWidth))
   val recordBytes=image.recordBytes
