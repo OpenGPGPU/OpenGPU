@@ -39,6 +39,9 @@ class TileBinHostMemoryFabric(config: GpuConfig,renderIds: Int,engines: Int,
     val satp=Input(UInt(32.W))
     val flush=Flipped(Valid(new VectorTlbFlush(config)))
     val drained=Output(Bool())
+    /** Per staging owner, through actual local response delivery. Render/DMA
+      * traffic does not retain a staging owner's otherwise idle port. */
+    val stagingDrained=Output(Vec(engines,Bool()))
     // DMA, bin/descriptor, stage 0, remaining stages (sum of worker cycles).
     val translationStall=Output(Vec(4,UInt(3.W)))
     val translationMiss=Output(Vec(4,UInt(3.W)))
@@ -97,6 +100,29 @@ class TileBinHostMemoryFabric(config: GpuConfig,renderIds: Int,engines: Int,
   live:=next
   io.drained:=live===0.U && !queue.io.deq.valid && !io.renderRequest.valid && !io.dmaRequest.valid &&
     !io.stagingRequest.map(_.valid).reduce(_ || _) && !io.memoryResponse.valid
+  for (e <- 0 until engines) {
+    if (programmable) {
+      val i=e+2
+      val c=clients(i)
+      // Count at the untranslated ingress and the final translated/local-fault
+      // reply. This retains ownership during TLB lookup, page walks, arbitration,
+      // queued external requests, late replies and a held local response.
+      val owned=RegInit(0.U(log2Ceil(kernelWordIds+1).W))
+      val nextOwned=(owned +& c.io.in.fire.asUInt)-c.io.out.fire.asUInt
+      assert(c.io.out.fire.asUInt<=owned+&c.io.in.fire.asUInt,
+        "staging response must retire its own translated input")
+      assert(nextOwned<=kernelWordIds.U,"staging translation credits must remain bounded")
+      owned:=nextOwned
+      val queuedData=queue.io.deq.bits.transactionId>=bases(i).U &&
+        queue.io.deq.bits.transactionId<(bases(i)+sizes(i)).U
+      val queuedWalk=queue.io.deq.bits.transactionId===(dataIds+i).U
+      io.stagingDrained(e):=owned===0.U && !c.io.in.valid && !c.io.out.valid &&
+        !c.io.memReq.valid && !c.io.pageWalk.valid && !c.io.memResp.valid && !c.io.pageWalkResp.valid &&
+        !(queue.io.deq.valid && (queuedData || queuedWalk))
+    } else {
+      io.stagingDrained(e):=true.B
+    }
+  }
   for (slot <- 0 until 4) {
     val members=clients.indices.filter(i=>math.min(i,3)==slot)
     def sum(f: Int=>Bool): UInt=if (members.isEmpty) 0.U else PopCount(VecInit(members.map(f)))

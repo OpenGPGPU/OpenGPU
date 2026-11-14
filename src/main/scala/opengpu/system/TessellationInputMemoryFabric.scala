@@ -27,6 +27,9 @@ class TessellationInputMemoryFabric(config:GpuConfig,renderIds:Int,ownedVertexSo
     /** Requested selection only. selected changes after all old credits drain. */
     val sourceLive=if(ownedVertexSource)Some(Input(Bool()))else None
     val sourceSelected=if(ownedVertexSource)Some(Output(Bool()))else None
+    /** Local source/legacy ownership only; global flush and frame retirement
+      * must still use drained, including every render client. */
+    val sourceDrained=if(ownedVertexSource)Some(Output(Bool()))else None
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,slots))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,slots)))
     val satp=Input(UInt(32.W));val flush=Flipped(Valid(new VectorTlbFlush(config)))
@@ -74,13 +77,14 @@ class TessellationInputMemoryFabric(config:GpuConfig,renderIds:Int,ownedVertexSo
       merged:=0.U.asTypeOf(merged)
     }
     val physicallyDrained=fabric.io.drained && adapter.io.drained
+    val slotPhysicallyDrained=fabric.io.stagingDrained(0) && adapter.io.drained
     val flushRequested=pendingFlush || io.flush.valid
     val applyFlush=physicallyDrained && flushRequested
     fabric.io.flush.valid:=applyFlush;fabric.io.flush.bits:=merged
     when(io.flush.valid){pendingFlush:=true.B;flushBits:=merged}
     when(applyFlush){pendingFlush:=false.B}
-    when(physicallyDrained && !flushRequested){
-      // Unselected offers do not enter physicallyDrained: they must be able
+    when(slotPhysicallyDrained && !flushRequested){
+      // Unselected offers do not enter slotPhysicallyDrained: they must be able
       // to acquire the grant. Keep a granted debt until actual acceptance.
       when(selected && sourceOwed){selected:=true.B}
         .elsewhen(!selected && legacyOwed){selected:=false.B}
@@ -89,6 +93,8 @@ class TessellationInputMemoryFabric(config:GpuConfig,renderIds:Int,ownedVertexSo
         .otherwise{selected:=io.sourceLive.get}
     }
     io.drained:=physicallyDrained && !flushRequested && (selected===io.sourceLive.get) &&
+      !sourceOwed && !legacyOwed && !io.sourceRequest.get.valid && !io.inputRequest.valid
+    io.sourceDrained.get:=slotPhysicallyDrained && !flushRequested && (selected===io.sourceLive.get) &&
       !sourceOwed && !legacyOwed && !io.sourceRequest.get.valid && !io.inputRequest.valid
   }else{
     fabric.io.stagingRequest(0).valid:=io.inputRequest.valid
