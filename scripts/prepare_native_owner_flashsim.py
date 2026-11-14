@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare/generate the full 96-word owner DUT; execution qualification is separate."""
+"""Prepare an exact owner factory; execution qualification is separate."""
 import argparse,json,os,re,subprocess,sys,tempfile
 from pathlib import Path
 sys.dont_write_bytecode=True
@@ -27,10 +27,14 @@ def source_inputs():
 
 def check_manifest(manifest,*,rtl_emitted=True):
     if type(manifest) is not dict:raise RuntimeError('Owner manifest must be an object')
-    from owner_resource_contract import COMPUTE_STAGE, COMPUTE_WORDS, PROFILE as FULL_PROFILE, FULL_STAGE, FULL_WORDS
+    from owner_resource_contract import COMPUTE_STAGE, COMPUTE_WORDS, PROFILE as FULL_PROFILE, FULL_STAGE, FULL_WORDS, SAMPLE_PROFILE, SAMPLE_STAGE, SAMPLE_WORDS
     compute_stage = manifest.get('profile') == COMPUTE_STAGE
     full_resources = manifest.get('profile') == FULL_PROFILE
-    expected_words = FULL_WORDS if full_resources else COMPUTE_WORDS if compute_stage else EXPECTED_WORDS
+    sample_resources = manifest.get('profile') == SAMPLE_PROFILE
+    if not sample_resources and any(key in manifest for key in
+            ('nativeSampleShading','nativeSampleTransport','nativeFragmentVersions')):
+        raise RuntimeError('Sample transport metadata requires its distinct owner factory')
+    expected_words = SAMPLE_WORDS if sample_resources else FULL_WORDS if full_resources else COMPUTE_WORDS if compute_stage else EXPECTED_WORDS
     required={'version':1,'profile':PROFILE,'computeUnits':2,'frameWidth':640,'frameHeight':480,
         'lanes':16,'warps':8,'transactionsPerCu':16,'axiDataBytes':32,'engines':4,
         'nativeMaxWidth':2048,'nativeMaxHeight':2048,'pagedCapacity':65536,'payloadBytes':524288,
@@ -40,11 +44,15 @@ def check_manifest(manifest,*,rtl_emitted=True):
     if compute_stage:
         required.update(version=2, profile=COMPUTE_STAGE, computeFeatureFlags=0x7ffff,
                         ownerResourceVersion=2, ownerResourceStage='compute', fullResourceQualification=False)
-    if full_resources:
+    if full_resources or sample_resources:
         required.update(version=2, profile=FULL_PROFILE, computeFeatureFlags=0xfffff,
             resourceDiscoveryWords=104, ownerResourceVersion=2, ownerResourceStage=FULL_STAGE,
             nativeGeometryDraw=True, nativeGeometryTransport=True, transformFeedback=True,
             fullResourceQualification=False)
+    if sample_resources:
+        required.update(profile=SAMPLE_PROFILE, computeFeatureFlags=0x1fffff,
+            resourceDiscoveryWords=112, ownerResourceStage=SAMPLE_STAGE,
+            nativeSampleShading=True, nativeSampleTransport=True, nativeFragmentVersions=[6,7])
     if any(type(manifest.get(k)) is not type(v) or manifest[k]!=v for k,v in required.items()):
         raise RuntimeError('Incomplete or mismatched protected owner factory')
     words=manifest.get('requiredDiscovery')
@@ -69,8 +77,8 @@ def prepared(out):
         raise RuntimeError('Owner RTL, assertions, factory or sources changed after preparation')
     return record
 
-def prepare(out,heap,compute_stage=False,full_resources=False):
-    if compute_stage and full_resources:raise RuntimeError('Select one exact owner factory')
+def prepare(out,heap,compute_stage=False,full_resources=False,sample_resources=False):
+    if sum((compute_stage,full_resources,sample_resources))>1:raise RuntimeError('Select one exact owner factory')
     if out.exists():raise RuntimeError('Owner preparation requires a new output directory')
     if not re.fullmatch(r'[1-9][0-9]*[kKmMgG]',heap):raise ValueError('Invalid Java heap size')
     sources=source_inputs()
@@ -78,15 +86,15 @@ def prepare(out,heap,compute_stage=False,full_resources=False):
     temporary=main/'.artifacts';temporary.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='o',dir=temporary) as directory:
         if len(directory.encode())>52:raise RuntimeError('JVM temporary path exceeds Unix-socket limit')
-        entry='PrepareOwnerResourceFullHost' if full_resources else 'PrepareOwnerResourceHost' if compute_stage else 'PrepareNativeOwnerHost'
+        entry='PrepareOwnerResourceSampleHost' if sample_resources else 'PrepareOwnerResourceFullHost' if full_resources else 'PrepareOwnerResourceHost' if compute_stage else 'PrepareNativeOwnerHost'
         command=['sbt','-J-Xmx'+heap,'-J-XX:ActiveProcessorCount=2','-J-Djava.io.tmpdir='+directory,
             '-Dopengpu.fullHostQualification=1',
             'Test / runMain opengpu.system.'+entry+' --output '+json.dumps(str(out))]
         subprocess.run(command,cwd=ROOT,env=dict(os.environ,TMPDIR=directory),check=True)
     if sources!=source_inputs():raise RuntimeError('Source changed during owner RTL preparation')
     manifest=out/'owner-manifest.json';description=json.loads(manifest.read_text());check_manifest(description)
-    from owner_resource_contract import COMPUTE_STAGE, PROFILE as FULL_PROFILE
-    if description['profile'] != (FULL_PROFILE if full_resources else COMPUTE_STAGE if compute_stage else PROFILE):
+    from owner_resource_contract import COMPUTE_STAGE, PROFILE as FULL_PROFILE, SAMPLE_PROFILE
+    if description['profile'] != (SAMPLE_PROFILE if sample_resources else FULL_PROFILE if full_resources else COMPUTE_STAGE if compute_stage else PROFILE):
         raise RuntimeError('Emitted owner profile differs from the requested factory')
     rtl=common.tree_hashes(out/'rtl')
     if not common.assertion_layer_hashes(rtl):raise RuntimeError('Owner DUT has no assertion bind layers')
@@ -114,14 +122,16 @@ def main():
                         help='prepare the distinct shared-atomic-enabled intermediate owner factory')
     factories.add_argument('--full-resources',action='store_true',
                         help='prepare the distinct full geometry/compute/feedback owner factory')
+    factories.add_argument('--sample-resources',action='store_true',
+                        help='prepare the distinct complete sample-plane geometry/compute owner factory')
     parser.add_argument('--java-heap',default='24G')
     parser.add_argument('--flashsim-dir',type=Path)
     parser.add_argument('--shards',type=int,default=32)
     args=parser.parse_args();out=args.output.resolve()
     os.environ['PYTHONDONTWRITEBYTECODE']='1'
     if not out.is_relative_to(ROOT/'.artifacts'):parser.error('--output must be inside this checkout .artifacts')
-    if (args.compute_stage or args.full_resources) and args.stage!='prepare':parser.error('factory options select only a fresh preparation')
-    if args.stage=='prepare':prepare(out,args.java_heap,args.compute_stage,args.full_resources)
+    if (args.compute_stage or args.full_resources or args.sample_resources) and args.stage!='prepare':parser.error('factory options select only a fresh preparation')
+    if args.stage=='prepare':prepare(out,args.java_heap,args.compute_stage,args.full_resources,args.sample_resources)
     elif args.stage=='generate':
         if args.flashsim_dir is None:parser.error('--stage generate requires --flashsim-dir')
         OwnerRunner(out,args.flashsim_dir,args.shards).generate()
