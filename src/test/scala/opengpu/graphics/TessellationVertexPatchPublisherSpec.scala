@@ -93,10 +93,14 @@ class TessellationVertexPatchPublisherSpec extends AnyFlatSpec {
   it should "drain held patch writes and late replies after canceled or failed source execution before reuse" in {
     simulate(new TessellationVertexPatchPublisher(p)){d=>
       val t=new Driver(d)
-      for(mode<-Seq("cancel","patch","protocol")){
+      t.descriptor();t.accept();t.until(d.io.sourceDraw.valid.peek().litToBoolean)
+      d.io.cancel.poke(true.B)
+      for(_<-0 until 3){d.clock.step();d.io.sourceDraw.valid.expect(true.B);d.io.cancelSource.expect(false.B)}
+      t.launch();d.io.cancelSource.expect(true.B);t.completed(4,0);t.result(4,0);d.io.cancel.poke(false.B)
+      for(mode<-Seq("cancel","patch","protocol","cancel-protocol")){
         t.descriptor();t.accept();t.launch();t.output(0)
         t.until(d.io.load.valid.peek().litToBoolean);val held=d.io.load.bits.peek().litValue
-        if(mode=="cancel")d.io.cancel.poke(true.B)
+        if(mode.startsWith("cancel"))d.io.cancel.poke(true.B)
         for(_<-0 until 3){d.clock.step();d.io.load.valid.expect(true.B);assert(d.io.load.bits.peek().litValue==held)}
         t.write(0,0)
         if(mode=="cancel"){
@@ -104,7 +108,7 @@ class TessellationVertexPatchPublisherSpec extends AnyFlatSpec {
           for(_<-0 until 5){d.clock.step();d.io.busy.expect(true.B);d.io.completion.valid.expect(false.B);d.io.seal.valid.expect(false.B)}
           t.reply(1);t.result(4,0);d.io.cancel.poke(false.B)
         }else{
-          t.reply(1,if(mode=="protocol")1 else 0);d.io.cancel.poke(true.B)
+          t.reply(1,if(mode.endsWith("protocol"))1 else 0);d.io.cancel.poke(true.B)
           t.completed(4,1);t.result(3,0);d.io.cancel.poke(false.B)
         }
       }
@@ -120,6 +124,11 @@ class TessellationVertexPatchPublisherSpec extends AnyFlatSpec {
       for(_<-0 until 3){d.clock.step();d.io.seal.valid.expect(true.B)}
       d.io.seal.ready.poke(true.B);d.clock.step();d.io.seal.ready.poke(false.B)
       t.result(4,2);d.io.cancel.poke(false.B)
+      // Healthy reuse after all cancellation/error paths, without reset.
+      t.descriptor();t.accept();t.launch();t.output(0)
+      for(c<-0 until 2){t.write(0,c);t.reply()};t.completed(0,1)
+      t.until(d.io.seal.valid.peek().litToBoolean)
+      d.io.seal.ready.poke(true.B);d.clock.step();d.io.seal.ready.poke(false.B);t.result(0,2)
     }
   }
   it should "reject invalid source layout and inactive mappings without launching a VS or writing a patch" in {
