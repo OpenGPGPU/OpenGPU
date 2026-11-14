@@ -14,6 +14,7 @@ constexpr uint32_t required_owner_caps=GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTE
 inline void require_owner_shader_profile(uint32_t caps,uint32_t shader) {
   require_product_owner_shader_profile(caps,shader);
 }
+struct SampleCapture;
 struct Capture {
   uint64_t max_cycles;
   uint32_t hold_cycles, command_id;
@@ -48,12 +49,14 @@ struct Capture {
   static void predicate(uint32_t mask,uint32_t expected) {
     require(mask && !(expected&~mask),"empty or noncanonical captured predicate");
   }
-  void validate(bool prefix_only=false) const {
+private:
+  friend struct SampleCapture;
+  void validate_contract(const std::vector<Command> &required_profile,bool prefix_only) const {
     require(max_cycles>0 && max_cycles<=1000000000 && hold_cycles>=8 && hold_cycles<=4096 && command_id<256,
       "invalid capture execution bounds");
     std::map<uint32_t,uint32_t> found;
     for(const auto &r:discovery) {address(r.address);require(found.emplace(r.address,r.value).second,"duplicate discovery word");}
-    for(const auto &r:profile()) {
+    for(const auto &r:required_profile) {
       auto at=found.find(r.address);
       require(at!=found.end() && at->second==r.value,"captured owner requires the complete two-CU production profile");
     }
@@ -131,8 +134,7 @@ struct Capture {
     }
     require(pops==1,"captured finish must retire exactly one native completion");
   }
-  static Capture read(std::istream &in,bool prefix_only=false) {
-    magic(in,"OGCAP001");
+  static Capture payload(std::istream &in) {
     Capture c;c.max_cycles=read_le(in,8);c.hold_cycles=read_le(in,4);c.command_id=read_le(in,4);
     auto count=[&](unsigned maximum) {auto n=read_le(in,4);require(n<=maximum,"oversized capture section");return n;};
     auto word=[&]() {return uint32_t(read_le(in,4));};
@@ -142,7 +144,12 @@ struct Capture {
     auto n=count(4096);for(uint64_t i=0;i<n;++i) {auto a=read_le(in,8),b=read_le(in,8);c.writable.push_back({a,b});}
     n=count(65536);for(uint64_t i=0;i<n;++i) {auto k=word(),a=word(),v=word(),m=word();c.trace.push_back({Kind(k),a,v,m});}
     n=count(256);for(uint64_t i=0;i<n;++i) {auto a=word(),m=word(),v=word();c.checks.push_back({a,m,v});}
-    c.finish=commands();require(in.peek()==EOF,"trailing owner capture bytes");c.validate(prefix_only);return c;
+    c.finish=commands();require(in.peek()==EOF,"trailing owner capture bytes");return c;
+  }
+public:
+  void validate(bool prefix_only=false) const {validate_contract(profile(),prefix_only);}
+  static Capture read(std::istream &in,bool prefix_only=false) {
+    magic(in,"OGCAP001");auto c=payload(in);c.validate(prefix_only);return c;
   }
   static Capture read(const std::string &path,bool prefix_only=false) {
     std::ifstream in(path,std::ios::binary);require(bool(in),"cannot open owner capture");return read(in,prefix_only);
