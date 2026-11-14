@@ -174,8 +174,7 @@ def main():
             subprocess.run([str(binary)], check=True)
 
             subprocess.run([sys.executable, str(ROOT / "scripts/test_gallium_compute.py")], check=True)
-            subprocess.run([sys.executable, str(ROOT / "scripts/test_gallium_compute.py"),
-                            "--fixture", "framebuffer-blit"], check=True)
+            subprocess.run([sys.executable, "-B", str(ROOT / "scripts/test_framebuffer_blit_inputs.py")], check=True)
 
 if __name__ == "__main__":
     main()

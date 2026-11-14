@@ -9,6 +9,16 @@
 #include "opengpu_framebuffer_blit.h"
 
 static unsigned blit_captures;
+static const char *blit_export_directory,*blit_export_name;
+static FILE *blit_export;
+static void export_u32(uint32_t value)
+{ for(unsigned i=0;i<4;i++)assert(fputc((int)(uint8_t)(value>>(8*i)),blit_export)!=EOF); }
+static void export_expected(const uint8_t *bytes,size_t size)
+{
+    if(!blit_export)return;
+    assert(fwrite(bytes,1,size,blit_export)==size && !fclose(blit_export));
+    blit_export=NULL;
+}
 static void inspect_blit(const struct drm_opengpu_compute_storage *p,
     const struct context *c,const struct job *j,const struct drm_opengpu_compute_uniform_resources *u)
 {
@@ -17,12 +27,41 @@ static void inspect_blit(const struct drm_opengpu_compute_storage *p,
     assert(p->bindings[0].access==1 && p->bindings[1].access==3 && p->bindings[2].access==1);
     assert(!p->bindings[3].slot && !p->bindings[3].access);
     const uint32_t *maps=(const void *)bos[c->b[37].handle].data;
-    assert(maps[0]==3 && maps[1]==sizeof(struct opengpu_framebuffer_blit));
+    assert(maps[0]>=1 && maps[0]<=3 && maps[1]==sizeof(struct opengpu_framebuffer_blit));
+    if(blit_export_directory && blit_export_name) {
+        char path[4096];assert(!blit_export);
+        int n=snprintf(path,sizeof(path),"%s/%s.blit",blit_export_directory,blit_export_name);
+        assert(n>0 && (size_t)n<sizeof(path));
+        /* A separate immutable input file. No pointer, expected MMIO result or
+         * GPU PASS receipt is synthesized by this modeled OS capture. */
+        blit_export=fopen(path,"wx");assert(blit_export);
+        assert(fwrite("OGBLT001",1,8,blit_export)==8);
+        export_u32(1);export_u32(p->launch.context_id);
+        export_u32((uint32_t)c->b[p->launch.shader_slot].size);
+        export_u32((uint32_t)c->b[p->launch.kernarg_slot].size);
+        for(unsigned a=0;a<3;a++)export_u32(p->launch.grid[a]);
+        for(unsigned a=0;a<3;a++)export_u32(p->launch.local[a]);
+        for(unsigned i=0;i<3;i++) {
+            const struct drm_opengpu_resource *b=&c->b[p->bindings[i].slot];
+            assert(!b->offset && b->size<=UINT32_MAX && bos[b->handle].size<=65536);
+            export_u32(b->handle);export_u32((uint32_t)bos[b->handle].size);
+            export_u32((uint32_t)b->size);export_u32(p->bindings[i].access);
+        }
+        const struct drm_opengpu_resource *shader=&c->b[p->launch.shader_slot];
+        const struct drm_opengpu_resource *arg=&c->b[p->launch.kernarg_slot];
+        assert(fwrite(bos[shader->handle].data,1,shader->size,blit_export)==shader->size);
+        assert(fwrite(bos[arg->handle].data,1,arg->size,blit_export)==arg->size);
+        for(unsigned i=0;i<3;i++) {
+            unsigned h=c->b[p->bindings[i].slot].handle;
+            assert(fwrite(bos[h].data,1,bos[h].size,blit_export)==bos[h].size);
+        }
+    }
     blit_captures++;
 }
 
 int main(void)
 {
+    blit_export_directory=getenv("OPENGPU_FRAMEBUFFER_BLIT_ARTIFACTS");
     features=OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE|OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_BYTE_VIEWS;
     struct pipe_screen *s=opengpu_drm_screen_create(7,NULL);assert(s);
     struct pipe_context *p=s->context_create(s,NULL,0);assert(p);
@@ -36,18 +75,21 @@ int main(void)
     assert(sb<=65536 && db<=65536);
     for(unsigned y=0;y<4;y++)for(unsigned x=0;x<4;x++)for(unsigned c=0;c<4;c++)input[y*sp+x*4+c]=(uint8_t)(x*31+y*17+c*53);
     uint8_t *source_copy=malloc((size_t)sb);assert(source_copy);memcpy(source_copy,input,(size_t)sb);
+    uint8_t *independent_expected=malloc((size_t)db);assert(independent_expected);
     const enum pipe_format formats[]={PIPE_FORMAT_R8G8B8A8_UNORM,PIPE_FORMAT_B8G8R8A8_UNORM,
         PIPE_FORMAT_R8G8B8X8_UNORM,PIPE_FORMAT_B8G8R8X8_UNORM};
     unsigned graphics_context=next_context-1;struct context original=contexts[graphics_context];
     submission_capture=inspect_blit;
     for(unsigned filter=0;filter<2;filter++)for(unsigned i=0;i<16;i++) {
+        char name[64];assert(snprintf(name,sizeof(name),"%s-%u",filter?"linear":"nearest",i)>0);
+        blit_export_name=name;
         struct pipe_blit_info b={0};
         src->format=b.src.format=formats[i/4];dst->format=b.dst.format=formats[i%4];
         b.src.resource=src;b.dst.resource=dst;b.filter=filter?PIPE_TEX_FILTER_LINEAR:PIPE_TEX_FILTER_NEAREST;b.mask=PIPE_MASK_RGBA;
         b.src.box=(struct pipe_box){.x=4,.y=0,.width=-4,.height=4,.depth=1};
         b.dst.box=(struct pipe_box){.x=-1,.y=0,.width=6,.height=3,.depth=1};
         b.scissor_enable=1;b.scissor=(struct pipe_scissor_state){.minx=1,.maxx=3,.miny=0,.maxy=2};
-        memset(output,0xa5,(size_t)db);
+        memset(output,0xa5,(size_t)db);memset(independent_expected,0xa5,(size_t)db);
         unsigned before=computes;p->blit(p,&b);assert(computes==before+1 && blit_captures==filter*16+i+1);
         /* Independent fixed affine pixel-centre oracle for this cropped,
          * flipped 4-to-6 by 4-to-3 case; retain pitch/padding sentinels. */
@@ -71,20 +113,23 @@ int main(void)
                 }
             }
             assert(output[y*dp+x]==expected);
+            independent_expected[y*dp+x]=expected;
         }
+        export_expected(independent_expected,(size_t)db);
         assert(!memcmp(input,source_copy,(size_t)sb));
         assert(!memcmp(&contexts[graphics_context],&original,sizeof(original)));
     }
-    submission_capture=NULL;
     for(unsigned format=0;format<2;format++)for(unsigned mask=1;mask<4;mask++) {
         if(format && (mask&2))continue;
+        char name[64];assert(snprintf(name,sizeof(name),"depth-%u-%u",format,mask)>0);
+        blit_export_name=name;
         struct pipe_blit_info b={0};
         b.src.resource=src;b.dst.resource=dst;
         src->format=dst->format=b.src.format=b.dst.format=format?PIPE_FORMAT_Z24X8_UNORM:PIPE_FORMAT_Z24_UNORM_S8_UINT;
         b.src.box=(struct pipe_box){.x=4,.y=0,.width=-4,.height=4,.depth=1};
         b.dst.box=(struct pipe_box){.width=2,.height=2,.depth=1};
         b.filter=PIPE_TEX_FILTER_NEAREST;b.mask=(mask&1?PIPE_MASK_Z:0)|(mask&2?PIPE_MASK_S:0);
-        memset(output,0xa5,(size_t)db);unsigned before=computes;
+        memset(output,0xa5,(size_t)db);memset(independent_expected,0xa5,(size_t)db);unsigned before=computes;
         p->blit(p,&b);assert(computes==before+1);
         for(unsigned y=0;y<4;y++)for(unsigned x=0;x<dp;x++) {
             uint8_t expected=0xa5;
@@ -93,8 +138,11 @@ int main(void)
                 expected=input[sy*sp+sx*4+x%4];
             }
             assert(output[y*dp+x]==expected);
+            independent_expected[y*dp+x]=expected;
         }
+        export_expected(independent_expected,(size_t)db);
     }
+    submission_capture=NULL;blit_export_name=NULL;
     struct opengpu_framebuffer_blit d={.version=1,.bytes=sizeof(d),.mask=15,
         .source_format=1,.destination_format=2,.source_width=4,.source_height=4,.source_pitch=sp,
         .destination_width=4,.destination_height=4,.destination_pitch=dp,
@@ -130,12 +178,16 @@ int main(void)
     d.version=2;d.source_format=d.destination_format=1;
     d.source_w=d.destination_w=2;d.source_h=d.destination_h=1;
     d.destination_x=2;d.destination_y=0;before=computes;
+    submission_capture=inspect_blit;blit_export_name="same-gem";
+    memcpy(independent_expected,input,(size_t)sb);memcpy(independent_expected+8,input,8);
     assert(!pipe_opengpu_try_framebuffer_blit(opengpu_screen_gpu(s),gs,gs,&d,1000));
     assert(computes==before+1 && !memcmp(input,source_copy,8) && !memcmp(input+8,source_copy,8));
+    export_expected(independent_expected,(size_t)sb);submission_capture=NULL;blit_export_name=NULL;
     d.destination_x=1;before=computes;calls=ioctl_calls;
     assert(pipe_opengpu_try_framebuffer_blit(opengpu_screen_gpu(s),gs,gs,&d,1000)==1);
     assert(computes==before && ioctl_calls==calls);
-    free(source_copy);pipe_resource_reference(&src,NULL);pipe_resource_reference(&dst,NULL);
+    assert(!blit_export);free(independent_expected);free(source_copy);
+    pipe_resource_reference(&src,NULL);pipe_resource_reference(&dst,NULL);
     p->destroy(p);s->destroy(s);no_leaks();
     puts("GPU framebuffer blit CPU callbacks: actual Gallium/private pipe/ioctl/validator,2 filters x16 format pairs,depth/stencil,same-GEM,permissions/guards/held-ACK/fault/reuse PASS");
     return 0;
