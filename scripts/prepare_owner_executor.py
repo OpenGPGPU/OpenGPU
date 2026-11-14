@@ -69,7 +69,9 @@ SAMPLE_GENERATED_INCLUDES = frozenset((
        'submit', 'invalidate'))))
 SAMPLE_PRODUCER_ROOTS = (
     'scripts/native_sample_live_producer.c', 'scripts/native_sample_submit_producer.c',
-    'driver/opengpu_native_frame.c', 'driver/opengpu_hw.c', 'driver/opengpu_device.h',
+    'driver/opengpu_native_frame.c', 'driver/opengpu_native_frame_internal.h',
+    'userspace/opengpu_native_sample_graphics.c', 'userspace/opengpu_native_sample_graphics.h',
+    'driver/opengpu_hw.c', 'driver/opengpu_device.h',
     'driver/opengpu_scheduler.c', 'driver/opengpu_admission.c', 'driver/opengpu_native_submit.c')
 
 

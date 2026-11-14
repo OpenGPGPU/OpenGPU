@@ -72,7 +72,7 @@ def check_dependencies(cpu, source, bound, qualified_sources=None):
     source hash. Every other actual header/source must match the pre-build map.
     """
     dependencies = sorted(cpu.rglob('*.d'))
-    require(len(dependencies) == len(MESA_UNITS)+5, 'incomplete actual compiler dependency set')
+    require(len(dependencies) == len(MESA_UNITS)+6, 'incomplete actual compiler dependency set')
     observed = set()
     for path in dependencies:
         text = path.read_text().replace('\\\n', '')
