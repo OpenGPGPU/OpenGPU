@@ -389,7 +389,9 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     for((coordinate,axis)<-coordinates(i).zipWithIndex){
       val incoming=io.in.bits.values.lanes(i)
       coordinate.io.pixel:=(if(axis==0)incoming.x else incoming.y)
-      coordinate.io.sampleLocationValid:=incoming.sampleLocationValid
+      // 1x sample ABI retains the logical sample identity, but its physical
+      // location is the pixel center. Quarter locations apply only to MSAA.
+      coordinate.io.sampleLocationValid:=incoming.sampleLocationValid && io.in.bits.sampleMode=/=0.U
       coordinate.io.high:=(if(axis==0)incoming.sampleLocation(0)
         else Mux(io.in.bits.sampleMode===1.U,incoming.sampleLocation(0),incoming.sampleLocation(1)))
       coordinate.io.prepare:=io.in.fire && !stop
