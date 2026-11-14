@@ -1072,6 +1072,20 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 selected = changed_suites(root, [source])
                 self.assertIn("opengpu.graphics.TessellationVertexSourceReaderSpec", selected)
 
+    def test_original_vertex_draw_selects_linked_gnd_and_capacity_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        for source in ("system/TessellationVertexDrawReader", "system/TessellationVertexSourceReader",
+                       "system/TessellationVertexPatchSource", "graphics/NativeBinnedGraphicsDescriptors",
+                       "graphics/NativeTypedGraphicsDescriptors", "graphics/VertexInputFetcher",
+                       "graphics/VertexShaderStage", "graphics/ShaderUniformResources",
+                       "graphics/tessellation/TessellationPatchStore"):
+            with self.subTest(source=source):
+                self.assertIn("opengpu.graphics.TessellationVertexDrawReaderSpec", changed_suites(root,
+                              [f"src/main/scala/opengpu/{source}.scala"]))
+        for source in ("docs/abi/native-binned-graphics-v1.json", "docs/abi/tessellation-vertex-source-v1.json"):
+            with self.subTest(source=source):
+                self.assertIn("opengpu.graphics.TessellationVertexDrawReaderSpec", changed_suites(root, [source]))
+
     def test_early_render_qualification_stays_local_while_shader_owner_checks_remain_required(self):
         root = Path(__file__).resolve().parents[1]
         local = "opengpu.graphics.EarlyDepthRenderQualificationSpec"

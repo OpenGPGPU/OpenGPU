@@ -588,6 +588,18 @@ def changed_suites(root, changed, *, test_index=None):
                   "src/main/scala/opengpu/graphics/tessellation/TessellationPatchStore.scala",
                   "docs/abi/tessellation-vertex-source-v1.json"}:
         affected.add("src/test/scala/opengpu/graphics/TessellationVertexSourceReaderSpec.scala")
+    if changed & {"src/main/scala/opengpu/system/TessellationVertexDrawReader.scala",
+                  "src/main/scala/opengpu/system/TessellationVertexSourceReader.scala",
+                  "src/main/scala/opengpu/system/TessellationVertexPatchSource.scala",
+                  "src/main/scala/opengpu/graphics/NativeBinnedGraphicsDescriptors.scala",
+                  "src/main/scala/opengpu/graphics/NativeTypedGraphicsDescriptors.scala",
+                  "src/main/scala/opengpu/graphics/VertexInputFetcher.scala",
+                  "src/main/scala/opengpu/graphics/VertexShaderStage.scala",
+                  "src/main/scala/opengpu/graphics/ShaderUniformResources.scala",
+                  "src/main/scala/opengpu/graphics/tessellation/TessellationPatchStore.scala",
+                  "docs/abi/native-binned-graphics-v1.json",
+                  "docs/abi/tessellation-vertex-source-v1.json"}:
+        affected.add("src/test/scala/opengpu/graphics/TessellationVertexDrawReaderSpec.scala")
     if "src/main/scala/opengpu/graphics/TypedFragmentState.scala" in changed:
         affected.add("src/test/scala/opengpu/graphics/TypedFragmentStateReaderSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/TypedFragmentImageStateReaderSpec.scala")
