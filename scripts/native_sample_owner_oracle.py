@@ -172,8 +172,12 @@ def verify(initial, returned, description, program_data, capture_data, observed_
     case, samples = description.get('caseId'), uint(description.get('samples'))
     require(samples in (1, 2, 4), 'unsupported sample count')
     meta, code = program(program_data, case)
-    require(description.get('fragmentMetadata') == list(meta) and
-            description.get('fragmentWords') == list(struct.unpack('<%dI' % meta[14], code)),
+    for name in ('fragmentMetadata', 'fragmentWords'):
+        require(type(description.get(name)) is list, 'missing original program words')
+        for value in description[name]:
+            uint(value)
+    require(description['fragmentMetadata'] == list(meta) and
+            description['fragmentWords'] == list(struct.unpack('<%dI' % meta[14], code)),
             'original program metadata/words changed')
     require(returned is None or initial.ranges == returned.ranges, 'returned memory replaced original physical allocations')
     allocations = sorted((uint(r['first']), uint(r['end'])) for r in description.get('allocations', []))
@@ -208,10 +212,10 @@ def verify(initial, returned, description, program_data, capture_data, observed_
     space.physical(uint(description['vertexPC']), 420 * 4, executable=True)
     allowed, outputs = [], []
 
-    def view(va, size):
+    def view(va, size, written=None):
         require(0 < size <= 49152, 'unbounded writable recipe view')
         pa = space.physical(va, size, writable=True)
-        allowed.append((pa, pa + size))
+        allowed.append((pa, pa + (size if written is None else written)))
         return pa
 
     images = description.get('images')
@@ -247,13 +251,13 @@ def verify(initial, returned, description, program_data, capture_data, observed_
     vl = field(draw, dc, 'DRAW_VERTEX_GEOMETRY_VERTEX_SCRATCH_LIMIT')
     require(vl - vb == 40960, 'wrong vertex scratch view')
     view(vb, 75 * 512)
-    for first_name, last_name, count in (
-            ('FRAME_BINS_BINS_DIRECTORYBASE', 'FRAME_BINS_BINS_DIRECTORYLIMIT', 64),
-            ('FRAME_BINS_BINS_POOL_BASE', 'FRAME_BINS_BINS_POOL_LIMIT', 4096),
-            ('FRAME_BINS_PRODUCER_ARENA_BASE', 'FRAME_BINS_PRODUCER_ARENA_LIMIT', 4096)):
+    for first_name, last_name, count, written in (
+            ('FRAME_BINS_BINS_DIRECTORYBASE', 'FRAME_BINS_BINS_DIRECTORYLIMIT', 64, 64),
+            ('FRAME_BINS_BINS_POOL_BASE', 'FRAME_BINS_BINS_POOL_LIMIT', 4096, 48),
+            ('FRAME_BINS_PRODUCER_ARENA_BASE', 'FRAME_BINS_PRODUCER_ARENA_LIMIT', 4096, 23 * 64)):
         va = get(first_name)
         require(get(last_name) - va == count, 'unexpected original work area capacity')
-        view(va, count)
+        view(va, count, written)
     completion_va = struct.unpack_from('<I', job, 48 * 4)[0]
     completion = description['completionOriginal']
     require(completion_va == description['completionVA'] and completion['viewBytes'] == 16384,

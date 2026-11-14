@@ -10,13 +10,14 @@ import hashlib
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
 
 from native_sample_owner_protocol import (strict_json, profile_bytes, held_bytes,
     retired_bytes, cleanup_authorization, final_authorization, checked_cleanup)
-from native_sample_owner_oracle import SparseMemory, verify, program
+from native_sample_owner_oracle import SparseMemory, verify, program, capture
 from owner_process_lifetime import CleanupIncomplete, stop_group, remove_container
 from owner_resource_contract import SAMPLE_PROFILE
 
@@ -112,6 +113,9 @@ def main():
     bridge = running = None
     locks = []
     preserve = False
+    def terminate(_signal, _frame):
+        raise KeyboardInterrupt('sample qualification terminated')
+    previous = signal.signal(signal.SIGTERM, terminate)
 
     def qualified(log):
         subprocess.run([checker_python, checker, '--stage', 'check', '--kind', 'native-sample',
@@ -141,6 +145,7 @@ def main():
             guarded = [packet, directory / 'record-0.capture', directory / 'sample-inputs.json', directory / 'union.memory']
             identities = [digest(path) for path in guarded]
             capture_data = (directory / 'record-0.capture').read_bytes()
+            command_id, _, _ = capture(capture_data, observed)
             with SparseMemory(directory / 'union.memory') as before:
                 verify(before, None, description, original, capture_data, observed)
             qualified(output)
@@ -149,6 +154,8 @@ def main():
                 env=env, stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
             wait_file(directory / 'record-0.held.json', bridge, running, args.timeout)
             held = strict_json(directory / 'record-0.held.json')
+            require(held.get('commandId') == command_id and held.get('gnx', [])[6:9] == [7, 8, 9],
+                    'actual held receipt changed original enqueue/context identity')
             atomic(directory / 'record-0.held.response', held_bytes(held))
             wait_file(directory / 'record-0.retired.json', bridge, running, args.timeout)
             retired = strict_json(directory / 'record-0.retired.json')
@@ -193,10 +200,13 @@ def main():
             print('Preserved inputs for a possibly active consumer: ' + str(directory))
             raise
         finally:
-            for lock in locks:
-                lock.close()
-            if not preserve:
-                shutil.rmtree(directory)
+            try:
+                for lock in locks:
+                    lock.close()
+                if not preserve:
+                    shutil.rmtree(directory)
+            finally:
+                signal.signal(signal.SIGTERM, previous)
 
 
 if __name__ == '__main__':
