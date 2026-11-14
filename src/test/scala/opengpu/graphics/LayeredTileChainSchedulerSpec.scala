@@ -27,7 +27,7 @@ class LayeredTileChainSchedulerSpec extends AnyFlatSpec {
       d.clock.step();d.io.tile.valid.poke(false.B)}
     def bind(e:Int):TileBinCompletion={until(s"engine $e chain")(d.io.chain(e).valid.peek().litToBoolean)
       val q=d.io.chain(e).bits.peek();d.io.chain(e).ready.poke(true.B);d.clock.step();d.io.chain(e).ready.poke(false.B)
-      d.io.imageBusy(e).poke(true.B);q}
+      d.io.imageBusy(e).poke(true.B);d.io.imageOwned(e).expect(true.B);q}
     def done(e:Int,q:TileBinCompletion,status:Int=0,accepted:BigInt=0,scanned:BigInt=0):Unit={
       val c=d.io.imageCompletion(e);zero(c.bits);identity(c.bits.identity);c.bits.tile.poke(q.tile)
       c.bits.status.poke(status.U);identity(c.bits.replay.identity);c.bits.replay.tile.poke(q.tile)
@@ -76,7 +76,7 @@ class LayeredTileChainSchedulerSpec extends AnyFlatSpec {
       t.until("irrevocable chain offer")(d.io.chain(0).valid.peek().litToBoolean)
       val held=d.io.chain(0).bits.peek().litValue;d.io.cancel.poke(true.B);d.clock.step();d.io.cancel.poke(false.B)
       for(_<-0 until 7){d.clock.step();d.io.chain(0).valid.expect(true.B);assert(d.io.chain(0).bits.peek().litValue==held)
-        d.io.cancelImage(0).expect(false.B)}
+        d.io.cancelImage(0).expect(false.B);d.io.imageOwned(0).expect(false.B)}
       val q=t.bind(0);d.io.cancelImage(0).expect(true.B);t.done(0,q,status=4)
       assert(t.drain(1)==Vector(1));t.finish(4,1)
       t.begin();t.tile(0,PrimitiveBinStatus.memoryFault)
