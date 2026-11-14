@@ -270,6 +270,9 @@ struct drm_opengpu_param {
 /* Protected native descriptors, code/uniform snapshots and whole-job preflight.
  * This bit is withheld until the production submission path is available. */
 #define OPENGPU_DRIVER_FEATURE_NATIVE_BINNED (1ull << 40)
+/* Reserved for separately qualified GNJ2/GNF3/GNY2 protected geometry transport.
+ * Never inferred from bit40, GUC1 or the presence of an unused software module. */
+#define OPENGPU_DRIVER_FEATURE_NATIVE_GEOMETRY (1ull << 42)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u

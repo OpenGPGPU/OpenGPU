@@ -13,18 +13,21 @@
 
 struct opengpu_native_source_limits {
     struct opengpu_native_binned_host_caps frame;
+    u32 geometry_words[8]; /* Zero for the legacy VS/FS-only source profile. */
     u32 capacity, engines, lanes, warps;
     bool available;
 };
 #define OPENGPU_NATIVE_FIELD(c, name) (((c)->words[OPENGPU_NATIVE_BINNED_HOST_##name##_WORD] & \
     OPENGPU_NATIVE_BINNED_HOST_##name##_MASK) >> OPENGPU_NATIVE_BINNED_HOST_##name##_SHIFT)
-static inline bool opengpu_native_source_frame_valid(const struct opengpu_native_binned_host_caps *c)
+static inline bool opengpu_native_source_frame_valid_profile(const struct opengpu_native_binned_host_caps *c,
+    bool layered)
 {
     const u32 storage=OPENGPU_NATIVE_FIELD(c,STORAGE_BYTES),samples=OPENGPU_NATIVE_FIELD(c,SAMPLES);
     const u32 engines=OPENGPU_NATIVE_FIELD(c,ENGINES),owners=OPENGPU_NATIVE_FIELD(c,PAYLOAD_OWNERS);
     const u32 log2=OPENGPU_NATIVE_FIELD(c,PAYLOAD_CAPACITY_LOG2),lines=OPENGPU_NATIVE_FIELD(c,PAYLOAD_SLOT_LINES);
-    if ((c->words[0]!=OPENGPU_NATIVE_BINNED_HOST_MAGIC && c->words[0]!=OPENGPU_NATIVE_BINNED_HOST_WIDE_MAGIC) ||
-        c->words[1]!=8 || c->words[2]!=OPENGPU_NATIVE_BINNED_JOB_MAGIC ||
+    if ((layered ? c->words[0]!=0x474e4305u :
+         (c->words[0]!=OPENGPU_NATIVE_BINNED_HOST_MAGIC && c->words[0]!=OPENGPU_NATIVE_BINNED_HOST_WIDE_MAGIC)) ||
+        c->words[1]!=8 || c->words[2]!=(layered?0x474e4a02u:OPENGPU_NATIVE_BINNED_JOB_MAGIC) ||
         OPENGPU_NATIVE_FIELD(c,JOB_BYTES)!=512 || OPENGPU_NATIVE_FIELD(c,FRAME_BYTES)!=2048 ||
         OPENGPU_NATIVE_FIELD(c,DRAW_BYTES)!=2048 ||
         !OPENGPU_NATIVE_FIELD(c,ATTRIBUTES) || OPENGPU_NATIVE_FIELD(c,ATTRIBUTES)>16 ||
@@ -43,6 +46,8 @@ static inline bool opengpu_native_source_frame_valid(const struct opengpu_native
     }else if(owners || log2 || lines)return false;
     return true;
 }
+static inline bool opengpu_native_source_frame_valid(const struct opengpu_native_binned_host_caps *c)
+{ return opengpu_native_source_frame_valid_profile(c,false); }
 
 /* Bit17 guarantees these optional records together, not a Linux ioctl or API
  * capability. GNP alone and compute uniform transport do not guarantee GUC/GSL.

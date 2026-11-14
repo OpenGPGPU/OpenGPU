@@ -48,6 +48,16 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertTrue({"opengpu.graphics.NativeAdvancedBlendAbiSpec",
                                  "opengpu.graphics.NativeBinnedGraphicsJobReaderSpec",
                                  "opengpu.system.NativeDescriptorPreflightCapabilitiesAxiSpec"} <= set(changed_suites(REPO_ROOT, [path])))
+    def test_geometry_transport_discovery_selects_actual_axi_checks(self):
+        for path in ("src/main/scala/opengpu/graphics/NativeGeometryTransportCapabilities.scala",
+                     "src/main/scala/opengpu/elaboration/EmitNativeGeometryTransportAbi.scala",
+                     "driver/opengpu_native_geometry_transport_abi.h",
+                     "driver/opengpu_native_geometry_transport_features.h",
+                     "driver/tests/opengpu_native_geometry_transport_discovery_test.c"):
+            with self.subTest(path=path):
+                self.assertIn("opengpu.system.NativeGeometryTransportCapabilitiesAxiSpec",
+                              changed_suites(REPO_ROOT, [path]))
+
     def test_compute_resource_discovery_selects_existing_cpu_abi_checks(self):
         root = Path(__file__).resolve().parents[1]
         expected = {f"opengpu.graphics.{suite}" for suite in
