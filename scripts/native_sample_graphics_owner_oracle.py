@@ -41,6 +41,14 @@ def writable_views(d):
     return [*d['resources'], d['vertexScratch'], d['completion']]
 
 
+def page_intervals(intervals):
+    return merged((first & ~4095, (end+4095) & ~4095) for first, end in merged(intervals))
+
+
+def disjoint(left, right):
+    return all(a[1] <= b[0] or b[1] <= a[0] for a in left for b in right)
+
+
 def checked_pair(descriptions):
     require(type(descriptions) is list and len(descriptions) == 2 and
             [d.get('record') for d in descriptions] == [0, 1], 'two ordered original source plans required')
@@ -49,14 +57,35 @@ def checked_pair(descriptions):
             'two original owners must retain one protected context')
     for name in ('jobVA', 'frameVA', 'drawVA', 'stateVA'):
         require(left[name] != right[name], 'two owners reused a private record')
-    sets = []
+    writable, private, readonly, tables = [], [], [], []
     for d in descriptions:
-        views = [(first & ~4095, (end+4095) & ~4095)
-                 for first, end in map(view_interval, writable_views(d))]
-        views += [(s['physical'], s['physical']+s['allocationBytes']) for s in d['privateSegments']]
-        sets.append(merged(views))
-    require(all(a[1] <= b[0] or b[1] <= a[0] for a in sets[0] for b in sets[1]),
+        writable.append(page_intervals(map(view_interval, writable_views(d))))
+        private.append(page_intervals((uint(s['physical']), uint(s['physical'])+uint(s['allocationBytes']))
+                                      for s in d['privateSegments']))
+        # These are ORIGINAL RO GEM sources, not the privateSegments copies.
+        # Protect their complete retained allocations, including unused source
+        # tails; an alternate writable VA must not alias one of their pages.
+        originals = [*d['programs'], *d['uniforms'], d['vertexInput']]
+        readonly.append(page_intervals((uint(v['allocationPhysical']),
+            uint(v['allocationPhysical'])+uint(v['allocationBytes'])) for v in originals))
+        ptes = []
+        for p in d['pteRanges']:
+            first, end = uint(p['first']), uint(p['end'], 33)
+            require(first % 4096 == end % 4096 == 0, 'unaligned actual PTE page allocation')
+            ptes.append((first, end))
+        tables.append(merged(ptes))
+    exclusive = [merged(writable[i]+private[i]) for i in range(2)]
+    require(disjoint(exclusive[0], exclusive[1]),
             'two owners alias mutable/private source pages')
+    for i in range(2):
+        require(disjoint(writable[i], private[i]), 'writable source aliases its own private snapshot')
+        # Shared-context PTE pages and shared original RO programs/UBOs are
+        # legal across owners. Only mutable/private allocations are exclusive;
+        # never compare the RO or table sets against one another.
+        require(disjoint(exclusive[i], merged(readonly[0]+readonly[1])),
+                'mutable/private page aliases an original read-only source')
+        require(disjoint(exclusive[i], merged(tables[0]+tables[1])),
+                'mutable/private page aliases an actual PTE allocation')
 
 
 def capture_identity(data, profile, d):
@@ -157,3 +186,23 @@ def verify_result(initial, returned, descriptions, programs, reflection, profile
     verify_gny2(returned.read(completion, 16384), command_id=command, context=d['context'])
     guards(initial if previous is None else previous, returned, writable_bytes(d))
     return command
+
+
+def verify_pair(initial, first, second, descriptions, programs, reflection, profile, captures):
+    """Revalidate both complete results before any cleanup authorization.
+
+    A previous snapshot is not an oracle witness by itself: record0 must pass
+    its own image/GNY2 and initial-to-first guards before first-to-second
+    preservation can authorize a complete pair. This function emits no ACK.
+    """
+    require(type(captures) in (list, tuple) and len(captures) == 2 and
+            all(type(data) is bytes for data in captures), 'two original capture byte strings required')
+    require(type(descriptions) is list and len(descriptions) == 2 and
+            [d.get('record') for d in descriptions] == [0, 1], 'wrong original owner order')
+    commands = tuple(capture_identity(data, profile, d) for data, d in zip(captures, descriptions))
+    require(commands[0] != commands[1], 'two owners reused a command identity')
+    require(verify_result(initial, first, descriptions, programs, reflection, profile,
+                          captures[0], 0) == commands[0], 'first result changed capture identity')
+    require(verify_result(initial, second, descriptions, programs, reflection, profile,
+                          captures[1], 1, previous=first) == commands[1], 'second result changed capture identity')
+    return commands
