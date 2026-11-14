@@ -4,6 +4,7 @@
 recipes on the complete `geometry-compute` owner factory. The common builder
 still names the executable `native_product_driver`. Its explicit additional
 dependencies are `scripts/native_layered_product_fixture.hpp` and
+`scripts/native_layered_product_execution.hpp` together with
 `driver/opengpu_native_layered_abi.h`; the existing host simulation, AXI, fixture
 and progress headers remain shared dependencies.
 
@@ -53,3 +54,11 @@ These are CPU guards and source integration only. Actual complete-DUT execution
 of the six 640×480 frames, independent returned-frame verification and physical
 timing qualification remain required. This work does not inherit qualification
 from the old GNJ1 model or from a standalone component test.
+
+The separate fixed `native_sample_layered_product_driver.cpp` wrapper selects
+the shared execution template's strict OGLAY002/112-word sample factory. It
+rejects OGLAY001, while the original wrapper rejects OGLAY002. This path uses
+the same real traffic/completion/publication/retirement checks and unchanged
+original ABI1 recipes; it does not qualify SampleID/Position builtins. Its
+exact manifest, row and runner contract is described in
+`NATIVE_LAYERED_PRODUCT_QUALIFICATION.md`.

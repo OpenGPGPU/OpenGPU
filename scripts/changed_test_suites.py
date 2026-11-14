@@ -681,6 +681,16 @@ def changed_suites(root, changed, *, test_index=None):
                   "src/test/scala/opengpu/system/PrepareOwnerResourceSampleHost.scala"}:
         affected.add("src/test/scala/opengpu/system/NativeGeometryTransportCapabilitiesAxiSpec.scala")
         affected.add("src/test/scala/opengpu/system/NativeOwnerHostProfileSpec.scala")
+    if changed & {"src/test/scala/opengpu/system/NativeLayeredProductFixtures.scala",
+                  "scripts/native_layered_product_fixture.hpp",
+                  "scripts/native_layered_product_execution.hpp",
+                  "scripts/native_layered_product_driver.cpp",
+                  "scripts/native_sample_layered_product_driver.cpp",
+                  "scripts/qualify_native_layered_product.py",
+                  "scripts/qualify_native_sample_layered_product.py"}:
+        affected.add("src/test/scala/opengpu/system/NativeLayeredProductFixturesSpec.scala")
+        affected.add("src/test/scala/opengpu/system/NativeSampleLayeredProductFixturesSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/NativeLayeredProductFrameInputsSpec.scala")
     texture_image_abi_paths = {
         f"src/main/scala/opengpu/elaboration/Emit{name}Abi.scala"
         for name in ("ShaderImage", "TextureImageBinding", "TextureImageLevel", "TextureImageFormat")
