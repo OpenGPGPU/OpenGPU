@@ -8,7 +8,8 @@ import unittest
 from compute_owner_protocol import (AUXILIARY, MAGICS, SCHEMA, profile_bytes,
     held_bytes, retired_bytes, cleanup_authorization, checked_cleanup)
 from prepare_native_owner_flashsim import EXPECTED_WORDS
-from owner_resource_contract import COMPUTE_SCHEMA, COMPUTE_STAGE, COMPUTE_WORDS
+from owner_resource_contract import (COMPUTE_SCHEMA, COMPUTE_STAGE, COMPUTE_WORDS,
+    FULL_COMPUTE_SCHEMA, FULL_COMPUTE_CONTRACTS)
 
 
 def profile():
@@ -49,6 +50,36 @@ class Protocol(unittest.TestCase):
             with self.assertRaises(ValueError): profile_bytes(wrong)
         for index in range(len(COMPUTE_WORDS)):
             wrong = deepcopy(value); wrong['words'][index]['value'] ^= 1
+            with self.assertRaises(ValueError): profile_bytes(wrong)
+
+    def test_complete_geometry_and_sample_factories_are_distinct_exact_v3_contracts(self):
+        for name, (stage, words) in FULL_COMPUTE_CONTRACTS.items():
+            value = profile()
+            value.update(schema=FULL_COMPUTE_SCHEMA, ownerProfile=name,
+                ownerResourceStage=stage, ownerResourceVersion=2,
+                fullResourceQualification=False, words=deepcopy(words))
+            wire = profile_bytes(value)
+            self.assertEqual(wire[:12], b'OGCP0003' + struct.pack('<I', len(words)))
+            self.assertEqual(len(wire), 8+4+len(words)*8+4+10*8)
+            for index in range(len(words)):
+                for field in ('address', 'value'):
+                    wrong = deepcopy(value); wrong['words'][index][field] ^= 1
+                    with self.subTest(name=name, index=index, field=field), self.assertRaises(ValueError):
+                        profile_bytes(wrong)
+            for key, bad in [('schema', SCHEMA), ('schema', COMPUTE_SCHEMA),
+                    ('ownerProfile', COMPUTE_STAGE), ('ownerResourceStage', 'compute'),
+                    ('ownerResourceVersion', True), ('fullResourceQualification', True),
+                    ('words', COMPUTE_WORDS), ('words', words[:-1]), ('words', list(reversed(words)))]:
+                wrong = deepcopy(value); wrong[key] = bad
+                with self.subTest(name=name, key=key), self.assertRaises(ValueError): profile_bytes(wrong)
+            for other, (other_stage, other_words) in FULL_COMPUTE_CONTRACTS.items():
+                if other == name: continue
+                wrong = deepcopy(value); wrong['ownerProfile'] = other; wrong['ownerResourceStage'] = other_stage
+                with self.assertRaises(ValueError): profile_bytes(wrong)
+                wrong = deepcopy(value); wrong['words'] = deepcopy(other_words)
+                with self.assertRaises(ValueError): profile_bytes(wrong)
+        for key in ('ownerProfile', 'ownerResourceStage', 'ownerResourceVersion', 'fullResourceQualification'):
+            wrong = profile(); wrong[key] = False
             with self.assertRaises(ValueError): profile_bytes(wrong)
 
     def test_actual_profile_shape_and_each_raw_auxiliary(self):

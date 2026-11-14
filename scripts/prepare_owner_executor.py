@@ -18,7 +18,7 @@ import build_native_flashsim as builder
 import prepare_native_owner_flashsim as owner
 import qualify_native_product_compiled as common
 import qualify_native_product_flashsim as flash
-from owner_resource_contract import COMPUTE_STAGE
+from owner_resource_contract import COMPUTE_STAGE, FULL_COMPUTE_CONTRACTS, PROFILE as FULL_PROFILE, SAMPLE_PROFILE
 
 ROOT = Path(__file__).resolve().parents[1]
 KINDS = ('native', 'compute')
@@ -31,7 +31,12 @@ DEFAULT_DEPENDENCIES = ('scripts/flashsim_native/VGpuHostSystemAxi.h',
     'scripts/native_frame_fixture.hpp')
 CHECKERS = ('scripts/prepare_owner_executor.py', 'scripts/build_native_flashsim.py',
     'scripts/prepare_native_owner_flashsim.py', 'scripts/qualify_native_product_flashsim.py',
-    'scripts/qualify_native_product_compiled.py', 'scripts/owner_resource_contract.py')
+    'scripts/qualify_native_product_compiled.py', 'scripts/owner_resource_contract.py',
+    'scripts/compute_owner_protocol.py', 'scripts/compute_owner_controller.py',
+    'scripts/compute_owner_oracle.py', 'scripts/compute_owner_cases.py',
+    'scripts/qualify_compute_owner.py', 'scripts/test_gallium_compute_host.py',
+    'scripts/test_gallium_compute_uniforms.py', 'userspace/tests/compute_host_frontend.c',
+    'driver/tests/opengpu_compute_host_fixture.c')
 
 
 def require(condition, message):
@@ -41,19 +46,23 @@ def require(condition, message):
 
 def profile_contract(profile, kind):
     require(kind in KINDS, 'unknown owner executor kind')
-    require(profile == owner.PROFILE or (profile == COMPUTE_STAGE and kind == 'compute'),
+    require(profile == owner.PROFILE or ((profile == COMPUTE_STAGE or profile in FULL_COMPUTE_CONTRACTS) and kind == 'compute'),
             'unsupported factory for the selected owner executor kind')
     fields = dict(profile=profile)
     if profile == COMPUTE_STAGE:
         fields.update(ownerResourceVersion=2, ownerResourceStage='compute', fullResourceQualification=False)
+    elif profile in FULL_COMPUTE_CONTRACTS:
+        fields.update(ownerResourceVersion=2, ownerResourceStage=FULL_COMPUTE_CONTRACTS[profile][0], fullResourceQualification=False)
     return fields
 
 
 def driver_files(kind, profile=owner.PROFILE):
     require(kind in KINDS, 'unknown owner executor kind')
     profile_contract(profile, kind)
-    if profile == COMPUTE_STAGE:
-        return ['scripts/compute_stage_owner_driver.cpp', 'scripts/compute_owner_driver.cpp',
+    if profile == COMPUTE_STAGE or profile in FULL_COMPUTE_CONTRACTS:
+        wrapper = {COMPUTE_STAGE: 'compute_stage', FULL_PROFILE: 'geometry_compute',
+                   SAMPLE_PROFILE: 'geometry_compute_sample'}[profile]
+        return [f'scripts/{wrapper}_owner_driver.cpp', 'scripts/compute_owner_driver.cpp',
                 *SHARED, 'scripts/compute_owner_capture.hpp']
     return ([f'scripts/{kind}_owner_driver.cpp', *SHARED] +
             (['scripts/compute_owner_capture.hpp'] if kind == 'compute' else []))

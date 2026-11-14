@@ -157,13 +157,15 @@ int main(int argc,char **argv)
  }
  assert(uniform_case || dynamic_case || !strcmp(argv[4],"shared"));
  directory=argv[2];FILE *f=fopen(argv[1],"rb");assert(f);
- char wire[8];assert(fread(wire,1,8,f)==8 && (!memcmp(wire,"OGCP0001",8) || !memcmp(wire,"OGCP0002",8)));
- unsigned version=wire[7]-'0',count=read32(f);assert(count>=96 && count<=1014 && (version==2 || count==96));
+ char wire[8];assert(fread(wire,1,8,f)==8 && (!memcmp(wire,"OGCP0001",8) ||
+  !memcmp(wire,"OGCP0002",8) || !memcmp(wire,"OGCP0003",8)));
+ unsigned version=wire[7]-'0',count=read32(f);
+ assert((version==3 && (count==104 || count==112)) || ((version==1 || version==2) && count==96));
  struct compute_host_profile_word *words=calloc(count+10,sizeof(*words));assert(words);
  for(unsigned i=0;i<count;i++){words[i].address=read32(f);words[i].value=read32(f);}
  assert(read32(f)==10);for(unsigned i=count;i<count+10;i++){words[i].address=read32(f);words[i].value=read32(f);}end(f);
  session=compute_host_create(1,words,count+10);free(words);assert(session);
- if(dynamic_case){uint64_t features=0;assert(version==2 && !compute_host_query(session,OPENGPU_PARAM_DRIVER_FEATURES,&features) &&
+ if(dynamic_case){uint64_t features=0;assert((version==2 || version==3) && !compute_host_query(session,OPENGPU_PARAM_DRIVER_FEATURES,&features) &&
   (features&OPENGPU_DRIVER_FEATURE_COMPUTE_SHARED_ATOMICS));}
  struct pipe_screen *s=opengpu_drm_screen_create(7,NULL);assert(s);struct pipe_context *p=s->context_create(s,NULL,0);assert(p);
  char dump[4096];path(dump,"actual-shared");void *frontend=cs_frontend_compile(argv[3],dump);assert(frontend);
