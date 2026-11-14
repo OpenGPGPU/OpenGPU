@@ -74,6 +74,10 @@ class Entry(unittest.TestCase):
             self.assertIn('--memory-swap', command)
             self.assertIn('--network=none', command)
             self.assertIn('--read-only', command)
+            expected_memory='512m' if case==qualifier.COUNTER_CASE else '2g'
+            self.assertEqual(command[command.index('--memory')+1],expected_memory)
+            self.assertEqual(command[command.index('--memory-swap')+1],expected_memory)
+            self.assertEqual(command[command.index('--cpus')+1],'1' if case==qualifier.COUNTER_CASE else '2')
             self.assertIn('OPENGPU_COMPUTE_HOST_TIMEOUT=3600', command)
             self.assertEqual(command[-2:], ['--case', case])
             self.assertNotIn('--capture-only', command)
