@@ -27,7 +27,9 @@ def main():
         assert set(checked_inputs(tmp / "inputs", ROOT, pin)) == set(NAMES)
         source = tmp / "reader.cpp"
         source.write_text('''#include "native_frame_axi.hpp"
+#include "native_framebuffer_blit_fixture.hpp"
 #include "native_framebuffer_blit_lease.hpp"
+#include "../driver/opengpu_storage_descriptor.h"
 #include <iostream>
 int main(int argc,char **argv) {
   try {
@@ -48,6 +50,15 @@ int main(int argc,char **argv) {
       for(uint32_t n=0;n<f.views[i].allocation;n+=4096)
         walk(lease.vector_root,lease.virtual_base[i]+n,lease.physical_base[i]+n,i==1?0xc7:0x43);
       const uint32_t record=lease.table_physical+i*64;
+      opengpu_storage_descriptor descriptor{};
+      descriptor.context=f.context;descriptor.pass=7;descriptor.generation=1;descriptor.binding=i;
+      descriptor.base=descriptor.allocation_base=lease.virtual_base[i];
+      descriptor.limit=uint64_t(lease.virtual_base[i])+f.views[i].limit;
+      descriptor.allocation_limit=(descriptor.limit+63)&~uint64_t(63);
+      descriptor.readable=bool(f.views[i].access&1);descriptor.writable=bool(f.views[i].access&2);
+      uint32_t encoded[16];require(opengpu_encode_storage_descriptor(encoded,&descriptor),"real GSB encoder rejected");
+      for(unsigned n=0;n<16;n++)require(Lease::get(lease.memory,record+n*4)==encoded[n],
+        "wire GSB differs from actual kernel encoder");
       require(Lease::get(lease.memory,record)==0x47534201 && Lease::get(lease.memory,record+12)==f.context &&
         Lease::get(lease.memory,record+24)==i && Lease::get(lease.memory,record+32)==1 &&
         Lease::get(lease.memory,record+36)==(i==1) &&

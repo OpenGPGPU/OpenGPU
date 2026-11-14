@@ -79,6 +79,20 @@ The bounded Sv32 fixture retains actual GEM identity, aliases, bytes and exact
 GSB1 permissions; independent walks check every mapped page, while complete
 memory checks include shader, maps, page tables, padding and image guards.
 
+The host executor source admits these original packets before creating a model,
+requires the complete 96-word profile, and stages the original bytes in that
+bounded test VM. It checks held completions, last external ACK, publication
+invalidate, exact retirement and page revocation before the next case without
+reset. Its runtime comes from an explicit owner checkout; producer C checks are
+separate from the C++ wire reader, so no duplicate cross-checkout ABI header is
+selected. The actual owner's strict driver-include validator and a C++ typecheck
+pass. The typecheck uses declaration-only ports and executes no RTL. This source
+is not yet a qualified executable or a completed GPU test; original Linux MMIO
+replay, fault/reset cancellation, full-model identity and pre/post execution
+guards remain separate required gates. Reusing the frozen 96-word DUT would be
+functional diagnosis only. Final H6 qualification requires the newly integrated
+source profile and all six complete 640×480 frames with its whole-host clock.
+
 ```sh
 python3 -B scripts/test_framebuffer_blit.py
 OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 \
@@ -87,6 +101,8 @@ OPENGPU_DRM_INCLUDE=/path/to/drm-headers \
 OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 \
 OPENGPU_DRM_INCLUDE=/path/to/drm-headers \
   python3 -B scripts/test_framebuffer_blit_inputs.py
+python3 -B scripts/check_framebuffer_blit_host_source.py \
+  --owner-root /path/to/gpu/.artifacts/worktrees/complete-owner-source
 ```
 
 Actual two-CU/Sv32/L2 execution, fault/reset drain and completion retirement remain

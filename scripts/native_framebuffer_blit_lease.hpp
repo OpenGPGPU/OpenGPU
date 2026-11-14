@@ -1,6 +1,5 @@
 #pragma once
-#include "native_framebuffer_blit_fixture.hpp"
-#include "../driver/opengpu_storage_descriptor.h"
+#include "native_framebuffer_blit_input.hpp"
 #include <map>
 #include <set>
 
@@ -48,7 +47,7 @@ template<class Memory> struct Lease {
     const auto pte=at->second+4*((va>>12)&1023);
     require(!get(memory,pte),"fixture virtual pages overlap");put(memory,pte,((pa>>12)<<10)|flags);
   }
-  explicit Lease(const Input &input,unsigned epoch=0):asid(input.context) {
+  explicit Lease(const Packet &input,unsigned epoch=0):asid(input.context) {
     require(epoch<64,"fixture epoch exceeds bounded physical layout");
     instruction_root=0x10000+epoch*0x40000;vector_root=instruction_root+0x10000;
     code_physical=0x100000+epoch*0x200000;kernarg_physical=code_physical+0x2000;table_physical=code_physical+0x4000;
@@ -73,24 +72,21 @@ template<class Memory> struct Lease {
       physical_base[i]=at->second;
       for(uint32_t n=0;n<view.allocation;n+=4096)
         map_page(vector_root,virtual_base[i]+n,physical_base[i]+n,view.access&2?0xc7:0x43);
-      opengpu_storage_descriptor descriptor{};
-      descriptor.context=input.context;descriptor.pass=7;descriptor.generation=1;descriptor.binding=i;
-      descriptor.base=descriptor.allocation_base=virtual_base[i];
-      descriptor.limit=uint64_t(virtual_base[i])+view.limit;
-      // As in the actual kernel, transport padding grants no extra logical
-      // authority. Only the complete-line tail of this view is in GSB1.
-      descriptor.allocation_limit=(descriptor.limit+63)&~uint64_t(63);
-      descriptor.readable=bool(view.access&1);descriptor.writable=bool(view.access&2);
-      uint32_t record[16];require(opengpu_encode_storage_descriptor(record,&descriptor),"fixture GSB1 rejected");
+      const uint32_t limit=virtual_base[i]+view.limit;
+      // Exact GSB1 wire fields. CPU checks compare all 16 words against the
+      // real kernel encoder; no C producer header is selected by this runtime.
+      const uint32_t record[16]={0x47534201,64,1,input.context,7,1,i,1,
+        uint32_t(bool(view.access&1)),uint32_t(bool(view.access&2)),virtual_base[i],limit,0,
+        virtual_base[i],(limit+63)&~63u,0};
       for(unsigned n=0;n<16;n++)put(memory,table_physical+i*64+n*4,record[n]);
     }
     // Fourth storage binding remains all zero/unbound, as in the actual call.
     std::sort(memory.ranges.begin(),memory.ranges.end(),[](auto a,auto b){return a.start<b.start;});
   }
-  uint32_t instruction_satp() const {return GPU_SATP_ENABLE|(asid<<GPU_SATP_ASID_SHIFT)|(instruction_root>>12);}
-  uint32_t vector_satp() const {return GPU_SATP_ENABLE|(asid<<GPU_SATP_ASID_SHIFT)|(vector_root>>12);}
+  uint32_t instruction_satp() const {return 0x80000000u|(asid<<22)|(instruction_root>>12);}
+  uint32_t vector_satp() const {return 0x80000000u|(asid<<22)|(vector_root>>12);}
 
-  void verify(const Memory &initial,const Input &input,bool completed) const {
+  void verify(const Memory &initial,const Packet &input,bool completed) const {
     require(initial.ranges.size()==memory.ranges.size(),"fixture physical map changed");
     const uint64_t start=physical_base[1],end=start+input.destination.size();
     for(const auto &r:initial.ranges)for(uint64_t a=r.start;a<r.end;a++) {
