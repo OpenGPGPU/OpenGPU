@@ -1561,5 +1561,20 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertNotIn("opengpu.graphics.TypedTileRenderPipelineSpec", actual)
 
 
+    def test_dynamic_tes_patch_keeps_service_and_actual_cu_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        expected = {"opengpu.graphics.TessellationEvaluationVectorAccessSpec",
+                    "opengpu.system.TessellationEvaluationPatchProviderSpec",
+                    "opengpu.system.TessellationDynamicPatchElaborationSpec",
+                    "opengpu.system.TessellationDynamicPatchSystemSpec"}
+        for name in ("graphics/tessellation/TessellationEvaluationVectorAccess.scala",
+                     "system/TessellationEvaluationPatchProvider.scala",
+                     "system/TessellationCuTriangleSharedEvaluator.scala",
+                     "system/TessellationSystemQuadImagePipeline.scala",
+                     "core/frontend/decode/VectorDecoder.scala"):
+            with self.subTest(path=name):
+                self.assertTrue(expected <= set(changed_suites(root, ["src/main/scala/opengpu/" + name])))
+
+
 if __name__ == "__main__":
     unittest.main()

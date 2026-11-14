@@ -721,6 +721,26 @@ def changed_suites(root, changed, *, test_index=None):
         affected.add("src/test/scala/opengpu/graphics/NativeGeometryProgramSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/NativeBinnedGraphicsJobReaderSpec.scala")
     if changed & {
+        "src/main/scala/opengpu/graphics/tessellation/TessellationEvaluationVectorAccess.scala",
+        "src/main/scala/opengpu/system/TessellationEvaluationPatchProvider.scala",
+        "src/main/scala/opengpu/system/SharedCuGraphicsPort.scala",
+        "src/main/scala/opengpu/graphics/SharedShaderTaskRouter.scala",
+        "src/main/scala/opengpu/core/frontend/decode/VectorDecoder.scala",
+        "src/main/scala/opengpu/core/frontend/decode/FullInstructionDecoder.scala",
+        "src/main/scala/opengpu/core/GpuComputeUnit.scala",
+        "src/main/scala/opengpu/system/GpuSystem.scala",
+        "src/main/scala/opengpu/graphics/tessellation/TessellationControlWarpScheduler.scala",
+    } or any(path in changed for domain in ("Isoline", "Triangle", "Quad")
+             for path in (f"src/main/scala/opengpu/system/TessellationCu{domain}SharedEvaluator.scala",
+                          f"src/main/scala/opengpu/system/TessellationCu{domain}SystemClient.scala",
+                          f"src/main/scala/opengpu/system/TessellationSystem{domain}ImagePipeline.scala",
+                          f"src/main/scala/opengpu/graphics/tessellation/TessellationCu{domain}Patch.scala")):
+        for suite in ("opengpu.graphics.TessellationEvaluationVectorAccessSpec",
+                      "opengpu.system.TessellationEvaluationPatchProviderSpec",
+                      "opengpu.system.TessellationDynamicPatchElaborationSpec",
+                      "opengpu.system.TessellationDynamicPatchSystemSpec"):
+            affected.add("src/test/scala/" + suite.replace(".", "/") + ".scala")
+    if changed & {
         "src/main/scala/opengpu/graphics/ShaderUniformResources.scala",
         "src/main/scala/opengpu/graphics/ShaderUniformLoadUnit.scala",
         "src/main/scala/opengpu/graphics/ShaderUniformExecuteUnit.scala",
