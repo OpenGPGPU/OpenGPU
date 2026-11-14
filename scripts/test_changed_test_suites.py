@@ -149,6 +149,26 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertIn("opengpu.graphics.TessellationSystemClientRetirementSpec",
                               changed_suites(REPO_ROOT, [path]))
 
+    def test_vertex_sequence_dependencies_require_new_and_old_reader_checks(self):
+        paths = ["src/main/scala/opengpu/graphics/NativeTypedGraphicsDescriptors.scala",
+                 "src/main/scala/opengpu/system/TessellationVertexSequenceLayout.scala",
+                 "src/main/scala/opengpu/system/TessellationVertexSequenceReader.scala",
+                 "src/main/scala/opengpu/system/TessellationVertexSourceReader.scala",
+                 "src/main/scala/opengpu/system/TessellationUniformSequenceLayout.scala",
+                 "docs/abi/tessellation-vertex-sequence-v1.json",
+                 "docs/abi/tessellation-uniform-sequence.json",
+                 "docs/abi/native-tessellation-sequence-v1.json",
+                 "docs/abi/native-tessellation-triangle-sequence-v2.json",
+                 "docs/abi/native-tessellation-quad-sequence-v3.json"]
+        paths += [f"src/main/scala/opengpu/system/Tessellation{stem}.scala"
+                  for domain in ("", "Triangle", "Quad")
+                  for stem in (f"{domain}PatchSequence", f"Native{domain}SequenceReader",
+                               f"Native{domain}VertexSequenceReader")]
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertIn("opengpu.graphics.TessellationVertexSequenceReaderSpec",
+                              changed_suites(REPO_ROOT, [path]))
+
     def test_geometry_uniform_schema_selects_exact_admission_and_abi(self):
         for path in ("src/main/scala/opengpu/elaboration/EmitGeometryUniformAbi.scala",
                      "driver/opengpu_geometry_uniform_abi.h", "docs/abi/geometry-uniform-v2.json"):

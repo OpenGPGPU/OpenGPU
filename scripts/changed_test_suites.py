@@ -800,6 +800,22 @@ def changed_suites(root, changed, *, test_index=None):
           for domain in ("Isoline", "Triangle", "Quad")),
     }:
         affected.add("src/test/scala/opengpu/graphics/TessellationSystemClientRetirementSpec.scala")
+    if changed & {
+        "src/main/scala/opengpu/graphics/NativeTypedGraphicsDescriptors.scala",
+        "src/main/scala/opengpu/system/TessellationVertexSequenceLayout.scala",
+        "src/main/scala/opengpu/system/TessellationVertexSequenceReader.scala",
+        "src/main/scala/opengpu/system/TessellationVertexSourceReader.scala",
+        "src/main/scala/opengpu/system/TessellationUniformSequenceLayout.scala",
+        "docs/abi/tessellation-vertex-sequence-v1.json",
+        "docs/abi/tessellation-uniform-sequence.json",
+        "docs/abi/native-tessellation-sequence-v1.json",
+        "docs/abi/native-tessellation-triangle-sequence-v2.json",
+        "docs/abi/native-tessellation-quad-sequence-v3.json",
+    } or any(f"src/main/scala/opengpu/system/Tessellation{stem}.scala" in changed
+             for domain in ("", "Triangle", "Quad")
+             for stem in (f"{domain}PatchSequence", f"Native{domain}SequenceReader",
+                          f"Native{domain}VertexSequenceReader")):
+        affected.add("src/test/scala/opengpu/graphics/TessellationVertexSequenceReaderSpec.scala")
     if changed & {"src/main/scala/opengpu/elaboration/EmitGeometryUniformAbi.scala",
                   "driver/opengpu_geometry_uniform_abi.h", "docs/abi/geometry-uniform-v2.json"}:
         affected.add("src/test/scala/opengpu/graphics/ComputeUniformRecordAbiSpec.scala")
