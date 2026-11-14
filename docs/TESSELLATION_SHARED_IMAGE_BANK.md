@@ -193,3 +193,46 @@ sbt -batch -J-Xms256m -J-Xmx4G -J-XX:ActiveProcessorCount=2 \\
 After verifying that no process or other consumer needs the temporary outputs,
 remove `"$GPU_TMP"` and the ended simulation workspaces. No selector inherits an
 earlier factory's model results.
+
+## Isolated image-op component selector
+
+`TessellationSampleImageOpsSharedSystemSpec` adds actual CUSTOM-1 image
+instructions behind `sampleImageOpcodes=false` by default. The original
+`TessellationSampleImageSharedSystemSpec` keeps its builtin-only shader and
+remains independently selectable. The new source has not been compiled or
+executed; no image-op qualification result is claimed.
+
+The image-op program retains ABI6's 128-thread capacity, 512-byte array stride,
+16 varying slots and four raw MRTs. It loads a nonzero per-sample RGBA32UI tuple
+from GIU1 unit 0 into MRT3, stores the original sample builtins through unit 1,
+and loads that store result back into MRT2. MRT0/1 retain the original builtin
+outputs. Each program remains within 512 instructions. GIR1 at `0x8800` binds
+the real GIU1 table at `0x9000`; fragment-only descriptors have format 26,
+RO/RW permission respectively, and explicit embedded 2D level views. The RO
+and RW allocations are separate 4 KiB regions at `0x700000` and `0x710000`.
+Both texel bases have byte offset 63 to exercise split-line accesses.
+
+Expected sample coverage still comes from the fixed TES line and independent
+integer line reference. The oracle checks every MRT pixel/sample, every RO,
+GIR1/table and RW allocation byte, helper-only rows, row padding and all MRT
+guards. It delays an accepted RW store acknowledgement and requires the image
+lease and completion owner to remain live until release. Final memory replies
+must drain. The fixture uses bare physical memory, handcrafted internal ISA,
+two configured CUs and one outstanding fragment task window. It does not prove
+that both CUs execute image opcodes, parallel throughput, original ESSL, Sv32
+or the complete protected 112-word host.
+
+After a fresh compile and a separately checked resource window, use the same
+JDK, short `GPU_TMP` and serial build settings above:
+
+```sh
+MAKEFLAGS=-j1 sbt -batch -J-Xms256m -J-Xmx4G -J-XX:ActiveProcessorCount=2 \
+  -J-XX:MaxMetaspaceSize=768m -J-XX:ReservedCodeCacheSize=256m \
+  -J-XX:MaxDirectMemorySize=256m -J-Xss4m -Djava.io.tmpdir="$GPU_TMP" \
+  -Dopengpu.simWorkspace="$GPU_TMP/image-ops" -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simSeparateBuild=1 \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simCache=off \
+  -Dopengpu.tessellationSampleImageOpsQualification=1 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.tessellation.TessellationSampleImageOpsSharedSystemSpec'
+```
