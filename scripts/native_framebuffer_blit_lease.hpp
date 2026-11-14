@@ -86,15 +86,22 @@ template<class Memory> struct Lease {
   uint32_t instruction_satp() const {return 0x80000000u|(asid<<22)|(instruction_root>>12);}
   uint32_t vector_satp() const {return 0x80000000u|(asid<<22)|(vector_root>>12);}
 
-  void verify(const Memory &initial,const Packet &input,bool completed) const {
+  void verify_bytes(const Memory &initial,const Packet &input,bool completed,bool cancelled) const {
     require(initial.ranges.size()==memory.ranges.size(),"fixture physical map changed");
     const uint64_t start=physical_base[1],end=start+input.destination.size();
     for(const auto &r:initial.ranges)for(uint64_t a=r.start;a<r.end;a++) {
-      const uint8_t expected=completed && a>=start && a<end?input.expected.at(a-start):initial.byte(a);
-      require(memory.byte(a)==expected,"GPU blit stored bytes or read-only/page/transport guard differ");
+      const bool destination=a>=start && a<end;
+      const uint8_t expected=completed && destination?input.expected.at(a-start):initial.byte(a);
+      require(memory.byte(a)==expected || (cancelled && destination && memory.byte(a)==input.expected.at(a-start)),
+        "GPU blit stored bytes or read-only/page/transport guard differ");
     }
     for(const auto &p:memory.pages)require(std::any_of(initial.ranges.begin(),initial.ranges.end(),[&](auto r){
       return p.first<r.end && p.first+4096>r.start;}),"GPU blit created an out-of-allocation page");
   }
+  void verify(const Memory &initial,const Packet &input,bool completed) const {verify_bytes(initial,input,completed,false);}
+  // Cancellation can publish a prefix of selected pixel-byte stores. Every
+  // surviving byte must still be either the original or independent result;
+  // unselected bytes, source data, VM/code/maps and all guards remain exact.
+  void verify_cancelled(const Memory &initial,const Packet &input) const {verify_bytes(initial,input,false,true);}
 };
 } // namespace framebuffer_blit
