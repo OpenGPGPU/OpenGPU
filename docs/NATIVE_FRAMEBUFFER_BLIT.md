@@ -151,6 +151,11 @@ default is the original 32-shard layout; build optimization/PCH/alias options
 must match when checking or running. These commands have not yet completed on
 an actual DUT and must not be reported as execution results.
 
+The separate [protected112 executor](NATIVE_FRAMEBUFFER_BLIT_SAMPLE_OWNER.md)
+uses a distinct source-selected kind and qualification on the integrated sample
+factory. It preserves these 43 caller packets and lifecycle exercises; its CPU
+checks do not complete actual DUT qualification.
+
 Actual two-CU/Sv32/L2 execution, fault/reset drain and completion retirement remain
 required. This implementation currently launches one workgroup per destination
 pixel; full-frame cost has not been measured. No blit throughput, product frame
