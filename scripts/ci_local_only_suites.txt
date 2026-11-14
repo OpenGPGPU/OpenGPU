@@ -114,6 +114,9 @@ opengpu.graphics.TypedGeometryImageQualificationSpec
 opengpu.graphics.TypedTileImagePipelineSpec
 opengpu.graphics.TypedTileRenderPipelineSpec
 opengpu.graphics.tessellation.TessellationSystemIsolineImageSharedSystemSpec
+# Explicit opt-in sample/image qualifiers retain two full 128-thread CUs.
+opengpu.graphics.tessellation.TessellationSampleImageSharedSystemSpec
+opengpu.graphics.tessellation.TessellationSampleImageOpsSharedSystemSpec
 opengpu.graphics.tessellation.TessellationSystemIsolineInputImageSharedSpec
 opengpu.graphics.tessellation.TessellationSequenceImageSharedSpec
 opengpu.graphics.tessellation.TessellationTranslatedSequenceImageSharedSpec

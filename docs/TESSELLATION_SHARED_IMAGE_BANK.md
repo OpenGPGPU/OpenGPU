@@ -174,7 +174,29 @@ The three sample modes currently create three sequential models. Both explicit
 component suites use `@DoNotDiscover`; sbt `testOnly` does not select them from
 `definedTests`. Two attempted `testOnly` commands reported zero tests and zero
 suites despite exit success. **Zero selected tests are not a passing execution
-result.** Export the compiled Test classpath, then name the suite explicitly in
+result.** Both full-capacity sample/image aliases are explicitly local-only.
+Regular PR CI selects their bounded profile/ABI, sample-variable/scheduler,
+recipe, task-router, image-bank ownership/mux and typed image-state checks.
+The image-op alias also selects image execute/publication/store-encoding and
+instruction/availability decoder checks. Direct alias edits and changes to the
+shared parent or private recipe keep that coverage. These components do not
+replace the full-CU qualifier or enable either opt-in property automatically.
+
+Selector validation passes 143 tests, the exact partition checks pass 32, and
+the unchanged strict runner passes four. Integration and complete-suite shard
+catalog checks also pass. Compared with the original selected work, only these
+two local qualifiers are excluded; every other original partition retains its
+suite members, with additional bounded sample and image checks.
+
+```sh
+python3 -B scripts/test_changed_test_suites.py
+python3 -B scripts/test_test_selection.py
+python3 -B scripts/test_ci_case_partitions.py
+python3 -B scripts/test_run_ci_partition.py
+```
+
+For a separately authorized local run, export the compiled Test classpath and
+name the suite explicitly in
 ScalaTest Runner. Set `JAVA_HOME` to the same JDK 21 used to compile:
 
 ```sh

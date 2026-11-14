@@ -81,6 +81,8 @@ local_only = {line.strip() for line in (root / "scripts/ci_local_only_suites.txt
 assert local_only <= all_specs
 assert "opengpu.graphics.NativeFourEngineDefaultHostAxiSpec" in local_only
 assert "opengpu.graphics.SharedShaderTaskRouterSpec" in local_only
+assert "opengpu.graphics.tessellation.TessellationSampleImageSharedSystemSpec" in local_only
+assert "opengpu.graphics.tessellation.TessellationSampleImageOpsSharedSystemSpec" in local_only
 assert "opengpu.graphics.NativeLayeredFourImageSpec" in local_only
 assert "opengpu.graphics.NativeLayeredSamplePlaneSpec" in local_only
 assert "opengpu.core.memory.SharedL2CacheSpec" in local_only
