@@ -110,6 +110,23 @@ static void full_symbolic_program(struct builder *b,unsigned operation)
     instruction(b,TGSI_OPCODE_END,0,0,source(0,0,0),source(0,0,0));
 }
 
+/* Mesa keeps the initialization address alive through UIF until a later
+ * shared LOAD. A resident copy at the split must not erase its affine proof;
+ * a definition in just one arm must not leak into the join's proof either. */
+static void retained_address_program(struct builder *b,unsigned operation,unsigned kind)
+{
+    program(b,0,0);remove_end(b);
+    instruction(b,TGSI_OPCODE_BARRIER,0,0,source(0,0,0),source(0,0,0));
+    control(b,TGSI_OPCODE_UIF);atomic_instruction(b,operation,1,0);
+    if(kind)instruction(b,kind==1?TGSI_OPCODE_AND:TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,0,
+        source(TGSI_FILE_TEMPORARY,0,0),source(TGSI_FILE_IMMEDIATE,0,3));
+    control(b,TGSI_OPCODE_ELSE);
+    control(b,TGSI_OPCODE_ENDIF);
+    instruction(b,TGSI_OPCODE_LOAD,TGSI_FILE_TEMPORARY,1,
+        source(TGSI_FILE_MEMORY,TGSI_MEMORY_TYPE_SHARED,0),source(TGSI_FILE_TEMPORARY,0,0));
+    instruction(b,TGSI_OPCODE_END,0,0,source(0,0,0),source(0,0,0));
+}
+
 int main(void)
 {
     assert(retained_stripes_main()==0); // retain the complete original corpus
@@ -203,5 +220,19 @@ int main(void)
         }
     }
     puts("shared atomic full 16KiB/32 symbolic stripes/20 registers: 30 programs PASS (CPU only)");
+    for(unsigned base=0;base<3;base++)for(unsigned op=0;op<10;op++)for(unsigned kind=0;kind<3;kind++) {
+        struct builder b;retained_address_program(&b,operations[op],kind);
+        struct opengpu_cs_shared shared={bases[base],16384,16,512};
+        struct opengpu_cs_program p,before;memset(&p,0x5a,sizeof(p));before=p;
+        int result=opengpu_cs_emit_shared(b.tokens,&shared,&p);
+        if(kind)assert(result<0 && !memcmp(&p,&before,sizeof(p)));
+        else {
+            assert(!result && p.words<=512 && p.shared_atomics);
+            assert(opengpu_compute_shader_validate_words_shared_atomics(p.code,p.words,12,128,
+                false,false,false,false,false,false,false,false,false,
+                shared.base,shared.bytes,shared.lanes,false,true));
+        }
+    }
+    puts("shared atomic retained stripe identity/unequal-arm rejection: 90 programs PASS (CPU only)");
     return 0;
 }
