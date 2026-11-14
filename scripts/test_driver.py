@@ -159,6 +159,7 @@ def run_driver_tests():
         parse = mesa / "src/gallium/auxiliary/tgsi/tgsi_parse.c"
         drm = Path(os.environ.get("OPENGPU_DRM_INCLUDE", ROOT / "depends/aarch64-root/include"))
         if parse.is_file() and (drm / "drm/drm.h").is_file():
+            subprocess.run([sys.executable, str(ROOT / "scripts/test_tessellation_uniform_emit.py")], check=True)
             incs = [
                 "-I" + str(ROOT / "userspace/gallium"),
                 "-I" + str(ROOT / "userspace"),
