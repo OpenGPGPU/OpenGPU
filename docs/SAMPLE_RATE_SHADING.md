@@ -150,6 +150,46 @@ Dynamic `interpolateAtSample`/`interpolateAtOffset` still need a real shader
 ISA/service with retained primitive/attribute identity and dynamic operands;
 the standalone location selector does not close that requirement.
 
+## Complete owner sample transport source
+
+`OwnerResourceProfile.sampleStage` composes that same sample-plane pipeline with
+the complete geometry/compute/feedback host, retaining two 16×8 CUs, shared
+atomics, four image engines, sixteen varying slots, four MRTs and the original
+512 KiB payload pool. Its identity is `two-cu-vga60-owner-v2-sample-stage`, stage
+`geometry-compute-sample`. The frozen 104-word factory remains unchanged. The
+new stage requires 112 exact discovery words, GCR bit20 (`0x1fffff` full flags)
+and the separate eight-word GSS1 record at `0x520`. GSS1 reports raw ABI6/7
+inputs, output-mask control, full-plane execution and the actual maxima. It
+advertises no API state, GLSL compiler lowering or dynamic interpolation.
+
+`NativeAlignmentHostConfig` derives presence from the actual sample pipeline;
+`GpuHostSystemAxi` rejects disagreement between presence and execution. Its
+real `GpuHostAxi` register decoder supplies GSS1 and GCR presence together.
+The public `opengpu_native_sample_transport_features.h` composes independently
+checked GSS1 and GGS1 without masking flags or widening the old discovery
+entry point. Errors preserve all output caches, an absent bit20 avoids GSS1
+reads, and ABI6/7 remain unauthorized on older factories. The compiler/native
+assembler helper gives the actual SoA input/output array indices and bounded
+control-word encoding; colors precede depth/control in shader storage.
+
+The new ASan/UBSan CPU regression checks every GSS1 bit, prerequisite/BAR
+rejection before optional reads, frozen GGS1 behavior, atomic errors, full
+resource consistency and all bounded sample SoA/control combinations:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_sample_transport.py
+```
+
+The checked-in GSS1 header matches its freshly compiled standalone Scala
+capability object; kernel-header compilation passes. The new full-factory and
+real AXI discovery tests are source fixtures awaiting fresh complete caller
+compilation and RTL execution. No prior full RTL, source/assertion, execution
+or timing qualification transfers to this combined host. Protected Linux
+sample shader admission and compiler/API policy must use this new discovered
+identity; ordinary ESSL sample builtins, sample-enable/minimum/static-use
+publication, coverage state and dynamic interpolation remain separate open
+end-to-end requirements.
+
 The ordering and minimum-rate contract follow
 [OpenGL ES 3.2 §13.4.1 and §14.2](https://registry.khronos.org/OpenGL/specs/es/3.2/es_spec_3.2.pdf#page=374)
 and the [GLSL ES 3.20 fragment builtins](https://registry.khronos.org/OpenGL/specs/es/3.2/GLSL_ES_Specification_3.20.html#fragment-shader-special-variables).

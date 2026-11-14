@@ -36,6 +36,7 @@ object EmitRegistry {
     e("EmitNativeBinnedGraphicsAbi", EmitNativeBinnedGraphicsAbi.main),
     e("EmitNativeGeometryAbi", EmitNativeGeometryAbi.main),
     e("EmitNativeGeometryTransportAbi", EmitNativeGeometryTransportAbi.main),
+    e("EmitNativeSampleTransportAbi", EmitNativeSampleTransportAbi.main),
     e("EmitNativeLayeredGraphicsAbi", EmitNativeLayeredGraphicsAbi.main),
     e("EmitNativeBinnedHostAbi", EmitNativeBinnedHostAbi.main),
     e("EmitNativePrimitiveQueryAbi", EmitNativePrimitiveQueryAbi.main),
