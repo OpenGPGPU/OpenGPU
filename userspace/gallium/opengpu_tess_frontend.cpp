@@ -19,8 +19,10 @@ extern "C" {
 #include "pipe/p_screen.h"
 #include "tgsi/tgsi_dump.h"
 #include "tgsi/tgsi_parse.h"
+#include "tgsi/tgsi_from_mesa.h"
 #include "tgsi/tgsi_ureg.h"
 #include "opengpu_tess_frontend.h"
+#include "opengpu_native_tess_uniform_emit.h"
 
 static const gl_shader_stage stages[] = {MESA_SHADER_VERTEX, MESA_SHADER_TESS_CTRL,
     MESA_SHADER_TESS_EVAL, MESA_SHADER_GEOMETRY, MESA_SHADER_FRAGMENT};
@@ -72,6 +74,7 @@ struct graphics_program {
     gl_shader_program *program;
     const tgsi_token *tokens[5];
     unsigned color_types[4];
+    opengpu_native_tess_input_map evaluation_inputs,control_outputs;
 };
 static int type_size(const glsl_type *type, bool) { return glsl_count_vec4_slots(type, false, false); }
 
@@ -138,6 +141,26 @@ extern "C" void *opengpu_tess_frontend_compile(const char *const files[5], const
             unsigned next=i+1; while(next<5 && !program->_LinkedShaders[stages[next]])next++;
             nir->info.next_stage=stages[next];
         }
+        if(stage==MESA_SHADER_TESS_EVAL||stage==MESA_SHADER_TESS_CTRL){
+            auto &map=stage==MESA_SHADER_TESS_EVAL?f->evaluation_inputs:f->control_outputs;
+            auto mode=stage==MESA_SHADER_TESS_EVAL?nir_var_shader_in:nir_var_shader_out;
+            map.version=1;
+            nir_foreach_variable_with_modes(var,nir,mode){
+                if(map.count==64 || var->data.location_frac){map.version=0;break;}
+                auto *type=var->type;bool per_vertex=nir_is_arrayed_io(var,stage);
+                if(per_vertex)type=glsl_get_array_element(type);
+                auto &span=map.spans[map.count++];
+                span.first=var->data.driver_location;span.slots=glsl_count_attribute_slots(type,false);
+                span.per_vertex=per_vertex;span.compact=var->data.compact;
+                unsigned location=var->data.location;
+                if(location>=VARYING_SLOT_VAR0 && location<VARYING_SLOT_PATCH0){
+                    span.semantic=TGSI_SEMANTIC_GENERIC;span.index=location-VARYING_SLOT_VAR0;
+                }else tgsi_get_gl_varying_semantic((gl_varying_slot)location,true,&span.semantic,&span.index);
+                unsigned components=span.compact?glsl_get_length(type):glsl_get_vector_elements(glsl_without_array_or_matrix(type));
+                if(!components||components>4){map.version=0;break;}
+                span.mask=(1u<<components)-1;
+            }
+        }
         nir_validate_shader(nir, "actual linked graphics uniform frontend");
         nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir)); shader->Program->info = nir->info;
         if (stage == MESA_SHADER_FRAGMENT) nir_foreach_shader_out_variable(var, nir) {
@@ -172,6 +195,10 @@ extern "C" unsigned opengpu_tess_frontend_binding(void *p,unsigned gpu,unsigned 
 { auto *sh=linked(p,gpu);return sh&&block<sh->sh.NumUniformBlocks?sh->sh.UniformBlocks[block]->Binding:~0u; }
 extern "C" unsigned opengpu_tess_frontend_components(void *p,unsigned gpu)
 { auto *sh=linked(p,gpu);return sh?sh->Parameters->NumParameterValues:0; }
+extern "C" int opengpu_tess_frontend_input_map(void *p,opengpu_native_tess_input_map *out)
+{if(!p||!out||static_cast<graphics_program *>(p)->evaluation_inputs.version!=1)return -1;*out=static_cast<graphics_program *>(p)->evaluation_inputs;return 0;}
+extern "C" int opengpu_tess_frontend_control_output_map(void *p,opengpu_native_tess_input_map *out)
+{if(!p||!out||static_cast<graphics_program *>(p)->control_outputs.version!=1)return -1;*out=static_cast<graphics_program *>(p)->control_outputs;return 0;}
 extern "C" int opengpu_tess_frontend_ubos(void *p,pipe_context *pipe,
     pipe_resource *const resources[72],const unsigned offsets[72],const unsigned sizes[72])
 {

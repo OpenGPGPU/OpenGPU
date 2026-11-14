@@ -4,15 +4,17 @@
 #include "tgsi/tgsi_parse.h"
 #include <string.h>
 #define REGS 32u
+#define SEMANTICS 64u
 struct semantic {unsigned mask,name,index;
 };
 struct builder {
     struct opengpu_native_tess_program p;
-    struct semantic input[2][REGS],output[2][REGS],sys[REGS];
+    struct semantic input[2][SEMANTICS],output[2][SEMANTICS],sys[REGS];
     unsigned temp[REGS],reg[REGS][4],defined[REGS],next,addr_decl,addr_defined;
     unsigned constants[13],first[13],last[13];
     uint32_t imm[64][4];
      unsigned nimm,failed,ended,depth,properties;
+    unsigned vertex_cached,vertex_dimension,vertex_indirect,vertex_base,vertex_register;
 };
 static void word(struct builder *b,uint32_t w) {if(b->p.words==512)b->failed=1;
 else b->p.code[b->p.words++]=w;
@@ -37,7 +39,7 @@ static unsigned swizzle(const struct tgsi_src_register *r,unsigned c){return c==
 }
 /* Validate lengths before invoking any optional token parser. No texture,
  * memory, nested dimensions or indirect register-file offsets are admitted. */
-static int packets(const struct tgsi_token *t,unsigned n,unsigned stage){
+static int packets(const struct tgsi_token *t,unsigned n,unsigned stage,unsigned dynamic){
     struct tgsi_header h;
     struct tgsi_processor p;
     if(!t||n<3||n>4098)return -1;
@@ -60,7 +62,8 @@ static int packets(const struct tgsi_token *t,unsigned n,unsigned stage){
         }else if(tok.Type==TGSI_TOKEN_TYPE_INSTRUCTION){struct tgsi_instruction i;
         memcpy(&i,t+at,4);
         size=i.NrTokens+1;
-            if(i.Texture||i.Memory||i.Saturate||i.Padding||i.NumDstRegs>1||i.NumSrcRegs>2||size>n-at||
+            if(i.Texture||i.Memory||i.Saturate||i.Padding||i.NumDstRegs>1||
+                i.NumSrcRegs>(dynamic&&i.Opcode==TGSI_OPCODE_UCMP?3u:2u)||size>n-at||
                 (i.Label&&i.Opcode!=TGSI_OPCODE_UIF&&i.Opcode!=TGSI_OPCODE_ELSE))return -1;
             unsigned pos=at+1+i.Label;
             for(unsigned k=0;k<(unsigned)i.NumDstRegs+i.NumSrcRegs;k++){
@@ -73,7 +76,9 @@ static int packets(const struct tgsi_token *t,unsigned n,unsigned stage){
                 }
                 else {struct tgsi_src_register s;
                 memcpy(&s,t+pos++,4);
-                if(s.Indirect||s.Absolute||s.Negate)return -1;
+                if(s.Absolute||s.Negate|| (s.Indirect&&(!dynamic||s.File!=TGSI_FILE_INPUT)))return -1;
+                if(s.Indirect){struct tgsi_ind_register x;if(pos>=at+size)return -1;memcpy(&x,t+pos++,4);
+                    if(x.File!=TGSI_FILE_ADDRESS||x.Index<0||x.Index>1||x.Swizzle||x.ArrayID)return -1;}
                 dim=s.Dimension;
                 }
                 if(dim){struct tgsi_dimension d;
@@ -102,7 +107,8 @@ static int declaration(struct builder *b,const struct tgsi_full_declaration *d){
         b->last[slot]=l;
         return 0;
         }
-    if(l>=REGS)return -1;
+    if(l>=SEMANTICS)return -1;
+    if(d->Declaration.File!=TGSI_FILE_INPUT&&d->Declaration.File!=TGSI_FILE_OUTPUT&&l>=REGS)return -1;
     if(d->Declaration.File==TGSI_FILE_TEMPORARY){if(dim||d->Declaration.Semantic)return -1;
         for(unsigned i=f;i<=l;i++){if(b->temp[i])return -1;
         b->temp[i]=m;
@@ -125,7 +131,26 @@ static int declaration(struct builder *b,const struct tgsi_full_declaration *d){
     else if(d->Declaration.File==TGSI_FILE_SYSTEM_VALUE&&!dim)dest=b->sys;
     else return -1;
     if(!d->Declaration.Semantic||d->Semantic.StreamX||d->Semantic.StreamY||d->Semantic.StreamZ||d->Semantic.StreamW)return -1;
-    for(unsigned i=f;i<=l;i++){if(dest[i].mask)return -1;
+    for(unsigned i=f;i<=l;i++){
+    /* nir_to_tgsi declares the compact float[4]/float[2] backing slots,
+     * although the real level operand is packed into index0's channels.
+     * Nonzero semantic-index placeholders are not addressable declarations;
+     * their numeric slot may legitimately be reused by a real PATCH output. */
+    unsigned si=d->Semantic.Index+i-f;
+    if((d->Semantic.Name==TGSI_SEMANTIC_TESSOUTER||d->Semantic.Name==TGSI_SEMANTIC_TESSINNER)&&si){
+        unsigned found=0,slots=d->Semantic.Name==TGSI_SEMANTIC_TESSINNER?2u:4u;
+        const struct opengpu_native_tess_input_map *proof=d->Declaration.File==TGSI_FILE_INPUT?&b->p.input_map:&b->p.output_map;
+        for(unsigned k=0;k<proof->count;k++){
+            const struct opengpu_native_tess_input_span *span=proof->spans+k;
+            if(span->compact==1&&!span->per_vertex&&span->semantic==d->Semantic.Name&&span->index==0&&
+                span->slots==slots&&span->mask==(1u<<slots)-1&&si<slots&&i>=si&&span->first==i-si)found++;
+        }
+        if(found==1)continue;
+        /* Legacy v1 keeps its original declarations and operand checks. Only
+         * the explicit mapped API may discard a proven unused placeholder. */
+        if(proof->version||proof->count)return -1;
+    }
+    if(dest[i].mask)return -1;
     dest[i]=(struct semantic){m,d->Semantic.Name,d->Semantic.Index+i-f};
     }
     return 0;
@@ -159,11 +184,81 @@ static int vertex(struct builder *b,unsigned has,const struct tgsi_dimension *d,
     else splat(b,to,d->Index);
     return 0;
 }
+/* V2 checks full-width source values before any shift or addition can wrap.
+ * v30 is private scratch, v0 is a fresh comparison mask. TES v2 has no SIMT
+ * side-effect scopes, and never relies on a prior v0 value. */
+static void bounded(struct builder *b,unsigned source,unsigned limit,unsigned value,unsigned to){
+    scalar(b,10,limit);
+    word(b,vec(0x1a,4,0,10,source)); /* vmsltu.vx v0,source,limit */
+    splat(b,30,0x80000001u);
+    word(b,vec(23,0,to,value,30)&~(1u<<25)); /* valid ? value : sentinel */
+}
+static int dynamic_vertex(struct builder *b,const struct tgsi_full_src_register *r,unsigned to){
+    if(b->vertex_cached&&b->vertex_dimension==r->Register.Dimension&&
+        b->vertex_indirect==r->Dimension.Indirect&&b->vertex_base==(unsigned)r->Dimension.Index&&
+        b->vertex_register==(unsigned)r->DimIndirect.Index)return 0;
+    b->vertex_cached=1;b->vertex_dimension=r->Register.Dimension;
+    b->vertex_indirect=r->Dimension.Indirect;b->vertex_base=r->Dimension.Index;
+    b->vertex_register=r->DimIndirect.Index;
+    if(!r->Register.Dimension){splat(b,to,0);return 0;}
+    if(!r->Dimension.Indirect){splat(b,to,r->Dimension.Index);return 0;}
+    unsigned reg=20+r->DimIndirect.Index,base=r->Dimension.Index;
+    unsigned count=b->p.layout.tes_patch_layout.output_vertices;
+    if(!(b->addr_defined&(1u<<r->DimIndirect.Index))||base>=count)return -1;
+    copy(b,to,reg);
+    if(base){scalar(b,10,base);word(b,vec(0,4,to,10,to));}
+    bounded(b,reg,count-base,to,to);
+    return 0;
+}
+static int interface_map_valid(struct builder *b,unsigned output){
+    const struct opengpu_native_tess_input_map *map=output?&b->p.output_map:&b->p.input_map;
+    struct semantic (*actual)[SEMANTICS]=output?b->output:b->input;
+    unsigned covered[2][SEMANTICS]={{0}};
+    if(map->version!=1||!map->count||map->count>64)return -1;
+    for(unsigned i=0;i<64;i++){
+        const struct opengpu_native_tess_input_span *s=map->spans+i;
+        if(i>=map->count){struct opengpu_native_tess_input_span zero={0};if(memcmp(s,&zero,sizeof(zero)))return -1;continue;}
+        if(s->per_vertex>1||s->compact>1||!s->slots||s->first>=SEMANTICS||s->slots>SEMANTICS-s->first||!s->mask||s->mask>15)return -1;
+        unsigned slots=s->slots;
+        if(s->compact){
+            unsigned n=s->semantic==TGSI_SEMANTIC_TESSOUTER?4u:s->semantic==TGSI_SEMANTIC_TESSINNER?2u:0u;
+            if(!n||s->per_vertex||s->index||s->slots!=n||s->mask!=(1u<<n)-1)return -1;
+            slots=1;
+        }
+        for(unsigned j=0;j<slots;j++){
+            struct semantic d=actual[s->per_vertex][s->first+j];
+            if(covered[s->per_vertex][s->first+j]++||!d.mask||((d.mask&~s->mask)&&!s->compact)||d.name!=s->semantic||d.index!=s->index+j)return -1;
+        }
+    }
+    for(unsigned dim=0;dim<2;dim++)for(unsigned i=0;i<SEMANTICS;i++)
+        if(!!actual[dim][i].mask!=!!covered[dim][i])return -1;
+    return 0;
+}
+static int dynamic_input(struct builder *b,const struct tgsi_full_src_register *r,unsigned off,unsigned pp,unsigned tl,unsigned to){
+    if(dynamic_vertex(b,r,28))return -1;
+    unsigned flags=1|pp<<1|tl<<2;
+    if(!r->Register.Indirect)splat(b,29,off<<3|flags);
+    else {
+        const struct opengpu_native_tess_input_span *span=NULL;
+        unsigned index=r->Register.Index,dim=r->Register.Dimension;
+        for(unsigned i=0;i<b->p.input_map.count;i++){
+            const struct opengpu_native_tess_input_span *s=b->p.input_map.spans+i;
+            if(s->per_vertex==dim&&index>=s->first&&index-s->first<s->slots){if(span)return -1;span=s;}
+        }
+        if(!span||tl||!(b->addr_defined&(1u<<r->Indirect.Index)))return -1;
+        unsigned reg=20+r->Indirect.Index;
+        word(b,vec(0x25,3,29,5,reg)); /* vec4-register offset -> 32 descriptor units */
+        scalar(b,10,off<<3|flags);word(b,vec(0,4,29,10,29));
+        bounded(b,reg,span->slots-(index-span->first),29,29);
+    }
+    word(b,patch(33,to,28,29));
+    return 0;
+}
 static int source(struct builder *b,const struct tgsi_full_src_register *r,unsigned c,unsigned to){
     const struct tgsi_src_register *s=&r->Register;
     unsigned ch=swizzle(s,c);
     int i=s->Index;
-    if(i<0||(s->File!=TGSI_FILE_CONSTANT&&i>=32))return -1;
+    if(i<0||(s->File!=TGSI_FILE_CONSTANT&&i>=(s->File==TGSI_FILE_INPUT||s->File==TGSI_FILE_OUTPUT?SEMANTICS:REGS)))return -1;
     switch(s->File){
     case TGSI_FILE_TEMPORARY:if(!(b->defined[i]&(1u<<ch)))return -1;
     copy(b,to,b->reg[i][ch]);
@@ -210,6 +305,10 @@ static int source(struct builder *b,const struct tgsi_full_src_register *r,unsig
             b->p.input_mask|=UINT64_C(1)<<off;
             }return 0;
             }
+        if(b->p.layout.version==2){
+            if(s->File!=TGSI_FILE_INPUT|| (pp&&dim))return -1;
+            return dynamic_input(b,r,off,pp,tl,to);
+        }
         if(s->File!=TGSI_FILE_INPUT||r->Dimension.Indirect||
             (dim&&(unsigned)r->Dimension.Index>=b->p.layout.output_vertices)||
             (pp&&!tl&&off>=b->p.layout.patch_components)||(!pp&&!tl&&off>=b->p.layout.input_components))return -1;
@@ -229,6 +328,9 @@ static int source(struct builder *b,const struct tgsi_full_src_register *r,unsig
     }
 }
 static int instruction(struct builder *b,const struct tgsi_full_instruction *in){
+    /* Only reuse v28 inside one TGSI instruction. ADDR writes and subsequent
+     * instructions always invalidate it; no runtime bounds check is removed. */
+    b->vertex_cached=0;
     unsigned op=in->Instruction.Opcode;
     if(op==TGSI_OPCODE_BARRIER){if(b->p.layout.stage!=4||b->depth||in->Instruction.NumSrcRegs||in->Instruction.NumDstRegs)return -1;
         word(b,0x0b);
@@ -237,6 +339,7 @@ static int instruction(struct builder *b,const struct tgsi_full_instruction *in)
         }
     unsigned count=1,fn=0,f3=0,compare=0;
     switch(op){case TGSI_OPCODE_MOV:case TGSI_OPCODE_UARL:break;
+    case TGSI_OPCODE_UCMP:if(b->p.layout.version!=2)return -1;count=3;break;
     case TGSI_OPCODE_UADD:count=2;
     break;
     case TGSI_OPCODE_UMUL:count=2;
@@ -282,7 +385,7 @@ static int instruction(struct builder *b,const struct tgsi_full_instruction *in)
     const struct tgsi_dst_register *d=&in->Dst[0].Register;
     int i=d->Index;
     unsigned mask=d->WriteMask;
-    if(in->Instruction.NumSrcRegs!=count||in->Instruction.NumDstRegs!=1||i<0||i>=32||!mask)return -1;
+    if(in->Instruction.NumSrcRegs!=count||in->Instruction.NumDstRegs!=1||i<0||i>=(d->File==TGSI_FILE_OUTPUT?SEMANTICS:REGS)||!mask)return -1;
     if(op==TGSI_OPCODE_UARL){if(d->File!=TGSI_FILE_ADDRESS||mask!=1||!(b->addr_decl&(1u<<i))||d->Dimension)return -1;
         if(source(b,&in->Src[0],0,20+i))return -1;
         b->addr_defined|=1u<<i;
@@ -295,7 +398,14 @@ static int instruction(struct builder *b,const struct tgsi_full_instruction *in)
         if(source(b,&in->Src[0],c,26))return -1;
         if(op==TGSI_OPCODE_MOV)copy(b,22+c,26);
         else {if(source(b,&in->Src[1],c,27))return -1;
-            if(compare){word(b,vec(fn,0,0,27,26));
+            if(op==TGSI_OPCODE_UCMP){
+                if(source(b,&in->Src[2],c,28))return -1;
+                b->vertex_cached=0; /* v28 now holds the false operand. */
+                copy(b,22+c,28); /* Define old vd independently of prior ops. */
+                word(b,vec(0x19,3,0,0,26)); /* vmsne.vi condition,0 */
+                word(b,vec(23,0,22+c,27,28)&~(1u<<25));
+            }
+            else if(compare){word(b,vec(fn,0,0,27,26));
             splat(b,22+c,0);
             word(b,vec(23,3,22+c,31,22+c)&~(1u<<25));
             }
@@ -363,15 +473,16 @@ static int span(struct builder *b,const struct node *nodes,unsigned start,unsign
         i=e;
     }return 0;
 }
-int opengpu_native_tess_uniform_emit(const void *tokens,unsigned n,const struct opengpu_native_tess_layout *layout,
-    struct opengpu_native_tess_program *out){
-    if(!layout||!out||layout->version!=1||(layout->stage!=4&&layout->stage!=5)||!layout->capacity||layout->capacity>128||
+static int emit(const void *tokens,unsigned n,const struct opengpu_native_tess_layout *layout,
+    const struct opengpu_native_tess_input_map *map,struct opengpu_native_tess_program *out){
+    if(!layout||!out||(layout->version!=1&&layout->version!=2)||(layout->stage!=4&&layout->stage!=5)||!layout->capacity||layout->capacity>128||
         !layout->input_vertices||layout->input_vertices>32||!layout->output_vertices||layout->output_vertices>32||
         layout->output_vertices>layout->capacity||layout->input_components>64||layout->output_components>64||
-        layout->input_position>1||layout->output_position>1||(layout->stage==5&&!layout->output_position)||layout->patch_components>120||layout->output_vertices*layout->output_components+layout->patch_components>2048||
-        packets(tokens,n,layout->stage))return -1;
+        layout->input_position>1||layout->output_position>1||(layout->stage==5&&!layout->output_position)||layout->patch_components>120||(layout->version==1&&layout->output_vertices*layout->output_components+layout->patch_components>2048)||
+        packets(tokens,n,layout->stage,layout->version==2))return -1;
     struct builder b={0};
     b.p.layout=*layout;
+    if(map){if(layout->stage==5)b.p.input_map=*map;else b.p.output_map=*map;}
     b.next=2;
     struct tgsi_parse_context parse;
     struct node nodes[256];
@@ -451,6 +562,7 @@ int opengpu_native_tess_uniform_emit(const void *tokens,unsigned n,const struct 
         break;
         }
     }tgsi_parse_free(&parse);
+    if(map&&interface_map_valid(&b,layout->stage==4))return -1;
     if(b.failed||b.properties!=(layout->stage==4?1u:62u)||!b.ended||depth||span(&b,nodes,0,count))return -1;
     if(layout->stage==5){if((b.p.output_mask&15)!=15)return -1;
     word(&b,geo(35,0,0,0));
@@ -464,14 +576,14 @@ int opengpu_native_tess_uniform_emit(const void *tokens,unsigned n,const struct 
 
 /* Reflection is bounded independently of emission. Pair construction owns the
  * linked TCS-output -> TES-input map; this never grants task permissions. */
-int opengpu_native_tess_uniform_reflect(const void *tokens,unsigned n,unsigned stage,unsigned capacity,
+static int reflect(const void *tokens,unsigned n,unsigned stage,unsigned capacity,unsigned dynamic,
     unsigned patch_vertices,struct opengpu_native_tess_layout *out)
 {
     struct opengpu_native_tess_layout l={.version=1,.stage=stage,.capacity=capacity,
         .input_vertices=patch_vertices,.output_vertices=1};
     struct tgsi_parse_context p;
     unsigned properties=0;
-    if(!out||(stage!=4&&stage!=5)||!capacity||capacity>128||!patch_vertices||patch_vertices>32||packets(tokens,n,stage))return -1;
+    if(!out||(stage!=4&&stage!=5)||!capacity||capacity>128||!patch_vertices||patch_vertices>32||packets(tokens,n,stage,dynamic))return -1;
     /* Position presence changes the generic packing base, independent of
      * declaration order. Count applicable builtins inside the64 components. */
     if(tgsi_parse_init(&p,tokens)!=TGSI_PARSE_OK)return -1;
@@ -524,7 +636,7 @@ int opengpu_native_tess_uniform_reflect(const void *tokens,unsigned n,unsigned s
             const struct tgsi_full_declaration *d=&p.FullToken.FullDeclaration;
             unsigned file=d->Declaration.File;
             if(file!=TGSI_FILE_INPUT&&file!=TGSI_FILE_OUTPUT)continue;
-            if(!d->Declaration.Semantic||d->Range.Last>=32||d->Range.First>d->Range.Last){bad=1;
+            if(!d->Declaration.Semantic||d->Range.Last>=SEMANTICS||d->Range.First>d->Range.Last){bad=1;
             break;
             }
             for(unsigned i=d->Range.First;i<=d->Range.Last;i++)for(unsigned c=0;c<4;c++)if(d->Declaration.UsageMask&(1u<<c)){
@@ -547,4 +659,50 @@ int opengpu_native_tess_uniform_reflect(const void *tokens,unsigned n,unsigned s
         l.output_vertices*l.output_components+l.patch_components>2048)return -1;
     *out=l;
     return 0;
+}
+
+static int no_dynamic_layout(const struct opengpu_native_tess_layout *l){
+    const struct opengpu_native_tess_patch_layout zero={0};
+    return l&&!l->owned_patch_reads&&!memcmp(&l->tes_patch_layout,&zero,sizeof(zero));
+}
+static int patch_layout_valid(const struct opengpu_native_tess_patch_layout *p){
+    return p->input_vertices&&p->input_vertices<=32&&p->output_vertices&&p->output_vertices<=32&&
+        p->input_components<=64&&p->output_components<=64&&p->patch_components<=120&&
+        p->input_vertices*p->input_components<=2048&&p->output_vertices*p->output_components+p->patch_components<=2048;
+}
+int opengpu_native_tess_uniform_emit(const void *tokens,unsigned n,const struct opengpu_native_tess_layout *layout,
+    struct opengpu_native_tess_program *out){
+    if(!layout||layout->version!=1||!no_dynamic_layout(layout))return -1;
+    return emit(tokens,n,layout,NULL,out);
+}
+int opengpu_native_tess_dynamic_emit(const void *tokens,unsigned n,const struct opengpu_native_tess_layout *l,
+    const struct opengpu_native_tess_input_map *map,struct opengpu_native_tess_program *out){
+    if(!l||!map||map->version!=1||!map->count||map->count>64||l->version!=2||l->stage!=5||l->owned_patch_reads!=1||!patch_layout_valid(&l->tes_patch_layout)||
+        l->input_vertices!=l->tes_patch_layout.input_vertices||l->output_vertices!=l->tes_patch_layout.output_vertices||
+        l->input_components!=l->tes_patch_layout.output_components||l->patch_components!=l->tes_patch_layout.patch_components)return -1;
+    return emit(tokens,n,l,map,out);
+}
+int opengpu_native_tess_uniform_reflect(const void *tokens,unsigned n,unsigned stage,unsigned capacity,
+    unsigned patch_vertices,struct opengpu_native_tess_layout *out){
+    return reflect(tokens,n,stage,capacity,0,patch_vertices,out);
+}
+int opengpu_native_tess_dynamic_reflect(const void *tokens,unsigned n,unsigned capacity,
+    const struct opengpu_native_tess_layout *control,struct opengpu_native_tess_layout *out){
+    struct opengpu_native_tess_layout l;
+    if(!control||!out||control->version!=1||control->stage!=4||!no_dynamic_layout(control)||
+        control->capacity!=capacity||reflect(tokens,n,5,capacity,1,control->input_vertices,&l))return -1;
+    struct opengpu_native_tess_patch_layout p={control->input_vertices,control->input_components,
+        control->output_vertices,control->output_components,control->patch_components};
+    if(!patch_layout_valid(&p)||(l.input_position&&!control->output_position)||l.input_components>p.output_components||
+        l.patch_components>p.patch_components)return -1;
+    l.version=2;l.owned_patch_reads=1;l.tes_patch_layout=p;
+    l.output_vertices=p.output_vertices;l.input_components=p.output_components;l.patch_components=p.patch_components;
+    l.input_position=control->output_position;
+    *out=l;return 0;
+}
+
+int opengpu_native_tess_control_emit(const void *tokens,unsigned n,const struct opengpu_native_tess_layout *layout,
+    const struct opengpu_native_tess_input_map *map,struct opengpu_native_tess_program *out){
+    if(!layout||layout->version!=1||layout->stage!=4||!no_dynamic_layout(layout)||!map||map->version!=1||!map->count||map->count>64)return -1;
+    return emit(tokens,n,layout,map,out);
 }
