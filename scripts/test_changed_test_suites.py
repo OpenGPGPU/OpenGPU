@@ -130,6 +130,15 @@ class ChangedTestSuitesTest(unittest.TestCase):
                                  "opengpu.system.TessellationCuIsolineSystemClientSpec"}
                                 <= set(changed_suites(REPO_ROOT, [path])))
 
+    def test_tessellation_clients_select_task_retirement_checks(self):
+        paths = ["src/main/scala/opengpu/system/TessellationUniformCuService.scala"]
+        paths += [f"src/main/scala/opengpu/system/TessellationCu{domain}SystemClient.scala"
+                  for domain in ("Isoline", "Triangle", "Quad")]
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertIn("opengpu.graphics.TessellationSystemClientRetirementSpec",
+                              changed_suites(REPO_ROOT, [path]))
+
     def test_geometry_uniform_schema_selects_exact_admission_and_abi(self):
         for path in ("src/main/scala/opengpu/elaboration/EmitGeometryUniformAbi.scala",
                      "driver/opengpu_geometry_uniform_abi.h", "docs/abi/geometry-uniform-v2.json"):

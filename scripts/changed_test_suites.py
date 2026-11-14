@@ -698,6 +698,12 @@ def changed_suites(root, changed, *, test_index=None):
                       "opengpu.system.TessellationNativeQuadSequenceReaderSpec",
                       "opengpu.system.TessellationCuIsolineSystemClientSpec"):
             affected.add("src/test/scala/" + suite.replace(".", "/") + ".scala")
+    if changed & {
+        "src/main/scala/opengpu/system/TessellationUniformCuService.scala",
+        *(f"src/main/scala/opengpu/system/TessellationCu{domain}SystemClient.scala"
+          for domain in ("Isoline", "Triangle", "Quad")),
+    }:
+        affected.add("src/test/scala/opengpu/graphics/TessellationSystemClientRetirementSpec.scala")
     if changed & {"src/main/scala/opengpu/elaboration/EmitGeometryUniformAbi.scala",
                   "driver/opengpu_geometry_uniform_abi.h", "docs/abi/geometry-uniform-v2.json"}:
         affected.add("src/test/scala/opengpu/graphics/ComputeUniformRecordAbiSpec.scala")
