@@ -188,9 +188,11 @@ dependency sources. Read-only dependency classes were used only for typechecking
 the mixed class set was never executed and its private output was deleted.
 Fresh complete caller compilation and RTL execution remain required. CPU test
 selection also passes. No prior full RTL, source/assertion, execution
-or timing qualification transfers to this combined host. Protected Linux
-sample shader admission and compiler/API policy must use this new discovered
-identity; ordinary ESSL sample builtins, sample-enable/minimum/static-use
+or timing qualification transfers to this combined host. Protected Linux sample
+shader admission now uses this discovered identity; its actual ioctl, private RX
+owner and MMU CPU validation are described in
+[the protected submission contract](NATIVE_SAMPLE_PROTECTED_SUBMISSION.md).
+Ordinary ESSL sample builtins, sample-enable/minimum/static-use
 publication, coverage state and dynamic interpolation remain separate open
 end-to-end requirements.
 
