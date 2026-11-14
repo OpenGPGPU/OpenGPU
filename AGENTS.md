@@ -16,6 +16,12 @@ on topic branches; never commit, merge, or push directly to `main` or `master`.
 Keep existing unpublished work intact and submit it from a topic branch.
 Required CI must pass before a PR is merged. Do not bypass branch protection.
 
+Keep `Scala regression` (`.github/workflows/scala_regression.yml`) disabled.
+Do not enable or trigger it: its broad test workload is intentionally disabled
+because it is too large. Use the existing protected PR `Scala CI`, focused local
+tests and explicitly scoped qualification runs. Unexecuted Scala/RTL, integration
+or product checks remain pending; disabling this workflow does not waive them.
+
 Keep at most two pull requests open at once, including drafts. Finish and merge
 ready work before opening another PR. Prefer logical commits on an existing
 topic branch over additional stacked PRs. Close superseded or deferred PRs while
