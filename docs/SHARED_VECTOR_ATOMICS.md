@@ -117,6 +117,9 @@ addresses within the original 20-register/512-word limits, including the
 exclusive 4 GiB endpoint. Removing any initializer needed by their final-stripe
 AMO is rejected. Valid VXRM/texture/image prefixes and noncanonical vector
 forms remain rejected before SIMT, with the corresponding resources enabled.
+Another ninety TGSI cases check affine addresses retained through a branch
+until a later shared load. Both arms must retain the same identity; a
+single-arm overwrite cannot lend its stripe proof to the join.
 
 Actual Mesa ESSL 3.10 lowering additionally passes sixteen cases covering all
 ten operations and both int/uint overloads where defined. Each
@@ -144,6 +147,19 @@ patch stages described by `test_gallium_compute_shared.py`:
 ```sh
 python3 scripts/test_gallium_compute_shared.py --build /path/to/private-build --sanitize
 ```
+
+For an immutable compiler image without Git, stage the same exact patch on
+the host first, then mount its output read-only and add
+`--mesa-shared-ntt /path/to/private-source/src/gallium/auxiliary/nir/nir_to_tgsi.c`
+to that command:
+
+```sh
+python3 scripts/stage_mesa_shared_memory.py --mesa /path/to/mesa-22.3.6 --out /path/to/private-source
+```
+
+The fixture accepts only the pinned shared NTT postimage, rejects changed
+bytes before compilation, and compiles it with the original configured Mesa
+flags. It does not modify the shared Mesa source or build.
 
 Prepared hardware gates are `SharedAtomicVectorExecuteUnitSpec`,
 `SharedAtomicAvailabilityDecodeSpec`, and the explicit stock SRAM/FPU/vector
@@ -221,12 +237,20 @@ establish Linux GEM/producer/context lifetime, complete-host or two-CU product
 execution, general shared layouts/CFG admission, physical timing or H7 closure.
 The current product profiles continue to leave this new feature disabled.
 
-The new sixteen `shared-dynamic*.native.words` cases have a separate explicit
-entry point. It checks source-level conditional/permuted old words, sixteen
+The new sixteen `shared-dynamic*.native.words` cases pass real Mesa ESSL 3.10
+lowering, production emission and kernel admission under ASan/UBSan. Each
+294-word program retains 32 initialization stores, two shared loads, two
+atomic captures/operations, one active-lane scope and two workgroup barriers.
+Missing publication, a partly initialized declaration and conditional
+initialization are rejected. The complete original corpus remains passing.
+These are compiler/admission results; actual execution of the new programs
+on the CU remains pending.
+
+Their separate explicit CU entry checks source-level conditional/permuted old words, sixteen
 bounded dynamic contention buckets, final shared values, all output guards,
 held completion and no-reset reuse on the same full stock CU. The memory
-responder only acknowledges actual DUT requests. Actual ESSL compilation and
-this CU execution are still pending; this command is not a recorded pass:
+responder only acknowledges actual DUT requests. This command is not yet a
+recorded pass:
 
 ```sh
 sbt -Dopengpu.galliumComputeSharedDynamicQualification=1 \
