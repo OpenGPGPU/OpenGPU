@@ -5,7 +5,7 @@ import chisel3._
 object ShaderUniformLimits {
   val blocksPerStage=12;val bindings=24;val blockBytes=16384;val offsetAlignment=256
   // VS, FS and compute keep their existing indices. GS is a distinct owner.
-  val defaultComponents=Seq(1024,1024,1024,1024)
+  val defaultComponents=Seq(1024,1024,1024,1024,1024,1024)
   val defaultBlock=31
 }
 
@@ -27,6 +27,43 @@ object GeometryUniformResources {
   val rootMagic=BigInt("47555202",16);val bindingMagic=BigInt("47554202",16)
   def legal(r: ShaderUniformResources): Bool=(r.version===0.U && r.address===0.U) ||
     (r.version===version.U && r.address(5,0)===0.U && r.address.pad(33)+64.U<=(BigInt(1)<<32).U)
+}
+
+/** GUR3/GUB3 is exclusive to the two tessellation stages. Private table
+  * indices remain five bits; application binding numbers are not encoded here.
+  * A shared immutable view may authorize TCS and TES, never another stage.
+  */
+object TessellationUniformResources {
+  val controlStage=4;val evaluationStage=5;val stageMask=0x30;val version=3
+  val rootMagic=BigInt("47555203",16);val bindingMagic=BigInt("47554203",16)
+  def isStage(stage:Int):Boolean=stage==controlStage || stage==evaluationStage
+  def legal(r:ShaderUniformResources):Bool=(r.version===0.U && r.address===0.U) ||
+    (r.version===version.U && r.address(5,0)===0.U && r.address.pad(33)+64.U<=(BigInt(1)<<32).U)
+}
+
+/** Each stage owns its root and forbidden writable prefix. The enclosing task
+  * captures both scopes and the identity before either physical CU launch.
+  */
+class TessellationUniformStageResources extends Bundle {
+  val resources=new ShaderUniformResources
+  val privateBase=UInt(32.W);val privateLimit=UInt(33.W)
+}
+class TessellationUniformTaskResources extends Bundle {
+  val identity=new GraphicsWorkIdentity
+  val control=new TessellationUniformStageResources
+  val evaluation=new TessellationUniformStageResources
+}
+object TessellationUniformTaskResources {
+  def legal(s:TessellationUniformTaskResources):Bool={
+    def stage(v:TessellationUniformStageResources):Bool={
+      val prefix=Mux(v.privateLimit===0.U,v.privateBase===0.U,
+        v.privateLimit>v.privateBase && v.privateLimit<=(BigInt(1)<<32).U)
+      TessellationUniformResources.legal(v.resources) && prefix &&
+        (v.resources.version=/=0.U || (v.privateBase===0.U && v.privateLimit===0.U))
+    }
+    stage(s.control) && stage(s.evaluation) &&
+      ((s.control.resources.version=/=0.U || s.evaluation.resources.version=/=0.U) || s.asUInt===0.U)
+  }
 }
 
 /** Twelve program-block mappings select a shared twenty-four-binding table.
