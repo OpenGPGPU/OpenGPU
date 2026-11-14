@@ -50,10 +50,13 @@ must match the ScalaTest summary. Each job publishes its result in the Actions
 summary; selection also lists the required suites there.
 
 This selector is conservative about fixture references and is not a complete
-production dependency graph. Selected broader integration is available through
-manual `Scala regression`; its scheduled nightly trigger is disabled. A success
-on an older revision does not qualify a newer PR. Documentation-only
-PRs explicitly run host checks without Scala simulation.
+production dependency graph. The broad `Scala regression` workflow is
+intentionally disabled because its test workload is too large. Do not enable
+or trigger it. Use the existing protected PR `Scala CI`, focused local tests and
+explicitly scoped qualification runs for the required coverage. Unexecuted
+Scala/RTL, integration and product checks remain pending; this workflow policy
+does not waive them. A success on an older revision does not qualify a newer PR.
+Documentation-only PRs explicitly run host checks without Scala simulation.
 
 Reproduce selection with `python3 scripts/changed_test_suites.py <changed-path>...`.
 Shader-router changes select `SharedShaderTaskRouterSmallSpec`, which checks
