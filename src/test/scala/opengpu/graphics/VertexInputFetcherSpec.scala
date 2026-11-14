@@ -15,7 +15,9 @@ class VertexInputFetcherSpec extends AnyFlatSpec {
   private case class Draw(count: Int=3,instances: Int=1,firstVertex: BigInt=0,firstIndex: BigInt=0,
     baseVertex: BigInt=0,baseInstance: BigInt=0,indexFormat: Int=0,restart: Boolean=false,
     indices: View=View(0,0,0,0),buffers: Vector[Buffer]=Vector.empty,
-    attributes: Vector[Attribute]=Vector.empty,generation: Int=11,version: Int=1)
+    attributes: Vector[Attribute]=Vector.empty,generation: Int=11,version: Int=1,
+    instanceLimit:Option[BigInt]=None)
+  private case class Slice(firstOrdinal:BigInt,count:Int,firstInstance:BigInt,instances:Int,version:Int=1)
   private case class Record(ordinal: Int,vertex: BigInt,instance: Int,baseInstance: BigInt,
     restart: Boolean,values: Vector[Vector[BigInt]],generation: Int)
   private case class Summary(status: Int,vertices: BigInt,restarts: BigInt,indexLines: BigInt,
@@ -36,6 +38,7 @@ class VertexInputFetcherSpec extends AnyFlatSpec {
     private var heldRequest=Option.empty[BigInt];private var heldOutput=Option.empty[BigInt]
     private var heldCompletion=Option.empty[BigInt]
     d.io.draw.valid.poke(false.B);d.io.draw.bits.poke(0.U.asTypeOf(d.io.draw.bits))
+    d.io.slice.foreach(s=>s.poke(0.U.asTypeOf(s)))
     d.io.cancel.poke(false.B);d.io.out.ready.poke(false.B);d.io.completion.ready.poke(false.B)
     d.io.memoryRequest.ready.poke(false.B);d.io.memoryResponse.valid.poke(false.B)
     d.io.memoryResponse.bits.poke(0.U.asTypeOf(d.io.memoryResponse.bits))
@@ -45,7 +48,11 @@ class VertexInputFetcherSpec extends AnyFlatSpec {
     def get(at: BigInt,bytes: Int): BigInt=
       (0 until bytes).foldLeft(BigInt(0))((v,i)=>v|(BigInt(memory.getOrElse(at+i,0))<<(8*i)))
     def attribute(a: Draw,i: Int): Attribute=a.attributes.lift(i).getOrElse(Attribute(enabled=false))
-    def expected(a: Draw): Vector[Record]=(for(instance<-0 until a.instances;ordinal<-0 until a.count)yield {
+    def expected(a: Draw,slice:Option[Slice]=None): Vector[Record]={
+      val s=slice.getOrElse(Slice(0,a.count,0,a.instances))
+      (for(relative<-0 until s.instances;item<-0 until s.count)yield {
+      val ordinal=s.firstOrdinal+item
+      val instance=s.firstInstance+relative
       val index=if(a.indexFormat==0)a.firstVertex+ordinal else
         get(a.indices.base+(a.firstIndex+ordinal)*(1<<(a.indexFormat-1)),1<<(a.indexFormat-1))
       val restart=a.indexFormat!=0 && a.restart && index==((BigInt(1)<<(8*(1<<(a.indexFormat-1))))-1)
@@ -54,7 +61,7 @@ class VertexInputFetcherSpec extends AnyFlatSpec {
         val field=attribute(a,i)
         if(restart)Vector.fill(4)(BigInt(0))else if(!field.enabled)field.constant else {
           val binding=a.buffers(field.binding);val bytes=size(field.format)
-          val element=if(binding.divisor==0)vertex else a.baseInstance+BigInt(instance)/binding.divisor
+          val element=if(binding.divisor==0)vertex else a.baseInstance+instance/binding.divisor
           Vector.tabulate(4) { c=>
             if(c>=field.components)if(c==3){if(field.format==0 || field.format>=7)BigInt("3f800000",16)else BigInt(1)}else BigInt(0)
             else {
@@ -64,17 +71,20 @@ class VertexInputFetcherSpec extends AnyFlatSpec {
           }
         }
       }
-      Record(ordinal,vertex,instance,a.baseInstance,restart,values,a.generation)
-    }).toVector
+      Record(ordinal.toInt,vertex,instance.toInt,a.baseInstance,restart,values,a.generation)
+    }).toVector}
     private def pokeView(port: VertexInputView,v: View): Unit={
       port.allocationBase.poke(v.allocationBase.U);port.allocationLimit.poke(v.allocationLimit.U)
       port.base.poke(v.base.U);port.limit.poke(v.limit.U)
     }
-    def start(a: Draw): Unit={
+    def start(a: Draw,slice:Option[Slice]=None): Unit={
       d.io.draw.ready.expect(true.B);outputs.clear();requests.clear();faultLine=None;generation=a.generation
       d.io.draw.bits.poke(0.U.asTypeOf(d.io.draw.bits));val b=d.io.draw.bits
       b.version.poke(a.version.U);b.identity.context.poke(3.U);b.identity.pass.poke(7.U);b.identity.generation.poke(a.generation.U)
-      b.count.poke(a.count.U);b.instances.poke(a.instances.U);b.firstVertex.poke(a.firstVertex.U)
+      b.count.poke(a.count.U);b.instances.poke(a.instanceLimit.getOrElse(BigInt(a.instances)).U);b.firstVertex.poke(a.firstVertex.U)
+      d.io.slice.foreach{v=>val s=slice.getOrElse(Slice(0,a.count,0,a.instances))
+        v.version.poke(s.version.U);v.firstOrdinal.poke(s.firstOrdinal.U);v.count.poke(s.count.U)
+        v.firstInstance.poke(s.firstInstance.U);v.instances.poke(s.instances.U)}
       b.firstIndex.poke(a.firstIndex.U);b.baseVertex.poke(a.baseVertex.S);b.baseInstance.poke(a.baseInstance.U)
       b.indexFormat.poke(a.indexFormat.U);b.restart.poke(a.restart.B);pokeView(b.indices,a.indices)
       for((buffer,i)<-a.buffers.zipWithIndex) {
@@ -90,6 +100,7 @@ class VertexInputFetcherSpec extends AnyFlatSpec {
       d.io.draw.valid.poke(true.B);step();d.io.draw.valid.poke(false.B)
       // Every subsequent fetch and record must use the accepted snapshot.
       d.io.draw.bits.poke(0.U.asTypeOf(d.io.draw.bits))
+      d.io.slice.foreach(s=>s.poke(0.U.asTypeOf(s)))
     }
     def step(): Unit={
       val requestReady= !holdRequests && cycle%5!=1
@@ -145,6 +156,65 @@ class VertexInputFetcherSpec extends AnyFlatSpec {
     }
     def consume(): Unit={
       d.io.completion.ready.poke(true.B);step();d.io.completion.ready.poke(false.B);d.io.busy.expect(false.B)
+    }
+  }
+
+  it should "retain original indexed ordinals and divisor phases in sliced instance ranges" in {
+    val p=VertexInputFetchConfig(3,3)
+    simulate(new VertexInputFetcher(p=p,drawSlices=true)){d=>
+      val driver=new Driver(d,p)
+      val bases=Vector[BigInt](0x2000,0x4000,0x6000)
+      for(b<-bases.indices;i<-0 until 512)driver.put(bases(b)+4*i,0x10000000L+b*0x10000+i)
+      for(i<-0 until 13)driver.put(0x1000+i,if(i==6)255 else i+2,1)
+      for(divisor<-Seq[BigInt](1,2,3,5,31,255,BigInt("ffffffff",16))){
+        val a=Draw(count=11,instances=259,firstIndex=2,baseVertex=7,baseInstance=3,
+          indexFormat=1,restart=true,indices=view(0x1000,64),
+          buffers=bases.zipWithIndex.map{case(base,i)=>Buffer(view(base,4096),4,if(i==0)0 else if(i==1)divisor else 3)},
+          attributes=Vector.tabulate(3)(i=>Attribute(binding=i,components=1,format=VertexInputFormat.uint32)))
+        for(s<-Seq(Slice(3,4,37,3),Slice(7,4,255,4),Slice(0,2,0,2))){
+          driver.start(a,Some(s));val result=driver.summary(0)
+          assert(driver.outputs.toVector==driver.expected(a,Some(s)))
+          assert(result.vertices+result.restarts==BigInt(s.count*s.instances))
+          driver.consume()
+        }
+      }
+      val high=Draw(count=3,instances=1,baseInstance=2,
+        buffers=bases.zipWithIndex.map{case(base,i)=>Buffer(view(base,4096),4,
+          if(i==0)BigInt("80000000",16)else BigInt("ffffffff",16))},
+        attributes=Vector.tabulate(3)(i=>Attribute(binding=i,components=1,format=VertexInputFormat.uint32)),
+        instanceLimit=Some(BigInt("ffffffff",16)))
+      val s=Slice(1,2,BigInt("fffffffd",16),2)
+      driver.start(high,Some(s));driver.summary(0)
+      assert(driver.outputs.toVector==driver.expected(high,Some(s)));driver.consume()
+    }
+  }
+
+  it should "reject malformed slices before reads and drain canceled divisor setup before reuse" in {
+    val p=VertexInputFetchConfig(1,1)
+    simulate(new VertexInputFetcher(p=p,drawSlices=true)){d=>
+      val driver=new Driver(d,p)
+      for(i<-0 until 64)driver.put(0x2000+4*i,0x50000000L+i)
+      val a=Draw(count=8,instances=64,buffers=Vector(Buffer(view(0x2000,256),4,3)),
+        attributes=Vector(Attribute(components=1,format=VertexInputFormat.uint32)))
+      for(s<-Seq(Slice(7,2,0,1),Slice(BigInt("ffffffff",16),2,0,1),Slice(0,1,63,2),Slice(0,1,0,1,2),
+          Slice(0,1,BigInt("ffffffff",16),2))){
+        driver.start(a,Some(s));driver.summary(1)
+        assert(driver.requests.isEmpty && driver.outputs.isEmpty);driver.consume()
+      }
+      for(s<-Seq(Slice(8,0,64,0),Slice(0,0,1,1))){
+        driver.start(a,Some(s));driver.summary(0)
+        assert(driver.requests.isEmpty && driver.outputs.isEmpty);driver.consume()
+      }
+      val range=Slice(2,3,37,2)
+      driver.start(a,Some(range));for(_<-0 until 10)driver.step()
+      d.io.cancel.poke(true.B);driver.summary(4)
+      assert(driver.requests.isEmpty && driver.outputs.isEmpty);driver.consume();d.io.cancel.poke(false.B)
+      driver.start(a,Some(range));driver.until(driver.requests.nonEmpty)
+      driver.holdResponses=true;d.io.cancel.poke(true.B)
+      for(_<-0 until 8){driver.step();d.io.busy.expect(true.B);d.io.draw.ready.expect(false.B)}
+      driver.holdResponses=false;driver.summary(4);driver.consume();d.io.cancel.poke(false.B)
+      driver.start(a,Some(range));driver.summary(0)
+      assert(driver.outputs.toVector==driver.expected(a,Some(range)));driver.consume()
     }
   }
 

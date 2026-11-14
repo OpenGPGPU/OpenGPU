@@ -1023,6 +1023,15 @@ class ChangedTestSuitesTest(unittest.TestCase):
             self.assertIn("opengpu.graphics.VertexInputCoalescerSpec", actual)
             self.assertNotIn("opengpu.graphics.VertexShaderTextureMatrixSpec", actual)
 
+    def test_original_draw_slice_selects_fetch_and_focused_actual_cu_cases(self):
+        root = Path(__file__).resolve().parents[1]
+        for name in ("VertexInputSlice", "VertexInputFetcher", "VertexShaderStage"):
+            selected = changed_suites(root, [f"src/main/scala/opengpu/graphics/{name}.scala"])
+            self.assertIn("opengpu.graphics.VertexInputFetcherSpec", selected)
+            self.assertIn("opengpu.graphics.VertexShaderSliceSpec", selected)
+            self.assertNotIn("opengpu.graphics.VertexShaderStageSpec", selected)
+            self.assertNotIn("opengpu.graphics.VertexShaderTextureMatrixSpec", selected)
+
     def test_early_render_qualification_stays_local_while_shader_owner_checks_remain_required(self):
         root = Path(__file__).resolve().parents[1]
         local = "opengpu.graphics.EarlyDepthRenderQualificationSpec"

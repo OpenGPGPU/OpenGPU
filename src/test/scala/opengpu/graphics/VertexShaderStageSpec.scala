@@ -11,7 +11,7 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-private class VertexShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,coherentUpdates: Boolean=false,scalarFpu: Boolean=false,reuseEntries: Int=0,nativeProfile: Boolean=false) extends Module {
+private class VertexShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,coherentUpdates: Boolean=false,scalarFpu: Boolean=false,reuseEntries: Int=0,nativeProfile: Boolean=false,drawSlices:Boolean=false) extends Module {
   val cfg=GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2)
   val vp=(if(fullInterface)VertexShaderStageConfig()else VertexShaderStageConfig(VertexInputFetchConfig(4,3),2)).copy(postTransformEntries=reuseEntries)
   val pp=ShaderPayloadConfig(capacityBytes=if(fullInterface)65536 else 4096,
@@ -19,6 +19,7 @@ private class VertexShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,
   private val slots=GpuSystem.totalMemoryTransactions(2,4,4)
   val io=IO(new Bundle {
     val draw=Flipped(Decoupled(new VertexShaderDraw(vp)))
+    val slice=if(drawSlices)Some(Input(new VertexInputSlice))else None
     val out=Decoupled(new ShadedVertexRecord(vp))
     val completion=Decoupled(new VertexShaderCompletion)
     val memoryRequest=Decoupled(new ComputeMemoryRequest(cfg,64,slots))
@@ -34,7 +35,8 @@ private class VertexShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,
     val publish=if(coherentUpdates)Some(Flipped(Decoupled(new GpuCommand(cfg,8))))else None
     val published=if(coherentUpdates)Some(Decoupled(new GpuCommandResult(8)))else None
   })
-  private val stage=Module(new VertexShaderStage(cfg,vp,SharedCuShaderConfig(2),payload=if(local)Some(pp)else None))
+  private val stage=Module(new VertexShaderStage(cfg,vp,SharedCuShaderConfig(2),payload=if(local)Some(pp)else None,drawSlices=drawSlices))
+  if(drawSlices)stage.io.slice.get:=io.slice.get
   private val system=Module(new GpuSystem(cfg,numComputeUnits=2,enableGraphicsKernels=true,enableFpuBackend=scalarFpu,
     graphicsHostTransactions=4,instructionCacheSets=4,instructionCacheWays=1,
     vectorCacheSets=4,vectorCacheWays=1,shaderPayload=if(local)Some(pp)else None,enableUnifiedCommands=coherentUpdates,nativeExecutionProfile=nativeProfile))
@@ -77,7 +79,7 @@ private class VertexShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,
   }
 }
 
-abstract class VertexShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) extends AnyFlatSpec {
+abstract class VertexShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,slicesOnly:Boolean=false) extends AnyFlatSpec {
   private def zero(data: Data): Unit=data match {
     case r: Record=>r.elements.values.foreach(zero)
     case v: Vec[_]=>v.foreach(zero)
@@ -229,7 +231,44 @@ abstract class VertexShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) exten
     }
   }
 
-  if(!nativeTextureMatrixOnly){
+  if(slicesOnly){
+  for(local<-Seq(true,false))
+  it should s"execute a captured instance slice on a two-CU full-capacity system without rebasing shader IDs local=$local" in {
+    simulate(new VertexShaderHarness(local=local,lanes=16,warps=8,fullInterface=true,drawSlices=true)){d=>
+      val t=new Driver(d)
+      def start():Unit={
+        t.exports.clear();t.descriptor(indexed=false,instances=8,count=9,first=1)
+        val s=d.io.slice.get
+        s.version.poke(1.U);s.firstOrdinal.poke(2.U);s.count.poke(3.U)
+        s.firstInstance.poke(3.U);s.instances.poke(2.U)
+        t.submit();s.poke(0.U.asTypeOf(s));d.io.draw.bits.poke(0.U.asTypeOf(d.io.draw.bits))
+      }
+      start();t.until(d.io.out.valid.peek().litToBoolean)
+      val held=d.io.out.bits.peek().litValue
+      for(_<-0 until 9){t.tick();assert(d.io.out.bits.peek().litValue==held)}
+      d.io.out.ready.poke(true.B);t.until(d.io.completion.valid.peek().litToBoolean)
+      val expected=(for(inst<-3 until 5;ordinal<-2 until 5)yield{
+        val id=1+ordinal
+        Export(ordinal,id,inst,2,false,
+          Vector(fp((11*id+1).toFloat),fp((10*id+2).toFloat),fp((10*id+3).toFloat),fp((10*id+4).toFloat)),
+          Vector[BigInt](id,inst,2,119+inst/2)++Vector.fill(4*d.vp.varyings-4)(BigInt(0)))
+      }).toVector
+      assert(t.exports.toVector==expected)
+      d.io.completion.bits.vertices.expect(6.U);d.io.completion.bits.restarts.expect(0.U)
+      t.complete(0)
+      // A captured input request keeps ownership through cancel and its reply.
+      start();t.blockMemory=true;t.until(d.io.memoryRequest.valid.peek().litToBoolean)
+      val request=d.io.memoryRequest.bits.peek().litValue;d.io.cancel.poke(true.B)
+      for(_<-0 until 7){t.tick();d.io.memoryRequest.valid.expect(true.B)
+        assert(d.io.memoryRequest.bits.peek().litValue==request);d.io.draw.ready.expect(false.B)}
+      t.blockMemory=false;t.complete(4);d.io.cancel.poke(false.B)
+      start();t.until(d.io.completion.valid.peek().litToBoolean)
+      assert(t.exports.toVector==expected);t.complete(0)
+    }
+  }
+  }
+
+  if(!nativeTextureMatrixOnly && !slicesOnly){
   for(local<-Seq(true,false))
   it should s"preserve two vertex input batches with sixteen lanes and a partial tail local=$local" in {
     simulate(new VertexShaderHarness(local=local,lanes=4,warps=4)){d=>
@@ -869,7 +908,7 @@ abstract class VertexShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) exten
 
 
   }
-  if(!nativeTextureMatrixOnly){
+  if(!nativeTextureMatrixOnly && !slicesOnly){
   for(local<-Seq(true,false))it should s"execute projective samples after CU division and retain uncovered helper gradients local=$local" in {
     simulate(new VertexShaderHarness(local,scalarFpu=true)){d=>val t=new Driver(d);val tex=NativeTextureFetchTestData;val id=Seq[BigInt](7,8,9)
       tex.roots(t.put,stage=0,id=id);d.io.out.ready.poke(true.B)
@@ -984,6 +1023,9 @@ abstract class VertexShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) exten
 }
 
 class VertexShaderStageSpec extends VertexShaderStageBaseSpec(false)
+
+/** Focused actual-CU slice coverage, independent of the full stage qualifier. */
+class VertexShaderSliceSpec extends VertexShaderStageBaseSpec(false,slicesOnly=true)
 
 /** Exhaustive format/instruction sweeps run locally, outside PR/nightly CI. */
 class VertexShaderTextureMatrixSpec extends VertexShaderStageBaseSpec(true)
