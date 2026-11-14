@@ -243,19 +243,38 @@ lowering, production emission and kernel admission under ASan/UBSan. Each
 atomic captures/operations, one active-lane scope and two workgroup barriers.
 Missing publication, a partly initialized declaration and conditional
 initialization are rejected. The complete original corpus remains passing.
-These are compiler/admission results; actual execution of the new programs
-on the CU remains pending.
+These compiler/admission results are distinct from the CU execution below.
 
 Their separate explicit CU entry checks source-level conditional/permuted old words, sixteen
 bounded dynamic contention buckets, final shared values, all output guards,
 held completion and no-reset reuse on the same full stock CU. The memory
-responder only acknowledges actual DUT requests. This command is not yet a
-recorded pass:
+responder only acknowledges actual DUT requests.
 
 ```sh
-sbt -Dopengpu.galliumComputeSharedDynamicQualification=1 \
+sbt -J-Xmx2G -J-Xss6M -J-XX:ActiveProcessorCount=2 \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.galliumComputeSharedDynamicQualification=1 \
+  'set Test / sources := (Test / sources).value.filter(f => Set("GpuSim.scala", "QualifyGalliumComputeSharedAtomic.scala").contains(f.getName))' \
+  'Compile / compile' 'Test / compile' \
   'Test / runMain opengpu.core.QualifyGalliumComputeSharedDynamic --inputs /path/to/private-build/glsl --input-sha256 PRINTED_DYNAMIC_SHA256 --reports /path/to/temporary-reports'
 ```
+
+Both explicit tests pass: input-contract refusal and execution of all sixteen
+actual 294-word programs. The stock CU retains sixteen lanes, eight warps,
+128 invocations, 16 KiB SRAM, FPU, vector execution and actual Sv32 accesses.
+All 32 groups, 256 warp starts, 16384 output words and 16384 acknowledged
+writes pass the independent source oracle: conditional old values/inactive
+sentinels, sixteen eight-lane contention buckets and both final shared-value
+planes. Code, descriptor, page-table and output allocation guards remain
+unchanged. Each case observes all eight warps, holds drained completion for
+thirteen cycles and checks sixteen quiet cycles before reuse without reset.
+The sixteen cases complete in 812383 simulated cycles in total. Filtering
+test compilation isolates this manual entry; it does not remove any of its
+cases or change main-source compilation or hardware capacity.
+
+This is a stock-CU semantic qualification, not complete-host/two-CU product,
+Linux lifetime, VGA frame-rate or complete H7 qualification. The default-off
+product discovery and the remaining API/aggregate/physical gates are unchanged.
 
 The ESSL CPU script prints `ACTUAL_MESA_SHARED_DYNAMIC_INPUT_SHA256` separately
 from the original sixteen-program digest. Missing or changed inputs and an
