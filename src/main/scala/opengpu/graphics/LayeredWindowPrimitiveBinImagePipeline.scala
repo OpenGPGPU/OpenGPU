@@ -173,7 +173,7 @@ class LayeredWindowPrimitiveBinImagePipeline(config:GpuConfig,p:VertexShaderStag
     router.io.clients(e)<>image.io.shared
     if(groupedTexture){io.grouped.get.client(e)<>image.io.grouped.get.client(0);io.grouped.get.cuMask(e):=image.io.grouped.get.cuMask(0)}
     payload.foreach{_=>tieInputs(image.io.payload.get(0));io.payload.get(e)<>image.io.payload.get(1)
-      image.io.payload.get(1).context:=contexts(e);image.io.payload.get(1).cancel:=scheduler.io.cancelImage(e) && io.payload.get(e).cancel
+      image.io.payload.get(1).context:=contexts(e);image.io.payload.get(1).cancel:=scheduler.io.imageOwned(e) && io.payload.get(e).cancel
       router.io.clientPayload.get(e):=image.io.poolPayload.get
       for(i<-0 until 4)io.payloadPins.get(2*engines+4*e+i):=image.io.payloadPins.get(i)}
   }
