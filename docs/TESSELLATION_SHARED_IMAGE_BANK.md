@@ -103,19 +103,28 @@ Tessellation bin records currently publish `geometry.valid=false`. The new
 route accepts ordinary sample ABI6. ABI7 still requires a real GS primitive/layer
 owner and is rejected on this route; zero metadata does not authorize it.
 The bounded component selector starts at a trusted internal patch descriptor,
-not the protected native job envelope. It executes control/evaluation and ABI6
-fragment code on two 16-lane/eight-warp CUs with 16 varying slots, four raw MRTs,
-and 1x/2x/4x output in a 4x4 frame. Expected coverage comes from an explicit TES
-line and the independent integer line reference. Every MRT/sample and all
-allocation guard bytes are checked, including clear pixels and an interior
-witness for each sample. Image publication fetch and task routing are checked;
-the shader contains no image opcode, so image load/store execution remains an
-open qualification item.
+not the protected native job envelope. It is designed to execute isoline
+control/evaluation and ABI6 fragment code on two 16-lane/eight-warp CUs with
+16 varying slots, four raw MRTs, and 1x/2x/4x output in a 4x4 frame. Expected
+coverage comes from an explicit TES line and the independent integer line
+reference. Assertions cover every MRT/sample and allocation guard byte,
+including clear pixels and an interior witness for each sample. The fixture
+uses two image engines, eight directory entries and three payload owners; it
+does not instantiate the complete three-domain/host wrapper. Its shader has no
+image opcode: publication/root and task routing checks do not establish image
+load/store execution.
 
-The 25 Python preparation/executor/product guard tests pass. The new Scala
-sources and RTL tests have not been compiled or simulated in this source-only
-change; full-host, clock and FPS qualification remain open. Reproduce the CPU
-checks with:
+Fresh JDK 21 `Test/compile` passed for all 755 main and 1095 test sources with
+a 4 GiB heap in 204 seconds. A separate 2 GiB serial run passed 15 tests: five
+pure owner-profile checks, three host-router checks, one bank-owner check,
+four bank-mux variants and two GFS/image-reader cases. These exercise legacy
+isolation, captured image identity, backpressure, cancellation, drain, reuse,
+ABI6 admission and ABI7 rejection without GS metadata. The 25 Python
+preparation/executor/product guard tests also pass.
+
+The real-CU selector has **not run**. Actual image-opcode execution and the
+complete 112-word protected host, clock and FPS remain unqualified. Reproduce
+the CPU checks with:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p test_prepare_native_sample_owner.py
@@ -124,18 +133,50 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p test_prepar
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p test_qualify_native_sample_layered_product.py
 ```
 
-After a fresh caller compile, run the router, bank and GFS ownership tests
-serially, then select the real-CU component explicitly in a separate resource
-window:
+Use JDK 21 and one JVM at a time. Create a short managed temporary directory
+under the main repository (not the long worktree path), and retain it until all
+JVM, Verilator and native build processes exit:
 
 ```sh
-sbt -batch -Dopengpu.simJobs=1 'set Test / parallelExecution := false' \
+GPU_MAIN=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+GPU_TMP=$(mktemp -d "$GPU_MAIN/.artifacts/t.XXXXXX")
+export TMPDIR="$GPU_TMP"
+sbt -batch -J-Xms256m -J-Xmx4G -J-XX:ActiveProcessorCount=2 \
+  -J-XX:MaxMetaspaceSize=768m -J-XX:ReservedCodeCacheSize=256m \
+  -J-XX:MaxDirectMemorySize=256m -J-Xss4m -Djava.io.tmpdir="$GPU_TMP" \
+  'Test/compile'
+sbt -batch -J-Xms256m -J-Xmx2G -J-XX:ActiveProcessorCount=2 \
+  -Djava.io.tmpdir="$GPU_TMP" -Dopengpu.simWorkspace="$GPU_TMP/sim" \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simSeparateBuild=1 \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simCache=off \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.system.NativeOwnerHostProfileSpec -- -z compose' \
+  'testOnly opengpu.system.NativeOwnerHostProfileSpec -- -z "retain the complete"' \
+  'testOnly opengpu.system.NativeOwnerHostProfileSpec -- -z "reject protected"' \
   'testOnly opengpu.system.TessellationHostShaderRouterSpec opengpu.system.TessellationImageBankOwnerSpec opengpu.system.TessellationImageBankMuxSpec opengpu.graphics.TypedFragmentImageStateReaderSpec'
-sbt -batch -Dopengpu.simJobs=1 -Dopengpu.tessellationSampleImageQualification=1 \
+```
+
+The next command is the unexecuted real-CU selector, not a measured resource
+bound. Run it only in a separately checked memory window. Its two complete CU
+interfaces and real native-sample backend make it substantially larger than
+the router/reader tests. Serial native compilation and heap release avoid
+concurrent front-end/native build peaks; they do not guarantee peak memory.
+The three sample modes currently create three sequential models.
+
+```sh
+MAKEFLAGS=-j1 sbt -batch -J-Xms256m -J-Xmx4G -J-XX:ActiveProcessorCount=2 \
+  -J-XX:MaxMetaspaceSize=768m -J-XX:ReservedCodeCacheSize=256m \
+  -J-XX:MaxDirectMemorySize=256m -J-Xss4m -Djava.io.tmpdir="$GPU_TMP" \
+  -Dopengpu.simWorkspace="$GPU_TMP/cu-sim" -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simSeparateBuild=1 \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simCache=off \
+  -Dopengpu.tessellationSampleImageQualification=1 \
   'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.tessellation.TessellationSampleImageSharedSystemSpec'
 ```
 
-`TessellationNativeThreeDomainJobImageElaborationSpec` also checks both legacy
-and sample/image-enabled three-domain hierarchies with exactly one shared bank.
-These tests do not inherit results from an earlier factory or model.
+After verifying that no process or other consumer needs the temporary outputs,
+remove `"$GPU_TMP"` and the ended simulation workspaces. The new enabled
+variants of `TessellationNativeThreeDomainJobImageElaborationSpec` have not run;
+they additionally check that the three domain frontends retain exactly one
+shared image bank. No selector inherits an earlier factory's model results.
