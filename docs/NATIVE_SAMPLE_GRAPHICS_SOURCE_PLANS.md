@@ -86,6 +86,19 @@ OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_gallium_sample_graphics_bridge
 
 They check exact112/old96 isolation, OGNP0002/EOF rejection, legal two/four-bank
 acceptance, odd-bank rejection, unchanged error outputs and CPU-only admission.
+The complete host `test_driver.py` regression also passes with per-fixture
+ASan/UBSan, actual Mesa 22.3.6 and DRM headers, including the old snapshot,
+submission, validator, MMU and Gallium framebuffer paths. The Linux
+`sync_file`-dependent fixture is skipped on macOS; the explicit Linux run above
+covers the new producer. Reproduce the host regression with a managed temporary
+directory and plain host compiler:
+
+```sh
+TMPDIR="$OUT" OPENGPU_TEST_SANITIZERS=1 CC=cc \\
+  OPENGPU_MESA_DIR="$MESA" OPENGPU_DRM_INCLUDE="$DRM_INCLUDE" \\
+  python3 -B scripts/test_driver.py
+```
+
 For the explicit actual-Mesa CPU path, use the immutable ARM64 tool image and
 read-only source/build/library mounts described in `NATIVE_SAMPLE_ESSL_BRIDGE.md`,
 with a new managed output directory under `.artifacts` and the same Mesa/DRM/link
