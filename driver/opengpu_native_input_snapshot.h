@@ -26,4 +26,11 @@ int opengpu_native_input_snapshot_patch(struct opengpu_private_snapshot *owner,
     u32 draw_array_segment,u64 draw_byte_offset,const void *raw_draw,
     const struct drm_opengpu_native_draw_plan *plan,u32 capacity,
     opengpu_native_frame_resolve resolve,void *resolve_context);
+/* Explicit GND2 version only, selected after full GNG/GS admission. The
+ * ordinary entry above continues to reject GND2. Input/output capacities and
+ * original backing permissions are identical; no metadata/code is patched. */
+int opengpu_native_input_snapshot_patch_geometry(struct opengpu_private_snapshot *owner,
+    u32 draw_array_segment,u64 draw_byte_offset,const void *raw,
+    const struct drm_opengpu_native_draw_plan *plan,u32 capacity,
+    opengpu_native_frame_resolve resolve,void *context);
 #endif

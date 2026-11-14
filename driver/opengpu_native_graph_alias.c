@@ -60,14 +60,14 @@ int opengpu_native_graph_alias_check(const struct opengpu_native_job_source *s,
     size_t count=0;
     u32 i,j;
     int ret=0;
-    if(!s || !resolve || (s->plan_count && !s->plans) ||
+    if(!s || !resolve || (s->plan_count && (s->layered ? !s->layered_plans : !s->plans)) ||
        (s->resource_count && !s->resources))return -EINVAL;
     maximum=(u64)s->plan_count*19u+s->resource_count;
     if(maximum>(u64)(~(size_t)0)/sizeof(*spans))return -ERANGE;
     if(!maximum)return 0;
     spans=kvzalloc((size_t)maximum*sizeof(*spans),GFP_KERNEL);if(!spans)return -ENOMEM;
     for(i=0;i<s->plan_count;i++){
-        const struct drm_opengpu_native_draw_plan *p=&s->plans[i];
+        const struct drm_opengpu_native_draw_plan *p=opengpu_native_job_draw_plan(s,i);
         for(j=0;j<19;j++){
             const struct drm_opengpu_compute_uniform_view *v=j<16?&p->bindings[j]:
                 j==16?&p->indices:j==17?&p->indirect:&p->vertex_scratch;

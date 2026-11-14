@@ -2285,8 +2285,12 @@ int opengpu_hw_native_binned_async(struct opengpu_device *gpu,
     if (ret)
         goto out;
     ret = opengpu_private_snapshot_verify_locked(owner, gpu, context);
-    if (!ret)
-        ret = opengpu_private_snapshot_native_job_address(owner, job_segment, &address);
+    if (!ret) {
+        if (gpu->hw.native_layered_transport)
+            ret = opengpu_private_snapshot_native_layered_job_address(owner, job_segment, &address);
+        else
+            ret = opengpu_private_snapshot_native_job_address(owner, job_segment, &address);
+    }
     if (!ret)
         ret = opengpu_private_snapshot_read32(owner, job_segment,
             4u * OPENGPU_NATIVE_BINNED_JOB_JOB_IDENTITY_PASS_WORD, &pass);

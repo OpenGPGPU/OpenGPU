@@ -8,6 +8,10 @@
 #include "../opengpu_native_frame_snapshot.c"
 #include "../opengpu_native_input_snapshot.c"
 #include "../opengpu_native_program_snapshot.c"
+#include "../opengpu_geometry_uniform_snapshot.c"
+#include "../opengpu_geometry_program_snapshot.c"
+#include "../opengpu_geometry_snapshot.c"
+#include "../opengpu_native_layered_snapshot.c"
 /* Production files have private static helpers with this same spelling. */
 #define identity job_graph_identity
 #include "../opengpu_native_job_snapshot.c"
@@ -324,7 +328,10 @@ static void graph_alias_matrix(struct graph_records *g,struct opengpu_device *gp
     assert(opengpu_native_graph_alias_check(NULL,graph_resolve,graph_original)==-EINVAL);
     assert(opengpu_native_graph_alias_check(&g->source,NULL,graph_original)==-EINVAL);
 }
-int main(void)
+#ifndef OPENGPU_NATIVE_JOB_SNAPSHOT_TEST_MAIN
+#define OPENGPU_NATIVE_JOB_SNAPSHOT_TEST_MAIN main
+#endif
+int OPENGPU_NATIVE_JOB_SNAPSHOT_TEST_MAIN(void)
 {
     struct opengpu_device gpu={0};struct opengpu_render_context context={.gpu=&gpu,.references=1,.id=7};
     struct graph_records g;gpu.hw.capabilities=GPU_CAP_UNIFIED_COMMANDS;

@@ -3,6 +3,7 @@
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include "opengpu_native_input_snapshot.h"
+#include "opengpu_native_geometry_abi.h"
 #include "opengpu_private_snapshot.h"
 #include "opengpu_native_binned_abi.h"
 
@@ -81,9 +82,9 @@ static int input_relocate(struct opengpu_private_snapshot *owner,u32 segment,u64
     return opengpu_private_snapshot_relocate_resource(owner,segment,(size_t)(offset+4u*word),
         view->resource,addend,limit?OPENGPU_PRIVATE_SNAPSHOT_LIMIT33:OPENGPU_PRIVATE_SNAPSHOT_VA32);
 }
-int opengpu_native_input_snapshot_patch(struct opengpu_private_snapshot *owner,
+static int native_input_patch(struct opengpu_private_snapshot *owner,
     u32 segment,u64 offset,const void *raw,const struct drm_opengpu_native_draw_plan *plan,u32 capacity,
-    opengpu_native_frame_resolve resolve,void *context)
+    opengpu_native_frame_resolve resolve,void *context,bool geometry)
 {
     struct input_view *views;
     u32 used=0,count=0,index_format,mode,version,attributes,varyings,vs_version;
@@ -98,8 +99,8 @@ int opengpu_native_input_snapshot_patch(struct opengpu_private_snapshot *owner,
         if(opengpu_private_snapshot_read32(owner,segment,(size_t)(offset+word*4u),&copied) ||
             copied!=input_word(raw,word))return -EINVAL;
     }
-    if(input_word(raw,0)!=OPENGPU_NATIVE_BINNED_DRAW_MAGIC || input_word(raw,1)!=OPENGPU_NATIVE_BINNED_DRAW_BYTES ||
-        input_word(raw,2)!=1 || input_word(raw,3)!=16 || input_word(raw,4)!=16 ||
+    if(input_word(raw,0)!=(geometry?OPENGPU_NATIVE_GEOMETRY_DRAW_MAGIC:OPENGPU_NATIVE_BINNED_DRAW_MAGIC) || input_word(raw,1)!=OPENGPU_NATIVE_BINNED_DRAW_BYTES ||
+        input_word(raw,2)!=(geometry?2u:1u) || input_word(raw,3)!=16 || input_word(raw,4)!=16 ||
         input_word(raw,5)!=16 || input_word(raw,6)!=4 || input_word(raw,7)!=4 ||
         input_word(raw,OPENGPU_NATIVE_BINNED_DRAW_DRAW_VERSION_WORD)!=1)return -EINVAL;
     attributes=input_word(raw,V(ATTRIBUTESLOTS));varyings=input_word(raw,V(VARYINGSLOTS));
@@ -182,6 +183,18 @@ int opengpu_native_input_snapshot_patch(struct opengpu_private_snapshot *owner,
     ret=0;
 done:
     kvfree(views);return ret;
+}
+int opengpu_native_input_snapshot_patch(struct opengpu_private_snapshot *owner,
+    u32 segment,u64 offset,const void *raw,const struct drm_opengpu_native_draw_plan *plan,u32 capacity,
+    opengpu_native_frame_resolve resolve,void *context)
+{
+    return native_input_patch(owner,segment,offset,raw,plan,capacity,resolve,context,false);
+}
+int opengpu_native_input_snapshot_patch_geometry(struct opengpu_private_snapshot *owner,
+    u32 segment,u64 offset,const void *raw,const struct drm_opengpu_native_draw_plan *plan,u32 capacity,
+    opengpu_native_frame_resolve resolve,void *context)
+{
+    return native_input_patch(owner,segment,offset,raw,plan,capacity,resolve,context,true);
 }
 #undef PAGE
 #undef I

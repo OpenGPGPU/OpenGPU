@@ -8,6 +8,8 @@
 #include "opengpu_native_frame_snapshot.h"
 #include "opengpu_native_binned_abi.h"
 #include "opengpu_typed_fragment_state_abi.h"
+#include "opengpu_native_layered_abi.h"
+#include "opengpu_texture_image_format_abi.h"
 
 #define W(name) OPENGPU_NATIVE_BINNED_FRAME_##name##_WORD
 #define RESOURCE_READ OPENGPU_NATIVE_FRAME_RESOURCE_READ
@@ -54,7 +56,8 @@ static const struct range_words spills[8] = {
 struct resolved_view {
     const struct opengpu_native_frame_resource *source;
     u64 physical, first_line, line_end, page, pages, delta;
-    u32 owner_resource;
+    u32 owner_resource, layers;
+    u64 layer_pitch, layer_span;
 };
 static u32 get32(const void *bytes, u32 word)
 {
@@ -158,11 +161,74 @@ static int patch_state_scratch(struct opengpu_private_snapshot *owner,u32 states
     return 0;
 }
 
+/* All declared layer intervals, not just layer zero or an envelope which
+ * would reject legal interleaved planes. Original physical cache lines are
+ * compared so distinct GEM handles/private VAs cannot hide a writer alias. */
+#define CB(n) OPENGPU_TEXTURE_FORMAT_##n##_BYTES
+static const u8 frame_layer_color_bytes[36]={
+    CB(R8),CB(RG8),CB(RGB8),CB(RGBA8),CB(RGB565),CB(RGBA4),CB(RGB5_A1),
+    CB(RGB10_A2),CB(SRGB8_ALPHA8),CB(R8I),CB(R8UI),CB(R16I),CB(R16UI),
+    CB(R32I),CB(R32UI),CB(RG8I),CB(RG8UI),CB(RG16I),CB(RG16UI),CB(RG32I),
+    CB(RG32UI),CB(RGBA8I),CB(RGBA8UI),CB(RGBA16I),CB(RGBA16UI),CB(RGBA32I),
+    CB(RGBA32UI),CB(RGB10_A2UI),CB(R16F),CB(R32F),CB(RG16F),CB(RG32F),
+    CB(RGB16F),CB(RGB32F),CB(RGBA16F),CB(RGBA32F)};
+#undef CB
+#define DIMS(n) {W(n##_IMAGEWIDTH),W(n##_IMAGEHEIGHT),W(n##_ROWPITCH)}
+static const u32 frame_layer_dims[12][3]={
+    DIMS(FRAME_IMAGE_VIEWS0),DIMS(FRAME_IMAGE_VIEWS1),DIMS(FRAME_IMAGE_VIEWS2),
+    DIMS(FRAME_IMAGE_VIEWS3),DIMS(FRAME_IMAGE_VIEWS4),DIMS(FRAME_IMAGE_VIEWS5),
+    DIMS(FRAME_IMAGE_RESOLVES0_DESTINATION),DIMS(FRAME_IMAGE_RESOLVES1_DESTINATION),
+    DIMS(FRAME_IMAGE_RESOLVES2_DESTINATION),DIMS(FRAME_IMAGE_RESOLVES3_DESTINATION),
+    DIMS(FRAME_IMAGE_RESOLVES4_DESTINATION),DIMS(FRAME_IMAGE_RESOLVES5_DESTINATION)};
+#undef DIMS
+static const u32 frame_layer_formats[6]={
+    W(FRAME_IMAGE_PIXELS_COLORS_COLORS0_FORMAT),W(FRAME_IMAGE_PIXELS_COLORS_COLORS1_FORMAT),
+    W(FRAME_IMAGE_PIXELS_COLORS_COLORS2_FORMAT),W(FRAME_IMAGE_PIXELS_COLORS_COLORS3_FORMAT),
+    W(FRAME_IMAGE_PIXELS_DEPTH_FORMAT),W(FRAME_IMAGE_PIXELS_STENCIL_FORMAT)};
+static int frame_layer_span(const void *frame,struct resolved_view *v)
+{
+    const struct opengpu_native_frame_resource *r=v->source;
+    bool resolving=r->role==OPENGPU_NATIVE_FRAME_RESOURCE_RESOLVE;
+    u32 index=r->index,plane=index+(resolving?6u:0u),format=get32(frame,frame_layer_formats[index]);
+    u32 width=get32(frame,frame_layer_dims[plane][0]),height=get32(frame,frame_layer_dims[plane][1]);
+    u32 row_pitch=get32(frame,frame_layer_dims[plane][2]),mode=resolving?0u:get32(frame,W(FRAME_IMAGE_PIXELS_COLORS_SAMPLEMODE));
+    u32 bytes,pitch_word=(resolving?OPENGPU_NATIVE_LAYERED_FRAME_LAYERED_RESOLVEPITCH0_WORD:
+        OPENGPU_NATIVE_LAYERED_FRAME_LAYERED_SOURCEPITCH0_WORD)+2u*index;
+    static const u8 depth_bytes[7]={0,2,4,4,4,8,1};
+    u64 row,last;
+    if(index<4){if(format>=36)return -EINVAL;bytes=frame_layer_color_bytes[format];}
+    else {if(format>=7 || !depth_bytes[format])return -EINVAL;bytes=depth_bytes[format];}
+    if(!width || !height || mode>2)return -EINVAL;
+    row=(u64)width*(1u<<mode)*bytes;
+    if(row>row_pitch)return -EINVAL;
+    v->layer_span=(u64)(height-1u)*row_pitch;
+    if(v->layer_span>(1ULL<<32) || row>(1ULL<<32)-v->layer_span)return -ERANGE;
+    v->layer_span+=row;
+    v->layer_pitch=get32(frame,pitch_word)|(u64)get32(frame,pitch_word+1u)<<32;
+    v->layers=get32(frame,OPENGPU_NATIVE_LAYERED_FRAME_LAYERED_LAYERS_WORD);
+    if(v->layers>1 && v->layer_pitch<v->layer_span)return -EINVAL;
+    last=(u64)(v->layers-1u)*v->layer_pitch+v->layer_span;
+    return last<=r->bytes?0:-ERANGE;
+}
+static bool frame_layer_overlap(const struct resolved_view *a,const struct resolved_view *b)
+{
+    u32 i=0,j=0;
+    if(!a->layers || !b->layers)return a->first_line<b->line_end && b->first_line<a->line_end;
+    while(i<a->layers && j<b->layers){
+        u64 ab=a->physical+i*a->layer_pitch,bb=b->physical+j*b->layer_pitch;
+        u64 ae=(ab+a->layer_span+63u)&~63ULL,be=(bb+b->layer_span+63u)&~63ULL;
+        ab&=~63ULL;bb&=~63ULL;
+        if(ab<be && bb<ae)return true;
+        if(ae<=bb)++i;else ++j;
+    }
+    return false;
+}
+
 static int append_frame(struct opengpu_private_snapshot *owner,
     const void *frame,u32 states,size_t state_bytes,
     const struct opengpu_native_frame_resource *plans,u32 count,
     u32 engines,u32 context,u32 pass,u32 generation,
-    opengpu_native_frame_resolve resolve,void *resolve_context,u32 *out,bool complete)
+    opengpu_native_frame_resolve resolve,void *resolve_context,u32 *out,bool complete,bool layered)
 {
     struct resolved_view *views;
     const struct resolved_view *roles[7][9]={{0}};
@@ -172,9 +238,13 @@ static int append_frame(struct opengpu_private_snapshot *owner,
     if(!owner || !frame || !out || !resolve || !plans || !count || count>MAX_RESOURCES ||
         !engines || engines>4 || !state_bytes || (state_bytes%512) ||
         (u64)state_bytes>(1ULL<<32) || !zero_addresses(frame) ||
-        get32(frame,0)!=OPENGPU_NATIVE_BINNED_FRAME_MAGIC ||
+        get32(frame,0)!=(layered?OPENGPU_NATIVE_LAYERED_FRAME_MAGIC:OPENGPU_NATIVE_BINNED_FRAME_MAGIC) ||
         get32(frame,1)!=OPENGPU_NATIVE_BINNED_FRAME_BYTES ||
-        get32(frame,2)!=OPENGPU_NATIVE_BINNED_VERSION)return -EINVAL;
+        get32(frame,2)!=(layered?OPENGPU_NATIVE_LAYERED_FRAME_VERSION:OPENGPU_NATIVE_BINNED_VERSION))return -EINVAL;
+    if(layered && (!opengpu_native_layered_wire_valid(OPENGPU_NATIVE_LAYERED_FRAME_KIND,frame,512) ||
+        get32(frame,OPENGPU_NATIVE_LAYERED_FRAME_LAYERED_VERSION_WORD)!=1 ||
+        !get32(frame,OPENGPU_NATIVE_LAYERED_FRAME_LAYERED_LAYERS_WORD) ||
+        get32(frame,OPENGPU_NATIVE_LAYERED_FRAME_LAYERED_LAYERS_WORD)>256))return -EINVAL;
     if(complete){
         int checked=check_state_scratch(owner,states,state_bytes,engines);
         if(checked)return checked;
@@ -236,8 +306,12 @@ static int append_frame(struct opengpu_private_snapshot *owner,
         v->page=v->physical&~(u64)(PAGE-1u);
         v->pages=((physical_end+PAGE-1u)&~(u64)(PAGE-1u))-v->page;
         v->delta=v->physical-v->page;
+        if(layered && (p->role==OPENGPU_NATIVE_FRAME_RESOURCE_IMAGE ||
+            p->role==OPENGPU_NATIVE_FRAME_RESOURCE_RESOLVE)){
+            ret=frame_layer_span(frame,v);if(ret)goto done;ret=-EINVAL;
+        }
         for(j=0;j<i;++j)if(((p->access|views[j].source->access)&RESOURCE_WRITE) &&
-            v->first_line<views[j].line_end && views[j].first_line<v->line_end)goto done;
+            frame_layer_overlap(v,&views[j]))goto done;
         roles[p->role][p->index]=v;
     }
     if(!roles[OPENGPU_NATIVE_FRAME_RESOURCE_PRIMITIVES][0] ||
@@ -307,7 +381,7 @@ int opengpu_native_frame_snapshot_append(struct opengpu_private_snapshot *owner,
     opengpu_native_frame_resolve resolve,void *resolve_context,u32 *out)
 {
     return append_frame(owner,frame,states,state_bytes,plans,count,engines,context,pass,generation,
-                        resolve,resolve_context,out,false);
+                        resolve,resolve_context,out,false,false);
 }
 int opengpu_native_frame_snapshot_append_complete(struct opengpu_private_snapshot *owner,
     const void *frame,u32 states,size_t state_bytes,
@@ -316,7 +390,16 @@ int opengpu_native_frame_snapshot_append_complete(struct opengpu_private_snapsho
     opengpu_native_frame_resolve resolve,void *resolve_context,u32 *out)
 {
     return append_frame(owner,frame,states,state_bytes,plans,count,engines,context,pass,generation,
-                        resolve,resolve_context,out,true);
+                        resolve,resolve_context,out,true,false);
+}
+int opengpu_native_frame_snapshot_append_layered_complete(struct opengpu_private_snapshot *owner,
+    const void *frame,u32 states,size_t state_bytes,
+    const struct opengpu_native_frame_resource *plans,u32 count,
+    u32 engines,u32 context,u32 pass,u32 generation,
+    opengpu_native_frame_resolve resolve,void *resolve_context,u32 *out)
+{
+    return append_frame(owner,frame,states,state_bytes,plans,count,engines,context,pass,generation,
+                        resolve,resolve_context,out,true,true);
 }
 #undef RESOURCE_READ
 #undef RESOURCE_WRITE

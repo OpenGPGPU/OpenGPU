@@ -81,6 +81,10 @@ int opengpu_private_snapshot_invalidate_locked(const struct opengpu_private_snap
  * registers its resources. It is not admission of an untrusted record graph. */
 int opengpu_private_snapshot_native_job_address(const struct opengpu_private_snapshot *owner,
     u32 segment, u32 *address);
+/* Explicit GNJ2 only; additionally proves the complete GNY2 view is in this
+ * published owner's writable resource mapping. Legacy entry rejects GNJ2. */
+int opengpu_private_snapshot_native_layered_job_address(const struct opengpu_private_snapshot *owner,
+    u32 segment,u32 *address);
 int opengpu_private_snapshot_retire(struct opengpu_private_snapshot *owner);
 
 #endif
