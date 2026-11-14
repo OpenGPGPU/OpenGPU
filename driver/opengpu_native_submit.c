@@ -18,6 +18,7 @@
 #include "opengpu_native_binned_abi.h"
 #include "opengpu_native_advanced_blend_gfs.h"
 #include "opengpu_admission.h"
+#include "opengpu_protected_tessellation_submit.h"
 
 struct native_reference {
     struct drm_gem_object *object;
@@ -267,4 +268,187 @@ out:
     kvfree(deps);kvfree(sources.refs);
     for(i=0;i<7;++i)kvfree(records[i]);
     return ret;
+}
+
+/* Separate protected tessellation admission. This does not extend the old
+ * trusted GNQ ioctl or native binned discovery. No ioctl number is registered. */
+int opengpu_hw_protected_tessellation_profile(struct opengpu_device *gpu,
+    struct opengpu_protected_tessellation_profile *profile)
+{
+    (void)gpu;(void)profile;
+    /* Future probe must bind exact GNT4/5/6, GUR3/GUB3, provider launch/RAM
+     * initialization, private MMU route and cancellation/retirement contracts.
+     * Legacy capability bits and a caller-supplied profile are insufficient. */
+    return -EOPNOTSUPP;
+}
+struct dma_fence *opengpu_protected_tessellation_job_run(struct opengpu_sched_job *job)
+{
+    struct opengpu_protected_tessellation_profile profile;
+    int ret=opengpu_hw_protected_tessellation_profile(job->gpu,&profile);
+    /* Even a future profile getter cannot silently enable a legacy kick. A
+     * matched private-owner hardware route must be supplied independently. */
+    return ERR_PTR(ret?ret:-EOPNOTSUPP);
+}
+static int native_collect_protected_tessellation(struct native_sources *sources,
+    const struct opengpu_protected_tessellation_source *s)
+{
+    u32 i,j,stage;int ret;
+    for(i=0;i<s->plan_count;++i){
+        const struct opengpu_protected_tessellation_plan *p=&s->plans[i];
+        const struct drm_opengpu_native_program_view *code[2]={&p->control_program,&p->evaluation_program};
+        const struct drm_opengpu_native_uniform_stage *uniforms[2]={&p->control_uniforms,&p->evaluation_uniforms};
+        for(stage=0;stage<2;++stage){
+            const struct drm_opengpu_compute_uniform_view v={.handle=code[stage]->handle,.offset=code[stage]->offset,.bytes=code[stage]->bytes};
+            ret=native_view(sources,&v,false);if(ret)return ret;
+            for(j=0;j<12;++j){ret=native_view(sources,&uniforms[stage]->blocks[j],false);if(ret)return ret;}
+            ret=native_view(sources,&uniforms[stage]->defaults,false);if(ret)return ret;
+        }
+        const struct opengpu_protected_tessellation_input *v=&p->input;
+        if(!v->handle){if(v->offset || v->bytes)return -EINVAL;continue;}
+        if(!v->bytes || v->offset>~(u64)0-v->bytes)return -EINVAL;
+        ret=native_retain(sources,v->handle,false);if(ret)return ret;
+        for(j=0;j<sources->count;++j)if(sources->refs[j].handle==v->handle &&
+            v->offset+v->bytes>sources->refs[j].object->size)return -ERANGE;
+    }
+    for(i=0;i<s->state_plan_count;++i){
+        const struct opengpu_protected_tessellation_state_plan *p=&s->state_plans[i];
+        const struct drm_opengpu_compute_uniform_view v={.handle=p->fragment_program.handle,
+            .offset=p->fragment_program.offset,.bytes=p->fragment_program.bytes};
+        ret=native_view(sources,&v,false);if(ret)return ret;
+        for(j=0;j<12;++j){ret=native_view(sources,&p->fragment_uniforms.blocks[j],false);if(ret)return ret;}
+        ret=native_view(sources,&p->fragment_uniforms.defaults,false);if(ret)return ret;
+    }
+    for(i=0;i<s->resource_count;++i){
+        const struct opengpu_native_frame_resource *r=&s->resources[i];
+        ret=native_retain(sources,r->gem_handle,!!(r->access&OPENGPU_NATIVE_FRAME_RESOURCE_WRITE));if(ret)return ret;
+    }
+    return 0;
+}
+/* The production wrapper obtains verified from the hardware getter, never
+ * userspace. CPU composition tests invoke this body with an explicit test
+ * profile; they do not exercise or replace the unavailable production probe. */
+static int protected_tessellation_submit_verified(struct drm_device *drm,
+    struct opengpu_protected_tessellation_request *request,struct drm_file *file,
+    const struct opengpu_protected_tessellation_profile *verified)
+{
+    struct opengpu_protected_tessellation_request captured;
+    struct opengpu_protected_tessellation_profile profile;
+    struct opengpu_device *gpu=dev_get_drvdata(drm->dev);
+    struct opengpu_file *render_file=file->driver_priv;
+    struct opengpu_render_context *context;
+    struct opengpu_protected_tessellation_source source={0};
+    struct native_sources sources={.file=file};
+    struct opengpu_native_job_copy copy={native_copy,native_resolve,&sources};
+    struct opengpu_sched_dep *deps=NULL;
+    struct opengpu_sched_job *job=NULL;
+    struct drm_syncobj *out_sync=NULL;
+    struct drm_exec exec;
+    void *records[7]={0};
+    u64 plans_bytes,state_plans_bytes,resources_bytes,max_refs,seqno=0;
+    u32 i;int ret=-EINVAL;
+    if(!request || !verified)return -EINVAL;
+    profile=*verified;
+    if(!opengpu_protected_tessellation_profile_valid(&profile))return -EOPNOTSUPP;
+    captured=*request;
+    const struct opengpu_protected_tessellation_request *args=&captured;
+    if(args->version!=1 || args->flags || args->pad || args->reserved[0] || args->reserved[1] ||
+        args->plan_stride!=sizeof(struct opengpu_protected_tessellation_plan) ||
+        args->state_plan_stride!=sizeof(struct opengpu_protected_tessellation_state_plan) ||
+        args->resource_stride!=sizeof(struct opengpu_native_frame_resource) ||
+        !args->job || !args->frame || !args->states || !args->states_bytes || (args->states_bytes&511u) ||
+        !args->state_plan_count || !args->state_plans || !args->resources || !args->resource_count || args->resource_count>27 ||
+        (args->plan_count?(!args->plans || !args->sequences || !args->sequences_bytes):(args->plans || args->sequences || args->sequences_bytes)) ||
+        args->sequences_bytes>(1ULL<<32) || args->states_bytes>(1ULL<<32) ||
+        args->sequences_bytes>(u64)(~(size_t)0) || args->states_bytes>(u64)(~(size_t)0))return -EINVAL;
+    const u64 pointers[]={args->job,args->frame,args->sequences,args->states,args->plans,args->state_plans,args->resources};
+    for(i=0;i<7;++i)if(!native_pointer_valid(pointers[i]))return -EINVAL;
+    plans_bytes=(u64)args->plan_count*sizeof(struct opengpu_protected_tessellation_plan);
+    state_plans_bytes=(u64)args->state_plan_count*sizeof(struct opengpu_protected_tessellation_state_plan);
+    resources_bytes=(u64)args->resource_count*sizeof(struct opengpu_native_frame_resource);
+    max_refs=(u64)args->plan_count*29u+(u64)args->state_plan_count*14u+args->resource_count;
+    if(plans_bytes>(u64)(~(size_t)0) || state_plans_bytes>(u64)(~(size_t)0) || max_refs>0xffffffffu ||
+       max_refs*sizeof(*sources.refs)>(u64)(~(size_t)0) || max_refs*sizeof(*deps)>(u64)(~(size_t)0))return -ERANGE;
+#define PT_COPY(index,pointer,bytes) do { \
+    if(bytes){records[index]=vmemdup_user(u64_to_user_ptr(pointer),(size_t)(bytes)); \
+        if(IS_ERR(records[index])){ret=PTR_ERR(records[index]);records[index]=NULL;goto out;}} \
+} while(0)
+    PT_COPY(0,args->job,512u);PT_COPY(1,args->frame,2048u);
+    PT_COPY(2,args->sequences,args->sequences_bytes);PT_COPY(3,args->states,args->states_bytes);
+    PT_COPY(4,args->plans,plans_bytes);PT_COPY(5,args->state_plans,state_plans_bytes);PT_COPY(6,args->resources,resources_bytes);
+#undef PT_COPY
+    source=(struct opengpu_protected_tessellation_source){.job=records[0],.frame=records[1],.sequences=records[2],.states=records[3],
+        .sequences_bytes=args->sequences_bytes,.states_bytes=args->states_bytes,.plans=records[4],.plan_count=args->plan_count,
+        .state_plans=records[5],.state_plan_count=args->state_plan_count,.resources=records[6],.resource_count=args->resource_count,
+        .context=args->context_id,.profile=profile};
+    source.pass=opengpu_native_advanced_blend_word(records[0],OPENGPU_NATIVE_BINNED_JOB_JOB_IDENTITY_PASS_WORD);
+    source.generation=opengpu_native_advanced_blend_word(records[0],OPENGPU_NATIVE_BINNED_JOB_JOB_IDENTITY_GENERATION_WORD);
+    sources.capacity=max_refs;sources.refs=kvzalloc((size_t)max_refs*sizeof(*sources.refs),GFP_KERNEL);
+    deps=kvzalloc((size_t)max_refs*sizeof(*deps),GFP_KERNEL);
+    if(!sources.refs || !deps){ret=-ENOMEM;goto out;}
+    if(args->in_syncobj){
+        struct dma_fence *input=NULL;
+        ret=drm_syncobj_find_fence(file,args->in_syncobj,0,0,&input);if(ret)goto out;
+        ret=opengpu_hw_fence_wait(gpu,input,OPENGPU_DRAW_WAIT_MS+100,true);
+        dma_fence_put(input);if(ret)goto out;
+    }
+    mutex_lock(&render_file->lock);
+    context=opengpu_context_lookup(render_file,args->context_id);
+    if(!context || !context->vm.enabled){ret=-EINVAL;goto out_file;}
+    ret=native_collect_protected_tessellation(&sources,&source);if(ret)goto out_file;
+    if(args->out_syncobj){out_sync=drm_syncobj_find(file,args->out_syncobj);if(!out_sync){ret=-ENOENT;goto out_file;}}
+    for(i=0;i<sources.count;++i)deps[i]=(struct opengpu_sched_dep){sources.refs[i].object,
+        sources.refs[i].writable?DMA_RESV_USAGE_READ:DMA_RESV_USAGE_WRITE,
+        sources.refs[i].writable?DMA_RESV_USAGE_WRITE:DMA_RESV_USAGE_READ};
+    drm_exec_init(&exec,DRM_EXEC_INTERRUPTIBLE_WAIT|DRM_EXEC_IGNORE_DUPLICATES,0);
+    drm_exec_until_all_locked(&exec){
+        for(i=0,ret=0;!ret && i<sources.count;++i)ret=drm_exec_prepare_obj(&exec,sources.refs[i].object,1);
+        drm_exec_retry_on_contention(&exec);if(ret)goto out_exec;
+    }
+    /* No submit_lock while producer fences can require old-owner retirement. */
+    for(i=0;i<sources.count;++i){
+        struct dma_resv_iter cursor;struct dma_fence *producer;
+        dma_resv_for_each_fence(&cursor,sources.refs[i].object->resv,deps[i].wait_usage,producer){
+            ret=opengpu_hw_fence_wait(gpu,producer,OPENGPU_DRAW_WAIT_MS+100,true);if(ret)goto out_exec;
+        }
+    }
+    sources.producers_complete=true;
+    job=kzalloc(sizeof(*job),GFP_KERNEL);if(!job){ret=-ENOMEM;goto out_exec;}
+    job->gpu=gpu;job->context=context;job->vm=&context->vm;job->type=OPENGPU_SCHED_PROTECTED_TESSELLATION;
+    job->native_owner=opengpu_private_snapshot_create(gpu,context);
+    if(IS_ERR(job->native_owner)){ret=PTR_ERR(job->native_owner);job->native_owner=NULL;goto out_exec;}
+    ret=opengpu_protected_tessellation_build(job->native_owner,&source,&copy,&job->native_job_segment);
+    if(!ret)ret=opengpu_admission_native_lock(gpu);
+    if(!ret){
+        ret=opengpu_private_snapshot_prepare(job->native_owner);
+        if(!ret)ret=opengpu_private_snapshot_publish(job->native_owner);
+        if(!ret)ret=opengpu_sched_job_submit_locked(render_file,file,context,job,0,out_sync,deps,sources.count,&seqno);
+        opengpu_admission_unlock(gpu);
+    }
+    if(!ret){job=NULL;request->fence_seqno=seqno;}
+out_exec:
+    if(job){
+        int revoke=job->native_owner?opengpu_private_snapshot_retire(job->native_owner):0;
+        if(revoke){
+            WRITE_ONCE(gpu->hw.wedged,true);
+            job->native_quarantine_refs=sources.refs;job->native_quarantine_refcount=sources.count;
+            sources.refs=NULL;sources.count=0;ret=revoke;
+            dev_err(gpu->dev,"retaining protected tessellation originals after owner revocation failure: %d\n",revoke);
+        }else kfree(job);
+    }
+    drm_exec_fini(&exec);
+out_file:
+    if(out_sync)drm_syncobj_put(out_sync);
+    mutex_unlock(&render_file->lock);
+out:
+    for(i=0;i<sources.count;++i)drm_gem_object_put(sources.refs[i].object);
+    kvfree(deps);kvfree(sources.refs);for(i=0;i<7;++i)kvfree(records[i]);return ret;
+}
+int opengpu_protected_tessellation_ioctl(struct drm_device *drm,void *data,struct drm_file *file)
+{
+    struct opengpu_protected_tessellation_profile profile;
+    int ret;
+    if(!drm || !file || !data)return -EINVAL;
+    ret=opengpu_hw_protected_tessellation_profile(dev_get_drvdata(drm->dev),&profile);
+    if(ret)return ret; /* Before request dereference, lookup, usercopy or allocation. */
+    return protected_tessellation_submit_verified(drm,data,file,&profile);
 }

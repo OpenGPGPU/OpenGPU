@@ -201,7 +201,7 @@ struct opengpu_kernel_launch { u32 indirect_base,indirect_bytes,indirect_offset;
 };
 struct dma_fence_chain;
 struct opengpu_job_temporary_mapping {u64 va;size_t size;};
-enum {OPENGPU_SCHED_COMPUTE=1,OPENGPU_SCHED_TESSELLATION=7,OPENGPU_SCHED_NATIVE_BINNED=8};
+enum {OPENGPU_SCHED_COMPUTE=1,OPENGPU_SCHED_TESSELLATION=7,OPENGPU_SCHED_NATIVE_BINNED=8,OPENGPU_SCHED_PROTECTED_TESSELLATION=9};
 struct opengpu_sched_job {
     void *native_owner;struct dma_fence *retirement_fence,*admission_chain;bool ordinary_pending;
     struct dma_fence_chain *execution_chain;bool admission_armed;

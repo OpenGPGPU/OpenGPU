@@ -149,6 +149,8 @@ static void compute_mmio_progress(struct opengpu_device *gpu)
 {struct compute_mmio_state *m=compute_mmio_state(gpu);
  if(gpu->hw.unified_fence && !m->kernel_waiting)opengpu_hw_unified_drain(gpu);}
 
+static struct dma_fence *opengpu_protected_tessellation_job_run(struct opengpu_sched_job *job)
+{(void)job;return (void *)(intptr_t)-EOPNOTSUPP;}
 static struct dma_fence *opengpu_tessellation_job_run(struct opengpu_sched_job *job)
 {(void)job;assert(0);return (void *)(intptr_t)-EOPNOTSUPP;}
 static int opengpu_hw_native_binned_async(struct opengpu_device *gpu,void *owner,

@@ -123,7 +123,7 @@ struct opengpu_device { struct {
     struct opengpu_compute_local_limits compute_local_limits;
     struct opengpu_compute_shared_limits compute_shared_limits;
 } hw;struct {int admission_lock;} compute; u32 regs[512],captured[8],active_root; unsigned kicks,pops,uniform_writes,invalidations; };
-enum { OPENGPU_SCHED_COMPUTE=1,OPENGPU_SCHED_TESSELLATION=7,OPENGPU_SCHED_NATIVE_BINNED=8 };
+enum { OPENGPU_SCHED_COMPUTE=1,OPENGPU_SCHED_TESSELLATION=7,OPENGPU_SCHED_NATIVE_BINNED=8, OPENGPU_SCHED_PROTECTED_TESSELLATION=9 };
 struct opengpu_job_temporary_mapping { u64 va; size_t size; };
 struct opengpu_sched_job {
     struct drm_sched_job base; struct opengpu_device *gpu; const struct opengpu_vm *vm;
@@ -312,6 +312,7 @@ static int opengpu_mmu_vm_unmap(struct opengpu_device *g,struct opengpu_vm *v,u6
 static int opengpu_binding_map_code(struct opengpu_device *g,struct opengpu_render_context *c,u64 p,size_t z,unsigned slot,u64 *a)
 { (void)g;assert(c->vm.enabled&&p&&z&&slot==1);*a=0xc0400000u;return 0; }
 static struct dma_fence *opengpu_tessellation_job_run(struct opengpu_sched_job *j) { (void)j;assert(0);return NULL; }
+static struct dma_fence *opengpu_protected_tessellation_job_run(struct opengpu_sched_job *j) {(void)j;return ERR_PTR(-EOPNOTSUPP);}
 static int opengpu_hw_unified_quiesce_timeout(struct opengpu_device *g) { return g->hw.unified_fence||g->hw.active_fence||g->hw.aborting?-EBUSY:0; }
 /* This fixture has no private native owner; actual lease waiting is covered
  * by the snapshot admission/retirement fixture. */

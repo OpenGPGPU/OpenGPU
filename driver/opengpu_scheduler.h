@@ -46,6 +46,7 @@ enum opengpu_sched_job_type {
     OPENGPU_SCHED_INVALIDATE,
     OPENGPU_SCHED_TESSELLATION,
     OPENGPU_SCHED_NATIVE_BINNED,
+    OPENGPU_SCHED_PROTECTED_TESSELLATION,
 };
 
 /* A render job maps command, code, framebuffer and descriptor windows; a DMA
@@ -85,6 +86,7 @@ struct opengpu_sched_job {
     /* Only populated on failed pre-enqueue revocation; the entire job and
      * original reference container are quarantined with the owner. */
     void *native_quarantine_refs;
+    u32 native_quarantine_refcount;
     struct dma_fence *retirement_fence, *admission_chain;
     struct dma_fence_chain *execution_chain; bool admission_armed;
     bool ordinary_pending;
@@ -189,6 +191,7 @@ struct dma_fence *opengpu_job_run(struct opengpu_sched_job *job);
 int opengpu_job_track_mapping(struct opengpu_sched_job *job,
                               dma_addr_t va, size_t size);
 struct dma_fence *opengpu_tessellation_job_run(struct opengpu_sched_job *job);
+struct dma_fence *opengpu_protected_tessellation_job_run(struct opengpu_sched_job *job);
 void opengpu_tessellation_job_release(struct opengpu_sched_job *job);
 int opengpu_tessellation_sched_submit(
     struct opengpu_file *render_file, struct drm_file *file,
