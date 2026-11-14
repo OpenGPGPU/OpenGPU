@@ -9,6 +9,7 @@ final release follows actual same-DUT PTE revocation and executor success.
 import argparse
 import fcntl
 import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -28,6 +29,7 @@ from owner_resource_contract import SAMPLE_PROFILE
 
 ROOT = Path(__file__).resolve().parents[1]
 KIND = 'native-sample-graphics'
+CLEANUP_SCHEMA = 'opengpu-native-sample-graphics-consumer-cleanup-v1'
 PRODUCER_SUCCESS = ('ACTUAL_SAMPLE_GRAPHICS_LIVE_RETIRED records=2 originalMesaABI1=true '
     'originalGUR=true completionBytes=16384 observed=true')
 READY = dict(schema='opengpu-native-sample-graphics-ready-v1', ownerProfile=SAMPLE_PROFILE,
@@ -171,7 +173,7 @@ def lock_owner(qualification):
         raise
 
 
-def cleanup_inputs(directory, running, bridge, container=None):
+def cleanup_inputs(directory, running, bridge, container=None, *, receipt=None, executor=None, qualification=None):
     """Prove every owned consumer stopped before removing its source inputs."""
     try:
         try:
@@ -186,6 +188,21 @@ def cleanup_inputs(directory, running, bridge, container=None):
         print('Preserved inputs for a possibly active consumer: '+str(directory))
         raise
     shutil.rmtree(directory)
+    if receipt is not None:
+        value = dict(schema=CLEANUP_SCHEMA, kind=KIND, controllerPID=os.getpid(), sourceRoot=str(ROOT),
+            executor=str(executor.absolute()), qualification=str(qualification.absolute()),
+            consumerCleanupConfirmed=True)
+        atomic(receipt,(json.dumps(value)+'\n').encode())
+
+
+def receipt_output(path, parent):
+    if path is None:
+        return None
+    path = path.absolute()
+    require(path.is_relative_to(parent) and path.parent.is_dir() and
+            path.parent.resolve(strict=True) == path.parent and
+            not path.exists() and not path.is_symlink(), 'invalid/pre-existing consumer cleanup receipt output')
+    return path
 
 
 def main():
@@ -193,6 +210,7 @@ def main():
     for name in ('executor','executor-qualification','executor-checker','executor-checker-python','bridge-command'):
         parser.add_argument('--'+name,type=Path,required=True)
     parser.add_argument('--bridge-container-name')
+    parser.add_argument('--cleanup-receipt',type=Path,help='new managed file proving all owned consumers stopped')
     parser.add_argument('--timeout',type=int,default=3600)
     args=parser.parse_args();require(0 < args.timeout <= 86400,'timeout must be 1..86400 seconds')
     executor=regular(args.executor.absolute());qualification=regular(args.executor_qualification.absolute())
@@ -210,6 +228,7 @@ def main():
     require(not args.bridge_container_name or docker,'container cleanup requires a direct Docker bridge')
     gpu=next(p for p in (ROOT,*ROOT.parents) if (p/'.git').is_dir())
     parent=gpu/'.artifacts';parent.mkdir(exist_ok=True)
+    cleanup_receipt=receipt_output(args.cleanup_receipt,parent)
     directory=Path(tempfile.mkdtemp(prefix='g',dir=parent))
     env=dict(os.environ,TMPDIR=str(directory),PYTHONDONTWRITEBYTECODE='1',
         OPENGPU_NATIVE_HOST_TIMEOUT=str(args.timeout),OPENGPU_SAMPLE_GRAPHICS_HOST_DIRECTORY=str(directory),
@@ -250,7 +269,8 @@ def main():
         raise
     finally:
         try:
-            cleanup_inputs(directory,running,bridge,args.bridge_container_name)
+            cleanup_inputs(directory,running,bridge,args.bridge_container_name,receipt=cleanup_receipt,
+                executor=executor,qualification=qualification)
         finally:
             for handle in locks:handle.close()
             signal.signal(signal.SIGTERM,previous)

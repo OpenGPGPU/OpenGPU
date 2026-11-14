@@ -209,6 +209,33 @@ class ControllerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'aliased'):
             controller.producer_success(self.directory)
 
+    def test_cleanup_receipt_requires_complete_exit_before_publication(self):
+        first,second=object(),object()
+        outer=self.directory/'parent';outer.mkdir()
+        ipc=outer/'ipc';ipc.mkdir();(ipc/'input').write_bytes(b'active')
+        receipt=controller.receipt_output(outer/'cleanup.json',self.directory)
+        executor=self.directory/'executor';qualification=self.directory/'qualification.json'
+        with patch.object(controller,'stop_group',side_effect=[controller.CleanupIncomplete('active'),None]), \
+                patch.object(controller,'remove_container'):
+            with self.assertRaises(controller.CleanupIncomplete):
+                controller.cleanup_inputs(ipc,first,second,'owned',receipt=receipt,
+                    executor=executor,qualification=qualification)
+        self.assertFalse(receipt.exists());self.assertTrue(ipc.exists())
+        with patch.object(controller,'stop_group'),patch.object(controller,'remove_container') as container:
+            controller.cleanup_inputs(ipc,first,second,'owned',receipt=receipt,
+                executor=executor,qualification=qualification)
+            container.assert_called_once_with('owned')
+        self.assertFalse(ipc.exists())
+        self.assertEqual(json.loads(receipt.read_text()),dict(schema=controller.CLEANUP_SCHEMA,
+            kind=controller.KIND,controllerPID=controller.os.getpid(),sourceRoot=str(controller.ROOT),
+            executor=str(executor.absolute()),qualification=str(qualification.absolute()),consumerCleanupConfirmed=True))
+        for wrong in (receipt,outer/'missing/output.json',self.directory.parent/'outside.json'):
+            with self.assertRaisesRegex(ValueError,'receipt output'):
+                controller.receipt_output(wrong,self.directory)
+        alias=outer/'alias';alias.symlink_to(outer/'absent')
+        with self.assertRaisesRegex(ValueError,'receipt output'):
+            controller.receipt_output(alias,self.directory)
+
     def test_cleanup_preserves_inputs_on_unknown_exit_and_attempts_all_consumers(self):
         first,second=object(),object()
         with patch.object(controller,'stop_group',side_effect=[controller.CleanupIncomplete('active'),None]) as stop, \
