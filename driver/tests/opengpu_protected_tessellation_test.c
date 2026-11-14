@@ -166,6 +166,17 @@ static void pt_negatives(struct pt_records *t,struct opengpu_device *gpu,struct 
   pt_expect(gpu,context,&t->source,error);
  }
  *t=*saved;
+ /* Existing GNT4/5/6 derive program-v1 only. Even well-defined full-VL
+  * dynamic reads must not gain v2 permission from this old serialized graph. */
+ u8 old_evaluation[24];memcpy(old_evaluation,(u8 *)graph_original[t->evaluation_handle].cpu+64,24);
+ word(graph_original[t->evaluation_handle].cpu,68,0x0104f057);
+ word(graph_original[t->evaluation_handle].cpu,72,33u<<26|1u<<25|1u<<20|1u<<15|2u<<7|0x2b);
+ word(graph_original[t->evaluation_handle].cpu,76,35u<<25|0xb);
+ word(graph_original[t->evaluation_handle].cpu,80,36u<<25|0xb);
+ word(graph_original[t->evaluation_handle].cpu,84,0x30500073);
+ for(u32 k=0;k<3;++k)t->plans[k].evaluation_program.bytes=24;
+ pt_expect(gpu,context,&t->source,-EINVAL);
+ memcpy((u8 *)graph_original[t->evaluation_handle].cpu+64,old_evaluation,24);*t=*saved;
  /* Every reserved or narrow-padding word is checked using the committed
   * layout catalog, including the independent extension's complete 16 words. */
  for(u32 i=3;i<512;i++){

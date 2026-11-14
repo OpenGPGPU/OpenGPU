@@ -3,14 +3,22 @@
 #define OPENGPU_TESSELLATION_PROGRAM_SNAPSHOT_H
 #include <linux/types.h>
 #include "opengpu_native_program_snapshot.h"
+/* Exact task-owned patch layout captured independently of TES exports. */
+struct opengpu_tessellation_patch_layout {
+    u32 input_vertices, input_components, output_vertices, output_components, patch_components;
+};
 /* Internal verified-owner profile, never caller metadata permission. Version 1
  * is the current checked-patch TCS / static-selection one-point TES dialect.
- * TES's 61 selected words are a transport limit, not full dynamic gl_in[]. */
+ * Version 2 is TES-only checked CUSTOM1 fn33 reads from the captured owned
+ * patch layout. It has no static selected words. Neither version enables a
+ * production provider/getter/serialized submission on its own. */
 struct opengpu_tessellation_program_profile {
     u32 version, stage, lanes, warps;
     u32 input_vertices, input_components, output_vertices, output_components, patch_components;
     u32 patch_words;
     bool available, owned_uniforms, scalar_fpu;
+    struct opengpu_tessellation_patch_layout tes_patch_layout;
+    bool owned_patch_reads;
 };
 bool opengpu_tessellation_program_profile_valid(const struct opengpu_tessellation_program_profile *profile);
 bool opengpu_tessellation_shader_validate_words(const u32 *words,u32 word_count,

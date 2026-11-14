@@ -18,12 +18,19 @@ def main():
     parser.add_argument('--programs', type=Path, help='directory containing original LE native-tcs.words/native-tes.words')
     parser.add_argument('--tcs-layout', type=int, nargs=5, metavar=('IN_VERTS', 'IN_COMPS', 'OUT_VERTS', 'OUT_COMPS', 'PATCH_COMPS'))
     parser.add_argument('--tes-layout', type=int, nargs=2, metavar=('PATCH_WORDS', 'OUT_COMPS'))
+    parser.add_argument('--tes-program-version', type=int, choices=(1, 2), default=1)
+    parser.add_argument('--tes-patch-layout', type=int, nargs=5, metavar=('IN_VERTS', 'IN_COMPS', 'OUT_VERTS', 'OUT_COMPS', 'PATCH_COMPS'))
     args = parser.parse_args()
     if args.programs and (args.tcs_layout is None or args.tes_layout is None):
         parser.error('--programs requires exact --tcs-layout and --tes-layout')
     if not args.programs and (args.tcs_layout is not None or args.tes_layout is not None):
         parser.error('layout metadata requires --programs')
-    if any(value < 0 or value > 2**32-1 for value in (args.tcs_layout or []) + (args.tes_layout or [])):
+    if args.tes_program_version == 2:
+        if not args.programs or args.tes_patch_layout is None or args.tes_layout[0] != 0:
+            parser.error('version 2 requires --programs, --tes-layout 0 OUT_COMPS and --tes-patch-layout')
+    elif args.tes_patch_layout is not None:
+        parser.error('--tes-patch-layout requires --tes-program-version 2')
+    if any(value < 0 or value > 2**32-1 for value in (args.tcs_layout or []) + (args.tes_layout or []) + (args.tes_patch_layout or [])):
         parser.error('layout fields must be u32')
     temporary_root = ROOT / '.artifacts'
     temporary_root.mkdir(exist_ok=True)
@@ -47,6 +54,8 @@ def main():
         command = [str(out / 'test')]
         if args.programs:
             command += [str(args.programs.resolve())] + list(map(str, args.tcs_layout + args.tes_layout))
+            if args.tes_program_version == 2:
+                command += ['2'] + list(map(str, args.tes_patch_layout))
         subprocess.run(command, check=True, env=environment)
         if args.negative_controls:
             production = (ROOT / 'driver/opengpu_tessellation_shader_validator.c').read_text()
@@ -63,6 +72,19 @@ def main():
                 'clobber-shared-scalar': ('(!rd || rd==10) && (op==0x37', 'true && (op==0x37'),
                 'clobber-shared-fp': ('if(op==0x43 || op==0x47 || op==0x4b || op==0x4f || op==0x53 || op==0x73)goto done;', 'if(op==0x73)goto done;'),
                 'short-output-as-vl': ('s->x[9].value==p->lanes*p->warps', 's->x[9].value==p->output_vertices'),
+                'dynamic-v1-field-relabel': ('if(p->version==1 && (p->owned_patch_reads || !tess_layout_zero(&p->tes_patch_layout)))return false;', 'if(false && p->version==1 && (p->owned_patch_reads || !tess_layout_zero(&p->tes_patch_layout)))return false;'),
+                'dynamic-without-profile-permission': ('return p->owned_patch_reads && !p->patch_words', 'return true && !p->patch_words'),
+                'dynamic-without-coupled-capacity': ('l->output_vertices*l->output_components+l->patch_components<=2048', 'true'),
+                'dynamic-input-bank': ('if(a>=1024 || !(a&1))return false;', 'if(a>=1024)return false;'),
+                'dynamic-truncated-vertex': ('s->v[vertex].value>=l->output_vertices', '(s->v[vertex].value&63)>=l->output_vertices'),
+                'dynamic-truncated-descriptor': ('u32 a=s->v[address].value,component=a>>3;\n        bool per_patch', 'u32 a=s->v[address].value&1023,component=a>>3;\n        bool per_patch'),
+                'dynamic-confused-export-layout': ('component>=l->output_components', 'component>=p->output_components'),
+                'dynamic-missing-old-destination': ('function==7 || function==21 || function==33', 'function==7 || function==21'),
+                'dynamic-read-after-publication': ('p->owned_patch_reads && !depth && !s->invalid && !s->emitted && !s->ended', 'p->owned_patch_reads && !depth && !s->invalid'),
+                'dynamic-undefined-source': ('if(!s->v[vertex].defined || !s->v[address].defined)return false;\n    if(s->v[vertex].known', 'if(s->v[vertex].known'),
+                'dynamic-old-dialect': ('p->stage==5 && p->version==2 && p->owned_patch_reads && !depth', '!depth'),
+                'dynamic-short-vl': ('!f && s->full_vl && tess_masked(s,insn,rd,function', '!f && (s->full_vl || function==33) && tess_masked(s,insn,rd,function'),
+
             }
             for name, (before, after) in mutations.items():
                 assert before in production

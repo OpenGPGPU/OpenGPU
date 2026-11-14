@@ -33,12 +33,35 @@ no permission: a matched internal verified-owner profile is required.
 Version 1 TCS validates GPU stage 4, lanes 1/2/4/8/16, warps 2/4/8 and actual launch
 layout. Inputs have at most 32 vertices×64 components; outputs at most 32 vertices,
 64 components and 120 patch components. Input and combined output/patch storage
-must each fit 2048 words. Thus 32×64+0 and32×60+120 pass; 32×61+120 fails.
+must each fit 2048 words. Thus 32×64+0 and 32×60+120 pass; 32×61+120 fails.
 Version 1 TES validates stage 5 and only current vertex-zero static transport:
 three TessCoord words plus at most 61 selected patch words, one emitted point.
-This is not full dynamic `gl_in[]`; P40 needs matched service/ISA/validation.
-P39 separately supplies original VS-to-patch execution. CPU-produced patch data
-does not close either requirement.
+Version 1 requires all new dynamic-layout/permission fields to be zero and
+rejects the new read instruction. The existing GNT4/5/6 builder still derives
+only version 1; all three domains reject dynamic-read programs.
+
+Internal program version 2 permits TES-only CUSTOM1 opcode `0x2b`, function 33
+(bits 31:26), funct3=0. It requires an independent `owned_patch_reads` permission,
+zero static `patch_words`, and captured `tes_patch_layout` with all five TCS
+input/output/patch dimensions. That layout has the same 32-vertex, 64-component,
+120-patch-component and coupled 2048-word bounds; its output component count is
+independent of the top-level TES export count. CUSTOM0 function 32 then exposes
+only TessCoord 0..2. CUSTOM0 function 33 retains its separate export permission.
+The program remains limited to 512 words and exactly one emitted point.
+
+Both vertex and descriptor operands must be defined full-width vectors. Known
+constants reject input-bank access, high bits, out-of-layout vertices/components,
+nonzero per-patch/level vertices and malformed level flags. Defined unknown
+indices require the actual retained task's owned service to check every selected
+lane at execution. Reads require full VL before emit/end; masked reads require
+v0 plus defined old destination, and cannot write v0. Unmasked reads may define
+v0 without inventing known mask bits. Source metadata cannot grant this permission.
+
+Version 2 validation/RX capture does not enable a producer, serialized GNT,
+protected submission or hardware provider. Its hardware-owned binding, dynamic
+service and full CU/host execution remain separate P40 requirements. P39 still
+requires original VS-to-patch execution. CPU-produced patch data closes neither
+requirement.
 
 Definedness follows real launch: x1 kernarg, x2..4 group coordinates, x5..7 local
 sizes, x8 linear base, x9 physical lanes×warps, and only v1 initialized. Other
@@ -57,8 +80,8 @@ initialized params for the current mask and valid output permission. TessLevel
 requires output|perPatch|tessLevel=7. The only barrier is real `0x0000000b` at a
 converged PC, without outstanding alternatives or earlier peer CEASE. Runtime
 memory-idle parking, PC matching and finish/cancel drain remain mandatory.
-TES functions 32/33/35/36 provide static reads, component writes, exactly one
-point and end before CEASE. Function 37 exposes existing invocation selectors;
+TES CUSTOM0 functions 32/33/35/36 provide coordinate/static reads, component
+writes, exactly one point and end before CEASE. Function 37 exposes existing invocation selectors;
 GS layer 34/PrimitiveID 38, raw memory, atomics and unrelated resources fail.
 Checked scalar/vector uniform function 7 requires the corresponding owned scope.
 
@@ -142,7 +165,13 @@ ASan/UBSan uniform tests compare every byte against a literal oracle at full
 source/plan mutation, all copy/allocation failures and actual private MMU leases.
 Five deliberately weakened encoders fail semantic assertions. Program tests
 cover real launch/branch/SIMT/patch/barrier/uniform/publication rules, exact RX
-capture and 12 semantic negative controls. Original Mesa/P17-emitted baseline
+capture and 24 semantic negative controls (12 original, 12 dynamic-read).
+Version 2 fixtures cover version/stage/permission misuse, each forbidden version-1
+extension field, full-width index aliases, independent patch/export dimensions,
+zero-component levels, coupled capacity, definedness, mask/old-vd/v0 rules,
+post-publication reads and capture-once original/profile mutation. Actual owner/
+MMU tests preserve opaque prefix/suffix and nonzero entry bytes in RX/no-W pages;
+errors leave output unchanged and retire the owner. Original Mesa/P17-emitted baseline
 TCS/TES 228/149 words, full twelve-block 292/201 and conditional-uniform 340/149
 pass the strict validator/RX/MMU path with exact 2/4/2/8/0 TCS layout, TES 8/8,
 16 lanes/eight warps. They are original bytes, not executed shader results.
@@ -180,13 +209,15 @@ python3 -B scripts/test_tessellation_uniform_abi.py
 git diff --check
 ```
 
-The four new P16 scripts also pass GCC 13.3 with ASan/UBSan and all 31 semantic
-negative controls (5 uniform, 12 validator, 7 builder, 7 Linux). The immutable
-ARM64 image below used 512MiB total memory+swap, one CPU, no network and read-only
-source; all tracked input bytes were unchanged before/after each run. GCC's
-`-Werror=misleading-indentation` findings were fixed by splitting independent
-statements. Production C tokens/guards are unchanged. Containers and private
-outputs were removed at termination. No Mesa/JVM/model build was involved.
+The original four P16 scripts and their 31 semantic negative controls pass
+GCC 13.3 with ASan/UBSan. The expanded version-2 program suite and all 24 program
+negative controls also pass GCC 13.3 and Clang with ASan/UBSan; the current
+three-domain builder and Linux admission regressions pass GCC after this change,
+including old GNT4/5/6 rejection of the new instruction. The immutable ARM64
+image below uses 512MiB total memory+swap, one CPU, no network and read-only source.
+All tracked input bytes were unchanged before/after the run. `-Wall -Wextra
+-Werror` remains enabled. Containers and private outputs were removed at
+termination. No Mesa/JVM/model build or GPU execution was involved.
 
 ```sh
 P16_GCC_OUT=$(mktemp -d "$PWD/.artifacts/p16-gcc-XXXXXX")
@@ -215,4 +246,15 @@ To validate original producer bytes without executing them, additionally run:
 python3 -B scripts/test_tessellation_program_snapshot.py --sanitize \
   --programs /path/to/original-emitter-output \
   --tcs-layout 2 4 2 8 0 --tes-layout 8 8
+```
+
+For a version-2 TES producer, pass its separately captured patch layout; the
+TCS program still uses version 1. This CLI selects an explicit CPU test profile,
+not a production verified-owner profile:
+
+```sh
+python3 -B scripts/test_tessellation_program_snapshot.py --sanitize \
+  --programs /path/to/original-dynamic-emitter-output \
+  --tcs-layout 2 4 2 8 0 --tes-layout 0 8 --tes-program-version 2 \
+  --tes-patch-layout 2 4 2 8 0
 ```
