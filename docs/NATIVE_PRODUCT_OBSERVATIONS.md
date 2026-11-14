@@ -71,3 +71,37 @@ OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_compute_owner.py
 OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_alignment_sequence.py
 python3 -B scripts/test_prepare_owner_executor.py
 ```
+
+## Reusing the exact prepared owner across worktrees
+
+The owner product and ordered-sequence entries accept an already prepared
+owner directory under the primary GPU repository's `.artifacts/`, including
+another GPU worktree's active model. Before creating a lock or starting work,
+they run the current original owner preparation check against every recorded
+Scala/build/SRAM/helper input, exact discovery words, complete RTL and assertion
+bytes. Different source, capacities or factory identity fail; an aliased lock
+also fails. This permits driver-tool development around one original model
+without duplicating or relabeling it. Every run retains the original output
+lock; finish existing generation and executor work before starting these stages.
+
+For the same source-qualified owner, after its original generation completes:
+
+```sh
+python3 scripts/qualify_native_owner_product.py --product --stage prepare \
+  --output "$OWNER" --flashsim-dir "$ORIGINAL_FLASHSIM"
+python3 scripts/qualify_native_owner_product.py --product --stage build \
+  --output "$OWNER" --flashsim-dir "$ORIGINAL_FLASHSIM" --jobs 2
+python3 scripts/qualify_native_owner_product.py --product --stage run \
+  --output "$OWNER" --flashsim-dir "$ORIGINAL_FLASHSIM"
+python3 scripts/qualify_native_owner_product.py --product --stage verify \
+  --output "$OWNER" --flashsim-dir "$ORIGINAL_FLASHSIM"
+```
+
+Use the generation-matched Python/CIRCT/FlashSim environment and build options
+for every stage. All six independent 640×480 image/sample/resolve/guard checks
+remain required. These entries neither qualify a different compute-stage or
+geometry factory nor transfer a v1 clock/FPS result to that later profile.
+
+Reproduce path, exact-source refusal, fixture and independent-verification
+checks with `python3 -B scripts/test_qualify_native_owner_product.py` and
+`python3 -B scripts/test_native_alignment_sequence.py` (eleven cases total).

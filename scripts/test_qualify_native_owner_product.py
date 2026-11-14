@@ -92,6 +92,26 @@ class OwnerProductTests(unittest.TestCase):
                     with self.assertRaises(RuntimeError):q.verify_marker(path,not product,log2)
                     with self.assertRaises(RuntimeError):q.verify_marker(path,product,7-log2)
 
+    def test_shared_owner_requires_the_exact_prepared_source_and_original_lock(self):
+        parent=q.sequence.temporary_root()
+        with tempfile.TemporaryDirectory(prefix='owner-product-shared-',dir=parent) as d:
+            root=Path(d);sibling=root/'sibling-worktree/.artifacts/owner';sibling.mkdir(parents=True)
+            with patch.object(q.owner,'prepared',return_value={'CPU fixture':'not execution'}) as checked:
+                self.assertEqual(q.sequence.checked_owner_output(sibling),sibling)
+                checked.assert_called_once_with(sibling)
+            with patch.object(q.owner,'prepared',side_effect=RuntimeError('different complete source/RTL/assertions')):
+                with self.assertRaisesRegex(RuntimeError,'different complete source'):
+                    q.sequence.checked_owner_output(sibling)
+            with patch.object(q.owner,'prepared') as checked:
+                for path in (root/'missing',root.parent.parent):
+                    with self.assertRaisesRegex(RuntimeError,'inside this GPU repository'):
+                        q.sequence.checked_owner_output(path)
+                checked.assert_not_called()
+            (sibling/'.lock').symlink_to(root/'unrelated-lock')
+            with patch.object(q.owner,'prepared'):
+                with self.assertRaisesRegex(RuntimeError,'lock must not be aliased'):
+                    q.sequence.checked_owner_output(sibling)
+
     def test_failed_new_attempt_invalidates_old_success_before_preparation(self):
         parent=q.ROOT/'.artifacts';parent.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='owner-product-failed-',dir=parent) as d:

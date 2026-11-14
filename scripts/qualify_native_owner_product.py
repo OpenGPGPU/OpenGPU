@@ -164,9 +164,8 @@ def main():
     args = parser.parse_args()
     if args.jobs < 1 or args.shards < 1:
         parser.error('--jobs and --shards must be positive')
-    out = args.output.resolve()
-    if not out.is_relative_to(ROOT / '.artifacts') or not out.is_dir():
-        parser.error('--output must be an already prepared owner DUT inside this checkout .artifacts')
+    try:out=sequence.checked_owner_output(args.output)
+    except RuntimeError as error:parser.error(str(error))
     with (out / '.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         runner = Runner(out, args.product, args.flashsim_dir, args.scene_jobs, args.shards,
