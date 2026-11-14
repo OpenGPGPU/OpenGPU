@@ -144,6 +144,7 @@ struct opengpu_hw {
     bool native_advanced_blend_transport;
     bool native_descriptor_preflight;
     bool native_layered_transport;
+    bool native_sample_transport;
     struct opengpu_native_source_limits native_sources;
     /* Immutable identity of the verified native command's held completion. */
     u32 native_context, native_pass, native_generation;

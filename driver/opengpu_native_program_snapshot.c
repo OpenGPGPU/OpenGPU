@@ -26,7 +26,10 @@ int opengpu_native_program_snapshot_append(struct opengpu_private_snapshot *owne
         !profile->staging_bytes || profile->staging_bytes>0xffffffffu ||
         (!profile->stage && ((profile->version!=1 && profile->version!=2) || profile->colors)) ||
         (profile->geometry_inputs && profile->stage!=1) ||
-        (profile->stage && (!profile->version || profile->version>(profile->geometry_inputs?5u:4u) || profile->attributes)))return -EINVAL;
+        (profile->sample_inputs && profile->stage!=1) ||
+        (profile->stage && (!profile->version || profile->version>7u || profile->attributes ||
+            ((profile->version==5u || profile->version==7u) && !profile->geometry_inputs) ||
+            (profile->version>=6u && !profile->sample_inputs))))return -EINVAL;
     /* Keep original instruction bytes distinct from host-endian analysis.
      * Neither a nonzero entry nor a big-endian CPU may rewrite the RX copy. */
     bytes=kvzalloc(view->bytes*2u,GFP_KERNEL);if(!bytes)return -ENOMEM;
@@ -36,10 +39,11 @@ int opengpu_native_program_snapshot_append(struct opengpu_private_snapshot *owne
     if(ret)goto done;
     for(u32 i=0;i<view->bytes/4;++i)
         words[i]=(u32)bytes[4*i]|(u32)bytes[4*i+1]<<8|(u32)bytes[4*i+2]<<16|(u32)bytes[4*i+3]<<24;
-    if(!opengpu_native_shader_validate_words(words+view->entry_offset/4,
+    if(!opengpu_native_shader_validate_words_sample_inputs(words+view->entry_offset/4,
         (view->bytes-view->entry_offset)/4,profile->staging_bytes,profile->capacity,
         profile->stage,profile->version,profile->attributes,profile->varyings,profile->colors,
-        profile->scalar_fpu,profile->owned_uniforms,profile->geometry_inputs)) {ret=-EINVAL;goto done;}
+        profile->scalar_fpu,profile->owned_uniforms,profile->geometry_inputs,
+        profile->sample_inputs)) {ret=-EINVAL;goto done;}
     ret=opengpu_private_snapshot_append_code(owner,bytes,view->bytes,&result.segment);
     if(!ret){result.entry_offset=view->entry_offset;*output=result;}
 done:
