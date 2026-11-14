@@ -330,7 +330,7 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
         "executable_sha256": digest(result), "dut_header_sha256": context["header_sha256"],
         "dut_sources": {path.name: value for path, value in source_hashes.items()},
         "objects": {path.name: digest(path) for path in sorted(objects)},
-        "driver_inputs": driver_inputs,
+        "driver_source": str(driver), "driver_inputs": driver_inputs,
         "compiler": executable, "compiler_version": version, "base_flags": flags,
         "driver_flags": driver_flags + ["-O1"], "environment": context["environment"],
         "shard_opt": shard_opt,
