@@ -1,7 +1,7 @@
 #pragma once
 // Replay only actual production-owner captures. No shader, descriptor, VA or
 // output byte is generated here. An independent image oracle remains required.
-#include "native_owner_capture.hpp"
+#include "owner_factory.hpp"
 #include "native_host_simulation.hpp"
 #include <array>
 #include <chrono>
@@ -92,17 +92,22 @@ struct RecordResult {
   std::array<uint32_t,12> gnx{};
   bool held_irq_asserted=false, retired_irq_asserted=false, external_drained=false;
 };
-struct ProfileObservation {std::vector<Command> words,registers;};
+struct ProfileObservation {
+  OwnerFactory factory=OwnerFactory::v1;
+  std::vector<Command> words,registers;
+};
 template<class Sim>
-ProfileObservation probe_profile(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,bool compute=false) {
-  ProfileObservation observed;
+ProfileObservation probe_profile(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,bool compute=false,
+    OwnerFactory factory=OwnerFactory::v1) {
+  require(compute || factory==OwnerFactory::v1,"compute-stage factory requires compute observations");
+  ProfileObservation observed;observed.factory=factory;
   const auto id=bus.read(GPU_REG_ID),caps=bus.read(GPU_REG_CAPABILITIES);
   require((id&0xffffu)>=GPU_ABI_COMPUTE_RESOURCE_VERSION && (caps&required_owner_caps)==required_owner_caps,
     "profile probe requires a protected unified-command ABI");
   observed.registers={{GPU_REG_ID,id},{GPU_REG_CAPABILITIES,caps}};
   // The first three reads establish GCR presence/version/protected sources.
   // Never probe dependent GUC/GNC/GSE windows after a rejected prerequisite.
-  for(const auto &required:Capture::profile()) {
+  for(const auto &required:owner_factory_words(factory)) {
     const auto value=bus.read(required.address);
     require(value==required.value,"actual DUT lacks the complete native source profile");
     observed.words.push_back({required.address,value});
@@ -133,10 +138,18 @@ ProfileObservation probe_profile(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,bool 
   return observed;
 }
 inline void profile_json(std::ostream &out,const ProfileObservation &profile,bool compute=false) {
-  require(profile.words.size()==96 && profile.registers.size()==(compute?10u:5u),
+  const bool stage=profile.factory==OwnerFactory::compute_stage;
+  require(compute || !stage,"compute-stage observations cannot use a native profile schema");
+  const auto expected=owner_factory_words(profile.factory);
+  require(profile.words.size()==expected.size() && profile.registers.size()==(compute?10u:5u),
     "profile observations do not match their selected schema");
-  out<<"{\"schema\":\""<<(compute?"opengpu-compute-owner-profile-v1":"opengpu-native-owner-profile-v1")
-    <<"\",\"words\":[";
+  for(size_t n=0;n<expected.size();++n)
+    require(profile.words[n].address==expected[n].address && profile.words[n].value==expected[n].value,
+      "profile observations do not match their exact factory");
+  out<<"{\"schema\":\""<<(stage?"opengpu-compute-owner-profile-v2":compute?"opengpu-compute-owner-profile-v1":"opengpu-native-owner-profile-v1")<<'"';
+  if(stage)out<<",\"ownerProfile\":\""<<owner_factory_id(profile.factory)
+    <<"\",\"ownerResourceVersion\":2,\"ownerResourceStage\":\"compute\",\"fullResourceQualification\":false";
+  out<<",\"words\":[";
   const auto &words=profile.words;
   for(size_t n=0;n<words.size();++n)
     out<<(n?",":"")<<"{\"address\":"<<words[n].address<<",\"value\":"<<words[n].value<<"}";
@@ -377,4 +390,3 @@ void cleanup_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
   });
 }
 } // namespace native_owner
-

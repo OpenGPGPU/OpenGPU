@@ -9,7 +9,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 
-def main():
+def run_driver_tests():
     with tempfile.TemporaryDirectory(prefix="opengpu-buffer-view-") as directory:
         binary = Path(directory) / "buffer_view"
         subprocess.run(shlex.split(os.environ.get("CC", "cc")) + ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
@@ -39,6 +39,11 @@ def main():
     subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_texture_prepare.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_texture_ioctl_flow.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_uniform_flow.py")], check=True)
+    subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_host.py")], check=True)
+    subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_owner_protocol.py")], check=True)
+    subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_owner_oracle.py")], check=True)
+    subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_owner_controller.py")], check=True)
+    subprocess.run([sys.executable, str(ROOT / "scripts/test_qualify_compute_owner.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_local_limits.py")], check=True)
     compiler = shlex.split(os.environ.get("CC", "cc"))
     subprocess.run(compiler + ["-std=c11", "-Wall", "-Wextra", "-Werror", "-D__KERNEL__",
@@ -55,7 +60,7 @@ def main():
         "-fsyntax-only", str(ROOT / "driver/tests/opengpu_native_sources_kernel_abi_test.c")], check=True)
     print("native source discovery kernel headers: PASS", flush=True)
     with tempfile.TemporaryDirectory(prefix="opengpu-tests-") as directory:
-        for name in ("shader_validator", "compute_atomics", "compute_storage_validator", "compute_simt_validator", "compute_image_validator", "compute_image_descriptor", "compute_discovery", "native_layout", "native_sources_discovery", "native_geometry_transport_discovery", "native_preflight_discovery", "native_advanced_blend_discovery", "native_advanced_blend_gfs", "fragment_output_usage", "staging_validator", "backing_identity", "cache_range", "resolve_validator", "depth_validator", "render_extent",
+        for name in ("shared_atomic_validator", "shader_validator", "compute_atomics", "compute_storage_validator", "compute_simt_validator", "compute_image_validator", "compute_image_descriptor", "compute_discovery", "native_layout", "native_sources_discovery", "native_geometry_transport_discovery", "native_preflight_discovery", "native_advanced_blend_discovery", "native_advanced_blend_gfs", "fragment_output_usage", "staging_validator", "backing_identity", "cache_range", "resolve_validator", "depth_validator", "render_extent",
                      "tlb_flush", "kernarg_va", "asid", "mmu", "scheduler", "tessellation_job_validate", "tessellation_state", "shader_resources", "shader_builder", "tile_job_abi", "shader_image", "shader_image_command", "fragment_image_publication_abi", "storage_command", "storage_descriptor", "compute_uniform_command", "compute_uniform_records", "compute_texture_command", "compute_texture_records", "compute_texture_mips", "compute_texture_sampler_validation", "compute_texture_snapshot", "compute_texture_tables", "compute_texture_bound_view", "atomic_counter_command", "compute_resource_capabilities", "raster_capabilities", "context_robustness"):
             include = ROOT / "driver" / ({"mmu": "tests/mmu_stubs", "scheduler": "tests/scheduler_stubs", "native_layout": "tests/compute_submit_stubs"}.get(name, "."))
             binary = Path(directory) / name
@@ -194,6 +199,25 @@ def main():
             subprocess.run([str(binary)], check=True)
 
             subprocess.run([sys.executable, str(ROOT / "scripts/test_gallium_compute.py")], check=True)
+
+def main():
+    parent = ROOT / '.artifacts'
+    parent.mkdir(exist_ok=True)
+    # Several legacy child fixtures use tempfile's default directory. Keep
+    # their inherited TMPDIR and this process's cached default inside GPU too.
+    with tempfile.TemporaryDirectory(prefix='driver-', dir=parent) as temporary:
+        previous_env, previous_cache = os.environ.get('TMPDIR'), tempfile.tempdir
+        os.environ['TMPDIR'] = temporary
+        tempfile.tempdir = temporary
+        try:
+            run_driver_tests()
+        finally:
+            tempfile.tempdir = previous_cache
+            if previous_env is None:
+                os.environ.pop('TMPDIR', None)
+            else:
+                os.environ['TMPDIR'] = previous_env
+
 
 if __name__ == "__main__":
     main()

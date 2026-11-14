@@ -84,7 +84,11 @@ struct opengpu_device {
     } hw;
     struct opengpu_mmu mmu;
     struct {struct mutex admission_lock;long long ordinary_pending;
-        u64 admission_context,admission_seqno;struct dma_fence *admission_tail,*execution_tail;} compute;
+        u64 admission_context,admission_seqno;struct dma_fence *admission_tail,*execution_tail;
+#ifdef OPENGPU_MMU_TEST_COMPUTE_EXTRA
+        OPENGPU_MMU_TEST_COMPUTE_EXTRA
+#endif
+    } compute;
     void *dev;
 };
 static int allocations_until_failure = -1, live_allocations, idle_error;

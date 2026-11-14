@@ -17,6 +17,16 @@ def changed_suites(root, changed):
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_fragment_setup_changes_select_exact_key_consumer_and_instance_checks(self):
+        required = {"opengpu.graphics.FragmentSetupCacheSpec",
+                    "opengpu.graphics.FragmentPreparationInstanceSpec",
+                    "opengpu.graphics.Fp32FragmentPreparationSpec",
+                    "opengpu.graphics.Fp32StreamingFragmentDifferentialSpec"}
+        for name in ("Fp32FragmentInterpolator", "Fp32FragmentPreparation", "Fp32StreamingFragmentInterpolator"):
+            with self.subTest(name=name):
+                selected = set(changed_suites(REPO_ROOT, [f"src/main/scala/opengpu/graphics/{name}.scala"]))
+                self.assertTrue(required <= selected, selected)
+
     def test_shared_tessellation_bank_changes_select_owner_and_complete_interface_checks(self):
         expected = {"opengpu.system.TessellationImageBankOwnerSpec",
                     "opengpu.system.TessellationImageBankMuxSpec"}
@@ -68,6 +78,13 @@ class ChangedTestSuitesTest(unittest.TestCase):
             selected = expected | ({"opengpu.system.NativeOwnerHostProfileSpec"}
                 if path.endswith("/ComputeResourceCapabilities.scala") else set())
             self.assertEqual(set(changed_suites(root, [path])), selected)
+
+    def test_complete_owner_resource_composition_selects_the_actual_host_check(self):
+        for path in ("src/main/scala/opengpu/system/OwnerResourceProfile.scala",
+                     "src/test/scala/opengpu/system/PrepareOwnerResourceHost.scala"):
+            with self.subTest(path=path):
+                self.assertIn("opengpu.system.NativeOwnerHostProfileSpec",
+                              changed_suites(REPO_ROOT,[path]))
 
     def test_texture_image_schemas_select_existing_cpu_abi_check(self):
         paths = [f"src/main/scala/opengpu/elaboration/Emit{name}Abi.scala"
@@ -808,6 +825,18 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 actual = set(changed_suites(root, [name]))
                 self.assertIn("opengpu.graphics.tessellation.TessellationQuadPatchEvaluationSpec", actual)
                 self.assertIn("opengpu.system.TessellationQuadPatchCuEvaluationSpec", actual)
+
+    def test_clip_arithmetic_selects_every_production_owner_and_spatial_consumer(self):
+        root = Path(__file__).resolve().parents[1]
+        actual = set(changed_suites(root,
+            ["src/main/scala/opengpu/graphics/ClipFloatArithmetic.scala"]))
+        required = {"opengpu.graphics." + name for name in (
+            "ClipFloatArithmeticSpec", "PrimitiveClipStageSpec", "Fp32ViewportStageSpec",
+            "Fp32PrimitiveRasterStageSpec", "PrimitiveRasterInstanceSpec",
+            "Fp32FragmentInterpolatorSpec", "Fp32FragmentPreparationSpec",
+            "Fp32StreamingFragmentDifferentialSpec", "Fp32StreamingFragmentInterpolatorSpec",
+            "FragmentSetupCacheSpec", "FragmentPreparationInstanceSpec")}
+        self.assertTrue(required <= actual, required - actual)
 
     def test_fixtures_inheritance_and_matching_production_spec(self):
         with tempfile.TemporaryDirectory() as temporary:

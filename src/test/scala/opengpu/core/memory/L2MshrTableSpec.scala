@@ -139,6 +139,93 @@ class L2MshrTableSpec extends AnyFlatSpec {
     }
   }
 
+  it should "keep non-power-of-two waiter edges local through simultaneous allocation and retirement" in {
+    simulate(new L2MshrTable(GpuConfig(lanes = 4), entries = 4,
+      maxOutstanding = 17, numComputeUnits = 3)) { dut =>
+      dut.io.request.valid.poke(false.B)
+      dut.io.allocation.ready.poke(true.B)
+      dut.io.refill.valid.poke(false.B)
+      dut.io.fill.ready.poke(true.B)
+      dut.io.response.ready.poke(false.B)
+      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+
+      def request(line: Int, id: Int, cu: Int, set: Int): Unit = {
+        val r = dut.io.request.bits
+        r.lineAddress.poke(line.U); r.transactionId.poke(id.U)
+        r.requester.poke(cu.U); r.trackSharer.poke(true.B)
+        r.victimSet.poke(set.U); r.victimWay.poke(0.U)
+        dut.io.request.valid.poke(true.B); dut.io.request.ready.expect(true.B)
+        dut.clock.step(); dut.io.request.valid.poke(false.B)
+        dut.io.allocation.valid.expect(true.B)
+      }
+      def allocate(line: Int, id: Int, cu: Int, set: Int): BigInt = {
+        request(line, id, cu, set)
+        dut.io.allocation.bits.merged.expect(false.B)
+        val entry = dut.io.allocation.bits.entryId.peek().litValue
+        dut.clock.step(); entry
+      }
+      def refill(entry: BigInt, data: Int, fault: Boolean): Unit = {
+        dut.io.refill.bits.entryId.poke(entry.U)
+        dut.io.refill.bits.readData.poke(data.U); dut.io.refill.bits.fault.poke(fault.B)
+        dut.io.refill.valid.poke(true.B); dut.io.refill.ready.expect(true.B)
+        dut.clock.step(); dut.io.refill.valid.poke(false.B)
+        dut.io.fill.valid.expect(true.B); dut.io.fill.bits.entryId.expect(entry.U)
+        dut.io.fill.bits.sharerUpdate.expect(false.B)
+        dut.clock.step()
+      }
+      def response(line: Int, id: Int, data: Int, fault: Boolean): Unit = {
+        dut.io.response.valid.expect(true.B)
+        dut.io.response.bits.lineAddress.expect(line.U)
+        dut.io.response.bits.transactionId.expect(id.U)
+        dut.io.response.bits.readData.expect(data.U)
+        dut.io.response.bits.fault.expect(fault.B)
+      }
+
+      val a = allocate(0x1000, 0, 0, 0)
+      val b = allocate(0x2000, 8, 1, 1)
+      assert(a != b)
+      refill(a, 0xaa, false)
+      // Hold the old response before capturing a new highest-ID waiter.
+      // Its committed allocation and the held response then fire together.
+      response(0x1000, 0, 0xaa, false); dut.clock.step()
+      dut.io.allocation.ready.poke(false.B)
+      request(0x1000, 16, 2, 0)
+      dut.io.allocation.bits.entryId.expect(a.U)
+      dut.io.allocation.bits.merged.expect(true.B)
+      response(0x1000, 0, 0xaa, false)
+      dut.io.allocation.ready.poke(true.B); dut.io.response.ready.poke(true.B)
+      dut.clock.step(); dut.io.response.ready.poke(false.B)
+      dut.io.validEntries.expect(((BigInt(1) << a.toInt) | (BigInt(1) << b.toInt)).U)
+      dut.io.fill.valid.expect(true.B); dut.io.fill.bits.entryId.expect(a.U)
+      dut.io.fill.bits.sharerUpdate.expect(true.B); dut.io.fill.bits.sharers.expect(5.U)
+      dut.clock.step()
+      response(0x1000, 16, 0xaa, false); dut.clock.step()
+
+      // A different entry's committed merge must not enter the retiring
+      // entry's bitmap, even though both use its highest transaction ID.
+      dut.io.allocation.ready.poke(false.B)
+      request(0x2000, 16, 0, 1)
+      dut.io.allocation.bits.entryId.expect(b.U)
+      dut.io.allocation.bits.merged.expect(true.B)
+      response(0x1000, 16, 0xaa, false)
+      dut.io.allocation.ready.poke(true.B); dut.io.response.ready.poke(true.B)
+      dut.clock.step(); dut.io.response.ready.poke(false.B)
+      dut.io.validEntries.expect((BigInt(1) << b.toInt).U)
+      refill(b, 0xbb, true)
+      for (_ <- 0 until 3) { response(0x2000, 8, 0xbb, true); dut.clock.step() }
+      dut.io.response.ready.poke(true.B); dut.clock.step()
+      response(0x2000, 16, 0xbb, true); dut.clock.step()
+      dut.io.response.ready.poke(false.B); dut.io.validEntries.expect(0.U)
+
+      // No reset: the retired entry must start with only its new waiter.
+      val reused = allocate(0x3000, 16, 0, 2)
+      refill(reused, 0xcc, false)
+      response(0x3000, 16, 0xcc, false)
+      dut.io.response.ready.poke(true.B); dut.clock.step()
+      dut.io.validEntries.expect(0.U); dut.io.response.valid.expect(false.B)
+    }
+  }
+
   it should "reject duplicate waiters only on the matching live line" in {
     simulate(new L2MshrTable(GpuConfig(lanes = 4), entries = 4)) { dut =>
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)

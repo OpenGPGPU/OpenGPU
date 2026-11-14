@@ -1,5 +1,5 @@
 #pragma once
-#include "native_owner_capture.hpp"
+#include "owner_factory.hpp"
 
 namespace compute_owner {
 using namespace native_owner;
@@ -43,7 +43,7 @@ struct ComputeCapture {
       const auto at=found.find(r.address);
       require(at!=found.end() && at->second==r.value,"compute source/transport contract differs");
     };
-    for(const auto &r:Capture::profile())exact(r);
+    for(const auto &r:owner_factory_words(compute_owner_factory()))exact(r);
     for(const auto &r:transports())exact(r);
     for(uint32_t address:{GPU_REG_ID,GPU_REG_CAPABILITIES,GPU_REG_BIN_CAPABILITY_PTR,0x320,GPU_REG_SHADER_CONFIG})
       require(found.count(address),"missing actual compute auxiliary observation");

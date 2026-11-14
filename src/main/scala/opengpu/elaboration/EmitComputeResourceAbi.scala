@@ -33,6 +33,7 @@ object EmitComputeResourceAbi {
       "#define OPENGPU_COMPUTE_RESOURCE_NATIVE_ADVANCED_BLEND_V1 (1u << 15)\n"+
       "#define OPENGPU_COMPUTE_RESOURCE_NATIVE_DESCRIPTOR_PREFLIGHT_V1 (1u << 16)\n"+
       "#define OPENGPU_COMPUTE_RESOURCE_NATIVE_PROTECTED_SOURCES_V1 (1u << 17)\n"+
+      "#define OPENGPU_COMPUTE_RESOURCE_SHARED_VECTOR_ATOMICS_V1 (1u << 18)\n"+
       "#define OPENGPU_COMPUTE_RESOURCE_NATIVE_GEOMETRY_TRANSPORT_V1 (1u << 19)\n#endif\n"
     val defaults=c.words(ComputeResourceProfile(GpuConfig(),1,8))
     val mobile=c.words(ComputeResourceProfile(GpuConfig(),4,32))

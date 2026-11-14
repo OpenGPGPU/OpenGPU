@@ -11,11 +11,12 @@ template<class F> static void rejects(F action) {
   require(rejected,"malformed compute owner input was accepted");
 }
 static ComputeCapture fixture() {
-  ComputeCapture c;c.max_cycles=100000;c.hold_cycles=64;c.command_id=17;c.discovery=Capture::profile();
+  ComputeCapture c;c.max_cycles=100000;c.hold_cycles=64;c.command_id=17;
+  c.discovery=owner_factory_words(compute_owner_factory());
   for(const auto &r:ComputeCapture::transports())c.discovery.push_back(r);
   for(const auto &r:std::vector<Command>{{GPU_REG_ID,0x47550002},
       {GPU_REG_CAPABILITIES,GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE|GPU_CAP_SHADER_CONFIG_INFO|GPU_CAP_COMPUTE_SCALAR_FPU|GPU_CAP_NATIVE_PIXEL_FORMATS|(128u<<GPU_CAP_FRAGMENT_BATCH_SHIFT)},
-      {GPU_REG_BIN_CAPABILITY_PTR,GPU_REG_BIN_CAPABILITIES},{0x320,128},{GPU_REG_SHADER_CONFIG,0x02040810}})
+      {GPU_REG_BIN_CAPABILITY_PTR,GPU_REG_BIN_CAPABILITIES},{0x320,1048576},{GPU_REG_SHADER_CONFIG,0x02040810}})
     c.discovery.push_back(r);
   c.writable={{0x6000,0x6040}};
   auto write=[&](uint32_t a,uint32_t v){c.trace.push_back({Kind::write,a,v,0});};
@@ -124,6 +125,11 @@ static void deadline_checks() {
 static void parser_checks() {
   const auto c=fixture();const auto wire=encode(c);std::istringstream input(wire);
   require(ComputeCapture::read(input).discovery.size()==106,"lost compute 96+10 profile");
+  for(unsigned n=0;n<96;n++) {
+    auto bad=c;bad.discovery[n].value^=1;rejects([&]{bad.validate();});
+  }
+  auto wrong_factory=c;wrong_factory.discovery[2].value^=1u<<18;
+  rejects([&]{wrong_factory.validate();});
   auto mutate=[&](uint32_t address,uint32_t value) {
     auto bad=c;bool found=false;
     for(auto &a:bad.trace)if(a.kind==Kind::write && a.address==address){a.value=value;found=true;}
@@ -174,6 +180,36 @@ static void parser_checks() {
   invalid=r;invalid.actions.push_back(r.actions[4]);rejects([&]{invalid.validate();});
   auto native_retirement=rw;native_retirement.replace(0,8,"OGRTR001");std::istringstream wrong_retire(native_retirement);
   rejects([&]{ComputeRetirement::read(wrong_retire);});
+}
+static void profile_checks(int argc,char **argv) {
+  auto memory=memory_fixture();ComputePeer sim(argc,argv,memory);sim.reset();
+  Agent agent(memory);ReplayBus<ComputePeer> bus(sim,agent,100000);
+  const auto profile=probe_profile(sim,agent,bus,true,compute_owner_factory());
+  require(!sim.submitted && profile.words.size()==96 && profile.registers.size()==10,
+    "compute profile probe submitted work or lost actual observations");
+  require(std::vector<uint32_t>(sim.reads.begin(),sim.reads.begin()+5)==
+    std::vector<uint32_t>({GPU_REG_ID,GPU_REG_CAPABILITIES,0x360,0x364,0x368}),
+    "compute probe read dependent windows before factory presence");
+  const auto legacy=Capture::profile(),selected=owner_factory_words(compute_owner_factory());
+  for(size_t n=0;n<selected.size();n++)require(selected[n].address==legacy[n].address &&
+    selected[n].value==(legacy[n].value|(n==2 && compute_owner_factory()==OwnerFactory::compute_stage?1u<<18:0u)),
+    "compute-stage selection changed the frozen native factory");
+  // Python consumes this actual CPU MMIO peer observation through the same
+  // strict profile parser used by the live controller. No GPU executes here.
+  atomic_json(std::filesystem::path(std::getenv("TMPDIR"))/"profile.json",
+    [&](auto &out){profile_json(out,profile,true);});
+  for(unsigned n=0;n<selected.size();n++) {
+    auto m=memory_fixture();ComputePeer peer(argc,argv,m);peer.reset();
+    peer.model->registers[selected[n].address]^=1;
+    Agent a(m);ReplayBus<ComputePeer> b(peer,a,100000);
+    rejects([&]{probe_profile(peer,a,b,true,compute_owner_factory());});
+    require(!peer.submitted,"wrong factory profile submitted a kernel");
+  }
+  auto m=memory_fixture();ComputePeer peer(argc,argv,m);peer.reset();
+  peer.model->registers[0x368]^=1u<<18;Agent a(m);ReplayBus<ComputePeer> b(peer,a,100000);
+  rejects([&]{probe_profile(peer,a,b,true,compute_owner_factory());});
+  require(!peer.submitted && peer.reads==std::vector<uint32_t>({GPU_REG_ID,GPU_REG_CAPABILITIES,0x360,0x364,0x368}),
+    "opposite factory was accepted or probed dependent windows");
 }
 static void execution_checks(int argc,char **argv) {
   const auto c=fixture();auto memory=memory_fixture();ComputePeer sim(argc,argv,memory);sim.reset();
@@ -270,6 +306,6 @@ static void active_protocol(int argc,char **argv) {
 int main(int argc,char **argv) {
   if(argc==3) {const auto m=Memory::read(argv[1]);const auto c=ComputeCapture::read(argv[2]);
     verify_readonly(m,m,c.writable);PtePages p;p.observe_tables(m,c.trace);return 0;}
-  deadline_checks();parser_checks();execution_checks(argc,argv);phase_deadline_checks(argc,argv);active_protocol(argc,argv);
+  deadline_checks();parser_checks();profile_checks(argc,argv);execution_checks(argc,argv);phase_deadline_checks(argc,argv);active_protocol(argc,argv);
   std::cout<<"compute owner CPU protocol/guard checks: PASS\n";
 }

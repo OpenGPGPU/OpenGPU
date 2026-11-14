@@ -22,6 +22,15 @@ Only the existing reconverged barrier publishes written bytes for reads.
 Unresolved branches or a divergent early exit cannot publish initialization.
 The existing 512-instruction and four-forward-target limits remain unchanged.
 
+An exact LOCAL read may also use a prior store to its own stripe without a
+workgroup barrier. Multiple disjoint stripes are retained; overlapping stores
+remove old mappings and joins intersect all incoming proofs. This authority
+never extends to a shifted or permuted address merely covered by initialization.
+Each validation starts with an empty bounded proof set. Five heap slots use
+10280 bytes in total, are freed on every validation exit, and fail closed on
+allocation failure; branch state stays small. The 512-entry set follows the
+native instruction bound and does not restrict discovered shared capacity.
+
 An additional read-only provenance recognizes exactly `XORI 64` on zero-offset
 local bytes for a complete 128-item, 16-lane group. Its eight warp bases are
 multiples of 64 bytes; the operation swaps adjacent warp bases while preserving

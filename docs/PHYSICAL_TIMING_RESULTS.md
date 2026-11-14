@@ -97,6 +97,11 @@ an exact source-hierarchy contract of 752 `srambank_64x4x32_6t122` and 992
 or timing. Use the new owner-specific entry point against its actual prepared
 source checkout; do not apply the earlier 72-word counts or borrow its clock:
 
+The complete frozen 96-word shared-bank host reached the 14,400-second limit
+in pre-mapping Yosys OPT with two CPUs and 12 GiB: no mapped netlist, clock or
+STA result was produced. Source and tool checks completed, and no physical
+qualification passed; the command below reproduces this diagnostic budget.
+
 ```sh
 CHIPAGENT_DIR=/path/to/chipagent PYTHONDONTWRITEBYTECODE=1 \
   /path/to/chipagent/.venv/bin/python -B scripts/qualify_native_owner_ppa.py \

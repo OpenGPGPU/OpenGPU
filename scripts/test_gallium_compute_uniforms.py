@@ -17,16 +17,32 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main(control_flow=False, buffer_resources=False, shared_memory=False, memory_barriers=False,
-         storage_atomics=False, texture_namespaces=False, image_ordering=False, atomic_counters=False, shared_publication=False):
+         storage_atomics=False, texture_namespaces=False, image_ordering=False, atomic_counters=False, shared_publication=False, host_execution=False):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--build", type=Path, required=True, help="new private output directory")
     ap.add_argument("--sanitize", action="store_true")
+    if host_execution:
+        from compute_owner_cases import CASES
+        ap.add_argument('--case', choices=CASES, default='shared')
+        ap.add_argument('--profile-wire', type=Path, required=True)
+        ap.add_argument('--session', type=Path, required=True)
+        ap.add_argument('--capture-only', action='store_true', help='explicit CPU capture only; no DUT execution')
     if control_flow or buffer_resources:
         ap.add_argument("--artifacts", type=Path,
                         help="new directory for actual validated submission inputs (CPU only)")
     ap.add_argument("--mesa-nir-lower-io", type=Path,
                     help="privately compile this checked Mesa nir_lower_io.c before libnir")
+    ap.add_argument("--mesa-shared-ntt", type=Path,
+                    help="exact privately staged shared NTT source (shared fixtures only)")
     args = ap.parse_args()
+    if args.mesa_shared_ntt and not (shared_memory or shared_publication):
+        ap.error("--mesa-shared-ntt requires a shared-memory fixture")
+    shared_ntt = None
+    if args.mesa_shared_ntt:
+        from stage_mesa_shared_memory import AFTER
+        shared_ntt = args.mesa_shared_ntt.resolve(strict=True)
+        if hashlib.sha256(shared_ntt.read_bytes()).hexdigest() != AFTER:
+            raise ValueError("exact checked shared NTT postimage required")
     out = args.build.resolve()
     out.mkdir(parents=True, exist_ok=False)
     mesa = Path(os.environ.get("OPENGPU_MESA_DIR", ROOT / "depends/mesa")).resolve()
@@ -105,7 +121,17 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     common = ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
               "-DHAVE_ENDIAN_H", "-D_POSIX_C_SOURCE=200809L", "-ffunction-sections", "-fdata-sections"]
     primitives = ["-D" + name + "=cs_fixture_" + name for name in ("ioctl", "mmap", "munmap", "dup", "close")]
-    if buffer_resources:
+    if host_execution:
+        from test_compute_host import write_bodies
+        kernel = out / 'kernel'
+        kernel.mkdir()
+        write_bodies(kernel)
+        obj = out / 'actual-compute-kernel.o'
+        run(cc + common + san + ['-Wno-unused-function', '-I' + str(ROOT / 'driver/tests/compute_submit_stubs'),
+            '-I' + str(ROOT / 'driver/tests/mmu_stubs'), '-I' + str(ROOT / 'driver'), '-I' + str(kernel),
+            '-c', ROOT / 'driver/tests/opengpu_compute_host_fixture.c', '-o', obj], 'compile-actual-compute-kernel')
+        objects.append(obj)
+    elif buffer_resources:
         from test_compute_uniform_flow import write_bodies
         kernel = out / "kernel"
         kernel.mkdir()
@@ -116,7 +142,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
             "-c", ROOT / "userspace/tests/cs_buffer_kernel.c", "-o", obj], "compile-cs_buffer_kernel")
         objects.append(obj)
     for relative, extra in [
-        ("userspace/tests/cs_atomic_frontend.c" if storage_atomics else "userspace/tests/cs_barrier_frontend.c" if memory_barriers else "userspace/tests/cs_shared_frontend.c" if shared_memory else "userspace/tests/cs_buffer_flow.c" if buffer_resources else
+        ("userspace/tests/compute_host_frontend.c" if host_execution else "userspace/tests/cs_atomic_frontend.c" if storage_atomics else "userspace/tests/cs_barrier_frontend.c" if memory_barriers else "userspace/tests/cs_shared_frontend.c" if shared_memory else "userspace/tests/cs_buffer_flow.c" if buffer_resources else
          "userspace/tests/cs_control_flow.c" if control_flow else "userspace/tests/cs_uniform_flow.c",
          ["-DOPENGPU_CS_TEXTURE_NAMESPACE"] if texture_namespaces else
          ["-DOPENGPU_CS_IMAGE_ORDERING"] if image_ordering else
@@ -133,6 +159,10 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         obj = out / (source.stem + ".o")
         run(cc + common + inc + extra + san + ["-MMD", "-MF", obj.with_suffix(".d"), "-c", source, "-o", obj],
             "compile-" + source.stem)
+        objects.append(obj)
+    if host_execution:
+        obj = out / 'compute_host_gallium_stubs.o'
+        run(cc + common + inc + san + ['-c', ROOT / 'userspace/tests/compute_host_gallium_stubs.c', '-o', obj], 'compile-compute-host-stubs')
         objects.append(obj)
     obj = out / "cs_glsl_frontend.o"
     run(cxx + configured_flags("compiler/glsl/standalone.cpp") + ["-UNDEBUG", "-Wall", "-Wextra", "-Werror",
@@ -184,7 +214,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         raise RuntimeError("configured real Mesa static libraries required")
     if shared_memory or shared_publication:
         from stage_mesa_shared_memory import stage
-        source = stage(mesa, out / "private-mesa-source")
+        source = shared_ntt or stage(mesa, out / "private-mesa-source")
         obj = out / "nir_nir_to_tgsi.c.o"
         run(cc + configured_flags("gallium/auxiliary/nir/nir_to_tgsi.c") + ["-UNDEBUG"] + san +
             ["-MMD", "-MF", obj.with_suffix(".d"), "-c", source, "-o", obj], "compile-shared-NTT")
@@ -193,7 +223,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
             input_text="create %s\naddlib %s\nsave\nend\n" % (archive, libraries[4]))
         run(["ar", "r", archive, obj], "replace-only-shared-NTT")
         libraries[4] = archive
-    binary = out / ("cs_atomic_frontend" if storage_atomics else "cs_barrier_frontend" if memory_barriers else "cs_shared_frontend" if shared_memory else "cs_buffer_flow" if buffer_resources else "cs_control_flow" if control_flow else "cs_uniform_flow")
+    binary = out / ("compute_host_frontend" if host_execution else "cs_atomic_frontend" if storage_atomics else "cs_barrier_frontend" if memory_barriers else "cs_shared_frontend" if shared_memory else "cs_buffer_flow" if buffer_resources else "cs_control_flow" if control_flow else "cs_uniform_flow")
     namespace_link = (["-Wl,--wrap=st_finalize_texture",
                        "-Wl,--wrap=st_get_texture_sampler_view_from_stobj"] if texture_namespaces else [])
     run(cxx + san + namespace_link + ["-Wl,--gc-sections", "-Wl,-t,-t", "-Wl,-Map=" + str(out / "link.map")] + objects +
@@ -220,7 +250,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     elif memory_barriers:
         from test_gallium_compute_barriers import write_sources
         write_sources(sources)
-    elif shared_memory:
+    elif shared_memory and not (host_execution and args.case == 'uniforms'):
         from test_gallium_compute_shared import write_sources
         write_sources(sources)
     elif buffer_resources:
@@ -293,7 +323,28 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         # process-global compiler singletons. Check new code for ASan/UBSan.
         env["ASAN_OPTIONS"] = "detect_leaks=0:abort_on_error=1"
         env["UBSAN_OPTIONS"] = "halt_on_error=1:print_stacktrace=1"
+    if host_execution:
+        args.session.mkdir(parents=True, exist_ok=True)
+        run([binary, args.profile_wire.resolve(), args.session.resolve(), sources / ('full128.comp' if args.case == 'uniforms' else 'full.comp' if args.case == 'shared' else args.case + '.comp'), args.case] +
+            (['--capture-only'] if args.capture_only else []), 'actual-compute-capture', env)
+        print('Actual Mesa/Linux compute ' + ('CPU capture only' if args.capture_only else 'external-DUT protocol') + ' completed: ' + str(out))
+        return
     run([binary, sources], "actual-acceptance", env)
+    if shared_memory:
+        # Active compiler-to-CU inputs only. The caller removes this private
+        # build after the explicit RTL qualifier has consumed the words.
+        names = ["shared-atomic-%d" % op for op in range(10)] + [
+            "shared-atomic-i-%d" % op for op in (0, 1, 2, 3, 4, 9)]
+        digest = hashlib.sha256()
+        for name in names:
+            digest.update((name + "\n").encode("ascii"))
+            digest.update((sources / (name + ".native.words")).read_bytes())
+        print("ACTUAL_MESA_SHARED_ATOMIC_INPUT_SHA256=" + digest.hexdigest())
+        digest = hashlib.sha256()
+        for name in [n.replace('shared-atomic-', 'shared-dynamic-') for n in names]:
+            digest.update((name + "\n").encode("ascii"))
+            digest.update((sources / (name + ".native.words")).read_bytes())
+        print("ACTUAL_MESA_SHARED_DYNAMIC_INPUT_SHA256=" + digest.hexdigest())
     if artifacts:
         manifest = "format=1\n" + "".join(p.name + ".sha256=" + hashlib.sha256(p.read_bytes()).hexdigest() + "\n"
             for p in sorted(artifacts.iterdir()))

@@ -5,6 +5,58 @@ import opengpu.graphics._
 import org.scalatest.flatspec.AnyFlatSpec
 
 class NativeOwnerHostProfileSpec extends AnyFlatSpec {
+  it should "compose complete protected geometry, shared atomics and feedback without relabeling either frozen owner" in {
+    val p = OwnerResourceProfile.target
+    assert(p.nativeGeometryTransport && p.native.nativeGeometry && p.nativeProtectedSources)
+    assert(p.native.transformFeedback && p.execution.enableSharedVectorAtomics)
+    assert(p.computeUnits == 2 && p.execution.lanes == 16 && p.execution.warps == 8)
+    assert(p.graphics.screenWidth == 640 && p.graphics.screenHeight == 480)
+    assert(p.transactionsPerCu == 16 && p.axiDataBytes == 32)
+    assert(p.native.engines == 4 && p.native.pagedCapacity == 65536)
+    assert(p.native.renderTargetExtent.contains((2048,2048)))
+    assert(p.native.payload == NativeOwnerHostProfile.target.native.payload)
+    assert(p.native.vertex == NativeOwnerHostProfile.target.native.vertex)
+    assert(p.native.fragment == NativeOwnerHostProfile.target.native.fragment)
+    assert(p.requiredDiscovery.size == 104)
+    val words = p.requiredDiscovery.toMap
+    assert(words(0x368) == 0xfffff && words(0x160) == 0x474e4305 && words(0x168) == 0x474e4a02)
+    assert(words(0x17c) == BigInt("8813db02",16))
+    assert(MemoryNativeBinnedGraphicsPipeline.transactions(p.native) == 2048)
+    assert(p.requiredDiscovery.takeRight(8) == NativeGeometryTransportCapabilities.words.zipWithIndex.map {
+      case (word,index) => (NativeGeometryTransportCapabilities.base+4*index,word)
+    })
+    assert(OwnerResourceProfile.computeStage.requiredDiscovery.size == 96)
+    assert(!OwnerResourceProfile.computeStage.nativeGeometryTransport && !NativeOwnerHostProfile.target.native.nativeGeometry)
+    assert(OwnerResourceProfile.computeStage.requiredDiscovery.toMap.apply(0x368) == 0x7ffff)
+    intercept[IllegalArgumentException] {
+      NativeOwnerHostProfile.target.copy(nativeGeometryTransport = true)
+    }
+    intercept[IllegalArgumentException] {
+      p.copy(nativeProtectedSources = false)
+    }
+    assert(PrepareOwnerResourceFullHost.manifest(false).contains("\"resourceDiscoveryWords\":104"))
+    assert(PrepareOwnerResourceFullHost.manifest(false).contains("\"fullResourceQualification\":false"))
+  }
+
+  it should "compose mandatory shared atomics without changing the frozen owner or any other resource" in {
+    val before = NativeOwnerHostProfile.target
+    val after = OwnerResourceProfile.computeStage
+    assert(OwnerResourceProfile.version == 2 && OwnerResourceProfile.id == "two-cu-vga60-owner-v2")
+    assert(OwnerResourceProfile.computeStageId.endsWith("-compute-stage"))
+    assert(!before.execution.enableSharedVectorAtomics && after.execution.enableSharedVectorAtomics)
+    assert(after.execution == before.execution.copy(enableSharedVectorAtomics = true))
+    assert(after.copy(execution = before.execution) == before)
+    assert(after.requiredDiscovery.toMap.apply(0x368) == 0x7ffff)
+    assert(before.requiredDiscovery.toMap.apply(0x368) == 0x3ffff)
+    assert(after.requiredDiscovery.filterNot(_._1 == 0x368) == before.requiredDiscovery.filterNot(_._1 == 0x368))
+    intercept[IllegalArgumentException] {
+      OwnerResourceProfile.withComputeAtomics(before.copy(computeUnits = 1))
+    }
+    intercept[IllegalArgumentException] {
+      OwnerResourceProfile.withComputeAtomics(before.copy(execution = before.execution.copy(sharedMemoryBytes = 8192)))
+    }
+  }
+
   it should "retain the complete two-CU VGA capacities and exact 96-word owner contract" in {
     val p = NativeOwnerHostProfile.target
     assert(NativeOwnerHostProfile.id == "two-cu-vga60-owner-v1" && NativeOwnerHostProfile.targetFps == 60)
@@ -42,18 +94,19 @@ class NativeOwnerHostProfileSpec extends AnyFlatSpec {
     intercept[IllegalArgumentException](NativeAlignmentHostProfile.target.copy(nativeProtectedSources = true))
   }
 
-  it should "connect protected discovery, native preflight and advanced execution in the actual bounded host" in {
-    val base = NativeOwnerHostProfile.target
+  it should "connect protected discovery, native preflight, advanced execution and shared atomics in the actual bounded host" in {
+    val base = OwnerResourceProfile.computeStage
     val native = NativeBinnedGraphicsConfig(
       VertexShaderStageConfig(VertexInputFetchConfig(2,2),2), FragmentShaderConfig(2,4),
       storage=base.native.storage, engines=1,
       pageBytes=128,writeCredits=2,tileSlots=1,pagedCapacity=8,transformFeedback=true,
       payload=Some(ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=1024,owners=2,ports=4)))
     val p=base.copy(graphics=GraphicsConfig(screenWidth=4,screenHeight=4),
-      execution=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2),native=native)
+      execution=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2,enableSharedVectorAtomics=true),native=native)
     val circuit=circt.stage.ChiselStage.elaborate(new NativeAlignmentHostSystemAxi(p))
     val required=Set("NativeBinnedGraphicsJobReader","TessellationNativeThreeDomainJobImage",
-      "NativeVisibilityQueryEngine","NativePrimitiveQueryEngine","ComputeUniformCuService")
+      "NativeVisibilityQueryEngine","NativePrimitiveQueryEngine","ComputeUniformCuService",
+      "SharedAtomicVectorExecuteUnit")
     val found=circuit.lazilySerialize.iterator.foldLeft(Set.empty[String]) { (seen,part) =>
       seen ++ required.filter(part.contains)
     }

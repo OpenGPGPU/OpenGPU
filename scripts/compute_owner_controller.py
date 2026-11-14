@@ -1,0 +1,180 @@
+#!/usr/bin/env python3
+"""Keep actual Linux compute mappings alive through DUT execution and cleanup.
+
+The caller supplies the complete-factory/source/tool-qualified executor. The
+bridge argv JSON may use {ipc}; no shell is used. A CPU protocol peer is not an
+execution qualification. All temporary process data is deleted on exit.
+"""
+import argparse
+from contextlib import nullcontext
+import fcntl
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import time
+from compute_owner_protocol import (strict_json, profile_bytes, held_bytes,
+    retired_bytes, cleanup_authorization, checked_cleanup)
+from compute_owner_oracle import SparseMemory, verify
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def require(value, text):
+    if not value:
+        raise ValueError(text)
+
+
+def atomic(path, data):
+    require(not path.exists() and not path.is_symlink(), 'pre-existing response')
+    temporary = path.with_suffix(path.suffix + '.tmp')
+    with temporary.open('xb') as stream:
+        stream.write(data)
+    os.link(temporary, path)
+    temporary.unlink()
+
+
+def wait_file(path, bridge, executor, timeout):
+    deadline = time.monotonic() + timeout
+    while not path.exists():
+        require(not (path.parent / 'error').exists(), 'producer reported an active-session failure')
+        require(bridge.poll() is None, 'producer exited with a live compute owner')
+        require(executor is None or executor.poll() is None, 'executor exited before ' + path.name)
+        require(time.monotonic() < deadline, 'timeout waiting for ' + path.name)
+        time.sleep(0.05)
+    require(path.is_file() and not path.is_symlink(), 'invalid IPC file ' + path.name)
+    require(bridge.poll() is None, 'producer exited before live receipt ' + path.name)
+
+
+def stop(process):
+    if process is not None and process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+
+
+def lock_owner(qualification):
+    record = strict_json(qualification)
+    require(record.get('schema') == 'opengpu-owner-executor-v1' and record.get('kind') == 'compute',
+            'wrong owner lock qualification kind')
+    require(type(record.get('owner_output')) is str, 'missing prepared owner directory')
+    owner = Path(record['owner_output']).resolve(strict=True)
+    require(qualification.resolve(strict=True) == owner / 'executors/compute/qualification.json',
+            'qualification does not name the prepared owner')
+    path = owner / '.lock'
+    require(not path.is_symlink(), 'owner lock must not be aliased')
+    lock = path.open('a')
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BaseException:
+        lock.close()
+        raise
+    return lock
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--executor', type=Path, required=True)
+    parser.add_argument('--executor-qualification', type=Path, required=True)
+    parser.add_argument('--executor-checker', type=Path, required=True,
+                        help='original guarded prepare_owner_executor.py; do not copy it into the bridge tree')
+    parser.add_argument('--executor-checker-python', type=Path, required=True,
+                        help='the generation-matched Python interpreter, with its fixed CIRCT environment')
+    parser.add_argument('--bridge-command', type=Path, required=True)
+    parser.add_argument('--managed-session-directory', type=Path,
+                        help='new GPU-internal session owned/removed by qualify_compute_owner after container exit')
+    parser.add_argument('--timeout', type=int, default=3600)
+    args = parser.parse_args()
+    require(0 < args.timeout <= 604800, 'timeout must be 1..604800 seconds')
+    command = strict_json(args.bridge_command)
+    require(type(command) is list and command and all(type(x) is str and x for x in command),
+            'bridge command must be a nonempty argv array')
+    require(any('{ipc}' in x for x in command), 'bridge command must consume the active IPC directory')
+    executor = args.executor.absolute()
+    qualification = args.executor_qualification.absolute()
+    require(executor.is_file() and not executor.is_symlink() and qualification.is_file() and not qualification.is_symlink(),
+            'executor/qualification must be original regular files')
+    checker = args.executor_checker.resolve(strict=True)
+    checker_python = args.executor_checker_python.resolve(strict=True)
+    def qualified(env, log):
+        subprocess.run([checker_python, checker, '--stage', 'check', '--kind', 'compute',
+                        '--qualification', qualification, '--executor', executor],
+                       env=env, stdout=log, stderr=subprocess.STDOUT,
+                       timeout=args.timeout, check=True)
+    gpu = next(p for p in (ROOT, *ROOT.parents) if (p / '.git').is_dir())
+    parent = gpu / '.artifacts'; parent.mkdir(exist_ok=True)
+    if args.managed_session_directory is not None:
+        managed = args.managed_session_directory.absolute()
+        require(managed.parent.resolve(strict=True).is_relative_to(parent.resolve(strict=True)) and
+                managed.parent.resolve(strict=True) == managed.parent and not managed.exists() and not managed.is_symlink(),
+                'managed session must be a new original path below GPU/.artifacts')
+        managed.mkdir()
+        session = nullcontext(str(managed))
+    else:
+        session = tempfile.TemporaryDirectory(prefix='c', dir=parent)
+    with session as temporary:
+        directory = Path(temporary)
+        env = dict(os.environ, TMPDIR=temporary, OPENGPU_COMPUTE_HOST_TIMEOUT=str(args.timeout))
+        bridge = running = owner_lock = None
+        try:
+            with (directory / 'probe.log').open('w') as log:
+                qualified(env, log)
+                owner_lock = lock_owner(qualification)
+                # The first read-only check locates the owner. Recheck after
+                # taking the exact shared product/build lock, before any probe.
+                qualified(env, log)
+                subprocess.run([executor, '--probe-profile', directory / 'profile.json'], env=env,
+                    stdout=log, stderr=subprocess.STDOUT, timeout=args.timeout, check=True)
+            atomic(directory / 'profile.bin', profile_bytes(strict_json(directory / 'profile.json')))
+            with (directory / 'bridge.log').open('w') as log, (directory / 'execution.log').open('w') as output:
+                bridge = subprocess.Popen([x.replace('{ipc}', temporary) for x in command], env=env,
+                    stdout=log, stderr=subprocess.STDOUT)
+                wait_file(directory / 'READY', bridge, None, args.timeout)
+                for name in ('union.memory', 'record-0.capture', 'oracle.json'):
+                    wait_file(directory / name, bridge, None, args.timeout)
+                results = directory / 'results'
+                running = subprocess.Popen([executor, '--active-owner', directory / 'union.memory', results, directory],
+                    env=env, stdout=output, stderr=subprocess.STDOUT)
+                wait_file(directory / 'record-0.held.json', bridge, running, args.timeout)
+                held = strict_json(directory / 'record-0.held.json')
+                atomic(directory / 'record-0.held.response', held_bytes(held))
+                wait_file(directory / 'record-0.retired.json', bridge, running, args.timeout)
+                returned = strict_json(directory / 'record-0.retired.json')
+                response = retired_bytes(returned, held)
+                with SparseMemory(directory / 'union.memory') as before, SparseMemory(results / 'record-0.memory') as after:
+                    verify(before, after, strict_json(directory / 'oracle.json'))
+                atomic(directory / 'record-0.retired.response', response)
+                wait_file(directory / 'cleanup_wait', bridge, running, args.timeout)
+                require(bridge.poll() is None and running.poll() is None, 'owner did not remain live through all oracles')
+                atomic(directory / 'BEGIN_CLEANUP', cleanup_authorization())
+                wait_file(directory / 'cleanup.json', bridge, running, args.timeout)
+                checked_cleanup(strict_json(directory / 'cleanup.json'))
+                require(running.wait(timeout=args.timeout) == 0, 'DUT executor rejected final context cleanup')
+                require(bridge.poll() is None, 'producer freed resources before successful DUT/context receipt')
+                qualified(env, output)
+                atomic(directory / 'FINAL_RESPONSE', b'OGCMOK01\x01\x00\x00\x00')
+                require(bridge.wait(timeout=args.timeout) == 0, 'producer rejected observed final cleanup')
+            print('actual compute returned bytes, physical guards and observed context cleanup: PASS')
+        except BaseException:
+            if bridge is not None and bridge.poll() is None:
+                try:
+                    atomic(directory / 'error', b'controller failed; cleanup not authorized\n')
+                except (OSError, ValueError):
+                    pass
+            for name in ('probe.log', 'bridge.log', 'execution.log'):
+                path = directory / name
+                if path.exists():
+                    print(path.read_text(errors='replace')[-10000:], end='')
+            raise
+        finally:
+            stop(running)
+            stop(bridge)
+            if owner_lock is not None:
+                owner_lock.close()
+
+
+if __name__ == '__main__':
+    main()
