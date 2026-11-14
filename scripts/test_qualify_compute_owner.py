@@ -12,6 +12,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import qualify_compute_owner as qualifier
+from compute_owner_cases import ADDRESS_CASES
 import owner_process_lifetime as lifetime
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,14 +34,17 @@ class Entry(unittest.TestCase):
             qualification=directory/'qualification.json'
             args=argparse.Namespace(executor=executable,executor_qualification=qualification,
                 executor_checker_python=sys.executable,executor_checker=directory/'checker',case='mandatory-compute')
-            for profile in ('two-cu-vga60-owner-v1', 'unknown', qualifier.COMPUTE_STAGE, *qualifier.FULL_COMPUTE_CONTRACTS):
-                qualification.write_text(json.dumps(dict(schema='opengpu-owner-executor-v1',kind='compute',profile=profile)))
-                with patch.object(qualifier.subprocess,'run'):
-                    if profile==qualifier.COMPUTE_STAGE or profile in qualifier.FULL_COMPUTE_CONTRACTS:
-                        qualifier.checked_inputs(args)
-                    else:
-                        with self.assertRaisesRegex(ValueError,'distinct shared-enabled'):
+            for case in ('mandatory-compute', *ADDRESS_CASES):
+                args.case = case
+                for profile in ('two-cu-vga60-owner-v1', 'unknown', qualifier.COMPUTE_STAGE,
+                                *qualifier.FULL_COMPUTE_CONTRACTS):
+                    qualification.write_text(json.dumps(dict(schema='opengpu-owner-executor-v1',kind='compute',profile=profile)))
+                    with patch.object(qualifier.subprocess,'run'):
+                        if profile==qualifier.COMPUTE_STAGE or profile in qualifier.FULL_COMPUTE_CONTRACTS:
                             qualifier.checked_inputs(args)
+                        else:
+                            with self.assertRaisesRegex(ValueError,'distinct shared-enabled'):
+                                qualifier.checked_inputs(args)
 
     def test_fixed_paths_real_producer_and_both_full_sources(self):
         gpu = ROOT
