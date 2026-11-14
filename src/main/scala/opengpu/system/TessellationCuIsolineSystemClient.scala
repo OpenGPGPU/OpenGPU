@@ -16,7 +16,7 @@ class TessellationCuIsolineSystemTask(config: GpuConfig, idWidth: Int) extends B
 /** Own one tagged control patch and its evaluation invocations on the shared
   * CU pool. The surrounding router reserves the command tag and forwards the
   * texture, trap and invalidation services through completion. */
-class TessellationCuIsolineSystemClient(config: GpuConfig, idWidth: Int, numComputeUnits: Int, tessellationUniforms: Boolean=false) extends Module {
+class TessellationCuIsolineSystemClient(config: GpuConfig, idWidth: Int, numComputeUnits: Int, tessellationUniforms: Boolean=false,evaluationPatchAvailable:Boolean=false) extends Module {
   require(numComputeUnits > 0)
   val io = IO(new Bundle {
     val task = Flipped(Decoupled(new TessellationCuIsolineSystemTask(config, idWidth)))
@@ -25,14 +25,14 @@ class TessellationCuIsolineSystemClient(config: GpuConfig, idWidth: Int, numComp
     val reply = Decoupled(new TessellationContextReply)
     val out = Decoupled(new EvaluatedIsolinePrimitive); val completion = Decoupled(new TessellationCuIsolineCompletion)
     val cancel = Input(Bool()); val busy = Output(Bool())
-    val shared = Flipped(new SharedCuGraphicsPort(config, idWidth, numComputeUnits, geometryAvailable = true, tessellationAvailable = true))
+    val shared = Flipped(new SharedCuGraphicsPort(config, idWidth, numComputeUnits, geometryAvailable = true, tessellationAvailable = true,evaluationPatchAvailable=evaluationPatchAvailable))
     val texture = Vec(numComputeUnits, new SharedCuTexturePort(config))
     val uniformMemoryRequest=if(tessellationUniforms)Some(Decoupled(new ComputeMemoryRequest(config,64,2)))else None
     val uniformMemoryResponse=if(tessellationUniforms)Some(Flipped(Decoupled(new ComputeMemoryResponse(64,2))))else None
     val trap = Decoupled(new TaggedGraphicsTrap(config, idWidth, numComputeUnits))
     val invalidate = Flipped(Decoupled(new CacheLineInvalidate(config))); val invalidateDone = Decoupled(new CacheLineInvalidate(config))
   })
-  private val client = Module(new TessellationCuIsolineSharedEvaluator(config, idWidth, numComputeUnits))
+  private val client = Module(new TessellationCuIsolineSharedEvaluator(config, idWidth, numComputeUnits,evaluationPatchAvailable))
   private val tag = Reg(UInt(idWidth.W)); private val native = Reg(Bool()); private val uniform = Reg(Bool())
   private val scope=Reg(new TessellationUniformTaskResources)
   private val service=if(tessellationUniforms)Some(Module(new TessellationUniformCuService(config,idWidth,numComputeUnits)))else None
@@ -42,8 +42,11 @@ class TessellationCuIsolineSystemClient(config: GpuConfig, idWidth: Int, numComp
   when(client.io.busy && io.cancel){cancelled:=true.B}
   private val rejected=RegInit(false.B)
   private val rejectedResult=Reg(chiselTypeOf(io.completion.bits))
-  private val scopeLegal=if(tessellationUniforms)TessellationUniformTaskResources.legal(io.task.bits.uniforms) && !io.task.bits.uniformResources
+  private val oldScopeLegal=if(tessellationUniforms)TessellationUniformTaskResources.legal(io.task.bits.uniforms) && !io.task.bits.uniformResources
     else io.task.bits.uniforms.asUInt===0.U
+  private val dynamicLegal=if(evaluationPatchAvailable)io.task.bits.patch.patchInputCount===0.U &&
+    io.task.bits.patch.patchInputs.asUInt===0.U else true.B
+  private val scopeLegal=oldScopeLegal && dynamicLegal
   client.io.task.valid := io.task.valid && scopeLegal && !rejected && !serviceBusy
   client.io.task.bits := io.task.bits.patch
   io.task.ready := !rejected && !serviceBusy && Mux(scopeLegal,client.io.task.ready,!client.io.busy && !io.cancel)
@@ -72,6 +75,11 @@ class TessellationCuIsolineSystemClient(config: GpuConfig, idWidth: Int, numComp
   client.io.launch.ready := io.shared.launch.ready && !controlOffer && !serviceBusy
   io.shared.tessellationBases.get.valid := controlOffer
   io.shared.tessellationBases.get.bits := client.io.bases
+  if(evaluationPatchAvailable){
+    io.shared.evaluationPatch.get<>client.io.evaluationPatch.get
+    io.shared.evaluationPatchBinding.get:=client.io.evaluationPatchBinding.get
+    when(controlOffer){io.shared.evaluationPatchBinding.get.valid:=false.B}
+  }
   io.shared.geometryTask.get := client.io.geometryTask
   when(controlOffer) { io.shared.geometryTask.get.valid := false.B }
   when(client.io.controlKernel.fire) { controlLive := true.B }

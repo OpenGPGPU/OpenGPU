@@ -10,7 +10,7 @@ import chisel3.util._
   * results and resumes must be consumed before the corresponding warp can
   * issue again; close also waits for all of them to drain.
   */
-class TessellationControlWarpScheduler(warps: Int, lanes: Int) extends Module {
+class TessellationControlWarpScheduler(warps: Int, lanes: Int,zeroOnBegin:Boolean=false) extends Module {
   require(warps >= 2 && isPow2(warps) && lanes >= 1 && lanes <= 32)
   val io = IO(new Bundle {
     val begin = Flipped(Decoupled(new TessellationPatchContextTask)); val opened = Decoupled(UInt(2.W))
@@ -23,7 +23,7 @@ class TessellationControlWarpScheduler(warps: Int, lanes: Int) extends Module {
     val inspect = Flipped(Decoupled(new TessellationPatchAccess)); val reply = Decoupled(new TessellationContextReply)
     val close = Flipped(Decoupled(Bool())); val cancel = Input(Bool()); val busy = Output(Bool())
   })
-  private val context = Module(new TessellationPatchContext)
+  private val context = Module(new TessellationPatchContext(zeroOnBegin))
   private val access = Module(new TessellationWarpPatchAccess(warps, lanes))
   private val barrier = Module(new TessellationWarpBarrier(warps, lanes))
   private val active = RegInit(false.B); private val running = RegInit(false.B); private val stopping = RegInit(false.B)

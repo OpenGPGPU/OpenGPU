@@ -32,7 +32,7 @@ class TessellationSystemIsolineViewportCompletion extends Bundle {
   */
 class TessellationSystemIsolineViewport(config: GpuConfig, p: VertexShaderStageConfig, idWidth: Int, numComputeUnits: Int,
     viewport: Fp32ViewportConfig = Fp32ViewportConfig(), useSramBlackBoxes: Boolean = false,
-    transformFeedback: Boolean = false, tessellationUniforms: Boolean = false) extends Module {
+    transformFeedback: Boolean = false, tessellationUniforms: Boolean = false,evaluationPatchAvailable:Boolean=false) extends Module {
   val io = IO(new Bundle {
     val task = Flipped(Decoupled(new TessellationSystemIsolineViewportTask(config, p, idWidth)))
     val opened = Decoupled(UInt(2.W)); val load = Flipped(Decoupled(new TessellationPatchAccess))
@@ -41,14 +41,14 @@ class TessellationSystemIsolineViewport(config: GpuConfig, p: VertexShaderStageC
     val out = Decoupled(new WindowPrimitive(p)); val completion = Decoupled(new TessellationSystemIsolineViewportCompletion)
     val cancel = Input(Bool()); val busy = Output(Bool())
     val feedback = if(transformFeedback) Some(new TransformFeedbackPipelineIO(config)) else None
-    val shared = Flipped(new SharedCuGraphicsPort(config, idWidth, numComputeUnits, geometryAvailable = true, tessellationAvailable = true))
+    val shared = Flipped(new SharedCuGraphicsPort(config, idWidth, numComputeUnits, geometryAvailable = true, tessellationAvailable = true,evaluationPatchAvailable=evaluationPatchAvailable))
     val texture = Vec(numComputeUnits, new SharedCuTexturePort(config))
     val uniformMemoryRequest=if(tessellationUniforms)Some(Decoupled(new ComputeMemoryRequest(config,64,2)))else None
     val uniformMemoryResponse=if(tessellationUniforms)Some(Flipped(Decoupled(new ComputeMemoryResponse(64,2))))else None
     val trap = Decoupled(new TaggedGraphicsTrap(config, idWidth, numComputeUnits))
     val invalidate = Flipped(Decoupled(new CacheLineInvalidate(config))); val invalidateDone = Decoupled(new CacheLineInvalidate(config))
   })
-  private val source = Module(new TessellationCuIsolineSystemClient(config, idWidth, numComputeUnits,tessellationUniforms))
+  private val source = Module(new TessellationCuIsolineSystemClient(config, idWidth, numComputeUnits,tessellationUniforms,evaluationPatchAvailable))
   private val mapper = Module(new TessellationIsolinePrimitiveMapper(p,flatShading = !transformFeedback))
   private val feedback = if(transformFeedback) Some(Module(new TransformFeedbackExport(config,p))) else None
   private val clip = Module(new PrimitiveClipStage(p, useSramBlackBoxes))

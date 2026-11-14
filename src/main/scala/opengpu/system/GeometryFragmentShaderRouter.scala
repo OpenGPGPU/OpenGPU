@@ -25,18 +25,18 @@ object GeometryFragmentShaderRouter {
   */
 class GeometryFragmentShaderRouter(config: GpuConfig, numComputeUnits: Int, taskIdWidth: Int,
     shaderPayload: Option[ShaderPayloadConfig]=None, tessellationAvailable: Boolean=false,
-    imageAvailable: Boolean=false) extends Module {
+    imageAvailable: Boolean=false,evaluationPatchAvailable:Boolean=false) extends Module {
   val io = IO(new Bundle {
-    val geometry = new SharedCuGraphicsPort(config,taskIdWidth,numComputeUnits,geometryAvailable=true,tessellationAvailable=tessellationAvailable,imageAvailable=imageAvailable)
+    val geometry = new SharedCuGraphicsPort(config,taskIdWidth,numComputeUnits,geometryAvailable=true,tessellationAvailable=tessellationAvailable,imageAvailable=imageAvailable,evaluationPatchAvailable=evaluationPatchAvailable)
     val fragment = new SharedCuGraphicsPort(config,taskIdWidth,numComputeUnits,imageAvailable=imageAvailable)
-    val pool = Flipped(new SharedCuGraphicsPort(config,taskIdWidth,numComputeUnits,geometryAvailable=true,tessellationAvailable=tessellationAvailable,imageAvailable=imageAvailable))
+    val pool = Flipped(new SharedCuGraphicsPort(config,taskIdWidth,numComputeUnits,geometryAvailable=true,tessellationAvailable=tessellationAvailable,imageAvailable=imageAvailable,evaluationPatchAvailable=evaluationPatchAvailable))
     val clientPayload = shaderPayload.map(p=>Input(Vec(2,Valid(new ShaderPayloadBinding(config,p)))))
     val poolPayload = shaderPayload.map(p=>Output(Valid(new ShaderPayloadBinding(config,p))))
     val payloadPins = shaderPayload.map(p=>Output(Vec(4,Valid(new ShaderPayloadPin(p)))))
     val drained = Output(Bool())
   })
   private val router = Module(new SharedShaderTaskRouter(config,numComputeUnits,2,taskIdWidth,
-    shaderPayload=shaderPayload,geometryAvailable=true,tessellationAvailable=tessellationAvailable,imageAvailable=imageAvailable))
+    shaderPayload=shaderPayload,geometryAvailable=true,tessellationAvailable=tessellationAvailable,imageAvailable=imageAvailable,evaluationPatchAvailable=evaluationPatchAvailable))
   router.io.clients(0) <> io.geometry
   io.pool <> router.io.pool
   val fragment = router.io.clients(1)
@@ -51,6 +51,10 @@ class GeometryFragmentShaderRouter(config: GpuConfig, numComputeUnits: Int, task
   io.fragment.taskIds := fragment.taskIds
   fragment.invalidate <> io.fragment.invalidate
   io.fragment.invalidateDone <> fragment.invalidateDone
+  if(evaluationPatchAvailable){fragment.evaluationPatchBinding.get:=0.U.asTypeOf(fragment.evaluationPatchBinding.get)
+    for(cu<-0 until numComputeUnits){val p=fragment.evaluationPatch.get(cu)
+      p.request.ready:=false.B;p.result.valid:=false.B;p.result.bits:=0.U.asTypeOf(p.result.bits);p.cancel:=false.B
+      assert(!p.request.valid,"fragment cannot issue TES patch reads")}}
   fragment.geometryTask.get := 0.U.asTypeOf(Valid(new GeometryInvocationLaunch))
   if(tessellationAvailable) fragment.tessellationBases.get := 0.U.asTypeOf(fragment.tessellationBases.get)
   for(cu<-0 until numComputeUnits) {

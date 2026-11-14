@@ -7,13 +7,14 @@ import opengpu.config.GpuConfig
 /** Unified RV32I + F/D/Zfh + RVV instruction classifier. */
 class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean = true,
   textureAvailable: Boolean = true, taskTextureAvailability: Boolean = false,
-  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false) extends Module {
+  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false, evaluationPatchAvailable: Boolean = false) extends Module {
   val io = IO(new Bundle {
     val imageEnabled = if(imageAvailable) Some(Input(Bool())) else None
     val storageEnabled = if(storageAvailable) Some(Input(Bool())) else None
   val computeUniformEnabled = if(computeUniformAvailable) Some(Input(Bool())) else None
     val geometryEnabled = if(geometryAvailable) Some(Input(Bool())) else None
   val tessellationEnabled = if(tessellationAvailable) Some(Input(Bool())) else None
+    val evaluationPatchEnabled = if(evaluationPatchAvailable) Some(Input(Bool())) else None
     val computeTextureEnabled = if(computeTextureAvailable) Some(Input(Bool())) else None
     val atomicCounterEnabled = if(atomicCounterAvailable) Some(Input(Bool())) else None
     val textureEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
@@ -25,7 +26,7 @@ class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable
 
   val scalarDecoder = Module(new RiscVDecoder)
   val fpuDecoder = Module(new FpuDecoder)
-  val vectorDecoder = Module(new VectorDecoder(imageAtomicAvailable, storageAtomicAvailable, config.enableSharedVectorAtomics))
+  val vectorDecoder = Module(new VectorDecoder(imageAtomicAvailable, storageAtomicAvailable, config.enableSharedVectorAtomics,evaluationPatchAvailable))
   scalarDecoder.io.instruction := io.instruction
   fpuDecoder.io.instruction := io.instruction
   vectorDecoder.io.instruction := io.instruction
@@ -87,10 +88,13 @@ class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable
   private val ordinaryVectorResourceAllowed =
     (vectorComputeTexture && computeTextureAllowed) || (vectorUniform && computeUniformAllowed) ||
       (textureAllowed && (!vectorNative || nativeAllowed) && (!vectorUniform || uniformAllowed))
-  private val vectorResourceAllowed = Mux(vectorSharedAtomic, config.enableSharedVectorAtomics.B,
+  private val vectorEvaluationPatch=opengpu.graphics.tessellation.TessellationEvaluationPatchOpcode.legal(io.instruction)
+  private val evaluationPatchAllowed=evaluationPatchAvailable.B && io.evaluationPatchEnabled.getOrElse(false.B)
+  private val oldVectorResourceAllowed = Mux(vectorSharedAtomic, config.enableSharedVectorAtomics.B,
     Mux(vectorPatch, patchAllowed, Mux(vectorCounter, counterAllowed,
       Mux(vectorStorage, storageAllowed, Mux(vectorImage,
         imageAllowed && (!vectorImageAtomic || imageAtomicAvailable.B), ordinaryVectorResourceAllowed)))))
+  private val vectorResourceAllowed=Mux(vectorEvaluationPatch,evaluationPatchAllowed,oldVectorResourceAllowed)
   when(vectorDecoder.io.decoded.valid && config.enableVector.B &&
       (scalarFpuAvailable.B || !vectorNeedsScalarFpu) &&
       (vectorResourceAllowed || vectorDecoder.io.decoded.unit =/= VectorUnit.texture)) {

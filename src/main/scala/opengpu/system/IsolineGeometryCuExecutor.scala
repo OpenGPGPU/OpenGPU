@@ -19,8 +19,10 @@ class IsolineGeometryCuTask(config: GpuConfig, commandIdWidth: Int) extends Bund
   * response. The shader reads gl_TessCoord through input vertex 0 components
   * 0..2, writes output components and emits exactly one point.
   */
-class IsolineGeometryCuExecutor(config: GpuConfig, commandIdWidth: Int, numComputeUnits: Int) extends Module {
+class IsolineGeometryCuExecutor(config: GpuConfig, commandIdWidth: Int, numComputeUnits: Int,evaluationPatchAvailable:Boolean=false) extends Module {
   val io = IO(new Bundle {
+    val patchLayout=if(evaluationPatchAvailable)Some(Input(new TessellationPatchLayout))else None
+    val evaluationPatchBinding=if(evaluationPatchAvailable)Some(Output(Valid(new TessellationEvaluationPatchBinding)))else None
     val task = Flipped(Decoupled(new IsolineGeometryCuTask(config, commandIdWidth)))
     val response = Decoupled(new IsolineEvaluationResponse)
     val cancel = Input(Bool()); val busy = Output(Bool())
@@ -40,6 +42,13 @@ class IsolineGeometryCuExecutor(config: GpuConfig, commandIdWidth: Int, numCompu
   private val scheduler = Module(new GeometrySharedCuScheduler(config,commandIdWidth,numComputeUnits))
   io.task.ready := state === idle && !io.cancel
   io.response.valid := state === result; io.response.bits := response; io.busy := state =/= idle
+  if(evaluationPatchAvailable){val binding=io.evaluationPatchBinding.get
+    binding.valid:=state===offer || state===running
+    binding.bits.version:=1.U;binding.bits.stage:=5.U
+    binding.bits.taskId:=saved.evaluation.taskId;binding.bits.sequence:=saved.evaluation.sequence
+    binding.bits.layout:=io.patchLayout.get
+    when(io.task.fire){assert(io.task.bits.patchCount===0.U,"dynamic TES must not borrow the61-word snapshot")}
+  }
   scheduler.io.task.valid := state === offer
   scheduler.io.task.bits := 0.U.asTypeOf(scheduler.io.task.bits)
   scheduler.io.task.bits.commandId := saved.commandId; scheduler.io.task.bits.kernel := saved.kernel

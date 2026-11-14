@@ -12,22 +12,22 @@ import opengpu.graphics.{ShaderImageTask, ShaderPayloadConfig, ShaderPayloadPin,
   */
 class TessellationHostShaderRouter(config: GpuConfig, numComputeUnits: Int, taskIdWidth: Int,
     tasksPerClient: Int, payload: Option[ShaderPayloadConfig] = None,
-    imageAvailable: Boolean = false,legacyGeometry:Boolean=false,tessellationImageAvailable:Boolean=false) extends Module {
+    imageAvailable: Boolean = false,legacyGeometry:Boolean=false,tessellationImageAvailable:Boolean=false,evaluationPatchAvailable:Boolean=false) extends Module {
   require(!tessellationImageAvailable || imageAvailable,"tessellation images require the shared image path")
   require(numComputeUnits > 0 && taskIdWidth > 0 && tasksPerClient > 0)
   private val pins = 2 * tasksPerClient + 2
   val io = IO(new Bundle {
     val legacy = new SharedCuGraphicsPort(config, taskIdWidth, numComputeUnits, geometryAvailable=legacyGeometry,imageAvailable=imageAvailable)
-    val tessellation = new SharedCuGraphicsPort(config, taskIdWidth, numComputeUnits, geometryAvailable=true, tessellationAvailable=true,imageAvailable=tessellationImageAvailable)
+    val tessellation = new SharedCuGraphicsPort(config, taskIdWidth, numComputeUnits, geometryAvailable=true, tessellationAvailable=true,imageAvailable=tessellationImageAvailable,evaluationPatchAvailable=evaluationPatchAvailable)
     val pool = Flipped(new SharedCuGraphicsPort(config, taskIdWidth, numComputeUnits,
-      geometryAvailable=true, tessellationAvailable=true, imageAvailable=imageAvailable))
+      geometryAvailable=true, tessellationAvailable=true, imageAvailable=imageAvailable,evaluationPatchAvailable=evaluationPatchAvailable))
     val clientPayload = payload.map(p => Input(Vec(2, Valid(new ShaderPayloadBinding(config,p)))))
     val poolPayload = payload.map(p => Output(Valid(new ShaderPayloadBinding(config,p))))
     val payloadPins = payload.map(p => Output(Vec(pins, Valid(new ShaderPayloadPin(p)))))
     val drained = Output(Bool())
   })
   private val router = Module(new SharedShaderTaskRouter(config, numComputeUnits, 2, taskIdWidth,
-    tasksPerClient, payload, geometryAvailable=true, tessellationAvailable=true, imageAvailable=imageAvailable))
+    tasksPerClient, payload, geometryAvailable=true, tessellationAvailable=true, imageAvailable=imageAvailable,evaluationPatchAvailable=evaluationPatchAvailable))
   private val legacy = router.io.clients(0)
   legacy.launch <> io.legacy.launch
   io.legacy.completion <> legacy.completion
@@ -42,6 +42,10 @@ class TessellationHostShaderRouter(config: GpuConfig, numComputeUnits: Int, task
     io.legacy.geometryEvent.get<>legacy.geometryEvent.get
     legacy.geometryCancel.get:=io.legacy.geometryCancel.get
   }else{legacy.geometryTask.get.valid := false.B; legacy.geometryTask.get.bits := 0.U.asTypeOf(legacy.geometryTask.get.bits)}
+  if(evaluationPatchAvailable){legacy.evaluationPatchBinding.get:=0.U.asTypeOf(legacy.evaluationPatchBinding.get)
+    for(cu<-0 until numComputeUnits){val p=legacy.evaluationPatch.get(cu)
+      p.request.ready:=false.B;p.result.valid:=false.B;p.result.bits:=0.U.asTypeOf(p.result.bits);p.cancel:=false.B
+      assert(!p.request.valid,"legacy renderer cannot issue TES patch reads")}}
   legacy.tessellationBases.get.valid := false.B; legacy.tessellationBases.get.bits := 0.U.asTypeOf(legacy.tessellationBases.get.bits)
   for (cu <- 0 until numComputeUnits) {
     if(!legacyGeometry){legacy.geometryEvent.get(cu).ready := false.B; legacy.geometryCancel.get(cu) := false.B}
@@ -66,6 +70,8 @@ class TessellationHostShaderRouter(config: GpuConfig, numComputeUnits: Int, task
   tessellation.geometryTask.get := io.tessellation.geometryTask.get
   io.tessellation.geometryEvent.get <> tessellation.geometryEvent.get
   tessellation.geometryCancel.get := io.tessellation.geometryCancel.get
+  if(evaluationPatchAvailable){tessellation.evaluationPatchBinding.get:=io.tessellation.evaluationPatchBinding.get
+    io.tessellation.evaluationPatch.get<>tessellation.evaluationPatch.get}
   tessellation.tessellationBases.get := io.tessellation.tessellationBases.get
   io.tessellation.tessellation.get <> tessellation.tessellation.get
   // A launch snapshots its own publication, independently of the legacy owner.

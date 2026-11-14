@@ -23,7 +23,7 @@ class TessellationCuIsolineCompletion extends Bundle {
   * until accepted CU work and evaluation requests drain, and must interrupt
   * running CU work when cancelCu is asserted.
   */
-class TessellationCuIsolinePatch(config:GpuConfig) extends Module {
+class TessellationCuIsolinePatch(config:GpuConfig,zeroOnBegin:Boolean=false) extends Module {
   require(config.warps>=2 && isPow2(config.warps) && config.lanes<=32)
   val io=IO(new Bundle {
     val task=Flipped(Decoupled(new TessellationCuIsolineTask(config)));val opened=Decoupled(UInt(2.W))
@@ -45,7 +45,7 @@ class TessellationCuIsolinePatch(config:GpuConfig) extends Module {
   private val failed=RegInit(false.B);private val cancelSent=RegInit(false.B);private val terminal=RegInit(false.B)
   private val offered=RegInit(false.B);private val started=RegInit(false.B);private val kernelDone=RegInit(false.B)
   private val controlDone=RegInit(false.B);private val levelIndex=RegInit(false.B);private val levels=Reg(Vec(2,UInt(32.W)))
-  private val scheduler=Module(new TessellationControlWarpScheduler(config.warps,config.lanes))
+  private val scheduler=Module(new TessellationControlWarpScheduler(config.warps,config.lanes,zeroOnBegin))
   private val generator=Module(new TessellationIsolineGenerator);private val evaluator=Module(new TessellationIsolineEvaluation)
   private val stop=io.cancel || cancelled || failed || evaluator.io.fault.valid
   private val k=io.task.bits.kernel;private val n=io.task.bits.patch.context.layout.outputVertices
