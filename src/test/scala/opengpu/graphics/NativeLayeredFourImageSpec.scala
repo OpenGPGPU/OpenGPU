@@ -61,24 +61,40 @@ class NativeLayeredFourImageSpec extends AnyFlatSpec {
       Plane(i,resolve,BigInt(if(resolve)0x2000000 else 0x1000000)+i*0x10000)).toVector
     private val immutable=mutable.Map.empty[BigInt,Int]
     private val guards=mutable.Map.empty[BigInt,Int]
+    private val readable=mutable.ArrayBuffer.empty[(BigInt,BigInt)]
+    private val writable=mutable.ArrayBuffer.empty[(BigInt,BigInt)]
     private val stateFields=TypedFragmentStateLayout.fields(new TypedFragmentState(d.fragments))
     private val held=mutable.Map.empty[String,BigInt]
+    private val primitiveTuples=mutable.Set.empty[(Int,Int)]
+    private val pixelTuples=mutable.Set.empty[(Int,Int)]
+    private val layerTuples=mutable.Set.empty[(Int,Int)]
+    private val tileTuples=mutable.Set.empty[Int]
+    private var tileEngines=0;private var checkHealthy=true
     var launches=0;var geometryLaunches=0;var tiles=0;var layers=0
     var stores=0;var acknowledgements=0;var ordinal=0
     private def identity(i:GraphicsWorkIdentity):Unit={i.context.poke(7.U);i.pass.poke(8.U);i.generation.poke(9.U)}
+    private def checkIdentity(i:GraphicsWorkIdentity):Unit={i.context.expect(7.U);i.pass.expect(8.U);i.generation.expect(9.U)}
     private def view(v:VertexInputView,base:Int,bytes:Int):Unit={
       v.base.poke(base.U);v.limit.poke((base+bytes).U)
       v.allocationBase.poke((base& ~63).U);v.allocationLimit.poke(((base+bytes+63)& ~63).U)
     }
     private def snapshot(base:BigInt,limit:BigInt):Unit=for(a<-base until limit)immutable(a)=memory.bytes.getOrElse(a,0)
     def install():Unit={
+      def allocation(base:BigInt,limit:BigInt,write:Boolean):Unit={
+        val span=(base,limit);readable+=span;if(write)writable+=span
+      }
       for((base,words)<-Seq(0x1000->vs,0x900000->gs,0x8000->fragment(0),0x9000->fragment(1))){
         for((word,i)<-words.zipWithIndex)memory.putWord(base+i*4,word)
-        snapshot(base,base+words.size*4)
+        val end=(base+words.size*4+63)& ~63
+        snapshot(base,end);allocation(base,end,write=false)
       }
       for((x,i)<-Vector(0,8,16,24).zipWithIndex;c<-0 until 4)
         memory.putWord(0x20000+i*16+c*4,fp(Vector((2.0*x+1)/32-1,0.0,0.0,1.0)(c)))
-      snapshot(0x20000,0x20040)
+      snapshot(0x20000,0x20040);allocation(0x20000,0x20040,write=false)
+      allocation(0x200000,0x200000+64*d.recordBytes,write=true)
+      allocation(0x400000,0x410000,write=true);allocation(0x500000,0x500100,write=true)
+      allocation(0x300000,0x300000+1216,write=true)
+      for(a<-0x300000 until 0x301000){memory.bytes(a)=0x6d;if(a>=0x300000+1200)guards(a)=0x6d}
       for(h<-0 until 2){
         val prefix=if(h==0)1408 else 1472
         val state=Map[String,BigInt]("version"->2,"engineCount"->4,
@@ -94,6 +110,7 @@ class NativeLayeredFourImageSpec extends AnyFlatSpec {
           (0 until 4).flatMap{e=>
             val base=0x600000+e*0x10000+h*4096
             for(a<-base until base+4096){memory.bytes(a)=0x6d;if(a>=base+prefix)guards(a)=0x6d}
+            allocation(base,base+((prefix+63)& ~63),write=true)
             val name=if(e==0)"fragment.scratch" else s"scratch[${e-1}]"
             Seq(s"$name.base"->BigInt(base),s"$name.limit"->BigInt(base+prefix),
               s"$name.allocationBase"->BigInt(base),s"$name.allocationLimit"->BigInt(base+((prefix+63)& ~63)))
@@ -105,9 +122,18 @@ class NativeLayeredFourImageSpec extends AnyFlatSpec {
           memory.putWord(base+(f.word+w)*4,(raw>>(32*w))&0xffffffffL)}
         for((word,i)<-Vector[BigInt](TypedFragmentStateLayout.magic,512,1,4,7,8,9,h).zipWithIndex)
           memory.putWord(base+i*4,word)
-        snapshot(base,base+512)
+        snapshot(base,base+512);allocation(base,base+512,write=false)
       }
-      for(p<-planes;a<-p.allocation until p.end)memory.bytes(a)=0xa7
+      for(p<-planes){allocation(p.allocation,p.end,write=true)
+        for(a<-p.allocation until p.end)memory.bytes(a)=0xa7}
+      memory.beforeRequest=r=>{
+        if(r.write){for(b<-0 until 64 if r.mask.testBit(b)){
+          val address=r.address+b
+          assert(writable.exists{case(first,end)=>address>=first && address<end},
+            s"write escaped all owned allocations: 0x${address.toString(16)}")}}
+        else assert(readable.exists{case(first,end)=>r.address>=first && r.address+64<=end},
+          s"read escaped all owned allocations: 0x${r.address.toString(16)}")
+      }
     }
     def tick():Unit={
       memory.drive()
@@ -121,20 +147,54 @@ class NativeLayeredFourImageSpec extends AnyFlatSpec {
         val p=d.io.primitiveDone(e);p.ready.poke((memory.cycle%3!=e%3).B);output(s"primitive$e",p.valid,p.ready,p.bits)
         val o=d.io.out(e);o.ready.poke((memory.cycle%5!=e).B);output(s"pixel$e",o.valid,o.ready,o.bits)
         val l=d.io.layerDone(e);l.ready.poke((memory.cycle%7!=e).B);output(s"layer$e",l.valid,l.ready,l.bits)
-        if(l.valid.peek().litToBoolean && l.ready.peek().litToBoolean)layers+=1
+        if(checkHealthy && p.valid.peek().litToBoolean && p.ready.peek().litToBoolean){
+          val r=p.bits;val sequence=r.source.reference.sequence.peek().litValue.toInt
+          val tile=r.source.tile.peek().litValue.toInt;assert(sequence>=0 && sequence<8 && tile==sequence%4)
+          checkIdentity(r.source.identity);r.status.expect(0.U);r.renderStarted.expect(true.B)
+          r.source.reference.primitive.expect(sequence.U);r.source.reference.state.expect((sequence/4).U)
+          r.source.reference.token.expect((200+sequence/4).U)
+          assert(primitiveTuples.add((tile,sequence)),"duplicate original primitive completion")
+        }
+        if(checkHealthy && o.valid.peek().litToBoolean && o.ready.peek().litToBoolean){
+          val r=o.bits;val layer=r.layer.peek().litValue.toInt;assert(layer==0 || layer==1)
+          checkIdentity(r.pixels.identity);r.pixels.status.expect(0.U)
+          r.pixels.testedSamples.expect(4.U);r.pixels.passingSamples.expect(4.U)
+          assert(pixelTuples.add((e,layer)),"duplicate pixel retirement for an image layer")
+          val primitive=r.pixels.primitiveId.peek().litValue.toInt
+          assert(if(layer==0)primitive>=0 && primitive<4 else primitive==93)
+        }
+        if(l.valid.peek().litToBoolean && l.ready.peek().litToBoolean){layers+=1
+          if(checkHealthy){val r=l.bits;val tile=r.image.tile.peek().litValue.toInt;val layer=r.layer.peek().litValue.toInt
+            assert(tile>=0 && tile<4 && layer>=0 && layer<2);checkIdentity(r.image.identity);r.image.status.expect(0.U)
+            assert(layerTuples.add((tile,layer)),"duplicate layer retirement")}}
         if(d.io.imageStore(e).peek().litToBoolean)stores|=1<<e
         if(d.io.imageAck(e).peek().litToBoolean)acknowledgements|=1<<e
       }
       d.io.tileDone.ready.poke((memory.cycle%3!=0).B)
       output("tile",d.io.tileDone.valid,d.io.tileDone.ready,d.io.tileDone.bits)
-      if(d.io.tileDone.valid.peek().litToBoolean && d.io.tileDone.ready.peek().litToBoolean)tiles+=1
+      if(d.io.tileDone.valid.peek().litToBoolean && d.io.tileDone.ready.peek().litToBoolean){tiles+=1
+        if(checkHealthy){val r=d.io.tileDone.bits;val tile=r.image.tile.peek().litValue.toInt
+          val engine=r.engine.peek().litValue.toInt;assert(tile>=0 && tile<4 && engine>=0 && engine<4)
+          assert(tileTuples.add(tile),"duplicate tile retirement");tileEngines|=1<<engine
+          r.renderStarted.expect(true.B);checkIdentity(r.image.identity);r.image.status.expect(0.U)
+          r.image.replay.completedLayers.expect(2.U)}}
+      for(i<-0 until 5){val task=d.io.task(i)
+        if(task.valid.peek().litToBoolean){task.bits.owner.expect(i.U);task.bits.context.expect(7.U)
+          assert(task.bits.handle.peek().litValue<d.native.payload.get.slots)}
+      }
+      if(d.io.launch.valid.peek().litToBoolean && d.io.launchPayload.valid.peek().litToBoolean){
+        val binding=d.io.launchPayload.bits.peek().litValue
+        assert(d.io.task.exists(t=>t.valid.peek().litToBoolean && t.bits.peek().litValue==binding),
+          "shared-CU launch lost the live producer payload lease")
+      }
       if(d.io.launch.valid.peek().litToBoolean){launches+=1;if(d.io.launch.bits.peek().litToBoolean)geometryLaunches+=1}
       assert(!d.io.trap.valid.peek().litToBoolean,"unexpected actual shader trap")
       memory.capture();d.clock.step()
     }
     def until(label:String)(condition: =>Boolean):Unit={var n=0;while(!condition && n<300000){tick();n+=1}
       assert(condition,s"$label stalled cycles=${memory.cycle} draws=$ordinal launches=$launches tiles=$tiles layers=$layers")}
-    def begin():Unit={
+    def begin(check:Boolean=true):Unit={
+      checkHealthy=check;primitiveTuples.clear();pixelTuples.clear();layerTuples.clear();tileTuples.clear();tileEngines=0
       ordinal=0;tiles=0;layers=0;stores=0;acknowledgements=0
       val q=d.io.begin.bits;zero(q);q.version.poke(1.U)
       val a=q.bins.producer;val b=q.bins.bins
@@ -186,7 +246,7 @@ class NativeLayeredFourImageSpec extends AnyFlatSpec {
       until("draw completion")(d.io.drawCompletion.valid.peek().litToBoolean)
       val r=d.io.drawCompletion.bits;r.status.expect(0.U);r.ordinal.expect(ordinal.U)
       r.receivedParts.expect(4.U);r.admittedParts.expect(4.U);r.droppedParts.expect(0.U)
-      val held=r.peek().litValue;for(_<-0 until 5){tick();assert(r.peek().litValue==held)}
+      val held=r.peek().litValue;for(_<-0 until 5){tick();d.io.drawCompletion.valid.expect(true.B);assert(r.peek().litValue==held)}
       d.io.drawCompletion.ready.poke(true.B);tick();d.io.drawCompletion.ready.poke(false.B);ordinal+=1
     }
     def end():Unit={d.io.end.valid.poke(true.B);d.io.end.bits.poke(true.B)
@@ -211,7 +271,7 @@ class NativeLayeredFourImageSpec extends AnyFlatSpec {
           s"attachment mismatch location=${p.location} resolve=${p.resolve} address=0x${a.toString(16)} got=${memory.bytes(a)} expected=${expected.getOrElse(a,0xa7)}")
       }
       for((a,v)<-immutable)assert(memory.bytes.getOrElse(a,0)==v,s"immutable input changed 0x${a.toString(16)}")
-      for((a,v)<-guards)assert(memory.bytes(a)==v,s"FS prefix escaped 0x${a.toString(16)}")
+      for((a,v)<-guards)assert(memory.bytes(a)==v,s"shader prefix escaped 0x${a.toString(16)}")
     }
     def finish(status:Int=0):Unit={
       until("pass completion")(d.io.completion.valid.peek().litToBoolean)
@@ -221,8 +281,12 @@ class NativeLayeredFourImageSpec extends AnyFlatSpec {
       if(status==0){r.draws.expect(2.U);r.admittedParts.expect(8.U);r.submittedGeometryPrimitives.expect(4.U)
         r.completedGeometryInvocations.expect(4.U);r.emittedGeometryPrimitives.expect(4.U)
         r.images.images.tiles.expect(4.U);assert(tiles==4 && layers==8 && stores==15 && acknowledgements==15)
+        assert(tileTuples.toSet==(0 until 4).toSet && tileEngines==15)
+        assert(layerTuples.toSet==(for(tile<-0 until 4;layer<-0 until 2)yield(tile,layer)).toSet)
+        assert(pixelTuples.toSet==(for(engine<-0 until 4;layer<-0 until 2)yield(engine,layer)).toSet)
+        assert(primitiveTuples.toSet==(0 until 8).map(sequence=>(sequence%4,sequence)).toSet)
         checkBacking()}
-      val held=r.peek().litValue;for(_<-0 until 7){tick();assert(r.peek().litValue==held);d.io.begin.ready.expect(false.B)}
+      val held=r.peek().litValue;for(_<-0 until 7){tick();d.io.completion.valid.expect(true.B);assert(r.peek().litValue==held);d.io.begin.ready.expect(false.B)}
       d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B)
       until("idle")(d.io.idle.peek().litToBoolean);assert(memory.pending.isEmpty && memory.reply.isEmpty)
     }
@@ -231,12 +295,20 @@ class NativeLayeredFourImageSpec extends AnyFlatSpec {
   it should "execute mixed VS and GS through four real layered images and retain allocation replies across peer cancellation" in {
     require(sys.props.get("opengpu.nativeLayeredFourImageQualification").contains("1"),"select this local qualification explicitly")
     simulate(new NativeLayeredFourImageHarness){d=>val t=new Driver(d);t.install();t.healthy()
-      t.begin();t.draw(0);t.draw(1)
+      t.begin(check=false);t.draw(0);t.draw(1)
       for(i<-1 to 4)d.io.holdPayloadReply(i).poke(true.B)
       t.end();t.until("four real held allocation replies")((1 to 4).forall(i=>d.io.payloadReplyHeld(i).peek().litToBoolean))
-      val reserved=d.io.reservedBytes.peek().litValue;assert(reserved>0)
+      val reserved=BigInt(4)*d.native.payload.get.slotBytes;d.io.reservedBytes.expect(reserved.U)
+      val replies=(1 to 4).map{i=>val r=d.io.payloadReply(i)
+        r.valid.expect(true.B);r.bits.operation.expect(ShaderPayloadControl.allocate.U)
+        r.bits.resident.expect(true.B);r.bits.spill.expect(false.B);r.bits.fault.expect(false.B)
+        r.bits.context.expect(7.U);r.bits.bytes.expect(1408.U);r.bits.peek().litValue}
+      assert((1 to 4).map(i=>d.io.payloadReply(i).bits.handle.peek().litValue).distinct.size==4,
+        "four image owners must hold distinct resident reservations")
       d.io.payloadCancel(2).poke(true.B);t.tick();d.io.payloadCancel(2).poke(false.B)
-      for(_<-0 until 9){t.tick();d.io.completion.valid.expect(false.B);d.io.poolDrained.expect(false.B);d.io.reservedBytes.expect(reserved.U)}
+      for(_<-0 until 9){t.tick();d.io.completion.valid.expect(false.B);d.io.poolDrained.expect(false.B);d.io.reservedBytes.expect(reserved.U)
+        for(i<-1 to 4){d.io.payloadReplyHeld(i).expect(true.B);d.io.payloadReply(i).valid.expect(true.B)
+          assert(d.io.payloadReply(i).bits.peek().litValue==replies(i-1),"held actual allocation lease changed during peer cancel")}}
       for(i<-1 to 4)d.io.holdPayloadReply(i).poke(false.B)
       t.finish(4);t.healthy()
       assert(t.geometryLaunches==12)

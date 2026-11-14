@@ -44,6 +44,7 @@ private[graphics] class NativeLayeredFourImageHarness extends Module {
     // lease. Never synthesize a staging success or an ownership indication.
     val holdPayloadReply=Input(Vec(5,Bool()))
     val payloadReplyHeld=Output(Vec(5,Bool()))
+    val payloadReply=Output(Vec(5,Valid(new ShaderPayloadControlResponse(payload))))
     val task=Output(Vec(5,Valid(new ShaderPayloadBinding(config,payload))))
     val launch=Output(Valid(Bool()));val launchPayload=Output(Valid(new ShaderPayloadBinding(config,payload)))
     val imageStore=Output(Vec(4,Bool()));val imageAck=Output(Vec(4,Bool()))
@@ -81,6 +82,7 @@ private[graphics] class NativeLayeredFourImageHarness extends Module {
     management.request(i)<>port.request;port.response<>management.response(i)
     port.context:=7.U;port.cancel:=io.payloadCancel(i)
     io.task(i):=port.task;io.payloadReplyHeld(i):=reply.valid && io.holdPayloadReply(i)
+    io.payloadReply(i).valid:=reply.valid;io.payloadReply(i).bits:=reply.bits
   }
   private val invalidations=Module(new Queue(new CacheLineInvalidate(config),1))
   invalidations.io.enq<>system.io.graphicsShaderL1Invalidate
