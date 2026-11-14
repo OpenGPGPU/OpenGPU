@@ -11,12 +11,12 @@ import opengpu.graphics._
   * migrate to the next domain. Unselected domains observe an idle engine.
   */
 class TessellationImageBankMux(config:GpuConfig,p:VertexShaderStageConfig,shared:SharedCuShaderConfig,
-    engines:Int,payload:Option[ShaderPayloadConfig]) extends Module {
+    engines:Int,payload:Option[ShaderPayloadConfig],fragmentImageAvailable:Boolean=false) extends Module {
   require(engines>=1 && engines<=4)
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
-    val clients=Vec(3,Vec(engines,new TypedReplayTileImagePipelineIO(config,p,sharedConfig,payloadConfig)))
-    val bank=Flipped(Vec(engines,new TypedReplayTileImagePipelineIO(config,p,sharedConfig,payloadConfig)))
+    val clients=Vec(3,Vec(engines,new TypedReplayTileImagePipelineIO(config,p,sharedConfig,payloadConfig,fragmentImageAvailable=fragmentImageAvailable)))
+    val bank=Flipped(Vec(engines,new TypedReplayTileImagePipelineIO(config,p,sharedConfig,payloadConfig,fragmentImageAvailable=fragmentImageAvailable)))
     val active=Input(Bool());val domain=Input(UInt(2.W))
   })
   when(io.active){assert(io.domain<3.U,"invalid shared tessellation image bank owner")}

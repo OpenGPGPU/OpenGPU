@@ -106,4 +106,58 @@ class TessellationHostShaderRouterSpec extends AnyFlatSpec {
       pool.imageTask.get.table.base.expect(0x5000.U);pool.imageTask.get.table.identity.generation.expect(10.U)
     }
   }
+  it should "snapshot tessellation fragment images through stalls cancellation drain and task reuse without legacy bleed" in {
+    val cfg=GpuConfig() // Complete 16-lane / 8-warp / two-CU task interfaces.
+    simulate(new TessellationHostShaderRouter(cfg,2,8,1,imageAvailable=true,tessellationImageAvailable=true)){d=>
+      zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      val a=d.io.legacy;val b=d.io.tessellation;val pool=d.io.pool
+      a.completion.ready.poke(true.B)
+      def offer(client:SharedCuGraphicsPort,base:Int,generation:Int):Unit={
+        val image=client.imageTask.get
+        image.enabled.poke(true.B);image.stage.poke(GraphicsStage.fragment.U)
+        image.table.version.poke(1.U);image.table.identity.context.poke(7.U)
+        image.table.identity.pass.poke(8.U);image.table.identity.generation.poke(generation.U)
+        image.table.base.poke(base.U);image.table.limit.poke((base+1024).U)
+        client.launch.bits.commandId.poke(23.U);client.launch.valid.poke(true.B)
+        client.launch.ready.expect(true.B);d.clock.step();client.launch.valid.poke(false.B)
+        // Future publication mutations must not alter the pending launch.
+        image.table.base.poke(0xdead0000L.U);image.enabled.poke(false.B)
+      }
+      offer(b,0x8000,9);offer(a,0xa000,10)
+      for(_<-0 until 4){pool.launch.valid.expect(true.B)
+        pool.launch.bits.commandId.expect(1.U);pool.imageTask.get.enabled.expect(true.B)
+        pool.imageTask.get.table.base.expect(0x8000.U);pool.imageTask.get.table.identity.generation.expect(9.U)
+        d.io.drained.expect(false.B);d.clock.step()}
+      pool.launch.ready.poke(true.B);d.clock.step()
+      pool.imageTask.get.table.base.expect(0xa000.U);pool.launch.bits.commandId.expect(0.U)
+      d.clock.step();pool.launch.ready.poke(false.B)
+      // Cancel remains routed to the assigned tessellation CU, while its
+      // completion is backpressured. No task can reuse its slot before retire.
+      pool.owned.poke(3.U);pool.taskIds(0).poke(1.U);pool.taskIds(1).poke(0.U)
+      b.geometryCancel.get(0).poke(true.B);pool.geometryCancel.get(0).expect(true.B)
+      pool.geometryCancel.get(1).expect(false.B);b.tessellation.get(0).cancel.poke(true.B)
+      pool.tessellation.get(0).cancel.expect(true.B);pool.tessellation.get(1).cancel.expect(false.B)
+      pool.owned.poke(0.U);pool.completion.valid.poke(true.B);pool.completion.bits.commandId.poke(1.U)
+      for(_<-0 until 3){b.completion.valid.expect(true.B);b.completion.bits.commandId.expect(23.U)
+        pool.completion.ready.expect(false.B);b.launch.ready.expect(false.B);d.io.drained.expect(false.B);d.clock.step()}
+      b.completion.ready.poke(true.B);d.clock.step();b.geometryCancel.get(0).poke(false.B)
+      b.tessellation.get(0).cancel.poke(false.B)
+      pool.completion.bits.commandId.poke(0.U);a.completion.valid.expect(true.B);d.clock.step()
+      pool.completion.valid.poke(false.B);d.io.drained.expect(true.B)
+      offer(b,0xc000,11);pool.launch.valid.expect(true.B)
+      pool.imageTask.get.enabled.expect(true.B);pool.imageTask.get.table.base.expect(0xc000.U)
+      pool.imageTask.get.table.identity.generation.expect(11.U)
+      pool.launch.ready.poke(true.B);d.clock.step();pool.launch.ready.poke(false.B)
+      pool.completion.valid.poke(true.B);pool.completion.bits.commandId.poke(1.U);d.clock.step()
+      pool.completion.valid.poke(false.B);d.io.drained.expect(true.B)
+      // Patch/evaluation launches explicitly carry an empty publication after
+      // a sample fragment task has retired; neither owner's table is inherited.
+      zero(b.imageTask.get)
+      b.tessellationBases.get.valid.poke(true.B);b.tessellationBases.get.bits(7).poke(9.U)
+      b.launch.valid.poke(true.B);d.clock.step();b.launch.valid.poke(false.B)
+      pool.imageTask.get.enabled.expect(false.B);pool.imageTask.get.table.base.expect(0.U)
+      pool.tessellationBases.get.valid.expect(true.B);pool.tessellationBases.get.bits(7).expect(9.U)
+    }
+  }
+
 }

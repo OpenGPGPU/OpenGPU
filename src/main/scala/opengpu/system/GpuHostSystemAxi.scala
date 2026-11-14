@@ -110,8 +110,13 @@ class GpuHostSystemAxi(
   tessellationNative: Boolean = false,
   nativeFragmentImages: Boolean = false, imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false,
   nativeProtectedSources: Boolean = false, nativeGeometryTransport: Boolean = false,
-  nativeSampleTransport: Boolean = false
+  nativeSampleTransport: Boolean = false,
+  tessellationFragmentImages: Boolean = false, tessellationSampleShading: Boolean = false
 ) extends RawModule {
+  require(!tessellationFragmentImages || (tessellationNative && nativeFragmentImages),
+    "tessellation fragment images require the actual shared image path")
+  require(!tessellationSampleShading || (tessellationNative && nativeSampleTransport),
+    "tessellation sample shading requires the actual sample-plane path")
   require(!imageAtomicAvailable || imageAvailable, "image atomics require image execution")
   require(!storageAtomicAvailable || storageAvailable, "storage atomics require storage execution")
   require(!nativeFragmentImages || (imageAvailable && nativeBinnedGraphics.nonEmpty && sharedGraphics),
@@ -383,10 +388,12 @@ class GpuHostSystemAxi(
     val tessellation=if(tessellationNative){val n=nativeBinnedGraphics.get
       Some(Module(new TessellationNativeThreeDomainJobImage(gpuConfig,n.vertex,n.fragment,sharedShader.get,n.renderGraphics(graphicsConfig),
         engines=n.engines,pageBytes=n.pageBytes,writeCredits=n.writeCredits,tileSlots=n.tileSlots,pagedCapacity=n.pagedCapacity,
-        storage=n.storage,useSramBlackBoxes=useBlackBoxes,payload=localPayload,transformFeedback=nativeFeedback)))}else None
+        storage=n.storage,useSramBlackBoxes=useBlackBoxes,payload=localPayload,transformFeedback=nativeFeedback,
+        fragmentImageAvailable=tessellationFragmentImages,sampleShading=tessellationSampleShading)))}else None
     val tessellationMemory=if(tessellationNative)Some(Module(new TessellationHostMemoryFabric(gpuConfig,legacyGraphicsHostTransactions,tessellationTransactions)))else None
     val tessellationRouter=if(tessellationNative)Some(Module(new TessellationHostShaderRouter(gpuConfig,numComputeUnits,commandIdWidth,hostShaderTasksPerClient,localPayload,
-      imageAvailable=nativeFragmentImages,legacyGeometry=nativeBinnedGraphics.exists(_.nativeGeometry))))else None
+      imageAvailable=nativeFragmentImages,legacyGeometry=nativeBinnedGraphics.exists(_.nativeGeometry),
+      tessellationImageAvailable=tessellationFragmentImages)))else None
     val tessellationPayload=if(tessellationNative)localPayload.map(p=>Module(new TessellationHostPayloadOwner(p)))else None
     val queries=if(visibilityQueries)Some(Module(new opengpu.graphics.NativeVisibilityQueryEngine(gpuConfig,
       contexts=opengpu.graphics.NativeVisibilityQueryCapabilities.activeContexts,

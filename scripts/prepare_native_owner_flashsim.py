@@ -32,7 +32,8 @@ def check_manifest(manifest,*,rtl_emitted=True):
     full_resources = manifest.get('profile') == FULL_PROFILE
     sample_resources = manifest.get('profile') == SAMPLE_PROFILE
     if not sample_resources and any(key in manifest for key in
-            ('nativeSampleShading','nativeSampleTransport','nativeFragmentVersions')):
+            ('nativeSampleShading','nativeSampleTransport','nativeFragmentVersions',
+             'tessellationFragmentImages','tessellationSampleShading')):
         raise RuntimeError('Sample transport metadata requires its distinct owner factory')
     expected_words = SAMPLE_WORDS if sample_resources else FULL_WORDS if full_resources else COMPUTE_WORDS if compute_stage else EXPECTED_WORDS
     required={'version':1,'profile':PROFILE,'computeUnits':2,'frameWidth':640,'frameHeight':480,
@@ -52,7 +53,8 @@ def check_manifest(manifest,*,rtl_emitted=True):
     if sample_resources:
         required.update(profile=SAMPLE_PROFILE, computeFeatureFlags=0x1fffff,
             resourceDiscoveryWords=112, ownerResourceStage=SAMPLE_STAGE,
-            nativeSampleShading=True, nativeSampleTransport=True, nativeFragmentVersions=[6,7])
+            nativeSampleShading=True, nativeSampleTransport=True, nativeFragmentVersions=[6,7],
+            tessellationFragmentImages=True, tessellationSampleShading=True)
     if any(type(manifest.get(k)) is not type(v) or manifest[k]!=v for k,v in required.items()):
         raise RuntimeError('Incomplete or mismatched protected owner factory')
     words=manifest.get('requiredDiscovery')

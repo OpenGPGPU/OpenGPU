@@ -14,13 +14,14 @@ import opengpu.testutil.GraphicsTestResolution
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-private class TessellationSystemIsolineImageSharedHarness(transformFeedback:Boolean=false) extends Module {
-  val cfg=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
-  val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2);val f=FragmentShaderConfig(2,4)
+private class TessellationSystemIsolineImageSharedHarness(transformFeedback:Boolean=false,sampleImages:Boolean=false) extends Module {
+  val cfg=GpuConfig(lanes=if(sampleImages)16 else 4,warps=if(sampleImages)8 else 2,l2Sets=8,l2Ways=2)
+  val p=if(sampleImages)VertexShaderStageConfig()else VertexShaderStageConfig(VertexInputFetchConfig(2,2),2)
+  val f=FragmentShaderConfig(if(sampleImages)16 else 2,4)
   val g=GraphicsConfig(screenWidth=math.min(4,GraphicsTestResolution.width),screenHeight=math.min(4,GraphicsTestResolution.height))
-  val payload=ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=1024,owners=3,ports=6)
+  val payload=ShaderPayloadConfig(capacityBytes=if(sampleImages)524288 else 4096,maxPayloadBytes=if(sampleImages)65536 else 1024,owners=3,ports=6)
   val hostSlots=TessellationSystemIsolineImagePipeline.memoryTransactions(2,2,8)
-  private val slots=GpuSystem.totalMemoryTransactions(2,4,hostSlots)
+  private val slots=GpuSystem.totalMemoryTransactions(2,if(sampleImages)8 else 4,hostSlots)
   val io=IO(new Bundle {
     val begin=Flipped(Decoupled(new TypedVertexBinImageDescriptor))
     val task=Flipped(Decoupled(new TessellationSystemIsolineBinTask(cfg,p,4)))
@@ -36,13 +37,16 @@ private class TessellationSystemIsolineImageSharedHarness(transformFeedback:Bool
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,slots)))
     val cancel=Input(Bool());val context=Input(UInt(32.W))
     val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(cfg))else None
+    val imageLaunch=Output(Bool());val controlLaunch=Output(Bool());val imageRoot=Output(UInt(32.W))
     val idle=Output(Bool());val reserved=Output(UInt(32.W));val poolDrained=Output(Bool())
   })
   private val stage=Module(new TessellationSystemIsolineImagePipeline(cfg,p,f,SharedCuShaderConfig(2,taskIdWidth=4),
-    g=g,engines=2,pageBytes=128,writeCredits=2,tileSlots=1,pagedCapacity=8,payload=Some(payload),transformFeedback=transformFeedback))
+    g=g,engines=2,pageBytes=128,writeCredits=2,tileSlots=1,pagedCapacity=8,storage=if(sampleImages)NativeBinnedGraphicsConfig.fourEngineApiExtent.storage else TypedTileColorConfig(),
+    payload=Some(payload),transformFeedback=transformFeedback,
+    fragmentImageAvailable=sampleImages,sampleShading=sampleImages))
   val recordBytes=stage.recordBytes
-  private val system=Module(new GpuSystem(cfg,numComputeUnits=2,commandIdWidth=4,transactionsPerCu=4,
-    enableGraphicsKernels=true,geometryAvailable=true,tessellationAvailable=true,graphicsHostTransactions=hostSlots,
+  private val system=Module(new GpuSystem(cfg,numComputeUnits=2,commandIdWidth=4,transactionsPerCu=if(sampleImages)8 else 4,
+    enableGraphicsKernels=true,imageAvailable=sampleImages,graphicsImageAvailable=sampleImages,geometryAvailable=true,tessellationAvailable=true,graphicsHostTransactions=hostSlots,
     instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
     shaderPayload=Some(payload),producerPayloadPins=TessellationSystemIsolineImagePipeline.payloadPins(2)))
   private def tie(d:Data):Unit=d match {
@@ -60,6 +64,15 @@ private class TessellationSystemIsolineImageSharedHarness(transformFeedback:Bool
   io.tileDone<>stage.io.tileDone;io.completion<>stage.io.completion;stage.io.cancel:=io.cancel
   if(transformFeedback)io.feedback.get<>stage.io.feedback.get
   system.io.graphicsKernels.get<>stage.io.shared
+  io.imageLaunch:=false.B;io.controlLaunch:=false.B;io.imageRoot:=0.U
+  if(sampleImages){
+    io.imageLaunch:=stage.io.shared.launch.fire && stage.io.shared.imageTask.get.enabled
+    io.controlLaunch:=stage.io.shared.launch.fire && stage.io.shared.tessellationBases.get.valid
+    io.imageRoot:=stage.io.shared.imageTask.get.table.base
+    when(stage.io.shared.launch.valid && (stage.io.shared.tessellationBases.get.valid || stage.io.shared.geometryTask.get.valid)){
+      assert(!stage.io.shared.imageTask.get.asUInt.orR,"patch launch inherited fragment image publication")
+    }
+  }
   private val hostQueue=Module(new Queue(new ComputeMemoryRequest(cfg,64,hostSlots),2,pipe=true))
   hostQueue.io.enq<>stage.io.memoryRequest;system.io.graphicsHostRequest<>hostQueue.io.deq;stage.io.memoryResponse<>system.io.graphicsHostResponse
   private val lowerQueue=Module(new Queue(new ComputeMemoryRequest(cfg,64,slots),2,pipe=true))
@@ -76,6 +89,7 @@ private class TessellationSystemIsolineImageSharedHarness(transformFeedback:Bool
 }
 
 class TessellationSystemIsolineImageSharedSystemSpec extends AnyFlatSpec {
+  protected def sampleImageQualification:Boolean=false
   import WindowRecordTest.{zero,Memory}
   import TypedColorReference.fp
   private def vector(fn:Int,form:Int,rd:Int,vs1:Int):BigInt=
@@ -102,27 +116,54 @@ class TessellationSystemIsolineImageSharedSystemSpec extends AnyFlatSpec {
     code+=addi(5,7,6*stride);code+=vm(5,1,false);code+=addi(6,7,inputs*stride);code+=vm(6,1,true)
     code+=BigInt("30500073",16);code.toVector
   }
-  for(testMode<-Seq("baseline","capture","discard","fault","reset","reset_fault"))
+  // Explicit TES recipe: clip (u,-0.25,0,1), u=0..1. With the 4x4
+  // viewport this is the fixed width-one line (2,1.5)..(4,1.5).
+  private val sampleEvaluationProgram=Vector(addi(1,0,0),addi(2,0,0),geometry(32,3,1,2),
+    addi(4,0,0),geometry(33,0,4,3),BigInt("be8001b7",16),addi(4,0,1),geometry(33,0,4,3),
+    BigInt("3f8002b7",16),addi(4,0,3),geometry(33,0,4,5),addi(4,0,4),geometry(33,0,4,5),
+    geometry(35),geometry(36),BigInt("30500073",16))
+  private def sampleProgram:Vector[BigInt]={
+    // Full ABI6: 128 threads, 16 varyings, four raw MRTs. Export SampleID,
+    // SamplePosition.xy and SampleMaskIn without float/uint reinterpretation.
+    val code=mutable.ArrayBuffer[BigInt](BigInt("00241393",16),add(7,1,7),BigInt("c1087057",16))
+    def address(rd:Int,array:Int):Unit={
+      val offset=array*512
+      code+=((BigInt((offset+2048)>>12)<<12)|(BigInt(rd)<<7)|0x37)
+      code+=addi(rd,rd,offset&4095);code+=add(rd,7,rd)
+    }
+    for(location<-0 until 4;(source,c)<-Seq(72,73,74,5).zipWithIndex){
+      address(5,source);code+=vm(5,1,false);address(6,75+location*4+c);code+=vm(6,1,true)
+    }
+    code+=BigInt("30500073",16);code.toVector
+  }
+  for(testMode<-(if(sampleImageQualification)Seq("sample-images-0","sample-images-1","sample-images-2")
+    else Seq("baseline","capture","discard","fault","reset","reset_fault")))
   it should s"shade controlled isoline patches into typed images with feedback mode=$testMode" in {
-    val enabled=testMode!="baseline";val fault=testMode=="fault" || testMode=="reset_fault"
+    val sampleImages=sampleImageQualification;val sampleMode=if(sampleImages)testMode.last.asDigit else 0
+    if(sampleImages)require(sys.props.get("opengpu.tessellationSampleImageQualification").contains("1"),
+      "select the full-capacity component qualification explicitly")
+    val enabled= !sampleImages && testMode!="baseline";val fault=testMode=="fault" || testMode=="reset_fault"
     val reset=testMode.startsWith("reset");val discard=testMode=="discard"
     val frameStatus=if(fault)5 else if(reset)4 else 0
-    simulate(new TessellationSystemIsolineImageSharedHarness(transformFeedback=enabled)){d=>
+    simulate(new TessellationSystemIsolineImageSharedHarness(transformFeedback=enabled,sampleImages=sampleImages)){d=>
       zero(d.io);d.reset.poke(true.B);d.clock.step(2);d.reset.poke(false.B)
       val memory=new Memory(d.io.memoryRequest.bits,d.io.memoryResponse.bits,d.io.memoryRequest.valid,d.io.memoryRequest.ready,
         d.io.memoryResponse.valid,d.io.memoryResponse.ready)
       val feedbackMemory=d.io.feedback.map(f=>new Memory(f.memoryRequest.bits,f.memoryResponse.bits,f.memoryRequest.valid,
         f.memoryRequest.ready,f.memoryResponse.valid,f.memoryResponse.ready))
       feedbackMemory.foreach{m=>m.delay=24;if(fault)m.faultAt=Set(BigInt(0x700000))}
+      var imageLaunches=0;var controlLaunches=0
       var recorded=0;var resetIssued=false;var pendingEnd=false
       controlProgram.zipWithIndex.foreach{case(w,i)=>memory.putWord(0x1000+i*4,w)}
-      isolineProgram.zipWithIndex.foreach{case(w,i)=>memory.putWord(0x3000+i*4,w)}
-      fragmentProgram.zipWithIndex.foreach{case(w,i)=>memory.putWord(0x2000+i*4,w)}
-      val fields=TypedFragmentStateLayout.fields(new TypedFragmentState(FragmentShaderConfig(2,4)))
+      (if(sampleImages)sampleEvaluationProgram else isolineProgram).zipWithIndex.foreach{case(w,i)=>memory.putWord(0x3000+i*4,w)}
+      (if(sampleImages)sampleProgram else fragmentProgram).zipWithIndex.foreach{case(w,i)=>memory.putWord(0x2000+i*4,w)}
+      val fields=TypedFragmentStateLayout.fields(new TypedFragmentState(FragmentShaderConfig(if(sampleImages)16 else 2,4)))
       val clear=Vector(0.1,0.2,0.3,0.4).map(fp)
       def identity(i:GraphicsWorkIdentity):Unit={i.context.poke(7.U);i.pass.poke(8.U);i.generation.poke(9.U)}
       def tick():Unit={
         memory.drive();feedbackMemory.foreach(_.drive())
+        if(sampleImages && d.io.imageLaunch.peek().litToBoolean){imageLaunches+=1;d.io.imageRoot.expect(0x9000.U)}
+        if(sampleImages && d.io.controlLaunch.peek().litToBoolean)controlLaunches+=1
         for(e<-0 until 2){d.io.out(e).ready.poke(true.B);d.io.primitiveDone(e).ready.poke(true.B);d.io.tileDone(e).ready.poke(true.B)}
         d.io.feedback.foreach{f=>
           if(pendingEnd)f.command.ready.expect(false.B)
@@ -152,14 +193,22 @@ class TessellationSystemIsolineImageSharedSystemSpec extends AnyFlatSpec {
       }
       val stateBase=0x8000;for(w<-0 until 128)memory.putWord(stateBase+w*4,0)
       for((v,i)<-Vector[BigInt](TypedFragmentStateLayout.magic,512,1,4,7,8,9,0).zipWithIndex)memory.putWord(stateBase+i*4,v)
-      val scratch0=0x100000;val scratch1=0x110000
-      val prefix=FragmentShaderConfig(2,4).prefixBytes(8,1,1,FragmentInputAbi.center)
-      val values=Map[String,BigInt]("version"->1,"engineCount"->2,"fragment.version"->FragmentInputAbi.center,"fragment.identity.context"->7,"fragment.identity.pass"->8,"fragment.identity.generation"->9,
-        "fragment.shaderPc"->0x2000,"fragment.varyingSlots"->1,"fragment.colorSlots"->1,"fragment.colorMask"->1,"fragment.sampleMode"->0,
+      val scratch0=0x100000;val scratch1=if(sampleImages)0x140000 else 0x110000
+      val abi=if(sampleImages)FragmentInputAbi.sample else FragmentInputAbi.center
+      val prefix=FragmentShaderConfig(if(sampleImages)16 else 2,4).prefixBytes(if(sampleImages)128 else 8,
+        if(sampleImages)16 else 1,if(sampleImages)4 else 1,abi)
+      val values=Map[String,BigInt]("version"->1,"engineCount"->2,"fragment.version"->abi,"fragment.identity.context"->7,"fragment.identity.pass"->8,"fragment.identity.generation"->9,
+        "fragment.shaderPc"->0x2000,"fragment.varyingSlots"->(if(sampleImages)16 else 1),"fragment.colorSlots"->(if(sampleImages)4 else 1),"fragment.colorMask"->(if(sampleImages)15 else 1),"fragment.sampleMode"->sampleMode,
         "fragment.sampler.texWidth"->1,"fragment.sampler.texHeight"->1,
         "fragment.scratch.base"->scratch0,"fragment.scratch.limit"->(scratch0+prefix),"fragment.scratch.allocationBase"->scratch0,"fragment.scratch.allocationLimit"->(scratch0+prefix),
         "scratch[0].base"->scratch1,"scratch[0].limit"->(scratch1+prefix),"scratch[0].allocationBase"->scratch1,"scratch[0].allocationLimit"->(scratch1+prefix),
-        "tests.version"->1,"tests.depthEnable"->0,"tests.front.function"->6,"tests.back.function"->6,"blend.version"->1)
+        "tests.version"->1,"tests.depthEnable"->0,"tests.front.function"->6,"tests.back.function"->6,"blend.version"->1) ++
+        (if(sampleImages)Map[String,BigInt]("image.version"->1,"image.address"->0x8800) ++
+          (0 until 4).map(i=>s"fragment.colorTypes[$i]"->BigInt(1))else Map.empty[String,BigInt])
+      if(sampleImages){
+        for((v,w)<-Vector[BigInt](ShaderImagePublicationLayout.magic,64,1,7,8,9,1,1,0x9000,0x9400,0).zipWithIndex)
+          memory.putWord(0x8800+4*w,v)
+      }
       for(field<-fields){val raw=values.getOrElse(field.name,BigInt(0))&((BigInt(1)<<(field.words*32))-1)
         for(w<-0 until field.words)memory.putWord(stateBase+(field.word+w)*4,(raw>>(w*32))&0xffffffffL)}
 
@@ -169,8 +218,8 @@ class TessellationSystemIsolineImageSharedSystemSpec extends AnyFlatSpec {
       a.screenWidth.poke(4.U);a.screenHeight.poke(4.U);a.tileLog2.poke(3.U)
       val b=dsc.bins.bins;b.version.poke(3.U);b.tileCount.poke(1.U);b.directoryBase.poke(0x500000.U);b.directoryLimit.poke(0x500080.U)
       b.pool.version.poke(1.U);identity(b.pool.identity);b.pool.base.poke(0x400000.U);b.pool.limit.poke(0x410000.U);b.pool.pageSizeLog2.poke(7.U)
-      dsc.states.version.poke(1.U);identity(dsc.states.identity);dsc.states.base.poke(0x8000.U);dsc.states.limit.poke(0x8400.U);dsc.scratchStride.poke(4096.U)
-      for(e<-0 until 2){dsc.scratch(e).base.poke((0x100000+e*0x10000).U);dsc.scratch(e).limit.poke((0x102000+e*0x10000).U)}
+      dsc.states.version.poke(1.U);identity(dsc.states.identity);dsc.states.base.poke(0x8000.U);dsc.states.limit.poke(0x8400.U);dsc.scratchStride.poke((if(sampleImages)65536 else 4096).U)
+      for(e<-0 until 2){dsc.scratch(e).base.poke((0x100000+e*(if(sampleImages)0x40000 else 0x10000)).U);dsc.scratch(e).limit.poke(((if(sampleImages)0x120000 else 0x102000)+e*(if(sampleImages)0x40000 else 0x10000)).U)}
       val im=dsc.image;im.version.poke(1.U);im.pixels.version.poke(1.U);val c=im.pixels.colors;c.version.poke(1.U);identity(c.identity)
       c.tileLog2.poke(3.U);c.tileWidth.poke(4.U);c.tileHeight.poke(4.U);c.reservedBytes.poke(4096.U)
       val color=c.colors(0);color.enabled.poke(true.B);color.format.poke(TypedColorFormat.id("RGBA8").U);color.offset.poke(4096.U)
@@ -180,6 +229,19 @@ class TessellationSystemIsolineImageSharedSystemSpec extends AnyFlatSpec {
       view.imageWidth.poke(4.U);view.imageHeight.poke(4.U);view.rowPitch.poke(16.U)
       view.readable.poke(true.B);view.writable.poke(true.B);view.store.poke(true.B)
       for(a<-0x600000 until 0x600040)memory.bytes(a)=0
+      if(sampleImages){
+        c.sampleMode.poke(sampleMode.U)
+        for(i<-0 until 4){
+          val v=c.colors(i);v.enabled.poke(true.B);v.format.poke(TypedColorFormat.id("RGBA32UI").U)
+          v.offset.poke((4096+i*4096).U);v.channelMask.poke(15.U);v.loadOp.poke(AttachmentLoadOp.clear.U)
+          v.clear.foreach(_.poke(0.U))
+          val out=im.views(i);val base=0x600000+i*0x10000;val bytes=16*16*(1<<sampleMode)
+          out.base.poke(base.U);out.limit.poke((base+bytes).U);out.allocationBase.poke(base.U)
+          out.allocationLimit.poke((base+bytes).U);out.imageWidth.poke(4.U);out.imageHeight.poke(4.U)
+          out.rowPitch.poke((4*16*(1<<sampleMode)).U);out.readable.poke(true.B);out.writable.poke(true.B);out.store.poke(true.B)
+          for(a<-base-64 until base+bytes+64)memory.bytes(a)=0xa7
+        }
+      }
       d.io.context.poke(101.U);d.io.begin.valid.poke(true.B);until("begin")(d.io.begin.ready.peek().litToBoolean);tick();d.io.begin.valid.poke(false.B)
       if(enabled){feedbackCommand(TransformFeedbackAction.end);pendingEnd=true}
 
@@ -190,12 +252,12 @@ class TessellationSystemIsolineImageSharedSystemSpec extends AnyFlatSpec {
         src.commandId.poke(3.U);src.evaluationKernel.kernelPc.poke(0x3000.U);src.outputComponents.poke(5.U)
         src.patchInputCount.poke(1.U);src.patchInputs(0).perPatch.poke(true.B)
         for(i<-Seq(0,1,3)){view.componentSources(i).valid.poke(true.B);view.componentSources(i).bits.poke(i.U)}
-        view.varyingSlots.poke(1.U);view.componentSources(4).valid.poke(true.B);view.componentSources(4).bits.poke(4.U)
+        view.varyingSlots.poke((if(sampleImages)16 else 1).U);view.componentSources(4).valid.poke(true.B);view.componentSources(4).bits.poke(4.U)
         ctl.patch.context.taskId.poke(taskId.U);ctl.patch.context.layout.inputVertices.poke(1.U)
         ctl.patch.context.layout.outputVertices.poke(4.U);ctl.patch.context.layout.patchComponents.poke(1.U)
         ctl.kernel.kernelPc.poke(0x1000.U);for(i<-0 until 3){ctl.kernel.gridSize(i).poke(1.U);ctl.kernel.localSize(i).poke((if(i==0)4 else 1).U)}
         ctl.bases(0).poke(0.U);ctl.bases(1).poke(4.U)
-        t.raster.version.poke(1.U);t.raster.pointSize.poke("h3f800000".U);t.raster.screenW.poke(4.U);t.raster.screenH.poke(4.U)
+        t.raster.version.poke(1.U);t.raster.sampleMode.poke(sampleMode.U);t.raster.pointSize.poke("h3f800000".U);if(sampleImages)t.raster.lineWidth.poke(fp(1).U);t.raster.screenW.poke(4.U);t.raster.screenH.poke(4.U)
         t.state.poke(0.U);t.token.poke((200+taskId).U)
         d.io.feedback.foreach{f=>f.scope.context.poke(7.U);f.scope.program.poke(9.U)}
         d.io.task.valid.poke(true.B);until("task")(d.io.task.ready.peek().litToBoolean);tick();d.io.task.valid.poke(false.B)
@@ -243,8 +305,30 @@ class TessellationSystemIsolineImageSharedSystemSpec extends AnyFlatSpec {
       until("idle")(d.io.idle.peek().litToBoolean);d.io.reserved.expect(0.U);d.io.poolDrained.expect(true.B)
       assert(memory.pending.isEmpty && memory.reply.isEmpty)
       val reds=(0 until 16).map(i=>memory.bytes.getOrElse(0x600000+i*4,0))
-      if(frameStatus==0 && !discard)assert(reds.contains(255) && reds.contains(26),s"expected shaded red and clear pixels, got $reds")
+      if(frameStatus==0 && !discard && !sampleImages)assert(reds.contains(255) && reds.contains(26),s"expected shaded red and clear pixels, got $reds")
       if(discard)assert(reds.forall(_==26),s"discarded tessellation changed the clear image: $reds")
+      if(sampleImages){
+        assert(imageLaunches>0 && controlLaunches>=2,"real patch and image-bound fragment tasks must both execute")
+        assert(memory.seen.exists(_.address==0x8800),"the actual GFS publication must be fetched")
+        // Expected coverage comes from the fixed TES program and the
+        // independent integer diamond/line reference, never returned pixels.
+        val unit=BigInt(1)<<d.g.subPixelBits
+        val coords=Vector((2*unit,3*unit/2),(4*unit,3*unit/2),(2*unit,3*unit/2))
+        val settings=TriangleRasterReference.Settings(width=4,height=4,mode=sampleMode)
+        val covered=PointLineReference.samples(coords,1,settings,d.g,PointLineReference.Sizes(line=1)).flatten
+          .flatMap(p=>(0 until(1<<sampleMode)).filter(s=>(p.mask&(1<<s))!=0).map(s=>(p.x,p.y,s))).toSet
+        for(s<-0 until(1<<sampleMode))assert(covered((2,1,s)),"independent interior sample witness missing")
+        for(i<-0 until 4;y<-0 until 4;x<-0 until 4;s<-0 until(1<<sampleMode)){
+          val address=0x600000+i*0x10000+((y*4+x)*(1<<sampleMode)+s)*16
+          val got=Vector.tabulate(4)(c=>memory.word(address+4*c))
+          val px=fp(if(sampleMode==0)0.5 else if((s&1)!=0)0.75 else 0.25)
+          val py=fp(if(sampleMode==0)0.5 else if((s&(if(sampleMode==1)1 else 2))!=0)0.75 else 0.25)
+          val expected=if(covered((x,y,s)))Vector[BigInt](s,px,py,1<<s)else Vector.fill(4)(BigInt(0))
+          assert(got==expected,s"sample MRT=$i ($x,$y,$s): $got expected=$expected")
+        }
+        for(i<-0 until 4;offset<-( -64 until 0)++(16*16*(1<<sampleMode) until 16*16*(1<<sampleMode)+64))
+          assert(memory.bytes(0x600000+i*0x10000+offset)==0xa7,"sample source allocation guard changed")
+      }
       info(s"CONTROLLED_ISOLINE_WINDOW_BIN_TYPED_IMAGE_SHARED patches=2 primitives=$primitives tiles=1 cycles=${memory.cycle}")
     }
   }

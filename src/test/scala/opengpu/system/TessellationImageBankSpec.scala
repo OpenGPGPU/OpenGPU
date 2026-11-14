@@ -34,7 +34,7 @@ class TessellationImageBankOwnerSpec extends AnyFlatSpec {
 /** Keep the complete production interface inside the harness. Exporting every
   * individual leaf to DPI creates thousands of redundant C++ accessor bodies.
   */
-private class TessellationImageBankMuxHarness(usePayload:Boolean) extends Module {
+private class TessellationImageBankMuxHarness(usePayload:Boolean,images:Boolean=false) extends Module {
   val io=IO(new Bundle {
     val active=Input(Bool());val domain=Input(UInt(2.W));val pattern=Input(UInt(16.W))
     val matches=Output(Bool());val checkedLeaves=Output(UInt(32.W))
@@ -42,7 +42,7 @@ private class TessellationImageBankMuxHarness(usePayload:Boolean) extends Module
   private val cfg=GpuConfig(lanes=4,warps=2)
   private val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2)
   private val payload=if(usePayload)Some(ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=1024,owners=5,ports=8))else None
-  private val mux=Module(new TessellationImageBankMux(cfg,p,SharedCuShaderConfig(2,taskIdWidth=4),4,payload))
+  private val mux=Module(new TessellationImageBankMux(cfg,p,SharedCuShaderConfig(2,taskIdWidth=4),4,payload,fragmentImageAvailable=images))
   mux.io.active:=io.active;mux.io.domain:=io.domain
   private def leaves(d:Data,path:String=""):Vector[(String,Data)]=d match {
     case r:Record=>r.elements.toVector.flatMap{case(n,v)=>leaves(v,s"$path.$n")}
@@ -80,9 +80,9 @@ private class TessellationImageBankMuxHarness(usePayload:Boolean) extends Module
 }
 
 class TessellationImageBankMuxSpec extends AnyFlatSpec {
-  for(usePayload<-Seq(false,true))
-  it should s"route every engine/control/reply leaf exclusively to one retained domain with payload=$usePayload" in {
-    simulate(new TessellationImageBankMuxHarness(usePayload)){d=>
+  for(usePayload<-Seq(false,true);images<-Seq(false,true))
+  it should s"route every engine/control/reply leaf exclusively to one retained domain with payload=$usePayload images=$images" in {
+    simulate(new TessellationImageBankMuxHarness(usePayload,images)){d=>
       d.io.active.poke(false.B);d.io.domain.poke(0.U);d.io.pattern.poke(0.U)
       d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
       assert(d.io.checkedLeaves.peek().litValue>1000,"the full four-engine interface must be checked")
