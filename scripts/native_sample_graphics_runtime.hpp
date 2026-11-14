@@ -32,8 +32,18 @@ void active_sample_graphics_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Me
   uint32_t context=0;
   for(size_t record=0;record<2;record++) {
     const auto stem="record-"+std::to_string(record);
-    if(record)wait_input(session/(stem+".capture"),session,timeout);
-    const auto capture=record?SampleCapture::read((session/(stem+".capture")).string(),true):first;
+    std::string original;
+    auto capture=first;
+    if(record) {
+      const auto path=session/(stem+".capture");wait_input(path,session,timeout);
+      const auto bytes=std::filesystem::file_size(path);
+      require(bytes>0 && bytes<=2097152,"ordinary112 capture exceeds its bounded admission wire");
+      std::ifstream input(path,std::ios::binary);require(bool(input),"cannot read ordinary112 capture");
+      original.resize(bytes);input.read(&original[0],std::streamsize(bytes));
+      require(input.gcount()==std::streamsize(bytes) && input.peek()==EOF,
+        "ordinary112 capture changed while being read");
+      std::istringstream parsed(original);capture=SampleCapture::read(parsed,true);
+    }
     match_profile(capture,profile);
     std::map<uint32_t,uint32_t> staged;
     for(const auto &action:capture.trace)if(action.kind==Kind::write)staged[action.address]=action.value;
@@ -43,6 +53,16 @@ void active_sample_graphics_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Me
     require(commands.insert(capture.command_id).second,"ordinary112 reused a command identity");
     require(sources.insert(staged.at(GPU_REG_UCMD_SOURCE)).second,"ordinary112 reused a private job owner");
     require(staged.at(GPU_REG_UCMD_FLAGS)==0,"ordinary112 triangle cannot discard raster or capture feedback");
+    if(record) {
+      // The controller must bind this exact original capture to its retained
+      // canonical source plan before a second enqueue can run on the DUT.
+      const auto path=session/(stem+".admit");wait_input(path,session,timeout);
+      std::ifstream admission(path,std::ios::binary);magic(admission,"OGNGA001");
+      require(read_le(admission,4)==record && read_le(admission,4)==original.size(),
+        "ordinary112 admission changed the record or capture size");
+      for(unsigned char byte:original)require(read_le(admission,1)==byte,"ordinary112 admission changed capture bytes");
+      require(admission.peek()==EOF,"ordinary112 admission has trailing bytes");
+    }
     verify_readonly(memory,memory,capture.writable);
     pte.observe(memory,capture);
     auto held=hold_record(sim,agent,bus,memory,capture,true);
