@@ -28,6 +28,7 @@ cp "$GPU_DIR/userspace/pipe_opengpu.c" "$GPU_DIR/userspace/pipe_opengpu.h" "$GPU
     "$GPU_DIR/driver/opengpu_shader_resources.h" "$GPU_DIR/driver/opengpu_kernarg_va.h" \
     "$GPU_DIR/driver/opengpu_native_layout.h" \
     "$GPU_DIR/driver/opengpu_native_frame.c" "$GPU_DIR/driver/opengpu_native_frame.h" \
+    "$GPU_DIR/driver/opengpu_native_frame_internal.h" "$GPU_DIR/driver/opengpu_native_layered_abi.h" \
     "$GPU_DIR/driver/opengpu_native_frame_abi.h" "$GPU_DIR/driver/opengpu_native_binned_abi.h" \
     "$GPU_DIR/driver/opengpu_native_binned_host_abi.h" \
     "$GPU_DIR/driver/opengpu_typed_fragment_state_abi.h" \

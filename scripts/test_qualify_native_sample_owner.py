@@ -163,7 +163,7 @@ class Qualification(unittest.TestCase):
         bound=self.compiler_fixture();self.assertEqual(len(inputs.MESA_LIBRARIES),8)
         source=self.out/'source';source.mkdir();cpu=self.out/'cpu';cpu.mkdir()
         header=self.args.mesa/'src/a.h'
-        for i in range(len(inputs.MESA_UNITS)+5):(cpu/f'{i}.d').write_text(f'{cpu}/{i}.o: {header}\n')
+        for i in range(len(inputs.MESA_UNITS)+6):(cpu/f'{i}.d').write_text(f'{cpu}/{i}.o: {header}\n')
         inputs.check_dependencies(cpu,source,bound)
         archive_header=source/'fixture.h';archive_header.write_text('/* private archive fixture */')
         (cpu/'0.d').write_text(f'{cpu}/0.o: {archive_header}\n')
@@ -179,16 +179,17 @@ class Qualification(unittest.TestCase):
         (self.args.mesa_build/inputs.MESA_LIBRARIES[0]).unlink()
         with self.assertRaises(FileNotFoundError):inputs.snapshot(self.args.mesa,self.args.mesa_build,self.args.library_directory,self.out)
 
-    def test_live_build_declares_both_real_compiler_dependency_units_without_running_them(self):
+    def test_live_build_declares_three_real_producer_dependency_units_without_running_them(self):
         out=self.out/'live';out.mkdir()
         with patch.object(bridge.subprocess,'run') as run, \
              patch('test_native_mmio_capture.write_bodies'):
             bridge.build_bridge(out,sanitize=True,live=True)
         commands=[call.args[0] for call in run.call_args_list]
-        self.assertEqual(len(commands),3)
-        for command in commands[:2]:
+        self.assertEqual(len(commands),4)
+        for command in commands[:3]:
             self.assertIn('-MMD',command);self.assertIn('-MF',command);self.assertIn('-c',command)
-        self.assertNotEqual(commands[0][commands[0].index('-MF')+1],commands[1][commands[1].index('-MF')+1])
+        self.assertEqual(len({command[command.index('-MF')+1] for command in commands[:3]}),3)
+        self.assertTrue(any(str(command[command.index('-c')+1]).endswith('userspace/opengpu_native_sample_graphics.c') for command in commands[:3]))
         self.assertNotIn('-c',commands[-1]);self.assertNotIn('-MMD',commands[-1])
 
 

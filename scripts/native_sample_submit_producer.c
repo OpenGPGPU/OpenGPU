@@ -5,6 +5,8 @@
 #undef OPENGPU_NATIVE_SUBMIT_FIXTURE_MAIN
 #include "../driver/opengpu_native_sample_transport_features.h"
 #include "native_sample_expected_profile.inc"
+#include "../userspace/opengpu_native_sample_graphics.h"
+static struct opengpu_native_sample_runtime sample_runtime;
 
 struct sample_program {u32 meta[15], code[512];unsigned char bytes[2048];};
 static bool read_le(FILE *f,u32 *v)
@@ -33,12 +35,14 @@ static bool valid_program(const struct sample_program *p)
     return p->meta[2]==l.input_arrays && p->meta[3]==512 && p->meta[4]==l.prefix_bytes;
 }
 struct bridge_profile {const struct native_kernel_profile_word *words;unsigned count;};
+#ifdef OPENGPU_NATIVE_MMIO
 static u32 profile_read(void *opaque,u32 address)
 {
     const struct bridge_profile *p=opaque;
     for(unsigned i=0;i<p->count;i++)if(p->words[i].address==address)return p->words[i].value;
     return 0;
 }
+#endif
 static bool install_profile(struct native_kernel_session *s,unsigned count)
 {
     /* Source-fixed CPU fixtures, never observed DUT words. Older tables are
@@ -47,22 +51,21 @@ static bool install_profile(struct native_kernel_session *s,unsigned count)
     if(count==96)p=(struct bridge_profile){legacy_expected_profile,101};
     else if(count==104)p=(struct bridge_profile){layered_expected_profile,109};
     else if(count!=112)return false;
-    struct opengpu_native_source_limits limits={0};bool layered=false,sample=false;
-    const u32 caps=profile_read(&p,GPU_REG_CAPABILITIES);
-    if(!opengpu_read_native_sample_transport_limits(profile_read(&p,GPU_REG_ID),profile_read(&p,0x368),caps,
-         count==112?0x540:0x520,&p,profile_read,&limits,&layered,&sample) || !layered || !sample)return false;
-    s->gpu.hw.capabilities=caps;s->gpu.hw.native_sources.available=limits.available;
-    s->gpu.hw.native_sources.capacity=limits.capacity;s->gpu.hw.native_sources.engines=limits.engines;
-    s->gpu.hw.native_sources.frame=limits.frame;
-    s->gpu.hw.native_layered_transport=layered;s->gpu.hw.native_sample_transport=sample;
+    struct opengpu_native_sample_word observed[117]={0};
+    for(unsigned i=0;i<p.count;i++)observed[i]=(struct opengpu_native_sample_word){p.words[i].address,p.words[i].value};
+    if(opengpu_native_sample_runtime_decode(observed,p.count,&sample_runtime))return false;
+    s->gpu.hw.capabilities=sample_runtime.capabilities;s->gpu.hw.native_sources.available=sample_runtime.limits.available;
+    s->gpu.hw.native_sources.capacity=sample_runtime.limits.capacity;
+    s->gpu.hw.native_sources.engines=sample_runtime.limits.engines;
+    s->gpu.hw.native_sources.frame=sample_runtime.limits.frame;
+    s->gpu.hw.native_layered_transport=true;s->gpu.hw.native_sample_transport=true;
     return true;
 }
 static void make_record(struct native_kernel_session *s,struct native_test_record *r,
     struct drm_opengpu_native_layered_draw_plan *plan,const struct sample_program *p,unsigned samples)
 {
     test_record_init(s,r,1,2);
-    const struct opengpu_native_binned_host_caps caps={{0x474e4303,8,0x474e4a01,0x08000200,0xc2100800,0x08000800,0xe4908000,0x8813d902}};
-    struct opengpu_native_frame_request req={.caps=&caps,.width=4,.height=4,.samples=samples,.color_mask=15,
+    struct opengpu_native_frame_request req={.caps=&sample_runtime.limits.frame,.width=4,.height=4,.samples=samples,.color_mask=15,
         .context=s->context.id,.pass=8,.generation=9,.state_count=1,.scratch_stride=49152};
     for(unsigned c=0;c<4;c++){
         req.attachments[c].format=35;req.attachments[c].channel_mask=15;req.attachments[c].load_op=1;
@@ -73,23 +76,25 @@ static void make_record(struct native_kernel_session *s,struct native_test_recor
     req.attachments[4].image=(struct opengpu_native_frame_image){.gem=test_gem(s,4*4*4*samples),.row_pitch=4*4*samples,.store=1};
     req.primitives=test_gem(s,4096);req.directory=test_gem(s,64);req.pool[0]=test_gem(s,4096);
     for(unsigned e=0;e<4;e++)req.scratch[e]=test_gem(s,49152);
-    assert(!opengpu_native_frame_encode(&req,&r->encoded));
+    const struct opengpu_native_sample_frame_request frame={.runtime=&sample_runtime,
+        .frame=req,.source_pitch={4096}};
+    assert(!opengpu_native_sample_frame_encode(&frame,&r->encoded));
     r->submit.resource_count=r->encoded.resource_count;
-    r->job[0]=0x474e4a02;r->job[2]=2;r->job[54]=1;
-    r->encoded.frame.words[0]=0x474e4603;r->encoded.frame.words[2]=3;r->encoded.frame.words[299]=3;
-    r->encoded.frame.words[320]=1;r->encoded.frame.words[321]=1;r->encoded.frame.words[322]=4096;
     r->draw[20]=r->state[39]=samples==4?2:samples==2?1:0;
     r->draw[345]=16;
     struct opengpu_native_frame_gem vs_scratch=test_gem(s,40960);
     r->plan.vertex_scratch=(struct drm_opengpu_compute_uniform_view){.handle=vs_scratch.handle,.bytes=40960};
     r->state[82]=1;r->state[83]=7;r->state[84]=1;
     r->state[29]=p->meta[7];r->state[30]=15;r->state[31]=4;r->state[32]=0;r->state[55]=16;r->state[56]=6;
-    *plan=(struct drm_opengpu_native_layered_draw_plan){.draw=r->plan};
-    plan->draw.fragment_program=(struct drm_opengpu_native_program_view){.handle=3,.bytes=p->meta[14]*4};
-    memset(&plan->draw.fragment_uniforms,0,sizeof(plan->draw.fragment_uniforms));
+    r->plan.fragment_program=(struct drm_opengpu_native_program_view){.handle=3,.bytes=p->meta[14]*4};
+    memset(&r->plan.fragment_uniforms,0,sizeof(r->plan.fragment_uniforms));
+    assert(!opengpu_native_sample_ordinary_plan(&sample_runtime,&r->plan,plan));
     struct opengpu_native_frame_gem out=test_gem(s,16384);
     static struct drm_opengpu_native_completion_view view;
-    view=(struct drm_opengpu_native_completion_view){.view={.handle=out.handle,.bytes=16384}};
+    const struct drm_opengpu_compute_uniform_view original={.handle=out.handle,.bytes=16384};
+    struct opengpu_native_sample_job_encoding job;
+    assert(!opengpu_native_sample_job_encode(&sample_runtime,s->context.id,8,9,1,&original,&job));
+    memcpy(r->job,job.job.words,sizeof(r->job));view=job.completion;
     r->submit.version=2;r->submit.plan_stride=sizeof(*plan);r->submit.plans=(uintptr_t)plan;r->submit.reserved[0]=(uintptr_t)&view;
 }
 static void assert_rx(struct native_kernel_session *s,u32 pc,const struct sample_program *p)
