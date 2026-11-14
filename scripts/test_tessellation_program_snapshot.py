@@ -58,6 +58,10 @@ def main():
                 'ignore-uniform-ownership': ('p->owned_uniforms &&', 'true &&'),
                 'raw-memory-admission': ('else goto done; /* No raw memory', 'else if(op==0x03 || op==0x23){}else goto done; /* No raw memory'),
                 'ignore-combined-patch-capacity': ('p->output_vertices*p->output_components+p->patch_components<=2048 &&', ''),
+                'restore-shared-scratch': ('s->x[10]=(struct tess_value){0};s->fp=0;', '(void)s;'),
+                'restore-shared-mask-params': ('s->v[0]=(struct tess_value){0};s->mask_version=0;s->params=0;', '(void)s;'),
+                'clobber-shared-scalar': ('(!rd || rd==10) && (op==0x37', 'true && (op==0x37'),
+                'clobber-shared-fp': ('if(op==0x43 || op==0x47 || op==0x4b || op==0x4f || op==0x53 || op==0x73)goto done;', 'if(op==0x73)goto done;'),
                 'short-output-as-vl': ('s->x[9].value==p->lanes*p->warps', 's->x[9].value==p->output_vertices'),
             }
             for name, (before, after) in mutations.items():

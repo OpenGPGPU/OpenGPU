@@ -53,6 +53,14 @@ static void tess_merge(struct tess_state *to,const struct tess_state *from)
     /* Rejoining paths must agree on their single-point publication phase. */
     if(to->emitted!=from->emitted || to->ended!=from->ended)to->invalid=true;
 }
+/* Scalar/FP RF and capture protocols are warp-shared. SIMT restores lane
+ * masks, not these registers. Only x10 may be a scalar scratch in a scope;
+ * every arm and continuation must rematerialize it and any mask/parameters. */
+static void tess_simt_boundary(struct tess_state *s)
+{
+    s->x[10]=(struct tess_value){0};s->fp=0;
+    s->v[0]=(struct tess_value){0};s->mask_version=0;s->params=0;
+}
 static bool tess_queue(struct tess_branch *b,u32 target,const struct tess_state *s)
 {
     for(u32 i=0;i<TESS_BRANCHES;i++)if(b[i].used && b[i].target==target){tess_merge(&b[i].state,s);return true;}
@@ -185,6 +193,12 @@ bool opengpu_tessellation_shader_validate_words(const u32 *words,u32 count,
         }
         if(!reachable)continue;
         u32 insn=words[pc],op=insn&127,rd=insn>>7&31,a=insn>>15&31,b=insn>>20&31,f=insn>>12&7,fn=insn>>25;
+        if(depth && op!=0x5b){
+            if(op==0x13 || op==0x33 || op==0x37 || op==0x17)
+                TESS_REQUIRE((!rd || rd==10) && (op==0x37 || (op==0x13 && !f && (!a || a==10))));
+            if(op==0x43 || op==0x47 || op==0x4b || op==0x4f || op==0x53 || op==0x73)goto done;
+            if(op==0x0b && fn==7)TESS_REQUIRE(!rd || rd==10);
+        }
         if(insn==OPENGPU_SHADER_CEASE){
             TESS_REQUIRE(!depth && (p->stage==4 || (!s->invalid && s->emitted && s->ended)));
             ceased=true;early_exit=true;reachable=false;continue;
@@ -203,17 +217,18 @@ bool opengpu_tessellation_shader_validate_words(const u32 *words,u32 count,
                     bound=pc<taken?taken-1:bound-1;distance=opengpu_shader_simt_displacement(branch);taken=pc+1+(u32)distance/4;}
                 TESS_REQUIRE(taken>pc+2 && marker>taken && marker<bound && marker<count &&
                     words[taken-1]==OPENGPU_SHADER_SIMT_JOIN && words[marker-1]==OPENGPU_SHADER_SIMT_JOIN && words[marker]==OPENGPU_SHADER_SIMT_JOIN);
-                depth++;
+                depth++;tess_simt_boundary(s);
             }else if(f<=1){
                 TESS_REQUIRE(depth && opengpu_shader_simt_scope_at(words,pc,&branch_pc,&taken,&marker) && pc==branch_pc && s->v[a].defined && s->v[b].defined);
                 u32 k;for(k=0;k<TESS_BRANCHES && branches[k].used;k++);
                 TESS_REQUIRE(k<TESS_BRANCHES);branches[k].used=true;branches[k].target=taken;branches[k].state=*s;
             }else if(insn==OPENGPU_SHADER_SIMT_JOIN){
                 TESS_REQUIRE(depth && opengpu_shader_simt_scope_at(words,pc,&branch_pc,&taken,&marker));
+                tess_simt_boundary(s);
                 u32 target=pc<taken?taken:marker+1,k;
                 for(k=0;k<TESS_BRANCHES;k++)if(branches[k].used && branches[k].target==target)break;
                 TESS_REQUIRE(k<TESS_BRANCHES);
-                if(pc==taken-1){w->swap=*s;*s=branches[k].state;branches[k].state=w->swap;branches[k].target=marker+1;}
+                if(pc==taken-1){w->swap=*s;*s=branches[k].state;branches[k].state=w->swap;branches[k].target=marker+1;tess_simt_boundary(s);}
                 else if(pc==marker)depth--;else TESS_REQUIRE(pc==marker-1);
             }else goto done;
         }else if(op==0x63 || op==0x6f){
