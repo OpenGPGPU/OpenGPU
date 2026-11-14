@@ -1,13 +1,20 @@
 // SPDX-License-Identifier: MIT
 #include <assert.h>
 #include <stddef.h>
+#include <string.h>
 #include "../opengpu_compute_features.h"
 #include "../opengpu_tessellation_transport.h"
 #include "../opengpu_native_binned_host_abi.h"
 #include "../opengpu_native_binned_abi.h"
+#include "../opengpu_native_layered_abi.h"
 
 _Static_assert(OPENGPU_TESS_HOST_WORDS == OPENGPU_NATIVE_BINNED_HOST_WORDS, "GNC word count");
 _Static_assert(OPENGPU_TESS_HOST_JOB_MAGIC == OPENGPU_NATIVE_BINNED_JOB_MAGIC, "GNC job magic");
+_Static_assert(OPENGPU_TESS_HOST_MAGIC_LAYERED == OPENGPU_NATIVE_LAYERED_CAP_MAGIC &&
+    OPENGPU_TESS_HOST_LAYERED_JOB_MAGIC == OPENGPU_NATIVE_LAYERED_JOB_MAGIC, "GNC5/GNJ2 pairing");
+_Static_assert(OPENGPU_NATIVE_LAYERED_JOB_BYTES == OPENGPU_NATIVE_TESSELLATION_JOB_BYTES &&
+    OPENGPU_NATIVE_LAYERED_FRAME_BYTES == OPENGPU_NATIVE_TESSELLATION_JOB_FRAME_BYTES,
+    "GNC5 shared record capacities do not change GNQ/GNT records");
 _Static_assert(OPENGPU_TESS_HOST_BASE + 4u * OPENGPU_TESS_HOST_WORDS == GPU_REG_BIN_CAPABILITIES_END &&
     OPENGPU_NATIVE_TESSELLATION_JOB_BYTES == OPENGPU_NATIVE_BINNED_JOB_BYTES &&
     OPENGPU_NATIVE_TESSELLATION_JOB_FRAME_BYTES == OPENGPU_NATIVE_BINNED_FRAME_BYTES &&
@@ -58,6 +65,76 @@ static void reject_tessellation_host(struct device *device)
     }
 }
 
+static void layered_tessellation_discovery_cases(void)
+{
+    /* Exact GNC block of both complete 104/112-word owner factories. The
+     * sample presence record changes GCR flags, not this shared GNC5 block.
+     * Exercise the production hw-init sequence: GCR -> presence -> GNC. */
+    const u32 gnc[] = {0x474e4305u,8u,0x474e4a02u,0x08000200u,
+        0xc2100800u,0x08000800u,0xe4908000u,0x8813db02u};
+    const u32 profiles[] = {0xfffffu,0x1fffffu};
+    const u32 caps = GPU_CAP_UNIFIED_COMMANDS | GPU_CAP_PROTECTED_VM_STATE;
+    struct device valid = {.magic=OPENGPU_COMPUTE_RESOURCE_MAGIC,.words=16,
+        .discovery=OPENGPU_TESS_HOST_BASE};
+    memcpy(valid.host,gnc,sizeof(gnc));
+    for (unsigned p=0;p<sizeof(profiles)/sizeof(profiles[0]);++p) {
+        struct device d=valid;
+        u32 flags=0,engines=99;
+        bool transport=false,feedback=false,virtual_images=false;
+        d.flags=profiles[p];
+        assert(opengpu_read_compute_features(0x47550002u,0x540,&d,read_reg,&flags));
+        assert(flags==profiles[p]);
+        assert(opengpu_tessellation_transport_features(flags,caps,&transport,&feedback));
+        assert(transport && feedback);
+        assert(opengpu_read_tessellation_host(transport,0x540,&d,read_reg,&engines,&virtual_images));
+        assert(engines==4 && virtual_images);
+    }
+    /* Only GNC1..4/GNJ1 and GNC5/GNJ2 are legal. No newer GNC, GNJ,
+     * tessellation job magic or cross-version pair is inferred from size. */
+    for (u32 version=0;version<=6;++version)
+        for (u32 job=0;job<=3;++job) {
+            struct device d=valid;
+            u32 engines=99;
+            bool virtual_images=false;
+            d.host[0]=0x474e4300u|version;d.host[2]=0x474e4a00u|job;
+            bool expected=(version>=1 && version<=4 && job==1) || (version==5 && job==2);
+            assert(opengpu_read_tessellation_host(true,0x180,&d,read_reg,&engines,&virtual_images)==expected);
+            assert(expected ? engines==4 && virtual_images : engines==99 && !virtual_images);
+        }
+    for (u32 count=1;count<=4;++count) {
+        struct device d=valid;u32 engines=99;bool virtual_images=false;
+        d.host[6]=(d.host[6]&~OPENGPU_TESS_HOST_ENGINES_MASK)|(count<<OPENGPU_TESS_HOST_ENGINES_SHIFT);
+        assert(opengpu_read_tessellation_host(true,0x180,&d,read_reg,&engines,&virtual_images));
+        assert(engines==count && virtual_images);
+    }
+    for (unsigned test=0;test<16;++test) {
+        struct device d=valid;
+        switch (test) {
+        case 0:d.host[0]=0xffffffffu;break;
+        case 1:d.host[2]=OPENGPU_NATIVE_TESSELLATION_JOB_MAGIC;break;
+        case 2:d.host[1]=0;break;
+        case 3:d.host[1]=7;break;
+        case 4:d.host[1]=9;break;
+        case 5:d.host[3]^=1;break;
+        case 6:d.host[3]^=1u<<16;break;
+        case 7:d.host[3]=0;break;
+        case 8:d.host[4]^=1;break;
+        case 9:d.host[4]&=~OPENGPU_TESS_HOST_COMPLETION_MASK;break;
+        case 10:d.host[6]&=~OPENGPU_TESS_HOST_ENGINES_MASK;break;
+        case 11:case 12:case 13:
+            d.host[6]=(d.host[6]&~OPENGPU_TESS_HOST_ENGINES_MASK)|((test-6u)<<OPENGPU_TESS_HOST_ENGINES_SHIFT);break;
+        case 14:d.discovery=0;break;
+        default:d.discovery=OPENGPU_TESS_HOST_BASE+4;break;
+        }
+        reject_tessellation_host(&d);
+    }
+    for (unsigned bytes=0;bytes<0x180;++bytes) {
+        struct device d=valid;u32 engines=99;bool virtual_images=true;
+        assert(!opengpu_read_tessellation_host(true,bytes,&d,read_reg,&engines,&virtual_images));
+        assert(!d.reads && engines==99 && virtual_images);
+    }
+}
+
 static u32 read_indirect(void *context, u32 address)
 {
     u32 *words = context;
@@ -99,6 +176,7 @@ static void indirect_cases(void)
 int main(void)
 {
     indirect_cases();
+    layered_tessellation_discovery_cases();
     struct device d = { .magic = OPENGPU_COMPUTE_RESOURCE_MAGIC, .words = 16, .flags = 15 };
     u32 flags = ~0u;
     bool transport = true, feedback = true;
