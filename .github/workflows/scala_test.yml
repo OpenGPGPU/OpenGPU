@@ -19,7 +19,8 @@ jobs:
     # Drafts need the same bounded feedback; readiness is enforced by ci-ok.
     if: github.event.pull_request.base.ref == 'main' && github.event.pull_request.state == 'open'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Budget host checks plus a fresh compile of every main and test source.
+    timeout-minutes: 25
     outputs:
       selected: ${{ steps.select.outputs.selected }}
       suites: ${{ steps.select.outputs.suites }}
