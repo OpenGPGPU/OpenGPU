@@ -13,7 +13,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def fixture(source_case="counter-increment"):
-    seed=1 if source_case=="counter-decrement" else 0xfffffffe
+    dynamic='dynamic-' in source_case;all_counters='dynamic-all-' in source_case
+    index=0 if all_counters else 4 if dynamic else 7;groups=(2 if all_counters else 1) if dynamic else 4
+    seed=(0 if dynamic else 1) if source_case.endswith('decrement') else 0xfffffffe
     allocations = {0x1000: bytearray(4096), 0x20000: bytearray(b'\x5a'*8192)}
     for a in (0x30000, 0x32000, 0x34000, 0x36000):
         allocations[a] = bytearray(struct.pack('<I', 0xdeadbeef)*2048)
@@ -35,8 +37,8 @@ def fixture(source_case="counter-increment"):
     descriptor_root, counter_va, storage_root = 0xb1400000, 0xb1c00ff0, 0xb0c00000
     for i in range(8): word(0x20000+4080+4*i, (seed+i*0x10203)&0xffffffff)
     word(0x20000+4108, seed)
-    d = dict(schema=SCHEMA, sourceCase=source_case, groups=4, local=4, viewBytes=8192,
-        guard=0xdeadbeef, seed=seed, index=7, count=8, counterHandle=4, context=2,
+    d = dict(schema=SCHEMA, sourceCase=source_case, groups=groups, local=4, viewBytes=8192,
+        guard=0xdeadbeef, seed=seed, index=index, count=8, counterHandle=4, context=2,
         descriptorPhysical=0x40000, descriptorRoot=descriptor_root, kernargPhysical=0x42000, kernargBytes=64,
         counter=view(0x20000, 0, 4080, 32), storageBindings=[0,1,2,3], outputs=[view(a, i) for i,a in enumerate((0x30000,0x32000,0x34000,0x36000))])
     record = [0x47534201,64,1,2,0,0,0,1,1,1,counter_va,counter_va+32,0,counter_va&~63,(counter_va+95)&~63,0]
@@ -53,10 +55,28 @@ def fixture(source_case="counter-increment"):
         (0x320,1048576),(0x158,0x02020810),(0x494,0x47544d01),(0x43c,0x47534d01),
         (0x3fc,0x47494d01),(0x4bc,0x47414d01),(0x460,0x47554d01)]
     writable=sorted([(0x42000,0x42040),(0x20ff0,0x21010)]+[(a,a+8192) for a in (0x30000,0x32000,0x34000,0x36000)])
-    registers={0xc8:0,0xd0:0x80800000,0x14c:0x80800001,0x150:0x80800001,0x11c:1}
-    registers.update({0xd4:4,0xd8:1,0xdc:1,0xe0:4,0xe4:1,0xe8:1})
+    registers={0xc8:0,0xd0:0x80800000,0x14c:0x80800001,0x150:0x80800001,0x11c:1,0x440:0}
+    registers.update({0xd4:groups,0xd8:1,0xdc:1,0xe0:4,0xe4:1,0xe8:1})
     for base,root,size in ((0x4a0,descriptor_root,64),(0x420,storage_root,256)):
         registers.update({base+4*i:v for i,v in enumerate((257,root,root+size,0,2,0,0))})
+    if dynamic:
+        allocations[0x44000]=bytearray(b'\x6d'*4096)
+        struct.pack_into('<4I',allocations[0x44000],0,index,0x13579bdf,0x2468ace0,0x11223344)
+        d.update(indexUniform=dict(globalBinding=35,allocationPhysical=0x44000,allocationBytes=4096,offset=0,bytes=16),
+            uniformRoot=0xb1800000,uniformPhysical=0x60000,uniformBytes=8192)
+        allocations[0x60000]=bytearray(8192);u=allocations[0x60000];root=0xb1800000
+        struct.pack_into('<16I',u,0,0x47555201,64,1,2,0,0,2,1,0,0,root+64,root+1600,0,0,0,0)
+        struct.pack_into('<16I',u,64,0x47554201,64,1,2,0,0,0,4,root+4096,root+4112,0,root+4096,root+4160,0,1,0)
+        u[4096:4112]=allocations[0x44000][:16]
+        map_page(root,0x60000,3);map_page(root+4096,0x61000,3)
+        # RO snapshot pages are accessed but not dirty; source data stays an
+        # independently guarded original GEM rather than a writable GPU view.
+        for va in (root,root+4096):
+            pa=tables[va>>22]+((va>>12)&1023)*4
+            for first,data in allocations.items():
+                if first<=pa<=first+len(data)-4:
+                    struct.pack_into('<I',data,pa-first,struct.unpack_from('<I',data,pa-first)[0]&~128)
+        registers.update({0x440+4*i:v for i,v in enumerate((257,root,2,0,0,0x80800000,0x80800040,0))})
     def capture(discovery=discovery, writable=writable, registers=registers):
         actions=[(1,a,v,0) for a,v in registers.items() if a!=0x11c]+[(1,0x11c,1,0)]
         return (b'OGCMP002'+struct.pack('<QIII',1000000,37,11,len(discovery))+
@@ -133,6 +153,49 @@ class Counter(unittest.TestCase):
                 for allocation,offset in ((0x20000,4080),(0x20000,4112),(0x40000,0),(0x30000,64)):
                     wrong=returned();wrong[allocation][offset]^=1
                     with self.subTest(case=case,allocation=allocation,offset=offset),self.assertRaises(ValueError):check(wrong)
+
+    def test_dynamic_nonzero_uniform_and_all_counter_recipes(self):
+        parent=ROOT/'.artifacts';parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='counter-dynamic-',dir=parent) as t:
+            before,after=Path(t)/'before',Path(t)/'after'
+            for prefix,start,count in (('counter-dynamic-',4,4),('counter-dynamic-all-',0,8)):
+                for op in ('increment','read','decrement'):
+                    case=prefix+op;alloc,d,cap,*_=fixture(case);emit(before,alloc)
+                    with SparseMemory(before) as b:ready(b,d,cap())
+                    seed=0 if op=='decrement' else 0xfffffffe
+                    original=[seed if i==7 else (seed+i*0x10203)&0xffffffff for i in range(8)]
+                    values=[(original[i]-(op=='decrement'))&0xffffffff for i in range(start,start+count)]
+                    good=copy.deepcopy(alloc)
+                    for pa in (0x30000,0x32000,0x34000,0x36000):struct.pack_into('<%uI'%count,good[pa],0,*values)
+                    for i in range(start,start+count):
+                        final=(original[i]+(1 if op=='increment' else -1 if op=='decrement' else 0))&0xffffffff
+                        struct.pack_into('<I',good[0x20000],4080+4*i,final)
+                    def check(data):
+                        emit(after,data)
+                        with SparseMemory(before) as b,SparseMemory(after) as a:verify(b,a,d)
+                    check(good)
+                    with self.assertRaises(ValueError):check(alloc)
+                    # A missing nonzero UBO addition, another-lane result or
+                    # old rather than new decrement result cannot pass.
+                    wrong=copy.deepcopy(good)
+                    wrong_values=([original[i] for i in range(start,start+count)] if op=='decrement' else
+                                  [(original[i]-(op=='decrement'))&0xffffffff for i in range(count)] if start else
+                                  list(reversed(values)))
+                    for pa in (0x30000,0x32000,0x34000,0x36000):struct.pack_into('<%uI'%count,wrong[pa],0,*wrong_values)
+                    with self.assertRaises(ValueError):check(wrong)
+                    for pa,offset in ((0x20000,4108),(0x20000,4112),(0x20000,4079),
+                        (0x30000,count*4),(0x36000,0),(0x44000,0),(0x44000,4095),
+                        (0x60000,7*4),(0x60000,64+14*4),(0x60000,4096),(0x60000,8191)):
+                        wrong=copy.deepcopy(good);wrong[pa][offset]^=1
+                        with self.subTest(case=case,pa=pa,offset=offset),self.assertRaises(ValueError):check(wrong)
+                    # These malformed READY snapshots are rejected before a
+                    # DUT can receive a command, including original UBO bytes.
+                    for pa,offset in ((0x44000,0),(0x60000,7*4),(0x60000,64+14*4),(0x60000,4096),(0x60000,8191)):
+                        wrong=copy.deepcopy(alloc);wrong[pa][offset]^=1;emit(before,wrong)
+                        with SparseMemory(before) as b,self.assertRaises(ValueError):ready(b,d,cap())
+                    emit(before,alloc)
+                    wrong=copy.deepcopy(d);wrong['indexUniform']['globalBinding']=34
+                    with SparseMemory(before) as b,self.assertRaises(ValueError):ready(b,wrong,cap())
 
     def test_ready_metadata_factory_writable_descriptor_and_pte_mutants(self):
         parent=ROOT/'.artifacts';parent.mkdir(exist_ok=True)

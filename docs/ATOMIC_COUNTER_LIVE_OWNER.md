@@ -102,6 +102,39 @@ precise views and full-byte guards are shared with increment. These source and
 CPU checks do not constitute actual-DUT execution; subsequent real compiler
 capture and DUT gates remain separate.
 
+## Dynamic index extension
+
+The six dynamic recipes use the original `dynamic-increment.comp`,
+`dynamic-read.comp` and `dynamic-decrement.comp`, each with two fixed launches:
+
+| Case prefix | Original binding35 index | Groups × local | Counter indices |
+|---|---:|---:|---|
+| `counter-dynamic-` |4|1×4|4..7|
+| `counter-dynamic-all-` |0|2×4|0..7|
+
+The nonzero case distinguishes dropping the original UBO addition from using
+`gl_GlobalInvocationID.x` directly. The all-counter case separately covers all
+eight original words. Neither reduces the factory's supported resources or
+proves simultaneous activity on two CUs. All retain the same8192-byte original
+counter GEM and exact32-byte writable view. Dynamic decrement uses seed0,
+including counter7=0, so its selected indices check modulo2³² underflow.
+
+The original4096-byte index UBO has a16-byte view, first word0 or4 and three
+fixed nonzero padding components, with0x6d guards outside that view. READY binds
+the source to a complete8192-byte read-only uniform snapshot: GUM1 command,
+GUR1/GUB1 metadata, every reserved/padding byte, the16 copied source bytes and
+both snapshot PTEs. No additional writable interval is granted. Results are
+checked per invocation against its exact selected counter; every unselected
+counter, original UBO, private snapshot and SSBO tail remains unchanged. Read
+requires no source change; decrement requires new values, not TGSI old values.
+
+Seven small counter tests and13 qualifier tests pass for static/dynamic math,
+nonzero-index loss, return/index permutations, uniform source/snapshot/padding
+mutations and full112 factory refusal. `--capture-counter-matrix` is an explicit
+CPU-only build/capture mode: it requires `--case counter-increment --capture-only`
+and reuses one build for the nine recipes/six original ESSL files. It cannot
+start a live DUT qualification. Actual-DUT execution remains unqualified.
+
 ## Reproduction
 
 CPU checks, with temporary outputs removed by each test:
