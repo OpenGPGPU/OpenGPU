@@ -17,6 +17,9 @@
   不再把两者隐含在已经存在的组件结果中；原编号保持不变。
 - 当前交付为 P15 / [源码 PR #822](https://github.com/OpenGPGPU/OpenGPU/pull/822)；
   基于三项 checked-uniform 实现，保留独立测试 helper 与 sampler 编码修复。
+  正常 PR CI 的完整 759 个 main / 1099 个 test 源码编译、host 与 unit 检查通过；
+  三域客户端已修复取消/故障后的状态清理，六项定向复用RTL及两项原代码负控通过；
+  修复后的完整正常PR CI仍待通过。
   CPU/语法检查不关闭其实际 CU load/writeback、仲裁、drain 和故障复用验收。
   已合入交付的临时工作树按准确 head、清洁状态和活动消费者检查后清理。
 - P07 的九条 recipe、六组原 ESSL 已覆盖 increment/read/decrement/动态索引的
@@ -65,7 +68,7 @@ GPU 的正式交付入口是受保护的 [`main`](https://github.com/OpenGPGPU/O
 | 仓库 / 分支 | 用途与交付方式 |
 |---|---|
 | GPU `main` | 已通过受保护 CI 并合入的正式源码；最近基线为 #821 |
-| GPU `codex/p15-delivery` | P15 当前源码交付分支；从 #821 实际 main 重放三项源码与测试 helper 修复，限定核心编译/RTL已通过；完整编译/实际CU与目标验收仍待完成 |
+| GPU `codex/p15-delivery` | P15 当前源码交付分支；从 #821 实际 main 重放三项源码与测试 helper 修复，完整工程编译及限定组件RTL已通过；取消/故障复用修复仍须通过正常PR CI，全容量实际CU与目标验收待完成 |
 | GPU `codex/native-sample-dut-bridge` | 保留 P02/P03 的原开发源码，按本清单分批交付；不另外开放并行 PR |
 | GPU `codex/owner-counter-live` | P07 的隔离实现分支；CPU 操作语料已扩展，实际 DUT/共存验收待完成 |
 | GPU `codex/p15-tess-checked-uniform` | P15 原 checked-uniform/版本化 ABI 源码；交付分支保留三项实现逻辑提交，不带旧政策/CI 父链 |
@@ -144,8 +147,8 @@ P07 的 CPU 操作语料已有扩展，但不能替代实际 DUT、原提交链�
 | 编号 | PR 范围 | 验收条件 | 依赖 | 当前状态 / PR |
 |---|---|---|---|---|
 | P14 | 原 GS→FS ABI7 与 GS/TF 同 host 语料 | 原 ESSL GS、非零16-slot varying、ABI7 FS、sample/mask、4 MRT；TF在clip/flat前的原始输出及render规则、discard/fault/cancel/ACK/无reset复用精确验证 | P03、P04 | 已有组件/保护源码，组合语料待补 |
-| P15 | TCS/TES checked-uniform RTL 与版本化 ABI | 明确 stage4/5 root/provider，实际 CU scalar/vector load与writeback、仲裁/drain；block0/11/default31、16KiB/1024 defaults和错误stage/version/map、fault/cancel/reset通过；冻结旧GUR/GNT合同 | P03；新合同重做P04 | [源码PR #822](https://github.com/OpenGPGPU/OpenGPU/pull/822)；三项原实现与测试 helper 修复已重放到当前 main；3项CPU ABI、146项选择、catalog、49源码parser、27当前核心源码plugin编译、13项组件RTL、1项layout合同及5个ABI生成器核对通过；默认关闭，完整工程编译、全容量实际CU load/writeback/仲裁/drain、三域及故障复用验收仍待执行，源码交付不计目标完成 |
-| P16 | Protected TCS/TES program、uniform、GNQ/GNT admission | 原 GEM code/default/UBO进入正确 RX/R-NX私有视图；真实可达性、writer冲突、immutable snapshot、引用、owned patch RAM/level 初始化隔离、三domain执行、retirement/cleanup闭合；只消费实际验证的硬件版本/容量/路由 | P15、P39、P40 | 原 GEM mapper、严格 validator/RX/MMU、2048耦合容量和共享标量分歧修复已有；GVS1/GNT7–9 exact ABI、原VS/GUR1/GND root-only owner/MMU encoder及10项变异负控经Clang/GCC通过；联合BUILD/GNDreader/parent和真实protected submit/retirement仍待闭合，未注册usable ioctl/probe |
+| P15 | TCS/TES checked-uniform RTL 与版本化 ABI | 明确 stage4/5 root/provider，实际 CU scalar/vector load与writeback、仲裁/drain；block0/11/default31、16KiB/1024 defaults和错误stage/version/map、fault/cancel/reset通过；冻结旧GUR/GNT合同 | P03；新合同重做P04 | [源码PR #822](https://github.com/OpenGPGPU/OpenGPU/pull/822)；完整759 main/1099 test编译、host/unit、3项CPU ABI、147项选择、catalog、49源码parser、27当前核心源码plugin编译、13项组件RTL、1项layout合同及5个ABI生成器核对通过；三域task-local cancel/fault改为实际报告消费后清理，9源编译、6项组件RTL与2项原代码负控通过，修复后完整CI待通过；默认关闭，全容量实际CU load/writeback/仲裁/drain、三域及故障复用目标验收待完成，源码交付不计目标完成 |
+| P16 | Protected TCS/TES program、uniform、GNQ/GNT admission | 原 GEM code/default/UBO进入正确 RX/R-NX私有视图；真实可达性、writer冲突、immutable snapshot、引用、owned patch RAM/level 初始化隔离、三domain执行、retirement/cleanup闭合；只消费实际验证的硬件版本/容量/路由 | P15、P39、P40 | 原 GEM mapper、严格 validator/RX/MMU、2048耦合容量和共享标量分歧修复已有；GVS1/GNT7–9 exact ABI、原VS/GUR1/GND root-only owner/MMU encoder及10项变异负控经Clang/GCC通过；真实Linux7.2.0 ARM64 Kbuild的完整27对象、MODPOST及gpu_drv.ko链接通过，未加载；联合BUILD/GNDreader/parent和真实protected submit/retirement仍待闭合，未注册usable ioctl/probe |
 | P17 | 原 Mesa TCS/TES lowering 与 API72 无损映射 | binding0..71→每stage至多12 blocks→独立私有表；真实ESSL/反射/GEM/GUR/GUB闭合，binding71、rebind、同GEM不同view、跨stage复用及60个graphics引用正确 | P15；与P16/P39/P40联合执行 | 两项实现提交已有；实际 Mesa 三组原 ESSL、五stage60-block 反射、原 GEM 资源生命周期及严格 RX/MMU ASan/UBSan CPU 检查通过；protected submit 接线/实际 CU/API 暴露待完成 |
 | P18 | Tessellation domain/spacing/primitive generation 完整语义 | isoline/triangle/quad、所需spacing/winding/边界、不变性、amplification/overflow、primitive bounds与实际protected stages组合；独立几何/图像和fault/order oracle | P15–P17、P39、P40 | 待闭合 |
 | P19 | 96 combined texture namespace 与六stage checked sampler | 各stage16 units及全局accounting、stage-local无损映射、TCS/TES真实采样返回；原resource来源、immutable view、writer/fault/drain/cleanup完整 | P15–P17 | 待实现 |

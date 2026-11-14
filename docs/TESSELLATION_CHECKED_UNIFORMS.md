@@ -6,13 +6,17 @@ shared-CU source/writeback ports. It defaults to false throughout the three
 image domains and native sequence/job wrappers. Existing host factories,
 discovery tables, GUC1 and public API capabilities do not enable it.
 
-This delivery passed a 128MiB, single-CPU parser check of its 49 changed Scala
-sources and Chisel-plugin compilation of the 27-unit core closure below.
-Thirteen actual component RTL cases, one layout contract and five ABI generator
-checks passed. Dependencies came from an unchanged frozen checkout; this is
-**not a fresh complete main/test build or actual CU execution**. P15 remains
-unqualified until its full execution checks pass. CPU and component results
-do not prove an image, protected submit, complete-host clock or FPS.
+For the checked-uniform delivery before the retirement follow-up, protected
+PR `Scala CI` passed a fresh compilation of all 759 main and 1099 test sources,
+its host checks and unit lane. Bounded local validation also
+passed a 128MiB, single-CPU parser check of 49 changed Scala sources and
+Chisel-plugin compilation of the 27-unit core closure below. Thirteen actual
+component RTL cases, one layout contract and five ABI generator checks passed.
+The local incremental checks use unchanged frozen dependencies. Compilation
+does not establish actual CU execution: the shared-system cancellation/reuse
+checks still require a passing run after the task-retirement fix. P15 remains
+unqualified until its full execution checks pass; component results do not
+prove an image, protected submit, complete-host clock or FPS.
 
 ## Resource and draw contracts
 
@@ -84,6 +88,14 @@ CU owner. Cancellation is latched so its later failed physical completion does
 not become a new primary fault. A noncancel service error suppresses writes,
 cancels the child and remains a failed task through completion.
 
+All three domain clients retain their task-local cancel and service-fault
+latches while physical/service work drains and while the external task report
+is held. They clear both latches when that report is actually consumed
+(`completion.fire`). A latch left set until the next `task.fire` would hold the
+child's cancel input high, preventing the very task acceptance needed to clear
+it. Clearing on report retirement preserves the held result and admits the
+next independent task without reset.
+
 The shared source port can also carry sampler requests under the existing
 native decoder permission. On stage 4/5 these fail with invalid status and a
 failed scalar/vector writeback, without any uniform descriptor/data read.
@@ -94,7 +106,7 @@ they are not supplied by a trusted scope or this transport.
 ## Validation and reproduction
 
 The bounded CPU checks passed: three public C/schema catalog checks (including
-old/new type coexistence and all three appended layouts), 146 affected-suite
+old/new type coexistence and all three appended layouts), 147 affected-suite
 selection tests, integration/large-PR suite selection, emitter registry,
 32 exact partition and four strict runner checks, and `git diff --check`.
 No generated models, raw evidence or process logs are kept.
@@ -188,9 +200,41 @@ done
 # Remove GPU_TMP only after all compiler, JVM and native consumers exit.
 ```
 
-A fresh complete main+test compile and the complete suites below remain
-**pending**. The limited closure above does not refresh every image/factory
-constructor caller, and a parser check cannot establish that compatibility:
+The nine-unit current retirement closure passed Chisel-plugin compilation;
+all six retirement RTL cases passed. The fixture instantiates each actual
+SystemClient, patch context and control scheduler with a CU protocol peer.
+Its six cases cover all three domains with uniforms disabled/enabled at two
+lanes/two warps. Disabled cases
+isolate latched cancellation; enabled cases isolate a failed physical launch
+with the checked service present. Both hold the external report for six cycles,
+then require the next actual task acceptance within 16 cycles and further reuse
+without reset. The enabled cases do not fetch uniforms or execute an ISA.
+The original isoline code fails that exact next-task oracle in both modes.
+Reproduce each case separately under the same 180-second process ceiling:
+
+```sh
+P15_RETIREMENT=(
+  src/main/scala/opengpu/graphics/{NativeTypedGraphicsDescriptors,ShaderUniformResources,ShaderUniformLoadUnit,ShaderUniformExecuteUnit}.scala
+  src/main/scala/opengpu/system/{TessellationUniformCuService,TessellationCuIsolineSystemClient,TessellationCuTriangleSystemClient,TessellationCuQuadSystemClient}.scala
+  src/test/scala/opengpu/graphics/TessellationSystemClientRetirementSpec.scala
+)
+java "${JAVA_LIMITS[@]}" -Dscala.usejavacp=true -cp "$SCALA_COMPILER_CP" \
+  scala.tools.nsc.Main -classpath "$FROZEN_CP" -Xplugin:"$CHISEL_PLUGIN_JAR" \
+  -language:reflectiveCalls -Ymacro-annotations -d "$GPU_TMP/classes" "${P15_RETIREMENT[@]}"
+for domain in 0 1 2; do
+  for uniforms in false true; do
+    java "${JAVA_LIMITS[@]}" "${SIM_FLAGS[@]}" -cp "$P15_CP" org.scalatest.tools.Runner -oD \
+      -s opengpu.graphics.TessellationSystemClientRetirementSpec \
+      -z "domain=$domain uniforms=$uniforms"
+  done
+done
+```
+
+A fresh complete main+test compile passed in protected PR CI. The complete
+shared-system suites below must also pass on the retirement-fix head; the
+incremental closure and parser check do not substitute for that validation.
+Keep `Scala regression` disabled: these commands are focused checks and do not
+enable or dispatch that workflow.
 
 ```sh
 sbt Test/compile
@@ -201,11 +245,13 @@ The added tests cover both stages' full block/default capacity and upper private
 table slots; version/stage/mask/map/bounds rejection; scalar/vector and inactive
 lane behavior; unsupported sampler rejection; held request/response cancellation,
 faults and reuse; physical client/retirement ownership; unchanged old field
-positions and old/new/cross-domain draw rejection. The unexecuted shared-system
-case uses two physical CUs at four lanes/two warps and makes TCS/TES load values affect
+positions and old/new/cross-domain draw rejection. The shared-system case uses
+two physical CUs at four lanes/two warps and makes TCS/TES load values affect
 patch levels and evaluated output, and cancels an actual CU after accepting a
 uniform read while its response is held, then reuses the same owner without
-reset. That fixture is not the target 16-lane/eight-warp execution profile.
+reset. Its cancellation/reuse check failed before the retirement fix; a passing
+post-fix run is required. That fixture is not the target
+16-lane/eight-warp execution profile.
 Actual CU execution at full capacity, whole three-domain image execution under
 contention, full 128-thread host admission and final factory/source qualification
 remain pending; none is inferred from component results or unexecuted tests.
