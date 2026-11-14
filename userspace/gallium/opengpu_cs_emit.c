@@ -961,6 +961,21 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
         for (c = 0; c < 4; ++c) if (d->WriteMask & (1u << c)) b->ranges[d->Index][c] = ranges[c];
         return 0;
     }
+    if (b->shared && op==TGSI_OPCODE_MOV && d->File==TGSI_FILE_TEMPORARY && d->Index>=0 &&
+        (unsigned)d->Index<CS_TEMPS && !(d->WriteMask&(d->WriteMask-1u)) &&
+        !(d->WriteMask&~b->declared[d->Index])) {
+        /* A single component cannot clobber another parallel MOV source.
+         * Capture its source register before assigning the destination, then
+         * copy directly under the same SIMT mask. Mesa's scalarized shared
+         * stores otherwise spend two words via v26 for every such MOV. */
+        for(c=0;c<4;c++)if(d->WriteMask&(1u<<c)) {
+            unsigned from;
+            if(source_register(b,&in->Src[0],c,22,&from) || resident_destination(b,(unsigned)d->Index,c))return -1;
+            if(b->reg[d->Index][c]!=from)copy(b,b->reg[d->Index][c],from);
+            b->ranges[d->Index][c]=ranges[c];
+        }
+        return 0;
+    }
     for (c = 0; c < 4; c++) if (d->WriteMask & (1u << c)) {
         unsigned left, right, third;
         if (source_register(b, &in->Src[0], c, 22, &left)) return -1;
