@@ -108,12 +108,16 @@ The [actual Mesa CPU preflight](NATIVE_SAMPLE_GRAPHICS_SOURCE_PLANS.md) also
 passes for frozen39775 source, including canonical records and both actual C
 capture identities; it does not contain returned GPU images or GNY2 results.
 
-Eight controller CPU tests pass with explicit mocked image/GNY2 checks. They
+Nine controller CPU tests pass with explicit mocked image/GNY2 checks. They
 exercise successful phase order and admission, and reject source/result
 mutation, foreign/swapped receipts, failed per-record or complete-pair checks,
 invalid cleanup, executor failure and changed final qualification. They also
 check that unknown process exit preserves inputs while cleanup still attempts
-all owned consumers. These tests establish controller gating only; the separate
+all owned consumers. A managed caller can request a separate consumer-cleanup
+receipt, published only after both process groups, the owned container and IPC
+cleanup finish. It binds the exact controller PID, source root, executor and
+qualification. Missing or mismatched confirmation preserves the caller's inputs.
+These tests establish controller gating only; the separate
 source/image/GNY2 suites exercise the actual independent oracles.
 
 Reproduce serially:
