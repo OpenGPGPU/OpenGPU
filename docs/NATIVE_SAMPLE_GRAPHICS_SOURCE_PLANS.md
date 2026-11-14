@@ -76,13 +76,30 @@ Gallium references, calls `graphics_sample_graphics_host_execute`, and emits
 `ACTUAL_SAMPLE_GRAPHICS_LIVE_RETIRED` only after its observed execution and
 complete external cleanup/final receipt exchange returns successfully. Failed
 exchange returns nonzero without invoking the CPU capture peer. The Python
-actual-Mesa builder remains CPU-only; no LIVE builder option or public feature
-is enabled by this change.
+actual-Mesa builder requires exactly one of `--cpu-capture-only` and
+`--prepare-live-producer`. CPU capture requires `--profile-wire`; prepare
+rejects it because the controller supplies the actual profile at execution.
+Both modes require `--native-kernel-root` and reject all live environment
+variables before building. Prepare compiles the two LIVE translation units and
+the new receipt codec, generates the original ESSL sources, then returns
+`BUILT, execution=false` before starting a producer or writing a result. It
+does not enable a public feature.
 
-Five fast admission/entry tests and five kernel-lifetime ASan/UBSan tests pass,
+```sh
+python3 -B scripts/test_gallium_sample_graphics_uniforms.py \
+  --build "$OUT/build" --sanitize --native-kernel-root "$TOPIC" \
+  --mesa-nir-lower-io "$CHECKED_PRIVATE_NIR" --prepare-live-producer
+```
+
+The independently checked controller can subsequently start
+`$OUT/build/cs_uniform_flow $OUT/build/glsl` with its two new live environment
+variables. The builder itself does not start or qualify that exchange.
+
+Seven fast admission/entry tests and five kernel-lifetime ASan/UBSan tests pass,
 including original handles closed before external execution, retained job
 references, CPU/LIVE argument and environment separation, missing/empty/mixed
-profiles and invalid compile-mode rejection. These tests use synthetic control
+profiles, invalid compile-mode rejection and build-only command planning.
+These tests use synthetic control
 files and CEASE programs, without actual Mesa LIVE or DUT execution:
 
 ```sh
