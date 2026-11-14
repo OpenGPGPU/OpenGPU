@@ -8,7 +8,12 @@ inline std::vector<std::string> layered_product_scenes() {
     "transparent-layers","small-triangles","msaa-4x"};
 }
 // A different container and a different factory: never accepted by Fixture::read.
-struct LayeredProductFixture : Fixture {
+template<bool Sample> struct BasicLayeredProductFixture : Fixture {
+  static constexpr unsigned discovery_words=Sample?112:104;
+  static constexpr uint32_t compute_flags=Sample?0x1fffff:0xfffff;
+  static const char *container_magic() {return Sample?"OGLAY002":"OGLAY001";}
+  static const char *profile_id() {return Sample?"two-cu-vga60-owner-v2-sample-stage":"two-cu-vga60-owner-v2";}
+  static const char *stage_id() {return Sample?"geometry-compute-sample":"geometry-compute";}
   static std::vector<Command> profile() {
     std::vector<Command> out;
     const auto block = [&](uint32_t base, std::initializer_list<uint32_t> words) {
@@ -25,11 +30,17 @@ struct LayeredProductFixture : Fixture {
     block(0x4e0,{0x474e5001,8,512,2048,2048,512,15,0});
     block(0x300,{0x47534c01,8,31,32,1048576,0x04051918,0x320,0x138});
     block(0x500,{0x47475301,8,31,0x474e4a02,0x474e4603,0x474e5902,0xff840206,0x04001000});
+    if constexpr(Sample) {
+      require(out.size()==104 && out[2].address==0x368 && out[2].value==0xfffff,
+              "frozen layered owner contract changed");
+      out[2].value=0x1fffff;
+      block(0x520,{0x47535301,8,1,31,0xc0,0x4d041004,0x7ff,7});
+    }
     return out;
   }
   void validate_resources() const {
     const auto expected = profile();
-    require(resources.size() == expected.size(), "layered product requires all 104 discovery words");
+    require(resources.size() == expected.size(), "layered product requires its exact complete discovery table");
     for (unsigned n = 0; n < expected.size(); ++n)
       require(resources[n].address == expected[n].address && resources[n].value == expected[n].value,
               "layered product requires the exact ordered geometry-compute factory");
@@ -63,9 +74,9 @@ struct LayeredProductFixture : Fixture {
     require(finish.size() == 2 && finish[0].address == 0x130 && finish[0].value == 1 &&
       finish[1].address == 0x00c && finish[1].value == 3, "layered product retirement contract differs");
   }
-  static LayeredProductFixture read(const std::string &path) {
+  static BasicLayeredProductFixture read(const std::string &path) {
     std::ifstream in(path, std::ios::binary); require(bool(in), "cannot read layered product commands");
-    magic(in, "OGLAY001"); LayeredProductFixture f;
+    magic(in, container_magic()); BasicLayeredProductFixture f;
     f.width=read_le(in,4); f.height=read_le(in,4); f.samples=read_le(in,4);
     f.id=read_le(in,4); f.max_cycles=read_le(in,8);
     f.resources=commands(in); f.writes=commands(in);
@@ -78,6 +89,9 @@ struct LayeredProductFixture : Fixture {
     f.validate(); return f;
   }
 };
+
+using LayeredProductFixture=BasicLayeredProductFixture<false>;
+using SampleLayeredProductFixture=BasicLayeredProductFixture<true>;
 
 struct LayeredProductInput {
   std::array<uint32_t,12> expected_gnx{};
@@ -94,7 +108,8 @@ std::array<uint32_t,Words> layered_product_record(const Memory &memory, uint32_t
   return words;
 }
 
-inline LayeredProductInput layered_product_input(const LayeredProductFixture &fixture, const Memory &memory) {
+template<bool Sample>
+LayeredProductInput layered_product_input(const BasicLayeredProductFixture<Sample> &fixture, const Memory &memory) {
   fixture.validate();
   const auto base=fixture.job_address();
   const auto job=layered_product_record<128>(memory,base);
@@ -134,8 +149,8 @@ struct LayeredProductProfile {
   std::array<Command,5> registers;
   std::vector<Command> discovery;
 };
-template<class Sim>
-LayeredProductProfile read_layered_product_profile(Sim &sim,const LayeredProductFixture &fixture) {
+template<class Sim,bool Sample>
+LayeredProductProfile read_layered_product_profile(Sim &sim,const BasicLayeredProductFixture<Sample> &fixture) {
   fixture.validate_resources();
   LayeredProductProfile observed{{{{0,sim.read(0)},{0x60,sim.read(0x60)},{0x68,0},{0x320,0},{0x158,0}}},{}};
   require((observed.registers[0].value&0xffff)>=2 &&

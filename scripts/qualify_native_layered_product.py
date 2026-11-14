@@ -3,10 +3,11 @@
 import argparse
 import fcntl
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 import qualify_native_alignment_sequence as sequence
-from owner_resource_contract import PROFILE, FULL_STAGE, FULL_WORDS
+from owner_resource_contract import PROFILE, FULL_STAGE, FULL_WORDS, SAMPLE_PROFILE, SAMPLE_STAGE, SAMPLE_WORDS
 
 common, flash, owner = sequence.common, sequence.flash, sequence.owner
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,27 +15,65 @@ FIXTURE_MANIFEST = 'layer-product-fixture-manifest.json'
 FIXTURE_RECORD = 'layer-product-fixtures.json'
 
 
-def check_full_manifest(manifest, *, rtl_emitted=True):
+@dataclass(frozen=True)
+class ProductContract:
+    profile: str
+    stage: str
+    flags: int
+    words: tuple
+    driver: str
+    prepare_entry: str
+    verify_entry: str
+    marker: str
+    fixture_manifest: str
+    fixture_record: str
+    sample: bool = False
+
+
+FULL_CONTRACT = ProductContract(PROFILE, FULL_STAGE, 0xfffff,
+    tuple((w['address'], w['value']) for w in FULL_WORDS),
+    'scripts/native_layered_product_driver.cpp', 'PrepareNativeLayeredProductFixtures',
+    'VerifyNativeLayeredProduct', 'NATIVE_LAYERED_PRODUCT', FIXTURE_MANIFEST, FIXTURE_RECORD)
+SAMPLE_CONTRACT = ProductContract(SAMPLE_PROFILE, SAMPLE_STAGE, 0x1fffff,
+    tuple((w['address'], w['value']) for w in SAMPLE_WORDS),
+    'scripts/native_sample_layered_product_driver.cpp', 'PrepareNativeSampleLayeredProductFixtures',
+    'VerifyNativeSampleLayeredProduct', 'NATIVE_SAMPLE_LAYERED_PRODUCT',
+    'sample-layer-product-fixture-manifest.json', 'sample-layer-product-fixtures.json', True)
+
+
+def contract_words(contract):
+    if contract not in (FULL_CONTRACT, SAMPLE_CONTRACT):
+        raise RuntimeError('Unknown source-selected layered product contract')
+    return [dict(address=address, value=value) for address, value in contract.words]
+
+
+def check_contract_manifest(manifest, contract, *, rtl_emitted=True):
+    contract_words(contract)
     owner.check_manifest(manifest, rtl_emitted=rtl_emitted)
-    if manifest['profile'] != PROFILE or manifest['ownerResourceStage'] != FULL_STAGE:
-        raise RuntimeError('GNJ2 product execution requires the exact geometry-compute owner factory')
+    if manifest['profile'] != contract.profile or manifest['ownerResourceStage'] != contract.stage:
+        raise RuntimeError('GNJ2 product execution requires its exact source-selected owner factory')
 
 
-def checked_output(path):
+def check_full_manifest(manifest, *, rtl_emitted=True):
+    check_contract_manifest(manifest, FULL_CONTRACT, rtl_emitted=rtl_emitted)
+
+
+def checked_output(path, *, contract=FULL_CONTRACT):
     out = sequence.checked_owner_output(path)
-    check_full_manifest(json.loads((out / 'owner-manifest.json').read_text()))
+    check_contract_manifest(json.loads((out / 'owner-manifest.json').read_text()), contract)
     return out
 
 
-def validate_rows(rows, product):
+def validate_rows(rows, product, *, contract=FULL_CONTRACT):
+    discovery = contract_words(contract)
     width, height = common.frame_size(product, True)
     if not isinstance(rows, list) or any(type(row) is not dict for row in rows):
         raise RuntimeError('Layered product execution rows must be objects')
     if [row.get('scene') for row in rows] != common.SCENES:
         raise RuntimeError('All six original GNJ2 product scenes must complete in order')
-    expected = dict(profile=PROFILE, ownerResourceStage=FULL_STAGE, computeUnits=2,
+    expected = dict(profile=contract.profile, ownerResourceStage=contract.stage, computeUnits=2,
         nativeEngines=4, nativeMaxWidth=2048, nativeMaxHeight=2048,
-        resourceDiscoveryWords=104, computeFeatureFlags=0xfffff,
+        resourceDiscoveryWords=len(contract.words), computeFeatureFlags=contract.flags,
         nativeJobVersion=2, nativeFrameVersion=3, nativeCompletionVersion=2,
         frameWidth=width, frameHeight=height, trafficDrained=True,
         imageVerificationRequired=True, clockQualified=False, fpsQualified=False,
@@ -45,7 +84,12 @@ def validate_rows(rows, product):
         drawCompletionCountAvailable=False, primitiveCompletionCountAvailable=False,
         liveProfilePreflight=True, idleBeforeSubmit=True,
         shaderInputSource='native-layered-product-hand-encoded')
+    if contract.sample:
+        expected.update(nativeSampleTransport=True, nativeSampleShading=True, sampleBuiltinsQualified=False)
     for row in rows:
+        if not contract.sample and any(key in row for key in
+                ('nativeSampleTransport', 'nativeSampleShading', 'sampleBuiltinsQualified')):
+            raise RuntimeError('Sample metadata cannot relabel the frozen layered product profile')
         if (any(type(row.get(k)) is not type(v) or row[k] != v for k, v in expected.items())
                 or type(row.get('samples')) is not int
                 or row['samples'] != (4 if row['scene'] == 'msaa-4x' else 1)
@@ -67,10 +111,10 @@ def validate_rows(rows, product):
                 or row['gnx'] != [0x474e5801, 0, 0, 0, 0, 0, 7, 8, 9, 0, 0, 0]):
             raise RuntimeError('Layered product coarse completion has fault or identity mismatch')
         words = row.get('resourceDiscovery')
-        if (not isinstance(words, list) or len(words) != len(FULL_WORDS)
+        if (not isinstance(words, list) or len(words) != len(discovery)
                 or any(type(w) is not dict or set(w) != {'address', 'value'}
                        or type(w['address']) is not int or type(w['value']) is not int
-                       for w in words) or words != FULL_WORDS):
+                       for w in words) or words != discovery):
             raise RuntimeError('Actual layered owner discovery is incomplete or differs from its factory')
         registers = row.get('profileRegisters')
         if (not isinstance(registers, list) or len(registers) != 5
@@ -88,43 +132,57 @@ def validate_rows(rows, product):
             raise RuntimeError('Layered live profile contradicts the complete two-CU contract')
 
 
-def marker(product, tile_log2):
+def marker(product, tile_log2, *, contract=FULL_CONTRACT):
+    contract_words(contract)
     width, height = common.frame_size(product, True)
-    return (f'NATIVE_LAYERED_PRODUCT PASS profile={PROFILE} scenes=6 tile={1 << tile_log2} '
+    return (f'{contract.marker} PASS profile={contract.profile} scenes=6 tile={1 << tile_log2} '
             f'frame={width}x{height} computeUnits=2 clockQualified=false fpsQualified=false')
 
 
-def verify_marker(log, product, tile_log2):
+def verify_marker(log, product, tile_log2, *, contract=FULL_CONTRACT):
+    contract_words(contract)
     width, height = common.frame_size(product, True)
-    expected = [f'NATIVE_LAYERED_PRODUCT_IMAGE scene={name} tile={1 << tile_log2} '
+    expected = [f'{contract.marker}_IMAGE scene={name} tile={1 << tile_log2} '
         f'frame={width}x{height} exactImagesSamplesResolvesGuardsAndGNY2=true' for name in common.SCENES]
     lines = log.read_text().splitlines()
-    if ([line for line in lines if line.startswith('NATIVE_LAYERED_PRODUCT_IMAGE ')] != expected
-            or [line for line in lines if line.startswith('NATIVE_LAYERED_PRODUCT PASS')]
-            != [marker(product, tile_log2)]):
+    for other in (FULL_CONTRACT, SAMPLE_CONTRACT):
+        if other != contract and any(line.startswith(other.marker + suffix)
+                for line in lines for suffix in ('_IMAGE ', ' PASS')):
+            raise RuntimeError('Mixed layered product factory verification markers')
+    if ([line for line in lines if line.startswith(contract.marker + '_IMAGE ')] != expected
+            or [line for line in lines if line.startswith(contract.marker + ' PASS')]
+            != [marker(product, tile_log2, contract=contract)]):
         raise RuntimeError('Complete independent layered image/sample/resolve/guard/GNY2 verification is missing')
 
 
 class Runner(sequence.OwnerRunner):
+    contract = FULL_CONTRACT
+
     def driver_path(self):
-        return ROOT / 'scripts/native_layered_product_driver.cpp'
+        return ROOT / self.contract.driver
 
     def driver_sources(self):
         return [name for name in flash.DRIVER if name != 'scripts/native_product_driver.cpp'] + [
-            'scripts/native_layered_product_driver.cpp', 'scripts/native_layered_product_fixture.hpp',
+            self.contract.driver, 'scripts/native_layered_product_fixture.hpp',
+            'scripts/native_layered_product_execution.hpp',
             'driver/opengpu_native_layered_abi.h',
-            'scripts/qualify_native_alignment_sequence.py', 'scripts/qualify_native_layered_product.py']
+            'scripts/qualify_native_alignment_sequence.py', 'scripts/qualify_native_layered_product.py'] + (
+            ['scripts/qualify_native_sample_layered_product.py'] if self.contract.sample else [])
 
     def extra_driver_dependencies(self):
         return [ROOT / name for name in (
-            'scripts/native_layered_product_fixture.hpp', 'driver/opengpu_native_layered_abi.h')]
+            'scripts/native_layered_product_fixture.hpp', 'scripts/native_layered_product_execution.hpp',
+            'driver/opengpu_native_layered_abi.h')]
 
     def fixture_manifest(self):
-        manifest = json.loads((self.out / FIXTURE_MANIFEST).read_text())
-        check_full_manifest(manifest, rtl_emitted=False)
+        manifest = json.loads((self.out / self.contract.fixture_manifest).read_text())
+        check_contract_manifest(manifest, self.contract, rtl_emitted=False)
         width, height = common.frame_size(self.product, True)
         expected = dict(workloadProduct=self.product, workloadWidth=width, workloadHeight=height,
                         workloadTileLog2=self.tile_log2, scenes=common.SCENES)
+        if self.contract.sample:
+            expected.update(workloadContainerMagic='OGLAY002', workloadFragmentVersion=1,
+                            sampleBuiltinsQualified=False)
         if any(type(manifest.get(k)) is not type(v) or manifest[k] != v for k, v in expected.items()):
             raise RuntimeError('Layered fixtures differ from the selected six original recipes')
 
@@ -135,38 +193,38 @@ class Runner(sequence.OwnerRunner):
         if (set(files) != expected
                 or (self.out / 'fixtures/suite.txt').read_text().splitlines() != common.SCENES):
             raise RuntimeError('Incomplete or reordered layered fixture set')
-        return dict(fixture_sha256=files, manifest_sha256=common.sha(self.out / FIXTURE_MANIFEST),
+        return dict(fixture_sha256=files, manifest_sha256=common.sha(self.out / self.contract.fixture_manifest),
                     driver_sha256={name: common.sha(ROOT / name) for name in self.driver_sources()})
 
     def full_owner(self):
         record = owner.prepared(self.out)
-        check_full_manifest(json.loads((self.out / 'owner-manifest.json').read_text()))
+        check_contract_manifest(json.loads((self.out / 'owner-manifest.json').read_text()), self.contract)
         return record
 
     def prepared(self):
         record = self.full_owner()
         self.fixture_manifest()
-        if json.loads((self.out / FIXTURE_RECORD).read_text()) != self.fixture_inputs():
+        if json.loads((self.out / self.contract.fixture_record).read_text()) != self.fixture_inputs():
             raise RuntimeError('Layered fixtures or driver changed after preparation')
         return record
 
     def prepare(self):
         record = self.full_owner()
-        for name in ('fixtures', FIXTURE_MANIFEST, FIXTURE_RECORD):
+        for name in ('fixtures', self.contract.fixture_manifest, self.contract.fixture_record):
             if (self.out / name).exists():
                 raise RuntimeError('Layered preparation requires fresh fixtures')
         mode = '--product' if self.product else '--smoke'
         width, height = common.frame_size(self.product, True)
         log = self.out / 'layer-product-prepare.log'
         self.execute('prepare-layered-product-fixtures', self.sbt(
-            'opengpu.system.PrepareNativeLayeredProductFixtures ' + mode + ' --output '
+            'opengpu.system.' + self.contract.prepare_entry + ' ' + mode + ' --output '
             + json.dumps(str(self.out)) + ' --tile-log2 ' + str(self.tile_log2), '3G'), log)
-        common.verify_prepare_completion(log, f'NATIVE_LAYERED_PRODUCT_FIXTURES scenes=6 '
-            f'frame={width}x{height} words=104 rtlEmitted=false gpuExecution=false')
+        common.verify_prepare_completion(log, f'{self.contract.marker}_FIXTURES scenes=6 '
+            f'frame={width}x{height} words={len(self.contract.words)} rtlEmitted=false gpuExecution=false')
         if self.full_owner() != record:
             raise RuntimeError('Complete owner changed during layered fixture preparation')
         self.fixture_manifest()
-        common.write_json(self.out / FIXTURE_RECORD, self.fixture_inputs())
+        common.write_json(self.out / self.contract.fixture_record, self.fixture_inputs())
         self.prepared()
 
     def run(self):
@@ -185,7 +243,7 @@ class Runner(sequence.OwnerRunner):
             rows = [json.loads(line) for line in log.read_text().splitlines() if line.strip()]
         else:
             rows = self.run_parallel_scenes(self.out / self.executable_name, directory)
-        validate_rows(rows, self.product)
+        validate_rows(rows, self.product, contract=self.contract)
         self.prepared()
         self.checked_build(prepared)
         common.write_json(self.out / 'execution.json', dict(exit_code=0, rows=rows,
@@ -205,28 +263,30 @@ class Runner(sequence.OwnerRunner):
                 or record.get('preparation_sha256') != common.sha(self.out / 'preparation.json')
                 or record.get('build_sha256') != common.sha(self.out / 'build.json')):
             raise RuntimeError('Layered outputs or executing model changed before verification')
-        validate_rows(record['rows'], self.product)
+        validate_rows(record['rows'], self.product, contract=self.contract)
         identity = common.sha(path)
         log = self.out / 'layer-product-verify.log'
         mode = '--product' if self.product else '--smoke'
         self.execute('verify-layered-six-scenes', self.sbt(
-            'opengpu.system.VerifyNativeLayeredProduct ' + mode + ' --output '
+            'opengpu.system.' + self.contract.verify_entry + ' ' + mode + ' --output '
             + json.dumps(str(directory)) + ' --tile-log2 ' + str(self.tile_log2), '3G'), log)
-        verify_marker(log, self.product, self.tile_log2)
+        verify_marker(log, self.product, self.tile_log2, contract=self.contract)
         self.prepared()
         self.checked_build(prepared)
         if common.sha(path) != identity or common.tree_hashes(directory) != record['output_sha256']:
             raise RuntimeError('Layered execution changed during independent verification')
-        common.write_json(self.out / 'qualification.json', dict(passed=True, profile=PROFILE,
-            ownerResourceStage=FULL_STAGE, execution_sha256=identity, tileLog2=self.tile_log2,
+        common.write_json(self.out / 'qualification.json', dict(passed=True, profile=self.contract.profile,
+            ownerResourceStage=self.contract.stage, execution_sha256=identity, tileLog2=self.tile_log2,
             product=self.product, clockQualified=False, fpsQualified=False,
-            scope='Six original GNJ2 native scenes on one complete geometry-compute owner DUT. '
+            scope='Six original ABI1 GNJ2 native scenes on the exact source-selected owner DUT. '
                   'Exact images, samples, resolves, guards and complete GNY2. '
-                  'No complete API, physical timing or FPS claim.'))
-        print(marker(self.product, self.tile_log2), flush=True)
+                  'No SampleID builtin, complete API, physical timing or FPS claim.'))
+        print(marker(self.product, self.tile_log2, contract=self.contract), flush=True)
 
 
-def main():
+def main(*, contract=FULL_CONTRACT, runner_type=None):
+    contract_words(contract)
+    runner_class = Runner if runner_type is None else runner_type
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument('--smoke', action='store_true')
@@ -247,12 +307,12 @@ def main():
     if args.jobs < 1 or args.shards < 1 or not 1 <= args.scene_jobs <= 6:
         parser.error('jobs/shards must be positive; scene-jobs must be 1..6')
     try:
-        out = checked_output(args.output)
+        out = checked_output(args.output) if contract == FULL_CONTRACT else checked_output(args.output, contract=contract)
     except RuntimeError as error:
         parser.error(str(error))
     with (out / '.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        runner = Runner(out, args.product, args.flashsim_dir, args.scene_jobs, args.shards,
+        runner = runner_class(out, args.product, args.flashsim_dir, args.scene_jobs, args.shards,
             reshard=args.reshard_dir, reshard_tool=args.reshard_tool,
             precompiled_header=args.precompiled_header, shard_opt=args.shard_opt,
             conservative_alias=args.conservative_alias,
