@@ -61,3 +61,65 @@ class TessellationPatchStoreSpec extends AnyFlatSpec {
     }
   }
 }
+
+/** Cross-owner initialization, independent of shader-provided output values. */
+class TessellationOwnedPatchStoreSpec extends AnyFlatSpec {
+  import opengpu.graphics.WindowRecordTest._
+  it should "initialize every newly reachable word and level before publishing an owned patch" in {
+    simulate(new TessellationPatchStore(zeroOnBegin=true)){d=>
+      zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      def begin(iv:Int,ic:Int,ov:Int,oc:Int,pc:Int,status:Int=0):Unit={
+        val l=d.io.begin.bits;l.inputVertices.poke(iv.U);l.inputComponents.poke(ic.U)
+        l.outputVertices.poke(ov.U);l.outputComponents.poke(oc.U);l.patchComponents.poke(pc.U)
+        d.io.begin.valid.poke(true.B);d.io.begin.ready.expect(true.B);d.clock.step();d.io.begin.valid.poke(false.B)
+        // Later caller mutation cannot shorten initialization of the saved layout.
+        zero(l)
+        val words=if(status==0)math.max(iv*ic,ov*oc+pc)else 0
+        for(_<-0 until words){
+          d.io.busy.expect(true.B);d.io.beginResult.valid.expect(false.B)
+          d.io.begin.ready.expect(false.B);d.io.access.ready.expect(false.B);d.io.end.ready.expect(false.B);d.clock.step()
+        }
+        d.io.beginResult.valid.expect(true.B);d.io.beginResult.bits.expect(status.U)
+        for(_<-0 until 3){d.clock.step();d.io.beginResult.valid.expect(true.B)
+          d.io.beginResult.bits.expect(status.U);d.io.access.ready.expect(false.B);d.io.end.ready.expect(false.B)}
+        d.io.beginResult.ready.poke(true.B);d.clock.step();d.io.beginResult.ready.poke(false.B)
+      }
+      def access(out:Boolean,patch:Boolean,v:Int,c:Int,write:Boolean=false,data:BigInt=0,expected:BigInt=0,level:Boolean=false):Unit={
+        val a=d.io.access.bits;zero(a);a.output.poke(out.B);a.perPatch.poke(patch.B);a.tessLevel.poke(level.B)
+        a.vertex.poke(v.U);a.component.poke(c.U);a.write.poke(write.B);a.data.poke(data.U)
+        d.io.access.valid.poke(true.B);d.io.access.ready.expect(true.B);d.clock.step();d.io.access.valid.poke(false.B)
+        var n=0;while(!d.io.reply.valid.peek().litToBoolean && n<4){d.clock.step();n+=1}
+        d.io.reply.valid.expect(true.B);d.io.reply.bits.status.expect(0.U);d.io.reply.bits.data.expect(expected.U)
+        d.io.end.valid.poke(true.B);d.clock.step();d.io.end.ready.expect(false.B)
+        d.io.reply.bits.data.expect(expected.U);d.io.end.valid.poke(false.B)
+        d.io.reply.ready.poke(true.B);d.clock.step();d.io.reply.ready.poke(false.B)
+      }
+      def end():Unit={d.io.end.valid.poke(true.B);d.io.end.ready.expect(true.B)
+        d.clock.step();d.io.end.valid.poke(false.B);d.io.busy.expect(false.B)}
+      begin(32,64,32,64,0)
+      for(v<-0 until 32;c<-0 until 64){
+        access(false,false,v,c,write=true,data=0x10000000L+v*64+c)
+        access(true,false,v,c,write=true,data=0x20000000L+v*64+c)
+      }
+      for(c<-0 until 6)access(true,true,0,c,write=true,data=0x30000000L+c,level=true)
+      end()
+      // Full input and coupled output/patch storage, across a layout change.
+      begin(32,64,32,60,120)
+      for(v<-0 until 32;c<-0 until 64)access(false,false,v,c)
+      for(v<-0 until 32;c<-0 until 60)access(true,false,v,c)
+      for(c<-0 until 120)access(true,true,0,c)
+      for(c<-0 until 6)access(true,true,0,c,level=true)
+      end()
+      // Growing the output exposes eight old addresses that were unreachable
+      // under the previous layout; they must initialize again too.
+      begin(32,64,32,64,0)
+      for(c<-56 until 64)access(true,false,31,c)
+      for(c<-0 until 6)access(true,true,0,c,write=true,data=0x40000000L+c,level=true)
+      end()
+      begin(32,64,32,64,1,status=1);d.io.busy.expect(false.B)
+      begin(1,0,1,0,0)
+      for(c<-0 until 6)access(true,true,0,c,level=true)
+      end()
+    }
+  }
+}

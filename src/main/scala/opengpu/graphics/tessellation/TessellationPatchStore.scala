@@ -20,11 +20,13 @@ class TessellationPatchReply extends Bundle {
 }
 
 /** One owned patch with separately packed input and control-output memories.
-  * Unwritten components have undefined contents; consumers must observe the
-  * control shader's initialization and barrier rules. Requests and replies
+  * Legacy unwritten components have undefined contents. With zeroOnBegin,
+  * every address reachable under the new layout and all six levels initialize
+  * before beginResult; shader barriers still govern concurrent access. Requests and replies
   * are serialized, and a held reply prevents reuse or patch release.
   */
-class TessellationPatchStore extends Module {
+class TessellationPatchStore(zeroOnBegin:Boolean) extends Module {
+  def this()=this(false)
   val io=IO(new Bundle {
     val begin=Flipped(Decoupled(new TessellationPatchLayout))
     val beginResult=Decoupled(UInt(2.W))
@@ -40,16 +42,33 @@ class TessellationPatchStore extends Module {
   private val active=RegInit(false.B);private val opening=RegInit(false.B);private val openStatus=Reg(UInt(2.W))
   private val responseValid=RegInit(false.B);private val response=Reg(new TessellationPatchReply)
   private val readPending=RegInit(false.B);private val readOutput=Reg(Bool())
+  private val clearing=if(zeroOnBegin)Some(RegInit(false.B))else None
+  private val clearAddress=if(zeroOnBegin)Some(Reg(UInt(11.W)))else None
+  private val inputWords=if(zeroOnBegin)Some(Reg(UInt(12.W)))else None
+  private val outputWords=if(zeroOnBegin)Some(Reg(UInt(12.W)))else None
+  private val isClearing=clearing.getOrElse(false.B)
   private val inCount=io.begin.bits.inputVertices*io.begin.bits.inputComponents
   private val outCount=io.begin.bits.outputVertices*io.begin.bits.outputComponents+&io.begin.bits.patchComponents
   private val legal=io.begin.bits.inputVertices>=1.U && io.begin.bits.inputVertices<=TessellationLimits.maxPatchVertices.U &&
     io.begin.bits.outputVertices>=1.U && io.begin.bits.outputVertices<=TessellationLimits.maxPatchVertices.U &&
     io.begin.bits.inputComponents<=64.U && io.begin.bits.outputComponents<=64.U && io.begin.bits.patchComponents<=120.U &&
     inCount<=depth.U && outCount<=depth.U
-  io.begin.ready:= !active && !opening && !responseValid && !readPending
-  io.beginResult.valid:=opening;io.beginResult.bits:=openStatus
-  io.busy:=active || opening || responseValid || readPending
+  io.begin.ready:= !active && !opening && !responseValid && !readPending && !isClearing
+  io.beginResult.valid:=opening && !isClearing;io.beginResult.bits:=openStatus
+  io.busy:=active || opening || responseValid || readPending || isClearing
   when(io.begin.fire){layout:=io.begin.bits;active:=legal;opening:=true.B;openStatus:=Mux(legal,0.U,1.U)}
+  if(zeroOnBegin){
+    when(io.begin.fire){
+      clearing.get:=legal && (inCount=/=0.U || outCount=/=0.U)
+      clearAddress.get:=0.U;inputWords.get:=inCount;outputWords.get:=outCount
+      when(legal){levels:=VecInit(Seq.fill(6)(0.U(32.W)))}
+    }
+    when(isClearing){
+      val words=Mux(inputWords.get>outputWords.get,inputWords.get,outputWords.get)
+      when(clearAddress.get+&1.U>=words){clearing.get:=false.B}
+        .otherwise{clearAddress.get:=clearAddress.get+1.U}
+    }
+  }
   when(io.beginResult.fire){opening:=false.B}
 
   private val req=io.access.bits
@@ -62,19 +81,29 @@ class TessellationPatchStore extends Module {
   private val vertexAddress=req.vertex*componentBound+&req.component
   private val patchAddress=layout.outputVertices*layout.outputComponents+&req.component
   private val address=Mux(req.perPatch,patchAddress,vertexAddress)(10,0)
-  io.access.ready:=active && !opening && !responseValid && !readPending && !io.end.valid
-  io.end.ready:=active && !opening && !responseValid && !readPending
+  io.access.ready:=active && !opening && !responseValid && !readPending && !io.end.valid && !isClearing
+  io.end.ready:=active && !opening && !responseValid && !readPending && !isClearing
   when(io.end.fire){active:=false.B}
   private val read=io.access.fire && accessValid && !req.write && !req.tessLevel
   private val inputData=input.read(address,read && !req.output)
   private val outputData=output.read(address,read && req.output)
+  private val write=io.access.fire && accessValid && req.write && !req.tessLevel
+  // Share each bank's original write port with initialization; do not infer a
+  // second SRAM write port or increase its capacity for owner isolation.
+  if(zeroOnBegin){
+    val a=Mux(isClearing,clearAddress.get,address);val data=Mux(isClearing,0.U,req.data)
+    when((isClearing && clearAddress.get<inputWords.get) || (write && !req.output)){input.write(a,data)}
+    when((isClearing && clearAddress.get<outputWords.get) || (write && req.output)){output.write(a,data)}
+  }else{
+    when(write && !req.output){input.write(address,req.data)}
+    when(write && req.output){output.write(address,req.data)}
+  }
   when(io.access.fire){
     when(!accessValid){response.status:=1.U;response.data:=0.U;responseValid:=true.B}
       .elsewhen(req.tessLevel){
         when(req.write){levels(req.component(2,0)):=req.data}
         response.status:=0.U;response.data:=Mux(req.write,0.U,levels(req.component(2,0)));responseValid:=true.B
       }.elsewhen(req.write){
-        when(req.output){output.write(address,req.data)}.otherwise{input.write(address,req.data)}
         response.status:=0.U;response.data:=0.U;responseValid:=true.B
       }.otherwise{readPending:=true.B;readOutput:=req.output}
   }
