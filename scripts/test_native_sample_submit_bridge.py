@@ -40,9 +40,15 @@ def build_bridge(out: Path, sanitize: bool = False, live: bool = False) -> Path:
     includes = [out, ROOT/'driver', ROOT/'driver/tests', ROOT/'driver/tests/private_snapshot_stubs',
                 ROOT/'driver/tests/mmu_stubs', ROOT/'driver/tests/compute_submit_stubs']
     binary = out / ('native-sample-live-producer' if live else 'native-sample-submit-producer')
-    subprocess.run([*shlex.split(os.environ.get('CC', 'cc')), *flags,
-                    *['-I'+str(p) for p in includes], str(ROOT/'scripts'/('native_sample_live_producer.c' if live else 'native_sample_submit_producer.c')),
-                    str(ROOT/'driver/opengpu_native_frame.c'), '-o', str(binary)], check=True)
+    cc = shlex.split(os.environ.get('CC', 'cc'))
+    objects = []
+    for source in (ROOT/'scripts'/('native_sample_live_producer.c' if live else 'native_sample_submit_producer.c'),
+                   ROOT/'driver/opengpu_native_frame.c'):
+        obj = out/(source.stem+'.o')
+        subprocess.run([*cc, *flags, *['-I'+str(p) for p in includes],
+                        '-MMD', '-MF', str(obj.with_suffix('.d')), '-c', str(source), '-o', str(obj)], check=True)
+        objects.append(str(obj))
+    subprocess.run([*cc, *flags, *objects, '-o', str(binary)], check=True)
     return binary
 
 
