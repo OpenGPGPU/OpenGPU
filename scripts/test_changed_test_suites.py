@@ -1064,6 +1064,14 @@ class ChangedTestSuitesTest(unittest.TestCase):
             self.assertNotIn("opengpu.graphics.VertexShaderSliceSpec", selected)
             self.assertNotIn("opengpu.graphics.TessellationVertexPatchSourceSpec", selected)
 
+    def test_original_vertex_router_selects_capability_and_two_tier_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        for source in ("system/TessellationVertexShaderRouter", "system/SharedCuGraphicsPort",
+                       "system/GeometryFragmentShaderRouter", "graphics/SharedShaderTaskRouter"):
+            with self.subTest(source=source):
+                selected = changed_suites(root, [f"src/main/scala/opengpu/{source}.scala"])
+                self.assertIn("opengpu.graphics.TessellationVertexShaderRouterSpec", selected)
+
     def test_original_vertex_patch_ranges_select_retirement_and_order_checks(self):
         root = Path(__file__).resolve().parents[1]
         for source in ("system/TessellationVertexPatchSequence", "system/TessellationVertexPatchSource",
