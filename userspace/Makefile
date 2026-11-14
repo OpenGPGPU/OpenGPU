@@ -27,7 +27,7 @@ all: $(EXAMPLES) shaders/round_modes.bin
 opengpu.o: opengpu.c opengpu.h ../driver/opengpu_drm.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
-pipe_opengpu.o: pipe_opengpu.c pipe_opengpu.h opengpu_pixel_format.h opengpu.h ../driver/opengpu_drm.h ../driver/opengpu_formats.h
+pipe_opengpu.o: pipe_opengpu.c pipe_opengpu.h opengpu_framebuffer_blit.h opengpu_pixel_format.h opengpu.h ../driver/opengpu_drm.h ../driver/opengpu_formats.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
 examples/compute_counter: examples/compute_counter.c examples/compute_counter_program.h opengpu.o

@@ -16,6 +16,12 @@ on topic branches; never commit, merge, or push directly to `main` or `master`.
 Keep existing unpublished work intact and submit it from a topic branch.
 Required CI must pass before a PR is merged. Do not bypass branch protection.
 
+Keep at most two pull requests open at once, including drafts. Finish and merge
+ready work before opening another PR. Prefer logical commits on an existing
+topic branch over additional stacked PRs. Close superseded or deferred PRs while
+preserving all unmerged source branches; reopen an existing PR when it is ready
+and a slot is available.
+
 After implementation and relevant local validation pass, automatically mark a
 Codex PR ready for review (or create it without draft mode) and enable GitHub
 auto-merge with the rebase method. The user has authorized this workflow; do not

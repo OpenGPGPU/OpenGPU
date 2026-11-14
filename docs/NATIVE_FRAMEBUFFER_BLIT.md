@@ -1,0 +1,160 @@
+# Native framebuffer blit
+
+The Gallium blit callback now has a checked-storage GPU implementation
+for its four existing RGBA8/BGRA8/RGBX8/BGRX8 formats. Scaling, source flips,
+destination clipping, scissor and channel masks run through a private compute
+context. The CPU prepares coordinate offsets; it never reads or converts source
+pixels. The emitted GPU program reads source pixels, converts channels, merges
+masked destination bytes and waits for acknowledged writes.
+
+Same-format 2D/rectangle `resource_copy_region` uses the same checked-storage
+pass for all four color formats and D24S8/D24X8. This operation copies every
+storage byte, including RGBX X bytes and D24X8 padding, through an explicit raw
+RGBA8 interpretation. Actual source/destination dimensions, different pitches,
+row offsets and final partial cache-line guards are preserved. Unsupported
+pre-admission copies retain the Mesa transfer helper; an accepted failure keeps
+its original owner and cannot invoke that CPU helper. Buffer/PBO pixel-transfer
+layouts and additional framebuffer formats remain open.
+
+The version-1 descriptor rejects unknown versions, lengths, flags, formats and
+out-of-range image metadata. Whole images retain their actual pitch and exact
+logical byte limits. Source and coordinate views are read-only; destination
+storage is read/write. Kernel compute admission proves backing disjointness,
+retains original GEMs and constructs the existing private Sv32 leases. Submission,
+completion, cached publication and final context destruction are separate steps.
+An unresolved accepted wait retains its original fence and context as a screen
+orphan. A new blit cannot reuse that context or replay it through the CPU.
+
+Version 2 additionally admits same-format D24S8/D24X8 nearest transfers, with
+independent selected depth/stencil planes and unselected bits retained. A depth
+format mismatch or stencil request on D24X8 fails admission. Version 1 continues
+to reject these formats. Version 2/3 permit same-GEM copies only after an exact
+tap-set proof establishes that all source reads are disjoint from all destination
+writes. Actual X/Y taps are sorted; two binary searches per destination row retain
+skipped rows/columns, source reversal and repeated scaled samples. Scratch is
+bounded at 256 KiB for the unchanged 16,384-axis capacity. Merely having
+different object handles is not the backing proof; unknown imports remain subject
+to the kernel's existing rejection.
+
+The old CPU implementation remains available only before GPU work is admitted:
+unsupported depth view combinations, overlapping same-GEM operations, views beyond the checked-storage
+128 MiB window, incomplete physical line tails and devices without byte views.
+It preserves the existing API capacity; it does not qualify those operations as
+GPU features. Version 1 also accepts reversed destination endpoints in the direct
+winsys descriptor; the existing Gallium callback requires a positive destination
+box. Hardware capacities and the public kernel command ABI are unchanged.
+
+Version 3 adds LINEAR filtering for these normalized color formats. Each axis
+uses a clamped two-tap coordinate with Q16 weights. The GPU reads all four pixels
+and computes the complete bilinear sum using 16-bit limbs and existing uint32
+instructions, preserving the full 40-bit intermediate product and rounding only
+once at the end. No extra arithmetic opcode or relaxed shader validator is used.
+The coordinate weight error can change an ideal rounded 8-bit component by at
+most one level; quantized results match the independent full uint64 sum exactly.
+Versions 1/2 reject the LINEAR flag. Depth/stencil LINEAR and mismatched depth
+formats remain invalid descriptors. The source-region clamp follows the allowed
+region-clamped policy; framebuffer edges always clamp.
+
+CPU validation passes 16,414 affine/format/mask/scissor cases against an independent
+direct pixel oracle and instruction decoder, including full source/map/destination
+guards and signed endpoint boundaries. Every generated program passes the real
+kernel shader validator. The actual Gallium/private winsys/lib-ioctl CPU fixture
+passes both filters across all 16 format pairs, read/write permission checks, held coordinate and
+compute acknowledgments, rejected new work before late retirement, compute fault
+and healthy reuse, with graphics bindings unchanged. Both gates use ASan/UBSan.
+Depth images retain their tightly packed pitch and dimensions in the actual
+resource allocation callback, so native admission sees the real image layout.
+The caller allocates real D24S8/D24X8 resources and verifies all supported
+depth/stencil selections; changing a color resource's public format is not used
+as evidence for depth admission. It also verifies legal same-GEM
+disjoint copy and pre-submission rejection of overlapping read/write spans.
+Another 4,145 random/boundary bilinear products match a full uint64 oracle,
+including zero/full weights, all-ones values and low-limb carries. The image
+cases also compare against ideal long-double filtering within one 8-bit level.
+The same-GEM proof matches an independent per-byte/tap oracle for 4,096 bounded
+rectangles with different pitches, scaling, clipping, scissor and both endpoint
+directions. Directed positive cases admit destination columns and rows in actual
+downsampling holes; corresponding true nearest/four-tap overlaps are rejected.
+The existing transfer/depth/viewport/sampler/attachment and winsys range/unbind
+CPU regressions also pass. Linux ioctls and device scheduling are modeled in the
+CPU fixture; these results do not prove actual RTL execution.
+
+The actual caller can export 43 bounded original submissions: both filters and
+all 16 color pairs, four depth/stencil selections, six raw copy-region formats
+and a same-GEM copy. The copy-region cases use real 5×3 and 4×4 allocations
+with pitches of 20 and 16 bytes and independent checks of every padding byte.
+Held compute acknowledgements also reject fresh copy-region work until late
+retirement, then permit healthy reuse without changing graphics bindings. Each
+contains the original shader, kernarg, descriptor/maps, complete GEM bytes,
+exact permissions/view bounds and an independently calculated expected GEM.
+Preparation pins the compiler and transitive C/Python source closure before and
+after capture. Reuse requires an external manifest hash and unchanged original
+sources; this CPU receipt cannot qualify a DUT. The C++ reader checks all 43
+against the production emitter/maps and an independent direct affine pixel
+oracle. ASan/UBSan passes these inputs and 27 malformed input rejections.
+The bounded Sv32 fixture retains actual GEM identity, aliases, bytes and exact
+GSB1 permissions; independent walks check every mapped page, while complete
+memory checks include shader, maps, page tables, padding and image guards.
+
+The host executor source admits these original packets before creating a model,
+requires the complete 96-word profile, and stages the original bytes in that
+bounded test VM. It checks held completions, last external ACK, publication
+invalidate, exact retirement and page revocation before the next case without
+reset. The lifecycle executor then reuses the original first color packet for
+a physical source-read SLVERR and two unified resets with an actual R response
+or B ACK held. It requires RESET_BUSY and VM ownership to remain asserted while
+held, rejects a racing submission, and checks that reset acknowledgement follows
+external drain with no stale completion or later writes. A healthy launch reuses
+the original command ID after each fault/reset. Cancellation may leave selected
+destination bytes at their original or independently computed values; source,
+unselected bytes, maps, code, page tables and allocation guards remain exact.
+It never substitutes a synthesized shader or resets the model between packets.
+Its runtime comes from an explicit owner checkout; producer C checks are
+separate from the C++ wire reader, so no duplicate cross-checkout ABI header is
+selected. The actual owner's strict driver-include validator and a C++ typecheck
+pass. The typecheck uses declaration-only ports and executes no RTL. A dedicated
+wrapper binds the explicit owner source/modules, complete generated model,
+assertions, generator, all shards, compiler, exact driver dependency closure and
+original input manifest before and after build/execution. It shares only the
+guarded shard cache, uses one compiler job, and removes its temporary result on
+exit. Eleven CPU tests cover wrong model/source/flags/compiler, incomplete results,
+incorrect scope, required fault/R/B-reset observations and actual interrupted
+child-process cleanup. An ASan/UBSan transport test drives the real memory agent
+through held two-beat reads, source SLVERR, delayed write ACK and healthy read
+reuse; its clock/port shell executes no RTL. The strict owner include validator
+and declaration-only C++ typecheck pass with this lifecycle executor.
+This is not yet a
+qualified executable or a completed GPU test; original Linux MMIO replay and
+actual fault/reset cancellation remain required. Reusing the frozen 96-word DUT would be
+functional diagnosis only. Final H6 qualification requires the newly integrated
+source profile and all six complete 640×480 frames with its whole-host clock.
+
+```sh
+python3 -B scripts/test_framebuffer_blit.py
+OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 \
+OPENGPU_DRM_INCLUDE=/path/to/drm-headers \
+  python3 -B scripts/test_gallium_compute.py --fixture framebuffer-blit
+OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 \
+OPENGPU_DRM_INCLUDE=/path/to/drm-headers \
+  python3 -B scripts/test_framebuffer_blit_inputs.py
+python3 -B scripts/check_framebuffer_blit_host_source.py \
+  --owner-root /path/to/gpu/.artifacts/worktrees/complete-owner-source
+python3 -B scripts/test_framebuffer_blit_host.py
+```
+
+For an existing completed owner model, use
+`qualify_framebuffer_blit_host.py --stage build` (then `check` and `run`) with
+explicit `--owner-root`, `--owner-output`, `--flashsim-dir`, `--inputs` and
+`--input-manifest-sha256`. The last argument is the hash printed at actual caller
+preparation, held separately from the mutable input directory. The current
+default is the original 32-shard layout; build optimization/PCH/alias options
+must match when checking or running. These commands have not yet completed on
+an actual DUT and must not be reported as execution results.
+
+Actual two-CU/Sv32/L2 execution, fault/reset drain and completion retirement remain
+required. This implementation currently launches one workgroup per destination
+pixel; full-frame cost has not been measured. No blit throughput, product frame
+rate or whole-host physical clock is qualified. F08 and the full H6 target remain
+open, including actual native/API qualification of these paths and broader
+pixel-transfer layouts and framebuffer formats.
+The GLES contract is described in [OpenGL ES 3.0.6, §4.3.3](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf).

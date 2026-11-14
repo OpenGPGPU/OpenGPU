@@ -1123,8 +1123,8 @@ static void test_texture_gather_admission(void)
 
 int main(void)
 {
-    test_native_uniform_admission();
     test_shared_own_proof_bounds();
+    test_native_uniform_admission();
     test_compute_shared_admission();
     unsigned shared_allocations=proof_allocations;
     test_compute_uniform_admission();

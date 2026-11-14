@@ -29,6 +29,7 @@
 #include "opengpu_buffer_views.h"
 #include "opengpu_shader_abi.h"
 #include "opengpu_shader_resources.h"
+#include "opengpu_framebuffer_blit.h"
 #include "opengpu_texture_layout.h"
 #include "opengpu_sampler_lowering.h"
 #include "opengpu_vertex_formats.h"
@@ -4202,6 +4203,39 @@ static int blit_image(struct pipe_context *pipe, const struct pipe_blit_info *in
     if (!src_width || !src_height || !dst_width || !dst_height ||
         !info->mask)
         return 0;
+    /* The GPU owns all pixel bytes in this pass. CPU work is limited to
+     * immutable coordinate metadata. Select the old path only before GPU
+     * admission; an accepted-job fault/timeout must never replay on the CPU. */
+    struct pipe_opengpu_screen *gpu_screen=opengpu_screen_gpu(pipe->screen);
+    struct pipe_opengpu_resource *gpu_src=opengpu_resource(src)->gpu;
+    struct pipe_opengpu_resource *gpu_dst=opengpu_resource(dst)->gpu;
+    bool gpu_depth=depth_stencil && info->src.format==info->dst.format &&
+        src->format==info->src.format && dst->format==info->dst.format;
+    if ((!depth_stencil || gpu_depth) &&
+        pipe_opengpu_screen_framebuffer_blit(gpu_screen)) {
+        uint32_t depth_format=info->src.format==PIPE_FORMAT_Z24_UNORM_S8_UINT ?
+            OPENGPU_FRAMEBUFFER_BLIT_D24S8 : OPENGPU_FRAMEBUFFER_BLIT_D24X8;
+        struct opengpu_framebuffer_blit descriptor={
+            .version=OPENGPU_FRAMEBUFFER_BLIT_VERSION_3,.bytes=sizeof(descriptor),
+            .flags=(info->scissor_enable ? OPENGPU_FRAMEBUFFER_BLIT_SCISSOR : 0) |
+                (info->filter==PIPE_TEX_FILTER_LINEAR ? OPENGPU_FRAMEBUFFER_BLIT_LINEAR : 0),
+            .mask=info->mask,.source_format=depth_stencil ? depth_format : (uint32_t)opengpu_format(info->src.format),
+            .destination_format=depth_stencil ? depth_format : (uint32_t)opengpu_format(info->dst.format),
+            .source_width=src->width0,.source_height=src->height0,
+            .source_pitch=pipe_opengpu_resource_pitch(gpu_src),
+            .destination_width=dst->width0,.destination_height=dst->height0,
+            .destination_pitch=pipe_opengpu_resource_pitch(gpu_dst),
+            .source_x=info->src.box.x,.source_y=info->src.box.y,
+            .source_w=info->src.box.width,.source_h=info->src.box.height,
+            .destination_x=info->dst.box.x,.destination_y=info->dst.box.y,
+            .destination_w=info->dst.box.width,.destination_h=info->dst.box.height,
+            .scissor_x0=info->scissor.minx,.scissor_y0=info->scissor.miny,
+            .scissor_x1=info->scissor.maxx,.scissor_y1=info->scissor.maxy,
+        };
+        int gpu_result=pipe_opengpu_try_framebuffer_blit(gpu_screen,gpu_dst,gpu_src,&descriptor,
+                                                       octx(pipe)->fence_timeout_ms);
+        if(gpu_result<=0)return gpu_result;
+    }
     sx = (int64_t)info->src.box.x + (info->src.box.width < 0 ? -src_width : 0);
     sy = (int64_t)info->src.box.y + (info->src.box.height < 0 ? -src_height : 0);
     sx0 = sx < 0 ? 0 : sx; sy0 = sy < 0 ? 0 : sy;
@@ -4328,6 +4362,47 @@ static void blit(struct pipe_context *pipe, const struct pipe_blit_info *info)
 {
     if (blit_image(pipe,info))
         gpu_failed("unsupported or invalid image blit");
+}
+
+static void resource_copy_region(struct pipe_context *pipe,
+    struct pipe_resource *dst,unsigned dst_level,unsigned dstx,unsigned dsty,unsigned dstz,
+    struct pipe_resource *src,unsigned src_level,const struct pipe_box *box)
+{
+    /* Copy-region transfers storage bytes without format conversion. In
+     * particular RGBX X and D24X8 padding must copy too, unlike a semantic
+     * color/depth blit. The existing byte-view shader can copy each raw word
+     * through its RGBA8 interpretation without changing any of those bits. */
+    if (src && dst && box && src->screen==pipe->screen && dst->screen==pipe->screen &&
+        src->format==dst->format && (opengpu_format(src->format)>=0 || blit_depth_format(src->format)) &&
+        (src->target==PIPE_TEXTURE_2D || src->target==PIPE_TEXTURE_RECT) &&
+        (dst->target==PIPE_TEXTURE_2D || dst->target==PIPE_TEXTURE_RECT) &&
+        !src_level && !dst_level && !dstz && !box->z && box->depth==1 &&
+        box->x>=0 && box->y>=0 && box->width>0 && box->height>0 &&
+        src->nr_samples<=1 && src->nr_storage_samples<=1 && dst->nr_samples<=1 && dst->nr_storage_samples<=1 &&
+        (uint64_t)box->x+(unsigned)box->width<=src->width0 &&
+        (uint64_t)box->y+(unsigned)box->height<=src->height0 &&
+        (uint64_t)dstx+(unsigned)box->width<=dst->width0 &&
+        (uint64_t)dsty+(unsigned)box->height<=dst->height0) {
+        struct pipe_opengpu_screen *screen=opengpu_screen_gpu(pipe->screen);
+        if (pipe_opengpu_screen_framebuffer_blit(screen)) {
+            struct pipe_opengpu_resource *source=opengpu_resource(src)->gpu,*destination=opengpu_resource(dst)->gpu;
+            const struct opengpu_framebuffer_blit d={
+                .version=OPENGPU_FRAMEBUFFER_BLIT_VERSION_2,.bytes=sizeof(d),.mask=PIPE_MASK_RGBA,
+                .source_format=OPENGPU_FORMAT_RGBA8,.destination_format=OPENGPU_FORMAT_RGBA8,
+                .source_width=src->width0,.source_height=src->height0,.source_pitch=pipe_opengpu_resource_pitch(source),
+                .destination_width=dst->width0,.destination_height=dst->height0,
+                .destination_pitch=pipe_opengpu_resource_pitch(destination),
+                .source_x=box->x,.source_y=box->y,.source_w=box->width,.source_h=box->height,
+                .destination_x=(int32_t)dstx,.destination_y=(int32_t)dsty,
+                .destination_w=box->width,.destination_h=box->height};
+            const int result=pipe_opengpu_try_framebuffer_blit(screen,destination,source,&d,octx(pipe)->fence_timeout_ms);
+            if(result<=0) {
+                if(result)gpu_failed("GPU image region copy failed");
+                return;
+            }
+        }
+    }
+    util_resource_copy_region(pipe,dst,dst_level,dstx,dsty,dstz,src,src_level,box);
 }
 
 /* Mesa sets these on every draw. Viewport coordinates and the scissor are
@@ -5211,7 +5286,7 @@ struct pipe_context *opengpu_pipe_context_create(struct pipe_screen *screen,
     ctx->base.texture_subdata = u_default_texture_subdata;
     ctx->base.transfer_flush_region = u_default_transfer_flush_region;
     ctx->base.flush_resource = flush_resource;
-    ctx->base.resource_copy_region = util_resource_copy_region;
+    ctx->base.resource_copy_region = resource_copy_region;
     ctx->base.blit = blit;
     ctx->base.clear_render_target = clear_render_target;
     ctx->base.clear_depth_stencil = clear_depth_stencil;

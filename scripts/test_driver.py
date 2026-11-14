@@ -200,6 +200,7 @@ def run_driver_tests():
             subprocess.run([str(binary)], check=True)
 
             subprocess.run([sys.executable, str(ROOT / "scripts/test_gallium_compute.py")], check=True)
+            subprocess.run([sys.executable, "-B", str(ROOT / "scripts/test_framebuffer_blit_inputs.py")], check=True)
 
 def main():
     parent = ROOT / '.artifacts'
