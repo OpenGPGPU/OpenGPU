@@ -119,28 +119,42 @@ int main(void)
         assert(!memcmp(input,source_copy,(size_t)sb));
         assert(!memcmp(&contexts[graphics_context],&original,sizeof(original)));
     }
-    for(unsigned format=0;format<2;format++)for(unsigned mask=1;mask<4;mask++) {
-        if(format && (mask&2))continue;
-        char name[64];assert(snprintf(name,sizeof(name),"depth-%u-%u",format,mask)>0);
-        blit_export_name=name;
-        struct pipe_blit_info b={0};
-        b.src.resource=src;b.dst.resource=dst;
-        src->format=dst->format=b.src.format=b.dst.format=format?PIPE_FORMAT_Z24X8_UNORM:PIPE_FORMAT_Z24_UNORM_S8_UINT;
-        b.src.box=(struct pipe_box){.x=4,.y=0,.width=-4,.height=4,.depth=1};
-        b.dst.box=(struct pipe_box){.width=2,.height=2,.depth=1};
-        b.filter=PIPE_TEX_FILTER_NEAREST;b.mask=(mask&1?PIPE_MASK_Z:0)|(mask&2?PIPE_MASK_S:0);
-        memset(output,0xa5,(size_t)db);memset(independent_expected,0xa5,(size_t)db);unsigned before=computes;
-        p->blit(p,&b);assert(computes==before+1);
-        for(unsigned y=0;y<4;y++)for(unsigned x=0;x<dp;x++) {
-            uint8_t expected=0xa5;
-            if(y<2 && x<8 && (x%4==3?mask&2:mask&1)) {
-                unsigned sx=x/4?1:3,sy=y*2+1;
-                expected=input[sy*sp+sx*4+x%4];
+    /* Depth must use the real depth allocation callback, not a color GEM
+     * whose public format field was changed by the fixture. */
+    for(unsigned format=0;format<2;format++) {
+        templ.format=format?PIPE_FORMAT_Z24X8_UNORM:PIPE_FORMAT_Z24_UNORM_S8_UINT;
+        templ.bind=PIPE_BIND_DEPTH_STENCIL;
+        struct pipe_resource *ds=s->resource_create(s,&templ),*dd=s->resource_create(s,&templ);assert(ds&&dd);
+        struct pipe_opengpu_resource *dgs=opengpu_resource(ds)->gpu,*dgd=opengpu_resource(dd)->gpu;
+        uint32_t dsp=pipe_opengpu_resource_pitch(dgs),ddp=pipe_opengpu_resource_pitch(dgd);
+        uint64_t dsb=pipe_opengpu_resource_size(dgs),ddb=pipe_opengpu_resource_size(dgd);
+        assert(dsp==16 && ddp==16 && pipe_opengpu_resource_width(dgs)==4 && pipe_opengpu_resource_height(dgd)==4);
+        uint8_t *di=pipe_opengpu_resource_map(dgs),*dout=pipe_opengpu_resource_map(dgd);
+        uint8_t *de=malloc((size_t)ddb),*saved=malloc((size_t)dsb);assert(de&&saved);
+        for(uint64_t n=0;n<dsb;n++)di[n]=(uint8_t)(n*17+41);
+        memcpy(saved,di,(size_t)dsb);
+        for(unsigned mask=1;mask<4;mask++) {
+            if(format && (mask&2))continue;
+            char name[64];assert(snprintf(name,sizeof(name),"depth-%u-%u",format,mask)>0);
+            blit_export_name=name;
+            struct pipe_blit_info b={0};
+            b.src.resource=ds;b.dst.resource=dd;b.src.format=b.dst.format=templ.format;
+            b.src.box=(struct pipe_box){.x=4,.y=0,.width=-4,.height=4,.depth=1};
+            b.dst.box=(struct pipe_box){.width=2,.height=2,.depth=1};
+            b.filter=PIPE_TEX_FILTER_NEAREST;b.mask=(mask&1?PIPE_MASK_Z:0)|(mask&2?PIPE_MASK_S:0);
+            memset(dout,0xa5,(size_t)ddb);memset(de,0xa5,(size_t)ddb);unsigned before=computes;
+            p->blit(p,&b);assert(computes==before+1);
+            for(unsigned y=0;y<4;y++)for(unsigned x=0;x<ddp;x++) {
+                uint8_t expected=0xa5;
+                if(y<2 && x<8 && (x%4==3?mask&2:mask&1)) {
+                    unsigned sx=x/4?1:3,sy=y*2+1;
+                    expected=di[sy*dsp+sx*4+x%4];
+                }
+                assert(dout[y*ddp+x]==expected);de[y*ddp+x]=expected;
             }
-            assert(output[y*dp+x]==expected);
-            independent_expected[y*dp+x]=expected;
+            assert(!memcmp(di,saved,(size_t)dsb));export_expected(de,(size_t)ddb);
         }
-        export_expected(independent_expected,(size_t)db);
+        free(de);free(saved);pipe_resource_reference(&ds,NULL);pipe_resource_reference(&dd,NULL);
     }
     submission_capture=NULL;blit_export_name=NULL;
     struct opengpu_framebuffer_blit d={.version=1,.bytes=sizeof(d),.mask=15,

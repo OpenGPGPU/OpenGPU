@@ -53,7 +53,11 @@ kernel shader validator. The actual Gallium/private winsys/lib-ioctl CPU fixture
 passes both filters across all 16 format pairs, read/write permission checks, held coordinate and
 compute acknowledgments, rejected new work before late retirement, compute fault
 and healthy reuse, with graphics bindings unchanged. Both gates use ASan/UBSan.
-The caller also verifies all supported depth/stencil selections, legal same-GEM
+Depth images retain their tightly packed pitch and dimensions in the actual
+resource allocation callback, so native admission sees the real image layout.
+The caller allocates real D24S8/D24X8 resources and verifies all supported
+depth/stencil selections; changing a color resource's public format is not used
+as evidence for depth admission. It also verifies legal same-GEM
 disjoint copy and pre-submission rejection of overlapping read/write spans.
 Another 4,145 random/boundary bilinear products match a full uint64 oracle,
 including zero/full weights, all-ones values and low-limb carries. The image
