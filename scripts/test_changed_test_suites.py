@@ -3,7 +3,8 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from changed_test_suites import changed_suites as select_changed_suites, index_test_sources
+from changed_test_suites import (LOCAL_QUALIFICATION_CHECKS, changed_suites as select_changed_suites,
+                                index_test_sources, is_local_only_suite)
 
 # The repository is immutable during this test process. Temporary fixture trees
 # still use fresh scans so tests can verify additions and edits immediately.
@@ -1281,6 +1282,27 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertIn("opengpu.graphics.ControlledIsolineWindowBinTypedImagePipelineSpec", actual)
         self.assertNotIn("opengpu.graphics.tessellation.TessellationSystemIsolineImageSharedSystemSpec", actual)
 
+    def test_all_local_qualification_targets_name_declared_suites(self):
+        declared = {suite for _, _, suite in REPO_INDEX[1] if suite}
+        for qualification, targets in LOCAL_QUALIFICATION_CHECKS.items():
+            with self.subTest(qualification=qualification):
+                self.assertLessEqual(targets, declared)
+
+    def test_sample_image_bounded_checks_name_declared_nonlocal_suites(self):
+        declared = {suite for _, _, suite in REPO_INDEX[1] if suite}
+        for alias in ("opengpu.graphics.tessellation.TessellationSampleImageSharedSystemSpec",
+                      "opengpu.graphics.tessellation.TessellationSampleImageOpsSharedSystemSpec"):
+            checks = LOCAL_QUALIFICATION_CHECKS[alias]
+            with self.subTest(alias=alias):
+                self.assertLessEqual(checks, declared)
+                self.assertFalse({suite for suite in checks
+                                  if is_local_only_suite(REPO_ROOT, suite)})
+        # File names are not suite identities: this file declares ExtendedDecoderSpec.
+        decoder = "src/test/scala/opengpu/core/frontend/decode/FullInstructionDecoderSpec.scala"
+        suites = {REPO_INDEX[1][node][2] for node in REPO_INDEX[0][decoder]}
+        self.assertIn("opengpu.core.frontend.decode.ExtendedDecoderSpec", suites)
+        self.assertNotIn("opengpu.core.frontend.decode.FullInstructionDecoderSpec", suites)
+
     def test_sample_image_opt_in_aliases_select_bounded_checks_without_full_cus(self):
         aliases={"opengpu.graphics.tessellation.TessellationSampleImageSharedSystemSpec",
                  "opengpu.graphics.tessellation.TessellationSampleImageOpsSharedSystemSpec"}
@@ -1300,7 +1322,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
                     "opengpu.graphics.ShaderImagePublicationReaderSpec",
                     "opengpu.graphics.ShaderImageStoreEncoderSpec",
                     "opengpu.core.frontend.decode.ImageExecutionAvailabilityDecodeSpec",
-                    "opengpu.core.frontend.decode.FullInstructionDecoderSpec"}
+                    "opengpu.core.frontend.decode.ExtendedDecoderSpec"}
         for suite in aliases:
             path="src/test/scala/"+suite.replace(".","/")+".scala"
             with self.subTest(suite=suite):
