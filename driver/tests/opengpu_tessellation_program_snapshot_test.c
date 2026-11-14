@@ -220,7 +220,7 @@ static void snapshot_tests(void)
 }
 /* Optional independent producer byte input. No shader interpreter or expected
  * shader result is involved: this follows the production validator/RX path. */
-static void producer_programs(const char *directory,const char **metadata)
+static void producer_programs(const char *directory,const char **metadata,bool dynamic)
 {
     struct opengpu_device gpu={0};struct opengpu_render_context ctx={.gpu=&gpu,.references=1,.id=7};
     gpu.hw.capabilities=GPU_CAP_UNIFIED_COMMANDS;assert(!opengpu_mmu_init(&gpu) && !opengpu_mmu_vm_create(&gpu,&ctx.vm));copy_gpu=&gpu;
@@ -232,7 +232,16 @@ static void producer_programs(const char *directory,const char **metadata)
         struct opengpu_tessellation_program_profile p=policy(stage);
         if(stage==4){p.input_vertices=(u32)strtoul(metadata[0],NULL,10);p.input_components=(u32)strtoul(metadata[1],NULL,10);
             p.output_vertices=(u32)strtoul(metadata[2],NULL,10);p.output_components=(u32)strtoul(metadata[3],NULL,10);p.patch_components=(u32)strtoul(metadata[4],NULL,10);}
-        else {p.patch_words=(u32)strtoul(metadata[5],NULL,10);p.output_components=(u32)strtoul(metadata[6],NULL,10);}
+        else {
+            p.patch_words=(u32)strtoul(metadata[5],NULL,10);p.output_components=(u32)strtoul(metadata[6],NULL,10);
+            if(dynamic){
+                p.version=(u32)strtoul(metadata[7],NULL,10);p.owned_patch_reads=true;
+                p.tes_patch_layout=(struct opengpu_tessellation_patch_layout){
+                    (u32)strtoul(metadata[8],NULL,10),(u32)strtoul(metadata[9],NULL,10),
+                    (u32)strtoul(metadata[10],NULL,10),(u32)strtoul(metadata[11],NULL,10),
+                    (u32)strtoul(metadata[12],NULL,10)};
+            }
+        }
         struct drm_opengpu_native_program_view view={.handle=71,.bytes=bytes+4,.entry_offset=4};
         struct opengpu_native_program_snapshot output;struct opengpu_private_snapshot *owner=opengpu_private_snapshot_create(&gpu,&ctx);assert(!IS_ERR(owner));
         int result=opengpu_tessellation_program_snapshot_append(owner,&view,&p,program_copy,tc_code,&output);
@@ -245,9 +254,10 @@ static void producer_programs(const char *directory,const char **metadata)
     }
     opengpu_mmu_vm_destroy(&gpu,&ctx.vm);opengpu_mmu_fini(&gpu);assert(ctx.references==1 && !live_allocations && !fixture_buffers);
 }
+#include "opengpu_tessellation_dynamic_program_test.inc"
 int main(int argc,const char **argv)
 {
-    assert(argc==1 || argc==9);program_tests();snapshot_tests();
-    if(argc==9)producer_programs(argv[1],argv+2);
-    puts("TCS/TES version1 validator + exact RX snapshot: definedness/branch/patch/mask/barrier/single-point/entry/lease tests PASS (CPU only; no protected submit)");return 0;
+    assert(argc==1 || argc==9 || argc==15);program_tests();dynamic_program_tests();snapshot_tests();dynamic_snapshot_tests();
+    if(argc!=1)producer_programs(argv[1],argv+2,argc==15);
+    puts("TCS v1 / TES v1-v2 validator + exact RX snapshot: definedness/branch/patch/mask/barrier/single-point/entry/lease tests PASS (CPU only; no protected submit)");return 0;
 }

@@ -19,18 +19,28 @@ struct tess_state {
 struct tess_branch { struct tess_state state; u32 target; bool used; };
 struct tess_workspace { struct tess_state state,swap; struct tess_branch branches[TESS_BRANCHES]; };
 
+static bool tess_layout_zero(const struct opengpu_tessellation_patch_layout *l)
+{ return !l->input_vertices && !l->input_components && !l->output_vertices && !l->output_components && !l->patch_components; }
+static bool tess_evaluation_layout_valid(const struct opengpu_tessellation_patch_layout *l)
+{
+    return l->input_vertices>=1 && l->input_vertices<=32 && l->output_vertices>=1 && l->output_vertices<=32 &&
+        l->input_components<=64 && l->output_components<=64 && l->patch_components<=120 &&
+        l->input_vertices*l->input_components<=2048 && l->output_vertices*l->output_components+l->patch_components<=2048;
+}
 bool opengpu_tessellation_program_profile_valid(const struct opengpu_tessellation_program_profile *p)
 {
-    if(!p || !p->available || p->version!=1 || (p->stage!=4 && p->stage!=5) ||
+    if(!p || !p->available || (p->version!=1 && p->version!=2) || (p->stage!=4 && p->stage!=5) ||
         !p->lanes || p->lanes>16 || (p->lanes&(p->lanes-1)) ||
         p->warps<2 || p->warps>8 || (p->warps&(p->warps-1)))return false;
-    if(p->stage==4)return p->input_vertices>=1 && p->input_vertices<=32 &&
+    if(p->version==1 && (p->owned_patch_reads || !tess_layout_zero(&p->tes_patch_layout)))return false;
+    if(p->stage==4)return p->version==1 && p->input_vertices>=1 && p->input_vertices<=32 &&
         p->output_vertices>=1 && p->output_vertices<=32 && p->output_vertices<=p->lanes*p->warps &&
         p->input_components<=64 && p->output_components<=64 && p->patch_components<=120 &&
         p->input_vertices*p->input_components<=2048 &&
         p->output_vertices*p->output_components+p->patch_components<=2048 && !p->patch_words;
-    return !p->input_vertices && !p->input_components && !p->output_vertices &&
-        !p->patch_components && p->patch_words<=61 && p->output_components<=64;
+    if(p->input_vertices || p->input_components || p->output_vertices || p->patch_components || p->output_components>64)return false;
+    if(p->version==1)return p->patch_words<=61;
+    return p->owned_patch_reads && !p->patch_words && tess_evaluation_layout_valid(&p->tes_patch_layout);
 }
 static struct tess_value tess_unknown(void)
 { return (struct tess_value){.defined=true}; }
@@ -89,6 +99,26 @@ static bool tess_patch_access(const struct tess_state *s,u32 vertex,u32 address,
                 (s->v[vertex].known && s->v[vertex].value))return false;
         }else if(component>=(output?p->output_components:p->input_components) ||
             (s->v[vertex].known && s->v[vertex].value>=(output?p->output_vertices:p->input_vertices)))return false;
+    }
+    return true;
+}
+/* CUSTOM1 TES fn33 is read-only output inspection, not CUSTOM0 fn33 output
+ * publication or TCS fn21's input/output access. Preserve full uint32 operands;
+ * dynamic values remain subject to the actual retained task's owned service. */
+static bool tess_evaluation_access(const struct tess_state *s,u32 vertex,u32 address,
+    const struct opengpu_tessellation_program_profile *p)
+{
+    const struct opengpu_tessellation_patch_layout *l=&p->tes_patch_layout;
+    if(!s->v[vertex].defined || !s->v[address].defined)return false;
+    if(s->v[vertex].known && s->v[vertex].value>=l->output_vertices)return false;
+    if(s->v[address].known){
+        u32 a=s->v[address].value,component=a>>3;
+        bool per_patch=a&2,level=a&4;
+        if(a>=1024 || !(a&1))return false;
+        if(per_patch || level){
+            if(!per_patch || component>=(level?6:l->patch_components) ||
+                (s->v[vertex].known && s->v[vertex].value))return false;
+        }else if(component>=l->output_components)return false;
     }
     return true;
 }
@@ -281,7 +311,7 @@ bool opengpu_tessellation_shader_validate_words(const u32 *words,u32 count,
                 if(rd)s->x[rd]=tess_unknown();
             }else{
                 TESS_REQUIRE(p->stage==5 && !depth && !f && !s->invalid && !s->ended);
-                if(fn==32){TESS_REQUIRE(s->x[a].known && !s->x[a].value && s->x[b].known && s->x[b].value<3+p->patch_words && !s->emitted);if(rd)s->x[rd]=tess_unknown();}
+                if(fn==32){TESS_REQUIRE(s->x[a].known && !s->x[a].value && s->x[b].known && s->x[b].value<(p->version==2?3u:3u+p->patch_words) && !s->emitted);if(rd)s->x[rd]=tess_unknown();}
                 else if(fn==33){TESS_REQUIRE(!rd && !s->emitted && s->x[a].known && s->x[a].value<p->output_components && s->x[b].defined);}
                 else if(fn==35){TESS_REQUIRE(!rd && !a && !b && !s->emitted);s->emitted=true;}
                 else if(fn==36){TESS_REQUIRE(!rd && !a && !b && s->emitted);s->ended=true;}
@@ -290,9 +320,13 @@ bool opengpu_tessellation_shader_validate_words(const u32 *words,u32 count,
             }
         }else if(op==0x2b){
             u32 function=insn>>26;bool unmasked=insn&(1u<<25);
-            TESS_REQUIRE(!f && s->full_vl && tess_masked(s,insn,rd,function==7 || function==21));
+            TESS_REQUIRE(!f && s->full_vl && tess_masked(s,insn,rd,function==7 || function==21 || function==33));
             if(function==7){TESS_REQUIRE(p->owned_uniforms && s->v[a].defined && s->v[b].defined);tess_vector_write(s,rd,pc,tess_unknown());}
-            else{
+            else if(function==33){
+                TESS_REQUIRE(p->stage==5 && p->version==2 && p->owned_patch_reads && !depth && !s->invalid && !s->emitted && !s->ended);
+                TESS_REQUIRE(tess_evaluation_access(s,a,b,p));
+                tess_vector_write(s,rd,pc,tess_unknown());
+            }else{
                 TESS_REQUIRE(p->stage==4 && (function==20 || function==21 || function==22));
                 if(function==20){TESS_REQUIRE(!rd && !b && s->v[a].defined);s->params=unmasked?TESS_ALL_PARAMS:s->mask_version;}
                 else{
