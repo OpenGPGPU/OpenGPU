@@ -33,10 +33,10 @@ class Entry(unittest.TestCase):
             qualification=directory/'qualification.json'
             args=argparse.Namespace(executor=executable,executor_qualification=qualification,
                 executor_checker_python=sys.executable,executor_checker=directory/'checker',case='mandatory-compute')
-            for profile in ('two-cu-vga60-owner-v1','two-cu-vga60-owner-v2',qualifier.COMPUTE_STAGE):
+            for profile in ('two-cu-vga60-owner-v1', 'unknown', qualifier.COMPUTE_STAGE, *qualifier.FULL_COMPUTE_CONTRACTS):
                 qualification.write_text(json.dumps(dict(schema='opengpu-owner-executor-v1',kind='compute',profile=profile)))
                 with patch.object(qualifier.subprocess,'run'):
-                    if profile==qualifier.COMPUTE_STAGE:
+                    if profile==qualifier.COMPUTE_STAGE or profile in qualifier.FULL_COMPUTE_CONTRACTS:
                         qualifier.checked_inputs(args)
                     else:
                         with self.assertRaisesRegex(ValueError,'distinct shared-enabled'):
