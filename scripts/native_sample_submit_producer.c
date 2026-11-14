@@ -65,9 +65,12 @@ static void make_record(struct native_kernel_session *s,struct native_test_recor
     struct opengpu_native_frame_request req={.caps=&caps,.width=4,.height=4,.samples=samples,.color_mask=15,
         .context=s->context.id,.pass=8,.generation=9,.state_count=1,.scratch_stride=49152};
     for(unsigned c=0;c<4;c++){
-        req.attachments[c].format=35;req.attachments[c].channel_mask=15;
+        req.attachments[c].format=35;req.attachments[c].channel_mask=15;req.attachments[c].load_op=1;
+        for(unsigned k=0;k<4;k++)req.attachments[c].clear[k]=0x3e800000;
         req.attachments[c].image=(struct opengpu_native_frame_image){.gem=test_gem(s,4096),.row_pitch=4*16*samples,.store=1};
     }
+    req.attachments[4].format=3;req.attachments[4].load_op=1;req.attachments[4].clear[0]=0x3f800000;
+    req.attachments[4].image=(struct opengpu_native_frame_image){.gem=test_gem(s,4096),.row_pitch=4*4*samples,.store=1};
     req.primitives=test_gem(s,4096);req.directory=test_gem(s,64);req.pool[0]=test_gem(s,4096);
     for(unsigned e=0;e<4;e++)req.scratch[e]=test_gem(s,49152);
     assert(!opengpu_native_frame_encode(&req,&r->encoded));
@@ -77,8 +80,9 @@ static void make_record(struct native_kernel_session *s,struct native_test_recor
     r->encoded.frame.words[320]=1;r->encoded.frame.words[321]=1;r->encoded.frame.words[322]=4096;
     r->draw[20]=r->state[39]=samples==4?2:samples==2?1:0;
     r->draw[345]=16;
-    struct opengpu_native_frame_gem vs_scratch=test_gem(s,36864);
-    r->plan.vertex_scratch=(struct drm_opengpu_compute_uniform_view){.handle=vs_scratch.handle,.bytes=36864};
+    struct opengpu_native_frame_gem vs_scratch=test_gem(s,40960);
+    r->plan.vertex_scratch=(struct drm_opengpu_compute_uniform_view){.handle=vs_scratch.handle,.bytes=40960};
+    r->state[82]=1;r->state[83]=7;r->state[84]=1;
     r->state[30]=15;r->state[31]=4;r->state[32]=0;r->state[55]=16;r->state[56]=6;
     *plan=(struct drm_opengpu_native_layered_draw_plan){.draw=r->plan};
     plan->draw.fragment_program=(struct drm_opengpu_native_program_view){.handle=3,.bytes=p->meta[14]*4};
@@ -97,7 +101,10 @@ static void assert_rx(struct native_kernel_session *s,u32 pc,const struct sample
         assert(test_read_va(s,va)==p->code[i]);
     }
 }
-int main(int argc,char **argv)
+#ifndef OPENGPU_NATIVE_SAMPLE_CPU_ENTRY
+#define OPENGPU_NATIVE_SAMPLE_CPU_ENTRY main
+#endif
+int OPENGPU_NATIVE_SAMPLE_CPU_ENTRY(int argc,char **argv)
 {
     if(argc!=4){fprintf(stderr,"usage: %s program.ognsf 1|2|4 96|104|112\n",argv[0]);return 2;}
     struct sample_program p={0};if(!read_program(argv[1],&p) || !valid_program(&p)){fprintf(stderr,"invalid ordinary ABI6 program contract\n");return 2;}
