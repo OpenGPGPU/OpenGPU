@@ -35,7 +35,9 @@ CHECKERS = ('scripts/prepare_owner_executor.py', 'scripts/build_native_flashsim.
     'scripts/compute_owner_protocol.py', 'scripts/compute_owner_controller.py',
     'scripts/compute_owner_oracle.py', 'scripts/compute_owner_cases.py',
     'scripts/qualify_compute_owner.py', 'scripts/test_gallium_compute_host.py',
-    'scripts/test_gallium_compute_uniforms.py', 'userspace/tests/compute_host_frontend.c',
+    'scripts/test_gallium_compute_uniforms.py', 'scripts/test_gallium_compute_shared.py',
+    'userspace/tests/compute_host_frontend.c', 'userspace/tests/cs_shared_frontend.c',
+    'userspace/gallium/opengpu_cs_emit.c',
     'driver/tests/opengpu_compute_host_fixture.c')
 
 

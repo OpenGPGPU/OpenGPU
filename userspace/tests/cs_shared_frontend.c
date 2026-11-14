@@ -237,10 +237,13 @@ int main(int argc,char **argv)
      * oracle belongs to the explicit REAL-CU qualifier, not a CPU fake READY
      * or a synthetic execution of these words. Retain the old CPU VM corpus
      * above unchanged, and preserve these exact original words for the DUT. */
-    for(unsigned variant=0;variant<16;variant++) {
+    for(unsigned variant=0;variant<19;variant++) {
         const unsigned signed_operations[]={0,1,2,3,4,9};
-        unsigned operation=variant<10?variant:signed_operations[variant-10];
-        char name[64];assert(snprintf(name,sizeof(name),variant<10?"shared-dynamic-%u":"shared-dynamic-i-%u",operation)>0);
+        unsigned operation=variant<10?variant:variant<16?signed_operations[variant-10]:variant==16?1:9;
+        char name[64];
+        if(variant<16)assert(snprintf(name,sizeof(name),variant<10?"shared-dynamic-%u":"shared-dynamic-i-%u",operation)>0);
+        else {const char *address_names[]={"shared-address-add","shared-address-cas-match","shared-address-cas-miss"};
+            assert(snprintf(name,sizeof(name),"%s",address_names[variant-16])>0);}
         void *dynamic=front(argv[1],name,"shared-dynamic");
         struct opengpu_cs_shared cfg=profile;cfg.required_bytes=cs_frontend_shared_bytes(dynamic);
         struct opengpu_cs_program actual;assert(cfg.required_bytes==16384);
