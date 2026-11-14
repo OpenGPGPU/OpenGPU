@@ -85,6 +85,25 @@ class NativeLayeredProductFrameInputsSpec extends AnyFlatSpec {
     val scene = NativeProductWorkloads.scene("msaa-4x", frameWidth.min(16), frameHeight.min(16))
     val input = NativeLayeredProductFrameInputs.encode(scene)
     val healthy = verifierFixture(scene, input, 6)
+    val scratchViews = input.draws.map(draw => draw("draw.vertex.geometry.vertex.scratch.base").toLong ->
+      draw("draw.vertex.geometry.vertex.scratch.limit").toLong) ++ input.states.flatMap { state =>
+      (Seq("fragment.scratch.") ++ (0 until 3).map(e => s"scratch[$e].")).map { prefix =>
+        state(prefix + "base").toLong -> state(prefix + "limit").toLong
+      }
+    }
+    val scratchOutputs = healthy.snapshot()
+    for ((base, limit) <- scratchViews.distinct; address <- Seq(base, limit - 1))
+      scratchOutputs.writeByte(address, scratchOutputs.readByte(address) ^ 1)
+    NativeLayeredProductFrameInputs.verify(scene, input, scratchOutputs, 6)
+    val scratchGuards = scratchViews.map(_._2) ++
+      input.regions.filter(r => Set("vertex-scratch", "fragment-scratch", "bin-directory")(r.name))
+        .map(_.limit - 1) :+ input.frame("frame.bins.bins.directoryLimit").toLong
+    for (address <- scratchGuards.distinct) {
+      assert(!scratchViews.exists { case (base, limit) => base <= address && address < limit })
+      val actual = healthy.snapshot()
+      actual.writeByte(address, actual.readByte(address) ^ 1)
+      intercept[IllegalArgumentException](NativeLayeredProductFrameInputs.verify(scene, input, actual, 6))
+    }
     for (name <- Seq("commandId", "completedDraws", "frame.status", "frame.images.images.tiles",
         "frame.images.images.selected", "frame.images.images.overflow", "frame.images.directory.identity.context")) {
       val actual = healthy.snapshot()

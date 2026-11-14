@@ -20,8 +20,14 @@ Two CPU tests pass after a direct Scala/Chisel-plugin compilation using a
 256 MiB heap. They cover all six recipes and both tile decompositions, retained
 source bytes, valid returned-image verification and mutations of shader,
 descriptor, vertex, texture, sparse pages, GNY2 guards, identity, status, counts,
-high bits of the 145-bit received count, samples and resolves. Reproduce through
-the normal build with:
+high bits of the 145-bit received count, samples and resolves.
+
+Writable scratch is restricted to each actual VS/FS view, including the
+per-state/per-engine fragment views. Unbound slots, prefix tails, slot gaps and
+directory bytes beyond the active tile view remain immutable guards even when
+their surrounding AXI backing is mapped. The tests accept scratch output bytes
+inside the bound views and reject mutations in those surrounding guards.
+Reproduce through the normal build with:
 
 ```sh
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=1 \
