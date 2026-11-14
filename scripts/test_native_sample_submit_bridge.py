@@ -43,7 +43,7 @@ def build_bridge(out: Path, sanitize: bool = False, live: bool = False) -> Path:
     cc = shlex.split(os.environ.get('CC', 'cc'))
     objects = []
     for source in (ROOT/'scripts'/('native_sample_live_producer.c' if live else 'native_sample_submit_producer.c'),
-                   ROOT/'driver/opengpu_native_frame.c'):
+                   ROOT/'driver/opengpu_native_frame.c', ROOT/'userspace/opengpu_native_sample_graphics.c'):
         obj = out/(source.stem+'.o')
         subprocess.run([*cc, *flags, *['-I'+str(p) for p in includes],
                         '-MMD', '-MF', str(obj.with_suffix('.d')), '-c', str(source), '-o', str(obj)], check=True)

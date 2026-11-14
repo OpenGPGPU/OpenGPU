@@ -53,10 +53,15 @@ static void live_profile(struct native_kernel_session *s,const char *path)
     live_require((id&0xffff0000u)==0x47550000u && profile_read(&p,0x320)==1048576 &&
         opengpu_read_native_sample_transport_limits(id,profile_read(&p,0x368),caps,0x1000,&p,profile_read,&limits,&layered,&sample) &&
         layered && sample,"actual profile cache validation");
+    struct opengpu_native_sample_word observed[117];
+    for(unsigned i=0;i<117;i++)observed[i]=(struct opengpu_native_sample_word){words[i].address,words[i].value};
+    live_require(!opengpu_native_sample_runtime_decode(observed,117,&sample_runtime),"private112 runtime discovery");
     s->profile=calloc(1,sizeof(*s->profile));live_require(s->profile!=NULL,"profile allocation");
     memcpy(s->profile->words,words,sizeof(words));s->profile->limits=limits;s->profile->capabilities=caps;
-    s->gpu.hw.capabilities=caps;s->gpu.hw.native_sources.available=limits.available;
-    s->gpu.hw.native_sources.capacity=limits.capacity;s->gpu.hw.native_sources.engines=limits.engines;s->gpu.hw.native_sources.frame=limits.frame;
+    s->gpu.hw.capabilities=caps;s->gpu.hw.native_sources.available=sample_runtime.limits.available;
+    s->gpu.hw.native_sources.capacity=sample_runtime.limits.capacity;
+    s->gpu.hw.native_sources.engines=sample_runtime.limits.engines;
+    s->gpu.hw.native_sources.frame=sample_runtime.limits.frame;
     s->gpu.hw.native_layered_transport=true;s->gpu.hw.native_sample_transport=true;
 }
 static u32 vertex_addi(unsigned rd,unsigned rs,int value)
