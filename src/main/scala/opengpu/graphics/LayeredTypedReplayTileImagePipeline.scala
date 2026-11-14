@@ -37,7 +37,7 @@ class LayeredTypedReplayTileImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
     f:FragmentShaderConfig=FragmentShaderConfig(),shared:SharedCuShaderConfig=SharedCuShaderConfig(4),
     g:GraphicsConfig=GraphicsConfig(),storage:TypedTileColorConfig=TypedTileColorConfig(),engine:Int=0,pageBytes:Int=4096,
     useSramBlackBoxes:Boolean=false,payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,
-    groupedTexture:Boolean=false,fragmentImageAvailable:Boolean=false) extends Module {
+    groupedTexture:Boolean=false,fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false) extends Module {
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
     val begin=Flipped(Decoupled(new LayeredTypedReplayTileDescriptor))
@@ -57,7 +57,7 @@ class LayeredTypedReplayTileImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
   private val admission=Module(new TypedLayeredImageAdmission(storage))
   private val scanner=Module(new LayeredWindowPrimitiveReplayPipeline(config,p,pageBytes))
   private val image=Module(new TypedReplayTileImagePipeline(config,p,f,shared,g,storage,engine,useSramBlackBoxes,
-    payload,payloadOwner,groupedTexture,fragmentImageAvailable,geometryInput=true))
+    payload,payloadOwner,groupedTexture,fragmentImageAvailable,geometryInput=true,sampleShading=sampleShading))
   private object State extends ChiselEnum {val idle,validate,admit,run,closing,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new LayeredTypedReplayTileDescriptor)
   private val status=RegInit(0.U(3.W));private val stage=RegInit(0.U(3.W));private val cancelled=RegInit(false.B)

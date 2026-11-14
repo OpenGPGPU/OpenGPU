@@ -15,7 +15,7 @@ case class NativeBinnedGraphicsConfig(vertex: VertexShaderStageConfig=VertexShad
     engines: Int=2,pageBytes: Int=4096,writeCredits: Int=8,tileSlots: Int=8,pagedCapacity: Int=16384,
     payload: Option[ShaderPayloadConfig]=Some(ShaderPayloadConfig(maxPayloadBytes=16*1024,owners=3,ports=8)),
     translateImageViews: Boolean=true,groupedTexture: Boolean=false,transformFeedback: Boolean=false,
-    renderTargetExtent: Option[(Int,Int)]=None,preflightDescriptors: Boolean=false,nativeGeometry:Boolean=false) {
+    renderTargetExtent: Option[(Int,Int)]=None,preflightDescriptors: Boolean=false,nativeGeometry:Boolean=false,sampleShading:Boolean=false) {
   renderTargetExtent.foreach{case(width,height)=>
     require(width>0 && width<65536 && height>0 && height<65536,
       "native render-target extents must fit positive 16-bit dimensions")}
@@ -32,6 +32,7 @@ case class NativeBinnedGraphicsConfig(vertex: VertexShaderStageConfig=VertexShad
   def descriptorPreflight: Boolean=preflightDescriptors || storage.nativeAdvancedDraws || nativeGeometry
   require(!nativeGeometry || (translateImageViews && pagedCapacity==65536 && vertex.varyings==16 &&
     vertex.input.attributes==16 && vertex.input.bindings==16),"GNJ2/GNF3 retain translated full-capacity native metadata")
+  require(!sampleShading || nativeGeometry,"sample shading is opt-in on the complete native layered route")
   require(engines>=1 && engines<=4 && vertex.varyings==fragment.varyings && fragment.colors==4)
   payload.foreach(q=>require(q.owners>=engines+1,"vertex and fragment engines need distinct payload owners"))
 }

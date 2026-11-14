@@ -30,12 +30,12 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
     p: VertexShaderStageConfig=VertexShaderStageConfig(),engines: Int=2,virtualImageViews: Boolean=false,allowWideTileCount: Boolean=false,
     preflightDescriptors: Boolean=false,f: FragmentShaderConfig=FragmentShaderConfig(),g: GraphicsConfig=GraphicsConfig(),
     nativeAdvanced: Boolean=false,imageAvailable: Boolean=false,nativeGeometry: Boolean=false,
-    nativeLayered: Boolean=false,preserveChildFaultAfterCancel:Boolean=false) extends Module {
+    nativeLayered: Boolean=false,preserveChildFaultAfterCancel:Boolean=false,sampleShading:Boolean=false) extends Module {
   require(config.xLen==32 && commandIdWidth>0 && commandIdWidth<=12 && engines>=1 && engines<=4)
   require(!nativeLayered || (nativeGeometry && virtualImageViews && allowWideTileCount),
     "GNJ2/GNF3 require the geometry, translated-allocation and full-grid route")
   require(!preserveChildFaultAfterCancel || nativeLayered,
-    "late owned-child fault priority belongs to the explicit layered feedback route")
+    "late owned-child fault priority belongs to an explicit layered source route")
   private val preflight=preflightDescriptors || nativeAdvanced || nativeGeometry
   val memoryTransactions=if(preflight)8 else 4
   import NativeBinnedGraphicsLayout._
@@ -113,7 +113,7 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
   private def childFail(code:UInt,address:UInt):Unit={
     if(preserveChildFaultAfterCancel){
       // Called only after the original child identity/ordinal checks. An
-      // accepted feedback store may return its actual fault after draw abort;
+      // accepted child store may return its actual fault after draw abort;
       // preserve that cause in the coarse result as well as the full frame.
       when((status===0.U || status===4.U) && code=/=0.U && code=/=4.U){
         status:=code;faultStage:=3.U;faultAddress:=address;faultDraw:=index
@@ -212,7 +212,7 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
   // Separate ownership for GFS reads. Four spare descriptor IDs are used;
   // renderer IDs remain at 16+. Every offered lookup and read survives cancel.
   if(preflight){
-    val reader=Module(new TypedFragmentStateReader(config,f,g,imageAvailable,nativeAdvanced,geometryInput=nativeGeometry))
+    val reader=Module(new TypedFragmentStateReader(config,f,g,imageAvailable,nativeAdvanced,geometryInput=nativeGeometry,sampleShading=sampleShading))
     reader.io.lookup.valid:=stateOffered;reader.io.lookup.bits.arena:=pass.states
     reader.io.lookup.bits.handle:=draw.state
     reader.io.invalidate:=io.submit.fire
