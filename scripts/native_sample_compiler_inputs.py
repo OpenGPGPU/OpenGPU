@@ -63,12 +63,13 @@ def snapshot(mesa, build, libraries, gpu):
     return result
 
 
-def check_dependencies(cpu, source, bound):
+def check_dependencies(cpu, source, bound, qualified_sources=None):
     """Actual compiler-generated make dependencies must have been bound.
 
     -MMD excludes immutable image system headers. Fresh private scaffold and
     generated fixture includes live below cpu; archive sources live below
-    source. Every other actual header/source must match the pre-build map.
+    source; the live qualifier also requires each archive input's recorded
+    source hash. Every other actual header/source must match the pre-build map.
     """
     dependencies = sorted(cpu.rglob('*.d'))
     require(len(dependencies) == len(MESA_UNITS)+5, 'incomplete actual compiler dependency set')
@@ -80,7 +81,14 @@ def check_dependencies(cpu, source, bound):
             item = Path(name)
             require(item.is_absolute(), 'relative actual compiler input')
             resolved = item.resolve(strict=True)
-            if resolved.is_relative_to(cpu) or resolved.is_relative_to(source):
+            if resolved.is_relative_to(cpu):
+                observed.add(str(resolved))
+                continue
+            if resolved.is_relative_to(source):
+                if qualified_sources is not None:
+                    name = str(resolved.relative_to(source))
+                    require(qualified_sources.get(name) == sha256(resolved),
+                            'actual archive compiler input is not qualified: ' + name)
                 observed.add(str(resolved))
                 continue
             expected = bound.get(str(item), bound.get(str(resolved)))

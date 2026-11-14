@@ -275,6 +275,8 @@ class ExecutorTests(unittest.TestCase):
             [files[0],*q.DEFAULT_DEPENDENCIES,*files[1:]]],self.out/'flashsim-dut/dut.h',self.out/'flashsim-dut')
         for name in ('scripts/native_sample_owner_controller.py','scripts/native_sample_owner_oracle.py',
                      'scripts/native_sample_gny2_oracle.py',
+                     'scripts/native_sample_owner_recipe.py', 'scripts/qualify_native_sample_owner.py',
+                     'scripts/native_sample_compiler_inputs.py',
                      'docs/abi/native-layered-graphics-v2.json','scripts/owner_process_lifetime.py',
                      'scripts/native_sample_owner_protocol.py','scripts/test_native_mmio_capture.py',
                      'driver/opengpu_native_program_snapshot.c','driver/opengpu_shader_validator.h',
@@ -289,6 +291,8 @@ class ExecutorTests(unittest.TestCase):
                      'userspace/gallium/opengpu_native_fs_emit.c','userspace/tests/fs_glsl_frontend.cpp',
                      'scripts/native_sample_owner_runtime.hpp','scripts/native_sample_owner_capture.hpp',
                      'scripts/native_sample_owner_controller.py','scripts/native_sample_owner_oracle.py',
+                     'scripts/qualify_native_sample_owner.py','scripts/native_sample_compiler_inputs.py',
+                     'scripts/native_sample_owner_recipe.py',
                      'docs/abi/native-layered-graphics-v2.json','scripts/owner_process_lifetime.py',
                      'driver/opengpu_native_submit.c','driver/opengpu_native_program_snapshot.c',
                      'driver/opengpu_shader_validator.h'):
@@ -296,7 +300,8 @@ class ExecutorTests(unittest.TestCase):
             with self.subTest(name=name),self.assertRaises(RuntimeError):q.verify_qualification(path,kind='native-sample')
             item.write_bytes(original)
         for name in ('scripts/native_sample_owner_controller.py','scripts/native_sample_owner_oracle.py',
-                     'scripts/native_sample_gny2_oracle.py'):
+                     'scripts/native_sample_gny2_oracle.py','scripts/native_sample_owner_recipe.py',
+                     'scripts/qualify_native_sample_owner.py','scripts/native_sample_compiler_inputs.py'):
             item=q.ROOT/name;original=item.read_bytes();item.unlink()
             with self.assertRaisesRegex(RuntimeError,'missing required native sample checker'):
                 q.verify_qualification(path,kind='native-sample')
