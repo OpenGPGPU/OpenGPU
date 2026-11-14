@@ -122,13 +122,18 @@ isolation, captured image identity, backpressure, cancellation, drain, reuse,
 ABI6 admission and ABI7 rejection without GS metadata. The 25 Python
 preparation/executor/product guard tests also pass.
 
-The explicit Runner passed all three real-CU builtin-only sample cases: 1x in
-9747, 2x in 11227 and 4x in 14123 fixture cycles. Each completed two patches,
-two primitives and one tile with the independent full four-MRT/sample/guard
-oracle. These are component simulation cycles, not clock or FPS measurements.
-The separate image-op case failed its RW address oracle as described below;
-image-op qualification and the complete 112-word protected host remain open.
-Reproduce the CPU checks with:
+The explicit Runner passed all three real-CU builtin-only cases and all three
+image-opcode cases. Each completed two patches, two primitives and one tile
+with the independent full four-MRT/sample/guard oracle:
+
+| Samples | Builtin-only fixture cycles | Image-opcode fixture cycles |
+| --- | ---: | ---: |
+| 1x | 9747 | 12336 |
+| 2x | 11227 | 13840 |
+| 4x | 14123 | 18448 |
+
+These are component simulation cycles, not clock or FPS measurements. The
+complete 112-word protected host remains unqualified. Reproduce CPU checks with:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p test_prepare_native_sample_owner.py
@@ -211,17 +216,13 @@ earlier factory's model results.
 `TessellationSampleImageOpsSharedSystemSpec` adds actual CUSTOM-1 image
 instructions behind `sampleImageOpcodes=false` by default. The original
 `TessellationSampleImageSharedSystemSpec` keeps its builtin-only shader and
-remains independently selectable. Incremental `Test/compile` passed for the
-additional sources. The sbt selector attempts ran zero tests; neither real-CU
-suite executed in those attempts. The later explicit Runner passed the three
-builtin-only baseline cases. Its image-op 1x case reached the final RW backing
-oracle after the full MRT, immutable RO/publication/table and delayed-ACK
-checks, then failed: the independent diamond coverage includes pixel `(1,1)`,
-which the original coordinate bit mapping aliased with pixel `(3,1)`.
-The corrected test uses real `vfcvt.rtz.xu.f.v` on `FragCoord.xy` and maps
+remains independently selectable. Incremental `Test/compile` and both data-only
+recipe tests pass. The explicit Runner executed all three image-opcode cases
+successfully in one serial JVM. The test uses real `vfcvt.rtz.xu.f.v` on
+`FragCoord.xy` and maps
 `(x,y,sample)` to RW texel `(floor(x),4*sample+floor(y))`. The full independent
-coverage set is retained. The corrected image-op test has not been compiled
-or rerun; no image-op qualification is claimed.
+coverage set, including the 1x left-edge pixel `(1,1)`, is retained without
+address aliases. This qualifies the bounded physical-memory component recipe.
 
 The image-op program retains ABI6's 128-thread capacity, 512-byte array stride,
 16 varying slots and four raw MRTs. It loads a nonzero per-sample RGBA32UI tuple
@@ -253,30 +254,36 @@ sbt -batch -J-Xms256m -J-Xmx4G -J-XX:ActiveProcessorCount=2 \
   'testOnly opengpu.graphics.tessellation.TessellationSampleImageRecipeSpec'
 ```
 
-The new Scala recipe regression is unexecuted. A lightweight Python check of
+Both Scala recipe regressions pass. A lightweight Python check also passes for
 the independent fixed-line coverage and all 112 pixel/sample coordinate and
-address mappings passes; it does not execute the ISA or replace the RTL rerun.
+address mappings; the actual image ISA is covered by the three RTL cases above.
 
 After a fresh compile and a separately checked resource window, use the same
 JDK, short `GPU_TMP` and serial build settings above:
 
 ```sh
-MAKEFLAGS=-j1 "$JAVA_HOME/bin/java" -Xms256m -Xmx4G -XX:ActiveProcessorCount=2 \
+MAKEFLAGS=-j1 "$JAVA_HOME/bin/java" -Xms256m -Xmx3G -XX:ActiveProcessorCount=2 \
+  -XX:+UseSerialGC -XX:MaxHeapFreeRatio=10 -XX:MinHeapFreeRatio=5 \
   -XX:MaxMetaspaceSize=768m -XX:ReservedCodeCacheSize=256m \
   -XX:MaxDirectMemorySize=256m -Xss4m -Djava.io.tmpdir="$GPU_TMP" \
   -Dopengpu.simWorkspace="$GPU_TMP/image-ops" -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simSeparateBuild=1 \
-  -Dopengpu.simReleaseHeap=1 -Dopengpu.simCache=off \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simCache=on \
+  -Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine,Rgba8BlendFmaEngine \
+  -Dopengpu.productQualification=0 \
   -Dopengpu.tessellationSampleImageOpsQualification=1 \
   -cp "$GPU_TEST_CP" org.scalatest.tools.Runner -oD \
-  -s opengpu.graphics.tessellation.TessellationSampleImageOpsSharedSystemSpec \
-  -z sample-images-0
+  -s opengpu.graphics.tessellation.TessellationSampleImageOpsSharedSystemSpec
 ```
 
-Each command above selects exactly one 1x test. Remove `-z sample-images-0` to
-select all three 1x/2x/4x cases in that suite. To run both 1x tests in one fresh
-JVM, set both qualification properties and provide each suite's filter directly
-after its name:
+The image-opcode command selects all three measured 1x/2x/4x cases. The builtin
+command selects one 1x test; remove its `-z sample-images-0` for all three.
+The image-opcode run used the 3GiB SerialGC heap above, one native build job,
+heap release, separate generation/build and hierarchy libraries. These are
+reproduction settings, not a guarantee of peak host memory. Its temporary
+model/cache and all child processes were removed after the successful result.
+To run both 1x tests in one fresh JVM, set both qualification properties and
+provide each suite's filter directly after its name:
 
 ```sh
 -s opengpu.graphics.tessellation.TessellationSampleImageSharedSystemSpec -z sample-images-0 \
