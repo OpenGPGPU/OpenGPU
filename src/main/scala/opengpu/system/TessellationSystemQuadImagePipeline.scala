@@ -17,8 +17,8 @@ class TessellationSystemQuadImageCompletion(p:VertexShaderStageConfig) extends B
   val loadBytes=UInt(64.W);val storedBytes=UInt(64.W);val resolvedBytes=UInt(64.W)
 }
 object TessellationSystemQuadImagePipeline {
-  def memoryTransactions(engines:Int,writeCredits:Int,pagedCapacity:Int):Int=
-    1<<log2Ceil(VertexBinPipeline.binTransactions(engines,writeCredits,pagedCapacity)+32*engines)
+  def memoryTransactions(engines:Int,writeCredits:Int,pagedCapacity:Int,tessellationUniforms:Boolean=false):Int=
+    1<<log2Ceil(VertexBinPipeline.binTransactions(engines,writeCredits,pagedCapacity)+32*engines+(if(tessellationUniforms)2 else 0))
   def payloadPins(engines:Int):Int=4+2*engines+4*engines
 }
 
@@ -33,13 +33,13 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
     pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
     payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false,externalImages:Boolean=false,
-    fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false) extends Module {
+    fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false,tessellationUniforms:Boolean=false) extends Module {
   require(engines>=1 && engines<=4 && p.varyings==f.varyings && f.colors==4)
   payload.foreach(q=>require(payloadOwner>=0 && payloadOwner+engines<q.owners))
   private val sharedConfig=shared;private val payloadConfig=payload
   private val idWidth=shared.taskIdWidth;private val cus=shared.numComputeUnits
   private val binSlots=VertexBinPipeline.binTransactions(engines,writeCredits,pagedCapacity)
-  val memoryTransactions=TessellationSystemQuadImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity)
+  val memoryTransactions=TessellationSystemQuadImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity,tessellationUniforms)
   private val replaySharedConfig=shared
   val io=IO(new Bundle {
     val images=if(externalImages)Some(Flipped(Vec(engines,new TypedReplayTileImagePipelineIO(config,p,replaySharedConfig,payloadConfig,fragmentImageAvailable=fragmentImageAvailable))))else None
@@ -68,7 +68,7 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val source=Module(new TessellationSystemQuadBinPass(config,p,idWidth,cus,g,viewport,engines,pageBytes,writeCredits,
-    tileSlots,pagedCapacity,useSramBlackBoxes,rendererCredits=true,transformFeedback=transformFeedback))
+    tileSlots,pagedCapacity,useSramBlackBoxes,rendererCredits=true,transformFeedback=transformFeedback,tessellationUniforms=tessellationUniforms))
   val recordBytes=source.recordBytes
   private val images:Seq[TypedReplayTileImagePipelineIO]=if(externalImages)io.images.get.toSeq else
     Seq.tabulate(engines)(e=>Module(new TypedReplayTileImagePipeline(config,p,f,shared,g,storage,
@@ -262,7 +262,7 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
       resolves(e):=resolves(e)+imageResult(e).image.transfers.resolvedBytes}
   }
 
-  private val arbiter=Module(new RRArbiter(new ComputeMemoryRequest(config,64,memoryTransactions),engines+1))
+  private val arbiter=Module(new RRArbiter(new ComputeMemoryRequest(config,64,memoryTransactions),engines+1+(if(tessellationUniforms)1 else 0)))
   private val requests=Module(new Queue(new ComputeMemoryRequest(config,64,memoryTransactions),2,pipe=true))
   arbiter.io.in(0).valid:=source.io.memoryRequest.valid;arbiter.io.in(0).bits:=source.io.memoryRequest.bits
   source.io.memoryRequest.ready:=arbiter.io.in(0).ready
@@ -277,8 +277,20 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
     image.memoryResponse.bits.transactionId:=io.memoryResponse.bits.transactionId-base.U
     imageReplies(e):=selected && image.memoryResponse.ready
   }
+  private val uniformReply=WireDefault(false.B)
+  if(tessellationUniforms){
+    val base=binSlots+32*engines
+    val port=arbiter.io.in(engines+1);val request=source.io.uniformMemoryRequest.get
+    port.valid:=request.valid;port.bits:=request.bits;port.bits.transactionId:=request.bits.transactionId+&base.U
+    request.ready:=port.ready
+    val selected=io.memoryResponse.bits.transactionId>=base.U && io.memoryResponse.bits.transactionId<(base+2).U
+    val reply=source.io.uniformMemoryResponse.get
+    reply.valid:=io.memoryResponse.valid && selected;reply.bits:=io.memoryResponse.bits
+    reply.bits.transactionId:=io.memoryResponse.bits.transactionId-base.U
+    uniformReply:=selected && reply.ready
+  }
   requests.io.enq<>arbiter.io.out;io.memoryRequest<>requests.io.deq
-  io.memoryResponse.ready:=Mux(io.memoryResponse.bits.transactionId<binSlots.U,source.io.memoryResponse.ready,imageReplies.asUInt.orR)
+  io.memoryResponse.ready:=Mux(io.memoryResponse.bits.transactionId<binSlots.U,source.io.memoryResponse.ready,imageReplies.asUInt.orR || uniformReply)
   private val inFlight=RegInit(0.U(log2Ceil(memoryTransactions+3).W))
   inFlight:=inFlight+io.memoryRequest.fire.asUInt-io.memoryResponse.fire.asUInt
   when(io.memoryResponse.fire){assert(inFlight.orR || io.memoryRequest.fire,"unowned quad bin image response")}

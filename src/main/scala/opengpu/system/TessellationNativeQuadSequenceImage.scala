@@ -16,9 +16,9 @@ class TessellationNativeQuadSequenceImage(config:GpuConfig,p:VertexShaderStageCo
     pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
     payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false,externalImages:Boolean=false,
-    fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false) extends Module {
+    fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false,tessellationUniforms:Boolean=false) extends Module {
   private val idWidth=shared.taskIdWidth;private val cus=shared.numComputeUnits;private val payloadConfig=payload
-  private val renderIds=TessellationSystemQuadImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity)
+  private val renderIds=TessellationSystemQuadImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity,tessellationUniforms)
   private val imageIds=TessellationInputMemoryFabric.transactions(renderIds)
   private val slots=TessellationNativeRecordMemoryFabric.transactions(imageIds)
   private val replaySharedConfig=shared
@@ -43,9 +43,9 @@ class TessellationNativeQuadSequenceImage(config:GpuConfig,p:VertexShaderStageCo
     val fragmentEvents=Output(new FragmentPerformanceEvents);val cancel=Input(Bool());val busy=Output(Bool());val drained=Output(Bool())
   })
   private val image=Module(new TessellationQuadTranslatedSequenceImage(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,
-    tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading))
+    tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading,tessellationUniforms))
   if(externalImages)io.images.get<>image.io.images.get
-  private val reader=Module(new TessellationNativeQuadSequenceReader(config,p,idWidth))
+  private val reader=Module(new TessellationNativeQuadSequenceReader(config,p,idWidth,tessellationUniforms))
   private val fabric=Module(new TessellationNativeRecordMemoryFabric(config,imageIds))
   val recordBytes=image.recordBytes
   private val active=RegInit(false.B);private val ending=RegInit(false.B);private val cancelled=RegInit(false.B)
