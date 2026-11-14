@@ -23,9 +23,9 @@ object ShaderUniformOpcode {
   * This adapter has no persistent descriptor or data cache.
   */
 class ShaderUniformExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0,
-    geometryAvailable: Boolean=false) extends Module {
-  require(stage>=0 && (stage<=2 || stage==GeometryUniformResources.stage && geometryAvailable),
-    "geometry uniform stage requires its explicit provider")
+    geometryAvailable: Boolean=false,tessellationAvailable: Boolean=false) extends Module {
+  require(stage>=0 && (stage<=2 || stage==GeometryUniformResources.stage && geometryAvailable || TessellationUniformResources.isStage(stage) && tessellationAvailable),
+    "geometry/tessellation uniform stages require their explicit provider")
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new ScalarIssuedInstruction(config)))
     val vectorIn=Flipped(Decoupled(new VectorTextureRequest(config)))
@@ -49,7 +49,7 @@ class ShaderUniformExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0,
   private val status=RegInit(0.U(3.W));private val source=RegInit(0.U(2.W))
   private val faultValid=RegInit(false.B);private val faultAddress=Reg(UInt(32.W));private val started=RegInit(false.B)
   private val faultMask=RegInit(0.U(config.lanes.W))
-  private val load=Module(new ShaderUniformLoadUnit(config,stage,geometryAvailable))
+  private val load=Module(new ShaderUniformLoadUnit(config,stage,geometryAvailable,tessellationAvailable))
   io.memoryRequest<>load.io.memoryRequest;load.io.memoryResponse<>io.memoryResponse
   private val chooseVector=io.vectorIn.valid && (!io.in.valid || preferVector)
   io.in.ready:=phase===State.idle && !io.cancel && !chooseVector
@@ -77,13 +77,15 @@ class ShaderUniformExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0,
       request.privateBase:=io.privateBase;request.privateLimit:=io.privateLimit
       status:=0.U;source:=0.U;faultValid:=false.B;faultAddress:=0.U;scalarData:=0.U;started:=false.B;phase:=State.next
       when(io.vectorIn.fire){val d=io.vectorIn.bits.issued.decode
-        assert(ShaderUniformOpcode.vector(d.instruction))
+        if(TessellationUniformResources.isStage(stage)) { when(!ShaderUniformOpcode.vector(d.instruction)){status:=ShaderUniformStatus.invalid.U} }
+        else assert(ShaderUniformOpcode.vector(d.instruction))
         vector:=true.B;warp:=d.warpId;rd:=d.instruction(11,7);pc:=d.pc;active:=d.activeMask
         faultMask:=io.vectorIn.bits.executionMask
         remaining:=io.vectorIn.bits.executionMask;blocks:=io.vectorIn.bits.issued.vs1Data;offsets:=io.vectorIn.bits.issued.vs2Data
         data:=io.vectorIn.bits.issued.oldVdData;preferVector:=false.B
       }.otherwise{val d=io.in.bits.decode
-        assert(ShaderUniformOpcode.scalar(d.instruction))
+        if(TessellationUniformResources.isStage(stage)) { when(!ShaderUniformOpcode.scalar(d.instruction)){status:=ShaderUniformStatus.invalid.U} }
+        else assert(ShaderUniformOpcode.scalar(d.instruction))
         vector:=false.B;warp:=d.warpId;rd:=d.instruction(11,7);pc:=d.pc;active:=d.activeMask
         faultMask:=d.activeMask
         remaining:=1.U;blocks:=0.U.asTypeOf(blocks);offsets:=0.U.asTypeOf(offsets);data:=0.U.asTypeOf(data)
