@@ -115,4 +115,46 @@ class TessellationVertexPatchSequenceSpec extends AnyFlatSpec {
       d.io.childBusy.poke(false.B);d.clock.step();x.complete(0,1)
     }
   }
+  it should "retain a completed range across a later child flush and gate only its next begin" in {
+    simulate(new TessellationVertexPatchSequence(p)){d=>
+      val x=new Driver(d)
+      x.descriptor(pp=1,instances=1,patches=1);x.begin();x.offered(55,5,3);x.accept();x.retire(55)
+      d.clock.step(3);d.io.completion.valid.expect(false.B)
+      d.io.childBusy.poke(false.B);d.clock.step()
+      x.until(d.io.completion.valid.peek().litToBoolean)
+      d.io.completion.bits.status.expect(0.U);d.io.completion.bits.completed.expect(1.U)
+      val held=d.io.completion.bits.peek().litValue
+      // A later valid-only flush may reacquire child transport credit after
+      // the range has already captured its final report. It cannot undo it.
+      d.io.childBusy.poke(true.B);d.io.cancel.poke(true.B)
+      x.descriptor(pp=1,instances=1,patches=1,id=73);d.io.begin.valid.poke(true.B)
+      for(_<-0 until 3){
+        d.io.completion.valid.expect(true.B);assert(d.io.completion.bits.peek().litValue==held)
+        d.io.begin.ready.expect(false.B);d.clock.step()
+      }
+      d.io.cancel.poke(false.B);d.io.completion.ready.poke(true.B);d.clock.step()
+      d.io.completion.ready.poke(false.B);d.io.completion.valid.expect(false.B);d.io.busy.expect(false.B)
+      for(_<-0 until 3){
+        assert(!d.io.begin.ready.peek().litToBoolean,"next begin must wait for current child transport drain")
+        d.io.task.valid.expect(false.B);d.clock.step()
+      }
+      d.io.childBusy.poke(false.B);d.io.begin.ready.expect(true.B);d.clock.step()
+      d.io.begin.valid.poke(false.B);zero(d.io.begin.bits)
+      x.offered(73,5,3);x.accept();x.retire(73)
+      d.io.childBusy.poke(false.B);d.clock.step();x.complete(0,1)
+
+      // Even branches with no child launch establish their first report only
+      // after the real transport drains; begin's prior idle check is not a
+      // promise that a flush cannot arrive on the next cycle.
+      for(mode<-0 until 3){
+        if(mode==0)x.descriptor(patches=5)
+        else if(mode==1)x.descriptor(pp=0,instances=0,patches=0,ordinal=0,instance=0)
+        else x.descriptor(pp=1,instances=1,patches=1)
+        x.begin();d.io.childBusy.poke(true.B);d.io.cancel.poke((mode==2).B)
+        for(_<-0 until 3){d.io.task.valid.expect(false.B);d.io.completion.valid.expect(false.B);d.clock.step()}
+        d.io.cancel.poke(false.B);d.io.childBusy.poke(false.B);d.clock.step()
+        x.complete(if(mode==0)1 else if(mode==1)0 else 4,0)
+      }
+    }
+  }
 }
