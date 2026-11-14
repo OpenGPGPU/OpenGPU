@@ -17,11 +17,15 @@ accept replies before releasing its resources.
 ## Explicit fabric mode
 
 `TessellationInputMemoryFabric(config, renderIds, ownedVertexSource=true)` adds
-four-tag `sourceRequest/sourceResponse` ports and two selection signals:
+four-tag `sourceRequest/sourceResponse` ports, selection and local drain signals:
 
 - `sourceLive` requests source ownership; it is not memory authority.
 - `sourceSelected` is the registered actual selection. It changes only after
-  both adapter and underlying translated fabric have drained.
+  both adapter and the underlying staging slot have drained. Unrelated render
+  traffic does not prevent VS/legacy handoff.
+- `sourceDrained` proves stable drain of this serialized VS/legacy input slot,
+  including held requests/replies, grant debts and selection changes. It does
+  not authorize frame retirement, a SATP change or a global flush.
 
 The existing `inputRequest/inputResponse` remains the legacy single-tag,
 read-only DMA entry, including when the new mode is enabled. The default and
@@ -42,6 +46,16 @@ public `drained` also remains false for unselected waiting offers, selection
 changes or retained flushes, so it cannot authorize releasing their original
 VM/resources.
 
+`TileBinHostMemoryFabric.stagingDrained(e)` counts each staging translator's
+accepted input through its final local reply delivery. The bounded per-client
+credit includes translation, page walks, arbitration, queued external requests,
+late responses and local faults; simultaneous accept/retire is supported.
+Underflow and capacity assertions apply independently of render/DMA credits.
+Held local/physical offers, full-width data/walker tags at the external queue
+head and responses targeting that client also prevent its drain. The renderer
+and other staging clients do not enter this per-slot predicate. The original
+whole-fabric credit and `drained` contract are unchanged.
+
 The renderer and selected input still use the original `TileBinHostMemoryFabric`
 and `TranslatedLineClient`. Scratch writes therefore undergo the real Sv32
 write permission checks; the option does not bypass translation or make a
@@ -55,7 +69,8 @@ may safely coalesce into a full TLB invalidation. Neither a pending flush nor
 `sourceLive` withdraws an already offered request. No extra memory transaction
 ID is used. The parent must stop issuing new old-owner work for handoff/flush;
 already offered work still drains. The legacy mode keeps its original direct
-flush protocol.
+flush protocol. A pending global flush intentionally prevents local handoff and
+keeps `sourceDrained` false until the entire fabric drains and applies it.
 
 ## Focused validation and limits
 
@@ -69,17 +84,32 @@ ACK. A subsequent legacy read walks again after flush, then VS can reacquire
 the port after a held legacy response. Specific protocol assertions reject
 legacy writes in both modes and unowned/nonzero serialized replies.
 
-Final local results: eight focused ScalaTest cases passed (ten component
-simulations, including both legacy assertion modes, two invalid-reply cases and
-the full-width staging-tag narrowing check). A separate queued-offer case
+The focused cases include both legacy assertion modes, two invalid-reply cases
+and the full-width staging-tag narrowing check. A queued-offer case
 withdraws `sourceLive` in exactly the cycle the next original VS request is
 offered; that request and its local reply drain before the grant is released.
 An additional case withdraws selection intent before an offered VS request
 can acquire the port, then repeats the symmetric legacy handback. Both requests
 are granted and delivered before final drain. With the retained grant debt
 removed, this same case fails its bounded VS-grant assertion after the actual
-legacy reply is delivered. The four current adapter/fabric/helper/test sources passed Chisel-plugin
-incremental compilation, and 147 CPU suite-selector tests passed.
+legacy reply is delivered.
+
+The independent-drain case holds the renderer's actual local page-fault reply
+while VS receives its grant, performs a real Sv32 walk and read, and delivers
+its original local tag/data. `sourceDrained` becomes true while the renderer
+keeps whole-fabric `drained` false. A second VS request and reply retain their
+grant through stalls and cancellation intent; legacy handback and delivery also
+finish while the render fault stays held. A requested global flush still waits
+for that render reply. Restoring the former global-drain handoff condition
+fails the same test's fixed eight-cycle grant assertion, without a process
+timeout or a changed resource budget.
+
+Final local results for the independent-drain change: five current
+adapter/fabric/helper/test sources passed Chisel-plugin incremental compilation;
+all twelve focused ScalaTest cases passed (fourteen actual component
+simulations). The old-global-handoff negative control failed exactly its grant
+assertion. Each process group terminated before its temporary classes,
+simulation outputs and logs were removed.
 
 These tests use modeled physical memory peers and execute the real adapter,
 translator, page walker and fabric RTL. They do not run a VS/TCS/TES shader,
