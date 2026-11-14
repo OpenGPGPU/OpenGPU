@@ -188,6 +188,11 @@ class Counter(unittest.TestCase):
                         (0x60000,7*4),(0x60000,64+14*4),(0x60000,4096),(0x60000,8191)):
                         wrong=copy.deepcopy(good);wrong[pa][offset]^=1
                         with self.subTest(case=case,pa=pa,offset=offset),self.assertRaises(ValueError):check(wrong)
+                    if start:
+                        wrong=copy.deepcopy(good)
+                        omitted_ubo=[(original[i]-(op=='decrement'))&0xffffffff for i in range(count)]
+                        for pa in (0x30000,0x32000,0x34000,0x36000):struct.pack_into('<4I',wrong[pa],0,*omitted_ubo)
+                        with self.assertRaises(ValueError):check(wrong)
                     if start==0:
                         # All eight initial values differ: the previous equal
                         # index0/index7 seed could conceal this exact swap.
