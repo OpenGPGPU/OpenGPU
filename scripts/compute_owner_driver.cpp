@@ -36,7 +36,7 @@ template<class Sim>
 ComputeHeld hold_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,const ComputeCapture &capture) {
   capture.validate();
   require(agent.drained() && !sim.model->io_m_irq,"compute starts before prior drain");
-  const auto profile=probe_profile(sim,agent,bus,true);
+  const auto profile=probe_profile(sim,agent,bus,true,compute_owner_factory());
   std::map<uint32_t,uint32_t> captured;
   for(const auto &r:capture.discovery)captured.emplace(r.address,r.value);
   for(const auto *words:{&profile.words,&profile.registers})for(const auto &r:*words)
@@ -137,7 +137,7 @@ int main(int argc,char **argv) {
     if(argc==3 && std::string(argv[1])=="--probe-profile") {
       require(!std::filesystem::exists(argv[2]),"compute profile output already exists");
       Memory memory;Simulation sim(argc,argv);sim.reset();Agent agent(memory);ReplayBus<Simulation> bus(sim,agent,100000);
-      const auto observed=probe_profile(sim,agent,bus,true);
+      const auto observed=probe_profile(sim,agent,bus,true,compute_owner_factory());
       atomic_json(argv[2],[&](auto &out){profile_json(out,observed,true);});sim.model->final();return 0;
     }
     require(argc==5 && std::string(argv[1])=="--active-owner",
