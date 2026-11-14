@@ -426,6 +426,9 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
                 raise RuntimeError("independent original-source oracle must distinguish both nonzero colors")
             if descriptions[0]["color"]["physical_base"] == descriptions[1]["color"]["physical_base"]:
                 raise RuntimeError("simultaneous owners must have distinct mutable frame allocations")
+            if sample_graphics:
+                from test_gallium_sample_graphics_uniforms import validate_source_plans
+                validate_source_plans(sources)
     if artifacts:
         manifest = "format=1\n" + "".join(p.name + ".sha256=" + hashlib.sha256(p.read_bytes()).hexdigest() + "\n"
             for p in sorted(artifacts.iterdir()))

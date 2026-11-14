@@ -5,6 +5,21 @@ from pathlib import Path
 import struct
 ROOT=Path(__file__).resolve().parents[1]
 
+def validate_source_plans(directory):
+    """New112-only source preflight; no GNY2/image or execution inference."""
+    from compute_owner_oracle import SparseMemory
+    from native_sample_graphics_source_oracle import verify
+    programs=[(directory/('native-real-%s.words'%stage)).read_bytes() for stage in ('vs','fs')]
+    reflection=json.loads((directory/'compiler-reflection.json').read_text())
+    descriptions=[json.loads((directory/('record-%u.source-plan.json'%index)).read_text()) for index in range(2)]
+    if [d['record'] for d in descriptions] != [0,1]:
+        raise ValueError('new112 source plans must contain two ordered original owners')
+    with SparseMemory(directory/'union.memory') as memory:
+        colors=[verify(memory,d,programs,reflection) for d in descriptions]
+    if colors[0] == colors[1]:
+        raise ValueError('fixed original input patches must distinguish both owners')
+    return colors
+
 def validate_native_metadata(directory,prefix='native'):
     schemas=json.loads((ROOT/'docs/abi/native-layered-graphics-v2.json').read_text())
     old=json.loads((ROOT/'docs/abi/native-binned-graphics-v1.json').read_text())

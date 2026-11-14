@@ -30,6 +30,7 @@ def run_driver_tests():
     subprocess.run([sys.executable, str(ROOT / "scripts/test_native_submit.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_native_layered_submit.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_gallium_sample_graphics_bridge.py")], check=True)
+    subprocess.run([sys.executable, str(ROOT / "scripts/test_native_sample_graphics_source.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_native_sample_graphics.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_native_sample_submit_bridge.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_native_mmio_capture.py")], check=True)
