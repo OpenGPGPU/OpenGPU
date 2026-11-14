@@ -190,6 +190,19 @@ identity; ordinary ESSL sample builtins, sample-enable/minimum/static-use
 publication, coverage state and dynamic interpolation remain separate open
 end-to-end requirements.
 
+`PrepareOwnerResourceSampleHost --describe` describes only the new factory.
+Fresh emission is selected explicitly with
+`prepare_native_owner_flashsim.py --stage prepare --sample-resources`; it never
+reuses or relabels an existing owner directory. The strict preparation guard
+requires all 112 ordered words, ABI6/7, sample execution and transport flags,
+the new profile/stage and false execution/clock/FPS qualification fields. The
+unchanged 104-word entry remains `--full-resources`. Actual source/RTL/assertion
+identity checks continue through `prepared()` for either explicit factory.
+
+```sh
+python3 -B scripts/test_prepare_native_sample_owner.py
+```
+
 The ordering and minimum-rate contract follow
 [OpenGL ES 3.2 §13.4.1 and §14.2](https://registry.khronos.org/OpenGL/specs/es/3.2/es_spec_3.2.pdf#page=374)
 and the [GLSL ES 3.20 fragment builtins](https://registry.khronos.org/OpenGL/specs/es/3.2/GLSL_ES_Specification_3.20.html#fragment-shader-special-variables).
