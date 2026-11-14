@@ -179,6 +179,9 @@ class Runner(common.Runner):
     def driver_path(self):
         return ROOT / 'scripts/native_product_driver.cpp'
 
+    def extra_driver_dependencies(self):
+        return []
+
     def backend(self):
         return 'flashsim'
 
@@ -288,6 +291,8 @@ class Runner(common.Runner):
         build_command = [sys.executable, str(ROOT / 'scripts/build_native_flashsim.py'),
             '--dut-dir', str(build_dut), '--build-dir', str(build), '--jobs', str(jobs),
             '--driver', str(self.driver_path())]
+        for dependency in self.extra_driver_dependencies():
+            build_command.extend(['--driver-dependency', str(dependency)])
         if self.precompiled_header:
             build_command.append('--precompiled-header')
         if self.conservative_alias:

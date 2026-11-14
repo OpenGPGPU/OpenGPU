@@ -297,6 +297,8 @@ int main() {
             runner = flash.Runner(out, False, out, shards=1)
             runner.prepared = lambda: prepared
             runner.driver_sources = lambda: []
+            dependency = out / 'extra-header.hpp'
+            runner.extra_driver_dependencies = lambda: [dependency]
             commands = []
             stale = out / 'flashsim-dut'; stale.mkdir()
             (stale / 'hw.mlir').write_text('stale MLIR')
@@ -333,6 +335,9 @@ int main() {
                 runner.build(2)  # Changed MLIR forces a new CIRCT import.
             self.assertIn('assertions=True', commands[0][2])
             self.assertIn('frontend="circt"', commands[0][2])
+            for command in commands:
+                if '--driver' in command:
+                    self.assertEqual(command[command.index('--driver-dependency') + 1], str(dependency))
             self.assertEqual(commands[0][-1], '1')
             self.assertTrue(commands[1][1].endswith('build_native_flashsim.py'))
             self.assertTrue(commands[2][1].endswith('build_native_flashsim.py'))
