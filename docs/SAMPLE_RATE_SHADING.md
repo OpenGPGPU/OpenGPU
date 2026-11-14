@@ -182,8 +182,12 @@ PYTHONDONTWRITEBYTECODE=1 OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_nati
 
 The checked-in GSS1 header matches its freshly compiled standalone Scala
 capability object; kernel-header compilation passes. The new full-factory and
-real AXI discovery tests are source fixtures awaiting fresh complete caller
-compilation and RTL execution. No prior full RTL, source/assertion, execution
+real AXI discovery tests pass a restricted 384 MiB Scala/Chisel-plugin typecheck
+of fifty source files, including the sample/TF path, host, preparer and required
+dependency sources. Read-only dependency classes were used only for typechecking;
+the mixed class set was never executed and its private output was deleted.
+Fresh complete caller compilation and RTL execution remain required. CPU test
+selection also passes. No prior full RTL, source/assertion, execution
 or timing qualification transfers to this combined host. Protected Linux
 sample shader admission and compiler/API policy must use this new discovered
 identity; ordinary ESSL sample builtins, sample-enable/minimum/static-use
