@@ -92,9 +92,11 @@ class FragmentInterpolationCompletion extends Bundle {
 @instantiable
 class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfig(),g: GraphicsConfig=GraphicsConfig(),
     externalArithmetic: Boolean=false,prepareOnly: Boolean=false,preparationLane: Option[Int]=None,
-    sharedPreparationInput: Boolean=false) extends Module {
+    sharedPreparationInput: Boolean=false,reuseSetup: Boolean=false,finiteZeroShortcut: Boolean=true,
+    powerTwoMultiplyShortcut: Boolean=true) extends Module {
   require(preparationLane.isEmpty || (prepareOnly && preparationLane.get>=0 && preparationLane.get<4))
   require(!sharedPreparationInput || (prepareOnly && preparationLane.nonEmpty))
+  require(!reuseSetup || (prepareOnly && preparationLane.nonEmpty && !externalArithmetic))
   private val firstLane=preparationLane.getOrElse(0)
   @public val io=IO(new Bundle {
     val in=Flipped(Decoupled(new FragmentInterpolationRequest(p,g)))
@@ -144,7 +146,8 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   if(externalArithmetic){
     io.mathRequest.get<>mathRequest;mathResponse<>io.mathResponse.get;io.mathCancel.get:=mathCancel
   }else{
-    val service=Module(new ClipFloatArithmetic())
+    val service=Module(new ClipFloatArithmetic(finiteZeroShortcut=finiteZeroShortcut,
+      powerTwoMultiplyShortcut=powerTwoMultiplyShortcut))
     service.io.in<>mathRequest;mathResponse<>service.io.out;service.io.cancel:=mathCancel
   }
   private val offered=RegInit(false.B);private val pending=RegInit(false.B)
@@ -302,6 +305,22 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   private val depth0=input.primitive.vertices(0).windowDepth(30,0)
   private val depth1=input.primitive.vertices(1).windowDepth(30,0)
   private val depth2=input.primitive.vertices(2).windowDepth(30,0)
+  // A single successful numerical setup may be reused across owned quads.
+  // The exact raw key deliberately retains signed64 area and all three raw
+  // depth words (including zero signs). No identity, address, varying, sample
+  // or per-quad validity is cached. Each Instance owns its own entry.
+  private val setupKey=Cat(primitive.kind,input.quad.lanes(0).area.asUInt,
+    VecInit(input.primitive.vertices.map(_.windowDepth)).asUInt)
+  private val setupValid=if(reuseSetup)Some(RegInit(false.B))else None
+  private val savedSetupKey=if(reuseSetup)Some(Reg(UInt(setupKey.getWidth.W)))else None
+  private val setupHit=if(reuseSetup)Some(RegInit(false.B))else None
+  private val savedSetup=if(reuseSetup)Some(Reg(new Bundle {
+    val area=new ClipFloat;val differences=Vec(2,new ClipFloat)
+    val minimum=new ClipFloat;val maximum=new ClipFloat
+    val rawMinimum=UInt(31.W);val rawMaximum=UInt(31.W)
+    // Logical setup accounting is included once, also on a cache hit.
+    val operations=UInt(16.W);val arithmetic=UInt(5.W);val packing=UInt(5.W)
+  }))else None
   private def magnitudeLess(a: ClipFloat,b: ClipFloat): Bool=
     (!a.significand.orR && b.significand.orR) || (a.significand.orR && b.significand.orR &&
       (a.exponent<b.exponent || (a.exponent===b.exponent && a.significand<b.significand)))
@@ -412,6 +431,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
       // Keep full signed66 conservation checks, but register short equality
       // groups before combining them with metadata and driving fault state.
       is(State.edgeCheck){
+        if(reuseSetup)setupHit.get:=setupValid.get && primitive.kind=/=0.U && savedSetupKey.get===setupKey
         for(i<-0 until 4){
           val bits=input.quad.lanes(i).area.asUInt
           val common=input.quad.lanes(0).area.asUInt
@@ -491,6 +511,16 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
             for(i<-0 until 4){val o=output.lanes(i);val s=input.quad.lanes(i);o.x:=s.x;o.y:=s.y;o.covered:=s.covered;o.coverageMask:=s.coverageMask}
             depthDifferences:=0.U.asTypeOf(depthDifferences);vertex:=1.U
             phase:=Mux(primitive.kind===0.U,State.startLane,State.areaNormalize)
+            if(reuseSetup){
+              when(setupHit.get){
+                val saved=savedSetup.get
+                area:=saved.area;depthDifferences:=saved.differences
+                minimumDepth:=saved.minimum;maximumDepth:=saved.maximum
+                rawMinimumDepth:=saved.rawMinimum;rawMaximumDepth:=saved.rawMaximum
+                operations:=saved.operations;arithmeticFlags:=saved.arithmetic;packingFlags:=saved.packing
+                phase:=State.startLane
+              }
+            }
       }
       is(State.areaNormalize){areaRounding:=FragmentEdgeFloat.prepare(areaMagnitude,areaNegative);phase:=State.areaRound}
       is(State.areaRound){area:=FragmentEdgeFloat.round(areaRounding);phase:=State.depthDifference}
@@ -506,6 +536,19 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
         when(vertex===primitive.kind){phase:=State.startLane}.otherwise{vertex:=2.U;phase:=State.depthDifference}
       }
       is(State.startLane){sampling:=false.B;preparingCentroid:=false.B;centroidActive:=false.B;fallbackPerspective:=false.B;resamplingDepth:=false.B
+        if(reuseSetup){
+          // Reached only after current validation and all setup replies have
+          // succeeded. Cancellation/fault paths cannot populate the cache.
+          when(!laneStarted.get && !setupHit.get && primitive.kind=/=0.U){
+            assert(!offered && !pending)
+            val saved=savedSetup.get
+            setupValid.get:=true.B;savedSetupKey.get:=setupKey
+            saved.area:=area;saved.differences:=depthDifferences
+            saved.minimum:=minimumDepth;saved.maximum:=maximumDepth
+            saved.rawMinimum:=rawMinimumDepth;saved.rawMaximum:=rawMaximumDepth
+            saved.operations:=operations;saved.arithmetic:=arithmeticFlags;saved.packing:=packingFlags
+          }
+        }
         if(prepareOnly){
           when(lane===firstLane.U){
             preparation.get.setupOperations:=operations

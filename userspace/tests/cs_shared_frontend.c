@@ -6,6 +6,7 @@
 #undef main
 #include "cs_glsl_frontend.h"
 #include "cs_shared_word_vm.h"
+#include "cs_shared_atomic_word_vm.h"
 
 static void *front(const char *directory, const char *name, const char *dump)
 {
@@ -78,7 +79,7 @@ int main(int argc,char **argv)
         void *f=front(argv[1],"full","original");assert(cs_frontend_shared_bytes(f)==16384);
         memory_binding(cs_frontend_tokens(f),0);cs_frontend_destroy(f);return 0;
     }
-    assert(!old_callback_corpus()); /* Original51 callbacks/guards remain intact. */
+    assert(!old_callback_corpus()); /* Original callback/guard corpus remains intact. */
     void *f=front(argv[1],"full","corrected");const void *tokens=cs_frontend_tokens(f);
     assert(cs_frontend_shared_bytes(f)==16384);memory_binding(tokens,TGSI_MEMORY_TYPE_SHARED);
     struct opengpu_cs_shared profile={.base=0x10000000u,.bytes=16384,.lanes=16,
@@ -143,6 +144,126 @@ int main(int argc,char **argv)
     for(unsigned n=0;n<4;n++){
         const char *name[]={"uninitialized","no-barrier","divergent","peer-store"};
         void *negative=front(argv[1],name[n],"negative");
+        struct opengpu_cs_shared cfg=profile;cfg.required_bytes=cs_frontend_shared_bytes(negative);
+        reject_shared(cs_frontend_tokens(negative),&cfg);cs_frontend_destroy(negative);
+    }
+    /* A memory fence does not rendezvous with other invocations. These loads
+     * are admitted only because each invocation reads its exact own stripe. */
+    for(unsigned n=0;n<3;n++) {
+        const char *name[]={"own","own-end","multi-own"};
+        void *own=front(argv[1],name[n],"own-stripe");
+        struct opengpu_cs_shared cfg=profile;cfg.required_bytes=cs_frontend_shared_bytes(own);
+        struct opengpu_cs_program own_code;
+        assert(cfg.required_bytes==16384);
+        assert(!opengpu_cs_emit_shared(cs_frontend_tokens(own),&cfg,&own_code));
+        assert(admitted(&own_code,cfg.base,cfg.bytes,cfg.lanes));
+        unsigned reads=0,writes=0,barriers=0;
+        for(unsigned i=0;i<own_code.words;i++) {
+            reads+=(own_code.code[i]&127u)==0x07u;writes+=(own_code.code[i]&127u)==0x27u;
+            barriers+=own_code.code[i]==0x0000000bu;
+        }
+        assert(reads==(n==2?32u:1u)&&writes==(n==2?32u:1u)&&!barriers&&own_code.words<=512);
+        /* Reject each actual missing producer, even after the full array was
+         * otherwise initialized. Do not infer own visibility from that prefix. */
+        for(unsigned i=0;i<own_code.words;i++)if((own_code.code[i]&127u)==0x27u) {
+            uint32_t saved=own_code.code[i];own_code.code[i]=0x13u;
+            assert(!admitted(&own_code,cfg.base,cfg.bytes,cfg.lanes));own_code.code[i]=saved;
+        }
+        printf("ESSL %s: %u words, %u shared stores/%u loads, no workgroup barrier (CPU only)\n",
+               name[n],own_code.words,writes,reads);
+        if(n==2)for(unsigned order=0;order<2;order++) {
+            uint32_t output[288];for(unsigned j=0;j<288;j++)output[j]=0xfade9876u;
+            for(unsigned group=0;group<2;group++)
+                shared_word_oracle_own(own_code.code,own_code.words,cfg.base,output+16,group,0xa1000000u,order);
+            for(unsigned group=0;group<2;group++)for(unsigned id=0;id<128;id++) {
+                uint32_t sum=0;for(unsigned stripe=0;stripe<32;stripe++)sum+=0xa1000000u+(group<<16)+id+stripe*128;
+                assert(output[16+group*128+id]==sum);
+            }
+            for(unsigned j=0;j<16;j++)assert(output[j]==0xfade9876u&&output[272+j]==0xfade9876u);
+        }
+        cs_frontend_destroy(own);
+    }
+    void *shifted=front(argv[1],"own-shifted","negative");
+    struct opengpu_cs_shared shifted_cfg=profile;
+    shifted_cfg.required_bytes=cs_frontend_shared_bytes(shifted);
+    reject_shared(cs_frontend_tokens(shifted),&shifted_cfg);cs_frontend_destroy(shifted);
+    limit_shared_base=profile.base;limit_shared_bytes=profile.bytes;limit_shared_lanes=profile.lanes;
+    for(unsigned variant=0;variant<16;variant++) {
+        const unsigned signed_operations[]={0,1,2,3,4,9};
+        unsigned operation=variant<10?variant:signed_operations[variant-10];
+        char name[64];assert(snprintf(name,sizeof(name),variant<10?"shared-atomic-%u":"shared-atomic-i-%u",operation)>0);
+        void *atomic=front(argv[1],name,"shared-atomic");
+        struct opengpu_cs_shared cfg=profile;cfg.required_bytes=cs_frontend_shared_bytes(atomic);
+        assert(cfg.required_bytes==16384);
+        struct opengpu_cs_program actual;
+        assert(!opengpu_cs_emit_shared(cs_frontend_tokens(atomic),&cfg,&actual));
+        assert(actual.words<=512&&actual.shared_atomics);
+        assert(opengpu_compute_shader_validate_words_shared_atomics(actual.code,actual.words,12,128,
+            false,false,false,true,false,false,false,false,false,cfg.base,cfg.bytes,cfg.lanes,false,true));
+        assert(!admitted(&actual,cfg.base,cfg.bytes,cfg.lanes));
+        unsigned captures=0,operations=0,stores=0,barriers=0;
+        for(unsigned i=0;i<actual.words;i++) {
+            unsigned fn=actual.code[i]>>26;
+            captures+=(actual.code[i]&127)==0x2b&&fn==30;
+            operations+=(actual.code[i]&127)==0x2b&&(fn==31||fn==32);
+            stores+=(actual.code[i]&127)==0x27;
+            barriers+=actual.code[i]==0x0000000bu;
+        }
+        assert(captures==2&&operations==2&&stores==32&&barriers==1);
+        for(unsigned order=0;order<2;order++) {
+            uint32_t output[544];for(unsigned i=0;i<544;i++)output[i]=0xfade9876u;
+            for(unsigned group=0;group<2;group++)
+                shared_atomic_word_vm(actual.code,actual.words,cfg.base,output+16,group,order,operation);
+            for(unsigned i=0;i<16;i++)assert(output[i]==0xfade9876u&&output[528+i]==0xfade9876u);
+        }
+        printf("SHARED_ATOMIC_CPU actualESSL=310 operation=%u words=%u items=128 sharedBytes=16384 oldWords=512 noGPU=true\n",operation,actual.words);
+        uint64_t original_features=features;
+        for(unsigned enabled=0;enabled<2;enabled++) {
+            features=original_features|(enabled?OPENGPU_DRIVER_FEATURE_COMPUTE_SHARED_ATOMICS:0);
+            struct pipe_screen *screen=opengpu_drm_screen_create(7,NULL);assert(screen);
+            struct pipe_context *context=screen->context_create(screen,NULL,0);assert(context);
+            struct pipe_compute_state state={.ir_type=PIPE_SHADER_IR_TGSI,
+                .prog=cs_frontend_tokens(atomic),.req_local_mem=16384};
+            void *created=context->create_compute_state(context,&state);
+            assert(!!created==!!enabled);
+            if(created)context->delete_compute_state(context,created);
+            context->destroy(context);screen->destroy(screen);no_leaks();
+        }
+        features=original_features;
+        preserve_program(argv[1],name,&actual);
+        cs_frontend_destroy(atomic);
+    }
+    /* Compiler/admission coverage only. The independent source-level output
+     * oracle belongs to the explicit REAL-CU qualifier, not a CPU fake READY
+     * or a synthetic execution of these words. Retain the old CPU VM corpus
+     * above unchanged, and preserve these exact original words for the DUT. */
+    for(unsigned variant=0;variant<16;variant++) {
+        const unsigned signed_operations[]={0,1,2,3,4,9};
+        unsigned operation=variant<10?variant:signed_operations[variant-10];
+        char name[64];assert(snprintf(name,sizeof(name),variant<10?"shared-dynamic-%u":"shared-dynamic-i-%u",operation)>0);
+        void *dynamic=front(argv[1],name,"shared-dynamic");
+        struct opengpu_cs_shared cfg=profile;cfg.required_bytes=cs_frontend_shared_bytes(dynamic);
+        struct opengpu_cs_program actual;assert(cfg.required_bytes==16384);
+        assert(!opengpu_cs_emit_shared(cs_frontend_tokens(dynamic),&cfg,&actual));
+        assert(actual.words<=512 && actual.shared_atomics);
+        assert(opengpu_compute_shader_validate_words_shared_atomics(actual.code,actual.words,12,128,
+            false,false,false,true,false,false,false,false,false,cfg.base,cfg.bytes,cfg.lanes,false,true));
+        assert(!admitted(&actual,cfg.base,cfg.bytes,cfg.lanes));
+        unsigned params=0,atomics=0,stores=0,loads=0,barriers=0,scopes=0;
+        for(unsigned i=0;i<actual.words;i++) {
+            uint32_t w=actual.code[i];unsigned fn=w>>26;
+            params+=(w&127)==0x2b && fn==30;
+            atomics+=(w&127)==0x2b && (fn==31 || fn==32);
+            stores+=(w&127)==0x27;loads+=(w&127)==0x07;barriers+=w==0xb;
+            scopes+=(w&0x707f)==0x305b;
+        }
+        assert(params==2 && atomics==2 && stores==32 && loads==2 && barriers==2 && scopes==1);
+        printf("SHARED_DYNAMIC_COMPILER actualESSL310 operation=%u words=%u items=128 sharedBytes=16384 activeScope=1 compilerOnly=true noGPU=true\n",operation,actual.words);
+        preserve_program(argv[1],name,&actual);cs_frontend_destroy(dynamic);
+    }
+    for(unsigned n=0;n<3;n++) {
+        const char *name[]={"dynamic-no-barrier","dynamic-uninitialized-tail","dynamic-conditional-init"};
+        void *negative=front(argv[1],name[n],"shared-dynamic-negative");
         struct opengpu_cs_shared cfg=profile;cfg.required_bytes=cs_frontend_shared_bytes(negative);
         reject_shared(cs_frontend_tokens(negative),&cfg);cs_frontend_destroy(negative);
     }

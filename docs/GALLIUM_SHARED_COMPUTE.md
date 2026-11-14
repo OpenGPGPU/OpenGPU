@@ -15,10 +15,105 @@ workgroup, straight-line converged barriers, and the checked adjacent-warp
 access. The emitter preserves the shared declaration's typed MEMORY binding,
 proves an initialized prefix before a barrier makes it readable, and emits
 unmasked e32 unit-stride operations using the trusted local-linear warp base.
+It also admits a read of any retained exact invocation-local store stripe
+without a workgroup barrier. A later disjoint store preserves earlier proofs;
+a store overlapping another stripe removes that old proof before adding its
+own. Offsets need not be multiples of the workgroup span. Prefix coverage does
+not prove invocation ownership: shifted and peer-permuted reads still require
+publication. Native CFG joins retain only exact stripe proofs present on every
+incoming path, using independent branch snapshots. Unknown or unsupported
+shared writes reject the program. The shared frontend still requires
+straight-line control flow; arbitrary layouts and general CFGs remain open.
+
+The sorted proof set has at most 512 entries, bounded by the existing native
+instruction limit: each instruction introduces at most one store and joins
+only remove proofs. Linux allocates five 2056-byte proof slots per shared
+validation, frees them on every exit, and retains small state objects on the
+kernel stack. Allocation failure rejects admission. Nonshared profiles allocate
+no proof slots. The emitter uses the same interval and intersection helpers;
+no resource capacity or instruction limit changes.
+The distinction between an invocation's own accesses and communication with
+other invocations follows [GLSL ES 3.10, shared variables](https://registry.khronos.org/OpenGL/specs/es/3.1/GLSL_ES_Specification_3.10.pdf),
+section 4.3.8.
 The shared lane count must be a power of two representable by `vsetivli`
 (at most 31); the validated device has 16 lanes. Legacy nonshared compilation
 keeps its entry point and program layout, including the 16-vec4 immediate limit.
-The shared parser permits 32 immediate vec4s; the native limit remains 512 words.
+The shared parser permits 32 immediate vec4s and tracks 64 TEMP IDs, including
+symbolic addresses that need no persistent physical register. This handles
+Mesa's 35-TEMP CSE form for the full own-stripe program. The legacy declaration
+limit remains 32 TEMP IDs; the physical v2..v21 allocator and 512-word native
+limit remain unchanged. A shared TEMP represented by an exact expression releases
+its old physical-register ownership. That old register is only a hint: any
+later concrete definition reacquires an unoccupied slot before writing it.
+Partial writes preserve other resident components and counter ADDR2 keeps its
+independent slot. The CPU register test executes 278 native words through the
+independent arithmetic/counter decoder, checking simultaneous alias/swizzle,
+39 concrete-to-symbolic replacements, partial-component retention, a later
+counter read and four 128-item result planes with guards. A twenty-first truly
+resident value still fails admission. This is compiler arithmetic coverage,
+not a counter publication or GPU execution qualification.
+
+The explicit own-stripe CPU test builds 59 programs using the actual Mesa
+22.3.6 TGSI builder/parser and production emitter/validator. The first and last
+128-word stripes are accepted without control barriers; uninitialized,
+shifted, peer and overwritten-stripe proofs are rejected without partial
+output. It covers zero, ordinary and exclusive-4-GiB shared address windows.
+The full 32-stripe case writes all 16 KiB then reloads every stripe without a
+workgroup barrier; removing each corresponding store from the actual emitted
+words makes Linux validation fail. Disjoint noncanonical offsets and
+exclusive-4-GiB windows are covered. Shared TEMP63 is accepted, TEMP64 is
+rejected; legacy TEMP31/TEMP32 retain their acceptance/rejection boundary. A
+published peer read remains accepted. ASan/UBSan and the complete native
+validator corpus pass, including CFG joins and an exclusive
+4 GiB endpoint. This test does not execute a GPU or establish general shared
+layout/barrier semantics. The additional ESSL own-stripe cases in the full
+shared frontend also pass under ASan/UBSan with actual Mesa 22.3.6 lowering.
+The single-stripe cases retain one shared store and one shared load, no
+workgroup barrier and a full 16 KiB allocation; the shifted read is rejected.
+The full 32-stripe own-read ESSL case emits 480 words with exactly 32 stores,
+32 loads and no workgroup barrier. Removing each real store rejects admission.
+Its independent CPU decoder checks all 4096 initialized words, two groups,
+all eight warps in both orders, exact sums and guards. The original callback
+corpus (57 submissions / 66 waits) and both complete 486-word peer/barrier
+epochs remain passing under ASan/UBSan.
+
+Hardware coverage remains the previously passed stock SRAM CU test with all
+eight 16-lane warps, the full 16 KiB allocation, SRAM, FPU and vector units. Its
+existing native program checks store → local AMO → own-stripe load → guarded
+global publication at the first and last 512-byte stripes, including exact
+results and held completion. This is component hardware execution, not
+execution of the new ESSL words on a complete host. General shared layouts,
+CFGs, API qualification and H7 remain open.
+
+```sh
+OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 \
+OPENGPU_DRM_INCLUDE=/path/to/drm-headers \
+OPENGPU_TEST_SANITIZERS=1 \
+python3 scripts/test_gallium_shared_own_stripe.py
+```
+
+To reproduce the stock SRAM test within a 2 GiB heap, compile only its original
+test source and `GpuSim` helper; all main sources and every case/assertion in
+the Spec remain unchanged. Use a short `GPU_TMP` directory (at most 52 absolute
+path characters on macOS) and `GPU_RUNTIME` for dependencies, both under the
+GPU repository's `.artifacts/`. Point `FIRTOOL_BIN` at the existing 1.158.0
+tool's `bin` directory. Remove private model/build/TMP data after the owned
+process group exits; retain shared dependency tools while other tasks use them.
+
+```sh
+TMPDIR="$GPU_TMP" COURSIER_CACHE="$GPU_RUNTIME/coursier" \
+XDG_CACHE_HOME="$GPU_RUNTIME/xdg" CHISEL_FIRTOOL_PATH="$FIRTOOL_BIN" \
+MAKEFLAGS=-j1 CXX=clang++ sbt \
+  -J-Xmx2G -J-Xss6M -J-XX:ActiveProcessorCount=2 \
+  -J-Djava.io.tmpdir="$GPU_TMP" \
+  -Dsbt.global.base="$GPU_RUNTIME/sbt" \
+  -Dsbt.boot.directory="$GPU_RUNTIME/boot" -Dsbt.ivy.home="$GPU_RUNTIME/ivy" \
+  -Dsbt.server.autostart=false -Dsbt.supershell=false \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  'set Test / sources := Seq(baseDirectory.value / "src/test/scala/opengpu/core/GpuComputeUnitSharedSramSpec.scala", baseDirectory.value / "src/test/scala/opengpu/testutil/GpuSim.scala")' \
+  'testOnly opengpu.core.GpuComputeUnitSharedSramSpec'
+```
 
 The CPU qualification passed with actual Mesa 22.3.6 ESSL310 → NIR → TGSI, the
 production emitter, discovery callbacks and kernel word validator. Its full
@@ -27,7 +122,7 @@ adjacent warps and executes two barrier generations. Both shader seed epochs
 compile to 486 native words. An independent instruction decoder checks every
 store and every read address/value, each complete 4096-index read multiset,
 all eight warps in forward and reverse orders, two groups, exact outputs and
-allocation guards. The original 51 callback submissions, comparison/predicate
+allocation guards. The original callback submissions, comparison/predicate
 corpus and failure/recovery checks also pass under ASan/UBSan. Missing discovery,
 short allocation, uninitialized reads, omitted/divergent barriers, masked stores,
 undeclared MEMORY bindings and unsupported lane configurations are rejected.

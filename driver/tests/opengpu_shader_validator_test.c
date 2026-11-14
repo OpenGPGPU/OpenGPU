@@ -3,8 +3,31 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include "../opengpu_shared_own_proof.h"
+
+static unsigned proof_allocations, proof_frees, proof_live;
+static int proof_fail;
+static void *proof_calloc(size_t count,size_t bytes)
+{
+    assert(count==5&&bytes==sizeof(struct opengpu_shared_own_proof));
+    assert(bytes<=2600); /* fixed heap analysis, no shader-sized stack growth */
+    ++proof_allocations;
+    if(proof_fail)return NULL;
+    void *p=calloc(count,bytes);assert(p);++proof_live;return p;
+}
+static void proof_free(void *p)
+{
+    if(p){assert(proof_live);--proof_live;++proof_frees;}
+    free(p);
+}
+#define calloc proof_calloc
+#define free proof_free
 
 #include "../opengpu_shader_validator.h"
+#undef calloc
+#undef free
+_Static_assert(sizeof(struct opengpu_shader_state)<=384,"branch snapshots must stay small");
 #include "../opengpu_shader_builder.h"
 #include "opengpu_compute_uniform_counter_source_program.h"
 
@@ -821,6 +844,43 @@ static bool shared_valid(const uint32_t *words,unsigned n,unsigned items,
         base,bytes,lanes);
 }
 
+static void test_shared_own_proof_bounds(void)
+{
+    struct opengpu_shared_own_proof p={0}, q={0};
+    /* Maximum native-store count, reverse insertion, exact endpoints. */
+    for(unsigned i=512;i;i--)assert(opengpu_shared_own_store(&p,4*(i-1),4));
+    assert(p.count==512);
+    for(unsigned i=0;i<512;i++)assert(p.offsets[i]==4*i);
+    assert(!opengpu_shared_own_store(&p,2048,4));
+    assert(p.count==512);
+    assert(opengpu_shared_own_store(&p,0,4)&&p.count==512);
+    assert(!opengpu_shared_own_contains(&p,0,8));
+    assert(opengpu_shared_own_store(&p,0xfffffffcu,4)==false);
+    p=(struct opengpu_shared_own_proof){0};
+    assert(opengpu_shared_own_store(&p,0xfffffffcu,4));
+    assert(opengpu_shared_own_store(&p,0xfffffff8u,4));
+    assert(p.count==2&&p.offsets[1]==0xfffffffcu);
+    /* Changed launch span cannot reuse old proofs. */
+    assert(opengpu_shared_own_store(&p,0,512)&&p.count==1);
+    assert(opengpu_shared_own_store(&q,0,256));
+    opengpu_shared_own_intersect(&p,&q);assert(!p.count);
+    /* Differential interval oracle including shifted overlap and joins. */
+    for(unsigned seed=1;seed<20;seed++) {
+        bool expected[256]={0};unsigned random=seed;
+        p=(struct opengpu_shared_own_proof){0};
+        for(unsigned step=0;step<200;step++) {
+            random=random*1664525u+1013904223u;unsigned offset=(random>>16)%256;
+            for(unsigned j=0;j<256;j++)
+                if(j<offset+8&&offset<j+8)expected[j]=false;
+            expected[offset]=true;
+            assert(opengpu_shared_own_store(&p,offset*4,32));
+            for(unsigned j=0;j<256;j++)
+                assert(opengpu_shared_own_contains(&p,j*4,32)==expected[j]);
+        }
+        q=p;opengpu_shared_own_intersect(&p,&q);assert(p.count==q.count);
+    }
+}
+
 static void test_compute_shared_admission(void)
 {
     uint32_t full[512],bad[512],original[512];struct opg_shared_layout f;
@@ -828,6 +888,9 @@ static void test_compute_shared_admission(void)
     assert(n==512 && OPENGPU_SHADER_MAX_INSTRUCTIONS==512 &&
            OPENGPU_SHADER_MAX_FORWARD_BRANCHES==4);
 #define SHARED(code,count) shared_valid(code,count,128,OPG_SHARED_BASE,16384,16)
+    unsigned before=proof_allocations;
+    proof_fail=1;assert(!SHARED(full,n));assert(proof_allocations==before+1&&!proof_live);
+    proof_fail=0;
     assert(SHARED(full,n));
     assert(!opengpu_compute_shader_validate_words_uniform_resources(
         full,n,4096,128,true,true,true,true,true,true,true,true));
@@ -876,12 +939,106 @@ static void test_compute_shared_admission(void)
     uint32_t p[]={vsetivli(16),slli(13,8,2),OPG_SHARED_BASE|14u<<7|0x37u,
         add(13,13,14),vse32(1,13),0x0000000bu,vle32(10,13),OPENGPU_SHADER_CEASE};
     assert(SHARED(p,8));
+    /* Invocation-local read-after-write does not exchange data between
+     * invocations. It needs the exact same stripe, not prefix coverage. */
+    p[5]=addi(0,0,0);assert(SHARED(p,8));
+    p[4]=addi(0,0,0);assert(!SHARED(p,8));p[4]=vse32(1,13);
+    uint32_t shifted[]={vsetivli(16),slli(13,8,2),OPG_SHARED_BASE|14u<<7|0x37u,
+        add(13,13,14),vse32(1,13),addi(13,13,512),vse32(1,13),
+        addi(13,13,-508),vle32(10,13),OPENGPU_SHADER_CEASE};
+    assert(!SHARED(shifted,10)); /* initialized prefix cannot prove own offset4 */
+    shifted[7]=addi(13,13,0);assert(SHARED(shifted,10));
+    uint32_t peer[11]={vsetivli(16),slli(13,8,2),OPG_SHARED_BASE|14u<<7|0x37u,
+        add(13,13,14),vse32(1,13),slli(15,8,2),
+        64u<<20|15u<<15|4u<<12|15u<<7|0x13u,add(15,15,14),
+        vle32(10,15),OPENGPU_SHADER_CEASE};
+    assert(!SHARED(peer,10));
+    memmove(peer+6,peer+5,5*sizeof(*peer));peer[5]=0x0000000bu;
+    assert(SHARED(peer,11));
+    /* A skipped initializer cannot acquire the last-stripe proof at join. */
+    uint32_t own_cfg[]={vsetivli(16),slli(13,8,2),OPG_SHARED_BASE|14u<<7|0x37u,
+        add(13,13,14),branch(0,8,0,8),vse32(1,13),vle32(10,13),OPENGPU_SHADER_CEASE};
+    assert(!SHARED(own_cfg,8));
+    /* Deep snapshots and joins retain exactly the common disjoint stripes. */
+    struct opengpu_shared_own_proof proof={0}, other={0}, copied={0};
+    struct opengpu_shader_state own_state={.shared_own=&proof},
+        incoming={.shared_own=&other}, snapshot={.shared_own=&copied};
+    assert(opengpu_shared_own_store(&proof,0,512));
+    assert(opengpu_shared_own_store(&proof,512,512));
+    assert(opengpu_shared_own_store(&proof,1536,512));
+    opengpu_shader_copy_state(&snapshot,&own_state);
+    assert(snapshot.shared_own!=own_state.shared_own);
+    assert(opengpu_shared_own_store(&other,512,512));
+    assert(opengpu_shared_own_store(&other,1024,512));
+    opengpu_shader_merge_state(&own_state,&incoming);
+    assert(proof.count==1&&opengpu_shared_own_contains(&proof,512,512));
+    assert(copied.count==3); /* merging cannot mutate a saved branch */
+    opengpu_shader_simt_swap(&own_state,&snapshot);
+    assert(own_state.shared_own==&copied&&snapshot.shared_own==&proof);
+    assert(own_state.shared_own->count==3&&snapshot.shared_own->count==1);
+    /* Write all 32 full-profile stripes, then reload every earlier stripe
+     * without a workgroup barrier. The native 512-word cap stays unchanged. */
+    uint32_t retained[512];unsigned r=0;
+    retained[r++]=vsetivli(16);retained[r++]=slli(13,8,2);
+    retained[r++]=OPG_SHARED_BASE|14u<<7|0x37u;retained[r++]=add(13,13,14);
+    for(unsigned stripe=0;stripe<32;stripe++) {
+        retained[r++]=vse32(1,13);if(stripe<31)retained[r++]=addi(13,13,512);
+    }
+    /* Restore from the trusted base rather than encoding a truncated imm. */
+    retained[r++]=slli(13,8,2);retained[r++]=add(13,13,14);
+    unsigned first_retained_read=r;
+    for(unsigned stripe=0;stripe<32;stripe++) {
+        retained[r++]=vle32(10,13);if(stripe<31)retained[r++]=addi(13,13,512);
+    }
+    retained[r++]=OPENGPU_SHADER_CEASE;assert(SHARED(retained,r));
+    for(unsigned stripe=0;stripe<32;stripe++) {
+        uint32_t saved=retained[4+2*stripe];retained[4+2*stripe]=addi(0,0,0);
+        assert(!SHARED(retained,r));retained[4+2*stripe]=saved;
+    }
+    /* Overlap kills the old mapping even though both stripes initialized
+     * the prefix. A disjoint offset need not be a multiple of 512. */
+    uint32_t overlap[]={vsetivli(16),slli(13,8,2),OPG_SHARED_BASE|14u<<7|0x37u,
+        add(13,13,14),vse32(1,13),addi(13,13,4),vse32(1,13),
+        addi(13,13,-4),vle32(10,13),OPENGPU_SHADER_CEASE};
+    assert(!SHARED(overlap,10));
+    overlap[5]=addi(13,13,516);overlap[7]=addi(13,13,-516);
+    assert(SHARED(overlap,10));
+    /* Taken and fallthrough snapshots must not alias. Earlier unconditional
+     * proof survives a join; conditionally initialized stripe does not. */
+    uint32_t multi_cfg[]={vsetivli(16),slli(13,8,2),OPG_SHARED_BASE|14u<<7|0x37u,
+        add(13,13,14),vse32(1,13),addi(15,13,512),
+        branch(0,8,0,8),vse32(1,15),vle32(10,13),OPENGPU_SHADER_CEASE};
+    assert(SHARED(multi_cfg,10));
+    multi_cfg[8]=vle32(10,15);assert(!SHARED(multi_cfg,10));
+    /* Unreachable writes never become initialization at a later target. */
+    multi_cfg[6]=branch(0,0,0,8);assert(!SHARED(multi_cfg,10));
+    /* Both arms write both stripes in opposite orders. Set intersection
+     * preserves both mappings; deleting either arm's producer rejects. */
+    uint32_t orders[]={vsetivli(16),slli(13,8,2),OPG_SHARED_BASE|14u<<7|0x37u,
+        add(13,13,14),addi(15,13,512),branch(0,8,0,16),vse32(1,13),vse32(1,15),
+        branch(0,0,0,12),vse32(1,15),vse32(1,13),vle32(10,13),vle32(10,15),
+        OPENGPU_SHADER_CEASE};
+    assert(SHARED(orders,14));
+    const unsigned arm_stores[]={6,7,9,10};
+    for(unsigned i=0;i<4;i++) {
+        unsigned at=arm_stores[i];uint32_t saved=orders[at];orders[at]=addi(0,0,0);
+        assert(!SHARED(orders,14));orders[at]=saved;
+    }
+    /* One incoming overlapping write destroys the old proof for all paths. */
+    multi_cfg[5]=addi(15,13,4);multi_cfg[6]=branch(0,8,0,8);
+    multi_cfg[8]=vle32(10,13);assert(!SHARED(multi_cfg,10));
+    /* A second validation cannot inherit any of the retained proofs. */
+    retained[4]=addi(0,0,0);assert(!SHARED(retained,r));
+    retained[4]=vse32(1,13);assert(first_retained_read>4);
+    p[5]=0x0000000bu;
     /* A prior accepted program contributes no initialization to a new one. */
     p[4]=addi(0,0,0);assert(!SHARED(p,8));p[4]=vse32(1,13);
     /* Whole-WG bounds, including the final byte at 2^32, use 64 bits. */
     uint32_t edge[]={vsetivli(16),slli(13,8,2),0xfffff000u|14u<<7|0x37u,
         addi(14,14,2047),addi(14,14,1537),add(13,13,14),vse32(1,13),
         0x0000000bu,vle32(10,13),OPENGPU_SHADER_CEASE};
+    assert(shared_valid(edge,10,128,0xfffffe00u,512,16));
+    edge[7]=addi(0,0,0);
     assert(shared_valid(edge,10,128,0xfffffe00u,512,16));
     assert(!shared_valid(edge,10,128,0xfffffe04u,512,16));
     edge[6]=addi(13,13,-4);assert(!shared_valid(edge,10,128,0xfffffe00u,512,16));
@@ -957,7 +1114,9 @@ static void test_texture_gather_admission(void)
 int main(void)
 {
     test_native_uniform_admission();
+    test_shared_own_proof_bounds();
     test_compute_shared_admission();
+    unsigned shared_allocations=proof_allocations;
     test_compute_uniform_admission();
     test_resource_texture_operands();
     test_compute_texture_resource_profile();
@@ -3109,5 +3268,6 @@ int main(void)
             assert(!opengpu_compute_shader_validate_words(exit_between, 5, 64, 8));
         }
     }
+    assert(!proof_live&&proof_allocations==proof_frees+1&&proof_allocations==shared_allocations);
     return 0;
 }

@@ -110,7 +110,7 @@ static void cs_vm_group_resources_counters_checked(const uint32_t *code, unsigne
                     continue;
                 }
                 for (unsigned lane = 0; lane < active; lane++) if (control & (1u << lane)) {
-                    uint32_t left = v[z][lane], right = f == 4 || f == 6 ? x[a] : v[a][lane], result;
+                    uint32_t left = v[z][lane], right = f == 3 ? a : f == 4 || f == 6 ? x[a] : v[a][lane], result;
                     if (fn == 0x17 && f == 4) { assert(z == 0); result = x[a]; }
                     else if (fn == 0 && (f == 0 || f == 4)) result = left + right;
                     else if (fn == 0x20 && f == 6) { assert(right); result = left / right; }
@@ -119,7 +119,7 @@ static void cs_vm_group_resources_counters_checked(const uint32_t *code, unsigne
                     else if (fn == 9 && f == 0) result = left & right;
                     else if (fn == 10 && f == 0) result = left | right;
                     else if (fn == 11 && f == 0) result = left ^ right;
-                    else if (fn == 0x25 && (f == 0 || f == 4)) result = left << (right & 31);
+                    else if (fn == 0x25 && (f == 0 || f == 3 || f == 4)) result = left << (right & 31);
                     else if (fn == 0x28 && f == 0) result = left >> (right & 31);
                     else { assert(!"unexpected emitted vector opcode"); result = 0; }
                     v[rd][lane] = result;

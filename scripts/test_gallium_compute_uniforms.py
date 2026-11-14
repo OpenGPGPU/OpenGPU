@@ -29,10 +29,19 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     if control_flow or buffer_resources:
         ap.add_argument("--artifacts", type=Path,
                         help="new directory for actual validated submission inputs (CPU only)")
-    ap.add_argument("--mesa-shared-ntt", type=Path, help="exact privately staged shared NTT source")
     ap.add_argument("--mesa-nir-lower-io", type=Path,
                     help="privately compile this checked Mesa nir_lower_io.c before libnir")
+    ap.add_argument("--mesa-shared-ntt", type=Path,
+                    help="exact privately staged shared NTT source (shared fixtures only)")
     args = ap.parse_args()
+    if args.mesa_shared_ntt and not (shared_memory or shared_publication):
+        ap.error("--mesa-shared-ntt requires a shared-memory fixture")
+    shared_ntt = None
+    if args.mesa_shared_ntt:
+        from stage_mesa_shared_memory import AFTER
+        shared_ntt = args.mesa_shared_ntt.resolve(strict=True)
+        if hashlib.sha256(shared_ntt.read_bytes()).hexdigest() != AFTER:
+            raise ValueError("exact checked shared NTT postimage required")
     out = args.build.resolve()
     out.mkdir(parents=True, exist_ok=False)
     mesa = Path(os.environ.get("OPENGPU_MESA_DIR", ROOT / "depends/mesa")).resolve()
@@ -203,10 +212,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     if not all(p.is_file() for p in libraries):
         raise RuntimeError("configured real Mesa static libraries required")
     if shared_memory or shared_publication:
-        from stage_mesa_shared_memory import stage, AFTER
-        source = args.mesa_shared_ntt.resolve(strict=True) if args.mesa_shared_ntt else stage(mesa, out / "private-mesa-source")
-        if hashlib.sha256(source.read_bytes()).hexdigest() != AFTER:
-            raise ValueError('exact checked shared NTT postimage required')
+        from stage_mesa_shared_memory import stage
+        source = shared_ntt or stage(mesa, out / "private-mesa-source")
         obj = out / "nir_nir_to_tgsi.c.o"
         run(cc + configured_flags("gallium/auxiliary/nir/nir_to_tgsi.c") + ["-UNDEBUG"] + san +
             ["-MMD", "-MF", obj.with_suffix(".d"), "-c", source, "-o", obj], "compile-shared-NTT")
@@ -322,6 +329,21 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         print('Actual Mesa/Linux compute ' + ('CPU capture only' if args.capture_only else 'external-DUT protocol') + ' completed: ' + str(out))
         return
     run([binary, sources], "actual-acceptance", env)
+    if shared_memory:
+        # Active compiler-to-CU inputs only. The caller removes this private
+        # build after the explicit RTL qualifier has consumed the words.
+        names = ["shared-atomic-%d" % op for op in range(10)] + [
+            "shared-atomic-i-%d" % op for op in (0, 1, 2, 3, 4, 9)]
+        digest = hashlib.sha256()
+        for name in names:
+            digest.update((name + "\n").encode("ascii"))
+            digest.update((sources / (name + ".native.words")).read_bytes())
+        print("ACTUAL_MESA_SHARED_ATOMIC_INPUT_SHA256=" + digest.hexdigest())
+        digest = hashlib.sha256()
+        for name in [n.replace('shared-atomic-', 'shared-dynamic-') for n in names]:
+            digest.update((name + "\n").encode("ascii"))
+            digest.update((sources / (name + ".native.words")).read_bytes())
+        print("ACTUAL_MESA_SHARED_DYNAMIC_INPUT_SHA256=" + digest.hexdigest())
     if artifacts:
         manifest = "format=1\n" + "".join(p.name + ".sha256=" + hashlib.sha256(p.read_bytes()).hexdigest() + "\n"
             for p in sorted(artifacts.iterdir()))

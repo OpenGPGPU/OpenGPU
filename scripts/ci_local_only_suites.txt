@@ -184,3 +184,4 @@ opengpu.core.GpuComputeUnitImageBarrierSpec
 # Quad/Triangle HostAxiImage variants above, which OOMs the CI heap on a cold
 # sim cache.
 opengpu.graphics.tessellation.TessellationNativeHostAxiImageSpec
+opengpu.core.GpuComputeUnitSharedAtomicSpec

@@ -8,9 +8,10 @@ backpressure are unchanged.
 
 A four-bank elaboration with 32,850 transaction IDs, 64-byte lines and
 128 sets/four ways per bank retains four physical table instances. Reusing
-their definition reduces four table definitions to one and the wrapper's
+their definition reduced four table definitions to one and the wrapper's
 recursive Chisel command count from 1,381,120 to 345,334 (75% fewer). These
-are elaboration results for this memory subsystem, not a whole-host conversion,
+counts were measured before the waiter-update rewrite below. They are
+elaboration results for this memory subsystem, not a whole-host conversion,
 synthesis, clock or frame-rate qualification.
 
 Ten local RTL cases and the production miss-engine CI case pass.
@@ -36,3 +37,57 @@ sbt -J-Xmx3G -J-XX:+ExitOnOutOfMemoryError -J-XX:ActiveProcessorCount=2 \
 
 The explicit elaboration command emits no RTL or simulation model. Remove
 temporary build outputs, caches and logs after their active use ends.
+
+## Waiter bitmap updates
+
+Allocation and response retirement update each entry's own waiter bitmap
+under its entry-select enable. Neither update reads a dynamically selected
+full-width bitmap back into all entries. All four entries and 32,850 product
+transaction IDs remain present. A held response retiring with a committed
+same-entry merge ORs the new waiter before clearing the old one; response
+retirement retains its original priority over allocation. The cached nonempty
+predicate follows the same update, and late sharers still require directory
+publication before their response.
+
+The product table also retains all three coherent requesters: two CUs and
+the graphics-shader port. The full-capacity emitter includes that third
+requester's sharer bit; a two-requester table cannot substitute for it.
+
+The RTL regression includes a 17-ID namespace with simultaneous same-entry
+and different-entry merge/retirement, held replies, both boundary IDs, fault
+delivery and healthy reuse without reset. Run `L2MshrTableSpec` together with
+the existing suites above. Emit the full-capacity table for synthesis or
+equivalence comparison, using a GPU-local target directory, with:
+
+```sh
+sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 \
+  'set Test / sources := (Test / sources).value.filter(_.getName == "EmitL2MshrRtl.scala")' \
+  'Test / runMain opengpu.core.memory.EmitL2MshrRtl .artifacts/mshr-rtl'
+```
+
+Changing this feedback structure does not establish a cell-count, clock or
+frame-rate improvement; those require measurements of the emitted design.
+
+All 12 directed RTL cases across the six suites above pass with a 2 GiB JVM
+and one native compiler job. Both the reference and updated table elaborate
+and emit with all four 32,850-bit waiter maps and three coherent requester
+bits. Full-capacity Yosys equivalence is not established: candidate preparation
+completed `proc`, `opt_expr` and `opt_clean`, but reached the 300-second limit
+inside `check -assert` under a one-CPU/2-GiB container budget, without an OOM.
+No equivalence or synthesis improvement is inferred from these results.
+Reproduce that preparation from the emitted directory with:
+
+```sh
+yosys -p 'read_verilog -sv -formal L2MshrTable.sv; hierarchy -check -top L2MshrTable; proc; opt_expr; opt_clean; check -assert; stat -width'
+```
+
+Before mapping, `proc; opt_expr; opt_clean; stat -width -json` completes for
+both full-capacity designs. The reference has 164,763 word-level cells and
+1,829,944 wire bits; the update has 164,786 cells and 2,355,390 wire bits.
+Two 32,850-bit three-input `$pmux` cells and one 32,850-bit `$mux` disappear,
+while entry-local operations increase. These are structural counts, not
+standard-cell area or timing. A bit-level comparison with
+`proc; opt -fast; techmap; opt -fast; stat -json` reaches the same 300-second
+budget on the reference's first waiter-register `OPT_DFF` transformation;
+it produces no mapped comparison. Forcing detailed loop checking also reaches
+that budget on the reference, so it does not resolve the equivalence limit.

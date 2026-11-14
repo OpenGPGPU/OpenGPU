@@ -270,6 +270,7 @@ struct drm_opengpu_param {
 /* Protected native descriptors, code/uniform snapshots and whole-job preflight.
  * This bit is withheld until the production submission path is available. */
 #define OPENGPU_DRIVER_FEATURE_NATIVE_BINNED (1ull << 40)
+#define OPENGPU_DRIVER_FEATURE_COMPUTE_SHARED_ATOMICS (1ull << 41)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u
