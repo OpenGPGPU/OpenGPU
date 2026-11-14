@@ -116,4 +116,5 @@ int main(int argc,char **argv) {
     sample_profile_json(std::cout,profile);sample_receipt_json(std::cout,result,c.command_id,bus.cycles);
     sample_receipt_json(std::cout,result,c.command_id,bus.cycles,true);
   }else std::cout<<"native sample owner CPU transport guards: PASS\n";
+  return 0;
 }
