@@ -250,7 +250,7 @@ int main(int argc,char **argv) {
             broken=session/'depth-override-disabled.memory'
             data=bytearray((session/'union.memory').read_bytes());struct.pack_into('<I',data,offset,0);broken.write_bytes(data)
             with SparseMemory(broken) as memory:
-                with self.assertRaisesRegex(ValueError,'rewritten GFS'):
+                with self.assertRaisesRegex(ValueError,'sample recipe: GFS1 word 29 differs'):
                     verify(memory,None,inputs,program.read_bytes(),capture,actual_profile)
             (session/'record-0.held.response').write_bytes(b'OGCMH001')
             process.communicate(timeout=5)
