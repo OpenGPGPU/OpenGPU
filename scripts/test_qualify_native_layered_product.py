@@ -176,7 +176,8 @@ class LayeredProductTests(unittest.TestCase):
                 runner.return_value.run.assert_not_called()
             runner = q.Runner(out, False, out, api_capacity=True, two_cu_vga=True)
             self.assertEqual(runner.extra_driver_dependencies(), [q.ROOT / name for name in (
-                'scripts/native_layered_product_fixture.hpp', 'driver/opengpu_native_layered_abi.h')])
+                'scripts/native_layered_product_fixture.hpp', 'scripts/native_layered_product_execution.hpp',
+                'driver/opengpu_native_layered_abi.h')])
 
 
 if __name__ == '__main__':
