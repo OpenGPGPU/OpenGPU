@@ -126,13 +126,22 @@ The new fetcher cases contain an independent arithmetic/byte oracle for
 indexed/nonindexed subranges, restart records, original ordinals, independent
 divisors 1/2/3/5/31/255/`0xffffffff`, high unsigned instance IDs, endpoint carry,
 malformed versions, empty work, source mutation, cancellation and no-reset
-reuse. The focused `VertexShaderSliceSpec` contains two actual shared-CU cases
-with 16 lanes, eight warps and two CUs: local payload and global staging. Shader
+reuse. Both new slice RTL cases passed under the bounded settings above. They
+also check the 33-bit `baseInstance + quotient` boundary with zero stride and
+divisors 1, 3 and `0x80000000`: the last legal element succeeds and an overflow
+fails before any memory request or record. Three independently compiled
+semantic mutations were rejected by completed-suite behavioral assertions:
+rebasing the original ordinal, forgetting the starting-instance dividend, and
+dropping the addition carry. These tests execute the fetcher with modeled
+memory, without a shader CU or original ESSL/Mesa.
+
+The focused `VertexShaderSliceSpec` contains two actual shared-CU cases with
+16 lanes, eight warps and two CUs: local payload and global staging. Shader
 exports depend on original vertex/instance IDs and instanced attribute values;
-held exports and canceled requests precede healthy reuse. These are test
-sources, not recorded passes, and use a native instruction fixture rather than
-original ESSL/Mesa. The full P39 pipeline needs its separate original-source,
-three-domain, patch ACK/seal and whole-owner execution evidence.
+held exports and canceled requests precede healthy reuse. These CU cases remain
+unexecuted and use a native instruction fixture rather than original ESSL/Mesa.
+The full P39 pipeline needs its separate original-source, three-domain, patch
+ACK/seal and whole-owner execution evidence.
 
 `TessellationVertexPatchPublisherSpec` adds protocol-peer cases for all 32×64
 input words, write acknowledgements, actual source-completion gating, empty
@@ -202,6 +211,13 @@ java -Xmx128m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m \
   -s opengpu.graphics.tessellation.TessellationPatchStoreSpec \
   -s opengpu.graphics.tessellation.TessellationPatchContextSpec \
   -s opengpu.graphics.TessellationVertexPatchPublisherSpec
+# Executed fetcher-only slice cases; the other fetcher/CU cases are separate:
+java -Xmx128m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m \
+  -XX:ActiveProcessorCount=1 -XX:+UseSerialGC \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=0 \
+  -Dopengpu.simCache=off -Dopengpu.simWorkspace="$SIM_OUT" \
+  -cp "$CHECK_OUT:$FROZEN_CP" org.scalatest.tools.Runner -oD \
+  -s opengpu.graphics.VertexInputFetcherSpec -z slice
 # After the JVM and native consumers have exited:
 rm -r -- "$CHECK_OUT" "$SIM_OUT"
 
