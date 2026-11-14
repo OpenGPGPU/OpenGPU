@@ -42,6 +42,39 @@ remain required. The transport does not transfer any previous model, timing or
 six-scene qualification to the 112-word factory. Complete API sample state,
 dynamic interpolation and the two-CU 640×480/60 FPS product gate remain separate.
 
+The live controller checks the exact prepared source root and takes both the
+shared model lock and the independent sample-executor lock before probing. It
+checks the complete qualification again before submission and after observed
+cleanup. The capture binds the original nonzero enqueue identity, actual Sv32
+ASID/root, job descriptor and identical vector/instruction address spaces.
+Original packet bytes must match the actual private RX mapping. This low-level
+packet binding alone does not establish original ESSL compilation provenance.
+
+The independent byte oracle checks the fixed fresh 4×4 full-coverage point at
+1/2/4 samples, all four RGBA32F images and D32F depth, with no resolve. Sample
+locations, one-hot input masks, unsigned/signed conversions, truncation,
+varying slot 15 and both killing/preserving output masks follow the committed
+source expressions without interpreting instructions. It checks actual rewritten
+GFS sample/depth policy before DUT launch. Only exact image views, shader scratch
+prefixes, one 23-line primitive record, the page header/first reference, one tile
+directory and the original full GNY2 lease may change. All other physical bytes,
+including page tables, descriptors, RX and page-rounded backing tails, stay
+guarded. Oracle authorization precedes PTE revocation; final authorization follows
+observed synchronous context cleanup. Process groups and any named task container
+must be proved ended before temporary inputs are deleted.
+
+CPU tests pass for all 21 case/sample preflights from actual Linux captures and
+for synthetic returned-image/complete-GNY2 positives and source/guard negatives.
+Those synthetic returns execute no shader and do not complete the live owner.
+Absent model qualification or a copied checker is rejected before any probe.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 OPENGPU_TEST_SANITIZERS=1 \
+  python3 -B scripts/test_native_sample_owner_oracle.py
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_native_sample_gny2_oracle.py
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_prepare_owner_executor.py
+```
+
 `native_sample_gny2_oracle.verify(data, command_id, samples)` independently
 constructs all 4096 expected GNY2 words from the committed ABI catalog for the
 fixed live 4×4 ordinary-point recipe: one full-frame primitive, identities
