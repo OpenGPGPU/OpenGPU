@@ -4,8 +4,17 @@
 #define OPENGPU_NATIVE_CAPTURE_MAGIC "OGCAP002"
 #define OPENGPU_NATIVE_CAPTURE_DISCOVERY_WORDS 117
 struct opengpu_device;
+#ifdef OPENGPU_NATIVE_SAMPLE_GRAPHICS_LIVE
+#if OPENGPU_NATIVE_SAMPLE_GRAPHICS_LIVE != 1
+#error "ordinary112 live transport requires an explicit value of one"
+#endif
+#ifdef OPENGPU_NATIVE_MMIO_CLEANUP_TEST_PEER
+#error "ordinary112 live transport cannot compile a cleanup test peer"
+#endif
+#else
 static void sample_cpu_cleanup(struct opengpu_device *,const char *,unsigned);
 #define OPENGPU_NATIVE_MMIO_CLEANUP_TEST_PEER(g,d,s) sample_cpu_cleanup(g,d,s)
+#endif
 #define OPENGPU_NATIVE_SUBMIT_FIXTURE_MAIN unused_native_component_main
 #include "opengpu_native_submit_fixture.c"
 #undef OPENGPU_NATIVE_SUBMIT_FIXTURE_MAIN
@@ -15,6 +24,7 @@ static void sample_cpu_cleanup(struct opengpu_device *,const char *,unsigned);
  * shader execution, GNY2 publication or image correctness. */
 static void sample_path(char *path,size_t bytes,const char *directory,const char *name)
 {int n=snprintf(path,bytes,"%s/%s",directory,name);assert(n>0 && (size_t)n<bytes);}
+#ifndef OPENGPU_NATIVE_SAMPLE_GRAPHICS_LIVE
 static void sample_cpu_cleanup(struct opengpu_device *gpu,const char *directory,unsigned sequence)
 {
     (void)gpu;char path[4096],name[64];snprintf(name,sizeof(name),"cleanup-%u.trace",sequence);
@@ -35,6 +45,7 @@ static struct native_kernel_held_receipt sample_cpu_held(struct native_kernel_se
     h.gnx[0]=OPENGPU_NATIVE_BINNED_COMPLETION_MAGIC;h.gnx[6]=s->gpu.hw.native_context;
     h.gnx[7]=s->gpu.hw.native_pass;h.gnx[8]=s->gpu.hw.native_generation;return h;
 }
+#endif
 void graphics_native_source_observer(void *record,uint32_t handle,uint64_t offset,uint32_t bytes,const void *source)
 {assert(!native_graphics_source_observe(record,handle,offset,bytes,source));}
 int graphics_native_source_write(struct native_kernel_session *s,FILE *f,struct native_graphics_source_record *r)
@@ -88,6 +99,9 @@ int graphics_sample_private_code(struct native_kernel_session *s,unsigned index,
     return 0;
 }
 #include "graphics_sample_source_plan.inc"
+#ifdef OPENGPU_NATIVE_SAMPLE_GRAPHICS_LIVE
+#include "graphics_sample_live.inc"
+#else
 int graphics_sample_cpu_capture(struct native_kernel_session *s,const char *directory,struct native_graphics_source_record records[2])
 {
     char path[4096];sample_path(path,sizeof(path),directory,"union.memory");
@@ -110,3 +124,4 @@ int graphics_sample_cpu_capture(struct native_kernel_session *s,const char *dire
     for(unsigned i=0;i<2;i++){e=native_kernel_finish_observed(s,i);if(e)return e;}
     return native_kernel_end_cleanup(s);
 }
+#endif
