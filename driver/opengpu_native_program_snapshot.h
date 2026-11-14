@@ -8,6 +8,9 @@ struct opengpu_native_program_profile {
     u64 staging_bytes;
     u32 capacity, stage, version, attributes, varyings, colors;
     bool scalar_fpu, owned_uniforms;
+    /* Explicit only for a validated GS-to-FS owner. Default native VS/FS
+     * publication still rejects version 5 and exposes no geometry inputs. */
+    bool geometry_inputs;
 };
 struct opengpu_native_program_snapshot {
     u32 segment, entry_offset;

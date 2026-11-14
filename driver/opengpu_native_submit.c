@@ -5,6 +5,9 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/vmalloc.h>
+#ifdef CONFIG_COMPAT
+#include <linux/compat.h>
+#endif
 #include <drm/drm_device.h>
 #include <drm/drm_exec.h>
 #include <drm/drm_gem_dma_helper.h>
@@ -92,10 +95,11 @@ static int native_collect(struct native_sources *sources,const struct opengpu_na
     u32 i,j,stage;
     int ret;
     for(i=0;i<s->plan_count;++i){
-        const struct drm_opengpu_native_draw_plan *p=&s->plans[i];
-        const struct drm_opengpu_native_program_view *code[2]={&p->vertex_program,&p->fragment_program};
-        const struct drm_opengpu_native_uniform_stage *uniforms[2]={&p->vertex_uniforms,&p->fragment_uniforms};
-        for(stage=0;stage<2;++stage){
+        const struct drm_opengpu_native_draw_plan *p=opengpu_native_job_draw_plan(s,i);
+        const struct drm_opengpu_native_layered_draw_plan *g=s->layered?&s->layered_plans[i]:NULL;
+        const struct drm_opengpu_native_program_view *code[3]={&p->vertex_program,&p->fragment_program,g?&g->geometry_program:NULL};
+        const struct drm_opengpu_native_uniform_stage *uniforms[3]={&p->vertex_uniforms,&p->fragment_uniforms,g?&g->geometry_uniforms:NULL};
+        for(stage=0;stage<(s->layered?3u:2u);++stage){
             const struct drm_opengpu_compute_uniform_view v={.offset=code[stage]->offset,
                 .handle=code[stage]->handle,.bytes=code[stage]->bytes};
             ret=native_view(sources,&v,false);if(ret)return ret;
@@ -107,6 +111,7 @@ static int native_collect(struct native_sources *sources,const struct opengpu_na
         ret=native_view(sources,&p->indirect,false);if(ret)return ret;
         ret=native_view(sources,&p->vertex_scratch,true);if(ret)return ret;
     }
+    if(s->layered){ret=native_view(sources,&s->completion,true);if(ret)return ret;}
     for(i=0;i<s->resource_count;++i){
         const struct opengpu_native_frame_resource *r=&s->resources[i];
         ret=native_retain(sources,r->gem_handle,!!(r->access&OPENGPU_NATIVE_FRAME_RESOURCE_WRITE));
@@ -115,6 +120,14 @@ static int native_collect(struct native_sources *sources,const struct opengpu_na
     return 0;
 }
 
+static bool native_pointer_valid(u64 pointer)
+{
+    if(sizeof(void *)<8 && pointer>>32)return false;
+#ifdef CONFIG_COMPAT
+    if(in_compat_syscall() && pointer>>32)return false;
+#endif
+    return true;
+}
 int opengpu_native_binned_ioctl(struct drm_device *drm,void *data,struct drm_file *file)
 {
     struct drm_opengpu_submit_native_binned *args=data;
@@ -128,23 +141,31 @@ int opengpu_native_binned_ioctl(struct drm_device *drm,void *data,struct drm_fil
     struct opengpu_sched_job *job=NULL;
     struct drm_syncobj *out_sync=NULL;
     struct drm_exec exec;
-    void *records[6]={0};
+    void *records[7]={0};
+    bool layered;
     u64 plans_bytes,resources_bytes,max_refs,seqno=0;
     u32 i;
     int ret=-EINVAL;
-    if(!args || args->version!=1 || args->flags || args->pad || args->reserved[0] || args->reserved[1] ||
-        args->plan_stride!=sizeof(struct drm_opengpu_native_draw_plan) ||
+    if(!args)return -EINVAL;
+    layered=args->version==OPENGPU_NATIVE_LAYERED_SUBMIT_VERSION;
+    if((args->version!=1 && !layered) || args->flags || args->pad || args->reserved[1] ||
+        (layered?!args->reserved[0]:!!args->reserved[0]) ||
+        args->plan_stride!=(layered?sizeof(struct drm_opengpu_native_layered_draw_plan):sizeof(struct drm_opengpu_native_draw_plan)) ||
         args->resource_stride!=sizeof(struct opengpu_native_frame_resource) ||
         !args->job || !args->frame || !args->states || !args->states_bytes || (args->states_bytes&511u) ||
         !args->resource_count || args->resource_count>27 || !args->resources ||
         (args->plan_count && (!args->plans || !args->draws || !args->draws_bytes)) ||
         args->draws_bytes>(1ULL<<32) || args->states_bytes>(1ULL<<32) ||
         args->draws_bytes>(u64)(~(size_t)0) || args->states_bytes>(u64)(~(size_t)0))return -EINVAL;
-    if(!gpu->hw.native_sources.available || !gpu->hw.native_descriptor_preflight ||
+    if(layered && (!native_pointer_valid(args->reserved[0]) || !native_pointer_valid(args->job) ||
+       !native_pointer_valid(args->frame) || !native_pointer_valid(args->draws) || !native_pointer_valid(args->states) ||
+       !native_pointer_valid(args->plans) || !native_pointer_valid(args->resources)))return -EINVAL;
+    if((layered!=gpu->hw.native_layered_transport) ||
+       !gpu->hw.native_sources.available || !gpu->hw.native_descriptor_preflight ||
        !gpu->hw.native_sources.capacity || gpu->hw.native_sources.capacity>255)return -EOPNOTSUPP;
-    plans_bytes=(u64)args->plan_count*sizeof(struct drm_opengpu_native_draw_plan);
+    plans_bytes=(u64)args->plan_count*args->plan_stride;
     resources_bytes=(u64)args->resource_count*sizeof(struct opengpu_native_frame_resource);
-    max_refs=(u64)args->plan_count*47u+args->resource_count;
+    max_refs=(u64)args->plan_count*(layered?61u:47u)+args->resource_count+(layered?1u:0u);
     if(plans_bytes>(u64)(~(size_t)0) || max_refs>0xffffffffu ||
        max_refs*sizeof(*sources.refs)>(u64)(~(size_t)0) ||
        max_refs*sizeof(*deps)>(u64)(~(size_t)0))return -ERANGE;
@@ -155,13 +176,21 @@ int opengpu_native_binned_ioctl(struct drm_device *drm,void *data,struct drm_fil
     COPY(0,args->job,512u);COPY(1,args->frame,2048u);
     COPY(2,args->draws,args->draws_bytes);COPY(3,args->states,args->states_bytes);
     COPY(4,args->plans,plans_bytes);COPY(5,args->resources,resources_bytes);
+    if(layered){
+        const struct drm_opengpu_native_completion_view *completion;
+        COPY(6,args->reserved[0],sizeof(struct drm_opengpu_native_completion_view));
+        completion=records[6];
+        if(completion->reserved[0] || completion->reserved[1]){ret=-EINVAL;goto out;}
+    }
 #undef COPY
     source=(struct opengpu_native_job_source){.job=records[0],.frame=records[1],.draws=records[2],.states=records[3],
-        .draws_bytes=args->draws_bytes,.states_bytes=args->states_bytes,.plans=records[4],.plan_count=args->plan_count,
+        .draws_bytes=args->draws_bytes,.states_bytes=args->states_bytes,.plans=layered?NULL:records[4],.plan_count=args->plan_count,
+        .layered=layered,.layered_plans=layered?records[4]:NULL,
         .resources=records[5],.resource_count=args->resource_count,.context=args->context_id,
         .capacity=gpu->hw.native_sources.capacity,.engines=gpu->hw.native_sources.engines,
         .scalar_fpu=!!(gpu->hw.capabilities&GPU_CAP_COMPUTE_SCALAR_FPU),
         .advanced_blend=gpu->hw.native_advanced_blend_transport};
+    if(layered)source.completion=((const struct drm_opengpu_native_completion_view *)records[6])->view;
     /* These identities are checked against every copied record by the builder. */
     source.pass=opengpu_native_advanced_blend_word(records[0],OPENGPU_NATIVE_BINNED_JOB_JOB_IDENTITY_PASS_WORD);
     source.generation=opengpu_native_advanced_blend_word(records[0],OPENGPU_NATIVE_BINNED_JOB_JOB_IDENTITY_GENERATION_WORD);
@@ -235,6 +264,6 @@ out_file:
 out:
     for(i=0;i<sources.count;++i)drm_gem_object_put(sources.refs[i].object);
     kvfree(deps);kvfree(sources.refs);
-    for(i=0;i<6;++i)kvfree(records[i]);
+    for(i=0;i<7;++i)kvfree(records[i]);
     return ret;
 }

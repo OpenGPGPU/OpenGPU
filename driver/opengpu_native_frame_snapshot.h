@@ -36,4 +36,12 @@ int opengpu_native_frame_snapshot_append_complete(struct opengpu_private_snapsho
     u32 engines, u32 context, u32 pass, u32 generation,
     opengpu_native_frame_resolve resolve, void *resolve_context,
     u32 *frame_segment);
+/* Explicit GNF3 only. Admit all 256 layer intervals using original physical
+ * ranges, preserving valid interleaved planes; otherwise the same complete
+ * GFS/scratch/RO-RW owner contract as the legacy complete entry. */
+int opengpu_native_frame_snapshot_append_layered_complete(struct opengpu_private_snapshot *owner,
+    const void *frame,u32 states_segment,size_t states_bytes,
+    const struct opengpu_native_frame_resource *resources,u32 resource_count,
+    u32 engines,u32 context,u32 pass,u32 generation,
+    opengpu_native_frame_resolve resolve,void *resolve_context,u32 *frame_segment);
 #endif

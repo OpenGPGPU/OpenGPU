@@ -39,6 +39,10 @@ static void native_fixture_progress(struct opengpu_device *);
 #include "../opengpu_native_layout.h"
 #include "../opengpu_native_frame_snapshot.c"
 #include "../opengpu_native_program_snapshot.c"
+#include "../opengpu_geometry_uniform_snapshot.c"
+#include "../opengpu_geometry_program_snapshot.c"
+#include "../opengpu_geometry_snapshot.c"
+#include "../opengpu_native_layered_snapshot.c"
 #include "../opengpu_native_input_snapshot.c"
 #include "../opengpu_native_graph_alias.c"
 #define identity native_graph_identity

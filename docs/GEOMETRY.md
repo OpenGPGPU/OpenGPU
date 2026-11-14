@@ -1143,7 +1143,48 @@ sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 'runMain opengpu.elaboration.EmitNativ
 python3 scripts/test_native_layered_abi.py
 ```
 
-The ABI generator/check and 3,979 malformed-wire C cases pass. Protected GNJ2
-production admission, complete physical source/layer/writer leases, transform
-feedback, composed four-owner execution and the full host/API gates remain
-required; these component results do not close H8.
+The ABI generator/check and 3,979 malformed-wire C cases pass. Hardware-discovered
+protected GNJ2 execution, transform feedback, composed four-owner execution and
+the full host/API gates remain required; these component results do not close H8.
+
+### Linux version-two publication
+
+The existing 128-byte native ioctl has a distinct version 2 with a 2,056-byte
+plan: the unchanged 792-byte VS/FS/input prefix, a GS code view, its twelve-block
+uniform stage and inline 1,024-byte GNG metadata. Its completion-source pointer
+names a 24-byte typed original-GEM view with two required-zero reserved words.
+Version 1 retains its old plan and required-zero submit fields; the old input,
+program and private-GNJ helpers do not acquire new versions implicitly. Compat
+pointers with nonzero high 32 bits are rejected before copying. Extended plans
+and aggregate staging use checked heap allocations.
+
+The real builder now joins shuffled ordinary/GS plans and shared fragment
+states, copies all three stages after producer completion, binds private GS RX
+code and GUR2/GUB2 data, patches typed GND2 inputs, and leases complete layered
+frame resources and the GNY output. It checks completion aliases against the
+complete original code, UBO/default, input and frame windows in physical cache
+lines. Layered frame admission checks all 256 physical layer intervals while
+preserving legal interleaved planes. The separate published-GNJ2 helper also
+proves the complete GNY range belongs to that owner's actual RW mapping before
+the real enqueue body can use it.
+
+CPU ASan/UBSan qualification passes the full-capacity mixed graph with four
+engines, four MRTs, twelve source/resolve planes, 256 layers, adjacency-six GS
+metadata, 32 invocations and the 256-vertex/1,024-component boundary. Two owners
+retain different original program/data revisions, actual RX/RO/RW PTEs and
+independent retirement. Failure traversal covers 111 copies, 348 resolves and
+998 allocations. The actual Linux ioctl/scheduler composition checks strict
+version/view/compat rejection and original GEM close references through
+retirement; freestanding i386, x64 and ARM64 UAPI layout probes pass. The complete
+host `test_driver.py` entry also passes. These fixtures model OS primitives and
+the final hardware kick; they do not establish GPU execution or observed GNY
+ACKs. Hardware capability discovery remains closed for this new route.
+
+```sh
+TMPDIR="$PWD/.artifacts" PYTHONDONTWRITEBYTECODE=1 OPENGPU_TEST_SANITIZERS=1 \
+  python3 scripts/test_native_layered_snapshot.py --sanitize
+TMPDIR="$PWD/.artifacts" PYTHONDONTWRITEBYTECODE=1 OPENGPU_TEST_SANITIZERS=1 \
+  python3 scripts/test_native_layered_submit.py
+TMPDIR="$PWD/.artifacts" PYTHONDONTWRITEBYTECODE=1 OPENGPU_TEST_SANITIZERS=1 \
+  python3 scripts/test_driver.py
+```

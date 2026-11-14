@@ -18,7 +18,19 @@ struct opengpu_native_job_source {
     u32 resource_count;
     u32 context, pass, generation, capacity, engines;
     bool scalar_fpu, advanced_blend;
+    /* Separate explicit GNJ2/GNF3 publication. These fields are unused and
+     * must stay zero for version 1; the old contiguous 792-byte plans remain
+     * unchanged. Typed original completion backing is leased RW until drain. */
+    bool layered;
+    const struct drm_opengpu_native_layered_draw_plan *layered_plans;
+    struct drm_opengpu_compute_uniform_view completion;
+
 };
+static inline const struct drm_opengpu_native_draw_plan *
+opengpu_native_job_draw_plan(const struct opengpu_native_job_source *s,u32 i)
+{
+    return s->layered ? &s->layered_plans[i].draw : &s->plans[i];
+}
 struct opengpu_native_job_copy {
     int (*copy)(void *,const struct drm_opengpu_compute_uniform_view *,void *);
     opengpu_native_frame_resolve resolve;
