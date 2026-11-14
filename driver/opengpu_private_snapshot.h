@@ -26,6 +26,8 @@ int opengpu_private_snapshot_resource_map(struct opengpu_private_snapshot *owner
  * there is no fixed draw/state/resource count smaller than the native ABI. */
 struct opengpu_private_snapshot *opengpu_private_snapshot_create(
     struct opengpu_device *gpu, struct opengpu_render_context *context);
+/* Typed builders may only append for their accepted context in BUILD. */
+int opengpu_private_snapshot_build_context(const struct opengpu_private_snapshot *owner,u32 context);
 int opengpu_private_snapshot_append(struct opengpu_private_snapshot *owner,
     const void *stable_kernel_bytes, size_t bytes, u32 *segment);
 /* Instruction bytes are copied exactly and mapped R+X without W. Descriptor
@@ -84,6 +86,10 @@ int opengpu_private_snapshot_native_job_address(const struct opengpu_private_sna
 /* Explicit GNJ2 only; additionally proves the complete GNY2 view is in this
  * published owner's writable resource mapping. Legacy entry rejects GNJ2. */
 int opengpu_private_snapshot_native_layered_job_address(const struct opengpu_private_snapshot *owner,
+    u32 segment,u32 *address);
+/* Exact GNQ1/2/3 root, with owner-private frame/sequence RO envelopes. Old
+ * GNJ accessors continue to reject it. New trusted builder owns full semantics. */
+int opengpu_private_snapshot_protected_tessellation_job_address(const struct opengpu_private_snapshot *owner,
     u32 segment,u32 *address);
 int opengpu_private_snapshot_retire(struct opengpu_private_snapshot *owner);
 

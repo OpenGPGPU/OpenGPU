@@ -2,8 +2,9 @@
 
 P16 supplies independent checked TCS/TES GUR3/GUB3 uniform copies and a
 version-1 TCS/TES program validator composed with private RX snapshots. These
-helpers do **not** provide complete GNQ/GNT admission, a protected tessellation
-ioctl, capability discovery, actual CU execution or a qualified full host.
+helpers now compose with a typed, three-domain GNQ/GNT4/5/6 BUILD-stage
+admission graph. There is no registered protected tessellation ioctl, verified
+capability discovery, actual CU execution or qualified full host.
 P16 remains incomplete. The existing trusted GNQ/GNT/GNF
 and GUR1/GUB1 paths keep their original contracts.
 
@@ -199,3 +200,36 @@ Both local tests are registered in `scripts/test_driver.py`; the production
 objects are registered in `driver/Makefile`. No Scala/JVM/RTL, kernel module
 build, actual TCS/TES CU execution or complete protected submit was performed.
 The disabled Scala regression workflow must not be enabled or triggered.
+
+## Typed three-domain BUILD graph
+
+`opengpu_protected_tessellation_build` captures all kernel metadata, plans and
+resource descriptors before the first source callback. GNQ1/2/3 selects exactly
+GNT4/5/6 respectively; older or crossed dialects, caller addresses, nonzero
+extension words, missing/duplicate plans and mismatched state coverage fail.
+Typed original inputs retain their exact logical range, while immutable source
+and writable publication resources must not share any physical 64-byte line,
+even through different handles. TCS/TES programs use the independent validator
+and private RX capture, uniforms use GUR3, and fragment programs/uniforms retain
+the original FS validator and GUR1. The original frame helper owns all exact
+resource roles. Only typed relocations link private metadata and original views.
+
+The internal profile requires task-owned input/output patch RAM and levels to
+initialize before access. Existing undefined-content patch RAM does not satisfy
+this prerequisite. A CPU fixture explicitly declares its test profile; that is
+not a hardware observation. No current production getter enables this path.
+
+ASan/UBSan tests construct all three domains with full 16-lane/eight-warp,
+2-CU/four-engine capacity, 24 full uniform blocks, two full default scopes and
+all 27 frame resources. They reject reserved/high padding, all extension words,
+raw/crossed/old descriptors, bounds, physical rounded-line aliases and producer
+unreadiness. Every actual copy/resolve/allocation failure position retires the
+whole owner. Original metadata and source mutation cannot change the protected
+copy. Real timeout/shootdown failures retain all owner allocations/context;
+recovery and a healthy graph in the same context succeed. Seven intentionally
+weakened builder variants fail semantic assertions. These are CPU owner/MMU
+checks, not Linux submit or GPU execution qualifications.
+
+```sh
+python3 -B scripts/test_protected_tessellation.py --sanitize --negative-controls
+```

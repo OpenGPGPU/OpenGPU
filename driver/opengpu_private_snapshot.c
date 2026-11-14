@@ -160,6 +160,12 @@ struct opengpu_private_snapshot *opengpu_private_snapshot_create(
     return owner;
 }
 
+int opengpu_private_snapshot_build_context(const struct opengpu_private_snapshot *owner,u32 context)
+{
+    return owner && owner->phase==SNAPSHOT_BUILD && owner->context &&
+        owner->context->id==context?0:-EINVAL;
+}
+
 static int snapshot_append(struct opengpu_private_snapshot *owner,
     const void *stable_kernel_bytes, size_t bytes, u32 *id, bool executable)
 {
@@ -467,6 +473,36 @@ int opengpu_private_snapshot_native_job_address(const struct opengpu_private_sna
             return -EINVAL;
     }
     return opengpu_private_snapshot_address(owner, id, address);
+}
+
+int opengpu_private_snapshot_protected_tessellation_job_address(const struct opengpu_private_snapshot *owner,
+    u32 id,u32 *address)
+{
+    const struct snapshot_segment *root,*target;u32 words[27],value;u64 end;
+    if(!owner || !address || owner->phase!=SNAPSHOT_PUBLISHED)return -EINVAL;
+    root=snapshot_segment_find(owner,id);
+    if(!root || root->executable || !root->mapped || root->bytes!=512)return -EINVAL;
+    for(u32 i=0;i<128;i++){
+        int ret=opengpu_private_snapshot_read32(owner,id,4u*i,&value);if(ret)return ret;
+        if(i<27)words[i]=value;else if(value)return -EINVAL;
+    }
+    if(words[0]<0x474e5101u || words[0]>0x474e5103u || words[1]!=512 || words[2]!=1 ||
+       words[3]!=16 || words[4]!=16 || words[5]!=16 || words[6]!=4 || words[7]!=4 ||
+       words[24]!=owner->context->id || words[19]>1 || words[23]>1 ||
+       words[20]<2048 || (words[20]&63))return -EINVAL;
+    for(u32 i=8;i<16;i++)if(words[i])return -EINVAL;
+    end=words[22]|(u64)words[23]<<32;
+    for(target=owner->segments;target;target=target->next)if(target->va==words[21])break;
+    if(!target || target->executable || !target->mapped || target->bytes!=2048 ||
+       end!=(u64)target->va+2048)return -EINVAL;
+    if(words[17]){
+        end=(u64)(words[17]-1u)*words[20]+2048;
+        if(end>(1ULL<<32))return -EINVAL;
+        for(target=owner->segments;target;target=target->next)if(target->va==words[16])break;
+        if(!target || target->executable || !target->mapped || target->bytes!=end ||
+           (words[18]|(u64)words[19]<<32)!=(u64)target->va+end)return -EINVAL;
+    }else if(words[16] || words[18] || words[19])return -EINVAL;
+    return opengpu_private_snapshot_address(owner,id,address);
 }
 
 int opengpu_private_snapshot_native_layered_job_address(const struct opengpu_private_snapshot *owner,

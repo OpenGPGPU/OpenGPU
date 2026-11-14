@@ -93,7 +93,7 @@ int opengpu_tessellation_uniform_snapshot_append(struct opengpu_private_snapshot
         if(result.present[stage])result.root_offset[stage]=stage*TESS_ROOT_BYTES;
     }
     if(!result.present[0] && !result.present[1]){*output=result;return 0;}
-    bytes=(bytes+63u)&~63u;
+    bytes=(bytes+63u)&~63u;result.bytes=bytes;
     data=kvzalloc(bytes,GFP_KERNEL);if(!data)return -ENOMEM;
     for(u32 stage=0;stage<2 && !ret;++stage){
         u32 base=stage*TESS_ROOT_BYTES,low=0,high=0;
