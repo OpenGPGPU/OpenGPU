@@ -1080,6 +1080,14 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 selected = changed_suites(root, [f"src/main/scala/opengpu/{source}.scala"])
                 self.assertIn("opengpu.graphics.TessellationVertexPatchSequenceSpec", selected)
 
+    def test_original_vertex_owner_selects_admission_and_cancel_drain_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        for source in ("system/TessellationVertexPatchOwner", "system/TessellationVertexPatchSource",
+                       "graphics/VertexShaderStage", "graphics/VertexInputSlice"):
+            with self.subTest(source=source):
+                selected = changed_suites(root, [f"src/main/scala/opengpu/{source}.scala"])
+                self.assertIn("opengpu.graphics.TessellationVertexPatchOwnerSpec", selected)
+
     def test_original_vertex_source_root_selects_strict_record_read_checks(self):
         root = Path(__file__).resolve().parents[1]
         for source in ("src/main/scala/opengpu/system/TessellationVertexSourceReader.scala",
