@@ -94,6 +94,8 @@ to drain. Per-primitive plane counters include two additional bits; public
 
 The sample ABI appends SampleID and SamplePosition.xy to the existing input
 prefix after point/geometry inputs; the coverage array supplies SampleMaskIn.
+At 1x the logical sample identity remains valid while FragCoord.xy is packed at pixel center, consistent with
+SamplePosition=(0.5,0.5), depth and varying evaluation.
 Actual shared-CU output readback accepts control bit 6 as mask-written and bits
 10:7 as its low four mask bits only for versions 6/7. It intersects that mask with
 the invocation's own coverage and applies discard before the existing typed
@@ -110,7 +112,9 @@ keeping its existing 128-row physical banks, sixteen slots and four MRTs.
 
 Source fixtures include an independent geometric triangle oracle for 1x/2x/4x
 sample interpolation with 64 varying components and helper lanes; real two-CU
-fragment input/mask readback under local and spilled staging; and a
+fragment input/mask readback under local and spilled staging, including actual
+shader loads of FragCoord.xyzw at zero, negative and positive origins for every
+1x/2x/4x ordinary/GS sample; and a
 mixed ordinary/GS, four-image-owner layered renderer fixture with 4-lane/1-warp
 CUs and complete interface/storage capacities. The latter feeds
 SampleID, SamplePosition and recomputed pointCoord into actual shader outputs,
