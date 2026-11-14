@@ -1,10 +1,12 @@
-/* Private fixed112 ordinary original-Mesa bridge. Explicit CPU capture only.
- * Reuse actual callback/linked-source helpers without running the legacy entry. */
+/* Private fixed112 ordinary original-Mesa bridge. The default is CPU capture;
+ * the explicit LIVE build waits for independent real execution/cleanup receipts.
+ * Reuse callback/linked-source helpers without running the legacy entry. */
 #define OPENGPU_GRAPHICS_UNIFORM_ENTRY unused_original_graphics_flow_main
 #include "graphics_uniform_flow.c"
 #undef OPENGPU_GRAPHICS_UNIFORM_ENTRY
 #include "opengpu_native_sample_program.h"
 #include "graphics_sample_kernel.h"
+#include "graphics_sample_entry.h"
 static struct opengpu_native_sample_runtime sample_cache;
 /* Separate compiler observation, written before private-plan construction.
  * Uses the unchanged actual Mesa linked-reflection accessors. */
@@ -93,17 +95,21 @@ static void sample_metadata(struct pipe_context *pipe,const struct opengpu_nativ
 }
 int main(int argc,char **argv)
 {
-    assert(argc==3); /* sources, explicit OGNP0002 profile; no live/controller CLI */
-    assert(!getenv("OPENGPU_NATIVE_HOST_DIRECTORY") && !getenv("OPENGPU_NATIVE_HOST_PROFILE"));
-    assert(!graphics_sample_profile_read(argv[2],&sample_cache));
+    struct graphics_sample_entry entry;
+    if(graphics_sample_entry_options(argc,argv,&entry)){
+        fputs("ordinary112 entry requires its explicit CPU or LIVE argument/environment contract\n",stderr);return 2;
+    }
+    if(graphics_sample_profile_read(entry.profile,&sample_cache)){
+        fputs("ordinary112 entry requires an exact protected112 profile\n",stderr);return 2;
+    }
     char vertex[4096],fragment[4096],prefix[4096];
-    assert(snprintf(vertex,sizeof(vertex),"%s/full.vert",argv[1])>0);
-    assert(snprintf(fragment,sizeof(fragment),"%s/full.frag",argv[1])>0);
-    assert(snprintf(prefix,sizeof(prefix),"%s/full",argv[1])>0);
+    assert(snprintf(vertex,sizeof(vertex),"%s/full.vert",entry.sources)>0);
+    assert(snprintf(fragment,sizeof(fragment),"%s/full.frag",entry.sources)>0);
+    assert(snprintf(prefix,sizeof(prefix),"%s/full",entry.output)>0);
     void *linked=graphics_uniform_compile(vertex,fragment,prefix);assert(linked && graphics_uniform_color_type(linked,0)==1);
     unsigned reflection[2][12];
     for(unsigned stage=0;stage<2;stage++)for(unsigned slot=0;slot<12;slot++)reflection[stage][slot]=graphics_uniform_binding(linked,stage,slot);
-    char reflection_path[4096];assert(snprintf(reflection_path,sizeof(reflection_path),"%s/compiler-reflection.json",argv[1])>0);
+    char reflection_path[4096];assert(snprintf(reflection_path,sizeof(reflection_path),"%s/compiler-reflection.json",entry.output)>0);
     assert(!sample_compiler_reflection(linked,reflection_path));
     uint64_t oldfeatures=features;features&=~OPENGPU_DRIVER_FEATURE_NATIVE_BINNED;
     struct pipe_screen *screen=opengpu_drm_screen_create(7,NULL);assert(screen);
@@ -155,8 +161,8 @@ int main(int argc,char **argv)
             for(unsigned slot=0;slot<12;slot++)assert(sources.uniforms[stage].blocks[slot].bytes==16384);
         }
         native_original_inputs(&observations[index],resources,offsets,sources.uniforms);
-        sample_metadata(pipe,&sources,resources[12],graphics_uniform_color_type(linked,0),argv[1],index?"native-next":"native",&observations[index],reflection);
-        if(!index)native_program_inputs(&sources,"real",argv[1]);
+        sample_metadata(pipe,&sources,resources[12],graphics_uniform_color_type(linked,0),entry.output,index?"native-next":"native",&observations[index],reflection);
+        if(!index)native_program_inputs(&sources,"real",entry.output);
     }
     assert(native_kernel_records==2);
     unsigned codes[2]={sources.programs[0].handle,sources.programs[1].handle};
@@ -164,11 +170,23 @@ int main(int argc,char **argv)
     for(unsigned binding=0;binding<36;binding++)pipe_resource_reference(&resources[binding],NULL);
     screen->destroy(screen);features=oldfeatures;
     assert(native_original_references(codes[0])==2 && native_original_references(codes[1])==2);
-    assert(!graphics_sample_cpu_capture(native_session,argv[1],observations));
+#ifdef OPENGPU_NATIVE_SAMPLE_GRAPHICS_LIVE
+    /* Both original program views are still retained by the two protected
+     * jobs after Gallium release. This call never supplies a CPU control peer. */
+    if(graphics_sample_graphics_host_execute(native_session,entry.output,sources.programs)){
+        fputs("ordinary112 LIVE owner exchange failed; no cleanup or success inferred\n",stderr);return 1;
+    }
+#else
+    assert(!graphics_sample_cpu_capture(native_session,entry.output,observations));
+#endif
     for(unsigned h=1;h<next_bo;h++)if(bos[h].native_owned)maybe_free(h);
     assert(!native_kernel_session_destroy(native_session));native_session=NULL;
     native_original_allocate=NULL;native_original_close=NULL;native_original_refcount=NULL;
     graphics_uniform_destroy(linked);no_leaks();
+#ifdef OPENGPU_NATIVE_SAMPLE_GRAPHICS_LIVE
+    puts("ACTUAL_SAMPLE_GRAPHICS_LIVE_RETIRED records=2 originalMesaABI1=true originalGUR=true completionBytes=16384 observed=true");
+#else
     puts("ACTUAL_SAMPLE_GRAPHICS_CPU_CAPTURE_PASS records=2 originalMesaABI1=true originalGUR=true completionBytes=16384 GPU=false hardwareKick=modeled");
+#endif
     return 0;
 }
