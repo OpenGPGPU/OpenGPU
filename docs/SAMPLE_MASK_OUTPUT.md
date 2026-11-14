@@ -62,3 +62,9 @@ passes raster coverage unchanged. One directed case covers version gating,
 the written mask, discard, noncanonical coverage/counts and held results
 (`SAMPLE_MASK_OUTPUT`).
 
+
+The default-off native layered source also defines a real versioned shader
+readback path in `FragmentShaderStage` for fragment versions6/7; see
+[SAMPLE_RATE_SHADING.md](SAMPLE_RATE_SHADING.md#default-off-native-layered-source-implementation).
+The complete caller rebuild, RTL tests, protected publication and original ESSL
+execution remain pending. Component counts above do not qualify this route.

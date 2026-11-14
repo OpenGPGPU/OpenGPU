@@ -15,7 +15,7 @@ import opengpu.testutil.GraphicsTestResolution
   * This physical-source service harness is separate from protected host/MMU
   * qualification and from the product's 16-lane/eight-warp throughput target.
   */
-private[graphics] class NativeLayeredFourImageHarness extends Module {
+private[graphics] class NativeLayeredFourImageHarness(val sampleShading:Boolean=false) extends Module {
   val config=GpuConfig(lanes=4,warps=1,l2Sets=8,l2Ways=2)
   val vertices=VertexShaderStageConfig();val fragments=FragmentShaderConfig()
   val native=NativeBinnedGraphicsConfig.fourEngineApiExtent
@@ -54,7 +54,7 @@ private[graphics] class NativeLayeredFourImageHarness extends Module {
   })
   private val stage=Module(new NativeLayeredVertexBinImagePipeline(config,vertices,fragments,
     SharedCuShaderConfig(2),graphics,engines=4,pageBytes=native.pageBytes,writeCredits=native.writeCredits,
-    tileSlots=native.tileSlots,pagedCapacity=65536,storage=native.storage,payload=native.payload))
+    tileSlots=native.tileSlots,pagedCapacity=65536,storage=native.storage,payload=native.payload,sampleShading=sampleShading))
   val recordBytes=stage.recordBytes
   private val system=Module(new GpuSystem(config,numComputeUnits=2,enableGraphicsKernels=true,
     geometryAvailable=true,graphicsHostTransactions=hostSlots,shaderPayload=native.payload,

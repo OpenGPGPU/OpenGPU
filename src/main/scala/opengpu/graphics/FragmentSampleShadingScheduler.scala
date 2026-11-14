@@ -12,7 +12,8 @@ import chisel3.util._
   * coverage and out-of-range sample modes are rejected before any invocation.
   *
   * The 32-bit minimum value is consumed only as zero versus nonzero; ES 3.2's
-  * nonzero minimum means the shader runs at least once per covered sample.
+  * minimum specifies a lower bound on unique input sets; this scheduler
+  * conservatively chooses every covered sample for a nonzero value.
   * Shader execution, interpolation at the emitted positions and per-sample
   * output merging remain owners outside this scheduler.
   */

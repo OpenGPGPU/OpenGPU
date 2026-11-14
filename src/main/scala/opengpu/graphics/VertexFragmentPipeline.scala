@@ -31,8 +31,9 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     g: GraphicsConfig=GraphicsConfig(),viewport: Fp32ViewportConfig=Fp32ViewportConfig(),
     useSramBlackBoxes: Boolean=false,payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,
     preparedGeometry: Boolean=false,depthFormatInput: Boolean=false,groupedTexture: Boolean=false,transformFeedback: Boolean=false,earlyDepthInput: Boolean=false,
-    geometryInput: Boolean=false,fragmentImageAvailable: Boolean=false) extends Module {
+    geometryInput: Boolean=false,fragmentImageAvailable: Boolean=false,sampleShading:Boolean=false) extends Module {
   require(!transformFeedback || !preparedGeometry,"feedback belongs to original vertex work,not prepared replay")
+  require(!sampleShading || preparedGeometry,"sample planes require retained original prepared geometry")
   require(!geometryInput || preparedGeometry,"geometry builtins require a retained prepared primitive")
   require(p.varyings==f.varyings,"vertex and fragment interface capacities must match")
   payload.foreach(q=>require(payloadOwner>=0 && payloadOwner+1<q.owners))
@@ -57,7 +58,7 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val vertex=if(!preparedGeometry)Some(Module(new VertexRasterPipeline(config,p,shaderConfig,g,viewport,useSramBlackBoxes,payload,payloadOwner,centroidInput=true,depthFormatInput=true,groupedTexture=groupedTexture,transformFeedback=transformFeedback)))else None
-  private val fragment=Module(new FragmentShaderStage(config,f,shaderConfig,g,useSramBlackBoxes,payload,payloadOwner+1,groupedTexture=groupedTexture,earlyDepthInput=earlyDepthInput,geometryInput=geometryInput,imageAvailable=fragmentImageAvailable))
+  private val fragment=Module(new FragmentShaderStage(config,f,shaderConfig,g,useSramBlackBoxes,payload,payloadOwner+1,groupedTexture=groupedTexture,earlyDepthInput=earlyDepthInput,geometryInput=geometryInput,imageAvailable=fragmentImageAvailable,sampleShading=sampleShading))
   fragment.io.earlyDepth.foreach(_:=io.earlyDepth.get)
   private val fragmentImage=if(fragmentImageAvailable)Some(Module(new GraphicsImageDrawCapture))else None
   fragmentImage.foreach { c =>
@@ -87,6 +88,7 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
   private val depthFormat=Reg(UInt(3.W))
   when(io.draw.fire){depthFormat:=io.depthFormat.getOrElse(TypedDepthFormat.d24.U)}
   private val centroidMask=Wire(UInt((p.varyings*4).W))
+  private val samplePlane=Wire(Bool())
   private def tie(d: Data,direction: ActualDirection): Unit=d match {
     case r: Record=>r.elements.values.foreach(tie(_,direction))
     case v: Vec[_]=>v.foreach(tie(_,direction))
@@ -96,9 +98,10 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     case _=>()
   }
   if(preparedGeometry){
-    val raster=Instantiate(new Fp32PrimitiveRasterEngine(p,g,false,8))
+    val raster=Instantiate(new Fp32PrimitiveRasterEngine(p,g,false,8,sampleShading))
     raster.io.in.valid:=vertexDraw.valid;raster.io.in.bits.primitive:=primitive.get;raster.io.in.bits.state:=vertexDraw.bits.raster
     raster.io.in.bits.centroidMask:=centroidMask
+    raster.io.perSample.foreach(_:=samplePlane)
     val resolution=PolygonDepthResolution.evaluate(depthFormat,primitive.get.vertices.map(_.windowDepth))
     raster.io.in.bits.depthRoundTowardZero:=TypedDepthFormat.floating(depthFormat)
     raster.io.in.bits.depthOffset.enabled:=vertexDraw.bits.raster.polygonOffsetEnable && resolution.available
@@ -139,7 +142,7 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
   }
   private object State extends ChiselEnum {val idle,validate,run,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new VertexFragmentDraw(p,f));private val result=Reg(new VertexFragmentCompletion)
-  centroidMask:=descriptor.fragment.centroidMask
+  centroidMask:=descriptor.fragment.centroidMask;samplePlane:=FragmentInputAbi.hasSample(descriptor.fragment.version)
   private val vertexOffered=RegInit(false.B);private val vertexStarted=RegInit(false.B);private val vertexDone=RegInit(false.B)
   private val fragmentOffered=RegInit(false.B);private val fragmentStarted=RegInit(false.B);private val fragmentDone=RegInit(false.B)
   private val vertexResult=Reg(new VertexRasterCompletion);private val fragmentResult=Reg(new FragmentShaderCompletion)
@@ -217,7 +220,7 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     }}
     is(State.validate){
       val v=descriptor.vertex.vertex.geometry.vertex;val f=descriptor.fragment
-      val (invalid,bounds)=FragmentShaderDescriptor.errors(f,this.f,g,config,geometryInput=geometryInput)
+      val (invalid,bounds)=FragmentShaderDescriptor.errors(f,this.f,g,config,geometryInput=geometryInput,sampleShading=sampleShading)
       val identity=primitive.map(_.clipped.primitive.identity).getOrElse(v.input.identity)
       val slots=primitive.map(_.clipped.primitive.varyingSlots).getOrElse(v.varyingSlots)
       val matching=identity.asUInt===f.identity.asUInt && slots===f.varyingSlots && descriptor.vertex.raster.sampleMode===f.sampleMode &&
