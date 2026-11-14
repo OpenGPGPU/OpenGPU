@@ -176,9 +176,30 @@ class ShaderUniformExecuteUnitSpec extends AnyFlatSpec {
     }
   }
 
+  for(stage<-Seq(4,5))it should s"retain full sixteen-lane eight-warp TCS/TES execution capacity stage=$stage" in {
+    simulate(new ShaderUniformExecuteUnit(GpuConfig(lanes=16,warps=8),stage,tessellationAvailable=true)){d=>
+      val t=new Driver(d,stage,16);t.fixture()
+      t.start(true,Seq.fill(16)(BigInt(11)),Seq.fill(16)(BigInt(16380)));t.finish(0,Seq.fill(16)(value(11,16380)))
+      t.start(true,Seq.fill(16)(BigInt(31)),Seq.fill(16)(BigInt(4092)));t.finish(0,Seq.fill(16)(value(31,4092)))
+      t.start(true,Seq.fill(16)(BigInt(31)),Seq.fill(15)(BigInt(4092)):+BigInt(4096));t.finish(2,source=3)
+      t.healthy()
+    }
+  }
+
   for(stage<-Seq(4,5))it should s"execute distinct TCS/TES scalar/vector loads with held fault/cancel drain stage=$stage" in {
     simulate(new ShaderUniformExecuteUnit(GpuConfig(lanes=4,warps=2),stage,tessellationAvailable=true)){d=>
       val t=new Driver(d,stage,4);t.fixture()
+      // Native sampler instructions share the physical service port, but this
+      // provider must fail them without asserting, reading memory or hanging.
+      for(vector<-Seq(false,true)){
+        val before=t.memory.seen.size
+        t.arm(vector,Seq.fill(4)(BigInt(0)),Seq.fill(4)(BigInt(0)),t.all)
+        if(vector)d.io.vectorIn.bits.issued.decode.instruction.poke("h0a00002b".U)
+        else d.io.in.bits.decode.instruction.poke("h0400000b".U)
+        t.until(if(vector)d.io.vectorIn.ready.peek().litToBoolean else d.io.in.ready.peek().litToBoolean);t.tick()
+        d.io.in.valid.poke(false.B);d.io.vectorIn.valid.poke(false.B);t.finish(1)
+        assert(t.memory.seen.size==before);t.healthy()
+      }
       val blocks=Seq[BigInt](0,1,11,31);val offsets=Seq[BigInt](0,4,16380,4092)
       t.start(blocks=Seq.fill(4)(BigInt(11)),offsets=Seq.fill(4)(BigInt(16380)))
       t.finish(0,Seq(value(11,16380)))

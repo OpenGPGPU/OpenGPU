@@ -35,13 +35,13 @@ class TessellationNativeSequenceReaderSpec extends AnyFlatSpec {
     case s:SInt if DataMirror.directionOf(s)==ActualDirection.Input=>s.poke(0.S)
     case _=>()
   }
-  it should "snapshot bounded GPU records, reject truncation, and drain cancellation" in {
+  for(uniforms<-Seq(false,true))it should s"snapshot exact GNT contract, reject truncation and drain cancellation uniforms=$uniforms" in {
     val config=GpuConfig(lanes=4,warps=2);val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2)
-    simulate(new TessellationNativeSequenceReader(config,p,4)){d=>
+    simulate(new TessellationNativeSequenceReader(config,p,4,tessellationUniforms=uniforms)){d=>
       import TessellationNativeSequenceLayout._
       zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
-      val fs=fields(new TessellationPatchSequenceDescriptor(GpuConfig(),VertexShaderStageConfig(),12))
-      val record=Array.fill[BigInt](words)(0);record(0)=magic;record(1)=bytes;record(2)=version
+      val fs=fields(new TessellationPatchSequenceDescriptor(GpuConfig(),VertexShaderStageConfig(),12),uniforms)
+      val record=Array.fill[BigInt](words)(0);record(0)=if(uniforms)uniformMagic else magic;record(1)=bytes;record(2)=if(uniforms)uniformVersion else version
       def set(name:String,value:BigInt):Unit={val f=fs.find(_.name==name).getOrElse(fail(s"missing $name"))
         for(i<-0 until f.words)record(f.word+i)=(value>>(32*i)) & 0xffffffffL}
       set("count",2);set("patchStride",32)
@@ -52,6 +52,15 @@ class TessellationNativeSequenceReaderSpec extends AnyFlatSpec {
       set("template.input.base",0x5000);set("template.input.limit",0x5040)
       set("template.input.allocationBase",0x5000);set("template.input.allocationLimit",0x5040)
       set("template.stride",4);set("template.source.token",77)
+      if(uniforms){
+        set("template.source.viewport.system.uniforms.identity.context",7)
+        set("template.source.viewport.system.uniforms.identity.pass",8)
+        set("template.source.viewport.system.uniforms.identity.generation",9)
+        set("template.source.viewport.system.uniforms.control.resources.version",3)
+        set("template.source.viewport.system.uniforms.control.resources.address",0x6000)
+        set("template.source.viewport.system.uniforms.evaluation.resources.version",3)
+        set("template.source.viewport.system.uniforms.evaluation.resources.address",0x7000)
+      }
       var base=BigInt(0x1000);var faultLine= -1;var cycle=0;var heldRequest:Option[BigInt]=None
       val replies=mutable.Queue.empty[(Int,BigInt)];var pending:Option[(Int,BigInt)]=None
       def tick():Unit={
@@ -98,7 +107,27 @@ class TessellationNativeSequenceReaderSpec extends AnyFlatSpec {
       d.io.submit.valid.poke(false.B);d.io.memoryRequest.valid.expect(false.B);finish(1,0)
       // A GNT2 triangle record must not be interpreted as an isoline draw.
       record(0)=BigInt("474e5402",16);record(2)=2;submit();finish(1,bytes)
-      record(0)=magic;record(2)=version
+      record(0)=if(uniforms)uniformMagic else magic;record(2)=if(uniforms)uniformVersion else version
+      if(uniforms){
+        // The enabled reader is fixed to GNT4, not a permissive 1-or-4 reader.
+        record(0)=magic;record(2)=version;submit();finish(1,bytes)
+        record(0)=uniformMagic;record(2)=version;submit();finish(1,bytes);record(2)=uniformVersion
+        set("template.source.viewport.system.uniforms.control.resources.version",2);submit();finish(1,bytes)
+        set("template.source.viewport.system.uniforms.control.resources.version",3)
+        set("template.source.viewport.system.uniforms.identity.generation",10);submit();finish(1,bytes)
+        set("template.source.viewport.system.uniforms.identity.generation",9)
+        record(503)=2;submit();finish(1,bytes);record(503)=0 // privateLimit high bits must be canonical
+      }else{
+        // Every new extension word remains reserved, even when its value could
+        // describe a legal stage root in the explicitly enabled successor.
+        for(word<-496 until 509){record(word)=1;submit();finish(1,bytes);record(word)=0}
+        record(0)=uniformMagic;record(2)=uniformVersion;submit();finish(1,bytes)
+        record(0)=magic;record(2)=version
+      }
+      for(other<-Seq(4,5,6) if !uniforms || other!=uniformVersion){
+        record(0)=BigInt("474e5400",16)+other;record(2)=other;submit();finish(1,bytes)
+      }
+      record(0)=if(uniforms)uniformMagic else magic;record(2)=if(uniforms)uniformVersion else version
       record(8)=1;submit();finish(1,bytes);record(8)=0
       set("template.source.viewport.identity.context",6);submit();finish(1,bytes)
       set("template.source.viewport.identity.context",7)
