@@ -26,6 +26,41 @@ Distinct fixed compute executors now accept opcode 0 on the exact 104-word
 geometry or 112-word sample factory, with new probe/wire/capture contracts;
 see [complete owner compute executors](COMPLETE_OWNER_COMPUTE_EXECUTOR.md).
 
+The production tessellation discovery helper accepts the exact GNC5/GNJ2
+pair used by both complete factories. It retains GNC1–4/GNJ1, the fixed
+512/2048/2048-byte job/frame/draw capacities, completion presence and one to
+four engines. GNC5 selects the separate native GNJ2/GNF3 renderer; tessellation
+keeps its existing GNQ/GNT/GNF1 records and context-virtual image addressing.
+Geometry/sample admission still requires its own discovery and protected-source
+checks. Unknown versions and cross-paired GNC/GNJ records are rejected.
+
+Six focused driver C tests pass under ASan/UBSan. The compute discovery test
+uses both factories' actual GNC words and GCR flags through the production
+GCR/presence/GNC helper sequence, including malformed pairs, sizes, engine
+counts and every truncated BAR size. The old production helper fails this new
+regression. These are CPU initialization checks, not a kernel boot, emitted-DUT
+execution, timing or API qualification. Reproduce serially with managed outputs:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -B - <<'PY'
+from pathlib import Path
+import os, subprocess, tempfile
+root = Path.cwd()
+(root / '.artifacts').mkdir(exist_ok=True)
+with tempfile.TemporaryDirectory(prefix='gnc-discovery-', dir=root / '.artifacts') as tmp:
+    for name in ('compute_discovery', 'native_geometry_transport_discovery',
+                 'native_sample_transport', 'native_sources_discovery',
+                 'native_preflight_discovery', 'compute_resource_capabilities'):
+        binary = Path(tmp) / name
+        subprocess.run(['cc', '-std=c11', '-O1', '-Wall', '-Wextra', '-Werror',
+            '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
+            '-I' + str(root / 'driver'),
+            str(root / 'driver/tests' / ('opengpu_' + name + '_test.c')),
+            '-o', str(binary)], check=True, env=dict(os.environ, TMPDIR=tmp))
+        subprocess.run([str(binary)], check=True)
+PY
+```
+
 CPU ASan/UBSan validation covers the merged GS and shared-atomic validators,
 original layered snapshots/submission and combined geometry discovery.
 Preparation and executor guard tests also pass. This composition has not had
