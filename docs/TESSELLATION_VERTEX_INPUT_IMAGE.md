@@ -74,14 +74,24 @@ the complete raw image report and first noncancel task report remain available.
 The focused component test instantiates the real shared frame glue and Owner
 with explicit image/source protocol peers. Its other case instantiates the
 real combinational tuple checker. Neither case executes a shader or instantiates
-one of the three complete image parents. Full current-source parent
-typechecking/elaboration, actual VS/TCS/TES execution and protected native
-admission remain pending. Component results do not qualify the complete
-VS-to-patch-to-image owner or the 640x480/60 FPS target.
-The three typed-parent source files separately passed Scala 2.13.18 parser
-checks. This establishes syntax only; their full type/build closure includes
-the current image and FP raster dependencies described in
-[the image-routing limits](TESSELLATION_VERTEX_IMAGE_ROUTING.md).
+one of the three complete image parents. Separately, the complete 79-current-
+source dependency closure passed Scala 2.13.18/Chisel 7.15 plugin compilation,
+including all three actual typed parents and their image, VS, uniform, patch,
+FP and fragment providers. New classes preceded the read-only `75899c185`
+dependency classpath; all source/classpath inputs matched before/after. See
+[the bounded source-compile command and elaboration configuration](TESSELLATION_VERTEX_IMAGE_ROUTING.md#reproduce-the-bounded-checks).
+
+Actual full-width isoline-parent `ChiselStage.elaborate` exhausted its 128 MiB
+heap in the actual VS texture-binding path. It used two CU interfaces,
+16 lanes/eight warps, 16 attributes/bindings/varyings, four MRTs, a 4x4 frame,
+one external engine interface and all optional routing capabilities. Triangle
+and quad elaboration were not run. Complete parent elaboration, actual
+VS/TCS/TES execution and protected native admission remain pending; the OOM
+neither proves a semantic defect nor validates connections. External engines
+exclude actual CU/render-bank instances and cannot establish sample shading,
+image execution or native-sample/advanced-blend behavior. Component results and
+the type compile do not qualify the complete VS-to-patch-to-image owner or the
+640x480/60 FPS target.
 
 Eight current source files passed Scala/Chisel-plugin compilation, followed by
 both actual component RTL cases. This fresh positive run includes the Owner's
@@ -101,7 +111,7 @@ timeouts. Those controls preceded the independent Owner held-report change;
 the final fresh positive cases were rerun with that change. No claim is made
 that the two mutated models were rerun afterward. All owned processes exited
 and temporary classes, models and logs were removed after consumer checks.
-All 154 test-selector CPU checks and integration/catalog selection checks
+All 155 test-selector CPU checks and integration/catalog selection checks
 passed, including dependency routing to these component cases.
 
 In an explicitly allocated resource window, compile current
