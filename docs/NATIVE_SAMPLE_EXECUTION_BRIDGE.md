@@ -41,3 +41,21 @@ Fresh complete caller compilation, generation and actual same-host execution
 remain required. The transport does not transfer any previous model, timing or
 six-scene qualification to the 112-word factory. Complete API sample state,
 dynamic interpolation and the two-CU 640×480/60 FPS product gate remain separate.
+
+`native_sample_gny2_oracle.verify(data, command_id, samples)` independently
+constructs all 4096 expected GNY2 words from the committed ABI catalog for the
+fixed live 4×4 ordinary-point recipe: one full-frame primitive, identities
+7/8/9, four RGBA32F and D32F clear/store views, and 1/2/4 samples. It checks all
+628 fields, including the complete zero fault/restart trees, full 145-bit
+counters, high field padding and 3330 reserved words. The original enqueue ID
+must come from the captured submission, and the caller must separately verify
+the recipe, images, immutable guards and successful held publication.
+
+CPU regression passes mutations of every used/reserved word and every field's
+highest allocated bit, including counter bits above 64. This checks rejection
+and expected semantic traffic counts; it provides no observed DUT timing or
+execution result. Reproduce without generation or a JVM:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_native_sample_gny2_oracle.py
+```
