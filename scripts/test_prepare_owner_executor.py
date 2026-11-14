@@ -4,6 +4,7 @@ import copy
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -75,7 +76,7 @@ class ExecutorTests(unittest.TestCase):
             executorBuildVerified=True,sourceQualificationRequired=True,gpuExecution=False,
             clockQualified=False,fpsQualified=False,source_root=str(q.ROOT),owner_output=str(self.out),
             flashsim=str(self.flashsim),shards=1,source_sha256=q.hashes(
-                [*files,*q.DEFAULT_DEPENDENCIES,*q.CHECKERS]),
+                [*files,*q.DEFAULT_DEPENDENCIES,*q.checker_files(kind)]),
             model=model,compiler=self.compiler,options=self.options,
             builder_sha256=q.common.sha(target/'builder.json'),executable_sha256=q.common.sha(target/'executor'))
         path=target/'qualification.json';q.common.write_json(path,record)
@@ -154,7 +155,7 @@ class ExecutorTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):q.verify_qualification(path)
 
     def test_distinct_kind_and_exact_dependencies_with_reusable_shared_cache(self):
-        for kind in q.KINDS:
+        for kind in ('native', 'compute'):
             path,record=self.fixture(kind)
             with self.assertRaises(RuntimeError):q.verify_qualification(path,kind='native' if kind=='compute' else 'compute')
             cache=self.out/'flashsim-build';cache.mkdir(exist_ok=True)
@@ -229,6 +230,135 @@ class ExecutorTests(unittest.TestCase):
             bad=copy.deepcopy(original);bad[key]=value;q.common.write_json(path.parent/'builder.json',bad)
             record['builder_sha256']=q.common.sha(path.parent/'builder.json');q.common.write_json(path,record)
             with self.subTest(key=key),self.assertRaises(RuntimeError):q.verify_qualification(path)
+
+    def sample_fixture(self):
+        """Private copied source tree: mutate real dependencies without editing
+        *any* active original ESSL, producer, driver or shared header."""
+        names = set((*q.driver_files('native-sample', q.SAMPLE_PROFILE),
+                     *q.DEFAULT_DEPENDENCIES, *q.checker_files('native-sample')))
+        original = self.out
+        source = original / 'private-source'
+        for name in names:
+            destination = source / name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(q.ROOT / name, destination)
+        model = source / '.artifacts' / 'owner'
+        model.mkdir(parents=True)
+        for name in ('flashsim-dut', 'preparation.json', 'owner-manifest.json', 'cpu-tool'):
+            item = original / name
+            if item.is_dir():shutil.copytree(item, model / name)
+            else:shutil.copyfile(item, model / name)
+        self.out = model
+        self.flashsim = model / 'cpu-tool'
+        patch.object(q, 'ROOT', source).start()
+        patch.object(q.builder, 'ROOT', source).start()
+        patch.object(q.builder, 'ADAPTER', source / 'scripts/flashsim_native').start()
+        return self.fixture('native-sample', q.SAMPLE_PROFILE)
+
+    def test_native_sample_has_one_exact_factory_distinct_path_and_include_closure(self):
+        path,record=self.sample_fixture()
+        self.assertEqual(path,self.out/'executors/native-sample/qualification.json')
+        self.assertEqual(record['ownerResourceStage'],'geometry-compute-sample')
+        self.assertEqual(record['ownerResourceVersion'],2)
+        self.assertIs(record['fullResourceQualification'],False)
+        self.assertEqual(len(q.FULL_COMPUTE_CONTRACTS[q.SAMPLE_PROFILE][1]),112)
+        files=q.driver_files('native-sample',q.SAMPLE_PROFILE)
+        self.assertEqual(files[0],'scripts/native_sample_owner_driver.cpp')
+        self.assertIn('scripts/native_sample_owner_runtime.hpp',files)
+        self.assertIn('scripts/native_sample_owner_capture.hpp',files)
+        for kind in ('native','compute'):
+            self.assertEqual(q.checker_files(kind),q.CHECKERS)
+            with self.assertRaises(RuntimeError):q.verify_qualification(path,kind=kind)
+        for profile in (q.owner.PROFILE,q.COMPUTE_STAGE,q.FULL_PROFILE,'another-sample-profile'):
+            with self.assertRaises(RuntimeError):q.driver_files('native-sample',profile)
+        q.builder.validate_driver_includes([q.ROOT/n for n in
+            [files[0],*q.DEFAULT_DEPENDENCIES,*files[1:]]],self.out/'flashsim-dut/dut.h',self.out/'flashsim-dut')
+        for name in ('scripts/native_sample_owner_controller.py','scripts/native_sample_owner_oracle.py',
+                     'scripts/native_sample_gny2_oracle.py',
+                     'docs/abi/native-layered-graphics-v2.json','scripts/owner_process_lifetime.py',
+                     'scripts/native_sample_owner_protocol.py','scripts/test_native_mmio_capture.py',
+                     'driver/opengpu_native_program_snapshot.c','driver/opengpu_shader_validator.h',
+                     'driver/tests/private_snapshot_stubs/linux/slab.h',
+                     'userspace/tests/native_sample_essl/mask-depth-keep.frag'):
+            self.assertIn(name,record['source_sha256'])
+
+    def test_native_sample_rejects_real_source_essl_headers_and_missing_consumers(self):
+        path,record=self.sample_fixture()
+        for name in ('scripts/native_sample_live_producer.c','scripts/native_sample_submit_producer.c',
+                     'userspace/tests/native_sample_essl/sample.frag',
+                     'userspace/gallium/opengpu_native_fs_emit.c','userspace/tests/fs_glsl_frontend.cpp',
+                     'scripts/native_sample_owner_runtime.hpp','scripts/native_sample_owner_capture.hpp',
+                     'scripts/native_sample_owner_controller.py','scripts/native_sample_owner_oracle.py',
+                     'docs/abi/native-layered-graphics-v2.json','scripts/owner_process_lifetime.py',
+                     'driver/opengpu_native_submit.c','driver/opengpu_native_program_snapshot.c',
+                     'driver/opengpu_shader_validator.h'):
+            item=q.ROOT/name;original=item.read_bytes();item.write_bytes(original+b'\n/* stale CPU fixture */\n')
+            with self.subTest(name=name),self.assertRaises(RuntimeError):q.verify_qualification(path,kind='native-sample')
+            item.write_bytes(original)
+        for name in ('scripts/native_sample_owner_controller.py','scripts/native_sample_owner_oracle.py',
+                     'scripts/native_sample_gny2_oracle.py'):
+            item=q.ROOT/name;original=item.read_bytes();item.unlink()
+            with self.assertRaisesRegex(RuntimeError,'missing required native sample checker'):
+                q.verify_qualification(path,kind='native-sample')
+            item.write_bytes(original)
+        item=q.ROOT/'scripts/native_sample_live_producer.c';original=item.read_bytes()
+        item.write_bytes(original+b'\n#include "unregistered.inc"\n')
+        with self.assertRaisesRegex(RuntimeError,'missing native sample producer dependency'):
+            q.verify_qualification(path,kind='native-sample')
+        item.write_bytes(original)
+        new=q.ROOT/'scripts/new-live-dependency.hpp';new.write_text('// new source dependency\n')
+        item.write_bytes(original+b'\n#include "new-live-dependency.hpp"\n')
+        with self.assertRaises(RuntimeError):q.verify_qualification(path,kind='native-sample')
+        item.write_bytes(original)
+        q.verify_qualification(path,kind='native-sample')
+        item=q.ROOT/'scripts/native_sample_owner_oracle.py';original=item.read_bytes()
+        alternate=self.out/'external-oracle.py';alternate.write_bytes(original)
+        item.unlink();item.symlink_to(alternate)
+        with self.assertRaisesRegex(RuntimeError,'aliased native sample checker source'):
+            q.verify_qualification(path,kind='native-sample')
+        item.unlink();item.write_bytes(original)
+
+    def test_native_sample_rejects_incomplete_dependencies_driver_or_updated_include(self):
+        path,record=self.sample_fixture();snapshot=path.parent/'builder.json'
+        original=json.loads(snapshot.read_text())
+        for name in ('scripts/native_sample_owner_capture.hpp','scripts/native_sample_owner_runtime.hpp'):
+            bad=copy.deepcopy(original);del bad['driver_inputs'][str((q.ROOT/name).resolve())]
+            q.common.write_json(snapshot,bad);record['builder_sha256']=q.common.sha(snapshot);q.common.write_json(path,record)
+            with self.assertRaises(RuntimeError):q.verify_qualification(path,kind='native-sample')
+        q.common.write_json(snapshot,original);record['builder_sha256']=q.common.sha(snapshot)
+        # Even a freshly rehashed forged record cannot omit a newly included
+        # shared runtime header from the builder's exact declared closure.
+        runtime=q.ROOT/'scripts/native_sample_owner_runtime.hpp'
+        runtime.write_bytes(runtime.read_bytes()+b'\n#include "new-runtime.hpp"\n')
+        (runtime.parent/'new-runtime.hpp').write_text('// new runtime dependency\n')
+        record['source_sha256']=q.hashes([*q.driver_files('native-sample',q.SAMPLE_PROFILE),
+            *q.DEFAULT_DEPENDENCIES,*q.checker_files('native-sample')])
+        q.common.write_json(path,record)
+        with self.assertRaisesRegex(ValueError,'unsupported or shadowed driver include'):
+            q.verify_qualification(path,kind='native-sample')
+
+    def test_native_sample_rejects_stale_model_kind_and_failed_attempt_cannot_reuse_success(self):
+        path,record=self.sample_fixture()
+        for name in ('dut.h','dut_0.cpp','hw.mlir'):
+            item=self.out/'flashsim-dut'/name;original=item.read_bytes();item.write_bytes(original+b'\nchanged')
+            with self.assertRaises(RuntimeError):q.verify_qualification(path,kind='native-sample')
+            item.write_bytes(original)
+        for key,value in (('kind','compute'),('profile',q.FULL_PROFILE),
+                          ('ownerResourceStage','geometry-compute'),('source_sha256',{})):
+            bad=copy.deepcopy(record);bad[key]=value;q.common.write_json(path,bad)
+            with self.assertRaises(RuntimeError):q.verify_qualification(path,kind='native-sample')
+        q.common.write_json(path,record)
+        cache=self.out/'executors/compute';cache.mkdir();other=cache/'qualification.json';other.write_text('other identity')
+        locks=q.build_lock_paths(self.out,'native-sample')
+        self.assertEqual(locks,(self.out/'.lock',path.parent/'.lock'))
+        self.assertEqual(q.build_lock_paths(self.out,'compute'),(self.out/'.lock',))
+        (path.parent/'.lock').symlink_to(other)
+        with self.assertRaises(RuntimeError):q.build_lock_paths(self.out,'native-sample')
+        (path.parent/'.lock').unlink()
+        with patch.object(q,'model_identity',side_effect=RuntimeError('stale full model')):
+            with self.assertRaisesRegex(RuntimeError,'stale full model'):
+                q.build_executor(self.out,self.flashsim,'native-sample',shards=1)
+        self.assertFalse(path.exists());self.assertEqual(other.read_text(),'other identity')
 
 
 if __name__=='__main__':unittest.main()

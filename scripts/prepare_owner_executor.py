@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Build/check fixed native or compute executors for an existing complete owner DUT."""
 import argparse
+from contextlib import ExitStack
 import fcntl
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import subprocess
@@ -21,7 +23,7 @@ import qualify_native_product_flashsim as flash
 from owner_resource_contract import COMPUTE_STAGE, FULL_COMPUTE_CONTRACTS, PROFILE as FULL_PROFILE, SAMPLE_PROFILE
 
 ROOT = Path(__file__).resolve().parents[1]
-KINDS = ('native', 'compute')
+KINDS = ('native', 'compute', 'native-sample')
 SHARED = ('scripts/native_owner_runtime.hpp', 'scripts/native_owner_capture.hpp',
           'scripts/owner_factory.hpp',
           'driver/gpu_abi.h', 'driver/opengpu_formats.h', 'driver/opengpu_shader_resources.h')
@@ -39,6 +41,34 @@ CHECKERS = ('scripts/prepare_owner_executor.py', 'scripts/build_native_flashsim.
     'userspace/tests/compute_host_frontend.c', 'userspace/tests/cs_shared_frontend.c',
     'userspace/gallium/opengpu_cs_emit.c',
     'driver/tests/opengpu_compute_host_fixture.c')
+SAMPLE_CHECKERS = (
+    'scripts/native_sample_owner_protocol.py', 'scripts/native_sample_owner_controller.py',
+    'scripts/native_sample_owner_oracle.py', 'scripts/native_sample_gny2_oracle.py',
+    'docs/abi/native-layered-graphics-v2.json', 'scripts/owner_process_lifetime.py',
+    'scripts/test_native_sample_submit_bridge.py',
+    'scripts/test_native_submit.py', 'scripts/test_native_mmio_capture.py',
+    'scripts/test_native_sample_essl.py', 'scripts/native_fs_cpu_oracle.py',
+    'userspace/gallium/opengpu_native_fs_emit.c', 'userspace/gallium/opengpu_native_fs_emit.h',
+    'userspace/tests/fs_glsl_frontend.cpp', 'userspace/tests/fs_glsl_frontend.h',
+    'userspace/tests/native_fs_compile.c',
+    *(f'userspace/tests/native_sample_essl/{name}.frag' for name in
+      ('sample', 'mask-depth', 'mask-depth-keep', 'mrt', 'varying', 'signedness', 'truncation')))
+# These generated includes are fully determined by the registered fixture
+# generators and original production bodies below. No missing arbitrary include
+# or required consumer is silently ignored.
+SAMPLE_GENERATED_INCLUDES = frozenset((
+    'native_sample_expected_profile.inc', 'snapshot_submission_under_test.inc',
+    'native_enqueue_under_test.inc', 'native_scheduler_under_test.inc',
+    'native_admission_under_test.inc', 'native_submit_under_test.inc',
+    *(f'native_mmio_{name}_under_test.inc' for name in
+      ('fault', 'fence', 'fault_record', 'job_id', 'reset_pending', 'result_error',
+       'drain', 'irq', 'enable_irqs', 'quiesce', 'kick', 'set_satp', 'activate_locked',
+       'busy', 'wait_idle', 'activate', 'enable', 'flush', 'flush_asid', 'disable',
+       'submit', 'invalidate'))))
+SAMPLE_PRODUCER_ROOTS = (
+    'scripts/native_sample_live_producer.c', 'scripts/native_sample_submit_producer.c',
+    'driver/opengpu_native_frame.c', 'driver/opengpu_hw.c', 'driver/opengpu_device.h',
+    'driver/opengpu_scheduler.c', 'driver/opengpu_admission.c', 'driver/opengpu_native_submit.c')
 
 
 def require(condition, message):
@@ -48,7 +78,8 @@ def require(condition, message):
 
 def profile_contract(profile, kind):
     require(kind in KINDS, 'unknown owner executor kind')
-    require(profile == owner.PROFILE or ((profile == COMPUTE_STAGE or profile in FULL_COMPUTE_CONTRACTS) and kind == 'compute'),
+    require((profile == SAMPLE_PROFILE if kind == 'native-sample' else
+             profile == owner.PROFILE or ((profile == COMPUTE_STAGE or profile in FULL_COMPUTE_CONTRACTS) and kind == 'compute')),
             'unsupported factory for the selected owner executor kind')
     fields = dict(profile=profile)
     if profile == COMPUTE_STAGE:
@@ -61,6 +92,9 @@ def profile_contract(profile, kind):
 def driver_files(kind, profile=owner.PROFILE):
     require(kind in KINDS, 'unknown owner executor kind')
     profile_contract(profile, kind)
+    if kind == 'native-sample':
+        return ['scripts/native_sample_owner_driver.cpp', 'scripts/native_sample_owner_runtime.hpp',
+                'scripts/native_sample_owner_capture.hpp', *SHARED]
     if profile == COMPUTE_STAGE or profile in FULL_COMPUTE_CONTRACTS:
         wrapper = {COMPUTE_STAGE: 'compute_stage', FULL_PROFILE: 'geometry_compute',
                    SAMPLE_PROFILE: 'geometry_compute_sample'}[profile]
@@ -68,6 +102,60 @@ def driver_files(kind, profile=owner.PROFILE):
                 *SHARED, 'scripts/compute_owner_capture.hpp']
     return ([f'scripts/{kind}_owner_driver.cpp', *SHARED] +
             (['scripts/compute_owner_capture.hpp'] if kind == 'compute' else []))
+
+
+def sample_producer_files():
+    """Bind actual C producer/include closure and extracted production bodies."""
+    search = [ROOT / name for name in ('driver', 'driver/tests',
+        'driver/tests/private_snapshot_stubs', 'driver/tests/mmu_stubs',
+        'driver/tests/compute_submit_stubs')]
+    pending, observed = [ROOT / name for name in SAMPLE_PRODUCER_ROOTS], set()
+    while pending:
+        path = pending.pop().resolve(strict=True)
+        require(path.is_relative_to(ROOT), 'native sample source escapes its checkout')
+        if path in observed:
+            continue
+        observed.add(path)
+        for match in builder.INCLUDE.finditer(path.read_bytes()):
+            directive = re.sub(rb'^[ \t]*#[ \t]*include[ \t]*', b'', match[0]).strip()
+            directive = directive.split(b'//', 1)[0].strip()
+            parsed = re.fullmatch(rb'([<"])([^>"]+)[>"]', directive)
+            require(parsed is not None, 'unsupported native sample producer include')
+            name = os.fsdecode(parsed[2])
+            candidates = ([path.parent] if parsed[1] == b'"' else []) + search
+            actual = next(((directory / name).resolve() for directory in candidates
+                           if (directory / name).is_file()), None)
+            if actual is not None:
+                pending.append(actual)
+            elif parsed[1] == b'"':
+                require(name in SAMPLE_GENERATED_INCLUDES,
+                        'missing native sample producer dependency: ' + name)
+    return tuple(sorted(str(path.relative_to(ROOT)) for path in observed))
+
+
+def checker_files(kind):
+    require(kind in KINDS, 'unknown owner executor kind')
+    if kind != 'native-sample':
+        return CHECKERS
+    # Every fixed consumer is mandatory even before it has a valid build. A
+    # partially integrated checkout cannot qualify by omitting absent files.
+    for name in SAMPLE_CHECKERS:
+        path = ROOT / name
+        require(path.is_file(), 'missing required native sample checker: ' + name)
+        require(path.resolve() == path, 'aliased native sample checker source: ' + name)
+    return tuple(dict.fromkeys((*CHECKERS, *SAMPLE_CHECKERS, *sample_producer_files())))
+
+
+def build_lock_paths(directory, kind):
+    require(kind in KINDS, 'unknown owner executor kind')
+    paths = [directory / '.lock']  # Existing common shard cache stays serialized.
+    if kind == 'native-sample':
+        target = directory / 'executors' / kind
+        require(target.resolve() == target, 'native sample executor lock must not be aliased')
+        target.mkdir(parents=True, exist_ok=True)
+        paths.append(target / '.lock')
+        require(all(not path.is_symlink() for path in paths), 'native sample build lock must not be aliased')
+    return tuple(paths)
 
 
 def hashes(names):
@@ -111,6 +199,10 @@ def model_identity(directory, flashsim, shards):
 
 def checked_builder(record, model, kind, options, compiler):
     files = driver_files(kind, model['profile'])
+    if kind == 'native-sample':
+        builder.validate_driver_includes([ROOT / name for name in
+            [files[0], *DEFAULT_DEPENDENCIES, *files[1:]]],
+            Path(model['dut_directory']) / 'dut.h', Path(model['dut_directory']))
     require(type(options) is dict and set(options) == {'shard_opt', 'commit_opt',
             'conservative_alias', 'strict_flex_arrays', 'precompiled_header'} and
             options['shard_opt'] in ('-O0', '-O1', '-O2', '-O3') and options['commit_opt'] == '-O0' and
@@ -172,7 +264,7 @@ def verify_qualification(path, *, executor=None, kind='compute'):
     if executor is not None:
         require(Path(executor).absolute() == executable and not Path(executor).is_symlink(),
                 'controller selected an unqualified owner executable')
-    require(record.get('source_sha256') == hashes([*files, *DEFAULT_DEPENDENCIES, *CHECKERS]),
+    require(record.get('source_sha256') == hashes([*files, *DEFAULT_DEPENDENCIES, *checker_files(kind)]),
             'owner executor source or checker changed')
     require(record.get('model') == model, 'owner executor no longer matches the complete model')
     compiler = compiler_identity(record['compiler']['path'])
@@ -204,7 +296,8 @@ def build_executor(directory, flashsim, kind, *, shards=32, jobs=1,
     model = model_identity(directory, flashsim, shards)
     contract = profile_contract(model['profile'], kind)
     files = driver_files(kind, model['profile'])
-    sources = hashes([*files, *DEFAULT_DEPENDENCIES, *CHECKERS])
+    checkers = checker_files(kind)
+    sources = hashes([*files, *DEFAULT_DEPENDENCIES, *checkers])
     compiler_path = shutil.which('c++')
     require(compiler_path, 'owner executor requires c++')
     compiler = compiler_identity(compiler_path)
@@ -235,7 +328,7 @@ def build_executor(directory, flashsim, kind, *, shards=32, jobs=1,
             raise
         require(code == 0, 'owner executor compilation failed')
     require(model == model_identity(directory, flashsim, shards) and
-            sources == hashes([*files, *DEFAULT_DEPENDENCIES, *CHECKERS]) and
+            sources == hashes([*files, *DEFAULT_DEPENDENCIES, *checker_files(kind)]) and
             compiler == compiler_identity(compiler['path']), 'owner inputs changed during executor build')
     snapshot = build / 'native-flashsim-build.json'
     built = json.loads(snapshot.read_text())
@@ -284,8 +377,10 @@ def main():
             raise KeyboardInterrupt('owner executor build terminated')
         previous = signal.signal(signal.SIGTERM, terminate)
         try:
-            with (directory / '.lock').open('a') as lock:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with ExitStack() as stack:
+                for lock_path in build_lock_paths(directory, args.kind):
+                    lock = stack.enter_context(lock_path.open('a'))
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 path = build_executor(directory, args.flashsim_dir.resolve(), args.kind,
                     shards=args.shards, jobs=args.jobs, precompiled_header=args.precompiled_header,
                     conservative_alias=args.conservative_alias, shard_opt=args.shard_opt)
