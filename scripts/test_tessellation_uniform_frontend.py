@@ -12,7 +12,7 @@ LIBS=("src/compiler/glsl/libglsl.a","src/compiler/nir/libnir.a","src/compiler/li
       "src/util/format/libmesa_format.a","src/c11/impl/libmesa_util_c11.a")
 def main():
     ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('--build',type=Path,required=True)
-    ap.add_argument('--sanitize',action='store_true');a=ap.parse_args()
+    ap.add_argument('--sanitize',action='store_true');ap.add_argument('--dynamic',action='store_true',help='private TES v2 CPU compiler cases');a=ap.parse_args()
     out=a.build.resolve();out.mkdir(parents=True,exist_ok=False)
     mesa=Path(os.environ.get('OPENGPU_MESA_DIR',ROOT/'depends/mesa')).resolve()
     mb=Path(os.environ.get('OPENGPU_MESA_BUILD',ROOT/'depends/mesa-build')).resolve()
@@ -50,7 +50,7 @@ def main():
             ['-MMD','-MF',obj.with_suffix('.d'),'-c',source,'-o',obj],'compile-'+obj.stem);objects.append(obj)
     inc=['-I'+str(p) for p in (ROOT/'userspace/gallium',ROOT/'userspace',ROOT/'driver',mesa/'src/gallium/include',
         mesa/'src/gallium/auxiliary',ROOT/'userspace/tests',Path(os.environ.get('OPENGPU_DRM_INCLUDE',ROOT/'depends/aarch64-root/include')),mesa/'src/compiler/nir',mb/'src/compiler/nir',mesa/'src',mesa/'include')]
-    for name in ('userspace/gallium/opengpu_tess_frontend.cpp','userspace/tests/tessellation_uniform_frontend_test.cpp'):
+    for name in ('userspace/gallium/opengpu_tess_frontend.cpp',('userspace/tests/tessellation_dynamic_frontend_test.cpp' if a.dynamic else 'userspace/tests/tessellation_uniform_frontend_test.cpp')):
         obj=out/(Path(name).stem+'.o')
         run(cxx+flags(units[0])+['-UNDEBUG','-Wall','-Wextra','-Werror','-Wno-unused-parameter']+inc+san+
             ['-MMD','-MF',obj.with_suffix('.d'),'-c',ROOT/name,'-o',obj],'compile-'+obj.stem);objects.append(obj)
@@ -78,6 +78,6 @@ def main():
     binary=out/'tess-frontend'
     run(cxx+san+['-rdynamic','-Wl,--gc-sections']+objects+['-Wl,--start-group']+[mb/p for p in LIBS]+['-Wl,--end-group']+
         shlex.split(os.environ.get('OPENGPU_MESA_LINK_LIBS','-lz -lexpat'))+['-ldl','-lm','-pthread','-o',binary],'link')
-    for name in ('uniform','full','conditional'):(out/'programs'/name).mkdir(parents=True)
+    for name in (('dynamic','adjacent','capacity','edge','component') if a.dynamic else ('uniform','full','conditional')):(out/'programs'/name).mkdir(parents=True)
     run([binary,ROOT/'userspace/tests/tess_uniform_essl',out/'programs'],'actual-ESSL320')
 if __name__=='__main__':main()
