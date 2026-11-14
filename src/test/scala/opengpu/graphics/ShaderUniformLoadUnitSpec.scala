@@ -127,6 +127,11 @@ class ShaderUniformLoadUnitSpec extends AnyFlatSpec {
       val t=new Driver(d,stage);t.fixture()
       for(block<-0 until 12;offset<-Seq(0,4,8192,16380)){t.start(block,offset);t.finish(0,pattern(block,offset))}
       for(component<-0 until 1024){t.start(31,component*4);t.finish(0,pattern(31,component*4))}
+      val upper=(0 until 12).map(i=>BigInt(12+i))
+      val low=(0 until 6).map(i=>upper(i)<<(5*i)).sum;val high=(0 until 6).map(i=>upper(i+6)<<(5*i)).sum
+      t.record(rootAddress,rootWords(stage).updated[BigInt](8,low).updated[BigInt](9,high))
+      for(block<-0 until 12){t.start(block,16380);t.finish(0,pattern(12+block,16380))}
+      t.fixture()
       for(version<-Seq(1,2)){val before=t.memory.seen.size;t.start(resourceVersion=version);t.finish(1,source=1);assert(t.memory.seen.size==before)}
       for((word,value)<-Seq(0->BigInt("47555201",16),2->BigInt(2),6->BigInt(9-stage),8->BigInt(24))){
         t.record(rootAddress,rootWords(stage).updated[BigInt](word,value));t.start();t.finish(if(word==8)1 else 7,source=1);t.fixture();t.healthy()
@@ -134,6 +139,10 @@ class ShaderUniformLoadUnitSpec extends AnyFlatSpec {
       for(mask<-Seq(0,1<<(9-stage),(1<<stage)|1,(1<<stage)|8)){
         t.record(tableAddress,viewWords(0,bufferBase(0),16384,mask,3));t.start();t.finish(7,source=2);t.fixture()
       }
+      for(version<-Seq(1,2)){
+        t.record(tableAddress,viewWords(0,bufferBase(0),16384,1<<stage,version));t.start();t.finish(7,source=2);t.fixture()
+      }
+      t.start(privateBase=bufferBase(0),privateLimit=bufferBase(0)+64);t.finish(1,source=2);t.healthy()
       // A shared TCS/TES immutable table view is legal; no unrelated stage is.
       t.record(tableAddress,viewWords(0,bufferBase(0),16384,0x30,3));t.healthy()
       t.start(31,4096);t.finish(2,source=3);t.start(11,16384);t.finish(2,source=3)
@@ -149,6 +158,13 @@ class ShaderUniformLoadUnitSpec extends AnyFlatSpec {
       }
       t.memory.faultAt=Set(bufferBase(0));t.start();t.finish(3,source=3,fault=Some(bufferBase(0)))
       t.memory.faultAt=Set.empty;t.healthy()
+    }
+  }
+
+  for(stage<-0 to 3)it should s"reject tessellation version-three on an existing provider stage=$stage" in {
+    simulate(new ShaderUniformLoadUnit(GpuConfig(lanes=4,warps=2),stage,geometryAvailable=stage==3)){d=>
+      val t=new Driver(d,stage);t.fixture();val before=t.memory.seen.size
+      t.start(resourceVersion=3);t.finish(1,source=1);assert(t.memory.seen.size==before);t.healthy()
     }
   }
 
