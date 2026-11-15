@@ -300,6 +300,21 @@ static int interface_map_valid(struct builder *b,unsigned output){
         }
     return 0;
 }
+/* Mapped slots have1..4 actual components. Compare the original full-width
+ * index before arithmetic; RVV0x25/IVX is a shift, never multiplication.
+ * Keep v28 (cached vertex), the ADDR source, and v0 predicate intact. */
+static void mapped_descriptor(struct builder *b,unsigned reg,unsigned width,unsigned limit,unsigned base){
+    scalar(b,10,limit);
+    word(b,vec(0x1a,4,0,10,reg));
+    if(width==3){
+        word(b,vec(0x25,3,29,1,reg));
+        word(b,vec(0,0,29,reg,29));
+        word(b,vec(0x25,3,29,3,29));
+    }else word(b,vec(0x25,3,29,width==1?3:width==2?4:5,reg));
+    scalar(b,10,base);word(b,vec(0,4,29,10,29));
+    splat(b,30,0x80000001u);
+    word(b,vec(23,0,29,29,30)&~(1u<<25));
+}
 static int dynamic_input(struct builder *b,const struct tgsi_full_src_register *r,unsigned off,unsigned pp,unsigned tl,unsigned to){
     if(dynamic_vertex(b,r,28))return -1;
     unsigned flags=1|pp<<1|tl<<2;
@@ -318,10 +333,12 @@ static int dynamic_input(struct builder *b,const struct tgsi_full_src_register *
             unsigned width=bits(slot->mask);
             if(!width)return -1;
             for(unsigned j=0;j<span->slots;j++)if((pp?b->packing[0]->patch[span->index+j].mask:b->packing[0]->vertex[span->index+j].mask)!=slot->mask)return -1;
-            scalar(b,10,width*8);word(b,vec(0x25,4,29,10,reg));
-        }else word(b,vec(0x25,3,29,5,reg)); /* vec4-register offset -> 32 descriptor units */
-        scalar(b,10,off<<3|flags);word(b,vec(0,4,29,10,29));
-        bounded(b,reg,span->slots-(index-span->first),29,29);
+            mapped_descriptor(b,reg,width,span->slots-(index-span->first),off<<3|flags);
+        }else {
+            word(b,vec(0x25,3,29,5,reg)); /* vec4-register offset -> 32 descriptor units */
+            scalar(b,10,off<<3|flags);word(b,vec(0,4,29,10,29));
+            bounded(b,reg,span->slots-(index-span->first),29,29);
+        }
     }
     word(b,patch(33,to,28,29));
     return 0;
