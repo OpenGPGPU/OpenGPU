@@ -11,6 +11,7 @@
 struct semantic { unsigned declared, mask, name, index; };
 struct builder {
     struct opengpu_native_fs_program p;
+    struct opengpu_native_fragment_metadata_v2 *v2;
     struct semantic input[REGS], system[REGS], output[REGS];
     unsigned temp[REGS], reg[REGS][4], defined[REGS], next;
     uint32_t imm[64][4];
@@ -46,7 +47,7 @@ static void store(struct builder *b,unsigned s,unsigned slice)
 
 /* Parse only after all packet lengths and optional-field shapes were bounded.
  * In particular no indirect/dimension/texture/label token reader may run. */
-static int packets(const struct tgsi_token *t,unsigned words)
+static int packets(const struct tgsi_token *t,unsigned words,unsigned v2)
 {
     struct tgsi_header h;struct tgsi_processor p;unsigned at;
     if(!t||words<3||words>LIMIT+2)return -1;
@@ -69,7 +70,7 @@ static int packets(const struct tgsi_token *t,unsigned words)
         }else if(token.Type==TGSI_TOKEN_TYPE_INSTRUCTION){
             struct tgsi_instruction i;unsigned j;memcpy(&i,t+at,4);n=1u+i.NrTokens;
             if(i.Label||i.Texture||i.Memory||i.Precise||i.Saturate||i.Padding||
-               i.NumDstRegs>1||i.NumSrcRegs>2||n!=1u+i.NumDstRegs+i.NumSrcRegs||n>words-at)return -1;
+               i.NumDstRegs>1||i.NumSrcRegs>(v2&&i.Opcode==TGSI_OPCODE_UCMP?3u:2u)||n!=1u+i.NumDstRegs+i.NumSrcRegs||n>words-at)return -1;
             for(j=0;j<i.NumDstRegs;j++){
                 struct tgsi_dst_register d;memcpy(&d,t+at+1+j,4);
                 if(d.Indirect||d.Dimension||d.Padding)return -1;
@@ -90,10 +91,10 @@ static int input_slice(struct builder *b,const struct semantic *s,unsigned c,uns
     if(!s->declared||!(s->mask&(1u<<c)))return -1;
     switch(s->name){
     case TGSI_SEMANTIC_SAMPLEID:
-        if(s->index||c)return -1;
+        if(s->index||c||(b->v2&&b->v2->abi_version!=9))return -1;
         *slice=sample;b->p.metadata.used_sysvals|=OPENGPU_NATIVE_FS_SAMPLE_ID;break;
     case TGSI_SEMANTIC_SAMPLEPOS:
-        if(s->index||c>1)return -1;
+        if(s->index||c>1||(b->v2&&b->v2->abi_version!=9))return -1;
         *slice=sample+1+c;b->p.metadata.used_sysvals|=OPENGPU_NATIVE_FS_SAMPLE_POSITION;break;
     case TGSI_SEMANTIC_SAMPLEMASK:
         if(s->index||c)return -1;
@@ -102,12 +103,20 @@ static int input_slice(struct builder *b,const struct semantic *s,unsigned c,uns
         if(s->index)return -1;
         *slice=c;b->p.metadata.used_sysvals|=OPENGPU_NATIVE_FS_FRAG_COORD;break;
     case TGSI_SEMANTIC_GENERIC:
-        if(s->index>=16)return -1;
+        if(s->index>=(b->v2?b->v2->varying_slots:16u))return -1;
         *slice=6+4*s->index+c;b->p.metadata.used_sysvals|=OPENGPU_NATIVE_FS_VARYING;break;
     case TGSI_SEMANTIC_PRIMID:case TGSI_SEMANTIC_LAYER:
-        if(b->p.metadata.abi_version!=7||s->index||c)return -1;
-        *slice=72+(s->name==TGSI_SEMANTIC_LAYER);
-        b->p.metadata.used_sysvals|=OPENGPU_NATIVE_FS_GEOMETRY;break;
+        if(s->index||c)return -1;
+        if(b->v2){
+            if(s->name==TGSI_SEMANTIC_LAYER){*slice=~0u;b->p.metadata.used_sysvals|=OPENGPU_FRAGMENT_LAYER_ZERO;}
+            else{*slice=8+4*b->v2->varying_slots;b->p.metadata.used_sysvals|=OPENGPU_FRAGMENT_PRIMITIVE_ID;}
+        }else{
+            if(b->p.metadata.abi_version!=7)return -1;
+            *slice=72+(s->name==TGSI_SEMANTIC_LAYER);b->p.metadata.used_sysvals|=OPENGPU_NATIVE_FS_GEOMETRY;
+        }break;
+    case TGSI_SEMANTIC_HELPER_INVOCATION:
+        if(!b->v2||s->index||c)return -1;
+        *slice=~1u;b->p.metadata.used_sysvals|=OPENGPU_FRAGMENT_HELPER;break;
     default:return -1;
     }
     return 0;
@@ -127,7 +136,14 @@ static int source(struct builder *b,const struct tgsi_full_src_register *s,unsig
         splat(b,scratch,b->imm[i][c]);break;
     case TGSI_FILE_INPUT:case TGSI_FILE_SYSTEM_VALUE:
         if(input_slice(b,s->Register.File==TGSI_FILE_INPUT?b->input+i:b->system+i,c,&slice))return -1;
-        load(b,scratch,slice);break;
+        if(slice==~0u)splat(b,scratch,0);
+        else if(slice==~1u){
+            load(b,scratch,4);emit(b,vec(0x28,3,scratch,1,scratch));
+            emit(b,vec(9,3,scratch,1,scratch));emit(b,vec(11,3,scratch,31,scratch));emit(b,vec(0,3,scratch,1,scratch));
+        }else load(b,scratch,slice);
+        if(b->v2&&s->Register.File==TGSI_FILE_INPUT&&b->input[i].name==TGSI_SEMANTIC_GENERIC)
+            b->v2->varying_mask|=UINT64_C(1)<<(4*b->input[i].index+c);
+        break;
     default:return -1;
     }
     *r=scratch;return 0;
@@ -138,6 +154,7 @@ static int instruction(struct builder *b,const struct tgsi_full_instruction *in)
     const struct tgsi_dst_register *d=&in->Dst[0].Register;
     switch(op){
     case TGSI_OPCODE_MOV:n=1;break;
+    case TGSI_OPCODE_UCMP:if(!b->v2)return -1;n=3;break;
     case TGSI_OPCODE_U2F:n=1;convert=2;break;
     case TGSI_OPCODE_I2F:n=1;convert=3;break;
     case TGSI_OPCODE_F2U:n=1;convert=6;break; /* TGSI truncates toward zero. */
@@ -168,9 +185,12 @@ static int instruction(struct builder *b,const struct tgsi_full_instruction *in)
      * in-place MOV/ALU is parallel TGSI assignment, not scalar updates. */
     for(c=0;c<4;c++)if(d->WriteMask&(1u<<c)){
         unsigned a,z=0;
-        if(source(b,in->Src,c,28,&a)||(n==2&&source(b,in->Src+1,c,29,&z)))return -1;
+        if(source(b,in->Src,c,28,&a)||(n>=2&&source(b,in->Src+1,c,29,&z)))return -1;
         if(op==TGSI_OPCODE_MOV)copy(b,24+c,a);
-        else if(convert!=99)emit(b,vec(0x12,1,24+c,convert,a));
+        else if(op==TGSI_OPCODE_UCMP){
+            unsigned f;if(source(b,in->Src+2,c,31,&f))return -1;
+            copy(b,24+c,f);emit(b,vec(0x19,3,0,0,a));emit(b,vec(23,0,24+c,z,f)&~(1u<<25));
+        }else if(convert!=99)emit(b,vec(0x12,1,24+c,convert,a));
         else emit(b,vec(fn,f3,24+c,z,a));
     }
     for(c=0;c<4;c++)if(d->WriteMask&(1u<<c)){
@@ -181,25 +201,31 @@ static int instruction(struct builder *b,const struct tgsi_full_instruction *in)
         }else{
             struct semantic *s=b->output+d->Index;unsigned first=b->p.metadata.input_arrays;
             if(s->name==TGSI_SEMANTIC_COLOR){store(b,24+c,first+4*s->index+c);b->color_written[s->index]|=1u<<c;}
-            else if(s->name==TGSI_SEMANTIC_POSITION){store(b,24+c,first+16);b->depth=1;}
+            else if(s->name==TGSI_SEMANTIC_POSITION){store(b,24+c,first+4*b->p.metadata.color_slots);b->depth=1;}
             else{copy(b,30,24+c);b->sample_mask=1;}
         }
     }
     return b->failed?-1:0;
 }
-int opengpu_native_fs_emit(const void *tokens,unsigned token_words,
-    const struct opengpu_native_fs_config *config,struct opengpu_native_fs_program *out)
+static int emit_internal(const void *tokens,unsigned token_words,
+    const struct opengpu_native_fs_config *config,struct opengpu_native_fs_program *out,
+    struct opengpu_native_fragment_metadata_v2 *v2)
 {
     struct builder b={0};struct tgsi_parse_context parser;unsigned ended=0,result=-1;
-    if(!config||!out||(config->abi_version!=6&&config->abi_version!=7)||
-       config->thread_capacity!=128||config->varying_slots!=16||config->color_slots!=4||
-       config->sample_transport!=1||config->geometry_transport>1||
-       (config->abi_version==7&&!config->geometry_transport)||packets(tokens,token_words))return -1;
-    b.next=2;b.p.metadata=(struct opengpu_native_fs_metadata){
+    if(!config||!out||(!v2&&(config->abi_version!=6&&config->abi_version!=7))||
+       config->thread_capacity!=128||(!v2&&(config->varying_slots!=16||config->color_slots!=4))||
+       (!v2&&config->sample_transport!=1)||config->geometry_transport>1||
+       (config->abi_version==7&&!config->geometry_transport)||packets(tokens,token_words,v2!=NULL))return -1;
+    b.v2=v2;b.next=2;b.p.metadata=(struct opengpu_native_fs_metadata){
         .abi_version=config->abi_version,.input_arrays=config->abi_version==6?75:77,
         .array_stride=512,.thread_capacity=128,.varying_slots=16,.color_slots=4,
         .requires_sample_owner=1,.requires_geometry_owner=config->abi_version==7};
-    b.p.metadata.prefix_bytes=(b.p.metadata.input_arrays+18)*512;
+    if(v2){
+        b.p.metadata.abi_version=v2->abi_version;b.p.metadata.input_arrays=v2->input_arrays;
+        b.p.metadata.varying_slots=v2->varying_slots;b.p.metadata.color_slots=v2->color_slots;
+        b.p.metadata.requires_sample_owner=v2->requires_sample_owner;
+    }
+    b.p.metadata.prefix_bytes=(b.p.metadata.input_arrays+4*b.p.metadata.color_slots+2)*512;
     emit(&b,0x01007557u); /* full hardware vector length, active lanes remain masked */
     emit(&b,2u<<20|8u<<15|1u<<12|7u<<7|0x13u);
     emit(&b,7u<<20|1u<<15|5u<<7|0x33u);
@@ -220,19 +246,36 @@ int opengpu_native_fs_emit(const void *tokens,unsigned token_words,
                         d->Declaration.File==TGSI_FILE_SYSTEM_VALUE?b.system+i:b.output+i;
                     if(!d->Declaration.Semantic||s->declared)goto done;
                     *s=(struct semantic){1,d->Declaration.UsageMask,d->Semantic.Name,d->Semantic.Index+i-first};
-                    unsigned dummy;
+                    unsigned dummy,old_used=b.p.metadata.used_sysvals;
                     if(d->Declaration.File!=TGSI_FILE_OUTPUT){
                         /* Scalar system-value declarations may use the default
                          * xyzw usage mask; validate consumed swizzles separately. */
                         if(input_slice(&b,s,0,&dummy))goto done;
                         if(d->Declaration.File==TGSI_FILE_INPUT){
-                            if((s->name!=TGSI_SEMANTIC_GENERIC&&s->name!=TGSI_SEMANTIC_POSITION)||
-                               !d->Declaration.Interpolate||d->Interp.Padding||
-                               d->Interp.Location!=TGSI_INTERPOLATE_LOC_CENTER||
-                               d->Interp.Interpolate!=(s->name==TGSI_SEMANTIC_GENERIC?
-                                   TGSI_INTERPOLATE_PERSPECTIVE:TGSI_INTERPOLATE_LINEAR))goto done;
-                        }else if(s->name==TGSI_SEMANTIC_GENERIC||s->name==TGSI_SEMANTIC_POSITION)goto done;
-                    }else if(s->name!=TGSI_SEMANTIC_COLOR&&s->name!=TGSI_SEMANTIC_POSITION&&s->name!=TGSI_SEMANTIC_SAMPLEMASK)goto done;
+                            if(v2){
+                                if(!d->Declaration.Interpolate||d->Interp.Padding)goto done;
+                                if(s->name==TGSI_SEMANTIC_GENERIC){
+                                    unsigned mode=d->Interp.Interpolate,loc=d->Interp.Location;
+                                    if((mode!=TGSI_INTERPOLATE_CONSTANT&&mode!=TGSI_INTERPOLATE_PERSPECTIVE&&mode!=TGSI_INTERPOLATE_LINEAR)||
+                                       loc>TGSI_INTERPOLATE_LOC_SAMPLE||(loc==TGSI_INTERPOLATE_LOC_SAMPLE&&v2->abi_version!=9)||
+                                       (mode==TGSI_INTERPOLATE_CONSTANT&&loc!=TGSI_INTERPOLATE_LOC_CENTER))goto done;
+                                    uint64_t mask=(uint64_t)s->mask<<(4*s->index);
+                                    if(mode==TGSI_INTERPOLATE_CONSTANT)v2->flat_mask|=mask;
+                                    if(loc==TGSI_INTERPOLATE_LOC_CENTROID)v2->centroid_mask|=mask;
+                                    /* Native interpolator has perspective/flat; noperspective is not silently rewritten. */
+                                    if(mode==TGSI_INTERPOLATE_LINEAR)goto done;
+                                }else if(s->name==TGSI_SEMANTIC_PRIMID||s->name==TGSI_SEMANTIC_LAYER){
+                                    if(d->Interp.Interpolate!=TGSI_INTERPOLATE_CONSTANT||d->Interp.Location!=TGSI_INTERPOLATE_LOC_CENTER)goto done;
+                                }else if(s->name!=TGSI_SEMANTIC_POSITION||d->Interp.Interpolate!=TGSI_INTERPOLATE_LINEAR||
+                                         d->Interp.Location!=TGSI_INTERPOLATE_LOC_CENTER)goto done;
+                            }else if((s->name!=TGSI_SEMANTIC_GENERIC&&s->name!=TGSI_SEMANTIC_POSITION)||
+                                !d->Declaration.Interpolate||d->Interp.Padding||d->Interp.Location!=TGSI_INTERPOLATE_LOC_CENTER||
+                                d->Interp.Interpolate!=(s->name==TGSI_SEMANTIC_GENERIC?TGSI_INTERPOLATE_PERSPECTIVE:TGSI_INTERPOLATE_LINEAR))goto done;
+                        }else if(s->name==TGSI_SEMANTIC_GENERIC||s->name==TGSI_SEMANTIC_POSITION||
+                            (v2&&(s->name==TGSI_SEMANTIC_PRIMID||s->name==TGSI_SEMANTIC_LAYER)))goto done;
+                        if(v2)b.p.metadata.used_sysvals=old_used;
+                    }else if((s->name==TGSI_SEMANTIC_COLOR&&s->index>=b.p.metadata.color_slots)||
+                             (s->name!=TGSI_SEMANTIC_COLOR&&s->name!=TGSI_SEMANTIC_POSITION&&s->name!=TGSI_SEMANTIC_SAMPLEMASK))goto done;
                 }
             }break;
         }
@@ -272,10 +315,27 @@ int opengpu_native_fs_emit(const void *tokens,unsigned token_words,
         emit(&b,vec(0x25,3,30,7,30));
         splat(&b,31,control|64u);emit(&b,vec(10,0,31,30,31));
     }else splat(&b,31,control);
-    store(&b,31,b.p.metadata.input_arrays+17);
+    store(&b,31,b.p.metadata.input_arrays+4*b.p.metadata.color_slots+1);
     emit(&b,0x0330000fu);emit(&b,0x30500073u);
     if(!b.failed){*out=b.p;result=0;}
 done:tgsi_parse_free(&parser);return (int)result;
+}
+int opengpu_native_fs_emit(const void *tokens,unsigned words,const struct opengpu_native_fs_config *c,
+    struct opengpu_native_fs_program *out)
+{ return emit_internal(tokens,words,c,out,NULL); }
+int opengpu_native_fs_emit_v2(const void *tokens,unsigned words,
+    const struct opengpu_native_fragment_reflection_v2 *r,const struct opengpu_native_fragment_config_v2 *c,
+    struct opengpu_native_fragment_program_v2 *out)
+{
+    struct opengpu_native_fragment_program_v2 p={0};struct opengpu_native_fs_program raw;
+    if(!out||opengpu_native_fragment_metadata_init_v2(r,c,&p.metadata))return -1;
+    struct opengpu_native_fs_config config={p.metadata.abi_version,128,c->varying_slots,c->color_slots,c->sample_transport,0};
+    if(emit_internal(tokens,words,&config,&raw,&p.metadata))return -1;
+    p.words=raw.words;memcpy(p.code,raw.code,p.words*4);
+    p.metadata.used_sysvals=raw.metadata.used_sysvals;p.metadata.output_color_mask=raw.metadata.output_color_mask;
+    p.metadata.writes_depth=raw.metadata.writes_depth;p.metadata.writes_sample_mask=raw.metadata.writes_sample_mask;
+    if(!opengpu_native_fragment_metadata_valid_v2(&p.metadata))return -1;
+    *out=p;return 0;
 }
 static int le32(FILE *f,uint32_t v)
 { unsigned char a[4]={(unsigned char)v,(unsigned char)(v>>8),(unsigned char)(v>>16),(unsigned char)(v>>24)};return fwrite(a,1,4,f)==4?0:-1; }

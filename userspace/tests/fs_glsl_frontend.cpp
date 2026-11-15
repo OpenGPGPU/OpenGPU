@@ -17,6 +17,7 @@ extern "C" {
 #include "tgsi/tgsi_parse.h"
 #include "tgsi/tgsi_ureg.h"
 #include "fs_glsl_frontend.h"
+#include "native_fragment_reflection_v2.h"
 
 static int param(pipe_screen *,pipe_cap) { return 0; }
 static int shader_param(pipe_screen *,pipe_shader_type,pipe_shader_cap cap)
@@ -47,6 +48,7 @@ void opengpu_frontend_compiler_limits(gl_context *ctx)
 struct frontend_program {
     gl_context ctx;standalone_options options;gl_shader_program *program;
     const tgsi_token *tokens;
+    opengpu_native_fragment_reflection_v2 reflection;
 };
 extern "C" void native_fs_frontend_destroy(void *handle)
 {
@@ -55,15 +57,16 @@ extern "C" void native_fs_frontend_destroy(void *handle)
     if(f->program)standalone_compiler_cleanup(f->program);
     delete f;
 }
-extern "C" void *native_fs_frontend_compile(const char *path,const char *dump_prefix)
+static void *compile(const char *path,const char *dump_prefix,bool v2)
 {
     auto *f=new frontend_program{};
     f->options.glsl_version=300;f->options.do_link=1;f->options.just_log=1;
     char *filename=const_cast<char *>(path);
     f->program=standalone_compile_shader(&f->options,1,&filename,&f->ctx);
     auto *prog=f->program;
-    if(!prog||prog->data->LinkStatus!=LINKING_SUCCESS||!prog->IsES||prog->data->Version!=310||
+    if(!prog||prog->data->LinkStatus!=LINKING_SUCCESS||!prog->IsES||prog->data->Version!=(v2?320:310)||
        !prog->_LinkedShaders[MESA_SHADER_FRAGMENT]){native_fs_frontend_destroy(f);return nullptr;}
+    if(v2&&!native_fragment_reflect_v2(prog,&f->reflection)){native_fs_frontend_destroy(f);return nullptr;}
     exec_list_make_empty(&prog->EmptyUniformLocations);
     auto *shader=prog->_LinkedShaders[MESA_SHADER_FRAGMENT];
     pipe_screen screen={};screen.get_param=param;screen.get_shader_param=shader_param;
@@ -100,6 +103,13 @@ extern "C" void *native_fs_frontend_compile(const char *path,const char *dump_pr
         if(n<0||(unsigned)n>=sizeof(filename))abort();
         FILE *out=fopen(filename,"wx");if(!out)abort();nir_print_shader(nir,out);if(fclose(out))abort();
     }
+    if(v2)nir_foreach_shader_out_variable(var,nir){
+        if(var->data.location>=FRAG_RESULT_DATA0&&var->data.location<FRAG_RESULT_DATA0+4){
+            auto type=glsl_get_base_type(var->type);
+            if(type!=GLSL_TYPE_FLOAT&&type!=GLSL_TYPE_UINT&&type!=GLSL_TYPE_INT){native_fs_frontend_destroy(f);return nullptr;}
+            f->reflection.color_types[var->data.location-FRAG_RESULT_DATA0]=type==GLSL_TYPE_UINT?1:type==GLSL_TYPE_INT?2:0;
+        }
+    }
     f->tokens=static_cast<const tgsi_token *>(nir_to_tgsi(nir,&screen));
     shader->Program->nir=nullptr;
     if(!f->tokens){native_fs_frontend_destroy(f);return nullptr;}
@@ -114,3 +124,14 @@ extern "C" const void *native_fs_frontend_tokens(void *handle)
 { return static_cast<frontend_program *>(handle)->tokens; }
 extern "C" unsigned native_fs_frontend_token_words(void *handle)
 { return tgsi_num_tokens(static_cast<frontend_program *>(handle)->tokens); }
+
+extern "C" void *native_fs_frontend_compile(const char *path,const char *prefix)
+{ return compile(path,prefix,false); }
+extern "C" void *native_fs_frontend_compile_no_gs_v2(const char *path,const char *prefix)
+{ return compile(path,prefix,true); }
+extern "C" int native_fs_frontend_reflection_v2(void *p,opengpu_native_fragment_reflection_v2 *out)
+{
+    auto *f=static_cast<frontend_program *>(p);
+    if(!f||!out||f->reflection.version!=2)return -1;
+    *out=f->reflection;return 0;
+}

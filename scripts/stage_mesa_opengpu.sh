@@ -279,6 +279,7 @@ libopengpu_gallium = static_library(
     'opengpu_vs_emit.c',
     'opengpu_cs_emit.c',
     'opengpu_native_uniform_emit.c',
+    'opengpu_native_fragment_v2.c',
     'opengpu_native_graphics.c',
     'opengpu_native_sample_program.c',
     'opengpu_native_sample_graphics.c',

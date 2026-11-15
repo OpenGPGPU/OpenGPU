@@ -1,0 +1,31 @@
+#version 320 es
+precision highp float;
+precision highp int;
+uniform uvec4 defaults[256];
+layout(std140,binding=0) uniform B0 {uvec4 values[1024];} b0;
+layout(std140,binding=1) uniform B1 {uvec4 values[1024];} b1;
+layout(std140,binding=2) uniform B2 {uvec4 values[1024];} b2;
+layout(std140,binding=3) uniform B3 {uvec4 values[1024];} b3;
+layout(std140,binding=4) uniform B4 {uvec4 values[1024];} b4;
+layout(std140,binding=5) uniform B5 {uvec4 values[1024];} b5;
+layout(std140,binding=6) uniform B6 {uvec4 values[1024];} b6;
+layout(std140,binding=7) uniform B7 {uvec4 values[1024];} b7;
+layout(std140,binding=8) uniform B8 {uvec4 values[1024];} b8;
+layout(std140,binding=9) uniform B9 {uvec4 values[1024];} b9;
+layout(std140,binding=10) uniform B10 {uvec4 values[1024];} b10;
+layout(std140,binding=11) uniform B11 {uvec4 values[1024];} b11;
+layout(location=0) out uvec4 color;
+void main(){uint v=uint(gl_PrimitiveID)^defaults[255].w;
+v^=b0.values[1023].w;
+v^=b1.values[1023].w;
+v^=b2.values[1023].w;
+v^=b3.values[1023].w;
+v^=b4.values[1023].w;
+v^=b5.values[1023].w;
+v^=b6.values[1023].w;
+v^=b7.values[1023].w;
+v^=b8.values[1023].w;
+v^=b9.values[1023].w;
+v^=b10.values[1023].w;
+v^=b11.values[1023].w;
+color=uvec4(v,0u,0u,1u);}

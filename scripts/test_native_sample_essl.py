@@ -83,7 +83,7 @@ def main():
         mesa / 'src/gallium/include', mesa / 'src/gallium/auxiliary', mesa / 'src', mesa / 'include',
         mesa / 'src/compiler/nir', mb / 'src/compiler/nir')]
     for relative in ('userspace/tests/fs_glsl_frontend.cpp', 'userspace/tests/native_fs_compile.c',
-                     'userspace/gallium/opengpu_native_fs_emit.c'):
+                     'userspace/gallium/opengpu_native_fs_emit.c','userspace/gallium/opengpu_native_fragment_v2.c'):
         obj = out / (Path(relative).stem + '.o')
         opts = flags('compiler/glsl/standalone.cpp') if relative.endswith('.cpp') else ['-std=c11', '-O1', '-DHAVE_ENDIAN_H', '-D_POSIX_C_SOURCE=200809L']
         run((cxx if relative.endswith('.cpp') else cc) + opts + ['-UNDEBUG', '-Wall', '-Wextra', '-Werror',

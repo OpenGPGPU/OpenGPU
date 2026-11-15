@@ -225,6 +225,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         objects.append(obj)
     if graphics_uniforms:
         for relative in ("userspace/gallium/opengpu_native_uniform_emit.c",
+                         "userspace/gallium/opengpu_native_fragment_v2.c",
                          "userspace/gallium/opengpu_native_graphics.c",
                          "userspace/gallium/opengpu_native_draw.c",
                          "userspace/opengpu_native_runtime.c", "driver/opengpu_native_frame.c") + (("userspace/gallium/opengpu_native_sample_program.c", "userspace/opengpu_native_sample_graphics.c") if sample_graphics else ()):
