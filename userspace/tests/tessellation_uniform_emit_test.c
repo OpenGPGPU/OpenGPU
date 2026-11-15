@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 struct builder {struct tgsi_token t[1024];struct tgsi_header *h;};
-static unsigned io_copy,level_placeholder;
+static unsigned io_copy,level_placeholder,language_simt;
 #define APPEND(b,f,v) assert(f(&(v),(b)->t+(b)->h->HeaderSize+(b)->h->BodySize,(b)->h,1024-(b)->h->HeaderSize-(b)->h->BodySize))
 static void property(struct builder *b,unsigned name,unsigned value)
 {
@@ -84,6 +84,7 @@ static void dynamic_guards(void)
         .spans={{0,1,1,TGSI_SEMANTIC_GENERIC,15,15,0}}};
     struct opengpu_native_tess_program p,saved;
     assert(!opengpu_native_tess_dynamic_emit(b.t,n,&l,&m,&p));saved=p;
+    l.owned_tessellation_info=1;assert(opengpu_native_tess_dynamic_emit(b.t,n,&l,&m,&p));assert(!memcmp(&p,&saved,sizeof(p)));l.owned_tessellation_info=0;
     assert(!p.selection_count);
     for(unsigned i=0;i<61;i++){struct opengpu_native_tess_selection z={0};assert(!memcmp(p.selections+i,&z,sizeof(z)));}
     for(unsigned mode=0;mode<8;mode++){
@@ -141,15 +142,101 @@ static struct opengpu_native_tess_program first_ucmp(void)
     assert(selects==4);
     return p;
 }
+static void language_build(struct builder *b,unsigned stage,unsigned file,unsigned semantic_index,
+    unsigned channel,unsigned dimension){
+    memset(b,0,sizeof(*b));b->h=(void *)b->t;*b->h=tgsi_build_header();
+    struct tgsi_processor p=tgsi_build_processor(stage==4?PIPE_SHADER_TESS_CTRL:PIPE_SHADER_TESS_EVAL,b->h);memcpy(b->t+1,&p,4);
+    if(stage==4)property(b,TGSI_PROPERTY_TCS_VERTICES_OUT,32);
+    else {property(b,TGSI_PROPERTY_TES_PRIM_MODE,1);property(b,TGSI_PROPERTY_TES_SPACING,2);
+        property(b,TGSI_PROPERTY_TES_VERTEX_ORDER_CW,0);property(b,TGSI_PROPERTY_TES_POINT_MODE,0);
+        property(b,TGSI_PROPERTY_NEXT_SHADER,PIPE_SHADER_FRAGMENT);}
+    declaration(b,TGSI_FILE_OUTPUT,0,TGSI_SEMANTIC_POSITION,0);
+    declaration(b,TGSI_FILE_INPUT,0,TGSI_SEMANTIC_GENERIC,0);
+    struct tgsi_full_declaration d=tgsi_default_full_declaration();
+    d.Declaration.File=file;d.Declaration.Semantic=1;d.Declaration.UsageMask=1;
+    d.Range.First=d.Range.Last=1;d.Semantic.Name=TGSI_SEMANTIC_PRIMID;d.Semantic.Index=semantic_index;
+    APPEND(b,tgsi_build_full_declaration,d);
+    struct tgsi_full_instruction i=tgsi_default_full_instruction();i.Instruction.Opcode=TGSI_OPCODE_MOV;
+    i.Instruction.NumDstRegs=i.Instruction.NumSrcRegs=1;i.Dst[0].Register.File=TGSI_FILE_OUTPUT;
+    i.Dst[0].Register.WriteMask=15;i.Dst[0].Register.Dimension=stage==4;
+    i.Src[0].Register.File=file;i.Src[0].Register.Index=1;i.Src[0].Register.Dimension=dimension;
+    i.Src[0].Register.SwizzleX=i.Src[0].Register.SwizzleY=i.Src[0].Register.SwizzleZ=i.Src[0].Register.SwizzleW=channel;
+    if(language_simt){
+        struct tgsi_full_instruction branch=tgsi_default_full_instruction();
+        branch.Instruction.Opcode=TGSI_OPCODE_UIF;branch.Instruction.NumSrcRegs=1;branch.Instruction.NumDstRegs=0;
+        branch.Src[0]=i.Src[0];APPEND(b,tgsi_build_full_instruction,branch);
+        APPEND(b,tgsi_build_full_instruction,i);
+        branch=tgsi_default_full_instruction();branch.Instruction.Opcode=TGSI_OPCODE_ELSE;
+        branch.Instruction.NumSrcRegs=branch.Instruction.NumDstRegs=0;APPEND(b,tgsi_build_full_instruction,branch);
+        APPEND(b,tgsi_build_full_instruction,i);
+        branch.Instruction.Opcode=TGSI_OPCODE_ENDIF;APPEND(b,tgsi_build_full_instruction,branch);
+    }else APPEND(b,tgsi_build_full_instruction,i);
+    i=tgsi_default_full_instruction();i.Instruction.Opcode=TGSI_OPCODE_END;
+    i.Instruction.NumDstRegs=i.Instruction.NumSrcRegs=0;APPEND(b,tgsi_build_full_instruction,i);
+}
+static void language_guards(void){
+    for(unsigned stage=4;stage<=5;stage++)for(unsigned file=0;file<2;file++){
+        unsigned actual=file?TGSI_FILE_INPUT:TGSI_FILE_SYSTEM_VALUE;
+        struct builder b;language_build(&b,stage,actual,0,0,0);
+        struct opengpu_native_tess_layout l={.version=3,.stage=stage,.capacity=128,.input_vertices=32,
+            .output_vertices=32,.input_components=64,.output_components=stage==4?64:4,
+            .output_position=1,.domain=1,.spacing=2,.owned_tessellation_info=1};
+        if(stage==5){l.owned_patch_reads=1;l.tes_patch_layout=(struct opengpu_native_tess_patch_layout){32,64,32,64,0};}
+        struct opengpu_native_tess_input_map m={.version=1,.count=1,
+            .spans={{0,1,1,stage==4?TGSI_SEMANTIC_POSITION:TGSI_SEMANTIC_GENERIC,stage==4?0:15,15,0}}};
+        struct opengpu_native_tess_program out,saved;
+        assert(!opengpu_native_tess_language_emit(b.t,b.h->HeaderSize+b.h->BodySize,&l,&m,&out));saved=out;
+        unsigned reads=0;
+        for(unsigned i=0;i<out.words;i++)if((out.code[i]&127)==0x0b&&(out.code[i]>>25)==37){
+            assert(i&&out.code[i-1]==(6u<<20|10u<<7|0x13));
+            assert(out.code[i]==(37u<<25|10u<<15|10u<<7|0x0b));reads++;
+        }
+        assert(reads==4);
+        if(stage==4&&!file){
+            language_simt=1;language_build(&b,stage,actual,0,0,0);language_simt=0;
+            assert(!opengpu_native_tess_language_emit(b.t,b.h->HeaderSize+b.h->BodySize,&l,&m,&out));
+            unsigned scoped=0;
+            for(unsigned j=0;j<out.words;j++)if((out.code[j]&127)==0x0b&&(out.code[j]>>25)==37){
+                assert(j&&out.code[j-1]==(6u<<20|10u<<7|0x13));scoped++;
+            }
+            assert(scoped==9);out=saved;language_build(&b,stage,actual,0,0,0);
+        }
+        assert(opengpu_native_tess_uniform_emit(b.t,b.h->HeaderSize+b.h->BodySize,&l,&out));
+        assert(opengpu_native_tess_dynamic_emit(b.t,b.h->HeaderSize+b.h->BodySize,&l,&m,&out));
+        assert(!memcmp(&saved,&out,sizeof(out)));
+        for(unsigned kind=0;kind<10;kind++){
+            struct opengpu_native_tess_layout bad=l;
+            language_build(&b,stage,actual,kind==4,kind==5,kind==6);
+            if(kind==0)bad.version=1;
+            if(kind==1)bad.version=2;
+            if(kind==2)bad.owned_tessellation_info=0;
+            if(kind==3)bad.owned_tessellation_info=2;
+            if(kind==7)bad.stage=3;
+            if(kind==8)bad.owned_patch_reads=stage==4;
+            if(kind==9)bad.tes_patch_layout.output_components=65;
+            assert(opengpu_native_tess_language_emit(b.t,b.h->HeaderSize+b.h->BodySize,&bad,&m,&out));
+            assert(!memcmp(&saved,&out,sizeof(out)));
+        }
+        language_build(&b,stage,actual,0,0,0);
+        for(unsigned v=1;v<=2;v++){
+            struct opengpu_native_tess_layout bad=l;bad.version=v;
+            assert(opengpu_native_tess_uniform_emit(b.t,b.h->HeaderSize+b.h->BodySize,&bad,&out));
+            assert(opengpu_native_tess_dynamic_emit(b.t,b.h->HeaderSize+b.h->BodySize,&bad,&m,&out));
+            assert(!memcmp(&saved,&out,sizeof(out)));
+        }
+    }
+    puts("Language v3 real Mesa token parser: four stage/semantic forms and40 rejection fixtures PASS; CPU only");
+}
 int main(void)
 {
-    old_vs_isolation();dynamic_guards();(void)first_ucmp();
+    old_vs_isolation();dynamic_guards();language_guards();(void)first_ucmp();
     struct builder b;struct opengpu_native_tess_program out;
     for(unsigned stage=4;stage<=5;stage++){
         struct opengpu_native_tess_layout l={.version=1,.stage=stage,.capacity=128,.input_vertices=32,.output_vertices=32,
             .input_components=64,.output_components=64,.output_position=1,.domain=1,.spacing=2};
         build(&b,stage,12,1023);unsigned n=b.h->HeaderSize+b.h->BodySize;
         assert(!opengpu_native_tess_uniform_emit(b.t,n,&l,&out));assert(out.constant_bytes[12]==16384&&out.words<=512);
+        l.owned_tessellation_info=1;rejected(&b,n,l);l.owned_tessellation_info=0;
         if(stage==4){
             level_placeholder=1;build(&b,stage,12,1023);level_placeholder=0;
             n=b.h->HeaderSize+b.h->BodySize;

@@ -15,8 +15,9 @@ void opengpu_native_tess_program_destroy(struct opengpu_native_tess_program_pair
     for(unsigned i=0;i<2;i++)if(p->code[i])pipe_opengpu_resource_destroy(opengpu_screen_gpu(p->pipe->screen),p->code[i]);
     free(p);
 }
-struct opengpu_native_tess_program_pair *opengpu_native_tess_program_create(struct pipe_context *pipe,
-    const void *tokens[2],const unsigned words[2],const struct opengpu_native_tess_layout layout[2]){
+static struct opengpu_native_tess_program_pair *create(struct pipe_context *pipe,
+    const void *tokens[2],const unsigned words[2],const struct opengpu_native_tess_layout layout[2],
+    const struct opengpu_native_tess_input_map maps[2]){
     if(!pipe||!pipe->screen||!tokens||!words||!layout||layout[0].stage!=4||layout[1].stage!=5||
         layout[0].output_components!=layout[1].input_components||layout[0].output_position!=layout[1].input_position||
         layout[0].output_vertices!=layout[1].output_vertices||layout[0].patch_components!=layout[1].patch_components||
@@ -26,8 +27,14 @@ struct opengpu_native_tess_program_pair *opengpu_native_tess_program_create(stru
     struct opengpu_native_tess_program_pair *p=calloc(1,sizeof(*p));
     if(!p)return NULL;
     p->pipe=pipe;
+    /* Compile/capture both source programs before any allocation callback can
+     * mutate original tokens, maps or layout storage. */
+    if(maps)for(unsigned i=0;i<2;i++)if(opengpu_native_tess_language_emit(tokens[i],words[i],layout+i,maps+i,p->shaders+i)){
+        errno=ENOTSUP;goto fail;
+    }
     for(unsigned i=0;i<2;i++){
-        if(opengpu_native_tess_uniform_emit(tokens[i],words[i],layout+i,p->shaders+i)){errno=ENOTSUP;
+        int result=maps?0:opengpu_native_tess_uniform_emit(tokens[i],words[i],layout+i,p->shaders+i);
+        if(result){errno=ENOTSUP;
         goto fail;
         }
         p->code[i]=pipe_opengpu_resource_create(opengpu_screen_gpu(pipe->screen),4*p->shaders[i].words);
@@ -58,4 +65,20 @@ int opengpu_native_tess_program_sources(struct opengpu_native_tess_program_pair 
     if(opengpu_native_tess_constant_sources(constants,required,value.uniforms))return -1;
     *out=value;
     return 0;
+}
+
+struct opengpu_native_tess_program_pair *opengpu_native_tess_program_create(struct pipe_context *pipe,
+    const void *tokens[2],const unsigned words[2],const struct opengpu_native_tess_layout layout[2]){
+    return create(pipe,tokens,words,layout,NULL);
+}
+struct opengpu_native_tess_program_pair *opengpu_native_tess_language_program_create(struct pipe_context *pipe,
+    const void *tokens[2],const unsigned words[2],const struct opengpu_native_tess_layout layout[2],
+    const struct opengpu_native_tess_input_map maps[2]){
+    if(!maps||!layout||layout[0].version!=3||layout[1].version!=3){errno=EINVAL;return NULL;}
+    struct opengpu_native_tess_layout captured[2]={layout[0],layout[1]};
+    struct opengpu_native_tess_input_map captured_maps[2]={maps[0],maps[1]};
+    const struct opengpu_native_tess_patch_layout expected={captured[0].input_vertices,captured[0].input_components,
+        captured[0].output_vertices,captured[0].output_components,captured[0].patch_components};
+    if(memcmp(&expected,&captured[1].tes_patch_layout,sizeof(expected))){errno=EINVAL;return NULL;}
+    return create(pipe,tokens,words,captured,captured_maps);
 }

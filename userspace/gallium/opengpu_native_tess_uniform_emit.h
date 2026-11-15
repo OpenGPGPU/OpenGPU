@@ -32,6 +32,8 @@ struct opengpu_native_tess_layout {
     /* Version1 requires these fields zero. Version2 is TES-only. */
     struct opengpu_native_tess_patch_layout tes_patch_layout;
     unsigned owned_patch_reads;
+    /* Version3-only compiler requirement, never verified-owner authority. */
+    unsigned owned_tessellation_info;
 };
 struct opengpu_native_tess_selection { unsigned per_patch, tess_level, vertex, component; };
 struct opengpu_native_tess_program {
@@ -64,6 +66,14 @@ int opengpu_native_tess_dynamic_emit(const void *,unsigned tokens_words,
 int opengpu_native_tess_control_emit(const void *,unsigned tokens_words,
     const struct opengpu_native_tess_layout *,const struct opengpu_native_tess_input_map *,
     struct opengpu_native_tess_program *);
+/* Explicit language input-patch-ID dialect. TCS keeps checked patch ops;
+ * TES keeps dynamic owned patch ops. Original v1/v2 entry points reject v3. */
+int opengpu_native_tess_language_control_reflect(const void *,unsigned,unsigned capacity,
+    unsigned patch_vertices,struct opengpu_native_tess_layout *);
+int opengpu_native_tess_language_evaluation_reflect(const void *,unsigned,unsigned capacity,
+    const struct opengpu_native_tess_layout *control,struct opengpu_native_tess_layout *);
+int opengpu_native_tess_language_emit(const void *,unsigned,const struct opengpu_native_tess_layout *,
+    const struct opengpu_native_tess_input_map *,struct opengpu_native_tess_program *);
 #ifdef __cplusplus
 }
 #endif

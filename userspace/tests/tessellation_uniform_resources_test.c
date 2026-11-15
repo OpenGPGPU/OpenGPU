@@ -110,3 +110,56 @@ void tessellation_resource_test(void *frontend)
     for(unsigned i=1;i<next_bo;i++)assert(!bos[i].handle&&!bos[i].jobs&&!bos[i].maps);
     puts("Actual Mesa TCS/TES callbacks, original GEM views/private code/defaults CPU PASS; GPU not executed");
 }
+
+/* Explicit private language compiler path; old public callbacks stay absent.
+ * The original GEM views and code/default copies remain real winsys objects. */
+void tessellation_language_resource_test(void *frontend,const struct opengpu_native_tess_layout layout[2],
+    const struct opengpu_native_tess_input_map maps[2])
+{
+    struct pipe_screen *screen=opengpu_drm_screen_create(7,NULL);assert(screen);
+    struct pipe_context *pipe=screen->context_create(screen,NULL,0);assert(pipe);
+    assert(!pipe->create_tcs_state&&!pipe->create_tes_state);
+    struct opengpu_native_tess_constants *cache=opengpu_native_tess_constants_create(pipe);assert(cache);
+    struct pipe_context *sink=opengpu_native_tess_constants_pipe(cache);
+    struct pipe_resource *resources[72]={0};unsigned offsets[72]={0},sizes[72]={0};
+    unsigned blocks[2]={opengpu_tess_frontend_blocks(frontend,4),opengpu_tess_frontend_blocks(frontend,5)};
+    assert((blocks[0]==1&&blocks[1]==1)||(blocks[0]==12&&blocks[1]==12));
+    unsigned allocation=(blocks[0]+blocks[1])*16448+64;sparse_next=1;
+    struct pipe_resource *original=buffer(screen,allocation);assert(original);
+    unsigned handle=pipe_opengpu_resource_handle(opengpu_resource(original)->gpu);
+    for(unsigned s=0,w=0;s<2;s++)for(unsigned i=0;i<blocks[s];i++,w++){
+        unsigned binding=opengpu_tess_frontend_binding(frontend,s+4,i);assert(binding<72&&!resources[binding]);
+        pipe_resource_reference(resources+binding,original);offsets[binding]=4+w*16448;sizes[binding]=16384;
+    }
+    pipe_resource_reference(&original,NULL);
+    assert(!opengpu_tess_frontend_ubos(frontend,sink,resources,offsets,sizes));
+    unsigned defaults[1024];for(unsigned i=0;i<1024;i++)defaults[i]=0x19283746u+i;
+    for(unsigned stage=4;stage<=5;stage++)assert(!opengpu_tess_frontend_defaults(frontend,sink,stage,defaults,1024));
+    memset(defaults,0xee,sizeof(defaults));
+    const void *tokens[2]={opengpu_tess_frontend_tokens(frontend,4),opengpu_tess_frontend_tokens(frontend,5)};
+    unsigned words[2]={tgsi_num_tokens(tokens[0]),tgsi_num_tokens(tokens[1])};
+    assert(!opengpu_native_tess_program_create(pipe,tokens,words,layout));
+    struct opengpu_native_tess_program_pair *pair=opengpu_native_tess_language_program_create(pipe,tokens,words,layout,maps);assert(pair);
+    struct opengpu_native_tess_program_sources source,saved;
+    assert(!opengpu_native_tess_program_sources(pair,cache,&source));saved=source;
+    for(unsigned s=0;s<2;s++){
+        assert(source.shaders[s].layout.version==3&&source.shaders[s].layout.owned_tessellation_info==1);
+        assert(source.uniforms[s].active_mask==((1u<<blocks[s])-1));
+        assert(source.code[s].bytes==source.shaders[s].words*4&&source.code[s].offset==0);
+        assert(!memcmp(bos[source.code[s].handle].data,source.shaders[s].code,source.code[s].bytes));
+        for(unsigned i=0;i<blocks[s];i++){
+            unsigned b=opengpu_tess_frontend_binding(frontend,s+4,i);
+            assert(source.uniforms[s].blocks[i].handle==handle&&source.uniforms[s].blocks[i].offset==offsets[b]&&source.uniforms[s].blocks[i].bytes==16384);
+        }
+        unsigned d=source.uniforms[s].defaults.handle;assert(d&&d!=handle&&source.uniforms[s].defaults.bytes==4096);
+        for(unsigned i=0;i<1024;i++)assert(((unsigned *)bos[d].data)[i]==0x19283746u+i);
+    }
+    for(unsigned i=0;i<72;i++)pipe_resource_reference(resources+i,NULL);
+    assert(bos[handle].handle);assert(!opengpu_native_tess_program_sources(pair,cache,&source));assert(!memcmp(&saved,&source,sizeof(source)));
+    struct opengpu_native_tess_layout bad[2]={layout[0],layout[1]};bad[1].tes_patch_layout.input_vertices++;
+    assert(!opengpu_native_tess_language_program_create(pipe,tokens,words,bad,maps));
+    opengpu_native_tess_program_destroy(pair);opengpu_native_tess_constants_destroy(cache);
+    pipe->destroy(pipe);screen->destroy(screen);
+    for(unsigned i=1;i<next_bo;i++)assert(!bos[i].handle&&!bos[i].jobs&&!bos[i].maps);
+    puts("Language v3 original code/default/UBO GEM source copies and reference retirement CPU PASS");
+}
