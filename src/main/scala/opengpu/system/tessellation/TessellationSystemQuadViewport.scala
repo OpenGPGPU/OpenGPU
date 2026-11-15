@@ -54,7 +54,7 @@ class TessellationSystemQuadViewport(config: GpuConfig, p: VertexShaderStageConf
     val invalidate = Flipped(Decoupled(new CacheLineInvalidate(config))); val invalidateDone = Decoupled(new CacheLineInvalidate(config))
   })
   private val source = Module(new TessellationCuQuadSystemClient(config, idWidth, numComputeUnits,tessellationUniforms,evaluationPatchAvailable,tessellationInfoAvailable))
-  private val mapper = Module(new TessellationQuadPrimitiveMapper(p,flatShading = !transformFeedback))
+  protected val mapper = Module(new TessellationQuadPrimitiveMapper(p,flatShading = !transformFeedback))
   private val feedback = if(transformFeedback) Some(Module(new TransformFeedbackExport(config,p))) else None
   private val clip = Module(new PrimitiveClipStage(p, useSramBlackBoxes))
   private val prep = Module(new Fp32ViewportStage(p, viewport))

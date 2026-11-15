@@ -18,7 +18,11 @@ class TessellationSystemIsolineVertexTypedRangeCompletion extends Bundle {
 /** Typed range adapter only: task/retirement connect to the actual image parent.
   * It creates neither patch bytes nor child completions and grants no native authority. */
 class TessellationSystemIsolineVertexTypedRange(config:GpuConfig,p:VertexShaderStageConfig,idWidth:Int,
-    tessellationUniforms:Boolean=false,evaluationPatchAvailable:Boolean=false,tessellationInfoAvailable:Boolean=false) extends Module {
+    tessellationUniforms:Boolean=false,evaluationPatchAvailable:Boolean=false,tessellationInfoAvailable:Boolean=false,jointCursors:Boolean=false) extends Module {
+  // Keep the previous full constructor and its serialized metadata unchanged.
+  def this(config:GpuConfig,p:VertexShaderStageConfig,idWidth:Int,tessellationUniforms:Boolean,evaluationPatchAvailable:Boolean,tessellationInfoAvailable:Boolean) =
+    this(config,p,idWidth,tessellationUniforms,evaluationPatchAvailable,tessellationInfoAvailable,false)
+
   // Preserve the previous full JVM constructor with the language service disabled.
   def this(config:GpuConfig,p:VertexShaderStageConfig,idWidth:Int,tessellationUniforms:Boolean,evaluationPatchAvailable:Boolean) =
     this(config,p,idWidth,tessellationUniforms,evaluationPatchAvailable,false)
@@ -30,8 +34,11 @@ class TessellationSystemIsolineVertexTypedRange(config:GpuConfig,p:VertexShaderS
     val taskDrained=Input(Bool());val cancel=Input(Bool());val cancelChild=Output(Bool())
     val completion=Decoupled(new TessellationSystemIsolineVertexTypedRangeCompletion)
     val busy=Output(Bool());val drained=Output(Bool())
+    val cursor=if(jointCursors)Some(Input(new TessellationJointPublicationCursor))else None
+    val nextCursor=if(jointCursors)Some(Output(new TessellationJointPublicationCursor))else None
   })
-  private val core=Module(new TessellationVertexTypedRangeControl(p))
+  private val core=Module(new TessellationVertexTypedRangeControl(p,jointCursors))
+  if(jointCursors){core.io.cursor.get:=io.cursor.get;io.nextCursor.get:=core.io.nextCursor.get}
   private val template=Reg(new TessellationSystemIsolineBinTask(config,p,idWidth))
   private val lastValid=RegInit(false.B)
   private val last=Reg(new TessellationSystemIsolineVertexInputImageTaskCompletion)
