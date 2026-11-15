@@ -29,6 +29,17 @@ exclusion are checked without granting resource or execution permission.
 Original GNQ/GND/GNT sizes remain 512/2048/2048 bytes; old encoders, readers
 and admission interfaces are unchanged.
 
+The producer-facing
+`opengpu_tessellation_vertex_sequence_source_canonical` checks the same full
+GNT7/8/9 header, domain, reserved bits and transport exclusions, but requires
+all three source words 509–511 to be zero. The existing
+`opengpu_tessellation_vertex_sequence_canonical` instead checks a bound root:
+64-byte-aligned base, exact 512-byte extent and a 33-bit exclusive limit no
+greater than 4 GiB. A producer cannot provide either relocation field. An
+enclosing BUILD must validate the unbound source, apply owner-controlled
+relocations, then validate the bound record; this distinction does not create
+that enclosing BUILD or grant submission permission.
+
 ## Production helper boundary
 
 `opengpu_tessellation_vertex_source_append` first copies the complete typed
@@ -83,6 +94,18 @@ Negative controls remove source-alias checks, legacy sampler rejection,
 old-DMA exclusion, static-TES exclusion, restart canonicalization, 33-bit
 source/sequence endpoint checks, unused-map rejection or immutable-plan
 capture, or make metadata executable. Each fails a semantic assertion.
+
+The producer/bound split adds all-three-domain cases for zero relocation
+fields, cross-domain/header/size rejection, reserved and over-width fields,
+forbidden legacy transports, ordinary bound roots and the exact 4 GiB
+exclusive endpoint. An eleventh semantic negative control removes the
+producer's zero-address requirement and must fail an assertion. The updated
+owner/MMU fixture and all eleven semantic negative controls passed with
+Clang and immutable Linux GCC 13.3 ASan/UBSan (53.05 and 62.72 seconds).
+The ABI generator check and all four ABI/catalog tests also passed. The four
+tested C/header/fixture/runner inputs were unchanged during each compiler run;
+owned temporary outputs were removed. The earlier module-build result below
+predates this split, which has no new runtime or module-build qualification.
 
 Reproduce from the repository root:
 

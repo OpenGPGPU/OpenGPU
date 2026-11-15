@@ -40,6 +40,8 @@ def main():
         if args.negative_controls:
             production = (ROOT / 'driver/opengpu_tessellation_vertex_source.c').read_text()
             mutations = {
+                'accept-caller-gvs-address': ('if(!bound)return !gvs_word(raw,509) && !end;',
+                                             'if(!bound)return true;'),
                 'ignore-physical-alias': ('if(first<limit && scratch<end)return -EINVAL;',
                                           'if(false && first<limit && scratch<end)return -EINVAL;'),
                 'ignore-legacy-sampler-source': ('for(u32 word=328;word<=335;word++)if(gvs_word(c->draw,word))return true;', ''),

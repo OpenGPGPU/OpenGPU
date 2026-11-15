@@ -36,6 +36,10 @@ struct opengpu_tessellation_vertex_source {
  * enqueue permission. A linked reader/outer BUILD is still required. */
 bool opengpu_tessellation_vertex_source_canonical(const void *data,size_t bytes);
 bool opengpu_tessellation_vertex_sequence_canonical(const void *data,size_t bytes,u32 domain);
+/* Original, unbound GNT7/8/9: source words 509..511 must all be zero. This
+ * format check grants no allocation, profile, owner or enqueue authority.
+ * A BUILD must apply its private GVS relocation, then use the bound checker. */
+bool opengpu_tessellation_vertex_sequence_source_canonical(const void *data,size_t bytes,u32 domain);
 /* Capture the complete kernel plan and original GND bytes before callbacks.
  * Caller MUST retain local GEMs/context, hold reservations, complete producers
  * outside submit_lock and prevent source CPU writes while copying. Callback
