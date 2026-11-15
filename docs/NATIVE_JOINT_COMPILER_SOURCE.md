@@ -1,5 +1,8 @@
 # Private linked four-stage program and source lease
 
+Source delivery: [PR #827](https://github.com/OpenGPGPU/OpenGPU/pull/827), based
+on merged #826. Full P17 target acceptance remains pending.
+
 `opengpu_native_joint` compiles one original ESSL320 VS/TCS/TES/FS link. Its
 opaque compiler object owns the four TGSI streams, original NIR variable spans,
 linked block order and HIR fragment static-use facts. Program creation copies
