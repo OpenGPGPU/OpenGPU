@@ -1,6 +1,7 @@
 # Captured invocation and private program source delivery
 
-This package rebases six original logical commits on merged PR #824. It adds
+[PR #825](https://github.com/OpenGPGPU/OpenGPU/pull/825) rebases six original
+logical commits on merged PR #824. It adds
 unbound GNT source validation, complete original draw/invocation capture,
 internal tessellation program profile 3, immutable native program authority,
 and independently owned fragment ABI 8/9 program validation. It enables no
