@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 struct opengpu_native_joint_program {unsigned refs;struct pipe_context *pipe;struct pipe_opengpu_screen *screen;struct opengpu_native_joint_description d;struct pipe_opengpu_resource *code[4];};
-struct opengpu_native_joint_source {struct opengpu_native_joint_program *program;struct opengpu_native_joint_bindings *bindings;struct opengpu_native_joint_description d;};
+struct opengpu_native_joint_source {unsigned refs;struct opengpu_native_joint_program *program;struct opengpu_native_joint_bindings *bindings;struct opengpu_native_joint_description d;};
 static unsigned bits(unsigned x){unsigned n=0;for(;x;x>>=1)n+=x&1;return n;}
 void opengpu_native_joint_program_destroy(struct opengpu_native_joint_program *p){
     if(!p||--p->refs)return;
@@ -114,7 +114,12 @@ struct opengpu_native_joint_source *opengpu_native_joint_source_create(struct op
     memcpy(need[1],p->d.tess[0].constant_bytes,sizeof(need[1]));memcpy(need[2],p->d.tess[1].constant_bytes,sizeof(need[2]));
     memcpy(need[3],p->d.fragment.metadata.constant_bytes,sizeof(need[3]));
     s->bindings=opengpu_native_joint_capture(constants,p->pipe,need,s->d.uniforms);
-    if(!s->bindings){free(s);return NULL;}s->program=p;p->refs++;return s;
+    if(!s->bindings){free(s);return NULL;}s->refs=1;s->program=p;p->refs++;return s;
 }
-void opengpu_native_joint_source_destroy(struct opengpu_native_joint_source *s){if(!s)return;opengpu_native_joint_release(s->bindings);opengpu_native_joint_program_destroy(s->program);free(s);}
+void opengpu_native_joint_source_destroy(struct opengpu_native_joint_source *s){if(!s||--s->refs)return;opengpu_native_joint_release(s->bindings);opengpu_native_joint_program_destroy(s->program);free(s);}
 int opengpu_native_joint_source_describe(const struct opengpu_native_joint_source *s,struct opengpu_native_joint_description *out){if(!s||!out){errno=EINVAL;return -1;}*out=s->d;return 0;}
+
+int opengpu_native_joint_source_matches(const struct opengpu_native_joint_source *s,struct pipe_context *pipe)
+{ if(!s || s->program->pipe!=pipe){errno=EINVAL;return -1;}return 0; }
+struct opengpu_native_joint_source *opengpu_native_joint_source_retain(struct opengpu_native_joint_source *s)
+{ if(!s || s->refs==~0u){errno=EINVAL;return NULL;}s->refs++;return s; }

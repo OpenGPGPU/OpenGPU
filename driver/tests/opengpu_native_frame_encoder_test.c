@@ -1,5 +1,5 @@
 /* CPU metadata/ownership checks, not an RTL rendering qualification. */
-#include "opengpu_native_frame.h"
+#include "opengpu_native_frame_internal.h"
 #include "opengpu_texture_image_format_abi.h"
 #include <assert.h>
 #include <errno.h>
@@ -47,8 +47,33 @@ static void reject(const struct opengpu_native_frame_request *r, int error)
     assert(opengpu_native_frame_encode(r,&e)==error);
     assert(!memcmp(&e,&before,sizeof(e)));
 }
+static void joint_planner(void)
+{
+    struct opengpu_native_frame_request r=request();
+    struct opengpu_native_frame_encoding expected,out,before;
+    assert(!opengpu_native_frame_encode(&r,&expected));
+    struct opengpu_native_frame_limits limits={2048,2048,4,4,4,32768,1,1,2};
+    r.caps=NULL;assert(!opengpu_native_frame_encode_joint(&r,&limits,&out));
+    assert(!memcmp(&out,&expected,sizeof(out))); /* GNF1 directly, unchanged bytes. */
+    for(unsigned bad=0;bad<14;bad++){
+        struct opengpu_native_frame_limits l=limits;struct opengpu_native_frame_request q=r;
+        switch(bad){case 0:l.width=0;break;case 1:l.height=0;break;case 2:l.samples=3;break;
+        case 3:l.colors=0;break;case 4:l.colors=5;break;case 5:l.engines=0;break;
+        case 6:l.engines=5;break;case 7:l.storage_bytes=32767;break;case 8:l.tile8=2;break;
+        case 9:l.tile8=l.tile16=0;break;case 10:l.frame_version=3;break;
+        case 11:q.caps=&caps;break;case 12:q.width=UINT32_MAX;break;
+        case 13:l.width=l.height=q.width=q.height=UINT32_MAX;break;}
+        memset(&out,0xa7,sizeof(out));before=out;
+        assert(opengpu_native_frame_encode_joint(&q,&l,&out));assert(!memcmp(&out,&before,sizeof(out)));
+    }
+    /* New typed metadata never makes GNC5 acceptable to either old wrapper. */
+    struct opengpu_native_binned_host_caps c=caps;c.words[0]=0x474e4305;r.caps=&c;
+    assert(opengpu_native_frame_encode(&r,&out)==-EOPNOTSUPP);
+    r.caps=NULL;assert(opengpu_native_frame_encode(&r,&out)==-EINVAL);
+}
 int main(int argc, char **argv)
 {
+    joint_planner();
     struct opengpu_native_frame_request r=request(), q;
     struct opengpu_native_frame_encoding e;
     assert(!opengpu_native_frame_encode(&r,&e));
