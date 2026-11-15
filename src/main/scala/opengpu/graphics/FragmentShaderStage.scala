@@ -11,7 +11,7 @@ case class FragmentShaderConfig(varyings: Int=16,colors: Int=4) {
   require(varyings>=1 && varyings<=16 && colors>=1 && colors<=4)
   val vertices=VertexShaderStageConfig(varyings=varyings)
   val maxOutputWords=4*colors+2
-  def prefixBytes(capacity: Int,varyingSlots: Int,colorSlots: Int,version: Int=1): Int=4*capacity*(8+4*varyingSlots+4*colorSlots+(if(FragmentInputAbi.hasPointCoord(version))2 else 0)+(if(FragmentInputAbi.hasGeometry(version))2 else 0)+(if(FragmentInputAbi.hasSample(version))3 else 0))
+  def prefixBytes(capacity: Int,varyingSlots: Int,colorSlots: Int,version: Int=1): Int=4*capacity*(8+4*varyingSlots+4*colorSlots+(if(FragmentInputAbi.hasPointCoord(version))2 else 0)+FragmentInputAbi.metadataWords(version)+(if(FragmentInputAbi.hasSample(version))3 else 0))
 }
 /** Internal version1 SoA ABI, stride=4*physical-CU-thread-capacity:
   * inputs: fragCoord.xyzw, flags(front/helper/perspective/sampleMode), coverage,
@@ -23,8 +23,12 @@ case class FragmentShaderConfig(varyings: Int=16,colors: Int=4) {
   * It requires an explicitly enabled stage and per-quad layer sideband; it is
   * not advertised by the public native fragment ABI.
   * Versions6/7 append SampleID and SamplePosition.xy; coverage is SampleMaskIn.
-  * Only these opt-in versions allow control bit6 (mask written) and bits10:7
-  * (shader mask). Version7 retains geometry builtins. Old ABI offsets are fixed.
+  * These versions allow control bit6 (mask written) and bits10:7 (shader mask).
+  * Version7 retains geometry builtins. Internal versions8/9 instead append only
+  * primitiveId from the actual quad, with no GS/layer authority. Version8 shades
+  * at pixel rate with mask control; version9 also appends the three sample
+  * arrays. Their admission needs primitiveIdInput, plus sampleShading for9.
+  * Old ABI offsets are fixed.
   * Version1 and the legacy nine-array ABI retain their existing offsets.
   */
 class FragmentShaderDraw(p: FragmentShaderConfig) extends Bundle {
@@ -42,9 +46,11 @@ class FragmentShaderDraw(p: FragmentShaderConfig) extends Bundle {
 }
 /** Pure descriptor checks shared by the standalone client and draw admission. */
 object FragmentShaderDescriptor {
-  def errors(draw: FragmentShaderDraw,p: FragmentShaderConfig,g: GraphicsConfig,config: GpuConfig,geometryInput: Boolean=false,sampleShading:Boolean=false): (Bool,Bool)={
+  def errors(draw: FragmentShaderDraw,p: FragmentShaderConfig,g: GraphicsConfig,config: GpuConfig,geometryInput: Boolean=false,sampleShading:Boolean=false): (Bool,Bool)=
+    errors(draw,p,g,config,geometryInput,sampleShading,false)
+  def errors(draw: FragmentShaderDraw,p: FragmentShaderConfig,g: GraphicsConfig,config: GpuConfig,geometryInput: Boolean,sampleShading:Boolean,primitiveIdInput:Boolean): (Bool,Bool)={
     val s=draw.scratch;val stride=config.lanes*config.warps*4
-    val prefix=(8.U+&(draw.varyingSlots<<2)+&(draw.colorSlots<<2)+&Mux(FragmentInputAbi.hasPointCoord(draw.version),2.U,0.U)+&Mux(FragmentInputAbi.hasGeometry(draw.version),2.U,0.U)+&Mux(FragmentInputAbi.hasSample(draw.version),3.U,0.U))*stride.U
+    val prefix=(8.U+&(draw.varyingSlots<<2)+&(draw.colorSlots<<2)+&Mux(FragmentInputAbi.hasPointCoord(draw.version),2.U,0.U)+&FragmentInputAbi.metadataWords(draw.version)+&Mux(FragmentInputAbi.hasSample(draw.version),3.U,0.U))*stride.U
     val end=s.base+&prefix
     val view=s.allocationBase(5,0)===0.U && s.allocationLimit(5,0)===0.U && s.allocationLimit<=(BigInt(1)<<32).U &&
       s.allocationLimit>s.allocationBase && s.base>=s.allocationBase && s.base(5,0)===0.U && s.limit>=s.base && s.limit<=s.allocationLimit
@@ -53,7 +59,7 @@ object FragmentShaderDescriptor {
       types && draw.sampleMode<=log2Ceil(g.maxSampleCount).U &&
       !(draw.centroidMask>>(draw.varyingSlots<<2)).orR && (FragmentInputAbi.hasCentroid(draw.version) || !draw.centroidMask.orR)
     val sharedAlias=s.base<(config.sharedMemoryBase+config.sharedMemoryBytes).U && end>config.sharedMemoryBase.U
-    val invalid= !FragmentInputAbi.supported(draw.version,geometryInput,sampleShading) || !VertexShaderSampler.legal(draw.sampler) || !ShaderTextureResources.legal(draw.resources) || !ShaderUniformResources.legal(draw.uniforms) || !fields || !view || draw.shaderPc===0.U || draw.shaderPc(1,0)=/=0.U || sharedAlias
+    val invalid= !FragmentInputAbi.supported(draw.version,geometryInput,sampleShading,primitiveIdInput) || !VertexShaderSampler.legal(draw.sampler) || !ShaderTextureResources.legal(draw.resources) || !ShaderUniformResources.legal(draw.uniforms) || !fields || !view || draw.shaderPc===0.U || draw.shaderPc(1,0)=/=0.U || sharedAlias
     val bounds=end>s.limit || end>(BigInt(1)<<32).U || ((end+63.U)&(~63.U(40.W)))>s.allocationLimit
     (invalid,bounds)
   }
@@ -100,7 +106,14 @@ class FragmentShaderCompletion extends Bundle {
 class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=FragmentShaderConfig(),
     shared: SharedCuShaderConfig=SharedCuShaderConfig(4),g: GraphicsConfig=GraphicsConfig(),useSramBlackBoxes: Boolean=false,
     payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false,earlyDepthInput: Boolean=false,geometryInput: Boolean=false,
-    imageAvailable: Boolean=false,inputReturnCredit: Boolean=true,sampleShading:Boolean=false) extends Module {
+    imageAvailable: Boolean=false,inputReturnCredit: Boolean=true,sampleShading:Boolean=false,primitiveIdInput:Boolean=false) extends Module {
+  // Preserve the previous full JVM constructor; it never enables ABI8/9.
+  def this(config: GpuConfig,p: FragmentShaderConfig,shared: SharedCuShaderConfig,g: GraphicsConfig,
+      useSramBlackBoxes: Boolean,payload: Option[ShaderPayloadConfig],payloadOwner: Int,groupedTexture: Boolean,
+      earlyDepthInput: Boolean,geometryInput: Boolean,imageAvailable: Boolean,inputReturnCredit: Boolean,
+      sampleShading:Boolean) =
+    this(config,p,shared,g,useSramBlackBoxes,payload,payloadOwner,groupedTexture,earlyDepthInput,geometryInput,imageAvailable,inputReturnCredit,sampleShading,false)
+
   private val capacity=config.lanes*config.warps;private val quadCapacity=capacity/4
   require(config.xLen==32 && config.lanes>=4 && config.lanes%4==0 && capacity<=255)
   private val stride=capacity*4;private val countWidth=log2Ceil(capacity+1)
@@ -206,7 +219,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   metadataReader.io.readData:=metadataReply
   private val cache=Module(new L2SramArray(cacheDepth,128,useSramBlackBoxes))
   private val readback=Module(new FragmentOutputReader(config,p.maxOutputWords))
-  private val inputCoalescer=Module(new FragmentInputCoalescer(capacity,8+4*p.varyings+(if(geometryInput)2 else 0)+(if(sampleShading)3 else 0),useSramBlackBoxes))
+  private val inputCoalescer=Module(new FragmentInputCoalescer(capacity,8+4*p.varyings+(if(geometryInput)2 else if(primitiveIdInput)1 else 0)+(if(sampleShading)3 else 0),useSramBlackBoxes))
   private val active=phase=/=State.idle && phase=/=State.complete
   private val externalCancel=io.cancel || io.payload.map(_.cancel).getOrElse(false.B)
   private val sourceFault=io.inputEnd.valid && !inputDone && io.inputEnd.bits.status=/=0.U
@@ -408,12 +421,14 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     when(selected===5.U){data:=l.coverageMask}
     for(v<-0 until p.varyings;c<-0 until 4)when(selected===(6+4*v+c).U){data:=l.varyings(v)(c)}
     for(c<-0 until 2)when(FragmentInputAbi.hasPointCoord(draw.version) && selected===(6.U+(draw.varyingSlots<<2)+c.U)){data:=l.pointCoord(c)}
+    if(geometryInput || primitiveIdInput){
+      when(FragmentInputAbi.hasPrimitiveId(draw.version) && selected===(8.U+(draw.varyingSlots<<2))){data:=inputQuad.values.primitiveId}
+    }
     if(geometryInput){
-      when(FragmentInputAbi.hasGeometry(draw.version) && selected===(8.U+(draw.varyingSlots<<2))){data:=inputQuad.values.primitiveId}
       when(FragmentInputAbi.hasGeometry(draw.version) && selected===(9.U+(draw.varyingSlots<<2))){data:=geometryLayer.get}
     }
     if(sampleShading){
-      val first=6.U+(draw.varyingSlots<<2)+Mux(FragmentInputAbi.hasPointCoord(draw.version),2.U,0.U)+Mux(FragmentInputAbi.hasGeometry(draw.version),2.U,0.U)
+      val first=6.U+(draw.varyingSlots<<2)+Mux(FragmentInputAbi.hasPointCoord(draw.version),2.U,0.U)+FragmentInputAbi.metadataWords(draw.version)
       val id=inputQuad.values.sampleId
       when(FragmentInputAbi.hasSample(draw.version)){
         when(selected===first){data:=id}
@@ -536,12 +551,12 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
         draw:=io.draw.bits;status:=0.U;count:=0.U;bufferedQuads:=0.U;groupStart:=0.U;inputDone:=false.B;outputValid:=false.B
         maxLocalX:=0.U;metadataStored:=false.B
         faultSource:=0.U;faultAddress:=0.U;faultQuadValid:=false.B;faultSequence:=0.U;faultPrimitive:=0.U;faultInstance:=0.U;faultPart:=0.U;faultLane:=0.U
-        val in=6.U+(io.draw.bits.varyingSlots<<2)+Mux(FragmentInputAbi.hasPointCoord(io.draw.bits.version),2.U,0.U)+Mux(FragmentInputAbi.hasGeometry(io.draw.bits.version),2.U,0.U)+Mux(FragmentInputAbi.hasSample(io.draw.bits.version),3.U,0.U);val color=io.draw.bits.colorSlots<<2
+        val in=6.U+(io.draw.bits.varyingSlots<<2)+Mux(FragmentInputAbi.hasPointCoord(io.draw.bits.version),2.U,0.U)+FragmentInputAbi.metadataWords(io.draw.bits.version)+Mux(FragmentInputAbi.hasSample(io.draw.bits.version),3.U,0.U);val color=io.draw.bits.colorSlots<<2
         inputWords:=in;colorWords:=color;outputWords:=color+2.U;inputBytes:=in*stride.U;prefixBytes:=(in+&color+2.U)*stride.U
         payloadContext:=io.payload.map(_.context).getOrElse(0.U);helperQuads.foreach(_:=0.U);phase:=State.validate
       }}
       is(State.validate){
-        val (invalid,bounds)=FragmentShaderDescriptor.errors(draw,p,g,config,geometryInput,sampleShading)
+        val (invalid,bounds)=FragmentShaderDescriptor.errors(draw,p,g,config,geometryInput,sampleShading,primitiveIdInput)
         when(invalid || imageCapture.map(_.io.invalid).getOrElse(false.B)){fail(1.U,1.U,draw.scratch.base);phase:=State.drain}
           .elsewhen(bounds){fail(2.U,1.U,draw.scratch.base);phase:=State.drain}
           .otherwise{phase:=State.collect}

@@ -5,6 +5,10 @@ opengpu.core.GpuComputeUnitTessellationInfoSpec
 # fetch, publisher/context, range and source-reader checks stay in normal CI.
 opengpu.graphics.VertexShaderSliceSpec
 opengpu.graphics.TessellationVertexPatchSourceSpec
+
+# Full fragment-stage packing uses all 128 lanes, 16 varyings and four MRTs.
+# Its independent ABI/admission and GFS readers remain normal CI checks.
+opengpu.graphics.FragmentPrimitiveInputPackingSpec
 # Full CU storage/fence integration compiles locally; no frame is rendered.
 opengpu.core.GpuComputeUnitStorageFenceSpec
 # Exhaustive texture-format sweeps and 16/32-lane texture models run locally.

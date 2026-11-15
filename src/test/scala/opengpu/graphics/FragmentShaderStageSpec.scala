@@ -18,14 +18,15 @@ private class FragmentShaderSramModels extends BlackBox with HasBlackBoxInline {
         s"depends/asap7_sram_0p0/generated/verilog/srambank_64x4x${width}_6t122.v"))).mkString("\n"))
 }
 
-private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,oversize: Boolean=false,scalarFpu: Boolean=false,nativeProfile: Boolean=false,val geometryInput: Boolean=false,inputReturnCredit: Boolean=true,val guardQualification: Boolean=false,val inputBankQualification: Boolean=false,val sampleShading:Boolean=false) extends Module {
+private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,oversize: Boolean=false,scalarFpu: Boolean=false,nativeProfile: Boolean=false,val geometryInput: Boolean=false,inputReturnCredit: Boolean=true,val guardQualification: Boolean=false,val inputBankQualification: Boolean=false,val sampleShading:Boolean=false,val primitiveIdInput:Boolean=false) extends Module {
   require(!guardQualification || (local && nativeProfile && fullInterface && scalarFpu && lanes==16 && warps==8 && !oversize))
   require(!inputBankQualification || (local && nativeProfile && fullInterface && scalarFpu && lanes==16 && warps==8 && !oversize && !geometryInput))
   val cfg=if(inputBankQualification)GpuConfig(l2Sets=512,l2StoreEntries=8)else if(nativeProfile)GpuConfig(lanes=lanes,warps=warps)
     else GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2)
   val vp=if(fullInterface)FragmentShaderConfig()else FragmentShaderConfig(2,4)
+  val inputAbi=if(primitiveIdInput){if(sampleShading)9 else 8}else if(sampleShading){if(geometryInput)7 else 6}else if(geometryInput)5 else 1
   val pp=if(guardQualification || inputBankQualification)NativeShaderPayloadSizing.pool(owners=3,ports=8)else ShaderPayloadConfig(capacityBytes=if(fullInterface)65536 else 4096,
-    maxPayloadBytes=if(oversize)4608 else vp.prefixBytes(lanes*warps,if(fullInterface)16 else 2,4,if(sampleShading){if(geometryInput)7 else 6}else if(geometryInput)5 else 1),owners=2,ports=4)
+    maxPayloadBytes=if(oversize)4608 else vp.prefixBytes(lanes*warps,if(fullInterface)16 else 2,4,inputAbi),owners=2,ports=4)
   private val hostTransactions=if(inputBankQualification)32 else 4
   private val slots=GpuSystem.totalMemoryTransactions(2,4,hostTransactions)
   val io=IO(new Bundle {
@@ -52,7 +53,7 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
     val busy=Output(Bool());val task=Output(Valid(new ShaderPayloadBinding(cfg,pp)))
   })
   private val stage=Module(new FragmentShaderStage(cfg,vp,SharedCuShaderConfig(2),payload=if(local)Some(pp)else None,
-    useSramBlackBoxes=nativeProfile,geometryInput=geometryInput,inputReturnCredit=inputReturnCredit,groupedTexture=inputBankQualification,sampleShading=sampleShading))
+    useSramBlackBoxes=nativeProfile,geometryInput=geometryInput,inputReturnCredit=inputReturnCredit,groupedTexture=inputBankQualification,sampleShading=sampleShading,primitiveIdInput=primitiveIdInput))
   private val system=Module(new GpuSystem(cfg,numComputeUnits=2,useBlackBoxes=nativeProfile,
     enableGraphicsKernels=true,enableFpuBackend=scalarFpu,
     graphicsHostTransactions=hostTransactions,instructionCacheSets=if(nativeProfile)64 else 4,instructionCacheWays=if(nativeProfile)2 else 1,
@@ -210,7 +211,7 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
   private case class Export(sequence: BigInt,primitive: BigInt,instance: BigInt,part: BigInt,front: Boolean,lanes: Vector[Lane])
   private class Driver(val d: FragmentShaderHarness,verifyEvents: Boolean=false) {
     val cap=d.cfg.lanes*d.cfg.warps;val stride=4*cap;val varyingSlots=d.vp.varyings
-    val prefix=d.vp.prefixBytes(cap,varyingSlots,4,if(d.sampleShading){if(d.geometryInput)7 else 6}else if(d.geometryInput)FragmentInputAbi.geometry else 1);val scratch=BigInt(0x100000)
+    val prefix=d.vp.prefixBytes(cap,varyingSlots,4,d.inputAbi);val scratch=BigInt(0x100000)
     val memory=mutable.Map.empty[BigInt,BigInt]
     def put(address: BigInt,value: BigInt): Unit=for(b<-0 until 4)memory(address+b)=(value>>(8*b))&255
     def word(address: BigInt): BigInt=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(memory.getOrElse(address+b,BigInt(0))<<(8*b)))
@@ -549,6 +550,61 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
           assert(lane.colors(4)==fp(originX+i%2+sampleX),s"FragCoord.x mode=$mode id=$id origin=($originX,$originY) lane=$i")
           assert(lane.colors(5)==fp(originY+i/2+sampleY),s"FragCoord.y mode=$mode id=$id origin=($originX,$originY) lane=$i")
           assert(lane.colors(6)==fp(0.5f) && lane.colors(7)==fp(2f))
+        }
+      }
+    }
+  }
+  // Full-capacity shader execution is an explicit qualification, separate
+  // from the small ABI/admission RTL fixtures. No GS metadata is provided.
+  if(sys.props.get("opengpu.nativePrimitiveInputQualification").contains("1"))
+  for(local<-Seq(true,false);abi<-Seq(8,9))
+  it should s"execute no-GS PrimitiveID ABI$abi with16 varyings and4 MRTs on two full CUs local=$local" in {
+    simulate(new FragmentShaderHarness(local=local,lanes=16,warps=8,fullInterface=true,
+        nativeProfile=true,scalarFpu=true,primitiveIdInput=true,sampleShading=abi==9)){d=>val t=new Driver(d)
+      val inputs=if(abi==8)73 else 76
+      val code=mutable.ArrayBuffer[BigInt](
+        (BigInt(2)<<20)|(BigInt(8)<<15)|(BigInt(1)<<12)|(BigInt(7)<<7)|0x13,
+        add(7,1,7),(BigInt(3)<<30)|(BigInt(0x10)<<20)|(BigInt(16)<<15)|(BigInt(7)<<12)|0x57)
+      val sourceArrays=Vector(72,4,5,70)++(if(abi==9)Vector(73,74,75,0)else Vector(0,1,2,3))++
+        Vector(66,67,68,69,71,6,37,53)
+      for((in,out)<-(sourceArrays.zipWithIndex:+(13->17))){
+        code++=address(5,7,in*t.stride);code+=vectorMemory(5,1,false)
+        code++=address(6,7,(inputs+out)*t.stride);code+=vectorMemory(6,1,true)}
+      code+=cease;assert(code.size<=512);code.zipWithIndex.foreach{case(w,i)=>t.put(0x2000+4*i,w)}
+      for(mode<-0 to 2;id<-0 until (if(abi==9)1<<mode else 1)){
+        val previous=t.exports.size;val primitive=BigInt("fedcba98",16)-mode*17-id
+        t.descriptor();d.io.draw.bits.version.poke(abi.U);d.io.draw.bits.sampleMode.poke(mode.U)
+        d.io.draw.bits.shaderPc.poke(0x2000.U);t.submit()
+        for(qi<-0 until 32){t.input(qi)
+          val r=d.io.in.bits;r.values.primitiveId.poke((primitive-qi*131).U);r.sampleMode.poke(mode.U)
+          r.frontFacing.poke(true.B);r.values.perSample.poke((abi==9).B);r.values.sampleId.poke(id.U)
+          for(i<-0 until 4){val lane=r.values.lanes(i);val covered=i==0 || i==2
+            lane.covered.poke(covered.B);lane.coverageMask.poke((if(!covered)0 else if(abi==9)1<<id else (1<<(1<<mode))-1).U)
+            lane.sampleLocationValid.poke((abi==9).B);lane.sampleLocation.poke(id.U)
+            lane.pointCoord(0).poke(fp(.25f).U);lane.pointCoord(1).poke(fp(.75f).U)
+            // lane0 keeps only this invocation's samples; lane2 kills all.
+            val mask=if(i==0)15 else 0
+            lane.varyings(1)(3).poke((61|64|(mask<<7)).U)}
+          d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B)
+        }
+        t.end(32);t.until(d.io.out.valid.peek().litToBoolean);val held=d.io.out.bits.peek().litValue
+        for(_<-0 until 5){t.tick();d.io.out.valid.expect(true.B);assert(d.io.out.bits.peek().litValue==held)}
+        d.io.out.ready.poke(true.B);t.complete(0);d.io.out.ready.poke(false.B)
+        assert(t.exports.size==previous+32)
+        for(qi<-0 until 32){val out=t.exports(previous+qi);assert(out.primitive==primitive-qi*131)
+          for(i<-0 until 4){val lane=out.lanes(i);val covered=i==0 || i==2
+            val expectedCoverage=if(i!=0)0 else if(abi==9)1<<id else (1<<(1<<mode))-1
+            assert(lane.coverage==expectedCoverage)
+            assert(lane.colors(0)==primitive-qi*131 && lane.colors(1)==(5+(if(covered)0 else 2)+(mode<<3)))
+            assert(lane.colors(2)==(if(!covered)0 else if(abi==9)1<<id else (1<<(1<<mode))-1))
+            assert(lane.colors(3)==fp(.25f) && lane.colors(12)==fp(.75f))
+            for((component,color)<-Seq(60->8,61->9,62->10,63->11,0->13,31->14,47->15))
+              assert(lane.colors(color)==t.varying(qi,i,component))
+            if(abi==9){val x=if(mode==0).5f else if((id&1)==0).25f else .75f
+              val y=if(mode==0).5f else if((id&(if(mode==1)1 else 2))==0).25f else .75f
+              assert(lane.colors(4)==id && lane.colors(5)==fp(x) && lane.colors(6)==fp(y))}
+            else {assert(lane.colors(4)==fp(2*qi+i%2+.5f) && lane.colors(5)==fp(-4+i/2+.5f))}
+          }
         }
       }
     }

@@ -28,6 +28,22 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 selected = changed_suites(REPO_ROOT, [f"src/main/scala/opengpu/{path}.scala"])
                 self.assertIn("opengpu.system.TessellationSharedLoadReplySpec", selected)
 
+    def test_ordinary_primitive_input_selects_light_permission_checks_and_keeps_full_stage_local(self):
+        paths = ["graphics/FragmentInputAbi", "graphics/FragmentSampleAbi", "graphics/FragmentShaderStage",
+                 "graphics/TypedFragmentState", "graphics/TypedFragmentImageStateReader",
+                 "graphics/TypedReplayTileImagePipeline", "graphics/TypedTileImagePipeline",
+                 "graphics/TypedTileRenderPipeline", "graphics/VertexFragmentPipeline",
+                 "system/TessellationSystemIsolineImagePipeline", "system/TessellationSystemTriangleImagePipeline",
+                 "system/TessellationSystemQuadImagePipeline"]
+        changed = [f"src/main/scala/opengpu/{path}.scala" for path in paths]
+        changed.append("src/test/scala/opengpu/graphics/FragmentPrimitiveInputAbiSpec.scala")
+        for path in changed:
+            with self.subTest(path=path):
+                selected = set(changed_suites(REPO_ROOT, [path]))
+                self.assertTrue({"opengpu.graphics.FragmentPrimitiveInputAbiSpec",
+                                 "opengpu.graphics.TypedFragmentImageStateReaderSpec"} <= selected)
+                self.assertNotIn("opengpu.graphics.FragmentPrimitiveInputPackingSpec", selected)
+
     def test_tessellation_language_changes_select_independent_permission_and_owner_checks(self):
         required = {"opengpu.graphics.TessellationScalarInfoWorkerSpec",
                     "opengpu.graphics.TessellationInfoMuxSpec",
@@ -1059,7 +1075,9 @@ class ChangedTestSuitesTest(unittest.TestCase):
             ["src/test/scala/opengpu/graphics/FragmentReturnedCreditQualificationSpec.scala"]))
         self.assertEqual(selected, {"opengpu.graphics.FragmentInputCoalescerSpec",
                                     "opengpu.graphics.FragmentShaderAbiSpec",
-                                    "opengpu.graphics.FragmentMetadataReaderSpec"})
+                                    "opengpu.graphics.FragmentMetadataReaderSpec",
+                                    "opengpu.graphics.FragmentPrimitiveInputAbiSpec",
+                                    "opengpu.graphics.TypedFragmentImageStateReaderSpec"})
 
     def test_geometry_fragment_qualification_selects_bounded_admission(self):
         root = Path(__file__).resolve().parents[1]

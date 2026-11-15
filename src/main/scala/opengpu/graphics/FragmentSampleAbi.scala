@@ -9,10 +9,13 @@ import chisel3.util._
   * after point/geometry inputs; the existing coverage array is SampleMaskIn.
   */
 object FragmentSampleAbi {
+  // Pixel-rate primitive ABI8 permits an output mask without requesting
+  // SampleID/Position or per-sample raster invocations. ABI1..7 are unchanged.
+  def hasMaskControl(version:UInt):Bool=FragmentInputAbi.hasSample(version) || version===FragmentInputAbi.primitive.U
   def invalidControl(control:UInt,version:UInt):Bool=
-    Mux(FragmentInputAbi.hasSample(version),control(31,11).orR,control(31,6).orR)
+    Mux(hasMaskControl(version),control(31,11).orR,control(31,6).orR)
   def effectiveMask(coverage:UInt,control:UInt,version:UInt,enabled:Bool):UInt=
-    Mux(enabled,coverage & Mux(FragmentInputAbi.hasSample(version) && control(6),control(10,7),15.U),0.U)
+    Mux(enabled,coverage & Mux(hasMaskControl(version) && control(6),control(10,7),15.U),0.U)
   def position(mode:UInt,id:UInt,axis:Int):UInt={
     require(axis==0 || axis==1)
     val high=if(axis==0)id(0)else Mux(mode===1.U,id(0),id(1))

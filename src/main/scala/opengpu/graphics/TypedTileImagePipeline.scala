@@ -23,7 +23,14 @@ class TypedTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     g: GraphicsConfig=GraphicsConfig(),viewport: Fp32ViewportConfig=Fp32ViewportConfig(),
     storage: TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes: Boolean=false,
     payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,preparedGeometry: Boolean=false,groupedTexture: Boolean=false,transformFeedback: Boolean=false,
-    geometryInput: Boolean=false,fragmentImageAvailable: Boolean=false,sampleShading:Boolean=false) extends Module {
+    geometryInput: Boolean=false,fragmentImageAvailable: Boolean=false,sampleShading:Boolean=false,primitiveIdInput:Boolean=false) extends Module {
+  // Preserve the previous full JVM constructor; it never enables ABI8/9.
+  def this(config: GpuConfig,p: VertexShaderStageConfig,f: FragmentShaderConfig,shared: SharedCuShaderConfig,
+      g: GraphicsConfig,viewport: Fp32ViewportConfig,storage: TypedTileColorConfig,useSramBlackBoxes: Boolean,
+      payload: Option[ShaderPayloadConfig],payloadOwner: Int,preparedGeometry: Boolean,groupedTexture: Boolean,
+      transformFeedback: Boolean,geometryInput: Boolean,fragmentImageAvailable: Boolean,sampleShading:Boolean) =
+    this(config,p,f,shared,g,viewport,storage,useSramBlackBoxes,payload,payloadOwner,preparedGeometry,groupedTexture,transformFeedback,geometryInput,fragmentImageAvailable,sampleShading,false)
+
   require(!geometryInput || preparedGeometry)
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
@@ -47,7 +54,7 @@ class TypedTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     val fragmentEvents=Output(new FragmentPerformanceEvents)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val renderer=Module(new TypedTileRenderPipeline(config,p,f,shared,g,viewport,storage,useSramBlackBoxes,payload,payloadOwner,preparedGeometry,groupedTexture=groupedTexture,transformFeedback=transformFeedback,geometryInput=geometryInput,fragmentImageAvailable=fragmentImageAvailable,sampleShading=sampleShading))
+  private val renderer=Module(new TypedTileRenderPipeline(config,p,f,shared,g,viewport,storage,useSramBlackBoxes,payload,payloadOwner,preparedGeometry,groupedTexture=groupedTexture,transformFeedback=transformFeedback,geometryInput=geometryInput,fragmentImageAvailable=fragmentImageAvailable,sampleShading=sampleShading,primitiveIdInput=primitiveIdInput))
   if(fragmentImageAvailable)renderer.io.fragmentImageTask.get:=io.fragmentImageTask.get
   if(transformFeedback){
     val scope=Reg(new TransformFeedbackScope)
