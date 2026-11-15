@@ -18,7 +18,7 @@ static void write_words(const char *prefix,const char *stage,const uint32_t *cod
     assert(!fclose(f));
 }
 void native_five_test(struct opengpu_native_five_link *link,const char *output,unsigned mode){
-    unsigned sample=mode==1,centroid=mode==3,depth=mode==4;
+    unsigned sample=mode==1,centroid=mode==3,depth=mode==4,pixel_mask=mode==5;
     struct pipe_screen *screen=opengpu_drm_screen_create(7,NULL);assert(screen);
     struct pipe_context *pipe=screen->context_create(screen,NULL,0);assert(pipe);
     struct opengpu_native_sample_runtime runtime;assert(!opengpu_native_sample_runtime_decode(cpu_profile,117,&runtime));
@@ -41,9 +41,24 @@ void native_five_test(struct opengpu_native_five_link *link,const char *output,u
     memset(&untouched_layout,0xa5,sizeof(untouched_layout));struct opengpu_native_tess_layout before_layout=untouched_layout;
     assert(opengpu_native_tess_linked_reflect(input.tokens[2],input.words[2],5,128,2,&pin,&pout,&untouched_layout));
     assert(!memcmp(&untouched_layout,&before_layout,sizeof(untouched_layout))); /* NEXT_GS never accepted as NEXT_FS */
-    struct opengpu_native_five_program *p=opengpu_native_five_program_create(pipe,link,2);
+    struct opengpu_native_five_compile_options selected={1,pixel_mask,{0,0}};
+    for(unsigned bad=0;bad<4;bad++){
+        struct opengpu_native_five_compile_options wrong=selected;
+        if(bad==0)wrong.version=0;
+        if(bad==1)wrong.geometry_pixel_mask_transport=2;
+        if(bad==2)wrong.reserved[0]=1;
+        if(bad==3)wrong.reserved[1]=1;
+        unsigned before=next_bo;
+        assert(!opengpu_native_five_program_create_options(pipe,link,2,&wrong)&&next_bo==before);
+    }
+    if(sample){
+        struct opengpu_native_five_compile_options incompatible={1,1,{0,0}};unsigned before=next_bo;
+        assert(!opengpu_native_five_program_create_options(pipe,link,2,&incompatible)&&next_bo==before);
+    }
+    struct opengpu_native_five_program *p=pixel_mask?
+        opengpu_native_five_program_create_options(pipe,link,2,&selected):opengpu_native_five_program_create(pipe,link,2);
     if(!p){
-        struct opengpu_native_fragment_config_v3 cfg={128,16,4,1,1};struct opengpu_native_fragment_program_v3 fs;
+        struct opengpu_native_fragment_config_v3 cfg={128,16,4,1,1,0};struct opengpu_native_fragment_program_v3 fs;
         fprintf(stderr,"five-stage FS compile=%d static=%u\n",opengpu_native_fragment_uniform_compile_v3(input.tokens[4],input.words[4],&input.fragment,&cfg,&fs),input.fragment.static_inputs);
         tgsi_dump_to_file(input.tokens[4],0,stderr);
     }
@@ -68,11 +83,20 @@ void native_five_test(struct opengpu_native_five_link *link,const char *output,u
     memset(defaults,0xee,sizeof(defaults));
     struct opengpu_native_five_source *lease=opengpu_native_five_source_create(p,cache);assert(lease);
     struct opengpu_native_five_description d,saved;assert(!opengpu_native_five_source_describe(lease,&d));saved=d;
-    assert(d.fragment.metadata.abi_version==(sample?7u:5u)&&d.fragment.metadata.requires_geometry_owner==1&&!d.fragment.metadata.requires_primitive_owner);
+    assert(d.fragment.metadata.abi_version==(pixel_mask?10u:sample?7u:5u)&&d.fragment.metadata.requires_geometry_owner==1&&!d.fragment.metadata.requires_primitive_owner);
     assert(d.fragment.metadata.requires_sample_owner==sample&&d.fragment.metadata.color_slots==4&&d.fragment.metadata.varying_slots==16);
     assert(d.fragment.metadata.flat_mask==(centroid?0:UINT64_C(15)<<60));
     assert(d.fragment.metadata.centroid_mask==(centroid?UINT64_C(15)<<60:0));
-    assert(d.fragment.metadata.writes_depth==depth&&!d.fragment.metadata.writes_sample_mask);
+    assert(d.fragment.metadata.writes_depth==depth&&d.fragment.metadata.writes_sample_mask==pixel_mask);
+    if(pixel_mask){
+        assert(d.fragment.metadata.input_arrays==74&&d.fragment.metadata.prefix_bytes==47104);
+        unsigned shift=0,enable=0;
+        for(unsigned i=0;i<d.fragment.words;i++){
+            shift+=d.fragment.code[i]==0x97e3bf57u; /* vsll.vi v30,v30,7 */
+            enable+=d.fragment.code[i]==0x07d00513u; /* x10=1|(15<<2)|mask-enable64 */
+        }
+        assert(shift==1&&enable==1); /* Actual pixel-mask control word, no sample planes. */
+    }
     assert(d.vertex_layout.varyings==16&&d.tess[0].layout.version==3&&d.tess[1].layout.version==3);
     assert(d.tess[0].layout.input_components==8&&d.tess[0].layout.output_components==8&&d.tess[1].layout.output_components==8);
     assert(d.vertex_components[4].kind==1&&d.vertex_components[4].component==60);
@@ -151,7 +175,8 @@ void native_five_test(struct opengpu_native_five_link *link,const char *output,u
     for(unsigned s=0;s<5;s++)assert(!bos[d.code[s].handle].handle&&!bos[d.uniforms[s].defaults.handle].handle);
     for(unsigned k=0;k<6;k++){
         if(k<5){fail_request=DRM_IOCTL_OPENGPU_CREATE_BUFFER;fail_nth=k+1;fail_seen=0;}else map_error=1;
-        assert(!opengpu_native_five_program_create(pipe,link,2));fail_request=fail_nth=fail_seen=map_error=0;
+        assert(!(pixel_mask?opengpu_native_five_program_create_options(pipe,link,2,&selected):
+            opengpu_native_five_program_create(pipe,link,2)));fail_request=fail_nth=fail_seen=map_error=0;
     }
     pipe->destroy(pipe);screen->destroy(screen);
     for(unsigned i=1;i<next_bo;i++)assert(!bos[i].handle&&!bos[i].jobs&&!bos[i].maps);
@@ -165,13 +190,25 @@ void native_five_mask_reject(struct opengpu_native_five_link *link){
     struct opengpu_native_five_input input;assert(!opengpu_native_five_link_capture(link,&input));
     assert((input.fragment.static_inputs&(OPENGPU_FRAGMENT_SAMPLE_MASK_IN|OPENGPU_FRAGMENT_HELPER))==(OPENGPU_FRAGMENT_SAMPLE_MASK_IN|OPENGPU_FRAGMENT_HELPER));
     assert(!(input.fragment.static_inputs&(OPENGPU_FRAGMENT_SAMPLE_ID|OPENGPU_FRAGMENT_SAMPLE_POSITION|OPENGPU_FRAGMENT_SAMPLE_QUALIFIER)));
-    struct opengpu_native_fragment_config_v3 cfg={128,16,4,1,1};struct opengpu_native_fragment_program_v3 output,saved;
+    struct opengpu_native_fragment_config_v3 cfg={128,16,4,1,1,0};struct opengpu_native_fragment_program_v3 output,saved;
     struct opengpu_native_fragment_metadata_v2 metadata;
     assert(!opengpu_native_fragment_metadata_init_v3(&input.fragment,&cfg,&metadata)&&metadata.abi_version==5&&!metadata.requires_sample_owner);
     memset(&output,0xa5,sizeof(output));saved=output;
     assert(opengpu_native_fragment_uniform_compile_v3(input.tokens[4],input.words[4],&input.fragment,&cfg,&output));
     assert(!memcmp(&output,&saved,sizeof(output)));
     unsigned before=next_bo;assert(!opengpu_native_five_program_create(pipe,link,2)&&next_bo==before);
+    cfg.geometry_pixel_mask_transport=1;cfg.sample_transport=0;
+    assert(!opengpu_native_fragment_uniform_compile_v3(input.tokens[4],input.words[4],&input.fragment,&cfg,&output));
+    assert(output.metadata.abi_version==10&&output.metadata.requires_geometry_owner==1&&
+        !output.metadata.requires_sample_owner&&!output.metadata.requires_primitive_owner&&output.metadata.writes_sample_mask);
+    assert(output.metadata.input_arrays==74&&output.metadata.prefix_bytes==47104);
+    struct opengpu_native_fragment_metadata_v2 valid=output.metadata;
+    metadata=valid;metadata.abi_version=5;assert(!opengpu_native_fragment_metadata_valid_v3(&metadata));
+    metadata=valid;metadata.requires_sample_owner=1;assert(!opengpu_native_fragment_metadata_valid_v3(&metadata));
+    metadata=valid;metadata.requires_primitive_owner=1;assert(!opengpu_native_fragment_metadata_valid_v3(&metadata));
+    metadata=valid;metadata.requires_geometry_owner=0;assert(!opengpu_native_fragment_metadata_valid_v3(&metadata));
+    cfg.geometry_pixel_mask_transport=2;metadata=valid;
+    assert(opengpu_native_fragment_metadata_init_v3(&input.fragment,&cfg,&metadata)&&!memcmp(&metadata,&valid,sizeof(metadata)));
     pipe->destroy(pipe);screen->destroy(screen);
     for(unsigned i=1;i<next_bo;i++)assert(!bos[i].handle&&!bos[i].jobs&&!bos[i].maps);
     puts("Original GS pixel-rate SampleMask requires new transport; rejected without planes");

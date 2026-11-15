@@ -9,10 +9,11 @@ int opengpu_native_fragment_metadata_init_v3(const struct opengpu_native_fragmen
     struct opengpu_native_fragment_metadata_v2 m={0};
     if(!r||!c||!out||r->version!=3||r->essl_version!=320||r->linked_geometry!=1||
        (r->static_inputs&~INPUT_BITS)||c->thread_capacity!=128||c->varying_slots>16||
-       c->color_slots>4||c->geometry_transport!=1||c->sample_transport>1)return -1;
+       c->color_slots>4||c->geometry_transport!=1||c->sample_transport>1||c->geometry_pixel_mask_transport>1)return -1;
     m.requires_sample_owner=!!(r->static_inputs&(1u|2u|512u));
-    if(m.requires_sample_owner&&!c->sample_transport)return -1;
-    m.abi_version=m.requires_sample_owner?7:5;
+    if((m.requires_sample_owner&&!c->sample_transport)||
+       (m.requires_sample_owner&&c->geometry_pixel_mask_transport))return -1;
+    m.abi_version=c->geometry_pixel_mask_transport?10:m.requires_sample_owner?7:5;
     m.thread_capacity=128;m.varying_slots=c->varying_slots;m.color_slots=c->color_slots;
     m.input_arrays=10+4*c->varying_slots+3*m.requires_sample_owner;
     m.array_stride=512;m.prefix_bytes=(m.input_arrays+4*c->color_slots+2)*512;
@@ -25,7 +26,7 @@ int opengpu_native_fragment_metadata_init_v3(const struct opengpu_native_fragmen
 }
 int opengpu_native_fragment_metadata_valid_v3(const struct opengpu_native_fragment_metadata_v2 *m)
 {
-    if(!m||(m->abi_version!=5&&m->abi_version!=7)||m->thread_capacity!=128||
+    if(!m||(m->abi_version!=5&&m->abi_version!=7&&m->abi_version!=10)||m->thread_capacity!=128||
        m->varying_slots>16||m->color_slots>4||m->array_stride!=512||
        m->input_arrays!=10+4*m->varying_slots+3*(m->abi_version==7)||
        m->prefix_bytes!=(m->input_arrays+4*m->color_slots+2)*512||
@@ -35,7 +36,7 @@ int opengpu_native_fragment_metadata_valid_v3(const struct opengpu_native_fragme
        (m->static_inputs&~INPUT_BITS)||(m->used_sysvals&~INPUT_BITS)||
        ((m->used_sysvals&(1u|2u))&&m->abi_version!=7)||
        ((m->used_sysvals&~16u)&~m->static_inputs)||
-       m->writes_depth>1||m->writes_sample_mask>1||(m->writes_sample_mask&&m->abi_version!=7)||m->requires_uniform_owner>1||
+       m->writes_depth>1||m->writes_sample_mask>1||(m->writes_sample_mask&&m->abi_version!=7&&m->abi_version!=10)||m->requires_uniform_owner>1||
        (m->output_color_mask>>m->color_slots))return 0;
     uint64_t available=m->varying_slots==16?UINT64_MAX:((UINT64_C(1)<<(4*m->varying_slots))-1);
     if((m->varying_mask|m->flat_mask|m->centroid_mask)&~available)return 0;

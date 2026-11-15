@@ -34,8 +34,11 @@ static int masks_from_tokens(const void *tokens,unsigned *v,unsigned *colors){
     }tgsi_parse_free(&p);*v=varying;*colors=color;return 0;
 bad:tgsi_parse_free(&p);return -1;
 }
-struct opengpu_native_five_program *opengpu_native_five_compile(struct pipe_context *pipe,const struct opengpu_native_five_input *input,unsigned vertices){
-    if(!pipe||!input||!vertices||vertices>32){errno=EINVAL;return NULL;}
+struct opengpu_native_five_program *opengpu_native_five_compile_options(struct pipe_context *pipe,const struct opengpu_native_five_input *input,unsigned vertices,
+    const struct opengpu_native_five_compile_options *options){
+    if(!pipe||!input||!vertices||vertices>32||!options){errno=EINVAL;return NULL;}
+    const struct opengpu_native_five_compile_options selected=*options;
+    if(selected.version!=1||selected.geometry_pixel_mask_transport>1||selected.reserved[0]||selected.reserved[1]){errno=EINVAL;return NULL;}
     /* Freeze all original words and compiler metadata BEFORE any GEM callback.
      * No later stage is relinked with an unrelated VS or placeholder FS. */
     struct opengpu_native_five_input captured=*input;
@@ -95,7 +98,7 @@ struct opengpu_native_five_program *opengpu_native_five_compile(struct pipe_cont
     }
     /* Validate original FS packets before inspecting their GENERIC semantics.
      * Final re-emission uses GS->FS prefix, independent of VS->TC. */
-    struct opengpu_native_fragment_config_v3 fs={128,16,4,1,1};
+    struct opengpu_native_fragment_config_v3 fs={128,16,4,1,!selected.geometry_pixel_mask_transport,selected.geometry_pixel_mask_transport};
     if(opengpu_native_fragment_uniform_compile_v3(tokens[4],captured.words[4],&captured.fragment,&fs,&p->d.fragment)||
         masks_from_tokens(tokens[4],&fs.varying_slots,&fs.color_slots)||
         opengpu_native_fragment_uniform_compile_v3(tokens[4],captured.words[4],&captured.fragment,&fs,&p->d.fragment))goto fail;
@@ -133,6 +136,10 @@ struct opengpu_native_five_program *opengpu_native_five_compile(struct pipe_cont
     return p;
 fail:{int error=errno?errno:ENOTSUP;for(unsigned s=0;s<5;s++)free(tokens[s]);opengpu_native_five_program_destroy(p);errno=error;return NULL;}
 }
+struct opengpu_native_five_program *opengpu_native_five_compile(struct pipe_context *pipe,const struct opengpu_native_five_input *input,unsigned vertices){
+    const struct opengpu_native_five_compile_options options={1,0,{0,0}};
+    return opengpu_native_five_compile_options(pipe,input,vertices,&options);
+}
 struct opengpu_native_five_source *opengpu_native_five_source_create(struct opengpu_native_five_program *p,struct opengpu_native_five_constants *constants){
     if(!p||!constants){errno=EINVAL;return NULL;}
     if(p->refs==UINT_MAX){errno=EOVERFLOW;return NULL;}
@@ -151,4 +158,11 @@ struct opengpu_native_five_program *opengpu_native_five_program_create(struct pi
     struct opengpu_native_five_input input={0};
     if(opengpu_native_five_link_capture(link,&input))return NULL;
     return opengpu_native_five_compile(pipe,&input,vertices);
+}
+
+struct opengpu_native_five_program *opengpu_native_five_program_create_options(struct pipe_context *pipe,
+    const struct opengpu_native_five_link *link,unsigned vertices,const struct opengpu_native_five_compile_options *options){
+    struct opengpu_native_five_input input={0};
+    if(opengpu_native_five_link_capture(link,&input))return NULL;
+    return opengpu_native_five_compile_options(pipe,&input,vertices,options);
 }

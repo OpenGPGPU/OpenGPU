@@ -170,6 +170,10 @@ def main():
     generated(fragment,fragment.read_text().replace('color1=color0;', 'color0^=uvec4(uint(gl_HelperInvocation));gl_SampleMask[0]=gl_SampleMaskIn[0];color1=color0;'))
     for path in sources.iterdir():private[str(path)]=sha256(path)
     run([binary,*[sources/('pixel-mask.'+s) for s in ('vert','tesc','tese','geom','frag')],out/'pixel-mask',2],'original-pixel-mask-rejected')
+    for suffix in ('.ognsf','.vs.words','.tcs.words','.tes.words','.gs.words','.fs.words'):(out/('pixel-mask-enabled'+suffix)).unlink(missing_ok=True)
+    run([binary,*[sources/('pixel-mask.'+s) for s in ('vert','tesc','tese','geom','frag')],out/'pixel-mask-enabled',5],'explicit-pixel-mask-ABI10')
+    for suffix in ('.ognsf','.vs.words','.tcs.words','.tes.words','.gs.words','.fs.words'):
+        path=out/('pixel-mask-enabled'+suffix);private[str(path)]=sha256(path)
     if a.negative_controls:
         controls=(
           ('gs-default-retention','userspace/gallium/opengpu_native_five_constants.c',

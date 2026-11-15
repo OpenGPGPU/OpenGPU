@@ -50,13 +50,13 @@ GS PrimitiveID and Layer read actual geometry input arrays. In particular,
 Layer is not the no-GS version-2 constant zero. PointCoord has its own builtin
 kind and does not become a generic varying by numerical offset.
 
-This initial transport uses existing ABI5 for pixel-rate GS input and ABI7
+The default transport uses existing ABI5 for pixel-rate GS input and ABI7
 only when SampleID, SamplePosition or a sample qualifier requires sample
 planes. MaskIn and HelperInvocation do not open those planes. ABI5 cannot
 encode shader SampleMask writes: the actual original source is rejected
-without creating code GEMs. The independently developed geometry pixel-mask
-transport remains a required later dependency; metadata alone cannot enable
-it. Sample input permission, geometry permission and uniform permission must
+without creating code GEMs. The explicit diagnostic options described below
+can target the separate geometry pixel-mask transport; metadata alone cannot
+enable its verified owner or hardware provider. Sample input permission, geometry permission and uniform permission must
 be independently verified before execution.
 
 `OGNSF003` consists of eight magic bytes, 42 little-endian u32 header words,
@@ -71,13 +71,58 @@ header inventory matches OGNSF002's numerical order, with header word0=3:
 - Words37..40: four color types; word41 must be zero.
 
 Version3 requires geometry ownership and requires primitive ownership to be
-zero. ABI5 has `10+4*varyingSlots` input arrays; ABI7 adds three sample arrays.
+zero. Explicit ABI10 additionally requires independently verified geometry
+pixel-mask service permission. ABI5 has `10+4*varyingSlots` input arrays; ABI7 adds three sample arrays.
 Stride is 512 bytes at capacity128; the writable prefix follows inputs and
 contains `4*colorSlots+2` arrays. Layer's static-input bit128 means real GS
 Layer here, whereas version2's same numerical bit means no-GS Layer-zero.
 The APIs, artifact magic/version and validators distinguish those meanings.
 Both readers reject the other artifact; reserved fields, extra bytes and
 failed reads leave the output unchanged. OGNSF001/002 are unchanged.
+
+## Explicit geometry pixel-mask compilation
+
+`opengpu_native_five_program_create_options` accepts a separate version1
+compiler-options record. Its `geometry_pixel_mask_transport` must be exactly
+0 or1, with both reserved words zero. Existing `program_create` supplies zero;
+its ABI5/7 acceptance and bytes are unchanged. The option is captured before
+GEM callbacks. It selects a compiler transport prerequisite, never a device
+capability, kernel permission, discovery bit or public shader callback.
+
+With the explicit option1, FS version3 selects ABI10: real geometry inputs,
+no sample planes, mask-control enable bit6 and coverage bits10:7. Capacity128,
+16 varyings and four MRTs require 74 input arrays and prefix47104 bytes,
+identical in size to ABI5. SampleID, SamplePosition and sample-qualified input
+are incompatible with this explicit pixel-rate mode and are rejected. Its
+artifact still uses OGNSF003's exact inventory; ABI10 itself declares the
+additional independent provider requirement. No old artifact is relabeled.
+The old FS5/7 offline consumer deliberately continues rejecting ABI10 inputs.
+
+A fresh 37-TU Linux CPU build passed all seven original-source cases and the
+three precise source controls in 42.688 seconds, with 37 MMD files/255 distinct
+dependencies. All 1060 GPU/reference and 8101 external inputs were unchanged.
+The default six cases' 36 code/artifact files stayed byte-for-byte identical.
+The same original pixel-mask ESSL is rejected by the default API and compiles
+only with explicit options into a 436-word FS ABI10 program. It preserves
+all 65 uniform references and five code objects, checks every allocation
+rollback, and tests invalid option version/reserved/Boolean fields and
+sample-plane incompatibility. Independent literals check the emitted shift7
+and mask-enable64, prefix47104, geometry1/sample0/primitive0, and metadata
+rejection after removing geometry or borrowing sample/primitive authority.
+
+The original 436 FS words also passed an independent actual ABI10
+validator/private-RX/MMU consumer with explicit offline-test permissions.
+Clang ASan/UBSan took 3.58 seconds; 338 source/code inputs were unchanged.
+It checked raw code, entry, precise scratch bounds and rejection without
+geometry, geometry-mask or uniform permission. The independent nine semantic
+controls passed. This consumer did not read OGNSF003 or import compiler
+permission claims.
+
+This is diagnostic CPU compilation and code protection. Its new
+provider/admission/RTL source lives in a separate development topic and is
+not enabled by this compiler.
+It does not establish instruction execution, original five-stage values,
+GUR2 contents or whole-owner submission/retirement.
 
 ## Validation and remaining work
 
@@ -202,4 +247,15 @@ python3 -B scripts/test_native_joint.py --sanitize --negative-controls \
   --tess-baseline-source "$OUT/reference-tess.c" --build "$OUT/four"
 python3 -B scripts/test_native_vertex_artifacts.py --sanitize \
   --vertex-artifact "$OUT/four/matrix-payload.vs.words" 1 16 0
+```
+
+The same fresh five-stage runner regenerates the diagnostic original ABI10
+packet; no separate word patch or handwritten shader is used:
+
+```sh
+python3 -B scripts/test_native_five.py --sanitize --negative-controls \
+  --build "$OUT/five"
+# Original linked source: $OUT/five/sources/pixel-mask.{vert,tesc,tese,geom,frag}
+# Raw FS words:          $OUT/five/pixel-mask-enabled.fs.words
+# OGNSF003 artifact:     $OUT/five/pixel-mask-enabled.ognsf
 ```
