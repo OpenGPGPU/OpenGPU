@@ -1,5 +1,7 @@
 # Original linked Mesa source to protected joint BUILD
 
+Source delivery: [PR #829](https://github.com/OpenGPGPU/OpenGPU/pull/829).
+
 The private `opengpu_native_joint_build_source` API retains one original linked
 VS/TCS/TES/FS source lease and captures an explicit draw catalog, invocations,
 instance-major ranges and original frame views. VS uses the linked NEXT_TCS
