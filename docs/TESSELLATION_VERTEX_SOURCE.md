@@ -64,8 +64,9 @@ roles, append GNT/GNQ, publish/enqueue, or enable a getter/ioctl.
 
 ## Validation and remaining integration
 
-Clang and immutable Linux GCC 13.3 both passed ASan/UBSan owner/MMU fixtures
-and ten semantic negative controls. Four ABI tests check exact fields,
+At delivery source commit `41b51b8a1217213de55198eaca7aa56142551f11`, Clang
+and immutable Linux GCC 13.3 both passed ASan/UBSan owner/MMU fixtures and ten
+semantic negative controls. Four ABI tests check exact fields,
 append-only inheritance, stale generated headers and malformed catalogs. The
 owner graph checks all 128 published root words, all reserved/high-bit words,
 the original code/entry bytes, all 16 binding mappings, full VS uniforms, and
@@ -95,7 +96,7 @@ python3 -B scripts/test_tessellation_uniform_abi.py
 python3 -B scripts/test_tessellation_canonical.py
 ```
 
-At production source commit `42afaacb52e3bc54d9f48857edc68346c4ef9a0b`, a fresh
+At delivery source commit `41b51b8a1217213de55198eaca7aa56142551f11`, a fresh
 full module build passed against the configured ARM64 Linux 7.2.0 tree with
 Homebrew AArch64 GCC 15.2.0 and GNU Make 4.4.1. Kbuild compiled all 27 driver
 objects plus two module helpers, completed MODPOST and linked `gpu_drv.ko`
@@ -105,11 +106,12 @@ relocatable with vermagic `7.2.0 SMP preempt mod_unload aarch64`;
 `opengpu_tessellation_vertex_source_canonical` and
 `opengpu_tessellation_vertex_sequence_canonical` were present in its linked
 symbols. Kernel configuration, generated headers, symbol versions and host
-tools matched before/after, as did all copied driver inputs. No kernel or
+tools matched before/after (5777 shared inputs), as did all 152 original and
+copied driver inputs. No kernel or
 driver source was changed and no warning was disabled. The serial build
-completed in 16.64 seconds under an owned process group's 180-second wall
+completed in 17.20 seconds under an owned process group's 180-second wall
 deadline and 512 MiB aggregate RSS guard. The largest sampled group RSS was
-325840 KiB; this is not an absolute physical-memory peak. All private outputs
+350304 KiB; this is not an absolute physical-memory peak. All private outputs
 were removed after process, open-file and external-symlink consumer checks.
 
 Reproduce the module build with an already configured kernel and its matching

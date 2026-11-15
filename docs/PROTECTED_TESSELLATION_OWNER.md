@@ -209,15 +209,27 @@ python3 -B scripts/test_tessellation_uniform_abi.py
 git diff --check
 ```
 
-The original four P16 scripts and their 31 semantic negative controls pass
-GCC 13.3 with ASan/UBSan. The expanded version-2 program suite and all 24 program
-negative controls also pass GCC 13.3 and Clang with ASan/UBSan; the current
-three-domain builder and Linux admission regressions pass GCC after this change,
-including old GNT4/5/6 rejection of the new instruction. The immutable ARM64
-image below uses 512MiB total memory+swap, one CPU, no network and read-only source.
-All tracked input bytes were unchanged before/after the run. `-Wall -Wextra
+At delivery source commit `41b51b8a1217213de55198eaca7aa56142551f11`, all five
+P16 suites passed Clang and actual Ubuntu GCC 13.3.0 with ASan/UBSan and all
+53 semantic negative controls: uniform 5, program 24, BUILD 7, Linux submit 7
+and GVS/source 10. This includes the version-2 validator and old GNT4/5/6
+rejection of that instruction. The immutable ARM64 image below uses 512MiB
+total memory+swap, one CPU, no network and read-only source. The complete GCC
+run finished in 364.38 seconds; all 758 driver/script/ABI inputs were unchanged
+before/after the run. `-Wall -Wextra
 -Werror` remains enabled. Containers and private outputs were removed at
 termination. No Mesa/JVM/model build or GPU execution was involved.
+
+The delivery also passes the complete host lane at source commit
+`8139bb727771b3756993069885bc606a22ddb6ae` with sanitizers enabled
+(`OPENGPU_TEST_SANITIZERS=1 PYTHONDONTWRITEBYTECODE=1 bash scripts/test_scripts.sh`).
+It completed in 709.82 seconds; 727 driver/script/ABI file inputs were unchanged.
+The executor checks bind the fixture's exact default macro include to the real
+protected C body and recursive headers. Changed/unknown macros, overrides,
+missing sources, external aliases and omitted qualification dependencies fail;
+49 targeted CPU checks and the complete host lane pass. Mesa-dependent and
+unavailable OpenGPU-target checks retain their declared skips. This is CPU
+validation, not a model or shader-execution result. Ended outputs were removed.
 
 ```sh
 P16_GCC_OUT=$(mktemp -d "$PWD/.artifacts/p16-gcc-XXXXXX")
@@ -232,7 +244,8 @@ docker run --rm --init --name "$P16_GCC_NAME" \
   sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72 -B - <<'PY'
 import subprocess, sys
 for name in ("test_tessellation_uniform_snapshot.py", "test_tessellation_program_snapshot.py",
-             "test_protected_tessellation.py", "test_protected_tessellation_submit.py"):
+             "test_protected_tessellation.py", "test_protected_tessellation_submit.py",
+             "test_tessellation_vertex_source.py"):
     subprocess.run([sys.executable, "-B", "scripts/" + name, "--negative-controls"], check=True)
 PY
 # Confirm the container has ended and no other consumer needs this private output.
