@@ -58,9 +58,28 @@ static int caps_validate(const struct opengpu_native_binned_host_caps *c, int la
 int opengpu_native_frame_caps_validate(const struct opengpu_native_binned_host_caps *c)
 { return caps_validate(c, 0); }
 
+static int limits_valid(const struct opengpu_native_frame_limits *l)
+{
+    return l && l->width && l->height && l->colors && l->colors<=4 &&
+        l->engines && l->engines<=4 && (l->samples==1 || l->samples==2 || l->samples==4) &&
+        l->storage_bytes>=1024 && l->storage_bytes<=65536 &&
+        !(l->storage_bytes&(l->storage_bytes-1)) && l->tile8<=1 && l->tile16<=1 &&
+        (l->tile8 || l->tile16) && (l->frame_version==1 || l->frame_version==2);
+}
+static int limits_from_caps(const struct opengpu_native_binned_host_caps *c,int layered,
+    struct opengpu_native_frame_limits *out)
+{
+    int error=caps_validate(c,layered);if(error)return error;
+    *out=(struct opengpu_native_frame_limits){FIELD(c,FRAME_WIDTH),FIELD(c,FRAME_HEIGHT),
+        FIELD(c,SAMPLES),FIELD(c,COLORS),FIELD(c,ENGINES),FIELD(c,STORAGE_BYTES),
+        FIELD(c,TILE8),FIELD(c,TILE16),
+        layered || FIELD(c,MAGIC)==OPENGPU_NATIVE_BINNED_HOST_WIDE_MAGIC?2u:1u};
+    return 0;
+}
+
 static int layout_for(const struct opengpu_native_tile_request *r,
                       unsigned log2, unsigned storage, unsigned mode,
-                      struct opengpu_native_tile_layout *out, int layered)
+                      struct opengpu_native_tile_layout *out, unsigned maximum)
 {
     struct opengpu_native_tile_layout layout;
     memset(&layout, 0, sizeof(layout));
@@ -75,26 +94,22 @@ static int layout_for(const struct opengpu_native_tile_request *r,
     }
     if (cursor > storage) return -ENOSPC;
     layout.tile_log2 = log2; layout.sample_mode = mode;
-    layout.columns = (r->width + edge - 1) / edge;
-    layout.rows = (r->height + edge - 1) / edge;
-    layout.tile_count = layout.columns * layout.rows;
-    const unsigned maximum = (layered || FIELD(r->caps, MAGIC) == OPENGPU_NATIVE_BINNED_HOST_WIDE_MAGIC) ?
-        OPENGPU_NATIVE_BINNED_FRAME_V2_MAX_TILES : 65535;
-    if (layout.tile_count > maximum) return -ENOSPC;
+    layout.columns = ((uint64_t)r->width + edge - 1) / edge;
+    layout.rows = ((uint64_t)r->height + edge - 1) / edge;
+    const uint64_t count=(uint64_t)layout.columns*layout.rows;
+    if (count > maximum) return -ENOSPC;
+    layout.tile_count=(unsigned)count;
     layout.storage_bytes = storage; layout.used_bytes = cursor;
     *out = layout;
     return 0;
 }
 
-static int tile_plan(const struct opengpu_native_tile_request *r,
-                     struct opengpu_native_tile_layout *out, int layered)
+static int tile_plan_limits(const struct opengpu_native_tile_request *r,
+    struct opengpu_native_tile_layout *out,const struct opengpu_native_frame_limits *l)
 {
-    if (!r || !r->caps || !out) return -EINVAL;
-    const struct opengpu_native_binned_host_caps *c = r->caps;
-    int error = caps_validate(c, layered);
-    if (error) return error;
-    if (!r->width || !r->height || r->width > FIELD(c, FRAME_WIDTH) ||
-        r->height > FIELD(c, FRAME_HEIGHT) || r->color_mask > 15 || (r->color_mask >> FIELD(c, COLORS)) ||
+    if (!r || !out || !limits_valid(l)) return -EINVAL;
+    if (!r->width || !r->height || r->width > l->width ||
+        r->height > l->height || r->color_mask > 15 || (r->color_mask >> l->colors) ||
         (r->tile_log2 && r->tile_log2 != 3 && r->tile_log2 != 4) ||
         r->depth_format > 6 || (r->stencil_format && r->stencil_format != 6) ||
         (r->stencil_format && r->depth_format >= 4)) return -EINVAL;
@@ -105,15 +120,16 @@ static int tile_plan(const struct opengpu_native_tile_request *r,
     case 4: mode = 2; break;
     default: return -EINVAL;
     }
-    if (r->samples > FIELD(c, SAMPLES)) return -EOPNOTSUPP;
+    if (r->samples > l->samples) return -EOPNOTSUPP;
     for (unsigned i = 0; i < 4; ++i)
         if ((r->color_mask & (1u << i)) && r->color_format[i] >= 36) return -EOPNOTSUPP;
-    const unsigned storage = FIELD(c, STORAGE_BYTES);
+    const unsigned storage = l->storage_bytes;
     int result = -EOPNOTSUPP;
     for (unsigned log2 = 4; log2 >= 3; --log2) {
         if (r->tile_log2 && log2 != r->tile_log2) continue;
-        if (!(log2 == 4 ? FIELD(c, TILE16) : FIELD(c, TILE8))) continue;
-        result = layout_for(r, log2, storage, mode, out, layered);
+        if (!(log2 == 4 ? l->tile16 : l->tile8)) continue;
+        result = layout_for(r, log2, storage, mode, out,
+            l->frame_version==2?OPENGPU_NATIVE_BINNED_FRAME_V2_MAX_TILES:65535);
         if (!result) return 0;
     }
     return result;
@@ -121,7 +137,12 @@ static int tile_plan(const struct opengpu_native_tile_request *r,
 
 int opengpu_native_tile_plan(const struct opengpu_native_tile_request *r,
                             struct opengpu_native_tile_layout *out)
-{ return tile_plan(r, out, 0); }
+{
+    struct opengpu_native_frame_limits limits;
+    if(!r || !r->caps || !out)return -EINVAL;
+    int error=limits_from_caps(r->caps,0,&limits);
+    return error?error:tile_plan_limits(r,out,&limits);
+}
 
 #define W(name) OPENGPU_NATIVE_BINNED_FRAME_##name##_WORD
 #define VIEW(prefix) { W(prefix##_IMAGEWIDTH), W(prefix##_IMAGEHEIGHT), \
@@ -220,9 +241,14 @@ static int encode_image(struct opengpu_native_frame_encoding *e,
 
 static int frame_encode(const struct opengpu_native_frame_request *r,
     struct opengpu_native_frame_encoding *out, int layered,
-    const uint64_t source_pitch[6], const uint64_t resolve_pitch[6])
+    const uint64_t source_pitch[6], const uint64_t resolve_pitch[6],
+    const struct opengpu_native_frame_limits *typed)
 {
-    if (!r || !out || !r->caps) return -EINVAL;
+    if (!r || !out || (typed?r->caps!=NULL:!r->caps)) return -EINVAL;
+    struct opengpu_native_frame_limits limits;
+    int error;
+    if(typed){if(layered || !limits_valid(typed))return -EINVAL;limits=*typed;}
+    else {error=limits_from_caps(r->caps,layered,&limits);if(error)return error;}
     struct opengpu_native_frame_encoding e;
     memset(&e, 0, sizeof(e));
     struct opengpu_native_tile_request tile = {
@@ -231,9 +257,9 @@ static int frame_encode(const struct opengpu_native_frame_request *r,
         .depth_format = r->attachments[4].format, .stencil_format = r->attachments[5].format
     };
     for (unsigned i = 0; i < 4; ++i) tile.color_format[i] = r->attachments[i].format;
-    int error = tile_plan(&tile, &e.tile, layered);
+    error = tile_plan_limits(&tile, &e.tile, &limits);
     if (error) return error;
-    const unsigned engines = FIELD(r->caps, ENGINES);
+    const unsigned engines = limits.engines;
     if (!r->state_count || (uint64_t)r->state_count * 512 > (UINT64_C(1) << 32) ||
         r->scratch_stride < 64 || (r->scratch_stride & 63) || r->spill_count > 8) return -EINVAL;
     uint32_t *w = e.frame.words;
@@ -261,7 +287,7 @@ static int frame_encode(const struct opengpu_native_frame_request *r,
     SET(prefix##_PASS, r->pass); } while (0)
     ID(FRAME_BINS_PRODUCER_ARENA_IDENTITY); ID(FRAME_BINS_BINS_POOL_IDENTITY);
     ID(FRAME_STATES_IDENTITY); ID(FRAME_IMAGE_PIXELS_COLORS_IDENTITY);
-    SET(FRAME_VERSION, layered ? 3 : (FIELD(r->caps, MAGIC) == OPENGPU_NATIVE_BINNED_HOST_WIDE_MAGIC ? 2 : 1));
+    SET(FRAME_VERSION, layered ? 3 : limits.frame_version);
     SET(FRAME_BINS_PRODUCER_VERSION, 1); SET(FRAME_BINS_PRODUCER_ARENA_VERSION, 1);
     SET(FRAME_BINS_PRODUCER_SCREENWIDTH, r->width); SET(FRAME_BINS_PRODUCER_SCREENHEIGHT, r->height);
     SET(FRAME_BINS_PRODUCER_TILELOG2, e.tile.tile_log2);
@@ -342,11 +368,15 @@ static int frame_encode(const struct opengpu_native_frame_request *r,
 }
 int opengpu_native_frame_encode(const struct opengpu_native_frame_request *r,
                                struct opengpu_native_frame_encoding *out)
-{ return frame_encode(r, out, 0, NULL, NULL); }
+{ return frame_encode(r, out, 0, NULL, NULL, NULL); }
 
 int opengpu_native_frame_encode_gnc5(const struct opengpu_native_frame_request *r,
     const uint64_t source_pitch[6], const uint64_t resolve_pitch[6],
     struct opengpu_native_frame_encoding *out)
-{ return frame_encode(r, out, 1, source_pitch, resolve_pitch); }
+{ return frame_encode(r, out, 1, source_pitch, resolve_pitch, NULL); }
 #undef W
 #undef FIELD
+
+int opengpu_native_frame_encode_joint(const struct opengpu_native_frame_request *r,
+    const struct opengpu_native_frame_limits *limits,struct opengpu_native_frame_encoding *out)
+{ return frame_encode(r,out,0,NULL,NULL,limits); }
