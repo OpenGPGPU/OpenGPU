@@ -81,7 +81,14 @@ class TypedTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
   private val active=phase=/=State.idle && phase=/=State.complete
   io.transferFailure.valid:=active && status=/=0.U && status=/=4.U && faultStage===2.U
   io.transferFailure.bits.status:=status;io.transferFailure.bits.address:=faultAddress
-  private def fail(code: UInt,stage: UInt,address: UInt=0.U): Unit=when(status===0.U && !externalCancel){status:=code;faultStage:=stage;faultAddress:=address}
+  private val primaryRaised=WireDefault(false.B)
+  private def fail(code: UInt,stage: UInt,address: UInt=0.U): Unit={
+    val primary=code=/=0.U && code=/=4.U && (status===0.U || status===4.U)
+    when(primary){primaryRaised:=true.B}
+    when(primary || (code===4.U && status===0.U && !externalCancel && !primaryRaised)){
+      status:=code;faultStage:=stage;faultAddress:=address
+    }
+  }
   io.shared<>renderer.io.shared
   io.fragmentEvents:=renderer.io.fragmentEvents
   payload.foreach{_=>for(i<-0 until 2){io.payload.get(i)<>renderer.io.payload.get(i);renderer.io.payload.get(i).context:=contexts(i)
@@ -116,7 +123,7 @@ class TypedTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
       Mux(renderer.io.drawCompletion.valid && renderer.io.drawCompletion.bits.status=/=0.U,renderer.io.drawCompletion.bits.status,renderer.io.completion.bits.status))
     fail(code,1.U)
   }
-  when(active && externalCancel && status===0.U){status:=4.U;faultStage:=0.U}
+  when(active && externalCancel && status===0.U && !primaryRaised){status:=4.U;faultStage:=0.U}
   private val arbiter=Module(new RRArbiter(new ComputeMemoryRequest(config,64,16),2))
   private val queue=Module(new Queue(new ComputeMemoryRequest(config,64,16),1))
   private val sources=Seq(renderer.io.memoryRequest,transfers.io.memoryRequest)

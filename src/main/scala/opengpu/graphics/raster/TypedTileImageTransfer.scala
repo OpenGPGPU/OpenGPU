@@ -89,6 +89,14 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   private object State extends ChiselEnum {val idle,validate,prepareClear,waitClear,active,refillStart,refillLocate,refillAddress,refillOrigin,refillOffset,refillByte,refillReply,scan,localOffer,localWait,storeAddress,storePrepare,busOffer,busWait,advance,resolveScan,resolveByte,resolveOffer,resolveWait,resolveStore,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new TypedTileImageDescriptor);private val result=Reg(new TypedTileImageTransferCompletion)
   private val status=RegInit(0.U(3.W));private val fault=RegInit(0.U(32.W));private val bound=RegInit(false.B)
+  private val primaryRaised=WireDefault(false.B)
+  private def fail(code: UInt,address: UInt): Unit={
+    val primary=code=/=0.U && code=/=4.U && (status===0.U || status===4.U)
+    when(primary){primaryRaised:=true.B}
+    when(primary || (code===4.U && status===0.U && !io.cancel && !primaryRaised)){
+      status:=code;fault:=address
+    }
+  }
   private val closing=RegInit(false.B);private val refilling=RegInit(false.B);private val view=RegInit(0.U(3.W))
   private val row=RegInit(0.U(5.W));private val offset=RegInit(0.U(17.W));private val byte=RegInit(0.U(4.W))
   // Admission limits rows to 8/16 and row strides to 16*4*16=1024 bytes.
@@ -138,7 +146,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   resolver.io.in.bits.depth:=view>=4.U;resolver.io.in.bits.format:=descriptor.pixels.colors.colors(view(1,0)).format
   resolver.io.out.ready:=phase===State.resolveWait;resolver.io.cancel:=io.cancel || status=/=0.U
   when(resolver.io.in.fire){phase:=State.resolveWait}
-  when(resolver.io.out.fire){when(resolver.io.out.bits.status=/=0.U){status:=3.U}
+  when(resolver.io.out.fire){when(resolver.io.out.bits.status=/=0.U){fail(3.U,0.U)}
     resolved:=resolver.io.out.bits.value;written:=0.U;phase:=State.resolveStore}
   private val refillUseful=RegInit(0.U(4.W));private val loadBytes=RegInit(0.U(64.W));private val issuedBytes=RegInit(0.U(64.W));private val storedBytes=RegInit(0.U(64.W))
   private val readLines=RegInit(0.U(64.W));private val writeLines=RegInit(0.U(64.W))
@@ -189,7 +197,6 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   admission.io.in.bits:=descriptor;admission.io.out.ready:=phase===State.validate && admissionIssued
   admission.io.cancel:=stop
   when(admission.io.in.fire){admissionIssued:=true.B}
-  private def fail(code: UInt,address: UInt): Unit=when(status===0.U && !io.cancel){status:=code;fault:=address}
   private def offerRead(): Unit={
     busRequest:=0.U.asTypeOf(busRequest);busRequest.address:=line
     busRequest.sizeLog2:=6.U;busRequest.cachePolicy:=CachePolicy.uncached
@@ -228,7 +235,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   io.memory.valid:=localOffered;io.memory.bits:=localRequest;io.reply.ready:=localPending
   io.memoryRequest.valid:=busOffered;io.memoryRequest.bits:=busRequest;io.memoryResponse.ready:=busPending
   io.completion.valid:=phase===State.complete;io.completion.bits:=result
-  when(active && io.cancel && status===0.U){status:=4.U}
+  when(active && io.cancel && status===0.U && !primaryRaised){status:=4.U}
   when(io.memory.fire){localOffered:=false.B;localPending:=true.B;phase:=State.localWait}
   when(io.memoryRequest.fire){busOffered:=false.B;busPending:=true.B;phase:=State.busWait
     when(busRequest.isWrite){when(busResolve){resolveIssueEvent:=true.B;issuedResolve:=nextIssuedResolve}.otherwise{issueEvent:=true.B;issuedBytes:=nextIssuedBytes};writeEvent:=true.B;writeLines:=nextWriteLines}.otherwise{readEvent:=true.B;readLines:=nextReadLines}}

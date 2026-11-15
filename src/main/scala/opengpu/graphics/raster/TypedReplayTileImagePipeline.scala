@@ -119,8 +119,17 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
   private val emptyStates=allowEmptyStates.B && descriptor.states.base===0.U && descriptor.states.limit===0.U
   private val stop=status=/=0.U || externalCancel
   private val active=phase=/=State.idle && phase=/=State.complete
-  private def fail(code: UInt,stage: Int,address: UInt=0.U): Unit=when(status===0.U && !externalCancel){
-    status:=code;faultStage:=stage.U;faultAddress:=address;faultRecordValid:=owned;faultRecord:=current.source}
+  // A response from an accepted operation remains authoritative after cancel,
+  // including the same cycle. Keep a prior serious fault and the old pure
+  // cancellation metadata; never let another child's cancel hide a fault.
+  private val primaryRaised=WireDefault(false.B)
+  private def fail(code: UInt,stage: Int,address: UInt=0.U): Unit={
+    val primary=code=/=0.U && code=/=4.U && (status===0.U || status===4.U)
+    when(primary){primaryRaised:=true.B}
+    when(primary || (code===4.U && status===0.U && !externalCancel && !primaryRaised)){
+      status:=code;faultStage:=stage.U;faultAddress:=address;faultRecordValid:=owned;faultRecord:=current.source
+    }
+  }
   io.begin.ready:=phase===State.idle && !externalCancel;io.busy:=phase=/=State.idle;io.cancelSource:=active && stop
   io.in.ready:=phase===State.ready && !stop && image.io.draw.ready
   io.primitiveDone.valid:=phase===State.emit;io.primitiveDone.bits:=recordResult
@@ -201,7 +210,7 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
   when(active && imageStarted && image.io.transferFailure.valid){
     fail(image.io.transferFailure.bits.status,2,image.io.transferFailure.bits.address)
   }
-  when(active && externalCancel && status===0.U){status:=4.U;faultStage:=0.U;faultRecordValid:=false.B}
+  when(active && externalCancel && status===0.U && !primaryRaised){status:=4.U;faultStage:=0.U;faultRecordValid:=false.B}
   switch(phase){
     is(State.idle){when(io.begin.fire){descriptor:=io.begin.bits;status:=0.U;faultStage:=0.U;faultAddress:=0.U;faultRecordValid:=false.B
       imageStarted:=false.B;imageDone:=false.B;stateOffered:=false.B;stateStarted:=false.B;drawOffered:=false.B;drawStarted:=false.B;drawDone:=false.B;owned:=false.B

@@ -47,11 +47,13 @@ generated primitives or task IDs.
 
 ## Validation and remaining gates
 
-All 37 current source files in the focused provider/parent/test closure passed
+All 37 source files in the original focused provider/parent/test closure passed
 fresh plugin compilation with Scala 2.13.18 and Chisel 7.15.0. Borrowed classes
 were accepted only after package/SourceFile, their own producer's source hash
 and class hash matched; changed providers were compiled from current source.
 This is type qualification, not execution of the complete composed parent.
+The subsequent fault fix refreshed transfer, image, replay and fixture sources
+(11.47 seconds, 334128 KiB), extending the current source closure to 39 files.
 
 The three domain master tests passed actual RTL serially (53.31, 52.98 and
 52.99 seconds; sampled group peaks 486656, 477456 and 491328 KiB). Each uses
@@ -66,19 +68,34 @@ preserves the new interface; it is not a claim that an older whole module ran
 unchanged.
 
 These master tests do not execute a shader or clear/store/resolve. The actual
-full-capacity replay clear test retains 16 lanes × 8 warps, two CU interfaces,
+full-capacity replay clear test passed in 904.25 seconds with a sampled peak of
+4564096 KiB. It retains 16 lanes × 8 warps, two CU interfaces,
 16 varyings, four MRTs, four samples, D32F, the complete native tile store and
 advanced blend paths. Its independent oracle checks all declared clear/store/
 resolve bytes and allocation/pitch guards, with held physical write replies,
-no shader launch and no state fetch. Actual replay execution and the composed
-GNQ-to-image path remain pending until that fixture completes. Earlier bounded
-attempts exhausted JVM heap/metaspace or the sampled aggregate budget during
-elaboration; a 3 GiB attempt completed elaboration but exposed a missing
-test-only vendor SRAM model at Verilator compilation, before RTL execution.
-The fixture now supplies the original vendor models explicitly. That corrected
-fixture reached native compilation but its 3 GiB aggregate guard stopped it at
-3157856 KiB after 46.53 seconds, before RTL behavior. No clear result is inferred
-from those bounded failures.
+no shader launch and no state fetch. Both healthy clears, rejected unexpected
+primitive and reset-free reuse passed. The composed GNQ-to-image execution and
+old-default negative case remain separate gates. Earlier heap/metaspace/aggregate limits and a 600-second native
+build limit were insufficient; those bounded failures are not RTL failures or
+passing results. The successful run used the original vendor SRAM models and
+a fresh complete native build.
+
+An accepted physical write whose acknowledgement was held for twelve cycles
+through cancellation exposed a real propagation defect: the original source
+reported cancellation 4 instead of fault 3, failing the specific status assertion
+(769.30 seconds, 4803008 KiB). Transfer, image and replay now allow a real fault
+to replace cancellation, preserve an already recorded real fault, and prevent
+same-edge cancellation from overwriting a newly raised fault. Ordinary
+cancellation metadata and all interfaces remain unchanged. Resolver failures
+use the same transfer fault path.
+
+The unchanged failing fixture passed against the fixed source (797.27 seconds,
+4902208 KiB): status 3, stage/address, actual response-credit drain and held
+report stability all passed, followed by healthy clear/store/resolve with a full
+byte/guard oracle on the same owner without reset. This tests a delayed fault
+after cancellation; it is not a claim of exhaustive fault-injection coverage.
+All reported actual groups passed source, class, tool and HEAD guards. Ended
+models and raw logs were removed after their consumers finished.
 
 No full-CU qualification, native admission, six VGA scenes, physical result or
 640×480/60 FPS acceptance follows from this component evidence. The Scala
@@ -101,8 +118,8 @@ Compile the current source closure with the real Chisel plugin before running
 it; do not substitute an old compiled parent or changed provider. Master groups
 used 128 MiB heap/metaspace, 32 MiB code cache, SerialGC, ActiveProcessorCount=1,
 180 seconds and a sampled 512 MiB aggregate limit. Replay's current budget is
-1024 MiB heap, 256 MiB metaspace, 32 MiB code cache, 300 seconds and a sampled
-3 GiB aggregate limit. Supply the pinned original SRAM files through
+1024 MiB heap, 256 MiB metaspace, 32 MiB code cache, 1800 seconds and a sampled
+6 GiB aggregate limit. Supply the pinned original SRAM files through
 `-Dopengpu.testSramRoot=.../depends/asap7_sram_0p0/generated/verilog`, or the
 default in-repository submodule path. Bind tools, classes, sources and those
 files before and after each group. Reproduce the reported budget; any later
