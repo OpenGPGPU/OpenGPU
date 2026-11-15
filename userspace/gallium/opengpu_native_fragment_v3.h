@@ -15,6 +15,8 @@ struct opengpu_native_fragment_reflection_v3 {
 struct opengpu_native_fragment_config_v3 {
     uint32_t thread_capacity,varying_slots,color_slots;
     uint32_t geometry_transport,sample_transport;
+    /* Diagnostic compiler prerequisite only, never a verified device grant. */
+    uint32_t geometry_pixel_mask_transport;
 };
 struct opengpu_native_fragment_program_v3 {
     /* Same numerical layout inventory, but interpreted only after strict v3

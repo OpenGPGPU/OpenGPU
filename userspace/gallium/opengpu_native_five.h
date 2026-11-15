@@ -13,6 +13,9 @@ struct opengpu_native_five_link;
 struct opengpu_native_five_program;
 struct opengpu_native_five_constants;
 struct opengpu_native_five_source;
+struct opengpu_native_five_compile_options {
+    uint32_t version,geometry_pixel_mask_transport,reserved[2];
+};
 struct opengpu_native_five_description {
     unsigned context_id;
     struct opengpu_native_uniform_layout vertex_layout;
@@ -34,6 +37,10 @@ unsigned opengpu_native_five_defaults(const struct opengpu_native_five_link *,un
 int opengpu_native_five_bind_ubos(struct opengpu_native_five_link *,struct pipe_context *,struct pipe_resource *const [72],const unsigned [72],const unsigned [72]);
 int opengpu_native_five_bind_defaults(struct opengpu_native_five_link *,struct pipe_context *,unsigned,const unsigned *,unsigned);
 struct opengpu_native_five_program *opengpu_native_five_program_create(struct pipe_context *,const struct opengpu_native_five_link *,unsigned);
+/* Explicit compiler transport selection; this cannot enable kernel admission,
+ * discovery or public caps. Existing create() always selects defaults/off. */
+struct opengpu_native_five_program *opengpu_native_five_program_create_options(struct pipe_context *,
+    const struct opengpu_native_five_link *,unsigned,const struct opengpu_native_five_compile_options *);
 void opengpu_native_five_program_destroy(struct opengpu_native_five_program *);
 struct opengpu_native_five_constants *opengpu_native_five_constants_create(struct pipe_context *);
 struct pipe_context *opengpu_native_five_constants_pipe(struct opengpu_native_five_constants *);

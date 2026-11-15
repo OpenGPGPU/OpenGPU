@@ -13,6 +13,8 @@ struct opengpu_native_five_input {
 extern "C" {
 #endif
 int opengpu_native_five_link_capture(const struct opengpu_native_five_link *,struct opengpu_native_five_input *);
+struct opengpu_native_five_program *opengpu_native_five_compile_options(struct pipe_context *,
+    const struct opengpu_native_five_input *,unsigned,const struct opengpu_native_five_compile_options *);
 struct opengpu_native_five_program *opengpu_native_five_compile(struct pipe_context *,const struct opengpu_native_five_input *,unsigned);
 struct opengpu_native_five_bindings;
 struct opengpu_native_five_bindings *opengpu_native_five_capture(struct opengpu_native_five_constants *,struct pipe_context *,const unsigned [5][13],struct drm_opengpu_native_uniform_stage [5]);
