@@ -72,8 +72,18 @@ class TessellationCuQuadSharedEvaluator(config: GpuConfig, idWidth: Int, numComp
     io.evaluationPatchBinding.get:=evaluator.io.evaluationPatchBinding.get
     arb.io.in(0)<>evaluator.io.inspect;evaluator.io.reply<>arb.io.replies(0)
     arb.io.in(1)<>provider.io.inspect;provider.io.reply<>arb.io.replies(1)
-    arb.io.in(2)<>io.inspect;io.reply<>arb.io.replies(2)
-    patch.io.inspect<>arb.io.out;arb.io.reply<>patch.io.reply
+    arb.io.in(2)<>io.inspect;patch.io.inspect<>arb.io.out
+    // Input publication has no inspection credit. Route its real source-zero
+    // acknowledgement directly to the producer, including during cancellation.
+    // Only source-two replies may consume the inspection arbiter's credit.
+    val loading=patch.io.reply.bits.source===0.U
+    val inspecting=patch.io.reply.bits.source===2.U
+    arb.io.reply.valid:=patch.io.reply.valid && inspecting;arb.io.reply.bits:=patch.io.reply.bits
+    io.reply.valid:=(patch.io.reply.valid && loading) || arb.io.replies(2).valid
+    io.reply.bits:=Mux(loading,patch.io.reply.bits,arb.io.replies(2).bits)
+    arb.io.replies(2).ready:= !loading && io.reply.ready
+    patch.io.reply.ready:=Mux(loading,io.reply.ready,inspecting && arb.io.reply.ready)
+    when(patch.io.reply.valid){assert(loading || inspecting,"shared evaluator received an unrouted patch reply source")}
     evaluationFault:=provider.io.fault;evaluationBusy:=provider.io.busy || arb.io.busy
   }else{
   // Lock stalled offers and route the one outstanding response to its issuer.
