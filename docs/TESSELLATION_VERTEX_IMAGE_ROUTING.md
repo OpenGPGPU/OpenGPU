@@ -50,24 +50,48 @@ callers were compiled from current source. This establishes source/plugin type
 qualification, including the changed `payloadPins` signatures, rather than a
 complete current-engine or host build.
 
-An actual isoline-parent `ChiselStage.elaborate` with two CU interfaces,
-16 lanes/eight warps, 16 attributes/bindings/varyings and four MRTs exhausted
-its 128 MiB heap in the actual VS texture-binding path
-(`TextureImageBindingUnit` / `TextureImageFormat` / Chisel `Vec`). It did not
-complete construction or establish connection correctness. Triangle and quad
-elaboration were not run. All three full elaborations, routing/payload RTL,
-actual shader execution and product qualification remain pending. The disabled
-Scala regression workflow must not be enabled or triggered.
+The initial full-width isoline-parent `ChiselStage.elaborate` attempt exhausted
+its 128 MiB heap in the actual VS texture-binding path. A later current-source
+run passed actual CIRCT 1.158.0 lowering and SystemVerilog emission at 768 MiB
+heap. It refreshed all twelve changed fragment/image providers, the three
+typed-parent callers, `DecodeTypes` and the Owner, ahead of source-identical
+prerequisites and the verified frozen classpath. No changed-source provider
+fell back to old bytecode. Source, compiler, classpath and tool guards matched
+before/after.
 
-The elaboration configuration was a 4x4 frame, one external image-engine
-interface, 4096-byte pages, eight write credits/tile slots, 65536 paged capacity,
-512 KiB payload capacity/64 KiB maximum payload, eight owners/twelve ports,
-and 32 KiB native-sample parallel color/depth storage. Payload, transform
-feedback, fragment-image publication, sample shading, tessellation uniforms
-and dynamic TES patch access were enabled. `externalImages=true` avoids
-instantiating a renderer bank or CU; it cannot validate sample raster/shading,
-native-sample storage, advanced blend or image execution. No CIRCT lowering,
-Verilator, ISA execution or native factory was run.
+The full configuration retains two CU interfaces, 16 lanes/eight warps,
+16 attributes/bindings/varyings, four MRTs, a 4x4 frame, one external engine,
+4096-byte pages, eight write credits/tile slots and 65536 paged capacity.
+Payload capacity is 512 KiB with 64 KiB maximum payload, eight owners and twelve
+ports. Payload, transform feedback, fragment-image publication, sample shading,
+checked tessellation uniforms and dynamic TES patch access are enabled; the
+32 KiB storage config enables parallel lanes/depth, native samples, eight word
+ports and advanced/native draw admission. The actual lowering completed in
+20.04 seconds, emitting the real top and 304 fully defined modules across
+468 SV files, including 77 verification binds and 297 assertion error/fatal
+pairs. No unresolved instance type, unlowered module or external blackbox
+specification remained. The run used 256 MiB metaspace, 64 MiB code cache and
+one processor, within a 600-second/1536-MiB aggregate-RSS guard. Largest sampled
+group RSS was 1,384,624 KiB, not an absolute physical-memory peak; 34 existing
+index/enum elaboration warnings remain.
+
+Actual lowering exposed a cancel feedback cycle through the real Publisher
+and Owner. The Owner now sends independent parent cancellation and observed
+completion faults to an owned source immediately, but does not combinationally
+echo the source's own `cancelPatch` back to it. That indication still stops the
+image/new work immediately and is latched for continued drain. Four component
+RTL cases passed, including a real Owner/Publisher closed loop, held offers,
+loads, actual replies and seals, late faults, immutable reports after a flush,
+and healthy no-reset reuse. Restoring only the echo in a source-copy negative
+control fails the exact FIRRTL combinational-cycle check; production source
+remains fixed.
+
+Triangle and quad construction/lowering, actual shaders, routing/payload
+execution and product qualification remain pending. `externalImages=true`
+excludes actual CU/render-bank instances: flags do not prove sample/image or
+native-sample/advanced-blend execution. The new language/primitive-ID ABIs are
+not connected through these parents. No Verilator, ISA or native factory was
+run for the parent lowering. Scala regression must remain disabled.
 
 ### Reproduce the bounded checks
 
@@ -86,16 +110,38 @@ java -Xmx128m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m \
   -Ymacro-annotations -language:reflectiveCalls -d "$CURRENT_CLASSES" "${CURRENT_GROUP[@]}"
 ```
 
-For the elaboration limit, compile a temporary main calling
-`circt.stage.ChiselStage.elaborate(new TessellationSystemIsolineVertexInputImage(...))`
-with the configuration above, `VertexShaderStageConfig()`,
-`FragmentShaderConfig(16,4)`,
-`GpuConfig(lanes=16,warps=8,enableSharedVectorAtomics=true)` and
-`SharedCuShaderConfig(2,taskIdWidth=8)`. Run that main with the same heap,
-metaspace, code-cache and CPU flags and `-cp "$CURRENT_CLASSES:$FROZEN_CP"`.
-This is a resource-limited attempt, not a passing elaboration test. A later run
-with a different resource budget must report that scope explicitly; reduced
-interfaces cannot qualify the full profile.
+For the passing full-capacity lowering, compile a temporary main that calls
+`circt.stage.ChiselStage.emitSystemVerilogFile(gen, Array("--target-dir", args(0)),
+Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))`, keeping
+the assertions enabled. Its `gen` is the actual
+`TessellationSystemIsolineVertexInputImage` with the full configuration above,
+`VertexShaderStageConfig()`, `FragmentShaderConfig(16,4)`,
+`GpuConfig(lanes=16,warps=8,enableSharedVectorAtomics=true)`,
+`SharedCuShaderConfig(2,taskIdWidth=8)`,
+`GraphicsConfig(screenWidth=4,screenHeight=4)` and
+`Fp32ViewportConfig(maxWidth=4,maxHeight=4)`.
+Use `ShaderPayloadConfig(capacityBytes=512*1024,maxPayloadBytes=64*1024,
+owners=8,ports=12)`, `payloadOwner=0`, `engines=1`, `pagedCapacity=65536`,
+`useSramBlackBoxes=false`, and every exposed optional routing flag true.
+Keep current `SharedCuGraphicsPort`, router and binding classes ahead of older
+prerequisites; freshly compile every changed provider and direct caller,
+including `DecodeTypes`. Verify all input hashes before/after.
+
+```sh
+CHISEL_FIRTOOL_PATH=/Users/duckdonald/Library/Caches/org.chipsalliance.llvm-firtool/1.158.0/bin \
+TMPDIR="$PARENT_PRIVATE_TMP" java -Xmx768m -Xms64m \
+  -XX:MaxMetaspaceSize=256m -XX:ReservedCodeCacheSize=64m \
+  -XX:ActiveProcessorCount=1 -XX:+UseSerialGC -Xss2m \
+  -Dscala.usejavacp=true -Djava.io.tmpdir="$PARENT_PRIVATE_TMP" \
+  -cp "$CURRENT_CLASSES:$VERIFIED_PREREQUISITES:$FROZEN_CP" \
+  FullIsolineParentEmit "$PARENT_PRIVATE_RTL"
+```
+
+Apply the owned 600-second process-group deadline and 1536-MiB aggregate-RSS
+monitor. Check the top, all instance definitions and extracted verification
+layers, then remove private output after process/open-file/cross-worktree
+consumer checks. The prior 128-MiB failure remains a failure at its stated
+budget; frontend construction alone does not establish successful lowering.
 
 The optional ports do not implement the owned VS parent, GVS/GND admission,
 original draw range iteration, patch opening/load/reply/seal ordering, protected
