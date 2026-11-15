@@ -11,6 +11,14 @@ extern "C" {
 struct opengpu_native_tess_patch_layout {
     unsigned input_vertices,input_components,output_vertices,output_components,patch_components;
 };
+/* Private linked-component packing. Original semantic/array identities stay
+ * unchanged; addresses are compacted consistently at each producer/consumer
+ * boundary. Old entry points never use this metadata. */
+struct opengpu_native_tess_packed_slot { unsigned mask,base; };
+struct opengpu_native_tess_packing {
+    unsigned position,vertex_components,patch_components;
+    struct opengpu_native_tess_packed_slot vertex[16],patch[30];
+};
 /* Original linked NIR variable boundaries, before nir_to_tgsi erases ArrayID.
  * Per-vertex's outer vertex array is not part of slots. Matrix columns and
  * user arrays are. This is compiler semantics, never a kernel permission. */
@@ -74,6 +82,11 @@ int opengpu_native_tess_language_evaluation_reflect(const void *,unsigned,unsign
     const struct opengpu_native_tess_layout *control,struct opengpu_native_tess_layout *);
 int opengpu_native_tess_language_emit(const void *,unsigned,const struct opengpu_native_tess_layout *,
     const struct opengpu_native_tess_input_map *,struct opengpu_native_tess_program *);
+int opengpu_native_tess_pack(const struct opengpu_native_tess_input_map *,struct opengpu_native_tess_packing *);
+int opengpu_native_tess_linked_reflect(const void *,unsigned,unsigned stage,unsigned capacity,unsigned patch_vertices,
+    const struct opengpu_native_tess_packing *,const struct opengpu_native_tess_packing *,struct opengpu_native_tess_layout *);
+int opengpu_native_tess_linked_emit(const void *,unsigned,const struct opengpu_native_tess_layout *,
+    const struct opengpu_native_tess_input_map *,const struct opengpu_native_tess_packing *,const struct opengpu_native_tess_packing *,struct opengpu_native_tess_program *);
 #ifdef __cplusplus
 }
 #endif

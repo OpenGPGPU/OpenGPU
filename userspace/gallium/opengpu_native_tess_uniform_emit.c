@@ -9,6 +9,7 @@ struct semantic {unsigned mask,name,index;
 };
 struct builder {
     struct opengpu_native_tess_program p;
+    const struct opengpu_native_tess_packing *packing[2];
     struct semantic input[2][SEMANTICS],output[2][SEMANTICS],sys[REGS];
     unsigned temp[REGS],reg[REGS][4],defined[REGS],next,addr_decl,addr_defined;
     unsigned constants[13],first[13],last[13];
@@ -155,6 +156,67 @@ static int declaration(struct builder *b,const struct tgsi_full_declaration *d){
     }
     return 0;
 }
+static unsigned bits(unsigned v){unsigned n=0;for(;v;v>>=1)n+=v&1;return n;}
+int opengpu_native_tess_pack(const struct opengpu_native_tess_input_map *map,struct opengpu_native_tess_packing *out){
+    struct opengpu_native_tess_packing p={0};
+    if(!map||!out||map->version!=1||map->count>64)return -1;
+    for(unsigned i=0;i<64;i++){
+        const struct opengpu_native_tess_input_span *s=map->spans+i;
+        if(i>=map->count){struct opengpu_native_tess_input_span z={0};if(memcmp(s,&z,sizeof(z)))return -1;continue;}
+        if(!s->slots||!s->mask||s->mask>15||s->per_vertex>1||s->compact>1)return -1;
+        if(s->semantic==TGSI_SEMANTIC_POSITION){if(s->index||s->slots!=1||s->mask!=15||p.position)return -1;p.position=1;}
+        else if(s->semantic==TGSI_SEMANTIC_GENERIC||s->semantic==TGSI_SEMANTIC_PATCH){
+            unsigned limit=s->semantic==TGSI_SEMANTIC_GENERIC?16:30;
+            struct opengpu_native_tess_packed_slot *t=s->semantic==TGSI_SEMANTIC_GENERIC?p.vertex:p.patch;
+            if(s->compact||s->index>=limit||s->slots>limit-s->index)return -1;
+            for(unsigned j=0;j<s->slots;j++){if(t[s->index+j].mask)return -1;t[s->index+j].mask=s->mask;}
+        }else if(s->semantic==TGSI_SEMANTIC_TESSOUTER||s->semantic==TGSI_SEMANTIC_TESSINNER){
+            unsigned n=s->semantic==TGSI_SEMANTIC_TESSOUTER?4:2;
+            if(s->index||!s->compact||s->per_vertex||s->slots!=n||s->mask!=(1u<<n)-1)return -1;
+        }else return -1;
+    }
+    p.vertex_components=p.position*4;
+    for(unsigned i=0;i<16;i++){p.vertex[i].base=p.vertex_components;p.vertex_components+=bits(p.vertex[i].mask);}
+    for(unsigned i=0;i<30;i++){p.patch[i].base=p.patch_components;p.patch_components+=bits(p.patch[i].mask);}
+    if(p.vertex_components>64||p.patch_components>120)return -1;
+    *out=p;return 0;
+}
+static int packing_valid(const struct opengpu_native_tess_packing *p){
+    if(!p||p->position>1)return 0;
+    unsigned vertex=p->position*4,patch=0;
+    for(unsigned i=0;i<16;i++){
+        if(p->vertex[i].mask>15||p->vertex[i].base!=vertex)return 0;
+        vertex+=bits(p->vertex[i].mask);
+    }
+    for(unsigned i=0;i<30;i++){
+        if(p->patch[i].mask>15||p->patch[i].base!=patch)return 0;
+        patch+=bits(p->patch[i].mask);
+    }
+    return vertex<=64&&patch<=120&&p->vertex_components==vertex&&p->patch_components==patch;
+}
+/* nir_to_tgsi reserves a vec4 input declaration for a real vec2/vec3.
+ * Only linked NIR spans can prove this padding; actual operand accesses still
+ * use packed_component and may never address a missing source channel. */
+static int declared_padding(const struct opengpu_native_tess_packing *p,struct semantic sem,unsigned c){
+    if(!p||sem.mask!=15||c>3)return 0;
+    unsigned mask=0;
+    if(sem.name==TGSI_SEMANTIC_GENERIC&&sem.index<16)mask=p->vertex[sem.index].mask;
+    else if(sem.name==TGSI_SEMANTIC_PATCH&&sem.index<30)mask=p->patch[sem.index].mask;
+    return (mask==1||mask==3||mask==7)&&!(mask&(1u<<c));
+}
+static int packed_component(const struct opengpu_native_tess_packing *p,struct semantic s,unsigned c,unsigned *off,unsigned *pp,unsigned *tl){
+    if(!p||!(s.mask&(1u<<c)))return -1;
+    *pp=0;*tl=0;
+    if(s.name==TGSI_SEMANTIC_POSITION&&p->position&&!s.index){*off=c;return 0;}
+    const struct opengpu_native_tess_packed_slot *entry=NULL;
+    if(s.name==TGSI_SEMANTIC_GENERIC&&s.index<16)entry=p->vertex+s.index;
+    else if(s.name==TGSI_SEMANTIC_PATCH&&s.index<30){entry=p->patch+s.index;*pp=1;}
+    else if((s.name==TGSI_SEMANTIC_TESSOUTER||s.name==TGSI_SEMANTIC_TESSINNER)&&!s.index){
+        *tl=1;*pp=1;*off=(s.name==TGSI_SEMANTIC_TESSINNER?4:0)+c;return *off<6?0:-1;
+    }
+    if(!entry||!(entry->mask&(1u<<c)))return -1;
+    *off=entry->base+bits(entry->mask&((1u<<c)-1));return 0;
+}
 static int component(struct semantic s,unsigned position,unsigned c,unsigned *out,unsigned *pp,unsigned *tl){
     if(!(s.mask&(1u<<c)))return -1;
     *pp=0;
@@ -214,7 +276,7 @@ static int interface_map_valid(struct builder *b,unsigned output){
     const struct opengpu_native_tess_input_map *map=output?&b->p.output_map:&b->p.input_map;
     struct semantic (*actual)[SEMANTICS]=output?b->output:b->input;
     unsigned covered[2][SEMANTICS]={{0}};
-    if(map->version!=1||!map->count||map->count>64)return -1;
+    if(map->version!=1||map->count>64)return -1;
     for(unsigned i=0;i<64;i++){
         const struct opengpu_native_tess_input_span *s=map->spans+i;
         if(i>=map->count){struct opengpu_native_tess_input_span zero={0};if(memcmp(s,&zero,sizeof(zero)))return -1;continue;}
@@ -227,7 +289,7 @@ static int interface_map_valid(struct builder *b,unsigned output){
         }
         for(unsigned j=0;j<slots;j++){
             struct semantic d=actual[s->per_vertex][s->first+j];
-            if(covered[s->per_vertex][s->first+j]++||!d.mask||((d.mask&~s->mask)&&!s->compact)||d.name!=s->semantic||d.index!=s->index+j)return -1;
+            if(covered[s->per_vertex][s->first+j]++||!d.mask||((d.mask&~s->mask)&&!s->compact&&!(b->packing[output]&&d.mask==15&&(s->mask==1||s->mask==3||s->mask==7)))||d.name!=s->semantic||d.index!=s->index+j)return -1;
         }
     }
     for(unsigned dim=0;dim<2;dim++)for(unsigned i=0;i<SEMANTICS;i++)
@@ -251,7 +313,13 @@ static int dynamic_input(struct builder *b,const struct tgsi_full_src_register *
         }
         if(!span||tl||!(b->addr_defined&(1u<<r->Indirect.Index)))return -1;
         unsigned reg=20+r->Indirect.Index;
-        word(b,vec(0x25,3,29,5,reg)); /* vec4-register offset -> 32 descriptor units */
+        if(b->packing[0]){
+            const struct opengpu_native_tess_packed_slot *slot=pp?b->packing[0]->patch+span->index:b->packing[0]->vertex+span->index;
+            unsigned width=bits(slot->mask);
+            if(!width)return -1;
+            for(unsigned j=0;j<span->slots;j++)if((pp?b->packing[0]->patch[span->index+j].mask:b->packing[0]->vertex[span->index+j].mask)!=slot->mask)return -1;
+            scalar(b,10,width*8);word(b,vec(0x25,4,29,10,reg));
+        }else word(b,vec(0x25,3,29,5,reg)); /* vec4-register offset -> 32 descriptor units */
         scalar(b,10,off<<3|flags);word(b,vec(0,4,29,10,29));
         bounded(b,reg,span->slots-(index-span->first),29,29);
     }
@@ -316,7 +384,8 @@ static int source(struct builder *b,const struct tgsi_full_src_register *r,unsig
             if(d.index||!(d.mask&(1u<<ch)))return -1;
             return primitive_id(b,r,ch,to);
         }
-        if(component(d,s->File==TGSI_FILE_INPUT?b->p.layout.input_position:b->p.layout.output_position,ch,&off,&pp,&tl))return -1;
+        if(b->packing[s->File==TGSI_FILE_OUTPUT] ? packed_component(b->packing[s->File==TGSI_FILE_OUTPUT],d,ch,&off,&pp,&tl) :
+            component(d,s->File==TGSI_FILE_INPUT?b->p.layout.input_position:b->p.layout.output_position,ch,&off,&pp,&tl))return -1;
         if(b->p.layout.stage==4){if(vertex(b,dim,&r->Dimension,&r->DimIndirect,28))return -1;
             splat(b,29,(off<<3)|(s->File==TGSI_FILE_OUTPUT)|pp<<1|tl<<2);
             word(b,patch(21,to,28,29));
@@ -356,8 +425,12 @@ static int instruction(struct builder *b,const struct tgsi_full_instruction *in)
         b->p.barriers++;
         return 0;
         }
-    unsigned count=1,fn=0,f3=0,compare=0;
+    unsigned count=1,fn=0,f3=0,compare=0,convert=99;
     switch(op){case TGSI_OPCODE_MOV:case TGSI_OPCODE_UARL:break;
+    case TGSI_OPCODE_U2F:case TGSI_OPCODE_I2F:case TGSI_OPCODE_F2U:case TGSI_OPCODE_F2I:
+        /* Explicit linked dialect only; old entry-point acceptance is frozen. */
+        if(!b->packing[0]||!b->packing[1])return -1;
+        convert=op==TGSI_OPCODE_U2F?2:op==TGSI_OPCODE_I2F?3:op==TGSI_OPCODE_F2U?6:7;break;
     case TGSI_OPCODE_UCMP:if(b->p.layout.stage!=5||(b->p.layout.version!=2&&b->p.layout.version!=3))return -1;count=3;break;
     case TGSI_OPCODE_UADD:count=2;
     break;
@@ -416,6 +489,7 @@ static int instruction(struct builder *b,const struct tgsi_full_instruction *in)
     for(unsigned c=0;c<4;c++)if(mask&(1u<<c)){
         if(source(b,&in->Src[0],c,26))return -1;
         if(op==TGSI_OPCODE_MOV)copy(b,22+c,26);
+        else if(convert!=99)word(b,vec(0x12,1,22+c,convert,26));
         else {if(source(b,&in->Src[1],c,27))return -1;
             if(op==TGSI_OPCODE_UCMP){
                 if(source(b,&in->Src[2],c,28))return -1;
@@ -438,7 +512,8 @@ static int instruction(struct builder *b,const struct tgsi_full_instruction *in)
             copy(b,b->reg[i][c],22+c);
             b->defined[i]|=1u<<c;
         }else{unsigned off,pp,tl;
-        if(component(b->output[d->Dimension][i],b->p.layout.output_position,c,&off,&pp,&tl))return -1;
+        if(b->packing[1] ? packed_component(b->packing[1],b->output[d->Dimension][i],c,&off,&pp,&tl) :
+            component(b->output[d->Dimension][i],b->p.layout.output_position,c,&off,&pp,&tl))return -1;
             if(b->p.layout.stage==4){if(vertex(b,d->Dimension,&in->Dst[0].Dimension,&in->Dst[0].DimIndirect,28))return -1;
                 if((pp&&!tl&&off>=b->p.layout.patch_components)||(!pp&&!tl&&off>=b->p.layout.output_components))return -1;
                 splat(b,29,(off<<3)|1|pp<<1|tl<<2);
@@ -492,15 +567,16 @@ static int span(struct builder *b,const struct node *nodes,unsigned start,unsign
         i=e;
     }return 0;
 }
-static int emit(const void *tokens,unsigned n,const struct opengpu_native_tess_layout *layout,
-    const struct opengpu_native_tess_input_map *map,struct opengpu_native_tess_program *out){
+static int emit_mode(const void *tokens,unsigned n,const struct opengpu_native_tess_layout *layout,
+    const struct opengpu_native_tess_input_map *map,const struct opengpu_native_tess_packing *pin,
+    const struct opengpu_native_tess_packing *pout,struct opengpu_native_tess_program *out){
     if(!layout||!out||(layout->version!=1&&layout->version!=2&&layout->version!=3)||(layout->stage!=4&&layout->stage!=5)||!layout->capacity||layout->capacity>128||
         !layout->input_vertices||layout->input_vertices>32||!layout->output_vertices||layout->output_vertices>32||
         layout->output_vertices>layout->capacity||layout->input_components>64||layout->output_components>64||
         layout->input_position>1||layout->output_position>1||(layout->stage==5&&!layout->output_position)||layout->patch_components>120||((layout->version==1||layout->stage==4)&&layout->output_vertices*layout->output_components+layout->patch_components>2048)||
         packets(tokens,n,layout->stage,layout->stage==5&&(layout->version==2||layout->version==3)))return -1;
     struct builder b={0};
-    b.p.layout=*layout;
+    b.p.layout=*layout;b.packing[0]=pin;b.packing[1]=pout;
     if(map){if(layout->stage==5)b.p.input_map=*map;else b.p.output_map=*map;}
     b.next=2;
     struct tgsi_parse_context parse;
@@ -593,10 +669,14 @@ static int emit(const void *tokens,unsigned n,const struct opengpu_native_tess_l
     return 0;
 }
 
+static int emit(const void *tokens,unsigned n,const struct opengpu_native_tess_layout *layout,
+    const struct opengpu_native_tess_input_map *map,struct opengpu_native_tess_program *out){return emit_mode(tokens,n,layout,map,NULL,NULL,out);}
+
 /* Reflection is bounded independently of emission. Pair construction owns the
  * linked TCS-output -> TES-input map; this never grants task permissions. */
 static int reflect(const void *tokens,unsigned n,unsigned stage,unsigned capacity,unsigned dynamic,
-    unsigned patch_vertices,unsigned language,struct opengpu_native_tess_layout *out)
+    unsigned patch_vertices,unsigned language,const struct opengpu_native_tess_packing *pin,
+    const struct opengpu_native_tess_packing *pout,struct opengpu_native_tess_layout *out)
 {
     struct opengpu_native_tess_layout l={.version=1,.stage=stage,.capacity=capacity,
         .input_vertices=patch_vertices,.output_vertices=1};
@@ -666,7 +746,9 @@ static int reflect(const void *tokens,unsigned n,unsigned stage,unsigned capacit
                 if(language&&file==TGSI_FILE_INPUT&&sem.name==TGSI_SEMANTIC_PRIMID&&
                     !sem.index&&c==0&&!d->Declaration.Dimension)continue;
                 unsigned off,pp,tl,position=file==TGSI_FILE_INPUT?l.input_position:l.output_position;
-                if(component(sem,position,c,&off,&pp,&tl)){bad=1;
+                const struct opengpu_native_tess_packing *packing=file==TGSI_FILE_INPUT?pin:pout;
+                if(declared_padding(packing,sem,c))continue;
+                if(packing ? packed_component(packing,sem,c,&off,&pp,&tl) : component(sem,position,c,&off,&pp,&tl)){bad=1;
                 break;
                 }
                 unsigned *count=pp?&l.patch_components:file==TGSI_FILE_INPUT?&l.input_components:&l.output_components;
@@ -698,20 +780,20 @@ int opengpu_native_tess_uniform_emit(const void *tokens,unsigned n,const struct 
 }
 int opengpu_native_tess_dynamic_emit(const void *tokens,unsigned n,const struct opengpu_native_tess_layout *l,
     const struct opengpu_native_tess_input_map *map,struct opengpu_native_tess_program *out){
-    if(!l||!map||map->version!=1||!map->count||map->count>64||l->version!=2||l->owned_tessellation_info||l->stage!=5||l->owned_patch_reads!=1||!patch_layout_valid(&l->tes_patch_layout)||
+    if(!l||!map||map->version!=1||map->count>64||l->version!=2||l->owned_tessellation_info||l->stage!=5||l->owned_patch_reads!=1||!patch_layout_valid(&l->tes_patch_layout)||
         l->input_vertices!=l->tes_patch_layout.input_vertices||l->output_vertices!=l->tes_patch_layout.output_vertices||
         l->input_components!=l->tes_patch_layout.output_components||l->patch_components!=l->tes_patch_layout.patch_components)return -1;
     return emit(tokens,n,l,map,out);
 }
 int opengpu_native_tess_uniform_reflect(const void *tokens,unsigned n,unsigned stage,unsigned capacity,
     unsigned patch_vertices,struct opengpu_native_tess_layout *out){
-    return reflect(tokens,n,stage,capacity,0,patch_vertices,0,out);
+    return reflect(tokens,n,stage,capacity,0,patch_vertices,0,NULL,NULL,out);
 }
 int opengpu_native_tess_dynamic_reflect(const void *tokens,unsigned n,unsigned capacity,
     const struct opengpu_native_tess_layout *control,struct opengpu_native_tess_layout *out){
     struct opengpu_native_tess_layout l;
     if(!control||!out||control->version!=1||control->stage!=4||!no_dynamic_layout(control)||
-        control->capacity!=capacity||reflect(tokens,n,5,capacity,1,control->input_vertices,0,&l))return -1;
+        control->capacity!=capacity||reflect(tokens,n,5,capacity,1,control->input_vertices,0,NULL,NULL,&l))return -1;
     struct opengpu_native_tess_patch_layout p={control->input_vertices,control->input_components,
         control->output_vertices,control->output_components,control->patch_components};
     if(!patch_layout_valid(&p)||(l.input_position&&!control->output_position)||l.input_components>p.output_components||
@@ -724,14 +806,14 @@ int opengpu_native_tess_dynamic_reflect(const void *tokens,unsigned n,unsigned c
 
 int opengpu_native_tess_control_emit(const void *tokens,unsigned n,const struct opengpu_native_tess_layout *layout,
     const struct opengpu_native_tess_input_map *map,struct opengpu_native_tess_program *out){
-    if(!layout||layout->version!=1||layout->stage!=4||!no_dynamic_layout(layout)||!map||map->version!=1||!map->count||map->count>64)return -1;
+    if(!layout||layout->version!=1||layout->stage!=4||!no_dynamic_layout(layout)||!map||map->version!=1||map->count>64)return -1;
     return emit(tokens,n,layout,map,out);
 }
 
 int opengpu_native_tess_language_control_reflect(const void *tokens,unsigned n,unsigned capacity,
     unsigned patch_vertices,struct opengpu_native_tess_layout *out){
     struct opengpu_native_tess_layout l;
-    if(!out||reflect(tokens,n,4,capacity,0,patch_vertices,1,&l))return -1;
+    if(!out||reflect(tokens,n,4,capacity,0,patch_vertices,1,NULL,NULL,&l))return -1;
     l.version=3;l.owned_tessellation_info=1;*out=l;return 0;
 }
 int opengpu_native_tess_language_evaluation_reflect(const void *tokens,unsigned n,unsigned capacity,
@@ -740,7 +822,7 @@ int opengpu_native_tess_language_evaluation_reflect(const void *tokens,unsigned 
     const struct opengpu_native_tess_patch_layout zero={0};
     if(!control||!out||control->version!=3||control->stage!=4||control->owned_tessellation_info!=1||
         control->owned_patch_reads||memcmp(&control->tes_patch_layout,&zero,sizeof(zero))||
-        control->capacity!=capacity||reflect(tokens,n,5,capacity,1,control->input_vertices,1,&l))return -1;
+        control->capacity!=capacity||reflect(tokens,n,5,capacity,1,control->input_vertices,1,NULL,NULL,&l))return -1;
     struct opengpu_native_tess_patch_layout p={control->input_vertices,control->input_components,
         control->output_vertices,control->output_components,control->patch_components};
     if(!patch_layout_valid(&p)||(l.input_position&&!control->output_position)||
@@ -754,7 +836,7 @@ int opengpu_native_tess_language_emit(const void *tokens,unsigned n,
     const struct opengpu_native_tess_layout *l,const struct opengpu_native_tess_input_map *map,
     struct opengpu_native_tess_program *out){
     const struct opengpu_native_tess_patch_layout zero={0};
-    if(!l||!map||map->version!=1||!map->count||map->count>64||l->version!=3||
+    if(!l||!map||map->version!=1||map->count>64||l->version!=3||
         l->owned_tessellation_info!=1)return -1;
     if(l->stage==4){
         if(l->owned_patch_reads||memcmp(&l->tes_patch_layout,&zero,sizeof(zero)))return -1;
@@ -766,4 +848,30 @@ int opengpu_native_tess_language_emit(const void *tokens,unsigned n,
             l->patch_components!=l->tes_patch_layout.patch_components)return -1;
     }else return -1;
     return emit(tokens,n,l,map,out);
+}
+
+int opengpu_native_tess_linked_reflect(const void *tokens,unsigned n,unsigned stage,unsigned capacity,unsigned vertices,
+    const struct opengpu_native_tess_packing *pin,const struct opengpu_native_tess_packing *pout,struct opengpu_native_tess_layout *out){
+    struct opengpu_native_tess_layout l;
+    if(!packing_valid(pin)||!packing_valid(pout)||!out||reflect(tokens,n,stage,capacity,stage==5,vertices,1,pin,pout,&l))return -1;
+    l.version=3;l.owned_tessellation_info=1;
+    l.input_components=pin->vertex_components;l.output_components=pout->vertex_components;
+    l.patch_components=stage==4?pout->patch_components:pin->patch_components;
+    l.input_position=pin->position;l.output_position=pout->position;
+    if(l.input_vertices*l.input_components>2048 || (stage==4&&l.output_vertices*l.output_components+l.patch_components>2048))return -1;
+    *out=l;return 0;
+}
+int opengpu_native_tess_linked_emit(const void *tokens,unsigned n,const struct opengpu_native_tess_layout *l,
+    const struct opengpu_native_tess_input_map *proof,const struct opengpu_native_tess_packing *pin,
+    const struct opengpu_native_tess_packing *pout,struct opengpu_native_tess_program *out){
+    struct opengpu_native_tess_packing checked;
+    if(!l||!proof||!packing_valid(pin)||!packing_valid(pout)||opengpu_native_tess_pack(proof,&checked)||l->version!=3||l->owned_tessellation_info!=1||
+       l->input_components!=pin->vertex_components||l->output_components!=pout->vertex_components||
+       l->input_position!=pin->position||l->output_position!=pout->position)return -1;
+    if(l->stage==4){if(l->owned_patch_reads||l->patch_components!=pout->patch_components)return -1;}
+    else if(l->stage==5){if(l->owned_patch_reads!=1||l->patch_components!=pin->patch_components||
+        !patch_layout_valid(&l->tes_patch_layout)||l->tes_patch_layout.output_components!=pin->vertex_components||
+        l->tes_patch_layout.patch_components!=pin->patch_components)return -1;}
+    else return -1;
+    return emit_mode(tokens,n,l,proof,pin,pout,out);
 }
