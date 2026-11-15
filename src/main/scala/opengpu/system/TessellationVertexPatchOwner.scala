@@ -62,7 +62,13 @@ class TessellationVertexPatchOwner[T <: Data](p:VertexShaderStageConfig,imageTyp
   private val active=state===State.active
   private val incomingImageFailure=io.imageCompletion.valid && imageAccepted && !imageDone && io.imageCompletion.bits.status=/=0.U
   private val incomingSourceFailure=io.sourceCompletion.valid && sourceAccepted && !sourceDone && io.sourceCompletion.bits.status=/=0.U
-  private val stop=cancelled || io.cancel || primary.orR || io.sourcePatchCancel || incomingImageFailure || incomingSourceFailure
+  // A child's cancelPatch can itself include its cancel input. Do not echo
+  // that live indication back to the child combinationally. It still stops
+  // image/new work immediately and is retained in cancelled below; independent
+  // parent cancellation and actual completion failures reach an owned child
+  // in the same cycle.
+  private val sourceStop=cancelled || io.cancel || primary.orR || incomingImageFailure || incomingSourceFailure
+  private val stop=sourceStop || io.sourcePatchCancel
 
   // A range offer already exists when cancellation arrives. Accept and retire
   // it locally if no image work has been offered; do not gate ready on cancel.
@@ -75,7 +81,7 @@ class TessellationVertexPatchOwner[T <: Data](p:VertexShaderStageConfig,imageTyp
   // sourceBusy includes its held completion. Accept that completion first.
   io.sourceCompletion.ready:=active && sourceAccepted && !sourceDone
   io.sourceOwned:=state=/=State.idle && sourceAccepted
-  io.cancelSource:=io.sourceOwned && stop
+  io.cancelSource:=io.sourceOwned && sourceStop
   io.cancelImage:=state=/=State.idle && stop
   private val childrenDrained= !imageOffer && imageDone && !sourceOffer && sourceDone &&
     !io.sourceBusy && io.transportDrained

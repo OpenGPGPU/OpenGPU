@@ -81,16 +81,31 @@ FP and fragment providers. New classes preceded the read-only `75899c185`
 dependency classpath; all source/classpath inputs matched before/after. See
 [the bounded source-compile command and elaboration configuration](TESSELLATION_VERTEX_IMAGE_ROUTING.md#reproduce-the-bounded-checks).
 
-Actual full-width isoline-parent `ChiselStage.elaborate` exhausted its 128 MiB
-heap in the actual VS texture-binding path. It used two CU interfaces,
-16 lanes/eight warps, 16 attributes/bindings/varyings, four MRTs, a 4x4 frame,
-one external engine interface and all optional routing capabilities. Triangle
-and quad elaboration were not run. Complete parent elaboration, actual
-VS/TCS/TES execution and protected native admission remain pending; the OOM
-neither proves a semantic defect nor validates connections. External engines
-exclude actual CU/render-bank instances and cannot establish sample shading,
-image execution or native-sample/advanced-blend behavior. Component results and
-the type compile do not qualify the complete VS-to-patch-to-image owner or the
+The initial full-width isoline-parent construction exhausted 128 MiB heap in
+the actual VS texture-binding path. Fresh current providers subsequently passed
+actual CIRCT 1.158.0 lowering with 768 MiB heap: two CU interfaces, 16 lanes/eight
+warps, all 16 attributes/bindings/varyings, four MRTs, a 4x4 frame, one external
+engine, 65536 paged capacity and 512 KiB payload capacity/64 KiB maximum payload.
+All exposed optional routing flags were enabled. The run completed in 20.04
+seconds within the 600-second/1536-MiB group guard, with 1,384,624 KiB largest
+sampled RSS. The real top, complete module definitions and assertion layers
+were checked; input/provider guards matched before/after. See the linked
+reproduction for exact configuration and flags.
+
+Lowering found and verified the fix for an actual Owner/Publisher cancel echo
+cycle. Source-origin stop immediately cancels image/new work and is latched,
+while parent cancellation and actual completion faults still reach an owned
+source in the same cycle. The real Owner/Publisher closed-loop RTL case, prior
+Owner case and both frame-control/tuple cases passed. Reintroducing the echo
+fails the exact FIRRTL cycle check. Held offers, replies, seals and reports are
+retained through cancellation and drain before no-reset reuse.
+
+Triangle/quad lowering, actual VS/TCS/TES execution and protected native
+admission remain pending. External engines exclude actual CU/render-bank
+instances and cannot establish sample shading, image access or native-sample/
+advanced-blend behavior. New independent language/primitive-ID ABIs are not
+connected through this parent. These construction/lowering and component
+results do not qualify the complete VS-to-patch-to-image owner or the
 640x480/60 FPS target.
 
 Eight current source files passed Scala/Chisel-plugin compilation, followed by
