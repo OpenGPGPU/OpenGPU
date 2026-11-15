@@ -228,7 +228,10 @@ static void pt_failures(struct pt_records *t,struct opengpu_device *gpu,struct o
   if(!ret)break;
  }assert(reached>100 && reached<2048);
 }
-int main(void)
+#ifndef OPENGPU_PROTECTED_TESS_TEST_MAIN
+#define OPENGPU_PROTECTED_TESS_TEST_MAIN main
+#endif
+int OPENGPU_PROTECTED_TESS_TEST_MAIN(void)
 {
  for(u32 domain=0;domain<3;domain++){
   struct opengpu_device gpu={0};struct opengpu_render_context context={.gpu=&gpu,.references=1,.id=7};

@@ -205,12 +205,25 @@ static int outer_validate(struct outer_capture *c)
     }
     return opengpu_tessellation_vertex_outer_map_source_canonical(c->map,64+(size_t)s->range_count*64)?0:-EINVAL;
 }
-int opengpu_tessellation_vertex_outer_append(struct opengpu_private_snapshot *owner,
-    const struct opengpu_tessellation_vertex_outer_source_v2 *source,
-    const struct opengpu_native_job_copy *copy,u32 *output)
+int opengpu_tessellation_vertex_outer_precheck(const struct opengpu_tessellation_vertex_outer_source_v2 *s)
 {
     struct outer_capture *c;
-    u32 map;
+    int ret;
+    if(!s)return -EINVAL;
+    c=kvzalloc(sizeof(*c),GFP_KERNEL);
+    if(!c)return -ENOMEM;
+    c->source=*s;
+    ret=outer_capture_all(c);
+    if(!ret)ret=outer_validate(c);
+    outer_free(c);
+    return ret;
+}
+int opengpu_tessellation_vertex_outer_append_roots(struct opengpu_private_snapshot *owner,
+    const struct opengpu_tessellation_vertex_outer_source_v2 *source,
+    const struct opengpu_native_job_copy *copy,struct opengpu_tessellation_vertex_outer_roots *output)
+{
+    struct outer_capture *c;
+    u32 map,*roots=NULL;
     int ret;
     if(!owner || !source || !copy || !copy->copy || !copy->resolve || !output)return -EINVAL;
     if(!source->profile.available)return -EOPNOTSUPP;
@@ -222,6 +235,8 @@ int opengpu_tessellation_vertex_outer_append(struct opengpu_private_snapshot *ow
     c->source=*source;c->copy=*copy;
     ret=outer_capture_all(c);if(ret)goto done;
     ret=outer_validate(c);if(ret)goto done;
+    roots=kvzalloc((size_t)c->source.range_count*sizeof(*roots),GFP_KERNEL);
+    if(!roots){ret=-ENOMEM;goto done;}
     ret=opengpu_private_snapshot_append(owner,c->map,64+(size_t)c->source.range_count*64,&map);
     if(ret)goto done;
     for(u32 n=0;n<c->source.range_count;n++) {
@@ -237,11 +252,29 @@ int opengpu_tessellation_vertex_outer_append(struct opengpu_private_snapshot *ow
         memcpy(s.plan.bindings,p->bindings,sizeof(s.plan.bindings));s.plan.indices=p->indices;
         s.plan.indirect=p->indirect;s.plan.scratch=p->vertex_scratch;
         ret=opengpu_tessellation_vertex_source_append(owner,&s,&c->copy,&root);
+        if(!ret)roots[n]=root;
         if(!ret)ret=opengpu_private_snapshot_relocate(owner,map,64+(size_t)n*64+48,root,0,OPENGPU_PRIVATE_SNAPSHOT_VA32);
         if(!ret)ret=opengpu_private_snapshot_relocate(owner,map,64+(size_t)n*64+52,root,512,OPENGPU_PRIVATE_SNAPSHOT_LIMIT33);
         if(ret)goto done;
     }
-    *output=map;
+    *output=(struct opengpu_tessellation_vertex_outer_roots){map,c->source.range_count,roots};
+    roots=NULL;
 done:
-    outer_free(c);return ret;
+    kvfree(roots);outer_free(c);return ret;
+}
+void opengpu_tessellation_vertex_outer_roots_release(struct opengpu_tessellation_vertex_outer_roots *r)
+{
+    if(r){kvfree(r->root_segments);memset(r,0,sizeof(*r));}
+}
+int opengpu_tessellation_vertex_outer_append(struct opengpu_private_snapshot *owner,
+    const struct opengpu_tessellation_vertex_outer_source_v2 *source,
+    const struct opengpu_native_job_copy *copy,u32 *output)
+{
+    struct opengpu_tessellation_vertex_outer_roots r={0};
+    int ret;
+    if(!output)return -EINVAL;
+    ret=opengpu_tessellation_vertex_outer_append_roots(owner,source,copy,&r);
+    if(!ret)*output=r.map_segment;
+    opengpu_tessellation_vertex_outer_roots_release(&r);
+    return ret;
 }

@@ -43,6 +43,7 @@ python3 scripts/test_linear_image_allocation.py
 python3 scripts/test_native_frame.py
 python3 -B scripts/test_tessellation_uniform_abi.py
 python3 -B scripts/test_tessellation_vertex_source_abi.py
+python3 -B scripts/test_protected_tessellation_joint_abi.py
 python3 -B scripts/test_tessellation_vertex_source.py
 python3 scripts/test_tessellation_canonical.py
 python3 scripts/test_tessellation_transport_submit.py

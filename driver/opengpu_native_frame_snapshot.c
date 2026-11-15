@@ -228,7 +228,7 @@ static int append_frame(struct opengpu_private_snapshot *owner,
     const void *frame,u32 states,size_t state_bytes,
     const struct opengpu_native_frame_resource *plans,u32 count,
     u32 engines,u32 context,u32 pass,u32 generation,
-    opengpu_native_frame_resolve resolve,void *resolve_context,u32 *out,bool complete,bool layered)
+    opengpu_native_frame_resolve resolve,void *resolve_context,u32 *out,bool complete,bool layered,bool empty)
 {
     struct resolved_view *views;
     const struct resolved_view *roles[7][9]={{0}};
@@ -236,7 +236,7 @@ static int append_frame(struct opengpu_private_snapshot *owner,
     u64 pool_bytes=0,cursor=0;
     int ret=-EINVAL;
     if(!owner || !frame || !out || !resolve || !plans || !count || count>MAX_RESOURCES ||
-        !engines || engines>4 || !state_bytes || (state_bytes%512) ||
+        !engines || engines>4 || (empty?(states || state_bytes):!state_bytes) || (state_bytes%512) ||
         (u64)state_bytes>(1ULL<<32) || !zero_addresses(frame) ||
         get32(frame,0)!=(layered?OPENGPU_NATIVE_LAYERED_FRAME_MAGIC:OPENGPU_NATIVE_BINNED_FRAME_MAGIC) ||
         get32(frame,1)!=OPENGPU_NATIVE_BINNED_FRAME_BYTES ||
@@ -366,8 +366,10 @@ static int append_frame(struct opengpu_private_snapshot *owner,
         }
         if(ret)goto done;
     }
-    ret=opengpu_private_snapshot_relocate(owner,segment,4u*W(FRAME_STATES_BASE),states,0,OPENGPU_PRIVATE_SNAPSHOT_VA32);
-    if(!ret)ret=opengpu_private_snapshot_relocate(owner,segment,4u*W(FRAME_STATES_LIMIT),states,state_bytes,OPENGPU_PRIVATE_SNAPSHOT_LIMIT33);
+    if(!empty){
+        ret=opengpu_private_snapshot_relocate(owner,segment,4u*W(FRAME_STATES_BASE),states,0,OPENGPU_PRIVATE_SNAPSHOT_VA32);
+        if(!ret)ret=opengpu_private_snapshot_relocate(owner,segment,4u*W(FRAME_STATES_LIMIT),states,state_bytes,OPENGPU_PRIVATE_SNAPSHOT_LIMIT33);
+    }
     if(!ret)*out=segment;
 done:
     kvfree(views);
@@ -381,7 +383,7 @@ int opengpu_native_frame_snapshot_append(struct opengpu_private_snapshot *owner,
     opengpu_native_frame_resolve resolve,void *resolve_context,u32 *out)
 {
     return append_frame(owner,frame,states,state_bytes,plans,count,engines,context,pass,generation,
-                        resolve,resolve_context,out,false,false);
+                        resolve,resolve_context,out,false,false,false);
 }
 int opengpu_native_frame_snapshot_append_complete(struct opengpu_private_snapshot *owner,
     const void *frame,u32 states,size_t state_bytes,
@@ -390,7 +392,7 @@ int opengpu_native_frame_snapshot_append_complete(struct opengpu_private_snapsho
     opengpu_native_frame_resolve resolve,void *resolve_context,u32 *out)
 {
     return append_frame(owner,frame,states,state_bytes,plans,count,engines,context,pass,generation,
-                        resolve,resolve_context,out,true,false);
+                        resolve,resolve_context,out,true,false,false);
 }
 int opengpu_native_frame_snapshot_append_layered_complete(struct opengpu_private_snapshot *owner,
     const void *frame,u32 states,size_t state_bytes,
@@ -399,10 +401,19 @@ int opengpu_native_frame_snapshot_append_layered_complete(struct opengpu_private
     opengpu_native_frame_resolve resolve,void *resolve_context,u32 *out)
 {
     return append_frame(owner,frame,states,state_bytes,plans,count,engines,context,pass,generation,
-                        resolve,resolve_context,out,true,true);
+                        resolve,resolve_context,out,true,true,false);
 }
 #undef RESOURCE_READ
 #undef RESOURCE_WRITE
 #undef PAGE
 #undef W
 #undef GFS
+
+int opengpu_native_frame_snapshot_append_empty_complete(struct opengpu_private_snapshot *owner,
+    const void *frame,const struct opengpu_native_frame_resource *plans,u32 count,
+    u32 engines,u32 context,u32 pass,u32 generation,
+    opengpu_native_frame_resolve resolve,void *resolve_context,u32 *out)
+{
+    return append_frame(owner,frame,0,0,plans,count,engines,context,pass,generation,
+        resolve,resolve_context,out,true,false,true);
+}

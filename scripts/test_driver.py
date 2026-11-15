@@ -25,6 +25,7 @@ def run_driver_tests():
     subprocess.run([sys.executable, str(ROOT / "scripts/test_tessellation_program_snapshot.py")], check=True)
     subprocess.run([sys.executable, "-B", str(ROOT / "scripts/test_tessellation_vertex_plan.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_protected_tessellation.py")], check=True)
+    subprocess.run([sys.executable, "-B", str(ROOT / "scripts/test_protected_tessellation_joint.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_protected_tessellation_submit.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_geometry_program_snapshot.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_geometry_snapshot.py")], check=True)
