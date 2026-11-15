@@ -50,7 +50,8 @@
   六项环境 skip）；三组真实 Mesa CPU 检查和独立 P16 程序字节消费通过。
 - 下一批是 P17 同一原链接 VS/TCS/TES/FS 编译和原52引用 source lease，
   原逻辑提交 `9ed94be7b`、`9fde939af`、`53103920c`，交付分支
-  `codex/p17-joint-delivery`；本地实现和相关验证已通过，待提交单个 PR。
+  `codex/p17-joint-delivery`；本地实现和相关验证已通过，已开放唯一
+  [PR #827](https://github.com/OpenGPGPU/OpenGPU/pull/827)，等待正常 CI 和严格受保护的 `ci-ok`。
   [范围、实际 CPU 结果与限制](NATIVE_JOINT_COMPILER_SOURCE.md)：三组原 Mesa
   程序、45 TU 全新编译、旧字节兼容与两项源码负控通过；正式 main 独立
   validator/RX/MMU 消费12个原程序通过；mapped 地址宽度乘法已修正，
@@ -104,7 +105,7 @@ GPU 的正式交付入口是受保护的 [`main`](https://github.com/OpenGPGPU/O
 | 仓库 / 分支 | 用途与交付方式 |
 |---|---|
 | GPU `main` | 已通过受保护 CI 并合入的正式源码；最近基线为 #826；P15/P16/P39部分源码已合入，完整目标验收仍待完成 |
-| GPU `codex/p17-joint-delivery` | 基于 #826 的下一份源码交付准备；同一原链接四阶段编译、两独立边界 map 与52引用 lease；三个原逻辑提交9ed94be7b/9fde939af/53103920c；本地验收通过，走严格 ci-ok/rebase auto-merge |
+| GPU `codex/p17-joint-delivery` | 基于 #826 的唯一开放源码交付 [PR #827](https://github.com/OpenGPGPU/OpenGPU/pull/827)；同一原链接四阶段编译、两独立边界 map 与52引用 lease；三个原逻辑提交9ed94be7b/9fde939af/53103920c；本地验收通过，走严格 ci-ok/rebase auto-merge |
 | GPU `codex/native-sample-dut-bridge` | 保留 P02/P03 的原开发源码，按本清单分批交付；不另外开放并行 PR |
 | GPU `codex/owner-counter-live` | P07 的隔离实现分支；CPU 操作语料已扩展，实际 DUT/共存验收待完成 |
 | GPU `codex/p15-tess-checked-uniform` | P15 原 checked-uniform/版本化 ABI 源码；交付分支保留三项实现逻辑提交，不带旧政策/CI 父链 |
