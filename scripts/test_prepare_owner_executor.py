@@ -490,6 +490,61 @@ class ExecutorTests(unittest.TestCase):
             q.verify_qualification(path,kind='native-sample')
         item.unlink();item.write_bytes(original)
 
+    def test_sample_fixture_default_macro_binds_the_real_recursive_production_closure(self):
+        kind='native-sample-graphics';path,record=self.sample_fixture(kind)
+        for name in ('driver/opengpu_protected_tessellation.c',
+                     'driver/opengpu_protected_tessellation.h',
+                     'driver/opengpu_tessellation_program_snapshot.h',
+                     'driver/opengpu_tessellation_uniform_sequence_abi.h'):
+            self.assertIn(name,q.sample_producer_files())
+            self.assertIn(name,q.graphics_producer_files())
+            self.assertIn(name,record['source_sha256'])
+            item=q.ROOT/name;original=item.read_bytes()
+            item.write_bytes(original+b'\n/* changed real producer dependency */\n')
+            with self.subTest(changed=name),self.assertRaises(RuntimeError):
+                q.verify_qualification(path,kind=kind)
+            item.write_bytes(original)
+            omitted=copy.deepcopy(record);del omitted['source_sha256'][name]
+            q.common.write_json(path,omitted)
+            with self.subTest(omitted=name),self.assertRaises(RuntimeError):
+                q.verify_qualification(path,kind=kind)
+            q.common.write_json(path,record)
+        q.verify_qualification(path,kind=kind)
+
+    def test_sample_fixture_macro_cannot_change_default_override_escape_or_omit_source(self):
+        kind='native-sample-graphics';path,record=self.sample_fixture(kind)
+        fixture=q.ROOT/'driver/tests/opengpu_native_submit_fixture.c'
+        original=fixture.read_bytes();macro=b'OPENGPU_PROTECTED_TESS_SOURCE'
+        for bad in (
+                original.replace(b'#include '+macro,b'#include UNKNOWN_PROTECTED_TESS_SOURCE'),
+                original.replace(b'"../opengpu_protected_tessellation.c"',b'"../opengpu_native_frame.c"'),
+                original.replace(b'"../opengpu_protected_tessellation.c"',b'"../../../outside.c"'),
+                original.replace(b'#ifndef '+macro,b'#if 1'),
+                b'#define '+macro+b' "../opengpu_native_frame.c"\n'+original):
+            fixture.write_bytes(bad)
+            for collect in (q.sample_producer_files,q.graphics_producer_files):
+                with self.subTest(collect=collect.__name__,variant=bad),self.assertRaises(RuntimeError):
+                    collect()
+        fixture.write_bytes(original)
+        # An earlier header must not override the fixture-local default, even
+        # when the fixture's own three-line guard remains unchanged.
+        producer=q.ROOT/'scripts/native_sample_submit_producer.c'
+        producer_original=producer.read_bytes()
+        producer.write_bytes(b'#define '+macro+b' "../opengpu_native_frame.c"\n'+producer_original)
+        for collect in (q.sample_producer_files,q.graphics_producer_files):
+            with self.subTest(override=collect.__name__),self.assertRaises(RuntimeError):collect()
+        producer.write_bytes(producer_original)
+        target=q.ROOT/'driver/opengpu_protected_tessellation.c';body=target.read_bytes()
+        target.unlink()
+        for collect in (q.sample_producer_files,q.graphics_producer_files):
+            with self.subTest(missing=collect.__name__),self.assertRaises(RuntimeError):collect()
+        external=q.ROOT.parent/'external-protected-tessellation.c';external.write_bytes(body)
+        target.symlink_to(external)
+        for collect in (q.sample_producer_files,q.graphics_producer_files):
+            with self.subTest(escape=collect.__name__),self.assertRaises(RuntimeError):collect()
+        target.unlink();target.write_bytes(body)
+        q.verify_qualification(path,kind=kind)
+
     def test_native_sample_rejects_incomplete_dependencies_driver_or_updated_include(self):
         path,record=self.sample_fixture();snapshot=path.parent/'builder.json'
         original=json.loads(snapshot.read_text())

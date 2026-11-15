@@ -161,6 +161,29 @@ def driver_files(kind, profile=owner.PROFILE):
             (['scripts/compute_owner_capture.hpp'] if kind == 'compute' else []))
 
 
+def sample_fixture_macros(path, source):
+    """Resolve only the registered fixture's unmodified local default.
+
+    This is not a C preprocessor: overrides used by mutation tests cannot
+    qualify a producer. Both producer scanners still bind the real C body's
+    complete include closure after resolving this one exact form.
+    """
+    macro = b'OPENGPU_PROTECTED_TESS_SOURCE'
+    uses = re.findall(rb'\b' + macro + rb'\b', source)
+    if not uses:
+        return {}
+    default = (b'#ifndef ' + macro + b'\n#define ' + macro +
+               b' "../opengpu_protected_tessellation.c"\n#endif\n#include ' + macro)
+    fixture = ROOT / 'driver/tests/opengpu_native_submit_fixture.c'
+    target = ROOT / 'driver/opengpu_protected_tessellation.c'
+    require(path == fixture and source.count(default) == 1 and
+            len(uses) == 3,
+            'unsupported native sample fixture macro include')
+    require(target.is_file() and target.resolve() == target,
+            'missing/aliased protected tessellation producer source')
+    return {macro: b'"../opengpu_protected_tessellation.c"'}
+
+
 def sample_producer_files():
     """Bind actual C producer/include closure and extracted production bodies."""
     search = [ROOT / name for name in ('driver', 'driver/tests',
@@ -173,9 +196,12 @@ def sample_producer_files():
         if path in observed:
             continue
         observed.add(path)
-        for match in builder.INCLUDE.finditer(path.read_bytes()):
+        source = path.read_bytes()
+        macros = sample_fixture_macros(path, source)
+        for match in builder.INCLUDE.finditer(source):
             directive = re.sub(rb'^[ \t]*#[ \t]*include[ \t]*', b'', match[0]).strip()
             directive = directive.split(b'//', 1)[0].strip()
+            directive = macros.get(directive, directive)
             parsed = re.fullmatch(rb'([<"])([^>"]+)[>"]', directive)
             require(parsed is not None, 'unsupported native sample producer include')
             name = os.fsdecode(parsed[2])
@@ -211,10 +237,13 @@ def graphics_producer_files():
         if path in observed:
             continue
         observed.add(path)
-        for match in builder.INCLUDE.finditer(path.read_bytes()):
+        source = path.read_bytes()
+        macros = sample_fixture_macros(path, source)
+        for match in builder.INCLUDE.finditer(source):
             directive = re.sub(rb'^[ \t]*#[ \t]*include[ \t]*', b'', match[0]).strip()
             directive = directive.split(b'//', 1)[0].strip()
             directive = re.sub(rb'/\*.*?\*/', b'', directive).strip()
+            directive = macros.get(directive, directive)
             parsed = re.fullmatch(rb'([<"])([^>"]+)[>"]', directive)
             require(parsed is not None,
                     'unsupported native sample graphics producer include in ' + str(path) + ': ' + repr(directive))
