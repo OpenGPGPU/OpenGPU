@@ -201,7 +201,7 @@ in total under the separate 900-second whole-run deadline. Actual Linux memory
 and swap were both capped at 512 MiB with one CPU and no network. Source guards
 passed; ended private outputs and containers were removed.
 
-On the delivery based on merged #827, the complete sanitized host script
+On BUILD delivery `4c7b60138` based on merged #827, the complete sanitized host script
 passed in 767.27 seconds under a 1500-second/768-MiB sampled aggregate guard.
 Peak sampled aggregate RSS was 531920 KiB. All 3128 tracked non-document source
 inputs and HEAD were stable. Results include 152 pytest cases, 21 strict
@@ -214,7 +214,8 @@ unchanged. Ended private test outputs were removed after consumer checks.
 
 This BUILD block did not run a full module Kbuild or actual DUT/frame
 qualification. The accompanying default-off GNQ/GVM metadata readers passed
-separate bounded ABI/component RTL checks; see
+separate bounded ABI/component RTL and test-catalog checks after their
+source replay; see
 [TESSELLATION_JOINT_METADATA_CAPTURE.md](TESSELLATION_JOINT_METADATA_CAPTURE.md).
 The Scala regression workflow remains disabled and was not triggered.
 Actual GNT/GVS/GND capture and parent ownership, correct production VA placement,
