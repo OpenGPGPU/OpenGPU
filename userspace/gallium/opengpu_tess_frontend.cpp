@@ -23,6 +23,8 @@ extern "C" {
 #include "tgsi/tgsi_ureg.h"
 #include "opengpu_tess_frontend.h"
 #include "opengpu_native_tess_uniform_emit.h"
+#include "opengpu_native_joint_internal.h"
+#include "opengpu_native_fragment_reflection_v2.h"
 
 static const gl_shader_stage stages[] = {MESA_SHADER_VERTEX, MESA_SHADER_TESS_CTRL,
     MESA_SHADER_TESS_EVAL, MESA_SHADER_GEOMETRY, MESA_SHADER_FRAGMENT};
@@ -75,10 +77,11 @@ struct graphics_program {
     const tgsi_token *tokens[5];
     unsigned color_types[4];
     opengpu_native_tess_input_map evaluation_inputs,control_outputs;
+    bool joint;opengpu_native_joint_input captured;
 };
 static int type_size(const glsl_type *type, bool) { return glsl_count_vec4_slots(type, false, false); }
 
-extern "C" void *opengpu_tess_frontend_compile(const char *const files[5], const char *prefix)
+static void *compile(const char *const files[5], const char *prefix,bool joint)
 {
     if(!files || !files[0] || !files[1] || !files[2] || !files[4])return nullptr;
     auto *f = new graphics_program{};
@@ -93,7 +96,10 @@ extern "C" void *opengpu_tess_frontend_compile(const char *const files[5], const
         opengpu_tess_frontend_destroy(f); return nullptr;
     }
     auto *program = f->program;
-    assert(program->IsES && program->data->Version == 320);
+    if(joint){
+        if(!native_fragment_reflect_v2(program,&f->captured.fragment)){opengpu_tess_frontend_destroy(f);return nullptr;}
+        f->joint=true;
+    }else assert(program->IsES && program->data->Version == 320);
     exec_list_make_empty(&program->EmptyUniformLocations);
     pipe_screen screen = {};
     screen.get_param = param; screen.get_shader_param = shader_param;
@@ -164,16 +170,43 @@ extern "C" void *opengpu_tess_frontend_compile(const char *const files[5], const
                 span.mask=(1u<<components)-1;
             }
         }
+        if(joint){
+            struct capture_mode {unsigned slot;nir_variable_mode mode;};
+            capture_mode modes[2];unsigned nm=0;
+            if(stage==MESA_SHADER_VERTEX)modes[nm++]={0,nir_var_shader_out};
+            if(stage==MESA_SHADER_TESS_CTRL){modes[nm++]={1,nir_var_shader_in};modes[nm++]={2,nir_var_shader_out};}
+            if(stage==MESA_SHADER_TESS_EVAL){modes[nm++]={3,nir_var_shader_in};modes[nm++]={4,nir_var_shader_out};}
+            if(stage==MESA_SHADER_FRAGMENT)modes[nm++]={5,nir_var_shader_in};
+            for(unsigned q=0;q<nm;q++){
+                auto &map=f->captured.maps[modes[q].slot];map.version=1;
+                nir_foreach_variable_with_modes(var,nir,modes[q].mode){
+                    if(var->data.location==VARYING_SLOT_PRIMITIVE_ID)continue;
+                    if(stage==MESA_SHADER_FRAGMENT && (var->data.location<VARYING_SLOT_VAR0||var->data.location>=VARYING_SLOT_PATCH0))continue;
+                    if(map.count==64||var->data.location_frac){map.version=0;break;}
+                    auto *type=var->type;bool pv=nir_is_arrayed_io(var,stage);if(pv)type=glsl_get_array_element(type);
+                    auto &span=map.spans[map.count++];span.first=var->data.driver_location;
+                    span.slots=glsl_count_attribute_slots(type,false);span.per_vertex=pv;span.compact=var->data.compact;
+                    unsigned location=var->data.location;
+                    if(location>=VARYING_SLOT_VAR0&&location<VARYING_SLOT_PATCH0){span.semantic=TGSI_SEMANTIC_GENERIC;span.index=location-VARYING_SLOT_VAR0;}
+                    else tgsi_get_gl_varying_semantic((gl_varying_slot)location,true,&span.semantic,&span.index);
+                    unsigned n=span.compact?glsl_get_length(type):glsl_get_vector_elements(glsl_without_array_or_matrix(type));
+                    if(!n||n>4){map.version=0;break;}span.mask=(1u<<n)-1;
+                }
+            }
+        }
         nir_validate_shader(nir, "actual linked graphics uniform frontend");
         nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir)); shader->Program->info = nir->info;
         if (stage == MESA_SHADER_FRAGMENT) nir_foreach_shader_out_variable(var, nir) {
+            if(joint&&(var->data.location<FRAG_RESULT_DATA0||var->data.location>=FRAG_RESULT_DATA0+4))continue;
             assert(var->data.driver_location < 4 && glsl_get_components(var->type) <= 4);
             auto type = glsl_get_base_type(var->type);
             assert(type == GLSL_TYPE_FLOAT || type == GLSL_TYPE_UINT || type == GLSL_TYPE_INT);
             f->color_types[var->data.driver_location] = type == GLSL_TYPE_UINT ? 1 : type == GLSL_TYPE_INT ? 2 : 0;
+            if(joint)f->captured.fragment.color_types[var->data.driver_location]=f->color_types[var->data.driver_location];
         }
         f->tokens[i] = static_cast<const tgsi_token *>(nir_to_tgsi(nir, &screen));
         shader->Program->nir = nullptr; assert(f->tokens[i]);
+        if(joint){unsigned j=i==4?3:i;f->captured.tokens[j]=f->tokens[i];f->captured.words[j]=tgsi_num_tokens(f->tokens[i]);}
         if (prefix) {
             char filename[4096]; int n = snprintf(filename, sizeof(filename), "%s.%s.tgsi.txt", prefix, names[i]);
             assert(n > 0 && (size_t)n < sizeof(filename));
@@ -237,4 +270,20 @@ extern "C" void opengpu_tess_frontend_destroy(void *p)
     for(auto *t:f->tokens)if(t)ureg_free_tokens(t);
     if(f->program)standalone_compiler_cleanup(f->program);
     delete f;
+}
+
+extern "C" void *opengpu_tess_frontend_compile(const char *const files[5],const char *prefix){return compile(files,prefix,false);}
+extern "C" opengpu_native_joint_link *opengpu_native_joint_link_create(const char *const files[4]){
+    if(!files)return nullptr;
+    const char *all[5]={files[0],files[1],files[2],nullptr,files[3]};
+    return static_cast<opengpu_native_joint_link *>(compile(all,nullptr,true));
+}
+extern "C" void opengpu_native_joint_link_destroy(opengpu_native_joint_link *p){opengpu_tess_frontend_destroy(p);}
+extern "C" unsigned opengpu_native_joint_blocks(const opengpu_native_joint_link *p,unsigned stage){return opengpu_tess_frontend_blocks(const_cast<opengpu_native_joint_link *>(p),stage);}
+extern "C" unsigned opengpu_native_joint_binding(const opengpu_native_joint_link *p,unsigned stage,unsigned block){return opengpu_tess_frontend_binding(const_cast<opengpu_native_joint_link *>(p),stage,block);}
+extern "C" unsigned opengpu_native_joint_defaults(const opengpu_native_joint_link *p,unsigned stage){return opengpu_tess_frontend_components(const_cast<opengpu_native_joint_link *>(p),stage);}
+extern "C" int opengpu_native_joint_bind_ubos(opengpu_native_joint_link *p,pipe_context *pipe,pipe_resource *const r[72],const unsigned o[72],const unsigned n[72]){return opengpu_tess_frontend_ubos(p,pipe,r,o,n);}
+extern "C" int opengpu_native_joint_bind_defaults(opengpu_native_joint_link *p,pipe_context *pipe,unsigned stage,const unsigned *v,unsigned n){return opengpu_tess_frontend_defaults(p,pipe,stage,v,n);}
+extern "C" int opengpu_native_joint_link_capture(const opengpu_native_joint_link *p,opengpu_native_joint_input *out){
+    auto *f=reinterpret_cast<const graphics_program *>(p);if(!f||!f->joint||!out)return -1;*out=f->captured;return 0;
 }
