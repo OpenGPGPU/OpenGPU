@@ -25,6 +25,8 @@ struct opengpu_native_program_snapshot {
  * staging tails and input flags/built-ins stay read-only. Fragment depth and
  * shader-owned output-control arrays remain in the writable output prefix.
  *
+ * Capture the complete view and verified profile before invoking copy_source;
+ * callbacks cannot change the admitted layout, permissions or entry suffix.
  * Validate the executable suffix beginning at entry_offset, retaining the
  * validator's branch bounds relative to that suffix. Copy the entire original
  * view unchanged into a private RX/no-W segment. The producer relocates PC to

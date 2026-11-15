@@ -13,11 +13,16 @@ int opengpu_native_program_snapshot_append(struct opengpu_private_snapshot *owne
     void *copy_context,struct opengpu_native_program_snapshot *output)
 {
     struct opengpu_native_program_snapshot result;
+    struct drm_opengpu_native_program_view captured_view;
+    struct opengpu_native_program_profile captured_profile;
     struct drm_opengpu_compute_uniform_view source;
     u32 *words;
     u8 *bytes;
     int ret;
-    if(!owner || !view || !profile || !copy_source || !output || !view->handle || view->pad ||
+    if(!owner || !view || !profile || !copy_source || !output)return -EINVAL;
+    captured_view=*view;view=&captured_view;
+    captured_profile=*profile;profile=&captured_profile;
+    if(!view->handle || view->pad ||
         !view->bytes || view->bytes>4u*OPENGPU_SHADER_MAX_INSTRUCTIONS ||
         ((view->offset|view->bytes|view->entry_offset)&3u) ||
         view->entry_offset>=view->bytes || view->offset>~(u64)0-view->bytes ||
