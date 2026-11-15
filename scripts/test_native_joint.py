@@ -186,8 +186,18 @@ def main():
     clear_packets(out/'matrix')
     run([binary,*[sources/('matrix.'+s) for s in ('vert','tesc','tese','frag')],out/'matrix',0,15,15],'actual-matrix')
     for path in packet_paths(out/'matrix'):private[str(path)]=sha256(path)
+    generated(sources/'matrix-levels.tese',(sources/'matrix.tese').read_text().replace('matrices[indices.x][indices.y]+vectors[indices.z]', 'matrices[indices.x][indices.y]+vectors[indices.z]+vec3(gl_TessLevelOuter[0],gl_TessLevelOuter[1],gl_TessLevelInner[0])'))
+    clear_packets(out/'matrix-levels')
+    run([binary,sources/'matrix.vert',sources/'matrix.tesc',sources/'matrix-levels.tese',sources/'matrix.frag',out/'matrix-levels',3,15,15],'actual-matrix-levels')
+    for path in packet_paths(out/'matrix-levels'):private[str(path)]=sha256(path)
     generated(sources/'matrix-indirect.tesc',(sources/'matrix.tesc').read_text().replace('vectors[0]=vec3(1.,2.,3.);vectors[1]=vec3(4.,5.,6.);','vectors[gl_InvocationID]=payload[gl_InvocationID].xyz;'))
-    run([binary,sources/'matrix.vert',sources/'matrix-indirect.tesc',sources/'matrix.tese',sources/'matrix.frag',out/'unsupported',2,15,15],'original-indirect-store-rejected')
+    clear_packets(out/'matrix-indirect')
+    run([binary,sources/'matrix.vert',sources/'matrix-indirect.tesc',sources/'matrix.tese',sources/'matrix.frag',out/'matrix-indirect',2,15,15],'original-indirect-store')
+    for path in packet_paths(out/'matrix-indirect'):private[str(path)]=sha256(path)
+    generated(sources/'matrix-indirect-simt.tesc',(sources/'matrix-indirect.tesc').read_text().replace('vectors[gl_InvocationID]=payload[gl_InvocationID].xyz;', 'if(gl_InvocationID==0){vectors[gl_InvocationID]=payload[gl_InvocationID].xyz;}else{vectors[gl_InvocationID]=payload[gl_InvocationID].zyx;}'))
+    clear_packets(out/'matrix-indirect-simt')
+    run([binary,sources/'matrix.vert',sources/'matrix-indirect-simt.tesc',sources/'matrix.tese',sources/'matrix.frag',out/'matrix-indirect-simt',2,15,15],'original-indirect-store-simt')
+    for path in packet_paths(out/'matrix-indirect-simt'):private[str(path)]=sha256(path)
     run([binary,sources/'full.vert',sources/'full.frag','legacy'],'legacy-original-308-301-after')
     # Original independent v2 production emitter, not a current-helper self-test.
     rename=['-D'+n+'=baseline_'+n for n in ('opengpu_native_tess_uniform_emit','opengpu_native_tess_control_emit',
@@ -227,6 +237,12 @@ def main():
             'bos[saved.uniforms[s].defaults.handle].handle')
         mutant('mutant-wrong-array-stride','userspace/gallium/opengpu_native_tess_uniform_emit.c','word(b,vec(0x25,3,29,3,29));','word(b,vec(0x25,3,29,4,29));',
             [*[sources/('matrix.'+s) for s in ('vert','tesc','tese','frag')],out/'mutant-stride',0,15,15],'vec3Stride>=6')
+        mutant('mutant-no-store-params','userspace/gallium/opengpu_native_tess_uniform_emit.c','word(b,patch(20,0,22+c,0));','word(b,0x00000013u);',
+            [sources/'matrix.vert',sources/'matrix-indirect.tesc',sources/'matrix.tese',sources/'matrix.frag',out/'mutant-params',2,15,15],
+            '(params&0xfe007fffu)==(20u<<26|1u<<25|0x2bu)')
+        mutant('mutant-store-bound','userspace/gallium/opengpu_native_tess_uniform_emit.c','unsigned remaining=span->slots-(index-span->first);','unsigned remaining=span->slots+1-(index-span->first);',
+            [sources/'matrix.vert',sources/'matrix-indirect.tesc',sources/'matrix.tese',sources/'matrix.frag',out/'mutant-bound',2,15,15],
+            'd.tess[0].code[i-1]==0x00200513u')
     unchanged();assert snapshot(mesa,mb,libraries,drm,gpu)==external
     actual_dependencies=set()
     for dep in out.glob('*.d'):
@@ -235,7 +251,7 @@ def main():
             assert str(path) in bound or str(path) in private or str(path) in external,'unbound final MMD '+str(path)
     compiles=[c for c in commands if '-c' in c['argv']]
     fresh=sum(not c.get('reusedExactInputs') for c in compiles);reused=len(compiles)-fresh
-    print(f'NATIVE_JOINT_CPU PASS actualMesa linked4stage cases3 full48blocks/4defaults/API71 retained52views old308/301/v1/v2 bytes mutants={a.negative_controls} compilesFresh={fresh} exactReuse={reused} MMDdeps={len(actual_dependencies)} external={len(external)} childMaxRssKiB={resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss} GPU=false submit=false')
+    print(f'NATIVE_JOINT_CPU PASS actualMesa linked4stage baseCases3 storeCases2 levelCases1 full48blocks/4defaults/API71 retained52views old308/301/v1/v2 bytes mutants={a.negative_controls} compilesFresh={fresh} exactReuse={reused} MMDdeps={len(actual_dependencies)} external={len(external)} childMaxRssKiB={resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss} GPU=false submit=false')
 
 
 def packet_paths(target):

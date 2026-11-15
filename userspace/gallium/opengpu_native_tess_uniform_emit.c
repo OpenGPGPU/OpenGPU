@@ -39,8 +39,9 @@ static uint32_t patch(unsigned f,unsigned d,unsigned a,unsigned z){return f<<26|
 static unsigned swizzle(const struct tgsi_src_register *r,unsigned c){return c==0?r->SwizzleX:c==1?r->SwizzleY:c==2?r->SwizzleZ:r->SwizzleW;
 }
 /* Validate lengths before invoking any optional token parser. No texture,
- * memory, nested dimensions or indirect register-file offsets are admitted. */
-static int packets(const struct tgsi_token *t,unsigned n,unsigned stage,unsigned dynamic){
+ * memory or nested dimensions. Indirect file offsets require an explicit
+ * dynamic-input or linked-TCS-output contract, never a legacy entry point. */
+static int packets(const struct tgsi_token *t,unsigned n,unsigned stage,unsigned dynamic,unsigned linked_store){
     struct tgsi_header h;
     struct tgsi_processor p;
     if(!t||n<3||n>4098)return -1;
@@ -72,7 +73,9 @@ static int packets(const struct tgsi_token *t,unsigned n,unsigned stage,unsigned
                 if(pos>=at+size)return -1;
                 if(k<i.NumDstRegs){struct tgsi_dst_register d;
                 memcpy(&d,t+pos++,4);
-                if(d.Indirect||d.Padding)return -1;
+                if(d.Padding||(d.Indirect&&(!linked_store||d.File!=TGSI_FILE_OUTPUT)))return -1;
+                if(d.Indirect){struct tgsi_ind_register x;if(pos>=at+size)return -1;memcpy(&x,t+pos++,4);
+                    if(x.File!=TGSI_FILE_ADDRESS||x.Index<0||x.Index>1||x.Swizzle||x.ArrayID)return -1;}
                 dim=d.Dimension;
                 }
                 else {struct tgsi_src_register s;
@@ -343,6 +346,40 @@ static int dynamic_input(struct builder *b,const struct tgsi_full_src_register *
     word(b,patch(33,to,28,29));
     return 0;
 }
+/* Only the linked TCS v3 entry supplies the retained, original NIR output
+ * spans and checked packed layout. A register-file offset is not a vertex. */
+static int dynamic_store(struct builder *b,const struct tgsi_full_dst_register *r,unsigned off,unsigned pp,unsigned tl){
+    if(b->p.layout.stage!=4||b->p.layout.version!=3||!b->packing[0]||!b->packing[1]||tl||
+        (pp&&r->Register.Dimension)||!(b->addr_defined&(1u<<r->Indirect.Index)))return -1;
+    const struct opengpu_native_tess_input_span *span=NULL;
+    unsigned index=r->Register.Index,dim=r->Register.Dimension;
+    unsigned semantic=pp?TGSI_SEMANTIC_PATCH:TGSI_SEMANTIC_GENERIC;
+    if(b->output[dim][index].name!=semantic)return -1;
+    for(unsigned i=0;i<b->p.output_map.count;i++){
+        const struct opengpu_native_tess_input_span *s=b->p.output_map.spans+i;
+        /* Compact level spans include non-addressable placeholder slots;
+         * their numeric overlap does not make a PATCH variable ambiguous. */
+        if(!s->compact&&s->semantic==semantic&&s->per_vertex==dim&&index>=s->first&&index-s->first<s->slots){if(span)return -1;span=s;}
+    }
+    if(!span)return -1;
+    const struct opengpu_native_tess_packed_slot *slot=pp?b->packing[1]->patch+span->index:b->packing[1]->vertex+span->index;
+    unsigned width=bits(slot->mask);
+    if(!width)return -1;
+    for(unsigned j=0;j<span->slots;j++)if((pp?b->packing[1]->patch[span->index+j].mask:b->packing[1]->vertex[span->index+j].mask)!=slot->mask)return -1;
+    if(dim&&r->Dimension.Indirect){
+        unsigned reg=20+r->DimIndirect.Index,base=r->Dimension.Index,count=b->p.layout.output_vertices;
+        if(!(b->addr_defined&(1u<<r->DimIndirect.Index))||base>=count)return -1;
+        copy(b,28,reg);if(base){scalar(b,10,base);word(b,vec(0,4,28,10,28));}
+        bounded(b,reg,count-base,28,28);
+    }else if(vertex(b,dim,&r->Dimension,&r->DimIndirect,28))return -1;
+    unsigned remaining=span->slots-(index-span->first);
+    if(!pp)for(unsigned j=0;j<remaining;j++){
+        unsigned component=off+j*width;if(component>=b->p.layout.output_components)return -1;
+        b->p.output_mask|=UINT64_C(1)<<component;
+    }
+    mapped_descriptor(b,20+r->Indirect.Index,width,remaining,off<<3|1|pp<<1);
+    return 0;
+}
 static int primitive_id(struct builder *b,const struct tgsi_full_src_register *r,unsigned ch,unsigned to){
     if(b->p.layout.version!=3||b->p.layout.owned_tessellation_info!=1||ch||r->Register.Dimension||
         r->Register.Indirect)return -1;
@@ -531,9 +568,13 @@ static int instruction(struct builder *b,const struct tgsi_full_instruction *in)
         }else{unsigned off,pp,tl;
         if(b->packing[1] ? packed_component(b->packing[1],b->output[d->Dimension][i],c,&off,&pp,&tl) :
             component(b->output[d->Dimension][i],b->p.layout.output_position,c,&off,&pp,&tl))return -1;
-            if(b->p.layout.stage==4){if(vertex(b,d->Dimension,&in->Dst[0].Dimension,&in->Dst[0].DimIndirect,28))return -1;
+            if(b->p.layout.stage==4){
                 if((pp&&!tl&&off>=b->p.layout.patch_components)||(!pp&&!tl&&off>=b->p.layout.output_components))return -1;
-                splat(b,29,(off<<3)|1|pp<<1|tl<<2);
+                if(d->Indirect){if(dynamic_store(b,&in->Dst[0],off,pp,tl))return -1;}
+                else {if(vertex(b,d->Dimension,&in->Dst[0].Dimension,&in->Dst[0].DimIndirect,28))return -1;
+                    splat(b,29,(off<<3)|1|pp<<1|tl<<2);}
+                /* Bounds scratch may replace v0: capture params only after it,
+                 * then issue the store under the same actual side-effect mask. */
                 word(b,patch(20,0,22+c,0));
                 word(b,patch(22,0,28,29));
             }else{if(pp||tl||d->Dimension||b->depth||off>=b->p.layout.output_components)return -1;
@@ -591,7 +632,7 @@ static int emit_mode(const void *tokens,unsigned n,const struct opengpu_native_t
         !layout->input_vertices||layout->input_vertices>32||!layout->output_vertices||layout->output_vertices>32||
         layout->output_vertices>layout->capacity||layout->input_components>64||layout->output_components>64||
         layout->input_position>1||layout->output_position>1||(layout->stage==5&&!layout->output_position)||layout->patch_components>120||((layout->version==1||layout->stage==4)&&layout->output_vertices*layout->output_components+layout->patch_components>2048)||
-        packets(tokens,n,layout->stage,layout->stage==5&&(layout->version==2||layout->version==3)))return -1;
+        packets(tokens,n,layout->stage,layout->stage==5&&(layout->version==2||layout->version==3),layout->stage==4&&layout->version==3&&pin&&pout&&map))return -1;
     struct builder b={0};
     b.p.layout=*layout;b.packing[0]=pin;b.packing[1]=pout;
     if(map){if(layout->stage==5)b.p.input_map=*map;else b.p.output_map=*map;}
@@ -699,7 +740,7 @@ static int reflect(const void *tokens,unsigned n,unsigned stage,unsigned capacit
         .input_vertices=patch_vertices,.output_vertices=1};
     struct tgsi_parse_context p;
     unsigned properties=0;
-    if(!out||(stage!=4&&stage!=5)||!capacity||capacity>128||!patch_vertices||patch_vertices>32||packets(tokens,n,stage,dynamic))return -1;
+    if(!out||(stage!=4&&stage!=5)||!capacity||capacity>128||!patch_vertices||patch_vertices>32||packets(tokens,n,stage,dynamic,stage==4&&language&&pin&&pout))return -1;
     /* Position presence changes the generic packing base, independent of
      * declaration order. Count applicable builtins inside the64 components. */
     if(tgsi_parse_init(&p,tokens)!=TGSI_PARSE_OK)return -1;

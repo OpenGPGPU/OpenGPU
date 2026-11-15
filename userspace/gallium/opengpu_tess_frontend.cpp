@@ -56,6 +56,10 @@ void opengpu_tess_frontend_limits(gl_context *ctx)
     ctx->Const.MaxGeometryShaderInvocations = 32;
     ctx->Const.MaxTessGenLevel = 64; ctx->Const.MaxPatchVertices = 32;
     ctx->Const.MaxTessPatchComponents = 120; ctx->Const.MaxTessControlTotalOutputComponents = 2048;
+    /* The checked patch backend consumes levels as compact patch inputs.
+     * Mesa's NIR path cannot lower array-valued tessellation sysvals. This is
+     * compiler configuration, independent of public screen capabilities. */
+    ctx->Const.GLSLTessLevelsAsInputs = true;
     pipe_screen screen = {};
     screen.get_param = param; screen.get_shader_param = shader_param;
     for (auto stage : stages) {
