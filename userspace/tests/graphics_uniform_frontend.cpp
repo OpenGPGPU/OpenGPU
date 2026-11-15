@@ -21,6 +21,7 @@ extern "C" {
 #include "tgsi/tgsi_parse.h"
 #include "tgsi/tgsi_ureg.h"
 #include "graphics_uniform_frontend.h"
+#include "native_fragment_reflection_v2.h"
 
 static const gl_shader_stage stages[] = {MESA_SHADER_VERTEX, MESA_SHADER_FRAGMENT};
 static int param(pipe_screen *, pipe_cap) { return 0; }
@@ -41,6 +42,8 @@ void opengpu_frontend_compiler_limits(gl_context *ctx)
     ctx->Const.MaxCombinedUniformBlocks = 24;
     ctx->Const.MaxUniformBlockSize = 16384;
     ctx->Const.NativeIntegers = true;
+    ctx->Const.MaxDrawBuffers=4;ctx->Const.MaxVarying=16;
+    ctx->Const.Program[MESA_SHADER_FRAGMENT].MaxInputComponents=64;
     pipe_screen screen = {};
     screen.get_param = param; screen.get_shader_param = shader_param;
     for (auto stage : stages) {
@@ -60,10 +63,11 @@ struct graphics_program {
     gl_shader_program *program;
     const tgsi_token *tokens[2];
     unsigned color_types[4];
+    opengpu_native_fragment_reflection_v2 reflection;
 };
 static int type_size(const glsl_type *type, bool) { return glsl_count_vec4_slots(type, false, false); }
 
-extern "C" void *graphics_uniform_compile(const char *vertex, const char *fragment, const char *prefix)
+static void *compile(const char *vertex,const char *fragment,const char *prefix,bool v2)
 {
     auto *f = new graphics_program{};
     f->options.glsl_version = 300;
@@ -74,7 +78,8 @@ extern "C" void *graphics_uniform_compile(const char *vertex, const char *fragme
         graphics_uniform_destroy(f); return nullptr;
     }
     auto *program = f->program;
-    assert(program->IsES && program->data->Version == 310);
+    if(!program->IsES||program->data->Version!=(v2?320:310)||
+       (v2&&!native_fragment_reflect_v2(program,&f->reflection))){graphics_uniform_destroy(f);return nullptr;}
     exec_list_make_empty(&program->EmptyUniformLocations);
     pipe_screen screen = {};
     screen.get_param = param; screen.get_shader_param = shader_param;
@@ -118,10 +123,12 @@ extern "C" void *graphics_uniform_compile(const char *vertex, const char *fragme
         nir_validate_shader(nir, "actual linked graphics uniform frontend");
         nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir)); shader->Program->info = nir->info;
         if (stage == MESA_SHADER_FRAGMENT) nir_foreach_shader_out_variable(var, nir) {
+            if(v2&&(var->data.location<FRAG_RESULT_DATA0||var->data.location>=FRAG_RESULT_DATA0+4))continue;
             assert(var->data.driver_location < 4 && glsl_get_components(var->type) <= 4);
             auto type = glsl_get_base_type(var->type);
             assert(type == GLSL_TYPE_FLOAT || type == GLSL_TYPE_UINT || type == GLSL_TYPE_INT);
             f->color_types[var->data.driver_location] = type == GLSL_TYPE_UINT ? 1 : type == GLSL_TYPE_INT ? 2 : 0;
+            if(v2)f->reflection.color_types[var->data.driver_location]=f->color_types[var->data.driver_location];
         }
         f->tokens[i] = static_cast<const tgsi_token *>(nir_to_tgsi(nir, &screen));
         shader->Program->nir = nullptr; assert(f->tokens[i]);
@@ -186,4 +193,16 @@ extern "C" void graphics_uniform_destroy(void *p)
     for (auto *tokens : f->tokens) if (tokens) ureg_free_tokens(tokens);
     if (f->program) standalone_compiler_cleanup(f->program);
     delete f;
+}
+
+extern "C" void *graphics_uniform_compile(const char *vs,const char *fs,const char *prefix)
+{ return compile(vs,fs,prefix,false); }
+extern "C" void *graphics_uniform_compile_no_gs_v2(const char *vs,const char *fs,const char *prefix)
+{ return compile(vs,fs,prefix,true); }
+extern "C" unsigned graphics_uniform_token_words(void *p,unsigned stage)
+{ return p&&stage<2?tgsi_num_tokens(static_cast<graphics_program *>(p)->tokens[stage]):0; }
+extern "C" int graphics_uniform_reflection_v2(void *p,opengpu_native_fragment_reflection_v2 *out)
+{
+    auto *f=static_cast<graphics_program *>(p);if(!f||!out||f->reflection.version!=2)return -1;
+    *out=f->reflection;return 0;
 }

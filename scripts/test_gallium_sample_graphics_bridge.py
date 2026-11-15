@@ -87,6 +87,16 @@ class PrivateMesaBridgeTests(unittest.TestCase):
         for args,environment in cases:
             result=subprocess.run(base+args,env=dict(os.environ,**environment),capture_output=True,text=True)
             self.assertNotEqual(result.returncode,0);self.assertIn('error:',result.stderr);self.assertFalse(build.exists())
+    def test_staged_library_and_graphics_build_both_link_metadata_implementation(self):
+        # A real dependency, even for old callers: their emitter object exports
+        # the new entry point. A successful dead-strip link is not enough.
+        import native_sample_graphics_inputs as inputs
+        stage=(ROOT/'scripts/stage_mesa_opengpu.sh').read_text()
+        library=stage.split('libopengpu_gallium = static_library(',1)[1].split('include_directories',1)[0]
+        self.assertIn("'opengpu_native_uniform_emit.c'",library)
+        self.assertIn("'opengpu_native_fragment_v2.c'",library)
+        self.assertEqual(inputs.GPU_UNITS.count('userspace/gallium/opengpu_native_fragment_v2.c'),1)
+
     def test_prepare_commands_compile_both_live_units_and_new_codec_without_executing(self):
         # Command planning only, using explicitly synthetic configured-Mesa
         # files. No fake archive/binary is ever executed or called qualified.
@@ -124,13 +134,14 @@ class PrivateMesaBridgeTests(unittest.TestCase):
              redirect_stdout(stdout):
             builder.main(graphics_uniforms=True,sample_graphics=True)
         compiled={Path(c[c.index('-c')+1]).name:c for c in commands if '-c' in c}
-        self.assertEqual(len(compiled),28)
+        self.assertEqual(len(compiled),29)
         for name in ('graphics_sample_flow.c','graphics_sample_kernel.c'):
             self.assertIn('-DOPENGPU_NATIVE_SAMPLE_GRAPHICS_LIVE=1',compiled[name])
             self.assertIn('-MMD',compiled[name]);self.assertIn('-MF',compiled[name])
-        self.assertIn('graphics_sample_owner_ipc.c',compiled);self.assertNotIn('graphics_native_owner_ipc.c',compiled)
+        self.assertIn('opengpu_native_fragment_v2.c',compiled);self.assertIn('graphics_sample_owner_ipc.c',compiled);self.assertNotIn('graphics_native_owner_ipc.c',compiled)
         self.assertEqual(sum('-DOPENGPU_NATIVE_SAMPLE_GRAPHICS_LIVE=1' in c for c in commands),2)
         self.assertIn(str(output/'graphics_sample_owner_ipc.o'),commands[-1])
+        self.assertIn(str(output/'opengpu_native_fragment_v2.o'),commands[-1])
         self.assertTrue((output/'glsl/full.vert').is_file() and (output/'glsl/full.frag').is_file())
         self.assertIn('BUILT, execution=false',stdout.getvalue());self.assertFalse((output/'result.json').exists())
         self.assertFalse((output/'actual-acceptance.log').exists());self.assertFalse((output/'glsl/ready.json').exists())

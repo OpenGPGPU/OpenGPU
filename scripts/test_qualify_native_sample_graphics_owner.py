@@ -171,10 +171,10 @@ class OrdinaryQualificationTests(unittest.TestCase):
         return commands,log,dict(cpu=cpu,source=source,mesa=a.mesa,mesa_build=a.mesa_build,libraries=a.library_directory,
             bound=bound,qualified=qualified,generated=generated)
 
-    def test_exact_28_units_live_gates_and_link_reject_extra_inputs_or_injection(self):
+    def test_exact_29_units_live_gates_and_link_reject_extra_inputs_or_injection(self):
         commands,log,kwargs=self.planned_build()
         with patch.object(inputs,'LOWERING_SHA',inputs.sha256(kwargs['cpu']/'checked-nir-lower-io.c')):
-            self.assertEqual(len(inputs.check_build(**kwargs)),28)
+            self.assertEqual(len(inputs.check_build(**kwargs)),29)
             mutants=[]
             for extra in ('unexpected.o','unexpected.a','unexpected.so','@response','-Wl,--whole-archive','-include','/tmp/injected.h'):
                 bad=copy.deepcopy(commands);bad[-1]['argv'].insert(1,extra);mutants.append(bad)

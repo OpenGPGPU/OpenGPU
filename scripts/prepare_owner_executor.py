@@ -54,6 +54,8 @@ SAMPLE_CHECKERS = (
     'scripts/test_native_submit.py', 'scripts/test_native_mmio_capture.py',
     'scripts/test_native_sample_essl.py', 'scripts/native_fs_cpu_oracle.py',
     'userspace/gallium/opengpu_native_fs_emit.c', 'userspace/gallium/opengpu_native_fs_emit.h',
+    'userspace/gallium/opengpu_native_fragment_v2.c', 'userspace/gallium/opengpu_native_fragment_v2.h',
+    'userspace/tests/native_fragment_reflection_v2.h',
     'userspace/tests/fs_glsl_frontend.cpp', 'userspace/tests/fs_glsl_frontend.h',
     'userspace/tests/native_fs_compile.c',
     *(f'userspace/tests/native_sample_essl/{name}.frag' for name in
@@ -101,7 +103,8 @@ GRAPHICS_PRODUCER_ROOTS = (
     'userspace/gallium/opengpu_context.c', 'userspace/gallium/opengpu_screen.c',
     'userspace/gallium/opengpu_cs_emit.c', 'userspace/gallium/opengpu_fs_emit.c',
     'userspace/gallium/opengpu_vs_emit.c', 'userspace/pipe_opengpu.c', 'userspace/opengpu.c',
-    'userspace/gallium/opengpu_native_uniform_emit.c', 'userspace/gallium/opengpu_native_graphics.c',
+    'userspace/gallium/opengpu_native_uniform_emit.c', 'userspace/gallium/opengpu_native_fragment_v2.c',
+    'userspace/gallium/opengpu_native_graphics.c',
     'userspace/gallium/opengpu_native_draw.c', 'userspace/opengpu_native_runtime.c',
     'userspace/gallium/opengpu_native_sample_program.c',
     *SAMPLE_PRODUCER_ROOTS)
@@ -110,7 +113,7 @@ GRAPHICS_PRODUCER_ROOTS = (
 # execution qualifier; this record qualifies the GPU checkout and executor.
 GRAPHICS_MESA_INCLUDES = frozenset((
     'compiler/glsl/gl_nir.h', 'compiler/glsl/gl_nir_linker.h',
-    'compiler/glsl/glsl_to_nir.h', 'compiler/glsl/standalone.h', 'compiler/nir/nir.h',
+    'compiler/glsl/glsl_to_nir.h', 'compiler/glsl/ir.h', 'compiler/glsl/standalone.h', 'compiler/nir/nir.h',
     'frontend/winsys_handle.h', 'main/mtypes.h', 'nir/nir_to_tgsi.h',
     'pipe/p_context.h', 'pipe/p_defines.h', 'pipe/p_format.h', 'pipe/p_screen.h', 'pipe/p_state.h',
     'program/prog_parameter.h', 'state_tracker/st_atom.h', 'state_tracker/st_context.h',

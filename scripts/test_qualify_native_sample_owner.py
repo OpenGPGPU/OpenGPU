@@ -163,7 +163,7 @@ class Qualification(unittest.TestCase):
         bound=self.compiler_fixture();self.assertEqual(len(inputs.MESA_LIBRARIES),8)
         source=self.out/'source';source.mkdir();cpu=self.out/'cpu';cpu.mkdir()
         header=self.args.mesa/'src/a.h'
-        for i in range(len(inputs.MESA_UNITS)+6):(cpu/f'{i}.d').write_text(f'{cpu}/{i}.o: {header}\n')
+        for i in range(len(inputs.MESA_UNITS)+7):(cpu/f'{i}.d').write_text(f'{cpu}/{i}.o: {header}\n')
         inputs.check_dependencies(cpu,source,bound)
         archive_header=source/'fixture.h';archive_header.write_text('/* private archive fixture */')
         (cpu/'0.d').write_text(f'{cpu}/0.o: {archive_header}\n')

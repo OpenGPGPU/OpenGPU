@@ -2,6 +2,7 @@
 #ifndef OPENGPU_NATIVE_UNIFORM_EMIT_H
 #define OPENGPU_NATIVE_UNIFORM_EMIT_H
 #include <stdint.h>
+#include "opengpu_native_fragment_v2.h"
 /* Internal native SoA ABI v1. This is separate from the legacy draw sandbox. */
 struct opengpu_native_uniform_layout {
     unsigned stage; /* 0 vertex, 1 fragment */
@@ -24,4 +25,8 @@ int opengpu_native_uniform_emit(const void *tokens,
 int opengpu_native_uniform_compile(const void *tokens, unsigned stage,
     unsigned capacity, struct opengpu_native_uniform_layout *layout,
     struct opengpu_native_uniform_program *program);
+/* Independent FS8/9 entry; old VS/FS1 API and word streams are unchanged. */
+int opengpu_native_fragment_uniform_compile_v2(const void *tokens,unsigned token_words,
+    const struct opengpu_native_fragment_reflection_v2 *,const struct opengpu_native_fragment_config_v2 *,
+    struct opengpu_native_fragment_program_v2 *);
 #endif

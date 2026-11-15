@@ -2,6 +2,7 @@
 #ifndef OPENGPU_NATIVE_FS_EMIT_H
 #define OPENGPU_NATIVE_FS_EMIT_H
 #include <stdint.h>
+#include "opengpu_native_fragment_v2.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -40,6 +41,9 @@ int opengpu_native_fs_emit(const void *tokens, unsigned token_words,
     const struct opengpu_native_fs_config *, struct opengpu_native_fs_program *out);
 /* Portable qualification artifact: OGNSF001, fifteen LE u32 fields, raw code,
  * exact EOF. It conveys compiler output, not hardware qualification. */
+int opengpu_native_fs_emit_v2(const void *tokens, unsigned token_words,
+    const struct opengpu_native_fragment_reflection_v2 *,const struct opengpu_native_fragment_config_v2 *,
+    struct opengpu_native_fragment_program_v2 *);
 int opengpu_native_fs_write(const char *path, const struct opengpu_native_fs_program *);
 #ifdef __cplusplus
 }

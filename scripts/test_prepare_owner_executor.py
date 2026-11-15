@@ -349,13 +349,17 @@ class ExecutorTests(unittest.TestCase):
             'userspace/tests/graphics_sample_owner_ipc.c','userspace/tests/graphics_sample_owner_ipc.h',
             'userspace/tests/graphics_uniform_frontend.cpp','userspace/tests/graphics_uniform_flow.c',
             'userspace/gallium/opengpu_native_sample_program.c','userspace/gallium/opengpu_native_uniform_emit.c',
+            'userspace/gallium/opengpu_native_fragment_v2.c','userspace/gallium/opengpu_native_fragment_v2.h',
+            'userspace/tests/native_fragment_reflection_v2.h',
             'scripts/native_sample_graphics_driver.cpp','scripts/native_sample_graphics_runtime.hpp')
         for name in names:
             item=q.ROOT/name;original=item.read_bytes();item.write_bytes(original+b'\n/* stale CPU source */\n')
             with self.subTest(name=name),self.assertRaises(RuntimeError):q.verify_qualification(path,kind=kind)
             item.write_bytes(original)
         # Missing mandatory consumers cannot yield a smaller accepted closure.
-        for name in (*q.GRAPHICS_CHECKERS,'userspace/tests/graphics_sample_live.inc',
+        for name in (*q.GRAPHICS_CHECKERS,'userspace/gallium/opengpu_native_fragment_v2.c',
+                'userspace/gallium/opengpu_native_fragment_v2.h','userspace/tests/native_fragment_reflection_v2.h',
+                'userspace/tests/graphics_sample_live.inc',
                 'userspace/tests/graphics_sample_source_plan.inc','userspace/tests/graphics_sample_entry.h'):
             item=q.ROOT/name;original=item.read_bytes();item.unlink()
             with self.subTest(missing=name),self.assertRaises(RuntimeError):q.verify_qualification(path,kind=kind)
@@ -454,6 +458,8 @@ class ExecutorTests(unittest.TestCase):
         for name in ('scripts/native_sample_live_producer.c','scripts/native_sample_submit_producer.c',
                      'userspace/tests/native_sample_essl/sample.frag',
                      'userspace/gallium/opengpu_native_fs_emit.c','userspace/tests/fs_glsl_frontend.cpp',
+                     'userspace/gallium/opengpu_native_fragment_v2.c','userspace/gallium/opengpu_native_fragment_v2.h',
+                     'userspace/tests/native_fragment_reflection_v2.h',
                      'scripts/native_sample_owner_runtime.hpp','scripts/native_sample_owner_capture.hpp',
                      'scripts/native_sample_owner_controller.py','scripts/native_sample_owner_oracle.py',
                      'scripts/qualify_native_sample_owner.py','scripts/native_sample_compiler_inputs.py',
