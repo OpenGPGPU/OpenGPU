@@ -13,6 +13,9 @@ struct opengpu_native_program_profile {
     bool geometry_inputs;
     /* Kernel-discovered GSS1 transport, never supplied by raw user metadata. */
     bool sample_inputs;
+    /* Independently verified ordinary PrimitiveID transport. This internal
+     * owner prerequisite is not derived from GSS1 or compiler metadata. */
+    bool primitive_inputs;
 };
 struct opengpu_native_program_snapshot {
     u32 segment, entry_offset;

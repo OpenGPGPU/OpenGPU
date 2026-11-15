@@ -83,6 +83,7 @@ static void callback_capture(struct opengpu_device *gpu,struct opengpu_render_co
         assert(!opengpu_private_snapshot_retire(owner));
     }
 }
+#include "opengpu_native_primitive_program_test.inc"
 int main(int argc,char **argv)
 {
     struct opengpu_device gpu={0};
@@ -173,7 +174,9 @@ int main(int argc,char **argv)
         else {owner=opengpu_private_snapshot_create(&gpu,&context);assert(!IS_ERR(owner));
             reject(owner,view,profile,-EINVAL);assert(!opengpu_private_snapshot_retire(owner));}
     }
-    if(argc==2)for(unsigned fixture=0;fixture<4;fixture++) {
+    if(argc>2 && !strcmp(argv[1],"--primitive-artifacts")){
+        for(int i=2;i<argc;i++)primitive_artifact(&gpu,&context,argv[i]);
+    }else if(argc==2)for(unsigned fixture=0;fixture<4;fixture++) {
         const char *names[]={"native-real-vs.words","native-real-fs.words","native-full-vs.words","native-full-fs.words"};
         char path[4096];assert(snprintf(path,sizeof(path),"%s/%s",argv[1],names[fixture])>0);
         FILE *f=fopen(path,"rb");assert(f);size_t bytes=fread(original_code+64,1,2049,f);
@@ -192,6 +195,7 @@ int main(int argc,char **argv)
         accepted(&gpu,&context,view,profile);
     }
     callback_capture(&gpu,&context,profile);
+    primitive_program_tests(&gpu,&context);
     opengpu_mmu_vm_destroy(&gpu,&context.vm);opengpu_mmu_fini(&gpu);
     assert(context.references==1&&!live_allocations&&!fixture_buffers);
     puts("native program: actual validator/opaque RX owner/MMU, exact entry suffix, readonly inputs/tails, failure atomicity and reuse PASS (CPU only)");
