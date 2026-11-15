@@ -13,6 +13,8 @@ struct opengpu_geometry_program_profile {
  * The caller retains original local GEM references and waits producers before
  * copy_source. Validate only the executable suffix but preserve all source
  * bytes in an RX/no-W private segment, exactly as the VS/FS helper does.
+ * Capture the complete view and verified profile before invoking copy_source;
+ * callback rebinding cannot change bounds, entry or permissions mid-snapshot.
  * Output is unchanged on failure; retire the entire unpublished owner.
  */
 int opengpu_geometry_program_snapshot_append(struct opengpu_private_snapshot *owner,
