@@ -47,12 +47,13 @@ class TessellationMappedAddressSpec extends AnyFlatSpec {
       dut.io.request.valid.poke(false.B); dut.io.result.ready.poke(false.B)
       dut.io.instruction.poke(0.U)
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
-      for (width <- 1 to 4) {
-        val bytes = Files.readAllBytes(Paths.get(directory, s"width$width.words"))
+      val cases=(1 to 4).map(w=>(s"width$w",w,31,43,0))++Seq(("store-patch",3,2,3,1),("store-vertex",3,2,33,2))
+      for ((name,width,limit,base,vertex) <- cases) {
+        val bytes = Files.readAllBytes(Paths.get(directory, s"$name.words"))
         assert(bytes.nonEmpty && bytes.length <= 2048 && bytes.length % 4 == 0)
         val words = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
         val vr = Array.fill(32,16)(BigInt(0)); val xs = Array.fill(32)(BigInt(0))
-        vr(20) = indices.toArray
+        vr(20) = indices.toArray; vr(21) = indices.toArray
         vr(28) = Array.tabulate(16)(i => BigInt(0x5a000000L+i))
         vr(22) = Array.tabulate(16)(i => BigInt(0x6b000000L+i))
         var predicate = BigInt(0)
@@ -93,10 +94,12 @@ class TessellationMappedAddressSpec extends AnyFlatSpec {
         }
         // Literal independent arithmetic, not another instruction interpreter.
         for(lane <- 0 until 16){
-          val expected=if(indices(lane)<31)43+indices(lane)*width*8 else BigInt("80000001",16)
-          assert(vr(29)(lane)==expected,s"width=$width index=${indices(lane)} actual=${vr(29)(lane)} expected=$expected")
+          val expected=if(indices(lane)<limit)base+indices(lane)*width*8 else BigInt("80000001",16)
+          assert(vr(29)(lane)==expected,s"name=$name width=$width index=${indices(lane)} actual=${vr(29)(lane)} expected=$expected")
           assert(vr(20)(lane)==indices(lane),"ADDR source clobbered")
-          assert(vr(28)(lane)==BigInt(0x5a000000L+lane),"cached vertex clobbered")
+          assert(vr(21)(lane)==indices(lane),"vertex ADDR source clobbered")
+          val expectedVertex=if(vertex==0)BigInt(0x5a000000L+lane) else if(vertex==1)BigInt(0) else if(indices(lane)<31)indices(lane)+1 else BigInt("80000001",16)
+          assert(vr(28)(lane)==expectedVertex,s"vertex base/wrap: index=${indices(lane)} actual=${vr(28)(lane)} expected=$expectedVertex")
           assert(vr(22)(lane)==BigInt(0x6b000000L+lane),"pending value clobbered")
         }
       }

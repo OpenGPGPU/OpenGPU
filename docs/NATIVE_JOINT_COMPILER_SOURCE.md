@@ -3,19 +3,20 @@
 Source delivery: [PR #827](https://github.com/OpenGPGPU/OpenGPU/pull/827), based
 on merged #826. Full P17 target acceptance remains pending.
 
-`opengpu_native_joint` compiles one original ESSL320 VS/TCS/TES/FS link. Its
-opaque compiler object owns the four TGSI streams, original NIR variable spans,
-linked block order and HIR fragment static-use facts. Program creation copies
-all those inputs before any code-GEM callback. VS uses `NEXT_TCS`; TCS/TES use
-the checked language-v3 dialect; FS is actually re-emitted through the checked
-uniform ABI8/9 compiler. This does not stitch a separately linked VS/FS program
-onto borrowed tessellation views or change a legacy program's ABI tag.
+`opengpu_native_joint` compiles one original ESSL 320 VS/TCS/TES/FS link. Its
+opaque compiler object owns the four TGSI streams, original NIR variable
+spans, linked block order and HIR fragment static-use facts. Program creation
+copies all those inputs before any code-GEM callback. VS uses `NEXT_TCS`;
+TCS/TES use the checked language-v3 dialect; FS is actually re-emitted through
+the checked uniform ABI 8/9 compiler. This does not stitch a separately linked
+VS/FS program onto borrowed tessellation views or change a legacy program's
+ABI tag.
 
 The two boundaries are independent:
 
 - VS SoA output words map to the actual packed TCS inputs through 64 typed
-  `(kind, component)` entries. Position uses kind0; original VS varying words
-  use kind1. Sparse location15 stays semantic15 rather than becoming ordinal0.
+  `(kind, component)` entries. Position uses kind 0; original VS varying words
+  use kind 1. Sparse location 15 stays semantic 15 rather than becoming ordinal 0.
 - TCS output and TES input share one packing of the linked patch declarations.
   TES outputs then map separately to the 68 destination FS input components.
   TES export size is independent of TCS patch-output size. FS can retain its
@@ -35,12 +36,12 @@ and byte contracts. CPU compilation does not prove conversion results on a CU.
 The program owns all four actual code GEMs. A source lease retains the program
 and up to 52 original backing references: four copied defaults and 48 original
 UBO windows. Each stage keeps 12 logical blocks, 1024 default components and
-16KiB blocks; API bindings0..71 are resolved through actual Mesa reflection.
-VS/FS use one checked private table and TCS/TES another, each at most24 entries.
-No global72 binding number is treated as a private table index. Rebinding,
-destroying the constants cache, or releasing the caller's program does not
-change an existing lease. Exact windows of the same original GEM remain
-separate, and old copied defaults remain retained across rebind.
+16 KiB blocks; API bindings 0..71 are resolved through actual Mesa reflection.
+VS/FS use one checked private table and TCS/TES another, each at most 24
+entries. No global 72 binding number is treated as a private table index.
+Rebinding, destroying the constants cache, or releasing the caller's program
+does not change an existing lease. Exact windows of the same original GEM
+remain separate, and old copied defaults remain retained across rebind.
 
 `source_describe` returns copied code/uniform views and component maps. It does
 not accept caller-supplied replacement compiler metadata. It freezes references
@@ -56,88 +57,128 @@ GVS/GVM directory identity, original attributes/index/scratch views and all raw
 record construction belong to that caller and kernel BUILD. The compiler does
 not infer these identities from shader tokens or manufacture patch inputs.
 
-No public shader callback, capability, UAPI, getter, factory, GSS1 or discovery
-word is enabled. The existing private112 cache supplies physical capacity and
-context identity only; it does not grant primitive/sample, owned-patch or
-language-info permission. Those require an independent verified joint profile.
+No public shader callback, capability, UAPI, getter, factory, GSS1 or
+discovery word is enabled. The existing private 112-word cache supplies
+physical capacity and context identity only; it does not grant
+primitive/sample, owned-patch or language-info permission. Those require an
+independent verified joint profile.
 
 ## CPU validation
 
-Actual Mesa22.3.6/NIR/TGSI and real Gallium/winsys bodies passed the new
-four-stage lifecycle test under ASan/UBSan. Only OS/GEM primitives were modeled;
-no shader was interpreted or executed and no work was submitted.
+Actual Mesa 22.3.6/NIR/TGSI and real Gallium/winsys bodies passed the new
+four-stage lifecycle test under ASan/UBSan. Only OS/GEM primitives were
+modeled; no shader was interpreted or executed and no work was submitted.
 
 | Original linked case | VS / TCS / TES / FS words | TCS input vertices/components → output vertices/components; per-patch | TES exports | FS ABI; varying slots/MRTs |
 | --- | --- | --- | ---: | --- |
 | 48 blocks, sparse VS15 → FS0 | 308 / 478 / 362 / 308 | 2/8 → 2/8; 0 | 8 | 8; 1/1 |
 | 48 blocks + SampleID, VS1 → FS15 | 308 / 478 / 362 / 317 | 2/8 → 2/8; 0 | 8 | 9; 16/1 |
 | Sparse matrix/vec3 patch-array reads | 61 / 277 / 203 / 58 | 2/8 → 2/10; 6 | 8 | 8; 16/1 |
+| TessLevel inputs plus dynamic patch-array reads | 61 / 277 / 236 / 58 | 2/8 → 2/10; 6 | 8 | 8; 16/1 |
+| Original indirect patch-array write | 61 / 275 / 203 / 58 | 2/8 → 2/10; 6 | 8 | 8; 16/1 |
+| Indirect write in actual SIMT arms | 61 / 315 / 203 / 58 | 2/8 → 2/10; 6 | 8 | 8; 16/1 |
 
-Both full-resource cases exercised all 48 original 16KiB windows, API binding71,
-four copied 1024-component defaults, and all 52 retained references. Assertions
-checked positive rebind into a second lease, immutable old metadata/data views,
-old default copies after rebind and cache destruction, caller program release,
-foreign context/stage rejection, transferred-reference consumption, short-view
-failure and each of four code-allocation failures plus map failure. Returned
-metadata copies could not retag a program. Invalid source maps/packet bounds
-failed before a code-GEM callback. The matrix case checked independent literal
-component counts, the emitted shift/add address sequence, and rejection of an
-actual TES token operand changed to padding.w. Actual arithmetic is covered
-separately below; a constant or instruction-pattern count is not execution. Numerical metadata tests retained
+Both full-resource cases exercised all 48 original 16 KiB windows, API binding
+71, four copied 1024-component defaults, and all 52 retained references.
+Assertions checked positive rebind into a second lease, immutable old
+metadata/data views, old default copies after rebind and cache destruction,
+caller program release, foreign context/stage rejection, transferred-reference
+consumption, short-view failure and each of four code-allocation failures plus
+map failure. Returned metadata copies could not retag a program. Invalid
+source maps/packet bounds failed before a code-GEM callback. The matrix case
+checked independent literal component counts, the emitted shift/add address
+sequence, and rejection of an actual TES token operand changed to padding.w.
+Actual arithmetic is covered separately below; a constant or
+instruction-pattern count is not execution. Numerical metadata tests retained
 64-component/120-per-patch packing and rejected oversized output atomically.
 
-Old linked VS/FS remained exactly 308/301 words before and after the new cases,
-byte-for-byte equal to the separately compiled original emitter. Three v1 and
-five v2 original ESSL cases also matched the independently supplied original
-production tessellation emitter's full machine words, static selections,
-constant extents, masks and barriers. The rejected original TCS indirect-store
-case remained a separate rejection, not a renamed passing static-store test.
+Old linked VS/FS remained exactly 308/301 words before and after the new
+cases, byte-for-byte equal to the separately compiled original emitter. Three
+v1 and five v2 original ESSL cases also matched the independently supplied
+original production tessellation emitter's full machine words, static
+selections, constant extents, masks and barriers. The original TCS
+indirect-store source now passes through its actual linked compiler path; the
+static-store source remains a separate case.
 
-Two independent production-source mutants failed precise real assertions:
+Four independent production-source mutants failed precise real assertions:
 omitting backing retention killed a still-leased copied-default GEM; forcing
-the vec3 final shift from3 to4 removed the required emitted sequence.
-Neither control used a shader VM, timeout or a reduced hardware capacity.
+the vec3 final shift from 3 to 4 removed the required emitted sequence;
+skipping fn20 removed parameter capture before fn22; increasing the
+two-element store span to 3 changed its literal bound. The latter checks prove
+emitted structure, not shader results. Actual address arithmetic is covered
+separately below. No control used a shader VM, timeout or a reduced hardware
+capacity.
 
-The final frozen-source run compiled 45 fresh translation units: 35 for the
-joint build, eight for independent old compatibility and two for source-copy
-negative controls. It reused no private objects. All 263 actual MMD dependencies
-and 8101 external Mesa/DRM/SDK/library identities were bound, with original GPU,
-ESSL, Python, schema, generated sources, binary and emitted packets before use
-and afterwards. Sixty child groups totalled 36.75 seconds; the longest was 4.678
-seconds and every group had a 180-second bound. Maximum waited-child RSS was
-263400 KiB (not an aggregate-process memory measurement). Docker confirmed exit 0,
-OOMKilled=false, memory=memory-swap 512MiB, one CPU and no network. Original Mesa
-libraries were reused. All ended build objects, caches, logs and private
+The final frozen-source run compiled 47 fresh translation units: 35 for the
+joint build, eight for independent old compatibility and four for source-copy
+negative controls. It reused no private objects. All 265 actual MMD
+dependencies and 8101 external Mesa/DRM/SDK/library identities were bound,
+with original GPU, ESSL, Python, schema, generated sources, binary and emitted
+packets before use and afterwards. The complete run took 54.792 seconds. The
+68 child groups totalled 39.710 seconds; the longest was 4.661 seconds and
+every group had a 180-second bound. Maximum waited-child RSS was 263440 KiB
+(not an aggregate-process memory measurement). Docker confirmed exit 0,
+OOMKilled=false, memory=memory-swap 512 MiB, one CPU and no network. Original
+Mesa libraries were reused. All ended build objects, caches, logs and private
 baseline copies were deleted; only explicitly handed-off original program
 packets remained while the independent protection consumer needed them.
 
-The corrected 203-word matrix TES and all eleven companion programs passed
-independent validator/private RX/MMU consumption on the mainline delivery source
-below. Those checks do not establish complete 52-resource GUR ownership, joint
-BUILD or shader execution.
+An independent consumer on delivery source `3a134a96b` accepted the corrected
+12-program family through actual production validators/private RX/MMU: the
+three TCS/TES pairs took 3.41/3.41/3.39 seconds, FS 3.02 and VS 3.40 seconds.
+All 3138 source/artifact inputs and HEAD stayed unchanged. This includes the
+corrected matrix TES 203 and remains a CPU protection result. Independently,
+source `4c7b60138` consumed both new TCS 275/TES 203 and TCS 315/TES 203 pairs
+through the actual production validator/private RX/MMU under ASan/UBSan. Each
+pair took 3.66 seconds (maximum sampled aggregate RSS 212400 and 210688 KiB),
+with 3136 source/artifact inputs and HEAD unchanged. The final fresh run
+emitted those same original bytes. Complete 52-resource GUR ownership, joint
+BUILD and shader execution remain separate requirements.
+
+The actual TES source reading `gl_TessLevelOuter.xy`, `gl_TessLevelInner.x`
+and a dynamically indexed patch array initially reached Mesa
+`nir_lower_system_values` with unsupported array-valued system values. The
+private frontend now explicitly selects Mesa `GLSLTessLevelsAsInputs`: the
+existing checked backend consumes compact patch inputs. This does not change
+public screen capabilities. The test checks the original NIR compact spans and
+actual TGSI operands, including the indirect PATCH access. No ambiguous span
+lookup was observed for this real case, so the TES span lookup is unchanged.
+Independent old v1/v2 byte comparisons still pass with this frontend
+configuration. An independent consumer on delivery `079de6388` accepted the
+original TCS 277/TES 236 pair through the actual validator/private RX/MMU
+under ASan/UBSan in 3.63 seconds, with 204448 KiB maximum sampled aggregate
+RSS. All 3140 inputs, membership and HEAD remained unchanged under the
+180-second/512 MiB guard. The consumer explicitly selected program v3, owned
+tessellation info and the actual owned patch layout; using the legacy v1
+defaults correctly rejects this program. This remains a CPU protection result,
+not shader execution.
 
 ### Mapped address arithmetic
 
-Review found that the original mapped path used funct6`0x25` with IVX, which
-is `vsll.vx`, not multiplication. Checking a literal24 did not prove a vec3
-stride. The corrected production helper compares the original full32-bit index
-before arithmetic, uses shifts3/4/5 for widths1/2/4, and `(index<<1)+index`, then
-`<<3`, for width3. The original register and cached vertex remain intact.
-Out-of-span values select the high-bit sentinel before the owned patch service
-can truncate or reinterpret the address. The old unmapped emission is unchanged.
+Review found that the original mapped path used funct6 `0x25` with IVX, which
+is `vsll.vx`, not multiplication. Checking a literal 24 did not prove a vec3
+stride. The corrected production helper compares the original full 32-bit
+index before arithmetic, uses shifts 3/4/5 for widths 1/2/4, and
+`(index<<1)+index`, then `<<3`, for width 3. The original register and cached
+vertex remain intact. Out-of-span values select the high-bit sentinel before
+the owned patch service can truncate or reinterpret the address. The old
+unmapped emission is unchanged.
 
 The test-only exporter calls that same helper, used by actual `dynamic_input`,
 and emits original instruction words for four widths. A fresh six-source
-Chisel-plugin build passed in6.86 seconds (358560 KiB maximum sampled aggregate
-RSS). Actual `VectorDecoder` and full16-lane/eight-warp `VectorIntegerAlu` RTL
-passed all four widths in13.20 seconds (408256 KiB), including index1,2,last,
-nonzero base/flags, limit, `0xffffffff` and high-bit indices. Original ADDR,
-cached vertex and pending data registers were unchanged. An independent old
-shift implementation failed the exact index1 assertion:299 instead of51,
-in13.44 seconds (419056 KiB). Neither case timed out. Each run used128MiB heap,
-128MiB metaspace,32MiB code cache, one CPU, a180-second process-group bound and
-512MiB sampled aggregate memory guard. The fixture supplies register/scalar
-peers for this arithmetic microsequence; it is not a shader/CU/patch-RAM test.
+Chisel-plugin build passed in 6.86 seconds (358560 KiB maximum sampled
+aggregate RSS). Actual `VectorDecoder` and full 16-lane/eight-warp
+`VectorIntegerAlu` RTL passed all four widths in 13.20 seconds (408256 KiB),
+including indices 1, 2 and the last legal index, nonzero base/flags, limit,
+`0xffffffff` and high-bit indices. Original ADDR, cached vertex and pending
+data registers were unchanged. An independent old shift implementation failed
+the exact index-1 assertion: 299 instead of 51, in 13.44 seconds (419056 KiB).
+Neither case timed out. Each JVM used a 128 MiB heap, 128 MiB metaspace, 32
+MiB code cache, `ActiveProcessorCount=1` and SerialGC, with a 180-second
+process-group bound and a 512 MiB sampled aggregate memory guard. Native
+Verilator retained the upstream `-j0` setting; this was not a strict one-CPU
+native-process limit. The fixture supplies register/scalar peers for this
+arithmetic microsequence; it is not a shader/CU/patch-RAM test.
 
 The Scala fixture is outside default sbt test sources. It requires explicitly
 exported words and is not claimed as automatic CI coverage. Existing callbacks,
@@ -194,26 +235,53 @@ The compiler preserves those limits and 512 native words per stage. Position
 plus 64 user components cannot fit this transport; this is a current transport
 limit, not a claim that such GLSL is illegal or that the full P25 target shrinks.
 
-A real original TCS `vectors[gl_InvocationID] = ...` patch-array store produces
-TGSI `MOV OUT[ADDR[0].x+4].xyz, ...`: an indirect destination register, not a
-per-vertex dimension. The old checked packet contract rejects it. The test keeps
-that original source as an explicit unsupported case; a separate static-store
-case isolates and validates dynamic TES matrix/patch-array reads. Full TCS
-indirect-store lowering is still required. No rejected case is reported as a
-successful shader result.
+The original TCS `vectors[gl_InvocationID] = ...` produces TGSI `MOV
+OUT[ADDR[0].x+4].xyz, ...`: an indirect destination register, distinct from
+its per-vertex dimension. It is admitted only by explicit linked TCS v3 entry
+points with the retained original output span and packing. Legacy v1/v2 and
+nonlinked language-v3 entry points still reject it without changing output.
+
+The compiler requires an exact GENERIC/per-vertex or PATCH/per-patch semantic
+match. Compact tessellation-level placeholders do not create addressable spans
+or permission to borrow a neighboring variable. Defined full 32-bit register
+indices select a single original span; bounds are checked before multiplying
+actual packed component widths. Per-vertex base addition also keeps the
+original full index for its bounds check. OOB values become a high-bit
+sentinel rather than wrapping into a valid descriptor. Dynamic per-vertex
+output masks include all possible legal components. Params fn20 is emitted
+after address/mask scratch, immediately before fn22; the actual owned provider
+retains its existing execution/side-effect masks, descriptor bounds, fault and
+drain behavior.
+
+Two real original ESSL cases cover the original write and an xyz/zyx SIMT
+split. Ten actual-token negatives reject bad
+length/file/index/swizzle/ArrayID/padding, wrong dimension and an undefined
+ADDR, with unchanged error output. Both sources retain their original writes;
+static substitution is not used. Supplemental literal helper streams
+additionally exercised actual Decoder/IntegerAlu PP and per-vertex addresses,
+base 1 and full 32-bit wrap: fresh six-source compile 7.33 seconds, 359376 KiB
+maximum sampled aggregate RSS; RTL 13.94 seconds, 418384 KiB, under the same
+128 MiB JVM heap, `ActiveProcessorCount=1`/SerialGC, 180-second group bound
+and 512 MiB sampled aggregate memory guard. Native Verilator again retained
+upstream `-j0`; no strict native CPU limit is claimed. Register/scalar peers
+do not execute fn20/22, patch storage, a shader or CU. All xyz components of
+both legal columns are checked in the output-mask fixture. Broader supported
+TCS lowering and actual shader/patch results must still be qualified
+separately.
 
 Actual protected joint submit, VS-to-owned-patch/TCS/TES/FS CU execution,
 complete descriptor/image/GNY2 oracles, same-host five-stage execution and the
-mandatory two-CU640x480/60FPS qualification remain pending. CPU resource and
+mandatory two-CU 640x480/60 FPS qualification remain pending. CPU resource and
 compiler checks do not replace them. Scala regression remains disabled and
 must not be enabled or dispatched.
 
 ## Reproduction
 
-Use the immutable image and read-only Mesa22.3.6/SDK/LD setup in
+Use the immutable image and read-only Mesa 22.3.6/SDK/LD setup in
 [NATIVE_FRAGMENT_PRIMITIVE_COMPILER.md](NATIVE_FRAGMENT_PRIMITIVE_COMPILER.md#reproduction),
-with512MiB combined memory/swap, one CPU and no network. Original Mesa libraries
-are reused. Create a private output and two read-only original source baselines:
+with 512 MiB combined memory/swap, one CPU and no network. Original Mesa
+libraries are reused. Create a private output and two read-only original
+source baselines:
 
 ```sh
 mkdir "$OUT/reference"
@@ -226,6 +294,20 @@ python3 -B scripts/test_native_joint.py --sanitize --negative-controls \
   --legacy-source "$OUT/reference/opengpu_native_uniform_emit.c" \
   --tess-baseline-source "$OUT/reference/opengpu_native_tess_uniform_emit.c" \
   --build "$OUT/build"
+```
+
+For independent protection of the levels case, use a checkout containing the
+v3 snapshot consumer. Keep both programs unchanged and pass the actual layout
+and explicit offline permissions:
+
+```sh
+mkdir "$OUT/levels-consumer"
+cp "$OUT/build/matrix-levels.tcs.words" "$OUT/levels-consumer/native-tcs.words"
+cp "$OUT/build/matrix-levels.tes.words" "$OUT/levels-consumer/native-tes.words"
+python3 -B scripts/test_tessellation_program_snapshot.py --sanitize \
+  --programs "$OUT/levels-consumer" --tcs-layout 2 8 2 10 6 --tes-layout 0 8 \
+  --tcs-program-version 3 --tes-program-version 3 --owned-tessellation-info \
+  --tes-patch-layout 2 8 2 10 6
 ```
 
 The tracked offline VS consumer runs the original no-argument native-program
@@ -243,7 +325,7 @@ python3 -B scripts/test_native_vertex_artifacts.py --sanitize \
 ```
 
 Arguments are attributes, varyings and explicit offline owned-uniform permission;
-capacity128 and VS ABI1 are fixed. Short scratch, missing required uniform
+capacity 128 and VS ABI1 are fixed. Short scratch, missing required uniform
 permission, incorrect entry and failed copy are rejected; nonzero entry retains
 the exact original suffix, private PTEs are RX without W, and owners retire.
 A full 512-word literal additionally covers the entry-zero capacity boundary.
@@ -265,16 +347,17 @@ sbt -Dopengpu.mappedAddressPrograms="$OUT/address-words" \
   'testOnly opengpu.graphics.tessellation.TessellationMappedAddressSpec'
 ```
 
-The recorded run used direct Scala2.13.18 compiler/Chisel7.15 plugin invocation
-rather than sbt: freshly compile `DecodeTypes.scala`, `VectorDecoder.scala`,
-`VectorIntegerTypes.scala`, `VectorIntegerAlu.scala`, the current `GpuSim.scala`
-and the explicit fixture, with new classes first in an unchanged dependency
-classpath. Run `org.scalatest.tools.Runner -oD -s
+The recorded run used direct Scala 2.13.18 compiler/Chisel 7.15 plugin
+invocation rather than sbt: freshly compile `DecodeTypes.scala`,
+`VectorDecoder.scala`, `VectorIntegerTypes.scala`, `VectorIntegerAlu.scala`,
+the current `GpuSim.scala` and the explicit fixture, with new classes first in
+an unchanged dependency classpath. Run `org.scalatest.tools.Runner -oD -s
 opengpu.graphics.tessellation.TessellationMappedAddressSpec` with the property
 above and `opengpu.simJobs=1`, `simLowMem=1`, `simLowMemOpt=0`,
-`simSeparateBuild=1`, `simCache=off` (each prefixed `opengpu.`). Export to another
-empty directory with `--wrong-shift-control` to require the precise old-bug
-failure. Never enable or dispatch the disabled Scala regression workflow.
+`simSeparateBuild=1`, `simCache=off` (each prefixed `opengpu.`). Export to
+another empty directory with `--wrong-shift-control` to require the precise
+old-bug failure. Never enable or dispatch the disabled Scala regression
+workflow.
 
 Every compile/link/test process has a 180-second bound and process-group exit
 proof. Source/ESSL/schema/generated inputs, original Mesa/DRM/SDK/link objects and

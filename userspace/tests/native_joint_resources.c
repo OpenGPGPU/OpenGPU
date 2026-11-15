@@ -6,8 +6,49 @@
 #include "tgsi/tgsi_parse.h"
 #include "tgsi/tgsi_dump.h"
 static const unsigned joint_stages[4]={0,4,5,1};
+static void original_indirect_guards(const struct opengpu_native_joint_input *input)
+{
+    struct opengpu_native_tess_packing pin,pout;struct opengpu_native_tess_layout l;
+    assert(!opengpu_native_tess_pack(input->maps+1,&pin)&&!opengpu_native_tess_pack(input->maps+2,&pout));
+    assert(!opengpu_native_tess_linked_reflect(input->tokens[1],input->words[1],4,128,2,&pin,&pout,&l));
+    struct opengpu_native_tess_program out,saved;memset(&saved,0xa5,sizeof(saved));out=saved;
+    assert(opengpu_native_tess_language_emit(input->tokens[1],input->words[1],&l,input->maps+2,&out));assert(!memcmp(&out,&saved,sizeof(out)));
+    struct opengpu_native_tess_layout old=l;old.version=1;old.owned_tessellation_info=0;
+    assert(opengpu_native_tess_uniform_emit(input->tokens[1],input->words[1],&old,&out));assert(!memcmp(&out,&saved,sizeof(out)));
+    assert(opengpu_native_tess_control_emit(input->tokens[1],input->words[1],&old,input->maps+2,&out));assert(!memcmp(&out,&saved,sizeof(out)));
+    assert(!opengpu_native_tess_linked_emit(input->tokens[1],input->words[1],&l,input->maps+2,&pin,&pout,&out));
+    unsigned found=0,at=0,definition=0;struct tgsi_parse_context parser;assert(tgsi_parse_init(&parser,input->tokens[1])==TGSI_PARSE_OK);
+    while(!tgsi_parse_end_of_tokens(&parser)&&!found){
+        unsigned first=parser.Position;tgsi_parse_token(&parser);
+        if(parser.FullToken.Token.Type==TGSI_TOKEN_TYPE_INSTRUCTION&&parser.FullToken.FullInstruction.Instruction.Opcode==TGSI_OPCODE_UARL&&parser.FullToken.FullInstruction.Dst[0].Register.Index==0)
+            definition=first+1;
+        if(parser.FullToken.Token.Type==TGSI_TOKEN_TYPE_INSTRUCTION&&parser.FullToken.FullInstruction.Instruction.NumDstRegs&&parser.FullToken.FullInstruction.Dst[0].Register.Indirect){
+            at=first+1+parser.FullToken.FullInstruction.Instruction.Label;found=1;
+        }
+    }
+    tgsi_parse_free(&parser);assert(found&&definition);
+    for(unsigned bad=0;bad<10;bad++){
+        uint32_t *t=malloc(input->words[1]*4);assert(t);memcpy(t,input->tokens[1],input->words[1]*4);
+        struct tgsi_dst_register dst;struct tgsi_ind_register addr;
+        memcpy(&dst,t+at,4);memcpy(&addr,t+at+1,4);
+        if(bad==0)addr.File=TGSI_FILE_TEMPORARY;
+        if(bad==1)addr.Index=2;
+        if(bad==2)addr.Swizzle=1;
+        if(bad==3)addr.ArrayID=1;
+        if(bad==4)dst.File=TGSI_FILE_TEMPORARY;
+        if(bad==5)dst.Index=-1;
+        if(bad==6)dst.Dimension=1;
+        if(bad==7){struct tgsi_dst_register d;memcpy(&d,t+definition,4);d.Index=1;memcpy(t+definition,&d,4);} /* Original ADDR0 now undefined. */
+        if(bad==8)dst.Padding=1;
+        memcpy(t+at,&dst,4);memcpy(t+at+1,&addr,4);out=saved;
+        unsigned n=input->words[1]-(bad==9);
+        assert(opengpu_native_tess_linked_emit(t,n,&l,input->maps+2,&pin,&pout,&out));
+        assert(!memcmp(&out,&saved,sizeof(out)));free(t);
+    }
+}
 void native_joint_test(struct opengpu_native_joint_link *link,const char *output,unsigned full,unsigned vs_slot,unsigned fs_slot)
 {
+    unsigned indirect=full==2,levels=full==3;if(indirect||levels)full=0;
     struct pipe_screen *screen=opengpu_drm_screen_create(7,NULL);assert(screen);
     struct pipe_context *pipe=screen->context_create(screen,NULL,0);assert(pipe);
     assert(!pipe->create_tcs_state&&!pipe->create_tes_state);
@@ -25,12 +66,36 @@ void native_joint_test(struct opengpu_native_joint_link *link,const char *output
     unchanged=packed;capacity.spans[1].slots=16;
     assert(opengpu_native_tess_pack(&capacity,&packed)&&!memcmp(&packed,&unchanged,sizeof(packed)));
     struct opengpu_native_joint_input input;assert(!opengpu_native_joint_link_capture(link,&input));
-    struct opengpu_native_joint_program *p=opengpu_native_joint_program_create(pipe,link,2);
-    if(full==2){
-        assert(!p);pipe->destroy(pipe);screen->destroy(screen);
-        for(unsigned i=1;i<next_bo;i++)assert(!bos[i].handle&&!bos[i].jobs&&!bos[i].maps);
-        puts("NATIVE_JOINT_CPU expected unsupported original TCS indirect patch store; no GPU");return;
+    if(indirect)original_indirect_guards(&input);
+    if(levels){
+        const struct opengpu_native_tess_input_span *outer=NULL,*inner=NULL,*patch=NULL;
+        for(unsigned i=0;i<input.maps[3].count;i++){
+            const struct opengpu_native_tess_input_span *s=input.maps[3].spans+i;
+            if(s->semantic==TGSI_SEMANTIC_TESSOUTER)outer=s;
+            if(s->semantic==TGSI_SEMANTIC_TESSINNER)inner=s;
+            if(s->semantic==TGSI_SEMANTIC_PATCH)patch=s;
+        }
+        assert(outer&&outer->compact&&outer->slots==4&&!outer->per_vertex);
+        assert(inner&&inner->compact&&inner->slots==2&&!inner->per_vertex);
+        assert(patch&&!patch->compact&&patch->slots==2&&!patch->per_vertex);
+        unsigned outerRead=0,innerRead=0,indirectPatch=0;
+        struct tgsi_parse_context parser;assert(tgsi_parse_init(&parser,input.tokens[2])==TGSI_PARSE_OK);
+        while(!tgsi_parse_end_of_tokens(&parser)){
+            tgsi_parse_token(&parser);if(parser.FullToken.Token.Type!=TGSI_TOKEN_TYPE_INSTRUCTION)continue;
+            const struct tgsi_full_instruction *in=&parser.FullToken.FullInstruction;
+            unsigned mask=in->Instruction.NumDstRegs?in->Dst[0].Register.WriteMask:15;
+            for(unsigned k=0;k<in->Instruction.NumSrcRegs;k++){
+                struct tgsi_src_register s=in->Src[k].Register;if(s.File!=TGSI_FILE_INPUT||s.Dimension)continue;
+                if(s.Indirect&&(unsigned)s.Index>=patch->first&&(unsigned)s.Index-patch->first<2)indirectPatch++;
+                unsigned read=0,sw[4]={s.SwizzleX,s.SwizzleY,s.SwizzleZ,s.SwizzleW};
+                for(unsigned c=0;c<4;c++)if(mask&(1u<<c))read|=1u<<sw[c];
+                if((unsigned)s.Index==outer->first)outerRead|=read;
+                if((unsigned)s.Index==inner->first)innerRead|=read;
+            }
+        }
+        tgsi_parse_free(&parser);assert(outerRead==3&&innerRead==1&&indirectPatch);
     }
+    struct opengpu_native_joint_program *p=opengpu_native_joint_program_create(pipe,link,2);
     if(!p){
         struct opengpu_native_tess_packing a,b,c;struct opengpu_native_tess_layout t[2];struct opengpu_native_tess_program q;
         fprintf(stderr,"pack=%d/%d/%d\n",opengpu_native_tess_pack(input.maps+1,&a),opengpu_native_tess_pack(input.maps+2,&b),opengpu_native_tess_pack(input.maps+4,&c));
@@ -134,6 +199,22 @@ void native_joint_test(struct opengpu_native_joint_link *link,const char *output
                 last==(0x25u<<26|1u<<25|29u<<20|3u<<15|3u<<12|29u<<7|0x57u);
         }
         assert(vec3Stride>=6); /* Actual opcode chain; arithmetic also has RTL coverage. */
+    }
+    if(indirect){
+        unsigned pairs=0,storeBound2=0;
+        for(unsigned i=1;i<d.tess[0].words;i++){
+            uint32_t insn=d.tess[0].code[i];
+            if(insn==(0x1au<<26|1u<<25|20u<<20|10u<<15|4u<<12|0x57u)){
+                assert(d.tess[0].code[i-1]==0x00200513u);storeBound2++;
+            }
+            if((insn&0xfe007fffu)==(22u<<26|1u<<25|0x2bu)){
+                uint32_t params=d.tess[0].code[i-1];
+                assert((params&0xfe007fffu)==(20u<<26|1u<<25|0x2bu));
+                assert(((params>>15)&31)>=22&&((params>>15)&31)<=25);
+                assert(((insn>>15)&31)==28&&((insn>>20)&31)==29);pairs++;
+            }
+        }
+        assert(pairs>=3&&storeBound2>=3); /* Original two-element PP array, xyz. */
     }
     assert(d.vertex_layout.varyings==vs_slot+1&&d.fragment.metadata.varying_slots==fs_slot+1);
     assert(d.vertex_components[4].kind==1&&d.vertex_components[4].component==4*vs_slot);
