@@ -1,0 +1,172 @@
+# Original linked five-stage source
+
+The independent `opengpu_native_five_*` family links original ESSL 3.20
+VS/TCS/TES/GS/FS once, captures its five TGSI packets and eight original NIR
+variable maps, and compiles five actual native programs. The existing
+four-stage `opengpu_native_joint_*` objects and no-GS fragment artifact remain
+separate. This introduces no public shader callbacks, screen capability,
+getter, UAPI, protected submission or device permission.
+
+## Ownership and stage boundaries
+
+The opaque link owns the original Mesa tokens and reflection. Program creation
+copies all packets/maps/reflection before the first GEM callback. VS uses the
+original NEXT_TCS compiler. TC/TES use language program v3 and the full owned
+patch layout. A distinct TES-to-GS entry requires NEXT_GEOMETRY; the old
+linked entry still requires NEXT_FRAGMENT. GS uses the scalar geometry
+program dialect described in [the GS compiler contract](NATIVE_GEOMETRY_MESA.md).
+No old code is relabeled or borrowed from an independently linked shader.
+
+The eight maps are VS output, TC input/output, TES input/output, GS
+input/output and FS input. Each retains original variable spans, component
+masks and semantic locations. The TC patch packing and TES export packing
+are independent. TES-to-GS maps actual packed TES output to the GS input
+inventory; GS-to-FS maps actual GS exports to the FS semantic slots. Sparse
+location 15 remains a full native varying prefix, not a packed API location.
+Position and applicable builtins count inside the existing component limits.
+TES topology is checked against the original GS input primitive.
+
+A source lease retains every required original backing/view and the program.
+The complete test uses 60 UBO references plus five separately copied default
+views, and five original code GEMs. API bindings 0..71 remain distinct from
+each stage's logical blocks 0..11. VS/FS use one private table pair, TC/TES
+another pair, and GS its own table. No global 60-entry hardware table is
+invented. Same-GEM offsets/lengths survive rebind, caller reference release,
+and destruction of the constants cache and caller's program reference.
+The source pipe/context and screen must outlive the leased objects.
+
+The lease freezes references and compiler metadata, not mutable GEM data or
+producer fences. Protected capture, checked GUR1/GUR2/GUR3 contents, writer
+leases, RX permissions and whole-job retirement still belong to the verified
+kernel owner. This family does not claim those graphs have been built.
+
+## GS-linked fragment compiler version 3
+
+`opengpu_native_fragment_*_v3` is an explicit GS-linked compiler family.
+Original HIR records the static builtin/sample use before optimized NIR loses
+it. Checked uniform emission preserves all 16 varying slots, four MRTs,
+flat/centroid masks, depth/control arrays and stage-local uniform requirements.
+GS PrimitiveID and Layer read actual geometry input arrays. In particular,
+Layer is not the no-GS version-2 constant zero. PointCoord has its own builtin
+kind and does not become a generic varying by numerical offset.
+
+This initial transport uses existing ABI5 for pixel-rate GS input and ABI7
+only when SampleID, SamplePosition or a sample qualifier requires sample
+planes. MaskIn and HelperInvocation do not open those planes. ABI5 cannot
+encode shader SampleMask writes: the actual original source is rejected
+without creating code GEMs. The independently developed geometry pixel-mask
+transport remains a required later dependency; metadata alone cannot enable
+it. Sample input permission, geometry permission and uniform permission must
+be independently verified before execution.
+
+`OGNSF003` consists of eight magic bytes, 42 little-endian u32 header words,
+and exactly the declared 1..512 instruction words, followed by EOF. The
+header inventory matches OGNSF002's numerical order, with header word0=3:
+
+- Words1..17: ABI, input arrays, stride, prefix bytes, used builtins, color
+  mask, depth/mask writes, sample/geometry requirements, capacity, varying/MRT
+  counts, instruction count, primitive/uniform requirements, static inputs.
+- Words18..23: low/high words of varying, flat and centroid masks.
+- Words24..36: default and twelve logical UBO byte requirements.
+- Words37..40: four color types; word41 must be zero.
+
+Version3 requires geometry ownership and requires primitive ownership to be
+zero. ABI5 has `10+4*varyingSlots` input arrays; ABI7 adds three sample arrays.
+Stride is 512 bytes at capacity128; the writable prefix follows inputs and
+contains `4*colorSlots+2` arrays. Layer's static-input bit128 means real GS
+Layer here, whereas version2's same numerical bit means no-GS Layer-zero.
+The APIs, artifact magic/version and validators distinguish those meanings.
+Both readers reject the other artifact; reserved fields, extra bytes and
+failed reads leave the output unchanged. OGNSF001/002 are unchanged.
+
+## Validation and remaining work
+
+Actual Mesa CPU validation is described by the opt-in runner below. It uses
+original immutable Mesa libraries and modeled OS/GEM primitives; it does not
+interpret or execute a shader. The real-source tests cover API binding71,
+60 UBOs/5 defaults, first/last words, original view offsets, five code GEMs,
+65-reference lease retention, rebind, short-view rollback, foreign context,
+and each code-allocation failure. Independent source-copy controls remove GS
+default retention, corrupt TES-to-GS mapping, or replace GS Layer with zero;
+each must hit its own exact assertion, not a compilation error or timeout.
+
+The final current-source build compiled 37 translation units from scratch
+(including three source-copy controls), checked 37 MMD files and 255 distinct
+dependencies, and passed in 42.852 seconds. The 1060 GPU/reference inputs and
+8101 external Mesa/SDK/library inputs were unchanged before and after use.
+All cases retain 65 uniform references, five code GEMs, 16 varying slots,
+four MRTs and capacity128. VS/TC/TE/GS are 308/478/362/289 words:
+
+| Original FS use | ABI | FS words | Prefix bytes |
+|---|---:|---:|---:|
+| GS PrimitiveID and Layer | 5 | 401 | 47104 |
+| SampleID | 7 | 408 | 48640 |
+| MaskIn and HelperInvocation | 5 | 434 | 47104 |
+| PointCoord, original points GS | 5 | 427 | 47104 |
+| Centroid varying | 5 | 401 | 47104 |
+| Depth output | 5 | 408 | 47104 |
+
+A separately compiled production validator/private-RX/MMU fixture consumed
+these six original FS instruction files with explicit synthetic CPU geometry,
+sample and uniform permissions. Clang16 ASan/UBSan passed in 3.417 seconds;
+maximum sampled aggregate RSS was 202480 KiB, under the 180-second/512-MiB
+limits. Its 654 source/code inputs were unchanged. It checks exact prefix
+bounds, nonzero entry, raw RX bytes, publication/retirement, missing permissions,
+and independent literal probes for every input, writable color/depth/control,
+and read-only tail array. It does not import producer authority or execute
+instructions. The new 289-word GS program also passed the actual independent
+scalar-GS validator/private-RX/MMU fixture in 3.069 seconds, with maximum
+sampled aggregate RSS 203392 KiB and 649 unchanged inputs.
+
+The old four-stage family was rebuilt from scratch against the final common
+source: 47 translation units, 47 MMD files/271 dependencies, 55.466 seconds.
+Original 308/301 programs and all old v1/v2 byte comparisons against independent
+original emitter sources passed, along with its four precise controls.
+No cached object was counted as a fresh compilation.
+
+The scalar GS compiler and five-stage graph are still incomplete product
+work. Maximum-output GS lowering, remaining GLSL arithmetic/builtins and
+PointSize, dynamic/ordered GS execution, TF, GS-capable protected joint BUILD,
+shader values and full-frame execution remain pending. No original
+four-stage CPU result or individual RX validator substitutes for those paths.
+The mandatory two-CU 640x480/60-FPS target remains unchanged. No Scala
+regression, full model or actual CU is run by this CPU test.
+
+## Reproduction
+
+Use the pinned immutable `cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72`
+image with `--memory=512m --memory-swap=512m --cpus=1 --network=none --read-only`.
+Mount the GPU/Mesa/SDK sources read-only and one private output under this
+checkout's `.artifacts` writable. Reuse the existing Mesa22.3.6 libraries:
+
+```sh
+GPU=/Users/duckdonald/workspace/gpu
+export OPENGPU_MESA_DIR="$GPU/depends/mesa"
+export OPENGPU_MESA_BUILD="$GPU/depends/mesa-build"
+export OPENGPU_DRM_INCLUDE="$GPU/depends/aarch64-root/include"
+export LD_LIBRARY_PATH="$GPU/depends/aarch64-root/lib"
+export OPENGPU_MESA_LINK_LIBS="-l:libz.so.1 $GPU/depends/aarch64-root/lib/libexpat.so.1.6.7"
+python3 -B scripts/test_native_five.py --sanitize --negative-controls \
+  --build "$OUT/build"
+```
+
+Bind original/generated inputs, actual MMD dependencies, binary and ESSL
+files before/after use. Enforce the 180-second group deadline and prove owned
+process groups/container have exited before deleting ended output. Reuse mode
+is only for active private diagnosis with exact argv/object/MMD-input SHA
+receipts; it must not be reported as a fresh build.
+
+The independent offline FS consumer has an explicit test profile per file;
+these arguments describe CPU policy only:
+
+```sh
+python3 -B scripts/test_native_geometry_fragment_artifacts.py --sanitize \
+  --fragment-artifact "$OUT/build/full5.fs.words" 5 16 4 1 1 0 \
+  --fragment-artifact "$OUT/build/full7.fs.words" 7 16 4 1 1 1 \
+  --fragment-artifact "$OUT/build/pixel-inputs.fs.words" 5 16 4 1 1 0 \
+  --fragment-artifact "$OUT/build/pointcoord.fs.words" 5 16 4 1 1 0 \
+  --fragment-artifact "$OUT/build/centroid.fs.words" 5 16 4 1 1 0 \
+  --fragment-artifact "$OUT/build/depth.fs.words" 5 16 4 1 1 0
+python3 -B scripts/test_geometry_program_snapshot.py --sanitize \
+  --program "$OUT/build/full5.gs.words" --owned-uniforms
+```

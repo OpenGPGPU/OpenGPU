@@ -26,6 +26,8 @@ extern "C" {
 #include "opengpu_native_tess_uniform_emit.h"
 #include "opengpu_native_joint_internal.h"
 #include "opengpu_native_fragment_reflection_v2.h"
+#include "opengpu_native_fragment_reflection_v3.h"
+#include "opengpu_native_five_internal.h"
 
 static const gl_shader_stage stages[] = {MESA_SHADER_VERTEX, MESA_SHADER_TESS_CTRL,
     MESA_SHADER_TESS_EVAL, MESA_SHADER_GEOMETRY, MESA_SHADER_FRAGMENT};
@@ -83,15 +85,19 @@ struct graphics_program {
     unsigned color_types[4];
     opengpu_native_tess_input_map evaluation_inputs,control_outputs,geometry_inputs,geometry_outputs;
     bool joint;opengpu_native_joint_input captured;
+    bool five;opengpu_native_five_input captured_five;
 };
 static int type_size(const glsl_type *type, bool) { return glsl_count_vec4_slots(type, false, false); }
 
-static void *compile(const char *const files[5], const char *prefix,bool joint)
+static void *compile(const char *const files[5], const char *prefix,unsigned family)
 {
     if (!files || !files[0] || !files[4]) return nullptr;
-    const bool tessellation = files[1] && files[2];
-    const bool geometry = !files[1] && !files[2] && files[3] && !joint;
-    if (!tessellation && !geometry) return nullptr;
+    bool joint=family==1,five=family==2;
+    if(family>2||(five&&!files[3]))return nullptr;
+    const bool tessellation = family==0 && files[1] && files[2] && !files[3];
+    const bool geometry = family==0 && !files[1] && !files[2] && files[3];
+    if ((family==0 && !tessellation && !geometry) ||
+        (joint && (!files[1] || !files[2] || files[3]))) return nullptr;
     auto *f = new graphics_program{};
     f->options.glsl_version = 300;
     f->options.do_link = 1; f->options.just_log = 1;
@@ -119,6 +125,9 @@ static void *compile(const char *const files[5], const char *prefix,bool joint)
     if(joint){
         if(!native_fragment_reflect_v2(program,&f->captured.fragment)){opengpu_tess_frontend_destroy(f);return nullptr;}
         f->joint=true;
+    }else if(five){
+        if(!native_fragment_reflect_v3(program,&f->captured_five.fragment)){opengpu_tess_frontend_destroy(f);return nullptr;}
+        f->five=true;
     }else assert(program->IsES && program->data->Version == 320);
     exec_list_make_empty(&program->EmptyUniformLocations);
     pipe_screen screen = {};
@@ -160,7 +169,7 @@ static void *compile(const char *const files[5], const char *prefix,bool joint)
         nir->num_uniforms = (params->NumParameterValues + 3) / 4;
         if (nir->options->lower_uniforms_to_ubo)
             NIR_PASS_V(nir, nir_lower_uniforms_to_ubo, false, false);
-        if (stage != MESA_SHADER_VERTEX || geometry || joint)
+        if (stage != MESA_SHADER_VERTEX || geometry || joint || five)
             nir_assign_io_var_locations(nir, nir_var_shader_in, &nir->num_inputs, stage);
         nir_assign_io_var_locations(nir, nir_var_shader_out, &nir->num_outputs, stage);
         if(stage!=MESA_SHADER_FRAGMENT) {
@@ -206,17 +215,18 @@ static void *compile(const char *const files[5], const char *prefix,bool joint)
                 }
             }
         }
-        if(joint){
+        if(joint||five){
             struct capture_mode {unsigned slot;nir_variable_mode mode;};
             capture_mode modes[2];unsigned nm=0;
             if(stage==MESA_SHADER_VERTEX)modes[nm++]={0,nir_var_shader_out};
             if(stage==MESA_SHADER_TESS_CTRL){modes[nm++]={1,nir_var_shader_in};modes[nm++]={2,nir_var_shader_out};}
             if(stage==MESA_SHADER_TESS_EVAL){modes[nm++]={3,nir_var_shader_in};modes[nm++]={4,nir_var_shader_out};}
-            if(stage==MESA_SHADER_FRAGMENT)modes[nm++]={5,nir_var_shader_in};
+            if(stage==MESA_SHADER_GEOMETRY&&five){modes[nm++]={5,nir_var_shader_in};modes[nm++]={6,nir_var_shader_out};}
+            if(stage==MESA_SHADER_FRAGMENT)modes[nm++]={five?7u:5u,nir_var_shader_in};
             for(unsigned q=0;q<nm;q++){
-                auto &map=f->captured.maps[modes[q].slot];map.version=1;
+                auto &map=five?f->captured_five.maps[modes[q].slot]:f->captured.maps[modes[q].slot];map.version=1;
                 nir_foreach_variable_with_modes(var,nir,modes[q].mode){
-                    if(var->data.location==VARYING_SLOT_PRIMITIVE_ID)continue;
+                    if(var->data.location==VARYING_SLOT_PRIMITIVE_ID&&!(five&&stage==MESA_SHADER_GEOMETRY&&modes[q].mode==nir_var_shader_out))continue;
                     if(stage==MESA_SHADER_FRAGMENT && (var->data.location<VARYING_SLOT_VAR0||var->data.location>=VARYING_SLOT_PATCH0))continue;
                     if(map.count==64||var->data.location_frac){map.version=0;break;}
                     auto *type=var->type;bool pv=nir_is_arrayed_io(var,stage);if(pv)type=glsl_get_array_element(type);
@@ -233,19 +243,21 @@ static void *compile(const char *const files[5], const char *prefix,bool joint)
         nir_validate_shader(nir, "actual linked graphics uniform frontend");
         nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir)); shader->Program->info = nir->info;
         if (stage == MESA_SHADER_FRAGMENT) nir_foreach_shader_out_variable(var, nir) {
-            if ((joint || geometry) && (var->data.location < FRAG_RESULT_DATA0 ||
-                                        var->data.location >= FRAG_RESULT_DATA0 + 4)) continue;
-            const unsigned color = geometry ? var->data.location - FRAG_RESULT_DATA0
-                                            : var->data.driver_location;
-            assert(color < 4 && glsl_get_components(var->type) <= 4);
+            if ((joint || five || geometry) && (var->data.location < FRAG_RESULT_DATA0 ||
+                                                var->data.location >= FRAG_RESULT_DATA0 + 4)) continue;
+            const unsigned target = (five || geometry) ? var->data.location - FRAG_RESULT_DATA0
+                                                       : var->data.driver_location;
+            assert(target < 4 && glsl_get_components(var->type) <= 4);
             auto type = glsl_get_base_type(var->type);
             assert(type == GLSL_TYPE_FLOAT || type == GLSL_TYPE_UINT || type == GLSL_TYPE_INT);
-            f->color_types[color] = type == GLSL_TYPE_UINT ? 1 : type == GLSL_TYPE_INT ? 2 : 0;
-            if(joint)f->captured.fragment.color_types[color]=f->color_types[color];
+            f->color_types[target] = type == GLSL_TYPE_UINT ? 1 : type == GLSL_TYPE_INT ? 2 : 0;
+            if(joint)f->captured.fragment.color_types[var->data.driver_location]=f->color_types[var->data.driver_location];
+            if(five)f->captured_five.fragment.color_types[target]=f->color_types[target];
         }
         f->tokens[i] = static_cast<const tgsi_token *>(nir_to_tgsi(nir, &screen));
         shader->Program->nir = nullptr; assert(f->tokens[i]);
         if(joint){unsigned j=i==4?3:i;f->captured.tokens[j]=f->tokens[i];f->captured.words[j]=tgsi_num_tokens(f->tokens[i]);}
+        if(five){f->captured_five.tokens[i]=f->tokens[i];f->captured_five.words[i]=tgsi_num_tokens(f->tokens[i]);}
         if (prefix) {
             char filename[4096]; int n = snprintf(filename, sizeof(filename), "%s.%s.tgsi.txt", prefix, names[i]);
             assert(n > 0 && (size_t)n < sizeof(filename));
@@ -332,11 +344,11 @@ extern "C" void opengpu_tess_frontend_destroy(void *p)
     delete f;
 }
 
-extern "C" void *opengpu_tess_frontend_compile(const char *const files[5],const char *prefix){return compile(files,prefix,false);}
+extern "C" void *opengpu_tess_frontend_compile(const char *const files[5],const char *prefix){return compile(files,prefix,0);}
 extern "C" opengpu_native_joint_link *opengpu_native_joint_link_create(const char *const files[4]){
     if(!files)return nullptr;
     const char *all[5]={files[0],files[1],files[2],nullptr,files[3]};
-    return static_cast<opengpu_native_joint_link *>(compile(all,nullptr,true));
+    return static_cast<opengpu_native_joint_link *>(compile(all,nullptr,1));
 }
 extern "C" void opengpu_native_joint_link_destroy(opengpu_native_joint_link *p){opengpu_tess_frontend_destroy(p);}
 extern "C" unsigned opengpu_native_joint_blocks(const opengpu_native_joint_link *p,unsigned stage){return opengpu_tess_frontend_blocks(const_cast<opengpu_native_joint_link *>(p),stage);}
@@ -347,3 +359,12 @@ extern "C" int opengpu_native_joint_bind_defaults(opengpu_native_joint_link *p,p
 extern "C" int opengpu_native_joint_link_capture(const opengpu_native_joint_link *p,opengpu_native_joint_input *out){
     auto *f=reinterpret_cast<const graphics_program *>(p);if(!f||!f->joint||!out)return -1;*out=f->captured;return 0;
 }
+
+extern "C" opengpu_native_five_link *opengpu_native_five_link_create(const char *const files[5]){return static_cast<opengpu_native_five_link *>(compile(files,nullptr,2));}
+extern "C" void opengpu_native_five_link_destroy(opengpu_native_five_link *p){opengpu_tess_frontend_destroy(p);}
+extern "C" unsigned opengpu_native_five_blocks(const opengpu_native_five_link *p,unsigned stage){return opengpu_tess_frontend_blocks(const_cast<opengpu_native_five_link *>(p),stage);}
+extern "C" unsigned opengpu_native_five_binding(const opengpu_native_five_link *p,unsigned stage,unsigned block){return opengpu_tess_frontend_binding(const_cast<opengpu_native_five_link *>(p),stage,block);}
+extern "C" unsigned opengpu_native_five_defaults(const opengpu_native_five_link *p,unsigned stage){return opengpu_tess_frontend_components(const_cast<opengpu_native_five_link *>(p),stage);}
+extern "C" int opengpu_native_five_bind_ubos(opengpu_native_five_link *p,pipe_context *pipe,pipe_resource *const r[72],const unsigned o[72],const unsigned n[72]){return opengpu_tess_frontend_ubos(p,pipe,r,o,n);}
+extern "C" int opengpu_native_five_bind_defaults(opengpu_native_five_link *p,pipe_context *pipe,unsigned stage,const unsigned *v,unsigned n){return opengpu_tess_frontend_defaults(p,pipe,stage,v,n);}
+extern "C" int opengpu_native_five_link_capture(const opengpu_native_five_link *p,opengpu_native_five_input *out){auto *f=reinterpret_cast<const graphics_program *>(p);if(!f||!f->five||!out)return -1;*out=f->captured_five;return 0;}

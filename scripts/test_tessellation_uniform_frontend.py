@@ -190,7 +190,7 @@ def main():
         verify_geometry_vertex(out/'geometry.native-vs-code.bin')
         verify_geometry_fragment(out/'geometry.native-fs-code.bin')
         return
-    for name in (('geometry','geometry-runtime','geometry-invocation','geometry-conditional') if a.scalar_geometry else ('language','language-conditional','language-full') if a.language else ('dynamic','adjacent','capacity','edge','component') if a.dynamic else ('uniform','full','conditional')):(out/'programs'/name).mkdir(parents=True)
+    for name in (('geometry','geometry-runtime','geometry-invocation','geometry-conditional','geometry-matrix') if a.scalar_geometry else ('language','language-conditional','language-full') if a.language else ('dynamic','adjacent','capacity','edge','component') if a.dynamic else ('uniform','full','conditional')):(out/'programs'/name).mkdir(parents=True)
     run([binary,ROOT/'userspace/tests/tess_uniform_essl',out/'programs'],'actual-ESSL320')
     if a.regressions:
         original_main=out/('native_geometry_frontend_test.o' if a.scalar_geometry else 'tessellation_language_frontend_test.o')

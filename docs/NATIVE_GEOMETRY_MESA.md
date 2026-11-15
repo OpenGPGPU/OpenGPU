@@ -34,9 +34,8 @@ GS input-array dimensions are carried by source operands. Mesa's
 vertex operands retain all 32 bits: an unsigned bound check precedes adding
 a static vertex offset. Invalid operands become `UINT32_MAX`, not a masked or
 wrapped valid vertex. The separate generic-indirect path uses original
-variable spans and exact component strides. The original-ESSL qualification
-below covers dynamic vertex indexing; a dynamic GS matrix/array-register
-qualification remains pending.
+variable spans and exact component strides. The original-ESSL qualification below covers dynamic vertex indexing and
+a separately indexed matrix-column register using the original NIR span.
 
 The backend emits scalar ALU and checked GS operations, never ordinary
 memory, texture/image instructions or VS/FS SoA accesses. The original
@@ -71,6 +70,7 @@ before/after guards. All four original GS instruction files stayed identical.
 | `geometry-runtime.geom` | 224 | Full-width runtime vertex, 12 UBOs and all 1024 defaults |
 | `geometry-invocation.geom` | 193 | 32 declared invocations, PrimitiveID input/output and layer |
 | `geometry-conditional.geom` | 255 | Runtime arms, output reads after the join, checked uniforms |
+| `geometry-matrix.geom` with its original TES | 269 | Independent runtime vertex and mat2x3-column ADDR values, sparse location13 |
 
 The same build ran the three old v1 and five old v2 ESSL cases, comparing
 native bytes with the independent original emitter. Those bytes were
@@ -81,6 +81,18 @@ helper. Missing geometry/uniform permission remains rejected. These are
 explicit synthetic CPU profiles, not producer-authorized device profiles.
 The callback isolation controls and their limits are described in
 [Geometry](GEOMETRY.md).
+
+A final current-source raw-GS run compiled 26 translation units from scratch
+and checked 26 MMD files/244 distinct dependencies in 25.073 seconds. All five
+original programs in the table passed; the original four instruction files
+retained their listed lengths. The 1060 GPU/reference and 8101 external inputs
+were unchanged. The matrix program carries actual Mesa
+`IN[ADDR[1].x][ADDR[0].x+1]` with independent runtime vertex and matrix-column
+indices and original NIR mask7/two-column span. Its 269 original words passed
+the independent production GS validator/private-RX/MMU fixture; this checks
+code protection, not matrix values or shader execution. A separate original
+five-stage source/lease test is documented in
+[Original linked five-stage source](NATIVE_FIVE_STAGE_SOURCE.md).
 
 Supplemental literal-token tests use Mesa's actual token builder/parser. They
 cover all five input-vertex counts, invocations 1/32, coupled output limits,
@@ -107,10 +119,11 @@ constant expansion or the existing literal 19-word output-loop test. They
 need a semantics-preserving lowering to the existing proven pure-output loop
 where applicable, or an explicitly versioned stronger loop contract.
 
-Actual GS matrix/array-register lowering, remaining arithmetic/builtins,
-point-size transport, TES-to-GS production ownership, GS-aware checked FS
-metadata/emission, five-code/65-uniform-reference leases, joint BUILD routing,
-ordered GS execution/TF and actual CU/frame execution remain pending. The
+Remaining arithmetic/builtins, point-size transport, TES-to-GS production
+ownership, GS-capable joint BUILD routing, ordered GS execution/TF and actual
+CU/frame execution remain pending. The initial GS-linked FS and five-code/
+65-uniform-reference lease now have separate compiler/CPU checks, not device
+qualification. The
 existing GS/TCS/TES/fragment capacities and the full five-stage target remain
 unchanged. No CPU test here demonstrates shader values, full GUR data or the
 2-CU 640×480/60-FPS product target. No Scala regression or model was run.
@@ -142,7 +155,7 @@ use, enforce the group deadline, and prove all descendants/container exited
 before deleting ended outputs. For the explicit offline CPU protection chain:
 
 ```sh
-for name in geometry geometry-runtime geometry-invocation geometry-conditional; do
+for name in geometry geometry-runtime geometry-invocation geometry-conditional geometry-matrix; do
   python3 -B scripts/test_geometry_program_snapshot.py --sanitize \
     --program "$OUT/build/programs/$name/native-gs.words" --owned-uniforms
 done
