@@ -132,4 +132,54 @@ class TypedReplayEmptyStateSpec extends AnyFlatSpec {
       d.io.completion.bits.stateReadLines.expect(0.U)
     }
   }
+  it should "preserve an accepted backing write fault over cancellation" in {
+    simulate(fixture(true)){d=>
+      zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      val mem=new Memory(d.io.memoryRequest.bits,d.io.memoryResponse.bits,d.io.memoryRequest.valid,d.io.memoryRequest.ready,
+        d.io.memoryResponse.valid,d.io.memoryResponse.ready)
+      mem.holdResponses=true
+      configure(d.io.begin.bits,4).keys.foreach(a=>mem.bytes(a)=0xa7)
+      def tick():Unit={
+        mem.drive();d.io.shared.launch.valid.expect(false.B)
+        mem.capture();d.clock.step()
+      }
+      def until(label:String)(condition: =>Boolean):Unit={
+        var n=0;while(!condition && n<60000){tick();n+=1};assert(condition,s"$label timed out")
+      }
+      d.io.begin.valid.poke(true.B);until("fault fixture begin")(d.io.begin.ready.peek().litToBoolean)
+      tick();d.io.begin.valid.poke(false.B)
+      d.io.end.valid.poke(true.B);d.io.end.bits.poke(true.B)
+      until("fault fixture end")(d.io.end.ready.peek().litToBoolean);tick();d.io.end.valid.poke(false.B)
+      until("actual accepted backing write")(mem.pending.exists(_.write))
+      val address=mem.pending.find(_.write).get.address
+      assert(mem.seen.forall(_.write),"clear unexpectedly read a missing state or backing input")
+      d.io.cancel.poke(true.B)
+      for(_<-0 until 12){tick();d.io.completion.valid.expect(false.B)}
+      // The request was actually accepted before cancellation. Its delayed
+      // physical fault remains authoritative; cancellation cannot erase it.
+      mem.faultAt=Set(address);mem.holdResponses=false
+      until("fault retirement")(d.io.completion.valid.peek().litToBoolean)
+      val c=d.io.completion.bits
+      assert(c.status.peek().litValue==3,"accepted backing write fault was hidden by cancellation")
+      c.faultStage.expect(2.U);c.faultAddress.expect(address.U)
+      c.accepted.expect(0.U);c.issued.expect(0.U);c.completed.expect(0.U);c.stateReadLines.expect(0.U)
+      assert(mem.pending.isEmpty && mem.reply.isEmpty,"fault report escaped physical response drain")
+      val held=c.peek().litValue
+      for(_<-0 until 4){tick();d.io.completion.valid.expect(true.B);assert(c.peek().litValue==held)}
+      d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B);d.io.cancel.poke(false.B)
+      d.io.busy.expect(false.B)
+      mem.faultAt=Set.empty;mem.seen.clear();mem.bytes.clear()
+      val expected=configure(d.io.begin.bits,5);expected.keys.foreach(a=>mem.bytes(a)=0xa7)
+      d.io.begin.valid.poke(true.B);until("healthy reuse begin")(d.io.begin.ready.peek().litToBoolean)
+      tick();d.io.begin.valid.poke(false.B)
+      d.io.end.valid.poke(true.B);d.io.end.bits.poke(true.B)
+      until("healthy reuse end")(d.io.end.ready.peek().litToBoolean);tick();d.io.end.valid.poke(false.B)
+      until("healthy reuse retirement")(d.io.completion.valid.peek().litToBoolean)
+      d.io.completion.bits.status.expect(0.U);d.io.completion.bits.image.transfers.storedBytes.expect(4352.U)
+      d.io.completion.bits.image.transfers.resolvedBytes.expect(1088.U)
+      assert(mem.bytes.toMap==expected,"healthy clear after fault/cancel changed bytes or guards")
+      assert(mem.pending.isEmpty && mem.reply.isEmpty)
+      d.io.completion.ready.poke(true.B);tick();d.io.busy.expect(false.B)
+    }
+  }
 }
