@@ -146,6 +146,17 @@ first three with their `scripts/test_*` entry points named above
 `OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_tessellation_uniform_emit.py --language-negative-controls`.
 These checks neither emit RTL nor execute a shader.
 
+The tracked offline vertex consumer was replayed as `7992710d1`, preserving
+main's callback-capture and primitive-program regression bodies. On that exact
+source, 3117 tracked non-document inputs and HEAD stayed unchanged through
+strict producer closure (21 tests, 21.51s / 97280KiB), the unchanged original
+sanitized program runner (3.13s / 219232KiB), and the new sanitized no-argument
+consumer (3.24s / 24400KiB). Each group had a 180-second/512MiB aggregate guard;
+RSS values are sampled peaks. This integration check used the original fixture
+and no external Mesa packet; the three original VS packet results above remain
+separate Linux checks. Temporary outputs were removed after process-group exit
+and consumer checks.
+
 ## Limits
 
 This API covers four stages. A native GS emitter/cache, TES-to-GS boundary and
