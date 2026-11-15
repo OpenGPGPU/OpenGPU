@@ -1023,22 +1023,36 @@ class ChangedTestSuitesTest(unittest.TestCase):
             self.assertIn("opengpu.graphics.VertexInputCoalescerSpec", actual)
             self.assertNotIn("opengpu.graphics.VertexShaderTextureMatrixSpec", actual)
 
-    def test_original_draw_slice_selects_fetch_and_focused_actual_cu_cases(self):
+    def test_original_draw_slice_selects_fetch_and_protocol_checks_without_full_cu_qualification(self):
         root = Path(__file__).resolve().parents[1]
         for name in ("VertexInputSlice", "VertexInputFetcher", "VertexShaderStage"):
             selected = changed_suites(root, [f"src/main/scala/opengpu/graphics/{name}.scala"])
             self.assertIn("opengpu.graphics.VertexInputFetcherSpec", selected)
-            self.assertIn("opengpu.graphics.VertexShaderSliceSpec", selected)
-            self.assertIn("opengpu.graphics.TessellationVertexPatchSourceSpec", selected)
+            self.assertNotIn("opengpu.graphics.VertexShaderSliceSpec", selected)
+            self.assertNotIn("opengpu.graphics.TessellationVertexPatchSourceSpec", selected)
+            self.assertIn("opengpu.graphics.TessellationVertexPatchPublisherSpec", selected)
+            self.assertIn("opengpu.graphics.TessellationVertexSourceReaderSpec", selected)
             self.assertNotIn("opengpu.graphics.VertexShaderStageSpec", selected)
             self.assertNotIn("opengpu.graphics.VertexShaderTextureMatrixSpec", selected)
 
-    def test_original_vertex_patch_source_selects_protocol_and_actual_cu_checks(self):
+    def test_original_vertex_patch_source_selects_protocol_and_keeps_actual_cu_qualification_local(self):
         root = Path(__file__).resolve().parents[1]
         selected = changed_suites(root,
             ["src/main/scala/opengpu/system/TessellationVertexPatchSource.scala"])
         self.assertIn("opengpu.graphics.TessellationVertexPatchPublisherSpec", selected)
-        self.assertIn("opengpu.graphics.TessellationVertexPatchSourceSpec", selected)
+        self.assertNotIn("opengpu.graphics.TessellationVertexPatchSourceSpec", selected)
+        self.assertIn("opengpu.graphics.TessellationVertexSourceReaderSpec", selected)
+
+    def test_original_vs_isa_qualification_changes_keep_bounded_ci_feedback(self):
+        required = {"opengpu.graphics.TessellationVertexPatchPublisherSpec",
+                    "opengpu.graphics.TessellationVertexPatchSequenceSpec",
+                    "opengpu.graphics.TessellationVertexSourceReaderSpec",
+                    "opengpu.graphics.VertexInputFetcherSpec"}
+        for name in ("TessellationVertexPatchSourceSpec", "VertexShaderStageSpec"):
+            selected = set(changed_suites(REPO_ROOT, [f"src/test/scala/opengpu/graphics/{name}.scala"]))
+            self.assertTrue(required <= selected, selected)
+            self.assertNotIn("opengpu.graphics.VertexShaderSliceSpec", selected)
+            self.assertNotIn("opengpu.graphics.TessellationVertexPatchSourceSpec", selected)
 
     def test_original_vertex_patch_ranges_select_retirement_and_order_checks(self):
         root = Path(__file__).resolve().parents[1]
