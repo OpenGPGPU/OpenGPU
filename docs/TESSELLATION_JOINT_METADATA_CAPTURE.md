@@ -84,16 +84,19 @@ completion and reset-free reuse.
 The four current production sources, five test sources and current
 `GpuConfig.scala` passed a fresh plugin compile. Four explicitly selected suites
 passed: one ABI test and five actual component RTL tests (job reader two,
-directory reader two, crosslink one). Compile took 5.91 seconds; component
-suites took 20.59, 19.66 and 9.98 seconds. Maximum sampled aggregate owned-group
-RSS was 415824 KiB. Each group was limited to 180 seconds and 512 MiB sampled
+directory reader two, crosslink one). On the exact delivery based on merged
+#827, compile took 5.87 seconds;
+the ABI suite took 0.47 seconds and component suites took 20.69, 18.27 and
+9.25 seconds. All six tests passed without skips. Maximum sampled aggregate
+owned-group RSS was 418624 KiB. Each group was limited to 180 seconds and
+512 MiB sampled
 aggregate RSS; JVM heap/metaspace/code limits were 128/128/32 MiB with SerialGC
 and `ActiveProcessorCount=1`. Make and `--build-jobs` were one; actual Verilator
 arguments retained upstream `-j 0`, so this is not a claim of a strict one-CPU
 limit throughout native generation.
 
 Source, class membership/content, jars, tools and HEAD were unchanged across
-the run (7232 guarded inputs). The actual direct provider classfiles'
+the run (7237 guarded inputs). The actual direct provider classfiles'
 `SourceFile` attributes were checked. Frozen memory-port, identity, cache-policy
 and simulation helper sources matched the current sources byte for byte.
 `GpuConfig` differed and was rebuilt from the current source into the private
