@@ -651,7 +651,10 @@ static void joint_placement(struct joint_fixture *f,struct opengpu_device *gpu,
         assert(!opengpu_private_snapshot_retire(o));
     }
 }
-int main(void)
+#ifndef OPENGPU_TESS_JOINT_TEST_MAIN
+#define OPENGPU_TESS_JOINT_TEST_MAIN main
+#endif
+int OPENGPU_TESS_JOINT_TEST_MAIN(void)
 {
     for(u32 domain=0;domain<3;domain++) {
         struct opengpu_device gpu={0};struct opengpu_render_context ctx={.gpu=&gpu,.references=1,.id=7};

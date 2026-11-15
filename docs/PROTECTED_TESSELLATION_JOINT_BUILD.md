@@ -212,8 +212,18 @@ optional FlashSim bound check. Python 3.14.7, pytest 9.1.1 and Apple Clang 16
 were used. The existing strict producer scanner and macro exemptions were
 unchanged. Ended private test outputs were removed after consumer checks.
 
-This BUILD block did not run a full module Kbuild or actual DUT/frame
-qualification. The accompanying default-off GNQ/GVM metadata readers passed
+The accurate #828 source `1dba3adbd` also passed a complete ARM64 Linux
+7.2.0 module Kbuild with GCC 15.2.0 and GNU Make 4.4.1, `-j1`: all 29 core
+objects, `gpu_drv.mod.o`, `.module-common.o`, MODPOST and `gpu_drv.ko` completed
+without warnings/errors. The ELF64 AArch64 relocatable module had vermagic
+`7.2.0 SMP preempt mod_unload aarch64` and the actual joint BUILD, prepare and
+`opengpu_private_snapshot_check_prepared_joint` symbols. Original/copy driver
+inputs (157 files) and shared kernel/tools guards passed. No exact elapsed/peak value was retained; the 180-second/512-MiB aggregate
+bounds applied. The module was never loaded. That result covers #828, not
+subsequent changes to `opengpu_native_frame.c`; see the separate
+[original linked source-to-BUILD proof](NATIVE_JOINT_BUILD_SOURCE.md).
+
+This BUILD block did not run actual DUT/frame qualification. The accompanying default-off GNQ/GVM metadata readers passed
 separate bounded ABI/component RTL and test-catalog checks after their
 source replay; see
 [TESSELLATION_JOINT_METADATA_CAPTURE.md](TESSELLATION_JOINT_METADATA_CAPTURE.md).

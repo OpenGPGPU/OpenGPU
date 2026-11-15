@@ -31,6 +31,12 @@ GPU_UNITS=(
  'userspace/gallium/opengpu_native_joint_frontend.cpp','userspace/gallium/opengpu_native_joint_program.c',
  'userspace/gallium/opengpu_native_joint_constants.c')
 
+GPU_UNIT_FLAGS={}  # Explicit per-TU test-stub includes; empty for the original build.
+EXTRA_NEGATIVE_CONTROLS=None
+EXTRA_CASES=None  # Optional actual-source cases in the explicit BUILD proof runner.
+GENERATED_INPUTS={}  # Exact test-only production-body captures, bound before compile.
+
+
 def verify_records(output):
     """Canonical reserved/high bits and all private addresses from public ABI.
 
@@ -146,6 +152,7 @@ def main():
         obj=out/(unit.replace('/','_')+'.o')
         run((cxx if src.suffix=='.cpp' else cc)+flags(unit)+['-UNDEBUG','-ffunction-sections','-fdata-sections']+san+
             ['-MMD','-MF',obj.with_suffix('.d'),'-c',src,'-o',obj],obj.stem);objects.append(obj)
+    for name,text in GENERATED_INPUTS.items():generated(out/name,text)
     primitive_units=('userspace/pipe_opengpu.c','userspace/opengpu.c')
     common=['-std=c11','-O1','-UNDEBUG','-DHAVE_ENDIAN_H','-D_POSIX_C_SOURCE=200809L','-Wall','-Wextra','-Werror',
             '-Wno-unused-parameter','-Wno-unused-function','-Wno-sign-compare','-ffunction-sections','-fdata-sections']
@@ -153,6 +160,7 @@ def main():
     for unit in GPU_UNITS:
         obj=out/(Path(unit).stem+'.o');cpp=unit.endswith('.cpp')
         extra=['-D'+n+'=cs_fixture_'+n for n in ('ioctl','mmap','munmap','dup','close')] if unit in primitive_units else []
+        extra+=GPU_UNIT_FLAGS.get(unit,[])
         run((cxx if cpp else cc)+(flags(MESA_UNITS[0])+['-UNDEBUG','-Wall','-Wextra','-Werror','-Wno-unused-parameter'] if cpp else common)+extra+inc+san+
             ['-MMD','-MF',obj.with_suffix('.d'),'-c',ROOT/unit,'-o',obj],obj.stem);objects.append(obj)
     obj=out/'reference-uniform.o'
@@ -163,12 +171,14 @@ def main():
     link=cxx+san+['-rdynamic','-Wl,--gc-sections']+objects+[mb/'src/mesa/libmesa.a.p/state_tracker_st_atom_constbuf.c.o',
          '-Wl,--start-group']+[mb/p for p in MESA_LIBRARIES]+['-Wl,--end-group']+shlex.split(os.environ['OPENGPU_MESA_LINK_LIBS'])+['-ldl','-lm','-pthread','-o',binary]
     run(link,'link')
+    def mmd_paths():
+        return {Path(c['argv'][c['argv'].index('-MF')+1]) for c in commands if '-MF' in c['argv']}
     dependencies=set()
-    for dep in out.glob('*.d'):
+    for dep in mmd_paths():
         for name in shlex.split(dep.read_text().replace('\\\n','').split(':',1)[1]):
             path=Path(name).resolve(strict=True);dependencies.add(path)
             assert str(path) in bound or str(path) in private or str(path) in external,'unbound MMD '+str(path)
-    assert len(list(out.glob('*.d')))==35
+    assert len(mmd_paths())==len(objects)
     assert snapshot(mesa,mb,libraries,drm,gpu)==external;unchanged()
     sources=out/'sources';sources.mkdir(exist_ok=a.reuse_objects)
     from test_gallium_graphics_uniforms import write_sources as legacy_sources
@@ -198,6 +208,11 @@ def main():
     clear_packets(out/'matrix-indirect-simt')
     run([binary,sources/'matrix.vert',sources/'matrix-indirect-simt.tesc',sources/'matrix.tese',sources/'matrix.frag',out/'matrix-indirect-simt',2,15,15],'original-indirect-store-simt')
     for path in packet_paths(out/'matrix-indirect-simt'):private[str(path)]=sha256(path)
+    if EXTRA_CASES:
+        for name,files,full,vs_slot,fs_slot in EXTRA_CASES(sources,generated):
+            target=out/name;clear_packets(target)
+            run([binary,*files,target,full,vs_slot,fs_slot],'actual-'+name)
+            for path in packet_paths(target):private[str(path)]=sha256(path)
     run([binary,sources/'full.vert',sources/'full.frag','legacy'],'legacy-original-308-301-after')
     # Original independent v2 production emitter, not a current-helper self-test.
     rename=['-D'+n+'=baseline_'+n for n in ('opengpu_native_tess_uniform_emit','opengpu_native_tess_control_emit',
@@ -216,21 +231,31 @@ def main():
         src=ROOT/'userspace/tests'/main;obj=out/(version+'-main.o')
         run(cxx+flags(MESA_UNITS[0])+['-UNDEBUG','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-DOPENGPU_TESS_BYTE_BASELINE']+
             inc+san+['-MMD','-MF',obj.with_suffix('.d'),'-c',src,'-o',obj],version+'-compile')
-        changed=[v for v in link if str(v) not in (str(out/'native_joint_frontend.o'),str(out/'native_joint_resources.o'))]
+        changed=[v for v in link if str(v) not in (str(out/'native_joint_frontend.o'),str(out/'native_joint_resources.o'),str(out/'native_joint_build_flow.o'),str(out/'native_joint_build_kernel.o'))]
         assert changed[-1]==binary;changed[-1]=out/('old-'+version)
         changed[changed.index('-Wl,--start-group'):changed.index('-Wl,--start-group')]=[*legacy_objects,obj]
         run(changed,version+'-link')
         programs=out/'regressions'/version
-        for case in cases:(programs/case).mkdir(parents=True,exist_ok=a.reuse_objects)
+        for case in cases:
+            directory=programs/case
+            directory.mkdir(parents=True,exist_ok=a.reuse_objects)
+            if a.reuse_objects:
+                # Only explicit active-build reruns; same exclusive output
+                # policy and caller consumer-release rule as clear_packets.
+                for path in directory.iterdir():
+                    assert path.is_file() and not path.is_symlink()
+                    assert path.name in ('native-tcs.words','native-tes.words') or (path.name.startswith('actual.') and path.name.endswith('.tgsi.txt'))
+                    path.unlink()
         run([changed[-1],ROOT/'userspace/tests/tess_uniform_essl',programs],version+'-original-bytes')
     if a.negative_controls:
-        def mutant(name,unit,old,new,args,needle):
+        def mutant(name,unit,old,new,args,needle,expected=-6):
             source=(ROOT/unit).read_text();assert source.count(old)==1
             path=out/(name+'.c');generated(path,source.replace(old,new));obj=out/(name+'.o')
             run(cc+common+inc+san+['-MMD','-MF',obj.with_suffix('.d'),'-c',path,'-o',obj],name+'-compile')
             changed=[str(obj) if str(v)==str(out/(Path(unit).stem+'.o')) else str(v) for v in link]
             assert changed.count(str(obj))==1;changed[-1]=str(out/name);run(changed,name+'-link')
-            run([out/name,*args],name+'-rejected',-6)
+            target=Path(args[4]);assert target.parent==out;clear_packets(target)
+            run([out/name,*args],name+'-rejected',expected)
             assert needle in (out/(name+'-rejected.log')).read_text()
         mutant('mutant-no-backing-retain','userspace/gallium/opengpu_native_joint_constants.c','v->refs++;','(void)v;',
             [*[sources/('full8.'+s) for s in ('vert','tesc','tese','frag')],out/'mutant-refs',1,15,0],
@@ -243,9 +268,10 @@ def main():
         mutant('mutant-store-bound','userspace/gallium/opengpu_native_tess_uniform_emit.c','unsigned remaining=span->slots-(index-span->first);','unsigned remaining=span->slots+1-(index-span->first);',
             [sources/'matrix.vert',sources/'matrix-indirect.tesc',sources/'matrix.tese',sources/'matrix.frag',out/'mutant-bound',2,15,15],
             'd.tess[0].code[i-1]==0x00200513u')
+    if a.negative_controls and EXTRA_NEGATIVE_CONTROLS:EXTRA_NEGATIVE_CONTROLS(mutant,sources,out)
     unchanged();assert snapshot(mesa,mb,libraries,drm,gpu)==external
     actual_dependencies=set()
-    for dep in out.glob('*.d'):
+    for dep in mmd_paths():
         for name in shlex.split(dep.read_text().replace('\\\n','').split(':',1)[1]):
             path=Path(name).resolve(strict=True);actual_dependencies.add(path)
             assert str(path) in bound or str(path) in private or str(path) in external,'unbound final MMD '+str(path)
