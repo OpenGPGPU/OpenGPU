@@ -721,6 +721,12 @@ def changed_suites(root, changed, *, test_index=None):
         affected.add("src/test/scala/opengpu/graphics/NativeGeometryProgramSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/NativeBinnedGraphicsJobReaderSpec.scala")
     if changed & {
+        "src/main/scala/opengpu/graphics/tessellation/TessellationPatchContext.scala",
+        "src/main/scala/opengpu/system/TessellationEvaluationPatchProvider.scala",
+    } or any(f"src/main/scala/opengpu/system/TessellationCu{domain}SharedEvaluator.scala" in changed
+             for domain in ("Isoline", "Triangle", "Quad")):
+        affected.add("src/test/scala/opengpu/system/TessellationSharedLoadReplySpec.scala")
+    if changed & {
         "src/main/scala/opengpu/graphics/tessellation/TessellationEvaluationVectorAccess.scala",
         "src/main/scala/opengpu/system/TessellationEvaluationPatchProvider.scala",
         "src/main/scala/opengpu/system/SharedCuGraphicsPort.scala",

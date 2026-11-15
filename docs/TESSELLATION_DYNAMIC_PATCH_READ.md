@@ -57,6 +57,12 @@ its patch traffic must still drain. CU completion, shared-owner completion and
 frame retirement remain blocked while this work or an inspection credit is
 outstanding. A provider fault is retained through subsequent abort draining.
 
+Input publication replies (context source 0) return directly to the original
+publisher; only inspection replies (source 2) consume inspection arbitration
+credit. This applies to all three dynamic shared evaluators. See the
+[input reply routing results](TESSELLATION_INPUT_REPLY_ROUTING.md) for the
+actual patch-store regression and original-source negative controls.
+
 The new mode selects `zeroOnBegin=true` along all three real hierarchies:
 SharedEvaluator -> CuPatch -> ControlWarpScheduler -> PatchContext ->
 PatchStore. It initializes the current legal input/output ranges and six levels

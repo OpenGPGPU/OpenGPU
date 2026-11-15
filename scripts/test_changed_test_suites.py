@@ -18,6 +18,16 @@ def changed_suites(root, changed):
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_shared_patch_reply_changes_select_actual_input_acknowledgements(self):
+        paths = ["graphics/tessellation/TessellationPatchContext",
+                 "system/TessellationEvaluationPatchProvider"]
+        paths += [f"system/TessellationCu{domain}SharedEvaluator"
+                  for domain in ("Isoline", "Triangle", "Quad")]
+        for path in paths:
+            with self.subTest(path=path):
+                selected = changed_suites(REPO_ROOT, [f"src/main/scala/opengpu/{path}.scala"])
+                self.assertIn("opengpu.system.TessellationSharedLoadReplySpec", selected)
+
     def test_fragment_setup_changes_select_exact_key_consumer_and_instance_checks(self):
         required = {"opengpu.graphics.FragmentSetupCacheSpec",
                     "opengpu.graphics.FragmentPreparationInstanceSpec",
