@@ -15,21 +15,29 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--sanitize', action='store_true')
     parser.add_argument('--negative-controls', action='store_true')
+    parser.add_argument('--negative-control-group', choices=('all', 'legacy', 'legacy-first', 'legacy-second', 'language'), default='all')
     parser.add_argument('--programs', type=Path, help='directory containing original LE native-tcs.words/native-tes.words')
     parser.add_argument('--tcs-layout', type=int, nargs=5, metavar=('IN_VERTS', 'IN_COMPS', 'OUT_VERTS', 'OUT_COMPS', 'PATCH_COMPS'))
     parser.add_argument('--tes-layout', type=int, nargs=2, metavar=('PATCH_WORDS', 'OUT_COMPS'))
-    parser.add_argument('--tes-program-version', type=int, choices=(1, 2), default=1)
+    parser.add_argument('--tes-program-version', type=int, choices=(1, 2, 3), default=1)
+    parser.add_argument('--tcs-program-version', type=int, choices=(1, 3), default=1)
+    parser.add_argument('--owned-tessellation-info', action='store_true', help='explicit offline verified-test profile permission, never hardware discovery')
     parser.add_argument('--tes-patch-layout', type=int, nargs=5, metavar=('IN_VERTS', 'IN_COMPS', 'OUT_VERTS', 'OUT_COMPS', 'PATCH_COMPS'))
     args = parser.parse_args()
     if args.programs and (args.tcs_layout is None or args.tes_layout is None):
         parser.error('--programs requires exact --tcs-layout and --tes-layout')
     if not args.programs and (args.tcs_layout is not None or args.tes_layout is not None):
         parser.error('layout metadata requires --programs')
-    if args.tes_program_version == 2:
+    if args.tcs_program_version == 3 or args.tes_program_version == 3:
+        if not args.programs or not args.owned_tessellation_info:
+            parser.error('version 3 requires --programs and explicit --owned-tessellation-info')
+    elif args.owned_tessellation_info:
+        parser.error('--owned-tessellation-info requires an explicit version 3 profile')
+    if args.tes_program_version in (2, 3):
         if not args.programs or args.tes_patch_layout is None or args.tes_layout[0] != 0:
-            parser.error('version 2 requires --programs, --tes-layout 0 OUT_COMPS and --tes-patch-layout')
+            parser.error('version 2/3 TES requires --programs, --tes-layout 0 OUT_COMPS and --tes-patch-layout')
     elif args.tes_patch_layout is not None:
-        parser.error('--tes-patch-layout requires --tes-program-version 2')
+        parser.error('--tes-patch-layout requires --tes-program-version 2 or 3')
     if any(value < 0 or value > 2**32-1 for value in (args.tcs_layout or []) + (args.tes_layout or []) + (args.tes_patch_layout or [])):
         parser.error('layout fields must be u32')
     temporary_root = ROOT / '.artifacts'
@@ -54,7 +62,10 @@ def main():
         command = [str(out / 'test')]
         if args.programs:
             command += [str(args.programs.resolve())] + list(map(str, args.tcs_layout + args.tes_layout))
-            if args.tes_program_version == 2:
+            if args.owned_tessellation_info:
+                command += [str(args.tes_program_version)] + list(map(str, args.tes_patch_layout or [0]*5))
+                command += [str(args.tcs_program_version), '1']
+            elif args.tes_program_version == 2:
                 command += ['2'] + list(map(str, args.tes_patch_layout))
         subprocess.run(command, check=True, env=environment)
         if args.negative_controls:
@@ -82,11 +93,34 @@ def main():
                 'dynamic-missing-old-destination': ('function==7 || function==21 || function==33', 'function==7 || function==21'),
                 'dynamic-read-after-publication': ('p->owned_patch_reads && !depth && !s->invalid && !s->emitted && !s->ended', 'p->owned_patch_reads && !depth && !s->invalid'),
                 'dynamic-undefined-source': ('if(!s->v[vertex].defined || !s->v[address].defined)return false;\n    if(s->v[vertex].known', 'if(s->v[vertex].known'),
-                'dynamic-old-dialect': ('p->stage==5 && p->version==2 && p->owned_patch_reads && !depth', '!depth'),
+                'dynamic-old-dialect': ('p->stage==5 && (p->version==2 || p->version==3) && p->owned_patch_reads && !depth', '!depth'),
                 'dynamic-short-vl': ('!f && s->full_vl && tess_masked(s,insn,rd,function', '!f && (s->full_vl || function==33) && tess_masked(s,insn,rd,function'),
 
             }
+            legacy_names = set(mutations)
+            legacy_positions = {name: index for index, name in enumerate(mutations)}
+            assert len(legacy_names) == 24
+            mutations.update({
+                'info-old-version-permission': ('if(p->version!=3 && p->owned_tessellation_info)return false;', ''),
+                'info-missing-owner-permission': ('if(p->version==3 && !p->owned_tessellation_info)return false;', ''),
+                'info-tcs-selector': ('p->owned_tessellation_info && s->x[a].value==6', 'p->owned_tessellation_info'),
+                'info-tes-old-version-selector6': ('p->version==3 && p->owned_tessellation_info));', 'true));'),
+                'info-arm-scalar-clobber': ('!depth || (a==10 && (!rd || rd==10))', '!depth || a==10'),
+                'info-arm-selector-rematerialization': ('!depth || (a==10 && (!rd || rd==10))', '!depth || (!rd || rd==10)'),
+                'info-result-is-not-authority': ('if(rd)s->x[rd]=tess_unknown();\n            }else{\n                TESS_REQUIRE(p->stage==5', 'if(rd)s->x[rd]=tess_constant(6);\n            }else{\n                TESS_REQUIRE(p->stage==5'),
+                'info-arm-shared-boundary': ('s->x[10]=(struct tess_value){0};s->fp=0;', 's->fp=0;'),
+                'info-tcs-tes-layout-confusion': ('if(p->version==3 && p->stage==4 &&\n        (p->owned_patch_reads || !tess_layout_zero(&p->tes_patch_layout)))return false;', ''),
+            })
             for name, (before, after) in mutations.items():
+                is_language = name not in legacy_names
+                if args.negative_control_group.startswith('legacy') and is_language:
+                    continue
+                if args.negative_control_group == 'legacy-first' and legacy_positions.get(name, 24) >= 12:
+                    continue
+                if args.negative_control_group == 'legacy-second' and legacy_positions.get(name, -1) < 12:
+                    continue
+                if args.negative_control_group == 'language' and not is_language:
+                    continue
                 assert before in production
                 mutant = out / (name + '.c')
                 mutant.write_text(production.replace(before, after))
@@ -96,10 +130,32 @@ def main():
                                ['-DOPENGPU_TESS_VALIDATOR_SOURCE="' + str(mutant) + '"',
                                 str(ROOT / 'driver/tests/opengpu_tessellation_program_snapshot_test.c'),
                                 '-o', str(binary)], check=True, env=environment)
-                result = subprocess.run([str(binary)], capture_output=True, text=True, env=environment)
+                result = subprocess.run([str(binary)] + (['--info-only'] if is_language else []), capture_output=True, text=True, env=environment)
                 if result.returncode == 0 or not re.search(r'assertion.*failed', result.stderr, re.I | re.S):
                     raise SystemExit('negative control did not fail its semantic assertion: ' + name)
                 print('tess program semantic negative control rejected: ' + name)
+            if not args.negative_control_group.startswith('legacy'):
+                # Use the real production snapshot body with only its profile
+                # capture removed. The callback mutates valid source fields,
+                # so rejection must be semantic, not a bool-representation UB.
+                snapshot = (ROOT / 'driver/opengpu_tessellation_program_snapshot.c').read_text()
+                before = 'captured=*view;policy=*profile;view=&captured;profile=&policy;'
+                assert snapshot.count(before) == 1
+                mutant = out / 'uncaptured-info-profile.c'
+                mutant.write_text(snapshot.replace(before, 'captured=*view;policy=*profile;view=&captured;(void)policy;'))
+                fixture = (ROOT / 'driver/tests/opengpu_tessellation_program_snapshot_test.c').read_text()
+                literal = '#include "../opengpu_tessellation_program_snapshot.c"'
+                assert fixture.count(literal) == 1
+                source = out / 'uncaptured-info-profile-test.c'
+                source.write_text(fixture.replace(literal, '#include "' + str(mutant) + '"'))
+                binary = out / 'uncaptured-info-profile'
+                subprocess.run(shlex.split(os.environ.get('CC', 'cc')) + flags +
+                               ['-I' + str(path) for path in includes] +
+                               [str(source), '-o', str(binary)], check=True, env=environment)
+                result = subprocess.run([str(binary), '--info-only'], capture_output=True, text=True, env=environment)
+                if result.returncode == 0 or not re.search(r'assertion.*failed', result.stderr, re.I | re.S):
+                    raise SystemExit('negative control did not fail its semantic assertion: info-profile-callback-capture')
+                print('tess program semantic negative control rejected: info-profile-callback-capture')
 
 
 if __name__ == "__main__":

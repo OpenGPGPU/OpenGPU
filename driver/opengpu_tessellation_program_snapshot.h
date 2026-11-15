@@ -10,8 +10,11 @@ struct opengpu_tessellation_patch_layout {
 /* Internal verified-owner profile, never caller metadata permission. Version 1
  * is the current checked-patch TCS / static-selection one-point TES dialect.
  * Version 2 is TES-only checked CUSTOM1 fn33 reads from the captured owned
- * patch layout. It has no static selected words. Neither version enables a
- * production provider/getter/serialized submission on its own. */
+ * patch layout. It has no static selected words. Version 3 independently
+ * permits language input-patch info (CUSTOM0 fn37 selector6): TCS retains
+ * version1 patch access; TES retains version2 dynamic patch access. The new
+ * permission must be zero for versions1/2 and true for version3. No version
+ * enables a production provider/getter/serialized submission on its own. */
 struct opengpu_tessellation_program_profile {
     u32 version, stage, lanes, warps;
     u32 input_vertices, input_components, output_vertices, output_components, patch_components;
@@ -19,6 +22,7 @@ struct opengpu_tessellation_program_profile {
     bool available, owned_uniforms, scalar_fpu;
     struct opengpu_tessellation_patch_layout tes_patch_layout;
     bool owned_patch_reads;
+    bool owned_tessellation_info;
 };
 bool opengpu_tessellation_program_profile_valid(const struct opengpu_tessellation_program_profile *profile);
 bool opengpu_tessellation_shader_validate_words(const u32 *words,u32 word_count,
