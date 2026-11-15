@@ -117,8 +117,112 @@ static void gs_program_accept(struct opengpu_device *gpu,struct opengpu_render_c
     assert((((u32 *)l1->cpu)[base%MMU_SUPERPAGE_SIZE/MMU_PAGE_SIZE]&15)==(MMU_PTE_V|MMU_PTE_R|MMU_PTE_X));
     assert(!opengpu_private_snapshot_retire(o));
 }
-int main(void)
+/* Explicit offline producer-byte consumer. It reuses the real validator,
+ * private RX owner, PTE walk and retirement above; it never executes ISA. */
+static void gs_artifact(const char *path,bool uniforms)
 {
+    FILE *f=fopen(path,"rb");assert(f);u32 words[512];unsigned count=0;
+    for(;;){int a=fgetc(f);if(a==EOF)break;int c[3]={fgetc(f),fgetc(f),fgetc(f)};
+        assert(count<512&&c[0]!=EOF&&c[1]!=EOF&&c[2]!=EOF);
+        words[count++]=(u32)a|(u32)c[0]<<8|(u32)c[1]<<16|(u32)c[2]<<24;
+    }
+    assert(!ferror(f)&&!fclose(f)&&count);
+    assert(gs_validate(words,count,uniforms));
+    struct opengpu_device gpu={0};struct opengpu_render_context ctx={.gpu=&gpu,.references=1,.id=7};
+    gpu.hw.capabilities=GPU_CAP_UNIFIED_COMMANDS;
+    assert(!opengpu_mmu_init(&gpu)&&!opengpu_mmu_vm_create(&gpu,&ctx.vm));copy_gpu=&gpu;
+    unsigned entry=count<512?4:0;memset(gs_code,0x95,sizeof(gs_code));
+    if(entry)gs_code_word(0,0xffffffffu);
+    for(unsigned i=0;i<count;i++)gs_code_word(i+entry/4,words[i]);
+    struct drm_opengpu_native_program_view view={.handle=17,.offset=64,.bytes=count*4+entry,.entry_offset=entry};
+    struct opengpu_geometry_program_profile profile={.version=1,.geometry_enabled=true,.scalar_fpu=true,.owned_uniforms=uniforms};
+    struct opengpu_private_snapshot *owner=opengpu_private_snapshot_create(&gpu,&ctx);assert(!IS_ERR(owner));
+    struct opengpu_geometry_program_profile denied=profile;denied.geometry_enabled=false;
+    gs_program_reject(owner,view,denied,-EINVAL);
+    if(uniforms){denied=profile;denied.owned_uniforms=false;gs_program_reject(owner,view,denied,-EINVAL);}
+    assert(!opengpu_private_snapshot_retire(owner));gs_program_accept(&gpu,&ctx,view,profile);
+    opengpu_mmu_vm_destroy(&gpu,&ctx.vm);opengpu_mmu_fini(&gpu);
+    assert(ctx.references==1&&!live_allocations&&!fixture_buffers);
+    printf("original GS artifact validator/private RX/MMU/retire PASS: %u words (CPU only)\n",count);
+}
+struct gs_rebind {
+    struct drm_opengpu_native_program_view *view;
+    struct opengpu_geometry_program_profile *profile;
+    unsigned test;
+};
+static int gs_rebind_copy(void *opaque,const struct drm_opengpu_compute_uniform_view *source,void *out)
+{
+    struct gs_rebind *c=opaque;
+    int ret=gs_code_copy(gs_code,source,out);
+    assert(!ret);
+    switch(c->test){
+    case 1:c->view->entry_offset=0;break;
+    case 2:c->view->entry_offset=4;break;
+    case 3:c->profile->owned_uniforms=true;break;
+    case 4:c->profile->scalar_fpu=true;break;
+    case 5:c->profile->geometry_enabled=false;c->profile->version=2;break;
+    case 6:c->view->bytes=2048;break;
+    default:assert(false);
+    }
+    return 0;
+}
+/* Actual reentrant producer callbacks change their original caller objects.
+ * The accepted request, not those changed objects, controls validation/RX. */
+static void test_gs_callback_capture(unsigned selected)
+{
+    assert(selected<=6);
+    struct opengpu_device gpu={0};struct opengpu_render_context ctx={.gpu=&gpu,.references=1,.id=7};
+    gpu.hw.capabilities=GPU_CAP_UNIFIED_COMMANDS;
+    assert(!opengpu_mmu_init(&gpu)&&!opengpu_mmu_vm_create(&gpu,&ctx.vm));copy_gpu=&gpu;
+    gs_code_producer=true;
+    for(unsigned test=1;test<=6;test++){
+        if(selected&&selected!=test)continue;
+        struct drm_opengpu_native_program_view view={.offset=64,.handle=17,.bytes=8};
+        struct opengpu_geometry_program_profile profile={.version=1,.geometry_enabled=true,.scalar_fpu=true};
+        int expected=0;
+        gs_code_word(0,gs_op(35,0,0,0));gs_code_word(1,OPENGPU_SHADER_CEASE);
+        if(test<=2){
+            gs_code_word(0,0xffffffffu);gs_code_word(1,gs_op(35,0,0,0));gs_code_word(2,OPENGPU_SHADER_CEASE);
+            view.bytes=12;view.entry_offset=test==1?4:0;expected=test==1?0:-EINVAL;
+        }else if(test==3){gs_code_word(0,gs_op(7,5,0,0));expected=-EINVAL;}
+        else if(test==4){
+            gs_code_word(0,0xf0028053u);gs_code_word(1,0xe0000353u);gs_code_word(2,OPENGPU_SHADER_CEASE);
+            view.bytes=12;profile.scalar_fpu=false;expected=-EINVAL;
+        }
+        struct drm_opengpu_native_program_view original=view;
+        u8 expected_bytes[12];memcpy(expected_bytes,gs_code+original.offset,original.bytes);
+        struct gs_rebind rebind={&view,&profile,test};
+        struct opengpu_private_snapshot *owner=opengpu_private_snapshot_create(&gpu,&ctx);assert(!IS_ERR(owner));
+        struct opengpu_native_program_snapshot result={0x12345678,0xabcddcba},saved=result;
+        void *before=owner->segments;
+        int ret=opengpu_geometry_program_snapshot_append(owner,&view,&profile,gs_rebind_copy,&rebind,&result);
+        if(ret!=expected)fprintf(stderr,"GS callback capture case %u: expected %d got %d\n",test,expected,ret);
+        assert(ret==expected);
+        if(expected){assert(!memcmp(&result,&saved,sizeof(result))&&owner->segments==before);}
+        else {
+            assert(result.entry_offset==original.entry_offset);
+            for(unsigned i=0;i<((original.bytes+63u)&~63u);i+=4){
+                u32 actual,value=0;
+                if(i<original.bytes)for(unsigned b=0;b<4;b++)value|=(u32)expected_bytes[i+b]<<(8*b);
+                assert(!opengpu_private_snapshot_read32(owner,result.segment,i,&actual)&&actual==value);
+            }
+            assert(!opengpu_private_snapshot_prepare(owner)&&!opengpu_private_snapshot_publish(owner));
+            u32 base;assert(!opengpu_private_snapshot_address(owner,result.segment,&base));
+            const struct opengpu_buffer *l1=vm_live_l1(&ctx.vm,base/MMU_SUPERPAGE_SIZE);assert(l1);
+            assert((((u32 *)l1->cpu)[base%MMU_SUPERPAGE_SIZE/MMU_PAGE_SIZE]&15)==(MMU_PTE_V|MMU_PTE_R|MMU_PTE_X));
+        }
+        assert(!opengpu_private_snapshot_retire(owner));
+    }
+    opengpu_mmu_vm_destroy(&gpu,&ctx.vm);opengpu_mmu_fini(&gpu);
+    assert(ctx.references==1&&!live_allocations&&!fixture_buffers);
+    puts("GS callback capture: original bounds/entry/permissions, immutable RX and rejection rollback PASS (CPU only)");
+}
+int main(int argc,char **argv)
+{
+    if(argc==3&&!strcmp(argv[1],"--callback-case")){
+        assert(strlen(argv[2])==1&&argv[2][0]>='1'&&argv[2][0]<='6');
+        test_gs_callback_capture((unsigned)(argv[2][0]-'0'));return 0;
+    }
     u32 words[513];
     test_gs_emit_loops();
     for(unsigned function=32;function<=38;function++){
@@ -196,6 +300,9 @@ int main(void)
     assert(!opengpu_private_snapshot_retire(o));
     opengpu_mmu_vm_destroy(&gpu,&ctx.vm);opengpu_mmu_fini(&gpu);
     assert(ctx.references==1 && !live_allocations && !fixture_buffers);
+    test_gs_callback_capture(0);
     puts("opt-in scalar GS validator/private RX owner: strict legacy isolation, source suffix/bytes, resource rejection, allocation failures/reuse PASS (CPU only)");
+    assert(argc==1||argc==3);
+    if(argc==3){assert(!strcmp(argv[2],"0")||!strcmp(argv[2],"1"));gs_artifact(argv[1],argv[2][0]=='1');}
     return 0;
 }

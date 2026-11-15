@@ -1424,6 +1424,36 @@ TMPDIR="$PWD/.artifacts" PYTHONDONTWRITEBYTECODE=1 OPENGPU_TEST_SANITIZERS=1 \
   python3 scripts/test_driver.py
 ```
 
+### Geometry program capture across producer callbacks
+
+The private GS program helper captures the complete original code view and
+verified profile before calling the producer's copy function. The same captured
+length, entry and permissions govern allocation, suffix validation and RX
+publication. Rebinding the caller's objects inside the callback cannot enlarge
+the analysis buffer, skip original instructions or grant uniform/FPU access.
+
+The actual helper, private owner and MMU fixture pass under Clang ASan/UBSan,
+including six callbacks that change the entry, length or profile. Accepted cases
+retain original instruction bytes, original entry, zero cache-line padding and
+R-X/no-W PTEs; rejected cases preserve the output and owner segment list. The
+unchanged production helper from `057cfaf7438` fails each corresponding isolated
+case: five exact result assertions and one ASan heap-buffer-overflow when the
+callback expands an eight-byte view to 2,048 bytes. These are CPU memory and
+permission-boundary checks, not shader execution or geometry API qualification.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 ASAN_OPTIONS=detect_leaks=0:abort_on_error=1 \
+  UBSAN_OPTIONS=halt_on_error=1 \
+  python3 -B scripts/test_geometry_program_snapshot.py --sanitize
+```
+
+For an isolated old-source control, compile the same fixture against the
+unchanged helper from that commit and run its binary with `--callback-case N`
+for `N=1..6`. Cases 1–5 must fail at `GS callback capture case N`; case 6 must
+fail with `AddressSanitizer: heap-buffer-overflow`. A compile failure or timeout
+does not satisfy these controls. Delete private copied sources and binaries
+after the comparison; no raw callback evidence is required in the repository.
+
 ### Independent geometry transport discovery
 
 GGS1 occupies eight read-only words at `0x500..0x51c`, guarded by GCR bit 19
