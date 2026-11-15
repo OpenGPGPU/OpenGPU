@@ -10,6 +10,7 @@ set -euo pipefail
 GPU_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$GPU_DIR"
 
+# Includes the vertex outer-plan owner/MMU suite exactly once.
 python3 scripts/test_driver.py
 python3 scripts/test_compute_feature_query.py
 python3 scripts/test_query_unsupported.py
