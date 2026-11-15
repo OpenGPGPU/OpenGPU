@@ -2290,6 +2290,41 @@ static inline bool opengpu_native_shader_validate_words_sample_inputs(
         owned_uniforms, 0, 0, 0, false, false, true, false, NULL);
 }
 
+/* New internal ordinary PrimitiveID transport, independent of GS and GSS1.
+ * Legacy entry points above/below retain their exact versions1..7 contract.
+ * A verified primitive owner is required for8/9; sample planes additionally
+ * require the separately verified sample permission for9. No layer array or
+ * geometry instructions are introduced. Metadata is read-only, and only the
+ * actual color/depth/control prefix may be written. */
+static inline bool opengpu_native_shader_validate_words_primitive_inputs(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
+    opengpu_shader_u64 kernarg_size, opengpu_shader_u32 capacity,
+    opengpu_shader_u32 stage, opengpu_shader_u32 version,
+    opengpu_shader_u32 attributes, opengpu_shader_u32 varyings,
+    opengpu_shader_u32 colors, bool scalar_fpu_enabled,
+    bool owned_uniforms, bool geometry_inputs_enabled, bool sample_inputs_enabled,
+    bool primitive_inputs_enabled)
+{
+    if(version<8){
+        if(primitive_inputs_enabled)return false;
+        return opengpu_native_shader_validate_words_sample_inputs(words,word_count,
+            kernarg_size,capacity,stage,version,attributes,varyings,colors,
+            scalar_fpu_enabled,owned_uniforms,geometry_inputs_enabled,sample_inputs_enabled);
+    }
+    if(stage!=1 || (version!=8 && version!=9) || attributes || varyings>16 || colors>4 ||
+        !word_count || word_count>OPENGPU_SHADER_MAX_INSTRUCTIONS ||
+        !primitive_inputs_enabled || geometry_inputs_enabled ||
+        (version==9 && !sample_inputs_enabled))return false;
+    opengpu_shader_u32 start=9u+4u*varyings+(version==9?3u:0u);
+    opengpu_shader_u32 end=start+4u*colors+2u;
+    return opengpu_shader_validate_words_profile_runtime_features_buffer_images_proofs(
+        words,word_count,kernarg_size,capacity,start,end,
+        false,false,false,scalar_fpu_enabled,capacity,
+        (opengpu_shader_u32 *)0,(opengpu_shader_u32 *)0,
+        false,false,false,false,false,false,false,
+        owned_uniforms,0,0,0,false,false,true,false,NULL);
+}
+
 /* Existing callers do not authorize SampleID/Position or sample-mask output. */
 static inline bool opengpu_native_shader_validate_words(
     const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
