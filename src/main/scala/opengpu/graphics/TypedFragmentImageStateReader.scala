@@ -24,7 +24,12 @@ class TypedFragmentImageStateResult(f: FragmentShaderConfig) extends Bundle {
   * all resulting draws; native descriptor admission does not yet use this.
   */
 class TypedFragmentImageStateReader(config: GpuConfig = GpuConfig(),
-    f: FragmentShaderConfig = FragmentShaderConfig(), g: GraphicsConfig = GraphicsConfig(),nativeAdvanced: Boolean=false,geometryInput: Boolean=false,sampleShading:Boolean=false) extends Module {
+    f: FragmentShaderConfig = FragmentShaderConfig(), g: GraphicsConfig = GraphicsConfig(),nativeAdvanced: Boolean=false,geometryInput: Boolean=false,sampleShading:Boolean=false,primitiveIdInput:Boolean=false) extends Module {
+  // Preserve the previous full JVM constructor; it never enables ABI8/9.
+  def this(config: GpuConfig,f: FragmentShaderConfig,g: GraphicsConfig,nativeAdvanced: Boolean,
+      geometryInput: Boolean,sampleShading:Boolean) =
+    this(config,f,g,nativeAdvanced,geometryInput,sampleShading,false)
+
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new TypedFragmentImageStateRequest))
     val out = Decoupled(new TypedFragmentImageStateResult(f))
@@ -34,7 +39,7 @@ class TypedFragmentImageStateReader(config: GpuConfig = GpuConfig(),
   })
   private object State extends ChiselEnum { val idle, stateOffer, stateWait, imageOffer, imageWait, finish, complete = Value }
   private val phase = RegInit(State.idle)
-  private val stateReader = Module(new TypedFragmentStateReader(config, f, g, imageAvailable = true,nativeAdvanced=nativeAdvanced,geometryInput=geometryInput,sampleShading=sampleShading))
+  private val stateReader = Module(new TypedFragmentStateReader(config, f, g, imageAvailable = true,nativeAdvanced=nativeAdvanced,geometryInput=geometryInput,sampleShading=sampleShading,primitiveIdInput=primitiveIdInput))
   private val imageReader = Module(new ShaderImagePublicationReader(config))
   private val request = Reg(new TypedFragmentImageStateRequest)
   private val state = Reg(new TypedFragmentState(f))

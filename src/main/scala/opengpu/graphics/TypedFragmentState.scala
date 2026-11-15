@@ -37,9 +37,11 @@ object TypedFragmentStateLayout {
       ShaderTextureResources.fields(126,"fragment.resources.",d.fragment.resources)++
       ShaderUniformResources.fields(118,"fragment.uniforms.",d.fragment.uniforms)
   }
-  def errors(d: TypedFragmentState,arena: PrimitiveStateDescriptor,f: FragmentShaderConfig,g: GraphicsConfig,c: GpuConfig,imageAvailable: Boolean=false,nativeAdvanced: Boolean=false,geometryInput: Boolean=false,sampleShading:Boolean=false): (Bool,Bool)={
+  def errors(d: TypedFragmentState,arena: PrimitiveStateDescriptor,f: FragmentShaderConfig,g: GraphicsConfig,c: GpuConfig,imageAvailable: Boolean=false,nativeAdvanced: Boolean=false,geometryInput: Boolean=false,sampleShading:Boolean=false): (Bool,Bool)=
+    errors(d,arena,f,g,c,imageAvailable,nativeAdvanced,geometryInput,sampleShading,false)
+  def errors(d: TypedFragmentState,arena: PrimitiveStateDescriptor,f: FragmentShaderConfig,g: GraphicsConfig,c: GpuConfig,imageAvailable: Boolean,nativeAdvanced: Boolean,geometryInput: Boolean,sampleShading:Boolean,primitiveIdInput:Boolean): (Bool,Bool)={
     val checks=(0 until engines).map{e=>val view=scratch(d,e);val shader=WireDefault(d.fragment);shader.scratch:=view
-      val (invalid,bounds)=FragmentShaderDescriptor.errors(shader,f,g,c,geometryInput=geometryInput,sampleShading=sampleShading)
+      val (invalid,bounds)=FragmentShaderDescriptor.errors(shader,f,g,c,geometryInput=geometryInput,sampleShading=sampleShading,primitiveIdInput=primitiveIdInput)
       val alias=view.base<arena.limit && view.limit>arena.base
       val active=e.U<d.engineCount
       (active && (invalid || alias),active && bounds)}
@@ -68,7 +70,12 @@ private class TypedFragmentStateHeader extends Bundle {val capacity=UInt(32.W);v
   * Invalidate at every pass binding, including same-address/generation reuse.
   * An invalidate during a fill prevents that fill from becoming a cache entry.
   */
-class TypedFragmentStateReader(config: GpuConfig=GpuConfig(),f: FragmentShaderConfig=FragmentShaderConfig(),g: GraphicsConfig=GraphicsConfig(),imageAvailable: Boolean=false,nativeAdvanced: Boolean=false,geometryInput: Boolean=false,sampleShading:Boolean=false) extends Module {
+class TypedFragmentStateReader(config: GpuConfig=GpuConfig(),f: FragmentShaderConfig=FragmentShaderConfig(),g: GraphicsConfig=GraphicsConfig(),imageAvailable: Boolean=false,nativeAdvanced: Boolean=false,geometryInput: Boolean=false,sampleShading:Boolean=false,primitiveIdInput:Boolean=false) extends Module {
+  // Preserve the previous full JVM constructor; it never enables ABI8/9.
+  def this(config: GpuConfig,f: FragmentShaderConfig,g: GraphicsConfig,imageAvailable: Boolean,
+      nativeAdvanced: Boolean,geometryInput: Boolean,sampleShading:Boolean) =
+    this(config,f,g,imageAvailable,nativeAdvanced,geometryInput,sampleShading,false)
+
   require(config.xLen==32 && f.colors==4)
   val io=IO(new Bundle {
     val lookup=Flipped(Decoupled(new TypedFragmentStateLookup));val result=Decoupled(new TypedFragmentStateResult(f))
@@ -126,7 +133,7 @@ class TypedFragmentStateReader(config: GpuConfig=GpuConfig(),f: FragmentShaderCo
     }
     is(State.fetch){when((stop || issued===8.U) && !live.asUInt.orR && !offered){phase:=Mux(stop,State.finish,State.verify)}}
     is(State.verify){
-      val (invalid,bounds)=TypedFragmentStateLayout.errors(snapshot,descriptor.arena,f,g,config,imageAvailable,nativeAdvanced,geometryInput,sampleShading)
+      val (invalid,bounds)=TypedFragmentStateLayout.errors(snapshot,descriptor.arena,f,g,config,imageAvailable,nativeAdvanced,geometryInput,sampleShading,primitiveIdInput)
       val legacyPadding=snapshot.version===1.U && snapshot.blend.buffers.asUInt.orR
       val unsupportedImage= !imageAvailable.B && snapshot.image.asUInt.orR
       when(!stop){when(badEncoding || legacyPadding || unsupportedImage || header.capacity=/=TypedFragmentStateLayout.engines.U || header.identity.asUInt=/=descriptor.arena.identity.asUInt || header.handle=/=descriptor.handle){status:=7.U}

@@ -15,6 +15,10 @@ import sys
 # These checks cover configuration, descriptor ownership and image bounds;
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
+    "opengpu.graphics.FragmentPrimitiveInputPackingSpec": {
+        "opengpu.graphics.FragmentPrimitiveInputAbiSpec",
+        "opengpu.graphics.TypedFragmentImageStateReaderSpec",
+    },
     "opengpu.core.GpuComputeUnitTessellationInfoSpec": {
         "opengpu.graphics.TessellationScalarInfoWorkerSpec",
         "opengpu.graphics.TessellationInfoMuxSpec",
@@ -490,6 +494,8 @@ LOCAL_QUALIFICATION_CHECKS = {
     "opengpu.graphics.FragmentShaderStageSpec": {
         "opengpu.graphics.FragmentInputCoalescerSpec", "opengpu.graphics.FragmentShaderAbiSpec",
         "opengpu.graphics.FragmentMetadataReaderSpec",
+        "opengpu.graphics.FragmentPrimitiveInputAbiSpec",
+        "opengpu.graphics.TypedFragmentImageStateReaderSpec",
     },
     "opengpu.system.GpuHostAxiSpec": {
         "opengpu.system.GpuHostAxiOwnershipSpec", "opengpu.graphics.GpuCommandMmioSpec",
@@ -561,6 +567,24 @@ def changed_suites(root, changed, *, test_index=None):
     files, nodes = index_test_sources(root) if test_index is None else test_index
 
     affected = set(changed) & files.keys()
+    if changed & {
+        "src/main/scala/opengpu/graphics/FragmentInputAbi.scala",
+        "src/main/scala/opengpu/graphics/FragmentSampleAbi.scala",
+        "src/main/scala/opengpu/graphics/FragmentShaderStage.scala",
+        "src/main/scala/opengpu/graphics/TypedFragmentState.scala",
+        "src/main/scala/opengpu/graphics/TypedFragmentImageStateReader.scala",
+        "src/main/scala/opengpu/graphics/TypedReplayTileImagePipeline.scala",
+        "src/main/scala/opengpu/graphics/TypedTileImagePipeline.scala",
+        "src/main/scala/opengpu/graphics/TypedTileRenderPipeline.scala",
+        "src/main/scala/opengpu/graphics/VertexFragmentPipeline.scala",
+        "src/main/scala/opengpu/system/TessellationSystemIsolineImagePipeline.scala",
+        "src/main/scala/opengpu/system/TessellationSystemTriangleImagePipeline.scala",
+        "src/main/scala/opengpu/system/TessellationSystemQuadImagePipeline.scala",
+    }:
+        affected.update({
+            "src/test/scala/opengpu/graphics/FragmentPrimitiveInputAbiSpec.scala",
+            "src/test/scala/opengpu/graphics/TypedFragmentImageStateReaderSpec.scala",
+        })
     if changed & {
         "src/main/scala/opengpu/graphics/tessellation/TessellationScalarInfoWorker.scala",
         "src/main/scala/opengpu/core/GpuComputeUnit.scala",

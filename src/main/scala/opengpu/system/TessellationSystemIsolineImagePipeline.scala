@@ -35,7 +35,16 @@ class TessellationSystemIsolineImagePipeline(config:GpuConfig=GpuConfig(),p:Vert
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
     payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false,externalImages:Boolean=false,
     fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false,tessellationUniforms:Boolean=false,evaluationPatchAvailable:Boolean=false,
-    ownedVertexSource:Boolean=false) extends Module {
+    ownedVertexSource:Boolean=false,primitiveIdInput:Boolean=false) extends Module {
+  // Preserve the previous full JVM constructor; it never enables ABI8/9.
+  def this(config:GpuConfig,p:VertexShaderStageConfig,f:FragmentShaderConfig,shared:SharedCuShaderConfig,
+      g:GraphicsConfig,viewport:Fp32ViewportConfig,engines:Int,pageBytes:Int,
+      writeCredits:Int,tileSlots:Int,pagedCapacity:Int,storage:TypedTileColorConfig,
+      useSramBlackBoxes:Boolean,payload:Option[ShaderPayloadConfig],payloadOwner:Int,transformFeedback:Boolean,
+      externalImages:Boolean,fragmentImageAvailable:Boolean,sampleShading:Boolean,tessellationUniforms:Boolean,
+      evaluationPatchAvailable:Boolean,ownedVertexSource:Boolean) =
+    this(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading,tessellationUniforms,evaluationPatchAvailable,ownedVertexSource,false)
+
   require(engines>=1 && engines<=4 && p.varyings==f.varyings && f.colors==4)
   payload.foreach(q=>require(payloadOwner>=0 && payloadOwner+engines<q.owners))
   private val sharedConfig=shared;private val payloadConfig=payload
@@ -79,7 +88,7 @@ class TessellationSystemIsolineImagePipeline(config:GpuConfig=GpuConfig(),p:Vert
   val recordBytes=source.recordBytes
   private val images:Seq[TypedReplayTileImagePipelineIO]=if(externalImages)io.images.get.toSeq else
     Seq.tabulate(engines)(e=>Module(new TypedReplayTileImagePipeline(config,p,f,shared,g,storage,
-      engine=e,useSramBlackBoxes=useSramBlackBoxes,payload=payload,payloadOwner=payloadOwner+e,fragmentImageAvailable=fragmentImageAvailable,sampleShading=sampleShading)).io)
+      engine=e,useSramBlackBoxes=useSramBlackBoxes,payload=payload,payloadOwner=payloadOwner+e,fragmentImageAvailable=fragmentImageAvailable,sampleShading=sampleShading,primitiveIdInput=primitiveIdInput)).io)
   for(phase<-0 until 6)io.fragmentEvents.phaseWorkers(phase):=
     images.map(_.fragmentEvents.phaseWorkers(phase)).reduce(_+&_)
   io.fragmentEvents.stagingOutstanding:=images.map(_.fragmentEvents.stagingOutstanding).reduce(_+&_)

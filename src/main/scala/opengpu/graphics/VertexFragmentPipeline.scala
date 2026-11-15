@@ -31,7 +31,15 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     g: GraphicsConfig=GraphicsConfig(),viewport: Fp32ViewportConfig=Fp32ViewportConfig(),
     useSramBlackBoxes: Boolean=false,payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,
     preparedGeometry: Boolean=false,depthFormatInput: Boolean=false,groupedTexture: Boolean=false,transformFeedback: Boolean=false,earlyDepthInput: Boolean=false,
-    geometryInput: Boolean=false,fragmentImageAvailable: Boolean=false,sampleShading:Boolean=false) extends Module {
+    geometryInput: Boolean=false,fragmentImageAvailable: Boolean=false,sampleShading:Boolean=false,primitiveIdInput:Boolean=false) extends Module {
+  // Preserve the previous full JVM constructor; it never enables ABI8/9.
+  def this(config: GpuConfig,p: VertexShaderStageConfig,f: FragmentShaderConfig,shared: SharedCuShaderConfig,
+      g: GraphicsConfig,viewport: Fp32ViewportConfig,useSramBlackBoxes: Boolean,payload: Option[ShaderPayloadConfig],
+      payloadOwner: Int,preparedGeometry: Boolean,depthFormatInput: Boolean,groupedTexture: Boolean,
+      transformFeedback: Boolean,earlyDepthInput: Boolean,geometryInput: Boolean,fragmentImageAvailable: Boolean,
+      sampleShading:Boolean) =
+    this(config,p,f,shared,g,viewport,useSramBlackBoxes,payload,payloadOwner,preparedGeometry,depthFormatInput,groupedTexture,transformFeedback,earlyDepthInput,geometryInput,fragmentImageAvailable,sampleShading,false)
+
   require(!transformFeedback || !preparedGeometry,"feedback belongs to original vertex work,not prepared replay")
   require(!sampleShading || preparedGeometry,"sample planes require retained original prepared geometry")
   require(!geometryInput || preparedGeometry,"geometry builtins require a retained prepared primitive")
@@ -58,7 +66,7 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val vertex=if(!preparedGeometry)Some(Module(new VertexRasterPipeline(config,p,shaderConfig,g,viewport,useSramBlackBoxes,payload,payloadOwner,centroidInput=true,depthFormatInput=true,groupedTexture=groupedTexture,transformFeedback=transformFeedback)))else None
-  private val fragment=Module(new FragmentShaderStage(config,f,shaderConfig,g,useSramBlackBoxes,payload,payloadOwner+1,groupedTexture=groupedTexture,earlyDepthInput=earlyDepthInput,geometryInput=geometryInput,imageAvailable=fragmentImageAvailable,sampleShading=sampleShading))
+  private val fragment=Module(new FragmentShaderStage(config,f,shaderConfig,g,useSramBlackBoxes,payload,payloadOwner+1,groupedTexture=groupedTexture,earlyDepthInput=earlyDepthInput,geometryInput=geometryInput,imageAvailable=fragmentImageAvailable,sampleShading=sampleShading,primitiveIdInput=primitiveIdInput))
   fragment.io.earlyDepth.foreach(_:=io.earlyDepth.get)
   private val fragmentImage=if(fragmentImageAvailable)Some(Module(new GraphicsImageDrawCapture))else None
   fragmentImage.foreach { c =>
@@ -220,7 +228,7 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     }}
     is(State.validate){
       val v=descriptor.vertex.vertex.geometry.vertex;val f=descriptor.fragment
-      val (invalid,bounds)=FragmentShaderDescriptor.errors(f,this.f,g,config,geometryInput=geometryInput,sampleShading=sampleShading)
+      val (invalid,bounds)=FragmentShaderDescriptor.errors(f,this.f,g,config,geometryInput=geometryInput,sampleShading=sampleShading,primitiveIdInput=primitiveIdInput)
       val identity=primitive.map(_.clipped.primitive.identity).getOrElse(v.input.identity)
       val slots=primitive.map(_.clipped.primitive.varyingSlots).getOrElse(v.varyingSlots)
       val matching=identity.asUInt===f.identity.asUInt && slots===f.varyingSlots && descriptor.vertex.raster.sampleMode===f.sampleMode &&
