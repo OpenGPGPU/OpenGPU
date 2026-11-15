@@ -84,7 +84,10 @@ static void callback_capture(struct opengpu_device *gpu,struct opengpu_render_co
     }
 }
 #include "opengpu_native_primitive_program_test.inc"
-int main(int argc,char **argv)
+#ifndef OPENGPU_NATIVE_PROGRAM_SNAPSHOT_TEST_MAIN
+#define OPENGPU_NATIVE_PROGRAM_SNAPSHOT_TEST_MAIN main
+#endif
+int OPENGPU_NATIVE_PROGRAM_SNAPSHOT_TEST_MAIN(int argc,char **argv)
 {
     struct opengpu_device gpu={0};
     struct opengpu_render_context context={.gpu=&gpu,.references=1,.id=7};

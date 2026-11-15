@@ -192,6 +192,36 @@ python3 -B scripts/test_native_joint.py --sanitize --negative-controls \
   --build "$OUT/build"
 ```
 
+The tracked offline VS consumer runs the original no-argument native-program
+fixture first, then checks each supplied program through the actual validator,
+private RX owner and MMU. It accepts the full 512-word ABI1 capacity. The three
+original linked Mesa VS programs passed with their independent layout and
+uniform requirements in the same constrained Linux image (3.30 seconds,
+ASan/UBSan):
+
+```sh
+python3 -B scripts/test_native_vertex_artifacts.py --sanitize \
+  --vertex-artifact "$OUT/build/full8.vs.words" 1 16 1 \
+  --vertex-artifact "$OUT/build/full9.vs.words" 1 2 1 \
+  --vertex-artifact "$OUT/build/matrix.vs.words" 1 16 0
+```
+
+Arguments are attributes, varyings and explicit offline owned-uniform permission;
+capacity128 and VS ABI1 are fixed. Short scratch, missing required uniform
+permission, incorrect entry and failed copy are rejected; nonzero entry retains
+the exact original suffix, private PTEs are RX without W, and owners retire.
+A full 512-word literal additionally covers the entry-zero capacity boundary.
+Ten malformed file/metadata arguments fail before compilation. The runner
+honors `TMPDIR` for read-only source mounts; the earlier read-only temporary-directory
+failure occurred before byte consumption and is excluded from successful results.
+The original Python runner also passed unchanged on the host. Linux regeneration used 43
+fresh GPU translation units with no reuse, checked original legacy bytes and
+261 actual MMD dependencies; all 8101 external inputs and consumed source/code
+were checked before and after. Ended containers, build products and packets
+were removed after consumer checks. These are offline CPU protection checks,
+not shader interpretation, joint BUILD, permissions for submission or GPU
+execution.
+
 Every compile/link/test process has a 180-second bound and process-group exit
 proof. Source/ESSL/schema/generated inputs, original Mesa/DRM/SDK/link objects and
 libraries, actual per-TU MMD inputs, binary and emitted packets are bound before
