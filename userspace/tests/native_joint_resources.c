@@ -67,6 +67,32 @@ void native_joint_test(struct opengpu_native_joint_link *link,const char *output
     assert(opengpu_native_tess_pack(&capacity,&packed)&&!memcmp(&packed,&unchanged,sizeof(packed)));
     struct opengpu_native_joint_input input;assert(!opengpu_native_joint_link_capture(link,&input));
     if(indirect)original_indirect_guards(&input);
+    /* An actual floating NEXT_TCS VS must not open legacy NEXT_FRAGMENT
+     * acceptance, even if its original property is explicitly changed. */
+    {
+        struct tgsi_parse_context parse;unsigned fp=0,property=0;
+        assert(tgsi_parse_init(&parse,input.tokens[0])==TGSI_PARSE_OK);
+        while(!tgsi_parse_end_of_tokens(&parse)){
+            unsigned at=parse.Position;tgsi_parse_token(&parse);
+            if(parse.FullToken.Token.Type==TGSI_TOKEN_TYPE_PROPERTY&&
+               parse.FullToken.FullProperty.Property.PropertyName==TGSI_PROPERTY_NEXT_SHADER)property=at+1;
+            if(parse.FullToken.Token.Type==TGSI_TOKEN_TYPE_INSTRUCTION&&
+               (parse.FullToken.FullInstruction.Instruction.Opcode==TGSI_OPCODE_ADD||
+                parse.FullToken.FullInstruction.Instruction.Opcode==TGSI_OPCODE_MUL))fp++;
+        }
+        tgsi_parse_free(&parse);
+        if(fp){
+            assert(property);uint32_t *words=malloc(input.words[0]*4);assert(words);
+            memcpy(words,input.tokens[0],input.words[0]*4);words[property]=PIPE_SHADER_FRAGMENT;
+            struct opengpu_native_uniform_layout layout,saved_layout;
+            struct opengpu_native_uniform_program machine,saved_machine;
+            memset(&layout,0xa5,sizeof(layout));saved_layout=layout;
+            memset(&machine,0xa5,sizeof(machine));saved_machine=machine;
+            assert(opengpu_native_uniform_compile(words,0,128,&layout,&machine));
+            assert(!memcmp(&layout,&saved_layout,sizeof(layout))&&!memcmp(&machine,&saved_machine,sizeof(machine)));
+            free(words);
+        }
+    }
     if(levels){
         const struct opengpu_native_tess_input_span *outer=NULL,*inner=NULL,*patch=NULL;
         for(unsigned i=0;i<input.maps[3].count;i++){

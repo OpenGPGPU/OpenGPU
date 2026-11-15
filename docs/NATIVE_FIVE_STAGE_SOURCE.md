@@ -92,7 +92,7 @@ each must hit its own exact assertion, not a compilation error or timeout.
 
 The final current-source build compiled 37 translation units from scratch
 (including three source-copy controls), checked 37 MMD files and 255 distinct
-dependencies, and passed in 42.852 seconds. The 1060 GPU/reference inputs and
+dependencies, and passed in 41.609 seconds. The 1060 GPU/reference inputs and
 8101 external Mesa/SDK/library inputs were unchanged before and after use.
 All cases retain 65 uniform references, five code GEMs, 16 varying slots,
 four MRTs and capacity128. VS/TC/TE/GS are 308/478/362/289 words:
@@ -119,10 +119,30 @@ scalar-GS validator/private-RX/MMU fixture in 3.069 seconds, with maximum
 sampled aggregate RSS 203392 KiB and 649 unchanged inputs.
 
 The old four-stage family was rebuilt from scratch against the final common
-source: 47 translation units, 47 MMD files/271 dependencies, 55.466 seconds.
+source: 47 translation units, 47 MMD files/271 dependencies, 57.447 seconds.
 Original 308/301 programs and all old v1/v2 byte comparisons against independent
 original emitter sources passed, along with its four precise controls.
 No cached object was counted as a fresh compilation.
+
+The explicit NEXT_TCS VS compiler now admits vector floating ADD/MUL through
+its own arithmetic gate; it never borrows the FS metadata flag. Legacy
+NEXT_FRAGMENT acceptance remains integer-only. A real original matrix vertex
+source adds `vec4(.125,.25,.5,0)` to payload while leaving position unchanged.
+One original four-stage relink produces VS69/TCS277/TES203; TC/TE and FS
+instruction/artifact bytes are identical to the unmodified source. The same
+actual floating VS packet with its NEXT_SHADER property changed to FRAGMENT
+is rejected atomically by the old compiler. Original 308/301 and v1/v2 bytes
+still pass the independent baseline comparison.
+
+The 69 original VS words passed the actual validator/private-RX/MMU consumer
+at capacity128, attributes1/varyings16, scratch38400, with scalar-FP permission
+both true and false. Pure OPFVV vector arithmetic does not depend on that
+separate scalar permission. An independent scalar FLW literal still rejects
+permission false and accepts true. The Clang16 ASan/UBSan group took 3.193
+seconds, maximum sampled aggregate RSS199568 KiB, with 649 source/code inputs
+unchanged. It checks original bytes, opaque nonzero entry, short scratch,
+atomic failures, RX permissions and retirement; it does not execute shader
+instructions. The original and variant source packages are separate.
 
 The scalar GS compiler and five-stage graph are still incomplete product
 work. Maximum-output GS lowering, remaining GLSL arithmetic/builtins and
@@ -169,4 +189,17 @@ python3 -B scripts/test_native_geometry_fragment_artifacts.py --sanitize \
   --fragment-artifact "$OUT/build/depth.fs.words" 5 16 4 1 1 0
 python3 -B scripts/test_geometry_program_snapshot.py --sanitize \
   --program "$OUT/build/full5.gs.words" --owned-uniforms
+```
+
+The opt-in four-stage runner also emits the original-source floating payload
+variant. It must run in the same bounded original-Mesa environment:
+
+```sh
+git show bcdbdfd70:userspace/gallium/opengpu_native_uniform_emit.c > "$OUT/reference-uniform.c"
+git show c6eddf7d5:userspace/gallium/opengpu_native_tess_uniform_emit.c > "$OUT/reference-tess.c"
+python3 -B scripts/test_native_joint.py --sanitize --negative-controls \
+  --legacy-source "$OUT/reference-uniform.c" \
+  --tess-baseline-source "$OUT/reference-tess.c" --build "$OUT/four"
+python3 -B scripts/test_native_vertex_artifacts.py --sanitize \
+  --vertex-artifact "$OUT/four/matrix-payload.vs.words" 1 16 0
 ```
