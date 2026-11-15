@@ -367,3 +367,103 @@ build whose packet consumers have been released: it requires exact recorded
 argv, object/MMD hashes and every actual dependency hash before reuse. Reused
 objects must be reported separately from fresh compilation. Do not retain
 ended build caches, raw packets, receipts or logs after their consumers finish.
+
+## Original triangle and quad domain fixtures (CPU only)
+
+The opt-in `test_native_joint.py --domains` adds two separately linked ESSL
+recipes, `matrix-triangle` and `matrix-quad`. Their VS, FS, input/output patch
+vertex counts (two), sparse location-15 boundaries, matrix/vec3 packing and
+TES indices default remain the original matrix recipe. TCS invocation zero
+writes every required level to one (triangle: three outer and one inner;
+quad: four outer and two inner), then all invocations reach the original
+barrier. TES uses `triangles` or `quads`, equal spacing and counter-clockwise
+ordering, and adds the real `gl_TessCoord.xyz` to its matrix result. These are
+original Mesa-linked programs, not patched machine words.
+
+Only these explicit new fixture modes export an additional `.domain.json`:
+
+```json
+{"schema":"opengpu-native-joint-domain-v1","version":1,"stage":5,"domain":4,"spacing":2,"clockwise":0,"pointMode":0}
+```
+
+Each value comes from the actual queried TES program layout and is checked
+against the original TGSI properties. `domain` and `spacing` use Mesa's
+`pipe_prim_type` and `pipe_tess_spacing`: triangle=4, quad=7, equal=2. They are
+**not RTL enum values**. The consumer must explicitly translate them. Existing
+nine-number `.layout` and source-v1 JSON formats are unchanged; existing calls
+produce no domain receipt. Four independent metadata disagreements must fail
+emission with its output untouched. Missing, duplicate, extra, non-integer,
+wrong-version and wrong-recipe receipt fields are rejected by the CPU reader.
+
+Fresh GCC 13.3/ASan/UBSan validation passed in the immutable CPU image below,
+with 512 MiB combined memory/swap and one CPU: 52 fresh translation units,
+zero reused objects, 276 actual MMD dependencies and 8,101 guarded Mesa/external
+inputs. The complete run, including the independent protected consumer,
+finished in 95.66 seconds. Source/archive guards passed before and after.
+
+| Actual linked recipe | VS / TCS / TES words | Patch input → output; per-patch components | TES exports |
+| --- | --- | --- | ---: |
+| Triangle, all required levels=1, real TessCoord | 61 / 236 / 221 | 2/8 → 2/10; 6 | 8 |
+| Quad, all required levels=1, real TessCoord | 61 / 254 / 221 | 2/8 → 2/10; 6 | 8 |
+
+All six packet files for each of seven old linked cases (42 files total)
+matched a separately compiled frozen pre-domain fixture byte for byte,
+including old layout/source JSON. Original 308/301 VS/FS and the three v1/five
+v2 tessellation cases also retained their independent original-emitter byte
+checks. Four source-copy controls individually removed the domain, spacing,
+clockwise or point-mode comparison from the production emitter; each failed
+the exact metadata-rejection assertion, rather than compilation or a timeout.
+
+A separate, fixed official-main driver consumer (`057cfaf74385293f3ac425c9536b7af577ff2537`)
+accepted both original TCS/TES pairs through the actual v3 validator,
+private RX snapshot, Sv32 MMU and retirement paths. This is four actual
+program-byte consumptions; only OS/GEM primitives are modeled. A final
+host-only check also rejects `--domains` without its required frozen fixture
+before creating any output or entering compilation. All three lightweight
+recipe/receipt/CLI tests pass and run once in `scripts/test_scripts.sh`; this
+CLI-only follow-up did not repeat or replace the measured C/Mesa qualification. It neither
+submits protected graphics nor executes shader instructions. New triangle/quad
+hardware parents, TES coordinates/results, primitive order/counts and TF
+bytes remain unexecuted. The prior isoline GPU results do not cover these
+new programs or domains. No capability, factory or public permission changes.
+
+Reproduce from this compiler checkout with the existing Mesa 22.3.6 source,
+compile database, original libraries and immutable image; do not rebuild Mesa:
+
+```sh
+GPU_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+COMPILER_ROOT=$PWD
+OUT=$(mktemp -d "$COMPILER_ROOT/.artifacts/domain-cpu-XXXXXX")
+CONSUMER=$(mktemp -d "$GPU_ROOT/.artifacts/worktrees/domain-consumer-XXXXXX")
+git archive 057cfaf74385293f3ac425c9536b7af577ff2537 driver scripts | tar -x -C "$CONSUMER"
+mkdir "$OUT/tmp" "$OUT/consumer-artifacts" "$CONSUMER/.artifacts"
+git show bcdbdfd70:userspace/gallium/opengpu_native_uniform_emit.c > "$OUT/reference-uniform.c"
+git show c6eddf7d5:userspace/gallium/opengpu_native_tess_uniform_emit.c > "$OUT/reference-tess.c"
+git show fb0b2e6be:userspace/tests/native_joint_resources.c > "$OUT/reference-joint.c"
+IMAGE=sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72
+docker run --rm --init --memory=512m --memory-swap=512m --cpus=1 \
+  --network=none --read-only \
+  -v "$GPU_ROOT:$GPU_ROOT:ro" -v "$OUT:$OUT:rw" \
+  -v "$OUT/consumer-artifacts:$CONSUMER/.artifacts:rw" -w "$COMPILER_ROOT" \
+  -e PYTHONDONTWRITEBYTECODE=1 -e ASAN_OPTIONS=detect_leaks=0 -e TMPDIR="$OUT/tmp" \
+  -e OPENGPU_MESA_DIR="$GPU_ROOT/depends/mesa" \
+  -e OPENGPU_MESA_BUILD="$GPU_ROOT/depends/mesa-build" \
+  -e OPENGPU_DRM_INCLUDE="$GPU_ROOT/depends/aarch64-root/include" \
+  -e LD_LIBRARY_PATH="$GPU_ROOT/depends/aarch64-root/lib" \
+  -e OPENGPU_MESA_LINK_LIBS="-l:libz.so.1 $GPU_ROOT/depends/aarch64-root/lib/libexpat.so.1.6.7" \
+  "$IMAGE" sh -ec '
+    timeout --signal=TERM --kill-after=5s 180s python3 -B scripts/test_native_joint.py \
+      --sanitize --negative-controls --domains --build "$1/build" \
+      --legacy-source "$1/reference-uniform.c" --tess-baseline-source "$1/reference-tess.c" \
+      --joint-baseline-fixture "$1/reference-joint.c"
+    timeout --signal=TERM --kill-after=5s 180s python3 -B scripts/test_native_joint_domains.py \
+      --sanitize --programs "$1/build" --protected-root "$2"
+  ' sh "$OUT" "$CONSUMER"
+```
+
+Keep the selected source, compiler, Mesa inputs, fixed consumer and output
+bytes unchanged across both steps. The producer checks actual compile/link
+inputs and every MMD dependency before/after; repeat the outer source/tool
+identity checks for a new qualification. End all owned groups and check open
+files, symlinks and other consumers before deleting these temporary outputs
+and the consumer archive. Raw packets and process records are not committed.

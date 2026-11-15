@@ -46,9 +46,53 @@ static void original_indirect_guards(const struct opengpu_native_joint_input *in
         assert(!memcmp(&out,&saved,sizeof(out)));free(t);
     }
 }
+/* Explicit opt-in domain receipts come from the original linked TES layout,
+ * never an output prefix. Independently re-read its real TGSI properties and
+ * prove each metadata disagreement fails without changing the output. */
+static void original_domain_guards(const struct opengpu_native_joint_input *input,
+    const struct opengpu_native_joint_description *d,unsigned mode)
+{
+    const struct opengpu_native_tess_layout *l=&d->tess[1].layout;
+    assert(l->domain==(mode==4?PIPE_PRIM_TRIANGLES:PIPE_PRIM_QUADS));
+    assert(l->spacing==PIPE_TESS_SPACING_EQUAL&&!l->clockwise&&!l->point_mode);
+    unsigned seen=0;struct tgsi_parse_context parser;
+    assert(tgsi_parse_init(&parser,input->tokens[2])==TGSI_PARSE_OK);
+    while(!tgsi_parse_end_of_tokens(&parser)){
+        tgsi_parse_token(&parser);
+        if(parser.FullToken.Token.Type!=TGSI_TOKEN_TYPE_PROPERTY)continue;
+        unsigned name=parser.FullToken.FullProperty.Property.PropertyName;
+        unsigned value=parser.FullToken.FullProperty.u[0].Data,bit=0;
+        switch(name){
+        case TGSI_PROPERTY_TES_PRIM_MODE:assert(value==l->domain);bit=1;break;
+        case TGSI_PROPERTY_TES_SPACING:assert(value==l->spacing);bit=2;break;
+        case TGSI_PROPERTY_TES_VERTEX_ORDER_CW:assert(value==l->clockwise);bit=4;break;
+        case TGSI_PROPERTY_TES_POINT_MODE:assert(value==l->point_mode);bit=8;break;
+        default:break;
+        }
+        assert(!(seen&bit));seen|=bit;
+    }
+    tgsi_parse_free(&parser);assert(seen==15);
+    struct opengpu_native_tess_packing pin,pout;
+    assert(!opengpu_native_tess_pack(input->maps+2,&pin));
+    assert(!opengpu_native_tess_pack(input->maps+4,&pout));
+    struct opengpu_native_tess_program out,saved;
+    assert(!opengpu_native_tess_linked_emit(input->tokens[2],input->words[2],l,input->maps+3,&pin,&pout,&out));
+    assert(out.words==d->tess[1].words&&!memcmp(out.code,d->tess[1].code,4*out.words));
+    for(unsigned bad=0;bad<4;bad++){
+        struct opengpu_native_tess_layout wrong=*l;
+        if(bad==0)wrong.domain=l->domain==PIPE_PRIM_TRIANGLES?PIPE_PRIM_QUADS:PIPE_PRIM_TRIANGLES;
+        if(bad==1)wrong.spacing=PIPE_TESS_SPACING_FRACTIONAL_ODD;
+        if(bad==2)wrong.clockwise=1;
+        if(bad==3)wrong.point_mode=1;
+        memset(&saved,0xa5,sizeof(saved));out=saved;
+        assert(opengpu_native_tess_linked_emit(input->tokens[2],input->words[2],&wrong,input->maps+3,&pin,&pout,&out));
+        assert(!memcmp(&out,&saved,sizeof(out)));
+    }
+}
 void native_joint_test(struct opengpu_native_joint_link *link,const char *output,unsigned full,unsigned vs_slot,unsigned fs_slot)
 {
-    unsigned indirect=full==2,levels=full==3;if(indirect||levels)full=0;
+    unsigned domain=full==4 || full==5?full:0;
+    unsigned indirect=full==2,levels=full==3;if(indirect||levels||domain)full=0;
     struct pipe_screen *screen=opengpu_drm_screen_create(7,NULL);assert(screen);
     struct pipe_context *pipe=screen->context_create(screen,NULL,0);assert(pipe);
     assert(!pipe->create_tcs_state&&!pipe->create_tes_state);
@@ -200,6 +244,7 @@ void native_joint_test(struct opengpu_native_joint_link *link,const char *output
     struct opengpu_native_joint_source *lease=opengpu_native_joint_source_create(p,cache);assert(lease);
     struct opengpu_native_joint_description d,saved;
     assert(!opengpu_native_joint_source_describe(lease,&d));saved=d;
+    if(domain)original_domain_guards(&input,&d,domain);
     d.fragment.metadata.abi_version=1;d.tess[1].layout.output_components=0;
     assert(!opengpu_native_joint_source_describe(lease,&d)&&!memcmp(&d,&saved,sizeof(d)));
     struct pipe_context *other=screen->context_create(screen,NULL,0);assert(other);
@@ -312,6 +357,13 @@ void native_joint_test(struct opengpu_native_joint_link *link,const char *output
     for(unsigned k=0;k<64;k++)fprintf(f,"%s[%u,%u]",k?",":"",d.vertex_components[k].kind,d.vertex_components[k].component);
     fprintf(f,"],\"fragmentComponents\":[");for(unsigned k=0;k<68;k++)fprintf(f,"%s[%u,%u]",k?",":"",d.fragment_components[k].valid,d.fragment_components[k].component);
     fprintf(f,"]}\n");assert(!fclose(f));
+    if(domain){
+        assert(snprintf(path,sizeof(path),"%s.domain.json",output)>0);f=fopen(path,"w");assert(f);
+        const struct opengpu_native_tess_layout *l=&d.tess[1].layout;
+        fprintf(f,"{\"schema\":\"opengpu-native-joint-domain-v1\",\"version\":1,\"stage\":5,"
+            "\"domain\":%u,\"spacing\":%u,\"clockwise\":%u,\"pointMode\":%u}\n",
+            l->domain,l->spacing,l->clockwise,l->point_mode);assert(!fclose(f));
+    }
     opengpu_native_joint_source_destroy(lease);
     for(unsigned s=0;s<4;s++){assert(!bos[d.code[s].handle].handle);if(full)assert(!bos[d.uniforms[s].defaults.handle].handle);}
     assert(!bos[handle].handle);

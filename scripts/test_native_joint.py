@@ -82,10 +82,13 @@ def verify_records(output):
 def main(*, build_only=False):
     ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('--build',type=Path,required=True)
     ap.add_argument('--legacy-source',type=Path,required=True)
+    ap.add_argument('--joint-baseline-fixture',type=Path,help='fixed original native_joint_resources.c for exact old-case packet comparisons')
+    ap.add_argument('--domains',action='store_true',help='compile separately named original triangle/quad matrix ESSL and checked domain-v1 receipts')
     if not build_only:
         ap.add_argument('--tess-baseline-source',type=Path,required=True)
         ap.add_argument('--negative-controls',action='store_true')
     ap.add_argument('--reuse-objects',action='store_true',help='reuse only private objects with exact argv/object/MMD-input SHA receipts from an earlier active build');ap.add_argument('--sanitize',action='store_true');a=ap.parse_args()
+    if a.domains and not a.joint_baseline_fixture:ap.error('--domains requires --joint-baseline-fixture')
     out=a.build.resolve();out.mkdir(parents=True,exist_ok=a.reuse_objects)
     mesa=Path(os.environ['OPENGPU_MESA_DIR']).resolve();mb=Path(os.environ['OPENGPU_MESA_BUILD']).resolve()
     drm=Path(os.environ['OPENGPU_DRM_INCLUDE']).absolute();gpu=mesa.parents[1];libraries=drm.parent/'lib'
@@ -96,6 +99,8 @@ def main(*, build_only=False):
     baseline=a.legacy_source.resolve(strict=True);bound[str(baseline)]=sha256(baseline)
     if not build_only:
         tess_baseline=a.tess_baseline_source.resolve(strict=True);bound[str(tess_baseline)]=sha256(tess_baseline)
+    if a.joint_baseline_fixture:
+        joint_baseline=a.joint_baseline_fixture.resolve(strict=True);bound[str(joint_baseline)]=sha256(joint_baseline)
     private={};commands=[];objects=[]
     def unchanged():
         assert all(sha256(Path(p))==h for p,h in {**bound,**private}.items())
@@ -291,6 +296,46 @@ def main(*, build_only=False):
             [sources/'matrix.vert',sources/'matrix-indirect.tesc',sources/'matrix.tese',sources/'matrix.frag',out/'mutant-bound',2,15,15],
             'd.tess[0].code[i-1]==0x00200513u')
     if a.negative_controls and EXTRA_NEGATIVE_CONTROLS:EXTRA_NEGATIVE_CONTROLS(mutant,sources,out)
+    if a.domains:
+        from test_native_joint_domains import verify_packet,write_domain_sources
+        original={str(p):sha256(p) for name in ('full8','full9','matrix','matrix-payload',
+            'matrix-levels','matrix-indirect','matrix-indirect-simt') for p in packet_paths(out/name)}
+        for name,mode in (('matrix-triangle',4),('matrix-quad',5)):
+            write_domain_sources(sources,name)
+            for p in sources.iterdir():private[str(p)]=sha256(p)
+            clear_packets(out/name)
+            receipt=(out/name).with_suffix('.domain.json')
+            if receipt.exists():receipt.unlink()
+            run([binary,*[sources/(name+'.'+s) for s in ('vert','tesc','tese','frag')],out/name,mode,15,15],name)
+            for p in [*packet_paths(out/name),receipt]:private[str(p)]=sha256(p)
+            verify_packet(out/name)
+        assert all(sha256(Path(p))==h for p,h in original.items())
+        # Same original linked sources, actual backend and libraries; only the
+        # fixed pre-domain OS fixture body differs. Compare complete packets,
+        # including old source JSON/layout bytes, not instruction counts.
+        obj=out/'reference-joint-fixture.o'
+        run(cc+common+inc+san+['-MMD','-MF',obj.with_suffix('.d'),'-c',joint_baseline,'-o',obj], 'reference-joint-compile')
+        changed=[str(obj) if str(v)==str(out/'native_joint_resources.o') else str(v) for v in link]
+        changed[-1]=str(out/'reference-joint');run(changed,'reference-joint-link')
+        reference=out/'reference-original';reference.mkdir(exist_ok=a.reuse_objects)
+        for name,mode,vs_slot,fs_slot,files in (
+            ('full8',1,15,0,('full8.vert','full8.tesc','full8.tese','full8.frag')),
+            ('full9',1,1,15,('full9.vert','full9.tesc','full9.tese','full9.frag')),
+            ('matrix',0,15,15,('matrix.vert','matrix.tesc','matrix.tese','matrix.frag')),
+            ('matrix-payload',0,15,15,('matrix-payload.vert','matrix.tesc','matrix.tese','matrix.frag')),
+            ('matrix-levels',3,15,15,('matrix.vert','matrix.tesc','matrix-levels.tese','matrix.frag')),
+            ('matrix-indirect',2,15,15,('matrix.vert','matrix-indirect.tesc','matrix.tese','matrix.frag')),
+            ('matrix-indirect-simt',2,15,15,('matrix.vert','matrix-indirect-simt.tesc','matrix.tese','matrix.frag'))):
+            run([out/'reference-joint',*[sources/f for f in files],reference/name,mode,vs_slot,fs_slot],'reference-'+name)
+            for expected,actual in zip(packet_paths(out/name),packet_paths(reference/name)):
+                assert expected.read_bytes()==actual.read_bytes(),'old packet byte drift '+name+' '+expected.suffix
+                private[str(actual)]=sha256(actual)
+        if a.negative_controls:
+            for field in ('domain','spacing','clockwise','point_mode'):
+                mutant('mutant-domain-'+field,'userspace/gallium/opengpu_native_tess_uniform_emit.c',
+                    'if(v!=layout->'+field+')ret=-1;', '(void)v;',
+                    [*[sources/('matrix-triangle.'+s) for s in ('vert','tesc','tese','frag')],out/('mutant-domain-'+field),4,15,15],
+                    'opengpu_native_tess_linked_emit(input->tokens[2],input->words[2],&wrong')
     unchanged();assert snapshot(mesa,mb,libraries,drm,gpu)==external
     actual_dependencies=set()
     for dep in mmd_paths():
@@ -299,7 +344,7 @@ def main(*, build_only=False):
             assert str(path) in bound or str(path) in private or str(path) in external,'unbound final MMD '+str(path)
     compiles=[c for c in commands if '-c' in c['argv']]
     fresh=sum(not c.get('reusedExactInputs') for c in compiles);reused=len(compiles)-fresh
-    print(f'NATIVE_JOINT_CPU PASS actualMesa linked4stage baseCases3 storeCases2 levelCases1 full48blocks/4defaults/API71 retained52views old308/301/v1/v2 bytes mutants={a.negative_controls} compilesFresh={fresh} exactReuse={reused} MMDdeps={len(actual_dependencies)} external={len(external)} childMaxRssKiB={resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss} GPU=false submit=false')
+    print(f'NATIVE_JOINT_CPU PASS actualMesa linked4stage baseCases3 storeCases2 levelCases1 full48blocks/4defaults/API71 retained52views old308/301/v1/v2 bytes domains={a.domains} mutants={a.negative_controls} compilesFresh={fresh} exactReuse={reused} MMDdeps={len(actual_dependencies)} external={len(external)} childMaxRssKiB={resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss} GPU=false submit=false')
 
 
 def packet_paths(target):
