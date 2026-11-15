@@ -167,9 +167,11 @@ run, excluding deliberate mutant artifacts. No public profile/getter is opened.
 Actual protected submit admission remains a separate dependency.
 The existing driver rejects these versions until an independently verified
 primitive-input profile is supplied. This block does not change that gate.
-Program/source/draw integration must carry the emitted FS metadata and original
-GEM resources; the current draw encoder still emits ABI1. Same-host no-GS/tess
-replay, actual full2CU shader execution, product images and GNY2 remain pending.
+The old draw API still emits ABI1. The independent private program/source/draw
+v2 preparation and retained original-GEM lifecycle are described in
+[NATIVE_GRAPHICS_PRIMITIVE_LIFECYCLE.md](NATIVE_GRAPHICS_PRIMITIVE_LIFECYCLE.md).
+Protected ABI8/9 submission, same-host no-GS/tess replay, actual full2CU shader
+execution, product images and GNY2 remain pending.
 
 ## Reproduction
 

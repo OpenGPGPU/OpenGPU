@@ -134,7 +134,7 @@ class PrivateMesaBridgeTests(unittest.TestCase):
              redirect_stdout(stdout):
             builder.main(graphics_uniforms=True,sample_graphics=True)
         compiled={Path(c[c.index('-c')+1]).name:c for c in commands if '-c' in c}
-        self.assertEqual(len(compiled),29)
+        self.assertEqual(len(compiled),31)
         for name in ('graphics_sample_flow.c','graphics_sample_kernel.c'):
             self.assertIn('-DOPENGPU_NATIVE_SAMPLE_GRAPHICS_LIVE=1',compiled[name])
             self.assertIn('-MMD',compiled[name]);self.assertIn('-MF',compiled[name])

@@ -105,6 +105,7 @@ GRAPHICS_PRODUCER_ROOTS = (
     'userspace/gallium/opengpu_vs_emit.c', 'userspace/pipe_opengpu.c', 'userspace/opengpu.c',
     'userspace/gallium/opengpu_native_uniform_emit.c', 'userspace/gallium/opengpu_native_fragment_v2.c',
     'userspace/gallium/opengpu_native_graphics.c',
+    'userspace/gallium/opengpu_native_graphics_v2.c', 'userspace/gallium/opengpu_native_draw_v2.c',
     'userspace/gallium/opengpu_native_draw.c', 'userspace/opengpu_native_runtime.c',
     'userspace/gallium/opengpu_native_sample_program.c',
     *SAMPLE_PRODUCER_ROOTS)

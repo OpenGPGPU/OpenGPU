@@ -30,6 +30,7 @@ GPU_UNITS = (
     'userspace/gallium/opengpu_vs_emit.c', 'userspace/pipe_opengpu.c', 'userspace/opengpu.c',
     'userspace/gallium/opengpu_native_uniform_emit.c', 'userspace/gallium/opengpu_native_fragment_v2.c',
     'userspace/gallium/opengpu_native_graphics.c',
+    'userspace/gallium/opengpu_native_graphics_v2.c', 'userspace/gallium/opengpu_native_draw_v2.c',
     'userspace/gallium/opengpu_native_draw.c', 'userspace/opengpu_native_runtime.c',
     'driver/opengpu_native_frame.c', 'userspace/gallium/opengpu_native_sample_program.c',
     'userspace/opengpu_native_sample_graphics.c', 'userspace/tests/graphics_uniform_frontend.cpp')
@@ -125,10 +126,10 @@ def dependency_inputs(path, *, cpu, source, bound, qualified, generated):
 
 
 def check_build(cpu, source, *, mesa, mesa_build, libraries, bound, qualified, generated):
-    """Check the actual command log and exact 29-unit MMD closure."""
+    """Check the actual command log and exact 31-unit MMD closure."""
     producer = cpu/'producer'
     commands = strict_json(regular(producer/'commands.json'))
-    require(type(commands) is list and len(commands) == 30, 'exact 29 compiles plus one link required')
+    require(type(commands) is list and len(commands) == 32, 'exact 31 compiles plus one link required')
     expected = {str(source/name) for name in GPU_UNITS}
     expected.update(str(mesa/'src'/name) for name in MESA_UNITS[1:])
     expected.update((str(producer/'standalone-profile.cpp'), str(cpu/'checked-nir-lower-io.c')))
@@ -152,7 +153,7 @@ def check_build(cpu, source, *, mesa, mesa_build, libraries, bound, qualified, g
         require(dep not in dependencies, 'reused actual compiler dependency unit')
         dependencies.add(dep)
         dependency_inputs(dep,cpu=cpu,source=source,bound=bound,qualified=qualified,generated=generated)
-    require(seen == expected and dependencies == set(cpu.rglob('*.d')), 'incomplete/extraneous actual 29-unit closure')
+    require(seen == expected and dependencies == set(cpu.rglob('*.d')), 'incomplete/extraneous actual 31-unit closure')
     link = commands[-1]
     require(type(link) is dict, 'missing actual link command')
     argv = link.get('argv')
