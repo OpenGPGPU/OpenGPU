@@ -108,10 +108,10 @@ libraries were reused. All ended build objects, caches, logs and private
 baseline copies were deleted; only explicitly handed-off original program
 packets remained while the independent protection consumer needed them.
 
-The remapped matrix TES is now203 words; a fresh independent whole-program
-validator/RX/MMU consumption of this corrected packet is still required. The
-arithmetic qualification below is not a substitute for that protection check,
-complete 52-resource GUR ownership, joint BUILD or actual shader execution.
+The corrected 203-word matrix TES and all eleven companion programs passed
+independent validator/private RX/MMU consumption on the mainline delivery source
+below. Those checks do not establish complete 52-resource GUR ownership, joint
+BUILD or shader execution.
 
 ### Mapped address arithmetic
 
@@ -143,36 +143,41 @@ compiler cases and old-byte comparisons still run through their existing lanes.
 
 ## Mainline delivery integration
 
-The source block `9ed94be7b` was replayed onto merged #826 without changes to
-its 14 paths (`08602318b`). On that exact delivery source, 3115 tracked
-non-document inputs and HEAD remained unchanged through four serial
-180-second/512MiB aggregate-RSS groups:
+The three logical source commits (`9ed94be7b`, `9fde939af`, `53103920c`) were
+replayed onto merged #826. The delivery preserves main's callback-capture and
+primitive-program regressions and its recursive producer-macro closure. On
+exact corrected source `3a134a96b`, 3120 tracked non-document inputs, HEAD and
+18 original packet/layout files stayed unchanged through these serial checks:
 
 | Check | Result | Elapsed / maximum sampled aggregate RSS |
 | --- | --- | --- |
-| Strict prepared-source producer closure | 21 tests PASS | 22.03s / 96576KiB |
-| Graphics qualifier guards | 13 tests PASS | 0.48s / 31024KiB |
-| Sanitized graphics bridge | 8 tests PASS | 9.03s / 336992KiB |
-| Real Mesa token parser, old capacity guards and five language source controls | PASS | 13.66s / 117216KiB |
+| Strict prepared-source producer closure | 21 tests PASS | 22.18s / 92784KiB |
+| Graphics qualifier guards | 13 tests PASS | 0.37s / 36064KiB |
+| Sanitized graphics bridge | 8 tests PASS | 10.27s / 329072KiB |
+| Original full8 TCS/TES v3 | 478/362 words PASS | 3.41s / 212896KiB |
+| Original full9 TCS/TES v3 | 478/362 words PASS | 3.41s / 209200KiB |
+| Original matrix TCS/TES v3 | 277/203 words PASS | 3.39s / 207168KiB |
+| Three original FS8/9 artifacts | 308/317/58 words PASS | 3.02s / 198208KiB |
+| Three original VS ABI1 artifacts | 308/308/61 words PASS | 3.40s / 26416KiB |
 
-The mainline recursive producer-macro closure remains intact. Reproduce the
-first three with their `scripts/test_*` entry points named above
-(`test_prepare_owner_executor.py`, `test_qualify_native_sample_graphics_owner.py`,
-`test_gallium_sample_graphics_bridge.py`), and the last with actual
-`OPENGPU_MESA_DIR` and
-`OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_tessellation_uniform_emit.py --language-negative-controls`.
-These checks neither emit RTL nor execute a shader.
+Every group had a 180-second/512MiB aggregate guard. Program checks used actual
+production validators, opaque RX owners and MMU, with Clang16 ASan/UBSan. VS
+profiles retained attributes1, varying slots16/2/16, capacity128 and exact
+scratch38400/9728/38400; uniform permission was required for the two full VS
+programs. Nonzero entry, short scratch, permission rejection, failed copy and
+retirement checks remained active. The new vertex entry also ran the original
+no-argument program fixture unchanged. This is twelve original program byte
+consumers, not shader execution or a complete GUR/joint owner graph.
 
-The tracked offline vertex consumer was replayed as `7992710d1`, preserving
-main's callback-capture and primitive-program regression bodies. On that exact
-source, 3117 tracked non-document inputs and HEAD stayed unchanged through
-strict producer closure (21 tests, 21.51s / 97280KiB), the unchanged original
-sanitized program runner (3.13s / 219232KiB), and the new sanitized no-argument
-consumer (3.24s / 24400KiB). Each group had a 180-second/512MiB aggregate guard;
-RSS values are sampled peaks. This integration check used the original fixture
-and no external Mesa packet; the three original VS packet results above remain
-separate Linux checks. Temporary outputs were removed after process-group exit
-and consumer checks.
+Reproduce producer/qualifier/bridge checks with
+`test_prepare_owner_executor.py`, `test_qualify_native_sample_graphics_owner.py`
+and `test_gallium_sample_graphics_bridge.py`. Original program consumers are
+`test_tessellation_program_snapshot.py` (explicit v3, owned language-info and
+captured patch layouts from the table), `test_native_program_snapshot.py
+--owned-primitive-inputs --primitive-artifacts`, and the vertex command below.
+Temporary consumer outputs were removed after process-group and consumer
+checks. The original matrix inputs remain only while the separate actual-CU
+qualification consumer needs them.
 
 ## Limits
 
@@ -242,13 +247,10 @@ A full 512-word literal additionally covers the entry-zero capacity boundary.
 Ten malformed file/metadata arguments fail before compilation. The runner
 honors `TMPDIR` for read-only source mounts; the earlier read-only temporary-directory
 failure occurred before byte consumption and is excluded from successful results.
-The original Python runner also passed unchanged on the host. Linux regeneration used 43
-fresh GPU translation units with no reuse, checked original legacy bytes and
-261 actual MMD dependencies; all 8101 external inputs and consumed source/code
-were checked before and after. Ended containers, build products and packets
-were removed after consumer checks. These are offline CPU protection checks,
-not shader interpretation, joint BUILD, permissions for submission or GPU
-execution.
+The original Python runner also passed unchanged on the host. The final
+regeneration and consumed-source limits are recorded above. These are offline
+CPU protection checks, not shader interpretation, joint BUILD, permission for
+submission or GPU execution.
 
 The address microsequence can be reproduced independently (no Mesa rebuild):
 

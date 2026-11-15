@@ -49,10 +49,13 @@
   检查通过（748.35s，768MiB aggregate 守卫，152 pytest/21 strict producer，
   六项环境 skip）；三组真实 Mesa CPU 检查和独立 P16 程序字节消费通过。
 - 下一批是 P17 同一原链接 VS/TCS/TES/FS 编译和原52引用 source lease，
-  原提交 `9ed94be7b`，交付分支 `codex/p17-joint-delivery`；尚未开放 PR。
+  原逻辑提交 `9ed94be7b`、`9fde939af`、`53103920c`，交付分支
+  `codex/p17-joint-delivery`；本地实现和相关验证已通过，待提交单个 PR。
   [范围、实际 CPU 结果与限制](NATIVE_JOINT_COMPILER_SOURCE.md)：三组原 Mesa
   程序、45 TU 全新编译、旧字节兼容与两项源码负控通过；正式 main 独立
-  validator/RX/MMU 消费12个原程序通过。当前仍为CPU编译/资源/保护检查，
+  validator/RX/MMU 消费12个原程序通过；mapped 地址宽度乘法已修正，
+  16-lane/eight-warp 实际 Decoder/IntegerAlu 正例和恢复旧错误的精确负控通过。
+  CPU编译/资源/保护与地址运算 RTL 范围分开，
   原52资源GUR图、joint BUILD和真实CU执行未验收；完整五阶段65引用也待实现。
   同时最多开放一个 alignment PR，合入后才开放下一份。
 - P07 的九条 recipe、六组原 ESSL 已覆盖 increment/read/decrement/动态索引的
@@ -101,12 +104,12 @@ GPU 的正式交付入口是受保护的 [`main`](https://github.com/OpenGPGPU/O
 | 仓库 / 分支 | 用途与交付方式 |
 |---|---|
 | GPU `main` | 已通过受保护 CI 并合入的正式源码；最近基线为 #826；P15/P16/P39部分源码已合入，完整目标验收仍待完成 |
-| GPU `codex/p17-joint-delivery` | 基于 #826 的下一份源码交付准备；同一原链接四阶段编译、两独立边界 map 与52引用 lease；原开发提交9ed94be7b；本地验收后走严格 ci-ok/rebase auto-merge |
+| GPU `codex/p17-joint-delivery` | 基于 #826 的下一份源码交付准备；同一原链接四阶段编译、两独立边界 map 与52引用 lease；三个原逻辑提交9ed94be7b/9fde939af/53103920c；本地验收通过，走严格 ci-ok/rebase auto-merge |
 | GPU `codex/native-sample-dut-bridge` | 保留 P02/P03 的原开发源码，按本清单分批交付；不另外开放并行 PR |
 | GPU `codex/owner-counter-live` | P07 的隔离实现分支；CPU 操作语料已扩展，实际 DUT/共存验收待完成 |
 | GPU `codex/p15-tess-checked-uniform` | P15 原 checked-uniform/版本化 ABI 源码；交付分支保留三项实现逻辑提交，不带旧政策/CI 父链 |
 | GPU `codex/p16-protected-tess` | P16 私有原 GEM/RX/validator 与 protected submit 实现；完整提交/执行仍未闭合 |
-| GPU `codex/p17-tess-mesa` | P17 原 Mesa frontend/emitter/私有资源回调、动态 TES 与语言 input-patch ID、ordinary FS8/9 编译源码；当前已提交至9ed94be7b，包含原四阶段 linked frontend、独立边界 map 和52引用 source lease；CPU 通过不等于原 CU 执行 |
+| GPU `codex/p17-tess-mesa` | P17 原 Mesa frontend/emitter/私有资源回调、动态 TES 与语言 input-patch ID、ordinary FS8/9 编译源码；当前已提交至53103920c，包含原四阶段 linked frontend、独立边界 map、52引用 source lease、独立 VS 字节消费者与 mapped stride 修复；CPU 通过不等于原 CU 执行 |
 | GPU `codex/p39-vertex-patch-source` | P39 原 draw slice、范围 sequencer、GVS1 reader 与 VS→patch ACK/seal 源码；限定组件 RTL 已通过，联合生产接线/CU/native 三域待验收，不启用正式入口 |
 | GPU `codex/p40-dynamic-tes-patch` | P40 动态 TES typed read/CU/provider、独立语言输入与 memory adapter/fabric；单 CU 语言 ISA、9bc86886a 原 ordinal binding 及三域完整容量父级 CIRCT 已按各自范围通过；后者 externalImages 不含实际 CU/render，三域原程序联合执行待验收 |
 | GPU `codex/alignment-host-integration` | 旧96模型的冻结输入；供现有验证消费者使用，不是新的完整目标版本 |
