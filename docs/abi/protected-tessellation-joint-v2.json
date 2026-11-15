@@ -1,0 +1,324 @@
+{
+  "version": 2,
+  "words": 128,
+  "bytes": 512,
+  "records": [
+    {
+      "domain": "isoline",
+      "magic": "0x474e5104",
+      "sequenceMagic": "0x474e5407",
+      "sequenceVersion": 7
+    },
+    {
+      "domain": "triangle",
+      "magic": "0x474e5105",
+      "sequenceMagic": "0x474e5408",
+      "sequenceVersion": 8
+    },
+    {
+      "domain": "quad",
+      "magic": "0x474e5106",
+      "sequenceMagic": "0x474e5409",
+      "sequenceVersion": 9
+    }
+  ],
+  "header": [
+    512,
+    2,
+    16,
+    16,
+    16,
+    4,
+    4
+  ],
+  "fields": [
+    {
+      "name": "sequence.base",
+      "word": 16,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "sequence.count",
+      "word": 17,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "sequence.limit",
+      "word": 18,
+      "bits": 33,
+      "signed": false
+    },
+    {
+      "name": "sequence.stride",
+      "word": 20,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "frame.base",
+      "word": 21,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "frame.limit",
+      "word": 22,
+      "bits": 33,
+      "signed": false
+    },
+    {
+      "name": "identity.context",
+      "word": 24,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "identity.generation",
+      "word": 25,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "identity.pass",
+      "word": 26,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "directory.version",
+      "word": 27,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "directory.base",
+      "word": 28,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "directory.limit",
+      "word": 29,
+      "bits": 33,
+      "signed": false
+    },
+    {
+      "name": "directory.count",
+      "word": 31,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "directory.bytes",
+      "word": 32,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "directory.entryBytes",
+      "word": 33,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "directory.drawCount",
+      "word": 34,
+      "bits": 32,
+      "signed": false
+    },
+    {
+      "name": "directory.invocationCount",
+      "word": 35,
+      "bits": 32,
+      "signed": false
+    }
+  ],
+  "directory": {
+    "magic": "0x47564d02",
+    "version": 2,
+    "headerBytes": 64,
+    "entryBytes": 64,
+    "headerFields": [
+      {
+        "name": "magic",
+        "word": 0,
+        "bits": 32,
+        "signed": false
+      },
+      {
+        "name": "bytes",
+        "word": 1,
+        "bits": 32,
+        "signed": false
+      },
+      {
+        "name": "version",
+        "word": 2,
+        "bits": 32,
+        "signed": false
+      },
+      {
+        "name": "entryBytes",
+        "word": 3,
+        "bits": 32,
+        "signed": false
+      },
+      {
+        "name": "drawCount",
+        "word": 4,
+        "bits": 32,
+        "signed": false
+      },
+      {
+        "name": "invocationCount",
+        "word": 5,
+        "bits": 32,
+        "signed": false
+      },
+      {
+        "name": "rangeCount",
+        "word": 6,
+        "bits": 32,
+        "signed": false
+      },
+      {
+        "name": "identity.context",
+        "word": 7,
+        "bits": 32,
+        "signed": false
+      },
+      {
+        "name": "identity.pass",
+        "word": 8,
+        "bits": 32,
+        "signed": false
+      },
+      {
+        "name": "identity.generation",
+        "word": 9,
+        "bits": 32,
+        "signed": false
+      },
+      {
+        "name": "attributes",
+        "word": 10,
+        "bits": 32,
+        "signed": false
+      },
+      {
+        "name": "bindings",
+        "word": 11,
+        "bits": 32,
+        "signed": false
+      },
+      {
+        "name": "varyings",
+        "word": 12,
+        "bits": 32,
+        "signed": false
+      },
+      {
+        "name": "warps",
+        "word": 13,
+        "bits": 32,
+        "signed": false
+      },
+      {
+        "name": "computeUnits",
+        "word": 14,
+        "bits": 32,
+        "signed": false
+      }
+    ],
+    "entryFields": [
+      {
+        "name": "sequenceIndex",
+        "word": 0,
+        "bits": 32,
+        "signed": false
+      },
+      {
+        "name": "drawIndex",
+        "word": 1,
+        "bits": 32,
+        "signed": false
+      },
+      {
+        "name": "invocationId",
+        "word": 2,
+        "bits": 64,
+        "signed": false
+      },
+      {
+        "name": "flags",
+        "word": 4,
+        "bits": 3,
+        "signed": false
+      },
+      {
+        "name": "rangeOrdinal",
+        "word": 5,
+        "bits": 32,
+        "signed": false
+      },
+      {
+        "name": "firstInstance",
+        "word": 6,
+        "bits": 32,
+        "signed": false
+      },
+      {
+        "name": "instanceCount",
+        "word": 7,
+        "bits": 32,
+        "signed": false
+      },
+      {
+        "name": "firstInputPatch",
+        "word": 8,
+        "bits": 32,
+        "signed": false
+      },
+      {
+        "name": "patchesPerInstance",
+        "word": 9,
+        "bits": 32,
+        "signed": false
+      },
+      {
+        "name": "taskIdBase",
+        "word": 10,
+        "bits": 32,
+        "signed": false
+      },
+      {
+        "name": "patchCount",
+        "word": 11,
+        "bits": 32,
+        "signed": false
+      },
+      {
+        "name": "source.base",
+        "word": 12,
+        "bits": 32,
+        "signed": false
+      },
+      {
+        "name": "source.limit",
+        "word": 13,
+        "bits": 33,
+        "signed": false
+      }
+    ]
+  },
+  "sourceAddressesZero": [
+    "sequence.base",
+    "sequence.limit",
+    "frame.base",
+    "frame.limit",
+    "directory.base",
+    "directory.limit"
+  ]
+}

@@ -34,6 +34,20 @@ struct opengpu_tessellation_vertex_outer_source_v2 {
     struct opengpu_tessellation_vertex_source_profile profile;
 };
 
+/* Internal BUILD result. Caller releases roots with the function below. Values
+ * are owner segment IDs, never parsed/guessed virtual addresses. */
+struct opengpu_tessellation_vertex_outer_roots {
+    u32 map_segment, root_count;
+    u32 *root_segments; /* sequence-index order */
+};
+/* Pure complete-catalog/invocation/range preflight, no callbacks/owner writes. */
+int opengpu_tessellation_vertex_outer_precheck(const struct opengpu_tessellation_vertex_outer_source_v2 *source);
+void opengpu_tessellation_vertex_outer_roots_release(struct opengpu_tessellation_vertex_outer_roots *result);
+int opengpu_tessellation_vertex_outer_append_roots(struct opengpu_private_snapshot *owner,
+    const struct opengpu_tessellation_vertex_outer_source_v2 *source,
+    const struct opengpu_native_job_copy *copy,
+    struct opengpu_tessellation_vertex_outer_roots *result);
+
 /* Internal GVM2 only; no GNQ reader, ioctl, factory or address getter accepts
  * this map. Header16 words: magic/bytes/version/entryBytes/draws/invocations/
  * ranges/context/pass/generation/attributes/bindings/varyings/warps/CUs/zero.

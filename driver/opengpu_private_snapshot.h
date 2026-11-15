@@ -60,6 +60,10 @@ int opengpu_private_snapshot_read32(const struct opengpu_private_snapshot *owner
  * checked relocations. The submitted packet cannot run before this succeeds.
  * Append/relocation registration is then permanently closed. */
 int opengpu_private_snapshot_prepare(struct opengpu_private_snapshot *owner);
+/* New GNQ4..6 only: exact prepared root/owner scope, bound private envelopes,
+ * actual live leaves and all segment/resource VAs outside fixed LDS. Status
+ * only, before publish. Any failure closes publication; retire whole owner. */
+int opengpu_private_snapshot_check_prepared_joint(struct opengpu_private_snapshot *owner,u32 segment);
 int opengpu_private_snapshot_address(const struct opengpu_private_snapshot *owner,
     u32 segment, u32 *address);
 

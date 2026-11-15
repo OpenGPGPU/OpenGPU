@@ -44,4 +44,12 @@ int opengpu_native_frame_snapshot_append_layered_complete(struct opengpu_private
     const struct opengpu_native_frame_resource *resources,u32 resource_count,
     u32 engines,u32 context,u32 pass,u32 generation,
     opengpu_native_frame_resolve resolve,void *resolve_context,u32 *frame_segment);
+/* Independent no-invocation/no-shader joint frame BUILD. There is no state
+ * segment and all GNF state address words stay zero. All original frame roles,
+ * bounds, permissions and physical aliases retain the ordinary checks. This
+ * does not qualify a hardware clear route; old entry points still need states. */
+int opengpu_native_frame_snapshot_append_empty_complete(struct opengpu_private_snapshot *owner,
+    const void *frame,const struct opengpu_native_frame_resource *resources,u32 resource_count,
+    u32 engines,u32 context,u32 pass,u32 generation,
+    opengpu_native_frame_resolve resolve,void *resolve_context,u32 *frame_segment);
 #endif
