@@ -35,7 +35,11 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
     payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false,externalImages:Boolean=false,
     fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false,tessellationUniforms:Boolean=false,evaluationPatchAvailable:Boolean=false,
-    ownedVertexSource:Boolean=false,primitiveIdInput:Boolean=false,tessellationInfoAvailable:Boolean=false) extends Module {
+    ownedVertexSource:Boolean=false,primitiveIdInput:Boolean=false,tessellationInfoAvailable:Boolean=false,allowEmptyStates:Boolean=false) extends Module {
+  // The previous complete constructor retains nonempty-state admission.
+  def this(config:GpuConfig,p:VertexShaderStageConfig,f:FragmentShaderConfig,shared:SharedCuShaderConfig,g:GraphicsConfig,viewport:Fp32ViewportConfig,engines:Int,pageBytes:Int,writeCredits:Int,tileSlots:Int,pagedCapacity:Int,storage:TypedTileColorConfig,useSramBlackBoxes:Boolean,payload:Option[ShaderPayloadConfig],payloadOwner:Int,transformFeedback:Boolean,externalImages:Boolean,fragmentImageAvailable:Boolean,sampleShading:Boolean,tessellationUniforms:Boolean,evaluationPatchAvailable:Boolean,ownedVertexSource:Boolean,primitiveIdInput:Boolean,tessellationInfoAvailable:Boolean) =
+    this(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading,tessellationUniforms,evaluationPatchAvailable,ownedVertexSource,primitiveIdInput,tessellationInfoAvailable,false)
+
   // Preserve the previous full JVM constructor with the language service disabled.
   def this(config:GpuConfig,p:VertexShaderStageConfig,f:FragmentShaderConfig,shared:SharedCuShaderConfig,g:GraphicsConfig,viewport:Fp32ViewportConfig,engines:Int,pageBytes:Int,writeCredits:Int,tileSlots:Int,pagedCapacity:Int,storage:TypedTileColorConfig,useSramBlackBoxes:Boolean,payload:Option[ShaderPayloadConfig],payloadOwner:Int,transformFeedback:Boolean,externalImages:Boolean,fragmentImageAvailable:Boolean,sampleShading:Boolean,tessellationUniforms:Boolean,evaluationPatchAvailable:Boolean,ownedVertexSource:Boolean,primitiveIdInput:Boolean) =
     this(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading,tessellationUniforms,evaluationPatchAvailable,ownedVertexSource,primitiveIdInput,false)
@@ -93,7 +97,7 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
   val recordBytes=source.recordBytes
   private val images:Seq[TypedReplayTileImagePipelineIO]=if(externalImages)io.images.get.toSeq else
     Seq.tabulate(engines)(e=>Module(new TypedReplayTileImagePipeline(config,p,f,shared,g,storage,
-      engine=e,useSramBlackBoxes=useSramBlackBoxes,payload=payload,payloadOwner=payloadOwner+e,fragmentImageAvailable=fragmentImageAvailable,sampleShading=sampleShading,primitiveIdInput=primitiveIdInput)).io)
+      engine=e,useSramBlackBoxes=useSramBlackBoxes,payload=payload,payloadOwner=payloadOwner+e,fragmentImageAvailable=fragmentImageAvailable,sampleShading=sampleShading,primitiveIdInput=primitiveIdInput,allowEmptyStates=allowEmptyStates)).io)
   for(phase<-0 until 6)io.fragmentEvents.phaseWorkers(phase):=
     images.map(_.fragmentEvents.phaseWorkers(phase)).reduce(_+&_)
   io.fragmentEvents.stagingOutstanding:=images.map(_.fragmentEvents.stagingOutstanding).reduce(_+&_)
@@ -356,6 +360,7 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
       val cols=(b.producer.screenWidth.pad(17)+tileSize-1.U)>>b.producer.tileLog2
       val rows=(b.producer.screenHeight.pad(17)+tileSize-1.U)>>b.producer.tileLog2
       val count=(a.limit-a.base)>>9
+      val emptyStates=allowEmptyStates.B && a.base===0.U && a.limit===0.U
       val fixed=Seq((b.producer.arena.base,b.producer.arena.limit),(b.bins.pool.base,b.bins.pool.limit)) ++
         (if(pagedCapacity>0)Seq((b.bins.directoryBase,b.bins.directoryLimit))else Seq.empty)
       val enabled=TypedTileImageRules.enabled(d.image.pixels);val loadOps=TypedTileImageRules.loads(d.image.pixels)
@@ -364,7 +369,7 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
         d.image.resolves.map(r=>(Mux(r.enable,r.destination.allocationBase,0.U),Mux(r.enable,r.destination.allocationLimit,0.U)))
       val stateClear= !(fixed++views).map{case(x,y)=>overlap(a.base,a.limit,x,y)}.reduce(_ || _)
       val scratchClear=d.scratch.zipWithIndex.map{case(s,e)=>if(e<engines)
-        legalSpan(s.base,s.limit) && s.base.pad(64)+count.pad(64)*d.scratchStride.pad(64)<=s.limit &&
+        legalSpan(s.base,s.limit) && (!emptyStates || s.limit>s.base) && s.base.pad(64)+count.pad(64)*d.scratchStride.pad(64)<=s.limit &&
           !(fixed++views++Seq((a.base,a.limit))).map{case(x,y)=>overlap(s.base,s.limit,x,y)}.reduce(_ || _)
         else !s.asUInt.orR}.reduce(_ && _)
       val separate=(for(x<-0 until engines;y<-x+1 until engines)yield !overlap(d.scratch(x).base,d.scratch(x).limit,d.scratch(y).base,d.scratch(y).limit)).foldLeft(true.B)(_ && _)
@@ -375,7 +380,7 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
         b.producer.screenWidth>0.U && b.producer.screenHeight>0.U && b.producer.screenWidth<=g.screenWidth.U && b.producer.screenHeight<=g.screenHeight.U &&
         (b.producer.tileLog2===3.U || b.producer.tileLog2===4.U) && c.tileLog2===b.producer.tileLog2 && c.originX===0.S && c.originY===0.S &&
         cols*rows===b.bins.tileCount && cols*rows<=(if(pagedCapacity>0)pagedCapacity else tileSlots).U &&
-        a.version===1.U && legalSpan(a.base,a.limit) && a.limit>a.base && ((a.limit-a.base)&511.U)===0.U &&
+        a.version===1.U && legalSpan(a.base,a.limit) && (a.limit>a.base || emptyStates) && ((a.limit-a.base)&511.U)===0.U &&
         a.identity.asUInt===c.identity.asUInt && a.identity.asUInt===b.producer.arena.identity.asUInt && a.identity.asUInt===b.bins.pool.identity.asUInt &&
         d.scratchStride>=64.U && d.scratchStride(5,0)===0.U && stateClear && scratchClear && separate && viewsClear
       columns:=cols
