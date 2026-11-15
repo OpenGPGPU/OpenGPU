@@ -24,12 +24,15 @@ class TessellationVertexPatchSequenceCompletion extends Bundle {
   * cancellation. Neither a retirement acknowledgement nor a transiently idle
   * publisher permits reuse while the parent's complete patch remains busy.
   */
-class TessellationVertexPatchSequence(p:VertexShaderStageConfig) extends Module {
+class TessellationVertexPatchSequence(p:VertexShaderStageConfig,nextAdmissionAvailable:Boolean=false) extends Module {
+  def this(p:VertexShaderStageConfig)=this(p,false)
   val io=IO(new Bundle {
     val begin=Flipped(Decoupled(new TessellationVertexPatchSequenceDescriptor(p)))
     val task=Decoupled(new TessellationVertexPatchTask(p))
     val retired=Flipped(Decoupled(new TessellationVertexPatchRetirement))
     val childBusy=Input(Bool());val cancelChild=Output(Bool())
+    /** A checked next-cursor failure, never an error attributed to this child. */
+    val nextAdmissionFault=if(nextAdmissionAvailable)Some(Input(Bool()))else None
     val cancel=Input(Bool());val busy=Output(Bool())
     val completion=Decoupled(new TessellationVertexPatchSequenceCompletion)
   })
@@ -90,14 +93,18 @@ class TessellationVertexPatchSequence(p:VertexShaderStageConfig) extends Module 
       .otherwise{
         result.completed:=result.completed+1.U
         when(patch+&1.U===d.patchCount){completeAfterDrain()}.otherwise{
-          patch:=patch+1.U;task.taskId:=task.taskId+1.U
-          when(instancePatch+&1.U===d.patchesPerInstance){
-            instancePatch:=0.U;task.slice.firstOrdinal:=firstOrdinal
-            task.slice.firstInstance:=task.slice.firstInstance+1.U
+          when(io.nextAdmissionFault.getOrElse(false.B)){
+            result.status:=1.U;result.failedPatch:=patch+1.U;completeAfterDrain()
           }.otherwise{
-            instancePatch:=instancePatch+1.U;task.slice.firstOrdinal:=task.slice.firstOrdinal+l.inputVertices
+            patch:=patch+1.U;task.taskId:=task.taskId+1.U
+            when(instancePatch+&1.U===d.patchesPerInstance){
+              instancePatch:=0.U;task.slice.firstOrdinal:=firstOrdinal
+              task.slice.firstInstance:=task.slice.firstInstance+1.U
+            }.otherwise{
+              instancePatch:=instancePatch+1.U;task.slice.firstOrdinal:=task.slice.firstOrdinal+l.inputVertices
+            }
+            state:=State.offer
           }
-          state:=State.offer
         }
       }
   }

@@ -157,4 +157,22 @@ class TessellationVertexPatchSequenceSpec extends AnyFlatSpec {
       }
     }
   }
+  it should "check opt-in continuation admission only after a healthy nonfinal child drains" in {
+    simulate(new TessellationVertexPatchSequence(p,nextAdmissionAvailable=true)){d=>
+      val x=new Driver(d)
+      d.io.nextAdmissionFault.get.poke(true.B)
+      x.descriptor(pp=2,instances=1,patches=2);x.begin();x.offered(55,5,3);x.accept();x.retire(55)
+      d.clock.step(3);d.io.completion.valid.expect(false.B)
+      d.io.childBusy.poke(false.B);d.clock.step();x.complete(1,1,1)
+      // A last task never constructs or admits a hypothetical next task.
+      x.descriptor(pp=1,instances=1,patches=1);x.begin();x.offered(55,5,3);x.accept();x.retire(55)
+      d.io.childBusy.poke(false.B);d.clock.step();x.complete(0,1)
+      x.descriptor(pp=2,instances=1,patches=2);x.begin();x.offered(55,5,3);x.accept()
+      d.io.cancel.poke(true.B);x.retire(55,2);d.io.childBusy.poke(false.B);d.clock.step();d.io.cancel.poke(false.B)
+      x.complete(2,0)
+      x.descriptor(pp=2,instances=1,patches=2);x.begin();x.offered(55,5,3);x.accept()
+      d.io.cancel.poke(true.B);x.retire(55);d.io.childBusy.poke(false.B);d.clock.step();d.io.cancel.poke(false.B)
+      x.complete(4,0)
+    }
+  }
 }

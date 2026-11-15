@@ -1161,6 +1161,22 @@ class ChangedTestSuitesTest(unittest.TestCase):
             with self.subTest(source=source):
                 self.assertIn("opengpu.graphics.TessellationVertexCaptureControllerSpec", changed_suites(root, [source]))
 
+    def test_original_vertex_typed_ranges_select_capture_binding_and_instance_cursor_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        sources = ["system/TessellationVertexTypedRangeControl", "system/TessellationVertexPatchSequence",
+                   "system/TessellationVertexCaptureController", "system/TessellationVertexDrawReader",
+                   "system/TessellationVertexSourceReader", "system/TessellationVertexPatchSource",
+                   "system/TessellationVertexInputImageControl", "system/TessellationVertexSequenceLayout",
+                   "graphics/VertexInputSlice", "graphics/ShaderUniformResources",
+                   "graphics/tessellation/TessellationPatchStore"]
+        sources += [f"system/TessellationSystem{domain}Vertex{kind}"
+                    for domain in ("Isoline", "Triangle", "Quad") for kind in ("TypedRange", "InputImage")]
+        sources += [f"system/Tessellation{domain}PatchSequence" for domain in ("", "Triangle", "Quad")]
+        for source in sources:
+            with self.subTest(source=source):
+                self.assertIn("opengpu.graphics.TessellationVertexTypedRangeSpec", changed_suites(root,
+                              [f"src/main/scala/opengpu/{source}.scala"]))
+
     def test_early_render_qualification_stays_local_while_shader_owner_checks_remain_required(self):
         root = Path(__file__).resolve().parents[1]
         local = "opengpu.graphics.EarlyDepthRenderQualificationSpec"

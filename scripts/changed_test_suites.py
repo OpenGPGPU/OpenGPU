@@ -636,6 +636,22 @@ def changed_suites(root, changed, *, test_index=None):
                   "docs/abi/native-binned-graphics-v1.json",
                   "docs/abi/tessellation-vertex-source-v1.json"}:
         affected.add("src/test/scala/opengpu/graphics/TessellationVertexCaptureControllerSpec.scala")
+    if changed & {"src/main/scala/opengpu/system/TessellationVertexTypedRangeControl.scala",
+                  "src/main/scala/opengpu/system/TessellationVertexPatchSequence.scala",
+                  "src/main/scala/opengpu/system/TessellationVertexCaptureController.scala",
+                  "src/main/scala/opengpu/system/TessellationVertexDrawReader.scala",
+                  "src/main/scala/opengpu/system/TessellationVertexSourceReader.scala",
+                  "src/main/scala/opengpu/system/TessellationVertexPatchSource.scala",
+                  "src/main/scala/opengpu/system/TessellationVertexInputImageControl.scala",
+                  "src/main/scala/opengpu/system/TessellationVertexSequenceLayout.scala",
+                  "src/main/scala/opengpu/graphics/VertexInputSlice.scala",
+                  "src/main/scala/opengpu/graphics/ShaderUniformResources.scala",
+                  "src/main/scala/opengpu/graphics/tessellation/TessellationPatchStore.scala"} or any(
+            f"src/main/scala/opengpu/system/Tessellation{stem}.scala" in changed
+            for domain in ("Isoline", "Triangle", "Quad")
+            for stem in (f"System{domain}VertexTypedRange", f"System{domain}VertexInputImage",
+                         f"{'' if domain == 'Isoline' else domain}PatchSequence")):
+        affected.add("src/test/scala/opengpu/graphics/TessellationVertexTypedRangeSpec.scala")
     if "src/main/scala/opengpu/graphics/TypedFragmentState.scala" in changed:
         affected.add("src/test/scala/opengpu/graphics/TypedFragmentStateReaderSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/TypedFragmentImageStateReaderSpec.scala")
