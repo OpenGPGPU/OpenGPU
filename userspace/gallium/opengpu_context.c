@@ -23,6 +23,7 @@
  * A GTK position that is only CONST[0][4] times the matrix is still
  * vertex_mvp: the draw stages that vec4 in place of an attribute. */
 #include "opengpu_internal.h"
+#include "opengpu_native_graphics_internal.h"
 #include "opengpu_fs_emit.h"
 #include "opengpu_vs_emit.h"
 #include "opengpu_cs_emit.h"
@@ -4669,6 +4670,30 @@ int opengpu_native_graphics_uniform_sources(struct pipe_context *pipe,
 int opengpu_native_sample_uniform_sources(struct pipe_context *pipe,
     const unsigned required[2][13],struct drm_opengpu_native_uniform_stage stages[2])
 { return graphics_uniform_sources(pipe,required,stages,1);
+}
+
+void opengpu_native_sample_uniform_lease_release(struct opengpu_native_uniform_lease *lease)
+{
+    if(!lease)return;
+    for(unsigned stage=0;stage<2;stage++)for(unsigned slot=0;slot<13;slot++)
+        pipe_resource_reference(&lease->resources[stage][slot],NULL);
+    memset(lease,0,sizeof(*lease));
+}
+int opengpu_native_sample_uniform_lease_capture(struct pipe_context *pipe,
+    const unsigned required[2][13],struct opengpu_native_uniform_lease *out)
+{
+    struct opengpu_native_uniform_lease lease={0};
+    if(!pipe || !required || !out){errno=EINVAL;return -1;}
+    struct opengpu_context *ctx=octx(pipe);
+    if(!ctx->native_sample_cache){errno=ENOTSUP;return -1;}
+    for(unsigned stage=0;stage<2;stage++)for(unsigned slot=0;slot<13;slot++)if(required[stage][slot]){
+        const struct pipe_constant_buffer *cb=&ctx->native_constants[stage][slot];
+        pipe_resource_reference(&lease.resources[stage][slot],cb->buffer);
+    }
+    if(graphics_uniform_sources(pipe,required,lease.stages,1)){
+        int saved=errno;opengpu_native_sample_uniform_lease_release(&lease);errno=saved;return -1;
+    }
+    *out=lease;return 0;
 }
 
 static void set_constant_buffer(struct pipe_context *pipe,

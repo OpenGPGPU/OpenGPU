@@ -228,7 +228,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
                          "userspace/gallium/opengpu_native_fragment_v2.c",
                          "userspace/gallium/opengpu_native_graphics.c",
                          "userspace/gallium/opengpu_native_draw.c",
-                         "userspace/opengpu_native_runtime.c", "driver/opengpu_native_frame.c") + (("userspace/gallium/opengpu_native_sample_program.c", "userspace/opengpu_native_sample_graphics.c") if sample_graphics else ()):
+                         "userspace/opengpu_native_runtime.c", "driver/opengpu_native_frame.c") + (("userspace/gallium/opengpu_native_sample_program.c", "userspace/opengpu_native_sample_graphics.c",
+                          "userspace/gallium/opengpu_native_graphics_v2.c", "userspace/gallium/opengpu_native_draw_v2.c") if sample_graphics else ()):
             source = ROOT / relative
             obj = out / (source.stem + ".o")
             run(cc + common + inc + san + ["-MMD", "-MF", obj.with_suffix(".d"), "-c", source, "-o", obj],
