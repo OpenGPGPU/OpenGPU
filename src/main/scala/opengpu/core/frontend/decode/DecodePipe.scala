@@ -7,16 +7,21 @@ import opengpu.config.GpuConfig
 /** One-stage decoupled decode pipe with backpressure. */
 class DecodePipe(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean = true,
   textureAvailable: Boolean = true, taskTextureAvailability: Boolean = false,
-  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false, evaluationPatchAvailable: Boolean = false) extends Module {
-  val io = IO(new DecodePipeIO(config, taskTextureAvailability, imageAvailable, storageAvailable, computeUniformAvailable, geometryAvailable, computeTextureAvailable, atomicCounterAvailable, tessellationAvailable,evaluationPatchAvailable))
+  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false, evaluationPatchAvailable: Boolean = false, tessellationInfoAvailable: Boolean = false) extends Module {
+  // Preserve the previous full JVM constructor for frozen default-off callers.
+  def this(config: GpuConfig, scalarFpuAvailable: Boolean, textureAvailable: Boolean, taskTextureAvailability: Boolean, nativeResourcesAvailable: Boolean, nativeUniformsAvailable: Boolean, imageAvailable: Boolean, storageAvailable: Boolean, computeUniformAvailable: Boolean, geometryAvailable: Boolean, computeTextureAvailable: Boolean, atomicCounterAvailable: Boolean, tessellationAvailable: Boolean, imageAtomicAvailable: Boolean, storageAtomicAvailable: Boolean, evaluationPatchAvailable: Boolean) =
+    this(config, scalarFpuAvailable, textureAvailable, taskTextureAvailability, nativeResourcesAvailable, nativeUniformsAvailable, imageAvailable, storageAvailable, computeUniformAvailable, geometryAvailable, computeTextureAvailable, atomicCounterAvailable, tessellationAvailable, imageAtomicAvailable, storageAtomicAvailable, evaluationPatchAvailable, false)
 
-  val decoder = Module(new FullInstructionDecoder(config, scalarFpuAvailable, textureAvailable, taskTextureAvailability,nativeResourcesAvailable,nativeUniformsAvailable,imageAvailable,storageAvailable,computeUniformAvailable,geometryAvailable,computeTextureAvailable,atomicCounterAvailable,tessellationAvailable,imageAtomicAvailable,storageAtomicAvailable,evaluationPatchAvailable))
+  val io = IO(new DecodePipeIO(config, taskTextureAvailability, imageAvailable, storageAvailable, computeUniformAvailable, geometryAvailable, computeTextureAvailable, atomicCounterAvailable, tessellationAvailable,evaluationPatchAvailable,tessellationInfoAvailable))
+
+  val decoder = Module(new FullInstructionDecoder(config, scalarFpuAvailable, textureAvailable, taskTextureAvailability,nativeResourcesAvailable,nativeUniformsAvailable,imageAvailable,storageAvailable,computeUniformAvailable,geometryAvailable,computeTextureAvailable,atomicCounterAvailable,tessellationAvailable,imageAtomicAvailable,storageAtomicAvailable,evaluationPatchAvailable,tessellationInfoAvailable))
   if(imageAvailable) { decoder.io.imageEnabled.get := io.imageEnabled.get }
   if(storageAvailable) { decoder.io.storageEnabled.get := io.storageEnabled.get }
   if(computeUniformAvailable) { decoder.io.computeUniformEnabled.get := io.computeUniformEnabled.get }
   if(geometryAvailable) { decoder.io.geometryEnabled.get := io.geometryEnabled.get }
   if(tessellationAvailable) { decoder.io.tessellationEnabled.get := io.tessellationEnabled.get }
   if(evaluationPatchAvailable) { decoder.io.evaluationPatchEnabled.get := io.evaluationPatchEnabled.get }
+  if(tessellationInfoAvailable) { decoder.io.tessellationInfoEnabled.get := io.tessellationInfoEnabled.get }
   if(computeTextureAvailable) { decoder.io.computeTextureEnabled.get := io.computeTextureEnabled.get }
   if(atomicCounterAvailable) { decoder.io.atomicCounterEnabled.get := io.atomicCounterEnabled.get }
   if(taskTextureAvailability) { decoder.io.textureEnabled.get := io.textureEnabled.get }
