@@ -68,7 +68,7 @@ no shader was interpreted or executed and no work was submitted.
 | --- | --- | --- | ---: | --- |
 | 48 blocks, sparse VS15 → FS0 | 308 / 478 / 362 / 308 | 2/8 → 2/8; 0 | 8 | 8; 1/1 |
 | 48 blocks + SampleID, VS1 → FS15 | 308 / 478 / 362 / 317 | 2/8 → 2/8; 0 | 8 | 9; 16/1 |
-| Sparse matrix/vec3 patch-array reads | 61 / 277 / 197 / 58 | 2/8 → 2/10; 6 | 8 | 8; 16/1 |
+| Sparse matrix/vec3 patch-array reads | 61 / 277 / 203 / 58 | 2/8 → 2/10; 6 | 8 | 8; 16/1 |
 
 Both full-resource cases exercised all 48 original 16KiB windows, API binding71,
 four copied 1024-component defaults, and all 52 retained references. Assertions
@@ -78,8 +78,9 @@ foreign context/stage rejection, transferred-reference consumption, short-view
 failure and each of four code-allocation failures plus map failure. Returned
 metadata copies could not retag a program. Invalid source maps/packet bounds
 failed before a code-GEM callback. The matrix case checked independent literal
-component counts, the real vec3 descriptor stride, and rejection of an actual
-TES token operand changed to padding.w. Numerical metadata tests retained
+component counts, the emitted shift/add address sequence, and rejection of an
+actual TES token operand changed to padding.w. Actual arithmetic is covered
+separately below; a constant or instruction-pattern count is not execution. Numerical metadata tests retained
 64-component/120-per-patch packing and rejected oversized output atomically.
 
 Old linked VS/FS remained exactly 308/301 words before and after the new cases,
@@ -91,7 +92,7 @@ case remained a separate rejection, not a renamed passing static-store test.
 
 Two independent production-source mutants failed precise real assertions:
 omitting backing retention killed a still-leased copied-default GEM; forcing
-a vec3 array stride to the vec4 value lost the required 24 descriptor-unit step.
+the vec3 final shift from3 to4 removed the required emitted sequence.
 Neither control used a shader VM, timeout or a reduced hardware capacity.
 
 The final frozen-source run compiled 45 fresh translation units: 35 for the
@@ -99,29 +100,45 @@ joint build, eight for independent old compatibility and two for source-copy
 negative controls. It reused no private objects. All 263 actual MMD dependencies
 and 8101 external Mesa/DRM/SDK/library identities were bound, with original GPU,
 ESSL, Python, schema, generated sources, binary and emitted packets before use
-and afterwards. Sixty child groups totalled 36.69 seconds; the longest was 4.621
+and afterwards. Sixty child groups totalled 36.75 seconds; the longest was 4.678
 seconds and every group had a 180-second bound. Maximum waited-child RSS was
-263340 KiB (not an aggregate-process memory measurement). Docker confirmed exit 0,
+263400 KiB (not an aggregate-process memory measurement). Docker confirmed exit 0,
 OOMKilled=false, memory=memory-swap 512MiB, one CPU and no network. Original Mesa
 libraries were reused. All ended build objects, caches, logs and private
 baseline copies were deleted; only explicitly handed-off original program
 packets remained while the independent protection consumer needed them.
 
-An independent consumer used unchanged formal main `842b291c3`, rather than
-this working tree, for all 12 original program packets. Clang16 ASan/UBSan
-accepted the exact three TCS/TES v3 pairs through production validator/private
-RX/MMU with their distinct nested layouts (3.41/3.33/3.31 seconds). The three
-FS8/9 packets passed the independent primitive/sample/uniform protection path
-in 3.09 seconds. Actual VS ABI1 programs 308/308/61 also passed nonzero-entry
-RX/MMU capture using their real layouts (attributes 1, varyings 16/2/16,
-capacity 128; scratch 38400/9728/38400 bytes). Missing uniform permission, short
-scratch and incorrect entry were rejected. VS compilation took 2.59 seconds
-(194896 KiB maximum sampled aggregate RSS), execution 0.59 seconds. All original packets and
-formal source/scaffold inputs were checked before and after. These are CPU
-byte/protection results, not a complete 52-resource GUR graph, joint BUILD,
-shader execution or CU result. All independent consumers released their
-packets; process/open-file and cross-worktree symlink checks preceded removal
-of the remaining raw output directory. No generated process data is committed.
+The remapped matrix TES is now203 words; a fresh independent whole-program
+validator/RX/MMU consumption of this corrected packet is still required. The
+arithmetic qualification below is not a substitute for that protection check,
+complete 52-resource GUR ownership, joint BUILD or actual shader execution.
+
+### Mapped address arithmetic
+
+Review found that the original mapped path used funct6`0x25` with IVX, which
+is `vsll.vx`, not multiplication. Checking a literal24 did not prove a vec3
+stride. The corrected production helper compares the original full32-bit index
+before arithmetic, uses shifts3/4/5 for widths1/2/4, and `(index<<1)+index`, then
+`<<3`, for width3. The original register and cached vertex remain intact.
+Out-of-span values select the high-bit sentinel before the owned patch service
+can truncate or reinterpret the address. The old unmapped emission is unchanged.
+
+The test-only exporter calls that same helper, used by actual `dynamic_input`,
+and emits original instruction words for four widths. A fresh six-source
+Chisel-plugin build passed in6.86 seconds (358560 KiB maximum sampled aggregate
+RSS). Actual `VectorDecoder` and full16-lane/eight-warp `VectorIntegerAlu` RTL
+passed all four widths in13.20 seconds (408256 KiB), including index1,2,last,
+nonzero base/flags, limit, `0xffffffff` and high-bit indices. Original ADDR,
+cached vertex and pending data registers were unchanged. An independent old
+shift implementation failed the exact index1 assertion:299 instead of51,
+in13.44 seconds (419056 KiB). Neither case timed out. Each run used128MiB heap,
+128MiB metaspace,32MiB code cache, one CPU, a180-second process-group bound and
+512MiB sampled aggregate memory guard. The fixture supplies register/scalar
+peers for this arithmetic microsequence; it is not a shader/CU/patch-RAM test.
+
+The Scala fixture is outside default sbt test sources. It requires explicitly
+exported words and is not claimed as automatic CI coverage. Existing callbacks,
+compiler cases and old-byte comparisons still run through their existing lanes.
 
 
 ## Mainline delivery integration
@@ -232,6 +249,27 @@ were checked before and after. Ended containers, build products and packets
 were removed after consumer checks. These are offline CPU protection checks,
 not shader interpretation, joint BUILD, permissions for submission or GPU
 execution.
+
+The address microsequence can be reproduced independently (no Mesa rebuild):
+
+```sh
+python3 -B scripts/test_tessellation_mapped_address.py --dump "$OUT/address-words"
+# Explicit local-only test source; this command is not Scala regression dispatch.
+sbt -Dopengpu.mappedAddressPrograms="$OUT/address-words" \
+  'set Test / unmanagedSources += file("userspace/tests/scala/TessellationMappedAddressSpec.scala")' \
+  'testOnly opengpu.graphics.tessellation.TessellationMappedAddressSpec'
+```
+
+The recorded run used direct Scala2.13.18 compiler/Chisel7.15 plugin invocation
+rather than sbt: freshly compile `DecodeTypes.scala`, `VectorDecoder.scala`,
+`VectorIntegerTypes.scala`, `VectorIntegerAlu.scala`, the current `GpuSim.scala`
+and the explicit fixture, with new classes first in an unchanged dependency
+classpath. Run `org.scalatest.tools.Runner -oD -s
+opengpu.graphics.tessellation.TessellationMappedAddressSpec` with the property
+above and `opengpu.simJobs=1`, `simLowMem=1`, `simLowMemOpt=0`,
+`simSeparateBuild=1`, `simCache=off` (each prefixed `opengpu.`). Export to another
+empty directory with `--wrong-shift-control` to require the precise old-bug
+failure. Never enable or dispatch the disabled Scala regression workflow.
 
 Every compile/link/test process has a 180-second bound and process-group exit
 proof. Source/ESSL/schema/generated inputs, original Mesa/DRM/SDK/link objects and

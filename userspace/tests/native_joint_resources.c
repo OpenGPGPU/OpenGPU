@@ -125,8 +125,15 @@ void native_joint_test(struct opengpu_native_joint_link *link,const char *output
     opengpu_native_joint_constants_destroy(foreign);
     if(!full){
         assert(d.tess[0].layout.input_components==8&&d.tess[0].layout.output_components==10&&d.tess[0].layout.patch_components==6);
-        unsigned stride24=0;for(unsigned i=0;i<d.tess[1].words;i++)stride24+=d.tess[1].code[i]==0x01800513u;
-        assert(stride24>=6); /* two-column/two-element real vec3 stride = 3*8 */
+        unsigned vec3Stride=0;
+        for(unsigned i=2;i<d.tess[1].words;i++){
+            uint32_t first=d.tess[1].code[i-2],add=d.tess[1].code[i-1],last=d.tess[1].code[i];
+            unsigned address=(first>>20)&31;
+            vec3Stride+=first==(0x25u<<26|1u<<25|address<<20|1u<<15|3u<<12|29u<<7|0x57u)&&
+                add==(1u<<25|29u<<20|address<<15|29u<<7|0x57u)&&
+                last==(0x25u<<26|1u<<25|29u<<20|3u<<15|3u<<12|29u<<7|0x57u);
+        }
+        assert(vec3Stride>=6); /* Actual opcode chain; arithmetic also has RTL coverage. */
     }
     assert(d.vertex_layout.varyings==vs_slot+1&&d.fragment.metadata.varying_slots==fs_slot+1);
     assert(d.vertex_components[4].kind==1&&d.vertex_components[4].component==4*vs_slot);

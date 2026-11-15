@@ -225,8 +225,8 @@ def main():
         mutant('mutant-no-backing-retain','userspace/gallium/opengpu_native_joint_constants.c','v->refs++;','(void)v;',
             [*[sources/('full8.'+s) for s in ('vert','tesc','tese','frag')],out/'mutant-refs',1,15,0],
             'bos[saved.uniforms[s].defaults.handle].handle')
-        mutant('mutant-wrong-array-stride','userspace/gallium/opengpu_native_tess_uniform_emit.c','scalar(b,10,width*8);','scalar(b,10,32);',
-            [*[sources/('matrix.'+s) for s in ('vert','tesc','tese','frag')],out/'mutant-stride',0,15,15],'stride24>=6')
+        mutant('mutant-wrong-array-stride','userspace/gallium/opengpu_native_tess_uniform_emit.c','word(b,vec(0x25,3,29,3,29));','word(b,vec(0x25,3,29,4,29));',
+            [*[sources/('matrix.'+s) for s in ('vert','tesc','tese','frag')],out/'mutant-stride',0,15,15],'vec3Stride>=6')
     unchanged();assert snapshot(mesa,mb,libraries,drm,gpu)==external
     actual_dependencies=set()
     for dep in out.glob('*.d'):
