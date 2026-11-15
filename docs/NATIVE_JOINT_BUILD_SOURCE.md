@@ -118,6 +118,33 @@ the old gates; the frame test also compares direct typed GNF1 bytes with the
 old canonical encoder and rejects invalid limits atomically. No Scala/JVM,
 DUT, ISA execution or public route was used for this block.
 
+The final source also passed an ARM64 Linux 7.2.0 module Kbuild using GCC
+15.2.0 and GNU Make 4.4.1, `-j1`. All 29 core objects, `gpu_drv.mod.o`,
+`.module-common.o`, MODPOST and `gpu_drv.ko` completed without warnings or
+errors in 17.507 seconds, with maximum sampled aggregate RSS of 357360 KiB
+under the 180-second/512-MiB process-group guard. The ELF64 AArch64 relocatable
+module has vermagic `7.2.0 SMP preempt mod_unload aarch64` and the actual
+`opengpu_protected_tessellation_joint_build`,
+`opengpu_protected_tessellation_joint_prepare` and
+`opengpu_private_snapshot_check_prepared_joint` symbols. Before/after guards
+covered 157 original driver inputs and their read-only copies, 12690 kernel
+inputs including ARM64 headers, and 50 tool inputs. All 840 actual `.cmd`
+dependencies belonged to those inputs or the private generated output.
+
+The module was never loaded. Its Makefile does not link the pure
+`opengpu_native_frame.c` planner, so this Kbuild result covers module
+integration, while the separate 53-TU Linux run above compiled and exercised
+the planner. Neither result establishes kernel runtime or shader execution.
+
+The complete host lane also passed on the same source: Python 3.14.7 and
+Apple Clang 16, sanitizers enabled, 152 pytest tests and 757 unittest executions
+across 89 summaries (not unique test counts). It finished in 745.29 seconds
+with maximum sampled group RSS of 532800 KiB under the 1500-second/768-MiB
+guard. All 3149 tracked non-document and tool inputs, index and HEAD remained
+stable. Six environment skips remain: four unavailable Mesa environments,
+the unavailable Clang OpenGPU target, and the optional FlashSim check. The
+separate actual Linux Mesa run above covers this block's explicit Mesa path.
+
 ## Reproduction
 
 Use the pinned original Mesa/SDK inputs and immutable Linux tool image. Do not
@@ -151,3 +178,23 @@ leader does not replace descendant cleanup. The runner binds source/generated
 inputs, actual MMD, objects/binaries/ESSL and all external Mesa/DRM/link inputs
 before and after their use. Do not count diagnostic `--reuse-objects` as fresh
 compilation. Release all consumers before removing completed private outputs.
+
+For the module check, copy the current driver top-level `.c`, `.h` and
+`Makefile` inputs into a private read-only source directory, with distinct
+output and temporary directories. Against the prepared ARM64 Linux 7.2.0
+kernel tree and cross-tools used above, run:
+
+```sh
+TMPDIR="$PRIVATE_TMP" /opt/homebrew/bin/gmake \
+  -C /Users/duckdonald/workspace/arti-work/arti-linux-build \
+  M="$PRIVATE_SRC" MO="$PRIVATE_OUT" ARCH=arm64 \
+  CROSS_COMPILE=/opt/homebrew/bin/aarch64-linux-gnu- \
+  KCONFIG_NOSILENTUPDATE=1 -j1 V=1 modules
+```
+
+Run this command in an owned process group with a 180-second deadline and
+512-MiB sampled aggregate RSS bound. Bind original/copy driver inputs,
+kernel source/build configuration, ARM64 headers, scripts and tools before
+and after; verify actual `.cmd` dependencies against that closure. Inspect
+the module with the cross-tool `readelf` and `nm`; do not load it. Confirm
+the group has exited before deleting the private directories.
