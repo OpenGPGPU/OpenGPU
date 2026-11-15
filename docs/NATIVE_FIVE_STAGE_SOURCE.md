@@ -259,3 +259,34 @@ python3 -B scripts/test_native_five.py --sanitize --negative-controls \
 # Raw FS words:          $OUT/five/pixel-mask-enabled.fs.words
 # OGNSF003 artifact:     $OUT/five/pixel-mask-enabled.ognsf
 ```
+
+## Original GS handoff for explicit local ISA qualification
+
+The test-only `--geometry-handoff` switch exports the live five-stage source
+lease's original GS code, GNG layout, TES-to-GS maps and thirteen retained
+constant views, after caller resources/programs have been rebound or destroyed.
+Each view retains its actual handle, decimal-string 64-bit offset and extent.
+The runner immediately validates exact metadata/EOF/file names and binds every
+new output before the next invocation. These files grant no shader permission.
+
+Using the documented immutable Mesa 22.3.6 environment, run:
+
+```sh
+python3 -B scripts/test_native_five.py --build "$PRIVATE_BUILD" --geometry-handoff
+```
+
+The bounded Linux CPU run passed in 18.929 seconds: 34 fresh translation units,
+34 MMD files and 253 distinct dependencies; 1,060 compiler/source inputs and
+the external Mesa/SDK/library snapshot remained unchanged. Both original
+`full5` and relinked `pointcoord` produced the same 289 GS instruction words,
+with their distinct original line-strip/point metadata retained. Original
+`full5` emits one line-strip vertex and therefore has zero complete primitives;
+the point source supplies the positive downstream test case.
+
+A separate default-off run passed in 9.388 seconds with one fresh resource TU
+and 33 exactly matched reused TUs. All 35 original instruction files were
+byte-identical, and it generated no handoff files. The actual GS289 bytes also
+passed the independent geometry validator/private-RX/MMU/retirement fixture
+with explicit offline uniform permission. None of these CPU checks executes a
+shader or qualifies the complete five-stage owner chain. Ended containers,
+objects and logs were removed; only explicitly active consumer inputs remain.

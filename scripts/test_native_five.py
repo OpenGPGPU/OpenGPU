@@ -26,8 +26,58 @@ GPU_UNITS=tuple(p for p in FOUR_GPU_UNITS if p not in (
  'userspace/gallium/opengpu_native_geometry_emit.c','userspace/gallium/opengpu_native_fragment_v3.c',
  'userspace/gallium/opengpu_native_five_program.c','userspace/gallium/opengpu_native_five_constants.c',
  'userspace/tests/native_five_resources.c','userspace/tests/native_five_frontend.cpp')
+
+def check_geometry_handoff(prefix):
+    """Strict test artifact reader; exported compiler data grants no permission."""
+    def require(condition,message):
+        if not condition:raise ValueError(message)
+    def pairs(items):
+        result={}
+        for key,value in items:
+            require(key not in result,'duplicate handoff key');result[key]=value
+        return result
+    def uint(value):return type(value) is int and 0<=value<=0xffffffff
+    prefix=Path(prefix);name=prefix.name;parent=prefix.parent.resolve(strict=True)
+    require(re.fullmatch(r'[a-z0-9-]+',name) is not None,'unsafe recipe stem')
+    files={}
+    def read(path):
+        require(path.is_file() and not path.is_symlink() and path.parent.resolve()==parent,'unsafe handoff path')
+        data=path.read_bytes();files[str(path.resolve())]=sha256(path);return data
+    data=read(prefix.with_suffix('.geometry.json'))
+    j=json.loads(data,object_pairs_hook=pairs,parse_constant=lambda _:(_ for _ in ()).throw(ValueError('nonfinite JSON')))
+    require(set(j)=={'schema','codeWords','tesOutputComponents','geometry','inputSources','outputSources',
+                    'evaluationComponents','constantBytes','activeMask','uniforms'},'handoff key set')
+    require(j['schema']=='opengpu-test-only-mesa-geometry-v1','handoff schema')
+    def array(key,n):
+        v=j[key];require(type(v) is list and len(v)==n and all(map(uint,v)),key);return v
+    g=array('geometry',11);ins=array('inputSources',64);sizes=array('constantBytes',13)
+    require(g[0]==1 and g[1]==1 and g[2]==2 and 1<=g[3]<=32 and g[4]<=2 and 1<=g[5]<=256,'GS header')
+    require(g[6]<=64 and g[7]<=64 and g[8]<=3 and g[5]*(g[7]+bin(g[8]).count('1'))<=1024 and g[9]<=16 and g[10]<=16,'GS capacity')
+    require(uint(j['tesOutputComponents']) and 1<=j['tesOutputComponents']<=64 and j['activeMask']==4095,'TES/UBO dimensions')
+    for key,n in (('outputSources',68),('evaluationComponents',64)):
+        require(type(j[key]) is list and len(j[key])==n,key)
+        require(all(type(v) is list and len(v)==2 and all(map(uint,v)) and v[0]<=1 for v in j[key]),key)
+    for i,(valid,component) in enumerate(j['evaluationComponents']):
+        require((valid==1 and component<j['tesOutputComponents'] and ins[i]<68) if i<g[6]
+                else (valid==0 and component==0 and ins[i]==0),'noncanonical evaluation map')
+    for i,(valid,source) in enumerate(j['outputSources']):
+        require((i<4+4*g[10] and source<g[7]) if valid else source==0,'noncanonical output map')
+    code=read(prefix.with_suffix('.gs.words'))
+    require(uint(j['codeWords']) and 1<=j['codeWords']<=512 and len(code)==4*j['codeWords'],'original code length/EOF')
+    require(type(j['uniforms']) is list and len(j['uniforms'])==13,'GS13 view count')
+    for i,v in enumerate(j['uniforms']):
+        require(type(v) is dict and set(v)=={'handle','offset','bytes','file'},'view keys')
+        require(uint(v['handle']) and v['handle'] and type(v['offset']) is str and re.fullmatch(r'0|[1-9][0-9]*',v['offset']) and int(v['offset'])<=0xffffffffffffffff,'original view identity')
+        require(uint(v['bytes']) and v['bytes']==(4096 if i==0 else 16384) and sizes[i]<=v['bytes'],'original view bounds')
+        require(v['file']==f'{name}.gs-uniform-{i}.bin','view path escape')
+        require(len(read(parent/v['file']))==v['bytes'],'view EOF/extent')
+    require(len({v['handle'] for v in j['uniforms'][1:]})==1,'same-GEM identity lost')
+    require(len({v['offset'] for v in j['uniforms'][1:]})==12,'same-GEM distinct views lost')
+    return j,files
+
 def main():
     ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('--build',type=Path,required=True)
+    ap.add_argument('--geometry-handoff',action='store_true',help='export original GS layout/maps and 13 retained byte views for explicit offline ISA qualification; no provider permission')
 
     ap.add_argument('--reuse-objects',action='store_true',help='reuse only private objects with exact argv/object/MMD-input SHA receipts from an earlier active build');ap.add_argument('--sanitize',action='store_true');ap.add_argument('--negative-controls',action='store_true');a=ap.parse_args()
     out=a.build.resolve();out.mkdir(parents=True,exist_ok=a.reuse_objects)
@@ -68,6 +118,8 @@ def main():
             log=(out/(label+'.log')).read_text()
             assert code and re.search(r'assertion.*failed',log,re.I|re.S) and re.search(failure,log),(label,code,log[-6000:])
         elif code!=expected:raise RuntimeError(f'{label}: exit {code}, expected {expected}\n'+(out/(label+'.log')).read_text()[-6000:])
+        if a.geometry_handoff and not code and Path(argv[0]).name=='native-five' and int(argv[-1])!=2:
+            _,exported=check_geometry_handoff(Path(argv[6]));private.update(exported)
         if not code and '-o' in argv:
             target=Path(argv[argv.index('-o')+1]);private[str(target)]=sha256(target)
             if '-MF' in argv:
@@ -115,6 +167,7 @@ def main():
     for unit in GPU_UNITS:
         obj=out/(Path(unit).stem+'.o');cpp=unit.endswith('.cpp')
         extra=['-D'+n+'=cs_fixture_'+n for n in ('ioctl','mmap','munmap','dup','close')] if unit in primitive_units else []
+        if a.geometry_handoff and unit=='userspace/tests/native_five_resources.c':extra+=['-DOPENGPU_TEST_GEOMETRY_HANDOFF=1']
         run((cxx if cpp else cc)+(flags(MESA_UNITS[0])+['-UNDEBUG','-Wall','-Wextra','-Werror','-Wno-unused-parameter'] if cpp else common)+extra+inc+san+
             ['-MMD','-MF',obj.with_suffix('.d'),'-c',ROOT/unit,'-o',obj],obj.stem);objects.append(obj)
     binary=out/'native-five'

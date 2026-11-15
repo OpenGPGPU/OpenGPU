@@ -10,6 +10,9 @@
 #include "opengpu_native_joint_internal.h"
 #include "native_graphics_v2_profile.inc"
 #include "tgsi/tgsi_dump.h"
+#ifdef OPENGPU_TEST_GEOMETRY_HANDOFF
+#include "native_geometry_mesa_handoff.inc"
+#endif
 static const unsigned five_stages[5]={0,4,5,3,1};
 static void write_words(const char *prefix,const char *stage,const uint32_t *code,unsigned words){
     char path[4096];assert(snprintf(path,sizeof(path),"%s.%s.words",prefix,stage)>0);
@@ -170,6 +173,9 @@ void native_five_test(struct opengpu_native_five_link *link,const char *output,u
     assert(opengpu_native_fragment_read_v2(path,&rejected)&&!memcmp(&rejected,&untouched,sizeof(rejected)));
     write_words(output,"vs",d.vertex.code,d.vertex.words);write_words(output,"tcs",d.tess[0].code,d.tess[0].words);
     write_words(output,"tes",d.tess[1].code,d.tess[1].words);write_words(output,"gs",d.geometry.code,d.geometry.words);write_words(output,"fs",d.fragment.code,d.fragment.words);
+#ifdef OPENGPU_TEST_GEOMETRY_HANDOFF
+    geometry_mesa_handoff(output,&d);
+#endif
     printf("NATIVE_FIVE_CPU words=%u/%u/%u/%u/%u refs65 code5 ABI%u GPU=false submit=false\n",d.vertex.words,d.tess[0].words,d.tess[1].words,d.geometry.words,d.fragment.words,d.fragment.metadata.abi_version);
     opengpu_native_five_source_destroy(lease);assert(!bos[handle].handle);
     for(unsigned s=0;s<5;s++)assert(!bos[d.code[s].handle].handle&&!bos[d.uniforms[s].defaults.handle].handle);
