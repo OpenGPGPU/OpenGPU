@@ -113,6 +113,25 @@ ordinary native geometry-shader admission, or the VGA/60-FPS product gate.
 
 ## Combined mainline source validation
 
+The native VS/FS program snapshot now captures its complete source view and
+verified layout/permission profile before the copy callback. This matches the
+tessellation helper's immutable-input boundary: callback changes to the
+original entry offset or owned-uniform permission cannot change admission.
+Actual validator/private-owner/MMU fixtures pass with a nonzero entry, one
+copy and exact RX/no-W bytes for each mutation separately and together. Two
+independent source-copy negative controls, removing view or profile capture,
+fail at the intended admission assertions. Clang 16 and pinned Linux GCC 13.3
+ASan/UBSan runs passed in 8.00 and 9.62 seconds; all 730 driver/script inputs
+matched before/after. Each run had a 180-second/512-MiB process-group limit;
+the GCC container additionally used one CPU, equal memory+swap limits, no
+network and read-only inputs. These are CPU checks, with no Mesa invocation
+or GPU-execution claim. Reproduce with:
+
+```sh
+CC=clang ASAN_OPTIONS=detect_leaks=0 python3 -B scripts/test_native_program_snapshot.py \
+  --sanitize --negative-controls
+```
+
 The combined source retains the shared-atomic/SIMT proof bounds and kernel
 range-transfer helper together with the explicit geometry/layered/sample
 discovery cache and ABI6/7 owner gates. The driver entry keeps managed temporary

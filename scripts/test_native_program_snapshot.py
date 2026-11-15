@@ -2,6 +2,7 @@
 """Exercise actual native code admission/owner/MMU; optional real Mesa inputs."""
 import argparse
 import os
+import re
 from pathlib import Path
 import shlex
 import subprocess
@@ -17,6 +18,7 @@ def main():
     parser.add_argument('--programs', type=Path,
                         help='active actual graphics fixture directory with four original code-GEM inputs')
     parser.add_argument('--sanitize', action='store_true')
+    parser.add_argument('--negative-controls', action='store_true')
     args = parser.parse_args()
     dependency = args.snapshot_root.resolve(strict=True)
     for name in ('driver/opengpu_private_snapshot.h', 'driver/tests/opengpu_private_snapshot_test.c'):
@@ -48,6 +50,26 @@ def main():
                        check=True, env=environment)
         subprocess.run([str(out / 'test')] + ([str(programs)] if args.programs else []),
                        check=True, env=environment)
+        if args.negative_controls:
+            production = (dependency / 'driver/opengpu_native_program_snapshot.c').read_text()
+            fixture = (ROOT / 'driver/tests/opengpu_native_program_snapshot_test.c').read_text()
+            literal = '#include "../opengpu_native_program_snapshot.c"'
+            assert fixture.count(literal) == 1
+            for kind in ('view', 'profile'):
+                before = f'captured_{kind}=*{kind};{kind}=&captured_{kind};'
+                assert production.count(before) == 1
+                mutant = out / (kind + '-uncaptured.c')
+                mutant.write_text(production.replace(before, f'(void)captured_{kind};'))
+                source = out / (kind + '-test.c')
+                source.write_text(fixture.replace(literal, '#include "' + str(mutant) + '"'))
+                binary = out / (kind + '-test')
+                subprocess.run(shlex.split(os.environ.get('CC', 'cc')) + flags +
+                               ['-I' + str(path) for path in includes] +
+                               [str(source), '-o', str(binary)], check=True, env=environment)
+                result = subprocess.run([str(binary)], capture_output=True, text=True, env=environment)
+                if result.returncode == 0 or not re.search(r'assertion.*failed', result.stderr, re.I | re.S):
+                    raise SystemExit('negative control did not fail its semantic assertion: ' + kind)
+                print('native snapshot semantic negative control rejected: uncaptured-' + kind)
     if args.programs:
         print('Actual Mesa original code-GEM inputs -> actual private RX owner/MMU: PASS (CPU only)')
 

@@ -9,12 +9,17 @@ static unsigned char original_code[4096];
 static unsigned code_copies;
 static int code_copy_error;
 static bool producer_complete;
+static struct drm_opengpu_native_program_view *change_original_view;
+static struct opengpu_native_program_profile *change_original_profile;
 static int copy_original_code(void *opaque,const struct drm_opengpu_compute_uniform_view *view,void *destination)
 {
     assert(opaque==original_code && producer_complete && view->handle==71);
     assert(view->offset<=sizeof(original_code) && view->bytes<=sizeof(original_code)-view->offset);
     ++code_copies;if(code_copy_error)return code_copy_error;
-    memcpy(destination,original_code+view->offset,view->bytes);return 0;
+    memcpy(destination,original_code+view->offset,view->bytes);
+    if(change_original_view){change_original_view->entry_offset=0;change_original_view=NULL;}
+    if(change_original_profile){change_original_profile->owned_uniforms=false;change_original_profile=NULL;}
+    return 0;
 }
 static void literal_word(unsigned offset,u32 word)
 {
@@ -50,6 +55,33 @@ static void accepted(struct opengpu_device *gpu,struct opengpu_render_context *c
     assert((leaf&0xfu)==(MMU_PTE_V|MMU_PTE_R|MMU_PTE_X));
     assert(!opengpu_private_snapshot_publish(owner));
     assert(!opengpu_private_snapshot_retire(owner));
+}
+static void callback_capture(struct opengpu_device *gpu,struct opengpu_render_context *context,
+    struct opengpu_native_program_profile profile)
+{
+    /* Valid fn7 requires the captured owned-uniform permission. The opaque
+     * prefix is deliberately invalid if a callback changes the entry view. */
+    literal_word(64,0xffffffffu);literal_word(68,7u<<25|5u<<7|0x0bu);
+    literal_word(72,OPENGPU_SHADER_CEASE);
+    unsigned char expected[12];memcpy(expected,original_code+64,sizeof(expected));
+    for(unsigned mutation=0;mutation<3;mutation++){
+        struct drm_opengpu_native_program_view view={.handle=71,.offset=64,.bytes=12,.entry_offset=4};
+        struct opengpu_native_program_profile policy=profile;
+        struct opengpu_private_snapshot *owner=opengpu_private_snapshot_create(gpu,context);assert(!IS_ERR(owner));
+        struct opengpu_native_program_snapshot result={0};
+        unsigned before=code_copies;
+        change_original_view=mutation!=1?&view:NULL;
+        change_original_profile=mutation!=0?&policy:NULL;
+        assert(!opengpu_native_program_snapshot_append(owner,&view,&policy,copy_original_code,original_code,&result));
+        assert(code_copies==before+1 && result.entry_offset==4);
+        assert(!memcmp(owner->segments->staging,expected,sizeof(expected)));
+        assert(!opengpu_private_snapshot_prepare(owner) && !opengpu_private_snapshot_publish(owner));
+        assert(!memcmp(owner->segments->backing.cpu,expected,sizeof(expected)));
+        u32 address=owner->segments->va;
+        const struct opengpu_buffer *l1=vm_live_l1(&context->vm,address/MMU_SUPERPAGE_SIZE);assert(l1);
+        assert((((u32 *)l1->cpu)[(address%MMU_SUPERPAGE_SIZE)/MMU_PAGE_SIZE]&15)==(MMU_PTE_V|MMU_PTE_R|MMU_PTE_X));
+        assert(!opengpu_private_snapshot_retire(owner));
+    }
 }
 int main(int argc,char **argv)
 {
@@ -159,6 +191,7 @@ int main(int argc,char **argv)
         }
         accepted(&gpu,&context,view,profile);
     }
+    callback_capture(&gpu,&context,profile);
     opengpu_mmu_vm_destroy(&gpu,&context.vm);opengpu_mmu_fini(&gpu);
     assert(context.references==1&&!live_allocations&&!fixture_buffers);
     puts("native program: actual validator/opaque RX owner/MMU, exact entry suffix, readonly inputs/tails, failure atomicity and reuse PASS (CPU only)");
