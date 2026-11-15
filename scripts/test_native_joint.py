@@ -207,6 +207,17 @@ def main(*, build_only=False):
     clear_packets(out/'matrix')
     run([binary,*[sources/('matrix.'+s) for s in ('vert','tesc','tese','frag')],out/'matrix',0,15,15],'actual-matrix')
     for path in packet_paths(out/'matrix'):private[str(path)]=sha256(path)
+    # Real original ESSL VS floating payload variation. Other linked sources
+    # stay exact; no word patching or metadata relabeling is allowed.
+    generated(sources/'matrix-payload.vert',(sources/'matrix.vert').read_text().replace(
+        'payload=position;', 'payload=position+vec4(0.125,0.25,0.5,0.0);'))
+    clear_packets(out/'matrix-payload')
+    run([binary,sources/'matrix-payload.vert',sources/'matrix.tesc',sources/'matrix.tese',sources/'matrix.frag',
+         out/'matrix-payload',0,15,15],'original-VS-floating-payload')
+    for path in packet_paths(out/'matrix-payload'):private[str(path)]=sha256(path)
+    assert (out/'matrix-payload.vs.words').read_bytes()!=(out/'matrix.vs.words').read_bytes()
+    for suffix in ('.tcs.words','.tes.words','.ognsf'):
+        assert (out/('matrix-payload'+suffix)).read_bytes()==(out/('matrix'+suffix)).read_bytes()
     generated(sources/'matrix-levels.tese',(sources/'matrix.tese').read_text().replace('matrices[indices.x][indices.y]+vectors[indices.z]', 'matrices[indices.x][indices.y]+vectors[indices.z]+vec3(gl_TessLevelOuter[0],gl_TessLevelOuter[1],gl_TessLevelInner[0])'))
     clear_packets(out/'matrix-levels')
     run([binary,sources/'matrix.vert',sources/'matrix.tesc',sources/'matrix-levels.tese',sources/'matrix.frag',out/'matrix-levels',3,15,15],'actual-matrix-levels')

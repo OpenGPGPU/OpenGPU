@@ -15,7 +15,7 @@ struct build {
     struct opengpu_native_fragment_metadata_v2 *v2;
     bool geometry_vertex;
     unsigned input_kind[32], output_kind[32], system_decl[32], system_array[32][4], system_kind[32];
-    unsigned depth, sample_mask;
+    unsigned depth, sample_mask, vertex_fp;
     unsigned temp_decl[32], temp[32][4], next;
     unsigned constants[13], first[13], last[13];
     unsigned input[32][4], output[32][4], input_decl[32], output_decl[32], written[32];
@@ -56,15 +56,16 @@ static void load(struct build *b, unsigned to, unsigned array)
 { address(b, array); word(b, 1u << 25 | 6u << 15 | 6u << 12 | to << 7 | 7u); }
 static void store(struct build *b, unsigned from, unsigned array)
 { address(b, array); word(b, 1u << 25 | 6u << 15 | 6u << 12 | from << 7 | 0x27u); }
-static int sources(unsigned op, bool v2, bool geometry_vertex)
+static int sources(unsigned op, bool v2, bool vertex_fp, bool geometry_vertex)
 {
     switch (op) {
     case TGSI_OPCODE_END: return 0;
     case TGSI_OPCODE_MOV: return 1;
-    case TGSI_OPCODE_ADD: return v2 || geometry_vertex ? 2 : -1;
+    case TGSI_OPCODE_ADD: return v2 || vertex_fp || geometry_vertex ? 2 : -1;
     case TGSI_OPCODE_UADD: case TGSI_OPCODE_UMUL: case TGSI_OPCODE_XOR:
     case TGSI_OPCODE_AND: case TGSI_OPCODE_OR: case TGSI_OPCODE_SHL: case TGSI_OPCODE_USHR: return 2;
     default:
+        if(vertex_fp&&op==TGSI_OPCODE_MUL)return 2;
         if(v2){
             if(op==TGSI_OPCODE_UCMP)return 3;
             if(op==TGSI_OPCODE_U2F||op==TGSI_OPCODE_I2F||op==TGSI_OPCODE_F2U||op==TGSI_OPCODE_F2I)return 1;
@@ -106,7 +107,8 @@ static int packets_mode(const struct tgsi_token *t, unsigned stage, bool v2, uns
         } else if (token.Type == TGSI_TOKEN_TYPE_INSTRUCTION) {
             struct tgsi_instruction i;
             memcpy(&i, t + pos, 4);
-            int count = sources(i.Opcode, v2, !stage && next_stage == PIPE_SHADER_GEOMETRY);
+            int count = sources(i.Opcode, v2, !stage && next_stage == PIPE_SHADER_TESS_CTRL,
+                                !stage && next_stage == PIPE_SHADER_GEOMETRY);
             n = i.NrTokens + 1;
             if (count < 0 || i.NumSrcRegs != (unsigned)count || i.NumDstRegs != (i.Opcode != TGSI_OPCODE_END) ||
                 (v2&&i.Precise) || i.Saturate || i.Label || i.Texture || i.Memory || i.Padding || n > end - pos) return -1;
@@ -312,7 +314,7 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
     switch (op) {
     case TGSI_OPCODE_MOV: break;
     case TGSI_OPCODE_ADD:
-        if (!b->v2 && !b->geometry_vertex) return -1;
+        if (!b->v2 && !b->geometry_vertex && !b->vertex_fp) return -1;
         f3 = 1;
         break;
     case TGSI_OPCODE_UADD: break;
@@ -323,7 +325,12 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
     case TGSI_OPCODE_SHL: fn = 0x25; break;
     case TGSI_OPCODE_USHR: fn = 0x28; break;
     default:
-        if(!b->v2)return -1;
+        /* Explicit NEXT_TCS arithmetic is separate from FS metadata. Legacy
+         * VS->FS entry points keep their original integer-only acceptance. */
+        if(!b->v2){
+            if(!b->vertex_fp||(op!=TGSI_OPCODE_ADD&&op!=TGSI_OPCODE_MUL))return -1;
+            f3=1;if(op==TGSI_OPCODE_MUL)fn=0x24;break;
+        }
         switch(op){
         case TGSI_OPCODE_UCMP:break;
         case TGSI_OPCODE_U2F:convert=2;break;case TGSI_OPCODE_I2F:convert=3;break;
@@ -383,6 +390,7 @@ static int emit_mode(const void *tokens, const struct opengpu_native_uniform_lay
         packets_mode(tokens, layout->stage, v2 != NULL, next_stage)) return -1;
     b.layout = *layout; b.next = 2;b.v2=v2;
     b.geometry_vertex = !layout->stage && next_stage == PIPE_SHADER_GEOMETRY;
+    b.vertex_fp = !layout->stage && next_stage == PIPE_SHADER_TESS_CTRL;
     word(&b, 0x01007557u); /* e32 VLMAX; decoder retains the task active mask. */
     word(&b, 0x00241393u); word(&b, 0x007083b3u); /* x7 = kernarg + 4*local base */
     word(&b, 0x00249293u); /* x5 = 4*trusted physical task capacity */

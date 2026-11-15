@@ -30,6 +30,13 @@ static void vertex_original_artifact(struct opengpu_device *gpu,
     struct opengpu_private_snapshot *owner=opengpu_private_snapshot_create(gpu,context);
     assert(!IS_ERR(owner));struct opengpu_native_program_profile wrong=profile;
     wrong.staging_bytes--;reject(owner,view,wrong,-EINVAL);
+    /* Independently inspect original OPFVV opcodes. Pure vector arithmetic
+     * does not require the separate scalar-FP service permission. */
+    bool fpu=false;
+    for(size_t at=0;at<bytes;at+=4){
+        u32 w=(u32)code[at]|(u32)code[at+1]<<8|(u32)code[at+2]<<16|(u32)code[at+3]<<24;
+        fpu|=(w&0x7f)==0x57&&((w>>12)&7)==1;
+    }
     if(uniforms){wrong=profile;wrong.owned_uniforms=false;reject(owner,view,wrong,-EINVAL);}
     struct drm_opengpu_native_program_view bad=view;unsigned before=code_copies;
     bad.entry_offset=2;reject(owner,bad,profile,-EINVAL);
@@ -48,8 +55,29 @@ static void vertex_original_artifact(struct opengpu_device *gpu,
         bad=view;bad.entry_offset=0;reject(owner,bad,profile,-EINVAL);
         assert(!opengpu_private_snapshot_retire(owner));accepted(gpu,context,view,profile);
     }
+    if(fpu){
+        /* accepted() deliberately reuses/clobbers the original GEM. Reload
+         * the same file bytes before the independent second policy capture. */
+        if(view.entry_offset)literal_word(64,0xffffffffu);
+        memcpy(original_code+64+view.entry_offset,code,bytes);
+        wrong=profile;wrong.scalar_fpu=false;accepted(gpu,context,view,wrong);
+    }
     printf("offline VS artifact: words=%u attrs=%u varyings=%u capacity128 ABI1 scratch=%llu ownedUniforms=%u actual RX/MMU PASS; GPU=false\n",
         (unsigned)bytes/4,attributes,varyings,(unsigned long long)profile.staging_bytes,uniforms);
+}
+static void vertex_scalar_fp_permission(struct opengpu_device *gpu,struct opengpu_render_context *context)
+{
+    /* Independent scalar-FP literal; never substituted for producer bytes. */
+    struct drm_opengpu_native_program_view view={.offset=64,.handle=71,.bytes=12};
+    struct opengpu_native_program_profile p={.stage=0,.version=1,.capacity=128,
+        .attributes=1,.varyings=1,.staging_bytes=15u*512u,.scalar_fpu=true};
+    producer_complete=true;
+    literal_word(64,0x0000a007u); /* flw f0,0(x1), actual read-only input */
+    literal_word(68,0x0330000fu);literal_word(72,OPENGPU_SHADER_CEASE);
+    struct opengpu_private_snapshot *owner=opengpu_private_snapshot_create(gpu,context);assert(!IS_ERR(owner));
+    struct opengpu_native_program_profile off=p;off.scalar_fpu=false;
+    reject(owner,view,off,-EINVAL);assert(!opengpu_private_snapshot_retire(owner));
+    accepted(gpu,context,view,p);
 }
 int main(int argc,char **argv)
 {
@@ -59,6 +87,7 @@ int main(int argc,char **argv)
     struct opengpu_device gpu={0};struct opengpu_render_context context={.gpu=&gpu,.references=1,.id=7};
     gpu.hw.capabilities=GPU_CAP_UNIFIED_COMMANDS;
     assert(!opengpu_mmu_init(&gpu));assert(!opengpu_mmu_vm_create(&gpu,&context.vm));copy_gpu=&gpu;
+    vertex_scalar_fp_permission(&gpu,&context);
     for(int at=1;at<argc;at+=5){
         assert(!strcmp(argv[at],"--vertex-artifact"));
         unsigned attributes=vertex_decimal(argv[at+2],16),varyings=vertex_decimal(argv[at+3],16);
