@@ -146,6 +146,9 @@ extern "C" void *opengpu_tess_frontend_compile(const char *const files[5], const
             auto mode=stage==MESA_SHADER_TESS_EVAL?nir_var_shader_in:nir_var_shader_out;
             map.version=1;
             nir_foreach_variable_with_modes(var,nir,mode){
+                /* PrimitiveID is a language system value, never an owned patch
+                 * component or a CPU-selected patch word. */
+                if(var->data.location==VARYING_SLOT_PRIMITIVE_ID)continue;
                 if(map.count==64 || var->data.location_frac){map.version=0;break;}
                 auto *type=var->type;bool per_vertex=nir_is_arrayed_io(var,stage);
                 if(per_vertex)type=glsl_get_array_element(type);

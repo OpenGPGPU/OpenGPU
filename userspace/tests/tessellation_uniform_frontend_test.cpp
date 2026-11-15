@@ -1,6 +1,10 @@
 /* SPDX-License-Identifier: MIT */
 #include "opengpu_tess_frontend.h"
 #include "opengpu_native_tess_uniform_emit.h"
+#ifdef OPENGPU_TESS_BYTE_BASELINE
+extern "C" void tessellation_old_bytes_equal(const void *,unsigned,const opengpu_native_tess_layout *,
+    const opengpu_native_tess_input_map *,const opengpu_native_tess_program *);
+#endif
 #include "tgsi/tgsi_parse.h"
 #include <cstring>
 #include <cassert>
@@ -32,6 +36,9 @@ static void run(const char *directory,const char *prefix,const char *name) { con
         opengpu_native_tess_program binary={};
         auto *tokens=static_cast<const tgsi_token *>(opengpu_tess_frontend_tokens(p,stage));
         assert(!opengpu_native_tess_uniform_emit(tokens,tgsi_num_tokens(tokens),&l,&binary));
+#ifdef OPENGPU_TESS_BYTE_BASELINE
+        tessellation_old_bytes_equal(tokens,tgsi_num_tokens(tokens),&l,nullptr,&binary);
+#endif
         assert(binary.words<=512&&binary.constant_bytes[0]==4096&&binary.constant_bytes[1]==16384);
         if(stage==4)assert(binary.barriers==2);
         else assert(binary.selection_count==8&&binary.output_mask==255);

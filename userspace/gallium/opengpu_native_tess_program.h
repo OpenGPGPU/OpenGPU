@@ -21,6 +21,11 @@ struct opengpu_native_tess_program_sources {
  */
 struct opengpu_native_tess_program_pair *opengpu_native_tess_program_create(struct pipe_context *,
     const void *tokens[2],const unsigned token_words[2],const struct opengpu_native_tess_layout layout[2]);
+/* Explicit version3 original-source compiler path; maps are immutable linked
+ * NIR semantics, not GPU address or verified program-profile authority. */
+struct opengpu_native_tess_program_pair *opengpu_native_tess_language_program_create(struct pipe_context *,
+    const void *tokens[2],const unsigned token_words[2],const struct opengpu_native_tess_layout layout[2],
+    const struct opengpu_native_tess_input_map maps[2]);
 void opengpu_native_tess_program_destroy(struct opengpu_native_tess_program_pair *);
 int opengpu_native_tess_program_sources(struct opengpu_native_tess_program_pair *,
     struct opengpu_native_tess_constants *,struct opengpu_native_tess_program_sources *);

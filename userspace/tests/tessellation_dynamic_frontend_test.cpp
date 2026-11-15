@@ -2,6 +2,10 @@
 /* Actual original Mesa ESSL -> TGSI evidence. CPU compiler only, no shader VM. */
 #include "opengpu_tess_frontend.h"
 #include "opengpu_native_tess_uniform_emit.h"
+#ifdef OPENGPU_TESS_BYTE_BASELINE
+extern "C" void tessellation_old_bytes_equal(const void *,unsigned,const opengpu_native_tess_layout *,
+    const opengpu_native_tess_input_map *,const opengpu_native_tess_program *);
+#endif
 #include "tgsi/tgsi_parse.h"
 #include <cassert>
 #include <cstdio>
@@ -35,6 +39,10 @@ static void run(char *const *argv,const char *name){
  for(unsigned i=0;i<map.count;i++){auto &s=map.spans[i];
   printf("ACTUAL_NIR_INPUT_SPAN first=%u slots=%u vertex=%u semantic=%u index=%u mask=%u\n",s.first,s.slots,s.per_vertex,s.semantic,s.index,s.mask);}
  assert(!opengpu_native_tess_dynamic_emit(te,tgsi_num_tokens(te),&evaluation,&map,&tes));
+#ifdef OPENGPU_TESS_BYTE_BASELINE
+ tessellation_old_bytes_equal(tc,tgsi_num_tokens(tc),&control,&outputs,&tcs);
+ tessellation_old_bytes_equal(te,tgsi_num_tokens(te),&evaluation,&map,&tes);
+#endif
  assert(evaluation.version==2&&tes.selection_count==0);
  for(auto &s:tes.selections){opengpu_native_tess_selection zero={};assert(!memcmp(&s,&zero,sizeof(s)));}
  unsigned reads=0;for(unsigned i=0;i<tes.words;i++)if((tes.code[i]&127)==0x2b&&(tes.code[i]>>26)==33)reads++;
