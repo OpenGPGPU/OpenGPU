@@ -10,7 +10,7 @@
 static void run(const char *directory,const char *out,const char *name) {
     std::string paths[5];const char *files[5];
     const char *suffix[]={"vert","tesc","tese","geom","frag"};
-    for(unsigned i=0;i<5;i++) {paths[i]=std::string(directory)+"/"+(i==3&&std::string(name)!="geometry"?name:"graphics60")+"."+suffix[i];files[i]=paths[i].c_str();}
+    for(unsigned i=0;i<5;i++) {paths[i]=std::string(directory)+"/"+((i==3&&std::string(name)!="geometry")||(i==2&&std::string(name)=="geometry-matrix")?name:"graphics60")+"."+suffix[i];files[i]=paths[i].c_str();}
     std::string prefix=std::string(out)+"/"+name+"/actual";
     void *p=opengpu_tess_frontend_compile(files,prefix.c_str());assert(p);
     unsigned blocks=0;
@@ -33,10 +33,13 @@ static void run(const char *directory,const char *out,const char *name) {
     opengpu_native_geometry_program native={};
     assert(!opengpu_native_geometry_compile(tokens,tgsi_num_tokens(tokens),&input,&output,&native));
     assert(native.layout.input_vertices==2&&native.layout.invocations==(std::string(name)=="geometry-invocation"?32u:1u)&&native.layout.max_vertices==2);
-    assert(native.layout.input_components==8&&native.layout.output_components==8&&native.layout.output_topology==1);
-    assert(native.layout.input_varyings==1&&native.layout.output_varyings==1);
+    assert(native.layout.input_components==(std::string(name)=="geometry-matrix"?10u:8u)&&native.layout.output_components==8&&native.layout.output_topology==1);
+    assert(native.layout.input_varyings==(std::string(name)=="geometry-matrix"?15u:1u)&&native.layout.output_varyings==1);
     assert(native.layout.builtin_output_mask==(std::string(name)=="geometry-invocation"?3u:0u));
-    for(unsigned i=0;i<64;i++)assert(native.layout.input_sources[i]==(i<8?i:0));
+    for(unsigned i=0;i<64;i++){
+        unsigned source=std::string(name)=="geometry-matrix"?(i<4?i:i<10?4+4*(13+(i-4)/3)+(i-4)%3:0):(i<8?i:0);
+        assert(native.layout.input_sources[i]==source);
+    }
     for(unsigned i=0;i<68;i++){
         assert(native.layout.output_sources[i].valid==(i<8?1u:0u));
         assert(native.layout.output_sources[i].source==(i<8?i:0));
@@ -53,4 +56,4 @@ static void run(const char *directory,const char *out,const char *name) {
     opengpu_tess_frontend_destroy(p);
 }
 
-int main(int argc,char **argv){assert(argc==3);setvbuf(stdout,nullptr,_IONBF,0);for(const char *name:{"geometry","geometry-runtime","geometry-invocation","geometry-conditional"})run(argv[1],argv[2],name);}
+int main(int argc,char **argv){assert(argc==3);setvbuf(stdout,nullptr,_IONBF,0);for(const char *name:{"geometry","geometry-runtime","geometry-invocation","geometry-conditional","geometry-matrix"})run(argv[1],argv[2],name);}

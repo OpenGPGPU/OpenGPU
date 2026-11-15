@@ -87,6 +87,11 @@ int opengpu_native_tess_linked_reflect(const void *,unsigned,unsigned stage,unsi
     const struct opengpu_native_tess_packing *,const struct opengpu_native_tess_packing *,struct opengpu_native_tess_layout *);
 int opengpu_native_tess_linked_emit(const void *,unsigned,const struct opengpu_native_tess_layout *,
     const struct opengpu_native_tess_input_map *,const struct opengpu_native_tess_packing *,const struct opengpu_native_tess_packing *,struct opengpu_native_tess_program *);
+/* Explicit same-linked TES->GS boundary. Old linked APIs remain NEXT_FS. */
+int opengpu_native_tess_geometry_reflect(const void *,unsigned,unsigned capacity,unsigned patch_vertices,
+    const struct opengpu_native_tess_packing *,const struct opengpu_native_tess_packing *,struct opengpu_native_tess_layout *);
+int opengpu_native_tess_geometry_emit(const void *,unsigned,const struct opengpu_native_tess_layout *,
+    const struct opengpu_native_tess_input_map *,const struct opengpu_native_tess_packing *,const struct opengpu_native_tess_packing *,struct opengpu_native_tess_program *);
 #ifdef __cplusplus
 }
 #endif

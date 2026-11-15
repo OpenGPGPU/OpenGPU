@@ -3,6 +3,7 @@
  * SoA input/output access stays inside the native stage's private payload. */
 #include "opengpu_native_tess_uniform_emit.h"
 #include "opengpu_native_uniform_emit.h"
+#include "opengpu_native_fragment_emit_internal.h"
 #include "pipe/p_defines.h"
 #include "tgsi/tgsi_parse.h"
 #include <limits.h>
@@ -155,11 +156,17 @@ static int declaration_v2(struct build *b,const struct tgsi_full_declaration *d)
                 unsigned mode=d->Interp.Interpolate,loc=d->Interp.Location;
                 if(name==TGSI_SEMANTIC_GENERIC){
                     if(index>=b->layout.varyings||(mode!=TGSI_INTERPOLATE_CONSTANT&&mode!=TGSI_INTERPOLATE_PERSPECTIVE)||
-                       loc>TGSI_INTERPOLATE_LOC_SAMPLE||(loc==TGSI_INTERPOLATE_LOC_SAMPLE&&b->v2->abi_version!=9)||
+                       loc>TGSI_INTERPOLATE_LOC_SAMPLE||(loc==TGSI_INTERPOLATE_LOC_SAMPLE&&(b->v2->abi_version!=9&&b->v2->abi_version!=7))||
                        (mode==TGSI_INTERPOLATE_CONSTANT&&loc!=TGSI_INTERPOLATE_LOC_CENTER))return -1;
                     uint64_t bits=(uint64_t)mask<<(4*index);
                     if(mode==TGSI_INTERPOLATE_CONSTANT)b->v2->flat_mask|=bits;
                     if(loc==TGSI_INTERPOLATE_LOC_CENTROID)b->v2->centroid_mask|=bits;
+                }else if(name==TGSI_SEMANTIC_PCOORD){
+                    /* Actual Mesa ESSL PointCoord is PCOORD/PERSPECTIVE at
+                     * center. Its kind selects the existing geometry point
+                     * coordinate arrays; it is never a generic varying. */
+                    if(!b->v2->requires_geometry_owner||index||(mask&~3u)||
+                       mode!=TGSI_INTERPOLATE_PERSPECTIVE||loc!=TGSI_INTERPOLATE_LOC_CENTER)return -1;
                 }else if(name==TGSI_SEMANTIC_PRIMID||name==TGSI_SEMANTIC_LAYER){
                     if(mode!=TGSI_INTERPOLATE_CONSTANT||loc!=TGSI_INTERPOLATE_LOC_CENTER)return -1;
                 }else if(name!=TGSI_SEMANTIC_POSITION||mode!=TGSI_INTERPOLATE_LINEAR||loc!=TGSI_INTERPOLATE_LOC_CENTER)return -1;
@@ -168,11 +175,12 @@ static int declaration_v2(struct build *b,const struct tgsi_full_declaration *d)
                 if(name==TGSI_SEMANTIC_GENERIC)arrays[c]=6+4*index+c;
                 else if(name==TGSI_SEMANTIC_POSITION&&!index)arrays[c]=c;
                 else if(name==TGSI_SEMANTIC_PRIMID&&!index)arrays[c]=8+4*b->layout.varyings;
-                else if(name==TGSI_SEMANTIC_LAYER&&!index)arrays[c]=~0u;
+                else if(name==TGSI_SEMANTIC_LAYER&&!index)arrays[c]=b->v2->requires_geometry_owner?9+4*b->layout.varyings:~0u;
+                else if(name==TGSI_SEMANTIC_PCOORD&&!index&&b->v2->requires_geometry_owner)arrays[c]=6+4*b->layout.varyings+c;
                 else if(name==TGSI_SEMANTIC_HELPER_INVOCATION&&!index)arrays[c]=~1u;
                 else if(name==TGSI_SEMANTIC_SAMPLEMASK&&!index)arrays[c]=5;
-                else if(name==TGSI_SEMANTIC_SAMPLEID&&!index&&b->v2->abi_version==9)arrays[c]=b->v2->input_arrays-3;
-                else if(name==TGSI_SEMANTIC_SAMPLEPOS&&!index&&b->v2->abi_version==9)arrays[c]=b->v2->input_arrays-2+c;
+                else if(name==TGSI_SEMANTIC_SAMPLEID&&!index&&(b->v2->abi_version==9||b->v2->abi_version==7))arrays[c]=b->v2->input_arrays-3;
+                else if(name==TGSI_SEMANTIC_SAMPLEPOS&&!index&&(b->v2->abi_version==9||b->v2->abi_version==7))arrays[c]=b->v2->input_arrays-2+c;
                 else return -1;
             }
             if(d->Declaration.File==TGSI_FILE_SYSTEM_VALUE)b->system_kind[i]=name;
@@ -250,6 +258,7 @@ static int source_v2(struct build *b,unsigned file,unsigned i,unsigned c,unsigne
     case TGSI_SEMANTIC_PRIMID:if(c)return -1;bit=OPENGPU_FRAGMENT_PRIMITIVE_ID;break;
     case TGSI_SEMANTIC_LAYER:if(c)return -1;bit=OPENGPU_FRAGMENT_LAYER_ZERO;break;
     case TGSI_SEMANTIC_HELPER_INVOCATION:if(c)return -1;bit=OPENGPU_FRAGMENT_HELPER;break;
+    case TGSI_SEMANTIC_PCOORD:if(c>1||!b->v2->requires_geometry_owner)return -1;bit=32u;break;
     default:return -1;
     }
     b->v2->used_sysvals|=bit;
@@ -422,6 +431,15 @@ static int emit_mode(const void *tokens, const struct opengpu_native_uniform_lay
 static int emit_next(const void *tokens,const struct opengpu_native_uniform_layout *layout,
     struct opengpu_native_uniform_program *out,unsigned next_stage)
 { return emit_mode(tokens,layout,out,next_stage,NULL); }
+int opengpu_native_fragment_emit_metadata(const void *tokens,unsigned token_words,
+    struct opengpu_native_fragment_metadata_v2 *metadata,struct opengpu_native_uniform_program *out)
+{
+    struct tgsi_header h;
+    if(!tokens||!metadata||!out||token_words<3||token_words>4098)return -1;
+    memcpy(&h,tokens,4);if(h.HeaderSize!=2||h.BodySize!=token_words-2)return -1;
+    struct opengpu_native_uniform_layout layout={1,128,0,metadata->varying_slots,metadata->color_slots};
+    return emit_mode(tokens,&layout,out,0,metadata);
+}
 int opengpu_native_fragment_uniform_compile_v2(const void *tokens,unsigned token_words,
     const struct opengpu_native_fragment_reflection_v2 *r,const struct opengpu_native_fragment_config_v2 *c,
     struct opengpu_native_fragment_program_v2 *out)
