@@ -7,6 +7,30 @@ import opengpu.core.backend.issue.ScalarIssuedInstruction
 import opengpu.core.backend.writeback.ScalarCommitRequest
 import opengpu.graphics.GeometryScalarOpcode
 
+/** Internal original-input-patch identity; independent of generated TES output order.
+  * The producer captures this binding with the accepted original-VS tuple.
+  */
+class TessellationInputPatchBinding extends Bundle {
+  val version = UInt(8.W)
+  val taskId = UInt(32.W)
+  val inputPatchPrimitiveId = UInt(32.W)
+}
+object TessellationInputPatchBinding {
+  def legal(binding:ValidIO[TessellationInputPatchBinding],taskId:UInt):Bool =
+    binding.valid && binding.bits.version===1.U && binding.bits.taskId===taskId
+  /** Safe full-width division: even rejected inputs never divide by zero.
+    * Ordinals are within an original draw instance; indexed values/baseInstance
+    * and generated primitive sequence have no role in this language identity.
+    */
+  def aligned(firstOrdinal:UInt,inputVertices:UInt):Bool = {
+    val valid=inputVertices>=1.U && inputVertices<=32.U
+    val divisor=Mux(valid,inputVertices,1.U)
+    valid && firstOrdinal%divisor===0.U && firstOrdinal.pad(33)+&inputVertices.pad(33)<=(BigInt(1)<<32).U
+  }
+  def primitiveId(firstOrdinal:UInt,inputVertices:UInt):UInt =
+    firstOrdinal/Mux(inputVertices>=1.U && inputVertices<=32.U,inputVertices,1.U)
+}
+
 /** Internal language-input binding, independent of geometry output metadata.
   * taskId is an ownership crosslink, never the shader-visible primitive ID.
   * Version 1 binds one original input patch, shared by every launched warp.

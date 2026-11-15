@@ -56,3 +56,14 @@ original VS/shared-CU shader execution, complete resources, final host routing
 and product/timing qualification remain required. A lowered external image
 interface does not prove sample, image or advanced-blend execution. No default
 factory, available getter, public API or discovery bit is enabled.
+
+## Original input-patch route
+
+The separately enabled `tessellationInfoAvailable` path carries the original
+input-patch ordinal through all three domain parents and their actual TCS/TES
+launches. The value is derived from `slice.firstOrdinal / layout.inputVertices`,
+independently of task ownership, generated primitive sequence and raster IDs.
+Aligned complete patches, accepted task snapshots and held reports retain
+their own checks. This is an internal route and enables no public capability.
+Current stage results and remaining scope are recorded in
+[the route delivery](TESSELLATION_INPUT_PATCH_ROUTE_DELIVERY.md).

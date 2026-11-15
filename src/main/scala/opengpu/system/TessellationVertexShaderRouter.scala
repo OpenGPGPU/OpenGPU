@@ -18,13 +18,17 @@ import opengpu.graphics.{ShaderPayloadConfig,ShaderPayloadPin,SharedShaderTaskRo
   */
 class TessellationVertexShaderRouter(config:GpuConfig,numComputeUnits:Int,taskIdWidth:Int,
     shaderPayload:Option[ShaderPayloadConfig]=None,tessellationAvailable:Boolean=false,
-    evaluationPatchAvailable:Boolean=false) extends Module {
+    evaluationPatchAvailable:Boolean=false,tessellationInfoAvailable:Boolean=false) extends Module {
+  // Preserve the previous full JVM constructor with the language service disabled.
+  def this(config:GpuConfig,numComputeUnits:Int,taskIdWidth:Int,shaderPayload:Option[ShaderPayloadConfig],tessellationAvailable:Boolean,evaluationPatchAvailable:Boolean) =
+    this(config,numComputeUnits,taskIdWidth,shaderPayload,tessellationAvailable,evaluationPatchAvailable,false)
+
   val io=IO(new Bundle {
     val patch=new SharedCuGraphicsPort(config,taskIdWidth,numComputeUnits,geometryAvailable=true,
-      tessellationAvailable=tessellationAvailable,evaluationPatchAvailable=evaluationPatchAvailable)
+      tessellationAvailable=tessellationAvailable,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable)
     val vertex=new SharedCuGraphicsPort(config,taskIdWidth,numComputeUnits)
     val pool=Flipped(new SharedCuGraphicsPort(config,taskIdWidth,numComputeUnits,geometryAvailable=true,
-      tessellationAvailable=tessellationAvailable,evaluationPatchAvailable=evaluationPatchAvailable))
+      tessellationAvailable=tessellationAvailable,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable))
     /** Patch then VS, sampled with each accepted launch. */
     val clientPayload=shaderPayload.map(p=>Input(Vec(2,Valid(new ShaderPayloadBinding(config,p)))))
     val poolPayload=shaderPayload.map(p=>Output(Valid(new ShaderPayloadBinding(config,p))))
@@ -34,7 +38,7 @@ class TessellationVertexShaderRouter(config:GpuConfig,numComputeUnits:Int,taskId
   })
   private val router=Module(new SharedShaderTaskRouter(config,numComputeUnits,2,taskIdWidth,
     tasksPerClient=1,shaderPayload=shaderPayload,geometryAvailable=true,
-    tessellationAvailable=tessellationAvailable,evaluationPatchAvailable=evaluationPatchAvailable))
+    tessellationAvailable=tessellationAvailable,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable))
   router.io.clients(0)<>io.patch
   io.pool<>router.io.pool
 
@@ -78,4 +82,9 @@ class TessellationVertexShaderRouter(config:GpuConfig,numComputeUnits:Int,taskId
     io.payloadPins.get:=router.io.payloadPins.get
   }
   io.drained:=router.io.drained
+
+  if(tessellationInfoAvailable){
+    vertex.tessellationTask.get:=0.U.asTypeOf(vertex.tessellationTask.get)
+    vertex.tessellationInfoCancel.get:=VecInit(Seq.fill(numComputeUnits)(false.B))
+  }
 }

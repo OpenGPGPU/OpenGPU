@@ -35,7 +35,11 @@ class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:Ver
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
     payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false,externalImages:Boolean=false,
     fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false,tessellationUniforms:Boolean=false,evaluationPatchAvailable:Boolean=false,
-    ownedVertexSource:Boolean=false,primitiveIdInput:Boolean=false) extends Module {
+    ownedVertexSource:Boolean=false,primitiveIdInput:Boolean=false,tessellationInfoAvailable:Boolean=false) extends Module {
+  // Preserve the previous full JVM constructor with the language service disabled.
+  def this(config:GpuConfig,p:VertexShaderStageConfig,f:FragmentShaderConfig,shared:SharedCuShaderConfig,g:GraphicsConfig,viewport:Fp32ViewportConfig,engines:Int,pageBytes:Int,writeCredits:Int,tileSlots:Int,pagedCapacity:Int,storage:TypedTileColorConfig,useSramBlackBoxes:Boolean,payload:Option[ShaderPayloadConfig],payloadOwner:Int,transformFeedback:Boolean,externalImages:Boolean,fragmentImageAvailable:Boolean,sampleShading:Boolean,tessellationUniforms:Boolean,evaluationPatchAvailable:Boolean,ownedVertexSource:Boolean,primitiveIdInput:Boolean) =
+    this(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading,tessellationUniforms,evaluationPatchAvailable,ownedVertexSource,primitiveIdInput,false)
+
   // Preserve the previous full JVM constructor; it never enables ABI8/9.
   def this(config:GpuConfig,p:VertexShaderStageConfig,f:FragmentShaderConfig,shared:SharedCuShaderConfig,
       g:GraphicsConfig,viewport:Fp32ViewportConfig,engines:Int,pageBytes:Int,
@@ -53,6 +57,7 @@ class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:Ver
   val memoryTransactions=TessellationSystemTriangleImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity,tessellationUniforms)
   private val replaySharedConfig=shared
   val io=IO(new Bundle {
+    val inputPatchBinding=if(tessellationInfoAvailable)Some(Input(Valid(new TessellationInputPatchBinding)))else None
     val images=if(externalImages)Some(Flipped(Vec(engines,new TypedReplayTileImagePipelineIO(config,p,replaySharedConfig,payloadConfig,fragmentImageAvailable=fragmentImageAvailable))))else None
     val begin=Flipped(Decoupled(new TypedVertexBinImageDescriptor))
     val task=Flipped(Decoupled(new TessellationSystemTriangleBinTask(config,p,idWidth)))
@@ -65,7 +70,7 @@ class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:Ver
     val opened=Decoupled(UInt(2.W));val load=Flipped(Decoupled(new TessellationPatchAccess))
     val seal=Flipped(Decoupled(Bool()))
     val inspect=Flipped(Decoupled(new TessellationPatchAccess));val reply=Decoupled(new TessellationContextReply)
-    val shared=Flipped(new SharedCuGraphicsPort(config,idWidth,cus,geometryAvailable=true,tessellationAvailable=true,imageAvailable=fragmentImageAvailable,evaluationPatchAvailable=evaluationPatchAvailable))
+    val shared=Flipped(new SharedCuGraphicsPort(config,idWidth,cus,geometryAvailable=true,tessellationAvailable=true,imageAvailable=fragmentImageAvailable,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable))
     /** Ordinary VS capability only; admission and the actual producer belong to the parent. */
     val vertexShared=if(ownedVertexSource)Some(new SharedCuGraphicsPort(config,idWidth,cus))else None
     /** Inner VS/TCS/TES router credits only, not complete patch or frame retirement. */
@@ -84,7 +89,7 @@ class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:Ver
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val source=Module(new TessellationSystemTriangleBinPass(config,p,idWidth,cus,g,viewport,engines,pageBytes,writeCredits,
-    tileSlots,pagedCapacity,useSramBlackBoxes,rendererCredits=true,transformFeedback=transformFeedback,tessellationUniforms=tessellationUniforms,evaluationPatchAvailable=evaluationPatchAvailable))
+    tileSlots,pagedCapacity,useSramBlackBoxes,rendererCredits=true,transformFeedback=transformFeedback,tessellationUniforms=tessellationUniforms,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable))
   val recordBytes=source.recordBytes
   private val images:Seq[TypedReplayTileImagePipelineIO]=if(externalImages)io.images.get.toSeq else
     Seq.tabulate(engines)(e=>Module(new TypedReplayTileImagePipeline(config,p,f,shared,g,storage,
@@ -94,10 +99,10 @@ class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:Ver
   io.fragmentEvents.stagingOutstanding:=images.map(_.fragmentEvents.stagingOutstanding).reduce(_+&_)
   io.fragmentEvents.stagingBlocked:=images.map(_.fragmentEvents.stagingBlocked).reduce(_ || _)
   io.fragmentEvents.outputBlocked:=images.map(_.fragmentEvents.outputBlocked).reduce(_ || _)
-  private val mux=Module(new GeometryFragmentShaderRouter(config,cus,idWidth,payload,tessellationAvailable=true,imageAvailable=fragmentImageAvailable,evaluationPatchAvailable=evaluationPatchAvailable))
+  private val mux=Module(new GeometryFragmentShaderRouter(config,cus,idWidth,payload,tessellationAvailable=true,imageAvailable=fragmentImageAvailable,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable))
   private val router=Module(new SharedShaderTaskRouter(config,cus,engines,idWidth,shaderPayload=payload,imageAvailable=fragmentImageAvailable))
   private val vertexRouter=if(ownedVertexSource)Some(Module(new TessellationVertexShaderRouter(config,cus,idWidth,payload,
-    tessellationAvailable=true,evaluationPatchAvailable=evaluationPatchAvailable)))else None
+    tessellationAvailable=true,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable)))else None
   if(ownedVertexSource){
     val inner=vertexRouter.get
     inner.io.patch<>source.io.shared;inner.io.vertex<>io.vertexShared.get
@@ -393,4 +398,6 @@ class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:Ver
     is(State.complete){when(io.completion.fire){phase:=State.idle}}
   }
   when(io.completion.valid){assert(drained,"triangle bin image completion escaped source/render/publication drain")}
+
+  if(tessellationInfoAvailable)source.io.inputPatchBinding.get:=io.inputPatchBinding.get
 }

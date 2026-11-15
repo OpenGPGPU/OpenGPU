@@ -32,8 +32,13 @@ class TessellationSystemQuadViewportCompletion extends Bundle {
   */
 class TessellationSystemQuadViewport(config: GpuConfig, p: VertexShaderStageConfig, idWidth: Int, numComputeUnits: Int,
     viewport: Fp32ViewportConfig = Fp32ViewportConfig(), useSramBlackBoxes: Boolean = false,
-    transformFeedback: Boolean = false, tessellationUniforms: Boolean = false,evaluationPatchAvailable:Boolean=false) extends Module {
+    transformFeedback: Boolean = false, tessellationUniforms: Boolean = false,evaluationPatchAvailable:Boolean=false,tessellationInfoAvailable:Boolean=false) extends Module {
+  // Preserve the previous full JVM constructor with the language service disabled.
+  def this(config: GpuConfig,p: VertexShaderStageConfig,idWidth: Int,numComputeUnits: Int,viewport: Fp32ViewportConfig,useSramBlackBoxes: Boolean,transformFeedback: Boolean,tessellationUniforms: Boolean,evaluationPatchAvailable:Boolean) =
+    this(config,p,idWidth,numComputeUnits,viewport,useSramBlackBoxes,transformFeedback,tessellationUniforms,evaluationPatchAvailable,false)
+
   val io = IO(new Bundle {
+    val inputPatchBinding=if(tessellationInfoAvailable)Some(Input(Valid(new TessellationInputPatchBinding)))else None
     val task = Flipped(Decoupled(new TessellationSystemQuadViewportTask(config, p, idWidth)))
     val opened = Decoupled(UInt(2.W)); val load = Flipped(Decoupled(new TessellationPatchAccess))
     val seal = Flipped(Decoupled(Bool())); val inspect = Flipped(Decoupled(new TessellationPatchAccess))
@@ -41,14 +46,14 @@ class TessellationSystemQuadViewport(config: GpuConfig, p: VertexShaderStageConf
     val out = Decoupled(new WindowPrimitive(p)); val completion = Decoupled(new TessellationSystemQuadViewportCompletion)
     val cancel = Input(Bool()); val busy = Output(Bool())
     val feedback = if(transformFeedback) Some(new TransformFeedbackPipelineIO(config)) else None
-    val shared = Flipped(new SharedCuGraphicsPort(config, idWidth, numComputeUnits, geometryAvailable = true, tessellationAvailable = true,evaluationPatchAvailable=evaluationPatchAvailable))
+    val shared = Flipped(new SharedCuGraphicsPort(config, idWidth, numComputeUnits, geometryAvailable = true, tessellationAvailable = true,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable))
     val texture = Vec(numComputeUnits, new SharedCuTexturePort(config))
     val uniformMemoryRequest=if(tessellationUniforms)Some(Decoupled(new ComputeMemoryRequest(config,64,2)))else None
     val uniformMemoryResponse=if(tessellationUniforms)Some(Flipped(Decoupled(new ComputeMemoryResponse(64,2))))else None
     val trap = Decoupled(new TaggedGraphicsTrap(config, idWidth, numComputeUnits))
     val invalidate = Flipped(Decoupled(new CacheLineInvalidate(config))); val invalidateDone = Decoupled(new CacheLineInvalidate(config))
   })
-  private val source = Module(new TessellationCuQuadSystemClient(config, idWidth, numComputeUnits,tessellationUniforms,evaluationPatchAvailable))
+  private val source = Module(new TessellationCuQuadSystemClient(config, idWidth, numComputeUnits,tessellationUniforms,evaluationPatchAvailable,tessellationInfoAvailable))
   private val mapper = Module(new TessellationQuadPrimitiveMapper(p,flatShading = !transformFeedback))
   private val feedback = if(transformFeedback) Some(Module(new TransformFeedbackExport(config,p))) else None
   private val clip = Module(new PrimitiveClipStage(p, useSramBlackBoxes))
@@ -148,4 +153,6 @@ class TessellationSystemQuadViewport(config: GpuConfig, p: VertexShaderStageConf
   if(tessellationUniforms){io.uniformMemoryRequest.get<>source.io.uniformMemoryRequest.get
     source.io.uniformMemoryResponse.get<>io.uniformMemoryResponse.get}
 
+
+  if(tessellationInfoAvailable)source.io.inputPatchBinding.get:=io.inputPatchBinding.get
 }

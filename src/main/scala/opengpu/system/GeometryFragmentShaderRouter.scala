@@ -25,18 +25,22 @@ object GeometryFragmentShaderRouter {
   */
 class GeometryFragmentShaderRouter(config: GpuConfig, numComputeUnits: Int, taskIdWidth: Int,
     shaderPayload: Option[ShaderPayloadConfig]=None, tessellationAvailable: Boolean=false,
-    imageAvailable: Boolean=false,evaluationPatchAvailable:Boolean=false) extends Module {
+    imageAvailable: Boolean=false,evaluationPatchAvailable:Boolean=false,tessellationInfoAvailable:Boolean=false) extends Module {
+  // Preserve the previous full JVM constructor with the language service disabled.
+  def this(config: GpuConfig,numComputeUnits: Int,taskIdWidth: Int,shaderPayload: Option[ShaderPayloadConfig],tessellationAvailable: Boolean,imageAvailable: Boolean,evaluationPatchAvailable:Boolean) =
+    this(config,numComputeUnits,taskIdWidth,shaderPayload,tessellationAvailable,imageAvailable,evaluationPatchAvailable,false)
+
   val io = IO(new Bundle {
-    val geometry = new SharedCuGraphicsPort(config,taskIdWidth,numComputeUnits,geometryAvailable=true,tessellationAvailable=tessellationAvailable,imageAvailable=imageAvailable,evaluationPatchAvailable=evaluationPatchAvailable)
+    val geometry = new SharedCuGraphicsPort(config,taskIdWidth,numComputeUnits,geometryAvailable=true,tessellationAvailable=tessellationAvailable,imageAvailable=imageAvailable,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable)
     val fragment = new SharedCuGraphicsPort(config,taskIdWidth,numComputeUnits,imageAvailable=imageAvailable)
-    val pool = Flipped(new SharedCuGraphicsPort(config,taskIdWidth,numComputeUnits,geometryAvailable=true,tessellationAvailable=tessellationAvailable,imageAvailable=imageAvailable,evaluationPatchAvailable=evaluationPatchAvailable))
+    val pool = Flipped(new SharedCuGraphicsPort(config,taskIdWidth,numComputeUnits,geometryAvailable=true,tessellationAvailable=tessellationAvailable,imageAvailable=imageAvailable,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable))
     val clientPayload = shaderPayload.map(p=>Input(Vec(2,Valid(new ShaderPayloadBinding(config,p)))))
     val poolPayload = shaderPayload.map(p=>Output(Valid(new ShaderPayloadBinding(config,p))))
     val payloadPins = shaderPayload.map(p=>Output(Vec(4,Valid(new ShaderPayloadPin(p)))))
     val drained = Output(Bool())
   })
   private val router = Module(new SharedShaderTaskRouter(config,numComputeUnits,2,taskIdWidth,
-    shaderPayload=shaderPayload,geometryAvailable=true,tessellationAvailable=tessellationAvailable,imageAvailable=imageAvailable,evaluationPatchAvailable=evaluationPatchAvailable))
+    shaderPayload=shaderPayload,geometryAvailable=true,tessellationAvailable=tessellationAvailable,imageAvailable=imageAvailable,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable))
   router.io.clients(0) <> io.geometry
   io.pool <> router.io.pool
   val fragment = router.io.clients(1)
@@ -76,4 +80,9 @@ class GeometryFragmentShaderRouter(config: GpuConfig, numComputeUnits: Int, task
     io.payloadPins.get := router.io.payloadPins.get
   }
   io.drained := router.io.drained
+
+  if(tessellationInfoAvailable){
+    fragment.tessellationTask.get:=0.U.asTypeOf(fragment.tessellationTask.get)
+    fragment.tessellationInfoCancel.get:=VecInit(Seq.fill(numComputeUnits)(false.B))
+  }
 }

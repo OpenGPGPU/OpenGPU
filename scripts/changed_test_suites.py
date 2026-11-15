@@ -20,6 +20,8 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.graphics.TypedFragmentImageStateReaderSpec",
     },
     "opengpu.core.GpuComputeUnitTessellationInfoSpec": {
+        "opengpu.graphics.TessellationInputPatchBindingSpec",
+        "opengpu.graphics.TessellationVertexTypedRangeSpec",
         "opengpu.graphics.TessellationScalarInfoWorkerSpec",
         "opengpu.graphics.TessellationInfoMuxSpec",
         "opengpu.graphics.TessellationInfoRouterSpec",
@@ -601,6 +603,29 @@ def changed_suites(root, changed, *, test_index=None):
             "src/test/scala/opengpu/graphics/TessellationInfoMuxSpec.scala",
             "src/test/scala/opengpu/graphics/TessellationInfoRouterSpec.scala",
             "src/test/scala/opengpu/core/frontend/decode/TessellationInfoDecodeSpec.scala",
+        })
+    # Original-ordinal identity must reach both actual launch stages. These
+    # checks execute bounded providers/owners, never a full CU qualification.
+    input_patch_sources = {
+        "graphics/tessellation/TessellationScalarInfoWorker", "graphics/VertexInputSlice",
+        "graphics/SharedShaderTaskRouter", "system/SharedCuGraphicsPort", "system/GpuSystem",
+        "system/IsolineGeometryCuExecutor", "system/TessellationVertexShaderRouter",
+        "system/GeometryFragmentShaderRouter", "system/TessellationHostShaderRouter",
+        "system/TessellationVertexInputImageControl", "system/TessellationVertexPatchSequence",
+        "system/TessellationTriangleCuEvaluator", "system/TessellationQuadCuEvaluator",
+    }
+    input_patch_sources.update(
+        f"system/TessellationSystem{domain}{suffix}"
+        for domain in ("Isoline", "Triangle", "Quad")
+        for suffix in ("VertexTypedRange", "VertexInputImage", "ImagePipeline", "BinPass", "Viewport"))
+    input_patch_sources.update(
+        f"system/TessellationCu{domain}{suffix}"
+        for domain in ("Isoline", "Triangle", "Quad")
+        for suffix in ("SystemClient", "SharedEvaluator"))
+    if changed & {f"src/main/scala/opengpu/{name}.scala" for name in input_patch_sources}:
+        affected.update({
+            "src/test/scala/opengpu/graphics/TessellationInputPatchBindingSpec.scala",
+            "src/test/scala/opengpu/graphics/TessellationVertexTypedRangeSpec.scala",
         })
     if "src/main/scala/opengpu/graphics/ClipFloatArithmetic.scala" in changed:
         # The scalar arithmetic service has four production owners. Its

@@ -12,22 +12,26 @@ import opengpu.graphics.{ShaderImageTask, ShaderPayloadConfig, ShaderPayloadPin,
   */
 class TessellationHostShaderRouter(config: GpuConfig, numComputeUnits: Int, taskIdWidth: Int,
     tasksPerClient: Int, payload: Option[ShaderPayloadConfig] = None,
-    imageAvailable: Boolean = false,legacyGeometry:Boolean=false,tessellationImageAvailable:Boolean=false,evaluationPatchAvailable:Boolean=false) extends Module {
+    imageAvailable: Boolean = false,legacyGeometry:Boolean=false,tessellationImageAvailable:Boolean=false,evaluationPatchAvailable:Boolean=false,tessellationInfoAvailable:Boolean=false) extends Module {
+  // Preserve the previous full JVM constructor with the language service disabled.
+  def this(config: GpuConfig,numComputeUnits: Int,taskIdWidth: Int,tasksPerClient: Int,payload: Option[ShaderPayloadConfig],imageAvailable: Boolean,legacyGeometry:Boolean,tessellationImageAvailable:Boolean,evaluationPatchAvailable:Boolean) =
+    this(config,numComputeUnits,taskIdWidth,tasksPerClient,payload,imageAvailable,legacyGeometry,tessellationImageAvailable,evaluationPatchAvailable,false)
+
   require(!tessellationImageAvailable || imageAvailable,"tessellation images require the shared image path")
   require(numComputeUnits > 0 && taskIdWidth > 0 && tasksPerClient > 0)
   private val pins = 2 * tasksPerClient + 2
   val io = IO(new Bundle {
     val legacy = new SharedCuGraphicsPort(config, taskIdWidth, numComputeUnits, geometryAvailable=legacyGeometry,imageAvailable=imageAvailable)
-    val tessellation = new SharedCuGraphicsPort(config, taskIdWidth, numComputeUnits, geometryAvailable=true, tessellationAvailable=true,imageAvailable=tessellationImageAvailable,evaluationPatchAvailable=evaluationPatchAvailable)
+    val tessellation = new SharedCuGraphicsPort(config, taskIdWidth, numComputeUnits, geometryAvailable=true, tessellationAvailable=true,imageAvailable=tessellationImageAvailable,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable)
     val pool = Flipped(new SharedCuGraphicsPort(config, taskIdWidth, numComputeUnits,
-      geometryAvailable=true, tessellationAvailable=true, imageAvailable=imageAvailable,evaluationPatchAvailable=evaluationPatchAvailable))
+      geometryAvailable=true, tessellationAvailable=true, imageAvailable=imageAvailable,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable))
     val clientPayload = payload.map(p => Input(Vec(2, Valid(new ShaderPayloadBinding(config,p)))))
     val poolPayload = payload.map(p => Output(Valid(new ShaderPayloadBinding(config,p))))
     val payloadPins = payload.map(p => Output(Vec(pins, Valid(new ShaderPayloadPin(p)))))
     val drained = Output(Bool())
   })
   private val router = Module(new SharedShaderTaskRouter(config, numComputeUnits, 2, taskIdWidth,
-    tasksPerClient, payload, geometryAvailable=true, tessellationAvailable=true, imageAvailable=imageAvailable,evaluationPatchAvailable=evaluationPatchAvailable))
+    tasksPerClient, payload, geometryAvailable=true, tessellationAvailable=true, imageAvailable=imageAvailable,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable))
   private val legacy = router.io.clients(0)
   legacy.launch <> io.legacy.launch
   io.legacy.completion <> legacy.completion
@@ -85,4 +89,13 @@ class TessellationHostShaderRouter(config: GpuConfig, numComputeUnits: Int, task
     io.payloadPins.get := router.io.payloadPins.get
   }
   io.drained := router.io.drained
+
+  if(tessellationInfoAvailable){
+    legacy.tessellationTask.get:=0.U.asTypeOf(legacy.tessellationTask.get)
+    legacy.tessellationInfoCancel.get:=VecInit(Seq.fill(numComputeUnits)(false.B))
+  }
+  if(tessellationInfoAvailable){
+    tessellation.tessellationTask.get:=io.tessellation.tessellationTask.get
+    tessellation.tessellationInfoCancel.get:=io.tessellation.tessellationInfoCancel.get
+  }
 }

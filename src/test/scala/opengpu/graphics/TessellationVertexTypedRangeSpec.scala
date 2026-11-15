@@ -10,7 +10,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 /** Explicit interface peer: captured metadata and retirement, never shader,
   * patch, image, publication or actual parent execution. */
-class TessellationVertexTypedRangePeer(domain:Int) extends Module {
+class TessellationVertexTypedRangePeer(domain:Int,info:Boolean=false) extends Module {
   private val p=VertexShaderStageConfig();private val config=GpuConfig()
   val io=IO(new Bundle {
     val capture=Input(new TessellationVertexCaptureCompletion(p))
@@ -31,7 +31,7 @@ class TessellationVertexTypedRangePeer(domain:Int) extends Module {
     val lastPublished=Output(UInt(16.W));val busy=Output(Bool());val drained=Output(Bool())
   })
   if(domain==0){
-    val a=Module(new TessellationSystemIsolineVertexTypedRange(config,p,4,evaluationPatchAvailable=true))
+    val a=Module(new TessellationSystemIsolineVertexTypedRange(config,p,4,evaluationPatchAvailable=true,tessellationInfoAvailable=info))
     a.io.begin.valid:=io.submit;io.submitReady:=a.io.begin.ready
     a.io.begin.bits:=0.U.asTypeOf(a.io.begin.bits)
     a.io.begin.bits.capture:=io.capture
@@ -70,7 +70,7 @@ class TessellationVertexTypedRangePeer(domain:Int) extends Module {
     io.busy:=a.io.busy;io.drained:=a.io.drained
   }
   else if(domain==1){
-    val a=Module(new TessellationSystemTriangleVertexTypedRange(config,p,4,evaluationPatchAvailable=true))
+    val a=Module(new TessellationSystemTriangleVertexTypedRange(config,p,4,evaluationPatchAvailable=true,tessellationInfoAvailable=info))
     a.io.begin.valid:=io.submit;io.submitReady:=a.io.begin.ready
     a.io.begin.bits:=0.U.asTypeOf(a.io.begin.bits)
     a.io.begin.bits.capture:=io.capture
@@ -109,7 +109,7 @@ class TessellationVertexTypedRangePeer(domain:Int) extends Module {
     io.busy:=a.io.busy;io.drained:=a.io.drained
   }
   else if(domain==2){
-    val a=Module(new TessellationSystemQuadVertexTypedRange(config,p,4,evaluationPatchAvailable=true))
+    val a=Module(new TessellationSystemQuadVertexTypedRange(config,p,4,evaluationPatchAvailable=true,tessellationInfoAvailable=info))
     a.io.begin.valid:=io.submit;io.submitReady:=a.io.begin.ready
     a.io.begin.bits:=0.U.asTypeOf(a.io.begin.bits)
     a.io.begin.bits.capture:=io.capture
@@ -214,6 +214,34 @@ class TessellationVertexTypedRangeSpec extends AnyFlatSpec {
       d.io.completion.ready.poke(true.B);d.clock.step();d.io.completion.ready.poke(false.B)
       d.io.cancel.poke(false.B);d.io.submitReady.expect(false.B);d.clock.step()
       d.io.submit.poke(false.B);d.io.taskDrained.poke(true.B);d.clock.step()
+    }
+  }
+  for(domain<-0 until 3){
+    "Typed original VS range" should s"admit aligned language-ID ordinals and reject malformed domain $domain ranges before a tuple" in {
+      simulate(new TessellationVertexTypedRangePeer(domain,info=true)){d=>
+        val x=new Driver(d)
+        // Legacy firstOrdinal5/inVerts2 remains valid only with the old mode.
+        x.setup();x.begin();x.report(1,0,0,rejected=true)
+        for(vertices<-Seq(3,32)){
+          x.setup()
+          val root=d.io.capture.root
+          val first=if(vertices==3)6 else 64
+          root.firstOrdinal.poke(first.U);root.layout.inputVertices.poke(vertices.U)
+          d.io.capture.request.layout.poke(root.layout.peek())
+          d.io.capture.draw.input.count.poke((first+2*vertices).U)
+          x.begin()
+          for(i<-0 until 4){
+            // The real sequence restores the original ordinal in the next
+            // instance; ordering and generated raster IDs remain independent.
+            x.task(55+i,first+vertices*(i%2),3+i/2,13+i,if(i<2)17+i else i-2)
+            d.io.task.bits.layout.inputVertices.expect(vertices.U)
+            x.retire(55+i,1);x.drain()
+          }
+          x.report(0,4,4)
+        }
+        // Empty ranges do not invent a patch ID or a task/launch.
+        x.setup(0,0,0);x.begin();d.io.task.valid.expect(false.B);x.report(0,0,0)
+      }
     }
   }
   for(domain<-0 until 3){
