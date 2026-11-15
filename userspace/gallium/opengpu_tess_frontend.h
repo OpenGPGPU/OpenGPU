@@ -21,6 +21,7 @@ unsigned opengpu_tess_frontend_binding(void *, unsigned gpu_stage, unsigned logi
 unsigned opengpu_tess_frontend_components(void *, unsigned gpu_stage);
 int opengpu_tess_frontend_input_map(void *,struct opengpu_native_tess_input_map *);
 int opengpu_tess_frontend_control_output_map(void *,struct opengpu_native_tess_input_map *);
+int opengpu_tess_frontend_geometry_maps(void *,struct opengpu_native_tess_input_map *,struct opengpu_native_tess_input_map *);
 int opengpu_tess_frontend_ubos(void *, struct pipe_context *,
     struct pipe_resource *const resources[72], const unsigned offsets[72], const unsigned sizes[72]);
 int opengpu_tess_frontend_defaults(void *, struct pipe_context *, unsigned gpu_stage,

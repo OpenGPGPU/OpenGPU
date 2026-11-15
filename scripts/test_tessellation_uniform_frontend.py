@@ -93,10 +93,8 @@ def verify_geometry_fragment(path):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('--build',type=Path,required=True)
-    ap.add_argument('--sanitize',action='store_true');ap.add_argument('--baseline-source',type=Path,help='explicit original v2 production emitter for old-byte comparison, never a replacement runtime');ap.add_argument('--regressions',action='store_true',help='with --language, reuse this immutable build for old v1/v2 ESSL suites');mode=ap.add_mutually_exclusive_group();mode.add_argument('--dynamic',action='store_true',help='private TES v2 CPU compiler cases');mode.add_argument('--language',action='store_true',help='private TCS/TES v3 language input-patch ID CPU cases')
-    mode.add_argument('--geometry', action='store_true', help='linked VS/GS/FS and native GS/ABI7 CPU compiler case')
-    a=ap.parse_args()
-    if a.regressions and not a.language:ap.error('--regressions requires --language')
+    ap.add_argument('--sanitize',action='store_true');ap.add_argument('--baseline-source',type=Path,help='explicit original v2 production emitter for old-byte comparison, never a replacement runtime');ap.add_argument('--regressions',action='store_true',help='with --language or --scalar-geometry, reuse this immutable build for old v1/v2 ESSL suites');mode=ap.add_mutually_exclusive_group();mode.add_argument('--geometry',action='store_true',help='linked VS/GS/FS and native GS/ABI7 CPU compiler case');mode.add_argument('--scalar-geometry',action='store_true',help='private actual linked scalar GS compiler cases; CPU only');mode.add_argument('--dynamic',action='store_true',help='private TES v2 CPU compiler cases');mode.add_argument('--language',action='store_true',help='private TCS/TES v3 language input-patch ID CPU cases');a=ap.parse_args()
+    if a.regressions and not (a.language or a.scalar_geometry):ap.error('--regressions requires --language or --scalar-geometry')
     if a.baseline_source and not a.regressions:ap.error('--baseline-source requires --regressions')
     out=a.build.resolve();out.mkdir(parents=True,exist_ok=False)
     mesa=Path(os.environ.get('OPENGPU_MESA_DIR',ROOT/'depends/mesa')).resolve()
@@ -136,6 +134,7 @@ def main():
     inc=['-I'+str(p) for p in (ROOT/'userspace/gallium',ROOT/'userspace',ROOT/'driver',mesa/'src/gallium/include',
         mesa/'src/gallium/auxiliary',ROOT/'userspace/tests',Path(os.environ.get('OPENGPU_DRM_INCLUDE',ROOT/'depends/aarch64-root/include')),mesa/'src/compiler/nir',mb/'src/compiler/nir',mesa/'src',mesa/'include')]
     test_source = ('geometry_link_frontend_test.cpp' if a.geometry else
+                   'native_geometry_frontend_test.cpp' if a.scalar_geometry else
                    'tessellation_language_frontend_test.cpp' if a.language else
                    'tessellation_dynamic_frontend_test.cpp' if a.dynamic else
                    'tessellation_uniform_frontend_test.cpp')
@@ -153,6 +152,8 @@ def main():
     if a.geometry:
         gpu_units += ('userspace/gallium/opengpu_native_fs_emit.c',
                       'userspace/gallium/opengpu_native_gs_emit.c')
+    if a.scalar_geometry:
+        gpu_units += ('userspace/gallium/opengpu_native_geometry_emit.c',)
     for name in gpu_units:
         obj=out/(Path(name).stem+'.o')
         extra=['-D'+n+'=cs_fixture_'+n for n in ('ioctl','mmap','munmap','dup','close')] if name in ('userspace/pipe_opengpu.c','userspace/opengpu.c') else []
@@ -189,10 +190,10 @@ def main():
         verify_geometry_vertex(out/'geometry.native-vs-code.bin')
         verify_geometry_fragment(out/'geometry.native-fs-code.bin')
         return
-    for name in (('language','language-conditional','language-full') if a.language else ('dynamic','adjacent','capacity','edge','component') if a.dynamic else ('uniform','full','conditional')):(out/'programs'/name).mkdir(parents=True)
+    for name in (('geometry','geometry-runtime','geometry-invocation','geometry-conditional') if a.scalar_geometry else ('language','language-conditional','language-full') if a.language else ('dynamic','adjacent','capacity','edge','component') if a.dynamic else ('uniform','full','conditional')):(out/'programs'/name).mkdir(parents=True)
     run([binary,ROOT/'userspace/tests/tess_uniform_essl',out/'programs'],'actual-ESSL320')
     if a.regressions:
-        original_main=out/'tessellation_language_frontend_test.o'
+        original_main=out/('native_geometry_frontend_test.o' if a.scalar_geometry else 'tessellation_language_frontend_test.o')
         common=[o for o in objects if o!=original_main]
         for version,source,cases in (
             ('v1','tessellation_uniform_frontend_test.cpp',('uniform','full','conditional')),
