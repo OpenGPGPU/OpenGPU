@@ -96,11 +96,17 @@ class SharedCuEvaluationPatchPort(config:GpuConfig) extends Bundle {
   * controls are currently shared with the system; concurrent address spaces
   * require a separate context scheduling contract.
   */
-class SharedCuGraphicsPort(config: GpuConfig, commandIdWidth: Int, numComputeUnits: Int, geometryAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAvailable: Boolean = false,evaluationPatchAvailable:Boolean=false)
+class SharedCuGraphicsPort(config: GpuConfig, commandIdWidth: Int, numComputeUnits: Int, geometryAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAvailable: Boolean = false,evaluationPatchAvailable:Boolean=false, tessellationInfoAvailable: Boolean = false)
     extends Bundle {
+  // Preserve the previous full JVM constructor for frozen default-off callers.
+  def this(config: GpuConfig, commandIdWidth: Int, numComputeUnits: Int, geometryAvailable: Boolean, tessellationAvailable: Boolean, imageAvailable: Boolean, evaluationPatchAvailable:Boolean) =
+    this(config, commandIdWidth, numComputeUnits, geometryAvailable, tessellationAvailable, imageAvailable, evaluationPatchAvailable, false)
+
   /** Native descriptor/captured-operand service for this prospective launch.
     * Routers snapshot it with acceptance, just like other task ownership.
     */
+  val tessellationTask = if(tessellationInfoAvailable) Some(Input(Valid(new TessellationShaderTaskBinding))) else None
+  val tessellationInfoCancel = if(tessellationInfoAvailable) Some(Input(Vec(numComputeUnits, Bool()))) else None
   val evaluationPatchBinding=if(evaluationPatchAvailable)Some(Input(Valid(new opengpu.graphics.tessellation.TessellationEvaluationPatchBinding)))else None
   val evaluationPatch=if(evaluationPatchAvailable)Some(Vec(numComputeUnits,new SharedCuEvaluationPatchPort(config)))else None
   val nativeResources = Input(Bool())

@@ -2,7 +2,7 @@
 """Select changed Scala tests, fixture consumers, and directly matching specs.
 
 This supplements the bounded smoke catalog; it is not a production dependency
-graph. Resource-heavy integration needs explicitly scoped qualification; the
+graph. Broad integration needs explicitly scoped qualification; the
 Scala regression workflow remains disabled.
 """
 import json
@@ -15,17 +15,11 @@ import sys
 # These checks cover configuration, descriptor ownership and image bounds;
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
-    "opengpu.graphics.TessellationVertexPatchSourceSpec": {
-        "opengpu.graphics.TessellationVertexPatchPublisherSpec",
-        "opengpu.graphics.TessellationVertexPatchSequenceSpec",
-        "opengpu.graphics.TessellationVertexSourceReaderSpec",
-        "opengpu.graphics.VertexInputFetcherSpec",
-    },
-    "opengpu.graphics.VertexShaderSliceSpec": {
-        "opengpu.graphics.TessellationVertexPatchPublisherSpec",
-        "opengpu.graphics.TessellationVertexPatchSequenceSpec",
-        "opengpu.graphics.TessellationVertexSourceReaderSpec",
-        "opengpu.graphics.VertexInputFetcherSpec",
+    "opengpu.core.GpuComputeUnitTessellationInfoSpec": {
+        "opengpu.graphics.TessellationScalarInfoWorkerSpec",
+        "opengpu.graphics.TessellationInfoMuxSpec",
+        "opengpu.graphics.TessellationInfoRouterSpec",
+        "opengpu.core.frontend.decode.TessellationInfoDecodeSpec",
     },
     "opengpu.graphics.SharedShaderTaskRouterSpec": {
         "opengpu.graphics.SharedShaderTaskRouterSmallSpec",
@@ -315,45 +309,6 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.system.TessellationSystemIsolineBinPassSpec",
         "opengpu.graphics.ControlledIsolineWindowBinTypedImagePipelineSpec",
     },
-    "opengpu.graphics.tessellation.TessellationSampleImageSharedSystemSpec": {
-        "opengpu.graphics.tessellation.TessellationSystemIsolineImageAdmissionSpec",
-        "opengpu.graphics.SharedShaderTessellationRouterSpec",
-        "opengpu.graphics.GeometryFragmentTessellationRouterSpec",
-        "opengpu.system.TessellationSystemIsolineBinPassSpec",
-        "opengpu.graphics.ControlledIsolineWindowBinTypedImagePipelineSpec",
-        "opengpu.system.NativeOwnerHostProfileSpec",
-        "opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec",
-        "opengpu.system.TessellationHostShaderRouterSpec",
-        "opengpu.system.TessellationImageBankOwnerSpec",
-        "opengpu.system.TessellationImageBankMuxSpec",
-        "opengpu.graphics.TypedFragmentImageStateReaderSpec",
-        "opengpu.graphics.FragmentShaderAbiSpec",
-        "opengpu.graphics.FragmentSampleVariableUnitSpec",
-        "opengpu.graphics.FragmentSampleShadingSchedulerSpec",
-        "opengpu.graphics.tessellation.TessellationSampleImageRecipeSpec",
-    },
-    "opengpu.graphics.tessellation.TessellationSampleImageOpsSharedSystemSpec": {
-        "opengpu.graphics.tessellation.TessellationSystemIsolineImageAdmissionSpec",
-        "opengpu.graphics.SharedShaderTessellationRouterSpec",
-        "opengpu.graphics.GeometryFragmentTessellationRouterSpec",
-        "opengpu.system.TessellationSystemIsolineBinPassSpec",
-        "opengpu.graphics.ControlledIsolineWindowBinTypedImagePipelineSpec",
-        "opengpu.system.NativeOwnerHostProfileSpec",
-        "opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec",
-        "opengpu.system.TessellationHostShaderRouterSpec",
-        "opengpu.system.TessellationImageBankOwnerSpec",
-        "opengpu.system.TessellationImageBankMuxSpec",
-        "opengpu.graphics.TypedFragmentImageStateReaderSpec",
-        "opengpu.graphics.FragmentShaderAbiSpec",
-        "opengpu.graphics.FragmentSampleVariableUnitSpec",
-        "opengpu.graphics.FragmentSampleShadingSchedulerSpec",
-        "opengpu.graphics.tessellation.TessellationSampleImageRecipeSpec",
-        "opengpu.graphics.ShaderImageExecuteUnitSpec",
-        "opengpu.graphics.ShaderImagePublicationReaderSpec",
-        "opengpu.graphics.ShaderImageStoreEncoderSpec",
-        "opengpu.core.frontend.decode.ImageExecutionAvailabilityDecodeSpec",
-        "opengpu.core.frontend.decode.ExtendedDecoderSpec",
-    },
     "opengpu.graphics.TypedGeometryImageQualificationSpec": {
         "opengpu.graphics.TypedTileImageTransferSpec",
         "opengpu.graphics.GeometryReplayFragmentAdmissionSpec",
@@ -555,6 +510,23 @@ def changed_suites(root, changed, *, test_index=None):
     files, nodes = index_test_sources(root) if test_index is None else test_index
 
     affected = set(changed) & files.keys()
+    if changed & {
+        "src/main/scala/opengpu/graphics/tessellation/TessellationScalarInfoWorker.scala",
+        "src/main/scala/opengpu/core/GpuComputeUnit.scala",
+        "src/main/scala/opengpu/core/GpuComputeUnitCore.scala",
+        "src/main/scala/opengpu/core/frontend/GpuFrontend.scala",
+        "src/main/scala/opengpu/core/frontend/decode/DecodePipe.scala",
+        "src/main/scala/opengpu/core/frontend/decode/DecodeTypes.scala",
+        "src/main/scala/opengpu/core/frontend/decode/FullInstructionDecoder.scala",
+        "src/main/scala/opengpu/system/SharedCuGraphicsPort.scala",
+        "src/main/scala/opengpu/graphics/SharedShaderTaskRouter.scala",
+    }:
+        affected.update({
+            "src/test/scala/opengpu/graphics/TessellationScalarInfoWorkerSpec.scala",
+            "src/test/scala/opengpu/graphics/TessellationInfoMuxSpec.scala",
+            "src/test/scala/opengpu/graphics/TessellationInfoRouterSpec.scala",
+            "src/test/scala/opengpu/core/frontend/decode/TessellationInfoDecodeSpec.scala",
+        })
     if "src/main/scala/opengpu/graphics/ClipFloatArithmetic.scala" in changed:
         # The scalar arithmetic service has four production owners. Its
         # response latency also reaches the spatial preparation/credit paths.
@@ -661,11 +633,6 @@ def changed_suites(root, changed, *, test_index=None):
                   "src/main/scala/opengpu/elaboration/EmitWindowPrimitiveRecordReadCache.scala"}:
         affected.add("src/test/scala/opengpu/graphics/WindowPrimitiveRecordReadCacheSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/WindowPrimitiveBinReplayPassSpec.scala")
-    if "src/test/scala/opengpu/graphics/tessellation/TessellationSampleImageRecipeSpec.scala" in changed:
-        # The recipe object is package-private; follow its two explicit users
-        # without broadening the generic suite-discovery parser.
-        affected.update("src/test/scala/opengpu/graphics/tessellation/" + name + ".scala" for name in (
-            "TessellationSampleImageSharedSystemSpec", "TessellationSampleImageOpsSharedSystemSpec"))
     ci_inputs = {
         ".github/actions/setup-simulation/action.yml", "scripts/prefetch_scala_bridge.sh",
         ".github/workflows/scala_test.yml", "scripts/changed_test_suites.py",

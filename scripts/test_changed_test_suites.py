@@ -28,6 +28,30 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 selected = changed_suites(REPO_ROOT, [f"src/main/scala/opengpu/{path}.scala"])
                 self.assertIn("opengpu.system.TessellationSharedLoadReplySpec", selected)
 
+    def test_tessellation_language_changes_select_independent_permission_and_owner_checks(self):
+        required = {"opengpu.graphics.TessellationScalarInfoWorkerSpec",
+                    "opengpu.graphics.TessellationInfoMuxSpec",
+                    "opengpu.graphics.TessellationInfoRouterSpec",
+                    "opengpu.core.frontend.decode.TessellationInfoDecodeSpec"}
+        paths = ["graphics/tessellation/TessellationScalarInfoWorker", "core/GpuComputeUnit",
+                 "core/GpuComputeUnitCore", "core/frontend/GpuFrontend", "core/frontend/decode/DecodePipe",
+                 "core/frontend/decode/DecodeTypes", "core/frontend/decode/FullInstructionDecoder",
+                 "system/SharedCuGraphicsPort", "graphics/SharedShaderTaskRouter"]
+        for path in paths:
+            with self.subTest(path=path):
+                selected = set(changed_suites(REPO_ROOT, [f"src/main/scala/opengpu/{path}.scala"]))
+                self.assertTrue(required <= selected, selected)
+                self.assertNotIn("opengpu.core.GpuComputeUnitTessellationInfoSpec", selected)
+
+    def test_full_tessellation_language_cu_selects_small_checks_without_dispatching_qualification(self):
+        selected = set(changed_suites(REPO_ROOT, [
+            "src/test/scala/opengpu/core/GpuComputeUnitTessellationInfoSpec.scala"]))
+        self.assertNotIn("opengpu.core.GpuComputeUnitTessellationInfoSpec", selected)
+        self.assertTrue({"opengpu.graphics.TessellationScalarInfoWorkerSpec",
+                         "opengpu.graphics.TessellationInfoMuxSpec",
+                         "opengpu.graphics.TessellationInfoRouterSpec",
+                         "opengpu.core.frontend.decode.TessellationInfoDecodeSpec"} <= selected)
+
     def test_fragment_setup_changes_select_exact_key_consumer_and_instance_checks(self):
         required = {"opengpu.graphics.FragmentSetupCacheSpec",
                     "opengpu.graphics.FragmentPreparationInstanceSpec",

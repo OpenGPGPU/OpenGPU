@@ -16,7 +16,11 @@ import opengpu.core.frontend.warp.WarpLaunch
   */
 class GpuFrontend(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean = true,
   instructionSimt: Boolean = false, textureAvailable: Boolean = true,
-  taskTextureAvailability: Boolean = false, nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false, evaluationPatchAvailable: Boolean = false) extends Module {
+  taskTextureAvailability: Boolean = false, nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false, evaluationPatchAvailable: Boolean = false, tessellationInfoAvailable: Boolean = false) extends Module {
+  // Preserve the previous full JVM constructor for frozen default-off callers.
+  def this(config: GpuConfig, scalarFpuAvailable: Boolean, instructionSimt: Boolean, textureAvailable: Boolean, taskTextureAvailability: Boolean, nativeResourcesAvailable: Boolean, nativeUniformsAvailable: Boolean, imageAvailable: Boolean, storageAvailable: Boolean, computeUniformAvailable: Boolean, geometryAvailable: Boolean, computeTextureAvailable: Boolean, atomicCounterAvailable: Boolean, tessellationAvailable: Boolean, imageAtomicAvailable: Boolean, storageAtomicAvailable: Boolean, evaluationPatchAvailable: Boolean) =
+    this(config, scalarFpuAvailable, instructionSimt, textureAvailable, taskTextureAvailability, nativeResourcesAvailable, nativeUniformsAvailable, imageAvailable, storageAvailable, computeUniformAvailable, geometryAvailable, computeTextureAvailable, atomicCounterAvailable, tessellationAvailable, imageAtomicAvailable, storageAtomicAvailable, evaluationPatchAvailable, false)
+
   val io = IO(new Bundle {
     val imageEnabled = if(imageAvailable) Some(Input(Bool())) else None
     val storageEnabled = if(storageAvailable) Some(Input(Bool())) else None
@@ -24,6 +28,7 @@ class GpuFrontend(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean =
     val geometryEnabled = if(geometryAvailable) Some(Input(Bool())) else None
     val tessellationEnabled = if(tessellationAvailable) Some(Input(Bool())) else None
     val evaluationPatchEnabled = if(evaluationPatchAvailable) Some(Input(Bool())) else None
+    val tessellationInfoEnabled = if(tessellationInfoAvailable) Some(Input(Bool())) else None
     val computeTextureEnabled = if(computeTextureAvailable) Some(Input(Bool())) else None
     val atomicCounterEnabled = if(atomicCounterAvailable) Some(Input(Bool())) else None
     val textureEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
@@ -51,13 +56,14 @@ class GpuFrontend(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean =
   })
 
   private val control = Module(new SimtFrontendControl(config,instructionSimt))
-  private val decode = Module(new DecodePipe(config, scalarFpuAvailable, textureAvailable, taskTextureAvailability,nativeResourcesAvailable,nativeUniformsAvailable,imageAvailable,storageAvailable,computeUniformAvailable,geometryAvailable,computeTextureAvailable,atomicCounterAvailable,tessellationAvailable,imageAtomicAvailable,storageAtomicAvailable,evaluationPatchAvailable))
+  private val decode = Module(new DecodePipe(config, scalarFpuAvailable, textureAvailable, taskTextureAvailability,nativeResourcesAvailable,nativeUniformsAvailable,imageAvailable,storageAvailable,computeUniformAvailable,geometryAvailable,computeTextureAvailable,atomicCounterAvailable,tessellationAvailable,imageAtomicAvailable,storageAtomicAvailable,evaluationPatchAvailable,tessellationInfoAvailable))
   if(imageAvailable) { decode.io.imageEnabled.get := io.imageEnabled.get }
   if(storageAvailable) { decode.io.storageEnabled.get := io.storageEnabled.get }
   if(computeUniformAvailable) { decode.io.computeUniformEnabled.get := io.computeUniformEnabled.get }
   if(geometryAvailable) { decode.io.geometryEnabled.get := io.geometryEnabled.get }
   if(tessellationAvailable) { decode.io.tessellationEnabled.get := io.tessellationEnabled.get }
   if(evaluationPatchAvailable) { decode.io.evaluationPatchEnabled.get := io.evaluationPatchEnabled.get }
+  if(tessellationInfoAvailable) { decode.io.tessellationInfoEnabled.get := io.tessellationInfoEnabled.get }
   if(computeTextureAvailable) { decode.io.computeTextureEnabled.get := io.computeTextureEnabled.get }
   if(atomicCounterAvailable) { decode.io.atomicCounterEnabled.get := io.atomicCounterEnabled.get }
   if(taskTextureAvailability) { decode.io.textureEnabled.get := io.textureEnabled.get }
