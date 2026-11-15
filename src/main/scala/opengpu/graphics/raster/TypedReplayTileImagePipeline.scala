@@ -56,7 +56,15 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
     f: FragmentShaderConfig=FragmentShaderConfig(),shared: SharedCuShaderConfig=SharedCuShaderConfig(4),
     g: GraphicsConfig=GraphicsConfig(),storage: TypedTileColorConfig=TypedTileColorConfig(),engine: Int=0,
     useSramBlackBoxes: Boolean=false,payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false,
-    fragmentImageAvailable: Boolean=false,geometryInput: Boolean=false,sampleShading:Boolean=false,primitiveIdInput:Boolean=false) extends Module {
+    fragmentImageAvailable: Boolean=false,geometryInput: Boolean=false,sampleShading:Boolean=false,primitiveIdInput:Boolean=false,allowEmptyStates:Boolean=false) extends Module {
+  // Empty-state clear is an explicit internal route; existing constructors
+  // retain their nonempty immutable state-table contract.
+  def this(config: GpuConfig,p: VertexShaderStageConfig,f: FragmentShaderConfig,shared: SharedCuShaderConfig,
+      g: GraphicsConfig,storage: TypedTileColorConfig,engine: Int,useSramBlackBoxes: Boolean,
+      payload: Option[ShaderPayloadConfig],payloadOwner: Int,groupedTexture: Boolean,fragmentImageAvailable: Boolean,
+      geometryInput: Boolean,sampleShading:Boolean,primitiveIdInput:Boolean) =
+    this(config,p,f,shared,g,storage,engine,useSramBlackBoxes,payload,payloadOwner,groupedTexture,fragmentImageAvailable,geometryInput,sampleShading,primitiveIdInput,false)
+
   // Preserve the previous full JVM constructor; it never enables ABI8/9.
   def this(config: GpuConfig,p: VertexShaderStageConfig,f: FragmentShaderConfig,shared: SharedCuShaderConfig,
       g: GraphicsConfig,storage: TypedTileColorConfig,engine: Int,useSramBlackBoxes: Boolean,
@@ -108,6 +116,7 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
   private val status=RegInit(0.U(3.W));private val faultStage=RegInit(0.U(2.W));private val faultAddress=RegInit(0.U(32.W))
   private val faultRecordValid=RegInit(false.B);private val faultRecord=Reg(new PrimitiveBinReference)
   private val externalCancel=io.cancel || io.payload.map(v=>VecInit(v.map(_.cancel)).asUInt.orR).getOrElse(false.B)
+  private val emptyStates=allowEmptyStates.B && descriptor.states.base===0.U && descriptor.states.limit===0.U
   private val stop=status=/=0.U || externalCancel
   private val active=phase=/=State.idle && phase=/=State.complete
   private def fail(code: UInt,stage: Int,address: UInt=0.U): Unit=when(status===0.U && !externalCancel){
@@ -203,11 +212,11 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
       def legalSpan(s: TypedReplayMemorySpan): Bool=s.base(5,0)===0.U && s.limit(5,0)===0.U && s.limit>=s.base && s.limit<=(BigInt(1)<<32).U
       def overlap(x: TypedReplayMemorySpan,y: TypedReplayMemorySpan): Bool=x.base<x.limit && y.base<y.limit && x.base<y.limit && x.limit>y.base
       val state=Wire(new TypedReplayMemorySpan);state.base:=a.base;state.limit:=a.limit
-      val valid=a.version===1.U && a.base(5,0)===0.U && a.limit>a.base && a.limit<=(BigInt(1)<<32).U && ((a.limit-a.base)&511.U)===0.U &&
+      val valid=a.version===1.U && a.base(5,0)===0.U && (a.limit>a.base || emptyStates) && a.limit<=(BigInt(1)<<32).U && ((a.limit-a.base)&511.U)===0.U &&
         a.identity.asUInt===d.image.pixels.colors.identity.asUInt && d.engines>=1.U && d.engines<=4.U && engine.U<d.engines &&
         d.scratchStride>=64.U && d.scratchStride(5,0)===0.U &&
         d.protectedMemory.map(s=>legalSpan(s) && !overlap(s,state)).reduce(_ && _) &&
-        d.scratch.zipWithIndex.map{case(s,e)=>Mux(e.U<d.engines,legalSpan(s) && s.base.pad(64)+count.pad(64)*d.scratchStride.pad(64)<=s.limit &&
+        d.scratch.zipWithIndex.map{case(s,e)=>Mux(e.U<d.engines,legalSpan(s) && (!emptyStates || s.limit>s.base) && s.base.pad(64)+count.pad(64)*d.scratchStride.pad(64)<=s.limit &&
           !overlap(s,state) && !d.protectedMemory.map(overlap(s,_)).reduce(_ || _),!s.asUInt.orR)}.reduce(_ && _) &&
         (for(x<-0 until 4;y<-x+1 until 4)yield y.U>=d.engines || !overlap(d.scratch(x),d.scratch(y))).reduce(_ && _)
       when(stop){phase:=State.closing}.elsewhen(!valid){fail(1.U,1);phase:=State.closing}.otherwise{imageOffered:=true.B;phase:=State.bind}
@@ -219,7 +228,7 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
     }.elsewhen(io.end.fire){phase:=State.closing}}
     is(State.checkRecord){
       val s=current.source;val r=current.record
-      val valid=s.identity.asUInt===descriptor.states.identity.asUInt && r.primitive.clipped.primitive.identity.asUInt===s.identity.asUInt && s.tile===descriptor.tile &&
+      val valid= !emptyStates && s.identity.asUInt===descriptor.states.identity.asUInt && r.primitive.clipped.primitive.identity.asUInt===s.identity.asUInt && s.tile===descriptor.tile &&
         s.ordinal===accepted-1.U && (!haveSequence || r.sequence>sequence) && s.reference.state===r.state && s.reference.sequence===r.sequence && s.reference.token===r.token
       when(stop || imageDone){phase:=State.closing}.elsewhen(!valid){fail(1.U,1);phase:=State.closing}
         .otherwise{sequence:=r.sequence;haveSequence:=true.B;stateOffered:=true.B;phase:=State.fetch}

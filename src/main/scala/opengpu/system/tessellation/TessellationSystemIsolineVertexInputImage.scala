@@ -25,7 +25,11 @@ class TessellationSystemIsolineVertexInputImage(config:GpuConfig,p:VertexShaderS
     pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
     payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false,externalImages:Boolean=false,
-    fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false,tessellationUniforms:Boolean=false,evaluationPatchAvailable:Boolean=false,tessellationInfoAvailable:Boolean=false) extends Module {
+    fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false,tessellationUniforms:Boolean=false,evaluationPatchAvailable:Boolean=false,tessellationInfoAvailable:Boolean=false,primitiveIdInput:Boolean=false,allowEmptyStates:Boolean=false) extends Module {
+  // Existing complete constructors keep the original FS ABI/state contract.
+  def this(config:GpuConfig,p:VertexShaderStageConfig,f:FragmentShaderConfig,shared:SharedCuShaderConfig,g:GraphicsConfig,viewport:Fp32ViewportConfig,engines:Int,pageBytes:Int,writeCredits:Int,tileSlots:Int,pagedCapacity:Int,storage:TypedTileColorConfig,useSramBlackBoxes:Boolean,payload:Option[ShaderPayloadConfig],payloadOwner:Int,transformFeedback:Boolean,externalImages:Boolean,fragmentImageAvailable:Boolean,sampleShading:Boolean,tessellationUniforms:Boolean,evaluationPatchAvailable:Boolean,tessellationInfoAvailable:Boolean) =
+    this(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading,tessellationUniforms,evaluationPatchAvailable,tessellationInfoAvailable,false,false)
+
   // Preserve the previous full JVM constructor with the language service disabled.
   def this(config:GpuConfig,p:VertexShaderStageConfig,f:FragmentShaderConfig,shared:SharedCuShaderConfig,g:GraphicsConfig,viewport:Fp32ViewportConfig,engines:Int,pageBytes:Int,writeCredits:Int,tileSlots:Int,pagedCapacity:Int,storage:TypedTileColorConfig,useSramBlackBoxes:Boolean,payload:Option[ShaderPayloadConfig],payloadOwner:Int,transformFeedback:Boolean,externalImages:Boolean,fragmentImageAvailable:Boolean,sampleShading:Boolean,tessellationUniforms:Boolean,evaluationPatchAvailable:Boolean) =
     this(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading,tessellationUniforms,evaluationPatchAvailable,false)
@@ -58,7 +62,7 @@ class TessellationSystemIsolineVertexInputImage(config:GpuConfig,p:VertexShaderS
   })
   private val image=Module(new TessellationSystemIsolineImagePipeline(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,
     tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,
-    sampleShading,tessellationUniforms,evaluationPatchAvailable,ownedVertexSource=true,tessellationInfoAvailable=tessellationInfoAvailable))
+    sampleShading,tessellationUniforms,evaluationPatchAvailable,ownedVertexSource=true,primitiveIdInput=primitiveIdInput,tessellationInfoAvailable=tessellationInfoAvailable,allowEmptyStates=allowEmptyStates))
   private val source=Module(new TessellationVertexPatchSource(config,p,shared,useSramBlackBoxes,payload,payloadOwner))
   private val control=Module(new TessellationVertexInputImageControl(p,new TessellationSystemIsolineBinTask(config,p,idWidth),
     new TessellationSystemIsolineBinTaskCompletion,new TessellationSystemIsolineImageCompletion(p)))
