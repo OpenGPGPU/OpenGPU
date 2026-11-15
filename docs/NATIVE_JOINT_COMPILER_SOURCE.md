@@ -123,6 +123,29 @@ shader execution or CU result. All independent consumers released their
 packets; process/open-file and cross-worktree symlink checks preceded removal
 of the remaining raw output directory. No generated process data is committed.
 
+
+## Mainline delivery integration
+
+The source block `9ed94be7b` was replayed onto merged #826 without changes to
+its 14 paths (`08602318b`). On that exact delivery source, 3115 tracked
+non-document inputs and HEAD remained unchanged through four serial
+180-second/512MiB aggregate-RSS groups:
+
+| Check | Result | Elapsed / maximum sampled aggregate RSS |
+| --- | --- | --- |
+| Strict prepared-source producer closure | 21 tests PASS | 22.03s / 96576KiB |
+| Graphics qualifier guards | 13 tests PASS | 0.48s / 31024KiB |
+| Sanitized graphics bridge | 8 tests PASS | 9.03s / 336992KiB |
+| Real Mesa token parser, old capacity guards and five language source controls | PASS | 13.66s / 117216KiB |
+
+The mainline recursive producer-macro closure remains intact. Reproduce the
+first three with their `scripts/test_*` entry points named above
+(`test_prepare_owner_executor.py`, `test_qualify_native_sample_graphics_owner.py`,
+`test_gallium_sample_graphics_bridge.py`), and the last with actual
+`OPENGPU_MESA_DIR` and
+`OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_tessellation_uniform_emit.py --language-negative-controls`.
+These checks neither emit RTL nor execute a shader.
+
 ## Limits
 
 This API covers four stages. A native GS emitter/cache, TES-to-GS boundary and
