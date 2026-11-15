@@ -1,6 +1,6 @@
 # P17 compiler and private source delivery
 
-This delivery replays six logical source commits onto protected `main` after
+[PR #826](https://github.com/OpenGPGPU/OpenGPU/pull/826) replays six logical source commits onto protected `main` after
 [#825](https://github.com/OpenGPGPU/OpenGPU/pull/825), base
 `4a574e0410c240bbbe32f474f03f274732036c88`. It delivers original Mesa TCS/TES
 compilation, dynamic TES patch reads, language input-patch IDs, ordinary no-GS
@@ -122,7 +122,8 @@ for FS8/9. Ended build/program/reference/log data are temporary and are removed
 after the last consumer and open-file/process checks.
 
 The linked VS/TCS/TES/FS four-stage compiler and immutable 52-resource caller,
-complete five-stage 65-resource lifecycle, original GUR graph, joint protected
+complete five-stage 65-resource lifecycle, indirect TCS patch-array stores,
+original GUR graph, joint protected
 BUILD/submit/retirement, original-Mesa execution on both full CUs, three-domain
 images/GNY2, actual API reporting and 2-CU 640×480/60-FPS qualification remain
 pending. Ordinary VS/FS lifecycle checks do not close those gates. Disabled
