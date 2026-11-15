@@ -220,7 +220,7 @@ static void snapshot_tests(void)
 }
 /* Optional independent producer byte input. No shader interpreter or expected
  * shader result is involved: this follows the production validator/RX path. */
-static void producer_programs(const char *directory,const char **metadata,bool dynamic)
+static void producer_programs(const char *directory,const char **metadata,bool dynamic,bool info_metadata)
 {
     struct opengpu_device gpu={0};struct opengpu_render_context ctx={.gpu=&gpu,.references=1,.id=7};
     gpu.hw.capabilities=GPU_CAP_UNIFIED_COMMANDS;assert(!opengpu_mmu_init(&gpu) && !opengpu_mmu_vm_create(&gpu,&ctx.vm));copy_gpu=&gpu;
@@ -235,29 +235,39 @@ static void producer_programs(const char *directory,const char **metadata,bool d
         else {
             p.patch_words=(u32)strtoul(metadata[5],NULL,10);p.output_components=(u32)strtoul(metadata[6],NULL,10);
             if(dynamic){
-                p.version=(u32)strtoul(metadata[7],NULL,10);p.owned_patch_reads=true;
+                p.version=(u32)strtoul(metadata[7],NULL,10);p.owned_patch_reads=p.version==2 || p.version==3;
                 p.tes_patch_layout=(struct opengpu_tessellation_patch_layout){
                     (u32)strtoul(metadata[8],NULL,10),(u32)strtoul(metadata[9],NULL,10),
                     (u32)strtoul(metadata[10],NULL,10),(u32)strtoul(metadata[11],NULL,10),
                     (u32)strtoul(metadata[12],NULL,10)};
             }
         }
+        if(info_metadata){
+            u32 owner_permission=(u32)strtoul(metadata[14],NULL,10);
+            assert(owner_permission<=1);
+            if(stage==4)p.version=(u32)strtoul(metadata[13],NULL,10);
+            p.owned_tessellation_info=p.version==3 && owner_permission;
+        }
         struct drm_opengpu_native_program_view view={.handle=71,.bytes=bytes+4,.entry_offset=4};
         struct opengpu_native_program_snapshot output;struct opengpu_private_snapshot *owner=opengpu_private_snapshot_create(&gpu,&ctx);assert(!IS_ERR(owner));
         int result=opengpu_tessellation_program_snapshot_append(owner,&view,&p,program_copy,tc_code,&output);
-        if(result)fprintf(stderr,"actual producer stage%u rejected: %d (%zu words)\n",stage,result,bytes/4);
+        if(result)fprintf(stderr,"input program stage%u rejected: %d (%zu words)\n",stage,result,bytes/4);
         assert(!result && tc_code_copies==1 && output.entry_offset==4);
         assert(!memcmp(owner->segments->staging,tc_code,bytes+4));
         assert(!opengpu_private_snapshot_prepare(owner) && !opengpu_private_snapshot_publish(owner));
         assert(!memcmp(owner->segments->backing.cpu,tc_code,bytes+4));
-        assert(!opengpu_private_snapshot_retire(owner));printf("actual producer stage%u: %zu words validator/RX PASS (CPU only)\n",stage,bytes/4);
+        assert(!opengpu_private_snapshot_retire(owner));printf("input program stage%u: %zu words validator/RX PASS (CPU only)\n",stage,bytes/4);
     }
     opengpu_mmu_vm_destroy(&gpu,&ctx.vm);opengpu_mmu_fini(&gpu);assert(ctx.references==1 && !live_allocations && !fixture_buffers);
 }
 #include "opengpu_tessellation_dynamic_program_test.inc"
+#include "opengpu_tessellation_info_program_test.inc"
 int main(int argc,const char **argv)
 {
-    assert(argc==1 || argc==9 || argc==15);program_tests();dynamic_program_tests();snapshot_tests();dynamic_snapshot_tests();
-    if(argc!=1)producer_programs(argv[1],argv+2,argc==15);
-    puts("TCS v1 / TES v1-v2 validator + exact RX snapshot: definedness/branch/patch/mask/barrier/single-point/entry/lease tests PASS (CPU only; no protected submit)");return 0;
+    if(argc==2 && !strcmp(argv[1],"--info-only")){
+        info_program_tests();info_snapshot_tests();puts("version3 info validator/RX fixtures PASS (CPU only)");return 0;
+    }
+    assert(argc==1 || argc==9 || argc==15 || argc==17);program_tests();dynamic_program_tests();snapshot_tests();dynamic_snapshot_tests();info_program_tests();info_snapshot_tests();
+    if(argc!=1)producer_programs(argv[1],argv+2,argc==15 || argc==17,argc==17);
+    puts("TCS v1/v3 / TES v1-v3 validator + exact RX snapshot: definedness/branch/patch/mask/barrier/single-point/entry/lease tests PASS (CPU only; no protected submit)");return 0;
 }

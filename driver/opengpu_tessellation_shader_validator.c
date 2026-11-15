@@ -29,11 +29,15 @@ static bool tess_evaluation_layout_valid(const struct opengpu_tessellation_patch
 }
 bool opengpu_tessellation_program_profile_valid(const struct opengpu_tessellation_program_profile *p)
 {
-    if(!p || !p->available || (p->version!=1 && p->version!=2) || (p->stage!=4 && p->stage!=5) ||
+    if(!p || !p->available || (p->version!=1 && p->version!=2 && p->version!=3) || (p->stage!=4 && p->stage!=5) ||
         !p->lanes || p->lanes>16 || (p->lanes&(p->lanes-1)) ||
         p->warps<2 || p->warps>8 || (p->warps&(p->warps-1)))return false;
+    if(p->version!=3 && p->owned_tessellation_info)return false;
+    if(p->version==3 && !p->owned_tessellation_info)return false;
     if(p->version==1 && (p->owned_patch_reads || !tess_layout_zero(&p->tes_patch_layout)))return false;
-    if(p->stage==4)return p->version==1 && p->input_vertices>=1 && p->input_vertices<=32 &&
+    if(p->version==3 && p->stage==4 &&
+        (p->owned_patch_reads || !tess_layout_zero(&p->tes_patch_layout)))return false;
+    if(p->stage==4)return (p->version==1 || p->version==3) && p->input_vertices>=1 && p->input_vertices<=32 &&
         p->output_vertices>=1 && p->output_vertices<=32 && p->output_vertices<=p->lanes*p->warps &&
         p->input_components<=64 && p->output_components<=64 && p->patch_components<=120 &&
         p->input_vertices*p->input_components<=2048 &&
@@ -309,13 +313,27 @@ bool opengpu_tessellation_shader_validate_words(const u32 *words,u32 count,
             else if(fn==7){
                 TESS_REQUIRE(p->owned_uniforms && !f && s->x[a].defined && s->x[b].defined);
                 if(rd)s->x[rd]=tess_unknown();
+            }else if(fn==37){
+                TESS_REQUIRE(!f && !b && s->x[a].defined && s->x[a].known);
+                if(p->stage==4){
+                    TESS_REQUIRE(p->version==3 && p->owned_tessellation_info && s->x[a].value==6);
+                    /* x10 is the only writable shared scratch in a SIMT arm.
+                     * Boundary clearing forces selector rematerialization;
+                     * the returned language value is defined, never constant
+                     * or a new mask/parameter authorization. */
+                    TESS_REQUIRE(!depth || (a==10 && (!rd || rd==10)));
+                }else{
+                    TESS_REQUIRE(!depth && !s->invalid && !s->ended);
+                    TESS_REQUIRE(s->x[a].value<6 || (s->x[a].value==6 &&
+                        p->version==3 && p->owned_tessellation_info));
+                }
+                if(rd)s->x[rd]=tess_unknown();
             }else{
                 TESS_REQUIRE(p->stage==5 && !depth && !f && !s->invalid && !s->ended);
-                if(fn==32){TESS_REQUIRE(s->x[a].known && !s->x[a].value && s->x[b].known && s->x[b].value<(p->version==2?3u:3u+p->patch_words) && !s->emitted);if(rd)s->x[rd]=tess_unknown();}
+                if(fn==32){TESS_REQUIRE(s->x[a].known && !s->x[a].value && s->x[b].known && s->x[b].value<((p->version==2 || p->version==3)?3u:3u+p->patch_words) && !s->emitted);if(rd)s->x[rd]=tess_unknown();}
                 else if(fn==33){TESS_REQUIRE(!rd && !s->emitted && s->x[a].known && s->x[a].value<p->output_components && s->x[b].defined);}
                 else if(fn==35){TESS_REQUIRE(!rd && !a && !b && !s->emitted);s->emitted=true;}
                 else if(fn==36){TESS_REQUIRE(!rd && !a && !b && s->emitted);s->ended=true;}
-                else if(fn==37){TESS_REQUIRE(!b && s->x[a].known && s->x[a].value<6);if(rd)s->x[rd]=tess_unknown();}
                 else goto done; /* No GS layer or shader PrimitiveID privilege. */
             }
         }else if(op==0x2b){
@@ -323,7 +341,7 @@ bool opengpu_tessellation_shader_validate_words(const u32 *words,u32 count,
             TESS_REQUIRE(!f && s->full_vl && tess_masked(s,insn,rd,function==7 || function==21 || function==33));
             if(function==7){TESS_REQUIRE(p->owned_uniforms && s->v[a].defined && s->v[b].defined);tess_vector_write(s,rd,pc,tess_unknown());}
             else if(function==33){
-                TESS_REQUIRE(p->stage==5 && p->version==2 && p->owned_patch_reads && !depth && !s->invalid && !s->emitted && !s->ended);
+                TESS_REQUIRE(p->stage==5 && (p->version==2 || p->version==3) && p->owned_patch_reads && !depth && !s->invalid && !s->emitted && !s->ended);
                 TESS_REQUIRE(tess_evaluation_access(s,a,b,p));
                 tess_vector_write(s,rd,pc,tess_unknown());
             }else{
