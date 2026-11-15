@@ -56,7 +56,8 @@
   validator/RX/MMU 消费12个原程序通过；mapped 地址宽度乘法已修正，
   16-lane/eight-warp 实际 Decoder/IntegerAlu 正例和恢复旧错误的精确负控通过。
   原52资源完整GUR图、joint BUILD和真实CU执行未验收；完整五阶段65引用也待实现。
-- 下一批将 P16 联合 BUILD 和 GNQ/GVM 元数据捕获合为一个源码 PR，交付分支
+- 当前唯一开放 [PR #828](https://github.com/OpenGPGPU/OpenGPU/pull/828)，将 P16
+  联合 BUILD 和 GNQ/GVM 元数据捕获合为一次源码交付，交付分支
   `codex/p16-joint-delivery`，保留原逻辑提交 `3de037bd8`、`6916cefda`。
   [BUILD 范围与复现](PROTECTED_TESSELLATION_JOINT_BUILD.md)、
   [元数据捕获范围与复现](TESSELLATION_JOINT_METADATA_CAPTURE.md)：准确交付源完整
@@ -111,7 +112,7 @@ GPU 的正式交付入口是受保护的 [`main`](https://github.com/OpenGPGPU/O
 | 仓库 / 分支 | 用途与交付方式 |
 |---|---|
 | GPU `main` | 已通过受保护 CI 并合入的正式源码；最近基线为 #827；P15/P16/P39部分源码已合入，完整目标验收仍待完成 |
-| GPU `codex/p16-joint-delivery` | 基于 #827，联合 BUILD 与 GNQ/GVM 元数据捕获的单一源码交付；原逻辑提交3de037bd8/6916cefda，本地验收通过，走严格 ci-ok/rebase auto-merge；完整 P16 仍待验收 |
+| GPU `codex/p16-joint-delivery` | 基于 #827，唯一开放源码交付 [PR #828](https://github.com/OpenGPGPU/OpenGPU/pull/828)，联合 BUILD 与 GNQ/GVM 元数据捕获；原逻辑提交3de037bd8/6916cefda，本地验收通过，走严格 ci-ok/rebase auto-merge；完整 P16 仍待验收 |
 | GPU `codex/native-sample-dut-bridge` | 保留 P02/P03 的原开发源码，按本清单分批交付；不另外开放并行 PR |
 | GPU `codex/owner-counter-live` | P07 的隔离实现分支；CPU 操作语料已扩展，实际 DUT/共存验收待完成 |
 | GPU `codex/p15-tess-checked-uniform` | P15 原 checked-uniform/版本化 ABI 源码；交付分支保留三项实现逻辑提交，不带旧政策/CI 父链 |
