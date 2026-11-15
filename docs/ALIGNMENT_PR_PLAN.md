@@ -60,9 +60,10 @@
   联合 BUILD 和 GNQ/GVM 元数据捕获合为一次源码交付，交付分支
   `codex/p16-joint-delivery`，保留原逻辑提交 `3de037bd8`、`6916cefda`。
   [BUILD 范围与复现](PROTECTED_TESSELLATION_JOINT_BUILD.md)、
-  [元数据捕获范围与复现](TESSELLATION_JOINT_METADATA_CAPTURE.md)：准确交付源完整
+  [元数据捕获范围与复现](TESSELLATION_JOINT_METADATA_CAPTURE.md)：准确 BUILD 交付源完整
   host 检查通过（767.27s，768MiB aggregate 守卫，152 pytest、21 strict producer、
-  六项环境 skip）；新鲜10源编译、1项 ABI 和5项实际组件 RTL 全通过。
+  六项环境 skip）；reader 重放后的新鲜10源编译、1项 ABI 和5项实际组件 RTL
+  全通过；四个新 suite 已登记 system-core，integration/large-PR 目录检查通过。
   实际 GNT/GVS/GND 串行捕获与执行父级、无 shader clear 路由、完整原程序资源图、
   实际 CU/三域 protected submit/retirement 仍待完成，本批不关闭 P16。
   同时最多开放一个 alignment PR，前一份合入后才开放下一份。

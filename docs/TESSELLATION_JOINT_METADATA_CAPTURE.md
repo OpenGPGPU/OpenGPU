@@ -104,6 +104,12 @@ classes preceding the frozen classpath. All owned groups were proved terminal
 before their temporary outputs were removed. No actual CU, full parent,
 Mesa-to-DUT, six VGA frames or physical timing result is established here.
 
+The four new system suites are registered in the existing `system-core`
+catalog. Both integration and large-PR catalog selection checks passed using
+`python3 -B scripts/test_test_selection.py`; `bash -n scripts/ci_shard_tests.sh`
+also passed. This registers the tests for existing selection paths and does
+not enable or dispatch the disabled Scala regression workflow.
+
 For a bounded reproduction, obtain the frozen host test classpath from
 `alignment-host-integration/target/streams/test/fullClasspath/_global/streams/export`,
 check the borrowed provider sources and tools before and after, and compile
