@@ -81,7 +81,7 @@ struct graphics_program {
     gl_shader_program *program;
     const tgsi_token *tokens[5];
     unsigned color_types[4];
-    opengpu_native_tess_input_map evaluation_inputs,control_outputs;
+    opengpu_native_tess_input_map evaluation_inputs,control_outputs,geometry_inputs,geometry_outputs;
     bool joint;opengpu_native_joint_input captured;
 };
 static int type_size(const glsl_type *type, bool) { return glsl_count_vec4_slots(type, false, false); }
@@ -190,6 +190,22 @@ static void *compile(const char *const files[5], const char *prefix,bool joint)
                 span.mask=(1u<<components)-1;
             }
         }
+        if(stage==MESA_SHADER_GEOMETRY){
+            for(unsigned output=0;output<2;output++){
+                auto &map=output?f->geometry_outputs:f->geometry_inputs;map.version=1;
+                nir_foreach_variable_with_modes(var,nir,output?nir_var_shader_out:nir_var_shader_in){
+                    if(map.count==64||var->data.location_frac){map.version=0;break;}
+                    auto *type=var->type;bool pv=nir_is_arrayed_io(var,stage);if(pv)type=glsl_get_array_element(type);
+                    auto &span=map.spans[map.count++];span.first=var->data.driver_location;
+                    span.slots=glsl_count_attribute_slots(type,false);span.per_vertex=pv;span.compact=var->data.compact;
+                    unsigned location=var->data.location;
+                    if(location>=VARYING_SLOT_VAR0&&location<VARYING_SLOT_PATCH0){span.semantic=TGSI_SEMANTIC_GENERIC;span.index=location-VARYING_SLOT_VAR0;}
+                    else tgsi_get_gl_varying_semantic((gl_varying_slot)location,true,&span.semantic,&span.index);
+                    unsigned n=glsl_get_vector_elements(glsl_without_array_or_matrix(type));
+                    if(!n||n>4){map.version=0;break;}span.mask=(1u<<n)-1;
+                }
+            }
+        }
         if(joint){
             struct capture_mode {unsigned slot;nir_variable_mode mode;};
             capture_mode modes[2];unsigned nm=0;
@@ -258,6 +274,12 @@ extern "C" int opengpu_tess_frontend_input_map(void *p,opengpu_native_tess_input
 {if(!p||!out||static_cast<graphics_program *>(p)->evaluation_inputs.version!=1)return -1;*out=static_cast<graphics_program *>(p)->evaluation_inputs;return 0;}
 extern "C" int opengpu_tess_frontend_control_output_map(void *p,opengpu_native_tess_input_map *out)
 {if(!p||!out||static_cast<graphics_program *>(p)->control_outputs.version!=1)return -1;*out=static_cast<graphics_program *>(p)->control_outputs;return 0;}
+extern "C" int opengpu_tess_frontend_geometry_maps(void *p,opengpu_native_tess_input_map *input,opengpu_native_tess_input_map *output)
+{
+    auto *f=static_cast<graphics_program *>(p);
+    if(!f||!input||!output||!linked(p,3)||f->geometry_inputs.version!=1||f->geometry_outputs.version!=1)return -1;
+    *input=f->geometry_inputs;*output=f->geometry_outputs;return 0;
+}
 extern "C" int opengpu_tess_frontend_ubos(void *p,pipe_context *pipe,
     pipe_resource *const resources[72],const unsigned offsets[72],const unsigned sizes[72])
 {
