@@ -569,6 +569,38 @@ def changed_suites(root, changed, *, test_index=None):
     files, nodes = index_test_sources(root) if test_index is None else test_index
 
     affected = set(changed) & files.keys()
+    joint_common = {
+        "src/main/scala/opengpu/system/tessellation/TessellationJointJobLayout.scala",
+        "src/main/scala/opengpu/graphics/host/NativeTypedGraphicsDescriptors.scala",
+        "src/main/scala/opengpu/graphics/host/NativeBinnedGraphicsDescriptors.scala",
+        "docs/abi/protected-tessellation-joint-v2.json",
+        "docs/abi/native-binned-graphics-v1.json",
+        "src/test/scala/opengpu/system/TessellationJointReaderTestSupport.scala",
+        "src/test/scala/opengpu/system/TessellationJointCaptureTestPackets.scala",
+    }
+    if changed & (joint_common | {
+        "src/main/scala/opengpu/system/tessellation/TessellationJointFrameCaptureReader.scala",
+        "src/main/scala/opengpu/graphics/vertex/TypedVertexBinImagePipeline.scala",
+        "src/main/scala/opengpu/graphics/raster/TypedTileImagePipeline.scala",
+    }):
+        affected.add("src/test/scala/opengpu/system/TessellationJointFrameCaptureReaderSpec.scala")
+    if changed & (joint_common | {
+        "src/main/scala/opengpu/system/tessellation/TessellationJointRangeCaptureController.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationJointSourceCrosslink.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationVertexSequenceLayout.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationVertexSequenceReader.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationVertexCaptureController.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationVertexSourceReader.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationVertexDrawReader.scala",
+        "docs/abi/tessellation-vertex-source-v1.json",
+        "docs/abi/tessellation-uniform-sequence.json",
+        "docs/abi/native-tessellation-sequence-v1.json",
+        "docs/abi/native-tessellation-triangle-sequence-v2.json",
+        "docs/abi/native-tessellation-quad-sequence-v3.json",
+    } | {f"src/main/scala/opengpu/system/tessellation/TessellationSystem{d}InputImage.scala"
+         for d in ("Isoline", "Triangle", "Quad")}):
+        affected.add("src/test/scala/opengpu/system/TessellationJointRangeCaptureControllerSpec.scala")
+        affected.add("src/test/scala/opengpu/system/TessellationJointZeroWorkCaptureSpec.scala")
     if changed & {
         "src/main/scala/opengpu/graphics/raster/FragmentInputAbi.scala",
         "src/main/scala/opengpu/graphics/raster/FragmentSampleAbi.scala",
