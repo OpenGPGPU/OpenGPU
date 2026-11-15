@@ -1717,6 +1717,27 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertNotIn("opengpu.graphics.TypedTileRenderPipelineSpec", actual)
 
 
+    def test_joint_frame_and_range_capture_select_real_memory_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        expected = "opengpu.system.TessellationJoint{}"
+        for path in ("system/tessellation/TessellationJointFrameCaptureReader",
+                     "system/tessellation/TessellationJointJobLayout", "graphics/host/NativeBinnedGraphicsDescriptors",
+                     "graphics/host/NativeTypedGraphicsDescriptors", "graphics/vertex/TypedVertexBinImagePipeline"):
+            self.assertIn(expected.format("FrameCaptureReaderSpec"), changed_suites(root,
+                          [f"src/main/scala/opengpu/{path}.scala"]))
+        for path in ("system/tessellation/TessellationJointRangeCaptureController", "system/tessellation/TessellationJointSourceCrosslink",
+                     "system/tessellation/TessellationVertexSequenceReader", "system/tessellation/TessellationVertexCaptureController",
+                     "system/tessellation/TessellationVertexSourceReader", "system/tessellation/TessellationVertexDrawReader",
+                     "system/tessellation/TessellationSystemTriangleInputImage"):
+            self.assertIn(expected.format("RangeCaptureControllerSpec"), changed_suites(root,
+                          [f"src/main/scala/opengpu/{path}.scala"]))
+            self.assertIn(expected.format("ZeroWorkCaptureSpec"), changed_suites(root,
+                          [f"src/main/scala/opengpu/{path}.scala"]))
+        for path in ("TessellationJointReaderTestSupport", "TessellationJointCaptureTestPackets"):
+            selected = changed_suites(root, [f"src/test/scala/opengpu/system/{path}.scala"])
+            for suite in ("FrameCaptureReaderSpec", "RangeCaptureControllerSpec", "ZeroWorkCaptureSpec"):
+                self.assertIn(expected.format(suite), selected)
+
     def test_dynamic_tes_patch_keeps_service_and_actual_cu_checks(self):
         root = Path(__file__).resolve().parents[1]
         expected = {"opengpu.core.TessellationEvaluationKernelContractSpec",
