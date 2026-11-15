@@ -1,4 +1,8 @@
 # Resource-heavy qualification runs locally, outside PR/nightly CI.
+# Original VS slice/patch ISA qualifiers instantiate two full-capacity CUs;
+# fetch, publisher/context, range and source-reader checks stay in normal CI.
+opengpu.graphics.VertexShaderSliceSpec
+opengpu.graphics.TessellationVertexPatchSourceSpec
 # Full CU storage/fence integration compiles locally; no frame is rendered.
 opengpu.core.GpuComputeUnitStorageFenceSpec
 # Exhaustive texture-format sweeps and 16/32-lane texture models run locally.
