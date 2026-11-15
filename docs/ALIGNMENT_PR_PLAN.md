@@ -32,7 +32,7 @@
 - 下一批 P39 源码交付在 `codex/p39-delivery` 从 #823 重放15个逻辑源码提交，
   范围为原 draw slice、ACK/seal publisher、zero-init、range retirement 和 GVS1 reader；
   准确交付源的新鲜9个production/2个helper/5个Spec编译、10项组件RTL和152项selector检查通过；
-  [交付范围、限制与复现](P39_SOURCE_DELIVERY.md)。尚未开放 PR。
+  [交付范围、限制与复现](P39_SOURCE_DELIVERY.md)。[源码 PR #824](https://github.com/OpenGPGPU/OpenGPU/pull/824) 是当前唯一开放的 alignment PR。
   原 VS 实际执行、联合 native/三域路径仍是 P39 的目标验收条件。
 - P07 的九条 recipe、六组原 ESSL 已覆盖 increment/read/decrement/动态索引的
   真实 Mesa CPU/capture、严格输入与 C++ parser；实际 DUT 与资源共存仍未验收。
@@ -80,7 +80,7 @@ GPU 的正式交付入口是受保护的 [`main`](https://github.com/OpenGPGPU/O
 | 仓库 / 分支 | 用途与交付方式 |
 |---|---|
 | GPU `main` | 已通过受保护 CI 并合入的正式源码；最近基线为 #823；P15/P16源码已合入，完整目标验收仍待完成 |
-| GPU `codex/p39-delivery` | 基于 #823 的单一 P39 源码交付准备；保留15个逻辑提交和正常 CI，不启用未闭合硬件入口；交付验收后再开放一个 PR |
+| GPU `codex/p39-delivery` | 基于 #823 的单一 P39 源码交付准备；保留15个逻辑提交和正常 CI，不启用未闭合硬件入口；当前唯一[源码 PR #824](https://github.com/OpenGPGPU/OpenGPU/pull/824)，通过正常 CI/严格 ci-ok 后 rebase 自动合入 |
 | GPU `codex/native-sample-dut-bridge` | 保留 P02/P03 的原开发源码，按本清单分批交付；不另外开放并行 PR |
 | GPU `codex/owner-counter-live` | P07 的隔离实现分支；CPU 操作语料已扩展，实际 DUT/共存验收待完成 |
 | GPU `codex/p15-tess-checked-uniform` | P15 原 checked-uniform/版本化 ABI 源码；交付分支保留三项实现逻辑提交，不带旧政策/CI 父链 |
@@ -168,7 +168,7 @@ P07 的 CPU 操作语料已有扩展，但不能替代实际 DUT、原提交链�
 | P21 | Advanced blend、indexed MRT 与对应原API状态 | 所需方程、独立enable/factor/equation/mask、sRGB、barrier、float附件与clear/visibility组合；原状态提交到native tile结果及guard一致 | P05、P20 | 待闭合 |
 | P22 | GLES3.2 texture builtins 与特殊 target 的整合 | 动态resource array、gather/offset、buffer texture、border、cube-array、stencil、multisample-array；原编译/driver/ISA/各stage实际取样和limits均验证 | P19 | 待闭合 |
 | P23 | ASTC及压缩/颜色格式完整原路径 | 全规定ASTC LDR footprints/modes、ETC2/EAC/sRGB等目录与decoder/采样绑定；独立格式oracle、非法块/边界/fault及目标host组合证据 | P19、P22 | 待闭合 |
-| P39 | 原 VS 输入/实例/index/restart→owned patch 的生产链 | 保留原 draw、实际原 ESSL/Mesa VS 执行与 GPU patch assembly；原 attribute/index/instance/divisor、linked component、同 patch identity/来源正确；输入逐字 ACK 后再 seal；原 code/resource authority、zero-init 隔离、fault/cancel/drain/retirement、三域实际组合验证，不用 CPU 预制 patch 关闭 | P15、P17；与P16联合验证，完整模型重做P04 | 原draw slice、VS wrapper、ACK/seal publisher、zero-init和GPU范围sequencer作为下一单一源码交付从#823重放15个逻辑源码提交；准确交付源9+2+5新鲜编译、10项组件RTL和152项selector检查通过，[结果/限制](P39_SOURCE_DELIVERY.md)，尚未开放PR；GVS1/original GND1严格reader、两者实际串行capture、GNT7–9 reader、VS路由/owner和三域typed image parent已在P40开发树实现；限定组件RTL及独立负控通过，其中capture为3绿/2精确断言红；79当前源plugin编译通过，但完整isoline parent elaboration在128MiB OOM，另两域未执行；范围adapter/联合parent、独立draw invocation与跨范围/实例语言PrimitiveID、no-GS FS builtin ABI、生产BUILD、原compiler→实际CU/native三域链仍未闭合，不用CPU预制patch替代 |
+| P39 | 原 VS 输入/实例/index/restart→owned patch 的生产链 | 保留原 draw、实际原 ESSL/Mesa VS 执行与 GPU patch assembly；原 attribute/index/instance/divisor、linked component、同 patch identity/来源正确；输入逐字 ACK 后再 seal；原 code/resource authority、zero-init 隔离、fault/cancel/drain/retirement、三域实际组合验证，不用 CPU 预制 patch 关闭 | P15、P17；与P16联合验证，完整模型重做P04 | 原draw slice、VS wrapper、ACK/seal publisher、zero-init和GPU范围sequencer作为下一单一源码交付从#823重放15个逻辑源码提交；准确交付源9+2+5新鲜编译、10项组件RTL和152项selector检查通过，[结果/限制](P39_SOURCE_DELIVERY.md)，[源码PR #824](https://github.com/OpenGPGPU/OpenGPU/pull/824)是当前唯一开放PR；GVS1/original GND1严格reader、两者实际串行capture、GNT7–9 reader、VS路由/owner和三域typed image parent已在P40开发树实现；限定组件RTL及独立负控通过，其中capture为3绿/2精确断言红；79当前源plugin编译通过，但完整isoline parent elaboration在128MiB OOM，另两域未执行；范围adapter/联合parent、独立draw invocation与跨范围/实例语言PrimitiveID、no-GS FS builtin ABI、生产BUILD、原compiler→实际CU/native三域链仍未闭合，不用CPU预制patch替代 |
 | P40 | TES 完整动态 patch read service、ISA 与原编译器 lowering | 在支持的32×64/120/2048容量内动态读取任意合法 control vertex/component、per-patch 与 tess levels；TES coords/原实例语义、实际 CU返回/writeback、越界/stage/version、仲裁及fault/cancel/drain；原 Mesa 动态索引程序与三域 protected 组合验证，ISA变化同步独立LLVM仓库 | P15、P17；与P16联合验证，完整模型重做P04 | 默认关闭的typed read/CU/provider、memory adapter及staging独立drain已有源码；后者12个case/14次限定组件仿真含RO/RW Sv32、render未退役时VS局部handoff与global flush等待、获grant前取消欠账；原Mesa5动态+3旧v1 CPU及P16原字节检查、独立LLVM TD生成器通过；当前typed parent仅79源编译通过，完整elaboration未通过，新MC roundtrip/联合BUILD/实际CU与三域protected执行仍待验收 |
 
 P39/P40 的完整边界见 [执行缺口](TESSELLATION_EXECUTION_GAPS.md)。P16/P17
