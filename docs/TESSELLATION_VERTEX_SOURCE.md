@@ -105,7 +105,10 @@ Clang and immutable Linux GCC 13.3 ASan/UBSan (53.05 and 62.72 seconds).
 The ABI generator check and all four ABI/catalog tests also passed. The four
 tested C/header/fixture/runner inputs were unchanged during each compiler run;
 owned temporary outputs were removed. The earlier module-build result below
-predates this split, which has no new runtime or module-build qualification.
+predates this split. The subsequent complete module build including the
+producer-facing checker and outer-plan source is recorded in
+[the outer-plan contract](TESSELLATION_VERTEX_OUTER_PLAN.md); runtime and GPU
+qualification remain pending.
 
 Reproduce from the repository root:
 
