@@ -77,7 +77,7 @@ bool opengpu_tessellation_vertex_source_canonical(const void *raw,size_t bytes)
     }
     return true;
 }
-bool opengpu_tessellation_vertex_sequence_canonical(const void *raw,size_t bytes,u32 domain)
+static bool gvs_sequence_canonical(const void *raw,size_t bytes,u32 domain,bool bound)
 {
     static const u32 magic[]={0x474e5407,0x474e5408,0x474e5409};
     const unsigned char *rules;
@@ -91,9 +91,18 @@ bool opengpu_tessellation_vertex_sequence_canonical(const void *raw,size_t bytes
     for(u32 i=17;i<=23;i++)if(gvs_word(raw,i))return false;
     for(u32 i=domain==0?237u:238u;i<=(domain==0?482u:483u);i++)if(gvs_word(raw,i))return false;
     if(gvs_word(raw,domain==0?491u:492u))return false;
-    return gvs_word(raw,0)==magic[domain] && gvs_word(raw,1)==2048 && gvs_word(raw,2)==7+domain &&
-        gvs_rules(raw,rules,512) && !(gvs_word(raw,509)&63u) && end==(u64)gvs_word(raw,509)+512 && end<=(1ULL<<32);
+    if(gvs_word(raw,0)!=magic[domain] || gvs_word(raw,1)!=2048 || gvs_word(raw,2)!=7+domain ||
+        !gvs_rules(raw,rules,512))return false;
+    /* The producer cannot supply a GVS address. The enclosing private BUILD
+     * first validates an unbound source, then owns both relocation fields.
+     * Bound validation remains necessary after those relocations are applied. */
+    if(!bound)return !gvs_word(raw,509) && !end;
+    return !(gvs_word(raw,509)&63u) && end==(u64)gvs_word(raw,509)+512 && end<=(1ULL<<32);
 }
+bool opengpu_tessellation_vertex_sequence_canonical(const void *raw,size_t bytes,u32 domain)
+{return gvs_sequence_canonical(raw,bytes,domain,true);}
+bool opengpu_tessellation_vertex_sequence_source_canonical(const void *raw,size_t bytes,u32 domain)
+{return gvs_sequence_canonical(raw,bytes,domain,false);}
 
 enum { GVS_ORIGINALS=35 };
 struct gvs_original {u32 handle;struct opengpu_native_frame_backing backing;};

@@ -76,11 +76,57 @@ static void gvs_record_mutants(u32 words[128])
     assert(opengpu_tessellation_vertex_source_canonical(words,512));
     words[29]=2;assert(!opengpu_tessellation_vertex_source_canonical(words,512));
     memcpy(words,saved,sizeof(saved));
+    assert(!opengpu_tessellation_vertex_sequence_source_canonical(NULL,2048,0));
+    assert(!opengpu_tessellation_vertex_sequence_canonical(NULL,2048,0));
     for(u32 domain=0;domain<3;domain++) {
         u32 sequence[512]={0};
         sequence[0]=0x474e5407+domain;sequence[1]=2048;sequence[2]=7+domain;
+        /* A producer supplies no address, including an exclusive high word.
+         * Validate the same full record before and after private relocation. */
+        assert(opengpu_tessellation_vertex_sequence_source_canonical(sequence,2048,domain));
+        assert(!opengpu_tessellation_vertex_sequence_canonical(sequence,2048,domain));
+        assert(!opengpu_tessellation_vertex_sequence_source_canonical(sequence,2047,domain));
+        assert(!opengpu_tessellation_vertex_sequence_source_canonical(sequence,2049,domain));
+        assert(!opengpu_tessellation_vertex_sequence_source_canonical(sequence,2048,3));
+        for(u32 other=0;other<3;other++)if(other!=domain)
+            assert(!opengpu_tessellation_vertex_sequence_source_canonical(sequence,2048,other));
+        for(u32 n=0;n<3;n++) {
+            u32 old=sequence[n];sequence[n]^=1;
+            assert(!opengpu_tessellation_vertex_sequence_source_canonical(sequence,2048,domain));
+            sequence[n]=old;
+        }
+        for(u32 n=509;n<512;n++) {
+            sequence[n]=1;
+            assert(!opengpu_tessellation_vertex_sequence_source_canonical(sequence,2048,domain));
+            sequence[n]=0;
+        }
+        sequence[510]=512;
+        assert(opengpu_tessellation_vertex_sequence_canonical(sequence,2048,domain));
+        assert(!opengpu_tessellation_vertex_sequence_source_canonical(sequence,2048,domain));
+        sequence[509]=64;sequence[510]=576;
+        assert(opengpu_tessellation_vertex_sequence_canonical(sequence,2048,domain));
+        assert(!opengpu_tessellation_vertex_sequence_source_canonical(sequence,2048,domain));
+        sequence[509]=sequence[510]=0;
+        for(u32 n=3;n<509;n++) {
+            const unsigned char *rules=domain==0?opengpu_gvs_isoline_word_rules:
+                domain==1?opengpu_gvs_triangle_word_rules:opengpu_gvs_quad_word_rules;
+            bool forbidden=(n>=17 && n<=23) ||
+                (n>=(domain==0?237u:238u) && n<=(domain==0?482u:483u)) ||
+                n==(domain==0?491u:492u) || !(rules[n]&127u);
+            if(forbidden) {
+                sequence[n]=1;
+                assert(!opengpu_tessellation_vertex_sequence_source_canonical(sequence,2048,domain));
+                sequence[n]=0;
+            }
+            if((rules[n]&127u)<32 && rules[n] && !(rules[n]&128u)) {
+                sequence[n]=1u<<(rules[n]&127u);
+                assert(!opengpu_tessellation_vertex_sequence_source_canonical(sequence,2048,domain));
+                sequence[n]=0;
+            }
+        }
         sequence[509]=0xfffffe00;sequence[510]=0;sequence[511]=1;
         assert(opengpu_tessellation_vertex_sequence_canonical(sequence,2048,domain));
+        assert(!opengpu_tessellation_vertex_sequence_source_canonical(sequence,2048,domain));
         for(u32 other=0;other<3;other++)if(other!=domain)assert(!opengpu_tessellation_vertex_sequence_canonical(sequence,2048,other));
         sequence[0]-=3;sequence[2]-=3;
         assert(!opengpu_tessellation_vertex_sequence_canonical(sequence,2048,domain));
