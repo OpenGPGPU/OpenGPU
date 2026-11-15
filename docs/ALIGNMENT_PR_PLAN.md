@@ -7,10 +7,10 @@
 
 ## 当前总览
 
-- 最近源码合入：P17 编译器增量 / [PR #826](https://github.com/OpenGPGPU/OpenGPU/pull/826)，
-  rebase 合入提交 `842b291c3b6664b3f368d04f37f635f24b5bdf8a`；准确 PR head
-  `926a6e4a4f30df6715205d557dcc1769da8215ab` 的正常 Scala CI
-  [43680799152](https://github.com/OpenGPGPU/OpenGPU/actions/runs/43680799152)
+- 最近源码合入：P17 原链接四阶段编译 / [PR #827](https://github.com/OpenGPGPU/OpenGPU/pull/827)，
+  rebase 合入提交 `6f7f58dbcd0cc81d049b3d91efbeebc5e22fe8d3`；准确 PR head
+  `35d05fb03cc103642e558bc5533925f253c3db4c` 的正常 Scala CI
+  [43685058798](https://github.com/OpenGPGPU/OpenGPU/actions/runs/43685058798)
   `checks`、受保护 `ci-ok` 成功，unit/affected RTL 按原变更选择规则跳过。
   临时交付树和本地分支经准确 head、清洁状态、进程、打开文件及活动消费者
   检查后已清理，远端 head 已自动删除。
@@ -48,17 +48,23 @@
   [交付范围与复现](P17_COMPILER_SOURCE_DELIVERY.md)：准确交付源完整 host
   检查通过（748.35s，768MiB aggregate 守卫，152 pytest/21 strict producer，
   六项环境 skip）；三组真实 Mesa CPU 检查和独立 P16 程序字节消费通过。
-- 下一批是 P17 同一原链接 VS/TCS/TES/FS 编译和原52引用 source lease，
-  原逻辑提交 `9ed94be7b`、`9fde939af`、`53103920c`，交付分支
-  `codex/p17-joint-delivery`；本地实现和相关验证已通过，已开放唯一
-  [PR #827](https://github.com/OpenGPGPU/OpenGPU/pull/827)，等待正常 CI 和严格受保护的 `ci-ok`。
+- P17 同一原链接 VS/TCS/TES/FS 编译和原52引用 source lease 已通过
+  [PR #827](https://github.com/OpenGPGPU/OpenGPU/pull/827) 合入，保留原逻辑提交
+  `9ed94be7b`、`9fde939af`、`53103920c`。
   [范围、实际 CPU 结果与限制](NATIVE_JOINT_COMPILER_SOURCE.md)：三组原 Mesa
   程序、45 TU 全新编译、旧字节兼容与两项源码负控通过；正式 main 独立
   validator/RX/MMU 消费12个原程序通过；mapped 地址宽度乘法已修正，
   16-lane/eight-warp 实际 Decoder/IntegerAlu 正例和恢复旧错误的精确负控通过。
-  CPU编译/资源/保护与地址运算 RTL 范围分开，
-  原52资源GUR图、joint BUILD和真实CU执行未验收；完整五阶段65引用也待实现。
-  同时最多开放一个 alignment PR，合入后才开放下一份。
+  原52资源完整GUR图、joint BUILD和真实CU执行未验收；完整五阶段65引用也待实现。
+- 下一批将 P16 联合 BUILD 和 GNQ/GVM 元数据捕获合为一个源码 PR，交付分支
+  `codex/p16-joint-delivery`，保留原逻辑提交 `3de037bd8`、`6916cefda`。
+  [BUILD 范围与复现](PROTECTED_TESSELLATION_JOINT_BUILD.md)、
+  [元数据捕获范围与复现](TESSELLATION_JOINT_METADATA_CAPTURE.md)：准确交付源完整
+  host 检查通过（767.27s，768MiB aggregate 守卫，152 pytest、21 strict producer、
+  六项环境 skip）；新鲜10源编译、1项 ABI 和5项实际组件 RTL 全通过。
+  实际 GNT/GVS/GND 串行捕获与执行父级、无 shader clear 路由、完整原程序资源图、
+  实际 CU/三域 protected submit/retirement 仍待完成，本批不关闭 P16。
+  同时最多开放一个 alignment PR，前一份合入后才开放下一份。
 - P07 的九条 recipe、六组原 ESSL 已覆盖 increment/read/decrement/动态索引的
   真实 Mesa CPU/capture、严格输入与 C++ parser；实际 DUT 与资源共存仍未验收。
 - P15、P16、P17、P39、P40 已有下表列出的限定范围源码与检查，均未完成目标验收。
@@ -104,12 +110,12 @@ GPU 的正式交付入口是受保护的 [`main`](https://github.com/OpenGPGPU/O
 
 | 仓库 / 分支 | 用途与交付方式 |
 |---|---|
-| GPU `main` | 已通过受保护 CI 并合入的正式源码；最近基线为 #826；P15/P16/P39部分源码已合入，完整目标验收仍待完成 |
-| GPU `codex/p17-joint-delivery` | 基于 #826 的唯一开放源码交付 [PR #827](https://github.com/OpenGPGPU/OpenGPU/pull/827)；同一原链接四阶段编译、两独立边界 map 与52引用 lease；三个原逻辑提交9ed94be7b/9fde939af/53103920c；本地验收通过，走严格 ci-ok/rebase auto-merge |
+| GPU `main` | 已通过受保护 CI 并合入的正式源码；最近基线为 #827；P15/P16/P39部分源码已合入，完整目标验收仍待完成 |
+| GPU `codex/p16-joint-delivery` | 基于 #827，联合 BUILD 与 GNQ/GVM 元数据捕获的单一源码交付；原逻辑提交3de037bd8/6916cefda，本地验收通过，走严格 ci-ok/rebase auto-merge；完整 P16 仍待验收 |
 | GPU `codex/native-sample-dut-bridge` | 保留 P02/P03 的原开发源码，按本清单分批交付；不另外开放并行 PR |
 | GPU `codex/owner-counter-live` | P07 的隔离实现分支；CPU 操作语料已扩展，实际 DUT/共存验收待完成 |
 | GPU `codex/p15-tess-checked-uniform` | P15 原 checked-uniform/版本化 ABI 源码；交付分支保留三项实现逻辑提交，不带旧政策/CI 父链 |
-| GPU `codex/p16-protected-tess` | P16 私有原 GEM/RX/validator 与 protected submit 实现；完整提交/执行仍未闭合 |
+| GPU `codex/p16-protected-tess` | P16 私有原 GEM/RX/validator、联合 BUILD 与默认关闭元数据捕获实现；完整提交/执行仍未闭合 |
 | GPU `codex/p17-tess-mesa` | P17 原 Mesa frontend/emitter/私有资源回调、动态 TES 与语言 input-patch ID、ordinary FS8/9 编译源码；当前已提交至53103920c，包含原四阶段 linked frontend、独立边界 map、52引用 source lease、独立 VS 字节消费者与 mapped stride 修复；CPU 通过不等于原 CU 执行 |
 | GPU `codex/p39-vertex-patch-source` | P39 原 draw slice、范围 sequencer、GVS1 reader 与 VS→patch ACK/seal 源码；限定组件 RTL 已通过，联合生产接线/CU/native 三域待验收，不启用正式入口 |
 | GPU `codex/p40-dynamic-tes-patch` | P40 动态 TES typed read/CU/provider、独立语言输入与 memory adapter/fabric；单 CU 语言 ISA、9bc86886a 原 ordinal binding 及三域完整容量父级 CIRCT 已按各自范围通过；后者 externalImages 不含实际 CU/render，三域原程序联合执行待验收 |
@@ -186,8 +192,8 @@ P07 的 CPU 操作语料已有扩展，但不能替代实际 DUT、原提交链�
 |---|---|---|---|---|
 | P14 | 原 GS→FS ABI7 与 GS/TF 同 host 语料 | 原 ESSL GS、非零16-slot varying、ABI7 FS、sample/mask、4 MRT；TF在clip/flat前的原始输出及render规则、discard/fault/cancel/ACK/无reset复用精确验证 | P03、P04 | 已有组件/保护源码，组合语料待补 |
 | P15 | TCS/TES checked-uniform RTL 与版本化 ABI | 明确 stage4/5 root/provider，实际 CU scalar/vector load与writeback、仲裁/drain；block0/11/default31、16KiB/1024 defaults和错误stage/version/map、fault/cancel/reset通过；冻结旧GUR/GNT合同 | P03；新合同重做P04 | [源码PR #822已合入](https://github.com/OpenGPGPU/OpenGPU/pull/822)，合入提交cafc53e09；正常CI全部80项job通过，包含完整编译、host/unit、4-lane/two-warp实际CU isoline client、system input/viewport及ci-ok；原CPU ABI/catalog/parser、27核心源plugin、13组件RTL、layout及5生成器核对通过；三域task-local cancel/fault在实际报告消费后清理，另9源编译、6项定向RTL与2项原代码负控通过；默认关闭，全容量实际CU load/writeback/仲裁/drain、三域及完整资源/故障复用目标验收待完成，源码交付不计目标完成 |
-| P16 | Protected TCS/TES program、uniform、GNQ/GNT admission | 原 GEM code/default/UBO进入正确 RX/R-NX私有视图；真实可达性、writer冲突、immutable snapshot、引用、owned patch RAM/level 初始化隔离、三domain执行、retirement/cleanup闭合；只消费实际验证的硬件版本/容量/路由 | P15、P39、P40 | 原 GEM mapper、严格 validator/RX/MMU、2048耦合容量和共享标量分歧修复已有；GVS1/GNT7–9 exact ABI、原VS/GUR1/GND root-only owner/MMU encoder及10项变异负控经Clang/GCC通过；[源码PR #823已合入](https://github.com/OpenGPGPU/OpenGPU/pull/823)，合入提交c784cc1ee，交付临时树/分支已清理；保留原12逻辑提交；Clang/GCC13.3 ASan/UBSan五套正例及53语义负控、实际完整host回归（709.82s，Mesa/缺失target按原脚本跳过）与49项执行器相关CPU检查通过；准确交付源的Linux7.2.0 ARM64 Kbuild实际编译27对象+2helpers、MODPOST及gpu_drv.ko链接通过，未加载；BUILD仍GNT4/5/6静态TES、GVS仍root-only，联合新BUILD/parent和真实protected submit/retirement待闭合，未注册usable ioctl/probe；后续原draw/invocation完整捕获、program v3及独立FS8/9私有profile源码已通过[#825](https://github.com/OpenGPGPU/OpenGPU/pull/825)合入，[结果与限制](P16_INVOCATION_SOURCE_DELIVERY.md)，本批不关闭P16 |
-| P17 | 原 Mesa TCS/TES lowering 与 API72 无损映射 | binding0..71→每stage至多12 blocks→独立私有表；真实ESSL/反射/GEM/GUR/GUB闭合，binding71、rebind、同GEM不同view、跨stage复用及60个graphics引用正确 | P15；与P16/P39/P40联合执行 | 六个逻辑源码提交已通过[源码PR #826](https://github.com/OpenGPGPU/OpenGPU/pull/826)合入（基于#825，完整host/Mesa/P16字节检查通过）；开发源码至9ed94be7b；原 Mesa 三组语言input-patch ID ESSL产生6个TCS/TES程序，独立P16 v3 validator/RX/MMU通过；旧3组v1和5组v2程序与独立原emitter逐字节一致，API72/五stage60-block反射、原GEM资源生命周期和五项语言负控通过；ordinary FS8/9两frontend产生29个原程序并经独立P16实际字节消费；ordinary FS8/9 的 opaque program、原26资源source lease及metadata-derived draw CPU生命周期已实现，五组原Mesa程序和独立P16字节消费通过，见[NATIVE_GRAPHICS_PRIMITIVE_LIFECYCLE.md](NATIVE_GRAPHICS_PRIMITIVE_LIFECYCLE.md)；同一原链接四阶段52引用与两独立map的CPU编译/lease检查已实现，三组原Mesa/45 fresh TU/12原程序独立P16字节消费通过，见[NATIVE_JOINT_COMPILER_SOURCE.md](NATIVE_JOINT_COMPILER_SOURCE.md)；原indirect TCS patch store、52资源完整GUR/joint BUILD、五阶段65引用、protected submit、生产语言binding与实际CU/API待闭合 |
+| P16 | Protected TCS/TES program、uniform、GNQ/GNT admission | 原 GEM code/default/UBO进入正确 RX/R-NX私有视图；真实可达性、writer冲突、immutable snapshot、引用、owned patch RAM/level 初始化隔离、三domain执行、retirement/cleanup闭合；只消费实际验证的硬件版本/容量/路由 | P15、P39、P40 | 原 GEM mapper、严格 validator/RX/MMU、2048耦合容量和共享标量分歧修复已有；GVS1/GNT7–9 exact ABI、原VS/GUR1/GND root-only owner/MMU encoder及10项变异负控经Clang/GCC通过；[源码PR #823已合入](https://github.com/OpenGPGPU/OpenGPU/pull/823)，合入提交c784cc1ee，交付临时树/分支已清理；保留原12逻辑提交；Clang/GCC13.3 ASan/UBSan五套正例及53语义负控、实际完整host回归（709.82s，Mesa/缺失target按原脚本跳过）与49项执行器相关CPU检查通过；准确交付源的Linux7.2.0 ARM64 Kbuild实际编译27对象+2helpers、MODPOST及gpu_drv.ko链接通过，未加载；BUILD仍GNT4/5/6静态TES、GVS仍root-only，联合新BUILD/parent和真实protected submit/retirement待闭合，未注册usable ioctl/probe；后续原draw/invocation完整捕获、program v3及独立FS8/9私有profile源码已通过[#825](https://github.com/OpenGPGPU/OpenGPU/pull/825)合入，[结果与限制](P16_INVOCATION_SOURCE_DELIVERY.md)；新GNQ4/5/6联合BUILD与GNQ/GVM默认关闭reader已实现并通过准确交付源完整host及6项ABI/组件检查，见[BUILD](PROTECTED_TESSELLATION_JOINT_BUILD.md)与[metadata](TESSELLATION_JOINT_METADATA_CAPTURE.md)；实际GNT/GVS/GND串行capture/parent/clear/CU/submit仍待闭合，不关闭P16 |
+| P17 | 原 Mesa TCS/TES lowering 与 API72 无损映射 | binding0..71→每stage至多12 blocks→独立私有表；真实ESSL/反射/GEM/GUR/GUB闭合，binding71、rebind、同GEM不同view、跨stage复用及60个graphics引用正确 | P15；与P16/P39/P40联合执行 | 六个逻辑源码提交已通过[源码PR #826](https://github.com/OpenGPGPU/OpenGPU/pull/826)合入（基于#825，完整host/Mesa/P16字节检查通过）；已合入开发源码至53103920c；原 Mesa 三组语言input-patch ID ESSL产生6个TCS/TES程序，独立P16 v3 validator/RX/MMU通过；旧3组v1和5组v2程序与独立原emitter逐字节一致，API72/五stage60-block反射、原GEM资源生命周期和五项语言负控通过；ordinary FS8/9两frontend产生29个原程序并经独立P16实际字节消费；ordinary FS8/9 的 opaque program、原26资源source lease及metadata-derived draw CPU生命周期已实现，五组原Mesa程序和独立P16字节消费通过，见[NATIVE_GRAPHICS_PRIMITIVE_LIFECYCLE.md](NATIVE_GRAPHICS_PRIMITIVE_LIFECYCLE.md)；同一原链接四阶段52引用与两独立map的CPU编译/lease检查已通过[#827](https://github.com/OpenGPGPU/OpenGPU/pull/827)合入，三组原Mesa/45 fresh TU/12原程序独立P16字节消费通过，见[NATIVE_JOINT_COMPILER_SOURCE.md](NATIVE_JOINT_COMPILER_SOURCE.md)；原indirect TCS patch store、52资源完整GUR/joint BUILD、五阶段65引用、protected submit、生产语言binding与实际CU/API待闭合 |
 | P18 | Tessellation domain/spacing/primitive generation 完整语义 | isoline/triangle/quad、所需spacing/winding/边界、不变性、amplification/overflow、primitive bounds与实际protected stages组合；独立几何/图像和fault/order oracle | P15–P17、P39、P40 | 待闭合 |
 | P19 | 96 combined texture namespace 与六stage checked sampler | 各stage16 units及全局accounting、stage-local无损映射、TCS/TES真实采样返回；原resource来源、immutable view、writer/fault/drain/cleanup完整 | P15–P17 | 待实现 |
 | P20 | Sample-rate、显式插值与 shader sample I/O | 实际1x/2x/4x、center/sample/centroid/offset、sampleID/position/mask、alpha-to-coverage/discard/depth/MRT/resolve；原shader输入输出及完整host结果独立检查 | P05、P14、P18 | 待闭合 |

@@ -201,15 +201,31 @@ in total under the separate 900-second whole-run deadline. Actual Linux memory
 and swap were both capped at 512 MiB with one CPU and no network. Source guards
 passed; ended private outputs and containers were removed.
 
-This block did not run a full module Kbuild, Scala/JVM, RTL, joint Mesa producer
-or actual DUT/frame qualification. The Scala regression workflow was not
-triggered. Hardware readers/parent ownership, correct production VA placement,
+On the delivery based on merged #827, the complete sanitized host script
+passed in 767.27 seconds under a 1500-second/768-MiB sampled aggregate guard.
+Peak sampled aggregate RSS was 531920 KiB. All 3128 tracked non-document source
+inputs and HEAD were stable. Results include 152 pytest cases, 21 strict
+producer checks and 757 unittest executions across 89 summaries; these are
+executions, not a deduplicated test count. Six existing environment skips
+remain: four unavailable Mesa environments, the Clang OpenGPU target and the
+optional FlashSim bound check. Python 3.14.7, pytest 9.1.1 and Apple Clang 16
+were used. The existing strict producer scanner and macro exemptions were
+unchanged. Ended private test outputs were removed after consumer checks.
+
+This BUILD block did not run a full module Kbuild or actual DUT/frame
+qualification. The accompanying default-off GNQ/GVM metadata readers passed
+separate bounded ABI/component RTL checks; see
+[TESSELLATION_JOINT_METADATA_CAPTURE.md](TESSELLATION_JOINT_METADATA_CAPTURE.md).
+The Scala regression workflow remains disabled and was not triggered.
+Actual GNT/GVS/GND capture and parent ownership, correct production VA placement,
 no-state clear execution, a verified factory/getter/runtime and the mandatory
 2-CU 640×480/60FPS product qualification remain pending.
 
 ## Reproduction
 
 ```sh
+PATH=/opt/homebrew/bin:$PATH PYTHONDONTWRITEBYTECODE=1 \
+  OPENGPU_TEST_SANITIZERS=1 ASAN_OPTIONS=detect_leaks=0 bash scripts/test_scripts.sh
 python3 -B scripts/generate_protected_tessellation_joint_abi.py --check
 python3 -B scripts/test_protected_tessellation_joint_abi.py
 python3 -B scripts/test_protected_tessellation_joint.py --sanitize --negative-controls
