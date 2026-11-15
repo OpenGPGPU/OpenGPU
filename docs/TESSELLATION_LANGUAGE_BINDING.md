@@ -139,3 +139,14 @@ this complete execution path. No factory, public capability or production
 admission is enabled here. Two physical CUs, original shaders/resources,
 protected/API execution and the **2-CU 640×480 at 60 FPS** product remain
 unfinished; alignment acceptance stays 3/40.
+
+## Original input-patch route
+
+The separately enabled `tessellationInfoAvailable` path carries the original
+input-patch ordinal through all three domain parents and their actual TCS/TES
+launches. The value is derived from `slice.firstOrdinal / layout.inputVertices`,
+independently of task ownership, generated primitive sequence and raster IDs.
+Aligned complete patches, accepted task snapshots and held reports retain
+their own checks. This is an internal route and enables no public capability.
+Current stage results and remaining scope are recorded in
+[the route delivery](TESSELLATION_INPUT_PATCH_ROUTE_DELIVERY.md).

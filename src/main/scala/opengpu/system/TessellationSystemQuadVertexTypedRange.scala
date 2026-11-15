@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
 import opengpu.graphics._
+import opengpu.graphics.tessellation.TessellationInputPatchBinding
 
 class TessellationSystemQuadVertexTypedRangeBegin(config:GpuConfig,p:VertexShaderStageConfig,idWidth:Int) extends Bundle {
   val gnt=new TessellationVertexSequenceCompletion(new TessellationQuadPatchSequenceDescriptor(config,p,idWidth),idWidth)
@@ -17,7 +18,11 @@ class TessellationSystemQuadVertexTypedRangeCompletion extends Bundle {
 /** Typed range adapter only: task/retirement connect to the actual image parent.
   * It creates neither patch bytes nor child completions and grants no native authority. */
 class TessellationSystemQuadVertexTypedRange(config:GpuConfig,p:VertexShaderStageConfig,idWidth:Int,
-    tessellationUniforms:Boolean=false,evaluationPatchAvailable:Boolean=false) extends Module {
+    tessellationUniforms:Boolean=false,evaluationPatchAvailable:Boolean=false,tessellationInfoAvailable:Boolean=false) extends Module {
+  // Preserve the previous full JVM constructor with the language service disabled.
+  def this(config:GpuConfig,p:VertexShaderStageConfig,idWidth:Int,tessellationUniforms:Boolean,evaluationPatchAvailable:Boolean) =
+    this(config,p,idWidth,tessellationUniforms,evaluationPatchAvailable,false)
+
   val io=IO(new Bundle {
     val begin=Flipped(Decoupled(new TessellationSystemQuadVertexTypedRangeBegin(config,p,idWidth)))
     val task=Decoupled(new TessellationSystemQuadVertexInputImageTask(config,p,idWidth))
@@ -43,7 +48,8 @@ class TessellationSystemQuadVertexTypedRange(config:GpuConfig,p:VertexShaderStag
   core.io.begin.bits.range:=v;core.io.begin.bits.firstSequence:=t.firstSequence
   core.io.begin.bits.firstPrimitiveId:=t.firstPrimitiveId
   core.io.begin.bits.admissionStatus:=TessellationVertexTypedRangeBinding.admission(g.status,c.status,
-    linked && (g.sequence.count===0.U || tuple))
+    linked && (g.sequence.count===0.U || (tuple &&
+      (if(tessellationInfoAvailable)TessellationInputPatchBinding.aligned(v.template.slice.firstOrdinal,v.template.layout.inputVertices)else true.B))))
   when(io.begin.fire){template:=g.sequence.template.source;lastValid:=false.B;last:=0.U.asTypeOf(last)}
   io.task.valid:=core.io.task.valid;core.io.task.ready:=io.task.ready
   io.task.bits.source:=template;io.task.bits.vertex:=core.io.task.bits

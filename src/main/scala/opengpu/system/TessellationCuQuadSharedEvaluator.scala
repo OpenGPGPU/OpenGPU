@@ -19,8 +19,14 @@ class TessellationCuQuadSharedTask(config: GpuConfig, idWidth: Int) extends Bund
   * through completion; launches and accepted traffic must drain on cancellation.
   * The two interfaces can be multiplexed onto the same CU after control ends.
   */
-class TessellationCuQuadSharedEvaluator(config: GpuConfig, idWidth: Int, numComputeUnits: Int,evaluationPatchAvailable:Boolean=false) extends Module {
+class TessellationCuQuadSharedEvaluator(config: GpuConfig, idWidth: Int, numComputeUnits: Int,evaluationPatchAvailable:Boolean=false,tessellationInfoAvailable:Boolean=false) extends Module {
+  // Preserve the previous full JVM constructor with the language service disabled.
+  def this(config: GpuConfig,idWidth: Int,numComputeUnits: Int,evaluationPatchAvailable:Boolean) =
+    this(config,idWidth,numComputeUnits,evaluationPatchAvailable,false)
+
   val io = IO(new Bundle {
+    val inputPatchBinding=if(tessellationInfoAvailable)Some(Input(Valid(new TessellationInputPatchBinding)))else None
+    val tessellationTask=if(tessellationInfoAvailable)Some(Output(Valid(new TessellationShaderTaskBinding)))else None
     val evaluationPatch=if(evaluationPatchAvailable)Some(Flipped(Vec(numComputeUnits,new SharedCuEvaluationPatchPort(config))))else None
     val evaluationPatchBinding=if(evaluationPatchAvailable)Some(Output(Valid(new TessellationEvaluationPatchBinding)))else None
     val task = Flipped(Decoupled(new TessellationCuQuadSharedTask(config, idWidth)))
@@ -42,12 +48,22 @@ class TessellationCuQuadSharedEvaluator(config: GpuConfig, idWidth: Int, numComp
     val cancel = Input(Bool()); val busy = Output(Bool())
   })
   private val patch = Module(new TessellationCuQuadPatch(config,zeroOnBegin=evaluationPatchAvailable))
-  private val evaluator = Module(new TessellationQuadCuEvaluator(config, idWidth, numComputeUnits,evaluationPatchAvailable))
+  private val evaluator = Module(new TessellationQuadCuEvaluator(config, idWidth, numComputeUnits,evaluationPatchAvailable,tessellationInfoAvailable))
   private val active = RegInit(false.B); private val cancelled = RegInit(false.B)
   private val saved = Reg(new TessellationCuQuadSharedTask(config, idWidth))
-  patch.io.task.valid := !active && io.task.valid && !io.cancel; patch.io.task.bits := io.task.bits.control
-  io.task.ready := !active && !io.cancel && patch.io.task.ready
-  when(io.task.fire) { active := true.B; cancelled := false.B; saved := io.task.bits }
+  private val bindingLegal=if(tessellationInfoAvailable)
+    TessellationInputPatchBinding.legal(io.inputPatchBinding.get,io.task.bits.control.patch.context.taskId)else true.B
+  private val rejected=RegInit(false.B)
+  private val rejectedResult=Reg(chiselTypeOf(io.completion.bits))
+  private val inputBinding=if(tessellationInfoAvailable)Some(Reg(new TessellationInputPatchBinding))else None
+  if(tessellationInfoAvailable)when(io.task.fire){inputBinding.get:=io.inputPatchBinding.get.bits}
+  patch.io.task.valid := !active && !rejected && io.task.valid && !io.cancel && bindingLegal
+  patch.io.task.bits := io.task.bits.control
+  io.task.ready := !active && !rejected && !io.cancel && Mux(bindingLegal,patch.io.task.ready,true.B)
+  when(io.task.fire) { active := bindingLegal; cancelled := false.B; saved := io.task.bits
+    when(!bindingLegal){rejected:=true.B;rejectedResult:=0.U.asTypeOf(rejectedResult)
+      rejectedResult.taskId:=io.task.bits.control.patch.context.taskId;rejectedResult.status:=1.U}
+  }
   when(active && io.cancel && !patch.io.completion.valid) { cancelled := true.B }
   private val evaluationFault=WireDefault(false.B);private val evaluationBusy=WireDefault(false.B)
   private val evaluationFailed=RegInit(false.B)
@@ -108,13 +124,19 @@ class TessellationCuQuadSharedEvaluator(config: GpuConfig, idWidth: Int, numComp
   evaluator.io.outputComponents := saved.outputComponents; evaluator.io.cancel := stop
   patch.io.response <> evaluator.io.response
   evaluator.io.cancel := stop
-  io.out <> patch.io.out; io.completion.valid:=patch.io.completion.valid && !evaluationBusy
-  io.completion.bits:=patch.io.completion.bits
-  if(evaluationPatchAvailable)when(evaluationFailed && (patch.io.completion.bits.status===0.U || patch.io.completion.bits.status===4.U)){io.completion.bits.status:=3.U}
-  patch.io.completion.ready:=io.completion.ready && !evaluationBusy
-  io.busy := active || evaluationBusy
-  when(io.completion.fire) { active := false.B }
+  io.out <> patch.io.out; io.completion.valid:=rejected || (patch.io.completion.valid && !evaluationBusy)
+  io.completion.bits:=Mux(rejected,rejectedResult,patch.io.completion.bits)
+  if(evaluationPatchAvailable)when(!rejected && evaluationFailed && (patch.io.completion.bits.status===0.U || patch.io.completion.bits.status===4.U)){io.completion.bits.status:=3.U}
+  patch.io.completion.ready:=io.completion.ready && !evaluationBusy && !rejected
+  io.busy := active || rejected || evaluationBusy
+  when(io.completion.fire) { active := false.B;rejected:=false.B }
   io.launch <> evaluator.io.launch; io.geometryTask := evaluator.io.geometryTask
   evaluator.io.kernelCompletion <> io.kernelCompletion; evaluator.io.event <> io.event
   evaluator.io.owner := io.owner; evaluator.io.taskIds := io.taskIds; io.cancelCu := evaluator.io.cancelCu
+
+  if(tessellationInfoAvailable){
+    evaluator.io.inputPatchBinding.get.valid:=active
+    evaluator.io.inputPatchBinding.get.bits:=inputBinding.get
+    io.tessellationTask.get:=evaluator.io.tessellationTask.get
+  }
 }

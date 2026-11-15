@@ -28,6 +28,29 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 selected = changed_suites(REPO_ROOT, [f"src/main/scala/opengpu/{path}.scala"])
                 self.assertIn("opengpu.system.TessellationSharedLoadReplySpec", selected)
 
+    def test_original_input_patch_identity_selects_bounded_launch_and_range_checks(self):
+        paths = ["graphics/tessellation/TessellationScalarInfoWorker", "graphics/SharedShaderTaskRouter",
+                 "graphics/VertexInputSlice", "system/SharedCuGraphicsPort", "system/GpuSystem",
+                 "system/IsolineGeometryCuExecutor", "system/TessellationTriangleCuEvaluator",
+                 "system/TessellationQuadCuEvaluator", "system/TessellationVertexShaderRouter",
+                 "system/GeometryFragmentShaderRouter", "system/TessellationHostShaderRouter"]
+        paths += [f"system/TessellationSystem{domain}{suffix}"
+                  for domain in ("Isoline", "Triangle", "Quad")
+                  for suffix in ("VertexTypedRange", "VertexInputImage", "ImagePipeline", "BinPass", "Viewport")]
+        paths += [f"system/TessellationCu{domain}{suffix}"
+                  for domain in ("Isoline", "Triangle", "Quad")
+                  for suffix in ("SystemClient", "SharedEvaluator")]
+        paths = [f"src/main/scala/opengpu/{p}.scala" for p in paths]
+        paths += ["src/test/scala/opengpu/graphics/TessellationInputPatchBindingSpec.scala",
+                  "src/test/scala/opengpu/core/GpuComputeUnitTessellationInfoSpec.scala"]
+        for path in paths:
+            with self.subTest(path=path):
+                selected = set(changed_suites(REPO_ROOT, [path]))
+                self.assertIn("opengpu.graphics.TessellationInputPatchBindingSpec", selected)
+                if not path.endswith("/TessellationInputPatchBindingSpec.scala"):
+                    self.assertIn("opengpu.graphics.TessellationVertexTypedRangeSpec", selected)
+                self.assertNotIn("opengpu.core.GpuComputeUnitTessellationInfoSpec", selected)
+
     def test_ordinary_primitive_input_selects_light_permission_checks_and_keeps_full_stage_local(self):
         paths = ["graphics/FragmentInputAbi", "graphics/FragmentSampleAbi", "graphics/FragmentShaderStage",
                  "graphics/TypedFragmentState", "graphics/TypedFragmentImageStateReader",

@@ -19,8 +19,14 @@ class IsolineGeometryCuTask(config: GpuConfig, commandIdWidth: Int) extends Bund
   * response. The shader reads gl_TessCoord through input vertex 0 components
   * 0..2, writes output components and emits exactly one point.
   */
-class IsolineGeometryCuExecutor(config: GpuConfig, commandIdWidth: Int, numComputeUnits: Int,evaluationPatchAvailable:Boolean=false) extends Module {
+class IsolineGeometryCuExecutor(config: GpuConfig, commandIdWidth: Int, numComputeUnits: Int,evaluationPatchAvailable:Boolean=false,tessellationInfoAvailable:Boolean=false) extends Module {
+  // Preserve the previous full JVM constructor with the language service disabled.
+  def this(config: GpuConfig,commandIdWidth: Int,numComputeUnits: Int,evaluationPatchAvailable:Boolean) =
+    this(config,commandIdWidth,numComputeUnits,evaluationPatchAvailable,false)
+
   val io = IO(new Bundle {
+    val inputPatchBinding=if(tessellationInfoAvailable)Some(Input(Valid(new TessellationInputPatchBinding)))else None
+    val tessellationTask=if(tessellationInfoAvailable)Some(Output(Valid(new TessellationShaderTaskBinding)))else None
     val patchLayout=if(evaluationPatchAvailable)Some(Input(new TessellationPatchLayout))else None
     val evaluationPatchBinding=if(evaluationPatchAvailable)Some(Output(Valid(new TessellationEvaluationPatchBinding)))else None
     val task = Flipped(Decoupled(new IsolineGeometryCuTask(config, commandIdWidth)))
@@ -69,7 +75,11 @@ class IsolineGeometryCuExecutor(config: GpuConfig, commandIdWidth: Int, numCompu
     saved := io.task.bits; response := 0.U.asTypeOf(response)
     response.taskId := io.task.bits.evaluation.taskId; response.sequence := io.task.bits.evaluation.sequence
     response.vertex := io.task.bits.evaluation.vertex; seen := false.B; duplicate := false.B; cancelled := false.B
-    state := offer
+    if(tessellationInfoAvailable){
+      when(!TessellationInputPatchBinding.legal(io.inputPatchBinding.get,io.task.bits.evaluation.taskId)){
+        response.failed:=true.B;state:=result
+      }.otherwise{state:=offer}
+    }else{state:=offer}
   }
   when(state =/= idle && state =/= result && io.cancel) { cancelled := true.B }
   when(scheduler.io.task.fire) { state := running }
@@ -88,4 +98,14 @@ class IsolineGeometryCuExecutor(config: GpuConfig, commandIdWidth: Int, numCompu
     state := result
   }
   when(io.response.fire) { state := idle }
+
+  if(tessellationInfoAvailable){
+    val binding=Reg(new TessellationInputPatchBinding)
+    when(io.task.fire){binding:=io.inputPatchBinding.get.bits}
+    io.tessellationTask.get.valid:=io.launch.valid
+    io.tessellationTask.get.bits.version:=binding.version
+    io.tessellationTask.get.bits.stage:=5.U
+    io.tessellationTask.get.bits.taskId:=binding.taskId
+    io.tessellationTask.get.bits.inputPatchPrimitiveId:=binding.inputPatchPrimitiveId
+  }
 }

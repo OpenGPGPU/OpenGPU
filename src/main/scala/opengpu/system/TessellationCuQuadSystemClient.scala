@@ -16,23 +16,28 @@ class TessellationCuQuadSystemTask(config: GpuConfig, idWidth: Int) extends Bund
 /** Own one tagged control patch and its evaluation invocations on the shared
   * CU pool. The surrounding router reserves the command tag and forwards the
   * texture, trap and invalidation services through completion. */
-class TessellationCuQuadSystemClient(config: GpuConfig, idWidth: Int, numComputeUnits: Int, tessellationUniforms: Boolean=false,evaluationPatchAvailable:Boolean=false) extends Module {
+class TessellationCuQuadSystemClient(config: GpuConfig, idWidth: Int, numComputeUnits: Int, tessellationUniforms: Boolean=false,evaluationPatchAvailable:Boolean=false,tessellationInfoAvailable:Boolean=false) extends Module {
+  // Preserve the previous full JVM constructor with the language service disabled.
+  def this(config: GpuConfig,idWidth: Int,numComputeUnits: Int,tessellationUniforms: Boolean,evaluationPatchAvailable:Boolean) =
+    this(config,idWidth,numComputeUnits,tessellationUniforms,evaluationPatchAvailable,false)
+
   require(numComputeUnits > 0)
   val io = IO(new Bundle {
+    val inputPatchBinding=if(tessellationInfoAvailable)Some(Input(Valid(new TessellationInputPatchBinding)))else None
     val task = Flipped(Decoupled(new TessellationCuQuadSystemTask(config, idWidth)))
     val opened = Decoupled(UInt(2.W)); val load = Flipped(Decoupled(new TessellationPatchAccess))
     val seal = Flipped(Decoupled(Bool())); val inspect = Flipped(Decoupled(new TessellationPatchAccess))
     val reply = Decoupled(new TessellationContextReply)
     val out = Decoupled(new EvaluatedQuadPrimitive); val completion = Decoupled(new TessellationCuQuadCompletion)
     val cancel = Input(Bool()); val busy = Output(Bool())
-    val shared = Flipped(new SharedCuGraphicsPort(config, idWidth, numComputeUnits, geometryAvailable = true, tessellationAvailable = true,evaluationPatchAvailable=evaluationPatchAvailable))
+    val shared = Flipped(new SharedCuGraphicsPort(config, idWidth, numComputeUnits, geometryAvailable = true, tessellationAvailable = true,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable))
     val texture = Vec(numComputeUnits, new SharedCuTexturePort(config))
     val uniformMemoryRequest=if(tessellationUniforms)Some(Decoupled(new ComputeMemoryRequest(config,64,2)))else None
     val uniformMemoryResponse=if(tessellationUniforms)Some(Flipped(Decoupled(new ComputeMemoryResponse(64,2))))else None
     val trap = Decoupled(new TaggedGraphicsTrap(config, idWidth, numComputeUnits))
     val invalidate = Flipped(Decoupled(new CacheLineInvalidate(config))); val invalidateDone = Decoupled(new CacheLineInvalidate(config))
   })
-  private val client = Module(new TessellationCuQuadSharedEvaluator(config, idWidth, numComputeUnits,evaluationPatchAvailable))
+  private val client = Module(new TessellationCuQuadSharedEvaluator(config, idWidth, numComputeUnits,evaluationPatchAvailable,tessellationInfoAvailable))
   private val tag = Reg(UInt(idWidth.W)); private val native = Reg(Bool()); private val uniform = Reg(Bool())
   private val scope=Reg(new TessellationUniformTaskResources)
   private val service=if(tessellationUniforms)Some(Module(new TessellationUniformCuService(config,idWidth,numComputeUnits)))else None
@@ -46,9 +51,11 @@ class TessellationCuQuadSystemClient(config: GpuConfig, idWidth: Int, numCompute
     else io.task.bits.uniforms.asUInt===0.U
   private val dynamicLegal=if(evaluationPatchAvailable)io.task.bits.patch.patchInputCount===0.U &&
     io.task.bits.patch.patchInputs.asUInt===0.U else true.B
-  private val scopeLegal=oldScopeLegal && dynamicLegal
+  private val scopeLegal=oldScopeLegal && dynamicLegal &&
+    (if(tessellationInfoAvailable)TessellationInputPatchBinding.legal(io.inputPatchBinding.get,io.task.bits.patch.control.patch.context.taskId)else true.B)
   client.io.task.valid := io.task.valid && scopeLegal && !rejected && !serviceBusy
   client.io.task.bits := io.task.bits.patch
+  if(tessellationInfoAvailable)client.io.inputPatchBinding.get:=io.inputPatchBinding.get
   io.task.ready := !rejected && !serviceBusy && Mux(scopeLegal,client.io.task.ready,!client.io.busy && !io.cancel)
   when(io.task.fire){scope:=io.task.bits.uniforms;serviceFault:=false.B;cancelled:=false.B
     when(!scopeLegal){rejected:=true.B;rejectedResult:=0.U.asTypeOf(rejectedResult)
@@ -104,6 +111,22 @@ class TessellationCuQuadSystemClient(config: GpuConfig, idWidth: Int, numCompute
   client.io.event <> io.shared.geometryEvent.get
   client.io.owner := io.shared.owned; client.io.taskIds := io.shared.taskIds
   io.shared.geometryCancel.get := client.io.cancelCu
+  if(tessellationInfoAvailable){
+    val binding=Reg(new TessellationInputPatchBinding)
+    when(io.task.fire){binding:=io.inputPatchBinding.get.bits}
+    io.shared.tessellationTask.get:=client.io.tessellationTask.get
+    when(controlOffer){
+      io.shared.tessellationTask.get.valid:=true.B
+      io.shared.tessellationTask.get.bits.version:=binding.version
+      io.shared.tessellationTask.get.bits.stage:=4.U
+      io.shared.tessellationTask.get.bits.taskId:=binding.taskId
+      io.shared.tessellationTask.get.bits.inputPatchPrimitiveId:=binding.inputPatchPrimitiveId
+    }
+    for(i<-0 until numComputeUnits){
+      val controlOwner=controlLive && io.shared.owned(i) && io.shared.taskIds(i)===tag
+      io.shared.tessellationInfoCancel.get(i):=Mux(controlOwner,client.io.controlCancel,client.io.cancelCu(i))
+    }
+  }
   private val selected = VecInit((0 until numComputeUnits).map(i => controlLive && io.shared.owned(i) && io.shared.taskIds(i) === tag))
   assert(PopCount(selected) <= 1.U, "patch control tag must identify at most one CU")
   private val ports = io.shared.tessellation.get

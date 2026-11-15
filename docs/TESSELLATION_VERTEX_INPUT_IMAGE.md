@@ -164,3 +164,14 @@ rm -r -- "$PARENT_OUT"
 
 The emitter requires a fresh output under `.artifacts/`; it does not replace
 existing files or run a shader. Do not enable or dispatch Scala regression.
+
+## Original input-patch route
+
+The separately enabled `tessellationInfoAvailable` path carries the original
+input-patch ordinal through all three domain parents and their actual TCS/TES
+launches. The value is derived from `slice.firstOrdinal / layout.inputVertices`,
+independently of task ownership, generated primitive sequence and raster IDs.
+Aligned complete patches, accepted task snapshots and held reports retain
+their own checks. This is an internal route and enables no public capability.
+Current stage results and remaining scope are recorded in
+[the route delivery](TESSELLATION_INPUT_PATCH_ROUTE_DELIVERY.md).

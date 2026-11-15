@@ -29,10 +29,15 @@ class TessellationSystemQuadBinCompletion(p:VertexShaderStageConfig) extends Bun
 class TessellationSystemQuadBinPass(config:GpuConfig,p:VertexShaderStageConfig,commandIdWidth:Int,numComputeUnits:Int,
     g:GraphicsConfig=GraphicsConfig(),viewport:Fp32ViewportConfig=Fp32ViewportConfig(),engines:Int=2,
     pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,useSramBlackBoxes:Boolean=false,
-    rendererCredits:Boolean=false,transformFeedback:Boolean=false,tessellationUniforms:Boolean=false,evaluationPatchAvailable:Boolean=false) extends Module {
+    rendererCredits:Boolean=false,transformFeedback:Boolean=false,tessellationUniforms:Boolean=false,evaluationPatchAvailable:Boolean=false,tessellationInfoAvailable:Boolean=false) extends Module {
+  // Preserve the previous full JVM constructor with the language service disabled.
+  def this(config:GpuConfig,p:VertexShaderStageConfig,commandIdWidth:Int,numComputeUnits:Int,g:GraphicsConfig,viewport:Fp32ViewportConfig,engines:Int,pageBytes:Int,writeCredits:Int,tileSlots:Int,pagedCapacity:Int,useSramBlackBoxes:Boolean,rendererCredits:Boolean,transformFeedback:Boolean,tessellationUniforms:Boolean,evaluationPatchAvailable:Boolean) =
+    this(config,p,commandIdWidth,numComputeUnits,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,useSramBlackBoxes,rendererCredits,transformFeedback,tessellationUniforms,evaluationPatchAvailable,false)
+
   require(g.subPixelBits==viewport.subPixelBits)
   private val transactions=VertexBinPipeline.binTransactions(engines,writeCredits,pagedCapacity)
   val io=IO(new Bundle {
+    val inputPatchBinding=if(tessellationInfoAvailable)Some(Input(Valid(new TessellationInputPatchBinding)))else None
     val begin=Flipped(Decoupled(new WindowPrimitiveBinReplayDescriptor))
     val task=Flipped(Decoupled(new TessellationSystemQuadBinTask(config,p,commandIdWidth)))
     val taskCompletion=Decoupled(new TessellationSystemQuadBinTaskCompletion)
@@ -41,7 +46,7 @@ class TessellationSystemQuadBinPass(config:GpuConfig,p:VertexShaderStageConfig,c
     val opened=Decoupled(UInt(2.W));val load=Flipped(Decoupled(new TessellationPatchAccess))
     val seal=Flipped(Decoupled(Bool()))
     val inspect=Flipped(Decoupled(new TessellationPatchAccess));val reply=Decoupled(new TessellationContextReply)
-    val shared=Flipped(new SharedCuGraphicsPort(config,commandIdWidth,numComputeUnits,geometryAvailable=true,tessellationAvailable=true,evaluationPatchAvailable=evaluationPatchAvailable))
+    val shared=Flipped(new SharedCuGraphicsPort(config,commandIdWidth,numComputeUnits,geometryAvailable=true,tessellationAvailable=true,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable))
     val texture=Vec(numComputeUnits,new SharedCuTexturePort(config))
     val uniformMemoryRequest=if(tessellationUniforms)Some(Decoupled(new ComputeMemoryRequest(config,64,2)))else None
     val uniformMemoryResponse=if(tessellationUniforms)Some(Flipped(Decoupled(new ComputeMemoryResponse(64,2))))else None
@@ -53,7 +58,7 @@ class TessellationSystemQuadBinPass(config:GpuConfig,p:VertexShaderStageConfig,c
     val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val source=Module(new TessellationSystemQuadViewport(config,p,commandIdWidth,numComputeUnits,viewport,useSramBlackBoxes,transformFeedback,tessellationUniforms,evaluationPatchAvailable))
+  private val source=Module(new TessellationSystemQuadViewport(config,p,commandIdWidth,numComputeUnits,viewport,useSramBlackBoxes,transformFeedback,tessellationUniforms,evaluationPatchAvailable,tessellationInfoAvailable))
   private val bins=Module(new WindowPrimitiveBinReplayPass(config,p,g,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,useSramBlackBoxes,rendererCredits))
   val recordBytes=bins.recordBytes
   if(rendererCredits)bins.io.rendererPermit.get:=io.rendererPermit.get
@@ -131,4 +136,6 @@ class TessellationSystemQuadBinPass(config:GpuConfig,p:VertexShaderStageConfig,c
   if(tessellationUniforms){io.uniformMemoryRequest.get<>source.io.uniformMemoryRequest.get
     source.io.uniformMemoryResponse.get<>io.uniformMemoryResponse.get}
 
+
+  if(tessellationInfoAvailable)source.io.inputPatchBinding.get:=io.inputPatchBinding.get
 }

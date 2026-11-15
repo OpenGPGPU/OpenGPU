@@ -25,7 +25,11 @@ class TessellationSystemQuadVertexInputImage(config:GpuConfig,p:VertexShaderStag
     pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
     payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false,externalImages:Boolean=false,
-    fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false,tessellationUniforms:Boolean=false,evaluationPatchAvailable:Boolean=false) extends Module {
+    fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false,tessellationUniforms:Boolean=false,evaluationPatchAvailable:Boolean=false,tessellationInfoAvailable:Boolean=false) extends Module {
+  // Preserve the previous full JVM constructor with the language service disabled.
+  def this(config:GpuConfig,p:VertexShaderStageConfig,f:FragmentShaderConfig,shared:SharedCuShaderConfig,g:GraphicsConfig,viewport:Fp32ViewportConfig,engines:Int,pageBytes:Int,writeCredits:Int,tileSlots:Int,pagedCapacity:Int,storage:TypedTileColorConfig,useSramBlackBoxes:Boolean,payload:Option[ShaderPayloadConfig],payloadOwner:Int,transformFeedback:Boolean,externalImages:Boolean,fragmentImageAvailable:Boolean,sampleShading:Boolean,tessellationUniforms:Boolean,evaluationPatchAvailable:Boolean) =
+    this(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading,tessellationUniforms,evaluationPatchAvailable,false)
+
   private val idWidth=shared.taskIdWidth;private val cus=shared.numComputeUnits
   private val payloadConfig=payload;private val sharedConfig=shared
   private val slots=TessellationSystemQuadImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity,tessellationUniforms)
@@ -40,7 +44,7 @@ class TessellationSystemQuadVertexInputImage(config:GpuConfig,p:VertexShaderStag
     val completion=Decoupled(new TessellationSystemQuadVertexInputImageCompletion(p))
     val inspect=Flipped(Decoupled(new TessellationPatchAccess));val reply=Decoupled(new TessellationContextReply)
     val shared=Flipped(new SharedCuGraphicsPort(config,idWidth,cus,geometryAvailable=true,tessellationAvailable=true,
-      imageAvailable=fragmentImageAvailable,evaluationPatchAvailable=evaluationPatchAvailable))
+      imageAvailable=fragmentImageAvailable,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable))
     val payload=payloadConfig.map(q=>Vec(engines+1,new FragmentPayloadPort(config,q)))
     val poolPayload=payloadConfig.map(q=>Output(Valid(new ShaderPayloadBinding(config,q))))
     val payloadPins=payloadConfig.map(q=>Output(Vec(TessellationSystemQuadImagePipeline.payloadPins(engines,ownedVertexSource=true),Valid(new ShaderPayloadPin(q)))))
@@ -54,7 +58,7 @@ class TessellationSystemQuadVertexInputImage(config:GpuConfig,p:VertexShaderStag
   })
   private val image=Module(new TessellationSystemQuadImagePipeline(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,
     tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,
-    sampleShading,tessellationUniforms,evaluationPatchAvailable,ownedVertexSource=true))
+    sampleShading,tessellationUniforms,evaluationPatchAvailable,ownedVertexSource=true,tessellationInfoAvailable=tessellationInfoAvailable))
   private val source=Module(new TessellationVertexPatchSource(config,p,shared,useSramBlackBoxes,payload,payloadOwner))
   private val control=Module(new TessellationVertexInputImageControl(p,new TessellationSystemQuadBinTask(config,p,idWidth),
     new TessellationSystemQuadBinTaskCompletion,new TessellationSystemQuadImageCompletion(p)))
@@ -71,7 +75,8 @@ class TessellationSystemQuadVertexInputImage(config:GpuConfig,p:VertexShaderStag
   private val t=io.task.bits.source.viewport;private val s=t.system;private val patch=s.patch
   control.io.tupleLegal:=TessellationVertexInputImageTuple.legal(io.task.bits.vertex,patch.control.patch.context,
     t.identity,t.instanceId,t.baseInstance,s.uniforms,s.uniformResources,patch.patchInputCount,patch.patchInputs,
-    control.io.frameIdentity,tessellationUniforms,evaluationPatchAvailable)
+    control.io.frameIdentity,tessellationUniforms,evaluationPatchAvailable) &&
+    (if(tessellationInfoAvailable)TessellationInputPatchBinding.aligned(io.task.bits.vertex.slice.firstOrdinal,io.task.bits.vertex.layout.inputVertices)else true.B)
   source.io.task<>control.io.sourceTask;control.io.sourceCompletion<>source.io.completion
   control.io.sourceBusy:=source.io.busy;control.io.sourcePatchCancel:=source.io.cancelPatch
   control.io.localTransportDrained:=image.io.vertexRouterDrained.get && io.sourceMemoryDrained
@@ -103,4 +108,15 @@ class TessellationSystemQuadVertexInputImage(config:GpuConfig,p:VertexShaderStag
   io.memoryRequest<>image.io.memoryRequest;image.io.memoryResponse<>io.memoryResponse
   io.sourceMemoryRequest<>source.io.memoryRequest;source.io.memoryResponse<>io.sourceMemoryResponse
   io.fragmentEvents:=image.io.fragmentEvents;io.busy:=control.io.busy || image.io.busy
+
+  if(tessellationInfoAvailable){
+    val binding=Reg(new TessellationInputPatchBinding)
+    when(io.task.fire){
+      binding.version:=1.U;binding.taskId:=io.task.bits.vertex.taskId
+      binding.inputPatchPrimitiveId:=TessellationInputPatchBinding.primitiveId(
+        io.task.bits.vertex.slice.firstOrdinal,io.task.bits.vertex.layout.inputVertices)
+    }
+    image.io.inputPatchBinding.get.valid:=control.io.imageTask.valid
+    image.io.inputPatchBinding.get.bits:=binding
+  }
 }

@@ -12,8 +12,14 @@ import opengpu.graphics._
   * the isoline executor's correlation tag has only one vertex bit. Only one
   * evaluation is outstanding; accepted requests drain across cancellation.
   */
-class TessellationTriangleCuEvaluator(config: GpuConfig, idWidth: Int, numComputeUnits: Int,evaluationPatchAvailable:Boolean=false) extends Module {
+class TessellationTriangleCuEvaluator(config: GpuConfig, idWidth: Int, numComputeUnits: Int,evaluationPatchAvailable:Boolean=false,tessellationInfoAvailable:Boolean=false) extends Module {
+  // Preserve the previous full JVM constructor with the language service disabled.
+  def this(config: GpuConfig,idWidth: Int,numComputeUnits: Int,evaluationPatchAvailable:Boolean) =
+    this(config,idWidth,numComputeUnits,evaluationPatchAvailable,false)
+
   val io = IO(new Bundle {
+    val inputPatchBinding=if(tessellationInfoAvailable)Some(Input(Valid(new TessellationInputPatchBinding)))else None
+    val tessellationTask=if(tessellationInfoAvailable)Some(Output(Valid(new TessellationShaderTaskBinding)))else None
     val patchLayout=if(evaluationPatchAvailable)Some(Input(new TessellationPatchLayout))else None
     val evaluationPatchBinding=if(evaluationPatchAvailable)Some(Output(Valid(new TessellationEvaluationPatchBinding)))else None
     val request = Flipped(Decoupled(new TriangleEvaluationRequest)); val response = Decoupled(new TriangleEvaluationResponse)
@@ -27,7 +33,7 @@ class TessellationTriangleCuEvaluator(config: GpuConfig, idWidth: Int, numComput
     val cancelCu = Output(Vec(numComputeUnits, Bool())); val cancel = Input(Bool()); val busy = Output(Bool())
   })
   private val reader = Module(new IsolinePatchInputReader(config, idWidth))
-  private val executor = Module(new IsolineGeometryCuExecutor(config, idWidth, numComputeUnits,evaluationPatchAvailable))
+  private val executor = Module(new IsolineGeometryCuExecutor(config, idWidth, numComputeUnits,evaluationPatchAvailable,tessellationInfoAvailable))
   private val active = RegInit(false.B); private val vertex = Reg(UInt(2.W))
   private val cancelled = RegInit(false.B)
   private val stop = io.cancel || (active && cancelled)
@@ -60,4 +66,11 @@ class TessellationTriangleCuEvaluator(config: GpuConfig, idWidth: Int, numComput
   reader.io.response.ready := active && io.response.ready
   when(io.response.fire) { active := false.B }
   io.busy := active || reader.io.busy || executor.io.busy
+
+  if(tessellationInfoAvailable){
+    val binding=Reg(Valid(new TessellationInputPatchBinding))
+    when(io.request.fire){binding:=io.inputPatchBinding.get}
+    executor.io.inputPatchBinding.get:=binding
+    io.tessellationTask.get:=executor.io.tessellationTask.get
+  }
 }
