@@ -7,19 +7,22 @@
 
 ## 当前总览
 
-- 最近正式源码合入为独立TCS/TES语言ID基础层，
-  [#836](https://github.com/OpenGPGPU/OpenGPU/pull/836)，merge `be44d7a9b`、准确head `8afb2a83b`。
-  正常 CI [43815592424](https://github.com/OpenGPGPU/OpenGPU/actions/runs/43815592424)
-  的21个job（含受保护`ci-ok`）全部成功并rebase合入；前序#835九个CI job和#834的45个CI job也全部成功。
-  语言ID的788生产源/1128测试源、七项组件RTL、完整16×8单CU六次launch和四项源负控
-  保留[原范围与复现](TESSELLATION_LANGUAGE_BINDING.md)，不代表原Mesa/完整父级/两颗CU执行。
-  本阶段交付ordinary PrimitiveID ABI8/9：788生产源/1129测试源全新编译、七项RTL（含真实128-thread、
-  16-varying/4-MRT stage打包）、两项源负控、十个旧完整构造与三个helper签名、166项selector检查通过；
-  [最终结果、限制与复现](FRAGMENT_PRIMITIVE_INPUT_ABI.md)。临时classes/models/cache/controls/logs已清理。
-  两项逻辑提交重放到正式#836基线时完整树字节一致，随后只更新本清单的合入状态。
-  同时只开放一份PR；打包完成端仍是协议peer，不证明shader执行。后续为四项full-CU FS shader检查、
-  生产父级ordinal接线、joint-frame capture/跨range游标、原shader/真实父级、protected/API、
-  完整资源与2-CU VGA60产品验收，闭环计数保持3/40。
+- 最近正式源码合入为ordinary PrimitiveID ABI8/9，
+  [#837](https://github.com/OpenGPGPU/OpenGPU/pull/837)，merge `1a03cfd93`、准确head `b7a0c5d1c`。
+  正常 CI [43820053475](https://github.com/OpenGPGPU/OpenGPU/actions/runs/43820053475)
+  的49个job（含受保护`ci-ok`）全部成功并受保护rebase合入。准确交付树和本地分支已按head、
+  清洁状态、进程、打开文件及跨树引用检查清理；远端head已自动删除。
+  [ABI8/9最终结果与边界](FRAGMENT_PRIMITIVE_INPUT_ABI.md)保持原范围：stage打包的CU端是协议peer，
+  四项full-CU FS shader检查仍待执行。#836独立语言binding的实际单CU结果保留
+  [原范围](TESSELLATION_LANGUAGE_BINDING.md)，不代表原Mesa/完整父级/两颗CU执行。
+  本阶段交付原始input-patch ID的三域生产接线：788生产源/1130测试源全新编译、十项组件RTL、
+  三域完整容量父级CIRCT、两项精确源负控、28类的31个旧完整/辅助构造签名和167项selector检查通过；
+  [最终结果、限制与复现](TESSELLATION_INPUT_PATCH_ROUTE_DELIVERY.md)。组件资格生成物已清理。
+  三项逻辑提交重放到#837时完整树字节一致，随后只更新本清单；生产源、测试、脚本及构建输入未改。
+  当前串行目标为P04完整factory、模型、执行器与原probe的绑定资格；按原P04定义使用完整sample factory，
+  后续stage/资源/ABI变化须重新绑定。内部五阶段host的接口/组件结果不替代这项验收。
+  joint-frame/range、原shader/三域protected/API、完整资源和2-CU VGA60仍待其各自目标验收；
+  阶段合入不增加闭环计数，当前仍为3/40。同时只开放一份PR。
   P01 / #819、P02 / #820、P03 / #821 已完成各自的源码交付验收。
 - 当前基线为 **40 个 PR 工作包**：源码交付 3 项，功能/资源/API 闭合 31 项，
   性能与最终验收 6 项。验收完成并合入 **3/40**，剩余 **37 项**。
