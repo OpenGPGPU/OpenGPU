@@ -70,10 +70,11 @@ before opening the patch, using each bank's original write port. Legacy mode
 keeps its false default. Dynamic mode rejects a nonzero old static selection
 count or selection array; fn32 still supplies TessCoord components 0..2.
 
-## Serialized/admission inventory still to be assigned
+## Native admission and remaining connection
 
-A later versioned native contract must carry or derive all of the following;
-this source change deliberately allocates no magic, word offsets or MMIO bits:
+This stage allocates no new magic, word offsets or MMIO bits. Previously
+delivered GNQ/GNT source BUILD records retain their contracts. Runtime
+connection must still derive all of the following from their accepted owners:
 
 - Independently verified stage-5 program version 2 and dynamic-read capability;
   exact original code/entry/RX extent and the retained TES resource roots.
@@ -86,54 +87,83 @@ this source change deliberately allocates no magic, word offsets or MMIO bits:
   A precomputed CPU patch cannot establish that provenance.
 
 The compiler and independent P16 validator now implement the internal v2
-contract described below. Production protected admission and serialized native
-records remain unchanged; the existing getter/BUILD path does not enable v2.
+contract described below. CPU BUILD can retain versioned original programs, but the public getter,
+queue and factory route for this execution service remain closed. A built
+source graph does not prove that the shader executed.
 
-## Validation and remaining limits
+## Staged source validation and limits
 
-The small service/provider tests use modeled transport peers. They cover
-address limits and high bits, binding version/stage/coupled capacity, default
-encoding rejection, held request/commit stability, owner/scope rejection,
-three-way response ownership, cancellation draining and reuse. They are not
-shader execution or original ESSL evidence.
+The exact P40 delivery freshly compiled all 771 production and all 1116 test
+Scala sources with Scala 2.13.18/Chisel 7.15.0, in 88.873/174.177 seconds.
+There was no old GPU class provider. The source union preserves the four
+previously registered joint-metadata suites; the new load-reply fixture uses
+this stage's existing interfaces and does not require a future language-ID
+binding before seal.
 
-Final bounded local results: five service/provider/decoder RTL cases passed;
-three structural elaboration cases passed (legacy and dynamic mode in all
-three domains). These verify the actual patch hierarchy's initialization and
-unchanged SRAM depth/write-port count. A 47-source incremental typer check
-covering CU/frontend/router and all three evaluator/client/viewport/bin paths
-passed, as did 146 selector tests and the integration/shard catalog check.
-The larger 68-source image/sample dependency check did not pass: hierarchy
-macro errors against the older dependency classpath preceded a 128MiB heap
-exhaustion. No larger heap or complete image/CU build was attempted.
+All fourteen component/structural cases passed in 113.212 seconds: launch
+contract, decoder/vector service, owner/provider, legacy/dynamic initialization
+in all three domains, and actual source-0 load replies. They cover full-width
+indices, stage/version/coupled bounds, held requests/commits, cancellation,
+inspection ownership and no-reset reuse. The launch guard still raises actual
+RTL assertion failures for missing geometry and multiple invocations.
 
-`TessellationDynamicPatchSystemSpec` contains a separate actual 2-CU,
-16-lane/8-warp instruction fixture: TCS instructions produce the patch words,
-TES selects a runtime vertex from TessCoord and reads via CUSTOM-1 fn33, and a
-held actual read result is canceled before reuse. **This CU test has not run.**
-The complete current-source build, all three domain/CU execution paths,
-protected admission, full-capacity dynamic CU accesses and same-host product
-qualification remain pending. Scala regression stays disabled.
+The actual-CU test also passed in 235.986 seconds, including model generation
+and native build. `TessellationDynamicPatchSystemSpec` contains two physical
+CUs with 16 lanes/eight warps and compact caches. Literal TCS instructions
+produce the tested patch values; TES obtains its runtime vertex from generated
+TessCoord and reads CUSTOM-1 fn33 through the actual context/provider/CU path.
+Both expected primitive vertex words (`0x1003`/`0x1103`), held-result
+cancellation/drain, held completion and healthy reuse pass without reset.
+Neither a patch result nor a CU completion is injected. The model contains two
+CUs; this fixture does not establish that both were used, full cache capacity,
+all-warp activity or complete 32-vertex/full-component CU accesses.
 
-Focused reproduction after an explicitly permitted source-build/resource
-window (no workflow dispatch):
+The launch assertion uses a port-only contract module. The former direct
+internal signal reference prevented Verilator hierarchical builds; the contract
+preserves its conditions while keeping assertions enabled inside that boundary.
+All tests use fresh classes, enabled assertions, native one-job builds and no
+executable/object caches. The CU build uses `GpuComputeUnit` hierarchy and
+`opengpu.simLowMemOpt=1`; component builds use optimization zero.
+
+Production/test compilation had separate 600-second/6144-MiB sampled aggregate
+bounds (observed 3534992/4266016 KiB). Components used 600 seconds/1536 MiB
+(observed 669072 KiB); the actual CU case used 1200 seconds/3072 MiB with a
+1536-MiB JVM heap (observed 2334880 KiB). Sampled RSS is not an absolute peak.
+Source/tool/HEAD/index checks passed before and after each command. Ended
+classes, mutants, models and logs are removed after consumer checks.
+All 157 affected-suite selector checks and integration/large-PR catalog checks
+pass. The unchanged evaluator and load-reply sources also pass the three
+original-routing semantic controls described in the
+[input reply guide](TESSELLATION_INPUT_REPLY_ROUTING.md).
+
+This source/limited-ISA stage does not qualify original Mesa execution, the
+complete three-domain CU chain, full-capacity dynamic accesses, native
+protected admission, the final host profile or the two-CU VGA60 product.
+P39/P40 and the whole alignment target remain open.
+
+Reproduce with the repository toolchain; do not dispatch Scala regression:
 
 ```sh
-sbt 'testOnly opengpu.graphics.TessellationEvaluationVectorAccessSpec opengpu.system.TessellationEvaluationPatchProviderSpec opengpu.system.TessellationDynamicPatchElaborationSpec'
-sbt 'testOnly opengpu.system.TessellationDynamicPatchSystemSpec'
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=1 compile 'Test / compile'
+sbt -J-Xmx768m -J-XX:ActiveProcessorCount=1 \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=0 \
+  -Dopengpu.simCache=off -Dopengpu.simCcache=off \
+  'testOnly opengpu.core.TessellationEvaluationKernelContractSpec opengpu.graphics.TessellationEvaluationVectorAccessSpec opengpu.system.TessellationEvaluationPatchProviderSpec opengpu.system.TessellationDynamicPatchElaborationSpec opengpu.system.TessellationSharedLoadReplySpec'
+sbt -J-Xmx1536m -J-XX:ActiveProcessorCount=1 \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simSeparateBuild=1 \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simCache=off -Dopengpu.simCcache=off \
+  -Dopengpu.productQualification=0 \
+  'testOnly opengpu.system.TessellationDynamicPatchSystemSpec'
 python3 -B scripts/test_changed_test_suites.py
 python3 -B scripts/test_test_selection.py
+git diff --check
 ```
 
-The bounded local checks compile current selected sources with the Chisel
-plugin and a read-only dependency classpath. Their Java limits are
-`-Xmx128m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m
--XX:ActiveProcessorCount=1`; component simulation also uses
-`-Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=0
--Dopengpu.simCache=off`, a private workspace and a 180-second process-group
-limit per run. Incremental checking does not qualify unrelated frozen classes
-or replace a complete source rebuild.
-
+The independent LLVM candidate `codex/p40-tes-patch-isa` at `cc37fd175`
+contains the matching fn33 MC declaration. Its existing 21 RUN/11-file MC
+result retains its documented scope; no fresh MC or production-tool migration
+is claimed for this GPU delivery.
 
 ## Real Mesa dynamic TES compiler
 
