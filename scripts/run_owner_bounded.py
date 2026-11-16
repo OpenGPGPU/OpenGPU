@@ -37,7 +37,10 @@ def process_rows():
             if len(fields) != 9:
                 raise ValueError('unknown process-table row')
             pid, parent, group = map(int, fields[:3])
-            if pid <= 0 or parent < 0 or group < 0 or not fields[3][0].isalpha():
+            # macOS can report '?' or '?E' while a process starts or exits.
+            # Retain it as potentially live; ownership still needs the native
+            # birth identity and session/group checks below.
+            if pid <= 0 or parent < 0 or group < 0 or not (fields[3][0].isalpha() or fields[3][0] == '?'):
                 raise ValueError('invalid process identity')
             rows[pid] = ProcessRow(parent, group, fields[3], ' '.join(fields[4:]))
         if not rows:

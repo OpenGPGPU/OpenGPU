@@ -19,6 +19,11 @@ the observed consumers exit, and reports resident/charged peaks and
 `cleanup_proven`. It never removes command inputs or outputs. An uncertain exit
 requires preserving inputs for diagnosis.
 
+macOS `ps` can briefly report `?` or `?E` during process transitions. The runner
+retains these rows as potentially live and still requires native birth identity,
+ancestry and session/group ownership checks. A transient state neither proves
+exit nor permits skipping an owned process's memory or cleanup checks.
+
 Cleanup reads native birth identities independently of RSS/swap counters, so a
 memory-accounting failure does not prevent stopping known consumers. On Linux,
 an exiting task may release its address space before becoming a zombie. Missing
@@ -76,6 +81,8 @@ Reproduce the focused checks with:
 ```sh
 python3 -B scripts/test_owner_process_memory.py -v
 python3 -B scripts/test_run_owner_bounded.py -v
+python3 -B scripts/test_qualify_compute_owner.py -v
+python3 -B scripts/test_qualify_native_graphics_owner.py -v
 ```
 
 The checks cover aggregate ceilings, compressed-footprint values exceeding an
@@ -92,7 +99,7 @@ of the CLI. PID reuse, foreign groups and unavailable observations fail closed;
 the caller's original input file remains present. These tests do not generate
 RTL or a GPU model.
 
-Local validation with Python 3.14.7 on macOS passed all 13 command-runner tests,
+Local validation with Python 3.14.7 on macOS passed all 15 command-runner tests,
 all 13 memory-accounting tests and the 19 existing compute/native-graphics cleanup
 tests. A guarded invocation of the selected real `circt-verilog --version` also
 exited zero with process cleanup confirmed. Complete factory generation and
