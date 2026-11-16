@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.util._
 import org.scalatest.flatspec.AnyFlatSpec
 import GpuSim._
+import scala.collection.immutable.ListMap
 
 /** Guards the shared simulation harness: a model restored from the cache has to
   * behave exactly like a freshly compiled one, and a failing expectation has to
@@ -11,6 +12,37 @@ import GpuSim._
   */
 class GpuSimSpec extends AnyFlatSpec {
   behavior of "GpuSim"
+
+  private val longPortPrefix = "retained_ordinary_submission_completion_frame_source_bins_producer_restart_primitive_vertices_coordinate_conversion_full_precision_result_"
+  private class LongPortIO extends Record {
+    override val elements: ListMap[String, Data] = ListMap(
+      (longPortPrefix + "a") -> Input(UInt(130.W)),
+      (longPortPrefix + "b") -> Input(UInt(37.W)),
+      (longPortPrefix + "out") -> Output(UInt(130.W)))
+    def a: UInt = elements(longPortPrefix + "a").asInstanceOf[UInt]
+    def b: UInt = elements(longPortPrefix + "b").asInstanceOf[UInt]
+    def out: UInt = elements(longPortPrefix + "out").asInstanceOf[UInt]
+  }
+  private class LongPortSentinel extends Module {
+    val io = IO(new LongPortIO)
+    io.out := RegNext(io.a ^ io.b.pad(130), 0.U(130.W))
+  }
+
+  it should "preserve distinct long DPI port names and multiword values" in {
+    assert(longPortPrefix.length > 128)
+    simulate(new LongPortSentinel) { dut =>
+      dut.io.a.poke(0.U); dut.io.b.poke(0.U)
+      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+      dut.io.out.expect(0.U)
+      for ((a, b) <- Seq(
+        ((BigInt(1) << 129) | (BigInt(1) << 64) | 0x12345678, BigInt(1) << 36),
+        ((BigInt(1) << 130) - 1, (BigInt(1) << 37) - 1),
+        (BigInt(0), BigInt(7)))) {
+        dut.io.a.poke(a.U); dut.io.b.poke(b.U); dut.clock.step()
+        dut.io.out.expect((a ^ b).U)
+      }
+    }
+  }
 
   private class Counter(width: Int) extends Module {
     val io = IO(new Bundle {
