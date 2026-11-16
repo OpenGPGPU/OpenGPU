@@ -7,11 +7,13 @@
 
 ## 当前总览
 
-- 最近源码合入：P16 联合 BUILD / [PR #828](https://github.com/OpenGPGPU/OpenGPU/pull/828)，
-  merge `346d96cfd475916944679db76c268afa6f240144`，准确 head `1dba3adbd`；
-  正常 CI [43688426845](https://github.com/OpenGPGPU/OpenGPU/actions/runs/43688426845)
-  的八个 job 和受保护 `ci-ok` 全通过。临时交付树/分支已按准确 head、清洁状态、
-  进程、打开文件和消费者检查清理。当前唯一开放 PR 为下述 #829。
+- 最近正式源码合入为 P17 原四阶段 source-to-BUILD /
+  [PR #829](https://github.com/OpenGPGPU/OpenGPU/pull/829)，merge `057cfaf74`。
+  前置仿真修复 [#830](https://github.com/OpenGPGPU/OpenGPU/pull/830) 也已通过
+  全部正常 CI / `ci-ok`，rebase 合入 `c9e24cf34`。当前阶段交付为 P39 原 GND1 reader：
+  保留2个原逻辑提交，全部768生产源新鲜编译、3项实际reader RTL、153项
+  selector与integration/large-PR catalog检查通过。
+  本阶段交付后继续memory/source owner接线，不等待完整P39/P40才提PR。
   P01 / #819、P02 / #820、P03 / #821 已完成各自的源码交付验收。
 - 当前基线为 **40 个 PR 工作包**：源码交付 3 项，功能/资源/API 闭合 31 项，
   性能与最终验收 6 项。验收完成并合入 **3/40**，剩余 **37 项**。
@@ -54,7 +56,7 @@
   validator/RX/MMU 消费12个原程序通过；mapped 地址宽度乘法已修正，
   16-lane/eight-warp 实际 Decoder/IntegerAlu 正例和恢复旧错误的精确负控通过。
   原52资源完整GUR图与 joint BUILD 新增限定范围 CPU 证明见
-  [source-to-BUILD](NATIVE_JOINT_BUILD_SOURCE.md)，正在 #829 交付；真实 CU 执行未验收，
+  [source-to-BUILD](NATIVE_JOINT_BUILD_SOURCE.md)，已通过 #829 交付；真实 CU 执行未验收，
   完整五阶段65引用也待实现。
 - [PR #828](https://github.com/OpenGPGPU/OpenGPU/pull/828) 已合入 `346d96cfd`，准确 head `1dba3adbd`；正常 CI
   `43688426845` 的八个 job 和 ci-ok 全通过，临时交付树/分支已清理。
@@ -68,12 +70,12 @@
   实际 GNT/GVS/GND 串行捕获与执行父级、无 shader clear 路由、完整原程序资源图、
   实际 CU/三域 protected submit/retirement 仍待完成，本批不关闭 P16。
   同时最多开放一个 alignment PR，前一份合入后才开放下一份。
-- 当前唯一开放 [PR #829](https://github.com/OpenGPGPU/OpenGPU/pull/829)，合并交付
+- [PR #829](https://github.com/OpenGPGPU/OpenGPU/pull/829) 已合入，合并交付
   P17 linked TCS 间接输出存储、原四阶段 source-to-BUILD adapter 和独立原资源图检查。
   [最终结果与复现](NATIVE_JOINT_BUILD_SOURCE.md)：53 TU 全新编译、八组原 linked ESSL
   的正常/零工作 invocation/无 invocation 三类实际 BUILD 图、七项源码负控通过；
   完整 host 检查及 ARM64 模块 Kbuild 通过。源码交付仍保留真实 CU、完整五阶段/65引用、
-  protected 执行与产品验收边界，不关闭 P16/P17。等待严格 `ci-ok` 后 rebase auto-merge。
+  protected 执行与产品验收边界，不关闭 P16/P17。严格 `ci-ok` 成功后已 rebase auto-merge。
 - P07 的九条 recipe、六组原 ESSL 已覆盖 increment/read/decrement/动态索引的
   真实 Mesa CPU/capture、严格输入与 C++ parser；实际 DUT 与资源共存仍未验收。
 - P15、P16、P17、P39、P40 已有下表列出的限定范围源码与检查，均未完成目标验收。
@@ -85,8 +87,9 @@
 
 ## 执行和状态规则
 
-1. 每个编号对应一个有明确交付物与验收条件的 PR。实现可在依赖允许时由
-   subagent 并行进行；**同时只开放 1 个 alignment PR，合入后再开下一个**。
+1. 每个编号可以通过多个有明确范围、局部验收和剩余边界的阶段 PR 交付。
+   一个阶段实现及相关本地检查通过后即提 PR，不等待整个编号或联合 GPU 验收。
+   阶段合入不等于工作包完成；**同时只开放 1 个 alignment PR，合入后再开下一个**。
 2. 优先交付 P01 → P02 → P03，再按依赖推进功能与资源闭合。模型等待期间
    可以完成独立源码工作，不用旧96或小容量模型替代目标配置的验收。
 3. 每行记录实际 PR 链接、源码/实现状态、目标验收状态。只有该行所有
@@ -119,9 +122,9 @@ GPU 的正式交付入口是受保护的 [`main`](https://github.com/OpenGPGPU/O
 
 | 仓库 / 分支 | 用途与交付方式 |
 |---|---|
-| GPU `main` | 已通过受保护 CI 并合入的正式源码；最近基线为 #828；P15/P16/P39部分源码已合入，完整目标验收仍待完成 |
+| GPU `main` | 已通过受保护 CI 并合入的正式源码；最近基线为 #829；P15/P16/P39部分源码已合入，完整目标验收仍待完成 |
 | GPU #828 已合入 | 联合 BUILD 与 GNQ/GVM 元数据捕获；准确 head1dba3adbd/merge346d96cfd，正常CI八job成功，临时交付树/分支已清理；完整P16仍待验收 |
-| GPU `codex/p17-joint-build-delivery` | 唯一开放 [PR #829](https://github.com/OpenGPGPU/OpenGPU/pull/829)，整合 linked TCS 间接输出存储和同一原四阶段/52引用到 joint BUILD 的源码与独立检查；正式基于 #828，不是正式版本，保留逻辑提交并走受保护 rebase auto-merge |
+| GPU #829 已合入 | [PR #829](https://github.com/OpenGPGPU/OpenGPU/pull/829) 整合 linked TCS 间接输出存储和同一原四阶段/52引用到 joint BUILD 的源码与独立检查；已通过受保护 CI 并 rebase 合入正式 main |
 | GPU `codex/native-sample-dut-bridge` | 保留 P02/P03 的原开发源码，按本清单分批交付；不另外开放并行 PR |
 | GPU `codex/owner-counter-live` | P07 的隔离实现分支；CPU 操作语料已扩展，实际 DUT/共存验收待完成 |
 | GPU `codex/p15-tess-checked-uniform` | P15 原 checked-uniform/版本化 ABI 源码；交付分支保留三项实现逻辑提交，不带旧政策/CI 父链 |
