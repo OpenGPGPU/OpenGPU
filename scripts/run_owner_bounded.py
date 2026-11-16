@@ -10,7 +10,7 @@ import sys
 import time
 
 from owner_process_lifetime import CleanupIncomplete
-from owner_process_memory import ProcessMemoryBudget, process_memory
+from owner_process_memory import ProcessMemoryBudget, process_birth
 
 
 @dataclass(frozen=True)
@@ -86,8 +86,8 @@ class OwnedProcesses:
                         rows[pid] = ProcessRow(row.parent, row.group, 'X', row.birth)
                         pending.remove(pid)
                         continue
-                sample = process_memory(pid)
-                if sample is None:
+                birth = process_birth(pid)
+                if birth is None:
                     # A positive native exit observation supersedes the older
                     # ps row. It must not turn into a false foreign live member
                     # when cleanup compares group membership with `owned`.
@@ -96,10 +96,10 @@ class OwnedProcesses:
                     continue
                 if row.group <= 0:
                     raise CleanupIncomplete('owned process has no valid signal group')
-                if known and pid in self.native_births and self.native_births[pid] != sample.birth:
+                if known and pid in self.native_births and self.native_births[pid] != birth:
                     raise CleanupIncomplete('native process birth changed; preserve command inputs')
                 self.births[pid] = row.birth
-                self.native_births[pid] = sample.birth
+                self.native_births[pid] = birth
                 self.groups.add(row.group)
                 owned.add(pid)
                 pending.remove(pid)

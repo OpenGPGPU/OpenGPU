@@ -90,11 +90,13 @@ class MemoryTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 memory.ProcessMemoryBudget(value)
         for pid in (0, -1, True, 1.5, '42'):
-            with self.subTest(pid=pid), self.assertRaises(memory.MemoryObservationError):
-                memory.process_memory(pid)
+            for inspect in (memory.process_memory, memory.process_birth):
+                with self.subTest(pid=pid, inspect=inspect.__name__), self.assertRaises(memory.MemoryObservationError):
+                    inspect(pid)
         with patch.object(memory.sys, 'platform', 'unsupported'):
-            with self.assertRaises(memory.MemoryObservationError):
-                memory.process_memory(42)
+            for inspect in (memory.process_memory, memory.process_birth):
+                with self.assertRaises(memory.MemoryObservationError):
+                    inspect(42)
 
     def test_linux_swap_and_unusual_process_name(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -123,6 +125,30 @@ class MemoryTests(unittest.TestCase):
                 memory._linux_memory(42)
         with patch.object(memory, '_linux_stat', return_value=('Z', 1)):
             self.assertIsNone(memory._linux_memory(42))
+
+    def test_linux_released_address_space_requires_positive_zero_statm(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            process = root / '42'
+            process.mkdir()
+            (process / 'status').write_text('Name: exiting\nState: R (running)\n')
+            (process / 'statm').write_text('0 0 0 0 0 0 0\n')
+            with patch.object(memory, '_linux_stat', return_value=('R', 123)):
+                self.assertEqual(memory._linux_memory(42, root), memory.ProcessMemory(123, 0, 0))
+                for value in ('1 0 0 0 0 0 0\n', 'unknown\n', '0 0\n'):
+                    (process / 'statm').write_text(value)
+                    with self.subTest(statm=value), self.assertRaises((ValueError, KeyError)):
+                        memory._linux_memory(42, root)
+                (process / 'statm').unlink()
+                with self.assertRaises(FileNotFoundError):
+                    memory._linux_memory(42, root)
+
+    def test_native_identity_does_not_require_rss_or_swap_counters(self):
+        with patch.object(memory.sys, 'platform', 'linux'), \
+             patch.object(memory, '_linux_stat', return_value=('S', 123)):
+            self.assertEqual(memory.process_birth(42), 123)
+        with patch.object(memory.sys, 'platform', 'darwin'), self.darwin_reader(0, 0):
+            self.assertEqual(memory.process_birth(42), 123)
 
     def test_real_owned_allocation_and_failure_cleanup(self):
         # Keep the parent and child alive throughout the samples. The child
