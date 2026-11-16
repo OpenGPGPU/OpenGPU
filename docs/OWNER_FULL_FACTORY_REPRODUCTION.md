@@ -108,26 +108,39 @@ compiled all 788 production and 1130 test sources with Scala 2.13.18, Chisel
 GPU classes. Class `SourceFile` and actual loaded providers were checked;
 classes from another GPU checkout are not valid substitutes.
 
+For model generation, select the published FlashSim source at
+[`e2c5ea442ad5e0027933fc789d10e3cd5a993b67`](https://github.com/OpenGPGPU/FlashSim/commit/e2c5ea442ad5e0027933fc789d10e3cd5a993b67).
+It includes shared-expression traversal, recursive-visitor lifetime and output
+buffer fixes. Its optional scoped GC policy below runs in the isolated generator
+process and is part of the generator environment binding. Keep that environment
+through executor builds and checks.
+
 ```sh
-sbt -J-Xmx4g -J-XX:ActiveProcessorCount=1 clean compile 'Test / compile'
+export FLASHSIM_GC_POLICY=defer
+python3 -B scripts/run_owner_bounded.py --memory-mib 6144 --timeout-seconds 600 -- \
+  sbt -J-Xmx4g -J-XX:ActiveProcessorCount=1 clean compile 'Test / compile'
 P04_OWNER="$PWD/.artifacts/p04-owner"
-python3 -B scripts/prepare_native_owner_flashsim.py --stage prepare \
-  --sample-resources --java-heap 8G --output "$P04_OWNER"
+python3 -B scripts/run_owner_bounded.py --memory-mib 24576 --timeout-seconds 1800 -- \
+  python3 -B scripts/prepare_native_owner_flashsim.py --stage prepare \
+    --sample-resources --java-heap 8G --output "$P04_OWNER"
 python3 -B scripts/prepare_native_owner_flashsim.py --stage check \
   --output "$P04_OWNER"
-python3 -B scripts/prepare_native_owner_flashsim.py --stage generate \
-  --output "$P04_OWNER" --flashsim-dir "$FLASHSIM_DIR" --shards 32
+python3 -B scripts/run_owner_bounded.py --memory-mib 24576 --timeout-seconds 14400 -- \
+  python3 -B scripts/prepare_native_owner_flashsim.py --stage generate \
+    --output "$P04_OWNER" --flashsim-dir "$FLASHSIM_DIR" --shards 32
 for kind in native-sample native-sample-graphics compute framebuffer-blit-sample; do
-  python3 -B scripts/prepare_owner_executor.py --stage build --kind "$kind" \
-    --owner-output "$P04_OWNER" --flashsim-dir "$FLASHSIM_DIR" \
-    --shards 32 --jobs 1 --shard-opt=-O1 --precompiled-header --conservative-alias
+  python3 -B scripts/run_owner_bounded.py --memory-mib 8192 --timeout-seconds 7200 -- \
+    python3 -B scripts/prepare_owner_executor.py --stage build --kind "$kind" \
+      --owner-output "$P04_OWNER" --flashsim-dir "$FLASHSIM_DIR" \
+      --shards 32 --jobs 1 --shard-opt=-O1 --precompiled-header --conservative-alias
   python3 -B scripts/prepare_owner_executor.py --stage check --kind "$kind" \
     --qualification "$P04_OWNER/executors/$kind/qualification.json" \
     --executor "$P04_OWNER/executors/$kind/executor"
 done
 for kind in native-sample native-sample-graphics compute; do
-  "$P04_OWNER/executors/$kind/executor" \
-    --probe-profile "$P04_OWNER/probe-$kind.json"
+  python3 -B scripts/run_owner_bounded.py --memory-mib 8192 --timeout-seconds 600 -- \
+    "$P04_OWNER/executors/$kind/executor" \
+      --probe-profile "$P04_OWNER/probe-$kind.json"
 done
 ```
 
@@ -166,7 +179,7 @@ PY
 
 Run the stages under explicit aggregate memory/deadline guards. The local
 budgets are 6144 MiB/600 seconds per fresh compilation, an 8 GiB JVM heap with
-24576 MiB/1800 seconds for complete RTL emission, 24576 MiB/10800 seconds for
+24576 MiB/1800 seconds for complete RTL emission, 24576 MiB/14400 seconds for
 model generation, and 8192 MiB/7200 seconds per native build. These budgets do
 not permit resource reduction. RSS alone misses macOS compressed pages. Use
 the [owner process memory guard](OWNER_PROCESS_MEMORY.md) with the existing
