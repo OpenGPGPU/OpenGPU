@@ -741,6 +741,7 @@ def changed_suites(root, changed, *, test_index=None):
                           f"src/main/scala/opengpu/system/TessellationCu{domain}SystemClient.scala",
                           f"src/main/scala/opengpu/system/TessellationSystem{domain}ImagePipeline.scala",
                           f"src/main/scala/opengpu/graphics/tessellation/TessellationCu{domain}Patch.scala")):
+        affected.add("src/test/scala/opengpu/core/TessellationEvaluationKernelContractSpec.scala")
         for suite in ("opengpu.graphics.TessellationEvaluationVectorAccessSpec",
                       "opengpu.system.TessellationEvaluationPatchProviderSpec",
                       "opengpu.system.TessellationDynamicPatchElaborationSpec",
