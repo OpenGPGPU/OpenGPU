@@ -50,55 +50,18 @@ retaining its positive-width and line-containment checks. This accommodates
 the existing 128-bit control/evaluation helper masks without changing a field
 offset, raw record, old reader or JVM constructor signature.
 
-## Focused results and limits
+## Validation and limits
 
-Eight current prerequisite files and seven current helper/reader/test files
-passed separate Scala 2.13.18 / Chisel-plugin compilations, in about 7 and 5
-seconds. The latter group freshly compiled the shared native descriptor helper
-ahead of the read-only current dependency classes. That helper was the only
-authorized change among their original 79 source inputs; the remaining 78
-sources, all 525 dependency classes, frozen classpath, compiler inputs, four
-ABI catalogs and private compilation outputs matched before/after execution.
-This is an incremental component check, not a full current-source build.
+The six focused RTL cases use independent literal little-endian packets for
+all three new readers and both old contracts per domain. They cover exact
+headers, reserved bits, full 128-bit helper masks, scope and capacity bounds,
+distinct sequence/draw ordinals, cancellation, late faults and healthy reuse.
+The published field catalogs are checked independently from the functional
+packets; a field crossing a cache-line boundary is rejected at elaboration.
 
-Six actual component RTL cases passed in about 64 seconds. Three exercise the
-new domain readers with independent literal little-endian packets; three
-instantiate both original and uniform-capable old readers for each domain
-and verify actual rejection of new packets. The field catalog is independently
-compared with the three published domain schemas, the GUR3 extension and the
-two new source-reference fields. Functional packets are not generated from
-the reader's map.
-
-Coverage includes exact header/domain/version isolation, reserved/high bits,
-old/new transport exclusion, GUR3 scope, exact source bounds, coupled capacity,
-task-ID overflow, distinct expected ordinals, full nonzero 128-bit masks
-(including lanes 127/126/64), held cancellation, late faults, zero error
-payloads and healthy reuse. A metadata field crossing a cache-line boundary
-is rejected during elaboration. Independent source-copy negative controls
-removing the header gate and source bounds fail their respective explicit
-illegal-packet status assertions; neither relies on timeout.
-
-Each separate compiler/simulation group had a 180-second limit, one CPU,
-128MiB Java heap, 128MiB metaspace, 32MiB code cache and one unoptimized
-Verilator job, with simulation cache disabled. Every owned compiler and Runner
-group was confirmed terminated.
-
+[Fresh-source results, negative controls and reproduction](P39_CAPTURE_RANGE_SOURCE_DELIVERY.md)
+record the current delivery checks without requiring historical class outputs.
 These readers do not read GVS/GND, inspect RX instructions or GUR contents,
-check physical aliases, launch a kernel, generate a patch, or connect a GNQ
-job to the typed parent. The verified native profile, protected builder,
-original-draw mapping, GVS/GND cross-read chain, actual shared-CU execution and
-complete owner/product qualification remain separate unfinished work. No
-factory, ioctl, discovery bit or public API is enabled.
-
-Focused reproduction in a permitted resource window:
-
-```sh
-sbt 'testOnly opengpu.graphics.TessellationVertexSequenceReaderSpec'
-```
-
-For the bounded local route, compile the eight prerequisite sequence/layout
-files first, then the shared native descriptor helper, five new main files and
-the Spec into separate private class directories. Run ScalaTest with
-`-s opengpu.graphics.TessellationVertexSequenceReaderSpec`; `-z` selects one
-domain/case at a time. Keep new classes before current prerequisite classes
-and frozen dependencies. Do not enable or dispatch Scala regression.
+check physical aliases, launch kernels, generate patches, or connect a GNQ job
+to the typed parent. The outer owner must still pin the original resources and
+supply the checked original-draw mapping. No public capability is enabled.

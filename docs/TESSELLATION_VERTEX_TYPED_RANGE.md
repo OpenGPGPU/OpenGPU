@@ -83,67 +83,15 @@ remain pending. Scala regression must remain disabled.
 
 ## Validation
 
-The nine-source closure passed Chisel-plugin compilation with a 128 MiB
-heap, one CPU, and private output first on the classpath. The two capture-reader
-sources were compiled explicitly; the existing A/B7/current-79 prerequisites
-and frozen dependencies remained read-only. The shared `NativeTyped` 512-bit
-field override remained ahead of the older dependency classes. Source and
-upstream class/compiler inputs were checked around the runs. This is an
-incremental closure check, not a fresh full-repository build. The corrected
-instance-counter core and its Spec were then freshly compiled into a separate
-output ahead of those nine classes; the other seven sources and all nine
-prerequisite class outputs remained unchanged.
+The four typed-adapter cases instantiate the actual three adapters and range
+sequence with explicit captured-metadata and retirement peers. Those peers are
+not capture-reader execution, shaders or a production parent. Coverage includes
+per-instance primitive bases `[17,20,0,7]`, independent ordering sequences
+`[13,16,16,23]`, legal instance-reset carry, necessary sequence carry, raw report
+attribution, partial publication and error/cancel priority. Five sequence cases
+also retain default behavior and opt-in continuation checks.
 
-All four final typed-adapter RTL cases passed: the three domains and the
-cursor/error case. They include per-instance primitive bases `[17,20,0,7]`
-with independent ordering sequences `[13,16,16,23]`, a legal primitive carry at
-an instance reset, and rejection of a necessary sequence carry at that same
-boundary. Actual-parent-shaped early image rejection and VS-failure/cancel
-reports preserve their real status, flags and attributable partial publication.
-The unchanged sequence source also passed its four default cases and opt-in
-continuation case.
-
-Three independent source-copy controls failed at exact behavior assertions:
-omitting sequence advancement returned 13 instead of 16; removing the next-begin
-drain gate returned ready 1 instead of 0; omitting the instance primitive reset
-returned 20 instead of 0. None was a timeout or infrastructure failure. Earlier
-counter checks are not used as evidence for the corrected instance semantics.
-Every simulation had its own 180-second process-group
-limit, `simJobs=1`, low-memory `-O0` build and cache disabled; no heap increase,
-SBT, actual CU model or Scala-regression dispatch was used.
-
-`TessellationVertexTypedRangeSpec` uses the actual sequence and each actual
-adapter with explicit captured-metadata and retirement interface peers. These
-peers are not shader execution, capture-reader execution or a production parent.
-All private simulation/class/log/control outputs were removed after their
-consumers ended; the separately owned active prerequisites were preserved.
-
-To reproduce with the corresponding read-only prerequisite classpaths, compile
-the following current sources into a fresh `$OUT` using Scala 2.13.18 and the
-Chisel 7.15.0 compiler plugin; put `$OUT` before the B7, A, current-79 and frozen
-dependency outputs:
-
-```sh
-java -Xmx128m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m \
-  -XX:ActiveProcessorCount=1 -XX:+UseSerialGC -Dscala.usejavacp=true \
-  -cp "$SCALA_COMPILER_CP" scala.tools.nsc.Main \
-  -classpath "$CP" -Xplugin:"$CHISEL_PLUGIN" -Ymacro-annotations \
-  -language:reflectiveCalls -d "$OUT" \
-  src/main/scala/opengpu/system/TessellationVertex{DrawReader,CaptureController,PatchSequence,TypedRangeControl}.scala \
-  src/main/scala/opengpu/system/TessellationSystem{Isoline,Triangle,Quad}VertexTypedRange.scala \
-  src/test/scala/opengpu/graphics/TessellationVertex{PatchSequence,TypedRange}Spec.scala
-```
-
-Run one selected case per bounded process, changing `$SUITE` and `$CASE` for the
-two suites above. The typed adapter cases select `preserve domain 0`, `1`, `2`
-or `attribute next cursor`; the sequence suite contains its four default cases
-and `check opt-in continuation`.
-
-```sh
-java -Xmx128m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m \
-  -XX:ActiveProcessorCount=1 -XX:+UseSerialGC \
-  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
-  -Dopengpu.simLowMemOpt=0 -Dopengpu.simCache=off \
-  -Dopengpu.simWorkspace="$RUN/sim" -cp "$CP" \
-  org.scalatest.tools.Runner -R "$OUT" -oD -s "$SUITE" -z "$CASE"
-```
+[Fresh-source results, negative controls and reproduction](P39_CAPTURE_RANGE_SOURCE_DELIVERY.md)
+record the current delivery checks. Original input-patch language identity,
+exclusive cursors across separate joint ranges, actual parent composition,
+original shaders and protected/product qualification remain later stages.
