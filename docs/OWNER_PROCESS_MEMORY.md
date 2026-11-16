@@ -20,10 +20,10 @@ the observed consumers exit, and reports resident/charged peaks and
 requires preserving inputs for diagnosis.
 
 This is a runner for cooperating build/qualification tools, not a sandbox.
-Commands must not launch background services that create a new session and
-detach before any ancestry observation. The initial pinned group and previously
+Commands must not launch background work that changes its process group or
+session and detaches before any ancestry observation. The initial pinned group and previously
 observed descendants remain covered after their parent exits. Unseen daemonized
-sessions are outside the runner's exit proof. Keep the existing source, tool,
+processes are outside the runner's exit proof. Keep the existing source, tool,
 RTL, shard and binary qualification checks; a successful guard is not a GPU
 qualification result.
 
@@ -82,3 +82,9 @@ SIGTERM, a leader that exits before its original-group child, and interruption
 of the CLI. PID reuse, foreign groups and unavailable observations fail closed;
 the caller's original input file remains present. These tests do not generate
 RTL or a GPU model.
+
+Local validation with Python 3.14.7 on macOS passed all 13 command-runner tests,
+all 11 memory-accounting tests and the 19 existing compute/native-graphics cleanup
+tests. A guarded invocation of the selected real `circt-verilog --version` also
+exited zero with process cleanup confirmed. Complete factory generation and
+executor/probe qualification require their separate runs.
