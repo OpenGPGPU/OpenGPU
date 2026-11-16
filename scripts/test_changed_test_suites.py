@@ -1573,7 +1573,8 @@ class ChangedTestSuitesTest(unittest.TestCase):
 
     def test_dynamic_tes_patch_keeps_service_and_actual_cu_checks(self):
         root = Path(__file__).resolve().parents[1]
-        expected = {"opengpu.graphics.TessellationEvaluationVectorAccessSpec",
+        expected = {"opengpu.core.TessellationEvaluationKernelContractSpec",
+                    "opengpu.graphics.TessellationEvaluationVectorAccessSpec",
                     "opengpu.system.TessellationEvaluationPatchProviderSpec",
                     "opengpu.system.TessellationDynamicPatchElaborationSpec",
                     "opengpu.system.TessellationDynamicPatchSystemSpec"}

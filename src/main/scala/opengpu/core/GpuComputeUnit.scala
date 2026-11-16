@@ -27,6 +27,17 @@ private class TessellationKernelContract extends Module {
   when(io.accepted && io.enabled) { assert(io.legal, "patch task requires one fully resident one-dimensional workgroup of at most 32 invocations") }
   when(io.completion) { assert(!io.busy, "patch instruction escaped kernel completion") }
 }
+/** Keep the TES launch assertion on this module's ports so hierarchical
+  * simulation retains it without reaching into a compiled CU's internals. */
+class TessellationEvaluationKernelContract extends Module {
+  val io=IO(new Bundle {
+    val accepted=Input(Bool());val bound=Input(Bool())
+    val geometry=Input(Bool());val single=Input(Bool())
+  })
+  when(io.accepted && io.bound) {
+    assert(io.geometry && io.single,"TES patch binding requires actual single-invocation geometry launch")
+  }
+}
 
 /** One usable compute unit: kernel dispatch, context initialization, core
   * execution, and instruction-driven warp/kernel completion.
@@ -173,8 +184,11 @@ class GpuComputeUnit(
     core.io.evaluationPatchEnabled.get:=service.io.enabled
     io.evaluationPatchRequest.get<>service.io.request;service.io.result<>io.evaluationPatchResult.get
     io.evaluationPatchLease.get:=service.io.enabled
-    when(service.io.start.valid){assert(io.geometryEnabled.get && io.kernel.bits.gridSize.map(_===1.U).reduce(_ && _) &&
-      io.kernel.bits.localSize.map(_===1.U).reduce(_ && _),"TES patch binding requires actual single-invocation geometry launch")}
+    val contract=Module(new TessellationEvaluationKernelContract)
+    contract.io.accepted:=io.kernel.fire;contract.io.bound:=io.evaluationPatchBinding.get.valid
+    contract.io.geometry:=io.geometryEnabled.get
+    contract.io.single:=io.kernel.bits.gridSize.map(_===1.U).reduce(_ && _) &&
+      io.kernel.bits.localSize.map(_===1.U).reduce(_ && _)
   }
   private val tessellationControlBusy=WireDefault(false.B)
   private val tessellationService = if(tessellationAvailable) Some(Module(new opengpu.graphics.tessellation.TessellationControlVectorAccess(config))) else None
