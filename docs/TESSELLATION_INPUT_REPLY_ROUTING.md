@@ -21,34 +21,27 @@ replies, cancels with a reply outstanding, drains completion, and reuses the
 store without reset, including a checked out-of-bounds write. No inspection
 request, shader execution, CU completion or reply peer is injected.
 
-| Case | Result | Elapsed | Sampled process-group peak |
-| --- | --- | --- | --- |
-| Dynamic isoline | 1 passed | 11.07 s | 397280 KiB |
-| Dynamic triangle | 1 passed | 11.73 s | 422240 KiB |
-| Dynamic quad | 1 passed | 11.64 s | 427184 KiB |
-| Legacy isoline | 1 passed | 10.35 s | 393104 KiB |
+All four actual domain/legacy cases pass in the exact delivery's fourteen-case
+component run, using all-fresh production/test classes; the complete run takes
+113.212 seconds. Its compiler and actual-CU results are in the
+[P40 staged validation](TESSELLATION_DYNAMIC_PATCH_READ.md#staged-source-validation-and-limits).
+This fixture does not seal or launch a shader and needs no later language-ID
+binding. Its original full-capacity write/ACK, cancellation, fault and reuse
+oracles remain intact.
 
-The same test and dependencies were run with freshly compiled original
-production files from `9bc86886a20e158f3e01e417f65c6afee537fe2e` first in the
-runtime classpath. All three dynamic domains failed at the 128-cycle semantic
-assertion `load response stalled after its real input write`, after their
-actual write was accepted. These were assertion failures, not wall timeouts.
-Runtime class-load checks confirmed the intended fixed/original production
-provider in each run. Source, class, jar, tool and membership guards passed.
-All 163 selector checks and the integration/large-PR suite catalog checks
-passed; the new component suite is registered in `system-core`.
+Independently compiled copies of all three production evaluators with the old
+reply routing each fail the fixed 128-cycle assertion `load response stalled
+after its real input write`, after the actual write is accepted. Isoline,
+triangle and quad fail with one selected test each in 9.724/10.799/10.889
+seconds, within separate 180-second/1536-MiB limits; sampled aggregate maxima
+are 478656/532784/544128 KiB. These are semantic assertion failures, not wall
+timeouts. The evaluator and fixture sources are unchanged by the later CU
+launch-contract fix. All owned processes exit before mutants/classes/logs are
+removed. These controls do not execute a shader.
 
-The two existing `TessellationEvaluationPatchProviderSpec` RTL cases also
-passed (21.00 s, 377408 KiB sampled group peak), covering held three-issuer
-inspection credit, owner/scope rejection and canceled accepted inspection
-drain. Those tests use modeled transport peers and do not execute a shader.
-
-Each local run used a 180-second/512-MiB sampled aggregate process-group
-guard, Java heap/metaspace/code-cache limits of 128/128/32 MiB,
-`ActiveProcessorCount=1` and SerialGC. Native make used one job; Verilator's
-upstream `-j 0` is not a strict one-CPU limit. Only selected changed sources
-were freshly compiled, with individually source-matched dependency classes.
-This does not qualify a complete source build or the full two-CU model.
+All 157 affected-suite selector checks and integration/large-PR catalog checks
+pass. `TessellationSharedLoadReplySpec` is registered in `system-core`, alongside
+the preserved earlier joint metadata suites.
 
 ## Reproduction and remaining scope
 
