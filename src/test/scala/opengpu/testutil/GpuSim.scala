@@ -88,7 +88,8 @@ object GpuSim extends PeekPokeAPI {
 
   private val slots = new AtomicInteger(0)
 
-  private val backend: Backend = if (enabled || hierarchy || buildJobs.nonEmpty || lowMemBuild || compilerCache.nonEmpty || releaseHeap || separateBuild) locateVerilator() match {
+  // The shim also keeps svsim's exported DPI names intact when caching is off.
+  private val backend: Backend = locateVerilator() match {
     case Some(verilator) =>
       for (tool <- (if (compilerCache.nonEmpty) Seq("ccache", "python3")
                     else if (separateBuild) Seq("python3") else Seq.empty)) {
@@ -109,8 +110,6 @@ object GpuSim extends PeekPokeAPI {
       throw new IllegalStateException("Explicit simulation options require Verilator on PATH")
     case None =>
       Backend.initializeFromProcessEnvironment()
-  } else {
-    Backend.initializeFromProcessEnvironment()
   }
 
   private final class Runner(val workspacePath: String) extends Simulator[Backend] {
@@ -252,6 +251,10 @@ object GpuSim extends PeekPokeAPI {
        |cache='$cache'
        |log="$cache/shim.log"
        |case "$${1:-}" in --version) exec "$$verilator" "$$@" ;; esac
+       |# svsim calls its exported DPI names verbatim. Verilator otherwise
+       |# hashes identifiers longer than 128 characters, breaking that ABI.
+       |# Keep the complete names; DUT ports, widths and assertions are unchanged.
+       |set -- "$$@" --comp-limit-syms 0
        |${compilerCache.map { directory =>
           val quoted = "'" + directory.toString.replace("'", "'\"'\"'") + "'"
           val launcher = "'" + objectCacheShim.toAbsolutePath.toString.replace("'", "'\"'\"'") + "'"
