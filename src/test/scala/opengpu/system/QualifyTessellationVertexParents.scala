@@ -10,7 +10,9 @@ import opengpu.testutil.GraphicsTestResolution
   * image engines and the CU pool are interfaces, not execution evidence. */
 object QualifyTessellationVertexParents {
   def main(args:Array[String]):Unit={
-    require(args.length==2,"usage: <isoline|triangle|quad> <new .artifacts/output>")
+    require(args.length==2 || (args.length==3 && args(2)=="--tessellation-info"),
+      "usage: <isoline|triangle|quad> <new .artifacts/output> [--tessellation-info]")
+    val tessellationInfo=args.length==3
     require(Set("isoline","triangle","quad")(args(0)),"unknown domain")
     val output=Paths.get(args(1)).toAbsolutePath.normalize()
     require(output.startsWith(Paths.get(".artifacts").toAbsolutePath.normalize()),"output must be under .artifacts")
@@ -26,16 +28,19 @@ object QualifyTessellationVertexParents {
     def parent:chisel3.RawModule=args(0) match {
       case "isoline"=>new TessellationSystemIsolineVertexInputImage(config,vertex,fragment,shared,graphics,viewport,
         engines=1,pagedCapacity=65536,storage=storage,payload=payload,transformFeedback=true,externalImages=true,
-        fragmentImageAvailable=true,sampleShading=true,tessellationUniforms=true,evaluationPatchAvailable=true)
+        fragmentImageAvailable=true,sampleShading=true,tessellationUniforms=true,evaluationPatchAvailable=true,
+        tessellationInfoAvailable=tessellationInfo)
       case "triangle"=>new TessellationSystemTriangleVertexInputImage(config,vertex,fragment,shared,graphics,viewport,
         engines=1,pagedCapacity=65536,storage=storage,payload=payload,transformFeedback=true,externalImages=true,
-        fragmentImageAvailable=true,sampleShading=true,tessellationUniforms=true,evaluationPatchAvailable=true)
+        fragmentImageAvailable=true,sampleShading=true,tessellationUniforms=true,evaluationPatchAvailable=true,
+        tessellationInfoAvailable=tessellationInfo)
       case "quad"=>new TessellationSystemQuadVertexInputImage(config,vertex,fragment,shared,graphics,viewport,
         engines=1,pagedCapacity=65536,storage=storage,payload=payload,transformFeedback=true,externalImages=true,
-        fragmentImageAvailable=true,sampleShading=true,tessellationUniforms=true,evaluationPatchAvailable=true)
+        fragmentImageAvailable=true,sampleShading=true,tessellationUniforms=true,evaluationPatchAvailable=true,
+        tessellationInfoAvailable=tessellationInfo)
     }
     ChiselStage.emitSystemVerilogFile(parent,Array("--target-dir",output.toString),
       Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
-    println(s"Emitted ${args(0)} typed parent at ${GraphicsTestResolution.label}; no CU, image-bank or shader execution")
+    println(s"Emitted ${args(0)} typed parent at ${GraphicsTestResolution.label}, tessellation-info=$tessellationInfo; no CU, image-bank or shader execution")
   }
 }
