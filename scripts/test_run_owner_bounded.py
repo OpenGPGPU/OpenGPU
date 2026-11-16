@@ -180,10 +180,35 @@ if not {early_exit!r}:time.sleep(30)
         good = '2 0 0 S Mon Nov 16 00:00:00 2026\n'
         with patch.object(bounded.subprocess, 'run', return_value=Mock(stdout=good)):
             self.assertEqual(bounded.process_rows()[2].group, 0)
-        for bad in ('', 'unknown', '2 0 -1 S Mon Nov 16 00:00:00 2026\n'):
+        for bad in ('', 'unknown', '2 0 -1 S Mon Nov 16 00:00:00 2026\n',
+                    '2 0 2 ! Mon Nov 16 00:00:00 2026\n'):
             with self.subTest(bad=bad), patch.object(bounded.subprocess, 'run', return_value=Mock(stdout=bad)):
                 with self.assertRaises(CleanupIncomplete):
                     bounded.process_rows()
+
+    def test_transient_unknown_state_is_observed_as_live(self):
+        for state in ('?', '?E'):
+            snapshot = f'42 {os.getpid()} 42 {state} Mon Jan 1 00:00:00 2024\n'
+            with self.subTest(state=state), \
+                 patch.object(bounded.subprocess, 'run', return_value=Mock(stdout=snapshot)):
+                row = bounded.process_rows()[42]
+                self.assertEqual(row.state, state)
+                self.assertTrue(row.live)
+
+    def test_transient_state_still_requires_native_identity_and_group_ownership(self):
+        snapshot = f'42 {os.getpid()} 42 ?E Mon Jan 1 00:00:00 2024\n'
+        with patch.object(bounded.subprocess, 'run', return_value=Mock(stdout=snapshot)), \
+             patch.object(bounded.os, 'getsid', return_value=42) as session, \
+             patch.object(bounded, 'process_birth', side_effect=[123, 124]) as birth:
+            tree = bounded.OwnedProcesses(Mock(pid=42))
+            _, owned, exited = tree.observe()
+            self.assertEqual(owned, {42})
+            self.assertFalse(exited)
+            self.assertEqual(tree.native_births, {42: 123})
+            with self.assertRaisesRegex(CleanupIncomplete, 'birth changed'):
+                tree.observe()
+            self.assertEqual(session.call_count, 2)
+            self.assertEqual(birth.call_count, 2)
 
     def test_broken_reporting_stream_does_not_replace_failure(self):
         class Broken:
