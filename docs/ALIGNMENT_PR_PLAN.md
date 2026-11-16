@@ -7,16 +7,18 @@
 
 ## 当前总览
 
-- 最近正式源码合入为P40动态TES读取/source-0回复与CU检查 /
-  [#833](https://github.com/OpenGPGPU/OpenGPU/pull/833)，merge `2336a4b97`。
-  正常 CI [43801050433](https://github.com/OpenGPGPU/OpenGPU/actions/runs/43801050433)
-  的75个job和受保护`ci-ok`全部成功；P39前序[#832](https://github.com/OpenGPGPU/OpenGPU/pull/832)、
-  [#831](https://github.com/OpenGPGPU/OpenGPU/pull/831)及前置[#830](https://github.com/OpenGPGPU/OpenGPU/pull/830)均已合入。
-  当前阶段为原VS router/source owner/三域typed parent：777生产源/1120测试源新鲜编译、
-  14个原协议用例、两个精确负控与VGA/完整接口三域CIRCT lowering通过。
-  首批600s整批运行部分完成后超时，独立确认消费者退出后余下原用例逐项通过，
-  不计整批PASS。端点是external CU/image接口，不证明原shader、图像或protected执行。
-  分阶段交付，不等待完整P39/P40；语言ID、GNT/GVS/GND capture/range与完整目标仍待完成，
+- 最近正式源码合入为P39原VS router/source owner/三域typed parent，
+  [#834](https://github.com/OpenGPGPU/OpenGPU/pull/834)，merge `29fca6780`、准确head `04778b13a`。
+  正常 CI [43807298829](https://github.com/OpenGPGPU/OpenGPU/actions/runs/43807298829)
+  的45个job（含受保护`ci-ok`）全部成功，按rebase方式合入；前序#833/#832/#831/#830均已合入。
+  父级的777生产源/1120测试源、14项协议检查、两个精确负控和三域VGA完整接口CIRCT结果
+  保留[原范围与复现](TESSELLATION_VERTEX_INPUT_IMAGE.md)，不代表原shader/图像/protected执行。
+  本阶段交付原GNT7–9、GVS→GND串行capture与三域typed range：787生产源/1123测试源全新编译、
+  18项原RTL、三项精确源负控及163项selector检查通过；
+  [最终结果、限制与复现](P39_CAPTURE_RANGE_SOURCE_DELIVERY.md)。
+  四项逻辑提交已重放到正式#834基线，完整树字节一致，随后只更新本清单的合入状态。
+  保持同时只开放一份PR。后续为独立语言ID基础层、普通FS输入、生产ordinal接线、
+  joint-frame capture/跨range游标、原shader/真实父级、protected/API及完整产品验收。
   闭环计数保持3/40。
   P01 / #819、P02 / #820、P03 / #821 已完成各自的源码交付验收。
 - 当前基线为 **40 个 PR 工作包**：源码交付 3 项，功能/资源/API 闭合 31 项，
