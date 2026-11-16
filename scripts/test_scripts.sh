@@ -36,6 +36,7 @@ python3 -B scripts/test_graphics_sample_live.py
 python3 scripts/test_native_sample_graphics.py
 python3 scripts/test_native_graphics_owner_bridge.py
 python3 scripts/test_qualify_native_graphics_owner.py
+python3 -B scripts/test_owner_process_memory.py
 python3 scripts/native_graphics_uniform_oracle.py --self-test
 python3 scripts/test_gallium_index_buffers.py
 python3 scripts/test_gallium_resource_shapes.py

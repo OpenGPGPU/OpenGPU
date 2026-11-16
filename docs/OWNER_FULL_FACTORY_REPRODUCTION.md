@@ -168,7 +168,10 @@ Run the stages under explicit aggregate memory/deadline guards. The local
 budgets are 6144 MiB/600 seconds per fresh compilation, an 8 GiB JVM heap with
 24576 MiB/1800 seconds for complete RTL emission, 24576 MiB/10800 seconds for
 model generation, and 8192 MiB/7200 seconds per native build. These budgets do
-not permit resource reduction. Memory limits refer to sampled aggregate RSS.
+not permit resource reduction. RSS alone misses macOS compressed pages. Use
+the [owner process memory guard](OWNER_PROCESS_MEMORY.md) with the existing
+ownership, deadline and exit-proof checks: charge max(RSS, physical footprint)
+on macOS or RSS plus swap on Linux, and report both resident and charged peaks.
 Completed outputs, logs, caches and temporary source copies must be removed
 after their consumers and diagnosis end, following
 `AGENTS.md`; preserve the qualified model/tool inputs while an actual subsequent
