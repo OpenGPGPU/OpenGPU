@@ -7,13 +7,15 @@
 
 ## 当前总览
 
-- 最近正式源码合入为 P17 原四阶段 source-to-BUILD /
-  [PR #829](https://github.com/OpenGPGPU/OpenGPU/pull/829)，merge `057cfaf74`。
-  前置仿真修复 [#830](https://github.com/OpenGPGPU/OpenGPU/pull/830) 也已通过
-  全部正常 CI / `ci-ok`，rebase 合入 `c9e24cf34`。当前阶段交付为 P39 原 GND1 reader：
-  保留2个原逻辑提交，全部768生产源新鲜编译、3项实际reader RTL、153项
-  selector与integration/large-PR catalog检查通过。
-  本阶段交付后继续memory/source owner接线，不等待完整P39/P40才提PR。
+- 最近正式源码合入为 P39 原GND1 draw reader /
+  [#831](https://github.com/OpenGPGPU/OpenGPU/pull/831)，merge `f604dd64e`。
+  正常 CI [43795869803](https://github.com/OpenGPGPU/OpenGPU/actions/runs/43795869803)
+  的五个job（含reader、GpuSim、unit和受保护`ci-ok`）全部成功；
+  前置仿真修复 [#830](https://github.com/OpenGPGPU/OpenGPU/pull/830) 也已合入。
+  当前阶段为原VS memory路由：序列化四个本地tag、保留未获grant请求、
+  source独立排空与全局flush边界，保留5个原逻辑提交；769生产源新鲜编译、
+  13项实际RTL、两个精确源码负控、155项selector与catalog检查通过。
+  分阶段提PR，不等待完整P39/P40；source owner/真实CU与protected联合验收仍未完成。
   P01 / #819、P02 / #820、P03 / #821 已完成各自的源码交付验收。
 - 当前基线为 **40 个 PR 工作包**：源码交付 3 项，功能/资源/API 闭合 31 项，
   性能与最终验收 6 项。验收完成并合入 **3/40**，剩余 **37 项**。
