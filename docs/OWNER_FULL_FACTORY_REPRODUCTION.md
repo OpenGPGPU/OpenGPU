@@ -31,60 +31,73 @@ binding; an old96 model or a protocol peer cannot supply this qualification.
 
 ## Compiler prerequisite
 
-The local compiler is CIRCT `d21a21e51`, with the firtool-1.158.0 SDK and LLVM
+The compiler is CIRCT `d21a21e51`, with the firtool-1.158.0 shared SDK and LLVM
 revision `6279700538792da0c5a08e17babfe9b6e824c69f`. Large recursive deadness
 queries otherwise repeatedly traverse whole regions during canonicalization.
-The existing LLVM change
-[`13d1cd1825594d49000d04fbdab24c9946b573a4`](https://github.com/OpenGPGPU/llvm-project/commit/13d1cd1825594d49000d04fbdab24c9946b573a4)
-limits this optimizer query to 64 work items, conservatively retaining an
-operation when the bound is reached. This limit changes neither GPU capacity
-nor assertion coverage. The patch parent's entire source file matches the SDK
-revision's original file; the library change is exactly the ten budget lines.
+The bounded implementation and its isolated builder/checker are merged in
+[LLVM PR #2](https://github.com/OpenGPGPU/llvm-project/pull/2), at
+[`6090a2c305467740bdf0d2c63fe497d7337a4e23`](https://github.com/OpenGPGPU/llvm-project/commit/6090a2c305467740bdf0d2c63fe497d7337a4e23).
+The query counts at most 64 work items, including visited intervals and enqueued
+blocks, and conservatively retains an operation when the budget runs out.
+GPU capacity, assertion coverage and the complete pass pipeline are retained.
 
-Set `LLVM_SOURCE` to a checkout containing that commit, `FLASHSIM_DIR` to the
-FlashSim source checkout, and `CIRCT_BASE` to the matching `circt-verilog`
-executable. Use Python 3.10 or newer for the FlashSim commands below (the local
-checks used Python 3.14.7). Build an isolated library; leave installed tools and
-libraries intact:
+This library overlay supports macOS with the matching shared LLVM 24 release.
+Use Python 3.10 or newer. Set absolute paths for `LLVM_SOURCE` (a clean checkout
+of the merged revision), `FLASHSIM_DIR` (the intended source checkout),
+`CIRCT_RELEASE` (the matching SDK, including headers and shared libraries),
+`CIRCT_BASE` (the real `circt-verilog` executable), and `GTEST_SOURCE` (the
+googletest source directory). The SDK may be outside the FlashSim checkout.
+Start from this GPU checkout; the tool output directory must be new:
 
 ```sh
-CIRCT_RELEASE="$FLASHSIM_DIR/third_party/circt-release/firtool-1.158.0"
-P04_TOOL="$PWD/.artifacts/p04-tool"
-mkdir -p "$P04_TOOL/bin" "$P04_TOOL/lib"
-git -C "$LLVM_SOURCE" show \
-  13d1cd1825594d49000d04fbdab24c9946b573a4:mlir/lib/Interfaces/SideEffectInterfaces.cpp \
-  > "$P04_TOOL/SideEffectInterfaces.cpp"
-clang++ -std=c++17 -O2 -fPIC -fvisibility-inlines-hidden \
-  -fno-exceptions -fno-rtti -dynamiclib \
-  -I"$CIRCT_RELEASE/include" "$P04_TOOL/SideEffectInterfaces.cpp" \
-  -L"$CIRCT_RELEASE/lib" -lMLIRIR -lMLIRSupport -lLLVMSupport \
-  -Wl,-install_name,@rpath/libMLIRSideEffectInterfaces.dylib \
-  -Wl,-compatibility_version,24.0.0 -Wl,-current_version,24.0.0 \
-  -Wl,-rpath,"$CIRCT_RELEASE/lib" \
-  -o "$P04_TOOL/lib/libMLIRSideEffectInterfaces.dylib"
-cp "$CIRCT_BASE" "$P04_TOOL/bin/circt-verilog"
-export CIRCT_VERILOG="$P04_TOOL/bin/circt-verilog"
+P04_GPU="$PWD"
+P04_TOOL="$P04_GPU/.artifacts/p04-tool"
+P04_TMP="$P04_GPU/.artifacts/p04-tool-check"
+mkdir -p "$P04_TMP"
+python3 -B "$LLVM_SOURCE/mlir/utils/build_bounded_deadness_overlay.py" \
+  --release "$CIRCT_RELEASE" --verilog "$CIRCT_BASE" --output "$P04_TOOL" \
+  --test-googletest "$GTEST_SOURCE"
+python3 -B "$LLVM_SOURCE/mlir/utils/check_bounded_deadness_overlay.py" \
+  --flashsim "$FLASHSIM_DIR" --original "$CIRCT_BASE" \
+  --bounded "$P04_TOOL/circt-verilog" --temporary-parent "$P04_TMP" \
+  --original-opt "$CIRCT_RELEASE/bin/circt-opt" \
+  --bounded-opt "$P04_TOOL/circt-opt"
+```
+
+The builder checks the exported MLIR ABI and runs the six source unit tests,
+including small pure/effectful regions, long/wide budget boundaries and live
+pure values. The semantic checker generates and executes actual assertion-enabled
+C++ models against an independent initial/reset, synchronous-read, old-data,
+hold and write fault oracle. ASan/UBSan errors terminate the executable through
+`-fno-sanitize-recover=all`. It also compares canonical IR from eight nested
+modules at each of four depths. These checks passed with Python 3.14.7; they
+establish compiler behavior, not complete GPU model execution or throughput.
+
+The builder's shell wrappers select the library for those local checks. Guarded
+GPU generation requires the real executable so its bytes can be fingerprinted.
+Select the isolated library explicitly and keep this loader environment through
+generation, executor builds and qualification checks:
+
+```sh
+export CIRCT_VERILOG="$CIRCT_BASE"
+export DYLD_LIBRARY_PATH="$P04_TOOL"
 export FLASHSIM_CIRCT_SERIAL=1
 export PYTHONDONTWRITEBYTECODE=1
 DYLD_PRINT_LIBRARIES=1 "$CIRCT_VERILOG" --version
 ```
 
-The loader must select the isolated `libMLIRSideEffectInterfaces.dylib`.
-Its 55 exported symbols matched the SDK library exactly. Nine SDK-linked MLIR
-checks covered small pure/effectful regions and both long/wide boundaries;
-selecting the original library failed the precise 61-operation boundary control.
-The fixed tool also passed all 20 FlashSim clocked assertion/cache cases
-(34.72 seconds; 600-second/3072-MiB process-group ceiling). These are compiler
-checks, not complete-model execution. The corresponding LLVM boundary cases
-are `DeadOpFixture.*` in `mlir/unittests/Interfaces/SideEffectInterfacesTest.cpp`.
-
-Reproduce the FlashSim checks with temporary outputs under this checkout:
+Verify that the loader output names
+`$P04_TOOL/libMLIRSideEffectInterfaces.dylib`. `generator_inputs` rejects compiler
+shell wrappers and fingerprints the real executable, loaded libraries and
+explicit loader environment. With the FlashSim source tree at
+[`ac55d1ad844a9efaf95f551184732a22dd99fa27`](https://github.com/OpenGPGPU/FlashSim/commit/ac55d1ad844a9efaf95f551184732a22dd99fa27),
+the real-tool selection and all 21 clocked assertion/cache cases passed under
+a 600-second/3072-MiB aggregate RSS ceiling.
+Reproduce the assertion checks with temporary outputs under this checkout:
 
 ```sh
-P04_GPU="$PWD"
-(cd "$FLASHSIM_DIR" && python3 -m pytest flashsim/test_clocked_assertions.py -q \
-  --basetemp="$P04_GPU/.artifacts/p04-assertions" \
-  -o cache_dir="$P04_GPU/.artifacts/p04-pytest-cache")
+(cd "$FLASHSIM_DIR" && python3 -B -m pytest flashsim/test_clocked_assertions.py \
+  -q -p no:cacheprovider --basetemp="$P04_TMP/pytest")
 ```
 
 ## Full model and original executors
@@ -131,11 +144,32 @@ Validate the observed probe JSON with `profile_bytes` from
 discovery words and the required auxiliary reads. The blit executable has its
 own build qualification; its 43-packet execution remains P06.
 
+```sh
+python3 -B - "$P04_OWNER" <<'PY'
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path.cwd() / "scripts"))
+from compute_owner_protocol import profile_bytes as compute_profile, strict_json
+from native_sample_owner_protocol import profile_bytes as native_profile
+from owner_resource_contract import SAMPLE_PROFILE
+owner = Path(sys.argv[1])
+for kind, validate in (("native-sample", native_profile),
+                       ("native-sample-graphics", native_profile),
+                       ("compute", compute_profile)):
+    profile = strict_json(owner / f"probe-{kind}.json")
+    if profile.get("ownerProfile") != SAMPLE_PROFILE:
+        raise ValueError("probe does not belong to the complete sample factory")
+    wire = validate(profile)
+    print(kind, len(profile["words"]), len(wire))
+PY
+```
+
 Run the stages under explicit aggregate memory/deadline guards. The local
 budgets are 6144 MiB/600 seconds per fresh compilation, an 8 GiB JVM heap with
-24576 MiB/1800 seconds for complete RTL emission, 24576 MiB/7200 seconds for
+24576 MiB/1800 seconds for complete RTL emission, 24576 MiB/10800 seconds for
 model generation, and 8192 MiB/7200 seconds per native build. These budgets do
-not permit resource reduction. Completed outputs, logs, caches and temporary
-source copies must be removed after their consumers and diagnosis end, following
+not permit resource reduction. Memory limits refer to sampled aggregate RSS.
+Completed outputs, logs, caches and temporary source copies must be removed
+after their consumers and diagnosis end, following
 `AGENTS.md`; preserve the qualified model/tool inputs while an actual subsequent
 consumer still needs them.
