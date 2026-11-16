@@ -7,16 +7,16 @@
 
 ## 当前总览
 
-- 最近正式源码合入为P39原VS memory路由与独立排空 /
-  [#832](https://github.com/OpenGPGPU/OpenGPU/pull/832)，merge `fb41e058e`。
-  正常 CI [43797969120](https://github.com/OpenGPGPU/OpenGPU/actions/runs/43797969120)
-  的七个job（含四个affected、unit、checks和受保护`ci-ok`）全部成功。
-  前一阶段GND1 reader [#831](https://github.com/OpenGPGPU/OpenGPU/pull/831) 及
-  前置仿真修复[#830](https://github.com/OpenGPGPU/OpenGPU/pull/830) 均已合入。
-  当前阶段为P40动态TES service/decoder/provider与三域source-0回复：
-  771生产源和1116测试源新鲜编译、14项组件/结构检查、三域原路由负控及
-  literal TCS→实际CU动态TES读/取消/drain/无reset复用通过；launch断言保持启用。
-  分阶段交付，不等待完整P39/P40；原Mesa、三域protected、资源及产品目标仍未完成，
+- 最近正式源码合入为P40动态TES读取/source-0回复与CU检查 /
+  [#833](https://github.com/OpenGPGPU/OpenGPU/pull/833)，merge `2336a4b97`。
+  正常 CI [43801050433](https://github.com/OpenGPGPU/OpenGPU/actions/runs/43801050433)
+  的75个job和受保护`ci-ok`全部成功；P39前序[#832](https://github.com/OpenGPGPU/OpenGPU/pull/832)、
+  [#831](https://github.com/OpenGPGPU/OpenGPU/pull/831)及前置[#830](https://github.com/OpenGPGPU/OpenGPU/pull/830)均已合入。
+  当前阶段为原VS router/source owner/三域typed parent：777生产源/1120测试源新鲜编译、
+  14个原协议用例、两个精确负控与VGA/完整接口三域CIRCT lowering通过。
+  首批600s整批运行部分完成后超时，独立确认消费者退出后余下原用例逐项通过，
+  不计整批PASS。端点是external CU/image接口，不证明原shader、图像或protected执行。
+  分阶段交付，不等待完整P39/P40；语言ID、GNT/GVS/GND capture/range与完整目标仍待完成，
   闭环计数保持3/40。
   P01 / #819、P02 / #820、P03 / #821 已完成各自的源码交付验收。
 - 当前基线为 **40 个 PR 工作包**：源码交付 3 项，功能/资源/API 闭合 31 项，

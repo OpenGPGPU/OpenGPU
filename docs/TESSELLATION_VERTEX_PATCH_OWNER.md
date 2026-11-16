@@ -50,73 +50,23 @@ without treating that later flush as unfinished work from the reported task.
 The enclosing owner retains program, uniform, GEM and MMU resources through
 whole-frame and whole-fabric retirement, including after this task report.
 
-## Bounded results
+## Staged results and limits
 
-Six current source units passed Scala 2.13.18 / Chisel 7.15 plugin compilation
-against the read-only dependency classes from
-`75899c1856ee0ee0204cbd2e5d1893d6dad11f63`. One actual controller RTL test
-passed sixteen protocol scenarios with the default 16-lane, eight-warp VS
-descriptor. Its image peer carries a 32-bit typed task; its VS peer supplies
-protocol responses. No image pipeline, shader or CU was instantiated.
+The two actual Owner/Publisher tests pass in the complete fresh staged source.
+The controller test covers admission rejection, held offers during cancel,
+real completions while source busy, late faults, foreign task IDs, premature
+image success, simultaneous completions, backpressure, later flush and reuse.
+The second connects the actual Publisher/Owner feedback, held writes, real
+replies and seals, fault priority and healthy no-reset reuse. VS execution and
+image/store responses remain protocol peers; no shader is executed.
 
-The scenarios cover complete descriptor snapshots, early admission rejection,
-held image and VS offers during cancellation, local cancellation of a held
-range task, completion acceptance while the source is busy, residual local
-credits, late faults, foreign task IDs, premature image success before VS
-acceptance and before VS completion, terminal-frame abandonment, nonzero
-opened status, simultaneous completions, report backpressure and reuse
-without reset. Actual negative controls independently failed the expected
-status assertion with the old premature-success controller and the expected
-ready assertion after gating VS completion acceptance on `!sourceBusy`.
-An expanded held-report flush check also reproduced the old retirement
-assertion failure. Recompiling the final Owner and expanded fixture against
-the unchanged current component classes passed the complete protocol RTL test;
-the report stayed stable while live drain and next admission remained blocked.
+Two independently compiled source-copy controls reproduce the exact cancel
+combinational cycle and held-report drain assertion. Full compilation,
+source/consumer checks, per-case bounds, original batch limit and reproduction
+are recorded in the [typed-parent validation](TESSELLATION_VERTEX_INPUT_IMAGE.md#staged-validation-and-limits).
+The three real typed parents also pass CIRCT lowering with the fixed Owner.
 
-Compilation and each RTL run used an owned 180-second process group, 128 MiB
-heap, 128 MiB metaspace, 32 MiB code cache, one CPU/native build job,
-optimization zero and simulation cache disabled. The final positive RTL run
-completed in about 35 seconds. All six source inputs remained unchanged
-through that run. The 152 selector CPU tests passed. Temporary classes and
-models were removed after owned processes exited and open consumers and
-cross-worktree symlinks were checked.
-
-These results do not establish three-domain image integration, actual original
-VS execution, native admission, complete current-source compilation, full
-VS-to-Context-to-TCS-to-dynamic-TES retirement, or product qualification. The
-controller does not enable a factory, public API, getter or discovery bit.
-
-## Focused reproduction
-
-Use JDK 21, Scala 2.13.18 and its matching Chisel plugin in an allocated
-resource window. Compile the complete current closure below and place its
-classes before the frozen dependency classpath. Run the JVM in an owned
-180-second process group; terminate only that group if it exceeds the limit.
-
-```sh
-FROZEN_CP=$(cat "$FROZEN/target/streams/test/fullClasspath/_global/streams/export")
-CHECK_OUT=$(mktemp -d .artifacts/vertex-patch-owner-XXXXXX)
-SIM_OUT=$(mktemp -d .artifacts/vertex-patch-owner-rtl-XXXXXX)
-java -Xmx128m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m \
-  -XX:ActiveProcessorCount=1 -XX:+UseSerialGC \
-  -cp "$SCALA_COMPILER_CP" scala.tools.nsc.Main \
-  -language:reflectiveCalls -Xplugin:"$CHISEL_PLUGIN_JAR" \
-  -classpath "$FROZEN_CP" -d "$CHECK_OUT" \
-  src/main/scala/opengpu/graphics/VertexInputSlice.scala \
-  src/main/scala/opengpu/graphics/VertexInputFetcher.scala \
-  src/main/scala/opengpu/graphics/VertexShaderStage.scala \
-  src/main/scala/opengpu/system/TessellationVertexPatchSource.scala \
-  src/main/scala/opengpu/system/TessellationVertexPatchOwner.scala \
-  src/test/scala/opengpu/graphics/TessellationVertexPatchOwnerSpec.scala
-java -Xmx128m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m \
-  -XX:ActiveProcessorCount=1 -XX:+UseSerialGC \
-  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=0 \
-  -Dopengpu.simCache=off -Dopengpu.simWorkspace="$SIM_OUT" \
-  -cp "$CHECK_OUT:$FROZEN_CP" org.scalatest.tools.Runner -oD \
-  -s opengpu.graphics.TessellationVertexPatchOwnerSpec
-python3 -B scripts/test_changed_test_suites.py
-# Remove only after all compiler, JVM and native consumers have exited:
-rm -r -- "$CHECK_OUT" "$SIM_OUT"
-```
-
-Do not enable or dispatch Scala regression.
+Native/protected source admission, original three-domain shader execution,
+complete resource and product qualification remain pending. This controller
+never enables a factory, public API, getter or discovery bit. Keep Scala
+regression disabled.
