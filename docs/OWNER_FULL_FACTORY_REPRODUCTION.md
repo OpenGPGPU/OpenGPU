@@ -109,13 +109,27 @@ GPU classes. Class `SourceFile` and actual loaded providers were checked;
 classes from another GPU checkout are not valid substitutes.
 
 For model generation, select the published FlashSim source at
-[`e2c5ea442ad5e0027933fc789d10e3cd5a993b67`](https://github.com/OpenGPGPU/FlashSim/commit/e2c5ea442ad5e0027933fc789d10e3cd5a993b67).
+[`1df7bc33cb0a12e192b074f6cd0575348422467c`](https://github.com/OpenGPGPU/FlashSim/commit/1df7bc33cb0a12e192b074f6cd0575348422467c).
 It includes shared-expression traversal, recursive-visitor lifetime and output
-buffer fixes. Its optional scoped GC policy below runs in the isolated generator
-process and is part of the generator environment binding. Keep that environment
-through executor builds and checks.
+buffer fixes. The compiler also transfers its frontend model to the optimizer
+and releases parsed CIRCT text after lowering, allowing obsolete inputs to be
+released as passes replace them. The public optimizer preserves caller-owned
+input. Native/CIRCT success and failure lifetime checks and the
+complete 419-test suite passed under both normal and deferred GC; those checks
+do not establish complete GPU generation memory use.
+
+The optional scoped GC policy below runs in the isolated generator process and
+is part of the generator environment binding. Keep that environment through
+executor builds and checks. First check that the clean FlashSim checkout has
+the published source tree; a reviewed PR head with identical tree bytes is
+also accepted.
 
 ```sh
+set -e
+P04_FLASHSIM_REV=1df7bc33cb0a12e192b074f6cd0575348422467c
+test "$(git -C "$FLASHSIM_DIR" rev-parse 'HEAD^{tree}')" = \
+  "$(git -C "$FLASHSIM_DIR" rev-parse "$P04_FLASHSIM_REV^{tree}")"
+test -z "$(git -C "$FLASHSIM_DIR" status --porcelain)"
 export FLASHSIM_GC_POLICY=defer
 python3 -B scripts/run_owner_bounded.py --memory-mib 6144 --timeout-seconds 600 -- \
   sbt -J-Xmx4g -J-XX:ActiveProcessorCount=1 clean compile 'Test / compile'
