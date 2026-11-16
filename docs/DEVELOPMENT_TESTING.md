@@ -40,6 +40,28 @@ Each selected regression shard streams test output and records its completed
 ScalaTest count in the job summary. An unexpectedly empty shard or an empty,
 incomplete, failed, canceled or pending ScalaTest run fails validation.
 
+## Long simulator port names
+
+`GpuSim` passes `--comp-limit-syms 0` to Verilator so svsim can call exported
+DPI functions by their complete names. Its shim also runs with executable
+caching disabled and no optional build settings. The flag enters the executable
+cache key. This fixes native compilation failures for long flattened port names.
+
+All six `GpuSimSpec` cases passed in each of two fresh JVMs, with executable
+caching disabled and enabled. The cached run recorded six actual executable
+cache hits. The regression transfers distinct 130-bit and 37-bit inputs through
+ports sharing a prefix longer than 128 characters; the suite also checks failed
+expectations, independent resets, changed RTL widths and an actual RTL assertion.
+The two test-tool sources were freshly compiled without GPU production classes.
+These results cover the simulation helper, with no full-host or product claim.
+
+```sh
+sbt -Dopengpu.simCache=off -Dopengpu.simWorkspace=target/dpi-check-off \
+  'testOnly opengpu.testutil.GpuSimSpec'
+GPU_SIM_DEBUG=1 sbt -Dopengpu.simWorkspace=target/dpi-check-cached \
+  'testOnly opengpu.testutil.GpuSimSpec'
+```
+
 ## Regression simulation builds
 
 
