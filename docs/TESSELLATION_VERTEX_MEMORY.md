@@ -104,12 +104,31 @@ for that render reply. Restoring the former global-drain handoff condition
 fails the same test's fixed eight-cycle grant assertion, without a process
 timeout or a changed resource budget.
 
-Final local results for the independent-drain change: five current
-adapter/fabric/helper/test sources passed Chisel-plugin incremental compilation;
-all twelve focused ScalaTest cases passed (fourteen actual component
-simulations). The old-global-handoff negative control failed exactly its grant
-assertion. Each process group terminated before its temporary classes,
-simulation outputs and logs were removed.
+## Staged source validation
+
+The exact P39 memory-routing delivery freshly compiled all 769 production
+Scala sources with Scala 2.13.18/Chisel 7.15.0 in 88.354 seconds, then four
+exact test/helper sources against that output in 5.042 seconds. No existing
+GPU class provider was used. All thirteen actual RTL cases passed across
+`TessellationInputMemoryFabricSpec` and `TileBinHostMemoryFabricSpec` in
+137.863 seconds, including the original multi-client routing regression.
+Assertions were enabled, native builds used one job, and executable/object
+caches were disabled. All 155 affected-suite selector checks and the
+integration/large-PR catalog checks also passed.
+
+Two independently compiled source-copy controls failed only their bounded
+behavioral assertions: restoring global-drain handoff failed the eight-cycle
+source-grant check; dropping the ungranted VS debt failed `grant/drain wait 5`.
+Both compiled successfully and terminated with exactly one failed selected
+test, not a process timeout. The unchanged source passed the complete suite.
+
+Production/test compilation had separate 600-second/6144-MiB sampled aggregate
+bounds (observed 3523280/442736 KiB). The complete RTL run had a
+900-second/1536-MiB bound (observed 599952 KiB). Each control had a separate
+180-second/1536-MiB RTL bound; observed maxima were 459056/460624 KiB.
+Sampled RSS is not an absolute peak. Source/tool/HEAD/index checks passed
+before and after each command; all consumers exited before private classes,
+mutants, models and logs were removed.
 
 These tests use modeled physical memory peers and execute the real adapter,
 translator, page walker and fabric RTL. They do not run a VS/TCS/TES shader,
@@ -117,16 +136,20 @@ prove protected GEM admission or qualify a complete owner. Connecting this
 port to the versioned VS-to-patch sequencer and native owned-source contract,
 actual shared-CU execution and same-host product qualification remain pending.
 
-Focused reproduction in an explicitly permitted resource window:
+Reproduce with the repository JDK/Scala/Chisel and Verilator toolchain:
 
 ```sh
-sbt 'testOnly opengpu.system.TessellationInputMemoryFabricSpec'
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=1 compile
+sbt -J-Xmx768m -J-XX:ActiveProcessorCount=1 \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=0 \
+  -Dopengpu.simCache=off -Dopengpu.simCcache=off \
+  -Dopengpu.productQualification=0 \
+  'testOnly opengpu.system.TessellationInputMemoryFabricSpec opengpu.system.TileBinHostMemoryFabricSpec'
 python3 -B scripts/test_changed_test_suites.py
+python3 -B scripts/test_test_selection.py
+git diff --check
 ```
 
-Do not dispatch or enable Scala regression. The local bounded check compiles
-current adapter/fabric/test sources with the Chisel plugin and a read-only
-frozen dependency classpath. Each separate simulation process has a 180-second
-limit, one CPU, 128MiB Java heap/128MiB metaspace/32MiB code cache, one Verilator
-job, optimization zero and simulation cache disabled. This incremental component
-check does not replace a complete current-source build or actual CU execution.
+Keep the existing protected PR CI and the intentionally disabled Scala
+regression workflow. This stage does not qualify a complete factory or
+actual CU execution and does not close P39/P40 or the product target.
