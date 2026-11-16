@@ -36,7 +36,7 @@ class _RusageInfoV0(ctypes.Structure):
             'ri_proc_exit_abstime')]
 
 
-def _darwin_memory(pid):
+def _darwin_usage(pid):
     libproc = ctypes.CDLL('/usr/lib/libproc.dylib', use_errno=True)
     read = libproc.proc_pid_rusage
     read.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_void_p]
@@ -51,6 +51,13 @@ def _darwin_memory(pid):
         return None
     if not usage.ri_proc_start_abstime:
         raise ValueError('missing process birth identity')
+    return usage
+
+
+def _darwin_memory(pid):
+    usage = _darwin_usage(pid)
+    if usage is None:
+        return None
     # phys_footprint includes the task's compressed-memory ledger. RSS can
     # exceed it for shared/file-backed pages; retain the larger value rather
     # than counting those pages twice or reverting to an RSS-only ceiling.
@@ -78,6 +85,14 @@ def _linux_memory(pid, proc=Path('/proc')):
                 if unit != 'kB' or int(amount) < 0 or name in values:
                     raise ValueError('invalid memory field: ' + line)
                 values[name] = int(amount) * 1024
+        if not values:
+            # exit_mm can release the address space before the task becomes
+            # a zombie. Linux proc_pid_statm reports seven zeroes for a task
+            # without an mm. This is positive zero-memory evidence, not an
+            # RSS fallback or proof that the process itself has exited.
+            if (path / 'statm').read_text().split() != ['0'] * 7:
+                raise ValueError('missing memory counters without zero address-space evidence')
+            values = {'VmRSS': 0, 'VmSwap': 0}
         after_state, after_birth = _linux_stat(path)
         if after_birth != birth:
             raise ValueError('PID reused during memory observation')
@@ -110,6 +125,32 @@ def process_memory(pid):
         raise ValueError('unsupported memory-accounting platform: ' + sys.platform)
     except (OSError, ValueError, KeyError, IndexError) as error:
         raise MemoryObservationError(f'cannot account for owned PID {pid}: {error}') from error
+
+
+def process_birth(pid):
+    """Observe native identity independently of memory accounting for cleanup."""
+    try:
+        if type(pid) is not int or pid <= 0:
+            raise ValueError('a positive integer PID is required')
+        if sys.platform == 'darwin':
+            usage = _darwin_usage(pid)
+            return usage.ri_proc_start_abstime if usage is not None else None
+        if sys.platform.startswith('linux'):
+            path = Path('/proc') / str(pid)
+            try:
+                state, birth = _linux_stat(path)
+            except FileNotFoundError:
+                if path.exists():
+                    raise
+                return None
+            if state in {'Z', 'X'}:
+                return None
+            if birth <= 0:
+                raise ValueError('missing process birth identity')
+            return birth
+        raise ValueError('unsupported process-identity platform: ' + sys.platform)
+    except (OSError, ValueError, KeyError, IndexError) as error:
+        raise MemoryObservationError(f'cannot identify owned PID {pid}: {error}') from error
 
 
 class ProcessMemoryBudget:

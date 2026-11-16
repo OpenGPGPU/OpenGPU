@@ -19,6 +19,15 @@ the observed consumers exit, and reports resident/charged peaks and
 `cleanup_proven`. It never removes command inputs or outputs. An uncertain exit
 requires preserving inputs for diagnosis.
 
+Cleanup reads native birth identities independently of RSS/swap counters, so a
+memory-accounting failure does not prevent stopping known consumers. On Linux,
+an exiting task may release its address space before becoming a zombie. Missing
+memory counters count as zero only with the kernel's seven-zero `statm` result
+and an unchanged native start identity; the task remains live for ownership and
+exit checks. Missing, malformed or nonzero corroborating data still fails the
+memory observation. The format follows
+[Linux proc memory reporting](https://github.com/torvalds/linux/blob/master/fs/proc/array.c).
+
 This is a runner for cooperating build/qualification tools, not a sandbox.
 Commands must not launch background work that changes its process group or
 session and detaches before any ancestry observation. The initial pinned group and previously
@@ -84,7 +93,7 @@ the caller's original input file remains present. These tests do not generate
 RTL or a GPU model.
 
 Local validation with Python 3.14.7 on macOS passed all 13 command-runner tests,
-all 11 memory-accounting tests and the 19 existing compute/native-graphics cleanup
+all 13 memory-accounting tests and the 19 existing compute/native-graphics cleanup
 tests. A guarded invocation of the selected real `circt-verilog --version` also
 exited zero with process cleanup confirmed. Complete factory generation and
 executor/probe qualification require their separate runs.

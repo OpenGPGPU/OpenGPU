@@ -17,7 +17,7 @@ from unittest.mock import Mock, patch
 
 import run_owner_bounded as bounded
 from owner_process_lifetime import CleanupIncomplete, group_dead
-from owner_process_memory import MemoryBudgetExceeded, MemoryObservationError, ProcessMemory, process_memory
+from owner_process_memory import MemoryBudgetExceeded, MemoryObservationError, process_memory
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -119,7 +119,8 @@ if not {early_exit!r}:time.sleep(30)
 
     def test_memory_observation_failure_preserves_error_and_cleans_consumers(self):
         error = MemoryObservationError('required footprint unavailable')
-        with patch.object(bounded.ProcessMemoryBudget, 'check', side_effect=error):
+        with patch('owner_process_memory.process_memory', side_effect=error), \
+             patch.object(bounded, 'process_memory', side_effect=error, create=True):
             with self.assertRaises(MemoryObservationError) as caught:
                 self.run_command(self.python('import time;time.sleep(30)'))
         self.assertIs(caught.exception, error)
@@ -147,7 +148,7 @@ if not {early_exit!r}:time.sleep(30)
         row = bounded.ProcessRow(os.getpid(), 42, 'S', 'same ps birth')
         with patch.object(bounded, 'process_rows', return_value={42: row}), \
              patch.object(bounded.os, 'getsid', return_value=42), \
-             patch.object(bounded, 'process_memory', side_effect=[ProcessMemory(1, 1, 1), ProcessMemory(2, 1, 1)]):
+             patch.object(bounded, 'process_birth', side_effect=[1, 2], create=True):
             tree.observe()
             with self.assertRaisesRegex(CleanupIncomplete, 'birth changed'):
                 tree.observe()
@@ -170,7 +171,7 @@ if not {early_exit!r}:time.sleep(30)
                  patch.object(bounded, 'process_rows', return_value={42: row}), \
                  patch.object(bounded.os, 'getsid', return_value=42,
                               side_effect=ProcessLookupError() if exit_at == 'session' else None), \
-                 patch.object(bounded, 'process_memory', return_value=None), \
+                 patch.object(bounded, 'process_birth', return_value=None, create=True), \
                  patch.object(bounded.os, 'killpg') as kill:
                 tree._signal_groups(signal.SIGTERM)
                 kill.assert_not_called()
