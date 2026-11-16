@@ -1,5 +1,9 @@
 # Complete owner factory qualification
 
+The complete factory's fresh compilation, RTL emission and structural audit
+have passed. Assertion-enabled model generation, original executor builds and
+actual discovery probes remain pending; P04 is not closed by these results.
+
 P04 binds the complete `OwnerResourceProfile.sampleStage` factory to fresh RTL,
 its assertion-enabled model, original executors and actual MMIO discovery.
 The target retains two 16-lane/eight-warp CUs, 16 KiB shared memory per CU,
@@ -39,7 +43,9 @@ revision's original file; the library change is exactly the ten budget lines.
 
 Set `LLVM_SOURCE` to a checkout containing that commit, `FLASHSIM_DIR` to the
 FlashSim source checkout, and `CIRCT_BASE` to the matching `circt-verilog`
-executable. Build an isolated library; leave installed tools and libraries intact:
+executable. Use Python 3.10 or newer for the FlashSim commands below (the local
+checks used Python 3.14.7). Build an isolated library; leave installed tools and
+libraries intact:
 
 ```sh
 CIRCT_RELEASE="$FLASHSIM_DIR/third_party/circt-release/firtool-1.158.0"
