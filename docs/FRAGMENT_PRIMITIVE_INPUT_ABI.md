@@ -39,8 +39,8 @@ ABI1..7 offsets and acceptance rules remain fixed. GS ABI5/7 still require
 explicit geometry permission and actual captured geometry metadata. New
 ordinary permission does not imply GS or sample permission. Every changed
 module preserves its old full JVM constructor, and old full-arity descriptor
-helpers delegate with new permission false. Current new callers still require
-fresh compilation; these overloads do not establish whole-source qualification.
+helpers delegate with new permission false. All changed callers are freshly
+compiled for the checks below; overload retention alone is not hardware qualification.
 The new flag is passed through the real fragment state readers, prepared and
 ordinary fragment pipeline, typed image/replay pipelines and three tessellation
 image pipelines. Existing TF, image, advanced blend, payload and sampler
@@ -50,68 +50,101 @@ No payload-owner index or pin layout changes. The existing69632-byte full VS
 payload remains larger than the new FS prefixes, so the five-owner512KiB pool
 requires no capacity reduction.
 
-## Verification scope
+## Final local results
 
-`FragmentPrimitiveInputAbiSpec` exercises the actual descriptor and replay
-admission helpers against independent literal layouts, all old/new capability
-combinations, geometry metadata presence, sample-plane selection, output mask
-bounds and exact scratch extents. The separate local-only
-`FragmentPrimitiveInputPackingSpec` retains the complete real stage,128 lanes,
-16 varying slots,4 MRTs and a two-CU shared interface. It checks acknowledged
-quad packing with a tagged completion peer that executes no shader ISA. Shader
-load/readback and whole renderer correctness cannot be inferred from that peer.
+All **788 production and 1129 test Scala sources** were freshly compiled with
+Scala 2.13.18 and the Chisel 7.15.0 plugin. Runtime used only those classes and
+38 third-party JARs checked to contain no GPU classes, with no historical GPU
+class provider. Production/test compilation took 91.0/176.0 seconds, with sampled
+aggregate peaks 3,619,456/4,063,312 KiB. Each compile group had a 600-second,
+6144-MiB bound and a 4-GiB heap. Ten previous full constructor descriptors and
+three old full-arity helper method descriptors were independently derived from
+the preceding source and found in the new class files.
 
-`TypedFragmentImageStateReaderSpec` includes ABI1/6/8/9 publication, cache,
-backpressure, fault, cancel/drain/reuse and independent permission rejection.
-The full-CU cases in `FragmentShaderStageQualificationSpec` are explicitly
-selected by `-Dopengpu.nativePrimitiveInputQualification=1`; they preserve two
-physical CUs,16lanes×8warps,16varyings,4MRTs and local/global payload variants.
-They load the PrimitiveID/sample/varying arrays in real shader code and check
-raw output readback. Those full-CU cases have not been executed for this block.
+All **seven focused RTL cases** passed with assertions and caching disabled:
 
-Bounded local results: all12 changed production files and four test/helper
-files passed fresh Scala2.13.18/Chisel7.15.0 plugin compilation in separate
-128MiB groups. This used explicit earlier read-only dependencies, with the new
-classes first; it is not a fresh whole-source factory build. The previous
-public JVM constructor/method descriptors were retained. The lightweight
-admission case and all four actual state/image reader cases passed Verilator
-RTL. Two independently compiled production mutations were rejected by exact
-hardware expectations: substituting GS permission for primitive permission,
-and treating ABI8 as a sample plane (each observed1 where0 was required).
-Normal CI selection includes the lightweight ABI/admission and state/image
-reader suites. Full-stage packing remains in the separate local qualification
-suite; selecting it still runs the bounded CI checks. All161 selector CPU
-tests passed.
+| Suite | Cases | Group seconds | Sampled aggregate peak KiB |
+| --- | ---: | ---: | ---: |
+| `FragmentPrimitiveInputAbiSpec` | 1 | 9.3 | 373520 |
+| `TypedFragmentImageStateReaderSpec` | 4 | 41.7 | 439072 |
+| `FragmentPrimitiveInputPackingSpec` | 2 | 229.5 | 1292560 |
 
-The complete stage packing attempt exceeded128MiB during Chisel-to-FIRRTL
-conversion before behavior simulation. The identical ABI9 stage closure was
-not retried. Capacity and texture functionality were retained. Both packing
-cases and the four full-CU shader cases remain pending. Splitting the packing
-suite from the lightweight admission suite changed only test registration and
-was followed by fresh test compilation; successful admission/reader behavior
-was not inferred for the full stage.
+The ABI case checks independent literal layouts for all nine versions, every
+old/new permission combination, real GS-metadata presence, sample-plane
+selection, output-mask bounds and exact scratch extents. The reader cases use
+ABI1/6/8/9 with actual state/image record responses, including publication,
+cache, held offers/reports, fault, cancellation, drain and no-reset reuse.
 
-For the bounded local checks, compile the listed current source groups using
-the Chisel plugin, then put those outputs before the matching read-only
-dependencies on `CHECK_CP`. Each Java invocation uses:
+The packing cases instantiate the complete real `FragmentShaderStage` at
+16 lanes × 8 warps (128 threads), 16 varying slots and four MRTs, with a two-CU
+shared interface. Actual accepted memory writes/replies precede the held launch;
+independent checks inspect all 64 varying components, PointCoord, PrimitiveID
+and ABI9 sample arrays across 32 quads. Each ABI covers 1×/2×/4× sample modes,
+a wrong sample-plane rejection, held output/report and healthy reuse. The
+completion endpoint is an explicit tagged protocol peer, not a CU or shader
+interpreter. No shader load, output color/mask computation or two-physical-CU
+execution is inferred from that peer. Each packing elaboration emitted five
+warnings in the retained texture/service closure; that closure was not removed
+to fit the test.
+
+Each simulation group had a 600-second deadline, one CPU, one unoptimized
+Verilator job and 64-MiB code cache. ABI/reader groups used 256-MiB heap,
+192-MiB metaspace and a 1536-MiB aggregate bound; full-stage packing used
+1024/256 MiB and a 3072-MiB bound. No interface capacity was reduced. Scala/ABI
+sources, compiler/plugin/JAR inputs, Java/firtool/Verilator executables and
+compiled classes were checked around their consumers.
+
+Two separately compiled production-source copies each ran the original ABI
+case and failed an explicit hardware expectation:
+
+- Substituting `geometryInput` for the ordinary permission admitted ABI8 through
+  GS permission alone (observed 1 instead of 0, 9.3 seconds).
+- Including ABI8 in `hasSample(UInt)` classified a pixel-rate draw as a sample
+  plane (observed 1 instead of 0, 9.1 seconds).
+
+Both failures were behavior assertions, not timeouts, OOMs or compilation
+failures; production source remained unchanged. Each control had a
+240-second/1536-MiB bound and the component JVM settings above. All 166 selector
+unit checks, integration/large-PR catalog validation and `git diff --check`
+passed. Existing scoped qualifiers are retained; packing stays explicitly local
+while ABI/admission and state/image-reader checks run in normal CI. Owned
+consumers exited, then generated classes, models, caches, controls and logs
+were removed after their final use.
+
+## Reproduction
+
+Use a fresh topic checkout with the supported simulation toolchain:
 
 ```sh
-java -Xmx128m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m \
-  -XX:ActiveProcessorCount=1 -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
-  -Dopengpu.simLowMemOpt=0 -Dopengpu.simCache=off \
-  -Dopengpu.simWorkspace="$PRIVATE_SIM_DIRECTORY" -cp "$CHECK_CP" \
-  org.scalatest.tools.Runner -oD \
-  -s opengpu.graphics.FragmentPrimitiveInputAbiSpec
+sbt clean 'Test / compile'
+sbt -Dopengpu.productQualification=0 \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=0 \
+  -Dopengpu.simCache=off \
+  'testOnly opengpu.graphics.FragmentPrimitiveInputAbiSpec opengpu.graphics.TypedFragmentImageStateReaderSpec'
+# Explicit local full-stage packing, outside regular CI:
+sbt -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=0 \
+  -Dopengpu.simCache=off \
+  'testOnly opengpu.graphics.FragmentPrimitiveInputPackingSpec'
+python3 scripts/test_changed_test_suites.py
+bash scripts/ci_shard_tests.sh suites system-core ALL
+bash scripts/ci_shard_tests.sh suites system-core-large-pr ALL
+git diff --check
 ```
 
-Select `opengpu.graphics.TypedFragmentImageStateReaderSpec` with
-`-z 'publish ABI1 state'` (or6/8/9) for each reader case. Bound every process
-group to180seconds, verify it exited before removing its private simulation
-and compiler outputs, and check source/class/compiler inputs before and after.
-Full-stage packing and full-CU qualification require a separately permitted
-resource window; they are not substitutions for these small cases. No SBT,
-full model or disabled Scala regression workflow was launched for this block.
-Actual Mesa emitter/reflector and protected ABI8/9 RX admission, source/profile
-identity, same-host ordinary/tess replay shader execution, full product images
-and GNY2 qualification remain pending. This is not an end-to-end PrimitiveID or
-GLES qualification.
+For each control, use a separate temporary source copy, make exactly one
+change above, freshly compile it ahead of the normal classes, then select
+`opengpu.graphics.FragmentPrimitiveInputAbiSpec`. Require exactly one executed
+test and the corresponding explicit mismatch. Remove owned outputs only after
+consumers exit. Scala regression remains disabled.
+
+## Remaining qualification
+
+The four explicit `FragmentShaderStageQualificationSpec` shader cases selected
+by `-Dopengpu.nativePrimitiveInputQualification=1` have not been executed for
+this delivery. Their local/global-payload paths and actual shader-array loads,
+raw output readback, full native 512-KiB/five-owner resource factory, original
+linked programs and protected submit remain outside these seven checks.
+Existing compiler/validator source does not establish that complete GPU path.
+Full product images, resource coexistence and the 2-CU 640×480 at 60-FPS target
+remain unfinished; this stage enables no public capability and keeps alignment
+acceptance at 3/40.
