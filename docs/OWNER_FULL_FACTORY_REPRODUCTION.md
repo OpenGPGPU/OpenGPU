@@ -3,9 +3,21 @@
 P04 binds the complete `OwnerResourceProfile.sampleStage` factory to fresh RTL,
 its assertion-enabled model, original executors and actual MMIO discovery.
 The target retains two 16-lane/eight-warp CUs, 16 KiB shared memory per CU,
-512-set/four-way L2, four image engines, 65536 paged entries, the five-owner,
-twelve-port 512 KiB payload pool and characterized SRAM models. Display size is
+512-set/four-way L2, four image engines, 65536 paged entries, the 512 KiB payload
+pool configured for five owners and twelve request ports, and characterized
+SRAM models. Display size is
 640x480; native render-target capacity remains 2048x2048.
+
+The emitted hierarchy was checked directly: two actual CU instances, sixteen
+lane interfaces/eight active-warp bits, sixteen 1024-byte logical shared banks
+per CU, four 128-set/four-way L2 slices with 64-byte lines (128 KiB total), and
+four actual layered image engines. Payload storage contains sixteen groups of
+32 characterized 256x32-bit arrays, totaling 512 KiB. Its five control owners
+and seven live request ports are retained: five producers plus two CUs. The
+other five source-configured request ports are tied off by `GpuSystem` and
+pruned by firtool. This does not qualify twelve simultaneously active clients.
+These are structural capacity checks; shader execution and resource coexistence
+retain their separate acceptance requirements.
 
 The exact 112-word sample discovery contract keeps
 `fullResourceQualification=false`. It is not GLES 3.2, original shader/API,
