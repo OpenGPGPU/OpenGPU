@@ -40,65 +40,48 @@ stable under backpressure, and the reader can be reused without reset. The
 native owner must retain all records/resources through complete execution and
 translation retirement.
 
-## Focused results
+## Staged source validation
 
-Ten current source compilation units passed direct Scala 2.13.18 / Chisel
-7.15 plugin compilation against unchanged frozen dependency classes from
-`75899c1856ee0ee0204cbd2e5d1893d6dad11f63`. An independent Chisel layout
-elaboration matched all 320 production GND fields' names, words, widths and
-signedness against `abi/native-binned-graphics-v1.json`.
+This P39 delivery captures original GND1 records; later PRs connect memory,
+source ownership and actual shader execution. All 768 production Scala source
+files freshly compiled with Scala 2.13.18/Chisel 7.15.0 in 93.312 seconds,
+without an existing GPU class provider. The exact delivery's three test/helper
+sources then freshly compiled against that output in 3.911 seconds.
 
-Three actual RTL cases passed in 62 seconds. Literal little-endian fixtures
-check 32 reads, full original indexed/instanced/array inputs, both VS ABIs,
-point size and 33-bit GND/RX ends at 2^32. Rejections cover malformed
-encodings, scope/PC/ABI/count/mask failures, each legacy sampler field, short
-scratch capacity, each known immutable metadata role, invalid request extents
-before reads, and missing scratch with zero original work. Held cancellation,
-the last-line late fault, zero error payloads and healthy reuse also pass.
+All three actual reader RTL cases passed in 62.658 seconds. Literal
+little-endian fixtures check 32 reads, full original indexed/instanced/array
+inputs, both VS ABIs, point size and 33-bit GND/RX ends at 2^32. Rejections
+cover malformed encodings, scope/PC/ABI/count/mask failures, legacy sampler
+fields, complete 128-item scratch capacity, immutable metadata aliases,
+invalid request extents before reads, and missing scratch with zero work.
+Held cancellation, last-line late faults, zero error payloads and healthy
+no-reset reuse also pass. Assertions were enabled and model/object caches
+disabled. Source/tool/HEAD/index guards passed before and after each command.
 
-Two isolated source-copy RTL negative controls fail the status assertion:
-calculating the prefix for 64 items instead of 128, and removing the immutable
-metadata alias guard. Production source was unchanged. The 150 selector CPU
-tests passed. Compiler/Runner process groups each had a 180-second ceiling,
-128 MiB heap/128 MiB metaspace/32 MiB code cache, one CPU and one native job.
-All owned processes exited; temporary classes, probes, mutants and RTL outputs
-were removed. These are incremental component checks, not a complete
-current-source build, original shader execution or full-profile qualification.
+Compilation stayed within separate 600-second/6144-MiB sampled aggregate
+bounds (observed 3388352/366656 KiB). The RTL run stayed within its
+600-second/1536-MiB bound (observed 615552 KiB). Sampled RSS is not an absolute
+peak. All 153 affected-suite selector checks and the integration/large-PR
+catalog checks passed. No shader or complete host executed in these tests.
+
+Earlier incremental source-copy controls separately rejected a 64-item scratch
+prefix and a removed metadata-alias guard. Those historical checks do not
+replace the exact delivery's fresh compilation and RTL results above.
 
 ## Reproduction and remaining connection
 
-With JDK21 and matching existing read-only dependency/compiler/plugin paths,
-compile the ten-unit closure below into private output. Run each compiler and
-Runner in an owned process group with the same 180-second ceiling.
+With the repository JDK/Scala/Chisel and Verilator toolchain:
 
 ```sh
-FROZEN_CP=$(cat "$FROZEN/target/streams/test/fullClasspath/_global/streams/export")
-CHECK_OUT=$(mktemp -d .artifacts/gnd-reader-XXXXXX)
-SIM_OUT=$(mktemp -d .artifacts/gnd-reader-rtl-XXXXXX)
-java -Xmx128m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m \
-  -XX:ActiveProcessorCount=1 -XX:+UseSerialGC -Dscala.usejavacp=true \
-  -cp "$SCALA_COMPILER_CP" scala.tools.nsc.Main \
-  -language:reflectiveCalls -Ymacro-annotations -Xplugin:"$CHISEL_PLUGIN_JAR" \
-  -classpath "$FROZEN_CP" -d "$CHECK_OUT" \
-  src/main/scala/opengpu/graphics/VertexInputSlice.scala \
-  src/main/scala/opengpu/graphics/VertexInputFetcher.scala \
-  src/main/scala/opengpu/graphics/VertexShaderStage.scala \
-  src/main/scala/opengpu/graphics/NativeTypedGraphicsDescriptors.scala \
-  src/main/scala/opengpu/graphics/NativeBinnedGraphicsDescriptors.scala \
-  src/main/scala/opengpu/graphics/ShaderUniformResources.scala \
-  src/main/scala/opengpu/system/TessellationVertexPatchSource.scala \
-  src/main/scala/opengpu/system/TessellationVertexSourceReader.scala \
-  src/main/scala/opengpu/system/TessellationVertexDrawReader.scala \
-  src/test/scala/opengpu/graphics/TessellationVertexDrawReaderSpec.scala
-java -Xmx128m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m \
-  -XX:ActiveProcessorCount=1 -XX:+UseSerialGC \
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=1 compile
+sbt -J-Xmx768m -J-XX:ActiveProcessorCount=1 \
   -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=0 \
-  -Dopengpu.simCache=off -Dopengpu.simWorkspace="$SIM_OUT" \
-  -cp "$CHECK_OUT:$FROZEN_CP" org.scalatest.tools.Runner -oD \
-  -s opengpu.graphics.TessellationVertexDrawReaderSpec
+  -Dopengpu.simCache=off -Dopengpu.simCcache=off \
+  -Dopengpu.productQualification=0 \
+  'testOnly opengpu.graphics.TessellationVertexDrawReaderSpec'
 python3 -B scripts/test_changed_test_suites.py
-# Only after compiler, JVM and native consumers have exited:
-rm -r -- "$CHECK_OUT" "$SIM_OUT"
+python3 -B scripts/test_test_selection.py
+git diff --check
 ```
 
 The outer protected BUILD, production GNT7/8/9/GVS/GND reader-to-parent wiring,
