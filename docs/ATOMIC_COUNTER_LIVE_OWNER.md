@@ -34,6 +34,20 @@ handle closure. The producer remains live until actual held/retired receipts,
 independent returned-byte verification and same-DUT PTE clear/shootdown/context
 cleanup complete. Bad cleanup acknowledgements retain reachable source memory.
 
+Full112 captures use `OGCMP003` to retain the real caller's unused graphics
+context beside its active compute context. Each inactive context must have a
+separate original 4096-byte root, no resource bindings and an entirely empty
+page table. The independent parser checks the original root bytes, allocation,
+ASID and overlap with active tables and writable views. This authorizes only
+its cleanup shootdown; it grants no PTE mutation or new SATP activation. The
+render-file capture starts without a fixture-created context, and Mesa creates
+both of its own contexts through the production ioctl.
+
+A polled publication invalidate may leave a sticky IRQ after its completion
+has been popped. The held observer waits for both IRQ and a valid completion
+slot before reading the final kernel's identity and telemetry; all exact
+success, byte, drain, retirement and cleanup checks still apply.
+
 Strict READY metadata binds the original allocations/views, complete 112-word
 profile plus ten auxiliary reads, 16-invocation opcode 0 launch, GAM1 context,
 GSB1 record and cross-page PTEs. Native SSBO slot order comes from actual Mesa
