@@ -20,7 +20,7 @@ def source_view(p, role, unit):
     """Reconstruct the recipe's original allocation and exposed source view."""
     target = dict(buffer=5, **{'2d': 0, 'array': 1, 'cube': 2, '3d': 3})[p['target']]
     v = dict(offset=48, rowPitch=13*p['bytes']+3, slicePitch=0, layerPitch=0,
-        slot=39+unit, flags=(2 if role else 3 if p['mode']=='atomic' else 1)|4, target=target,
+        slot=39+unit, flags=(2 if role else 3 if p['mode'].startswith('atomic') else 1)|4, target=target,
         storageFormat=3 if target==5 and p['format']=='rgba8_snorm' else p['native'],
         imageFormat=p['native'], level=0, width=13, height=1, depth=1, layers=1, layer=0)
     if target==5:
@@ -47,7 +47,7 @@ def source_view(p, role, unit):
             v['offset']+=first*plane
             v['layers']=1 if p['mode']=='single' else 3
         elif target==3:
-            first=0 if p['mode']=='single' or role else 1
+            first=1 if p['mode'].endswith('bounds') else 0 if p['mode']=='single' or role else 1
             v['offset']+=first*plane
             v['depth']=1 if p['mode']=='single' else 3-first
     return size, v
@@ -124,6 +124,31 @@ def texel_address(image, p, role, invocation):
     return first
 
 
+def boundary_coordinates(p, invocation):
+    """Independent integer coordinates for the original upper/lower accesses."""
+    target=p['shader']
+    if target=='buffer':upper=(invocation*13,0,0);axes=1
+    elif target=='2d':upper=((invocation%2)*13,(invocation//2)*5,0);axes=2
+    else:
+        upper=((invocation%2)*13,((invocation//2)%2)*(13 if target=='cube' else 5),
+            (invocation//4)*dict(array=3,cube=6,**{'3d':2})[target]);axes=3
+    return upper,tuple(value-1 if axis<axes else 0 for axis,value in enumerate(upper))
+
+
+def boundary_address(image,p,coordinate):
+    """An invalid coordinate has no physical texel; never wrap into a backing."""
+    x,y,z=coordinate;v=image['view']
+    width=13; height=1 if p['shader']=='buffer' else 13 if p['shader']=='cube' else 5
+    planes=dict(array=3,cube=6,**{'3d':2}).get(p['shader'],1)
+    if not (0<=x<width and 0<=y<height and 0<=z<planes):return None
+    return image['allocationPhysical']+v['offset']+x*p['bytes']+y*v['rowPitch']+z*(
+        v['slicePitch'] if p['shader']=='3d' else v['layerPitch'])
+
+
+def boundary_exchange_value(p,invocation,access):
+    return (0x3f400000 if p['format']=='r32f' else 0x87650000)+17*invocation+access
+
+
 def loaded_words(p, raw):
     words=[];step=p['bits']//8
     for c in range(p['components']):
@@ -176,6 +201,20 @@ def returned_outputs(initial, returned, description):
     p,output,images=recipe(initial,description)
     observed=bytearray();results=[]
     for invocation in range(8):
+        if p['mode'].endswith('bounds'):
+            for access,coordinate in enumerate(boundary_coordinates(p,invocation)):
+                source=boundary_address(images[0],p,coordinate)
+                destination=boundary_address(images[1],p,coordinate)
+                require((source is None)==(destination is None),'boundary view extents differ')
+                raw=initial.read(source,p['bytes']) if source is not None else bytes(p['bytes'])
+                if p['mode']=='atomic-bounds':
+                    observed.extend(raw)
+                    stored=boundary_exchange_value(p,invocation,access).to_bytes(4,'little')
+                    if source is not None:results.extend(((source,stored),(destination,stored)))
+                else:
+                    observed.extend(loaded_words(p,raw) if source is not None else bytes(16))
+                    if destination is not None:results.append((destination,raw))
+            continue
         raw=initial.read(texel_address(images[0],p,0,invocation),p['bytes'])
         if p['mode']=='atomic':
             old,value=atomic_values(p,int.from_bytes(raw,'little'),invocation)
@@ -199,7 +238,7 @@ def ready(memory, description, data, *, owner_profile=None):
             'image source requires a known complete sample factory')
     stage,expected_words=SAMPLE_FACTORY_CONTRACTS[owner_profile]
     p,output,images=recipe(memory,description)
-    if p['mode']=='atomic' and p['format']=='r32f':
+    if p['mode'].startswith('atomic') and p['format']=='r32f':
         require(owner_profile==IMAGE_FLOAT_PROFILE,'R32F exchange requires its qualified float owner')
     require(data[:8]==b'OGCMP003', 'full112 capture required')
     cursor=8

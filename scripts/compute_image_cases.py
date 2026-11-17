@@ -15,14 +15,20 @@ IMAGE_LOAD_STORE_CASES = tuple('image-' + target + '-' + fmt for target in TARGE
 IMAGE_INTEGER_ATOMIC_CASES = tuple('image-atomic-'+target+'-'+fmt for target in TARGETS for fmt in ('r32ui','r32i'))
 IMAGE_FLOAT_ATOMIC_CASES = tuple('image-atomic-'+target+'-r32f' for target in TARGETS)
 IMAGE_ATOMIC_CASES = IMAGE_INTEGER_ATOMIC_CASES + IMAGE_FLOAT_ATOMIC_CASES
-IMAGE_CASES = IMAGE_LOAD_STORE_CASES + IMAGE_ATOMIC_CASES
+IMAGE_BOUNDARY_LOAD_STORE_CASES = tuple('image-bounds-'+target+'-r32ui' for target in TARGETS)
+IMAGE_BOUNDARY_ATOMIC_CASES = tuple('image-atomic-bounds-'+target+'-'+fmt
+    for target in TARGETS for fmt in ('r32ui','r32f'))
+IMAGE_BOUNDARY_CASES = IMAGE_BOUNDARY_LOAD_STORE_CASES + IMAGE_BOUNDARY_ATOMIC_CASES
+IMAGE_FLOAT_EXCHANGE_CASES = IMAGE_FLOAT_ATOMIC_CASES + tuple(
+    case for case in IMAGE_BOUNDARY_ATOMIC_CASES if case.endswith('-r32f'))
+IMAGE_CASES = IMAGE_LOAD_STORE_CASES + IMAGE_ATOMIC_CASES + IMAGE_BOUNDARY_CASES
 
 
 def parameters(case):
     if case not in IMAGE_CASES:
         raise ValueError('unknown original typed-image source')
     fields = case.split('-')
-    mode = fields[1] if len(fields) == 4 else 'layered'
+    mode = 'atomic-bounds' if fields[1:3] == ['atomic','bounds'] else fields[1] if len(fields) == 4 else 'layered'
     target, fmt = fields[-2:]
     native, size, bits, kind, components = FORMATS[fmt]
     shader = '2d' if mode == 'plane' else target
@@ -56,6 +62,9 @@ def write_sources(out):
                 if p['shader'] == '2d' else 'ivec3(%s,%d,%d)' % (x, y, z))
         bits = 'uvec4(value)' if prefix else 'floatBitsToUint(value)'
         extension = '#extension GL_EXT_texture_buffer : require\n' if p['shader'] == 'buffer' else ''
+        if p['mode'] in ('bounds','atomic-bounds'):
+            _write_boundary_source(out,p,extension,prefix,vector)
+            continue
         if p['mode']=='atomic':
             scalar='uint' if prefix=='u' else 'int'
             floating=p['format']=='r32f'
@@ -89,3 +98,38 @@ def write_sources(out):
             'void main(){highp %s value=imageLoad(original,%s);' % (vector,coordinate(False))+
             'observed.data[gl_GlobalInvocationID.x]=%s;' % bits+
             'imageStore(destination,%s,value);}\n' % coordinate(True))
+
+
+def _write_boundary_source(out,p,extension,prefix,vector):
+    """Original accesses to first/last texels and each negative/exact boundary.
+
+    Only two invocations touch valid texels, once each. No ordering assumption
+    between lanes or workgroups supplies an expected value.
+    """
+    target=p['shader'];atomic=p['mode']=='atomic-bounds';floating=p['format']=='r32f'
+    coordinate_type='int' if target=='buffer' else 'ivec2' if target=='2d' else 'ivec3'
+    upper=('int(g*13u)' if target=='buffer' else
+        'ivec2(int((g&1u)*13u),int((g>>1u)*5u))' if target=='2d' else
+        'ivec3(int((g&1u)*13u),int(((g>>1u)&1u)*%du),int((g>>2u)*%du))' % (
+            13 if target=='cube' else 5,dict(array=3,cube=6,**{'3d':2})[target]))
+    body='void main(){uint g=gl_GlobalInvocationID.x;uint o=g*2u;%s upper=%s;%s lower=upper-%s(1);' % (
+        coordinate_type,upper,coordinate_type,coordinate_type)
+    if atomic:
+        for index,coordinate in enumerate(('upper','lower')):
+            operand='0x%08xu+g*17u+%du' % (0x3f400000 if floating else 0x87650000,index)
+            body+='observed.data[o+%du]=%s(imageAtomicExchange(original,%s,%s));' % (
+                index,'floatBitsToUint' if floating else 'uint',coordinate,
+                'uintBitsToFloat('+operand+')' if floating else operand)
+        body+='memoryBarrierImage();'
+    for index,coordinate in enumerate(('upper','lower')):
+        body+='highp %s value%u=imageLoad(original,%s);' % (vector,index,coordinate)
+        if not atomic:body+='observed.data[o+%du]=uvec4(value%u);' % (index,index)
+        body+='imageStore(destination,%s,value%u);' % (coordinate,index)
+    body+='}\n'
+    (out/p['source']).write_text('#version 310 es\n'+
+        ('#extension GL_OES_shader_image_atomic : require\n' if atomic else '')+extension+
+        'precision highp int;\n'+('precision highp float;\n' if floating else '')+'layout(local_size_x=4) in;\n'+
+        'layout(%s,binding=3) %s uniform highp %simage%s original;\n' % (
+            p['format'],'coherent' if atomic else 'readonly',prefix,p['suffix'])+
+        'layout(%s,binding=1) writeonly uniform highp %simage%s destination;\n' % (p['format'],prefix,p['suffix'])+
+        'layout(std430,binding=2) buffer Output {%s data[];} observed;\n' % ('uint' if atomic else 'uvec4')+body)
