@@ -254,6 +254,60 @@ class OrdinaryQualificationTests(unittest.TestCase):
             with self.assertRaises(q.CleanupIncomplete):q.run_controller(self.args,gpu=q.ROOT,source=self.out/'source',
                 cpu=self.out/'cpu',temporary=self.out,image='sha256:'+'1'*64)
 
+    def test_real_child_failure_and_missing_success_survive_managed_log_cleanup(self):
+        real_start = subprocess.Popen
+        prefix = 'EARLY_OUTPUT_MUST_NOT_BE_RETAINED\n'
+        for code, diagnostic in ((1, 'original independent image check rejected RAM'),
+                                 (0, 'controller exited without the checked success marker')):
+            with self.subTest(exit=code):
+                (self.out/'controller-cleanup.json').unlink(missing_ok=True)
+                cleanup = dict(schema='opengpu-native-sample-graphics-consumer-cleanup-v1',kind=q.KIND,
+                    sourceRoot=str(q.ROOT),executor=str(self.args.executor.absolute()),
+                    qualification=str(self.args.executor_qualification.absolute()),consumerCleanupConfirmed=True)
+                script = ('import json,os,pathlib,sys; '
+                    'sys.stderr.write(sys.argv[1]); '
+                    'record=json.loads(sys.argv[2]); record["controllerPID"]=os.getpid(); '
+                    'pathlib.Path(sys.argv[3]).write_text(json.dumps(record)); '
+                    'sys.exit(int(sys.argv[4]))')
+                def start(argv, *args, **kwargs):
+                    if (isinstance(argv, (list, tuple)) and len(argv) > 1 and
+                            str(argv[1]) == str(q.ROOT/'scripts/native_sample_graphics_controller.py')):
+                        argv = [sys.executable, '-c', script, prefix + 'background trace\n'*5000 + diagnostic,
+                                json.dumps(cleanup), str(self.out/'controller-cleanup.json'), str(code)]
+                    return real_start(argv, *args, **kwargs)
+                with patch.object(q.subprocess, 'Popen', side_effect=start), \
+                     patch.object(q, 'remove_container') as remove:
+                    with self.assertRaises(ValueError) as caught:
+                        q.run_controller(self.args,gpu=q.ROOT,source=self.out/'source',cpu=self.out/'cpu',
+                                         temporary=self.out,image='sha256:'+'1'*64)
+                text = str(caught.exception)
+                self.assertIn(diagnostic, text)
+                self.assertLess(len(text), 8500)
+                self.assertNotIn(prefix, text)
+                if code:
+                    self.assertIn('exit=1', text)
+                else:
+                    self.assertIn('unique checked two-owner success', text)
+                self.assertEqual(remove.call_count, 1)
+                (self.out/'controller.log').unlink()
+                self.assertIn(diagnostic, str(caught.exception))
+
+    def test_real_compiler_failure_reports_its_exit_and_output_before_cleanup(self):
+        real_start = subprocess.Popen
+        diagnostic = 'original Mesa producer compilation failed at its actual source'
+        def start(argv, *args, **kwargs):
+            if isinstance(argv, (list, tuple)) and argv and argv[0] == 'docker':
+                argv = [sys.executable, '-c', 'import sys; sys.stderr.write(sys.argv[1]); sys.exit(23)', diagnostic]
+            return real_start(argv, *args, **kwargs)
+        with patch.object(q.subprocess, 'Popen', side_effect=start), \
+             patch.object(q, 'remove_container') as remove:
+            with self.assertRaises(ValueError) as caught:
+                q.run_build(self.args,gpu=q.ROOT,source=self.out/'source',temporary=self.out,
+                            image='sha256:'+'1'*64,compiler={},qualified={})
+        self.assertIn('exit=23', str(caught.exception))
+        self.assertIn(diagnostic, str(caught.exception))
+        self.assertEqual(remove.call_count, 1)
+
     def test_build_timeout_stops_group_then_container_without_running_any_producer(self):
         process=Mock();process.wait.side_effect=subprocess.TimeoutExpired('build',30);events=[]
         with patch.object(q.subprocess,'Popen',return_value=process) as start, \
