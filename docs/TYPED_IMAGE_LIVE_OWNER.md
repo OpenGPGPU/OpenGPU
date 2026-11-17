@@ -81,14 +81,6 @@ control-flow metadata and shared-memory regression checks pass, as do the
 60 focused Python tests. These are CPU compiler/callback checks; no image atomic
 shader executes on a DUT and no execution qualification is created.
 
-R32F `imageAtomicExchange` remains unsupported by the compiler and hardware
-path. It is required by
-[OES_shader_image_atomic](https://registry.khronos.org/OpenGL/extensions/OES/OES_shader_image_atomic.txt),
-so integer admission does not establish that extension's conformance or close
-P08. Float exchange, actual source-bound atomic results,
-boundary, permission, fault/cancel/reset/drain and healthy-reuse checks remain
-required, with fresh model qualification for hardware changes.
-
 Image-atomic programs now use the existing signed-five-bit `VMV.V.I` encoding
 for small constants. A combined original 2D RMW program previously needed
 534 native words and failed the fixed 512-word admission bound. Compact
@@ -96,6 +88,51 @@ constants let the combined target matrix compile within that bound, including
 the 509-word 3D program. The public program layout, register limits and native
 encoding are unchanged; programs without image atomics retain their previous
 word stream. Operand checks include 15/16 and -16/-17 literal boundaries.
+
+## R32F exchange execution and compiler admission
+
+The image atomic access unit accepts R32F only for exchange, using the existing
+32-bit shared-L2 swap operation and returning the unmodified old word. The
+format qualifier, read/write permissions, address checks and offered-request
+drain remain required. No floating-point arithmetic or native encoding is added.
+R32F exchange is required by
+[OES_shader_image_atomic](https://registry.khronos.org/OpenGL/extensions/OES/OES_shader_image_atomic.txt);
+its implementation alone does not establish extension conformance or close P08.
+
+GCR1 bit 21 and driver feature bit 43 report this service separately from
+integer image atomics. The private compiler sidecar records each R32F exchange
+unit, and compute-state creation requires both discovered image-atomic and
+float-exchange support. Float immediates are opaque words and are admitted only
+in programs containing an R32F image exchange. Other float atomic operations
+remain rejected. The stable compute-program layout is unchanged. Existing
+96-, 104- and 112-word owner contracts and their discovery flags stay frozen;
+no current full-owner factory advertises the new service.
+
+All 13 tests in five focused RTL suites pass. They cover signed-zero,
+subnormal, infinity and NaN-payload words, permissions, unsupported operations,
+cancellation, held requests, old-value routing and a competing atomic through
+the actual shared L2, including untouched line bytes. Discovery tests check
+the explicit flag and preserve the existing owner quantities and contracts.
+The real driver feature-query fixture passes 128 capability combinations.
+ASan/UBSan CPU checks pass 85 original Mesa programs (80 integer and five R32F
+exchange), 160 integer and 20 float TGSI target/alias cases, four immediate
+boundaries, 65 load/store programs and 52 mapping/lifetime cases. These compiler
+checks execute no shader on a DUT.
+
+Fresh full-capacity R32F factory/model qualification, original source-bound
+atomic results, boundary, permission, fault/cancel/reset/drain and healthy-reuse
+acceptance remain required. Reproduce the focused RTL checks with Java 21,
+the normal FIRRTL/Verilator toolchain and assertions enabled:
+
+```sh
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 \
+  -Dopengpu.simJobs=4 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.ShaderImageAtomicAccessSpec opengpu.graphics.ShaderImageAtomicL2Spec opengpu.system.ImageAtomicDiscoveryAxiSpec opengpu.system.NativeAlignmentHostProfileSpec opengpu.system.NativeOwnerHostProfileSpec'
+python3 -B scripts/test_compute_feature_query.py
+```
+
+The Mesa and callback reproduction commands below include the float cases.
 
 ## Original integer-atomic source and independent result contract
 
@@ -256,7 +293,7 @@ their checks have ended:
 python3 -B scripts/test_gallium_typed_images.py --sanitize \
   --build "$CPU_CAPTURE/typed-compiler"
 python3 -B scripts/test_gallium_image_atomics.py --sanitize \
-  --build "$CPU_CAPTURE/integer-atomic-compiler"
+  --build "$CPU_CAPTURE/image-atomic-compiler"
 python3 -B scripts/test_gallium_buffer_views.py --sanitize \
   --build "$CPU_CAPTURE/typed-callbacks"
 OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_gallium_shared_own_stripe.py

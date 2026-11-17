@@ -23,11 +23,12 @@ int main(int argc,char **argv)
     static const unsigned native_targets[]={5,0,1,2,3};
     static const char *operations[]={"Exchange","Add","Xor","Or","And","Min","Max","CompSwap"};
     unsigned cases=0;
-    for(unsigned target=0;target<5;target++)for(unsigned signedness=0;signedness<2;signedness++)
-    for(unsigned operation=0;operation<8;operation++){
+    for(unsigned target=0;target<5;target++)for(unsigned signedness=0;signedness<3;signedness++)
+    for(unsigned operation=0;operation<(signedness==2?1u:8u);operation++){
         char source[4096],dump[4096];
-        assert(snprintf(source,sizeof(source),"%s/%s-%s-%s.comp",argv[1],targets[target],signedness?"r32i":"r32ui",operations[operation])>0);
-        assert(snprintf(dump,sizeof(dump),"%s/%s-%s-%s",argv[1],targets[target],signedness?"r32i":"r32ui",operations[operation])>0);
+        const char *format=signedness==2?"r32f":signedness?"r32i":"r32ui";
+        assert(snprintf(source,sizeof(source),"%s/%s-%s-%s.comp",argv[1],targets[target],format,operations[operation])>0);
+        assert(snprintf(dump,sizeof(dump),"%s/%s-%s-%s",argv[1],targets[target],format,operations[operation])>0);
         void *frontend=cs_frontend_compile_buffers(source,dump);
         if(!frontend)fprintf(stderr,"original Mesa image atomic compile failed: %s\n",source);
         assert(frontend && !cs_frontend_shared_bytes(frontend));
@@ -36,8 +37,8 @@ int main(int argc,char **argv)
         if(error)fprintf(stderr,"image atomic native lowering failed: %s\n",source);
         assert(!error && p.fixed_block[0]==4 && p.fixed_block[1]==1 && p.fixed_block[2]==1);
         assert(!opengpu_cs_emit(cs_frontend_tokens(frontend),&legacy) && !memcmp(&p,&legacy,sizeof(p)));
-        assert(info.atomics==1 && info.targets[0]==native_targets[target] &&
-            p.image_reads==1 && p.image_writes==1 && !p.image_queries && p.image_format[0]==(signedness?13u:14u));
+        assert(info.atomics==1 && info.float_exchange==(signedness==2?1u:0u) && info.targets[0]==native_targets[target] &&
+            p.image_reads==1 && p.image_writes==1 && !p.image_queries && p.image_format[0]==(signedness==2?29u:signedness?13u:14u));
         assert(cs_frontend_image_binding(frontend,0)==3 && cs_frontend_storage_binding(frontend,0)==2);
         assert(opengpu_compute_shader_validate_words_image_atomics(p.code,p.words,64,4,false,false,false,true,true));
         assert(!opengpu_compute_shader_validate_words_image_atomics(p.code,p.words,64,4,false,false,false,true,false));
@@ -47,7 +48,7 @@ int main(int argc,char **argv)
         }
         assert(atomics==1);cases++;cs_frontend_destroy(frontend);
     }
-    assert(cases==80);
-    puts("real Mesa image atomics: 80 original signed/unsigned/target/operation programs, reflection/native admission/capability rejection PASS (CPU compile only)");
+    assert(cases==85);
+    puts("real Mesa image atomics: 80 integer/5 float-exchange original programs, reflection/native admission/capability rejection PASS (CPU compile only)");
     return 0;
 }

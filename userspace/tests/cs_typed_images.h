@@ -67,7 +67,7 @@ static void typed_image_lowering(void)
         struct opengpu_cs_program p,legacy,described;unsigned image_targets[4];
         struct opengpu_cs_image_info info;
         assert(!opengpu_cs_emit(b.t,&legacy) && !opengpu_cs_emit_resources(b.t,NULL,&p,image_targets));
-        assert(!opengpu_cs_emit_image_info(b.t,NULL,&described,&info) && !info.atomics &&
+        assert(!opengpu_cs_emit_image_info(b.t,NULL,&described,&info) && !info.atomics && !info.float_exchange &&
             !memcmp(&p,&described,sizeof(p)) && info.targets[0]==targets[target].native);
         assert(!memcmp(&p,&legacy,sizeof(p)) && image_targets[0]==targets[target].native);
         assert(p.image_reads==1 && p.image_writes==1 && p.image_format[0]==image_formats[format].native);
@@ -104,7 +104,7 @@ static void typed_image_control_metadata(void)
         !opengpu_cs_emit_resources(b.t,NULL,&targets_program,targets));
     assert(!memcmp(&p,&legacy,sizeof(p)) && !memcmp(&p,&targets_program,sizeof(p)) &&
         !memcmp(info.targets,targets,sizeof(targets)) && info.targets[0]==5 && !info.targets[1] &&
-        !info.targets[2] && !info.targets[3] && !info.atomics);
+        !info.targets[2] && !info.targets[3] && !info.atomics && !info.float_exchange);
     assert(!p.image_reads && !p.image_writes && !p.image_queries);
     puts("typed image control metadata: retained unused target/zero atomic mask, legacy program equality PASS (CPU only)");
 }
