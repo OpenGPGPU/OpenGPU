@@ -53,6 +53,81 @@ def verify_source_read_fault(initial, returned, description):
                     'source fault changed an original image/output/argument/descriptor/PT byte')
 
 
+def captured_page_tables(memory, data):
+    """Collect original Sv32 pages after strict READY validation.
+
+    Only valid original PTE words may change to zero during cleanup. Retiring
+    private leaves must be revoked; ASID-0 identity policy leaves remain valid.
+    """
+    require(data[:8]==b'OGCMP003','recovery needs the original context-aware capture')
+    cursor=8
+    def take(fmt):
+        nonlocal cursor
+        size=struct.calcsize(fmt)
+        require(cursor+size<=len(data),'truncated recovery capture')
+        values=struct.unpack_from(fmt,data,cursor);cursor+=size;return values
+    _,_,_,count=take('<QIII')
+    require(count==122,'wrong recovery discovery count')
+    for _ in range(count):take('<II')
+    count,=take('<I');require(count<=4096,'oversized recovery write grants')
+    for _ in range(count):take('<QQ')
+    count,=take('<I');require(count==1,'wrong recovery inactive-context count')
+    inactive=[take('<II') for _ in range(count)]
+    count,=take('<I');require(count<=65536,'oversized recovery MMIO trace')
+    satps=set()
+    for _ in range(count):
+        kind,address,value,_=take('<IIII')
+        if kind==1 and address in (0x14c,0x150) and value&0x80000000:satps.add(value)
+    require(cursor==len(data) and satps,'incomplete recovery context capture')
+    pages=set();revocations=set()
+    def words(base):
+        require(base%4096==0,'unaligned original PTE page')
+        return struct.unpack('<1024I',memory.read(base,4096))
+    for satp in satps:
+        asid=(satp>>22)&511;root=(satp&0x3fffff)<<12
+        pages.add(root)
+        for index,link in enumerate(words(root)):
+            if not link&1:continue
+            require(not link&0x20,'global source PTE')
+            if link&15!=1:
+                require(asid==0 and link&15==7 and link>>10==index*1024,
+                        'unexpected source root leaf')
+                continue
+            child=(link>>10)<<12;pages.add(child)
+            for entry,leaf in enumerate(words(child)):
+                if not leaf&1:continue
+                require(leaf&3==3 and not leaf&0x20,'invalid original source leaf')
+                if asid:revocations.add(child+4*entry)
+    for context,satp in inactive:
+        require(context>0 and satp&0x80000000 and (satp>>22)&511 and
+                not any(words((satp&0x3fffff)<<12)), 'inactive source context is not empty')
+    require(revocations,'recovery lacks original private mappings')
+    return pages,revocations
+
+
+def verify_cleaned_memory(before, cleaned, tables):
+    """Independently check actual cleanup without accepting a replaced RAM."""
+    pages,revocations=tables
+    require(pages and revocations and all(a%4==0 and a&~4095 in pages for a in revocations),
+            'cleanup lacks original private page-table authority')
+    require(before.ranges==cleaned.ranges,'cleanup replaced original RAM layout')
+    for begin,end,_ in before.ranges:
+        for address in range(begin,end,4096):
+            count=min(4096,end-address)
+            old,new=before.read(address,count),cleaned.read(address,count)
+            if old==new:continue
+            require(address%4==0 and count%4==0,'cleanup changed a partial allocation word')
+            for offset in range(0,count,4):
+                a,b=struct.unpack_from('<I',old,offset)[0],struct.unpack_from('<I',new,offset)[0]
+                if a==b:continue
+                physical=address+offset
+                require(physical&~4095 in pages and a&1 and b==0,
+                        'cleanup changed a non-PTE byte or did not clear an original valid word')
+    for physical in revocations:
+        require(struct.unpack('<I',cleaned.read(physical,4))[0]&1==0,
+                'cleanup kept an original private translation reachable')
+
+
 def source_view(p, role, unit):
     """Reconstruct the recipe's original allocation and exposed source view."""
     target = dict(buffer=5, **{'2d': 0, 'array': 1, 'cube': 2, '3d': 3})[p['target']]

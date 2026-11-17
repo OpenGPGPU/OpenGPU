@@ -16,7 +16,7 @@ import subprocess
 import sys
 import tempfile
 import uuid
-from compute_owner_protocol import strict_json
+from compute_owner_protocol import strict_json, RECOVERY_CASE, RECOVERY_BASES, RECOVERY_COMMAND_SCHEMA
 from compute_owner_cases import CASES, DYNAMIC_CASES, LEGACY_CASES, COUNTER_CASE, COUNTER_CASES, IMAGE_CASES
 from owner_resource_contract import COMPUTE_STAGE, FULL_COMPUTE_CONTRACTS, SAMPLE_PROFILE, SAMPLE_FACTORY_CONTRACTS
 from owner_resource_contract import IMAGE_FLOAT_PROFILE
@@ -46,8 +46,10 @@ def sha256(path):
 
 
 def checked_inputs(args):
-    require(not getattr(args,'expect_image_source_fault',False) or
-            getattr(args,'case',None)=='image-atomic-buffer-r32f',
+    require(not (getattr(args,'expect_image_source_fault',False) and getattr(args,'image_source_recovery',False)),
+            'single source fault and continuous recovery modes are mutually exclusive')
+    require(not (getattr(args,'expect_image_source_fault',False) or getattr(args,'image_source_recovery',False)) or
+            getattr(args,'case',None)==RECOVERY_CASE,
             'source fault requires exactly the original float buffer exchange')
     # Refuse absent qualification before any archive, container or CPU build.
     require(args.executor_qualification.is_file() and not args.executor_qualification.is_symlink(),
@@ -69,10 +71,13 @@ def checked_inputs(args):
     return sha256(args.executor_qualification), sha256(args.executor)
 
 
-def producer_command(args, *, gpu, source, ntt, image, name, case):
+def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=None, physical_base=None):
     require(case in CASES, 'unknown original compute source')
-    require(not getattr(args,'expect_image_source_fault',False) or case=='image-atomic-buffer-r32f',
+    source_fault=getattr(args,'expect_image_source_fault',False) if source_fault is None else source_fault
+    require(type(source_fault) is bool and (not source_fault or case==RECOVERY_CASE),
             'source fault requires exactly the original float buffer exchange')
+    require(physical_base is None or (type(physical_base) is int and 0<physical_base<=0xfffff000 and
+            physical_base%4096==0 and case==RECOVERY_CASE),'invalid original recovery allocation base')
     # The configured Mesa object database uses these original absolute paths.
     # Keep that mount unchanged; all newly generated files live in {ipc}.
     counter = case in (*COUNTER_CASES,*IMAGE_CASES)
@@ -91,7 +96,8 @@ def producer_command(args, *, gpu, source, ntt, image, name, case):
     return command + [image, 'python3', *entry,
         '--build', '{ipc}/build', '--sanitize', '--mesa-shared-ntt', str(ntt),
         '--profile-wire', '{ipc}/profile.bin', '--session', '{ipc}', '--case', case] + (
-            ['--expect-image-source-fault'] if getattr(args,'expect_image_source_fault',False) else [])
+            ['--expect-image-source-fault'] if source_fault else [])+(
+            ['--physical-base',str(physical_base)] if physical_base is not None else [])
 
 
 def run_case(args, *, gpu, source, temporary, ntt, image, case):
@@ -108,7 +114,13 @@ def run_case(args, *, gpu, source, temporary, ntt, image, case):
             mesa=str(args.mesa), build=str(args.mesa_build), libraries=str(args.library_directory),
             drm=str(args.drm_include), gpu=str(gpu), ntt=str(ntt))) + '\n')
     name = 'opengpu-compute-' + uuid.uuid4().hex
-    argv = producer_command(args, gpu=gpu, source=source, ntt=ntt, image=image, name=name, case=case)
+    recovery=getattr(args,'image_source_recovery',False)
+    names=[name+'-round-'+str(i) for i in range(2)] if recovery else [name]
+    if recovery:
+        argv=dict(schema=RECOVERY_COMMAND_SCHEMA,rounds=[producer_command(args,gpu=gpu,source=source,ntt=ntt,
+            image=image,name=names[i],case=case,source_fault=i==0,physical_base=base)
+            for i,base in enumerate(RECOVERY_BASES)])
+    else:argv=producer_command(args, gpu=gpu, source=source, ntt=ntt, image=image, name=name, case=case)
     command_file = temporary / (case + '.argv.json')
     command_file.write_text(json.dumps(argv) + '\n')
     process = None
@@ -119,6 +131,7 @@ def run_case(args, *, gpu, source, temporary, ntt, image, case):
             '--bridge-command', command_file, '--timeout', str(args.timeout),
             *(['--case', case] if case in (*COUNTER_CASES,*IMAGE_CASES) else []),
             *(['--expect-image-source-fault'] if getattr(args,'expect_image_source_fault',False) else []),
+            *(['--image-source-recovery'] if recovery else []),
             '--managed-session-directory', temporary / (case + '-session')], start_new_session=True,
             env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1', TMPDIR=str(temporary)))
         require(process.wait() == 0, 'actual compute case failed: ' + case)
@@ -130,7 +143,11 @@ def run_case(args, *, gpu, source, temporary, ntt, image, case):
         try:
             stop_group(process)
         finally:
-            remove_container(name)
+            errors=[]
+            for container in names:
+                try:remove_container(container)
+                except CleanupIncomplete as error:errors.append(error)
+            if errors:raise CleanupIncomplete('cannot prove recovery producer containers exited') from errors[0]
 
 
 def main():
@@ -150,12 +167,14 @@ def main():
     parser.add_argument('--compiler-image', default='gpu-gtk-ci-check:latest')
     parser.add_argument('--case', choices=('both', 'mandatory-compute', *CASES), default='both')
     parser.add_argument('--timeout', type=int, default=3600)
-    parser.add_argument('--expect-image-source-fault', action='store_true')
+    mode=parser.add_mutually_exclusive_group()
+    mode.add_argument('--expect-image-source-fault', action='store_true')
+    mode.add_argument('--image-source-recovery', action='store_true')
     args = parser.parse_args()
     require(0 < args.timeout <= 604800, 'timeout must be 1..604800 seconds')
     args.executor = args.executor.absolute(); args.executor_qualification = args.executor_qualification.absolute()
     identity = checked_inputs(args)
-    if args.expect_image_source_fault:
+    if args.expect_image_source_fault or args.image_source_recovery:
         from owner_resource_contract import IMAGE_FLOAT_PROFILE
         require(args.case=='image-atomic-buffer-r32f' and
                 strict_json(args.executor_qualification).get('profile')==IMAGE_FLOAT_PROFILE,
@@ -200,7 +219,8 @@ def main():
             shutil.rmtree(temporary)
         signal.signal(signal.SIGTERM, previous)
     print('original Mesa compute ' + args.case + ': actual full-DUT ' +
-          ('source-read fault, unchanged physical bytes' if args.expect_image_source_fault else 'returned bytes')+
+          ('source fault then healthy same-ID recovery on retained RAM' if args.image_source_recovery else
+           'source-read fault, unchanged physical bytes' if args.expect_image_source_fault else 'returned bytes')+
           ' and context cleanup PASS')
 
 

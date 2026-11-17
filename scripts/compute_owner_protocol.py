@@ -7,6 +7,9 @@ from owner_resource_contract import (COMPUTE_SCHEMA, COMPUTE_STAGE, COMPUTE_WORD
     FULL_COMPUTE_SCHEMA, FULL_COMPUTE_CONTRACTS)
 
 SCHEMA = 'opengpu-compute-owner-profile-v1'
+RECOVERY_CASE = 'image-atomic-buffer-r32f'
+RECOVERY_BASES = (0x10000000, 0x20000000)
+RECOVERY_COMMAND_SCHEMA = 'opengpu-compute-image-recovery-command-v1'
 AUXILIARY = (0, 0x60, 0x68, 0x320, 0x158, 0x494, 0x43c, 0x3fc, 0x4bc, 0x460)
 MAGICS = (0x47544d01, 0x47534d01, 0x47494d01, 0x47414d01, 0x47554d01)
 

@@ -310,6 +310,12 @@ struct compute_host_session *compute_host_create(uint32_t context,
 {return context?compute_host_initialize(true,words,count):NULL;}
 struct compute_host_session *compute_host_open(const struct compute_host_profile_word *words,size_t count)
 {return compute_host_initialize(false,words,count);}
+int compute_host_allocation_base(uint64_t physical)
+{
+ if(!physical || (physical&4095) || physical>UINT32_MAX)return -EINVAL;
+ if(live_allocations || fixture_buffers || compute_running)return -EBUSY;
+ next_dma=(dma_addr_t)physical;return 0;
+}
 static void compute_original_drop(struct compute_original *o)
 {assert(o->refs);if(!--o->refs){
  dma_fence_put(o->resv.read);dma_fence_put(o->resv.write);o->resv.read=o->resv.write=NULL;
@@ -803,6 +809,18 @@ static void compute_host_test_cleanup_peer(struct opengpu_device *gpu,const char
 int main(int argc,char **argv)
 {
  assert(argc==2 || argc==4);
+ {
+  dma_addr_t original=next_dma;assert(!live_allocations && !fixture_buffers && !compute_running);
+  const uint64_t bad_bases[]={0,1,0x100001,UINT64_C(0x100000000),UINT64_MAX};
+  for(unsigned i=0;i<ARRAY_SIZE(bad_bases);i++)assert(compute_host_allocation_base(bad_bases[i])==-EINVAL && next_dma==original);
+  for(unsigned i=1;i<=2;i++){
+   uint64_t base=UINT64_C(0x10000000)*i;assert(!compute_host_allocation_base(base));
+   struct opengpu_buffer b={0};assert(!compute_mmu_buffer_alloc(NULL,&b,4096) && b.dma==base);
+   assert(compute_host_allocation_base(base+0x10000)==-EBUSY && next_dma==base+4096);
+   compute_mmu_buffer_free(NULL,&b);
+  }
+  assert(!compute_host_allocation_base(original) && !live_allocations && !fixture_buffers);
+ }
  test_failed_image_receipts=getenv("OPENGPU_COMPUTE_HOST_TEST_FAILED_IMAGES")!=NULL;
  assert(!unsetenv("OPENGPU_COMPUTE_HOST_TIMEOUT") && compute_host_timeout_seconds()==300);
  assert(!setenv("OPENGPU_COMPUTE_HOST_TIMEOUT","3600",1) && compute_host_timeout_seconds()==3600);

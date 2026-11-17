@@ -198,9 +198,18 @@ static void write_oracle(void)
  assert(!fclose(f));}
 int main(int argc,char **argv)
 {
- assert(argc==5 || argc==6);capture_only=argc==6 && !strcmp(argv[5],"--capture-only");
- expect_image_source_fault=argc==6 && !strcmp(argv[5],"--expect-image-source-fault");
- assert(argc==5 || capture_only || expect_image_source_fault);
+ assert(argc>=5);uint64_t physical_base=0;
+ for(int i=5;i<argc;i++){
+  if(!strcmp(argv[i],"--capture-only")){assert(!capture_only && !expect_image_source_fault);capture_only=1;}
+  else if(!strcmp(argv[i],"--expect-image-source-fault")){assert(!capture_only && !expect_image_source_fault);expect_image_source_fault=1;}
+  else if(!strcmp(argv[i],"--physical-base")){
+   assert(!physical_base && ++i<argc);const char *v=argv[i];assert(*v);
+   for(;*v;v++){assert(*v>='0' && *v<='9');unsigned digit=(unsigned)(*v-'0');
+    assert(physical_base<=(UINT32_MAX-digit)/10u);physical_base=physical_base*10+digit;}
+   assert(physical_base && !(physical_base&4095));
+  }else assert(!"unknown compute host option");
+ }
+ assert(!physical_base || (!capture_only && !strcmp(argv[4],"image-atomic-buffer-r32f")));
  assert(!expect_image_source_fault || !strcmp(argv[4],"image-atomic-buffer-r32f"));
  host_timeout_seconds=compute_host_timeout_seconds();assert(host_timeout_seconds);
  uniform_case=!strcmp(argv[4],"uniforms");
@@ -228,6 +237,7 @@ int main(int argc,char **argv)
  struct compute_host_profile_word *words=calloc(count+10,sizeof(*words));assert(words);
  for(unsigned i=0;i<count;i++){words[i].address=read32(f);words[i].value=read32(f);}
  assert(read32(f)==10);for(unsigned i=count;i<count+10;i++){words[i].address=read32(f);words[i].value=read32(f);}end(f);
+ if(physical_base)assert(!compute_host_allocation_base(physical_base));
  session=compute_host_open(words,count+10);free(words);assert(session);
  if(dynamic_case || address_case){uint64_t features=0;assert((version==2 || version==3) && !compute_host_query(session,OPENGPU_PARAM_DRIVER_FEATURES,&features) &&
   (features&OPENGPU_DRIVER_FEATURE_COMPUTE_SHARED_ATOMICS));}

@@ -454,6 +454,32 @@ env -u SDKROOT -u CPATH OPENGPU_TEST_SANITIZERS=1 PYTHONDONTWRITEBYTECODE=1 \
   python3 -B scripts/test_compute_host.py --image-float-stage --canonical-root "$PWD"
 ```
 
+## Continuous source-fault recovery contract
+
+The explicit `--image-source-recovery` option runs the same original buffer
+R32F recipe twice: a source-read fault followed by a healthy job. One execution
+DUT, initial reset, backing RAM, AXI agent and cycle counter span both jobs;
+the command ID must match. Separate original Linux producer processes select
+disjoint physical allocation bases through the real CPU MMU allocator. The
+executor appends those original uploads without replacing the retained RAM.
+
+The first job retains actual injected read-fault history and EIO fences through
+its original cleanup. The second accepts that exact fault baseline and rejects
+new errors. Resource probes after drain must preserve all cumulative external
+traffic. Before authorizing each cleanup, an independent oracle checks actual
+returned bytes; the healthy oracle includes every retained prior-owner byte.
+After cleanup, another check permits only original valid PTE words to become
+zero and requires every original private translation to be revoked. Both
+source closures and original inputs remain checked across the pair.
+
+CPU protocol, allocator and oracle checks do not establish actual recovery.
+After committing and freshly binding these sources, reproduce the actual pair
+with the bounded atomic qualifier command above, selecting
+`--case image-atomic-buffer-r32f --image-source-recovery`. Actual continuous
+recovery remains pending until both original jobs, byte checks, context cleanup
+and source postchecks pass on that execution DUT. Permission faults and
+cancel/reset/drain retain separate P08 gates.
+
 ## Original load/store source and independent result contract
 
 The live producer now accepts 70 original ESSL recipes: thirteen formats across

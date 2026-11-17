@@ -14,12 +14,54 @@ from unittest.mock import patch
 import qualify_compute_owner as qualifier
 from compute_owner_cases import ADDRESS_CASES
 from owner_resource_contract import IMAGE_FLOAT_PROFILE
+from compute_owner_protocol import RECOVERY_CASE,RECOVERY_BASES,RECOVERY_COMMAND_SCHEMA
+from compute_owner_controller import recovery_commands
 import owner_process_lifetime as lifetime
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class Entry(unittest.TestCase):
+    def test_recovery_commands_bind_each_original_physical_namespace(self):
+        args=argparse.Namespace(mesa=ROOT/'mesa',mesa_build=ROOT/'mesa-build',
+            drm_include=ROOT/'drm',library_directory=ROOT/'lib',mesa_link_libs='-lfixture',
+            counter_inputs=ROOT/'inputs',timeout=30,expect_image_source_fault=False,image_source_recovery=True)
+        commands=[qualifier.producer_command(args,gpu=ROOT,source=ROOT,ntt=ROOT/'ntt',
+            image='sha256:fixture',name='recovery-test-'+str(i),case=RECOVERY_CASE,
+            source_fault=i==0,physical_base=base) for i,base in enumerate(RECOVERY_BASES)]
+        recovery_commands(dict(schema=RECOVERY_COMMAND_SCHEMA,rounds=commands))
+        for base in (0,1,True,0x100000000):
+            with self.subTest(base=base),self.assertRaises(ValueError):
+                qualifier.producer_command(args,gpu=ROOT,source=ROOT,ntt=ROOT/'ntt',
+                    image='sha256:fixture',name='recovery-test',case=RECOVERY_CASE,physical_base=base)
+        for case in ('counter-increment','image-atomic-2d-r32f','both'):
+            args.case=case
+            with self.subTest(case=case),patch.object(qualifier.subprocess,'run') as run:
+                with self.assertRaisesRegex(ValueError,'source fault requires'):qualifier.checked_inputs(args)
+                run.assert_not_called()
+
+    def test_recovery_attempts_both_container_cleanups_when_one_fails(self):
+        # Process/container handles are CPU mocks; no execution is qualified.
+        import compute_owner_inputs
+        parent=ROOT/'.artifacts';parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='recovery-lifetime-',dir=parent) as d:
+            root=Path(d);q=root/'q.json';q.write_text(json.dumps(dict(source_sha256={})))
+            args=argparse.Namespace(mesa=root,mesa_build=root,drm_include=root,library_directory=root,
+                mesa_link_libs='-lfixture',executor_qualification=q,executor=root/'executor',
+                executor_checker=root/'checker',executor_checker_python=sys.executable,
+                timeout=30,image_source_recovery=True,expect_image_source_fault=False)
+            with patch.object(compute_owner_inputs,'snapshot',return_value={}),\
+                 patch.object(qualifier.subprocess,'Popen') as popen,\
+                 patch.object(qualifier,'stop_group'),\
+                 patch.object(qualifier,'remove_container',side_effect=[lifetime.CleanupIncomplete('blocked cleanup'),None]) as remove:
+                popen.return_value.wait.return_value=1
+                with self.assertRaises(lifetime.CleanupIncomplete):
+                    qualifier.run_case(args,gpu=ROOT,source=ROOT,temporary=root,ntt=root/'ntt',
+                        image='sha256:fixture',case=RECOVERY_CASE)
+                self.assertEqual(len(remove.call_args_list),2)
+                self.assertTrue(remove.call_args_list[0].args[0].endswith('-round-0'))
+                self.assertTrue(remove.call_args_list[1].args[0].endswith('-round-1'))
+
     def test_source_fault_mode_is_explicit_and_refuses_other_original_sources(self):
         for case in ('counter-increment','image-buffer-r32ui','image-atomic-2d-r32f','both'):
             args=argparse.Namespace(case=case,expect_image_source_fault=True)

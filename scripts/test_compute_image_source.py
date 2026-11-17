@@ -12,7 +12,8 @@ import unittest
 from compute_image_cases import IMAGE_CASES, IMAGE_BOUNDARY_CASES, parameters
 from compute_image_source import (loaded_words, ready as validate_ready, texel_address, atomic_values,
     boundary_coordinates,boundary_address,boundary_exchange_value,source_view,initial_bytes,returned_outputs,SCHEMA,
-    source_read_fault_plan,source_read_fault_proof,verify_source_read_fault)
+    source_read_fault_plan,source_read_fault_proof,verify_source_read_fault,
+    captured_page_tables,verify_cleaned_memory)
 from compute_owner_oracle import SparseMemory, verify
 from compute_owner_protocol import strict_json
 from compute_owner_controller import ready_inputs
@@ -20,6 +21,45 @@ from owner_resource_contract import SAMPLE_PROFILE, SAMPLE_FACTORY_CONTRACTS
 
 
 class Formats(unittest.TestCase):
+    def test_cleanup_changes_only_original_valid_ptes_and_revokes_private_leaves(self):
+        # CPU page-table metadata only, not READY or returned shader evidence.
+        class Tables:
+            def __init__(self,pages):
+                self.pages=pages;self.ranges=[(a,a+4096,0) for a in sorted(pages)]
+            def read(self,address,count):
+                page=address&~4095
+                if page not in self.pages or address+count>page+4096:raise ValueError('outside CPU metadata')
+                return bytes(self.pages[page][address-page:address-page+count])
+        pages={a:bytearray(4096) for a in (0x1000,0x2000,0x3000,0x4000,0x5000,0x8000)}
+        struct.pack_into('<I',pages[0x1000],0,7) # Original ASID-0 identity policy.
+        struct.pack_into('<I',pages[0x2000],0,(3<<10)|1)
+        struct.pack_into('<I',pages[0x3000],16,(4<<10)|0xc7)
+        struct.pack_into('<I',pages[0x8000],0,(9<<10)|0xc7) # Prior unrelated owner.
+        pages[0x4000][:]=b'\x6d'*4096
+        inactive=0x80000000|(2<<22)|5
+        actions=[(1,address,satp,0) for satp in (0x80000001,0x80400002) for address in (0x14c,0x150)]
+        capture=(b'OGCMP003'+struct.pack('<QIII',100000,8,17,122)+bytes(122*8)+
+            struct.pack('<IIII',0,1,2,inactive)+struct.pack('<I',len(actions))+
+            b''.join(struct.pack('<IIII',*action) for action in actions))
+        original=Tables(pages)
+        authority=captured_page_tables(original,capture)
+        self.assertEqual(authority,({0x1000,0x2000,0x3000},{0x3010}))
+        cleared=deepcopy(pages);struct.pack_into('<I',cleared[0x3000],16,0)
+        verify_cleaned_memory(original,Tables(cleared),authority)
+        with self.assertRaises(ValueError):verify_cleaned_memory(original,original,authority)
+        with self.assertRaises(ValueError):verify_cleaned_memory(original,Tables(cleared),(set(),set()))
+        for address,value in ((0x4000,0),(0x8000,0),(0x3000,1),(0x3010,0x10c7),(0x5000,1),(0x1000,5)):
+            bad=deepcopy(cleared);struct.pack_into('<I',bad[address&~4095],address&4095,value)
+            with self.subTest(address=address),self.assertRaises(ValueError):
+                verify_cleaned_memory(original,Tables(bad),authority)
+        for data in (capture[:7],capture[:-1],capture+b'x'):
+            with self.assertRaises(ValueError):captured_page_tables(original,data)
+        for page,address,value in ((0x1000,0,(1<<10)|7),(0x3000,16,(4<<10)|0xe7),
+                (0x5000,0,1),(0x2000,0,(0x100<<10)|1)):
+            bad=deepcopy(pages);struct.pack_into('<I',bad[page],address,value)
+            with self.subTest(page=page,value=value),self.assertRaises(ValueError):
+                captured_page_tables(Tables(bad),capture)
+
     def test_source_fault_plan_and_all_byte_failure_guard_keep_original_uploads(self):
         # Only original CPU uploads are represented, with no simulated shader.
         class Uploads:
