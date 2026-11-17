@@ -166,6 +166,16 @@ are removed. These checks execute no shader on a DUT; original R32F exchange
 recipes and full source-bound execution/boundary/fault/cancel/reset/drain
 acceptance remain required.
 
+The complete float factory passes fresh full-capacity RTL emission with inline
+assertions, hierarchical Verilator generation and native compilation with eight
+jobs under the 24-GiB build guard. All four original source-selected executors
+compile and link. Actual read-only MMIO probes pass for native sample, ordinary
+sample graphics and compute: each reads all 112 discovery words, with five,
+five and ten auxiliary registers respectively, one reset and drained idle state.
+Source/model/tool/object identities pass again after rebasing onto the merged
+backend change. These are discovery probes; original typed/atomic shader
+execution and the remaining P08 lifecycle gates stay open.
+
 For the CPU capture reproduction below, substitute `IMAGE_FLOAT_PROFILE`,
 `IMAGE_FLOAT_STAGE` and `IMAGE_FLOAT_WORDS` from `owner_resource_contract` in
 the labeled CPU profile fixture, compile the canonical parser with
