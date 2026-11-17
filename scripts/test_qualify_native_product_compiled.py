@@ -644,7 +644,7 @@ int main(int argc,char **argv) {
             result = subprocess.run([str(output), directory], check=True, capture_output=True, text=True)
             found = re.fullmatch(r'PASS native frame AXI cases=(\d+)\n', result.stdout)
             self.assertIsNotNone(found)
-            self.assertGreaterEqual(int(found[1]), 11)
+            self.assertGreaterEqual(int(found[1]), 15)
 
 
 class ParallelSceneTests(unittest.TestCase):

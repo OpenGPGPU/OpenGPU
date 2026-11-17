@@ -6,7 +6,9 @@
 #include <cstdio>
 #include <deque>
 #include <fstream>
+#include <iterator>
 #include <map>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -67,6 +69,48 @@ public:
     for (const auto &r : ranges)
       if (address >= r.start && address + 64 <= r.end) return true;
     return false;
+  }
+  // Add the next original owner's uploads without replacing prior physical
+  // storage. A sparse page must never shadow another allocation's fill/data.
+  void append_disjoint(const Memory &other) {
+    require(this != &other && !other.ranges.empty(), "empty or aliased memory append");
+    const auto intersects = [](uint64_t begin, uint64_t end, const Range &r) {
+      return begin < r.end && r.start < end;
+    };
+    const auto validate = [&](const Memory &m) {
+      uint64_t previous = 0;
+      for (const auto &r : m.ranges) {
+        require(previous <= r.start && r.start < r.end && r.end <= limit,
+          "invalid appended memory allocation");
+        previous = r.end;
+      }
+      for (const auto &p : m.pages) {
+        require(!(p.first & (page_bytes - 1)) && p.first <= limit - page_bytes &&
+          std::any_of(m.ranges.begin(), m.ranges.end(), [&](const auto &r) {
+            return intersects(p.first, p.first + page_bytes, r);
+          }), "orphan or invalid appended memory page");
+      }
+    };
+    validate(*this); validate(other);
+    for (const auto &r : other.ranges)
+      for (const auto &old : ranges)
+        require(!intersects(r.start, r.end, old), "appended memory allocations overlap");
+    for (const auto &p : other.pages) {
+      require(!pages.count(p.first), "appended sparse page already exists");
+      for (const auto &old : ranges)
+        require(!intersects(p.first, p.first + page_bytes, old),
+          "appended sparse page shadows prior allocation");
+    }
+    for (const auto &p : pages)
+      for (const auto &r : other.ranges)
+        require(!intersects(p.first, p.first + page_bytes, r),
+          "prior sparse page shadows appended allocation");
+    Memory next = *this;
+    next.ranges.clear();
+    std::merge(ranges.begin(), ranges.end(), other.ranges.begin(), other.ranges.end(),
+      std::back_inserter(next.ranges), [](const auto &a, const auto &b) { return a.start < b.start; });
+    next.pages.insert(other.pages.begin(), other.pages.end());
+    ranges.swap(next.ranges); pages.swap(next.pages);
   }
   static Memory read(const std::string &path) {
     std::ifstream in(path, std::ios::binary | std::ios::ate);
@@ -155,9 +199,27 @@ class Agent {
   uint32_t write_id = 0, expected_beats = 0, write_beats = 0;
   std::array<uint8_t, 64> write_data{};
   uint64_t write_mask = 0;
+  std::optional<std::pair<uint64_t, uint64_t>> read_fault_range;
+  uint64_t injected_reads = 0;
 public:
   Traffic traffic;
   explicit Agent(Memory &backing) : memory(backing) {}
+
+  // The physical fault plan is immutable until all accepted R/B traffic has
+  // drained. Counters remain cumulative when a later healthy owner reuses RAM.
+  void arm_read_faults(uint64_t begin, uint64_t end) {
+    require(drained() && !read_fault_range, "physical read fault plan is already active or busy");
+    require(begin < end && !(begin & 63) && !(end & 63) && end <= Memory::limit &&
+      std::any_of(memory.ranges.begin(), memory.ranges.end(), [&](const auto &r) {
+        return r.start <= begin && end <= r.end;
+      }), "physical read fault range is not aligned and fully backed");
+    read_fault_range = std::make_pair(begin, end);
+  }
+  void disarm_read_faults() {
+    require(drained() && bool(read_fault_range), "physical read fault plan is absent or busy");
+    read_fault_range.reset();
+  }
+  uint64_t injected_read_faults() const { return injected_reads; }
 
   Responses drive(uint64_t cycle) const {
     Responses out;
@@ -185,10 +247,14 @@ public:
               (in.arlen == 0 || (in.arsize == 5 && (in.araddr & 63) == 0)),
               "unsupported product AXI read burst");
       const uint64_t base = in.araddr & ~uint64_t(63);
-      const bool fault = !memory.contains_line(base);
+      const bool backed = memory.contains_line(base);
+      const bool injected = read_fault_range && read_fault_range->first <= base && base < read_fault_range->second;
+      require(!injected || backed, "physical fault source lost its original backing");
+      const bool fault = !backed || injected;
       Read r{cycle + 3, in.arid, in.arlen + 1, 0, uint32_t(in.araddr & 32), uint32_t(fault ? 2 : 0), {}};
       for (unsigned b = 0; b < 64; ++b) r.data[b] = memory.byte(base + b);
       reads.push_back(r); ++traffic.reads; traffic.read_faults += fault;
+      injected_reads += injected;
     }
     if (in.awvalid && out.awready) {
       require(in.awsize <= 5 && in.awburst == 1 && in.awlen <= 1 &&
