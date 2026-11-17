@@ -32,22 +32,27 @@ struct ComputeHeld {
   Memory initial;
   Traffic start,completed;
   uint64_t start_cycles=0;
+  uint64_t prior_read_faults=0;
   bool source_fault=false;
 };
 template<class Sim>
 ComputeHeld hold_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,const ComputeCapture &capture,
-    bool source_fault=false) {
+    bool source_fault=false,uint64_t prior_read_faults=0) {
   capture.validate();
   require(agent.drained() && !sim.model->io_m_irq,"compute starts before prior drain");
-  require(!agent.traffic.read_faults && !agent.traffic.write_faults && !agent.injected_read_faults(),
-    "single compute execution began with prior physical faults");
-  const auto profile=probe_profile(sim,agent,bus,true,compute_owner_factory());
+  require(agent.traffic.read_faults==prior_read_faults && !agent.traffic.write_faults &&
+      agent.injected_read_faults()==prior_read_faults,"compute began with unexpected prior physical faults");
+  const auto probe_traffic=agent.traffic;
+  const auto profile=probe_profile(sim,agent,bus,true,compute_owner_factory(),
+    prior_read_faults?&probe_traffic:nullptr);
+  traffic_unchanged(probe_traffic,agent.traffic);
   std::map<uint32_t,uint32_t> captured;
   for(const auto &r:capture.discovery)captured.emplace(r.address,r.value);
   for(const auto *words:{&profile.words,&profile.registers})for(const auto &r:*words)
     require(captured.at(r.address)==r.value,"compute capture differs from actual DUT observations");
   verify_readonly(memory,memory,capture.writable);
   ComputeHeld held;held.initial=memory;held.start=agent.traffic;held.start_cycles=bus.cycles;held.source_fault=source_fault;
+  held.prior_read_faults=prior_read_faults;
   bus.begin_record(capture.max_cycles);
   for(const auto &a:capture.trace)bus.action(a);
   // A polled prefix invalidate can leave the sticky IRQ pending after its
@@ -86,12 +91,13 @@ ComputeHeld hold_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memor
     "held compute completion or telemetry changed");
   traffic_unchanged(held.completed,agent.traffic);
   if(source_fault) {
-    require(agent.injected_read_faults()>0 && agent.traffic.read_faults==agent.injected_read_faults() &&
+    require(agent.injected_read_faults()>prior_read_faults && agent.traffic.read_faults==agent.injected_read_faults() &&
       !agent.traffic.write_faults && agent.traffic.writes==held.start.writes,
       "failed source-read compute lacks exact injected faults or issued physical writes");
     verify_readonly(held.initial,memory,{});
   }else {
-    require(!agent.traffic.read_faults && !agent.traffic.write_faults,"compute encountered physical memory faults");
+    require(agent.traffic.read_faults==prior_read_faults && agent.injected_read_faults()==prior_read_faults &&
+      !agent.traffic.write_faults,"compute encountered new physical memory faults");
     verify_readonly(held.initial,memory,capture.writable);
   }
   r.drained=agent.drained();r.cycles=bus.cycles-held.start_cycles;
@@ -114,7 +120,8 @@ ComputeResult retire_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &m
   require(r.retired_irq==GPU_IRQ_ENABLE && !r.retired_pin && agent.drained(),"compute retirement did not drain IRQ");
   traffic_unchanged(held.completed,agent.traffic);
   require(agent.traffic.read_faults==held.completed.read_faults && !agent.traffic.write_faults &&
-      (held.source_fault || !agent.traffic.read_faults),"compute retirement encountered unexpected physical memory faults");
+      (held.source_fault || agent.traffic.read_faults==held.prior_read_faults),
+      "compute retirement encountered unexpected physical memory faults");
   verify_readonly(held.initial,memory,{}); // No RAM changes are permitted after held completion.
   r.drained=agent.drained();r.cycles=bus.cycles-held.start_cycles;
   r.read_bytes=agent.traffic.read_bus_bytes-held.start.read_bus_bytes;
@@ -139,9 +146,9 @@ inline void compute_json(std::ostream &out,const ComputeResult &r,uint32_t comma
 template<class Sim>
 void active_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
     const ComputeCapture &capture,const std::filesystem::path &output,const std::filesystem::path &session,
-    std::chrono::milliseconds timeout=compute_response_timeout(),bool source_fault=false) {
+    std::chrono::milliseconds timeout=compute_response_timeout(),bool source_fault=false,uint64_t prior_read_faults=0) {
   PtePages pte;capture.observe_contexts(memory,pte);
-  auto held=hold_compute(sim,agent,bus,memory,capture,source_fault);
+  auto held=hold_compute(sim,agent,bus,memory,capture,source_fault,prior_read_faults);
   // Keep the original post-completion RAM image, including writable outputs,
   // fixed while the actual producer emits its Linux IRQ/drain/POP trace.
   atomic_json(session/"record-0.held.json",[&](auto &out){compute_json(out,held.result,capture.command_id,false,source_fault);});
@@ -153,6 +160,73 @@ void active_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
   // The producer must independently verify all returned bytes before it emits
   // cleanup.begin. The executor then observes real owner and context teardown.
   cleanup_records(sim,agent,bus,memory,session,pte,1,timeout,held.completed.read_faults);
+}
+
+inline void arm_source_fault(Agent &agent,const std::filesystem::path &session,
+    std::chrono::milliseconds timeout) {
+  wait_input(session/"record-0.fault-plan",session,timeout);
+  std::ifstream plan(session/"record-0.fault-plan",std::ios::binary);magic(plan,"OGCFS001");
+  const auto first=read_le(plan,8),end=read_le(plan,8);
+  require(plan.peek()==EOF,"trailing source fault plan");agent.arm_read_faults(first,end);
+}
+inline void authorize_recovery_round(const std::filesystem::path &session,unsigned index,
+    std::chrono::milliseconds timeout) {
+  wait_input(session/"BEGIN_EXECUTION",session,timeout);
+  std::ifstream in(session/"BEGIN_EXECUTION",std::ios::binary);magic(in,"OGCMEX01");
+  require(read_le(in,4)==index && in.peek()==EOF,"wrong recovery round authorization");
+}
+inline void active_image_recovery(int argc,char **argv,const std::filesystem::path &output,
+    const std::filesystem::path &session,std::chrono::milliseconds timeout) {
+  require(compute_owner_factory()==OwnerFactory::image_float_stage,
+    "image recovery requires the distinct complete float factory");
+  require(std::filesystem::is_directory(session) && !std::filesystem::is_symlink(session) &&
+    !std::filesystem::exists(output),"invalid recovery session or existing output");
+  const auto first_session=session/"round-0";
+  authorize_recovery_round(first_session,0,timeout);
+  wait_input(first_session/"union.memory",first_session,timeout);
+  Memory memory=Memory::read((first_session/"union.memory").string());
+  require(std::filesystem::create_directory(output),"cannot create recovery output");
+  // One execution DUT, one reset, one backing RAM and one cumulative AXI agent.
+  Simulation sim(argc,argv);sim.reset();Agent agent(memory);ReplayBus<Simulation> bus(sim,agent,100000);
+  uint32_t command_id=0;uint64_t prior_faults=0;
+  for(unsigned index=0;index<2;index++) {
+    const auto local=session/("round-"+std::to_string(index));
+    if(index) {
+      authorize_recovery_round(local,index,timeout);
+      wait_input(local/"union.memory",local,timeout);
+      require(agent.drained(),"new owner arrived before old AXI traffic drained");
+      memory.append_disjoint(Memory::read((local/"union.memory").string()));
+    }
+    wait_input(local/"record-0.capture",local,timeout);
+    const auto capture=ComputeCapture::read((local/"record-0.capture").string());
+    if(index)require(capture.command_id==command_id,"healthy recovery changed the original command ID");
+    else command_id=capture.command_id;
+    const auto destination=output/("round-"+std::to_string(index));
+    require(std::filesystem::create_directory(destination),"recovery output round already exists");
+    const auto start=bus.cycles;
+    if(!index)arm_source_fault(agent,local,timeout);
+    active_compute(sim,agent,bus,memory,capture,destination,local,timeout,index==0,prior_faults);
+    if(!index)agent.disarm_read_faults();
+    const auto completed_traffic=agent.traffic;
+    const auto status=bus.read(GPU_REG_UCMD_STATUS),irq=bus.read(GPU_REG_IRQ);
+    require(status==GPU_UCMD_STATUS_READY && irq==GPU_IRQ_ENABLE && !sim.model->io_m_irq && agent.drained() &&
+      !bus.read(GPU_REG_UCMD_VECTOR_SATP) && !bus.read(GPU_REG_UCMD_INSTRUCTION_SATP),
+      "recovery owner did not release its actual contexts and IRQ");
+    traffic_unchanged(completed_traffic,agent.traffic);
+    const auto faults=agent.injected_read_faults();
+    require(faults>0 && agent.traffic.read_faults==faults && !agent.traffic.write_faults &&
+      (!index || faults==prior_faults),"recovery lost physical fault history or incurred a new error");
+    memory.write((destination/"record-0.cleaned.memory").string());
+    atomic_json(local/"executor.done",[&](auto &out) {
+      out<<"{\"schema\":\"opengpu-compute-image-recovery-round-v1\",\"round\":"<<index
+        <<",\"commandId\":"<<command_id<<",\"resetCount\":1,\"ramReplaced\":false,\"externalDrained\":true"
+        <<",\"sourceQualificationRequired\":true,\"independentBytesRequired\":true"
+        <<",\"physicalReadFaults\":"<<agent.traffic.read_faults<<",\"injectedReadFaults\":"<<faults
+        <<",\"physicalWriteFaults\":0,\"startCycle\":"<<start<<",\"endCycle\":"<<bus.cycles<<"}\n";
+    });
+    prior_faults=faults;
+  }
+  sim.model->final();
 }
 } // namespace compute_owner
 
@@ -166,9 +240,12 @@ int main(int argc,char **argv) {
       const auto observed=probe_profile(sim,agent,bus,true,compute_owner_factory());
       atomic_json(argv[2],[&](auto &out){profile_json(out,observed,true);});sim.model->final();return 0;
     }
+    if(argc==4 && std::string(argv[1])=="--active-image-source-recovery") {
+      active_image_recovery(argc,argv,argv[2],argv[3],response_timeout);return 0;
+    }
     const bool source_fault=argc==5 && std::string(argv[1])=="--active-image-source-fault";
     require(argc==5 && (std::string(argv[1])=="--active-owner" || source_fault),
-      "usage: compute_owner_driver --probe-profile NEW.json | --active-owner INPUT.memory NEW_OUTPUT_DIR SESSION_DIR | --active-image-source-fault INPUT.memory NEW_OUTPUT_DIR SESSION_DIR");
+      "usage: compute_owner_driver --probe-profile NEW.json | --active-owner INPUT.memory NEW_OUTPUT_DIR SESSION_DIR | --active-image-source-fault INPUT.memory NEW_OUTPUT_DIR SESSION_DIR | --active-image-source-recovery NEW_OUTPUT_DIR SESSION_DIR");
     require(!source_fault || compute_owner_factory()==OwnerFactory::image_float_stage,
       "image source fault requires the distinct complete float factory");
     const std::filesystem::path output=argv[3],session=argv[4];
@@ -179,12 +256,7 @@ int main(int argc,char **argv) {
     Memory memory=Memory::read(argv[2]);verify_readonly(memory,memory,capture.writable);
     require(std::filesystem::create_directory(output),"cannot create compute output directory");
     Simulation sim(argc,argv);sim.reset();Agent agent(memory);ReplayBus<Simulation> bus(sim,agent,100000);
-    if(source_fault) {
-      wait_input(session/"record-0.fault-plan",session,response_timeout);
-      std::ifstream plan(session/"record-0.fault-plan",std::ios::binary);magic(plan,"OGCFS001");
-      const auto first=read_le(plan,8),end=read_le(plan,8);require(plan.peek()==EOF,"trailing source fault plan");
-      agent.arm_read_faults(first,end);
-    }
+    if(source_fault)arm_source_fault(agent,session,response_timeout);
     active_compute(sim,agent,bus,memory,capture,output,session,response_timeout,source_fault);
     if(source_fault)agent.disarm_read_faults();
     sim.model->final();return 0;

@@ -53,6 +53,15 @@ def guarded(request_path, builder_argv):
     source_fault='--expect-image-source-fault' in argv
     require(not source_fault or (case=='image-atomic-buffer-r32f' and not matrix and '--capture-only' not in argv),
             'source fault requires one original live R32F buffer recipe')
+    allocation_base=None
+    require(argv.count('--physical-base')<=1,'repeated original allocation namespace')
+    if '--physical-base' in argv:
+        require(argv.index('--physical-base')+1<len(argv),'missing original allocation namespace')
+        value=argv[argv.index('--physical-base')+1]
+        allocation_base=int(value)
+        require(str(allocation_base)==value and case=='image-atomic-buffer-r32f' and not matrix and
+                '--capture-only' not in argv and 0<allocation_base<=0xfffff000 and allocation_base%4096==0,
+                'allocation namespace requires one original live float buffer source')
     require(not matrix or '--capture-only' in argv, 'counter matrix is CPU capture only')
     launched=set()
     require(not image_matrix or case==IMAGE_CASES[0], 'image matrix must start at its first original source')
@@ -103,13 +112,14 @@ def guarded(request_path, builder_argv):
             require(command == expected_link(), 'actual counter link has unbound/replaced objects or libraries')
         if command[0]==str(out/'compute_host_frontend'):
             require(seen==units, 'incomplete actual host compiler closure')
-            source_case=command[4] if len(command) in (5,6) else None
+            source_case=command[4] if len(command)>=5 else None
             parameters=image_parameters(source_case) if source_case in IMAGE_CASES else counter_parameters(source_case)
             require(source_case in expected_cases and source_case not in launched and
                     command[3]==str(out/'glsl'/parameters['source']),
                     'counter producer source/recipe repeated or replaced')
             require(not matrix or command[-1]=='--capture-only', 'counter matrix attempted actual execution')
             expected_tail=(['--expect-image-source-fault'] if source_fault else ['--capture-only'] if '--capture-only' in argv else [])
+            if allocation_base is not None:expected_tail+=['--physical-base',str(allocation_base)]
             require(command[5:]==expected_tail, 'original producer execution mode changed')
             launched.add(source_case)
             if products:unchanged({str(p):v for p,v in products.items()})

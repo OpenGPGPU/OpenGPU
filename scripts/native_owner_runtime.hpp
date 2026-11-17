@@ -107,8 +107,13 @@ struct ProfileObservation {
 };
 template<class Sim>
 ProfileObservation probe_profile(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,bool compute=false,
-    OwnerFactory factory=OwnerFactory::v1) {
+    OwnerFactory factory=OwnerFactory::v1,const Traffic *prior_traffic=nullptr) {
   require(compute || factory==OwnerFactory::v1,"resource factory requires compute observations");
+  const auto initial_traffic=agent.traffic;
+  if(prior_traffic) {
+    require(agent.drained(),"reused profile probe began before external drain");
+    traffic_unchanged(*prior_traffic,initial_traffic);
+  }
   ProfileObservation observed;observed.factory=factory;
   const auto id=bus.read(GPU_REG_ID),caps=bus.read(GPU_REG_CAPABILITIES);
   require((id&0xffffu)>=GPU_ABI_COMPUTE_RESOURCE_VERSION && (caps&required_owner_caps)==required_owner_caps,
@@ -142,7 +147,8 @@ ProfileObservation probe_profile(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,bool 
   }
   require(!(bus.read(GPU_REG_UCMD_STATUS)&GPU_UCMD_STATUS_COMPLETION) && !sim.model->io_m_irq,
     "profile-only probe encountered an active completion");
-  require(agent.drained() && !agent.traffic.reads && !agent.traffic.writes,
+  traffic_unchanged(initial_traffic,agent.traffic);
+  require(agent.drained() && (prior_traffic || (!agent.traffic.reads && !agent.traffic.writes)),
     "profile-only probe encountered external memory work");
   return observed;
 }

@@ -298,6 +298,24 @@ static void execution_checks(int argc,char **argv) {
     "compute retirement lost raw observations");
   require(std::none_of(sim.reads.begin(),sim.reads.end(),[](auto address){return address>=0x180 && address<0x1b0;}),
     "compute executor read native GNX");
+  {
+    // CPU transport guard only: obtain real AXI-service error history, then
+    // verify that only the explicit matching baseline permits a healthy peer.
+    auto m=memory_fixture();ComputePeer peer(argc,argv,m);peer.reset();Agent a(m);
+    a.arm_read_faults(0x5000,0x5040);
+    native_frame::Requests request;request.arvalid=true;request.araddr=0x5000;
+    a.observe(0,request,a.drive(0));request={};request.rready=true;
+    a.observe(3,request,a.drive(3));a.disarm_read_faults();
+    require(a.drained() && a.traffic.read_faults==1 && a.injected_read_faults()==1,"lost CPU AXI fault history");
+    ReplayBus<ComputePeer> b(peer,a,100000);
+    rejects([&]{hold_compute(peer,a,b,m,c);});
+    rejects([&]{hold_compute(peer,a,b,m,c,false,2);});
+    require(!peer.submitted,"wrong fault baseline submitted an original command");
+    auto h=hold_compute(peer,a,b,m,c,false,1);
+    retire_compute(peer,a,b,m,h,retirement());
+    require(peer.resets==1 && a.traffic.read_faults==1 && a.injected_read_faults()==1,
+      "healthy CPU transport reset its peer or cleared physical fault history");
+  }
   for(unsigned scenario=0;scenario<3;scenario++) {
     auto m=memory_fixture();StickyPrefixPeer peer(argc,argv,m);peer.reset();
     Agent a(m);ReplayBus<StickyPrefixPeer> b(peer,a,100000);

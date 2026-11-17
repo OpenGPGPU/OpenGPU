@@ -4,7 +4,7 @@ from pathlib import Path
 import struct
 import tempfile
 import unittest
-from compute_owner_oracle import SparseMemory, expected_shared, verify
+from compute_owner_oracle import SparseMemory, expected_shared, verify, union_original_memory
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -27,6 +27,28 @@ def memory(path, output=None, corrupt=()):
 
 
 class OracleTests(unittest.TestCase):
+    def test_union_retains_old_bytes_and_new_original_uploads_without_aliases(self):
+        parent=ROOT/'.artifacts';parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='retained-input-union-',dir=parent) as d:
+            root=Path(d);old=root/'old';upload=root/'upload';merged=root/'merged'
+            memory(old)
+            data=bytearray(old.read_bytes())
+            for index in range(2):
+                a,b=struct.unpack_from('<QQ',data,16+24*index)
+                struct.pack_into('<QQ',data,16+24*index,a+0x10000,b+0x10000)
+            cursor=16+2*24
+            for _ in range(3):
+                a,=struct.unpack_from('<Q',data,cursor);struct.pack_into('<Q',data,cursor,a+0x10000)
+                cursor+=4104
+            upload.write_bytes(data)
+            with SparseMemory(old) as previous,SparseMemory(upload) as new:
+                merged.write_bytes(union_original_memory(previous,new))
+                with SparseMemory(merged) as combined:
+                    self.assertEqual(combined.ranges,sorted(previous.ranges+new.ranges))
+                    for source in (previous,new):
+                        for a,b,_ in source.ranges:self.assertEqual(source.read(a,b-a),combined.read(a,b-a))
+                with self.assertRaises(ValueError):union_original_memory(previous,previous)
+
     def test_nonuniform_add_and_cas_match_miss_reject_lost_xor_and_permuted_addresses(self):
         parent = ROOT / '.artifacts'; parent.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='address-oracle-', dir=parent) as temporary:

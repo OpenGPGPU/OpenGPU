@@ -12,11 +12,13 @@ import fcntl
 import os
 from pathlib import Path
 import subprocess
+import struct
 import tempfile
 import time
 from compute_owner_protocol import (strict_json, profile_bytes, held_bytes,
-    retired_bytes, failed_held_bytes, failed_retired_bytes, cleanup_authorization, checked_cleanup)
-from compute_owner_oracle import SparseMemory, verify
+    retired_bytes, failed_held_bytes, failed_retired_bytes, cleanup_authorization, checked_cleanup,
+    uint, required_flags, RECOVERY_CASE, RECOVERY_BASES, RECOVERY_COMMAND_SCHEMA)
+from compute_owner_oracle import SparseMemory, verify, union_original_memory
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -109,6 +111,114 @@ def unchanged_inputs(directory, inputs):
         require(input_digest(directory/name)==digest, 'counter immutable READY input changed: '+name)
 
 
+def recovery_commands(value):
+    require(type(value) is dict and set(value)=={'schema','rounds'} and
+            value['schema']==RECOVERY_COMMAND_SCHEMA and type(value['rounds']) is list and
+            len(value['rounds'])==2,'two original recovery producer commands required')
+    for index,command in enumerate(value['rounds']):
+        require(type(command) is list and command and all(type(x) is str and x for x in command) and
+                any('{ipc}' in x for x in command),'recovery producer must consume its original IPC directory')
+        require('--capture-only' not in command and command.count('--expect-image-source-fault')==(1 if index==0 else 0),
+                'recovery must run one live source fault followed by one healthy producer')
+        for flag,wanted in [('--case',RECOVERY_CASE),('--physical-base',str(RECOVERY_BASES[index]))]:
+            require(command.count(flag)==1 and command.index(flag)+1<len(command) and
+                    command[command.index(flag)+1]==wanted,'wrong original recovery recipe/allocation namespace')
+    return value['rounds']
+
+
+def checked_recovery_round(value,index,held,previous=None):
+    from compute_image_source import source_read_fault_proof
+    require(type(index) is int and index in (0,1),'unknown recovery round')
+    require((index==0)==(previous is None),'recovery round lacks its preceding fault result')
+    required_flags(value,dict(schema='opengpu-compute-image-recovery-round-v1',round=index,
+        commandId=uint(held.get('commandId')),resetCount=1,ramReplaced=False,externalDrained=True,
+        sourceQualificationRequired=True,independentBytesRequired=True,physicalWriteFaults=0))
+    source_read_fault_proof(value,held if previous is None else previous)
+    start,end=uint(value.get('startCycle'),64),uint(value.get('endCycle'),64)
+    require(start<end,'recovery cycle interval is empty or reversed')
+    if previous is not None:
+        require(index==1 and value['commandId']==previous['commandId'] and start>=previous['endCycle'],
+                'healthy recovery changed the command ID or restarted its execution clock')
+    return value
+
+
+def exchange_recovery(args,commands,directory,executor,env,qualified,qualified_profile):
+    from compute_image_source import (source_read_fault_plan,source_read_fault_proof,
+        verify_source_read_fault,captured_page_tables,verify_cleaned_memory)
+    running=bridge=None;previous=None;previous_clean=None;previous_digest=None;input_sets=[]
+    try:
+        with (directory/'execution.log').open('w') as output:
+            for index,command in enumerate(commands):
+                local=directory/('round-'+str(index));local.mkdir()
+                atomic(local/'profile.bin',(directory/'profile.bin').read_bytes())
+                with (local/'bridge.log').open('w') as log:
+                    bridge=subprocess.Popen([x.replace('{ipc}',str(local)) for x in command],
+                        env=dict(env,TMPDIR=str(local)),stdout=log,stderr=subprocess.STDOUT)
+                    wait_file(local/'READY',bridge,running,args.timeout)
+                    for name in ('union.memory','record-0.capture','oracle.json'):
+                        wait_file(local/name,bridge,running,args.timeout)
+                    description,inputs=ready_inputs(local,args.case,owner_profile=qualified_profile)
+                    with SparseMemory(local/'union.memory') as upload:
+                        require(upload.ranges and upload.ranges[0][0]==RECOVERY_BASES[index],
+                                'original allocation namespace was ignored or replaced')
+                        tables=captured_page_tables(upload,(local/'record-0.capture').read_bytes())
+                        if index==0:
+                            atomic(local/'record-0.fault-plan',source_read_fault_plan(
+                                upload,description,owner_profile=qualified_profile))
+                            inputs['record-0.fault-plan']=input_digest(local/'record-0.fault-plan')
+                            baseline=local/'union.memory'
+                        else:
+                            require(input_digest(previous_clean)==previous_digest,'retained cleaned RAM changed before new upload')
+                            with SparseMemory(previous_clean) as old:
+                                atomic(local/'global-before.memory',union_original_memory(old,upload))
+                            inputs['global-before.memory']=input_digest(local/'global-before.memory')
+                            baseline=local/'global-before.memory'
+                    input_sets.append((local,inputs))
+                    for path,identities in input_sets:unchanged_inputs(path,identities)
+                    atomic(local/'BEGIN_EXECUTION',struct.pack('<8sI',b'OGCMEX01',index))
+                    if index==0:
+                        running=subprocess.Popen([executor,'--active-image-source-recovery',directory/'results',directory],
+                            env=env,stdout=output,stderr=subprocess.STDOUT)
+                    destination=directory/'results'/('round-'+str(index))
+                    wait_file(local/'record-0.held.json',bridge,running,args.timeout)
+                    held=strict_json(local/'record-0.held.json')
+                    if index==0:source_read_fault_proof(held)
+                    atomic(local/'record-0.held.response',(held_bytes if index else failed_held_bytes)(held))
+                    wait_file(local/'record-0.retired.json',bridge,running,args.timeout)
+                    retired=strict_json(local/'record-0.retired.json')
+                    response=(retired_bytes if index else failed_retired_bytes)(retired,held)
+                    if index==0:source_read_fault_proof(retired,held)
+                    for path,identities in input_sets:unchanged_inputs(path,identities)
+                    with SparseMemory(baseline) as before,SparseMemory(destination/'record-0.memory') as after:
+                        (verify if index else verify_source_read_fault)(before,after,description)
+                    atomic(local/'record-0.retired.response',response)
+                    wait_file(local/'cleanup_wait',bridge,running,args.timeout)
+                    require(bridge.poll() is None and running.poll() is None,'recovery owner exited before independent cleanup authorization')
+                    atomic(local/'BEGIN_CLEANUP',cleanup_authorization())
+                    wait_file(local/'cleanup.json',bridge,running,args.timeout)
+                    checked_cleanup(strict_json(local/'cleanup.json'))
+                    wait_file(local/'executor.done',bridge,running,args.timeout)
+                    done=checked_recovery_round(strict_json(local/'executor.done'),index,held,previous)
+                    cleaned=destination/'record-0.cleaned.memory'
+                    with SparseMemory(destination/'record-0.memory') as before,SparseMemory(cleaned) as after:
+                        verify_cleaned_memory(before,after,tables)
+                    if index==0:require(running.poll() is None,'recovery execution DUT exited between the two original jobs')
+                    else:require(running.wait(timeout=args.timeout)==0,'recovery DUT rejected final context cleanup')
+                    qualified(env,output)
+                    for path,identities in input_sets:unchanged_inputs(path,identities)
+                    previous,previous_clean,previous_digest=done,cleaned,input_digest(cleaned)
+                    atomic(local/'FINAL_RESPONSE',b'OGCMOK01\x01\x00\x00\x00')
+                    require(bridge.wait(timeout=args.timeout)==0,'original recovery producer rejected actual cleanup')
+                    bridge=None
+    except BaseException:
+        for local in directory.glob('round-*'):
+            path=local/'bridge.log'
+            if path.is_file():print(path.read_text(errors='replace')[-10000:],end='')
+        raise
+    finally:
+        stop(running);stop(bridge)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--executor', type=Path, required=True)
@@ -123,19 +233,23 @@ def main():
     parser.add_argument('--timeout', type=int, default=3600)
     from compute_owner_cases import COUNTER_CASES, IMAGE_CASES
     parser.add_argument('--case', choices=(*COUNTER_CASES,*IMAGE_CASES), help='distinct final112 source contract')
-    parser.add_argument('--expect-image-source-fault', action='store_true')
+    mode=parser.add_mutually_exclusive_group()
+    mode.add_argument('--expect-image-source-fault', action='store_true')
+    mode.add_argument('--image-source-recovery', action='store_true')
     args = parser.parse_args()
     require(0 < args.timeout <= 604800, 'timeout must be 1..604800 seconds')
     command = strict_json(args.bridge_command)
-    require(type(command) is list and command and all(type(x) is str and x for x in command),
-            'bridge command must be a nonempty argv array')
-    require(any('{ipc}' in x for x in command), 'bridge command must consume the active IPC directory')
+    if args.image_source_recovery:command=recovery_commands(command)
+    else:
+        require(type(command) is list and command and all(type(x) is str and x for x in command),
+                'bridge command must be a nonempty argv array')
+        require(any('{ipc}' in x for x in command), 'bridge command must consume the active IPC directory')
     executor = args.executor.absolute()
     qualification = args.executor_qualification.absolute()
     require(executor.is_file() and not executor.is_symlink() and qualification.is_file() and not qualification.is_symlink(),
             'executor/qualification must be original regular files')
     qualified_profile=strict_json(qualification).get('profile')
-    if args.expect_image_source_fault:
+    if args.expect_image_source_fault or args.image_source_recovery:
         from owner_resource_contract import IMAGE_FLOAT_PROFILE
         require(args.case=='image-atomic-buffer-r32f' and qualified_profile==IMAGE_FLOAT_PROFILE,
                 'source fault requires the original buffer exchange and qualified float executor')
@@ -179,6 +293,10 @@ def main():
                 subprocess.run([executor, '--probe-profile', directory / 'profile.json'], env=env,
                     stdout=log, stderr=subprocess.STDOUT, timeout=args.timeout, check=True)
             atomic(directory / 'profile.bin', profile_bytes(strict_json(directory / 'profile.json')))
+            if args.image_source_recovery:
+                exchange_recovery(args,command,directory,executor,env,qualified,qualified_profile)
+                print('actual compute source fault then healthy same-ID recovery, retained RAM and context cleanup: PASS')
+                return
             with (directory / 'bridge.log').open('w') as log, (directory / 'execution.log').open('w') as output:
                 bridge = subprocess.Popen([x.replace('{ipc}', temporary) for x in command], env=env,
                     stdout=log, stderr=subprocess.STDOUT)

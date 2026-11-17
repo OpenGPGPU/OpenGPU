@@ -76,6 +76,25 @@ class SparseMemory:
         return bytes(result)
 
 
+def union_original_memory(previous, upload):
+    """Serialize measured prior RAM plus disjoint original CPU uploads.
+
+    This constructs an input baseline, never expected shader output. Both
+    sparse sources have already passed SparseMemory's allocation/page checks.
+    """
+    ranges=sorted([*previous.ranges,*upload.ranges])
+    if (not upload.ranges or any(a[1]>b[0] for a,b in zip(ranges,ranges[1:])) or
+            previous.pages.keys() & upload.pages.keys()):
+        raise ValueError('new original upload aliases retained physical memory')
+    pages=sorted([(address,previous) for address in previous.pages]+
+                 [(address,upload) for address in upload.pages])
+    parts=[struct.pack('<8sII',b'OGMEM001',len(ranges),len(pages))]
+    parts.extend(struct.pack('<QQII',begin,end,fill,0) for begin,end,fill in ranges)
+    for address,memory in pages:
+        parts.extend((struct.pack('<Q',address),memory.read(address,4096)))
+    return b''.join(parts)
+
+
 def expected_shared(group, lane):
     # ESSL: data[id+128*r]=0xa1000000+(group<<16)+id+128*r;
     # after converged barriers each warp reads the peer (id^16) stripe.
