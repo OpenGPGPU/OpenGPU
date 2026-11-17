@@ -1,8 +1,9 @@
 # Complete owner factory qualification
 
-The complete factory's fresh compilation, RTL emission and structural audit
-have passed. Assertion-enabled model generation, original executor builds and
-actual discovery probes remain pending; P04 is not closed by these results.
+The complete factory's fresh compilation, RTL emission, structural audit and
+assertion-enabled Verilator C++ generation have passed. Native C++ compilation,
+original executor builds and actual discovery probes remain pending; P04 is
+not closed by code generation alone.
 
 P04 binds the complete `OwnerResourceProfile.sampleStage` factory to fresh RTL,
 its assertion-enabled model, original executors and actual MMIO discovery.
@@ -64,11 +65,57 @@ python3 -B scripts/qualification/check_owner_inline_assertions.py \
   --firtool "$FIRTOOL"
 ```
 
-Both Scala emission checks and 30 focused owner-input/executor checks passed.
-This establishes the emission format; complete model generation, four original
-executor builds and three actual MMIO probes remain required for P04.
+Both Scala emission checks and 36 focused owner-input/executor checks passed.
+The latter include backend/kind isolation, original include closure, changed
+checkers/binaries/system headers and rehashed build-command mutations. These
+checks do not replace the original executors' actual MMIO probes.
 
-## Compiler prerequisite
+## Complete Verilator model
+
+Verilator 5.050 generated the complete inline factory with assertions enabled
+and six hierarchical module families. Generation completed in 937.939 seconds,
+with a charged process-tree peak of 21,256,328,232 bytes under a 24 GiB limit.
+It produced 3666 C++ files. Flat compilation exceeded the same memory limit;
+the hierarchical result establishes complete code generation, not native
+compilation, execution speed or GPU qualification.
+
+The generator checks the exact prepared factory, RTL, compiler toolkit and
+generated sources. The native builder binds its compiler, SDK, options,
+runtime objects and complete model archives. It uses eight compiler jobs by
+default, bounded by aggregate memory, with `-O1` for active code and `-O0` for
+Verilator's initialization/slow files. On macOS it passes the selected SDK
+explicitly when invoking the real compiler.
+
+Starting with the prepared inline owner above:
+
+```sh
+P04_OWNER="$PWD/.artifacts/owner-inline"
+python3 -B scripts/generate_owner_verilator.py --owner-output "$P04_OWNER"
+python3 -B scripts/generate_owner_verilator.py --owner-output "$P04_OWNER" --check
+python3 -B scripts/build_owner_verilator.py --owner-output "$P04_OWNER" \
+  --jobs 8 --memory-mib 24576
+python3 -B scripts/build_owner_verilator.py --owner-output "$P04_OWNER" --check
+for kind in native-sample native-sample-graphics compute framebuffer-blit-sample; do
+  python3 -B scripts/prepare_owner_executor.py --stage build --backend verilator \
+    --kind "$kind" --owner-output "$P04_OWNER"
+done
+for kind in native-sample native-sample-graphics compute; do
+  python3 -B scripts/prepare_owner_executor.py --stage probe --kind "$kind" \
+    --qualification "$P04_OWNER/executors/$kind/qualification.json" \
+    --executor "$P04_OWNER/executors/$kind/executor"
+done
+```
+
+These entry points retain the original four C++ translation units and original
+source/checker closures. They use the actual Verilator runtime rather than the
+FlashSim adapter. Each probe resets the real model, reads the complete 112-word
+factory and original auxiliary registers, checks idle/IRQ/no-memory-work
+invariants, and passes the result through the original independent protocol
+validator. Probe outputs are removed after validation and proven consumer exit.
+Shader/API execution, the 43 blit packets, clock and FPS retain their later
+acceptance requirements.
+
+## FlashSim compiler prerequisite
 
 The compiler is CIRCT `d21a21e51`, with the firtool-1.158.0 shared SDK and LLVM
 revision `6279700538792da0c5a08e17babfe9b6e824c69f`. Large recursive deadness

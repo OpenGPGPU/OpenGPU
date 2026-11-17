@@ -385,6 +385,10 @@ def verify_qualification(path, *, executor=None, kind='compute'):
                     clockQualified=False, fpsQualified=False)
     require(all(type(record.get(k)) is type(v) and record[k] == v for k, v in required.items()),
             'owner executor qualification has the wrong kind, schema, profile or scope')
+    if record.get('backend') == 'verilator':
+        import prepare_owner_verilator_executor as verilator
+        return verilator.verify_qualification(path, record, executor=executor, kind=kind)
+    require(record.get('backend', 'flashsim') == 'flashsim', 'unsupported owner executor backend')
     directory = inside(record['owner_output'])
     model = model_identity(directory, Path(record['flashsim']), record['shards'])
     contract = profile_contract(model['profile'], kind)
@@ -498,8 +502,9 @@ def build_executor(directory, flashsim, kind, *, shards=32, jobs=1,
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--stage', required=True, choices=('build', 'check'))
+    parser.add_argument('--stage', required=True, choices=('build', 'check', 'probe'))
     parser.add_argument('--kind', required=True, choices=KINDS)
+    parser.add_argument('--backend', choices=('flashsim', 'verilator'), default='flashsim')
     parser.add_argument('--owner-output', type=Path)
     parser.add_argument('--flashsim-dir', type=Path)
     parser.add_argument('--qualification', type=Path)
@@ -510,13 +515,21 @@ def main():
     parser.add_argument('--conservative-alias', action='store_true')
     parser.add_argument('--shard-opt', choices=('-O0', '-O1', '-O2', '-O3'), default='-O2')
     args = parser.parse_args()
-    if args.stage == 'check':
+    if args.stage in ('check', 'probe'):
         if args.qualification is None:
-            parser.error('--stage check requires --qualification')
-        verify_qualification(args.qualification, executor=args.executor, kind=args.kind)
+            parser.error('--stage ' + args.stage + ' requires --qualification')
+        verified = verify_qualification(args.qualification, executor=args.executor, kind=args.kind)
+        if args.stage == 'probe':
+            if verified.get('backend') != 'verilator':
+                parser.error('--stage probe currently requires a qualified Verilator executor')
+            import prepare_owner_verilator_executor as verilator
+            verilator.probe(args.qualification, executor=args.executor, kind=args.kind)
     else:
-        if args.owner_output is None or args.flashsim_dir is None:
-            parser.error('--stage build requires --owner-output and --flashsim-dir')
+        if args.owner_output is None or (args.backend == 'flashsim' and args.flashsim_dir is None):
+            parser.error('--stage build requires --owner-output and FlashSim also requires --flashsim-dir')
+        if args.backend == 'verilator' and (args.flashsim_dir is not None or args.jobs != 1
+                or args.precompiled_header or args.conservative_alias or args.shard_opt != '-O2'):
+            parser.error('Verilator executors use the bound native model and one original driver compilation')
         directory = inside(args.owner_output)
         def terminate(_signal, _frame):
             raise KeyboardInterrupt('owner executor build terminated')
@@ -526,9 +539,13 @@ def main():
                 for lock_path in build_lock_paths(directory, args.kind):
                     lock = stack.enter_context(lock_path.open('a'))
                     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                path = build_executor(directory, args.flashsim_dir.resolve(), args.kind,
-                    shards=args.shards, jobs=args.jobs, precompiled_header=args.precompiled_header,
-                    conservative_alias=args.conservative_alias, shard_opt=args.shard_opt)
+                if args.backend == 'verilator':
+                    import prepare_owner_verilator_executor as verilator
+                    path = verilator.build_executor(directory, args.kind)
+                else:
+                    path = build_executor(directory, args.flashsim_dir.resolve(), args.kind,
+                        shards=args.shards, jobs=args.jobs, precompiled_header=args.precompiled_header,
+                        conservative_alias=args.conservative_alias, shard_opt=args.shard_opt)
         finally:
             signal.signal(signal.SIGTERM, previous)
         print('OWNER_EXECUTOR_QUALIFICATION ' + str(path), flush=True)
