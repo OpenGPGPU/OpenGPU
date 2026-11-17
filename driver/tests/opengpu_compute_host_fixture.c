@@ -221,6 +221,7 @@ struct compute_host_session {
  struct compute_host_profile_word *profile;size_t profile_count;
  bool missing,exported,captured,drained,observed,freed,vm_destroyed;
  struct compute_host_held_receipt held;
+ int completion_error;
  struct drm_opengpu_compute_uniform_resources submitted;
  struct drm_syncobj sync[3];struct drm_sched_job *head,*tail;u64 next_seq;
  struct dma_fence *hardware;bool prepared_execution;
@@ -626,10 +627,11 @@ int compute_host_capture(struct compute_host_session *s,const char *path,uint64_
  compute_mmio_le(f,m->count,4);compute_mmio_actions(f,m,0);
  int error=compute_mmio_close(f,path,temporary);if(!error)s->captured=true;return error;
 }
-int compute_host_drain_held(struct compute_host_session *s,const struct compute_host_held_receipt *held,const char *path)
+static int compute_host_drain_receipt(struct compute_host_session *s,
+ const struct compute_host_held_receipt *held,const char *path,int expected_error)
 {
  if(!s || !held || !s->captured || s->drained || held->command_id!=s->gpu.hw.unified_command_id ||
-  held->completion!=(0x8000u|held->command_id) || held->processed_bytes || held->legacy_status ||
+  held->completion!=((expected_error?(GPU_UCMD_KERNEL_EXECUTION_FAILED<<11):0x8000u)|held->command_id) || held->processed_bytes || held->legacy_status ||
   !(held->status&GPU_UCMD_STATUS_COMPLETION) || held->irq!=(GPU_IRQ_ENABLE|GPU_IRQ_PENDING) ||
   held->irq_asserted!=1 || !s->hardware || dma_fence_is_signaled(s->hardware))return -EINVAL;
  struct compute_mmio_state *m=compute_mmio_state(&s->gpu);
@@ -641,24 +643,43 @@ int compute_host_drain_held(struct compute_host_session *s,const struct compute_
  m->regs[GPU_REG_UCMD_COMPLETION_BYTES_LO/4]=(u32)held->processed_bytes;
  m->regs[GPU_REG_UCMD_COMPLETION_BYTES_HI/4]=(u32)(held->processed_bytes>>32);m->receipt_loaded=true;
  opengpu_irq_handler(0,&s->gpu);
- if(!dma_fence_is_signaled(s->hardware) || s->hardware->error || m->kernel_waiting){fclose(f);remove(temporary);free(temporary);return -EIO;}
+ const struct opengpu_fault_snapshot *fault=&s->gpu.hw.last_fault;
+ bool wrong_fault=expected_error && (!fault->sequence || fault->error!=expected_error ||
+  fault->flags!=(OPENGPU_FAULT_VALID|OPENGPU_FAULT_COMPLETION_ERROR) ||
+  fault->command_id!=held->command_id || fault->expected_command_id!=held->command_id ||
+  fault->opcode!=GPU_UCMD_OP_KERNEL || fault->expected_opcode!=GPU_UCMD_OP_KERNEL ||
+  fault->status!=GPU_UCMD_KERNEL_EXECUTION_FAILED || fault->bytes_processed);
+ if(!dma_fence_is_signaled(s->hardware) || s->hardware->error!=expected_error || m->kernel_waiting || wrong_fault){fclose(f);remove(temporary);free(temporary);return -EIO;}
  fwrite("OGCMT001",1,8,f);compute_mmio_le(f,m->count-start,4);compute_mmio_actions(f,m,start);
- int error=compute_mmio_close(f,path,temporary);if(!error){s->held=*held;s->drained=true;}return error;
+ int error=compute_mmio_close(f,path,temporary);if(!error){s->held=*held;s->drained=true;s->completion_error=expected_error;}return error;
+}
+int compute_host_drain_held(struct compute_host_session *s,const struct compute_host_held_receipt *held,const char *path)
+{return compute_host_drain_receipt(s,held,path,0);}
+int compute_host_drain_failed(struct compute_host_session *s,const struct compute_host_held_receipt *held,const char *path)
+{
+ if(!held || (held->status&(GPU_UCMD_STATUS_OVERFLOW|GPU_UCMD_STATUS_RESET_BUSY|GPU_UCMD_STATUS_RESET_REJECTED)))return -EINVAL;
+ return compute_host_drain_receipt(s,held,path,-EIO);
 }
 static bool compute_same_held(const struct compute_host_held_receipt *a,const struct compute_host_held_receipt *b)
 {return a->command_id==b->command_id && a->completion==b->completion && a->processed_bytes==b->processed_bytes &&
  a->legacy_status==b->legacy_status && a->status==b->status && a->irq==b->irq && a->irq_asserted==b->irq_asserted;}
-int compute_host_observe_retired(struct compute_host_session *s,const struct compute_host_retired_receipt *receipt)
+static int compute_host_observe_receipt(struct compute_host_session *s,
+ const struct compute_host_retired_receipt *receipt,int expected_error)
 {
  u32 busy=GPU_UCMD_STATUS_COMPLETION|GPU_UCMD_STATUS_VM_BUSY|GPU_UCMD_STATUS_RESET_BUSY;
  if(!s || !receipt || !s->drained || s->observed || !compute_same_held(&s->held,&receipt->held) ||
   receipt->external_drained!=1 || receipt->irq_asserted || receipt->irq!=GPU_IRQ_ENABLE ||
   !(receipt->status&GPU_UCMD_STATUS_READY) || (receipt->status&busy) || !s->hardware ||
-  !dma_fence_is_signaled(s->hardware) || s->hardware->error)return -EINVAL;
+  !dma_fence_is_signaled(s->hardware) || s->hardware->error!=expected_error || s->completion_error!=expected_error)return -EINVAL;
  struct compute_mmio_state *m=compute_mmio_state(&s->gpu);
  m->regs[GPU_REG_UCMD_STATUS/4]=receipt->status;m->regs[GPU_REG_IRQ/4]=receipt->irq;
+ if(expected_error)dma_fence_set_error(&s->head->s_fence->finished,expected_error);
  dma_fence_signal(&s->head->s_fence->finished);s->observed=true;return 0;
 }
+int compute_host_observe_retired(struct compute_host_session *s,const struct compute_host_retired_receipt *receipt)
+{return compute_host_observe_receipt(s,receipt,0);}
+int compute_host_observe_failed_retired(struct compute_host_session *s,const struct compute_host_retired_receipt *receipt)
+{return compute_host_observe_receipt(s,receipt,-EIO);}
 int compute_host_begin_cleanup(struct compute_host_session *s,const char *directory)
 {
  struct stat st;if(!s || !directory || lstat(directory,&st) || !S_ISDIR(st.st_mode))return -EINVAL;
@@ -673,11 +694,22 @@ int compute_host_begin_cleanup(struct compute_host_session *s,const char *direct
  if(error){free(m->cleanup_directory);m->cleanup_directory=NULL;return error;}
  compute_running=s;m->cleanup_start=m->count;m->cleanup_active=true;return 0;
 }
-int compute_host_finish_observed(struct compute_host_session *s)
+static int compute_host_finish_receipt(struct compute_host_session *s,int expected_error)
 {
- if(!s || !s->observed || s->freed || !s->head || !s->hardware || s->hardware->error)return -EINVAL;
+ if(!s || !s->observed || s->freed || !s->head || !s->hardware ||
+  s->hardware->error!=expected_error || s->completion_error!=expected_error)return -EINVAL;
  struct compute_mmio_state *m=compute_mmio_state(&s->gpu);if(!m->cleanup_active || m->cleanup_error)return -EBUSY;
- compute_running=s;opengpu_sched_free_job(s->head);
+ compute_running=s;
+ if(expected_error){
+  /* The real context quiesce reports a completed job's error once and drops
+   * only its context fence reference. Consume that expected report before
+   * revocation; hardware/scheduler/reservation fences keep their EIO value. */
+  if(!s->context || !s->context->last_fence ||
+   dma_fence_get_status(s->context->last_fence)!=expected_error)return -EINVAL;
+  int error=opengpu_context_quiesce(&s->render,s->context);
+  if(error!=expected_error || s->context->last_fence)return error?error:-EIO;
+ }
+ opengpu_sched_free_job(s->head);
  if(s->gpu.hw.wedged || m->cleanup_error)return -EIO;
  s->head=s->tail=NULL;s->queued=0;dma_fence_put(s->hardware);s->hardware=NULL;
  for(unsigned slot=1;slot<=OPENGPU_MAX_RESOURCE_BINDINGS;slot++)if(s->context->bindings[slot-1]){
@@ -689,6 +721,10 @@ int compute_host_finish_observed(struct compute_host_session *s)
  error=opengpu_mmu_fini(&s->gpu);if(error)return error;
  s->vm_destroyed=true;s->freed=true;return 0;
 }
+int compute_host_finish_observed(struct compute_host_session *s)
+{return compute_host_finish_receipt(s,0);}
+int compute_host_finish_failed_observed(struct compute_host_session *s)
+{return compute_host_finish_receipt(s,-EIO);}
 int compute_host_end_cleanup(struct compute_host_session *s)
 {
  if(!s || !s->freed || !s->vm_destroyed || s->head || s->gpu.hw.wedged)return -EBUSY;
@@ -742,6 +778,7 @@ static u64 translate(struct opengpu_vm *vm,u32 va,u32 *flags)
  assert(leaf&1);*flags=leaf&0x3ff;return ((u64)(leaf>>10)<<12)|(va&4095);}
 #include "compute_host_test_profile.inc"
 static int test_fail_phase,test_bad_kind;
+static bool test_failed_image_receipts;
 static bool test_failure_injected;
 static void compute_host_test_cleanup_peer(struct opengpu_device *gpu,const char *directory,unsigned sequence)
 {
@@ -759,6 +796,7 @@ static void compute_host_test_cleanup_peer(struct opengpu_device *gpu,const char
 int main(int argc,char **argv)
 {
  assert(argc==2 || argc==4);
+ test_failed_image_receipts=getenv("OPENGPU_COMPUTE_HOST_TEST_FAILED_IMAGES")!=NULL;
  assert(!unsetenv("OPENGPU_COMPUTE_HOST_TIMEOUT") && compute_host_timeout_seconds()==300);
  assert(!setenv("OPENGPU_COMPUTE_HOST_TIMEOUT","3600",1) && compute_host_timeout_seconds()==3600);
  assert(!setenv("OPENGPU_COMPUTE_HOST_TIMEOUT","604800",1) && compute_host_timeout_seconds()==604800);

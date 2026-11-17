@@ -57,9 +57,14 @@ struct compute_host_retired_receipt {
 int compute_host_capture(struct compute_host_session *,const char *path,uint64_t budget,uint32_t hold);
 int compute_host_drain_held(struct compute_host_session *,const struct compute_host_held_receipt *,const char *retire_trace);
 int compute_host_observe_retired(struct compute_host_session *,const struct compute_host_retired_receipt *);
+/* Distinct execution-failed path. Only an exact opcode-0 execution-failure
+ * receipt may signal an EIO fence; ordinary success entry points reject it. */
+int compute_host_drain_failed(struct compute_host_session *,const struct compute_host_held_receipt *,const char *retire_trace);
+int compute_host_observe_failed_retired(struct compute_host_session *,const struct compute_host_retired_receipt *);
 /* Separate explicit all-byte-oracle authorization, not a completion receipt. */
 int compute_host_begin_cleanup(struct compute_host_session *,const char *session_directory);
 int compute_host_finish_observed(struct compute_host_session *);
+int compute_host_finish_failed_observed(struct compute_host_session *);
 int compute_host_end_cleanup(struct compute_host_session *);
 int compute_host_export_memory(struct compute_host_session *,const char *path);
 int compute_host_destroy(struct compute_host_session *);

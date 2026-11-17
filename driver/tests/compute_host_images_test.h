@@ -19,12 +19,53 @@ static void test_image_retire(struct compute_host_session *s,const char *directo
   .completion=0x8000u|s->gpu.hw.unified_command_id,.legacy_status=0,
   .status=GPU_UCMD_STATUS_COMPLETION|GPU_UCMD_STATUS_VM_BUSY,
   .irq=GPU_IRQ_ENABLE|GPU_IRQ_PENDING,.irq_asserted=1};
- assert(!compute_host_drain_held(s,&held,path));
+ if(test_failed_image_receipts){
+  struct compute_host_held_receipt success=held;
+  assert(compute_host_drain_failed(s,&success,path)==-EINVAL && !dma_fence_is_signaled(s->hardware));
+  held.completion=s->gpu.hw.unified_command_id|(GPU_UCMD_KERNEL_EXECUTION_FAILED<<11);
+  assert(compute_host_drain_held(s,&held,path)==-EINVAL && !dma_fence_is_signaled(s->hardware));
+  for(unsigned bad=0;bad<10;bad++){
+   struct compute_host_held_receipt wrong=held;
+   if(bad==0)wrong.command_id^=1;
+   if(bad==1)wrong.completion^=1;
+   if(bad==2)wrong.completion|=1u<<8;
+   if(bad==3)wrong.completion|=1u<<15;
+   if(bad==4)wrong.completion|=1u<<31;
+   if(bad==5)wrong.processed_bytes=1;
+   if(bad==6)wrong.legacy_status=1;
+   if(bad==7)wrong.status|=GPU_UCMD_STATUS_RESET_BUSY;
+   if(bad==8)wrong.irq=GPU_IRQ_ENABLE;
+   if(bad==9)wrong.irq_asserted=0;
+   assert(compute_host_drain_failed(s,&wrong,path)==-EINVAL && !dma_fence_is_signaled(s->hardware));
+  }
+  assert(!compute_host_drain_failed(s,&held,path) && s->hardware->error==-EIO);
+  const struct opengpu_fault_snapshot *fault=&s->gpu.hw.last_fault;
+  assert(fault->sequence && fault->error==-EIO && fault->flags==(OPENGPU_FAULT_VALID|OPENGPU_FAULT_COMPLETION_ERROR) &&
+   fault->command_id==held.command_id && fault->expected_command_id==held.command_id &&
+   fault->opcode==GPU_UCMD_OP_KERNEL && fault->expected_opcode==GPU_UCMD_OP_KERNEL &&
+   fault->status==GPU_UCMD_KERNEL_EXECUTION_FAILED && !fault->bytes_processed);
+ }else assert(!compute_host_drain_held(s,&held,path));
  struct compute_host_retired_receipt retired={.held=held,.status=GPU_UCMD_STATUS_READY,
   .irq=GPU_IRQ_ENABLE,.external_drained=1};
- assert(!compute_host_observe_retired(s,&retired));
+ if(test_failed_image_receipts){
+  assert(compute_host_observe_retired(s,&retired)==-EINVAL && !s->observed);
+  struct compute_host_retired_receipt wrong=retired;wrong.external_drained=0;
+  assert(compute_host_observe_failed_retired(s,&wrong)==-EINVAL && !s->observed);
+  wrong=retired;wrong.held.completion^=1;
+  assert(compute_host_observe_failed_retired(s,&wrong)==-EINVAL && !s->observed);
+  assert(!compute_host_observe_failed_retired(s,&retired) && s->head->s_fence->finished.error==-EIO);
+ }else{
+  assert(compute_host_observe_failed_retired(s,&retired)==-EINVAL && !s->observed);
+  assert(!compute_host_observe_retired(s,&retired));
+ }
  assert(!compute_host_begin_cleanup(s,directory));
- int cleanup=compute_host_finish_observed(s);
+ if(test_failed_image_receipts){
+  assert(compute_host_finish_observed(s)==-EINVAL && !s->freed && s->head);
+  s->hardware->error=0;
+  assert(compute_host_finish_failed_observed(s)==-EINVAL && !s->freed && s->head);
+  s->hardware->error=-EIO;
+ }else assert(compute_host_finish_failed_observed(s)==-EINVAL && !s->freed && s->head);
+ int cleanup=test_failed_image_receipts?compute_host_finish_failed_observed(s):compute_host_finish_observed(s);
  if(test_fail_phase){
   assert(test_fail_phase==1 && test_failure_injected && cleanup<0 && s->gpu.hw.wedged);
   struct opengpu_sched_job *job=opengpu_sched_job_from_base(s->head);assert(job && job->image_records.cpu);
@@ -170,5 +211,7 @@ static void test_compute_host_images(const char *parent)
  }
  assert(cases==208);
  test_image_capture_budget();
- puts("typed image CPU transport: 208 original-resource/permission/pitch/layer byte-guard cases PASS (no GPU execution)");
+ puts(test_failed_image_receipts?
+  "typed image failed receipt: 208 actual IRQ/error-fence/fault-record/cleanup and success-path rejection cases PASS (CPU transport only)":
+  "typed image CPU transport: 208 original-resource/permission/pitch/layer byte-guard cases PASS (no GPU execution)");
 }

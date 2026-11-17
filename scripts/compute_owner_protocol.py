@@ -124,6 +124,42 @@ def held_bytes(value):
     return b'OGCMH001' + held_payload(value)
 
 
+def failed_held_payload(value):
+    """A distinct opcode-0 execution-failed observation; never a success."""
+    required_flags(value, dict(schema='opengpu-compute-owner-failed-held-v1', phase='held', record=0,
+        sourceQualificationRequired=True, heldCompletionDrained=True, readOnlyGuards=True,
+        independentBytesRequired=True, resetCount=1, clockQualified=False, fpsQualified=False))
+    command=uint(value.get('commandId'))
+    completion,processed=uint(value.get('completion')),uint(value.get('processedBytes'),64)
+    legacy,status,irq=(uint(value.get(key)) for key in ('heldLegacyStatus','heldStatus','heldIrq'))
+    # GPU_UCMD_KERNEL_EXECUTION_FAILED=1, opcode zero, success bit clear.
+    if not 0<command<256 or completion!=(1<<11)|command or processed or legacy or not status&2 or status&(4|8|16):
+        raise ValueError('wrong failed compute completion or identity')
+    if value.get('heldIrqAsserted') is not True or irq!=3:
+        raise ValueError('failed held completion IRQ required')
+    if 'gnx' in value or 'retiredStatus' in value or 'retiredIrq' in value:
+        raise ValueError('native or premature retired observation in failed held phase')
+    return struct.pack('<IIQIIII',command,completion,processed,legacy,status,irq,1)
+
+
+def failed_held_bytes(value):
+    return b'OGCFH001'+failed_held_payload(value)
+
+
+def failed_retired_bytes(value,held):
+    required_flags(value,dict(schema='opengpu-compute-owner-failed-retired-v1',phase='retired',record=0,
+        sourceQualificationRequired=True,externalDrained=True,independentBytesRequired=True,
+        resetCount=1,clockQualified=False,fpsQualified=False))
+    payload=failed_held_payload(held)
+    for key in ('commandId','completion','processedBytes','heldLegacyStatus','heldStatus','heldIrq','heldIrqAsserted'):
+        if type(value.get(key)) is not type(held.get(key)) or value[key]!=held[key]:
+            raise ValueError('failed retirement changed the held receipt')
+    status,irq=uint(value.get('retiredStatus')),uint(value.get('retiredIrq'))
+    if status!=1 or irq!=1 or value.get('retiredIrqAsserted') is not False:
+        raise ValueError('failed compute retirement must be drained and idle')
+    return b'OGCFR001'+payload+struct.pack('<IIII',status,irq,0,1)
+
+
 def retired_bytes(value, held):
     required_flags(value, dict(schema='opengpu-compute-owner-retired-v1', phase='retired', record=0,
         sourceQualificationRequired=True, externalDrained=True, independentBytesRequired=True,
