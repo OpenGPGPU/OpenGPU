@@ -21,7 +21,7 @@ resource capacities or the 2-CU/640×480/60-FPS product target.
 
 ## Gallium typed storage and load/store lowering
 
-The next source phase adds private, image-only linear allocations for the
+Gallium provides private, image-only linear allocations for the
 thirteen native image formats and 2D, 2D-array, cube and 3D targets. Checked
 mip layouts retain original storage formats, 64-byte row alignment and explicit
 plane pitches. The existing 128-MiB backing-window bound applies to the complete
@@ -50,8 +50,8 @@ These checks execute no image shader on a GPU or DUT.
 This phase accepts only `PIPE_BIND_SHADER_IMAGE` for the new nonbuffer layouts.
 Combined sampler/render bindings, imported/exported typed storage and nonbuffer
 `imageSize` remain unsupported by this path. Existing render
-layouts and driver/RTL capacities are unchanged. Real source-bound image
-execution and its boundary/fault/cancel/reset oracles remain P08 work.
+layouts and driver/RTL capacities are unchanged. The actual execution results
+and remaining P08 lifecycle limits are documented below.
 
 ## Integer image-atomic compiler admission
 
@@ -252,8 +252,9 @@ actual PTE revocation, TLB/context cleanup ACK and final source checks pass in
 every case. Each case uses its own fresh DUT reset and original uploaded RAM;
 this run establishes neither cross-command coherence nor same-DUT reuse.
 
-The fifteen coordinate-boundary recipes and actual image permission/source
-fault, cancellation/reset/drain and healthy reuse remain pending. This result
+Coordinate-boundary and source-read fault results appear below. Actual image
+permission faults, cancellation/reset/drain and healthy reuse retain separate
+acceptance gates. This atomic result
 does not close P08, establish complete resource combinations, or qualify
 product clock/FPS. The formal accepted count remains 7/40.
 
@@ -307,8 +308,23 @@ the same two selected mip planes. Only R32F exchange cases require the distinct
 qualified float factory. Register and shader-word limits are unchanged. The
 100-image CPU matrix above includes all fifteen recipes; it establishes
 original compilation, production admission and strict input/oracle binding,
-with no DUT shader execution. Their live execution and the separate
-fault/cancel/reset/drain/reuse gates remain required.
+with no DUT shader execution. The separate fault/cancel/reset/drain/reuse gates
+remain required.
+
+All fifteen original coordinate-boundary recipes now pass actual execution
+through Mesa, production Linux ioctls and the complete assertion-enabled float
+DUT. The execution source tree exactly matches commit
+`66848f6ba3b3a4e631d9c04ddb634867582be0cc`; source and model remain fixed during
+the matrix. Every case passes the independent returned-value/final-image
+oracle, including both valid endpoints, fourteen invalid accesses, zero invalid
+load/atomic results and no invalid writes. All other physical bytes, held and
+retired receipts, original IRQ/drain/POP, actual PTE/context cleanup and final
+source checks pass under the 4-GiB/900-second per-case guard.
+
+Each case uses a fresh execution DUT/reset and original RAM. These results do
+not establish cross-command coherence, continuous recovery or product
+clock/FPS. Every qualifier removes its private producer build, capture,
+container and returned memory after verification. P08 remains open at 7/40.
 
 ```sh
 PYTHONPATH=scripts python3 -B -m unittest test_compute_image_source \
@@ -317,8 +333,9 @@ PYTHONPATH=scripts python3 -B -c \
   'from compute_image_cases import IMAGE_BOUNDARY_CASES; print(*IMAGE_BOUNDARY_CASES, sep="\n")'
 ```
 
-Use each listed case with the guarded live command below and a freshly bound
-float-factory compute executor. These are bounded texel accesses, not rendered
+Use each listed case with the guarded live command in the atomic execution
+section and a freshly bound float-factory compute executor. These are bounded
+texel accesses, not rendered
 frames; supported hardware dimensions and the 640×480 product target remain
 unchanged.
 
@@ -478,6 +495,9 @@ prior traffic and new external work during a reused resource probe. The
 canonical float Linux transport also passes its 208 healthy and 208 failed
 image cases and bad-ACK retention checks. These CPU checks do not establish
 actual recovery.
+Run the protocol suite above and reproduce the sanitizer guards with
+`OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_compute_owner.py` and
+`OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_owner.py`.
 After committing and freshly binding these sources, reproduce the actual pair
 with the bounded atomic qualifier command above, selecting
 `--case image-atomic-buffer-r32f --image-source-recovery`. Actual continuous
@@ -553,8 +573,9 @@ closure. The existing storage/uniform/counter transport and cleanup checks pass.
 These are CPU OS/MMIO transport fixtures, including CPU completion/cleanup peers.
 They execute no shader and create no DUT qualification. The separate seventy
 load/store and fifteen atomic complete-host runs above establish only their
-stated source snapshots and scopes. P08 remains incomplete: actual boundaries,
-permission/source faults, cancellation/reset/drain and healthy reuse remain open. Complete resource
+stated source snapshots and scopes. Boundary and source-read fault results
+also appear above. P08 remains incomplete: permission faults,
+cancellation/reset/drain and healthy reuse remain open. Complete resource
 combinations, cross-command coherence and product clock/FPS keep their own gates.
 Existing executor qualifications cannot be relabeled for the changed source.
 
@@ -610,8 +631,8 @@ For later actual execution, freshly qualify the software executor against these
 producer/checker sources, then use `qualify_compute_owner.py --case CASE` for
 each name in `compute_image_cases.IMAGE_CASES`. The existing executor/Mesa/tool
 arguments and complete-host cleanup protocol are unchanged. Matrix capture flags
-require `--capture-only`; they cannot launch live qualification. This document
-records no typed-image DUT result.
+require `--capture-only`; they cannot launch live qualification. CPU matrix
+capture does not itself establish a typed-image DUT result.
 
 For the typed compiler and callbacks, use the same pinned Mesa/DRM container
 environment and new private output directories. Remove those directories after
