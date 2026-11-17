@@ -156,10 +156,10 @@ cross-factory captures/receipts and rehashed model/wrapper substitutions remain
 rejected. All 87 focused Python/CPU checks pass, including five canonical C++
 factory variants and 208 typed-view transport cases on each 112-word profile.
 
-All 85 original Mesa image recipes and eleven counter recipes pass fresh
+All 100 original Mesa image recipes and eleven counter recipes pass fresh
 ASan/UBSan CPU captures under the explicitly CPU-only float-stage profile,
 the source-selected canonical C++ parser, strict qualified READY and rejection
-of initial uploads as GPU results. The image checks include 9834 rejections,
+of initial uploads as GPU results. The image checks include 11729 rejections,
 including a wrong qualified owner for every case. All 8102 external and 169
 producer/checker inputs remain unchanged. Ended captures, builds and containers
 are removed. These checks execute no shader on a DUT; full source-bound atomic
@@ -229,7 +229,46 @@ limit are unchanged. A regression consumes 24 components while preserving live
 XYZ/value operands through an aliased exchange destination. It passes ASan/UBSan
 alongside 160 integer and twenty raw float target/alias programs, four immediate
 boundaries, 65 load/store programs and 52 mappings. All 85 original single-atomic
-Mesa programs and eighteen focused source/qualification tests also pass.
+Mesa programs also pass. Twenty-seven focused image/controller/oracle/qualification
+checks pass with the coordinate-boundary additions below.
+
+## Original coordinate-boundary recipes
+
+Fifteen additional recipes cover buffer, 2D, array, cube and 3D images: five
+R32UI load/store programs and ten R32UI/R32F exchange programs. Each invocation
+accesses an upper coordinate and that coordinate minus one. Across eight
+invocations only the first and last exposed texels are valid, once each;
+fourteen coordinates include negative values and exact dimension/layer limits.
+Valid accesses never alias across lanes or workgroups. The original 85 recipe
+identities and ESSL bytes remain unchanged.
+
+The independent oracle expects four zero channels for invalid loads and zero
+old words for invalid atomics, with no invalid store/atomic writes. It checks
+both valid endpoints, exact exchange words, copied destination texels and all
+other physical bytes. This distinguishes valid R32UI's default alpha of one
+from an invalid load's all-zero result. Initial-memory unit checks cover the
+complete expected ranges and holes without constructing returned GPU memory.
+
+The recipes retain sparse API bindings, original mip/pitch/layer grants and
+the buffer view's three incomplete trailing bytes. Both volume views expose
+the same two selected mip planes. Only R32F exchange cases require the distinct
+qualified float factory. Register and shader-word limits are unchanged. The
+100-image CPU matrix above includes all fifteen recipes; it establishes
+original compilation, production admission and strict input/oracle binding,
+with no DUT shader execution. Their live execution and the separate
+fault/cancel/reset/drain/reuse gates remain required.
+
+```sh
+PYTHONPATH=scripts python3 -B -m unittest test_compute_image_source \
+  test_qualify_compute_owner test_compute_owner_controller test_compute_owner_oracle
+PYTHONPATH=scripts python3 -B -c \
+  'from compute_image_cases import IMAGE_BOUNDARY_CASES; print(*IMAGE_BOUNDARY_CASES, sep="\n")'
+```
+
+Use each listed case with the guarded live command below and a freshly bound
+float-factory compute executor. These are bounded texel accesses, not rendered
+frames; supported hardware dimensions and the 640×480 product target remain
+unchanged.
 
 ## Original load/store source and independent result contract
 
