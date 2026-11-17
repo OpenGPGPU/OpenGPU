@@ -398,8 +398,12 @@ static void profile_probe(int argc,char **argv) {
   require(no_shader.read_addresses==std::vector<uint32_t>({GPU_REG_ID,GPU_REG_CAPABILITIES}),
     "profile probe read shader resources without their advertised capability");
   // Unexpected real external-memory work cannot be called profile-only.
-  ControlPeer work(argc,argv,memory,captures);work.reset();Agent busy(memory);
-  ReplayBus<ControlPeer> active(work,busy,1000);rejects([&]{probe_profile(work,busy,active);});
+  for(bool reused:{false,true}) {
+    ControlPeer work(argc,argv,memory,captures);work.reset();Agent busy(memory);
+    const auto before=busy.traffic;
+    ReplayBus<ControlPeer> active(work,busy,1000);
+    rejects([&]{probe_profile(work,busy,active,false,OwnerFactory::v1,reused?&before:nullptr);});
+  }
 
   const std::array<Command,5> transports{{{0x494,0x47544d01},{0x43c,0x47534d01},
     {0x3fc,0x47494d01},{0x4bc,0x47414d01},{0x460,0x47554d01}}};

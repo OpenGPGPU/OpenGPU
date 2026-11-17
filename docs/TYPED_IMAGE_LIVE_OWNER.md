@@ -472,7 +472,12 @@ After cleanup, another check permits only original valid PTE words to become
 zero and requires every original private translation to be revoked. Both
 source closures and original inputs remain checked across the pair.
 
-CPU protocol, allocator and oracle checks do not establish actual recovery.
+All 44 Python protocol/oracle cases pass. All five fixed native variants and
+the native-owner guards pass with ASan/UBSan, including rejection of mismatched
+prior traffic and new external work during a reused resource probe. The
+canonical float Linux transport also passes its 208 healthy and 208 failed
+image cases and bad-ACK retention checks. These CPU checks do not establish
+actual recovery.
 After committing and freshly binding these sources, reproduce the actual pair
 with the bounded atomic qualifier command above, selecting
 `--case image-atomic-buffer-r32f --image-source-recovery`. Actual continuous

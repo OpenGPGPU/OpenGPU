@@ -210,6 +210,8 @@ def exchange_recovery(args,commands,directory,executor,env,qualified,qualified_p
                     atomic(local/'FINAL_RESPONSE',b'OGCMOK01\x01\x00\x00\x00')
                     require(bridge.wait(timeout=args.timeout)==0,'original recovery producer rejected actual cleanup')
                     bridge=None
+                    print('image recovery verified round=%d commandId=%d cycles=%d..%d retainedReadFaults=%d'%(
+                        index,done['commandId'],done['startCycle'],done['endCycle'],done['physicalReadFaults']),flush=True)
     except BaseException:
         for local in directory.glob('round-*'):
             path=local/'bridge.log'
