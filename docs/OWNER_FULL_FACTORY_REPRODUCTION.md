@@ -1,9 +1,11 @@
 # Complete owner factory qualification
 
-The complete factory's fresh compilation, RTL emission, structural audit and
-assertion-enabled Verilator C++ generation and native model compilation have
-passed. Original executor builds and actual discovery probes remain pending;
-P04 is not closed by model compilation alone.
+The complete factory's fresh compilation, RTL emission, structural audit,
+assertion-enabled Verilator model, four original executors and three actual
+discovery probes passed P04's local binding acceptance. The protected merge of
+[PR #847](https://github.com/OpenGPGPU/OpenGPU/pull/847) closes P04, following
+the source deliveries in [#845](https://github.com/OpenGPGPU/OpenGPU/pull/845)
+and [#846](https://github.com/OpenGPGPU/OpenGPU/pull/846).
 
 P04 binds the complete `OwnerResourceProfile.sampleStage` factory to fresh RTL,
 its assertion-enabled model, original executors and actual MMIO discovery.
@@ -97,11 +99,26 @@ seconds. Observed peak charged process-tree memory was 19,839,844,352 bytes,
 under the 24 GiB limit. Complete model archives, native runtime objects,
 generated-source identities and original source/tool inputs passed validation.
 
-All four original driver translation units compiled successfully against the
-complete generated model's real headers with `-O1`. Their actual include
-dependencies and original source/checker closures were checked before and after
-compilation. This verifies the source interface; model archives, linked
-executables and the three actual probes retain their separate acceptance gates.
+All four original executors compiled and linked successfully against the same
+complete model: native-sample, native-sample-graphics, compute and
+framebuffer-blit-sample. The actual compiler dependencies, original source and
+checker closures, model/runtime archives, compiler/SDK/linker identities, exact
+commands and executable hashes passed the original executor checker.
+
+All three original probes ran the real DUT and passed their independent
+protocol validators:
+
+| Original executor | Discovery words | Auxiliary registers | Probe time |
+|---|---:|---:|---:|
+| native-sample | 112 | 5 | 15.186 s |
+| native-sample-graphics | 112 | 5 | 15.919 s |
+| compute | 112 | 10 | 16.577 s |
+
+Each observed one reset, the exact complete sample factory, idle status, clear
+IRQ and no external memory work. Peak charged probe memory was 322,207,744
+bytes. All probes exited zero with proven consumer cleanup and unchanged
+source/tool/model/binary bindings. Shader/API execution, resource coexistence,
+clock and FPS retain their later acceptance gates.
 
 The original simulation advances its real VerilatedContext using `timeInc()`.
 The backend supplies the legacy initial-zero callback required by the compiled
