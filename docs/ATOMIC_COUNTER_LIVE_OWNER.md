@@ -67,25 +67,32 @@ fail. Every other counter, original allocation byte, SSBO tail, source, argument
 code, descriptor and PTE byte must remain unchanged. Initial output buffers are
 checked for precomputation before accepting any result.
 
-## Input qualification and local result
+## Actual complete-host execution (P07)
 
-The nine original static/dynamic operation recipes passed their complete actual
-lifecycles on the full112 two-CU, 16-lane/eight-warp host using the source
-qualified in PR #860. Each active case used a separate reset and its real
-Mesa/Linux/GEM owner. All returned values/final counters, every byte guard,
-retirement, PTE/shootdown/context cleanup, producer/executor zero exit and
-post-execution source/tool/model checks passed; consumer cleanup was proven.
-All 178 qualified source inputs matched that delivery. The nine bounded runs
-totalled 1647.784 seconds including fresh CPU production and validation; maximum
-host process-tree RSS was 333,824,000 bytes. Each Linux producer separately
-used 512 MiB memory/total memory-plus-swap and one CPU. These are not shader-only
-timing, complete process/VM memory, clock or FPS measurements.
+All eleven original scalar, coexistence and static/dynamic operation recipes
+passed their complete actual lifecycles on the full112 two-CU,
+16-lane/eight-warp host. The software executor was freshly bound to the complete
+source delivered in [PR #861](https://github.com/OpenGPGPU/OpenGPU/pull/861);
+all 178 qualified source inputs matched the result delivery, and the unchanged
+hardware model retained its original qualification. All nine operation recipes
+were rerun with this final source alongside scalar and coexistence.
 
-The scalar/coexistence source addition changes producer/checker identities.
-Its full eleven-case actual-DUT qualification requires a newly bound software
-executor, including the nine operation regressions. P07 is not complete until
-that final corpus passes. Verified unchanged hardware model inputs may be reused;
-old executor qualifications cannot be relabeled for the new source.
+Each case used a separate active-DUT reset and its real Mesa/Linux/GEM owner.
+All independent returned values/final counters, every byte guard, actual
+held/retired receipts, PTE/shootdown/context cleanup, producer/executor zero
+exit and post-execution source/tool/model checks passed. Process/container
+cleanup was proven for every case. This closes P07's original eleven-recipe
+counter corpus; it does not establish a same-RAM, no-reset multi-command corpus.
+
+The eleven bounded runs totalled 2042.258 seconds including fresh CPU production
+and validation; maximum host process-tree RSS was 338,149,376 bytes. Each Linux
+producer separately used 512 MiB memory and total memory-plus-swap and one CPU;
+its VM memory is outside the host process-tree RSS. These are not shader-only
+timing, total host-plus-VM memory, clock or FPS measurements. The factory retains
+`fullResourceQualification=false`; complete resource combinations and the
+2-CU, 640×480, 60-FPS product target keep their separate acceptance gates.
+
+## Input qualification and local checks
 
 Compute-specific mandatory checkers and a recursive GPU include closure bind
 all original 21-case producers/oracles as well as the counter additions. Missing
@@ -120,9 +127,8 @@ Final local CPU validation passed:
   Every untouched initial memory was rejected by the result oracle.
 
 These compiler/capture/rejection checks execute no GPU shader and write no GPU
-qualification. The prior nine-case actual result is separate. The final eleven
-cases still require their newly bound full-host run. Image/storage atomics,
-indirect work, cross-domain barriers, full resource-limit combinations and
+qualification; the eleven-case actual full-host result above is separate.
+Image/storage atomics, indirect work, cross-domain barriers, full resource-limit combinations and
 whole-host physical/clock/FPS gates keep their own requirements. Ended containers,
 binaries, captures, input snapshots and temporary reports were removed.
 
@@ -222,19 +228,38 @@ build, the actual-DUT entry reproduces the original Mesa build, live capture,
 independent result verification and retirement/cleanup:
 
 ```sh
-python3 scripts/qualify_compute_owner.py \
+env -u SDKROOT -u CPATH "$MATCHED_PYTHON" -B scripts/run_owner_bounded.py \
+  --memory-mib 8192 --timeout-seconds 7200 -- \
+  "$MATCHED_PYTHON" -B scripts/qualify_compute_owner.py \
   --executor "$OWNER/executors/compute/executor" \
   --executor-qualification "$OWNER/executors/compute/qualification.json" \
   --executor-checker "$SOURCE/scripts/prepare_owner_executor.py" \
   --executor-checker-python "$MATCHED_PYTHON" \
-  --case counter-scalar
+  --case counter-scalar --timeout 3600
 ```
 
-Select `counter-coexist` for the original four-image program, or each name in
-`scripts/compute_owner_cases.py::COUNTER_CASES` for the complete eleven-case run.
-The CPU capture matrix flag remains CPU-only and cannot qualify DUT results.
+Select each of the following cases with the same qualified executor for the
+complete eleven-case run:
 
-Preserve the generation-matched FlashSim/CIRCT environment. This command refuses
+```text
+counter-scalar
+counter-coexist
+counter-increment
+counter-read
+counter-decrement
+counter-dynamic-increment
+counter-dynamic-read
+counter-dynamic-decrement
+counter-dynamic-all-increment
+counter-dynamic-all-read
+counter-dynamic-all-decrement
+```
+
+These are exactly `scripts/compute_owner_cases.py::COUNTER_CASES`. The CPU
+capture matrix flag remains CPU-only and cannot qualify DUT results.
+
+Preserve the generation-matched FlashSim/CIRCT environment and Python interpreter
+(Homebrew Python 3.14.7 for this result). This command refuses
 an absent/stale executor qualification before building a producer. It cannot
 succeed using CPU-only captures: it requires actual DUT receipts and returned
 bytes. Do not run it against an older model by changing a manifest/profile label.
