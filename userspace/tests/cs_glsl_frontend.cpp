@@ -113,6 +113,7 @@ struct frontend_program {
     gl_shader_program *program;
     const tgsi_token *tokens;
     unsigned shared_bytes;
+    unsigned image_count, image_bindings[4];
 };
 
 extern "C" void *cs_frontend_compile(const char *path, const char *dump_prefix)
@@ -182,9 +183,14 @@ extern "C" void *cs_frontend_compile(const char *path, const char *dump_prefix)
          * gl_nir_lower_images converts derefs to program-local unit indices. */
         unsigned image = 0;
         nir_foreach_image_variable(var, nir) {
+            const unsigned count = glsl_type_get_image_count(var->type);
+            assert(image + count <= 4);
+            for (unsigned i = 0; i < count; i++)
+                f->image_bindings[image + i] = var->data.binding + i;
             var->data.driver_location = image;
-            image += glsl_type_get_image_count(var->type);
+            image += count;
         }
+        f->image_count = image;
         NIR_PASS_V(nir, gl_nir_lower_images, false);
     }
     nir_validate_shader(nir, "actual GLSL frontend pre-TGSI");
@@ -334,6 +340,13 @@ extern "C" unsigned cs_frontend_storage_binding(void *handle, unsigned native_sl
     auto *program = f->program->_LinkedShaders[MESA_SHADER_COMPUTE]->Program;
     assert(native_slot < program->info.num_ssbos);
     return program->sh.ShaderStorageBlocks[native_slot]->Binding;
+}
+
+extern "C" unsigned cs_frontend_image_binding(void *handle, unsigned native_slot)
+{
+    auto *f = static_cast<frontend_program *>(handle);
+    assert(native_slot < f->image_count);
+    return f->image_bindings[native_slot];
 }
 
 extern "C" void cs_frontend_defaults(void *handle, pipe_context *pipe,

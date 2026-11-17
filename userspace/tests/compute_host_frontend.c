@@ -29,13 +29,14 @@ static struct compute_host_session *session;
 static struct {void *data;uint64_t bytes;unsigned maps,closed;} bos[512];
 static unsigned next_bo=1,next_sync=1,submitted,retired;
 static const char *directory;
-static int capture_only,uniform_case,dynamic_case,address_case,counter_case,counter_dynamic;
+static int capture_only,uniform_case,dynamic_case,address_case,counter_case,counter_dynamic,counter_coexist;
 static unsigned dynamic_operation,dynamic_signed;
 static unsigned address_kind,counter_operation,counter_index;
 static unsigned counter_offset=4080,counter_count=8;
 static const char *counter_name;
 static unsigned host_timeout_seconds;
 static unsigned output_handles[4],uniform_handles[12],counter_handle,counter_storage_bindings[4],index_uniform_handle;
+static unsigned image_handles[4],counter_image_bindings[4];
 static struct drm_opengpu_compute_counter_source_resources accepted_counter;
 static struct drm_opengpu_compute_uniform_resources accepted_uniforms;
 static void write_oracle(void);
@@ -147,6 +148,15 @@ static void write_oracle(void)
   source_window(f,counter_handle,counter_offset,counter_count*4,0);fputs(",\"outputs\":[",f);
   for(unsigned i=0;i<4;i++){if(i)fputc(',',f);source_window(f,output_handles[i],0,8192,i);}
   fprintf(f,"],\"storageBindings\":[%u,%u,%u,%u]",counter_storage_bindings[0],counter_storage_bindings[1],counter_storage_bindings[2],counter_storage_bindings[3]);
+  if(counter_coexist){
+   assert(snap.images && snap.image_bytes==1024 && snap.image_root &&
+    accepted_counter.resources.resources.resource_flags==(OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE|OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES));
+   fputs(",\"images\":[",f);
+   for(unsigned i=0;i<4;i++){if(i)fputc(',',f);source_window(f,image_handles[i],0,512,i);}
+   fprintf(f,"],\"imageBindings\":[%u,%u,%u,%u],\"imageRoot\":%u,\"imagePhysical\":%llu,\"imageBytes\":%llu",
+    counter_image_bindings[0],counter_image_bindings[1],counter_image_bindings[2],counter_image_bindings[3],snap.image_root,
+    (unsigned long long)snap.image_physical,(unsigned long long)snap.image_bytes);
+  }
   if(counter_dynamic){
    assert(accepted_counter.resources.active_mask==1 && !accepted_counter.resources.defaults.handle &&
     accepted_counter.resources.blocks[0].handle==index_uniform_handle && accepted_counter.resources.blocks[0].bytes==16);
@@ -186,6 +196,7 @@ int main(int argc,char **argv)
   "counter-dynamic-all-increment","counter-dynamic-all-read","counter-dynamic-all-decrement"};
  for(unsigned i=0;i<9;i++)if(!strcmp(argv[4],counter_names[i])){counter_case=1;counter_operation=i%3;counter_dynamic=i>=3;counter_index=i>=6?0:i>=3?4:7;counter_name=counter_names[i];}
  if(!strcmp(argv[4],"counter-scalar")){counter_case=1;counter_index=0;counter_offset=8188;counter_count=1;counter_name="counter-scalar";}
+ if(!strcmp(argv[4],"counter-coexist")){counter_case=counter_coexist=1;counter_index=7;counter_name="counter-coexist";}
  for(unsigned variant=0;variant<16;variant++){
   const unsigned signed_operations[]={0,1,2,3,4,9};unsigned op=variant<10?variant:signed_operations[variant-10];
   char name[64];assert(snprintf(name,sizeof(name),variant<10?"shared-dynamic-%u":"shared-dynamic-i-%u",op)>0);
@@ -217,6 +228,23 @@ int main(int argc,char **argv)
   uint32_t *data=pipe_opengpu_resource_map(opengpu_resource(output[binding])->gpu);for(unsigned i=0;i<2048;i++)data[i]=0xdeadbeefu;}
  cs_frontend_storage(frontend,p,output);
  if(counter_case)for(unsigned i=0;i<4;i++)counter_storage_bindings[i]=cs_frontend_storage_binding(frontend,i);
+ if(counter_coexist){
+  struct pipe_resource *images[4];struct pipe_image_view views[4]={0};
+  for(unsigned i=0;i<4;i++){
+   struct pipe_resource image={.target=PIPE_BUFFER,.format=PIPE_FORMAT_R32_UINT,
+    .width0=4096,.height0=1,.depth0=1,.array_size=1,.bind=PIPE_BIND_SHADER_IMAGE|PIPE_BIND_SHADER_BUFFER};
+   images[i]=s->resource_create(s,&image);assert(images[i]);
+   image_handles[i]=pipe_opengpu_resource_handle(opengpu_resource(images[i])->gpu);
+   memset(pipe_opengpu_resource_map(opengpu_resource(images[i])->gpu),0x69,4096);
+  }
+  for(unsigned native=0;native<4;native++){
+   unsigned api=cs_frontend_image_binding(frontend,native);assert(api<4);counter_image_bindings[native]=api;
+   views[native]=(struct pipe_image_view){.resource=images[api],.format=PIPE_FORMAT_R32_UINT,
+    .access=PIPE_IMAGE_ACCESS_WRITE,.shader_access=PIPE_IMAGE_ACCESS_WRITE};
+   views[native].u.buf.size=512;
+  }
+  p->set_shader_images(p,PIPE_SHADER_COMPUTE,0,4,0,views);
+ }
  struct pipe_resource *ub[36]={0};unsigned offsets[36]={0},sizes[36]={0};
  if(uniform_case){
   assert(cs_frontend_default_components(frontend)==1024);uint32_t defaults[1024];

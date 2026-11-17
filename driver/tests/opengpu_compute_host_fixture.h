@@ -28,12 +28,12 @@ int compute_host_unbind(struct compute_host_session *,uint32_t slot);
 /* Admission only: the real Linux handler snapshots source bytes and retains
  * dependencies. No instruction execution or completion occurs here. */
 struct compute_host_snapshot {
-    const void *code,*storage,*uniforms;
-    uint64_t code_bytes,storage_bytes,uniform_bytes;
-    uint64_t code_physical,storage_physical,uniform_physical;
+    const void *code,*storage,*uniforms,*images;
+    uint64_t code_bytes,storage_bytes,uniform_bytes,image_bytes;
+    uint64_t code_physical,storage_physical,uniform_physical,image_physical;
     uint32_t storage_root,uniform_root,retained_objects,temporary_mappings;
     uint64_t counter_physical,counter_bytes,counter_descriptor_physical,kernarg_physical,kernarg_bytes;
-    uint32_t counter_root,context;
+    uint32_t counter_root,context,image_root;
 };
 int compute_host_submit_counter_source(struct compute_host_session *,const struct drm_opengpu_compute_counter_source_resources *);
 int compute_host_submit_uniforms(struct compute_host_session *,const struct drm_opengpu_compute_uniform_resources *);
