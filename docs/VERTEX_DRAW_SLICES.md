@@ -239,8 +239,8 @@ scalac -J-Xmx128m -J-XX:MaxMetaspaceSize=128m \
   src/main/scala/opengpu/graphics/tessellation/TessellationPatchContext.scala \
   src/test/scala/opengpu/graphics/VertexInputFetcherSpec.scala \
   src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala \
-  src/main/scala/opengpu/system/TessellationVertexPatchSource.scala \
-  src/main/scala/opengpu/system/TessellationVertexPatchSequence.scala \
+  src/main/scala/opengpu/system/tessellation/TessellationVertexPatchSource.scala \
+  src/main/scala/opengpu/system/tessellation/TessellationVertexPatchSequence.scala \
   src/test/scala/opengpu/graphics/TessellationVertexPatchPublisherSpec.scala \
   src/test/scala/opengpu/graphics/TessellationVertexPatchSequenceSpec.scala \
   src/test/scala/opengpu/graphics/TessellationVertexPatchSourceSpec.scala \
