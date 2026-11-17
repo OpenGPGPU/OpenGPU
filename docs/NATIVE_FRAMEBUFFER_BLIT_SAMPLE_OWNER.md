@@ -8,6 +8,38 @@ or assertion layers. Its actual translation unit is
 `native_framebuffer_blit_sample_driver.cpp`; an old96, single-point sample or
 ordinary-graphics executor cannot supply this qualification.
 
+## Actual complete-host execution (P06)
+
+All 43 original caller packets passed on the complete assertion-enabled
+protected112 factory using the compact Verilator `-O1` model. The source
+deliveries in [#854](https://github.com/OpenGPGPU/OpenGPU/pull/854) and
+[#856](https://github.com/OpenGPGPU/OpenGPU/pull/856) supplied rejected-MMIO
+diagnostics and the VM-shootdown teardown barrier; the qualified compact
+backend is delivered by [#857](https://github.com/OpenGPGPU/OpenGPU/pull/857).
+
+The run preserved every original shader, kernarg, view, map and expected byte.
+All 43 freshly captured packets were byte-identical to the original P06
+packets; the 98-file caller/compiler-input closure passed admission and final
+revalidation. Each case passed actual retirement, independent destination
+bytes, read-only/VM guards, publication and context teardown. The source AXI
+read fault and healthy reuse passed, followed by both delayed-response reset
+channels, rejected submit during drain, partial-cancellation bytes, no writes
+after reset acknowledgement, VM revocation and healthy command-ID reuse.
+
+The complete qualifier exited zero in 3137.530 seconds, with peak charged
+process-tree memory of 485,867,520 bytes under an 8 GiB/14600-second guard.
+Source/tool/model/binary and original input identities were rechecked after
+execution. Consumer exit and removal of the managed result directory were
+confirmed; raw results and process logs are not archived.
+
+This is the original bounded caller corpus: 28 distinct 2048-byte shader
+programs, local size 1x1x1 and dispatch grids 2x1x1 or 2x2x1, with small
+4x4 destinations and a 5x3 source in the raw-copy cases. The factory retains
+its complete two-CU capacity. Original Linux MMIO replay, full-resource
+coexistence, six full 640x480 product frames, physical timing and FPS remain
+separate acceptance gates. This result closes P06 when its delivery merges
+through the protected PR checks.
+
 The source-selected wrapper shares the existing blit execution body. All 43
 original caller packets remain mandatory: both filters across sixteen format
 pairs, depth/stencil cases, six raw copy formats and same-GEM copy. Admission
@@ -117,8 +149,8 @@ The old96 eleven-test gate suite passes separately with the host's real Git
 and Clang16; the cached image lacks Git and cannot run its two Git-dependent
 negative checks. No compiler/tool was installed for these checks.
 
-These checks execute no generated DUT and do not prove the blit fault/reset
-lifecycle on hardware. Actual complete112 execution, original Linux trace
+These CPU checks retain their limited scope. The complete112 execution above
+supplies the bounded P06 DUT and fault/reset result; original Linux trace
 qualification, six full 640×480 product frames and physical timing remain open.
 
 ```sh
