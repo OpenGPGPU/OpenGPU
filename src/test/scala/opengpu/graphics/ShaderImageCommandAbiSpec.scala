@@ -13,6 +13,8 @@ class ShaderImageCommandAbiSpec extends AnyFlatSpec {
     assert(ComputeResourceCapabilities.words(profile)(2) == 15)
     assert(ComputeResourceCapabilities.words(profile,imageAvailable=true)(2) == (31 | (1 << 14)))
     assert(ComputeResourceCapabilities.words(profile,imageAvailable=true,imageAtomicAvailable=true)(2) == (543 | (1 << 14)))
+    assert(ComputeResourceCapabilities.words(profile,imageAvailable=true,imageAtomicAvailable=true,
+      imageFloatExchangeAvailable=true)(2) == (543 | (1 << 14) | (1 << 21)))
     assertThrows[IllegalArgumentException] {
       ComputeResourceCapabilities.words(profile,imageAtomicAvailable=true)
     }
