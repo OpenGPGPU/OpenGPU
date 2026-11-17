@@ -81,7 +81,8 @@ class GpuHostAxi(
   tessellationDiscovery: Boolean = false,
   nativeAdvancedDraws: Boolean = false, nativeDescriptorPreflight: Boolean = false,
   nativeProtectedSources: Boolean = false, nativeGeometryTransport: Boolean = false,
-  nativeSampleTransport: Boolean = false
+  nativeSampleTransport: Boolean = false,
+  imageFloatExchangeAvailable: Boolean = false
 ) extends Module {
   require(!nativeSampleTransport || nativeGeometryTransport,
     "GSS1 discovery requires the protected layered geometry transport")
@@ -98,6 +99,7 @@ class GpuHostAxi(
     protectVmState && computeResources.nonEmpty && version>=2),
     "native advanced discovery requires protected native routing and the guaranteed GCR1 block")
   require(!imageAtomicAvailable || imageAvailable, "image atomics require images")
+  require(!imageFloatExchangeAvailable || imageAtomicAvailable, "float image exchange requires image atomics")
   require(!storageAtomicAvailable || storageAvailable, "storage atomics require storage")
   require(!protectVmState || unifiedCommandMmio)
   require(!persistentAttachments || (unifiedCommandMmio && protectVmState))
@@ -632,7 +634,7 @@ class GpuHostAxi(
           ((beatAddr-opengpu.command.ComputeIndirectCapabilities.base.U)>>2)(2,0))
       }
       if(computeResources.nonEmpty)when(targetComputeResources) {
-        rdata := VecInit(ComputeResourceCapabilities.words(computeResources.get,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable,atomicCounterAvailable,imageAtomicAvailable,storageAtomicAvailable,tessellationDiscovery,tessellationDiscovery && transformFeedback,nativeAdvancedDraws,nativeDescriptorPreflight,nativeProtectedSources,nativeGeometryTransport,nativeSampleTransport).map(_.U(32.W)))(
+        rdata := VecInit(ComputeResourceCapabilities.words(computeResources.get,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable,atomicCounterAvailable,imageAtomicAvailable,storageAtomicAvailable,tessellationDiscovery,tessellationDiscovery && transformFeedback,nativeAdvancedDraws,nativeDescriptorPreflight,nativeProtectedSources,nativeGeometryTransport,nativeSampleTransport,imageFloatExchangeAvailable).map(_.U(32.W)))(
           ((beatAddr-ComputeResourceCapabilities.base.U)>>2)(3,0))
       }
       if(nativeVertexInput)when(targetBlendResources) {

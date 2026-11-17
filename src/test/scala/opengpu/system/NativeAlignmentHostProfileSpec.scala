@@ -21,6 +21,10 @@ class NativeAlignmentHostProfileSpec extends AnyFlatSpec {
     val words = p.requiredDiscovery.toMap
     assert(p.requiredDiscovery.size == 72 && words.size == 72)
     assert(words(0x368) == 0x7fff && words(0x36c) == 2)
+    val floating=p.copy(imageFloatExchange=true)
+    assert(floating.requiredDiscovery.toMap.apply(0x368)==(words(0x368)|ComputeResourceCapabilities.imageFloatExchange))
+    assert(floating.requiredDiscovery.filterNot(_._1==0x368)==p.requiredDiscovery.filterNot(_._1==0x368))
+    assert(floating.execution==p.execution && floating.native==p.native && floating.computeUnits==2)
     assert(words(0x160) == BigInt("474e4303",16) && words(0x174) == BigInt("08000800",16))
     for ((base, magic, count) <- Seq((0x340,"47434901",8),(0x240,"47515601",8),
         (0x260,"47464301",8),(0x280,"47515001",8),(0x3a0,"47554301",16))) {
@@ -48,7 +52,7 @@ class NativeAlignmentHostProfileSpec extends AnyFlatSpec {
     val n = NativeBinnedGraphicsConfig(p,f,engines=1,pageBytes=128,writeCredits=2,
       tileSlots=1,pagedCapacity=8,transformFeedback=true,
       payload=Some(ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=1024,owners=2,ports=4)))
-    val profile = NativeAlignmentHostConfig(g,gpu,computeUnits=2,native=n)
+    val profile = NativeAlignmentHostConfig(g,gpu,computeUnits=2,native=n,imageFloatExchange=true)
     val circuit = circt.stage.ChiselStage.elaborate(new NativeAlignmentHostSystemAxi(profile))
     val required = Set("TessellationNativeQuadJobImage", "TessellationNativeThreeDomainJobImage",
       "TessellationHostShaderRouter",

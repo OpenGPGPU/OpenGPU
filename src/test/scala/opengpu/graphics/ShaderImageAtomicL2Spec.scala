@@ -50,11 +50,16 @@ class ImageAtomicL2Harness(config: GpuConfig) extends Module {
 
 class ShaderImageAtomicL2Spec extends AnyFlatSpec {
   behavior of "Image atomic shared L2"
-  it should "serialize a descriptor-backed image atomic with a competing L2 atomic" in {
+  for(floating<-Seq(false,true)) {
+  it should s"serialize a descriptor-backed ${if(floating)"R32F exchange"else"integer atomic"} with a competing L2 atomic" in {
     val config = GpuConfig(lanes = 4, warps = 2)
     simulate(new ImageAtomicL2Harness(config)) { d =>
       WindowRecordTest.zero(d.io); d.reset.poke(true.B); d.clock.step(2); d.reset.poke(false.B)
-      val fmt = TextureImageFormat.id("R32UI"); val control = (fmt << 6) | (1 << 5) | (1 << 3)
+      val fmt = TextureImageFormat.id(if(floating)"R32F"else"R32UI")
+      val control = (fmt << 6) | (1 << 5) | (if(floating)0 else 1 << 3)
+      val imageOperand=if(floating)1 else 3
+      val otherOperand=if(floating)BigInt("7fc12345",16) else BigInt(2)
+      val initialWord=if(floating)BigInt("80000000",16) else BigInt(10)
       val task = d.io.task; task.enabled.poke(true.B); task.stage.poke(GraphicsStage.compute.U)
       task.table.version.poke(1.U); task.table.base.poke(0x8000.U); task.table.limit.poke(0x8400.U)
       task.table.identity.context.poke(7.U); task.table.identity.pass.poke(11.U); task.table.identity.generation.poke(13.U)
@@ -78,12 +83,13 @@ class ShaderImageAtomicL2Spec extends AnyFlatSpec {
         d.io.commit.valid.expect(true.B); d.io.status.expect(0.U)
         d.io.commit.ready.poke(true.B); d.clock.step(); d.io.commit.ready.poke(false.B)
       }
-      parameter(0, 0, control); parameter(1, 0, 0); parameter(2, 3, 0)
-      issue(23, ShaderImageAtomicOperation.add, 5, 0, 0)
+      parameter(0, 0, control); parameter(1, 0, 0); parameter(2, imageOperand, 0)
+      issue(23, if(floating)ShaderImageAtomicOperation.exchange else ShaderImageAtomicOperation.add, 5, 0, 0)
       case class Descriptor(data: BigInt, due: Int)
       case class Lower(id: BigInt, data: BigInt, due: Int)
       val desc = mutable.Queue.empty[Descriptor]; val lower = mutable.Queue.empty[Lower]
-      var memory = (0 until 64).foldLeft(BigInt(0))((v, i) => v | (BigInt(if (i == 8) 10 else if (i >= 8 && i < 12) 0 else 0x5a) << (8 * i)))
+      var memory = (0 until 64).foldLeft(BigInt(0))((v, i) => v | ((if(i>=8 && i<12)
+        (initialWord>>(8*(i-8)))&255 else BigInt(0x5a)) << (8*i)))
       val initial = memory
       var cycle = 0; var lines = 0; var armed = false; var sent = false; var otherDone = false
       var otherOld = BigInt(-1); var reads = 0; var writes = 0
@@ -99,7 +105,8 @@ class ShaderImageAtomicL2Spec extends AnyFlatSpec {
         }
         if (d.io.imageOffer.peek().litToBoolean) armed = true
         d.io.other.valid.poke((armed && !sent).B); d.io.other.bits.address.poke(0x1048.U); d.io.other.bits.warpId.poke(0.U)
-        d.io.other.bits.operation.poke(AtomicMemoryOp.add); d.io.other.bits.operand.poke(2.U)
+        d.io.other.bits.operation.poke(if(floating)AtomicMemoryOp.swap else AtomicMemoryOp.add)
+        d.io.other.bits.operand.poke(otherOperand.U)
         if (armed && !sent && d.io.other.ready.peek().litToBoolean) sent = true
         d.io.otherResult.ready.poke((cycle % 3 != 0).B)
         if (d.io.otherResult.valid.peek().litToBoolean && d.io.otherResult.ready.peek().litToBoolean) {
@@ -125,11 +132,17 @@ class ShaderImageAtomicL2Spec extends AnyFlatSpec {
       }
       d.io.commit.valid.expect(true.B); d.io.status.expect(0.U); d.io.commit.bits.writesVd.expect(true.B)
       val imageOld = d.io.commit.bits.writeback.data(0).peek().litValue
-      assert((imageOld == 10 && otherOld == 13) || (imageOld == 12 && otherOld == 10))
-      val word = (memory >> 64) & BigInt("ffffffff", 16); assert(word == 15)
+      val word = (memory >> 64) & BigInt("ffffffff", 16)
+      if(floating) {
+        assert((imageOld==initialWord && otherOld==imageOperand && word==otherOperand) ||
+          (imageOld==otherOperand && otherOld==initialWord && word==imageOperand))
+      } else {
+        assert((imageOld == 10 && otherOld == 13) || (imageOld == 12 && otherOld == 10));assert(word == 15)
+      }
       val mask = BigInt("ffffffff", 16) << 64; assert((memory & ~mask) == (initial & ~mask))
       assert(lines == 4 && sent && otherDone && reads >= 1 && writes == 2 && desc.isEmpty && lower.isEmpty)
       d.io.commit.ready.poke(true.B); d.clock.step(); d.io.commit.ready.poke(false.B)
     }
+  }
   }
 }

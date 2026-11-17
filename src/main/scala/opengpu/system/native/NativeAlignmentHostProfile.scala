@@ -13,7 +13,8 @@ final case class NativeAlignmentHostConfig(graphics: GraphicsConfig,
     execution: GpuConfig, computeUnits: Int, native: NativeBinnedGraphicsConfig,
     transactionsPerCu: Int = 16, axiDataBytes: Int = 32,
     nativeProtectedSources: Boolean = false, nativeGeometryTransport: Boolean = false,
-    tessellationFragmentImages: Boolean = false, tessellationSampleShading: Boolean = false) {
+    tessellationFragmentImages: Boolean = false, tessellationSampleShading: Boolean = false,
+    imageFloatExchange: Boolean = false) {
   require(computeUnits > 0 && transactionsPerCu >= 16,
     "the integrated resource paths require sixteen CU transaction IDs")
   require(native.transformFeedback, "primitive queries require native feedback ownership")
@@ -50,7 +51,8 @@ final case class NativeAlignmentHostConfig(graphics: GraphicsConfig,
       nativeDescriptorPreflightAvailable = native.descriptorPreflight,
       nativeProtectedSourcesAvailable = nativeProtectedSources,
       nativeGeometryTransportAvailable = nativeGeometryTransport,
-      nativeSampleTransportAvailable = nativeSampleTransport)) ++
+      nativeSampleTransportAvailable = nativeSampleTransport,
+      imageFloatExchangeAvailable = imageFloatExchange)) ++
     block(0x160, NativeBinnedGraphicsCapabilities.words(native, computeUnits, graphics)) ++
     block(ComputeIndirectCapabilities.base, ComputeIndirectCapabilities.words(execution)) ++
     block(NativeVisibilityQueryCapabilities.base, NativeVisibilityQueryCapabilities.words) ++
@@ -108,6 +110,7 @@ class NativeAlignmentHostSystemAxi(profile: NativeAlignmentHostConfig,
     imageAvailable = true, storageAvailable = true, computeUniformAvailable = true,
     computeTextureAvailable = true, atomicCounterAvailable = true,
     imageAtomicAvailable = true, storageAtomicAvailable = true,
+    imageFloatExchangeAvailable = profile.imageFloatExchange,
     nativeFragmentImages = true, tessellationNative = true,
     nativeProtectedSources = profile.nativeProtectedSources,
     nativeGeometryTransport = profile.nativeGeometryTransport,

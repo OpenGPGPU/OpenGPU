@@ -111,13 +111,15 @@ class GpuHostSystemAxi(
   nativeFragmentImages: Boolean = false, imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false,
   nativeProtectedSources: Boolean = false, nativeGeometryTransport: Boolean = false,
   nativeSampleTransport: Boolean = false,
-  tessellationFragmentImages: Boolean = false, tessellationSampleShading: Boolean = false
+  tessellationFragmentImages: Boolean = false, tessellationSampleShading: Boolean = false,
+  imageFloatExchangeAvailable: Boolean = false
 ) extends RawModule {
   require(!tessellationFragmentImages || (tessellationNative && nativeFragmentImages),
     "tessellation fragment images require the actual shared image path")
   require(!tessellationSampleShading || (tessellationNative && nativeSampleTransport),
     "tessellation sample shading requires the actual sample-plane path")
   require(!imageAtomicAvailable || imageAvailable, "image atomics require image execution")
+  require(!imageFloatExchangeAvailable || imageAtomicAvailable, "float image exchange requires image atomic execution")
   require(!storageAtomicAvailable || storageAvailable, "storage atomics require storage execution")
   require(!nativeFragmentImages || (imageAvailable && nativeBinnedGraphics.nonEmpty && sharedGraphics),
     "native fragment images require an image-enabled shared-CU binned host")
@@ -349,6 +351,7 @@ class GpuHostSystemAxi(
       nativeDescriptorPreflight=nativeBinnedGraphics.exists(_.descriptorPreflight),
       nativeProtectedSources=nativeProtectedSources,nativeGeometryTransport=nativeGeometryTransport,
       nativeSampleTransport=nativeSampleTransport,
+      imageFloatExchangeAvailable=imageFloatExchangeAvailable,
       nativeAdvancedDraws=typedGraphics.exists(_.storage.nativeAdvancedDraws) || nativeBinnedGraphics.exists(_.storage.nativeAdvancedDraws)))
     val system = Module(new GpuSystem(
       gpuConfig,
