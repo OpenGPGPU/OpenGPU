@@ -41,6 +41,7 @@ COMPUTE_CHECKERS = (
     'scripts/owner_resource_contract.py', 'scripts/compute_owner_protocol.py',
     'scripts/compute_owner_controller.py', 'scripts/compute_owner_oracle.py',
     'scripts/compute_owner_cases.py', 'scripts/compute_counter_source.py', 'scripts/compute_owner_inputs.py',
+    'scripts/compute_image_cases.py', 'scripts/compute_image_source.py',
     'scripts/qualify_compute_owner.py', 'scripts/owner_process_lifetime.py',
     'scripts/native_sample_compiler_inputs.py', 'scripts/native_sample_graphics_inputs.py',
     'scripts/native_sample_owner_protocol.py', 'scripts/apply_mesa_uniform_index_patch.py',

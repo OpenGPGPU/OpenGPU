@@ -68,7 +68,7 @@ class Entry(unittest.TestCase):
             qualification=directory/'qualification.json'
             args=argparse.Namespace(executor=executable,executor_qualification=qualification,
                 executor_checker_python=sys.executable,executor_checker=directory/'checker')
-            for case in qualifier.COUNTER_CASES:
+            for case in (*qualifier.COUNTER_CASES,*qualifier.IMAGE_CASES):
                 args.case=case
                 for profile in ('two-cu-vga60-owner-v1',qualifier.COMPUTE_STAGE,*qualifier.FULL_COMPUTE_CONTRACTS):
                     qualification.write_text(json.dumps(dict(schema='opengpu-owner-executor-v1',kind='compute',profile=profile)))
@@ -86,6 +86,16 @@ class Entry(unittest.TestCase):
                 self.assertEqual(result.returncode,2,result.stderr)
                 self.assertIn('requires --case counter-increment --capture-only',result.stderr)
                 self.assertFalse(output.exists())
+            for extra in ([],['--capture-only','--case','image-2d-r32ui']):
+                output=directory/'never-created-image'
+                command=[sys.executable,str(ROOT/'scripts/test_gallium_compute_host.py'),
+                    '--build',str(output),'--profile-wire',str(directory/'absent-profile'),
+                    '--session',str(directory/'absent-session'),'--capture-image-matrix',*extra]
+                result=subprocess.run(command,capture_output=True,text=True,
+                    env=dict(__import__('os').environ,PYTHONDONTWRITEBYTECODE='1'))
+                self.assertEqual(result.returncode,2,result.stderr)
+                self.assertIn('requires the first image case and --capture-only',result.stderr)
+                self.assertFalse(output.exists())
 
     def test_fixed_paths_real_producer_and_both_full_sources(self):
         gpu = ROOT
@@ -100,16 +110,17 @@ class Entry(unittest.TestCase):
             self.assertIn('--memory-swap', command)
             self.assertIn('--network=none', command)
             self.assertIn('--read-only', command)
-            expected_memory='512m' if case in qualifier.COUNTER_CASES else '2g'
+            strict=case in (*qualifier.COUNTER_CASES,*qualifier.IMAGE_CASES)
+            expected_memory='512m' if strict else '2g'
             self.assertEqual(command[command.index('--memory')+1],expected_memory)
             self.assertEqual(command[command.index('--memory-swap')+1],expected_memory)
-            self.assertEqual(command[command.index('--cpus')+1],'1' if case in qualifier.COUNTER_CASES else '2')
+            self.assertEqual(command[command.index('--cpus')+1],'1' if strict else '2')
             self.assertIn('OPENGPU_COMPUTE_HOST_TIMEOUT=3600', command)
             self.assertEqual(command[-2:], ['--case', case])
             self.assertNotIn('--capture-only', command)
             self.assertNotIn('OPENGPU_COMPUTE_HOST_TEST_MAIN', ' '.join(command))
             self.assertIn('{ipc}/profile.bin', command)
-            self.assertIn('scripts/compute_owner_inputs.py' if case in qualifier.COUNTER_CASES else 'scripts/test_gallium_compute_host.py', command)
+            self.assertIn('scripts/compute_owner_inputs.py' if strict else 'scripts/test_gallium_compute_host.py', command)
             self.assertIn('--sanitize', command)
 
     def test_container_exit_must_be_proven_and_active_inputs_preserved(self):

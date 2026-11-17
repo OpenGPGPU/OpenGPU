@@ -11,6 +11,7 @@ from native_sample_graphics_inputs import (snapshot as base_snapshot, dependency
 from native_sample_compiler_inputs import sha256, MESA_UNITS, MESA_LIBRARIES
 from compute_owner_protocol import strict_json
 from compute_owner_cases import COUNTER_CASES, counter_parameters
+from compute_image_cases import IMAGE_CASES, parameters as image_parameters
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -42,13 +43,18 @@ def guarded(request_path, builder_argv):
     dependencies=dict(bound)
     dependencies[str(paths['ntt'])]=[str(paths['ntt']),AFTER]
     argv=list(builder_argv)
-    require('--case' in argv and argv[argv.index('--case')+1] in COUNTER_CASES and '--sanitize' in argv,
+    require('--case' in argv and argv[argv.index('--case')+1] in (*COUNTER_CASES,*IMAGE_CASES) and '--sanitize' in argv,
             'strict original counter source and sanitized producer required')
     case=argv[argv.index('--case')+1]
-    matrix='--capture-counter-matrix' in argv
+    image_matrix='--capture-image-matrix' in argv
+    counter_matrix='--capture-counter-matrix' in argv
+    require(not (image_matrix and counter_matrix), 'counter/image matrices must remain distinct')
+    matrix=image_matrix or counter_matrix
     require(not matrix or '--capture-only' in argv, 'counter matrix is CPU capture only')
     launched=set()
-    expected_cases=set(COUNTER_CASES if matrix else (case,))
+    require(not image_matrix or case==IMAGE_CASES[0], 'image matrix must start at its first original source')
+    require(not counter_matrix or case==COUNTER_CASES[0], 'counter matrix must start at its first original source')
+    expected_cases=set(IMAGE_CASES if image_matrix else COUNTER_CASES if counter_matrix else (case,))
     out=Path(argv[argv.index('--build')+1]).absolute()
     generated={};seen=set();compiled=False
     # These are all actual host translation units, not the CPU VM fixture.
@@ -95,8 +101,9 @@ def guarded(request_path, builder_argv):
         if command[0]==str(out/'compute_host_frontend'):
             require(seen==units, 'incomplete actual host compiler closure')
             source_case=command[4] if len(command) in (5,6) else None
+            parameters=image_parameters(source_case) if source_case in IMAGE_CASES else counter_parameters(source_case)
             require(source_case in expected_cases and source_case not in launched and
-                    command[3]==str(out/'glsl'/counter_parameters(source_case)['source']),
+                    command[3]==str(out/'glsl'/parameters['source']),
                     'counter producer source/recipe repeated or replaced')
             require(not matrix or command[-1]=='--capture-only', 'counter matrix attempted actual execution')
             launched.add(source_case)

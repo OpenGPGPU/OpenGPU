@@ -125,6 +125,7 @@ python3 scripts/test_qualify_native_sample_owner.py
 python3 scripts/test_native_sample_owner_recipe.py
 python3 scripts/test_compute_owner.py
 python3 scripts/test_compute_counter_source.py
+python3 -B scripts/test_compute_image_source.py
 python3 scripts/test_native_binned_topology_fixture.py
 python3 scripts/test_flashsim_native_adapter.py
 python3 scripts/test_build_native_flashsim.py
