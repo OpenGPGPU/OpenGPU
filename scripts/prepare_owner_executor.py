@@ -48,6 +48,7 @@ COMPUTE_CHECKERS = (
     'scripts/test_gallium_compute_host.py', 'scripts/test_gallium_compute_uniforms.py',
     'scripts/test_gallium_compute_shared.py', 'scripts/test_gallium_atomic_counter.py',
     'scripts/test_gallium_typed_images.py',
+    'scripts/test_gallium_image_atomics.py',
     'scripts/test_compute_host.py', 'scripts/stage_mesa_shared_memory.py',
     'scripts/stage_mesa_buffer_txf_mask.py')
 COMPUTE_PRODUCER_ROOTS = (

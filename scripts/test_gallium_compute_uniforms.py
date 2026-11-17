@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main(control_flow=False, buffer_resources=False, shared_memory=False, memory_barriers=False,
-         storage_atomics=False, texture_namespaces=False, image_ordering=False, atomic_counters=False, shared_publication=False, host_execution=False, graphics_uniforms=False, sample_graphics=False, typed_images=False):
+         storage_atomics=False, texture_namespaces=False, image_ordering=False, atomic_counters=False, shared_publication=False, host_execution=False, graphics_uniforms=False, sample_graphics=False, typed_images=False, image_atomics=False):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--build", type=Path, required=True, help="new private output directory")
     ap.add_argument("--sanitize", action="store_true")
@@ -205,7 +205,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
             "-c", ROOT / "userspace/tests/cs_buffer_kernel.c", "-o", obj], "compile-cs_buffer_kernel")
         objects.append(obj)
     for relative, extra in [
-        ("userspace/tests/compute_host_frontend.c" if host_execution else "userspace/tests/cs_typed_image_frontend.c" if typed_images else "userspace/tests/graphics_sample_flow.c" if sample_graphics else "userspace/tests/graphics_uniform_flow.c" if graphics_uniforms else "userspace/tests/cs_atomic_frontend.c" if storage_atomics else "userspace/tests/cs_barrier_frontend.c" if memory_barriers else "userspace/tests/cs_shared_frontend.c" if shared_memory else "userspace/tests/cs_buffer_flow.c" if buffer_resources else
+        ("userspace/tests/compute_host_frontend.c" if host_execution else "userspace/tests/cs_image_atomic_frontend.c" if image_atomics else "userspace/tests/cs_typed_image_frontend.c" if typed_images else "userspace/tests/graphics_sample_flow.c" if sample_graphics else "userspace/tests/graphics_uniform_flow.c" if graphics_uniforms else "userspace/tests/cs_atomic_frontend.c" if storage_atomics else "userspace/tests/cs_barrier_frontend.c" if memory_barriers else "userspace/tests/cs_shared_frontend.c" if shared_memory else "userspace/tests/cs_buffer_flow.c" if buffer_resources else
          "userspace/tests/cs_control_flow.c" if control_flow else "userspace/tests/cs_uniform_flow.c",
          ["-DOPENGPU_CS_TEXTURE_NAMESPACE"] if texture_namespaces else
          ["-DOPENGPU_CS_IMAGE_ORDERING"] if image_ordering else
@@ -218,7 +218,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         ("userspace/gallium/opengpu_fs_emit.c", []),
         ("userspace/gallium/opengpu_vs_emit.c", []),
         ("userspace/pipe_opengpu.c", primitives), ("userspace/opengpu.c", primitives)]:
-        if (graphics_uniforms or typed_images) and relative == "userspace/tests/cs_graphics_unused_stubs.c":
+        if (graphics_uniforms or typed_images or image_atomics) and relative == "userspace/tests/cs_graphics_unused_stubs.c":
             continue  # These compiler paths link actual Mesa format/surface helpers.
         if native_kernel and relative in ("userspace/tests/graphics_uniform_flow.c", "userspace/tests/graphics_sample_flow.c"):
             extra = extra + ["-DOPENGPU_CS_NATIVE_KERNEL"] + (["-Wno-unused-function"] if sample_graphics else []) + (["-DOPENGPU_NATIVE_MMIO=1"] if active_host else [])
@@ -304,7 +304,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
             input_text="create %s\naddlib %s\nsave\nend\n" % (archive, libraries[4]))
         run(["ar", "r", archive, obj], "replace-only-shared-NTT")
         libraries[4] = archive
-    binary = out / ("compute_host_frontend" if host_execution else "cs_typed_image_frontend" if typed_images else "cs_atomic_frontend" if storage_atomics else "cs_barrier_frontend" if memory_barriers else "cs_shared_frontend" if shared_memory else "cs_buffer_flow" if buffer_resources else "cs_control_flow" if control_flow else "cs_uniform_flow")
+    binary = out / ("compute_host_frontend" if host_execution else "cs_image_atomic_frontend" if image_atomics else "cs_typed_image_frontend" if typed_images else "cs_atomic_frontend" if storage_atomics else "cs_barrier_frontend" if memory_barriers else "cs_shared_frontend" if shared_memory else "cs_buffer_flow" if buffer_resources else "cs_control_flow" if control_flow else "cs_uniform_flow")
     namespace_link = (["-Wl,--wrap=st_finalize_texture",
                        "-Wl,--wrap=st_get_texture_sampler_view_from_stobj"] if texture_namespaces else [])
     run(cxx + san + namespace_link + ["-Wl,--gc-sections", "-Wl,-t,-t", "-Wl,-Map=" + str(out / "link.map")] + objects +
@@ -315,6 +315,9 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     sources.mkdir()
     if host_execution and args.case in IMAGE_CASES:
         from compute_image_cases import write_sources
+        write_sources(sources)
+    elif image_atomics:
+        from test_gallium_image_atomics import write_sources
         write_sources(sources)
     elif typed_images:
         from test_gallium_typed_images import write_sources
@@ -433,7 +436,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         print('Actual Mesa/Linux compute ' + ('CPU capture only' if args.capture_only else 'external-DUT protocol') + ' completed: ' + str(out))
         return
     run([binary, sources] + ([args.profile_wire.resolve(strict=True)] if sample_graphics else []), "actual-acceptance", env)
-    if typed_images:
+    if typed_images or image_atomics:
         print('Real Mesa typed image compiler acceptance PASS (CPU only): ' + str(out))
         return
     if shared_memory:

@@ -135,7 +135,7 @@ struct opengpu_shader {
 
 struct opengpu_compute_state {
     struct opengpu_cs_program program;
-    unsigned image_targets[4];
+    struct opengpu_cs_image_info images;
     struct pipe_context *owner;
     struct opengpu_compute_state *next;
 };
@@ -5065,7 +5065,7 @@ static void *create_compute_state(struct pipe_context *pipe,
     }
     cs = CALLOC_STRUCT(opengpu_compute_state);
     if (!cs) { errno = ENOMEM; return NULL; }
-    if (opengpu_cs_emit_resources(state->prog,state->req_local_mem?&shared:NULL,&cs->program,cs->image_targets)) {
+    if (opengpu_cs_emit_image_info(state->prog,state->req_local_mem?&shared:NULL,&cs->program,&cs->images)) {
         FREE(cs); errno = EINVAL; return NULL;
     }
     if ((cs->program.textures && !pipe_opengpu_screen_compute_buffer_textures(opengpu_screen_gpu(pipe->screen))) ||
@@ -5073,6 +5073,7 @@ static void *create_compute_state(struct pipe_context *pipe,
          !pipe_opengpu_screen_compute_counter_source(opengpu_screen_gpu(pipe->screen))) ||
         (cs->program.shared_atomics && !pipe_opengpu_screen_compute_shared_atomics(opengpu_screen_gpu(pipe->screen))) ||
         (cs->program.storage_atomics && !pipe_opengpu_screen_compute_storage_atomics(opengpu_screen_gpu(pipe->screen))) ||
+        (cs->images.atomics && !pipe_opengpu_screen_compute_image_atomics(opengpu_screen_gpu(pipe->screen))) ||
         ((cs->program.image_reads | cs->program.image_writes | cs->program.image_queries) &&
          !pipe_opengpu_screen_compute_image_backings(opengpu_screen_gpu(pipe->screen)))) {
         FREE(cs); errno = ENOTSUP; return NULL;
@@ -5273,7 +5274,7 @@ static void launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *
         if (!v->resource) continue;
         if (!pipe_opengpu_screen_compute_image_backings(screen) ||
             !opengpu_gallium_image_init(&images[i].view, 39 + i, v) ||
-            (needed && !opengpu_gallium_image_for_shader(&images[i].view,39+i,v,ctx->cs->image_targets[i])) ||
+            (needed && !opengpu_gallium_image_for_shader(&images[i].view,39+i,v,ctx->cs->images.targets[i])) ||
             (needed && images[i].view.image_format != ctx->cs->program.image_format[i]) ||
             (read && !(v->access & PIPE_IMAGE_ACCESS_READ)) ||
             (write && !(v->access & PIPE_IMAGE_ACCESS_WRITE)) ||
