@@ -23,6 +23,13 @@ template<class Sim> class ReplayBus {
   Sim &sim;
   Agent &agent;
   uint64_t limit;
+  void check_response(uint32_t response,const char *operation,uint32_t address,uint32_t value) const {
+    if(!response)return;
+    std::ostringstream message;
+    message<<"captured MMIO "<<operation<<" fault: address=0x"<<std::hex<<address
+      <<" value=0x"<<value<<" response=0x"<<response<<std::dec<<" cycles="<<cycles;
+    throw std::runtime_error(message.str());
+  }
 public:
   uint64_t cycles=0;
   ReplayBus(Sim &s,Agent &a,uint64_t maximum):sim(s),agent(a),limit(maximum) {}
@@ -45,7 +52,8 @@ public:
         if(m.io_s_axi_arvalid && m.io_s_axi_arready)ar=true;
         if(m.io_s_axi_rvalid && m.io_s_axi_rready) {
           require(ar,"captured MMIO response preceded its read address");
-          require(m.io_s_axi_rresp==0,"captured MMIO read fault");value=m.io_s_axi_rdata;r=true;
+          check_response(m.io_s_axi_rresp,"read",address,m.io_s_axi_rdata);
+          value=m.io_s_axi_rdata;r=true;
         }
       });
       if(ar)d.io_s_axi_arvalid=0;
@@ -64,7 +72,7 @@ public:
         if(m.io_s_axi_wvalid && m.io_s_axi_wready)w=true;
         if(m.io_s_axi_bvalid && m.io_s_axi_bready) {
           require(aw && w,"captured MMIO response preceded its write request");
-          require(m.io_s_axi_bresp==0,"captured MMIO write fault");b=true;
+          check_response(m.io_s_axi_bresp,"write",address,value);b=true;
         }
       });
       if(aw)d.io_s_axi_awvalid=0;
