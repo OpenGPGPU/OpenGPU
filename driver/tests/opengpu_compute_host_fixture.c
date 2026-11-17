@@ -393,13 +393,28 @@ int compute_host_submit_storage(struct compute_host_session *s,const struct drm_
   memcpy(s->submitted.resources.bindings,copy.bindings,sizeof(copy.bindings));
   s->submitted.resources.resource_flags=OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE;}
  return error;}
+static int compute_host_image_views(struct compute_host_session *s)
+{
+ if(!(s->submitted.resources.resource_flags&OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES))return 0;
+ for(unsigned i=0;i<4;i++){
+  const struct drm_opengpu_compute_image_view *v=&s->submitted.resources.images[i];
+  if(!v->slot)continue;
+  if(v->slot>OPENGPU_MAX_RESOURCE_BINDINGS)return -EINVAL;
+  const struct opengpu_resource_binding *b=s->context->bindings[v->slot-1];
+  /* Only bounded R32UI buffer-image writes have a captured byte oracle here.
+   * Production/RTL image capacities and the remaining image domains stay intact. */
+  if(!b || v->target!=5 || v->storage_format!=OPENGPU_TEXTURE_FORMAT_R32UI ||
+     v->image_format!=OPENGPU_TEXTURE_FORMAT_R32UI || v->flags!=OPENGPU_COMPUTE_IMAGE_WRITE ||
+     !v->buffer_bytes || (v->buffer_bytes&3) || v->offset>b->size ||
+     v->buffer_bytes>b->size-v->offset || (u64)v->buffer_texels*4!=v->buffer_bytes)return -EOPNOTSUPP;
+ }
+ return 0;
+}
 int compute_host_begin_execution(struct compute_host_session *s)
 {
  if(!s || s->exported || s->prepared_execution || !s->head || s->head!=s->tail)return -EBUSY;
- /* This first execution entry covers uniform + SSBO/shared kernels. Other
-  * domains retain their production capacity, but need their own capture of
-  * writable views before this qualifier can safely execute them. */
- if(s->submitted.resources.resource_flags&~OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE)return -EOPNOTSUPP;
+ if(s->submitted.resources.resource_flags&~(OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE|OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES))return -EOPNOTSUPP;
+ {int error=compute_host_image_views(s);if(error)return error;}
  compute_running=s;struct opengpu_sched_job *job=opengpu_sched_job_from_base(s->head);
  for(struct fixture_dependency *d=job->base.dependencies;d;d=d->next)if(!dma_fence_is_signaled(d->fence))return -EBUSY;
  opengpu_hw_enable_irqs(&s->gpu);struct dma_fence *fence=opengpu_job_run(job);
@@ -421,6 +436,8 @@ int compute_host_snapshot_get(struct compute_host_session *s,struct compute_host
   .uniform_physical=job->uniform_snapshot.dma,.uniform_root=job->kernel.uniform.root,
   .counter_physical=job->counter_source.dma,.counter_bytes=job->counter_source.size,
   .counter_descriptor_physical=job->counter_records.dma,.counter_root=job->kernel.counter.base,
+  .images=job->image_records.cpu,.image_bytes=job->image_records.size,
+  .image_physical=job->image_records.dma,.image_root=job->kernel.image.base,
   .context=s->context_id,
   .kernarg_physical=s->context->bindings[s->submitted.resources.launch.kernarg_slot-1]->dma,
   .kernarg_bytes=s->context->bindings[s->submitted.resources.launch.kernarg_slot-1]->size,
@@ -429,10 +446,8 @@ int compute_host_snapshot_get(struct compute_host_session *s,struct compute_host
 int compute_host_cancel_unexecuted(struct compute_host_session *s)
 {
  if(!s || s->exported || s->prepared_execution || !s->head || s->head!=s->tail)return -EBUSY;
- /* This first execution entry covers uniform + SSBO/shared kernels. Other
-  * domains retain their production capacity, but need their own capture of
-  * writable views before this qualifier can safely execute them. */
- if(s->submitted.resources.resource_flags&~OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE)return -EOPNOTSUPP;
+ if(s->submitted.resources.resource_flags&~(OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE|OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES))return -EOPNOTSUPP;
+ {int error=compute_host_image_views(s);if(error)return error;}
  compute_running=s;struct drm_sched_job *base=s->head;
  base->s_fence->finished.error=-ECANCELED;dma_fence_signal(&base->s_fence->finished);
  opengpu_sched_free_job(base);if(s->gpu.hw.wedged)return -EIO;
@@ -502,7 +517,7 @@ int compute_host_capture(struct compute_host_session *s,const char *path,uint64_
  struct compute_mmio_state *m=compute_mmio_state(&s->gpu);
  if(!m->kernel_waiting || !s->hardware || dma_fence_is_signaled(s->hardware))return -EBUSY;
  if(s->profile_count==122){int error=compute_host_empty_contexts(s,NULL);if(error)return error;}
- struct compute_writable_range ranges[6];unsigned count=0;
+ struct compute_writable_range ranges[10];unsigned count=0;
  struct opengpu_resource_binding *arg=s->context->bindings[s->submitted.resources.launch.kernarg_slot-1];
  if(!arg)return -EINVAL;
  ranges[count].first=arg->dma;ranges[count++].end=arg->dma+arg->size;
@@ -513,6 +528,11 @@ int compute_host_capture(struct compute_host_session *s,const char *path,uint64_
   ranges[count].first=b->dma;ranges[count++].end=b->dma+b->size;
  }
  struct opengpu_sched_job *job=opengpu_sched_job_from_base(s->head);
+ if(s->submitted.resources.resource_flags&OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES)for(unsigned i=0;i<4;i++){
+  const struct drm_opengpu_compute_image_view *v=&s->submitted.resources.images[i];if(!v->slot)continue;
+  const struct opengpu_resource_binding *b=s->context->bindings[v->slot-1];if(!b)return -EINVAL;
+  ranges[count].first=b->dma+v->offset;ranges[count++].end=b->dma+v->offset+v->buffer_bytes;
+ }
  if(job->kernel.counter_enabled){
   /* Independent original GEM only: exact logical words, never page/line padding. */
   if(!job->counter_source.object || !job->counter_source.dma || !job->counter_source.size ||

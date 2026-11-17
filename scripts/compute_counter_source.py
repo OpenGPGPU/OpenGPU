@@ -2,7 +2,7 @@
 import struct
 from compute_owner_protocol import required_flags, uint
 from owner_resource_contract import SAMPLE_WORDS
-from compute_owner_cases import counter_parameters
+from compute_owner_cases import counter_parameters, COEXIST_COUNTER_CASE
 
 SCHEMA = 'opengpu-compute-counter-oracle-v1'
 CASE = 'counter-increment'
@@ -21,6 +21,8 @@ def recipe(memory, value):
     require(type(value) is dict, 'counter source metadata must be an object')
     parameters=counter_parameters(value.get('sourceCase'))
     fields=FIELDS|({'indexUniform','uniformRoot','uniformPhysical','uniformBytes'} if parameters['dynamic'] else set())
+    coexist=value['sourceCase']==COEXIST_COUNTER_CASE
+    if coexist:fields|={'images','imageBindings','imageRoot','imagePhysical','imageBytes'}
     require(set(value)==fields, 'invalid counter source metadata fields')
     required_flags(value, dict(schema=SCHEMA, groups=parameters['groups'], local=4, viewBytes=8192,
                               guard=0xdeadbeef, seed=parameters['seed'], index=parameters['index'], count=parameters['count']))
@@ -38,6 +40,18 @@ def recipe(memory, value):
         required_flags(view, dict(offset=0, allocationBytes=8192))
         require(memory.read(first, 8192) == struct.pack('<I', 0xdeadbeef) * 2048, 'counter output precomputed or unguarded')
         outputs.append(first); allocations.append((first, first + 8192))
+    if coexist:
+        bindings=value['imageBindings']
+        require(type(bindings) is list and all(type(i) is int for i in bindings) and sorted(bindings)==[0,1,2,3],
+                'actual Mesa image bindings must be a complete permutation')
+        require(type(value['images']) is list and len(value['images'])==4, 'four original buffer images required')
+        for binding,view in enumerate(value['images']):
+            first=allocation_window(memory,view,512,binding)
+            required_flags(view,dict(offset=0,allocationBytes=4096))
+            require(memory.read(first,4096)==b'\x69'*4096, 'original image backing precomputed or unguarded')
+            allocations.append((first,first+4096))
+        require(uint(value['imageRoot'])==0xb1000000 and uint(value['imagePhysical'])>0 and
+                value['imagePhysical']%4096==0 and uint(value['imageBytes'])==1024, 'image descriptor table bounds differ')
     if parameters['dynamic']:
         uniform=allocation_window(memory,value['indexUniform'],16,35)
         required_flags(value['indexUniform'],dict(offset=0,allocationBytes=4096))
@@ -86,7 +100,13 @@ def returned_outputs(initial, returned, description):
         finals=[(source+parameters['index']*4,struct.pack('<I',final))]
     for address,data in finals:
         require(returned.read(address,4)==data, 'counter final value/wrap differs')
-    return list(zip(outputs,values))+finals
+    result=list(zip(outputs,values))+finals
+    if description['sourceCase']==COEXIST_COUNTER_CASE:
+        for view in description['images']:
+            address=view['allocationPhysical'];data=returned.read(address,invocations*4)
+            require(data==values[0], 'counter imageStore values differ from original SSBO invocation outputs')
+            result.append((address,data))
+    return result
 
 
 def translate(memory, satp, va, permissions):
@@ -106,6 +126,7 @@ def ready(memory, description, data):
     """Bind READY metadata to full112 discovery, actual MMIO, GSB1 and PTEs."""
     source, outputs = recipe(memory, description)
     parameters=counter_parameters(description['sourceCase']);counter_bytes=parameters['count']*4
+    coexist=description['sourceCase']==COEXIST_COUNTER_CASE
     require(data[:8] == b'OGCMP003', 'counter requires full112 capture with original inactive contexts')
     cursor = 8
     def take(fmt):
@@ -127,11 +148,13 @@ def ready(memory, description, data):
         gpuExecution=False, clockQualified=False, fpsQualified=False,
         words=[dict(address=a, value=v) for a, v in discovery[:112]],
         registers=[dict(address=a, value=v) for a, v in discovery[112:]]))
-    count, = take('<I'); require(count == 6, 'counter capture must have six precise writable views')
+    count, = take('<I'); require(count == (10 if coexist else 6), 'counter capture writable view count differs')
     writable = [take('<QQ') for _ in range(count)]
     arg, argbytes = description['kernargPhysical'], description['kernargBytes']
     require(any(a <= arg < arg + argbytes <= b for a, b, _ in memory.ranges), 'kernarg outside original allocation')
-    expected = sorted([(arg, arg + argbytes), (source, source + counter_bytes)] + [(p, p + 8192) for p in outputs])
+    expected = [(arg, arg + argbytes), (source, source + counter_bytes)] + [(p, p + 8192) for p in outputs]
+    if coexist:expected += [(v['allocationPhysical'],v['allocationPhysical']+512) for v in description['images']]
+    expected.sort()
     require(writable == expected and all(a[1] <= b[0] for a, b in zip(expected, expected[1:])),
             'counter capture writable windows widened, aliased or missing')
     count, = take('<I');require(count==1, 'original Mesa compute requires its separate inactive graphics context')
@@ -188,6 +211,26 @@ def ready(memory, description, data):
                            base, base + 8192, 0, base, base + 8192, 0)
         require(record == expected_record and translate(memory, satp, base, 15) == output and
                 translate(memory, satp, base + 8191, 15) == output + 8191, 'counter SSBO descriptor/source mapping differs')
+
+    if coexist:
+        table=description['imageRoot'];physical=description['imagePhysical']
+        require([r.get(0x3e0+4*i) for i in range(7)]==[257,table,table+1024,0,context,0,0],
+                'counter four-image command context differs')
+        require(translate(memory,satp,table,15)==physical and translate(memory,satp,table+1023,15)==physical+1023,
+                'image descriptors are not their original private mapping')
+        for unit,global_binding in enumerate(description['imageBindings']):
+            base=0xc7ffb000 if unit==3 else 0x87ffd000+unit*(128*1024*1024+4096)
+            expected_image=[0]*64
+            expected_image[:14]=[0x47495501,256,1,context,0,0,unit,1,1,4,0,1,14,14]
+            expected_image[20]=5;expected_image[22]=base;expected_image[23]=base+4096;expected_image[25]=base
+            expected_image[26:30]=[1,1,1,1];expected_image[37:40]=[4,128,512]
+            require(memory.read(physical+unit*256,256)==struct.pack('<64I',*expected_image),
+                    'original R32UI buffer-image descriptor/access/bounds differ')
+            output=description['images'][global_binding]['allocationPhysical']
+            require(translate(memory,satp,base,15)==output and translate(memory,satp,base+511,15)==output+511,
+                    'counter image original GEM mapping differs')
+    else:
+        require(r.get(0x3e0,0)==0, 'non-image counter recipe enabled an image source')
 
     if parameters['dynamic']:
         root=description['uniformRoot'];physical=description['uniformPhysical']

@@ -82,6 +82,21 @@ def fixture(source_case="counter-increment"):
                 if first<=pa<=first+len(data)-4:
                     struct.pack_into('<I',data,pa-first,struct.unpack_from('<I',data,pa-first)[0]&~128)
         registers.update({0x440+4*i:v for i,v in enumerate((257,root,2,0,0,0x80800000,0x80800040,0))})
+    if source_case=='counter-coexist':
+        image_pas=(0x90000,0x91000,0x92000,0x93000);root=0xb1000000
+        allocations[0x80000]=bytearray(4096);map_page(root,0x80000,15)
+        d.update(images=[dict(globalBinding=i,allocationPhysical=pa,allocationBytes=4096,offset=0,bytes=512)
+                         for i,pa in enumerate(image_pas)],imageBindings=[0,1,2,3],imageRoot=root,imagePhysical=0x80000,imageBytes=1024)
+        registers.update({0x3e0+4*i:v for i,v in enumerate((257,root,root+1024,0,2,0,0))})
+        for unit,pa in enumerate(image_pas):
+            allocations[pa]=bytearray(b'\x69'*4096)
+            base=0xc7ffb000 if unit==3 else 0x87ffd000+unit*0x8001000
+            image=[0]*64;image[:14]=[0x47495501,256,1,2,0,0,unit,1,1,4,0,1,14,14]
+            image[20]=5;image[22]=image[25]=base;image[23]=base+4096
+            image[26:30]=[1,1,1,1];image[37:40]=[4,128,512]
+            struct.pack_into('<64I',allocations[0x80000],unit*256,*image)
+            map_page(base,pa,15);writable.append((pa,pa+512))
+        writable.sort()
     def capture(discovery=discovery, writable=writable, registers=registers,prefix=(),suffix=(),inactive=((1,0x80400070),)):
         actions=list(prefix)+[(1,a,v,0) for a,v in registers.items() if a!=0x11c]+[(1,0x11c,1,0)]+list(suffix)
         return (b'OGCMP003'+struct.pack('<QIII',1000000,37,11,len(discovery))+
@@ -102,6 +117,37 @@ def emit(path, allocations):
 
 
 class Counter(unittest.TestCase):
+    def test_original_four_image_coexistence_requires_all_nine_write_owners(self):
+        parent=ROOT/'.artifacts';parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='counter-images-',dir=parent) as t:
+            before,after=Path(t)/'before',Path(t)/'after'
+            alloc,d,cap,discovery,writable,registers,tables=fixture('counter-coexist');emit(before,alloc)
+            with SparseMemory(before) as b:ready(b,d,cap())
+            good=copy.deepcopy(alloc);values=[0xffffffff,0xfffffffe]+list(range(13,-1,-1))
+            for pa in (0x30000,0x32000,0x34000,0x36000,0x90000,0x91000,0x92000,0x93000):
+                struct.pack_into('<16I',good[pa],0,*values)
+            struct.pack_into('<I',good[0x20000],4108,14)
+            def check(data,description=d):
+                emit(after,data)
+                with SparseMemory(before) as b,SparseMemory(after) as a:verify(b,a,description)
+            check(good)
+            with self.assertRaises(ValueError):check(alloc)
+            for pa in (0x90000,0x91000,0x92000,0x93000):
+                for offset in (0,60,64,511,512,4095):
+                    wrong=copy.deepcopy(good);wrong[pa][offset]^=1
+                    with self.subTest(pa=pa,offset=offset),self.assertRaises(ValueError):check(wrong)
+            for bindings in ([0,0,2,3],[3,2,1,0]):
+                wrong=copy.deepcopy(d);wrong['imageBindings']=bindings
+                with SparseMemory(before) as b,self.assertRaises(ValueError):ready(b,wrong,cap())
+            for key,value in (('offset',4),('bytes',4096),('allocationPhysical',0x30000)):
+                wrong=copy.deepcopy(d);wrong['images'][0][key]=value
+                with SparseMemory(before) as b,self.assertRaises(ValueError):ready(b,wrong,cap())
+            widened=[(a,b+3584 if a==0x93000 else b) for a,b in writable]
+            with SparseMemory(before) as b,self.assertRaises(ValueError):ready(b,d,cap(writable=widened))
+            for unit,word in ((0,3),(0,11),(1,13),(2,25),(3,38),(3,39),(3,63)):
+                wrong=copy.deepcopy(alloc);wrong[0x80000][unit*256+word*4]^=1;emit(before,wrong)
+                with self.subTest(unit=unit,word=word),SparseMemory(before) as b,self.assertRaises(ValueError):ready(b,d,cap())
+
     def test_original_scalar_uses_the_allocation_last_word_and_guards_every_other_byte(self):
         parent=ROOT/'.artifacts';parent.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='counter-scalar-',dir=parent) as t:

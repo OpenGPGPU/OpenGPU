@@ -15,6 +15,7 @@ const void *cs_frontend_tokens(void *handle);
 unsigned cs_frontend_default_components(void *handle);
 unsigned cs_frontend_shared_bytes(void *handle);
 unsigned cs_frontend_storage_binding(void *handle, unsigned native_slot);
+unsigned cs_frontend_image_binding(void *handle, unsigned native_slot);
 unsigned cs_frontend_sampler_binding(void *handle, unsigned native_slot);
 unsigned cs_frontend_textures(void *handle, struct pipe_context *, struct pipe_resource *const [48],
     const unsigned [48], const unsigned [48], unsigned previously_bound, unsigned rgba_unit);
