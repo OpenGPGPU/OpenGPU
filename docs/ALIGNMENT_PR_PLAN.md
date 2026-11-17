@@ -88,7 +88,7 @@
 - P07 的九条 recipe、六组原 ESSL 已覆盖 increment/read/decrement/动态索引的
   真实 Mesa CPU/capture、严格输入与 C++ parser；实际 DUT 与资源共存仍未验收。
 - P15、P16、P17、P39、P40 已有下表列出的限定范围源码与检查，均未完成目标验收。
-  当前112仍非完整资源资格，旧96模型的活动生成也不关闭 P04。
+  当前112仍非完整资源资格；旧96模型不能替代P04的完整factory和原probe验收。
 
 这里的 3/40 只统计本次列出的剩余工作，不是整个项目的历史完成率。
 现有源码和组件证据不因列入闭合任务而被当作从零开始，也不会据此推算
@@ -194,7 +194,7 @@ python3 -B scripts/test_framebuffer_blit_host.py
 
 | 编号 | PR 范围 | 验收条件 | 依赖 | 当前状态 / PR |
 |---|---|---|---|---|
-| P04 | 新完整目标 factory 的 RTL、模型和执行器资格 | 新鲜生成；全容量、assertions、源码/工具/分片/二进制绑定与原 probe 一致；具备可复现的实际执行入口。后续合同变化须重做此绑定 | P01–P03 | 待执行；当前旧96生成不关闭本项 |
+| P04 | 新完整目标 factory 的 RTL、模型和执行器资格 | 新鲜生成；全容量、assertions、源码/工具/分片/二进制绑定与原 probe 一致；具备可复现的实际执行入口。后续合同变化须重做此绑定 | P01–P03 | 完整sample factory的RTL和Verilator C++生成已通过；原执行器构建及三个实际probe待验收，不计完成 |
 | P05 | 原 Mesa graphics/sample 的完整 host 双 owner 执行 | 实际 shader、原 GEM/Sv32、同 RAM/无中间 reset；两次结果由独立图像/GNY2/guard oracle 验证；实际 retirement、PTE/shootdown/context cleanup ACK 全部成功 | P04 | 代码/CPU证据已有，实际 DUT 待执行 |
 | P06 | 43个原调用者 framebuffer blit 的目标 host 执行 | 原43包及 source SHA 不变；精确字节/VM guard、source fault、延迟 R/B reset/drain、健康 ID 复用在目标 DUT 上通过 | P03、P04 | 112入口已实现，实际 DUT 待执行 |
 | P07 | 原 GEM atomic-counter live 提交与完整操作语料 | 实际 Mesa→生产 ioctl→目标 DUT；inc/read/dec、动态索引及资源共存；独立返回集合/最终 counter/全字节 guard，保留真实 owner 至 cleanup ACK | P04 | 九条 recipe/六组原 ESSL 的 inc/read/dec/动态索引 CPU/capture 检查通过；实际 DUT/共存待完成 |
