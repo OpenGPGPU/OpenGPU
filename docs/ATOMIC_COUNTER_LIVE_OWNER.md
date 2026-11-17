@@ -68,6 +68,21 @@ checked for precomputation before accepting any result.
 
 ## Input qualification and local result
 
+The original `counter-increment` case passed its complete actual lifecycle on
+the full112 two-CU, 16-lane/eight-warp host: real Mesa/Linux submission and held
+original GEMs, exact returned-value multiset/final counter, every byte guard,
+retirement and observed PTE/shootdown/context cleanup. The producer and executor
+exited zero, post-execution source/tool/model checks passed, and consumer cleanup
+was proven. All 178 qualified source inputs matched the delivery source. The
+bounded run took 190.640 seconds including fresh CPU production and validation;
+host process-tree peak RSS was 329,580,544 bytes. The Linux producer separately
+used a 512-MiB memory/swap and one-CPU container limit. These are not shader-only
+timing, complete process/VM memory, clock or FPS measurements.
+
+This result covers only `counter-increment`. The other eight operation recipes,
+the original scalar last-word view and four-image coexistence still require
+their actual full-host execution and cleanup. P07 is not complete.
+
 Compute-specific mandatory checkers and a recursive GPU include closure bind
 all original 21-case producers/oracles as well as the counter additions. Missing
 or aliased source and new unbound quoted includes fail closed. Base native
