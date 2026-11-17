@@ -6,7 +6,7 @@ from pathlib import Path
 import struct
 import unittest
 from compute_owner_protocol import (AUXILIARY, MAGICS, SCHEMA, profile_bytes,
-    held_bytes, retired_bytes, cleanup_authorization, checked_cleanup)
+    held_bytes, retired_bytes, failed_held_bytes, failed_retired_bytes, cleanup_authorization, checked_cleanup)
 from prepare_native_owner_flashsim import EXPECTED_WORDS
 from owner_resource_contract import (COMPUTE_SCHEMA, COMPUTE_STAGE, COMPUTE_WORDS,
     FULL_COMPUTE_SCHEMA, FULL_COMPUTE_CONTRACTS)
@@ -157,6 +157,29 @@ class Protocol(unittest.TestCase):
             with self.assertRaises(ValueError): checked_cleanup(dict(value, **{key: False}))
         for key in ('batches', 'pteClears', 'shootdowns'):
             with self.assertRaises(ValueError): checked_cleanup(dict(value, **{key: 0}))
+
+    def test_failed_receipts_are_distinct_raw_execution_errors_and_cannot_relabel_success(self):
+        first=dict(held(),schema='opengpu-compute-owner-failed-held-v1',completion=0x080b)
+        payload=struct.pack('<IIQIIII',11,0x080b,0,0,34,3,1)
+        self.assertEqual(failed_held_bytes(first),b'OGCFH001'+payload)
+        with self.assertRaises(ValueError):held_bytes(first)
+        with self.assertRaises(ValueError):failed_held_bytes(held())
+        for key,bad in [('completion',0x800b),('completion',0x880b),('completion',0x090b),
+                ('completion',0x100b),('completion',0x8000080b),('commandId',0),('commandId',True),
+                ('processedBytes',1),('heldLegacyStatus',1),('heldStatus',0),('heldStatus',6),
+                ('heldStatus',10),('heldStatus',18),('heldIrq',1),('heldIrqAsserted',1),
+                ('retiredStatus',1),('gnx',[]),('resetCount',2),('independentBytesRequired',False)]:
+            with self.subTest(key=key,bad=bad),self.assertRaises(ValueError):
+                failed_held_bytes(dict(first,**{key:bad}))
+        retired=dict(first,schema='opengpu-compute-owner-failed-retired-v1',phase='retired',
+            retiredStatus=1,retiredIrq=1,retiredIrqAsserted=False,externalDrained=True)
+        self.assertEqual(failed_retired_bytes(retired,first),b'OGCFR001'+payload+struct.pack('<IIII',1,1,0,1))
+        with self.assertRaises(ValueError):retired_bytes(retired,held())
+        for key,bad in [('completion',0x080c),('heldStatus',2),('externalDrained',False),
+                ('retiredStatus',3),('retiredStatus',33),('retiredStatus',True),('retiredIrq',3),
+                ('retiredIrqAsserted',0),('clockQualified',True)]:
+            with self.subTest(key=key,bad=bad),self.assertRaises(ValueError):
+                failed_retired_bytes(dict(retired,**{key:bad}),first)
 
 
 if __name__ == '__main__':

@@ -144,6 +144,11 @@ def main():
                        ['-I' + str(p) for p in include] + ['-c', str(ROOT / 'driver/tests/opengpu_compute_host_fixture.c'),
                         '-o', str(out / 'producer-boundary.o')], env=env, check=True)
         subprocess.run([str(out / 'test'), str(out)], env=env, check=True)
+        if sample_factory:
+            failed=out/'failed-image-receipts';failed.mkdir()
+            (failed/'images').mkdir();(failed/'counter').mkdir()
+            subprocess.run([str(out/'test'),str(failed)],
+                env=dict(env,OPENGPU_COMPUTE_HOST_TEST_FAILED_IMAGES='1'),check=True)
         if args.canonical_root:
             canonical = args.canonical_root.resolve(strict=True)
             source = canonical / 'scripts/test_compute_owner.cpp'
@@ -182,6 +187,10 @@ def main():
                         image_env=dict(env,OPENGPU_COMPUTE_HOST_TEST_IMAGES='1')
                         if write:image_env['OPENGPU_COMPUTE_HOST_TEST_IMAGE_WRITE']='1'
                         subprocess.run([str(out/'test'),str(image_negative),str(phase),str(kind)],env=image_env,check=True)
+                        failed_negative=out/('failed-image-negative-%s-%s'%(kind,int(write)))
+                        failed_negative.mkdir();(failed_negative/'images').mkdir()
+                        subprocess.run([str(out/'test'),str(failed_negative),str(phase),str(kind)],
+                            env=dict(image_env,OPENGPU_COMPUTE_HOST_TEST_FAILED_IMAGES='1'),check=True)
 
 
 if __name__ == '__main__':
