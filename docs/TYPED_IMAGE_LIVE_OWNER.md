@@ -78,16 +78,53 @@ ESSL→NIR→TGSI compiler, reflection and production native-word admission. Ano
 coordinate/destination aliasing, including XYZ/control/value/CAS operands,
 negative metadata and feature gates. The 65 load/store, 52 mapping/lifetime,
 control-flow metadata and shared-memory regression checks pass, as do the
-59 focused Python tests. These are CPU compiler/callback checks; no image atomic
+60 focused Python tests. These are CPU compiler/callback checks; no image atomic
 shader executes on a DUT and no execution qualification is created.
 
 R32F `imageAtomicExchange` remains unsupported by the compiler and hardware
 path. It is required by
 [OES_shader_image_atomic](https://registry.khronos.org/OpenGL/extensions/OES/OES_shader_image_atomic.txt),
 so integer admission does not establish that extension's conformance or close
-P08. Float exchange, source-bound atomic submissions and independent result,
+P08. Float exchange, actual source-bound atomic results,
 boundary, permission, fault/cancel/reset/drain and healthy-reuse checks remain
 required, with fresh model qualification for hardware changes.
+
+Image-atomic programs now use the existing signed-five-bit `VMV.V.I` encoding
+for small constants. A combined original 2D RMW program previously needed
+534 native words and failed the fixed 512-word admission bound. Compact
+constants let the combined target matrix compile within that bound, including
+the 509-word 3D program. The public program layout, register limits and native
+encoding are unchanged; programs without image atomics retain their previous
+word stream. Operand checks include 15/16 and -16/-17 literal boundaries.
+
+## Original integer-atomic source and independent result contract
+
+Ten original ESSL recipes cover buffer, 2D, array, cube and 3D with R32I/R32UI.
+Each invocation owns a separate texel and performs exchange, add, XOR, OR,
+AND, signed/unsigned min/max, another exchange and matching/mismatching CAS.
+Sparse SSBO binding 2 records all ten returned old values. An image memory
+barrier precedes the final image load and copy to the separate destination.
+
+These recipes reuse the original offset/mip/pitch/layer allocations. API image
+unit 3 is read-write and unit 1 stays write-only. CPU READY checks reconstruct
+both exact writable views, excluding padding, unselected planes and partial
+buffer texels. The original load/store cases keep their read-only source grant.
+The independent oracle computes integer wrap, signed order and both CAS paths,
+checks all 80 old values and eight final texels in each source/destination, then
+checks every other physical byte. It does not interpret native instructions or
+synthesize returned GPU memory. The CPU producer also verifies all ten native
+atomic operations and their image-unit metadata before the real launch call.
+
+All 80 fresh Mesa→production-ioctl CPU captures (70 load/store plus these ten
+atomic recipes) pass the canonical ASan/UBSan C++ parser, strict READY,
+9081 rejection checks and rejection of initial uploads as results. All 8102
+external and 181 GPU/checker inputs remain unchanged. The eleven original
+counter recipes also pass fresh guarded CPU captures, canonical parsing and
+initial-upload rejection; 60 focused Python tests pass. These captures execute
+no shader on a DUT. Same-texel contention, other atomic view combinations,
+R32F exchange and actual boundary/fault/cancel/reset/drain acceptance remain
+pending; P08 stays open. Existing qualifications must be freshly bound to the
+changed compiler, producer and checker sources before actual execution.
 
 ## Original load/store source and independent result contract
 
@@ -124,15 +161,12 @@ extension, scalar default components, normalized endpoints and SNORM -128→-1
 loading/-127 storage are explicit. It neither executes native words nor
 synthesizes returned GPU memory.
 
-Final CPU validation passes all 70 fresh Mesa→production-ioctl captures with the
-independent ASan/UBSan C++ parser, strict READY and 7745 rejection checks. These
-include view/descriptor/permission/backing mutations, widened write intervals,
-read-only grants, inactive-context authority and mismatched qualified cases.
-All source patterns distinguish adjacent row/plane reads. The eleven original
-counter CPU recipes also pass strict READY, canonical parsing and initial-memory
-rejection with fresh 22-TU/22-MMD builds. Each matrix preserves all 8102 external
-and 180 GPU/checker inputs. The 59 focused Python checks pass. These checks
-execute no image shader on a DUT and create no execution qualification.
+The original 70 load/store recipes are included in the CPU matrix above. The
+rejection checks include view/descriptor/permission/backing mutations, widened
+write intervals, read-only grants, inactive-context authority and mismatched
+qualified cases. All source patterns distinguish adjacent row/plane reads.
+Each original-source matrix uses a fresh 22-TU/22-MMD build. CPU captures create
+no execution qualification.
 
 ## CPU transport result and limits
 
@@ -192,7 +226,8 @@ using the current `snapshot` and source hashes rather than an executor
 qualification. Run the canonical parser and strict counter READY checker for
 each `sessions/COUNTER_CASES` capture. CPU capture records cannot qualify a DUT.
 
-For the original typed-image CPU matrix, select a new build/session and replace
+For the original typed-image CPU matrix (70 load/store and ten integer-atomic
+recipes), select a new build/session and replace
 the case selection with the following flags on the same guarded command:
 
 ```sh

@@ -31,7 +31,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         ap.add_argument('--capture-counter-matrix', action='store_true',
                         help='CPU only: reuse one build for all original static/dynamic counter recipes')
         ap.add_argument('--capture-image-matrix', action='store_true',
-                        help='CPU only: reuse one build for original typed load/store recipes')
+                        help='CPU only: reuse one build for original typed load/store and integer-atomic recipes')
     if sample_graphics:
         ap.add_argument("--profile-wire", type=Path, help="CPU mode's strict OGNP0002 observations; label synthetic fixtures explicitly")
         mode = ap.add_mutually_exclusive_group(required=True)

@@ -10,7 +10,7 @@ from pathlib import Path
 import struct
 import unittest
 from compute_image_cases import IMAGE_CASES, parameters
-from compute_image_source import loaded_words, ready, texel_address
+from compute_image_source import loaded_words, ready, texel_address, atomic_values
 from compute_owner_oracle import SparseMemory, verify
 from compute_owner_protocol import strict_json
 from compute_owner_controller import ready_inputs
@@ -34,8 +34,18 @@ class Formats(unittest.TestCase):
             struct.pack('<4f',0,1,-1,-1))
 
     def test_unknown_source_is_rejected(self):
-        for name in ('image-2d-rgba8ui-extra','image-plane-buffer-r32ui','image-single-cube-r32ui','image-rectangle-r32ui'):
+        for name in ('image-2d-rgba8ui-extra','image-plane-buffer-r32ui','image-single-cube-r32ui','image-rectangle-r32ui',
+                     'image-atomic-array-rgba8ui','image-atomic-2d-r32f'):
             with self.subTest(name=name),self.assertRaises(ValueError):parameters(name)
+
+    def test_atomic_old_values_wrap_signed_order_and_cas_paths(self):
+        common=[0x13579bdf,0x80000000,0xfffffff0,0xaaaa555a,0xaaaa555f,0xaaaa5553]
+        unsigned=atomic_values(parameters('image-atomic-2d-r32ui'),0x13579bdf,0)
+        signed=atomic_values(parameters('image-atomic-2d-r32i'),0x13579bdf,0)
+        self.assertEqual(unsigned,(common+[0x7fffff00,0x80000020,0x12345670,0xdeadb000],0xdeadb000))
+        self.assertEqual(signed,(common+[0xaaaa5553,0xaaaa5553,0x12345670,0xdeadb000],0xdeadb000))
+        self.assertEqual(atomic_values(parameters('image-atomic-buffer-r32ui'),7,1),
+            ([7,0x80000011,1,0x5555aaab,0x5555aaaf,0x5555aaa3,0x5555aaa3,0x80000020,0x12345671,0xdeadb001],0xdeadb001))
 
 
 class ChangedMemory:
@@ -136,7 +146,7 @@ def check_capture(root):
             rejected(lambda:ready(memory,description,capture(changed)),'widened writable interval');count+=1
         source=description['images'][0]['allocationPhysical']
         rejected(lambda:ready(memory,description,capture(sorted([*ranges,(source,source+4)]))),
-            'read-only image write grant');count+=1
+            'image bytes outside original writable view');count+=1
         changed=deepcopy(description);changed['sourceCase']='image-2d-not-a-format'
         rejected(lambda:ready(memory,changed,data),'unbound source identity');count+=1
     return count
