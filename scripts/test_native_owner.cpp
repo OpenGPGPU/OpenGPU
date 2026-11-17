@@ -4,6 +4,7 @@
 #undef main
 #include <sstream>
 #include <future>
+#include <functional>
 
 using namespace native_owner;
 template<class F> static void rejects(F action) {
@@ -159,6 +160,45 @@ public:
     }
   }
 };
+static void mmio_fault_diagnostics(int argc,char **argv) {
+  // This protocol peer injects raw AXI responses, not GPU completions.
+  struct Peer:Simulation {
+    uint32_t response=0;bool premature=false;
+    using Simulation::Simulation;
+    void step(Agent &,uint64_t,const std::function<void(const VGpuHostSystemAxi &)> &observe) {
+      auto &d=*model;
+      d.io_s_axi_arready=d.io_s_axi_awready=d.io_s_axi_wready=!premature;
+      d.io_s_axi_rvalid=d.io_s_axi_arvalid;
+      d.io_s_axi_bvalid=d.io_s_axi_awvalid && d.io_s_axi_wvalid;
+      d.io_s_axi_rresp=d.io_s_axi_bresp=response;d.io_s_axi_rdata=0x89abcdef;
+      observe(d);
+    }
+  };
+  for(bool write:{false,true})for(uint32_t response:{1u,2u,3u}) {
+    Memory memory;Agent agent(memory);Peer sim(argc,argv);sim.response=response;
+    ReplayBus<Peer> bus(sim,agent,1000);bus.cycles=17;
+    std::string error;
+    try {if(write)bus.write(0x2e4,0xdeadbeef);else bus.read(0x2e8);}
+    catch(const std::runtime_error &e){error=e.what();}
+    const auto expected=std::string("captured MMIO ")+(write?"write":"read")+
+      " fault: address=0x"+(write?"2e4":"2e8")+" value=0x"+
+      (write?"deadbeef":"89abcdef")+" response=0x"+std::to_string(response)+" cycles=18";
+    require(error==expected && bus.cycles==18,"MMIO fault discarded actual transaction/response/cycle");
+    require(sim.model->io_s_axi_bresp==response && sim.model->io_s_axi_rresp==response,
+      "MMIO fault observation replaced the rejected AXI response");
+  }
+  for(bool write:{false,true}) {
+    Memory memory;Agent agent(memory);Peer sim(argc,argv);sim.response=2;sim.premature=true;
+    ReplayBus<Peer> bus(sim,agent,1000);std::string error;
+    try {if(write)bus.write(0x2e4,7);else bus.read(0x2e8);}
+    catch(const std::runtime_error &e){error=e.what();}
+    require(error==std::string("captured MMIO response preceded its ")+
+      (write?"write request":"read address"),"MMIO response accepted before its request handshake");
+  }
+  Memory memory;Agent agent(memory);Peer healthy(argc,argv);ReplayBus<Peer> bus(healthy,agent,1000);
+  bus.write(0x2e4,0x12345678);
+  require(bus.read(0x2e8)==0x89abcdef && bus.cycles==2,"healthy MMIO response behavior changed");
+}
 static void record_series(int argc,char **argv,bool corrupt) {
   auto a=fixture(),b=a;a.max_cycles=b.max_cycles=400;
   a.writable={{0x2000,0x2040}};b.writable={{0x3000,0x3040}};
@@ -695,6 +735,7 @@ int main() {
   rejects([&]{bus.action({Kind::check,0x100,0,0xffffffffu});});
   ReplayBus<Simulation> timed(sim,agent,3);
   rejects([&]{timed.action({Kind::poll,0x100,0,0xffffffffu});});
+  mmio_fault_diagnostics(argc,argv);
   record_series(argc,argv,false);record_series(argc,argv,true);
   unstable_completion(argc,argv);
   actual_observations(argc,argv);unstable_append_telemetry(argc,argv);

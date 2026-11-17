@@ -145,6 +145,12 @@ python3 -B scripts/test_prepare_owner_executor.py
 python3 -B scripts/test_build_native_flashsim.py
 ```
 
+Rejected MMIO AXI responses report the operation, original address, raw data,
+response code and observed bus cycle. Successful transactions retain their
+existing behavior, and responses before their request handshake still fail.
+The sanitized native-owner CPU tests above cover both read and write rejection
+and preserve the raw fault response; they do not execute a GPU shader.
+
 The active native executor uses `OPENGPU_NATIVE_HOST_TIMEOUT` for its initial
 capture, every later capture/retirement and every cleanup response. It accepts
 decimal seconds within 1..86400, defaults to 300 when unset, and rejects malformed
