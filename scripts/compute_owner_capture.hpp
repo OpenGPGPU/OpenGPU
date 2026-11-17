@@ -128,7 +128,7 @@ struct ComputeCapture {
     char wire[8];in.read(wire,8);require(bool(in),"truncated compute capture magic");
     const bool contexts=std::string(wire,8)=="OGCMP003";
     require(std::string(wire,8)==compute_capture_magic() ||
-      (contexts && compute_owner_factory()==OwnerFactory::geometry_compute_sample),"wrong compute capture magic");
+      (contexts && owner_factory_has_sample(compute_owner_factory())),"wrong compute capture magic");
     ComputeCapture c;
     c.max_cycles=read_le(in,8);c.hold_cycles=read_le(in,4);c.command_id=read_le(in,4);
     auto count=[&](uint32_t maximum) {const auto n=read_le(in,4);require(n<=maximum,"oversized compute capture section");return n;};

@@ -3,21 +3,27 @@
 import struct
 
 from compute_owner_protocol import uint, required_flags, strict_json, checked_cleanup
-from owner_resource_contract import SAMPLE_PROFILE, SAMPLE_STAGE, SAMPLE_WORDS
+from owner_resource_contract import SAMPLE_PROFILE, SAMPLE_FACTORY_CONTRACTS
 
 SCHEMA = 'opengpu-native-sample-owner-profile-v1'
 AUXILIARY = (0, 0x60, 0x68, 0x320, 0x158)
 
 
-def profile_bytes(profile):
-    required_flags(profile, dict(schema=SCHEMA, ownerProfile=SAMPLE_PROFILE,
-        ownerResourceStage=SAMPLE_STAGE, ownerResourceVersion=2, fullResourceQualification=False,
+def profile_bytes(profile, *, owner_profile=SAMPLE_PROFILE):
+    if type(profile) is not dict:
+        raise ValueError('sample profile must be an object')
+    name=owner_profile
+    if type(name) is not str or name not in SAMPLE_FACTORY_CONTRACTS:
+        raise ValueError('unknown complete sample factory')
+    stage,expected_words=SAMPLE_FACTORY_CONTRACTS[name]
+    required_flags(profile, dict(schema=SCHEMA, ownerProfile=name,
+        ownerResourceStage=stage, ownerResourceVersion=2, fullResourceQualification=False,
         resetCount=1, sourceQualificationRequired=True, gpuExecution=False,
         clockQualified=False, fpsQualified=False))
     words, registers = profile.get('words'), profile.get('registers')
     if type(words) is not list or len(words) != 112 or type(registers) is not list or len(registers) != 5:
         raise ValueError('sample owner requires 112 discovery and five actual auxiliary observations')
-    for actual, expected in zip(words, SAMPLE_WORDS):
+    for actual, expected in zip(words, expected_words):
         if (type(actual) is not dict or set(actual) != {'address', 'value'} or
                 uint(actual['address']) != expected['address'] or uint(actual['value']) != expected['value']):
             raise ValueError('wrong or reordered complete sample factory')
@@ -42,8 +48,13 @@ def profile_bytes(profile):
     return bytes(output)
 
 
-def _held_payload(value):
-    required_flags(value, dict(ownerProfile=SAMPLE_PROFILE, record=0, resetCount=1,
+def _held_payload(value,owner_profile):
+    if type(value) is not dict:
+        raise ValueError('sample receipt must be an object')
+    name=owner_profile
+    if type(name) is not str or name not in SAMPLE_FACTORY_CONTRACTS:
+        raise ValueError('unknown complete sample receipt factory')
+    required_flags(value, dict(ownerProfile=name, record=0, resetCount=1,
         sourceQualificationRequired=True, heldCompletionDrained=True, readOnlyGuards=True,
         heldIrqAsserted=True, clockQualified=False, fpsQualified=False))
     command = uint(value.get('commandId'))
@@ -59,21 +70,23 @@ def _held_payload(value):
     return struct.pack('<15IQ4I', 0, command, completion, *gnx, append, legacy, status, irq, 1)
 
 
-def held_bytes(value):
+def held_bytes(value, *, owner_profile=SAMPLE_PROFILE):
     required_flags(value, dict(schema='opengpu-native-sample-owner-held-v1', phase='held'))
     if any(key in value for key in ('retiredStatus', 'retiredIrq', 'retiredIrqAsserted')):
         raise ValueError('premature native sample retirement')
-    return b'OGNSH001' + _held_payload(value)
+    return b'OGNSH001' + _held_payload(value,owner_profile)
 
 
-def retired_bytes(value, held):
+def retired_bytes(value, held, *, owner_profile=SAMPLE_PROFILE):
     # Revalidate the original receipt rather than trusting a previously encoded
     # mutable dictionary, and preserve every raw successful GNX reader field.
-    held_bytes(held)
+    held_bytes(held,owner_profile=owner_profile)
+    if value.get('ownerProfile') != held['ownerProfile']:
+        raise ValueError('sample retirement changed its owner factory')
     required_flags(value, dict(schema='opengpu-native-sample-owner-retired-v1', phase='retired',
         externalDrained=True, retiredIrqAsserted=False))
-    payload = _held_payload(value)
-    if payload != _held_payload(held):
+    payload = _held_payload(value,owner_profile)
+    if payload != _held_payload(held,owner_profile):
         raise ValueError('sample retirement changed the original held receipt')
     status, irq = uint(value.get('retiredStatus')), uint(value.get('retiredIrq'))
     if status != 1 or irq != 1:

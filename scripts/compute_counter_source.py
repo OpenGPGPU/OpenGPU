@@ -1,7 +1,7 @@
 """Strict original-GEM counter recipe/READY binding checks; never executes code."""
 import struct
 from compute_owner_protocol import required_flags, uint
-from owner_resource_contract import SAMPLE_WORDS
+from owner_resource_contract import SAMPLE_PROFILE, SAMPLE_FACTORY_CONTRACTS
 from compute_owner_cases import counter_parameters, COEXIST_COUNTER_CASE
 
 SCHEMA = 'opengpu-compute-counter-oracle-v1'
@@ -122,8 +122,11 @@ def translate(memory, satp, va, permissions):
     return (second >> 10) * 4096 + (va & 4095)
 
 
-def ready(memory, description, data):
+def ready(memory, description, data, *, owner_profile=SAMPLE_PROFILE):
     """Bind READY metadata to full112 discovery, actual MMIO, GSB1 and PTEs."""
+    require(type(owner_profile) is str and owner_profile in SAMPLE_FACTORY_CONTRACTS,
+            'counter requires a known complete sample factory')
+    stage,expected_words=SAMPLE_FACTORY_CONTRACTS[owner_profile]
     source, outputs = recipe(memory, description)
     parameters=counter_parameters(description['sourceCase']);counter_bytes=parameters['count']*4
     coexist=description['sourceCase']==COEXIST_COUNTER_CASE
@@ -139,11 +142,11 @@ def ready(memory, description, data):
     require(0 < budget <= 1000000000 and 8 <= hold <= 4096 and 0 < command < 256 and count == 122,
             'counter capture bounds or complete factory differ')
     discovery = [take('<II') for _ in range(count)]
-    require(discovery[:112] == [(w['address'], w['value']) for w in SAMPLE_WORDS], 'counter needs exact final112 factory')
+    require(discovery[:112] == [(w['address'], w['value']) for w in expected_words], 'counter needs exact qualified final112 factory')
     # Validate the ten auxiliary observations with the shared strict public wire contract.
     from compute_owner_protocol import profile_bytes
-    from owner_resource_contract import FULL_COMPUTE_SCHEMA, SAMPLE_PROFILE, SAMPLE_STAGE
-    profile_bytes(dict(schema=FULL_COMPUTE_SCHEMA, ownerProfile=SAMPLE_PROFILE, ownerResourceStage=SAMPLE_STAGE,
+    from owner_resource_contract import FULL_COMPUTE_SCHEMA
+    profile_bytes(dict(schema=FULL_COMPUTE_SCHEMA, ownerProfile=owner_profile, ownerResourceStage=stage,
         ownerResourceVersion=2, fullResourceQualification=False, resetCount=1, sourceQualificationRequired=True,
         gpuExecution=False, clockQualified=False, fpsQualified=False,
         words=[dict(address=a, value=v) for a, v in discovery[:112]],

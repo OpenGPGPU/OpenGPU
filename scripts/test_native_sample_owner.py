@@ -11,18 +11,19 @@ import tempfile
 import unittest
 
 import native_sample_owner_protocol as protocol
-from owner_resource_contract import SAMPLE_PROFILE, SAMPLE_STAGE, SAMPLE_WORDS
+from owner_resource_contract import SAMPLE_PROFILE, IMAGE_FLOAT_PROFILE, SAMPLE_FACTORY_CONTRACTS
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def profile():
+def profile(owner_profile=SAMPLE_PROFILE):
     """Explicit CPU fixture. Never passed off as a live DUT probe."""
     caps = sum(1 << bit for bit in (6, 22, 23, 25, 29)) | 128 << 8
-    return dict(schema=protocol.SCHEMA, ownerProfile=SAMPLE_PROFILE,
-        ownerResourceStage=SAMPLE_STAGE, ownerResourceVersion=2, fullResourceQualification=False,
+    stage,words=SAMPLE_FACTORY_CONTRACTS[owner_profile]
+    return dict(schema=protocol.SCHEMA, ownerProfile=owner_profile,
+        ownerResourceStage=stage, ownerResourceVersion=2, fullResourceQualification=False,
         resetCount=1, sourceQualificationRequired=True, gpuExecution=False,
-        clockQualified=False, fpsQualified=False, words=copy.deepcopy(SAMPLE_WORDS),
+        clockQualified=False, fpsQualified=False, words=copy.deepcopy(words),
         registers=[dict(address=a, value=v) for a, v in
             zip(protocol.AUXILIARY, (0x47550002, caps, 0x160, 1048576, 0x02040810))])
 
@@ -47,8 +48,21 @@ class SampleProtocolTests(unittest.TestCase):
         for n in range(5):
             bad = copy.deepcopy(good); bad['registers'][n]['value'] = 0
             with self.assertRaises(ValueError): protocol.profile_bytes(bad)
+        floating=profile(IMAGE_FLOAT_PROFILE)
+        with self.assertRaises(ValueError):protocol.profile_bytes(floating)
+        self.assertNotEqual(protocol.profile_bytes(floating,owner_profile=IMAGE_FLOAT_PROFILE),wire)
+        for original,other in ((good,floating),(floating,good)):
+            bad=copy.deepcopy(original)
+            bad.update(ownerProfile=other['ownerProfile'],ownerResourceStage=other['ownerResourceStage'])
+            with self.assertRaises(ValueError):protocol.profile_bytes(bad,owner_profile=original['ownerProfile'])
+            bad=copy.deepcopy(original);bad['words']=copy.deepcopy(other['words'])
+            with self.assertRaises(ValueError):protocol.profile_bytes(bad,owner_profile=original['ownerProfile'])
 
     def test_cpp_actual_mmio_observation_and_wire_interoperation(self):
+        self.check_cpp_actual_mmio_observation([],SAMPLE_PROFILE)
+        self.check_cpp_actual_mmio_observation(['-DOPENGPU_OWNER_IMAGE_FLOAT_STAGE=1'],IMAGE_FLOAT_PROFILE)
+
+    def check_cpp_actual_mmio_observation(self,selection,owner_profile):
         parent = ROOT / '.artifacts'; parent.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='sample-owner-cpu-', dir=parent) as temporary:
             compiler = shlex.split(os.environ.get('CXX', 'c++'))
@@ -57,7 +71,7 @@ class SampleProtocolTests(unittest.TestCase):
                 flags += ['-fsanitize=address,undefined', '-fno-omit-frame-pointer']
             binary = Path(temporary) / 'peer'
             env = dict(os.environ, TMPDIR=temporary)
-            subprocess.run([*compiler, *flags, '-I', str(ROOT/'scripts/test_stubs/native_host'),
+            subprocess.run([*compiler, *flags, *selection, '-I', str(ROOT/'scripts/test_stubs/native_host'),
                 str(ROOT/'scripts/test_native_sample_owner.cpp'), '-o', str(binary)], env=env, check=True)
             output = subprocess.check_output([str(binary), '--json'], env=env, text=True, timeout=60)
             def unique(pairs):
@@ -67,22 +81,27 @@ class SampleProtocolTests(unittest.TestCase):
                     result[key] = value
                 return result
             observed, held, retired = [json.loads(line, object_pairs_hook=unique) for line in output.splitlines()]
-            self.assertEqual(protocol.profile_bytes(observed), protocol.profile_bytes(profile()))
-            held_wire, retired_wire = protocol.held_bytes(held), protocol.retired_bytes(retired, held)
+            self.assertEqual(protocol.profile_bytes(observed,owner_profile=owner_profile),
+                             protocol.profile_bytes(profile(owner_profile),owner_profile=owner_profile))
+            held_wire=protocol.held_bytes(held,owner_profile=owner_profile)
+            retired_wire=protocol.retired_bytes(retired,held,owner_profile=owner_profile)
             self.assertEqual((len(held_wire), len(retired_wire)), (92, 108))
             self.assertEqual(held_wire[:8], b'OGNSH001')
             self.assertEqual(retired_wire[:8], b'OGNSR001')
             words = struct.unpack('<15IQ4I', held_wire[8:])
             self.assertEqual(words[5:7], (0x12345678, 0x89abcdef))
             self.assertEqual(words[15], 0x100000040)
+            bad=copy.deepcopy(retired)
+            bad['ownerProfile']=IMAGE_FLOAT_PROFILE if owner_profile==SAMPLE_PROFILE else SAMPLE_PROFILE
+            with self.assertRaises(ValueError):protocol.retired_bytes(bad,held,owner_profile=owner_profile)
             for n in range(12):
                 bad = copy.deepcopy(retired); bad['gnx'][n] ^= 1
-                with self.assertRaises(ValueError): protocol.retired_bytes(bad, held)
+                with self.assertRaises(ValueError): protocol.retired_bytes(bad,held,owner_profile=owner_profile)
             for key, value in [('appendReadBytes', 1), ('heldStatus', 2|4), ('heldIrqAsserted', 1),
                     ('ownerProfile', 'two-cu-vga60-owner-v1'), ('clockQualified', True),
                     ('schema', 'opengpu-compute-owner-held-v1')]:
                 bad = copy.deepcopy(held); bad[key] = value
-                with self.assertRaises(ValueError): protocol.held_bytes(bad)
+                with self.assertRaises(ValueError): protocol.held_bytes(bad,owner_profile=owner_profile)
             self.assertNotEqual(protocol.cleanup_authorization()[:8], held_wire[:8])
             self.assertEqual(protocol.final_authorization(), b'OGNSOK01\x01\x00\x00\x00')
             subprocess.run([*compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror', '-pedantic',

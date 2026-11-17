@@ -37,6 +37,9 @@ int main(void)
     valid();assert(probe(2,0x1fffff,caps,0x540,&out,&layered,&sample));
     assert(layered && sample && out.available && out.capacity==128 && out.engines==4 && sample_reads==8);
     for(unsigned i=0;i<8;++i)assert(out.sample_words[i]==registers[0x520/4+i]);
+    valid();assert(probe(2,0x3fffff,caps,0x540,&out,&layered,&sample));
+    assert(layered && sample && out.available && out.capacity==128 && out.engines==4 && sample_reads==8);
+    for(unsigned i=0;i<8;++i)assert(out.sample_words[i]==registers[0x520/4+i]);
     for(unsigned word=0;word<8;++word)for(unsigned bit=0;bit<32;++bit){
         valid();registers[0x520/4+word]^=1u<<bit;memset(&out,0x5a,sizeof(out));before=out;
         layered=false;sample=true;
@@ -51,8 +54,13 @@ int main(void)
     for(unsigned test=0;test<32;++test){
         valid();memset(&out,0x5a,sizeof(out));before=out;layered=false;sample=true;
         const u32 flags=0x1fffff^(1u<<test);
-        if(test==20)continue; /* absence follows the original contract below */
+        if(test==20 || test==21)continue; /* absence and the exact R32F successor are separate contracts */
         assert(!probe(2,flags,caps,0x540,&out,&layered,&sample) && !reads);
+        assert(!memcmp(&before,&out,sizeof(out)) && !layered && sample);
+    }
+    for(unsigned test=0;test<32;++test)if(test!=21){
+        valid();memset(&out,0x5a,sizeof(out));before=out;layered=false;sample=true;
+        assert(!probe(2,0x3fffff^(1u<<test),caps,0x540,&out,&layered,&sample));
         assert(!memcmp(&before,&out,sizeof(out)) && !layered && sample);
     }
     for(unsigned bit=0;bit<32;++bit)if(caps&(1u<<bit)){

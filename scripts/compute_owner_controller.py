@@ -84,7 +84,7 @@ def input_digest(path):
     return digest.hexdigest()
 
 
-def ready_inputs(directory, case):
+def ready_inputs(directory, case, *, owner_profile=None):
     from compute_counter_source import SCHEMA as COUNTER_SCHEMA, ready as counter_ready
     from compute_owner_cases import COUNTER_CASES, IMAGE_CASES
     from compute_image_source import SCHEMA as IMAGE_SCHEMA, ready as image_ready
@@ -95,9 +95,11 @@ def ready_inputs(directory, case):
     require(image==(case in IMAGE_CASES), 'image source requires distinct qualification/case binding')
     inputs={}
     if counter or image:
+        from owner_resource_contract import SAMPLE_PROFILE
+        owner_profile=SAMPLE_PROFILE if owner_profile is None else owner_profile
         require(description.get('sourceCase')==case, 'source READY case differs from qualification')
         with SparseMemory(directory/'union.memory') as before:
-            (image_ready if image else counter_ready)(before,description,(directory/'record-0.capture').read_bytes())
+            (image_ready if image else counter_ready)(before,description,(directory/'record-0.capture').read_bytes(),owner_profile=owner_profile)
         inputs={name:input_digest(directory/name) for name in ('union.memory','record-0.capture','oracle.json')}
     return description,inputs
 
@@ -131,9 +133,11 @@ def main():
     qualification = args.executor_qualification.absolute()
     require(executor.is_file() and not executor.is_symlink() and qualification.is_file() and not qualification.is_symlink(),
             'executor/qualification must be original regular files')
+    qualified_profile=strict_json(qualification).get('profile')
     if args.case in (*COUNTER_CASES,*IMAGE_CASES):
-        from owner_resource_contract import SAMPLE_PROFILE
-        require(strict_json(qualification).get('profile') == SAMPLE_PROFILE, 'counter requires exact final112 executor')
+        from owner_resource_contract import SAMPLE_FACTORY_CONTRACTS
+        require(type(qualified_profile) is str and qualified_profile in SAMPLE_FACTORY_CONTRACTS,
+                'source requires a known complete final112 executor')
     checker = args.executor_checker.resolve(strict=True)
     checker_python = args.executor_checker_python.resolve(strict=True)
     def qualified(env, log):
@@ -172,7 +176,7 @@ def main():
                 wait_file(directory / 'READY', bridge, None, args.timeout)
                 for name in ('union.memory', 'record-0.capture', 'oracle.json'):
                     wait_file(directory / name, bridge, None, args.timeout)
-                description,inputs=ready_inputs(directory,args.case)
+                description,inputs=ready_inputs(directory,args.case,owner_profile=qualified_profile)
                 results = directory / 'results'
                 running = subprocess.Popen([executor, '--active-owner', directory / 'union.memory', results, directory],
                     env=env, stdout=output, stderr=subprocess.STDOUT)

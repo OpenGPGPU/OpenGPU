@@ -148,8 +148,7 @@ ProfileObservation probe_profile(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,bool 
 }
 inline void profile_json(std::ostream &out,const ProfileObservation &profile,bool compute=false) {
   const bool stage=profile.factory==OwnerFactory::compute_stage;
-  const bool sample=profile.factory==OwnerFactory::geometry_compute_sample;
-  const bool full=profile.factory==OwnerFactory::geometry_compute || sample;
+  const bool full=profile.factory==OwnerFactory::geometry_compute || owner_factory_has_sample(profile.factory);
   require(compute || (!stage && !full),"resource observations cannot use a native profile schema");
   const auto expected=owner_factory_words(profile.factory);
   require(profile.words.size()==expected.size() && profile.registers.size()==(compute?10u:5u),
@@ -159,7 +158,7 @@ inline void profile_json(std::ostream &out,const ProfileObservation &profile,boo
       "profile observations do not match their exact factory");
   out<<"{\"schema\":\""<<(full?"opengpu-compute-owner-profile-v3":stage?"opengpu-compute-owner-profile-v2":compute?"opengpu-compute-owner-profile-v1":"opengpu-native-owner-profile-v1")<<'"';
   if(stage || full)out<<",\"ownerProfile\":\""<<owner_factory_id(profile.factory)
-    <<"\",\"ownerResourceVersion\":2,\"ownerResourceStage\":\""<<(sample?"geometry-compute-sample":full?"geometry-compute":"compute")
+    <<"\",\"ownerResourceVersion\":2,\"ownerResourceStage\":\""<<owner_factory_stage(profile.factory)
     <<"\",\"fullResourceQualification\":false";
   out<<",\"words\":[";
   const auto &words=profile.words;

@@ -23,13 +23,14 @@ static inline bool opengpu_read_native_sample_transport_limits(u32 id,u32 flags,
     struct opengpu_native_source_limits value={0};
     bool geometry=false;
     u32 words[8],i,shader;
+    const u32 float_flags=0x1fffffu|OPENGPU_COMPUTE_RESOURCE_IMAGE_FLOAT_EXCHANGE;
     if(!limits || !layered || !sample)return false;
     if(!(flags&OPENGPU_NATIVE_SAMPLE_TRANSPORT_PRESENCE)){
         if(!opengpu_read_native_geometry_transport_limits(id,flags,caps,mmio_bytes,context,read_reg,
                 &value,&geometry))return false;
         *limits=value;*layered=geometry;*sample=false;return true;
     }
-    if((id&0xffffu)<GPU_ABI_COMPUTE_RESOURCE_VERSION || flags!=0x1fffffu ||
+    if((id&0xffffu)<GPU_ABI_COMPUTE_RESOURCE_VERSION || (flags!=0x1fffffu && flags!=float_flags) ||
         (caps&required)!=required ||
         ((caps&GPU_CAP_FRAGMENT_BATCH_MASK)>>GPU_CAP_FRAGMENT_BATCH_SHIFT)!=128 ||
         !read_reg || mmio_bytes<0x540)return false;
@@ -37,7 +38,7 @@ static inline bool opengpu_read_native_sample_transport_limits(u32 id,u32 flags,
         words[i]=read_reg(context,OPENGPU_NATIVE_SAMPLE_TRANSPORT_CAPABILITIES+4*i);
         if(words[i]!=expected[i])return false;
     }
-    if(!opengpu_native_geometry_transport_limits_impl(id,flags,caps,0x1fffffu,
+    if(!opengpu_native_geometry_transport_limits_impl(id,flags,caps,flags,
             mmio_bytes,context,read_reg,&value,&geometry) || !geometry ||
         value.lanes!=16 || value.warps!=8 || value.capacity!=128 || value.engines!=4)return false;
     for(i=0;i<8;++i)if(value.frame.words[i]!=frame[i])return false;

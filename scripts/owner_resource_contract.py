@@ -30,7 +30,15 @@ SAMPLE_STAGE = 'geometry-compute-sample'
 SAMPLE_WORDS = [dict(word, value=0x1fffff if word['address'] == 0x368 else word['value'])
     for word in FULL_WORDS] + [dict(address=0x520+4*i, value=value) for i,value in enumerate(
         (0x47535301, 8, 1, 31, 0xc0, 0x4d041004, 0x7ff, 7))]
+IMAGE_FLOAT_PROFILE = PROFILE + '-image-float-stage'
+IMAGE_FLOAT_STAGE = 'geometry-compute-sample-image-float'
+IMAGE_FLOAT_WORDS = [dict(word, value=0x3fffff if word['address'] == 0x368 else word['value'])
+                     for word in SAMPLE_WORDS]
+SAMPLE_FACTORY_CONTRACTS = {
+    SAMPLE_PROFILE: (SAMPLE_STAGE, SAMPLE_WORDS),
+    IMAGE_FLOAT_PROFILE: (IMAGE_FLOAT_STAGE, IMAGE_FLOAT_WORDS),
+}
 FULL_COMPUTE_CONTRACTS = {
     PROFILE: (FULL_STAGE, FULL_WORDS),
-    SAMPLE_PROFILE: (SAMPLE_STAGE, SAMPLE_WORDS),
+    **SAMPLE_FACTORY_CONTRACTS,
 }

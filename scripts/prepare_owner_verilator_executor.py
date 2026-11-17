@@ -36,10 +36,10 @@ def regular(path):
     return path
 
 
-def driver_inputs(kind, model, kit):
+def driver_inputs(kind, model, kit, profile=SAMPLE_PROFILE):
     """Reject undeclared GPU includes, adapter substitution and standard-header shadows."""
     require(kind in KINDS, 'Unsupported complete owner Verilator executor kind')
-    files = owner.driver_files(kind, SAMPLE_PROFILE)
+    files = owner.driver_files(kind, profile)
     declared = {ROOT / name for name in (*files, *DEPENDENCIES)}
     expected = {path.name: path for path in declared}
     require(len(expected) == len(declared), 'Ambiguous original driver dependency names')
@@ -71,9 +71,11 @@ def driver_inputs(kind, model, kit):
 def context(directory, kind):
     built = native.checked_build(directory)
     generated = generator.checked_generation(directory)
+    profile = generated['context']['profile']
+    owner.profile_contract(profile, kind)
     target = generator.output(directory)
     model, kit = target / 'model', Path(generated['context']['verilator_root'])
-    files = driver_inputs(kind, model, kit)
+    files = driver_inputs(kind, model, kit, profile)
     sources = owner.hashes((*files, *owner.checker_files(kind), *CHECKERS))
     flags = ['-std=c++17', '-O1', '-g0', '-faligned-new', '-pthread']
     if 'clang' in built['context']['compiler']['version'].lower():
@@ -97,8 +99,8 @@ def context(directory, kind):
             linkers[name] = dict(path=str(path), sha256=owner.common.sha(path))
     return dict(kind=kind, source_sha256=sources, compiler=built['context']['compiler'], flags=flags,
         linkers=linkers,
-        driver=str(ROOT / owner.driver_files(kind, SAMPLE_PROFILE)[0]),
-        model=dict(backend='verilator', profile=SAMPLE_PROFILE, dut_directory=str(model),
+        driver=str(ROOT / owner.driver_files(kind, profile)[0]),
+        model=dict(backend='verilator', profile=profile, dut_directory=str(model),
             preparation_sha256=owner.common.sha(directory / 'preparation.json'),
             profile_manifest_sha256=owner.common.sha(directory / 'owner-manifest.json'),
             generation_sha256=owner.common.sha(target / 'generation.json'),
@@ -137,7 +139,7 @@ def check_dependencies(dependencies, bound):
     for path in (Path(bound['driver']), model / 'VGpuHostSystemAxi.h', kit / 'include/verilated.h',
                  ROOT / 'scripts/native_verilator_initial_time.hpp'):
         require(str(path.resolve()) in dependencies, 'Compiler omitted a required actual driver/model header')
-    declared = {str((ROOT / name).resolve()) for name in driver_inputs(bound['kind'], model, kit)}
+    declared = {str((ROOT / name).resolve()) for name in driver_inputs(bound['kind'], model, kit, bound['model']['profile'])}
     for name in dependencies:
         path = Path(name)
         if (path.is_relative_to(ROOT) and not path.is_relative_to(model)
@@ -167,7 +169,7 @@ def execute(log, command, memory_mib, timeout, *, expected_exit=0):
 def verify_qualification(path, record, *, executor=None, kind):
     require(record == strict_json(path), 'Original qualification JSON changed during validation')
     directory = owner.inside(record['owner_output'])
-    contract = owner.profile_contract(SAMPLE_PROFILE, kind)
+    contract = owner.profile_contract(record.get('profile'), kind)
     require(record.get('backend') == 'verilator' and kind in KINDS and
             all(type(record.get(k)) is type(v) and record[k] == v for k, v in contract.items()),
             'Wrong original Verilator executor factory/kind/scope')
@@ -180,6 +182,7 @@ def verify_qualification(path, record, *, executor=None, kind):
         require(Path(executor).absolute() == binary and not Path(executor).is_symlink(),
                 'Controller selected another Verilator executor')
     bound = context(directory, kind)
+    require(record.get('profile') == bound['model']['profile'], 'Original executor profile differs from its complete model')
     require(all(record.get(name) == bound[name] for name in ('source_sha256', 'model', 'compiler')),
             'Original owner source, checker, compiler or complete model changed')
     snapshot = regular(target / 'builder.json')
@@ -217,7 +220,7 @@ def build_executor(directory, kind):
         dependencies=dependencies, executable_sha256=executable_sha256))
     path = target / 'qualification.json'
     owner.common.write_json(path, dict(schema='opengpu-owner-executor-v1', version=1,
-        backend='verilator', kind=kind, **owner.profile_contract(SAMPLE_PROFILE, kind),
+        backend='verilator', kind=kind, **owner.profile_contract(bound['model']['profile'], kind),
         executorBuildVerified=True, sourceQualificationRequired=True, gpuExecution=False,
         clockQualified=False, fpsQualified=False, source_root=str(ROOT), owner_output=str(directory),
         source_sha256=bound['source_sha256'], model=bound['model'], compiler=bound['compiler'],
@@ -246,12 +249,13 @@ def probe(path, *, executor=None, kind):
         observed = temporary / 'profile.json'
         execute(temporary / 'probe.log', [str(binary), '--probe-profile', str(observed)], 8192, 600)
         profile = strict_json(regular(observed))
-        require(profile.get('ownerProfile') == SAMPLE_PROFILE, 'Original probe read another owner factory')
+        require(profile.get('ownerProfile') == record['profile'], 'Original probe read another owner factory')
         if kind == 'compute':
             from compute_owner_protocol import profile_bytes
+            profile_bytes(profile)
         else:
             from native_sample_owner_protocol import profile_bytes
-        profile_bytes(profile)
+            profile_bytes(profile,owner_profile=record['profile'])
         require(owner.verify_qualification(path, executor=executor, kind=kind) == record,
                 'Original owner inputs changed during the actual MMIO probe')
         print('Actual original probe PASS kind=' + kind + ' words=' + str(len(profile['words'])) +

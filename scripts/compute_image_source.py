@@ -183,11 +183,15 @@ def returned_outputs(initial, returned, description):
     return [(output,bytes(observed)),*results]
 
 
-def ready(memory, description, data):
+def ready(memory, description, data, *, owner_profile=None):
     """Bind full112 READY to original views, exact write windows and GIU1/PTEs."""
     from compute_counter_source import translate
-    from owner_resource_contract import SAMPLE_WORDS, SAMPLE_PROFILE, SAMPLE_STAGE, FULL_COMPUTE_SCHEMA
+    from owner_resource_contract import SAMPLE_PROFILE, SAMPLE_FACTORY_CONTRACTS, FULL_COMPUTE_SCHEMA
     from compute_owner_protocol import profile_bytes
+    owner_profile=SAMPLE_PROFILE if owner_profile is None else owner_profile
+    require(type(owner_profile) is str and owner_profile in SAMPLE_FACTORY_CONTRACTS,
+            'image source requires a known complete sample factory')
+    stage,expected_words=SAMPLE_FACTORY_CONTRACTS[owner_profile]
     p,output,images=recipe(memory,description)
     require(data[:8]==b'OGCMP003', 'full112 capture required')
     cursor=8
@@ -201,8 +205,8 @@ def ready(memory, description, data):
     require(0<budget<=1000000000 and 8<=hold<=4096 and 0<command<256 and count==122,
         'capture bounds/discovery differ')
     discovery=[take('<II') for _ in range(count)]
-    require(discovery[:112]==[(w['address'],w['value']) for w in SAMPLE_WORDS], 'exact final112 discovery required')
-    profile_bytes(dict(schema=FULL_COMPUTE_SCHEMA,ownerProfile=SAMPLE_PROFILE,ownerResourceStage=SAMPLE_STAGE,
+    require(discovery[:112]==[(w['address'],w['value']) for w in expected_words], 'exact qualified final112 discovery required')
+    profile_bytes(dict(schema=FULL_COMPUTE_SCHEMA,ownerProfile=owner_profile,ownerResourceStage=stage,
         ownerResourceVersion=2,fullResourceQualification=False,resetCount=1,sourceQualificationRequired=True,
         gpuExecution=False,clockQualified=False,fpsQualified=False,
         words=[dict(address=a,value=v) for a,v in discovery[:112]],

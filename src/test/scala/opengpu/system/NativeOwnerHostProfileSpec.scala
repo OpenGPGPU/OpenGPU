@@ -5,6 +5,25 @@ import opengpu.graphics._
 import org.scalatest.flatspec.AnyFlatSpec
 
 class NativeOwnerHostProfileSpec extends AnyFlatSpec {
+  it should "add R32F exchange under a distinct full sample owner identity without reducing any resource" in {
+    val before=OwnerResourceProfile.sampleStage
+    val p=OwnerResourceProfile.imageFloatStage
+    assert(OwnerResourceProfile.imageFloatStageId=="two-cu-vga60-owner-v2-image-float-stage")
+    assert(OwnerResourceProfile.imageFloatStageName=="geometry-compute-sample-image-float")
+    assert(!before.imageFloatExchange && p.imageFloatExchange)
+    assert(p.copy(imageFloatExchange=false)==before)
+    assert(p.requiredDiscovery.size==112 && p.requiredDiscovery.toMap.apply(0x368)==0x3fffff)
+    assert(p.requiredDiscovery.filterNot(_._1==0x368)==before.requiredDiscovery.filterNot(_._1==0x368))
+    assert(p.computeUnits==2 && p.execution.lanes==16 && p.execution.warps==8)
+    assert(p.execution.sharedMemoryBytes==16384 && p.execution.l2Sets*p.execution.l2Ways*64==131072)
+    assert(p.graphics.screenWidth==640 && p.graphics.screenHeight==480)
+    assert(p.native.engines==4 && p.native.pagedCapacity==65536 && p.native.payload.get.capacityBytes==524288)
+    assert(p.native.renderTargetExtent.contains((2048,2048)))
+    assert(p.nativeSampleTransport && p.nativeGeometryTransport && p.native.transformFeedback)
+    val manifest=PrepareOwnerResourceImageFloatHost.manifest(false)
+    assert(manifest.contains("\"imageFloatExchange\":true") && manifest.contains("\"computeFeatureFlags\":4194303"))
+  }
+
   it should "compose the full sample owner under a distinct 112-word identity and retain every capacity" in {
     val before=OwnerResourceProfile.target
     val sample=OwnerResourceProfile.sampleStage

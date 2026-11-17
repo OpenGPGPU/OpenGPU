@@ -27,10 +27,15 @@ def source_inputs():
 
 def check_manifest(manifest,*,rtl_emitted=True):
     if type(manifest) is not dict:raise RuntimeError('Owner manifest must be an object')
-    from owner_resource_contract import COMPUTE_STAGE, COMPUTE_WORDS, PROFILE as FULL_PROFILE, FULL_STAGE, FULL_WORDS, SAMPLE_PROFILE, SAMPLE_STAGE, SAMPLE_WORDS
+    from owner_resource_contract import (COMPUTE_STAGE, COMPUTE_WORDS, PROFILE as FULL_PROFILE,
+        FULL_STAGE, FULL_WORDS, SAMPLE_PROFILE, SAMPLE_STAGE, SAMPLE_WORDS,
+        IMAGE_FLOAT_PROFILE, IMAGE_FLOAT_STAGE, IMAGE_FLOAT_WORDS)
     compute_stage = manifest.get('profile') == COMPUTE_STAGE
     full_resources = manifest.get('profile') == FULL_PROFILE
-    sample_resources = manifest.get('profile') == SAMPLE_PROFILE
+    float_resources = manifest.get('profile') == IMAGE_FLOAT_PROFILE
+    sample_resources = manifest.get('profile') in (SAMPLE_PROFILE, IMAGE_FLOAT_PROFILE)
+    if not float_resources and 'imageFloatExchange' in manifest:
+        raise RuntimeError('Float exchange metadata requires its distinct owner factory')
     if 'assertionMode' in manifest and (not sample_resources or
             manifest['assertionMode'] != 'inline' or not rtl_emitted):
         raise RuntimeError('Inline assertions require the emitted complete sample factory')
@@ -38,7 +43,7 @@ def check_manifest(manifest,*,rtl_emitted=True):
             ('nativeSampleShading','nativeSampleTransport','nativeFragmentVersions',
              'tessellationFragmentImages','tessellationSampleShading')):
         raise RuntimeError('Sample transport metadata requires its distinct owner factory')
-    expected_words = SAMPLE_WORDS if sample_resources else FULL_WORDS if full_resources else COMPUTE_WORDS if compute_stage else EXPECTED_WORDS
+    expected_words = IMAGE_FLOAT_WORDS if float_resources else SAMPLE_WORDS if sample_resources else FULL_WORDS if full_resources else COMPUTE_WORDS if compute_stage else EXPECTED_WORDS
     required={'version':1,'profile':PROFILE,'computeUnits':2,'frameWidth':640,'frameHeight':480,
         'lanes':16,'warps':8,'transactionsPerCu':16,'axiDataBytes':32,'engines':4,
         'nativeMaxWidth':2048,'nativeMaxHeight':2048,'pagedCapacity':65536,'payloadBytes':524288,
@@ -58,6 +63,9 @@ def check_manifest(manifest,*,rtl_emitted=True):
             resourceDiscoveryWords=112, ownerResourceStage=SAMPLE_STAGE,
             nativeSampleShading=True, nativeSampleTransport=True, nativeFragmentVersions=[6,7],
             tessellationFragmentImages=True, tessellationSampleShading=True)
+    if float_resources:
+        required.update(profile=IMAGE_FLOAT_PROFILE, ownerResourceStage=IMAGE_FLOAT_STAGE,
+            computeFeatureFlags=0x3fffff, imageFloatExchange=True)
     if any(type(manifest.get(k)) is not type(v) or manifest[k]!=v for k,v in required.items()):
         raise RuntimeError('Incomplete or mismatched protected owner factory')
     words=manifest.get('requiredDiscovery')
@@ -98,9 +106,9 @@ def prepared(out):
     check_assertion_format(out,manifest,record['rtl_sha256'])
     return record
 
-def prepare(out,heap,compute_stage=False,full_resources=False,sample_resources=False,inline_assertions=False):
-    if sum((compute_stage,full_resources,sample_resources))>1:raise RuntimeError('Select one exact owner factory')
-    if inline_assertions and not sample_resources:raise RuntimeError('Inline assertions require the complete sample factory')
+def prepare(out,heap,compute_stage=False,full_resources=False,sample_resources=False,inline_assertions=False,float_resources=False):
+    if sum((compute_stage,full_resources,sample_resources,float_resources))>1:raise RuntimeError('Select one exact owner factory')
+    if inline_assertions and not (sample_resources or float_resources):raise RuntimeError('Inline assertions require the complete sample factory')
     if out.exists():raise RuntimeError('Owner preparation requires a new output directory')
     if not re.fullmatch(r'[1-9][0-9]*[kKmMgG]',heap):raise ValueError('Invalid Java heap size')
     sources=source_inputs()
@@ -108,7 +116,7 @@ def prepare(out,heap,compute_stage=False,full_resources=False,sample_resources=F
     temporary=main/'.artifacts';temporary.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='o',dir=temporary) as directory:
         if len(directory.encode())>52:raise RuntimeError('JVM temporary path exceeds Unix-socket limit')
-        entry='PrepareOwnerResourceSampleHost' if sample_resources else 'PrepareOwnerResourceFullHost' if full_resources else 'PrepareOwnerResourceHost' if compute_stage else 'PrepareNativeOwnerHost'
+        entry='PrepareOwnerResourceImageFloatHost' if float_resources else 'PrepareOwnerResourceSampleHost' if sample_resources else 'PrepareOwnerResourceFullHost' if full_resources else 'PrepareOwnerResourceHost' if compute_stage else 'PrepareNativeOwnerHost'
         command=['sbt','-J-Xmx'+heap,'-J-XX:ActiveProcessorCount=2','-J-Djava.io.tmpdir='+directory,
             '-Dopengpu.fullHostQualification=1',
             'Test / runMain opengpu.system.'+entry+' --output '+json.dumps(str(out))+
@@ -116,8 +124,8 @@ def prepare(out,heap,compute_stage=False,full_resources=False,sample_resources=F
         subprocess.run(command,cwd=ROOT,env=dict(os.environ,TMPDIR=directory),check=True)
     if sources!=source_inputs():raise RuntimeError('Source changed during owner RTL preparation')
     manifest=out/'owner-manifest.json';description=json.loads(manifest.read_text());check_manifest(description)
-    from owner_resource_contract import COMPUTE_STAGE, PROFILE as FULL_PROFILE, SAMPLE_PROFILE
-    if description['profile'] != (SAMPLE_PROFILE if sample_resources else FULL_PROFILE if full_resources else COMPUTE_STAGE if compute_stage else PROFILE):
+    from owner_resource_contract import COMPUTE_STAGE, PROFILE as FULL_PROFILE, SAMPLE_PROFILE, IMAGE_FLOAT_PROFILE
+    if description['profile'] != (IMAGE_FLOAT_PROFILE if float_resources else SAMPLE_PROFILE if sample_resources else FULL_PROFILE if full_resources else COMPUTE_STAGE if compute_stage else PROFILE):
         raise RuntimeError('Emitted owner profile differs from the requested factory')
     if description.get('assertionMode','bound') != ('inline' if inline_assertions else 'bound'):
         raise RuntimeError('Emitted assertion format differs from the requested format')
@@ -149,6 +157,8 @@ def main():
                         help='prepare the distinct full geometry/compute/feedback owner factory')
     factories.add_argument('--sample-resources',action='store_true',
                         help='prepare the distinct complete sample-plane geometry/compute owner factory')
+    factories.add_argument('--image-float-resources',action='store_true',
+                        help='prepare the distinct complete sample owner with R32F exchange')
     parser.add_argument('--inline-assertions',action='store_true',
                         help='inline the complete sample factory checks for hierarchical compilation')
     parser.add_argument('--java-heap',default='24G')
@@ -157,10 +167,10 @@ def main():
     args=parser.parse_args();out=args.output.resolve()
     os.environ['PYTHONDONTWRITEBYTECODE']='1'
     if not out.is_relative_to(ROOT/'.artifacts'):parser.error('--output must be inside this checkout .artifacts')
-    if (args.compute_stage or args.full_resources or args.sample_resources) and args.stage!='prepare':parser.error('factory options select only a fresh preparation')
-    if args.inline_assertions and (args.stage!='prepare' or not args.sample_resources):
-        parser.error('--inline-assertions requires --stage prepare --sample-resources')
-    if args.stage=='prepare':prepare(out,args.java_heap,args.compute_stage,args.full_resources,args.sample_resources,args.inline_assertions)
+    if (args.compute_stage or args.full_resources or args.sample_resources or args.image_float_resources) and args.stage!='prepare':parser.error('factory options select only a fresh preparation')
+    if args.inline_assertions and (args.stage!='prepare' or not (args.sample_resources or args.image_float_resources)):
+        parser.error('--inline-assertions requires --stage prepare with a complete sample factory')
+    if args.stage=='prepare':prepare(out,args.java_heap,args.compute_stage,args.full_resources,args.sample_resources,args.inline_assertions,args.image_float_resources)
     elif args.stage=='generate':
         if args.flashsim_dir is None:parser.error('--stage generate requires --flashsim-dir')
         OwnerRunner(out,args.flashsim_dir,args.shards).generate()

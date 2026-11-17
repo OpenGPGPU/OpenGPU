@@ -11,7 +11,7 @@ import sys
 
 import prepare_native_owner_flashsim as owner
 import qualify_native_product_compiled as common
-from owner_resource_contract import SAMPLE_PROFILE
+from owner_resource_contract import SAMPLE_FACTORY_CONTRACTS
 from run_owner_bounded import run_bounded
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,7 +39,7 @@ def output(directory):
 def context(directory):
     prepared = owner.prepared(directory)
     manifest = json.loads((directory / 'owner-manifest.json').read_text())
-    require(manifest['profile'] == SAMPLE_PROFILE and manifest.get('assertionMode') == 'inline',
+    require(manifest['profile'] in SAMPLE_FACTORY_CONTRACTS and manifest.get('assertionMode') == 'inline',
             'Hierarchical owner compilation requires the complete inline sample factory')
     verilator = Path(shutil.which('verilator')).resolve(strict=True)
     kit = Path(subprocess.check_output(
@@ -49,7 +49,7 @@ def context(directory):
         ('run_owner_bounded.py', 'owner_process_memory.py', 'owner_process_lifetime.py'))]
     programs.extend(path for folder in ('include', 'bin')
                     for path in (kit / folder).rglob('*') if path.is_file())
-    return dict(schema='opengpu-owner-verilator-context-v1', profile=SAMPLE_PROFILE,
+    return dict(schema='opengpu-owner-verilator-context-v1', profile=manifest['profile'],
         preparation_sha256=common.sha(directory / 'preparation.json'),
         manifest_sha256=prepared['manifest_sha256'], rtl_sha256=prepared['rtl_sha256'],
         hierarchy=common.hierarchy_plan(prepared['rtl_sha256'], 'fp32'), flags=FLAGS,
