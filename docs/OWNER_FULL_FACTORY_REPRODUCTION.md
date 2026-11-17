@@ -29,6 +29,45 @@ clock or FPS qualification. P05 and subsequent work packages retain those
 requirements. Changes to hardware source, resources or ABI require a new P04
 binding; an old96 model or a protocol peer cannot supply this qualification.
 
+## Inline assertions for hierarchical compilation
+
+The complete sample factory accepts `--inline-assertions`. Firtool enables
+`Verification` and `Verification.Assert`, placing checks inside their owning
+modules. The manifest labels this format with `assertionMode: "inline"`; the
+preparation checker rejects missing checks, remaining assertion bind layers,
+other factories and stale source/RTL bindings. The default bound-layer format
+remains available.
+
+Fresh compilation of all 788 production and 1131 test sources passed, with
+4140/3601 class `SourceFile` identities checked. The complete inline emission
+passed in 269.968 seconds with an observed charged process-tree peak of
+15,520,350,208 bytes. Its original 112 discovery words and resource manifest
+match the bound factory, apart from the assertion-format label.
+
+The emitted RTL contains 3774 diagnostic statements. The bound version has one
+additional statement whose failure condition is impossible: its 12-bit response
+ID selects either `~tag[11]` or `tag[11]`, covering all 4096 values. All other
+diagnostic messages and multiplicities match. The focused compiler check below
+also verifies bound hierarchy rejection, successful inline hierarchy compilation,
+healthy clocked execution and two independent actual assertion failures.
+Set `FIRTOOL` to the Chisel toolchain's firtool 1.158.0 executable.
+
+```sh
+python3 -B scripts/prepare_native_owner_flashsim.py --stage prepare \
+  --sample-resources --inline-assertions --java-heap 8G \
+  --output "$PWD/.artifacts/owner-inline"
+python3 -B scripts/prepare_native_owner_flashsim.py --stage check \
+  --output "$PWD/.artifacts/owner-inline"
+sbt -J-Xmx4G 'testOnly opengpu.system.OwnerInlineAssertionEmissionSpec'
+python3 -B -m unittest discover -s scripts -p 'test_prepare*owner*.py'
+python3 -B scripts/qualification/check_owner_inline_assertions.py \
+  --firtool "$FIRTOOL"
+```
+
+Both Scala emission checks and 30 focused owner-input/executor checks passed.
+This establishes the emission format; complete model generation, four original
+executor builds and three actual MMIO probes remain required for P04.
+
 ## Compiler prerequisite
 
 The compiler is CIRCT `d21a21e51`, with the firtool-1.158.0 shared SDK and LLVM
