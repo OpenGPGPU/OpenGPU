@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """CPU-only exact 112-word factory manifest guards; no RTL is generated."""
 import copy
+import json
+from pathlib import Path
+import tempfile
 import unittest
+from unittest.mock import patch
 
 import prepare_native_owner_flashsim as owner
 from owner_resource_contract import (SAMPLE_PROFILE, SAMPLE_STAGE, SAMPLE_WORDS,
@@ -9,6 +13,66 @@ from owner_resource_contract import (SAMPLE_PROFILE, SAMPLE_STAGE, SAMPLE_WORDS,
 
 
 class SampleOwnerManifestTests(unittest.TestCase):
+    def test_inline_assertions_require_the_complete_emitted_sample_factory(self):
+        valid = self.manifest()
+        valid['assertionMode'] = 'inline'
+        owner.check_manifest(valid)
+        for mode in (False, None, 'off', 'bound', ''):
+            bad = copy.deepcopy(valid)
+            bad['assertionMode'] = mode
+            with self.subTest(mode=mode), self.assertRaises(RuntimeError):
+                owner.check_manifest(bad)
+        from test_prepare_native_owner_flashsim import OwnerInputTests
+        wrong = OwnerInputTests().manifest()
+        wrong['assertionMode'] = 'inline'
+        with self.assertRaises(RuntimeError):
+            owner.check_manifest(wrong)
+        valid['rtlEmitted'] = False
+        with self.assertRaises(RuntimeError):
+            owner.check_manifest(valid, rtl_emitted=False)
+        with self.assertRaisesRegex(RuntimeError, 'complete sample factory'):
+            owner.prepare(Path('unused'), '1G', inline_assertions=True)
+
+    def test_inline_preparation_rejects_empty_checks_binding_layers_and_changed_rtl(self):
+        # CPU-only format/source guard fixture; it cannot qualify a DUT.
+        parent = owner.ROOT / '.artifacts'
+        parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='inline-owner-', dir=parent) as directory:
+            out = Path(directory)
+            rtl = out / 'rtl'
+            rtl.mkdir()
+            sv = rtl / 'Sample.sv'
+            checked = 'module Sample(input clock, okay);\nalways @(posedge clock)\n  assert(okay) else $error("check");\nendmodule\n'
+            sv.write_text(checked)
+            manifest = self.manifest()
+            manifest['assertionMode'] = 'inline'
+            manifest_path = out / 'owner-manifest.json'
+            manifest_path.write_text(json.dumps(manifest))
+            with patch.object(owner, 'source_inputs', return_value={'fixture': 'original'}):
+                record = dict(version=1, exit_code=0, source_sha256={'fixture': 'original'},
+                    manifest_sha256=owner.common.sha(manifest_path))
+                def refresh():
+                    record['rtl_sha256'] = owner.common.tree_hashes(rtl)
+                    (out / 'preparation.json').write_text(json.dumps(record))
+                refresh()
+                self.assertEqual(owner.prepared(out), record)
+                sv.write_text(checked + '// changed after preparation\n')
+                with self.assertRaises(RuntimeError):
+                    owner.prepared(out)
+                for empty in ('module Sample; endmodule\n',
+                              '/*\n assert(okay) else $error("comment only");\n*/\n'):
+                    sv.write_text(empty)
+                    refresh()
+                    with self.assertRaisesRegex(RuntimeError, 'no executable assertion'):
+                        owner.prepared(out)
+                sv.write_text(checked)
+                layers = rtl / 'verification/assert'
+                layers.mkdir(parents=True)
+                (layers / 'layers-Sample-Verification-Assert.sv').write_text('bind Sample Check c();\n')
+                refresh()
+                with self.assertRaisesRegex(RuntimeError, 'still contains assertion bind layers'):
+                    owner.prepared(out)
+
     def manifest(self):
         return dict(version=2, ownerResourceVersion=2, ownerResourceStage=SAMPLE_STAGE,
             profile=SAMPLE_PROFILE, computeUnits=2, frameWidth=640, frameHeight=480,

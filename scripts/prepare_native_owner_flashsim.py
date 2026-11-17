@@ -31,6 +31,9 @@ def check_manifest(manifest,*,rtl_emitted=True):
     compute_stage = manifest.get('profile') == COMPUTE_STAGE
     full_resources = manifest.get('profile') == FULL_PROFILE
     sample_resources = manifest.get('profile') == SAMPLE_PROFILE
+    if 'assertionMode' in manifest and (not sample_resources or
+            manifest['assertionMode'] != 'inline' or not rtl_emitted):
+        raise RuntimeError('Inline assertions require the emitted complete sample factory')
     if not sample_resources and any(key in manifest for key in
             ('nativeSampleShading','nativeSampleTransport','nativeFragmentVersions',
              'tessellationFragmentImages','tessellationSampleShading')):
@@ -67,20 +70,37 @@ def check_manifest(manifest,*,rtl_emitted=True):
     if words!=expected_words:
         raise RuntimeError('Protected owner discovery differs from its factory')
 
+def check_assertion_format(out, manifest, rtl):
+    layers = common.assertion_layer_hashes(rtl)
+    if manifest.get('assertionMode') != 'inline':
+        if not layers:raise RuntimeError('Owner DUT has no assertion bind layers')
+        return
+    if layers:raise RuntimeError('Inline owner DUT still contains assertion bind layers')
+    # This is a format guard, not execution qualification. Source/RTL bindings
+    # below and the assertion-enabled model/probes remain mandatory.
+    for name in rtl:
+        if not name.endswith('.sv'):continue
+        text = re.sub(r'/\*.*?\*/', '', (out/'rtl'/name).read_text(), flags=re.S)
+        if re.search(r'(?m)^\s*(?:assert\s*\(|\$(?:fatal|error)\b)', text):
+            return
+    raise RuntimeError('Inline owner DUT contains no executable assertion statements')
+
 def prepared(out):
     record=json.loads((out/'preparation.json').read_text())
-    manifest_path=out/'owner-manifest.json';check_manifest(json.loads(manifest_path.read_text()))
+    manifest_path=out/'owner-manifest.json';manifest=json.loads(manifest_path.read_text())
+    check_manifest(manifest)
     if (type(record.get('version')) is not int or record['version']!=1 or
         type(record.get('exit_code')) is not int or record['exit_code']!=0 or
         record.get('source_sha256')!=source_inputs() or
         record.get('manifest_sha256')!=common.sha(manifest_path) or
-        record.get('rtl_sha256')!=common.tree_hashes(out/'rtl') or
-        not common.assertion_layer_hashes(record['rtl_sha256'])):
+        record.get('rtl_sha256')!=common.tree_hashes(out/'rtl')):
         raise RuntimeError('Owner RTL, assertions, factory or sources changed after preparation')
+    check_assertion_format(out,manifest,record['rtl_sha256'])
     return record
 
-def prepare(out,heap,compute_stage=False,full_resources=False,sample_resources=False):
+def prepare(out,heap,compute_stage=False,full_resources=False,sample_resources=False,inline_assertions=False):
     if sum((compute_stage,full_resources,sample_resources))>1:raise RuntimeError('Select one exact owner factory')
+    if inline_assertions and not sample_resources:raise RuntimeError('Inline assertions require the complete sample factory')
     if out.exists():raise RuntimeError('Owner preparation requires a new output directory')
     if not re.fullmatch(r'[1-9][0-9]*[kKmMgG]',heap):raise ValueError('Invalid Java heap size')
     sources=source_inputs()
@@ -91,15 +111,18 @@ def prepare(out,heap,compute_stage=False,full_resources=False,sample_resources=F
         entry='PrepareOwnerResourceSampleHost' if sample_resources else 'PrepareOwnerResourceFullHost' if full_resources else 'PrepareOwnerResourceHost' if compute_stage else 'PrepareNativeOwnerHost'
         command=['sbt','-J-Xmx'+heap,'-J-XX:ActiveProcessorCount=2','-J-Djava.io.tmpdir='+directory,
             '-Dopengpu.fullHostQualification=1',
-            'Test / runMain opengpu.system.'+entry+' --output '+json.dumps(str(out))]
+            'Test / runMain opengpu.system.'+entry+' --output '+json.dumps(str(out))+
+            (' --inline-assertions' if inline_assertions else '')]
         subprocess.run(command,cwd=ROOT,env=dict(os.environ,TMPDIR=directory),check=True)
     if sources!=source_inputs():raise RuntimeError('Source changed during owner RTL preparation')
     manifest=out/'owner-manifest.json';description=json.loads(manifest.read_text());check_manifest(description)
     from owner_resource_contract import COMPUTE_STAGE, PROFILE as FULL_PROFILE, SAMPLE_PROFILE
     if description['profile'] != (SAMPLE_PROFILE if sample_resources else FULL_PROFILE if full_resources else COMPUTE_STAGE if compute_stage else PROFILE):
         raise RuntimeError('Emitted owner profile differs from the requested factory')
+    if description.get('assertionMode','bound') != ('inline' if inline_assertions else 'bound'):
+        raise RuntimeError('Emitted assertion format differs from the requested format')
     rtl=common.tree_hashes(out/'rtl')
-    if not common.assertion_layer_hashes(rtl):raise RuntimeError('Owner DUT has no assertion bind layers')
+    check_assertion_format(out,description,rtl)
     common.simulation_inputs(out/'rtl')
     common.write_json(out/'preparation.json',dict(version=1,exit_code=0,source_sha256=sources,
         manifest_sha256=common.sha(manifest),rtl_sha256=rtl))
@@ -126,6 +149,8 @@ def main():
                         help='prepare the distinct full geometry/compute/feedback owner factory')
     factories.add_argument('--sample-resources',action='store_true',
                         help='prepare the distinct complete sample-plane geometry/compute owner factory')
+    parser.add_argument('--inline-assertions',action='store_true',
+                        help='inline the complete sample factory checks for hierarchical compilation')
     parser.add_argument('--java-heap',default='24G')
     parser.add_argument('--flashsim-dir',type=Path)
     parser.add_argument('--shards',type=int,default=32)
@@ -133,7 +158,9 @@ def main():
     os.environ['PYTHONDONTWRITEBYTECODE']='1'
     if not out.is_relative_to(ROOT/'.artifacts'):parser.error('--output must be inside this checkout .artifacts')
     if (args.compute_stage or args.full_resources or args.sample_resources) and args.stage!='prepare':parser.error('factory options select only a fresh preparation')
-    if args.stage=='prepare':prepare(out,args.java_heap,args.compute_stage,args.full_resources,args.sample_resources)
+    if args.inline_assertions and (args.stage!='prepare' or not args.sample_resources):
+        parser.error('--inline-assertions requires --stage prepare --sample-resources')
+    if args.stage=='prepare':prepare(out,args.java_heap,args.compute_stage,args.full_resources,args.sample_resources,args.inline_assertions)
     elif args.stage=='generate':
         if args.flashsim_dir is None:parser.error('--stage generate requires --flashsim-dir')
         OwnerRunner(out,args.flashsim_dir,args.shards).generate()
