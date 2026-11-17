@@ -32,7 +32,7 @@ struct build {
     uint32_t samplers, sampler_views;
     const unsigned *texture_observed;
     unsigned texture_position;
-    unsigned images, image_writable;
+    unsigned images, image_writable, image_target[4];
     unsigned cf, cf_depth, cf_count, planned[CS_TEMPS][4];
     uint32_t imm[CS_IMMS][4];
     unsigned nimm;
@@ -246,13 +246,23 @@ static int declaration(struct build *b, const struct tgsi_full_declaration *d)
     }
     case TGSI_FILE_IMAGE: {
         int format = opengpu_buffer_image_format(d->Image.Format);
-        if (last >= 4 || d->Image.Resource != TGSI_TEXTURE_BUFFER ||
+        unsigned target;
+        switch (d->Image.Resource) {
+        case TGSI_TEXTURE_2D: target = 0; break;
+        case TGSI_TEXTURE_2D_ARRAY: target = 1; break;
+        case TGSI_TEXTURE_CUBE: target = 2; break;
+        case TGSI_TEXTURE_3D: target = 3; break;
+        case TGSI_TEXTURE_BUFFER: target = 5; break;
+        default: return -1;
+        }
+        if (last >= 4 ||
             d->Image.Raw || d->Image.Padding || format < 0) return -1;
         for (i = first; i <= last; i++) {
             if (b->images & (1u << i)) return -1;
             b->images |= 1u << i;
             if (d->Image.Writable) b->image_writable |= 1u << i;
             b->p.image_format[i] = (unsigned)format;
+            b->image_target[i] = target;
         }
         return 0;
     }
@@ -697,13 +707,17 @@ static int image(struct build *b, const struct tgsi_full_instruction *in)
          * access and shared-L2 invalidation path. Other qualifier contracts
          * remain unsupported; do not erase them during lowering. */
         (in->Memory.Qualifier & ~TGSI_MEMORY_COHERENT) || in->Memory.Padding ||
-        in->Memory.Texture != TGSI_TEXTURE_BUFFER ||
+        in->Memory.Texture != (b->image_target[index] == 0 ? TGSI_TEXTURE_2D :
+            b->image_target[index] == 1 ? TGSI_TEXTURE_2D_ARRAY :
+            b->image_target[index] == 2 ? TGSI_TEXTURE_CUBE :
+            b->image_target[index] == 3 ? TGSI_TEXTURE_3D : TGSI_TEXTURE_BUFFER) ||
         opengpu_buffer_image_format(in->Memory.Format) != (int)b->p.image_format[index] ||
         (store && (!(b->image_writable & (1u << index)) || d->WriteMask != 15))) return -1;
     unsigned format = b->p.image_format[index];
-    unsigned controls = 5u | opengpu_buffer_native_kind(format) << 3 | 1u << 5 | format << 6;
+    unsigned target = b->image_target[index];
+    unsigned controls = target | opengpu_buffer_native_kind(format) << 3 | 1u << 5 | format << 6;
     if (query) {
-        if (d->WriteMask != 1) return -1; /* imageBuffer size is scalar */
+        if (target != 5 || d->WriteMask != 1) return -1; /* function27 is the versioned buffer query */
         splat(b, 24, index); splat(b, 23, controls);
         resource_word(b, 27, 0, 26, 24, 23);
         b->p.image_queries |= 1u << index;
@@ -712,9 +726,11 @@ static int image(struct build *b, const struct tgsi_full_instruction *in)
     /* Capture the coordinate before loading other sources; source() may use
      * scratch v22..25/v31 but cannot overwrite this reserved staged v26. */
     if (source(b, &in->Src[store ? 0 : 1], 0, 26)) return -1;
+    if (target != 5 && source(b, &in->Src[store ? 0 : 1], 1, 27)) return -1;
+    if (target != 0 && target != 5 && source(b, &in->Src[store ? 0 : 1], 2, 28)) return -1;
     splat(b, 24, index); splat(b, 23, controls);
     resource_word(b, 8, 0, 0, 24, 23);
-    splat(b, 24, 0); resource_word(b, 8, 1, 0, 24, 24);
+    splat(b, 24, 0); resource_word(b, 8, 1, 0, target != 0 && target != 5 ? 28 : 24, 24);
     if (store) {
         /* Capture each pair immediately. No output-register copy can clobber
          * an aliased TGSI source before all source components are consumed. */
@@ -723,12 +739,12 @@ static int image(struct build *b, const struct tgsi_full_instruction *in)
                 source(b, &in->Src[1], pair * 2 + 1, 23)) return -1;
             resource_word(b, 8, pair + 2, 0, 22, 23);
         }
-        splat(b, 24, 0); resource_word(b, 10, 0, 0, 26, 24);
+        splat(b, 24, 0); resource_word(b, 10, 0, 0, 26, target == 5 ? 24 : 27);
         b->p.image_writes |= 1u << index;
         word(b, 0x0330000fu);
         return 0;
     }
-    resource_word(b, 9, 0, 26, 26, 24);
+    resource_word(b, 9, 0, 26, 26, target == 5 ? 24 : 27);
     for (unsigned c = 1; c < 4; c++) if (d->WriteMask & (1u << c))
         resource_word(b, 11, c, 26 + c, 0, 0);
     b->p.image_reads |= 1u << index;
@@ -1218,7 +1234,7 @@ done:
 }
 
 static int emit_program(const void *tokens, const struct opengpu_cs_shared *shared,
-                        struct opengpu_cs_program *out)
+                        struct opengpu_cs_program *out, unsigned image_targets[4])
 {
     struct build b;
     struct tgsi_parse_context p;
@@ -1306,21 +1322,29 @@ static int emit_program(const void *tokens, const struct opengpu_cs_shared *shar
         b.p.fixed_block[1] != 1 || b.p.fixed_block[2] != 1 ||
         b.p.fixed_block[0] % shared->lanes))) return -1;
     *out = b.p;
+    if (image_targets) memcpy(image_targets,b.image_target,sizeof(b.image_target));
     return 0;
 }
 
 int opengpu_cs_emit(const void *tokens, struct opengpu_cs_program *out)
 {
-    return emit_program(tokens, NULL, out);
+    return emit_program(tokens, NULL, out, NULL);
 }
 
 int opengpu_cs_emit_shared(const void *tokens, const struct opengpu_cs_shared *shared,
                           struct opengpu_cs_program *out)
 {
-    if (!shared || !shared->bytes || !shared->lanes || shared->lanes > 31 ||
+    if (!shared) return -1;
+    return opengpu_cs_emit_resources(tokens,shared,out,NULL);
+}
+
+int opengpu_cs_emit_resources(const void *tokens, const struct opengpu_cs_shared *shared,
+                             struct opengpu_cs_program *out, unsigned image_targets[4])
+{
+    if (shared && (!shared->bytes || !shared->lanes || shared->lanes > 31 ||
         (shared->lanes & (shared->lanes - 1)) || !shared->required_bytes ||
         ((shared->base | shared->bytes | shared->required_bytes) & 3u) ||
         shared->required_bytes > shared->bytes ||
-        (uint64_t)shared->base + shared->bytes > UINT64_C(0x100000000)) return -1;
-    return emit_program(tokens, shared, out);
+        (uint64_t)shared->base + shared->bytes > UINT64_C(0x100000000))) return -1;
+    return emit_program(tokens, shared, out, image_targets);
 }

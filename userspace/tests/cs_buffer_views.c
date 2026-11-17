@@ -50,7 +50,9 @@ static void formats_and_ranges(struct pipe_screen *s,struct pipe_context *p,stru
         int expected=-1,expected_image=-1;
         for(unsigned i=0;i<30;i++)if(sampler_formats[i].pipe==(enum pipe_format)f)expected=(int)sampler_formats[i].native;
         for(unsigned i=0;i<13;i++)if(image_formats[i].pipe==(enum pipe_format)f)expected_image=(int)image_formats[i].native;
-        assert(opengpu_buffer_sampler_format((enum pipe_format)f)==expected);
+        int mapped=opengpu_buffer_sampler_format((enum pipe_format)f);
+        int eligible=mapped>=0 && opengpu_texture_buffer_format_bytes((unsigned)mapped);
+        assert((eligible?mapped:-1)==expected);
         assert(opengpu_buffer_image_format((enum pipe_format)f)==expected_image);
         samplers+=expected>=0;images+=expected_image>=0;
     }
@@ -244,6 +246,7 @@ static void old_feature_screens(void)
         pipe_resource_reference(&r,NULL);s->destroy(s);no_leaks();
     }
 }
+#include "cs_typed_images.h"
 int main(void)
 {
     features=OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE | OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE |
@@ -260,6 +263,10 @@ int main(void)
     s=opengpu_drm_screen_create(7,NULL);assert(s);dense_state_lifetimes(s);s->destroy(s);no_leaks();
     old_feature_screens();
     assert(!computes && !fills && !invalidates);
+    typed_image_lowering();
+    features|=OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BACKINGS;
+    typed_image_mappings();
+    assert(!computes && !fills && invalidates==52);
     puts("Gallium buffer views: all30 sampler/13image formats, logical ranges/swizzles, 32 sparse samplers/4 images, transferred/borrowed/reordered refs, invalid/fresh reuse and old feature gates PASS; 0 shader submits/0 GPU/API caps");
     return 0;
 }

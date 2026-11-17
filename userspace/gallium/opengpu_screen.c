@@ -279,11 +279,18 @@ static bool screen_is_format_supported(struct pipe_screen *screen,
     (void)screen;
     if (sample_count > 1 || storage_sample_count > 1)
         return false;
+    if (target != PIPE_BUFFER && (bindings & PIPE_BIND_SHADER_IMAGE)) {
+        return (target == PIPE_TEXTURE_2D || target == PIPE_TEXTURE_2D_ARRAY ||
+                target == PIPE_TEXTURE_CUBE || target == PIPE_TEXTURE_3D) &&
+            !(bindings & ~PIPE_BIND_SHADER_IMAGE) && opengpu_buffer_image_format(format) >= 0 &&
+            pipe_opengpu_screen_compute_image_backings(oscreen(screen)->gpu);
+    }
     if (target == PIPE_BUFFER && (bindings & (PIPE_BIND_SAMPLER_VIEW | PIPE_BIND_SHADER_IMAGE))) {
         struct pipe_opengpu_screen *gpu=oscreen(screen)->gpu;
         if ((bindings & PIPE_BIND_SAMPLER_VIEW) &&
             (!pipe_opengpu_screen_compute_buffer_textures(gpu) ||
-             opengpu_buffer_sampler_format(format)<0)) return false;
+             opengpu_buffer_sampler_format(format)<0 ||
+             !opengpu_texture_buffer_format_bytes((unsigned)opengpu_buffer_sampler_format(format)))) return false;
         if ((bindings & PIPE_BIND_SHADER_IMAGE) &&
             (!pipe_opengpu_screen_compute_buffer_images(gpu) ||
              opengpu_buffer_image_format(format)<0)) return false;
@@ -294,9 +301,6 @@ static bool screen_is_format_supported(struct pipe_screen *screen,
     }
     if (target != PIPE_BUFFER && target != PIPE_TEXTURE_2D &&
         target != PIPE_TEXTURE_RECT)
-        return false;
-    /* Image views are currently buffer-only, and sampler views are 2D-only. */
-    if (target != PIPE_BUFFER && (bindings & PIPE_BIND_SHADER_IMAGE))
         return false;
     if (target == PIPE_TEXTURE_RECT && (bindings & PIPE_BIND_SAMPLER_VIEW))
         return false;
@@ -337,10 +341,16 @@ static struct pipe_resource *resource_create(struct pipe_screen *screen,
 {
     struct opengpu_resource *res;
     uint32_t bytes;
+    struct opengpu_image_layout image = {0};
 
     if (!templ)
         return NULL;
-    if (templ->target == PIPE_BUFFER) {
+    if (templ->target != PIPE_BUFFER && (templ->bind & PIPE_BIND_SHADER_IMAGE)) {
+        if (!screen_is_format_supported(screen, templ->format, templ->target,
+                templ->nr_samples, templ->nr_storage_samples, templ->bind) ||
+            !opengpu_gallium_image_layout(templ, &image)) return NULL;
+        bytes = image.bytes;
+    } else if (templ->target == PIPE_BUFFER) {
         if (!templ->width0 || templ->width0 > 0x7fffffffu ||
             templ->height0 != 1 || templ->depth0 != 1 ||
             templ->array_size != 1 || templ->last_level ||
@@ -368,7 +378,8 @@ static struct pipe_resource *resource_create(struct pipe_screen *screen,
     res->base = *templ;
     res->base.screen = screen;
     res->base.reference.count = 1;
-    if (templ->target == PIPE_BUFFER) {
+    res->image = image;
+    if (image.levels || templ->target == PIPE_BUFFER) {
         res->gpu = pipe_opengpu_resource_create(opengpu_screen_gpu(screen), bytes);
     } else if (templ->format == PIPE_FORMAT_Z24_UNORM_S8_UINT ||
                templ->format == PIPE_FORMAT_Z24X8_UNORM) {
@@ -398,7 +409,7 @@ static struct pipe_resource *resource_create(struct pipe_screen *screen,
         FREE(res);
         return NULL;
     }
-    if (opengpu_format(templ->format) >= 0 &&
+    if (!image.levels && opengpu_format(templ->format) >= 0 &&
         pipe_opengpu_resource_set_format(opengpu_screen_gpu(screen), res->gpu,
                                           opengpu_format(templ->format))) {
         resource_destroy(screen, &res->base);
@@ -419,7 +430,7 @@ static bool resource_get_handle(struct pipe_screen *screen,
     (void)screen;
     (void)context;
     (void)usage;
-    if (!res || !res->gpu || !whandle || whandle->plane)
+    if (!res || !res->gpu || res->image.levels || !whandle || whandle->plane)
         return false;
     if (whandle->type != WINSYS_HANDLE_TYPE_KMS &&
         whandle->type != WINSYS_HANDLE_TYPE_FD)
@@ -452,6 +463,7 @@ static struct pipe_resource *resource_from_handle(
 
     (void)usage;
     if (!og || !templ || !whandle || templ->target != PIPE_TEXTURE_2D ||
+        (templ->bind & PIPE_BIND_SHADER_IMAGE) ||
         !image_shape_supported(templ) ||
         !screen_is_format_supported(screen, templ->format, templ->target,
             templ->nr_samples, templ->nr_storage_samples, templ->bind) ||
@@ -497,8 +509,16 @@ static bool resource_get_param(struct pipe_screen *screen,
     (void)screen;
     (void)context;
     (void)handle_usage;
-    if (!res || !res->gpu || plane || layer || level || !value)
+    if (!res || !res->gpu || plane || !value)
         return false;
+    if (res->image.levels) {
+        if (level >= res->image.levels || layer >= res->image.level[level].planes) return false;
+        if (param == PIPE_RESOURCE_PARAM_STRIDE) { *value = res->image.level[level].row_pitch; return true; }
+        if (param == PIPE_RESOURCE_PARAM_OFFSET) {
+            *value = res->image.level[level].offset + (uint64_t)layer * res->image.level[level].plane_pitch;
+            return true;
+        }
+    } else if (layer || level) return false;
     pitch = pipe_opengpu_resource_pitch(res->gpu);
     if (!pitch && tex->target != PIPE_BUFFER)
         pitch = (uint32_t)tex->width0 * 4u;

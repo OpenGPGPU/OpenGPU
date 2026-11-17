@@ -13,7 +13,7 @@ struct opengpu_cs_program {
     unsigned constant_bytes[13]; /* static byte endpoints: defaults, then UBOs */
     uint32_t textures; /* statically indexed buffer sampler views, including TXQ */
     unsigned texture_kind[32]; /* native float0/uint1/sint2 return class */
-    unsigned image_reads, image_writes, image_queries; /* buffer image indices0..3 */
+    unsigned image_reads, image_writes, image_queries; /* typed image indices0..3; query is target5 */
     unsigned image_format[4]; /* native format qualifier; separate13-format policy */
     unsigned counter_reads, counter_writes; /* independent HW counter binding0 */
     unsigned storage_atomics; /* checked RMW bindings0..3; requires discovery */
@@ -32,5 +32,9 @@ struct opengpu_cs_shared {
 };
 int opengpu_cs_emit_shared(const void *tokens,
     const struct opengpu_cs_shared *shared, struct opengpu_cs_program *out);
+/* Optional static image-target sidecar; the legacy program layout and both
+ * legacy entry points are unchanged. NULL shared selects the nonshared path. */
+int opengpu_cs_emit_resources(const void *tokens, const struct opengpu_cs_shared *shared,
+    struct opengpu_cs_program *out, unsigned image_targets[4]);
 
 #endif

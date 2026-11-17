@@ -27,8 +27,9 @@ static inline unsigned opengpu_buffer_native_kind(unsigned format)
     }
 }
 
-/* EXT_texture_buffer table texbo.1. This table does not include SNORM,
- * legacy BGRA or general image formats, and does not advertise an API cap. */
+/* Native storage-ID mapping. Buffer sampler eligibility is independently
+ * restricted by opengpu_texture_buffer_format_bytes; a mapped ID alone does
+ * not advertise support for that target. */
 static inline int opengpu_buffer_sampler_format(enum pipe_format format)
 {
     switch (format) {
