@@ -174,6 +174,13 @@ qualification and executor for the first three kinds. Every probe must match
 the selected float factory through actual MMIO. Model preparation and read-only
 probes do not establish original shader execution, clock or FPS acceptance.
 
+The complete float-stage factory passes this fresh assertion-enabled emission,
+generation and eight-job native build. All four source-selected executors link;
+the first three pass their actual MMIO probes with 112 words and 5/5/10 auxiliary
+reads, one reset, idle completion/IRQ state and no memory traffic. Full source,
+tool and native object identities remain checked. Original shader execution
+keeps its separate case-specific result and cleanup gates.
+
 Once that factory has been prepared and generated in its own `.artifacts/`
 directory, build and check its executor with the generation-matched Python,
 FlashSim and CIRCT environment:
