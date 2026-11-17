@@ -114,6 +114,7 @@ cancellation, held requests, old-value routing and a competing atomic through
 the actual shared L2, including untouched line bytes. Discovery tests check
 the explicit flag and preserve the existing owner quantities and contracts.
 The real driver feature-query fixture passes 128 capability combinations.
+The generated GCR1 header and ABI JSON pass five tests in four ABI suites.
 ASan/UBSan CPU checks pass 85 original Mesa programs (80 integer and five R32F
 exchange), 160 integer and 20 float TGSI target/alias cases, four immediate
 boundaries, 65 load/store programs and 52 mapping/lifetime cases. These compiler
@@ -130,6 +131,7 @@ sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 \
   'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.ShaderImageAtomicAccessSpec opengpu.graphics.ShaderImageAtomicL2Spec opengpu.system.ImageAtomicDiscoveryAxiSpec opengpu.system.NativeAlignmentHostProfileSpec opengpu.system.NativeOwnerHostProfileSpec'
 python3 -B scripts/test_compute_feature_query.py
+sbt 'testOnly opengpu.graphics.ShaderImageCommandAbiSpec opengpu.graphics.StorageCommandAbiSpec opengpu.graphics.ComputeUniformCommandAbiSpec opengpu.graphics.NativeAdvancedBlendAbiSpec'
 ```
 
 The Mesa and callback reproduction commands below include the float cases.

@@ -35,7 +35,8 @@ object EmitComputeResourceAbi {
       "#define OPENGPU_COMPUTE_RESOURCE_NATIVE_PROTECTED_SOURCES_V1 (1u << 17)\n"+
       "#define OPENGPU_COMPUTE_RESOURCE_SHARED_VECTOR_ATOMICS_V1 (1u << 18)\n"+
       "#define OPENGPU_COMPUTE_RESOURCE_NATIVE_GEOMETRY_TRANSPORT_V1 (1u << 19)\n"+
-      "#define OPENGPU_COMPUTE_RESOURCE_NATIVE_SAMPLE_TRANSPORT_V1 (1u << 20)\n#endif\n"
+      "#define OPENGPU_COMPUTE_RESOURCE_NATIVE_SAMPLE_TRANSPORT_V1 (1u << 20)\n"+
+      "#define OPENGPU_COMPUTE_RESOURCE_IMAGE_FLOAT_EXCHANGE (1u << 21)\n#endif\n"
     val defaults=c.words(ComputeResourceProfile(GpuConfig(),1,8))
     val mobile=c.words(ComputeResourceProfile(GpuConfig(),4,32))
     val json=s"""{
@@ -50,6 +51,7 @@ object EmitComputeResourceAbi {
   "local_axis":"minimum of physical per-CU lane*warp capacity and the uint16 launch-axis encoding limit",
   "simt":"physical entry capacity of the existing controller; does not imply instruction-driven vector-branch execution",
   "buffer_transport_flags":{"texture_v1":${c.bufferTextures},"image_and_size_v1":${c.bufferImages}},
+  "image_atomic_flags":{"integer":${c.imageAtomics},"float_exchange":${c.imageFloatExchange}},
   "buffer_transport_scope":"target5 sampler records and target5 GIU records plus metadata-only function27; each bit requires its actual command service; no GL capability claim",
   "scope":"read-only hardware quantities; not an API capability or full resource/visibility contract"
 }
