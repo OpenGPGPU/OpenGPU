@@ -14,7 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def fixture(source_case="counter-increment"):
     dynamic='dynamic-' in source_case;all_counters='dynamic-all-' in source_case
-    index=0 if all_counters else 4 if dynamic else 7;groups=(2 if all_counters else 1) if dynamic else 4
+    index=0 if all_counters or source_case=='counter-scalar' else 4 if dynamic else 7
+    groups=(2 if all_counters else 1) if dynamic else 4
     seed=(0 if dynamic else 1) if source_case.endswith('decrement') else 0xfffffffe
     allocations = {0x1000: bytearray(4096), 0x20000: bytearray(b'\x5a'*8192)}
     allocations[0x70000]=bytearray(4096) # Real Mesa also owns an unused graphics context.
@@ -37,7 +38,7 @@ def fixture(source_case="counter-increment"):
         return dict(globalBinding=binding, allocationPhysical=a, allocationBytes=8192, offset=offset, bytes=count)
     descriptor_root, counter_va, storage_root = 0xb1400000, 0xb1c00ff0, 0xb0c00000
     for i in range(8): word(0x20000+4080+4*i, (seed+(i+int(dynamic))*0x10203)&0xffffffff)
-    word(0x20000+4108, seed)
+    word(0x20000+4080+(7 if dynamic else index)*4, seed)
     d = dict(schema=SCHEMA, sourceCase=source_case, groups=groups, local=4, viewBytes=8192,
         guard=0xdeadbeef, seed=seed, index=index, count=8, counterHandle=4, context=2,
         descriptorPhysical=0x40000, descriptorRoot=descriptor_root, kernargPhysical=0x42000, kernargBytes=64,
@@ -98,6 +99,32 @@ def emit(path, allocations):
 
 
 class Counter(unittest.TestCase):
+    def test_original_scalar_uses_word_zero_and_guards_the_other_seven_words(self):
+        parent=ROOT/'.artifacts';parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='counter-scalar-',dir=parent) as t:
+            before,after=Path(t)/'before',Path(t)/'after'
+            alloc,d,cap,*_=fixture('counter-scalar');emit(before,alloc)
+            with SparseMemory(before) as b:ready(b,d,cap())
+            good=copy.deepcopy(alloc)
+            values=[0xffffffff,0xfffffffe]+list(range(13,-1,-1))
+            for pa in (0x30000,0x32000,0x34000,0x36000):struct.pack_into('<16I',good[pa],0,*values)
+            struct.pack_into('<I',good[0x20000],4080,14)
+            def check(data,description=d):
+                emit(after,data)
+                with SparseMemory(before) as b,SparseMemory(after) as a:verify(b,a,description)
+            check(good)
+            with self.assertRaises(ValueError):check(alloc)
+            wrong=copy.deepcopy(good)
+            wrong[0x20000][4080:4084]=alloc[0x20000][4080:4084]
+            struct.pack_into('<I',wrong[0x20000],4108,14)
+            with self.assertRaises(ValueError):check(wrong)
+            for pa,offset in ((0x20000,4079),(0x20000,4084),(0x20000,4108),
+                              (0x20000,4112),(0x30000,64),(0x36000,8191)):
+                wrong=copy.deepcopy(good);wrong[pa][offset]^=1
+                with self.subTest(pa=pa,offset=offset),self.assertRaises(ValueError):check(wrong)
+            wrong=copy.deepcopy(d);wrong['index']=7
+            with self.assertRaises(ValueError):check(good,wrong)
+
     def test_inactive_graphics_context_requires_its_original_empty_root(self):
         parent=ROOT/'.artifacts';parent.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='counter-empty-context-',dir=parent) as t:

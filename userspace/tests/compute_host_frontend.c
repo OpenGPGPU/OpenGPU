@@ -140,7 +140,7 @@ static void write_oracle(void)
   uint64_t physical,bytes;assert(!compute_host_original_physical(session,counter_handle,&physical,&bytes));
   assert(accepted_counter.version==1 && v->handle==counter_handle && v->offset==4080 && v->count==8 &&
    bytes==8192 && snap.counter_physical==physical+4080 && snap.counter_bytes==32 && snap.counter_root);
-  fprintf(f,"{\"schema\":\"opengpu-compute-counter-oracle-v1\",\"sourceCase\":\"%s\",\"groups\":%u,\"local\":4,\"viewBytes\":8192,\"guard\":3735928559,\"seed\":%u,\"index\":%u,\"count\":8,\"counterHandle\":%u,\"context\":%u,\"descriptorPhysical\":%llu,\"descriptorRoot\":%u,\"kernargPhysical\":%llu,\"kernargBytes\":%llu,\"counter\":",counter_name,counter_dynamic?(counter_index?1u:2u):4u,counter_operation==2?(counter_dynamic?0u:1u):0xfffffffeu,counter_dynamic?counter_index:7u,v->handle,snap.context,
+  fprintf(f,"{\"schema\":\"opengpu-compute-counter-oracle-v1\",\"sourceCase\":\"%s\",\"groups\":%u,\"local\":4,\"viewBytes\":8192,\"guard\":3735928559,\"seed\":%u,\"index\":%u,\"count\":8,\"counterHandle\":%u,\"context\":%u,\"descriptorPhysical\":%llu,\"descriptorRoot\":%u,\"kernargPhysical\":%llu,\"kernargBytes\":%llu,\"counter\":",counter_name,counter_dynamic?(counter_index?1u:2u):4u,counter_operation==2?(counter_dynamic?0u:1u):0xfffffffeu,counter_index,v->handle,snap.context,
    (unsigned long long)snap.counter_descriptor_physical,snap.counter_root,
    (unsigned long long)snap.kernarg_physical,(unsigned long long)snap.kernarg_bytes);
   source_window(f,counter_handle,4080,32,0);fputs(",\"outputs\":[",f);
@@ -183,7 +183,8 @@ int main(int argc,char **argv)
  const char *counter_names[]={"counter-increment","counter-read","counter-decrement",
   "counter-dynamic-increment","counter-dynamic-read","counter-dynamic-decrement",
   "counter-dynamic-all-increment","counter-dynamic-all-read","counter-dynamic-all-decrement"};
- for(unsigned i=0;i<9;i++)if(!strcmp(argv[4],counter_names[i])){counter_case=1;counter_operation=i%3;counter_dynamic=i>=3;counter_index=i>=6?0:4;counter_name=counter_names[i];}
+ for(unsigned i=0;i<9;i++)if(!strcmp(argv[4],counter_names[i])){counter_case=1;counter_operation=i%3;counter_dynamic=i>=3;counter_index=i>=6?0:i>=3?4:7;counter_name=counter_names[i];}
+ if(!strcmp(argv[4],"counter-scalar")){counter_case=1;counter_index=0;counter_name="counter-scalar";}
  for(unsigned variant=0;variant<16;variant++){
   const unsigned signed_operations[]={0,1,2,3,4,9};unsigned op=variant<10?variant:signed_operations[variant-10];
   char name[64];assert(snprintf(name,sizeof(name),variant<10?"shared-dynamic-%u":"shared-dynamic-i-%u",op)>0);
@@ -242,7 +243,7 @@ int main(int argc,char **argv)
   uint32_t *words=(uint32_t *)(data+4080);
   uint32_t seed=counter_operation==2?(counter_dynamic?0u:1u):0xfffffffeu;
   for(unsigned i=0;i<8;i++)words[i]=seed+(i+(counter_dynamic?1u:0u))*0x10203u;
-  words[7]=seed;
+  words[counter_dynamic?7:counter_index]=seed;
   cs_frontend_counters(frontend,p,counter,4080,32);
   /* Gallium and the accepted production job retain this original GEM until
    * the same externally observed retirement/context cleanup as all outputs. */
