@@ -7,7 +7,18 @@
 
 ## 当前总览
 
-- 最近正式源码合入为ordinary PrimitiveID ABI8/9，
+- P04完整factory、模型与原执行器的绑定验收已通过，
+  [#847](https://github.com/OpenGPGPU/OpenGPU/pull/847)受保护合入后计为完成。
+  源码阶段[#845](https://github.com/OpenGPGPU/OpenGPU/pull/845)和
+  [#846](https://github.com/OpenGPGPU/OpenGPU/pull/846)已合入；788生产源/1131测试源
+  新鲜编译、完整sample RTL与开启assertions的Verilator模型、四个原执行器构建和
+  三个实际reset/MMIO probe均通过。每个probe读回112字，辅助寄存器分别为5/5/10项，
+  原独立validator及idle/IRQ/无外部内存工作检查通过；
+  [最终结果、边界与复现](OWNER_FULL_FACTORY_REPRODUCTION.md)。
+  本交付合入后完成数为4/40，下一串行目标为P05原Mesa graphics/sample双owner执行。
+  后续stage、资源或ABI变化仍须重新绑定；shader/API、43个blit包、资源共存和
+  2-CU VGA60保留各自门槛。同时只开放一份alignment PR。
+- ordinary PrimitiveID ABI8/9源码交付为
   [#837](https://github.com/OpenGPGPU/OpenGPU/pull/837)，merge `1a03cfd93`、准确head `b7a0c5d1c`。
   正常 CI [43820053475](https://github.com/OpenGPGPU/OpenGPU/actions/runs/43820053475)
   的49个job（含受保护`ci-ok`）全部成功并受保护rebase合入。准确交付树和本地分支已按head、
@@ -19,13 +30,11 @@
   三域完整容量父级CIRCT、两项精确源负控、28类的31个旧完整/辅助构造签名和167项selector检查通过；
   [最终结果、限制与复现](TESSELLATION_INPUT_PATCH_ROUTE_DELIVERY.md)。组件资格生成物已清理。
   三项逻辑提交重放到#837时完整树字节一致，随后只更新本清单；生产源、测试、脚本及构建输入未改。
-  当前串行目标为P04完整factory、模型、执行器与原probe的绑定资格；按原P04定义使用完整sample factory，
-  后续stage/资源/ABI变化须重新绑定。内部五阶段host的接口/组件结果不替代这项验收。
-  joint-frame/range、原shader/三域protected/API、完整资源和2-CU VGA60仍待其各自目标验收；
-  阶段合入不增加闭环计数，当前仍为3/40。同时只开放一份PR。
+  内部五阶段host的接口/组件结果保留原范围；joint-frame/range、原shader/三域protected/API、
+  完整资源和2-CU VGA60仍待其各自目标验收。阶段源码合入不自动增加闭环计数。
   P01 / #819、P02 / #820、P03 / #821 已完成各自的源码交付验收。
 - 当前基线为 **40 个 PR 工作包**：源码交付 3 项，功能/资源/API 闭合 31 项，
-  性能与最终验收 6 项。验收完成并合入 **3/40**，剩余 **37 项**。
+  性能与最终验收 6 项。本交付受保护合入后，验收完成并合入 **4/40**，剩余 **36 项**。
   清单显式包含 P39（原 VS→patch）和 P40（完整动态 TES patch read），
   不再把两者隐含在已经存在的组件结果中；原编号保持不变。
 - P15 源码已合入；三域客户端在实际报告消费后清理取消/故障状态，六项定向
@@ -90,7 +99,7 @@
 - P15、P16、P17、P39、P40 已有下表列出的限定范围源码与检查，均未完成目标验收。
   当前112仍非完整资源资格；旧96模型不能替代P04的完整factory和原probe验收。
 
-这里的 3/40 只统计本次列出的剩余工作，不是整个项目的历史完成率。
+这里的 4/40 只统计本次列出的剩余工作，不是整个项目的历史完成率。
 现有源码和组件证据不因列入闭合任务而被当作从零开始，也不会据此推算
 一个未经验收的总完成百分比。
 
@@ -194,7 +203,7 @@ python3 -B scripts/test_framebuffer_blit_host.py
 
 | 编号 | PR 范围 | 验收条件 | 依赖 | 当前状态 / PR |
 |---|---|---|---|---|
-| P04 | 新完整目标 factory 的 RTL、模型和执行器资格 | 新鲜生成；全容量、assertions、源码/工具/分片/二进制绑定与原 probe 一致；具备可复现的实际执行入口。后续合同变化须重做此绑定 | P01–P03 | 完整sample factory的RTL和Verilator C++生成已通过；原执行器构建及三个实际probe待验收，不计完成 |
+| P04 | 新完整目标 factory 的 RTL、模型和执行器资格 | 新鲜生成；全容量、assertions、源码/工具/分片/二进制绑定与原 probe 一致；具备可复现的实际执行入口。后续合同变化须重做此绑定 | P01–P03 | 完成（随本交付受保护合入生效）；[#845](https://github.com/OpenGPGPU/OpenGPU/pull/845)、[#846](https://github.com/OpenGPGPU/OpenGPU/pull/846)、[#847](https://github.com/OpenGPGPU/OpenGPU/pull/847)交付完整sample factory、assertion模型、四个原执行器及三个实际112字probe；[结果与复现](OWNER_FULL_FACTORY_REPRODUCTION.md)。shader/API、资源共存、clock/FPS仍按后续目标验收 |
 | P05 | 原 Mesa graphics/sample 的完整 host 双 owner 执行 | 实际 shader、原 GEM/Sv32、同 RAM/无中间 reset；两次结果由独立图像/GNY2/guard oracle 验证；实际 retirement、PTE/shootdown/context cleanup ACK 全部成功 | P04 | 代码/CPU证据已有，实际 DUT 待执行 |
 | P06 | 43个原调用者 framebuffer blit 的目标 host 执行 | 原43包及 source SHA 不变；精确字节/VM guard、source fault、延迟 R/B reset/drain、健康 ID 复用在目标 DUT 上通过 | P03、P04 | 112入口已实现，实际 DUT 待执行 |
 | P07 | 原 GEM atomic-counter live 提交与完整操作语料 | 实际 Mesa→生产 ioctl→目标 DUT；inc/read/dec、动态索引及资源共存；独立返回集合/最终 counter/全字节 guard，保留真实 owner 至 cleanup ACK | P04 | 九条 recipe/六组原 ESSL 的 inc/read/dec/动态索引 CPU/capture 检查通过；实际 DUT/共存待完成 |
