@@ -123,6 +123,17 @@ host checks passed, including actual child-process failures, a missing marker,
 bounded diagnostics surviving log deletion and the existing cleanup/quarantine
 requirements. These reporting checks keep the full execution acceptance gates.
 
+An IRQ without a unified completion fails with the actual elapsed cycles,
+completion word, legacy status, unified status, IRQ bits and IRQ line state.
+A failed completion/GNX predicate reports its address, actual value, mask and
+expected value. Sanitized CPU protocol tests cover command and vblank IRQs
+without a completion, and a mismatched GNX word; all reject without popping or
+acknowledging the held command. They execute no GPU work. Reproduce with:
+
+```sh
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_owner.py
+```
+
 ```sh
 python3 -B scripts/test_qualify_native_sample_graphics_owner.py
 python3 -B scripts/qualify_native_sample_graphics_owner.py \
