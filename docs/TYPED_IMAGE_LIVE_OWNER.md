@@ -253,8 +253,8 @@ every case. Each case uses its own fresh DUT reset and original uploaded RAM;
 this run establishes neither cross-command coherence nor same-DUT reuse.
 
 Coordinate-boundary and source-read fault results appear below. Actual image
-permission faults, cancellation/reset/drain and healthy reuse retain separate
-acceptance gates. This atomic result
+permission faults and cancellation/reset/drain retain separate acceptance
+gates; continuous buffer source-fault recovery is scoped below. This atomic result
 does not close P08, establish complete resource combinations, or qualify
 product clock/FPS. The formal accepted count remains 7/40.
 
@@ -378,8 +378,8 @@ PYTHONPATH=scripts python3 -B -m unittest test_compute_owner_protocol \
 
 These are CPU transport and schema checks. The ordinary compute executor and
 Mesa producer use success receipts; the distinct source-fault execution path
-below requires its own actual-DUT qualification. Same-DUT healthy reuse and
-cancel/reset execution also remain pending. Freshly bind any
+below requires its own actual-DUT qualification. Continuous source-fault
+recovery is qualified separately below; cancel/reset execution remains pending. Freshly bind any
 execution qualification to the changed boundary/protocol sources; this source
 phase does not close P08.
 
@@ -451,10 +451,11 @@ images, all other physical bytes and actual cleanup; it exits zero in 235.804
 seconds under the same guard. Both remove their private producer builds,
 captures, containers and returned RAM after verification.
 
-Each run uses a separate fresh DUT reset and original RAM; these two results do
-not establish same-DUT recovery or cross-command coherence. Actual permission
-faults, cancel/reset/drain, healthy reuse and fifteen coordinate-boundary recipes
-keep their independent P08 acceptance gates. P08 remains open at 7/40 accepted.
+Each of these standalone runs uses a separate fresh DUT reset and original
+RAM. Continuous buffer recovery and coordinate-boundary results are scoped
+separately in this document. Actual permission faults, cancel/reset/drain,
+cross-command coherence and complete resource combinations keep their own
+acceptance gates. P08 remains open at 7/40 accepted.
 
 After committing and freshly binding this source to the complete compute
 executor, use the bounded qualifier command in the atomic execution section
@@ -498,12 +499,26 @@ actual recovery.
 Run the protocol suite above and reproduce the sanitizer guards with
 `OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_compute_owner.py` and
 `OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_owner.py`.
-After committing and freshly binding these sources, reproduce the actual pair
-with the bounded atomic qualifier command above, selecting
-`--case image-atomic-buffer-r32f --image-source-recovery`. Actual continuous
-recovery remains pending until both original jobs, byte checks, context cleanup
-and source postchecks pass on that execution DUT. Permission faults and
-cancel/reset/drain retain separate P08 gates.
+The actual original pair passes on the complete assertion-enabled float DUT
+with the execution sources at `c22fb16da2723f22ded8ff8b9e518c10d4571c52`.
+Both jobs retain command ID 4; the execution clock advances from 0 to 2337,
+then from 2337 to 12009. The two actual injected read errors remain recorded
+after healthy recovery, with no new physical errors or extra reset. The failed
+job preserves original RAM and actual EIO fences through cleanup. The healthy
+job verifies forty old raw words, final images and every retained prior-owner
+byte. Both actual PTE/context cleanups, independent cleanup-memory checks and
+final source postchecks pass.
+
+The bounded pair exits zero in 290.734 seconds under a 4-GiB/900-second guard,
+with peak aggregate resident memory 390234112 bytes and proven process cleanup.
+Both private producer builds, captures, containers and returned RAM are removed
+after verification. This establishes only the original buffer source-fault /
+healthy pair; actual permission faults and cancel/reset/drain remain open.
+P08 remains open at 7/40 accepted.
+
+After freshly binding the execution sources, reproduce the pair with the
+bounded atomic qualifier command above, selecting
+`--case image-atomic-buffer-r32f --image-source-recovery`.
 
 ## Original load/store source and independent result contract
 
@@ -575,7 +590,8 @@ They execute no shader and create no DUT qualification. The separate seventy
 load/store and fifteen atomic complete-host runs above establish only their
 stated source snapshots and scopes. Boundary and source-read fault results
 also appear above. P08 remains incomplete: permission faults,
-cancellation/reset/drain and healthy reuse remain open. Complete resource
+cancellation/reset/drain remain open. Continuous buffer source-fault recovery
+is scoped above. Complete resource
 combinations, cross-command coherence and product clock/FPS keep their own gates.
 Existing executor qualifications cannot be relabeled for the changed source.
 
