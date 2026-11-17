@@ -192,6 +192,87 @@ int main() {
                 str(root / "test.cpp"), "-o", str(root / "test")], check=True)
             subprocess.run([str(root / "test")], check=True)
 
+    def test_vm_revocation_waits_for_shootdown_before_clearing_satps(self):
+        # Run the actual revoke routine against a protected-MMIO CPU peer.
+        # This models delayed VM readiness and executes no shader or RTL.
+        source = r'''
+#define main blit_driver_cpu_entry
+#include "native_framebuffer_blit_driver.cpp"
+#undef main
+#include <cassert>
+class VmPeer:public framebuffer_blit::Simulation {
+public:
+  unsigned pending=0,delay=0,flushes=0,status_reads=0,vm_writes=0,denied=0,resets=0;
+  bool never_idle=false;
+  using framebuffer_blit::Simulation::Simulation;
+  void reset(){++resets;framebuffer_blit::Simulation::reset();model->issue_read=false;model->mmio_enabled=true;}
+  template<class Observe> void step(native_frame::Agent &agent,uint64_t cycle,Observe observe) {
+    auto &d=*model;
+    if(d.io_s_axi_awvalid) {
+      const bool vm=d.io_s_axi_awaddr==GPU_REG_UCMD_VECTOR_SATP ||
+        d.io_s_axi_awaddr==GPU_REG_UCMD_INSTRUCTION_SATP;
+      d.io_s_axi_bresp=vm && (d.registers[GPU_REG_UCMD_STATUS]&GPU_UCMD_STATUS_VM_BUSY)?2:0;
+    }
+    bool written=false,polled=false;uint32_t address=0;
+    framebuffer_blit::Simulation::step(agent,cycle,[&](const auto &m) {
+      if(m.io_s_axi_awvalid && m.io_s_axi_awready && m.io_s_axi_wvalid && m.io_s_axi_wready) {
+        written=true;address=m.io_s_axi_awaddr;
+        if(address==GPU_REG_UCMD_VECTOR_SATP || address==GPU_REG_UCMD_INSTRUCTION_SATP) {
+          ++vm_writes;if(d.registers[GPU_REG_UCMD_STATUS]&GPU_UCMD_STATUS_VM_BUSY)++denied;
+        }
+      }
+      polled=m.io_s_axi_arvalid && m.io_s_axi_arready && m.io_s_axi_araddr==GPU_REG_UCMD_STATUS;
+      observe(m);
+    });
+    if(written && address==GPU_REG_UCMD_TLB_FLUSH) {
+      ++flushes;pending=delay;
+      d.registers[GPU_REG_UCMD_STATUS]=GPU_UCMD_STATUS_READY|
+        (pending || never_idle?GPU_UCMD_STATUS_VM_BUSY:0);
+    }
+    if(polled) {
+      ++status_reads;
+      if(pending)--pending;
+      if(!pending && !never_idle)d.registers[GPU_REG_UCMD_STATUS]=GPU_UCMD_STATUS_READY;
+    }
+  }
+};
+void check(unsigned delay,bool never) {
+  using namespace framebuffer_blit;
+  Packet packet;packet.context=7;
+  packet.views={{{1,64,64,1},{2,64,64,3},{3,64,64,1}}};
+  packet.source.assign(64,0x11);packet.destination.assign(64,0x22);packet.coordinates.assign(64,0x33);
+  HostLease lease(packet);Memory memory=lease.memory;native_frame::Agent agent(memory);
+  VmPeer sim(0,nullptr);sim.reset();sim.delay=delay;sim.never_idle=never;
+  sim.model->registers[GPU_REG_UCMD_STATUS]=GPU_UCMD_STATUS_READY;
+  sim.model->registers[GPU_REG_UCMD_VECTOR_SATP]=lease.vector_satp();
+  sim.model->registers[GPU_REG_UCMD_INSTRUCTION_SATP]=lease.instruction_satp();
+  native_owner::ReplayBus<VmPeer> bus(sim,agent,100);
+  if(never) {
+    std::string error;try{revoke(sim,agent,bus,memory,lease);}catch(const std::runtime_error &e){error=e.what();}
+    assert(error=="captured owner exceeded its total cycle budget");
+    assert(!sim.vm_writes && sim.model->registers[GPU_REG_UCMD_VECTOR_SATP]==lease.vector_satp());
+    assert(sim.model->registers[GPU_REG_UCMD_INSTRUCTION_SATP]==lease.instruction_satp());
+  } else {
+    revoke(sim,agent,bus,memory,lease);
+    assert(sim.vm_writes==2 && !sim.denied && sim.status_reads>=delay);
+    assert(!sim.model->registers[GPU_REG_UCMD_VECTOR_SATP] && !sim.model->registers[GPU_REG_UCMD_INSTRUCTION_SATP]);
+    for(const auto &level:lease.levels)for(unsigned n=0;n!=1024;++n)
+      assert(!HostLease::get(memory,level.second+n*4));
+  }
+  assert(sim.flushes==1 && sim.resets==1 && sim.drained(agent));
+}
+int main(){check(5,false);check(0,false);check(5,true);}
+'''
+        (gate.ROOT / ".artifacts").mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="blit-vm-", dir=gate.ROOT / ".artifacts") as temporary:
+            root = Path(temporary)
+            (root / "test.cpp").write_text(source)
+            subprocess.run(["c++", "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror",
+                "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
+                "-I" + str(gate.ROOT / "scripts/test_stubs/native_host"),
+                "-I" + str(gate.ROOT / "scripts"), str(root / "test.cpp"), "-o", str(root / "test")], check=True)
+            subprocess.run([str(root / "test")], check=True, timeout=30)
+
     def test_interrupt_joins_owned_process_group(self):
         (gate.ROOT / ".artifacts").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="blit-signal-", dir=gate.ROOT / ".artifacts") as temporary:

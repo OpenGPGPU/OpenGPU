@@ -18,6 +18,13 @@ and B responses across unified reset, partial-cancellation byte checks, ACK
 drain, revocation and healthy command-ID reuse. Every executor run starts from a real
 112-word DUT probe; the wrapper does not fabricate discovery observations.
 
+After clearing PTEs and requesting a full shootdown, teardown polls the actual
+VM-busy status before clearing either SATP. The same MMIO loop services AXI
+traffic and retains the original record cycle budget. A CPU protected-MMIO
+peer covers delayed and immediate readiness; permanent busy exhausts the
+budget without clearing the live SATPs or resetting the model. These checks
+do not establish successful complete DUT execution.
+
 The separate result schema is `opengpu-framebuffer-blit-sample-host-v1`.
 It binds the exact kind/profile/stage and all 43 retirement observations plus
 fault and both reset channels. Old96 and protected112 result contracts reject
