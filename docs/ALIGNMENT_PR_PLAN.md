@@ -104,8 +104,10 @@
   的正常/零工作 invocation/无 invocation 三类实际 BUILD 图、七项源码负控通过；
   完整 host 检查及 ARM64 模块 Kbuild 通过。源码交付仍保留真实 CU、完整五阶段/65引用、
   protected 执行与产品验收边界，不关闭 P16/P17。严格 `ci-ok` 成功后已 rebase auto-merge。
-- P07 的九条 recipe、六组原 ESSL 已覆盖 increment/read/decrement/动态索引的
-  真实 Mesa CPU/capture、严格输入与 C++ parser；实际 DUT 与资源共存仍未验收。
+- P07 的九条 recipe、六组原 ESSL 源码阶段已覆盖 increment/read/decrement/动态索引的
+  真实 Mesa CPU/capture、严格输入与 C++ parser；53项定向检查、新112/旧96生产C路径
+  和九份原调用者捕获的ASan/UBSan parser均通过；
+  [源码范围与复现](ATOMIC_COUNTER_LIVE_OWNER.md)。实际DUT及原scalar/四image共存语料仍待验收。
 - P15、P16、P17、P39、P40 已有下表列出的限定范围源码与检查，均未完成目标验收。
   当前112仍非完整资源资格；旧96模型不能替代P04的完整factory和原probe验收。
 
@@ -216,7 +218,7 @@ python3 -B scripts/test_framebuffer_blit_host.py
 | P04 | 新完整目标 factory 的 RTL、模型和执行器资格 | 新鲜生成；全容量、assertions、源码/工具/分片/二进制绑定与原 probe 一致；具备可复现的实际执行入口。后续合同变化须重做此绑定 | P01–P03 | 完成（随本交付受保护合入生效）；[#845](https://github.com/OpenGPGPU/OpenGPU/pull/845)、[#846](https://github.com/OpenGPGPU/OpenGPU/pull/846)、[#847](https://github.com/OpenGPGPU/OpenGPU/pull/847)交付完整sample factory、assertion模型、四个原执行器及三个实际112字probe；[结果与复现](OWNER_FULL_FACTORY_REPRODUCTION.md)。shader/API、资源共存、clock/FPS仍按后续目标验收 |
 | P05 | 原 Mesa graphics/sample 的完整 host 双 owner 执行 | 实际 shader、原 GEM/Sv32、同 RAM/无中间 reset；两次结果由独立图像/GNY2/guard oracle 验证；实际 retirement、PTE/shootdown/context cleanup ACK 全部成功 | P04 | 完成（随本交付受保护合入生效）；原Mesa22.3.6 ABI1双owner在完整112字sample host实际通过；[范围与复现](NATIVE_SAMPLE_GRAPHICS_OWNER.md#actual-complete-host-execution-p05)。clock/FPS与后续功能矩阵保持独立 |
 | P06 | 43个原调用者 framebuffer blit 的目标 host 执行 | 原43包及 source SHA 不变；精确字节/VM guard、source fault、延迟 R/B reset/drain、健康 ID 复用在目标 DUT 上通过 | P03、P04 | 完成（随本交付受保护合入生效）；完整112字host的43包与source fault、R/B reset/drain、partial-cancel字节及健康ID复用全部实际通过；[最终结果、bounded VM范围与复现](NATIVE_FRAMEBUFFER_BLIT_SAMPLE_OWNER.md#actual-complete-host-execution-p06)。原Linux trace、完整资源与产品clock/FPS仍保留独立门槛 |
-| P07 | 原 GEM atomic-counter live 提交与完整操作语料 | 实际 Mesa→生产 ioctl→目标 DUT；inc/read/dec、动态索引及资源共存；独立返回集合/最终 counter/全字节 guard，保留真实 owner 至 cleanup ACK | P04 | 九条 recipe/六组原 ESSL 的 inc/read/dec/动态索引 CPU/capture 检查通过；实际 DUT/共存待完成 |
+| P07 | 原 GEM atomic-counter live 提交与完整操作语料 | 实际 Mesa→生产 ioctl→目标 DUT；inc/read/dec、动态索引及资源共存；独立返回集合/最终 counter/全字节 guard，保留真实 owner 至 cleanup ACK | P04 | 九条recipe/六组原ESSL的源码、原GEM保留、严格输入与独立oracle已交付；53项定向检查及九份实际Mesa CPU捕获通过；[阶段范围与复现](ATOMIC_COUNTER_LIVE_OWNER.md)。实际完整112字DUT、原scalar及四image共存语料待完成，未关闭P07 |
 | P08 | Typed image load/store/atomic live 提交 | 原 image view、format/pitch/layer/权限与精确 writable view；实际 shader 结果、边界、fault/cancel/reset 及独立 oracle 通过 | P04、P07 | 待补齐 |
 | P09 | Indirect compute 原始 source 与执行合同 | 专用 opcode14 capture；GPU产生的三维 grid、依赖 fence/snapshot、零工作、极限/越界、失败与复用均通过，不靠 opcode 白名单 | P04、P07 | 待补齐 |
 | P10 | Storage/global/image atomic 完整操作与竞争 | 全规定操作、CAS 精确旧值、竞争与重排、延迟 ACK、reservation、只读/越界、故障后健康复用；实际完整 host 验证 | P07、P08 | 待闭合 |

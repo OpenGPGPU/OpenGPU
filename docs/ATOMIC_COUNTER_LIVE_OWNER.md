@@ -67,8 +67,9 @@ uses 512 MiB memory and total memory-plus-swap limit, one CPU, no network and re
 
 Final local CPU validation passed:
 
-- 43 Python tests: seven counter tests, 17 executor tests, 13 compute qualifier
-  tests, four byte-oracle tests and two controller tests. They reject wrong
+- 53 Python tests: seven counter tests, 21 executor tests, 13 compute qualifier
+  tests, four byte-oracle tests, two controller tests and six Verilator executor
+  boundary tests. They reject wrong
   arithmetic/returns, omitted nonzero UBO indices, 0↔7 index/result swaps, hidden
   kernel submissions, changed guards/PTEs/descriptors, stale source identities,
   missing include dependencies and mismatched factories.
@@ -77,16 +78,16 @@ Final local CPU validation passed:
   Counter-specific bad cleanup acknowledgements retain the original GEM.
 - One pinned immutable AArch64 Linux build compiled 22 translation units with
   22 checked MMD files, then captured all nine recipes from the six original
-  ESSL files. All 8102 external inputs and 164 GPU/checker/driver inputs remained
+  ESSL files. All 8102 external inputs and 161 GPU/checker/driver inputs remained
   unchanged. The container used 512 MiB memory and total memory-plus-swap,
   one CPU and no network. Strict READY/uniform/PTE checks and canonical C++
-  ASan/UBSan parsing passed for all nine captures. Native counter operations
-  17/18/19 matched read/increment/decrement; Mesa storage order was `[3,2,0,1]`.
+  ASan/UBSan parsing passed for all nine captures. Observed Mesa storage orders
+  were `[3,2,0,1]` and `[0,2,3,1]`; each capture used its actual binding order.
   Every untouched initial memory was rejected by the result oracle.
 
 These are CPU compiler/capture/rejection results. No counter shader executed on
 an actual DUT and no GPU qualification was written. Actual-DUT acceptance for
-all nine recipes, counter coexistence with other resources, image/storage
+all nine recipes, the original scalar and four-image coexistence sources, image/storage
 atomics, indirect work, cross-domain barriers, full resource-limit combinations
 and whole-host physical/clock/FPS gates remain open. Ended containers, binaries,
 captures, input snapshots and temporary reports were removed; source commits
