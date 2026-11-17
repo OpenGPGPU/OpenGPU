@@ -116,6 +116,13 @@ cleanup confirmation gates deletion of outer build inputs; unknown exit
 preserves those inputs. CPU tests cover rejection, source and actual MMD/link
 closure, execution argument separation and cleanup/quarantine behavior:
 
+Nonzero compiler or controller exits report their exit code and the last
+8192 bytes of process output before managed cleanup. A zero exit without the
+unique checked success marker also reports the bounded transcript. All fifteen
+host checks passed, including actual child-process failures, a missing marker,
+bounded diagnostics surviving log deletion and the existing cleanup/quarantine
+requirements. These reporting checks keep the full execution acceptance gates.
+
 ```sh
 python3 -B scripts/test_qualify_native_sample_graphics_owner.py
 python3 -B scripts/qualify_native_sample_graphics_owner.py \
@@ -126,9 +133,9 @@ python3 -B scripts/qualify_native_sample_graphics_owner.py \
   --drm-include "$DRM_INCLUDE" --library-directory "$LD_LIBRARIES"
 ```
 
-No final112 executor has qualified or executed this path. CPU construction
-and rejection tests cannot produce a device PASS, hardware ACK or product
-qualification.
+The complete sample executor's model/source binding and actual 112-word
+discovery probe passed P04. Successful original Mesa execution of both owners,
+independent images/GNY2, retirement and cleanup remain P05 acceptance work.
 
 Seven fast admission/entry tests and five kernel-lifetime ASan/UBSan tests pass,
 including original handles closed before external execution, retained job

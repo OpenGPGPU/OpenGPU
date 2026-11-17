@@ -47,6 +47,22 @@ def require(ok, message):
 def regular(path): return inputs.regular(path)
 
 
+def failure_detail(log, message):
+    # Copy a bounded diagnostic before the managed directory is removed.
+    # Retaining the original process log is unnecessary once exit is proven.
+    with log.open('rb') as stream:
+        stream.seek(0, os.SEEK_END)
+        stream.seek(max(0, stream.tell() - 8192))
+        tail = stream.read().decode('utf-8', errors='replace').strip()
+    return message + ('\n' + tail if tail else '\n(no process output)')
+
+
+def require_process_success(code, log, message):
+    if code != 0:
+        raise ValueError('ordinary112 qualification: ' +
+                         failure_detail(log, message + ' (exit=' + str(code) + ')'))
+
+
 def checked_inputs(args):
     """Invalid qualification must fail before archive, Docker or compiler scans."""
     require(args.executor_qualification.is_file() and not args.executor_qualification.is_symlink(),
@@ -120,7 +136,9 @@ def run_build(args, *, gpu, source, temporary, image, compiler, qualified):
         with (temporary/'build.log').open('w') as output:
             process = subprocess.Popen(command+['python3','-B',str(source/'scripts/native_sample_graphics_inputs.py'),
                 '--build-request',str(request)],stdout=output,stderr=subprocess.STDOUT,start_new_session=True)
-            require(process.wait(timeout=args.timeout) == 0,'actual Linux LIVE producer build failed; no DUT ran')
+            code = process.wait(timeout=args.timeout)
+        require_process_success(code, temporary/'build.log',
+                                'actual Linux LIVE producer build failed; no DUT ran')
     finally:
         try:stop_group(process)
         finally:remove_container(name)
@@ -169,9 +187,13 @@ def run_controller(args, *, gpu, source, cpu, temporary, image):
                 '--cleanup-receipt',cleanup],
                 stdout=output,stderr=subprocess.STDOUT,start_new_session=True,
                 env=dict(os.environ,PYTHONDONTWRITEBYTECODE='1',TMPDIR=str(temporary)))
-            require(process.wait() == 0,'actual ordinary112 images/GNY2/cleanup or producer marker failed')
-        require((temporary/'controller.log').read_text().splitlines().count(SUCCESS) == 1,
-                'original controller did not report its unique checked two-owner success')
+            code = process.wait()
+        log = temporary/'controller.log'
+        require_process_success(code, log,
+                                'actual ordinary112 images/GNY2/cleanup or producer marker failed')
+        if log.read_text().splitlines().count(SUCCESS) != 1:
+            raise ValueError('ordinary112 qualification: ' + failure_detail(log,
+                'original controller did not report its unique checked two-owner success'))
     finally:
         try:stop_group(process)
         finally:remove_container(name)
