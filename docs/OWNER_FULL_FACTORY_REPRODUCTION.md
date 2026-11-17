@@ -87,10 +87,28 @@ Verilator 5.050, the exact emitted `L2MshrTable.sv` with its 32850-bit waiter
 vectors generated 142,308,006 C++ bytes by default, including a 71,098,975-byte
 file. With this option it generated 72,438,273 bytes, with a largest file of
 609,172 bytes. Code generation took 48.054 versus 11.617 seconds; both exited
-zero under a 4 GiB process-tree limit. This compares isolated code generation;
-complete-model compilation and execution with the new option still need
-qualification. Existing model identities fail the changed generator binding
-and must be regenerated before use with this version.
+zero under a 4 GiB process-tree limit. This compares isolated code generation.
+Existing model identities fail the changed generator binding and must be
+regenerated before use with this version.
+
+Fresh complete-factory preparation for the compact model compiled all 787
+production and 1130 test sources; all 7737 class `SourceFile` attributes mapped
+to this checkout. Its classpath contained no external GPU project classes.
+All 1037 emitted RTL files were byte-identical to the original P04 inputs,
+including capacities and inline checks. Preparation took 407.788 seconds,
+with a charged process-tree peak of 16,676,929,536 bytes. This includes fresh
+Scala compilation and emission; the original emission-only time above covers
+a different workload.
+
+The compact model's complete code generation passed in 683.130 seconds,
+with a charged peak of 21,790,823,560 bytes. It produced 4487 C++ files,
+2,752,007,801 bytes in total; the largest was 11,276,289 bytes. Complete native
+compilation at `-O1` then passed with eight jobs in 1595.994 seconds, peaking
+at 10,247,323,648 charged bytes. Both stages stayed within 24 GiB and proved
+consumer cleanup. The original `-O0` build below uses a different optimization
+level, so these native build times do not establish a compile-time speedup.
+Generation/native source, tool, SDK, runtime and archive checks passed again
+after the executor fixes in PRs #854 and #856; those fixes leave RTL unchanged.
 
 Reproduce the isolated comparison against a prepared complete owner:
 
@@ -125,7 +143,7 @@ default, bounded by aggregate memory, and accepts `-O0` or `-O1` for active
 code; initialization/slow files use `-O0`. On macOS it passes the selected SDK
 explicitly when invoking the real compiler.
 
-The commands below select `-O0` for the model. With Apple clang 16, one 83.6 MB
+The original P04 build selected `-O0`. With Apple clang 16, one 83.6 MB
 active translation unit compiled in 18.840 seconds at `-O0`, while its `-O1`
 compile spent more than 24 minutes in ARM branch relaxation before interruption.
 This establishes a compiler-cost limit, not simulation throughput. The original
@@ -143,26 +161,30 @@ checker closures, model/runtime archives, compiler/SDK/linker identities, exact
 commands and executable hashes passed the original executor checker.
 
 All three original probes ran the real DUT and passed their independent
-protocol validators:
+protocol validators on both models. The compact `-O1` model also passed all
+four original executor builds, with source/tool/model/binary identities
+checked before and after execution:
 
-| Original executor | Discovery words | Auxiliary registers | Probe time |
-|---|---:|---:|---:|
-| native-sample | 112 | 5 | 15.186 s |
-| native-sample-graphics | 112 | 5 | 15.919 s |
-| compute | 112 | 10 | 16.577 s |
+| Original executor | Discovery words | Auxiliary registers | Original `-O0` probe | Compact `-O1` probe |
+|---|---:|---:|---:|---:|
+| native-sample | 112 | 5 | 15.186 s | 4.174 s |
+| native-sample-graphics | 112 | 5 | 15.919 s | 4.149 s |
+| compute | 112 | 10 | 16.577 s | 4.409 s |
 
 Each observed one reset, the exact complete sample factory, idle status, clear
 IRQ and no external memory work. Peak charged probe memory was 322,207,744
 bytes. All probes exited zero with proven consumer cleanup and unchanged
-source/tool/model/binary bindings. Shader/API execution, resource coexistence,
-clock and FPS retain their later acceptance gates.
+source/tool/model/binary bindings. The compact probes peaked at 203,505,664
+charged bytes. These discovery probes do not qualify shader/API execution,
+resource coexistence, clock rate or FPS.
 
 The original simulation advances its real VerilatedContext using `timeInc()`.
 The backend supplies the legacy initial-zero callback required by the compiled
 runtime; subsequent time reads use the context's actual 64-bit clock. The clock
 check links the real runtime and verifies initial zero, advancement beyond
 2^60, two independent contexts, C++ exception unwinding and rejection of a
-wrong initial-time callback. On macOS the executor linker selects the installed
+wrong initial-time callback; it passed again against the compact model's real
+runtime. On macOS the executor linker selects the installed
 classic Apple linker and fingerprints both linker binaries. This avoids the
 newer linker's 24-bit compact-unwind offset assertion on the large generated
 functions; the original compute executable's caught-error path was verified.
@@ -174,7 +196,7 @@ P04_OWNER="$PWD/.artifacts/owner-inline"
 python3 -B scripts/generate_owner_verilator.py --owner-output "$P04_OWNER"
 python3 -B scripts/generate_owner_verilator.py --owner-output "$P04_OWNER" --check
 python3 -B scripts/build_owner_verilator.py --owner-output "$P04_OWNER" \
-  --jobs 8 --memory-mib 24576 --optimization=-O0
+  --jobs 8 --memory-mib 24576 --optimization=-O1
 python3 -B scripts/build_owner_verilator.py --owner-output "$P04_OWNER" --check
 python3 -B scripts/qualification/check_owner_verilator_clock.py \
   --owner-output "$P04_OWNER"
