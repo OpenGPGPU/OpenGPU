@@ -158,6 +158,42 @@ static void image_atomic_lowering(void)
         }
         cases++;
     }
+    /* Keep XYZ and the raw float operand live while more than twenty other
+     * components are defined and consumed. Their dead slots may be recycled;
+     * the final exchange aliases its coordinate destination and must still
+     * receive the original four components. */
+    {
+        struct builder b;begin(&b,PIPE_SHADER_COMPUTE);
+        append_decl(&b,TGSI_FILE_TEMPORARY,0,6,-1);
+        append_decl(&b,TGSI_FILE_BUFFER,0,0,-1);
+        struct tgsi_full_declaration decl=tgsi_default_full_declaration();
+        decl.Declaration.File=TGSI_FILE_IMAGE;decl.Range.First=decl.Range.Last=0;
+        decl.Image.Resource=TGSI_TEXTURE_2D_ARRAY;decl.Image.Format=PIPE_FORMAT_R32_FLOAT;decl.Image.Writable=1;
+        assert(tgsi_build_full_declaration(&decl,b.t+b.h->HeaderSize+b.h->BodySize,b.h,TOKENS-b.h->HeaderSize-b.h->BodySize));
+        immediate(&b,3,7,11,0);immediate(&b,0x87654321,0x12345678,0,0);
+        struct tgsi_src_register coord=I(0);coord.SwizzleY=1;coord.SwizzleZ=2;
+        insn(&b,TGSI_OPCODE_MOV,TGSI_FILE_TEMPORARY,0,7,coord,I(0));
+        insn(&b,TGSI_OPCODE_MOV,TGSI_FILE_TEMPORARY,0,8,src(TGSI_FILE_IMMEDIATE,1,0),I(0));
+        for(unsigned t=1;t<=6;t++)for(unsigned c=0;c<4;c++){
+            insn(&b,TGSI_OPCODE_MOV,TGSI_FILE_TEMPORARY,t,1u<<c,src(TGSI_FILE_IMMEDIATE,1,1),I(0));
+            insn(&b,TGSI_OPCODE_STORE,TGSI_FILE_BUFFER,0,1,I(3),T(t,c));
+        }
+        struct tgsi_full_instruction i=tgsi_default_full_instruction();
+        i.Instruction.Opcode=TGSI_OPCODE_ATOMXCHG;i.Instruction.Memory=1;
+        i.Instruction.NumDstRegs=1;i.Instruction.NumSrcRegs=3;
+        i.Memory.Texture=TGSI_TEXTURE_2D_ARRAY;i.Memory.Format=PIPE_FORMAT_R32_FLOAT;
+        i.Dst[0].Register.File=TGSI_FILE_TEMPORARY;i.Dst[0].Register.WriteMask=1;
+        i.Src[0].Register=src(TGSI_FILE_IMAGE,0,0);i.Src[1].Register=T(0,0);
+        i.Src[1].Register.SwizzleY=1;i.Src[1].Register.SwizzleZ=2;i.Src[1].Register.SwizzleW=3;
+        i.Src[2].Register=T(0,3);
+        assert(tgsi_build_full_instruction(&i,b.t+b.h->HeaderSize+b.h->BodySize,b.h,TOKENS-b.h->HeaderSize-b.h->BodySize));
+        insn(&b,TGSI_OPCODE_END,0,0,0,I(0),I(0));
+        struct opengpu_cs_program p;struct opengpu_cs_image_info info;
+        assert(!opengpu_cs_emit_image_info(b.t,NULL,&p,&info) && info.float_exchange==1);
+        assert(opengpu_compute_shader_validate_words_image_atomics(p.code,p.words,64,4,false,false,false,true,true));
+        image_atomic_operands(&p,1,29,0,0x87654321,0);
+        puts("image float register lifetime: 24 consumed components, preserved live XYZ/value and aliased exchange destination PASS (CPU only)");
+    }
     assert(cases==160 && boundaries==4 && floating==20);
     puts("image atomic compiler: 160 integer/20 float-exchange target/alias programs, 4 immediate boundaries, literal XYZ/value/CAS order, unsupported float ops and feature gates PASS (CPU only)");
 }

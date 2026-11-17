@@ -144,7 +144,13 @@ def loaded_words(p, raw):
 
 
 def atomic_values(p, initial, invocation):
-    """Original ESSL integer RMW semantics on one lane's independent texel."""
+    """Original ESSL RMW semantics on one lane's independent texel."""
+    if p['format']=='r32f':
+        # These are the exact encodings copied by five float exchanges. No
+        # floating arithmetic or NaN bitcast with unspecified GLSL results.
+        values=[(invocation&1)<<31,0x3f400000+invocation,0xbf800000+invocation,
+                0x7f800000|((invocation&1)<<31),0x40000000+(invocation<<20)]
+        return [initial,*values[:-1]],values[-1]
     old=[initial]
     value=0x80000000+invocation*17
     old.append(value);value=(value+0x7ffffff0)&0xffffffff
@@ -173,7 +179,7 @@ def returned_outputs(initial, returned, description):
         raw=initial.read(texel_address(images[0],p,0,invocation),p['bytes'])
         if p['mode']=='atomic':
             old,value=atomic_values(p,int.from_bytes(raw,'little'),invocation)
-            observed.extend(struct.pack('<10I',*old))
+            observed.extend(struct.pack('<%uI'%len(old),*old))
             stored=value.to_bytes(4,'little')
             results.extend((texel_address(image,p,role,invocation),stored) for role,image in enumerate(images))
             continue
@@ -186,13 +192,15 @@ def returned_outputs(initial, returned, description):
 def ready(memory, description, data, *, owner_profile=None):
     """Bind full112 READY to original views, exact write windows and GIU1/PTEs."""
     from compute_counter_source import translate
-    from owner_resource_contract import SAMPLE_PROFILE, SAMPLE_FACTORY_CONTRACTS, FULL_COMPUTE_SCHEMA
+    from owner_resource_contract import SAMPLE_PROFILE, SAMPLE_FACTORY_CONTRACTS, FULL_COMPUTE_SCHEMA, IMAGE_FLOAT_PROFILE
     from compute_owner_protocol import profile_bytes
     owner_profile=SAMPLE_PROFILE if owner_profile is None else owner_profile
     require(type(owner_profile) is str and owner_profile in SAMPLE_FACTORY_CONTRACTS,
             'image source requires a known complete sample factory')
     stage,expected_words=SAMPLE_FACTORY_CONTRACTS[owner_profile]
     p,output,images=recipe(memory,description)
+    if p['mode']=='atomic' and p['format']=='r32f':
+        require(owner_profile==IMAGE_FLOAT_PROFILE,'R32F exchange requires its qualified float owner')
     require(data[:8]==b'OGCMP003', 'full112 capture required')
     cursor=8
     def take(fmt):
