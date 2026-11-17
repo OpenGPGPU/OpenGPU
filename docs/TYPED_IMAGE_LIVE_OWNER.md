@@ -270,6 +270,50 @@ float-factory compute executor. These are bounded texel accesses, not rendered
 frames; supported hardware dimensions and the 640×480 product target remain
 unchanged.
 
+## Failed execution receipts and original Linux cleanup
+
+The private CPU boundary has separate `compute_host_drain_failed`,
+`compute_host_observe_failed_retired` and `compute_host_finish_failed_observed`
+entry points. They accept only an exact opcode-zero execution-failed completion
+with its original command ID, zero kernel byte telemetry and held IRQ. The
+original Linux IRQ/drain path must produce an EIO hardware fence and a matching
+valid fault snapshot containing only the completion-error flag. The scheduler
+fence also retains EIO. Success entry points reject failed receipts, and failure
+entry points reject success, altered IDs/opcodes/status/telemetry and undrained
+retirement.
+
+After independent bytes/guards authorize cleanup, failure cleanup explicitly
+consumes the real context quiesce's one-time EIO report before revoking mappings.
+It drops only the context's fence reference. Hardware, scheduler and reservation
+fences retain their error; a cleared error is rejected. Original MMU unmap,
+shootdown and cleanup ACK requirements remain mandatory. Bad read/write cleanup
+ACKs still quarantine reachable job/image/context allocations.
+
+Separate `OGCFH001`/`OGCFR001` wire helpers carry failed held/retired observations.
+They cannot be passed through the ordinary success schema. All five original
+factory variants pass guarded ASan/UBSan CPU driver/MMU/IRQ/cleanup and canonical
+capture parsing. Each of the two complete 112-word profiles passes 208 ordinary
+and 208 failed image transport cases, covering thirteen formats and eight view
+layouts in read/write modes. Fourteen protocol/controller/oracle checks pass,
+including exact failed wire words and cross-path rejection. Temporary outputs
+are removed at terminal completion.
+
+```sh
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_compute_host.py \
+  --image-float-stage --canonical-root "$PWD"
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_compute_host.py \
+  --sample-stage --canonical-root "$PWD"
+PYTHONPATH=scripts python3 -B -m unittest test_compute_owner_protocol \
+  test_compute_owner_controller test_compute_owner_oracle
+```
+
+These are CPU transport and schema checks. The ordinary compute executor and
+Mesa producer still use success receipts; a source-qualified native failure
+mode, physical fault injection, live failure handoff and same-DUT healthy reuse
+remain required. Cancel/reset execution also remains pending. Freshly bind any
+execution qualification to the changed boundary/protocol sources; this source
+phase does not close P08.
+
 ## Original load/store source and independent result contract
 
 The live producer now accepts 70 original ESSL recipes: thirteen formats across
