@@ -308,6 +308,9 @@ static void execution_checks(int argc,char **argv) {
     a.observe(3,request,a.drive(3));a.disarm_read_faults();
     require(a.drained() && a.traffic.read_faults==1 && a.injected_read_faults()==1,"lost CPU AXI fault history");
     ReplayBus<ComputePeer> b(peer,a,100000);
+    rejects([&]{probe_profile(peer,a,b,true,compute_owner_factory());});
+    auto wrong_history=a.traffic;++wrong_history.reads;
+    rejects([&]{probe_profile(peer,a,b,true,compute_owner_factory(),&wrong_history);});
     rejects([&]{hold_compute(peer,a,b,m,c);});
     rejects([&]{hold_compute(peer,a,b,m,c,false,2);});
     require(!peer.submitted,"wrong fault baseline submitted an original command");
