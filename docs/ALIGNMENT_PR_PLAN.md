@@ -15,9 +15,14 @@
   三个实际reset/MMIO probe均通过。每个probe读回112字，辅助寄存器分别为5/5/10项，
   原独立validator及idle/IRQ/无外部内存工作检查通过；
   [最终结果、边界与复现](OWNER_FULL_FACTORY_REPRODUCTION.md)。
-  本交付合入后完成数为4/40，下一串行目标为P05原Mesa graphics/sample双owner执行。
   后续stage、资源或ABI变化仍须重新绑定；shader/API、43个blit包、资源共存和
   2-CU VGA60保留各自门槛。同时只开放一份alignment PR。
+- P05原Mesa22.3.6 ABI1 graphics/sample双owner在P04完整host上的实际执行通过：
+  两个原shader/GEM/Sv32 owner共用RAM、context且只reset一次；逐次和成对的独立
+  图像/GNY2/精确byte guard、实际retirement及PTE/shootdown/context cleanup ACK全部通过。
+  原LIVE producer唯一成功标记、执行器退出0和消费者清理均确认。
+  [最终结果、4×4/1-sample范围与复现](NATIVE_SAMPLE_GRAPHICS_OWNER.md#actual-complete-host-execution-p05)。
+  本交付受保护合入后完成数为5/40，下一串行目标为P06的43个原调用者blit包。
 - ordinary PrimitiveID ABI8/9源码交付为
   [#837](https://github.com/OpenGPGPU/OpenGPU/pull/837)，merge `1a03cfd93`、准确head `b7a0c5d1c`。
   正常 CI [43820053475](https://github.com/OpenGPGPU/OpenGPU/actions/runs/43820053475)
@@ -34,7 +39,7 @@
   完整资源和2-CU VGA60仍待其各自目标验收。阶段源码合入不自动增加闭环计数。
   P01 / #819、P02 / #820、P03 / #821 已完成各自的源码交付验收。
 - 当前基线为 **40 个 PR 工作包**：源码交付 3 项，功能/资源/API 闭合 31 项，
-  性能与最终验收 6 项。本交付受保护合入后，验收完成并合入 **4/40**，剩余 **36 项**。
+  性能与最终验收 6 项。本交付受保护合入后，验收完成并合入 **5/40**，剩余 **35 项**。
   清单显式包含 P39（原 VS→patch）和 P40（完整动态 TES patch read），
   不再把两者隐含在已经存在的组件结果中；原编号保持不变。
 - P15 源码已合入；三域客户端在实际报告消费后清理取消/故障状态，六项定向
@@ -99,7 +104,7 @@
 - P15、P16、P17、P39、P40 已有下表列出的限定范围源码与检查，均未完成目标验收。
   当前112仍非完整资源资格；旧96模型不能替代P04的完整factory和原probe验收。
 
-这里的 4/40 只统计本次列出的剩余工作，不是整个项目的历史完成率。
+这里的 5/40 只统计本次列出的剩余工作，不是整个项目的历史完成率。
 现有源码和组件证据不因列入闭合任务而被当作从零开始，也不会据此推算
 一个未经验收的总完成百分比。
 
@@ -204,7 +209,7 @@ python3 -B scripts/test_framebuffer_blit_host.py
 | 编号 | PR 范围 | 验收条件 | 依赖 | 当前状态 / PR |
 |---|---|---|---|---|
 | P04 | 新完整目标 factory 的 RTL、模型和执行器资格 | 新鲜生成；全容量、assertions、源码/工具/分片/二进制绑定与原 probe 一致；具备可复现的实际执行入口。后续合同变化须重做此绑定 | P01–P03 | 完成（随本交付受保护合入生效）；[#845](https://github.com/OpenGPGPU/OpenGPU/pull/845)、[#846](https://github.com/OpenGPGPU/OpenGPU/pull/846)、[#847](https://github.com/OpenGPGPU/OpenGPU/pull/847)交付完整sample factory、assertion模型、四个原执行器及三个实际112字probe；[结果与复现](OWNER_FULL_FACTORY_REPRODUCTION.md)。shader/API、资源共存、clock/FPS仍按后续目标验收 |
-| P05 | 原 Mesa graphics/sample 的完整 host 双 owner 执行 | 实际 shader、原 GEM/Sv32、同 RAM/无中间 reset；两次结果由独立图像/GNY2/guard oracle 验证；实际 retirement、PTE/shootdown/context cleanup ACK 全部成功 | P04 | 代码/CPU证据已有，实际 DUT 待执行 |
+| P05 | 原 Mesa graphics/sample 的完整 host 双 owner 执行 | 实际 shader、原 GEM/Sv32、同 RAM/无中间 reset；两次结果由独立图像/GNY2/guard oracle 验证；实际 retirement、PTE/shootdown/context cleanup ACK 全部成功 | P04 | 完成（随本交付受保护合入生效）；原Mesa22.3.6 ABI1双owner在完整112字sample host实际通过；[范围与复现](NATIVE_SAMPLE_GRAPHICS_OWNER.md#actual-complete-host-execution-p05)。clock/FPS与后续功能矩阵保持独立 |
 | P06 | 43个原调用者 framebuffer blit 的目标 host 执行 | 原43包及 source SHA 不变；精确字节/VM guard、source fault、延迟 R/B reset/drain、健康 ID 复用在目标 DUT 上通过 | P03、P04 | 112入口已实现，实际 DUT 待执行 |
 | P07 | 原 GEM atomic-counter live 提交与完整操作语料 | 实际 Mesa→生产 ioctl→目标 DUT；inc/read/dec、动态索引及资源共存；独立返回集合/最终 counter/全字节 guard，保留真实 owner 至 cleanup ACK | P04 | 九条 recipe/六组原 ESSL 的 inc/read/dec/动态索引 CPU/capture 检查通过；实际 DUT/共存待完成 |
 | P08 | Typed image load/store/atomic live 提交 | 原 image view、format/pitch/layer/权限与精确 writable view；实际 shader 结果、边界、fault/cancel/reset 及独立 oracle 通过 | P04、P07 | 待补齐 |

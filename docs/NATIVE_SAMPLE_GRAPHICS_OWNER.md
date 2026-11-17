@@ -6,6 +6,60 @@ owners. It shares the strict OGNP0002 profile probe and OGCAP002 parser, but has
 its own two-record execution loop and receipt schemas. The old96 executor and
 the record-zero-only sample executor retain their original contracts.
 
+## Actual complete-host execution (P05)
+
+The original Mesa 22.3.6 ABI1 two-owner qualification passed on 2026-11-17
+at committed source `8c06ea82db3629412db40687565ffb5a72750225`, using P04's
+complete assertion-enabled Verilator host. The original 308-word VS and
+301-word FS ran on the actual DUT through the LIVE C producer's GEM/Sv32
+submission path. Both owners shared one RAM, one protected context and one
+reset, with distinct original command and private job identities.
+
+Both independent per-owner image/GNY2/precise byte-guard checks and the complete
+ordered-pair check passed. The second result preserved the first owner's image,
+GNY2 lease and guarded bytes. Actual held completions, original-driver POP/IRQ
+retirement, PTE clearing, shootdown and context-cleanup acknowledgements passed.
+The original LIVE producer emitted its unique checked success marker; executor
+and producer exited zero. Consumer process groups, container and IPC outputs
+were cleaned with confirmed exit.
+
+The bounded qualification completed in 4449.835 seconds with a sampled charged
+process-tree peak of 495,714,304 bytes, under the 8 GiB limit. This is host
+qualification wall time with the P04 `-O0` model, not GPU frame timing. The
+recipe renders 4×4 at one sample on the unchanged full-capacity host. P05 closes
+this original two-owner path; other sample counts, shader/API matrices,
+resource coexistence, VGA product frames, physical clock and 60 FPS retain
+their separate acceptance gates.
+
+From a clean committed checkout, first prepare and bind the complete inline
+owner following [P04's reproduction](OWNER_FULL_FACTORY_REPRODUCTION.md).
+Set `P04_OWNER` to that matching output and `GPU_WORKSPACE` to the primary GPU
+checkout containing the configured Mesa/DRM dependencies. Rebuild the original
+executor after runtime changes, then run:
+
+```sh
+python3 -B scripts/prepare_owner_executor.py --stage build --backend verilator \
+  --kind native-sample-graphics --owner-output "$P04_OWNER"
+python3 -B scripts/prepare_owner_executor.py --stage probe \
+  --kind native-sample-graphics \
+  --qualification "$P04_OWNER/executors/native-sample-graphics/qualification.json" \
+  --executor "$P04_OWNER/executors/native-sample-graphics/executor"
+python3 -B scripts/run_owner_bounded.py --memory-mib 8192 \
+  --timeout-seconds 7200 -- python3 -B scripts/qualify_native_sample_graphics_owner.py \
+  --executor "$P04_OWNER/executors/native-sample-graphics/executor" \
+  --executor-qualification "$P04_OWNER/executors/native-sample-graphics/qualification.json" \
+  --executor-checker "$PWD/scripts/prepare_owner_executor.py" \
+  --executor-checker-python "$(command -v python3)" \
+  --mesa "$GPU_WORKSPACE/depends/mesa" \
+  --mesa-build "$GPU_WORKSPACE/depends/mesa-build" \
+  --drm-include "$GPU_WORKSPACE/depends/aarch64-root/include" \
+  --library-directory "$GPU_WORKSPACE/depends/aarch64-root/lib" \
+  --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72 \
+  --timeout 3600
+```
+
+## Transport and independent checks
+
 `--active-owners INPUT.memory NEW_OUTPUT SESSION` loads union memory once and
 resets once. It checks both captures against the actual complete profile and
 requires distinct command IDs, distinct private GNJ addresses, one shared Sv32
@@ -45,9 +99,9 @@ sources, undeclared includes, old driver/model relabeling and stale binaries.
 The [Linux LIVE producer build](NATIVE_SAMPLE_GRAPHICS_SOURCE_PLANS.md) passes
 ASan/UBSan compilation/linking of all28 units and331 actual dependencies. It
 never starts the producer or executes a GPU command. The original Mesa inputs
-and compiled products are checked before ended build data is removed. Actual
-final-host execution and its matching compiler-input binding remain required;
-no CPU receipt or successful build establishes GPU execution.
+and compiled products are checked before ended build data is removed. This
+build-only result does not itself establish GPU execution; the separately
+qualified complete-host result above retains its exact source and recipe scope.
 
 The JSON schemas are `opengpu-native-sample-graphics-held-v1` and
 `opengpu-native-sample-graphics-retired-v1`. Each names record0 or record1,
