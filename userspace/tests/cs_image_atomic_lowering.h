@@ -45,7 +45,7 @@ static void image_atomic_lowering(void)
         {TGSI_TEXTURE_CUBE,2},{TGSI_TEXTURE_3D,3}};
     static const unsigned ops[]={TGSI_OPCODE_ATOMXCHG,TGSI_OPCODE_ATOMUADD,TGSI_OPCODE_ATOMXOR,
         TGSI_OPCODE_ATOMOR,TGSI_OPCODE_ATOMAND,TGSI_OPCODE_ATOMIMIN,TGSI_OPCODE_ATOMIMAX,TGSI_OPCODE_ATOMCAS};
-    unsigned cases=0;
+    unsigned cases=0,boundaries=0;
     for(unsigned target=0;target<5;target++)for(unsigned signedness=0;signedness<2;signedness++)
     for(unsigned operation=0;operation<8;operation++)for(unsigned alias=0;alias<2;alias++){
         struct builder b;begin(&b,PIPE_SHADER_COMPUTE);
@@ -56,7 +56,9 @@ static void image_atomic_lowering(void)
         decl.Image.Format=signedness?PIPE_FORMAT_R32_SINT:PIPE_FORMAT_R32_UINT;decl.Image.Writable=1;
         unsigned declaration=b.h->HeaderSize+b.h->BodySize;
         assert(tgsi_build_full_declaration(&decl,b.t+b.h->HeaderSize+b.h->BodySize,b.h,TOKENS-b.h->HeaderSize-b.h->BodySize));
-        immediate(&b,3,7,11,0);immediate(&b,0x87654321,0x12345678,0,0);
+        immediate(&b,3,7,11,0);
+        unsigned value_position=b.h->HeaderSize+b.h->BodySize;
+        immediate(&b,0x87654321,0x12345678,0,0);
         struct tgsi_src_register coord=alias?T(0,0):I(0);
         coord.SwizzleY=1;coord.SwizzleZ=2;coord.SwizzleW=3;
         if(alias){
@@ -109,6 +111,15 @@ static void image_atomic_lowering(void)
             atomic->Opcode=i.Instruction.Opcode;
         }
         if(!target && !signedness && operation==1 && !alias){
+            static const uint32_t literals[]={15,16,0xfffffff0u,0xffffffefu};
+            for(unsigned k=0;k<4;k++){
+                struct opengpu_cs_program literal_program;struct opengpu_cs_image_info literal_info;
+                memcpy(b.t+value_position+1,&literals[k],sizeof(literals[k]));
+                assert(!opengpu_cs_emit_image_info(b.t,NULL,&literal_program,&literal_info));
+                assert(opengpu_compute_shader_validate_words_image_atomics(literal_program.code,literal_program.words,64,4,false,false,false,false,true));
+                image_atomic_operands(&literal_program,5,14,1,literals[k],0);boundaries++;
+            }
+            const uint32_t original=0x87654321;memcpy(b.t+value_position+1,&original,sizeof(original));
             for(unsigned mask=0;mask<8;mask++){
                 features=OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE|OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BACKINGS|
                     (mask&1?OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGES:0)|
@@ -125,6 +136,6 @@ static void image_atomic_lowering(void)
         }
         cases++;
     }
-    assert(cases==160);
-    puts("image atomic compiler: 160 signed/unsigned/target/alias programs, literal XYZ/value/CAS order, negative metadata and feature gates PASS (CPU only)");
+    assert(cases==160 && boundaries==4);
+    puts("image atomic compiler: 160 signed/unsigned/target/alias programs, 4 signed-immediate boundaries, literal XYZ/value/CAS order, negative metadata and feature gates PASS (CPU only)");
 }

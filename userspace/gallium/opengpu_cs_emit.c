@@ -32,7 +32,7 @@ struct build {
     uint32_t samplers, sampler_views;
     const unsigned *texture_observed;
     unsigned texture_position;
-    unsigned images, image_writable, image_target[4], image_atomics;
+    unsigned images, image_writable, image_target[4], image_atomics, compact_image_atomics;
     unsigned cf, cf_depth, cf_count, planned[CS_TEMPS][4];
     uint32_t imm[CS_IMMS][4];
     unsigned nimm;
@@ -90,6 +90,14 @@ static void scalar(struct build *b, uint32_t value)
 
 static void splat(struct build *b, unsigned reg, uint32_t value)
 {
+    /* Image RMW sequences otherwise spend two or three words per small
+     * coordinate/selector constant and exhaust the unchanged 512-word bound.
+     * VMV.V.I carries a signed five-bit literal; legacy programs keep their
+     * existing word stream. x10 is only scalar()'s explicit scratch output. */
+    if (b->compact_image_atomics && (value <= 15 || value >= UINT32_C(0xfffffff0))) {
+        word(b,vec(0x17,3,reg,value&31,0));
+        return;
+    }
     scalar(b, value);
     word(b, vec(0x17, 4, reg, 10, 0));
 }
@@ -1289,7 +1297,7 @@ static int emit_program(const void *tokens, const struct opengpu_cs_shared *shar
     struct build b;
     struct tgsi_parse_context p;
     unsigned observed[CS_TOKENS + 2] = {0}, pending[CS_TEMPS][4] = {{0}};
-    int ended = 0;
+    int ended = 0;unsigned compact_images=0;
     if (!tokens || !out || packets(tokens)) return -1;
     if (tgsi_parse_init(&p, tokens) != TGSI_PARSE_OK) return -1;
     while (!tgsi_parse_end_of_tokens(&p)) {
@@ -1298,6 +1306,8 @@ static int emit_program(const void *tokens, const struct opengpu_cs_shared *shar
             const struct tgsi_full_instruction *full = &p.FullToken.FullInstruction;
             const struct tgsi_instruction *in = &full->Instruction;
             unsigned position = p.Position - in->NrTokens - 1;
+            if(in->NumSrcRegs && storage_atomic_operation(in->Opcode)>=0 &&
+                full->Src[0].Register.File==TGSI_FILE_IMAGE)compact_images=1;
             for (unsigned s = 0; s < in->NumSrcRegs; s++) {
                 const struct tgsi_src_register *src = &full->Src[s].Register;
                 if (src->File != TGSI_FILE_TEMPORARY || src->Index < 0 ||
@@ -1328,6 +1338,7 @@ static int emit_program(const void *tokens, const struct opengpu_cs_shared *shar
     memset(&b, 0, sizeof(b));
     b.texture_observed = observed;
     b.shared = shared;
+    b.compact_image_atomics=compact_images;
     b.next_reg = 2;
     if (tgsi_parse_init(&p, tokens) != TGSI_PARSE_OK) return -1;
     word(&b, 0x01007557u); /* VLMAX e32,m1,tu,mu -> scratch x10; preserve x5..7 */
