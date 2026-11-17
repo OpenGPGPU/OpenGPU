@@ -188,7 +188,11 @@ HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
   require(!(bus.read(GPU_REG_UCMD_STATUS)&GPU_UCMD_STATUS_COMPLETION),
     "owner record starts with an unretired completion");
   for(const auto &a:capture.trace)bus.action(a);
-  while(!sim.model->io_m_irq)bus.step();
+  // IRQ is sticky and may still describe a preceding invalidation whose
+  // result was drained by polling. Observe the actual unified slot before
+  // treating this record as complete; polling continues to service AXI.
+  while(!(bus.read(GPU_REG_UCMD_STATUS)&GPU_UCMD_STATUS_COMPLETION))bus.step();
+  require(sim.model->io_m_irq,"native unified completion has no asserted IRQ");
   require(agent.drained(),"native completion preceded external memory drain");
   const auto completed=agent.traffic;
   const auto completion=bus.read(GPU_REG_UCMD_COMPLETION);

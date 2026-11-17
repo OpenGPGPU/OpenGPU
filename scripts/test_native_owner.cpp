@@ -75,6 +75,9 @@ public:
   bool corrupt_previous=false,unstable_gnx=false,raw_observations=false,unstable_telemetry=false;
   bool missing_completion=false;
   uint32_t completion_irq=GPU_IRQ_ENABLE|GPU_IRQ_PENDING;
+  uint64_t completion_delay=0;
+  bool suppress_completion=false,completion_pending=false,stale_irq_at_native=false;
+  uint32_t pending_completion=0;
   uint64_t completion_cycle=0;
   std::vector<uint32_t> read_addresses;
   ControlPeer(int argc,char **argv,Memory &m,const std::vector<Capture> &c)
@@ -87,22 +90,35 @@ public:
     model->registers[GPU_REG_BIN_CAPABILITY_PTR]=GPU_REG_BIN_CAPABILITIES;model->registers[0x320]=128;model->registers[GPU_REG_SHADER_CONFIG]=0x02040810;
   }
   template<class Observe> void step(Agent &agent,uint64_t cycle,Observe observe) {
-    bool written=false;Command write{};
+    bool written=false,completion_read=false;Command write{};
+    const auto prior_irq_register=model->registers[GPU_REG_IRQ];
     Simulation::step(agent,cycle,[&](const auto &m) {
-      if(m.io_s_axi_arvalid && m.io_s_axi_arready)read_addresses.push_back(m.io_s_axi_araddr);
+      if(m.io_s_axi_arvalid && m.io_s_axi_arready) {
+        read_addresses.push_back(m.io_s_axi_araddr);
+        completion_read=submitted && m.io_s_axi_araddr==GPU_REG_UCMD_COMPLETION;
+      }
       if(m.io_s_axi_awvalid && m.io_s_axi_awready && m.io_s_axi_wvalid && m.io_s_axi_wready) {
         written=true;write={m.io_s_axi_awaddr,m.io_s_axi_wdata};
       }
       observe(m);
     });
     auto &r=model->registers;
+    if(completion_pending && !suppress_completion && cycle>=completion_cycle+completion_delay) {
+      r[GPU_REG_UCMD_STATUS]=GPU_UCMD_STATUS_READY|GPU_UCMD_STATUS_COMPLETION;
+      r[GPU_REG_UCMD_COMPLETION]=pending_completion;completion_pending=false;
+    }
+    if(missing_completion && completion_read)
+      r[GPU_REG_UCMD_STATUS]=GPU_UCMD_STATUS_READY|GPU_UCMD_STATUS_VM_BUSY;
     if(unstable_gnx && submitted && cycle==completion_cycle+35)r[0x184]^=1;
     if(unstable_telemetry && submitted && cycle==completion_cycle+35)r[GPU_REG_UCMD_COMPLETION_BYTES_LO]^=64;
     if(!written)return;
     if(write.address==GPU_REG_UCMD_SUBMIT) {
+      const auto previous_completion=r[GPU_REG_UCMD_COMPLETION];
+      const bool previous_irq=model->io_m_irq;
       r[GPU_REG_UCMD_STATUS]=GPU_UCMD_STATUS_READY|GPU_UCMD_STATUS_COMPLETION;
       r[GPU_REG_UCMD_COMPLETION]=0x8000|(r[GPU_REG_UCMD_OPCODE]<<8)|r[GPU_REG_UCMD_ID];
       if(r[GPU_REG_UCMD_OPCODE]==GPU_UCMD_OP_NATIVE_BINNED_RENDER) {
+        stale_irq_at_native=previous_irq;
         require(submitted<captures.size(),"unexpected CPU peer native command");
         if(submitted)require(memory.byte(captures[0].writable[0].first)==0x51,
           "next record replaced prior output RAM");
@@ -114,19 +130,33 @@ public:
         }
         r[GPU_REG_IRQ]=completion_irq;
         if(missing_completion) {
-          r[GPU_REG_UCMD_STATUS]=GPU_UCMD_STATUS_READY|GPU_UCMD_STATUS_VM_BUSY;
           r[GPU_REG_UCMD_COMPLETION]=0x12345678;
           r[GPU_REG_STATUS]=GPU_STATUS_BUSY;
         }
+        if(completion_delay || suppress_completion) {
+          pending_completion=r[GPU_REG_UCMD_COMPLETION];completion_pending=true;
+          r[GPU_REG_UCMD_STATUS]=GPU_UCMD_STATUS_READY|GPU_UCMD_STATUS_VM_BUSY;
+          r[GPU_REG_UCMD_COMPLETION]=previous_completion;
+        }
         memory.byte(c.writable[0].first,uint8_t(0x51+submitted));
         if(submitted && corrupt_previous)memory.byte(captures[0].writable[0].first,0xff);
-        ++submitted;completion_cycle=cycle;model->io_m_irq=1;
-      }
+        ++submitted;completion_cycle=cycle;
+      } else r[GPU_REG_IRQ]|=GPU_IRQ_PENDING;
+      model->io_m_irq=bool(r[GPU_REG_IRQ]&GPU_IRQ_ENABLE) &&
+        bool(r[GPU_REG_IRQ]&(GPU_IRQ_PENDING|GPU_IRQ_VBLANK_PENDING));
     } else if(write.address==GPU_REG_UCMD_COMPLETION_POP) {
-      r[GPU_REG_UCMD_STATUS]=GPU_UCMD_STATUS_READY;model->io_m_irq=0;
+      r[GPU_REG_UCMD_STATUS]=GPU_UCMD_STATUS_READY;
+      model->io_m_irq=bool(r[GPU_REG_IRQ]&GPU_IRQ_ENABLE) &&
+        bool(r[GPU_REG_IRQ]&(GPU_IRQ_PENDING|GPU_IRQ_VBLANK_PENDING));
       r[GPU_REG_UCMD_COMPLETION_BYTES_LO]=r[GPU_REG_UCMD_COMPLETION_BYTES_HI]=0;
       for(unsigned n=0;n<12;++n)r[0x180+4*n]=0;
-    } else if(write.address==GPU_REG_IRQ) {r[GPU_REG_IRQ]=write.value&GPU_IRQ_ENABLE;model->io_m_irq=0;}
+    } else if(write.address==GPU_REG_IRQ) {
+      // The simple MMIO stub stores the write data at the edge. Apply W1C
+      // semantics to the pre-edge register, preserving unacknowledged causes.
+      r[GPU_REG_IRQ]=(prior_irq_register&~(write.value&6u)&~GPU_IRQ_ENABLE)|(write.value&GPU_IRQ_ENABLE);
+      model->io_m_irq=bool(r[GPU_REG_IRQ]&GPU_IRQ_ENABLE) &&
+        bool(r[GPU_REG_IRQ]&(GPU_IRQ_PENDING|GPU_IRQ_VBLANK_PENDING));
+    }
   }
 };
 static void record_series(int argc,char **argv,bool corrupt) {
@@ -198,6 +228,41 @@ static void missing_completion_diagnostic(int argc,char **argv) {
       sim.model->registers[GPU_REG_UCMD_COMPLETION]==0x12345678 && sim.model->registers[GPU_REG_IRQ]==irq,
       "missing completion observation retired or acknowledged the failed command");
   }
+}
+static void stale_irq_waits_for_completion(int argc,char **argv,bool never_complete) {
+  auto c=fixture();c.writable={{0x2000,0x2040}};c.max_cycles=1000;
+  c.trace[8].value=GPU_IRQ_ENABLE; // Poll-drain POP leaves the prior IRQ pending.
+  c.trace.insert(c.trace.begin(),{Kind::write,GPU_REG_IRQ,GPU_IRQ_ENABLE,0});c.validate();
+  const std::vector<Capture> captures{c};Memory memory;memory.ranges={{0x1000,0x4000,0xa7}};
+  ControlPeer sim(argc,argv,memory,captures);sim.reset();
+  sim.completion_delay=64;sim.suppress_completion=never_complete;
+  Agent agent(memory);ReplayBus<ControlPeer> bus(sim,agent,c.max_cycles);
+  if(never_complete) {
+    std::string error;
+    try {hold_record(sim,agent,bus,memory,c);}catch(const std::runtime_error &e) {error=e.what();}
+    require(error=="captured owner exceeded its total cycle budget" && bus.cycles==c.max_cycles &&
+      sim.stale_irq_at_native && sim.model->io_m_irq && sim.model->registers[GPU_REG_UCMD_COMPLETION]==0x8528 &&
+      !(sim.model->registers[GPU_REG_UCMD_STATUS]&GPU_UCMD_STATUS_COMPLETION),
+      "stale IRQ without a completion escaped the budget or released the old slot");
+  } else {
+    auto held=hold_record(sim,agent,bus,memory,c);
+    require(sim.stale_irq_at_native && held.result.completion==0x8729 && held.result.held_irq_asserted &&
+      bus.cycles>=sim.completion_cycle+sim.completion_delay && sim.resets==1,
+      "stale IRQ authorized a held receipt before the actual unified completion");
+    const auto retired=retire_record(sim,agent,bus,memory,c,held);
+    require(!retired.retired_irq_asserted,"real completion did not retire after the delayed publication");
+  }
+}
+static void completion_requires_irq(int argc,char **argv) {
+  auto c=fixture();c.writable={{0x2000,0x2040}};
+  const std::vector<Capture> captures{c};Memory memory;memory.ranges={{0x1000,0x4000,0xa7}};
+  ControlPeer sim(argc,argv,memory,captures);sim.reset();sim.completion_irq=GPU_IRQ_PENDING;
+  Agent agent(memory);ReplayBus<ControlPeer> bus(sim,agent,c.max_cycles);
+  std::string error;
+  try {hold_record(sim,agent,bus,memory,c);}catch(const std::runtime_error &e) {error=e.what();}
+  require(error=="native unified completion has no asserted IRQ" &&
+    (sim.model->registers[GPU_REG_UCMD_STATUS]&GPU_UCMD_STATUS_COMPLETION),
+    "completion polling waived its IRQ requirement or popped a failed slot");
 }
 static void mismatched_completion_diagnostic(int argc,char **argv) {
   auto c=fixture();c.writable={{0x2000,0x2040}};
@@ -634,6 +699,8 @@ int main() {
   unstable_completion(argc,argv);
   actual_observations(argc,argv);unstable_append_telemetry(argc,argv);
   missing_completion_diagnostic(argc,argv);
+  stale_irq_waits_for_completion(argc,argv,false);stale_irq_waits_for_completion(argc,argv,true);
+  completion_requires_irq(argc,argv);
   mismatched_completion_diagnostic(argc,argv);
   missing_source_profile(argc,argv);
   profile_probe(argc,argv);

@@ -134,6 +134,15 @@ acknowledging the held command. They execute no GPU work. Reproduce with:
 OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_owner.py
 ```
 
+A preceding invalidate may be drained by the original polling path without
+acknowledging its sticky IRQ. Owner execution therefore polls the actual
+unified completion bit before capturing the final slot, while continuing to
+serve external AXI and enforcing the captured total cycle budget. An asserted
+IRQ, exact final command identity/GNX, memory drain, stable held results and
+driver-controlled retirement remain mandatory. CPU tests cover a delayed real
+slot behind a stale IRQ, an absent slot exhausting its budget, and a completed
+slot without an asserted IRQ. Full Mesa two-owner acceptance remains separate.
+
 ```sh
 python3 -B scripts/test_qualify_native_sample_graphics_owner.py
 python3 -B scripts/qualify_native_sample_graphics_owner.py \
