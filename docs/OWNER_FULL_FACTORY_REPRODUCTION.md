@@ -1,9 +1,9 @@
 # Complete owner factory qualification
 
 The complete factory's fresh compilation, RTL emission, structural audit and
-assertion-enabled Verilator C++ generation have passed. Native C++ compilation,
-original executor builds and actual discovery probes remain pending; P04 is
-not closed by code generation alone.
+assertion-enabled Verilator C++ generation and native model compilation have
+passed. Original executor builds and actual discovery probes remain pending;
+P04 is not closed by model compilation alone.
 
 P04 binds the complete `OwnerResourceProfile.sampleStage` factory to fresh RTL,
 its assertion-enabled model, original executors and actual MMIO discovery.
@@ -92,11 +92,26 @@ compile spent more than 24 minutes in ARM branch relaxation before interruption.
 This establishes a compiler-cost limit, not simulation throughput. The original
 four driver translation units retain `-O1`.
 
+The complete model compiled successfully at `-O0` with eight jobs in 1043.919
+seconds. Observed peak charged process-tree memory was 19,839,844,352 bytes,
+under the 24 GiB limit. Complete model archives, native runtime objects,
+generated-source identities and original source/tool inputs passed validation.
+
 All four original driver translation units compiled successfully against the
 complete generated model's real headers with `-O1`. Their actual include
 dependencies and original source/checker closures were checked before and after
 compilation. This verifies the source interface; model archives, linked
 executables and the three actual probes retain their separate acceptance gates.
+
+The original simulation advances its real VerilatedContext using `timeInc()`.
+The backend supplies the legacy initial-zero callback required by the compiled
+runtime; subsequent time reads use the context's actual 64-bit clock. The clock
+check links the real runtime and verifies initial zero, advancement beyond
+2^60, two independent contexts, C++ exception unwinding and rejection of a
+wrong initial-time callback. On macOS the executor linker selects the installed
+classic Apple linker and fingerprints both linker binaries. This avoids the
+newer linker's 24-bit compact-unwind offset assertion on the large generated
+functions; the original compute executable's caught-error path was verified.
 
 Starting with the prepared inline owner above:
 
@@ -107,6 +122,8 @@ python3 -B scripts/generate_owner_verilator.py --owner-output "$P04_OWNER" --che
 python3 -B scripts/build_owner_verilator.py --owner-output "$P04_OWNER" \
   --jobs 8 --memory-mib 24576 --optimization=-O0
 python3 -B scripts/build_owner_verilator.py --owner-output "$P04_OWNER" --check
+python3 -B scripts/qualification/check_owner_verilator_clock.py \
+  --owner-output "$P04_OWNER"
 for kind in native-sample native-sample-graphics compute framebuffer-blit-sample; do
   python3 -B scripts/prepare_owner_executor.py --stage build --backend verilator \
     --kind "$kind" --owner-output "$P04_OWNER"

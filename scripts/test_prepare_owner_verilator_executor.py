@@ -61,7 +61,8 @@ class VerilatorExecutorInputsTest(unittest.TestCase):
         self.header.write_text('// Actual dependency fixture\n')
         dependencies = {str(path.resolve()): owner.common.sha(path) for path in
             (Path(bound['driver']), self.model / 'VGpuHostSystemAxi.h',
-             self.kit / 'include/verilated.h', self.header)}
+             self.kit / 'include/verilated.h',
+             self.root / 'scripts/native_verilator_initial_time.hpp', self.header)}
         compile_command, link_command = verilator.commands(bound, target)
         built = dict(schema='opengpu-owner-verilator-executor-build-v1', context=bound,
             compile_command=compile_command, link_command=link_command, dependencies=dependencies,
@@ -120,7 +121,8 @@ class VerilatorExecutorInputsTest(unittest.TestCase):
 
     def test_changed_original_checker_binary_and_consumed_system_header_are_rejected(self):
         record, built = self.fixture()
-        for path in (self.root / 'scripts/native_sample_owner_oracle.py', self.header,
+        for path in (self.root / 'scripts/native_sample_owner_oracle.py',
+                     self.root / 'scripts/native_verilator_initial_time.hpp', self.header,
                      self.path.parent / 'executor'):
             previous = path.read_bytes()
             path.write_bytes(previous + b'\n// Changed input\n')
