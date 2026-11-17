@@ -1,6 +1,6 @@
 """Independent original-image view, upload and returned-byte contracts.
 
-Expected bytes follow the ESSL load/store and format rules, without interpreting
+Expected bytes follow the ESSL load/store/atomic and format rules, without interpreting
 native words or trusting a descriptor as authority for an original view.
 """
 import struct
@@ -20,7 +20,7 @@ def source_view(p, role, unit):
     """Reconstruct the recipe's original allocation and exposed source view."""
     target = dict(buffer=5, **{'2d': 0, 'array': 1, 'cube': 2, '3d': 3})[p['target']]
     v = dict(offset=48, rowPitch=13*p['bytes']+3, slicePitch=0, layerPitch=0,
-        slot=39+unit, flags=(2 if role else 1)|4, target=target,
+        slot=39+unit, flags=(2 if role else 3 if p['mode']=='atomic' else 1)|4, target=target,
         storageFormat=3 if target==5 and p['format']=='rgba8_snorm' else p['native'],
         imageFormat=p['native'], level=0, width=13, height=1, depth=1, layers=1, layer=0)
     if target==5:
@@ -143,11 +143,40 @@ def loaded_words(p, raw):
     return struct.pack('<4I',*words)
 
 
+def atomic_values(p, initial, invocation):
+    """Original ESSL integer RMW semantics on one lane's independent texel."""
+    old=[initial]
+    value=0x80000000+invocation*17
+    old.append(value);value=(value+0x7ffffff0)&0xffffffff
+    old.append(value);value^=0x5555aaaa
+    old.append(value);value|=15
+    old.append(value);value&=0xfffffff3
+    old.append(value)
+    def ordered(word):
+        return word-0x100000000 if p['kind']=='sint' and word&0x80000000 else word
+    if ordered(value)>ordered(0x7fffff00):value=0x7fffff00
+    old.append(value)
+    if ordered(value)<ordered(0x80000020):value=0x80000020
+    old.append(value)
+    value=0x12345670+invocation
+    old.append(value)
+    if value==0x12345670+invocation:value=0xdeadb000+invocation
+    old.append(value)
+    if value==0x87654321:value=0xa5a5a5a5
+    return old,value
+
+
 def returned_outputs(initial, returned, description):
     p,output,images=recipe(initial,description)
     observed=bytearray();results=[]
     for invocation in range(8):
         raw=initial.read(texel_address(images[0],p,0,invocation),p['bytes'])
+        if p['mode']=='atomic':
+            old,value=atomic_values(p,int.from_bytes(raw,'little'),invocation)
+            observed.extend(struct.pack('<10I',*old))
+            stored=value.to_bytes(4,'little')
+            results.extend((texel_address(image,p,role,invocation),stored) for role,image in enumerate(images))
+            continue
         observed.extend(loaded_words(p,raw))
         stored=bytes(129 if byte==128 else byte for byte in raw) if p['kind']=='snorm' else raw
         results.append((texel_address(images[1],p,1,invocation),stored))
@@ -181,15 +210,17 @@ def ready(memory, description, data):
     arg,argbytes=uint(description['kernargPhysical']),uint(description['kernargBytes'])
     require(argbytes and any(a<=arg<arg+argbytes<=b for a,b,_ in memory.ranges), 'kernarg outside original allocation')
     expected=[(arg,arg+argbytes),(output,output+8192)]
-    image=images[1];v=image['view'];first=image['allocationPhysical']+v['offset']
-    if v['target']==5:
-        expected.append((first,first+13*p['bytes']))
-    else:
-        step=v['slicePitch'] if v['target']==3 else v['layerPitch']
-        planes=(v['layers'] if v['target']==1 else 6 if v['target']==2 else v['depth'] if v['target']==3 else 1) if v['flags']&8 else 1
-        if not v['flags']&8:first+=v['layer']*step
-        expected.extend((first+z*step+y*v['rowPitch'],first+z*step+y*v['rowPitch']+13*p['bytes'])
-            for z in range(planes) for y in range(v['height']))
+    for image in images:
+        v=image['view'];first=image['allocationPhysical']+v['offset']
+        if not v['flags']&2:continue
+        if v['target']==5:
+            expected.append((first,first+13*p['bytes']))
+        else:
+            step=v['slicePitch'] if v['target']==3 else v['layerPitch']
+            planes=(v['layers'] if v['target']==1 else 6 if v['target']==2 else v['depth'] if v['target']==3 else 1) if v['flags']&8 else 1
+            if not v['flags']&8:first+=v['layer']*step
+            expected.extend((first+z*step+y*v['rowPitch'],first+z*step+y*v['rowPitch']+13*p['bytes'])
+                for z in range(planes) for y in range(v['height']))
     expected.sort()
     require(all(a[1]<=b[0] for a,b in zip(expected,expected[1:])), 'source writable ranges alias')
     count,=take('<I');require(0<count<=4096, 'invalid writable interval count')

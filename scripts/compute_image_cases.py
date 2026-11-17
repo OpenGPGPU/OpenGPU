@@ -9,9 +9,11 @@ FORMATS = {
     'rgba8_snorm': (39, 4, 8, 'snorm', 4),
 }
 TARGETS = ('buffer', '2d', 'array', 'cube', '3d')
-IMAGE_CASES = tuple('image-' + target + '-' + fmt for target in TARGETS for fmt in FORMATS) + (
+IMAGE_LOAD_STORE_CASES = tuple('image-' + target + '-' + fmt for target in TARGETS for fmt in FORMATS) + (
     'image-single-array-r32ui', 'image-single-3d-r32ui',
     'image-plane-array-r32ui', 'image-plane-cube-r32ui', 'image-plane-3d-r32ui')
+IMAGE_ATOMIC_CASES = tuple('image-atomic-'+target+'-'+fmt for target in TARGETS for fmt in ('r32ui','r32i'))
+IMAGE_CASES = IMAGE_LOAD_STORE_CASES + IMAGE_ATOMIC_CASES
 
 
 def parameters(case):
@@ -52,6 +54,25 @@ def write_sources(out):
                 if p['shader'] == '2d' else 'ivec3(%s,%d,%d)' % (x, y, z))
         bits = 'uvec4(value)' if prefix else 'floatBitsToUint(value)'
         extension = '#extension GL_EXT_texture_buffer : require\n' if p['shader'] == 'buffer' else ''
+        if p['mode']=='atomic':
+            scalar='uint' if prefix=='u' else 'int'
+            steps=(('Exchange','0x80000000u+g*17u'),('Add','0x7ffffff0u'),
+                ('Xor','0x5555aaaau'),('Or','0x0000000fu'),('And','0xfffffff3u'),
+                ('Min','0x7fffff00u'),('Max','0x80000020u'),('Exchange','0x12345670u+g'),
+                ('CompSwap','0x12345670u+g','0xdeadb000u+g'),
+                ('CompSwap','0x87654321u','0xa5a5a5a5u'))
+            body='void main(){uint g=gl_GlobalInvocationID.x;uint o=g*10u;'
+            for index,(operation,*values) in enumerate(steps):
+                body+='observed.data[o+%du]=uint(imageAtomic%s(original,%s,%s));' % (
+                    index,operation,coordinate(False),','.join(scalar+'('+value+')' for value in values))
+            body+='memoryBarrierImage();highp %s value=imageLoad(original,%s);imageStore(destination,%s,value);}\n' % (
+                vector,coordinate(False),coordinate(True))
+            (out/p['source']).write_text('#version 310 es\n#extension GL_OES_shader_image_atomic : require\n'+extension+
+                'precision highp int;\nlayout(local_size_x=4) in;\n'+
+                'layout(%s,binding=3) coherent uniform highp %simage%s original;\n' % (p['format'],prefix,p['suffix'])+
+                'layout(%s,binding=1) writeonly uniform highp %simage%s destination;\n' % (p['format'],prefix,p['suffix'])+
+                'layout(std430,binding=2) buffer Output {uint data[];} observed;\n'+body)
+            continue
         (out/p['source']).write_text('#version 310 es\n'+extension+
             'precision highp int;\nlayout(local_size_x=4) in;\n'+
             'layout(%s,binding=3) readonly uniform highp %simage%s original;\n' % (p['format'],prefix,p['suffix'])+
