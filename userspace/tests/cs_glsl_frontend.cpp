@@ -185,8 +185,13 @@ extern "C" void *cs_frontend_compile(const char *path, const char *dump_prefix)
         nir_foreach_image_variable(var, nir) {
             const unsigned count = glsl_type_get_image_count(var->type);
             assert(image + count <= 4);
+            /* gl_nir_lower_samplers has replaced the API binding with a
+             * program-local image index. Match st_atom_image's ImageUnits
+             * mapping before assigning the native descriptor locations. */
+            const auto &units = shader->Program->sh.ImageUnits;
+            assert(var->data.binding + count <= sizeof(units) / sizeof(units[0]));
             for (unsigned i = 0; i < count; i++)
-                f->image_bindings[image + i] = var->data.binding + i;
+                f->image_bindings[image + i] = units[var->data.binding + i];
             var->data.driver_location = image;
             image += count;
         }

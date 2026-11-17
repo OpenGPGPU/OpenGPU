@@ -1,4 +1,4 @@
-# Typed image live-owner transport (P08)
+# Typed image live-owner transport and lowering (P08)
 
 The complete-host CPU boundary now forwards the original `COMPUTE_IMAGES` and
 `COMPUTE_IMAGE_RESOURCES` requests to their production Linux handlers. It retains
@@ -19,6 +19,46 @@ that representation is rejected before a hardware kernel is offered and remains
 cancellable. This does not change production admission, RTL image dimensions,
 resource capacities or the 2-CU/640×480/60-FPS product target.
 
+## Gallium typed storage and load/store lowering
+
+The next source phase adds private, image-only linear allocations for the
+thirteen native image formats and 2D, 2D-array, cube and 3D targets. Checked
+mip layouts retain original storage formats, 64-byte row alignment and explicit
+plane pitches. The existing 128-MiB backing-window bound applies to the complete
+allocation. Transfers map the selected mip/plane and retain the resource through
+unmap; launch views keep the original BO, offsets, permissions and exposed layer
+range. A private compiler target sidecar distinguishes a one-plane layered
+array/volume from a 2D view of one selected plane. The public compute-program
+layout and legacy emitter entry points remain unchanged.
+
+Native image load/store lowering carries target, format and XYZ operands. The
+Mesa frontend now recovers API image units through the actual program's
+`ImageUnits` table after sampler lowering, preserving sparse bindings such as
+read-only unit 3 and write-only unit 1. Buffer sampler admission also checks the
+existing target-5 format policy rather than accepting every mapped format ID.
+
+ASan/UBSan CPU checks pass 65 target/format TGSI load/store programs, including
+literal coordinate/control checks and mismatched-target rejection; 52 actual
+Gallium mip/plane transfer and reference-lifetime cases; and the existing buffer
+view tests. The resource-shape fixture passes 52 typed layouts plus the legacy
+allocation paths, partial array views and single-plane array/volume views. A
+separate real Mesa ESSL→NIR→TGSI build compiles all 65 target/format programs and
+passes reflection and the production native-word validator. Existing shared
+own-stripe, atomic, address/SIMT, 16-KiB and symbolic-register checks also pass.
+These checks execute no image shader on a GPU or DUT.
+
+The final typed-storage source also passes the eleven original counter CPU
+captures with a fresh 22-TU/22-MMD producer, strict READY checks, the independent
+ASan/UBSan parser and untouched-memory result rejection. All 8102 external and
+177 GPU/checker inputs remain unchanged across that run. This checks regression
+of the producer path; it does not extend P07's DUT qualification.
+
+This phase accepts only `PIPE_BIND_SHADER_IMAGE` for the new nonbuffer layouts.
+Combined sampler/render bindings, imported/exported typed storage, nonbuffer
+`imageSize`, and image atomics remain unsupported by this path. Existing render
+layouts and driver/RTL capacities are unchanged. Real source-bound image
+execution and its boundary/fault/cancel/reset oracles remain P08 work.
+
 ## CPU transport result and limits
 
 The full112 CPU profile passes 208 source-view cases with ASan/UBSan and the
@@ -36,7 +76,7 @@ layouts check bounded planning and cancellation. Four bad cleanup-ACK cases
 retain the reachable original image and private descriptor after public-handle
 closure. The existing storage/uniform/counter transport and cleanup checks pass.
 
-The updated producer also passes all eleven original counter recipes, including
+The transport-phase producer also passes all eleven original counter recipes, including
 four-image coexistence, through a fresh 22-TU Mesa build with 22 checked MMD
 files. All 8102 external and 174 GPU/checker inputs remain unchanged. Each CPU
 capture passes strict READY checks and the independent ASan/UBSan parser;
@@ -84,3 +124,16 @@ The compiler input guard is `compute_owner_inputs.py --bound-inputs INPUTS.json`
 using the current `snapshot` and source hashes rather than an executor
 qualification. Run the canonical parser and strict counter READY checker for
 each `sessions/COUNTER_CASES` capture. CPU capture records cannot qualify a DUT.
+
+For the typed compiler and callbacks, use the same pinned Mesa/DRM container
+environment and new private output directories. Remove those directories after
+their checks have ended:
+
+```sh
+python3 -B scripts/test_gallium_typed_images.py --sanitize \
+  --build "$CPU_CAPTURE/typed-compiler"
+python3 -B scripts/test_gallium_buffer_views.py --sanitize \
+  --build "$CPU_CAPTURE/typed-callbacks"
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_gallium_shared_own_stripe.py
+python3 -B scripts/test_gallium_resource_shapes.py
+```
