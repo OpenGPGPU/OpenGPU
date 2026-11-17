@@ -48,10 +48,46 @@ own-stripe, atomic, address/SIMT, 16-KiB and symbolic-register checks also pass.
 These checks execute no image shader on a GPU or DUT.
 
 This phase accepts only `PIPE_BIND_SHADER_IMAGE` for the new nonbuffer layouts.
-Combined sampler/render bindings, imported/exported typed storage, nonbuffer
-`imageSize`, and image atomics remain unsupported by this path. Existing render
+Combined sampler/render bindings, imported/exported typed storage and nonbuffer
+`imageSize` remain unsupported by this path. Existing render
 layouts and driver/RTL capacities are unchanged. Real source-bound image
 execution and its boundary/fault/cancel/reset oracles remain P08 work.
+
+## Integer image-atomic compiler admission
+
+The compiler lowers exchange, add, XOR, OR, AND, signed/unsigned min/max and
+compare-and-swap for R32I/R32UI images on buffer, 2D, array, cube and 3D targets.
+It uses the existing native function 23 and image-parameter tuples; no hardware
+encoding or supported capacity changes. XYZ coordinates are captured before
+staging values, CAS keeps the original compare/replacement order, and the
+returned old value uses the normal scalar destination path. Writable image
+declarations, matching target/format and discovered image-atomic transport
+support are required. Unsupported memory qualifiers and control-flow atomics
+are rejected.
+
+An image-unit atomic mask joins the private target sidecar, outside the stable
+compute-program layout. Compute-state creation checks the discovered native
+capability before accepting an atomic program. Successful straight-line and
+control-flow emission initializes this metadata; rejected emission leaves the
+caller outputs unchanged. Legacy emitter entry points retain identical program
+bytes.
+
+ASan/UBSan checks pass 80 original ESSL programs through the actual Mesa
+ESSL→NIR→TGSI compiler, reflection and production native-word admission. Another
+160 literal TGSI cases cover targets, signedness, all eight operations and
+coordinate/destination aliasing, including XYZ/control/value/CAS operands,
+negative metadata and feature gates. The 65 load/store, 52 mapping/lifetime,
+control-flow metadata and shared-memory regression checks pass, as do the
+59 focused Python tests. These are CPU compiler/callback checks; no image atomic
+shader executes on a DUT and no execution qualification is created.
+
+R32F `imageAtomicExchange` remains unsupported by the compiler and hardware
+path. It is required by
+[OES_shader_image_atomic](https://registry.khronos.org/OpenGL/extensions/OES/OES_shader_image_atomic.txt),
+so integer admission does not establish that extension's conformance or close
+P08. Float exchange, source-bound atomic submissions and independent result,
+boundary, permission, fault/cancel/reset/drain and healthy-reuse checks remain
+required, with fresh model qualification for hardware changes.
 
 ## Original load/store source and independent result contract
 
@@ -184,6 +220,8 @@ their checks have ended:
 ```sh
 python3 -B scripts/test_gallium_typed_images.py --sanitize \
   --build "$CPU_CAPTURE/typed-compiler"
+python3 -B scripts/test_gallium_image_atomics.py --sanitize \
+  --build "$CPU_CAPTURE/integer-atomic-compiler"
 python3 -B scripts/test_gallium_buffer_views.py --sanitize \
   --build "$CPU_CAPTURE/typed-callbacks"
 OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_gallium_shared_own_stripe.py

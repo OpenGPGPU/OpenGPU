@@ -247,6 +247,7 @@ static void old_feature_screens(void)
     }
 }
 #include "cs_typed_images.h"
+#include "cs_image_atomic_lowering.h"
 int main(void)
 {
     features=OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE | OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE |
@@ -264,8 +265,10 @@ int main(void)
     old_feature_screens();
     assert(!computes && !fills && !invalidates);
     typed_image_lowering();
+    typed_image_control_metadata();
     features|=OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BACKINGS;
     typed_image_mappings();
+    image_atomic_lowering();
     assert(!computes && !fills && invalidates==52);
     puts("Gallium buffer views: all30 sampler/13image formats, logical ranges/swizzles, 32 sparse samplers/4 images, transferred/borrowed/reordered refs, invalid/fresh reuse and old feature gates PASS; 0 shader submits/0 GPU/API caps");
     return 0;

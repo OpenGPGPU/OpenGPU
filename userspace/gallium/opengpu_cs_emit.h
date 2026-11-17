@@ -30,6 +30,13 @@ int opengpu_cs_emit(const void *tokens, struct opengpu_cs_program *out);
 struct opengpu_cs_shared {
     uint32_t base, bytes, lanes, required_bytes;
 };
+/* Compiler resource metadata lives outside the stable legacy program layout. */
+struct opengpu_cs_image_info {
+    unsigned targets[4];
+    unsigned atomics; /* read/write image-unit mask; requires discovered support */
+};
+int opengpu_cs_emit_image_info(const void *tokens, const struct opengpu_cs_shared *shared,
+    struct opengpu_cs_program *out, struct opengpu_cs_image_info *images);
 int opengpu_cs_emit_shared(const void *tokens,
     const struct opengpu_cs_shared *shared, struct opengpu_cs_program *out);
 /* Optional static image-target sidecar; the legacy program layout and both

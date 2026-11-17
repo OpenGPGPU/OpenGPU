@@ -64,8 +64,11 @@ static void typed_image_lowering(void)
             assert(tgsi_build_full_instruction(&i,b.t+b.h->HeaderSize+b.h->BodySize,b.h,TOKENS-b.h->HeaderSize-b.h->BodySize));
         }
         insn(&b,TGSI_OPCODE_END,0,0,0,I(0),I(0));
-        struct opengpu_cs_program p,legacy;unsigned image_targets[4];
+        struct opengpu_cs_program p,legacy,described;unsigned image_targets[4];
+        struct opengpu_cs_image_info info;
         assert(!opengpu_cs_emit(b.t,&legacy) && !opengpu_cs_emit_resources(b.t,NULL,&p,image_targets));
+        assert(!opengpu_cs_emit_image_info(b.t,NULL,&described,&info) && !info.atomics &&
+            !memcmp(&p,&described,sizeof(p)) && info.targets[0]==targets[target].native);
         assert(!memcmp(&p,&legacy,sizeof(p)) && image_targets[0]==targets[target].native);
         assert(p.image_reads==1 && p.image_writes==1 && p.image_format[0]==image_formats[format].native);
         assert(opengpu_compute_shader_validate_words_images(p.code,p.words,64,4,false,true));
@@ -76,6 +79,34 @@ static void typed_image_lowering(void)
         assert(opengpu_cs_emit(b.t,&p)<0 && !memcmp(&p,&saved,sizeof(p)));
     }
     puts("typed image compiler: 65 target/format load/store programs, literal XYZ/control operands and target mismatch rejection PASS (CPU only)");
+}
+
+static void typed_image_control_metadata(void)
+{
+    struct builder b;begin(&b,PIPE_SHADER_COMPUTE);append_decl(&b,TGSI_FILE_TEMPORARY,0,0,-1);
+    struct tgsi_full_declaration decl=tgsi_default_full_declaration();
+    decl.Declaration.File=TGSI_FILE_IMAGE;decl.Range.First=decl.Range.Last=0;
+    decl.Image.Resource=TGSI_TEXTURE_BUFFER;decl.Image.Format=PIPE_FORMAT_R32_UINT;
+    assert(tgsi_build_full_declaration(&decl,b.t+b.h->HeaderSize+b.h->BodySize,b.h,TOKENS-b.h->HeaderSize-b.h->BodySize));
+    immediate(&b,1,0,0,0);
+    insn(&b,TGSI_OPCODE_MOV,TGSI_FILE_TEMPORARY,0,1,I(0),I(0));
+    struct tgsi_full_instruction branch=tgsi_default_full_instruction();
+    branch.Instruction.Opcode=TGSI_OPCODE_UIF;branch.Instruction.NumDstRegs=0;branch.Instruction.NumSrcRegs=1;branch.Src[0].Register=T(0,0);
+    assert(tgsi_build_full_instruction(&branch,b.t+b.h->HeaderSize+b.h->BodySize,b.h,TOKENS-b.h->HeaderSize-b.h->BodySize));
+    insn(&b,TGSI_OPCODE_MOV,TGSI_FILE_TEMPORARY,0,1,src(TGSI_FILE_IMMEDIATE,0,1),I(0));
+    branch=tgsi_default_full_instruction();branch.Instruction.Opcode=TGSI_OPCODE_ENDIF;
+    branch.Instruction.NumDstRegs=branch.Instruction.NumSrcRegs=0;
+    assert(tgsi_build_full_instruction(&branch,b.t+b.h->HeaderSize+b.h->BodySize,b.h,TOKENS-b.h->HeaderSize-b.h->BodySize));
+    insn(&b,TGSI_OPCODE_END,0,0,0,I(0),I(0));
+    struct opengpu_cs_program p,legacy,targets_program;struct opengpu_cs_image_info info;
+    unsigned targets[4];memset(&info,0xd3,sizeof(info));memset(targets,0xd3,sizeof(targets));
+    assert(!opengpu_cs_emit_image_info(b.t,NULL,&p,&info) && !opengpu_cs_emit(b.t,&legacy) &&
+        !opengpu_cs_emit_resources(b.t,NULL,&targets_program,targets));
+    assert(!memcmp(&p,&legacy,sizeof(p)) && !memcmp(&p,&targets_program,sizeof(p)) &&
+        !memcmp(info.targets,targets,sizeof(targets)) && info.targets[0]==5 && !info.targets[1] &&
+        !info.targets[2] && !info.targets[3] && !info.atomics);
+    assert(!p.image_reads && !p.image_writes && !p.image_queries);
+    puts("typed image control metadata: retained unused target/zero atomic mask, legacy program equality PASS (CPU only)");
 }
 
 static void typed_image_mappings(void)

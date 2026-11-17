@@ -32,7 +32,7 @@ struct build {
     uint32_t samplers, sampler_views;
     const unsigned *texture_observed;
     unsigned texture_position;
-    unsigned images, image_writable, image_target[4];
+    unsigned images, image_writable, image_target[4], image_atomics;
     unsigned cf, cf_depth, cf_count, planned[CS_TEMPS][4];
     uint32_t imm[CS_IMMS][4];
     unsigned nimm;
@@ -751,6 +751,46 @@ static int image(struct build *b, const struct tgsi_full_instruction *in)
     return destination(b, d);
 }
 
+static int image_atomic(struct build *b, const struct tgsi_full_instruction *in, unsigned operation)
+{
+    const struct tgsi_instruction *i = &in->Instruction;
+    const struct tgsi_dst_register *d = &in->Dst[0].Register;
+    const struct tgsi_src_register *resource = &in->Src[0].Register;
+    unsigned index = (unsigned)resource->Index;
+    if (b->cf || i->NumDstRegs != 1 || i->NumSrcRegs != (operation == 9 ? 4u : 3u) ||
+        d->File != TGSI_FILE_TEMPORARY || d->WriteMask != 1 || !i->Memory || i->Texture || i->Label ||
+        resource->File != TGSI_FILE_IMAGE || resource->Index < 0 || index >= 4 ||
+        !(b->images & b->image_writable & (1u << index)) ||
+        (in->Memory.Qualifier & ~TGSI_MEMORY_COHERENT) || in->Memory.Padding ||
+        opengpu_buffer_image_format(in->Memory.Format) != (int)b->p.image_format[index]) return -1;
+    unsigned format = b->p.image_format[index], target = b->image_target[index];
+    if ((format != OPENGPU_TEXTURE_FORMAT_R32I && format != OPENGPU_TEXTURE_FORMAT_R32UI) ||
+        ((operation == 5 || operation == 6) && format != OPENGPU_TEXTURE_FORMAT_R32I) ||
+        ((operation == 7 || operation == 8) && format != OPENGPU_TEXTURE_FORMAT_R32UI) ||
+        in->Memory.Texture != (target == 0 ? TGSI_TEXTURE_2D : target == 1 ? TGSI_TEXTURE_2D_ARRAY :
+            target == 2 ? TGSI_TEXTURE_CUBE : target == 3 ? TGSI_TEXTURE_3D : TGSI_TEXTURE_BUFFER)) return -1;
+    /* Capture coordinates before staging parameters. v30 is persistent ADDR0;
+     * after pair1 captures Z, v28/v29 retain value/compare across uniform loads. */
+    if (source(b, &in->Src[1], 0, 26) ||
+        (target != 5 && source(b, &in->Src[1], 1, 27)) ||
+        (target != 0 && target != 5 && source(b, &in->Src[1], 2, 28))) return -1;
+    splat(b,24,index);
+    splat(b,23,target | opengpu_buffer_native_kind(format) << 3 | 1u << 5 | format << 6);
+    resource_word(b,8,0,0,24,23);
+    splat(b,24,0);resource_word(b,8,1,0,target != 0 && target != 5 ? 28 : 24,24);
+    /* TGSI CAS operands are compare,replacement. The native tuple is value,compare. */
+    if (source(b,&in->Src[operation == 9 ? 3 : 2],0,28)) return -1;
+    if (operation == 9) { if (source(b,&in->Src[2],0,29)) return -1; }
+    else splat(b,29,0);
+    resource_word(b,8,2,0,28,29);
+    splat(b,24,0);
+    unsigned native = operation == 9 ? 7 : operation >= 7 ? operation - 2 : operation;
+    resource_word(b,23,native,26,26,target == 5 ? 24 : 27);
+    b->image_atomics |= 1u << index;
+    b->p.image_reads |= 1u << index;b->p.image_writes |= 1u << index;
+    return destination(b,d);
+}
+
 static int shared_atomic(struct build *b, const struct tgsi_full_instruction *in, unsigned operation)
 {
     const struct tgsi_instruction *i = &in->Instruction;
@@ -904,6 +944,8 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
     if ((mem || op == TGSI_OPCODE_RESQ) &&
         (op == TGSI_OPCODE_STORE ? d->File : in->Src[0].Register.File) == TGSI_FILE_IMAGE)
         return image(b, in);
+    if(storage_atomic_operation(op)>=0 && in->Src[0].Register.File == TGSI_FILE_IMAGE)
+        return image_atomic(b,in,(unsigned)storage_atomic_operation(op));
     if(storage_atomic_operation(op)>=0 && in->Src[0].Register.File == TGSI_FILE_MEMORY)
         return shared_atomic(b,in,(unsigned)storage_atomic_operation(op));
     if(storage_atomic_operation(op)>=0)
@@ -1140,8 +1182,16 @@ static int span(struct build *b, const struct cf_instruction *ir, unsigned first
     return b->failed ? -1 : 0;
 }
 
+static void image_info(const struct build *b,struct opengpu_cs_image_info *images)
+{
+    if(images){
+        memcpy(images->targets,b->image_target,sizeof(b->image_target));
+        images->atomics=b->image_atomics;
+    }
+}
+
 static int control_program(const void *tokens, const struct opengpu_cs_shared *shared,
-                           struct opengpu_cs_program *out)
+                           struct opengpu_cs_program *out, struct opengpu_cs_image_info *images)
 {
     struct build b;
     struct tgsi_parse_context p;
@@ -1225,7 +1275,7 @@ static int control_program(const void *tokens, const struct opengpu_cs_shared *s
     word(&b, 0x0330000fu); word(&b, 0x30500073u);
     if (!b.failed && (!shared || (b.shared_used && b.p.shared_atomics && b.p.fixed_block[0] &&
         b.p.fixed_block[0] <= 128 && b.p.fixed_block[1] == 1 && b.p.fixed_block[2] == 1 &&
-        !(b.p.fixed_block[0] % shared->lanes)))) { *out = b.p; result = 0; }
+        !(b.p.fixed_block[0] % shared->lanes)))) { *out = b.p; image_info(&b,images); result = 0; }
 parsed:
     tgsi_parse_free(&p);
 done:
@@ -1234,7 +1284,7 @@ done:
 }
 
 static int emit_program(const void *tokens, const struct opengpu_cs_shared *shared,
-                        struct opengpu_cs_program *out, unsigned image_targets[4])
+                        struct opengpu_cs_program *out, struct opengpu_cs_image_info *images)
 {
     struct build b;
     struct tgsi_parse_context p;
@@ -1271,7 +1321,7 @@ static int emit_program(const void *tokens, const struct opengpu_cs_shared *shar
              p.FullToken.FullInstruction.Instruction.Opcode == TGSI_OPCODE_ELSE ||
              p.FullToken.FullInstruction.Instruction.Opcode == TGSI_OPCODE_ENDIF)) {
             tgsi_parse_free(&p);
-            return control_program(tokens, shared, out);
+            return control_program(tokens, shared, out, images);
         }
     }
     tgsi_parse_free(&p);
@@ -1322,7 +1372,7 @@ static int emit_program(const void *tokens, const struct opengpu_cs_shared *shar
         b.p.fixed_block[1] != 1 || b.p.fixed_block[2] != 1 ||
         b.p.fixed_block[0] % shared->lanes))) return -1;
     *out = b.p;
-    if (image_targets) memcpy(image_targets,b.image_target,sizeof(b.image_target));
+    image_info(&b,images);
     return 0;
 }
 
@@ -1341,10 +1391,19 @@ int opengpu_cs_emit_shared(const void *tokens, const struct opengpu_cs_shared *s
 int opengpu_cs_emit_resources(const void *tokens, const struct opengpu_cs_shared *shared,
                              struct opengpu_cs_program *out, unsigned image_targets[4])
 {
+    struct opengpu_cs_image_info images;
+    int result=opengpu_cs_emit_image_info(tokens,shared,out,image_targets?&images:NULL);
+    if (!result && image_targets) memcpy(image_targets,images.targets,sizeof(images.targets));
+    return result;
+}
+
+int opengpu_cs_emit_image_info(const void *tokens, const struct opengpu_cs_shared *shared,
+                             struct opengpu_cs_program *out, struct opengpu_cs_image_info *images)
+{
     if (shared && (!shared->bytes || !shared->lanes || shared->lanes > 31 ||
         (shared->lanes & (shared->lanes - 1)) || !shared->required_bytes ||
         ((shared->base | shared->bytes | shared->required_bytes) & 3u) ||
         shared->required_bytes > shared->bytes ||
         (uint64_t)shared->base + shared->bytes > UINT64_C(0x100000000))) return -1;
-    return emit_program(tokens, shared, out, image_targets);
+    return emit_program(tokens, shared, out, images);
 }
