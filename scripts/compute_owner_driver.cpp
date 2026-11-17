@@ -56,8 +56,14 @@ ComputeHeld hold_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memor
     now.processed_bytes=(uint64_t(hi)<<32)|lo;now.held_pin=bool(sim.model->io_m_irq);return now;
   };
   r=observe();
-  require(r.completion==(0x8000u|capture.command_id) && !r.processed_bytes,
-    "compute completion identity, success or telemetry differs");
+  if(r.completion!=(0x8000u|capture.command_id) || r.processed_bytes)
+    throw std::runtime_error("compute completion identity, success or telemetry differs: expected="+
+      std::to_string(0x8000u|capture.command_id)+" actual="+std::to_string(r.completion)+
+      " processedBytes="+std::to_string(r.processed_bytes)+" legacy="+std::to_string(r.legacy)+
+      " status="+std::to_string(r.status)+" irq="+std::to_string(r.irq)+
+      " elapsedCycles="+std::to_string(bus.cycles-held.start_cycles)+
+      " readFaults="+std::to_string(agent.traffic.read_faults)+
+      " writeFaults="+std::to_string(agent.traffic.write_faults));
   require(!r.legacy && (r.status&GPU_UCMD_STATUS_COMPLETION) &&
       !(r.status&(GPU_UCMD_STATUS_OVERFLOW|GPU_UCMD_STATUS_RESET_BUSY|GPU_UCMD_STATUS_RESET_REJECTED)) &&
       r.irq==(GPU_IRQ_ENABLE|GPU_IRQ_PENDING) && r.held_pin,"compute held status/IRQ differs");
