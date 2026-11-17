@@ -6,7 +6,6 @@
 - `core/backend/register`: scalar register storage, bypass, and atomic issue/writeback boundary.
 - `core/backend/scoreboard`: per-warp dependency reservation and release.
 - `core/execute`: execution-unit control types and datapaths.
-- `core/simt`: lane replication and warp-level datapaths.
 - `top`: synthesizable integration tops.
 - `elaboration`: RTL generation entry points; not instantiated as hardware.
 
