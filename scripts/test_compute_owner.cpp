@@ -35,9 +35,13 @@ static ComputeCapture fixture() {
   write(GPU_REG_UCMD_SUBMIT,1);c.validate();return c;
 }
 static std::string encode(const ComputeCapture &c) {
-  std::ostringstream out;out.write(compute_capture_magic(),8);write_le(out,c.max_cycles,8);write_le(out,c.hold_cycles,4);write_le(out,c.command_id,4);
+  const bool contexts=!c.empty_contexts.empty();
+  std::ostringstream out;out.write(contexts?"OGCMP003":compute_capture_magic(),8);write_le(out,c.max_cycles,8);write_le(out,c.hold_cycles,4);write_le(out,c.command_id,4);
   write_le(out,c.discovery.size(),4);for(const auto &r:c.discovery){write_le(out,r.address,4);write_le(out,r.value,4);}
   write_le(out,c.writable.size(),4);for(const auto &r:c.writable){write_le(out,r.first,8);write_le(out,r.end,8);}
+  if(contexts) {
+    write_le(out,c.empty_contexts.size(),4);for(const auto &r:c.empty_contexts){write_le(out,r.context,4);write_le(out,r.satp,4);}
+  }
   write_le(out,c.trace.size(),4);for(const auto &a:c.trace) {
     write_le(out,uint32_t(a.kind),4);write_le(out,a.address,4);write_le(out,a.value,4);write_le(out,a.mask,4);
   }return out.str();
@@ -249,6 +253,36 @@ static void profile_checks(int argc,char **argv) {
   require(!peer.submitted && peer.reads==std::vector<uint32_t>({GPU_REG_ID,GPU_REG_CAPABILITIES,0x360,0x364,0x368}),
     "opposite factory was accepted or probed dependent windows");
 }
+static void empty_context_checks() {
+  auto memory=memory_fixture();memory.ranges.push_back({0x7000,0x8000,0});
+  auto capture=fixture();capture.empty_contexts={{2,0x80800007}};
+  PtePages pte;capture.observe_contexts(memory,pte);
+  require(pte.empty_roots.size()==1 && !pte.pages.count(0x7000) && !pte.satps.count(0x80800007),
+    "empty context acquired active PTE/SATP authority");
+  Cleanup flush;flush.actions={{Kind::write,GPU_REG_UCMD_VECTOR_SATP,0x80000003,0},
+    {Kind::write,GPU_REG_UCMD_INSTRUCTION_SATP,0x80000003,0},
+    {Kind::write,GPU_REG_UCMD_TLB_FLUSH,GPU_TLB_FLUSH_ASID|(2u<<GPU_TLB_FLUSH_ASID_SHIFT),0}};
+  pte.validate_scope(flush);
+  auto bad=flush;bad.actions.back().value=GPU_TLB_FLUSH_ASID|(3u<<GPU_TLB_FLUSH_ASID_SHIFT);
+  rejects([&]{pte.validate_scope(bad);});
+  bad=flush;bad.actions.insert(bad.actions.begin(),{Kind::pte_clear,0x2000,0,0x140f});
+  rejects([&]{pte.validate_scope(bad);});
+  bad=flush;bad.actions[0].value=bad.actions[1].value=0x80800007;
+  rejects([&]{pte.validate_scope(bad);});
+  rejects([&]{pte.clear(memory,{Kind::pte_clear,0x7000,0,1});});
+  for(uint32_t satp:{0x80800007u,0x80400007u,0x80c00003u,0x80c00009u})
+    rejects([&]{pte.observe_empty(memory,satp);});
+  auto nonempty=memory;put(nonempty,0x7ffc,1);
+  rejects([&]{PtePages p;capture.observe_contexts(nonempty,p);});
+  auto aliased=capture;aliased.writable.push_back({0x7000,0x7004});
+  rejects([&]{PtePages p;aliased.observe_contexts(memory,p);});
+  const auto wire=encode(capture);
+  if(compute_owner_factory()==OwnerFactory::geometry_compute_sample) {
+    std::istringstream in(wire);const auto decoded=ComputeCapture::read(in);
+    require(decoded.empty_contexts.size()==1,"complete compute parser dropped original inactive context");
+    PtePages p;decoded.observe_contexts(memory,p);
+  }else rejects([&]{std::istringstream in(wire);ComputeCapture::read(in);});
+}
 static void execution_checks(int argc,char **argv) {
   const auto c=fixture();auto memory=memory_fixture();ComputePeer sim(argc,argv,memory);sim.reset();
   Agent agent(memory);ReplayBus<ComputePeer> bus(sim,agent,100000);PtePages pte;pte.observe_tables(memory,c.trace);
@@ -355,7 +389,7 @@ static void active_protocol(int argc,char **argv) {
 }
 int main(int argc,char **argv) {
   if(argc==3) {const auto m=Memory::read(argv[1]);const auto c=ComputeCapture::read(argv[2]);
-    verify_readonly(m,m,c.writable);PtePages p;p.observe_tables(m,c.trace);return 0;}
-  deadline_checks();parser_checks();profile_checks(argc,argv);execution_checks(argc,argv);phase_deadline_checks(argc,argv);active_protocol(argc,argv);
+    verify_readonly(m,m,c.writable);PtePages p;c.observe_contexts(m,p);return 0;}
+  deadline_checks();parser_checks();profile_checks(argc,argv);empty_context_checks();execution_checks(argc,argv);phase_deadline_checks(argc,argv);active_protocol(argc,argv);
   std::cout<<"compute owner CPU protocol/guard checks: PASS\n";
 }

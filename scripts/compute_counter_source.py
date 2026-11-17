@@ -104,7 +104,7 @@ def translate(memory, satp, va, permissions):
 def ready(memory, description, data):
     """Bind READY metadata to full112 discovery, actual MMIO, GSB1 and PTEs."""
     source, outputs = recipe(memory, description)
-    require(data[:8] == b'OGCMP002', 'counter requires full112 capture wire')
+    require(data[:8] == b'OGCMP003', 'counter requires full112 capture with original inactive contexts')
     cursor = 8
     def take(fmt):
         nonlocal cursor
@@ -132,13 +132,17 @@ def ready(memory, description, data):
     expected = sorted([(arg, arg + argbytes), (source, source + 32)] + [(p, p + 8192) for p in outputs])
     require(writable == expected and all(a[1] <= b[0] for a, b in zip(expected, expected[1:])),
             'counter capture writable windows widened, aliased or missing')
+    count, = take('<I');require(count==1, 'original Mesa compute requires its separate inactive graphics context')
+    inactive_context,inactive_satp=take('<II')
+    require(0<inactive_context<512 and inactive_context!=description['context'], 'inactive context identity differs')
     count, = take('<I'); require(0 < count <= 65536, 'invalid counter MMIO action count')
-    staged, submissions, last_submit = {}, [], None
+    staged, submissions, last_submit, satps = {}, [], None, set()
     for action in range(count):
         kind, address, value, mask = take('<IIII')
         if kind == 1:
             require(mask == 0, 'masked counter write')
             staged[address] = value
+            if address in (0x14c,0x150) and value&0x80000000:satps.add(value)
             if address == 0x11c:
                 require(value==1, 'counter submit must publish one command')
                 submissions.append(dict(staged));last_submit=action
@@ -154,6 +158,13 @@ def ready(memory, description, data):
             'counter GAM1 context/view was changed')
     satp = r.get(0x14c, 0)
     require(r.get(0x150) == satp, 'counter instruction/data owners differ')
+    inactive_root=(inactive_satp&0x3fffff)<<12;inactive_asid=(inactive_satp>>22)&511
+    require(inactive_satp&0x80000000 and inactive_asid and
+            all(((active>>22)&511)!=inactive_asid and ((active&0x3fffff)<<12)!=inactive_root for active in satps),
+            'inactive context aliases an active owner ASID/root')
+    require(any(a==inactive_root and b==inactive_root+4096 for a,b,_ in memory.ranges) and
+            not any(inactive_root<b and a<inactive_root+4096 for a,b in expected) and
+            memory.read(inactive_root,4096)==bytes(4096), 'inactive graphics context is not an original separate empty root')
     physical = translate(memory, satp, root, 15)
     require(physical == description['descriptorPhysical'], 'counter descriptor original binding differs')
     va = 0xb0000000 + 7 * 0x400000 + 4080

@@ -17,6 +17,8 @@ struct ComputeCapture {
   uint32_t hold_cycles=0,command_id=0;
   std::vector<Command> discovery;
   std::vector<Writable> writable;
+  struct EmptyContext {uint32_t context,satp;};
+  std::vector<EmptyContext> empty_contexts;
   std::vector<Action> trace;
   static std::vector<Command> transports() {
     return {{0x494,0x47544d01},{0x43c,0x47534d01},{0x3fc,0x47494d01},
@@ -32,6 +34,13 @@ struct ComputeCapture {
       (address>=0x3e0 && address<0x3fc) || (address>=0x4a0 && address<0x4bc);
   }
   void validate() const {
+    require(empty_contexts.size()<512,"oversized inactive context set");
+    uint32_t previous_context=0;
+    for(const auto &c:empty_contexts) {
+      require(c.context>previous_context && c.context<512 && (c.satp&GPU_SATP_ENABLE) &&
+        ((c.satp>>GPU_SATP_ASID_SHIFT)&GPU_SATP_ASID_MASK),"invalid inactive context identity");
+      previous_context=c.context;
+    }
     require(max_cycles && max_cycles<=1000000000 && hold_cycles>=8 && hold_cycles<=4096 && command_id<256,
       "invalid compute capture execution bounds");
     require(discovery.size()==owner_factory_words(compute_owner_factory()).size()+10,
@@ -105,14 +114,31 @@ struct ComputeCapture {
     }
     require(kernels==1 && pending,"compute capture has no held kernel");
   }
+  void observe_contexts(const Memory &memory,PtePages &pte) const {
+    pte.observe_tables(memory,trace);
+    for(const auto &c:empty_contexts) {
+      const uint64_t root=uint64_t(c.satp&0x3fffffu)<<12;
+      require(std::none_of(writable.begin(),writable.end(),[&](const auto &r) {
+        return root<r.end && r.first<root+4096;
+      }),"inactive context root aliases a writable owner view");
+      pte.observe_empty(memory,c.satp);
+    }
+  }
   static ComputeCapture read(std::istream &in) {
-    magic(in,compute_capture_magic());ComputeCapture c;
+    char wire[8];in.read(wire,8);require(bool(in),"truncated compute capture magic");
+    const bool contexts=std::string(wire,8)=="OGCMP003";
+    require(std::string(wire,8)==compute_capture_magic() ||
+      (contexts && compute_owner_factory()==OwnerFactory::geometry_compute_sample),"wrong compute capture magic");
+    ComputeCapture c;
     c.max_cycles=read_le(in,8);c.hold_cycles=read_le(in,4);c.command_id=read_le(in,4);
     auto count=[&](uint32_t maximum) {const auto n=read_le(in,4);require(n<=maximum,"oversized compute capture section");return n;};
     auto word=[&]() {return uint32_t(read_le(in,4));};
     auto n=count(owner_factory_words(compute_owner_factory()).size()+10);
     for(uint64_t i=0;i<n;i++){const auto a=word(),v=word();c.discovery.push_back({a,v});}
     n=count(4096);for(uint64_t i=0;i<n;i++){const auto a=read_le(in,8),b=read_le(in,8);c.writable.push_back({a,b});}
+    if(contexts) {
+      n=count(511);for(uint64_t i=0;i<n;i++){const auto id=word(),satp=word();c.empty_contexts.push_back({id,satp});}
+    }
     n=count(65536);for(uint64_t i=0;i<n;i++) {
       const auto k=word(),a=word(),v=word(),m=word();c.trace.push_back({Kind(k),a,v,m});
     }
