@@ -123,7 +123,7 @@ template<class Sim>
 void active_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
     const ComputeCapture &capture,const std::filesystem::path &output,const std::filesystem::path &session,
     std::chrono::milliseconds timeout=compute_response_timeout()) {
-  PtePages pte;pte.observe_tables(memory,capture.trace);
+  PtePages pte;capture.observe_contexts(memory,pte);
   auto held=hold_compute(sim,agent,bus,memory,capture);
   // Keep the original post-completion RAM image, including writable outputs,
   // fixed while the actual producer emits its Linux IRQ/drain/POP trace.

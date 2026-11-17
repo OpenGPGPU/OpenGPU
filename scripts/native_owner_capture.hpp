@@ -272,6 +272,10 @@ struct PtePages {
   std::set<uint64_t> pages;
   std::set<uint64_t> required_revocations;
   std::set<uint32_t> satps;
+  // Original contexts which never ran may still be destroyed by the caller.
+  // Their proven-empty roots authorize only an ASID shootdown, not a PTE
+  // mutation or a new hardware SATP activation.
+  std::map<uint32_t,uint64_t> empty_roots;
   std::map<uint64_t,std::set<uint32_t>> page_asids;
   static uint32_t word(const Memory &memory,uint64_t address) {
     require(!(address&3) && address<=Memory::limit-4 && std::any_of(memory.ranges.begin(),memory.ranges.end(),
@@ -287,6 +291,7 @@ struct PtePages {
     for(const auto &a:trace)if(a.kind==Kind::write &&
         (a.address==GPU_REG_UCMD_VECTOR_SATP || a.address==GPU_REG_UCMD_INSTRUCTION_SATP) && (a.value&GPU_SATP_ENABLE)) {
       satps.insert(a.value);const uint32_t asid=(a.value>>GPU_SATP_ASID_SHIFT)&GPU_SATP_ASID_MASK;
+      require(!empty_roots.count(asid),"active owner reuses an inactive empty context ASID");
       const uint64_t root=uint64_t(a.value&0x3fffffu)<<12;page(memory,root,asid);
       for(unsigned n=0;n<1024;n++) {
         const auto link=word(memory,root+4*n);
@@ -309,6 +314,20 @@ struct PtePages {
         }
       }
     }
+  }
+  void observe_empty(const Memory &memory,uint32_t satp) {
+    const auto asid=(satp>>GPU_SATP_ASID_SHIFT)&GPU_SATP_ASID_MASK;
+    const uint64_t root=uint64_t(satp&0x3fffffu)<<12;
+    require((satp&GPU_SATP_ENABLE) && asid && !empty_roots.count(asid) && !pages.count(root) &&
+      std::none_of(satps.begin(),satps.end(),[&](auto active) {
+        return ((active>>GPU_SATP_ASID_SHIFT)&GPU_SATP_ASID_MASK)==asid;
+      }) && std::none_of(empty_roots.begin(),empty_roots.end(),[&](auto entry){return entry.second==root;}),
+      "inactive context aliases a captured ASID or root");
+    require(std::any_of(memory.ranges.begin(),memory.ranges.end(),[&](const auto &r) {
+      return r.start==root && r.end==root+4096;
+    }),"inactive context root lacks its original separate page allocation");
+    for(unsigned n=0;n<1024;n++)require(!word(memory,root+4*n),"inactive context page table is not empty");
+    empty_roots.emplace(asid,root);
   }
   void observe(const Memory &memory,const Capture &capture) {
     observe_tables(memory,capture.trace);
@@ -343,7 +362,7 @@ struct PtePages {
               "cleanup shootdown does not cover every revoked PTE ASID");
             require(std::any_of(satps.begin(),satps.end(),[&](auto satp) {
               return ((satp>>GPU_SATP_ASID_SHIFT)&GPU_SATP_ASID_MASK)==asid;
-            }),"cleanup shootdown names an uncaptured ASID");
+            }) || (affected.empty() && empty_roots.count(asid)),"cleanup shootdown names an uncaptured ASID");
           }
           affected.clear();
         }else {

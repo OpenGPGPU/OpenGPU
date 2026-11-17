@@ -17,6 +17,7 @@ def fixture(source_case="counter-increment"):
     index=0 if all_counters else 4 if dynamic else 7;groups=(2 if all_counters else 1) if dynamic else 4
     seed=(0 if dynamic else 1) if source_case.endswith('decrement') else 0xfffffffe
     allocations = {0x1000: bytearray(4096), 0x20000: bytearray(b'\x5a'*8192)}
+    allocations[0x70000]=bytearray(4096) # Real Mesa also owns an unused graphics context.
     for a in (0x30000, 0x32000, 0x34000, 0x36000):
         allocations[a] = bytearray(struct.pack('<I', 0xdeadbeef)*2048)
     for a in (0x40000, 0x41000, 0x42000): allocations[a] = bytearray(4096)
@@ -77,11 +78,12 @@ def fixture(source_case="counter-increment"):
                 if first<=pa<=first+len(data)-4:
                     struct.pack_into('<I',data,pa-first,struct.unpack_from('<I',data,pa-first)[0]&~128)
         registers.update({0x440+4*i:v for i,v in enumerate((257,root,2,0,0,0x80800000,0x80800040,0))})
-    def capture(discovery=discovery, writable=writable, registers=registers,prefix=(),suffix=()):
+    def capture(discovery=discovery, writable=writable, registers=registers,prefix=(),suffix=(),inactive=((1,0x80400070),)):
         actions=list(prefix)+[(1,a,v,0) for a,v in registers.items() if a!=0x11c]+[(1,0x11c,1,0)]+list(suffix)
-        return (b'OGCMP002'+struct.pack('<QIII',1000000,37,11,len(discovery))+
+        return (b'OGCMP003'+struct.pack('<QIII',1000000,37,11,len(discovery))+
             b''.join(struct.pack('<II',*r) for r in discovery)+struct.pack('<I',len(writable))+
-            b''.join(struct.pack('<QQ',*r) for r in writable)+struct.pack('<I',len(actions))+
+            b''.join(struct.pack('<QQ',*r) for r in writable)+struct.pack('<I',len(inactive))+
+            b''.join(struct.pack('<II',*r) for r in inactive)+struct.pack('<I',len(actions))+
             b''.join(struct.pack('<IIII',*r) for r in actions))
     return allocations,d,capture,discovery,writable,registers,tables
 
@@ -96,6 +98,18 @@ def emit(path, allocations):
 
 
 class Counter(unittest.TestCase):
+    def test_inactive_graphics_context_requires_its_original_empty_root(self):
+        parent=ROOT/'.artifacts';parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='counter-empty-context-',dir=parent) as t:
+            before=Path(t)/'before';alloc,d,cap,*_=fixture();emit(before,alloc)
+            with SparseMemory(before) as memory:
+                ready(memory,d,cap())
+                for inactive in ((),((2,0x80400070),),((1,0x80800070),),((1,0x80400042),)):
+                    with self.subTest(inactive=inactive),self.assertRaises(ValueError):ready(memory,d,cap(inactive=inactive))
+                with self.assertRaises(ValueError):ready(memory,d,b'OGCMP002'+cap()[8:])
+            alloc[0x70000][-1]=1;emit(before,alloc)
+            with SparseMemory(before) as memory,self.assertRaises(ValueError):ready(memory,d,cap())
+
     def test_math_permutation_four_outputs_wrap_and_all_guards(self):
         parent=ROOT/'.artifacts';parent.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='counter-oracle-',dir=parent) as t:

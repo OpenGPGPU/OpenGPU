@@ -475,11 +475,33 @@ int compute_host_export_memory(struct compute_host_session *s,const char *path)
 struct compute_writable_range {u64 first,end;};
 static int compute_writable_compare(const void *a,const void *b)
 {const struct compute_writable_range *x=a,*y=b;return x->first<y->first?-1:x->first>y->first;}
+static int compute_host_empty_contexts(struct compute_host_session *s,FILE *out)
+{
+ unsigned count=0;
+ for(u32 id=1;id<512;id++){
+  struct opengpu_render_context *c=idr_find(&s->render.contexts,id);if(!c || c==s->context)continue;
+  if(!c->vm.enabled || !c->vm.asid || c->vm.asid>GPU_SATP_ASID_MASK ||
+     !c->vm.root.cpu || c->vm.root.size!=4096 || (c->vm.root.dma&4095) ||
+     c->vm.root.dma>(1ull<<32)-4096)return -EOPNOTSUPP;
+  for(unsigned slot=0;slot<OPENGPU_MAX_RESOURCE_BINDINGS;slot++)if(c->bindings[slot])return -EOPNOTSUPP;
+  for(unsigned word=0;word<1024;word++)if(((const u32 *)c->vm.root.cpu)[word])return -EOPNOTSUPP;
+  ++count;
+ }
+ if(!out)return 0;
+ if(compute_mmio_le(out,count,4))return -EIO;
+ for(u32 id=1;id<512;id++){
+  struct opengpu_render_context *c=idr_find(&s->render.contexts,id);if(!c || c==s->context)continue;
+  u32 satp=GPU_SATP_ENABLE|(c->vm.asid<<GPU_SATP_ASID_SHIFT)|(u32)(c->vm.root.dma>>12);
+  if(compute_mmio_le(out,id,4) || compute_mmio_le(out,satp,4))return -EIO;
+ }
+ return 0;
+}
 int compute_host_capture(struct compute_host_session *s,const char *path,uint64_t budget,uint32_t hold)
 {
  if(!s || !s->exported || !s->prepared_execution || s->captured || !budget || budget>1000000000 || hold<8 || hold>4096)return -EINVAL;
  struct compute_mmio_state *m=compute_mmio_state(&s->gpu);
  if(!m->kernel_waiting || !s->hardware || dma_fence_is_signaled(s->hardware))return -EBUSY;
+ if(s->profile_count==122){int error=compute_host_empty_contexts(s,NULL);if(error)return error;}
  struct compute_writable_range ranges[6];unsigned count=0;
  struct opengpu_resource_binding *arg=s->context->bindings[s->submitted.resources.launch.kernarg_slot-1];
  if(!arg)return -EINVAL;
@@ -509,12 +531,13 @@ int compute_host_capture(struct compute_host_session *s,const char *path,uint64_
  }
  count=merged;
  char *temporary=NULL;FILE *f=compute_mmio_file(path,&temporary);if(!f)return -EIO;
- fwrite(s->profile_count==114 || s->profile_count==122?"OGCMP002":"OGCMP001",1,8,f);
+ fwrite(s->profile_count==122?"OGCMP003":s->profile_count==114?"OGCMP002":"OGCMP001",1,8,f);
  compute_mmio_le(f,budget,8);compute_mmio_le(f,hold,4);
  compute_mmio_le(f,s->gpu.hw.unified_command_id,4);compute_mmio_le(f,s->profile_count,4);
  for(size_t i=0;i<s->profile_count;i++){compute_mmio_le(f,s->profile[i].address,4);compute_mmio_le(f,s->profile[i].value,4);}
  compute_mmio_le(f,count,4);
  for(unsigned i=0;i<count;i++){compute_mmio_le(f,ranges[i].first,8);compute_mmio_le(f,ranges[i].end,8);}
+ if(s->profile_count==122)assert(!compute_host_empty_contexts(s,f));
  compute_mmio_le(f,m->count,4);compute_mmio_actions(f,m,0);
  int error=compute_mmio_close(f,path,temporary);if(!error)s->captured=true;return error;
 }
