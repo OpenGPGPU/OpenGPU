@@ -16,9 +16,10 @@ class VerilatorExecutorInputsTest(unittest.TestCase):
     def setUp(self):
         original = owner.ROOT
         names = set(verilator.CHECKERS)
-        for kind in verilator.KINDS:
-            names.update(owner.driver_files(kind, owner.SAMPLE_PROFILE))
-            names.update(owner.checker_files(kind))
+        for profile in owner.SAMPLE_FACTORY_CONTRACTS:
+            for kind in verilator.KINDS:
+                names.update(owner.driver_files(kind, profile))
+                names.update(owner.checker_files(kind))
         names.update(verilator.DEPENDENCIES)
         self.temporary = tempfile.TemporaryDirectory(prefix='verilator-input-test-', dir=original / '.artifacts')
         self.addCleanup(self.temporary.cleanup)
@@ -39,7 +40,7 @@ class VerilatorExecutorInputsTest(unittest.TestCase):
             (self.out / name).write_text('{}\n')
         compiler = verilator.native.tool('c++')
         built = dict(context=dict(compiler=compiler, sdk=None), runtime_objects=['verilated.o'])
-        generated = dict(context=dict(verilator_root=str(self.kit)))
+        generated = dict(context=dict(verilator_root=str(self.kit),profile=owner.SAMPLE_PROFILE))
         # These mocks isolate record mutations. They do not qualify this tiny
         # fixture as a GPU model or substitute for the explicit full RTL run.
         def patched(patcher):
@@ -47,11 +48,12 @@ class VerilatorExecutorInputsTest(unittest.TestCase):
             self.addCleanup(patcher.stop)
             return value
         self.native_check = patched(patch.object(verilator.native, 'checked_build', return_value=built))
-        patched(patch.object(verilator.generator, 'checked_generation', return_value=generated))
+        self.generation_check=patched(patch.object(verilator.generator, 'checked_generation', return_value=generated))
         patched(patch.object(owner, 'ROOT', self.root))
         patched(patch.object(verilator, 'ROOT', self.root))
 
-    def fixture(self, kind='native-sample'):
+    def fixture(self, kind='native-sample', profile=owner.SAMPLE_PROFILE):
+        self.generation_check.return_value['context']['profile']=profile
         bound = verilator.context(self.out, kind)
         target = self.out / 'executors' / kind
         target.mkdir(parents=True, exist_ok=True)
@@ -68,7 +70,7 @@ class VerilatorExecutorInputsTest(unittest.TestCase):
             compile_command=compile_command, link_command=link_command, dependencies=dependencies,
             executable_sha256=owner.common.sha(target / 'executor'))
         record = dict(schema='opengpu-owner-executor-v1', version=1, backend='verilator', kind=kind,
-            **owner.profile_contract(owner.SAMPLE_PROFILE, kind), executorBuildVerified=True,
+            **owner.profile_contract(profile, kind), executorBuildVerified=True,
             sourceQualificationRequired=True, gpuExecution=False, clockQualified=False, fpsQualified=False,
             source_root=str(self.root), owner_output=str(self.out), source_sha256=bound['source_sha256'],
             model=bound['model'], compiler=bound['compiler'], executable_sha256=built['executable_sha256'])
@@ -92,6 +94,23 @@ class VerilatorExecutorInputsTest(unittest.TestCase):
                     if other != kind:
                         with self.assertRaises(RuntimeError):
                             owner.verify_qualification(self.path, kind=other)
+
+    def test_float_factory_binds_each_new_wrapper_and_rejects_a_relabelled_model(self):
+        for kind in verilator.KINDS:
+            with self.subTest(kind=kind):
+                record,built=self.fixture(kind,owner.IMAGE_FLOAT_PROFILE)
+                self.assertEqual(Path(built['context']['driver']).name,
+                    Path(owner.driver_files(kind,owner.IMAGE_FLOAT_PROFILE)[0]).name)
+                self.assertTrue(Path(built['context']['driver']).name.startswith('image_float_'))
+                self.assertEqual(record['model']['profile'],owner.IMAGE_FLOAT_PROFILE)
+                for changed in ('profile','model'):
+                    bad=copy.deepcopy(record)
+                    if changed=='profile':
+                        bad.update(owner.profile_contract(owner.SAMPLE_PROFILE,kind))
+                    else:bad['model']['profile']=owner.SAMPLE_PROFILE
+                    self.save(bad,built)
+                    with self.subTest(changed=changed),self.assertRaises(RuntimeError):
+                        owner.verify_qualification(self.path,kind=kind)
 
     def test_relabelled_scope_unknown_backend_and_stale_model_are_rejected(self):
         record, built = self.fixture()

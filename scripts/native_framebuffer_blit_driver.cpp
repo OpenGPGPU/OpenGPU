@@ -180,8 +180,8 @@ int main(int argc,char **argv) {
     native_frame::Agent agent(memory);Bus bus(sim,agent,100000);
 #ifdef OPENGPU_FRAMEBUFFER_BLIT_SAMPLE_OWNER
     const auto profile=native_owner::probe_sample_profile(sim,agent,bus);
-    require(profile.factory==native_owner::OwnerFactory::geometry_compute_sample &&
-      profile.words.size()==112 && profile.words.at(2).value==0x1fffff,
+    require(profile.factory==native_owner::sample_owner_factory() && profile.words.size()==112 &&
+      profile.words.at(2).value==native_owner::owner_factory_words(profile.factory).at(2).value,
       "blit requires the exact complete 112-word sample owner profile");
 #else
     const auto profile=native_owner::probe_profile(sim,agent,bus,true);
@@ -213,9 +213,9 @@ int main(int argc,char **argv) {
       out<<"]},\"unifiedResetCount\":2,\"partialCancellationBytesChecked\":true,\"originalCallerInputs\":true,\"originalLinuxTrace\":false,\"independentBytes\":true,"
         "\"vmAndReadOnlyGuards\":true,";
 #ifdef OPENGPU_FRAMEBUFFER_BLIT_SAMPLE_OWNER
-      out<<"\"executorKind\":\"framebuffer-blit-sample\",\"profile\":\"two-cu-vga60-owner-v2-sample-stage\","
-        "\"ownerResourceVersion\":2,\"ownerResourceStage\":\"geometry-compute-sample\","
-        "\"resourceDiscoveryWords\":112,\"computeFeatureFlags\":2097151,\"full112Profile\":true,"
+      out<<"\"executorKind\":\"framebuffer-blit-sample\",\"profile\":\""<<native_owner::owner_factory_id(profile.factory)<<"\","
+        "\"ownerResourceVersion\":2,\"ownerResourceStage\":\""<<native_owner::owner_factory_stage(profile.factory)<<"\","
+        "\"resourceDiscoveryWords\":112,\"computeFeatureFlags\":"<<profile.words.at(2).value<<",\"full112Profile\":true,"
         "\"fullResourceQualification\":false,\"finalProductQualification\":false,";
 #else
       out<<"\"full96Profile\":true,";

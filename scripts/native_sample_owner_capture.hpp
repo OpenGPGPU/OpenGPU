@@ -6,7 +6,7 @@
 namespace native_owner {
 struct SampleCapture : Capture {
   static std::vector<Command> profile() {
-    return owner_factory_words(OwnerFactory::geometry_compute_sample);
+    return owner_factory_words(sample_owner_factory());
   }
   static constexpr std::array<uint32_t,5> auxiliary{{
     GPU_REG_ID,GPU_REG_CAPABILITIES,GPU_REG_BIN_CAPABILITY_PTR,0x320,GPU_REG_SHADER_CONFIG}};

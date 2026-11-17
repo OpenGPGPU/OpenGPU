@@ -10,10 +10,11 @@ from pathlib import Path
 import struct
 import unittest
 from compute_image_cases import IMAGE_CASES, parameters
-from compute_image_source import loaded_words, ready, texel_address, atomic_values
+from compute_image_source import loaded_words, ready as validate_ready, texel_address, atomic_values
 from compute_owner_oracle import SparseMemory, verify
 from compute_owner_protocol import strict_json
 from compute_owner_controller import ready_inputs
+from owner_resource_contract import SAMPLE_PROFILE, SAMPLE_FACTORY_CONTRACTS
 
 
 class Formats(unittest.TestCase):
@@ -68,12 +69,18 @@ def rejected(function, message):
     raise AssertionError('image negative control accepted: '+message)
 
 
-def check_capture(root):
+def check_capture(root,owner_profile=SAMPLE_PROFILE):
+    def ready(memory,description,data):
+        return validate_ready(memory,description,data,owner_profile=owner_profile)
     description=strict_json(root/'oracle.json')
     data=(root/'record-0.capture').read_bytes()
     count=0
     with SparseMemory(root/'union.memory') as memory:
         ready(memory,description,data)
+        for other_profile in SAMPLE_FACTORY_CONTRACTS:
+            if other_profile!=owner_profile:
+                rejected(lambda:validate_ready(memory,description,data,owner_profile=other_profile),
+                         'different qualified owner factory');count+=1
         pos=8+20+122*8
         n,=struct.unpack_from('<I',data,pos);pos+=4+16*n
         contexts,=struct.unpack_from('<I',data,pos);pos+=4
@@ -95,11 +102,11 @@ def check_capture(root):
                 if shift:
                     wrong=b''.join(loaded_words(p,memory.read(address-shift,p['bytes'])) for address in addresses)
                     assert wrong!=values, 'source oracle cannot distinguish another row/plane'
-        recorded,inputs=ready_inputs(root,description['sourceCase'])
+        recorded,inputs=ready_inputs(root,description['sourceCase'],owner_profile=owner_profile)
         assert recorded==description and set(inputs)=={'union.memory','record-0.capture','oracle.json'}
-        rejected(lambda:ready_inputs(root,None),'image contract without a distinct qualified case');count+=1
+        rejected(lambda:ready_inputs(root,None,owner_profile=owner_profile),'image contract without a distinct qualified case');count+=1
         other=IMAGE_CASES[0] if description['sourceCase']!=IMAGE_CASES[0] else IMAGE_CASES[1]
-        rejected(lambda:ready_inputs(root,other),'different qualified image case');count+=1
+        rejected(lambda:ready_inputs(root,other,owner_profile=owner_profile),'different qualified image case');count+=1
         rejected(lambda:verify(memory,memory,description),'untouched upload as GPU result');count+=1
         for role in range(2):
             view=description['images'][role]['view']
@@ -155,13 +162,14 @@ def check_capture(root):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--captures',type=Path,help='one actual CPU capture or complete image matrix directory')
+    parser.add_argument('--owner-profile',choices=tuple(SAMPLE_FACTORY_CONTRACTS),default=SAMPLE_PROFILE)
     args=parser.parse_args()
     if args.captures is None:
         unittest.main(argv=[__file__])
         return
     root=args.captures
     cases=[root] if (root/'oracle.json').is_file() else [root/case for case in IMAGE_CASES]
-    negatives=sum(check_capture(case) for case in cases)
+    negatives=sum(check_capture(case,args.owner_profile) for case in cases)
     print(f'Original typed-image CPU READY: {len(cases)} captures, {negatives} rejection checks PASS; no GPU results')
 
 

@@ -114,9 +114,11 @@ def main():
                         help='exercise the distinct shared-enabled CPU profile and matching parser')
     profiles.add_argument('--geometry-compute', action='store_true')
     profiles.add_argument('--sample-stage', action='store_true')
+    profiles.add_argument('--image-float-stage', action='store_true')
     args = parser.parse_args()
-    from owner_resource_contract import PROFILE, SAMPLE_PROFILE
-    full_profile = SAMPLE_PROFILE if args.sample_stage else PROFILE if args.geometry_compute else None
+    from owner_resource_contract import PROFILE, SAMPLE_PROFILE, IMAGE_FLOAT_PROFILE
+    full_profile = IMAGE_FLOAT_PROFILE if args.image_float_stage else SAMPLE_PROFILE if args.sample_stage else PROFILE if args.geometry_compute else None
+    sample_factory=args.sample_stage or args.image_float_stage
     parent = ROOT / '.artifacts'
     parent.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='compute-host-', dir=parent) as temporary:
@@ -147,7 +149,8 @@ def main():
             source = canonical / 'scripts/test_compute_owner.cpp'
             cppflags = ['-std=c++17', '-O1', '-Wall', '-Wextra', '-Werror']
             if full_profile:
-                cppflags += ['-DOPENGPU_OWNER_GEOMETRY_COMPUTE_SAMPLE=1' if args.sample_stage else '-DOPENGPU_OWNER_GEOMETRY_COMPUTE=1']
+                cppflags += ['-DOPENGPU_OWNER_IMAGE_FLOAT_STAGE=1' if args.image_float_stage else
+                             '-DOPENGPU_OWNER_GEOMETRY_COMPUTE_SAMPLE=1' if args.sample_stage else '-DOPENGPU_OWNER_GEOMETRY_COMPUTE=1']
             elif args.compute_stage:
                 cppflags += ['-DOPENGPU_OWNER_COMPUTE_STAGE=1']
             if os.environ.get('OPENGPU_TEST_SANITIZERS') == '1':
@@ -157,7 +160,7 @@ def main():
                            ['-I' + str(canonical / 'scripts/test_stubs/native_host'),
                             '-I' + str(canonical / 'scripts'), str(source), '-o', str(binary)], env=env, check=True)
             subprocess.run([str(binary), str(out / 'union.memory'), str(out / 'record-0.capture')], env=env, check=True)
-            if args.sample_stage:
+            if sample_factory:
                 subprocess.run([str(binary), str(out / 'counter/union.memory'), str(out / 'counter/record-0.capture')], env=env, check=True)
                 captures=sorted((out/'images').glob('*/record-0.capture'))
                 if len(captures)!=208:
@@ -169,7 +172,7 @@ def main():
                 negative = out / ('negative-%s-%s' % (phase, kind))
                 negative.mkdir()
                 subprocess.run([str(out / 'test'), str(negative), str(phase), str(kind)], env=env, check=True)
-                if args.sample_stage and phase == 1:
+                if sample_factory and phase == 1:
                     counter_negative=out/('counter-negative-%s'%kind);counter_negative.mkdir();(counter_negative/'counter').mkdir()
                     subprocess.run([str(out/'test'),str(counter_negative),str(phase),str(kind)],
                         env=dict(env,OPENGPU_COMPUTE_HOST_TEST_COUNTER='1'),check=True)

@@ -13,6 +13,7 @@ import unittest
 from unittest.mock import patch
 import qualify_compute_owner as qualifier
 from compute_owner_cases import ADDRESS_CASES
+from owner_resource_contract import IMAGE_FLOAT_PROFILE
 import owner_process_lifetime as lifetime
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -57,7 +58,7 @@ class Entry(unittest.TestCase):
             for profile in ('two-cu-vga60-owner-v1',qualifier.COMPUTE_STAGE,*qualifier.FULL_COMPUTE_CONTRACTS):
                 qualification.write_text(json.dumps(dict(schema='opengpu-owner-executor-v1',kind='compute',profile=profile)))
                 with patch.object(qualifier.subprocess,'run'):
-                    if profile==qualifier.SAMPLE_PROFILE:qualifier.checked_inputs(args)
+                    if profile in (qualifier.SAMPLE_PROFILE,IMAGE_FLOAT_PROFILE):qualifier.checked_inputs(args)
                     else:
                         with self.assertRaisesRegex(ValueError,'exact final112'):qualifier.checked_inputs(args)
 
@@ -73,7 +74,7 @@ class Entry(unittest.TestCase):
                 for profile in ('two-cu-vga60-owner-v1',qualifier.COMPUTE_STAGE,*qualifier.FULL_COMPUTE_CONTRACTS):
                     qualification.write_text(json.dumps(dict(schema='opengpu-owner-executor-v1',kind='compute',profile=profile)))
                     with patch.object(qualifier.subprocess,'run'):
-                        if profile==qualifier.SAMPLE_PROFILE:qualifier.checked_inputs(args)
+                        if profile in (qualifier.SAMPLE_PROFILE,IMAGE_FLOAT_PROFILE):qualifier.checked_inputs(args)
                         else:
                             with self.assertRaisesRegex(ValueError,'exact final112'):qualifier.checked_inputs(args)
             for extra in ([],['--capture-only','--case','counter-read']):

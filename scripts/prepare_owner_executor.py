@@ -20,7 +20,8 @@ import build_native_flashsim as builder
 import prepare_native_owner_flashsim as owner
 import qualify_native_product_compiled as common
 import qualify_native_product_flashsim as flash
-from owner_resource_contract import COMPUTE_STAGE, FULL_COMPUTE_CONTRACTS, PROFILE as FULL_PROFILE, SAMPLE_PROFILE
+from owner_resource_contract import (COMPUTE_STAGE, FULL_COMPUTE_CONTRACTS, PROFILE as FULL_PROFILE,
+    SAMPLE_PROFILE, IMAGE_FLOAT_PROFILE, SAMPLE_FACTORY_CONTRACTS)
 
 ROOT = Path(__file__).resolve().parents[1]
 BLIT_KIND = 'framebuffer-blit-sample'
@@ -159,7 +160,7 @@ def require(condition, message):
 
 def profile_contract(profile, kind):
     require(kind in KINDS, 'unknown owner executor kind')
-    require((profile == SAMPLE_PROFILE if kind in SAMPLE_FACTORY_KINDS else
+    require((profile in SAMPLE_FACTORY_CONTRACTS if kind in SAMPLE_FACTORY_KINDS else
              profile == owner.PROFILE or ((profile == COMPUTE_STAGE or profile in FULL_COMPUTE_CONTRACTS) and kind == 'compute')),
             'unsupported factory for the selected owner executor kind')
     fields = dict(profile=profile)
@@ -174,20 +175,20 @@ def driver_files(kind, profile=owner.PROFILE):
     require(kind in KINDS, 'unknown owner executor kind')
     profile_contract(profile, kind)
     if kind == BLIT_KIND:
-        return ['scripts/native_framebuffer_blit_sample_driver.cpp',
+        return ([f'scripts/image_float_framebuffer_blit_sample_owner_driver.cpp'] if profile==IMAGE_FLOAT_PROFILE else []) + ['scripts/native_framebuffer_blit_sample_driver.cpp',
                 'scripts/native_framebuffer_blit_driver.cpp',
                 'scripts/native_framebuffer_blit_lease.hpp', 'scripts/native_framebuffer_blit_input.hpp',
                 'scripts/native_framebuffer_blit_simulation.hpp', 'driver/opengpu_storage_command_abi.h',
                 'scripts/native_sample_owner_runtime.hpp', 'scripts/native_sample_owner_capture.hpp', *SHARED]
     if kind == 'native-sample-graphics':
-        return ['scripts/native_sample_graphics_driver.cpp', 'scripts/native_sample_graphics_runtime.hpp',
+        return (['scripts/image_float_native_sample_graphics_owner_driver.cpp'] if profile==IMAGE_FLOAT_PROFILE else []) + ['scripts/native_sample_graphics_driver.cpp', 'scripts/native_sample_graphics_runtime.hpp',
                 'scripts/native_sample_owner_runtime.hpp', 'scripts/native_sample_owner_capture.hpp', *SHARED]
     if kind == 'native-sample':
-        return ['scripts/native_sample_owner_driver.cpp', 'scripts/native_sample_owner_runtime.hpp',
+        return (['scripts/image_float_native_sample_owner_driver.cpp'] if profile==IMAGE_FLOAT_PROFILE else []) + ['scripts/native_sample_owner_driver.cpp', 'scripts/native_sample_owner_runtime.hpp',
                 'scripts/native_sample_owner_capture.hpp', *SHARED]
     if profile == COMPUTE_STAGE or profile in FULL_COMPUTE_CONTRACTS:
         wrapper = {COMPUTE_STAGE: 'compute_stage', FULL_PROFILE: 'geometry_compute',
-                   SAMPLE_PROFILE: 'geometry_compute_sample'}[profile]
+                   SAMPLE_PROFILE: 'geometry_compute_sample', IMAGE_FLOAT_PROFILE: 'image_float'}[profile]
         return [f'scripts/{wrapper}_owner_driver.cpp', 'scripts/compute_owner_driver.cpp',
                 *SHARED, 'scripts/compute_owner_capture.hpp']
     return ([f'scripts/{kind}_owner_driver.cpp', *SHARED] +

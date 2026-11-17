@@ -6,7 +6,7 @@
 namespace native_owner {
 template<class Sim>
 ProfileObservation probe_sample_profile(Sim &sim,Agent &agent,ReplayBus<Sim> &bus) {
-  ProfileObservation result;result.factory=OwnerFactory::geometry_compute_sample;
+  ProfileObservation result;result.factory=sample_owner_factory();
   const auto id=bus.read(GPU_REG_ID),caps=bus.read(GPU_REG_CAPABILITIES);
   require((id&0xffff0000u)==0x47550000u && (id&0xffffu)>=GPU_ABI_COMPUTE_RESOURCE_VERSION &&
     (caps&required_owner_caps)==required_owner_caps,"sample profile requires a protected command ABI");
@@ -25,11 +25,11 @@ ProfileObservation probe_sample_profile(Sim &sim,Agent &agent,ReplayBus<Sim> &bu
   return result;
 }
 inline void sample_profile_json(std::ostream &out,const ProfileObservation &profile) {
-  require(profile.factory==OwnerFactory::geometry_compute_sample,"sample profile factory changed");
+  require(profile.factory==sample_owner_factory(),"sample profile factory changed");
   auto discovery=profile.words;discovery.insert(discovery.end(),profile.registers.begin(),profile.registers.end());
   SampleCapture::validate_discovery(discovery);
   out<<"{\"schema\":\"opengpu-native-sample-owner-profile-v1\",\"ownerProfile\":\""
-    <<owner_factory_id(profile.factory)<<"\",\"ownerResourceStage\":\"geometry-compute-sample\","
+    <<owner_factory_id(profile.factory)<<"\",\"ownerResourceStage\":\""<<owner_factory_stage(profile.factory)<<"\","
     "\"ownerResourceVersion\":2,\"fullResourceQualification\":false,\"words\":[";
   for(size_t n=0;n<profile.words.size();++n)out<<(n?",":"")<<"{\"address\":"
     <<profile.words[n].address<<",\"value\":"<<profile.words[n].value<<"}";
@@ -47,7 +47,7 @@ inline void sample_receipt_json(std::ostream &out,const RecordResult &result,uin
   auto text=base.str();require(text.size()>=2 && text.substr(text.size()-2)=="}\n","invalid native receipt encoding");
   text.resize(text.size()-2);
   out<<text<<",\"schema\":\"opengpu-native-sample-owner-"<<(retired?"retired":"held")<<"-v1\","
-    "\"ownerProfile\":\"two-cu-vga60-owner-v2-sample-stage\",\"resetCount\":1";
+    "\"ownerProfile\":\""<<owner_factory_id(sample_owner_factory())<<"\",\"resetCount\":1";
   if(!retired)out<<",\"clockQualified\":false,\"fpsQualified\":false";
   out<<"}\n";
 }

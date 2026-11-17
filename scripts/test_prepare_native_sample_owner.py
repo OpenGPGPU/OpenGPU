@@ -13,6 +13,35 @@ from owner_resource_contract import (SAMPLE_PROFILE, SAMPLE_STAGE, SAMPLE_WORDS,
 
 
 class SampleOwnerManifestTests(unittest.TestCase):
+    def test_float_exchange_factory_preserves_resources_and_rejects_relabelled_words(self):
+        from owner_resource_contract import IMAGE_FLOAT_PROFILE, IMAGE_FLOAT_STAGE, IMAGE_FLOAT_WORDS
+        valid=self.manifest()
+        valid.update(profile=IMAGE_FLOAT_PROFILE, ownerResourceStage=IMAGE_FLOAT_STAGE,
+            computeFeatureFlags=0x3fffff, imageFloatExchange=True,
+            requiredDiscovery=copy.deepcopy(IMAGE_FLOAT_WORDS))
+        owner.check_manifest(valid)
+        inline=copy.deepcopy(valid);inline['assertionMode']='inline';owner.check_manifest(inline)
+        self.assertEqual([w for w in IMAGE_FLOAT_WORDS if w['address']!=0x368],
+                         [w for w in SAMPLE_WORDS if w['address']!=0x368])
+        for key,value in valid.items():
+            if key=='requiredDiscovery':continue
+            bad=copy.deepcopy(valid);bad[key]=not value if type(value) is bool else 0
+            with self.subTest(field=key),self.assertRaises(RuntimeError):owner.check_manifest(bad)
+            bad=copy.deepcopy(valid);del bad[key]
+            with self.subTest(missing=key),self.assertRaises(RuntimeError):owner.check_manifest(bad)
+        for index in range(112):
+            for field in ('address','value'):
+                bad=copy.deepcopy(valid);bad['requiredDiscovery'][index][field]^=1
+                with self.subTest(index=index,field=field),self.assertRaises(RuntimeError):owner.check_manifest(bad)
+        for words in (SAMPLE_WORDS,FULL_WORDS,IMAGE_FLOAT_WORDS[::-1]):
+            bad=copy.deepcopy(valid);bad['requiredDiscovery']=copy.deepcopy(words)
+            with self.assertRaises(RuntimeError):owner.check_manifest(bad)
+        bad=self.manifest();bad['imageFloatExchange']=True
+        with self.assertRaises(RuntimeError):owner.check_manifest(bad)
+        for old in ('compute_stage','full_resources','sample_resources'):
+            with self.subTest(old=old),self.assertRaisesRegex(RuntimeError,'one exact owner factory'):
+                owner.prepare(None,'1G',float_resources=True,**{old:True})
+
     def test_inline_assertions_require_the_complete_emitted_sample_factory(self):
         valid = self.manifest()
         valid['assertionMode'] = 'inline'

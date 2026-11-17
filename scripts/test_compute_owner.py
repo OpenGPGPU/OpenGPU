@@ -25,7 +25,8 @@ class ComputeOwnerTests(unittest.TestCase):
                      '-include', str(header), '-DOPENGPU_FLASHSIM_NATIVE']
             env = dict(os.environ, TMPDIR=temporary)
             for driver in ('compute_owner_driver.cpp', 'compute_stage_owner_driver.cpp',
-                           'geometry_compute_owner_driver.cpp', 'geometry_compute_sample_owner_driver.cpp'):
+                           'geometry_compute_owner_driver.cpp', 'geometry_compute_sample_owner_driver.cpp',
+                           'image_float_owner_driver.cpp'):
                 for count, expected, message in ((0, 0, 'assertion-free'),
                                                   (1, 2, 'wrong owner replay assertion model'),
                                                   (1, 1, None)):
@@ -39,7 +40,8 @@ class ComputeOwnerTests(unittest.TestCase):
                         self.assertEqual(result.returncode, 0, result.stderr)
             for driver, selection in (
                     ('geometry_compute_owner_driver.cpp', '-DOPENGPU_OWNER_COMPUTE_STAGE=1'),
-                    ('geometry_compute_sample_owner_driver.cpp', '-DOPENGPU_OWNER_GEOMETRY_COMPUTE=1')):
+                    ('geometry_compute_sample_owner_driver.cpp', '-DOPENGPU_OWNER_GEOMETRY_COMPUTE=1'),
+                    ('image_float_owner_driver.cpp', '-DOPENGPU_OWNER_GEOMETRY_COMPUTE_SAMPLE=1')):
                 result = subprocess.run([*flags, '-DCOMPUTE_TEST_ASSERTIONS=1',
                     '-DOPENGPU_EXPECTED_ASSERTIONS=1', selection, str(ROOT / 'scripts' / driver)],
                     env=env, capture_output=True, text=True)
@@ -57,7 +59,8 @@ class ComputeOwnerTests(unittest.TestCase):
                     ('v1', [], b'OGCP0001'),
                     ('stage', ['-DOPENGPU_OWNER_COMPUTE_STAGE=1'], b'OGCP0002'),
                     ('geometry', ['-DOPENGPU_OWNER_GEOMETRY_COMPUTE=1'], b'OGCP0003'),
-                    ('sample', ['-DOPENGPU_OWNER_GEOMETRY_COMPUTE_SAMPLE=1'], b'OGCP0003')):
+                    ('sample', ['-DOPENGPU_OWNER_GEOMETRY_COMPUTE_SAMPLE=1'], b'OGCP0003'),
+                    ('float', ['-DOPENGPU_OWNER_IMAGE_FLOAT_STAGE=1'], b'OGCP0003')):
                 directory = Path(temporary) / name
                 directory.mkdir()
                 binary = directory / 'test'
@@ -71,7 +74,7 @@ class ComputeOwnerTests(unittest.TestCase):
                 self.assertEqual(wire[:8], magic)
 
     def test_full_factory_linux_capture_reaches_its_fixed_cpp_parser(self):
-        for option in ('--geometry-compute', '--sample-stage'):
+        for option in ('--geometry-compute', '--sample-stage', '--image-float-stage'):
             subprocess.run([sys.executable, str(ROOT / 'scripts/test_compute_host.py'),
                 '--canonical-root', str(ROOT), option], check=True,
                 env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1'))

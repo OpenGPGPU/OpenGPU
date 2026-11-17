@@ -105,10 +105,12 @@ unit, and compute-state creation requires both discovered image-atomic and
 float-exchange support. Float immediates are opaque words and are admitted only
 in programs containing an R32F image exchange. Other float atomic operations
 remain rejected. The stable compute-program layout is unchanged. Existing
-96-, 104- and 112-word owner contracts and their discovery flags stay frozen;
-no current full-owner factory advertises the new service.
+96-, 104- and sample 112-word owner contracts and their discovery flags stay frozen.
+The separate `two-cu-vga60-owner-v2-image-float-stage` factory reports `0x3fffff`
+with 112 words. All other discovery words, native/compute services and physical
+capacities match the complete sample owner.
 
-All 13 tests in five focused RTL suites pass. They cover signed-zero,
+The focused RTL checks pass. They cover signed-zero,
 subnormal, infinity and NaN-payload words, permissions, unsupported operations,
 cancellation, held requests, old-value routing and a competing atomic through
 the actual shared L2, including untouched line bytes. Discovery tests check
@@ -135,6 +137,44 @@ sbt 'testOnly opengpu.graphics.ShaderImageCommandAbiSpec opengpu.graphics.Storag
 ```
 
 The Mesa and callback reproduction commands below include the float cases.
+
+## Complete float-factory source and CPU binding
+
+Seven Scala profile checks and both actual Scala descriptions pass the strict
+Python manifest guard. The float factory preserves two CUs, sixteen lanes,
+eight warps, 16-KiB shared memory per CU, 128-KiB L2, four native engines,
+65536 paged entries, 512-KiB payload storage and the 2048-square render capacity;
+the product frame stays 640×480. Its complete model must be freshly generated
+with assertions. See [the executor guide](COMPLETE_OWNER_COMPUTE_EXECUTOR.md)
+for preparation, native compilation and the three original MMIO probes.
+
+Each executor has a fixed float-stage wrapper. Qualifications, probes and
+READY validation bind the selected profile explicitly; the default sample
+profile cannot authorize float-stage data. Native GSS discovery accepts only
+the two exact sample flag patterns. Unknown flags, changed quantities,
+cross-factory captures/receipts and rehashed model/wrapper substitutions remain
+rejected. All 87 focused Python/CPU checks pass, including five canonical C++
+factory variants and 208 typed-view transport cases on each 112-word profile.
+
+All 80 original Mesa image recipes and eleven counter recipes pass fresh
+ASan/UBSan CPU captures under the explicitly CPU-only float-stage profile,
+the source-selected canonical C++ parser, strict qualified READY and rejection
+of initial uploads as GPU results. The image checks include 9161 rejections,
+including a wrong qualified owner for every case. All 8102 external and 169
+producer/checker inputs remain unchanged. Ended captures, builds and containers
+are removed. These checks execute no shader on a DUT; original R32F exchange
+recipes and full source-bound execution/boundary/fault/cancel/reset/drain
+acceptance remain required.
+
+For the CPU capture reproduction below, substitute `IMAGE_FLOAT_PROFILE`,
+`IMAGE_FLOAT_STAGE` and `IMAGE_FLOAT_WORDS` from `owner_resource_contract` in
+the labeled CPU profile fixture, compile the canonical parser with
+`-DOPENGPU_OWNER_IMAGE_FLOAT_STAGE=1`, and select the expected owner explicitly:
+
+```sh
+python3 -B scripts/test_compute_image_source.py --captures "$CPU_CAPTURE/sessions" \
+  --owner-profile two-cu-vga60-owner-v2-image-float-stage
+```
 
 ## Original integer-atomic source and independent result contract
 

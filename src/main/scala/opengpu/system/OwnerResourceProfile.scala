@@ -53,6 +53,17 @@ object OwnerResourceProfile {
     sampleStage.native.payload == target.native.payload &&
     sampleStage.execution == target.execution, "sample stage preserves complete owner resources")
 
+  val imageFloatStageId = id + "-image-float-stage"
+  val imageFloatStageName = "geometry-compute-sample-image-float"
+  // Separate source-selected factory. Existing sample discovery stays frozen.
+  val imageFloatStage: NativeAlignmentHostConfig = sampleStage.copy(imageFloatExchange = true)
+  require(imageFloatStage.copy(imageFloatExchange = false) == sampleStage &&
+    imageFloatStage.requiredDiscovery.size == 112 &&
+    imageFloatStage.requiredDiscovery.toMap.apply(0x368) == 0x3fffff &&
+    imageFloatStage.requiredDiscovery.filterNot(_._1 == 0x368) ==
+      sampleStage.requiredDiscovery.filterNot(_._1 == 0x368),
+    "float exchange stage preserves every complete sample owner resource")
+
   require(target.requiredDiscovery.size == 104 &&
     target.requiredDiscovery.toMap.apply(0x368) == 0xfffff &&
     target.native.transformFeedback && target.native.engines == 4 &&

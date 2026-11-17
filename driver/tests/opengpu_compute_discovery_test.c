@@ -72,7 +72,7 @@ static void layered_tessellation_discovery_cases(void)
      * Exercise the production hw-init sequence: GCR -> presence -> GNC. */
     const u32 gnc[] = {0x474e4305u,8u,0x474e4a02u,0x08000200u,
         0xc2100800u,0x08000800u,0xe4908000u,0x8813db02u};
-    const u32 profiles[] = {0xfffffu,0x1fffffu};
+    const u32 profiles[] = {0xfffffu,0x1fffffu,0x3fffffu};
     const u32 caps = GPU_CAP_UNIFIED_COMMANDS | GPU_CAP_PROTECTED_VM_STATE;
     struct device valid = {.magic=OPENGPU_COMPUTE_RESOURCE_MAGIC,.words=16,
         .discovery=OPENGPU_TESS_HOST_BASE};

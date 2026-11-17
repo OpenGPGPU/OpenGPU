@@ -182,7 +182,8 @@ class ExecutorTests(unittest.TestCase):
                     shutil.rmtree(target)
                 path, record=self.fixture(profile=name)
                 files=q.driver_files('compute',name)
-                expected='geometry_compute_sample' if name==q.SAMPLE_PROFILE else 'geometry_compute'
+                expected={q.FULL_PROFILE:'geometry_compute',q.SAMPLE_PROFILE:'geometry_compute_sample',
+                          q.IMAGE_FLOAT_PROFILE:'image_float'}[name]
                 self.assertEqual(files[0],f'scripts/{expected}_owner_driver.cpp')
                 q.builder.validate_driver_includes([q.ROOT/n for n in
                     [files[0],*q.DEFAULT_DEPENDENCIES,*files[1:]]],self.out/'flashsim-dut/dut.h',self.out/'flashsim-dut')
@@ -193,7 +194,7 @@ class ExecutorTests(unittest.TestCase):
                     with self.assertRaises(RuntimeError):q.verify_qualification(path)
                 q.common.write_json(path,record)
                 original=json.loads((path.parent/'builder.json').read_text())
-                for driver in ('compute_owner','compute_stage_owner','geometry_compute_owner','geometry_compute_sample_owner'):
+                for driver in ('compute_owner','compute_stage_owner','geometry_compute_owner','geometry_compute_sample_owner','image_float_owner'):
                     if 'scripts/'+driver+'.cpp'==files[0]:continue
                     wrong=copy.deepcopy(original)
                     wrong['driver_source']=str((q.ROOT/'scripts'/str(driver+'.cpp')).resolve())

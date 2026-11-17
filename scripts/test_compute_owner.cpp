@@ -228,7 +228,7 @@ static void profile_checks(int argc,char **argv) {
   for(size_t n=0;n<frozen.size();++n)require(frozen[n].address==legacy[n].address &&
     frozen[n].value==legacy[n].value,"frozen v1 table changed");
   for(const auto other:{OwnerFactory::v1,OwnerFactory::compute_stage,
-      OwnerFactory::geometry_compute,OwnerFactory::geometry_compute_sample}) {
+      OwnerFactory::geometry_compute,OwnerFactory::geometry_compute_sample,OwnerFactory::image_float_stage}) {
     if(other==compute_owner_factory())continue;
     auto wrong=fixture();wrong.discovery=owner_factory_words(other);
     for(const auto &r:ComputeCapture::transports())wrong.discovery.push_back(r);
@@ -277,7 +277,7 @@ static void empty_context_checks() {
   auto aliased=capture;aliased.writable.push_back({0x7000,0x7004});
   rejects([&]{PtePages p;aliased.observe_contexts(memory,p);});
   const auto wire=encode(capture);
-  if(compute_owner_factory()==OwnerFactory::geometry_compute_sample) {
+  if(owner_factory_has_sample(compute_owner_factory())) {
     std::istringstream in(wire);const auto decoded=ComputeCapture::read(in);
     require(decoded.empty_contexts.size()==1,"complete compute parser dropped original inactive context");
     PtePages p;decoded.observe_contexts(memory,p);

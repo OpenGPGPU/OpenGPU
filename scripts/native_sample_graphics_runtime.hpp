@@ -12,7 +12,7 @@ inline void sample_graphics_receipt_json(std::ostream &out,const RecordResult &r
   require(text.size()>=2 && text.substr(text.size()-2)=="}\n","invalid ordinary112 receipt encoding");
   text.resize(text.size()-2);
   out<<text<<",\"schema\":\"opengpu-native-sample-graphics-"<<(retired?"retired":"held")
-    <<"-v1\",\"ownerProfile\":\"two-cu-vga60-owner-v2-sample-stage\","
+    <<"-v1\",\"ownerProfile\":\""<<owner_factory_id(sample_owner_factory())<<"\","
       "\"recordCount\":2,\"resetCount\":1";
   if(!retired)out<<",\"clockQualified\":false,\"fpsQualified\":false";
   out<<"}\n";

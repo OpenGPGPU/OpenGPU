@@ -10,14 +10,22 @@ captures from another factory. The native GNJ1 replay executor stays frozen.
 | `two-cu-vga60-owner-v1` | 96 | profile-v1 / `OGCP0001` | `OGCMP001` | `compute_owner_driver.cpp` |
 | `two-cu-vga60-owner-v2-compute-stage` | 96 | profile-v2 / `OGCP0002` | `OGCMP001` | `compute_stage_owner_driver.cpp` |
 | `two-cu-vga60-owner-v2` | 104 | profile-v3 / `OGCP0003` | `OGCMP002` | `geometry_compute_owner_driver.cpp` |
-| `two-cu-vga60-owner-v2-sample-stage` | 112 | profile-v3 / `OGCP0003` | `OGCMP002` | `geometry_compute_sample_owner_driver.cpp` |
+| `two-cu-vga60-owner-v2-sample-stage` | 112 | profile-v3 / `OGCP0003` | `OGCMP002` / `OGCMP003` | `geometry_compute_sample_owner_driver.cpp` |
+| `two-cu-vga60-owner-v2-image-float-stage` | 112 | profile-v3 / `OGCP0003` | `OGCMP002` / `OGCMP003` | `image_float_owner_driver.cpp` |
 
 Schema names have prefix `opengpu-compute-owner-`. The v3 JSON record requires
-the exact profile ID, version 2, stage `geometry-compute` or
-`geometry-compute-sample`, and `fullResourceQualification=false`. The registry
-contains two explicit ordered address/value tables. The sample table retains
+the exact profile ID, version 2, its registered resource stage, and
+`fullResourceQualification=false`. The registry contains three explicit ordered
+address/value tables. The sample table retains
 the original 104 words except GCR flags `0x1fffff`, and appends eight GSS1 words
 at `0x520`. The original 104-word table remains unchanged.
+
+The float stage is `geometry-compute-sample-image-float`. Its table preserves
+all 112 sample words except GCR flags `0x3fffff`, adding only R32F exchange bit
+21. Separate source-selected wrappers bind all four Verilator executor kinds.
+Native sample discovery accepts exactly the old and float-stage flag patterns;
+unknown bits remain errors. Native probe/receipt helpers require an explicit
+qualified profile for the float stage and preserve the old default.
 
 Probe wires retain the original little-endian container: magic, u32 discovery
 count, discovery address/value pairs, u32 auxiliary count, and ten actual
@@ -43,14 +51,16 @@ objects and executable. The bound checker inputs also include the compute
 controller, protocol, oracle, case registry, Mesa host frontend and Linux
 capture producer. Changing any of these invalidates an existing qualification.
 
-CPU validation passes for all four fixed factories under ASan/UBSan: complete
+CPU validation passes for all five fixed factories under ASan/UBSan: complete
 actual-bus peer probes, every discovery-word mutation, cross-factory capture
 rejection, held/retired receipts, read-only guards, cleanup ordering and phase
 deadlines. Both new tables also pass the production Linux ioctl, real MMU/PTE,
 snapshot, scheduler, IRQ and cleanup boundary into the canonical C++ parser;
 bad cleanup ACKs retain reachable allocations. These peers execute no GPU
 instructions. Python schema, source/model/build/binary identity and entry-point
-negative tests pass. Reproduce with:
+negative tests pass. The float table also passes the 208 typed-view production
+transport cases and canonical parser, including permissions and cleanup errors.
+Reproduce with:
 
 ```sh
 export PYTHONDONTWRITEBYTECODE=1 OPENGPU_TEST_SANITIZERS=1
@@ -140,11 +150,29 @@ arbitration orders and reject the address/group mutations. Remove ended private 
 container and parser exit. This CPU matrix supplies no held or retired GPU
 receipt: actual DUT execution is still unverified for every one of the 21 cases.
 
-No fresh complete RTL/model or actual DUT shader execution qualifies either new
-factory yet. Keep this work draft until a fresh full-capacity host is generated
-and the complete guarded execution succeeds. Preserve two CUs, sixteen lanes,
+Each factory needs its own source-bound complete RTL/model and actual execution
+qualification. CPU captures supply no DUT result. Preserve two CUs, sixteen lanes,
 eight warps, the full native API capacities and every assertion. Do not rename
 an existing model or inherit previous compute-stage results.
+
+Use the same Python interpreter throughout preparation, generation, compilation
+and executor checks. Prepare the distinct float factory and its assertion-enabled
+native model with a new `OWNER_OUTPUT` inside this checkout's `.artifacts/`:
+
+```sh
+python3 -B scripts/prepare_native_owner_flashsim.py --stage prepare \
+  --output "$OWNER_OUTPUT" --image-float-resources --inline-assertions --java-heap 24G
+python3 -B scripts/generate_owner_verilator.py --owner-output "$OWNER_OUTPUT"
+python3 -B scripts/build_owner_verilator.py --owner-output "$OWNER_OUTPUT" \
+  --jobs 8 --memory-mib 24576
+```
+
+The Verilator executor path uses `prepare_owner_executor.py --backend verilator`.
+Build each of `native-sample`, `native-sample-graphics`, `compute` and
+`framebuffer-blit-sample`; then run `--stage probe` with the resulting
+qualification and executor for the first three kinds. Every probe must match
+the selected float factory through actual MMIO. Model preparation and read-only
+probes do not establish original shader execution, clock or FPS acceptance.
 
 Once that factory has been prepared and generated in its own `.artifacts/`
 directory, build and check its executor with the generation-matched Python,
