@@ -250,10 +250,10 @@ static u32 compute_profile_read(void *opaque,u32 address)
 {struct compute_host_session *s=opaque;
  for(size_t i=0;i<s->profile_count;i++)if(s->profile[i].address==address)return s->profile[i].value;
  s->missing=true;return 0;}
-struct compute_host_session *compute_host_create(uint32_t context,
+static struct compute_host_session *compute_host_initialize(bool initial_context,
  const struct compute_host_profile_word *words,size_t count)
 {
- if(!context || !words || !count || count>1024 || !compute_host_timeout_seconds())return NULL;
+ if(!words || !count || count>1024 || !compute_host_timeout_seconds())return NULL;
  struct compute_host_session *s=calloc(1,sizeof(*s));if(!s)return NULL;
  s->profile=malloc(count*sizeof(*words));if(!s->profile){free(s);return NULL;}
  memcpy(s->profile,words,count*sizeof(*words));s->profile_count=count;
@@ -295,13 +295,20 @@ struct compute_host_session *compute_host_create(uint32_t context,
  s->render=(struct opengpu_file){.session=s,.gpu=&s->gpu};
  s->file.driver_priv=&s->render;s->drm.dev=&s->gpu;
  if(opengpu_mmu_init(&s->gpu))goto fail;
- struct drm_opengpu_context request={0};
- if(opengpu_compute_context_create_ioctl(&s->drm,&request,&s->file)){opengpu_mmu_fini(&s->gpu);goto fail;}
- s->context=opengpu_context_lookup(&s->render,request.id);s->context_id=request.id;
- assert(s->context);
+ if(initial_context){
+  struct drm_opengpu_context request={0};
+  if(opengpu_compute_context_create_ioctl(&s->drm,&request,&s->file)){opengpu_mmu_fini(&s->gpu);goto fail;}
+  s->context=opengpu_context_lookup(&s->render,request.id);s->context_id=request.id;
+  assert(s->context);
+ }
  opengpu_admission_init(&s->gpu);compute_running=s;return s;
 fail:free(s->profile);free(s);return NULL;
 }
+struct compute_host_session *compute_host_create(uint32_t context,
+ const struct compute_host_profile_word *words,size_t count)
+{return context?compute_host_initialize(true,words,count):NULL;}
+struct compute_host_session *compute_host_open(const struct compute_host_profile_word *words,size_t count)
+{return compute_host_initialize(false,words,count);}
 static void compute_original_drop(struct compute_original *o)
 {assert(o->refs);if(!--o->refs){
  dma_fence_put(o->resv.read);dma_fence_put(o->resv.write);o->resv.read=o->resv.write=NULL;
@@ -660,6 +667,7 @@ int main(int argc,char **argv)
  for(size_t i=0;i<ARRAY_SIZE(test_profile);i++) {
   struct compute_host_profile_word old=test_profile[i];
   test_profile[i].address=0x1000;
+  assert(!compute_host_open(test_profile,ARRAY_SIZE(test_profile)));
   assert(!compute_host_create(7,test_profile,ARRAY_SIZE(test_profile)));test_profile[i]=old;
  }
  for(size_t i=0;i<ARRAY_SIZE(test_profile);i++) {
@@ -702,6 +710,17 @@ int main(int argc,char **argv)
   assert(!compute_host_destroy(discovery));assert(!live_allocations && !fixture_buffers);
   test_profile[flags].value=saved;
  }
+ /* A Gallium caller owns context creation. Opening its render file must not
+  * insert an unused context/ASID into the later observed cleanup stream. */
+ struct compute_host_session *opened=compute_host_open(test_profile,ARRAY_SIZE(test_profile));
+ assert(opened && !compute_host_context_id(opened) && !opened->context);
+ for(unsigned id=1;id<512;id++)assert(!idr_find(&opened->render.contexts,id));
+ assert(!compute_host_destroy(opened) && !live_allocations && !fixture_buffers);
+ opened=compute_host_open(test_profile,ARRAY_SIZE(test_profile));assert(opened);
+ u32 first_context=0;assert(!compute_host_context_create(opened,&first_context) && first_context==1);
+ assert(compute_host_context_id(opened)==first_context && opened->context);
+ assert(!compute_host_context_destroy(opened,first_context) && !opened->context);
+ assert(!compute_host_destroy(opened) && !live_allocations && !fixture_buffers);
  struct compute_host_session *session=compute_host_create(7,test_profile,ARRAY_SIZE(test_profile));
  assert(session && compute_host_context_id(session)==1);
  u64 query=0x123456789abcdef0ull;
