@@ -45,7 +45,10 @@ ComputeHeld hold_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memor
   ComputeHeld held;held.initial=memory;held.start=agent.traffic;held.start_cycles=bus.cycles;
   bus.begin_record(capture.max_cycles);
   for(const auto &a:capture.trace)bus.action(a);
-  while(!sim.model->io_m_irq)bus.step();
+  // A polled prefix invalidate can leave the sticky IRQ pending after its
+  // completion was popped. Its old window is invalid until COMPLETION rises
+  // for the final kernel; the IRQ pin alone does not establish that receipt.
+  while(!sim.model->io_m_irq || !(bus.read(GPU_REG_UCMD_STATUS)&GPU_UCMD_STATUS_COMPLETION))bus.step();
   require(agent.drained(),"compute completion preceded external drain");held.completed=agent.traffic;
   auto &r=held.result;
   auto observe=[&]() {

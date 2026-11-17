@@ -84,7 +84,6 @@ public:
     });
     auto &r=model->registers;
     if(submitted && unstable && cycle==completed_at+40)r[GPU_REG_UCMD_COMPLETION_BYTES_HI]^=1;
-    if(submitted && late_write && cycle==completed_at+90)memory.byte(0x6000,0xee);
     if(!written)return;
     if(write.address==GPU_REG_UCMD_SUBMIT) {
       r[GPU_REG_UCMD_STATUS]=GPU_UCMD_STATUS_COMPLETION|GPU_UCMD_STATUS_VM_BUSY;
@@ -96,8 +95,35 @@ public:
         memory.byte(corrupt_readonly?0x5000:0x6000,0x55); // CPU-only protocol peer.
       }
     }else if(write.address==GPU_REG_UCMD_COMPLETION_POP) {
+      // A forbidden post-held mutation must follow the actual retirement
+      // boundary, independently of how many MMIO reads preceded it.
+      if(submitted && late_write)memory.byte(0x6000,0xee);
       r[GPU_REG_UCMD_STATUS]=GPU_UCMD_STATUS_READY;r[GPU_REG_UCMD_COMPLETION]=0;model->io_m_irq=0;
     }else if(write.address==GPU_REG_IRQ)r[GPU_REG_IRQ]=write.value&1u;
+  }
+};
+// Model the real prefix IRQ surviving a polled POP while the final kernel is
+// still executing. This peer supplies no shader execution evidence.
+class StickyPrefixPeer:public ComputePeer {
+  uint64_t available_at=0;
+  uint32_t completion=0,bytes=0;
+public:
+  using ComputePeer::ComputePeer;
+  template<class Observe> void step(Agent &agent,uint64_t cycle,Observe observe) {
+    ComputePeer::step(agent,cycle,observe);
+    if(!submitted)return;
+    auto &r=model->registers;
+    if(!available_at) {
+      available_at=cycle+96;completion=r[GPU_REG_UCMD_COMPLETION];
+      bytes=r[GPU_REG_UCMD_COMPLETION_BYTES_LO];
+    }
+    if(cycle<available_at) {
+      r[GPU_REG_UCMD_STATUS]=GPU_UCMD_STATUS_READY|GPU_UCMD_STATUS_VM_BUSY;
+      r[GPU_REG_UCMD_COMPLETION]=0x8510;r[GPU_REG_UCMD_COMPLETION_BYTES_LO]=64;
+    }else if(cycle==available_at) {
+      r[GPU_REG_UCMD_STATUS]=GPU_UCMD_STATUS_COMPLETION|GPU_UCMD_STATUS_VM_BUSY;
+      r[GPU_REG_UCMD_COMPLETION]=completion;r[GPU_REG_UCMD_COMPLETION_BYTES_LO]=bytes;
+    }
   }
 };
 static void deadline_checks() {
@@ -238,6 +264,18 @@ static void execution_checks(int argc,char **argv) {
     "compute retirement lost raw observations");
   require(std::none_of(sim.reads.begin(),sim.reads.end(),[](auto address){return address>=0x180 && address<0x1b0;}),
     "compute executor read native GNX");
+  for(unsigned scenario=0;scenario<3;scenario++) {
+    auto m=memory_fixture();StickyPrefixPeer peer(argc,argv,m);peer.reset();
+    Agent a(m);ReplayBus<StickyPrefixPeer> b(peer,a,100000);
+    peer.wrong_completion=scenario==1;peer.nonzero_bytes=scenario==2;
+    auto run=[&] {
+      auto h=hold_compute(peer,a,b,m,c);
+      require(h.result.completion==0x8011 && !h.result.processed_bytes,
+        "sticky prefix IRQ exposed a stale completion window");
+      retire_compute(peer,a,b,m,h,retirement());
+    };
+    if(scenario)rejects(run);else run();
+  }
   for(unsigned scenario=0;scenario<6;scenario++) {
     auto m=memory_fixture();ComputePeer peer(argc,argv,m);peer.reset();Agent a(m);ReplayBus<ComputePeer> b(peer,a,100000);
     peer.wrong_completion=scenario==0;peer.nonzero_bytes=scenario==1;peer.corrupt_readonly=scenario==2;
