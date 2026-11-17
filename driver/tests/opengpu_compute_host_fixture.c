@@ -393,20 +393,88 @@ int compute_host_submit_storage(struct compute_host_session *s,const struct drm_
   memcpy(s->submitted.resources.bindings,copy.bindings,sizeof(copy.bindings));
   s->submitted.resources.resource_flags=OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE;}
  return error;}
-static int compute_host_image_views(struct compute_host_session *s)
+int compute_host_submit_image_resources(struct compute_host_session *s,const struct drm_opengpu_compute_image_resources *request)
+{
+ if(!s || !request || s->exported || s->head)return -EBUSY;
+ /* Texture owners have a separate live capture contract. */
+ if(request->textures || request->texture_count)return -EOPNOTSUPP;
+ compute_running=s;struct drm_opengpu_compute_image_resources copy=*request;
+ int error=opengpu_compute_image_resources_ioctl(&s->drm,&copy,&s->file);
+ if(!error){
+  memset(&s->submitted,0,sizeof(s->submitted));s->submitted.version=1;
+  s->submitted.resources.launch=copy.launch;
+  s->submitted.resources.resource_flags=OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE|OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES;
+  memcpy(s->submitted.resources.bindings,copy.bindings,sizeof(copy.bindings));
+  memcpy(s->submitted.resources.images,copy.images,sizeof(copy.images));
+  s->context_id=copy.launch.context_id;s->context=opengpu_context_lookup(&s->render,s->context_id);assert(s->context);
+ }
+ return error;
+}
+int compute_host_submit_images(struct compute_host_session *s,const struct drm_opengpu_compute_images *request)
+{
+ if(!s || !request || s->exported || s->head)return -EBUSY;
+ compute_running=s;struct drm_opengpu_compute_images copy=*request;
+ int error=opengpu_compute_images_ioctl(&s->drm,&copy,&s->file);
+ if(!error){
+  memset(&s->submitted,0,sizeof(s->submitted));s->submitted.version=1;
+  s->submitted.resources.launch=copy.launch;
+  s->submitted.resources.resource_flags=OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES;
+  memcpy(s->submitted.resources.images,copy.views,sizeof(copy.views));
+  s->context_id=copy.launch.context_id;s->context=opengpu_context_lookup(&s->render,s->context_id);assert(s->context);
+ }
+ return error;
+}
+
+/* OGCMP has at most 4096 exact byte intervals, independently of RTL capacity. */
+#define COMPUTE_HOST_MAX_WRITABLE 4096u
+struct compute_writable_range {u64 first,end;};
+static int compute_writable_compare(const void *a,const void *b)
+{const struct compute_writable_range *x=a,*y=b;return x->first<y->first?-1:x->first>y->first;}
+static int compute_host_image_ranges(struct compute_host_session *s,
+ struct compute_writable_range *ranges,unsigned *count)
 {
  if(!(s->submitted.resources.resource_flags&OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES))return 0;
  for(unsigned i=0;i<4;i++){
   const struct drm_opengpu_compute_image_view *v=&s->submitted.resources.images[i];
   if(!v->slot)continue;
-  if(v->slot>OPENGPU_MAX_RESOURCE_BINDINGS)return -EINVAL;
+  if(v->slot>OPENGPU_MAX_RESOURCE_BINDINGS || v->pad || v->offset>UINT32_MAX ||
+     (v->flags&~(OPENGPU_COMPUTE_IMAGE_READ|OPENGPU_COMPUTE_IMAGE_WRITE|
+                 OPENGPU_COMPUTE_IMAGE_BY_SIZE|OPENGPU_COMPUTE_IMAGE_LAYERED)))return -EINVAL;
   const struct opengpu_resource_binding *b=s->context->bindings[v->slot-1];
-  /* Only bounded R32UI buffer-image writes have a captured byte oracle here.
-   * Production/RTL image capacities and the remaining image domains stay intact. */
-  if(!b || v->target!=5 || v->storage_format!=OPENGPU_TEXTURE_FORMAT_R32UI ||
-     v->image_format!=OPENGPU_TEXTURE_FORMAT_R32UI || v->flags!=OPENGPU_COMPUTE_IMAGE_WRITE ||
-     !v->buffer_bytes || (v->buffer_bytes&3) || v->offset>b->size ||
-     v->buffer_bytes>b->size-v->offset || (u64)v->buffer_texels*4!=v->buffer_bytes)return -EOPNOTSUPP;
+  if(!b)return -EINVAL;
+  bool buffer=v->target==5;
+  u32 bytes=buffer?opengpu_texture_buffer_format_bytes(v->storage_format):
+                   opengpu_compute_image_format_bytes(v->storage_format);
+  struct opengpu_compute_image_descriptor d={.context=s->context_id,.unit=i,
+   .storage_format=v->storage_format,.image_format=v->image_format,
+   .level=v->level,.base_level=v->level,.max_level=v->level,.layer=v->layer,
+   .readable=!!(v->flags&OPENGPU_COMPUTE_IMAGE_READ),.writable=!!(v->flags&OPENGPU_COMPUTE_IMAGE_WRITE),
+   .compatible_by_size=!!(v->flags&OPENGPU_COMPUTE_IMAGE_BY_SIZE),.layered=!!(v->flags&OPENGPU_COMPUTE_IMAGE_LAYERED),
+   .view={.target=v->target,.level=v->level,.base=(u32)v->offset,
+    .width=buffer?1u:v->width,.height=v->height,.depth=v->depth,.layers=v->layers,
+    .row_pitch=buffer?0:v->row_pitch,.slice_pitch=v->slice_pitch,.layer_pitch=v->layer_pitch,
+    .block_bytes=bytes,.buffer_texels=buffer?v->buffer_texels:0,.buffer_bytes=buffer?v->buffer_bytes:0}};
+  u32 checked[64];
+  if(b->dma>UINT32_MAX || !opengpu_build_compute_image_descriptor(checked,&d,(u32)b->dma,b->size))return -EINVAL;
+  if(!d.writable)continue;
+  u64 first=b->dma+v->offset,row=buffer?(u64)v->buffer_texels*bytes:(u64)v->width*bytes;
+  unsigned rows=buffer?1u:v->height,planes=1;
+  u64 pitch=buffer?row:v->row_pitch,step=0;
+  unsigned extent=v->target==1?v->layers:v->target==2?6u:v->target==3?v->depth:1u;
+  if(v->target!=0 && !buffer){
+   step=v->target==3?v->slice_pitch:v->layer_pitch;
+   if(d.layered)planes=extent;else first+=(u64)v->layer*step;
+  }
+  /* Packed rows and planes need one interval, even for a large valid view.
+   * Padding, unselected layers and incomplete buffer texels stay read-only. */
+  if(pitch==row){row*=rows;rows=1;pitch=row;}
+  if(rows==1 && planes>1 && step==row){row*=planes;planes=1;}
+  if((u64)rows*planes>COMPUTE_HOST_MAX_WRITABLE-*count)return -E2BIG;
+  for(unsigned plane=0;plane<planes;plane++)for(unsigned y=0;y<rows;y++){
+   u64 start=first+(u64)plane*step+(u64)y*pitch;
+   if(!row || start<b->dma || start>b->dma+b->size || row>b->dma+b->size-start)return -ERANGE;
+   ranges[*count]=(struct compute_writable_range){start,start+row};++*count;
+  }
  }
  return 0;
 }
@@ -414,7 +482,11 @@ int compute_host_begin_execution(struct compute_host_session *s)
 {
  if(!s || s->exported || s->prepared_execution || !s->head || s->head!=s->tail)return -EBUSY;
  if(s->submitted.resources.resource_flags&~(OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE|OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES))return -EOPNOTSUPP;
- {int error=compute_host_image_views(s);if(error)return error;}
+ /* Refuse an unrepresentable capture before offering a hardware command. */
+ {struct compute_writable_range ranges[COMPUTE_HOST_MAX_WRITABLE];unsigned count=1;
+  for(unsigned i=0;i<4;i++)count+=!!(s->submitted.resources.bindings[i].access&OPENGPU_COMPUTE_STORAGE_WRITE);
+  count+=!!opengpu_sched_job_from_base(s->head)->kernel.counter_enabled;
+  int error=compute_host_image_ranges(s,ranges,&count);if(error)return error;}
  compute_running=s;struct opengpu_sched_job *job=opengpu_sched_job_from_base(s->head);
  for(struct fixture_dependency *d=job->base.dependencies;d;d=d->next)if(!dma_fence_is_signaled(d->fence))return -EBUSY;
  opengpu_hw_enable_irqs(&s->gpu);struct dma_fence *fence=opengpu_job_run(job);
@@ -447,7 +519,7 @@ int compute_host_cancel_unexecuted(struct compute_host_session *s)
 {
  if(!s || s->exported || s->prepared_execution || !s->head || s->head!=s->tail)return -EBUSY;
  if(s->submitted.resources.resource_flags&~(OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE|OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES))return -EOPNOTSUPP;
- {int error=compute_host_image_views(s);if(error)return error;}
+ /* Capture-budget failures must still permit cancellation before execution. */
  compute_running=s;struct drm_sched_job *base=s->head;
  base->s_fence->finished.error=-ECANCELED;dma_fence_signal(&base->s_fence->finished);
  opengpu_sched_free_job(base);if(s->gpu.hw.wedged)return -EIO;
@@ -487,9 +559,6 @@ int compute_host_export_memory(struct compute_host_session *s,const char *path)
  if(error){remove(path);return error;}s->exported=true;return 0;
 }
 
-struct compute_writable_range {u64 first,end;};
-static int compute_writable_compare(const void *a,const void *b)
-{const struct compute_writable_range *x=a,*y=b;return x->first<y->first?-1:x->first>y->first;}
 static int compute_host_empty_contexts(struct compute_host_session *s,FILE *out)
 {
  unsigned count=0;
@@ -517,7 +586,7 @@ int compute_host_capture(struct compute_host_session *s,const char *path,uint64_
  struct compute_mmio_state *m=compute_mmio_state(&s->gpu);
  if(!m->kernel_waiting || !s->hardware || dma_fence_is_signaled(s->hardware))return -EBUSY;
  if(s->profile_count==122){int error=compute_host_empty_contexts(s,NULL);if(error)return error;}
- struct compute_writable_range ranges[10];unsigned count=0;
+ struct compute_writable_range ranges[COMPUTE_HOST_MAX_WRITABLE];unsigned count=0;
  struct opengpu_resource_binding *arg=s->context->bindings[s->submitted.resources.launch.kernarg_slot-1];
  if(!arg)return -EINVAL;
  ranges[count].first=arg->dma;ranges[count++].end=arg->dma+arg->size;
@@ -528,17 +597,13 @@ int compute_host_capture(struct compute_host_session *s,const char *path,uint64_
   ranges[count].first=b->dma;ranges[count++].end=b->dma+b->size;
  }
  struct opengpu_sched_job *job=opengpu_sched_job_from_base(s->head);
- if(s->submitted.resources.resource_flags&OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES)for(unsigned i=0;i<4;i++){
-  const struct drm_opengpu_compute_image_view *v=&s->submitted.resources.images[i];if(!v->slot)continue;
-  const struct opengpu_resource_binding *b=s->context->bindings[v->slot-1];if(!b)return -EINVAL;
-  ranges[count].first=b->dma+v->offset;ranges[count++].end=b->dma+v->offset+v->buffer_bytes;
- }
  if(job->kernel.counter_enabled){
   /* Independent original GEM only: exact logical words, never page/line padding. */
   if(!job->counter_source.object || !job->counter_source.dma || !job->counter_source.size ||
      job->counter_source.size>32 || (job->counter_source.size&3))return -EOPNOTSUPP;
   ranges[count].first=job->counter_source.dma;ranges[count++].end=job->counter_source.dma+job->counter_source.size;
  }
+ {int error=compute_host_image_ranges(s,ranges,&count);if(error)return error;}
  qsort(ranges,count,sizeof(*ranges),compute_writable_compare);
  unsigned merged=0;
  for(unsigned i=0;i<count;i++){
@@ -690,6 +755,7 @@ static void compute_host_test_cleanup_peer(struct opengpu_device *gpu,const char
  compute_mmio_le(f,GPU_UCMD_STATUS_READY|(bad && test_bad_kind==2?GPU_UCMD_STATUS_VM_BUSY:0),4);
  compute_mmio_le(f,GPU_IRQ_ENABLE,4);compute_mmio_le(f,0,4);compute_mmio_le(f,1,4);assert(!fclose(f));
 }
+#include "compute_host_images_test.h"
 int main(int argc,char **argv)
 {
  assert(argc==2 || argc==4);
@@ -704,6 +770,10 @@ int main(int argc,char **argv)
  assert(!unsetenv("OPENGPU_COMPUTE_HOST_TIMEOUT"));
  if(argc==4){test_fail_phase=atoi(argv[2]);test_bad_kind=atoi(argv[3]);
   assert(test_fail_phase>=1 && test_fail_phase<=3 && test_bad_kind>=1 && test_bad_kind<=2);}
+ if(getenv("OPENGPU_COMPUTE_HOST_TEST_IMAGES")){
+  assert(argc==4 && test_fail_phase==1 && ARRAY_SIZE(test_profile)==122);
+  test_compute_host_images(argv[1]);assert(0);
+ }
 
 
  assert(!compute_host_create(0,test_profile,ARRAY_SIZE(test_profile)));
@@ -916,6 +986,7 @@ int main(int argc,char **argv)
  }
  assert(!compute_host_destroy(session));assert(producer.refs==1 && !live_allocations && !fixture_buffers);
  }
+ if(argc==2 && ARRAY_SIZE(test_profile)==122)test_compute_host_images(argv[1]);
  puts("compute actual Linux ioctl/snapshot/scheduler/MMU/MMIO/IRQ/cleanup CPU transport: PASS (no GPU execution)");return 0;
 }
 

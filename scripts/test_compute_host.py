@@ -123,6 +123,7 @@ def main():
         out = Path(temporary)
         write_bodies(out, args.compute_stage, full_profile)
         (out / 'counter').mkdir()
+        (out / 'images').mkdir()
         flags = ['-DOPENGPU_COMPUTE_HOST_TEST_MAIN=1', '-D_POSIX_C_SOURCE=200809L', '-std=c11', '-O1', '-Wall', '-Wextra', '-Werror', '-Wno-unused-function']
         if os.environ.get('OPENGPU_TEST_SANITIZERS') == '1':
             flags += ['-fsanitize=address,undefined', '-fno-omit-frame-pointer']
@@ -158,6 +159,11 @@ def main():
             subprocess.run([str(binary), str(out / 'union.memory'), str(out / 'record-0.capture')], env=env, check=True)
             if args.sample_stage:
                 subprocess.run([str(binary), str(out / 'counter/union.memory'), str(out / 'counter/record-0.capture')], env=env, check=True)
+                captures=sorted((out/'images').glob('*/record-0.capture'))
+                if len(captures)!=208:
+                    raise RuntimeError('incomplete typed image CPU transport matrix')
+                for capture in captures:
+                    subprocess.run([str(binary),str(capture.parent/'union.memory'),str(capture)],env=env,check=True)
         for phase in range(1, 4):
             for kind in range(1, 3):
                 negative = out / ('negative-%s-%s' % (phase, kind))
@@ -167,6 +173,12 @@ def main():
                     counter_negative=out/('counter-negative-%s'%kind);counter_negative.mkdir();(counter_negative/'counter').mkdir()
                     subprocess.run([str(out/'test'),str(counter_negative),str(phase),str(kind)],
                         env=dict(env,OPENGPU_COMPUTE_HOST_TEST_COUNTER='1'),check=True)
+                    for write in (False,True):
+                        image_negative=out/('image-negative-%s-%s'%(kind,int(write)))
+                        image_negative.mkdir();(image_negative/'images').mkdir()
+                        image_env=dict(env,OPENGPU_COMPUTE_HOST_TEST_IMAGES='1')
+                        if write:image_env['OPENGPU_COMPUTE_HOST_TEST_IMAGE_WRITE']='1'
+                        subprocess.run([str(out/'test'),str(image_negative),str(phase),str(kind)],env=image_env,check=True)
 
 
 if __name__ == '__main__':

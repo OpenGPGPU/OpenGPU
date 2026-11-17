@@ -104,6 +104,8 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
  if(request==DRM_IOCTL_OPENGPU_RESOURCE_UNBIND){struct drm_opengpu_resource *p=arg;
   assert(p->context_id==compute_host_context_id(session));return result(compute_host_unbind(session,p->slot));}
  if(request==DRM_IOCTL_OPENGPU_COMPUTE_STORAGE){int error=compute_host_submit_storage(session,arg);if(!error)submitted++;return result(error);}
+ if(request==DRM_IOCTL_OPENGPU_COMPUTE_IMAGES){int error=compute_host_submit_images(session,arg);if(!error)submitted++;return result(error);}
+ if(request==DRM_IOCTL_OPENGPU_COMPUTE_IMAGE_RESOURCES){int error=compute_host_submit_image_resources(session,arg);if(!error)submitted++;return result(error);}
  if(request==DRM_IOCTL_OPENGPU_COMPUTE_UNIFORM_RESOURCES){int error=compute_host_submit_uniforms(session,arg);
   if(!error){accepted_uniforms=*(const struct drm_opengpu_compute_uniform_resources *)arg;submitted++;}return result(error);}
  if(request==DRM_IOCTL_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES){
