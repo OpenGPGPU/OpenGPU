@@ -419,10 +419,25 @@ continue to reject those uploads.
 Source/CPU checks pass 38 Python cases, all five fixed compute-driver variants,
 the existing native-owner cleanup tests, and the float canonical Linux transport
 with ASan/UBSan (208 healthy and 208 failed image cases plus bad-ACK retention).
-These checks do not establish actual-DUT image failure or same-DUT recovery.
-Each single-record execution still starts from a fresh reset. Actual permission
-faults, cancel/reset/drain, healthy reuse and coordinate-boundary execution keep
-their independent P08 acceptance gates.
+These CPU checks do not establish actual-DUT execution by themselves.
+
+The original buffer R32F recipe now passes actual source-qualified execution on
+the complete assertion-enabled float DUT in both explicit source-fault and
+ordinary healthy modes. The execution source tree matches commit
+`66848f6ba3b3a4e631d9c04ddb634867582be0cc`. The fault run observes injected
+physical read errors and failed kernel completion, carries actual EIO hardware
+and scheduler fences through the original Linux IRQ path, verifies every
+original physical byte unchanged, and completes actual PTE/context cleanup and
+source postchecks. It exits zero in 153.115 seconds under a 4-GiB/900-second
+guard. The ordinary healthy regression verifies forty old raw words, final
+images, all other physical bytes and actual cleanup; it exits zero in 235.804
+seconds under the same guard. Both remove their private producer builds,
+captures, containers and returned RAM after verification.
+
+Each run uses a separate fresh DUT reset and original RAM; these two results do
+not establish same-DUT recovery or cross-command coherence. Actual permission
+faults, cancel/reset/drain, healthy reuse and fifteen coordinate-boundary recipes
+keep their independent P08 acceptance gates. P08 remains open at 7/40 accepted.
 
 After committing and freshly binding this source to the complete compute
 executor, use the bounded qualifier command in the atomic execution section
