@@ -64,8 +64,8 @@ scalac -J-Xmx128m -J-XX:MaxMetaspaceSize=128m \
   src/main/scala/opengpu/graphics/VertexInputSlice.scala \
   src/main/scala/opengpu/graphics/VertexInputFetcher.scala \
   src/main/scala/opengpu/graphics/VertexShaderStage.scala \
-  src/main/scala/opengpu/system/TessellationVertexPatchSource.scala \
-  src/main/scala/opengpu/system/TessellationVertexSourceReader.scala \
+  src/main/scala/opengpu/system/tessellation/TessellationVertexPatchSource.scala \
+  src/main/scala/opengpu/system/tessellation/TessellationVertexSourceReader.scala \
   src/test/scala/opengpu/graphics/TessellationVertexSourceReaderSpec.scala
 java -Xmx128m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m \
   -XX:ActiveProcessorCount=1 -XX:+UseSerialGC \

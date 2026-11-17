@@ -98,8 +98,8 @@ rg -n 'VertexInputView|inputDma|seal|patch.layout' \
 rg -n 'ShadedVertexRecord|VertexShaderCompletion|kernelDone|payload' \
   src/main/scala/opengpu/graphics/VertexShaderStage.scala
 rg -n '61|patchWords|patchCount|inputComponents' \
-  src/main/scala/opengpu/system/IsolinePatchInputReader.scala \
-  src/main/scala/opengpu/system/IsolineGeometryCuExecutor.scala
+  src/main/scala/opengpu/system/geometry/IsolinePatchInputReader.scala \
+  src/main/scala/opengpu/system/geometry/IsolineGeometryCuExecutor.scala
 ```
 
 Rendering tests follow `GraphicsTestResolution` and remain at or below 640×480.
