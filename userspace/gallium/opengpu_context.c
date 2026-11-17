@@ -28,6 +28,7 @@
 #include "opengpu_vs_emit.h"
 #include "opengpu_cs_emit.h"
 #include "opengpu_buffer_views.h"
+#include "opengpu_image_views.h"
 #include "opengpu_shader_abi.h"
 #include "opengpu_shader_resources.h"
 #include "opengpu_framebuffer_blit.h"
@@ -134,6 +135,7 @@ struct opengpu_shader {
 
 struct opengpu_compute_state {
     struct opengpu_cs_program program;
+    unsigned image_targets[4];
     struct pipe_context *owner;
     struct opengpu_compute_state *next;
 };
@@ -4014,15 +4016,26 @@ static void *buffer_map(struct pipe_context *pipe, struct pipe_resource *resourc
     (void)pipe;
     if (out)
         *out = NULL;
-    if (!resource || !box || !out || level || box->x < 0 ||
-        box->y < 0 || box->z || box->width <= 0 || box->height <= 0 ||
-        box->depth != 1) {
+    if (!resource || !box || !out || box->x < 0 ||
+        box->y < 0 || box->z < 0 || box->width <= 0 || box->height <= 0 || box->depth <= 0) {
         errno = EINVAL;
         return NULL;
     }
     res = opengpu_resource(resource);
     bytes = pipe_opengpu_resource_size(res->gpu);
-    if (resource->target == PIPE_BUFFER) {
+    if (res->image.levels) {
+        if (level >= res->image.levels) { errno = EINVAL; return NULL; }
+        const struct opengpu_image_level *m = &res->image.level[level];
+        if ((uint64_t)box->x + box->width > m->width || (uint64_t)box->y + box->height > m->height ||
+            (uint64_t)box->z + box->depth > m->planes) { errno = EINVAL; return NULL; }
+        stride = m->row_pitch;
+        offset = m->offset + (uint64_t)box->z * m->plane_pitch + (uint64_t)box->y * stride +
+                 (uint64_t)box->x * res->image.texel_bytes;
+        end = offset + (uint64_t)(box->depth - 1) * m->plane_pitch +
+              (uint64_t)(box->height - 1) * stride + (uint64_t)box->width * res->image.texel_bytes;
+    } else if (level || box->z || box->depth != 1) {
+        errno = EINVAL; return NULL;
+    } else if (resource->target == PIPE_BUFFER) {
         if (box->y || box->height != 1 ||
             (uint64_t)box->x > resource->width0 ||
             (uint64_t)box->width > resource->width0 - (uint64_t)box->x) {
@@ -4078,7 +4091,7 @@ static void *buffer_map(struct pipe_context *pipe, struct pipe_resource *resourc
     xfer->usage = usage;
     xfer->box = *box;
     xfer->stride = stride;
-    xfer->layer_stride = 0;
+    xfer->layer_stride = res->image.levels ? res->image.level[level].plane_pitch : 0;
     *out = xfer;
     return map + (size_t)offset;
 }
@@ -4822,6 +4835,7 @@ static struct pipe_sampler_view *create_sampler_view(
         }
     } else if (!texture || !templ || texture->screen != pipe->screen ||
         texture->target != PIPE_TEXTURE_2D || templ->target != PIPE_TEXTURE_2D ||
+        opengpu_resource(texture)->image.levels ||
         opengpu_format(templ->format) < 0 ||
         templ->u.tex.first_level != 0 || templ->u.tex.last_level != 0 ||
         templ->u.tex.first_layer != 0 || templ->u.tex.last_layer != 0 ||
@@ -4960,7 +4974,7 @@ static void set_shader_images(struct pipe_context *pipe, enum pipe_shader_type s
         struct drm_opengpu_compute_image_view native;
         if (images[i].resource->screen != pipe->screen ||
             !pipe_opengpu_screen_compute_buffer_images(opengpu_screen_gpu(pipe->screen)) ||
-            !opengpu_gallium_buffer_image_init(&native,13+start+i,&images[i])) goto invalid;
+            !opengpu_gallium_image_init(&native,13+start+i,&images[i])) goto invalid;
     }
     for (unsigned i=0;i<count;i++) util_copy_image_view(&next[i],images?&images[i]:NULL);
     for (unsigned i=0;i<count;i++) {
@@ -4971,7 +4985,7 @@ static void set_shader_images(struct pipe_context *pipe, enum pipe_shader_type s
     ctx->cs_image_error=0;
     return;
 invalid:
-    ctx->cs_image_error=1;errno=EINVAL;gpu_failed("invalid compute buffer image view");
+    ctx->cs_image_error=1;errno=EINVAL;gpu_failed("invalid compute image view");
 }
 
 static void flush(struct pipe_context *pipe, struct pipe_fence_handle **fence,
@@ -5051,8 +5065,7 @@ static void *create_compute_state(struct pipe_context *pipe,
     }
     cs = CALLOC_STRUCT(opengpu_compute_state);
     if (!cs) { errno = ENOMEM; return NULL; }
-    if (state->req_local_mem ? opengpu_cs_emit_shared(state->prog, &shared, &cs->program) :
-                              opengpu_cs_emit(state->prog, &cs->program)) {
+    if (opengpu_cs_emit_resources(state->prog,state->req_local_mem?&shared:NULL,&cs->program,cs->image_targets)) {
         FREE(cs); errno = EINVAL; return NULL;
     }
     if ((cs->program.textures && !pipe_opengpu_screen_compute_buffer_textures(opengpu_screen_gpu(pipe->screen))) ||
@@ -5259,13 +5272,16 @@ static void launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *
         if (needed && !v->resource) goto invalid;
         if (!v->resource) continue;
         if (!pipe_opengpu_screen_compute_image_backings(screen) ||
-            !opengpu_gallium_buffer_image_init(&images[i].view, 39 + i, v) ||
+            !opengpu_gallium_image_init(&images[i].view, 39 + i, v) ||
+            (needed && !opengpu_gallium_image_for_shader(&images[i].view,39+i,v,ctx->cs->image_targets[i])) ||
             (needed && images[i].view.image_format != ctx->cs->program.image_format[i]) ||
             (read && !(v->access & PIPE_IMAGE_ACCESS_READ)) ||
             (write && !(v->access & PIPE_IMAGE_ACCESS_WRITE)) ||
-            v->resource->width0 > 128u * 1024u * 1024u) goto invalid;
+            (v->resource->target == PIPE_BUFFER ? v->resource->width0 : opengpu_resource(v->resource)->image.bytes) >
+                128u * 1024u * 1024u) goto invalid;
         images[i].resource = opengpu_resource(v->resource)->gpu;
-        images[i].binding_bytes = v->resource->width0;
+        images[i].binding_bytes = v->resource->target == PIPE_BUFFER ? v->resource->width0 :
+            opengpu_resource(v->resource)->image.bytes;
         buffer_views = 1;
     }
     if (!grid[0] || !grid[1] || !grid[2]) return;

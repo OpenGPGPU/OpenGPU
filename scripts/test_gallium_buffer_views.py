@@ -38,6 +38,7 @@ def main():
         common += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
     primitives = ["-D" + name + "=cs_fixture_" + name for name in ("ioctl", "mmap", "munmap", "dup", "close")]
     units = [(ROOT / "userspace/tests/cs_buffer_views.c", [])]
+    units += [(ROOT / "userspace/tests/cs_graphics_unused_stubs.c", [])]
     units += [(ROOT / "userspace/gallium" / name, ["-Wno-sign-compare"] if name == "opengpu_context.c" else [])
               for name in ("opengpu_context.c", "opengpu_screen.c", "opengpu_cs_emit.c", "opengpu_fs_emit.c", "opengpu_vs_emit.c")]
     units += [(ROOT / "userspace" / name, primitives) for name in ("pipe_opengpu.c", "opengpu.c")]

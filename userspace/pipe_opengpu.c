@@ -1278,7 +1278,6 @@ int pipe_opengpu_launch_grid_buffers(struct pipe_opengpu_context *ctx,
     }
     for (unsigned i = 0; i < 4; i++) {
         const struct pipe_opengpu_buffer_image *v = &images[i];
-        struct drm_opengpu_compute_image_view expected;
         if (pipe_opengpu_storage_view_validate(ctx->screen, &storage[i])) return -1;
         if (!v->resource) {
             static const struct drm_opengpu_compute_image_view empty;
@@ -1291,10 +1290,7 @@ int pipe_opengpu_launch_grid_buffers(struct pipe_opengpu_context *ctx,
         }
         if (!live_buffer(ctx->screen, v->resource, v->binding_bytes) ||
             v->binding_bytes > OPENGPU_STORAGE_VA_MAX_BYTES ||
-            !opengpu_buffer_image_view_init(&expected, 39 + i, v->view.flags,
-                v->view.storage_format, v->view.image_format, v->binding_bytes,
-                v->view.offset, v->view.buffer_bytes) ||
-            memcmp(&expected, &v->view, sizeof(expected))) goto invalid;
+            !opengpu_compute_image_view_valid(&v->view,39+i,v->binding_bytes)) goto invalid;
         command.images[i] = v->view; image_mask |= 1u << i;
     }
     for (unsigned i = 0; i < 32; i++) {
@@ -1483,7 +1479,6 @@ static int launch_grid_counter_resources(struct pipe_opengpu_context *ctx,
     } else if (independent) goto invalid;
     for (unsigned i = 0; i < 4; i++) {
         const struct pipe_opengpu_buffer_image *v = &images[i];
-        struct drm_opengpu_compute_image_view expected;
         if (pipe_opengpu_storage_view_validate(ctx->screen, &storage[i])) return -1;
         if (independent && storage[i].resource) resource_flags |= OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE;
         if (!v->resource) {
@@ -1497,10 +1492,7 @@ static int launch_grid_counter_resources(struct pipe_opengpu_context *ctx,
         }
         if (!live_buffer(ctx->screen, v->resource, v->binding_bytes) ||
             v->binding_bytes > OPENGPU_STORAGE_VA_MAX_BYTES ||
-            !opengpu_buffer_image_view_init(&expected, 39 + i, v->view.flags,
-                v->view.storage_format, v->view.image_format, v->binding_bytes,
-                v->view.offset, v->view.buffer_bytes) ||
-            memcmp(&expected, &v->view, sizeof(expected))) goto invalid;
+            !opengpu_compute_image_view_valid(&v->view,39+i,v->binding_bytes)) goto invalid;
         command.images[i] = v->view; image_mask |= 1u << i;
     }
     for (unsigned i = 0; i < 32; i++) {

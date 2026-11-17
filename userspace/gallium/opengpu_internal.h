@@ -5,6 +5,7 @@
 #include "pipe_opengpu.h"
 #include "pipe/p_screen.h"
 #include "pipe/p_state.h"
+#include "opengpu_image_layout.h"
 
 static inline int opengpu_format(enum pipe_format format)
 {
@@ -20,6 +21,7 @@ static inline int opengpu_format(enum pipe_format format)
 struct opengpu_resource {
     struct pipe_resource base;
     struct pipe_opengpu_resource *gpu;
+    struct opengpu_image_layout image;
 };
 
 struct opengpu_resource *opengpu_resource(struct pipe_resource *resource);
