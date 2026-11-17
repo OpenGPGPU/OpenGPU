@@ -162,8 +162,9 @@ the source-selected canonical C++ parser, strict qualified READY and rejection
 of initial uploads as GPU results. The image checks include 11729 rejections,
 including a wrong qualified owner for every case. All 8102 external and 169
 producer/checker inputs remain unchanged. Ended captures, builds and containers
-are removed. These checks execute no shader on a DUT; full source-bound atomic
-execution/boundary/fault/cancel/reset/drain acceptance remains required.
+are removed. These CPU checks execute no shader on a DUT. The separate actual
+atomic execution result below does not waive boundary/fault/cancel/reset/drain
+acceptance.
 
 The complete float factory passes fresh full-capacity RTL emission with inline
 assertions, hierarchical Verilator generation and native compilation with eight
@@ -172,8 +173,8 @@ compile and link. Actual read-only MMIO probes pass for native sample, ordinary
 sample graphics and compute: each reads all 112 discovery words, with five,
 five and ten auxiliary registers respectively, one reset and drained idle state.
 Source/model/tool/object identities pass again after rebasing onto the merged
-backend change. These are discovery probes; original typed/atomic shader
-execution and the remaining P08 lifecycle gates stay open.
+backend change. These are discovery probes; the actual atomic result below and
+the remaining P08 lifecycle gates have separate execution requirements.
 
 For the CPU capture reproduction below, substitute `IMAGE_FLOAT_PROFILE`,
 `IMAGE_FLOAT_STAGE` and `IMAGE_FLOAT_WORDS` from `owner_resource_contract` in
@@ -204,10 +205,11 @@ synthesize returned GPU memory. The CPU producer also verifies all ten native
 atomic operations and their image-unit metadata before the real launch call.
 
 The float-stage CPU matrix above covers these ten integer recipes alongside
-the original load/store recipes and five R32F recipes. Actual atomic shader
-execution, same-texel contention, other view combinations and lifecycle
-acceptance remain pending. Qualifications must be freshly bound to the changed
-compiler, producer and checker sources before execution; P08 stays open.
+the original load/store recipes and five R32F recipes. The separate complete-host
+run below establishes these atomic recipes' shader execution. Same-texel
+contention, other view combinations and lifecycle acceptance retain their own
+requirements. Qualifications must be freshly bound to changed compiler,
+producer and checker sources before execution; P08 stays open.
 
 ## Original R32F exchange sequences and bounded register reuse
 
@@ -231,6 +233,56 @@ alongside 160 integer and twenty raw float target/alias programs, four immediate
 boundaries, 65 load/store programs and 52 mappings. All 85 original single-atomic
 Mesa programs also pass. Twenty-seven focused image/controller/oracle/qualification
 checks pass with the coordinate-boundary additions below.
+
+## Actual complete float-host atomic execution (P08 partial)
+
+All fifteen original atomic recipes pass actual execution through Mesa,
+production ioctls and the complete 112-word float-stage Verilator DUT: ten
+R32I/R32UI cases and five R32F cases across buffer, 2D, array, cube and 3D.
+The execution source tree exactly matches merged PR #870
+(`d496a675522ac62098386f0e5b355104be195154`), including the bounded TEMP reuse;
+the complete model uses the full-capacity assertion-enabled float factory
+delivered in PR #869. No source or model change occurs during this matrix.
+
+Every integer case checks eighty returned old words and both images' final
+texels. Every R32F case checks forty returned raw old words and both images'
+final texels. The independent oracle also checks all physical bytes outside
+the exact writable views. Original Linux IRQ/drain/POP, held/retired receipts,
+actual PTE revocation, TLB/context cleanup ACK and final source checks pass in
+every case. Each case uses its own fresh DUT reset and original uploaded RAM;
+this run establishes neither cross-command coherence nor same-DUT reuse.
+
+The fifteen coordinate-boundary recipes and actual image permission/source
+fault, cancellation/reset/drain and healthy reuse remain pending. This result
+does not close P08, establish complete resource combinations, or qualify
+product clock/FPS. The formal accepted count remains 7/40.
+
+After preparing and freshly source-qualifying the complete float-stage compute
+executor as described in the executor guide, reproduce this matrix with the
+original pinned producer image. Substitute the selected owner build directory;
+changed sources require fresh executor qualification:
+
+```sh
+owner_dir="$PWD/.artifacts/p08-float-owner"
+for target in buffer 2d array cube 3d; do
+  for format in r32ui r32i r32f; do
+    env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 \
+      /usr/bin/python3 -B scripts/run_owner_bounded.py \
+      --memory-mib 4096 --timeout-seconds 900 -- \
+      /usr/bin/python3 -B scripts/qualify_compute_owner.py \
+      --executor "$owner_dir/executors/compute/executor" \
+      --executor-qualification "$owner_dir/executors/compute/qualification.json" \
+      --executor-checker "$PWD/scripts/prepare_owner_executor.py" \
+      --executor-checker-python /usr/bin/python3 \
+      --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72 \
+      --case "image-atomic-$target-$format" --timeout 600 || exit 1
+  done
+done
+```
+
+Each qualifier removes its private producer build, captures, container and
+returned memory when verification ends. Keep the shared complete model only
+while another explicitly scoped qualification needs it.
 
 ## Original coordinate-boundary recipes
 
@@ -380,10 +432,10 @@ retain the reachable original image and private descriptor after public-handle
 closure. The existing storage/uniform/counter transport and cleanup checks pass.
 
 These are CPU OS/MMIO transport fixtures, including CPU completion/cleanup peers.
-They execute no shader and create no DUT qualification. P08 remains incomplete:
-the original typed load/store sources and exact returned-byte oracle still need
-fresh source-bound full-host DUT execution. Image atomics, actual boundaries,
-permission faults, cancellation/reset/drain and healthy reuse remain open. Complete resource
+They execute no shader and create no DUT qualification. The separate seventy
+load/store and fifteen atomic complete-host runs above establish only their
+stated source snapshots and scopes. P08 remains incomplete: actual boundaries,
+permission/source faults, cancellation/reset/drain and healthy reuse remain open. Complete resource
 combinations, cross-command coherence and product clock/FPS keep their own gates.
 Existing executor qualifications cannot be relabeled for the changed source.
 
