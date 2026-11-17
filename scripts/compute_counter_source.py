@@ -23,16 +23,16 @@ def recipe(memory, value):
     fields=FIELDS|({'indexUniform','uniformRoot','uniformPhysical','uniformBytes'} if parameters['dynamic'] else set())
     require(set(value)==fields, 'invalid counter source metadata fields')
     required_flags(value, dict(schema=SCHEMA, groups=parameters['groups'], local=4, viewBytes=8192,
-                              guard=0xdeadbeef, seed=parameters['seed'], index=parameters['index'], count=8))
+                              guard=0xdeadbeef, seed=parameters['seed'], index=parameters['index'], count=parameters['count']))
     require(0 < uint(value['counterHandle']) < 512 and 0 < uint(value['context']), 'invalid original counter owner')
     bindings=value['storageBindings']
     require(type(bindings) is list and all(type(i) is int for i in bindings) and sorted(bindings)==[0,1,2,3],
             'actual Mesa storage bindings must be a complete permutation')
-    source = allocation_window(memory, value['counter'], 32, 0)
-    required_flags(value['counter'], dict(offset=4080, allocationBytes=8192))
+    source = allocation_window(memory, value['counter'], parameters['count']*4, 0)
+    required_flags(value['counter'], dict(offset=parameters['offset'], allocationBytes=8192))
     require(type(value['outputs']) is list and len(value['outputs']) == 4, 'four original SSBOs required')
     outputs = []
-    allocations = [(source - 4080, source - 4080 + 8192)]
+    allocations = [(source - parameters['offset'], source - parameters['offset'] + 8192)]
     for binding, view in enumerate(value['outputs']):
         first = allocation_window(memory, view, 8192, binding)
         required_flags(view, dict(offset=0, allocationBytes=8192))
@@ -49,11 +49,11 @@ def recipe(memory, value):
     allocations.sort()
     require(all(a[1] <= b[0] for a, b in zip(allocations, allocations[1:])), 'counter original GEM aliases an output')
     original = bytearray(b'\x5a' * 8192)
-    for i in range(8):
-        struct.pack_into('<I', original, 4080 + i * 4, (parameters['seed'] + (i+int(parameters['dynamic'])) * 0x10203) & 0xffffffff)
+    for i in range(parameters['count']):
+        struct.pack_into('<I', original, parameters['offset'] + i * 4, (parameters['seed'] + (i+int(parameters['dynamic'])) * 0x10203) & 0xffffffff)
     index=7 if parameters['dynamic'] else parameters['index']
-    struct.pack_into('<I', original, 4080 + index*4, parameters['seed'])
-    require(memory.read(source - 4080, 8192) == original, 'counter original source/guard initialization differs')
+    struct.pack_into('<I', original, parameters['offset'] + index*4, parameters['seed'])
+    require(memory.read(source - parameters['offset'], 8192) == original, 'counter original source/guard initialization differs')
     for key in ('descriptorPhysical', 'descriptorRoot', 'kernargPhysical', 'kernargBytes'):
         uint(value[key])
     require(value['descriptorPhysical'] % 64 == value['descriptorRoot'] % 64 == 0 and
@@ -105,6 +105,7 @@ def translate(memory, satp, va, permissions):
 def ready(memory, description, data):
     """Bind READY metadata to full112 discovery, actual MMIO, GSB1 and PTEs."""
     source, outputs = recipe(memory, description)
+    parameters=counter_parameters(description['sourceCase']);counter_bytes=parameters['count']*4
     require(data[:8] == b'OGCMP003', 'counter requires full112 capture with original inactive contexts')
     cursor = 8
     def take(fmt):
@@ -130,7 +131,7 @@ def ready(memory, description, data):
     writable = [take('<QQ') for _ in range(count)]
     arg, argbytes = description['kernargPhysical'], description['kernargBytes']
     require(any(a <= arg < arg + argbytes <= b for a, b, _ in memory.ranges), 'kernarg outside original allocation')
-    expected = sorted([(arg, arg + argbytes), (source, source + 32)] + [(p, p + 8192) for p in outputs])
+    expected = sorted([(arg, arg + argbytes), (source, source + counter_bytes)] + [(p, p + 8192) for p in outputs])
     require(writable == expected and all(a[1] <= b[0] for a, b in zip(expected, expected[1:])),
             'counter capture writable windows widened, aliased or missing')
     count, = take('<I');require(count==1, 'original Mesa compute requires its separate inactive graphics context')
@@ -168,11 +169,11 @@ def ready(memory, description, data):
             memory.read(inactive_root,4096)==bytes(4096), 'inactive graphics context is not an original separate empty root')
     physical = translate(memory, satp, root, 15)
     require(physical == description['descriptorPhysical'], 'counter descriptor original binding differs')
-    va = 0xb0000000 + 7 * 0x400000 + 4080
-    require(translate(memory, satp, va, 15) == source and translate(memory, satp, va + 31, 15) == source + 31,
-            'counter original cross-page source mapping differs')
-    expected_descriptor = (0x47534201, 64, 1, context, 0, 0, 0, 1, 1, 1, va, va + 32, 0,
-                           va & ~63, (va + 95) & ~63, 0)
+    va = 0xb0000000 + 7 * 0x400000 + parameters['offset']
+    require(translate(memory, satp, va, 15) == source and translate(memory, satp, va + counter_bytes-1, 15) == source + counter_bytes-1,
+            'counter original source mapping differs')
+    expected_descriptor = (0x47534201, 64, 1, context, 0, 0, 0, 1, 1, 1, va, va + counter_bytes, 0,
+                           va & ~63, (va + counter_bytes + 63) & ~63, 0)
     require(memory.read(physical, 64) == struct.pack('<16I', *expected_descriptor), 'counter GSB1 permissions/bounds differ')
     require(translate(memory, satp, r.get(0xd0, 0), 15) == arg, 'counter kernarg mapping differs')
     # Four actual GSM1 output descriptors must map the declared original GEMs.

@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def fixture(source_case="counter-increment"):
     dynamic='dynamic-' in source_case;all_counters='dynamic-all-' in source_case
     index=0 if all_counters or source_case=='counter-scalar' else 4 if dynamic else 7
+    offset,count=(8188,1) if source_case=='counter-scalar' else (4080,8)
     groups=(2 if all_counters else 1) if dynamic else 4
     seed=(0 if dynamic else 1) if source_case.endswith('decrement') else 0xfffffffe
     allocations = {0x1000: bytearray(4096), 0x20000: bytearray(b'\x5a'*8192)}
@@ -36,16 +37,18 @@ def fixture(source_case="counter-increment"):
         word(tables[upper]+((va>>12)&1023)*4, (pa>>12)*1024+flags+704)
     def view(a, binding, offset=0, count=8192):
         return dict(globalBinding=binding, allocationPhysical=a, allocationBytes=8192, offset=offset, bytes=count)
-    descriptor_root, counter_va, storage_root = 0xb1400000, 0xb1c00ff0, 0xb0c00000
-    for i in range(8): word(0x20000+4080+4*i, (seed+(i+int(dynamic))*0x10203)&0xffffffff)
-    word(0x20000+4080+(7 if dynamic else index)*4, seed)
+    descriptor_root, counter_va, storage_root = 0xb1400000, 0xb1c00000+offset, 0xb0c00000
+    for i in range(count): word(0x20000+offset+4*i, (seed+(i+int(dynamic))*0x10203)&0xffffffff)
+    word(0x20000+offset+(7 if dynamic else index)*4, seed)
     d = dict(schema=SCHEMA, sourceCase=source_case, groups=groups, local=4, viewBytes=8192,
-        guard=0xdeadbeef, seed=seed, index=index, count=8, counterHandle=4, context=2,
+        guard=0xdeadbeef, seed=seed, index=index, count=count, counterHandle=4, context=2,
         descriptorPhysical=0x40000, descriptorRoot=descriptor_root, kernargPhysical=0x42000, kernargBytes=64,
-        counter=view(0x20000, 0, 4080, 32), storageBindings=[0,1,2,3], outputs=[view(a, i) for i,a in enumerate((0x30000,0x32000,0x34000,0x36000))])
-    record = [0x47534201,64,1,2,0,0,0,1,1,1,counter_va,counter_va+32,0,counter_va&~63,(counter_va+95)&~63,0]
+        counter=view(0x20000, 0, offset, count*4), storageBindings=[0,1,2,3], outputs=[view(a, i) for i,a in enumerate((0x30000,0x32000,0x34000,0x36000))])
+    record = [0x47534201,64,1,2,0,0,0,1,1,1,counter_va,counter_va+count*4,0,counter_va&~63,(counter_va+count*4+63)&~63,0]
     for i,w in enumerate(record): word(0x40000+i*4,w)
-    map_page(descriptor_root,0x40000,15);map_page(counter_va,0x20000,15);map_page(counter_va+31,0x21000,15)
+    map_page(descriptor_root,0x40000,15)
+    map_page(counter_va,0x20000+(offset//4096)*4096,15)
+    map_page(counter_va+count*4-1,0x20000+((offset+count*4-1)//4096)*4096,15)
     map_page(storage_root,0x41000,15);map_page(0x80800000,0x42000,15)
     for i,pa in enumerate((0x30000,0x32000,0x34000,0x36000)):
         va=0xcfffc000+i*(128*1024*1024+4096)
@@ -56,7 +59,7 @@ def fixture(source_case="counter-increment"):
         (0x60,(1<<6)|(1<<22)|(1<<23)|(1<<25)|(1<<29)|(128<<8)),(0x68,0x160),
         (0x320,1048576),(0x158,0x02020810),(0x494,0x47544d01),(0x43c,0x47534d01),
         (0x3fc,0x47494d01),(0x4bc,0x47414d01),(0x460,0x47554d01)]
-    writable=sorted([(0x42000,0x42040),(0x20ff0,0x21010)]+[(a,a+8192) for a in (0x30000,0x32000,0x34000,0x36000)])
+    writable=sorted([(0x42000,0x42040),(0x20000+offset,0x20000+offset+count*4)]+[(a,a+8192) for a in (0x30000,0x32000,0x34000,0x36000)])
     registers={0xc8:0,0xd0:0x80800000,0x14c:0x80800001,0x150:0x80800001,0x11c:1,0x440:0}
     registers.update({0xd4:groups,0xd8:1,0xdc:1,0xe0:4,0xe4:1,0xe8:1})
     for base,root,size in ((0x4a0,descriptor_root,64),(0x420,storage_root,256)):
@@ -99,7 +102,7 @@ def emit(path, allocations):
 
 
 class Counter(unittest.TestCase):
-    def test_original_scalar_uses_word_zero_and_guards_the_other_seven_words(self):
+    def test_original_scalar_uses_the_allocation_last_word_and_guards_every_other_byte(self):
         parent=ROOT/'.artifacts';parent.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='counter-scalar-',dir=parent) as t:
             before,after=Path(t)/'before',Path(t)/'after'
@@ -108,18 +111,18 @@ class Counter(unittest.TestCase):
             good=copy.deepcopy(alloc)
             values=[0xffffffff,0xfffffffe]+list(range(13,-1,-1))
             for pa in (0x30000,0x32000,0x34000,0x36000):struct.pack_into('<16I',good[pa],0,*values)
-            struct.pack_into('<I',good[0x20000],4080,14)
+            struct.pack_into('<I',good[0x20000],8188,14)
             def check(data,description=d):
                 emit(after,data)
                 with SparseMemory(before) as b,SparseMemory(after) as a:verify(b,a,description)
             check(good)
             with self.assertRaises(ValueError):check(alloc)
             wrong=copy.deepcopy(good)
-            wrong[0x20000][4080:4084]=alloc[0x20000][4080:4084]
+            wrong[0x20000][8188:8192]=alloc[0x20000][8188:8192]
             struct.pack_into('<I',wrong[0x20000],4108,14)
             with self.assertRaises(ValueError):check(wrong)
-            for pa,offset in ((0x20000,4079),(0x20000,4084),(0x20000,4108),
-                              (0x20000,4112),(0x30000,64),(0x36000,8191)):
+            for pa,offset in ((0x20000,0),(0x20000,4079),(0x20000,4080),(0x20000,8187),
+                              (0x20000,8191),(0x30000,64),(0x36000,8191)):
                 wrong=copy.deepcopy(good);wrong[pa][offset]^=1
                 with self.subTest(pa=pa,offset=offset),self.assertRaises(ValueError):check(wrong)
             wrong=copy.deepcopy(d);wrong['index']=7
