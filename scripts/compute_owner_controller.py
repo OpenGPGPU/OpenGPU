@@ -138,6 +138,10 @@ def main():
         from owner_resource_contract import SAMPLE_FACTORY_CONTRACTS
         require(type(qualified_profile) is str and qualified_profile in SAMPLE_FACTORY_CONTRACTS,
                 'source requires a known complete final112 executor')
+        from compute_image_cases import IMAGE_FLOAT_ATOMIC_CASES
+        if args.case in IMAGE_FLOAT_ATOMIC_CASES:
+            from owner_resource_contract import IMAGE_FLOAT_PROFILE
+            require(qualified_profile==IMAGE_FLOAT_PROFILE,'R32F exchange requires its qualified float owner')
     checker = args.executor_checker.resolve(strict=True)
     checker_python = args.executor_checker_python.resolve(strict=True)
     def qualified(env, log):

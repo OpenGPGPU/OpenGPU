@@ -27,7 +27,7 @@ static void image_parse_case(const char *name)
 {
  for(unsigned target=0;target<5;target++)for(unsigned format=0;format<13;format++)for(unsigned mode=0;mode<4;mode++){
   if((mode==1 || mode==2) && (format!=6 || (mode==1 && target!=2 && target!=4) || (mode==2 && target<2)))continue;
-  if(mode==3 && format!=6 && format!=10)continue;
+  if(mode==3 && format!=2 && format!=6 && format!=10)continue;
   char expected[128];assert(snprintf(expected,sizeof(expected),mode==1?"image-single-%s-%s":mode==2?"image-plane-%s-%s":mode==3?"image-atomic-%s-%s":"image-%s-%s",image_targets[target],image_formats[format].name)>0);
   if(!strcmp(name,expected)){assert(!image_case);image_case=1;image_target=target;image_mode=mode;image_format=format;image_name=name;}
  }
@@ -88,11 +88,14 @@ static void image_setup(struct pipe_screen *s,struct pipe_context *p,void *front
   struct opengpu_cs_program program;struct opengpu_cs_image_info info;
   assert(!opengpu_cs_emit_image_info(cs_frontend_tokens(frontend),NULL,&program,&info));
   assert(info.atomics==(1u<<image_native_units[0]) && program.image_reads==info.atomics && program.image_writes==3);
+  const unsigned floating=image_format==2;
+  assert(info.float_exchange==(floating?info.atomics:0));
+  if(floating)assert(pipe_opengpu_screen_compute_image_float_exchange(opengpu_screen_gpu(s)));
   unsigned counts[8]={0};
   for(unsigned i=0;i<program.words;i++)if((program.code[i]&127)==0x2b && (program.code[i]>>26)==23)
    counts[(program.code[i]>>12)&7]++;
-  for(unsigned op=0;op<8;op++)assert(counts[op]==(op==0 || op==7?2u:1u));
-  printf("original %s: ten image atomics, native words=%u, metadata/opcodes PASS (CPU compiler only)\n",image_name,program.words);
+  for(unsigned op=0;op<8;op++)assert(counts[op]==(floating?(op==0?5u:0u):(op==0 || op==7?2u:1u)));
+  printf("original %s: %u image atomics, native words=%u, metadata/opcodes PASS (CPU compiler only)\n",image_name,floating?5u:10u,program.words);
  }
  p->set_shader_images(p,PIPE_SHADER_COMPUTE,0,2,0,views);
 }

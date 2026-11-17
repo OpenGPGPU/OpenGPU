@@ -32,6 +32,7 @@ struct build {
     uint32_t samplers, sampler_views;
     const unsigned *texture_observed;
     unsigned texture_position;
+    unsigned recycle_temporaries;
     unsigned images, image_writable, image_target[4], image_atomics, image_float_exchange, compact_image_atomics;
     unsigned cf, cf_depth, cf_count, planned[CS_TEMPS][4];
     uint32_t imm[CS_IMMS][4];
@@ -533,11 +534,11 @@ static int source_register(struct build *b, const struct tgsi_full_src_register 
  * persistent owner even when no ordinary TEMP names that register. */
 static unsigned temporary_register(struct build *b, unsigned hint)
 {
-    if (!b->shared) return b->next_reg <= 21 ? b->next_reg++ : 0;
+    if (!b->shared && !b->recycle_temporaries) return b->next_reg <= 21 ? b->next_reg++ : 0;
     uint32_t used = b->counter_address ? UINT32_C(1) << b->counter_address : 0;
     for (unsigned t = 0; t < CS_TEMPS; ++t)
         for (unsigned c = 0; c < 4; ++c)
-            if (!b->expr[t][c].kind && b->reg[t][c]) used |= UINT32_C(1) << b->reg[t][c];
+            if ((!b->shared || !b->expr[t][c].kind) && b->reg[t][c]) used |= UINT32_C(1) << b->reg[t][c];
     if (hint >= 2 && hint <= 21 && !(used & (UINT32_C(1) << hint))) return hint;
     for (unsigned r = 2; r <= 21; ++r) if (!(used & (UINT32_C(1) << r))) return r;
     return 0;
@@ -1311,7 +1312,8 @@ static int emit_program(const void *tokens, const struct opengpu_cs_shared *shar
     struct build b;
     struct tgsi_parse_context p;
     unsigned observed[CS_TOKENS + 2] = {0}, pending[CS_TEMPS][4] = {{0}};
-    int ended = 0;unsigned compact_images=0;
+    unsigned last_use[CS_TEMPS][4] = {{0}};
+    int ended = 0;unsigned compact_images=0,float_images=0;
     if (!tokens || !out || packets(tokens)) return -1;
     if (tgsi_parse_init(&p, tokens) != TGSI_PARSE_OK) return -1;
     while (!tgsi_parse_end_of_tokens(&p)) {
@@ -1322,12 +1324,16 @@ static int emit_program(const void *tokens, const struct opengpu_cs_shared *shar
             unsigned position = p.Position - in->NrTokens - 1;
             if(in->NumSrcRegs && storage_atomic_operation(in->Opcode)>=0 &&
                 full->Src[0].Register.File==TGSI_FILE_IMAGE)compact_images=1;
+            if(in->Opcode==TGSI_OPCODE_ATOMXCHG && in->Memory && in->NumSrcRegs &&
+                full->Src[0].Register.File==TGSI_FILE_IMAGE && full->Memory.Format==PIPE_FORMAT_R32_FLOAT)
+                float_images=1;
             for (unsigned s = 0; s < in->NumSrcRegs; s++) {
                 const struct tgsi_src_register *src = &full->Src[s].Register;
                 if (src->File != TGSI_FILE_TEMPORARY || src->Index < 0 ||
                     (unsigned)src->Index >= CS_TEMPS) continue;
                 for (unsigned c = 0; c < 4; c++) {
                     unsigned component = swizzle(src, c), definition = pending[src->Index][component];
+                    last_use[src->Index][component]=position;
                     if (definition) observed[definition] |= 1u << component;
                 }
             }
@@ -1353,6 +1359,7 @@ static int emit_program(const void *tokens, const struct opengpu_cs_shared *shar
     b.texture_observed = observed;
     b.shared = shared;
     b.compact_image_atomics=compact_images;
+    b.recycle_temporaries=float_images;
     b.next_reg = 2;
     if (tgsi_parse_init(&p, tokens) != TGSI_PARSE_OK) return -1;
     word(&b, 0x01007557u); /* VLMAX e32,m1,tu,mu -> scratch x10; preserve x5..7 */
@@ -1385,6 +1392,14 @@ static int emit_program(const void *tokens, const struct opengpu_cs_shared *shar
             b.texture_position = p.Position - p.FullToken.FullInstruction.Instruction.NrTokens - 1;
             ret = instruction(&b, &p.FullToken.FullInstruction);
             if (ret == 1) { ended = 1; ret = 0; }
+            /* A float exchange sequence can write more than twenty distinct
+             * TGSI components while keeping fewer than twenty live. Recycle
+             * only after the complete instruction has consumed its inputs.
+             * Last-use includes every source swizzle conservatively. Programs
+             * without float exchange retain their register assignment. */
+            if (b.recycle_temporaries) for (unsigned t=0;t<CS_TEMPS;t++)
+                for (unsigned c=0;c<4;c++) if (last_use[t][c]<=b.texture_position)
+                    b.reg[t][c]=0;
             break;
         default: ret = -1;
         }

@@ -36,7 +36,7 @@ class Formats(unittest.TestCase):
 
     def test_unknown_source_is_rejected(self):
         for name in ('image-2d-rgba8ui-extra','image-plane-buffer-r32ui','image-single-cube-r32ui','image-rectangle-r32ui',
-                     'image-atomic-array-rgba8ui','image-atomic-2d-r32f'):
+                     'image-atomic-array-rgba8ui','image-atomic-2d-rgba32f'):
             with self.subTest(name=name),self.assertRaises(ValueError):parameters(name)
 
     def test_atomic_old_values_wrap_signed_order_and_cas_paths(self):
@@ -47,6 +47,14 @@ class Formats(unittest.TestCase):
         self.assertEqual(signed,(common+[0xaaaa5553,0xaaaa5553,0x12345670,0xdeadb000],0xdeadb000))
         self.assertEqual(atomic_values(parameters('image-atomic-buffer-r32ui'),7,1),
             ([7,0x80000011,1,0x5555aaab,0x5555aaaf,0x5555aaa3,0x5555aaa3,0x80000020,0x12345671,0xdeadb001],0xdeadb001))
+
+    def test_float_exchange_old_encodings_signed_zero_infinity_and_final_finite_word(self):
+        for target in ('buffer','2d','array','cube','3d'):
+            p=parameters('image-atomic-'+target+'-r32f')
+            self.assertEqual(atomic_values(p,0x3f123456,0),
+                ([0x3f123456,0,0x3f400000,0xbf800000,0x7f800000],0x40000000))
+            self.assertEqual(atomic_values(p,0xbf654321,1),
+                ([0xbf654321,0x80000000,0x3f400001,0xbf800001,0xff800000],0x40100000))
 
 
 class ChangedMemory:
