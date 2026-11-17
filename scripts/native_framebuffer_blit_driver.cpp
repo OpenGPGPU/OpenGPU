@@ -81,11 +81,15 @@ uint64_t submit(Bus &bus,const Packet &input,uint32_t id=2) {
   }
   bus.write(GPU_REG_UCMD_SUBMIT,1);return start;
 }
-void revoke(Simulation &sim,native_frame::Agent &agent,Bus &bus,Memory &memory,const HostLease &lease) {
+template<class Sim>
+void revoke(Sim &sim,native_frame::Agent &agent,native_owner::ReplayBus<Sim> &bus,
+    Memory &memory,const HostLease &lease) {
   require(sim.drained(agent) && !sim.model->io_m_irq,"blit revokes before retirement/ACK drain");
   bus.write(OPENGPU_STORAGE_COMMAND_REG_CONTROL,0);
   for(const auto &level:lease.levels)for(unsigned n=0;n<1024;n++)HostLease::put(memory,level.second+n*4,0);
   bus.write(GPU_REG_UCMD_TLB_FLUSH,GPU_TLB_FLUSH_FULL);
+  // The shootdown can keep protected VM writes busy after the flush write ACK.
+  while(bus.read(GPU_REG_UCMD_STATUS)&GPU_UCMD_STATUS_VM_BUSY){}
   bus.write(GPU_REG_UCMD_VECTOR_SATP,0);bus.write(GPU_REG_UCMD_INSTRUCTION_SATP,0);
   require(!bus.read(GPU_REG_UCMD_VECTOR_SATP) && !bus.read(GPU_REG_UCMD_INSTRUCTION_SATP) &&
     bus.read(GPU_REG_UCMD_STATUS)==GPU_UCMD_STATUS_READY && sim.drained(agent) && !sim.model->io_m_irq,
@@ -188,6 +192,7 @@ int main(int argc,char **argv) {
     std::vector<std::array<uint64_t,3>> cycles;
     for(size_t epoch=0;epoch<inputs.size();epoch++) {
       cycles.push_back(healthy(sim,agent,bus,memory,inputs[epoch],unsigned(epoch)));
+      std::cerr<<"framebuffer blit case "<<(epoch+1)<<'/'<<inputs.size()<<" retired and verified\n";
     }
     const auto recovery=lifecycle(sim,agent,bus,memory,inputs.front(),unsigned(inputs.size()));
     native_owner::atomic_json(output,[&](auto &out) {
