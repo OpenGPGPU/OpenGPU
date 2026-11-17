@@ -201,7 +201,7 @@ int main(int argc,char **argv)
  struct compute_host_profile_word *words=calloc(count+10,sizeof(*words));assert(words);
  for(unsigned i=0;i<count;i++){words[i].address=read32(f);words[i].value=read32(f);}
  assert(read32(f)==10);for(unsigned i=count;i<count+10;i++){words[i].address=read32(f);words[i].value=read32(f);}end(f);
- session=compute_host_create(1,words,count+10);free(words);assert(session);
+ session=compute_host_open(words,count+10);free(words);assert(session);
  if(dynamic_case || address_case){uint64_t features=0;assert((version==2 || version==3) && !compute_host_query(session,OPENGPU_PARAM_DRIVER_FEATURES,&features) &&
   (features&OPENGPU_DRIVER_FEATURE_COMPUTE_SHARED_ATOMICS));}
  struct pipe_screen *s=opengpu_drm_screen_create(7,NULL);assert(s);struct pipe_context *p=s->context_create(s,NULL,0);assert(p);

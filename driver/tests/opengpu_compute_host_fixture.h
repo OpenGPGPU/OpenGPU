@@ -13,6 +13,8 @@ struct compute_host_profile_word { uint32_t address,value; };
 unsigned compute_host_timeout_seconds(void);
 struct compute_host_session *compute_host_create(uint32_t context,
     const struct compute_host_profile_word *,size_t count);
+/* A real render-file open has no context until the caller creates one. */
+struct compute_host_session *compute_host_open(const struct compute_host_profile_word *,size_t count);
 int compute_host_query(struct compute_host_session *,uint32_t param,uint64_t *value);
 int compute_host_original_close(struct compute_host_session *,uint32_t handle);
 int compute_host_context_destroy(struct compute_host_session *,uint32_t id);
