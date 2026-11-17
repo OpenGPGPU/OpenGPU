@@ -51,7 +51,8 @@ def recipe(memory, value):
     original = bytearray(b'\x5a' * 8192)
     for i in range(8):
         struct.pack_into('<I', original, 4080 + i * 4, (parameters['seed'] + (i+int(parameters['dynamic'])) * 0x10203) & 0xffffffff)
-    struct.pack_into('<I', original, 4080 + 28, parameters['seed'])
+    index=7 if parameters['dynamic'] else parameters['index']
+    struct.pack_into('<I', original, 4080 + index*4, parameters['seed'])
     require(memory.read(source - 4080, 8192) == original, 'counter original source/guard initialization differs')
     for key in ('descriptorPhysical', 'descriptorRoot', 'kernargPhysical', 'kernargBytes'):
         uint(value[key])
@@ -82,7 +83,7 @@ def returned_outputs(initial, returned, description):
                     for i in range(invocations)]
         require(sorted(actual) == sorted(expected), 'counter returned ESSL value multiset differs')
         final=(seed+invocations if op=='increment' else seed-invocations if op=='decrement' else seed)&0xffffffff
-        finals=[(source+28,struct.pack('<I',final))]
+        finals=[(source+parameters['index']*4,struct.pack('<I',final))]
     for address,data in finals:
         require(returned.read(address,4)==data, 'counter final value/wrap differs')
     return list(zip(outputs,values))+finals

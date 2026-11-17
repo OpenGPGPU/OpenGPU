@@ -8,13 +8,17 @@ COUNTER_CASE = 'counter-increment'
 STATIC_COUNTER_CASES = (COUNTER_CASE, 'counter-read', 'counter-decrement')
 DYNAMIC_COUNTER_CASES = tuple('counter-dynamic-' + op for op in ('increment','read','decrement')) + tuple(
     'counter-dynamic-all-' + op for op in ('increment','read','decrement'))
-COUNTER_CASES = STATIC_COUNTER_CASES + DYNAMIC_COUNTER_CASES
+SCALAR_COUNTER_CASE = 'counter-scalar'
+COUNTER_CASES = STATIC_COUNTER_CASES + DYNAMIC_COUNTER_CASES + (SCALAR_COUNTER_CASE,)
 CASES = LEGACY_CASES + COUNTER_CASES
 
 
 def counter_parameters(name):
     if name not in COUNTER_CASES:
         raise ValueError('unknown original atomic counter source')
+    if name == SCALAR_COUNTER_CASE:
+        return dict(source='scalar.comp', operation='increment', groups=4, local=4,
+                    dynamic=False, seed=0xfffffffe, index=0)
     source = name.removeprefix('counter-')
     dynamic = name in DYNAMIC_COUNTER_CASES
     all_counters=name.startswith('counter-dynamic-all-')
