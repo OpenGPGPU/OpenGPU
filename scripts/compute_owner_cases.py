@@ -18,7 +18,7 @@ def counter_parameters(name):
         raise ValueError('unknown original atomic counter source')
     if name == SCALAR_COUNTER_CASE:
         return dict(source='scalar.comp', operation='increment', groups=4, local=4,
-                    dynamic=False, seed=0xfffffffe, index=0)
+                    dynamic=False, seed=0xfffffffe, index=0, offset=8188, count=1)
     source = name.removeprefix('counter-')
     dynamic = name in DYNAMIC_COUNTER_CASES
     all_counters=name.startswith('counter-dynamic-all-')
@@ -26,7 +26,7 @@ def counter_parameters(name):
     source=('dynamic-' if dynamic else '')+operation
     return dict(source=source + '.comp', operation=operation, groups=(2 if all_counters else 1) if dynamic else 4, local=4,
                 dynamic=dynamic, seed=(0 if dynamic else 1) if operation == 'decrement' else 0xfffffffe,
-                index=(0 if all_counters else 4) if dynamic else 7)
+                index=(0 if all_counters else 4) if dynamic else 7, offset=4080, count=8)
 
 
 def dynamic_case(name):

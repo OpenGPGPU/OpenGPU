@@ -32,6 +32,7 @@ static const char *directory;
 static int capture_only,uniform_case,dynamic_case,address_case,counter_case,counter_dynamic;
 static unsigned dynamic_operation,dynamic_signed;
 static unsigned address_kind,counter_operation,counter_index;
+static unsigned counter_offset=4080,counter_count=8;
 static const char *counter_name;
 static unsigned host_timeout_seconds;
 static unsigned output_handles[4],uniform_handles[12],counter_handle,counter_storage_bindings[4],index_uniform_handle;
@@ -138,12 +139,12 @@ static void write_oracle(void)
   const struct drm_opengpu_compute_counter_source *v=&accepted_counter.source;
   struct compute_host_snapshot snap;assert(!compute_host_snapshot_get(session,&snap));
   uint64_t physical,bytes;assert(!compute_host_original_physical(session,counter_handle,&physical,&bytes));
-  assert(accepted_counter.version==1 && v->handle==counter_handle && v->offset==4080 && v->count==8 &&
-   bytes==8192 && snap.counter_physical==physical+4080 && snap.counter_bytes==32 && snap.counter_root);
-  fprintf(f,"{\"schema\":\"opengpu-compute-counter-oracle-v1\",\"sourceCase\":\"%s\",\"groups\":%u,\"local\":4,\"viewBytes\":8192,\"guard\":3735928559,\"seed\":%u,\"index\":%u,\"count\":8,\"counterHandle\":%u,\"context\":%u,\"descriptorPhysical\":%llu,\"descriptorRoot\":%u,\"kernargPhysical\":%llu,\"kernargBytes\":%llu,\"counter\":",counter_name,counter_dynamic?(counter_index?1u:2u):4u,counter_operation==2?(counter_dynamic?0u:1u):0xfffffffeu,counter_index,v->handle,snap.context,
+  assert(accepted_counter.version==1 && v->handle==counter_handle && v->offset==counter_offset && v->count==counter_count &&
+   bytes==8192 && snap.counter_physical==physical+counter_offset && snap.counter_bytes==counter_count*4 && snap.counter_root);
+  fprintf(f,"{\"schema\":\"opengpu-compute-counter-oracle-v1\",\"sourceCase\":\"%s\",\"groups\":%u,\"local\":4,\"viewBytes\":8192,\"guard\":3735928559,\"seed\":%u,\"index\":%u,\"count\":%u,\"counterHandle\":%u,\"context\":%u,\"descriptorPhysical\":%llu,\"descriptorRoot\":%u,\"kernargPhysical\":%llu,\"kernargBytes\":%llu,\"counter\":",counter_name,counter_dynamic?(counter_index?1u:2u):4u,counter_operation==2?(counter_dynamic?0u:1u):0xfffffffeu,counter_index,counter_count,v->handle,snap.context,
    (unsigned long long)snap.counter_descriptor_physical,snap.counter_root,
    (unsigned long long)snap.kernarg_physical,(unsigned long long)snap.kernarg_bytes);
-  source_window(f,counter_handle,4080,32,0);fputs(",\"outputs\":[",f);
+  source_window(f,counter_handle,counter_offset,counter_count*4,0);fputs(",\"outputs\":[",f);
   for(unsigned i=0;i<4;i++){if(i)fputc(',',f);source_window(f,output_handles[i],0,8192,i);}
   fprintf(f,"],\"storageBindings\":[%u,%u,%u,%u]",counter_storage_bindings[0],counter_storage_bindings[1],counter_storage_bindings[2],counter_storage_bindings[3]);
   if(counter_dynamic){
@@ -184,7 +185,7 @@ int main(int argc,char **argv)
   "counter-dynamic-increment","counter-dynamic-read","counter-dynamic-decrement",
   "counter-dynamic-all-increment","counter-dynamic-all-read","counter-dynamic-all-decrement"};
  for(unsigned i=0;i<9;i++)if(!strcmp(argv[4],counter_names[i])){counter_case=1;counter_operation=i%3;counter_dynamic=i>=3;counter_index=i>=6?0:i>=3?4:7;counter_name=counter_names[i];}
- if(!strcmp(argv[4],"counter-scalar")){counter_case=1;counter_index=0;counter_name="counter-scalar";}
+ if(!strcmp(argv[4],"counter-scalar")){counter_case=1;counter_index=0;counter_offset=8188;counter_count=1;counter_name="counter-scalar";}
  for(unsigned variant=0;variant<16;variant++){
   const unsigned signed_operations[]={0,1,2,3,4,9};unsigned op=variant<10?variant:signed_operations[variant-10];
   char name[64];assert(snprintf(name,sizeof(name),variant<10?"shared-dynamic-%u":"shared-dynamic-i-%u",op)>0);
@@ -240,11 +241,11 @@ int main(int argc,char **argv)
   struct pipe_resource *counter=buffer(s,8192);assert(counter);
   counter_handle=pipe_opengpu_resource_handle(opengpu_resource(counter)->gpu);
   uint8_t *data=pipe_opengpu_resource_map(opengpu_resource(counter)->gpu);assert(data);memset(data,0x5a,8192);
-  uint32_t *words=(uint32_t *)(data+4080);
+  uint32_t *words=(uint32_t *)(data+counter_offset);
   uint32_t seed=counter_operation==2?(counter_dynamic?0u:1u):0xfffffffeu;
-  for(unsigned i=0;i<8;i++)words[i]=seed+(i+(counter_dynamic?1u:0u))*0x10203u;
+  for(unsigned i=0;i<counter_count;i++)words[i]=seed+(i+(counter_dynamic?1u:0u))*0x10203u;
   words[counter_dynamic?7:counter_index]=seed;
-  cs_frontend_counters(frontend,p,counter,4080,32);
+  cs_frontend_counters(frontend,p,counter,counter_offset,counter_count*4);
   /* Gallium and the accepted production job retain this original GEM until
    * the same externally observed retirement/context cleanup as all outputs. */
  }
