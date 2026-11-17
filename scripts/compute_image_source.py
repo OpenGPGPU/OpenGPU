@@ -57,7 +57,7 @@ def captured_page_tables(memory, data):
     """Collect original Sv32 pages after strict READY validation.
 
     Only valid original PTE words may change to zero during cleanup. Retiring
-    private leaves must be revoked; ASID-0 identity policy leaves remain valid.
+    private leaves must be revoked; ASID-0 identity leaves need no revocation.
     """
     require(data[:8]==b'OGCMP003','recovery needs the original context-aware capture')
     cursor=8
