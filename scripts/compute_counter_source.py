@@ -192,7 +192,9 @@ def ready(memory, description, data):
             memory.read(inactive_root,4096)==bytes(4096), 'inactive graphics context is not an original separate empty root')
     physical = translate(memory, satp, root, 15)
     require(physical == description['descriptorPhysical'], 'counter descriptor original binding differs')
-    va = 0xb0000000 + 7 * 0x400000 + parameters['offset']
+    # The source window gets its own command mapping, preserving only the
+    # physical page offset. A last-page scalar is not a whole-GEM mapping.
+    va = 0xb0000000 + 7 * 0x400000 + (parameters['offset']&4095)
     require(translate(memory, satp, va, 15) == source and translate(memory, satp, va + counter_bytes-1, 15) == source + counter_bytes-1,
             'counter original source mapping differs')
     expected_descriptor = (0x47534201, 64, 1, context, 0, 0, 0, 1, 1, 1, va, va + counter_bytes, 0,

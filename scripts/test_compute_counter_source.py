@@ -37,7 +37,7 @@ def fixture(source_case="counter-increment"):
         word(tables[upper]+((va>>12)&1023)*4, (pa>>12)*1024+flags+704)
     def view(a, binding, offset=0, count=8192):
         return dict(globalBinding=binding, allocationPhysical=a, allocationBytes=8192, offset=offset, bytes=count)
-    descriptor_root, counter_va, storage_root = 0xb1400000, 0xb1c00000+offset, 0xb0c00000
+    descriptor_root, counter_va, storage_root = 0xb1400000, 0xb1c00000+(offset&4095), 0xb0c00000
     for i in range(count): word(0x20000+offset+4*i, (seed+(i+int(dynamic))*0x10203)&0xffffffff)
     word(0x20000+offset+(7 if dynamic else index)*4, seed)
     d = dict(schema=SCHEMA, sourceCase=source_case, groups=groups, local=4, viewBytes=8192,
