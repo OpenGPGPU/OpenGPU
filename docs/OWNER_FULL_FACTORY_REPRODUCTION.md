@@ -81,6 +81,43 @@ It produced 3666 C++ files. Flat compilation exceeded the same memory limit;
 the hierarchical result establishes complete code generation, not native
 compilation, execution speed or GPU qualification.
 
+The generator now selects `--expand-limit 0` to retain runtime helpers for
+wide operations instead of expanding them into word assignments. With
+Verilator 5.050, the exact emitted `L2MshrTable.sv` with its 32850-bit waiter
+vectors generated 142,308,006 C++ bytes by default, including a 71,098,975-byte
+file. With this option it generated 72,438,273 bytes, with a largest file of
+609,172 bytes. Code generation took 48.054 versus 11.617 seconds; both exited
+zero under a 4 GiB process-tree limit. This compares isolated code generation;
+complete-model compilation and execution with the new option still need
+qualification. Existing model identities fail the changed generator binding
+and must be regenerated before use with this version.
+
+Reproduce the isolated comparison against a prepared complete owner:
+
+```sh
+P04_OWNER="$PWD/.artifacts/owner-inline"
+MSHR_COMPARISON="$(mktemp -d "$PWD/.artifacts/mshr-XXXXXX")"
+for mode in default compact; do
+  extra=()
+  if [ "$mode" = compact ]; then extra=(--expand-limit 0); fi
+  python3 -B scripts/run_owner_bounded.py --memory-mib 4096 \
+    --timeout-seconds 180 -- verilator --cc --assert --output-groups 0 \
+    --output-split 10000 --output-split-cfuncs 200 -Wno-fatal -Wno-UNOPTFLAT \
+    --top-module L2MshrTable --Mdir "$MSHR_COMPARISON/$mode" \
+    "${extra[@]}" "$P04_OWNER/rtl/L2MshrTable.sv" || exit
+done
+python3 -B - "$MSHR_COMPARISON" <<'PY'
+from pathlib import Path
+import shutil, sys
+base = Path(sys.argv[1])
+for mode in ('default', 'compact'):
+    files = list((base / mode).glob('*.cpp'))
+    print(mode, len(files), sum(p.stat().st_size for p in files),
+          max(p.stat().st_size for p in files))
+shutil.rmtree(base)
+PY
+```
+
 The generator checks the exact prepared factory, RTL, compiler toolkit and
 generated sources. The native builder binds its compiler, SDK, options,
 runtime objects and complete model archives. It uses eight compiler jobs by
