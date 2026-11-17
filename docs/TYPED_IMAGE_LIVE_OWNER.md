@@ -366,6 +366,38 @@ remain required. Cancel/reset execution also remains pending. Freshly bind any
 execution qualification to the changed boundary/protocol sources; this source
 phase does not close P08.
 
+## Native fault and retained-memory service primitives
+
+The external AXI service can explicitly arm one aligned, fully backed physical
+read interval. It returns SLVERR for reads in that interval while retaining the
+original snapshotted data and RAM bytes. The plan cannot change until all
+accepted read/write traffic drains. Disarming preserves cumulative physical
+and injected fault counters; default service and writes are unchanged.
+
+`Memory.append_disjoint` retains prior physical uploads and results when adding
+another original owner's allocations. It rejects overlapping ranges, orphan
+pages and sparse pages that shadow either owner's allocations, before changing
+RAM. Failed validation leaves the original layout and bytes unchanged.
+
+Fifteen CPU AXI/RAM scenarios pass with ASan/UBSan, including stable two-beat
+fault responses, same-agent healthy ID reuse without clearing fault history,
+transactional rejected appends and whole-allocation byte preservation. All 34
+native-product preparation/guard checks pass. These service tests execute no
+GPU shader and do not establish the pending image fault/cancel/reset/reuse
+acceptance. A source-qualified executor/producer/controller must still drive
+and independently verify those actual-DUT cases.
+
+```sh
+env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 \
+  python3 -B scripts/test_qualify_native_product_compiled.py
+mkdir -p .artifacts
+axi_dir="$(mktemp -d .artifacts/image-fault-axi.XXXXXX)"
+trap 'rm -rf "$axi_dir"' EXIT
+c++ -std=c++17 -O1 -Wall -Wextra -Werror -fsanitize=address,undefined \
+  -fno-omit-frame-pointer scripts/test_native_frame_axi.cpp -o "$axi_dir/check"
+"$axi_dir/check" "$axi_dir"
+```
+
 ## Original load/store source and independent result contract
 
 The live producer now accepts 70 original ESSL recipes: thirteen formats across

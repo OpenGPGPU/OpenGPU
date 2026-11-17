@@ -26,6 +26,13 @@ template <typename F> static void rejects(F f) {
   try { f(); } catch (const std::runtime_error &) { failed = true; }
   require(failed, "invalid fixture/protocol was accepted");
 }
+static bool same_memory(const Memory &a, const Memory &b) {
+  if (a.pages != b.pages || a.ranges.size() != b.ranges.size()) return false;
+  for (size_t i = 0; i < a.ranges.size(); ++i)
+    if (a.ranges[i].start != b.ranges[i].start || a.ranges[i].end != b.ranges[i].end ||
+        a.ranges[i].fill != b.ranges[i].fill) return false;
+  return true;
+}
 
 int main(int argc, char **argv) {
   try {
@@ -161,6 +168,94 @@ int main(int argc, char **argv) {
       require(std::filesystem::file_size(path) == 16 + 2 * 24 + 2 * 4104, "sparse fills expanded");
       { std::fstream corrupt(path, std::ios::binary | std::ios::in | std::ios::out); corrupt.seekp(36); corrupt.put(1); }
       rejects([&] { Memory::read(path); });
+      ++cases;
+    }
+    {
+      auto memory = backing(); memory.byte(0x1033, 0x77); const auto old = memory;
+      Memory extra; extra.ranges.push_back({0x10000, 0x11000, 0x9b}); extra.byte(0x10001, 0x53);
+      const auto upload = extra;
+      memory.append_disjoint(extra);
+      require(memory.ranges.size() == 2 && memory.pages.size() == 2 && same_memory(extra, upload),
+        "disjoint append changed an original upload");
+      for (uint64_t a = 0x1000; a < 0x4000; ++a)
+        require(memory.byte(a) == old.byte(a), "disjoint append replaced prior owner bytes");
+      for (uint64_t a = 0x10000; a < 0x11000; ++a)
+        require(memory.byte(a) == upload.byte(a), "disjoint append changed new input bytes");
+      rejects([&] { memory.append_disjoint(memory); });
+      const auto before = memory;
+      for (unsigned variant = 0; variant < 6; ++variant) {
+        auto bad = extra;
+        if (variant == 0) { bad.ranges[0] = {0x2000, 0x3000, 0}; bad.pages.clear(); }
+        if (variant == 1) bad.ranges = {{0x30000, 0x31000, 0}, {0x20000, 0x21000, 0}};
+        if (variant == 2) bad.ranges[0] = {0x30000, 0x30000, 0};
+        if (variant == 3) bad.ranges[0] = {Memory::limit, Memory::limit + 4096, 0};
+        if (variant == 4) { bad.ranges[0] = {0x30000, 0x31000, 0}; bad.pages.clear(); bad.byte(0x50000, 1); }
+        if (variant == 5) { bad.ranges.clear(); bad.pages.clear(); }
+        rejects([&] { memory.append_disjoint(bad); });
+        require(same_memory(memory, before), "rejected memory append partially changed RAM");
+      }
+      ++cases;
+    }
+    {
+      Memory old, next;
+      old.ranges.push_back({0x1000, 0x1800, 0x25});
+      next.ranges.push_back({0x1800, 0x2000, 0x61}); next.byte(0x1801, 0x72);
+      const auto before = old;
+      rejects([&] { old.append_disjoint(next); });
+      require(same_memory(old, before), "new sparse page shadowed old fill bytes");
+      next.pages.clear(); old.byte(0x1001, 0x91); const auto written = old;
+      rejects([&] { old.append_disjoint(next); });
+      require(same_memory(old, written), "old sparse page shadowed new fill bytes");
+      ++cases;
+    }
+    {
+      auto memory = backing(); memory.byte(0x1033, 0x77); const auto before = memory;
+      Agent agent(memory); agent.arm_read_faults(0x1000, 0x1080);
+      rejects([&] { agent.arm_read_faults(0x2000, 0x2040); });
+      Requests r; r.arvalid = true; r.araddr = 0x1000; r.arlen = 1; r.arid = 7;
+      tick(agent, 0, r);
+      rejects([&] { agent.disarm_read_faults(); });
+      const auto first = agent.drive(3), held = agent.drive(8);
+      require(first.rvalid && !first.rlast && first.rresp == 2 && first.rid == 7 &&
+        first.rdata == held.rdata && held.rresp == 2 && held.rid == 7,
+        "injected fault response changed under R backpressure");
+      r = {}; r.rready = true; tick(agent, 8, r);
+      const auto last = tick(agent, 9, r);
+      require(last.rvalid && last.rlast && last.rresp == 2 && last.rdata[19] == 0x77 &&
+        agent.drained() && same_memory(memory, before), "injected read fault changed original RAM or lost its second beat");
+      require(agent.traffic.read_faults == 1 && agent.injected_read_faults() == 1 &&
+        !agent.traffic.write_faults, "injected fault accounting differs");
+      agent.disarm_read_faults();
+      r = {}; r.arvalid = true; r.araddr = 0x1000; r.arlen = 1; r.arid = 7; tick(agent, 10, r);
+      r = {}; r.rready = true;
+      require(tick(agent, 13, r).rresp == 0 && tick(agent, 14, r).rresp == 0 && agent.drained(),
+        "same-agent healthy ID reuse retained the physical read fault");
+      require(agent.traffic.read_faults == 1 && agent.injected_read_faults() == 1 &&
+        agent.traffic.reads == 2 && agent.traffic.read_bus_bytes == 128 && same_memory(memory, before),
+        "healthy reuse cleared old fault history or changed original bytes");
+      ++cases;
+    }
+    {
+      auto memory = backing(); Agent agent(memory);
+      for (const auto &range : std::vector<std::pair<uint64_t, uint64_t>>{
+          {0x1001, 0x1040}, {0x1000, 0x1041}, {0x1040, 0x1000}, {0x8000, 0x8040},
+          {Memory::limit - 64, Memory::limit + 64}})
+        rejects([&] { agent.arm_read_faults(range.first, range.second); });
+      rejects([&] { agent.disarm_read_faults(); });
+      agent.arm_read_faults(0x1000, 0x1040);
+      Requests r; r.arvalid = true; r.araddr = 0x2000; tick(agent, 0, r);
+      rejects([&] { agent.disarm_read_faults(); });
+      r = {}; r.rready = true; require(tick(agent, 3, r).rresp == 0, "read outside fault interval was injected");
+      tick(agent, 4, write_request(0x1000, 9));
+      rejects([&] { agent.disarm_read_faults(); });
+      r = {}; r.bready = true; require(tick(agent, 11, r).bresp == 0 && agent.drained(),
+        "read fault interval incorrectly faulted a physical write");
+      agent.disarm_read_faults();
+      r = {}; r.arvalid = true; r.araddr = 0x8000; tick(agent, 12, r);
+      r = {}; r.rready = true;
+      require(tick(agent, 15, r).rresp == 2 && agent.traffic.read_faults == 1 &&
+        agent.injected_read_faults() == 0 && !agent.traffic.write_faults,
+        "unmapped physical fault was confused with an injected read error");
       ++cases;
     }
     std::cout << "PASS native frame AXI cases=" << cases << "\n";
