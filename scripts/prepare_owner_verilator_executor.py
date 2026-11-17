@@ -6,6 +6,7 @@ import re
 import shlex
 import shutil
 import signal
+import subprocess
 import sys
 import tempfile
 
@@ -20,10 +21,12 @@ from run_owner_bounded import run_bounded
 ROOT = owner.ROOT
 KINDS = ('native-sample', 'native-sample-graphics', 'compute', owner.BLIT_KIND)
 DEPENDENCIES = tuple(name for name in owner.DEFAULT_DEPENDENCIES
-                     if not name.startswith('scripts/flashsim_native/'))
+                     if not name.startswith('scripts/flashsim_native/')) + (
+                         'scripts/native_verilator_initial_time.hpp',)
 CHECKERS = ('scripts/prepare_owner_verilator_executor.py', 'scripts/generate_owner_verilator.py',
             'scripts/build_owner_verilator.py', 'scripts/run_owner_bounded.py',
-            'scripts/owner_process_memory.py', 'scripts/owner_process_lifetime.py')
+            'scripts/owner_process_memory.py', 'scripts/owner_process_lifetime.py',
+            'scripts/qualification/check_owner_verilator_clock.py')
 require = owner.require
 
 
@@ -83,7 +86,17 @@ def context(directory, kind):
     sdk = built['context']['sdk']
     if sdk is not None:
         flags += ['-isysroot', sdk['path']]
+    flags += ['-include', str(ROOT / 'scripts/native_verilator_initial_time.hpp')]
+    linkers = {}
+    if sys.platform == 'darwin':
+        # Apple's newer linker rejects compact-unwind offsets across these
+        # large generated functions. The installed classic linker preserves
+        # normal C++ exception handling without that 24-bit layout failure.
+        for name in ('ld', 'ld-classic'):
+            path = Path(subprocess.check_output(['xcrun', '--find', name], text=True).strip()).resolve(strict=True)
+            linkers[name] = dict(path=str(path), sha256=owner.common.sha(path))
     return dict(kind=kind, source_sha256=sources, compiler=built['context']['compiler'], flags=flags,
+        linkers=linkers,
         driver=str(ROOT / owner.driver_files(kind, SAMPLE_PROFILE)[0]),
         model=dict(backend='verilator', profile=SAMPLE_PROFILE, dut_directory=str(model),
             preparation_sha256=owner.common.sha(directory / 'preparation.json'),
@@ -98,7 +111,8 @@ def commands(bound, target):
     compile_command = [compiler, *bound['flags'], '-MD', '-MF', str(target / 'driver.d'),
                        '-c', bound['driver'], '-o', str(target / 'driver.o')]
     model = Path(bound['model']['dut_directory'])
-    link = [compiler, *bound['flags'], str(target / 'driver.o'),
+    link_flags = ['-Wl,-ld_classic'] if bound['linkers'] else []
+    link = [compiler, *bound['flags'], *link_flags, str(target / 'driver.o'),
             *(str(model / name) for name in bound['runtime_objects']),
             str(model / 'VGpuHostSystemAxi__ALL.a'), '-o', str(target / 'executor')]
     return compile_command, link
@@ -120,7 +134,8 @@ def check_dependencies(dependencies, bound):
     model = Path(bound['model']['dut_directory'])
     generated = generator.checked_generation(Path(model).parents[1])
     kit = Path(generated['context']['verilator_root'])
-    for path in (Path(bound['driver']), model / 'VGpuHostSystemAxi.h', kit / 'include/verilated.h'):
+    for path in (Path(bound['driver']), model / 'VGpuHostSystemAxi.h', kit / 'include/verilated.h',
+                 ROOT / 'scripts/native_verilator_initial_time.hpp'):
         require(str(path.resolve()) in dependencies, 'Compiler omitted a required actual driver/model header')
     declared = {str((ROOT / name).resolve()) for name in driver_inputs(bound['kind'], model, kit)}
     for name in dependencies:
@@ -130,7 +145,7 @@ def check_dependencies(dependencies, bound):
             require(name in declared, 'Actual compiler consumed an undeclared GPU driver dependency: ' + name)
 
 
-def execute(log, command, memory_mib, timeout):
+def execute(log, command, memory_mib, timeout, *, expected_exit=0):
     print('Owner stage: ' + log.stem, flush=True)
     with log.open('w') as stream:
         sys.stdout.flush(); sys.stderr.flush()
@@ -144,7 +159,7 @@ def execute(log, command, memory_mib, timeout):
             for fd in saved:
                 os.close(fd)
     text = log.read_text(errors='replace')
-    require(code == 0, 'Original owner stage failed:\n' + text[-6000:])
+    require(code == expected_exit, 'Original owner stage failed:\n' + text[-6000:])
     print('\n'.join(text.splitlines()[-1:]), flush=True)
     log.unlink()
 
