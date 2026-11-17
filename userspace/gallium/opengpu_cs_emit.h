@@ -34,6 +34,7 @@ struct opengpu_cs_shared {
 struct opengpu_cs_image_info {
     unsigned targets[4];
     unsigned atomics; /* read/write image-unit mask; requires discovered support */
+    unsigned float_exchange; /* R32F subset; requires separate discovered support */
 };
 int opengpu_cs_emit_image_info(const void *tokens, const struct opengpu_cs_shared *shared,
     struct opengpu_cs_program *out, struct opengpu_cs_image_info *images);

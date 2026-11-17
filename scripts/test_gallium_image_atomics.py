@@ -23,6 +23,13 @@ def write_sources(out):
                     'layout(std430,binding=2) buffer Output{uint data[];} observed;\n'+
                     'void main(){highp %s previous=imageAtomic%s(original,%s,%s);' % (kind,operation,coordinate,arguments)+
                     'observed.data[gl_GlobalInvocationID.x]=uint(previous);}\n')
+        (out/(target+'-r32f-Exchange.comp')).write_text(
+            '#version 310 es\n#extension GL_OES_shader_image_atomic : require\n'+extension+
+            'precision highp int;\nprecision highp float;\nlayout(local_size_x=4) in;\n'+
+            'layout(r32f,binding=3) coherent uniform highp image%s original;\n' % suffix+
+            'layout(std430,binding=2) buffer Output{uint data[];} observed;\n'+
+            'void main(){highp float previous=imageAtomicExchange(original,%s,uintBitsToFloat(0x3f400000u));' % coordinate+
+            'observed.data[gl_GlobalInvocationID.x]=floatBitsToUint(previous);}\n')
 
 
 if __name__=='__main__':

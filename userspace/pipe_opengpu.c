@@ -1043,6 +1043,14 @@ int pipe_opengpu_screen_compute_image_atomics(const struct pipe_opengpu_screen *
     return screen && (screen->driver_features & need) == need;
 }
 
+int pipe_opengpu_screen_compute_image_float_exchange(const struct pipe_opengpu_screen *screen)
+{
+    const uint64_t need=OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGES |
+        OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_ATOMICS |
+        OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_FLOAT_EXCHANGE;
+    return screen && (screen->driver_features&need)==need;
+}
+
 int pipe_opengpu_screen_compute_buffer_textures(const struct pipe_opengpu_screen *screen)
 {
     const uint64_t need=OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE |

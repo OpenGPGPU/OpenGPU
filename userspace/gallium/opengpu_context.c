@@ -5074,6 +5074,7 @@ static void *create_compute_state(struct pipe_context *pipe,
         (cs->program.shared_atomics && !pipe_opengpu_screen_compute_shared_atomics(opengpu_screen_gpu(pipe->screen))) ||
         (cs->program.storage_atomics && !pipe_opengpu_screen_compute_storage_atomics(opengpu_screen_gpu(pipe->screen))) ||
         (cs->images.atomics && !pipe_opengpu_screen_compute_image_atomics(opengpu_screen_gpu(pipe->screen))) ||
+        (cs->images.float_exchange && !pipe_opengpu_screen_compute_image_float_exchange(opengpu_screen_gpu(pipe->screen))) ||
         ((cs->program.image_reads | cs->program.image_writes | cs->program.image_queries) &&
          !pipe_opengpu_screen_compute_image_backings(opengpu_screen_gpu(pipe->screen)))) {
         FREE(cs); errno = ENOTSUP; return NULL;

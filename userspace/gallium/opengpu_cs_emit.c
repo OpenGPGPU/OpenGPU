@@ -32,7 +32,7 @@ struct build {
     uint32_t samplers, sampler_views;
     const unsigned *texture_observed;
     unsigned texture_position;
-    unsigned images, image_writable, image_target[4], image_atomics, compact_image_atomics;
+    unsigned images, image_writable, image_target[4], image_atomics, image_float_exchange, compact_image_atomics;
     unsigned cf, cf_depth, cf_count, planned[CS_TEMPS][4];
     uint32_t imm[CS_IMMS][4];
     unsigned nimm;
@@ -109,7 +109,7 @@ static int packets(const struct tgsi_token *t)
 {
     struct tgsi_header h;
     struct tgsi_processor processor;
-    unsigned pos, end;
+    unsigned pos, end, float_immediate=0, float_exchange=0;
     memcpy(&h, t, 4);
     if (h.HeaderSize != 2 || !h.BodySize || h.BodySize > CS_TOKENS) return -1;
     memcpy(&processor, t + 1, 4);
@@ -125,7 +125,9 @@ static int packets(const struct tgsi_token *t)
             memcpy(&imm, t + pos, 4);
             n = imm.NrTokens;
             if (n != 5 || imm.Padding ||
-                (imm.DataType != TGSI_IMM_UINT32 && imm.DataType != TGSI_IMM_INT32)) return -1;
+                (imm.DataType != TGSI_IMM_UINT32 && imm.DataType != TGSI_IMM_INT32 &&
+                 imm.DataType != TGSI_IMM_FLOAT32)) return -1;
+            if(imm.DataType==TGSI_IMM_FLOAT32)float_immediate=1;
         } else if (token.Type == TGSI_TOKEN_TYPE_DECLARATION) {
             struct tgsi_declaration d;
             memcpy(&d, t + pos, 4);
@@ -148,6 +150,7 @@ static int packets(const struct tgsi_token *t)
             if (p.NrTokens != 2 || p.Padding) return -1;
         } else if (token.Type == TGSI_TOKEN_TYPE_INSTRUCTION) {
             struct tgsi_instruction insn;
+            unsigned float_instruction=0;
             memcpy(&insn, t + pos, 4);
             /* TGSI instruction NrTokens counts its following tokens, unlike
              * declaration/immediate/property lengths, which include the head. */
@@ -174,6 +177,11 @@ static int packets(const struct tgsi_token *t)
                      insn.Opcode != TGSI_OPCODE_TXQ)) return -1;
             }
             if (insn.Memory && q >= pos + n) return -1;
+            if(insn.Memory){
+                struct tgsi_instruction_memory memory;
+                memcpy(&memory,t+q,4);
+                float_instruction=insn.Opcode==TGSI_OPCODE_ATOMXCHG && memory.Format==PIPE_FORMAT_R32_FLOAT;
+            }
             q += insn.Memory;
             for (i = 0; i < insn.NumDstRegs; i++, q++) {
                 struct tgsi_dst_register dst;
@@ -185,6 +193,7 @@ static int packets(const struct tgsi_token *t)
                 struct tgsi_src_register src;
                 if (q >= pos + n) return -1;
                 memcpy(&src, t + q, 4);
+                if(!i && float_instruction && src.File==TGSI_FILE_IMAGE)float_exchange=1;
                 if (src.Absolute || src.Negate) return -1;
                 if (src.Indirect) {
                     struct tgsi_ind_register ind;
@@ -206,7 +215,9 @@ static int packets(const struct tgsi_token *t)
         if (!n || n > end - pos) return -1;
         pos += n;
     }
-    return 0;
+    /* Float literals remain opaque words, admitted only with an actual R32F
+     * image exchange. Ordinary uint-only programs retain their old gate. */
+    return float_immediate && !float_exchange ? -1 : 0;
 }
 
 static int declaration(struct build *b, const struct tgsi_full_declaration *d)
@@ -772,7 +783,8 @@ static int image_atomic(struct build *b, const struct tgsi_full_instruction *in,
         (in->Memory.Qualifier & ~TGSI_MEMORY_COHERENT) || in->Memory.Padding ||
         opengpu_buffer_image_format(in->Memory.Format) != (int)b->p.image_format[index]) return -1;
     unsigned format = b->p.image_format[index], target = b->image_target[index];
-    if ((format != OPENGPU_TEXTURE_FORMAT_R32I && format != OPENGPU_TEXTURE_FORMAT_R32UI) ||
+    if ((format != OPENGPU_TEXTURE_FORMAT_R32I && format != OPENGPU_TEXTURE_FORMAT_R32UI &&
+            !(format == OPENGPU_TEXTURE_FORMAT_R32F && operation == 0)) ||
         ((operation == 5 || operation == 6) && format != OPENGPU_TEXTURE_FORMAT_R32I) ||
         ((operation == 7 || operation == 8) && format != OPENGPU_TEXTURE_FORMAT_R32UI) ||
         in->Memory.Texture != (target == 0 ? TGSI_TEXTURE_2D : target == 1 ? TGSI_TEXTURE_2D_ARRAY :
@@ -795,6 +807,7 @@ static int image_atomic(struct build *b, const struct tgsi_full_instruction *in,
     unsigned native = operation == 9 ? 7 : operation >= 7 ? operation - 2 : operation;
     resource_word(b,23,native,26,26,target == 5 ? 24 : 27);
     b->image_atomics |= 1u << index;
+    if(format == OPENGPU_TEXTURE_FORMAT_R32F)b->image_float_exchange |= 1u << index;
     b->p.image_reads |= 1u << index;b->p.image_writes |= 1u << index;
     return destination(b,d);
 }
@@ -1195,6 +1208,7 @@ static void image_info(const struct build *b,struct opengpu_cs_image_info *image
     if(images){
         memcpy(images->targets,b->image_target,sizeof(b->image_target));
         images->atomics=b->image_atomics;
+        images->float_exchange=b->image_float_exchange;
     }
 }
 
