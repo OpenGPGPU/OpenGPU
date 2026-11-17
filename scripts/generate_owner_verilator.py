@@ -17,6 +17,9 @@ from run_owner_bounded import run_bounded
 ROOT = Path(__file__).resolve().parents[1]
 TOP = common.TOP
 FLAGS = ['--cc', '--assert', '--hierarchical', '--build-jobs', '1',
+         # Preserve runtime helpers for wide operations. Expanding the full
+         # MSHR waiter vectors defeats function splitting and produces huge C++.
+         '--expand-limit', '0',
          '--output-groups', '0', '--output-split', '10000',
          '--output-split-cfuncs', '200', '-Wno-fatal', '-Wno-UNOPTFLAT',
          '-CFLAGS', '-std=c++17 -O1 -g0']
