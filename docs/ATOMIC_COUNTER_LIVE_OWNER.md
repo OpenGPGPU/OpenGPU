@@ -1,9 +1,10 @@
 # Original-GEM atomic counter live owner
 
-Nine explicit compute cases connect six original Mesa 22.3.6 ESSL sources from
+Eleven explicit compute cases connect eight original Mesa 22.3.6 ESSL sources from
 `test_gallium_atomic_counter.py` to the atomic-buffer state tracker, Gallium,
 library and production Linux counter-source resource ioctl. They cover static
-increment/read/decrement and two dynamic-index recipes for each operation.
+increment/read/decrement, two dynamic-index recipes for each operation, the
+original scalar last-word window and four-image coexistence.
 They never use `cs_buffer_flow.c` or a CPU shader VM. Execution requires a freshly
 prepared, generated and qualified `two-cu-vga60-owner-v2-sample-stage` compute
 executor. Its complete 112-word factory retains two 16-lane/eight-warp CUs,
@@ -68,20 +69,23 @@ checked for precomputation before accepting any result.
 
 ## Input qualification and local result
 
-The original `counter-increment` case passed its complete actual lifecycle on
-the full112 two-CU, 16-lane/eight-warp host: real Mesa/Linux submission and held
-original GEMs, exact returned-value multiset/final counter, every byte guard,
-retirement and observed PTE/shootdown/context cleanup. The producer and executor
-exited zero, post-execution source/tool/model checks passed, and consumer cleanup
-was proven. All 178 qualified source inputs matched the delivery source. The
-bounded run took 190.640 seconds including fresh CPU production and validation;
-host process-tree peak RSS was 329,580,544 bytes. The Linux producer separately
-used a 512-MiB memory/swap and one-CPU container limit. These are not shader-only
+The nine original static/dynamic operation recipes passed their complete actual
+lifecycles on the full112 two-CU, 16-lane/eight-warp host using the source
+qualified in PR #860. Each active case used a separate reset and its real
+Mesa/Linux/GEM owner. All returned values/final counters, every byte guard,
+retirement, PTE/shootdown/context cleanup, producer/executor zero exit and
+post-execution source/tool/model checks passed; consumer cleanup was proven.
+All 178 qualified source inputs matched that delivery. The nine bounded runs
+totalled 1647.784 seconds including fresh CPU production and validation; maximum
+host process-tree RSS was 333,824,000 bytes. Each Linux producer separately
+used 512 MiB memory/total memory-plus-swap and one CPU. These are not shader-only
 timing, complete process/VM memory, clock or FPS measurements.
 
-This result covers only `counter-increment`. The other eight operation recipes,
-the original scalar last-word view and four-image coexistence still require
-their actual full-host execution and cleanup. P07 is not complete.
+The scalar/coexistence source addition changes producer/checker identities.
+Its full eleven-case actual-DUT qualification requires a newly bound software
+executor, including the nine operation regressions. P07 is not complete until
+that final corpus passes. Verified unchanged hardware model inputs may be reused;
+old executor qualifications cannot be relabeled for the new source.
 
 Compute-specific mandatory checkers and a recursive GPU include closure bind
 all original 21-case producers/oracles as well as the counter additions. Missing
@@ -96,7 +100,7 @@ uses 512 MiB memory and total memory-plus-swap limit, one CPU, no network and re
 
 Final local CPU validation passed:
 
-- 53 Python tests: seven counter tests, 21 executor tests, 13 compute qualifier
+- 56 Python tests: ten counter tests, 21 executor tests, 13 compute qualifier
   tests, four byte-oracle tests, two controller tests and six Verilator executor
   boundary tests. They reject wrong
   arithmetic/returns, omitted nonzero UBO indices, 0↔7 index/result swaps, hidden
@@ -106,21 +110,45 @@ Final local CPU validation passed:
   C++ parsing pass with ASan/UBSan for the old 96 and new 112 CPU profiles.
   Counter-specific bad cleanup acknowledgements retain the original GEM.
 - One pinned immutable AArch64 Linux build compiled 22 translation units with
-  22 checked MMD files, then captured all nine recipes from the six original
+  22 checked MMD files, then captured all eleven recipes from the eight original
   ESSL files. All 8102 external inputs and 161 GPU/checker/driver inputs remained
   unchanged. The container used 512 MiB memory and total memory-plus-swap,
   one CPU and no network. Strict READY/uniform/PTE checks and canonical C++
-  ASan/UBSan parsing passed for all nine captures. Observed Mesa storage orders
+  ASan/UBSan parsing passed for all eleven captures, including the scalar
+  last-word view and four exact 512-byte image views. Observed Mesa storage orders
   were `[3,2,0,1]` and `[0,2,3,1]`; each capture used its actual binding order.
   Every untouched initial memory was rejected by the result oracle.
 
-These are CPU compiler/capture/rejection results. No counter shader executed on
-an actual DUT and no GPU qualification was written. Actual-DUT acceptance for
-all nine recipes, the original scalar and four-image coexistence sources, image/storage
-atomics, indirect work, cross-domain barriers, full resource-limit combinations
-and whole-host physical/clock/FPS gates remain open. Ended containers, binaries,
-captures, input snapshots and temporary reports were removed; source commits
-remain available.
+These compiler/capture/rejection checks execute no GPU shader and write no GPU
+qualification. The prior nine-case actual result is separate. The final eleven
+cases still require their newly bound full-host run. Image/storage atomics,
+indirect work, cross-domain barriers, full resource-limit combinations and
+whole-host physical/clock/FPS gates keep their own requirements. Ended containers,
+binaries, captures, input snapshots and temporary reports were removed.
+
+## Original scalar and four-image coexistence
+
+`counter-scalar` compiles the untouched `scalar.comp`. Its independent 8192-byte
+GEM exposes only the last four bytes: offset 8188, count 1, native index 0. Every
+other byte stays 0x5a. Four groups of four invocations must return the same
+increment multiset as the array case and leave that final word at 14. The source
+window's command VA preserves its physical page offset (`0xffc`), rather than
+mapping the preceding GEM page. No page or whole-allocation write permission
+is granted by the byte guard; the supported hardware capacity remains eight.
+
+`counter-coexist` compiles the untouched `coexist.comp` with all four SSBOs and
+four independent R32UI buffer images. Each image has a 4096-byte original backing
+filled with 0x69 and an exact 512-byte view (128 texels); only the first 16 words may
+change. Actual Mesa/NIR variable bindings are retained before native image
+location assignment, and their complete 0..3 permutation selects the original
+GEMs. READY independently checks all four GIU1 records, GIM1 context, exact
+access/format/view limits, namespace windows and PTE translations. All four
+images must agree per invocation with all four SSBOs and the counter result.
+The ten writable intervals are the argument, one exact counter window, four
+SSBO views and four 512-byte image views. Every view tail, backing guard,
+descriptor, PTE and inactive graphics root remains checked. Other image formats
+and resource-limit/alias matrices are separate qualification work; physical
+production and RTL capacities are unchanged.
 
 ## Static read and decrement
 
@@ -173,7 +201,7 @@ parser independently enforces the same command shape.
 
 `--capture-counter-matrix` is an explicit CPU-only build/capture mode. It
 requires `--case counter-increment --capture-only` and reuses one build for all
-nine recipes. It cannot start a live DUT qualification.
+eleven recipes. It cannot start a live DUT qualification.
 
 ## Reproduction
 
@@ -199,8 +227,12 @@ python3 scripts/qualify_compute_owner.py \
   --executor-qualification "$OWNER/executors/compute/qualification.json" \
   --executor-checker "$SOURCE/scripts/prepare_owner_executor.py" \
   --executor-checker-python "$MATCHED_PYTHON" \
-  --case counter-increment
+  --case counter-scalar
 ```
+
+Select `counter-coexist` for the original four-image program, or each name in
+`scripts/compute_owner_cases.py::COUNTER_CASES` for the complete eleven-case run.
+The CPU capture matrix flag remains CPU-only and cannot qualify DUT results.
 
 Preserve the generation-matched FlashSim/CIRCT environment. This command refuses
 an absent/stale executor qualification before building a producer. It cannot
