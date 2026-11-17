@@ -17,7 +17,7 @@ import sys
 import tempfile
 import uuid
 from compute_owner_protocol import strict_json
-from compute_owner_cases import CASES, DYNAMIC_CASES, LEGACY_CASES, COUNTER_CASE, COUNTER_CASES
+from compute_owner_cases import CASES, DYNAMIC_CASES, LEGACY_CASES, COUNTER_CASE, COUNTER_CASES, IMAGE_CASES
 from owner_resource_contract import COMPUTE_STAGE, FULL_COMPUTE_CONTRACTS, SAMPLE_PROFILE
 from owner_process_lifetime import CleanupIncomplete, stop_group, remove_container
 
@@ -53,7 +53,7 @@ def checked_inputs(args):
     record = strict_json(args.executor_qualification)
     require(record.get('schema') == 'opengpu-owner-executor-v1' and record.get('kind') == 'compute',
             'wrong executor qualification kind')
-    if getattr(args, 'case', None) in COUNTER_CASES:
+    if getattr(args, 'case', None) in (*COUNTER_CASES,*IMAGE_CASES):
         require(record.get('profile') == SAMPLE_PROFILE, 'counter execution requires the exact final112 sample owner factory')
     if getattr(args, 'case', None) in (*DYNAMIC_CASES, 'mandatory-compute'):
         require(record.get('profile') == COMPUTE_STAGE or record.get('profile') in FULL_COMPUTE_CONTRACTS,
@@ -65,7 +65,7 @@ def producer_command(args, *, gpu, source, ntt, image, name, case):
     require(case in CASES, 'unknown original compute source')
     # The configured Mesa object database uses these original absolute paths.
     # Keep that mount unchanged; all newly generated files live in {ipc}.
-    counter = case in COUNTER_CASES
+    counter = case in (*COUNTER_CASES,*IMAGE_CASES)
     command = ['docker', 'run', '--rm', '--init', '--name', name, '--memory', '512m' if counter else '2g',
                '--memory-swap', '512m' if counter else '2g', '--cpus', '1' if counter else '2', '--network=none', '--read-only',
                '-v', f'{gpu}:{gpu}:ro', '-v', '{ipc}:{ipc}:rw', '-w', str(source)]
@@ -77,14 +77,14 @@ def producer_command(args, *, gpu, source, ntt, image, name, case):
     for key, value in environment.items():
         command += ['-e', key + '=' + value]
     entry = (['scripts/compute_owner_inputs.py', '--bound-inputs', str(args.counter_inputs)]
-             if case in COUNTER_CASES else ['scripts/test_gallium_compute_host.py'])
+             if case in (*COUNTER_CASES,*IMAGE_CASES) else ['scripts/test_gallium_compute_host.py'])
     return command + [image, 'python3', *entry,
         '--build', '{ipc}/build', '--sanitize', '--mesa-shared-ntt', str(ntt),
         '--profile-wire', '{ipc}/profile.bin', '--session', '{ipc}', '--case', case]
 
 
 def run_case(args, *, gpu, source, temporary, ntt, image, case):
-    if case in COUNTER_CASES:
+    if case in (*COUNTER_CASES,*IMAGE_CASES):
         from compute_owner_inputs import snapshot
         bound = snapshot(args.mesa, args.mesa_build, args.library_directory, args.drm_include, gpu)
         args.counter_inputs = temporary / 'counter-inputs.json'
@@ -106,11 +106,11 @@ def run_case(args, *, gpu, source, temporary, ntt, image, case):
             '--executor', args.executor, '--executor-qualification', args.executor_qualification,
             '--executor-checker', args.executor_checker, '--executor-checker-python', args.executor_checker_python,
             '--bridge-command', command_file, '--timeout', str(args.timeout),
-            *(['--case', case] if case in COUNTER_CASES else []),
+            *(['--case', case] if case in (*COUNTER_CASES,*IMAGE_CASES) else []),
             '--managed-session-directory', temporary / (case + '-session')], start_new_session=True,
             env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1', TMPDIR=str(temporary)))
         require(process.wait() == 0, 'actual compute case failed: ' + case)
-        if case in COUNTER_CASES:
+        if case in (*COUNTER_CASES,*IMAGE_CASES):
             require(snapshot(args.mesa, args.mesa_build, args.library_directory, args.drm_include, gpu) == bound,
                     'original counter compiler inputs changed during execution')
     finally:

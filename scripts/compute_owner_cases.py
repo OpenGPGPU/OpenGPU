@@ -11,7 +11,8 @@ DYNAMIC_COUNTER_CASES = tuple('counter-dynamic-' + op for op in ('increment','re
 SCALAR_COUNTER_CASE = 'counter-scalar'
 COEXIST_COUNTER_CASE = 'counter-coexist'
 COUNTER_CASES = STATIC_COUNTER_CASES + DYNAMIC_COUNTER_CASES + (SCALAR_COUNTER_CASE,COEXIST_COUNTER_CASE)
-CASES = LEGACY_CASES + COUNTER_CASES
+from compute_image_cases import IMAGE_CASES
+CASES = LEGACY_CASES + COUNTER_CASES + IMAGE_CASES
 
 
 def counter_parameters(name):

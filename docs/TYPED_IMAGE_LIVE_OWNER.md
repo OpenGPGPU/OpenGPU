@@ -1,4 +1,4 @@
-# Typed image live-owner transport and lowering (P08)
+# Typed image source submission and live-owner contract (P08)
 
 The complete-host CPU boundary now forwards the original `COMPUTE_IMAGES` and
 `COMPUTE_IMAGE_RESOURCES` requests to their production Linux handlers. It retains
@@ -47,17 +47,56 @@ passes reflection and the production native-word validator. Existing shared
 own-stripe, atomic, address/SIMT, 16-KiB and symbolic-register checks also pass.
 These checks execute no image shader on a GPU or DUT.
 
-The final typed-storage source also passes the eleven original counter CPU
-captures with a fresh 22-TU/22-MMD producer, strict READY checks, the independent
-ASan/UBSan parser and untouched-memory result rejection. All 8102 external and
-177 GPU/checker inputs remain unchanged across that run. This checks regression
-of the producer path; it does not extend P07's DUT qualification.
-
 This phase accepts only `PIPE_BIND_SHADER_IMAGE` for the new nonbuffer layouts.
 Combined sampler/render bindings, imported/exported typed storage, nonbuffer
 `imageSize`, and image atomics remain unsupported by this path. Existing render
 layouts and driver/RTL capacities are unchanged. Real source-bound image
 execution and its boundary/fault/cancel/reset oracles remain P08 work.
+
+## Original load/store source and independent result contract
+
+The live producer now accepts 70 original ESSL recipes: thirteen formats across
+buffer/2D/array/cube/3D, two single-plane layered array/volume cases and three
+unlayered 2D views of selected array/cube/volume planes. Each launches two groups
+of four invocations. Read-only API unit 3 and write-only unit 1 retain their
+actual Mesa reflection order; sparse SSBO binding 2 observes all four loaded
+components. The shader copies the loaded texel to a different image coordinate.
+CPU uploads only initialize original input and guard allocations.
+
+Nonbuffer resources use mip 1 of an odd-width allocation, explicit row/plane
+pitches and selected/layered ranges. Buffer views start at byte 48 and include
+three incomplete trailing bytes. Input patterns distinguish adjacent rows and
+planes, including normalized formats. Accepted production ioctl views, original
+GEM identities and the actual private GIU1/GSM1 snapshots supply READY metadata.
+The common host producer always links its real Mesa atomic-buffer object, since
+its runtime-selected counter branch remains reachable for noncounter cases.
+
+Before execution, the independent reader requires the exact full112 discovery,
+one final kernel after publication invalidates, original sparse bindings and
+format/mip/pitch/layer/access fields, literal GIU1/GSM1 records, original Sv32
+backings/permissions, a separate empty inactive context and exact writable
+intervals. Read-only images, row/plane padding, unselected layers and incomplete
+buffer texels receive no write grant. The controller binds the specific image
+case and freezes all three READY inputs through result checks and cleanup.
+The qualifier uses the original compiler-input/MMD/link guard, a read-only
+512-MiB Linux container with one CPU and the exact final112 executor profile.
+
+The returned-byte oracle derives the eight loaded RGBA values from original
+source texels and format rules, checks each destination texel and all untouched
+physical bytes, and rejects initial uploads as results. Half/float bits, signed
+extension, scalar default components, normalized endpoints and SNORM -128→-1
+loading/-127 storage are explicit. It neither executes native words nor
+synthesizes returned GPU memory.
+
+Final CPU validation passes all 70 fresh Mesa→production-ioctl captures with the
+independent ASan/UBSan C++ parser, strict READY and 7745 rejection checks. These
+include view/descriptor/permission/backing mutations, widened write intervals,
+read-only grants, inactive-context authority and mismatched qualified cases.
+All source patterns distinguish adjacent row/plane reads. The eleven original
+counter CPU recipes also pass strict READY, canonical parsing and initial-memory
+rejection with fresh 22-TU/22-MMD builds. Each matrix preserves all 8102 external
+and 180 GPU/checker inputs. The 59 focused Python checks pass. These checks
+execute no image shader on a DUT and create no execution qualification.
 
 ## CPU transport result and limits
 
@@ -76,19 +115,11 @@ layouts check bounded planning and cancellation. Four bad cleanup-ACK cases
 retain the reachable original image and private descriptor after public-handle
 closure. The existing storage/uniform/counter transport and cleanup checks pass.
 
-The transport-phase producer also passes all eleven original counter recipes, including
-four-image coexistence, through a fresh 22-TU Mesa build with 22 checked MMD
-files. All 8102 external and 174 GPU/checker inputs remain unchanged. Each CPU
-capture passes strict READY checks and the independent ASan/UBSan parser;
-untouched initial memory is rejected as a GPU result. The pinned Linux producer
-uses 512 MiB memory and total memory-plus-swap, one CPU, read-only inputs and no
-network. This regression does not rerun or extend P07's actual-DUT qualification.
-
 These are CPU OS/MMIO transport fixtures, including CPU completion/cleanup peers.
 They execute no shader and create no DUT qualification. P08 remains incomplete:
-original Mesa typed image load/store/atomic programs and exact returned-byte
-oracles still need source-bound full-host execution, including boundaries,
-permission faults, cancellation/reset/drain and healthy reuse. Complete resource
+the original typed load/store sources and exact returned-byte oracle still need
+fresh source-bound full-host DUT execution. Image atomics, actual boundaries,
+permission faults, cancellation/reset/drain and healthy reuse remain open. Complete resource
 combinations, cross-command coherence and product clock/FPS keep their own gates.
 Existing executor qualifications cannot be relabeled for the changed source.
 
@@ -124,6 +155,27 @@ The compiler input guard is `compute_owner_inputs.py --bound-inputs INPUTS.json`
 using the current `snapshot` and source hashes rather than an executor
 qualification. Run the canonical parser and strict counter READY checker for
 each `sessions/COUNTER_CASES` capture. CPU capture records cannot qualify a DUT.
+
+For the original typed-image CPU matrix, select a new build/session and replace
+the case selection with the following flags on the same guarded command:
+
+```sh
+--case image-buffer-rgba32f --capture-only --capture-image-matrix
+```
+
+Then check every capture using the canonical C++ parser and run:
+
+```sh
+python3 -B scripts/test_compute_image_source.py --captures "$CPU_CAPTURE/sessions"
+python3 -B scripts/test_compute_image_source.py
+```
+
+For later actual execution, freshly qualify the software executor against these
+producer/checker sources, then use `qualify_compute_owner.py --case CASE` for
+each name in `compute_image_cases.IMAGE_CASES`. The existing executor/Mesa/tool
+arguments and complete-host cleanup protocol are unchanged. Matrix capture flags
+require `--capture-only`; they cannot launch live qualification. This document
+records no typed-image DUT result.
 
 For the typed compiler and callbacks, use the same pinned Mesa/DRM container
 environment and new private output directories. Remove those directories after
