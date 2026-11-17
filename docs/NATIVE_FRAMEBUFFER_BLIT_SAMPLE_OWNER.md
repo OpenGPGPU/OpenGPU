@@ -33,20 +33,55 @@ one another. `originalLinuxTrace=false`, `fullResourceQualification=false`,
 `fpsQualified=false` remain explicit: these caller packets use a bounded host
 qualification VM, not an original Linux MMIO replay.
 
-Build only after the exact complete sample-stage model has finished generation,
-using its original FlashSim/CIRCT environment and matching shard configuration:
+Build only after the exact complete sample-stage model has finished generation
+and native compilation. Use its original generation interpreter, checkout and
+compiler environment. The [complete factory reproduction](OWNER_FULL_FACTORY_REPRODUCTION.md)
+prepares the compact Verilator model and all four original executors. If this
+kind has not already been built, its separate Verilator build command is:
+
+```sh
+"$GENERATION_PYTHON" -B scripts/prepare_owner_executor.py --stage build \
+  --backend verilator --kind framebuffer-blit-sample --owner-output "$OWNER_OUTPUT"
+```
+
+For a completed FlashSim model, use its original CIRCT environment and matching
+shard configuration instead:
 
 ```sh
 "$GENERATION_PYTHON" -B scripts/prepare_owner_executor.py --stage build \
   --kind framebuffer-blit-sample --owner-output "$OWNER_OUTPUT" \
   --flashsim-dir "$FLASHSIM" --shards 32 --jobs 1
+```
+
+Capture all 43 original callers from the same checkout, using Mesa 22.3.6 and
+the original DRM headers. Select a fresh internal artifacts directory; the
+capture writes the independently pinned manifest and original code/kernarg/maps:
+
+```sh
+CALLER_DIRECTORY="$(mktemp -d "$PWD/.artifacts/blit-callers-XXXXXX")"
+CALLER_INPUTS="$CALLER_DIRECTORY/inputs"
+OPENGPU_MESA_DIR="$MESA" OPENGPU_DRM_INCLUDE="$DRM_INCLUDE" \
+  "$GENERATION_PYTHON" -B scripts/run_owner_bounded.py \
+  --memory-mib 1024 --timeout-seconds 300 -- \
+  "$GENERATION_PYTHON" -B scripts/test_gallium_compute.py \
+  --fixture framebuffer-blit --artifacts "$CALLER_INPUTS"
+CALLER_MANIFEST_SHA256="$("$GENERATION_PYTHON" -B -c \
+  'import hashlib, pathlib, sys; print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())' \
+  "$CALLER_INPUTS/manifest.json")"
 "$GENERATION_PYTHON" -B scripts/qualify_framebuffer_blit_sample_host.py --stage check \
   --executor "$OWNER_OUTPUT/executors/framebuffer-blit-sample/executor" \
   --executor-qualification "$OWNER_OUTPUT/executors/framebuffer-blit-sample/qualification.json" \
   --inputs "$CALLER_INPUTS" --input-manifest-sha256 "$CALLER_MANIFEST_SHA256"
+"$GENERATION_PYTHON" -B scripts/run_owner_bounded.py \
+  --memory-mib 8192 --timeout-seconds 14600 -- \
+  "$GENERATION_PYTHON" -B scripts/qualify_framebuffer_blit_sample_host.py --stage run \
+  --executor "$OWNER_OUTPUT/executors/framebuffer-blit-sample/executor" \
+  --executor-qualification "$OWNER_OUTPUT/executors/framebuffer-blit-sample/qualification.json" \
+  --inputs "$CALLER_INPUTS" --input-manifest-sha256 "$CALLER_MANIFEST_SHA256" \
+  --timeout 14400
 ```
 
-Use the same command with `--stage run --timeout 3600` for actual execution.
+Remove `CALLER_DIRECTORY` after validation and proven consumer exit.
 `GENERATION_PYTHON` must be the original model-generation interpreter. Preserve
 the matching `PYTHONPATH`, `CIRCT_VERILOG`, `DYLD_LIBRARY_PATH` (where used),
 `FLASHSIM_CIRCT_SERIAL` and `FLASHSIM_GC_POLICY`, plus the qualified compiler
