@@ -20,7 +20,7 @@ from compute_owner_protocol import strict_json
 from compute_owner_cases import CASES, DYNAMIC_CASES, LEGACY_CASES, COUNTER_CASE, COUNTER_CASES, IMAGE_CASES
 from owner_resource_contract import COMPUTE_STAGE, FULL_COMPUTE_CONTRACTS, SAMPLE_PROFILE, SAMPLE_FACTORY_CONTRACTS
 from owner_resource_contract import IMAGE_FLOAT_PROFILE
-from compute_image_cases import IMAGE_FLOAT_ATOMIC_CASES
+from compute_image_cases import IMAGE_FLOAT_EXCHANGE_CASES
 from owner_process_lifetime import CleanupIncomplete, stop_group, remove_container
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,7 +58,7 @@ def checked_inputs(args):
     if getattr(args, 'case', None) in (*COUNTER_CASES,*IMAGE_CASES):
         require(type(record.get('profile')) is str and record['profile'] in SAMPLE_FACTORY_CONTRACTS,
                 'source execution requires the exact final112 sample owner factory selected by qualification')
-    if getattr(args,'case',None) in IMAGE_FLOAT_ATOMIC_CASES:
+    if getattr(args,'case',None) in IMAGE_FLOAT_EXCHANGE_CASES:
         require(record.get('profile')==IMAGE_FLOAT_PROFILE,'R32F exchange requires its qualified float owner')
     if getattr(args, 'case', None) in (*DYNAMIC_CASES, 'mandatory-compute'):
         require(record.get('profile') == COMPUTE_STAGE or record.get('profile') in FULL_COMPUTE_CONTRACTS,

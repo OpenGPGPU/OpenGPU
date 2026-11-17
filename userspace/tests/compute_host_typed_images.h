@@ -2,6 +2,8 @@
  * inputs only; returned shader/image bytes are checked by the external oracle. */
 #include "opengpu_cs_emit.h"
 static unsigned image_case, image_target, image_mode, image_format;
+static int image_atomic_case(void){return image_mode==3 || image_mode==5;}
+static int image_boundary_case(void){return image_mode>=4;}
 static const char *image_name;
 static struct drm_opengpu_compute_image_view accepted_images[4];
 static struct drm_opengpu_resource image_bindings[OPENGPU_MAX_RESOURCE_BINDINGS+1];
@@ -25,10 +27,12 @@ static const enum pipe_texture_target image_pipe_targets[]={PIPE_BUFFER,PIPE_TEX
 
 static void image_parse_case(const char *name)
 {
- for(unsigned target=0;target<5;target++)for(unsigned format=0;format<13;format++)for(unsigned mode=0;mode<4;mode++){
+ for(unsigned target=0;target<5;target++)for(unsigned format=0;format<13;format++)for(unsigned mode=0;mode<6;mode++){
   if((mode==1 || mode==2) && (format!=6 || (mode==1 && target!=2 && target!=4) || (mode==2 && target<2)))continue;
   if(mode==3 && format!=2 && format!=6 && format!=10)continue;
-  char expected[128];assert(snprintf(expected,sizeof(expected),mode==1?"image-single-%s-%s":mode==2?"image-plane-%s-%s":mode==3?"image-atomic-%s-%s":"image-%s-%s",image_targets[target],image_formats[format].name)>0);
+  if(mode==4 && format!=6)continue;
+  if(mode==5 && format!=2 && format!=6)continue;
+  char expected[128];assert(snprintf(expected,sizeof(expected),mode==1?"image-single-%s-%s":mode==2?"image-plane-%s-%s":mode==3?"image-atomic-%s-%s":mode==4?"image-bounds-%s-%s":mode==5?"image-atomic-bounds-%s-%s":"image-%s-%s",image_targets[target],image_formats[format].name)>0);
   if(!strcmp(name,expected)){assert(!image_case);image_case=1;image_target=target;image_mode=mode;image_format=format;image_name=name;}
  }
 }
@@ -72,19 +76,19 @@ static void image_setup(struct pipe_screen *s,struct pipe_context *p,void *front
   unsigned role=api==1;assert(!(seen&(1u<<role)));seen|=1u<<role;image_native_units[role]=unit;
   struct pipe_image_view *v=&views[unit];
   *v=(struct pipe_image_view){.resource=resources[role],.format=image_formats[image_format].format,
-   .access=role?PIPE_IMAGE_ACCESS_WRITE:PIPE_IMAGE_ACCESS_READ|(image_mode==3?PIPE_IMAGE_ACCESS_WRITE:0),
-   .shader_access=role?PIPE_IMAGE_ACCESS_WRITE:PIPE_IMAGE_ACCESS_READ|(image_mode==3?PIPE_IMAGE_ACCESS_WRITE:0)};
+   .access=role?PIPE_IMAGE_ACCESS_WRITE:PIPE_IMAGE_ACCESS_READ|(image_atomic_case()?PIPE_IMAGE_ACCESS_WRITE:0),
+   .shader_access=role?PIPE_IMAGE_ACCESS_WRITE:PIPE_IMAGE_ACCESS_READ|(image_atomic_case()?PIPE_IMAGE_ACCESS_WRITE:0)};
   if(!image_target){v->u.buf.offset=48;v->u.buf.size=13*image_formats[image_format].bytes+3;}
   else{
    v->u.tex.level=1;
    if(image_mode==2)v->u.tex.first_layer=v->u.tex.last_layer=role?(image_target==3?4:2):1;
    else if(image_target==2){v->u.tex.first_layer=image_mode==1?0:1;v->u.tex.last_layer=image_mode==1?0:3;}
    else if(image_target==3)v->u.tex.last_layer=5;
-   else if(image_target==4){v->u.tex.first_layer=image_mode==1?0:role?0:1;v->u.tex.last_layer=image_mode==1?0:2;}
+   else if(image_target==4){v->u.tex.first_layer=image_boundary_case()?1:image_mode==1?0:role?0:1;v->u.tex.last_layer=image_mode==1?0:2;}
   }
  }
  assert(seen==3);
- if(image_mode==3){
+ if(image_atomic_case()){
   struct opengpu_cs_program program;struct opengpu_cs_image_info info;
   assert(!opengpu_cs_emit_image_info(cs_frontend_tokens(frontend),NULL,&program,&info));
   assert(info.atomics==(1u<<image_native_units[0]) && program.image_reads==info.atomics && program.image_writes==3);
@@ -94,8 +98,8 @@ static void image_setup(struct pipe_screen *s,struct pipe_context *p,void *front
   unsigned counts[8]={0};
   for(unsigned i=0;i<program.words;i++)if((program.code[i]&127)==0x2b && (program.code[i]>>26)==23)
    counts[(program.code[i]>>12)&7]++;
-  for(unsigned op=0;op<8;op++)assert(counts[op]==(floating?(op==0?5u:0u):(op==0 || op==7?2u:1u)));
-  printf("original %s: %u image atomics, native words=%u, metadata/opcodes PASS (CPU compiler only)\n",image_name,floating?5u:10u,program.words);
+  for(unsigned op=0;op<8;op++)assert(counts[op]==(image_boundary_case()?(op==0?2u:0u):floating?(op==0?5u:0u):(op==0 || op==7?2u:1u)));
+  printf("original %s: %u image atomics, native words=%u, metadata/opcodes PASS (CPU compiler only)\n",image_name,image_boundary_case()?2u:floating?5u:10u,program.words);
  }
  p->set_shader_images(p,PIPE_SHADER_COMPUTE,0,2,0,views);
 }

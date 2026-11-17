@@ -9,8 +9,9 @@ from copy import deepcopy
 from pathlib import Path
 import struct
 import unittest
-from compute_image_cases import IMAGE_CASES, parameters
-from compute_image_source import loaded_words, ready as validate_ready, texel_address, atomic_values
+from compute_image_cases import IMAGE_CASES, IMAGE_BOUNDARY_CASES, parameters
+from compute_image_source import (loaded_words, ready as validate_ready, texel_address, atomic_values,
+    boundary_coordinates,boundary_address,boundary_exchange_value,source_view,initial_bytes,returned_outputs,SCHEMA)
 from compute_owner_oracle import SparseMemory, verify
 from compute_owner_protocol import strict_json
 from compute_owner_controller import ready_inputs
@@ -36,7 +37,8 @@ class Formats(unittest.TestCase):
 
     def test_unknown_source_is_rejected(self):
         for name in ('image-2d-rgba8ui-extra','image-plane-buffer-r32ui','image-single-cube-r32ui','image-rectangle-r32ui',
-                     'image-atomic-array-rgba8ui','image-atomic-2d-rgba32f'):
+                     'image-atomic-array-rgba8ui','image-atomic-2d-rgba32f',
+                     'image-bounds-array-rgba8ui','image-atomic-bounds-2d-r32i'):
             with self.subTest(name=name),self.assertRaises(ValueError):parameters(name)
 
     def test_atomic_old_values_wrap_signed_order_and_cas_paths(self):
@@ -55,6 +57,73 @@ class Formats(unittest.TestCase):
                 ([0x3f123456,0,0x3f400000,0xbf800000,0x7f800000],0x40000000))
             self.assertEqual(atomic_values(p,0xbf654321,1),
                 ([0xbf654321,0x80000000,0x3f400001,0xbf800001,0xff800000],0x40100000))
+
+    def test_boundaries_keep_only_first_and_last_texels_and_never_wrap_addresses(self):
+        expected={'buffer':(1,(12,0,0)),'2d':(3,(12,4,0)),
+            'array':(7,(12,4,2)),'cube':(7,(12,12,5)),'3d':(7,(12,4,1))}
+        for target,(last_lane,last) in expected.items():
+            p=parameters('image-bounds-'+target+'-r32ui')
+            images=[dict(allocationPhysical=0x10000*(role+1),view=source_view(p,role,role)[1])
+                    for role in range(2)]
+            for image in images:
+                valid=[(lane,access,coordinate) for lane in range(8)
+                    for access,coordinate in enumerate(boundary_coordinates(p,lane))
+                    if boundary_address(image,p,coordinate) is not None]
+                self.assertEqual(valid,[(0,0,(0,0,0)),(last_lane,1,last)],target)
+                for coordinate in ((-1,0,0),(13,0,0),(0x7fffffff,0,0),(-0x80000000,0,0)):
+                    self.assertIsNone(boundary_address(image,p,coordinate))
+                first=boundary_address(image,p,(0,0,0))
+                self.assertEqual(first,image['allocationPhysical']+image['view']['offset'])
+            self.assertEqual(images[0]['view']['depth'],images[1]['view']['depth'])
+
+    def test_boundary_exchange_operands_are_exact_raw_words(self):
+        for target,last_lane in (('buffer',1),('2d',3),('array',7),('cube',7),('3d',7)):
+            for fmt,base in (('r32ui',0x87650000),('r32f',0x3f400000)):
+                p=parameters('image-atomic-bounds-'+target+'-'+fmt)
+                self.assertEqual(boundary_exchange_value(p,0,0),base)
+                self.assertEqual(boundary_exchange_value(p,last_lane,1),base+17*last_lane+1)
+                self.assertEqual(p['mode'],'atomic-bounds')
+
+    def test_boundary_oracle_has_four_zero_channels_and_only_two_valid_texel_writes(self):
+        # Only initial GEM bytes are modeled. No returned GPU memory is made.
+        class InitialMemory:
+            def __init__(self,data):
+                self.data=data;self.ranges=[(a,a+len(b),0) for a,b in sorted(data.items())]
+            def read(self,address,count):
+                for first,data in self.data.items():
+                    if first<=address<=address+count<=first+len(data):return data[address-first:address-first+count]
+                raise ValueError('read outside initial allocation')
+        endpoints={'buffer':(1,(12,0,0)),'2d':(3,(12,4,0)),
+            'array':(7,(12,4,2)),'cube':(7,(12,12,5)),'3d':(7,(12,4,1))}
+        for case in IMAGE_BOUNDARY_CASES:
+            p=parameters(case);atomic=p['mode']=='atomic-bounds'
+            data={0x1000:struct.pack('<I',0xdeadbeef)*2048};images=[]
+            for role in range(2):
+                binding,view=source_view(p,role,role);size=(binding+4095)//4096*4096
+                physical=0x10000*(role+1)
+                data[physical]=b'\xa7'*size if role else initial_bytes(p,size)
+                images.append(dict(apiBinding=1 if role else 3,nativeUnit=role,handle=role+1,
+                    allocationPhysical=physical,allocationBytes=size,bindingBytes=binding,view=view))
+            description=dict(schema=SCHEMA,sourceCase=case,groups=2,local=4,viewBytes=8192,
+                guard=0xdeadbeef,context=1,kernargPhysical=0,kernargBytes=0,imagePhysical=0,imageRoot=0,
+                storagePhysical=0,storageRoot=0,output=dict(globalBinding=2,allocationPhysical=0x1000,
+                    allocationBytes=8192,offset=0,bytes=8192),images=images)
+            memory=InitialMemory(data);last_lane,(x,y,z)=endpoints[p['shader']]
+            points=[]
+            for image in images:
+                v=image['view'];first=image['allocationPhysical']+v['offset']
+                points.append((first,first+x*4+y*v['rowPitch']+z*(v['slicePitch'] or v['layerPitch'])))
+            stride=4 if atomic else 16;observed=bytearray(16*stride);expected=[]
+            for index,(lane,access) in enumerate(((0,0),(last_lane,1))):
+                raw=memory.read(points[0][index],4)
+                value=raw if atomic else loaded_words(p,raw)
+                first=(lane*2+access)*stride;observed[first:first+stride]=value
+                if atomic:
+                    word=(0x3f400000 if p['format']=='r32f' else 0x87650000)+17*lane+access
+                    stored=word.to_bytes(4,'little')
+                    expected.extend(((points[0][index],stored),(points[1][index],stored)))
+                else:expected.append((points[1][index],raw))
+            self.assertEqual(returned_outputs(memory,None,description),[(0x1000,bytes(observed)),*expected],case)
 
 
 class ChangedMemory:
@@ -102,7 +171,14 @@ def check_capture(root,owner_profile=SAMPLE_PROFILE):
             if kind==1:writes[address]=value;write_offsets[address]=offset+8
         satp=writes[0x14c]
         p=parameters(description['sourceCase']);source_image=description['images'][0]
-        addresses=[texel_address(source_image,p,0,lane) for lane in range(8)]
+        if p['mode'].endswith('bounds'):
+            addresses=[]
+            for lane in range(8):
+                for coordinate in boundary_coordinates(p,lane):
+                    address=boundary_address(source_image,p,coordinate)
+                    if address is not None:addresses.append(address)
+            assert len(addresses)==len(set(addresses))==2,'boundary recipe aliases valid texels'
+        else:addresses=[texel_address(source_image,p,0,lane) for lane in range(8)]
         values=b''.join(loaded_words(p,memory.read(address,p['bytes'])) for address in addresses)
         if p['shader']!='buffer':
             view=source_image['view']

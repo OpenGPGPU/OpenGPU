@@ -74,7 +74,7 @@ class Entry(unittest.TestCase):
                 for profile in ('two-cu-vga60-owner-v1',qualifier.COMPUTE_STAGE,*qualifier.FULL_COMPUTE_CONTRACTS):
                     qualification.write_text(json.dumps(dict(schema='opengpu-owner-executor-v1',kind='compute',profile=profile)))
                     with patch.object(qualifier.subprocess,'run'):
-                        if case in qualifier.IMAGE_FLOAT_ATOMIC_CASES and profile==qualifier.SAMPLE_PROFILE:
+                        if case in qualifier.IMAGE_FLOAT_EXCHANGE_CASES and profile==qualifier.SAMPLE_PROFILE:
                             with self.assertRaisesRegex(ValueError,'qualified float owner'):qualifier.checked_inputs(args)
                         elif profile in (qualifier.SAMPLE_PROFILE,IMAGE_FLOAT_PROFILE):qualifier.checked_inputs(args)
                         else:
