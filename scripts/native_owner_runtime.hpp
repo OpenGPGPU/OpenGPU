@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <iostream>
 #include <limits>
+#include <sstream>
 #include <thread>
 
 #ifdef OPENGPU_FLASHSIM_NATIVE
@@ -198,11 +199,25 @@ HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
   const auto append_lo=bus.read(GPU_REG_UCMD_COMPLETION_BYTES_LO);
   const auto append_hi=bus.read(GPU_REG_UCMD_COMPLETION_BYTES_HI);
   result.append_read_bytes=(uint64_t(append_hi)<<32)|append_lo;
-  require(result.held_status&GPU_UCMD_STATUS_COMPLETION,"native completion status disappeared before capture");
+  if(!(result.held_status&GPU_UCMD_STATUS_COMPLETION)) {
+    std::ostringstream message;
+    message<<"native completion status missing after IRQ: cycles="
+      <<bus.cycles-held_record.start_cycles<<std::hex
+      <<" completion=0x"<<completion<<" legacy_status=0x"<<result.held_legacy_status
+      <<" ucmd_status=0x"<<result.held_status<<" irq=0x"<<result.held_irq
+      <<" irq_asserted="<<result.held_irq_asserted;
+    throw std::runtime_error(message.str());
+  }
   std::vector<uint32_t> held;
   for(const auto &c:capture.checks) {
     const auto value=bus.read(c.address);
-    require((value&c.mask)==c.expected,"native completion/GNX check differs");held.push_back(value);
+    if((value&c.mask)!=c.expected) {
+      std::ostringstream message;
+      message<<"native completion/GNX check differs: address=0x"<<std::hex<<c.address
+        <<" actual=0x"<<value<<" mask=0x"<<c.mask<<" expected=0x"<<c.expected;
+      throw std::runtime_error(message.str());
+    }
+    held.push_back(value);
     if(c.address>=0x180 && c.address<0x1b0)result.gnx[(c.address-0x180)/4]=value;
   }
   for(uint32_t n=0;n<capture.hold_cycles;++n) {

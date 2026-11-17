@@ -73,6 +73,8 @@ class ControlPeer:public Simulation {
 public:
   size_t submitted=0;unsigned resets=0;
   bool corrupt_previous=false,unstable_gnx=false,raw_observations=false,unstable_telemetry=false;
+  bool missing_completion=false;
+  uint32_t completion_irq=GPU_IRQ_ENABLE|GPU_IRQ_PENDING;
   uint64_t completion_cycle=0;
   std::vector<uint32_t> read_addresses;
   ControlPeer(int argc,char **argv,Memory &m,const std::vector<Capture> &c)
@@ -110,7 +112,12 @@ public:
           r[0x188]=0x12345678;
           r[GPU_REG_UCMD_COMPLETION_BYTES_LO]=64;r[GPU_REG_UCMD_COMPLETION_BYTES_HI]=1;
         }
-        r[GPU_REG_IRQ]=GPU_IRQ_ENABLE|GPU_IRQ_PENDING;
+        r[GPU_REG_IRQ]=completion_irq;
+        if(missing_completion) {
+          r[GPU_REG_UCMD_STATUS]=GPU_UCMD_STATUS_READY|GPU_UCMD_STATUS_VM_BUSY;
+          r[GPU_REG_UCMD_COMPLETION]=0x12345678;
+          r[GPU_REG_STATUS]=GPU_STATUS_BUSY;
+        }
         memory.byte(c.writable[0].first,uint8_t(0x51+submitted));
         if(submitted && corrupt_previous)memory.byte(captures[0].writable[0].first,0xff);
         ++submitted;completion_cycle=cycle;model->io_m_irq=1;
@@ -172,6 +179,38 @@ static void actual_observations(int argc,char **argv) {
     report.str().find("\"heldIrqAsserted\":true")!=std::string::npos &&
     report.str().find("\"retiredIrqAsserted\":false")!=std::string::npos,
     "replay result JSON discarded actual completion observations");
+}
+static void missing_completion_diagnostic(int argc,char **argv) {
+  for(uint32_t irq:{GPU_IRQ_ENABLE|GPU_IRQ_PENDING,GPU_IRQ_ENABLE|GPU_IRQ_VBLANK_PENDING}) {
+    auto c=fixture();c.writable={{0x2000,0x2040}};
+    const std::vector<Capture> captures{c};Memory memory;memory.ranges={{0x1000,0x4000,0xa7}};
+    ControlPeer sim(argc,argv,memory,captures);sim.reset();
+    sim.missing_completion=true;sim.completion_irq=irq;
+    Agent agent(memory);ReplayBus<ControlPeer> bus(sim,agent,c.max_cycles);
+    std::string error;
+    try {hold_record(sim,agent,bus,memory,c);}catch(const std::runtime_error &e) {error=e.what();}
+    require(error.find("native completion status missing after IRQ: cycles=")==0 &&
+      error.find(" completion=0x12345678 legacy_status=0x1 ucmd_status=0x21 irq=0x"+
+        std::string(irq&GPU_IRQ_PENDING?"3":"5")+" irq_asserted=1")!=std::string::npos,
+      "missing completion diagnostic discarded actual IRQ/status observations");
+    require(sim.submitted==1 && sim.model->io_m_irq &&
+      sim.model->registers[GPU_REG_UCMD_STATUS]==(GPU_UCMD_STATUS_READY|GPU_UCMD_STATUS_VM_BUSY) &&
+      sim.model->registers[GPU_REG_UCMD_COMPLETION]==0x12345678 && sim.model->registers[GPU_REG_IRQ]==irq,
+      "missing completion observation retired or acknowledged the failed command");
+  }
+}
+static void mismatched_completion_diagnostic(int argc,char **argv) {
+  auto c=fixture();c.writable={{0x2000,0x2040}};
+  const std::vector<Capture> captures{c};Memory memory;memory.ranges={{0x1000,0x4000,0xa7}};
+  ControlPeer sim(argc,argv,memory,captures);sim.reset();sim.raw_observations=true;
+  Agent agent(memory);ReplayBus<ControlPeer> bus(sim,agent,c.max_cycles);
+  std::string error;
+  try {hold_record(sim,agent,bus,memory,c);}catch(const std::runtime_error &e) {error=e.what();}
+  require(error=="native completion/GNX check differs: address=0x188 actual=0x12345678 mask=0xffffffff expected=0x0",
+    "completion diagnostic omitted actual address, value, mask or expected predicate");
+  require(sim.submitted==1 && sim.model->io_m_irq &&
+    (sim.model->registers[GPU_REG_UCMD_STATUS]&GPU_UCMD_STATUS_COMPLETION),
+    "failed completion predicate released the driver's held slot");
 }
 static void unstable_append_telemetry(int argc,char **argv) {
   auto c=fixture();c.writable={{0x2000,0x2040}};c.hold_cycles=64;
@@ -594,6 +633,8 @@ int main() {
   record_series(argc,argv,false);record_series(argc,argv,true);
   unstable_completion(argc,argv);
   actual_observations(argc,argv);unstable_append_telemetry(argc,argv);
+  missing_completion_diagnostic(argc,argv);
+  mismatched_completion_diagnostic(argc,argv);
   missing_source_profile(argc,argv);
   profile_probe(argc,argv);
   retirement_parser();cleanup_parser();active_series(argc,argv);
