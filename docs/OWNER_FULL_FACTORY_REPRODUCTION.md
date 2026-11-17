@@ -82,9 +82,21 @@ compilation, execution speed or GPU qualification.
 The generator checks the exact prepared factory, RTL, compiler toolkit and
 generated sources. The native builder binds its compiler, SDK, options,
 runtime objects and complete model archives. It uses eight compiler jobs by
-default, bounded by aggregate memory, with `-O1` for active code and `-O0` for
-Verilator's initialization/slow files. On macOS it passes the selected SDK
+default, bounded by aggregate memory, and accepts `-O0` or `-O1` for active
+code; initialization/slow files use `-O0`. On macOS it passes the selected SDK
 explicitly when invoking the real compiler.
+
+The commands below select `-O0` for the model. With Apple clang 16, one 83.6 MB
+active translation unit compiled in 18.840 seconds at `-O0`, while its `-O1`
+compile spent more than 24 minutes in ARM branch relaxation before interruption.
+This establishes a compiler-cost limit, not simulation throughput. The original
+four driver translation units retain `-O1`.
+
+All four original driver translation units compiled successfully against the
+complete generated model's real headers with `-O1`. Their actual include
+dependencies and original source/checker closures were checked before and after
+compilation. This verifies the source interface; model archives, linked
+executables and the three actual probes retain their separate acceptance gates.
 
 Starting with the prepared inline owner above:
 
@@ -93,7 +105,7 @@ P04_OWNER="$PWD/.artifacts/owner-inline"
 python3 -B scripts/generate_owner_verilator.py --owner-output "$P04_OWNER"
 python3 -B scripts/generate_owner_verilator.py --owner-output "$P04_OWNER" --check
 python3 -B scripts/build_owner_verilator.py --owner-output "$P04_OWNER" \
-  --jobs 8 --memory-mib 24576
+  --jobs 8 --memory-mib 24576 --optimization=-O0
 python3 -B scripts/build_owner_verilator.py --owner-output "$P04_OWNER" --check
 for kind in native-sample native-sample-graphics compute framebuffer-blit-sample; do
   python3 -B scripts/prepare_owner_executor.py --stage build --backend verilator \
