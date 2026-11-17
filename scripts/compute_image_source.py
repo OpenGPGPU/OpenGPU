@@ -16,6 +16,43 @@ def require(value, message):
         raise ValueError('typed image: '+message)
 
 
+def source_read_fault_plan(memory, description, *, owner_profile):
+    """Choose only the original recipe's source allocation, never GPU results."""
+    from owner_resource_contract import IMAGE_FLOAT_PROFILE
+    require(owner_profile==IMAGE_FLOAT_PROFILE and
+            description.get('sourceCase')=='image-atomic-buffer-r32f',
+            'source fault requires the original float buffer exchange and qualified owner')
+    recipe(memory, description)
+    image=description['images'][0]
+    first,size=uint(image['allocationPhysical']),uint(image['allocationBytes'])
+    require(first%64==0 and size%64==0 and size>0 and first+size<=1<<32,
+            'source fault allocation is not a complete physical line interval')
+    return struct.pack('<8sQQ',b'OGCFS001',first,first+size)
+
+
+def source_read_fault_proof(value, held=None):
+    physical=uint(value.get('physicalReadFaults'))
+    injected=uint(value.get('injectedReadFaults'))
+    require(physical>0 and physical==injected and uint(value.get('physicalWriteFaults'))==0,
+            'failed source execution lacks exact injected read faults')
+    proof=(physical,injected)
+    require(held is None or proof==source_read_fault_proof(held),
+            'source fault history changed during retirement')
+    return proof
+
+
+def verify_source_read_fault(initial, returned, description):
+    """A cold source-read failure must preserve every original physical byte."""
+    require(description.get('sourceCase')=='image-atomic-buffer-r32f', 'wrong source-fault result recipe')
+    recipe(initial,description)
+    require(initial.ranges==returned.ranges, 'source-fault result replaced original physical layout')
+    for begin,end,_ in initial.ranges:
+        for address in range(begin,end,4096):
+            size=min(4096,end-address)
+            require(initial.read(address,size)==returned.read(address,size),
+                    'source fault changed an original image/output/argument/descriptor/PT byte')
+
+
 def source_view(p, role, unit):
     """Reconstruct the recipe's original allocation and exposed source view."""
     target = dict(buffer=5, **{'2d': 0, 'array': 1, 'cube': 2, '3d': 3})[p['target']]

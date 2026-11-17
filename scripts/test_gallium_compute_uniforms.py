@@ -28,6 +28,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         ap.add_argument('--profile-wire', type=Path, required=True)
         ap.add_argument('--session', type=Path, required=True)
         ap.add_argument('--capture-only', action='store_true', help='explicit CPU capture only; no DUT execution')
+        ap.add_argument('--expect-image-source-fault', action='store_true',
+                        help='actual external-DUT source-read fault; distinct failed receipt protocol')
         ap.add_argument('--capture-counter-matrix', action='store_true',
                         help='CPU only: reuse one build for all original static/dynamic counter recipes')
         ap.add_argument('--capture-image-matrix', action='store_true',
@@ -48,6 +50,10 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     ap.add_argument("--mesa-shared-ntt", type=Path,
                     help="exact privately staged shared NTT source (shared fixtures only)")
     args = ap.parse_args()
+    if host_execution and args.expect_image_source_fault and (
+            args.case != 'image-atomic-buffer-r32f' or args.capture_only or
+            args.capture_counter_matrix or args.capture_image_matrix):
+        ap.error('--expect-image-source-fault requires one live image-atomic-buffer-r32f case')
     if host_execution and args.capture_counter_matrix and (not args.capture_only or args.case != 'counter-increment'):
         ap.error('--capture-counter-matrix requires --case counter-increment --capture-only')
     if host_execution and args.capture_image_matrix and (not args.capture_only or args.case != IMAGE_CASES[0] or args.capture_counter_matrix):
@@ -431,7 +437,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
             source=('full128.comp' if case=='uniforms' else 'full.comp' if case=='shared' else
                     counter_parameters(case)['source'] if case in COUNTER_CASES else case+'.comp')
             run([binary,args.profile_wire.resolve(),session.resolve(),sources/source,case]+
-                (['--capture-only'] if args.capture_only else []),
+                (['--capture-only'] if args.capture_only else ['--expect-image-source-fault'] if args.expect_image_source_fault else []),
                 'actual-compute-capture-'+case if matrix else 'actual-compute-capture',env)
         print('Actual Mesa/Linux compute ' + ('CPU capture only' if args.capture_only else 'external-DUT protocol') + ' completed: ' + str(out))
         return

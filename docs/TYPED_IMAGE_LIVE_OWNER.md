@@ -360,9 +360,9 @@ PYTHONPATH=scripts python3 -B -m unittest test_compute_owner_protocol \
 ```
 
 These are CPU transport and schema checks. The ordinary compute executor and
-Mesa producer still use success receipts; a source-qualified native failure
-mode, physical fault injection, live failure handoff and same-DUT healthy reuse
-remain required. Cancel/reset execution also remains pending. Freshly bind any
+Mesa producer use success receipts; the distinct source-fault execution path
+below requires its own actual-DUT qualification. Same-DUT healthy reuse and
+cancel/reset execution also remain pending. Freshly bind any
 execution qualification to the changed boundary/protocol sources; this source
 phase does not close P08.
 
@@ -396,6 +396,47 @@ trap 'rm -rf "$axi_dir"' EXIT
 c++ -std=c++17 -O1 -Wall -Wextra -Werror -fsanitize=address,undefined \
   -fno-omit-frame-pointer scripts/test_native_frame_axi.cpp -o "$axi_dir/check"
 "$axi_dir/check" "$axi_dir"
+```
+
+## Original source-read failure execution path
+
+The explicit qualifier option `--expect-image-source-fault` selects only the
+original `image-atomic-buffer-r32f` recipe and the distinct qualified float
+factory. CPU-capture and other recipe modes cannot select this path. After
+strict original READY validation, the independent controller derives a physical
+read-fault interval from the accepted source GEM allocation and freezes it
+alongside the original memory, descriptor/recipe and MMIO capture.
+
+The native executor requires actual injected AXI errors, exact failed opcode-0
+completion, no physical writes and unchanged original RAM. It retains fault
+counters through held/retired and real context cleanup. Distinct failed wire
+messages reach the original Linux IRQ path; `SYNC_IOC_FILE_INFO` reads agreeing
+actual hardware and scheduler fence status, including EIO. No fence error is
+cleared to authorize cleanup. The independent all-byte failure oracle accepts
+unchanged uploads only in this failed mode; ordinary healthy result checks
+continue to reject those uploads.
+
+Source/CPU checks pass 38 Python cases, all five fixed compute-driver variants,
+the existing native-owner cleanup tests, and the float canonical Linux transport
+with ASan/UBSan (208 healthy and 208 failed image cases plus bad-ACK retention).
+These checks do not establish actual-DUT image failure or same-DUT recovery.
+Each single-record execution still starts from a fresh reset. Actual permission
+faults, cancel/reset/drain, healthy reuse and coordinate-boundary execution keep
+their independent P08 acceptance gates.
+
+After committing and freshly binding this source to the complete compute
+executor, use the bounded qualifier command in the atomic execution section
+with `--case image-atomic-buffer-r32f --expect-image-source-fault` for the actual
+source-read fault. Reproduce the source/CPU checks with:
+
+```sh
+PYTHONPATH=scripts python3 -B -m unittest test_compute_image_source \
+  test_compute_owner_controller test_compute_owner_protocol \
+  test_qualify_compute_owner test_compute_owner_oracle
+python3 -B scripts/test_compute_owner.py
+python3 -B scripts/test_native_owner.py
+env -u SDKROOT -u CPATH OPENGPU_TEST_SANITIZERS=1 PYTHONDONTWRITEBYTECODE=1 \
+  python3 -B scripts/test_compute_host.py --image-float-stage --canonical-root "$PWD"
 ```
 
 ## Original load/store source and independent result contract

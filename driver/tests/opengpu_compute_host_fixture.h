@@ -61,6 +61,8 @@ int compute_host_observe_retired(struct compute_host_session *,const struct comp
  * receipt may signal an EIO fence; ordinary success entry points reject it. */
 int compute_host_drain_failed(struct compute_host_session *,const struct compute_host_held_receipt *,const char *retire_trace);
 int compute_host_observe_failed_retired(struct compute_host_session *,const struct compute_host_retired_receipt *);
+/* Observed hardware and scheduler fence status, before source cleanup. */
+int compute_host_completion_status(struct compute_host_session *,int32_t *status);
 /* Separate explicit all-byte-oracle authorization, not a completion receipt. */
 int compute_host_begin_cleanup(struct compute_host_session *,const char *session_directory);
 int compute_host_finish_observed(struct compute_host_session *);

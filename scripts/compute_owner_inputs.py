@@ -50,6 +50,9 @@ def guarded(request_path, builder_argv):
     counter_matrix='--capture-counter-matrix' in argv
     require(not (image_matrix and counter_matrix), 'counter/image matrices must remain distinct')
     matrix=image_matrix or counter_matrix
+    source_fault='--expect-image-source-fault' in argv
+    require(not source_fault or (case=='image-atomic-buffer-r32f' and not matrix and '--capture-only' not in argv),
+            'source fault requires one original live R32F buffer recipe')
     require(not matrix or '--capture-only' in argv, 'counter matrix is CPU capture only')
     launched=set()
     require(not image_matrix or case==IMAGE_CASES[0], 'image matrix must start at its first original source')
@@ -106,6 +109,8 @@ def guarded(request_path, builder_argv):
                     command[3]==str(out/'glsl'/parameters['source']),
                     'counter producer source/recipe repeated or replaced')
             require(not matrix or command[-1]=='--capture-only', 'counter matrix attempted actual execution')
+            expected_tail=(['--expect-image-source-fault'] if source_fault else ['--capture-only'] if '--capture-only' in argv else [])
+            require(command[5:]==expected_tail, 'original producer execution mode changed')
             launched.add(source_case)
             if products:unchanged({str(p):v for p,v in products.items()})
             external();unchanged(generated)

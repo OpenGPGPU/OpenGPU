@@ -680,6 +680,13 @@ int compute_host_observe_retired(struct compute_host_session *s,const struct com
 {return compute_host_observe_receipt(s,receipt,0);}
 int compute_host_observe_failed_retired(struct compute_host_session *s,const struct compute_host_retired_receipt *receipt)
 {return compute_host_observe_receipt(s,receipt,-EIO);}
+int compute_host_completion_status(struct compute_host_session *s,int32_t *status)
+{
+ if(!s || !status || !s->observed || s->freed || !s->hardware || !s->head || !s->head->s_fence)return -EINVAL;
+ int hardware=dma_fence_get_status(s->hardware),finished=dma_fence_get_status(&s->head->s_fence->finished);
+ if(hardware!=(s->completion_error?s->completion_error:1) || finished!=hardware)return -EIO;
+ *status=finished;return 0;
+}
 int compute_host_begin_cleanup(struct compute_host_session *s,const char *directory)
 {
  struct stat st;if(!s || !directory || lstat(directory,&st) || !S_ISDIR(st.st_mode))return -EINVAL;

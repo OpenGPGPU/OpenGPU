@@ -15,7 +15,7 @@ import subprocess
 import tempfile
 import time
 from compute_owner_protocol import (strict_json, profile_bytes, held_bytes,
-    retired_bytes, cleanup_authorization, checked_cleanup)
+    retired_bytes, failed_held_bytes, failed_retired_bytes, cleanup_authorization, checked_cleanup)
 from compute_owner_oracle import SparseMemory, verify
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -123,6 +123,7 @@ def main():
     parser.add_argument('--timeout', type=int, default=3600)
     from compute_owner_cases import COUNTER_CASES, IMAGE_CASES
     parser.add_argument('--case', choices=(*COUNTER_CASES,*IMAGE_CASES), help='distinct final112 source contract')
+    parser.add_argument('--expect-image-source-fault', action='store_true')
     args = parser.parse_args()
     require(0 < args.timeout <= 604800, 'timeout must be 1..604800 seconds')
     command = strict_json(args.bridge_command)
@@ -134,6 +135,10 @@ def main():
     require(executor.is_file() and not executor.is_symlink() and qualification.is_file() and not qualification.is_symlink(),
             'executor/qualification must be original regular files')
     qualified_profile=strict_json(qualification).get('profile')
+    if args.expect_image_source_fault:
+        from owner_resource_contract import IMAGE_FLOAT_PROFILE
+        require(args.case=='image-atomic-buffer-r32f' and qualified_profile==IMAGE_FLOAT_PROFILE,
+                'source fault requires the original buffer exchange and qualified float executor')
     if args.case in (*COUNTER_CASES,*IMAGE_CASES):
         from owner_resource_contract import SAMPLE_FACTORY_CONTRACTS
         require(type(qualified_profile) is str and qualified_profile in SAMPLE_FACTORY_CONTRACTS,
@@ -181,18 +186,33 @@ def main():
                 for name in ('union.memory', 'record-0.capture', 'oracle.json'):
                     wait_file(directory / name, bridge, None, args.timeout)
                 description,inputs=ready_inputs(directory,args.case,owner_profile=qualified_profile)
+                if args.expect_image_source_fault:
+                    from compute_image_source import source_read_fault_plan
+                    with SparseMemory(directory/'union.memory') as before:
+                        atomic(directory/'record-0.fault-plan',source_read_fault_plan(
+                            before,description,owner_profile=qualified_profile))
+                    inputs['record-0.fault-plan']=input_digest(directory/'record-0.fault-plan')
                 results = directory / 'results'
-                running = subprocess.Popen([executor, '--active-owner', directory / 'union.memory', results, directory],
+                execution_mode='--active-image-source-fault' if args.expect_image_source_fault else '--active-owner'
+                running = subprocess.Popen([executor, execution_mode, directory / 'union.memory', results, directory],
                     env=env, stdout=output, stderr=subprocess.STDOUT)
                 wait_file(directory / 'record-0.held.json', bridge, running, args.timeout)
                 held = strict_json(directory / 'record-0.held.json')
-                atomic(directory / 'record-0.held.response', held_bytes(held))
+                if args.expect_image_source_fault:
+                    from compute_image_source import source_read_fault_proof
+                    source_read_fault_proof(held)
+                atomic(directory / 'record-0.held.response', (failed_held_bytes if args.expect_image_source_fault else held_bytes)(held))
                 wait_file(directory / 'record-0.retired.json', bridge, running, args.timeout)
                 returned = strict_json(directory / 'record-0.retired.json')
-                response = retired_bytes(returned, held)
+                response = (failed_retired_bytes if args.expect_image_source_fault else retired_bytes)(returned, held)
+                if args.expect_image_source_fault:
+                    source_read_fault_proof(returned,held)
                 unchanged_inputs(directory,inputs)
                 with SparseMemory(directory / 'union.memory') as before, SparseMemory(results / 'record-0.memory') as after:
-                    verify(before, after, description)
+                    if args.expect_image_source_fault:
+                        from compute_image_source import verify_source_read_fault
+                        verify_source_read_fault(before,after,description)
+                    else:verify(before, after, description)
                 atomic(directory / 'record-0.retired.response', response)
                 wait_file(directory / 'cleanup_wait', bridge, running, args.timeout)
                 require(bridge.poll() is None and running.poll() is None, 'owner did not remain live through all oracles')
@@ -206,7 +226,8 @@ def main():
                 unchanged_inputs(directory,inputs)
                 atomic(directory / 'FINAL_RESPONSE', b'OGCMOK01\x01\x00\x00\x00')
                 require(bridge.wait(timeout=args.timeout) == 0, 'producer rejected observed final cleanup')
-            print('actual compute returned bytes, physical guards and observed context cleanup: PASS')
+            print('actual compute '+('source-read fault, unchanged physical bytes' if args.expect_image_source_fault else 'returned bytes, physical guards')+
+                  ' and observed context cleanup: PASS')
         except BaseException:
             if bridge is not None and bridge.poll() is None:
                 try:

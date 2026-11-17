@@ -14,6 +14,8 @@ static int test_image_submit(struct compute_host_session *s,
 
 static void test_image_retire(struct compute_host_session *s,const char *directory)
 {
+ int32_t fence_status=0;
+ assert(compute_host_completion_status(s,&fence_status)==-EINVAL && !fence_status);
  char path[4096];assert(snprintf(path,sizeof(path),"%s/record-0.retire",directory)>0);
  struct compute_host_held_receipt held={.command_id=s->gpu.hw.unified_command_id,
   .completion=0x8000u|s->gpu.hw.unified_command_id,.legacy_status=0,
@@ -58,10 +60,13 @@ static void test_image_retire(struct compute_host_session *s,const char *directo
   assert(compute_host_observe_failed_retired(s,&retired)==-EINVAL && !s->observed);
   assert(!compute_host_observe_retired(s,&retired));
  }
+ assert(!compute_host_completion_status(s,&fence_status) && fence_status==(test_failed_image_receipts?-EIO:1));
+ assert(compute_host_completion_status(s,NULL)==-EINVAL);
  assert(!compute_host_begin_cleanup(s,directory));
  if(test_failed_image_receipts){
   assert(compute_host_finish_observed(s)==-EINVAL && !s->freed && s->head);
   s->hardware->error=0;
+  assert(compute_host_completion_status(s,&fence_status)==-EIO && fence_status==-EIO);
   assert(compute_host_finish_failed_observed(s)==-EINVAL && !s->freed && s->head);
   s->hardware->error=-EIO;
  }else assert(compute_host_finish_failed_observed(s)==-EINVAL && !s->freed && s->head);

@@ -20,6 +20,25 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class Entry(unittest.TestCase):
+    def test_source_fault_mode_is_explicit_and_refuses_other_original_sources(self):
+        for case in ('counter-increment','image-buffer-r32ui','image-atomic-2d-r32f','both'):
+            args=argparse.Namespace(case=case,expect_image_source_fault=True)
+            with self.subTest(case=case),patch.object(qualifier.subprocess,'run') as run:
+                with self.assertRaisesRegex(ValueError,'source fault requires'):
+                    qualifier.checked_inputs(args)
+                run.assert_not_called()
+        args=argparse.Namespace(mesa=ROOT/'mesa',mesa_build=ROOT/'mesa-build',
+            drm_include=ROOT/'drm',library_directory=ROOT/'lib',mesa_link_libs='-lfixture',
+            counter_inputs=ROOT/'inputs',timeout=30,expect_image_source_fault=True)
+        command=qualifier.producer_command(args,gpu=ROOT,source=ROOT,ntt=ROOT/'ntt',
+            image='sha256:fixture',name='source-fault-test',case='image-atomic-buffer-r32f')
+        self.assertEqual(command[-3:],['--case','image-atomic-buffer-r32f','--expect-image-source-fault'])
+        self.assertIn('scripts/compute_owner_inputs.py',command)
+        self.assertNotIn('--capture-only',command)
+        with self.assertRaisesRegex(ValueError,'source fault requires'):
+            qualifier.producer_command(args,gpu=ROOT,source=ROOT,ntt=ROOT/'ntt',
+                image='sha256:fixture',name='source-fault-test',case='counter-increment')
+
     def test_absent_qualification_refuses_before_any_command(self):
         args = argparse.Namespace(executor_qualification=ROOT / '.artifacts/no-such-qualification',
                                   executor=ROOT / '.artifacts/no-such-executor')
