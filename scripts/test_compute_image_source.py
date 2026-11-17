@@ -11,7 +11,8 @@ import struct
 import unittest
 from compute_image_cases import IMAGE_CASES, IMAGE_BOUNDARY_CASES, parameters
 from compute_image_source import (loaded_words, ready as validate_ready, texel_address, atomic_values,
-    boundary_coordinates,boundary_address,boundary_exchange_value,source_view,initial_bytes,returned_outputs,SCHEMA)
+    boundary_coordinates,boundary_address,boundary_exchange_value,source_view,initial_bytes,returned_outputs,SCHEMA,
+    source_read_fault_plan,source_read_fault_proof,verify_source_read_fault)
 from compute_owner_oracle import SparseMemory, verify
 from compute_owner_protocol import strict_json
 from compute_owner_controller import ready_inputs
@@ -19,6 +20,62 @@ from owner_resource_contract import SAMPLE_PROFILE, SAMPLE_FACTORY_CONTRACTS
 
 
 class Formats(unittest.TestCase):
+    def test_source_fault_plan_and_all_byte_failure_guard_keep_original_uploads(self):
+        # Only original CPU uploads are represented, with no simulated shader.
+        class Uploads:
+            def __init__(self,data):
+                self.data=data;self.ranges=[(a,a+len(b),0) for a,b in sorted(data.items())]
+            def read(self,address,count):
+                for first,data in self.data.items():
+                    if first<=address<=address+count<=first+len(data):return data[address-first:address-first+count]
+                raise ValueError('outside original upload')
+        from owner_resource_contract import IMAGE_FLOAT_PROFILE
+        p=parameters('image-atomic-buffer-r32f')
+        data={0x1000:struct.pack('<I',0xdeadbeef)*2048,0x40000:b'\x52'*4096}
+        images=[]
+        for role in range(2):
+            binding,view=source_view(p,role,role);size=(binding+4095)//4096*4096
+            physical=0x10000*(role+1)
+            data[physical]=b'\xa7'*size if role else initial_bytes(p,size)
+            images.append(dict(apiBinding=1 if role else 3,nativeUnit=role,handle=role+1,
+                allocationPhysical=physical,allocationBytes=size,bindingBytes=binding,view=view))
+        description=dict(schema=SCHEMA,sourceCase='image-atomic-buffer-r32f',groups=2,local=4,viewBytes=8192,
+            guard=0xdeadbeef,context=1,kernargPhysical=0,kernargBytes=0,imagePhysical=0,imageRoot=0,
+            storagePhysical=0,storageRoot=0,output=dict(globalBinding=2,allocationPhysical=0x1000,
+                allocationBytes=8192,offset=0,bytes=8192),images=images)
+        uploads=Uploads(data)
+        self.assertEqual(source_read_fault_plan(uploads,description,owner_profile=IMAGE_FLOAT_PROFILE),
+                         struct.pack('<8sQQ',b'OGCFS001',0x10000,0x12000))
+        verify_source_read_fault(uploads,uploads,description)
+        # Healthy execution must still reject exactly these untouched uploads.
+        with self.assertRaises(ValueError):verify(uploads,uploads,description)
+        with self.assertRaises(ValueError):source_read_fault_plan(uploads,description,owner_profile=SAMPLE_PROFILE)
+        wrong=deepcopy(description);wrong['sourceCase']='image-atomic-buffer-r32ui'
+        with self.assertRaises(ValueError):source_read_fault_plan(uploads,wrong,owner_profile=IMAGE_FLOAT_PROFILE)
+        for address in (0x1000,0x1fff,0x10000,0x10030,0x11fff,0x20000,0x21fff,0x40000,0x40fff):
+            class Corrupted:
+                ranges=uploads.ranges
+                def read(self,first,count):
+                    value=bytearray(uploads.read(first,count))
+                    if first<=address<first+count:value[address-first]^=1
+                    return bytes(value)
+            with self.subTest(address=address),self.assertRaises(ValueError):
+                verify_source_read_fault(uploads,Corrupted(),description)
+
+    def test_source_fault_proof_rejects_absent_unplanned_or_changed_errors(self):
+        valid=dict(physicalReadFaults=2,injectedReadFaults=2,physicalWriteFaults=0)
+        self.assertEqual(source_read_fault_proof(valid),(2,2))
+        self.assertEqual(source_read_fault_proof(valid,valid),(2,2))
+        for field,value in [('physicalReadFaults',0),('injectedReadFaults',0),
+                ('physicalReadFaults',3),('physicalWriteFaults',1),
+                ('physicalReadFaults',True),('injectedReadFaults',-1)]:
+            wrong=dict(valid);wrong[field]=value
+            with self.subTest(field=field,value=value),self.assertRaises(ValueError):source_read_fault_proof(wrong)
+        wrong=dict(valid);del wrong['injectedReadFaults']
+        with self.assertRaises(ValueError):source_read_fault_proof(wrong)
+        with self.assertRaises(ValueError):source_read_fault_proof(
+            dict(physicalReadFaults=3,injectedReadFaults=3,physicalWriteFaults=0),valid)
+
     def test_scalar_defaults_and_signed_extension(self):
         self.assertEqual(struct.unpack('<4I',loaded_words(parameters('image-2d-r32ui'),b'\x89\x67\x45\x83')),
             (0x83456789,0,0,1))

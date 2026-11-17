@@ -46,6 +46,9 @@ def sha256(path):
 
 
 def checked_inputs(args):
+    require(not getattr(args,'expect_image_source_fault',False) or
+            getattr(args,'case',None)=='image-atomic-buffer-r32f',
+            'source fault requires exactly the original float buffer exchange')
     # Refuse absent qualification before any archive, container or CPU build.
     require(args.executor_qualification.is_file() and not args.executor_qualification.is_symlink(),
             'a real guarded compute executor qualification is required')
@@ -68,6 +71,8 @@ def checked_inputs(args):
 
 def producer_command(args, *, gpu, source, ntt, image, name, case):
     require(case in CASES, 'unknown original compute source')
+    require(not getattr(args,'expect_image_source_fault',False) or case=='image-atomic-buffer-r32f',
+            'source fault requires exactly the original float buffer exchange')
     # The configured Mesa object database uses these original absolute paths.
     # Keep that mount unchanged; all newly generated files live in {ipc}.
     counter = case in (*COUNTER_CASES,*IMAGE_CASES)
@@ -85,7 +90,8 @@ def producer_command(args, *, gpu, source, ntt, image, name, case):
              if case in (*COUNTER_CASES,*IMAGE_CASES) else ['scripts/test_gallium_compute_host.py'])
     return command + [image, 'python3', *entry,
         '--build', '{ipc}/build', '--sanitize', '--mesa-shared-ntt', str(ntt),
-        '--profile-wire', '{ipc}/profile.bin', '--session', '{ipc}', '--case', case]
+        '--profile-wire', '{ipc}/profile.bin', '--session', '{ipc}', '--case', case] + (
+            ['--expect-image-source-fault'] if getattr(args,'expect_image_source_fault',False) else [])
 
 
 def run_case(args, *, gpu, source, temporary, ntt, image, case):
@@ -112,6 +118,7 @@ def run_case(args, *, gpu, source, temporary, ntt, image, case):
             '--executor-checker', args.executor_checker, '--executor-checker-python', args.executor_checker_python,
             '--bridge-command', command_file, '--timeout', str(args.timeout),
             *(['--case', case] if case in (*COUNTER_CASES,*IMAGE_CASES) else []),
+            *(['--expect-image-source-fault'] if getattr(args,'expect_image_source_fault',False) else []),
             '--managed-session-directory', temporary / (case + '-session')], start_new_session=True,
             env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1', TMPDIR=str(temporary)))
         require(process.wait() == 0, 'actual compute case failed: ' + case)
@@ -143,10 +150,16 @@ def main():
     parser.add_argument('--compiler-image', default='gpu-gtk-ci-check:latest')
     parser.add_argument('--case', choices=('both', 'mandatory-compute', *CASES), default='both')
     parser.add_argument('--timeout', type=int, default=3600)
+    parser.add_argument('--expect-image-source-fault', action='store_true')
     args = parser.parse_args()
     require(0 < args.timeout <= 604800, 'timeout must be 1..604800 seconds')
     args.executor = args.executor.absolute(); args.executor_qualification = args.executor_qualification.absolute()
     identity = checked_inputs(args)
+    if args.expect_image_source_fault:
+        from owner_resource_contract import IMAGE_FLOAT_PROFILE
+        require(args.case=='image-atomic-buffer-r32f' and
+                strict_json(args.executor_qualification).get('profile')==IMAGE_FLOAT_PROFILE,
+                'source fault requires exactly the original buffer exchange and qualified float owner')
     for key in ('executor', 'executor_qualification', 'executor_checker', 'mesa', 'mesa_build', 'drm_include', 'library_directory'):
         setattr(args, key, inside(getattr(args, key), gpu))
     args.executor_checker_python = args.executor_checker_python.resolve(strict=True)
@@ -186,7 +199,9 @@ def main():
         if temporary is not None and not preserve:
             shutil.rmtree(temporary)
         signal.signal(signal.SIGTERM, previous)
-    print('original Mesa compute ' + args.case + ': actual full-DUT returned bytes and context cleanup PASS')
+    print('original Mesa compute ' + args.case + ': actual full-DUT ' +
+          ('source-read fault, unchanged physical bytes' if args.expect_image_source_fault else 'returned bytes')+
+          ' and context cleanup PASS')
 
 
 if __name__ == '__main__':

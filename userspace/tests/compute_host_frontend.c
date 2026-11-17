@@ -29,7 +29,7 @@ static struct compute_host_session *session;
 static struct {void *data;uint64_t bytes;unsigned maps,closed;} bos[512];
 static unsigned next_bo=1,next_sync=1,submitted,retired;
 static const char *directory;
-static int capture_only,uniform_case,dynamic_case,address_case,counter_case,counter_dynamic,counter_coexist;
+static int capture_only,expect_image_source_fault,uniform_case,dynamic_case,address_case,counter_case,counter_dynamic,counter_coexist;
 static unsigned dynamic_operation,dynamic_signed;
 static unsigned address_kind,counter_operation,counter_index;
 static unsigned counter_offset=4080,counter_count=8;
@@ -74,11 +74,11 @@ static int wait_execution(void)
  path(output,"record-0.capture");assert(!compute_host_capture(session,output,1000000000u,37));
  marker("READY",capture_only?"compute CPU capture only; no DUT execution\n":"compute active capture ready\n");
  if(capture_only){puts("actual Mesa/Linux compute CPU capture: PASS (no GPU execution)");fflush(stdout);_Exit(0);}
- FILE *f=wait_file("record-0.held.response");magic(f,"OGCMH001");struct compute_host_held_receipt h=held(f);end(f);
- path(output,"record-0.retire");assert(!compute_host_drain_held(session,&h,output));
- f=wait_file("record-0.retired.response");magic(f,"OGCMR001");struct compute_host_retired_receipt r={.held=held(f)};
+ FILE *f=wait_file("record-0.held.response");magic(f,expect_image_source_fault?"OGCFH001":"OGCMH001");struct compute_host_held_receipt h=held(f);end(f);
+ path(output,"record-0.retire");assert(!(expect_image_source_fault?compute_host_drain_failed(session,&h,output):compute_host_drain_held(session,&h,output)));
+ f=wait_file("record-0.retired.response");magic(f,expect_image_source_fault?"OGCFR001":"OGCMR001");struct compute_host_retired_receipt r={.held=held(f)};
  r.status=read32(f);r.irq=read32(f);r.irq_asserted=read32(f);r.external_drained=read32(f);end(f);
- assert(!compute_host_observe_retired(session,&r));retired=1;return 0;
+ assert(!(expect_image_source_fault?compute_host_observe_failed_retired(session,&r):compute_host_observe_retired(session,&r)));retired=1;return 0;
 }
 
 int cs_fixture_ioctl(int fd,unsigned long request,...)
@@ -121,7 +121,8 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
  if(request==DRM_IOCTL_SYNCOBJ_DESTROY)return 0;
  if(request==DRM_IOCTL_SYNCOBJ_WAIT){struct drm_syncobj_wait *p=arg;assert(p->count_handles==1);return wait_execution();}
  if(request==DRM_IOCTL_SYNCOBJ_HANDLE_TO_FD){struct drm_syncobj_handle *p=arg;assert(retired);p->fd=20000+p->handle;return 0;}
- if(request==SYNC_IOC_FILE_INFO){struct sync_file_info *p=arg;assert(retired);p->status=1;return 0;}
+ if(request==SYNC_IOC_FILE_INFO){struct sync_file_info *p=arg;assert(retired);
+  int32_t status=0;assert(!compute_host_completion_status(session,&status));p->status=status;return 0;}
  fprintf(stderr,"unsupported actual compute capture ioctl %lx\n",request);errno=EOPNOTSUPP;return -1;
 }
 int cs_fixture_dup(int fd){assert(fd==7);return 101;}
@@ -197,7 +198,10 @@ static void write_oracle(void)
  assert(!fclose(f));}
 int main(int argc,char **argv)
 {
- assert(argc==5 || argc==6);capture_only=argc==6 && !strcmp(argv[5],"--capture-only");assert(argc==5 || capture_only);
+ assert(argc==5 || argc==6);capture_only=argc==6 && !strcmp(argv[5],"--capture-only");
+ expect_image_source_fault=argc==6 && !strcmp(argv[5],"--expect-image-source-fault");
+ assert(argc==5 || capture_only || expect_image_source_fault);
+ assert(!expect_image_source_fault || !strcmp(argv[4],"image-atomic-buffer-r32f"));
  host_timeout_seconds=compute_host_timeout_seconds();assert(host_timeout_seconds);
  uniform_case=!strcmp(argv[4],"uniforms");
  image_parse_case(argv[4]);
@@ -296,7 +300,9 @@ int main(int argc,char **argv)
  p->launch_grid(p,&grid);assert(submitted==1 && retired);
  marker("cleanup_wait","actual compute retired; independent byte/source/guard authorization required\n");
  f=wait_file("BEGIN_CLEANUP");magic(f,"OGCMBA01");assert(read32(f)==1);end(f);
- assert(!compute_host_begin_cleanup(session,directory));assert(!compute_host_finish_observed(session));assert(!compute_host_end_cleanup(session));
+ assert(!compute_host_begin_cleanup(session,directory));
+ assert(!(expect_image_source_fault?compute_host_finish_failed_observed(session):compute_host_finish_observed(session)));
+ assert(!compute_host_end_cleanup(session));
  f=wait_file("FINAL_RESPONSE");magic(f,"OGCMOK01");assert(read32(f)==1);end(f);
  /* End this dedicated source process after the actual Linux file/context
   * ownership is retired. A generic Gallium destructor would enqueue later
