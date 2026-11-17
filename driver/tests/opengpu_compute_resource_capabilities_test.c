@@ -19,6 +19,7 @@ _Static_assert((OPENGPU_COMPUTE_RESOURCE_CHECKED_LOCAL_PRODUCT |
                 OPENGPU_COMPUTE_RESOURCE_ONE_GROUP_PER_CU |
                 OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS) == 15u, "baseline flags");
 _Static_assert(OPENGPU_COMPUTE_RESOURCE_IMAGE_ATOMICS == 512u, "image atomic flag");
+_Static_assert(OPENGPU_COMPUTE_RESOURCE_IMAGE_FLOAT_EXCHANGE == (1u << 21), "float exchange flag");
 _Static_assert(OPENGPU_COMPUTE_RESOURCE_STORAGE_ATOMICS == 1024u, "storage atomic flag");
 _Static_assert(OPENGPU_COMPUTE_RESOURCE_TESSELLATION_COMMANDS == 2048u, "tessellation command flag");
 _Static_assert(OPENGPU_COMPUTE_RESOURCE_TESSELLATION_FEEDBACK == 4096u, "tessellation feedback flag");

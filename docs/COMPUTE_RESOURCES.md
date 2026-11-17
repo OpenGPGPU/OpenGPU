@@ -65,6 +65,11 @@ command above with each profile's flags to reproduce RTL emission.
 | 0x398 | L2_DATA_BYTES | Shared L2 data capacity, excluding metadata |
 | 0x39c | L2_BANKS | Shared L2 bank count |
 
+GCR1 flag bit 21 reports opt-in R32F image exchange and requires image-atomic
+bit 9. The driver exposes it separately as feature bit 43, with image transport
+and unified commands also required. It does not imply other floating-point
+atomic operations or API conformance. Existing owner factories leave it clear.
+
 The generated [header](../driver/opengpu_compute_resource_abi.h) and
 [ABI JSON](abi/compute-resource-v1.json) distinguish the constructor profile
 (one CU, eight-byte AXI) from the four-CU/32-byte mobile candidate. Both use the

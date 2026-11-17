@@ -486,8 +486,11 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
         }
         if (gpu->hw.compute_image_transport &&
             (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS) &&
-            (gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_IMAGE_ATOMICS))
+            (gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_IMAGE_ATOMICS)) {
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_ATOMICS;
+            if (gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_IMAGE_FLOAT_EXCHANGE)
+                args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_FLOAT_EXCHANGE;
+        }
         if (gpu->hw.compute_storage_transport &&
             (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS) &&
             (gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_STORAGE_ATOMICS))

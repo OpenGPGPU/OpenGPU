@@ -57,6 +57,8 @@ class ShaderImageAtomicAccess(config: GpuConfig = GpuConfig(),
   private val resolver = Module(new ShaderImageBindingAddress(p, imageUnits))
   private val unsigned = request.access.imageBinding.imageFormat === TextureImageFormat.id("R32UI").U
   private val signed = request.access.imageBinding.imageFormat === TextureImageFormat.id("R32I").U
+  private val floatExchange = request.access.imageBinding.imageFormat === TextureImageFormat.id("R32F").U &&
+    request.operation === ShaderImageAtomicOperation.exchange.U
   private val op = MuxLookup(request.operation, AtomicMemoryOp.swap)(Seq(
     ShaderImageAtomicOperation.exchange.U -> AtomicMemoryOp.swap,
     ShaderImageAtomicOperation.add.U -> AtomicMemoryOp.add,
@@ -113,7 +115,7 @@ class ShaderImageAtomicAccess(config: GpuConfig = GpuConfig(),
         }.elsewhen(io.cancel || cancelled || r.status === ShaderImageBindingAddressStatus.cancelled.U) {
           result.status := ShaderImageAccessStatus.cancelled.U; state := State.complete
         }.elsewhen(!r.validTexel) { state := State.complete }
-        .elsewhen(!(signed || unsigned) || !request.access.hasFormatQualifier) {
+        .elsewhen(!(signed || unsigned || floatExchange) || !request.access.hasFormatQualifier) {
           result.status := ShaderImageAccessStatus.shaderType.U; state := State.complete
         }
         .elsewhen(r.address(1, 0).orR || line < r.allocationBase || line.pad(33) + 64.U > r.allocationLimit) {

@@ -29,10 +29,13 @@ class ImageAtomicDiscoveryAxiSpec extends AnyFlatSpec {
   it should "report image atomics only when enabled" in {
     val gpu = GpuConfig(lanes = 2, warps = 1)
     val profile = ComputeResourceProfile(gpu, 1, 8)
-    for (enabled <- Seq(false, true)) {
+    intercept[IllegalArgumentException] {
+      ComputeResourceCapabilities.words(profile,imageAvailable=true,imageFloatExchangeAvailable=true)
+    }
+    for ((enabled,floating) <- Seq(false->false,true->false,true->true)) {
       simulate(new GpuHostAxi(gpuConfig = gpu, version = 2, unifiedCommandMmio = true,
         protectVmState = true, computeResources = Some(profile), imageAvailable = true,
-        imageAtomicAvailable = enabled)) { dut =>
+        imageAtomicAvailable = enabled,imageFloatExchangeAvailable=floating)) { dut =>
         dut.io.gpuCommand.get.ready.poke(false.B)
         dut.io.gpuCompletion.get.valid.poke(false.B)
         dut.io.gpuCompletion.get.bits.poke(0.U.asTypeOf(dut.io.gpuCompletion.get.bits))
@@ -42,6 +45,7 @@ class ImageAtomicDiscoveryAxiSpec extends AnyFlatSpec {
         val flags = axiRead(dut, ComputeResourceCapabilities.base + 8)
         assert((flags & ComputeResourceCapabilities.imageCommands) != 0)
         assert(((flags & ComputeResourceCapabilities.imageAtomics) != 0) == enabled)
+        assert(((flags & ComputeResourceCapabilities.imageFloatExchange) != 0) == floating)
       }
     }
   }

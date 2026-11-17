@@ -274,6 +274,8 @@ struct drm_opengpu_param {
 /* Reserved for separately qualified GNJ2/GNF3/GNY2 protected geometry transport.
  * Never inferred from bit40, GUC1 or the presence of an unused software module. */
 #define OPENGPU_DRIVER_FEATURE_NATIVE_GEOMETRY (1ull << 42)
+/* Explicit R32F exchange-only service; integer image atomics do not imply it. */
+#define OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_FLOAT_EXCHANGE (1ull << 43)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u
