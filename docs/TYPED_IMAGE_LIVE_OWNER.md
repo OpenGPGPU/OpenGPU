@@ -156,15 +156,14 @@ cross-factory captures/receipts and rehashed model/wrapper substitutions remain
 rejected. All 87 focused Python/CPU checks pass, including five canonical C++
 factory variants and 208 typed-view transport cases on each 112-word profile.
 
-All 80 original Mesa image recipes and eleven counter recipes pass fresh
+All 85 original Mesa image recipes and eleven counter recipes pass fresh
 ASan/UBSan CPU captures under the explicitly CPU-only float-stage profile,
 the source-selected canonical C++ parser, strict qualified READY and rejection
-of initial uploads as GPU results. The image checks include 9161 rejections,
+of initial uploads as GPU results. The image checks include 9834 rejections,
 including a wrong qualified owner for every case. All 8102 external and 169
 producer/checker inputs remain unchanged. Ended captures, builds and containers
-are removed. These checks execute no shader on a DUT; original R32F exchange
-recipes and full source-bound execution/boundary/fault/cancel/reset/drain
-acceptance remain required.
+are removed. These checks execute no shader on a DUT; full source-bound atomic
+execution/boundary/fault/cancel/reset/drain acceptance remains required.
 
 The complete float factory passes fresh full-capacity RTL emission with inline
 assertions, hierarchical Verilator generation and native compilation with eight
@@ -204,16 +203,33 @@ checks every other physical byte. It does not interpret native instructions or
 synthesize returned GPU memory. The CPU producer also verifies all ten native
 atomic operations and their image-unit metadata before the real launch call.
 
-All 80 fresh Mesa→production-ioctl CPU captures (70 load/store plus these ten
-atomic recipes) pass the canonical ASan/UBSan C++ parser, strict READY,
-9081 rejection checks and rejection of initial uploads as results. All 8102
-external and 181 GPU/checker inputs remain unchanged. The eleven original
-counter recipes also pass fresh guarded CPU captures, canonical parsing and
-initial-upload rejection; 60 focused Python tests pass. These captures execute
-no shader on a DUT. Same-texel contention, other atomic view combinations,
-R32F exchange and actual boundary/fault/cancel/reset/drain acceptance remain
-pending; P08 stays open. Existing qualifications must be freshly bound to the
-changed compiler, producer and checker sources before actual execution.
+The float-stage CPU matrix above covers these ten integer recipes alongside
+the original load/store recipes and five R32F recipes. Actual atomic shader
+execution, same-texel contention, other view combinations and lifecycle
+acceptance remain pending. Qualifications must be freshly bound to the changed
+compiler, producer and checker sources before execution; P08 stays open.
+
+## Original R32F exchange sequences and bounded register reuse
+
+Five original ESSL recipes cover buffer, 2D, array, cube and 3D images. Each
+invocation performs five consecutive float exchanges, records every old raw
+word through `floatBitsToUint`, then uses an image barrier and copies the final
+texel into a separate write-only image. Operands cover positive/negative zero,
+finite encodings and both infinities without floating arithmetic. The independent
+oracle checks forty old words, all eight final texels in each image and every
+other physical byte. Only a source-qualified float-stage executor can authorize
+these cases; the original sample-stage identity remains insufficient.
+
+The array recipe exposed cumulative TEMP allocation beyond the twenty physical
+register slots despite a smaller live set. Straight-line float-exchange programs
+now release components after their last conservative source use, after the
+whole instruction consumes its inputs. Programs without float exchange retain
+their existing allocation. The physical register capacity and 512-word shader
+limit are unchanged. A regression consumes 24 components while preserving live
+XYZ/value operands through an aliased exchange destination. It passes ASan/UBSan
+alongside 160 integer and twenty raw float target/alias programs, four immediate
+boundaries, 65 load/store programs and 52 mappings. All 85 original single-atomic
+Mesa programs and eighteen focused source/qualification tests also pass.
 
 ## Original load/store source and independent result contract
 
@@ -224,6 +240,12 @@ of four invocations. Read-only API unit 3 and write-only unit 1 retain their
 actual Mesa reflection order; sparse SSBO binding 2 observes all four loaded
 components. The shader copies the loaded texel to a different image coordinate.
 CPU uploads only initialize original input and guard allocations.
+
+The original load/store-only source snapshot passes all seventy cases through
+the complete 112-word sample DUT. Actual returned bytes, all physical guards,
+held/retired source checks and observed context/PTE cleanup pass independently
+for each case. This run precedes integer atomics and the float-stage factory;
+it does not establish their shader execution or lifecycle acceptance.
 
 Nonbuffer resources use mip 1 of an odd-width allocation, explicit row/plane
 pitches and selected/layered ranges. Buffer views start at byte 48 and include
