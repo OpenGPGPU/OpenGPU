@@ -76,7 +76,6 @@ shard_prefixes() {
         "opengpu/core/frontend" \
         "opengpu/core/backend" \
         "opengpu/core/vector" \
-        "opengpu/core/simt" \
         "opengpu/core/trap" \
         "opengpu/core/system" \
         "opengpu/dispatch" \
