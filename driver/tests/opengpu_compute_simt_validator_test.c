@@ -61,6 +61,24 @@ static void check(struct program p,int want,unsigned uniforms)
         opengpu_compute_shader_validate_words_storage(p.w,512,12,128,false);
     if(got!=want)fprintf(stderr,"SIMT validator case%u expected%d got%d words%u\n",checks,want,got,p.n);
     assert(got==want);checks++;
+    /* Adding the complete shared-engine discovery must preserve this exact
+     * legacy storage dialect, including every rejected branch/VL envelope. */
+    const unsigned local_items[]={4,8,16,128};
+    for(unsigned n=0;n<sizeof(local_items)/sizeof(local_items[0]);n++) {
+        got=opengpu_compute_shader_validate_words_shared_atomics(p.w,512,12,local_items[n],
+            false,false,false,true,false,false,false,false,uniforms,
+            0x10000000u,16384,16,false,true);
+        if(got!=want)fprintf(stderr,"discovered-shared SIMT case%u local%u expected%d got%d\n",
+            checks,local_items[n],want,got);
+        assert(got==want);checks++;
+    }
+    const unsigned malformed[][3]={{0x10000001u,16384,16},{0x10000000u,16383,16},
+        {0x10000000u,16384,0},{0xffffe000u,16384,16}};
+    for(unsigned n=0;n<sizeof(malformed)/sizeof(malformed[0]);n++) {
+        assert(!opengpu_compute_shader_validate_words_shared_atomics(p.w,512,12,4,
+            false,false,false,true,false,false,false,false,uniforms,
+            malformed[n][0],malformed[n][1],malformed[n][2],false,true));checks++;
+    }
 }
 int main(void)
 {
