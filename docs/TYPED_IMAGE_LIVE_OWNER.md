@@ -252,9 +252,9 @@ actual PTE revocation, TLB/context cleanup ACK and final source checks pass in
 every case. Each case uses its own fresh DUT reset and original uploaded RAM;
 this run establishes neither cross-command coherence nor same-DUT reuse.
 
-Coordinate-boundary and source-read fault results appear below. Actual image
-permission faults and cancellation/reset/drain retain separate acceptance
-gates; continuous buffer source-fault recovery is scoped below. This atomic result
+Coordinate-boundary, source-read fault, permission-denial and continuous
+buffer recovery results are scoped below. Cancellation/reset/drain retains
+its separate acceptance gate. This atomic result
 does not close P08, establish complete resource combinations, or qualify
 product clock/FPS. The formal accepted count remains 7/40.
 
@@ -453,7 +453,7 @@ captures, containers and returned RAM after verification.
 
 Each of these standalone runs uses a separate fresh DUT reset and original
 RAM. Continuous buffer recovery and coordinate-boundary results are scoped
-separately in this document. Actual permission faults, cancel/reset/drain,
+separately in this document. Permission denials are qualified below; cancel/reset/drain,
 cross-command coherence and complete resource combinations keep their own
 acceptance gates. P08 remains open at 7/40 accepted.
 
@@ -513,7 +513,7 @@ The bounded pair exits zero in 290.734 seconds under a 4-GiB/900-second guard,
 with peak aggregate resident memory 390234112 bytes and proven process cleanup.
 Both private producer builds, captures, containers and returned RAM are removed
 after verification. This establishes only the original buffer source-fault /
-healthy pair; actual permission faults and cancel/reset/drain remain open.
+healthy pair; permission denials are qualified below and cancel/reset/drain remains open.
 P08 remains open at 7/40 accepted.
 
 After freshly binding the execution sources, reproduce the pair with the
@@ -547,12 +547,40 @@ require positive injected read-error counts.
 
 All 47 Python protocol/oracle checks and all five fixed C++ variants pass,
 with ASan/UBSan checks for failed/success receipt separation and exact
-zero-error traffic retention. CPU checks alone do not establish
-actual permission execution or close P08. After committing and freshly binding
-the sources, reproduce each actual pair with the bounded atomic qualifier
-command above and `--case image-atomic-buffer-r32f`, selecting
-`--image-permission-recovery read` or `--image-permission-recovery write`.
-Actual permission failure/recovery and cancel/reset/drain remain pending.
+zero-error traffic retention. These CPU checks alone do not qualify a DUT.
+
+Both original buffer R32F permission pairs pass actual execution on the
+complete assertion-enabled float DUT with execution sources
+`d64e54804cc6cfe8bc694f268ee8ead0205bc588`. Each denied request produces actual
+failed completion and original EIO fences, zero physical errors/writes and
+unchanged execution RAM. Its healthy original request verifies forty raw old
+words, final images and all retained prior-owner bytes. Both actual context
+cleanups, independent cleanup-memory checks and source postchecks pass.
+
+Both directions retain command ID 4 and advance the same execution clock from
+0 to 2283, then from 2283 to 11955, with no intermediate reset or RAM
+replacement. Read-denied execution exits zero in 317.004 seconds with peak
+aggregate resident memory 372408320 bytes; write-denied execution exits zero
+in 299.875 seconds with peak 380616704 bytes. Each pair uses a 4-GiB/900-second
+guard and proves process cleanup. Its private producer builds, captures,
+containers and returned RAM are removed after verification. The two directions
+use separate initial execution DUTs; they do not establish coherence across
+the pairs or product clock/FPS. Cancel/reset/drain remains required, and P08
+stays open at 7/40.
+
+The existing source-read fault/recovery pair also passes on those same
+execution sources: command ID 4 and clock intervals 0..2337 and 2337..12009,
+with both actual injected read errors retained and no new physical errors in
+healthy recovery. Returned bytes, all prior-owner guards, both original
+context cleanups and source postchecks pass. It exits zero in 304.996 seconds
+under the same 4-GiB/900-second guard, with peak aggregate resident memory
+387940352 bytes and proven private process/data cleanup. Thus the permission
+mode's zero-error acceptance does not weaken source-fault error requirements.
+
+After freshly binding the execution sources, reproduce each pair with the
+bounded atomic qualifier command above and `--case image-atomic-buffer-r32f`,
+selecting `--image-permission-recovery read` or
+`--image-permission-recovery write`.
 
 ## Original load/store source and independent result contract
 
@@ -623,9 +651,9 @@ These are CPU OS/MMIO transport fixtures, including CPU completion/cleanup peers
 They execute no shader and create no DUT qualification. The separate seventy
 load/store and fifteen atomic complete-host runs above establish only their
 stated source snapshots and scopes. Boundary and source-read fault results
-also appear above. P08 remains incomplete: permission faults,
-cancellation/reset/drain remain open. Continuous buffer source-fault recovery
-is scoped above. Complete resource
+also appear above. P08 remains incomplete: cancellation/reset/drain remains
+open. Continuous buffer source-fault and permission-denial recovery are scoped
+above. Complete resource
 combinations, cross-command coherence and product clock/FPS keep their own gates.
 Existing executor qualifications cannot be relabeled for the changed source.
 
