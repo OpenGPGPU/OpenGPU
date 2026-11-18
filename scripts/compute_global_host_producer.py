@@ -77,6 +77,7 @@ def main():
     parser.add_argument('--global-accepted-matrix',action='store_true')
     parser.add_argument('--cached-kernarg',action='store_true')
     parser.add_argument('--cache-alias-source',action='store_true')
+    parser.add_argument('--uc-cache-alias-source',action='store_true')
     parser.add_argument('--cache-alias-matrix',action='store_true')
     parser.add_argument('--physical-base',type=int)
     args = parser.parse_args()
@@ -88,6 +89,9 @@ def main():
         parser.error('global matrix requires its exact first source and private session')
     recovery=args.global_recovery_matrix or args.global_accepted_matrix
     matrix=recovery or args.cache_alias_matrix
+    if args.uc_cache_alias_source and (not args.cached_kernarg or not args.capture_only or
+            args.cache_alias_source or matrix or args.global_atomic_matrix):
+        parser.error('UC cache alias source requires its distinct cached CPU capture')
     if args.cache_alias_matrix and (args.case!=CASES[0] or args.session is None or args.capture_only or
             recovery or args.global_atomic_matrix or not args.cached_kernarg or not args.cache_alias_source):
         parser.error('cache alias matrix requires its distinct cached live first-source session')
@@ -130,6 +134,8 @@ def main():
     source_words,source_kernarg=words,initial_kernarg
     if args.cache_alias_source:
         from compute_cache_alias_cases import words as source_words, initial_kernarg as source_kernarg
+    if args.uc_cache_alias_source:
+        from compute_uc_cache_alias_cases import words as source_words, initial_kernarg as source_kernarg
     if matrix:
         if args.cache_alias_matrix:
             from compute_cache_alias_recovery import PHASES, source_launch, check_source_launch
@@ -158,6 +164,7 @@ def main():
         else:
             if args.cached_kernarg:command+=['--cached-kernarg']
             if args.cache_alias_source:command+=['--cache-alias-source']
+            if args.uc_cache_alias_source:command+=['--uc-cache-alias-source']
             if args.capture_only:command+=['--capture-only']
             if args.physical_base is not None:command+=['--physical-base',str(args.physical_base)]
         with log_path.open('w') as log:

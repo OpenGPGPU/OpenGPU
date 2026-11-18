@@ -58,6 +58,8 @@ COMPUTE_CHECKERS = (
     'scripts/compute_cache_alias_observation.py', 'scripts/test_compute_cache_alias_observer.py',
     'scripts/test_compute_cache_alias_observer.cpp',
     'scripts/compute_cache_alias_recovery.py', 'scripts/test_compute_cache_alias_recovery.py',
+    'scripts/compute_uc_cache_alias_cases.py', 'scripts/compute_uc_cache_alias_source.py',
+    'scripts/test_compute_uc_cache_alias.py',
     'scripts/compute_global_host_producer.py',
     'scripts/compute_global_host_inputs.py',
     'scripts/test_compute_global_host_inputs.py',

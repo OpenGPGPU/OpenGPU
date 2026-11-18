@@ -45,8 +45,8 @@ def history_events(case,groups):
     return events,predecessors
 
 
-def _outputs(initial,returned,description,*,failed=None,target_attempts=None):
-    p,kernarg,_=recipe(initial,description)
+def _outputs(initial,returned,description,*,failed=None,target_attempts=None,recipe_function=None):
+    p,kernarg,_=(recipe if recipe_function is None else recipe_function)(initial,description)
     def word(offset):return struct.unpack('<I',returned.read(kernarg+offset,4))[0]
     if failed is None:
         groups=list(range(4));value=p['seed']

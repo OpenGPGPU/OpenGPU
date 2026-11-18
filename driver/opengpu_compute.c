@@ -3823,6 +3823,7 @@ struct opengpu_compute_storage_prepare {
     struct opengpu_staging_range ranges[5];
     struct drm_gem_object *range_objects[5];
     u32 range_count, dep_count;
+    bool kernarg_alias;
 };
 
 struct opengpu_compute_image_prepare {
@@ -3865,17 +3866,16 @@ struct opengpu_compute_indirect_prepare {
     u32 dep_count;
 };
 
-/* Track each bound range separately: an object may have several ranges, and
- * each must be checked against every different object's DMA window. The
- * kernarg is entry zero and must remain disjoint even from the same object. */
+/* Track every view against different objects. Entry zero is the writable
+ * kernarg; only the explicit cached-kernarg/UC-storage contract may alias it. */
 static int opengpu_compute_record_range(struct drm_gem_object *object,
     const struct opengpu_staging_range *range, struct drm_gem_object **objects,
-    struct opengpu_staging_range *ranges, u32 *count)
+    struct opengpu_staging_range *ranges, u32 *count, bool kernarg_alias)
 {
     u32 i;
     for (i = 0; i < *count; ++i) {
         int ret;
-        if (i && objects[i] == object) continue;
+        if ((i || kernarg_alias) && objects[i] == object) continue;
         ret = opengpu_gem_backings_proven_disjoint(objects[i], object);
         if (ret) return ret;
         if (objects[i]->resv == object->resv ||
@@ -3891,7 +3891,7 @@ static void opengpu_compute_add_dep(struct opengpu_sched_dep *deps, u32 *count,
                                     struct drm_gem_object *object, bool write)
 {
     u32 i;
-    for (i = 1; i < *count; ++i) {
+    for (i = 0; i < *count; ++i) {
         if (deps[i].object != object) continue;
         if (write) {
             deps[i].wait_usage = DMA_RESV_USAGE_READ;
@@ -3963,7 +3963,7 @@ static int opengpu_compute_prepare_images(
         if (shader->object->resv == b->object->resv ||
             !opengpu_staging_disjoint(&range, &shader_range, 1)) return -EINVAL;
         ret = opengpu_compute_record_range(b->object, &range, p->range_objects,
-                                           p->ranges, &p->range_count);
+                                           p->ranges, &p->range_count, false);
         if (ret) return ret;
         d.context=context_id; d.unit=i;
         d.storage_format=v->storage_format; d.image_format=v->image_format;
@@ -3997,6 +3997,7 @@ static int opengpu_compute_prepare_storage(
     const struct opengpu_staging_range shader_range = { shader->dma, shader->size };
     if (!context->vm.enabled)
         return -EOPNOTSUPP;
+    p->kernarg_alias = false;
     p->dep_count = 1;
     p->deps[0] = (struct opengpu_sched_dep) {
         kernarg->object, DMA_RESV_USAGE_READ, DMA_RESV_USAGE_WRITE,
@@ -4024,8 +4025,16 @@ static int opengpu_compute_prepare_storage(
         range = (struct opengpu_staging_range) { b->dma, b->size };
         if (shader->object->resv == b->object->resv ||
             !opengpu_staging_disjoint(&range, &shader_range, 1)) return -EINVAL;
-        ret = opengpu_compute_record_range(b->object, &range, p->range_objects,
-                                           p->ranges, &p->range_count);
+        /* Both policies are explicit. Physical coincidence or a shared
+         * reservation does not authorize aliases of different GEM objects. */
+        {
+            bool alias = !!(kernarg->flags & OPENGPU_RESOURCE_CACHED) &&
+                         !!(b->flags & OPENGPU_RESOURCE_UNCACHED);
+            ret = opengpu_compute_record_range(b->object, &range, p->range_objects,
+                                               p->ranges, &p->range_count, alias);
+            if (!ret && alias && b->object == kernarg->object)
+                p->kernarg_alias = true;
+        }
         if (ret) return ret;
         d.context = context_id; d.binding = i; d.base = (u32)b->va;
         d.limit = (u64)b->va + b->size;
@@ -4837,7 +4846,8 @@ static int opengpu_compute_launch_extended(struct drm_device *drm,
     if (!opengpu_compute_shader_validate_words_shared_atomics(
             program, words, kernarg_bytes, local_items,
             !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU),
-            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS),
+            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS) &&
+                !(storage && storage->kernarg_alias),
             !!textures, !!storage, !!images,
             !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_IMAGE_ATOMICS),
             !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_STORAGE_ATOMICS),
