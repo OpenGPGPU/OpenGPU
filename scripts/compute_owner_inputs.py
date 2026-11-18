@@ -55,11 +55,15 @@ def guarded(request_path, builder_argv):
     counter_matrix='--capture-counter-matrix' in argv
     storage_matrix='--storage-matrix' in argv
     storage_recovery='--storage-recovery-matrix' in argv
+    storage_accepted='--storage-accepted-matrix' in argv
+    storage_phases,check_storage=STORAGE_RECOVERY_PHASES,check_storage_launch
+    if storage_accepted:
+        from compute_storage_accepted_recovery import PHASES as storage_phases, check_source_launch as check_storage
     contended_matrix='--contended-image-matrix' in argv
     mixed_matrix='--mixed-atomic-matrix' in argv
-    require(sum((image_matrix,counter_matrix,storage_matrix,storage_recovery,contended_matrix,mixed_matrix))<=1,
+    require(sum((image_matrix,counter_matrix,storage_matrix,storage_recovery,storage_accepted,contended_matrix,mixed_matrix))<=1,
             'source matrices must remain distinct')
-    matrix=image_matrix or counter_matrix or storage_matrix or storage_recovery or contended_matrix or mixed_matrix
+    matrix=image_matrix or counter_matrix or storage_matrix or storage_recovery or storage_accepted or contended_matrix or mixed_matrix
     source_fault='--expect-image-source-fault' in argv
     permission=None
     reset=None
@@ -101,11 +105,12 @@ def guarded(request_path, builder_argv):
         'mixed atomic matrix requires its exact first original same-GEM source')
     expected_cases=set(MIXED_ATOMIC_CASES if mixed_matrix else CONTENDED_IMAGE_CASES if contended_matrix else STORAGE_CASES if storage_matrix else
         LEGACY_IMAGE_CASES if image_matrix else COUNTER_CASES if counter_matrix else (case,))
-    if storage_recovery:
-        require(argv.count('--storage-recovery-matrix')==1 and case==STORAGE_CASES[0] and
+    if storage_recovery or storage_accepted:
+        flag='--storage-accepted-matrix' if storage_accepted else '--storage-recovery-matrix'
+        require(argv.count(flag)==1 and case==STORAGE_CASES[0] and
             '--capture-only' not in argv and not source_fault and permission is None and reset is None and allocation_base is None,
             'storage recovery requires the exact complete original live sequence')
-        expected_cases={(stage['case'],stage['index']) for stage in STORAGE_RECOVERY_PHASES}
+        expected_cases={(stage['case'],stage['index']) for stage in storage_phases}
     out=Path(argv[argv.index('--build')+1]).absolute()
     generated={};seen=set();compiled=False
     # These are all actual host translation units, not the CPU VM fixture.
@@ -157,10 +162,10 @@ def guarded(request_path, builder_argv):
                         image_parameters(source_case) if source_case in IMAGE_CASES else None if indirect else counter_parameters(source_case))
             expected_source=out/'glsl' if indirect else out/'glsl'/parameters['source']
             stage=None
-            if storage_recovery:
-                require(len(launched)<len(STORAGE_RECOVERY_PHASES),'extra original storage recovery phase')
-                stage=STORAGE_RECOVERY_PHASES[len(launched)]
-                check_storage_launch(command,stage['index'],out,
+            if storage_recovery or storage_accepted:
+                require(len(launched)<len(storage_phases),'extra original storage recovery phase')
+                stage=storage_phases[len(launched)]
+                check_storage(command,stage['index'],out,
                     Path(argv[argv.index('--session')+1]).absolute(),Path(argv[argv.index('--profile-wire')+1]).absolute())
             launch_key=(source_case,stage['index']) if stage is not None else source_case
             require(launch_key in expected_cases and launch_key not in launched and
@@ -173,7 +178,8 @@ def guarded(request_path, builder_argv):
                            ['--capture-only'] if '--capture-only' in argv else [])
             if allocation_base is not None:expected_tail+=['--physical-base',str(allocation_base)]
             if stage is not None:
-                expected_tail=(['--expect-storage-fault',stage['mode']] if stage['mode']!='healthy' else [])+[
+                expected_tail=(['--expect-storage-fault','write' if stage['mode']=='accepted-write' else stage['mode']]
+                    if stage['mode']!='healthy' else [])+[
                     '--physical-base',str(stage['base'])]
             require(command[5:]==expected_tail, 'original producer execution mode changed')
             launched.add(launch_key)

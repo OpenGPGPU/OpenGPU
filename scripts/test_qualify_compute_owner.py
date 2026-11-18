@@ -29,7 +29,8 @@ class Entry(unittest.TestCase):
             if 'HEAD' in command:return 'explicit-cpu-source'
             if command[:3]==['docker','image','inspect']:return 'sha256:'+'1'*64
             raise AssertionError(command)
-        for alias,fails in ((c,f) for c in ('global-atomics-recovery','global-atomics-accepted-write-error')
+        for alias,fails in ((c,f) for c in ('global-atomics-recovery','global-atomics-accepted-write-error',
+                            'storage-atomics-accepted-write-error')
                             for f in (False,True)):
             archive=unittest.mock.Mock();archive.stdout=io.BytesIO();archive.wait.return_value=0
             argv=['qualify_compute_owner.py','--executor',str(ROOT/'fixture-executor'),
@@ -366,6 +367,44 @@ class Entry(unittest.TestCase):
             args.storage_matrix=True
             with self.assertRaises(ValueError):
                 qualifier.producer_command(args,case=qualifier.STORAGE_ATOMIC_CASES[0],**keyword)
+
+    def test_storage_accepted_write_entry_binds_full_float_owner_and_original_source(self):
+        with tempfile.TemporaryDirectory(prefix='storage-accepted-command-') as temporary:
+            root=Path(temporary);q=root/'qualification.json';executable=root/'executor'
+            executable.write_bytes(b'explicit CPU command fixture')
+            args=argparse.Namespace(mesa=root,mesa_build=root,drm_include=root,library_directory=root,
+                mesa_link_libs='-lfixture',executor_qualification=q,executor=executable,
+                executor_checker=root/'checker',executor_checker_python=sys.executable,timeout=60,
+                storage_accepted_matrix=True,case='storage-atomics-accepted-write-error')
+            for profile in (qualifier.SAMPLE_PROFILE,IMAGE_FLOAT_PROFILE):
+                q.write_text(json.dumps(dict(schema='opengpu-owner-executor-v1',kind='compute',
+                    profile=profile,source_sha256={})))
+                with patch.object(qualifier.subprocess,'run'):
+                    if profile==IMAGE_FLOAT_PROFILE:qualifier.checked_inputs(args)
+                    else:
+                        with self.assertRaises(ValueError):qualifier.checked_inputs(args)
+            with patch('compute_owner_inputs.snapshot',return_value={}),\
+                    patch.object(qualifier.subprocess,'Popen') as popen,\
+                    patch.object(qualifier,'stop_group'),patch.object(qualifier,'remove_container'):
+                popen.return_value.wait.return_value=0
+                qualifier.run_case(args,gpu=ROOT,source=ROOT,temporary=root,ntt=root/'ntt',
+                    image='immutable-image',case=qualifier.STORAGE_ATOMIC_CASES[0])
+                self.assertIn('--storage-accepted-matrix',popen.call_args.args[0])
+                producer=json.loads((root/(qualifier.STORAGE_ATOMIC_CASES[0]+'.argv.json')).read_text())
+                self.assertIn('--storage-accepted-matrix',producer)
+                self.assertNotIn('--storage-recovery-matrix',producer)
+                self.assertNotIn('--capture-only',producer)
+                popen.return_value.wait.assert_called_once_with(timeout=180)
+            keyword=dict(gpu=ROOT,source=ROOT,ntt=root/'ntt',image='immutable-image',name='negative')
+            for case in ('shared','counter-increment',qualifier.STORAGE_ATOMIC_CASES[1]):
+                with self.assertRaises(ValueError):qualifier.producer_command(args,case=case,**keyword)
+            for flag in ('storage_matrix','storage_delayed_ack','storage_recovery_matrix','global_recovery_matrix',
+                    'global_accepted_matrix','global_atomic_matrix','global_delayed_ack','contended_image_matrix',
+                    'mixed_atomic_matrix','image_source_recovery','image_permission_recovery','image_reset_recovery'):
+                setattr(args,flag,True)
+                with self.subTest(flag=flag),self.assertRaises(ValueError):
+                    qualifier.producer_command(args,case=qualifier.STORAGE_ATOMIC_CASES[0],**keyword)
+                delattr(args,flag)
 
     def test_delayed_ack_uses_same_original_matrix_and_guarded_source_command(self):
         with tempfile.TemporaryDirectory(prefix='storage-ack-command-') as temporary:

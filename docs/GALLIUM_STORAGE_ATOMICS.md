@@ -274,3 +274,51 @@ env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 \
 P10 remains open for RV32 global AMOs, accepted-write/cached-alias failures and
 image/storage competition. Complete resource combinations, cross-domain
 coherence and clock/FPS retain their separate plan gates. Acceptance stays 9/40.
+
+## Complete-owner committed write errors and continuous reuse
+
+The distinct `storage-atomics-accepted-write-error` entry uses all 15 original
+successful Mesa storage programs. Each runs a committed first-write error
+followed by a healthy owner: 30 phases share one complete assertion-enabled
+float DUT, RAM, initial reset and original command ID. Original allocations
+occupy disjoint physical namespaces and retain every previously cleaned byte.
+The original eight invocations use two workgroups of four; the full model
+retains two sixteen-lane/eight-warp CUs.
+
+The physical AXI agent applies the original enabled W bytes, then returns the
+delayed failing B response. One AMO from the failed workgroup has committed;
+that group returns no old values, while the other group's four invocations
+finish. Their exact old values and final target must serialize after a legal
+first AMO from the failed group. Invocation order within that group is not an
+API guarantee, so the oracle checks all four possible original identities.
+The five physical target attempts bind to that first write and four surviving
+AMOs, including lower writes for CAS misses. Every other physical byte is
+guarded. A missed CAS writes the existing value: data alone cannot distinguish
+its accepted and suppressed histories, so independent native
+physical/injected/accepted counters remain mandatory.
+
+Each phase requires actual failed fence/userspace `EIO` or healthy success,
+held/retired IRQ, PTE/context/MMU cleanup and external drain. The capture keeps
+the storage owner's one inactive context; global raw owners still require
+zero. Original Mesa source, compile/link dependencies and the exact ordered
+30-phase producer arguments remain bound. The existing suppressed-write and
+read-fault matrix retains its separate mode and receipts.
+
+Ninety-one focused source/controller/qualifier checks and 26 input/closure
+checks pass. CPU controls include all 2,880 failed-invocation/successful-group
+permutations, literal values, failed-group identity, meaningful rollback and
+full-RAM negatives, no-op CAS accounting, and cleanup refusal. Full-DUT
+execution still must establish all 30 phases, 180 returned old words, actual
+cleanup and final compiler/source/model checks.
+
+```sh
+python3 -B scripts/qualify_compute_owner.py \
+  --executor "$COMPUTE_EXECUTOR" --executor-qualification "$COMPUTE_QUALIFICATION" \
+  --executor-checker scripts/prepare_owner_executor.py \
+  --executor-checker-python "$QUALIFICATION_PYTHON" \
+  --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72 \
+  --case storage-atomics-accepted-write-error --timeout 7200
+```
+
+Image accepted-write errors, cached aliases and cross-command coherence retain
+their separate complete-host gates. P10 remains open.

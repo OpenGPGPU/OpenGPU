@@ -179,11 +179,12 @@ class GlobalContinuousOwnerTests(unittest.TestCase):
     def test_bad_partial_bytes_never_authorize_fault_cleanup_or_next_phase(self):
         self.peer(True)
 
-    def peer(self, bad_write, *, protocol=None, records=None, expected_words=480):
+    def peer(self, bad_write, *, protocol=None, records=None, expected_words=480, source_fixture=None):
         from compute_global_recovery_controller import run_recovery_matrix
         from owner_resource_contract import IMAGE_FLOAT_PROFILE
         phases=PHASES if protocol is None else protocol.PHASES
         make_held,make_done=(held,done) if records is None else records
+        source_fixture=partial if source_fixture is None else source_fixture
         class Process:
             def __init__(self):self.returncode=None;self.terminated=False
             def poll(self):return self.returncode
@@ -204,8 +205,9 @@ class GlobalContinuousOwnerTests(unittest.TestCase):
             index=int(path.parent.name[6:])
             return make_done(index) if path.name=='executor.done' else make_held(index)
         def ready(path,case,**_kwargs):
-            index=int(path.name[6:]);_,_,description=partial(case)
-            description['kernarg']['allocationPhysical']=phases[index]['base']+4096
+            index=int(path.name[6:]);_,_,description=source_fixture(case)
+            view='kernarg' if 'kernarg' in description else 'target'
+            description[view]['allocationPhysical']=phases[index]['base']+4096
             return description,{}
         class MemoryPeer:
             def __init__(self,path):
@@ -252,7 +254,8 @@ class GlobalContinuousOwnerTests(unittest.TestCase):
                     run_recovery_matrix(argparse.Namespace(timeout=60),['original-producer','{ipc}'],
                         directory,Path('native-executor'),{},qualified,IMAGE_FLOAT_PROFILE,protocol=protocol)
         self.assertEqual(len(processes),2)
-        self.assertTrue(all(call.kwargs=={'inactive_contexts':0} for call in tables.call_args_list))
+        contexts=0 if protocol is None else protocol.INACTIVE_CONTEXTS
+        self.assertTrue(all(call.kwargs=={'inactive_contexts':contexts} for call in tables.call_args_list))
         self.assertEqual(commands[1][1],'--active-global-recovery-matrix' if protocol is None else protocol.RUNNER_FLAG)
         cleanups=[index for index,name in events if name=='BEGIN_CLEANUP']
         if bad_write:

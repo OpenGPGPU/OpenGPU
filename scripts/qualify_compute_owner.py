@@ -78,7 +78,8 @@ def checked_inputs(args):
     if getattr(args,'case',None) in (*GLOBAL_ATOMIC_CASES,'global-atomics','global-atomics-delayed-ack',
             'global-atomics-recovery','global-atomics-accepted-write-error'):
         require(record.get('profile')==IMAGE_FLOAT_PROFILE,'global atomics require their qualified float owner')
-    if getattr(args,'case',None) in (*STORAGE_ATOMIC_CASES,'storage-atomics','storage-atomics-delayed-ack','storage-atomics-recovery'):
+    if getattr(args,'case',None) in (*STORAGE_ATOMIC_CASES,'storage-atomics','storage-atomics-delayed-ack',
+            'storage-atomics-recovery','storage-atomics-accepted-write-error'):
         require(record.get('profile')==IMAGE_FLOAT_PROFILE,'storage atomics require the complete float owner')
     if getattr(args, 'case', None) in (*DYNAMIC_CASES, 'mandatory-compute'):
         require(record.get('profile') == COMPUTE_STAGE or record.get('profile') in FULL_COMPUTE_CONTRACTS,
@@ -102,6 +103,13 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
         'storage matrix requires its exact first source and normal source-owned receipts')
     require(not getattr(args,'storage_delayed_ack',False) or getattr(args,'storage_matrix',False),
             'delayed storage ACK requires the original complete source matrix')
+    require(not getattr(args,'storage_accepted_matrix',False) or (case==STORAGE_ATOMIC_CASES[0] and
+        not source_fault and permission is None and reset is None and physical_base is None and
+        not any(getattr(args,key,False) for key in ('storage_matrix','storage_delayed_ack','storage_recovery_matrix',
+        'contended_image_matrix','mixed_atomic_matrix','global_atomic_matrix','global_delayed_ack',
+        'global_recovery_matrix','global_accepted_matrix','image_source_recovery',
+        'image_permission_recovery','image_reset_recovery'))),
+        'storage accepted-write recovery requires its distinct first-source matrix and committed physical error')
     require(not getattr(args,'storage_recovery_matrix',False) or (case==STORAGE_ATOMIC_CASES[0] and
         not (getattr(args,'storage_matrix',False) or getattr(args,'storage_delayed_ack',False)) and
         not source_fault and permission is None and reset is None and physical_base is None),
@@ -170,6 +178,7 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
             ['--physical-base',str(physical_base)] if physical_base is not None else [])+(
             ['--storage-matrix'] if getattr(args,'storage_matrix',False) else
             ['--storage-recovery-matrix'] if getattr(args,'storage_recovery_matrix',False) else
+            ['--storage-accepted-matrix'] if getattr(args,'storage_accepted_matrix',False) else
             ['--contended-image-matrix'] if getattr(args,'contended_image_matrix',False) else
             ['--mixed-atomic-matrix'] if getattr(args,'mixed_atomic_matrix',False) else [])
 
@@ -218,6 +227,7 @@ def run_case(args, *, gpu, source, temporary, ntt, image, case):
             *(['--storage-matrix'] if getattr(args,'storage_matrix',False) else []),
             *(['--storage-delayed-ack'] if getattr(args,'storage_delayed_ack',False) else []),
             *(['--storage-recovery-matrix'] if getattr(args,'storage_recovery_matrix',False) else []),
+            *(['--storage-accepted-matrix'] if getattr(args,'storage_accepted_matrix',False) else []),
             *(['--contended-image-matrix'] if getattr(args,'contended_image_matrix',False) else []),
             *(['--mixed-atomic-matrix'] if getattr(args,'mixed_atomic_matrix',False) else []),
             *(['--global-atomic-matrix'] if getattr(args,'global_atomic_matrix',False) else []),
@@ -231,7 +241,7 @@ def run_case(args, *, gpu, source, temporary, ntt, image, case):
             env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1', TMPDIR=str(temporary)))
         require(process.wait(timeout=args.timeout+120 if (getattr(args,'storage_matrix',False) or
                 getattr(args,'storage_recovery_matrix',False) or getattr(args,'global_recovery_matrix',False) or
-                getattr(args,'global_accepted_matrix',False)) else None) == 0,
+                getattr(args,'global_accepted_matrix',False) or getattr(args,'storage_accepted_matrix',False)) else None) == 0,
                 'actual compute case failed: ' + case)
         if case in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES):
             require(snapshot(args.mesa, args.mesa_build, args.library_directory, args.drm_include, gpu) == bound,
@@ -264,7 +274,8 @@ def main():
     parser.add_argument('--mesa-link-libs', default='-l:libz.so.1 ' + str(gpu / 'depends/aarch64-root/lib/libexpat.so.1.6.7'))
     parser.add_argument('--compiler-image', default='gpu-gtk-ci-check:latest')
     parser.add_argument('--case', choices=('both', 'mandatory-compute', 'storage-atomics',
-        'storage-atomics-delayed-ack', 'storage-atomics-recovery', 'image-atomics-contended', 'image-storage-atomics',
+        'storage-atomics-delayed-ack', 'storage-atomics-recovery','storage-atomics-accepted-write-error',
+        'image-atomics-contended', 'image-storage-atomics',
         'global-atomics','global-atomics-delayed-ack','global-atomics-recovery','global-atomics-accepted-write-error',
         *CASES), default='both')
     parser.add_argument('--timeout', type=int, default=3600)
@@ -277,6 +288,7 @@ def main():
     args.storage_delayed_ack=args.case=='storage-atomics-delayed-ack'
     args.storage_matrix=args.case in ('storage-atomics','storage-atomics-delayed-ack')
     args.storage_recovery_matrix=args.case=='storage-atomics-recovery'
+    args.storage_accepted_matrix=args.case=='storage-atomics-accepted-write-error'
     args.contended_image_matrix=args.case=='image-atomics-contended'
     args.mixed_atomic_matrix=args.case=='image-storage-atomics'
     args.global_atomic_matrix=args.case in ('global-atomics','global-atomics-delayed-ack')
@@ -323,7 +335,7 @@ def main():
                            env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1', TMPDIR=directory))
             ntt = temporary / 'checked-ntt/src/gallium/auxiliary/nir/nir_to_tgsi.c'
         cases = (GLOBAL_ATOMIC_CASES[:1] if args.global_atomic_matrix or args.global_recovery_matrix or args.global_accepted_matrix else MIXED_ATOMIC_CASES[:1] if args.mixed_atomic_matrix else CONTENDED_IMAGE_CASES[:1] if args.contended_image_matrix else
-                 STORAGE_ATOMIC_CASES[:1] if args.storage_matrix or args.storage_recovery_matrix else
+                 STORAGE_ATOMIC_CASES[:1] if args.storage_matrix or args.storage_recovery_matrix or args.storage_accepted_matrix else
                  ('shared', 'uniforms') if args.case == 'both' else LEGACY_CASES if args.case == 'mandatory-compute' else (args.case,))
         for case in cases:
             require(checked_inputs(args) == identity, 'qualified model/executor changed between source cases')
