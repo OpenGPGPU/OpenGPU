@@ -22,6 +22,7 @@ static struct {void *data;uint64_t bytes;unsigned mapped,closed;} bos[16];
 static unsigned next_bo=1,submitted,retired,capture_only,timeout_seconds,expect_global_fault,cached_kernarg;
 static unsigned cache_alias_source;
 static unsigned cache_alias_live,cache_alias_write_error;
+static unsigned uc_cache_alias_source;
 static const char *directory,*source_case;
 static struct opengpu_buffer shader,kernarg;
 static size_t program_bytes;
@@ -59,20 +60,29 @@ static void window(FILE *f,const struct opengpu_buffer *buffer)
   buffer->handle,(unsigned long long)physical,(unsigned long long)bytes,(unsigned long long)buffer->size);}
 static void write_source(void)
 {struct compute_host_snapshot snap;assert(!compute_host_snapshot_get(session,&snap));
- assert(snap.code_bytes==shader.size && !snap.storage_bytes && !snap.uniform_bytes && !snap.image_bytes && !snap.counter_bytes);
+ assert(snap.code_bytes==shader.size && snap.storage_bytes==(uc_cache_alias_source?256u:0u) &&
+  !snap.uniform_bytes && !snap.image_bytes && !snap.counter_bytes);
  FILE *f=file("code.words","wx");const uint32_t *words=snap.code;
  for(size_t i=0;i<snap.code_bytes/4;i++)assert(fprintf(f,"%08x\n",words[i])==9);
  assert(!fclose(f));
  f=file("oracle.json","wx");
  fprintf(f,"{\"schema\":\"%s\",\"sourceCase\":\"%s\",\"viewBytes\":8192,\"groups\":4,\"local\":16,\"guard\":3735928559,\"context\":%u,\"codePhysical\":%llu,\"codeBytes\":%llu,\"shader\":",
+  uc_cache_alias_source?"opengpu-compute-uc-cache-alias-oracle-v1":
   cache_alias_source?"opengpu-compute-cache-alias-oracle-v1":
   cached_kernarg?"opengpu-compute-global-cached-atomic-oracle-v1":"opengpu-compute-global-atomic-oracle-v1",
   source_case,snap.context,(unsigned long long)snap.code_physical,(unsigned long long)snap.code_bytes);
- window(f,&shader);fputs(",\"kernarg\":",f);window(f,&kernarg);assert(fputs("}\n",f)>=0 && !fclose(f));}
+ window(f,&shader);fputs(",\"kernarg\":",f);window(f,&kernarg);
+ if(uc_cache_alias_source){
+  fputs(",\"storageAlias\":",f);window(f,&kernarg);
+  fprintf(f,",\"storageSlot\":13,\"storageBinding\":0,\"descriptorPhysical\":%llu,\"descriptorRoot\":%u,\"retainedObjects\":%u,\"temporaryMappings\":%u",
+   (unsigned long long)snap.storage_physical,snap.storage_root,snap.retained_objects,snap.temporary_mappings);
+ }
+ assert(fputs("}\n",f)>=0 && !fclose(f));}
 
 static int wait_execution(void)
-{if(retired)return 0;assert(submitted==1);write_source();
+{if(retired)return 0;assert(submitted==1);if(!uc_cache_alias_source)write_source();
  char out[4096];assert(!compute_host_begin_execution(session));
+ if(uc_cache_alias_source)write_source();
  path(out,"union.memory");assert(!compute_host_export_memory(session,out));
  path(out,"record-0.capture");assert(!compute_host_capture(session,out,1000000000,37));
  marker("READY",capture_only?"original RV32/Linux CPU capture; no GPU execution\n":"original RV32/Linux active capture\n");
@@ -96,6 +106,8 @@ int global_fixture_ioctl(int fd,unsigned long request,...)
   assert(bos[p->handle].data);bos[p->handle].bytes=p->size;return 0;}
  if(request==DRM_IOCTL_OPENGPU_RESOURCE_BIND)return result(compute_host_bind(session,arg));
  if(request==DRM_IOCTL_OPENGPU_COMPUTE){int error=compute_host_submit(session,arg);if(!error)submitted++;return result(error);}
+ if(request==DRM_IOCTL_OPENGPU_COMPUTE_STORAGE){assert(uc_cache_alias_source);
+  int error=compute_host_submit_storage(session,arg);if(!error)submitted++;return result(error);}
  if(request==DRM_IOCTL_SYNCOBJ_CREATE){struct drm_syncobj_create *p=arg;assert(!p->flags && !p->handle);p->handle=1;return 0;}
  if(request==DRM_IOCTL_SYNCOBJ_WAIT){struct drm_syncobj_wait *p=arg;assert(p->count_handles==1);return wait_execution();}
  if(request==DRM_IOCTL_SYNCOBJ_HANDLE_TO_FD){struct drm_syncobj_handle *p=arg;assert(retired && p->handle==1);p->fd=20001;return 0;}
@@ -118,6 +130,7 @@ int main(int argc,char **argv)
  for(int i=6;i<argc;i++){
   if(!strcmp(argv[i],"--cached-kernarg")){assert(!cached_kernarg && !expect_global_fault);cached_kernarg=1;}
   else if(!strcmp(argv[i],"--cache-alias-source")){assert(!cache_alias_source && !expect_global_fault);cache_alias_source=1;}
+  else if(!strcmp(argv[i],"--uc-cache-alias-source")){assert(!uc_cache_alias_source);uc_cache_alias_source=1;}
   else if(!strcmp(argv[i],"--cache-alias-live")){assert(!cache_alias_live && !capture_only);cache_alias_live=1;}
   else if(!strcmp(argv[i],"--expect-cache-alias-write-error")){
    assert(!cache_alias_write_error && !expect_global_fault && !capture_only);
@@ -138,6 +151,8 @@ int main(int argc,char **argv)
  assert(!cache_alias_live || (cache_alias_source && cached_kernarg && !capture_only));
  assert(!cache_alias_write_error || (cache_alias_live && expect_global_fault==2));
  assert(!cache_alias_source || !expect_global_fault || cache_alias_write_error);
+ assert(!uc_cache_alias_source || (cached_kernarg && capture_only && !cache_alias_source &&
+  !cache_alias_live && !expect_global_fault));
  assert(!strncmp(source_case,"global-atomic-",14));
  for(const char *c=source_case;*c;c++)assert((*c>='a' && *c<='z') || *c=='-');
  timeout_seconds=compute_host_timeout_seconds();assert(timeout_seconds);
@@ -147,7 +162,10 @@ int main(int argc,char **argv)
  assert(read32(f)==10);for(unsigned i=count;i<count+10;i++){profile[i].address=read32(f);profile[i].value=read32(f);}end(f);
  if(physical_base)assert(!compute_host_allocation_base(physical_base));
  session=compute_host_open(profile,count+10);free(profile);assert(session);
- uint64_t features;assert(!opengpu_driver_features(7,&features) && (features&OPENGPU_DRIVER_FEATURE_COMPUTE_WORD_ATOMICS));
+ uint64_t features,required=uc_cache_alias_source?
+  OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE|OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_ATOMICS:
+  OPENGPU_DRIVER_FEATURE_COMPUTE_WORD_ATOMICS;
+ assert(!opengpu_driver_features(7,&features) && (features&required)==required);
  uint8_t program[4097];f=fopen(argv[3],"rb");assert(f);program_bytes=fread(program,1,sizeof(program),f);
  assert(program_bytes && program_bytes<=4096 && !(program_bytes&3));end(f);
  assert(!opengpu_buffer_create(7,(uint32_t)program_bytes,&shader) && !opengpu_buffer_create(7,8192,&kernarg));
@@ -159,9 +177,19 @@ int main(int argc,char **argv)
  binding=(struct drm_opengpu_resource){.context_id=context,.slot=2,.handle=kernarg.handle,
   .type=OPENGPU_RESOURCE_COMPUTE_KERNARG,.size=8192,
   .flags=cached_kernarg?OPENGPU_RESOURCE_CACHED:0};assert(!opengpu_bind(7,&binding));
+ if(uc_cache_alias_source){
+  binding=(struct drm_opengpu_resource){.context_id=context,.slot=13,.handle=kernarg.handle,
+   .type=OPENGPU_RESOURCE_COMPUTE_STORAGE,.size=8192,.flags=OPENGPU_RESOURCE_UNCACHED};
+  assert(!opengpu_bind(7,&binding));
+ }
  struct drm_opengpu_compute command={.context_id=context,.shader_slot=1,.kernarg_slot=2,
   .grid={4,1,1},.local={16,1,1},.out_syncobj=sync};
- assert(!opengpu_compute(7,&command) && submitted==1);
+ if(uc_cache_alias_source){
+  struct drm_opengpu_compute_storage storage={.launch=command};
+  storage.bindings[0]=(struct drm_opengpu_compute_storage_binding){13,
+   OPENGPU_COMPUTE_STORAGE_READ|OPENGPU_COMPUTE_STORAGE_WRITE};
+  assert(!opengpu_compute_storage(7,&storage) && submitted==1);
+ }else assert(!opengpu_compute(7,&command) && submitted==1);
  int status=opengpu_sync_wait_success(7,sync,OPENGPU_FENCE_TIMEOUT_MS);
  assert(retired);
  if(expect_global_fault){int32_t fence_status;

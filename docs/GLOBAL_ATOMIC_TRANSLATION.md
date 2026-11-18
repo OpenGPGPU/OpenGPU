@@ -267,6 +267,93 @@ python3 -B scripts/qualify_compute_owner.py \
   --case global-atomics-cache-alias --timeout 14400
 ```
 
+## Explicit same-GEM UC/cached source admission
+
+A compute job may explicitly bind the same GEM through a cached kernarg and
+an `OPENGPU_RESOURCE_UNCACHED` storage view. Both policy flags are required.
+Every view remains checked against other objects' backing ranges; coincident
+DMA addresses, shared reservations, shader aliases and the default kernarg
+alias policy remain rejected. Images retain their existing kernarg-disjoint
+rule. The two data views retain one job data reference and the strongest
+write reservation. Scalar word AMOs are disabled for this alias profile;
+ordinary kernarg accesses remain bounded and UC operations use the checked
+storage descriptors.
+
+`compute_uc_cache_alias_cases.py` derives all 24 original operation/endpoint
+cases. Four sixteen-lane workgroups each use one active vector lane for their
+two checked storage AMOs. All original operands, comparisons and target offsets
+0, 4092, 4096 and 8188 remain. Ordinary vector loads use the cached kernarg
+mapping before and after the UC operations. The first two callers record their
+own initial loads and increment a separate UC ready word. A shared forward
+poll retains all 64 attempts, fits the existing 512-word binding limit, and
+prevents target operations when readiness is not observed. Neither the shader
+limit nor physical CU/lane/warp capacity is reduced.
+
+The distinct `opengpu-compute-uc-cache-alias-oracle-v1` source contract requires
+the same original handle/view, one enabled RW GSB1 descriptor and three disabled
+rows. Both cached leaves (`0xcf`) and UC leaves (`0x2cf`) must resolve both pages
+and every selected target to the same physical word. Source/private-code bytes,
+the private descriptor allocation, one retained data GEM and two actual temporary
+maps are checked. Independent ordinary-read/AMO histories and all physical bytes,
+including descriptor and previously cleaned RAM guards, remain required.
+
+All 283 focused source, Linux-admission, oracle, qualifier and binding checks
+pass. Actual ASan/UBSan Linux admission covers every derived program and ten
+policy/identity/reservation profiles. Independent binary decoding covers all
+96 caller paths, original operands and both the last successful poll and
+64-attempt failure path. The complete float-profile Linux/MMU regression passes
+its 208 image-byte, 208 failed-receipt and 208 reset cases plus bad-ACK resource
+retention controls. These are CPU transport checks, not shader execution.
+
+Guarded original Linux builds in the fixed compiler image pass all four source
+modes: 96 captures, 4080 source rejection controls and 32 compiler/header/object/
+link mutation controls. The new UC mode contributes 24 captures and 2232
+rejections, including each descriptor word and both aliases' PTEs. Eight actual
+C option rejections pass; the existing cached live-source receipt-wait controls
+also pass. All 252 software inputs remain bound and ended CPU outputs are removed.
+The complete original float compute driver additionally compiles/links and passes
+actual MMIO discovery with three cache headers and 1051 full compiler dependencies;
+all 4497 model objects/archives and the bound headers remain byte-identical.
+
+Reproduce the focused and original Linux lifecycle checks with:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts python3 -B -m unittest \
+  test_compute_uc_cache_alias test_compute_cached_kernarg \
+  test_compute_cache_alias_source test_compute_cache_alias_recovery \
+  test_compute_global_atomic_source test_compute_global_host_inputs \
+  test_qualify_compute_owner test_prepare_owner_executor \
+  test_prepare_owner_verilator_executor test_changed_test_suites test_compute_atomic_order
+OPENGPU_TEST_SANITIZERS=1 PYTHONDONTWRITEBYTECODE=1 \
+  python3 -B scripts/test_compute_host.py --image-float-stage
+```
+
+Inside the fixed compiler image and with an original complete-float discovery
+and fresh bound-input request, capture this mode separately:
+
+```sh
+python3 -B scripts/compute_global_host_producer.py \
+  --build "$CAPTURE_BUILD" --profile-wire "$DISCOVERY_WIRE" \
+  --bound-inputs "$INPUTS_REQUEST" --case all --capture-only --sanitize \
+  --cached-kernarg --uc-cache-alias-source
+python3 -B scripts/test_compute_global_atomic_source.py \
+  --captures "$CAPTURE_BUILD/captures" --profile-json "$PROFILE_JSON" \
+  --cached-kernarg --uc-cache-alias-source
+python3 -B scripts/test_compute_global_host_inputs.py \
+  --native-build "$CAPTURE_BUILD" --bound-inputs "$INPUTS_REQUEST"
+python3 -B scripts/test_compute_uc_cache_alias.py \
+  --native-build "$CAPTURE_BUILD" --profile-wire "$DISCOVERY_WIRE" \
+  --bound-inputs "$INPUTS_REQUEST"
+```
+
+The UC source flag currently selects CPU capture only. Its complete continuous
+UC/error/healthy matrix, native observer hook and typed-storage failure receipts
+remain to be connected and executed. The cached-only live matrix above does not
+qualify this UC path. Actual two-CU/L2 residency, invalidation/refetch, accepted
+errors and real cleanup for these UC aliases remain P10 gates. P10 stays open
+at 9/40; complete resources, cross-command coherence, clocks and FPS retain
+their separate plan requirements.
+
 ## Global AMO translation and prior component checks
 
 Global RV32 word AMOs capture the data SATP root and virtual operand before

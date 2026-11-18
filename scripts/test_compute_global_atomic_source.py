@@ -105,13 +105,17 @@ class Overlay:
         return bytes(data)
 
 
-def check_capture(directory, profile, *, cached=False, cache_alias=False):
+def check_capture(directory, profile, *, cached=False, cache_alias=False,uc_cache_alias=False):
     if cache_alias and not cached:raise ValueError('cache alias captures require cached admission')
+    if uc_cache_alias and (not cached or cache_alias):raise ValueError('UC aliases require their distinct cached source')
     d = strict_json(directory / 'oracle.json')
     data = (directory / 'record-0.capture').read_bytes()
     code = (directory / 'code.words').read_text().splitlines()
     checked = 0
     def selected_ready(*args):
+        if uc_cache_alias:
+            from compute_uc_cache_alias_source import ready as uc_ready
+            return uc_ready(*args)
         if cache_alias:
             from compute_cache_alias_source import ready as alias_ready
             return alias_ready(*args)
@@ -120,9 +124,23 @@ def check_capture(directory, profile, *, cached=False, cache_alias=False):
         selected_ready(memory, d, data, code, profile)
         controls = []
         if cached:controls.append((memory,dict(d,schema=SCHEMA),data,code,profile))
-        if cache_alias:
+        if cache_alias or uc_cache_alias:
             from compute_global_atomic_source import CACHED_SCHEMA
             controls.append((memory,dict(d,schema=CACHED_SCHEMA),data,code,profile))
+        if uc_cache_alias:
+            from compute_cache_alias_source import SCHEMA as WARM_SCHEMA
+            controls.append((memory,dict(d,schema=WARM_SCHEMA),data,code,profile))
+            for key,value in (('storageSlot',14),('storageBinding',1),
+                    ('descriptorPhysical',d['descriptorPhysical']+4096),
+                    ('descriptorRoot',d['descriptorRoot']+64),('retainedObjects',2),('temporaryMappings',1)):
+                controls.append((memory,dict(d,**{key:value}),data,code,profile))
+            for key,value in (('handle',3),('allocationPhysical',d['kernarg']['allocationPhysical']+4096),
+                    ('allocationBytes',4096),('offset',4),('bytes',8188)):
+                wrong=deepcopy(d);wrong['storageAlias'][key]=value
+                controls.append((memory,wrong,data,code,profile))
+            for offset in (*range(0,64,4),64,128,192):
+                address=d['descriptorPhysical']+offset
+                controls.append((Overlay(memory,address,bytes([memory.read(address,1)[0]^1])),d,data,code,profile))
         for mutate in (lambda x: x.update(context=2), lambda x: x.update(codeBytes=x['codeBytes'] - 4),
                        lambda x: x.update(codePhysical=x['shader']['allocationPhysical']),
                        lambda x: x['kernarg'].update(handle=3), lambda x: x['shader'].update(handle=3),
@@ -140,7 +158,7 @@ def check_capture(directory, profile, *, cached=False, cache_alias=False):
         for address in (d['shader']['allocationPhysical'], d['codePhysical'], d['kernarg']['allocationPhysical'] + 128):
             changed = Overlay(memory, address, bytes([memory.read(address, 1)[0] ^ 1]))
             controls.append((changed, d, data, code, profile))
-        if cache_alias:
+        if cache_alias or uc_cache_alias:
             for offset in (192,256,320,8191):
                 address=d['kernarg']['allocationPhysical']+offset
                 changed=Overlay(memory,address,bytes([memory.read(address,1)[0]^1]))
@@ -153,7 +171,7 @@ def check_capture(directory, profile, *, cached=False, cache_alias=False):
         for flag in (4, 0x200):
             changed = Overlay(memory, leaf_address, struct.pack('<I', leaf ^ flag))
             controls.append((changed, d, data, code, profile))
-        if cache_alias:
+        if cache_alias or uc_cache_alias:
             for page in (0,1):
                 address=leaf_address+4*page
                 value,=struct.unpack('<I',memory.read(address,4))
@@ -161,6 +179,16 @@ def check_capture(directory, profile, *, cached=False, cache_alias=False):
                     if page==0 and bit in (4,0x200):continue
                     changed=Overlay(memory,address,struct.pack('<I',value^bit))
                     controls.append((changed,d,data,code,profile))
+        if uc_cache_alias:
+            from compute_uc_cache_alias_source import STORAGE_BASE
+            entry,=struct.unpack('<I',memory.read(root+(STORAGE_BASE>>22)*4,4))
+            uc_leaf=(entry>>10)*4096+((STORAGE_BASE>>12)&1023)*4
+            for page in (0,1):
+                address=uc_leaf+4*page;value,=struct.unpack('<I',memory.read(address,4))
+                for bit in (1,2,4,8,0x10,0x40,0x80,0x100,0x200,0x400):
+                    controls.append((Overlay(memory,address,struct.pack('<I',value^bit)),d,data,code,profile))
+                address=leaf_address+4*page;value,=struct.unpack('<I',memory.read(address,4))
+                controls.append((Overlay(memory,address,struct.pack('<I',value^0x400)),d,data,code,profile))
         widened = bytearray(data)
         grant = struct.calcsize('<8sQIII') + 122 * 8 + 4
         end, = struct.unpack_from('<Q', widened, grant + 8)
@@ -179,7 +207,7 @@ def check_capture(directory, profile, *, cached=False, cache_alias=False):
             pass
         else:
             raise AssertionError('untouched raw RV32 upload accepted as an execution result')
-    assert checked == (40 if cache_alias else 19 if cached else 18), checked
+    assert checked == (93 if uc_cache_alias else 40 if cache_alias else 19 if cached else 18), checked
     return checked
 
 
@@ -189,9 +217,10 @@ if __name__ == '__main__':
     parser.add_argument('--profile-json', type=Path)
     parser.add_argument('--cached-kernarg',action='store_true')
     parser.add_argument('--cache-alias-source',action='store_true')
+    parser.add_argument('--uc-cache-alias-source',action='store_true')
     args = parser.parse_args()
     if args.captures is None:
-        if args.profile_json is not None or args.cached_kernarg or args.cache_alias_source:
+        if args.profile_json is not None or args.cached_kernarg or args.cache_alias_source or args.uc_cache_alias_source:
             parser.error('--profile-json requires --captures')
         unittest.main(argv=[sys.argv[0]])
     else:
@@ -199,7 +228,9 @@ if __name__ == '__main__':
             parser.error('--captures requires its explicit original --profile-json')
         if args.cache_alias_source and not args.cached_kernarg:
             parser.error('--cache-alias-source requires --cached-kernarg')
+        if args.uc_cache_alias_source and (not args.cached_kernarg or args.cache_alias_source):
+            parser.error('--uc-cache-alias-source requires its distinct --cached-kernarg source')
         profile = strict_json(args.profile_json)
         checked = sum(check_capture(args.captures / case, profile,cached=args.cached_kernarg,
-                                   cache_alias=args.cache_alias_source) for case in CASES)
+                                   cache_alias=args.cache_alias_source,uc_cache_alias=args.uc_cache_alias_source) for case in CASES)
         print('24 original Linux capture checks and %u rejection controls PASS (CPU only)' % checked)
