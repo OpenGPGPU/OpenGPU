@@ -1017,7 +1017,7 @@ python3 -B scripts/qualify_compute_owner.py \
   --executor-checker scripts/prepare_owner_executor.py \
   --executor-checker-python "$QUALIFICATION_PYTHON" \
   --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72 \
-  --case image-atomics-accepted-write-error --timeout 7200
+  --case image-atomics-accepted-write-error --timeout 14400
 ```
 
 Cached aliases and cross-command coherence retain separate complete-host
