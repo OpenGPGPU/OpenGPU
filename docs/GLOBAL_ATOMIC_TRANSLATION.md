@@ -175,6 +175,7 @@ previously clear bits, and signed-min operands cross the sign boundary so those
 operations have observable effects even in a group-serial execution.
 The complete float-owner Linux/MMU/IRQ/cleanup CPU transport regression also
 passes under ASan/UBSan; its modeled receipts are not DUT execution evidence.
+All 23 software-executor source/input-closure checks pass.
 
 Reproduce CPU capture checks inside the compiler environment, using discovery
 wire/JSON from the same complete float-owner probe:
@@ -188,6 +189,9 @@ PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover \
   -s scripts -p 'test_compute_*source.py'
 OPENGPU_TEST_SANITIZERS=1 PYTHONDONTWRITEBYTECODE=1 \
   python3 -B scripts/test_compute_host.py --image-float-stage
+(cd scripts && PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest \
+  test_compute_global_atomic_cases test_compute_global_atomic_source \
+  test_compute_atomic_order test_prepare_owner_executor)
 ```
 
 The caller implements the existing external held/retired/cleanup receipt
