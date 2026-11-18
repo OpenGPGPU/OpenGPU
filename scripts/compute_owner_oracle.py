@@ -202,12 +202,17 @@ def verify(initial, returned, description):
     image = mixed or description.get('schema') in ('opengpu-compute-image-oracle-v1',
                                                   'opengpu-compute-contended-image-oracle-v1')
     storage_atomic = description.get('schema') == 'opengpu-compute-storage-atomic-oracle-v1'
+    global_atomic = description.get('schema') == 'opengpu-compute-global-atomic-oracle-v1'
     if counter:
         from compute_owner_cases import counter_parameters
         groups=counter_parameters(description.get('sourceCase'))['groups']
     else:groups=2 if image or storage_atomic else 4
-    required_flags(description, dict(viewBytes=8192, groups=groups, local=4 if counter or image or storage_atomic else 128, guard=0xdeadbeef))
-    if storage_atomic:
+    required_flags(description, dict(viewBytes=8192, groups=groups,
+        local=16 if global_atomic else 4 if counter or image or storage_atomic else 128, guard=0xdeadbeef))
+    if global_atomic:
+        from compute_global_atomic_source import returned_outputs
+        outputs = returned_outputs(initial, returned, description)
+    elif storage_atomic:
         from compute_storage_atomic_source import returned_outputs
         outputs = returned_outputs(initial, returned, description)
     elif mixed:
@@ -262,7 +267,7 @@ def verify(initial, returned, description):
     else:
         raise ValueError('unknown original ESSL byte oracle')
     for first, expected in outputs:
-        if not (counter or image or storage_atomic) and initial.read(first, 8192) != struct.pack('<I', 0xdeadbeef) * 2048:
+        if not (counter or image or storage_atomic or global_atomic) and initial.read(first, 8192) != struct.pack('<I', 0xdeadbeef) * 2048:
             raise ValueError('output was not independently guard-initialized')
     verify_byte_changes(initial, returned, outputs)
 

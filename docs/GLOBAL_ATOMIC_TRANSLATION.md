@@ -156,3 +156,39 @@ separate P10 acceptance gates. No generated kernel or CPU result is retained.
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_compute_global_atomic_cases.py
 ```
+
+The standalone `compute_global_host_producer.py` builds the production userspace
+library, the original Linux/MMU boundary and a raw `opengpu_compute()` caller.
+It binds the original shader at slot 1 and an independent original kernarg at
+slot 2. Shader bindings retain the production 64-byte alignment with zero
+padding after the final CEASE. Original source bytes, private code snapshots,
+cached executable mappings, both exact UC2 kernarg pages and the sole 8-KiB
+writable grant are checked independently from captured memory and MMIO.
+
+All 24 original Linux CPU captures pass with ASan/UBSan, followed by 432
+metadata/code/PTE/write-grant rejection controls and untouched-upload rejection.
+The source/order suite (18 tests) and existing counter/image/source oracle suite
+(29 tests) pass; these overlapping suites are not additive counts. Fabricated
+CPU byte fixtures use literal histories for all six families, checking each old
+word, the final target and every other original physical byte. OR operands set
+previously clear bits, and signed-min operands cross the sign boundary so those
+operations have observable effects even in a group-serial execution.
+
+Reproduce CPU capture checks inside the compiler environment, using discovery
+wire/JSON from the same complete float-owner probe:
+
+```sh
+python3 -B scripts/compute_global_host_producer.py --build "$CPU/build" \
+  --profile-wire "$OWNER_PROFILE_WIRE" --case all --capture-only --sanitize
+python3 -B scripts/test_compute_global_atomic_source.py \
+  --captures "$CPU/build/captures" --profile-json "$OWNER_PROFILE_JSON"
+PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover \
+  -s scripts -p 'test_compute_*source.py'
+```
+
+The caller implements the existing external held/retired/cleanup receipt
+protocol for one source case. The complete-owner qualification entry and its
+compiler/input binding still need integration before actual DUT acceptance.
+These CPU captures do not prove delayed ACKs, global fault recovery,
+accepted-write/error cached aliases or cross-command coherence. P10 remains
+open; generated CPU data is removed after its checks end.

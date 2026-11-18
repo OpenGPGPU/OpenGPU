@@ -15,7 +15,7 @@ CEASE, FENCE = 0x30500073, 0x0330000f
 PAIRS = ('swap-add', 'xor-or', 'and-min', 'max-cas',
          'unsigned-min-max', 'cas-pair')
 VIEWS = {'base': 0, 'page-tail': 4092, 'next-page': 4096, 'endpoint': 8188}
-SEEDS = (0xfffffff0, 0x7fffffff, 0xffffffff, 0x80000000, 0xffffffff, 0)
+SEEDS = (0xfffffff0, 0x7ffff000, 0x7fffffff, 0x80000000, 0xffffffff, 0)
 CASES = tuple('global-atomic-' + pair + '-' + view
               for pair in PAIRS for view in VIEWS)
 FUNCT5 = {'add': 0, 'exchange': 1, 'xor': 4, 'compare-swap': 5,
@@ -42,9 +42,9 @@ def events(case):
             'swap-add': (('exchange', 0x80000001 + group, 0),
                          ('add', 0x7fffffff + group, 0)),
             'xor-or': (('xor', 0x80000007 ^ (group << 4), 0),
-                       ('or', 1 << (group + 4), 0)),
-            'and-min': (('and', 0xfffffff0 | (1 << group), 0),
-                        ('signed-min', 0xfffffff8 + group, 0)),
+                       ('or', 1 << (group + 8), 0)),
+            'and-min': (('and', 0x7ffffff0 | (1 << group), 0),
+                        ('signed-min', 0x80000007 + group, 0)),
             'max-cas': (('signed-max', 7 + group, 0),
                         ('compare-swap', 0xa2000000 + group, 10)),
             'unsigned-min-max': (('unsigned-min', 7 + group, 0),
@@ -133,6 +133,13 @@ def initial_kernarg(case):
     struct.pack_into('<8I', data, OUTPUT_OFFSET, *([OUTPUT_GUARD] * (2 * GROUPS)))
     struct.pack_into('<I', data, p['target_offset'], p['seed'])
     return bytes(data)
+
+
+def bound_words(case):
+    # The production shader binding requires a 64-byte extent. The caller
+    # zeroes only the padding after the last CEASE, never any result storage.
+    code = words(case)
+    return code + (0,) * (-len(code) % 16)
 
 
 def write_sources(out):

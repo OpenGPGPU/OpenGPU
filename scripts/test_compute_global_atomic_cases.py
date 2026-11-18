@@ -100,7 +100,7 @@ class GlobalSources(unittest.TestCase):
             rows = []
             for index, case in enumerate(source.CASES):
                 rows.append('static const uint32_t code_%u[]={%s};' %
-                            (index, ','.join('0x%08xu' % word for word in source.words(case))))
+                            (index, ','.join('0x%08xu' % word for word in source.bound_words(case))))
             rows.append('static const struct program programs[]={%s};' % ','.join(
                 '{code_%u,sizeof(code_%u)/sizeof(uint32_t)}' % (index, index)
                 for index in range(len(source.CASES))))
