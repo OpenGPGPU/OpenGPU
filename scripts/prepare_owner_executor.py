@@ -70,7 +70,7 @@ COMPUTE_GENERATED_INCLUDES = frozenset((
       ('fault_record', 'job_id', 'reset_pending', 'reset_request', 'complete', 'abort', 'result_error', 'drain', 'irq', 'enable_irqs',
        'quiesce', 'kick', 'set_satp', 'activate_locked', 'busy', 'wait_idle', 'activate', 'enable',
        'disable', 'flush', 'flush_asid', 'submit', 'invalidate', 'invalidate_validate',
-       'invalidate_sync', 'snapshot_submission', 'compute', 'fence'))))
+       'invalidate_sync', 'invalidate_async', 'snapshot_submission', 'compute', 'fence'))))
 SAMPLE_CHECKERS = (
     'scripts/owner_resource_contract.py', 'scripts/compute_owner_protocol.py',
     'scripts/compute_owner_oracle.py',

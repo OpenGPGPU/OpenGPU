@@ -53,7 +53,7 @@ static int compute_mmio_read_le(FILE *f,u32 *value)
 {
     *value=0;for(unsigned n=0;n<4;n++){int c=fgetc(f);if(c==EOF)return -EIO;*value|=(u32)c<<(8*n);}return 0;
 }
-static int compute_mmio_cleanup_ack(const char *path,unsigned sequence)
+static int compute_mmio_cleanup_ack(const char *path,unsigned sequence,bool phase)
 {
     struct stat before,st;if(lstat(path,&before) || !S_ISREG(before.st_mode))return -EINVAL;
     int flags=O_RDONLY;
@@ -64,7 +64,7 @@ static int compute_mmio_cleanup_ack(const char *path,unsigned sequence)
     if(fstat(fd,&st) || !S_ISREG(st.st_mode) || st.st_size!=28 ||
         before.st_dev!=st.st_dev || before.st_ino!=st.st_ino){close(fd);return -EINVAL;}
     FILE *f=fdopen(fd,"rb");if(!f){close(fd);return -EIO;}
-    char magic[8];u32 v[5];int error=fread(magic,1,8,f)!=8 || memcmp(magic,"OGCLA001",8)?-EINVAL:0;
+    char magic[8];u32 v[5];int error=fread(magic,1,8,f)!=8 || memcmp(magic,phase?"OGCPA001":"OGCLA001",8)?-EINVAL:0;
     for(unsigned n=0;n<5 && !error;n++)error=compute_mmio_read_le(f,&v[n]);
     if(!error && (v[0]!=sequence || v[1]!=GPU_UCMD_STATUS_READY || v[2]!=GPU_IRQ_ENABLE || v[3] || v[4]!=1))error=-EINVAL;
     if(fclose(f) && !error)error=-EIO;
@@ -82,7 +82,7 @@ static int compute_mmio_cleanup_sync(struct opengpu_device *gpu)
     if(!lstat(ack,&st) || errno!=ENOENT){error=-EEXIST;goto out;}
     if(m->count-m->cleanup_start>UINT32_MAX){error=-ERANGE;goto out;}
     FILE *f=compute_mmio_file(trace,&temporary);if(!f){error=-EIO;goto out;}
-    fwrite("OGCLN001",1,8,f);compute_mmio_le(f,m->count-m->cleanup_start,4);
+    fwrite(m->phase_cleanup?"OGCPC001":"OGCLN001",1,8,f);compute_mmio_le(f,m->count-m->cleanup_start,4);
     compute_mmio_actions(f,m,m->cleanup_start);error=compute_mmio_close(f,trace,temporary);if(error)goto out;
 #ifdef OPENGPU_COMPUTE_MMIO_CLEANUP_TEST_PEER
     /* Explicit CPU regression peer only; never enabled by the Mesa producer. */
@@ -92,7 +92,7 @@ static int compute_mmio_cleanup_sync(struct opengpu_device *gpu)
     struct timespec start,now,pause={.tv_nsec=10000000};
     if(clock_gettime(CLOCK_MONOTONIC,&start)){error=-EIO;goto out;}
     for(;;){
-        if(!lstat(ack,&st)){error=compute_mmio_cleanup_ack(ack,sequence);break;}
+        if(!lstat(ack,&st)){error=compute_mmio_cleanup_ack(ack,sequence,m->phase_cleanup);break;}
         if(errno!=ENOENT){error=-errno;break;}
         if(!lstat(failed,&st)){error=-EIO;break;}
         if(clock_gettime(CLOCK_MONOTONIC,&now)){error=-EIO;break;}

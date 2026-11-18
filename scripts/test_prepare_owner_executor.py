@@ -227,6 +227,27 @@ class ExecutorTests(unittest.TestCase):
                          'compute_host_hw_abort_under_test.inc'}<=q.COMPUTE_GENERATED_INCLUDES)
         q.verify_qualification(path,kind='compute')
 
+    def test_compute_phase_qualification_binds_original_transport_and_generated_async(self):
+        path,record=self.fixture(profile=q.IMAGE_FLOAT_PROFILE)
+        for name in ('driver/tests/opengpu_compute_host_phase.inc',
+                     'driver/tests/compute_host_phase_test.h',
+                     'driver/tests/opengpu_compute_host_fixture.h'):
+            with self.subTest(source=name):
+                self.assertIn(name,q.checker_files('compute'))
+                self.assertIn(name,record['source_sha256'])
+                item=q.ROOT/name;original=item.read_bytes()
+                try:
+                    item.write_bytes(original+b'\n/* changed continuous owner transport */\n')
+                    with self.assertRaises(RuntimeError):q.verify_qualification(path,kind='compute')
+                finally:
+                    item.write_bytes(original)
+                omitted=copy.deepcopy(record);del omitted['source_sha256'][name]
+                q.common.write_json(path,omitted)
+                with self.assertRaises(RuntimeError):q.verify_qualification(path,kind='compute')
+                q.common.write_json(path,record)
+        self.assertIn('compute_host_hw_invalidate_async_under_test.inc',q.COMPUTE_GENERATED_INCLUDES)
+        q.verify_qualification(path,kind='compute')
+
     def test_frozen_qualification_cannot_acquire_stage_labels(self):
         path,record=self.fixture()
         for fields in (q.profile_contract(q.COMPUTE_STAGE,'compute'),

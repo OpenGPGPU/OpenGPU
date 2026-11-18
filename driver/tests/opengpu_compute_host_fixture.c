@@ -201,13 +201,14 @@ struct opengpu_kernel_launch { u32 indirect_base,indirect_bytes,indirect_offset;
 };
 struct dma_fence_chain;
 struct opengpu_job_temporary_mapping {u64 va;size_t size;};
-enum {OPENGPU_SCHED_COMPUTE=1,OPENGPU_SCHED_TESSELLATION=7,OPENGPU_SCHED_NATIVE_BINNED=8,OPENGPU_SCHED_PROTECTED_TESSELLATION=9};
+enum {OPENGPU_SCHED_COMPUTE=1,OPENGPU_SCHED_INVALIDATE=6,OPENGPU_SCHED_TESSELLATION=7,OPENGPU_SCHED_NATIVE_BINNED=8,OPENGPU_SCHED_PROTECTED_TESSELLATION=9};
 struct opengpu_sched_job {
     void *native_owner;struct dma_fence *retirement_fence,*admission_chain;bool ordinary_pending;
     struct dma_fence_chain *execution_chain;bool admission_armed;
     struct drm_sched_job base; struct opengpu_device *gpu; const struct opengpu_vm *vm;
     struct opengpu_render_context *context; int type;
     u32 native_job_segment;
+    dma_addr_t dma_source;u32 dma_bytes;
     struct opengpu_buffer shader,texture_records,storage_records,image_records,counter_records,uniform_snapshot,indirect_snapshot;
     struct opengpu_resource_binding counter_source;
     struct opengpu_buffer depth,vertex_shader,render_desc,commands;
@@ -224,10 +225,13 @@ struct compute_host_session {
  int completion_error;
  struct drm_opengpu_compute_uniform_resources submitted;
  struct drm_opengpu_compute_indirect_resources submitted_indirect;
- struct drm_syncobj sync[3];struct drm_sched_job *head,*tail;u64 next_seq;
+ struct drm_syncobj sync[512];struct drm_sched_job *head,*tail;u64 next_seq;
  struct dma_fence *hardware;bool prepared_execution;
  unsigned queued;int wait_error,copy_error,submit_error;
-
+ struct compute_writable_range *captured_writable;unsigned captured_writable_count;
+ bool phase_readback,phase_job_freed,retained_execution;
+ bool phase_original_pinned[512];
+ u32 phase_context,phase_epoch,phase_command,phase_opcode;
 };
 static struct compute_host_session *compute_running;
 #include "opengpu_compute_host_os.inc"
@@ -337,7 +341,10 @@ int compute_host_query(struct compute_host_session *s,uint32_t param,uint64_t *v
 {if(!s || !value)return -EINVAL;struct drm_opengpu_param request={.param=param};
  int error=opengpu_compute_get_param_ioctl(&s->drm,&request,&s->file);if(!error)*value=request.value;return error;}
 int compute_host_context_destroy(struct compute_host_session *s,uint32_t id)
-{if(!s || (s->exported && !compute_mmio_state(&s->gpu)->cleanup_done))return -EBUSY;
+{if(!s)return -EBUSY;
+ struct compute_mmio_state *m=compute_mmio_state(&s->gpu);
+ if(s->exported && (m->phase_cleanup?
+    !(m->cleanup_active && s->phase_job_freed && id==s->phase_context):!m->cleanup_done))return -EBUSY;
  struct drm_opengpu_context request={.id=id};compute_running=s;
  int error=opengpu_compute_context_destroy_ioctl(&s->drm,&request,&s->file);
  if(!error && s->gpu.hw.wedged)return -EIO;
@@ -695,7 +702,13 @@ static int compute_host_capture_common(struct compute_host_session *s,const char
  for(unsigned i=0;i<count;i++){compute_mmio_le(f,ranges[i].first,8);compute_mmio_le(f,ranges[i].end,8);}
  if(s->profile_count==122)assert(!compute_host_empty_contexts(s,f));
  compute_mmio_le(f,m->count,4);compute_mmio_actions(f,m,0);
- int error=compute_mmio_close(f,path,temporary);if(!error)s->captured=true;return error;
+ struct compute_writable_range *saved=count?malloc(count*sizeof(*saved)):NULL;
+ if(count && !saved){fclose(f);remove(temporary);free(temporary);return -ENOMEM;}
+ if(count)memcpy(saved,ranges,count*sizeof(*saved));
+ int error=compute_mmio_close(f,path,temporary);
+ if(!error){s->captured=true;s->captured_writable=saved;s->captured_writable_count=count;}
+ else free(saved);
+ return error;
 }
 int compute_host_capture(struct compute_host_session *s,const char *path,uint64_t budget,uint32_t hold)
 {return compute_host_capture_common(s,path,budget,hold,false);}
@@ -805,7 +818,7 @@ static int compute_host_finish_receipt(struct compute_host_session *s,int expect
 {
  if(!s || !s->observed || s->freed || !s->head || !s->hardware ||
   s->hardware->error!=expected_error || s->completion_error!=expected_error)return -EINVAL;
- struct compute_mmio_state *m=compute_mmio_state(&s->gpu);if(!m->cleanup_active || m->cleanup_error)return -EBUSY;
+ struct compute_mmio_state *m=compute_mmio_state(&s->gpu);if(!m->cleanup_active || m->phase_cleanup || m->cleanup_error)return -EBUSY;
  compute_running=s;
  if(expected_error){
   /* The real context quiesce reports a completed job's error once and drops
@@ -845,7 +858,7 @@ int compute_host_end_cleanup(struct compute_host_session *s)
 {
  if(!s || !s->freed || !s->vm_destroyed || s->head || s->gpu.hw.wedged)return -EBUSY;
  struct compute_mmio_state *m=compute_mmio_state(&s->gpu);
- if(!m->cleanup_active || m->cleanup_done || m->cleanup_error)return -EBUSY;
+ if(!m->cleanup_active || m->phase_cleanup || m->cleanup_done || m->cleanup_error)return -EBUSY;
  if(m->count!=m->cleanup_start)m->cleanup_error=compute_mmio_cleanup_sync(&s->gpu);
  if(m->cleanup_error)return m->cleanup_error;
  if(!m->cleanup_sequence)return -EINVAL;
@@ -854,11 +867,14 @@ int compute_host_end_cleanup(struct compute_host_session *s)
  fwrite("OGCLD001",1,8,f);compute_mmio_le(f,m->cleanup_sequence,4);
  int error=compute_mmio_close(f,path,temporary);free(path);if(!error){m->cleanup_active=false;m->cleanup_done=true;}return error;
 }
+#include "opengpu_compute_host_phase.inc"
 int compute_host_destroy(struct compute_host_session *s)
 {
  /* Exported physical state may be live in a DUT. Until the synchronous
   * completion/cleanup protocol is connected, fail closed rather than free. */
- if(!s || s->head || (s->exported && !compute_mmio_state(&s->gpu)->cleanup_done))return -EBUSY;
+ if(!s || s->head || (s->retained_execution && !s->vm_destroyed) ||
+    (s->gpu.hw.compute_mmio && compute_mmio_state(&s->gpu)->phase_cleanup) ||
+    (s->exported && !compute_mmio_state(&s->gpu)->cleanup_done))return -EBUSY;
  compute_running=s;
  if(s->gpu.hw.wedged)return -EIO;
  if(s->context){
@@ -879,9 +895,9 @@ int compute_host_destroy(struct compute_host_session *s)
   while(m->pte){struct compute_mmio_pte_shadow *p=m->pte;m->pte=p->next;free(p->words);free(p);}
   free(m->cleanup_directory);free(m->reset_directory);free(m->actions);free(m);
  }
- for(unsigned i=0;i<3;i++)dma_fence_put(s->sync[i].fence);
+ for(unsigned i=0;i<ARRAY_SIZE(s->sync);i++)dma_fence_put(s->sync[i].fence);
  compute_running=NULL;
- free(s->profile);free(s);return 0;
+ free(s->captured_writable);free(s->profile);free(s);return 0;
 }
 #ifdef OPENGPU_COMPUTE_HOST_TEST_MAIN
 static u32 physical_word(u64 pa)
@@ -894,6 +910,7 @@ static u64 translate(struct opengpu_vm *vm,u32 va,u32 *flags)
  assert(leaf&1);*flags=leaf&0x3ff;return ((u64)(leaf>>10)<<12)|(va&4095);}
 #include "compute_host_test_profile.inc"
 static int test_fail_phase,test_bad_kind;
+static unsigned test_phase_ack_failure;
 static bool test_failed_image_receipts;
 static bool test_failure_injected;
 #include "compute_host_reset_test.h"
@@ -901,20 +918,26 @@ static void compute_host_test_cleanup_peer(struct opengpu_device *gpu,const char
 {
  struct compute_mmio_state *m=compute_mmio_state(gpu);assert(m->cleanup_active && m->pte);
  char path[4096];assert(snprintf(path,sizeof(path),"%s/cleanup-%u.observed",directory,sequence)>0);
- FILE *f=fopen(path,"wx");assert(f);assert(fwrite("OGCLA001",1,8,f)==8);
+ FILE *f=fopen(path,"wx");assert(f);assert(fwrite(m->phase_cleanup && test_phase_ack_failure!=1?"OGCPA001":"OGCLA001",1,8,f)==8);
  int phase=!gpu->mmu.vms?3:compute_running->context && !compute_running->context->refcount.refs?2:1;
  bool bad=test_fail_phase==phase && !test_failure_injected;
  if(bad)test_failure_injected=true;
- compute_mmio_le(f,sequence+(bad && test_bad_kind==1?1:0),4);
- compute_mmio_le(f,GPU_UCMD_STATUS_READY|(bad && test_bad_kind==2?GPU_UCMD_STATUS_VM_BUSY:0),4);
+ compute_mmio_le(f,sequence+((bad && test_bad_kind==1) || (m->phase_cleanup && test_phase_ack_failure==2)?1:0),4);
+ compute_mmio_le(f,GPU_UCMD_STATUS_READY|((bad && test_bad_kind==2) || (m->phase_cleanup && test_phase_ack_failure==3)?GPU_UCMD_STATUS_VM_BUSY:0),4);
  compute_mmio_le(f,GPU_IRQ_ENABLE,4);compute_mmio_le(f,0,4);compute_mmio_le(f,1,4);assert(!fclose(f));
 }
 #include "compute_host_images_test.h"
 #include "compute_host_indirect_test.h"
+#include "compute_host_phase_test.h"
 int main(int argc,char **argv)
 {
  assert(argc==2 || argc==4);
- if(getenv("OPENGPU_COMPUTE_HOST_TEST_INDIRECT")){test_compute_host_indirect(argv[1]);return 0;}
+ if(getenv("OPENGPU_COMPUTE_HOST_TEST_INDIRECT")){
+  const char *failure=getenv("OPENGPU_COMPUTE_HOST_TEST_PHASE_ACK");test_phase_ack_failure=failure?(unsigned)atoi(failure):0;
+  assert(test_phase_ack_failure<=3);
+  if(!test_phase_ack_failure)test_compute_host_indirect(argv[1]);
+  test_compute_host_phases(argv[1]);return 0;
+ }
  {
   dma_addr_t original=next_dma;assert(!live_allocations && !fixture_buffers && !compute_running);
   const uint64_t bad_bases[]={0,1,0x100001,UINT64_C(0x100000000),UINT64_MAX};

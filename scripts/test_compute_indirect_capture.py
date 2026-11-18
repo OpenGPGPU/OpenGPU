@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Actual Linux opcode14 capture and independent canonical parser; CPU only."""
+"""Actual Linux opcode14 captures and continuous original-GEM transport; CPU only."""
 import os
 from pathlib import Path
 import shlex
@@ -31,6 +31,11 @@ def main():
                        [str(ROOT / 'driver/tests/opengpu_compute_host_fixture.c'), '-o', str(out / 'source')],
                        env=env, check=True)
         subprocess.run([str(out / 'source'), str(out)], env=env, check=True)
+        for bad_ack in range(1, 4):
+            rejected = out / ('rejected-phase-ack-%u' % bad_ack)
+            rejected.mkdir()
+            subprocess.run([str(out / 'source'), str(rejected)],
+                           env=dict(env, OPENGPU_COMPUTE_HOST_TEST_PHASE_ACK=str(bad_ack)), check=True)
         # Compile the active C boundary without any CPU-peer test main.
         subprocess.run(shlex.split(os.environ.get('CC', 'cc')) +
                        [flag for flag in flags if flag != '-DOPENGPU_COMPUTE_HOST_TEST_MAIN=1'] + san +

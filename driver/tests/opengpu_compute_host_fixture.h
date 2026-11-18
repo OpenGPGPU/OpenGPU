@@ -101,6 +101,24 @@ int compute_host_finish_failed_observed(struct compute_host_session *);
 int compute_host_finish_cancelled_observed(struct compute_host_session *);
 int compute_host_finish_indirect_observed(struct compute_host_session *,uint32_t result_status);
 int compute_host_end_cleanup(struct compute_host_session *);
+/* Continuous opcode0/14 owners retain the original render file/GEM/fences.
+ * Import only externally observed, independently checked DUT bytes. The input
+ * must name every live original exactly, preserving all read-only bytes. */
+int compute_host_export_originals(struct compute_host_session *,const char *path);
+int compute_host_import_originals(struct compute_host_session *,const char *path);
+int compute_host_sync_status(struct compute_host_session *,uint32_t handle,int32_t *status);
+/* A distinct phase protocol: temporary-job retirement, ordinary caller-side
+ * publication/context destruction, then native ACK. Whole-session cleanup
+ * continues to require its original bare-SATP/MMU shutdown contract. */
+int compute_host_begin_phase_cleanup(struct compute_host_session *,const char *directory);
+int compute_host_release_phase_job(struct compute_host_session *);
+int compute_host_phase_invalidate(struct compute_host_session *,const struct drm_opengpu_invalidate *);
+int compute_host_end_phase_cleanup(struct compute_host_session *);
+struct compute_host_phase_receipt {
+ uint32_t command_id,context_id,epoch,batches;
+ uint32_t status,irq,irq_asserted,external_drained,quiet_cycles,read_only_guards;
+};
+int compute_host_resume_phase(struct compute_host_session *,const struct compute_host_phase_receipt *);
 int compute_host_export_memory(struct compute_host_session *,const char *path);
 int compute_host_destroy(struct compute_host_session *);
 #endif

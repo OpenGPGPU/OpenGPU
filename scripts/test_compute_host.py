@@ -38,11 +38,13 @@ def write_bodies(out, compute_stage=False, full_profile=None):
         line for line in memory.splitlines() if not line.startswith('#include ')))
     units = {
         'query': between(source, 'int opengpu_compute_get_param_ioctl(', 'int opengpu_compute_get_fault_ioctl('),
-        'run': between(source, 'int opengpu_job_track_mapping(', '    if (job->type == OPENGPU_SCHED_BLIT)') + '    return ERR_PTR(-EINVAL);\n}\n',
+        'run': between(source, 'int opengpu_job_track_mapping(', '    if (job->type == OPENGPU_SCHED_BLIT)') +
+               between(source, '    if (job->type == OPENGPU_SCHED_INVALIDATE)', '    /* Command-buffer fetches bypass') +
+               '    return ERR_PTR(-EINVAL);\n}\n',
         'events': between(source, 'static int opengpu_command_events_init(\n', '/* Virtual mappings used by queued DMA jobs'),
         'lookup': between(source, 'static struct opengpu_resource_binding *\nopengpu_binding_lookup(', 'static int opengpu_resolve_bindings('),
         'wait_reservation': between(source, 'static int opengpu_wait_reservation(', 'static bool opengpu_strided_range_end('),
-        'ioctl': between(source, 'struct opengpu_compute_texture_prepare {', 'static int opengpu_self_test('),
+        'ioctl': between(source, 'int opengpu_compute_invalidate_ioctl(', 'static int opengpu_self_test('),
     }
     scheduler = (ROOT / 'driver/opengpu_scheduler.c').read_text()
     units['scheduler'] = between(scheduler, 'static void opengpu_sched_free_job(', 'static const struct drm_sched_backend_ops')
@@ -82,6 +84,7 @@ def write_bodies(out, compute_stage=False, full_profile=None):
         'invalidate': 'int opengpu_hw_invalidate_buffer_locked(',
         'invalidate_validate': 'static int opengpu_hw_invalidate_validate(',
         'invalidate_sync': 'int opengpu_hw_invalidate_sync(',
+        'invalidate_async': 'int opengpu_hw_invalidate_async(',
         'snapshot_submission': 'int opengpu_hw_snapshot_submission_lock(',
         'compute': 'int opengpu_hw_compute_async(',
     }

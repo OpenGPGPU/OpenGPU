@@ -2,7 +2,7 @@
 static struct dma_fence *dma_fence_get(struct dma_fence *f){if(f)++f->refs;return f;}
 static void dma_fence_put(struct dma_fence *f){if(f){assert(f->refs);if(!--f->refs){if(f->ops && f->ops->release)f->ops->release(f);else free(f);}}}
 static struct drm_syncobj *drm_syncobj_find(struct drm_file *f,u32 h)
-{return h<3?&f->driver_priv->session->sync[h]:NULL;}
+{return h && h<ARRAY_SIZE(f->driver_priv->session->sync)?&f->driver_priv->session->sync[h]:NULL;}
 static void drm_syncobj_put(struct drm_syncobj *s){(void)s;}
 static int drm_syncobj_find_fence(struct drm_file *f,u32 h,u64 point,u64 flags,struct dma_fence **out)
 {struct drm_syncobj *s=drm_syncobj_find(f,h);assert(!point&&!flags);
@@ -53,7 +53,10 @@ static bool dma_fence_is_signaled(struct dma_fence *f)
 static void compute_mmio_progress(struct opengpu_device *);
 static int opengpu_hw_fence_wait(struct opengpu_device *gpu,struct dma_fence *f,unsigned ms,bool interruptible)
 {if(gpu->hw.submit_lock.held){compute_mmio_progress(gpu);return dma_fence_is_signaled(f)?f->error:-ETIMEDOUT;}
- assert(!gpu->hw.submit_lock.held && !gpu->hw.fence_lock && ms==OPENGPU_DRAW_WAIT_MS+100 && interruptible);
+ assert(!gpu->hw.submit_lock.held && !gpu->hw.fence_lock && ms==OPENGPU_DRAW_WAIT_MS+100);
+ /* Ordinary context destruction uses the production noninterruptible wait.
+  * It may only see an already-observed finished fence in this transport. */
+ if(!interruptible)assert(dma_fence_is_signaled(f));
  if(compute_running->wait_error)return compute_running->wait_error;
  return dma_fence_is_signaled(f)?f->error:-ETIMEDOUT;}
 static int dma_fence_get_status(struct dma_fence *f)
