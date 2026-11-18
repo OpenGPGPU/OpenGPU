@@ -113,6 +113,19 @@ def equal_bytes(before, after, writes=()):
                     'ESSL output or read-only physical guard differs at 0x%x' % address)
 
 
+def executable_physical(memory, satp, va):
+    # opengpu_binding_map_code currently uses the cached private mapping API,
+    # whose exact leaf is V/R/W/X/A/D with policy zero. Snapshot data uses a
+    # separate RO/NX/UC2 API; it must not determine code-page permissions.
+    require(satp & 0x80000000 and (satp >> 22) & 511, 'code lacks a protected Sv32 owner')
+    root = (satp & 0x3fffff) << 12
+    first, = struct.unpack('<I', memory.read(root + ((va >> 22) & 1023) * 4, 4))
+    require(first & 1023 == 1, 'code Sv32 root is not an exact nonleaf')
+    leaf, = struct.unpack('<I', memory.read((first >> 10) * 4096 + ((va >> 12) & 1023) * 4, 4))
+    require(leaf & 1023 == 0xcf, 'code differs from the actual cached private mapping')
+    return (leaf >> 10) * 4096 + (va & 4095)
+
+
 def capture(data, opcode, profile):
     r = Reader(data)
     magic, budget, hold, command, count = r.take('<8sQIII')
@@ -234,13 +247,23 @@ class Chain:
                     'private cross-page count snapshot differs')
         satp = staged.get(0x14c, 0)
         require(satp == staged.get(0x150), 'code/data MMU identity differs')
+        require([staged.get(0xe0 + 4*n) for n in range(3)] == ([4, 2, 1] if opcode == 14 else [4, 1, 1]) and
+                [staged.get(0xd4 + 4*n) for n in range(3)] == (list(grid) if opcode == 14 else [1, 1, 1]),
+                'actual original local/grid shape differs')
+        if args is not None:
+            require([staged.get(a) for a in (0xf4, 0xfc, 0x104, 0xd0)] ==
+                    [args['va'], args['snapshot_size'], args['snapshot_offset'], args['va'] + args['snapshot_offset']],
+                    'actual source/width/kernarg does not use the same private count window')
+            for offset in (4092, 4103):
+                require(translate(before, satp, args['va'] + offset, 3) == args['snapshot'] + offset,
+                        'private counts lack their exact RO/NX/UC2 mapping')
         words = (directory / 'code.words').read_text().splitlines()
         require(words and all(re.fullmatch('[0-9a-f]{8}', word) for word in words), 'invalid actual code words')
         code = b''.join(struct.pack('<I', int(word, 16)) for word in words)
         require(len(code) == uint(d['codeBytes'], 64) and before.read(uint(d['codePhysical']), len(code)) == code,
                 'actual compiler code snapshot differs')
         for offset in range(0, len(code), 4):
-            pa = translate(before, satp, staged.get(0xcc, 0) + offset, 11)
+            pa = executable_physical(before, satp, staged.get(0xcc, 0) + offset)
             require(before.read(pa, 4) == code[offset:offset + 4], 'staged executable is not actual Mesa code')
         self.current = originals
         self.command, self.context, self.opcode = command, d['context'], opcode

@@ -19,6 +19,8 @@ def cleanup_authorization(index):
 
 def phase_response(value, *, command, context, index):
     execution(index)
+    if not 0 < uint(command) < 256 or not 0 < uint(context) < 512:
+        raise ValueError('invalid original phase command/context')
     if index == PHASES - 1:
         raise ValueError('final phase requires whole-MMU cleanup')
     expected = dict(schema='opengpu-compute-phase-cleanup-v1', phase='phase-cleanup',
