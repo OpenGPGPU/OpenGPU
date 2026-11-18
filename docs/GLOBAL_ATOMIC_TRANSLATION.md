@@ -234,3 +234,39 @@ python3 -B scripts/qualify_compute_owner.py \
 These CPU captures do not prove delayed ACKs, global fault recovery,
 accepted-write/error cached aliases or cross-command coherence. P10 remains
 open; generated CPU data is removed after its checks end.
+
+## Complete-owner global delayed acknowledgements
+
+The explicit `global-atomics-delayed-ack` entry retains all 24 original RV32
+programs and the complete assertion-enabled float factory. A source-owned
+`OGCGACK1` plan identifies the exact physical target line and eight original
+old-value slots in the same kernarg GEM. The native executor withholds the
+first actual due target B response for at least 257 cycles, preserving its
+original AXI identity and payload. It checks the real completion register and
+all 32 old-output bytes throughout the hold. Early completion or any returned
+old word before ACK release aborts without authorizing owner cleanup.
+
+After release, the existing independent source-order/final-word/whole-physical
+byte oracle and real IRQ/PTE/context/MMU cleanup still apply to every case.
+The global transport has its own plan/report kind and native mode; the existing
+storage v1 plan and 37-cycle contract are unchanged. Both plans use the same
+actual AXI response gate, not manufactured kernel results.
+
+Six ACK/AXI guard tests pass with native ASan/UBSan, including exact source
+windows, missing observers, changed old words, malformed plans, premature
+completion and unrelated writes. The 47 focused source/controller/compiler
+checks and 23 software input/closure checks pass. Complete-DUT execution of
+this delayed matrix remains required before claiming all 192 actual old words
+and final compiler/source/model checks.
+
+```sh
+python3 -B scripts/qualify_compute_owner.py \
+  --executor "$COMPUTE_EXECUTOR" --executor-qualification "$COMPUTE_QUALIFICATION" \
+  --executor-checker scripts/prepare_owner_executor.py \
+  --executor-checker-python "$QUALIFICATION_PYTHON" \
+  --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72 \
+  --case global-atomics-delayed-ack --timeout 7200
+```
+
+This delay gate does not qualify continuous global fault/healthy reuse,
+accepted-write/error cached aliases, cross-command coherence, clocks or FPS.

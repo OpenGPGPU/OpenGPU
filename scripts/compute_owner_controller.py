@@ -334,12 +334,14 @@ def main():
     parser.add_argument('--contended-image-matrix',action='store_true')
     parser.add_argument('--mixed-atomic-matrix',action='store_true')
     parser.add_argument('--global-atomic-matrix',action='store_true')
+    parser.add_argument('--global-delayed-ack',action='store_true')
     mode=parser.add_mutually_exclusive_group()
     mode.add_argument('--expect-image-source-fault', action='store_true')
     mode.add_argument('--image-source-recovery', action='store_true')
     mode.add_argument('--image-permission-recovery',choices=('read','write'))
     mode.add_argument('--image-reset-recovery',choices=('read','write'))
     args = parser.parse_args()
+    require(not args.global_delayed_ack or args.global_atomic_matrix,'global ACK requires its exact complete source matrix')
     require(not args.global_atomic_matrix or (args.case==GLOBAL_ATOMIC_CASES[0] and not any((
         args.storage_matrix,args.storage_delayed_ack,args.storage_recovery_matrix,args.contended_image_matrix,
         args.mixed_atomic_matrix,args.expect_image_source_fault,args.image_source_recovery,

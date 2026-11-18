@@ -9,7 +9,9 @@ import subprocess
 import tempfile
 import unittest
 from compute_storage_atomic_cases import CASES, parameters
-from compute_storage_atomic_delay import SCHEMA, plan_bytes, check_report
+from compute_storage_atomic_delay import SCHEMA, GLOBAL_SCHEMA, plan_bytes, check_report
+from compute_global_atomic_cases import CASES as GLOBAL_CASES, parameters as global_parameters
+from compute_global_atomic_source import SCHEMA as GLOBAL_SOURCE_SCHEMA
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -25,7 +27,42 @@ def report(case=CASES[0]):
         requestedHoldCycles=cycles, heldWriteCycles=41, statusBeforeRelease=0, externalDrained=True)
 
 
+def global_description(case=GLOBAL_CASES[0]):
+    return dict(schema=GLOBAL_SOURCE_SCHEMA,sourceCase=case,groups=4,local=16,viewBytes=8192,guard=0xdeadbeef,context=1,
+        kernarg=dict(handle=2,allocationPhysical=0x1000,allocationBytes=8192,offset=0,bytes=8192))
+
+
+def global_report(case=GLOBAL_CASES[0]):
+    _,first,end,hold,old_first,old_end,guard=struct.unpack('<8sQQIQQI',plan_bytes(global_description(case)))
+    return dict(schema=GLOBAL_SCHEMA,commandId=43,targetLineStart=first,targetLineEnd=end,requestedHoldCycles=hold,
+        heldWriteCycles=261,statusBeforeRelease=0,externalDrained=True,oldOutputStart=old_first,
+        oldOutputEnd=old_end,oldOutputGuard=guard,oldValuesHeldUntilAck=True)
+
+
 class StorageAckDelayTests(unittest.TestCase):
+    def test_all_original_global_targets_and_old_output_windows_are_exact(self):
+        for case in GLOBAL_CASES:
+            magic,first,end,hold,old_first,old_end,guard=struct.unpack('<8sQQIQQI',plan_bytes(global_description(case)))
+            self.assertEqual((magic,end-first,hold,old_first,old_end,guard),
+                             (b'OGCGACK1',64,257,0x1080,0x10a0,0xdeadbeef))
+            offset=global_parameters(case)['target_offset']
+            self.assertLessEqual(first,0x1000+offset)
+            self.assertLess(0x1000+offset+3,end)
+            check_report(global_report(case),global_description(case),43)
+
+    def test_global_foreign_owners_early_returns_and_short_hold_are_rejected(self):
+        for key,value in (('handle',3),('allocationPhysical',0),('allocationPhysical',0x1001),
+                          ('allocationPhysical',0xfffff000),('offset',4),('bytes',8188)):
+            d=global_description();d['kernarg'][key]=value
+            with self.assertRaises(ValueError):plan_bytes(d)
+        for key,value in (('schema',SCHEMA),('oldOutputStart',0x1084),('oldOutputEnd',0x10a4),
+                          ('oldOutputGuard',0),('oldValuesHeldUntilAck',False),('requestedHoldCycles',37),
+                          ('heldWriteCycles',256),('statusBeforeRelease',2),('commandId',42),('externalDrained',False)):
+            r=global_report();r[key]=value
+            with self.assertRaises(ValueError):check_report(r,global_description(),43)
+        for key in global_report():
+            r=global_report();del r[key]
+            with self.assertRaises(ValueError):check_report(r,global_description(),43)
     def test_exact_original_word_and_endpoint_lines(self):
         for case in CASES:
             p = parameters(case)
@@ -88,6 +125,7 @@ class StorageAckDelayTests(unittest.TestCase):
             lines = result.stdout.splitlines()
             self.assertEqual(lines[-1], 'PASS storage ACK guard negatives and real AXI gate')
             check_report(json.loads(lines[0]), description(), 42)
+            check_report(json.loads(lines[1]),global_description(),43)
 
 
 if __name__ == '__main__':

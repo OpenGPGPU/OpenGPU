@@ -19,6 +19,8 @@ def run_matrix(args, command, directory, executor, env, qualified, profile_name)
     image_matrix=getattr(args,'contended_image_matrix',False)
     mixed_matrix=getattr(args,'mixed_atomic_matrix',False)
     global_matrix=getattr(args,'global_atomic_matrix',False)
+    global_delayed=getattr(args,'global_delayed_ack',False)
+    require(not global_delayed or global_matrix,'global ACK requires its original complete source matrix')
     if global_matrix:
         from compute_global_atomic_cases import CASES as selected_cases
         require(not (image_matrix or mixed_matrix or getattr(args,'storage_matrix',False) or
@@ -55,13 +57,14 @@ def run_matrix(args, command, directory, executor, env, qualified, profile_name)
                     wait_file(local / name, bridge, None, remaining())
                 description, frozen = ready_inputs(local, case, owner_profile=profile_name, profile=profile)
                 inputs.append((local, frozen))
-                delayed = getattr(args, 'storage_delayed_ack', False) and not failed
+                delayed = (getattr(args, 'storage_delayed_ack', False) or global_delayed) and not failed
                 plan = plan_bytes(description) if delayed else None
                 if delayed:
                     atomic(local / 'record-0.ack-delay-plan', plan)
                     delay_inputs.append((local, plan))
                 result = local / 'results'
                 mode = ('--active-storage-view-fault' if failed else
+                        '--active-global-delayed-ack' if global_delayed else
                         '--active-storage-delayed-ack' if delayed else '--active-owner')
                 running = subprocess.Popen([executor, mode,
                     local / 'union.memory', result, local],
@@ -99,7 +102,8 @@ def run_matrix(args, command, directory, executor, env, qualified, profile_name)
                 unchanged_inputs(local, frozen)
                 atomic(local / 'FINAL_RESPONSE', b'OGCMOK01\x01\x00\x00\x00')
                 print('original '+family+' ' + case + ': full DUT bytes/old values/cleanup PASS' +
-                      ('; actual target B ACK held >=37 cycles' if delayed else ''), flush=True)
+                      ('; actual target B ACK held >=257 cycles; old outputs untouched before release' if global_delayed else
+                       '; actual target B ACK held >=37 cycles' if delayed else ''), flush=True)
                 running = None
             require(bridge.wait(timeout=remaining()) == 0, 'original source/compiler matrix failed')
             qualified(env, output)
