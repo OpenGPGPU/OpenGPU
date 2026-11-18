@@ -220,7 +220,7 @@ class Entry(unittest.TestCase):
             self.assertIn('--memory-swap', command)
             self.assertIn('--network=none', command)
             self.assertIn('--read-only', command)
-            strict=case in (*qualifier.COUNTER_CASES,*qualifier.IMAGE_CASES)
+            strict=case in (*qualifier.COUNTER_CASES,*qualifier.IMAGE_CASES,*qualifier.STORAGE_ATOMIC_CASES)
             expected_memory='512m' if strict else '2g'
             self.assertEqual(command[command.index('--memory')+1],expected_memory)
             self.assertEqual(command[command.index('--memory-swap')+1],expected_memory)
@@ -232,6 +232,85 @@ class Entry(unittest.TestCase):
             self.assertIn('{ipc}/profile.bin', command)
             self.assertIn('scripts/compute_owner_inputs.py' if strict else 'scripts/test_gallium_compute_host.py', command)
             self.assertIn('--sanitize', command)
+            self.assertNotIn('HOME={ipc}',command)
+
+    def test_storage_matrix_keeps_one_producer_alive_until_every_actual_cleanup(self):
+        self.storage_matrix_peer(False)
+
+    def test_storage_matrix_command_cannot_substitute_another_original_source(self):
+        args=argparse.Namespace(mesa=ROOT/'depends/mesa',mesa_build=ROOT/'depends/mesa-build',
+            drm_include=ROOT/'depends/include',mesa_link_libs='-lz -lexpat',library_directory=ROOT/'depends/lib',
+            timeout=60,counter_inputs=ROOT/'.artifacts/inputs.json',storage_matrix=True)
+        keyword=dict(gpu=ROOT,source=ROOT,ntt=ROOT/'ntt.c',image='immutable-image',name='owned')
+        command=qualifier.producer_command(args,case=qualifier.STORAGE_ATOMIC_CASES[0],**keyword)
+        self.assertEqual(command[-1],'--storage-matrix')
+        self.assertIn('CXX=c++',command)
+        self.assertNotIn('--capture-only',command)
+        for case in ('shared','counter-increment',qualifier.STORAGE_ATOMIC_CASES[1]):
+            with self.subTest(case=case),self.assertRaisesRegex(ValueError,'exact first source'):
+                qualifier.producer_command(args,case=case,**keyword)
+
+    def test_storage_matrix_byte_failure_never_authorizes_failed_owner_cleanup(self):
+        self.storage_matrix_peer(True)
+
+    def storage_matrix_peer(self, fail_second):
+        from compute_storage_atomic_controller import run_matrix
+        from compute_storage_atomic_cases import CASES
+        from unittest.mock import Mock
+        class Process:
+            def __init__(self):self.returncode=None;self.terminated=False
+            def poll(self):return self.returncode
+            def wait(self,timeout=None):
+                if self.returncode is None:self.returncode=0
+                return self.returncode
+            def terminate(self):self.terminated=True;self.returncode=-15
+            def kill(self):self.returncode=-9
+        processes=[];events=[]
+        def start(*_args,**_kwargs):
+            process=Process();processes.append(process);return process
+        def atomic(path,data):events.append(('response',path.parent.name,path.name))
+        def check(*_args):
+            events.append(('bytes',))
+            if fail_second and len([e for e in events if e[0]=='bytes'])==2:
+                raise ValueError('deliberately invalid actual atomic old word')
+        qualified=Mock()
+        with tempfile.TemporaryDirectory(prefix='atomic-matrix-peer-',dir=ROOT/'.artifacts') as temporary:
+            directory=Path(temporary)
+            args=argparse.Namespace(timeout=60)
+            def record(path):
+                if path.name=='profile.json':return {'actual-profile-cpu-peer':True}
+                return {'actual-receipt-cpu-peer':True}
+            patches=(
+                patch('compute_storage_atomic_controller.subprocess.Popen',side_effect=start),
+                patch('compute_storage_atomic_controller.strict_json',side_effect=record),
+                patch('compute_storage_atomic_controller.held_bytes',return_value=b'held'),
+                patch('compute_storage_atomic_controller.retired_bytes',return_value=b'retired'),
+                patch('compute_storage_atomic_controller.checked_cleanup'),
+                patch('compute_storage_atomic_controller.SparseMemory'),
+                patch('compute_storage_atomic_controller.verify',side_effect=check),
+                patch('compute_owner_controller.wait_file'),
+                patch('compute_owner_controller.ready_inputs',return_value=({'source':'explicit-cpu-peer'},{})),
+                patch('compute_owner_controller.unchanged_inputs'),
+                patch('compute_owner_controller.atomic',side_effect=atomic))
+            from contextlib import ExitStack
+            with ExitStack() as stack, redirect_stdout(io.StringIO()):
+                for active in patches:stack.enter_context(active)
+                if fail_second:
+                    with self.assertRaisesRegex(ValueError,'invalid actual atomic'):
+                        run_matrix(args,['original-producer','{ipc}'],directory,Path('actual-executor'),{},qualified,IMAGE_FLOAT_PROFILE)
+                else:run_matrix(args,['original-producer','{ipc}'],directory,Path('actual-executor'),{},qualified,IMAGE_FLOAT_PROFILE)
+        cleanups=[e for e in events if e[0]=='response' and e[2]=='BEGIN_CLEANUP']
+        self.assertEqual(len(cleanups),1 if fail_second else len(CASES))
+        if fail_second:
+            self.assertTrue(processes[0].terminated)
+            self.assertTrue(processes[-1].terminated)
+            qualified.assert_not_called()
+            self.assertTrue(any(e[0]=='response' and e[1]==CASES[1] and e[2]=='error' for e in events))
+        else:
+            self.assertEqual(len(processes),len(CASES)+1)
+            self.assertTrue(all(p.returncode==0 and not p.terminated for p in processes))
+            self.assertEqual([e[1] for e in cleanups],list(CASES))
+            qualified.assert_called_once()
 
     def test_container_exit_must_be_proven_and_active_inputs_preserved(self):
         result = lambda code, output='': subprocess.CompletedProcess([], code, stdout=output, stderr='')

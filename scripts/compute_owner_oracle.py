@@ -199,12 +199,16 @@ def verify(initial, returned, description):
         raise ValueError('DUT memory replaced original physical allocations')
     counter = description.get('schema') == 'opengpu-compute-counter-oracle-v1'
     image = description.get('schema') == 'opengpu-compute-image-oracle-v1'
+    storage_atomic = description.get('schema') == 'opengpu-compute-storage-atomic-oracle-v1'
     if counter:
         from compute_owner_cases import counter_parameters
         groups=counter_parameters(description.get('sourceCase'))['groups']
-    else:groups=2 if image else 4
-    required_flags(description, dict(viewBytes=8192, groups=groups, local=4 if counter or image else 128, guard=0xdeadbeef))
-    if image:
+    else:groups=2 if image or storage_atomic else 4
+    required_flags(description, dict(viewBytes=8192, groups=groups, local=4 if counter or image or storage_atomic else 128, guard=0xdeadbeef))
+    if storage_atomic:
+        from compute_storage_atomic_source import returned_outputs
+        outputs = returned_outputs(initial, returned, description)
+    elif image:
         from compute_image_source import returned_outputs
         outputs = returned_outputs(initial, returned, description)
     elif counter:
@@ -253,7 +257,7 @@ def verify(initial, returned, description):
     else:
         raise ValueError('unknown original ESSL byte oracle')
     for first, expected in outputs:
-        if not (counter or image) and initial.read(first, 8192) != struct.pack('<I', 0xdeadbeef) * 2048:
+        if not (counter or image or storage_atomic) and initial.read(first, 8192) != struct.pack('<I', 0xdeadbeef) * 2048:
             raise ValueError('output was not independently guard-initialized')
         if returned.read(first, len(expected)) != expected:
             raise ValueError('returned original ESSL result differs from independent source arithmetic')

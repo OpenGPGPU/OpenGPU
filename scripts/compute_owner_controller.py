@@ -86,27 +86,37 @@ def input_digest(path):
     return digest.hexdigest()
 
 
-def ready_inputs(directory, case, *, owner_profile=None, permission=None):
+def ready_inputs(directory, case, *, owner_profile=None, permission=None, profile=None):
     from compute_counter_source import SCHEMA as COUNTER_SCHEMA, ready as counter_ready
     from compute_owner_cases import COUNTER_CASES, IMAGE_CASES
     from compute_image_source import SCHEMA as IMAGE_SCHEMA, ready as image_ready
+    from compute_storage_atomic_source import SCHEMA as STORAGE_SCHEMA, ready as storage_ready
+    from compute_storage_atomic_cases import CASES as STORAGE_CASES
     require(permission is None or (case==RECOVERY_CASE and permission in ('read','write')),
             'image permission denial requires the original float buffer case')
     description=strict_json(directory/'oracle.json')
     counter=description.get('schema')==COUNTER_SCHEMA
     image=description.get('schema')==IMAGE_SCHEMA
+    storage=description.get('schema')==STORAGE_SCHEMA
     require(counter==(case in COUNTER_CASES), 'counter source requires distinct qualification/case binding')
     require(image==(case in IMAGE_CASES), 'image source requires distinct qualification/case binding')
+    require(storage==(case in STORAGE_CASES), 'storage atomic source requires distinct qualification/case binding')
     inputs={}
-    if counter or image:
+    if counter or image or storage:
         from owner_resource_contract import SAMPLE_PROFILE
         owner_profile=SAMPLE_PROFILE if owner_profile is None else owner_profile
         require(description.get('sourceCase')==case, 'source READY case differs from qualification')
         with SparseMemory(directory/'union.memory') as before:
             data=(directory/'record-0.capture').read_bytes()
-            if image:image_ready(before,description,data,owner_profile=owner_profile,permission=permission)
+            if storage:
+                from owner_resource_contract import IMAGE_FLOAT_PROFILE
+                require(owner_profile==IMAGE_FLOAT_PROFILE, 'storage atomics require the full float owner')
+                storage_ready(before,description,data,(directory/'code.words').read_text().splitlines(),
+                              strict_json(directory/'profile.json') if profile is None else profile)
+            elif image:image_ready(before,description,data,owner_profile=owner_profile,permission=permission)
             else:counter_ready(before,description,data,owner_profile=owner_profile)
         inputs={name:input_digest(directory/name) for name in ('union.memory','record-0.capture','oracle.json')}
+        if storage:inputs['code.words']=input_digest(directory/'code.words')
     return description,inputs
 
 
@@ -298,14 +308,18 @@ def main():
     parser.add_argument('--managed-session-directory', type=Path,
                         help='new GPU-internal session owned/removed by qualify_compute_owner after container exit')
     parser.add_argument('--timeout', type=int, default=3600)
-    from compute_owner_cases import COUNTER_CASES, IMAGE_CASES
-    parser.add_argument('--case', choices=(*COUNTER_CASES,*IMAGE_CASES), help='distinct final112 source contract')
+    from compute_owner_cases import COUNTER_CASES, IMAGE_CASES, STORAGE_ATOMIC_CASES
+    parser.add_argument('--case', choices=(*COUNTER_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES), help='distinct final112 source contract')
+    parser.add_argument('--storage-matrix',action='store_true')
     mode=parser.add_mutually_exclusive_group()
     mode.add_argument('--expect-image-source-fault', action='store_true')
     mode.add_argument('--image-source-recovery', action='store_true')
     mode.add_argument('--image-permission-recovery',choices=('read','write'))
     mode.add_argument('--image-reset-recovery',choices=('read','write'))
     args = parser.parse_args()
+    require(not args.storage_matrix or (args.case==STORAGE_ATOMIC_CASES[0] and
+        not (args.expect_image_source_fault or args.image_source_recovery or args.image_permission_recovery or args.image_reset_recovery)),
+        'storage matrix requires its exact original source and normal receipts')
     require(0 < args.timeout <= 604800, 'timeout must be 1..604800 seconds')
     command = strict_json(args.bridge_command)
     if args.image_source_recovery or args.image_permission_recovery or args.image_reset_recovery:
@@ -319,6 +333,9 @@ def main():
     require(executor.is_file() and not executor.is_symlink() and qualification.is_file() and not qualification.is_symlink(),
             'executor/qualification must be original regular files')
     qualified_profile=strict_json(qualification).get('profile')
+    if args.case in STORAGE_ATOMIC_CASES:
+        from owner_resource_contract import IMAGE_FLOAT_PROFILE
+        require(qualified_profile==IMAGE_FLOAT_PROFILE,'storage atomic execution requires the complete float owner')
     if args.expect_image_source_fault or args.image_source_recovery or args.image_permission_recovery or args.image_reset_recovery:
         from owner_resource_contract import IMAGE_FLOAT_PROFILE
         require(args.case=='image-atomic-buffer-r32f' and qualified_profile==IMAGE_FLOAT_PROFILE,
@@ -363,6 +380,10 @@ def main():
                 subprocess.run([executor, '--probe-profile', directory / 'profile.json'], env=env,
                     stdout=log, stderr=subprocess.STDOUT, timeout=args.timeout, check=True)
             atomic(directory / 'profile.bin', profile_bytes(strict_json(directory / 'profile.json')))
+            if args.storage_matrix:
+                from compute_storage_atomic_controller import run_matrix
+                run_matrix(args,command,directory,executor,env,qualified,qualified_profile)
+                return
             if args.image_source_recovery or args.image_permission_recovery or args.image_reset_recovery:
                 exchange_recovery(args,command,directory,executor,env,qualified,qualified_profile)
                 print('actual compute '+('delayed '+args.image_reset_recovery+' response reset' if args.image_reset_recovery else
