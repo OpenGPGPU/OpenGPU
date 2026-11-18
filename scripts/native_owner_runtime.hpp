@@ -364,8 +364,9 @@ void active_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
 template<class Sim>
 void cleanup_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
     const std::filesystem::path &session,const PtePages &pte,uint64_t count,
-    std::chrono::milliseconds timeout=std::chrono::minutes(5),uint64_t completed_read_faults=0) {
-  require(agent.traffic.read_faults==completed_read_faults && !agent.traffic.write_faults,
+    std::chrono::milliseconds timeout=std::chrono::minutes(5),uint64_t completed_read_faults=0,
+    uint64_t completed_write_faults=0) {
+  require(agent.traffic.read_faults==completed_read_faults && agent.traffic.write_faults==completed_write_faults,
     "cleanup began with unexpected physical fault history");
   wait_input(session/"cleanup.begin",session,timeout);
   {
@@ -411,7 +412,7 @@ void cleanup_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
       context_closed=true;
     }
     traffic_unchanged(traffic,agent.traffic);
-    require(agent.traffic.read_faults==completed_read_faults && !agent.traffic.write_faults,
+    require(agent.traffic.read_faults==completed_read_faults && agent.traffic.write_faults==completed_write_faults,
       "cleanup encountered new external memory faults");
     atomic_json(session/(stem+".observed"),[&](auto &out) {
       out.write("OGCLA001",8);for(uint32_t v:{sequence,status,irq,0u,1u})write_le(out,v,4);

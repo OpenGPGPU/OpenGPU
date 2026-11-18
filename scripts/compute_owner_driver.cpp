@@ -26,10 +26,11 @@ inline std::chrono::milliseconds compute_response_timeout(
 struct ComputeResult {
   uint32_t completion=0,legacy=0,status=0,irq=0,retired_status=0,retired_irq=0;
   uint64_t processed_bytes=0,cycles=0,read_bytes=0,write_bytes=0;
-  uint64_t physical_read_faults=0,injected_read_faults=0;
+  uint64_t physical_read_faults=0,injected_read_faults=0,physical_write_faults=0,injected_write_faults=0;
+  uint64_t fault_target_write_attempts=0;
   bool held_pin=false,retired_pin=false,drained=false;
 };
-enum class ImageFailure { none, source_read, permission };
+enum class ImageFailure { none, source_read, permission, first_write };
 struct ComputeHeld {
   ComputeResult result;
   Memory initial;
@@ -43,7 +44,8 @@ ComputeHeld hold_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory
     uint32_t expected_completion,
     ImageFailure failure=ImageFailure::none,uint64_t prior_read_faults=0,const Traffic *prior_traffic=nullptr,
     StorageAckDelay *ack_delay=nullptr) {
-  require(failure==ImageFailure::none || failure==ImageFailure::source_read || failure==ImageFailure::permission,
+  require(failure==ImageFailure::none || failure==ImageFailure::source_read ||
+    failure==ImageFailure::permission || failure==ImageFailure::first_write,
     "unknown compute failure mode");
   verify_compute_upload(sim,agent,bus,memory,capture,prior_read_faults,prior_traffic);
   ComputeHeld held;held.initial=memory;held.start=agent.traffic;held.start_cycles=bus.cycles;held.failure=failure;
@@ -85,24 +87,39 @@ ComputeHeld hold_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory
       r.completion==again.completion && r.processed_bytes==again.processed_bytes && again.held_pin,
     "held compute completion or telemetry changed");
   traffic_unchanged(held.completed,agent.traffic);
-  if(failure!=ImageFailure::none) {
+  if(failure==ImageFailure::first_write) {
+    if(!(agent.traffic.read_faults==prior_read_faults && agent.injected_read_faults()==prior_read_faults &&
+      agent.traffic.write_faults==held.start.write_faults+1 &&
+      agent.injected_write_faults()==agent.traffic.write_faults && agent.first_write_attempts()==5))
+      throw std::runtime_error("storage first-write history differs: targetAttempts="+
+        std::to_string(agent.first_write_attempts())+" readFaults="+std::to_string(agent.traffic.read_faults)+
+        " writeFaults="+std::to_string(agent.traffic.write_faults)+" injectedWrites="+
+        std::to_string(agent.injected_write_faults()));
+    // Another workgroup may commit. Independent source semantics constrain
+    // its exact old values, final atomic word and every unwritten byte.
+    verify_readonly(held.initial,memory,capture.writable);
+  }else if(failure!=ImageFailure::none) {
     if(failure==ImageFailure::source_read)
       require(agent.injected_read_faults()>prior_read_faults && agent.traffic.read_faults==agent.injected_read_faults(),
         "failed source-read compute lacks exact injected faults");
-    else require(!prior_read_faults && !agent.traffic.read_faults && !agent.injected_read_faults(),
+    else require(agent.traffic.read_faults==prior_read_faults && agent.injected_read_faults()==prior_read_faults,
       "source-view failure encountered physical read errors");
-    require(!agent.traffic.write_faults && agent.traffic.writes==held.start.writes,
+    require(agent.traffic.write_faults==held.start.write_faults &&
+      agent.injected_write_faults()==held.start.write_faults && agent.traffic.writes==held.start.writes,
       "failed compute issued physical writes");
     verify_readonly(held.initial,memory,{});
   }else {
     require(agent.traffic.read_faults==prior_read_faults && agent.injected_read_faults()==prior_read_faults &&
-      !agent.traffic.write_faults,"compute encountered new physical memory faults");
+      agent.traffic.write_faults==held.start.write_faults &&
+      agent.injected_write_faults()==held.start.write_faults,"compute encountered new physical memory faults");
     verify_readonly(held.initial,memory,capture.writable);
   }
   r.drained=agent.drained();r.cycles=bus.cycles-held.start_cycles;
   r.read_bytes=agent.traffic.read_bus_bytes-held.start.read_bus_bytes;
   r.write_bytes=agent.traffic.write_bus_bytes-held.start.write_bus_bytes;
   r.physical_read_faults=agent.traffic.read_faults;r.injected_read_faults=agent.injected_read_faults();
+  r.physical_write_faults=agent.traffic.write_faults;r.injected_write_faults=agent.injected_write_faults();
+  r.fault_target_write_attempts=failure==ImageFailure::first_write?agent.first_write_attempts():0;
   if(ack_delay)ack_delay->finish(agent);
   held.initial=memory;return held;
 }
@@ -126,7 +143,7 @@ ComputeResult retire_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Me
   r.retired_irq=bus.read(GPU_REG_IRQ);r.retired_pin=bool(sim.model->io_m_irq);
   require(r.retired_irq==GPU_IRQ_ENABLE && !r.retired_pin && agent.drained(),"compute retirement did not drain IRQ");
   traffic_unchanged(held.completed,agent.traffic);
-  require(agent.traffic.read_faults==held.completed.read_faults && !agent.traffic.write_faults &&
+  require(agent.traffic.read_faults==held.completed.read_faults && agent.traffic.write_faults==held.completed.write_faults &&
       (held.failure!=ImageFailure::none || agent.traffic.read_faults==held.prior_read_faults),
       "compute retirement encountered unexpected physical memory faults");
   verify_readonly(held.initial,memory,{}); // No RAM changes are permitted after held completion.
@@ -150,7 +167,9 @@ inline void compute_json(std::ostream &out,const ComputeResult &r,uint32_t comma
     <<",\"retiredIrqAsserted\":"<<(r.retired_pin?"true":"false")
     <<",\"externalDrained\":"<<(r.drained?"true":"false");
   if(failed)out<<",\"physicalReadFaults\":"<<r.physical_read_faults
-    <<",\"injectedReadFaults\":"<<r.injected_read_faults<<",\"physicalWriteFaults\":0";
+    <<",\"injectedReadFaults\":"<<r.injected_read_faults<<",\"physicalWriteFaults\":"<<r.physical_write_faults
+    <<",\"injectedWriteFaults\":"<<r.injected_write_faults
+    <<",\"faultTargetWriteAttempts\":"<<r.fault_target_write_attempts;
   out<<",\"serviceCycles\":"<<r.cycles<<",\"readBusBytes\":"<<r.read_bytes<<",\"writeBusBytes\":"<<r.write_bytes
     <<",\"readOnlyGuards\":true,\"sourceQualificationRequired\":true,\"independentBytesRequired\":true,"
       "\"resetCount\":1,\"clockQualified\":false,\"fpsQualified\":false}\n";
@@ -175,7 +194,7 @@ void active_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
   atomic_json(session/"record-0.retired.json",[&](auto &out){compute_json(out,result,capture.command_id,true,failed);});
   // The producer must independently verify all returned bytes before it emits
   // cleanup.begin. The executor then observes real owner and context teardown.
-  cleanup_records(sim,agent,bus,memory,session,pte,1,timeout,held.completed.read_faults);
+  cleanup_records(sim,agent,bus,memory,session,pte,1,timeout,held.completed.read_faults,held.completed.write_faults);
 }
 
 inline void arm_source_fault(Agent &agent,const std::filesystem::path &session,
@@ -254,11 +273,16 @@ inline void active_image_recovery(int argc,char **argv,const std::filesystem::pa
 }
 } // namespace compute_owner
 
+#include "compute_storage_recovery.hpp"
+
 #ifndef OPENGPU_COMPUTE_OWNER_LIBRARY
 int main(int argc,char **argv) {
   try {
     using namespace compute_owner;
     const auto response_timeout=compute_response_timeout();
+    if(argc==4 && std::string(argv[1])=="--active-storage-recovery-matrix") {
+      active_storage_recovery_matrix(argc,argv,argv[2],argv[3],response_timeout);return 0;
+    }
     if(argc==3 && std::string(argv[1])=="--probe-profile") {
       require(!std::filesystem::exists(argv[2]),"compute profile output already exists");
       Memory memory;Simulation sim(argc,argv);sim.reset();Agent agent(memory);ReplayBus<Simulation> bus(sim,agent,100000);

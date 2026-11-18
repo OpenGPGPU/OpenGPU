@@ -237,6 +237,34 @@ class Entry(unittest.TestCase):
     def test_storage_matrix_keeps_one_producer_alive_until_every_actual_cleanup(self):
         self.storage_matrix_peer(False)
 
+    def test_continuous_storage_recovery_keeps_its_distinct_original_sequence(self):
+        with tempfile.TemporaryDirectory(prefix='storage-recovery-command-') as temporary:
+            root=Path(temporary);q=root/'qualification.json'
+            q.write_text(json.dumps(dict(source_sha256={})))
+            args=argparse.Namespace(mesa=root,mesa_build=root,drm_include=root,library_directory=root,
+                mesa_link_libs='-lfixture',executor_qualification=q,executor=root/'executor',
+                executor_checker=root/'checker',executor_checker_python=sys.executable,timeout=60,
+                storage_matrix=False,storage_delayed_ack=False,storage_recovery_matrix=True)
+            with patch('compute_owner_inputs.snapshot',return_value={}),\
+                 patch.object(qualifier.subprocess,'Popen') as popen,\
+                 patch.object(qualifier,'stop_group'),patch.object(qualifier,'remove_container'):
+                popen.return_value.wait.return_value=0
+                qualifier.run_case(args,gpu=ROOT,source=ROOT,temporary=root,ntt=root/'ntt',
+                    image='immutable-image',case=qualifier.STORAGE_ATOMIC_CASES[0])
+                self.assertIn('--storage-recovery-matrix',popen.call_args.args[0])
+                producer=json.loads((root/(qualifier.STORAGE_ATOMIC_CASES[0]+'.argv.json')).read_text())
+                self.assertIn('--storage-recovery-matrix',producer)
+                self.assertNotIn('--storage-matrix',producer)
+                self.assertNotIn('--capture-only',producer)
+                popen.return_value.wait.assert_called_once_with(timeout=180)
+            keyword=dict(gpu=ROOT,source=ROOT,ntt=root/'ntt',image='immutable-image',name='negative')
+            for case in ('shared','counter-increment',qualifier.STORAGE_ATOMIC_CASES[1]):
+                with self.subTest(case=case),self.assertRaisesRegex(ValueError,'continuous original receipts'):
+                    qualifier.producer_command(args,case=case,**keyword)
+            args.storage_matrix=True
+            with self.assertRaises(ValueError):
+                qualifier.producer_command(args,case=qualifier.STORAGE_ATOMIC_CASES[0],**keyword)
+
     def test_delayed_ack_uses_same_original_matrix_and_guarded_source_command(self):
         with tempfile.TemporaryDirectory(prefix='storage-ack-command-') as temporary:
             root=Path(temporary);q=root/'qualification.json'

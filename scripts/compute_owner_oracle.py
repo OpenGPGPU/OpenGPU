@@ -259,6 +259,15 @@ def verify(initial, returned, description):
     for first, expected in outputs:
         if not (counter or image or storage_atomic) and initial.read(first, 8192) != struct.pack('<I', 0xdeadbeef) * 2048:
             raise ValueError('output was not independently guard-initialized')
+    verify_byte_changes(initial, returned, outputs)
+
+
+def verify_byte_changes(initial, returned, outputs):
+    """Guard all physical bytes around semantically proven result words."""
+    if [(a, b) for a, b, _ in initial.ranges] != [(a, b) for a, b, _ in returned.ranges]:
+        raise ValueError('DUT memory replaced original physical allocations')
+    for first, expected in outputs:
+        initial.read(first, len(expected))
         if returned.read(first, len(expected)) != expected:
             raise ValueError('returned original ESSL result differs from independent source arithmetic')
     for begin, end, _ in initial.ranges:

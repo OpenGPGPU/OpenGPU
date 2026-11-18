@@ -14,6 +14,7 @@ from compute_owner_cases import COUNTER_CASES, counter_parameters
 from compute_image_cases import IMAGE_CASES, parameters as image_parameters
 from compute_indirect_sources import CASE as INDIRECT_CASE
 from compute_storage_atomic_cases import CASES as STORAGE_CASES, parameters as storage_parameters
+from compute_storage_recovery import PHASES as STORAGE_RECOVERY_PHASES, check_source_launch as check_storage_launch
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -52,8 +53,9 @@ def guarded(request_path, builder_argv):
     image_matrix='--capture-image-matrix' in argv
     counter_matrix='--capture-counter-matrix' in argv
     storage_matrix='--storage-matrix' in argv
-    require(sum((image_matrix,counter_matrix,storage_matrix))<=1, 'source matrices must remain distinct')
-    matrix=image_matrix or counter_matrix or storage_matrix
+    storage_recovery='--storage-recovery-matrix' in argv
+    require(sum((image_matrix,counter_matrix,storage_matrix,storage_recovery))<=1, 'source matrices must remain distinct')
+    matrix=image_matrix or counter_matrix or storage_matrix or storage_recovery
     source_fault='--expect-image-source-fault' in argv
     permission=None
     reset=None
@@ -89,6 +91,11 @@ def guarded(request_path, builder_argv):
     require(argv.count('--storage-matrix')<=1 and (not storage_matrix or case==STORAGE_CASES[0]),
             'storage matrix must start at its first original source')
     expected_cases=set(STORAGE_CASES if storage_matrix else IMAGE_CASES if image_matrix else COUNTER_CASES if counter_matrix else (case,))
+    if storage_recovery:
+        require(argv.count('--storage-recovery-matrix')==1 and case==STORAGE_CASES[0] and
+            '--capture-only' not in argv and not source_fault and permission is None and reset is None and allocation_base is None,
+            'storage recovery requires the exact complete original live sequence')
+        expected_cases={(stage['case'],stage['index']) for stage in STORAGE_RECOVERY_PHASES}
     out=Path(argv[argv.index('--build')+1]).absolute()
     generated={};seen=set();compiled=False
     # These are all actual host translation units, not the CPU VM fixture.
@@ -139,7 +146,14 @@ def guarded(request_path, builder_argv):
             parameters=(storage_parameters(source_case) if source_case in STORAGE_CASES else
                         image_parameters(source_case) if source_case in IMAGE_CASES else None if indirect else counter_parameters(source_case))
             expected_source=out/'glsl' if indirect else out/'glsl'/parameters['source']
-            require(source_case in expected_cases and source_case not in launched and
+            stage=None
+            if storage_recovery:
+                require(len(launched)<len(STORAGE_RECOVERY_PHASES),'extra original storage recovery phase')
+                stage=STORAGE_RECOVERY_PHASES[len(launched)]
+                check_storage_launch(command,stage['index'],out,
+                    Path(argv[argv.index('--session')+1]).absolute(),Path(argv[argv.index('--profile-wire')+1]).absolute())
+            launch_key=(source_case,stage['index']) if stage is not None else source_case
+            require(launch_key in expected_cases and launch_key not in launched and
                     command[3]==str(expected_source),
                     'counter producer source/recipe repeated or replaced')
             require(not (image_matrix or counter_matrix) or command[-1]=='--capture-only', 'counter/image matrix attempted actual execution')
@@ -148,8 +162,11 @@ def guarded(request_path, builder_argv):
                            ['--expect-image-reset',reset] if reset else
                            ['--capture-only'] if '--capture-only' in argv else [])
             if allocation_base is not None:expected_tail+=['--physical-base',str(allocation_base)]
+            if stage is not None:
+                expected_tail=(['--expect-storage-fault',stage['mode']] if stage['mode']!='healthy' else [])+[
+                    '--physical-base',str(stage['base'])]
             require(command[5:]==expected_tail, 'original producer execution mode changed')
-            launched.add(source_case)
+            launched.add(launch_key)
             if products:unchanged({str(p):v for p,v in products.items()})
             external();unchanged(generated)
             require(sha256(paths['ntt'])==AFTER, 'NTT changed before actual producer')

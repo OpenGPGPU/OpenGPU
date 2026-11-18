@@ -312,12 +312,17 @@ def main():
     parser.add_argument('--case', choices=(*COUNTER_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES), help='distinct final112 source contract')
     parser.add_argument('--storage-matrix',action='store_true')
     parser.add_argument('--storage-delayed-ack',action='store_true')
+    parser.add_argument('--storage-recovery-matrix',action='store_true')
     mode=parser.add_mutually_exclusive_group()
     mode.add_argument('--expect-image-source-fault', action='store_true')
     mode.add_argument('--image-source-recovery', action='store_true')
     mode.add_argument('--image-permission-recovery',choices=('read','write'))
     mode.add_argument('--image-reset-recovery',choices=('read','write'))
     args = parser.parse_args()
+    require(not args.storage_recovery_matrix or (args.case==STORAGE_ATOMIC_CASES[0] and
+        not (args.storage_matrix or args.storage_delayed_ack or args.expect_image_source_fault or
+             args.image_source_recovery or args.image_permission_recovery or args.image_reset_recovery)),
+        'storage recovery requires its exact original matrix and distinct failed receipts')
     require(not args.storage_delayed_ack or args.storage_matrix,
             'storage ACK qualification requires the original complete source matrix')
     require(not args.storage_matrix or (args.case==STORAGE_ATOMIC_CASES[0] and
@@ -386,6 +391,10 @@ def main():
                 subprocess.run([executor, '--probe-profile', directory / 'profile.json'], env=env,
                     stdout=log, stderr=subprocess.STDOUT, timeout=args.timeout, check=True)
             atomic(directory / 'profile.bin', profile_bytes(strict_json(directory / 'profile.json')))
+            if args.storage_recovery_matrix:
+                from compute_storage_recovery_controller import run_recovery_matrix
+                run_recovery_matrix(args,command,directory,executor,env,qualified,qualified_profile)
+                return
             if args.storage_matrix:
                 from compute_storage_atomic_controller import run_matrix
                 run_matrix(args,command,directory,executor,env,qualified,qualified_profile)

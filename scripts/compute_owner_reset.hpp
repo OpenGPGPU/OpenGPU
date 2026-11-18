@@ -10,8 +10,10 @@ void verify_compute_upload(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &mem
     const CaptureType &capture,uint64_t prior_read_faults=0,const Traffic *prior_traffic=nullptr) {
   capture.validate();
   require(agent.drained() && !sim.model->io_m_irq,"compute starts before prior drain");
-  require(agent.traffic.read_faults==prior_read_faults && !agent.traffic.write_faults &&
-    agent.injected_read_faults()==prior_read_faults,"compute began with unexpected prior physical faults");
+  const auto prior_write_faults=prior_traffic?prior_traffic->write_faults:0;
+  require(agent.traffic.read_faults==prior_read_faults && agent.traffic.write_faults==prior_write_faults &&
+    agent.injected_read_faults()==prior_read_faults && agent.injected_write_faults()==prior_write_faults,
+    "compute began with unexpected prior physical faults");
   const auto before=agent.traffic;
   if(prior_traffic)traffic_unchanged(*prior_traffic,before);
   const auto profile=probe_profile(sim,agent,bus,true,compute_owner_factory(),

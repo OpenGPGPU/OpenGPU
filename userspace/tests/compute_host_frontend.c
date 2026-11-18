@@ -32,8 +32,8 @@ static const char *directory;
 static int capture_only,expect_image_source_fault,uniform_case,dynamic_case,address_case,counter_case,counter_dynamic,counter_coexist;
 static unsigned image_permission_fault;
 static unsigned image_reset;
-static unsigned storage_view_failure;
-static int expect_compute_failure(void){return expect_image_source_fault || image_permission_fault || storage_view_failure;}
+static unsigned storage_view_failure,expect_storage_fault;
+static int expect_compute_failure(void){return expect_image_source_fault || image_permission_fault || storage_view_failure || expect_storage_fault;}
 static unsigned dynamic_operation,dynamic_signed;
 static unsigned address_kind,counter_operation,counter_index;
 static unsigned counter_offset=4080,counter_count=8;
@@ -238,10 +238,16 @@ static void write_oracle(void)
  assert(!fclose(f));}
 int main(int argc,char **argv)
 {
- assert(argc>=5);uint64_t physical_base=0;
+ assert(argc>=5);uint64_t physical_base=0;storage_parse_case(argv[4]);
  for(int i=5;i<argc;i++){
   if(!strcmp(argv[i],"--capture-only")){assert(!capture_only && !expect_compute_failure() && !image_reset);capture_only=1;}
   else if(!strcmp(argv[i],"--expect-image-source-fault")){assert(!capture_only && !expect_compute_failure() && !image_reset);expect_image_source_fault=1;}
+  else if(!strcmp(argv[i],"--expect-storage-fault")){
+   assert(!capture_only && !expect_compute_failure() && !image_reset && storage_case &&
+    storage_index!=14 && storage_index!=15 && ++i<argc);
+   expect_storage_fault=!strcmp(argv[i],"read")?1:!strcmp(argv[i],"write")?2:0;
+   assert(expect_storage_fault);
+  }
   else if(!strcmp(argv[i],"--expect-image-permission-fault")){
    assert(!capture_only && !expect_compute_failure() && !image_reset && ++i<argc);
    image_permission_fault=!strcmp(argv[i],"read")?1:!strcmp(argv[i],"write")?2:0;
@@ -258,11 +264,11 @@ int main(int argc,char **argv)
    assert(physical_base && !(physical_base&4095));
   }else assert(!"unknown compute host option");
  }
- assert(!physical_base || (!capture_only && !strcmp(argv[4],"image-atomic-buffer-r32f")));
- assert(!expect_compute_failure() || !strcmp(argv[4],"image-atomic-buffer-r32f"));
+ assert(!physical_base || (!capture_only && (!strcmp(argv[4],"image-atomic-buffer-r32f") ||
+  (storage_case && storage_index!=14 && storage_index!=15))));
+ assert(!expect_compute_failure() || expect_storage_fault || !strcmp(argv[4],"image-atomic-buffer-r32f"));
  host_timeout_seconds=compute_host_timeout_seconds();assert(host_timeout_seconds);
  uniform_case=!strcmp(argv[4],"uniforms");
- storage_parse_case(argv[4]);
  storage_view_failure=storage_case && (storage_index==14 || storage_index==15);
  image_parse_case(argv[4]);
  const char *counter_names[]={"counter-increment","counter-read","counter-decrement",
