@@ -309,15 +309,29 @@ byte unchanged. The target write count must equal one plus the returned old
 word count, including the failed first attempt and lower writes for CAS misses.
 The existing storage first-write contract retains its separate five attempts.
 
-Focused source/controller/compiler checks and existing atomic/source regressions
-pass. CPU controls cover all source layouts, both initial failed callers and
-each admitted prefix,
-legal interleavings, source-order rejection, prior RAM guards, exact command
-arguments and error counters, and cleanup refusal after bad partial results.
-Complete-DUT execution still must establish all 96 phases, report the actual
-returned old word count, and pass real cleanup and final compiler/source/model
-checks. Healthy phases require all eight old words; write-fault phases require
-two, four or six, bound to exactly three, five or seven physical attempts.
+Seventy focused source/controller/compiler checks and existing atomic/source
+regressions pass. CPU controls cover all source layouts, both initial failed
+callers and each admitted prefix, legal interleavings, source-order rejection,
+prior RAM guards, exact arguments and counters, and cleanup refusal after bad
+partial results. The 23 source/input-closure regressions also pass.
+
+All 96 phases passed on the complete assertion-enabled float DUT with one RAM,
+initial reset and original command ID. The 48 healthy phases returned 384
+source-ordered old words. The 24 suppressed-write failures returned 48 more:
+each drained one surviving caller, returned both old words and made exactly
+three target attempts, including the suppressed first write. Failed and
+unissued callers retained their guarded slots. All final targets, current and
+previous physical-byte guards, actual negative fences/userspace `EIO`, held
+and retired IRQs, PTE/context/MMU cleanup and external drains passed. The 24
+read-fault phases changed no RAM bytes; cumulative physical/injected counters
+agreed at 48 read errors and 24 write errors.
+
+The original guarded producer, native children, controller and outer qualifier
+all exited successfully. Final compiler/header/link inputs and software/model
+checks passed. Frozen execution source
+`f18705382184deb986e52c12691be84a8518b47c` and publication matched all 231
+qualified software files byte for byte. This qualifies 432 actual returned
+old words and complete continuous fault/healthy cleanup for this corpus.
 
 ```sh
 python3 -B scripts/qualify_compute_owner.py \
