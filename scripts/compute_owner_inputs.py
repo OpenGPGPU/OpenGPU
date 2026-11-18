@@ -56,14 +56,17 @@ def guarded(request_path, builder_argv):
     storage_matrix='--storage-matrix' in argv
     storage_recovery='--storage-recovery-matrix' in argv
     storage_accepted='--storage-accepted-matrix' in argv
+    image_accepted='--image-accepted-matrix' in argv
     storage_phases,check_storage=STORAGE_RECOVERY_PHASES,check_storage_launch
     if storage_accepted:
         from compute_storage_accepted_recovery import PHASES as storage_phases, check_source_launch as check_storage
+    if image_accepted:
+        from compute_image_accepted_recovery import PHASES as storage_phases, check_source_launch as check_storage
     contended_matrix='--contended-image-matrix' in argv
     mixed_matrix='--mixed-atomic-matrix' in argv
-    require(sum((image_matrix,counter_matrix,storage_matrix,storage_recovery,storage_accepted,contended_matrix,mixed_matrix))<=1,
+    require(sum((image_matrix,counter_matrix,storage_matrix,storage_recovery,storage_accepted,image_accepted,contended_matrix,mixed_matrix))<=1,
             'source matrices must remain distinct')
-    matrix=image_matrix or counter_matrix or storage_matrix or storage_recovery or storage_accepted or contended_matrix or mixed_matrix
+    matrix=image_matrix or counter_matrix or storage_matrix or storage_recovery or storage_accepted or image_accepted or contended_matrix or mixed_matrix
     source_fault='--expect-image-source-fault' in argv
     permission=None
     reset=None
@@ -105,9 +108,9 @@ def guarded(request_path, builder_argv):
         'mixed atomic matrix requires its exact first original same-GEM source')
     expected_cases=set(MIXED_ATOMIC_CASES if mixed_matrix else CONTENDED_IMAGE_CASES if contended_matrix else STORAGE_CASES if storage_matrix else
         LEGACY_IMAGE_CASES if image_matrix else COUNTER_CASES if counter_matrix else (case,))
-    if storage_recovery or storage_accepted:
-        flag='--storage-accepted-matrix' if storage_accepted else '--storage-recovery-matrix'
-        require(argv.count(flag)==1 and case==STORAGE_CASES[0] and
+    if storage_recovery or storage_accepted or image_accepted:
+        flag='--image-accepted-matrix' if image_accepted else '--storage-accepted-matrix' if storage_accepted else '--storage-recovery-matrix'
+        require(argv.count(flag)==1 and case==(CONTENDED_IMAGE_CASES[0] if image_accepted else STORAGE_CASES[0]) and
             '--capture-only' not in argv and not source_fault and permission is None and reset is None and allocation_base is None,
             'storage recovery requires the exact complete original live sequence')
         expected_cases={(stage['case'],stage['index']) for stage in storage_phases}
@@ -162,7 +165,7 @@ def guarded(request_path, builder_argv):
                         image_parameters(source_case) if source_case in IMAGE_CASES else None if indirect else counter_parameters(source_case))
             expected_source=out/'glsl' if indirect else out/'glsl'/parameters['source']
             stage=None
-            if storage_recovery or storage_accepted:
+            if storage_recovery or storage_accepted or image_accepted:
                 require(len(launched)<len(storage_phases),'extra original storage recovery phase')
                 stage=storage_phases[len(launched)]
                 check_storage(command,stage['index'],out,
@@ -178,7 +181,8 @@ def guarded(request_path, builder_argv):
                            ['--capture-only'] if '--capture-only' in argv else [])
             if allocation_base is not None:expected_tail+=['--physical-base',str(allocation_base)]
             if stage is not None:
-                expected_tail=(['--expect-storage-fault','write' if stage['mode']=='accepted-write' else stage['mode']]
+                expected_tail=((['--expect-image-write-fault'] if image_accepted else
+                    ['--expect-storage-fault','write' if stage['mode']=='accepted-write' else stage['mode']])
                     if stage['mode']!='healthy' else [])+[
                     '--physical-base',str(stage['base'])]
             require(command[5:]==expected_tail, 'original producer execution mode changed')
