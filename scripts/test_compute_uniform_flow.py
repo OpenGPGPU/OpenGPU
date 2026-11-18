@@ -54,6 +54,29 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory(prefix="opengpu-uniform-flow-") as tmp:
         path = Path(tmp)
         write_bodies(path)
+        # The public v1 padding spelling and v2 options remain valid standard
+        # C++17; anonymous nested structs would break existing strict clients.
+        cpp = path / "uapi.cpp"
+        cpp.write_text('''#include <cstddef>
+#include "opengpu_drm.h"
+static_assert(sizeof(drm_opengpu_compute_indirect_resources) ==
+    sizeof(drm_opengpu_compute_counter_source_resources) + 40, "stable wire size");
+static_assert(offsetof(drm_opengpu_compute_indirect_resources, v2) ==
+    offsetof(drm_opengpu_compute_indirect_resources, pad), "stable wire offset");
+int main() {
+    drm_opengpu_compute_indirect_resources old{}, current{};
+    old.version = OPENGPU_COMPUTE_INDIRECT_VERSION;
+    old.pad[0] = 0;
+    current.version = OPENGPU_COMPUTE_INDIRECT_VERSION2;
+    current.v2.flags = OPENGPU_COMPUTE_INDIRECT_KERNARG_COUNTS;
+    return old.pad[0] || current.v2.reserved ||
+        current.v2.flags != OPENGPU_COMPUTE_INDIRECT_KERNARG_COUNTS;
+}
+''')
+        subprocess.run(shlex.split(os.environ.get("CXX", "c++")) + [
+            "-std=c++17", "-pedantic-errors", "-Wall", "-Wextra", "-Werror",
+            "-fsyntax-only", "-I", str(root / "driver/tests/compute_submit_stubs"),
+            "-I", str(root / "driver"), str(cpp)], check=True)
         subprocess.run(shlex.split(os.environ.get("CC", "cc")) + [
             "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
             "-I", str(root / "driver/tests/compute_submit_stubs"),

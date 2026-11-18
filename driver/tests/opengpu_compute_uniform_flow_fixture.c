@@ -38,6 +38,8 @@ _Static_assert(sizeof(struct drm_opengpu_compute_counter_source_resources)==size
 _Static_assert(sizeof(struct drm_opengpu_compute_indirect_source)==16,"indirect source UAPI size");
 _Static_assert(offsetof(struct drm_opengpu_compute_indirect_resources,source)==sizeof(struct drm_opengpu_compute_counter_source_resources),"indirect source offset");
 _Static_assert(sizeof(struct drm_opengpu_compute_indirect_resources)==sizeof(struct drm_opengpu_compute_counter_source_resources)+40,"indirect wrapper UAPI size");
+_Static_assert(offsetof(struct drm_opengpu_compute_indirect_resources,v2)==offsetof(struct drm_opengpu_compute_indirect_resources,pad),"v2 preserves v1 padding offset");
+_Static_assert(sizeof(struct drm_opengpu_compute_indirect_options)==8&&offsetof(struct drm_opengpu_compute_indirect_options,reserved)==4,"v2 preserves v1 padding size and reserved offset");
 typedef uint64_t u64;
 typedef uint64_t dma_addr_t;
 typedef unsigned char u8;
@@ -380,6 +382,15 @@ static void finish(struct opengpu_device *g,struct opengpu_sched_job *j,int erro
         }
         assert(found==1);
     }
+    if(j->kernel.indirect_enabled) {
+        unsigned found=0;
+        for(unsigned i=0;i<vm_map_count;i++)if(vm_maps[i].live&&vm_maps[i].root==j->vm->root&&
+            vm_maps[i].va==j->kernel.indirect_base) {
+            assert(vm_maps[i].readonly&&vm_maps[i].pa==j->indirect_snapshot.dma&&
+                vm_maps[i].size==j->indirect_snapshot.size);found++;
+        }
+        assert(found==1);
+    }
     unsigned pinned=buffers,refs=j->objects[j->object_count-1]->refs;
 #ifndef OPENGPU_FLOW_REAL_WORD_EXECUTION
     if(j->counter_source.object&&(!j->kernel.indirect_enabled||
@@ -503,6 +514,8 @@ static void independent_image_backings(struct drm_device *drm, struct drm_file *
     g->hw.compute_resource_flags=flags;
     puts("independent image backings: 4x128MiB SSBO +4x128MiB images +32textures,41refs,RO/WO fences/fault/cancel/fresh retirement PASS (mock kernel/MMIO; no GPU execution)");
 }
+
+#include "compute_indirect_v2_test.h"
 
 static void indirect_cases(struct drm_device *drm,struct drm_file *file,
     struct opengpu_render_context *context,struct drm_opengpu_compute_counter_source_resources full)
@@ -866,6 +879,7 @@ static void counter_source_cases(struct drm_device *drm,struct drm_file *file,
     assert(source.refs==1&&!buffers&&context->refs==1);
     for(unsigned i=0;i<vm_map_count;i++)assert(!vm_maps[i].live);
     indirect_cases(drm,file,context,valid);
+    indirect_v2_cases(drm,file,context,valid);
     release_fence(&source_resv.last);release_fence(&fresh_resv.last);release_fence(&alternate.last_fence);
     free(source.vaddr);rf->handles[51]=NULL;
     puts("independent counter source: all12UB/defaults/32textures/4images/4x128MiB SSBOs +8counters, 51refs/52locks, original-GEM WRITE ownership/two roots/2pages/fault/cancel/quarantine/reuse PASS (mock kernel/MMIO; no GPU execution)");
