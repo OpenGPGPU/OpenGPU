@@ -29,6 +29,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     if host_execution:
         from compute_owner_cases import CASES, COUNTER_CASES, counter_parameters, IMAGE_CASES, STORAGE_ATOMIC_CASES
         from compute_storage_atomic_cases import parameters as storage_parameters
+        from compute_storage_recovery import PHASES as STORAGE_RECOVERY_PHASES
         ap.add_argument('--case', choices=('indirect-pipeline',) if continuous_compute else CASES,
                         default='indirect-pipeline' if continuous_compute else 'shared')
         ap.add_argument('--profile-wire', type=Path, required=True)
@@ -48,6 +49,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
                         help='CPU only: reuse one build for original typed load/store and integer-atomic recipes')
         ap.add_argument('--storage-matrix', action='store_true',
                         help='reuse one guarded producer build for every original contending SSBO atomic source')
+        ap.add_argument('--storage-recovery-matrix',action='store_true',
+                        help='one original producer build for all read/write-fault and healthy reuse phases')
     if sample_graphics:
         ap.add_argument("--profile-wire", type=Path, help="CPU mode's strict OGNP0002 observations; label synthetic fixtures explicitly")
         mode = ap.add_mutually_exclusive_group(required=True)
@@ -87,8 +90,13 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     if host_execution and args.capture_image_matrix and (not args.capture_only or args.case != IMAGE_CASES[0] or args.capture_counter_matrix):
         ap.error('--capture-image-matrix requires the first image case and --capture-only')
     if host_execution and args.storage_matrix and (args.case != STORAGE_ATOMIC_CASES[0] or
-            args.capture_counter_matrix or args.capture_image_matrix or continuous_compute):
+            args.capture_counter_matrix or args.capture_image_matrix or args.storage_recovery_matrix or continuous_compute):
         ap.error('--storage-matrix requires its first distinct storage-atomic case')
+    if host_execution and args.storage_recovery_matrix and (args.case!=STORAGE_ATOMIC_CASES[0] or
+            args.capture_only or args.capture_counter_matrix or args.capture_image_matrix or args.storage_matrix or
+            args.expect_image_source_fault or args.expect_image_permission_fault or args.expect_image_reset or
+            args.physical_base is not None or continuous_compute):
+        ap.error('--storage-recovery-matrix requires the complete original live storage sequence')
     if host_execution and args.case in COUNTER_CASES:
         atomic_counters = True
     if host_execution and args.case in STORAGE_ATOMIC_CASES:
@@ -477,18 +485,23 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         matrix=args.capture_counter_matrix or args.capture_image_matrix or args.storage_matrix
         cases=(STORAGE_ATOMIC_CASES if args.storage_matrix else COUNTER_CASES if args.capture_counter_matrix
                else IMAGE_CASES if args.capture_image_matrix else (args.case,))
-        for case in cases:
-            session=args.session/case if matrix else args.session
-            if matrix:session.mkdir(exist_ok=False)
+        entries=([(stage['case'],args.session/('round-'+str(stage['index'])),stage)
+                  for stage in STORAGE_RECOVERY_PHASES] if args.storage_recovery_matrix else
+                 [(case,args.session/case if matrix else args.session,None) for case in cases])
+        for case,session,stage in entries:
+            if matrix or stage is not None:session.mkdir(exist_ok=False)
             source=('' if continuous_compute else 'full128.comp' if case=='uniforms' else 'full.comp' if case=='shared' else
                     counter_parameters(case)['source'] if case in COUNTER_CASES else
                     storage_parameters(case)['source'] if case in STORAGE_ATOMIC_CASES else case+'.comp')
-            run([binary,args.profile_wire.resolve(),session.resolve(),sources/source,case]+
+            tail=((['--expect-storage-fault',stage['mode']] if stage['mode']!='healthy' else [])+
+                  ['--physical-base',str(stage['base'])] if stage is not None else
                 (['--capture-only'] if args.capture_only else ['--expect-image-source-fault'] if args.expect_image_source_fault else
                  ['--expect-image-permission-fault',args.expect_image_permission_fault] if args.expect_image_permission_fault else
                  ['--expect-image-reset',args.expect_image_reset] if args.expect_image_reset else [])+
-                (['--physical-base',str(args.physical_base)] if args.physical_base is not None else []),
-                'actual-compute-capture-'+case if matrix else 'actual-compute-capture',env)
+                (['--physical-base',str(args.physical_base)] if args.physical_base is not None else []))
+            run([binary,args.profile_wire.resolve(),session.resolve(),sources/source,case]+tail,
+                'actual-compute-capture-'+case+('-phase-'+str(stage['index']) if stage is not None else '')
+                if matrix or stage is not None else 'actual-compute-capture',env)
         print('Actual Mesa/Linux compute ' + ('CPU capture only' if args.capture_only else 'external-DUT protocol') + ' completed: ' + str(out))
         return
     run([binary, sources] + ([args.profile_wire.resolve(strict=True)] if sample_graphics else []), "actual-acceptance", env)
