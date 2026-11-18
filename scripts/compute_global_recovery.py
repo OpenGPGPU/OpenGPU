@@ -67,10 +67,10 @@ def fault_receipt(record, index, previous=None):
         require(r>prior_r and w==prior_w and attempts==0,
                 'missing original read error or unexpected target write')
     else:
-        # One failed first AMO plus two successful AMOs from each remaining
-        # scalar caller. L2 also acknowledges lower writes for CAS misses.
-        require(r==prior_r and w==prior_w+1 and attempts==7,
-                'missing one-shot B error, exact seven attempts or unexpected read error')
+        # The grid stops making offers on failure and drains admitted work.
+        # Bind the exact count to independently checked old slots below.
+        require(r==prior_r and w==prior_w+1 and attempts in (3,5,7),
+                'missing one-shot B error, surviving caller attempts or unexpected read error')
     return r,w
 
 
@@ -94,17 +94,35 @@ def check_round(record, index, held, previous=None):
     return record
 
 
-def verify_fault(initial, returned, description, mode):
+def surviving_groups(words):
+    require(len(words)==8, 'original scalar old-value window differs')
+    active=[]
+    for group in range(4):
+        pair=[word!=OUTPUT_GUARD for word in words[2*group:2*group+2]]
+        require(pair[0]==pair[1], 'partially returned scalar caller')
+        if pair[0]:
+            active.append(group)
+    # Before the first target write, neither initial CU can have completed a
+    # caller. The failed caller is therefore 0 or 1. Offers form an XYZ prefix;
+    # a registered offer is honored after failure, but no new offer is made.
+    require(any(active==[g for g in range(admitted) if g!=failed]
+                for admitted in (2,3,4) for failed in (0,1)),
+            'survivors are not an admitted prefix with one initial failed caller')
+    return active
+
+
+def verify_fault(initial, returned, description, mode, *, target_attempts):
     p,kernarg,_=recipe(initial,description)
     require(mode in ('read','write'), 'foreign global fault recipe')
     if mode=='read':
+        require(uint(target_attempts,64)==0, 'read fault attempted a target write')
         verify_byte_changes(initial,returned,[])
-        return
+        return 0
     words=struct.unpack('<8I',returned.read(kernarg+OUTPUT_OFFSET,32))
-    failed=[n for n,word in enumerate(words) if word==OUTPUT_GUARD]
-    require(failed in ([0,1],[2,3],[4,5],[6,7]),
-            'write fault must retain exactly one failed scalar caller: old=%r'%(words,))
-    active=[n for n in range(8) if n not in failed]
+    active=[event for group in surviving_groups(words) for event in (2*group,2*group+1)]
+    # Include the suppressed first write, and lower writes for CAS misses.
+    require(uint(target_attempts,64)==1+len(active),
+            'target attempts differ from the independently returned old words')
     original=predecessors(p['case'])
     order=[sum(1<<j for j,old in enumerate(active) if original[n] & (1<<old)) for n in active]
     final=returned.read(kernarg+p['target_offset'],4)
@@ -114,3 +132,4 @@ def verify_fault(initial, returned, description, mode):
     changes=[(kernarg+p['target_offset'],final)]
     changes.extend((kernarg+OUTPUT_OFFSET+4*n,struct.pack('<I',words[n])) for n in active)
     verify_byte_changes(initial,returned,changes)
+    return len(active)

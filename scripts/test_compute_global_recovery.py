@@ -14,17 +14,17 @@ from compute_atomic_order import result, linearization
 from compute_global_atomic_cases import CASES, events, parameters, OUTPUT_GUARD
 from compute_global_recovery import (BASE, STEP, PHASES, COUNTERS, ROUND_SCHEMA,
     phase, matrix_plan, fault_plan, source_launch, check_source_launch,
-    fault_receipt, check_round, verify_fault)
+    fault_receipt, check_round, surviving_groups, verify_fault)
 from test_compute_global_atomic_source import fixture, HISTORIES
 from test_compute_atomic_order import Memory
 
 
-def partial(case, failed=3, schedule=None):
+def partial(case, failed=1, schedule=None, admitted=3):
     before,_,description=fixture(case)
     before=Memory({**before.data,0x80000:bytearray(b'previous cleaned RAM'*128)})
     after=deepcopy(before)
     calls=events(case)
-    groups=[n for n in range(4) if n!=failed]
+    groups=[n for n in range(admitted) if n!=failed]
     order=([event for group in groups for event in (2*group,2*group+1)]
            if schedule is None else schedule)
     # Fabricated CPU fixture, not GPU execution or evidence. The arithmetic
@@ -43,7 +43,7 @@ def held(index):
     r=4*sum(s['mode']=='read' for s in PHASES[:index+1])
     w=sum(s['mode']=='write' for s in PHASES[:index+1])
     return dict(commandId=42,**dict(zip(COUNTERS,(r,r,w,w))),
-                faultTargetWriteAttempts=7 if phase(index)['mode']=='write' else 0)
+                faultTargetWriteAttempts=5 if phase(index)['mode']=='write' else 0)
 
 
 def done(index):
@@ -78,42 +78,53 @@ class GlobalRecovery(unittest.TestCase):
 
     def test_all_sources_failed_callers_legal_interleavings_and_whole_ram(self):
         for case in CASES:
-            for failed in range(4):
-                groups=[n for n in range(4) if n!=failed]
+            for admitted,failed in ((a,f) for a in (2,3,4) for f in (0,1)):
+                groups=[n for n in range(admitted) if n!=failed]
+                attempts=1+2*len(groups)
                 schedules=([event for group in groups for event in (2*group,2*group+1)],
                            [event for group in reversed(groups) for event in (2*group,2*group+1)],
                            [2*group for group in groups]+[2*group+1 for group in reversed(groups)])
                 for schedule in schedules:
-                    before,after,d=partial(case,failed,schedule)
-                    verify_fault(before,after,d,'write')
-                    verify_fault(before,before,d,'read')
-                    with self.assertRaises(ValueError):verify_fault(before,after,d,'read')
+                    before,after,d=partial(case,failed,schedule,admitted)
+                    self.assertEqual(verify_fault(before,after,d,'write',target_attempts=attempts),2*len(groups))
+                    self.assertEqual(verify_fault(before,before,d,'read',target_attempts=0),0)
+                    with self.assertRaises(ValueError):verify_fault(before,after,d,'read',target_attempts=0)
+                    for wrong in (0,1,2,3,4,5,6,7,8,True):
+                        if type(wrong) is int and wrong==attempts:continue
+                        with self.assertRaises(ValueError):
+                            verify_fault(before,after,d,'write',target_attempts=wrong)
                     for address,offset in ((0x20000,parameters(case)['target_offset']),
                             (0x10000,0),(0x30000,4095),(0x40000,0),(0x80000,1),
                             (0x20000,127),(0x20000,160)):
                         bad=deepcopy(after);bad.data[address][offset]^=1
                         with self.subTest(case=case,failed=failed,address=address,offset=offset),self.assertRaises(ValueError):
-                            verify_fault(before,bad,d,'write')
+                            verify_fault(before,bad,d,'write',target_attempts=attempts)
                     for index in range(8):
                         bad=deepcopy(after)
                         struct.pack_into('<I',bad.data[0x20000],128+4*index,
-                            0 if index//2==failed else OUTPUT_GUARD)
-                        with self.assertRaises(ValueError):verify_fault(before,bad,d,'write')
+                            0 if index//2 not in groups else OUTPUT_GUARD)
+                        with self.assertRaises(ValueError):verify_fault(before,bad,d,'write',target_attempts=attempts)
+
+    def test_rejects_nonprefix_survivors_and_a_later_first_failed_caller(self):
+        for active in ([],[2],[3],[0,1],[0,3],[1,3],[2,3],[0,1,2],[0,1,3],[0,1,2,3]):
+            words=[0 if group in active else OUTPUT_GUARD for group in range(4) for _ in range(2)]
+            with self.subTest(active=active),self.assertRaises(ValueError):surviving_groups(words)
 
     def test_partial_serial_fixture_matches_existing_independent_literal_histories(self):
         for case in CASES:
-            _,after,_=partial(case)
+            _,after,_=partial(case,admitted=2)
             words,final=HISTORIES[parameters(case)['pair']]
-            self.assertEqual(struct.unpack('<8I',after.read(0x20080,32)),(*words[:6],OUTPUT_GUARD,OUTPUT_GUARD))
-            self.assertEqual(struct.unpack('<I',after.read(0x20000+parameters(case)['target_offset'],4))[0],words[6])
+            self.assertEqual(struct.unpack('<8I',after.read(0x20080,32)),(*words[:2],*(OUTPUT_GUARD,)*6))
+            self.assertEqual(struct.unpack('<I',after.read(0x20000+parameters(case)['target_offset'],4))[0],words[2])
 
     def test_unordered_successful_calls_do_not_replace_original_caller_order(self):
         case=CASES[0]
-        before,after,d=partial(case,3,[1,0,2,3,4,5])
-        observed=list(struct.unpack('<6I',after.read(0x20080,24)))
+        before,after,d=partial(case,1,[1,0,4,5])
+        active=(0,1,4,5)
+        observed=[struct.unpack('<I',after.read(0x20080+4*n,4))[0] for n in active]
         final=struct.unpack('<I',after.read(0x20000,4))[0]
-        linearization(parameters(case)['seed'],final,events(case)[:6],observed)
-        with self.assertRaises(ValueError):verify_fault(before,after,d,'write')
+        linearization(parameters(case)['seed'],final,[events(case)[n] for n in active],observed)
+        with self.assertRaises(ValueError):verify_fault(before,after,d,'write',target_attempts=5)
 
     def test_exact_matrix_original_source_flags_and_physical_ranges(self):
         self.assertEqual(struct.unpack('<8sIIQQ',matrix_plan()),(b'OGCGRM01',96,4,BASE,STEP))
@@ -146,9 +157,11 @@ class GlobalRecovery(unittest.TestCase):
         for key,value in mutations.items():
             row=done(0);row[key]=value
             with self.subTest(key=key),self.assertRaises(ValueError):check_round(row,0,held(0))
-        for attempts in (0,1,5,6,8,True):
+        for attempts in (0,1,2,4,6,8,True):
             h=held(2);h['faultTargetWriteAttempts']=attempts
             with self.assertRaises(ValueError):fault_receipt(h,2,done(1))
+        for attempts in (3,5,7):
+            self.assertEqual(fault_receipt({**held(2),'faultTargetWriteAttempts':attempts},2,done(1)),(4,1))
         h=held(0);h['faultTargetWriteAttempts']=1
         with self.assertRaises(ValueError):fault_receipt(h,0)
         for changes in ({'physicalReadFaults':3},{'injectedWriteFaults':1}):
@@ -198,9 +211,11 @@ class GlobalContinuousOwnerTests(unittest.TestCase):
                 base=PHASES[n]['base'];self.ranges=[(base,base+65536,0)]
             def __enter__(self):return self
             def __exit__(self,*_args):pass
-        def fault_bytes(_before,_after,_description,mode):
+        def fault_bytes(_before,_after,_description,mode,*,target_attempts):
             events.append((-1,'fault-bytes-'+mode))
             if bad_write and mode=='write':raise ValueError('deliberately invalid partial old word')
+            self.assertEqual(target_attempts,5 if mode=='write' else 0)
+            return 4 if mode=='write' else 0
         qualified=Mock();tables=Mock(return_value='actual-cpu-peer-tables')
         with tempfile.TemporaryDirectory(prefix='global-recovery-peer-') as temporary:
             directory=Path(temporary)
@@ -223,7 +238,8 @@ class GlobalContinuousOwnerTests(unittest.TestCase):
                 patch('compute_owner_controller.ready_inputs',side_effect=ready),
                 patch('compute_owner_controller.unchanged_inputs'),
                 patch('compute_owner_controller.input_digest',side_effect=lambda path:str(path)))
-            with ExitStack() as stack,redirect_stdout(io.StringIO()):
+            stdout=io.StringIO()
+            with ExitStack() as stack,redirect_stdout(stdout):
                 for active in patches:stack.enter_context(active)
                 if bad_write:
                     with self.assertRaisesRegex(ValueError,'invalid partial old word'):
@@ -243,6 +259,7 @@ class GlobalContinuousOwnerTests(unittest.TestCase):
             self.assertTrue(all(p.terminated for p in processes))
             qualified.assert_not_called()
         else:
+            self.assertIn('480 old words',stdout.getvalue())
             self.assertEqual(cleanups,list(range(96)))
             self.assertTrue(all(p.returncode==0 and not p.terminated for p in processes))
             self.assertEqual(sum(name=='fault-bytes-read' for _,name in events),24)

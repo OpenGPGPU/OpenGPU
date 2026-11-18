@@ -89,7 +89,36 @@ ComputeHeld hold_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory
   traffic_unchanged(held.completed,agent.traffic);
   const bool write_failure=failure==ImageFailure::first_write || failure==ImageFailure::global_first_write;
   if(write_failure) {
-    const unsigned expected_attempts=failure==ImageFailure::global_first_write?7:5;
+    unsigned expected_attempts=5;
+    if(failure==ImageFailure::global_first_write) {
+      require(capture.writable.size()==1 && capture.writable[0].end-capture.writable[0].first==8192,
+        "global fault lost its exact original writable kernarg");
+      const auto old_first=capture.writable[0].first+128;
+      auto word=[&](const Memory &ram,uint64_t address) {
+        uint32_t value=0;
+        for(unsigned byte=0;byte<4;++byte)value|=uint32_t(ram.byte(address+byte))<<(8*byte);
+        return value;
+      };
+      std::array<bool,4> active{};unsigned surviving=0;
+      for(unsigned group=0;group<4;++group) {
+        const auto address=old_first+8*group;
+        require(word(held.initial,address)==0xdeadbeefu && word(held.initial,address+4)==0xdeadbeefu,
+          "global fault old slots were prefilled");
+        active[group]=word(memory,address)!=0xdeadbeefu;
+        require(active[group]==(word(memory,address+4)!=0xdeadbeefu),
+          "global fault returned only part of a scalar caller");
+        surviving+=active[group];
+      }
+      bool admitted_prefix=false;
+      for(unsigned admitted=2;admitted<=4;++admitted)for(unsigned failed=0;failed<2;++failed) {
+        bool matches=true;
+        for(unsigned group=0;group<4;++group)
+          matches&=active[group]==(group<admitted && group!=failed);
+        admitted_prefix|=matches;
+      }
+      require(admitted_prefix,"global fault survivors violate fail-fast grid admission");
+      expected_attempts=1+2*surviving;
+    }
     if(!(agent.traffic.read_faults==prior_read_faults && agent.injected_read_faults()==prior_read_faults &&
       agent.traffic.write_faults==held.start.write_faults+1 &&
       agent.injected_write_faults()==agent.traffic.write_faults && agent.first_write_attempts()==expected_attempts))
