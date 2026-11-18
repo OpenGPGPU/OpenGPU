@@ -4,7 +4,10 @@ from pathlib import Path
 OPERATIONS = ('exchange', 'add', 'xor', 'or', 'and', 'signed-min', 'signed-max',
               'unsigned-min', 'unsigned-max', 'compare-match', 'compare-miss',
               'exchange-lane', 'add-lane', 'compare-lane')
-CASES = tuple('storage-atomic-' + operation for operation in OPERATIONS)
+READONLY_CASE = 'storage-atomic-readonly'
+BOUNDS_CASE = 'storage-atomic-past-end'
+ENDPOINT_CASE = 'storage-atomic-endpoint'
+CASES = tuple('storage-atomic-' + operation for operation in OPERATIONS) + (READONLY_CASE, BOUNDS_CASE, ENDPOINT_CASE)
 SEEDS = (10, 0xfffffff0, 10, 0x80000000, 0xffffffff, 0x7fffffff, 0x80000000,
          0xffffffff, 0x7fffffff, 10, 10, 0x13579bdf, 0xfffffff0, 0)
 OPERANDS = (7, 5, 0x80000007, 0x80000007, 0x80000007, 0xfffffff9, 7,
@@ -15,9 +18,21 @@ def parameters(case):
     if case not in CASES:
         raise ValueError('unknown original storage atomic case')
     index = CASES.index(case)
-    return dict(case=case, source=OPERATIONS[index] + '.comp', operation=OPERATIONS[index],
-                seed=SEEDS[index], operand=OPERANDS[index], compare=10 if index == 9 else 11 if index == 10 else 0,
-                groups=2, local=4, invocations=8, target_offset=0)
+    common = dict(case=case, groups=2, local=4, invocations=8, target_offset=0,
+                  access_offset=0, result_status=0, target_access=3)
+    if index < len(OPERATIONS):
+        common.update(source=OPERATIONS[index]+'.comp', operation=OPERATIONS[index], seed=SEEDS[index],
+                      operand=OPERANDS[index], compare=10 if index == 9 else 11 if index == 10 else 0)
+    elif case == READONLY_CASE:
+        common.update(source='exchange.comp', operation='exchange', seed=10, operand=7, compare=0,
+                      result_status=1, target_access=1)
+    elif case == BOUNDS_CASE:
+        common.update(source='past-end-small.comp', operation='add', seed=10, operand=5, compare=0,
+                      result_status=1, access_offset=8192)
+    else:
+        common.update(source='endpoint-small.comp', operation='add', seed=0xfffffff0, operand=5, compare=0,
+                      target_offset=8188, access_offset=8188)
+    return common
 
 
 def invocations(case):
@@ -53,3 +68,5 @@ def write_sources(out):
         if source == template:
             raise ValueError('original atomic source shape changed')
         (out / (name + '.comp')).write_text(source)
+    (out / 'endpoint-small.comp').write_text((out / 'endpoint.comp').read_text().replace('33554431u', '2047u'))
+    (out / 'past-end-small.comp').write_text((out / 'past-end.comp').read_text().replace('33554432u', '2048u'))
