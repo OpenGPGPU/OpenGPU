@@ -74,6 +74,7 @@ def main():
     parser.add_argument('--bound-inputs',type=Path)
     parser.add_argument('--global-atomic-matrix',action='store_true')
     parser.add_argument('--global-recovery-matrix',action='store_true')
+    parser.add_argument('--global-accepted-matrix',action='store_true')
     parser.add_argument('--physical-base',type=int)
     args = parser.parse_args()
     if args.case == 'all' and not args.capture_only:
@@ -82,10 +83,13 @@ def main():
         parser.error('a live session identifies one original source case')
     if args.global_atomic_matrix and (args.case!=CASES[0] or args.session is None):
         parser.error('global matrix requires its exact first source and private session')
-    if args.global_recovery_matrix and (args.case!=CASES[0] or args.session is None or
+    recovery=args.global_recovery_matrix or args.global_accepted_matrix
+    if recovery and (args.case!=CASES[0] or args.session is None or
             args.global_atomic_matrix or args.capture_only):
         parser.error('global recovery requires its distinct live first-source matrix')
-    if args.physical_base is not None and (not args.capture_only or args.global_recovery_matrix or
+    if args.global_recovery_matrix and args.global_accepted_matrix:
+        parser.error('suppressed and accepted-write recovery matrices are distinct')
+    if args.physical_base is not None and (not args.capture_only or recovery or
             args.global_atomic_matrix or not 0<args.physical_base<=0xfffff000 or args.physical_base%4096):
         parser.error('explicit capture allocator requires a page-aligned bounded CPU-only source')
     if not args.capture_only and (args.bound_inputs is None or not args.sanitize):
@@ -111,26 +115,28 @@ def main():
     env = dict(os.environ, UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1',
                ASAN_OPTIONS='detect_leaks=1:abort_on_error=1')
     selected = CASES if args.case == 'all' or args.global_atomic_matrix else (args.case,)
-    if args.global_recovery_matrix:
-        from compute_global_recovery import PHASES, check_source_launch
+    if recovery:
+        if args.global_accepted_matrix:
+            from compute_global_accepted_recovery import PHASES, source_launch, check_source_launch
+        else:
+            from compute_global_recovery import PHASES, source_launch, check_source_launch
         selected=PHASES
     for stage in selected:
-        case=stage['case'] if args.global_recovery_matrix else stage
+        case=stage['case'] if recovery else stage
         code = words(case)
         program, initial = inputs / (case + '.bin'), inputs / (case + '.kernarg')
         program.write_bytes(struct.pack('<%uI' % len(code), *code))
         initial.write_bytes(initial_kernarg(case))
-        directory = ((args.session.resolve()/('round-'+str(stage['index'])) if args.global_recovery_matrix else
+        directory = ((args.session.resolve()/('round-'+str(stage['index'])) if recovery else
                       args.session.resolve()/case if args.global_atomic_matrix else args.session.resolve())
                      if args.session is not None else out / 'captures' / case)
         directory.mkdir(parents=True, exist_ok=args.session is not None)
         if guard is not None:guard.unchanged()
-        label='round-'+str(stage['index']) if args.global_recovery_matrix else case
+        label='round-'+str(stage['index']) if recovery else case
         log_path=out/('actual-compute-capture-'+label+'.log')
         command=[str(binary),str(directory),str(frozen_profile),str(program),str(initial),case]
-        if args.global_recovery_matrix:
-            if stage['mode']!='healthy':command+=['--expect-global-fault',stage['mode']]
-            command+=['--physical-base',str(stage['base'])]
+        if recovery:
+            command=source_launch(stage['index'],out,args.session.resolve(),frozen_profile)
             check_source_launch(command,stage['index'],out,args.session.resolve(),frozen_profile)
         else:
             if args.capture_only:command+=['--capture-only']

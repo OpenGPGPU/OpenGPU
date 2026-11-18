@@ -179,9 +179,11 @@ class GlobalContinuousOwnerTests(unittest.TestCase):
     def test_bad_partial_bytes_never_authorize_fault_cleanup_or_next_phase(self):
         self.peer(True)
 
-    def peer(self, bad_write):
+    def peer(self, bad_write, *, protocol=None, records=None, expected_words=480):
         from compute_global_recovery_controller import run_recovery_matrix
         from owner_resource_contract import IMAGE_FLOAT_PROFILE
+        phases=PHASES if protocol is None else protocol.PHASES
+        make_held,make_done=(held,done) if records is None else records
         class Process:
             def __init__(self):self.returncode=None;self.terminated=False
             def poll(self):return self.returncode
@@ -200,22 +202,22 @@ class GlobalContinuousOwnerTests(unittest.TestCase):
         def record(path):
             if path.name=='profile.json':return {'actual-profile-cpu-peer':True}
             index=int(path.parent.name[6:])
-            return done(index) if path.name=='executor.done' else held(index)
+            return make_done(index) if path.name=='executor.done' else make_held(index)
         def ready(path,case,**_kwargs):
             index=int(path.name[6:]);_,_,description=partial(case)
-            description['kernarg']['allocationPhysical']=PHASES[index]['base']+4096
+            description['kernarg']['allocationPhysical']=phases[index]['base']+4096
             return description,{}
         class MemoryPeer:
             def __init__(self,path):
                 n=int(path.parent.name[6:]) if path.parent.name.startswith('round-') else 0
-                base=PHASES[n]['base'];self.ranges=[(base,base+65536,0)]
+                base=phases[n]['base'];self.ranges=[(base,base+65536,0)]
             def __enter__(self):return self
             def __exit__(self,*_args):pass
         def fault_bytes(_before,_after,_description,mode,*,target_attempts):
             events.append((-1,'fault-bytes-'+mode))
-            if bad_write and mode=='write':raise ValueError('deliberately invalid partial old word')
-            self.assertEqual(target_attempts,5 if mode=='write' else 0)
-            return 4 if mode=='write' else 0
+            if bad_write and mode!='read':raise ValueError('deliberately invalid partial old word')
+            self.assertEqual(target_attempts,0 if mode=='read' else 5)
+            return 0 if mode=='read' else 4
         qualified=Mock();tables=Mock(return_value='actual-cpu-peer-tables')
         with tempfile.TemporaryDirectory(prefix='global-recovery-peer-') as temporary:
             directory=Path(temporary)
@@ -226,7 +228,8 @@ class GlobalContinuousOwnerTests(unittest.TestCase):
                 patch('compute_global_recovery_controller.captured_page_tables',new=tables),
                 patch('compute_global_recovery_controller.union_original_memory',return_value=b'old RAM plus disjoint originals'),
                 patch('compute_global_recovery_controller.verify'),
-                patch('compute_global_recovery_controller.verify_fault',side_effect=fault_bytes),
+                (patch('compute_global_recovery_controller.verify_fault',side_effect=fault_bytes) if protocol is None
+                    else patch.object(protocol,'verify_fault',side_effect=fault_bytes)),
                 patch('compute_global_recovery_controller.verify_cleaned_memory'),
                 patch('compute_global_recovery_controller.held_bytes',return_value=b'held'),
                 patch('compute_global_recovery_controller.failed_held_bytes',return_value=b'failed-held'),
@@ -244,26 +247,28 @@ class GlobalContinuousOwnerTests(unittest.TestCase):
                 if bad_write:
                     with self.assertRaisesRegex(ValueError,'invalid partial old word'):
                         run_recovery_matrix(argparse.Namespace(timeout=60),['original-producer','{ipc}'],
-                            directory,Path('native-executor'),{},qualified,IMAGE_FLOAT_PROFILE)
+                            directory,Path('native-executor'),{},qualified,IMAGE_FLOAT_PROFILE,protocol=protocol)
                 else:
                     run_recovery_matrix(argparse.Namespace(timeout=60),['original-producer','{ipc}'],
-                        directory,Path('native-executor'),{},qualified,IMAGE_FLOAT_PROFILE)
+                        directory,Path('native-executor'),{},qualified,IMAGE_FLOAT_PROFILE,protocol=protocol)
         self.assertEqual(len(processes),2)
         self.assertTrue(all(call.kwargs=={'inactive_contexts':0} for call in tables.call_args_list))
-        self.assertEqual(commands[1][1],'--active-global-recovery-matrix')
+        self.assertEqual(commands[1][1],'--active-global-recovery-matrix' if protocol is None else protocol.RUNNER_FLAG)
         cleanups=[index for index,name in events if name=='BEGIN_CLEANUP']
         if bad_write:
-            self.assertEqual(cleanups,[0,1])
-            self.assertNotIn((2,'record-0.retired.response'),events)
-            self.assertNotIn((3,'BEGIN_EXECUTION'),events)
+            first_bad=next(s['index'] for s in phases if s['mode'] in ('write','accepted-write'))
+            self.assertEqual(cleanups,list(range(first_bad)))
+            self.assertNotIn((first_bad,'record-0.retired.response'),events)
+            self.assertNotIn((first_bad+1,'BEGIN_EXECUTION'),events)
             self.assertTrue(all(p.terminated for p in processes))
             qualified.assert_not_called()
         else:
-            self.assertIn('480 old words',stdout.getvalue())
-            self.assertEqual(cleanups,list(range(96)))
+            self.assertIn('%d old words'%expected_words,stdout.getvalue())
+            self.assertEqual(cleanups,list(range(len(phases))))
             self.assertTrue(all(p.returncode==0 and not p.terminated for p in processes))
-            self.assertEqual(sum(name=='fault-bytes-read' for _,name in events),24)
-            self.assertEqual(sum(name=='fault-bytes-write' for _,name in events),24)
+            for mode in {s['mode'] for s in phases if s['mode']!='healthy'}:
+                self.assertEqual(sum(name=='fault-bytes-'+mode for _,name in events),
+                                 sum(s['mode']==mode for s in phases))
             qualified.assert_called_once()
 
 

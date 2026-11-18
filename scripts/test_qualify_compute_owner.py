@@ -29,12 +29,13 @@ class Entry(unittest.TestCase):
             if 'HEAD' in command:return 'explicit-cpu-source'
             if command[:3]==['docker','image','inspect']:return 'sha256:'+'1'*64
             raise AssertionError(command)
-        for fails in (False,True):
+        for alias,fails in ((c,f) for c in ('global-atomics-recovery','global-atomics-accepted-write-error')
+                            for f in (False,True)):
             archive=unittest.mock.Mock();archive.stdout=io.BytesIO();archive.wait.return_value=0
             argv=['qualify_compute_owner.py','--executor',str(ROOT/'fixture-executor'),
                 '--executor-qualification',str(ROOT/'fixture-qualification'),
                 '--executor-checker',str(ROOT/'scripts/prepare_owner_executor.py'),
-                '--executor-checker-python',sys.executable,'--case','global-atomics-recovery']
+                '--executor-checker-python',sys.executable,'--case',alias]
             output=io.StringIO()
             with patch.object(sys,'argv',argv),patch.object(qualifier,'checked_inputs',return_value='cpu-identity'),\
                     patch.object(qualifier,'inside',side_effect=lambda path,_gpu:path),\
@@ -448,11 +449,30 @@ class Entry(unittest.TestCase):
                 image='sha256:'+'1'*64,name='raw',case=case or qualifier.GLOBAL_ATOMIC_CASES[0])
         self.assertIn('--global-recovery-matrix',command())
         self.assertNotIn('--global-atomic-matrix',command())
-        for key in ('global_atomic_matrix','global_delayed_ack','storage_recovery_matrix','image_source_recovery'):
+        for key in ('global_atomic_matrix','global_delayed_ack','storage_recovery_matrix','image_source_recovery',
+                    'global_accepted_matrix'):
             setattr(args,key,True)
             with self.subTest(key=key),self.assertRaises(ValueError):command()
             delattr(args,key)
         with self.assertRaises(ValueError):command(qualifier.GLOBAL_ATOMIC_CASES[1])
+
+    def test_accepted_write_entry_rejects_other_fault_matrices_and_source_cases(self):
+        args=argparse.Namespace(timeout=60,global_inputs=ROOT/'.artifacts/global-inputs.json',
+            global_accepted_matrix=True)
+        def command(case=None,**options):
+            return qualifier.producer_command(args,gpu=ROOT,source=ROOT,ntt=None,
+                image='sha256:'+'1'*64,name='raw',case=case or qualifier.GLOBAL_ATOMIC_CASES[0],**options)
+        self.assertIn('--global-accepted-matrix',command())
+        self.assertNotIn('--global-recovery-matrix',command())
+        for key in ('global_atomic_matrix','global_recovery_matrix','global_delayed_ack','storage_matrix',
+                'storage_delayed_ack','storage_recovery_matrix','contended_image_matrix','mixed_atomic_matrix',
+                'image_source_recovery','image_permission_recovery','image_reset_recovery'):
+            setattr(args,key,True)
+            with self.subTest(key=key),self.assertRaises(ValueError):command()
+            delattr(args,key)
+        with self.assertRaises(ValueError):command(qualifier.GLOBAL_ATOMIC_CASES[1])
+        for option in ({'physical_base':0x1000000},{'source_fault':True},{'permission':'write'},{'reset':'write'}):
+            with self.assertRaises(ValueError):command(**option)
 
     def test_global_source_and_matrix_bind_their_exact_original_case(self):
         args=argparse.Namespace(timeout=60,global_inputs=ROOT/'.artifacts/global-inputs.json',global_atomic_matrix=True)

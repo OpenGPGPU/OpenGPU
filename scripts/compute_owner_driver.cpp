@@ -28,9 +28,11 @@ struct ComputeResult {
   uint64_t processed_bytes=0,cycles=0,read_bytes=0,write_bytes=0;
   uint64_t physical_read_faults=0,injected_read_faults=0,physical_write_faults=0,injected_write_faults=0;
   uint64_t fault_target_write_attempts=0;
+  uint64_t accepted_write_faults=0;
+  bool accepted_history=false;
   bool held_pin=false,retired_pin=false,drained=false;
 };
-enum class ImageFailure { none, source_read, permission, first_write, global_first_write };
+enum class ImageFailure { none, source_read, permission, first_write, global_first_write, global_accepted_write };
 struct ComputeHeld {
   ComputeResult result;
   Memory initial;
@@ -45,7 +47,8 @@ ComputeHeld hold_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory
     ImageFailure failure=ImageFailure::none,uint64_t prior_read_faults=0,const Traffic *prior_traffic=nullptr,
     StorageAckDelay *ack_delay=nullptr) {
   require(failure==ImageFailure::none || failure==ImageFailure::source_read ||
-    failure==ImageFailure::permission || failure==ImageFailure::first_write || failure==ImageFailure::global_first_write,
+    failure==ImageFailure::permission || failure==ImageFailure::first_write || failure==ImageFailure::global_first_write ||
+    failure==ImageFailure::global_accepted_write,
     "unknown compute failure mode");
   verify_compute_upload(sim,agent,bus,memory,capture,prior_read_faults,prior_traffic);
   ComputeHeld held;held.initial=memory;held.start=agent.traffic;held.start_cycles=bus.cycles;held.failure=failure;
@@ -87,10 +90,11 @@ ComputeHeld hold_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory
       r.completion==again.completion && r.processed_bytes==again.processed_bytes && again.held_pin,
     "held compute completion or telemetry changed");
   traffic_unchanged(held.completed,agent.traffic);
-  const bool write_failure=failure==ImageFailure::first_write || failure==ImageFailure::global_first_write;
+  const bool global_failure=failure==ImageFailure::global_first_write || failure==ImageFailure::global_accepted_write;
+  const bool write_failure=failure==ImageFailure::first_write || global_failure;
   if(write_failure) {
     unsigned expected_attempts=5;
-    if(failure==ImageFailure::global_first_write) {
+    if(global_failure) {
       require(capture.writable.size()==1 && capture.writable[0].end-capture.writable[0].first==8192,
         "global fault lost its exact original writable kernarg");
       const auto old_first=capture.writable[0].first+128;
@@ -129,6 +133,9 @@ ComputeHeld hold_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory
     // Another workgroup may commit. Independent source semantics constrain
     // its exact old values, final atomic word and every unwritten byte.
     verify_readonly(held.initial,memory,capture.writable);
+    if(failure==ImageFailure::global_accepted_write)
+      require(agent.accepted_write_faults()==agent.traffic.write_faults,
+        "global accepted-write error did not commit its actual lower write");
   }else if(failure!=ImageFailure::none) {
     if(failure==ImageFailure::source_read)
       require(agent.injected_read_faults()>prior_read_faults && agent.traffic.read_faults==agent.injected_read_faults(),
@@ -151,6 +158,8 @@ ComputeHeld hold_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory
   r.physical_read_faults=agent.traffic.read_faults;r.injected_read_faults=agent.injected_read_faults();
   r.physical_write_faults=agent.traffic.write_faults;r.injected_write_faults=agent.injected_write_faults();
   r.fault_target_write_attempts=write_failure?agent.first_write_attempts():0;
+  r.accepted_history=failure==ImageFailure::global_accepted_write;
+  r.accepted_write_faults=agent.accepted_write_faults();
   if(ack_delay)ack_delay->finish(agent);
   held.initial=memory;return held;
 }
@@ -201,6 +210,7 @@ inline void compute_json(std::ostream &out,const ComputeResult &r,uint32_t comma
     <<",\"injectedReadFaults\":"<<r.injected_read_faults<<",\"physicalWriteFaults\":"<<r.physical_write_faults
     <<",\"injectedWriteFaults\":"<<r.injected_write_faults
     <<",\"faultTargetWriteAttempts\":"<<r.fault_target_write_attempts;
+  if(r.accepted_history)out<<",\"acceptedWriteFaults\":"<<r.accepted_write_faults;
   out<<",\"serviceCycles\":"<<r.cycles<<",\"readBusBytes\":"<<r.read_bytes<<",\"writeBusBytes\":"<<r.write_bytes
     <<",\"readOnlyGuards\":true,\"sourceQualificationRequired\":true,\"independentBytesRequired\":true,"
       "\"resetCount\":1,\"clockQualified\":false,\"fpsQualified\":false}\n";
@@ -317,6 +327,9 @@ int main(int argc,char **argv) {
     }
     if(argc==4 && std::string(argv[1])=="--active-global-recovery-matrix") {
       active_global_recovery_matrix(argc,argv,argv[2],argv[3],response_timeout);return 0;
+    }
+    if(argc==4 && std::string(argv[1])=="--active-global-accepted-recovery-matrix") {
+      active_global_recovery_matrix(argc,argv,argv[2],argv[3],response_timeout,true);return 0;
     }
     if(argc==3 && std::string(argv[1])=="--probe-profile") {
       require(!std::filesystem::exists(argv[2]),"compute profile output already exists");
