@@ -133,7 +133,57 @@ env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 \
   test_prepare_owner_verilator_executor test_changed_test_suites)
 ```
 
-Each operation uses an independent DUT reset. Delayed ACKs, reservation and
-fault followed by healthy reuse on the same DUT/RAM, image/global contention,
+Each operation uses an independent DUT reset. The delayed-ACK extension is
+qualified below. Reservation and fault followed by healthy reuse on the same
+DUT/RAM, image/global contention,
 complete resource combinations and clock/FPS remain separate acceptance gates.
 This stage leaves P10 open and the alignment acceptance count at 9/40.
+
+## Complete-owner delayed ACK execution (P10)
+
+The seventeen-case matrix also passes with actual target write ACKs withheld
+on the same complete float-stage factory. For each of the fifteen successful
+cases, the controller derives one physical 64-byte line from the independently
+validated original GEM and atomic offset. The native executor gates a real due
+AXI B response for at least 37 cycles. Public unified-status reads throughout
+the hold, including the final read before release, show no kernel completion.
+The existing gate retains response identity through stalls; normal completion
+requires release and actual external drain.
+
+All 120 invocation old values, final atomic words and whole-RAM guards pass
+after release. The two original read-only/bounds cases retain their no-write
+failure checks. Every original producer, receipt, actual owner cleanup,
+executor exit and final compiler/source/model binding check passes. Each case
+still uses an independent reset; this establishes the delayed-ACK gate rather
+than continuous fault recovery or cross-domain ordering.
+
+The execution source is `d6ec42be658c0c5b69775e79f4dc344cac8b1410`.
+Publication preserves all 206 qualified software input files; hardware
+provenance has the same path/comment-only differences described above.
+The 251 focused checks pass, including native gate, premature-completion,
+wrong-target, missing-ACK and stalled-response checks under ASan/UBSan.
+Original indirect CPU transport and continuous-phase compatibility also pass.
+Invalid delay receipts cannot authorize byte acceptance or owner cleanup.
+
+Use a matching, newly source-qualified complete float compute executor:
+
+```sh
+owner_dir="$PWD/.artifacts/p10-owner"
+env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 \
+  /usr/bin/python3 -B scripts/qualify_compute_owner.py \
+  --executor "$owner_dir/executors/compute/executor" \
+  --executor-qualification "$owner_dir/executors/compute/qualification.json" \
+  --executor-checker "$PWD/scripts/prepare_owner_executor.py" \
+  --executor-checker-python /usr/bin/python3 \
+  --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72 \
+  --case storage-atomics-delayed-ack --timeout 3600
+(cd scripts && /usr/bin/python3 -B -m unittest \
+  test_compute_storage_atomic_delay test_qualify_compute_owner test_compute_owner \
+  test_compute_owner_oracle test_compute_owner_controller test_prepare_owner_executor \
+  test_prepare_owner_verilator_executor test_compute_atomic_order test_changed_test_suites)
+/usr/bin/python3 -B scripts/test_compute_indirect_capture.py
+```
+
+Reservation and read/write faults followed by healthy reuse on the same
+DUT/RAM, and image/global contention, remain required for P10 closure.
+Acceptance remains 9/40.
