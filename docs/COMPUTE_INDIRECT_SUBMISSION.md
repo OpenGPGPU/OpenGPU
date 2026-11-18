@@ -99,6 +99,8 @@ bash scripts/test_scripts.sh
 
 ## Version 2 source validation and P09 limits
 
+Source PR: [#881](https://github.com/OpenGPGPU/OpenGPU/pull/881).
+
 Source `82f2447acda2cd6597723c536417a307aab2abae` passes Clang and Linux
 GCC13.3 ASan/UBSan checks using the actual production ioctl, scheduler,
 submission and retirement bodies with modeled kernel/device primitives.
