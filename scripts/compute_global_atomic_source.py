@@ -5,6 +5,7 @@ oracle accepts only their returned old words and a legal final shared word.
 """
 import re
 import struct
+import compute_global_atomic_cases as original_source
 
 from compute_global_atomic_cases import (bound_words, check_results, initial_kernarg,
                                          parameters, OUTPUT_OFFSET)
@@ -23,15 +24,21 @@ def require(ok, message):
 
 
 def recipe(memory, description):
+    schema=CACHED_SCHEMA if type(description) is dict and description.get('schema')==CACHED_SCHEMA else SCHEMA
+    return _recipe(memory,description,original_source,schema)
+
+
+def _recipe(memory, description, source, schema):
+    """Share allocation checks while each public entry pins its own source."""
     require(type(description) is dict, 'original source metadata must be an object')
-    p = parameters(description.get('sourceCase'))
-    required_flags(description, dict(schema=CACHED_SCHEMA if description.get('schema')==CACHED_SCHEMA else SCHEMA,
+    p = source.parameters(description.get('sourceCase'))
+    required_flags(description, dict(schema=schema,
                                     sourceCase=p['case'], viewBytes=8192,
                                     groups=4, local=16, guard=0xdeadbeef, context=1))
     require(set(description) == {'schema', 'sourceCase', 'viewBytes', 'groups', 'local',
             'guard', 'context', 'codePhysical', 'codeBytes', 'shader', 'kernarg'},
             'foreign or missing original recipe fields')
-    code = struct.pack('<%uI' % len(bound_words(p['case'])), *bound_words(p['case']))
+    code = struct.pack('<%uI' % len(source.bound_words(p['case'])), *source.bound_words(p['case']))
     addresses = []
     for name, handle, size, allocation in (('shader', 1, len(code), 4096), ('kernarg', 2, 8192, 8192)):
         view = description[name]
@@ -45,7 +52,7 @@ def recipe(memory, description):
         addresses.append(address)
     shader, kernarg = addresses
     require(shader + 4096 <= kernarg or kernarg + 8192 <= shader, 'original source/kernarg alias')
-    require(memory.read(kernarg, 8192) == initial_kernarg(p['case']), 'changed or prefilled original arguments')
+    require(memory.read(kernarg, 8192) == source.initial_kernarg(p['case']), 'changed or prefilled original arguments')
     require(memory.read(shader, len(code)) == code, 'original RV32 source code differs')
     physical = uint(description['codePhysical'])
     require(physical and not physical & 4095 and physical != shader and
@@ -60,9 +67,14 @@ def recipe(memory, description):
 def ready(memory, description, data, code_words, profile, *, cached=False):
     require(type(cached) is bool and description.get('schema')==(CACHED_SCHEMA if cached else SCHEMA),
             'cached and uncached global source contracts must remain distinct')
+    return _ready(memory,description,data,code_words,profile,original_source,
+                  CACHED_SCHEMA if cached else SCHEMA,cached)
+
+
+def _ready(memory, description, data, code_words, profile, source, schema, cached):
     require(profile.get('ownerProfile') == IMAGE_FLOAT_PROFILE, 'complete float owner required')
     profile_bytes(profile)
-    p, kernarg, code = recipe(memory, description)
+    p, kernarg, code = _recipe(memory, description, source, schema)
     _, args, writable, inactive, _, staged = capture(data, 0, profile)
     require(args is None and not inactive and writable == [(kernarg, kernarg + 8192)],
             'source command has foreign argument owners or writable grants')
@@ -77,10 +89,10 @@ def ready(memory, description, data, code_words, profile, *, cached=False):
         # Require the explicit production cache policy and exact RWX/A/D.
         # Preserve the original in-page offset on both source pages.
         require(translate(memory, satp, 0x80800000 + offset, 15, cache_policy=0 if cached else 2) == kernarg + offset,
-                'original uncached kernarg translation differs')
+                'original kernarg cache policy or translation differs')
     require(type(code_words) is list and
             all(type(word) is str and re.fullmatch('[0-9a-f]{8}', word) for word in code_words) and
-            code_words == ['%08x' % word for word in bound_words(p['case'])],
+            code_words == ['%08x' % word for word in source.bound_words(p['case'])],
             'captured native words differ from original RV32 source')
     for offset in range(0, len(code), 4):
         physical = executable_physical(memory, satp, staged[0xcc] + offset)

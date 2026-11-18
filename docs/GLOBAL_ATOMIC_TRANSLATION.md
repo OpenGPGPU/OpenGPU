@@ -60,7 +60,7 @@ python3 -B scripts/qualify_compute_owner.py \
   --case global-atomics-cached --timeout 7200
 ```
 
-## Global AMO translation and prior component checks
+## Source-generated cache warming and independent histories
 
 The source helper `compute_cache_alias_cases.py` retains every original AMO,
 operand and boundary, with ordinary one-element vector loads before and after
@@ -69,17 +69,65 @@ word using bounded forward polling; failure to meet the barrier cannot return
 the required AMO results. All 24 derived programs pass actual production
 shader admission. Independent decoding checks the eight original target
 operations/comparisons and both 64-attempt forward barriers; upload and guard
-checks also pass (four CPU tests).
+checks also pass. Target words remain at the original base, page-tail,
+next-page and final-word offsets. Barrier and observation words use separate
+64-byte lines; prefix counter AMOs are not target AMO write attempts.
 
-This helper is not yet connected to the original producer/controller or a
-native cache-state observer. It does not prove actual L1/L2 residency, error
-recovery or refetch. Those full-host requirements remain pending. Reproduce
-the limited source checks with:
+The distinct `opengpu-compute-cache-alias-oracle-v1` contract requires both
+initial vector observations to equal the original seed and the barrier to
+reach two. The independent history oracle retains all eight original AMOs
+and per-caller vector read/AMO ordering. It allows ordinary reads to observe
+other callers' later writes. Committed-first-write fault fixtures additionally
+require the original admitted prefix, exact surviving AMO attempt count,
+committed failed value and preserved failed/unadmitted result guards. All
+current and previous physical allocation bytes remain checked. These CPU
+histories do not execute the programs or observe RTL cache state.
+
+The original production Linux caller accepts `--cache-alias-source` only with
+`--cached-kernarg --capture-only`. All 24 derived programs pass production
+shader admission and guarded ASan/UBSan Linux captures with the exact cached
+leaves on both original argument pages. Their 960 rejection controls and eight
+native compiler/header/object/link controls pass. The unchanged UC and normal
+cached modes also pass: the complete comparison comprises 72 captures, 1848
+rejection controls and 24 native input controls, with all 242 declared software
+inputs bound. Ended capture/build outputs are removed. The 37 focused
+source/oracle/transport and legacy recovery tests and 190 executor-input and
+test-selection checks pass. Another 28 common owner, atomic-order, counter and
+original-source checks pass, including the existing Linux lifecycle controls.
+
+The live controller and native read-only cache observer remain to be connected.
+This source stage does not prove actual L1/L2 residency, fault recovery/refetch
+or cached/uncached same-GEM alias coherence. Those full-host gates remain
+required, and P10 remains open at 9/40. Reproduce the CPU checks with:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts \
-  python3 -B -m unittest test_compute_cache_alias_cases
+  python3 -B -m unittest test_compute_cache_alias_cases test_compute_cache_alias_source \
+  test_compute_global_atomic_source test_compute_cached_kernarg \
+  test_compute_global_host_inputs test_compute_global_accepted_recovery test_compute_global_recovery
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts \
+  python3 -B -m unittest test_prepare_owner_executor test_changed_test_suites
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts \
+  python3 -B -m unittest test_compute_owner test_compute_atomic_order \
+  test_compute_counter_source test_compute_global_atomic_cases
 ```
+
+Inside the same fixed compiler image and with a fresh bound-input request,
+capture and check the derived source separately from normal cached programs:
+
+```sh
+python3 -B scripts/compute_global_host_producer.py \
+  --build "$CAPTURE_BUILD" --profile-wire "$DISCOVERY_WIRE" \
+  --bound-inputs "$INPUTS_REQUEST" --case all --capture-only --sanitize \
+  --cached-kernarg --cache-alias-source
+python3 -B scripts/test_compute_global_atomic_source.py \
+  --captures "$CAPTURE_BUILD/captures" --profile-json "$PROFILE_JSON" \
+  --cached-kernarg --cache-alias-source
+python3 -B scripts/test_compute_global_host_inputs.py \
+  --native-build "$CAPTURE_BUILD" --bound-inputs "$INPUTS_REQUEST"
+```
+
+## Global AMO translation and prior component checks
 
 Global RV32 word AMOs capture the data SATP root and virtual operand before
 sharing the ordinary data page walker. They require readable and writable

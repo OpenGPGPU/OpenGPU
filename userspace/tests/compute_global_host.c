@@ -20,6 +20,7 @@
 static struct compute_host_session *session;
 static struct {void *data;uint64_t bytes;unsigned mapped,closed;} bos[16];
 static unsigned next_bo=1,submitted,retired,capture_only,timeout_seconds,expect_global_fault,cached_kernarg;
+static unsigned cache_alias_source;
 static const char *directory,*source_case;
 static struct opengpu_buffer shader,kernarg;
 static size_t program_bytes;
@@ -63,6 +64,7 @@ static void write_source(void)
  assert(!fclose(f));
  f=file("oracle.json","wx");
  fprintf(f,"{\"schema\":\"%s\",\"sourceCase\":\"%s\",\"viewBytes\":8192,\"groups\":4,\"local\":16,\"guard\":3735928559,\"context\":%u,\"codePhysical\":%llu,\"codeBytes\":%llu,\"shader\":",
+  cache_alias_source?"opengpu-compute-cache-alias-oracle-v1":
   cached_kernarg?"opengpu-compute-global-cached-atomic-oracle-v1":"opengpu-compute-global-atomic-oracle-v1",
   source_case,snap.context,(unsigned long long)snap.code_physical,(unsigned long long)snap.code_bytes);
  window(f,&shader);fputs(",\"kernarg\":",f);window(f,&kernarg);assert(fputs("}\n",f)>=0 && !fclose(f));}
@@ -114,6 +116,7 @@ int main(int argc,char **argv)
  directory=argv[1];source_case=argv[5];
  for(int i=6;i<argc;i++){
   if(!strcmp(argv[i],"--cached-kernarg")){assert(!cached_kernarg && !expect_global_fault);cached_kernarg=1;}
+  else if(!strcmp(argv[i],"--cache-alias-source")){assert(!cache_alias_source && !expect_global_fault);cache_alias_source=1;}
   else if(!strcmp(argv[i],"--capture-only")){assert(!capture_only && !expect_global_fault);capture_only=1;}
   else if(!strcmp(argv[i],"--expect-global-fault")){
    assert(!capture_only && !expect_global_fault && !cached_kernarg && ++i<argc);
@@ -125,6 +128,7 @@ int main(int argc,char **argv)
    assert(physical_base && !(physical_base&4095));
   }else assert(!"unknown original global caller option");
  }
+ assert(!cache_alias_source || (cached_kernarg && capture_only && !expect_global_fault));
  assert(!strncmp(source_case,"global-atomic-",14));
  for(const char *c=source_case;*c;c++)assert((*c>='a' && *c<='z') || *c=='-');
  timeout_seconds=compute_host_timeout_seconds();assert(timeout_seconds);

@@ -136,6 +136,8 @@ python3 -B scripts/test_compute_global_accepted_recovery.py
 python3 -B scripts/test_compute_storage_accepted_recovery.py
 python3 -B scripts/test_compute_image_accepted_recovery.py
 python3 -B scripts/test_compute_cached_kernarg.py
+python3 -B scripts/test_compute_cache_alias_cases.py
+python3 -B scripts/test_compute_cache_alias_source.py
 python3 scripts/test_compute_counter_source.py
 python3 -B scripts/test_compute_image_source.py
 python3 -B scripts/test_compute_contended_image_cases.py

@@ -53,6 +53,8 @@ COMPUTE_CHECKERS = (
     'scripts/compute_global_atomic_cases.py', 'scripts/test_compute_global_atomic_cases.py',
     'scripts/compute_global_atomic_source.py', 'scripts/test_compute_global_atomic_source.py',
     'scripts/test_compute_cached_kernarg.py',
+    'scripts/compute_cache_alias_cases.py', 'scripts/test_compute_cache_alias_cases.py',
+    'scripts/compute_cache_alias_source.py', 'scripts/test_compute_cache_alias_source.py',
     'scripts/compute_global_host_producer.py',
     'scripts/compute_global_host_inputs.py',
     'scripts/test_compute_global_host_inputs.py',

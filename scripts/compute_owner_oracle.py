@@ -202,15 +202,19 @@ def verify(initial, returned, description):
     image = mixed or description.get('schema') in ('opengpu-compute-image-oracle-v1',
                                                   'opengpu-compute-contended-image-oracle-v1')
     storage_atomic = description.get('schema') == 'opengpu-compute-storage-atomic-oracle-v1'
-    global_atomic = description.get('schema') in ('opengpu-compute-global-atomic-oracle-v1',
-                                                'opengpu-compute-global-cached-atomic-oracle-v1')
+    cache_alias = description.get('schema') == 'opengpu-compute-cache-alias-oracle-v1'
+    global_atomic = cache_alias or description.get('schema') in ('opengpu-compute-global-atomic-oracle-v1',
+                                                               'opengpu-compute-global-cached-atomic-oracle-v1')
     if counter:
         from compute_owner_cases import counter_parameters
         groups=counter_parameters(description.get('sourceCase'))['groups']
     else:groups=2 if image or storage_atomic else 4
     required_flags(description, dict(viewBytes=8192, groups=groups,
         local=16 if global_atomic else 4 if counter or image or storage_atomic else 128, guard=0xdeadbeef))
-    if global_atomic:
+    if cache_alias:
+        from compute_cache_alias_source import returned_outputs
+        outputs = returned_outputs(initial, returned, description)
+    elif global_atomic:
         from compute_global_atomic_source import returned_outputs
         outputs = returned_outputs(initial, returned, description)
     elif storage_atomic:
