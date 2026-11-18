@@ -46,6 +46,8 @@ COMPUTE_CHECKERS = (
     'scripts/compute_image_cases.py', 'scripts/compute_image_source.py', 'scripts/compute_image_reset.py',
     'scripts/compute_contended_image_cases.py', 'scripts/test_compute_contended_image_cases.py',
     'scripts/test_compute_contended_image_source.py',
+    'scripts/compute_mixed_atomic_cases.py', 'scripts/test_compute_mixed_atomic_cases.py',
+    'scripts/compute_mixed_atomic_source.py', 'scripts/test_compute_mixed_atomic_source.py',
     'scripts/compute_storage_atomic_cases.py', 'scripts/compute_storage_atomic_source.py',
     'scripts/compute_atomic_order.py', 'scripts/test_compute_atomic_order.py',
     'scripts/compute_storage_atomic_controller.py',

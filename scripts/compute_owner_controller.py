@@ -88,22 +88,25 @@ def input_digest(path):
 
 def ready_inputs(directory, case, *, owner_profile=None, permission=None, profile=None):
     from compute_counter_source import SCHEMA as COUNTER_SCHEMA, ready as counter_ready
-    from compute_owner_cases import COUNTER_CASES, IMAGE_CASES
+    from compute_owner_cases import COUNTER_CASES, IMAGE_CASES, MIXED_ATOMIC_CASES
     from compute_image_source import SCHEMA as IMAGE_SCHEMA, CONTENDED_SCHEMA, ready as image_ready
     from compute_storage_atomic_source import SCHEMA as STORAGE_SCHEMA, ready as storage_ready
     from compute_storage_atomic_cases import CASES as STORAGE_CASES
+    from compute_mixed_atomic_source import SCHEMA as MIXED_SCHEMA, ready as mixed_ready
     require(permission is None or (case==RECOVERY_CASE and permission in ('read','write')),
             'image permission denial requires the original float buffer case')
     description=strict_json(directory/'oracle.json')
     counter=description.get('schema')==COUNTER_SCHEMA
     image=description.get('schema') in (IMAGE_SCHEMA,CONTENDED_SCHEMA)
     contended=description.get('schema')==CONTENDED_SCHEMA
+    mixed=description.get('schema')==MIXED_SCHEMA
     storage=description.get('schema')==STORAGE_SCHEMA
     require(counter==(case in COUNTER_CASES), 'counter source requires distinct qualification/case binding')
-    require(image==(case in IMAGE_CASES), 'image source requires distinct qualification/case binding')
+    require((image or mixed)==(case in IMAGE_CASES), 'image source requires distinct qualification/case binding')
+    require(mixed==(case in MIXED_ATOMIC_CASES),'mixed atomic source requires its distinct alias contract')
     require(storage==(case in STORAGE_CASES), 'storage atomic source requires distinct qualification/case binding')
     inputs={}
-    if counter or image or storage:
+    if counter or image or storage or mixed:
         from owner_resource_contract import SAMPLE_PROFILE
         owner_profile=SAMPLE_PROFILE if owner_profile is None else owner_profile
         require(description.get('sourceCase')==case, 'source READY case differs from qualification')
@@ -114,11 +117,16 @@ def ready_inputs(directory, case, *, owner_profile=None, permission=None, profil
                 require(owner_profile==IMAGE_FLOAT_PROFILE, 'storage atomics require the full float owner')
                 storage_ready(before,description,data,(directory/'code.words').read_text().splitlines(),
                               strict_json(directory/'profile.json') if profile is None else profile)
+            elif mixed:
+                from owner_resource_contract import IMAGE_FLOAT_PROFILE
+                require(owner_profile==IMAGE_FLOAT_PROFILE,'mixed atomics require the full float owner')
+                mixed_ready(before,description,data,(directory/'code.words').read_text().splitlines(),
+                    strict_json(directory/'profile.json') if profile is None else profile)
             elif image:image_ready(before,description,data,owner_profile=owner_profile,permission=permission,
                 code_words=(directory/'code.words').read_text().splitlines() if contended else None)
             else:counter_ready(before,description,data,owner_profile=owner_profile)
         inputs={name:input_digest(directory/name) for name in ('union.memory','record-0.capture','oracle.json')}
-        if storage or contended:inputs['code.words']=input_digest(directory/'code.words')
+        if storage or contended or mixed:inputs['code.words']=input_digest(directory/'code.words')
     return description,inputs
 
 
@@ -316,6 +324,7 @@ def main():
     parser.add_argument('--storage-delayed-ack',action='store_true')
     parser.add_argument('--storage-recovery-matrix',action='store_true')
     parser.add_argument('--contended-image-matrix',action='store_true')
+    parser.add_argument('--mixed-atomic-matrix',action='store_true')
     mode=parser.add_mutually_exclusive_group()
     mode.add_argument('--expect-image-source-fault', action='store_true')
     mode.add_argument('--image-source-recovery', action='store_true')
@@ -323,6 +332,11 @@ def main():
     mode.add_argument('--image-reset-recovery',choices=('read','write'))
     args = parser.parse_args()
     from compute_contended_image_cases import CASES as CONTENDED_IMAGE_CASES
+    from compute_mixed_atomic_cases import CASES as MIXED_ATOMIC_CASES
+    require(not args.mixed_atomic_matrix or (args.case==MIXED_ATOMIC_CASES[0] and
+        not (args.storage_matrix or args.storage_delayed_ack or args.storage_recovery_matrix or args.contended_image_matrix or
+             args.expect_image_source_fault or args.image_source_recovery or args.image_permission_recovery or args.image_reset_recovery)),
+        'mixed atomic matrix requires its exact first source and distinct original alias owners')
     require(not args.contended_image_matrix or (args.case==CONTENDED_IMAGE_CASES[0] and
         not (args.storage_matrix or args.storage_delayed_ack or args.storage_recovery_matrix or
              args.expect_image_source_fault or args.image_source_recovery or
@@ -365,7 +379,7 @@ def main():
         require(type(qualified_profile) is str and qualified_profile in SAMPLE_FACTORY_CONTRACTS,
                 'source requires a known complete final112 executor')
         from compute_image_cases import IMAGE_FLOAT_EXCHANGE_CASES
-        if args.case in IMAGE_FLOAT_EXCHANGE_CASES or args.contended_image_matrix or (
+        if args.case in IMAGE_FLOAT_EXCHANGE_CASES or args.contended_image_matrix or args.case in MIXED_ATOMIC_CASES or (
                 args.case in CONTENDED_IMAGE_CASES and '-r32f-' in args.case):
             from owner_resource_contract import IMAGE_FLOAT_PROFILE
             require(qualified_profile==IMAGE_FLOAT_PROFILE,'R32F exchange requires its qualified float owner')
@@ -405,7 +419,7 @@ def main():
                 from compute_storage_recovery_controller import run_recovery_matrix
                 run_recovery_matrix(args,command,directory,executor,env,qualified,qualified_profile)
                 return
-            if args.storage_matrix or args.contended_image_matrix:
+            if args.storage_matrix or args.contended_image_matrix or args.mixed_atomic_matrix:
                 from compute_storage_atomic_controller import run_matrix
                 run_matrix(args,command,directory,executor,env,qualified,qualified_profile)
                 return

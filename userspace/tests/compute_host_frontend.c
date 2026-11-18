@@ -47,6 +47,7 @@ static void source_window(FILE *,unsigned,uint64_t,unsigned,unsigned);
 static FILE *file(const char *,const char *);
 #include "compute_host_storage_atomics.h"
 #include "compute_host_typed_images.h"
+#include "compute_host_mixed_atomics.h"
 static void permission_views(struct drm_opengpu_compute_image_view *views)
 {
  if(!image_permission_fault)return;
@@ -184,7 +185,8 @@ static void source_window(FILE *f,unsigned handle,uint64_t offset,unsigned bytes
   (unsigned long long)physical,(unsigned long long)allocation,(unsigned long long)offset,bytes);}
 static void write_oracle(void)
 {FILE *f=file("oracle.json","wx");assert(f);
- if(storage_case)storage_write_oracle(f);
+ if(mixed_case)mixed_write_oracle(f);
+ else if(storage_case)storage_write_oracle(f);
  else if(image_case)image_write_oracle(f);
  else if(counter_case){
   const struct drm_opengpu_compute_counter_source *v=&accepted_counter.source;
@@ -271,6 +273,7 @@ int main(int argc,char **argv)
  uniform_case=!strcmp(argv[4],"uniforms");
  storage_view_failure=storage_case && (storage_index==14 || storage_index==15);
  image_parse_case(argv[4]);
+ mixed_parse_case(argv[4]);
  const char *counter_names[]={"counter-increment","counter-read","counter-decrement",
   "counter-dynamic-increment","counter-dynamic-read","counter-dynamic-decrement",
   "counter-dynamic-all-increment","counter-dynamic-all-read","counter-dynamic-all-decrement"};
@@ -307,12 +310,13 @@ int main(int argc,char **argv)
  struct pipe_compute_state state={.ir_type=PIPE_SHADER_IR_TGSI,.prog=cs_frontend_tokens(frontend),.req_local_mem=cs_frontend_shared_bytes(frontend)};
  void *cs=p->create_compute_state(p,&state);assert(cs);p->bind_compute_state(p,cs);
  struct pipe_resource *output[4];
- for(unsigned binding=0;binding<4;binding++){output[binding]=buffer(s,8192);assert(output[binding]);
+ for(unsigned binding=0;binding<4;binding++){output[binding]=mixed_case && !binding?mixed_target_buffer(s):buffer(s,8192);assert(output[binding]);
   output_handles[binding]=pipe_opengpu_resource_handle(opengpu_resource(output[binding])->gpu);
   uint32_t *data=pipe_opengpu_resource_map(opengpu_resource(output[binding])->gpu);for(unsigned i=0;i<2048;i++)data[i]=0xdeadbeefu;}
  cs_frontend_storage(frontend,p,output);
  if(storage_case)storage_setup(frontend,output);
- if(image_case)image_setup(s,p,frontend);
+ if(mixed_case)mixed_setup(s,p,frontend,output);
+ else if(image_case)image_setup(s,p,frontend);
  if(counter_case)for(unsigned i=0;i<4;i++)counter_storage_bindings[i]=cs_frontend_storage_binding(frontend,i);
  if(counter_coexist){
   struct pipe_resource *images[4];struct pipe_image_view views[4]={0};
