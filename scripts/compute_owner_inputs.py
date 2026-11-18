@@ -12,6 +12,7 @@ from native_sample_compiler_inputs import sha256, MESA_UNITS, MESA_LIBRARIES
 from compute_owner_protocol import strict_json
 from compute_owner_cases import COUNTER_CASES, counter_parameters
 from compute_image_cases import IMAGE_CASES, parameters as image_parameters
+from compute_indirect_sources import CASE as INDIRECT_CASE
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -43,9 +44,10 @@ def guarded(request_path, builder_argv):
     dependencies=dict(bound)
     dependencies[str(paths['ntt'])]=[str(paths['ntt']),AFTER]
     argv=list(builder_argv)
-    require('--case' in argv and argv[argv.index('--case')+1] in (*COUNTER_CASES,*IMAGE_CASES) and '--sanitize' in argv,
+    require('--case' in argv and argv[argv.index('--case')+1] in (*COUNTER_CASES,*IMAGE_CASES,INDIRECT_CASE) and '--sanitize' in argv,
             'strict original counter source and sanitized producer required')
     case=argv[argv.index('--case')+1]
+    indirect=case==INDIRECT_CASE
     image_matrix='--capture-image-matrix' in argv
     counter_matrix='--capture-counter-matrix' in argv
     require(not (image_matrix and counter_matrix), 'counter/image matrices must remain distinct')
@@ -87,7 +89,8 @@ def guarded(request_path, builder_argv):
     generated={};seen=set();compiled=False
     # These are all actual host translation units, not the CPU VM fixture.
     units={str(ROOT/name) for name in (
-        'driver/tests/opengpu_compute_host_fixture.c', 'userspace/tests/compute_host_frontend.c',
+        'driver/tests/opengpu_compute_host_fixture.c',
+        'userspace/tests/compute_indirect_frontend.c' if indirect else 'userspace/tests/compute_host_frontend.c',
         'userspace/tests/compute_host_gallium_stubs.c', 'userspace/tests/cs_graphics_unused_stubs.c',
         'userspace/tests/cs_glsl_frontend.cpp', 'userspace/gallium/opengpu_context.c',
         'userspace/gallium/opengpu_screen.c', 'userspace/gallium/opengpu_cs_emit.c',
@@ -129,9 +132,10 @@ def guarded(request_path, builder_argv):
         if command[0]==str(out/'compute_host_frontend'):
             require(seen==units, 'incomplete actual host compiler closure')
             source_case=command[4] if len(command)>=5 else None
-            parameters=image_parameters(source_case) if source_case in IMAGE_CASES else counter_parameters(source_case)
+            parameters=image_parameters(source_case) if source_case in IMAGE_CASES else None if indirect else counter_parameters(source_case)
+            expected_source=out/'glsl' if indirect else out/'glsl'/parameters['source']
             require(source_case in expected_cases and source_case not in launched and
-                    command[3]==str(out/'glsl'/parameters['source']),
+                    command[3]==str(expected_source),
                     'counter producer source/recipe repeated or replaced')
             require(not matrix or command[-1]=='--capture-only', 'counter matrix attempted actual execution')
             expected_tail=(['--expect-image-source-fault'] if source_fault else
@@ -155,7 +159,7 @@ def guarded(request_path, builder_argv):
         return result
     try:
         subprocess.run=run
-        sys.argv=[str(ROOT/'scripts/test_gallium_compute_host.py'),*argv]
+        sys.argv=[str(ROOT/('scripts/test_gallium_compute_indirect_host.py' if indirect else 'scripts/test_gallium_compute_host.py')),*argv]
         runpy.run_path(sys.argv[0],run_name='__main__')
     finally:subprocess.run=actual_run
     require(compiled and launched==expected_cases,'actual producer matrix was incomplete')

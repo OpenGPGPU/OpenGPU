@@ -41,12 +41,13 @@ def main():
                        [flag for flag in flags if flag != '-DOPENGPU_COMPUTE_HOST_TEST_MAIN=1'] + san +
                        ['-I' + str(p) for p in include] + ['-c', str(ROOT / 'driver/tests/opengpu_compute_host_fixture.c'),
                         '-o', str(out / 'boundary.o')], env=env, check=True)
-        subprocess.run(shlex.split(os.environ.get('CXX', 'c++')) +
-                       ['-std=c++17', '-O1', '-Wall', '-Wextra', '-Werror', '-DOPENGPU_OWNER_IMAGE_FLOAT_STAGE=1'] + san +
-                       ['-I' + str(ROOT / 'scripts/test_stubs/native_host'), '-I' + str(ROOT / 'scripts'),
-                        str(ROOT / 'scripts/test_compute_indirect_capture.cpp'), '-o', str(out / 'canonical')],
-                       env=env, check=True)
-        subprocess.run([str(out / 'canonical'), str(out)], env=env, check=True)
+        for source, executable in (('test_compute_indirect_capture.cpp', 'canonical'),
+                                   ('test_compute_owner_phase.cpp', 'phase-canonical')):
+            subprocess.run(shlex.split(os.environ.get('CXX', 'c++')) +
+                           ['-std=c++17', '-O1', '-Wall', '-Wextra', '-Werror', '-DOPENGPU_OWNER_IMAGE_FLOAT_STAGE=1'] + san +
+                           ['-I' + str(ROOT / 'scripts/test_stubs/native_host'), '-I' + str(ROOT / 'scripts'),
+                            str(ROOT / 'scripts' / source), '-o', str(out / executable)], env=env, check=True)
+            subprocess.run([str(out / executable), str(out)], env=env, check=True)
 
 
 if __name__ == '__main__':
