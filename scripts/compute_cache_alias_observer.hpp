@@ -214,9 +214,12 @@ public:
       "committed-write error lacks an invalidated L2, real lower refetch and subsequent cache refill");
     else check(!error && !errors,"healthy cache observation acquired a write error");
   }
-  void json(std::ostream &out,uint32_t command_id,unsigned phase,uint64_t target_attempts) const {
+  void json(std::ostream &out,uint32_t command_id,unsigned phase,uint64_t target_attempts,
+      uint64_t start_cycle,uint64_t end_cycle) const {
     finish(target_attempts);
+    check(start_cycle<warm_cycle && last<end_cycle,"cache observation left its original command clock window");
     out<<"{\"schema\":\"opengpu-compute-cache-alias-observation-v1\",\"commandId\":"<<command_id
+      <<",\"startCycle\":"<<start_cycle<<",\"endCycle\":"<<end_cycle
       <<",\"phase\":"<<phase<<",\"targetLine\":"<<target<<",\"acceptedWriteError\":"<<(fault?"true":"false")
       <<",\"warmL1Mask\":3,\"warmL2\":true,\"invalidateMask\":"<<unsigned(invalidated)
       <<",\"invalidateAckMask\":"<<unsigned(acked)<<",\"targetWrites\":"<<writes

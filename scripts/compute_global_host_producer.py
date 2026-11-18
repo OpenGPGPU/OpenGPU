@@ -77,6 +77,7 @@ def main():
     parser.add_argument('--global-accepted-matrix',action='store_true')
     parser.add_argument('--cached-kernarg',action='store_true')
     parser.add_argument('--cache-alias-source',action='store_true')
+    parser.add_argument('--cache-alias-matrix',action='store_true')
     parser.add_argument('--physical-base',type=int)
     args = parser.parse_args()
     if args.case == 'all' and not args.capture_only:
@@ -86,17 +87,21 @@ def main():
     if args.global_atomic_matrix and (args.case!=CASES[0] or args.session is None):
         parser.error('global matrix requires its exact first source and private session')
     recovery=args.global_recovery_matrix or args.global_accepted_matrix
-    if args.cache_alias_source and (not args.cached_kernarg or not args.capture_only or
+    matrix=recovery or args.cache_alias_matrix
+    if args.cache_alias_matrix and (args.case!=CASES[0] or args.session is None or args.capture_only or
+            recovery or args.global_atomic_matrix or not args.cached_kernarg or not args.cache_alias_source):
+        parser.error('cache alias matrix requires its distinct cached live first-source session')
+    if args.cache_alias_source and (not args.cached_kernarg or not (args.capture_only or args.cache_alias_matrix) or
             recovery or args.global_atomic_matrix):
-        parser.error('cache alias source requires its distinct cached CPU capture; live cache proof is not wired')
-    if args.cached_kernarg and (recovery or not (args.capture_only or args.global_atomic_matrix)):
+        parser.error('cache alias source requires its distinct cached capture or complete live matrix')
+    if args.cached_kernarg and (recovery or not (args.capture_only or args.global_atomic_matrix or args.cache_alias_matrix)):
         parser.error('cached kernarg requires distinct CPU capture or the original normal global matrix')
     if recovery and (args.case!=CASES[0] or args.session is None or
             args.global_atomic_matrix or args.capture_only):
         parser.error('global recovery requires its distinct live first-source matrix')
     if args.global_recovery_matrix and args.global_accepted_matrix:
         parser.error('suppressed and accepted-write recovery matrices are distinct')
-    if args.physical_base is not None and (not args.capture_only or recovery or
+    if args.physical_base is not None and (not args.capture_only or matrix or
             args.global_atomic_matrix or not 0<args.physical_base<=0xfffff000 or args.physical_base%4096):
         parser.error('explicit capture allocator requires a page-aligned bounded CPU-only source')
     if not args.capture_only and (args.bound_inputs is None or not args.sanitize):
@@ -125,27 +130,29 @@ def main():
     source_words,source_kernarg=words,initial_kernarg
     if args.cache_alias_source:
         from compute_cache_alias_cases import words as source_words, initial_kernarg as source_kernarg
-    if recovery:
-        if args.global_accepted_matrix:
+    if matrix:
+        if args.cache_alias_matrix:
+            from compute_cache_alias_recovery import PHASES, source_launch, check_source_launch
+        elif args.global_accepted_matrix:
             from compute_global_accepted_recovery import PHASES, source_launch, check_source_launch
         else:
             from compute_global_recovery import PHASES, source_launch, check_source_launch
         selected=PHASES
     for stage in selected:
-        case=stage['case'] if recovery else stage
+        case=stage['case'] if matrix else stage
         code = source_words(case)
         program, initial = inputs / (case + '.bin'), inputs / (case + '.kernarg')
         program.write_bytes(struct.pack('<%uI' % len(code), *code))
         initial.write_bytes(source_kernarg(case))
-        directory = ((args.session.resolve()/('round-'+str(stage['index'])) if recovery else
+        directory = ((args.session.resolve()/('round-'+str(stage['index'])) if matrix else
                       args.session.resolve()/case if args.global_atomic_matrix else args.session.resolve())
                      if args.session is not None else out / 'captures' / case)
         directory.mkdir(parents=True, exist_ok=args.session is not None)
         if guard is not None:guard.unchanged()
-        label='round-'+str(stage['index']) if recovery else case
+        label='round-'+str(stage['index']) if matrix else case
         log_path=out/('actual-compute-capture-'+label+'.log')
         command=[str(binary),str(directory),str(frozen_profile),str(program),str(initial),case]
-        if recovery:
+        if matrix:
             command=source_launch(stage['index'],out,args.session.resolve(),frozen_profile)
             check_source_launch(command,stage['index'],out,args.session.resolve(),frozen_profile)
         else:

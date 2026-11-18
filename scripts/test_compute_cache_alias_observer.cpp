@@ -131,8 +131,8 @@ void histories() {
   rejects([&]{replay(same_ack,false).finish(8);});
   Tracker repeated(target,false);repeated.observe(7,{});rejects([&]{repeated.observe(7,{});});
   for(uint64_t line:{uint64_t(0),uint64_t(1),uint64_t(0x100000000)})rejects([&]{Tracker bad(line,false);});
-  replay(trace(true,3),true).json(std::cout,42,0,3);
-  replay(healthy,false).json(std::cout,42,1,8);
+  replay(trace(true,3),true).json(std::cout,42,0,3,0,100);
+  replay(healthy,false).json(std::cout,42,1,8,0,100);
 }
 
 struct HookModel {Snapshot snapshot;};

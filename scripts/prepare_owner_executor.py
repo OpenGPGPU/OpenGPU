@@ -57,6 +57,7 @@ COMPUTE_CHECKERS = (
     'scripts/compute_cache_alias_source.py', 'scripts/test_compute_cache_alias_source.py',
     'scripts/compute_cache_alias_observation.py', 'scripts/test_compute_cache_alias_observer.py',
     'scripts/test_compute_cache_alias_observer.cpp',
+    'scripts/compute_cache_alias_recovery.py', 'scripts/test_compute_cache_alias_recovery.py',
     'scripts/compute_global_host_producer.py',
     'scripts/compute_global_host_inputs.py',
     'scripts/test_compute_global_host_inputs.py',
@@ -218,6 +219,7 @@ def driver_files(kind, profile=owner.PROFILE):
                 'scripts/compute_storage_atomic_delay.hpp',
                 'scripts/compute_storage_recovery.hpp', 'scripts/compute_global_recovery.hpp',
                 'scripts/compute_cache_alias_observer.hpp',
+                'scripts/compute_cache_alias_recovery.hpp',
                 'scripts/compute_indirect_capture.hpp', 'scripts/compute_owner_phase.hpp',
                 'driver/opengpu_kernarg_va.h', *SHARED]
     if kind == BLIT_KIND:
@@ -238,11 +240,11 @@ def driver_files(kind, profile=owner.PROFILE):
         return [f'scripts/{wrapper}_owner_driver.cpp', 'scripts/compute_owner_driver.cpp',
                 *SHARED, 'scripts/compute_owner_capture.hpp', 'scripts/compute_owner_reset.hpp',
                 'scripts/compute_storage_atomic_delay.hpp', 'scripts/compute_storage_recovery.hpp', 'scripts/compute_global_recovery.hpp',
-                'scripts/compute_cache_alias_observer.hpp']
+                'scripts/compute_cache_alias_observer.hpp', 'scripts/compute_cache_alias_recovery.hpp']
     return ([f'scripts/{kind}_owner_driver.cpp', *SHARED] +
             (['scripts/compute_owner_capture.hpp', 'scripts/compute_owner_reset.hpp',
               'scripts/compute_storage_atomic_delay.hpp', 'scripts/compute_storage_recovery.hpp', 'scripts/compute_global_recovery.hpp',
-              'scripts/compute_cache_alias_observer.hpp'] if kind == 'compute' else []))
+              'scripts/compute_cache_alias_observer.hpp', 'scripts/compute_cache_alias_recovery.hpp'] if kind == 'compute' else []))
 
 
 def sample_fixture_macros(path, source):

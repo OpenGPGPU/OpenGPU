@@ -83,8 +83,9 @@ committed failed value and preserved failed/unadmitted result guards. All
 current and previous physical allocation bytes remain checked. These CPU
 histories do not execute the programs or observe RTL cache state.
 
-The original production Linux caller accepts `--cache-alias-source` only with
-`--cached-kernarg --capture-only`. All 24 derived programs pass production
+The original production Linux caller accepts `--cache-alias-source` with
+`--cached-kernarg` and either `--capture-only` or the distinct
+`--cache-alias-live` mode described below. All 24 derived programs pass production
 shader admission and guarded ASan/UBSan Linux captures with the exact cached
 leaves on both original argument pages. Their 960 rejection controls and eight
 native compiler/header/object/link controls pass. The unchanged UC and normal
@@ -95,8 +96,8 @@ source/oracle/transport and legacy recovery tests and 190 executor-input and
 test-selection checks pass. Another 28 common owner, atomic-order, counter and
 original-source checks pass, including the existing Linux lifecycle controls.
 
-The live controller and native read-only cache observer remain to be connected.
-This source stage does not prove actual L1/L2 residency, fault recovery/refetch
+The live controller now uses the native read-only cache observer through the
+distinct recovery matrix below. CPU source checks do not prove L1/L2 residency, fault recovery/refetch
 or cached/uncached same-GEM alias coherence. Those full-host gates remain
 required, and P10 remains open at 9/40. Reproduce the CPU checks with:
 
@@ -189,6 +190,82 @@ python3 -B scripts/prepare_owner_executor.py --stage probe --backend verilator \
 
 The MMIO probe is discovery validation; source warming and coherence still
 require their subsequent original-program execution and independent byte gates.
+
+## Cache-warm committed-write recovery implementation
+
+The distinct `global-atomics-cache-alias` qualifier connects the 24 derived
+ordinary-read/AMO programs to 48 committed-first-write-error and healthy phases.
+The native runner retains one complete assertion-enabled float DUT, RAM,
+initial reset and original command ID. Each original Linux source uses its
+assigned disjoint physical namespace. Neither the ordinary cached matrix nor
+the uncached matrix can select this source schema or its receipts.
+
+Each round binds the physical target line to the independently checked
+original argument allocation and source offset. The native runner observes
+actual settled cache state and invalidation/AXI handshakes throughout execution
+and retirement. It publishes its cache observation before the retired receipt;
+the controller requires both the strict observation and independent
+ordinary-read/AMO histories plus all current/prior RAM bytes before replying to
+the original caller or authorizing cleanup. A failed cache proof or byte check
+prevents cleanup and the next owner. Round start/end clocks bind the proof to
+the same native command and monotonically advancing simulation.
+
+Failed phases commit the first target write before returning its B error.
+The observer requires both actual L1s and L2 to be warmed before invalidation,
+both L1 invalidation acknowledgements before the first target write, then
+actual L2 invalidation, a paired 64-byte lower refetch and subsequent cache
+refill. Surviving callers' attempts must equal the native error receipt; the
+healthy phase retains all eight original target operations. Real failed
+fences/userspace EIO, PTE/context/MMU cleanup and external drain remain required.
+
+All 279 focused source, observer, controller, qualifier and input-binding checks
+pass. Guarded original Linux builds pass 72 UC/cached/derived CPU captures,
+1848 source rejection controls and 24 native compiler-input mutation controls.
+Two additional original C live-mode captures reach READY and remain blocked
+without DUT receipts; 80 source negatives and eight mixed-option rejections
+pass. These are CPU admission/transport controls, not shader execution.
+
+The complete original compute driver compiles and links against the unchanged
+full float model with all 249 software inputs and three generated cache headers
+bound. Its full compiler dependency closure contains 1051 files; actual MMIO
+discovery passes. These results validate native integration, not the 48-phase
+shader execution. The complete cache-warm matrix, the original 24-program
+normal cached matrix and actual UC/cached same-GEM alias coherence still await
+their separate full-host runs. The current source performs AMOs through cached
+kernargs; it does not implement the UC alias gate. P10 remains open at 9/40.
+
+Reproduce the source/controller and binding checks with:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts python3 -B -m unittest \
+  test_compute_cache_alias_recovery test_compute_cache_alias_observer \
+  test_compute_cache_alias_source test_compute_global_accepted_recovery \
+  test_compute_global_recovery test_qualify_compute_owner \
+  test_prepare_owner_executor test_prepare_owner_verilator_executor \
+  test_changed_test_suites test_compute_global_host_inputs
+```
+
+Inside the fixed compiler image, after the guarded alias CPU capture build
+above, exercise the original C caller's distinct live flags and refusal to
+advance without actual DUT receipts:
+
+```sh
+python3 -B scripts/test_compute_cache_alias_recovery.py \
+  --native-source-build "$CAPTURE_BUILD" --profile-wire "$DISCOVERY_WIRE" \
+  --profile-json "$PROFILE_JSON" --bound-inputs "$INPUTS_REQUEST"
+```
+
+For the pending complete execution, rebuild the source-qualified original
+compute executor against its matching full float model, then run:
+
+```sh
+python3 -B scripts/qualify_compute_owner.py \
+  --executor "$COMPUTE_EXECUTOR" --executor-qualification "$COMPUTE_QUALIFICATION" \
+  --executor-checker scripts/prepare_owner_executor.py \
+  --executor-checker-python "$QUALIFICATION_PYTHON" \
+  --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72 \
+  --case global-atomics-cache-alias --timeout 14400
+```
 
 ## Global AMO translation and prior component checks
 

@@ -6,6 +6,7 @@
 #include "compute_storage_atomic_delay.hpp"
 #include "compute_cache_alias_observer.hpp"
 #include <cstdlib>
+#include <functional>
 
 // The bound Verilator builder supplies these exact generated headers. Other
 // backends keep the ordinary executor and cannot claim internal cache proof.
@@ -230,7 +231,8 @@ template<class Sim>
 void active_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
     const ComputeCapture &capture,const std::filesystem::path &output,const std::filesystem::path &session,
     std::chrono::milliseconds timeout=compute_response_timeout(),ImageFailure failure=ImageFailure::none,
-    uint64_t prior_read_faults=0,const Traffic *prior_traffic=nullptr,StorageAckDelay *ack_delay=nullptr) {
+    uint64_t prior_read_faults=0,const Traffic *prior_traffic=nullptr,StorageAckDelay *ack_delay=nullptr,
+    const std::function<void(const ComputeResult&)> &observe_retired={}) {
   PtePages pte;capture.observe_contexts(memory,pte);
   require(!ack_delay || failure==ImageFailure::none,"failed compute cannot use a successful atomic ACK plan");
   auto held=hold_compute(sim,agent,bus,memory,capture,failure,prior_read_faults,prior_traffic,ack_delay);
@@ -243,6 +245,7 @@ void active_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
   const auto retirement=ComputeRetirement::read((session/"record-0.retire").string());
   const auto result=retire_compute(sim,agent,bus,memory,held,retirement);
   memory.write((output/"record-0.memory").string());
+  if(observe_retired)observe_retired(result);
   atomic_json(session/"record-0.retired.json",[&](auto &out){compute_json(out,result,capture.command_id,true,failed);});
   // The producer must independently verify all returned bytes before it emits
   // cleanup.begin. The executor then observes real owner and context teardown.
@@ -327,12 +330,16 @@ inline void active_image_recovery(int argc,char **argv,const std::filesystem::pa
 
 #include "compute_storage_recovery.hpp"
 #include "compute_global_recovery.hpp"
+#include "compute_cache_alias_recovery.hpp"
 
 #ifndef OPENGPU_COMPUTE_OWNER_LIBRARY
 int main(int argc,char **argv) {
   try {
     using namespace compute_owner;
     const auto response_timeout=compute_response_timeout();
+    if(argc==4 && std::string(argv[1])=="--active-cache-alias-recovery-matrix") {
+      active_cache_alias_recovery_matrix(argc,argv,argv[2],argv[3],response_timeout);return 0;
+    }
     if(argc==4 && std::string(argv[1])=="--active-storage-recovery-matrix") {
       active_storage_recovery_matrix(argc,argv,argv[2],argv[3],response_timeout);return 0;
     }

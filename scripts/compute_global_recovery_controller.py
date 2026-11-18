@@ -41,7 +41,9 @@ def run_recovery_matrix(args, command, directory, executor, env, qualified, prof
                 local=directory/('round-'+str(index))
                 for name in ('READY','union.memory','record-0.capture','oracle.json','code.words'):
                     wait_file(local/name,bridge,running,remaining())
-                description,frozen=ready_inputs(local,stage['case'],owner_profile=profile_name,profile=profile)
+                cache_alias=getattr(contract,'CACHE_ALIAS',False)
+                description,frozen=ready_inputs(local,stage['case'],owner_profile=profile_name,profile=profile,
+                    **(dict(cache_alias=True) if cache_alias else {}))
                 with SparseMemory(local/'union.memory') as upload:
                     require(upload.ranges and upload.ranges[0][0]==stage['base'] and
                         all(stage['base']<=a<b<=stage['base']+contract.STEP for a,b,_ in upload.ranges),
@@ -56,6 +58,9 @@ def run_recovery_matrix(args, command, directory, executor, env, qualified, prof
                         baseline=local/'global-before.memory'
                     else:
                         baseline=local/'union.memory'
+                if cache_alias:
+                    atomic(local/'record-0.cache-target',contract.target_plan(description,index))
+                    frozen['record-0.cache-target']=input_digest(local/'record-0.cache-target')
                 if mode!='healthy':
                     atomic(local/'record-0.fault-plan',contract.fault_plan(description,mode))
                     frozen['record-0.fault-plan']=input_digest(local/'record-0.fault-plan')
@@ -90,6 +95,11 @@ def run_recovery_matrix(args, command, directory, executor, env, qualified, prof
                     else:
                         old_words+=contract.verify_fault(before,after,description,mode,
                             target_attempts=retired['faultTargetWriteAttempts'])
+                if cache_alias:
+                    wait_file(local/'record-0.cache-observation.json',bridge,running,remaining())
+                    observation=contract.check_cache(strict_json(local/'record-0.cache-observation.json'),
+                        index,description,held,previous)
+                    frozen['record-0.cache-observation.json']=input_digest(local/'record-0.cache-observation.json')
                 atomic(local/'record-0.retired.response',response)
                 wait_file(local/'cleanup_wait',bridge,running,remaining())
                 require(bridge.poll() is None and running.poll() is None,
@@ -99,6 +109,7 @@ def run_recovery_matrix(args, command, directory, executor, env, qualified, prof
                 checked_cleanup(strict_json(local/'cleanup.json'))
                 wait_file(local/'executor.done',bridge,running,remaining())
                 done=contract.check_round(strict_json(local/'executor.done'),index,held,previous)
+                if cache_alias:contract.check_cache(observation,index,description,held,previous,done)
                 cleaned=destination/'record-0.cleaned.memory'
                 with SparseMemory(destination/'record-0.memory') as before,SparseMemory(cleaned) as after:
                     verify_cleaned_memory(before,after,tables)

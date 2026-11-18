@@ -16,6 +16,7 @@ def checked_observation(record,*,command_id,phase,target_line,accepted_error,tar
     require(target_attempts in (3,5,7) if accepted_error else target_attempts==8,
             'foreign original target AMO count')
     expected=dict(schema=SCHEMA,commandId=uint(command_id),phase=uint(phase),targetLine=target_line,
+        startCycle=start_cycle,endCycle=end_cycle,
         acceptedWriteError=accepted_error,warmL1Mask=3,warmL2=True,invalidateMask=3,invalidateAckMask=3,
         targetWrites=target_attempts,targetWriteResponses=target_attempts,targetWriteErrors=int(accepted_error),
         refetchedL2=True)
