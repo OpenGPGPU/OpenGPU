@@ -1,5 +1,6 @@
 """Committed first-AMO write with a failed B response, then healthy reuse."""
 import struct
+import sys
 from compute_atomic_order import linearization, result
 from compute_global_atomic_cases import CASES, events, predecessors, OUTPUT_OFFSET
 from compute_global_atomic_source import recipe
@@ -16,6 +17,7 @@ COUNTERS=('physicalReadFaults','injectedReadFaults','physicalWriteFaults','injec
 PLAN_NAME='global-accepted-recovery.plan'
 RUNNER_FLAG='--active-global-accepted-recovery-matrix'
 LABEL='global accepted-write recovery'
+INACTIVE_CONTEXTS=0
 
 
 def phase(index):
@@ -62,14 +64,16 @@ def fault_receipt(record,index,previous=None):
     return actual
 
 
-def check_round(record,index,held,previous=None):
-    stage=phase(index)
-    expected=dict(schema=ROUND_SCHEMA,phase=index,mode=stage['mode'],commandId=uint(held['commandId']),
+def check_round(record,index,held,previous=None,*,protocol=None):
+    contract=sys.modules[__name__] if protocol is None else protocol
+    stage=contract.phase(index)
+    expected=dict(schema=contract.ROUND_SCHEMA,phase=index,mode=stage['mode'],commandId=uint(held['commandId']),
         resetCount=1,ramReplaced=False,externalDrained=True,sourceQualificationRequired=True,independentBytesRequired=True)
     required_flags(record,expected)
-    require(set(record)==set(expected)|set(COUNTERS)|{'startCycle','endCycle'},'foreign accepted-write round fields')
+    require(set(record)==set(expected)|set(contract.COUNTERS)|{'startCycle','endCycle'},'foreign accepted-write round fields')
     require((index==0)==(previous is None),'accepted-write phase lacks its original predecessor')
-    require(history(record)==(history(previous) if stage['mode']=='healthy' else fault_receipt(held,index,previous)),
+    require(contract.history(record)==(contract.history(previous) if stage['mode']=='healthy' else
+        contract.fault_receipt(held,index,previous)),
         'accepted-write history changed through retirement or cleanup')
     start,end=(uint(record[key],64) for key in ('startCycle','endCycle'))
     require(end>start,'accepted-write phase lost its execution clock')

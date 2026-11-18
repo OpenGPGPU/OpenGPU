@@ -3,16 +3,17 @@
 // shared. Only the controlled physical response errors and lifetime are new.
 namespace compute_owner {
 inline void active_storage_recovery_matrix(int argc,char **argv,const std::filesystem::path &output,
-    const std::filesystem::path &session,std::chrono::milliseconds timeout) {
-  constexpr unsigned rounds=60;
+    const std::filesystem::path &session,std::chrono::milliseconds timeout,bool accepted=false) {
+  const unsigned rounds=accepted?30:60;
   constexpr uint64_t base=0x01000000,step=0x01000000;
   require(compute_owner_factory()==OwnerFactory::image_float_stage,
     "storage recovery requires the complete float factory");
   require(std::filesystem::is_directory(session) && !std::filesystem::is_symlink(session) &&
     !std::filesystem::exists(output),"invalid storage recovery session/output");
-  wait_input(session/"storage-recovery.plan",session,timeout);
-  std::ifstream plan(session/"storage-recovery.plan",std::ios::binary);magic(plan,"OGCSRM01");
-  require(read_le(plan,4)==rounds && read_le(plan,4)==4 && read_le(plan,8)==base &&
+  const auto plan_path=session/(accepted?"storage-accepted-recovery.plan":"storage-recovery.plan");
+  wait_input(plan_path,session,timeout);
+  std::ifstream plan(plan_path,std::ios::binary);magic(plan,accepted?"OGCSAM01":"OGCSRM01");
+  require(read_le(plan,4)==rounds && read_le(plan,4)==(accepted?2u:4u) && read_le(plan,8)==base &&
     read_le(plan,8)==step && plan.peek()==EOF,"foreign storage recovery matrix");
   const auto first=session/"round-0";authorize_recovery_round(first,0,timeout);
   wait_input(first/"union.memory",first,timeout);
@@ -43,21 +44,23 @@ inline void active_storage_recovery_matrix(int argc,char **argv,const std::files
     const auto destination=output/("round-"+std::to_string(index));
     require(std::filesystem::create_directory(destination),"storage recovery output exists");
     const auto start=bus.cycles;
-    const unsigned kind=index%4==0?1:index%4==2?2:0;
+    const unsigned kind=accepted?(index%2==0?3:0):(index%4==0?1:index%4==2?2:0);
     if(kind) {
       wait_input(local/"record-0.fault-plan",local,timeout);
-      std::ifstream fault(local/"record-0.fault-plan",std::ios::binary);magic(fault,"OGCSF001");
+      std::ifstream fault(local/"record-0.fault-plan",std::ios::binary);magic(fault,accepted?"OGCSF002":"OGCSF001");
       const auto begin=read_le(fault,8),end=read_le(fault,8);
       require(read_le(fault,4)==kind && fault.peek()==EOF && begin && begin<Memory::limit &&
         !(begin&63) && end==begin+64,"foreign storage physical fault plan");
       if(kind==1)agent.arm_read_faults(begin,end);
+      else if(kind==3)agent.arm_accepted_write_error(begin,end);
       else agent.arm_first_write_fault(begin,end);
     }
     active_compute(sim,agent,bus,memory,capture,destination,local,timeout,
-      kind==1?ImageFailure::source_read:kind==2?ImageFailure::first_write:ImageFailure::none,
+      kind==1?ImageFailure::source_read:kind==2?ImageFailure::first_write:
+        kind==3?ImageFailure::storage_accepted_write:ImageFailure::none,
       prior_reads,index?&previous:nullptr);
     if(kind==1)agent.disarm_read_faults();
-    if(kind==2)agent.disarm_first_write_fault();
+    if(kind>=2)agent.disarm_first_write_fault();
     const auto completed=agent.traffic;
     require(bus.read(GPU_REG_UCMD_STATUS)==GPU_UCMD_STATUS_READY &&
       bus.read(GPU_REG_IRQ)==GPU_IRQ_ENABLE && !sim.model->io_m_irq && agent.drained() &&
@@ -66,17 +69,20 @@ inline void active_storage_recovery_matrix(int argc,char **argv,const std::files
     traffic_unchanged(completed,agent.traffic);
     const auto reads=agent.injected_read_faults(),writes=agent.injected_write_faults();
     require(reads==agent.traffic.read_faults && writes==agent.traffic.write_faults &&
-      (kind==1?reads>prior_reads:reads==prior_reads) && writes==prior_writes+(kind==2?1:0),
+      (kind==1?reads>prior_reads:reads==prior_reads) && writes==prior_writes+(kind>=2?1:0) &&
+      agent.accepted_write_faults()==(accepted?writes:0),
       "storage recovery lost prior error history or incurred an unplanned response fault");
     memory.write((destination/"record-0.cleaned.memory").string());
     atomic_json(local/"executor.done",[&](auto &out) {
-      out<<"{\"schema\":\"opengpu-compute-storage-recovery-round-v1\",\"phase\":"<<index
-        <<",\"mode\":\""<<(kind==1?"read":kind==2?"write":"healthy")<<"\",\"commandId\":"<<command_id
+      out<<"{\"schema\":\""<<(accepted?"opengpu-compute-storage-accepted-recovery-round-v1":
+          "opengpu-compute-storage-recovery-round-v1")<<"\",\"phase\":"<<index
+        <<",\"mode\":\""<<(kind==1?"read":kind==2?"write":kind==3?"accepted-write":"healthy")<<"\",\"commandId\":"<<command_id
         <<",\"resetCount\":1,\"ramReplaced\":false,\"externalDrained\":true"
           ",\"sourceQualificationRequired\":true,\"independentBytesRequired\":true"
         <<",\"physicalReadFaults\":"<<agent.traffic.read_faults<<",\"injectedReadFaults\":"<<reads
-        <<",\"physicalWriteFaults\":"<<agent.traffic.write_faults<<",\"injectedWriteFaults\":"<<writes
-        <<",\"startCycle\":"<<start<<",\"endCycle\":"<<bus.cycles<<"}\n";
+        <<",\"physicalWriteFaults\":"<<agent.traffic.write_faults<<",\"injectedWriteFaults\":"<<writes;
+      if(accepted)out<<",\"acceptedWriteFaults\":"<<agent.accepted_write_faults();
+      out<<",\"startCycle\":"<<start<<",\"endCycle\":"<<bus.cycles<<"}\n";
     });
     prior_reads=reads;prior_writes=writes;previous=agent.traffic;
   }

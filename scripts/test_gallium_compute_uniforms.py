@@ -52,6 +52,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
                         help='reuse one guarded producer build for every original contending SSBO atomic source')
         ap.add_argument('--storage-recovery-matrix',action='store_true',
                         help='one original producer build for all read/write-fault and healthy reuse phases')
+        ap.add_argument('--storage-accepted-matrix',action='store_true',
+                        help='one original producer build for committed-write errors and healthy reuse')
         ap.add_argument('--contended-image-matrix',action='store_true',
                         help='one guarded producer build for all original same-texel atomic image sources')
         ap.add_argument('--mixed-atomic-matrix',action='store_true',
@@ -72,6 +74,14 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     ap.add_argument("--mesa-shared-ntt", type=Path,
                     help="exact privately staged shared NTT source (shared fixtures only)")
     args = ap.parse_args()
+    if host_execution and args.storage_accepted_matrix:
+        if (args.case!=STORAGE_ATOMIC_CASES[0] or args.capture_only or args.capture_counter_matrix or
+            args.capture_image_matrix or args.storage_matrix or args.storage_recovery_matrix or
+            args.contended_image_matrix or args.mixed_atomic_matrix or continuous_compute or
+            args.expect_image_source_fault or args.expect_image_permission_fault or args.expect_image_reset or
+            args.physical_base is not None):
+            ap.error('--storage-accepted-matrix requires its distinct original live storage sequence')
+        from compute_storage_accepted_recovery import PHASES as STORAGE_RECOVERY_PHASES
     if host_execution and args.mixed_atomic_matrix and (
             args.case!=MIXED_ATOMIC_CASES[0] or args.capture_counter_matrix or args.capture_image_matrix or
             args.storage_matrix or args.storage_recovery_matrix or args.contended_image_matrix or continuous_compute or
@@ -509,14 +519,15 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         cases=(MIXED_ATOMIC_CASES if args.mixed_atomic_matrix else CONTENDED_IMAGE_CASES if args.contended_image_matrix else STORAGE_ATOMIC_CASES if args.storage_matrix else
                COUNTER_CASES if args.capture_counter_matrix else LEGACY_IMAGE_CASES if args.capture_image_matrix else (args.case,))
         entries=([(stage['case'],args.session/('round-'+str(stage['index'])),stage)
-                  for stage in STORAGE_RECOVERY_PHASES] if args.storage_recovery_matrix else
+                  for stage in STORAGE_RECOVERY_PHASES] if args.storage_recovery_matrix or args.storage_accepted_matrix else
                  [(case,args.session/case if matrix else args.session,None) for case in cases])
         for case,session,stage in entries:
             if matrix or stage is not None:session.mkdir(exist_ok=False)
             source=('' if continuous_compute else 'full128.comp' if case=='uniforms' else 'full.comp' if case=='shared' else
                     counter_parameters(case)['source'] if case in COUNTER_CASES else
                     storage_parameters(case)['source'] if case in STORAGE_ATOMIC_CASES else case+'.comp')
-            tail=((['--expect-storage-fault',stage['mode']] if stage['mode']!='healthy' else [])+
+            tail=((['--expect-storage-fault','write' if stage['mode']=='accepted-write' else stage['mode']]
+                   if stage['mode']!='healthy' else [])+
                   ['--physical-base',str(stage['base'])] if stage is not None else
                 (['--capture-only'] if args.capture_only else ['--expect-image-source-fault'] if args.expect_image_source_fault else
                  ['--expect-image-permission-fault',args.expect_image_permission_fault] if args.expect_image_permission_fault else

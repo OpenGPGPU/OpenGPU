@@ -32,7 +32,8 @@ struct ComputeResult {
   bool accepted_history=false;
   bool held_pin=false,retired_pin=false,drained=false;
 };
-enum class ImageFailure { none, source_read, permission, first_write, global_first_write, global_accepted_write };
+enum class ImageFailure { none, source_read, permission, first_write, global_first_write, global_accepted_write,
+  storage_accepted_write };
 struct ComputeHeld {
   ComputeResult result;
   Memory initial;
@@ -48,7 +49,7 @@ ComputeHeld hold_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory
     StorageAckDelay *ack_delay=nullptr) {
   require(failure==ImageFailure::none || failure==ImageFailure::source_read ||
     failure==ImageFailure::permission || failure==ImageFailure::first_write || failure==ImageFailure::global_first_write ||
-    failure==ImageFailure::global_accepted_write,
+    failure==ImageFailure::global_accepted_write || failure==ImageFailure::storage_accepted_write,
     "unknown compute failure mode");
   verify_compute_upload(sim,agent,bus,memory,capture,prior_read_faults,prior_traffic);
   ComputeHeld held;held.initial=memory;held.start=agent.traffic;held.start_cycles=bus.cycles;held.failure=failure;
@@ -91,7 +92,8 @@ ComputeHeld hold_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory
     "held compute completion or telemetry changed");
   traffic_unchanged(held.completed,agent.traffic);
   const bool global_failure=failure==ImageFailure::global_first_write || failure==ImageFailure::global_accepted_write;
-  const bool write_failure=failure==ImageFailure::first_write || global_failure;
+  const bool accepted_failure=failure==ImageFailure::global_accepted_write || failure==ImageFailure::storage_accepted_write;
+  const bool write_failure=failure==ImageFailure::first_write || global_failure || accepted_failure;
   if(write_failure) {
     unsigned expected_attempts=5;
     if(global_failure) {
@@ -133,9 +135,9 @@ ComputeHeld hold_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory
     // Another workgroup may commit. Independent source semantics constrain
     // its exact old values, final atomic word and every unwritten byte.
     verify_readonly(held.initial,memory,capture.writable);
-    if(failure==ImageFailure::global_accepted_write)
+    if(accepted_failure)
       require(agent.accepted_write_faults()==agent.traffic.write_faults,
-        "global accepted-write error did not commit its actual lower write");
+        "accepted-write error did not commit its actual lower write");
   }else if(failure!=ImageFailure::none) {
     if(failure==ImageFailure::source_read)
       require(agent.injected_read_faults()>prior_read_faults && agent.traffic.read_faults==agent.injected_read_faults(),
@@ -158,7 +160,7 @@ ComputeHeld hold_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory
   r.physical_read_faults=agent.traffic.read_faults;r.injected_read_faults=agent.injected_read_faults();
   r.physical_write_faults=agent.traffic.write_faults;r.injected_write_faults=agent.injected_write_faults();
   r.fault_target_write_attempts=write_failure?agent.first_write_attempts():0;
-  r.accepted_history=failure==ImageFailure::global_accepted_write;
+  r.accepted_history=accepted_failure;
   r.accepted_write_faults=agent.accepted_write_faults();
   if(ack_delay)ack_delay->finish(agent);
   held.initial=memory;return held;
@@ -324,6 +326,9 @@ int main(int argc,char **argv) {
     const auto response_timeout=compute_response_timeout();
     if(argc==4 && std::string(argv[1])=="--active-storage-recovery-matrix") {
       active_storage_recovery_matrix(argc,argv,argv[2],argv[3],response_timeout);return 0;
+    }
+    if(argc==4 && std::string(argv[1])=="--active-storage-accepted-recovery-matrix") {
+      active_storage_recovery_matrix(argc,argv,argv[2],argv[3],response_timeout,true);return 0;
     }
     if(argc==4 && std::string(argv[1])=="--active-global-recovery-matrix") {
       active_global_recovery_matrix(argc,argv,argv[2],argv[3],response_timeout);return 0;

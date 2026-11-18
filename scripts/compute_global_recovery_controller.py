@@ -13,6 +13,7 @@ from compute_global_recovery import (PHASES, STEP, matrix_plan, fault_plan,
 PLAN_NAME='global-recovery.plan'
 RUNNER_FLAG='--active-global-recovery-matrix'
 LABEL='global recovery'
+INACTIVE_CONTEXTS=0
 
 
 def run_recovery_matrix(args, command, directory, executor, env, qualified, profile_name, *, protocol=None):
@@ -45,7 +46,8 @@ def run_recovery_matrix(args, command, directory, executor, env, qualified, prof
                     require(upload.ranges and upload.ranges[0][0]==stage['base'] and
                         all(stage['base']<=a<b<=stage['base']+contract.STEP for a,b,_ in upload.ranges),
                         'original global allocator namespace differs or overlaps the next phase')
-                    tables=captured_page_tables(upload,(local/'record-0.capture').read_bytes(),inactive_contexts=0)
+                    tables=captured_page_tables(upload,(local/'record-0.capture').read_bytes(),
+                        inactive_contexts=contract.INACTIVE_CONTEXTS)
                     if index:
                         require(input_digest(previous_clean)==previous_digest,'previous cleaned RAM changed')
                         with SparseMemory(previous_clean) as old:
@@ -123,7 +125,7 @@ def run_recovery_matrix(args, command, directory, executor, env, qualified, prof
                 atomic(local/'error',b'global recovery failed; no further cleanup authorization\n')
             except (ValueError,OSError):
                 pass
-        print('global recovery failed at %r: %s'%(stage,error),flush=True)
+        print('%s failed at %r: %s'%(contract.LABEL,stage,error),flush=True)
         for name in ('execution.log','bridge.log'):
             path=directory/name
             if path.is_file():

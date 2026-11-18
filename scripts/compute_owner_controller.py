@@ -331,6 +331,7 @@ def main():
     parser.add_argument('--storage-matrix',action='store_true')
     parser.add_argument('--storage-delayed-ack',action='store_true')
     parser.add_argument('--storage-recovery-matrix',action='store_true')
+    parser.add_argument('--storage-accepted-matrix',action='store_true')
     parser.add_argument('--contended-image-matrix',action='store_true')
     parser.add_argument('--mixed-atomic-matrix',action='store_true')
     parser.add_argument('--global-atomic-matrix',action='store_true')
@@ -344,6 +345,12 @@ def main():
     mode.add_argument('--image-reset-recovery',choices=('read','write'))
     args = parser.parse_args()
     require(not args.global_delayed_ack or args.global_atomic_matrix,'global ACK requires its exact complete source matrix')
+    require(not args.storage_accepted_matrix or (args.case==STORAGE_ATOMIC_CASES[0] and not any((
+        args.storage_matrix,args.storage_delayed_ack,args.storage_recovery_matrix,args.contended_image_matrix,
+        args.mixed_atomic_matrix,args.global_atomic_matrix,args.global_delayed_ack,args.global_recovery_matrix,
+        args.global_accepted_matrix,args.expect_image_source_fault,args.image_source_recovery,
+        args.image_permission_recovery,args.image_reset_recovery))),
+        'storage accepted-write recovery requires its distinct original physical-fault matrix')
     require(not args.global_accepted_matrix or (args.case==GLOBAL_ATOMIC_CASES[0] and not any((
         args.global_atomic_matrix,args.global_recovery_matrix,args.global_delayed_ack,args.storage_matrix,
         args.storage_delayed_ack,args.storage_recovery_matrix,args.contended_image_matrix,args.mixed_atomic_matrix,
@@ -452,6 +459,11 @@ def main():
                     run_recovery_matrix(args,command,directory,executor,env,qualified,qualified_profile,protocol=protocol)
                 else:
                     run_recovery_matrix(args,command,directory,executor,env,qualified,qualified_profile)
+                return
+            if args.storage_accepted_matrix:
+                from compute_global_recovery_controller import run_recovery_matrix
+                import compute_storage_accepted_recovery as protocol
+                run_recovery_matrix(args,command,directory,executor,env,qualified,qualified_profile,protocol=protocol)
                 return
             if args.storage_recovery_matrix:
                 from compute_storage_recovery_controller import run_recovery_matrix
