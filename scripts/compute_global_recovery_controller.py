@@ -24,6 +24,7 @@ def run_recovery_matrix(args, command, directory, executor, env, qualified, prof
         ('global-recovery.plan','profile.json','profile.bin')})]
     bridge=running=None;local=None;stage=None
     previous=previous_clean=previous_digest=None
+    old_words=0
     try:
         with (directory/'bridge.log').open('w') as log,(directory/'execution.log').open('w') as output:
             bridge=subprocess.Popen([x.replace('{ipc}',str(directory)) for x in command],
@@ -69,13 +70,17 @@ def run_recovery_matrix(args, command, directory, executor, env, qualified, prof
                 if mode!='healthy':
                     require(fault_receipt(retired,index,previous)==fault_receipt(held,index,previous),
                             'physical error history changed during original retirement')
+                    require(retired['faultTargetWriteAttempts']==held['faultTargetWriteAttempts'],
+                            'target write attempts changed during original retirement')
                 for path,identities in inputs:
                     unchanged_inputs(path,identities)
                 with SparseMemory(baseline) as before,SparseMemory(destination/'record-0.memory') as after:
                     if mode=='healthy':
                         verify(before,after,description)
+                        old_words+=8
                     else:
-                        verify_fault(before,after,description,mode)
+                        old_words+=verify_fault(before,after,description,mode,
+                            target_attempts=retired['faultTargetWriteAttempts'])
                 atomic(local/'record-0.retired.response',response)
                 wait_file(local/'cleanup_wait',bridge,running,remaining())
                 require(bridge.poll() is None and running.poll() is None,
@@ -102,9 +107,9 @@ def run_recovery_matrix(args, command, directory, executor, env, qualified, prof
             qualified(env,output)
             for path,identities in inputs:
                 unchanged_inputs(path,identities)
-        print('all ninety-six original global recovery phases PASS; one DUT/RAM/reset, 528 old words, '
+        print('all ninety-six original global recovery phases PASS; one DUT/RAM/reset, %d old words, '
               'readFaults=%d writeFaults=%d, original source/model postchecks'%(
-                  previous['physicalReadFaults'],previous['physicalWriteFaults']),flush=True)
+                   old_words,previous['physicalReadFaults'],previous['physicalWriteFaults']),flush=True)
     except BaseException as error:
         if local is not None:
             try:

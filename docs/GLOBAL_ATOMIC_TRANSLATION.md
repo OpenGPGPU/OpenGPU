@@ -299,19 +299,25 @@ existing image/storage capture contract retains exactly one inactive context.
 The original production `opengpu_compute()` caller consumes failed receipts
 and requires its real negative fence and userspace `EIO` result. Read faults
 permit no RAM changes or target writes. A one-shot lower B error suppresses
-the first target write: exactly one scalar caller retains its two guarded
-old-value slots, while the other three produce six source-ordered old words.
-All six must have a legal shared-word serialization and final target, with
-every other physical byte unchanged. Seven target write attempts are required,
-including the failed first attempt and successful lower writes for CAS misses.
+the first target write. The grid stops creating offers on failure and drains
+previously admitted work, including a registered offer. Successful callers
+must form an admitted group prefix with exactly one failed initial caller
+(group zero or one); failed and unissued callers retain both guarded slots.
+Each survivor returns both source-ordered old words. Those words must have a
+legal shared-word serialization and final target, with every other physical
+byte unchanged. The target write count must equal one plus the returned old
+word count, including the failed first attempt and lower writes for CAS misses.
 The existing storage first-write contract retains its separate five attempts.
 
 Focused source/controller/compiler checks and existing atomic/source regressions
-pass. CPU controls cover all source layouts, every failed caller,
+pass. CPU controls cover all source layouts, both initial failed callers and
+each admitted prefix,
 legal interleavings, source-order rejection, prior RAM guards, exact command
 arguments and error counters, and cleanup refusal after bad partial results.
-Complete-DUT execution still must establish all 96 phases and 528 actual
-returned old words, real cleanup and final compiler/source/model checks.
+Complete-DUT execution still must establish all 96 phases, report the actual
+returned old word count, and pass real cleanup and final compiler/source/model
+checks. Healthy phases require all eight old words; write-fault phases require
+two, four or six, bound to exactly three, five or seven physical attempts.
 
 ```sh
 python3 -B scripts/qualify_compute_owner.py \
