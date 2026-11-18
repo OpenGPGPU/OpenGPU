@@ -255,9 +255,22 @@ actual AXI response gate, not manufactured kernel results.
 Six ACK/AXI guard tests pass with native ASan/UBSan, including exact source
 windows, missing observers, changed old words, malformed plans, premature
 completion and unrelated writes. The 47 focused source/controller/compiler
-checks and 23 software input/closure checks pass. Complete-DUT execution of
-this delayed matrix remains required before claiming all 192 actual old words
-and final compiler/source/model checks.
+checks and 23 software input/closure checks pass. The complete assertion-enabled
+2-CU, sixteen-lane/eight-warp float DUT passed all 24 original programs and
+192 returned scalar old words. Every case held its actual target B response
+for at least 257 cycles with the completion bit clear and all eight original
+old-value slots untouched. After release, caller-ordered old values, legal
+serialization, the final target, complete physical guards and real
+held/retired IRQ/PTE/context/MMU cleanup all passed. Each case used a fresh
+complete DUT/reset.
+
+The original guarded producer, native children, controller and outer qualifier
+all exited zero. Final compiler/header/link/runtime, source, executor and model
+checks passed. Frozen execution source `feda7c7163e8c3167cfa887d03f7ee70c17b14eb`
+and the publication source matched all 227 qualified software files byte for
+byte after execution. The complete hardware model, capacities and assertions
+were unchanged; only the software wrapper was rebuilt. Ended qualification
+data was removed.
 
 ```sh
 python3 -B scripts/qualify_compute_owner.py \
