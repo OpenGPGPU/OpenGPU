@@ -52,7 +52,7 @@ ComputeHeld hold_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory
   held.prior_read_faults=prior_read_faults;
   bus.begin_record(capture.max_cycles);
   for(const auto &a:capture.trace)bus.action(a);
-  if(ack_delay)ack_delay->withhold(bus,agent);
+  if(ack_delay)ack_delay->withhold(bus,agent,&memory);
   // A polled prefix invalidate can leave the sticky IRQ pending after its
   // completion was popped. Its old window is invalid until COMPLETION rises
   // for the final kernel; the IRQ pin alone does not establish that receipt.
@@ -301,9 +301,11 @@ int main(int argc,char **argv) {
     const bool source_fault=argc==5 && std::string(argv[1])=="--active-image-source-fault";
     const bool storage_view_fault=argc==5 && std::string(argv[1])=="--active-storage-view-fault";
     const bool storage_ack_delay=argc==5 && std::string(argv[1])=="--active-storage-delayed-ack";
-    require(argc==5 && (std::string(argv[1])=="--active-owner" || source_fault || storage_view_fault || storage_ack_delay),
-      "usage: compute_owner_driver --probe-profile NEW.json | --active-owner INPUT.memory NEW_OUTPUT_DIR SESSION_DIR | --active-storage-view-fault INPUT.memory NEW_OUTPUT_DIR SESSION_DIR | --active-storage-delayed-ack INPUT.memory NEW_OUTPUT_DIR SESSION_DIR | --active-image-source-fault INPUT.memory NEW_OUTPUT_DIR SESSION_DIR | --active-image-source-recovery NEW_OUTPUT_DIR SESSION_DIR | --active-image-permission-recovery NEW_OUTPUT_DIR SESSION_DIR");
-    require(!(source_fault || storage_view_fault || storage_ack_delay) || compute_owner_factory()==OwnerFactory::image_float_stage,
+    const bool global_ack_delay=argc==5 && std::string(argv[1])=="--active-global-delayed-ack";
+    const bool atomic_ack_delay=storage_ack_delay || global_ack_delay;
+    require(argc==5 && (std::string(argv[1])=="--active-owner" || source_fault || storage_view_fault || atomic_ack_delay),
+      "usage: compute_owner_driver --probe-profile NEW.json | --active-owner INPUT.memory NEW_OUTPUT_DIR SESSION_DIR | --active-storage-view-fault INPUT.memory NEW_OUTPUT_DIR SESSION_DIR | --active-storage-delayed-ack INPUT.memory NEW_OUTPUT_DIR SESSION_DIR | --active-global-delayed-ack INPUT.memory NEW_OUTPUT_DIR SESSION_DIR | --active-image-source-fault INPUT.memory NEW_OUTPUT_DIR SESSION_DIR | --active-image-source-recovery NEW_OUTPUT_DIR SESSION_DIR | --active-image-permission-recovery NEW_OUTPUT_DIR SESSION_DIR");
+    require(!(source_fault || storage_view_fault || atomic_ack_delay) || compute_owner_factory()==OwnerFactory::image_float_stage,
       "selected fault/ACK mode requires the distinct complete float factory");
     const std::filesystem::path output=argv[3],session=argv[4];
     require(std::filesystem::is_directory(session) && !std::filesystem::is_symlink(session),"invalid compute session directory");
@@ -315,14 +317,15 @@ int main(int argc,char **argv) {
     Simulation sim(argc,argv);sim.reset();Agent agent(memory);ReplayBus<Simulation> bus(sim,agent,100000);
     if(source_fault)arm_source_fault(agent,session,response_timeout);
     StorageAckDelay delay;
-    if(storage_ack_delay) {
+    if(atomic_ack_delay) {
       wait_input(session/"record-0.ack-delay-plan",session,response_timeout);
       std::ifstream input(session/"record-0.ack-delay-plan",std::ios::binary);
-      delay=StorageAckDelay::read(input);delay.arm(agent);
+      delay=StorageAckDelay::read(input);
+      require(delay.global_mode==global_ack_delay,"original atomic ACK source family differs");delay.arm(agent,&memory);
     }
     active_compute(sim,agent,bus,memory,capture,output,session,response_timeout,
       source_fault?ImageFailure::source_read:storage_view_fault?ImageFailure::permission:ImageFailure::none,
-      0,nullptr,storage_ack_delay?&delay:nullptr);
+      0,nullptr,atomic_ack_delay?&delay:nullptr);
     if(source_fault)agent.disarm_read_faults();
     sim.model->final();return 0;
   }catch(const std::exception &e) {std::cerr<<"compute owner replay failed: "<<e.what()<<'\n';return 1;}

@@ -75,7 +75,7 @@ def checked_inputs(args):
         require(record.get('profile')==IMAGE_FLOAT_PROFILE,'R32F exchange requires its qualified float owner')
     if getattr(args,'case',None) in (*MIXED_ATOMIC_CASES,'image-storage-atomics'):
         require(record.get('profile')==IMAGE_FLOAT_PROFILE,'mixed atomics require their qualified float owner')
-    if getattr(args,'case',None) in (*GLOBAL_ATOMIC_CASES,'global-atomics'):
+    if getattr(args,'case',None) in (*GLOBAL_ATOMIC_CASES,'global-atomics','global-atomics-delayed-ack'):
         require(record.get('profile')==IMAGE_FLOAT_PROFILE,'global atomics require their qualified float owner')
     if getattr(args,'case',None) in (*STORAGE_ATOMIC_CASES,'storage-atomics','storage-atomics-delayed-ack','storage-atomics-recovery'):
         require(record.get('profile')==IMAGE_FLOAT_PROFILE,'storage atomics require the complete float owner')
@@ -115,6 +115,8 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
         not source_fault and permission is None and reset is None and physical_base is None),
         'mixed atomic matrix requires its exact first source and independent original alias owners')
     global_matrix=getattr(args,'global_atomic_matrix',False)
+    require(not getattr(args,'global_delayed_ack',False) or global_matrix,
+            'global ACK qualification requires its original complete source matrix')
     require(not global_matrix or case==GLOBAL_ATOMIC_CASES[0], 'global matrix requires its exact first original source')
     if case in GLOBAL_ATOMIC_CASES:
         require(isinstance(getattr(args,'global_inputs',None),Path), 'raw global source requires bound compiler inputs')
@@ -201,6 +203,7 @@ def run_case(args, *, gpu, source, temporary, ntt, image, case):
             *(['--contended-image-matrix'] if getattr(args,'contended_image_matrix',False) else []),
             *(['--mixed-atomic-matrix'] if getattr(args,'mixed_atomic_matrix',False) else []),
             *(['--global-atomic-matrix'] if getattr(args,'global_atomic_matrix',False) else []),
+            *(['--global-delayed-ack'] if getattr(args,'global_delayed_ack',False) else []),
             *(['--expect-image-source-fault'] if getattr(args,'expect_image_source_fault',False) else []),
             *(['--image-reset-recovery',reset] if reset else ['--image-permission-recovery',permission] if permission else
               ['--image-source-recovery'] if recovery else []),
@@ -240,7 +243,8 @@ def main():
     parser.add_argument('--mesa-link-libs', default='-l:libz.so.1 ' + str(gpu / 'depends/aarch64-root/lib/libexpat.so.1.6.7'))
     parser.add_argument('--compiler-image', default='gpu-gtk-ci-check:latest')
     parser.add_argument('--case', choices=('both', 'mandatory-compute', 'storage-atomics',
-        'storage-atomics-delayed-ack', 'storage-atomics-recovery', 'image-atomics-contended', 'image-storage-atomics', 'global-atomics', *CASES), default='both')
+        'storage-atomics-delayed-ack', 'storage-atomics-recovery', 'image-atomics-contended', 'image-storage-atomics',
+        'global-atomics','global-atomics-delayed-ack', *CASES), default='both')
     parser.add_argument('--timeout', type=int, default=3600)
     mode=parser.add_mutually_exclusive_group()
     mode.add_argument('--expect-image-source-fault', action='store_true')
@@ -253,7 +257,8 @@ def main():
     args.storage_recovery_matrix=args.case=='storage-atomics-recovery'
     args.contended_image_matrix=args.case=='image-atomics-contended'
     args.mixed_atomic_matrix=args.case=='image-storage-atomics'
-    args.global_atomic_matrix=args.case=='global-atomics'
+    args.global_atomic_matrix=args.case in ('global-atomics','global-atomics-delayed-ack')
+    args.global_delayed_ack=args.case=='global-atomics-delayed-ack'
     global_source=args.global_atomic_matrix or args.case in GLOBAL_ATOMIC_CASES
     require(0 < args.timeout <= 604800, 'timeout must be 1..604800 seconds')
     args.executor = args.executor.absolute(); args.executor_qualification = args.executor_qualification.absolute()

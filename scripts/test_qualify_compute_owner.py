@@ -396,6 +396,24 @@ class Entry(unittest.TestCase):
     def test_global_bad_old_word_never_authorizes_failed_owner_cleanup(self):
         self.storage_matrix_peer(True,global_raw=True)
 
+    def test_global_delayed_ack_keeps_old_word_and_cleanup_gates(self):
+        self.storage_matrix_peer(False,global_raw=True,global_delayed=True)
+
+    def test_global_wrong_ack_does_not_authorize_returned_bytes_or_cleanup(self):
+        self.storage_matrix_peer(False,global_raw=True,global_delayed=True,bad_ack=True)
+
+    def test_global_ack_entry_requires_its_exact_matrix(self):
+        args=argparse.Namespace(timeout=60,global_inputs=ROOT/'.artifacts/global-inputs.json',
+            global_atomic_matrix=False,global_delayed_ack=True)
+        with self.assertRaisesRegex(ValueError,'original complete source matrix'):
+            qualifier.producer_command(args,gpu=ROOT,source=ROOT,ntt=None,image='sha256:'+'1'*64,name='raw',
+                case=qualifier.GLOBAL_ATOMIC_CASES[0])
+        args.global_atomic_matrix=True
+        command=qualifier.producer_command(args,gpu=ROOT,source=ROOT,ntt=None,image='sha256:'+'1'*64,name='raw',
+            case=qualifier.GLOBAL_ATOMIC_CASES[0])
+        self.assertIn('--global-atomic-matrix',command)
+        self.assertIn('--bound-inputs',command)
+
     def test_global_source_and_matrix_bind_their_exact_original_case(self):
         args=argparse.Namespace(timeout=60,global_inputs=ROOT/'.artifacts/global-inputs.json',global_atomic_matrix=True)
         for case in qualifier.GLOBAL_ATOMIC_CASES:
@@ -411,7 +429,7 @@ class Entry(unittest.TestCase):
             qualifier.producer_command(args,gpu=ROOT,source=ROOT,ntt=None,image='sha256:'+'1'*64,name='raw',
                 case=qualifier.GLOBAL_ATOMIC_CASES[0])
 
-    def storage_matrix_peer(self, fail_second, delayed=False, bad_ack=False,contended=False,mixed=False,global_raw=False):
+    def storage_matrix_peer(self, fail_second, delayed=False, bad_ack=False,contended=False,mixed=False,global_raw=False,global_delayed=False):
         from compute_storage_atomic_controller import run_matrix
         from compute_storage_atomic_cases import CASES
         if contended:CASES=qualifier.CONTENDED_IMAGE_CASES
@@ -443,7 +461,7 @@ class Entry(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='atomic-matrix-peer-',dir=ROOT/'.artifacts') as temporary:
             directory=Path(temporary)
             args=argparse.Namespace(timeout=60,storage_delayed_ack=delayed,contended_image_matrix=contended,
-                                   mixed_atomic_matrix=mixed,global_atomic_matrix=global_raw)
+                                   mixed_atomic_matrix=mixed,global_atomic_matrix=global_raw,global_delayed_ack=global_delayed)
             def record(path):
                 if path.name=='profile.json':return {'actual-profile-cpu-peer':True}
                 return {'actual-receipt-cpu-peer':True,'commandId':42,'physicalReadFaults':0,'injectedReadFaults':0,'physicalWriteFaults':0}
@@ -485,8 +503,9 @@ class Entry(unittest.TestCase):
             self.assertTrue(all(p.returncode==0 and not p.terminated for p in processes))
             self.assertEqual([e[1] for e in cleanups],list(CASES))
             qualified.assert_called_once()
-            self.assertEqual(ack_check.call_count,15 if delayed else 0)
+            self.assertEqual(ack_check.call_count,len(CASES) if global_delayed else 15 if delayed else 0)
             self.assertEqual(sum('--active-storage-delayed-ack' in command for command in commands),15 if delayed else 0)
+            self.assertEqual(sum('--active-global-delayed-ack' in command for command in commands),len(CASES) if global_delayed else 0)
 
     def test_container_exit_must_be_proven_and_active_inputs_preserved(self):
         result = lambda code, output='': subprocess.CompletedProcess([], code, stdout=output, stderr='')
