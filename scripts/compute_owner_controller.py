@@ -311,12 +311,15 @@ def main():
     from compute_owner_cases import COUNTER_CASES, IMAGE_CASES, STORAGE_ATOMIC_CASES
     parser.add_argument('--case', choices=(*COUNTER_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES), help='distinct final112 source contract')
     parser.add_argument('--storage-matrix',action='store_true')
+    parser.add_argument('--storage-delayed-ack',action='store_true')
     mode=parser.add_mutually_exclusive_group()
     mode.add_argument('--expect-image-source-fault', action='store_true')
     mode.add_argument('--image-source-recovery', action='store_true')
     mode.add_argument('--image-permission-recovery',choices=('read','write'))
     mode.add_argument('--image-reset-recovery',choices=('read','write'))
     args = parser.parse_args()
+    require(not args.storage_delayed_ack or args.storage_matrix,
+            'storage ACK qualification requires the original complete source matrix')
     require(not args.storage_matrix or (args.case==STORAGE_ATOMIC_CASES[0] and
         not (args.expect_image_source_fault or args.image_source_recovery or args.image_permission_recovery or args.image_reset_recovery)),
         'storage matrix requires its exact original source and normal receipts')

@@ -70,7 +70,7 @@ def checked_inputs(args):
                 'source execution requires the exact final112 sample owner factory selected by qualification')
     if getattr(args,'case',None) in IMAGE_FLOAT_EXCHANGE_CASES:
         require(record.get('profile')==IMAGE_FLOAT_PROFILE,'R32F exchange requires its qualified float owner')
-    if getattr(args,'case',None) in (*STORAGE_ATOMIC_CASES,'storage-atomics'):
+    if getattr(args,'case',None) in (*STORAGE_ATOMIC_CASES,'storage-atomics','storage-atomics-delayed-ack'):
         require(record.get('profile')==IMAGE_FLOAT_PROFILE,'storage atomics require the complete float owner')
     if getattr(args, 'case', None) in (*DYNAMIC_CASES, 'mandatory-compute'):
         require(record.get('profile') == COMPUTE_STAGE or record.get('profile') in FULL_COMPUTE_CONTRACTS,
@@ -92,6 +92,8 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
     require(not getattr(args,'storage_matrix',False) or (case==STORAGE_ATOMIC_CASES[0] and
         not source_fault and permission is None and reset is None and physical_base is None),
         'storage matrix requires its exact first source and normal source-owned receipts')
+    require(not getattr(args,'storage_delayed_ack',False) or getattr(args,'storage_matrix',False),
+            'delayed storage ACK requires the original complete source matrix')
     # The configured Mesa object database uses these original absolute paths.
     # Keep that mount unchanged; all newly generated files live in {ipc}.
     counter = case in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES)
@@ -151,6 +153,7 @@ def run_case(args, *, gpu, source, temporary, ntt, image, case):
             '--bridge-command', command_file, '--timeout', str(args.timeout),
             *(['--case', case] if case in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES) else []),
             *(['--storage-matrix'] if getattr(args,'storage_matrix',False) else []),
+            *(['--storage-delayed-ack'] if getattr(args,'storage_delayed_ack',False) else []),
             *(['--expect-image-source-fault'] if getattr(args,'expect_image_source_fault',False) else []),
             *(['--image-reset-recovery',reset] if reset else ['--image-permission-recovery',permission] if permission else
               ['--image-source-recovery'] if recovery else []),
@@ -188,7 +191,8 @@ def main():
     parser.add_argument('--library-directory', type=Path, default=gpu / 'depends/aarch64-root/lib')
     parser.add_argument('--mesa-link-libs', default='-l:libz.so.1 ' + str(gpu / 'depends/aarch64-root/lib/libexpat.so.1.6.7'))
     parser.add_argument('--compiler-image', default='gpu-gtk-ci-check:latest')
-    parser.add_argument('--case', choices=('both', 'mandatory-compute', 'storage-atomics', *CASES), default='both')
+    parser.add_argument('--case', choices=('both', 'mandatory-compute', 'storage-atomics',
+        'storage-atomics-delayed-ack', *CASES), default='both')
     parser.add_argument('--timeout', type=int, default=3600)
     mode=parser.add_mutually_exclusive_group()
     mode.add_argument('--expect-image-source-fault', action='store_true')
@@ -196,7 +200,8 @@ def main():
     mode.add_argument('--image-permission-recovery',choices=('read','write'))
     mode.add_argument('--image-reset-recovery',choices=('read','write'))
     args = parser.parse_args()
-    args.storage_matrix=args.case=='storage-atomics'
+    args.storage_delayed_ack=args.case=='storage-atomics-delayed-ack'
+    args.storage_matrix=args.case in ('storage-atomics','storage-atomics-delayed-ack')
     require(0 < args.timeout <= 604800, 'timeout must be 1..604800 seconds')
     args.executor = args.executor.absolute(); args.executor_qualification = args.executor_qualification.absolute()
     identity = checked_inputs(args)

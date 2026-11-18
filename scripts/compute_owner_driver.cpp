@@ -3,6 +3,7 @@
 #include "compute_owner_capture.hpp"
 #include "native_owner_runtime.hpp"
 #include "compute_owner_reset.hpp"
+#include "compute_storage_atomic_delay.hpp"
 #include <cstdlib>
 
 namespace compute_owner {
@@ -40,7 +41,8 @@ struct ComputeHeld {
 template<class Sim,class CaptureType>
 ComputeHeld hold_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,const CaptureType &capture,
     uint32_t expected_completion,
-    ImageFailure failure=ImageFailure::none,uint64_t prior_read_faults=0,const Traffic *prior_traffic=nullptr) {
+    ImageFailure failure=ImageFailure::none,uint64_t prior_read_faults=0,const Traffic *prior_traffic=nullptr,
+    StorageAckDelay *ack_delay=nullptr) {
   require(failure==ImageFailure::none || failure==ImageFailure::source_read || failure==ImageFailure::permission,
     "unknown compute failure mode");
   verify_compute_upload(sim,agent,bus,memory,capture,prior_read_faults,prior_traffic);
@@ -48,6 +50,7 @@ ComputeHeld hold_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory
   held.prior_read_faults=prior_read_faults;
   bus.begin_record(capture.max_cycles);
   for(const auto &a:capture.trace)bus.action(a);
+  if(ack_delay)ack_delay->withhold(bus,agent);
   // A polled prefix invalidate can leave the sticky IRQ pending after its
   // completion was popped. Its old window is invalid until COMPLETION rises
   // for the final kernel; the IRQ pin alone does not establish that receipt.
@@ -100,13 +103,15 @@ ComputeHeld hold_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory
   r.read_bytes=agent.traffic.read_bus_bytes-held.start.read_bus_bytes;
   r.write_bytes=agent.traffic.write_bus_bytes-held.start.write_bus_bytes;
   r.physical_read_faults=agent.traffic.read_faults;r.injected_read_faults=agent.injected_read_faults();
+  if(ack_delay)ack_delay->finish(agent);
   held.initial=memory;return held;
 }
 template<class Sim>
 ComputeHeld hold_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,const ComputeCapture &capture,
-    ImageFailure failure=ImageFailure::none,uint64_t prior_read_faults=0,const Traffic *prior_traffic=nullptr) {
+    ImageFailure failure=ImageFailure::none,uint64_t prior_read_faults=0,const Traffic *prior_traffic=nullptr,
+    StorageAckDelay *ack_delay=nullptr) {
   const auto expected=(failure!=ImageFailure::none?(GPU_UCMD_KERNEL_EXECUTION_FAILED<<11):0x8000u)|capture.command_id;
-  return hold_compute_record(sim,agent,bus,memory,capture,expected,failure,prior_read_faults,prior_traffic);
+  return hold_compute_record(sim,agent,bus,memory,capture,expected,failure,prior_read_faults,prior_traffic,ack_delay);
 }
 template<class Sim,class RetirementType>
 ComputeResult retire_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
@@ -154,9 +159,11 @@ template<class Sim>
 void active_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
     const ComputeCapture &capture,const std::filesystem::path &output,const std::filesystem::path &session,
     std::chrono::milliseconds timeout=compute_response_timeout(),ImageFailure failure=ImageFailure::none,
-    uint64_t prior_read_faults=0,const Traffic *prior_traffic=nullptr) {
+    uint64_t prior_read_faults=0,const Traffic *prior_traffic=nullptr,StorageAckDelay *ack_delay=nullptr) {
   PtePages pte;capture.observe_contexts(memory,pte);
-  auto held=hold_compute(sim,agent,bus,memory,capture,failure,prior_read_faults,prior_traffic);
+  require(!ack_delay || failure==ImageFailure::none,"failed compute cannot use a successful atomic ACK plan");
+  auto held=hold_compute(sim,agent,bus,memory,capture,failure,prior_read_faults,prior_traffic,ack_delay);
+  if(ack_delay)atomic_json(session/"record-0.ack-delay.json",[&](auto &out){ack_delay->json(out,capture.command_id);});
   // Keep the original post-completion RAM image, including writable outputs,
   // fixed while the actual producer emits its Linux IRQ/drain/POP trace.
   const bool failed=failure!=ImageFailure::none;
@@ -269,10 +276,11 @@ int main(int argc,char **argv) {
     }
     const bool source_fault=argc==5 && std::string(argv[1])=="--active-image-source-fault";
     const bool storage_view_fault=argc==5 && std::string(argv[1])=="--active-storage-view-fault";
-    require(argc==5 && (std::string(argv[1])=="--active-owner" || source_fault || storage_view_fault),
-      "usage: compute_owner_driver --probe-profile NEW.json | --active-owner INPUT.memory NEW_OUTPUT_DIR SESSION_DIR | --active-storage-view-fault INPUT.memory NEW_OUTPUT_DIR SESSION_DIR | --active-image-source-fault INPUT.memory NEW_OUTPUT_DIR SESSION_DIR | --active-image-source-recovery NEW_OUTPUT_DIR SESSION_DIR | --active-image-permission-recovery NEW_OUTPUT_DIR SESSION_DIR");
-    require(!(source_fault || storage_view_fault) || compute_owner_factory()==OwnerFactory::image_float_stage,
-      "source/view faults require the distinct complete float factory");
+    const bool storage_ack_delay=argc==5 && std::string(argv[1])=="--active-storage-delayed-ack";
+    require(argc==5 && (std::string(argv[1])=="--active-owner" || source_fault || storage_view_fault || storage_ack_delay),
+      "usage: compute_owner_driver --probe-profile NEW.json | --active-owner INPUT.memory NEW_OUTPUT_DIR SESSION_DIR | --active-storage-view-fault INPUT.memory NEW_OUTPUT_DIR SESSION_DIR | --active-storage-delayed-ack INPUT.memory NEW_OUTPUT_DIR SESSION_DIR | --active-image-source-fault INPUT.memory NEW_OUTPUT_DIR SESSION_DIR | --active-image-source-recovery NEW_OUTPUT_DIR SESSION_DIR | --active-image-permission-recovery NEW_OUTPUT_DIR SESSION_DIR");
+    require(!(source_fault || storage_view_fault || storage_ack_delay) || compute_owner_factory()==OwnerFactory::image_float_stage,
+      "selected fault/ACK mode requires the distinct complete float factory");
     const std::filesystem::path output=argv[3],session=argv[4];
     require(std::filesystem::is_directory(session) && !std::filesystem::is_symlink(session),"invalid compute session directory");
     require(!std::filesystem::exists(output),"compute output already exists");
@@ -282,8 +290,15 @@ int main(int argc,char **argv) {
     require(std::filesystem::create_directory(output),"cannot create compute output directory");
     Simulation sim(argc,argv);sim.reset();Agent agent(memory);ReplayBus<Simulation> bus(sim,agent,100000);
     if(source_fault)arm_source_fault(agent,session,response_timeout);
+    StorageAckDelay delay;
+    if(storage_ack_delay) {
+      wait_input(session/"record-0.ack-delay-plan",session,response_timeout);
+      std::ifstream input(session/"record-0.ack-delay-plan",std::ios::binary);
+      delay=StorageAckDelay::read(input);delay.arm(agent);
+    }
     active_compute(sim,agent,bus,memory,capture,output,session,response_timeout,
-      source_fault?ImageFailure::source_read:storage_view_fault?ImageFailure::permission:ImageFailure::none);
+      source_fault?ImageFailure::source_read:storage_view_fault?ImageFailure::permission:ImageFailure::none,
+      0,nullptr,storage_ack_delay?&delay:nullptr);
     if(source_fault)agent.disarm_read_faults();
     sim.model->final();return 0;
   }catch(const std::exception &e) {std::cerr<<"compute owner replay failed: "<<e.what()<<'\n';return 1;}
