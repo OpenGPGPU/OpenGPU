@@ -168,11 +168,13 @@ writable grant are checked independently from captured memory and MMIO.
 All 24 original Linux CPU captures pass with ASan/UBSan, followed by 432
 metadata/code/PTE/write-grant rejection controls and untouched-upload rejection.
 The source/order suite (18 tests) and existing counter/image/source oracle suite
-(29 tests) pass; these overlapping suites are not additive counts. Fabricated
+(33 tests) pass; these overlapping suites are not additive counts. Fabricated
 CPU byte fixtures use literal histories for all six families, checking each old
 word, the final target and every other original physical byte. OR operands set
 previously clear bits, and signed-min operands cross the sign boundary so those
 operations have observable effects even in a group-serial execution.
+The complete float-owner Linux/MMU/IRQ/cleanup CPU transport regression also
+passes under ASan/UBSan; its modeled receipts are not DUT execution evidence.
 
 Reproduce CPU capture checks inside the compiler environment, using discovery
 wire/JSON from the same complete float-owner probe:
@@ -184,6 +186,8 @@ python3 -B scripts/test_compute_global_atomic_source.py \
   --captures "$CPU/build/captures" --profile-json "$OWNER_PROFILE_JSON"
 PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover \
   -s scripts -p 'test_compute_*source.py'
+OPENGPU_TEST_SANITIZERS=1 PYTHONDONTWRITEBYTECODE=1 \
+  python3 -B scripts/test_compute_host.py --image-float-stage
 ```
 
 The caller implements the existing external held/retired/cleanup receipt
