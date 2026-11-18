@@ -706,7 +706,7 @@ the original driver compilation, linking and final input checks still run.
 Cold builds retain their PCHs, and a changed header invalidates all dependent
 objects. PCHs remain temporary and are removed after their consumers exit.
 
-Actual Clang controls confirm two default PCH compilations on a cold build,
+The Clang fixture with `-O2` and `-O0` shards starts two PCH compilations cold,
 zero on a fully cached rebuild and one for a changed shard's optimization
 level. PCH and ordinary compilation produce identical shard bytes, and the
 linked programs run successfully. Corrupt objects rebuild, header changes
@@ -719,7 +719,8 @@ including real FlashSim/CIRCT bound-assertion generation and native execution.
 The generated assertion DUT has identical ordinary/PCH object digests and
 executes correctly after both cold and cached PCH builds; its cached rebuild
 starts no PCH compiler.
-The Python 3.14 run stayed below 4 GiB and proved consumer cleanup. Reproduce
+The individually bounded generation/native runs stayed below 4 GiB and proved
+consumer cleanup. Reproduce
 with Python 3.10+ in the matching FlashSim/CIRCT environment:
 
 ```sh
@@ -729,10 +730,73 @@ OPENGPU_FLASHSIM_DIR="$FLASH_GENERATOR" PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scr
   test_qualify_native_product_flashsim test_prepare_native_owner_flashsim
 ```
 
-This removes redundant work from incremental native builds. It does not
-measure a complete current-factory cold build, RTL generation speed or
-simulation throughput; those comparisons still require the same complete RTL,
-assertions, capacities and independently checked executions on both backends.
+The actual complete-capacity `L2MshrTable.sv` also passed an isolated build
+comparison against GPU source `9e6f1346c`. FlashSim `36acf81` generated the
+unchanged 16,475,215-byte RTL with assertions enabled and sixteen shards:
+17 C++/header files totaled 9,852,950 bytes. Generation took about 41 seconds.
+Both native builds used two jobs, default optimization levels, conservative
+aliasing, the same generated files and compiler, and a 4 GiB bound.
+
+| Isolated MSHR build | Before | Updated |
+| --- | ---: | ---: |
+| Cold native build | 21.0 s | 21.0 s |
+| Cached rebuild, median of three interleaved runs | 1.57 s | 0.85 s |
+| PCH compiler invocations per cached rebuild | 1 | 0 |
+
+The cached median fell about 46% on this loaded machine. Timings include the
+bounded runner, driver compilation, linking and input checks; system load was
+not standardized. All sixteen shard objects were byte-identical. Every
+executable passed actual reset/idle and request-ready checks. Original RTL
+and FlashSim/CIRCT inputs matched after execution; generated data and the
+temporary baseline checkout were removed after their consumers exited.
+
+To reproduce, set `BASELINE_GPU` to a clean `9e6f1346c` checkout under the GPU
+workspace's `.artifacts/worktrees/`, `CURRENT_GPU` to this updated checkout,
+`MSHR_RTL` to the complete float owner's emitted `rtl/L2MshrTable.sv`, and
+use a fresh comparison directory under `.artifacts/`. Use the same Python 3.10+
+interpreter as `FLASHSIM_PYTHON` and the matching FlashSim/CIRCT environment:
+
+```sh
+set -eu
+mkdir -p "$CURRENT_GPU/.artifacts"
+MSHR_RUN="$(mktemp -d "$CURRENT_GPU/.artifacts/mshr-pch-XXXXXX")"
+cp "$MSHR_RTL" "$MSHR_RUN/L2MshrTable.sv"
+PYTHONPATH="$FLASH_GENERATOR" FLASHSIM_CIRCT_SERIAL=1 \
+  "$FLASHSIM_PYTHON" -B "$CURRENT_GPU/scripts/run_owner_bounded.py" \
+  --memory-mib 4096 --timeout-seconds 180 -- "$FLASHSIM_PYTHON" -B -c \
+  'from pathlib import Path; from flashsim.compile import compile_file; import sys; compile_file(Path(sys.argv[1]), Path(sys.argv[2]), frontend="circt", assertions=True, split=16)' \
+  "$MSHR_RUN/L2MshrTable.sv" "$MSHR_RUN/model/dut.h"
+cat > "$MSHR_RUN/probe.cpp" <<'CPP'
+#include "dut.h"
+#include <memory>
+int main() {
+  auto d=std::make_unique<L2MshrTableDut>();
+  d->clock=1; d->reset=1; d->tick(); d->reset=0;
+  for(int i=0;i<32;i++){d->tick();d->eval_io_request_ready();}
+  return d->io_request_ready?0:1;
+}
+CPP
+for pass in cold warm1 warm2 warm3; do
+  for variant in baseline current; do
+    if [ "$variant" = baseline ]; then checkout="$BASELINE_GPU"; else checkout="$CURRENT_GPU"; fi
+    /usr/bin/time -p "$FLASHSIM_PYTHON" -B "$CURRENT_GPU/scripts/run_owner_bounded.py" \
+      --memory-mib 4096 --timeout-seconds 180 -- "$FLASHSIM_PYTHON" -B \
+      "$checkout/scripts/build_native_flashsim.py" --dut-dir "$MSHR_RUN/model" \
+      --build-dir "$MSHR_RUN/$variant" --driver "$MSHR_RUN/probe.cpp" \
+      --jobs 2 --precompiled-header --conservative-alias
+    "$FLASHSIM_PYTHON" -B "$CURRENT_GPU/scripts/run_owner_bounded.py" \
+      --memory-mib 4096 --timeout-seconds 180 -- "$MSHR_RUN/$variant/native_product_driver"
+  done
+done
+"$FLASHSIM_PYTHON" -c 'import json,sys; from pathlib import Path; a,b=(json.loads((Path(p)/"native-flashsim-build.json").read_text())["objects"] for p in sys.argv[1:]); assert a==b' \
+  "$MSHR_RUN/baseline" "$MSHR_RUN/current"
+cmp "$MSHR_RTL" "$MSHR_RUN/L2MshrTable.sv"
+```
+
+Remove ended comparison outputs and the clean baseline checkout after checking
+their consumers and references. This measures one MSHR module; complete-factory
+cold generation/compilation and workload runtime comparisons remain pending
+with identical full RTL, assertions, capacities and independent execution gates.
 
 ## Compiler hierarchy profiles
 
