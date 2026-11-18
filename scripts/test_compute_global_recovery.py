@@ -179,7 +179,8 @@ class GlobalContinuousOwnerTests(unittest.TestCase):
     def test_bad_partial_bytes_never_authorize_fault_cleanup_or_next_phase(self):
         self.peer(True)
 
-    def peer(self, bad_write, *, protocol=None, records=None, expected_words=480, source_fixture=None):
+    def peer(self, bad_write, *, protocol=None, records=None, expected_words=480, source_fixture=None,
+             observation_fixture=None, expected_error=None, bad_phase=0):
         from compute_global_recovery_controller import run_recovery_matrix
         from owner_resource_contract import IMAGE_FLOAT_PROFILE
         phases=PHASES if protocol is None else protocol.PHASES
@@ -203,6 +204,9 @@ class GlobalContinuousOwnerTests(unittest.TestCase):
         def record(path):
             if path.name=='profile.json':return {'actual-profile-cpu-peer':True}
             index=int(path.parent.name[6:])
+            if path.name=='record-0.cache-observation.json' and observation_fixture is not None:
+                events.append((index,'cache-proof-read'))
+                return observation_fixture(index)
             return make_done(index) if path.name=='executor.done' else make_held(index)
         def ready(path,case,**_kwargs):
             index=int(path.name[6:]);_,_,description=source_fixture(case)
@@ -249,8 +253,8 @@ class GlobalContinuousOwnerTests(unittest.TestCase):
             stdout=io.StringIO()
             with ExitStack() as stack,redirect_stdout(stdout):
                 for active in patches:stack.enter_context(active)
-                if bad_write:
-                    with self.assertRaisesRegex(ValueError,'invalid partial old word'):
+                if bad_write or expected_error is not None:
+                    with self.assertRaisesRegex(ValueError,expected_error or 'invalid partial old word'):
                         run_recovery_matrix(argparse.Namespace(timeout=60),['original-producer','{ipc}'],
                             directory,Path('native-executor'),{},qualified,IMAGE_FLOAT_PROFILE,protocol=protocol)
                 else:
@@ -261,8 +265,8 @@ class GlobalContinuousOwnerTests(unittest.TestCase):
         self.assertTrue(all(call.kwargs=={'inactive_contexts':contexts} for call in tables.call_args_list))
         self.assertEqual(commands[1][1],'--active-global-recovery-matrix' if protocol is None else protocol.RUNNER_FLAG)
         cleanups=[index for index,name in events if name=='BEGIN_CLEANUP']
-        if bad_write:
-            first_bad=next(s['index'] for s in phases if s['mode'] in ('write','accepted-write'))
+        if bad_write or expected_error is not None:
+            first_bad=bad_phase if expected_error is not None else next(s['index'] for s in phases if s['mode'] in ('write','accepted-write'))
             self.assertEqual(cleanups,list(range(first_bad)))
             self.assertNotIn((first_bad,'record-0.retired.response'),events)
             self.assertNotIn((first_bad+1,'BEGIN_EXECUTION'),events)
@@ -276,6 +280,10 @@ class GlobalContinuousOwnerTests(unittest.TestCase):
                 self.assertEqual(sum(name=='fault-bytes-'+mode for _,name in events),
                                  sum(s['mode']==mode for s in phases))
             qualified.assert_called_once()
+            if observation_fixture is not None:
+                self.assertEqual(sum(name=='cache-proof-read' for _,name in events),len(phases))
+                for index in range(len(phases)):
+                    self.assertLess(events.index((index,'cache-proof-read')),events.index((index,'record-0.retired.response')))
 
 
 if __name__=='__main__':
