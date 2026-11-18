@@ -5,7 +5,7 @@ import struct
 import tempfile
 import unittest
 from unittest.mock import patch
-from compute_indirect_oracle import Originals, RetainedMemory, equal_bytes, executable_physical
+from compute_indirect_oracle import Originals, RetainedMemory, equal_bytes, executable_physical, retained_callers
 from compute_indirect_phase_protocol import execution, cleanup_authorization, phase_response, execution_result
 import prepare_owner_executor as owner
 
@@ -29,6 +29,16 @@ def originals(command=17, opcode=14, epoch=1, objects=((1, 0x1000, bytes(8192)),
 
 
 class TransportTests(unittest.TestCase):
+    def test_caller_gems_survive_while_completed_context_gems_may_close(self):
+        before = Originals(originals(objects=((1, 0x1000, bytes(8192)), (2, 0x5000, bytes(4096)))))
+        caller = {1: before.objects[1].extent}
+        retained_callers(Originals(originals()), caller)
+        for objects in ((), ((2, 0x5000, bytes(4096)),), ((1, 0x7000, bytes(8192)),)):
+            if not objects:
+                continue  # Empty complete exports are independently rejected by the wire reader.
+            with self.subTest(objects=len(objects)), self.assertRaises(ValueError):
+                retained_callers(Originals(originals(objects=objects)), caller)
+
     def test_executable_uses_exact_production_cached_mapping_not_snapshot_policy(self):
         root = struct.pack('<I', (3 << 10) | 1) + bytes(4092)
         for flags in (0xcf, 0x24b, 0x2cf, 0xc7, 0x43):
