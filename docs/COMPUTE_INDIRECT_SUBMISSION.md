@@ -378,6 +378,101 @@ consumer, retained live-RAM merge, full-DUT execution and independent GPU byte
 oracle remain required. No GPU-produced counts, continuous hardware coherence,
 clock/FPS or P09 completion is claimed; the accepted count remains8/40.
 
+## Complete continuous version2 execution (P09)
+
+Source `897950a87e0ac3540cca88825d9e86719fc2f69a` passes the original Mesa22.3.6
+ESSL/Gallium/Linux-source ten-phase chain on the assertion-enabled complete
+two-CU float owner. The distinct `compute-indirect` executor accepts only that
+full112-word factory and its ten actual auxiliary observations. It reuses the
+qualified Verilator model; no RTL capacity is reduced or model regenerated.
+
+After the directory moves in[#885](https://github.com/OpenGPGPU/OpenGPU/pull/885),
+all787 production Scala files retain the same exact content multiset, and
+all208 producer/executor/checker inputs remain byte-identical to this execution
+revision. That directory rebase changes no RTL contract. A new cached-model run
+still requires the normal current-source preparation and qualification checks.
+The210 focused byte/protocol/executor and test-selection checks pass after the
+rebase.
+
+The four original producer shaders write the count triplet at byte4092 of the
+same8192-byte caller GEM, crossing a page boundary. Its initial fill is0x6b;
+each fresh consumer output is filled0xa7. Expected results are never uploaded
+to the source GEM or supplied as producer return data.
+
+| Phase index | Actual source operation | Independently checked result |
+|---|---|---|
+| 0 | GPU direct producer | Counts `(2,2,2)` |
+| 1 | Opcode14 consumer, local `(4,2,1)` |64 `uvec4(2,2,2,index)` stores |
+| 2 | Opcode14 private-count RRESP failure |Status13, one injected physical read fault, no physical writes or output changes |
+| 3 | Healthy opcode14 reuse with fresh output |All64 original ESSL results; no additional physical fault |
+| 4 / 6 / 8 | GPU direct producer |Zero X / Y / Z; each other axis remains `UINT32_MAX` |
+| 5 / 7 / 9 | Corresponding opcode14 zero-work consumer |Every output and unrelated physical byte unchanged |
+
+Before phase1 the original driver rejects offset4093 and the8192-byte source
+tail at8184 with `EINVAL`, and rejects the actual GPU-produced count2 against
+caller maximum1 with `ERANGE`, before enqueue. These are driver-boundary
+rejections, not a claim that an out-of-bounds GPU dispatch executed.
+
+All ten phases share one execution DUT, one reset and retained actual RAM.
+The original producer WRITE fence and count GEM survive publication and the
+failed consumer. GCI1 and x1 use the same twelve-byte private RO/NX/UC2 snapshot.
+The independent oracle compares all physical allocations against measured
+prior RAM plus original CPU uploads and only the ESSL-specified stores. It
+also binds captured code words to the actual executable mapping. Only verified
+actual DUT bytes are returned verbatim to the live original owner.
+
+Each intermediate phase verifies the actual publication commands, completion
+telemetry, original IRQ-handler W1C, private PTE revocation, retiring-ASID
+shootdown, unchanged original empty graphics VM, and32 quiet cycles before
+releasing original pins and re-arming. Caller count/output GEM identities stay
+fixed; ordinary per-context shader/kernarg GEMs may close after their quiet
+ACK, while their old physical RAM remains guarded. Phase9 passes the existing
+strict whole-MMU cleanup: all required mappings revoked, both bare SATPs, final
+shootdown and32 additional quiet cycles. Native executor and original producer
+exit zero; all208 qualified GPU producer/executor/checker inputs and original
+Mesa/compiler products pass the final checks. The qualifier removes its private
+CPU builds, captures, memory, logs and container after proving consumer exit.
+
+The43 byte/protocol/executor mutation checks pass. Both Clang and Linux GCC13.3
+ASan/UBSan (including Linux leak checking) pass the actual C fourteen opcode14
+captures, six continuous CPU ownership phases, independent C++ policy checks and
+three rejected batch-ACK retention cases. Those CPU checks remain distinct from
+the ten-phase actual-DUT result above. Publication captures the original IRQ
+handler after the completion poll, so a sticky publication IRQ must be observed
+and acknowledged on the DUT before the phase can pass.
+
+Run from a clean committed checkout with the already qualified complete float
+model at `.artifacts/p08/owner` (see the float-owner preparation in
+[typed image execution](TYPED_IMAGE_LIVE_OWNER.md)):
+
+```sh
+PYTHONPATH=scripts PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 -B -m unittest \
+  test_compute_indirect_owner test_prepare_owner_executor test_prepare_owner_verilator_executor
+OPENGPU_TEST_SANITIZERS=1 PYTHONDONTWRITEBYTECODE=1 \
+  /usr/bin/python3 -B scripts/test_compute_indirect_capture.py
+env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 -B \
+  scripts/prepare_owner_executor.py --stage build --backend verilator \
+  --kind compute-indirect --owner-output .artifacts/p08/owner
+env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 -B \
+  scripts/qualify_compute_indirect_owner.py \
+  --executor .artifacts/p08/owner/executors/compute-indirect/executor \
+  --executor-qualification .artifacts/p08/owner/executors/compute-indirect/qualification.json \
+  --executor-checker scripts/prepare_owner_executor.py \
+  --executor-checker-python /usr/bin/python3 \
+  --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72 \
+  --timeout 1800
+```
+
+The Linux source bridge uses the actual production admission, submission,
+scheduler and IRQ bodies with modeled OS/MMIO control primitives; GPU results
+come only from the complete DUT. This is not a new live-kernel guest run or
+public GLES API qualification. Nonzero extreme grids are checked at the source
+boundary rather than exhaustively executed. Full resource coexistence, the
+remaining cross-domain coherence matrix, clock/FPS and the640x480/60FPS product
+target retain their separate gates. This result closes P09 upon protected merge
+of [#887](https://github.com/OpenGPGPU/OpenGPU/pull/887), making the accepted
+alignment count9/40; P10 is next.
+
 ## Earlier version1 guest qualification
 
 An explicit local guest qualification uses the same original full resource

@@ -43,7 +43,7 @@
   完整资源和2-CU VGA60仍待其各自目标验收。阶段源码合入不自动增加闭环计数。
   P01 / #819、P02 / #820、P03 / #821 已完成各自的源码交付验收。
 - 当前基线为 **40 个 PR 工作包**：源码交付 3 项，功能/资源/API 闭合 31 项，
-  性能与最终验收 6 项。本交付受保护合入后，验收完成并合入 **8/40**，剩余 **32 项**。
+  性能与最终验收 6 项。本交付受保护合入后，验收完成并合入 **9/40**，剩余 **31 项**。
   清单显式包含 P39（原 VS→patch）和 P40（完整动态 TES patch read），
   不再把两者隐含在已经存在的组件结果中；原编号保持不变。
 - P15 源码已合入；三域客户端在实际报告消费后清理取消/故障状态，六项定向
@@ -115,11 +115,16 @@
   两次实际PTE/context清理及末次源复查通过。
   [最终结果、各自准确执行源、范围与复现](TYPED_IMAGE_LIVE_OWNER.md)。
   [#880](https://github.com/OpenGPGPU/OpenGPU/pull/880)受保护合入后关闭P08，
-  下一串行目标为P09的indirect compute source与执行合同。
+  P09后续由[#887](https://github.com/OpenGPGPU/OpenGPU/pull/887)补齐原Mesa连续十阶段
+  完整DUT执行：GPU三维计数、真实读故障/无写入、同DUT/RAM健康复用、零X/Y/Z与
+  `UINT32_MAX`其余轴、原驱动边界拒绝、逐阶段publication/IRQ/PTE/ASID清理及最终MMU退出。
+  独立全物理字节检查、原进程正常退出和末次输入复查均通过；
+  [最终结果、范围与复现](COMPUTE_INDIRECT_SUBMISSION.md#complete-continuous-version2-execution-p09)。
+  本交付受保护合入后关闭P09，下一串行目标为P10的完整atomic操作与竞争。
 - P15、P16、P17、P39、P40 已有下表列出的限定范围源码与检查，均未完成目标验收。
   当前112仍非完整资源资格；旧96模型不能替代P04的完整factory和原probe验收。
 
-这里的 8/40 只统计本次列出的剩余工作，不是整个项目的历史完成率。
+这里的 9/40 只统计本次列出的剩余工作，不是整个项目的历史完成率。
 现有源码和组件证据不因列入闭合任务而被当作从零开始，也不会据此推算
 一个未经验收的总完成百分比。
 
@@ -228,7 +233,7 @@ python3 -B scripts/test_framebuffer_blit_host.py
 | P06 | 43个原调用者 framebuffer blit 的目标 host 执行 | 原43包及 source SHA 不变；精确字节/VM guard、source fault、延迟 R/B reset/drain、健康 ID 复用在目标 DUT 上通过 | P03、P04 | 完成（随本交付受保护合入生效）；完整112字host的43包与source fault、R/B reset/drain、partial-cancel字节及健康ID复用全部实际通过；[最终结果、bounded VM范围与复现](NATIVE_FRAMEBUFFER_BLIT_SAMPLE_OWNER.md#actual-complete-host-execution-p06)。原Linux trace、完整资源与产品clock/FPS仍保留独立门槛 |
 | P07 | 原 GEM atomic-counter live 提交与完整操作语料 | 实际 Mesa→生产 ioctl→目标 DUT；inc/read/dec、动态索引及资源共存；独立返回集合/最终 counter/全字节 guard，保留真实 owner 至 cleanup ACK | P04 | 完成（随本交付受保护合入生效）；最终source绑定的完整112字host十一条recipe/八组原ESSL全部实际通过，含scalar末地址和四image/四SSBO共存；独立结果/guard、held/retired、PTE/shootdown/context cleanup及输入复查全部通过；[最终结果、逐case reset范围与复现](ATOMIC_COUNTER_LIVE_OWNER.md#actual-complete-host-execution-p07)。完整资源、跨命令coherence和产品clock/FPS保留独立门槛 |
 | P08 | Typed image load/store/atomic live 提交 | 原 image view、format/pitch/layer/权限与精确 writable view；实际 shader 结果、边界、fault/cancel/reset 及独立 oracle 通过 | P04、P07 | 完成（随[#880](https://github.com/OpenGPGPU/OpenGPU/pull/880)受保护合入生效）；原70条load/store在完整112字sample DUT、15条R32I/UI/R32F atomic及15条坐标边界recipe在完整float DUT通过独立结果、有效端点/越界零值/无写入、全物理guard、retirement和实际PTE/context清理。全容量assertion模型、四执行器与三组MMIO probe已绑定；buffer R32F source-fault、读/写权限负例及各自同DUT/同RAM/同ID健康复用通过。延迟R/B取消另在准确执行源4a60abb3065通过原Linux RESET/IRQ、ECANCELED fence、实际drain、32周期无晚到流量、精确partial-cancel字节、严格清理和保留旧RAM的健康复用；两组均退出0且消费者清理确认。[最终结果、各自执行源与复现](TYPED_IMAGE_LIVE_OWNER.md)。单case矩阵分别reset；完整资源共存、跨命令coherence、完整API及clock/FPS保持后续独立门槛 |
-| P09 | Indirect compute 原始 source 与执行合同 | 专用 opcode14 capture；GPU产生的三维 grid、依赖 fence/snapshot、零工作、极限/越界、失败与复用均通过，不靠 opcode 白名单 | P04、P07 | v2驱动、Gallium原GEM路由和独立opcode14捕获/回执已由[#881](https://github.com/OpenGPGPU/OpenGPU/pull/881)、[#882](https://github.com/OpenGPGPU/OpenGPU/pull/882)、[#883](https://github.com/OpenGPGPU/OpenGPU/pull/883)合入。本交付增加连续owner源码生命周期：原GEM实际字节的完整身份/可写范围回读、保留reservation/sync fence、原驱动publication与临时映射/context阶段回收、独立phase ACK和错误保留。Clang/Linux GCC sanitizer六阶段CPU传输、原float-host624组与23项执行器资格检查通过；[合同、结果与复现](COMPUTE_INDIRECT_SUBMISSION.md#version2-continuous-owner-source-lifecycle)。真实Mesa连续frontend、typed native phase consumer、保留原RAM及完整DUT的GPU三维grid/依赖/快照/零工作/极限/越界/失败与健康复用仍待完成；P09未关闭，完成数仍8/40 |
+| P09 | Indirect compute 原始 source 与执行合同 | 专用 opcode14 capture；GPU产生的三维 grid、依赖 fence/snapshot、零工作、极限/越界、失败与复用均通过，不靠 opcode 白名单 | P04、P07 | 完成（随本交付受保护合入生效）；[#881](https://github.com/OpenGPGPU/OpenGPU/pull/881)–[#884](https://github.com/OpenGPGPU/OpenGPU/pull/884)交付v2驱动、原GEM路由、opcode14捕获与连续源生命周期；[#886](https://github.com/OpenGPGPU/OpenGPU/pull/886)修正完整shared发现下的storage SIMT接纳；[#887](https://github.com/OpenGPGPU/OpenGPU/pull/887)在完整float DUT通过原Mesa十阶段GPU三维计数、source WRITE fence/同一私有快照、真实RRESP失败及无写入、健康复用、零X/Y/Z及其余轴全u32、原驱动越界拒绝、同DUT/同RAM/单reset全物理字节与逐阶段/最终PTE/context/MMU清理。原进程退出0与末次输入复查通过；[结果、限制与复现](COMPUTE_INDIRECT_SUBMISSION.md#complete-continuous-version2-execution-p09)。live-kernel/API、完整资源/跨域coherence及clock/FPS保留后续独立验收 |
 | P10 | Storage/global/image atomic 完整操作与竞争 | 全规定操作、CAS 精确旧值、竞争与重排、延迟 ACK、reservation、只读/越界、故障后健康复用；实际完整 host 验证 | P07、P08 | 待闭合 |
 | P11 | 多 owner、多命令和跨域 coherence/barrier | 同 RAM、无 reset，GPU producer 与 warmed consumer；SSBO/image/texture/attachment/DMA/counter/shared 的 publication、barrier、fence 和 cleanup 矩阵通过 | P05–P10 | 待补齐 |
 | P12 | Compute 资源共存、极限与 robustness | 保留128本地线程/16KiB共享及4SSBO、4image、8counter、32texture、12UBO/default；同时使用、末地址、namespace/alias/permission、cancel/reset 均有完整 host 证据 | P07–P11 | 待闭合 |
