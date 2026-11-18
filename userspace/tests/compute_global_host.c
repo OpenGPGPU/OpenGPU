@@ -153,7 +153,8 @@ int main(int argc,char **argv)
  }else assert(!status);
  marker("cleanup_wait","original global kernel retired; independent byte authorization required\n");
  f=wait_file("BEGIN_CLEANUP");magic(f,"OGCMBA01");assert(read32(f)==1);end(f);
- assert(!compute_host_begin_cleanup(session,directory));assert(!compute_host_finish_observed(session));
+ assert(!compute_host_begin_cleanup(session,directory));
+ assert(!(expect_global_fault?compute_host_finish_failed_observed(session):compute_host_finish_observed(session)));
  assert(!compute_host_end_cleanup(session));
  f=wait_file("FINAL_RESPONSE");magic(f,"OGCMOK01");assert(read32(f)==1);end(f);
  /* Dedicated source process: the original file/context release above owns
