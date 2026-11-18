@@ -146,6 +146,8 @@ int main(void)
             assert(!opengpu_compute_get_param_ioctl(&drm,&p,&file));
             assert(!!(p.value&OPENGPU_DRIVER_FEATURE_COMPUTE_INDIRECT_RESOURCES)==
                 (indirect&&counter&&unified&&protected_vm));
+            assert(!!(p.value&OPENGPU_DRIVER_FEATURE_COMPUTE_INDIRECT_RESOURCES_V2)==
+                (indirect&&unified&&protected_vm));
         }
     /* Version bits alone, original service bits alone and missing transport
      * or VM ownership are all insufficient. Preserve the unrelated flags. */

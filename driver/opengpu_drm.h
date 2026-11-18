@@ -276,6 +276,8 @@ struct drm_opengpu_param {
 #define OPENGPU_DRIVER_FEATURE_NATIVE_GEOMETRY (1ull << 42)
 /* Explicit R32F exchange-only service; integer image atomics do not imply it. */
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_FLOAT_EXCHANGE (1ull << 43)
+/* Version-2 indirect snapshots: optional counter and shared count kernarg. */
+#define OPENGPU_DRIVER_FEATURE_COMPUTE_INDIRECT_RESOURCES_V2 (1ull << 44)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u
@@ -779,15 +781,29 @@ struct drm_opengpu_compute_counter_source_resources {
  * always have three nonzero axes; it grants no new shader memory authority.
  * This is a bounded snapshot transport, not a live GLES indirect-buffer ABI. */
 #define OPENGPU_COMPUTE_INDIRECT_VERSION 1u
+/* Version 2 retains the layout and original shader bytes. An all-zero nested
+ * counter source omits counters. KERNARG_COUNTS makes the same immutable 12B
+ * copy used by GCI1 the shader's complete kernarg, validated with a 12B bound.
+ * This gives GRID_SIZE one producer-fenced source without a second CPU read
+ * or a write to the caller's original kernarg. Other flags remain invalid. */
+#define OPENGPU_COMPUTE_INDIRECT_VERSION2 2u
+#define OPENGPU_COMPUTE_INDIRECT_KERNARG_COUNTS (1u << 0)
 struct drm_opengpu_compute_indirect_source {
     __aligned_u64 offset;
     __u32 handle, pad;
+};
+struct drm_opengpu_compute_indirect_options {
+    __u32 flags, reserved;
 };
 struct drm_opengpu_compute_indirect_resources {
     struct drm_opengpu_compute_counter_source_resources resources;
     struct drm_opengpu_compute_indirect_source source;
     __u32 max_groups[3];
-    __u32 version, pad[2];
+    __u32 version;
+    union {
+        __u32 pad[2]; /* Version 1: both zero. */
+        struct drm_opengpu_compute_indirect_options v2;
+    };
 };
 
 /* Hardware event controls shared by compute and DMA submissions. Event words
