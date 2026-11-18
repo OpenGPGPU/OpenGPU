@@ -696,6 +696,41 @@ environment that leave them unset for both builds. The witness covers the
 build and the recorded inputs; it does not replace assertion, scene or
 independent image qualification.
 
+## Skipping unused precompiled headers
+
+With `--precompiled-header`, the native FlashSim builder generates a PCH only
+for optimization levels with a missing or invalid shard object. It checks the
+same compiler, header, source, flags, environment and object digest used for
+ordinary object reuse. When every shard is cached, it starts no PCH compiler;
+the original driver compilation, linking and final input checks still run.
+Cold builds retain their PCHs, and a changed header invalidates all dependent
+objects. PCHs remain temporary and are removed after their consumers exit.
+
+Actual Clang controls confirm two default PCH compilations on a cold build,
+zero on a fully cached rebuild and one for a changed shard's optimization
+level. PCH and ordinary compilation produce identical shard bytes, and the
+linked programs run successfully. Corrupt objects rebuild, header changes
+rebuild both levels, and shards without a PCH include keep their ordinary
+path. Objects are checked again before reuse; a cache mutation after planning
+cannot use a missing or mismatched PCH or replace the last successful build.
+
+All 34 focused builder, cache, adapter, generator and owner-input checks pass,
+including real FlashSim/CIRCT bound-assertion generation and native execution.
+The Python 3.14 run stayed below 4 GiB and proved consumer cleanup. Reproduce
+with Python 3.10+ in the matching FlashSim/CIRCT environment:
+
+```sh
+OPENGPU_FLASHSIM_DIR="$FLASH_GENERATOR" PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts \
+  python3 -B -m unittest test_build_native_flashsim \
+  test_cache_native_flashsim_compiler test_flashsim_native_adapter \
+  test_qualify_native_product_flashsim test_prepare_native_owner_flashsim
+```
+
+This removes redundant work from incremental native builds. It does not
+measure a complete current-factory cold build, RTL generation speed or
+simulation throughput; those comparisons still require the same complete RTL,
+assertions, capacities and independently checked executions on both backends.
+
 ## Compiler hierarchy profiles
 
 The default `flat` profile compiles the complete RTL and generated checks
