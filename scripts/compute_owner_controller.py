@@ -332,6 +332,7 @@ def main():
     parser.add_argument('--storage-delayed-ack',action='store_true')
     parser.add_argument('--storage-recovery-matrix',action='store_true')
     parser.add_argument('--storage-accepted-matrix',action='store_true')
+    parser.add_argument('--image-accepted-matrix',action='store_true')
     parser.add_argument('--contended-image-matrix',action='store_true')
     parser.add_argument('--mixed-atomic-matrix',action='store_true')
     parser.add_argument('--global-atomic-matrix',action='store_true')
@@ -344,6 +345,13 @@ def main():
     mode.add_argument('--image-permission-recovery',choices=('read','write'))
     mode.add_argument('--image-reset-recovery',choices=('read','write'))
     args = parser.parse_args()
+    from compute_contended_image_cases import CASES as CONTENDED_IMAGE_CASES
+    require(not args.image_accepted_matrix or (args.case==CONTENDED_IMAGE_CASES[0] and not any((
+        args.storage_matrix,args.storage_delayed_ack,args.storage_recovery_matrix,args.storage_accepted_matrix,
+        args.contended_image_matrix,args.mixed_atomic_matrix,args.global_atomic_matrix,args.global_delayed_ack,
+        args.global_recovery_matrix,args.global_accepted_matrix,args.expect_image_source_fault,args.image_source_recovery,
+        args.image_permission_recovery,args.image_reset_recovery))),
+        'image accepted-write recovery requires its distinct original physical-fault matrix')
     require(not args.global_delayed_ack or args.global_atomic_matrix,'global ACK requires its exact complete source matrix')
     require(not args.storage_accepted_matrix or (args.case==STORAGE_ATOMIC_CASES[0] and not any((
         args.storage_matrix,args.storage_delayed_ack,args.storage_recovery_matrix,args.contended_image_matrix,
@@ -416,7 +424,7 @@ def main():
         require(type(qualified_profile) is str and qualified_profile in SAMPLE_FACTORY_CONTRACTS,
                 'source requires a known complete final112 executor')
         from compute_image_cases import IMAGE_FLOAT_EXCHANGE_CASES
-        if args.case in IMAGE_FLOAT_EXCHANGE_CASES or args.contended_image_matrix or args.case in MIXED_ATOMIC_CASES or (
+        if args.case in IMAGE_FLOAT_EXCHANGE_CASES or args.contended_image_matrix or args.image_accepted_matrix or args.case in MIXED_ATOMIC_CASES or (
                 args.case in CONTENDED_IMAGE_CASES and '-r32f-' in args.case):
             from owner_resource_contract import IMAGE_FLOAT_PROFILE
             require(qualified_profile==IMAGE_FLOAT_PROFILE,'R32F exchange requires its qualified float owner')
@@ -463,6 +471,11 @@ def main():
             if args.storage_accepted_matrix:
                 from compute_global_recovery_controller import run_recovery_matrix
                 import compute_storage_accepted_recovery as protocol
+                run_recovery_matrix(args,command,directory,executor,env,qualified,qualified_profile,protocol=protocol)
+                return
+            if args.image_accepted_matrix:
+                from compute_global_recovery_controller import run_recovery_matrix
+                import compute_image_accepted_recovery as protocol
                 run_recovery_matrix(args,command,directory,executor,env,qualified,qualified_profile,protocol=protocol)
                 return
             if args.storage_recovery_matrix:

@@ -62,6 +62,7 @@ COMPUTE_CHECKERS = (
     'scripts/test_compute_global_recovery.py',
     'scripts/compute_global_accepted_recovery.py', 'scripts/test_compute_global_accepted_recovery.py',
     'scripts/compute_storage_accepted_recovery.py', 'scripts/test_compute_storage_accepted_recovery.py',
+    'scripts/compute_image_accepted_recovery.py', 'scripts/test_compute_image_accepted_recovery.py',
     'scripts/test_compute_storage_recovery.py', 'scripts/test_native_frame_axi.cpp',
     'scripts/test_compute_storage_atomic_delay.cpp',
     'scripts/compute_indirect_oracle.py',

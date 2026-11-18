@@ -3,16 +3,17 @@
 // shared. Only the controlled physical response errors and lifetime are new.
 namespace compute_owner {
 inline void active_storage_recovery_matrix(int argc,char **argv,const std::filesystem::path &output,
-    const std::filesystem::path &session,std::chrono::milliseconds timeout,bool accepted=false) {
-  const unsigned rounds=accepted?30:60;
+    const std::filesystem::path &session,std::chrono::milliseconds timeout,bool accepted=false,bool image=false) {
+  require(!image || accepted,"image recovery requires committed-write errors");
+  const unsigned rounds=image?110:accepted?30:60;
   constexpr uint64_t base=0x01000000,step=0x01000000;
   require(compute_owner_factory()==OwnerFactory::image_float_stage,
     "storage recovery requires the complete float factory");
   require(std::filesystem::is_directory(session) && !std::filesystem::is_symlink(session) &&
     !std::filesystem::exists(output),"invalid storage recovery session/output");
-  const auto plan_path=session/(accepted?"storage-accepted-recovery.plan":"storage-recovery.plan");
+  const auto plan_path=session/(image?"image-accepted-recovery.plan":accepted?"storage-accepted-recovery.plan":"storage-recovery.plan");
   wait_input(plan_path,session,timeout);
-  std::ifstream plan(plan_path,std::ios::binary);magic(plan,accepted?"OGCSAM01":"OGCSRM01");
+  std::ifstream plan(plan_path,std::ios::binary);magic(plan,image?"OGCIAM01":accepted?"OGCSAM01":"OGCSRM01");
   require(read_le(plan,4)==rounds && read_le(plan,4)==(accepted?2u:4u) && read_le(plan,8)==base &&
     read_le(plan,8)==step && plan.peek()==EOF,"foreign storage recovery matrix");
   const auto first=session/"round-0";authorize_recovery_round(first,0,timeout);
@@ -47,7 +48,7 @@ inline void active_storage_recovery_matrix(int argc,char **argv,const std::files
     const unsigned kind=accepted?(index%2==0?3:0):(index%4==0?1:index%4==2?2:0);
     if(kind) {
       wait_input(local/"record-0.fault-plan",local,timeout);
-      std::ifstream fault(local/"record-0.fault-plan",std::ios::binary);magic(fault,accepted?"OGCSF002":"OGCSF001");
+      std::ifstream fault(local/"record-0.fault-plan",std::ios::binary);magic(fault,image?"OGCIF002":accepted?"OGCSF002":"OGCSF001");
       const auto begin=read_le(fault,8),end=read_le(fault,8);
       require(read_le(fault,4)==kind && fault.peek()==EOF && begin && begin<Memory::limit &&
         !(begin&63) && end==begin+64,"foreign storage physical fault plan");
@@ -57,7 +58,8 @@ inline void active_storage_recovery_matrix(int argc,char **argv,const std::files
     }
     active_compute(sim,agent,bus,memory,capture,destination,local,timeout,
       kind==1?ImageFailure::source_read:kind==2?ImageFailure::first_write:
-        kind==3?ImageFailure::storage_accepted_write:ImageFailure::none,
+        kind==3?(image?(index<100?ImageFailure::image_accepted_write:ImageFailure::image_accepted_float_write):
+          ImageFailure::storage_accepted_write):ImageFailure::none,
       prior_reads,index?&previous:nullptr);
     if(kind==1)agent.disarm_read_faults();
     if(kind>=2)agent.disarm_first_write_fault();
@@ -74,7 +76,7 @@ inline void active_storage_recovery_matrix(int argc,char **argv,const std::files
       "storage recovery lost prior error history or incurred an unplanned response fault");
     memory.write((destination/"record-0.cleaned.memory").string());
     atomic_json(local/"executor.done",[&](auto &out) {
-      out<<"{\"schema\":\""<<(accepted?"opengpu-compute-storage-accepted-recovery-round-v1":
+      out<<"{\"schema\":\""<<(image?"opengpu-compute-image-accepted-recovery-round-v1":accepted?"opengpu-compute-storage-accepted-recovery-round-v1":
           "opengpu-compute-storage-recovery-round-v1")<<"\",\"phase\":"<<index
         <<",\"mode\":\""<<(kind==1?"read":kind==2?"write":kind==3?"accepted-write":"healthy")<<"\",\"commandId\":"<<command_id
         <<",\"resetCount\":1,\"ramReplaced\":false,\"externalDrained\":true"

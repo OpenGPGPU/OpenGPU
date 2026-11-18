@@ -965,6 +965,60 @@ env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 -B \
   --case image-atomics-contended --timeout 7200
 ```
 
-P10 remains open for mixed image/storage competition, raw RV32 global AMOs
-and accepted-write/error cached-alias behavior. Complete resource coexistence,
+The later mixed image/storage and raw RV32 global stages have their own
+[results](MIXED_COMPUTE_ATOMICS.md) and
+[results](GLOBAL_ATOMIC_TRANSLATION.md). Image committed-write errors and
+cached-alias behavior remain P10 gates. Complete resource coexistence,
 cross-domain coherence, a physical clock and FPS retain their separate gates.
+
+## Committed image write errors and continuous reuse
+
+The distinct `image-atomics-accepted-write-error` entry retains all 55 original
+same-texel programs, targets, formats, operands and two four-invocation
+workgroups. Each program has a committed first-write error followed by healthy
+reuse: 110 phases require one complete assertion-enabled float DUT, retained
+RAM, one initial reset and the original command ID. Fresh original GEMs use
+disjoint physical namespaces; all previously cleaned RAM remains guarded.
+
+The physical agent commits enabled W bytes before returning the delayed B
+error. The image unit owns one lane's atomic request until its response; an
+error ends that vector instruction before another failed-group lane commits.
+The oracle enumerates the four legal first invocations of the failed group,
+then checks the surviving group's source-ordered AMOs, exact old words, final
+shared texel and each destination imageStore. Failed-group old slots and
+destination texels remain unchanged. Native accounting requires nine target
+attempts for each two-operation integer program and five for finite R32F
+exchange, including writes for missed CAS operations.
+
+The producer and input guard bind every original GLSL/code/view/mapping,
+compiler/link dependency and all 110 ordered source/session/fault/allocator
+arguments. Image write-failure receipts have a distinct option restricted to
+these original programs. Each phase requires actual EIO or healthy success,
+held/retired IRQ, PTE/context/MMU cleanup and external drain before reuse.
+
+Seventy focused oracle/source/controller/qualifier checks and 29 native
+transport/input-closure checks pass, alongside 21 legacy global/storage
+recovery checks. CPU controls include all 10,560 failed-lane/successful-group
+permutations, literal histories, source-order and failed-group negatives,
+destination/old-slot/current/previous-RAM guards and cleanup refusal.
+Actual complete-DUT qualification still must establish all 110 phases,
+1,260 returned old words, real cleanup and final compiler/source/model checks.
+
+```sh
+env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts \
+  /usr/bin/python3 -B -m unittest test_compute_image_accepted_recovery \
+  test_qualify_compute_owner test_compute_counter_source test_compute_image_source
+env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 \
+  /usr/bin/python3 -B scripts/prepare_owner_executor.py --backend verilator \
+  --stage build --kind compute --owner-output "$OWNER_OUTPUT"
+python3 -B scripts/qualify_compute_owner.py \
+  --executor "$OWNER_OUTPUT/executors/compute/executor" \
+  --executor-qualification "$OWNER_OUTPUT/executors/compute/qualification.json" \
+  --executor-checker scripts/prepare_owner_executor.py \
+  --executor-checker-python "$QUALIFICATION_PYTHON" \
+  --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72 \
+  --case image-atomics-accepted-write-error --timeout 7200
+```
+
+Cached aliases and cross-command coherence retain separate complete-host
+gates. P10 remains open and acceptance remains 9/40.

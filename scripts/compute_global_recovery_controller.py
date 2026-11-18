@@ -85,7 +85,8 @@ def run_recovery_matrix(args, command, directory, executor, env, qualified, prof
                 with SparseMemory(baseline) as before,SparseMemory(destination/'record-0.memory') as after:
                     if mode=='healthy':
                         verify(before,after,description)
-                        old_words+=8
+                        old_words+=(contract.healthy_old_words(description)
+                            if hasattr(contract,'healthy_old_words') else 8)
                     else:
                         old_words+=contract.verify_fault(before,after,description,mode,
                             target_attempts=retired['faultTargetWriteAttempts'])

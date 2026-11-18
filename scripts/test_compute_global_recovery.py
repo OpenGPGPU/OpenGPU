@@ -206,8 +206,9 @@ class GlobalContinuousOwnerTests(unittest.TestCase):
             return make_done(index) if path.name=='executor.done' else make_held(index)
         def ready(path,case,**_kwargs):
             index=int(path.name[6:]);_,_,description=source_fixture(case)
-            view='kernarg' if 'kernarg' in description else 'target'
-            description[view]['allocationPhysical']=phases[index]['base']+4096
+            view=(description['images'][0] if 'images' in description else
+                description['kernarg' if 'kernarg' in description else 'target'])
+            view['allocationPhysical']=phases[index]['base']+4096
             return description,{}
         class MemoryPeer:
             def __init__(self,path):
@@ -218,8 +219,10 @@ class GlobalContinuousOwnerTests(unittest.TestCase):
         def fault_bytes(_before,_after,_description,mode,*,target_attempts):
             events.append((-1,'fault-bytes-'+mode))
             if bad_write and mode!='read':raise ValueError('deliberately invalid partial old word')
-            self.assertEqual(target_attempts,0 if mode=='read' else 5)
-            return 0 if mode=='read' else 4
+            expected=(protocol.target_attempts(_description['sourceCase'])
+                if protocol is not None and hasattr(protocol,'target_attempts') else 5)
+            self.assertEqual(target_attempts,0 if mode=='read' else expected)
+            return 0 if mode=='read' else expected-1
         qualified=Mock();tables=Mock(return_value='actual-cpu-peer-tables')
         with tempfile.TemporaryDirectory(prefix='global-recovery-peer-') as temporary:
             directory=Path(temporary)
