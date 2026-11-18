@@ -474,6 +474,51 @@ CC=gcc CXX=g++ PYTHONDONTWRITEBYTECODE=1 OPENGPU_TEST_SANITIZERS=1 \
   python3 -B scripts/test_compute_host.py --image-float-stage
 ```
 
+## Delayed R/B reset recovery protocol
+
+`--image-reset-recovery read` or `write` selects two live original buffer R32F
+producers: cancellation followed by a healthy job. Their original shaders,
+image views and permissions are unchanged. The controller derives the held
+response interval only from the original source GEM. The native executor
+retains one complete float DUT, RAM, AXI agent and execution clock; the healthy
+owner appends disjoint original allocations and reuses the original command ID.
+The initial model reset and the one original unified-reset request are counted
+separately. Physical/injected error and response-hold history remain cumulative.
+
+Distinct held, BUSY, drained-ACK and retired-IRQ receipts replay the original
+Linux abort/reset traces. The native parser requires the request ending at
+RESET, the IRQ-enable tail and the original six-action no-POP IRQ retirement.
+A SUBMIT while reset is BUSY must be rejected. Thirty-two extra clocks after
+the drained ACK must preserve every RAM byte and external traffic count before
+any new command. Independent partial bytes must pass before the controller
+relays the ACK to the original IRQ handler; cleanup requires its own subsequent
+authorization and actual PTE/context acknowledgements.
+
+A read-held cancellation preserves every original data byte. A write-held
+cancellation permits only complete original R32F exchange states, original or
+exact independently expected old-value output words, and original/final
+destination words. It requires committed source data; code, arguments,
+descriptors, page tables, padding and unused texels remain protected. Independent
+cleanup checks forbid backwards data progress and permit only original valid
+PTE clears, with all private translations revoked. Every old owner's cleaned
+byte remains guarded through the healthy round.
+
+Fifty Python source/protocol/byte/lifetime checks and the five fixed C++ compute
+drivers pass; the C++ guards use ASan/UBSan and verify reset JSON interoperability
+and strict trace/plan rejection. The full float C matrix and canonical parser
+also pass, including original cancelled IRQ traces with both pending and clean
+IRQ histories. These remain CPU/source checks. Actual delayed-R/B reset/drain
+and healthy-reuse execution is still required before P08 can close.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts python3 -B -m unittest \
+  test_compute_image_reset test_compute_owner_protocol test_compute_owner_controller \
+  test_qualify_compute_owner test_compute_image_source
+# With a freshly source-qualified complete float executor, run each channel:
+# qualify_compute_owner.py --case image-atomic-buffer-r32f --image-reset-recovery read
+# qualify_compute_owner.py --case image-atomic-buffer-r32f --image-reset-recovery write
+```
+
 ## Original source-read failure execution path
 
 The explicit qualifier option `--expect-image-source-fault` selects only the

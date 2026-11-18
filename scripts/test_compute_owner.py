@@ -73,6 +73,13 @@ class ComputeOwnerTests(unittest.TestCase):
                 self.assertEqual(result.stdout, 'compute owner CPU protocol/guard checks: PASS\n')
                 wire = profile_bytes(strict_json(directory / 'profile.json'))
                 self.assertEqual(wire[:8], magic)
+                from compute_image_reset import reset_receipt_bytes
+                for channel in ('read','write'):
+                    previous=None
+                    for phase in ('held','busy','ack','retired'):
+                        value=strict_json(directory/('reset-'+channel+'-'+phase+'.json'))
+                        self.assertEqual(len(reset_receipt_bytes(value,phase,channel,previous)),32)
+                        previous=value
 
     def test_full_factory_linux_capture_reaches_its_fixed_cpp_parser(self):
         for option in ('--geometry-compute', '--sample-stage', '--image-float-stage'):

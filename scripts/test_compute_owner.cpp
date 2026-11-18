@@ -214,6 +214,65 @@ static void parser_checks() {
   auto native_retirement=rw;native_retirement.replace(0,8,"OGRTR001");std::istringstream wrong_retire(native_retirement);
   rejects([&]{ComputeRetirement::read(wrong_retire);});
 }
+static ComputeResetTrace reset_trace_fixture(ResetPhase phase) {
+  ComputeResetTrace r;r.command_id=17;
+  if(phase==ResetPhase::request)r.actions={{Kind::write,GPU_REG_IRQ,0,0},
+    {Kind::poll,GPU_REG_UCMD_STATUS,GPU_UCMD_STATUS_VM_BUSY,63},
+    {Kind::write,GPU_REG_UCMD_RESET,GPU_UCMD_RESET_REQUEST,0}};
+  else if(phase==ResetPhase::tail)r.actions={{Kind::write,GPU_REG_IRQ,GPU_IRQ_ENABLE,0}};
+  else r.actions={{Kind::check,GPU_REG_STATUS,0,0xffffffffu},
+    {Kind::check,GPU_REG_IRQ,3,0xffffffffu},{Kind::write,GPU_REG_IRQ,3,0},{Kind::write,GPU_REG_IRQ,1,0},
+    {Kind::poll,GPU_REG_UCMD_STATUS,GPU_UCMD_STATUS_READY,63},
+    {Kind::poll,GPU_REG_UCMD_STATUS,GPU_UCMD_STATUS_READY,63}};
+  return r;
+}
+static std::string reset_trace_wire(const ComputeResetTrace &r,ResetPhase phase) {
+  std::ostringstream out;out.write(phase==ResetPhase::request?"OGCRQ001":phase==ResetPhase::tail?"OGCRL001":"OGCRV001",8);
+  write_le(out,r.command_id,4);write_le(out,r.actions.size(),4);
+  for(const auto &a:r.actions)for(uint32_t v:{uint32_t(a.kind),a.address,a.value,a.mask})write_le(out,v,4);
+  return out.str();
+}
+static void reset_parser_checks() {
+  for(auto phase:{ResetPhase::request,ResetPhase::tail,ResetPhase::retire}) {
+    const auto good=reset_trace_fixture(phase);good.validate(phase,17);
+    auto wire=reset_trace_wire(good,phase);std::istringstream input(wire);ComputeResetTrace::read(input,phase,17);
+    for(size_t n=0;n<good.actions.size();n++) {
+      auto bad=good;bad.actions.erase(bad.actions.begin()+n);rejects([&]{bad.validate(phase,17);});
+      bad=good;bad.actions[n].address=GPU_REG_UCMD_COMPLETION_POP;rejects([&]{bad.validate(phase,17);});
+      bad=good;bad.actions[n].mask^=1;rejects([&]{bad.validate(phase,17);});
+      bad=good;bad.actions[n].value|=0x80000000u;rejects([&]{bad.validate(phase,17);});
+      bad=good;bad.actions[n].kind=Kind::pte_clear;rejects([&]{bad.validate(phase,17);});
+    }
+    auto bad=good;bad.command_id=18;rejects([&]{bad.validate(phase,17);});
+    bad=good;bad.actions.push_back(good.actions.front());rejects([&]{bad.validate(phase,17);});
+    for(auto broken:{wire.substr(0,7),wire.substr(0,wire.size()-1),wire+"x",std::string("OGCMT001")+wire.substr(8)}) {
+      std::istringstream in(broken);rejects([&]{ComputeResetTrace::read(in,phase,17);});
+    }
+  }
+  for(auto channel:{ResponseChannel::read,ResponseChannel::write}) {
+    std::ostringstream out;out.write("OGCRP001",8);write_le(out,channel==ResponseChannel::read?1:2,4);
+    write_le(out,0x5000,8);write_le(out,0x6000,8);const auto good=out.str();
+    std::istringstream input(good);const auto p=ComputeResetPlan::read(input,channel);
+    require(p.first==0x5000 && p.end==0x6000 && p.channel==channel,"reset plan replaced original source interval");
+    for(auto bad:{good.substr(0,7),good.substr(0,good.size()-1),good+"x"}) {
+      std::istringstream in(bad);rejects([&]{ComputeResetPlan::read(in,channel);});
+    }
+    std::istringstream other(good);rejects([&]{ComputeResetPlan::read(other,
+      channel==ResponseChannel::read?ResponseChannel::write:ResponseChannel::read);});
+    for(unsigned offset:{12u,20u}) {
+      auto bad=good;bad[offset]=1;std::istringstream in(bad);rejects([&]{ComputeResetPlan::read(in,channel);});
+    }
+    for(unsigned phase=0;phase<4;phase++) {
+      ComputeResetResult r;r.command=17;r.status=phase==0?33:phase==1?40:1;
+      r.irq=phase==0 || phase==2?3:phase==1?2:1;r.pin=phase==0 || phase==2;r.drained=phase>=2;
+      r.cycles=100+20*phase;r.read_holds=channel==ResponseChannel::read?5:0;r.write_holds=channel==ResponseChannel::write?5:0;
+      const char *names[]={"held","busy","ack","retired"};
+      const auto path=std::filesystem::path(std::getenv("TMPDIR"))/
+        (std::string("reset-")+(channel==ResponseChannel::read?"read-":"write-")+names[phase]+".json");
+      atomic_json(path,[&](auto &stream){compute_reset_json(stream,r,names[phase],channel);});
+    }
+  }
+}
 static void profile_checks(int argc,char **argv) {
   auto memory=memory_fixture();ComputePeer sim(argc,argv,memory);sim.reset();
   Agent agent(memory);ReplayBus<ComputePeer> bus(sim,agent,100000);
@@ -440,8 +499,14 @@ static void active_protocol(int argc,char **argv) {
   std::filesystem::remove_all(session);
 }
 int main(int argc,char **argv) {
+  if(argc==3 && std::string(argv[1])=="--reset-transport") {
+    const std::filesystem::path directory=argv[2];const auto capture=ComputeCapture::read((directory/"record-0.capture").string());
+    ComputeResetTrace::read(directory/"record-0.reset.request",ResetPhase::request,capture.command_id);
+    ComputeResetTrace::read(directory/"record-0.reset.tail",ResetPhase::tail,capture.command_id);
+    ComputeResetTrace::read(directory/"record-0.reset.retire",ResetPhase::retire,capture.command_id);return 0;
+  }
   if(argc==3) {const auto m=Memory::read(argv[1]);const auto c=ComputeCapture::read(argv[2]);
     verify_readonly(m,m,c.writable);PtePages p;c.observe_contexts(m,p);return 0;}
-  deadline_checks();parser_checks();profile_checks(argc,argv);empty_context_checks();execution_checks(argc,argv);phase_deadline_checks(argc,argv);active_protocol(argc,argv);
+  deadline_checks();parser_checks();reset_parser_checks();profile_checks(argc,argv);empty_context_checks();execution_checks(argc,argv);phase_deadline_checks(argc,argv);active_protocol(argc,argv);
   std::cout<<"compute owner CPU protocol/guard checks: PASS\n";
 }

@@ -47,11 +47,13 @@ def sha256(path):
 
 def checked_inputs(args):
     permission=getattr(args,'image_permission_recovery',None)
+    reset=getattr(args,'image_reset_recovery',None)
     require(permission is None or permission in ('read','write'),'unknown image permission denial')
+    require(reset is None or reset in ('read','write'),'unknown image reset response channel')
     require(sum(bool(x) for x in (getattr(args,'expect_image_source_fault',False),
-            getattr(args,'image_source_recovery',False),permission))<=1,
+            getattr(args,'image_source_recovery',False),permission,reset))<=1,
             'single source fault and continuous recovery modes are mutually exclusive')
-    require(not (getattr(args,'expect_image_source_fault',False) or getattr(args,'image_source_recovery',False) or permission) or
+    require(not (getattr(args,'expect_image_source_fault',False) or getattr(args,'image_source_recovery',False) or permission or reset) or
             getattr(args,'case',None)==RECOVERY_CASE,
             'source fault requires exactly the original float buffer exchange')
     # Refuse absent qualification before any archive, container or CPU build.
@@ -74,13 +76,15 @@ def checked_inputs(args):
     return sha256(args.executor_qualification), sha256(args.executor)
 
 
-def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=None, physical_base=None, permission=None):
+def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=None, physical_base=None, permission=None, reset=None):
     require(case in CASES, 'unknown original compute source')
     source_fault=getattr(args,'expect_image_source_fault',False) if source_fault is None else source_fault
     require(type(source_fault) is bool and (not source_fault or case==RECOVERY_CASE),
             'source fault requires exactly the original float buffer exchange')
     require(permission is None or (permission in ('read','write') and not source_fault and case==RECOVERY_CASE),
             'permission denial requires one original float buffer request')
+    require(reset is None or (reset in ('read','write') and not source_fault and permission is None and case==RECOVERY_CASE),
+            'reset requires one original live float buffer request')
     require(physical_base is None or (type(physical_base) is int and 0<physical_base<=0xfffff000 and
             physical_base%4096==0 and case==RECOVERY_CASE),'invalid original recovery allocation base')
     # The configured Mesa object database uses these original absolute paths.
@@ -102,7 +106,8 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
         '--build', '{ipc}/build', '--sanitize', '--mesa-shared-ntt', str(ntt),
         '--profile-wire', '{ipc}/profile.bin', '--session', '{ipc}', '--case', case] + (
             ['--expect-image-source-fault'] if source_fault else
-            ['--expect-image-permission-fault',permission] if permission else [])+(
+            ['--expect-image-permission-fault',permission] if permission else
+            ['--expect-image-reset',reset] if reset else [])+(
             ['--physical-base',str(physical_base)] if physical_base is not None else [])
 
 
@@ -121,12 +126,13 @@ def run_case(args, *, gpu, source, temporary, ntt, image, case):
             drm=str(args.drm_include), gpu=str(gpu), ntt=str(ntt))) + '\n')
     name = 'opengpu-compute-' + uuid.uuid4().hex
     permission=getattr(args,'image_permission_recovery',None)
-    recovery=getattr(args,'image_source_recovery',False) or permission is not None
+    reset=getattr(args,'image_reset_recovery',None)
+    recovery=getattr(args,'image_source_recovery',False) or permission is not None or reset is not None
     names=[name+'-round-'+str(i) for i in range(2)] if recovery else [name]
     if recovery:
         argv=dict(schema=RECOVERY_COMMAND_SCHEMA,rounds=[producer_command(args,gpu=gpu,source=source,ntt=ntt,
-            image=image,name=names[i],case=case,source_fault=i==0 and permission is None,physical_base=base,
-            permission=permission if i==0 else None)
+            image=image,name=names[i],case=case,source_fault=i==0 and permission is None and reset is None,physical_base=base,
+            permission=permission if i==0 else None,reset=reset if i==0 else None)
             for i,base in enumerate(RECOVERY_BASES)])
     else:argv=producer_command(args, gpu=gpu, source=source, ntt=ntt, image=image, name=name, case=case)
     command_file = temporary / (case + '.argv.json')
@@ -139,8 +145,8 @@ def run_case(args, *, gpu, source, temporary, ntt, image, case):
             '--bridge-command', command_file, '--timeout', str(args.timeout),
             *(['--case', case] if case in (*COUNTER_CASES,*IMAGE_CASES) else []),
             *(['--expect-image-source-fault'] if getattr(args,'expect_image_source_fault',False) else []),
-            *(['--image-source-recovery'] if recovery and permission is None else
-              ['--image-permission-recovery',permission] if permission else []),
+            *(['--image-reset-recovery',reset] if reset else ['--image-permission-recovery',permission] if permission else
+              ['--image-source-recovery'] if recovery else []),
             '--managed-session-directory', temporary / (case + '-session')], start_new_session=True,
             env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1', TMPDIR=str(temporary)))
         require(process.wait() == 0, 'actual compute case failed: ' + case)
@@ -180,11 +186,12 @@ def main():
     mode.add_argument('--expect-image-source-fault', action='store_true')
     mode.add_argument('--image-source-recovery', action='store_true')
     mode.add_argument('--image-permission-recovery',choices=('read','write'))
+    mode.add_argument('--image-reset-recovery',choices=('read','write'))
     args = parser.parse_args()
     require(0 < args.timeout <= 604800, 'timeout must be 1..604800 seconds')
     args.executor = args.executor.absolute(); args.executor_qualification = args.executor_qualification.absolute()
     identity = checked_inputs(args)
-    if args.expect_image_source_fault or args.image_source_recovery or args.image_permission_recovery:
+    if args.expect_image_source_fault or args.image_source_recovery or args.image_permission_recovery or args.image_reset_recovery:
         from owner_resource_contract import IMAGE_FLOAT_PROFILE
         require(args.case=='image-atomic-buffer-r32f' and
                 strict_json(args.executor_qualification).get('profile')==IMAGE_FLOAT_PROFILE,
@@ -229,7 +236,8 @@ def main():
             shutil.rmtree(temporary)
         signal.signal(signal.SIGTERM, previous)
     print('original Mesa compute ' + args.case + ': actual full-DUT ' +
-          ('image '+args.image_permission_recovery+' permission fault then healthy same-ID recovery on retained RAM'
+          ('delayed '+args.image_reset_recovery+' response reset then healthy same-ID recovery on retained RAM'
+           if args.image_reset_recovery else 'image '+args.image_permission_recovery+' permission fault then healthy same-ID recovery on retained RAM'
            if args.image_permission_recovery else 'source fault then healthy same-ID recovery on retained RAM' if args.image_source_recovery else
            'source-read fault, unchanged physical bytes' if args.expect_image_source_fault else 'returned bytes')+
           ' and context cleanup PASS')

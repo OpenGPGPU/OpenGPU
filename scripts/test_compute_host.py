@@ -191,6 +191,10 @@ def main():
                     raise RuntimeError('incomplete typed image CPU transport matrix')
                 for capture in captures:
                     subprocess.run([str(binary),str(capture.parent/'union.memory'),str(capture)],env=env,check=True)
+                # Original Linux reset traces, with both stale-pending and
+                # clean IRQ histories, reach the native strict no-POP parser.
+                for case in ('000','002'):
+                    subprocess.run([str(binary),'--reset-transport',str(cancelled/'images'/case)],env=env,check=True)
         for phase in range(1, 4):
             for kind in range(1, 3):
                 negative = out / ('negative-%s-%s' % (phase, kind))

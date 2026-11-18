@@ -32,6 +32,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
                         help='actual external-DUT source-read fault; distinct failed receipt protocol')
         ap.add_argument('--expect-image-permission-fault',choices=('read','write'),
                         help='deny this access in the actual DRM source view after Gallium admission')
+        ap.add_argument('--expect-image-reset',choices=('read','write'),
+                        help='original Linux abort/reset during an actual delayed R/B response')
         ap.add_argument('--physical-base',type=int,
                         help='private original allocator namespace for continuous DUT recovery')
         ap.add_argument('--capture-counter-matrix', action='store_true',
@@ -56,12 +58,16 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     args = ap.parse_args()
     if host_execution and args.expect_image_source_fault and (
             args.case != 'image-atomic-buffer-r32f' or args.capture_only or
-            args.capture_counter_matrix or args.capture_image_matrix or args.expect_image_permission_fault):
+            args.capture_counter_matrix or args.capture_image_matrix or args.expect_image_permission_fault or args.expect_image_reset):
         ap.error('--expect-image-source-fault requires one live image-atomic-buffer-r32f case')
     if host_execution and args.expect_image_permission_fault is not None and (
             args.case!='image-atomic-buffer-r32f' or args.capture_only or args.capture_counter_matrix or
-            args.capture_image_matrix or args.expect_image_source_fault):
+            args.capture_image_matrix or args.expect_image_source_fault or args.expect_image_reset):
         ap.error('--expect-image-permission-fault requires one live float buffer permission variant')
+    if host_execution and args.expect_image_reset is not None and (
+            args.case!='image-atomic-buffer-r32f' or args.capture_only or args.capture_counter_matrix or
+            args.capture_image_matrix or args.expect_image_source_fault or args.expect_image_permission_fault):
+        ap.error('--expect-image-reset requires one live original float buffer and distinct reset receipts')
     if host_execution and args.physical_base is not None and (
             args.case!='image-atomic-buffer-r32f' or args.capture_only or
             not 0<args.physical_base<=0xfffff000 or args.physical_base%4096):
@@ -450,7 +456,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
                     counter_parameters(case)['source'] if case in COUNTER_CASES else case+'.comp')
             run([binary,args.profile_wire.resolve(),session.resolve(),sources/source,case]+
                 (['--capture-only'] if args.capture_only else ['--expect-image-source-fault'] if args.expect_image_source_fault else
-                 ['--expect-image-permission-fault',args.expect_image_permission_fault] if args.expect_image_permission_fault else [])+
+                 ['--expect-image-permission-fault',args.expect_image_permission_fault] if args.expect_image_permission_fault else
+                 ['--expect-image-reset',args.expect_image_reset] if args.expect_image_reset else [])+
                 (['--physical-base',str(args.physical_base)] if args.physical_base is not None else []),
                 'actual-compute-capture-'+case if matrix else 'actual-compute-capture',env)
         print('Actual Mesa/Linux compute ' + ('CPU capture only' if args.capture_only else 'external-DUT protocol') + ' completed: ' + str(out))
