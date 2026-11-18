@@ -99,6 +99,16 @@ class RetainedMemory:
         return self.upload.read(address, size)
 
 
+def retained_callers(originals, previous):
+    # The caller's count/output GEMs outlive all phases. Per-context original
+    # shader/kernarg GEMs are normally closed by Gallium after the quiet ACK;
+    # their old physical RAM remains guarded, but their public handles need
+    # not appear in the next actual live-original export.
+    for handle, extent in previous.items():
+        require(handle in originals.objects and originals.objects[handle].extent == extent,
+                'caller GEM was lost or rebound between phases')
+
+
 def equal_bytes(before, after, writes=()):
     require(before.ranges == after.ranges, 'physical allocation/fill identity changed')
     for first, end, _ in before.ranges:
@@ -187,6 +197,7 @@ class Chain:
         self.index = 0
         self.source = None
         self.originals = {}
+        self.callers = {}
         self.outputs = set()
         self.retained = set()
 
@@ -209,13 +220,12 @@ class Chain:
             (directory / 'record-0.capture').read_bytes(), opcode, self.profile)
         originals = Originals((directory / 'originals.bytes').read_bytes())
         originals.verify(before, self.index, opcode, command)
-        for handle, old in self.originals.items():
-            require(handle in originals.objects and originals.objects[handle].extent == old,
-                    'original GEM was lost or rebound between phases')
+        retained_callers(originals, self.callers)
         self.originals = {handle: o.extent for handle, o in originals.objects.items()}
         source = originals.objects.get(uint(d['sourceHandle']))
         output = originals.objects.get(uint(d['outputHandle']))
         require(source is not None and output is not None, 'recipe does not name original handles')
+        self.callers.update({source.handle: source.extent, output.handle: output.extent})
         def view(value, obj):
             required_flags(value, dict(globalBinding=2, allocationPhysical=obj.physical,
                 allocationBytes=8192, offset=0, bytes=8192))
