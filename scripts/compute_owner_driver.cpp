@@ -4,7 +4,14 @@
 #include "native_owner_runtime.hpp"
 #include "compute_owner_reset.hpp"
 #include "compute_storage_atomic_delay.hpp"
+#include "compute_cache_alias_observer.hpp"
 #include <cstdlib>
+
+// The bound Verilator builder supplies these exact generated headers. Other
+// backends keep the ordinary executor and cannot claim internal cache proof.
+#ifdef OPENGPU_NATIVE_CACHE_STATE
+template class compute_cache_alias::View<VGpuHostSystemAxi,VGpuComputeUnit>;
+#endif
 
 namespace compute_owner {
 // Match the live producer/controller wall-clock contract. This is separate

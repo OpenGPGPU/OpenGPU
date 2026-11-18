@@ -15,7 +15,7 @@ import generate_owner_verilator as generator
 import prepare_owner_executor as owner
 from compute_owner_protocol import strict_json
 from owner_process_lifetime import CleanupIncomplete
-from owner_resource_contract import SAMPLE_PROFILE
+from owner_resource_contract import SAMPLE_PROFILE, IMAGE_FLOAT_PROFILE
 from run_owner_bounded import run_bounded
 
 ROOT = owner.ROOT
@@ -28,12 +28,18 @@ CHECKERS = ('scripts/prepare_owner_verilator_executor.py', 'scripts/generate_own
             'scripts/owner_process_memory.py', 'scripts/owner_process_lifetime.py',
             'scripts/qualification/check_owner_verilator_clock.py')
 require = owner.require
+CACHE_MODEL_HEADERS = ('VGpuHostSystemAxi___024root.h',
+    'VGpuComputeUnit/VGpuComputeUnit.h', 'VGpuComputeUnit/VGpuComputeUnit___024root.h')
 
 
 def regular(path):
     require(path.is_file() and not path.is_symlink() and path.resolve() == path,
             'Missing or aliased compiler input: ' + str(path))
     return path
+
+
+def cache_model_headers(model, kind, profile=SAMPLE_PROFILE):
+    return tuple(regular(model/name) for name in CACHE_MODEL_HEADERS) if kind=='compute' and profile==IMAGE_FLOAT_PROFILE else ()
 
 
 def driver_inputs(kind, model, kit, profile=SAMPLE_PROFILE):
@@ -76,6 +82,7 @@ def context(directory, kind):
     target = generator.output(directory)
     model, kit = target / 'model', Path(generated['context']['verilator_root'])
     files = driver_inputs(kind, model, kit, profile)
+    cache_headers=cache_model_headers(model,kind,profile)
     sources = owner.hashes((*files, *owner.checker_files(kind), *CHECKERS))
     flags = ['-std=c++17', '-O1', '-g0', '-faligned-new', '-pthread']
     if 'clang' in built['context']['compiler']['version'].lower():
@@ -89,6 +96,9 @@ def context(directory, kind):
     if sdk is not None:
         flags += ['-isysroot', sdk['path']]
     flags += ['-include', str(ROOT / 'scripts/native_verilator_initial_time.hpp')]
+    if cache_headers:
+        flags+=['-DOPENGPU_NATIVE_CACHE_STATE=1']
+        for path in cache_headers:flags+=['-include',str(path)]
     linkers = {}
     if sys.platform == 'darwin':
         # Apple's newer linker rejects compact-unwind offsets across these
@@ -98,6 +108,7 @@ def context(directory, kind):
             path = Path(subprocess.check_output(['xcrun', '--find', name], text=True).strip()).resolve(strict=True)
             linkers[name] = dict(path=str(path), sha256=owner.common.sha(path))
     return dict(kind=kind, source_sha256=sources, compiler=built['context']['compiler'], flags=flags,
+        cache_observer_headers={str(path):owner.common.sha(path) for path in cache_headers},
         linkers=linkers,
         driver=str(ROOT / owner.driver_files(kind, profile)[0]),
         model=dict(backend='verilator', profile=profile, dut_directory=str(model),
@@ -137,7 +148,8 @@ def check_dependencies(dependencies, bound):
     generated = generator.checked_generation(Path(model).parents[1])
     kit = Path(generated['context']['verilator_root'])
     for path in (Path(bound['driver']), model / 'VGpuHostSystemAxi.h', kit / 'include/verilated.h',
-                 ROOT / 'scripts/native_verilator_initial_time.hpp'):
+                 ROOT / 'scripts/native_verilator_initial_time.hpp',
+                 *cache_model_headers(model,bound['kind'],bound['model']['profile'])):
         require(str(path.resolve()) in dependencies, 'Compiler omitted a required actual driver/model header')
     declared = {str((ROOT / name).resolve()) for name in driver_inputs(bound['kind'], model, kit, bound['model']['profile'])}
     for name in dependencies:
