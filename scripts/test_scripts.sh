@@ -124,6 +124,7 @@ python3 scripts/test_native_sample_owner_oracle.py
 python3 scripts/test_qualify_native_sample_owner.py
 python3 scripts/test_native_sample_owner_recipe.py
 python3 scripts/test_compute_owner.py
+python3 -B scripts/test_compute_atomic_order.py
 python3 scripts/test_compute_indirect_capture.py
 python3 scripts/test_compute_counter_source.py
 python3 -B scripts/test_compute_image_source.py
