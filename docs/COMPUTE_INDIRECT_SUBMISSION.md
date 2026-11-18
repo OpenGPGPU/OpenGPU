@@ -287,6 +287,59 @@ remain required. The legacy reset protocol cannot qualify opcode14 reset/drain.
 No complete-DUT v2 or clock/FPS result is claimed. P09 remains open at8/40.
 Generated captures, memory images, test builds and logs are removed after use.
 
+## Version2 continuous-owner source lifecycle
+
+The compute host boundary supports distinct phase cleanup for a continuous
+opcode0 producer/opcode14 consumer. It retains the original render file,
+original GEM physical storage and reservation/sync fences. It releases the
+completed job's temporary mappings through the production scheduler; ordinary
+caller-side publication and destruction then revoke the old compute context.
+Other original contexts must remain empty. The global MMU, hardware fence
+timeline and profile remain live. Final whole-session cleanup retains its
+original MMU/bare-SATP shutdown requirements.
+
+`OGCOB001` transfers every live original GEM in handle order. Its four u32
+header fields are command ID, opcode, phase epoch and original count. Each
+record has u32 handle/zero padding, u64 PA/size, then exactly size bytes.
+Import requires the observed retirement and matches the complete original
+identity set. It validates the whole transfer before changing any allocation;
+only captured writable bytes may differ, and failed commands may change none.
+Originals are pinned through the final phase ACK, including public-handle
+closure during caller-side cleanup. Shader/private/PTE data cannot be imported
+as original output.
+
+The source emits `OGCPB001` authorization, `OGCPC001` cleanup batches and
+`OGCPD001` phase completion; batch acknowledgements use `OGCPA001`. The existing
+whole-session cleanup protocol is unchanged. Publication uses the actual
+production invalidate ioctl, scheduler run branch and asynchronous opcode5
+submission. Its range is limited to cache lines intersecting captured writes
+within the original GEM. Its modeled control completion still requires native
+replay/verification before phase acknowledgement. Re-arming requires the old
+compute context gone, other contexts empty, exact command/context/epoch/batch
+identity and an idle, drained, IRQ-free receipt with 32 quiet cycles and intact
+read-only guards. It preserves the actual original fences, including completed
+errors; it cannot silently destroy a retained session.
+
+Source `f05e76e316ddca38f8fafc74f4e7641549f50c38` passes Clang ASan/UBSan
+and Linux GCC13.3 ASan/UBSan/leak-checking across six CPU-peer
+phases: producer bytes, healthy indirect consumer, GCI read failure, healthy
+reuse with a fresh output, a zero-axis producer and zero-work consumer. Counts
+cross offset4092 in the same original GEM; the completed producer WRITE fence
+survives publication and consumer READ errors. Thirteen malformed identity,
+read-only/padding and truncated/trailing transfers reject atomically; ten
+mutated final receipt fields reject re-arming. Wrong batch magic, sequence and
+BUSY acknowledgements retain reachable original GEM/job/context/fences.
+Both toolchains also pass the existing 208 healthy,208 failed and208 cancelled
+float-host transport/canonical cases and their failed-ACK/BUSY guards. The
+executor qualification suite has23 tests, including changed/omitted phase
+source rejection. Run the three commands in the preceding section.
+
+These are CPU transport tests with explicitly modeled returned bytes and
+control replies. The actual Mesa continuous frontend, typed native phase
+consumer, retained live-RAM merge, full-DUT execution and independent GPU byte
+oracle remain required. No GPU-produced counts, continuous hardware coherence,
+clock/FPS or P09 completion is claimed; the accepted count remains8/40.
+
 ## Earlier version1 guest qualification
 
 An explicit local guest qualification uses the same original full resource
