@@ -87,7 +87,7 @@ static int compute_mmio_disable_mmu(struct opengpu_device *);
     u32 compute_resource_flags,shader_config; \
     struct opengpu_compute_local_limits compute_local_limits; \
     struct opengpu_compute_shared_limits compute_shared_limits; \
-    void *compute_mmio;bool reset_pending,aborting; \
+    void *compute_mmio;bool reset_pending;unsigned int aborting; \
     struct dma_fence *unified_fence,*active_fence; \
     u32 unified_command_id,unified_opcode,unified_completion_delay_ms,active_completion_delay_ms,job_seqno; \
     u64 unified_expected_bytes,fence_context,fence_seqno,regs_size; \

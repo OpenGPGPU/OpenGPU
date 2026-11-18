@@ -88,6 +88,13 @@ typedef int irqreturn_t;
 #include "compute_host_hw_fence_under_test.inc"
 #include "compute_host_hw_fault_record_under_test.inc"
 #include "compute_host_hw_job_id_under_test.inc"
+#define opengpu_hw_complete compute_mmio_complete_actual
+#include "compute_host_hw_complete_under_test.inc"
+#include "compute_host_hw_reset_request_under_test.inc"
+#define opengpu_hw_abort compute_mmio_abort_actual
+#include "compute_host_hw_abort_under_test.inc"
+#undef opengpu_hw_abort
+#undef opengpu_hw_complete
 #include "compute_host_hw_reset_pending_under_test.inc"
 #include "compute_host_hw_result_error_under_test.inc"
 #include "compute_host_hw_drain_under_test.inc"
