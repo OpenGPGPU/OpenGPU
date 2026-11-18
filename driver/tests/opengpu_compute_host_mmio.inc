@@ -11,7 +11,7 @@ struct compute_mmio_state {
  bool kernel_waiting,receipt_loaded;unsigned kernel_submissions,invalidates,pops;
  u32 expected_kernel_opcode;
  struct compute_mmio_pte_shadow *pte;char *cleanup_directory;size_t cleanup_start;
- unsigned cleanup_sequence;int cleanup_error;bool cleanup_active,cleanup_done;
+ unsigned cleanup_sequence;int cleanup_error;bool cleanup_active,cleanup_done,phase_cleanup;
  char *reset_directory;size_t reset_start,reset_tail_start;
  bool reset_active,reset_issued,reset_busy_observed;int reset_error;
 };
@@ -146,6 +146,7 @@ static int compute_mmio_flush_asid(struct opengpu_device *gpu,u32 asid)
 #include "compute_host_hw_invalidate_under_test.inc"
 #include "compute_host_hw_invalidate_validate_under_test.inc"
 #include "compute_host_hw_invalidate_sync_under_test.inc"
+#include "compute_host_hw_invalidate_async_under_test.inc"
 #include "compute_host_hw_snapshot_submission_under_test.inc"
 #include "compute_host_hw_compute_under_test.inc"
 #pragma GCC diagnostic pop
