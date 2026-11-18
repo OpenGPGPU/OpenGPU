@@ -86,14 +86,16 @@ def input_digest(path):
     return digest.hexdigest()
 
 
-def ready_inputs(directory, case, *, owner_profile=None, permission=None, profile=None):
+def ready_inputs(directory, case, *, owner_profile=None, permission=None, profile=None, global_cached=False):
     from compute_counter_source import SCHEMA as COUNTER_SCHEMA, ready as counter_ready
     from compute_owner_cases import COUNTER_CASES, IMAGE_CASES, MIXED_ATOMIC_CASES, GLOBAL_ATOMIC_CASES
     from compute_image_source import SCHEMA as IMAGE_SCHEMA, CONTENDED_SCHEMA, ready as image_ready
     from compute_storage_atomic_source import SCHEMA as STORAGE_SCHEMA, ready as storage_ready
     from compute_storage_atomic_cases import CASES as STORAGE_CASES
     from compute_mixed_atomic_source import SCHEMA as MIXED_SCHEMA, ready as mixed_ready
-    from compute_global_atomic_source import SCHEMA as GLOBAL_SCHEMA, ready as global_ready
+    from compute_global_atomic_source import SCHEMA as GLOBAL_SCHEMA, CACHED_SCHEMA, ready as global_ready
+    require(type(global_cached) is bool and (not global_cached or case in GLOBAL_ATOMIC_CASES),
+            'cached global qualification requires its original source')
     require(permission is None or (case==RECOVERY_CASE and permission in ('read','write')),
             'image permission denial requires the original float buffer case')
     description=strict_json(directory/'oracle.json')
@@ -102,7 +104,9 @@ def ready_inputs(directory, case, *, owner_profile=None, permission=None, profil
     contended=description.get('schema')==CONTENDED_SCHEMA
     mixed=description.get('schema')==MIXED_SCHEMA
     storage=description.get('schema')==STORAGE_SCHEMA
-    global_atomic=description.get('schema')==GLOBAL_SCHEMA
+    global_atomic=description.get('schema') in (GLOBAL_SCHEMA,CACHED_SCHEMA)
+    require(not global_atomic or description.get('schema')==(CACHED_SCHEMA if global_cached else GLOBAL_SCHEMA),
+            'cached and uncached global READY contracts differ')
     require(counter==(case in COUNTER_CASES), 'counter source requires distinct qualification/case binding')
     require((image or mixed)==(case in IMAGE_CASES), 'image source requires distinct qualification/case binding')
     require(mixed==(case in MIXED_ATOMIC_CASES),'mixed atomic source requires its distinct alias contract')
@@ -119,7 +123,7 @@ def ready_inputs(directory, case, *, owner_profile=None, permission=None, profil
                 from owner_resource_contract import IMAGE_FLOAT_PROFILE
                 require(owner_profile==IMAGE_FLOAT_PROFILE, 'global atomics require the full float owner')
                 global_ready(before,description,data,(directory/'code.words').read_text().splitlines(),
-                    strict_json(directory/'profile.json') if profile is None else profile)
+                    strict_json(directory/'profile.json') if profile is None else profile, cached=global_cached)
             elif storage:
                 from owner_resource_contract import IMAGE_FLOAT_PROFILE
                 require(owner_profile==IMAGE_FLOAT_PROFILE, 'storage atomics require the full float owner')
@@ -336,6 +340,7 @@ def main():
     parser.add_argument('--contended-image-matrix',action='store_true')
     parser.add_argument('--mixed-atomic-matrix',action='store_true')
     parser.add_argument('--global-atomic-matrix',action='store_true')
+    parser.add_argument('--global-cached-matrix',action='store_true')
     parser.add_argument('--global-delayed-ack',action='store_true')
     parser.add_argument('--global-recovery-matrix',action='store_true')
     parser.add_argument('--global-accepted-matrix',action='store_true')
@@ -345,6 +350,9 @@ def main():
     mode.add_argument('--image-permission-recovery',choices=('read','write'))
     mode.add_argument('--image-reset-recovery',choices=('read','write'))
     args = parser.parse_args()
+    require(not args.global_cached_matrix or (args.global_atomic_matrix and not args.global_delayed_ack and
+        not args.global_recovery_matrix and not args.global_accepted_matrix),
+        'cached global matrix requires its separate normal source sequence')
     from compute_contended_image_cases import CASES as CONTENDED_IMAGE_CASES
     require(not args.image_accepted_matrix or (args.case==CONTENDED_IMAGE_CASES[0] and not any((
         args.storage_matrix,args.storage_delayed_ack,args.storage_recovery_matrix,args.storage_accepted_matrix,

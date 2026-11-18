@@ -30,7 +30,7 @@ class Entry(unittest.TestCase):
             if command[:3]==['docker','image','inspect']:return 'sha256:'+'1'*64
             raise AssertionError(command)
         for alias,fails in ((c,f) for c in ('global-atomics-recovery','global-atomics-accepted-write-error',
-                            'storage-atomics-accepted-write-error','image-atomics-accepted-write-error')
+                            'storage-atomics-accepted-write-error','image-atomics-accepted-write-error','global-atomics-cached')
                             for f in (False,True)):
             archive=unittest.mock.Mock();archive.stdout=io.BytesIO();archive.wait.return_value=0
             argv=['qualify_compute_owner.py','--executor',str(ROOT/'fixture-executor'),
@@ -538,6 +538,32 @@ class Entry(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'bound compiler'):
             qualifier.producer_command(args,gpu=ROOT,source=ROOT,ntt=None,image='sha256:'+'1'*64,name='raw',
                 case=qualifier.GLOBAL_ATOMIC_CASES[0])
+
+    def test_cached_global_entry_pins_normal_matrix_source_and_float_factory(self):
+        args=argparse.Namespace(timeout=60,global_inputs=ROOT/'.artifacts/global-inputs.json',
+            global_atomic_matrix=True,global_cached_matrix=True)
+        keyword=dict(gpu=ROOT,source=ROOT,ntt=None,image='sha256:'+'1'*64,name='cached')
+        def command():return qualifier.producer_command(args,case=qualifier.GLOBAL_ATOMIC_CASES[0],**keyword)
+        original=command()
+        self.assertIn('--global-atomic-matrix',original);self.assertIn('--cached-kernarg',original)
+        self.assertNotIn('--capture-only',original)
+        for key in ('global_recovery_matrix','global_accepted_matrix','global_delayed_ack','storage_matrix',
+                    'contended_image_matrix','image_accepted_matrix'):
+            setattr(args,key,True)
+            with self.subTest(key=key),self.assertRaises(ValueError):command()
+            delattr(args,key)
+        args.global_atomic_matrix=False
+        with self.assertRaises(ValueError):command()
+        with tempfile.TemporaryDirectory(prefix='cached-global-profile-') as temporary:
+            root=Path(temporary);q=root/'qualification.json';binary=root/'executor';binary.write_bytes(b'CPU fixture')
+            args=argparse.Namespace(case='global-atomics-cached',executor_qualification=q,executor=binary,
+                executor_checker=root/'checker',executor_checker_python=sys.executable)
+            for profile in (qualifier.SAMPLE_PROFILE,IMAGE_FLOAT_PROFILE):
+                q.write_text(json.dumps(dict(schema='opengpu-owner-executor-v1',kind='compute',profile=profile)))
+                with patch.object(qualifier.subprocess,'run'):
+                    if profile==IMAGE_FLOAT_PROFILE:qualifier.checked_inputs(args)
+                    else:
+                        with self.assertRaises(ValueError):qualifier.checked_inputs(args)
 
     def storage_matrix_peer(self, fail_second, delayed=False, bad_ack=False,contended=False,mixed=False,global_raw=False,global_delayed=False):
         from compute_storage_atomic_controller import run_matrix

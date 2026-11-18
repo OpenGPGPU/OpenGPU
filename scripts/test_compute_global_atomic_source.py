@@ -105,14 +105,16 @@ class Overlay:
         return bytes(data)
 
 
-def check_capture(directory, profile):
+def check_capture(directory, profile, *, cached=False):
     d = strict_json(directory / 'oracle.json')
     data = (directory / 'record-0.capture').read_bytes()
     code = (directory / 'code.words').read_text().splitlines()
     checked = 0
+    def selected_ready(*args):return ready(*args,cached=cached)
     with SparseMemory(directory / 'union.memory') as memory:
-        ready(memory, d, data, code, profile)
+        selected_ready(memory, d, data, code, profile)
         controls = []
+        if cached:controls.append((memory,dict(d,schema=SCHEMA),data,code,profile))
         for mutate in (lambda x: x.update(context=2), lambda x: x.update(codeBytes=x['codeBytes'] - 4),
                        lambda x: x.update(codePhysical=x['shader']['allocationPhysical']),
                        lambda x: x['kernarg'].update(handle=3), lambda x: x['shader'].update(handle=3),
@@ -145,7 +147,7 @@ def check_capture(directory, profile):
         controls.append((memory, d, bytes(widened), code, profile))
         for args in controls:
             try:
-                ready(*args)
+                selected_ready(*args)
             except ValueError:
                 checked += 1
             else:
@@ -156,7 +158,7 @@ def check_capture(directory, profile):
             pass
         else:
             raise AssertionError('untouched raw RV32 upload accepted as an execution result')
-    assert checked == 18, checked
+    assert checked == (19 if cached else 18), checked
     return checked
 
 
@@ -164,14 +166,15 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--captures', type=Path)
     parser.add_argument('--profile-json', type=Path)
+    parser.add_argument('--cached-kernarg',action='store_true')
     args = parser.parse_args()
     if args.captures is None:
-        if args.profile_json is not None:
+        if args.profile_json is not None or args.cached_kernarg:
             parser.error('--profile-json requires --captures')
         unittest.main(argv=[sys.argv[0]])
     else:
         if args.profile_json is None:
             parser.error('--captures requires its explicit original --profile-json')
         profile = strict_json(args.profile_json)
-        checked = sum(check_capture(args.captures / case, profile) for case in CASES)
+        checked = sum(check_capture(args.captures / case, profile,cached=args.cached_kernarg) for case in CASES)
         print('24 original Linux capture checks and %u rejection controls PASS (CPU only)' % checked)

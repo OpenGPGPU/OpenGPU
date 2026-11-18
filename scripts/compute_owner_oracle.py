@@ -202,7 +202,8 @@ def verify(initial, returned, description):
     image = mixed or description.get('schema') in ('opengpu-compute-image-oracle-v1',
                                                   'opengpu-compute-contended-image-oracle-v1')
     storage_atomic = description.get('schema') == 'opengpu-compute-storage-atomic-oracle-v1'
-    global_atomic = description.get('schema') == 'opengpu-compute-global-atomic-oracle-v1'
+    global_atomic = description.get('schema') in ('opengpu-compute-global-atomic-oracle-v1',
+                                                'opengpu-compute-global-cached-atomic-oracle-v1')
     if counter:
         from compute_owner_cases import counter_parameters
         groups=counter_parameters(description.get('sourceCase'))['groups']

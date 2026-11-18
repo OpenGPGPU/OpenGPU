@@ -939,6 +939,7 @@ static void compute_host_test_cleanup_peer(struct opengpu_device *gpu,const char
 #include "compute_host_images_test.h"
 #include "compute_host_indirect_test.h"
 #include "compute_host_phase_test.h"
+#ifndef OPENGPU_COMPUTE_HOST_TEST_NO_MAIN
 int main(int argc,char **argv)
 {
  assert(argc==2 || argc==4);
@@ -1202,4 +1203,5 @@ int main(int argc,char **argv)
  puts("compute actual Linux ioctl/snapshot/scheduler/MMU/MMIO/IRQ/cleanup CPU transport: PASS (no GPU execution)");return 0;
 }
 
+#endif
 #endif
