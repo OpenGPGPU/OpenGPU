@@ -119,6 +119,22 @@ inline void compute_reset_json(std::ostream &out,const ComputeResetResult &r,con
     <<",\"clockQualified\":false,\"fpsQualified\":false}\n";
 }
 
+inline void verify_reset_readonly(const Memory &before,const Memory &after,const std::vector<Writable> &writable,const char *phase) {
+  try {verify_readonly(before,after,writable);}
+  catch(const std::runtime_error &error) {
+    std::ostringstream message;message<<phase<<": "<<error.what();
+    std::set<uint64_t> pages;for(const auto &p:before.pages)pages.insert(p.first);
+    for(const auto &p:after.pages)pages.insert(p.first);
+    for(auto page:pages)for(unsigned offset=0;offset<Memory::page_bytes;offset++) {
+      const auto address=page+offset;const auto a=before.byte(address),b=after.byte(address);
+      if(a!=b && !std::any_of(writable.begin(),writable.end(),[&](const auto &r){return r.first<=address && address<r.end;})) {
+        message<<" physical=0x"<<std::hex<<address<<" before="<<unsigned(a)<<" after="<<unsigned(b);
+        throw std::runtime_error(message.str());
+      }
+    }
+    throw std::runtime_error(message.str());
+  }
+}
 template<class Sim>
 void active_cancel_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
     const ComputeCapture &capture,const std::filesystem::path &output,const std::filesystem::path &session,
@@ -146,7 +162,7 @@ void active_cancel_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &mem
   auto publish=[&](const ComputeResetResult &r,const char *phase) {
     atomic_json(session/(std::string("record-0.reset.")+phase+".json"),[&](auto &out){compute_reset_json(out,r,phase,channel);});
   };
-  verify_readonly(initial,memory,channel==ResponseChannel::read?std::vector<Writable>{}:capture.writable);
+  verify_reset_readonly(initial,memory,channel==ResponseChannel::read?std::vector<Writable>{}:capture.writable,"held before RESET");
   const auto held=observe_compute_reset(sim,agent,bus,capture.command_id,start);
   require((held.status&GPU_UCMD_STATUS_VM_BUSY) && !(held.status&~(GPU_UCMD_STATUS_VM_BUSY|GPU_UCMD_STATUS_READY)) &&
     (held.irq&GPU_IRQ_ENABLE) && !(held.irq&~(GPU_IRQ_ENABLE|GPU_IRQ_PENDING)) &&
@@ -185,16 +201,19 @@ void active_cancel_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &mem
   const auto ack=observe_compute_reset(sim,agent,bus,capture.command_id,start);
   require(ack.status==GPU_UCMD_STATUS_READY && ack.irq==(GPU_IRQ_ENABLE|GPU_IRQ_PENDING) && ack.pin && ack.drained,
     "reset did not acknowledge an idle drained command path");
-  traffic_unchanged(traffic,agent.traffic);verify_readonly(stopped,memory,{});
-  verify_readonly(initial,memory,channel==ResponseChannel::read?std::vector<Writable>{}:capture.writable);
+  traffic_unchanged(traffic,agent.traffic);verify_reset_readonly(stopped,memory,{},"after drained reset ACK");
+  // Safe reset blocks new host dispatch and drains the already admitted
+  // kernel. The independent oracle requires all its original results even
+  // though the Linux abort fence remains ECANCELED.
+  verify_reset_readonly(initial,memory,capture.writable,"drained admitted kernel");
   memory.write((output/"record-0.memory").string());
   atomic_json(session/"record-0.reset.ack.json",[&](auto &out){compute_reset_json(out,ack,"ack",channel);});
-  // The controller checks partial bytes before the original IRQ handler runs.
+  // The controller checks complete bytes before the original IRQ handler runs.
   replay("retire",ResetPhase::retire);
   const auto retired=observe_compute_reset(sim,agent,bus,capture.command_id,start);
   require(retired.status==GPU_UCMD_STATUS_READY && retired.irq==GPU_IRQ_ENABLE && !retired.pin && retired.drained,
     "original reset IRQ did not retire idle and drained");
-  traffic_unchanged(traffic,agent.traffic);verify_readonly(stopped,memory,{});
+  traffic_unchanged(traffic,agent.traffic);verify_reset_readonly(stopped,memory,{},"after original reset IRQ retirement");
   publish(retired,"retired");
   cleanup_records(sim,agent,bus,memory,session,pte,1,timeout);
 }

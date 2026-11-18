@@ -232,6 +232,22 @@ static std::string reset_trace_wire(const ComputeResetTrace &r,ResetPhase phase)
   for(const auto &a:r.actions)for(uint32_t v:{uint32_t(a.kind),a.address,a.value,a.mask})write_le(out,v,4);
   return out.str();
 }
+static void reset_memory_checks() {
+  const auto original=memory_fixture();auto result=original;result.byte(0x6000,0x55);
+  verify_reset_readonly(original,result,{{0x6000,0x6040}},"admitted kernel");
+  for(bool metadata:{false,true}) {
+    auto changed=result;changed.byte(metadata?0x5000:0x6000,0xee);
+    bool rejected=false;
+    try {verify_reset_readonly(result,changed,{},"after ACK");}
+    catch(const std::runtime_error &e) {
+      const std::string text=e.what();
+      rejected=text.find("after ACK")!=std::string::npos &&
+        text.find(metadata?"physical=0x5000":"physical=0x6000")!=std::string::npos;
+    }
+    require(rejected,"reset ACK diagnostics lost phase or allowed a late writable/metadata byte");
+  }
+  rejects([&]{verify_reset_readonly(original,result,{},"cold source hold");});
+}
 static void reset_parser_checks() {
   for(auto phase:{ResetPhase::request,ResetPhase::tail,ResetPhase::retire}) {
     const auto good=reset_trace_fixture(phase);good.validate(phase,17);
@@ -507,6 +523,6 @@ int main(int argc,char **argv) {
   }
   if(argc==3) {const auto m=Memory::read(argv[1]);const auto c=ComputeCapture::read(argv[2]);
     verify_readonly(m,m,c.writable);PtePages p;c.observe_contexts(m,p);return 0;}
-  deadline_checks();parser_checks();reset_parser_checks();profile_checks(argc,argv);empty_context_checks();execution_checks(argc,argv);phase_deadline_checks(argc,argv);active_protocol(argc,argv);
+  deadline_checks();parser_checks();reset_memory_checks();reset_parser_checks();profile_checks(argc,argv);empty_context_checks();execution_checks(argc,argv);phase_deadline_checks(argc,argv);active_protocol(argc,argv);
   std::cout<<"compute owner CPU protocol/guard checks: PASS\n";
 }

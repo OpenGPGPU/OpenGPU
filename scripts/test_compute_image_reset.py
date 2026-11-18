@@ -57,6 +57,21 @@ def observation(phase,channel):
         sourceQualificationRequired=True,independentBytesRequired=True,clockQualified=False,fpsQualified=False)
 
 
+def completed(memory):
+    # Independent literal ESSL expectations in a CPU oracle fixture only.
+    # This is never a returned DUT artifact or an execution qualification.
+    result=deepcopy(memory)
+    for invocation in range(8):
+        source=0x10034+4*invocation;destination=0x2003c+4*invocation
+        initial=struct.unpack('<I',memory.read(source,4))[0]
+        old=[initial,(invocation&1)<<31,0x3f400000+invocation,0xbf800000+invocation,
+             0x7f800000|((invocation&1)<<31)]
+        for access,value in enumerate(old):result.word(0x1000+20*invocation+4*access,value)
+        result.word(source,0x40000000+(invocation<<20))
+        result.word(destination,0x40000000+(invocation<<20))
+    return result
+
+
 class ResetContracts(unittest.TestCase):
     def test_busy_ready_reports_queue_capacity_and_never_authorizes_drain(self):
         held=observation('held','write')
@@ -108,45 +123,35 @@ class ResetContracts(unittest.TestCase):
                     with self.assertRaises(ValueError):reset_receipt_bytes(value,phase,channel)
                 previous=value
 
-    def test_read_hold_preserves_every_byte_and_write_hold_requires_committed_data(self):
+    def test_both_drains_require_complete_original_results_not_untouched_uploads(self):
         memory,description=original()
-        verify_cancelled_memory(memory,memory,description,'read')
-        with self.assertRaises(ValueError):verify_cancelled_memory(memory,memory,description,'write')
-        for address in (0x1000,0x10034,0x2003c,0x40000,0x50000):
-            changed=deepcopy(memory);changed.word(address,0)
-            with self.subTest(address=address),self.assertRaises(ValueError):
-                verify_cancelled_memory(memory,changed,description,'read')
+        result=completed(memory)
+        for channel in ('read','write'):
+            verify_cancelled_memory(memory,result,description,channel)
+            with self.assertRaises(ValueError):verify_cancelled_memory(memory,memory,description,channel)
 
-    def test_write_hold_accepts_only_whole_original_exchange_and_output_words(self):
+    def test_drained_result_rejects_every_partial_word_and_protects_all_guards(self):
         memory,description=original()
-        for value in (0,0x3f400000,0xbf800000,0x7f800000,0x40000000):
-            partial=deepcopy(memory);partial.word(0x10034,value)
-            partial.word(0x1004,0);partial.word(0x2003c,0x40000000)
-            verify_cancelled_memory(memory,partial,description,'write')
-        partial=deepcopy(memory);partial.word(0x10034,0);partial.word(0x10038,0x80000000)
-        verify_cancelled_memory(memory,partial,description,'write')
-        for address,value in ((0x10034,0x80000000),(0x10038,0),(0x1000,0),(0x2003c,0),
-                (0x10030,0),(0x10054,0),(0x10064,0),(0x10067,0),(0x10a0,0),
-                (0x20030,0),(0x20038,0),(0x2005c,0),(0x40000,0),(0x50000,0)):
-            wrong=deepcopy(partial);wrong.word(address,value)
-            with self.subTest(address=address,value=value),self.assertRaises(ValueError):
-                verify_cancelled_memory(memory,wrong,description,'write')
+        result=completed(memory)
+        for channel in ('read','write'):
+            for address,value in ((0x10034,0),(0x10034,0x3f400000),(0x10034,0xbf800000),
+                    (0x10034,0x7f800000),(0x10038,0x80000000),(0x1000,0xdeadbeef),(0x2003c,0xa7a7a7a7),
+                    (0x10030,0),(0x10054,0),(0x10064,0),(0x10067,0),(0x10a0,0),
+                    (0x20030,0),(0x20038,0),(0x2005c,0),(0x40000,0),(0x50000,0)):
+                wrong=deepcopy(result);wrong.word(address,value)
+                with self.subTest(channel=channel,address=address,value=value),self.assertRaises(ValueError):
+                    verify_cancelled_memory(memory,wrong,description,channel)
 
-    def test_cancelled_cleanup_only_advances_valid_words_and_revokes_original_ptes(self):
+    def test_cancelled_cleanup_preserves_complete_data_and_revokes_original_ptes(self):
         memory,description=original();tables=({0x50000},{0x50000})
         for channel in ('read','write'):
-            cancelled=deepcopy(memory)
-            if channel=='write':cancelled.word(0x10034,0)
+            cancelled=completed(memory)
             cleaned=deepcopy(cancelled);cleaned.word(0x50000,0)
-            if channel=='write':cleaned.word(0x10034,0x3f400000);cleaned.word(0x1004,0)
             verify_cancelled_cleanup(memory,cancelled,cleaned,description,channel,tables)
             with self.assertRaises(ValueError):verify_cancelled_cleanup(memory,cancelled,cancelled,description,channel,tables)
-            for address,value in ((0x50004,0x4c7),(0x40000,0),(0x50000,0x4c6),(0x2005c,0)):
+            for address,value in ((0x50004,0x4c7),(0x40000,0),(0x50000,0x4c6),(0x2005c,0),(0x10034,0)):
                 wrong=deepcopy(cleaned);wrong.word(address,value)
                 with self.assertRaises(ValueError):verify_cancelled_cleanup(memory,cancelled,wrong,description,channel,tables)
-        cancelled=deepcopy(memory);cancelled.word(0x10034,0x3f400000);cancelled.word(0x10038,0x80000000)
-        backwards=deepcopy(cancelled);backwards.word(0x10034,0);backwards.word(0x50000,0)
-        with self.assertRaises(ValueError):verify_cancelled_cleanup(memory,cancelled,backwards,description,'write',tables)
 
 
 if __name__=='__main__':unittest.main()
