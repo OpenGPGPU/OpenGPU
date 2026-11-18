@@ -197,27 +197,37 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
     pch_sources = {source: source_uses_pch(source) for source in sources}
     pch_dir = None
 
-    def compile_one(source):
+    def compile_context(source):
         opt = optimization(source)
         effective = (flags[:-2] + ["-fno-strict-aliasing"] + flags[-2:]
                      if conservative_alias and opt != "-O0" else flags)
         expected = {**context, "flags": effective, "source_sha256": source_hashes[source], "optimization": opt}
         if pch_sources[source]:
             expected["precompiled_header"] = True
+        return opt, effective, expected
+
+    def reusable_object(source, expected):
         obj = output / (source.stem + ".o")
         metadata = output / (source.stem + ".json")
-        temporary = output / (source.stem + ".o.tmp")
-        reusable = False
         if obj.is_file() and metadata.is_file():
             try:
                 prior = json.loads(metadata.read_text())
-                reusable = prior.get("context") == expected and prior.get("output_sha256") == digest(obj)
+                return prior.get("context") == expected and prior.get("output_sha256") == digest(obj)
             except (OSError, ValueError):
                 pass
-        if reusable:
+        return False
+
+    def compile_one(source):
+        opt, effective, expected = compile_context(source)
+        obj = output / (source.stem + ".o")
+        metadata = output / (source.stem + ".json")
+        temporary = output / (source.stem + ".o.tmp")
+        if reusable_object(source, expected):
             progress.finish_shard(source, cached=True)
             print(source.name + ": cached", flush=True)
             return obj
+        if pch_sources[source] and (pch_dir is None or not (pch_dir / (opt[1:] + ".pch")).is_file()):
+            raise RuntimeError("cached shard changed after precompiled-header planning: " + source.name)
         pch_flags = ["-include-pch", str(pch_dir / (opt[1:] + ".pch"))] if pch_sources[source] else []
         command = [*effective, *pch_flags, opt, "-c", str(source), "-o", str(temporary)]
         log = output / (source.stem + ".log")
@@ -291,10 +301,16 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
                 raise
         return objects
 
-    if any(pch_sources.values()):
+    # A verified object needs no compiler, so avoid reparsing a potentially
+    # huge header for optimization levels whose shards are all cache hits.
+    # compile_one rechecks each object before reuse; a concurrent cache change
+    # cannot silently fall back to a missing or mismatched PCH.
+    pch_opts = {optimization(source) for source in sources
+                if pch_sources[source] and not reusable_object(source, compile_context(source)[2])}
+    if pch_opts:
         with tempfile.TemporaryDirectory(prefix=".native-pch-", dir=output) as temporary_dir:
             pch_dir = Path(temporary_dir)
-            for opt in sorted({optimization(source) for source in sources if pch_sources[source]}):
+            for opt in sorted(pch_opts):
                 effective = (flags[:-2] + ["-fno-strict-aliasing"] + flags[-2:]
                              if conservative_alias and opt != "-O0" else flags)
                 run_final([*effective, opt, "-x", "c++-header", str(header),

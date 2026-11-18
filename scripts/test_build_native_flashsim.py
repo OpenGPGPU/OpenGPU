@@ -143,20 +143,76 @@ int value(); int commit_value();
     (dut / "dut_commit_part000.cpp").write_text('#include "dut.h"\nint commit_value() { return mode; }\n')
     driver = tmp_path / "driver.cpp"
     driver.write_text('#include "dut.h"\nint main() { return value()+commit_value()==30 ? 0 : 1; }\n')
+    trace = tmp_path / "compiler-commands.jsonl"
+    traced_compiler = tmp_path / "traced-cxx"
+    traced_compiler.write_text("#!" + sys.executable + "\n" +
+        "import json,os,sys\n" +
+        "with open(" + repr(str(trace)) + ", 'a') as stream: stream.write(json.dumps(sys.argv[1:])+'\\n')\n" +
+        "if 'c++-header' in sys.argv and os.environ.get('OPENGPU_TEST_CORRUPT_OBJECT'):\n" +
+        " with open(os.environ['OPENGPU_TEST_CORRUPT_OBJECT'], 'wb') as stream: stream.write(b'changed during PCH planning')\n" +
+        "os.execv(" + repr(compiler) + ", [" + repr(compiler) + ", *sys.argv[1:]])\n")
+    traced_compiler.chmod(0o755)
     command = [sys.executable, str(SCRIPT), "--dut-dir", str(dut), "--driver", str(driver),
-               "--jobs", "2", "--conservative-alias"]
+               "--jobs", "2", "--conservative-alias", "--cxx", str(traced_compiler)]
+    def run_pch(*, check=True, env=None):
+        trace.write_text("")
+        result = subprocess.run([*command, "--build-dir", str(pch), "--precompiled-header"],
+                                check=check, capture_output=True, text=True, env=env)
+        headers = [args for args in map(json.loads, trace.read_text().splitlines())
+                   if "c++-header" in args]
+        return result, sorted(next(arg for arg in args if arg in ("-O0", "-O2")) for args in headers)
     subprocess.run([*command, "--build-dir", str(plain)], check=True, capture_output=True, text=True)
-    run = subprocess.run([*command, "--build-dir", str(pch), "--precompiled-header"],
-                         check=True, capture_output=True, text=True)
+    run, header_opts = run_pch()
+    assert header_opts == ["-O0", "-O2"], header_opts
     subprocess.run([str(pch / "native_product_driver")], check=True)
     for name in ("dut_0.o", "dut_commit_part000.o"):
         assert (plain / name).read_bytes() == (pch / name).read_bytes()
     assert json.loads((pch / "native-flashsim-build.json").read_text())["precompiled_header"]
     assert not list(pch.glob(".native-pch-*"))
-    again = subprocess.run([*command, "--build-dir", str(pch), "--precompiled-header"],
-                           check=True, capture_output=True, text=True)
+    again, header_opts = run_pch()
+    assert not header_opts, header_opts
     assert "dut_0.cpp: cached" in again.stdout and "dut_commit_part000.cpp: cached" in again.stdout
     assert "dut_0.cpp: compiled" in run.stdout
+    for source, opt, other in (("dut_0.cpp", "-O2", "dut_commit_part000.cpp"),
+                               ("dut_commit_part000.cpp", "-O0", "dut_0.cpp")):
+        path = dut / source
+        path.write_text(path.read_text() + "// changed source\n")
+        changed, header_opts = run_pch()
+        assert header_opts == [opt], header_opts
+        assert source + ": compiled" in changed.stdout and other + ": cached" in changed.stdout
+        subprocess.run([str(pch / "native_product_driver")], check=True)
+    obj = pch / "dut_0.o"
+    expected_object = obj.read_bytes()
+    obj.write_bytes(b"corrupt object")
+    repaired, header_opts = run_pch()
+    assert header_opts == ["-O2"] and "dut_0.cpp: compiled" in repaired.stdout
+    assert obj.read_bytes() == expected_object
+    manifest = pch / "native-flashsim-build.json"
+    previous_manifest = manifest.read_bytes()
+    previous_binary = (pch / "native_product_driver").read_bytes()
+    source = dut / "dut_0.cpp"
+    source.write_text(source.read_text() + "// force one optimization level to need a PCH\n")
+    failed, header_opts = run_pch(check=False, env=dict(os.environ,
+        OPENGPU_TEST_CORRUPT_OBJECT=str(pch / "dut_commit_part000.o")))
+    assert failed.returncode and header_opts == ["-O2"], failed.stderr
+    assert "cached shard changed after precompiled-header planning" in failed.stderr
+    assert manifest.read_bytes() == previous_manifest
+    assert (pch / "native_product_driver").read_bytes() == previous_binary
+    assert not list(pch.glob(".native-pch-*")) and not list(pch.glob("*.o.tmp"))
+    repaired, header_opts = run_pch()
+    assert header_opts == ["-O0", "-O2"], header_opts
+    subprocess.run([str(pch / "native_product_driver")], check=True)
+    header = dut / "dut.h"
+    header.write_text(header.read_text() + "// changed header\n")
+    changed, header_opts = run_pch()
+    assert header_opts == ["-O0", "-O2"], header_opts
+    assert "dut_0.cpp: compiled" in changed.stdout and "dut_commit_part000.cpp: compiled" in changed.stdout
+    source = dut / "dut_commit_part000.cpp"
+    source.write_text("// explicit ordinary include path\n" + source.read_text())
+    changed, header_opts = run_pch()
+    assert not header_opts, header_opts
+    assert "dut_0.cpp: cached" in changed.stdout and "dut_commit_part000.cpp: compiled" in changed.stdout
+    subprocess.run([str(pch / "native_product_driver")], check=True)
     (dut / "dut.h").write_text("int value(); int commit_value();\n")
     rejected = subprocess.run([*command, "--build-dir", str(tmp_path / "rejected"),
                                "--precompiled-header"], capture_output=True, text=True)
