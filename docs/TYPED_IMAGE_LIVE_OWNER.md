@@ -493,6 +493,8 @@ the drained ACK must preserve every RAM byte and external traffic count before
 any new command. Independent partial bytes must pass before the controller
 relays the ACK to the original IRQ handler; cleanup requires its own subsequent
 authorization and actual PTE/context acknowledgements.
+`STATUS.READY` reports staging-queue capacity and may remain set alongside
+`RESET_BUSY|VM_BUSY`; it cannot authorize progress or an early drain ACK.
 
 A read-held cancellation preserves every original data byte. A write-held
 cancellation permits only complete original R32F exchange states, original or
@@ -503,7 +505,7 @@ cleanup checks forbid backwards data progress and permit only original valid
 PTE clears, with all private translations revoked. Every old owner's cleaned
 byte remains guarded through the healthy round.
 
-Fifty Python source/protocol/byte/lifetime checks and the five fixed C++ compute
+Fifty-one Python source/protocol/byte/lifetime checks and the five fixed C++ compute
 drivers pass; the C++ guards use ASan/UBSan and verify reset JSON interoperability
 and strict trace/plan rejection. The full float C matrix and canonical parser
 also pass, including original cancelled IRQ traces with both pending and clean

@@ -159,18 +159,22 @@ void active_cancel_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &mem
   };
   replay("request",ResetPhase::request);
   const auto busy=observe_compute_reset(sim,agent,bus,capture.command_id,start);
-  require(busy.status==(GPU_UCMD_STATUS_RESET_BUSY|GPU_UCMD_STATUS_VM_BUSY) && !busy.drained && !busy.pin &&
-    !(busy.irq&~GPU_IRQ_PENDING),"original RESET did not remain busy with accepted responses held");
+  // READY is queue capacity, independently of reset's admission rejection.
+  if((busy.status&~GPU_UCMD_STATUS_READY)!=(GPU_UCMD_STATUS_RESET_BUSY|GPU_UCMD_STATUS_VM_BUSY) ||
+      busy.drained || busy.pin || (busy.irq&~GPU_IRQ_PENDING))
+    throw std::runtime_error("original RESET did not remain busy with accepted responses held: status="+std::to_string(busy.status)+
+      " irq="+std::to_string(busy.irq)+" pin="+std::to_string(busy.pin)+" drained="+std::to_string(busy.drained));
   publish(busy,"busy");
   replay("tail",ResetPhase::tail);
   // A rejected SUBMIT must not launch the old staged kernel during drain.
   bus.write(GPU_REG_UCMD_SUBMIT,1);
-  require(bus.read(GPU_REG_UCMD_STATUS)==(GPU_UCMD_STATUS_RESET_BUSY|GPU_UCMD_STATUS_VM_BUSY|GPU_UCMD_STATUS_RESET_REJECTED),
+  require((bus.read(GPU_REG_UCMD_STATUS)&~GPU_UCMD_STATUS_READY)==
+      (GPU_UCMD_STATUS_RESET_BUSY|GPU_UCMD_STATUS_VM_BUSY|GPU_UCMD_STATUS_RESET_REJECTED),
     "unified reset accepted another kernel while memory responses were held");
   bus.write(GPU_REG_UCMD_STATUS,GPU_UCMD_STATUS_RESET_REJECTED);
   for(unsigned n=0;n<capture.hold_cycles;n++) {
     bus.step();
-    require(bus.read(GPU_REG_UCMD_STATUS)==(GPU_UCMD_STATUS_RESET_BUSY|GPU_UCMD_STATUS_VM_BUSY) && !agent.drained(),
+    require((bus.read(GPU_REG_UCMD_STATUS)&~GPU_UCMD_STATUS_READY)==(GPU_UCMD_STATUS_RESET_BUSY|GPU_UCMD_STATUS_VM_BUSY) && !agent.drained(),
       "reset released VM ownership before the selected response drained");
   }
   agent.release_response_hold();

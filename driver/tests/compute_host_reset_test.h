@@ -37,13 +37,14 @@ static void compute_host_test_reset_peer(struct opengpu_device *gpu,const char *
   test_reset_bad==17?"error":"busy.response")>0);
  if(test_reset_bad==18){assert(!setenv("OPENGPU_COMPUTE_HOST_TIMEOUT","0",1));return;}
  if(test_reset_bad==19){assert(!setenv("OPENGPU_COMPUTE_HOST_TIMEOUT","1",1));return;}
- u32 v[]={gpu->hw.unified_command_id,0,GPU_UCMD_STATUS_RESET_BUSY|GPU_UCMD_STATUS_VM_BUSY,
+ u32 v[]={gpu->hw.unified_command_id,0,GPU_UCMD_STATUS_RESET_BUSY|GPU_UCMD_STATUS_VM_BUSY|
+  (m->regs[GPU_REG_UCMD_STATUS/4]&GPU_UCMD_STATUS_READY),
   m->regs[GPU_REG_IRQ/4],0,0};
  if(test_reset_bad==1)v[0]^=1;
  if(test_reset_bad==2)v[1]=1;
  if(test_reset_bad==3)v[2]&=~GPU_UCMD_STATUS_RESET_BUSY;
  if(test_reset_bad==4)v[2]|=GPU_UCMD_STATUS_COMPLETION;
- if(test_reset_bad==5)v[2]|=GPU_UCMD_STATUS_READY;
+ if(test_reset_bad==5)v[2]|=GPU_UCMD_STATUS_OVERFLOW;
  if(test_reset_bad==6)v[2]&=~GPU_UCMD_STATUS_VM_BUSY;
  if(test_reset_bad==7)v[3]|=GPU_IRQ_ENABLE;
  if(test_reset_bad==8)v[3]|=GPU_IRQ_VBLANK_PENDING;

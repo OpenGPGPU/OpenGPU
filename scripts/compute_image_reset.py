@@ -57,7 +57,7 @@ def _observation(value, phase, channel):
         require(status in (32,33) and irq in (1,3) and pin==bool(irq&2),
                 'held response must retain VM authority without an owned completion')
     elif phase=='busy':
-        require(status==40 and irq in (0,2) and not pin,
+        require(status in (40,41) and irq in (0,2) and not pin,
                 'original reset request lacks BUSY with IRQ delivery disabled')
     else:
         require(status==1 and irq==(3 if phase=='ack' else 1) and pin==(phase=='ack'),

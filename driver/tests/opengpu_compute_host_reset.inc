@@ -19,7 +19,8 @@ static int compute_mmio_reset_busy(const char *path,u32 command,struct compute_h
  FILE *f=fdopen(fd,"rb");if(!f){close(fd);return -EIO;}
  char magic[8];u32 v[6];int error=fread(magic,1,8,f)!=8 || memcmp(magic,"OGCRB001",8)?-EINVAL:0;
  for(unsigned n=0;n<6 && !error;n++)error=compute_mmio_read_le(f,&v[n]);
- if(!error && (v[0]!=command || v[1] || v[2]!=(GPU_UCMD_STATUS_RESET_BUSY|GPU_UCMD_STATUS_VM_BUSY) ||
+ if(!error && (v[0]!=command || v[1] ||
+    (v[2]&~GPU_UCMD_STATUS_READY)!=(GPU_UCMD_STATUS_RESET_BUSY|GPU_UCMD_STATUS_VM_BUSY) ||
     (v[3]&~GPU_IRQ_PENDING) || v[4] || v[5]))error=-EINVAL;
  if(!error)*receipt=(struct compute_host_reset_receipt){v[0],v[1],v[2],v[3],v[4],v[5]};
  if(fclose(f) && !error)error=-EIO;
