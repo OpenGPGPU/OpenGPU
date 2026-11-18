@@ -156,6 +156,18 @@ def main():
             (failed/'images').mkdir();(failed/'counter').mkdir()
             subprocess.run([str(out/'test'),str(failed)],
                 env=dict(env,OPENGPU_COMPUTE_HOST_TEST_FAILED_IMAGES='1'),check=True)
+            cancelled=out/'cancelled-image-receipts';cancelled.mkdir()
+            (cancelled/'images').mkdir();(cancelled/'counter').mkdir()
+            subprocess.run([str(out/'test'),str(cancelled)],
+                env=dict(env,OPENGPU_COMPUTE_HOST_TEST_RESET_IMAGES='1'),check=True)
+            # Each malformed/missing BUSY observation must quarantine its
+            # original Linux job, GEM and PTEs in an isolated CPU process.
+            for bad in range(1,20):
+                negative=out/('reset-negative-%s'%bad);negative.mkdir()
+                (negative/'images').mkdir();(negative/'counter').mkdir()
+                subprocess.run([str(out/'test'),str(negative)],env=dict(env,
+                    OPENGPU_COMPUTE_HOST_TEST_RESET_IMAGES='1',
+                    OPENGPU_COMPUTE_HOST_TEST_BAD_RESET=str(bad)),check=True)
         if args.canonical_root:
             canonical = args.canonical_root.resolve(strict=True)
             source = canonical / 'scripts/test_compute_owner.cpp'
@@ -198,6 +210,10 @@ def main():
                         failed_negative.mkdir();(failed_negative/'images').mkdir()
                         subprocess.run([str(out/'test'),str(failed_negative),str(phase),str(kind)],
                             env=dict(image_env,OPENGPU_COMPUTE_HOST_TEST_FAILED_IMAGES='1'),check=True)
+                        cancelled_negative=out/('cancelled-image-negative-%s-%s'%(kind,int(write)))
+                        cancelled_negative.mkdir();(cancelled_negative/'images').mkdir()
+                        subprocess.run([str(out/'test'),str(cancelled_negative),str(phase),str(kind)],
+                            env=dict(image_env,OPENGPU_COMPUTE_HOST_TEST_RESET_IMAGES='1'),check=True)
 
 
 if __name__ == '__main__':

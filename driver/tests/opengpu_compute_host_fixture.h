@@ -57,6 +57,14 @@ struct compute_host_retired_receipt {
     struct compute_host_held_receipt held;
     uint32_t status,irq,irq_asserted,external_drained;
 };
+/* Reset cancellation has no owned kernel completion slot and must never be
+ * represented by a success or execution-failed completion receipt. */
+struct compute_host_reset_receipt {
+    uint32_t command_id,legacy_status,status,irq,irq_asserted,external_drained;
+};
+int compute_host_abort_captured(struct compute_host_session *,const struct compute_host_reset_receipt *,const char *directory);
+int compute_host_drain_reset(struct compute_host_session *,const struct compute_host_reset_receipt *,const char *retire_trace);
+int compute_host_observe_reset_retired(struct compute_host_session *,const struct compute_host_reset_receipt *);
 int compute_host_capture(struct compute_host_session *,const char *path,uint64_t budget,uint32_t hold);
 int compute_host_drain_held(struct compute_host_session *,const struct compute_host_held_receipt *,const char *retire_trace);
 int compute_host_observe_retired(struct compute_host_session *,const struct compute_host_retired_receipt *);
@@ -70,6 +78,7 @@ int compute_host_completion_status(struct compute_host_session *,int32_t *status
 int compute_host_begin_cleanup(struct compute_host_session *,const char *session_directory);
 int compute_host_finish_observed(struct compute_host_session *);
 int compute_host_finish_failed_observed(struct compute_host_session *);
+int compute_host_finish_cancelled_observed(struct compute_host_session *);
 int compute_host_end_cleanup(struct compute_host_session *);
 int compute_host_export_memory(struct compute_host_session *,const char *path);
 int compute_host_destroy(struct compute_host_session *);

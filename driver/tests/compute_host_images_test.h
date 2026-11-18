@@ -14,6 +14,7 @@ static int test_image_submit(struct compute_host_session *s,
 
 static void test_image_retire(struct compute_host_session *s,const char *directory)
 {
+ if(test_cancelled_image_receipts){test_image_cancel_retire(s,directory);return;}
  int32_t fence_status=0;
  assert(compute_host_completion_status(s,&fence_status)==-EINVAL && !fence_status);
  char path[4096];assert(snprintf(path,sizeof(path),"%s/record-0.retire",directory)>0);
@@ -216,7 +217,8 @@ static void test_compute_host_images(const char *parent)
  }
  assert(cases==208);
  test_image_capture_budget();
- puts(test_failed_image_receipts?
+ puts(test_cancelled_image_receipts?
+  "typed image reset: 208 actual Linux abort/ECANCELED/BUSY/ACK/resource-pin/cleanup cases PASS (CPU transport only)":test_failed_image_receipts?
   "typed image failed receipt: 208 actual IRQ/error-fence/fault-record/cleanup and success-path rejection cases PASS (CPU transport only)":
   "typed image CPU transport: 208 original-resource/permission/pitch/layer byte-guard cases PASS (no GPU execution)");
 }

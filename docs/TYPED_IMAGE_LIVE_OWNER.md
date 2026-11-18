@@ -429,6 +429,51 @@ c++ -std=c++17 -O1 -Wall -Wextra -Werror -fsanitize=address,undefined \
 "$axi_dir/check" "$axi_dir"
 ```
 
+## Original Linux abort/reset CPU transport
+
+The compute host boundary extracts the original `opengpu_hw_abort`, legacy
+completion and unified reset-request functions directly from `opengpu_hw.c`,
+with the original reset timeout definition from `opengpu_device.h`. A distinct
+reset receipt carries no kernel completion or shader result. After a captured
+kernel, real abort records `ABORTED|RESET_ISSUED` and signals its hardware fence
+with `ECANCELED`; original GEM, descriptor and page-table ownership remains
+pinned. Unowned completion DATA may remain stale and is never POPped.
+
+At the original RESET write, the boundary exports the partial MMIO trace and
+waits for an exact external `RESET_BUSY|VM_BUSY` observation before the original
+IRQ-enable tail proceeds. Only a separate READY/reset-IRQ/external-drain ACK
+authorizes original IRQ retirement. A subsequent observation of the retired
+IRQ authorizes the scheduler's cancelled fence. Independent byte verification
+must still authorize cleanup, whose original PTE/TLB/context ACK protocol is
+unchanged. Rejected or absent observations retain the original allocations.
+Actual Mesa producers contain neither CPU test peer.
+
+ASan/UBSan CPU transport checks pass 208 cancelled image-view cases, alongside
+the existing 208 success and 208 execution-failure cases and canonical capture
+parser. Cancellation tests cover stale completion DATA, pending IRQ history,
+wrong/early/duplicate ACKs, separate success/EIO/cancelled fences and lifetime
+pins. Nineteen isolated malformed, stale, symlinked, missing, explicit-error or
+timeout BUSY cases retain the original job/GEM/PTEs; four bad cleanup-ACK cases
+also retain cancelled resources. Executor source guards bind the original
+driver, extracted-function generator and recursive transport includes.
+The complete C transport matrix also passes Linux GCC with strict warnings
+and ASan/UBSan. Canonical capture parsing passes with Clang; an additional
+container-mounted GCC parser run exceeded its 180-second bound and is not
+counted as a parser pass.
+
+These tests execute no shader. Native delayed-R/B replay, actual reset drain,
+independent partial-cancel bytes and same-DUT healthy reuse remain pending;
+this source stage does not close P08. Changed boundary sources require fresh
+execution qualification before an actual-DUT claim.
+
+```sh
+env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 OPENGPU_TEST_SANITIZERS=1 \
+  python3 -B scripts/test_compute_host.py --image-float-stage --canonical-root .
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_prepare_owner_executor.py
+CC=gcc CXX=g++ PYTHONDONTWRITEBYTECODE=1 OPENGPU_TEST_SANITIZERS=1 \
+  python3 -B scripts/test_compute_host.py --image-float-stage
+```
+
 ## Original source-read failure execution path
 
 The explicit qualifier option `--expect-image-source-fault` selects only the
