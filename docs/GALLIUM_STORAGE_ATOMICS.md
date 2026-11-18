@@ -184,6 +184,77 @@ env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 \
 /usr/bin/python3 -B scripts/test_compute_indirect_capture.py
 ```
 
-Reservation and read/write faults followed by healthy reuse on the same
-DUT/RAM, and image/global contention, remain required for P10 closure.
+The continuous storage fault/reuse extension is qualified below. RV32 global
+AMOs and image/storage contention retain their separate P10 acceptance gates.
 Acceptance remains 9/40.
+
+## Complete-owner physical faults and continuous reuse (P10)
+
+All sixty original Mesa phases pass on one assertion-enabled complete float
+DUT, one retained RAM and one execution reset. The original command ID is 3
+throughout. Each of the fifteen successful storage programs runs this sequence:
+
+| Phase | Cases | Observed result |
+|---|---:|---|
+| Target read-response fault | 15 | Failed original command; no writes; every RAM byte unchanged |
+| Healthy reuse after read fault | 15 | Eight exact old words and final atomic word |
+| First target write-response fault | 15 | Five actual target write attempts, one B error, four exact old words from the healthy workgroup |
+| Healthy reuse after write fault | 15 | Eight exact old words and final atomic word; prior error history retained |
+
+The matrix checks 300 returned old words, 30 actual injected read errors and
+15 actual injected write errors. It covers all ten operations, signedness,
+wrapping, CAS match/miss and invocation identity, lane-dependent operands and
+the last word of the original 8192-byte view. The independent oracle permits
+exactly one healthy four-invocation workgroup in each write-fault phase and
+finds a legal source-level serialization for its old values and final word.
+The failed workgroup's output words and every other physical byte stay guarded.
+
+One guarded compiler build and producer serve all sixty original C source
+owners. Each uses fresh disjoint original GEMs. Native execution and independent
+checks retain all earlier RAM, cumulative read/write fault counters, command
+identity and the execution clock. Actual held/retired IRQ receipts, PTE
+revocation, context/MMU cleanup and quiet state precede every next upload.
+The capture reader rejects unified reset and unrelated command opcodes.
+The original producer and native executor exit zero; final original compiler,
+source, executable and model binding checks pass.
+
+The controlled B-error provider waits 37 cycles and rejects the selected write
+before committing it to backing memory. The other workgroup can still commit
+its four operations. This qualifies that explicit failure model; a write that
+commits before reporting an error and cached-alias behavior retain separate
+full-host gates. Component accepted-write/error coverage is described in
+[global atomic translation](GLOBAL_ATOMIC_TRANSLATION.md).
+
+Execution source: `f521d4d5bed6a73ce9bcf71e9613a551d4f59045`.
+Publication preserves all 211 qualified software inputs. All 1960 hardware
+input contents have the same path/comment-only differences recorded above;
+RTL and supported capacities are unchanged. The 259 focused CPU checks pass;
+60 targeted checks also pass after precise target-attempt accounting.
+All 25 native AXI cases pass ASan/UBSan, including one-shot delayed B errors,
+W-before-AW, stable stalled error ownership and later healthy responses.
+Original indirect CPU transport/continuous-phase compatibility and current
+layout test selection pass.
+
+Use a matching source-qualified complete float compute executor:
+
+```sh
+owner_dir="$PWD/.artifacts/p10-owner"
+env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 \
+  /usr/bin/python3 -B scripts/qualify_compute_owner.py \
+  --executor "$owner_dir/executors/compute/executor" \
+  --executor-qualification "$owner_dir/executors/compute/qualification.json" \
+  --executor-checker "$PWD/scripts/prepare_owner_executor.py" \
+  --executor-checker-python /usr/bin/python3 \
+  --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72 \
+  --case storage-atomics-recovery --timeout 7200
+(cd scripts && /usr/bin/python3 -B -m unittest \
+  test_compute_storage_recovery test_compute_storage_atomic_delay test_qualify_compute_owner \
+  test_compute_owner test_compute_owner_oracle test_compute_owner_controller \
+  test_prepare_owner_executor test_prepare_owner_verilator_executor \
+  test_compute_atomic_order test_changed_test_suites)
+/usr/bin/python3 -B scripts/test_compute_indirect_capture.py
+```
+
+P10 remains open for RV32 global AMOs, accepted-write/cached-alias failures and
+image/storage competition. Complete resource combinations, cross-domain
+coherence and clock/FPS retain their separate plan gates. Acceptance stays 9/40.
