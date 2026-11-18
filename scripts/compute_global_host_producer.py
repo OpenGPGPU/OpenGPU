@@ -76,6 +76,7 @@ def main():
     parser.add_argument('--global-recovery-matrix',action='store_true')
     parser.add_argument('--global-accepted-matrix',action='store_true')
     parser.add_argument('--cached-kernarg',action='store_true')
+    parser.add_argument('--cache-alias-source',action='store_true')
     parser.add_argument('--physical-base',type=int)
     args = parser.parse_args()
     if args.case == 'all' and not args.capture_only:
@@ -85,6 +86,9 @@ def main():
     if args.global_atomic_matrix and (args.case!=CASES[0] or args.session is None):
         parser.error('global matrix requires its exact first source and private session')
     recovery=args.global_recovery_matrix or args.global_accepted_matrix
+    if args.cache_alias_source and (not args.cached_kernarg or not args.capture_only or
+            recovery or args.global_atomic_matrix):
+        parser.error('cache alias source requires its distinct cached CPU capture; live cache proof is not wired')
     if args.cached_kernarg and (recovery or not (args.capture_only or args.global_atomic_matrix)):
         parser.error('cached kernarg requires distinct CPU capture or the original normal global matrix')
     if recovery and (args.case!=CASES[0] or args.session is None or
@@ -118,6 +122,9 @@ def main():
     env = dict(os.environ, UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1',
                ASAN_OPTIONS='detect_leaks=1:abort_on_error=1')
     selected = CASES if args.case == 'all' or args.global_atomic_matrix else (args.case,)
+    source_words,source_kernarg=words,initial_kernarg
+    if args.cache_alias_source:
+        from compute_cache_alias_cases import words as source_words, initial_kernarg as source_kernarg
     if recovery:
         if args.global_accepted_matrix:
             from compute_global_accepted_recovery import PHASES, source_launch, check_source_launch
@@ -126,10 +133,10 @@ def main():
         selected=PHASES
     for stage in selected:
         case=stage['case'] if recovery else stage
-        code = words(case)
+        code = source_words(case)
         program, initial = inputs / (case + '.bin'), inputs / (case + '.kernarg')
         program.write_bytes(struct.pack('<%uI' % len(code), *code))
-        initial.write_bytes(initial_kernarg(case))
+        initial.write_bytes(source_kernarg(case))
         directory = ((args.session.resolve()/('round-'+str(stage['index'])) if recovery else
                       args.session.resolve()/case if args.global_atomic_matrix else args.session.resolve())
                      if args.session is not None else out / 'captures' / case)
@@ -143,6 +150,7 @@ def main():
             check_source_launch(command,stage['index'],out,args.session.resolve(),frozen_profile)
         else:
             if args.cached_kernarg:command+=['--cached-kernarg']
+            if args.cache_alias_source:command+=['--cache-alias-source']
             if args.capture_only:command+=['--capture-only']
             if args.physical_base is not None:command+=['--physical-base',str(args.physical_base)]
         with log_path.open('w') as log:

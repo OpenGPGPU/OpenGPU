@@ -105,16 +105,24 @@ class Overlay:
         return bytes(data)
 
 
-def check_capture(directory, profile, *, cached=False):
+def check_capture(directory, profile, *, cached=False, cache_alias=False):
+    if cache_alias and not cached:raise ValueError('cache alias captures require cached admission')
     d = strict_json(directory / 'oracle.json')
     data = (directory / 'record-0.capture').read_bytes()
     code = (directory / 'code.words').read_text().splitlines()
     checked = 0
-    def selected_ready(*args):return ready(*args,cached=cached)
+    def selected_ready(*args):
+        if cache_alias:
+            from compute_cache_alias_source import ready as alias_ready
+            return alias_ready(*args)
+        return ready(*args,cached=cached)
     with SparseMemory(directory / 'union.memory') as memory:
         selected_ready(memory, d, data, code, profile)
         controls = []
         if cached:controls.append((memory,dict(d,schema=SCHEMA),data,code,profile))
+        if cache_alias:
+            from compute_global_atomic_source import CACHED_SCHEMA
+            controls.append((memory,dict(d,schema=CACHED_SCHEMA),data,code,profile))
         for mutate in (lambda x: x.update(context=2), lambda x: x.update(codeBytes=x['codeBytes'] - 4),
                        lambda x: x.update(codePhysical=x['shader']['allocationPhysical']),
                        lambda x: x['kernarg'].update(handle=3), lambda x: x['shader'].update(handle=3),
@@ -132,6 +140,11 @@ def check_capture(directory, profile, *, cached=False):
         for address in (d['shader']['allocationPhysical'], d['codePhysical'], d['kernarg']['allocationPhysical'] + 128):
             changed = Overlay(memory, address, bytes([memory.read(address, 1)[0] ^ 1]))
             controls.append((changed, d, data, code, profile))
+        if cache_alias:
+            for offset in (192,256,320,8191):
+                address=d['kernarg']['allocationPhysical']+offset
+                changed=Overlay(memory,address,bytes([memory.read(address,1)[0]^1]))
+                controls.append((changed,d,data,code,profile))
         _, _, _, _, _, staged = capture(data, 0, profile)
         root = (staged[0x150] & 0x3fffff) << 12
         first, = struct.unpack('<I', memory.read(root + (0x80800000 >> 22) * 4, 4))
@@ -140,6 +153,14 @@ def check_capture(directory, profile, *, cached=False):
         for flag in (4, 0x200):
             changed = Overlay(memory, leaf_address, struct.pack('<I', leaf ^ flag))
             controls.append((changed, d, data, code, profile))
+        if cache_alias:
+            for page in (0,1):
+                address=leaf_address+4*page
+                value,=struct.unpack('<I',memory.read(address,4))
+                for bit in (1,2,4,8,0x10,0x40,0x80,0x100,0x200):
+                    if page==0 and bit in (4,0x200):continue
+                    changed=Overlay(memory,address,struct.pack('<I',value^bit))
+                    controls.append((changed,d,data,code,profile))
         widened = bytearray(data)
         grant = struct.calcsize('<8sQIII') + 122 * 8 + 4
         end, = struct.unpack_from('<Q', widened, grant + 8)
@@ -158,7 +179,7 @@ def check_capture(directory, profile, *, cached=False):
             pass
         else:
             raise AssertionError('untouched raw RV32 upload accepted as an execution result')
-    assert checked == (19 if cached else 18), checked
+    assert checked == (40 if cache_alias else 19 if cached else 18), checked
     return checked
 
 
@@ -167,14 +188,18 @@ if __name__ == '__main__':
     parser.add_argument('--captures', type=Path)
     parser.add_argument('--profile-json', type=Path)
     parser.add_argument('--cached-kernarg',action='store_true')
+    parser.add_argument('--cache-alias-source',action='store_true')
     args = parser.parse_args()
     if args.captures is None:
-        if args.profile_json is not None or args.cached_kernarg:
+        if args.profile_json is not None or args.cached_kernarg or args.cache_alias_source:
             parser.error('--profile-json requires --captures')
         unittest.main(argv=[sys.argv[0]])
     else:
         if args.profile_json is None:
             parser.error('--captures requires its explicit original --profile-json')
+        if args.cache_alias_source and not args.cached_kernarg:
+            parser.error('--cache-alias-source requires --cached-kernarg')
         profile = strict_json(args.profile_json)
-        checked = sum(check_capture(args.captures / case, profile,cached=args.cached_kernarg) for case in CASES)
+        checked = sum(check_capture(args.captures / case, profile,cached=args.cached_kernarg,
+                                   cache_alias=args.cache_alias_source) for case in CASES)
         print('24 original Linux capture checks and %u rejection controls PASS (CPU only)' % checked)
