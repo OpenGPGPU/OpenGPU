@@ -83,3 +83,57 @@ The RTL runner requires the explicit property and actual compiler inputs;
 it is excluded from default discovery. Missing inputs fail this explicit run.
 Remove private build directories and simulation outputs when their active
 validation use ends; retain source and these reproduction commands only.
+
+## Complete-owner storage-atomic stage (P10)
+
+All seventeen original Mesa storage-atomic source cases pass on the complete,
+assertion-enabled float-stage host: two 16-lane/eight-warp CUs, the full
+112-word factory contract and ten auxiliary registers, and unchanged supported
+RTL capacities. Each case compiles through Mesa and uses the original
+production submission, GEM objects, checked descriptors, PTEs and executable
+code. One guarded compiler build serves the sequential matrix.
+
+The fifteen successful cases cover all ten integer operations, signed and
+unsigned limits, wrapping add, matching/nonmatching CAS, lane-dependent
+exchange/add/CAS and the last word of an 8192-byte view. Eight invocations in
+two workgroups contend on one word. An independent source-level oracle finds
+a legal serialization consistent with every invocation's returned old value
+and the final word; all 120 returned words pass. The read-only and following-word
+cases report actual checked execution failures with no physical bus error or
+memory write. These are hardware view checks, rather than pre-enqueue rejects.
+
+Every case passes whole-physical-memory guards, original held/retired receipts,
+IRQ handling, actual PTE/context/MMU cleanup and executor exit zero. The original
+Mesa producer also exits zero; final compiler, source, executable and model
+binding checks pass. The separate CPU compiler/admission/capture matrix passes
+all seventeen cases, and 241 focused protocol, oracle, controller, executor and
+test-selection checks pass. The old-value oracle's negative tests run in host CI.
+
+The exact execution source is `e82c0cfb9051a8f6d31bddcd13ec0f43288edbc0`.
+Publication preserves all 202 qualified software input files byte for byte.
+Its hardware input contents match all 1960 original preparation inputs apart
+from two upstream Scala comment changes; the intervening Scala directory move
+changes paths only. Existing executors retain their original checkout binding.
+Reproduction requires a normally prepared and source-qualified complete float
+compute executor from the same checkout:
+
+```sh
+owner_dir="$PWD/.artifacts/p10-owner"
+env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 \
+  /usr/bin/python3 -B scripts/qualify_compute_owner.py \
+  --executor "$owner_dir/executors/compute/executor" \
+  --executor-qualification "$owner_dir/executors/compute/qualification.json" \
+  --executor-checker "$PWD/scripts/prepare_owner_executor.py" \
+  --executor-checker-python /usr/bin/python3 \
+  --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72 \
+  --case storage-atomics --timeout 3600
+(cd scripts && /usr/bin/python3 -B -m unittest \
+  test_compute_atomic_order test_compute_owner_oracle test_compute_owner_controller \
+  test_qualify_compute_owner test_prepare_owner_executor \
+  test_prepare_owner_verilator_executor test_changed_test_suites)
+```
+
+Each operation uses an independent DUT reset. Delayed ACKs, reservation and
+fault followed by healthy reuse on the same DUT/RAM, image/global contention,
+complete resource combinations and clock/FPS remain separate acceptance gates.
+This stage leaves P10 open and the alignment acceptance count at 9/40.
