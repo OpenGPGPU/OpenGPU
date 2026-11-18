@@ -194,9 +194,33 @@ OPENGPU_TEST_SANITIZERS=1 PYTHONDONTWRITEBYTECODE=1 \
   test_compute_atomic_order test_prepare_owner_executor)
 ```
 
-The caller implements the existing external held/retired/cleanup receipt
-protocol for one source case. The complete-owner qualification entry and its
-compiler/input binding still need integration before actual DUT acceptance.
+The complete-owner `--case global-atomics` entry binds the exact full float
+executor, committed source archive and original software qualification before
+starting its compiler image. It builds the three original native C units with
+ASan/UBSan, discovers every actual header before compilation, and requires the
+same complete `-MD` closure afterward. Exact native objects, the linker trace,
+compiler/image tools, generated Linux bodies, qualified source, dependency
+receipts and executable remain checked through all 24 original source owners.
+This route requires no Mesa or NTT preparation. The existing controller checks
+each source's independent old values/whole RAM before authorizing its real
+held/retired/IRQ/PTE/context/MMU cleanup; each case resets its DUT.
+
+All 24 guarded original Linux CPU captures and their controller READY bindings
+pass, including 432 source/PTE/grant controls and eight real native compiler,
+header, dependency, object, executable and link rejection controls. The 44
+focused source/controller/compiler tests also pass. These are CPU checks;
+actual complete-host execution must still prove all 192 returned scalar old
+words, final targets and final source/model inputs.
+
+```sh
+python3 -B scripts/qualify_compute_owner.py \
+  --executor "$COMPUTE_EXECUTOR" --executor-qualification "$COMPUTE_QUALIFICATION" \
+  --executor-checker scripts/prepare_owner_executor.py \
+  --executor-checker-python "$QUALIFICATION_PYTHON" \
+  --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72 \
+  --case global-atomics --timeout 7200
+```
+
 These CPU captures do not prove delayed ACKs, global fault recovery,
 accepted-write/error cached aliases or cross-command coherence. P10 remains
 open; generated CPU data is removed after its checks end.

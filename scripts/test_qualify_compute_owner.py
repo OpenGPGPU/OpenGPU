@@ -211,7 +211,8 @@ class Entry(unittest.TestCase):
     def test_fixed_paths_real_producer_and_both_full_sources(self):
         gpu = ROOT
         args = argparse.Namespace(mesa=gpu / 'depends/mesa', mesa_build=gpu / 'depends/mesa-build',
-            drm_include=gpu / 'depends/include', mesa_link_libs='-lz -lexpat', library_directory=gpu / 'depends/lib', timeout=3600, counter_inputs=gpu / '.artifacts/counter-inputs.json')
+            drm_include=gpu / 'depends/include', mesa_link_libs='-lz -lexpat', library_directory=gpu / 'depends/lib', timeout=3600,
+            counter_inputs=gpu / '.artifacts/counter-inputs.json',global_inputs=gpu/'.artifacts/global-inputs.json')
         for case in qualifier.CASES:
             command = qualifier.producer_command(args, gpu=gpu, source=gpu / '.artifacts/source',
                 ntt=gpu / '.artifacts/ntt.c', image='sha256:' + '1' * 64, name='unique-owned-container', case=case)
@@ -221,17 +222,23 @@ class Entry(unittest.TestCase):
             self.assertIn('--memory-swap', command)
             self.assertIn('--network=none', command)
             self.assertIn('--read-only', command)
-            strict=case in (*qualifier.COUNTER_CASES,*qualifier.IMAGE_CASES,*qualifier.STORAGE_ATOMIC_CASES)
+            raw=case in qualifier.GLOBAL_ATOMIC_CASES
+            strict=raw or case in (*qualifier.COUNTER_CASES,*qualifier.IMAGE_CASES,*qualifier.STORAGE_ATOMIC_CASES)
             expected_memory='512m' if strict else '2g'
             self.assertEqual(command[command.index('--memory')+1],expected_memory)
             self.assertEqual(command[command.index('--memory-swap')+1],expected_memory)
             self.assertEqual(command[command.index('--cpus')+1],'1' if strict else '2')
             self.assertIn('OPENGPU_COMPUTE_HOST_TIMEOUT=3600', command)
-            self.assertEqual(command[-2:], ['--case', case])
+            self.assertEqual(command[command.index('--case')+1],case)
             self.assertNotIn('--capture-only', command)
             self.assertNotIn('OPENGPU_COMPUTE_HOST_TEST_MAIN', ' '.join(command))
             self.assertIn('{ipc}/profile.bin', command)
-            self.assertIn('scripts/compute_owner_inputs.py' if strict else 'scripts/test_gallium_compute_host.py', command)
+            self.assertIn('scripts/compute_global_host_producer.py' if raw else
+                          'scripts/compute_owner_inputs.py' if strict else 'scripts/test_gallium_compute_host.py', command)
+            if raw:
+                self.assertIn('--bound-inputs',command)
+                self.assertIn('OPENGPU_COMPILER_IMAGE=sha256:'+'1'*64,command)
+                self.assertFalse(any('OPENGPU_MESA' in value or 'LD_LIBRARY_PATH=' in value for value in command))
             self.assertIn('--sanitize', command)
             self.assertNotIn('HOME={ipc}',command)
 
@@ -383,11 +390,33 @@ class Entry(unittest.TestCase):
     def test_invalid_actual_ack_never_authorizes_bytes_or_cleanup(self):
         self.storage_matrix_peer(False, delayed=True, bad_ack=True)
 
-    def storage_matrix_peer(self, fail_second, delayed=False, bad_ack=False,contended=False,mixed=False):
+    def test_global_matrix_keeps_all_original_scalar_callers_and_cleanup_receipts(self):
+        self.storage_matrix_peer(False,global_raw=True)
+
+    def test_global_bad_old_word_never_authorizes_failed_owner_cleanup(self):
+        self.storage_matrix_peer(True,global_raw=True)
+
+    def test_global_source_and_matrix_bind_their_exact_original_case(self):
+        args=argparse.Namespace(timeout=60,global_inputs=ROOT/'.artifacts/global-inputs.json',global_atomic_matrix=True)
+        for case in qualifier.GLOBAL_ATOMIC_CASES:
+            if case!=qualifier.GLOBAL_ATOMIC_CASES[0]:
+                with self.assertRaisesRegex(ValueError,'exact first'):
+                    qualifier.producer_command(args,gpu=ROOT,source=ROOT,ntt=None,image='sha256:'+'1'*64,name='raw',case=case)
+        command=qualifier.producer_command(args,gpu=ROOT,source=ROOT,ntt=None,image='sha256:'+'1'*64,name='raw',
+            case=qualifier.GLOBAL_ATOMIC_CASES[0])
+        self.assertIn('--global-atomic-matrix',command)
+        args.global_atomic_matrix=False
+        del args.global_inputs
+        with self.assertRaisesRegex(ValueError,'bound compiler'):
+            qualifier.producer_command(args,gpu=ROOT,source=ROOT,ntt=None,image='sha256:'+'1'*64,name='raw',
+                case=qualifier.GLOBAL_ATOMIC_CASES[0])
+
+    def storage_matrix_peer(self, fail_second, delayed=False, bad_ack=False,contended=False,mixed=False,global_raw=False):
         from compute_storage_atomic_controller import run_matrix
         from compute_storage_atomic_cases import CASES
         if contended:CASES=qualifier.CONTENDED_IMAGE_CASES
         if mixed:CASES=qualifier.MIXED_ATOMIC_CASES
+        if global_raw:CASES=qualifier.GLOBAL_ATOMIC_CASES
         from unittest.mock import Mock
         class Process:
             def __init__(self):self.returncode=None;self.terminated=False
@@ -413,7 +442,8 @@ class Entry(unittest.TestCase):
         ack_check=Mock(side_effect=ValueError('invalid actual ACK') if bad_ack else None)
         with tempfile.TemporaryDirectory(prefix='atomic-matrix-peer-',dir=ROOT/'.artifacts') as temporary:
             directory=Path(temporary)
-            args=argparse.Namespace(timeout=60,storage_delayed_ack=delayed,contended_image_matrix=contended,mixed_atomic_matrix=mixed)
+            args=argparse.Namespace(timeout=60,storage_delayed_ack=delayed,contended_image_matrix=contended,
+                                   mixed_atomic_matrix=mixed,global_atomic_matrix=global_raw)
             def record(path):
                 if path.name=='profile.json':return {'actual-profile-cpu-peer':True}
                 return {'actual-receipt-cpu-peer':True,'commandId':42,'physicalReadFaults':0,'injectedReadFaults':0,'physicalWriteFaults':0}

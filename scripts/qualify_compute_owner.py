@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run original Mesa compute sources on an already qualified full DUT.
+"""Run original Mesa or raw RV32 compute sources on a qualified full DUT.
 
 This entry never builds a DUT or supplies completion data. The real producer,
 executor, independent byte oracle and synchronous cleanup remain live under
@@ -17,7 +17,7 @@ import sys
 import tempfile
 import uuid
 from compute_owner_protocol import strict_json, RECOVERY_CASE, RECOVERY_BASES, RECOVERY_COMMAND_SCHEMA
-from compute_owner_cases import CASES, DYNAMIC_CASES, LEGACY_CASES, COUNTER_CASE, COUNTER_CASES, IMAGE_CASES, STORAGE_ATOMIC_CASES
+from compute_owner_cases import CASES, DYNAMIC_CASES, LEGACY_CASES, COUNTER_CASE, COUNTER_CASES, IMAGE_CASES, STORAGE_ATOMIC_CASES, GLOBAL_ATOMIC_CASES
 from owner_resource_contract import COMPUTE_STAGE, FULL_COMPUTE_CONTRACTS, SAMPLE_PROFILE, SAMPLE_FACTORY_CONTRACTS
 from owner_resource_contract import IMAGE_FLOAT_PROFILE
 from compute_image_cases import IMAGE_FLOAT_EXCHANGE_CASES
@@ -75,6 +75,8 @@ def checked_inputs(args):
         require(record.get('profile')==IMAGE_FLOAT_PROFILE,'R32F exchange requires its qualified float owner')
     if getattr(args,'case',None) in (*MIXED_ATOMIC_CASES,'image-storage-atomics'):
         require(record.get('profile')==IMAGE_FLOAT_PROFILE,'mixed atomics require their qualified float owner')
+    if getattr(args,'case',None) in (*GLOBAL_ATOMIC_CASES,'global-atomics'):
+        require(record.get('profile')==IMAGE_FLOAT_PROFILE,'global atomics require their qualified float owner')
     if getattr(args,'case',None) in (*STORAGE_ATOMIC_CASES,'storage-atomics','storage-atomics-delayed-ack','storage-atomics-recovery'):
         require(record.get('profile')==IMAGE_FLOAT_PROFILE,'storage atomics require the complete float owner')
     if getattr(args, 'case', None) in (*DYNAMIC_CASES, 'mandatory-compute'):
@@ -112,6 +114,18 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
              getattr(args,'contended_image_matrix',False)) and
         not source_fault and permission is None and reset is None and physical_base is None),
         'mixed atomic matrix requires its exact first source and independent original alias owners')
+    global_matrix=getattr(args,'global_atomic_matrix',False)
+    require(not global_matrix or case==GLOBAL_ATOMIC_CASES[0], 'global matrix requires its exact first original source')
+    if case in GLOBAL_ATOMIC_CASES:
+        require(isinstance(getattr(args,'global_inputs',None),Path), 'raw global source requires bound compiler inputs')
+        command=['docker','run','--rm','--init','--name',name,'--memory','512m','--memory-swap','512m',
+            '--cpus','1','--network=none','--read-only','-v',f'{gpu}:{gpu}:ro','-v','{ipc}:{ipc}:rw','-w',str(source)]
+        environment=dict(PYTHONDONTWRITEBYTECODE='1',CC='cc',TMPDIR='{ipc}',
+            OPENGPU_COMPILER_IMAGE=image,OPENGPU_COMPUTE_HOST_TIMEOUT=str(args.timeout))
+        for key,value in environment.items():command+=['-e',key+'='+value]
+        return command+[image,'python3','-B','scripts/compute_global_host_producer.py',
+            '--build','{ipc}/build','--profile-wire','{ipc}/profile.bin','--bound-inputs',str(args.global_inputs),
+            '--session','{ipc}','--case',case,'--sanitize',*(['--global-atomic-matrix'] if global_matrix else [])]
     # The configured Mesa object database uses these original absolute paths.
     # Keep that mount unchanged; all newly generated files live in {ipc}.
     counter = case in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES)
@@ -141,6 +155,14 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
 
 
 def run_case(args, *, gpu, source, temporary, ntt, image, case):
+    if case in GLOBAL_ATOMIC_CASES:
+        qualified=strict_json(args.executor_qualification).get('source_sha256')
+        require(type(qualified) is dict, 'global executor lacks complete producer/checker inputs')
+        for name,digest in qualified.items():
+            require(sha256(source/name)==digest, 'global archive differs from qualified source: '+name)
+        args.global_inputs=temporary/'global-inputs.json'
+        args.global_inputs.write_text(json.dumps(dict(schema='opengpu-global-host-inputs-v1',
+            source=str(source),qualified=qualified,compilerImage=image))+'\n')
     if case in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES):
         from compute_owner_inputs import snapshot
         bound = snapshot(args.mesa, args.mesa_build, args.library_directory, args.drm_include, gpu)
@@ -172,12 +194,13 @@ def run_case(args, *, gpu, source, temporary, ntt, image, case):
             '--executor', args.executor, '--executor-qualification', args.executor_qualification,
             '--executor-checker', args.executor_checker, '--executor-checker-python', args.executor_checker_python,
             '--bridge-command', command_file, '--timeout', str(args.timeout),
-            *(['--case', case] if case in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES) else []),
+            *(['--case', case] if case in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES,*GLOBAL_ATOMIC_CASES) else []),
             *(['--storage-matrix'] if getattr(args,'storage_matrix',False) else []),
             *(['--storage-delayed-ack'] if getattr(args,'storage_delayed_ack',False) else []),
             *(['--storage-recovery-matrix'] if getattr(args,'storage_recovery_matrix',False) else []),
             *(['--contended-image-matrix'] if getattr(args,'contended_image_matrix',False) else []),
             *(['--mixed-atomic-matrix'] if getattr(args,'mixed_atomic_matrix',False) else []),
+            *(['--global-atomic-matrix'] if getattr(args,'global_atomic_matrix',False) else []),
             *(['--expect-image-source-fault'] if getattr(args,'expect_image_source_fault',False) else []),
             *(['--image-reset-recovery',reset] if reset else ['--image-permission-recovery',permission] if permission else
               ['--image-source-recovery'] if recovery else []),
@@ -217,7 +240,7 @@ def main():
     parser.add_argument('--mesa-link-libs', default='-l:libz.so.1 ' + str(gpu / 'depends/aarch64-root/lib/libexpat.so.1.6.7'))
     parser.add_argument('--compiler-image', default='gpu-gtk-ci-check:latest')
     parser.add_argument('--case', choices=('both', 'mandatory-compute', 'storage-atomics',
-        'storage-atomics-delayed-ack', 'storage-atomics-recovery', 'image-atomics-contended', 'image-storage-atomics', *CASES), default='both')
+        'storage-atomics-delayed-ack', 'storage-atomics-recovery', 'image-atomics-contended', 'image-storage-atomics', 'global-atomics', *CASES), default='both')
     parser.add_argument('--timeout', type=int, default=3600)
     mode=parser.add_mutually_exclusive_group()
     mode.add_argument('--expect-image-source-fault', action='store_true')
@@ -230,6 +253,8 @@ def main():
     args.storage_recovery_matrix=args.case=='storage-atomics-recovery'
     args.contended_image_matrix=args.case=='image-atomics-contended'
     args.mixed_atomic_matrix=args.case=='image-storage-atomics'
+    args.global_atomic_matrix=args.case=='global-atomics'
+    global_source=args.global_atomic_matrix or args.case in GLOBAL_ATOMIC_CASES
     require(0 < args.timeout <= 604800, 'timeout must be 1..604800 seconds')
     args.executor = args.executor.absolute(); args.executor_qualification = args.executor_qualification.absolute()
     identity = checked_inputs(args)
@@ -238,7 +263,8 @@ def main():
         require(args.case=='image-atomic-buffer-r32f' and
                 strict_json(args.executor_qualification).get('profile')==IMAGE_FLOAT_PROFILE,
                 'source fault requires exactly the original buffer exchange and qualified float owner')
-    for key in ('executor', 'executor_qualification', 'executor_checker', 'mesa', 'mesa_build', 'drm_include', 'library_directory'):
+    for key in ('executor', 'executor_qualification', 'executor_checker', *(() if global_source else
+            ('mesa', 'mesa_build', 'drm_include', 'library_directory'))):
         setattr(args, key, inside(getattr(args, key), gpu))
     args.executor_checker_python = args.executor_checker_python.resolve(strict=True)
     require(not subprocess.check_output(['git', '-C', ROOT, 'status', '--porcelain']).strip(),
@@ -260,11 +286,13 @@ def main():
         finally:
             archive.stdout.close()
             require(archive.wait() == 0, 'fixed source archive failed')
-        subprocess.run([sys.executable, source / 'scripts/stage_mesa_shared_memory.py', '--mesa', args.mesa,
-                        '--out', temporary / 'checked-ntt'], check=True,
-                       env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1', TMPDIR=directory))
-        ntt = temporary / 'checked-ntt/src/gallium/auxiliary/nir/nir_to_tgsi.c'
-        cases = (MIXED_ATOMIC_CASES[:1] if args.mixed_atomic_matrix else CONTENDED_IMAGE_CASES[:1] if args.contended_image_matrix else
+        ntt=None
+        if not global_source:
+            subprocess.run([sys.executable, source / 'scripts/stage_mesa_shared_memory.py', '--mesa', args.mesa,
+                            '--out', temporary / 'checked-ntt'], check=True,
+                           env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1', TMPDIR=directory))
+            ntt = temporary / 'checked-ntt/src/gallium/auxiliary/nir/nir_to_tgsi.c'
+        cases = (GLOBAL_ATOMIC_CASES[:1] if args.global_atomic_matrix else MIXED_ATOMIC_CASES[:1] if args.mixed_atomic_matrix else CONTENDED_IMAGE_CASES[:1] if args.contended_image_matrix else
                  STORAGE_ATOMIC_CASES[:1] if args.storage_matrix or args.storage_recovery_matrix else
                  ('shared', 'uniforms') if args.case == 'both' else LEGACY_CASES if args.case == 'mandatory-compute' else (args.case,))
         for case in cases:
@@ -279,7 +307,7 @@ def main():
         if temporary is not None and not preserve:
             shutil.rmtree(temporary)
         signal.signal(signal.SIGTERM, previous)
-    print('original Mesa compute ' + args.case + ': actual full-DUT ' +
+        print(('original RV32 compute ' if global_source else 'original Mesa compute ') + args.case + ': actual full-DUT ' +
           ('delayed '+args.image_reset_recovery+' response reset then healthy same-ID recovery on retained RAM'
            if args.image_reset_recovery else 'image '+args.image_permission_recovery+' permission fault then healthy same-ID recovery on retained RAM'
            if args.image_permission_recovery else 'source fault then healthy same-ID recovery on retained RAM' if args.image_source_recovery else

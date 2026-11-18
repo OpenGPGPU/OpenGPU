@@ -18,7 +18,12 @@ def run_matrix(args, command, directory, executor, env, qualified, profile_name)
         unchanged_inputs, require)
     image_matrix=getattr(args,'contended_image_matrix',False)
     mixed_matrix=getattr(args,'mixed_atomic_matrix',False)
-    if mixed_matrix:
+    global_matrix=getattr(args,'global_atomic_matrix',False)
+    if global_matrix:
+        from compute_global_atomic_cases import CASES as selected_cases
+        require(not (image_matrix or mixed_matrix or getattr(args,'storage_matrix',False) or
+                     getattr(args,'storage_delayed_ack',False)), 'raw global and other matrices must remain separate')
+    elif mixed_matrix:
         from compute_mixed_atomic_cases import CASES as selected_cases
         require(not (image_matrix or getattr(args,'storage_matrix',False) or getattr(args,'storage_delayed_ack',False)),
                 'mixed atomic and other source matrices must remain separate')
@@ -27,7 +32,7 @@ def run_matrix(args, command, directory, executor, env, qualified, profile_name)
         require(not (getattr(args,'storage_matrix',False) or getattr(args,'storage_delayed_ack',False)),
                 'contended image and storage matrices must remain separate')
     else:selected_cases=CASES
-    family='mixed image/storage atomic' if mixed_matrix else 'contended image' if image_matrix else 'storage atomic'
+    family='global RV32 atomic' if global_matrix else 'mixed image/storage atomic' if mixed_matrix else 'contended image' if image_matrix else 'storage atomic'
     profile = strict_json(directory / 'profile.json')
     deadline = time.monotonic() + args.timeout
     def remaining():
@@ -43,7 +48,7 @@ def run_matrix(args, command, directory, executor, env, qualified, profile_name)
             bridge = subprocess.Popen([x.replace('{ipc}', str(directory)) for x in command],
                 env=env, stdout=log, stderr=subprocess.STDOUT)
             for case in selected_cases:
-                failed=False if image_matrix or mixed_matrix else bool(parameters(case)['result_status'])
+                failed=False if global_matrix or image_matrix or mixed_matrix else bool(parameters(case)['result_status'])
                 local = directory / case
                 wait_file(local / 'READY', bridge, None, remaining())
                 for name in ('union.memory', 'record-0.capture', 'oracle.json', 'code.words'):
@@ -103,7 +108,8 @@ def run_matrix(args, command, directory, executor, env, qualified, profile_name)
             for local, plan in delay_inputs:
                 require((local / 'record-0.ack-delay-plan').read_bytes() == plan,
                         'storage ACK plan changed before final source checks')
-        print('all sixty-six original same-GEM image/storage atomic cases: invocation-ordered old values, exact alias views and full physical guards PASS; per-case reset'
+        print('all twenty-four original global RV32 atomic cases: scalar-caller ordered old values and full physical guards PASS; per-case reset'
+              if global_matrix else 'all sixty-six original same-GEM image/storage atomic cases: invocation-ordered old values, exact alias views and full physical guards PASS; per-case reset'
               if mixed_matrix else 'all fifty-five original same-texel image cases: invocation-ordered old values and full physical guards PASS; per-case reset'
               if image_matrix else 'all seventeen original SSBO atomic cases: exact old values, view faults and full physical guards PASS; per-case reset')
     except BaseException as error:
