@@ -237,6 +237,34 @@ class Entry(unittest.TestCase):
     def test_storage_matrix_keeps_one_producer_alive_until_every_actual_cleanup(self):
         self.storage_matrix_peer(False)
 
+    def test_delayed_ack_uses_same_original_matrix_and_guarded_source_command(self):
+        with tempfile.TemporaryDirectory(prefix='storage-ack-command-') as temporary:
+            root=Path(temporary);q=root/'qualification.json'
+            q.write_text(json.dumps(dict(source_sha256={})))
+            args=argparse.Namespace(mesa=root,mesa_build=root,drm_include=root,library_directory=root,
+                mesa_link_libs='-lfixture',executor_qualification=q,executor=root/'executor',
+                executor_checker=root/'checker',executor_checker_python=sys.executable,timeout=60,
+                storage_matrix=True,storage_delayed_ack=True)
+            with patch('compute_owner_inputs.snapshot',return_value={}),\
+                 patch.object(qualifier.subprocess,'Popen') as popen,\
+                 patch.object(qualifier,'stop_group'),patch.object(qualifier,'remove_container'):
+                popen.return_value.wait.return_value=0
+                qualifier.run_case(args,gpu=ROOT,source=ROOT,temporary=root,ntt=root/'ntt',
+                    image='immutable-image',case=qualifier.STORAGE_ATOMIC_CASES[0])
+                argv=popen.call_args.args[0]
+                self.assertIn('--storage-matrix',argv)
+                self.assertIn('--storage-delayed-ack',argv)
+                producer=json.loads((root/(qualifier.STORAGE_ATOMIC_CASES[0]+'.argv.json')).read_text())
+                self.assertIn('--storage-matrix',producer)
+                self.assertNotIn('--storage-delayed-ack',producer)
+                self.assertEqual(producer[producer.index('--memory')+1],'512m')
+                self.assertNotIn('--capture-only',producer)
+                popen.return_value.wait.assert_called_once_with(timeout=180)
+            args.storage_matrix=False
+            with self.assertRaisesRegex(ValueError,'original complete source matrix'):
+                qualifier.producer_command(args,gpu=ROOT,source=ROOT,ntt=root/'ntt',
+                    image='immutable-image',name='negative',case=qualifier.STORAGE_ATOMIC_CASES[0])
+
     def test_storage_matrix_command_cannot_substitute_another_original_source(self):
         args=argparse.Namespace(mesa=ROOT/'depends/mesa',mesa_build=ROOT/'depends/mesa-build',
             drm_include=ROOT/'depends/include',mesa_link_libs='-lz -lexpat',library_directory=ROOT/'depends/lib',
@@ -253,7 +281,13 @@ class Entry(unittest.TestCase):
     def test_storage_matrix_byte_failure_never_authorizes_failed_owner_cleanup(self):
         self.storage_matrix_peer(True)
 
-    def storage_matrix_peer(self, fail_second):
+    def test_delayed_ack_matrix_checks_every_actual_ack_before_owner_cleanup(self):
+        self.storage_matrix_peer(False, delayed=True)
+
+    def test_invalid_actual_ack_never_authorizes_bytes_or_cleanup(self):
+        self.storage_matrix_peer(False, delayed=True, bad_ack=True)
+
+    def storage_matrix_peer(self, fail_second, delayed=False, bad_ack=False):
         from compute_storage_atomic_controller import run_matrix
         from compute_storage_atomic_cases import CASES
         from unittest.mock import Mock
@@ -265,22 +299,29 @@ class Entry(unittest.TestCase):
                 return self.returncode
             def terminate(self):self.terminated=True;self.returncode=-15
             def kill(self):self.returncode=-9
-        processes=[];events=[]
+        processes=[];events=[];commands=[]
         def start(*_args,**_kwargs):
+            commands.append(_args[0])
             process=Process();processes.append(process);return process
-        def atomic(path,data):events.append(('response',path.parent.name,path.name))
+        def atomic(path,data):
+            events.append(('response',path.parent.name,path.name))
+            if path.name=='record-0.ack-delay-plan':
+                path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(data)
         def check(*_args):
             events.append(('bytes',))
             if fail_second and len([e for e in events if e[0]=='bytes'])==2:
                 raise ValueError('deliberately invalid actual atomic old word')
         qualified=Mock()
+        ack_check=Mock(side_effect=ValueError('invalid actual ACK') if bad_ack else None)
         with tempfile.TemporaryDirectory(prefix='atomic-matrix-peer-',dir=ROOT/'.artifacts') as temporary:
             directory=Path(temporary)
-            args=argparse.Namespace(timeout=60)
+            args=argparse.Namespace(timeout=60,storage_delayed_ack=delayed)
             def record(path):
                 if path.name=='profile.json':return {'actual-profile-cpu-peer':True}
-                return {'actual-receipt-cpu-peer':True,'physicalReadFaults':0,'injectedReadFaults':0,'physicalWriteFaults':0}
+                return {'actual-receipt-cpu-peer':True,'commandId':42,'physicalReadFaults':0,'injectedReadFaults':0,'physicalWriteFaults':0}
             patches=(
+                patch('compute_storage_atomic_controller.plan_bytes',return_value=b'original-physical-line-plan'),
+                patch('compute_storage_atomic_controller.check_report',ack_check),
                 patch('compute_storage_atomic_controller.subprocess.Popen',side_effect=start),
                 patch('compute_storage_atomic_controller.strict_json',side_effect=record),
                 patch('compute_storage_atomic_controller.held_bytes',return_value=b'held'),
@@ -297,22 +338,27 @@ class Entry(unittest.TestCase):
             from contextlib import ExitStack
             with ExitStack() as stack, redirect_stdout(io.StringIO()):
                 for active in patches:stack.enter_context(active)
-                if fail_second:
-                    with self.assertRaisesRegex(ValueError,'invalid actual atomic'):
+                if fail_second or bad_ack:
+                    with self.assertRaisesRegex(ValueError,'invalid actual ACK' if bad_ack else 'invalid actual atomic'):
                         run_matrix(args,['original-producer','{ipc}'],directory,Path('actual-executor'),{},qualified,IMAGE_FLOAT_PROFILE)
                 else:run_matrix(args,['original-producer','{ipc}'],directory,Path('actual-executor'),{},qualified,IMAGE_FLOAT_PROFILE)
         cleanups=[e for e in events if e[0]=='response' and e[2]=='BEGIN_CLEANUP']
-        self.assertEqual(len(cleanups),1 if fail_second else len(CASES))
-        if fail_second:
+        self.assertEqual(len(cleanups),0 if bad_ack else 1 if fail_second else len(CASES))
+        if fail_second or bad_ack:
             self.assertTrue(processes[0].terminated)
             self.assertTrue(processes[-1].terminated)
             qualified.assert_not_called()
-            self.assertTrue(any(e[0]=='response' and e[1]==CASES[1] and e[2]=='error' for e in events))
+            self.assertTrue(any(e[0]=='response' and e[1]==CASES[0 if bad_ack else 1] and e[2]=='error' for e in events))
+            if bad_ack:
+                self.assertFalse(any(e[0]=='bytes' for e in events))
+                self.assertFalse(any(e[0]=='response' and e[2]=='record-0.held.response' for e in events))
         else:
             self.assertEqual(len(processes),len(CASES)+1)
             self.assertTrue(all(p.returncode==0 and not p.terminated for p in processes))
             self.assertEqual([e[1] for e in cleanups],list(CASES))
             qualified.assert_called_once()
+            self.assertEqual(ack_check.call_count,15 if delayed else 0)
+            self.assertEqual(sum('--active-storage-delayed-ack' in command for command in commands),15 if delayed else 0)
 
     def test_container_exit_must_be_proven_and_active_inputs_preserved(self):
         result = lambda code, output='': subprocess.CompletedProcess([], code, stdout=output, stderr='')

@@ -47,6 +47,8 @@ COMPUTE_CHECKERS = (
     'scripts/compute_storage_atomic_cases.py', 'scripts/compute_storage_atomic_source.py',
     'scripts/compute_atomic_order.py', 'scripts/test_compute_atomic_order.py',
     'scripts/compute_storage_atomic_controller.py',
+    'scripts/compute_storage_atomic_delay.py', 'scripts/test_compute_storage_atomic_delay.py',
+    'scripts/test_compute_storage_atomic_delay.cpp',
     'scripts/compute_indirect_oracle.py',
     'scripts/test_gallium_compute_atomics.py',
     'scripts/qualify_compute_owner.py', 'scripts/owner_process_lifetime.py',
@@ -191,6 +193,7 @@ def driver_files(kind, profile=owner.PROFILE):
     if kind == INDIRECT_KIND:
         return ['scripts/compute_indirect_owner_driver.cpp', 'scripts/compute_owner_driver.cpp',
                 'scripts/compute_owner_capture.hpp', 'scripts/compute_owner_reset.hpp',
+                'scripts/compute_storage_atomic_delay.hpp',
                 'scripts/compute_indirect_capture.hpp', 'scripts/compute_owner_phase.hpp',
                 'driver/opengpu_kernarg_va.h', *SHARED]
     if kind == BLIT_KIND:
@@ -209,9 +212,11 @@ def driver_files(kind, profile=owner.PROFILE):
         wrapper = {COMPUTE_STAGE: 'compute_stage', FULL_PROFILE: 'geometry_compute',
                    SAMPLE_PROFILE: 'geometry_compute_sample', IMAGE_FLOAT_PROFILE: 'image_float'}[profile]
         return [f'scripts/{wrapper}_owner_driver.cpp', 'scripts/compute_owner_driver.cpp',
-                *SHARED, 'scripts/compute_owner_capture.hpp', 'scripts/compute_owner_reset.hpp']
+                *SHARED, 'scripts/compute_owner_capture.hpp', 'scripts/compute_owner_reset.hpp',
+                'scripts/compute_storage_atomic_delay.hpp']
     return ([f'scripts/{kind}_owner_driver.cpp', *SHARED] +
-            (['scripts/compute_owner_capture.hpp', 'scripts/compute_owner_reset.hpp'] if kind == 'compute' else []))
+            (['scripts/compute_owner_capture.hpp', 'scripts/compute_owner_reset.hpp',
+              'scripts/compute_storage_atomic_delay.hpp'] if kind == 'compute' else []))
 
 
 def sample_fixture_macros(path, source):
