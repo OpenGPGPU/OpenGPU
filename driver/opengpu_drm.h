@@ -393,6 +393,11 @@ struct drm_opengpu_resource {
  * bind-time invalidation, and shaders are snapshotted. CPU writes to those
  * fallback bindings require rebinding or explicit cache invalidation. */
 #define OPENGPU_RESOURCE_UNCACHED (1u << 16)
+/* Opt in to cached compute-kernarg data in a private VM. Other resource
+ * types and the combination with UNCACHED are rejected. Binding invalidates
+ * the physical range before publishing its PTEs. Later CPU writes require
+ * rebinding or explicit cache invalidation. */
+#define OPENGPU_RESOURCE_CACHED (1u << 17)
 #define OPENGPU_MAX_RESOURCE_SLOTS 16u
 /* Slots 17–34 are reserved for compute texture backing. Together with the
  * lower slots this allows 32 distinct textures beside shader and kernarg. */

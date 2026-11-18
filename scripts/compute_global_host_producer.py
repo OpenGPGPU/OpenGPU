@@ -75,6 +75,7 @@ def main():
     parser.add_argument('--global-atomic-matrix',action='store_true')
     parser.add_argument('--global-recovery-matrix',action='store_true')
     parser.add_argument('--global-accepted-matrix',action='store_true')
+    parser.add_argument('--cached-kernarg',action='store_true')
     parser.add_argument('--physical-base',type=int)
     args = parser.parse_args()
     if args.case == 'all' and not args.capture_only:
@@ -84,6 +85,8 @@ def main():
     if args.global_atomic_matrix and (args.case!=CASES[0] or args.session is None):
         parser.error('global matrix requires its exact first source and private session')
     recovery=args.global_recovery_matrix or args.global_accepted_matrix
+    if args.cached_kernarg and (recovery or not (args.capture_only or args.global_atomic_matrix)):
+        parser.error('cached kernarg requires distinct CPU capture or the original normal global matrix')
     if recovery and (args.case!=CASES[0] or args.session is None or
             args.global_atomic_matrix or args.capture_only):
         parser.error('global recovery requires its distinct live first-source matrix')
@@ -139,6 +142,7 @@ def main():
             command=source_launch(stage['index'],out,args.session.resolve(),frozen_profile)
             check_source_launch(command,stage['index'],out,args.session.resolve(),frozen_profile)
         else:
+            if args.cached_kernarg:command+=['--cached-kernarg']
             if args.capture_only:command+=['--capture-only']
             if args.physical_base is not None:command+=['--physical-base',str(args.physical_base)]
         with log_path.open('w') as log:

@@ -694,9 +694,17 @@ static int opengpu_binding_map_kernarg(struct opengpu_device *gpu,
                                   OPENGPU_MMU_PAGE_SIZE, &plan);
     if (ret)
         return ret;
+    if (binding->flags & OPENGPU_RESOURCE_CACHED) {
+        /* Publish CPU-written cached data only after the physical invalidate
+         * succeeds, before installing the new private translation. */
+        ret = opengpu_binding_invalidate(gpu, binding);
+        if (ret)
+            return ret;
+    }
     ret = opengpu_mmu_vm_replace(gpu, &context->vm, (dma_addr_t)plan.va_page,
                              (dma_addr_t)plan.pa_page, (size_t)plan.span,
-                             OPENGPU_MMU_POLICY_UNCACHED,
+                             (binding->flags & OPENGPU_RESOURCE_CACHED) ?
+                                 OPENGPU_MMU_POLICY_CACHED : OPENGPU_MMU_POLICY_UNCACHED,
                              old ? old->va : 0, old && old->va ? old->size : 0);
     if (ret)
         return ret;
@@ -967,6 +975,10 @@ int opengpu_compute_resource_bind_ioctl(struct drm_device *drm, void *data,
         (args->type != OPENGPU_RESOURCE_COMPUTE_TEXTURE && (args->offset & 3)) || args->pad ||
         check_add_overflow(args->offset, args->size, &end))
         return -EINVAL;
+    if ((args->flags & OPENGPU_RESOURCE_CACHED) &&
+        (args->type != OPENGPU_RESOURCE_COMPUTE_KERNARG ||
+         (args->flags & OPENGPU_RESOURCE_UNCACHED)))
+        return -EINVAL;
     if (args->type == OPENGPU_RESOURCE_COMPUTE_STORAGE &&
         (!opengpu_storage_backing_index(args->slot, &storage_index) ||
          (args->offset & 255) || args->size > OPENGPU_STORAGE_DESCRIPTOR_MAX_BYTES))
@@ -1027,7 +1039,7 @@ int opengpu_compute_resource_bind_ioctl(struct drm_device *drm, void *data,
         if (texture_bytes > args->size)
             return -EINVAL;
     } else if (args->width || args->height ||
-               (args->flags & ~OPENGPU_RESOURCE_UNCACHED)) {
+               (args->flags & ~(OPENGPU_RESOURCE_UNCACHED | OPENGPU_RESOURCE_CACHED))) {
         return -EINVAL;
     }
 
@@ -1068,6 +1080,10 @@ int opengpu_compute_resource_bind_ioctl(struct drm_device *drm, void *data,
     context = opengpu_context_lookup(render_file, args->context_id);
     if (!context) {
         ret = -ENOENT;
+        goto out_file;
+    }
+    if ((args->flags & OPENGPU_RESOURCE_CACHED) && !context->vm.enabled) {
+        ret = -EOPNOTSUPP;
         goto out_file;
     }
     ret = opengpu_context_quiesce(render_file, context);

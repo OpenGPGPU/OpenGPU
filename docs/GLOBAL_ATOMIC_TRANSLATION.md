@@ -1,5 +1,67 @@
 # Global atomic translation
 
+## Explicit cached compute kernargs
+
+`OPENGPU_RESOURCE_CACHED` (resource flag bit 17) opts a compute-kernarg binding
+into cached private Sv32 pages. It requires an enabled private VM; other
+resource types and the combination with `OPENGPU_RESOURCE_UNCACHED` are
+rejected. Existing bindings without this flag retain their uncached policy.
+The driver invalidates the physical range before publishing the cached PTEs.
+CPU writes after binding require rebinding or explicit cache invalidation;
+compute submit does not automatically invalidate the original kernarg data.
+
+The distinct `global-atomics-cached` qualifier keeps all 24 original RV32
+programs, words, operands, four scalar callers in sixteen-lane workgroups,
+original GEMs and private code snapshots. It requires exact cached/RWX/A/D
+leaves (`0xcf`) on both argument pages instead of the original UC2 leaves
+(`0x2cf`), without weakening code, permissions, launch, old-value or complete
+physical-byte guards. Cached and uncached source schemas and producer options
+remain separate. The page-tail, next-page and final-word cases are retained.
+
+The 64 focused source/qualifier/input checks pass, including a real production
+Linux bind/rebind test under ASan/UBSan. That test checks both pages, default
+and explicit policies, failed flag/VM admission, original binding retention
+and complete allocation cleanup. Independently guarded cached and uncached
+Linux caller builds pass all 48 original CPU captures, 888 rejection controls
+and 16 compiler/header/object/link mutation controls. Actual compilation uses
+the three original native units, full MD closure and fixed compiler image;
+all 238 declared software inputs remain bound. Ended CPU capture/build outputs
+are removed. These are CPU admission and transport results, not GPU execution.
+The 190 executor-input binding and affected-test selection checks also pass.
+
+Actual complete-host execution of the 24 cached programs and 192 old words
+remains required. This mapping stage also does not establish warm L1/L2 alias
+residency, accepted-write-error refetch or cached/uncached alias coherence;
+those remain P10's subsequent full-host gates. Complete resources, physical
+clock and FPS keep their separate plan gates. P10 remains open at 9/40.
+
+```sh
+env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts \
+  /usr/bin/python3 -B -m unittest test_compute_cached_kernarg \
+  test_compute_global_atomic_source test_qualify_compute_owner \
+  test_compute_counter_source test_compute_global_host_inputs
+env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts \
+  /usr/bin/python3 -B -m unittest test_prepare_owner_executor test_changed_test_suites
+```
+
+For guarded CPU captures, add `--cached-kernarg` to the original sanitized
+`compute_global_host_producer.py --capture-only` command, then check all
+captures with `test_compute_global_atomic_source.py --cached-kernarg` and
+the matching discovery JSON. For actual execution, freshly build the original
+compute executor for these software sources against its matching complete
+float model, then run:
+
+```sh
+python3 -B scripts/qualify_compute_owner.py \
+  --executor "$COMPUTE_EXECUTOR" --executor-qualification "$COMPUTE_QUALIFICATION" \
+  --executor-checker scripts/prepare_owner_executor.py \
+  --executor-checker-python "$QUALIFICATION_PYTHON" \
+  --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72 \
+  --case global-atomics-cached --timeout 7200
+```
+
+## Global AMO translation and prior component checks
+
 Global RV32 word AMOs capture the data SATP root and virtual operand before
 sharing the ordinary data page walker. They require readable and writable
 translations, retain the page offset and PTE cache policy, and hold physical

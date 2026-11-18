@@ -20,6 +20,9 @@ def run_matrix(args, command, directory, executor, env, qualified, profile_name)
     mixed_matrix=getattr(args,'mixed_atomic_matrix',False)
     global_matrix=getattr(args,'global_atomic_matrix',False)
     global_delayed=getattr(args,'global_delayed_ack',False)
+    global_cached=getattr(args,'global_cached_matrix',False)
+    require(not global_cached or (global_matrix and not global_delayed),
+        'cached global matrix requires its distinct normal execution')
     require(not global_delayed or global_matrix,'global ACK requires its original complete source matrix')
     if global_matrix:
         from compute_global_atomic_cases import CASES as selected_cases
@@ -34,7 +37,7 @@ def run_matrix(args, command, directory, executor, env, qualified, profile_name)
         require(not (getattr(args,'storage_matrix',False) or getattr(args,'storage_delayed_ack',False)),
                 'contended image and storage matrices must remain separate')
     else:selected_cases=CASES
-    family='global RV32 atomic' if global_matrix else 'mixed image/storage atomic' if mixed_matrix else 'contended image' if image_matrix else 'storage atomic'
+    family='cached global RV32 atomic' if global_cached else 'global RV32 atomic' if global_matrix else 'mixed image/storage atomic' if mixed_matrix else 'contended image' if image_matrix else 'storage atomic'
     profile = strict_json(directory / 'profile.json')
     deadline = time.monotonic() + args.timeout
     def remaining():
@@ -55,7 +58,8 @@ def run_matrix(args, command, directory, executor, env, qualified, profile_name)
                 wait_file(local / 'READY', bridge, None, remaining())
                 for name in ('union.memory', 'record-0.capture', 'oracle.json', 'code.words'):
                     wait_file(local / name, bridge, None, remaining())
-                description, frozen = ready_inputs(local, case, owner_profile=profile_name, profile=profile)
+                description, frozen = ready_inputs(local, case, owner_profile=profile_name, profile=profile,
+                    **({'global_cached':True} if global_cached else {}))
                 inputs.append((local, frozen))
                 delayed = (getattr(args, 'storage_delayed_ack', False) or global_delayed) and not failed
                 plan = plan_bytes(description) if delayed else None

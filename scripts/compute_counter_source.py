@@ -109,7 +109,8 @@ def returned_outputs(initial, returned, description):
     return result
 
 
-def translate(memory, satp, va, permissions):
+def translate(memory, satp, va, permissions, *, cache_policy=2):
+    require(type(cache_policy) is int and cache_policy in (0,2), 'foreign private cache policy')
     require(satp & 0x80000000 and (satp >> 22) & 511, 'counter requires isolated Sv32')
     root = (satp & 0x3fffff) << 12
     def word(pa):
@@ -117,8 +118,8 @@ def translate(memory, satp, va, permissions):
     first = word(root + ((va >> 22) & 1023) * 4)
     require(first & 1023 == 1, 'counter Sv32 root is not a nonleaf')
     second = word((first >> 10) * 4096 + ((va >> 12) & 1023) * 4)
-    # Production private pages are uncached, accessed/dirty, supervisor-only.
-    require(second & 1023 == (0x240 | permissions | (0x80 if permissions&4 else 0)), 'counter Sv32 leaf permissions differ')
+    # Keep exact supervisor permissions/A/D and the selected production policy.
+    require(second & 1023 == ((cache_policy<<8) | 0x40 | permissions | (0x80 if permissions&4 else 0)), 'counter Sv32 leaf permissions differ')
     return (second >> 10) * 4096 + (va & 4095)
 
 

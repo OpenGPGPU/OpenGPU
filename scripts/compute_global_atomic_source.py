@@ -14,6 +14,7 @@ from compute_owner_protocol import profile_bytes, required_flags, uint
 from owner_resource_contract import IMAGE_FLOAT_PROFILE
 
 SCHEMA = 'opengpu-compute-global-atomic-oracle-v1'
+CACHED_SCHEMA = 'opengpu-compute-global-cached-atomic-oracle-v1'
 
 
 def require(ok, message):
@@ -24,7 +25,8 @@ def require(ok, message):
 def recipe(memory, description):
     require(type(description) is dict, 'original source metadata must be an object')
     p = parameters(description.get('sourceCase'))
-    required_flags(description, dict(schema=SCHEMA, sourceCase=p['case'], viewBytes=8192,
+    required_flags(description, dict(schema=CACHED_SCHEMA if description.get('schema')==CACHED_SCHEMA else SCHEMA,
+                                    sourceCase=p['case'], viewBytes=8192,
                                     groups=4, local=16, guard=0xdeadbeef, context=1))
     require(set(description) == {'schema', 'sourceCase', 'viewBytes', 'groups', 'local',
             'guard', 'context', 'codePhysical', 'codeBytes', 'shader', 'kernarg'},
@@ -55,7 +57,9 @@ def recipe(memory, description):
     return p, kernarg, code
 
 
-def ready(memory, description, data, code_words, profile):
+def ready(memory, description, data, code_words, profile, *, cached=False):
+    require(type(cached) is bool and description.get('schema')==(CACHED_SCHEMA if cached else SCHEMA),
+            'cached and uncached global source contracts must remain distinct')
     require(profile.get('ownerProfile') == IMAGE_FLOAT_PROFILE, 'complete float owner required')
     profile_bytes(profile)
     p, kernarg, code = recipe(memory, description)
@@ -70,9 +74,9 @@ def ready(memory, description, data, code_words, profile):
     satp = staged.get(0x14c, 0)
     require(satp == staged.get(0x150), 'instruction/data namespace differs')
     for offset in (0, 4095, 4096, 8191):
-        # The production kernarg leaf is exact UC2/RWX/A/D (0x2cf).
+        # Require the explicit production cache policy and exact RWX/A/D.
         # Preserve the original in-page offset on both source pages.
-        require(translate(memory, satp, 0x80800000 + offset, 15) == kernarg + offset,
+        require(translate(memory, satp, 0x80800000 + offset, 15, cache_policy=0 if cached else 2) == kernarg + offset,
                 'original uncached kernarg translation differs')
     require(type(code_words) is list and
             all(type(word) is str and re.fullmatch('[0-9a-f]{8}', word) for word in code_words) and

@@ -19,7 +19,7 @@
 
 static struct compute_host_session *session;
 static struct {void *data;uint64_t bytes;unsigned mapped,closed;} bos[16];
-static unsigned next_bo=1,submitted,retired,capture_only,timeout_seconds,expect_global_fault;
+static unsigned next_bo=1,submitted,retired,capture_only,timeout_seconds,expect_global_fault,cached_kernarg;
 static const char *directory,*source_case;
 static struct opengpu_buffer shader,kernarg;
 static size_t program_bytes;
@@ -62,7 +62,8 @@ static void write_source(void)
  for(size_t i=0;i<snap.code_bytes/4;i++)assert(fprintf(f,"%08x\n",words[i])==9);
  assert(!fclose(f));
  f=file("oracle.json","wx");
- fprintf(f,"{\"schema\":\"opengpu-compute-global-atomic-oracle-v1\",\"sourceCase\":\"%s\",\"viewBytes\":8192,\"groups\":4,\"local\":16,\"guard\":3735928559,\"context\":%u,\"codePhysical\":%llu,\"codeBytes\":%llu,\"shader\":",
+ fprintf(f,"{\"schema\":\"%s\",\"sourceCase\":\"%s\",\"viewBytes\":8192,\"groups\":4,\"local\":16,\"guard\":3735928559,\"context\":%u,\"codePhysical\":%llu,\"codeBytes\":%llu,\"shader\":",
+  cached_kernarg?"opengpu-compute-global-cached-atomic-oracle-v1":"opengpu-compute-global-atomic-oracle-v1",
   source_case,snap.context,(unsigned long long)snap.code_physical,(unsigned long long)snap.code_bytes);
  window(f,&shader);fputs(",\"kernarg\":",f);window(f,&kernarg);assert(fputs("}\n",f)>=0 && !fclose(f));}
 
@@ -112,9 +113,10 @@ int main(int argc,char **argv)
 {assert(argc>=6);uint64_t physical_base=0;
  directory=argv[1];source_case=argv[5];
  for(int i=6;i<argc;i++){
-  if(!strcmp(argv[i],"--capture-only")){assert(!capture_only && !expect_global_fault);capture_only=1;}
+  if(!strcmp(argv[i],"--cached-kernarg")){assert(!cached_kernarg && !expect_global_fault);cached_kernarg=1;}
+  else if(!strcmp(argv[i],"--capture-only")){assert(!capture_only && !expect_global_fault);capture_only=1;}
   else if(!strcmp(argv[i],"--expect-global-fault")){
-   assert(!capture_only && !expect_global_fault && ++i<argc);
+   assert(!capture_only && !expect_global_fault && !cached_kernarg && ++i<argc);
    expect_global_fault=!strcmp(argv[i],"read")?1:!strcmp(argv[i],"write")?2:0;assert(expect_global_fault);
   }else if(!strcmp(argv[i],"--physical-base")){
    assert(!physical_base && ++i<argc);const char *v=argv[i];assert(*v);
@@ -142,7 +144,8 @@ int main(int argc,char **argv)
  struct drm_opengpu_resource binding={.context_id=context,.slot=1,.handle=shader.handle,
   .type=OPENGPU_RESOURCE_COMPUTE_SHADER,.size=shader.size};assert(!opengpu_bind(7,&binding));
  binding=(struct drm_opengpu_resource){.context_id=context,.slot=2,.handle=kernarg.handle,
-  .type=OPENGPU_RESOURCE_COMPUTE_KERNARG,.size=8192};assert(!opengpu_bind(7,&binding));
+  .type=OPENGPU_RESOURCE_COMPUTE_KERNARG,.size=8192,
+  .flags=cached_kernarg?OPENGPU_RESOURCE_CACHED:0};assert(!opengpu_bind(7,&binding));
  struct drm_opengpu_compute command={.context_id=context,.shader_slot=1,.kernarg_slot=2,
   .grid={4,1,1},.local={16,1,1},.out_syncobj=sync};
  assert(!opengpu_compute(7,&command) && submitted==1);
