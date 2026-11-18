@@ -39,7 +39,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--write', action='store_true', help='replace the checked-in Scala ROM')
     args = parser.parse_args()
-    target = Path(__file__).resolve().parents[1] / 'src/main/scala/opengpu/graphics/Srgb8Thresholds.scala'
+    target = Path(__file__).resolve().parents[1] / 'src/main/scala/opengpu/graphics/texture/Srgb8Thresholds.scala'
     generated = generate()
     if args.write:
         target.write_text(generated)

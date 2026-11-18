@@ -96,21 +96,21 @@ also permits zero vertex/fragment minima for these resources; see the
 [3.1 resource map](GLES31_RESOURCE_LIMITS.md). Positive advertised graphics
 support requires separate qualification.
 
-The existing [uniform ABI](../src/main/scala/opengpu/graphics/ShaderUniformResources.scala)
+The existing [uniform ABI](../src/main/scala/opengpu/graphics/shader/ShaderUniformResources.scala)
 has 24 bindings, five-bit map entries, a one-bit stage and a two-bit stage mask;
 both stages now permit 1,024 default components through the
 [checked word-load path](UNIFORM_BUFFER_RESOURCES.md#expanded-fragment-default-capacity).
 A compatible versioned successor must address the larger namespace and additional stages. Merely
 raising `bindings` would leave the serialized fields too narrow. The existing
-[32-slot texture namespace](../src/main/scala/opengpu/graphics/NativeTextureResources.scala)
+[32-slot texture namespace](../src/main/scala/opengpu/graphics/texture/NativeTextureResources.scala)
 can supply a stage-local map, but does not prove a 96-unit API namespace.
-[GUC1](../src/main/scala/opengpu/graphics/NativeUniformCapabilities.scala)
+[GUC1](../src/main/scala/opengpu/graphics/shader/NativeUniformCapabilities.scala)
 must continue reporting the implemented vertex/fragment contract until a
 qualified successor exists.
 
 ## Implementation and acceptance sequence
 
-The [reserved stage tags](../src/main/scala/opengpu/graphics/TileRenderPass.scala)
+The [reserved stage tags](../src/main/scala/opengpu/graphics/raster/TileRenderPass.scala)
 are geometry=3, TCS=4 and TES=5. The current
 [shared-CU interface](../src/main/scala/opengpu/system/SharedCuGraphicsPort.scala)
 provides task transport; its vertex/fragment client allocation does not yet

@@ -570,15 +570,15 @@ def changed_suites(root, changed, *, test_index=None):
 
     affected = set(changed) & files.keys()
     if changed & {
-        "src/main/scala/opengpu/graphics/FragmentInputAbi.scala",
-        "src/main/scala/opengpu/graphics/FragmentSampleAbi.scala",
-        "src/main/scala/opengpu/graphics/FragmentShaderStage.scala",
-        "src/main/scala/opengpu/graphics/TypedFragmentState.scala",
-        "src/main/scala/opengpu/graphics/TypedFragmentImageStateReader.scala",
-        "src/main/scala/opengpu/graphics/TypedReplayTileImagePipeline.scala",
-        "src/main/scala/opengpu/graphics/TypedTileImagePipeline.scala",
-        "src/main/scala/opengpu/graphics/TypedTileRenderPipeline.scala",
-        "src/main/scala/opengpu/graphics/VertexFragmentPipeline.scala",
+        "src/main/scala/opengpu/graphics/raster/FragmentInputAbi.scala",
+        "src/main/scala/opengpu/graphics/raster/FragmentSampleAbi.scala",
+        "src/main/scala/opengpu/graphics/raster/FragmentShaderStage.scala",
+        "src/main/scala/opengpu/graphics/raster/TypedFragmentState.scala",
+        "src/main/scala/opengpu/graphics/raster/TypedFragmentImageStateReader.scala",
+        "src/main/scala/opengpu/graphics/raster/TypedReplayTileImagePipeline.scala",
+        "src/main/scala/opengpu/graphics/raster/TypedTileImagePipeline.scala",
+        "src/main/scala/opengpu/graphics/raster/TypedTileRenderPipeline.scala",
+        "src/main/scala/opengpu/graphics/vertex/VertexFragmentPipeline.scala",
         "src/main/scala/opengpu/system/tessellation/TessellationSystemIsolineImagePipeline.scala",
         "src/main/scala/opengpu/system/tessellation/TessellationSystemTriangleImagePipeline.scala",
         "src/main/scala/opengpu/system/tessellation/TessellationSystemQuadImagePipeline.scala",
@@ -596,7 +596,7 @@ def changed_suites(root, changed, *, test_index=None):
         "src/main/scala/opengpu/core/frontend/decode/DecodeTypes.scala",
         "src/main/scala/opengpu/core/frontend/decode/FullInstructionDecoder.scala",
         "src/main/scala/opengpu/system/SharedCuGraphicsPort.scala",
-        "src/main/scala/opengpu/graphics/SharedShaderTaskRouter.scala",
+        "src/main/scala/opengpu/graphics/shader/SharedShaderTaskRouter.scala",
     }:
         affected.update({
             "src/test/scala/opengpu/graphics/TessellationScalarInfoWorkerSpec.scala",
@@ -607,8 +607,8 @@ def changed_suites(root, changed, *, test_index=None):
     # Original-ordinal identity must reach both actual launch stages. These
     # checks execute bounded providers/owners, never a full CU qualification.
     input_patch_sources = {
-        "graphics/tessellation/TessellationScalarInfoWorker", "graphics/VertexInputSlice",
-        "graphics/SharedShaderTaskRouter", "system/SharedCuGraphicsPort", "system/GpuSystem",
+        "graphics/tessellation/TessellationScalarInfoWorker", "graphics/vertex/VertexInputSlice",
+        "graphics/shader/SharedShaderTaskRouter", "system/SharedCuGraphicsPort", "system/GpuSystem",
         "system/geometry/IsolineGeometryCuExecutor", "system/tessellation/TessellationVertexShaderRouter",
         "system/geometry/GeometryFragmentShaderRouter", "system/tessellation/TessellationHostShaderRouter",
         "system/tessellation/TessellationVertexInputImageControl", "system/tessellation/TessellationVertexPatchSequence",
@@ -627,7 +627,7 @@ def changed_suites(root, changed, *, test_index=None):
             "src/test/scala/opengpu/graphics/TessellationInputPatchBindingSpec.scala",
             "src/test/scala/opengpu/graphics/TessellationVertexTypedRangeSpec.scala",
         })
-    if "src/main/scala/opengpu/graphics/ClipFloatArithmetic.scala" in changed:
+    if "src/main/scala/opengpu/graphics/raster/ClipFloatArithmetic.scala" in changed:
         # The scalar arithmetic service has four production owners. Its
         # response latency also reaches the spatial preparation/credit paths.
         affected.update("src/test/scala/opengpu/graphics/" + name + ".scala" for name in (
@@ -636,15 +636,15 @@ def changed_suites(root, changed, *, test_index=None):
             "Fp32FragmentInterpolatorSpec", "Fp32FragmentPreparationSpec",
             "Fp32StreamingFragmentInterpolatorSpec", "FragmentSetupCacheSpec",
             "FragmentPreparationInstanceSpec"))
-    if changed & {"src/main/scala/opengpu/graphics/Fp32FragmentInterpolator.scala",
-                  "src/main/scala/opengpu/graphics/Fp32FragmentPreparation.scala",
-                  "src/main/scala/opengpu/graphics/Fp32StreamingFragmentInterpolator.scala"}:
+    if changed & {"src/main/scala/opengpu/graphics/raster/Fp32FragmentInterpolator.scala",
+                  "src/main/scala/opengpu/graphics/raster/Fp32FragmentPreparation.scala",
+                  "src/main/scala/opengpu/graphics/raster/Fp32StreamingFragmentInterpolator.scala"}:
         affected.add("src/test/scala/opengpu/graphics/FragmentSetupCacheSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/FragmentPreparationInstanceSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/Fp32FragmentPreparationSpec.scala")
-    if changed & {"src/main/scala/opengpu/graphics/VertexInputSlice.scala",
-                  "src/main/scala/opengpu/graphics/VertexInputFetcher.scala",
-                  "src/main/scala/opengpu/graphics/VertexShaderStage.scala"}:
+    if changed & {"src/main/scala/opengpu/graphics/vertex/VertexInputSlice.scala",
+                  "src/main/scala/opengpu/graphics/vertex/VertexInputFetcher.scala",
+                  "src/main/scala/opengpu/graphics/vertex/VertexShaderStage.scala"}:
         affected.add("src/test/scala/opengpu/graphics/VertexInputFetcherSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/TessellationVertexPatchSourceSpec.scala")
@@ -654,16 +654,16 @@ def changed_suites(root, changed, *, test_index=None):
     if changed & {"src/main/scala/opengpu/system/tessellation/TessellationVertexShaderRouter.scala",
                   "src/main/scala/opengpu/system/SharedCuGraphicsPort.scala",
                   "src/main/scala/opengpu/system/geometry/GeometryFragmentShaderRouter.scala",
-                  "src/main/scala/opengpu/graphics/SharedShaderTaskRouter.scala"}:
+                  "src/main/scala/opengpu/graphics/shader/SharedShaderTaskRouter.scala"}:
         affected.add("src/test/scala/opengpu/graphics/TessellationVertexShaderRouterSpec.scala")
     if changed & {"src/main/scala/opengpu/system/tessellation/TessellationVertexPatchSequence.scala",
                   "src/main/scala/opengpu/system/tessellation/TessellationVertexPatchSource.scala",
-                  "src/main/scala/opengpu/graphics/VertexInputSlice.scala"}:
+                  "src/main/scala/opengpu/graphics/vertex/VertexInputSlice.scala"}:
         affected.add("src/test/scala/opengpu/graphics/TessellationVertexPatchSequenceSpec.scala")
     if changed & {"src/main/scala/opengpu/system/tessellation/TessellationVertexPatchOwner.scala",
                   "src/main/scala/opengpu/system/tessellation/TessellationVertexPatchSource.scala",
-                  "src/main/scala/opengpu/graphics/VertexShaderStage.scala",
-                  "src/main/scala/opengpu/graphics/VertexInputSlice.scala"}:
+                  "src/main/scala/opengpu/graphics/vertex/VertexShaderStage.scala",
+                  "src/main/scala/opengpu/graphics/vertex/VertexInputSlice.scala"}:
         affected.add("src/test/scala/opengpu/graphics/TessellationVertexPatchOwnerSpec.scala")
     if changed & {"src/main/scala/opengpu/system/tessellation/TessellationVertexInputImageControl.scala",
                   "src/main/scala/opengpu/system/tessellation/TessellationSystemIsolineVertexInputImage.scala",
@@ -671,12 +671,12 @@ def changed_suites(root, changed, *, test_index=None):
                   "src/main/scala/opengpu/system/tessellation/TessellationSystemQuadVertexInputImage.scala",
                   "src/main/scala/opengpu/system/tessellation/TessellationVertexPatchOwner.scala",
                   "src/main/scala/opengpu/system/tessellation/TessellationVertexPatchSource.scala",
-                  "src/main/scala/opengpu/graphics/VertexShaderStage.scala",
-                  "src/main/scala/opengpu/graphics/VertexInputSlice.scala",
-                  "src/main/scala/opengpu/graphics/VertexInputFetcher.scala",
+                  "src/main/scala/opengpu/graphics/vertex/VertexShaderStage.scala",
+                  "src/main/scala/opengpu/graphics/vertex/VertexInputSlice.scala",
+                  "src/main/scala/opengpu/graphics/vertex/VertexInputFetcher.scala",
                   "src/main/scala/opengpu/graphics/tessellation/TessellationPatchStore.scala",
                   "src/main/scala/opengpu/graphics/tessellation/TessellationPatchContext.scala",
-                  "src/main/scala/opengpu/graphics/ShaderUniformResources.scala"}:
+                  "src/main/scala/opengpu/graphics/shader/ShaderUniformResources.scala"}:
         affected.add("src/test/scala/opengpu/graphics/TessellationVertexInputImageSpec.scala")
     if changed & {"src/main/scala/opengpu/system/tessellation/TessellationVertexSourceReader.scala",
                   "src/main/scala/opengpu/system/tessellation/TessellationVertexPatchSource.scala",
@@ -686,11 +686,11 @@ def changed_suites(root, changed, *, test_index=None):
     if changed & {"src/main/scala/opengpu/system/tessellation/TessellationVertexDrawReader.scala",
                   "src/main/scala/opengpu/system/tessellation/TessellationVertexSourceReader.scala",
                   "src/main/scala/opengpu/system/tessellation/TessellationVertexPatchSource.scala",
-                  "src/main/scala/opengpu/graphics/NativeBinnedGraphicsDescriptors.scala",
-                  "src/main/scala/opengpu/graphics/NativeTypedGraphicsDescriptors.scala",
-                  "src/main/scala/opengpu/graphics/VertexInputFetcher.scala",
-                  "src/main/scala/opengpu/graphics/VertexShaderStage.scala",
-                  "src/main/scala/opengpu/graphics/ShaderUniformResources.scala",
+                  "src/main/scala/opengpu/graphics/host/NativeBinnedGraphicsDescriptors.scala",
+                  "src/main/scala/opengpu/graphics/host/NativeTypedGraphicsDescriptors.scala",
+                  "src/main/scala/opengpu/graphics/vertex/VertexInputFetcher.scala",
+                  "src/main/scala/opengpu/graphics/vertex/VertexShaderStage.scala",
+                  "src/main/scala/opengpu/graphics/shader/ShaderUniformResources.scala",
                   "src/main/scala/opengpu/graphics/tessellation/TessellationPatchStore.scala",
                   "docs/abi/native-binned-graphics-v1.json",
                   "docs/abi/tessellation-vertex-source-v1.json"}:
@@ -699,11 +699,11 @@ def changed_suites(root, changed, *, test_index=None):
                   "src/main/scala/opengpu/system/tessellation/TessellationVertexDrawReader.scala",
                   "src/main/scala/opengpu/system/tessellation/TessellationVertexSourceReader.scala",
                   "src/main/scala/opengpu/system/tessellation/TessellationVertexPatchSource.scala",
-                  "src/main/scala/opengpu/graphics/NativeBinnedGraphicsDescriptors.scala",
-                  "src/main/scala/opengpu/graphics/NativeTypedGraphicsDescriptors.scala",
-                  "src/main/scala/opengpu/graphics/VertexInputFetcher.scala",
-                  "src/main/scala/opengpu/graphics/VertexShaderStage.scala",
-                  "src/main/scala/opengpu/graphics/ShaderUniformResources.scala",
+                  "src/main/scala/opengpu/graphics/host/NativeBinnedGraphicsDescriptors.scala",
+                  "src/main/scala/opengpu/graphics/host/NativeTypedGraphicsDescriptors.scala",
+                  "src/main/scala/opengpu/graphics/vertex/VertexInputFetcher.scala",
+                  "src/main/scala/opengpu/graphics/vertex/VertexShaderStage.scala",
+                  "src/main/scala/opengpu/graphics/shader/ShaderUniformResources.scala",
                   "src/main/scala/opengpu/graphics/tessellation/TessellationPatchStore.scala",
                   "docs/abi/native-binned-graphics-v1.json",
                   "docs/abi/tessellation-vertex-source-v1.json"}:
@@ -716,20 +716,20 @@ def changed_suites(root, changed, *, test_index=None):
                   "src/main/scala/opengpu/system/tessellation/TessellationVertexPatchSource.scala",
                   "src/main/scala/opengpu/system/tessellation/TessellationVertexInputImageControl.scala",
                   "src/main/scala/opengpu/system/tessellation/TessellationVertexSequenceLayout.scala",
-                  "src/main/scala/opengpu/graphics/VertexInputSlice.scala",
-                  "src/main/scala/opengpu/graphics/ShaderUniformResources.scala",
+                  "src/main/scala/opengpu/graphics/vertex/VertexInputSlice.scala",
+                  "src/main/scala/opengpu/graphics/shader/ShaderUniformResources.scala",
                   "src/main/scala/opengpu/graphics/tessellation/TessellationPatchStore.scala"} or any(
             f"src/main/scala/opengpu/system/tessellation/Tessellation{stem}.scala" in changed
             for domain in ("Isoline", "Triangle", "Quad")
             for stem in (f"System{domain}VertexTypedRange", f"System{domain}VertexInputImage",
                          f"{'' if domain == 'Isoline' else domain}PatchSequence")):
         affected.add("src/test/scala/opengpu/graphics/TessellationVertexTypedRangeSpec.scala")
-    if "src/main/scala/opengpu/graphics/TypedFragmentState.scala" in changed:
+    if "src/main/scala/opengpu/graphics/raster/TypedFragmentState.scala" in changed:
         affected.add("src/test/scala/opengpu/graphics/TypedFragmentStateReaderSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/TypedFragmentImageStateReaderSpec.scala")
-    if changed & {"src/main/scala/opengpu/graphics/WindowPrimitiveRecordReadCache.scala",
-                  "src/main/scala/opengpu/graphics/WindowPrimitiveRecords.scala",
-                  "src/main/scala/opengpu/graphics/WindowPrimitiveBinReplayPass.scala",
+    if changed & {"src/main/scala/opengpu/graphics/raster/WindowPrimitiveRecordReadCache.scala",
+                  "src/main/scala/opengpu/graphics/raster/WindowPrimitiveRecords.scala",
+                  "src/main/scala/opengpu/graphics/raster/WindowPrimitiveBinReplayPass.scala",
                   "src/main/scala/opengpu/elaboration/EmitWindowPrimitiveRecordReadCache.scala"}:
         affected.add("src/test/scala/opengpu/graphics/WindowPrimitiveRecordReadCacheSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/WindowPrimitiveBinReplayPassSpec.scala")
@@ -839,8 +839,8 @@ def changed_suites(root, changed, *, test_index=None):
     if "src/main/scala/opengpu/system/TileBinHostMemoryFabric.scala" in changed:
         affected.add("src/test/scala/opengpu/system/TessellationInputMemoryFabricSpec.scala")
     if changed & {"src/main/scala/opengpu/elaboration/EmitNativeGeometryAbi.scala",
-                  "src/main/scala/opengpu/graphics/NativeGeometryDescriptors.scala",
-                  "src/main/scala/opengpu/graphics/NativeGeometryProgramReader.scala",
+                  "src/main/scala/opengpu/graphics/host/NativeGeometryDescriptors.scala",
+                  "src/main/scala/opengpu/graphics/host/NativeGeometryProgramReader.scala",
                   "driver/opengpu_native_geometry_abi.h", "docs/abi/native-geometry-v1.json"}:
         affected.add("src/test/scala/opengpu/graphics/NativeGeometryProgramSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/NativeBinnedGraphicsJobReaderSpec.scala")
@@ -854,7 +854,7 @@ def changed_suites(root, changed, *, test_index=None):
         "src/main/scala/opengpu/graphics/tessellation/TessellationEvaluationVectorAccess.scala",
         "src/main/scala/opengpu/system/tessellation/TessellationEvaluationPatchProvider.scala",
         "src/main/scala/opengpu/system/SharedCuGraphicsPort.scala",
-        "src/main/scala/opengpu/graphics/SharedShaderTaskRouter.scala",
+        "src/main/scala/opengpu/graphics/shader/SharedShaderTaskRouter.scala",
         "src/main/scala/opengpu/core/frontend/decode/VectorDecoder.scala",
         "src/main/scala/opengpu/core/frontend/decode/FullInstructionDecoder.scala",
         "src/main/scala/opengpu/core/GpuComputeUnit.scala",
@@ -872,9 +872,9 @@ def changed_suites(root, changed, *, test_index=None):
                       "opengpu.system.TessellationDynamicPatchSystemSpec"):
             affected.add("src/test/scala/" + suite.replace(".", "/") + ".scala")
     if changed & {
-        "src/main/scala/opengpu/graphics/ShaderUniformResources.scala",
-        "src/main/scala/opengpu/graphics/ShaderUniformLoadUnit.scala",
-        "src/main/scala/opengpu/graphics/ShaderUniformExecuteUnit.scala",
+        "src/main/scala/opengpu/graphics/shader/ShaderUniformResources.scala",
+        "src/main/scala/opengpu/graphics/shader/ShaderUniformLoadUnit.scala",
+        "src/main/scala/opengpu/graphics/shader/ShaderUniformExecuteUnit.scala",
         "src/main/scala/opengpu/system/tessellation/TessellationUniformCuService.scala",
         "src/main/scala/opengpu/system/tessellation/TessellationUniformSequenceLayout.scala",
         "src/main/scala/opengpu/elaboration/EmitTessellationUniformAbi.scala",
@@ -902,7 +902,7 @@ def changed_suites(root, changed, *, test_index=None):
     }:
         affected.add("src/test/scala/opengpu/graphics/TessellationSystemClientRetirementSpec.scala")
     if changed & {
-        "src/main/scala/opengpu/graphics/NativeTypedGraphicsDescriptors.scala",
+        "src/main/scala/opengpu/graphics/host/NativeTypedGraphicsDescriptors.scala",
         "src/main/scala/opengpu/system/tessellation/TessellationVertexSequenceLayout.scala",
         "src/main/scala/opengpu/system/tessellation/TessellationVertexSequenceReader.scala",
         "src/main/scala/opengpu/system/tessellation/TessellationVertexSourceReader.scala",
@@ -937,7 +937,7 @@ def changed_suites(root, changed, *, test_index=None):
                   "src/main/scala/opengpu/system/ComputeResourceCapabilities.scala",
                   "src/main/scala/opengpu/system/native/NativeShaderExecutionCapabilities.scala"}:
         affected.add("src/test/scala/opengpu/system/NativeOwnerHostProfileSpec.scala")
-    if changed & {"src/main/scala/opengpu/graphics/NativeAdvancedBlendCapabilities.scala",
+    if changed & {"src/main/scala/opengpu/graphics/host/NativeAdvancedBlendCapabilities.scala",
                   "src/main/scala/opengpu/system/native/NativeAlignmentHostProfile.scala",
                   "src/main/scala/opengpu/elaboration/EmitNativeAdvancedBlendAbi.scala",
                   "driver/opengpu_native_advanced_blend_abi.h", "driver/opengpu_native_advanced_blend_features.h",
@@ -946,21 +946,21 @@ def changed_suites(root, changed, *, test_index=None):
                   "driver/tests/opengpu_native_advanced_blend_discovery_test.c"}:
         affected.add("src/test/scala/opengpu/graphics/NativeAdvancedBlendAbiSpec.scala")
         affected.add("src/test/scala/opengpu/system/NativeAdvancedBlendCapabilitiesAxiSpec.scala")
-    if changed & {"src/main/scala/opengpu/graphics/NativeDescriptorPreflightCapabilities.scala",
-                  "src/main/scala/opengpu/graphics/NativeBinnedDescriptorPreflight.scala",
+    if changed & {"src/main/scala/opengpu/graphics/host/NativeDescriptorPreflightCapabilities.scala",
+                  "src/main/scala/opengpu/graphics/host/NativeBinnedDescriptorPreflight.scala",
                   "src/main/scala/opengpu/elaboration/EmitNativeDescriptorPreflightAbi.scala",
                   "driver/opengpu_native_preflight_abi.h", "driver/opengpu_native_preflight_features.h",
                   "driver/tests/opengpu_native_preflight_discovery_test.c"}:
         affected.add("src/test/scala/opengpu/graphics/NativeAdvancedBlendAbiSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/NativeBinnedGraphicsJobReaderSpec.scala")
         affected.add("src/test/scala/opengpu/system/NativeDescriptorPreflightCapabilitiesAxiSpec.scala")
-    if changed & {"src/main/scala/opengpu/graphics/NativeGeometryTransportCapabilities.scala",
+    if changed & {"src/main/scala/opengpu/graphics/host/NativeGeometryTransportCapabilities.scala",
                   "src/main/scala/opengpu/elaboration/EmitNativeGeometryTransportAbi.scala",
                   "driver/opengpu_native_geometry_transport_abi.h",
                   "driver/opengpu_native_geometry_transport_features.h",
                   "driver/tests/opengpu_native_geometry_transport_discovery_test.c"}:
         affected.add("src/test/scala/opengpu/system/NativeGeometryTransportCapabilitiesAxiSpec.scala")
-    if changed & {"src/main/scala/opengpu/graphics/NativeSampleTransportCapabilities.scala",
+    if changed & {"src/main/scala/opengpu/graphics/host/NativeSampleTransportCapabilities.scala",
                   "src/main/scala/opengpu/elaboration/EmitNativeSampleTransportAbi.scala",
                   "driver/opengpu_native_sample_transport_abi.h",
                   "driver/opengpu_native_sample_transport_features.h",
@@ -989,8 +989,9 @@ def changed_suites(root, changed, *, test_index=None):
         for name in ("shader-image", "texture-image-binding", "texture-image-level", "texture-image-format")
     } | {
         f"src/main/scala/opengpu/graphics/{name}.scala"
-        for name in ("ShaderImageDescriptorReader", "TextureImageAddressUnit", "TextureImageBindingUnit",
-                     "TextureImageResourceAddressUnit", "TextureImageFormat")
+        for name in ("shader/ShaderImageDescriptorReader", "texture/TextureImageAddressUnit",
+                     "texture/TextureImageBindingUnit", "texture/TextureImageResourceAddressUnit",
+                     "texture/TextureImageFormat")
     }
     if changed & texture_image_abi_paths:
         affected.add("src/test/scala/opengpu/graphics/ShaderImageAbiSpec.scala")
@@ -1025,7 +1026,7 @@ def changed_suites(root, changed, *, test_index=None):
         affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationDomainFeedbackBridgeSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/TransformFeedbackOwnerTransferSpec.scala")
     if changed & {"src/main/scala/opengpu/system/tessellation/TessellationDomainSampleMux.scala",
-                  "src/main/scala/opengpu/graphics/NativeVisibilityQueryEngine.scala",
+                  "src/main/scala/opengpu/graphics/host/NativeVisibilityQueryEngine.scala",
                   "src/main/scala/opengpu/system/tessellation/TessellationNativeDomainJobImage.scala",
                   "src/main/scala/opengpu/system/GpuHostSystemAxi.scala"}:
         affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationDomainVisibilityQuerySpec.scala")
@@ -1033,7 +1034,7 @@ def changed_suites(root, changed, *, test_index=None):
         affected.add("src/test/scala/opengpu/system/TessellationThreeDomainPayloadOwnerSpec.scala")
     if changed & {"src/main/scala/opengpu/system/tessellation/TessellationThreeDomainFeedbackBridge.scala",
                   "src/main/scala/opengpu/system/tessellation/TessellationThreeDomainFeedbackAdmission.scala",
-                  "src/main/scala/opengpu/graphics/TransformFeedbackThreeDomainTransfer.scala"}:
+                  "src/main/scala/opengpu/graphics/host/TransformFeedbackThreeDomainTransfer.scala"}:
         affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationThreeDomainFeedbackBridgeSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeThreeDomainJobImageElaborationSpec.scala")
     if changed & {"src/main/scala/opengpu/system/tessellation/TessellationThreeDomainFeedbackAdmission.scala",
@@ -1045,7 +1046,7 @@ def changed_suites(root, changed, *, test_index=None):
     if changed & {"src/main/scala/opengpu/system/tessellation/TessellationThreeDomainSampleMux.scala",
                   "src/main/scala/opengpu/system/tessellation/TessellationNativeThreeDomainJobImage.scala",
                   "src/main/scala/opengpu/system/GpuHostSystemAxi.scala",
-                  "src/main/scala/opengpu/graphics/NativeVisibilityQueryEngine.scala"}:
+                  "src/main/scala/opengpu/graphics/host/NativeVisibilityQueryEngine.scala"}:
         affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationThreeDomainVisibilityQuerySpec.scala")
     if "src/main/scala/opengpu/system/tessellation/TessellationHostMemoryFabric.scala" in changed:
         affected.add("src/test/scala/opengpu/system/TessellationThreeDomainMemoryFabricSpec.scala")
@@ -1055,7 +1056,7 @@ def changed_suites(root, changed, *, test_index=None):
     if changed & {"src/main/scala/opengpu/system/tessellation/TessellationImageBankOwner.scala",
                   "src/main/scala/opengpu/system/tessellation/TessellationImageBankMux.scala",
                   "src/main/scala/opengpu/system/tessellation/TessellationNativeThreeDomainJobImage.scala",
-                  "src/main/scala/opengpu/graphics/TypedReplayTileImagePipeline.scala"}:
+                  "src/main/scala/opengpu/graphics/raster/TypedReplayTileImagePipeline.scala"}:
         affected.add("src/test/scala/opengpu/system/TessellationImageBankSpec.scala")
     if "src/main/scala/opengpu/system/tessellation/TessellationNativeDomainJobImage.scala" in changed:
         affected.add("src/test/scala/opengpu/system/TessellationNativeDomainJobImageAdmissionSpec.scala")
@@ -1088,12 +1089,12 @@ def changed_suites(root, changed, *, test_index=None):
             affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationTriangleBoundarySpec.scala")
         if name == "src/main/scala/opengpu/system/GpuHostAxi.scala":
             affected.add("src/test/scala/opengpu/system/TessellationHostAxiCommandSpec.scala")
-        if name in ("src/main/scala/opengpu/graphics/TileBinHostCommandPort.scala",
+        if name in ("src/main/scala/opengpu/graphics/host/TileBinHostCommandPort.scala",
                     "src/main/scala/opengpu/command/GpuCommandRouter.scala"):
             affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationHostCommandPortSpec.scala")
         if name in ("src/main/scala/opengpu/system/tessellation/TessellationNativeJobReader.scala",
                     "src/main/scala/opengpu/system/tessellation/TessellationNativeSequenceReader.scala",
-                    "src/main/scala/opengpu/graphics/NativeBinnedGraphicsDescriptors.scala",
+                    "src/main/scala/opengpu/graphics/host/NativeBinnedGraphicsDescriptors.scala",
                     "src/main/scala/opengpu/elaboration/EmitTessellationNativeJobAbi.scala",
                     "driver/opengpu_native_tessellation_job_abi.h",
                     "driver/tests/opengpu_tessellation_job_abi_test.c",
@@ -1173,7 +1174,7 @@ def changed_suites(root, changed, *, test_index=None):
                 affected.add("src/test/scala/opengpu/system/TessellationPatchInputDmaContextSpec.scala")
             if name == "src/main/scala/opengpu/system/tessellation/TessellationSystemIsolineImagePipeline.scala":
                 affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationSystemIsolineImageSharedSystemSpec.scala")
-            if name == "src/main/scala/opengpu/graphics/SharedShaderTaskRouter.scala":
+            if name == "src/main/scala/opengpu/graphics/shader/SharedShaderTaskRouter.scala":
                 affected.add("src/test/scala/opengpu/graphics/SharedShaderTessellationRouterSpec.scala")
                 affected.add("src/test/scala/opengpu/graphics/GeometryFragmentTessellationRouterSpec.scala")
             if name == "src/main/scala/opengpu/system/geometry/GeometryFragmentShaderRouter.scala":
@@ -1231,16 +1232,22 @@ def changed_suites(root, changed, *, test_index=None):
             if candidate in files:
                 affected.add(candidate)
             else:
-                # system/{tessellation,geometry,native} are layout folders only;
-                # matching Specs stay flat under opengpu/system/.
+                # system/ and graphics/ layout folders keep Specs flat under the
+                # package root (except graphics/tessellation, a real subpackage).
                 parts = candidate.split("/")
-                if "system" in parts:
-                    idx = parts.index("system")
-                    if (idx + 1 < len(parts) - 1 and
-                            parts[idx + 1] in ("tessellation", "geometry", "native")):
+                layout = {
+                    "system": ("tessellation", "geometry", "native"),
+                    "graphics": ("texture", "raster", "vertex", "shader", "host"),
+                }
+                for pkg, subs in layout.items():
+                    if pkg not in parts:
+                        continue
+                    idx = parts.index(pkg)
+                    if (idx + 1 < len(parts) - 1 and parts[idx + 1] in subs):
                         flat = "/".join(parts[: idx + 1] + parts[-1:])
                         if flat in files:
                             affected.add(flat)
+                        break
     # Include inherited suites and consumers of shared test fixtures, even if
     # the fixture filename itself does not end in Spec.scala. References are
     # deliberately conservative across packages (extra coverage is safe).

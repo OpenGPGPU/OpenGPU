@@ -6,7 +6,7 @@ runtime,composed timing/resource budgets and primitive-query integration remain
 open. Compiler/driver implementation is outside the hardware alignment plan;
 its required hardware interfaces are in scope. PPA uses synthesis only.
 
-[TransformFeedbackExport](../src/main/scala/opengpu/graphics/TransformFeedbackExport.scala)
+[TransformFeedbackExport](../src/main/scala/opengpu/graphics/host/TransformFeedbackExport.scala)
 accepts complete raw assembled primitives before flat shading or clipping.
 It captures up to64 selected32-bit components in an interleaved buffer, or
 up to four components in each of four separate bindings. Position, raw
@@ -48,7 +48,7 @@ Successful raw capture then applies the original provoking-vertex flat values
 for downstream clipping/binning; raster discard suppresses that output while
 retaining feedback writes/counts.
 
-[TransformFeedbackGeometryStage](../src/main/scala/opengpu/graphics/TransformFeedbackGeometryStage.scala)
+[TransformFeedbackGeometryStage](../src/main/scala/opengpu/graphics/host/TransformFeedbackGeometryStage.scala)
 composes the actual shared-CU vertex shader,raw primitive assembly and export
 engine. It snapshots draw scope,serializes object commands with complete draws,
 retains fault/cancel/source ownership and returns captured counts alongside

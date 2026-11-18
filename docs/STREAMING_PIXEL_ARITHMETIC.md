@@ -60,7 +60,7 @@ qualify these rates.
 
 ## Qualified streaming divider
 
-[`ClipFloatStreamingDivider`](../src/main/scala/opengpu/graphics/ClipFloatStreamingDivider.scala)
+[`ClipFloatStreamingDivider`](../src/main/scala/opengpu/graphics/raster/ClipFloatStreamingDivider.scala)
 accepts one tagged division each cycle. With no backpressure, it offers the
 result after 29 advancing edges and then retires one result each cycle. Its
 twenty-four spatial quotient steps retain exact sticky information for RNE.
@@ -98,7 +98,7 @@ CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py 
 
 ## Qualified streaming add/multiply
 
-[`ClipFloatStreamingAddMul`](../src/main/scala/opengpu/graphics/ClipFloatStreamingAddMul.scala)
+[`ClipFloatStreamingAddMul`](../src/main/scala/opengpu/graphics/raster/ClipFloatStreamingAddMul.scala)
 supports add, subtract, multiply and the internal directed add. It retains the
 existing normalized FP32 FMA core with sixteen owned result credits. Tagged
 extended exponents, malformed-input state and cancellation travel separately
@@ -133,7 +133,7 @@ CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py 
 
 ## Qualified weighted component
 
-[`ClipFloatWeightedComponent`](../src/main/scala/opengpu/graphics/ClipFloatWeightedComponent.scala)
+[`ClipFloatWeightedComponent`](../src/main/scala/opengpu/graphics/raster/ClipFloatWeightedComponent.scala)
 spatially composes three multipliers, two adders and a divider. It accepts and
 retires one prepared weighted component per cycle, with 64-cycle latency and
 the same six separate RNE operations as the serial interpolator. A two-slot
@@ -166,7 +166,7 @@ CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py 
 
 ## Qualified four-lane quad arithmetic
 
-[`ClipFloatQuadComponent`](../src/main/scala/opengpu/graphics/ClipFloatQuadComponent.scala)
+[`ClipFloatQuadComponent`](../src/main/scala/opengpu/graphics/raster/ClipFloatQuadComponent.scala)
 implements four spatial component pipelines with shared per-vertex component
 values and independent weights/denominators for the four pixels. It atomically
 accepts one varying row for all four pixels every cycle. A full 64-component
@@ -214,7 +214,7 @@ close H0–H8.
 
 ## Owned prepared quads
 
-[`Fp32PreparedQuadInterpolator`](../src/main/scala/opengpu/graphics/Fp32PreparedQuadInterpolator.scala)
+[`Fp32PreparedQuadInterpolator`](../src/main/scala/opengpu/graphics/raster/Fp32PreparedQuadInterpolator.scala)
 adds four private quad contexts around the four-lane component bank. Accepted
 attributes, masks, depth/sample metadata and output snapshots remain owned until
 ordered completion. Registered attribute selection and bank admission overlap

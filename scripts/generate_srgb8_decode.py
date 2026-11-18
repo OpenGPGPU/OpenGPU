@@ -35,7 +35,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--write', action='store_true')
     args = parser.parse_args()
-    target = Path(__file__).resolve().parents[1] / 'src/main/scala/opengpu/graphics/Srgb8Decode.scala'
+    target = Path(__file__).resolve().parents[1] / 'src/main/scala/opengpu/graphics/texture/Srgb8Decode.scala'
     generated = generate()
     if args.write:
         target.write_text(generated)

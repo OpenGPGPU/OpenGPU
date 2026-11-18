@@ -41,8 +41,8 @@ from texture dimensions, tile edge length and SRAM capacity.
 
 ## U: uniform storage and blocks — native boundaries checked
 
-[Vertex](../src/main/scala/opengpu/graphics/VertexShaderStage.scala) and
-[fragment](../src/main/scala/opengpu/graphics/FragmentShaderStage.scala) tasks
+[Vertex](../src/main/scala/opengpu/graphics/vertex/VertexShaderStage.scala) and
+[fragment](../src/main/scala/opengpu/graphics/raster/FragmentShaderStage.scala) tasks
 receive the scratch base through the existing kernarg ABI. Uniform data follows
 the invocation input/output prefix in GPU memory. Local payload allocation maps
 only the private prefix; its spill threshold is not a uniform-storage limit.
@@ -122,7 +122,7 @@ sbt -Dopengpu.simJobs=1 'set Test / parallelExecution := false' \
 ## T: texture bindings — native endpoint and CU boundaries checked
 
 [GTO1 word 10](NATIVE_TEXTURE_OPERATION_CAPABILITIES.md) reports thirty-two
-bindings. [ShaderTextureResources.maxBindings](../src/main/scala/opengpu/graphics/NativeTextureResources.scala)
+bindings. [ShaderTextureResources.maxBindings](../src/main/scala/opengpu/graphics/texture/NativeTextureResources.scala)
 defines that namespace for discovery and all three root-admission paths:
 packet/captured fetch, floating sampling and size queries. Each stage binds an
 independent GXR1 root; resource identity and stage tags remain checked. This
