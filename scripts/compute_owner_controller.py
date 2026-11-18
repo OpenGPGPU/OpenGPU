@@ -336,6 +336,7 @@ def main():
     parser.add_argument('--global-atomic-matrix',action='store_true')
     parser.add_argument('--global-delayed-ack',action='store_true')
     parser.add_argument('--global-recovery-matrix',action='store_true')
+    parser.add_argument('--global-accepted-matrix',action='store_true')
     mode=parser.add_mutually_exclusive_group()
     mode.add_argument('--expect-image-source-fault', action='store_true')
     mode.add_argument('--image-source-recovery', action='store_true')
@@ -343,8 +344,13 @@ def main():
     mode.add_argument('--image-reset-recovery',choices=('read','write'))
     args = parser.parse_args()
     require(not args.global_delayed_ack or args.global_atomic_matrix,'global ACK requires its exact complete source matrix')
+    require(not args.global_accepted_matrix or (args.case==GLOBAL_ATOMIC_CASES[0] and not any((
+        args.global_atomic_matrix,args.global_recovery_matrix,args.global_delayed_ack,args.storage_matrix,
+        args.storage_delayed_ack,args.storage_recovery_matrix,args.contended_image_matrix,args.mixed_atomic_matrix,
+        args.expect_image_source_fault,args.image_source_recovery,args.image_permission_recovery,
+        args.image_reset_recovery))), 'accepted-write recovery requires its distinct original physical-fault matrix')
     require(not args.global_recovery_matrix or (args.case==GLOBAL_ATOMIC_CASES[0] and not any((
-        args.global_atomic_matrix,args.global_delayed_ack,args.storage_matrix,args.storage_delayed_ack,
+        args.global_atomic_matrix,args.global_accepted_matrix,args.global_delayed_ack,args.storage_matrix,args.storage_delayed_ack,
         args.storage_recovery_matrix,args.contended_image_matrix,args.mixed_atomic_matrix,
         args.expect_image_source_fault,args.image_source_recovery,args.image_permission_recovery,
         args.image_reset_recovery))), 'global recovery requires its distinct original physical-fault matrix')
@@ -439,9 +445,13 @@ def main():
                 subprocess.run([executor, '--probe-profile', directory / 'profile.json'], env=env,
                     stdout=log, stderr=subprocess.STDOUT, timeout=args.timeout, check=True)
             atomic(directory / 'profile.bin', profile_bytes(strict_json(directory / 'profile.json')))
-            if args.global_recovery_matrix:
+            if args.global_recovery_matrix or args.global_accepted_matrix:
                 from compute_global_recovery_controller import run_recovery_matrix
-                run_recovery_matrix(args,command,directory,executor,env,qualified,qualified_profile)
+                if args.global_accepted_matrix:
+                    import compute_global_accepted_recovery as protocol
+                    run_recovery_matrix(args,command,directory,executor,env,qualified,qualified_profile,protocol=protocol)
+                else:
+                    run_recovery_matrix(args,command,directory,executor,env,qualified,qualified_profile)
                 return
             if args.storage_recovery_matrix:
                 from compute_storage_recovery_controller import run_recovery_matrix

@@ -346,3 +346,47 @@ The injected write is suppressed, so this gate makes no rollback claim for
 an accepted write followed by an error. Accepted-write/error cached aliases,
 cross-command coherence, clocks and FPS remain separate qualifications. P10
 remains open.
+
+## Complete-owner accepted first-write errors
+
+The distinct `global-atomics-accepted-write-error` entry uses all 24 original
+RV32 programs. Each runs a committed first-write error followed by a healthy
+owner: 48 phases share one complete float DUT, retained RAM, original command
+ID and initial reset. Original allocations occupy disjoint physical namespaces;
+each phase checks all previously cleaned physical bytes as well as its uploads.
+
+The physical AXI agent applies the original enabled W bytes after both AW and
+WLAST are accepted, then returns the delayed failing B response. It counts
+committed errors independently of target attempts and response errors. Other
+writes succeed; rearming the existing suppressed-write mode restores its
+original policy while preserving cumulative counters. The original caller
+checks its failed fence and userspace `EIO`, then performs real retirement and
+PTE/context/MMU cleanup before the next original healthy owner.
+
+The failed caller returns neither old-value slot, but its first AMO has changed
+the target before surviving callers execute. The independent oracle starts
+their source-ordered serialization from that committed first result; a
+rollback history is rejected. Surviving callers must match the admitted group
+prefix, and their old-word count must bind exactly to physical target attempts.
+Every other physical byte remains guarded.
+
+Seventy-four focused source/controller/qualifier checks and 26 input/closure
+checks pass. CPU fixtures cover both initial failed callers, all admitted
+prefixes and source layouts, interleavings, literal old/final values, rollback
+and source-order rejection, whole-RAM guards and cleanup refusal. Native
+ASan/UBSan covers 26 AXI cases, including W-before-AW, byte enables, independent
+read snapshots before a delayed/stalled failing B, later healthy writes and
+rearming without commit or counter leakage. Full-DUT execution of all 48
+phases and final compiler/source/model checks remain required.
+
+```sh
+python3 -B scripts/qualify_compute_owner.py \
+  --executor "$COMPUTE_EXECUTOR" --executor-qualification "$COMPUTE_QUALIFICATION" \
+  --executor-checker scripts/prepare_owner_executor.py \
+  --executor-checker-python "$QUALIFICATION_PYTHON" \
+  --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72 \
+  --case global-atomics-accepted-write-error --timeout 7200
+```
+
+Cached-alias behavior and cross-command coherence retain their separate
+complete-host qualification. P10 remains open.
