@@ -23,11 +23,35 @@ static unsigned atomic_at(struct tgsi_token *tokens)
         struct tgsi_token t;memcpy(&t,tokens+pos,4);
         if(t.Type==TGSI_TOKEN_TYPE_INSTRUCTION) {
             struct tgsi_instruction i;memcpy(&i,tokens+pos,4);
-            if(i.Opcode==TGSI_OPCODE_ATOMCAS)return pos;
+            switch(i.Opcode){
+            case TGSI_OPCODE_ATOMXCHG:case TGSI_OPCODE_ATOMUADD:case TGSI_OPCODE_ATOMXOR:
+            case TGSI_OPCODE_ATOMOR:case TGSI_OPCODE_ATOMAND:case TGSI_OPCODE_ATOMIMIN:
+            case TGSI_OPCODE_ATOMIMAX:case TGSI_OPCODE_ATOMUMIN:case TGSI_OPCODE_ATOMUMAX:
+            case TGSI_OPCODE_ATOMCAS:return pos;
+            default:break;
+            }
             pos+=1+i.NrTokens;
         } else pos+=t.NrTokens;
     }
-    assert(!"missing actual compare-swap instruction");return 0;
+    assert(!"missing actual word atomic instruction");return 0;
+}
+
+static void coherent_word_atomic(const void *actual)
+{
+    unsigned count=tgsi_num_tokens(actual);struct tgsi_token *copy=malloc(count*4);assert(copy);
+    memcpy(copy,actual,count*4);unsigned pos=atomic_at(copy);
+    struct tgsi_instruction *i=(struct tgsi_instruction *)(copy+pos);assert(i->Memory);
+    struct tgsi_instruction_memory *memory=(struct tgsi_instruction_memory *)(copy+pos+1);
+    assert(!memory->Qualifier);
+    struct opengpu_cs_program baseline,coherent;
+    assert(!opengpu_cs_emit(actual,&baseline));memory->Qualifier=TGSI_MEMORY_COHERENT;
+    assert(!opengpu_cs_emit(copy,&coherent) && !memcmp(&baseline,&coherent,sizeof(baseline)));
+    const unsigned unsupported[]={TGSI_MEMORY_VOLATILE,TGSI_MEMORY_RESTRICT,
+        TGSI_MEMORY_COHERENT|TGSI_MEMORY_VOLATILE,TGSI_MEMORY_COHERENT|TGSI_MEMORY_RESTRICT};
+    for(unsigned n=0;n<sizeof(unsupported)/sizeof(unsupported[0]);n++){
+        memory->Qualifier=unsupported[n];reject_atomic(copy,NULL);
+    }
+    free(copy);
 }
 
 static void negative_resources(void)
@@ -80,6 +104,7 @@ static struct opengpu_cs_program compile(const char *directory,const char *name,
 {
     *frontend=front(directory,name);
     struct opengpu_cs_program code;assert(!opengpu_cs_emit(cs_frontend_tokens(*frontend),&code));
+    coherent_word_atomic(cs_frontend_tokens(*frontend));
     unsigned target=cs_frontend_storage_binding(*frontend,0)==0?0:1;
     unsigned uniform=!strcmp(name,"compare-inputs");
     assert(cs_frontend_storage_binding(*frontend,target)==0&&cs_frontend_storage_binding(*frontend,1-target)==1);

@@ -857,7 +857,10 @@ static int storage_atomic(struct build *b, const struct tgsi_full_instruction *i
     unsigned binding=(unsigned)resource->Index;
     if(b->cf || i->NumDstRegs!=1 || i->NumSrcRegs!=(operation==9 ? 4u : 3u) ||
         d->File!=TGSI_FILE_TEMPORARY || d->WriteMask!=1 || !i->Memory || i->Texture ||
-        in->Memory.Qualifier || in->Memory.Format || in->Memory.Padding ||
+        /* Coherent word RMWs use the existing acknowledged uncached atomic
+         * path and shared-cache invalidation. Keep every other qualifier
+         * contract rejected; ordinary SSBO accesses remain unchanged. */
+        (in->Memory.Qualifier & ~TGSI_MEMORY_COHERENT) || in->Memory.Format || in->Memory.Padding ||
         in->Memory.Texture!=TGSI_TEXTURE_BUFFER || resource->File!=TGSI_FILE_BUFFER ||
         resource->Index<0 || binding>=4 || !(b->buffers&(1u<<binding))) return -1;
     /* Preserve every operand before staging native state or overwriting a

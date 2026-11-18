@@ -21,6 +21,22 @@ enabled by this change.
 
 ## Validation and limits
 
+The checked SSBO word-RMW lowering accepts `TGSI_MEMORY_COHERENT`. It uses
+the same acknowledged uncached atomic service and shared-cache invalidation as
+plain word atomics; it does not add an unchecked access or a new instruction.
+Volatile, restrict and combinations containing either remain rejected without
+publishing a partial program. Ordinary coherent SSBO loads and stores retain
+their separate admission rules.
+
+The actual Mesa CPU regression passes ASan/UBSan. All fourteen compiled
+programs preserve every native instruction and reflection byte when their
+atomic token gains the coherent qualifier, while all 56 unsupported qualifier
+mutations reject. This includes the eleven operation/CAS recipes, dynamic UBO
+CAS inputs and both endpoint recipes. Reproduce with
+`scripts/test_gallium_compute_atomics.py --build .artifacts/atomic-active --sanitize`
+in the configured environment below. These are compiler and CPU checks;
+complete-host mixed image/storage ordering remains a separate P10 gate.
+
 Real Mesa 22.3.6 ESSL310 → NIR → TGSI → emitter → kernel word validator and
 real state-tracker/callback submission pass ASan/UBSan. The CPU oracle checks
 96 returned old words, all ten operations, matching/nonmatching compare-swap,
