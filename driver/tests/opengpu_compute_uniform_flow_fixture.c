@@ -93,7 +93,7 @@ static struct dma_fence *next_write_fence(struct dma_resv_iter *c)
 static int dma_fence_get_status(struct dma_fence *f) { return f->signaled?(f->error?f->error:1):0; }
 struct drm_gem_object { struct dma_resv *resv; void *vaddr; u64 dma_addr; size_t size; void *import_attach; int refs; };
 struct drm_gem_dma_object { void *vaddr; u64 dma_addr; };
-struct opengpu_resource_binding { struct drm_gem_object *object; u64 dma,va,size,offset; u32 type; };
+struct opengpu_resource_binding { struct drm_gem_object *object; u64 dma,va,size,offset; u32 type,flags; };
 struct opengpu_vm { bool enabled; u32 root; };
 struct drm_sched_entity { int unused; };
 struct drm_sched_fence { struct dma_fence finished; };
