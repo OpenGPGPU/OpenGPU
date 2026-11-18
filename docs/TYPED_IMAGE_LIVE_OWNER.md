@@ -1001,8 +1001,27 @@ transport/input-closure checks pass, alongside 21 legacy global/storage
 recovery checks. CPU controls include all 10,560 failed-lane/successful-group
 permutations, literal histories, source-order and failed-group negatives,
 destination/old-slot/current/previous-RAM guards and cleanup refusal.
-Actual complete-DUT qualification still must establish all 110 phases,
-1,260 returned old words, real cleanup and final compiler/source/model checks.
+All 110 phases pass on the complete assertion-enabled float host with two
+16-lane/eight-warp CUs. The 55 original Mesa programs return 1,260 independently
+checked old words: 840 in healthy phases and 420 from surviving workgroups in
+failed phases. All 55 first target writes commit before their B error; physical,
+injected and accepted write-error counts are exactly 55, with zero read errors.
+Integer fault phases retain exactly nine target attempts and R32F phases five.
+Final texels, destination stores, failed-group guards and every current/previous
+physical byte pass. The DUT, RAM, initial reset and original command ID remain
+continuous across all phases.
+
+Every phase passes its actual failed EIO or healthy fence, held/retired receipt,
+PTE/context/MMU cleanup and external drain. The native executor, original Mesa
+producer, controller and outer qualifier exit zero. Final compiler, source,
+executable and complete-model checks pass. An additional post-run executor
+check and all 246 qualified software files match the immutable merged
+[#903](https://github.com/OpenGPGPU/OpenGPU/pull/903) source
+`9e6f1346c44871698646dad82fa3abb555a53c03` byte for byte. The exact execution
+checkout is `10103f99e32ac3c42767d28082a1d6905767b865`; this result does not
+qualify later software changes. All producer/native processes and the compiler
+container are gone, and ended simulation/capture data has been removed. The
+shared complete model remains available for subsequent qualified matrices.
 
 ```sh
 env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts \
