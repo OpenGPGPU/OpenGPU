@@ -909,3 +909,62 @@ python3 -B scripts/test_gallium_buffer_views.py --sanitize \
 OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_gallium_shared_own_stripe.py
 python3 -B scripts/test_gallium_resource_shapes.py
 ```
+
+## Same-texel atomic competition (P10)
+
+All 55 original contending ESSL recipes pass Mesa/Gallium/production Linux
+submission and actual execution on the complete assertion-enabled two-CU float
+owner. Each recipe launches two four-invocation workgroups against one shared
+original texel, with a separate destination texel for each invocation.
+
+The fifty R32UI/R32I recipes cover buffer, 2D, array, cube and 3D views with
+exchange/add, xor/or, and/min, max/CAS and CAS/CAS pairs. They cover all ten
+integer operations, signed/unsigned ordering and invocation-specific CAS
+winners. Each invocation retains its two source-ordered events. Five further
+R32F recipes exchange distinct finite raw float encodings, one per invocation.
+
+The independent oracle checks all **840 returned old words**, every final
+shared texel and every invocation's destination store. The old values and
+final word must admit a legal source-level serialization, including each
+invocation's program order. Every other original physical byte remains
+guarded. The READY contract also binds the actual Mesa words to the original
+code snapshot and every staged private executable mapping, alongside the
+exact original image views, descriptors, permissions and writable intervals.
+
+All 55 held/retired receipts, IRQ/drain/POP and actual PTE/context/MMU cleanup
+ACKs pass. Every native executor and original producer exits zero; final
+compiler/library/source, model and executor checks pass. One guarded compiler
+build serves the matrix. Each case has its own fresh DUT, original RAM upload
+and reset; this is not continuous same-DUT or cross-command qualification.
+
+The execution source is `2ade56eb7c7e3e4bcefc862547b63bfa693c7738`.
+All 214 qualified software files match the PR #892 publication byte for byte.
+All 1,960 original hardware preparation inputs remain exact in the execution
+checkout. Publication differences are source-path relocation and reviewed
+comments in `FragmentInterpolator.scala` and `RenderPipeline.scala`; their
+hardware logic is unchanged. The original complete model and its bound native
+objects are retained without rewriting model identities or reducing capacity.
+
+The 95 focused CPU/oracle/controller/executor checks and all 55 real Mesa CPU
+captures also pass. The latter independently check code/view/mapping identity
+and reject untouched result uploads; the actual DUT run above supplies the
+execution result. Reproduce against a matching complete qualified float owner,
+freshly qualifying the software executor for these sources:
+
+```sh
+env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 -B \
+  scripts/prepare_owner_executor.py --backend verilator --stage build \
+  --kind compute --owner-output "$OWNER_OUTPUT"
+env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 -B \
+  scripts/qualify_compute_owner.py \
+  --executor "$OWNER_OUTPUT/executors/compute/executor" \
+  --executor-qualification "$OWNER_OUTPUT/executors/compute/qualification.json" \
+  --executor-checker scripts/prepare_owner_executor.py \
+  --executor-checker-python /usr/bin/python3 \
+  --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72 \
+  --case image-atomics-contended --timeout 7200
+```
+
+P10 remains open for mixed image/storage competition, raw RV32 global AMOs
+and accepted-write/error cached-alias behavior. Complete resource coexistence,
+cross-domain coherence, a physical clock and FPS retain their separate gates.
