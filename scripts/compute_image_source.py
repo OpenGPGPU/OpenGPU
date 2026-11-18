@@ -78,12 +78,14 @@ def verify_failed_image(initial, returned, description, *, permission=None):
                     'source fault changed an original image/output/argument/descriptor/PT byte')
 
 
-def captured_page_tables(memory, data):
+def captured_page_tables(memory, data, *, inactive_contexts=1):
     """Collect original Sv32 pages after strict READY validation.
 
     Only valid original PTE words may change to zero during cleanup. Retiring
     private leaves must be revoked; ASID-0 identity leaves need no revocation.
     """
+    require(type(inactive_contexts) is int and inactive_contexts in (0,1),
+            'unsupported recovery inactive-context contract')
     require(data[:8]==b'OGCMP003','recovery needs the original context-aware capture')
     cursor=8
     def take(fmt):
@@ -96,7 +98,7 @@ def captured_page_tables(memory, data):
     for _ in range(count):take('<II')
     count,=take('<I');require(count<=4096,'oversized recovery write grants')
     for _ in range(count):take('<QQ')
-    count,=take('<I');require(count==1,'wrong recovery inactive-context count')
+    count,=take('<I');require(count==inactive_contexts,'wrong recovery inactive-context count')
     inactive=[take('<II') for _ in range(count)]
     count,=take('<I');require(count<=65536,'oversized recovery MMIO trace')
     satps=set()
