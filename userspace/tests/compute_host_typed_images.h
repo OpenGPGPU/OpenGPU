@@ -1,9 +1,9 @@
 /* Original typed-image resources and accepted ioctl views. CPU uploads are
  * inputs only; returned shader/image bytes are checked by the external oracle. */
 #include "opengpu_cs_emit.h"
-static unsigned image_case, image_target, image_mode, image_format;
-static int image_atomic_case(void){return image_mode==3 || image_mode==5;}
-static int image_boundary_case(void){return image_mode>=4;}
+static unsigned image_case, image_target, image_mode, image_format, image_pair;
+static int image_atomic_case(void){return image_mode==3 || image_mode==5 || image_mode==6;}
+static int image_boundary_case(void){return image_mode==4 || image_mode==5;}
 static const char *image_name;
 static struct drm_opengpu_compute_image_view accepted_images[4];
 static struct drm_opengpu_resource image_bindings[OPENGPU_MAX_RESOURCE_BINDINGS+1];
@@ -24,9 +24,25 @@ static const struct {const char *name;enum pipe_format format;unsigned native,by
  {"rgba8_snorm",PIPE_FORMAT_R8G8B8A8_SNORM,39,4,8,4,4}};
 static const char *image_targets[]={"buffer","2d","array","cube","3d"};
 static const enum pipe_texture_target image_pipe_targets[]={PIPE_BUFFER,PIPE_TEXTURE_2D,PIPE_TEXTURE_2D_ARRAY,PIPE_TEXTURE_CUBE,PIPE_TEXTURE_3D};
+static const char *image_pairs[]={"swap-add","xor-or","and-min","max-cas","cas-pair","swap"};
+
+static uint32_t image_contended_seed(void)
+{
+ if(image_format==2)return 0x3f800000;
+ if(image_pair==4)return 0;
+ if(image_pair==2)return image_format==10?0x7fffffff:0xffffffff;
+ if(image_pair==3)return image_format==10?0x80000000:0x7fffffff;
+ return 0xfffffff0;
+}
 
 static void image_parse_case(const char *name)
 {
+ for(unsigned target=0;target<5;target++)for(unsigned format=0;format<13;format++)for(unsigned pair=0;pair<6;pair++){
+  if(format!=2 && format!=6 && format!=10)continue;
+  if((format==2)!=(pair==5))continue;
+  char expected[128];assert(snprintf(expected,sizeof(expected),"image-contended-%s-%s-%s",image_targets[target],image_formats[format].name,image_pairs[pair])>0);
+  if(!strcmp(name,expected)){assert(!image_case);image_case=1;image_target=target;image_mode=6;image_format=format;image_pair=pair;image_name=name;}
+ }
  for(unsigned target=0;target<5;target++)for(unsigned format=0;format<13;format++)for(unsigned mode=0;mode<6;mode++){
   if((mode==1 || mode==2) && (format!=6 || (mode==1 && target!=2 && target!=4) || (mode==2 && target<2)))continue;
   if(mode==3 && format!=2 && format!=6 && format!=10)continue;
@@ -53,6 +69,20 @@ static void image_upload(unsigned handle,int destination)
   default:value=ordinal*0x10203u+0x8391u;break;
   }
   for(unsigned b=0;b<bits/8;b++)data[texel*size+component*(bits/8)+b]=(uint8_t)(value>>(8*b));
+ }
+ if(image_mode==6){
+  /* The original recipe selects (1,1,z) in level one, or buffer word one.
+   * Keep all padding and other texels spatially initialized as above. */
+  uint64_t offset=48+4;
+  if(image_target){
+   unsigned height=image_target==3?26:10,planes=image_target==2?4:(image_target==3 || image_target==4)?6:1;
+   unsigned row0=(26*4+63)&~63u,row=(13*4+63)&~63u,plane=row*(height/2);
+   offset=(uint64_t)row0*height*planes+row+4;
+   if(image_target==2 || image_target==3)offset+=2*plane;
+   else if(image_target==4)offset+=plane;
+  }
+  uint32_t seed=image_contended_seed();assert(size==4 && offset+4<=bytes);
+  for(unsigned b=0;b<4;b++)data[offset+b]=(uint8_t)(seed>>(8*b));
  }
 }
 
@@ -98,8 +128,12 @@ static void image_setup(struct pipe_screen *s,struct pipe_context *p,void *front
   unsigned counts[8]={0};
   for(unsigned i=0;i<program.words;i++)if((program.code[i]&127)==0x2b && (program.code[i]>>26)==23)
    counts[(program.code[i]>>12)&7]++;
-  for(unsigned op=0;op<8;op++)assert(counts[op]==(image_boundary_case()?(op==0?2u:0u):floating?(op==0?5u:0u):(op==0 || op==7?2u:1u)));
-  printf("original %s: %u image atomics, native words=%u, metadata/opcodes PASS (CPU compiler only)\n",image_name,image_boundary_case()?2u:floating?5u:10u,program.words);
+  for(unsigned op=0;op<8;op++){
+   unsigned expected=image_boundary_case()?(op==0?2u:0u):floating?(op==0?5u:0u):(op==0 || op==7?2u:1u);
+   if(image_mode==6)expected=image_pair==5?(op==0):image_pair==4?(op==7?2u:0u):(op==2*image_pair || op==2*image_pair+1);
+   assert(counts[op]==expected);
+  }
+  printf("original %s: %u image atomics, native words=%u, metadata/opcodes PASS (CPU compiler only)\n",image_name,image_mode==6?(floating?1u:2u):image_boundary_case()?2u:floating?5u:10u,program.words);
  }
  p->set_shader_images(p,PIPE_SHADER_COMPUTE,0,2,0,views);
 }
@@ -108,10 +142,17 @@ static void image_write_oracle(FILE *f)
 {
  struct compute_host_snapshot snap;assert(!compute_host_snapshot_get(session,&snap));
  assert(snap.images && snap.image_bytes==1024 && snap.image_root && snap.storage_bytes==256);
- fprintf(f,"{\"schema\":\"opengpu-compute-image-oracle-v1\",\"sourceCase\":\"%s\",\"groups\":2,\"local\":4,\"viewBytes\":8192,\"guard\":3735928559,\"context\":%u,\"kernargPhysical\":%llu,\"kernargBytes\":%llu,\"imagePhysical\":%llu,\"imageRoot\":%u,\"storagePhysical\":%llu,\"storageRoot\":%u,\"output\":",image_name,snap.context,
+ fprintf(f,"{\"schema\":\"%s\",\"sourceCase\":\"%s\",\"groups\":2,\"local\":4,\"viewBytes\":8192,\"guard\":3735928559,\"context\":%u,\"kernargPhysical\":%llu,\"kernargBytes\":%llu,\"imagePhysical\":%llu,\"imageRoot\":%u,\"storagePhysical\":%llu,\"storageRoot\":%u",image_mode==6?"opengpu-compute-contended-image-oracle-v1":"opengpu-compute-image-oracle-v1",image_name,snap.context,
   (unsigned long long)snap.kernarg_physical,(unsigned long long)snap.kernarg_bytes,
   (unsigned long long)snap.image_physical,snap.image_root,(unsigned long long)snap.storage_physical,snap.storage_root);
- source_window(f,output_handles[image_storage_binding],0,8192,image_storage_binding);fputs(",\"images\":[",f);
+ if(image_mode==6){
+  assert(snap.code && snap.code_bytes && !(snap.code_bytes&3));
+  fprintf(f,",\"codePhysical\":%llu,\"codeBytes\":%llu",(unsigned long long)snap.code_physical,(unsigned long long)snap.code_bytes);
+  FILE *code=file("code.words","wx");assert(code);
+  for(size_t n=0;n<snap.code_bytes/4;n++)assert(fprintf(code,"%08x\n",((const uint32_t *)snap.code)[n])>0);
+  assert(!fclose(code));
+ }
+ fputs(",\"output\":",f);source_window(f,output_handles[image_storage_binding],0,8192,image_storage_binding);fputs(",\"images\":[",f);
  for(unsigned role=0;role<2;role++){
   if(role)fputc(',',f);
   unsigned unit=image_native_units[role];const struct drm_opengpu_compute_image_view *v=&accepted_images[unit];

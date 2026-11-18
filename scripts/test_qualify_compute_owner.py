@@ -181,7 +181,7 @@ class Entry(unittest.TestCase):
                 for profile in ('two-cu-vga60-owner-v1',qualifier.COMPUTE_STAGE,*qualifier.FULL_COMPUTE_CONTRACTS):
                     qualification.write_text(json.dumps(dict(schema='opengpu-owner-executor-v1',kind='compute',profile=profile)))
                     with patch.object(qualifier.subprocess,'run'):
-                        if case in qualifier.IMAGE_FLOAT_EXCHANGE_CASES and profile==qualifier.SAMPLE_PROFILE:
+                        if (case in qualifier.IMAGE_FLOAT_EXCHANGE_CASES or '-r32f-' in case) and profile==qualifier.SAMPLE_PROFILE:
                             with self.assertRaisesRegex(ValueError,'qualified float owner'):qualifier.checked_inputs(args)
                         elif profile in (qualifier.SAMPLE_PROFILE,IMAGE_FLOAT_PROFILE):qualifier.checked_inputs(args)
                         else:
@@ -236,6 +236,44 @@ class Entry(unittest.TestCase):
 
     def test_storage_matrix_keeps_one_producer_alive_until_every_actual_cleanup(self):
         self.storage_matrix_peer(False)
+
+    def test_contended_images_keep_one_original_producer_and_check_all_fifty_five_cleanups(self):
+        self.storage_matrix_peer(False,contended=True)
+
+    def test_bad_contended_image_old_value_prevents_cleanup_and_the_next_source(self):
+        self.storage_matrix_peer(True,contended=True)
+
+    def test_contended_image_matrix_binds_its_exact_sources_and_full_float_owner(self):
+        with tempfile.TemporaryDirectory(prefix='contended-image-command-') as temporary:
+            root=Path(temporary);q=root/'qualification.json';executable=root/'executor'
+            executable.write_bytes(b'explicit CPU command fixture')
+            args=argparse.Namespace(mesa=root,mesa_build=root,drm_include=root,library_directory=root,
+                mesa_link_libs='-lfixture',executor_qualification=q,executor=executable,
+                executor_checker=root/'checker',executor_checker_python=sys.executable,timeout=60,
+                storage_matrix=False,storage_recovery_matrix=False,contended_image_matrix=True,
+                case='image-atomics-contended')
+            for profile in (qualifier.SAMPLE_PROFILE,IMAGE_FLOAT_PROFILE):
+                q.write_text(json.dumps(dict(schema='opengpu-owner-executor-v1',kind='compute',
+                    profile=profile,source_sha256={})))
+                with patch.object(qualifier.subprocess,'run'):
+                    if profile==IMAGE_FLOAT_PROFILE:qualifier.checked_inputs(args)
+                    else:
+                        with self.assertRaisesRegex(ValueError,'qualified float owner'):qualifier.checked_inputs(args)
+            with patch('compute_owner_inputs.snapshot',return_value={}),\
+                 patch.object(qualifier.subprocess,'Popen') as popen,\
+                 patch.object(qualifier,'stop_group'),patch.object(qualifier,'remove_container'):
+                popen.return_value.wait.return_value=0
+                qualifier.run_case(args,gpu=ROOT,source=ROOT,temporary=root,ntt=root/'ntt',
+                    image='immutable-image',case=qualifier.CONTENDED_IMAGE_CASES[0])
+                self.assertIn('--contended-image-matrix',popen.call_args.args[0])
+                producer=json.loads((root/(qualifier.CONTENDED_IMAGE_CASES[0]+'.argv.json')).read_text())
+                self.assertIn('--contended-image-matrix',producer)
+                self.assertNotIn('--storage-matrix',producer)
+                self.assertNotIn('--capture-only',producer)
+            keyword=dict(gpu=ROOT,source=ROOT,ntt=root/'ntt',image='immutable-image',name='negative')
+            for case in ('counter-increment',qualifier.CONTENDED_IMAGE_CASES[1],qualifier.STORAGE_ATOMIC_CASES[0]):
+                with self.subTest(case=case),self.assertRaisesRegex(ValueError,'independent original owners'):
+                    qualifier.producer_command(args,case=case,**keyword)
 
     def test_continuous_storage_recovery_keeps_its_distinct_original_sequence(self):
         with tempfile.TemporaryDirectory(prefix='storage-recovery-command-') as temporary:
@@ -315,9 +353,10 @@ class Entry(unittest.TestCase):
     def test_invalid_actual_ack_never_authorizes_bytes_or_cleanup(self):
         self.storage_matrix_peer(False, delayed=True, bad_ack=True)
 
-    def storage_matrix_peer(self, fail_second, delayed=False, bad_ack=False):
+    def storage_matrix_peer(self, fail_second, delayed=False, bad_ack=False,contended=False):
         from compute_storage_atomic_controller import run_matrix
         from compute_storage_atomic_cases import CASES
+        if contended:CASES=qualifier.CONTENDED_IMAGE_CASES
         from unittest.mock import Mock
         class Process:
             def __init__(self):self.returncode=None;self.terminated=False
@@ -343,7 +382,7 @@ class Entry(unittest.TestCase):
         ack_check=Mock(side_effect=ValueError('invalid actual ACK') if bad_ack else None)
         with tempfile.TemporaryDirectory(prefix='atomic-matrix-peer-',dir=ROOT/'.artifacts') as temporary:
             directory=Path(temporary)
-            args=argparse.Namespace(timeout=60,storage_delayed_ack=delayed)
+            args=argparse.Namespace(timeout=60,storage_delayed_ack=delayed,contended_image_matrix=contended)
             def record(path):
                 if path.name=='profile.json':return {'actual-profile-cpu-peer':True}
                 return {'actual-receipt-cpu-peer':True,'commandId':42,'physicalReadFaults':0,'injectedReadFaults':0,'physicalWriteFaults':0}

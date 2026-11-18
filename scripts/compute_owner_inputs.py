@@ -10,8 +10,9 @@ from native_sample_graphics_inputs import (snapshot as base_snapshot, dependency
     generated_inputs, unchanged, regular)
 from native_sample_compiler_inputs import sha256, MESA_UNITS, MESA_LIBRARIES
 from compute_owner_protocol import strict_json
-from compute_owner_cases import COUNTER_CASES, counter_parameters
-from compute_image_cases import IMAGE_CASES, parameters as image_parameters
+from compute_owner_cases import (COUNTER_CASES, counter_parameters, IMAGE_CASES,
+    LEGACY_IMAGE_CASES, CONTENDED_IMAGE_CASES)
+from compute_image_source import parameters as image_parameters
 from compute_indirect_sources import CASE as INDIRECT_CASE
 from compute_storage_atomic_cases import CASES as STORAGE_CASES, parameters as storage_parameters
 from compute_storage_recovery import PHASES as STORAGE_RECOVERY_PHASES, check_source_launch as check_storage_launch
@@ -54,8 +55,10 @@ def guarded(request_path, builder_argv):
     counter_matrix='--capture-counter-matrix' in argv
     storage_matrix='--storage-matrix' in argv
     storage_recovery='--storage-recovery-matrix' in argv
-    require(sum((image_matrix,counter_matrix,storage_matrix,storage_recovery))<=1, 'source matrices must remain distinct')
-    matrix=image_matrix or counter_matrix or storage_matrix or storage_recovery
+    contended_matrix='--contended-image-matrix' in argv
+    require(sum((image_matrix,counter_matrix,storage_matrix,storage_recovery,contended_matrix))<=1,
+            'source matrices must remain distinct')
+    matrix=image_matrix or counter_matrix or storage_matrix or storage_recovery or contended_matrix
     source_fault='--expect-image-source-fault' in argv
     permission=None
     reset=None
@@ -90,7 +93,11 @@ def guarded(request_path, builder_argv):
     require(not counter_matrix or case==COUNTER_CASES[0], 'counter matrix must start at its first original source')
     require(argv.count('--storage-matrix')<=1 and (not storage_matrix or case==STORAGE_CASES[0]),
             'storage matrix must start at its first original source')
-    expected_cases=set(STORAGE_CASES if storage_matrix else IMAGE_CASES if image_matrix else COUNTER_CASES if counter_matrix else (case,))
+    require(argv.count('--contended-image-matrix')<=1 and (not contended_matrix or
+        (case==CONTENDED_IMAGE_CASES[0] and not (storage_matrix or image_matrix or counter_matrix or storage_recovery))),
+        'contended image matrix requires its exact first source and separate original sources')
+    expected_cases=set(CONTENDED_IMAGE_CASES if contended_matrix else STORAGE_CASES if storage_matrix else
+        LEGACY_IMAGE_CASES if image_matrix else COUNTER_CASES if counter_matrix else (case,))
     if storage_recovery:
         require(argv.count('--storage-recovery-matrix')==1 and case==STORAGE_CASES[0] and
             '--capture-only' not in argv and not source_fault and permission is None and reset is None and allocation_base is None,

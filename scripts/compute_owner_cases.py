@@ -11,7 +11,9 @@ DYNAMIC_COUNTER_CASES = tuple('counter-dynamic-' + op for op in ('increment','re
 SCALAR_COUNTER_CASE = 'counter-scalar'
 COEXIST_COUNTER_CASE = 'counter-coexist'
 COUNTER_CASES = STATIC_COUNTER_CASES + DYNAMIC_COUNTER_CASES + (SCALAR_COUNTER_CASE,COEXIST_COUNTER_CASE)
-from compute_image_cases import IMAGE_CASES
+from compute_image_cases import IMAGE_CASES as LEGACY_IMAGE_CASES
+from compute_contended_image_cases import CASES as CONTENDED_IMAGE_CASES
+IMAGE_CASES = LEGACY_IMAGE_CASES + CONTENDED_IMAGE_CASES
 from compute_storage_atomic_cases import CASES as STORAGE_ATOMIC_CASES
 CASES = LEGACY_CASES + COUNTER_CASES + IMAGE_CASES + STORAGE_ATOMIC_CASES
 

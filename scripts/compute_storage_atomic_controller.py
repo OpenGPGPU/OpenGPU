@@ -1,5 +1,6 @@
 """One guarded compiler build, sequential original full-DUT atomic owners.
 
+Storage and same-texel image matrices retain separate original sources.
 Each independent operation case resets its execution DUT. The optional ACK
 mode gates actual target writes; continuous fault recovery is a separate gate.
 """
@@ -15,11 +16,18 @@ from compute_storage_atomic_delay import plan_bytes, check_report
 def run_matrix(args, command, directory, executor, env, qualified, profile_name):
     from compute_owner_controller import (atomic, wait_file, stop, ready_inputs,
         unchanged_inputs, require)
+    image_matrix=getattr(args,'contended_image_matrix',False)
+    if image_matrix:
+        from compute_contended_image_cases import CASES as selected_cases
+        require(not (getattr(args,'storage_matrix',False) or getattr(args,'storage_delayed_ack',False)),
+                'contended image and storage matrices must remain separate')
+    else:selected_cases=CASES
+    family='contended image' if image_matrix else 'storage atomic'
     profile = strict_json(directory / 'profile.json')
     deadline = time.monotonic() + args.timeout
     def remaining():
         value = deadline - time.monotonic()
-        require(value > 0, 'bounded storage atomic matrix timed out')
+        require(value > 0, 'bounded '+family+' matrix timed out')
         return value
     bridge = running = None
     local = None
@@ -29,8 +37,8 @@ def run_matrix(args, command, directory, executor, env, qualified, profile_name)
         with (directory / 'bridge.log').open('w') as log, (directory / 'execution.log').open('w') as output:
             bridge = subprocess.Popen([x.replace('{ipc}', str(directory)) for x in command],
                 env=env, stdout=log, stderr=subprocess.STDOUT)
-            for case in CASES:
-                failed=bool(parameters(case)['result_status'])
+            for case in selected_cases:
+                failed=False if image_matrix else bool(parameters(case)['result_status'])
                 local = directory / case
                 wait_file(local / 'READY', bridge, None, remaining())
                 for name in ('union.memory', 'record-0.capture', 'oracle.json', 'code.words'):
@@ -80,7 +88,7 @@ def run_matrix(args, command, directory, executor, env, qualified, profile_name)
                 require(bridge.poll() is None, 'original compiler/producer exited before cleanup ACK')
                 unchanged_inputs(local, frozen)
                 atomic(local / 'FINAL_RESPONSE', b'OGCMOK01\x01\x00\x00\x00')
-                print('original storage atomic ' + case + ': full DUT bytes/old values/cleanup PASS' +
+                print('original '+family+' ' + case + ': full DUT bytes/old values/cleanup PASS' +
                       ('; actual target B ACK held >=37 cycles' if delayed else ''), flush=True)
                 running = None
             require(bridge.wait(timeout=remaining()) == 0, 'original source/compiler matrix failed')
@@ -90,11 +98,12 @@ def run_matrix(args, command, directory, executor, env, qualified, profile_name)
             for local, plan in delay_inputs:
                 require((local / 'record-0.ack-delay-plan').read_bytes() == plan,
                         'storage ACK plan changed before final source checks')
-        print('all seventeen original SSBO atomic cases: exact old values, view faults and full physical guards PASS; per-case reset')
+        print('all fifty-five original same-texel image cases: invocation-ordered old values and full physical guards PASS; per-case reset'
+              if image_matrix else 'all seventeen original SSBO atomic cases: exact old values, view faults and full physical guards PASS; per-case reset')
     except BaseException:
         if local is not None:
             try:
-                atomic(local / 'error', b'storage atomic matrix failed; no cleanup authorization\n')
+                atomic(local / 'error', (family+' matrix failed; no cleanup authorization\n').encode())
             except (ValueError, OSError):
                 pass
         raise

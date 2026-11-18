@@ -4,11 +4,18 @@ Expected bytes follow the ESSL load/store/atomic and format rules, without inter
 native words or trusting a descriptor as authority for an original view.
 """
 import struct
-from compute_image_cases import parameters, coordinates
+from compute_image_cases import parameters as legacy_parameters, coordinates
+from compute_contended_image_cases import CASES as CONTENDED_CASES, parameters as contended_parameters
 from compute_owner_protocol import uint, required_flags
 from compute_owner_oracle import allocation_window
+from compute_indirect_oracle import executable_physical
 
 SCHEMA = 'opengpu-compute-image-oracle-v1'
+CONTENDED_SCHEMA = 'opengpu-compute-contended-image-oracle-v1'
+
+
+def parameters(case):
+    return contended_parameters(case) if case in CONTENDED_CASES else legacy_parameters(case)
 
 
 def require(value, message):
@@ -205,16 +212,28 @@ def initial_bytes(p, count):
                 value=(ordinal*0x10203+0x8391)&((1<<bits)-1)
             first=texel*size+component*(bits//8)
             result[first:first+bits//8]=value.to_bytes(bits//8,'little')
+    if p.get('pair') is not None:
+        _,view=source_view(p,0,0)
+        address=texel_address(dict(allocationPhysical=0,view=view),p,0,0)
+        struct.pack_into('<I',result,address,p['seed'])
     return bytes(result)
 
 
 def recipe(memory, description, *, permission=None):
+    require(type(description) is dict,'original view record must be an object')
+    p=parameters(description.get('sourceCase'))
+    contended=p.get('pair') is not None
     require(type(description) is dict and set(description)=={
         'schema','sourceCase','groups','local','viewBytes','guard','context',
         'kernargPhysical','kernargBytes','imagePhysical','imageRoot',
-        'storagePhysical','storageRoot','output','images'}, 'original view record fields differ')
-    required_flags(description,dict(schema=SCHEMA,groups=2,local=4,viewBytes=8192,guard=0xdeadbeef))
-    p=parameters(description['sourceCase'])
+        'storagePhysical','storageRoot','output','images'}|({'codePhysical','codeBytes'} if contended else set()),
+        'original view record fields differ')
+    required_flags(description,dict(schema=CONTENDED_SCHEMA if contended else SCHEMA,
+        groups=2,local=4,viewBytes=8192,guard=0xdeadbeef))
+    if contended:
+        code,size=uint(description['codePhysical']),uint(description['codeBytes'])
+        require(code>0 and code%4==0 and size>0 and size%4==0,'invalid original executable snapshot')
+        memory.read(code,size)
     context=uint(description['context'])
     require(0<context<512, 'invalid original context')
     output=allocation_window(memory,description['output'],8192,2)
@@ -247,7 +266,8 @@ def recipe(memory, description, *, permission=None):
 
 
 def texel_address(image, p, role, invocation):
-    x,y,z=coordinates(p,bool(role));x+=invocation
+    x,y,z=coordinates(p,bool(role))
+    if role or p.get('pair') is None:x+=invocation
     v=image['view'];first=image['allocationPhysical']+v['offset']
     if v['target']==5:
         return first+x*p['bytes']
@@ -332,6 +352,21 @@ def atomic_values(p, initial, invocation):
 
 def returned_outputs(initial, returned, description):
     p,output,images=recipe(initial,description)
+    if p.get('pair') is not None:
+        from compute_contended_image_cases import operations, steps
+        from compute_atomic_order import linearization
+        events,predecessors=operations(p['case'])
+        count=len(steps(p));source=texel_address(images[0],p,0,0)
+        observed=returned.read(output,4*len(events))
+        old=struct.unpack('<%dI'%len(events),observed)
+        final=returned.read(source,4)
+        require(initial.read(source,4)==struct.pack('<I',p['seed']),'original shared texel seed differs')
+        linearization(p['seed'],int.from_bytes(final,'little'),events,old,predecessors)
+        results=[(output,observed),(source,final)]
+        for invocation in range(8):
+            destination=texel_address(images[1],p,1,invocation)
+            results.append((destination,struct.pack('<I',old[invocation*count+count-1])))
+        return results
     observed=bytearray();results=[]
     for invocation in range(8):
         if p['mode'].endswith('bounds'):
@@ -361,7 +396,7 @@ def returned_outputs(initial, returned, description):
     return [(output,bytes(observed)),*results]
 
 
-def ready(memory, description, data, *, owner_profile=None, permission=None):
+def ready(memory, description, data, *, owner_profile=None, permission=None, code_words=None):
     """Bind full112 READY to original views, exact write windows and GIU1/PTEs."""
     from compute_counter_source import translate
     from owner_resource_contract import SAMPLE_PROFILE, SAMPLE_FACTORY_CONTRACTS, FULL_COMPUTE_SCHEMA, IMAGE_FLOAT_PROFILE
@@ -440,6 +475,16 @@ def ready(memory, description, data, *, owner_profile=None, permission=None):
         memory.read(inactive_root,4096)==bytes(4096), 'inactive context root is not original and empty')
     require(translate(memory,satp,r.get(0xd0,0),15)==arg, 'original kernarg mapping differs')
     require(not r.get(0x4a0,0) and not r.get(0x440,0), 'unexpected counter/uniform authority')
+    if p.get('pair') is not None:
+        import re
+        require(code_words and all(re.fullmatch('[0-9a-f]{8}',word) for word in code_words),
+                'missing or invalid original image code words')
+        code=b''.join(struct.pack('<I',int(word,16)) for word in code_words)
+        require(len(code)==description['codeBytes'] and
+            memory.read(description['codePhysical'],len(code))==code,'original image code snapshot differs')
+        for offset in range(0,len(code),4):
+            address=executable_physical(memory,satp,r.get(0xcc,0)+offset)
+            require(memory.read(address,4)==code[offset:offset+4],'actual image executable differs from Mesa code')
     table,physical=uint(description['imageRoot']),uint(description['imagePhysical'])
     require([r.get(0x3e0+4*i) for i in range(7)]==[257,table,table+1024,0,context,0,0] and
         translate(memory,satp,table,15)==physical and translate(memory,satp,table+1023,15)==physical+1023,
