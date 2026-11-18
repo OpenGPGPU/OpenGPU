@@ -43,7 +43,8 @@ def run_recovery_matrix(args, command, directory, executor, env, qualified, prof
                     wait_file(local/name,bridge,running,remaining())
                 cache_alias=getattr(contract,'CACHE_ALIAS',False)
                 description,frozen=ready_inputs(local,stage['case'],owner_profile=profile_name,profile=profile,
-                    **(dict(cache_alias=True) if cache_alias else {}))
+                    **(dict(uc_cache_alias=True) if getattr(contract,'UC_CACHE_ALIAS',False) else
+                       dict(cache_alias=True) if cache_alias else {}))
                 with SparseMemory(local/'union.memory') as upload:
                     require(upload.ranges and upload.ranges[0][0]==stage['base'] and
                         all(stage['base']<=a<b<=stage['base']+contract.STEP for a,b,_ in upload.ranges),

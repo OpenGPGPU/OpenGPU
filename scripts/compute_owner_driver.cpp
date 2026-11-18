@@ -41,7 +41,7 @@ struct ComputeResult {
   bool held_pin=false,retired_pin=false,drained=false;
 };
 enum class ImageFailure { none, source_read, permission, first_write, global_first_write, global_accepted_write,
-  storage_accepted_write, image_accepted_write, image_accepted_float_write };
+  storage_accepted_write, image_accepted_write, image_accepted_float_write, uc_cache_alias_accepted_write };
 struct ComputeHeld {
   ComputeResult result;
   Memory initial;
@@ -58,7 +58,8 @@ ComputeHeld hold_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory
   require(failure==ImageFailure::none || failure==ImageFailure::source_read ||
     failure==ImageFailure::permission || failure==ImageFailure::first_write || failure==ImageFailure::global_first_write ||
     failure==ImageFailure::global_accepted_write || failure==ImageFailure::storage_accepted_write ||
-    failure==ImageFailure::image_accepted_write || failure==ImageFailure::image_accepted_float_write,
+    failure==ImageFailure::image_accepted_write || failure==ImageFailure::image_accepted_float_write ||
+    failure==ImageFailure::uc_cache_alias_accepted_write,
     "unknown compute failure mode");
   verify_compute_upload(sim,agent,bus,memory,capture,prior_read_faults,prior_traffic);
   ComputeHeld held;held.initial=memory;held.start=agent.traffic;held.start_cycles=bus.cycles;held.failure=failure;
@@ -101,12 +102,14 @@ ComputeHeld hold_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory
     "held compute completion or telemetry changed");
   traffic_unchanged(held.completed,agent.traffic);
   const bool global_failure=failure==ImageFailure::global_first_write || failure==ImageFailure::global_accepted_write;
+  const bool four_caller_failure=global_failure || failure==ImageFailure::uc_cache_alias_accepted_write;
   const bool accepted_failure=failure==ImageFailure::global_accepted_write || failure==ImageFailure::storage_accepted_write ||
-    failure==ImageFailure::image_accepted_write || failure==ImageFailure::image_accepted_float_write;
+    failure==ImageFailure::image_accepted_write || failure==ImageFailure::image_accepted_float_write ||
+    failure==ImageFailure::uc_cache_alias_accepted_write;
   const bool write_failure=failure==ImageFailure::first_write || global_failure || accepted_failure;
   if(write_failure) {
     unsigned expected_attempts=failure==ImageFailure::image_accepted_write?9:5;
-    if(global_failure) {
+    if(four_caller_failure) {
       require(capture.writable.size()==1 && capture.writable[0].end-capture.writable[0].first==8192,
         "global fault lost its exact original writable kernarg");
       const auto old_first=capture.writable[0].first+128;
@@ -337,6 +340,9 @@ int main(int argc,char **argv) {
   try {
     using namespace compute_owner;
     const auto response_timeout=compute_response_timeout();
+    if(argc==4 && std::string(argv[1])=="--active-uc-cache-alias-recovery-matrix") {
+      active_cache_alias_recovery_matrix(argc,argv,argv[2],argv[3],response_timeout,true);return 0;
+    }
     if(argc==4 && std::string(argv[1])=="--active-cache-alias-recovery-matrix") {
       active_cache_alias_recovery_matrix(argc,argv,argv[2],argv[3],response_timeout);return 0;
     }

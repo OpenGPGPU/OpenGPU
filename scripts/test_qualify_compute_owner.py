@@ -31,7 +31,7 @@ class Entry(unittest.TestCase):
             raise AssertionError(command)
         for alias,fails in ((c,f) for c in ('global-atomics-recovery','global-atomics-accepted-write-error',
                             'storage-atomics-accepted-write-error','image-atomics-accepted-write-error','global-atomics-cached',
-                            'global-atomics-cache-alias')
+                            'global-atomics-cache-alias','global-atomics-uc-cache-alias')
                             for f in (False,True)):
             archive=unittest.mock.Mock();archive.stdout=io.BytesIO();archive.wait.return_value=0
             argv=['qualify_compute_owner.py','--executor',str(ROOT/'fixture-executor'),
