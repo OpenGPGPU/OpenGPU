@@ -386,6 +386,16 @@ int compute_host_unbind(struct compute_host_session *s,uint32_t slot)
  struct drm_opengpu_resource request={.context_id=s->context_id,.slot=slot};
  return opengpu_compute_resource_unbind_ioctl(&s->drm,&request,&s->file);}
 
+int compute_host_submit(struct compute_host_session *s,const struct drm_opengpu_compute *request)
+{
+ if(!s || !request || s->exported || s->head)return -EBUSY;
+ compute_running=s;struct drm_opengpu_compute copy=*request;
+ int error=opengpu_compute_launch_ioctl(&s->drm,&copy,&s->file);
+ if(!error){memset(&s->submitted,0,sizeof(s->submitted));s->submitted.resources.launch=copy;
+  s->context_id=copy.context_id;s->context=opengpu_context_lookup(&s->render,s->context_id);assert(s->context);}
+ return error;
+}
+
 int compute_host_submit_uniforms(struct compute_host_session *s,const struct drm_opengpu_compute_uniform_resources *request)
 {
  if(!s || !request || s->exported || s->head)return -EBUSY;

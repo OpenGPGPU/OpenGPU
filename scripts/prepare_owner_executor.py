@@ -50,6 +50,9 @@ COMPUTE_CHECKERS = (
     'scripts/compute_mixed_atomic_source.py', 'scripts/test_compute_mixed_atomic_source.py',
     'scripts/compute_storage_atomic_cases.py', 'scripts/compute_storage_atomic_source.py',
     'scripts/compute_atomic_order.py', 'scripts/test_compute_atomic_order.py',
+    'scripts/compute_global_atomic_cases.py', 'scripts/test_compute_global_atomic_cases.py',
+    'scripts/compute_global_atomic_source.py', 'scripts/test_compute_global_atomic_source.py',
+    'scripts/compute_global_host_producer.py',
     'scripts/compute_storage_atomic_controller.py',
     'scripts/compute_storage_atomic_delay.py', 'scripts/test_compute_storage_atomic_delay.py',
     'scripts/compute_storage_recovery.py', 'scripts/compute_storage_recovery_controller.py',
@@ -74,6 +77,7 @@ INDIRECT_CHECKERS = (
     'scripts/test_compute_indirect_protocol.py', 'scripts/test_compute_indirect_capture.py',
     'scripts/test_compute_indirect_capture.cpp', 'scripts/test_compute_owner_phase.cpp')
 COMPUTE_PRODUCER_ROOTS = (
+    'userspace/tests/compute_global_host.c',
     'userspace/tests/compute_host_frontend.c', 'userspace/tests/compute_host_gallium_stubs.c',
     'userspace/tests/cs_graphics_unused_stubs.c', 'userspace/tests/cs_glsl_frontend.cpp',
     'userspace/gallium/opengpu_context.c', 'userspace/gallium/opengpu_screen.c',
