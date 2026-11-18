@@ -176,7 +176,8 @@ def exchange_reset_receipts(args,local,bridge,running,destination,baseline,descr
         if phase=='ack':
             for path,identities in input_sets:unchanged_inputs(path,identities)
             with SparseMemory(baseline) as before,SparseMemory(destination/'record-0.memory') as after:
-                verify_cancelled_memory(before,after,description,channel)
+                proof=verify_cancelled_memory(before,after,description,channel)
+            print('image reset bytes verified channel=%s changedSourceWords=%d'%(channel,proof['changedSourceWords']),flush=True)
         atomic(local/('record-0.reset.'+phase+'.response'),response)
         previous=observed
     return previous
