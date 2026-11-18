@@ -41,10 +41,27 @@ def source_read_fault_proof(value, held=None):
     return proof
 
 
+def image_permission_fault_proof(value, held=None):
+    proof=tuple(uint(value.get(k)) for k in ('physicalReadFaults','injectedReadFaults','physicalWriteFaults'))
+    require(proof==(0,0,0),'image permission failure encountered physical errors')
+    require(held is None or proof==image_permission_fault_proof(held),
+            'permission failure changed physical error history')
+    return proof
+
+
 def verify_source_read_fault(initial, returned, description):
     """A cold source-read failure must preserve every original physical byte."""
+    verify_failed_image(initial,returned,description)
+
+
+def verify_image_permission_fault(initial, returned, description, *, permission):
+    require(permission in ('read','write'),'unknown image permission denial')
+    verify_failed_image(initial,returned,description,permission=permission)
+
+
+def verify_failed_image(initial, returned, description, *, permission=None):
     require(description.get('sourceCase')=='image-atomic-buffer-r32f', 'wrong source-fault result recipe')
-    recipe(initial,description)
+    recipe(initial,description,permission=permission)
     require(initial.ranges==returned.ranges, 'source-fault result replaced original physical layout')
     for begin,end,_ in initial.ranges:
         for address in range(begin,end,4096):
@@ -128,13 +145,17 @@ def verify_cleaned_memory(before, cleaned, tables):
                 'cleanup kept an original private translation reachable')
 
 
-def source_view(p, role, unit):
+def source_view(p, role, unit, *, permission=None):
     """Reconstruct the recipe's original allocation and exposed source view."""
+    require(permission is None or (type(permission) is str and permission in ('read','write') and
+            p['mode']=='atomic' and p['target']=='buffer' and p['format']=='r32f'),
+            'permission denial requires the original buffer float exchange')
     target = dict(buffer=5, **{'2d': 0, 'array': 1, 'cube': 2, '3d': 3})[p['target']]
     v = dict(offset=48, rowPitch=13*p['bytes']+3, slicePitch=0, layerPitch=0,
         slot=39+unit, flags=(2 if role else 3 if p['mode'].startswith('atomic') else 1)|4, target=target,
         storageFormat=3 if target==5 and p['format']=='rgba8_snorm' else p['native'],
         imageFormat=p['native'], level=0, width=13, height=1, depth=1, layers=1, layer=0)
+    if not role and permission is not None:v['flags']=2 if permission=='read' else 1
     if target==5:
         if p['format']!='rgba8_snorm':v['flags']&=~4
         return 8192, v
@@ -187,7 +208,7 @@ def initial_bytes(p, count):
     return bytes(result)
 
 
-def recipe(memory, description):
+def recipe(memory, description, *, permission=None):
     require(type(description) is dict and set(description)=={
         'schema','sourceCase','groups','local','viewBytes','guard','context',
         'kernargPhysical','kernargBytes','imagePhysical','imageRoot',
@@ -209,7 +230,7 @@ def recipe(memory, description):
         unit=uint(image['nativeUnit']);handle=uint(image['handle'])
         require(unit<2 and unit not in seen and 0<handle<512, 'native image unit/handle differs')
         seen.add(unit)
-        binding,v=source_view(p,role,unit)
+        binding,v=source_view(p,role,unit,permission=permission)
         require(type(image['view']) is dict and all(type(value) is int for value in image['view'].values()) and
             type(image['bindingBytes']) is int, 'view fields must be integers')
         require(image['bindingBytes']==binding and image['view']==v, 'original format/mip/pitch/layer/access view differs')
@@ -340,7 +361,7 @@ def returned_outputs(initial, returned, description):
     return [(output,bytes(observed)),*results]
 
 
-def ready(memory, description, data, *, owner_profile=None):
+def ready(memory, description, data, *, owner_profile=None, permission=None):
     """Bind full112 READY to original views, exact write windows and GIU1/PTEs."""
     from compute_counter_source import translate
     from owner_resource_contract import SAMPLE_PROFILE, SAMPLE_FACTORY_CONTRACTS, FULL_COMPUTE_SCHEMA, IMAGE_FLOAT_PROFILE
@@ -349,7 +370,7 @@ def ready(memory, description, data, *, owner_profile=None):
     require(type(owner_profile) is str and owner_profile in SAMPLE_FACTORY_CONTRACTS,
             'image source requires a known complete sample factory')
     stage,expected_words=SAMPLE_FACTORY_CONTRACTS[owner_profile]
-    p,output,images=recipe(memory,description)
+    p,output,images=recipe(memory,description,permission=permission)
     if p['mode'].startswith('atomic') and p['format']=='r32f':
         require(owner_profile==IMAGE_FLOAT_PROFILE,'R32F exchange requires its qualified float owner')
     require(data[:8]==b'OGCMP003', 'full112 capture required')

@@ -20,6 +20,33 @@ class Process:
 
 
 class Controller(unittest.TestCase):
+    def test_permission_recovery_binds_denied_access_and_zero_physical_errors(self):
+        for permission in ('read','write'):
+            commands=[['producer','{ipc}','--case',RECOVERY_CASE,'--physical-base',str(base)]+
+                (['--expect-image-permission-fault',permission] if i==0 else []) for i,base in enumerate(RECOVERY_BASES)]
+            value=dict(schema=RECOVERY_COMMAND_SCHEMA,rounds=commands)
+            self.assertEqual(recovery_commands(value,permission=permission),commands)
+            with self.assertRaises(ValueError):recovery_commands(value)
+            other='write' if permission=='read' else 'read'
+            with self.assertRaises(ValueError):recovery_commands(value,permission=other)
+            for index in range(2):
+                bad=deepcopy(value);bad['rounds'][index].append('--expect-image-source-fault')
+                with self.assertRaises(ValueError):recovery_commands(bad,permission=permission)
+            bad=deepcopy(value);bad['rounds'][1]+=commands[0][-2:]
+            with self.assertRaises(ValueError):recovery_commands(bad,permission=permission)
+            first=dict(schema='opengpu-compute-image-recovery-round-v1',round=0,commandId=4,
+                resetCount=1,ramReplaced=False,externalDrained=True,sourceQualificationRequired=True,
+                independentBytesRequired=True,physicalReadFaults=0,injectedReadFaults=0,
+                physicalWriteFaults=0,startCycle=0,endCycle=100)
+            checked_recovery_round(first,0,dict(commandId=4,physicalReadFaults=0,injectedReadFaults=0,
+                physicalWriteFaults=0),permission=permission)
+            second=dict(first,round=1,startCycle=100,endCycle=200)
+            checked_recovery_round(second,1,dict(commandId=4),first,permission=permission)
+            with self.assertRaises(ValueError):checked_recovery_round(second,1,dict(commandId=4),first)
+            for field in ('physicalReadFaults','injectedReadFaults','physicalWriteFaults'):
+                bad=dict(second);bad[field]=1
+                with self.assertRaises(ValueError):checked_recovery_round(bad,1,dict(commandId=4),first,permission=permission)
+
     def test_recovery_requires_two_live_original_sources_and_disjoint_namespaces(self):
         commands=[['producer','{ipc}','--case',RECOVERY_CASE,'--physical-base',str(base)]+
                   (['--expect-image-source-fault'] if i==0 else []) for i,base in enumerate(RECOVERY_BASES)]

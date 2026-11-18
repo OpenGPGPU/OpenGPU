@@ -30,6 +30,8 @@ static struct {void *data;uint64_t bytes;unsigned maps,closed;} bos[512];
 static unsigned next_bo=1,next_sync=1,submitted,retired;
 static const char *directory;
 static int capture_only,expect_image_source_fault,uniform_case,dynamic_case,address_case,counter_case,counter_dynamic,counter_coexist;
+static unsigned image_permission_fault;
+static int expect_image_failure(void){return expect_image_source_fault || image_permission_fault;}
 static unsigned dynamic_operation,dynamic_signed;
 static unsigned address_kind,counter_operation,counter_index;
 static unsigned counter_offset=4080,counter_count=8;
@@ -41,6 +43,19 @@ static struct drm_opengpu_compute_counter_source_resources accepted_counter;
 static struct drm_opengpu_compute_uniform_resources accepted_uniforms;
 static void source_window(FILE *,unsigned,uint64_t,unsigned,unsigned);
 #include "compute_host_typed_images.h"
+static void permission_views(struct drm_opengpu_compute_image_view *views)
+{
+ if(!image_permission_fault)return;
+ /* Exercise the production DRM client's permission boundary after ordinary
+  * Gallium admission. Keep its original shader/reflection, GEMs and layout;
+  * only the actual submitted UAPI source-view access changes. */
+ assert(image_case && image_atomic_case() && !image_target && image_format==2 &&
+  !strcmp(image_name,"image-atomic-buffer-r32f"));
+ unsigned unit=image_native_units[0];assert(unit<2);
+ struct drm_opengpu_compute_image_view *v=&views[unit];
+ assert(v->slot==39+unit && v->flags==(OPENGPU_COMPUTE_IMAGE_READ|OPENGPU_COMPUTE_IMAGE_WRITE));
+ v->flags=image_permission_fault==1?OPENGPU_COMPUTE_IMAGE_WRITE:OPENGPU_COMPUTE_IMAGE_READ;
+}
 static void write_oracle(void);
 static uint32_t read32(FILE *f)
 {uint32_t v=0;for(unsigned n=0;n<4;n++){int b=fgetc(f);assert(b!=EOF);v|=(uint32_t)b<<(8*n);}return v;}
@@ -74,11 +89,11 @@ static int wait_execution(void)
  path(output,"record-0.capture");assert(!compute_host_capture(session,output,1000000000u,37));
  marker("READY",capture_only?"compute CPU capture only; no DUT execution\n":"compute active capture ready\n");
  if(capture_only){puts("actual Mesa/Linux compute CPU capture: PASS (no GPU execution)");fflush(stdout);_Exit(0);}
- FILE *f=wait_file("record-0.held.response");magic(f,expect_image_source_fault?"OGCFH001":"OGCMH001");struct compute_host_held_receipt h=held(f);end(f);
- path(output,"record-0.retire");assert(!(expect_image_source_fault?compute_host_drain_failed(session,&h,output):compute_host_drain_held(session,&h,output)));
- f=wait_file("record-0.retired.response");magic(f,expect_image_source_fault?"OGCFR001":"OGCMR001");struct compute_host_retired_receipt r={.held=held(f)};
+ FILE *f=wait_file("record-0.held.response");magic(f,expect_image_failure()?"OGCFH001":"OGCMH001");struct compute_host_held_receipt h=held(f);end(f);
+ path(output,"record-0.retire");assert(!(expect_image_failure()?compute_host_drain_failed(session,&h,output):compute_host_drain_held(session,&h,output)));
+ f=wait_file("record-0.retired.response");magic(f,expect_image_failure()?"OGCFR001":"OGCMR001");struct compute_host_retired_receipt r={.held=held(f)};
  r.status=read32(f);r.irq=read32(f);r.irq_asserted=read32(f);r.external_drained=read32(f);end(f);
- assert(!(expect_image_source_fault?compute_host_observe_failed_retired(session,&r):compute_host_observe_retired(session,&r)));retired=1;return 0;
+ assert(!(expect_image_failure()?compute_host_observe_failed_retired(session,&r):compute_host_observe_retired(session,&r)));retired=1;return 0;
 }
 
 int cs_fixture_ioctl(int fd,unsigned long request,...)
@@ -108,10 +123,12 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
  if(request==DRM_IOCTL_OPENGPU_RESOURCE_UNBIND){struct drm_opengpu_resource *p=arg;
   assert(p->context_id==compute_host_context_id(session));return result(compute_host_unbind(session,p->slot));}
  if(request==DRM_IOCTL_OPENGPU_COMPUTE_STORAGE){int error=compute_host_submit_storage(session,arg);if(!error)submitted++;return result(error);}
- if(request==DRM_IOCTL_OPENGPU_COMPUTE_IMAGES){int error=compute_host_submit_images(session,arg);
-  if(!error){if(image_case)memcpy(accepted_images,((const struct drm_opengpu_compute_images *)arg)->views,sizeof(accepted_images));submitted++;}return result(error);}
- if(request==DRM_IOCTL_OPENGPU_COMPUTE_IMAGE_RESOURCES){int error=compute_host_submit_image_resources(session,arg);
-  if(!error){if(image_case)memcpy(accepted_images,((const struct drm_opengpu_compute_image_resources *)arg)->images,sizeof(accepted_images));submitted++;}return result(error);}
+ if(request==DRM_IOCTL_OPENGPU_COMPUTE_IMAGES){struct drm_opengpu_compute_images copy=*(struct drm_opengpu_compute_images *)arg;
+  permission_views(copy.views);int error=compute_host_submit_images(session,&copy);
+  if(!error){if(image_case)memcpy(accepted_images,copy.views,sizeof(accepted_images));submitted++;}return result(error);}
+ if(request==DRM_IOCTL_OPENGPU_COMPUTE_IMAGE_RESOURCES){struct drm_opengpu_compute_image_resources copy=*(struct drm_opengpu_compute_image_resources *)arg;
+  permission_views(copy.images);int error=compute_host_submit_image_resources(session,&copy);
+  if(!error){if(image_case)memcpy(accepted_images,copy.images,sizeof(accepted_images));submitted++;}return result(error);}
  if(request==DRM_IOCTL_OPENGPU_COMPUTE_UNIFORM_RESOURCES){int error=compute_host_submit_uniforms(session,arg);
   if(!error){accepted_uniforms=*(const struct drm_opengpu_compute_uniform_resources *)arg;submitted++;}return result(error);}
  if(request==DRM_IOCTL_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES){
@@ -200,8 +217,13 @@ int main(int argc,char **argv)
 {
  assert(argc>=5);uint64_t physical_base=0;
  for(int i=5;i<argc;i++){
-  if(!strcmp(argv[i],"--capture-only")){assert(!capture_only && !expect_image_source_fault);capture_only=1;}
-  else if(!strcmp(argv[i],"--expect-image-source-fault")){assert(!capture_only && !expect_image_source_fault);expect_image_source_fault=1;}
+  if(!strcmp(argv[i],"--capture-only")){assert(!capture_only && !expect_image_failure());capture_only=1;}
+  else if(!strcmp(argv[i],"--expect-image-source-fault")){assert(!capture_only && !expect_image_failure());expect_image_source_fault=1;}
+  else if(!strcmp(argv[i],"--expect-image-permission-fault")){
+   assert(!capture_only && !expect_image_failure() && ++i<argc);
+   image_permission_fault=!strcmp(argv[i],"read")?1:!strcmp(argv[i],"write")?2:0;
+   assert(image_permission_fault);
+  }
   else if(!strcmp(argv[i],"--physical-base")){
    assert(!physical_base && ++i<argc);const char *v=argv[i];assert(*v);
    for(;*v;v++){assert(*v>='0' && *v<='9');unsigned digit=(unsigned)(*v-'0');
@@ -210,7 +232,7 @@ int main(int argc,char **argv)
   }else assert(!"unknown compute host option");
  }
  assert(!physical_base || (!capture_only && !strcmp(argv[4],"image-atomic-buffer-r32f")));
- assert(!expect_image_source_fault || !strcmp(argv[4],"image-atomic-buffer-r32f"));
+ assert(!expect_image_failure() || !strcmp(argv[4],"image-atomic-buffer-r32f"));
  host_timeout_seconds=compute_host_timeout_seconds();assert(host_timeout_seconds);
  uniform_case=!strcmp(argv[4],"uniforms");
  image_parse_case(argv[4]);
@@ -311,7 +333,7 @@ int main(int argc,char **argv)
  marker("cleanup_wait","actual compute retired; independent byte/source/guard authorization required\n");
  f=wait_file("BEGIN_CLEANUP");magic(f,"OGCMBA01");assert(read32(f)==1);end(f);
  assert(!compute_host_begin_cleanup(session,directory));
- assert(!(expect_image_source_fault?compute_host_finish_failed_observed(session):compute_host_finish_observed(session)));
+ assert(!(expect_image_failure()?compute_host_finish_failed_observed(session):compute_host_finish_observed(session)));
  assert(!compute_host_end_cleanup(session));
  f=wait_file("FINAL_RESPONSE");magic(f,"OGCMOK01");assert(read32(f)==1);end(f);
  /* End this dedicated source process after the actual Linux file/context
