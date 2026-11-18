@@ -474,6 +474,42 @@ int main(int argc, char **argv) {
         "released B error changed identity or failed to drain");
       agent.disarm_response_hold();agent.disarm_first_write_fault();++cases;
     }
+    {
+      auto memory=backing();Agent agent(memory);
+      agent.arm_accepted_write_error(0x1000,0x1040);
+      rejects([&]{agent.arm_first_write_fault(0x1000,0x1040);});
+      auto w=write_request(0x1000,13,0x55);w.wstrb=0x80000005u;
+      w.awvalid=false;tick(agent,0,w);
+      require(memory.byte(0x1000)==0xa7 && !agent.accepted_write_faults(),
+        "accepted error committed before its actual AW");
+      w.awvalid=true;w.wvalid=false;tick(agent,1,w);
+      require(memory.byte(0x1000)==0x55 && memory.byte(0x1001)==0xa7 &&
+        memory.byte(0x1002)==0x55 && memory.byte(0x101f)==0x55 && memory.byte(0x1020)==0xa7 &&
+        agent.accepted_write_faults()==1 && agent.injected_write_faults()==1,
+        "accepted error did not commit exactly the original enabled W bytes");
+      rejects([&]{agent.disarm_first_write_fault();});
+      Requests r;r.rready=true;r.arvalid=true;r.araddr=0x1000;tick(agent,2,r);
+      auto healthy=write_request(0x1000,14,0x77);healthy.wstrb=0x10;tick(agent,3,healthy);
+      r.arvalid=false;tick(agent,4,r);const auto read=tick(agent,5,r);
+      require(read.rvalid && !read.rresp && read.rdata[0]==0x55 && read.rdata[1]==0xa7 &&
+        read.rdata[2]==0x55 && read.rdata[4]==0xa7 && read.rdata[31]==0x55 && !read.bvalid,
+        "read did not snapshot the committed failed write before its delayed B response");
+      for(unsigned cycle=6;cycle<38;++cycle)require(!tick(agent,cycle,r).bvalid,
+        "accepted error escaped its actual delayed B response");
+      const auto first=tick(agent,38,r),stalled=tick(agent,39,r);
+      require(first.bvalid && first.bid==13 && first.bresp==2 && stalled.bvalid &&
+        stalled.bid==13 && stalled.bresp==2 && memory.byte(0x1004)==0x77 &&
+        agent.first_write_attempts()==2 && agent.traffic.write_faults==1 && agent.accepted_write_faults()==1,
+        "stalled accepted error lost commit, identity or one-shot accounting");
+      r.bready=true;tick(agent,40,r);
+      require(tick(agent,41,r).bid==14 && agent.drained(),"healthy write did not drain after accepted error");
+      agent.disarm_first_write_fault();agent.arm_first_write_fault(0x1000,0x1040);
+      tick(agent,42,write_request(0x1000,15,0x99));
+      require(tick(agent,79,r).bresp==2 && agent.drained() && memory.byte(0x1000)==0x55 &&
+        agent.accepted_write_faults()==1 && agent.injected_write_faults()==2 && agent.traffic.write_faults==2,
+        "rearmed suppressed error retained the commit policy or cleared accepted history");
+      agent.disarm_first_write_fault();++cases;
+    }
     std::cout << "PASS native frame AXI cases=" << cases << "\n";
     return 0;
   } catch (const std::exception &e) {

@@ -209,7 +209,9 @@ class Agent {
   uint64_t injected_reads = 0;
   std::optional<std::pair<uint64_t, uint64_t>> first_write_fault_range;
   bool write_fault_pending = false;
+  bool commit_failed_write = false;
   uint64_t injected_writes = 0;
+  uint64_t committed_error_writes = 0;
   uint64_t matched_writes = 0;
   std::optional<Hold> response_hold;
   uint64_t read_hold_cycles = 0, write_hold_cycles = 0;
@@ -240,19 +242,29 @@ public:
   // Fail one actual matching lower write, with its original backing retained.
   // Later writes in the interval succeed, including another workgroup's RMW.
   void arm_first_write_fault(uint64_t begin, uint64_t end) {
+    arm_write_error(begin,end,false);
+  }
+  void arm_accepted_write_error(uint64_t begin, uint64_t end) {
+    arm_write_error(begin,end,true);
+  }
+private:
+  void arm_write_error(uint64_t begin, uint64_t end, bool commit) {
     require(drained() && !first_write_fault_range,"physical first-write fault plan is already active or busy");
     require(begin < end && !(begin & 63) && !(end & 63) && end <= Memory::limit &&
       std::any_of(memory.ranges.begin(),memory.ranges.end(),[&](const auto &r) {
         return r.start <= begin && end <= r.end;
       }),"physical first-write fault range is not aligned and fully backed");
     first_write_fault_range=std::make_pair(begin,end);write_fault_pending=true;matched_writes=0;
+    commit_failed_write=commit;
   }
+public:
   void disarm_first_write_fault() {
     require(drained() && first_write_fault_range && !write_fault_pending,
       "physical first-write fault plan is absent, unused or busy");
     first_write_fault_range.reset();
   }
   uint64_t injected_write_faults() const { return injected_writes; }
+  uint64_t accepted_write_faults() const { return committed_error_writes; }
   uint64_t first_write_attempts() const { return matched_writes; }
 
   // Arm only before traffic: a VALID already exposed to the master must never
@@ -353,9 +365,10 @@ public:
       require(!injected || backed,"physical write fault target lost its original backing");
       const bool fault = !backed || injected;
       if(injected) { write_fault_pending=false;++injected_writes; }
-      if (!fault)
+      if (!fault || (injected && commit_failed_write))
         for (unsigned b = 0; b < write_beats * 32; ++b)
           if ((write_mask >> b) & 1) memory.byte(base + offset + b, write_data[b]);
+      committed_error_writes += injected && commit_failed_write;
       acks.push_back({cycle + (injected ? 37 : 7), base, write_id, uint32_t(fault ? 2 : 0)});
       traffic.write_faults += fault;
       have_aw = false; have_last = false; write_beats = 0; write_mask = 0;
