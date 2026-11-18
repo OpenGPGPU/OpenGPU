@@ -208,9 +208,19 @@ held/retired/IRQ/PTE/context/MMU cleanup; each case resets its DUT.
 All 24 guarded original Linux CPU captures and their controller READY bindings
 pass, including 432 source/PTE/grant controls and eight real native compiler,
 header, dependency, object, executable and link rejection controls. The 44
-focused source/controller/compiler tests also pass. These are CPU checks;
-actual complete-host execution must still prove all 192 returned scalar old
-words, final targets and final source/model inputs.
+focused source/controller/compiler tests also pass. The complete assertion-enabled
+2-CU, sixteen-lane/eight-warp float owner subsequently passed all 24 original
+programs and all 192 returned scalar old words. Every case passed its caller
+program order, legal shared-word serialization, final target and complete
+physical-byte guards, followed by the real held/retired IRQ, PTE/context/MMU
+cleanup. Each case used a fresh complete DUT/reset.
+
+The original guarded producer, native children, controller and outer qualifier
+all exited zero. Final compiler/header/link/runtime, source, executor and model
+checks passed. Frozen execution source `4be83bdbc204128955339561516eb153943b5be6`
+and the publication source matched all 227 qualified software files byte for
+byte. The original full hardware model and assertions were retained; only the
+software execution wrapper was rebuilt. Ended qualification data was removed.
 
 ```sh
 python3 -B scripts/qualify_compute_owner.py \
