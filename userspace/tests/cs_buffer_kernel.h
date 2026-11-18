@@ -11,6 +11,8 @@ struct cs_buffer_kernel_input {
     struct drm_opengpu_compute_image_resources command;
     const struct drm_opengpu_compute_uniform_resources *uniforms;
     struct drm_opengpu_compute_counter_source_resources counter_source;
+    struct drm_opengpu_compute_indirect_resources indirect;
+    unsigned with_indirect;
     unsigned with_counter_source;
     unsigned with_images;
     unsigned storage_only;
@@ -20,6 +22,9 @@ struct cs_buffer_kernel_result {
     const void *textures, *images, *storage, *uniforms, *counters, *code;
     uint64_t texture_bytes, image_bytes, storage_bytes, uniform_bytes, counter_bytes, code_bytes;
     uint32_t texture_root, image_root, storage_root, uniform_root, counter_root, context;
+    const void *indirect;
+    uint64_t indirect_bytes, kernarg;
+    uint32_t indirect_base, indirect_offset, grid[3];
     uint64_t binding_va[43];
     unsigned retained_objects;
 };

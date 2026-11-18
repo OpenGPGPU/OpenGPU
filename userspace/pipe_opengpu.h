@@ -51,6 +51,7 @@ int pipe_opengpu_screen_compute_storage_atomics(const struct pipe_opengpu_screen
 int pipe_opengpu_screen_compute_image_atomics(const struct pipe_opengpu_screen *screen);
 int pipe_opengpu_screen_compute_image_float_exchange(const struct pipe_opengpu_screen *screen);
 int pipe_opengpu_screen_compute_counter_source(const struct pipe_opengpu_screen *screen);
+int pipe_opengpu_screen_compute_indirect(const struct pipe_opengpu_screen *screen);
 /* Versioned native transports only; these are not GL/GLES capabilities. */
 int pipe_opengpu_screen_compute_buffer_textures(const struct pipe_opengpu_screen *screen);
 int pipe_opengpu_screen_compute_buffer_images(const struct pipe_opengpu_screen *screen);
@@ -191,6 +192,13 @@ struct pipe_opengpu_counter_view {
     uint64_t offset, bytes;
     uint32_t slot, count;
 };
+/* Original local GEM and complete logical source bound. Counts stay in the
+ * producer-fenced driver snapshot; max_groups contains caller bounds only. */
+struct pipe_opengpu_indirect_source {
+    struct pipe_opengpu_resource *resource;
+    uint64_t binding_bytes, offset;
+    uint32_t max_groups[3];
+};
 /* Synchronous buffer resources: indexed arrays retain all32/4/4 slots. A
  * partial bind or failed accepted wait poisons this private context. */
 int pipe_opengpu_launch_grid_buffers(struct pipe_opengpu_context *ctx,
@@ -216,6 +224,15 @@ int pipe_opengpu_launch_grid_counter_source_resources(struct pipe_opengpu_contex
     const struct pipe_opengpu_buffer_image images[4],
     const struct pipe_opengpu_uniform_view uniforms[13],
     const struct pipe_opengpu_counter_view counter, uint32_t timeout_ms);
+/* Version2 snapshot supplies both GCI1 and the original shader's 12B kernarg.
+ * counter may be all-zero. The source must be independent of every view. */
+int pipe_opengpu_launch_grid_indirect_resources(struct pipe_opengpu_context *ctx,
+    const uint32_t local[3], const struct pipe_opengpu_storage_view storage[4],
+    const struct pipe_opengpu_buffer_texture textures[32],
+    const struct pipe_opengpu_buffer_image images[4],
+    const struct pipe_opengpu_uniform_view uniforms[13],
+    const struct pipe_opengpu_counter_view counter,
+    const struct pipe_opengpu_indirect_source source, uint32_t timeout_ms);
 /* Publish completed uncached compute writes with real invalidate fences.
  * Retained original BOs survive Gallium unbind until publication or teardown.
  * This is neither writeback nor permission to race CPU/cross-context writers. */

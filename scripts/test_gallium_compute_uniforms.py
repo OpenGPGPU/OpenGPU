@@ -18,7 +18,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main(control_flow=False, buffer_resources=False, shared_memory=False, memory_barriers=False,
-         storage_atomics=False, texture_namespaces=False, image_ordering=False, atomic_counters=False, shared_publication=False, host_execution=False, graphics_uniforms=False, sample_graphics=False, typed_images=False, image_atomics=False):
+         storage_atomics=False, texture_namespaces=False, image_ordering=False, atomic_counters=False, shared_publication=False, host_execution=False, graphics_uniforms=False, sample_graphics=False, typed_images=False, image_atomics=False, indirect_compute=False):
+    if indirect_compute:
+        buffer_resources = True
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--build", type=Path, required=True, help="new private output directory")
     ap.add_argument("--sanitize", action="store_true")
@@ -56,6 +58,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     ap.add_argument("--mesa-shared-ntt", type=Path,
                     help="exact privately staged shared NTT source (shared fixtures only)")
     args = ap.parse_args()
+    if indirect_compute and args.artifacts:
+        ap.error('the CPU indirect fixture does not export original opcode14 DUT captures')
     if host_execution and args.expect_image_source_fault and (
             args.case != 'image-atomic-buffer-r32f' or args.capture_only or
             args.capture_counter_matrix or args.capture_image_matrix or args.expect_image_permission_fault or args.expect_image_reset):
@@ -231,6 +235,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     for relative, extra in [
         ("userspace/tests/compute_host_frontend.c" if host_execution else "userspace/tests/cs_image_atomic_frontend.c" if image_atomics else "userspace/tests/cs_typed_image_frontend.c" if typed_images else "userspace/tests/graphics_sample_flow.c" if sample_graphics else "userspace/tests/graphics_uniform_flow.c" if graphics_uniforms else "userspace/tests/cs_atomic_frontend.c" if storage_atomics else "userspace/tests/cs_barrier_frontend.c" if memory_barriers else "userspace/tests/cs_shared_frontend.c" if shared_memory else "userspace/tests/cs_buffer_flow.c" if buffer_resources else
          "userspace/tests/cs_control_flow.c" if control_flow else "userspace/tests/cs_uniform_flow.c",
+         ["-DOPENGPU_CS_INDIRECT"] if indirect_compute else
          ["-DOPENGPU_CS_TEXTURE_NAMESPACE"] if texture_namespaces else
          ["-DOPENGPU_CS_IMAGE_ORDERING"] if image_ordering else
          ["-DOPENGPU_CS_ATOMIC_COUNTER"] if atomic_counters else
@@ -289,7 +294,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     if not storage_tracker.is_file():
         raise RuntimeError("actual st_bind_cs_ssbos object is required")
     objects.append(storage_tracker)
-    if atomic_counters or host_execution:
+    if atomic_counters or host_execution or indirect_compute:
         atomic_tracker = mb / "src/mesa/libmesa.a.p/state_tracker_st_atom_atomicbuf.c.o"
         if not atomic_tracker.is_file():
             raise RuntimeError("actual st_bind_hw_atomic_buffers object is required")
@@ -348,6 +353,9 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         write_sources(sources)
     elif graphics_uniforms:
         from test_gallium_graphics_uniforms import write_sources
+        write_sources(sources)
+    elif indirect_compute:
+        from test_gallium_compute_indirect import write_sources
         write_sources(sources)
     elif shared_publication:
         from test_gallium_shared_publication import write_sources
@@ -432,6 +440,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         env["OPENGPU_SHARED_PUBLICATION_QUALIFICATION"] = "1"
     if image_ordering:
         env["OPENGPU_IMAGE_ORDERING_QUALIFICATION"] = "1"
+    if indirect_compute:
+        env["OPENGPU_INDIRECT_COMPUTE_QUALIFICATION"] = "1"
     if atomic_counters:
         env["OPENGPU_ATOMIC_COUNTER_QUALIFICATION"] = "1"
     if texture_namespaces:
@@ -525,7 +535,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
                  ("real Mesa GLSL/NIR/TGSI, callbacks/lib, extracted kernel resource ioctl/prepare/snapshot/scheduler; "
                   "independent CPU word/record oracle, modeled OS/GEM/VM/MMIO, no GPU or real page walk") if buffer_resources else
                  "real Mesa GLSL/NIR/TGSI + real callbacks/lib/kernel word validator; modeled kernel OS/GEM boundary"}, indent=2) + "\n")
-    print(("Real GLSL graphics uniform frontend" if graphics_uniforms else "Real GLSL compute " + ("shared publication" if shared_publication else "atomic counters" if atomic_counters else "image ordering" if image_ordering else "texture namespaces" if texture_namespaces else "storage atomics" if storage_atomics else "memory barriers" if memory_barriers else "shared memory" if shared_memory else "buffer resources" if buffer_resources else "control-flow" if control_flow else "uniforms")) + (" active owner execution acceptance PASS: " if active_host else " CPU acceptance PASS: ") + str(out))
+    print(("Real GLSL graphics uniform frontend" if graphics_uniforms else "Real GLSL compute " + ("indirect submission" if indirect_compute else "shared publication" if shared_publication else "atomic counters" if atomic_counters else "image ordering" if image_ordering else "texture namespaces" if texture_namespaces else "storage atomics" if storage_atomics else "memory barriers" if memory_barriers else "shared memory" if shared_memory else "buffer resources" if buffer_resources else "control-flow" if control_flow else "uniforms")) + (" active owner execution acceptance PASS: " if active_host else " CPU acceptance PASS: ") + str(out))
 
 
 if __name__ == "__main__":
