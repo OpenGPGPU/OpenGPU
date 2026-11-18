@@ -51,7 +51,7 @@ typedef uint64_t u64; typedef unsigned char u8;
 #define dma_rmb() ((void)0)
 struct dma_resv { int id; };
 struct drm_gem_object { struct dma_resv *resv; bool foreign; void *vaddr; u64 dma_addr; size_t size; void *import_attach; };
-struct opengpu_resource_binding { struct drm_gem_object *object; u64 dma, va, size, offset; u32 type; };
+struct opengpu_resource_binding { struct drm_gem_object *object; u64 dma, va, size, offset; u32 type, flags; };
 struct opengpu_render_context { struct { bool enabled; } vm; struct opengpu_resource_binding *bindings[OPENGPU_MAX_RESOURCE_BINDINGS]; };
 struct opengpu_sched_dep { struct drm_gem_object *object; int wait_usage, signal_usage; };
 struct opengpu_command_events { u32 flags; };
@@ -829,9 +829,9 @@ int main(void)
             .size=4096,.va=0xa0000000,.type=OPENGPU_RESOURCE_COMPUTE_TEXTURE};
         struct opengpu_staging_range a={0x100000,4096}, b={0x102000,4096};
         im.range_count=1; im.range_objects[0]=&objects[0]; im.ranges[0]=(struct opengpu_staging_range){0x80000,4096};
-        assert(opengpu_compute_record_range(&objects[1],&a,im.range_objects,im.ranges,&im.range_count)==0);
-        assert(opengpu_compute_record_range(&objects[1],&b,im.range_objects,im.ranges,&im.range_count)==0);
-        assert(opengpu_compute_record_range(&objects[2],&b,im.range_objects,im.ranges,&im.range_count)==-EINVAL);
+        assert(opengpu_compute_record_range(&objects[1],&a,im.range_objects,im.ranges,&im.range_count,false)==0);
+        assert(opengpu_compute_record_range(&objects[1],&b,im.range_objects,im.ranges,&im.range_count,false)==0);
+        assert(opengpu_compute_record_range(&objects[2],&b,im.range_objects,im.ranges,&im.range_count,false)==-EINVAL);
         st.range_count=2; st.range_objects[1]=&objects[2]; st.ranges[1]=b;
         assert(opengpu_compute_check_image_storage(&im,&st)==-EINVAL);
         ctx.bindings[2]=&tex; memset(p,0,sizeof(*p)); p->views[0].slot=3;
