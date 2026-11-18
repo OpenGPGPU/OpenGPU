@@ -127,6 +127,69 @@ python3 -B scripts/test_compute_global_host_inputs.py \
   --native-build "$CAPTURE_BUILD" --bound-inputs "$INPUTS_REQUEST"
 ```
 
+## Read-only complete-model cache observation source
+
+`compute_cache_alias_observer.hpp` reads both actual hierarchical CU instances
+and the complete float owner's shared L2. It checks all 64 sets/two ways of
+each L1 and all four 128-set/four-way L2 slices, using logical valid bits and
+tags rather than directory hints. It reads no cache data arrays. Independent
+instance roots, model names and contexts are checked before observing them.
+
+The observer records settled pre-edge cache state and AXI/invalidation
+handshakes. Its bounded history requires simultaneous two-CU/L2 warming,
+both invalidate requests and ACKs before the first full-line lower write,
+and absence of L1 copies before every target lower write. For a first-write
+B error, it additionally requires the invalidated L2 line, a paired full
+64-byte target AR/R transaction through its final beat, and subsequent L1/L2
+refill. Other read IDs cannot supply that transaction's completion. Prefix
+cold maintenance cannot satisfy the warmed AMO's invalidate acknowledgements.
+The separate strict Python receipt checker rejects missing/retyped fields,
+wrong target/command/phase, clocks, masks, write counts and error histories.
+
+Complete-float compute builds explicitly include and bind three generated
+headers: the parent root, the actual CU model and its root. The compiler's
+full MD closure must contain all three. Missing, changed, aliased or omitted
+headers reject qualification; other factory/kind combinations retain their
+ordinary build path. The native driver instantiates the actual model view at
+compile time. Source and model checks remain distinct and complete.
+
+The 202 focused snapshot/receipt, executor-input and test-selection checks pass.
+ASan/UBSan CPU fixtures cover every set/way, independent CUs, real port shapes,
+pre-edge overloads, response reordering, two-beat reads and missing handshake
+evidence. The exact complete model's types and both step overloads compile and
+link; two actual CU instances also pass cold read-only access checks. The full
+original compute driver compiles/links and passes its actual complete-float
+MMIO discovery probe, with 1050 actual MD inputs. Each native stage runs under
+an 8-GiB/600-second guard. All model/archive/runtime bytes remain unchanged.
+The same fixed Linux compiler image passes all 72 UC/cached/derived-source
+captures, 1848 rejection controls and 24 native build controls with 246 bound
+software inputs. All ended native and CPU proof outputs are removed.
+
+This delivers the read-only observer, timing hook and input binding. The live
+matrix controller has not attached the hook yet. These checks do not establish
+warm cache execution, accepted-write-error refetch or cached/uncached same-GEM
+coherence. The required full-host matrices remain pending; P10 stays open at
+9/40. Reproduce the component checks with:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts \
+  python3 -B -m unittest test_compute_cache_alias_observer \
+  test_prepare_owner_verilator_executor test_prepare_owner_executor test_changed_test_suites
+```
+
+For the same matching complete-float owner, rebuild and probe the original
+compute executor with the bound generated headers and full dependency checks:
+
+```sh
+python3 -B scripts/prepare_owner_executor.py --stage build --backend verilator \
+  --kind compute --owner-output "$OWNER_DIRECTORY"
+python3 -B scripts/prepare_owner_executor.py --stage probe --backend verilator \
+  --kind compute --qualification "$OWNER_DIRECTORY/executors/compute/qualification.json"
+```
+
+The MMIO probe is discovery validation; source warming and coherence still
+require their subsequent original-program execution and independent byte gates.
+
 ## Global AMO translation and prior component checks
 
 Global RV32 word AMOs capture the data SATP root and virtual operand before
