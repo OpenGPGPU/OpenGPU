@@ -283,3 +283,44 @@ python3 -B scripts/qualify_compute_owner.py \
 
 This delay gate does not qualify continuous global fault/healthy reuse,
 accepted-write/error cached aliases, cross-command coherence, clocks or FPS.
+
+## Complete-owner global physical faults and continuous reuse
+
+The distinct `global-atomics-recovery` entry runs each of the 24 original RV32
+programs through read fault, healthy, first-write fault and healthy phases.
+All 96 phases share one complete assertion-enabled float DUT, RAM and initial
+reset, retaining the original command ID. Original caller allocations occupy
+disjoint 16-MiB physical namespaces; every previously cleaned RAM byte remains
+in the independent comparison. Each phase requires actual held/retired IRQ,
+PTE/context/MMU cleanup and external drain before the next original owner.
+
+The original production `opengpu_compute()` caller consumes failed receipts
+and requires its real negative fence and userspace `EIO` result. Read faults
+permit no RAM changes or target writes. A one-shot lower B error suppresses
+the first target write: exactly one scalar caller retains its two guarded
+old-value slots, while the other three produce six source-ordered old words.
+All six must have a legal shared-word serialization and final target, with
+every other physical byte unchanged. Seven target write attempts are required,
+including the failed first attempt and successful lower writes for CAS misses.
+The existing storage first-write contract retains its separate five attempts.
+
+Focused source/controller/compiler checks and existing atomic/source regressions
+pass. CPU controls cover all source layouts, every failed caller,
+legal interleavings, source-order rejection, prior RAM guards, exact command
+arguments and error counters, and cleanup refusal after bad partial results.
+Complete-DUT execution still must establish all 96 phases and 528 actual
+returned old words, real cleanup and final compiler/source/model checks.
+
+```sh
+python3 -B scripts/qualify_compute_owner.py \
+  --executor "$COMPUTE_EXECUTOR" --executor-qualification "$COMPUTE_QUALIFICATION" \
+  --executor-checker scripts/prepare_owner_executor.py \
+  --executor-checker-python "$QUALIFICATION_PYTHON" \
+  --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72 \
+  --case global-atomics-recovery --timeout 7200
+```
+
+The injected write is suppressed, so this gate makes no rollback claim for
+an accepted write followed by an error. Accepted-write/error cached aliases,
+cross-command coherence, clocks and FPS remain separate qualifications. P10
+remains open.

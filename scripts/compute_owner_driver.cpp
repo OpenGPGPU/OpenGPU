@@ -30,7 +30,7 @@ struct ComputeResult {
   uint64_t fault_target_write_attempts=0;
   bool held_pin=false,retired_pin=false,drained=false;
 };
-enum class ImageFailure { none, source_read, permission, first_write };
+enum class ImageFailure { none, source_read, permission, first_write, global_first_write };
 struct ComputeHeld {
   ComputeResult result;
   Memory initial;
@@ -45,7 +45,7 @@ ComputeHeld hold_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory
     ImageFailure failure=ImageFailure::none,uint64_t prior_read_faults=0,const Traffic *prior_traffic=nullptr,
     StorageAckDelay *ack_delay=nullptr) {
   require(failure==ImageFailure::none || failure==ImageFailure::source_read ||
-    failure==ImageFailure::permission || failure==ImageFailure::first_write,
+    failure==ImageFailure::permission || failure==ImageFailure::first_write || failure==ImageFailure::global_first_write,
     "unknown compute failure mode");
   verify_compute_upload(sim,agent,bus,memory,capture,prior_read_faults,prior_traffic);
   ComputeHeld held;held.initial=memory;held.start=agent.traffic;held.start_cycles=bus.cycles;held.failure=failure;
@@ -87,11 +87,13 @@ ComputeHeld hold_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory
       r.completion==again.completion && r.processed_bytes==again.processed_bytes && again.held_pin,
     "held compute completion or telemetry changed");
   traffic_unchanged(held.completed,agent.traffic);
-  if(failure==ImageFailure::first_write) {
+  const bool write_failure=failure==ImageFailure::first_write || failure==ImageFailure::global_first_write;
+  if(write_failure) {
+    const unsigned expected_attempts=failure==ImageFailure::global_first_write?7:5;
     if(!(agent.traffic.read_faults==prior_read_faults && agent.injected_read_faults()==prior_read_faults &&
       agent.traffic.write_faults==held.start.write_faults+1 &&
-      agent.injected_write_faults()==agent.traffic.write_faults && agent.first_write_attempts()==5))
-      throw std::runtime_error("storage first-write history differs: targetAttempts="+
+      agent.injected_write_faults()==agent.traffic.write_faults && agent.first_write_attempts()==expected_attempts))
+      throw std::runtime_error("atomic first-write history differs: targetAttempts="+
         std::to_string(agent.first_write_attempts())+" readFaults="+std::to_string(agent.traffic.read_faults)+
         " writeFaults="+std::to_string(agent.traffic.write_faults)+" injectedWrites="+
         std::to_string(agent.injected_write_faults()));
@@ -119,7 +121,7 @@ ComputeHeld hold_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory
   r.write_bytes=agent.traffic.write_bus_bytes-held.start.write_bus_bytes;
   r.physical_read_faults=agent.traffic.read_faults;r.injected_read_faults=agent.injected_read_faults();
   r.physical_write_faults=agent.traffic.write_faults;r.injected_write_faults=agent.injected_write_faults();
-  r.fault_target_write_attempts=failure==ImageFailure::first_write?agent.first_write_attempts():0;
+  r.fault_target_write_attempts=write_failure?agent.first_write_attempts():0;
   if(ack_delay)ack_delay->finish(agent);
   held.initial=memory;return held;
 }
@@ -274,6 +276,7 @@ inline void active_image_recovery(int argc,char **argv,const std::filesystem::pa
 } // namespace compute_owner
 
 #include "compute_storage_recovery.hpp"
+#include "compute_global_recovery.hpp"
 
 #ifndef OPENGPU_COMPUTE_OWNER_LIBRARY
 int main(int argc,char **argv) {
@@ -282,6 +285,9 @@ int main(int argc,char **argv) {
     const auto response_timeout=compute_response_timeout();
     if(argc==4 && std::string(argv[1])=="--active-storage-recovery-matrix") {
       active_storage_recovery_matrix(argc,argv,argv[2],argv[3],response_timeout);return 0;
+    }
+    if(argc==4 && std::string(argv[1])=="--active-global-recovery-matrix") {
+      active_global_recovery_matrix(argc,argv,argv[2],argv[3],response_timeout);return 0;
     }
     if(argc==3 && std::string(argv[1])=="--probe-profile") {
       require(!std::filesystem::exists(argv[2]),"compute profile output already exists");

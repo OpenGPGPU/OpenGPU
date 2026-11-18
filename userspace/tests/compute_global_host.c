@@ -19,7 +19,7 @@
 
 static struct compute_host_session *session;
 static struct {void *data;uint64_t bytes;unsigned mapped,closed;} bos[16];
-static unsigned next_bo=1,submitted,retired,capture_only,timeout_seconds;
+static unsigned next_bo=1,submitted,retired,capture_only,timeout_seconds,expect_global_fault;
 static const char *directory,*source_case;
 static struct opengpu_buffer shader,kernarg;
 static size_t program_bytes;
@@ -73,11 +73,11 @@ static int wait_execution(void)
  path(out,"record-0.capture");assert(!compute_host_capture(session,out,1000000000,37));
  marker("READY",capture_only?"original RV32/Linux CPU capture; no GPU execution\n":"original RV32/Linux active capture\n");
  if(capture_only){puts("original RV32/Linux admission/capture: PASS (no GPU execution)");fflush(stdout);_Exit(0);}
- FILE *f=wait_file("record-0.held.response");magic(f,"OGCMH001");struct compute_host_held_receipt h=held(f);end(f);
- path(out,"record-0.retire");assert(!compute_host_drain_held(session,&h,out));
- f=wait_file("record-0.retired.response");magic(f,"OGCMR001");struct compute_host_retired_receipt r={.held=held(f)};
+ FILE *f=wait_file("record-0.held.response");magic(f,expect_global_fault?"OGCFH001":"OGCMH001");struct compute_host_held_receipt h=held(f);end(f);
+ path(out,"record-0.retire");assert(!(expect_global_fault?compute_host_drain_failed(session,&h,out):compute_host_drain_held(session,&h,out)));
+ f=wait_file("record-0.retired.response");magic(f,expect_global_fault?"OGCFR001":"OGCMR001");struct compute_host_retired_receipt r={.held=held(f)};
  r.status=read32(f);r.irq=read32(f);r.irq_asserted=read32(f);r.external_drained=read32(f);end(f);
- assert(!compute_host_observe_retired(session,&r));retired=1;return 0;}
+ assert(!(expect_global_fault?compute_host_observe_failed_retired(session,&r):compute_host_observe_retired(session,&r)));retired=1;return 0;}
 
 int global_fixture_ioctl(int fd,unsigned long request,...)
 {va_list ap;va_start(ap,request);void *arg=va_arg(ap,void *);va_end(ap);assert(fd==7 || fd>=20000);
@@ -109,8 +109,20 @@ int global_fixture_close(int fd)
 {assert(fd==20001);return 0;}
 
 int main(int argc,char **argv)
-{assert(argc==6 || (argc==7 && !strcmp(argv[6],"--capture-only")));
- directory=argv[1];source_case=argv[5];capture_only=argc==7;
+{assert(argc>=6);uint64_t physical_base=0;
+ directory=argv[1];source_case=argv[5];
+ for(int i=6;i<argc;i++){
+  if(!strcmp(argv[i],"--capture-only")){assert(!capture_only && !expect_global_fault);capture_only=1;}
+  else if(!strcmp(argv[i],"--expect-global-fault")){
+   assert(!capture_only && !expect_global_fault && ++i<argc);
+   expect_global_fault=!strcmp(argv[i],"read")?1:!strcmp(argv[i],"write")?2:0;assert(expect_global_fault);
+  }else if(!strcmp(argv[i],"--physical-base")){
+   assert(!physical_base && ++i<argc);const char *v=argv[i];assert(*v);
+   for(;*v;v++){assert(*v>='0' && *v<='9');unsigned digit=(unsigned)(*v-'0');
+    assert(physical_base<=(UINT32_MAX-digit)/10u);physical_base=physical_base*10+digit;}
+   assert(physical_base && !(physical_base&4095));
+  }else assert(!"unknown original global caller option");
+ }
  assert(!strncmp(source_case,"global-atomic-",14));
  for(const char *c=source_case;*c;c++)assert((*c>='a' && *c<='z') || *c=='-');
  timeout_seconds=compute_host_timeout_seconds();assert(timeout_seconds);
@@ -118,6 +130,7 @@ int main(int argc,char **argv)
  struct compute_host_profile_word *profile=calloc(count+10,sizeof(*profile));assert(profile);
  for(unsigned i=0;i<count;i++){profile[i].address=read32(f);profile[i].value=read32(f);}
  assert(read32(f)==10);for(unsigned i=count;i<count+10;i++){profile[i].address=read32(f);profile[i].value=read32(f);}end(f);
+ if(physical_base)assert(!compute_host_allocation_base(physical_base));
  session=compute_host_open(profile,count+10);free(profile);assert(session);
  uint64_t features;assert(!opengpu_driver_features(7,&features) && (features&OPENGPU_DRIVER_FEATURE_COMPUTE_WORD_ATOMICS));
  uint8_t program[4097];f=fopen(argv[3],"rb");assert(f);program_bytes=fread(program,1,sizeof(program),f);
@@ -133,7 +146,11 @@ int main(int argc,char **argv)
  struct drm_opengpu_compute command={.context_id=context,.shader_slot=1,.kernarg_slot=2,
   .grid={4,1,1},.local={16,1,1},.out_syncobj=sync};
  assert(!opengpu_compute(7,&command) && submitted==1);
- assert(!opengpu_sync_wait_success(7,sync,OPENGPU_FENCE_TIMEOUT_MS) && retired);
+ int status=opengpu_sync_wait_success(7,sync,OPENGPU_FENCE_TIMEOUT_MS);
+ assert(retired);
+ if(expect_global_fault){int32_t fence_status;
+  assert(status==-1 && errno==EIO && !compute_host_completion_status(session,&fence_status) && fence_status==-EIO);
+ }else assert(!status);
  marker("cleanup_wait","original global kernel retired; independent byte authorization required\n");
  f=wait_file("BEGIN_CLEANUP");magic(f,"OGCMBA01");assert(read32(f)==1);end(f);
  assert(!compute_host_begin_cleanup(session,directory));assert(!compute_host_finish_observed(session));

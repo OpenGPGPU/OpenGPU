@@ -414,6 +414,20 @@ class Entry(unittest.TestCase):
         self.assertIn('--global-atomic-matrix',command)
         self.assertIn('--bound-inputs',command)
 
+    def test_global_recovery_entry_preserves_distinct_source_fault_and_allocator_binding(self):
+        args=argparse.Namespace(timeout=60,global_inputs=ROOT/'.artifacts/global-inputs.json',
+            global_recovery_matrix=True)
+        def command(case=None):
+            return qualifier.producer_command(args,gpu=ROOT,source=ROOT,ntt=None,
+                image='sha256:'+'1'*64,name='raw',case=case or qualifier.GLOBAL_ATOMIC_CASES[0])
+        self.assertIn('--global-recovery-matrix',command())
+        self.assertNotIn('--global-atomic-matrix',command())
+        for key in ('global_atomic_matrix','global_delayed_ack','storage_recovery_matrix','image_source_recovery'):
+            setattr(args,key,True)
+            with self.subTest(key=key),self.assertRaises(ValueError):command()
+            delattr(args,key)
+        with self.assertRaises(ValueError):command(qualifier.GLOBAL_ATOMIC_CASES[1])
+
     def test_global_source_and_matrix_bind_their_exact_original_case(self):
         args=argparse.Namespace(timeout=60,global_inputs=ROOT/'.artifacts/global-inputs.json',global_atomic_matrix=True)
         for case in qualifier.GLOBAL_ATOMIC_CASES:
