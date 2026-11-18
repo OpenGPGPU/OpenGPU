@@ -1033,6 +1033,16 @@ opengpu_shader_vector_range(
     return opengpu_range_eval(op, left, right);
 }
 
+static inline bool opengpu_shader_shared_profile_valid(
+    opengpu_shader_u32 base, opengpu_shader_u32 bytes,
+    opengpu_shader_u32 lanes, bool kernarg_writable, bool fragment_ops)
+{
+    return !(base || bytes || lanes) || (bytes && lanes &&
+        !((base | bytes) & 3u) &&
+        (opengpu_shader_u64)base + bytes <= 0x100000000ull &&
+        kernarg_writable && !fragment_ops);
+}
+
 static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer_images_proofs(
     const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
     opengpu_shader_u64 kernarg_size, opengpu_shader_u32 batch_capacity,
@@ -1090,11 +1100,8 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
         return false;
     if (uniform_enabled && ((!all_kernarg_writable && !native_graphics_profile) || fragment_ops_enabled))
         return false;
-    if ((shared_base || shared_bytes || shared_lanes) &&
-        (!shared_bytes || !shared_lanes ||
-         ((shared_base | shared_bytes) & 3u) ||
-         (opengpu_shader_u64)shared_base + shared_bytes > 0x100000000ull ||
-         !all_kernarg_writable || fragment_ops_enabled))
+    if (!opengpu_shader_shared_profile_valid(shared_base, shared_bytes,
+            shared_lanes, all_kernarg_writable, fragment_ops_enabled))
         return false;
     stride = 4ull * batch_capacity;
     if (all_kernarg_writable) {
@@ -2197,6 +2204,22 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
         image_atomics_enabled, storage_atomics_enabled, counter_enabled,
         uniform_enabled, shared_base, shared_bytes, shared_lanes,
         buffer_image_size_enabled, shared_atomics_enabled, false, false, proofs);
+    /* Discovered shared resources must not replace the legacy storage SIMT
+     * dialect's launch-sized lane proof. Retry the complete program with
+     * shared instructions closed, so an invalid shared access or shared SIMT
+     * prefix cannot gain permission from this compatibility path. */
+    if (!valid && shared_atomics_enabled && shared_bytes && storage_enabled &&
+        opengpu_shader_shared_profile_valid(shared_base, shared_bytes,
+            shared_lanes, all_kernarg_writable, fragment_ops_enabled))
+        valid = opengpu_shader_validate_words_profile_runtime_features_buffer_images_proofs(
+            words, word_count, kernarg_size, batch_capacity, output_start_slice,
+            output_end_slice, fragment_ops_enabled, texture_enabled,
+            all_kernarg_writable, scalar_fpu_enabled, launch_capacity,
+            input_read_mask, output_write_mask, word_atomics_enabled,
+            texture_backings_disjoint, storage_enabled, image_enabled,
+            image_atomics_enabled, storage_atomics_enabled, counter_enabled,
+            uniform_enabled, 0, 0, 0, buffer_image_size_enabled,
+            false, false, false, NULL);
 #ifdef __KERNEL__
     kfree(proofs);
 #else
