@@ -5,7 +5,9 @@ from copy import deepcopy
 import tempfile
 import json
 import unittest
-from compute_owner_controller import atomic, wait_file, lock_owner, recovery_commands, checked_recovery_round
+from types import SimpleNamespace
+from unittest.mock import patch
+from compute_owner_controller import atomic, wait_file, lock_owner, recovery_commands, checked_recovery_round, exchange_reset_receipts
 from compute_owner_protocol import RECOVERY_CASE, RECOVERY_BASES, RECOVERY_COMMAND_SCHEMA
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,6 +22,56 @@ class Process:
 
 
 class Controller(unittest.TestCase):
+    def test_reset_recovery_keeps_channel_hold_history_and_same_live_command(self):
+        from test_compute_image_reset import observation
+        for channel in ('read','write'):
+            commands=[['producer','{ipc}','--case',RECOVERY_CASE,'--physical-base',str(base)]+
+                (['--expect-image-reset',channel] if i==0 else []) for i,base in enumerate(RECOVERY_BASES)]
+            value=dict(schema=RECOVERY_COMMAND_SCHEMA,rounds=commands)
+            self.assertEqual(recovery_commands(value,reset=channel),commands)
+            with self.assertRaises(ValueError):recovery_commands(value)
+            for flag in ('--expect-image-source-fault','--capture-only','--expect-image-permission-fault','--expect-image-reset'):
+                for index in range(2):
+                    wrong=deepcopy(value);wrong['rounds'][index].append(flag)
+                    with self.subTest(flag=flag,index=index),self.assertRaises(ValueError):recovery_commands(wrong,reset=channel)
+            held=observation('retired',channel)
+            first=dict(schema='opengpu-compute-image-reset-recovery-round-v1',round=0,commandId=4,
+                resetCount=1,ramReplaced=False,externalDrained=True,sourceQualificationRequired=True,
+                independentBytesRequired=True,physicalReadFaults=0,injectedReadFaults=0,
+                physicalWriteFaults=0,startCycle=0,endCycle=200,channel=channel,unifiedResetRequests=1,
+                heldReadCycles=held['heldReadCycles'],heldWriteCycles=held['heldWriteCycles'])
+            checked_recovery_round(first,0,held,reset=channel)
+            second=dict(first,round=1,startCycle=200,endCycle=400)
+            checked_recovery_round(second,1,dict(commandId=4),first,reset=channel)
+            for key,new in (('commandId',5),('resetCount',2),('unifiedResetRequests',0),('channel','other'),
+                    ('heldReadCycles',6),('heldWriteCycles',6),('physicalReadFaults',1),
+                    ('injectedReadFaults',1),('physicalWriteFaults',1),('ramReplaced',True),('startCycle',199)):
+                wrong=dict(second);wrong[key]=new
+                with self.subTest(key=key),self.assertRaises(ValueError):
+                    checked_recovery_round(wrong,1,dict(commandId=4),first,reset=channel)
+
+    def test_reset_ack_requires_independent_cancel_bytes_before_original_irq_and_cleanup(self):
+        from test_compute_image_reset import observation
+        parent=ROOT/'.artifacts';parent.mkdir(exist_ok=True)
+        for fail in (False,True):
+            with tempfile.TemporaryDirectory(prefix='reset-controller-',dir=parent) as temporary:
+                local=Path(temporary)
+                for phase in ('held','busy','ack','retired'):
+                    (local/('record-0.reset.'+phase+'.json')).write_text(json.dumps(observation(phase,'write')))
+                with patch('compute_owner_controller.SparseMemory'),\
+                     patch('compute_image_reset.verify_cancelled_memory',side_effect=ValueError('bad partial bytes') if fail else None) as verify:
+                    invoke=lambda:exchange_reset_receipts(SimpleNamespace(timeout=1),local,Process(None),Process(None),
+                        local/'results',local/'union.memory',{},[],'write')
+                    if fail:
+                        with self.assertRaisesRegex(ValueError,'bad partial bytes'):invoke()
+                    else:self.assertEqual(invoke()['phase'],'retired')
+                    verify.assert_called_once()
+                self.assertTrue((local/'record-0.reset.held.response').exists())
+                self.assertTrue((local/'record-0.reset.busy.response').exists())
+                self.assertEqual((local/'record-0.reset.ack.response').exists(),not fail)
+                self.assertEqual((local/'record-0.reset.retired.response').exists(),not fail)
+                self.assertFalse((local/'BEGIN_CLEANUP').exists())
+
     def test_permission_recovery_binds_denied_access_and_zero_physical_errors(self):
         for permission in ('read','write'):
             commands=[['producer','{ipc}','--case',RECOVERY_CASE,'--physical-base',str(base)]+

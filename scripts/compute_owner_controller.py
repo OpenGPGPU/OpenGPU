@@ -115,8 +115,9 @@ def unchanged_inputs(directory, inputs):
         require(input_digest(directory/name)==digest, 'counter immutable READY input changed: '+name)
 
 
-def recovery_commands(value, *, permission=None):
+def recovery_commands(value, *, permission=None, reset=None):
     require(permission is None or permission in ('read','write'),'unknown image permission denial')
+    require(reset is None or (reset in ('read','write') and permission is None),'unknown/ambiguous image reset')
     require(type(value) is dict and set(value)=={'schema','rounds'} and
             value['schema']==RECOVERY_COMMAND_SCHEMA and type(value['rounds']) is list and
             len(value['rounds'])==2,'two original recovery producer commands required')
@@ -124,28 +125,38 @@ def recovery_commands(value, *, permission=None):
         require(type(command) is list and command and all(type(x) is str and x for x in command) and
                 any('{ipc}' in x for x in command),'recovery producer must consume its original IPC directory')
         require('--capture-only' not in command and
-                command.count('--expect-image-source-fault')==(1 if index==0 and permission is None else 0) and
-                command.count('--expect-image-permission-fault')==(1 if index==0 and permission is not None else 0),
+                command.count('--expect-image-source-fault')==(1 if index==0 and permission is None and reset is None else 0) and
+                command.count('--expect-image-permission-fault')==(1 if index==0 and permission is not None else 0) and
+                command.count('--expect-image-reset')==(1 if index==0 and reset is not None else 0),
                 'recovery must run one live source fault followed by one healthy producer')
         if index==0 and permission is not None:
             position=command.index('--expect-image-permission-fault')
             require(position+1<len(command) and command[position+1]==permission,'wrong denied image permission')
+        if index==0 and reset is not None:
+            position=command.index('--expect-image-reset')
+            require(position+1<len(command) and command[position+1]==reset,'wrong delayed image response channel')
         for flag,wanted in [('--case',RECOVERY_CASE),('--physical-base',str(RECOVERY_BASES[index]))]:
             require(command.count(flag)==1 and command.index(flag)+1<len(command) and
                     command[command.index(flag)+1]==wanted,'wrong original recovery recipe/allocation namespace')
     return value['rounds']
 
 
-def checked_recovery_round(value,index,held,previous=None, *, permission=None):
+def checked_recovery_round(value,index,held,previous=None, *, permission=None, reset=None):
     from compute_image_source import source_read_fault_proof,image_permission_fault_proof
     require(permission is None or permission in ('read','write'),'unknown image permission denial')
+    require(reset is None or (reset in ('read','write') and permission is None),'unknown/ambiguous image reset')
     require(type(index) is int and index in (0,1),'unknown recovery round')
     require((index==0)==(previous is None),'recovery round lacks its preceding fault result')
-    required_flags(value,dict(schema='opengpu-compute-image-recovery-round-v1',round=index,
+    required_flags(value,dict(schema='opengpu-compute-image-'+('reset-recovery' if reset else 'recovery')+'-round-v1',round=index,
         commandId=uint(held.get('commandId')),resetCount=1,ramReplaced=False,externalDrained=True,
         sourceQualificationRequired=True,independentBytesRequired=True,physicalWriteFaults=0))
-    proof=source_read_fault_proof if permission is None else image_permission_fault_proof
-    proof(value,held if previous is None else previous)
+    if reset:
+        from compute_image_reset import reset_history
+        required_flags(value,dict(channel=reset,unifiedResetRequests=1))
+        reset_history(value,reset,held if previous is None else previous)
+    else:
+        proof=source_read_fault_proof if permission is None else image_permission_fault_proof
+        proof(value,held if previous is None else previous)
     start,end=uint(value.get('startCycle'),64),uint(value.get('endCycle'),64)
     require(start<end,'recovery cycle interval is empty or reversed')
     if previous is not None:
@@ -154,11 +165,29 @@ def checked_recovery_round(value,index,held,previous=None, *, permission=None):
     return value
 
 
+def exchange_reset_receipts(args,local,bridge,running,destination,baseline,description,input_sets,channel):
+    from compute_image_reset import reset_receipt_bytes, verify_cancelled_memory
+    previous=None
+    for phase in ('held','busy','ack','retired'):
+        wait_file(local/('record-0.reset.'+phase+'.json'),bridge,running,args.timeout)
+        require(bridge.poll() is None and running.poll() is None,'reset owner exited before '+phase+' observation')
+        observed=strict_json(local/('record-0.reset.'+phase+'.json'))
+        response=reset_receipt_bytes(observed,phase,channel,previous)
+        if phase=='ack':
+            for path,identities in input_sets:unchanged_inputs(path,identities)
+            with SparseMemory(baseline) as before,SparseMemory(destination/'record-0.memory') as after:
+                verify_cancelled_memory(before,after,description,channel)
+        atomic(local/('record-0.reset.'+phase+'.response'),response)
+        previous=observed
+    return previous
+
+
 def exchange_recovery(args,commands,directory,executor,env,qualified,qualified_profile):
     from compute_image_source import (source_read_fault_plan,source_read_fault_proof,
         verify_source_read_fault,captured_page_tables,verify_cleaned_memory,
         image_permission_fault_proof,verify_image_permission_fault)
     permission=getattr(args,'image_permission_recovery',None)
+    reset=getattr(args,'image_reset_recovery',None)
     proof=source_read_fault_proof if permission is None else image_permission_fault_proof
     running=bridge=None;previous=None;previous_clean=None;previous_digest=None;input_sets=[]
     try:
@@ -179,7 +208,11 @@ def exchange_recovery(args,commands,directory,executor,env,qualified,qualified_p
                                 'original allocation namespace was ignored or replaced')
                         tables=captured_page_tables(upload,(local/'record-0.capture').read_bytes())
                         if index==0:
-                            if permission is None:
+                            if reset:
+                                from compute_image_reset import reset_plan
+                                atomic(local/'record-0.reset.plan',reset_plan(upload,description,reset,owner_profile=qualified_profile))
+                                inputs['record-0.reset.plan']=input_digest(local/'record-0.reset.plan')
+                            elif permission is None:
                                 atomic(local/'record-0.fault-plan',source_read_fault_plan(
                                     upload,description,owner_profile=qualified_profile))
                                 inputs['record-0.fault-plan']=input_digest(local/'record-0.fault-plan')
@@ -194,34 +227,42 @@ def exchange_recovery(args,commands,directory,executor,env,qualified,qualified_p
                     for path,identities in input_sets:unchanged_inputs(path,identities)
                     atomic(local/'BEGIN_EXECUTION',struct.pack('<8sI',b'OGCMEX01',index))
                     if index==0:
-                        execution_mode='--active-image-permission-recovery' if permission else '--active-image-source-recovery'
-                        running=subprocess.Popen([executor,execution_mode,directory/'results',directory],
+                        execution_mode='--active-image-reset-recovery' if reset else '--active-image-permission-recovery' if permission else '--active-image-source-recovery'
+                        running=subprocess.Popen([executor,execution_mode,directory/'results',directory,*([reset] if reset else [])],
                             env=env,stdout=output,stderr=subprocess.STDOUT)
                     destination=directory/'results'/('round-'+str(index))
-                    wait_file(local/'record-0.held.json',bridge,running,args.timeout)
-                    held=strict_json(local/'record-0.held.json')
-                    if index==0:proof(held)
-                    atomic(local/'record-0.held.response',(held_bytes if index else failed_held_bytes)(held))
-                    wait_file(local/'record-0.retired.json',bridge,running,args.timeout)
-                    retired=strict_json(local/'record-0.retired.json')
-                    response=(retired_bytes if index else failed_retired_bytes)(retired,held)
-                    if index==0:proof(retired,held)
-                    for path,identities in input_sets:unchanged_inputs(path,identities)
-                    with SparseMemory(baseline) as before,SparseMemory(destination/'record-0.memory') as after:
-                        if index:verify(before,after,description)
-                        elif permission:verify_image_permission_fault(before,after,description,permission=permission)
-                        else:verify_source_read_fault(before,after,description)
-                    atomic(local/'record-0.retired.response',response)
+                    if reset and index==0:
+                        held=exchange_reset_receipts(args,local,bridge,running,destination,baseline,description,input_sets,reset)
+                    else:
+                        wait_file(local/'record-0.held.json',bridge,running,args.timeout)
+                        held=strict_json(local/'record-0.held.json')
+                        if index==0:proof(held)
+                        atomic(local/'record-0.held.response',(held_bytes if index else failed_held_bytes)(held))
+                        wait_file(local/'record-0.retired.json',bridge,running,args.timeout)
+                        retired=strict_json(local/'record-0.retired.json')
+                        response=(retired_bytes if index else failed_retired_bytes)(retired,held)
+                        if index==0:proof(retired,held)
+                        for path,identities in input_sets:unchanged_inputs(path,identities)
+                        with SparseMemory(baseline) as before,SparseMemory(destination/'record-0.memory') as after:
+                            if index:verify(before,after,description)
+                            elif permission:verify_image_permission_fault(before,after,description,permission=permission)
+                            else:verify_source_read_fault(before,after,description)
+                        atomic(local/'record-0.retired.response',response)
                     wait_file(local/'cleanup_wait',bridge,running,args.timeout)
                     require(bridge.poll() is None and running.poll() is None,'recovery owner exited before independent cleanup authorization')
                     atomic(local/'BEGIN_CLEANUP',cleanup_authorization())
                     wait_file(local/'cleanup.json',bridge,running,args.timeout)
                     checked_cleanup(strict_json(local/'cleanup.json'))
                     wait_file(local/'executor.done',bridge,running,args.timeout)
-                    done=checked_recovery_round(strict_json(local/'executor.done'),index,held,previous,permission=permission)
+                    done=checked_recovery_round(strict_json(local/'executor.done'),index,held,previous,permission=permission,reset=reset)
                     cleaned=destination/'record-0.cleaned.memory'
-                    with SparseMemory(destination/'record-0.memory') as before,SparseMemory(cleaned) as after:
-                        verify_cleaned_memory(before,after,tables)
+                    if reset and index==0:
+                        from compute_image_reset import verify_cancelled_cleanup
+                        with SparseMemory(baseline) as initial,SparseMemory(destination/'record-0.memory') as cancelled,SparseMemory(cleaned) as after:
+                            verify_cancelled_cleanup(initial,cancelled,after,description,reset,tables)
+                    else:
+                        with SparseMemory(destination/'record-0.memory') as before,SparseMemory(cleaned) as after:
+                            verify_cleaned_memory(before,after,tables)
                     if index==0:require(running.poll() is None,'recovery execution DUT exited between the two original jobs')
                     else:require(running.wait(timeout=args.timeout)==0,'recovery DUT rejected final context cleanup')
                     qualified(env,output)
@@ -234,6 +275,9 @@ def exchange_recovery(args,commands,directory,executor,env,qualified,qualified_p
                         index,done['commandId'],done['startCycle'],done['endCycle'],done['physicalReadFaults']),flush=True)
     except BaseException:
         for local in directory.glob('round-*'):
+            for suffix in ('error','record-0.reset.error') if reset else ('error',):
+                if not (local/suffix).exists():
+                    atomic(local/suffix,b'controller failed; original owner cleanup not authorized\n')
             path=local/'bridge.log'
             if path.is_file():print(path.read_text(errors='replace')[-10000:],end='')
         raise
@@ -259,11 +303,12 @@ def main():
     mode.add_argument('--expect-image-source-fault', action='store_true')
     mode.add_argument('--image-source-recovery', action='store_true')
     mode.add_argument('--image-permission-recovery',choices=('read','write'))
+    mode.add_argument('--image-reset-recovery',choices=('read','write'))
     args = parser.parse_args()
     require(0 < args.timeout <= 604800, 'timeout must be 1..604800 seconds')
     command = strict_json(args.bridge_command)
-    if args.image_source_recovery or args.image_permission_recovery:
-        command=recovery_commands(command,permission=args.image_permission_recovery)
+    if args.image_source_recovery or args.image_permission_recovery or args.image_reset_recovery:
+        command=recovery_commands(command,permission=args.image_permission_recovery,reset=args.image_reset_recovery)
     else:
         require(type(command) is list and command and all(type(x) is str and x for x in command),
                 'bridge command must be a nonempty argv array')
@@ -273,7 +318,7 @@ def main():
     require(executor.is_file() and not executor.is_symlink() and qualification.is_file() and not qualification.is_symlink(),
             'executor/qualification must be original regular files')
     qualified_profile=strict_json(qualification).get('profile')
-    if args.expect_image_source_fault or args.image_source_recovery or args.image_permission_recovery:
+    if args.expect_image_source_fault or args.image_source_recovery or args.image_permission_recovery or args.image_reset_recovery:
         from owner_resource_contract import IMAGE_FLOAT_PROFILE
         require(args.case=='image-atomic-buffer-r32f' and qualified_profile==IMAGE_FLOAT_PROFILE,
                 'source fault requires the original buffer exchange and qualified float executor')
@@ -317,9 +362,10 @@ def main():
                 subprocess.run([executor, '--probe-profile', directory / 'profile.json'], env=env,
                     stdout=log, stderr=subprocess.STDOUT, timeout=args.timeout, check=True)
             atomic(directory / 'profile.bin', profile_bytes(strict_json(directory / 'profile.json')))
-            if args.image_source_recovery or args.image_permission_recovery:
+            if args.image_source_recovery or args.image_permission_recovery or args.image_reset_recovery:
                 exchange_recovery(args,command,directory,executor,env,qualified,qualified_profile)
-                print('actual compute '+('image permission fault' if args.image_permission_recovery else 'source fault')+
+                print('actual compute '+('delayed '+args.image_reset_recovery+' response reset' if args.image_reset_recovery else
+                      'image permission fault' if args.image_permission_recovery else 'source fault')+
                       ' then healthy same-ID recovery, retained RAM and context cleanup: PASS')
                 return
             with (directory / 'bridge.log').open('w') as log, (directory / 'execution.log').open('w') as output:

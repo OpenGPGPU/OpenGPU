@@ -207,7 +207,8 @@ class ExecutorTests(unittest.TestCase):
         path,record=self.fixture(profile=q.IMAGE_FLOAT_PROFILE)
         for name in ('driver/opengpu_hw.c','driver/opengpu_device.h',
                      'driver/tests/opengpu_compute_host_reset.inc',
-                     'driver/tests/compute_host_reset_test.h','scripts/test_compute_host.py'):
+                     'driver/tests/compute_host_reset_test.h','scripts/test_compute_host.py',
+                     'scripts/compute_image_reset.py'):
             with self.subTest(source=name):
                 self.assertIn(name,q.checker_files('compute'))
                 self.assertIn(name,record['source_sha256'])

@@ -2,6 +2,7 @@
 // producer supplies the original memory; an independent byte oracle is required.
 #include "compute_owner_capture.hpp"
 #include "native_owner_runtime.hpp"
+#include "compute_owner_reset.hpp"
 #include <cstdlib>
 
 namespace compute_owner {
@@ -41,20 +42,7 @@ ComputeHeld hold_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memor
     ImageFailure failure=ImageFailure::none,uint64_t prior_read_faults=0,const Traffic *prior_traffic=nullptr) {
   require(failure==ImageFailure::none || failure==ImageFailure::source_read || failure==ImageFailure::permission,
     "unknown compute failure mode");
-  capture.validate();
-  require(agent.drained() && !sim.model->io_m_irq,"compute starts before prior drain");
-  require(agent.traffic.read_faults==prior_read_faults && !agent.traffic.write_faults &&
-      agent.injected_read_faults()==prior_read_faults,"compute began with unexpected prior physical faults");
-  const auto probe_traffic=agent.traffic;
-  if(prior_traffic)traffic_unchanged(*prior_traffic,probe_traffic);
-  const auto profile=probe_profile(sim,agent,bus,true,compute_owner_factory(),
-    prior_traffic?prior_traffic:prior_read_faults?&probe_traffic:nullptr);
-  traffic_unchanged(probe_traffic,agent.traffic);
-  std::map<uint32_t,uint32_t> captured;
-  for(const auto &r:capture.discovery)captured.emplace(r.address,r.value);
-  for(const auto *words:{&profile.words,&profile.registers})for(const auto &r:*words)
-    require(captured.at(r.address)==r.value,"compute capture differs from actual DUT observations");
-  verify_readonly(memory,memory,capture.writable);
+  verify_compute_upload(sim,agent,bus,memory,capture,prior_read_faults,prior_traffic);
   ComputeHeld held;held.initial=memory;held.start=agent.traffic;held.start_cycles=bus.cycles;held.failure=failure;
   held.prior_read_faults=prior_read_faults;
   bus.begin_record(capture.max_cycles);
@@ -186,9 +174,10 @@ inline void authorize_recovery_round(const std::filesystem::path &session,unsign
   require(read_le(in,4)==index && in.peek()==EOF,"wrong recovery round authorization");
 }
 inline void active_image_recovery(int argc,char **argv,const std::filesystem::path &output,
-    const std::filesystem::path &session,std::chrono::milliseconds timeout,bool permission=false) {
+    const std::filesystem::path &session,std::chrono::milliseconds timeout,bool permission=false,unsigned reset=0) {
   require(compute_owner_factory()==OwnerFactory::image_float_stage,
     "image recovery requires the distinct complete float factory");
+  require(reset<=2 && !(reset && permission),"ambiguous image recovery mode");
   require(std::filesystem::is_directory(session) && !std::filesystem::is_symlink(session) &&
     !std::filesystem::exists(output),"invalid recovery session or existing output");
   const auto first_session=session/"round-0";
@@ -214,10 +203,13 @@ inline void active_image_recovery(int argc,char **argv,const std::filesystem::pa
     const auto destination=output/("round-"+std::to_string(index));
     require(std::filesystem::create_directory(destination),"recovery output round already exists");
     const auto start=bus.cycles;
-    if(!index && !permission)arm_source_fault(agent,local,timeout);
+    if(!index && !permission && !reset)arm_source_fault(agent,local,timeout);
     const auto failure=index?ImageFailure::none:permission?ImageFailure::permission:ImageFailure::source_read;
-    active_compute(sim,agent,bus,memory,capture,destination,local,timeout,failure,prior_faults,index?&prior_traffic:nullptr);
-    if(!index && !permission)agent.disarm_read_faults();
+    if(!index && reset)
+      active_cancel_compute(sim,agent,bus,memory,capture,destination,local,
+        reset==1?ResponseChannel::read:ResponseChannel::write,timeout);
+    else active_compute(sim,agent,bus,memory,capture,destination,local,timeout,failure,prior_faults,index?&prior_traffic:nullptr);
+    if(!index && !permission && !reset)agent.disarm_read_faults();
     const auto completed_traffic=agent.traffic;
     const auto status=bus.read(GPU_REG_UCMD_STATUS),irq=bus.read(GPU_REG_IRQ);
     require(status==GPU_UCMD_STATUS_READY && irq==GPU_IRQ_ENABLE && !sim.model->io_m_irq && agent.drained() &&
@@ -225,15 +217,18 @@ inline void active_image_recovery(int argc,char **argv,const std::filesystem::pa
       "recovery owner did not release its actual contexts and IRQ");
     traffic_unchanged(completed_traffic,agent.traffic);
     const auto faults=agent.injected_read_faults();
-    require((permission?faults==0:faults>0) && agent.traffic.read_faults==faults && !agent.traffic.write_faults &&
+    require(((permission || reset)?faults==0:faults>0) && agent.traffic.read_faults==faults && !agent.traffic.write_faults &&
       (!index || faults==prior_faults),"recovery lost physical fault history or incurred a new error");
     memory.write((destination/"record-0.cleaned.memory").string());
     atomic_json(local/"executor.done",[&](auto &out) {
-      out<<"{\"schema\":\"opengpu-compute-image-recovery-round-v1\",\"round\":"<<index
+      out<<"{\"schema\":\"opengpu-compute-image-"<<(reset?"reset-recovery":"recovery")<<"-round-v1\",\"round\":"<<index
         <<",\"commandId\":"<<command_id<<",\"resetCount\":1,\"ramReplaced\":false,\"externalDrained\":true"
         <<",\"sourceQualificationRequired\":true,\"independentBytesRequired\":true"
         <<",\"physicalReadFaults\":"<<agent.traffic.read_faults<<",\"injectedReadFaults\":"<<faults
-        <<",\"physicalWriteFaults\":0,\"startCycle\":"<<start<<",\"endCycle\":"<<bus.cycles<<"}\n";
+        <<",\"physicalWriteFaults\":0,\"startCycle\":"<<start<<",\"endCycle\":"<<bus.cycles;
+      if(reset)out<<",\"channel\":\""<<(reset==1?"read":"write")<<"\",\"unifiedResetRequests\":1"
+        <<",\"heldReadCycles\":"<<agent.held_read_cycles()<<",\"heldWriteCycles\":"<<agent.held_write_cycles();
+      out<<"}\n";
     });
     prior_faults=faults;prior_traffic=agent.traffic;
   }
@@ -255,6 +250,10 @@ int main(int argc,char **argv) {
         std::string(argv[1])=="--active-image-permission-recovery")) {
       active_image_recovery(argc,argv,argv[2],argv[3],response_timeout,
         std::string(argv[1])=="--active-image-permission-recovery");return 0;
+    }
+    if(argc==5 && std::string(argv[1])=="--active-image-reset-recovery") {
+      const std::string channel=argv[4];require(channel=="read" || channel=="write","unknown image reset response channel");
+      active_image_recovery(argc,argv,argv[2],argv[3],response_timeout,false,channel=="read"?1:2);return 0;
     }
     const bool source_fault=argc==5 && std::string(argv[1])=="--active-image-source-fault";
     require(argc==5 && (std::string(argv[1])=="--active-owner" || source_fault),

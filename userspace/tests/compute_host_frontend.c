@@ -31,6 +31,7 @@ static unsigned next_bo=1,next_sync=1,submitted,retired;
 static const char *directory;
 static int capture_only,expect_image_source_fault,uniform_case,dynamic_case,address_case,counter_case,counter_dynamic,counter_coexist;
 static unsigned image_permission_fault;
+static unsigned image_reset;
 static int expect_image_failure(void){return expect_image_source_fault || image_permission_fault;}
 static unsigned dynamic_operation,dynamic_signed;
 static unsigned address_kind,counter_operation,counter_index;
@@ -79,6 +80,10 @@ static void marker(const char *name,const char *text)
 static struct compute_host_held_receipt held(FILE *f)
 {struct compute_host_held_receipt h;h.command_id=read32(f);h.completion=read32(f);h.processed_bytes=read64(f);
  h.legacy_status=read32(f);h.status=read32(f);h.irq=read32(f);h.irq_asserted=read32(f);return h;}
+static struct compute_host_reset_receipt reset_receipt(FILE *f)
+{struct compute_host_reset_receipt r;
+ r.command_id=read32(f);r.legacy_status=read32(f);r.status=read32(f);
+ r.irq=read32(f);r.irq_asserted=read32(f);r.external_drained=read32(f);return r;}
 static int result(int error){if(error){errno=-error;return -1;}return 0;}
 static int wait_execution(void)
 {
@@ -89,6 +94,17 @@ static int wait_execution(void)
  path(output,"record-0.capture");assert(!compute_host_capture(session,output,1000000000u,37));
  marker("READY",capture_only?"compute CPU capture only; no DUT execution\n":"compute active capture ready\n");
  if(capture_only){puts("actual Mesa/Linux compute CPU capture: PASS (no GPU execution)");fflush(stdout);_Exit(0);}
+ if(image_reset){
+  FILE *f=wait_file("record-0.reset.held.response");magic(f,"OGCRH001");
+  struct compute_host_reset_receipt h=reset_receipt(f);end(f);
+  assert(!compute_host_abort_captured(session,&h,directory));
+  f=wait_file("record-0.reset.ack.response");magic(f,"OGCRA001");
+  struct compute_host_reset_receipt ack=reset_receipt(f);end(f);
+  path(output,"record-0.reset.retire");assert(!compute_host_drain_reset(session,&ack,output));
+  f=wait_file("record-0.reset.retired.response");magic(f,"OGCRD001");
+  struct compute_host_reset_receipt done=reset_receipt(f);end(f);
+  assert(!compute_host_observe_reset_retired(session,&done));retired=1;return 0;
+ }
  FILE *f=wait_file("record-0.held.response");magic(f,expect_image_failure()?"OGCFH001":"OGCMH001");struct compute_host_held_receipt h=held(f);end(f);
  path(output,"record-0.retire");assert(!(expect_image_failure()?compute_host_drain_failed(session,&h,output):compute_host_drain_held(session,&h,output)));
  f=wait_file("record-0.retired.response");magic(f,expect_image_failure()?"OGCFR001":"OGCMR001");struct compute_host_retired_receipt r={.held=held(f)};
@@ -217,12 +233,16 @@ int main(int argc,char **argv)
 {
  assert(argc>=5);uint64_t physical_base=0;
  for(int i=5;i<argc;i++){
-  if(!strcmp(argv[i],"--capture-only")){assert(!capture_only && !expect_image_failure());capture_only=1;}
-  else if(!strcmp(argv[i],"--expect-image-source-fault")){assert(!capture_only && !expect_image_failure());expect_image_source_fault=1;}
+  if(!strcmp(argv[i],"--capture-only")){assert(!capture_only && !expect_image_failure() && !image_reset);capture_only=1;}
+  else if(!strcmp(argv[i],"--expect-image-source-fault")){assert(!capture_only && !expect_image_failure() && !image_reset);expect_image_source_fault=1;}
   else if(!strcmp(argv[i],"--expect-image-permission-fault")){
-   assert(!capture_only && !expect_image_failure() && ++i<argc);
+   assert(!capture_only && !expect_image_failure() && !image_reset && ++i<argc);
    image_permission_fault=!strcmp(argv[i],"read")?1:!strcmp(argv[i],"write")?2:0;
    assert(image_permission_fault);
+  }
+  else if(!strcmp(argv[i],"--expect-image-reset")){
+   assert(!capture_only && !expect_image_failure() && !image_reset && !strcmp(argv[4],"image-atomic-buffer-r32f") && ++i<argc);
+   image_reset=!strcmp(argv[i],"read")?1:!strcmp(argv[i],"write")?2:0;assert(image_reset);
   }
   else if(!strcmp(argv[i],"--physical-base")){
    assert(!physical_base && ++i<argc);const char *v=argv[i];assert(*v);
@@ -333,7 +353,8 @@ int main(int argc,char **argv)
  marker("cleanup_wait","actual compute retired; independent byte/source/guard authorization required\n");
  f=wait_file("BEGIN_CLEANUP");magic(f,"OGCMBA01");assert(read32(f)==1);end(f);
  assert(!compute_host_begin_cleanup(session,directory));
- assert(!(expect_image_failure()?compute_host_finish_failed_observed(session):compute_host_finish_observed(session)));
+ assert(!(image_reset?compute_host_finish_cancelled_observed(session):
+  expect_image_failure()?compute_host_finish_failed_observed(session):compute_host_finish_observed(session)));
  assert(!compute_host_end_cleanup(session));
  f=wait_file("FINAL_RESPONSE");magic(f,"OGCMOK01");assert(read32(f)==1);end(f);
  /* End this dedicated source process after the actual Linux file/context

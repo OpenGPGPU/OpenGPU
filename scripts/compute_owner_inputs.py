@@ -52,13 +52,21 @@ def guarded(request_path, builder_argv):
     matrix=image_matrix or counter_matrix
     source_fault='--expect-image-source-fault' in argv
     permission=None
+    reset=None
+    require(argv.count('--expect-image-reset')<=1,'repeated image reset')
+    if '--expect-image-reset' in argv:
+        index=argv.index('--expect-image-reset');require(index+1<len(argv),'missing image reset channel')
+        reset=argv[index+1]
+        require(reset in ('read','write') and not source_fault and '--expect-image-permission-fault' not in argv and
+                case=='image-atomic-buffer-r32f' and not matrix and '--capture-only' not in argv,
+                'reset requires one original live float buffer and distinct reset receipts')
     require(argv.count('--expect-image-permission-fault')<=1,'repeated image permission denial')
     if '--expect-image-permission-fault' in argv:
         index=argv.index('--expect-image-permission-fault')
         require(index+1<len(argv),'missing denied image access')
         permission=argv[index+1]
         require(permission in ('read','write') and not source_fault and case=='image-atomic-buffer-r32f' and
-                not matrix and '--capture-only' not in argv,'permission denial requires one original live float buffer')
+                not reset and not matrix and '--capture-only' not in argv,'permission denial requires one original live float buffer')
     require(not source_fault or (case=='image-atomic-buffer-r32f' and not matrix and '--capture-only' not in argv),
             'source fault requires one original live R32F buffer recipe')
     allocation_base=None
@@ -128,6 +136,7 @@ def guarded(request_path, builder_argv):
             require(not matrix or command[-1]=='--capture-only', 'counter matrix attempted actual execution')
             expected_tail=(['--expect-image-source-fault'] if source_fault else
                            ['--expect-image-permission-fault',permission] if permission else
+                           ['--expect-image-reset',reset] if reset else
                            ['--capture-only'] if '--capture-only' in argv else [])
             if allocation_base is not None:expected_tail+=['--physical-base',str(allocation_base)]
             require(command[5:]==expected_tail, 'original producer execution mode changed')
