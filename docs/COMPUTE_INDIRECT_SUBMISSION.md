@@ -8,6 +8,42 @@ reserved fields and shader sandbox retain their existing checks. Existing
 direct ioctls are unchanged. Query
 `OPENGPU_DRIVER_FEATURE_COMPUTE_INDIRECT_RESOURCES` before using this interface.
 
+## Version 2: one snapshot for dispatch and shader counts
+
+Query `OPENGPU_DRIVER_FEATURE_COMPUTE_INDIRECT_RESOURCES_V2` (bit44) before
+selecting `OPENGPU_COMPUTE_INDIRECT_VERSION2`. The command's wire size and field
+offsets remain unchanged; the original `pad[2]` spelling remains available to
+version1 callers. Version2 uses `v2.flags` and requires `v2.reserved == 0`.
+Unknown versions and flag bits remain rejected. Version1 retains its original
+counter requirement and zero-padding checks.
+
+An all-zero nested counter source omits the counter service in version2. A
+present source retains its existing original-GEM, count, permission and
+dependency checks. Each storage, image, texture and uniform domain remains
+independently usable; the complete existing graph remains supported with or
+without a counter. Bit44 requires discovered GCI1, protected VM and unified
+commands; an omitted counter does not require counter transport. The existing
+version1 feature bit26 retains its original discovery predicate.
+
+With `v2.flags == 0`, the shader uses its original kernarg. With
+`OPENGPU_COMPUTE_INDIRECT_KERNARG_COUNTS`, the shader's complete kernarg is the
+same immutable twelve-byte copy consumed by GCI1. Its x1 points to the snapshot
+base plus the preserved source-page offset, and shader admission is bounded to
+twelve bytes. The original kernarg binding must still provide at least twelve
+bytes. Any uniform private window uses that same twelve-byte bound. The
+existing R-only, NX, uncached snapshot mapping serves both readers. The driver
+leaves every original kernarg byte unchanged and retains the existing binding
+ownership through retirement.
+
+This supports the original compiler's `GRID_SIZE` loads at x1 offsets0/4/8:
+`gl_NumWorkGroups` and the indirect dispatch consume one producer-fenced copy.
+The original program bytes remain unchanged, and a later mutable-source update
+cannot change either reader's grid. Store attempts remain subject to the
+snapshot's R-only VM permission. Native GCI1, shader ISA, resource quantities
+and the supported CU capacities are unchanged.
+
+## Shared discovery and snapshot lifetime
+
 The platform DT property **`opengpu,gci1` promises that the fixed GCI1 MMIO
 window0x340..0x35f is mapped**. It is not an automatic-probing switch. When
 absent, the driver performs no GCI1 register reads and retains direct compute.
@@ -41,12 +77,13 @@ This is **immutable-snapshot indirect transport**, not live mutable GPU argument
 execution. The existing GCI reader has no caller-specific maximum-count
 comparator. Checking an original BO on the CPU and subsequently letting GCI
 read changing bytes would not preserve the admitted bound. No new pointer
-authority is granted: ordinary kernarg accesses still require the existing
-x1/x8 provenance, and group-derived resource offsets use checked services.
+authority is granted beyond the selected kernarg contract: argument accesses
+retain the existing x1/x8 provenance and its exact byte bound, and
+group-derived resource offsets use checked services.
 The512word/four-forward-state shader sandbox is unchanged. GLES/compiler
 integration and complete H7 remain open.
 
-The CPU checks exercise actual ioctl, reservation, scheduler, VM, MMIO, POP and
+The version1 CPU checks exercise actual ioctl, reservation, scheduler, VM, MMIO, POP and
 retirement bodies with modeled kernel/device primitives. They cover the
 complete512word resource/shared program,52refs/53locks, producer waits/errors,
 unique12-byte copy, two roots, zero/full-u32 counts, partial-map failures,
@@ -59,6 +96,64 @@ python3 scripts/test_compute_feature_query.py
 python3 scripts/test_arti_small_smoke_args.py
 bash scripts/test_scripts.sh
 ```
+
+## Version 2 source validation and P09 limits
+
+Source `82f2447acda2cd6597723c536417a307aab2abae` passes Clang and Linux
+GCC13.3 ASan/UBSan checks using the actual production ioctl, scheduler,
+submission and retirement bodies with modeled kernel/device primitives.
+The tests cover nine resource combinations, distinct queued snapshots, one
+copy after the actual source-reservation wait, immutable original kernarg
+guards, first/last/crossing-page views, zero/full-u32 and large valid counts,
+u64 product overflow, strict twelve-byte shader bounds, invalid version/flags,
+failed producer fences, allocation/map rollback and healthy reuse. Original
+v1 counter/uniform/image/texture paths also pass. A standard C++17
+`-pedantic-errors` check preserves both public member spellings and the wire
+layout. The complete float-host C/canonical transport regression also passes
+208 healthy,208 failed and208 cancelled image-view cases, plus invalid BUSY
+and cleanup-ACK retention checks. These are CPU transport checks; no shader
+executes in these fixtures.
+
+A fresh configured Linux7.2/AArch64 module build with GCC15.2 passes MODPOST
+and `gpu_drv.ko` linkage in17.137s, with peak aggregate RSS347521024 bytes under
+the512MiB/180s guard. All157 original/copied driver inputs and16290 shared
+header/configuration/script/tool inputs remain unchanged;840 actual command
+dependencies are checked. The32 object outputs and AArch64 relocatable module
+are inspected, and the module is not loaded. Private sources, outputs, logs
+and the Linux GCC test container are removed after verification.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 \
+CC='clang -fsanitize=address,undefined -fno-omit-frame-pointer' \
+  python3 -B scripts/test_compute_uniform_flow.py
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_compute_feature_query.py
+# On Linux, repeat with CC='gcc -fsanitize=address,undefined -fno-omit-frame-pointer'.
+env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 OPENGPU_TEST_SANITIZERS=1 \
+  python3 -B scripts/test_compute_host.py --image-float-stage --canonical-root .
+```
+
+For Kbuild, copy the current top-level driver `.c`, `.h` and `Makefile` inputs
+into a private read-only source directory. Use separate output/temp directories
+and the configured ARM64 kernel and cross-tools; bind original/copy/shared
+inputs before and after and check the actual `.cmd` dependency closure:
+
+```sh
+TMPDIR="$PRIVATE_TMP" python3 -B scripts/run_owner_bounded.py \
+  --memory-mib 512 --timeout-seconds 180 -- \
+  /opt/homebrew/bin/gmake -C "$KERNEL_BUILD" \
+  M="$PRIVATE_SRC" MO="$PRIVATE_OUT" ARCH=arm64 \
+  CROSS_COMPILE=/opt/homebrew/bin/aarch64-linux-gnu- \
+  KCONFIG_NOSILENTUPDATE=1 -j1 V=1 modules
+```
+
+This source stage does not close P09. Pipe/Gallium v2 routing, a distinct
+original opcode14 capture and current complete-DUT execution of original
+shader/GPU-produced three-dimensional grids remain required, including source
+fences/private snapshots, zero/extreme/out-of-bounds inputs, failures and
+healthy reuse. The alignment count stays8/40. The earlier version1 guest
+results below retain their original source/model scope and do not qualify v2.
+
+## Earlier version1 guest qualification
 
 An explicit local guest qualification uses the same original full resource
 and shared-memory programs: twelve16KiB blocks,1024defaults,32textures,
