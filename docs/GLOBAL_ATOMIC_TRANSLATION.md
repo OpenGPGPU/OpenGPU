@@ -126,3 +126,33 @@ sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
   'testOnly opengpu.core.memory.L2AtomicWriteFaultSpec -- -z "drain shared L1 aliases"'
 ```
+
+## Original global AMO source corpus
+
+`scripts/compute_global_atomic_cases.py` defines 24 driver-level RV32 programs
+for the existing writable-kernarg word-atomic gate. Six two-operation families
+cover all ten relaxed word operations, including independently observable CAS
+winners and misses. The target is at byte 0, 4092, 4096 or 8188 of an original
+8-KiB kernarg, covering both sides of a page boundary and the final whole word.
+Four workgroups each contain one sixteen-lane warp. Scalar AMOs execute once
+per warp: there are four competing scalar callers and eight source events,
+with eight distinct old-word slots selected by the original launch group ID.
+The source preserves the immutable x1 root and uses bounded forward branches,
+constant scalar-store offsets and a fence between each caller's two AMOs.
+
+All 24 programs pass the compiled production validator. Their missing-feature
+controls and 1,152 individual malformed AMO mutations reject, including aq/rl,
+wide operations, LR, undefined addresses and writes to the immutable root.
+Literal CAS histories check both winning-caller identity and every returned
+old word. The source and existing atomic-order suite also pass with the native
+admission helper built under ASan/UBSan. Source uploads contain only the initial
+target and output guards.
+
+These checks establish source admission, not actual GPU execution. Original
+Linux submission/capture, private Sv32 mappings, complete-host returned bytes,
+delayed acknowledgments, fault recovery and cached-alias behavior retain their
+separate P10 acceptance gates. No generated kernel or CPU result is retained.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_compute_global_atomic_cases.py
+```
