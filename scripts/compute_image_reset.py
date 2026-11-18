@@ -1,12 +1,11 @@
-"""Original R32F cancellation receipts and independent drained-kernel bytes.
+"""Original R32F cancellation receipts and independent accepted-work bytes.
 
 No shader is interpreted and no returned memory is manufactured. Reset
 observations are distinct from both successful and failed kernel completions.
 """
 import struct
 from compute_owner_protocol import uint, required_flags, RECOVERY_CASE
-from compute_image_source import recipe, verify_cleaned_memory
-from compute_owner_oracle import verify
+from compute_image_source import recipe, texel_address, atomic_values, verify_cleaned_memory
 
 
 def require(value, message):
@@ -83,16 +82,57 @@ def reset_receipt_bytes(value, phase, channel, previous=None):
                              int(value['irqAsserted']),int(value['externalDrained']))
 
 
-def verify_cancelled_memory(initial, returned, description, channel):
-    """A held response proves kernel admission; reset drains that live kernel.
+def _cancel_words(initial, description, channel):
+    p,output,images=recipe(initial,description)
+    words={};sources=set()
+    def word(address):return struct.unpack('<I',initial.read(address,4))[0]
+    def grant(address,values):
+        require(address%4==0 and address not in words,'cancel word is unaligned or aliased')
+        words[address]=set(values)
+    for invocation in range(8):
+        source=texel_address(images[0],p,0,invocation)
+        old,final=atomic_values(p,word(source),invocation)
+        # Every source R response is hidden before exposure in a cold DUT.
+        # Only the first exchange can have been offered; its accepted atomic
+        # may finish the write while cancellation suppresses vector commit.
+        grant(source,old[:2] if channel=='read' else [*old,final]);sources.add(source)
+        if channel=='write':
+            destination=texel_address(images[1],p,1,invocation)
+            grant(destination,[word(destination),final])
+            for access,value in enumerate(old):
+                address=output+4*(len(old)*invocation+access)
+                grant(address,[word(address),value])
+    return words,sources
 
-    GpuSystem blocks new host dispatch and waits for command processor,
-    dispatcher and shared L2 to retire before resetting. The original host
-    fence remains ECANCELED, but every original shader result must complete.
+
+def verify_cancelled_memory(initial, returned, description, channel):
+    """Keep only original program states at the actual cancellation cut.
+
+    Reset cancels CU image/storage/uniform services while waiting for their
+    accepted operations to drain. An accepted atomic may write its source
+    even when its result is suppressed. No CPU result or memory is created.
     """
     require(channel in ('read','write'),'unknown cancellation channel')
     require(description.get('sourceCase')==RECOVERY_CASE,'wrong cancelled source recipe')
-    verify(initial,returned,description)
+    words,sources=_cancel_words(initial,description,channel)
+    require(initial.ranges==returned.ranges,'cancellation replaced original RAM')
+    for first,end,_ in initial.ranges:
+        for address in range(first,end,4096):
+            count=min(4096,end-address)
+            old,new=initial.read(address,count),returned.read(address,count)
+            if old==new:continue
+            require(address%4==0 and count%4==0,'cancellation changed a partial allocation word')
+            for offset in range(0,count,4):
+                a,b=struct.unpack_from('<I',old,offset)[0],struct.unpack_from('<I',new,offset)[0]
+                if a==b:continue
+                physical=address+offset
+                require(physical in words and b in words[physical],
+                    'invalid cancelled original word: physical=0x%x before=0x%08x after=0x%08x allowed=%s'%(
+                        physical,a,b,[hex(v) for v in sorted(words.get(physical,()))]))
+    if channel=='write':
+        require(any(initial.read(a,4)!=returned.read(a,4) for a in sources),
+                'write-response hold lacks committed original source data')
+    return dict(changedSourceWords=sum(initial.read(a,4)!=returned.read(a,4) for a in sources))
 
 
 def verify_cancelled_cleanup(initial, cancelled, cleaned, description, channel, tables):

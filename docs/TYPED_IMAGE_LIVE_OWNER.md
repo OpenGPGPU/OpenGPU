@@ -490,22 +490,27 @@ Linux abort/reset traces. The native parser requires the request ending at
 RESET, the IRQ-enable tail and the original six-action no-POP IRQ retirement.
 A SUBMIT while reset is BUSY must be rejected. Thirty-two extra clocks after
 the drained ACK must preserve every RAM byte and external traffic count before
-any new command. Independent complete bytes must pass before the controller
+any new command. Independent cancellation bytes must pass before the controller
 relays the ACK to the original IRQ handler; cleanup requires its own subsequent
 authorization and actual PTE/context acknowledgements.
 `STATUS.READY` reports staging-queue capacity and may remain set alongside
 `RESET_BUSY|VM_BUSY`; it cannot authorize progress or an early drain ACK.
 
-Both response holds witness an admitted kernel. `GpuSystem` blocks new host
-dispatch, drains the admitted kernel and shared L2, then resets the command
-path. Its host fence remains `ECANCELED`; accepted atomic writes are not rolled
-back. Both cuts therefore require all forty original old-value words and both
-images' final texels, with every other byte guarded. The cold read hold must
-still preserve the original upload before RESET. Independent cleanup checks
-preserve all completed data and permit only original valid PTE clears, with all
-private translations revoked. Every old owner's cleaned byte remains guarded
-through the healthy round. ACK and IRQ-retirement RAM/traffic checks remain
-strict and report their phase and first offending byte on failure.
+`GpuSystem` blocks new host dispatch and directly cancels CU image, storage,
+uniform and related services, then waits for accepted work and shared L2 to
+drain before resetting. An accepted atomic may update memory while its
+cancelled vector commit is suppressed; the host fence remains `ECANCELED`.
+Every cold source R response is held before exposure, so that cut permits only
+each invocation's original source word or its first signed-zero exchange.
+Output and destination bytes remain original. A B-held cut can occur after
+earlier program steps; it permits only original complete exchange states and
+independently expected old-value/destination words, requiring committed source
+data. All code, arguments, descriptors, PTEs, padding and unused texels stay
+guarded. Independent cleanup preserves every cancelled data byte and permits
+only original valid PTE clears, with all private translations revoked. Every
+old owner's cleaned byte stays guarded through the healthy round. ACK and
+IRQ-retirement RAM/traffic checks remain strict and report their phase and
+first offending byte on failure.
 
 Fifty-one Python source/protocol/byte/lifetime checks and the five fixed C++ compute
 drivers pass; the C++ guards use ASan/UBSan and verify reset JSON interoperability

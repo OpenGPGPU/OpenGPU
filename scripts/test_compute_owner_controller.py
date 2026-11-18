@@ -59,7 +59,8 @@ class Controller(unittest.TestCase):
                 for phase in ('held','busy','ack','retired'):
                     (local/('record-0.reset.'+phase+'.json')).write_text(json.dumps(observation(phase,'write')))
                 with patch('compute_owner_controller.SparseMemory'),\
-                     patch('compute_image_reset.verify_cancelled_memory',side_effect=ValueError('bad partial bytes') if fail else None) as verify:
+                     patch('compute_image_reset.verify_cancelled_memory',side_effect=ValueError('bad partial bytes') if fail else None,
+                           return_value=dict(changedSourceWords=1)) as verify:
                     invoke=lambda:exchange_reset_receipts(SimpleNamespace(timeout=1),local,Process(None),Process(None),
                         local/'results',local/'union.memory',{},[],'write')
                     if fail:
