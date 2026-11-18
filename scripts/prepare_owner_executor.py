@@ -25,7 +25,8 @@ from owner_resource_contract import (COMPUTE_STAGE, FULL_COMPUTE_CONTRACTS, PROF
 
 ROOT = Path(__file__).resolve().parents[1]
 BLIT_KIND = 'framebuffer-blit-sample'
-KINDS = ('native', 'compute', 'native-sample', 'native-sample-graphics', BLIT_KIND)
+INDIRECT_KIND = 'compute-indirect'
+KINDS = ('native', 'compute', 'native-sample', 'native-sample-graphics', BLIT_KIND, INDIRECT_KIND)
 SAMPLE_KINDS = ('native-sample', 'native-sample-graphics')
 SAMPLE_FACTORY_KINDS = (*SAMPLE_KINDS, BLIT_KIND)
 SHARED = ('scripts/native_owner_runtime.hpp', 'scripts/native_owner_capture.hpp',
@@ -52,6 +53,13 @@ COMPUTE_CHECKERS = (
     'scripts/test_gallium_image_atomics.py',
     'scripts/test_compute_host.py', 'scripts/stage_mesa_shared_memory.py',
     'scripts/stage_mesa_buffer_txf_mask.py')
+INDIRECT_CHECKERS = (
+    'scripts/compute_indirect_protocol.py', 'scripts/compute_indirect_phase_protocol.py',
+    'scripts/compute_indirect_sources.py', 'scripts/compute_indirect_oracle.py',
+    'scripts/compute_indirect_controller.py', 'scripts/qualify_compute_indirect_owner.py',
+    'scripts/test_gallium_compute_indirect_host.py', 'scripts/test_compute_indirect_owner.py',
+    'scripts/test_compute_indirect_protocol.py', 'scripts/test_compute_indirect_capture.py',
+    'scripts/test_compute_indirect_capture.cpp', 'scripts/test_compute_owner_phase.cpp')
 COMPUTE_PRODUCER_ROOTS = (
     'userspace/tests/compute_host_frontend.c', 'userspace/tests/compute_host_gallium_stubs.c',
     'userspace/tests/cs_graphics_unused_stubs.c', 'userspace/tests/cs_glsl_frontend.cpp',
@@ -160,7 +168,8 @@ def require(condition, message):
 
 def profile_contract(profile, kind):
     require(kind in KINDS, 'unknown owner executor kind')
-    require((profile in SAMPLE_FACTORY_CONTRACTS if kind in SAMPLE_FACTORY_KINDS else
+    require((profile == IMAGE_FLOAT_PROFILE if kind == INDIRECT_KIND else
+             profile in SAMPLE_FACTORY_CONTRACTS if kind in SAMPLE_FACTORY_KINDS else
              profile == owner.PROFILE or ((profile == COMPUTE_STAGE or profile in FULL_COMPUTE_CONTRACTS) and kind == 'compute')),
             'unsupported factory for the selected owner executor kind')
     fields = dict(profile=profile)
@@ -174,6 +183,11 @@ def profile_contract(profile, kind):
 def driver_files(kind, profile=owner.PROFILE):
     require(kind in KINDS, 'unknown owner executor kind')
     profile_contract(profile, kind)
+    if kind == INDIRECT_KIND:
+        return ['scripts/compute_indirect_owner_driver.cpp', 'scripts/compute_owner_driver.cpp',
+                'scripts/compute_owner_capture.hpp', 'scripts/compute_owner_reset.hpp',
+                'scripts/compute_indirect_capture.hpp', 'scripts/compute_owner_phase.hpp',
+                'driver/opengpu_kernarg_va.h', *SHARED]
     if kind == BLIT_KIND:
         return ([f'scripts/image_float_framebuffer_blit_sample_owner_driver.cpp'] if profile==IMAGE_FLOAT_PROFILE else []) + ['scripts/native_framebuffer_blit_sample_driver.cpp',
                 'scripts/native_framebuffer_blit_driver.cpp',
@@ -303,12 +317,16 @@ def checker_files(kind):
             path = ROOT / name
             require(path.is_file() and path.resolve() == path, 'missing/aliased required blit checker: '+name)
         return tuple(dict.fromkeys((*CHECKERS, *BLIT_CHECKERS)))
-    if kind == 'compute':
-        for name in (*CHECKERS, *COMPUTE_CHECKERS):
+    if kind in ('compute', INDIRECT_KIND):
+        mandatory = (*COMPUTE_CHECKERS, 'scripts/compute_indirect_sources.py',
+                     *(INDIRECT_CHECKERS if kind == INDIRECT_KIND else ()))
+        for name in (*CHECKERS, *mandatory):
             path = ROOT / name
             require(path.is_file() and path.resolve() == path, 'missing/aliased compute checker: ' + name)
-        return tuple(dict.fromkeys((*CHECKERS, *COMPUTE_CHECKERS,
-            *graphics_producer_files(COMPUTE_PRODUCER_ROOTS, COMPUTE_GENERATED_INCLUDES))))
+        roots = (*COMPUTE_PRODUCER_ROOTS, *(
+            ('userspace/tests/compute_indirect_frontend.c',) if kind == INDIRECT_KIND else ()))
+        return tuple(dict.fromkeys((*CHECKERS, *mandatory,
+            *graphics_producer_files(roots, COMPUTE_GENERATED_INCLUDES))))
     if kind not in SAMPLE_KINDS:
         return CHECKERS
     # Every fixed consumer is mandatory even before it has a valid build. A

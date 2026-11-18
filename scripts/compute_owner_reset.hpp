@@ -5,9 +5,9 @@
 #include "native_owner_runtime.hpp"
 
 namespace compute_owner {
-template<class Sim>
+template<class Sim,class CaptureType>
 void verify_compute_upload(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
-    const ComputeCapture &capture,uint64_t prior_read_faults=0,const Traffic *prior_traffic=nullptr) {
+    const CaptureType &capture,uint64_t prior_read_faults=0,const Traffic *prior_traffic=nullptr) {
   capture.validate();
   require(agent.drained() && !sim.model->io_m_irq,"compute starts before prior drain");
   require(agent.traffic.read_faults==prior_read_faults && !agent.traffic.write_faults &&

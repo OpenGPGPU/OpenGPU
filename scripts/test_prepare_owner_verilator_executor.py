@@ -18,6 +18,8 @@ class VerilatorExecutorInputsTest(unittest.TestCase):
         names = set(verilator.CHECKERS)
         for profile in owner.SAMPLE_FACTORY_CONTRACTS:
             for kind in verilator.KINDS:
+                if kind == owner.INDIRECT_KIND and profile != owner.IMAGE_FLOAT_PROFILE:
+                    continue
                 names.update(owner.driver_files(kind, profile))
                 names.update(owner.checker_files(kind))
         names.update(verilator.DEPENDENCIES)
@@ -86,6 +88,8 @@ class VerilatorExecutorInputsTest(unittest.TestCase):
 
     def test_original_four_kinds_keep_their_distinct_wrapper_and_model(self):
         for kind in verilator.KINDS:
+            if kind == owner.INDIRECT_KIND:
+                continue  # This distinct kind intentionally rejects the sample-only factory.
             with self.subTest(kind=kind):
                 record, built = self.fixture(kind)
                 self.assertEqual(built['context']['driver'], str(self.root / owner.driver_files(kind, owner.SAMPLE_PROFILE)[0]))
@@ -101,12 +105,13 @@ class VerilatorExecutorInputsTest(unittest.TestCase):
                 record,built=self.fixture(kind,owner.IMAGE_FLOAT_PROFILE)
                 self.assertEqual(Path(built['context']['driver']).name,
                     Path(owner.driver_files(kind,owner.IMAGE_FLOAT_PROFILE)[0]).name)
-                self.assertTrue(Path(built['context']['driver']).name.startswith('image_float_'))
+                self.assertTrue(kind == owner.INDIRECT_KIND or
+                    Path(built['context']['driver']).name.startswith('image_float_'))
                 self.assertEqual(record['model']['profile'],owner.IMAGE_FLOAT_PROFILE)
                 for changed in ('profile','model'):
                     bad=copy.deepcopy(record)
                     if changed=='profile':
-                        bad.update(owner.profile_contract(owner.SAMPLE_PROFILE,kind))
+                        bad.update(owner.profile_contract(owner.SAMPLE_PROFILE,'compute'))
                     else:bad['model']['profile']=owner.SAMPLE_PROFILE
                     self.save(bad,built)
                     with self.subTest(changed=changed),self.assertRaises(RuntimeError):

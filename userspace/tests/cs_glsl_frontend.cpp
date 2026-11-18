@@ -406,8 +406,8 @@ extern "C" void cs_frontend_storage(void *handle, pipe_context *pipe,
     for (unsigned i = 0; i < 4; i++) {
         objects[i].buffer = resources[i];
         auto &binding = f->ctx.ShaderStorageBufferBindings[i];
-        binding.BufferObject = &objects[i]; binding.Offset = 0;
-        binding.Size = resources[i]->width0; binding.AutomaticSize = false;
+        binding.BufferObject = resources[i] ? &objects[i] : nullptr; binding.Offset = 0;
+        binding.Size = resources[i] ? resources[i]->width0 : 0; binding.AutomaticSize = false;
     }
     st_bind_cs_ssbos(&st);
     for (unsigned i = 0; i < 4; i++) f->ctx.ShaderStorageBufferBindings[i].BufferObject = nullptr;

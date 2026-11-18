@@ -37,8 +37,9 @@ struct ComputeHeld {
   uint64_t prior_read_faults=0;
   ImageFailure failure=ImageFailure::none;
 };
-template<class Sim>
-ComputeHeld hold_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,const ComputeCapture &capture,
+template<class Sim,class CaptureType>
+ComputeHeld hold_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,const CaptureType &capture,
+    uint32_t expected_completion,
     ImageFailure failure=ImageFailure::none,uint64_t prior_read_faults=0,const Traffic *prior_traffic=nullptr) {
   require(failure==ImageFailure::none || failure==ImageFailure::source_read || failure==ImageFailure::permission,
     "unknown compute failure mode");
@@ -61,7 +62,6 @@ ComputeHeld hold_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memor
     now.processed_bytes=(uint64_t(hi)<<32)|lo;now.held_pin=bool(sim.model->io_m_irq);return now;
   };
   r=observe();
-  const auto expected_completion=(failure!=ImageFailure::none?(GPU_UCMD_KERNEL_EXECUTION_FAILED<<11):0x8000u)|capture.command_id;
   if(r.completion!=expected_completion || r.processed_bytes)
     throw std::runtime_error("compute completion identity, success or telemetry differs: expected="+
       std::to_string(expected_completion)+" actual="+std::to_string(r.completion)+
@@ -103,8 +103,14 @@ ComputeHeld hold_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memor
   held.initial=memory;return held;
 }
 template<class Sim>
-ComputeResult retire_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
-    ComputeHeld &held,const ComputeRetirement &retirement) {
+ComputeHeld hold_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,const ComputeCapture &capture,
+    ImageFailure failure=ImageFailure::none,uint64_t prior_read_faults=0,const Traffic *prior_traffic=nullptr) {
+  const auto expected=(failure!=ImageFailure::none?(GPU_UCMD_KERNEL_EXECUTION_FAILED<<11):0x8000u)|capture.command_id;
+  return hold_compute_record(sim,agent,bus,memory,capture,expected,failure,prior_read_faults,prior_traffic);
+}
+template<class Sim,class RetirementType>
+ComputeResult retire_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
+    ComputeHeld &held,const RetirementType &retirement) {
   retirement.validate();
   require(sim.model->io_m_irq && agent.drained(),"compute retirement lost its held receipt");
   traffic_unchanged(held.completed,agent.traffic);
@@ -122,6 +128,11 @@ ComputeResult retire_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &m
   r.drained=agent.drained();r.cycles=bus.cycles-held.start_cycles;
   r.read_bytes=agent.traffic.read_bus_bytes-held.start.read_bus_bytes;
   r.write_bytes=agent.traffic.write_bus_bytes-held.start.write_bus_bytes;return r;
+}
+template<class Sim>
+ComputeResult retire_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
+    ComputeHeld &held,const ComputeRetirement &retirement) {
+  return retire_compute_record(sim,agent,bus,memory,held,retirement);
 }
 inline void compute_json(std::ostream &out,const ComputeResult &r,uint32_t command_id,bool retired=false,bool failed=false) {
   out<<"{\"schema\":\"opengpu-compute-owner-"<<(failed?"failed-":"")<<(retired?"retired":"held")<<"-v1\",\"phase\":\""
@@ -236,6 +247,7 @@ inline void active_image_recovery(int argc,char **argv,const std::filesystem::pa
 }
 } // namespace compute_owner
 
+#ifndef OPENGPU_COMPUTE_OWNER_LIBRARY
 int main(int argc,char **argv) {
   try {
     using namespace compute_owner;
@@ -275,3 +287,4 @@ int main(int argc,char **argv) {
     sim.model->final();return 0;
   }catch(const std::exception &e) {std::cerr<<"compute owner replay failed: "<<e.what()<<'\n';return 1;}
 }
+#endif

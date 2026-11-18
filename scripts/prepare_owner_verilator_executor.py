@@ -19,7 +19,7 @@ from owner_resource_contract import SAMPLE_PROFILE
 from run_owner_bounded import run_bounded
 
 ROOT = owner.ROOT
-KINDS = ('native-sample', 'native-sample-graphics', 'compute', owner.BLIT_KIND)
+KINDS = ('native-sample', 'native-sample-graphics', 'compute', owner.BLIT_KIND, owner.INDIRECT_KIND)
 DEPENDENCIES = tuple(name for name in owner.DEFAULT_DEPENDENCIES
                      if not name.startswith('scripts/flashsim_native/')) + (
                          'scripts/native_verilator_initial_time.hpp',)

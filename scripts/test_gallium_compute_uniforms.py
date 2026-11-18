@@ -18,7 +18,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main(control_flow=False, buffer_resources=False, shared_memory=False, memory_barriers=False,
-         storage_atomics=False, texture_namespaces=False, image_ordering=False, atomic_counters=False, shared_publication=False, host_execution=False, graphics_uniforms=False, sample_graphics=False, typed_images=False, image_atomics=False, indirect_compute=False):
+         storage_atomics=False, texture_namespaces=False, image_ordering=False, atomic_counters=False, shared_publication=False, host_execution=False, graphics_uniforms=False, sample_graphics=False, typed_images=False, image_atomics=False, indirect_compute=False, continuous_compute=False):
+    if continuous_compute:
+        host_execution = shared_memory = buffer_resources = indirect_compute = True
     if indirect_compute:
         buffer_resources = True
     ap = argparse.ArgumentParser(description=__doc__)
@@ -26,7 +28,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     ap.add_argument("--sanitize", action="store_true")
     if host_execution:
         from compute_owner_cases import CASES, COUNTER_CASES, counter_parameters, IMAGE_CASES
-        ap.add_argument('--case', choices=CASES, default='shared')
+        ap.add_argument('--case', choices=('indirect-pipeline',) if continuous_compute else CASES,
+                        default='indirect-pipeline' if continuous_compute else 'shared')
         ap.add_argument('--profile-wire', type=Path, required=True)
         ap.add_argument('--session', type=Path, required=True)
         ap.add_argument('--capture-only', action='store_true', help='explicit CPU capture only; no DUT execution')
@@ -233,7 +236,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
             "-c", ROOT / "userspace/tests/cs_buffer_kernel.c", "-o", obj], "compile-cs_buffer_kernel")
         objects.append(obj)
     for relative, extra in [
-        ("userspace/tests/compute_host_frontend.c" if host_execution else "userspace/tests/cs_image_atomic_frontend.c" if image_atomics else "userspace/tests/cs_typed_image_frontend.c" if typed_images else "userspace/tests/graphics_sample_flow.c" if sample_graphics else "userspace/tests/graphics_uniform_flow.c" if graphics_uniforms else "userspace/tests/cs_atomic_frontend.c" if storage_atomics else "userspace/tests/cs_barrier_frontend.c" if memory_barriers else "userspace/tests/cs_shared_frontend.c" if shared_memory else "userspace/tests/cs_buffer_flow.c" if buffer_resources else
+        ("userspace/tests/compute_indirect_frontend.c" if continuous_compute else "userspace/tests/compute_host_frontend.c" if host_execution else "userspace/tests/cs_image_atomic_frontend.c" if image_atomics else "userspace/tests/cs_typed_image_frontend.c" if typed_images else "userspace/tests/graphics_sample_flow.c" if sample_graphics else "userspace/tests/graphics_uniform_flow.c" if graphics_uniforms else "userspace/tests/cs_atomic_frontend.c" if storage_atomics else "userspace/tests/cs_barrier_frontend.c" if memory_barriers else "userspace/tests/cs_shared_frontend.c" if shared_memory else "userspace/tests/cs_buffer_flow.c" if buffer_resources else
          "userspace/tests/cs_control_flow.c" if control_flow else "userspace/tests/cs_uniform_flow.c",
          ["-DOPENGPU_CS_INDIRECT"] if indirect_compute else
          ["-DOPENGPU_CS_TEXTURE_NAMESPACE"] if texture_namespaces else
@@ -342,7 +345,10 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         ["-ldl", "-lm", "-pthread", "-o", binary], "link")
     sources = out / "glsl"
     sources.mkdir()
-    if host_execution and args.case in IMAGE_CASES:
+    if continuous_compute:
+        from compute_indirect_sources import write_sources
+        write_sources(sources)
+    elif host_execution and args.case in IMAGE_CASES:
         from compute_image_cases import write_sources
         write_sources(sources)
     elif image_atomics:
@@ -462,7 +468,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         for case in cases:
             session=args.session/case if matrix else args.session
             if matrix:session.mkdir(exist_ok=False)
-            source=('full128.comp' if case=='uniforms' else 'full.comp' if case=='shared' else
+            source=('' if continuous_compute else 'full128.comp' if case=='uniforms' else 'full.comp' if case=='shared' else
                     counter_parameters(case)['source'] if case in COUNTER_CASES else case+'.comp')
             run([binary,args.profile_wire.resolve(),session.resolve(),sources/source,case]+
                 (['--capture-only'] if args.capture_only else ['--expect-image-source-fault'] if args.expect_image_source_fault else
