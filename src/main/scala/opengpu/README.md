@@ -8,8 +8,9 @@
 - `core/execute`: execution-unit control types and datapaths.
 - `core/vector`: lane vector ALUs and configuration.
 - `core/memory`: caches, TLBs, shared memory, and CU memory services.
-- `graphics`: raster, texture, fragment/vertex stages, and tessellation leaves
-  (`graphics/tessellation`).
+- `graphics`: raster, texture, fragment/vertex stages, and tessellation leaves.
+  Layout subdirs under `graphics/` keep package `opengpu.graphics` except
+  `graphics/tessellation` (see `graphics/README.md`).
 - `system`: SoC/host integration; layout subdirs under `system/` keep package
   `opengpu.system` (see `system/README.md`).
 - `command` / `dispatch` / `dma`: host command routing, kernel launch, and DMA.

@@ -6,7 +6,7 @@ composed timing remain open. PPA is synthesis only.
 
 The component record
 retains eight checks and one default emission on873 frozen inputs.
-[NativeVisibilityQueryEngine](../src/main/scala/opengpu/graphics/NativeVisibilityQueryEngine.scala)
+[NativeVisibilityQueryEngine](../src/main/scala/opengpu/graphics/host/NativeVisibilityQueryEngine.scala)
 adds a bounded control engine around GPU-memory result records. No existing
 texture production input changes.
 

@@ -96,7 +96,7 @@ inspection with:
 rg -n 'VertexInputView|inputDma|seal|patch.layout' \
   src/main/scala/opengpu/system/TessellationSystem*InputImage.scala
 rg -n 'ShadedVertexRecord|VertexShaderCompletion|kernelDone|payload' \
-  src/main/scala/opengpu/graphics/VertexShaderStage.scala
+  src/main/scala/opengpu/graphics/vertex/VertexShaderStage.scala
 rg -n '61|patchWords|patchCount|inputComponents' \
   src/main/scala/opengpu/system/geometry/IsolinePatchInputReader.scala \
   src/main/scala/opengpu/system/geometry/IsolineGeometryCuExecutor.scala

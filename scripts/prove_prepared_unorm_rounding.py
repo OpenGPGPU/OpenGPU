@@ -16,7 +16,7 @@ except ImportError:
 
 def check_source():
     root = Path(__file__).resolve().parents[1]
-    path = root / "src/main/scala/opengpu/graphics/PreparedTypedColorEncoder.scala"
+    path = root / "src/main/scala/opengpu/graphics/texture/PreparedTypedColorEncoder.scala"
     source = re.sub(r"//[^\n]*|/\*.*?\*/", "", path.read_text(), flags=re.S)
     source = re.sub(r"\s+", "", source)
     expected = (
@@ -41,7 +41,7 @@ def check_source():
     for expression in expected:
         if expression not in source:
             raise SystemExit("Proof/source correspondence needs review: " + expression)
-    viewport = root / "src/main/scala/opengpu/graphics/Fp32ViewportStage.scala"
+    viewport = root / "src/main/scala/opengpu/graphics/raster/Fp32ViewportStage.scala"
     if "defnan(bits:UInt):Bool=bits(30,23)===255.U&&bits(22,0).orR" not in re.sub(r"\s+", "", viewport.read_text()):
         raise SystemExit("Proof/source correspondence needs review: NaN classification")
 

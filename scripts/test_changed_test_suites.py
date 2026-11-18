@@ -29,8 +29,8 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertIn("opengpu.system.TessellationSharedLoadReplySpec", selected)
 
     def test_original_input_patch_identity_selects_bounded_launch_and_range_checks(self):
-        paths = ["graphics/tessellation/TessellationScalarInfoWorker", "graphics/SharedShaderTaskRouter",
-                 "graphics/VertexInputSlice", "system/SharedCuGraphicsPort", "system/GpuSystem",
+        paths = ["graphics/tessellation/TessellationScalarInfoWorker", "graphics/shader/SharedShaderTaskRouter",
+                 "graphics/vertex/VertexInputSlice", "system/SharedCuGraphicsPort", "system/GpuSystem",
                  "system/geometry/IsolineGeometryCuExecutor", "system/tessellation/TessellationTriangleCuEvaluator",
                  "system/tessellation/TessellationQuadCuEvaluator", "system/tessellation/TessellationVertexShaderRouter",
                  "system/geometry/GeometryFragmentShaderRouter", "system/tessellation/TessellationHostShaderRouter"]
@@ -52,10 +52,10 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertNotIn("opengpu.core.GpuComputeUnitTessellationInfoSpec", selected)
 
     def test_ordinary_primitive_input_selects_light_permission_checks_and_keeps_full_stage_local(self):
-        paths = ["graphics/FragmentInputAbi", "graphics/FragmentSampleAbi", "graphics/FragmentShaderStage",
-                 "graphics/TypedFragmentState", "graphics/TypedFragmentImageStateReader",
-                 "graphics/TypedReplayTileImagePipeline", "graphics/TypedTileImagePipeline",
-                 "graphics/TypedTileRenderPipeline", "graphics/VertexFragmentPipeline",
+        paths = ["graphics/raster/FragmentInputAbi", "graphics/raster/FragmentSampleAbi", "graphics/raster/FragmentShaderStage",
+                 "graphics/raster/TypedFragmentState", "graphics/raster/TypedFragmentImageStateReader",
+                 "graphics/raster/TypedReplayTileImagePipeline", "graphics/raster/TypedTileImagePipeline",
+                 "graphics/raster/TypedTileRenderPipeline", "graphics/vertex/VertexFragmentPipeline",
                  "system/tessellation/TessellationSystemIsolineImagePipeline", "system/tessellation/TessellationSystemTriangleImagePipeline",
                  "system/tessellation/TessellationSystemQuadImagePipeline"]
         changed = [f"src/main/scala/opengpu/{path}.scala" for path in paths]
@@ -75,7 +75,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
         paths = ["graphics/tessellation/TessellationScalarInfoWorker", "core/GpuComputeUnit",
                  "core/GpuComputeUnitCore", "core/frontend/GpuFrontend", "core/frontend/decode/DecodePipe",
                  "core/frontend/decode/DecodeTypes", "core/frontend/decode/FullInstructionDecoder",
-                 "system/SharedCuGraphicsPort", "graphics/SharedShaderTaskRouter"]
+                 "system/SharedCuGraphicsPort", "graphics/shader/SharedShaderTaskRouter"]
         for path in paths:
             with self.subTest(path=path):
                 selected = set(changed_suites(REPO_ROOT, [f"src/main/scala/opengpu/{path}.scala"]))
@@ -96,7 +96,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
                     "opengpu.graphics.FragmentPreparationInstanceSpec",
                     "opengpu.graphics.Fp32FragmentPreparationSpec",
                     "opengpu.graphics.Fp32StreamingFragmentDifferentialSpec"}
-        for name in ("Fp32FragmentInterpolator", "Fp32FragmentPreparation", "Fp32StreamingFragmentInterpolator"):
+        for name in ("raster/Fp32FragmentInterpolator", "raster/Fp32FragmentPreparation", "raster/Fp32StreamingFragmentInterpolator"):
             with self.subTest(name=name):
                 selected = set(changed_suites(REPO_ROOT, [f"src/main/scala/opengpu/graphics/{name}.scala"]))
                 self.assertTrue(required <= selected, selected)
@@ -106,13 +106,13 @@ class ChangedTestSuitesTest(unittest.TestCase):
                     "opengpu.system.TessellationImageBankMuxSpec"}
         for name in ("system/tessellation/TessellationImageBankOwner", "system/tessellation/TessellationImageBankMux",
                      "system/tessellation/TessellationNativeThreeDomainJobImage",
-                     "graphics/TypedReplayTileImagePipeline"):
+                     "graphics/raster/TypedReplayTileImagePipeline"):
             with self.subTest(name=name):
                 selected = set(changed_suites(REPO_ROOT, [f"src/main/scala/opengpu/{name}.scala"]))
                 self.assertTrue(expected <= selected)
 
     def test_native_advanced_discovery_selects_cpu_contract_and_real_axi_checks(self):
-        for path in ("src/main/scala/opengpu/graphics/NativeAdvancedBlendCapabilities.scala",
+        for path in ("src/main/scala/opengpu/graphics/host/NativeAdvancedBlendCapabilities.scala",
                      "src/main/scala/opengpu/system/native/NativeAlignmentHostProfile.scala",
                      "src/main/scala/opengpu/elaboration/EmitNativeAdvancedBlendAbi.scala",
                      "driver/opengpu_native_advanced_blend_abi.h", "driver/opengpu_native_advanced_blend_features.h",
@@ -123,8 +123,8 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertTrue({"opengpu.graphics.NativeAdvancedBlendAbiSpec",
                                  "opengpu.system.NativeAdvancedBlendCapabilitiesAxiSpec"} <= set(changed_suites(REPO_ROOT, [path])))
     def test_native_preflight_selects_real_metadata_reader_and_axi_checks(self):
-        for path in ("src/main/scala/opengpu/graphics/NativeDescriptorPreflightCapabilities.scala",
-                     "src/main/scala/opengpu/graphics/NativeBinnedDescriptorPreflight.scala",
+        for path in ("src/main/scala/opengpu/graphics/host/NativeDescriptorPreflightCapabilities.scala",
+                     "src/main/scala/opengpu/graphics/host/NativeBinnedDescriptorPreflight.scala",
                      "src/main/scala/opengpu/elaboration/EmitNativeDescriptorPreflightAbi.scala",
                      "driver/opengpu_native_preflight_abi.h", "driver/opengpu_native_preflight_features.h",
                      "driver/tests/opengpu_native_preflight_discovery_test.c"):
@@ -133,7 +133,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
                                  "opengpu.graphics.NativeBinnedGraphicsJobReaderSpec",
                                  "opengpu.system.NativeDescriptorPreflightCapabilitiesAxiSpec"} <= set(changed_suites(REPO_ROOT, [path])))
     def test_geometry_transport_discovery_selects_actual_axi_checks(self):
-        for path in ("src/main/scala/opengpu/graphics/NativeGeometryTransportCapabilities.scala",
+        for path in ("src/main/scala/opengpu/graphics/host/NativeGeometryTransportCapabilities.scala",
                      "src/main/scala/opengpu/elaboration/EmitNativeGeometryTransportAbi.scala",
                      "driver/opengpu_native_geometry_transport_abi.h",
                      "driver/opengpu_native_geometry_transport_features.h",
@@ -168,8 +168,8 @@ class ChangedTestSuitesTest(unittest.TestCase):
         paths += [f"docs/abi/{name}-v1.json"
                   for name in ("shader-image", "texture-image-binding", "texture-image-level", "texture-image-format")]
         paths += [f"src/main/scala/opengpu/graphics/{name}.scala"
-                  for name in ("ShaderImageDescriptorReader", "TextureImageAddressUnit", "TextureImageBindingUnit",
-                               "TextureImageResourceAddressUnit", "TextureImageFormat")]
+                  for name in ("shader/ShaderImageDescriptorReader", "texture/TextureImageAddressUnit", "texture/TextureImageBindingUnit",
+                               "texture/TextureImageResourceAddressUnit", "texture/TextureImageFormat")]
         for path in paths:
             with self.subTest(path=path):
                 self.assertIn("opengpu.graphics.ShaderImageAbiSpec", changed_suites(REPO_ROOT, [path]))
@@ -183,8 +183,8 @@ class ChangedTestSuitesTest(unittest.TestCase):
 
     def test_native_geometry_metadata_selects_new_and_frozen_readers(self):
         for path in ("src/main/scala/opengpu/elaboration/EmitNativeGeometryAbi.scala",
-                     "src/main/scala/opengpu/graphics/NativeGeometryDescriptors.scala",
-                     "src/main/scala/opengpu/graphics/NativeGeometryProgramReader.scala",
+                     "src/main/scala/opengpu/graphics/host/NativeGeometryDescriptors.scala",
+                     "src/main/scala/opengpu/graphics/host/NativeGeometryProgramReader.scala",
                      "driver/opengpu_native_geometry_abi.h", "docs/abi/native-geometry-v1.json"):
             with self.subTest(path=path):
                 selected = set(changed_suites(REPO_ROOT, [path]))
@@ -213,7 +213,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
                               changed_suites(REPO_ROOT, [path]))
 
     def test_vertex_sequence_dependencies_require_new_and_old_reader_checks(self):
-        paths = ["src/main/scala/opengpu/graphics/NativeTypedGraphicsDescriptors.scala",
+        paths = ["src/main/scala/opengpu/graphics/host/NativeTypedGraphicsDescriptors.scala",
                  "src/main/scala/opengpu/system/tessellation/TessellationVertexSequenceLayout.scala",
                  "src/main/scala/opengpu/system/tessellation/TessellationVertexSequenceReader.scala",
                  "src/main/scala/opengpu/system/tessellation/TessellationVertexSourceReader.scala",
@@ -250,9 +250,9 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertNotIn("opengpu.system.GpuSystemComputeUniformSpec", selected)
 
     def test_primitive_record_cache_changes_require_protocol_and_full_record_control(self):
-        for path in ("src/main/scala/opengpu/graphics/WindowPrimitiveRecordReadCache.scala",
-                     "src/main/scala/opengpu/graphics/WindowPrimitiveRecords.scala",
-                     "src/main/scala/opengpu/graphics/WindowPrimitiveBinReplayPass.scala",
+        for path in ("src/main/scala/opengpu/graphics/raster/WindowPrimitiveRecordReadCache.scala",
+                     "src/main/scala/opengpu/graphics/raster/WindowPrimitiveRecords.scala",
+                     "src/main/scala/opengpu/graphics/raster/WindowPrimitiveBinReplayPass.scala",
                      "src/main/scala/opengpu/elaboration/EmitWindowPrimitiveRecordReadCache.scala"):
             with self.subTest(path=path):
                 selected = set(changed_suites(REPO_ROOT, [path]))
@@ -262,7 +262,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
 
     def test_repository_index_matches_fresh_selection(self):
         for paths in ([], ["src/test/scala/opengpu/testutil/GpuSimSpec.scala"],
-                      ["src/main/scala/opengpu/graphics/TypedFragmentState.scala"],
+                      ["src/main/scala/opengpu/graphics/raster/TypedFragmentState.scala"],
                       ["scripts/ci_local_only_suites.txt"]):
             with self.subTest(paths=paths):
                 self.assertEqual(select_changed_suites(REPO_ROOT, paths, test_index=REPO_INDEX),
@@ -271,7 +271,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
     def test_binned_image_qualification_selects_small_admission_checks(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/test/scala/opengpu/graphics/TypedBinnedFragmentImageElaborationSpec.scala",
-                     "src/main/scala/opengpu/graphics/TypedVertexBinImagePipeline.scala"):
+                     "src/main/scala/opengpu/graphics/vertex/TypedVertexBinImagePipeline.scala"):
             with self.subTest(path=path):
                 actual = set(changed_suites(root, [path]))
                 self.assertNotIn("opengpu.graphics.TypedVertexBinImagePipelineSpec", actual)
@@ -285,7 +285,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertNotIn("opengpu.graphics.TypedReplayFragmentImageElaborationSpec", actual)
         self.assertIn("opengpu.graphics.TypedFragmentImageStateReaderSpec", actual)
         self.assertIn("opengpu.graphics.GraphicsImageDrawCaptureSpec", actual)
-        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/TypedReplayTileImagePipeline.scala"]))
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/raster/TypedReplayTileImagePipeline.scala"]))
         self.assertNotIn("opengpu.graphics.TypedReplayTileImagePipelineSpec", actual)
         self.assertIn("opengpu.graphics.TypedFragmentImageStateReaderSpec", actual)
         self.assertIn("opengpu.graphics.GeometryReplayFragmentAdmissionSpec", actual)
@@ -304,7 +304,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
 
     def test_fragment_state_source_selects_legacy_and_image_readers(self):
         root = Path(__file__).resolve().parents[1]
-        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/TypedFragmentState.scala"]))
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/raster/TypedFragmentState.scala"]))
         self.assertIn("opengpu.graphics.TypedFragmentStateReaderSpec", actual)
         self.assertIn("opengpu.graphics.TypedFragmentImageStateReaderSpec", actual)
 
@@ -386,7 +386,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
         for path in ("src/main/scala/opengpu/system/tessellation/TessellationThreeDomainSampleMux.scala",
                      "src/main/scala/opengpu/system/tessellation/TessellationNativeThreeDomainJobImage.scala",
                      "src/main/scala/opengpu/system/GpuHostSystemAxi.scala",
-                     "src/main/scala/opengpu/graphics/NativeVisibilityQueryEngine.scala"):
+                     "src/main/scala/opengpu/graphics/host/NativeVisibilityQueryEngine.scala"):
             with self.subTest(path=path):
                 self.assertIn("opengpu.graphics.tessellation.TessellationThreeDomainVisibilityQuerySpec", changed_suites(root, [path]))
 
@@ -511,7 +511,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
     def test_domain_samples_and_query_select_integration_check(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/system/tessellation/TessellationDomainSampleMux.scala",
-                     "src/main/scala/opengpu/graphics/NativeVisibilityQueryEngine.scala",
+                     "src/main/scala/opengpu/graphics/host/NativeVisibilityQueryEngine.scala",
                      "src/main/scala/opengpu/system/tessellation/TessellationNativeDomainJobImage.scala",
                      "src/main/scala/opengpu/system/GpuHostSystemAxi.scala"):
             self.assertIn("opengpu.graphics.tessellation.TessellationDomainVisibilityQuerySpec",
@@ -521,7 +521,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/system/tessellation/TessellationThreeDomainFeedbackBridge.scala",
                      "src/main/scala/opengpu/system/tessellation/TessellationThreeDomainFeedbackAdmission.scala",
-                     "src/main/scala/opengpu/graphics/TransformFeedbackThreeDomainTransfer.scala"):
+                     "src/main/scala/opengpu/graphics/host/TransformFeedbackThreeDomainTransfer.scala"):
             with self.subTest(path=path):
                 selected = changed_suites(root, [path])
                 self.assertIn("opengpu.graphics.tessellation.TessellationThreeDomainFeedbackBridgeSpec", selected)
@@ -944,7 +944,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
     def test_clip_arithmetic_selects_every_production_owner_and_spatial_consumer(self):
         root = Path(__file__).resolve().parents[1]
         actual = set(changed_suites(root,
-            ["src/main/scala/opengpu/graphics/ClipFloatArithmetic.scala"]))
+            ["src/main/scala/opengpu/graphics/raster/ClipFloatArithmetic.scala"]))
         required = {"opengpu.graphics." + name for name in (
             "ClipFloatArithmeticSpec", "PrimitiveClipStageSpec", "Fp32ViewportStageSpec",
             "Fp32PrimitiveRasterStageSpec", "PrimitiveRasterInstanceSpec",
@@ -1001,7 +1001,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
 
     def test_shader_router_changes_keep_small_coverage(self):
         root = Path(__file__).resolve().parents[1]
-        for path in ("src/main/scala/opengpu/graphics/SharedShaderTaskRouter.scala",
+        for path in ("src/main/scala/opengpu/graphics/shader/SharedShaderTaskRouter.scala",
                      "src/test/scala/opengpu/graphics/SharedShaderTaskRouterSpec.scala"):
             selected = set(changed_suites(root, [path]))
             self.assertNotIn("opengpu.graphics.SharedShaderTaskRouterSpec", selected)
@@ -1111,7 +1111,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
     def test_vertex_stage_and_matrix_are_local_with_small_checks(self):
         root = Path(__file__).resolve().parents[1]
         for changed in ("src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala",
-                        "src/main/scala/opengpu/graphics/VertexShaderStage.scala"):
+                        "src/main/scala/opengpu/graphics/vertex/VertexShaderStage.scala"):
             actual = changed_suites(root, [changed])
             self.assertNotIn("opengpu.graphics.VertexShaderStageSpec", actual)
             self.assertIn("opengpu.graphics.VertexShaderClearLinesSpec", actual)
@@ -1120,7 +1120,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
 
     def test_original_draw_slice_selects_fetch_and_protocol_checks_without_full_cu_qualification(self):
         root = Path(__file__).resolve().parents[1]
-        for name in ("VertexInputSlice", "VertexInputFetcher", "VertexShaderStage"):
+        for name in ("vertex/VertexInputSlice", "vertex/VertexInputFetcher", "vertex/VertexShaderStage"):
             selected = changed_suites(root, [f"src/main/scala/opengpu/graphics/{name}.scala"])
             self.assertIn("opengpu.graphics.VertexInputFetcherSpec", selected)
             self.assertNotIn("opengpu.graphics.VertexShaderSliceSpec", selected)
@@ -1152,7 +1152,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
     def test_original_vertex_router_selects_capability_and_two_tier_checks(self):
         root = Path(__file__).resolve().parents[1]
         for source in ("system/tessellation/TessellationVertexShaderRouter", "system/SharedCuGraphicsPort",
-                       "system/geometry/GeometryFragmentShaderRouter", "graphics/SharedShaderTaskRouter"):
+                       "system/geometry/GeometryFragmentShaderRouter", "graphics/shader/SharedShaderTaskRouter"):
             with self.subTest(source=source):
                 selected = changed_suites(root, [f"src/main/scala/opengpu/{source}.scala"])
                 self.assertIn("opengpu.graphics.TessellationVertexShaderRouterSpec", selected)
@@ -1160,7 +1160,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
     def test_original_vertex_patch_ranges_select_retirement_and_order_checks(self):
         root = Path(__file__).resolve().parents[1]
         for source in ("system/tessellation/TessellationVertexPatchSequence", "system/tessellation/TessellationVertexPatchSource",
-                       "graphics/VertexInputSlice"):
+                       "graphics/vertex/VertexInputSlice"):
             with self.subTest(source=source):
                 selected = changed_suites(root, [f"src/main/scala/opengpu/{source}.scala"])
                 self.assertIn("opengpu.graphics.TessellationVertexPatchSequenceSpec", selected)
@@ -1168,7 +1168,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
     def test_original_vertex_owner_selects_admission_and_cancel_drain_checks(self):
         root = Path(__file__).resolve().parents[1]
         for source in ("system/tessellation/TessellationVertexPatchOwner", "system/tessellation/TessellationVertexPatchSource",
-                       "graphics/VertexShaderStage", "graphics/VertexInputSlice"):
+                       "graphics/vertex/VertexShaderStage", "graphics/vertex/VertexInputSlice"):
             with self.subTest(source=source):
                 selected = changed_suites(root, [f"src/main/scala/opengpu/{source}.scala"])
                 self.assertIn("opengpu.graphics.TessellationVertexPatchOwnerSpec", selected)
@@ -1180,10 +1180,10 @@ class ChangedTestSuitesTest(unittest.TestCase):
                        "system/tessellation/TessellationSystemTriangleVertexInputImage",
                        "system/tessellation/TessellationSystemQuadVertexInputImage",
                        "system/tessellation/TessellationVertexPatchOwner", "system/tessellation/TessellationVertexPatchSource",
-                       "graphics/VertexShaderStage", "graphics/VertexInputSlice",
-                       "graphics/VertexInputFetcher", "graphics/tessellation/TessellationPatchStore",
+                       "graphics/vertex/VertexShaderStage", "graphics/vertex/VertexInputSlice",
+                       "graphics/vertex/VertexInputFetcher", "graphics/tessellation/TessellationPatchStore",
                        "graphics/tessellation/TessellationPatchContext",
-                       "graphics/ShaderUniformResources"):
+                       "graphics/shader/ShaderUniformResources"):
             with self.subTest(source=source):
                 selected = changed_suites(root, [f"src/main/scala/opengpu/{source}.scala"])
                 self.assertIn("opengpu.graphics.TessellationVertexInputImageSpec", selected)
@@ -1201,9 +1201,9 @@ class ChangedTestSuitesTest(unittest.TestCase):
     def test_original_vertex_draw_selects_linked_gnd_and_capacity_checks(self):
         root = Path(__file__).resolve().parents[1]
         for source in ("system/tessellation/TessellationVertexDrawReader", "system/tessellation/TessellationVertexSourceReader",
-                       "system/tessellation/TessellationVertexPatchSource", "graphics/NativeBinnedGraphicsDescriptors",
-                       "graphics/NativeTypedGraphicsDescriptors", "graphics/VertexInputFetcher",
-                       "graphics/VertexShaderStage", "graphics/ShaderUniformResources",
+                       "system/tessellation/TessellationVertexPatchSource", "graphics/host/NativeBinnedGraphicsDescriptors",
+                       "graphics/host/NativeTypedGraphicsDescriptors", "graphics/vertex/VertexInputFetcher",
+                       "graphics/vertex/VertexShaderStage", "graphics/shader/ShaderUniformResources",
                        "graphics/tessellation/TessellationPatchStore"):
             with self.subTest(source=source):
                 self.assertIn("opengpu.graphics.TessellationVertexDrawReaderSpec", changed_suites(root,
@@ -1216,9 +1216,9 @@ class ChangedTestSuitesTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         for source in ("system/tessellation/TessellationVertexCaptureController", "system/tessellation/TessellationVertexDrawReader",
                        "system/tessellation/TessellationVertexSourceReader", "system/tessellation/TessellationVertexPatchSource",
-                       "graphics/NativeBinnedGraphicsDescriptors", "graphics/NativeTypedGraphicsDescriptors",
-                       "graphics/VertexInputFetcher", "graphics/VertexShaderStage",
-                       "graphics/ShaderUniformResources", "graphics/tessellation/TessellationPatchStore"):
+                       "graphics/host/NativeBinnedGraphicsDescriptors", "graphics/host/NativeTypedGraphicsDescriptors",
+                       "graphics/vertex/VertexInputFetcher", "graphics/vertex/VertexShaderStage",
+                       "graphics/shader/ShaderUniformResources", "graphics/tessellation/TessellationPatchStore"):
             with self.subTest(source=source):
                 self.assertIn("opengpu.graphics.TessellationVertexCaptureControllerSpec", changed_suites(root,
                               [f"src/main/scala/opengpu/{source}.scala"]))
@@ -1232,7 +1232,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
                    "system/tessellation/TessellationVertexCaptureController", "system/tessellation/TessellationVertexDrawReader",
                    "system/tessellation/TessellationVertexSourceReader", "system/tessellation/TessellationVertexPatchSource",
                    "system/tessellation/TessellationVertexInputImageControl", "system/tessellation/TessellationVertexSequenceLayout",
-                   "graphics/VertexInputSlice", "graphics/ShaderUniformResources",
+                   "graphics/vertex/VertexInputSlice", "graphics/shader/ShaderUniformResources",
                    "graphics/tessellation/TessellationPatchStore"]
         sources += [f"system/tessellation/TessellationSystem{domain}Vertex{kind}"
                     for domain in ("Isoline", "Triangle", "Quad") for kind in ("TypedRange", "InputImage")]
@@ -1326,7 +1326,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
 
     def test_vertex_bin_changes_keep_bounded_record_and_producer_checks(self):
         root = Path(__file__).resolve().parents[1]
-        for path in ("src/main/scala/opengpu/graphics/VertexBinPipeline.scala",
+        for path in ("src/main/scala/opengpu/graphics/vertex/VertexBinPipeline.scala",
                      "src/test/scala/opengpu/graphics/VertexBinPipelineSpec.scala"):
             with self.subTest(path=path):
                 actual = set(changed_suites(root, [path]))
@@ -1406,7 +1406,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/system/tessellation/TessellationNativeJobReader.scala",
                      "src/main/scala/opengpu/system/tessellation/TessellationNativeSequenceReader.scala",
-                     "src/main/scala/opengpu/graphics/NativeBinnedGraphicsDescriptors.scala",
+                     "src/main/scala/opengpu/graphics/host/NativeBinnedGraphicsDescriptors.scala",
                      "src/main/scala/opengpu/elaboration/EmitTessellationNativeJobAbi.scala",
                      "driver/opengpu_native_tessellation_job_abi.h",
                      "driver/tests/opengpu_tessellation_job_abi_test.c",
@@ -1438,7 +1438,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
 
     def test_tessellation_host_command_selects_its_spec(self):
         root = Path(__file__).resolve().parents[1]
-        for path in ("src/main/scala/opengpu/graphics/TileBinHostCommandPort.scala",
+        for path in ("src/main/scala/opengpu/graphics/host/TileBinHostCommandPort.scala",
                      "src/main/scala/opengpu/command/GpuCommandRouter.scala"):
             with self.subTest(path=path):
                 self.assertIn("opengpu.graphics.tessellation.TessellationHostCommandPortSpec", set(changed_suites(root, [path])))
@@ -1591,7 +1591,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
 
     def test_tessellation_shader_routing_selects_owner_checks(self):
         root = Path(__file__).resolve().parents[1]
-        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/SharedShaderTaskRouter.scala"]))
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/shader/SharedShaderTaskRouter.scala"]))
         self.assertIn("opengpu.graphics.SharedShaderTessellationRouterSpec", actual)
         self.assertIn("opengpu.graphics.GeometryFragmentTessellationRouterSpec", actual)
         actual = set(changed_suites(root, ["src/main/scala/opengpu/system/geometry/GeometryFragmentShaderRouter.scala"]))
@@ -1692,7 +1692,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
         cases = {
             "src/test/scala/opengpu/graphics/PreparedGeometryFragmentPipelineSpec.scala":
                 {"opengpu.graphics.FragmentShaderAbiSpec", "opengpu.graphics.GeometryReplayFragmentAdmissionSpec", "opengpu.graphics.FragmentInputCoalescerSpec"},
-            "src/main/scala/opengpu/graphics/VertexFragmentPipeline.scala":
+            "src/main/scala/opengpu/graphics/vertex/VertexFragmentPipeline.scala":
                 {"opengpu.graphics.FragmentShaderAbiSpec", "opengpu.graphics.GeometryFragmentAdmissionSpec", "opengpu.graphics.FragmentInputCoalescerSpec"},
         }
         for path, expected in cases.items():
@@ -1705,8 +1705,8 @@ class ChangedTestSuitesTest(unittest.TestCase):
 
     def test_typed_geometry_image_keeps_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
-        for path in ("src/main/scala/opengpu/graphics/TypedTileImagePipeline.scala",
-                     "src/main/scala/opengpu/graphics/TypedTileRenderPipeline.scala",
+        for path in ("src/main/scala/opengpu/graphics/raster/TypedTileImagePipeline.scala",
+                     "src/main/scala/opengpu/graphics/raster/TypedTileRenderPipeline.scala",
                      "src/test/scala/opengpu/graphics/TypedGeometryImageQualificationSpec.scala"):
             with self.subTest(path=path):
                 actual = set(changed_suites(root, [path]))

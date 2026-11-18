@@ -232,9 +232,9 @@ scalac -J-Xmx128m -J-XX:MaxMetaspaceSize=128m \
   -J-XX:ReservedCodeCacheSize=32m -J-XX:ActiveProcessorCount=1 \
   -language:reflectiveCalls -Ymacro-annotations -Xplugin:"$CHISEL_PLUGIN_JAR" \
   -classpath "$FROZEN_CP" -d "$CHECK_OUT" \
-  src/main/scala/opengpu/graphics/VertexInputSlice.scala \
-  src/main/scala/opengpu/graphics/VertexInputFetcher.scala \
-  src/main/scala/opengpu/graphics/VertexShaderStage.scala \
+  src/main/scala/opengpu/graphics/vertex/VertexInputSlice.scala \
+  src/main/scala/opengpu/graphics/vertex/VertexInputFetcher.scala \
+  src/main/scala/opengpu/graphics/vertex/VertexShaderStage.scala \
   src/main/scala/opengpu/graphics/tessellation/TessellationPatchStore.scala \
   src/main/scala/opengpu/graphics/tessellation/TessellationPatchContext.scala \
   src/test/scala/opengpu/graphics/VertexInputFetcherSpec.scala \
