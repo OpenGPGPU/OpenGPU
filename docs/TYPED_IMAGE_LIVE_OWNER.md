@@ -520,6 +520,40 @@ After freshly binding the execution sources, reproduce the pair with the
 bounded atomic qualifier command above, selecting
 `--case image-atomic-buffer-r32f --image-source-recovery`.
 
+## Image permission-negative DRM request contract
+
+`--image-permission-recovery read` denies reads with a write-only source view;
+`--image-permission-recovery write` denies writes with a read-only source view.
+Each mode pairs the unchanged original buffer R32F ESSL program with a normal
+read-write invocation on the same execution DUT, command ID and retained RAM.
+
+Ordinary Gallium rejects shader/view permission mismatches before submission.
+This dedicated negative therefore changes only the source-view access flags
+in the original caller's DRM request copy, after normal Gallium admission and
+before the production Linux image handler. Shader/reflection, GEM backing,
+layout and all other request fields remain original. The Linux handler creates
+the actual denied GIU1 descriptor; the independent READY check reconstructs
+that accepted view under the explicit denied-access mode. Ordinary READY and
+the opposite denial mode reject it. No physical error or PTE edit substitutes
+for an image-permission denial.
+
+The failed execution must produce an actual execution-failed completion and
+original EIO fences with zero physical read/write errors, no physical writes
+and every original RAM byte unchanged. Healthy reuse needs the exact retained
+external-traffic baseline, including the zero-error history, and may change
+only its own result views. Both original context cleanups and independent
+PTE/all-byte checks remain required. The source-read fault mode continues to
+require positive injected read-error counts.
+
+All 47 Python protocol/oracle checks and all five fixed C++ variants pass,
+with ASan/UBSan checks for failed/success receipt separation and exact
+zero-error traffic retention. CPU checks alone do not establish
+actual permission execution or close P08. After committing and freshly binding
+the sources, reproduce each actual pair with the bounded atomic qualifier
+command above and `--case image-atomic-buffer-r32f`, selecting
+`--image-permission-recovery read` or `--image-permission-recovery write`.
+Actual permission failure/recovery and cancel/reset/drain remain pending.
+
 ## Original load/store source and independent result contract
 
 The live producer now accepts 70 original ESSL recipes: thirteen formats across

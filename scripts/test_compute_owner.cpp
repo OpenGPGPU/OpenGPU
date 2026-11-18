@@ -70,7 +70,7 @@ class ComputePeer:public Simulation {
 public:
   unsigned submitted=0,resets=0;
   uint64_t completed_at=0;
-  bool wrong_completion=false,nonzero_bytes=false,corrupt_readonly=false,unstable=false,late_write=false;
+  bool wrong_completion=false,nonzero_bytes=false,corrupt_readonly=false,unstable=false,late_write=false,execution_failed=false;
   std::vector<uint32_t> reads;
   ComputePeer(int argc,char **argv,Memory &m):Simulation(argc,argv),memory(m) {}
   void reset() {
@@ -94,9 +94,10 @@ public:
       r[GPU_REG_UCMD_COMPLETION]=0x8000u|(r[GPU_REG_UCMD_OPCODE]<<8)|r[GPU_REG_UCMD_ID];
       if(r[GPU_REG_UCMD_OPCODE]==GPU_UCMD_OP_KERNEL) {
         ++submitted;completed_at=cycle;model->io_m_irq=1;r[GPU_REG_IRQ]=GPU_IRQ_ENABLE|GPU_IRQ_PENDING;
+        if(execution_failed)r[GPU_REG_UCMD_COMPLETION]=(GPU_UCMD_KERNEL_EXECUTION_FAILED<<11)|r[GPU_REG_UCMD_ID];
         if(wrong_completion)r[GPU_REG_UCMD_COMPLETION]^=1;
         if(nonzero_bytes)r[GPU_REG_UCMD_COMPLETION_BYTES_LO]=4;
-        memory.byte(corrupt_readonly?0x5000:0x6000,0x55); // CPU-only protocol peer.
+        if(!execution_failed)memory.byte(corrupt_readonly?0x5000:0x6000,0x55); // CPU-only protocol peer.
       }
     }else if(write.address==GPU_REG_UCMD_COMPLETION_POP) {
       // A forbidden post-held mutation must follow the actual retirement
@@ -298,6 +299,36 @@ static void execution_checks(int argc,char **argv) {
     "compute retirement lost raw observations");
   require(std::none_of(sim.reads.begin(),sim.reads.end(),[](auto address){return address>=0x180 && address<0x1b0;}),
     "compute executor read native GNX");
+  for(auto failure:{ImageFailure::none,ImageFailure::source_read,ImageFailure::permission}) {
+    // CPU receipt/guard only: the failed peer runs no shader and emits no AXI fault.
+    auto m=memory_fixture();const auto original=m;ComputePeer peer(argc,argv,m);peer.reset();peer.execution_failed=true;
+    Agent a(m);ReplayBus<ComputePeer> b(peer,a,100000);
+    if(failure==ImageFailure::permission) {
+      auto h=hold_compute(peer,a,b,m,c,failure);
+      rejects([&]{retire_compute(peer,a,b,m,h,retirement());});
+      auto failed_retirement=retirement();
+      failed_retirement.actions[1].value=(GPU_UCMD_KERNEL_EXECUTION_FAILED<<11)|c.command_id;
+      retire_compute(peer,a,b,m,h,failed_retirement);
+    }else rejects([&]{hold_compute(peer,a,b,m,c,failure);});
+    verify_readonly(original,m,{});
+    require(!a.traffic.read_faults && !a.traffic.write_faults && !a.injected_read_faults(),
+      "permission CPU receipt invented physical errors");
+  }
+  {
+    // A permission failure leaves real read traffic, but no physical error.
+    // Only an explicit exact retained-traffic baseline admits healthy reuse.
+    auto m=memory_fixture();ComputePeer peer(argc,argv,m);peer.reset();Agent a(m);
+    native_frame::Requests request;request.arvalid=true;request.araddr=0x5000;
+    a.observe(0,request,a.drive(0));request={};request.rready=true;a.observe(3,request,a.drive(3));
+    require(a.drained() && a.traffic.reads && !a.traffic.read_faults,"wrong CPU error-free read history");
+    const auto before=a.traffic;ReplayBus<ComputePeer> b(peer,a,100000);
+    rejects([&]{hold_compute(peer,a,b,m,c);});
+    auto bad=before;++bad.read_beats;
+    rejects([&]{hold_compute(peer,a,b,m,c,ImageFailure::none,0,&bad);});
+    require(!peer.submitted,"mismatched error-free traffic submitted a command");
+    auto h=hold_compute(peer,a,b,m,c,ImageFailure::none,0,&before);retire_compute(peer,a,b,m,h,retirement());
+    require(peer.resets==1 && !a.traffic.read_faults,"error-free CPU recovery reset its peer");
+  }
   {
     // CPU transport guard only: obtain real AXI-service error history, then
     // verify that only the explicit matching baseline permits a healthy peer.
@@ -312,9 +343,9 @@ static void execution_checks(int argc,char **argv) {
     auto wrong_history=a.traffic;++wrong_history.reads;
     rejects([&]{probe_profile(peer,a,b,true,compute_owner_factory(),&wrong_history);});
     rejects([&]{hold_compute(peer,a,b,m,c);});
-    rejects([&]{hold_compute(peer,a,b,m,c,false,2);});
+    rejects([&]{hold_compute(peer,a,b,m,c,ImageFailure::none,2);});
     require(!peer.submitted,"wrong fault baseline submitted an original command");
-    auto h=hold_compute(peer,a,b,m,c,false,1);
+    auto h=hold_compute(peer,a,b,m,c,ImageFailure::none,1);
     retire_compute(peer,a,b,m,h,retirement());
     require(peer.resets==1 && a.traffic.read_faults==1 && a.injected_read_faults()==1,
       "healthy CPU transport reset its peer or cleared physical fault history");

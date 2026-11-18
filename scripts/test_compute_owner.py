@@ -68,7 +68,8 @@ class ComputeOwnerTests(unittest.TestCase):
                 subprocess.run([*shlex.split(os.environ.get('CXX', 'c++')), *flags, *selection,
                             '-I', str(ROOT / 'scripts/test_stubs/native_host'), '-I', str(ROOT / 'scripts'),
                             str(ROOT / 'scripts/test_compute_owner.cpp'), '-o', str(binary)], env=env, check=True)
-                result = subprocess.run([str(binary)], env=env, check=True, capture_output=True, text=True)
+                result = subprocess.run([str(binary)], env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertEqual(result.stdout, 'compute owner CPU protocol/guard checks: PASS\n')
                 wire = profile_bytes(strict_json(directory / 'profile.json'))
                 self.assertEqual(wire[:8], magic)

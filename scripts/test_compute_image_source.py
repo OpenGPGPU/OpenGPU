@@ -13,7 +13,7 @@ from compute_image_cases import IMAGE_CASES, IMAGE_BOUNDARY_CASES, parameters
 from compute_image_source import (loaded_words, ready as validate_ready, texel_address, atomic_values,
     boundary_coordinates,boundary_address,boundary_exchange_value,source_view,initial_bytes,returned_outputs,SCHEMA,
     source_read_fault_plan,source_read_fault_proof,verify_source_read_fault,
-    captured_page_tables,verify_cleaned_memory)
+    captured_page_tables,verify_cleaned_memory,verify_image_permission_fault,image_permission_fault_proof)
 from compute_owner_oracle import SparseMemory, verify
 from compute_owner_protocol import strict_json
 from compute_owner_controller import ready_inputs
@@ -92,6 +92,16 @@ class Formats(unittest.TestCase):
         with self.assertRaises(ValueError):source_read_fault_plan(uploads,description,owner_profile=SAMPLE_PROFILE)
         wrong=deepcopy(description);wrong['sourceCase']='image-atomic-buffer-r32ui'
         with self.assertRaises(ValueError):source_read_fault_plan(uploads,wrong,owner_profile=IMAGE_FLOAT_PROFILE)
+        denied=[]
+        for permission,flags in (('read',2),('write',1)):
+            variant=deepcopy(description);variant['images'][0]['view']['flags']=flags
+            verify_image_permission_fault(uploads,uploads,variant,permission=permission)
+            with self.assertRaises(ValueError):verify_source_read_fault(uploads,uploads,variant)
+            with self.assertRaises(ValueError):source_read_fault_plan(uploads,variant,owner_profile=IMAGE_FLOAT_PROFILE)
+            with self.assertRaises(ValueError):verify_image_permission_fault(uploads,uploads,description,permission=permission)
+            other='write' if permission=='read' else 'read'
+            with self.assertRaises(ValueError):verify_image_permission_fault(uploads,uploads,variant,permission=other)
+            denied.append((permission,variant))
         for address in (0x1000,0x1fff,0x10000,0x10030,0x11fff,0x20000,0x21fff,0x40000,0x40fff):
             class Corrupted:
                 ranges=uploads.ranges
@@ -101,6 +111,27 @@ class Formats(unittest.TestCase):
                     return bytes(value)
             with self.subTest(address=address),self.assertRaises(ValueError):
                 verify_source_read_fault(uploads,Corrupted(),description)
+            for permission,variant in denied:
+                with self.subTest(address=address,permission=permission),self.assertRaises(ValueError):
+                    verify_image_permission_fault(uploads,Corrupted(),variant,permission=permission)
+
+    def test_permission_failure_rejects_physical_errors_and_unbound_modes(self):
+        zero=dict(physicalReadFaults=0,injectedReadFaults=0,physicalWriteFaults=0)
+        self.assertEqual(image_permission_fault_proof(zero,zero),(0,0,0))
+        with self.assertRaises(ValueError):source_read_fault_proof(zero)
+        for field in zero:
+            for value in (1,True,-1,None):
+                bad=dict(zero);bad[field]=value
+                with self.subTest(field=field,value=value),self.assertRaises(ValueError):image_permission_fault_proof(bad)
+            bad=dict(zero);del bad[field]
+            with self.assertRaises(ValueError):image_permission_fault_proof(bad)
+        with self.assertRaises(ValueError):image_permission_fault_proof(zero,dict(zero,injectedReadFaults=1))
+        for mode in (None,True,'rw',''):
+            if mode is not None:
+                with self.assertRaises(ValueError):source_view(parameters('image-atomic-buffer-r32f'),0,0,permission=mode)
+        for case in ('image-atomic-2d-r32f','image-atomic-buffer-r32ui','image-buffer-r32f'):
+            with self.subTest(case=case),self.assertRaises(ValueError):
+                source_view(parameters(case),0,0,permission='write')
 
     def test_source_fault_proof_rejects_absent_unplanned_or_changed_errors(self):
         valid=dict(physicalReadFaults=2,injectedReadFaults=2,physicalWriteFaults=0)

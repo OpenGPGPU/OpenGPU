@@ -22,6 +22,29 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class Entry(unittest.TestCase):
+    def test_permission_recovery_commands_bind_actual_drm_request_variants(self):
+        args=argparse.Namespace(mesa=ROOT/'mesa',mesa_build=ROOT/'mesa-build',
+            drm_include=ROOT/'drm',library_directory=ROOT/'lib',mesa_link_libs='-lfixture',
+            counter_inputs=ROOT/'inputs',timeout=30,expect_image_source_fault=False,image_source_recovery=False)
+        for permission in ('read','write'):
+            args.image_permission_recovery=permission
+            commands=[qualifier.producer_command(args,gpu=ROOT,source=ROOT,ntt=ROOT/'ntt',
+                image='sha256:fixture',name='permission-'+str(i),case=RECOVERY_CASE,
+                source_fault=False,physical_base=base,permission=permission if i==0 else None)
+                for i,base in enumerate(RECOVERY_BASES)]
+            recovery_commands(dict(schema=RECOVERY_COMMAND_SCHEMA,rounds=commands),permission=permission)
+            self.assertNotIn('--expect-image-source-fault',commands[0])
+            for case in ('image-atomic-2d-r32f','counter-increment','both'):
+                args.case=case
+                with self.subTest(permission=permission,case=case),patch.object(qualifier.subprocess,'run') as run:
+                    with self.assertRaises(ValueError):qualifier.checked_inputs(args)
+                    run.assert_not_called()
+        for permission in (True,'rw',''):
+            with self.assertRaises(ValueError):qualifier.producer_command(args,gpu=ROOT,source=ROOT,ntt=ROOT/'ntt',
+                image='sha256:fixture',name='permission-negative',case=RECOVERY_CASE,permission=permission)
+        with self.assertRaises(ValueError):qualifier.producer_command(args,gpu=ROOT,source=ROOT,ntt=ROOT/'ntt',
+            image='sha256:fixture',name='permission-negative',case=RECOVERY_CASE,source_fault=True,permission='read')
+
     def test_recovery_commands_bind_each_original_physical_namespace(self):
         args=argparse.Namespace(mesa=ROOT/'mesa',mesa_build=ROOT/'mesa-build',
             drm_include=ROOT/'drm',library_directory=ROOT/'lib',mesa_link_libs='-lfixture',
