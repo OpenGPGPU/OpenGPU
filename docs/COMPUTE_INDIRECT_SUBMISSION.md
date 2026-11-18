@@ -217,10 +217,75 @@ UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1' \
 
 These are CPU source-composition checks, including a CPU-executed producer.
 They do not establish GPU-produced counts, real producer reservation fences,
-hardware page walks or cross-command DUT coherence. No new native opcode14
-capture or complete-DUT v2 result is exported. Those P09 gates remain open;
+hardware page walks or cross-command DUT coherence. That routing stage exports
+no opcode14 capture or complete-DUT v2 result. Those P09 gates remain open;
 the alignment count stays8/40 and the public compute API remains disabled.
 Private validation builds, logs and generated inputs are removed after use.
+
+## Version 2 opcode14 capture contract
+
+The Linux qualification bridge now has an explicit
+`compute_host_open_indirect` declaration and a dedicated v2 submission,
+snapshot, capture and receipt interface. It validates GCI1 through the actual
+production discovery helper before advertising transport. GCI1's eight words
+already belong to the complete112-word factory record; the original ten
+auxiliary observations and all resource capacities remain intact. Legacy
+opens leave indirect transport disabled, including with poisoned GCI1 data.
+
+| Wire | Contract |
+|---|---|
+| `OGCI0001` | Original source GEM identity/physical extent/offset, caller maxima, private snapshot PA/VA/size/offset, original kernarg guard, admitted grid, complete observations, writable views, empty VMs and actual opcode14 enqueue trace |
+| `OGCIT001` | Actual Linux IRQ/POP trace with exact command identity and result status |
+| `OGCIH001` | Typed held observation with explicit opcode14 and result status |
+| `OGCIR001` | The unchanged held observation plus exact idle/drained retirement |
+
+The independent C++ reader requires the same twelve bytes for GCI1 and x1,
+zero private padding, the exact preceding snapshot invalidate, and both pages'
+actual Sv32 PA/RO/NX/uncached mappings when the view crosses a page. Writable
+aliases in the active kernel VM are rejected. Source, snapshot and original
+kernarg guards cannot be declared writable. Zero-work grids preserve full-u32
+axes; nonempty counts retain the caller maxima and u64 product checks. Legacy
+opcode0 capture, snapshot, receipt and reset entry points reject indirect jobs.
+
+Opcode14's highest opcode bit is encoded in completion bit16, separately from
+status bits14:11. For command17, success is `0x18611`, execution failure1 is
+`0x10e11`, GCI bounds12 is `0x16611`, and GCI read failure13 is `0x16e11`.
+The naive `14 << 8` encoding is rejected. The driver reports bounds as
+`ERANGE`, and execution/read failures as `EIO`; typed observations still bind
+the exact result status when Linux errno is shared.
+
+Source `e51d034823bf730cedb5f9004ffa335e28eb8e77` passes Clang ASan/UBSan and
+Linux GCC13.3 ASan/UBSan with leak checking. Fourteen actual C-generated
+captures reach the independent C++ reader; an additional case cancels before
+execution. The checks cover source-only submission,
+first/last/crossing-page offsets, zero and large valid grids,128 local items,
+twelve UBOs/defaults with eight independent counters and four SSBOs, two
+additional empty VMs, source mutation/public-handle closure, failed source
+fences and exact result0/1/12/13 IRQ/fence/fault/cleanup paths. Mutations reject
+wrong source/private bounds, writable or
+executable/cached/global/wrong-PA leaves, a writable alias, changed private
+bytes/padding, legacy opcodes/wires and partial or mixed completion fields.
+The three Python protocol tests also pass. Both toolchains pass the existing
+208 healthy,208 failed and208 cancelled float-host transport/canonical cases,
+including invalid BUSY and cleanup-ACK retention. The22 executor qualification
+tests pass; the focused capture test is registered in the host script lane.
+
+```sh
+env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 OPENGPU_TEST_SANITIZERS=1 \
+  python3 -B scripts/test_compute_indirect_capture.py
+env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 OPENGPU_TEST_SANITIZERS=1 \
+  python3 -B scripts/test_compute_host.py --image-float-stage --canonical-root .
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_prepare_owner_executor.py
+# On Linux, CC=gcc CXX=g++ repeats the sanitizer and leak checks.
+```
+
+These checks use a small three-load native input and modeled device replies;
+no shader executes. Actual Mesa opcode14 source/capture integration, the native
+execution adapter/controller, GPU-produced three-dimensional counts and real
+producer fences, continuous original-GEM/DUT ownership and fault/reuse checks
+remain required. The legacy reset protocol cannot qualify opcode14 reset/drain.
+No complete-DUT v2 or clock/FPS result is claimed. P09 remains open at8/40.
+Generated captures, memory images, test builds and logs are removed after use.
 
 ## Earlier version1 guest qualification
 
