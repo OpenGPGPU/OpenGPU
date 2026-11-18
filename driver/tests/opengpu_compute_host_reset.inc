@@ -68,6 +68,7 @@ out:
 }
 int compute_host_abort_captured(struct compute_host_session *s,const struct compute_host_reset_receipt *held,const char *directory)
 {
+ if(s && s->head && opengpu_sched_job_from_base(s->head)->kernel.indirect_enabled)return -EOPNOTSUPP;
  struct stat st;
  if(!s || !held || !directory || lstat(directory,&st) || !S_ISDIR(st.st_mode) ||
     !s->captured || s->drained || s->observed || s->cancelled || !s->head || !s->hardware ||
@@ -106,6 +107,7 @@ static bool compute_reset_ack_valid(struct compute_host_session *s,const struct 
 }
 int compute_host_drain_reset(struct compute_host_session *s,const struct compute_host_reset_receipt *receipt,const char *path)
 {
+ if(s && s->head && opengpu_sched_job_from_base(s->head)->kernel.indirect_enabled)return -EOPNOTSUPP;
  if(!s || !path || !s->cancelled || !s->captured || s->drained || s->observed || !s->hardware || !s->head ||
     s->gpu.hw.wedged || !s->gpu.hw.reset_pending || !dma_fence_is_signaled(s->hardware) ||
     s->hardware->error!=-ECANCELED || s->completion_error!=-ECANCELED || !compute_reset_ack_valid(s,receipt,false))return -EINVAL;
@@ -125,6 +127,7 @@ int compute_host_drain_reset(struct compute_host_session *s,const struct compute
 }
 int compute_host_observe_reset_retired(struct compute_host_session *s,const struct compute_host_reset_receipt *receipt)
 {
+ if(s && s->head && opengpu_sched_job_from_base(s->head)->kernel.indirect_enabled)return -EOPNOTSUPP;
  if(!s || !s->cancelled || !s->drained || s->observed || !s->hardware || !s->head ||
     s->gpu.hw.reset_pending || s->gpu.hw.wedged || !dma_fence_is_signaled(s->hardware) ||
     s->hardware->error!=-ECANCELED || s->completion_error!=-ECANCELED || !compute_reset_ack_valid(s,receipt,true))return -EINVAL;

@@ -9,6 +9,7 @@ struct compute_mmio_pte_shadow {struct compute_mmio_pte_shadow *next;u64 physica
 struct compute_mmio_state {
  u32 regs[1024];struct compute_mmio_action *actions;size_t count,capacity;
  bool kernel_waiting,receipt_loaded;unsigned kernel_submissions,invalidates,pops;
+ u32 expected_kernel_opcode;
  struct compute_mmio_pte_shadow *pte;char *cleanup_directory;size_t cleanup_start;
  unsigned cleanup_sequence;int cleanup_error;bool cleanup_active,cleanup_done;
  char *reset_directory;size_t reset_start,reset_tail_start;
@@ -55,7 +56,9 @@ static void opengpu_reg_write(struct opengpu_device *gpu,u32 address,u32 value)
    m->regs[GPU_REG_UCMD_COMPLETION/4]=0x8000u|(opcode<<8)|m->regs[GPU_REG_UCMD_ID/4];
    m->regs[GPU_REG_UCMD_COMPLETION_BYTES_LO/4]=m->regs[GPU_REG_UCMD_BYTES/4];m->regs[GPU_REG_UCMD_COMPLETION_BYTES_HI/4]=0;
   }else{
-   assert(opcode==GPU_UCMD_OP_KERNEL && !m->kernel_waiting);
+   assert(opcode==m->expected_kernel_opcode && !m->kernel_waiting);
+   assert(opcode==GPU_UCMD_OP_KERNEL ||
+    (opcode==GPU_UCMD_OP_KERNEL_INDIRECT && gpu->hw.compute_indirect_transport));
    m->kernel_waiting=true;++m->kernel_submissions;m->regs[GPU_REG_UCMD_STATUS/4]=GPU_UCMD_STATUS_VM_BUSY;
   }
  }else if(address==GPU_REG_UCMD_COMPLETION_POP){

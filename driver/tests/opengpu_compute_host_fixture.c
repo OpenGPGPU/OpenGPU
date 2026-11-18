@@ -219,10 +219,11 @@ struct compute_host_session {
  struct opengpu_device gpu;struct opengpu_render_context *context;u32 context_id;
  struct opengpu_file render;struct drm_file file;struct drm_device drm;
  struct compute_host_profile_word *profile;size_t profile_count;
- bool missing,exported,captured,drained,observed,freed,vm_destroyed,cancelled;
+ bool missing,exported,captured,drained,observed,freed,vm_destroyed,cancelled,indirect_declared;
  struct compute_host_held_receipt held;
  int completion_error;
  struct drm_opengpu_compute_uniform_resources submitted;
+ struct drm_opengpu_compute_indirect_resources submitted_indirect;
  struct drm_syncobj sync[3];struct drm_sched_job *head,*tail;u64 next_seq;
  struct dma_fence *hardware;bool prepared_execution;
  unsigned queued;int wait_error,copy_error,submit_error;
@@ -251,7 +252,7 @@ static u32 compute_profile_read(void *opaque,u32 address)
 {struct compute_host_session *s=opaque;
  for(size_t i=0;i<s->profile_count;i++)if(s->profile[i].address==address)return s->profile[i].value;
  s->missing=true;return 0;}
-static struct compute_host_session *compute_host_initialize(bool initial_context,
+static struct compute_host_session *compute_host_initialize(bool initial_context,bool indirect,
  const struct compute_host_profile_word *words,size_t count)
 {
  if(!words || !count || count>1024 || !compute_host_timeout_seconds())return NULL;
@@ -293,6 +294,11 @@ static struct compute_host_session *compute_host_initialize(bool initial_context
     !s->gpu.hw.compute_image_transport || !s->gpu.hw.compute_counter_transport ||
     !s->gpu.hw.compute_uniform_transport || s->missing)goto fail;
  s->gpu.hw.shader_config=shader;
+ if(indirect && (count!=122 ||
+    !opengpu_read_compute_indirect_support(true,id,0x1000,s->gpu.hw.capabilities,
+      &s->gpu.hw.compute_local_limits,s,compute_profile_read,&s->gpu.hw.compute_indirect_transport) ||
+    !s->gpu.hw.compute_indirect_transport || s->missing))goto fail;
+ s->indirect_declared=indirect;
  s->render=(struct opengpu_file){.session=s,.gpu=&s->gpu};
  s->file.driver_priv=&s->render;s->drm.dev=&s->gpu;
  if(opengpu_mmu_init(&s->gpu))goto fail;
@@ -307,9 +313,11 @@ fail:free(s->profile);free(s);return NULL;
 }
 struct compute_host_session *compute_host_create(uint32_t context,
  const struct compute_host_profile_word *words,size_t count)
-{return context?compute_host_initialize(true,words,count):NULL;}
+{return context?compute_host_initialize(true,false,words,count):NULL;}
 struct compute_host_session *compute_host_open(const struct compute_host_profile_word *words,size_t count)
-{return compute_host_initialize(false,words,count);}
+{return compute_host_initialize(false,false,words,count);}
+struct compute_host_session *compute_host_open_indirect(const struct compute_host_profile_word *words,size_t count)
+{return compute_host_initialize(false,true,words,count);}
 int compute_host_allocation_base(uint64_t physical)
 {
  if(!physical || (physical&4095) || physical>UINT32_MAX)return -EINVAL;
@@ -387,6 +395,20 @@ int compute_host_submit_counter_source(struct compute_host_session *s,const stru
  compute_running=s;struct drm_opengpu_compute_counter_source_resources copy=*request;
  int error=opengpu_compute_counter_source_resources_ioctl(&s->drm,&copy,&s->file);
  if(!error){s->submitted=copy.resources;s->context_id=copy.resources.resources.launch.context_id;
+  s->context=opengpu_context_lookup(&s->render,s->context_id);assert(s->context);}
+ return error;
+}
+
+int compute_host_submit_indirect(struct compute_host_session *s,const struct drm_opengpu_compute_indirect_resources *request)
+{
+ if(!s || !request || s->exported || s->head)return -EBUSY;
+ if(!s->indirect_declared)return -EOPNOTSUPP;
+ if(request->version!=OPENGPU_COMPUTE_INDIRECT_VERSION2 ||
+    request->v2.flags!=OPENGPU_COMPUTE_INDIRECT_KERNARG_COUNTS || request->v2.reserved)return -EINVAL;
+ compute_running=s;struct drm_opengpu_compute_indirect_resources copy=*request;
+ int error=opengpu_compute_indirect_resources_ioctl(&s->drm,&copy,&s->file);
+ if(!error){s->submitted_indirect=copy;s->submitted=copy.resources.resources;
+  s->context_id=s->submitted.resources.launch.context_id;
   s->context=opengpu_context_lookup(&s->render,s->context_id);assert(s->context);}
  return error;
 }
@@ -490,11 +512,15 @@ int compute_host_begin_execution(struct compute_host_session *s)
  if(!s || s->exported || s->prepared_execution || !s->head || s->head!=s->tail)return -EBUSY;
  if(s->submitted.resources.resource_flags&~(OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE|OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES))return -EOPNOTSUPP;
  /* Refuse an unrepresentable capture before offering a hardware command. */
- {struct compute_writable_range ranges[COMPUTE_HOST_MAX_WRITABLE];unsigned count=1;
+ {struct compute_writable_range ranges[COMPUTE_HOST_MAX_WRITABLE];unsigned count=
+    !opengpu_sched_job_from_base(s->head)->kernel.indirect_enabled;
   for(unsigned i=0;i<4;i++)count+=!!(s->submitted.resources.bindings[i].access&OPENGPU_COMPUTE_STORAGE_WRITE);
   count+=!!opengpu_sched_job_from_base(s->head)->kernel.counter_enabled;
   int error=compute_host_image_ranges(s,ranges,&count);if(error)return error;}
  compute_running=s;struct opengpu_sched_job *job=opengpu_sched_job_from_base(s->head);
+ if(job->kernel.indirect_enabled && !s->indirect_declared)return -EOPNOTSUPP;
+ compute_mmio_state(&s->gpu)->expected_kernel_opcode=job->kernel.indirect_enabled?
+  GPU_UCMD_OP_KERNEL_INDIRECT:GPU_UCMD_OP_KERNEL;
  for(struct fixture_dependency *d=job->base.dependencies;d;d=d->next)if(!dma_fence_is_signaled(d->fence))return -EBUSY;
  opengpu_hw_enable_irqs(&s->gpu);struct dma_fence *fence=opengpu_job_run(job);
  if((intptr_t)fence<0 && (intptr_t)fence>=-4095)return (int)(intptr_t)fence;
@@ -504,7 +530,7 @@ int compute_host_begin_execution(struct compute_host_session *s)
  assert(m->kernel_waiting && m->kernel_submissions==1 && !dma_fence_is_signaled(fence));
  return 0;
 }
-int compute_host_snapshot_get(struct compute_host_session *s,struct compute_host_snapshot *out)
+static int compute_host_snapshot_common(struct compute_host_session *s,struct compute_host_snapshot *out)
 {
  if(!s || !out || !s->head || s->head!=s->tail)return -EINVAL;
  struct opengpu_sched_job *job=opengpu_sched_job_from_base(s->head);
@@ -521,6 +547,32 @@ int compute_host_snapshot_get(struct compute_host_session *s,struct compute_host
   .kernarg_physical=s->context->bindings[s->submitted.resources.launch.kernarg_slot-1]->dma,
   .kernarg_bytes=s->context->bindings[s->submitted.resources.launch.kernarg_slot-1]->size,
   .retained_objects=job->object_count,.temporary_mappings=job->temporary_mapping_count};return 0;
+}
+int compute_host_snapshot_get(struct compute_host_session *s,struct compute_host_snapshot *out)
+{
+ if(s && s->head && opengpu_sched_job_from_base(s->head)->kernel.indirect_enabled)return -EOPNOTSUPP;
+ return compute_host_snapshot_common(s,out);
+}
+int compute_host_indirect_snapshot_get(struct compute_host_session *s,struct compute_host_indirect_snapshot *out)
+{
+ if(!s || !out || !s->indirect_declared || !s->head || s->head!=s->tail)return -EINVAL;
+ struct opengpu_sched_job *job=opengpu_sched_job_from_base(s->head);
+ const struct drm_opengpu_compute_indirect_resources *q=&s->submitted_indirect;
+ struct compute_original *source=q->source.handle<512?s->render.originals[q->source.handle]:NULL;
+ if(!job->kernel.indirect_enabled || !source || !source->refs || !job->indirect_snapshot.cpu ||
+    job->kernel.kernarg!=(u64)job->kernel.indirect_base+job->kernel.indirect_offset)return -EINVAL;
+ struct compute_host_indirect_snapshot copy={0};
+ int error=compute_host_snapshot_common(s,&copy.resources);if(error)return error;
+ copy.original_kernarg_physical=copy.resources.kernarg_physical;
+ copy.original_kernarg_bytes=copy.resources.kernarg_bytes;
+ copy.arguments=job->indirect_snapshot.cpu;copy.snapshot_physical=job->indirect_snapshot.dma;
+ copy.snapshot_bytes=job->indirect_snapshot.size;copy.snapshot_va=job->kernel.indirect_base;
+ copy.snapshot_offset=job->kernel.indirect_offset;copy.source_handle=q->source.handle;
+ copy.source_physical=source->gem.dma_addr;copy.source_bytes=source->gem.base.size;
+ copy.source_offset=q->source.offset;copy.context=s->context_id;
+ memcpy(copy.max_groups,q->max_groups,sizeof(copy.max_groups));memcpy(copy.grid,job->kernel.grid,sizeof(copy.grid));
+ copy.resources.kernarg_physical=copy.snapshot_physical+copy.snapshot_offset;
+ copy.resources.kernarg_bytes=12;*out=copy;return 0;
 }
 int compute_host_cancel_unexecuted(struct compute_host_session *s)
 {
@@ -587,23 +639,24 @@ static int compute_host_empty_contexts(struct compute_host_session *s,FILE *out)
  }
  return 0;
 }
-int compute_host_capture(struct compute_host_session *s,const char *path,uint64_t budget,uint32_t hold)
+static int compute_host_capture_common(struct compute_host_session *s,const char *path,uint64_t budget,uint32_t hold,bool indirect)
 {
  if(!s || !s->exported || !s->prepared_execution || s->captured || !budget || budget>1000000000 || hold<8 || hold>4096)return -EINVAL;
  struct compute_mmio_state *m=compute_mmio_state(&s->gpu);
+ struct opengpu_sched_job *job=opengpu_sched_job_from_base(s->head);
+ if(job->kernel.indirect_enabled!=indirect || (indirect && (!s->indirect_declared || s->profile_count!=122)))return -EOPNOTSUPP;
  if(!m->kernel_waiting || !s->hardware || dma_fence_is_signaled(s->hardware))return -EBUSY;
  if(s->profile_count==122){int error=compute_host_empty_contexts(s,NULL);if(error)return error;}
  struct compute_writable_range ranges[COMPUTE_HOST_MAX_WRITABLE];unsigned count=0;
  struct opengpu_resource_binding *arg=s->context->bindings[s->submitted.resources.launch.kernarg_slot-1];
  if(!arg)return -EINVAL;
- ranges[count].first=arg->dma;ranges[count++].end=arg->dma+arg->size;
+ if(!indirect){ranges[count].first=arg->dma;ranges[count++].end=arg->dma+arg->size;}
  for(unsigned i=0;i<4;i++)if(s->submitted.resources.bindings[i].access&OPENGPU_COMPUTE_STORAGE_WRITE){
   u32 slot=s->submitted.resources.bindings[i].slot;
   if(!slot || slot>OPENGPU_MAX_RESOURCE_BINDINGS)return -EINVAL;
   struct opengpu_resource_binding *b=s->context->bindings[slot-1];if(!b)return -EINVAL;
   ranges[count].first=b->dma;ranges[count++].end=b->dma+b->size;
  }
- struct opengpu_sched_job *job=opengpu_sched_job_from_base(s->head);
  if(job->kernel.counter_enabled){
   /* Independent original GEM only: exact logical words, never page/line padding. */
   if(!job->counter_source.object || !job->counter_source.dma || !job->counter_source.size ||
@@ -623,21 +676,41 @@ int compute_host_capture(struct compute_host_session *s,const char *path,uint64_
  }
  count=merged;
  char *temporary=NULL;FILE *f=compute_mmio_file(path,&temporary);if(!f)return -EIO;
- fwrite(s->profile_count==122?"OGCMP003":s->profile_count==114?"OGCMP002":"OGCMP001",1,8,f);
+ fwrite(indirect?"OGCI0001":s->profile_count==122?"OGCMP003":s->profile_count==114?"OGCMP002":"OGCMP001",1,8,f);
  compute_mmio_le(f,budget,8);compute_mmio_le(f,hold,4);
  compute_mmio_le(f,s->gpu.hw.unified_command_id,4);compute_mmio_le(f,s->profile_count,4);
  for(size_t i=0;i<s->profile_count;i++){compute_mmio_le(f,s->profile[i].address,4);compute_mmio_le(f,s->profile[i].value,4);}
+ if(indirect){
+  struct compute_host_indirect_snapshot a;assert(!compute_host_indirect_snapshot_get(s,&a));
+  compute_mmio_le(f,OPENGPU_COMPUTE_INDIRECT_VERSION2,4);compute_mmio_le(f,OPENGPU_COMPUTE_INDIRECT_KERNARG_COUNTS,4);
+  compute_mmio_le(f,a.source_handle,4);compute_mmio_le(f,a.context,4);
+  compute_mmio_le(f,a.source_physical,8);compute_mmio_le(f,a.source_bytes,8);compute_mmio_le(f,a.source_offset,8);
+  compute_mmio_le(f,a.snapshot_physical,8);compute_mmio_le(f,a.snapshot_bytes,8);
+  compute_mmio_le(f,a.snapshot_va,4);compute_mmio_le(f,a.snapshot_offset,4);
+  compute_mmio_le(f,a.original_kernarg_physical,8);compute_mmio_le(f,a.original_kernarg_bytes,8);
+  for(unsigned i=0;i<3;i++)compute_mmio_le(f,a.max_groups[i],4);
+  for(unsigned i=0;i<3;i++)compute_mmio_le(f,a.grid[i],4);
+ }
  compute_mmio_le(f,count,4);
  for(unsigned i=0;i<count;i++){compute_mmio_le(f,ranges[i].first,8);compute_mmio_le(f,ranges[i].end,8);}
  if(s->profile_count==122)assert(!compute_host_empty_contexts(s,f));
  compute_mmio_le(f,m->count,4);compute_mmio_actions(f,m,0);
  int error=compute_mmio_close(f,path,temporary);if(!error)s->captured=true;return error;
 }
+int compute_host_capture(struct compute_host_session *s,const char *path,uint64_t budget,uint32_t hold)
+{return compute_host_capture_common(s,path,budget,hold,false);}
+int compute_host_capture_indirect(struct compute_host_session *s,const char *path,uint64_t budget,uint32_t hold)
+{return compute_host_capture_common(s,path,budget,hold,true);}
+
+static u32 compute_host_completion(u32 opcode,u32 status,u32 command)
+{return ((opcode&7u)<<8)|((opcode>>3)<<16)|(status<<11)|command|(status?0:0x8000u);}
 static int compute_host_drain_receipt(struct compute_host_session *s,
- const struct compute_host_held_receipt *held,const char *path,int expected_error)
+ const struct compute_host_held_receipt *held,const char *path,u32 opcode,u32 result_status)
 {
+ int expected_error=opengpu_hw_unified_result_error(opcode,result_status);
  if(!s || !held || !s->captured || s->drained || held->command_id!=s->gpu.hw.unified_command_id ||
-  held->completion!=((expected_error?(GPU_UCMD_KERNEL_EXECUTION_FAILED<<11):0x8000u)|held->command_id) || held->processed_bytes || held->legacy_status ||
+  s->gpu.hw.unified_opcode!=opcode ||
+  held->completion!=compute_host_completion(opcode,result_status,held->command_id) || held->processed_bytes || held->legacy_status ||
   !(held->status&GPU_UCMD_STATUS_COMPLETION) || held->irq!=(GPU_IRQ_ENABLE|GPU_IRQ_PENDING) ||
   held->irq_asserted!=1 || !s->hardware || dma_fence_is_signaled(s->hardware))return -EINVAL;
  struct compute_mmio_state *m=compute_mmio_state(&s->gpu);
@@ -653,18 +726,29 @@ static int compute_host_drain_receipt(struct compute_host_session *s,
  bool wrong_fault=expected_error && (!fault->sequence || fault->error!=expected_error ||
   fault->flags!=(OPENGPU_FAULT_VALID|OPENGPU_FAULT_COMPLETION_ERROR) ||
   fault->command_id!=held->command_id || fault->expected_command_id!=held->command_id ||
-  fault->opcode!=GPU_UCMD_OP_KERNEL || fault->expected_opcode!=GPU_UCMD_OP_KERNEL ||
-  fault->status!=GPU_UCMD_KERNEL_EXECUTION_FAILED || fault->bytes_processed);
+  fault->opcode!=opcode || fault->expected_opcode!=opcode ||
+  fault->status!=result_status || fault->bytes_processed);
  if(!dma_fence_is_signaled(s->hardware) || s->hardware->error!=expected_error || m->kernel_waiting || wrong_fault){fclose(f);remove(temporary);free(temporary);return -EIO;}
- fwrite("OGCMT001",1,8,f);compute_mmio_le(f,m->count-start,4);compute_mmio_actions(f,m,start);
+ fwrite(opcode==GPU_UCMD_OP_KERNEL_INDIRECT?"OGCIT001":"OGCMT001",1,8,f);
+ if(opcode==GPU_UCMD_OP_KERNEL_INDIRECT){compute_mmio_le(f,held->command_id,4);compute_mmio_le(f,result_status,4);}
+ compute_mmio_le(f,m->count-start,4);compute_mmio_actions(f,m,start);
  int error=compute_mmio_close(f,path,temporary);if(!error){s->held=*held;s->drained=true;s->completion_error=expected_error;}return error;
 }
 int compute_host_drain_held(struct compute_host_session *s,const struct compute_host_held_receipt *held,const char *path)
-{return compute_host_drain_receipt(s,held,path,0);}
+{return compute_host_drain_receipt(s,held,path,GPU_UCMD_OP_KERNEL,GPU_UCMD_RESULT_SUCCESS);}
 int compute_host_drain_failed(struct compute_host_session *s,const struct compute_host_held_receipt *held,const char *path)
 {
  if(!held || (held->status&(GPU_UCMD_STATUS_OVERFLOW|GPU_UCMD_STATUS_RESET_BUSY|GPU_UCMD_STATUS_RESET_REJECTED)))return -EINVAL;
- return compute_host_drain_receipt(s,held,path,-EIO);
+ return compute_host_drain_receipt(s,held,path,GPU_UCMD_OP_KERNEL,GPU_UCMD_KERNEL_EXECUTION_FAILED);
+}
+static bool compute_host_indirect_status(u32 status)
+{return status==GPU_UCMD_RESULT_SUCCESS || status==GPU_UCMD_KERNEL_EXECUTION_FAILED ||
+ status==GPU_INDIRECT_RESULT_BOUNDS || status==GPU_INDIRECT_RESULT_READ_FAILED;}
+int compute_host_drain_indirect(struct compute_host_session *s,const struct compute_host_held_receipt *held,const char *path,uint32_t status)
+{
+ if(!s || !s->indirect_declared || !held || !compute_host_indirect_status(status) ||
+    (held->status&~(GPU_UCMD_STATUS_READY|GPU_UCMD_STATUS_COMPLETION|GPU_UCMD_STATUS_VM_BUSY)))return -EINVAL;
+ return compute_host_drain_receipt(s,held,path,GPU_UCMD_OP_KERNEL_INDIRECT,status);
 }
 static bool compute_same_held(const struct compute_host_held_receipt *a,const struct compute_host_held_receipt *b)
 {return a->command_id==b->command_id && a->completion==b->completion && a->processed_bytes==b->processed_bytes &&
@@ -683,9 +767,19 @@ static int compute_host_observe_receipt(struct compute_host_session *s,
  dma_fence_signal(&s->head->s_fence->finished);s->observed=true;return 0;
 }
 int compute_host_observe_retired(struct compute_host_session *s,const struct compute_host_retired_receipt *receipt)
-{return compute_host_observe_receipt(s,receipt,0);}
+{if(s && s->head && opengpu_sched_job_from_base(s->head)->kernel.indirect_enabled)return -EOPNOTSUPP;
+ return compute_host_observe_receipt(s,receipt,0);}
 int compute_host_observe_failed_retired(struct compute_host_session *s,const struct compute_host_retired_receipt *receipt)
-{return compute_host_observe_receipt(s,receipt,-EIO);}
+{if(s && s->head && opengpu_sched_job_from_base(s->head)->kernel.indirect_enabled)return -EOPNOTSUPP;
+ return compute_host_observe_receipt(s,receipt,-EIO);}
+static bool compute_host_indirect_receipt(const struct compute_host_session *s,u32 status)
+{return s && s->indirect_declared && s->head && opengpu_sched_job_from_base(s->head)->kernel.indirect_enabled &&
+ compute_host_indirect_status(status) && s->held.completion==compute_host_completion(GPU_UCMD_OP_KERNEL_INDIRECT,status,s->held.command_id);}
+int compute_host_observe_indirect_retired(struct compute_host_session *s,const struct compute_host_retired_receipt *receipt,uint32_t status)
+{
+ if(!compute_host_indirect_receipt(s,status) || !receipt || receipt->status!=GPU_UCMD_STATUS_READY)return -EINVAL;
+ return compute_host_observe_receipt(s,receipt,opengpu_hw_unified_result_error(GPU_UCMD_OP_KERNEL_INDIRECT,status));
+}
 int compute_host_completion_status(struct compute_host_session *s,int32_t *status)
 {
  if(!s || !status || !s->observed || s->freed || !s->hardware || !s->head || !s->head->s_fence)return -EINVAL;
@@ -735,11 +829,18 @@ static int compute_host_finish_receipt(struct compute_host_session *s,int expect
  s->vm_destroyed=true;s->freed=true;return 0;
 }
 int compute_host_finish_observed(struct compute_host_session *s)
-{return compute_host_finish_receipt(s,0);}
+{if(s && s->head && opengpu_sched_job_from_base(s->head)->kernel.indirect_enabled)return -EOPNOTSUPP;
+ return compute_host_finish_receipt(s,0);}
 int compute_host_finish_failed_observed(struct compute_host_session *s)
-{return compute_host_finish_receipt(s,-EIO);}
+{if(s && s->head && opengpu_sched_job_from_base(s->head)->kernel.indirect_enabled)return -EOPNOTSUPP;
+ return compute_host_finish_receipt(s,-EIO);}
 int compute_host_finish_cancelled_observed(struct compute_host_session *s)
 {return s && s->cancelled?compute_host_finish_receipt(s,-ECANCELED):-EINVAL;}
+int compute_host_finish_indirect_observed(struct compute_host_session *s,uint32_t status)
+{
+ if(!compute_host_indirect_receipt(s,status))return -EINVAL;
+ return compute_host_finish_receipt(s,opengpu_hw_unified_result_error(GPU_UCMD_OP_KERNEL_INDIRECT,status));
+}
 int compute_host_end_cleanup(struct compute_host_session *s)
 {
  if(!s || !s->freed || !s->vm_destroyed || s->head || s->gpu.hw.wedged)return -EBUSY;
@@ -809,9 +910,11 @@ static void compute_host_test_cleanup_peer(struct opengpu_device *gpu,const char
  compute_mmio_le(f,GPU_IRQ_ENABLE,4);compute_mmio_le(f,0,4);compute_mmio_le(f,1,4);assert(!fclose(f));
 }
 #include "compute_host_images_test.h"
+#include "compute_host_indirect_test.h"
 int main(int argc,char **argv)
 {
  assert(argc==2 || argc==4);
+ if(getenv("OPENGPU_COMPUTE_HOST_TEST_INDIRECT")){test_compute_host_indirect(argv[1]);return 0;}
  {
   dma_addr_t original=next_dma;assert(!live_allocations && !fixture_buffers && !compute_running);
   const uint64_t bad_bases[]={0,1,0x100001,UINT64_C(0x100000000),UINT64_MAX};
