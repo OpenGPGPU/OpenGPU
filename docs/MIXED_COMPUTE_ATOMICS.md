@@ -34,9 +34,19 @@ independent case uses a fresh complete DUT/reset and real cleanup receipts.
 All 66 sources pass real Mesa compilation and production admission with
 ASan/UBSan and actual compiler/link dependency checks. Their original
 GEM/code/view captures and ten rejection controls per source pass. The focused
-CPU oracle/controller/executor checks also pass. These are CPU checks;
-complete-host execution of this mixed matrix remains required. A successful
-complete run must check 1,056 returned old words and final source/model inputs.
+CPU oracle/controller/executor checks also pass. The complete assertion-enabled
+2-CU, sixteen-lane/eight-warp float owner subsequently passed all 66 original
+programs and all 1,056 returned old words. Each case passed its per-invocation
+source ordering, final shared word, exact original dual-view mapping, target
+storage and complete physical-byte guards, followed by the real held/retired
+IRQ, PTE/context/MMU cleanup. Each case used a fresh DUT/reset.
+
+The original producer, all native children, controller and outer qualification
+exited zero. Final compiler/library, source, executor and model checks passed.
+Execution used frozen source `8bf3ef6a8e539f65de38f9dd9720e41e0cd691cb`; all
+219 qualified software inputs matched merged PR #893 byte for byte. The original
+full model, hardware capacities and assertions were retained. Ended CPU and
+qualification process data were removed.
 
 Run the focused controls from `scripts`:
 
