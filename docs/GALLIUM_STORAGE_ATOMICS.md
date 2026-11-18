@@ -307,9 +307,24 @@ read-fault matrix retains its separate mode and receipts.
 Ninety-one focused source/controller/qualifier checks and 26 input/closure
 checks pass. CPU controls include all 2,880 failed-invocation/successful-group
 permutations, literal values, failed-group identity, meaningful rollback and
-full-RAM negatives, no-op CAS accounting, and cleanup refusal. Full-DUT
-execution still must establish all 30 phases, 180 returned old words, actual
-cleanup and final compiler/source/model checks.
+full-RAM negatives, no-op CAS accounting, and cleanup refusal. The native AXI
+controls include 26 ASan/UBSan cases.
+
+Actual execution passes all 30 phases and 180 returned old words: 120 from
+healthy owners and 60 from the workgroups that survive committed-write errors.
+The same complete assertion-enabled float DUT and retained RAM record exactly
+15 physical, injected and accepted write errors, zero read errors and five
+target attempts per failed owner. Failed-group identity, source-level old-value
+serialization, final target and all current/previous physical guards pass.
+Actual failed fence/userspace EIO, held/retired IRQ, PTE/context/MMU cleanup and
+external drain pass before each next owner. The original Mesa producer,
+native executor, controller and outer qualifier exit zero; final compiler,
+source, executable and model checks pass. Ended session outputs are removed.
+
+Execution source: `42a9d5a29f007d093406b5336abb4f71e770e163`.
+Publication preserves all 235 qualified software input bytes. The existing
+hardware path/comment-only differences recorded above remain the only
+publication differences; supported RTL capacities and assertions are retained.
 
 ```sh
 python3 -B scripts/qualify_compute_owner.py \
