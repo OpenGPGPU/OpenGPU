@@ -87,9 +87,9 @@ ComputeHeld hold_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory
       require(agent.injected_read_faults()>prior_read_faults && agent.traffic.read_faults==agent.injected_read_faults(),
         "failed source-read compute lacks exact injected faults");
     else require(!prior_read_faults && !agent.traffic.read_faults && !agent.injected_read_faults(),
-      "image permission failure encountered physical read errors");
+      "source-view failure encountered physical read errors");
     require(!agent.traffic.write_faults && agent.traffic.writes==held.start.writes,
-      "failed image compute issued physical writes");
+      "failed compute issued physical writes");
     verify_readonly(held.initial,memory,{});
   }else {
     require(agent.traffic.read_faults==prior_read_faults && agent.injected_read_faults()==prior_read_faults &&
@@ -268,10 +268,11 @@ int main(int argc,char **argv) {
       active_image_recovery(argc,argv,argv[2],argv[3],response_timeout,false,channel=="read"?1:2);return 0;
     }
     const bool source_fault=argc==5 && std::string(argv[1])=="--active-image-source-fault";
-    require(argc==5 && (std::string(argv[1])=="--active-owner" || source_fault),
-      "usage: compute_owner_driver --probe-profile NEW.json | --active-owner INPUT.memory NEW_OUTPUT_DIR SESSION_DIR | --active-image-source-fault INPUT.memory NEW_OUTPUT_DIR SESSION_DIR | --active-image-source-recovery NEW_OUTPUT_DIR SESSION_DIR | --active-image-permission-recovery NEW_OUTPUT_DIR SESSION_DIR");
-    require(!source_fault || compute_owner_factory()==OwnerFactory::image_float_stage,
-      "image source fault requires the distinct complete float factory");
+    const bool storage_view_fault=argc==5 && std::string(argv[1])=="--active-storage-view-fault";
+    require(argc==5 && (std::string(argv[1])=="--active-owner" || source_fault || storage_view_fault),
+      "usage: compute_owner_driver --probe-profile NEW.json | --active-owner INPUT.memory NEW_OUTPUT_DIR SESSION_DIR | --active-storage-view-fault INPUT.memory NEW_OUTPUT_DIR SESSION_DIR | --active-image-source-fault INPUT.memory NEW_OUTPUT_DIR SESSION_DIR | --active-image-source-recovery NEW_OUTPUT_DIR SESSION_DIR | --active-image-permission-recovery NEW_OUTPUT_DIR SESSION_DIR");
+    require(!(source_fault || storage_view_fault) || compute_owner_factory()==OwnerFactory::image_float_stage,
+      "source/view faults require the distinct complete float factory");
     const std::filesystem::path output=argv[3],session=argv[4];
     require(std::filesystem::is_directory(session) && !std::filesystem::is_symlink(session),"invalid compute session directory");
     require(!std::filesystem::exists(output),"compute output already exists");
@@ -282,7 +283,7 @@ int main(int argc,char **argv) {
     Simulation sim(argc,argv);sim.reset();Agent agent(memory);ReplayBus<Simulation> bus(sim,agent,100000);
     if(source_fault)arm_source_fault(agent,session,response_timeout);
     active_compute(sim,agent,bus,memory,capture,output,session,response_timeout,
-      source_fault?ImageFailure::source_read:ImageFailure::none);
+      source_fault?ImageFailure::source_read:storage_view_fault?ImageFailure::permission:ImageFailure::none);
     if(source_fault)agent.disarm_read_faults();
     sim.model->final();return 0;
   }catch(const std::exception &e) {std::cerr<<"compute owner replay failed: "<<e.what()<<'\n';return 1;}

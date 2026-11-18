@@ -18,7 +18,8 @@ def require(ok, message):
 def recipe(memory, description):
     p = parameters(description.get('sourceCase'))
     expected = dict(schema=SCHEMA, sourceCase=p['case'], groups=2, local=4, viewBytes=8192,
-        guard=0xdeadbeef, seed=p['seed'], targetOffset=p['target_offset'], readonlyRejected=True)
+        guard=0xdeadbeef, seed=p['seed'], targetOffset=p['target_offset'], targetAccess=p['target_access'],
+        resultStatus=p['result_status'], atomicOffset=p['access_offset'])
     required_flags(description, expected)
     require(set(description) == set(expected) | {'context', 'target', 'output', 'storageBindings',
             'descriptorPhysical', 'descriptorRoot', 'codePhysical', 'codeBytes'}, 'foreign or missing recipe fields')
@@ -63,7 +64,8 @@ def ready(memory, description, data, code_words, profile):
     for unit, binding in enumerate(description['storageBindings']):
         address = (target, output)[binding]
         base = 0xcfffc000 + unit * (128 * 1024 * 1024 + 4096)
-        expected = (0x47534201, 64, 1, context, 0, 0, unit, 1, 1, 1,
+        writable = int(bool(p['target_access'] & 2)) if binding == 0 else 1
+        expected = (0x47534201, 64, 1, context, 0, 0, unit, 1, 1, writable,
                     base, base + 8192, 0, base, base + 8192, 0)
         require(memory.read(physical + unit * 64, 64) == struct.pack('<16I', *expected) and
                 translate(memory, satp, base, 15) == address and
@@ -82,6 +84,10 @@ def ready(memory, description, data, code_words, profile):
 
 def returned_outputs(initial, returned, description):
     p, target, output = recipe(initial, description)
+    if p['result_status']:
+        require(returned.read(target,8192)==initial.read(target,8192) and
+                returned.read(output,8192)==initial.read(output,8192), 'failed checked atomic changed original bytes')
+        return []
     actual = returned.read(output, p['invocations'] * 4)
     observed = struct.unpack('<%uI' % p['invocations'], actual)
     final = returned.read(target + p['target_offset'], 4)

@@ -101,7 +101,7 @@ class SourceBytes(unittest.TestCase):
         target = bytearray(b'\x6b' * 8192);struct.pack_into('<I', target, 0, p['seed'])
         before = Memory({0x1000: bytes(target), 0x5000: b'\xa7' * 8192, 0x9000: b'K' * 4096})
         description = dict(schema=SCHEMA, sourceCase=case, groups=2, local=4, viewBytes=8192,
-            guard=0xdeadbeef, seed=0, targetOffset=0, readonlyRejected=True, context=2,
+            guard=0xdeadbeef, seed=0, targetOffset=0, targetAccess=3, resultStatus=0, atomicOffset=0, context=2,
             storageBindings=[0, 1], descriptorPhysical=0xa000, descriptorRoot=0xb0000000,
             codePhysical=0xc000, codeBytes=128,
             target=dict(globalBinding=0, allocationPhysical=0x1000, allocationBytes=8192, offset=0, bytes=8192),
@@ -122,7 +122,7 @@ class SourceBytes(unittest.TestCase):
 
     def test_forged_recipe_prefill_and_wrong_cas_lane_are_rejected(self):
         before, after, description = self.fixture()
-        for key, value in (('readonlyRejected', False), ('seed', 1), ('groups', 1),
+        for key, value in (('targetAccess', 1), ('seed', 1), ('groups', 1),
                            ('sourceCase', 'counter-increment'), ('storageBindings', [0, 0])):
             changed = dict(description);changed[key] = value
             with self.subTest(key=key), self.assertRaises(ValueError):
@@ -140,13 +140,37 @@ class SourceBytes(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='atomic-sources-', dir=root / '.artifacts') as temporary:
             a, b = Path(temporary) / 'original', Path(temporary) / 'extended';a.mkdir();b.mkdir()
             original(a);write_sources(b)
-            self.assertEqual(len(CASES), 14)
+            self.assertEqual(len(CASES), 17)
             for case in CASES:
                 p = parameters(case)
                 self.assertEqual(len(invocations(case)), 8)
                 self.assertTrue((b / p['source']).is_file())
-                if not p['operation'].endswith('-lane'):
+                if (a / p['source']).is_file():
                     self.assertEqual((a / p['source']).read_bytes(), (b / p['source']).read_bytes())
+
+    def test_checked_view_failures_preserve_every_byte_and_last_valid_word_succeeds(self):
+        _, _, template = self.fixture()
+        from compute_storage_atomic_cases import READONLY_CASE, BOUNDS_CASE, ENDPOINT_CASE
+        for case in (READONLY_CASE, BOUNDS_CASE, ENDPOINT_CASE):
+            p=parameters(case);target=bytearray(b'\x6b'*8192)
+            struct.pack_into('<I',target,p['target_offset'],p['seed'])
+            before=Memory({0x1000:bytes(target),0x5000:b'\xa7'*8192,0x9000:b'K'*4096})
+            description=dict(template,sourceCase=case,seed=p['seed'],targetOffset=p['target_offset'],
+                targetAccess=p['target_access'],resultStatus=p['result_status'],atomicOffset=p['access_offset'])
+            if p['result_status']:
+                verify(before,before,description)
+                changed=dict(before.data);value=bytearray(changed[0x1000]);value[0]^=1;changed[0x1000]=bytes(value)
+                with self.subTest(case=case),self.assertRaises(ValueError):
+                    verify(before,Memory(changed),description)
+            else:
+                final=bytearray(target);struct.pack_into('<I',final,8188,24)
+                old=(0xfffffff0,0xfffffff5,0xfffffffa,0xffffffff,4,9,14,19)
+                after=Memory({0x1000:bytes(final),0x5000:struct.pack('<8I',*old)+b'\xa7'*(8192-32),0x9000:b'K'*4096})
+                verify(before,after,description)
+                final[8187]^=1
+                changed=dict(after.data);changed[0x1000]=bytes(final)
+                with self.assertRaises(ValueError):
+                    verify(before,Memory(changed),description)
 
     def test_qualification_requires_all_new_consumers_and_the_full_factory(self):
         import prepare_owner_executor as owner

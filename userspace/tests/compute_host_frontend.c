@@ -32,7 +32,8 @@ static const char *directory;
 static int capture_only,expect_image_source_fault,uniform_case,dynamic_case,address_case,counter_case,counter_dynamic,counter_coexist;
 static unsigned image_permission_fault;
 static unsigned image_reset;
-static int expect_image_failure(void){return expect_image_source_fault || image_permission_fault;}
+static unsigned storage_view_failure;
+static int expect_compute_failure(void){return expect_image_source_fault || image_permission_fault || storage_view_failure;}
 static unsigned dynamic_operation,dynamic_signed;
 static unsigned address_kind,counter_operation,counter_index;
 static unsigned counter_offset=4080,counter_count=8;
@@ -107,11 +108,11 @@ static int wait_execution(void)
   struct compute_host_reset_receipt done=reset_receipt(f);end(f);
   assert(!compute_host_observe_reset_retired(session,&done));retired=1;return 0;
  }
- FILE *f=wait_file("record-0.held.response");magic(f,expect_image_failure()?"OGCFH001":"OGCMH001");struct compute_host_held_receipt h=held(f);end(f);
- path(output,"record-0.retire");assert(!(expect_image_failure()?compute_host_drain_failed(session,&h,output):compute_host_drain_held(session,&h,output)));
- f=wait_file("record-0.retired.response");magic(f,expect_image_failure()?"OGCFR001":"OGCMR001");struct compute_host_retired_receipt r={.held=held(f)};
+ FILE *f=wait_file("record-0.held.response");magic(f,expect_compute_failure()?"OGCFH001":"OGCMH001");struct compute_host_held_receipt h=held(f);end(f);
+ path(output,"record-0.retire");assert(!(expect_compute_failure()?compute_host_drain_failed(session,&h,output):compute_host_drain_held(session,&h,output)));
+ f=wait_file("record-0.retired.response");magic(f,expect_compute_failure()?"OGCFR001":"OGCMR001");struct compute_host_retired_receipt r={.held=held(f)};
  r.status=read32(f);r.irq=read32(f);r.irq_asserted=read32(f);r.external_drained=read32(f);end(f);
- assert(!(expect_image_failure()?compute_host_observe_failed_retired(session,&r):compute_host_observe_retired(session,&r)));retired=1;return 0;
+ assert(!(expect_compute_failure()?compute_host_observe_failed_retired(session,&r):compute_host_observe_retired(session,&r)));retired=1;return 0;
 }
 
 int cs_fixture_ioctl(int fd,unsigned long request,...)
@@ -141,8 +142,9 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
  if(request==DRM_IOCTL_OPENGPU_RESOURCE_UNBIND){struct drm_opengpu_resource *p=arg;
   assert(p->context_id==compute_host_context_id(session));return result(compute_host_unbind(session,p->slot));}
  if(request==DRM_IOCTL_OPENGPU_COMPUTE_STORAGE){
-  if(storage_case)storage_check_submission(arg);
-  int error=compute_host_submit_storage(session,arg);if(!error)submitted++;return result(error);}
+  struct drm_opengpu_compute_storage copy=*(struct drm_opengpu_compute_storage *)arg;
+  if(storage_case)storage_prepare_submission(&copy);
+  int error=compute_host_submit_storage(session,&copy);if(!error)submitted++;return result(error);}
  if(request==DRM_IOCTL_OPENGPU_COMPUTE_IMAGES){struct drm_opengpu_compute_images copy=*(struct drm_opengpu_compute_images *)arg;
   permission_views(copy.views);int error=compute_host_submit_images(session,&copy);
   if(!error){if(image_case)memcpy(accepted_images,copy.views,sizeof(accepted_images));submitted++;}return result(error);}
@@ -238,15 +240,15 @@ int main(int argc,char **argv)
 {
  assert(argc>=5);uint64_t physical_base=0;
  for(int i=5;i<argc;i++){
-  if(!strcmp(argv[i],"--capture-only")){assert(!capture_only && !expect_image_failure() && !image_reset);capture_only=1;}
-  else if(!strcmp(argv[i],"--expect-image-source-fault")){assert(!capture_only && !expect_image_failure() && !image_reset);expect_image_source_fault=1;}
+  if(!strcmp(argv[i],"--capture-only")){assert(!capture_only && !expect_compute_failure() && !image_reset);capture_only=1;}
+  else if(!strcmp(argv[i],"--expect-image-source-fault")){assert(!capture_only && !expect_compute_failure() && !image_reset);expect_image_source_fault=1;}
   else if(!strcmp(argv[i],"--expect-image-permission-fault")){
-   assert(!capture_only && !expect_image_failure() && !image_reset && ++i<argc);
+   assert(!capture_only && !expect_compute_failure() && !image_reset && ++i<argc);
    image_permission_fault=!strcmp(argv[i],"read")?1:!strcmp(argv[i],"write")?2:0;
    assert(image_permission_fault);
   }
   else if(!strcmp(argv[i],"--expect-image-reset")){
-   assert(!capture_only && !expect_image_failure() && !image_reset && !strcmp(argv[4],"image-atomic-buffer-r32f") && ++i<argc);
+   assert(!capture_only && !expect_compute_failure() && !image_reset && !strcmp(argv[4],"image-atomic-buffer-r32f") && ++i<argc);
    image_reset=!strcmp(argv[i],"read")?1:!strcmp(argv[i],"write")?2:0;assert(image_reset);
   }
   else if(!strcmp(argv[i],"--physical-base")){
@@ -257,10 +259,11 @@ int main(int argc,char **argv)
   }else assert(!"unknown compute host option");
  }
  assert(!physical_base || (!capture_only && !strcmp(argv[4],"image-atomic-buffer-r32f")));
- assert(!expect_image_failure() || !strcmp(argv[4],"image-atomic-buffer-r32f"));
+ assert(!expect_compute_failure() || !strcmp(argv[4],"image-atomic-buffer-r32f"));
  host_timeout_seconds=compute_host_timeout_seconds();assert(host_timeout_seconds);
  uniform_case=!strcmp(argv[4],"uniforms");
  storage_parse_case(argv[4]);
+ storage_view_failure=storage_case && (storage_index==14 || storage_index==15);
  image_parse_case(argv[4]);
  const char *counter_names[]={"counter-increment","counter-read","counter-decrement",
   "counter-dynamic-increment","counter-dynamic-read","counter-dynamic-decrement",
@@ -364,7 +367,7 @@ int main(int argc,char **argv)
  f=wait_file("BEGIN_CLEANUP");magic(f,"OGCMBA01");assert(read32(f)==1);end(f);
  assert(!compute_host_begin_cleanup(session,directory));
  assert(!(image_reset?compute_host_finish_cancelled_observed(session):
-  expect_image_failure()?compute_host_finish_failed_observed(session):compute_host_finish_observed(session)));
+  expect_compute_failure()?compute_host_finish_failed_observed(session):compute_host_finish_observed(session)));
  assert(!compute_host_end_cleanup(session));
  f=wait_file("FINAL_RESPONSE");magic(f,"OGCMOK01");assert(read32(f)==1);end(f);
  /* End this dedicated source process after the actual Linux file/context

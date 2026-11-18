@@ -279,12 +279,14 @@ class Entry(unittest.TestCase):
             args=argparse.Namespace(timeout=60)
             def record(path):
                 if path.name=='profile.json':return {'actual-profile-cpu-peer':True}
-                return {'actual-receipt-cpu-peer':True}
+                return {'actual-receipt-cpu-peer':True,'physicalReadFaults':0,'injectedReadFaults':0,'physicalWriteFaults':0}
             patches=(
                 patch('compute_storage_atomic_controller.subprocess.Popen',side_effect=start),
                 patch('compute_storage_atomic_controller.strict_json',side_effect=record),
                 patch('compute_storage_atomic_controller.held_bytes',return_value=b'held'),
                 patch('compute_storage_atomic_controller.retired_bytes',return_value=b'retired'),
+                patch('compute_storage_atomic_controller.failed_held_bytes',return_value=b'failed-held'),
+                patch('compute_storage_atomic_controller.failed_retired_bytes',return_value=b'failed-retired'),
                 patch('compute_storage_atomic_controller.checked_cleanup'),
                 patch('compute_storage_atomic_controller.SparseMemory'),
                 patch('compute_storage_atomic_controller.verify',side_effect=check),

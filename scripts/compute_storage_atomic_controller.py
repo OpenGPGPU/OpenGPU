@@ -6,9 +6,9 @@ recovery and delayed acknowledgments require their separate P10 gates.
 import subprocess
 import time
 from compute_owner_protocol import (strict_json, held_bytes, retired_bytes,
-    checked_cleanup, cleanup_authorization)
+    failed_held_bytes, failed_retired_bytes, checked_cleanup, cleanup_authorization)
 from compute_owner_oracle import SparseMemory, verify
-from compute_storage_atomic_cases import CASES
+from compute_storage_atomic_cases import CASES, parameters
 
 
 def run_matrix(args, command, directory, executor, env, qualified, profile_name):
@@ -28,6 +28,7 @@ def run_matrix(args, command, directory, executor, env, qualified, profile_name)
             bridge = subprocess.Popen([x.replace('{ipc}', str(directory)) for x in command],
                 env=env, stdout=log, stderr=subprocess.STDOUT)
             for case in CASES:
+                failed=bool(parameters(case)['result_status'])
                 local = directory / case
                 wait_file(local / 'READY', bridge, None, remaining())
                 for name in ('union.memory', 'record-0.capture', 'oracle.json', 'code.words'):
@@ -35,14 +36,19 @@ def run_matrix(args, command, directory, executor, env, qualified, profile_name)
                 description, frozen = ready_inputs(local, case, owner_profile=profile_name, profile=profile)
                 inputs.append((local, frozen))
                 result = local / 'results'
-                running = subprocess.Popen([executor, '--active-owner', local / 'union.memory', result, local],
+                running = subprocess.Popen([executor, '--active-storage-view-fault' if failed else '--active-owner',
+                    local / 'union.memory', result, local],
                     env=env, stdout=output, stderr=subprocess.STDOUT)
                 wait_file(local / 'record-0.held.json', bridge, running, remaining())
                 held = strict_json(local / 'record-0.held.json')
-                atomic(local / 'record-0.held.response', held_bytes(held))
+                if failed:
+                    require(all(type(held.get(key)) is int and held[key]==0 for key in
+                        ('physicalReadFaults','injectedReadFaults','physicalWriteFaults')),
+                        'storage view fault must not encounter a physical bus error')
+                atomic(local / 'record-0.held.response', (failed_held_bytes if failed else held_bytes)(held))
                 wait_file(local / 'record-0.retired.json', bridge, running, remaining())
                 returned = strict_json(local / 'record-0.retired.json')
-                response = retired_bytes(returned, held)
+                response = (failed_retired_bytes if failed else retired_bytes)(returned, held)
                 unchanged_inputs(local, frozen)
                 with SparseMemory(local / 'union.memory') as before, SparseMemory(result / 'record-0.memory') as after:
                     verify(before, after, description)
@@ -63,7 +69,7 @@ def run_matrix(args, command, directory, executor, env, qualified, profile_name)
             qualified(env, output)
             for local, frozen in inputs:
                 unchanged_inputs(local, frozen)
-        print('all fourteen original SSBO atomic cases: exact legal old values and full physical guards PASS; per-case reset')
+        print('all seventeen original SSBO atomic cases: exact old values, view faults and full physical guards PASS; per-case reset')
     except BaseException:
         if local is not None:
             try:

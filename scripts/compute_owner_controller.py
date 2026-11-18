@@ -333,7 +333,10 @@ def main():
     require(executor.is_file() and not executor.is_symlink() and qualification.is_file() and not qualification.is_symlink(),
             'executor/qualification must be original regular files')
     qualified_profile=strict_json(qualification).get('profile')
+    storage_view_fault=False
     if args.case in STORAGE_ATOMIC_CASES:
+        from compute_storage_atomic_cases import parameters as storage_parameters
+        storage_view_fault=bool(storage_parameters(args.case)['result_status'])
         from owner_resource_contract import IMAGE_FLOAT_PROFILE
         require(qualified_profile==IMAGE_FLOAT_PROFILE,'storage atomic execution requires the complete float owner')
     if args.expect_image_source_fault or args.image_source_recovery or args.image_permission_recovery or args.image_reset_recovery:
@@ -404,7 +407,8 @@ def main():
                             before,description,owner_profile=qualified_profile))
                     inputs['record-0.fault-plan']=input_digest(directory/'record-0.fault-plan')
                 results = directory / 'results'
-                execution_mode='--active-image-source-fault' if args.expect_image_source_fault else '--active-owner'
+                execution_mode=('--active-storage-view-fault' if storage_view_fault else
+                                '--active-image-source-fault' if args.expect_image_source_fault else '--active-owner')
                 running = subprocess.Popen([executor, execution_mode, directory / 'union.memory', results, directory],
                     env=env, stdout=output, stderr=subprocess.STDOUT)
                 wait_file(directory / 'record-0.held.json', bridge, running, args.timeout)
@@ -412,10 +416,10 @@ def main():
                 if args.expect_image_source_fault:
                     from compute_image_source import source_read_fault_proof
                     source_read_fault_proof(held)
-                atomic(directory / 'record-0.held.response', (failed_held_bytes if args.expect_image_source_fault else held_bytes)(held))
+                atomic(directory / 'record-0.held.response', (failed_held_bytes if args.expect_image_source_fault or storage_view_fault else held_bytes)(held))
                 wait_file(directory / 'record-0.retired.json', bridge, running, args.timeout)
                 returned = strict_json(directory / 'record-0.retired.json')
-                response = (failed_retired_bytes if args.expect_image_source_fault else retired_bytes)(returned, held)
+                response = (failed_retired_bytes if args.expect_image_source_fault or storage_view_fault else retired_bytes)(returned, held)
                 if args.expect_image_source_fault:
                     source_read_fault_proof(returned,held)
                 unchanged_inputs(directory,inputs)
