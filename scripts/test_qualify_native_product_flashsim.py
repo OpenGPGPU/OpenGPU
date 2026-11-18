@@ -182,6 +182,24 @@ int main() {
             self.assertEqual(builder['dut_header_sha256'], generated.pop('dut.h'))
             self.assertEqual(builder['dut_sources'], generated)
             subprocess.run([str(build / 'native_product_driver')], check=True)
+            if 'clang' in subprocess.check_output(['c++','--version'],text=True).lower():
+                pch = root / 'pch-build'
+                command = [sys.executable, str(flash.ROOT / 'scripts/build_native_flashsim.py'),
+                    '--dut-dir', str(dut), '--build-dir', str(pch), '--driver', str(program),
+                    '--jobs', '2', '--precompiled-header']
+                subprocess.run(command,check=True,stdout=subprocess.PIPE,text=True)
+                pch_builder=json.loads((pch/'native-flashsim-build.json').read_text())
+                self.assertEqual(pch_builder['objects'],builder['objects'])
+                subprocess.run([str(pch/'native_product_driver')],check=True)
+                logs=list(pch.glob('native-pch-*.log'))
+                self.assertTrue(logs,'generated assertion DUT did not exercise PCH compilation')
+                for log in logs:log.unlink()
+                subprocess.run(command,check=True,stdout=subprocess.PIPE,text=True)
+                progress=json.loads((pch/'native-flashsim-progress.json').read_text())
+                self.assertEqual(progress['compiled_shards'],0)
+                self.assertEqual(progress['cached_shards'],len(generated))
+                self.assertFalse(list(pch.glob('native-pch-*.log')))
+                subprocess.run([str(pch/'native_product_driver')],check=True)
 
     def test_requires_split_assertion_model_and_fingerprints_every_shard(self):
         with tempfile.TemporaryDirectory() as tmp:

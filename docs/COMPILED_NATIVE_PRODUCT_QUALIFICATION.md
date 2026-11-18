@@ -716,6 +716,9 @@ cannot use a missing or mismatched PCH or replace the last successful build.
 
 All 34 focused builder, cache, adapter, generator and owner-input checks pass,
 including real FlashSim/CIRCT bound-assertion generation and native execution.
+The generated assertion DUT has identical ordinary/PCH object digests and
+executes correctly after both cold and cached PCH builds; its cached rebuild
+starts no PCH compiler.
 The Python 3.14 run stayed below 4 GiB and proved consumer cleanup. Reproduce
 with Python 3.10+ in the matching FlashSim/CIRCT environment:
 
