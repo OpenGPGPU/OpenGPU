@@ -1,4 +1,4 @@
-"""Source case identities for actual Mesa owner execution; no GPU results."""
+"""Original Mesa and raw RV32 source case identities; no GPU results."""
 LEGACY_DYNAMIC_CASES = tuple('shared-dynamic-%d' % op for op in range(10)) + tuple(
     'shared-dynamic-i-%d' % op for op in (0, 1, 2, 3, 4, 9))
 ADDRESS_CASES = ('shared-address-add', 'shared-address-cas-match', 'shared-address-cas-miss')
@@ -16,7 +16,8 @@ from compute_contended_image_cases import CASES as CONTENDED_IMAGE_CASES
 from compute_mixed_atomic_cases import CASES as MIXED_ATOMIC_CASES
 IMAGE_CASES = LEGACY_IMAGE_CASES + CONTENDED_IMAGE_CASES + MIXED_ATOMIC_CASES
 from compute_storage_atomic_cases import CASES as STORAGE_ATOMIC_CASES
-CASES = LEGACY_CASES + COUNTER_CASES + IMAGE_CASES + STORAGE_ATOMIC_CASES
+from compute_global_atomic_cases import CASES as GLOBAL_ATOMIC_CASES
+CASES = LEGACY_CASES + COUNTER_CASES + IMAGE_CASES + STORAGE_ATOMIC_CASES + GLOBAL_ATOMIC_CASES
 
 
 def counter_parameters(name):

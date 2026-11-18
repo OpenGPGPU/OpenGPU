@@ -127,6 +127,7 @@ python3 scripts/test_compute_owner.py
 python3 -B scripts/test_compute_atomic_order.py
 python3 -B scripts/test_compute_global_atomic_cases.py
 python3 -B scripts/test_compute_global_atomic_source.py
+python3 -B scripts/test_compute_global_host_inputs.py
 python3 scripts/test_compute_indirect_capture.py
 python3 -B scripts/test_compute_storage_atomic_delay.py
 python3 -B scripts/test_compute_storage_recovery.py

@@ -18,7 +18,7 @@ from test_compute_host import write_bodies
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def build(out, *, sanitize):
+def build(out, *, sanitize, guard=None):
     out.mkdir(parents=True, exist_ok=False)
     kernel = out / 'kernel'
     kernel.mkdir()
@@ -46,14 +46,20 @@ def build(out, *, sanitize):
          ['-D' + name + '=global_fixture_' + name for name in ('ioctl', 'mmap', 'munmap', 'close')]),
         ('userspace/tests/compute_global_host.c', [ROOT / 'driver', ROOT / 'userspace'], []),
     )
+    plans=[]
     for relative, includes, extra in units:
         obj = out / (Path(relative).stem + '.o')
-        run(cc + flags + ['-I' + str(path) for path in includes] + extra +
-            ['-MMD', '-MF', obj.with_suffix('.d'), '-c', ROOT / relative, '-o', obj],
-            'compile-' + obj.stem)
+        argv=cc + flags + ['-I' + str(path) for path in includes] + extra +\
+            ['-MD', '-MF', obj.with_suffix('.d'), '-c', ROOT / relative, '-o', obj]
+        plans.append(('compile-'+obj.stem,argv))
         objects.append(obj)
     binary = out / 'compute_global_host'
-    run(cc + flags + [*objects, '-o', binary], 'link-original-global-caller')
+    link=cc + flags + [*objects,'-Wl,-t','-o',binary]
+    if guard is not None:guard.prepare(out,plans,link)
+    for label,argv in plans:run(argv,label)
+    if guard is not None:guard.before_link()
+    run(link, 'link-original-global-caller')
+    if guard is not None:guard.built(commands,binary)
     return binary
 
 
@@ -65,13 +71,25 @@ def main():
     parser.add_argument('--session', type=Path)
     parser.add_argument('--capture-only', action='store_true')
     parser.add_argument('--sanitize', action='store_true')
+    parser.add_argument('--bound-inputs',type=Path)
+    parser.add_argument('--global-atomic-matrix',action='store_true')
     args = parser.parse_args()
     if args.case == 'all' and not args.capture_only:
         parser.error('all-case mode is CPU capture only; live mode requires one exact original case')
     if args.session is not None and args.case == 'all':
         parser.error('a live session identifies one original source case')
+    if args.global_atomic_matrix and (args.case!=CASES[0] or args.session is None):
+        parser.error('global matrix requires its exact first source and private session')
+    if not args.capture_only and (args.bound_inputs is None or not args.sanitize):
+        parser.error('live source requires guarded inputs and sanitized compilation')
+    if args.bound_inputs is not None and not args.sanitize:
+        parser.error('bound native compilation requires ASan/UBSan')
+    guard=None
+    if args.bound_inputs is not None:
+        from compute_global_host_inputs import Inputs
+        guard=Inputs(args.bound_inputs,ROOT)
     out = args.build.resolve()
-    binary = build(out, sanitize=args.sanitize)
+    binary = build(out, sanitize=args.sanitize,guard=guard)
     inputs = out / 'inputs'
     inputs.mkdir()
     profile = args.profile_wire.resolve(strict=True)
@@ -84,18 +102,27 @@ def main():
     frozen_profile.write_bytes(wire)
     env = dict(os.environ, UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1',
                ASAN_OPTIONS='detect_leaks=1:abort_on_error=1')
-    selected = CASES if args.case == 'all' else (args.case,)
+    selected = CASES if args.case == 'all' or args.global_atomic_matrix else (args.case,)
     for case in selected:
         code = words(case)
         program, initial = inputs / (case + '.bin'), inputs / (case + '.kernarg')
         program.write_bytes(struct.pack('<%uI' % len(code), *code))
         initial.write_bytes(initial_kernarg(case))
-        directory = args.session.resolve() if args.session is not None else out / 'captures' / case
+        directory = ((args.session.resolve()/case if args.global_atomic_matrix else args.session.resolve())
+                     if args.session is not None else out / 'captures' / case)
         directory.mkdir(parents=True, exist_ok=args.session is not None)
-        subprocess.run([str(binary), str(directory), str(frozen_profile), str(program), str(initial), case,
-                        *(['--capture-only'] if args.capture_only else [])], check=True, env=env)
+        if guard is not None:guard.unchanged()
+        log_path=out/('actual-compute-capture-'+case+'.log')
+        with log_path.open('w') as log:
+            done=subprocess.run([str(binary), str(directory), str(frozen_profile), str(program), str(initial), case,
+                        *(['--capture-only'] if args.capture_only else [])],stdout=log,stderr=subprocess.STDOUT,env=env)
+        if done.returncode:raise RuntimeError(case+' failed:\n'+log_path.read_text(errors='replace')[-8000:])
+        if guard is not None:guard.unchanged()
+        print('original RV32/Linux '+case+': '+('CPU capture PASS; no GPU execution' if args.capture_only else
+              'external DUT lifecycle completed'),flush=True)
     if profile.read_bytes() != wire:
         raise ValueError('original discovery input changed during source capture')
+    if guard is not None:guard.unchanged(full=True)
     print('%u original RV32/Linux source captures completed%s' %
           (len(selected), ' (CPU admission only; no GPU execution)' if args.capture_only else ''))
 
