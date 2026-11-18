@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """CPU mutation checks for continuous transport/oracles; never GPU proof."""
-import copy
 from pathlib import Path
 import struct
 import tempfile
 import unittest
 from unittest.mock import patch
-from compute_indirect_oracle import Originals, RetainedMemory, equal_bytes
+from compute_indirect_oracle import Originals, RetainedMemory, equal_bytes, executable_physical
 from compute_indirect_phase_protocol import execution, cleanup_authorization, phase_response, execution_result
 import prepare_owner_executor as owner
 
@@ -30,6 +29,17 @@ def originals(command=17, opcode=14, epoch=1, objects=((1, 0x1000, bytes(8192)),
 
 
 class TransportTests(unittest.TestCase):
+    def test_executable_uses_exact_production_cached_mapping_not_snapshot_policy(self):
+        root = struct.pack('<I', (3 << 10) | 1) + bytes(4092)
+        for flags in (0xcf, 0x24b, 0x2cf, 0xc7, 0x43):
+            leaf = struct.pack('<I', (4 << 10) | flags) + bytes(4092)
+            memory = Memory({0x2000: root, 0x3000: leaf})
+            if flags == 0xcf:
+                self.assertEqual(executable_physical(memory, 0x80800002, 12), 0x400c)
+            else:
+                with self.subTest(flags=flags), self.assertRaises(ValueError):
+                    executable_physical(memory, 0x80800002, 12)
+
     def test_original_bytes_bind_all_identities_and_whole_allocation(self):
         data = b'\xa7' * 8192
         wire = originals(objects=((1, 0x1000, data),))
