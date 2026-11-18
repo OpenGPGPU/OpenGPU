@@ -1,5 +1,15 @@
 # Typed image source submission and live-owner contract (P08)
 
+The P08 acceptance set passes: seventy original load/store recipes on the
+complete sample host, fifteen atomic and fifteen coordinate-boundary recipes
+on the complete float host, and the buffer R32F fault, permission-denial and
+delayed-R/B cancellation pairs with actual cleanup and healthy reuse.
+Each result below retains its own exact execution source and model scope.
+[PR #880](https://github.com/OpenGPGPU/OpenGPU/pull/880) closes P08 after
+protected merge, taking the alignment count to 8/40. Complete resource
+combinations, cross-command coherence, full compiler/API closure and product
+clock/FPS retain their separate acceptance gates.
+
 The complete-host CPU boundary now forwards the original `COMPUTE_IMAGES` and
 `COMPUTE_IMAGE_RESOURCES` requests to their production Linux handlers. It retains
 the accepted image views beside their original GEM bindings, snapshots the real
@@ -51,7 +61,7 @@ This phase accepts only `PIPE_BIND_SHADER_IMAGE` for the new nonbuffer layouts.
 Combined sampler/render bindings, imported/exported typed storage and nonbuffer
 `imageSize` remain unsupported by this path. Existing render
 layouts and driver/RTL capacities are unchanged. The actual execution results
-and remaining P08 lifecycle limits are documented below.
+and separately qualified P08 lifecycle results are documented below.
 
 ## Integer image-atomic compiler admission
 
@@ -122,10 +132,10 @@ exchange), 160 integer and 20 float TGSI target/alias cases, four immediate
 boundaries, 65 load/store programs and 52 mapping/lifetime cases. These compiler
 checks execute no shader on a DUT.
 
-Fresh full-capacity R32F factory/model qualification, original source-bound
-atomic results, boundary, permission, fault/cancel/reset/drain and healthy-reuse
-acceptance remain required. Reproduce the focused RTL checks with Java 21,
-the normal FIRRTL/Verilator toolchain and assertions enabled:
+Full-capacity R32F factory/model qualification, original source-bound atomic
+results, boundary, permission, fault/cancel/reset/drain and healthy-reuse
+results are documented separately below. Reproduce the focused RTL checks
+with Java 21, the normal FIRRTL/Verilator toolchain and assertions enabled:
 
 ```sh
 sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 \
@@ -174,7 +184,7 @@ sample graphics and compute: each reads all 112 discovery words, with five,
 five and ten auxiliary registers respectively, one reset and drained idle state.
 Source/model/tool/object identities pass again after rebasing onto the merged
 backend change. These are discovery probes; the actual atomic result below and
-the remaining P08 lifecycle gates have separate execution requirements.
+the P08 lifecycle results have separate execution qualifications.
 
 For the CPU capture reproduction below, substitute `IMAGE_FLOAT_PROFILE`,
 `IMAGE_FLOAT_STAGE` and `IMAGE_FLOAT_WORDS` from `owner_resource_contract` in
@@ -209,7 +219,7 @@ the original load/store recipes and five R32F recipes. The separate complete-hos
 run below establishes these atomic recipes' shader execution. Same-texel
 contention, other view combinations and lifecycle acceptance retain their own
 requirements. Qualifications must be freshly bound to changed compiler,
-producer and checker sources before execution; P08 stays open.
+producer and checker sources before execution.
 
 ## Original R32F exchange sequences and bounded register reuse
 
@@ -234,7 +244,7 @@ boundaries, 65 load/store programs and 52 mappings. All 85 original single-atomi
 Mesa programs also pass. Twenty-seven focused image/controller/oracle/qualification
 checks pass with the coordinate-boundary additions below.
 
-## Actual complete float-host atomic execution (P08 partial)
+## Actual complete float-host atomic execution
 
 All fifteen original atomic recipes pass actual execution through Mesa,
 production ioctls and the complete 112-word float-stage Verilator DUT: ten
@@ -253,10 +263,9 @@ every case. Each case uses its own fresh DUT reset and original uploaded RAM;
 this run establishes neither cross-command coherence nor same-DUT reuse.
 
 Coordinate-boundary, source-read fault, permission-denial and continuous
-buffer recovery results are scoped below. Cancellation/reset/drain retains
-its separate acceptance gate. This atomic result
-does not close P08, establish complete resource combinations, or qualify
-product clock/FPS. The formal accepted count remains 7/40.
+buffer recovery and cancellation/reset/drain results are scoped below. This
+atomic matrix alone does not establish those lifecycle results, complete
+resource combinations or product clock/FPS.
 
 After preparing and freshly source-qualifying the complete float-stage compute
 executor as described in the executor guide, reproduce this matrix with the
@@ -324,7 +333,7 @@ source checks pass under the 4-GiB/900-second per-case guard.
 Each case uses a fresh execution DUT/reset and original RAM. These results do
 not establish cross-command coherence, continuous recovery or product
 clock/FPS. Every qualifier removes its private producer build, capture,
-container and returned memory after verification. P08 remains open at 7/40.
+container and returned memory after verification.
 
 ```sh
 PYTHONPATH=scripts python3 -B -m unittest test_compute_image_source \
@@ -379,9 +388,8 @@ PYTHONPATH=scripts python3 -B -m unittest test_compute_owner_protocol \
 These are CPU transport and schema checks. The ordinary compute executor and
 Mesa producer use success receipts; the distinct source-fault execution path
 below requires its own actual-DUT qualification. Continuous source-fault
-recovery is qualified separately below; cancel/reset execution remains pending. Freshly bind any
-execution qualification to the changed boundary/protocol sources; this source
-phase does not close P08.
+recovery and cancellation/reset execution are qualified separately below.
+Freshly bind execution qualifications to changed boundary/protocol sources.
 
 ## Native fault and retained-memory service primitives
 
@@ -414,9 +422,9 @@ reuse without clearing hold/fault history. Transactional rejected appends
 preserve every original byte. All 34 native-product preparation/guard checks,
 the five fixed compute drivers and native-owner transport guards pass; the
 driver guards also use ASan/UBSan. These service tests execute no GPU shader; actual image fault/reuse
-qualifications below retain their independent source binding. Actual
-cancellation/reset/drain remains required and does not follow from these
-service tests.
+qualifications below retain their independent source binding. The actual
+cancellation/reset/drain results also have their own qualification; they do
+not follow from these service tests.
 
 ```sh
 env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 \
@@ -440,8 +448,9 @@ with `ECANCELED`; original GEM, descriptor and page-table ownership remains
 pinned. Unowned completion DATA may remain stale and is never POPped.
 
 At the original RESET write, the boundary exports the partial MMIO trace and
-waits for an exact external `RESET_BUSY|VM_BUSY` observation before the original
-IRQ-enable tail proceeds. Only a separate READY/reset-IRQ/external-drain ACK
+waits for an external `RESET_BUSY|VM_BUSY` observation, allowing only the
+independent queue-capacity READY bit, before the original IRQ-enable tail
+proceeds. Only a separate READY/reset-IRQ/external-drain ACK
 authorizes original IRQ retirement. A subsequent observation of the retired
 IRQ authorizes the scheduler's cancelled fence. Independent byte verification
 must still authorize cleanup, whose original PTE/TLB/context ACK protocol is
@@ -462,8 +471,8 @@ container-mounted GCC parser run exceeded its 180-second bound and is not
 counted as a parser pass.
 
 These tests execute no shader. Native delayed-R/B replay, actual reset drain,
-independent partial-cancel bytes and same-DUT healthy reuse remain pending;
-this source stage does not close P08. Changed boundary sources require fresh
+independent partial-cancel bytes and same-DUT healthy reuse have their separate
+actual execution results below. Changed boundary sources require fresh
 execution qualification before an actual-DUT claim.
 
 ```sh
@@ -517,15 +526,76 @@ drivers pass; the C++ guards use ASan/UBSan and verify reset JSON interoperabili
 and strict trace/plan rejection. The full float C matrix and canonical parser
 also pass, including original cancelled IRQ traces with both pending and clean
 IRQ histories. These remain CPU/source checks. Actual delayed-R/B reset/drain
-and healthy-reuse execution is still required before P08 can close.
+and healthy-reuse results follow below.
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts python3 -B -m unittest \
   test_compute_image_reset test_compute_owner_protocol test_compute_owner_controller \
   test_qualify_compute_owner test_compute_image_source
-# With a freshly source-qualified complete float executor, run each channel:
-# qualify_compute_owner.py --case image-atomic-buffer-r32f --image-reset-recovery read
-# qualify_compute_owner.py --case image-atomic-buffer-r32f --image-reset-recovery write
+```
+
+## Actual delayed R/B cancellation and healthy reuse
+
+Both original buffer R32F pairs pass on the complete assertion-enabled float
+DUT, with execution sources fixed at
+`4a60abb30654a5b96aa4d5cc096e466f4626749e`. The RTL and full model remain
+unchanged from the qualified float factory; source-only transport and checker
+changes receive fresh executor qualification. The two directions use separate
+initial DUTs. Within each pair, one DUT, RAM, AXI agent and cumulative clock
+span cancellation and healthy execution, with command ID 4, one initial model
+reset and one actual unified-reset request. No RAM replacement occurs.
+
+| Delayed response | Held cycles at drain | Changed original source words | Cancellation clock | Pair elapsed | Peak aggregate RSS |
+|---|---:|---:|---|---:|---:|
+| R | 143 R / 0 B | 2 | 0..2453 | 319.040 s | 382746624 bytes |
+| B | 0 R / 143 B | 2 | 0..2450 | 315.893 s | 372424704 bytes |
+
+Both actual BUSY observations are 41 (`RESET_BUSY|VM_BUSY|READY`), with IRQ
+delivery disabled and a rejected SUBMIT before release. The drained ACK is
+status 1 with IRQ 3; original six-action IRQ retirement leaves IRQ 1 and the
+pin deasserted. Both observe 32 further clocks with no late external traffic
+or changed RAM. Physical read/write faults and injected read faults stay zero.
+Independent per-cut bytes pass before ACK relay: R changes only two source
+words to their first original exchange, leaving output/destination original;
+B changes only permitted original exchange data. Every other original byte
+remains guarded. The cancelled owner retains real Linux `ECANCELED` hardware
+and scheduler fences through actual original PTE/context cleanup, whose strict
+byte check permits only valid original PTE clears.
+
+Each healthy owner then verifies forty raw old words, final source/destination
+texels and every retained prior-owner byte. The clock continues from the
+cancelled round; the B pair finishes at 12122. Both actual healthy cleanups,
+independent cleanup-memory checks, final source/input checks and original
+producer/executor exits pass. Each pair exits zero under the 4-GiB/900-second
+guard, with proven process cleanup. Private producer builds, captures,
+containers and returned RAM are removed; the ended software executor is also
+removed after process, cross-worktree reference and symlink audits. The full
+model is retained for the next indirect-compute qualification.
+
+These are the selected original buffer R32F cancellation cuts. They do not
+qualify every image recipe at every cut or establish general resource
+competition, cross-domain coherence or product clock/FPS. The earlier matrices
+keep their own exact source/model scopes; they are not relabeled as execution
+of this source tree.
+
+Prepare and freshly source-qualify the complete float executor as described in
+the executor guide, then reproduce both directions serially:
+
+```sh
+owner_dir="$PWD/.artifacts/p08-float-owner"
+for channel in read write; do
+  env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 \
+    /usr/bin/python3 -B scripts/run_owner_bounded.py \
+    --memory-mib 4096 --timeout-seconds 900 -- \
+    /usr/bin/python3 -B scripts/qualify_compute_owner.py \
+    --executor "$owner_dir/executors/compute/executor" \
+    --executor-qualification "$owner_dir/executors/compute/qualification.json" \
+    --executor-checker "$PWD/scripts/prepare_owner_executor.py" \
+    --executor-checker-python /usr/bin/python3 \
+    --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72 \
+    --case image-atomic-buffer-r32f --image-reset-recovery "$channel" \
+    --timeout 600 || exit 1
+done
 ```
 
 ## Original source-read failure execution path
@@ -566,9 +636,9 @@ captures, containers and returned RAM after verification.
 
 Each of these standalone runs uses a separate fresh DUT reset and original
 RAM. Continuous buffer recovery and coordinate-boundary results are scoped
-separately in this document. Permission denials are qualified below; cancel/reset/drain,
-cross-command coherence and complete resource combinations keep their own
-acceptance gates. P08 remains open at 7/40 accepted.
+separately in this document, as are permission denials and cancellation/reset/drain.
+Cross-command coherence and complete resource combinations keep their own
+acceptance gates.
 
 After committing and freshly binding this source to the complete compute
 executor, use the bounded qualifier command in the atomic execution section
@@ -626,8 +696,8 @@ The bounded pair exits zero in 290.734 seconds under a 4-GiB/900-second guard,
 with peak aggregate resident memory 390234112 bytes and proven process cleanup.
 Both private producer builds, captures, containers and returned RAM are removed
 after verification. This establishes only the original buffer source-fault /
-healthy pair; permission denials are qualified below and cancel/reset/drain remains open.
-P08 remains open at 7/40 accepted.
+healthy pair; permission denials and cancellation/reset/drain are qualified
+separately in this document.
 
 After freshly binding the execution sources, reproduce the pair with the
 bounded atomic qualifier command above, selecting
@@ -678,8 +748,8 @@ in 299.875 seconds with peak 380616704 bytes. Each pair uses a 4-GiB/900-second
 guard and proves process cleanup. Its private producer builds, captures,
 containers and returned RAM are removed after verification. The two directions
 use separate initial execution DUTs; they do not establish coherence across
-the pairs or product clock/FPS. Cancel/reset/drain remains required, and P08
-stays open at 7/40.
+the pairs or product clock/FPS. Cancellation/reset/drain has the separate
+actual results above.
 
 The existing source-read fault/recovery pair also passes on those same
 execution sources: command ID 4 and clock intervals 0..2337 and 2337..12009,
@@ -764,9 +834,9 @@ These are CPU OS/MMIO transport fixtures, including CPU completion/cleanup peers
 They execute no shader and create no DUT qualification. The separate seventy
 load/store and fifteen atomic complete-host runs above establish only their
 stated source snapshots and scopes. Boundary and source-read fault results
-also appear above. P08 remains incomplete: cancellation/reset/drain remains
-open. Continuous buffer source-fault and permission-denial recovery are scoped
-above. Complete resource
+also appear above, alongside the actual R/B cancellation/reset/drain and
+healthy-reuse pairs. Continuous buffer source-fault and permission-denial
+recovery are separately scoped above. Complete resource
 combinations, cross-command coherence and product clock/FPS keep their own gates.
 Existing executor qualifications cannot be relabeled for the changed source.
 
