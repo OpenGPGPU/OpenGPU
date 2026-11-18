@@ -88,8 +88,11 @@ void phase_cleanup(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,cons
     }
     for(unsigned n=0;n<8;n++)bus.step();
     const auto status=bus.read(GPU_REG_UCMD_STATUS),irq=bus.read(GPU_REG_IRQ);
-    require(status==GPU_UCMD_STATUS_READY && irq==GPU_IRQ_ENABLE && !sim.model->io_m_irq && agent.drained(),
-      "phase publication/revocation did not finish idle and drained");
+    if(status!=GPU_UCMD_STATUS_READY || irq!=GPU_IRQ_ENABLE || sim.model->io_m_irq || !agent.drained())
+      throw std::runtime_error("phase publication/revocation did not finish idle and drained: phase="+
+        std::to_string(mode.index)+" batch="+std::to_string(sequence)+" status="+std::to_string(status)+
+        " irq="+std::to_string(irq)+" pin="+std::to_string(bool(sim.model->io_m_irq))+
+        " drained="+std::to_string(agent.drained()));
     traffic_unchanged(traffic,agent.traffic);verify_readonly(expected,memory,{});
     atomic_json(session/(stem+".observed"),[&](auto &out) {
       out.write("OGCPA001",8);for(uint32_t v:{sequence,status,irq,0u,1u})write_le(out,v,4);

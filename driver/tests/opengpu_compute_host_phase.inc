@@ -157,6 +157,12 @@ int compute_host_phase_invalidate(struct compute_host_session *s,const struct dr
  if((intptr_t)fence<0 && (intptr_t)fence>=-4095)return (int)(intptr_t)fence;
  if(!fence)return -EIO;
  compute_mmio_progress(&s->gpu);
+ /* Polling the actual completion drain does not acknowledge the sticky IRQ.
+  * Capture the original IRQ handler after that poll; the native peer must
+  * observe the real pending bit and replay its W1C before acknowledging this
+  * batch. No completion or IRQ from this control peer is GPU evidence. */
+ m->regs[GPU_REG_IRQ/4]|=GPU_IRQ_PENDING;
+ opengpu_irq_handler(0,&s->gpu);
  if(dma_fence_get_status(fence)!=1){dma_fence_put(fence);return -EIO;}
  dma_fence_signal(&s->head->s_fence->finished);opengpu_sched_free_job(s->head);
  s->head=s->tail=NULL;s->queued=0;dma_fence_put(fence);
