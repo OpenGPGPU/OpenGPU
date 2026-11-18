@@ -13,16 +13,16 @@ class Varyings extends Bundle {
   val b = UInt(8.W)
 }
 
-/** Barycentric attribute interpolation.
+/** Barycentric attribute interpolation for the legacy immediate path.
   *
-  * Each screen-space channel is interpolated with the barycentric weights
-  * derived from the rasterizer's edge values:
+  * `RasterShader` (same file) instantiates this for `RenderPipeline` /
+  * tile-bin engines. Native/typed raster uses the FP32 streaming generation
+  * instead; see `graphics/README.md`. Each screen-space channel uses the
+  * rasterizer edge weights:
   *
   *   attr = (e0*attr0 + e1*attr1 + e2*attr2) / area
   *
-  * where area = e0 + e1 + e2 is twice the signed triangle area.  This is the
-  * fixed-function interpolation stage between the rasterizer and the
-  * programmable fragment shader.
+  * where area = e0 + e1 + e2 is twice the signed triangle area.
   */
 class FragmentInterpolator(config: GraphicsConfig) extends Module {
   val io = IO(new Bundle {

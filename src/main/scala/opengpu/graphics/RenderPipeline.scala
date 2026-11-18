@@ -35,8 +35,9 @@ import opengpu.core.memory.{
   * output live in the line-based memory behind the exposed
   * `kernelMemReq/Resp` and `kernelWordMemReq/Resp` ports.
   *
-  * Near-plane clipping is hooked in before the viewport stage; for now a
-  * triangle with far-w vertices is passed through by the clip stage unchanged.
+  * Clipping runs through `NearClipStage` before the viewport transform: a
+  * positive-w guard plus the six clip-space planes
+  * (`-w <= x,y,z <= w`), returning a fan when a triangle crosses a plane.
   */
 class RenderPipeline(
   config: GraphicsConfig = GraphicsConfig(),
