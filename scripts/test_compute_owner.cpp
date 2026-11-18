@@ -263,7 +263,7 @@ static void reset_parser_checks() {
       auto bad=good;bad[offset]=1;std::istringstream in(bad);rejects([&]{ComputeResetPlan::read(in,channel);});
     }
     for(unsigned phase=0;phase<4;phase++) {
-      ComputeResetResult r;r.command=17;r.status=phase==0?33:phase==1?40:1;
+      ComputeResetResult r;r.command=17;r.status=phase==0?33:phase==1?41:1;
       r.irq=phase==0 || phase==2?3:phase==1?2:1;r.pin=phase==0 || phase==2;r.drained=phase>=2;
       r.cycles=100+20*phase;r.read_holds=channel==ResponseChannel::read?5:0;r.write_holds=channel==ResponseChannel::write?5:0;
       const char *names[]={"held","busy","ack","retired"};

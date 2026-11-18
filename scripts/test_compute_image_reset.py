@@ -58,6 +58,17 @@ def observation(phase,channel):
 
 
 class ResetContracts(unittest.TestCase):
+    def test_busy_ready_reports_queue_capacity_and_never_authorizes_drain(self):
+        held=observation('held','write')
+        for status in (40,41):
+            busy=observation('busy','write');busy['status']=status
+            self.assertEqual(reset_receipt_bytes(busy,'busy','write',held)[16:20],struct.pack('<I',status))
+        for status in (1,8,9,32,33,42,43,44,45,56,57,104,105):
+            busy=observation('busy','write');busy['status']=status
+            with self.subTest(status=status),self.assertRaises(ValueError):reset_receipt_bytes(busy,'busy','write',held)
+        busy=observation('busy','write');busy['externalDrained']=True
+        with self.assertRaises(ValueError):reset_receipt_bytes(busy,'busy','write',held)
+
     def test_plan_is_exact_original_source_allocation_and_channel(self):
         memory,description=original()
         for channel,value in (('read',1),('write',2)):
