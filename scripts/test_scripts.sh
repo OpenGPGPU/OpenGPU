@@ -130,6 +130,8 @@ python3 -B scripts/test_compute_storage_atomic_delay.py
 python3 -B scripts/test_compute_storage_recovery.py
 python3 scripts/test_compute_counter_source.py
 python3 -B scripts/test_compute_image_source.py
+python3 -B scripts/test_compute_contended_image_cases.py
+python3 -B scripts/test_compute_contended_image_source.py
 python3 -B scripts/test_compute_image_reset.py
 python3 scripts/test_native_binned_topology_fixture.py
 python3 scripts/test_flashsim_native_adapter.py
