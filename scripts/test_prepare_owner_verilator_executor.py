@@ -37,6 +37,9 @@ class VerilatorExecutorInputsTest(unittest.TestCase):
         (self.kit / 'include/vltstd').mkdir(parents=True)
         (self.kit / 'include/verilated.h').write_text('// Fixture runtime header\n')
         (self.model / 'VGpuHostSystemAxi.h').write_text('// Fixture model header\n')
+        for name in verilator.CACHE_MODEL_HEADERS:
+            path=self.model/name;path.parent.mkdir(parents=True,exist_ok=True)
+            path.write_text('// Explicit CPU record fixture; not a cache-capable model\n')
         for name in ('preparation.json', 'owner-manifest.json',
                      'verilator-dut/generation.json', 'verilator-dut/build.json'):
             (self.out / name).write_text('{}\n')
@@ -66,7 +69,8 @@ class VerilatorExecutorInputsTest(unittest.TestCase):
         dependencies = {str(path.resolve()): owner.common.sha(path) for path in
             (Path(bound['driver']), self.model / 'VGpuHostSystemAxi.h',
              self.kit / 'include/verilated.h',
-             self.root / 'scripts/native_verilator_initial_time.hpp', self.header)}
+             self.root / 'scripts/native_verilator_initial_time.hpp', self.header,
+             *verilator.cache_model_headers(self.model,kind,profile))}
         compile_command, link_command = verilator.commands(bound, target)
         built = dict(schema='opengpu-owner-verilator-executor-build-v1', context=bound,
             compile_command=compile_command, link_command=link_command, dependencies=dependencies,
@@ -85,6 +89,31 @@ class VerilatorExecutorInputsTest(unittest.TestCase):
         owner.common.write_json(self.path.parent / 'builder.json', built)
         record['builder_sha256'] = owner.common.sha(self.path.parent / 'builder.json')
         owner.common.write_json(self.path, record)
+
+    def test_compute_cache_headers_are_exact_required_actual_compiler_inputs(self):
+        record,built=self.fixture('compute',owner.IMAGE_FLOAT_PROFILE)
+        bound=built['context'];headers=verilator.cache_model_headers(self.model,'compute',owner.IMAGE_FLOAT_PROFILE)
+        self.assertEqual(len(headers),3)
+        self.assertEqual(bound['cache_observer_headers'],{str(p):owner.common.sha(p) for p in headers})
+        self.assertIn('-DOPENGPU_NATIVE_CACHE_STATE=1',bound['flags'])
+        for path in headers:
+            self.assertIn(str(path),bound['flags'])
+            bad=copy.deepcopy(built);del bad['dependencies'][str(path)]
+            self.save(copy.deepcopy(record),bad)
+            with self.assertRaises(RuntimeError):owner.verify_qualification(self.path,kind='compute')
+            self.save(copy.deepcopy(record),built)
+            original=path.read_bytes()
+            try:
+                path.write_bytes(original+b'changed generated cache header\n')
+                with self.assertRaises(RuntimeError):owner.verify_qualification(self.path,kind='compute')
+            finally:path.write_bytes(original)
+        path=headers[-1];saved=path.with_suffix('.saved');path.rename(saved)
+        try:
+            with self.assertRaises(RuntimeError):verilator.context(self.out,'compute')
+            path.symlink_to(saved)
+            with self.assertRaises(RuntimeError):verilator.context(self.out,'compute')
+            path.unlink()
+        finally:saved.rename(path)
 
     def test_original_four_kinds_keep_their_distinct_wrapper_and_model(self):
         for kind in verilator.KINDS:
