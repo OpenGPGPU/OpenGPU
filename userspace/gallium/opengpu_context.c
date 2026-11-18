@@ -5193,6 +5193,7 @@ static void launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *
     struct pipe_opengpu_uniform_view uniforms[13] = {{0}};
     struct pipe_opengpu_buffer_texture textures[32] = {{0}};
     struct pipe_opengpu_buffer_image images[4] = {{0}};
+    struct pipe_opengpu_indirect_source indirect = {0};
     uint32_t items, axis;
     uint64_t product = 1;
     unsigned i, used_constants = 0, buffer_views = 0;
@@ -5210,8 +5211,8 @@ static void launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *
             goto invalid;
         product *= info->block[i];
     }
-    /* Snapshot a validated indirect grid only after earlier writes by this
-     * compute context are published to its CPU mapping. */
+    /* Retain the exact logical source view. Version2 supplies dispatch and
+     * GRID_SIZE from one producer-fenced driver snapshot. */
     uint32_t grid[3] = { info->grid[0], info->grid[1], info->grid[2] };
     if (info->indirect) {
         struct pipe_resource *source = info->indirect;
@@ -5223,14 +5224,21 @@ static void launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *
         ires = opengpu_resource(source);
         capacity = pipe_opengpu_resource_size(ires->gpu);
         if (offset > capacity || sizeof(grid) > capacity - offset) goto invalid;
-        uint8_t *imap = pipe_opengpu_resource_map(ires->gpu);
-        if (!imap) goto invalid;
-        if (ctx->cs_gpu && pipe_opengpu_compute_barrier(ctx->cs_gpu, ctx->fence_timeout_ms))
-            goto reset;
-        memcpy(grid, imap + (size_t)offset, sizeof(grid));
+        if (pipe_opengpu_screen_compute_indirect(screen)) {
+            indirect.resource = ires->gpu; indirect.binding_bytes = source->width0;
+            indirect.offset = offset;
+            for (i = 0; i < 3; i++)
+                indirect.max_groups[i] = info->work_dim && i >= info->work_dim ? 1 : UINT32_MAX;
+        } else {
+            uint8_t *imap = pipe_opengpu_resource_map(ires->gpu);
+            if (!imap) goto invalid;
+            if (ctx->cs_gpu && pipe_opengpu_compute_barrier(ctx->cs_gpu, ctx->fence_timeout_ms))
+                goto reset;
+            memcpy(grid, imap + (size_t)offset, sizeof(grid));
+        }
     }
     for (i = 0; i < 3; i++)
-        if (info->work_dim && i >= info->work_dim && grid[i] != 1) goto invalid;
+        if (!indirect.resource && info->work_dim && i >= info->work_dim && grid[i] != 1) goto invalid;
     for (i = 0; i < 4; i++) {
         unsigned needed = ((ctx->cs->program.reads | ctx->cs->program.writes) >> i) & 1u;
         if (needed && (!ctx->cs_buffers[i].buffer ||
@@ -5286,7 +5294,7 @@ static void launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *
             opengpu_resource(v->resource)->image.bytes;
         buffer_views = 1;
     }
-    if (!grid[0] || !grid[1] || !grid[2]) return;
+    if (!indirect.resource && (!grid[0] || !grid[1] || !grid[2])) return;
     /* HW counters have their own binding and retained original GEM. They
      * never borrow or displace one of the four checked SSBO windows. */
     struct pipe_opengpu_counter_view counter_view = {0};
@@ -5306,7 +5314,11 @@ static void launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *
         if (pipe_opengpu_bind_cs(ctx->cs_gpu, ctx->cs->program.code,
                                 ctx->cs->program.words * sizeof(uint32_t))) goto reset;
     }
-    if (counter_mask) {
+    if (indirect.resource) {
+        if (pipe_opengpu_launch_grid_indirect_resources(ctx->cs_gpu, info->block,
+                            views, textures, images, used_constants ? uniforms : NULL,
+                            counter_view, indirect, ctx->fence_timeout_ms)) goto reset;
+    } else if (counter_mask) {
         if (pipe_opengpu_launch_grid_counter_source_resources(ctx->cs_gpu, grid, info->block,
                             views, textures, images, used_constants ? uniforms : NULL,
                             counter_view, ctx->fence_timeout_ms)) goto reset;

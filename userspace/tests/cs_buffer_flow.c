@@ -26,6 +26,12 @@ static uint32_t shared_publication_seed;
 static void shared_publication_execute(struct buffer_job *j);
 #endif
 static unsigned buffer_submissions, kernel_admissions, buffer_executions;
+static unsigned indirect_submissions, indirect_groups;
+/* CPU-only visibility guard: grant the source mapping only inside the
+ * production ioctl bridge, then protect it while the word oracle executes. */
+static void (*indirect_snapshot_access)(int readable);
+static void (*indirect_observer)(const struct cs_buffer_kernel_input *,
+    const struct cs_buffer_kernel_result *);
 static unsigned actual_txf, actual_txq, actual_image_load, actual_image_store, actual_image_size;
 static const enum pipe_format all_sampler_formats[30] = {
     PIPE_FORMAT_R8_UNORM, PIPE_FORMAT_R16_FLOAT, PIPE_FORMAT_R32_FLOAT,
@@ -70,6 +76,7 @@ static void export_data(const struct buffer_job *j, const char *phase)
 }
 static void export_records(struct buffer_job *j, const struct drm_opengpu_compute_uniform_resources *gum)
 {
+    if (j->input->with_indirect) return;
     if (!buffer_artifacts || (kernel_admissions != 1 && (!gum || uniform_submissions))) return;
     j->capture = gum ? "buffers-uniforms" : "buffers";
     struct drm_opengpu_compute_image_resources command = j->input->command;
@@ -218,11 +225,17 @@ static int submit_buffers(unsigned long request, void *arg)
         memcpy(in->command.bindings, r->bindings, sizeof(r->bindings));
     } else {
         const struct drm_opengpu_compute_uniform_resources *r;
-        if (request == DRM_IOCTL_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES) {
+        if (request == DRM_IOCTL_OPENGPU_COMPUTE_INDIRECT_RESOURCES) {
+            in->indirect = *(const struct drm_opengpu_compute_indirect_resources *)arg;
+            in->with_indirect = 1;
+            in->counter_source = in->indirect.resources;
+            in->with_counter_source = !!in->counter_source.source.handle;
+            r = &in->counter_source.resources;
+        } else if (request == DRM_IOCTL_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES) {
             in->counter_source = *(const struct drm_opengpu_compute_counter_source_resources *)arg;
             in->with_counter_source = 1; r = &in->counter_source.resources;
         } else r = arg;
-        if (!in->with_counter_source || r->active_mask || r->defaults.handle) in->uniforms = r;
+        if ((!in->with_counter_source && !in->with_indirect) || r->active_mask || r->defaults.handle) in->uniforms = r;
         in->command.launch = r->resources.launch;
         in->command.textures = r->resources.textures; in->command.texture_count = r->resources.texture_count;
         memcpy(in->command.bindings, r->resources.bindings, sizeof(r->resources.bindings));
@@ -236,8 +249,11 @@ static int submit_buffers(unsigned long request, void *arg)
     for (unsigned h = 1; h < next_bo; h++) if (bos[h].handle)
         in->memory[h] = (struct cs_buffer_bo) {h, bos[h].size, bos[h].data};
     struct cs_buffer_kernel_result records;
+    if (in->with_indirect && indirect_snapshot_access) indirect_snapshot_access(1);
     int ret = cs_buffer_kernel_begin(in, &records);
+    if (in->with_indirect && indirect_snapshot_access) indirect_snapshot_access(0);
     if (ret) { free(in); errno = -ret; return -1; }
+    if (in->with_indirect && indirect_observer) indirect_observer(in, &records);
     kernel_admissions++;
     struct buffer_job prepared = {.input = in, .records = records};
     export_records(&prepared, in->uniforms);
@@ -259,13 +275,20 @@ static int submit_buffers(unsigned long request, void *arg)
     for (unsigned slot = 2; slot <= 42; slot++) if (in->bindings[slot].handle)
         retain_job(&jobs[sync], in->bindings[slot].handle);
     if (in->with_counter_source) retain_job(&jobs[sync], in->counter_source.source.handle);
+    if (in->with_indirect) {
+        retain_job(&jobs[sync], in->indirect.source.handle);
+        assert(in->indirect.version == OPENGPU_COMPUTE_INDIRECT_VERSION2 &&
+            in->indirect.v2.flags == OPENGPU_COMPUTE_INDIRECT_KERNARG_COUNTS);
+        for (unsigned i = 0; i < 3; i++) assert(!in->command.launch.grid[i]);
+        indirect_submissions++;
+    }
     last_compute_context = context; computes++; buffer_submissions++;
     return 0;
 }
 static void execute_buffers(unsigned sync, int execute)
 {
     struct buffer_job *j = &buffer_jobs[sync]; assert(j->input);
-    if (execute) {
+    if (execute && semantic) {
         struct cs_vm_view storage[4] = {{0}}, uniforms[13] = {{0}};
         uniform_views(j, uniforms);
         for (unsigned b = 0; b < 4; b++) {
@@ -287,16 +310,25 @@ static void execute_buffers(unsigned sync, int execute)
             counters = (struct cs_vm_view) {data_address(j, base, 4), limit - base, 3};
         }
         const struct cs_vm_resources resources = {j, texture_value, image_value};
-        const uint32_t group[3] = {0};
-        assert(j->input->command.launch.grid[0] == 1 && j->input->command.launch.grid[1] == 1 &&
-            j->input->command.launch.grid[2] == 1);
+        const uint32_t *grid = j->records.grid;
+        if (j->input->with_indirect) {
+            grid = (const uint32_t *)((const uint8_t *)j->records.indirect + j->records.indirect_offset);
+            assert(!memcmp(grid, j->records.grid, 12));
+        }
+        assert(grid[0] <= OPENGPU_CS_CALLBACK_MAX_GRID_AXIS &&
+            grid[1] <= OPENGPU_CS_CALLBACK_MAX_GRID_AXIS && grid[2] <= OPENGPU_CS_CALLBACK_MAX_GRID_AXIS);
 #ifdef OPENGPU_CS_SHARED_PUBLICATION
         if(j->input->command.launch.local[0]==128)shared_publication_execute(j);
         else
 #endif
-        cs_vm_group_resources_counters_checked(j->records.code, (unsigned)j->records.code_bytes / 4,
-            j->input->command.launch.grid, group, j->input->command.launch.local, storage, uniforms, NULL, &resources,
-            counters.data ? &counters : NULL);
+        for (uint32_t z = 0; z < grid[2]; z++) for (uint32_t y = 0; y < grid[1]; y++)
+            for (uint32_t x = 0; x < grid[0]; x++) {
+                const uint32_t group[3] = {x, y, z};
+                cs_vm_group_resources_counters_checked(j->records.code, (unsigned)j->records.code_bytes / 4,
+                    grid, group, j->input->command.launch.local, storage, uniforms, NULL, &resources,
+                    counters.data ? &counters : NULL);
+                if (j->input->with_indirect) indirect_groups++;
+            }
         buffer_executions++;
     }
     if (j->capture) export_data(j, "after");
@@ -892,6 +924,9 @@ static void first_execution(struct pipe_screen *s, struct pipe_context *p, void 
 #ifdef OPENGPU_CS_SHARED_PUBLICATION
 #include "cs_shared_publication_flow.h"
 #endif
+#ifdef OPENGPU_CS_INDIRECT
+#include "cs_indirect_flow.h"
+#endif
 
 int main(int argc, char **argv)
 {
@@ -908,6 +943,11 @@ int main(int argc, char **argv)
     if (!strcmp(argv[1], "--lifecycle-only")) {
         orphan_recovery(); final_screen_ownership(); return 0;
     }
+#ifdef OPENGPU_CS_INDIRECT
+    if (getenv("OPENGPU_INDIRECT_COMPUTE_QUALIFICATION")) {
+        indirect_compute_flow(argv[1]);return 0;
+    }
+#endif
     buffer_artifacts = getenv("OPENGPU_BUFFER_ARTIFACTS");
 #ifdef OPENGPU_CS_SHARED_PUBLICATION
     if (getenv("OPENGPU_SHARED_PUBLICATION_QUALIFICATION")) {

@@ -18,6 +18,7 @@ struct kernel_state {
     struct drm_gem_object objects[512];
     struct opengpu_resource_binding bindings[43];
     struct opengpu_sched_job *job;
+    unsigned with_indirect;
 };
 
 static void cleanup_state(struct kernel_state *s)
@@ -50,6 +51,8 @@ int cs_buffer_kernel_begin(const struct cs_buffer_kernel_input *in, struct cs_bu
         s->gpu.hw.compute_counter_transport = true;
         s->gpu.hw.compute_resource_flags |= OPENGPU_COMPUTE_RESOURCE_ATOMIC_COUNTER_COMMANDS;
     }
+    s->gpu.hw.compute_indirect_transport = !!in->with_indirect;
+    s->with_indirect = in->with_indirect;
     if(in->shared_bytes) s->gpu.hw.compute_shared_limits =
         (struct opengpu_compute_shared_limits){.base=in->shared_base,.bytes=in->shared_bytes,
             .lanes=in->shared_lanes,.discovered=true};
@@ -91,7 +94,11 @@ int cs_buffer_kernel_begin(const struct cs_buffer_kernel_input *in, struct cs_bu
     struct drm_opengpu_compute_image_resources request = in->command;
     request.launch.in_syncobj = 0; request.launch.out_syncobj = 2;
     int ret;
-    if (in->with_counter_source) {
+    if (in->with_indirect) {
+        struct drm_opengpu_compute_indirect_resources r = in->indirect;
+        r.resources.resources.resources.launch = request.launch;
+        ret = opengpu_compute_indirect_resources_ioctl(&s->drm, &r, &s->file);
+    } else if (in->with_counter_source) {
         struct drm_opengpu_compute_counter_source_resources source = in->counter_source;
         source.resources.resources.launch = request.launch;
         ret = opengpu_compute_counter_source_resources_ioctl(&s->drm, &source, &s->file);
@@ -123,6 +130,19 @@ int cs_buffer_kernel_begin(const struct cs_buffer_kernel_input *in, struct cs_bu
     out->texture_root = s->job->kernel.texture.root; out->image_root = s->job->kernel.image.base;
     out->storage_root = s->job->kernel.storage.base; out->uniform_root = s->job->kernel.uniform.root;
     out->counter_root = s->job->kernel.counter.base;
+    out->indirect = s->job->indirect_snapshot.cpu;
+    out->indirect_bytes = s->job->indirect_snapshot.size;
+    out->indirect_base = s->job->kernel.indirect_base;
+    out->indirect_offset = s->job->kernel.indirect_offset;
+    out->kernarg = s->job->kernel.kernarg;
+    memcpy(out->grid, s->job->kernel.grid, sizeof(out->grid));
+    if (in->with_indirect) {
+        assert(out->indirect && out->kernarg == (uint64_t)out->indirect_base + out->indirect_offset);
+        assert(!memcmp((const u8 *)out->indirect + out->indirect_offset, out->grid, 12));
+        assert(!s->job->kernel.uniform_enabled ||
+            (s->job->kernel.uniform.private_base == out->kernarg &&
+             s->job->kernel.uniform.private_limit == out->kernarg + 12));
+    }
     out->retained_objects = s->job->object_count;
     return 0;
 }
@@ -134,7 +154,15 @@ void cs_buffer_kernel_finish(struct cs_buffer_kernel_result *out, int cancel)
         s->job->base.s_fence->finished.error = -ECANCELED;
         s->job->base.s_fence->finished.signaled = true;
         opengpu_sched_free_job(&s->job->base);
-    } else finish(&s->gpu, s->job, 0);
+    } else {
+        finish(&s->gpu, s->job, 0);
+        if (s->with_indirect) {
+            assert(s->gpu.regs[GPU_REG_UCMD_OPCODE / 4] == GPU_UCMD_OP_KERNEL_INDIRECT);
+            assert(s->gpu.regs[GPU_REG_UCMD_SOURCE / 4] == out->indirect_base);
+            assert(s->gpu.regs[GPU_REG_UCMD_BYTES / 4] == out->indirect_bytes);
+            assert(s->gpu.regs[GPU_REG_UCMD_WIDTH / 4] == out->indirect_offset);
+        }
+    }
     cleanup_state(s);
     memset(out, 0, sizeof(*out));
 }
