@@ -376,8 +376,25 @@ prefixes and source layouts, interleavings, literal old/final values, rollback
 and source-order rejection, whole-RAM guards and cleanup refusal. Native
 ASan/UBSan covers 26 AXI cases, including W-before-AW, byte enables, independent
 read snapshots before a delayed/stalled failing B, later healthy writes and
-rearming without commit or counter leakage. Full-DUT execution of all 48
-phases and final compiler/source/model checks remain required.
+rearming without commit or counter leakage.
+
+All 48 phases passed on the complete assertion-enabled float DUT with one
+RAM, initial reset and original command ID. The 24 healthy phases returned
+192 source-ordered old words, and the 24 committed-write failures returned
+48 more, for 240 actual old words. Every failure made three target attempts:
+one committed write returning an error, then both AMOs of the surviving
+caller. Failed and unissued old slots stayed guarded. All committed-first
+histories, final targets, current/prior physical-byte guards, actual negative
+fences/userspace `EIO`, held/retired IRQs, PTE/context/MMU cleanup and external
+drains passed. Cumulative physical/injected/accepted write errors agreed at
+24; no physical or injected read errors occurred.
+
+The original guarded producer, native children, controller and outer qualifier
+all exited successfully, including final compiler/header/link, software source
+and model checks. Frozen execution source
+`066de7f1e6608e26ed7550bb072e4e166ca142ee` matched all 233 qualified software
+files in publication byte for byte. No RTL, capacity or assertion changes were
+needed.
 
 ```sh
 python3 -B scripts/qualify_compute_owner.py \
