@@ -258,6 +258,166 @@ int main(int argc, char **argv) {
         "unmapped physical fault was confused with an injected read error");
       ++cases;
     }
+    {
+      auto memory = backing(); memory.byte(0x1001, 0x36); memory.byte(0x1033, 0x77); Agent agent(memory);
+      agent.arm_response_hold(ResponseChannel::read, 0x1000, 0x1080);
+      Requests r; r.arvalid = true; r.araddr = 0x2000; r.arid = 1; tick(agent, 0, r);
+      r.araddr = 0x1000; r.arid = 7; r.arlen = 1; tick(agent, 1, r);
+      r = {}; r.rready = true;
+      require(tick(agent, 3, r).rid == 1, "read hold delayed an earlier unselected response");
+      for (unsigned cycle = 4; cycle < 36; ++cycle)
+        require(!tick(agent, cycle, r).rvalid && !agent.drained(), "selected read escaped its hold");
+      require(agent.held_read_cycles() == 32 && !agent.held_write_cycles() && agent.traffic.read_beats == 1,
+        "held read was consumed or its ready cycles were lost");
+      memory.byte(0x1001, 0x88); memory.byte(0x1033, 0x99);
+      agent.release_response_hold();
+      const auto held = agent.drive(36);
+      require(held.rvalid && held.rid == 7 && !held.rlast && held.rdata[1] == 0x36,
+        "released read lost its owner or original snapshot");
+      require(agent.drive(37).rdata == held.rdata, "released VALID changed under backpressure");
+      rejects([&] { agent.release_response_hold(); });
+      rejects([&] { agent.disarm_response_hold(); });
+      rejects([&] { agent.arm_response_hold(ResponseChannel::write, 0x2000, 0x2040); });
+      tick(agent, 38, r); const auto last = tick(agent, 39, r);
+      require(last.rlast && last.rid == 7 && last.rdata[19] == 0x77 && agent.drained() &&
+        agent.traffic.read_bus_bytes == 96 && !agent.traffic.read_faults, "released burst did not drain exactly");
+      agent.disarm_response_hold();
+      agent.arm_response_hold(ResponseChannel::read, 0x2000, 0x2040);
+      r = {}; r.arvalid = true; r.araddr = 0x2000; tick(agent, 40, r);
+      rejects([&] { agent.release_response_hold(); });
+      tick(agent, 42); // Before the accepted request's response is due.
+      rejects([&] { agent.release_response_hold(); });
+      tick(agent, 43); // The master may wait for VALID before asserting READY.
+      agent.release_response_hold();
+      require(agent.drive(44).rvalid, "release incorrectly waited for master READY");
+      r = {}; r.rready = true; tick(agent, 45, r);
+      require(agent.drained() && agent.held_read_cycles() == 33, "rearmed hold cleared or reused old ready cycles");
+      agent.disarm_response_hold(); ++cases;
+    }
+    {
+      auto memory = backing(); Agent agent(memory);
+      agent.arm_response_hold(ResponseChannel::write, 0x1000, 0x1080);
+      tick(agent, 0, write_request(0x2000, 1, 0x33));
+      auto w = write_request(0x1000, 9, 0x55); w.awvalid = false; tick(agent, 1, w);
+      w.awvalid = true; w.wvalid = false; tick(agent, 2, w);
+      Requests r; r.bready = true;
+      require(tick(agent, 7, r).bid == 1 && !tick(agent, 8, r).bvalid,
+        "write hold delayed an earlier unselected ACK or shortened latency");
+      for (unsigned cycle = 9; cycle < 41; ++cycle) {
+        r = {}; r.bready = r.rready = true;
+        if (cycle == 10) { r.arvalid = true; r.araddr = 0x3000; r.arid = 12; }
+        const auto response = tick(agent, cycle, r);
+        require(!response.bvalid && !agent.drained(), "held write ACK escaped or falsely drained");
+        if (cycle == 13) require(response.rvalid && response.rid == 12 && response.rdata[0] == 0xa7,
+          "B hold blocked the independent read channel");
+      }
+      require(agent.held_write_cycles() == 32 && !agent.held_read_cycles() &&
+        memory.byte(0x1000) == 0x55 && memory.byte(0x1020) == 0xa7 && agent.traffic.acknowledgements == 1,
+        "B hold did not retain committed W-before-AW data and its pending ACK");
+      agent.release_response_hold();
+      require(agent.drive(41).bvalid && agent.drive(41).bid == 9 && agent.drive(41).bresp == 0,
+        "released B response lost its owner/status");
+      tick(agent, 42, write_request(0x1040, 10, 0x77));
+      require(agent.drive(43).bvalid && agent.drive(43).bid == 9, "new ACK replaced a stalled released ACK");
+      rejects([&] { agent.release_response_hold(); }); rejects([&] { agent.disarm_response_hold(); });
+      r = {}; r.bready = true; tick(agent, 44, r);
+      const auto last = tick(agent, 49, r);
+      require(last.bvalid && last.bid == 10 && agent.drained() && agent.traffic.acknowledgements == 3 &&
+        agent.traffic.writes == 3 && !agent.traffic.write_faults && agent.held_write_cycles() == 32,
+        "released write plan lost or repeatedly held a later ACK");
+      agent.disarm_response_hold(); ++cases;
+    }
+    {
+      auto memory = backing(); const auto before = memory; Agent agent(memory);
+      agent.arm_read_faults(0x1000, 0x1040); agent.arm_response_hold(ResponseChannel::read, 0x1000, 0x1040);
+      Requests r; r.arvalid = true; r.araddr = 0x1000; r.arlen = 1; r.arid = 15; tick(agent, 0, r);
+      tick(agent, 3); require(agent.held_read_cycles() == 1, "hold detection incorrectly waited for READY");
+      rejects([&] { agent.disarm_read_faults(); }); rejects([&] { agent.disarm_response_hold(); });
+      r = {}; r.rready = true;
+      for (unsigned cycle = 4; cycle < 8; ++cycle) require(!tick(agent, cycle, r).rvalid, "held error leaked VALID");
+      agent.release_response_hold(); const auto first = tick(agent, 8, r), last = tick(agent, 9, r);
+      require(first.rresp == 2 && !first.rlast && last.rresp == 2 && last.rlast && last.rid == 15 &&
+        agent.drained() && same_memory(memory, before), "delayed error snapshot changed or lost a beat");
+      agent.disarm_response_hold(); agent.disarm_read_faults();
+      r = {}; r.arvalid = true; r.araddr = 0x1000; r.arlen = 1; r.arid = 15; tick(agent, 10, r);
+      r = {}; r.rready = true;
+      require(tick(agent, 13, r).rresp == 0 && tick(agent, 14, r).rresp == 0 && agent.drained() &&
+        agent.held_read_cycles() == 5 && agent.traffic.read_faults == 1 && agent.injected_read_faults() == 1 &&
+        agent.traffic.read_bus_bytes == 128, "healthy ID reuse changed held/error history");
+      ++cases;
+    }
+    {
+      auto memory = backing(); Agent agent(memory);
+      rejects([&] { agent.release_response_hold(); }); rejects([&] { agent.disarm_response_hold(); });
+      rejects([&] { agent.arm_response_hold(static_cast<ResponseChannel>(99), 0x1000, 0x1040); });
+      for (auto channel : {ResponseChannel::read, ResponseChannel::write})
+        for (const auto &range : std::vector<std::pair<uint64_t, uint64_t>>{
+            {0x1001, 0x1040}, {0x1000, 0x1041}, {0x1080, 0x1000}, {0x1000, 0x1000},
+            {0x8000, 0x8040}, {Memory::limit - 64, Memory::limit + 64}})
+          rejects([&] { agent.arm_response_hold(channel, range.first, range.second); });
+      agent.arm_response_hold(ResponseChannel::read, 0x1000, 0x1040);
+      rejects([&] { agent.arm_response_hold(ResponseChannel::write, 0x2000, 0x2040); });
+      agent.disarm_response_hold();
+      auto w = write_request(0x1000, 5); w.wvalid = false; tick(agent, 0, w);
+      rejects([&] { agent.arm_response_hold(ResponseChannel::read, 0x1000, 0x1040); });
+      w.awvalid = false; w.wvalid = true; tick(agent, 1, w);
+      Requests r; r.bready = true; tick(agent, 8, r);
+      agent.arm_response_hold(ResponseChannel::write, 0x1000, 0x1040);
+      r = {}; r.arvalid = true; r.araddr = 0x2000; tick(agent, 9, r);
+      rejects([&] { agent.disarm_response_hold(); });
+      const auto held = agent.drive(12);
+      rejects([&] { agent.arm_response_hold(ResponseChannel::read, 0x2000, 0x2040); });
+      require(held.rvalid && agent.drive(13).rvalid && held.rdata == agent.drive(13).rdata,
+        "busy plan mutation withdrew an already exposed VALID");
+      r = {}; r.rready = true; tick(agent, 13, r); agent.disarm_response_hold();
+      require(agent.drained() && !agent.held_read_cycles() && !agent.held_write_cycles(), "unused plan invented a hold");
+      ++cases;
+    }
+    {
+      auto memory = backing(); Agent agent(memory); agent.arm_response_hold(ResponseChannel::read, 0x1000, 0x1040);
+      Requests r; r.arvalid = r.rready = true; r.araddr = 0x1000;
+      for (unsigned cycle = 0; cycle < 16; ++cycle) { r.arid = cycle; tick(agent, cycle, r); }
+      require(!agent.drive(16).arready && !agent.drive(16).rvalid && !agent.drained(), "held read queue lost its credits");
+      r = {}; r.rready = true; tick(agent, 16, r); agent.release_response_hold();
+      for (unsigned cycle = 17; cycle < 33; ++cycle) {
+        const auto response = tick(agent, cycle, r);
+        require(response.rvalid && response.rid == cycle - 17 && response.rlast,
+          "released full read queue lost FIFO/ID order");
+      }
+      require(agent.drained() && agent.traffic.reads == 16 && agent.traffic.read_beats == 16 &&
+        agent.held_read_cycles() == 14, "released read credits or hold history differ");
+      agent.disarm_response_hold(); ++cases;
+    }
+    {
+      auto memory = backing(); Agent agent(memory); agent.arm_response_hold(ResponseChannel::write, 0x1000, 0x1040);
+      tick(agent, 0, write_request(0x8000, 11)); Requests r; r.bready = true;
+      const auto error = tick(agent, 7, r);
+      require(error.bvalid && error.bid == 11 && error.bresp == 2 && agent.drained() &&
+        !agent.held_write_cycles() && agent.traffic.write_faults == 1, "hold changed an unrelated fault ACK");
+      agent.disarm_response_hold(); tick(agent, 8, write_request(0x1000, 11));
+      require(tick(agent, 15, r).bresp == 0 && agent.drained() && agent.traffic.write_faults == 1,
+        "unused hold changed later healthy ID reuse");
+      ++cases;
+    }
+    for (auto channel : {ResponseChannel::read, ResponseChannel::write}) {
+      auto memory = backing(); memory.ranges.push_back({0xfffff000, Memory::limit, 0x83}); Agent agent(memory);
+      agent.arm_response_hold(channel, Memory::limit - 64, Memory::limit); Requests r;
+      if (channel == ResponseChannel::read) {
+        r.arvalid = true; r.araddr = Memory::limit - 32; r.arid = 17; tick(agent, 0, r);
+        r = {}; r.rready = true; require(!tick(agent, 3, r).rvalid, "top RV32 read escaped hold");
+        agent.release_response_hold(); const auto response = tick(agent, 4, r);
+        require(response.rvalid && response.rid == 17 && response.rdata[31] == 0x83 &&
+          agent.held_read_cycles() == 1, "top RV32 read address/snapshot truncated");
+      } else {
+        tick(agent, 0, write_request(Memory::limit - 32, 18, 0x5a)); r.bready = true;
+        require(!tick(agent, 7, r).bvalid, "top RV32 write escaped hold"); agent.release_response_hold();
+        const auto response = tick(agent, 8, r);
+        require(response.bvalid && response.bid == 18 && !response.bresp && memory.byte(Memory::limit - 1) == 0x5a &&
+          memory.byte(Memory::limit - 33) == 0x83 && agent.held_write_cycles() == 1, "top RV32 write address/strobes truncated");
+      }
+      require(agent.drained() && !agent.traffic.read_faults && !agent.traffic.write_faults, "top RV32 response did not drain");
+      agent.disarm_response_hold(); ++cases;
+    }
     std::cout << "PASS native frame AXI cases=" << cases << "\n";
     return 0;
   } catch (const std::exception &e) {

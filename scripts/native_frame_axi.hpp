@@ -180,6 +180,7 @@ struct Traffic {
   uint64_t writes = 0, write_beats = 0, write_bus_bytes = 0, enabled_write_bytes = 0;
   uint64_t read_faults = 0, write_faults = 0, acknowledgements = 0;
 };
+enum class ResponseChannel { read, write };
 
 /** Two-phase AXI service: drive every input, settle the RTL, then observe all
   * handshakes at the same pre-edge snapshot. Read snapshots precede writes.
@@ -187,10 +188,15 @@ struct Traffic {
   */
 class Agent {
   struct Read {
-    uint64_t due; uint32_t id, beats, beat, offset, response;
+    uint64_t due, base; uint32_t id, beats, beat, offset, response;
     std::array<uint8_t, 64> data;
   };
-  struct Ack { uint64_t due; uint32_t id, response; };
+  struct Ack { uint64_t due, base; uint32_t id, response; };
+  struct Hold {
+    ResponseChannel channel;
+    uint64_t begin, end, cycles_at_arm;
+    bool released = false;
+  };
   Memory &memory;
   std::deque<Read> reads;
   std::deque<Ack> acks;
@@ -201,6 +207,12 @@ class Agent {
   uint64_t write_mask = 0;
   std::optional<std::pair<uint64_t, uint64_t>> read_fault_range;
   uint64_t injected_reads = 0;
+  std::optional<Hold> response_hold;
+  uint64_t read_hold_cycles = 0, write_hold_cycles = 0;
+  bool gated(ResponseChannel channel, uint64_t base) const {
+    return response_hold && !response_hold->released && response_hold->channel == channel &&
+      response_hold->begin <= base && base < response_hold->end;
+  }
 public:
   Traffic traffic;
   explicit Agent(Memory &backing) : memory(backing) {}
@@ -221,6 +233,32 @@ public:
   }
   uint64_t injected_read_faults() const { return injected_reads; }
 
+  // Arm only before traffic: a VALID already exposed to the master must never
+  // be withdrawn. Release only opens the gate; plan changes require full drain.
+  void arm_response_hold(ResponseChannel channel, uint64_t begin, uint64_t end) {
+    require(channel == ResponseChannel::read || channel == ResponseChannel::write,
+      "unknown AXI response hold channel");
+    require(drained() && !response_hold, "response hold plan is already active or busy");
+    require(begin < end && !(begin & 63) && !(end & 63) && end <= Memory::limit &&
+      std::any_of(memory.ranges.begin(), memory.ranges.end(), [&](const auto &r) {
+        return r.start <= begin && end <= r.end;
+      }), "response hold interval is not aligned and fully backed");
+    response_hold = Hold{channel, begin, end,
+      channel == ResponseChannel::read ? read_hold_cycles : write_hold_cycles, false};
+  }
+  void release_response_hold() {
+    require(response_hold && !response_hold->released && !drained(), "response hold is absent, released or idle");
+    const auto cycles = response_hold->channel == ResponseChannel::read ? read_hold_cycles : write_hold_cycles;
+    require(cycles > response_hold->cycles_at_arm, "no selected due response was withheld");
+    response_hold->released = true;
+  }
+  void disarm_response_hold() {
+    require(response_hold && drained(), "response hold plan is absent or busy");
+    response_hold.reset();
+  }
+  uint64_t held_read_cycles() const { return read_hold_cycles; }
+  uint64_t held_write_cycles() const { return write_hold_cycles; }
+
   Responses drive(uint64_t cycle) const {
     Responses out;
     out.arready = reads.size() < 16;
@@ -228,18 +266,26 @@ public:
     out.wready = !have_last;
     if (!reads.empty() && reads.front().due <= cycle) {
       const auto &r = reads.front();
-      out.rvalid = true; out.rlast = r.beat + 1 == r.beats;
+      out.rvalid = !gated(ResponseChannel::read, r.base); out.rlast = r.beat + 1 == r.beats;
       out.rid = r.id; out.rresp = r.response;
       std::copy_n(r.data.begin() + r.offset + r.beat * 32, 32, out.rdata.begin());
     }
     if (!acks.empty()) {
-      out.bvalid = acks.front().due <= cycle;
+      out.bvalid = acks.front().due <= cycle && !gated(ResponseChannel::write, acks.front().base);
       out.bid = acks.front().id; out.bresp = acks.front().response;
     }
     return out;
   }
 
   void observe(uint64_t cycle, const Requests &in, const Responses &out) {
+    if (!reads.empty() && reads.front().due <= cycle && gated(ResponseChannel::read, reads.front().base)) {
+      require(!out.rvalid, "held read response escaped its gate");
+      ++read_hold_cycles;
+    }
+    if (!acks.empty() && acks.front().due <= cycle && gated(ResponseChannel::write, acks.front().base)) {
+      require(!out.bvalid, "held write response escaped its gate");
+      ++write_hold_cycles;
+    }
     // AR snapshots the backing before a concurrent W changes any byte.
     if (in.arvalid && out.arready) {
       require(in.arsize <= 5 && in.arburst == 1 && in.arlen <= 1 &&
@@ -251,7 +297,7 @@ public:
       const bool injected = read_fault_range && read_fault_range->first <= base && base < read_fault_range->second;
       require(!injected || backed, "physical fault source lost its original backing");
       const bool fault = !backed || injected;
-      Read r{cycle + 3, in.arid, in.arlen + 1, 0, uint32_t(in.araddr & 32), uint32_t(fault ? 2 : 0), {}};
+      Read r{cycle + 3, base, in.arid, in.arlen + 1, 0, uint32_t(in.araddr & 32), uint32_t(fault ? 2 : 0), {}};
       for (unsigned b = 0; b < 64; ++b) r.data[b] = memory.byte(base + b);
       reads.push_back(r); ++traffic.reads; traffic.read_faults += fault;
       injected_reads += injected;
@@ -281,7 +327,7 @@ public:
       if (!fault)
         for (unsigned b = 0; b < write_beats * 32; ++b)
           if ((write_mask >> b) & 1) memory.byte(base + offset + b, write_data[b]);
-      acks.push_back({cycle + 7, write_id, uint32_t(fault ? 2 : 0)});
+      acks.push_back({cycle + 7, base, write_id, uint32_t(fault ? 2 : 0)});
       traffic.write_faults += fault;
       have_aw = false; have_last = false; write_beats = 0; write_mask = 0;
     }

@@ -396,13 +396,27 @@ another original owner's allocations. It rejects overlapping ranges, orphan
 pages and sparse pages that shadow either owner's allocations, before changing
 RAM. Failed validation leaves the original layout and bytes unchanged.
 
-Fifteen CPU AXI/RAM scenarios pass with ASan/UBSan, including stable two-beat
-fault responses, same-agent healthy ID reuse without clearing fault history,
-transactional rejected appends and whole-allocation byte preservation. All 34
-native-product preparation/guard checks pass. These service tests execute no
-GPU shader and do not establish the pending image fault/cancel/reset/reuse
-acceptance. A source-qualified executor/producer/controller must still drive
-and independently verify those actual-DUT cases.
+The same service can arm one address-bound R or B response hold while fully
+drained. The aligned interval must be backed by original allocations. A hold
+keeps its accepted transactions, read snapshots and error status; W data still
+commits before its delayed B ACK. It hides selected VALID before exposure,
+then releases only after observing a withheld, due response. It does not
+require the master to assert READY before receiving VALID.
+Release only opens the gate, so a VALID exposed under backpressure cannot be
+withdrawn. Plan replacement/disarm requires complete R/B drain. Hold-cycle and
+physical-error counters remain cumulative; default response timing, credits
+and unselected traffic retain their existing behavior.
+
+Twenty-three CPU AXI/RAM scenarios pass with ASan/UBSan, including stable
+two-beat faults, explicit R/B release, W-before-AW, a full held read queue,
+independent opposite-channel work, RV32 upper-bound addresses and healthy ID
+reuse without clearing hold/fault history. Transactional rejected appends
+preserve every original byte. All 34 native-product preparation/guard checks,
+the five fixed compute drivers and native-owner transport guards pass; the
+driver guards also use ASan/UBSan. These service tests execute no GPU shader; actual image fault/reuse
+qualifications below retain their independent source binding. Actual
+cancellation/reset/drain remains required and does not follow from these
+service tests.
 
 ```sh
 env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 \
