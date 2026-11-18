@@ -418,6 +418,62 @@ int main(int argc, char **argv) {
       require(agent.drained() && !agent.traffic.read_faults && !agent.traffic.write_faults, "top RV32 response did not drain");
       agent.disarm_response_hold(); ++cases;
     }
+    {
+      auto memory=backing();Agent agent(memory);
+      for(const auto &range:std::vector<std::pair<uint64_t,uint64_t>>{
+          {0x1001,0x1040},{0x1000,0x1000},{0x4000,0x4040}})
+        rejects([&]{agent.arm_first_write_fault(range.first,range.second);});
+      agent.arm_first_write_fault(0x1000,0x1080);
+      rejects([&]{agent.arm_first_write_fault(0x1000,0x1040);});
+      rejects([&]{agent.disarm_first_write_fault();});
+      tick(agent,0,write_request(0x2000,1,0x33));
+      auto w=write_request(0x1000,9,0x55);w.awvalid=false;tick(agent,1,w);
+      w.awvalid=true;w.wvalid=false;tick(agent,2,w);
+      tick(agent,3,write_request(0x1040,10,0x77));
+      Requests r;r.bready=r.rready=true;
+      require(tick(agent,8,r).bvalid && agent.traffic.acknowledgements==1,
+        "first-write fault affected an earlier unrelated write");
+      for(unsigned cycle=9;cycle<39;cycle++) {
+        r.arvalid=cycle==10;r.araddr=0x1000;
+        const auto out=tick(agent,cycle,r);
+        require(!out.bvalid,"injected B error escaped its actual delayed response");
+        if(cycle==13)require(out.rvalid && !out.rresp && out.rdata[0]==0xa7,
+          "write error changed original backing or independent read service");
+      }
+      r={};
+      const auto first=tick(agent,39,r),stalled=tick(agent,40,r);
+      require(first.bvalid && first.bid==9 && first.bresp==2 &&
+        stalled.bvalid && stalled.bid==first.bid && stalled.bresp==first.bresp,
+        "stalled B error lost its actual accepted owner/status");
+      require(memory.byte(0x1000)==0xa7 && memory.byte(0x1040)==0x77 &&
+        agent.traffic.write_faults==1 && agent.injected_write_faults()==1 && agent.first_write_attempts()==2,
+        "one-shot write fault changed backing or poisoned the following write");
+      rejects([&]{agent.disarm_first_write_fault();});
+      r.bready=true;tick(agent,42,r);
+      require(tick(agent,43,r).bid==10 && agent.drained(),"healthy ACK did not follow the fault drain");
+      agent.disarm_first_write_fault();
+      agent.arm_first_write_fault(0x1000,0x1040);tick(agent,44,write_request(0x1000,11));
+      require(tick(agent,81,r).bresp==2 && agent.drained() && agent.injected_write_faults()==2 &&
+        agent.traffic.write_faults==2 && agent.first_write_attempts()==1 &&
+        !agent.traffic.read_faults,"write fault history was cleared or duplicated");
+      agent.disarm_first_write_fault();++cases;
+    }
+    {
+      auto memory=backing();Agent agent(memory);
+      agent.arm_first_write_fault(0x1000,0x1040);
+      agent.arm_response_hold(ResponseChannel::write,0x1000,0x1040);
+      tick(agent,0,write_request(0x1000,7));
+      Requests r;r.bready=true;
+      for(unsigned cycle=1;cycle<74;cycle++)require(!tick(agent,cycle,r).bvalid,
+        "held injected write error escaped its B gate");
+      require(agent.held_write_cycles()==37 && !agent.drained() && memory.byte(0x1000)==0xa7,
+        "first-write error did not retain its backed data and due-response hold");
+      rejects([&]{agent.disarm_first_write_fault();});
+      agent.release_response_hold();const auto out=tick(agent,74,r);
+      require(out.bvalid && out.bid==7 && out.bresp==2 && agent.drained(),
+        "released B error changed identity or failed to drain");
+      agent.disarm_response_hold();agent.disarm_first_write_fault();++cases;
+    }
     std::cout << "PASS native frame AXI cases=" << cases << "\n";
     return 0;
   } catch (const std::exception &e) {
