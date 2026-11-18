@@ -11,9 +11,11 @@ struct compute_mmio_state {
  bool kernel_waiting,receipt_loaded;unsigned kernel_submissions,invalidates,pops;
  struct compute_mmio_pte_shadow *pte;char *cleanup_directory;size_t cleanup_start;
  unsigned cleanup_sequence;int cleanup_error;bool cleanup_active,cleanup_done;
-
+ char *reset_directory;size_t reset_start,reset_tail_start;
+ bool reset_active,reset_issued,reset_busy_observed;int reset_error;
 };
 static int compute_mmio_cleanup_sync(struct opengpu_device *);
+static int compute_mmio_reset_sync(struct opengpu_device *);
 static struct compute_mmio_state *compute_mmio_state(struct opengpu_device *gpu)
 {
  struct compute_mmio_state *m=gpu->hw.compute_mmio;
@@ -40,7 +42,10 @@ static u32 opengpu_reg_read(struct opengpu_device *gpu,u32 address)
 static void opengpu_reg_write(struct opengpu_device *gpu,u32 address,u32 value)
 {
  struct compute_mmio_state *m=compute_mmio_state(gpu);compute_mmio_action(m,1,address,value,0);
- assert(address!=GPU_REG_UCMD_RESET);
+ if(address==GPU_REG_UCMD_RESET){
+  assert(m->reset_active && !m->reset_issued && value==GPU_UCMD_RESET_REQUEST);
+  m->reset_issued=true;m->reset_error=compute_mmio_reset_sync(gpu);return;
+ }
  if(address==GPU_REG_UCMD_SUBMIT){
   assert(value==1 && !(m->regs[GPU_REG_UCMD_STATUS/4]&GPU_UCMD_STATUS_COMPLETION));
   u32 opcode=m->regs[GPU_REG_UCMD_OPCODE/4];
@@ -152,6 +157,11 @@ static void compute_host_test_cleanup_peer(struct opengpu_device *,const char *,
 #define OPENGPU_COMPUTE_MMIO_CLEANUP_TEST_PEER(g,d,s) compute_host_test_cleanup_peer(g,d,s)
 #endif
 #include "opengpu_compute_host_cleanup.inc"
+#ifdef OPENGPU_COMPUTE_HOST_TEST_MAIN
+static void compute_host_test_reset_peer(struct opengpu_device *,const char *);
+#define OPENGPU_COMPUTE_MMIO_RESET_TEST_PEER(g,d) compute_host_test_reset_peer(g,d)
+#endif
+#include "opengpu_compute_host_reset.inc"
 static void compute_mmio_progress(struct opengpu_device *gpu)
 {struct compute_mmio_state *m=compute_mmio_state(gpu);
  if(gpu->hw.unified_fence && !m->kernel_waiting)opengpu_hw_unified_drain(gpu);}

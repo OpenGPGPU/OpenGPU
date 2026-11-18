@@ -219,7 +219,7 @@ struct compute_host_session {
  struct opengpu_device gpu;struct opengpu_render_context *context;u32 context_id;
  struct opengpu_file render;struct drm_file file;struct drm_device drm;
  struct compute_host_profile_word *profile;size_t profile_count;
- bool missing,exported,captured,drained,observed,freed,vm_destroyed;
+ bool missing,exported,captured,drained,observed,freed,vm_destroyed,cancelled;
  struct compute_host_held_receipt held;
  int completion_error;
  struct drm_opengpu_compute_uniform_resources submitted;
@@ -716,7 +716,7 @@ static int compute_host_finish_receipt(struct compute_host_session *s,int expect
  if(expected_error){
   /* The real context quiesce reports a completed job's error once and drops
    * only its context fence reference. Consume that expected report before
-   * revocation; hardware/scheduler/reservation fences keep their EIO value. */
+   * revocation; hardware/scheduler/reservation fences keep their error. */
   if(!s->context || !s->context->last_fence ||
    dma_fence_get_status(s->context->last_fence)!=expected_error)return -EINVAL;
   int error=opengpu_context_quiesce(&s->render,s->context);
@@ -738,6 +738,8 @@ int compute_host_finish_observed(struct compute_host_session *s)
 {return compute_host_finish_receipt(s,0);}
 int compute_host_finish_failed_observed(struct compute_host_session *s)
 {return compute_host_finish_receipt(s,-EIO);}
+int compute_host_finish_cancelled_observed(struct compute_host_session *s)
+{return s && s->cancelled?compute_host_finish_receipt(s,-ECANCELED):-EINVAL;}
 int compute_host_end_cleanup(struct compute_host_session *s)
 {
  if(!s || !s->freed || !s->vm_destroyed || s->head || s->gpu.hw.wedged)return -EBUSY;
@@ -774,7 +776,7 @@ int compute_host_destroy(struct compute_host_session *s)
  opengpu_admission_fini(&s->gpu);
  struct compute_mmio_state *m=s->gpu.hw.compute_mmio;if(m){
   while(m->pte){struct compute_mmio_pte_shadow *p=m->pte;m->pte=p->next;free(p->words);free(p);}
-  free(m->cleanup_directory);free(m->actions);free(m);
+  free(m->cleanup_directory);free(m->reset_directory);free(m->actions);free(m);
  }
  for(unsigned i=0;i<3;i++)dma_fence_put(s->sync[i].fence);
  compute_running=NULL;
@@ -793,6 +795,7 @@ static u64 translate(struct opengpu_vm *vm,u32 va,u32 *flags)
 static int test_fail_phase,test_bad_kind;
 static bool test_failed_image_receipts;
 static bool test_failure_injected;
+#include "compute_host_reset_test.h"
 static void compute_host_test_cleanup_peer(struct opengpu_device *gpu,const char *directory,unsigned sequence)
 {
  struct compute_mmio_state *m=compute_mmio_state(gpu);assert(m->cleanup_active && m->pte);
@@ -822,6 +825,16 @@ int main(int argc,char **argv)
   assert(!compute_host_allocation_base(original) && !live_allocations && !fixture_buffers);
  }
  test_failed_image_receipts=getenv("OPENGPU_COMPUTE_HOST_TEST_FAILED_IMAGES")!=NULL;
+ test_cancelled_image_receipts=getenv("OPENGPU_COMPUTE_HOST_TEST_RESET_IMAGES")!=NULL;
+ test_reset_bad=getenv("OPENGPU_COMPUTE_HOST_TEST_BAD_RESET")?atoi(getenv("OPENGPU_COMPUTE_HOST_TEST_BAD_RESET")):0;
+ assert(test_reset_bad>=0 && test_reset_bad<=19 && !(test_failed_image_receipts && test_cancelled_image_receipts));
+ if(test_cancelled_image_receipts){
+  /* Only explicit CPU-shaped reset tests add this discovery capability.
+   * Actual producers continue to use their unmodified native probe words. */
+  assert(ARRAY_SIZE(test_profile)==122);
+  for(unsigned i=0;i<ARRAY_SIZE(test_profile);i++)
+   if(test_profile[i].address==GPU_REG_CAPABILITIES)test_profile[i].value|=GPU_CAP_UNIFIED_RESET;
+ }
  assert(!unsetenv("OPENGPU_COMPUTE_HOST_TIMEOUT") && compute_host_timeout_seconds()==300);
  assert(!setenv("OPENGPU_COMPUTE_HOST_TIMEOUT","3600",1) && compute_host_timeout_seconds()==3600);
  assert(!setenv("OPENGPU_COMPUTE_HOST_TIMEOUT","604800",1) && compute_host_timeout_seconds()==604800);
