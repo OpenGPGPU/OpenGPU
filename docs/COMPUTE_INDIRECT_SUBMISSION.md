@@ -148,12 +148,79 @@ TMPDIR="$PRIVATE_TMP" python3 -B scripts/run_owner_bounded.py \
   KCONFIG_NOSILENTUPDATE=1 -j1 V=1 modules
 ```
 
-This source stage does not close P09. Pipe/Gallium v2 routing, a distinct
-original opcode14 capture and current complete-DUT execution of original
+This driver source stage does not close P09. A distinct original opcode14
+capture and current complete-DUT execution of original
 shader/GPU-produced three-dimensional grids remain required, including source
 fences/private snapshots, zero/extreme/out-of-bounds inputs, failures and
 healthy reuse. The alignment count stays8/40. The earlier version1 guest
 results below retain their original source/model scope and do not qualify v2.
+
+## Version 2 Gallium routing
+
+On screens advertising bit44, Gallium retains the original indirect resource,
+its logical buffer size and the exact byte offset. It does not map or decode
+the count triplet. The pipe submits version2 with
+`OPENGPU_COMPUTE_INDIRECT_KERNARG_COUNTS`, a zero direct grid and an optional
+independent counter source. The producer-fenced driver copy supplies both GCI1
+and the unmodified shader's `gl_NumWorkGroups` loads. The original pipe kernarg
+is not overwritten. Existing publication, fences, failed-wait ownership and
+context recovery remain in use. Screens without bit44 retain the existing CPU
+snapshot/direct fallback; that path does not qualify native indirect execution.
+
+The source's logical tail is checked independently of the page-rounded GEM
+allocation. Active axes retain the advertised `UINT32_MAX` grid capacity;
+inactive axes have a caller bound of one. The driver checks nonempty count
+products in u64 and retains its real opcode14 zero-work contract. Source
+allocation aliases with any submitted resource are rejected. Storage-only v2
+does not require legacy combined-resource or counter features; each supplied
+resource domain still requires its own capability and checked view.
+
+Source `8098dff3ad4b3992bce5f8ae83e41a0c064fef95` passes fresh Linux
+GCC13.3 ASan/UBSan builds against actual Mesa22.3.6. Four original ESSL programs
+exercise a three-dimensional consumer, default/UBO inputs, an independent
+counter and a count producer. Eighteen accepted indirect requests pass the
+actual production ioctl, private records, opcode14 MMIO staging and retirement
+bodies with modeled OS/GEM/VM/device replies and an independent CPU word oracle.
+Protecting the source mapping outside the ioctl bridge detects upper-layer
+count reads; original native shader bytes and kernarg guards remain unchanged.
+Checks cover first/last/crossing-page offsets, logical64B bounds inside a4096B
+GEM, zero and large valid grids, u64 overflow and inactive-axis rejection,
+foreign sources, allocation aliases, malformed bounds/empty-counter metadata,
+injected submission failure and healthy reuse. After an accepted wait failure,
+source mutation and public-handle closure preserve the private counts and
+source backing until retirement. Whole output/guard words remain checked.
+
+The original buffer and eight-program atomic-counter regressions also pass
+fresh GCC13.3 ASan/UBSan builds, including32textures, four SSBOs, four images,
+twelve UBOs/defaults,128 returned counter words, partial-bind failures and
+publication/teardown ownership. The unchanged legacy callback suite passes
+GCC11.4 ASan/UBSan with leak checking, including CPU indirect fallback,
+full128-item local shapes and four128MiB sparse metadata views.
+
+With pinned Mesa22.3.6 source/build, the checked uniform-index patch and DRM
+headers selected through `OPENGPU_MESA_DIR`, `OPENGPU_MESA_BUILD` and
+`OPENGPU_DRM_INCLUDE`, reproduce on Linux with new private build directories:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_gallium_compute_indirect.py \
+  --build "$PRIVATE_ROOT/indirect" --sanitize
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_gallium_buffer_flow.py \
+  --build "$PRIVATE_ROOT/buffers" --sanitize
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_gallium_atomic_counter.py \
+  --build "$PRIVATE_ROOT/counters" --sanitize
+PYTHONDONTWRITEBYTECODE=1 \
+CC='gcc -fsanitize=address,undefined -fno-omit-frame-pointer' \
+ASAN_OPTIONS='detect_leaks=1:abort_on_error=1' \
+UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1' \
+  python3 -B scripts/test_gallium_compute.py
+```
+
+These are CPU source-composition checks, including a CPU-executed producer.
+They do not establish GPU-produced counts, real producer reservation fences,
+hardware page walks or cross-command DUT coherence. No new native opcode14
+capture or complete-DUT v2 result is exported. Those P09 gates remain open;
+the alignment count stays8/40 and the public compute API remains disabled.
+Private validation builds, logs and generated inputs are removed after use.
 
 ## Earlier version1 guest qualification
 
