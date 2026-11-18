@@ -161,7 +161,7 @@ class StorageRecoveryTests(unittest.TestCase):
                 '-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-fno-omit-frame-pointer',
                 str(ROOT/'scripts/test_native_frame_axi.cpp'),'-o',str(binary)],check=True)
             result=subprocess.run([str(binary),directory],check=True,capture_output=True,text=True)
-            self.assertEqual(result.stdout,'PASS native frame AXI cases=25\n')
+            self.assertEqual(result.stdout,'PASS native frame AXI cases=26\n')
 
 
 class ContinuousOwnerTests(unittest.TestCase):
