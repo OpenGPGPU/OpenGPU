@@ -60,15 +60,24 @@ RISC-V SIMT front-end (core/)
 
 ## Multiple generations of the same function
 
-Many functions exist in several generations (for example
-`FragmentInterpolator`, `Fp32FragmentInterpolator`,
-`Fp32StreamingFragmentInterpolator` and `Fp32PreparedQuadInterpolator`).
-This is intentional: each generation is qualified separately in the
-capability matrix. To tell which one a pipeline actually uses, follow the
-instantiations from the entry point above rather than assuming the newest
-file wins. Entry-point files carry a `Path:` header stating which external
-path instantiates them. Leaf `*Unit` blocks are usually qualification-scoped
+Many functions exist in several generations. This is intentional: each
+generation is qualified separately in the capability matrix. Follow the
+instantiations from the entry point rather than assuming the newest file
+wins. Entry-point files carry a `Path:` header stating which external path
+instantiates them. Leaf `*Unit` blocks are usually qualification-scoped
 owners, not yet wired into a production pipeline; their docs say so.
+
+Interpolator wiring today (do not collapse these without retiring the path):
+
+| Generation | Wired by | Role |
+|---|---|---|
+| `FragmentInterpolator` (inside `RasterShader`) | `RenderPipeline` / tile-bin engines on the legacy immediate path | Fixed-function 8-bit colour/depth/UV barycentrics |
+| `Fp32FragmentInterpolator` | `Fp32FragmentPreparation`, matrix FPI/SDP checks | FP32 preparation / reference generation |
+| `Fp32StreamingFragmentInterpolator` | `Fp32PrimitiveRasterStage` (native/typed raster) | Wired product-path interpolation owner |
+| `Fp32PreparedQuadInterpolator` | Inside `Fp32StreamingFragmentInterpolator` | Per-quad component bank used by the streaming owner |
+
+Do not delete an older generation while any entry path, emission target, or
+capability-matrix row still names it.
 
 ## Naming for new files
 

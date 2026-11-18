@@ -13,9 +13,11 @@ stage is a separate PPA gate, not asserted here. Sections below distinguish the
 implemented path from the remaining PPA work.
 
 Source references: `Msaa.scala`, `Rasterizer.scala`,
-`FragmentInterpolator.scala`, `KernelFragStage.scala`, `RenderPipeline.scala`,
-`OutputMerger.scala` and `RenderHost.scala` under
-`src/main/scala/opengpu/graphics/`, plus `driver/opengpu_compute.c`.
+`FragmentInterpolator.scala` (legacy immediate `RasterShader` path),
+`Fp32StreamingFragmentInterpolator.scala` (native/typed raster),
+`KernelFragStage.scala`, `RenderPipeline.scala`, `OutputMerger.scala` and
+`RenderHost.scala` under `src/main/scala/opengpu/graphics/`, plus
+`driver/opengpu_compute.c`.
 
 The design has four invariants:
 
