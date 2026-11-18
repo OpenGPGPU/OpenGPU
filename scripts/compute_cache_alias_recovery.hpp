@@ -1,9 +1,9 @@
 #pragma once
 namespace compute_owner {
 inline void active_cache_alias_recovery_matrix(int argc,char **argv,const std::filesystem::path &output,
-    const std::filesystem::path &session,std::chrono::milliseconds timeout) {
+    const std::filesystem::path &session,std::chrono::milliseconds timeout,bool uc_alias=false) {
 #ifndef OPENGPU_NATIVE_CACHE_STATE
-  (void)argc;(void)argv;(void)output;(void)session;(void)timeout;
+  (void)argc;(void)argv;(void)output;(void)session;(void)timeout;(void)uc_alias;
   require(false,"cache alias recovery requires bound complete-float Verilator cache headers");
 #else
   require(compute_owner_factory()==OwnerFactory::image_float_stage,"cache alias recovery requires the complete float factory");
@@ -11,8 +11,9 @@ inline void active_cache_alias_recovery_matrix(int argc,char **argv,const std::f
     !std::filesystem::exists(output),"invalid cache alias recovery session/output");
   constexpr unsigned rounds=48;
   constexpr uint64_t base=0x01000000,step=0x01000000;
-  wait_input(session/"cache-alias-recovery.plan",session,timeout);
-  std::ifstream plan(session/"cache-alias-recovery.plan",std::ios::binary);magic(plan,"OGCCAM01");
+  const auto plan_name=uc_alias?"uc-cache-alias-recovery.plan":"cache-alias-recovery.plan";
+  wait_input(session/plan_name,session,timeout);
+  std::ifstream plan(session/plan_name,std::ios::binary);magic(plan,uc_alias?"OGCUAM01":"OGCCAM01");
   require(read_le(plan,4)==rounds && read_le(plan,4)==2 && read_le(plan,8)==base &&
     read_le(plan,8)==step && plan.peek()==EOF,"foreign cache alias recovery matrix");
   auto check_namespace=[&](const Memory &upload,unsigned index) {
@@ -43,7 +44,7 @@ inline void active_cache_alias_recovery_matrix(int argc,char **argv,const std::f
     if(index)require(capture.command_id==command_id,"cache alias recovery changed its original command ID");
     else command_id=capture.command_id;
     wait_input(local/"record-0.cache-target",local,timeout);
-    std::ifstream target(local/"record-0.cache-target",std::ios::binary);magic(target,"OGCCL001");
+    std::ifstream target(local/"record-0.cache-target",std::ios::binary);magic(target,uc_alias?"OGCUL001":"OGCCL001");
     require(read_le(target,4)==index && read_le(target,4)==0,"foreign cache target phase");
     const auto line=read_le(target,8),start=bus.cycles;const bool failed=index%2==0;
     require(target.peek()==EOF && !(line&63) && line>=base+index*step && line+64<=base+(index+1)*step &&
@@ -52,7 +53,7 @@ inline void active_cache_alias_recovery_matrix(int argc,char **argv,const std::f
       "cache target escaped its original writable kernel argument pages");
     if(failed) {
       wait_input(local/"record-0.fault-plan",local,timeout);
-      std::ifstream fault(local/"record-0.fault-plan",std::ios::binary);magic(fault,"OGCCF001");
+      std::ifstream fault(local/"record-0.fault-plan",std::ios::binary);magic(fault,uc_alias?"OGCUF001":"OGCCF001");
       require(read_le(fault,8)==line && read_le(fault,8)==line+64 && read_le(fault,4)==3 && fault.peek()==EOF,
         "cache write fault differs from the observed target line");
       agent.arm_accepted_write_error(line,line+64);
@@ -61,7 +62,8 @@ inline void active_cache_alias_recovery_matrix(int argc,char **argv,const std::f
     require(std::filesystem::create_directory(destination),"cache alias recovery output exists");
     compute_cache_alias::Tracker tracker(line,failed);sim.attach(tracker);
     active_compute(sim,agent,bus,memory,capture,destination,local,timeout,
-      failed?ImageFailure::global_accepted_write:ImageFailure::none,0,index?&previous:nullptr,nullptr,
+      failed?(uc_alias?ImageFailure::uc_cache_alias_accepted_write:ImageFailure::global_accepted_write):
+        ImageFailure::none,0,index?&previous:nullptr,nullptr,
       [&](const ComputeResult &result) {
         atomic_json(local/"record-0.cache-observation.json",[&](auto &out) {
           tracker.json(out,command_id,index,failed?result.fault_target_write_attempts:8,start,bus.cycles);
@@ -80,7 +82,8 @@ inline void active_cache_alias_recovery_matrix(int argc,char **argv,const std::f
       "cache alias recovery changed its committed-write error history");
     memory.write((destination/"record-0.cleaned.memory").string());
     atomic_json(local/"executor.done",[&](auto &out) {
-      out<<"{\"schema\":\"opengpu-compute-cache-alias-recovery-round-v1\",\"phase\":"<<index
+      out<<"{\"schema\":\""<<(uc_alias?"opengpu-compute-uc-cache-alias-recovery-round-v1":
+          "opengpu-compute-cache-alias-recovery-round-v1")<<"\",\"phase\":"<<index
         <<",\"mode\":\""<<(failed?"accepted-write":"healthy")<<"\",\"commandId\":"<<command_id
         <<",\"resetCount\":1,\"ramReplaced\":false,\"externalDrained\":true,\"sourceQualificationRequired\":true,\"independentBytesRequired\":true"
         <<",\"physicalReadFaults\":0,\"injectedReadFaults\":0,\"physicalWriteFaults\":"<<writes

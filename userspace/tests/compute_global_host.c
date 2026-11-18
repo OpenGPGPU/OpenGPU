@@ -22,7 +22,7 @@ static struct {void *data;uint64_t bytes;unsigned mapped,closed;} bos[16];
 static unsigned next_bo=1,submitted,retired,capture_only,timeout_seconds,expect_global_fault,cached_kernarg;
 static unsigned cache_alias_source;
 static unsigned cache_alias_live,cache_alias_write_error;
-static unsigned uc_cache_alias_source;
+static unsigned uc_cache_alias_source,uc_cache_alias_live,uc_cache_alias_write_error;
 static const char *directory,*source_case;
 static struct opengpu_buffer shader,kernarg;
 static size_t program_bytes;
@@ -131,6 +131,11 @@ int main(int argc,char **argv)
   if(!strcmp(argv[i],"--cached-kernarg")){assert(!cached_kernarg && !expect_global_fault);cached_kernarg=1;}
   else if(!strcmp(argv[i],"--cache-alias-source")){assert(!cache_alias_source && !expect_global_fault);cache_alias_source=1;}
   else if(!strcmp(argv[i],"--uc-cache-alias-source")){assert(!uc_cache_alias_source);uc_cache_alias_source=1;}
+  else if(!strcmp(argv[i],"--uc-cache-alias-live")){assert(!uc_cache_alias_live && !capture_only);uc_cache_alias_live=1;}
+  else if(!strcmp(argv[i],"--expect-uc-cache-alias-write-error")){
+   assert(!uc_cache_alias_write_error && !expect_global_fault && !capture_only);
+   uc_cache_alias_write_error=1;expect_global_fault=2;
+  }
   else if(!strcmp(argv[i],"--cache-alias-live")){assert(!cache_alias_live && !capture_only);cache_alias_live=1;}
   else if(!strcmp(argv[i],"--expect-cache-alias-write-error")){
    assert(!cache_alias_write_error && !expect_global_fault && !capture_only);
@@ -151,8 +156,10 @@ int main(int argc,char **argv)
  assert(!cache_alias_live || (cache_alias_source && cached_kernarg && !capture_only));
  assert(!cache_alias_write_error || (cache_alias_live && expect_global_fault==2));
  assert(!cache_alias_source || !expect_global_fault || cache_alias_write_error);
- assert(!uc_cache_alias_source || (cached_kernarg && capture_only && !cache_alias_source &&
-  !cache_alias_live && !expect_global_fault));
+ assert(!uc_cache_alias_source || (cached_kernarg && (capture_only != uc_cache_alias_live) &&
+  !cache_alias_source && !cache_alias_live && (!expect_global_fault || uc_cache_alias_write_error)));
+ assert(!uc_cache_alias_live || (uc_cache_alias_source && cached_kernarg && !capture_only));
+ assert(!uc_cache_alias_write_error || (uc_cache_alias_live && expect_global_fault==2));
  assert(!strncmp(source_case,"global-atomic-",14));
  for(const char *c=source_case;*c;c++)assert((*c>='a' && *c<='z') || *c=='-');
  timeout_seconds=compute_host_timeout_seconds();assert(timeout_seconds);

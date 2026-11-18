@@ -79,6 +79,7 @@ def main():
     parser.add_argument('--cache-alias-source',action='store_true')
     parser.add_argument('--uc-cache-alias-source',action='store_true')
     parser.add_argument('--cache-alias-matrix',action='store_true')
+    parser.add_argument('--uc-cache-alias-matrix',action='store_true')
     parser.add_argument('--physical-base',type=int)
     args = parser.parse_args()
     if args.case == 'all' and not args.capture_only:
@@ -88,17 +89,21 @@ def main():
     if args.global_atomic_matrix and (args.case!=CASES[0] or args.session is None):
         parser.error('global matrix requires its exact first source and private session')
     recovery=args.global_recovery_matrix or args.global_accepted_matrix
-    matrix=recovery or args.cache_alias_matrix
-    if args.uc_cache_alias_source and (not args.cached_kernarg or not args.capture_only or
-            args.cache_alias_source or matrix or args.global_atomic_matrix):
-        parser.error('UC cache alias source requires its distinct cached CPU capture')
+    matrix=recovery or args.cache_alias_matrix or args.uc_cache_alias_matrix
+    if args.uc_cache_alias_source and (not args.cached_kernarg or not (args.capture_only or args.uc_cache_alias_matrix) or
+            args.cache_alias_source or args.cache_alias_matrix or recovery or args.global_atomic_matrix):
+        parser.error('UC cache alias source requires its distinct cached capture or live matrix')
+    if args.uc_cache_alias_matrix and (args.case!=CASES[0] or args.session is None or args.capture_only or
+            recovery or args.global_atomic_matrix or args.cache_alias_matrix or not args.cached_kernarg or
+            not args.uc_cache_alias_source):
+        parser.error('UC cache alias matrix requires its distinct cached live first-source session')
     if args.cache_alias_matrix and (args.case!=CASES[0] or args.session is None or args.capture_only or
-            recovery or args.global_atomic_matrix or not args.cached_kernarg or not args.cache_alias_source):
+            recovery or args.global_atomic_matrix or args.uc_cache_alias_matrix or not args.cached_kernarg or not args.cache_alias_source):
         parser.error('cache alias matrix requires its distinct cached live first-source session')
     if args.cache_alias_source and (not args.cached_kernarg or not (args.capture_only or args.cache_alias_matrix) or
-            recovery or args.global_atomic_matrix):
+            recovery or args.global_atomic_matrix or args.uc_cache_alias_matrix):
         parser.error('cache alias source requires its distinct cached capture or complete live matrix')
-    if args.cached_kernarg and (recovery or not (args.capture_only or args.global_atomic_matrix or args.cache_alias_matrix)):
+    if args.cached_kernarg and (recovery or not (args.capture_only or args.global_atomic_matrix or args.cache_alias_matrix or args.uc_cache_alias_matrix)):
         parser.error('cached kernarg requires distinct CPU capture or the original normal global matrix')
     if recovery and (args.case!=CASES[0] or args.session is None or
             args.global_atomic_matrix or args.capture_only):
@@ -137,7 +142,9 @@ def main():
     if args.uc_cache_alias_source:
         from compute_uc_cache_alias_cases import words as source_words, initial_kernarg as source_kernarg
     if matrix:
-        if args.cache_alias_matrix:
+        if args.uc_cache_alias_matrix:
+            from compute_uc_cache_alias_recovery import PHASES, source_launch, check_source_launch
+        elif args.cache_alias_matrix:
             from compute_cache_alias_recovery import PHASES, source_launch, check_source_launch
         elif args.global_accepted_matrix:
             from compute_global_accepted_recovery import PHASES, source_launch, check_source_launch

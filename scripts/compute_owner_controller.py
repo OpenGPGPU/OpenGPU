@@ -86,7 +86,7 @@ def input_digest(path):
     return digest.hexdigest()
 
 
-def ready_inputs(directory, case, *, owner_profile=None, permission=None, profile=None, global_cached=False, cache_alias=False):
+def ready_inputs(directory, case, *, owner_profile=None, permission=None, profile=None, global_cached=False, cache_alias=False, uc_cache_alias=False):
     from compute_counter_source import SCHEMA as COUNTER_SCHEMA, ready as counter_ready
     from compute_owner_cases import COUNTER_CASES, IMAGE_CASES, MIXED_ATOMIC_CASES, GLOBAL_ATOMIC_CASES
     from compute_image_source import SCHEMA as IMAGE_SCHEMA, CONTENDED_SCHEMA, ready as image_ready
@@ -95,6 +95,10 @@ def ready_inputs(directory, case, *, owner_profile=None, permission=None, profil
     from compute_mixed_atomic_source import SCHEMA as MIXED_SCHEMA, ready as mixed_ready
     from compute_global_atomic_source import SCHEMA as GLOBAL_SCHEMA, CACHED_SCHEMA, ready as global_ready
     from compute_cache_alias_source import SCHEMA as ALIAS_SCHEMA, ready as alias_ready
+    from compute_uc_cache_alias_source import SCHEMA as UC_ALIAS_SCHEMA, ready as uc_alias_ready
+    require(type(uc_cache_alias) is bool and (not uc_cache_alias or
+        (case in GLOBAL_ATOMIC_CASES and not global_cached and not cache_alias)),
+        'UC cache alias qualification requires its distinct original source')
     require(type(cache_alias) is bool and (not cache_alias or (case in GLOBAL_ATOMIC_CASES and not global_cached)),
             'cache alias qualification requires its distinct original source')
     require(type(global_cached) is bool and (not global_cached or case in GLOBAL_ATOMIC_CASES),
@@ -107,8 +111,8 @@ def ready_inputs(directory, case, *, owner_profile=None, permission=None, profil
     contended=description.get('schema')==CONTENDED_SCHEMA
     mixed=description.get('schema')==MIXED_SCHEMA
     storage=description.get('schema')==STORAGE_SCHEMA
-    global_atomic=description.get('schema') in (GLOBAL_SCHEMA,CACHED_SCHEMA,ALIAS_SCHEMA)
-    require(not global_atomic or description.get('schema')==(ALIAS_SCHEMA if cache_alias else CACHED_SCHEMA if global_cached else GLOBAL_SCHEMA),
+    global_atomic=description.get('schema') in (GLOBAL_SCHEMA,CACHED_SCHEMA,ALIAS_SCHEMA,UC_ALIAS_SCHEMA)
+    require(not global_atomic or description.get('schema')==(UC_ALIAS_SCHEMA if uc_cache_alias else ALIAS_SCHEMA if cache_alias else CACHED_SCHEMA if global_cached else GLOBAL_SCHEMA),
             'cached and uncached global READY contracts differ')
     require(counter==(case in COUNTER_CASES), 'counter source requires distinct qualification/case binding')
     require((image or mixed)==(case in IMAGE_CASES), 'image source requires distinct qualification/case binding')
@@ -125,10 +129,10 @@ def ready_inputs(directory, case, *, owner_profile=None, permission=None, profil
             if global_atomic:
                 from owner_resource_contract import IMAGE_FLOAT_PROFILE
                 require(owner_profile==IMAGE_FLOAT_PROFILE, 'global atomics require the full float owner')
-                source_ready=alias_ready if cache_alias else global_ready
+                source_ready=uc_alias_ready if uc_cache_alias else alias_ready if cache_alias else global_ready
                 source_ready(before,description,data,(directory/'code.words').read_text().splitlines(),
                     strict_json(directory/'profile.json') if profile is None else profile,
-                    **({} if cache_alias else dict(cached=global_cached)))
+                    **({} if cache_alias or uc_cache_alias else dict(cached=global_cached)))
             elif storage:
                 from owner_resource_contract import IMAGE_FLOAT_PROFILE
                 require(owner_profile==IMAGE_FLOAT_PROFILE, 'storage atomics require the full float owner')
@@ -350,12 +354,20 @@ def main():
     parser.add_argument('--global-recovery-matrix',action='store_true')
     parser.add_argument('--global-accepted-matrix',action='store_true')
     parser.add_argument('--cache-alias-matrix',action='store_true')
+    parser.add_argument('--uc-cache-alias-matrix',action='store_true')
     mode=parser.add_mutually_exclusive_group()
     mode.add_argument('--expect-image-source-fault', action='store_true')
     mode.add_argument('--image-source-recovery', action='store_true')
     mode.add_argument('--image-permission-recovery',choices=('read','write'))
     mode.add_argument('--image-reset-recovery',choices=('read','write'))
     args = parser.parse_args()
+    require(not args.uc_cache_alias_matrix or (args.case==GLOBAL_ATOMIC_CASES[0] and not any((
+        args.storage_matrix,args.storage_delayed_ack,args.storage_recovery_matrix,args.storage_accepted_matrix,
+        args.image_accepted_matrix,args.contended_image_matrix,args.mixed_atomic_matrix,args.global_atomic_matrix,
+        args.global_cached_matrix,args.global_delayed_ack,args.global_recovery_matrix,args.global_accepted_matrix,
+        args.cache_alias_matrix,args.expect_image_source_fault,args.image_source_recovery,
+        args.image_permission_recovery,args.image_reset_recovery))),
+        'UC cache alias recovery requires its distinct original-source matrix')
     require(not args.cache_alias_matrix or (args.case==GLOBAL_ATOMIC_CASES[0] and not any((
         args.storage_matrix,args.storage_delayed_ack,args.storage_recovery_matrix,args.storage_accepted_matrix,
         args.image_accepted_matrix,args.contended_image_matrix,args.mixed_atomic_matrix,args.global_atomic_matrix,
@@ -426,7 +438,7 @@ def main():
     require(executor.is_file() and not executor.is_symlink() and qualification.is_file() and not qualification.is_symlink(),
             'executor/qualification must be original regular files')
     qualified_profile=strict_json(qualification).get('profile')
-    require(not args.cache_alias_matrix or strict_json(qualification).get('backend')=='verilator',
+    require(not (args.cache_alias_matrix or args.uc_cache_alias_matrix) or strict_json(qualification).get('backend')=='verilator',
             'cache alias recovery requires the actual bound Verilator cache-state observer')
     storage_view_fault=False
     if args.case in STORAGE_ATOMIC_CASES:
@@ -482,6 +494,11 @@ def main():
                 subprocess.run([executor, '--probe-profile', directory / 'profile.json'], env=env,
                     stdout=log, stderr=subprocess.STDOUT, timeout=args.timeout, check=True)
             atomic(directory / 'profile.bin', profile_bytes(strict_json(directory / 'profile.json')))
+            if args.uc_cache_alias_matrix:
+                from compute_global_recovery_controller import run_recovery_matrix
+                import compute_uc_cache_alias_recovery as protocol
+                run_recovery_matrix(args,command,directory,executor,env,qualified,qualified_profile,protocol=protocol)
+                return
             if args.cache_alias_matrix:
                 from compute_global_recovery_controller import run_recovery_matrix
                 import compute_cache_alias_recovery as protocol

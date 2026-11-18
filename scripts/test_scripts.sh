@@ -141,6 +141,7 @@ python3 -B scripts/test_compute_cache_alias_source.py
 python3 -B scripts/test_compute_cache_alias_observer.py
 python3 -B scripts/test_compute_cache_alias_recovery.py
 python3 -B scripts/test_compute_uc_cache_alias.py
+python3 -B scripts/test_compute_uc_cache_alias_recovery.py
 python3 scripts/test_compute_counter_source.py
 python3 -B scripts/test_compute_image_source.py
 python3 -B scripts/test_compute_contended_image_cases.py

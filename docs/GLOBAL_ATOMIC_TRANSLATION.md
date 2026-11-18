@@ -346,13 +346,87 @@ python3 -B scripts/test_compute_uc_cache_alias.py \
   --bound-inputs "$INPUTS_REQUEST"
 ```
 
-The UC source flag currently selects CPU capture only. Its complete continuous
-UC/error/healthy matrix, native observer hook and typed-storage failure receipts
-remain to be connected and executed. The cached-only live matrix above does not
-qualify this UC path. Actual two-CU/L2 residency, invalidation/refetch, accepted
-errors and real cleanup for these UC aliases remain P10 gates. P10 stays open
-at 9/40; complete resources, cross-command coherence, clocks and FPS retain
-their separate plan requirements.
+The captures above establish source admission and transport only. The distinct
+live UC matrix below connects the continuous protocol, observer and failure
+receipts. Actual two-CU/L2 residency, invalidation/refetch, accepted errors and
+real cleanup for these UC aliases remain P10 gates. P10 stays open at 9/40;
+complete resources, cross-command coherence, clocks and FPS retain their
+separate plan requirements.
+
+## Same-GEM UC/cache recovery implementation
+
+`global-atomics-uc-cache-alias` connects all 24 derived programs to 48 alternating
+committed-write-error/healthy phases. The original Linux caller uses its exact
+cached kernarg and UC storage view, checked descriptor and ordinary cached
+loads. Each owner waits for actual held/retired receipts and independent cleanup
+authorization. The native runner keeps one complete assertion-enabled float DUT,
+one RAM, one reset and the original command ID; each phase retains previous RAM.
+
+UC matrix, target and fault plans have distinct `OGCUAM01`, `OGCUL001` and
+`OGCUF001` signatures and a separate round schema. The native
+`uc_cache_alias_accepted_write` failure mode derives three, five or seven target
+attempts from complete pairs of surviving caller old values and the original
+fail-fast dispatch prefix. The legacy SSBO five-attempt and integer-image
+nine-attempt requirements remain intact. Independent source histories verify
+the first committed AMO, surviving old values, final target and all physical
+bytes, including descriptors, page tables and previous allocations.
+
+The existing read-only complete-model observer supplies both CU L1s and all four
+L2 slices. Before the controller returns the original retired response, it
+requires both warm L1s/L2, real invalidate handshakes and ACKs, exact target AW/B
+pairing, and ordinary-read refills. An accepted error additionally requires the
+L2 invalidation, a matched lower AR/R refetch and later cache refill. Both the
+outer qualifier and controller require the bound Verilator cache headers; CPU
+captures cannot substitute for this proof.
+
+All 306 focused checks pass, including the 48-phase CPU protocol peers and bad
+observation/returned-byte controls that prevent cleanup and the next owner.
+Four original Linux capture modes pass 96 captures, 4080 source rejections and
+32 compiler/header/object/link controls with all 254 software inputs bound.
+The new actual C live-source controls reach two READY captures and wait for DUT
+receipts; 186 source, six controller-mode and twelve C option negatives pass.
+Existing cached live-source and UC capture controls also pass. These controls
+execute the original C admission path without executing a shader.
+
+The complete-model executor compiles, links and passes actual MMIO discovery
+with three generated cache headers and 1051 compiler dependencies. All 4497 model
+objects/archives and the three headers remain byte-identical. Ended CPU/native
+outputs are removed after their consumers exit. Reproduce the focused checks:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts python3 -B -m unittest \
+  test_compute_uc_cache_alias_recovery test_compute_uc_cache_alias \
+  test_compute_cached_kernarg test_compute_cache_alias_source \
+  test_compute_cache_alias_recovery test_compute_global_atomic_source \
+  test_compute_global_host_inputs test_qualify_compute_owner test_prepare_owner_executor \
+  test_prepare_owner_verilator_executor test_changed_test_suites test_compute_atomic_order \
+  test_compute_owner test_compute_owner_controller test_compute_cache_alias_observer
+```
+
+After a fresh guarded UC CPU capture in the fixed compiler image, exercise the
+original live-source controls with:
+
+```sh
+python3 -B scripts/test_compute_uc_cache_alias_recovery.py \
+  --native-source-build "$CAPTURE_BUILD" --profile-wire "$DISCOVERY_WIRE" \
+  --profile-json "$PROFILE_JSON" --bound-inputs "$INPUTS_REQUEST"
+```
+
+Rebuild the source-qualified complete-float executor from these exact software
+inputs before attempting the distinct full-host qualification:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/qualify_compute_owner.py \
+  --executor "$EXECUTOR" --executor-qualification "$EXECUTOR_QUALIFICATION" \
+  --executor-checker scripts/prepare_owner_executor.py \
+  --executor-checker-python "$OWNER_PYTHON" \
+  --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72 \
+  --case global-atomics-uc-cache-alias --timeout 14400
+```
+
+The implementation and CPU/native-build checks above pass; the complete UC
+48-phase DUT run and its final source/model checks remain pending. The cached
+48-phase and normal cached 24-program gates remain separate. P10 is not closed.
 
 ## Global AMO translation and prior component checks
 
