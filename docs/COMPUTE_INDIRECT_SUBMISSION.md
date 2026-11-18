@@ -287,6 +287,44 @@ remain required. The legacy reset protocol cannot qualify opcode14 reset/drain.
 No complete-DUT v2 or clock/FPS result is claimed. P09 remains open at8/40.
 Generated captures, memory images, test builds and logs are removed after use.
 
+## Storage producer admission with full shared discovery
+
+The full shared-engine discovery preserves the existing storage SIMT dialect.
+If full shared validation fails, a storage program may pass only after complete
+validation with shared instructions closed. This retains launch-sized legacy
+lane proofs for local4/8/16/128 programs without changing shared capacities,
+the shared proof rules or any RTL. The shared layout/stage checks remain common
+to both paths; malformed discovery cannot disappear through the retry.
+
+Source `503f74514064be8988e8983f5308e83e674b060f` passes Clang ASan/UBSan
+and Linux GCC13.3 ASan/UBSan/leak checking across416 canonical
+SIMT cases, the shared-atomic proof/range/negative corpus and the general
+shader validator suite. The expanded corpus rejects against the preceding
+header at its first full-shared local4 positive case. Shared initialization,
+publication, divergent/short-VL, invalid arm and range negatives continue to
+reject. The full Linux7.2/GCC15.2 ELF64 AArch64 module builds in17.22seconds,
+with sampled peak305840KiB and unchanged production/kernel/tool inputs.
+
+```sh
+python3 -B - <<'PY'
+from pathlib import Path
+import subprocess, tempfile
+root = Path.cwd()
+with tempfile.TemporaryDirectory(prefix='storage-simt-', dir=root / '.artifacts') as output:
+    for name in ('opengpu_compute_simt_validator_test', 'opengpu_shared_atomic_validator_test',
+                 'opengpu_shader_validator_test'):
+        binary = Path(output) / name
+        subprocess.run(['cc', '-std=c11', '-O1', '-Wall', '-Wextra', '-Werror',
+                        '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
+                        str(root / 'driver/tests' / (name + '.c')), '-o', str(binary)], check=True)
+        subprocess.run([str(binary)], check=True)
+PY
+```
+
+These results establish source admission and module compilation. The module
+was not loaded, and the continuous Mesa/full-DUT producer/consumer chain still
+requires execution and independent byte checks. P09 remains open at8/40.
+
 ## Version2 continuous-owner source lifecycle
 
 The compute host boundary supports distinct phase cleanup for a continuous
