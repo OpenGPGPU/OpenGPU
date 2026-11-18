@@ -17,7 +17,7 @@ import sys
 import tempfile
 import uuid
 from compute_owner_protocol import strict_json, RECOVERY_CASE, RECOVERY_BASES, RECOVERY_COMMAND_SCHEMA
-from compute_owner_cases import CASES, DYNAMIC_CASES, LEGACY_CASES, COUNTER_CASE, COUNTER_CASES, IMAGE_CASES
+from compute_owner_cases import CASES, DYNAMIC_CASES, LEGACY_CASES, COUNTER_CASE, COUNTER_CASES, IMAGE_CASES, STORAGE_ATOMIC_CASES
 from owner_resource_contract import COMPUTE_STAGE, FULL_COMPUTE_CONTRACTS, SAMPLE_PROFILE, SAMPLE_FACTORY_CONTRACTS
 from owner_resource_contract import IMAGE_FLOAT_PROFILE
 from compute_image_cases import IMAGE_FLOAT_EXCHANGE_CASES
@@ -65,11 +65,13 @@ def checked_inputs(args):
     record = strict_json(args.executor_qualification)
     require(record.get('schema') == 'opengpu-owner-executor-v1' and record.get('kind') == 'compute',
             'wrong executor qualification kind')
-    if getattr(args, 'case', None) in (*COUNTER_CASES,*IMAGE_CASES):
+    if getattr(args, 'case', None) in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES):
         require(type(record.get('profile')) is str and record['profile'] in SAMPLE_FACTORY_CONTRACTS,
                 'source execution requires the exact final112 sample owner factory selected by qualification')
     if getattr(args,'case',None) in IMAGE_FLOAT_EXCHANGE_CASES:
         require(record.get('profile')==IMAGE_FLOAT_PROFILE,'R32F exchange requires its qualified float owner')
+    if getattr(args,'case',None) in (*STORAGE_ATOMIC_CASES,'storage-atomics'):
+        require(record.get('profile')==IMAGE_FLOAT_PROFILE,'storage atomics require the complete float owner')
     if getattr(args, 'case', None) in (*DYNAMIC_CASES, 'mandatory-compute'):
         require(record.get('profile') == COMPUTE_STAGE or record.get('profile') in FULL_COMPUTE_CONTRACTS,
                 'shared atomic execution requires the distinct shared-enabled complete owner factory')
@@ -87,32 +89,36 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
             'reset requires one original live float buffer request')
     require(physical_base is None or (type(physical_base) is int and 0<physical_base<=0xfffff000 and
             physical_base%4096==0 and case==RECOVERY_CASE),'invalid original recovery allocation base')
+    require(not getattr(args,'storage_matrix',False) or (case==STORAGE_ATOMIC_CASES[0] and
+        not source_fault and permission is None and reset is None and physical_base is None),
+        'storage matrix requires its exact first source and normal source-owned receipts')
     # The configured Mesa object database uses these original absolute paths.
     # Keep that mount unchanged; all newly generated files live in {ipc}.
-    counter = case in (*COUNTER_CASES,*IMAGE_CASES)
+    counter = case in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES)
     command = ['docker', 'run', '--rm', '--init', '--name', name, '--memory', '512m' if counter else '2g',
                '--memory-swap', '512m' if counter else '2g', '--cpus', '1' if counter else '2', '--network=none', '--read-only',
                '-v', f'{gpu}:{gpu}:ro', '-v', '{ipc}:{ipc}:rw', '-w', str(source)]
-    environment = dict(PYTHONDONTWRITEBYTECODE='1', OPENGPU_MESA_DIR=str(args.mesa),
+    environment = dict(PYTHONDONTWRITEBYTECODE='1', CC='cc', CXX='c++', OPENGPU_MESA_DIR=str(args.mesa),
         OPENGPU_MESA_BUILD=str(args.mesa_build), OPENGPU_DRM_INCLUDE=str(args.drm_include),
         OPENGPU_MESA_LINK_LIBS=args.mesa_link_libs, LD_LIBRARY_PATH=str(args.library_directory), TMPDIR='{ipc}',
-        HOME='{ipc}', XDG_CACHE_HOME='{ipc}/cache', MESA_SHADER_CACHE_DISABLE='true',
+        XDG_CACHE_HOME='{ipc}/cache', MESA_SHADER_CACHE_DISABLE='true',
         OPENGPU_COMPUTE_HOST_TIMEOUT=str(args.timeout))
     for key, value in environment.items():
         command += ['-e', key + '=' + value]
     entry = (['scripts/compute_owner_inputs.py', '--bound-inputs', str(args.counter_inputs)]
-             if case in (*COUNTER_CASES,*IMAGE_CASES) else ['scripts/test_gallium_compute_host.py'])
+             if counter else ['scripts/test_gallium_compute_host.py'])
     return command + [image, 'python3', *entry,
         '--build', '{ipc}/build', '--sanitize', '--mesa-shared-ntt', str(ntt),
         '--profile-wire', '{ipc}/profile.bin', '--session', '{ipc}', '--case', case] + (
             ['--expect-image-source-fault'] if source_fault else
             ['--expect-image-permission-fault',permission] if permission else
             ['--expect-image-reset',reset] if reset else [])+(
-            ['--physical-base',str(physical_base)] if physical_base is not None else [])
+            ['--physical-base',str(physical_base)] if physical_base is not None else [])+(
+            ['--storage-matrix'] if getattr(args,'storage_matrix',False) else [])
 
 
 def run_case(args, *, gpu, source, temporary, ntt, image, case):
-    if case in (*COUNTER_CASES,*IMAGE_CASES):
+    if case in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES):
         from compute_owner_inputs import snapshot
         bound = snapshot(args.mesa, args.mesa_build, args.library_directory, args.drm_include, gpu)
         args.counter_inputs = temporary / 'counter-inputs.json'
@@ -143,14 +149,16 @@ def run_case(args, *, gpu, source, temporary, ntt, image, case):
             '--executor', args.executor, '--executor-qualification', args.executor_qualification,
             '--executor-checker', args.executor_checker, '--executor-checker-python', args.executor_checker_python,
             '--bridge-command', command_file, '--timeout', str(args.timeout),
-            *(['--case', case] if case in (*COUNTER_CASES,*IMAGE_CASES) else []),
+            *(['--case', case] if case in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES) else []),
+            *(['--storage-matrix'] if getattr(args,'storage_matrix',False) else []),
             *(['--expect-image-source-fault'] if getattr(args,'expect_image_source_fault',False) else []),
             *(['--image-reset-recovery',reset] if reset else ['--image-permission-recovery',permission] if permission else
               ['--image-source-recovery'] if recovery else []),
             '--managed-session-directory', temporary / (case + '-session')], start_new_session=True,
             env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1', TMPDIR=str(temporary)))
-        require(process.wait() == 0, 'actual compute case failed: ' + case)
-        if case in (*COUNTER_CASES,*IMAGE_CASES):
+        require(process.wait(timeout=args.timeout+120 if getattr(args,'storage_matrix',False) else None) == 0,
+                'actual compute case failed: ' + case)
+        if case in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES):
             require(snapshot(args.mesa, args.mesa_build, args.library_directory, args.drm_include, gpu) == bound,
                     'original counter compiler inputs changed during execution')
     finally:
@@ -180,7 +188,7 @@ def main():
     parser.add_argument('--library-directory', type=Path, default=gpu / 'depends/aarch64-root/lib')
     parser.add_argument('--mesa-link-libs', default='-l:libz.so.1 ' + str(gpu / 'depends/aarch64-root/lib/libexpat.so.1.6.7'))
     parser.add_argument('--compiler-image', default='gpu-gtk-ci-check:latest')
-    parser.add_argument('--case', choices=('both', 'mandatory-compute', *CASES), default='both')
+    parser.add_argument('--case', choices=('both', 'mandatory-compute', 'storage-atomics', *CASES), default='both')
     parser.add_argument('--timeout', type=int, default=3600)
     mode=parser.add_mutually_exclusive_group()
     mode.add_argument('--expect-image-source-fault', action='store_true')
@@ -188,6 +196,7 @@ def main():
     mode.add_argument('--image-permission-recovery',choices=('read','write'))
     mode.add_argument('--image-reset-recovery',choices=('read','write'))
     args = parser.parse_args()
+    args.storage_matrix=args.case=='storage-atomics'
     require(0 < args.timeout <= 604800, 'timeout must be 1..604800 seconds')
     args.executor = args.executor.absolute(); args.executor_qualification = args.executor_qualification.absolute()
     identity = checked_inputs(args)
@@ -222,7 +231,8 @@ def main():
                         '--out', temporary / 'checked-ntt'], check=True,
                        env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1', TMPDIR=directory))
         ntt = temporary / 'checked-ntt/src/gallium/auxiliary/nir/nir_to_tgsi.c'
-        cases = ('shared', 'uniforms') if args.case == 'both' else LEGACY_CASES if args.case == 'mandatory-compute' else (args.case,)
+        cases = (STORAGE_ATOMIC_CASES[:1] if args.storage_matrix else
+                 ('shared', 'uniforms') if args.case == 'both' else LEGACY_CASES if args.case == 'mandatory-compute' else (args.case,))
         for case in cases:
             require(checked_inputs(args) == identity, 'qualified model/executor changed between source cases')
             run_case(args, gpu=gpu, source=source, temporary=temporary, ntt=ntt, image=image, case=case)

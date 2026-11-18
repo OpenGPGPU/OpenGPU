@@ -13,6 +13,7 @@ from compute_owner_protocol import strict_json
 from compute_owner_cases import COUNTER_CASES, counter_parameters
 from compute_image_cases import IMAGE_CASES, parameters as image_parameters
 from compute_indirect_sources import CASE as INDIRECT_CASE
+from compute_storage_atomic_cases import CASES as STORAGE_CASES, parameters as storage_parameters
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -44,14 +45,15 @@ def guarded(request_path, builder_argv):
     dependencies=dict(bound)
     dependencies[str(paths['ntt'])]=[str(paths['ntt']),AFTER]
     argv=list(builder_argv)
-    require('--case' in argv and argv[argv.index('--case')+1] in (*COUNTER_CASES,*IMAGE_CASES,INDIRECT_CASE) and '--sanitize' in argv,
+    require('--case' in argv and argv[argv.index('--case')+1] in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_CASES,INDIRECT_CASE) and '--sanitize' in argv,
             'strict original counter source and sanitized producer required')
     case=argv[argv.index('--case')+1]
     indirect=case==INDIRECT_CASE
     image_matrix='--capture-image-matrix' in argv
     counter_matrix='--capture-counter-matrix' in argv
-    require(not (image_matrix and counter_matrix), 'counter/image matrices must remain distinct')
-    matrix=image_matrix or counter_matrix
+    storage_matrix='--storage-matrix' in argv
+    require(sum((image_matrix,counter_matrix,storage_matrix))<=1, 'source matrices must remain distinct')
+    matrix=image_matrix or counter_matrix or storage_matrix
     source_fault='--expect-image-source-fault' in argv
     permission=None
     reset=None
@@ -80,11 +82,13 @@ def guarded(request_path, builder_argv):
         require(str(allocation_base)==value and case=='image-atomic-buffer-r32f' and not matrix and
                 '--capture-only' not in argv and 0<allocation_base<=0xfffff000 and allocation_base%4096==0,
                 'allocation namespace requires one original live float buffer source')
-    require(not matrix or '--capture-only' in argv, 'counter matrix is CPU capture only')
+    require(not (image_matrix or counter_matrix) or '--capture-only' in argv, 'counter/image matrix is CPU capture only')
     launched=set()
     require(not image_matrix or case==IMAGE_CASES[0], 'image matrix must start at its first original source')
     require(not counter_matrix or case==COUNTER_CASES[0], 'counter matrix must start at its first original source')
-    expected_cases=set(IMAGE_CASES if image_matrix else COUNTER_CASES if counter_matrix else (case,))
+    require(argv.count('--storage-matrix')<=1 and (not storage_matrix or case==STORAGE_CASES[0]),
+            'storage matrix must start at its first original source')
+    expected_cases=set(STORAGE_CASES if storage_matrix else IMAGE_CASES if image_matrix else COUNTER_CASES if counter_matrix else (case,))
     out=Path(argv[argv.index('--build')+1]).absolute()
     generated={};seen=set();compiled=False
     # These are all actual host translation units, not the CPU VM fixture.
@@ -132,12 +136,13 @@ def guarded(request_path, builder_argv):
         if command[0]==str(out/'compute_host_frontend'):
             require(seen==units, 'incomplete actual host compiler closure')
             source_case=command[4] if len(command)>=5 else None
-            parameters=image_parameters(source_case) if source_case in IMAGE_CASES else None if indirect else counter_parameters(source_case)
+            parameters=(storage_parameters(source_case) if source_case in STORAGE_CASES else
+                        image_parameters(source_case) if source_case in IMAGE_CASES else None if indirect else counter_parameters(source_case))
             expected_source=out/'glsl' if indirect else out/'glsl'/parameters['source']
             require(source_case in expected_cases and source_case not in launched and
                     command[3]==str(expected_source),
                     'counter producer source/recipe repeated or replaced')
-            require(not matrix or command[-1]=='--capture-only', 'counter matrix attempted actual execution')
+            require(not (image_matrix or counter_matrix) or command[-1]=='--capture-only', 'counter/image matrix attempted actual execution')
             expected_tail=(['--expect-image-source-fault'] if source_fault else
                            ['--expect-image-permission-fault',permission] if permission else
                            ['--expect-image-reset',reset] if reset else
