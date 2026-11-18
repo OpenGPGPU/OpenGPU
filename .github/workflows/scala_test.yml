@@ -51,11 +51,14 @@ jobs:
       run: |
         BASE=$(git merge-base origin/main HEAD)
         mapfile -t CHANGED < <(git diff --name-only "$BASE" HEAD)
+        # Exact renames (R100) keep package/compile selection via CHANGED, but must
+        # not each expand into a Spec job or layout moves blow the 256-job budget.
+        mapfile -t SUITE_CHANGED < <(git diff -M100% --name-status "$BASE" HEAD | awk '$1 !~ /^R100/ { print $NF }')
         SELECTED=$(bash scripts/select_tests.sh "${CHANGED[@]}")
         SUITES=$(bash scripts/ci_shard_tests.sh pr-suites "$SELECTED")
         echo "selected=$SELECTED" >> "$GITHUB_OUTPUT"
         echo "suites=$SUITES" >> "$GITHUB_OUTPUT"
-        AFFECTED=$(python3 scripts/changed_test_suites.py "${CHANGED[@]}")
+        AFFECTED=$(python3 scripts/changed_test_suites.py "${SUITE_CHANGED[@]}")
         echo "affected=$AFFECTED" >> "$GITHUB_OUTPUT"
         printf '%s' "$AFFECTED" > "$RUNNER_TEMP/affected.json"
         python3 scripts/ci_case_partitions.py candidates "$RUNNER_TEMP/affected.json" > "$RUNNER_TEMP/case-suites.txt"
