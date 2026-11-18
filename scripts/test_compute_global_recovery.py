@@ -55,6 +55,27 @@ def done(index):
 
 
 class GlobalRecovery(unittest.TestCase):
+    def test_raw_capture_has_exactly_zero_inactive_contexts_without_weakening_image_layout(self):
+        from compute_image_source import captured_page_tables
+        pages={a:bytearray(4096) for a in (0x1000,0x2000,0x3000,0x4000,0x5000)}
+        struct.pack_into('<I',pages[0x1000],0,7)
+        struct.pack_into('<I',pages[0x2000],0,(3<<10)|1)
+        struct.pack_into('<I',pages[0x3000],16,(4<<10)|0xc7)
+        memory=Memory(pages)
+        actions=[(1,address,satp,0) for satp in (0x80000001,0x80400002) for address in (0x14c,0x150)]
+        def capture(inactive):
+            return (b'OGCMP003'+struct.pack('<QIII',100000,8,17,122)+bytes(122*8)+
+                struct.pack('<II',0,len(inactive))+b''.join(struct.pack('<II',*c) for c in inactive)+
+                struct.pack('<I',len(actions))+b''.join(struct.pack('<IIII',*a) for a in actions))
+        raw=capture([])
+        image=capture([(2,0x80800005)])
+        self.assertEqual(captured_page_tables(memory,raw,inactive_contexts=0),({0x1000,0x2000,0x3000},{0x3010}))
+        self.assertEqual(captured_page_tables(memory,image),({0x1000,0x2000,0x3000},{0x3010}))
+        with self.assertRaises(ValueError):captured_page_tables(memory,raw)
+        with self.assertRaises(ValueError):captured_page_tables(memory,image,inactive_contexts=0)
+        for count in (True,-1,2):
+            with self.assertRaises(ValueError):captured_page_tables(memory,raw,inactive_contexts=count)
+
     def test_all_sources_failed_callers_legal_interleavings_and_whole_ram(self):
         for case in CASES:
             for failed in range(4):
@@ -180,14 +201,14 @@ class GlobalContinuousOwnerTests(unittest.TestCase):
         def fault_bytes(_before,_after,_description,mode):
             events.append((-1,'fault-bytes-'+mode))
             if bad_write and mode=='write':raise ValueError('deliberately invalid partial old word')
-        qualified=Mock()
+        qualified=Mock();tables=Mock(return_value='actual-cpu-peer-tables')
         with tempfile.TemporaryDirectory(prefix='global-recovery-peer-') as temporary:
             directory=Path(temporary)
             patches=(
                 patch('compute_global_recovery_controller.subprocess.Popen',side_effect=start),
                 patch('compute_global_recovery_controller.strict_json',side_effect=record),
                 patch('compute_global_recovery_controller.SparseMemory',MemoryPeer),
-                patch('compute_global_recovery_controller.captured_page_tables',return_value='actual-cpu-peer-tables'),
+                patch('compute_global_recovery_controller.captured_page_tables',new=tables),
                 patch('compute_global_recovery_controller.union_original_memory',return_value=b'old RAM plus disjoint originals'),
                 patch('compute_global_recovery_controller.verify'),
                 patch('compute_global_recovery_controller.verify_fault',side_effect=fault_bytes),
@@ -212,6 +233,7 @@ class GlobalContinuousOwnerTests(unittest.TestCase):
                     run_recovery_matrix(argparse.Namespace(timeout=60),['original-producer','{ipc}'],
                         directory,Path('native-executor'),{},qualified,IMAGE_FLOAT_PROFILE)
         self.assertEqual(len(processes),2)
+        self.assertTrue(all(call.kwargs=={'inactive_contexts':0} for call in tables.call_args_list))
         self.assertEqual(commands[1][1],'--active-global-recovery-matrix')
         cleanups=[index for index,name in events if name=='BEGIN_CLEANUP']
         if bad_write:

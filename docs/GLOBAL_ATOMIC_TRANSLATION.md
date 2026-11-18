@@ -293,6 +293,8 @@ reset, retaining the original command ID. Original caller allocations occupy
 disjoint 16-MiB physical namespaces; every previously cleaned RAM byte remains
 in the independent comparison. Each phase requires actual held/retired IRQ,
 PTE/context/MMU cleanup and external drain before the next original owner.
+The cleanup decoder requires the raw caller's zero inactive contexts; the
+existing image/storage capture contract retains exactly one inactive context.
 
 The original production `opengpu_compute()` caller consumes failed receipts
 and requires its real negative fence and userspace `EIO` result. Read faults

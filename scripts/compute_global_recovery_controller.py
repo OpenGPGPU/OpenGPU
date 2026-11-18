@@ -38,7 +38,7 @@ def run_recovery_matrix(args, command, directory, executor, env, qualified, prof
                     require(upload.ranges and upload.ranges[0][0]==stage['base'] and
                         all(stage['base']<=a<b<=stage['base']+STEP for a,b,_ in upload.ranges),
                         'original global allocator namespace differs or overlaps the next phase')
-                    tables=captured_page_tables(upload,(local/'record-0.capture').read_bytes())
+                    tables=captured_page_tables(upload,(local/'record-0.capture').read_bytes(),inactive_contexts=0)
                     if index:
                         require(input_digest(previous_clean)==previous_digest,'previous cleaned RAM changed')
                         with SparseMemory(previous_clean) as old:

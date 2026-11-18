@@ -292,6 +292,7 @@ def main():
     previous = signal.signal(signal.SIGTERM, terminate)
     temporary = None
     preserve = False
+    completed = False
     try:
         temporary = Path(tempfile.mkdtemp(prefix='cq', dir=gpu / '.artifacts'))
         directory = str(temporary); source = temporary / 'source'; source.mkdir()
@@ -314,6 +315,7 @@ def main():
             require(checked_inputs(args) == identity, 'qualified model/executor changed between source cases')
             run_case(args, gpu=gpu, source=source, temporary=temporary, ntt=ntt, image=image, case=case)
             require(checked_inputs(args) == identity, 'qualified model/executor changed during a source case')
+        completed = True
     except CleanupIncomplete:
         preserve = True
         print('Active consumers could not be excluded; preserved their inputs at ' + str(temporary), file=sys.stderr)
@@ -322,12 +324,13 @@ def main():
         if temporary is not None and not preserve:
             shutil.rmtree(temporary)
         signal.signal(signal.SIGTERM, previous)
-        print(('original RV32 compute ' if global_source else 'original Mesa compute ') + args.case + ': actual full-DUT ' +
-          ('delayed '+args.image_reset_recovery+' response reset then healthy same-ID recovery on retained RAM'
-           if args.image_reset_recovery else 'image '+args.image_permission_recovery+' permission fault then healthy same-ID recovery on retained RAM'
-           if args.image_permission_recovery else 'source fault then healthy same-ID recovery on retained RAM' if args.image_source_recovery else
-           'source-read fault, unchanged physical bytes' if args.expect_image_source_fault else 'returned bytes')+
-          ' and context cleanup PASS')
+        if completed:
+            print(('original RV32 compute ' if global_source else 'original Mesa compute ') + args.case + ': actual full-DUT ' +
+              ('delayed '+args.image_reset_recovery+' response reset then healthy same-ID recovery on retained RAM'
+               if args.image_reset_recovery else 'image '+args.image_permission_recovery+' permission fault then healthy same-ID recovery on retained RAM'
+               if args.image_permission_recovery else 'source fault then healthy same-ID recovery on retained RAM' if args.image_source_recovery else
+               'source-read fault, unchanged physical bytes' if args.expect_image_source_fault else 'returned bytes')+
+              ' and context cleanup PASS')
 
 
 if __name__ == '__main__':

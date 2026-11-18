@@ -22,6 +22,32 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class Entry(unittest.TestCase):
+    def test_outer_qualifier_reports_pass_only_after_the_case_and_postchecks_finish(self):
+        import sys
+        def probe(command,**kwargs):
+            if '--porcelain' in command:return b''
+            if 'HEAD' in command:return 'explicit-cpu-source'
+            if command[:3]==['docker','image','inspect']:return 'sha256:'+'1'*64
+            raise AssertionError(command)
+        for fails in (False,True):
+            archive=unittest.mock.Mock();archive.stdout=io.BytesIO();archive.wait.return_value=0
+            argv=['qualify_compute_owner.py','--executor',str(ROOT/'fixture-executor'),
+                '--executor-qualification',str(ROOT/'fixture-qualification'),
+                '--executor-checker',str(ROOT/'scripts/prepare_owner_executor.py'),
+                '--executor-checker-python',sys.executable,'--case','global-atomics-recovery']
+            output=io.StringIO()
+            with patch.object(sys,'argv',argv),patch.object(qualifier,'checked_inputs',return_value='cpu-identity'),\
+                    patch.object(qualifier,'inside',side_effect=lambda path,_gpu:path),\
+                    patch.object(qualifier.subprocess,'check_output',side_effect=probe),\
+                    patch.object(qualifier.subprocess,'Popen',return_value=archive),\
+                    patch.object(qualifier.subprocess,'run'),\
+                    patch.object(qualifier,'run_case',side_effect=ValueError('explicit CPU failure') if fails else None),\
+                    redirect_stdout(output):
+                if fails:
+                    with self.assertRaisesRegex(ValueError,'explicit CPU failure'):qualifier.main()
+                else:qualifier.main()
+            self.assertEqual('context cleanup PASS' in output.getvalue(),not fails)
+
     def test_reset_commands_bind_one_live_cancel_then_one_original_healthy_source(self):
         args=argparse.Namespace(mesa=ROOT/'mesa',mesa_build=ROOT/'mesa-build',
             drm_include=ROOT/'drm',library_directory=ROOT/'lib',mesa_link_libs='-lfixture',
