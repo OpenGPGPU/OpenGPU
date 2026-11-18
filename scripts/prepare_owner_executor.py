@@ -67,7 +67,7 @@ COMPUTE_GENERATED_INCLUDES = frozenset((
       ('bind', 'context', 'context_lifetime', 'memory', 'query', 'run', 'events', 'lookup',
        'wait_reservation', 'ioctl', 'scheduler', 'admission', 'gem')),
     *(f'compute_host_hw_{name}_under_test.inc' for name in
-      ('fault_record', 'job_id', 'reset_pending', 'result_error', 'drain', 'irq', 'enable_irqs',
+      ('fault_record', 'job_id', 'reset_pending', 'reset_request', 'complete', 'abort', 'result_error', 'drain', 'irq', 'enable_irqs',
        'quiesce', 'kick', 'set_satp', 'activate_locked', 'busy', 'wait_idle', 'activate', 'enable',
        'disable', 'flush', 'flush_asid', 'submit', 'invalidate', 'invalidate_validate',
        'invalidate_sync', 'snapshot_submission', 'compute', 'fence'))))

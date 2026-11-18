@@ -53,10 +53,16 @@ def write_bodies(out, compute_stage=False, full_profile=None):
     for name, body in units.items():
         (out / ('compute_host_' + name + '_under_test.inc')).write_text(body)
     hw = (ROOT / 'driver/opengpu_hw.c').read_text()
+    device = (ROOT / 'driver/opengpu_device.h').read_text()
+    reset_config=[line for line in device.splitlines() if line.startswith('#define OPENGPU_RESET_WAIT_MS ')]
+    if len(reset_config)!=1:raise ValueError('original reset timeout definition is missing or repeated')
     functions = {
         'fault_record': 'static void opengpu_hw_record_fault_locked(',
         'job_id': 'static u32 opengpu_next_job_id(',
         'reset_pending': 'static bool opengpu_hw_unified_reset_pending(',
+        'reset_request': 'static void opengpu_hw_unified_reset_request(',
+        'complete': 'static void opengpu_hw_complete(',
+        'abort': 'void opengpu_hw_abort(',
         'result_error': 'static int opengpu_hw_unified_result_error(',
         'drain': 'static bool opengpu_hw_unified_drain(',
         'irq': 'static irqreturn_t opengpu_irq_handler(',
@@ -84,10 +90,11 @@ def write_bodies(out, compute_stage=False, full_profile=None):
         while hw.find(';', first, hw.index('{', first)) != -1:
             first = hw.index(start, first + len(start))
         last = hw.index('\n}\n', first) + 2
-        (out / ('compute_host_hw_' + name + '_under_test.inc')).write_text(hw[first:last])
+        body=hw[first:last]
+        if name=='reset_request':body=reset_config[0]+'\n'+body
+        (out / ('compute_host_hw_' + name + '_under_test.inc')).write_text(body)
     (out / 'compute_host_hw_fence_under_test.inc').write_text(
         between(hw, 'struct opengpu_fence {', 'static u32 opengpu_reg_read('))
-    device = (ROOT / 'driver/opengpu_device.h').read_text()
     first = device.index('struct opengpu_fault_snapshot {')
     (out / 'compute_host_fault_under_test.inc').write_text(device[first:device.index('\n};', first)+3])
     # Explicit CPU-shaped discovery data for rejection/admission tests only.
