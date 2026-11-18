@@ -7,8 +7,8 @@ ORDERS=('storage-first','image-first')
 # different starts, but their selected aligned words must be identical.
 VIEWS={
     'same':dict(storage_offset=0,storage_bytes=64,storage_index=0,image_offset=0,image_bytes=64,image_coordinate=0),
-    'shifted':dict(storage_offset=4080,storage_bytes=64,storage_index=7,image_offset=4096,image_bytes=52,image_coordinate=3),
-    'endpoint':dict(storage_offset=8160,storage_bytes=32,storage_index=7,image_offset=8140,image_bytes=52,image_coordinate=12),
+    'shifted':dict(storage_offset=3840,storage_bytes=512,storage_index=67,image_offset=4096,image_bytes=52,image_coordinate=3),
+    'endpoint':dict(storage_offset=7936,storage_bytes=256,storage_index=63,image_offset=8140,image_bytes=52,image_coordinate=12),
 }
 DEFINITIONS=tuple(
     ('mixed-atomic-'+fmt+'-'+pair+'-'+order+'-'+view,fmt,pair,order,view)

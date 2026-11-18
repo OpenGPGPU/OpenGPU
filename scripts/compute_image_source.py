@@ -6,6 +6,7 @@ native words or trusting a descriptor as authority for an original view.
 import struct
 from compute_image_cases import parameters as legacy_parameters, coordinates
 from compute_contended_image_cases import CASES as CONTENDED_CASES, parameters as contended_parameters
+from compute_mixed_atomic_cases import CASES as MIXED_CASES, parameters as mixed_parameters
 from compute_owner_protocol import uint, required_flags
 from compute_owner_oracle import allocation_window
 from compute_indirect_oracle import executable_physical
@@ -15,7 +16,7 @@ CONTENDED_SCHEMA = 'opengpu-compute-contended-image-oracle-v1'
 
 
 def parameters(case):
-    return contended_parameters(case) if case in CONTENDED_CASES else legacy_parameters(case)
+    return mixed_parameters(case) if case in MIXED_CASES else contended_parameters(case) if case in CONTENDED_CASES else legacy_parameters(case)
 
 
 def require(value, message):

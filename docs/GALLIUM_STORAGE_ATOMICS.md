@@ -25,8 +25,8 @@ The checked SSBO word-RMW lowering accepts `TGSI_MEMORY_COHERENT`. It uses
 the same acknowledged uncached atomic service and shared-cache invalidation as
 plain word atomics; it does not add an unchecked access or a new instruction.
 Volatile, restrict and combinations containing either remain rejected without
-publishing a partial program. Ordinary coherent SSBO loads and stores retain
-their separate admission rules.
+publishing a partial program. Ordinary coherent SSBO loads and stores remain
+unsupported.
 
 The actual Mesa CPU regression passes ASan/UBSan. All fourteen compiled
 programs preserve every native instruction and reflection byte when their

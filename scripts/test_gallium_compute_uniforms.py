@@ -28,7 +28,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     ap.add_argument("--sanitize", action="store_true")
     if host_execution:
         from compute_owner_cases import (CASES, COUNTER_CASES, counter_parameters, IMAGE_CASES,
-            LEGACY_IMAGE_CASES, CONTENDED_IMAGE_CASES, STORAGE_ATOMIC_CASES)
+            LEGACY_IMAGE_CASES, CONTENDED_IMAGE_CASES, MIXED_ATOMIC_CASES, STORAGE_ATOMIC_CASES)
         from compute_storage_atomic_cases import parameters as storage_parameters
         from compute_storage_recovery import PHASES as STORAGE_RECOVERY_PHASES
         ap.add_argument('--case', choices=('indirect-pipeline',) if continuous_compute else CASES,
@@ -54,6 +54,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
                         help='one original producer build for all read/write-fault and healthy reuse phases')
         ap.add_argument('--contended-image-matrix',action='store_true',
                         help='one guarded producer build for all original same-texel atomic image sources')
+        ap.add_argument('--mixed-atomic-matrix',action='store_true',
+                        help='one guarded producer build for all original same-GEM image/storage atomic sources')
     if sample_graphics:
         ap.add_argument("--profile-wire", type=Path, help="CPU mode's strict OGNP0002 observations; label synthetic fixtures explicitly")
         mode = ap.add_mutually_exclusive_group(required=True)
@@ -70,6 +72,12 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     ap.add_argument("--mesa-shared-ntt", type=Path,
                     help="exact privately staged shared NTT source (shared fixtures only)")
     args = ap.parse_args()
+    if host_execution and args.mixed_atomic_matrix and (
+            args.case!=MIXED_ATOMIC_CASES[0] or args.capture_counter_matrix or args.capture_image_matrix or
+            args.storage_matrix or args.storage_recovery_matrix or args.contended_image_matrix or continuous_compute or
+            args.expect_image_source_fault or args.expect_image_permission_fault or args.expect_image_reset or
+            args.physical_base is not None):
+        ap.error('--mixed-atomic-matrix requires its exact first original source and independent mixed owners')
     if host_execution and args.contended_image_matrix and (
             args.case!=CONTENDED_IMAGE_CASES[0] or args.capture_counter_matrix or args.capture_image_matrix or
             args.storage_matrix or args.storage_recovery_matrix or continuous_compute or
@@ -376,6 +384,9 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     elif host_execution and args.case in STORAGE_ATOMIC_CASES:
         from compute_storage_atomic_cases import write_sources
         write_sources(sources)
+    elif host_execution and args.case in MIXED_ATOMIC_CASES:
+        from compute_mixed_atomic_cases import write_sources
+        write_sources(sources)
     elif host_execution and args.case in CONTENDED_IMAGE_CASES:
         from compute_contended_image_cases import write_sources
         write_sources(sources)
@@ -494,8 +505,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         env["UBSAN_OPTIONS"] = "halt_on_error=1:print_stacktrace=1"
     if host_execution:
         args.session.mkdir(parents=True, exist_ok=True)
-        matrix=args.capture_counter_matrix or args.capture_image_matrix or args.storage_matrix or args.contended_image_matrix
-        cases=(CONTENDED_IMAGE_CASES if args.contended_image_matrix else STORAGE_ATOMIC_CASES if args.storage_matrix else
+        matrix=args.capture_counter_matrix or args.capture_image_matrix or args.storage_matrix or args.contended_image_matrix or args.mixed_atomic_matrix
+        cases=(MIXED_ATOMIC_CASES if args.mixed_atomic_matrix else CONTENDED_IMAGE_CASES if args.contended_image_matrix else STORAGE_ATOMIC_CASES if args.storage_matrix else
                COUNTER_CASES if args.capture_counter_matrix else LEGACY_IMAGE_CASES if args.capture_image_matrix else (args.case,))
         entries=([(stage['case'],args.session/('round-'+str(stage['index'])),stage)
                   for stage in STORAGE_RECOVERY_PHASES] if args.storage_recovery_matrix else

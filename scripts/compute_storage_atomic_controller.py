@@ -1,6 +1,6 @@
 """One guarded compiler build, sequential original full-DUT atomic owners.
 
-Storage and same-texel image matrices retain separate original sources.
+Storage, same-texel image and mixed-alias matrices retain separate original sources.
 Each independent operation case resets its execution DUT. The optional ACK
 mode gates actual target writes; continuous fault recovery is a separate gate.
 """
@@ -17,12 +17,17 @@ def run_matrix(args, command, directory, executor, env, qualified, profile_name)
     from compute_owner_controller import (atomic, wait_file, stop, ready_inputs,
         unchanged_inputs, require)
     image_matrix=getattr(args,'contended_image_matrix',False)
-    if image_matrix:
+    mixed_matrix=getattr(args,'mixed_atomic_matrix',False)
+    if mixed_matrix:
+        from compute_mixed_atomic_cases import CASES as selected_cases
+        require(not (image_matrix or getattr(args,'storage_matrix',False) or getattr(args,'storage_delayed_ack',False)),
+                'mixed atomic and other source matrices must remain separate')
+    elif image_matrix:
         from compute_contended_image_cases import CASES as selected_cases
         require(not (getattr(args,'storage_matrix',False) or getattr(args,'storage_delayed_ack',False)),
                 'contended image and storage matrices must remain separate')
     else:selected_cases=CASES
-    family='contended image' if image_matrix else 'storage atomic'
+    family='mixed image/storage atomic' if mixed_matrix else 'contended image' if image_matrix else 'storage atomic'
     profile = strict_json(directory / 'profile.json')
     deadline = time.monotonic() + args.timeout
     def remaining():
@@ -38,7 +43,7 @@ def run_matrix(args, command, directory, executor, env, qualified, profile_name)
             bridge = subprocess.Popen([x.replace('{ipc}', str(directory)) for x in command],
                 env=env, stdout=log, stderr=subprocess.STDOUT)
             for case in selected_cases:
-                failed=False if image_matrix else bool(parameters(case)['result_status'])
+                failed=False if image_matrix or mixed_matrix else bool(parameters(case)['result_status'])
                 local = directory / case
                 wait_file(local / 'READY', bridge, None, remaining())
                 for name in ('union.memory', 'record-0.capture', 'oracle.json', 'code.words'):
@@ -98,9 +103,19 @@ def run_matrix(args, command, directory, executor, env, qualified, profile_name)
             for local, plan in delay_inputs:
                 require((local / 'record-0.ack-delay-plan').read_bytes() == plan,
                         'storage ACK plan changed before final source checks')
-        print('all fifty-five original same-texel image cases: invocation-ordered old values and full physical guards PASS; per-case reset'
+        print('all sixty-six original same-GEM image/storage atomic cases: invocation-ordered old values, exact alias views and full physical guards PASS; per-case reset'
+              if mixed_matrix else 'all fifty-five original same-texel image cases: invocation-ordered old values and full physical guards PASS; per-case reset'
               if image_matrix else 'all seventeen original SSBO atomic cases: exact old values, view faults and full physical guards PASS; per-case reset')
-    except BaseException:
+    except BaseException as error:
+        print('original '+family+' matrix failed at '+(local.name if local is not None else 'startup')+
+              ': '+str(error),flush=True)
+        logs=[directory/'execution.log',directory/'bridge.log']
+        if local is not None:logs.append(directory/'build'/('actual-compute-capture-'+local.name+'.log'))
+        for path in logs:
+            try:
+                tail='\n'.join(path.read_text(errors='replace').splitlines()[-16:])[-4000:]
+                if tail:print(path.name+' tail:\n'+tail,flush=True)
+            except OSError:pass
         if local is not None:
             try:
                 atomic(local / 'error', (family+' matrix failed; no cleanup authorization\n').encode())

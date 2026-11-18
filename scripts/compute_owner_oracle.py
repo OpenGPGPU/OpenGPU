@@ -198,8 +198,9 @@ def verify(initial, returned, description):
     if [(a, b) for a, b, _ in initial.ranges] != [(a, b) for a, b, _ in returned.ranges]:
         raise ValueError('DUT memory replaced original physical allocations')
     counter = description.get('schema') == 'opengpu-compute-counter-oracle-v1'
-    image = description.get('schema') in ('opengpu-compute-image-oracle-v1',
-                                         'opengpu-compute-contended-image-oracle-v1')
+    mixed = description.get('schema') == 'opengpu-compute-mixed-atomic-oracle-v1'
+    image = mixed or description.get('schema') in ('opengpu-compute-image-oracle-v1',
+                                                  'opengpu-compute-contended-image-oracle-v1')
     storage_atomic = description.get('schema') == 'opengpu-compute-storage-atomic-oracle-v1'
     if counter:
         from compute_owner_cases import counter_parameters
@@ -208,6 +209,9 @@ def verify(initial, returned, description):
     required_flags(description, dict(viewBytes=8192, groups=groups, local=4 if counter or image or storage_atomic else 128, guard=0xdeadbeef))
     if storage_atomic:
         from compute_storage_atomic_source import returned_outputs
+        outputs = returned_outputs(initial, returned, description)
+    elif mixed:
+        from compute_mixed_atomic_source import returned_outputs
         outputs = returned_outputs(initial, returned, description)
     elif image:
         from compute_image_source import returned_outputs

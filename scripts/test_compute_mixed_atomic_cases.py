@@ -17,6 +17,9 @@ class MixedSources(unittest.TestCase):
             self.assertEqual(len(events),16)
             self.assertEqual(p['target_offset'],p['image_offset']+4*p['image_coordinate'])
             self.assertEqual(p['target_offset']%4,0)
+            # Production storage bindings require 256-byte VA and 64-byte DMA
+            # alignment; retain those constraints in every original caller.
+            self.assertEqual(p['storage_offset']%256,0)
             for domain,index in (('storage',p['storage_index']),('image',p['image_coordinate'])):
                 first,size=p[domain+'_offset'],p[domain+'_bytes']
                 self.assertLessEqual(first+size,8192)
