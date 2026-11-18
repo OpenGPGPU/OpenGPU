@@ -62,6 +62,25 @@ python3 -B scripts/qualify_compute_owner.py \
 
 ## Global AMO translation and prior component checks
 
+The source helper `compute_cache_alias_cases.py` retains every original AMO,
+operand and boundary, with ordinary one-element vector loads before and after
+the operations. The first two resident callers synchronize through a separate
+word using bounded forward polling; failure to meet the barrier cannot return
+the required AMO results. All 24 derived programs pass actual production
+shader admission. Independent decoding checks the eight original target
+operations/comparisons and both 64-attempt forward barriers; upload and guard
+checks also pass (four CPU tests).
+
+This helper is not yet connected to the original producer/controller or a
+native cache-state observer. It does not prove actual L1/L2 residency, error
+recovery or refetch. Those full-host requirements remain pending. Reproduce
+the limited source checks with:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts \
+  python3 -B -m unittest test_compute_cache_alias_cases
+```
+
 Global RV32 word AMOs capture the data SATP root and virtual operand before
 sharing the ordinary data page walker. They require readable and writable
 translations, retain the page offset and PTE cache policy, and hold physical
