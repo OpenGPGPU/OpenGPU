@@ -53,7 +53,7 @@ def guarded(request_path, builder_argv):
     dependencies=dict(bound)
     dependencies[str(paths['ntt'])]=[str(paths['ntt']),AFTER]
     argv=list(builder_argv)
-    require('--case' in argv and argv[argv.index('--case')+1] in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_CASES,*PUBLICATION_CASES,*IMAGE_PUBLICATION_CASES,INDIRECT_CASE) and '--sanitize' in argv,
+    require('--case' in argv and argv[argv.index('--case')+1] in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_CASES,*PUBLICATION_CASES,*IMAGE_PUBLICATION_CASES,*TEXTURE_PUBLICATION_CASES,INDIRECT_CASE) and '--sanitize' in argv,
             'strict original counter source and sanitized producer required')
     case=argv[argv.index('--case')+1]
     indirect=case==INDIRECT_CASE
