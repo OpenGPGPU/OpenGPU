@@ -1,6 +1,7 @@
 #pragma once
 // Continuous same-GEM SSBO publication on one float DUT/RAM. Later phases keep
-// producer-written data/flag bytes by retaining exact physical extents.
+// producer-written data/flag bytes by retaining exact physical extents. CPU
+// re-exports of those extents are not authoritative after the first warm seed.
 namespace compute_owner {
 using PublicationExtent=std::pair<uint64_t,uint64_t>;
 
@@ -19,7 +20,7 @@ inline std::set<PublicationExtent> read_retained_extents(const std::filesystem::
 inline void append_publication_retained(Memory &live,const Memory &next,
     const std::set<PublicationExtent> &retained) {
   require(&live!=&next && !next.ranges.empty(),"empty or aliased retained publication upload");
-  Memory additions;std::set<uint64_t> new_pages;
+  Memory additions;std::set<uint64_t> new_pages;std::set<PublicationExtent> replaced;
   uint64_t previous=0;
   for(const auto &r:next.ranges) {
     require(previous<=r.start && r.start<r.end && r.end<=Memory::limit &&
@@ -33,24 +34,30 @@ inline void append_publication_retained(Memory &live,const Memory &next,
       for(uint64_t base=r.start;base<r.end;base+=4096)new_pages.insert(base);
       continue;
     }
-    require(r.start==overlap->start && r.end==overlap->end && r.fill==overlap->fill &&
-      retained.count({r.start,r.end}),"upload overlaps an unauthorized retained allocation");
-    for(uint64_t base=r.start;base<r.end;base+=4096) {
-      const auto a=live.pages.find(base);const auto b=next.pages.find(base);
-      if(a!=live.pages.end() && b!=next.pages.end())require(a->second==b->second,
-        "retained upload would replace DUT-produced bytes");
-      else if(a!=live.pages.end())require(std::all_of(a->second.begin(),a->second.end(),
-        [&](uint8_t v){return v==next.default_byte(base);}),"retained upload loses DUT-produced bytes");
-      else if(b!=next.pages.end())require(std::all_of(b->second.begin(),b->second.end(),
-        [&](uint8_t v){return v==live.default_byte(base);}),"retained upload changes original fill bytes");
-      else require(live.default_byte(base)==next.default_byte(base),"retained fill differs");
+    require(r.start==overlap->start && r.end==overlap->end && r.fill==overlap->fill,
+      "upload overlaps a mismatched live allocation");
+    if(retained.count({r.start,r.end})) {
+      // Keep measured DUT bytes. A later Mesa launch may re-seed the same PA.
+      continue;
     }
+    require(replaced.emplace(r.start,r.end).second,"duplicate replaced publication allocation");
+    for(uint64_t base=r.start;base<r.end;base+=4096)live.pages.erase(base);
+    additions.ranges.push_back(r);
+    for(uint64_t base=r.start;base<r.end;base+=4096)new_pages.insert(base);
   }
   for(const auto &page:next.pages) {
     require(!(page.first&4095) && std::any_of(next.ranges.begin(),next.ranges.end(),[&](const auto &r) {
       return page.first>=r.start && page.first+4096<=r.end;
     }),"retained publication upload has an orphan page");
     if(new_pages.count(page.first))additions.pages.emplace(page);
+  }
+  if(!replaced.empty()) {
+    Memory kept;
+    for(const auto &r:live.ranges)if(!replaced.count({r.start,r.end}))kept.ranges.push_back(r);
+    for(const auto &page:live.pages)if(std::any_of(kept.ranges.begin(),kept.ranges.end(),[&](const auto &r) {
+      return page.first>=r.start && page.first+4096<=r.end;
+    }))kept.pages.emplace(page);
+    live.ranges.swap(kept.ranges);live.pages.swap(kept.pages);
   }
   if(!additions.ranges.empty())live.append_disjoint(additions);
 }
