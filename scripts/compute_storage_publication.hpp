@@ -5,7 +5,7 @@ namespace compute_owner {
 using PublicationExtent=std::pair<uint64_t,uint64_t>;
 
 inline std::set<PublicationExtent> read_retained_extents(const std::filesystem::path &path) {
-  std::ifstream input(path,std::ios::binary);require(input,"missing retained publication extents");
+  std::ifstream input(path,std::ios::binary);require(bool(input),"missing retained publication extents");
   std::set<PublicationExtent> retained;
   while(input.peek()!=EOF) {
     const auto start=read_le(input,8),end=read_le(input,8);
