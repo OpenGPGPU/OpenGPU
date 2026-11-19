@@ -355,12 +355,16 @@ def main():
     parser.add_argument('--global-accepted-matrix',action='store_true')
     parser.add_argument('--cache-alias-matrix',action='store_true')
     parser.add_argument('--uc-cache-alias-matrix',action='store_true')
+    parser.add_argument('--reservation-matrix',action='store_true')
     mode=parser.add_mutually_exclusive_group()
     mode.add_argument('--expect-image-source-fault', action='store_true')
     mode.add_argument('--image-source-recovery', action='store_true')
     mode.add_argument('--image-permission-recovery',choices=('read','write'))
     mode.add_argument('--image-reset-recovery',choices=('read','write'))
     args = parser.parse_args()
+    if args.reservation_matrix:
+        from compute_reservation_wait import mode
+        mode(args,args.case)
     require(not args.uc_cache_alias_matrix or (args.case==GLOBAL_ATOMIC_CASES[0] and not any((
         args.storage_matrix,args.storage_delayed_ack,args.storage_recovery_matrix,args.storage_accepted_matrix,
         args.image_accepted_matrix,args.contended_image_matrix,args.mixed_atomic_matrix,args.global_atomic_matrix,
@@ -526,7 +530,7 @@ def main():
                 from compute_storage_recovery_controller import run_recovery_matrix
                 run_recovery_matrix(args,command,directory,executor,env,qualified,qualified_profile)
                 return
-            if args.storage_matrix or args.contended_image_matrix or args.mixed_atomic_matrix or args.global_atomic_matrix:
+            if args.reservation_matrix or args.storage_matrix or args.contended_image_matrix or args.mixed_atomic_matrix or args.global_atomic_matrix:
                 from compute_storage_atomic_controller import run_matrix
                 run_matrix(args,command,directory,executor,env,qualified,qualified_profile)
                 return

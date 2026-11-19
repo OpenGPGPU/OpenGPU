@@ -77,7 +77,7 @@ def checked_inputs(args):
     if getattr(args,'case',None) in (*MIXED_ATOMIC_CASES,'image-storage-atomics'):
         require(record.get('profile')==IMAGE_FLOAT_PROFILE,'mixed atomics require their qualified float owner')
     if getattr(args,'case',None) in (*GLOBAL_ATOMIC_CASES,'global-atomics','global-atomics-cached','global-atomics-delayed-ack',
-            'global-atomics-recovery','global-atomics-accepted-write-error','global-atomics-cache-alias','global-atomics-uc-cache-alias'):
+            'global-atomics-recovery','global-atomics-accepted-write-error','global-atomics-cache-alias','global-atomics-uc-cache-alias','global-atomics-reservation-wait'):
         require(record.get('profile')==IMAGE_FLOAT_PROFILE,'global atomics require their qualified float owner')
     if getattr(args,'case',None) in ('global-atomics-cache-alias','global-atomics-uc-cache-alias'):
         require(record.get('backend')=='verilator','cache alias execution requires its actual cache-state observer')
@@ -139,6 +139,11 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
     global_cached=getattr(args,'global_cached_matrix',False)
     cache_alias=getattr(args,'cache_alias_matrix',False)
     uc_cache_alias=getattr(args,'uc_cache_alias_matrix',False)
+    reservation=getattr(args,'reservation_matrix',False)
+    if reservation:
+        from compute_reservation_wait import mode
+        mode(args,case)
+        require(not any((source_fault,permission,reset,physical_base)), 'reservation wait cannot use fault/recovery inputs')
     require(not uc_cache_alias or (case==GLOBAL_ATOMIC_CASES[0] and not any((global_matrix,global_recovery,
         global_accepted,global_cached,cache_alias,source_fault,permission,reset,physical_base)) and not any(
         getattr(args,key,False) for key in ('storage_matrix','storage_delayed_ack','storage_recovery_matrix',
@@ -184,7 +189,8 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
             *(['--global-accepted-matrix'] if global_accepted else []),
             *(['--cached-kernarg'] if global_cached or cache_alias or uc_cache_alias else []),
             *(['--cache-alias-source','--cache-alias-matrix'] if cache_alias else []),
-            *(['--uc-cache-alias-source','--uc-cache-alias-matrix'] if uc_cache_alias else [])]
+            *(['--uc-cache-alias-source','--uc-cache-alias-matrix'] if uc_cache_alias else []),
+            *(['--reservation-matrix'] if reservation else [])]
     # The configured Mesa object database uses these original absolute paths.
     # Keep that mount unchanged; all newly generated files live in {ipc}.
     counter = case in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES)
@@ -270,6 +276,7 @@ def run_case(args, *, gpu, source, temporary, ntt, image, case):
             *(['--global-accepted-matrix'] if getattr(args,'global_accepted_matrix',False) else []),
             *(['--cache-alias-matrix'] if getattr(args,'cache_alias_matrix',False) else []),
             *(['--uc-cache-alias-matrix'] if getattr(args,'uc_cache_alias_matrix',False) else []),
+            *(['--reservation-matrix'] if getattr(args,'reservation_matrix',False) else []),
             *(['--expect-image-source-fault'] if getattr(args,'expect_image_source_fault',False) else []),
             *(['--image-reset-recovery',reset] if reset else ['--image-permission-recovery',permission] if permission else
               ['--image-source-recovery'] if recovery else []),
@@ -279,7 +286,7 @@ def run_case(args, *, gpu, source, temporary, ntt, image, case):
                 getattr(args,'storage_recovery_matrix',False) or getattr(args,'global_recovery_matrix',False) or
                 getattr(args,'global_accepted_matrix',False) or getattr(args,'storage_accepted_matrix',False) or
                 getattr(args,'image_accepted_matrix',False) or getattr(args,'global_cached_matrix',False) or
-                getattr(args,'cache_alias_matrix',False) or getattr(args,'uc_cache_alias_matrix',False)) else None) == 0,
+                getattr(args,'cache_alias_matrix',False) or getattr(args,'uc_cache_alias_matrix',False) or getattr(args,'reservation_matrix',False)) else None) == 0,
                 'actual compute case failed: ' + case)
         if case in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES):
             require(snapshot(args.mesa, args.mesa_build, args.library_directory, args.drm_include, gpu) == bound,
@@ -314,7 +321,7 @@ def main():
     parser.add_argument('--case', choices=('both', 'mandatory-compute', 'storage-atomics',
         'storage-atomics-delayed-ack', 'storage-atomics-recovery','storage-atomics-accepted-write-error',
         'image-atomics-contended', 'image-atomics-accepted-write-error', 'image-storage-atomics',
-        'global-atomics','global-atomics-cached','global-atomics-delayed-ack','global-atomics-recovery','global-atomics-accepted-write-error','global-atomics-cache-alias','global-atomics-uc-cache-alias',
+        'global-atomics','global-atomics-cached','global-atomics-delayed-ack','global-atomics-recovery','global-atomics-accepted-write-error','global-atomics-cache-alias','global-atomics-uc-cache-alias','global-atomics-reservation-wait',
         *CASES), default='both')
     parser.add_argument('--timeout', type=int, default=3600)
     mode=parser.add_mutually_exclusive_group()
@@ -337,7 +344,8 @@ def main():
     args.global_accepted_matrix=args.case=='global-atomics-accepted-write-error'
     args.cache_alias_matrix=args.case=='global-atomics-cache-alias'
     args.uc_cache_alias_matrix=args.case=='global-atomics-uc-cache-alias'
-    global_source=args.global_atomic_matrix or args.global_recovery_matrix or args.global_accepted_matrix or args.cache_alias_matrix or args.uc_cache_alias_matrix or args.case in GLOBAL_ATOMIC_CASES
+    args.reservation_matrix=args.case=='global-atomics-reservation-wait'
+    global_source=args.reservation_matrix or args.global_atomic_matrix or args.global_recovery_matrix or args.global_accepted_matrix or args.cache_alias_matrix or args.uc_cache_alias_matrix or args.case in GLOBAL_ATOMIC_CASES
     require(0 < args.timeout <= 604800, 'timeout must be 1..604800 seconds')
     args.executor = args.executor.absolute(); args.executor_qualification = args.executor_qualification.absolute()
     identity = checked_inputs(args)
@@ -376,7 +384,7 @@ def main():
                             '--out', temporary / 'checked-ntt'], check=True,
                            env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1', TMPDIR=directory))
             ntt = temporary / 'checked-ntt/src/gallium/auxiliary/nir/nir_to_tgsi.c'
-        cases = (GLOBAL_ATOMIC_CASES[:1] if args.global_atomic_matrix or args.global_recovery_matrix or args.global_accepted_matrix or args.cache_alias_matrix or args.uc_cache_alias_matrix else MIXED_ATOMIC_CASES[:1] if args.mixed_atomic_matrix else CONTENDED_IMAGE_CASES[:1] if args.contended_image_matrix or args.image_accepted_matrix else
+        cases = (GLOBAL_ATOMIC_CASES[:1] if args.reservation_matrix or args.global_atomic_matrix or args.global_recovery_matrix or args.global_accepted_matrix or args.cache_alias_matrix or args.uc_cache_alias_matrix else MIXED_ATOMIC_CASES[:1] if args.mixed_atomic_matrix else CONTENDED_IMAGE_CASES[:1] if args.contended_image_matrix or args.image_accepted_matrix else
                  STORAGE_ATOMIC_CASES[:1] if args.storage_matrix or args.storage_recovery_matrix or args.storage_accepted_matrix else
                  ('shared', 'uniforms') if args.case == 'both' else LEGACY_CASES if args.case == 'mandatory-compute' else (args.case,))
         for case in cases:

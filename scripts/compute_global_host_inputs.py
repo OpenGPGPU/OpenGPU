@@ -14,9 +14,10 @@ import subprocess
 from compute_owner_protocol import strict_json
 from native_sample_compiler_inputs import sha256
 
-UNITS = ('driver/tests/opengpu_compute_host_fixture.c', 'userspace/opengpu.c',
+UNITS = ('driver/tests/opengpu_compute_reservation_fixture.c', 'userspace/opengpu.c',
          'userspace/tests/compute_global_host.c')
-REQUIRED = set(UNITS) | {'driver/tests/opengpu_compute_host_fixture.h',
+REQUIRED = set(UNITS) | {'driver/tests/opengpu_compute_host_fixture.c','driver/tests/opengpu_compute_host_fixture.h',
+    'driver/tests/opengpu_compute_reservation_fixture.h','scripts/compute_reservation_wait.py',
     'driver/opengpu_compute.c', 'driver/opengpu_memory.c', 'driver/opengpu_hw.c',
     'driver/opengpu_scheduler.c', 'driver/opengpu_admission.c', 'driver/opengpu_drm_device.c',
     'scripts/test_compute_host.py', 'scripts/compute_global_host_producer.py',

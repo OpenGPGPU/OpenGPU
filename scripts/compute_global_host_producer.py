@@ -40,7 +40,7 @@ def build(out, *, sanitize, guard=None):
             raise RuntimeError(label + ' failed:\n' + (out / (label + '.log')).read_text()[-12000:])
 
     units = (
-        ('driver/tests/opengpu_compute_host_fixture.c',
+        ('driver/tests/opengpu_compute_reservation_fixture.c',
          [ROOT / 'driver/tests/compute_submit_stubs', ROOT / 'driver/tests/mmu_stubs', ROOT / 'driver', kernel], []),
         ('userspace/opengpu.c', [ROOT / 'driver', ROOT / 'userspace'],
          ['-D' + name + '=global_fixture_' + name for name in ('ioctl', 'mmap', 'munmap', 'close')]),
@@ -80,6 +80,7 @@ def main():
     parser.add_argument('--uc-cache-alias-source',action='store_true')
     parser.add_argument('--cache-alias-matrix',action='store_true')
     parser.add_argument('--uc-cache-alias-matrix',action='store_true')
+    parser.add_argument('--reservation-matrix',action='store_true')
     parser.add_argument('--physical-base',type=int)
     args = parser.parse_args()
     if args.case == 'all' and not args.capture_only:
@@ -89,7 +90,11 @@ def main():
     if args.global_atomic_matrix and (args.case!=CASES[0] or args.session is None):
         parser.error('global matrix requires its exact first source and private session')
     recovery=args.global_recovery_matrix or args.global_accepted_matrix
-    matrix=recovery or args.cache_alias_matrix or args.uc_cache_alias_matrix
+    matrix=recovery or args.cache_alias_matrix or args.uc_cache_alias_matrix or args.reservation_matrix
+    if args.reservation_matrix and (args.case!=CASES[0] or args.session is None or args.capture_only or
+            any((recovery,args.cache_alias_matrix,args.uc_cache_alias_matrix,args.global_atomic_matrix,
+                 args.cached_kernarg,args.cache_alias_source,args.uc_cache_alias_source,args.physical_base))):
+        parser.error('reservation matrix requires its distinct live first-source session')
     if args.uc_cache_alias_source and (not args.cached_kernarg or not (args.capture_only or args.uc_cache_alias_matrix) or
             args.cache_alias_source or args.cache_alias_matrix or recovery or args.global_atomic_matrix):
         parser.error('UC cache alias source requires its distinct cached capture or live matrix')
@@ -142,7 +147,9 @@ def main():
     if args.uc_cache_alias_source:
         from compute_uc_cache_alias_cases import words as source_words, initial_kernarg as source_kernarg
     if matrix:
-        if args.uc_cache_alias_matrix:
+        if args.reservation_matrix:
+            from compute_reservation_wait import PHASES, source_launch, check_source_launch
+        elif args.uc_cache_alias_matrix:
             from compute_uc_cache_alias_recovery import PHASES, source_launch, check_source_launch
         elif args.cache_alias_matrix:
             from compute_cache_alias_recovery import PHASES, source_launch, check_source_launch
