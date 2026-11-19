@@ -253,7 +253,7 @@ class Entry(unittest.TestCase):
             self.assertIn('--read-only', command)
             raw=case in qualifier.GLOBAL_ATOMIC_CASES
             strict=raw or case in (*qualifier.COUNTER_CASES,*qualifier.IMAGE_CASES,*qualifier.STORAGE_ATOMIC_CASES,
-                *qualifier.STORAGE_PUBLICATION_CASES)
+                *qualifier.STORAGE_PUBLICATION_CASES,*qualifier.IMAGE_PUBLICATION_CASES)
             expected_memory='512m' if strict else '2g'
             self.assertEqual(command[command.index('--memory')+1],expected_memory)
             self.assertEqual(command[command.index('--memory-swap')+1],expected_memory)
