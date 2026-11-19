@@ -16,8 +16,10 @@ from compute_contended_image_cases import CASES as CONTENDED_IMAGE_CASES
 from compute_mixed_atomic_cases import CASES as MIXED_ATOMIC_CASES
 IMAGE_CASES = LEGACY_IMAGE_CASES + CONTENDED_IMAGE_CASES + MIXED_ATOMIC_CASES
 from compute_storage_atomic_cases import CASES as STORAGE_ATOMIC_CASES
+from compute_storage_publication_cases import CASES as STORAGE_PUBLICATION_CASES
 from compute_global_atomic_cases import CASES as GLOBAL_ATOMIC_CASES
-CASES = LEGACY_CASES + COUNTER_CASES + IMAGE_CASES + STORAGE_ATOMIC_CASES + GLOBAL_ATOMIC_CASES
+CASES = (LEGACY_CASES + COUNTER_CASES + IMAGE_CASES + STORAGE_ATOMIC_CASES +
+         STORAGE_PUBLICATION_CASES + GLOBAL_ATOMIC_CASES)
 
 
 def counter_parameters(name):

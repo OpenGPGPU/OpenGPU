@@ -202,6 +202,7 @@ def verify(initial, returned, description):
     image = mixed or description.get('schema') in ('opengpu-compute-image-oracle-v1',
                                                   'opengpu-compute-contended-image-oracle-v1')
     storage_atomic = description.get('schema') == 'opengpu-compute-storage-atomic-oracle-v1'
+    storage_publication = description.get('schema') == 'opengpu-compute-storage-publication-oracle-v1'
     cache_alias = description.get('schema') == 'opengpu-compute-cache-alias-oracle-v1'
     uc_cache_alias = description.get('schema') == 'opengpu-compute-uc-cache-alias-oracle-v1'
     global_atomic = cache_alias or uc_cache_alias or description.get('schema') in ('opengpu-compute-global-atomic-oracle-v1',
@@ -209,9 +210,10 @@ def verify(initial, returned, description):
     if counter:
         from compute_owner_cases import counter_parameters
         groups=counter_parameters(description.get('sourceCase'))['groups']
-    else:groups=2 if image or storage_atomic else 4
+    else:groups=1 if storage_publication else 2 if image or storage_atomic else 4
     required_flags(description, dict(viewBytes=8192, groups=groups,
-        local=16 if global_atomic else 4 if counter or image or storage_atomic else 128, guard=0xdeadbeef))
+        local=1 if storage_publication else 16 if global_atomic else 4 if counter or image or storage_atomic else 128,
+        guard=0xdeadbeef))
     if uc_cache_alias:
         from compute_uc_cache_alias_source import returned_outputs
         outputs = returned_outputs(initial, returned, description)
@@ -220,6 +222,9 @@ def verify(initial, returned, description):
         outputs = returned_outputs(initial, returned, description)
     elif global_atomic:
         from compute_global_atomic_source import returned_outputs
+        outputs = returned_outputs(initial, returned, description)
+    elif storage_publication:
+        from compute_storage_publication_source import returned_outputs
         outputs = returned_outputs(initial, returned, description)
     elif storage_atomic:
         from compute_storage_atomic_source import returned_outputs
