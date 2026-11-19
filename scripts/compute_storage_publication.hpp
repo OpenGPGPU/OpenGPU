@@ -2,6 +2,7 @@
 // Continuous same-GEM SSBO publication on one float DUT/RAM. Later phases keep
 // producer-written data/flag bytes by retaining exact physical extents. CPU
 // re-exports of those extents are not authoritative after the first warm seed.
+#include "compute_storage_publication_cache.hpp"
 namespace compute_owner {
 using PublicationExtent=std::pair<uint64_t,uint64_t>;
 
@@ -64,6 +65,8 @@ inline void append_publication_retained(Memory &live,const Memory &next,
 
 inline void active_storage_publication(int argc,char **argv,const std::filesystem::path &output,
     const std::filesystem::path &session,std::chrono::milliseconds timeout) {
+  require_publication_cache_support();
+#ifdef OPENGPU_NATIVE_CACHE_STATE
   constexpr unsigned rounds=3;constexpr uint64_t base=0x01000000;
   require(compute_owner_factory()==OwnerFactory::image_float_stage,
     "storage publication requires the complete float factory");
@@ -74,12 +77,21 @@ inline void active_storage_publication(int argc,char **argv,const std::filesyste
   std::ifstream plan(plan_path,std::ios::binary);magic(plan,"OGCSPM01");
   require(read_le(plan,4)==rounds && read_le(plan,4)==1u && read_le(plan,8)==base && plan.peek()==EOF,
     "foreign storage publication matrix");
+  wait_input(session/"publication.cache-target",session,timeout);
+  std::ifstream target_file(session/"publication.cache-target",std::ios::binary);magic(target_file,"OGCSPT01");
+  const auto data_line=read_le(target_file,8);
+  require(target_file.peek()==EOF && data_line && !(data_line&63) && data_line>=base && data_line+64<=base+0x01000000,
+    "foreign publication cache target line");
   const auto first=session/"round-0";authorize_recovery_round(first,0,timeout);
   wait_input(first/"union.memory",first,timeout);
   Memory memory=Memory::read((first/"union.memory").string());
   require(std::filesystem::create_directory(output),"cannot create storage publication output");
-  Simulation sim(argc,argv);sim.reset();Agent agent(memory);ReplayBus<Simulation> bus(sim,agent,100000);
+  using View=compute_cache_alias::View<VGpuHostSystemAxi,VGpuComputeUnit>;
+  using CacheSimulation=compute_cache_alias::ObservedSimulation<Simulation,View,PublicationCacheTracker>;
+  CacheSimulation sim(argc,argv);sim.reset();Agent agent(memory);ReplayBus<CacheSimulation> bus(sim,agent,100000);
+  PublicationCacheTracker tracker;tracker.target=uint32_t(data_line);sim.attach(tracker);
   uint32_t command_id=0;Traffic previous{};std::set<PublicationExtent> retained;
+  const auto session_start=bus.cycles;
   for(unsigned index=0;index<rounds;index++) {
     const auto local=session/("round-"+std::to_string(index));
     if(index) {
@@ -95,6 +107,7 @@ inline void active_storage_publication(int argc,char **argv,const std::filesyste
     else command_id=capture.command_id;
     const auto destination=output/("round-"+std::to_string(index));
     require(std::filesystem::create_directory(destination),"storage publication output exists");
+    tracker.begin_phase(index);
     const auto start=bus.cycles;
     active_compute(sim,agent,bus,memory,capture,destination,local,timeout,
       ImageFailure::none,0,index?&previous:nullptr);
@@ -115,6 +128,11 @@ inline void active_storage_publication(int argc,char **argv,const std::filesyste
     });
     previous=agent.traffic;
   }
+  atomic_json(session/"publication.cache-observation.json",[&](auto &out) {
+    tracker.json(out,command_id,session_start,bus.cycles);
+  });
+  sim.detach();
   sim.model->final();
+#endif
 }
 } // namespace compute_owner

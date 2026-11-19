@@ -80,8 +80,10 @@ def checked_inputs(args):
     if getattr(args,'case',None) in (*GLOBAL_ATOMIC_CASES,'global-atomics','global-atomics-cached','global-atomics-delayed-ack',
             'global-atomics-recovery','global-atomics-accepted-write-error','global-atomics-cache-alias','global-atomics-uc-cache-alias','global-atomics-reservation-wait'):
         require(record.get('profile')==IMAGE_FLOAT_PROFILE,'global atomics require their qualified float owner')
-    if getattr(args,'case',None) in ('global-atomics-cache-alias','global-atomics-uc-cache-alias'):
-        require(record.get('backend')=='verilator','cache alias execution requires its actual cache-state observer')
+    if getattr(args,'case',None) in ('global-atomics-cache-alias','global-atomics-uc-cache-alias',
+                                     'storage-publication'):
+        require(record.get('backend')=='verilator',
+                'cache alias/publication L1 observation requires its actual cache-state observer')
     if getattr(args,'case',None) in (*STORAGE_ATOMIC_CASES,'storage-atomics','storage-atomics-delayed-ack',
             'storage-atomics-recovery','storage-atomics-accepted-write-error',
             *STORAGE_PUBLICATION_CASES,'storage-publication'):
