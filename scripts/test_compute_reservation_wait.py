@@ -213,9 +213,12 @@ struct Bus {
  Sim &sim;Agent &agent;uint64_t cycles=0;unsigned reads=0,at=0,field=0;bool before=true,after=true;
  uint32_t read(uint32_t address){assert(address==1);return (++reads==1?before:after)?1:0;}
  template<class F> void step(F observe){++cycles;if(cycles==at){
-  if(field==0)sim.state.io_m_irq=true;if(field==1)sim.state.io_m_axi_arvalid=true;
-  if(field==2)sim.state.io_m_axi_awvalid=true;if(field==3)sim.state.io_m_axi_wvalid=true;
-  if(field==4)++agent.traffic;if(field==5)agent.pending=true;}
+  if(field==0)sim.state.io_m_irq=true;
+  if(field==1)sim.state.io_m_axi_arvalid=true;
+  if(field==2)sim.state.io_m_axi_awvalid=true;
+  if(field==3)sim.state.io_m_axi_wvalid=true;
+  if(field==4)++agent.traffic;
+  if(field==5)agent.pending=true;}
   observe(sim.state);}
 };
 int main(){
