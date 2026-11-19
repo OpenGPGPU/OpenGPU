@@ -2,11 +2,15 @@
 
 Original Mesa SSBO publication corpus and complete-owner continuous execution
 for P11's first domain: GPU producer → warmed/reload consumer on one
-assertion-enabled float DUT, same RAM, one reset.
+assertion-enabled float DUT, same RAM, one reset, with Verilator observation of
+the uncached storage fabric traffic on the retained data line.
 
-This closes the SSBO float DUT gate. It does **not** close P11. Ordinary L1
-cached-alias observation and the remaining domains (image/texture/attachment/
-DMA/counter/shared) remain open.
+This closes the SSBO float DUT gate and its uncached publication fabric
+witness. It does **not** close P11. Ordinary L1 cached-alias consumers of the
+same GEM (storage↔ordinary dual-direction) remain the component contract in
+[GALLIUM_COMPUTE_MEMORY_BARRIERS.md](GALLIUM_COMPUTE_MEMORY_BARRIERS.md) /
+`GpuSystemStoragePublicationSpec`; image/texture/attachment/DMA/counter/shared
+domains remain open.
 
 ## Corpus
 
@@ -22,21 +26,28 @@ window. All three phases share physical base `0x01000000`. Retained data
 extents keep measured DUT bytes across Mesa relaunches; other exact physical
 overlaps are replaced from the new upload.
 
-Qualify entry: `scripts/qualify_compute_owner.py --case storage-publication`.
+Checked storage word accesses bypass private L1/L2. The continuous session
+therefore records warm AR → producer AW → reload AR on the retained data
+line through the Verilator cache observer (`publication.cache-target` /
+`publication.cache-observation.json`).
+
+Qualify entry: `scripts/qualify_compute_owner.py --case storage-publication`
+(requires the Verilator complete-float executor).
 
 ## Actual complete float DUT execution
 
-Execution source `dcd2a543b0f70550edccdc9f634ad31bfb1fa8a9` on the assertion-
+Execution source `527c342205a8b875105a57c0f02cdb95fbc9d13c` on the assertion-
 enabled `two-cu-vga60-owner-v2-image-float-stage` Verilator compute executor.
 All three phases passed independent returned-byte/guard oracles, cleanup ACK,
-one DUT/RAM/single reset, and unchanged source/model postchecks:
+one DUT/RAM/single reset, uncached fabric observation, and unchanged
+source/model postchecks:
 
 ```text
 original storage publication phase=0 role=warm full bytes/cleanup PASS
 original storage publication phase=1 role=producer full bytes/cleanup PASS
 original storage publication phase=2 role=reload full bytes/cleanup PASS
 all three original storage publication phases PASS; one DUT/RAM/reset,
-warm/producer/reload, original source/model postchecks
+warm/producer/reload, uncached fabric observation, original source/model postchecks
 original Mesa compute storage-publication: actual full-DUT returned bytes
 and context cleanup PASS
 ```
@@ -66,7 +77,9 @@ git diff --check
 ## Limits
 
 - Count stays **10/40** until the full P11 matrix closes.
-- Ordinary L1 cached-alias observation of this publication path remains open.
+- Ordinary L1 cached-alias of this GEM (storage producer ↔ ordinary consumer)
+  remains component evidence; complete-owner ordinary consumers land with later
+  domains that already carry that witness shape.
 - Component evidence in [GALLIUM_COMPUTE_MEMORY_BARRIERS.md](GALLIUM_COMPUTE_MEMORY_BARRIERS.md)
   is not a complete-owner substitute for the remaining domains.
 - P12 full resources and product clock/FPS keep their own gates.
