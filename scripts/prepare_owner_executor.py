@@ -224,9 +224,11 @@ def driver_files(kind, profile=owner.PROFILE):
         return ['scripts/compute_indirect_owner_driver.cpp', 'scripts/compute_owner_driver.cpp',
                 'scripts/compute_owner_capture.hpp', 'scripts/compute_owner_reset.hpp',
                 'scripts/compute_storage_atomic_delay.hpp',
-                'scripts/compute_storage_recovery.hpp', 'scripts/compute_global_recovery.hpp',
+                'scripts/compute_storage_recovery.hpp', 'scripts/compute_storage_publication.hpp',
+                'scripts/compute_global_recovery.hpp',
                 'scripts/compute_cache_alias_observer.hpp',
-                'scripts/compute_cache_alias_recovery.hpp', 'scripts/compute_reservation_wait.hpp', 'scripts/compute_reservation_idle.hpp',
+                'scripts/compute_cache_alias_recovery.hpp', 'scripts/compute_reservation_wait.hpp',
+                'scripts/compute_reservation_idle.hpp',
                 'scripts/compute_indirect_capture.hpp', 'scripts/compute_owner_phase.hpp',
                 'driver/opengpu_kernarg_va.h', *SHARED]
     if kind == BLIT_KIND:
@@ -246,12 +248,16 @@ def driver_files(kind, profile=owner.PROFILE):
                    SAMPLE_PROFILE: 'geometry_compute_sample', IMAGE_FLOAT_PROFILE: 'image_float'}[profile]
         return [f'scripts/{wrapper}_owner_driver.cpp', 'scripts/compute_owner_driver.cpp',
                 *SHARED, 'scripts/compute_owner_capture.hpp', 'scripts/compute_owner_reset.hpp',
-                'scripts/compute_storage_atomic_delay.hpp', 'scripts/compute_storage_recovery.hpp', 'scripts/compute_global_recovery.hpp',
-                'scripts/compute_cache_alias_observer.hpp', 'scripts/compute_cache_alias_recovery.hpp', 'scripts/compute_reservation_wait.hpp', 'scripts/compute_reservation_idle.hpp']
+                'scripts/compute_storage_atomic_delay.hpp', 'scripts/compute_storage_recovery.hpp',
+                'scripts/compute_storage_publication.hpp', 'scripts/compute_global_recovery.hpp',
+                'scripts/compute_cache_alias_observer.hpp', 'scripts/compute_cache_alias_recovery.hpp',
+                'scripts/compute_reservation_wait.hpp', 'scripts/compute_reservation_idle.hpp']
     return ([f'scripts/{kind}_owner_driver.cpp', *SHARED] +
             (['scripts/compute_owner_capture.hpp', 'scripts/compute_owner_reset.hpp',
-              'scripts/compute_storage_atomic_delay.hpp', 'scripts/compute_storage_recovery.hpp', 'scripts/compute_global_recovery.hpp',
-              'scripts/compute_cache_alias_observer.hpp', 'scripts/compute_cache_alias_recovery.hpp', 'scripts/compute_reservation_wait.hpp', 'scripts/compute_reservation_idle.hpp'] if kind == 'compute' else []))
+              'scripts/compute_storage_atomic_delay.hpp', 'scripts/compute_storage_recovery.hpp',
+              'scripts/compute_storage_publication.hpp', 'scripts/compute_global_recovery.hpp',
+              'scripts/compute_cache_alias_observer.hpp', 'scripts/compute_cache_alias_recovery.hpp',
+              'scripts/compute_reservation_wait.hpp', 'scripts/compute_reservation_idle.hpp'] if kind == 'compute' else []))
 
 
 def sample_fixture_macros(path, source):
