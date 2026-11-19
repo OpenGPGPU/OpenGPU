@@ -476,6 +476,13 @@ int compute_host_submit_resources(struct compute_host_session *s,const struct dr
  }
  return error;
 }
+int compute_host_align_texture_publication_command(struct compute_host_session *s)
+{
+ if(!s || s->exported || s->head || s->captured)return -EBUSY;
+ /* Match the one extra unified DMA the texture COMPUTE_RESOURCES path spends
+  * before its compute kick (warm/reload command id 5 vs image producer 4). */
+ s->gpu.hw.job_seqno+=1;return 0;
+}
 int compute_host_submit_images(struct compute_host_session *s,const struct drm_opengpu_compute_images *request)
 {
  if(!s || !request || s->exported || s->head)return -EBUSY;
