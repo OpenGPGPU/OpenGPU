@@ -168,8 +168,6 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         atomic_counters = True
     if host_execution and args.case in STORAGE_ATOMIC_CASES:
         storage_atomics = True
-    if host_execution and args.case in IMAGE_PUBLICATION_CASES:
-        buffer_resources = True
     if args.mesa_shared_ntt and not (shared_memory or shared_publication):
         ap.error("--mesa-shared-ntt requires a shared-memory fixture")
     shared_ntt = None
