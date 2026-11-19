@@ -79,7 +79,7 @@ inline void active_storage_publication(int argc,char **argv,const std::filesyste
   Memory memory=Memory::read((first/"union.memory").string());
   require(std::filesystem::create_directory(output),"cannot create storage publication output");
   Simulation sim(argc,argv);sim.reset();Agent agent(memory);ReplayBus<Simulation> bus(sim,agent,100000);
-  uint32_t command_id=0;std::set<PublicationExtent> retained;
+  uint32_t command_id=0;Traffic previous{};std::set<PublicationExtent> retained;
   for(unsigned index=0;index<rounds;index++) {
     const auto local=session/("round-"+std::to_string(index));
     if(index) {
@@ -96,7 +96,8 @@ inline void active_storage_publication(int argc,char **argv,const std::filesyste
     const auto destination=output/("round-"+std::to_string(index));
     require(std::filesystem::create_directory(destination),"storage publication output exists");
     const auto start=bus.cycles;
-    active_compute(sim,agent,bus,memory,capture,destination,local,timeout);
+    active_compute(sim,agent,bus,memory,capture,destination,local,timeout,
+      ImageFailure::none,0,index?&previous:nullptr);
     const auto completed=agent.traffic;
     require(bus.read(GPU_REG_UCMD_STATUS)==GPU_UCMD_STATUS_READY &&
       bus.read(GPU_REG_IRQ)==GPU_IRQ_ENABLE && !sim.model->io_m_irq && agent.drained() &&
@@ -112,6 +113,7 @@ inline void active_storage_publication(int argc,char **argv,const std::filesyste
           ",\"sourceQualificationRequired\":true,\"independentBytesRequired\":true"
         <<",\"startCycle\":"<<start<<",\"endCycle\":"<<bus.cycles<<"}\n";
     });
+    previous=agent.traffic;
   }
   sim.model->final();
 }
