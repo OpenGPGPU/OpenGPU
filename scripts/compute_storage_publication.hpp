@@ -65,8 +65,11 @@ inline void append_publication_retained(Memory &live,const Memory &next,
 
 inline void active_storage_publication(int argc,char **argv,const std::filesystem::path &output,
     const std::filesystem::path &session,std::chrono::milliseconds timeout) {
+#ifndef OPENGPU_NATIVE_CACHE_STATE
+  (void)argc;(void)argv;(void)output;(void)session;(void)timeout;
   require_publication_cache_support();
-#ifdef OPENGPU_NATIVE_CACHE_STATE
+#else
+  require_publication_cache_support();
   constexpr unsigned rounds=3;constexpr uint64_t base=0x01000000;
   require(compute_owner_factory()==OwnerFactory::image_float_stage,
     "storage publication requires the complete float factory");
