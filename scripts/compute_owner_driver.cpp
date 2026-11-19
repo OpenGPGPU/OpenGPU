@@ -332,6 +332,7 @@ inline void active_image_recovery(int argc,char **argv,const std::filesystem::pa
 } // namespace compute_owner
 
 #include "compute_storage_recovery.hpp"
+#include "compute_storage_publication.hpp"
 #include "compute_global_recovery.hpp"
 #include "compute_cache_alias_recovery.hpp"
 #include "compute_reservation_wait.hpp"
@@ -349,6 +350,9 @@ int main(int argc,char **argv) {
     }
     if(argc==4 && std::string(argv[1])=="--active-cache-alias-recovery-matrix") {
       active_cache_alias_recovery_matrix(argc,argv,argv[2],argv[3],response_timeout);return 0;
+    }
+    if(argc==4 && std::string(argv[1])=="--active-storage-publication") {
+      active_storage_publication(argc,argv,argv[2],argv[3],response_timeout);return 0;
     }
     if(argc==4 && std::string(argv[1])=="--active-storage-recovery-matrix") {
       active_storage_recovery_matrix(argc,argv,argv[2],argv[3],response_timeout);return 0;
