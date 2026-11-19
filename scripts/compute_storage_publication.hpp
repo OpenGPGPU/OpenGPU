@@ -1,11 +1,12 @@
 #pragma once
-// Continuous same-GEM SSBO publication on one float DUT/RAM. Later phases use
-// append_retained so producer-written data/flag bytes survive into reload.
-#include "compute_owner_phase.hpp"
+// Continuous same-GEM SSBO publication on one float DUT/RAM. Later phases keep
+// producer-written data/flag bytes by retaining exact physical extents.
 namespace compute_owner {
-inline std::set<Extent> read_retained_extents(const std::filesystem::path &path) {
+using PublicationExtent=std::pair<uint64_t,uint64_t>;
+
+inline std::set<PublicationExtent> read_retained_extents(const std::filesystem::path &path) {
   std::ifstream input(path,std::ios::binary);require(input,"missing retained publication extents");
-  std::set<Extent> retained;
+  std::set<PublicationExtent> retained;
   while(input.peek()!=EOF) {
     const auto start=read_le(input,8),end=read_le(input,8);
     require(start<end && !((start|end)&4095) && end<=Memory::limit,"invalid retained publication extent");
@@ -13,6 +14,45 @@ inline std::set<Extent> read_retained_extents(const std::filesystem::path &path)
   }
   require(!retained.empty(),"publication retained no original SSBO extents");
   return retained;
+}
+
+inline void append_publication_retained(Memory &live,const Memory &next,
+    const std::set<PublicationExtent> &retained) {
+  require(&live!=&next && !next.ranges.empty(),"empty or aliased retained publication upload");
+  Memory additions;std::set<uint64_t> new_pages;
+  uint64_t previous=0;
+  for(const auto &r:next.ranges) {
+    require(previous<=r.start && r.start<r.end && r.end<=Memory::limit &&
+      !((r.start|r.end)&4095),"invalid retained publication upload allocation");previous=r.end;
+    const Memory::Range *overlap=nullptr;
+    for(const auto &old:live.ranges)if(r.start<old.end && old.start<r.end) {
+      require(!overlap,"retained publication upload crosses old allocation boundaries");overlap=&old;
+    }
+    if(!overlap) {
+      additions.ranges.push_back(r);
+      for(uint64_t base=r.start;base<r.end;base+=4096)new_pages.insert(base);
+      continue;
+    }
+    require(r.start==overlap->start && r.end==overlap->end && r.fill==overlap->fill &&
+      retained.count({r.start,r.end}),"upload overlaps an unauthorized retained allocation");
+    for(uint64_t base=r.start;base<r.end;base+=4096) {
+      const auto a=live.pages.find(base);const auto b=next.pages.find(base);
+      if(a!=live.pages.end() && b!=next.pages.end())require(a->second==b->second,
+        "retained upload would replace DUT-produced bytes");
+      else if(a!=live.pages.end())require(std::all_of(a->second.begin(),a->second.end(),
+        [&](uint8_t v){return v==next.default_byte(base);}),"retained upload loses DUT-produced bytes");
+      else if(b!=next.pages.end())require(std::all_of(b->second.begin(),b->second.end(),
+        [&](uint8_t v){return v==live.default_byte(base);}),"retained upload changes original fill bytes");
+      else require(live.default_byte(base)==next.default_byte(base),"retained fill differs");
+    }
+  }
+  for(const auto &page:next.pages) {
+    require(!(page.first&4095) && std::any_of(next.ranges.begin(),next.ranges.end(),[&](const auto &r) {
+      return page.first>=r.start && page.first+4096<=r.end;
+    }),"retained publication upload has an orphan page");
+    if(new_pages.count(page.first))additions.pages.emplace(page);
+  }
+  if(!additions.ranges.empty())live.append_disjoint(additions);
 }
 
 inline void active_storage_publication(int argc,char **argv,const std::filesystem::path &output,
@@ -32,7 +72,7 @@ inline void active_storage_publication(int argc,char **argv,const std::filesyste
   Memory memory=Memory::read((first/"union.memory").string());
   require(std::filesystem::create_directory(output),"cannot create storage publication output");
   Simulation sim(argc,argv);sim.reset();Agent agent(memory);ReplayBus<Simulation> bus(sim,agent,100000);
-  uint32_t command_id=0;std::set<Extent> retained;
+  uint32_t command_id=0;std::set<PublicationExtent> retained;
   for(unsigned index=0;index<rounds;index++) {
     const auto local=session/("round-"+std::to_string(index));
     if(index) {
@@ -40,7 +80,7 @@ inline void active_storage_publication(int argc,char **argv,const std::filesyste
       require(agent.drained(),"new publication upload preceded prior AXI drain");
       wait_input(local/"retained.extents",local,timeout);
       retained=read_retained_extents(local/"retained.extents");
-      append_retained(memory,Memory::read((local/"union.memory").string()),retained);
+      append_publication_retained(memory,Memory::read((local/"union.memory").string()),retained);
     }
     wait_input(local/"record-0.capture",local,timeout);
     const auto capture=ComputeCapture::read((local/"record-0.capture").string());
