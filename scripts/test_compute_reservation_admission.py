@@ -34,6 +34,7 @@ class ReservationAdmission(unittest.TestCase):
                 env=dict(os.environ,ASAN_OPTIONS='halt_on_error=1:abort_on_error=1',UBSAN_OPTIONS='halt_on_error=1'))
             self.assertEqual(ran.returncode,0,ran.stdout+ran.stderr)
             self.assertIn('96 cross-context pairs / 192 jobs',ran.stdout)
+            self.assertIn('96 blocked/released-or-cancelled cases + 48 disjoint controls PASS',ran.stdout)
 
 
 if __name__=='__main__':unittest.main()

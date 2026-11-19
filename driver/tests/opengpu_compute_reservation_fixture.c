@@ -104,3 +104,111 @@ int compute_reservation_destroy(struct compute_reservation_session *r)
  }
  return -ECANCELED;
 }
+
+struct compute_external_fence {struct dma_fence base;spinlock_t lock;};
+struct compute_reservation_producer {
+ struct compute_host_session *host;
+ struct drm_gem_object *original;
+ struct dma_fence *fence;
+ uint32_t handle,blocked_attempts;
+ uint64_t context;
+ uint8_t initial[8192];
+};
+static const char *compute_external_name(struct dma_fence *f)
+{(void)f;return "external-cpu-original-gem";}
+static const struct dma_fence_ops compute_external_ops={
+ .get_driver_name=compute_external_name,.get_timeline_name=compute_external_name};
+
+struct compute_reservation_producer *compute_reservation_producer_create(struct compute_host_session *s,uint32_t handle)
+{
+ if(!s || s->head || s->exported || s->prepared_execution || s->next_seq ||
+    s->gpu.compute.admission_tail || s->gpu.compute.execution_tail ||
+    s->gpu.compute.admission_seqno)return NULL;
+ struct drm_gem_object *object=drm_gem_object_lookup(&s->file,handle);
+ if(!object)return NULL;
+ if(object->size!=8192){drm_gem_object_put(object);return NULL;}
+ struct compute_reservation_producer *p=calloc(1,sizeof(*p));
+ struct compute_external_fence *f=calloc(1,sizeof(*f));
+ if(!p || !f){free(p);free(f);drm_gem_object_put(object);return NULL;}
+ p->host=s;p->original=object;p->handle=handle;p->context=dma_fence_context_alloc(1);
+ spin_lock_init(&f->lock);dma_fence_init(&f->base,&compute_external_ops,&f->lock,p->context,1);
+ p->fence=&f->base;
+ struct drm_exec exec;drm_exec_init(&exec,DRM_EXEC_INTERRUPTIBLE_WAIT|DRM_EXEC_IGNORE_DUPLICATES,0);
+ int error=drm_exec_prepare_obj(&exec,object,1);
+ if(!error && (object->resv->write || object->resv->read))error=-EBUSY;
+ if(!error){
+  memcpy(p->initial,to_drm_gem_dma_obj(object)->vaddr,sizeof(p->initial));
+  dma_resv_add_fence(object->resv,p->fence,DMA_RESV_USAGE_WRITE);
+ }
+ drm_exec_fini(&exec);
+ if(error){dma_fence_put(p->fence);drm_gem_object_put(object);free(p);return NULL;}
+ return p;
+}
+
+int compute_reservation_producer_snapshot(struct compute_reservation_producer *p,struct compute_reservation_wait_info *out)
+{
+ if(!p || !out || !p->host)return -EINVAL;
+ struct compute_host_session *s=p->host;
+ if(s->exported || s->prepared_execution || !s->head || s->head!=s->tail)return -EBUSY;
+ if(s->submitted.resources.resource_flags)return -EINVAL;
+ const struct drm_opengpu_compute *command=&s->submitted.resources.launch;
+ struct opengpu_sched_job *job=opengpu_sched_job_from_base(s->head);
+ if(command->in_syncobj || command->kernarg_slot!=2 || !job->context ||
+    job->context!=s->context || job->context->last_fence!=&s->head->s_fence->finished ||
+    s->gpu.compute.admission_seqno!=1 || s->next_seq!=1 ||
+    memcmp(p->initial,to_drm_gem_dma_obj(p->original)->vaddr,sizeof(p->initial)))return -EINVAL;
+ struct compute_reservation_wait_info info={.context=job->context->id,.handle=p->handle,
+  .objects=job->object_count,.queued=s->queued,.blocked_attempts=p->blocked_attempts,
+  .producer_context=p->context,.producer_sequence=p->fence->seqno,
+  .consumer_sequence=s->head->s_fence->finished.seqno,
+  .producer_status=dma_fence_get_status(p->fence),
+  .consumer_status=dma_fence_get_status(&s->head->s_fence->finished),
+  .physical=to_drm_gem_dma_obj(p->original)->dma_addr,.bytes=p->original->size,
+  .kernel_submissions=compute_mmio_state(&s->gpu)->kernel_submissions};
+ struct opengpu_resource_binding *binding=job->context->bindings[1];
+ info.original_identity=job->object_count==1 && job->objects[0]==p->original &&
+  binding && binding->object==p->original && binding->size==8192;
+ for(struct fixture_dependency *d=job->base.dependencies;d;d=d->next){
+  ++info.dependencies;info.pending_dependencies+=!dma_fence_is_signaled(d->fence);
+  if(d->reservation==p->original->resv){
+   ++info.reservation_dependencies;info.reservation_usage=(uint32_t)d->reservation_usage;
+   info.producer_dependencies+=d->fence==p->fence;
+  }
+ }
+ *out=info;return 0;
+}
+static int compute_external_pending(struct compute_reservation_producer *p)
+{
+ struct compute_reservation_wait_info info;
+ int error=compute_reservation_producer_snapshot(p,&info);if(error)return error;
+ return info.queued==1 && info.objects==1 && info.original_identity && info.dependencies==1 &&
+  info.pending_dependencies==1 && info.reservation_dependencies==1 && info.producer_dependencies==1 &&
+  info.reservation_usage==DMA_RESV_USAGE_READ && !info.kernel_submissions &&
+  !info.producer_status && !info.consumer_status?0:-EINVAL;
+}
+int compute_reservation_producer_attempt(struct compute_reservation_producer *p)
+{
+ int error=compute_external_pending(p);if(error)return error;
+ error=compute_host_begin_execution(p->host);
+ if(error!=-EBUSY || compute_mmio_state(&p->host->gpu)->kernel_submissions)return -EIO;
+ ++p->blocked_attempts;return error;
+}
+int compute_reservation_producer_signal(struct compute_reservation_producer *p)
+{
+ int error=compute_external_pending(p);if(error)return error;
+ if(!p->blocked_attempts)return -EINVAL;
+ dma_fence_signal(p->fence);return 0;
+}
+int compute_reservation_producer_cancel(struct compute_reservation_producer *p)
+{
+ if(!p || !p->host)return -EINVAL;
+ if(p->host->exported || p->host->prepared_execution)return -EBUSY;
+ if(dma_fence_is_signaled(p->fence))return -EINVAL;
+ p->fence->error=-ECANCELED;dma_fence_signal(p->fence);return 0;
+}
+int compute_reservation_producer_destroy(struct compute_reservation_producer *p)
+{
+ if(!p || !p->host)return -EINVAL;
+ if(!dma_fence_is_signaled(p->fence))return -EBUSY;
+ dma_fence_put(p->fence);drm_gem_object_put(p->original);free(p);return 0;
+}
