@@ -37,9 +37,21 @@ Qualify entry: `scripts/qualify_compute_owner.py --case texture-publication`
 
 ## Actual complete float DUT execution
 
-Execution source pending local float DUT qualification on this branch.
-Results and the exact source SHA are recorded after
-`qualify_compute_owner.py --case texture-publication` passes.
+Execution source `d5734b4b3010c45547eecb7e490588ebe5ea4f58` on the assertion-enabled
+`two-cu-vga60-owner-v2-image-float-stage` Verilator compute executor.
+All three phases passed independent returned-byte/guard oracles, cleanup ACK,
+one DUT/RAM/single reset, uncached fabric observation, and unchanged
+source/model postchecks:
+
+```text
+original texture publication phase=0 role=warm full bytes/cleanup PASS
+original texture publication phase=1 role=producer full bytes/cleanup PASS
+original texture publication phase=2 role=reload full bytes/cleanup PASS
+all three original texture publication phases PASS; one DUT/RAM/reset,
+warm/producer/reload, uncached fabric observation, original source/model postchecks
+original Mesa compute texture-publication: actual full-DUT returned bytes
+and context cleanup PASS
+```
 
 Reproduce against a prepared float owner (see
 [COMPLETE_OWNER_COMPUTE_EXECUTOR.md](COMPLETE_OWNER_COMPUTE_EXECUTOR.md)):
