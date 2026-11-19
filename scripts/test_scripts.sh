@@ -134,6 +134,7 @@ python3 -B scripts/test_compute_storage_recovery.py
 python3 -B scripts/test_compute_storage_publication.py
 python3 -B scripts/test_compute_image_publication.py
 python3 -B scripts/test_compute_texture_publication.py
+python3 -B scripts/test_compute_counter_publication.py
 python3 -B scripts/test_compute_global_recovery.py
 python3 -B scripts/test_compute_global_accepted_recovery.py
 python3 -B scripts/test_compute_storage_accepted_recovery.py
