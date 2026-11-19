@@ -19,7 +19,7 @@ import uuid
 from compute_owner_protocol import strict_json, RECOVERY_CASE, RECOVERY_BASES, RECOVERY_COMMAND_SCHEMA
 from compute_owner_cases import (CASES, DYNAMIC_CASES, LEGACY_CASES, COUNTER_CASE, COUNTER_CASES,
     IMAGE_CASES, STORAGE_ATOMIC_CASES, STORAGE_PUBLICATION_CASES, IMAGE_PUBLICATION_CASES,
-    TEXTURE_PUBLICATION_CASES, GLOBAL_ATOMIC_CASES)
+    TEXTURE_PUBLICATION_CASES, COUNTER_PUBLICATION_CASES, GLOBAL_ATOMIC_CASES)
 from owner_resource_contract import COMPUTE_STAGE, FULL_COMPUTE_CONTRACTS, SAMPLE_PROFILE, SAMPLE_FACTORY_CONTRACTS
 from owner_resource_contract import IMAGE_FLOAT_PROFILE
 from compute_image_cases import IMAGE_FLOAT_EXCHANGE_CASES
@@ -70,7 +70,8 @@ def checked_inputs(args):
     require(record.get('schema') == 'opengpu-owner-executor-v1' and record.get('kind') == 'compute',
             'wrong executor qualification kind')
     if getattr(args, 'case', None) in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES,
-            *STORAGE_PUBLICATION_CASES,*IMAGE_PUBLICATION_CASES,*TEXTURE_PUBLICATION_CASES):
+            *STORAGE_PUBLICATION_CASES,*IMAGE_PUBLICATION_CASES,*TEXTURE_PUBLICATION_CASES,
+            *COUNTER_PUBLICATION_CASES):
         require(type(record.get('profile')) is str and record['profile'] in SAMPLE_FACTORY_CONTRACTS,
                 'source execution requires the exact final112 sample owner factory selected by qualification')
     if getattr(args,'case',None) in (*IMAGE_FLOAT_EXCHANGE_CASES,
@@ -83,15 +84,17 @@ def checked_inputs(args):
             'global-atomics-recovery','global-atomics-accepted-write-error','global-atomics-cache-alias','global-atomics-uc-cache-alias','global-atomics-reservation-wait'):
         require(record.get('profile')==IMAGE_FLOAT_PROFILE,'global atomics require their qualified float owner')
     if getattr(args,'case',None) in ('global-atomics-cache-alias','global-atomics-uc-cache-alias',
-                                     'storage-publication','image-publication','texture-publication'):
+                                     'storage-publication','image-publication','texture-publication',
+                                     'counter-publication'):
         require(record.get('backend')=='verilator',
                 'cache alias/publication L1 observation requires its actual cache-state observer')
     if getattr(args,'case',None) in (*STORAGE_ATOMIC_CASES,'storage-atomics','storage-atomics-delayed-ack',
             'storage-atomics-recovery','storage-atomics-accepted-write-error',
             *STORAGE_PUBLICATION_CASES,'storage-publication',
             *IMAGE_PUBLICATION_CASES,'image-publication',
-            *TEXTURE_PUBLICATION_CASES,'texture-publication'):
-        require(record.get('profile')==IMAGE_FLOAT_PROFILE,'storage/image/texture atomics/publication require the complete float owner')
+            *TEXTURE_PUBLICATION_CASES,'texture-publication',
+            *COUNTER_PUBLICATION_CASES,'counter-publication'):
+        require(record.get('profile')==IMAGE_FLOAT_PROFILE,'storage/image/texture/counter atomics/publication require the complete float owner')
     if getattr(args, 'case', None) in (*DYNAMIC_CASES, 'mandatory-compute'):
         require(record.get('profile') == COMPUTE_STAGE or record.get('profile') in FULL_COMPUTE_CONTRACTS,
                 'shared atomic execution requires the distinct shared-enabled complete owner factory')
@@ -134,7 +137,7 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
         'storage recovery requires its exact first source and continuous original receipts')
     require(not getattr(args,'storage_publication_matrix',False) or (case==STORAGE_PUBLICATION_CASES[0] and
         not any(getattr(args,key,False) for key in ('storage_matrix','storage_delayed_ack','storage_recovery_matrix',
-        'storage_accepted_matrix','image_publication_matrix','texture_publication_matrix','image_accepted_matrix',
+        'storage_accepted_matrix','image_publication_matrix','texture_publication_matrix','counter_publication_matrix','image_accepted_matrix',
         'contended_image_matrix','mixed_atomic_matrix','global_atomic_matrix','global_delayed_ack',
         'global_recovery_matrix','global_accepted_matrix','cache_alias_matrix','uc_cache_alias_matrix',
         'reservation_matrix')) and
@@ -142,7 +145,7 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
         'storage publication requires its exact first warm source and distinct continuous receipts')
     require(not getattr(args,'image_publication_matrix',False) or (case==IMAGE_PUBLICATION_CASES[0] and
         not any(getattr(args,key,False) for key in ('storage_matrix','storage_delayed_ack','storage_recovery_matrix',
-        'storage_accepted_matrix','storage_publication_matrix','texture_publication_matrix','image_accepted_matrix',
+        'storage_accepted_matrix','storage_publication_matrix','texture_publication_matrix','counter_publication_matrix','image_accepted_matrix',
         'contended_image_matrix','mixed_atomic_matrix','global_atomic_matrix','global_delayed_ack',
         'global_recovery_matrix','global_accepted_matrix','cache_alias_matrix','uc_cache_alias_matrix',
         'reservation_matrix')) and
@@ -150,12 +153,20 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
         'image publication requires its exact first warm source and distinct continuous receipts')
     require(not getattr(args,'texture_publication_matrix',False) or (case==TEXTURE_PUBLICATION_CASES[0] and
         not any(getattr(args,key,False) for key in ('storage_matrix','storage_delayed_ack','storage_recovery_matrix',
-        'storage_accepted_matrix','storage_publication_matrix','image_publication_matrix','image_accepted_matrix',
+        'storage_accepted_matrix','storage_publication_matrix','image_publication_matrix','counter_publication_matrix','image_accepted_matrix',
         'contended_image_matrix','mixed_atomic_matrix','global_atomic_matrix','global_delayed_ack',
         'global_recovery_matrix','global_accepted_matrix','cache_alias_matrix','uc_cache_alias_matrix',
         'reservation_matrix')) and
         not source_fault and permission is None and reset is None and physical_base is None),
         'texture publication requires its exact first warm source and distinct continuous receipts')
+    require(not getattr(args,'counter_publication_matrix',False) or (case==COUNTER_PUBLICATION_CASES[0] and
+        not any(getattr(args,key,False) for key in ('storage_matrix','storage_delayed_ack','storage_recovery_matrix',
+        'storage_accepted_matrix','storage_publication_matrix','image_publication_matrix','texture_publication_matrix','image_accepted_matrix',
+        'contended_image_matrix','mixed_atomic_matrix','global_atomic_matrix','global_delayed_ack',
+        'global_recovery_matrix','global_accepted_matrix','cache_alias_matrix','uc_cache_alias_matrix',
+        'reservation_matrix')) and
+        not source_fault and permission is None and reset is None and physical_base is None),
+        'counter publication requires its exact first warm source and distinct continuous receipts')
     require(not getattr(args,'contended_image_matrix',False) or (case==CONTENDED_IMAGE_CASES[0] and
         not (getattr(args,'storage_matrix',False) or getattr(args,'storage_recovery_matrix',False)) and
         not source_fault and permission is None and reset is None and physical_base is None),
@@ -226,7 +237,7 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
     # The configured Mesa object database uses these original absolute paths.
     # Keep that mount unchanged; all newly generated files live in {ipc}.
     counter = case in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES,*STORAGE_PUBLICATION_CASES,
-                       *IMAGE_PUBLICATION_CASES,*TEXTURE_PUBLICATION_CASES)
+                       *IMAGE_PUBLICATION_CASES,*TEXTURE_PUBLICATION_CASES,*COUNTER_PUBLICATION_CASES)
     command = ['docker', 'run', '--rm', '--init', '--name', name, '--memory', '512m' if counter else '2g',
                '--memory-swap', '512m' if counter else '2g', '--cpus', '1' if counter else '2', '--network=none', '--read-only',
                '-v', f'{gpu}:{gpu}:ro', '-v', '{ipc}:{ipc}:rw', '-w', str(source)]
@@ -252,6 +263,7 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
             ['--storage-publication-matrix'] if getattr(args,'storage_publication_matrix',False) else
             ['--image-publication-matrix'] if getattr(args,'image_publication_matrix',False) else
             ['--texture-publication-matrix'] if getattr(args,'texture_publication_matrix',False) else
+            ['--counter-publication-matrix'] if getattr(args,'counter_publication_matrix',False) else
             ['--image-accepted-matrix'] if getattr(args,'image_accepted_matrix',False) else
             ['--contended-image-matrix'] if getattr(args,'contended_image_matrix',False) else
             ['--mixed-atomic-matrix'] if getattr(args,'mixed_atomic_matrix',False) else [])
@@ -267,7 +279,7 @@ def run_case(args, *, gpu, source, temporary, ntt, image, case):
         args.global_inputs.write_text(json.dumps(dict(schema='opengpu-global-host-inputs-v1',
             source=str(source),qualified=qualified,compilerImage=image))+'\n')
     if case in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES,*STORAGE_PUBLICATION_CASES,
-                *IMAGE_PUBLICATION_CASES,*TEXTURE_PUBLICATION_CASES):
+                *IMAGE_PUBLICATION_CASES,*TEXTURE_PUBLICATION_CASES,*COUNTER_PUBLICATION_CASES):
         from compute_owner_inputs import snapshot
         bound = snapshot(args.mesa, args.mesa_build, args.library_directory, args.drm_include, gpu)
         args.counter_inputs = temporary / 'counter-inputs.json'
@@ -298,7 +310,7 @@ def run_case(args, *, gpu, source, temporary, ntt, image, case):
             '--executor', args.executor, '--executor-qualification', args.executor_qualification,
             '--executor-checker', args.executor_checker, '--executor-checker-python', args.executor_checker_python,
             '--bridge-command', command_file, '--timeout', str(args.timeout),
-            *(['--case', case] if case in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES,*STORAGE_PUBLICATION_CASES,*IMAGE_PUBLICATION_CASES,*TEXTURE_PUBLICATION_CASES,*GLOBAL_ATOMIC_CASES) else []),
+            *(['--case', case] if case in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES,*STORAGE_PUBLICATION_CASES,*IMAGE_PUBLICATION_CASES,*TEXTURE_PUBLICATION_CASES,*COUNTER_PUBLICATION_CASES,*GLOBAL_ATOMIC_CASES) else []),
             *(['--storage-matrix'] if getattr(args,'storage_matrix',False) else []),
             *(['--storage-delayed-ack'] if getattr(args,'storage_delayed_ack',False) else []),
             *(['--storage-recovery-matrix'] if getattr(args,'storage_recovery_matrix',False) else []),
@@ -306,6 +318,7 @@ def run_case(args, *, gpu, source, temporary, ntt, image, case):
             *(['--storage-publication-matrix'] if getattr(args,'storage_publication_matrix',False) else []),
             *(['--image-publication-matrix'] if getattr(args,'image_publication_matrix',False) else []),
             *(['--texture-publication-matrix'] if getattr(args,'texture_publication_matrix',False) else []),
+            *(['--counter-publication-matrix'] if getattr(args,'counter_publication_matrix',False) else []),
             *(['--image-accepted-matrix'] if getattr(args,'image_accepted_matrix',False) else []),
             *(['--contended-image-matrix'] if getattr(args,'contended_image_matrix',False) else []),
             *(['--mixed-atomic-matrix'] if getattr(args,'mixed_atomic_matrix',False) else []),
@@ -360,7 +373,7 @@ def main():
     parser.add_argument('--compiler-image', default='gpu-gtk-ci-check:latest')
     parser.add_argument('--case', choices=('both', 'mandatory-compute', 'storage-atomics',
         'storage-atomics-delayed-ack', 'storage-atomics-recovery','storage-atomics-accepted-write-error',
-        'storage-publication','image-publication','texture-publication',
+        'storage-publication','image-publication','texture-publication','counter-publication',
         'image-atomics-contended', 'image-atomics-accepted-write-error', 'image-storage-atomics',
         'global-atomics','global-atomics-cached','global-atomics-delayed-ack','global-atomics-recovery','global-atomics-accepted-write-error','global-atomics-cache-alias','global-atomics-uc-cache-alias','global-atomics-reservation-wait',
         *CASES), default='both')
@@ -378,6 +391,7 @@ def main():
     args.storage_publication_matrix=args.case=='storage-publication'
     args.image_publication_matrix=args.case=='image-publication'
     args.texture_publication_matrix=args.case=='texture-publication'
+    args.counter_publication_matrix=args.case=='counter-publication'
     args.image_accepted_matrix=args.case=='image-atomics-accepted-write-error'
     args.contended_image_matrix=args.case=='image-atomics-contended'
     args.mixed_atomic_matrix=args.case=='image-storage-atomics'
@@ -429,6 +443,7 @@ def main():
                            env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1', TMPDIR=directory))
             ntt = temporary / 'checked-ntt/src/gallium/auxiliary/nir/nir_to_tgsi.c'
         cases = (GLOBAL_ATOMIC_CASES[:1] if args.reservation_matrix or args.global_atomic_matrix or args.global_recovery_matrix or args.global_accepted_matrix or args.cache_alias_matrix or args.uc_cache_alias_matrix else MIXED_ATOMIC_CASES[:1] if args.mixed_atomic_matrix else CONTENDED_IMAGE_CASES[:1] if args.contended_image_matrix or args.image_accepted_matrix else
+                 COUNTER_PUBLICATION_CASES[:1] if args.counter_publication_matrix else
                  TEXTURE_PUBLICATION_CASES[:1] if args.texture_publication_matrix else
                  IMAGE_PUBLICATION_CASES[:1] if args.image_publication_matrix else
                  STORAGE_PUBLICATION_CASES[:1] if args.storage_publication_matrix else

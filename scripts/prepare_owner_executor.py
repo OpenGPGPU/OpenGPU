@@ -227,7 +227,9 @@ def driver_files(kind, profile=owner.PROFILE):
                 'scripts/compute_storage_recovery.hpp', 'scripts/compute_storage_publication.hpp',
                 'scripts/compute_storage_publication_cache.hpp', 'scripts/compute_image_publication.hpp',
                 'scripts/compute_image_publication_cache.hpp', 'scripts/compute_texture_publication.hpp',
-                'scripts/compute_texture_publication_cache.hpp', 'scripts/compute_global_recovery.hpp',
+                'scripts/compute_texture_publication_cache.hpp',
+                'scripts/compute_counter_publication.hpp',
+                'scripts/compute_counter_publication_cache.hpp', 'scripts/compute_global_recovery.hpp',
                 'scripts/compute_cache_alias_observer.hpp',
                 'scripts/compute_cache_alias_recovery.hpp', 'scripts/compute_reservation_wait.hpp',
                 'scripts/compute_reservation_idle.hpp',
@@ -254,6 +256,7 @@ def driver_files(kind, profile=owner.PROFILE):
                 'scripts/compute_storage_publication.hpp', 'scripts/compute_storage_publication_cache.hpp',
                 'scripts/compute_image_publication.hpp', 'scripts/compute_image_publication_cache.hpp',
                 'scripts/compute_texture_publication.hpp', 'scripts/compute_texture_publication_cache.hpp',
+                'scripts/compute_counter_publication.hpp', 'scripts/compute_counter_publication_cache.hpp',
                 'scripts/compute_global_recovery.hpp',
                 'scripts/compute_cache_alias_observer.hpp', 'scripts/compute_cache_alias_recovery.hpp',
                 'scripts/compute_reservation_wait.hpp', 'scripts/compute_reservation_idle.hpp']
@@ -263,6 +266,7 @@ def driver_files(kind, profile=owner.PROFILE):
               'scripts/compute_storage_publication.hpp', 'scripts/compute_storage_publication_cache.hpp',
               'scripts/compute_image_publication.hpp', 'scripts/compute_image_publication_cache.hpp',
               'scripts/compute_texture_publication.hpp', 'scripts/compute_texture_publication_cache.hpp',
+              'scripts/compute_counter_publication.hpp', 'scripts/compute_counter_publication_cache.hpp',
               'scripts/compute_global_recovery.hpp',
               'scripts/compute_cache_alias_observer.hpp', 'scripts/compute_cache_alias_recovery.hpp',
               'scripts/compute_reservation_wait.hpp', 'scripts/compute_reservation_idle.hpp'] if kind == 'compute' else []))
