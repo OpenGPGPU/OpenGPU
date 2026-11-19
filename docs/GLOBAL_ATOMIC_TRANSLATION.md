@@ -506,6 +506,46 @@ OPENGPU_TEST_SANITIZERS=1 PYTHONDONTWRITEBYTECODE=1 \
   python3 -B scripts/test_compute_host.py --image-float-stage
 ```
 
+## External original-GEM producer admission
+
+The reservation fixture also exposes a distinct external CPU producer. Its
+WRITE fence is published on the original 8192-byte GEM before any GPU job is
+admitted, with no global admission/execution predecessor. Input bytes are
+initialized before resource binding and must remain unchanged while blocked.
+The consumer uses the ordinary original Linux compute handler, a fresh context
+and no input sync object.
+
+The blocked-attempt and producer-release entries require exactly one pending
+dependency: the original GEM reservation's actual producer fence with
+`DMA_RESV_USAGE_READ`. They reject disjoint GEMs, unrelated or untagged extra
+dependencies, changed input bytes and altered provenance. The attempted
+`compute_host_begin_execution` must actually return `-EBUSY` without a hardware
+submission. Only a genuine blocked attempt permits successful CPU producer
+signaling; that signal leaves the GPU completion fence pending. A pending
+producer cannot be discarded. Explicit producer cancellation signals its own
+ECANCELED fence, and unexecuted GPU cancellation/context destruction retain
+their ordinary cleanup paths.
+
+All 24 original programs run through both default-UC and explicit-cached
+admission, with successful release and cancellation: 96 blocked cases and 48
+disjoint controls. Both pages and all four boundary words are checked. Together
+with the cross-context pairs, the fixture covers 336 main Linux jobs without
+executing a shader. The 35 focused input/executor/admission checks pass.
+Clang and fixed-image GCC ASan/UBSan checks pass; the latter binds all 258
+software inputs, 192 full compiler dependencies and the actual link/object
+inputs before and after execution. Ended outputs are removed.
+
+These are CPU OS-boundary admission/lifetime results. The native idle proof,
+controller-authorized producer release, real consumer execution and its
+all-byte/cleanup checks are not connected by this API alone. The forced
+reservation-wait gate remains open. Reproduce the focused source checks with:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts python3 -B -m unittest \
+  test_compute_reservation_admission test_compute_global_host_inputs \
+  test_prepare_owner_executor test_prepare_owner_verilator_executor
+```
+
 ## Global AMO translation and prior component checks
 
 Global RV32 word AMOs capture the data SATP root and virtual operand before
