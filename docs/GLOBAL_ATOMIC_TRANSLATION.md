@@ -483,13 +483,12 @@ outer qualifier and final input checks all return zero. An explicit final
 executor check and all 258 source hashes/Git blobs also pass; the original
 execution source is clean, and its container, process consumers and temporary
 session are gone. No raw process data is retained. The later 262-input
-reservation implementation has its own pending actual matrix and does not
-change this result's source scope.
+reservation execution below has a separate source scope.
 
 Reproduce from that exact software source and its source-qualified complete-float
 executor with the `global-atomics-uc-cache-alias` command above. These results
-close this UC alias execution gate. Warm cached recovery and forced reservation
-waits remain separate P10 requirements; P11 GPU-producer/cross-domain ordering,
+close this UC alias execution gate. Warm cached recovery remains pending;
+forced reservation waits have their separate final result below. P11 GPU-producer/cross-domain ordering,
 full resources and product qualification remain open.
 
 ## Cross-context reservation admission source
@@ -573,8 +572,8 @@ inputs before and after execution. Ended outputs are removed.
 
 These are CPU OS-boundary admission/lifetime results. The native idle proof,
 controller-authorized producer release, real consumer execution and its
-all-byte/cleanup checks require the distinct live protocol below. The forced
-reservation-wait gate remains open until its actual full-DUT matrix passes.
+all-byte/cleanup checks use the distinct live protocol below; its complete
+48-case actual result is recorded separately below.
 Reproduce the focused source checks with:
 
 ```sh
@@ -659,9 +658,47 @@ PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/qualify_compute_owner.py \
   --case global-atomics-reservation-wait --timeout 14400
 ```
 
-The complete 48-case actual-DUT wait/consumer matrix and its final source/model
-checks remain pending. CPU controls, source compilation and MMIO discovery do
-not close this gate or P10.
+The complete actual-DUT result follows. CPU controls, source compilation and
+MMIO discovery alone do not close this gate or P10.
+
+## Complete-owner external reservation wait execution
+
+All 48 independent cases pass: the 24 original RV32 programs each run with
+default-UC and explicit-cached consumers. Every original Linux OS-boundary
+caller observes its unique original-GEM CPU producer dependency, an actual
+`-EBUSY` execution attempt, pending producer/consumer fences and zero hardware
+submissions. The complete assertion-enabled float DUT then proves at least
+257 idle cycles with READY, no IRQ, no external AR/AW/W offers, drained traffic
+and no RAM uploaded before producer release. Only that checked certificate
+authorizes the external CPU fence signal; the GPU fence remains pending.
+
+After independent original code, PTE and cache-policy validation, each consumer
+executes on the same DUT used for its blocked idle proof, without another
+reset. All 384 source-ordered old words, final target words and every physical
+guard pass the independent oracle. Original held/retired receipts, healthy GPU
+fences, real Linux/native PTE/context/MMU cleanup and independently checked
+cleaned RAM all pass. Final native witnesses observe READY, no IRQ, zero
+instruction/vector SATPs, drained traffic and uninterrupted clocks, with zero
+physical read or write faults. Each case has its own initial reset; this is
+not a continuous single-reset 48-case run.
+
+The exact execution source is `4ba1dff1a503aceb1f0dca96455e222c0fbbbe78`.
+All 262 qualified software inputs match their recorded hashes and immutable
+Git blobs at `4d64b205a77a01b9c0e7e687e938905e44797b30`, the PR #910 result
+checkpoint. Merged #910 adds only a C++ unit-fixture formatting fix in
+`test_compute_reservation_wait.py`; runtime inputs are unchanged. Native,
+controller, original producer, outer qualifier and final input checks all
+return zero. The explicit post-run executor check and all 262 source/Git-blob
+comparisons also pass. The execution checkout is clean, and the original
+temporary session, container and process consumers are gone.
+
+Reproduce from that exact software checkpoint and its source-qualified
+complete-float executor using the `global-atomics-reservation-wait` command
+above. This closes the forced external CPU producer reservation-wait gate at
+the original Linux OS boundary; it does not boot Linux or establish a GPU
+producer/cross-domain coherence result. Warm cached recovery still requires
+its own complete actual matrix. P10 remains open at 9/40; P11, full resources,
+physical clocks and FPS remain separate qualifications.
 
 ## Global AMO translation and prior component checks
 
