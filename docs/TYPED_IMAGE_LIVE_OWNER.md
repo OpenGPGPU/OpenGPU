@@ -968,7 +968,8 @@ env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 -B \
 The later mixed image/storage and raw RV32 global stages have their own
 [results](MIXED_COMPUTE_ATOMICS.md) and
 [results](GLOBAL_ATOMIC_TRANSLATION.md). Image committed-write errors and
-cached-alias behavior remain P10 gates. Complete resource coexistence,
+cached-alias behavior have separate results in the
+[P10 index](P10_ATOMIC_QUALIFICATION.md). Complete resource coexistence,
 cross-domain coherence, a physical clock and FPS retain their separate gates.
 
 ## Committed image write errors and continuous reuse
@@ -1039,5 +1040,6 @@ python3 -B scripts/qualify_compute_owner.py \
   --case image-atomics-accepted-write-error --timeout 14400
 ```
 
-Cached aliases and cross-command coherence retain separate complete-host
-gates. P10 remains open and acceptance remains 9/40.
+Cached aliases have separate complete-host results in the
+[P10 index](P10_ATOMIC_QUALIFICATION.md). Cross-command coherence retains its
+P11 gate.

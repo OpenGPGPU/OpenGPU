@@ -69,4 +69,6 @@ python3 -B scripts/qualify_compute_owner.py \
 
 This buffer-alias matrix does not qualify other image alias APIs, cross-command
 coherence, raw RV32 global AMOs, accepted-write/error cached aliases, a physical
-clock or FPS. P10 and those independent acceptance gates remain open.
+clock or FPS. Other atomic results are indexed in
+[P10 qualification](P10_ATOMIC_QUALIFICATION.md); cross-command coherence,
+physical clock and FPS retain their separate plan requirements.

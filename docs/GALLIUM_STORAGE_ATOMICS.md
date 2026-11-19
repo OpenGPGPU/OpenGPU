@@ -149,11 +149,10 @@ env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 \
   test_prepare_owner_verilator_executor test_changed_test_suites)
 ```
 
-Each operation uses an independent DUT reset. The delayed-ACK extension is
-qualified below. Reservation and fault followed by healthy reuse on the same
-DUT/RAM, image/global contention,
-complete resource combinations and clock/FPS remain separate acceptance gates.
-This stage leaves P10 open and the alignment acceptance count at 9/40.
+Each operation uses an independent DUT reset. The delayed-ACK and continuous
+fault/reuse results are qualified below. Reservation and image/global contention
+have separate results in the [P10 index](P10_ATOMIC_QUALIFICATION.md). Complete
+resource combinations and clock/FPS retain their separate plan requirements.
 
 ## Complete-owner delayed ACK execution (P10)
 
@@ -201,8 +200,8 @@ env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 \
 ```
 
 The continuous storage fault/reuse extension is qualified below. RV32 global
-AMOs and image/storage contention retain their separate P10 acceptance gates.
-Acceptance remains 9/40.
+AMOs and image/storage contention have separate results in the
+[P10 index](P10_ATOMIC_QUALIFICATION.md).
 
 ## Complete-owner physical faults and continuous reuse (P10)
 
@@ -271,9 +270,10 @@ env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 \
 /usr/bin/python3 -B scripts/test_compute_indirect_capture.py
 ```
 
-P10 remains open for RV32 global AMOs, accepted-write/cached-alias failures and
-image/storage competition. Complete resource combinations, cross-domain
-coherence and clock/FPS retain their separate plan gates. Acceptance stays 9/40.
+RV32 global AMOs, accepted-write/cached-alias failures and image/storage
+competition have separate results in the [P10 index](P10_ATOMIC_QUALIFICATION.md).
+Complete resource combinations, cross-domain coherence and clock/FPS retain
+their separate plan gates.
 
 ## Complete-owner committed write errors and continuous reuse
 
@@ -335,5 +335,6 @@ python3 -B scripts/qualify_compute_owner.py \
   --case storage-atomics-accepted-write-error --timeout 7200
 ```
 
-Image accepted-write errors, cached aliases and cross-command coherence retain
-their separate complete-host gates. P10 remains open.
+Image accepted-write errors and cached aliases have separate complete-host
+results in the [P10 index](P10_ATOMIC_QUALIFICATION.md). Cross-command coherence
+retains its P11 gate.
