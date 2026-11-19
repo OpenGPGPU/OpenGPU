@@ -29,6 +29,7 @@ int compute_host_submit(struct compute_host_session *,const struct drm_opengpu_c
 int compute_host_submit_storage(struct compute_host_session *,const struct drm_opengpu_compute_storage *);
 int compute_host_submit_images(struct compute_host_session *,const struct drm_opengpu_compute_images *);
 int compute_host_submit_image_resources(struct compute_host_session *,const struct drm_opengpu_compute_image_resources *);
+int compute_host_submit_resources(struct compute_host_session *,const struct drm_opengpu_compute_resources *);
 uint32_t compute_host_context_id(const struct compute_host_session *);
 void *compute_host_original_allocate(struct compute_host_session *,uint32_t handle,uint64_t page_bytes);
 int compute_host_original_physical(struct compute_host_session *,uint32_t handle,uint64_t *physical,uint64_t *bytes);
@@ -37,12 +38,12 @@ int compute_host_unbind(struct compute_host_session *,uint32_t slot);
 /* Admission only: the real Linux handler snapshots source bytes and retains
  * dependencies. No instruction execution or completion occurs here. */
 struct compute_host_snapshot {
-    const void *code,*storage,*uniforms,*images;
-    uint64_t code_bytes,storage_bytes,uniform_bytes,image_bytes;
-    uint64_t code_physical,storage_physical,uniform_physical,image_physical;
+    const void *code,*storage,*uniforms,*images,*textures;
+    uint64_t code_bytes,storage_bytes,uniform_bytes,image_bytes,texture_bytes;
+    uint64_t code_physical,storage_physical,uniform_physical,image_physical,texture_physical;
     uint32_t storage_root,uniform_root,retained_objects,temporary_mappings;
     uint64_t counter_physical,counter_bytes,counter_descriptor_physical,kernarg_physical,kernarg_bytes;
-    uint32_t counter_root,context,image_root;
+    uint32_t counter_root,context,image_root,texture_root;
 };
 int compute_host_submit_counter_source(struct compute_host_session *,const struct drm_opengpu_compute_counter_source_resources *);
 int compute_host_submit_uniforms(struct compute_host_session *,const struct drm_opengpu_compute_uniform_resources *);
