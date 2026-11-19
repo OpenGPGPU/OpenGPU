@@ -281,7 +281,7 @@ def verify(initial, returned, description):
     else:
         raise ValueError('unknown original ESSL byte oracle')
     for first, expected in outputs:
-        if not (counter or image or storage_atomic or global_atomic) and initial.read(first, 8192) != struct.pack('<I', 0xdeadbeef) * 2048:
+        if not (counter or image or storage_atomic or storage_publication or global_atomic) and initial.read(first, 8192) != struct.pack('<I', 0xdeadbeef) * 2048:
             raise ValueError('output was not independently guard-initialized')
     verify_byte_changes(initial, returned, outputs)
 
