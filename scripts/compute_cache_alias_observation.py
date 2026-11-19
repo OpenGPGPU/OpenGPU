@@ -2,6 +2,9 @@
 from compute_owner_protocol import required_flags,uint
 
 SCHEMA='opengpu-compute-cache-alias-observation-v1'
+UC_SCHEMA='opengpu-compute-uc-cache-alias-observation-v1'
+UC_CYCLES=('preAtomicL2InvalidatedCycle','firstAuthoritativeReadRequestCycle','firstAuthoritativeReadResponseCycle')
+UC_COUNTS=('uncachedReadBeforeWrites','nonAllocatingWriteResponses','nonAllocatingRetiredWrites')
 CYCLES=('warmCycle','invalidateCycle','invalidateAckCycle','firstTargetWriteCycle',
         'writeErrorCycle','l2InvalidatedCycle','refetchRequestCycle','refetchResponseCycle','refillCycle')
 
@@ -30,4 +33,25 @@ def checked_observation(record,*,command_id,phase,target_line,accepted_error,tar
         require(write<error<invalid<=read<response<refill,
                 'write error lacks actual L2 invalidation, lower refetch and cache refill')
     else:require(error==invalid==read==response==0,'healthy observation contains a failed-write history')
+    return record
+
+
+def checked_uc_observation(record,**expected):
+    """UC RMWs drop the warmed L2 line before snooping L1, then bypass it.
+
+    Cached observations cannot substitute for the per-write lower-read and
+    nonallocation witnesses. The shared history/byte gates remain unchanged.
+    """
+    required_flags(record,dict(schema=UC_SCHEMA))
+    common={key:value for key,value in record.items() if key not in (*UC_CYCLES,*UC_COUNTS)}
+    checked_observation(dict(common,schema=SCHEMA),**expected)
+    if set(record)!=set(common)|set(UC_CYCLES)|set(UC_COUNTS):
+        raise ValueError('UC cache alias observation: missing bypass fields')
+    invalid,read,response=(uint(record[key],64) for key in UC_CYCLES)
+    if not record['warmCycle']<invalid<=record['invalidateCycle'] or not (
+            record['invalidateAckCycle']<read<response<record['firstTargetWriteCycle']):
+        raise ValueError('UC cache alias observation: early invalidation or authoritative read unordered')
+    for key in UC_COUNTS:
+        if uint(record[key],64)!=expected['target_attempts']:
+            raise ValueError('UC cache alias observation: missing per-write bypass witness: '+key)
     return record

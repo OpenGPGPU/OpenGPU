@@ -60,7 +60,7 @@ inline void active_cache_alias_recovery_matrix(int argc,char **argv,const std::f
     }
     const auto destination=output/("round-"+std::to_string(index));
     require(std::filesystem::create_directory(destination),"cache alias recovery output exists");
-    compute_cache_alias::Tracker tracker(line,failed);sim.attach(tracker);
+    compute_cache_alias::Tracker tracker(line,failed,uc_alias);sim.attach(tracker);
     active_compute(sim,agent,bus,memory,capture,destination,local,timeout,
       failed?(uc_alias?ImageFailure::uc_cache_alias_accepted_write:ImageFailure::global_accepted_write):
         ImageFailure::none,0,index?&previous:nullptr,nullptr,

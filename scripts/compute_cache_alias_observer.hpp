@@ -118,17 +118,22 @@ public:
 
 class Tracker {
   struct Write {bool target;uint64_t ordinal;};
+  struct Read {bool refetch;uint64_t uncached_request;};
   uint32_t target;
-  bool fault,seen_cycle=false,warm=false,invalidating=false,writing=false,error=false;
+  bool fault,uncached,seen_cycle=false,warm=false,invalidating=false,writing=false,error=false;
   uint64_t last=0,warm_cycle=0,inv_cycle=0,ack_cycle=0,write_cycle=0,error_cycle=0;
   uint64_t invalid_cycle=0,read_cycle=0,response_cycle=0,refill_cycle=0;
   uint64_t writes=0,responses=0,errors=0;
+  uint64_t pre_atomic_invalid=0,authoritative_request=0,authoritative_response=0;
+  uint64_t candidate_request=0,candidate_response=0,last_target_response=0;
+  uint64_t uncached_reads=0,nonallocating_responses=0,nonallocating_retired=0,check_retired=0;
   uint8_t invalidated=0,acked=0,refilled=0;
   bool refilled_l2=false;
   std::map<uint32_t,std::deque<Write>> outstanding_writes;
-  std::map<uint32_t,std::deque<bool>> outstanding_reads;
+  std::map<uint32_t,std::deque<Read>> outstanding_reads;
 public:
-  Tracker(uint64_t line,bool accepted_error):target(uint32_t(line)),fault(accepted_error) {
+  Tracker(uint64_t line,bool accepted_error,bool uncached_alias=false):
+      target(uint32_t(line)),fault(accepted_error),uncached(uncached_alias) {
     check(line && line<=0xffffffc0u && !(line&63u),"cache observer target must be a complete physical u32 line");
   }
   uint32_t line() const {return target;}
@@ -136,10 +141,25 @@ public:
     check(!seen_cycle || cycle>last,"cache observation clock repeated or restarted");
     check(!((s.l1_mask|s.invalidate_mask|s.ack_mask)&~3u),"cache observation lost the two-CU shape");
     seen_cycle=true;last=cycle;
+    if(uncached) {
+      if(check_retired) {
+        check(cycle>check_retired && !s.l1_mask && !s.l2,
+          "UC target write allocated a cache line on retirement");
+        ++nonallocating_retired;check_retired=0;
+      }
+      // A cached refill cannot authorize an uncached RMW. Its own lower
+      // read must complete after the preceding target write response, with
+      // the line absent until the new write is offered.
+      if(s.l2 || s.l1_mask)candidate_request=candidate_response=0;
+      if(warm && !invalidating && !s.l2 && s.l1_mask==3 && !pre_atomic_invalid)
+        pre_atomic_invalid=cycle;
+    }
     if(!writing && !warm && s.l1_mask==3 && s.l2) {warm=true;warm_cycle=cycle;}
     if(!writing && warm && s.invalidate_mask) {
       if(!invalidating) {
-        check(s.l1_mask==3 && s.l2,"first target invalidation did not observe both warm L1s and L2");
+        if(uncached)check(s.l1_mask==3 && !s.l2 && warm_cycle<pre_atomic_invalid && pre_atomic_invalid<=cycle,
+          "first UC target invalidation lacks prior two-CU/L2 warmth and the early L2 drop");
+        else check(s.l1_mask==3 && s.l2,"first target invalidation did not observe both warm L1s and L2");
         invalidating=true;inv_cycle=cycle;
       }
       invalidated|=s.invalidate_mask;
@@ -155,6 +175,14 @@ public:
       if(match) {
         check(s.aw.address==target && s.aw.length==1 && s.aw.size==5,"target lower write lost the original full-line transfer");
         check(!s.l1_mask,"a target lower write preceded actual L1 invalidation");
+        if(uncached) {
+          check(!s.l2 && candidate_request>last_target_response && candidate_request<candidate_response &&
+            candidate_response<cycle,"UC target write lacks its own nonallocating authoritative lower read");
+          if(!uncached_reads) {
+            authoritative_request=candidate_request;authoritative_response=candidate_response;
+          }
+          ++uncached_reads;candidate_request=candidate_response=0;
+        }
         if(!writing) {
           check(warm && invalidating && invalidated==3 && acked==3 && ack_cycle<cycle,
             "first target write lacks both warm caches and completed invalidate ACKs");
@@ -169,7 +197,13 @@ public:
       check(found!=outstanding_writes.end() && !found->second.empty(),"cache observer received an unmatched B response");
       const auto transaction=found->second.front();found->second.pop_front();
       if(found->second.empty())outstanding_writes.erase(found);
-      if(transaction.target)++responses;
+      if(transaction.target) {
+        ++responses;
+        if(uncached) {
+          check(!s.l1_mask && !s.l2,"UC target B response retained or allocated a cached alias");
+          ++nonallocating_responses;last_target_response=cycle;check_retired=cycle;
+        }
+      }
       if(s.b.response) {
         check(fault && transaction.target && transaction.ordinal==1 && s.b.response==2 && !error,
           "cache observation has a foreign or repeated write error");
@@ -186,14 +220,24 @@ public:
         check(!s.l2 && invalid_cycle,"post-error target refetch did not observe the invalidated L2 line");
         read_cycle=cycle;
       }
-      outstanding_reads[s.ar.id].push_back(selected);
+      uint64_t uc_request=0;
+      if(uncached && match && acked==3 && cycle>ack_cycle && cycle>last_target_response && !s.l1_mask && !s.l2) {
+        check(s.ar.address==target && s.ar.length==1 && s.ar.size==5,
+          "UC authoritative read lost the original full-line transfer");
+        uc_request=cycle;
+      }
+      outstanding_reads[s.ar.id].push_back({selected,uc_request});
     }
     if(s.r.fire) {
       auto found=outstanding_reads.find(s.r.id);
       check(found!=outstanding_reads.end() && !found->second.empty() && !s.r.response,
         "cache observer received an unmatched or failed R response");
       if(s.r.last) {
-        if(found->second.front() && !response_cycle)response_cycle=cycle;
+        const auto request=found->second.front();
+        if(request.refetch && !response_cycle)response_cycle=cycle;
+        if(uncached && request.uncached_request>last_target_response && !s.l1_mask && !s.l2) {
+          candidate_request=request.uncached_request;candidate_response=cycle;
+        }
         found->second.pop_front();if(found->second.empty())outstanding_reads.erase(found);
       }
     }
@@ -209,6 +253,10 @@ public:
     check(fault?(target_attempts==3 || target_attempts==5 || target_attempts==7):target_attempts==8,
       "cache observation does not retain the original caller AMOs");
     check(refilled_l2 && (fault?refilled!=0:refilled==3),"ordinary source reads did not refill the required L1/L2 caches");
+    if(uncached)check(warm_cycle<pre_atomic_invalid && pre_atomic_invalid<=inv_cycle &&
+      ack_cycle<authoritative_request && authoritative_request<authoritative_response && authoritative_response<write_cycle &&
+      uncached_reads==writes && nonallocating_responses==writes && nonallocating_retired==writes && !check_retired,
+      "UC cache observation lacks authoritative reads or nonallocating write retirement");
     if(fault)check(error && errors==1 && write_cycle<error_cycle && error_cycle<invalid_cycle &&
         invalid_cycle<=read_cycle && read_cycle<response_cycle && response_cycle<refill_cycle,
       "committed-write error lacks an invalidated L2, real lower refetch and subsequent cache refill");
@@ -218,7 +266,8 @@ public:
       uint64_t start_cycle,uint64_t end_cycle) const {
     finish(target_attempts);
     check(start_cycle<warm_cycle && last<end_cycle,"cache observation left its original command clock window");
-    out<<"{\"schema\":\"opengpu-compute-cache-alias-observation-v1\",\"commandId\":"<<command_id
+    out<<"{\"schema\":\""<<(uncached?"opengpu-compute-uc-cache-alias-observation-v1":
+      "opengpu-compute-cache-alias-observation-v1")<<"\",\"commandId\":"<<command_id
       <<",\"startCycle\":"<<start_cycle<<",\"endCycle\":"<<end_cycle
       <<",\"phase\":"<<phase<<",\"targetLine\":"<<target<<",\"acceptedWriteError\":"<<(fault?"true":"false")
       <<",\"warmL1Mask\":3,\"warmL2\":true,\"invalidateMask\":"<<unsigned(invalidated)
@@ -229,7 +278,14 @@ public:
       <<",\"invalidateAckCycle\":"<<ack_cycle<<",\"firstTargetWriteCycle\":"<<write_cycle
       <<",\"writeErrorCycle\":"<<error_cycle<<",\"l2InvalidatedCycle\":"<<invalid_cycle
       <<",\"refetchRequestCycle\":"<<read_cycle<<",\"refetchResponseCycle\":"<<response_cycle
-      <<",\"refillCycle\":"<<refill_cycle<<"}\n";
+      <<",\"refillCycle\":"<<refill_cycle;
+    if(uncached)out<<",\"preAtomicL2InvalidatedCycle\":"<<pre_atomic_invalid
+      <<",\"firstAuthoritativeReadRequestCycle\":"<<authoritative_request
+      <<",\"firstAuthoritativeReadResponseCycle\":"<<authoritative_response
+      <<",\"uncachedReadBeforeWrites\":"<<uncached_reads
+      <<",\"nonAllocatingWriteResponses\":"<<nonallocating_responses
+      <<",\"nonAllocatingRetiredWrites\":"<<nonallocating_retired;
+    out<<"}\n";
   }
 };
 
