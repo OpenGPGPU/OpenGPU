@@ -289,13 +289,13 @@ public:
   }
 };
 
-template<class Base,class CacheView>
+template<class Base,class CacheView,class Observer=Tracker>
 class ObservedSimulation:public Base {
-  Tracker *tracker=nullptr;
+  Observer *tracker=nullptr;
   std::unique_ptr<CacheView> view;
 public:
   using Base::Base;
-  void attach(Tracker &value) {
+  void attach(Observer &value) {
     check(!tracker,"a cache observation is already active");
     view=std::make_unique<CacheView>(*this->model);tracker=&value;
   }

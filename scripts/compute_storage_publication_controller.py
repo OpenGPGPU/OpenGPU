@@ -56,6 +56,12 @@ def run_publication_matrix(args, command, directory, executor, env, qualified, p
                     else:
                         retained = extent
                         baseline = local / 'union.memory'
+                        # Ordinary L1 witness watches the cache line of data.v[1].
+                        line = (target + 4) & ~63
+                        atomic(directory / 'publication.cache-target',
+                               struct.pack('<8sQ', b'OGCSPT01', line))
+                        inputs[0][1]['publication.cache-target'] = input_digest(
+                            directory / 'publication.cache-target')
                 inputs.append((local, frozen))
                 for path, identities in inputs:
                     unchanged_inputs(path, identities)
@@ -100,11 +106,24 @@ def run_publication_matrix(args, command, directory, executor, env, qualified, p
                 print('original storage publication phase=%d role=%s full bytes/cleanup PASS' % (
                     index, role), flush=True)
             require(bridge.wait(timeout=remaining()) == 0, 'original Mesa publication producer failed')
+            observation = strict_json(directory / 'publication.cache-observation.json')
+            require(observation.get('schema') ==
+                    'opengpu-compute-storage-publication-cache-observation-v1',
+                    'publication lacked its uncached fabric observation')
+            require(observation.get('commandId') == previous['commandId'] and
+                    observation.get('uncachedStoragePath') is True and
+                    observation.get('warmReadRequestCycle') <
+                    observation.get('warmReadResponseCycle') <
+                    observation.get('firstTargetWriteCycle') <
+                    observation.get('reloadReadRequestCycle') <
+                    observation.get('reloadReadResponseCycle'),
+                    'publication uncached warm-read/producer-write/reload-read order differs')
             qualified(env, output)
             for path, identities in inputs:
                 unchanged_inputs(path, identities)
         print('all three original storage publication phases PASS; one DUT/RAM/reset, '
-              'warm/producer/reload, original source/model postchecks', flush=True)
+              'warm/producer/reload, uncached fabric observation, original source/model postchecks',
+              flush=True)
     except BaseException as error:
         if local is not None:
             try:

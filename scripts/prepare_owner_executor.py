@@ -225,7 +225,7 @@ def driver_files(kind, profile=owner.PROFILE):
                 'scripts/compute_owner_capture.hpp', 'scripts/compute_owner_reset.hpp',
                 'scripts/compute_storage_atomic_delay.hpp',
                 'scripts/compute_storage_recovery.hpp', 'scripts/compute_storage_publication.hpp',
-                'scripts/compute_global_recovery.hpp',
+                'scripts/compute_storage_publication_cache.hpp', 'scripts/compute_global_recovery.hpp',
                 'scripts/compute_cache_alias_observer.hpp',
                 'scripts/compute_cache_alias_recovery.hpp', 'scripts/compute_reservation_wait.hpp',
                 'scripts/compute_reservation_idle.hpp',
@@ -249,13 +249,15 @@ def driver_files(kind, profile=owner.PROFILE):
         return [f'scripts/{wrapper}_owner_driver.cpp', 'scripts/compute_owner_driver.cpp',
                 *SHARED, 'scripts/compute_owner_capture.hpp', 'scripts/compute_owner_reset.hpp',
                 'scripts/compute_storage_atomic_delay.hpp', 'scripts/compute_storage_recovery.hpp',
-                'scripts/compute_storage_publication.hpp', 'scripts/compute_global_recovery.hpp',
+                'scripts/compute_storage_publication.hpp', 'scripts/compute_storage_publication_cache.hpp',
+                'scripts/compute_global_recovery.hpp',
                 'scripts/compute_cache_alias_observer.hpp', 'scripts/compute_cache_alias_recovery.hpp',
                 'scripts/compute_reservation_wait.hpp', 'scripts/compute_reservation_idle.hpp']
     return ([f'scripts/{kind}_owner_driver.cpp', *SHARED] +
             (['scripts/compute_owner_capture.hpp', 'scripts/compute_owner_reset.hpp',
               'scripts/compute_storage_atomic_delay.hpp', 'scripts/compute_storage_recovery.hpp',
-              'scripts/compute_storage_publication.hpp', 'scripts/compute_global_recovery.hpp',
+              'scripts/compute_storage_publication.hpp', 'scripts/compute_storage_publication_cache.hpp',
+              'scripts/compute_global_recovery.hpp',
               'scripts/compute_cache_alias_observer.hpp', 'scripts/compute_cache_alias_recovery.hpp',
               'scripts/compute_reservation_wait.hpp', 'scripts/compute_reservation_idle.hpp'] if kind == 'compute' else []))
 
