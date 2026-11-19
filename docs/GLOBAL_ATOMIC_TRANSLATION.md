@@ -43,10 +43,10 @@ inputs, all byte-identical to merged
 `fdcdbe1e09440fbea2ac21726723ba6efeb7f4f9`. The additional post-run executor
 check and Git-blob comparison pass; all consumers and ended capture/simulation
 data are removed. This result retains that exact software scope. Warm L1/L2
-residency, accepted-write-error refetch and cached/UC same-GEM coherence keep
-their distinct full-host matrices. Forced reservation waits remain open;
-complete resources, physical clock and FPS retain their separate plan gates.
-P10 remains open at 9/40.
+residency, accepted-write-error refetch, cached/UC same-GEM coherence and forced
+reservation waits have distinct complete-host results below, indexed in
+[P10 qualification](P10_ATOMIC_QUALIFICATION.md). Complete resources, physical
+clock and FPS retain their separate plan gates.
 
 ```sh
 env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts \
@@ -111,8 +111,8 @@ original-source checks pass, including the existing Linux lifecycle controls.
 
 The live controller now uses the native read-only cache observer through the
 distinct recovery matrix below. CPU source checks do not prove L1/L2 residency, fault recovery/refetch
-or cached/uncached same-GEM alias coherence. Those full-host gates remain
-required, and P10 remains open at 9/40. Reproduce the CPU checks with:
+or cached/uncached same-GEM alias coherence. The distinct full-host results are recorded below and in the
+[P10 index](P10_ATOMIC_QUALIFICATION.md). Reproduce the CPU checks with:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts \
@@ -179,11 +179,11 @@ The same fixed Linux compiler image passes all 72 UC/cached/derived-source
 captures, 1848 rejection controls and 24 native build controls with 246 bound
 software inputs. All ended native and CPU proof outputs are removed.
 
-This delivers the read-only observer, timing hook and input binding. The live
-matrix controller has not attached the hook yet. These checks do not establish
-warm cache execution, accepted-write-error refetch or cached/uncached same-GEM
-coherence. The required full-host matrices remain pending; P10 stays open at
-9/40. Reproduce the component checks with:
+These component checks deliver the read-only observer, timing hook and input
+binding; they do not establish warm cache execution, accepted-write-error
+refetch or cached/uncached same-GEM coherence. The distinct live matrices below
+attach the hook and provide those actual results, indexed in
+[P10 qualification](P10_ATOMIC_QUALIFICATION.md). Reproduce the component checks with:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts \
@@ -242,10 +242,10 @@ The complete original compute driver compiles and links against the unchanged
 full float model with all 249 software inputs and three generated cache headers
 bound. Its full compiler dependency closure contains 1051 files; actual MMIO
 discovery passes. These results validate native integration, not the 48-phase
-shader execution. The complete cache-warm matrix, the original 24-program
-normal cached matrix and actual UC/cached same-GEM alias coherence still await
-their separate full-host runs. The current source performs AMOs through cached
-kernargs; it does not implement the UC alias gate. P10 remains open at 9/40.
+shader execution. The separate complete warm-cached result follows; ordinary
+cached and UC/cached same-GEM results have their own sections. This cached
+profile performs AMOs through cached kernargs; the UC alias gate uses its
+separate source profile and matrix. See the [P10 index](P10_ATOMIC_QUALIFICATION.md).
 
 Reproduce the source/controller and binding checks with:
 
@@ -268,7 +268,7 @@ python3 -B scripts/test_compute_cache_alias_recovery.py \
   --profile-json "$PROFILE_JSON" --bound-inputs "$INPUTS_REQUEST"
 ```
 
-For the pending complete execution, rebuild the source-qualified original
+To reproduce complete execution, rebuild the source-qualified original
 compute executor against its matching full float model, then run:
 
 ```sh
@@ -279,6 +279,44 @@ python3 -B scripts/qualify_compute_owner.py \
   --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72 \
   --case global-atomics-cache-alias --timeout 14400
 ```
+
+## Complete-owner warm cached recovery execution
+
+All 48 alternating committed-write-error/healthy phases pass on one complete
+assertion-enabled float DUT, one retained RAM, one initial reset and the
+original command ID. All 24 derived original RV32 programs retain their AMOs,
+operands and four page/endpoint positions. The independent source oracle
+checks 240 returned atomic old words, ordinary cached reads, source ordering,
+final targets and every current and preceding physical allocation. All 24
+physical target B errors are injected and accepted after the first write
+commits; there are zero read errors. Real EIO/healthy GPU fences and original
+PTE/context/MMU cleanup pass.
+
+Every phase passes actual read-only cache observation: both CU L1s and L2 are
+warm before the first target AMO, both L1 invalidations and acknowledgements
+precede its exact 64-byte write transaction, and ordinary reads refill the
+required L1s and L2. Every error additionally observes L2 invalidation, a real
+lower AR/R refetch and later cached refill. Independent histories and bytes,
+cache observations and the native cleanup witness all pass before the next
+original owner is authorized. Final READY, IRQ, SATP and external-drain checks
+pass without resetting the DUT or replacing its RAM.
+
+The exact execution source is `4ba1dff1a503aceb1f0dca96455e222c0fbbbe78` with
+262 qualified software inputs, all matching recorded hashes and immutable Git
+blobs at `4d64b205a77a01b9c0e7e687e938905e44797b30`. Merged #910 adds only
+the reviewed GCC C++ unit-fixture formatting fix; runtime inputs are unchanged.
+Native, controller, original producer, outer qualifier and final input checks
+all return zero. The additional post-run executor check and all 262 source/
+Git-blob comparisons pass. The execution source is clean, and the original
+temporary session, container and process consumers are gone. The unchanged
+complete factory retains its original assertions and supported capacities.
+
+Reproduce from that exact software checkpoint and its source-qualified
+complete-float executor with the `global-atomics-cache-alias` command above.
+This closes the warm cached recovery gate. The
+[P10 result index](P10_ATOMIC_QUALIFICATION.md) records the complete atomic
+scope; P11 GPU-producer/cross-domain ordering, full resources, physical clocks
+and FPS retain their separate requirements.
 
 ## Explicit same-GEM UC/cached source admission
 
@@ -362,9 +400,9 @@ python3 -B scripts/test_compute_uc_cache_alias.py \
 The captures above establish source admission and transport only. The distinct
 live UC matrix below connects the continuous protocol, observer and failure
 receipts. Actual two-CU/L2 residency, invalidation/refetch, accepted errors and
-real cleanup for these UC aliases remain P10 gates. P10 stays open at 9/40;
-complete resources, cross-command coherence, clocks and FPS retain their
-separate plan requirements.
+real cleanup for these UC aliases are qualified separately below and indexed
+in [P10](P10_ATOMIC_QUALIFICATION.md). Complete resources, cross-command
+coherence, clocks and FPS retain their separate plan requirements.
 
 ## Same-GEM UC/cache recovery implementation
 
@@ -487,8 +525,9 @@ reservation execution below has a separate source scope.
 
 Reproduce from that exact software source and its source-qualified complete-float
 executor with the `global-atomics-uc-cache-alias` command above. These results
-close this UC alias execution gate. Warm cached recovery remains pending;
-forced reservation waits have their separate final result below. P11 GPU-producer/cross-domain ordering,
+close this UC alias execution gate. Warm cached recovery and forced reservation
+waits have separate final results in this document and the
+[P10 index](P10_ATOMIC_QUALIFICATION.md). P11 GPU-producer/cross-domain ordering,
 full resources and product qualification remain open.
 
 ## Cross-context reservation admission source
@@ -696,9 +735,10 @@ Reproduce from that exact software checkpoint and its source-qualified
 complete-float executor using the `global-atomics-reservation-wait` command
 above. This closes the forced external CPU producer reservation-wait gate at
 the original Linux OS boundary; it does not boot Linux or establish a GPU
-producer/cross-domain coherence result. Warm cached recovery still requires
-its own complete actual matrix. P10 remains open at 9/40; P11, full resources,
-physical clocks and FPS remain separate qualifications.
+producer/cross-domain coherence result. Warm cached recovery has its own
+complete actual result above. The [P10 index](P10_ATOMIC_QUALIFICATION.md)
+records the final atomic scope; P11, full resources, physical clocks and FPS
+remain separate qualifications.
 
 ## Global AMO translation and prior component checks
 
@@ -934,8 +974,9 @@ python3 -B scripts/qualify_compute_owner.py \
 ```
 
 These CPU captures do not prove delayed ACKs, global fault recovery,
-accepted-write/error cached aliases or cross-command coherence. P10 remains
-open; generated CPU data is removed after its checks end.
+accepted-write/error cached aliases or cross-command coherence. Their actual
+scope is recorded in the [P10 index](P10_ATOMIC_QUALIFICATION.md); generated CPU
+data is removed after its checks end.
 
 ## Complete-owner global delayed acknowledgements
 
@@ -1046,8 +1087,9 @@ python3 -B scripts/qualify_compute_owner.py \
 
 The injected write is suppressed, so this gate makes no rollback claim for
 an accepted write followed by an error. Accepted-write/error cached aliases,
-cross-command coherence, clocks and FPS remain separate qualifications. P10
-remains open.
+cross-command coherence, clocks and FPS retain their separate scope. See the
+[complete atomic index](P10_ATOMIC_QUALIFICATION.md) for the accepted-write and
+cached-alias results.
 
 ## Complete-owner accepted first-write errors
 
@@ -1107,5 +1149,6 @@ python3 -B scripts/qualify_compute_owner.py \
   --case global-atomics-accepted-write-error --timeout 7200
 ```
 
-Cached-alias behavior and cross-command coherence retain their separate
-complete-host qualification. P10 remains open.
+Cached-alias behavior has separate complete-host results in the
+[P10 index](P10_ATOMIC_QUALIFICATION.md). Cross-command coherence retains its
+P11 qualification.
