@@ -16,6 +16,7 @@
 #include <linux/sync_file.h>
 #include "opengpu.h"
 #include "../../driver/tests/opengpu_compute_host_fixture.h"
+#include "../../driver/tests/opengpu_compute_reservation_fixture.h"
 
 static struct compute_host_session *session;
 static struct {void *data;uint64_t bytes;unsigned mapped,closed;} bos[16];
@@ -23,6 +24,8 @@ static unsigned next_bo=1,submitted,retired,capture_only,timeout_seconds,expect_
 static unsigned cache_alias_source;
 static unsigned cache_alias_live,cache_alias_write_error;
 static unsigned uc_cache_alias_source,uc_cache_alias_live,uc_cache_alias_write_error;
+static unsigned reservation_wait;
+static struct compute_reservation_producer *reservation_producer;
 static const char *directory,*source_case;
 static struct opengpu_buffer shader,kernarg;
 static size_t program_bytes;
@@ -81,6 +84,28 @@ static void write_source(void)
 
 static int wait_execution(void)
 {if(retired)return 0;assert(submitted==1);if(!uc_cache_alias_source)write_source();
+ if(reservation_wait){
+  assert(reservation_producer && compute_reservation_producer_attempt(reservation_producer)==-EBUSY);
+  struct compute_reservation_wait_info info;
+  for(unsigned released=0;released<2;released++){
+   assert(!compute_reservation_producer_snapshot(reservation_producer,&info));
+   char text[4096];int n=snprintf(text,sizeof(text),
+    "{\"schema\":\"opengpu-compute-reservation-%s-v1\",\"sourceCase\":\"%s\",\"cachedKernarg\":%s,\"producerKind\":\"external-cpu\",\"executionAttemptStatus\":-16,"
+    "\"context\":%u,\"handle\":%u,\"objects\":%u,\"dependencies\":%u,\"pendingDependencies\":%u,"
+    "\"reservationDependencies\":%u,\"producerDependencies\":%u,\"reservationUsage\":%u,\"queued\":%u,"
+    "\"kernelSubmissions\":%u,\"blockedAttempts\":%u,\"originalIdentity\":%s,\"producerStatus\":%d,\"consumerStatus\":%d,"
+    "\"producerContext\":%llu,\"producerSequence\":%llu,\"consumerSequence\":%llu,\"physical\":%llu,\"bytes\":%llu}\n",
+    released?"released":"blocked",source_case,cached_kernarg?"true":"false",info.context,info.handle,info.objects,
+    info.dependencies,info.pending_dependencies,info.reservation_dependencies,info.producer_dependencies,info.reservation_usage,
+    info.queued,info.kernel_submissions,info.blocked_attempts,info.original_identity?"true":"false",info.producer_status,
+    info.consumer_status,(unsigned long long)info.producer_context,(unsigned long long)info.producer_sequence,
+    (unsigned long long)info.consumer_sequence,(unsigned long long)info.physical,(unsigned long long)info.bytes);
+   assert(n>0 && n<(int)sizeof(text));marker(released?"reservation.released.json":"reservation.blocked.json",text);
+   if(!released){FILE *release=wait_file("RELEASE_RESERVATION");magic(release,"OGCRRL01");assert(read32(release)==1);end(release);
+    assert(!compute_reservation_producer_signal(reservation_producer));}
+  }
+  assert(!compute_reservation_producer_destroy(reservation_producer));reservation_producer=NULL;
+ }
  char out[4096];assert(!compute_host_begin_execution(session));
  if(uc_cache_alias_source)write_source();
  path(out,"union.memory");assert(!compute_host_export_memory(session,out));
@@ -129,6 +154,7 @@ int main(int argc,char **argv)
  directory=argv[1];source_case=argv[5];
  for(int i=6;i<argc;i++){
   if(!strcmp(argv[i],"--cached-kernarg")){assert(!cached_kernarg && !expect_global_fault);cached_kernarg=1;}
+  else if(!strcmp(argv[i],"--reservation-wait")){assert(!reservation_wait);reservation_wait=1;}
   else if(!strcmp(argv[i],"--cache-alias-source")){assert(!cache_alias_source && !expect_global_fault);cache_alias_source=1;}
   else if(!strcmp(argv[i],"--uc-cache-alias-source")){assert(!uc_cache_alias_source);uc_cache_alias_source=1;}
   else if(!strcmp(argv[i],"--uc-cache-alias-live")){assert(!uc_cache_alias_live && !capture_only);uc_cache_alias_live=1;}
@@ -160,6 +186,8 @@ int main(int argc,char **argv)
   !cache_alias_source && !cache_alias_live && (!expect_global_fault || uc_cache_alias_write_error)));
  assert(!uc_cache_alias_live || (uc_cache_alias_source && cached_kernarg && !capture_only));
  assert(!uc_cache_alias_write_error || (uc_cache_alias_live && expect_global_fault==2));
+ assert(!reservation_wait || (!capture_only && !cache_alias_source && !cache_alias_live &&
+  !uc_cache_alias_source && !uc_cache_alias_live && !expect_global_fault));
  assert(!strncmp(source_case,"global-atomic-",14));
  for(const char *c=source_case;*c;c++)assert((*c>='a' && *c<='z') || *c=='-');
  timeout_seconds=compute_host_timeout_seconds();assert(timeout_seconds);
@@ -191,6 +219,7 @@ int main(int argc,char **argv)
  }
  struct drm_opengpu_compute command={.context_id=context,.shader_slot=1,.kernarg_slot=2,
   .grid={4,1,1},.local={16,1,1},.out_syncobj=sync};
+ if(reservation_wait){reservation_producer=compute_reservation_producer_create(session,kernarg.handle);assert(reservation_producer);}
  if(uc_cache_alias_source){
   struct drm_opengpu_compute_storage storage={.launch=command};
   storage.bindings[0]=(struct drm_opengpu_compute_storage_binding){13,

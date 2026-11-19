@@ -334,12 +334,16 @@ inline void active_image_recovery(int argc,char **argv,const std::filesystem::pa
 #include "compute_storage_recovery.hpp"
 #include "compute_global_recovery.hpp"
 #include "compute_cache_alias_recovery.hpp"
+#include "compute_reservation_wait.hpp"
 
 #ifndef OPENGPU_COMPUTE_OWNER_LIBRARY
 int main(int argc,char **argv) {
   try {
     using namespace compute_owner;
     const auto response_timeout=compute_response_timeout();
+    if(argc==4 && std::string(argv[1])=="--active-reservation-wait") {
+      active_reservation_wait(argc,argv,argv[2],argv[3],response_timeout);return 0;
+    }
     if(argc==4 && std::string(argv[1])=="--active-uc-cache-alias-recovery-matrix") {
       active_cache_alias_recovery_matrix(argc,argv,argv[2],argv[3],response_timeout,true);return 0;
     }

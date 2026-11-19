@@ -537,14 +537,95 @@ inputs before and after execution. Ended outputs are removed.
 
 These are CPU OS-boundary admission/lifetime results. The native idle proof,
 controller-authorized producer release, real consumer execution and its
-all-byte/cleanup checks are not connected by this API alone. The forced
-reservation-wait gate remains open. Reproduce the focused source checks with:
+all-byte/cleanup checks require the distinct live protocol below. The forced
+reservation-wait gate remains open until its actual full-DUT matrix passes.
+Reproduce the focused source checks with:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts python3 -B -m unittest \
   test_compute_reservation_admission test_compute_global_host_inputs \
   test_prepare_owner_executor test_prepare_owner_verilator_executor
 ```
+
+## Complete-owner external reservation wait implementation
+
+`global-atomics-reservation-wait` connects all 24 original RV32 programs to
+both default-UC and explicit-cached consumers, for 48 independent cases. Each
+original C caller installs the external CPU producer after initialization and
+binding, submits through the ordinary Linux compute handler, and actually
+attempts execution while its unique GEM dependency is pending. It publishes
+the checked source identity, `-EBUSY`, pending producer/consumer fences and zero
+kernel submissions. The three-unit original caller build compiles the
+reservation fixture, which includes the host fixture; it never compiles both
+as separate units. Full source/header/link and immutable compiler-image guards
+remain mandatory.
+
+The controller requires this distinct blocked source before starting a complete
+assertion-enabled float DUT. Native execution starts with empty RAM and checks
+at least 257 cycles of READY, no IRQ, no external AR/AW/W offers and drained
+traffic. Its `OGCRWP01` plan and idle certificate bind the case, policy, original
+physical GEM and actual producer/consumer fence identities. Only a valid idle
+certificate authorizes the CPU producer's `OGCRRL01` release. That release
+leaves the GPU fence pending. The caller then prepares its original capture.
+
+Independent ordinary source/code/PTE/cache-policy validation must pass before
+the controller emits the separate phase-bound `OGCRGO01` execution authorization.
+The native runner then uploads those original inputs and runs the consumer on
+the same DUT without another reset. Original held/retired receipts, all eight
+old words, final target, every physical guard and real Linux/native cleanup
+remain required. A final native witness checks READY, no IRQ, zero SATP roots,
+drained external traffic and the uninterrupted clock; an independent cleaned-RAM
+comparison verifies PTE teardown and unrelated bytes. Each case has one reset;
+this is an external CPU producer wait, with GPU-producer cross-domain coherence
+remaining in P11.
+
+All 311 focused checks pass, including strict source/idle/release/cleanup fields,
+all 48 original producer commands, early-publication rejection, and sanitized
+native idle controls at the first, middle and last observed cycles. The fixed
+compiler image passes all four existing capture modes: 96 original captures,
+4080 source rejections and 32 compiler/header/object/link controls. The actual C
+reservation path additionally passes four blocked/released READY controls, 74
+source negatives and nine mixed-option rejections, while waiting for real DUT
+completion receipts. GCC ASan/UBSan also passes the 336-main-job reservation
+fixture with all 192 full dependencies unchanged. These remain CPU controls.
+
+The complete native executor compiles, links and passes actual MMIO discovery
+with all 262 software inputs bound, three cache headers and 1053 full compiler
+dependencies. All 4497 model objects/archives and the three headers remain
+byte-identical. No RTL, assertions or supported capacities change. Ended CPU,
+native and discovery outputs are removed after their consumers exit.
+
+Reproduce the focused source checks and actual original C receipt-wait controls
+with the same fixed compiler image and complete-float discovery:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts python3 -B -m unittest \
+  test_compute_reservation_wait test_compute_reservation_admission \
+  test_compute_cache_alias_observer test_compute_cache_alias_cases test_compute_cache_alias_source \
+  test_compute_uc_cache_alias test_compute_uc_cache_alias_recovery test_compute_cached_kernarg \
+  test_compute_cache_alias_recovery test_compute_global_atomic_source test_compute_global_host_inputs \
+  test_qualify_compute_owner test_prepare_owner_executor test_prepare_owner_verilator_executor \
+  test_changed_test_suites test_compute_atomic_order
+python3 -B scripts/test_compute_reservation_wait.py \
+  --native-source-build "$CAPTURE_BUILD" --profile-wire "$DISCOVERY_WIRE" \
+  --profile-json "$PROFILE_JSON" --bound-inputs "$INPUTS_REQUEST"
+```
+
+After rebuilding the source-qualified complete-float executor, run the distinct
+actual matrix with:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/qualify_compute_owner.py \
+  --executor "$EXECUTOR" --executor-qualification "$EXECUTOR_QUALIFICATION" \
+  --executor-checker scripts/prepare_owner_executor.py \
+  --executor-checker-python "$OWNER_PYTHON" \
+  --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72 \
+  --case global-atomics-reservation-wait --timeout 14400
+```
+
+The complete 48-case actual-DUT wait/consumer matrix and its final source/model
+checks remain pending. CPU controls, source compilation and MMIO discovery do
+not close this gate or P10.
 
 ## Global AMO translation and prior component checks
 
