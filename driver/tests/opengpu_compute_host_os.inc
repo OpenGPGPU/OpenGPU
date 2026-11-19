@@ -98,7 +98,8 @@ static int drm_sched_job_add_syncobj_dependency(struct drm_sched_job *j,struct d
 static int drm_sched_job_add_resv_dependencies(struct drm_sched_job *j,struct dma_resv *r,int usage)
 {assert(r->locked);struct dma_fence *fences[]={r->write,usage==DMA_RESV_USAGE_READ?r->read:NULL};
  for(unsigned i=0;i<2;i++)if(fences[i] && !dma_fence_is_signaled(fences[i])){
-  int error=drm_sched_job_add_dependency(j,dma_fence_get(fences[i]));if(error)return error;}
+  int error=drm_sched_job_add_dependency(j,dma_fence_get(fences[i]));if(error)return error;
+  j->dependencies->reservation=r;j->dependencies->reservation_usage=usage;}
  return 0;}
 static void drm_sched_job_arm(struct drm_sched_job *j){assert(j->s_fence);}
 static void dma_resv_add_fence(struct dma_resv *r,struct dma_fence *f,int usage)

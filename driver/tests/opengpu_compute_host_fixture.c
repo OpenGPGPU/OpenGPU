@@ -55,7 +55,11 @@ typedef unsigned spinlock_t;
 struct dma_fence;
 struct dma_fence_ops {const char *(*get_driver_name)(struct dma_fence *);const char *(*get_timeline_name)(struct dma_fence *);void (*release)(struct dma_fence *);};
 struct dma_fence {u64 seqno;unsigned refs;int error;bool signaled;const struct dma_fence_ops *ops;};
-struct fixture_dependency {struct fixture_dependency *next;struct dma_fence *fence;};
+struct fixture_dependency {
+ struct fixture_dependency *next;struct dma_fence *fence;
+ /* OS-boundary attribution only; never an execution or fence receipt. */
+ struct dma_resv *reservation;int reservation_usage;
+};
 struct drm_sched_entity {int unused;};
 struct drm_gpu_scheduler {int unused;};
 struct kref {unsigned refs;};

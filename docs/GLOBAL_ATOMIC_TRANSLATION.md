@@ -29,11 +29,24 @@ all 238 declared software inputs remain bound. Ended CPU capture/build outputs
 are removed. These are CPU admission and transport results, not GPU execution.
 The 190 executor-input binding and affected-test selection checks also pass.
 
-Actual complete-host execution of the 24 cached programs and 192 old words
-remains required. This mapping stage also does not establish warm L1/L2 alias
-residency, accepted-write-error refetch or cached/uncached alias coherence;
-those remain P10's subsequent full-host gates. Complete resources, physical
-clock and FPS keep their separate plan gates. P10 remains open at 9/40.
+All 24 original cached programs now pass on the complete assertion-enabled
+float host with two 16-lane/eight-warp CUs. The independent source oracle checks
+all 192 scalar-caller ordered old values, final words and full physical guards,
+including both argument pages and all endpoint cases. Every original caller,
+held/retired receipt, PTE/context cleanup and native executor succeeds; each
+case has its own reset. The controller, producer, outer qualifier and final
+source/model checks exit zero.
+
+Execution source `10b51e0f667b5c78c90a9c1a95859cc69685dc1f` binds 254 software
+inputs, all byte-identical to merged
+[#907](https://github.com/OpenGPGPU/OpenGPU/pull/907)
+`fdcdbe1e09440fbea2ac21726723ba6efeb7f4f9`. The additional post-run executor
+check and Git-blob comparison pass; all consumers and ended capture/simulation
+data are removed. This result retains that exact software scope. Warm L1/L2
+residency, accepted-write-error refetch and cached/UC same-GEM coherence keep
+their distinct full-host matrices. Forced reservation waits remain open;
+complete resources, physical clock and FPS retain their separate plan gates.
+P10 remains open at 9/40.
 
 ```sh
 env -u SDKROOT -u CPATH PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts \
@@ -427,6 +440,56 @@ PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/qualify_compute_owner.py \
 The implementation and CPU/native-build checks above pass; the complete UC
 48-phase DUT run and its final source/model checks remain pending. The cached
 48-phase and normal cached 24-program gates remain separate. P10 is not closed.
+
+## Cross-context reservation admission source
+
+The CPU OS boundary attributes each reservation-origin dependency to its actual
+`dma_resv` and usage. Device admission-chain and input-sync dependencies keep
+separate provenance. The new reservation fixture calls the original Linux
+compute ioctl twice using two fresh contexts, separate scheduler entities,
+original GEM handles and immutable code snapshots, with no input sync object.
+Both jobs remain pending and have never reached hardware.
+
+All 24 original RV32 programs pass with default UC and explicit cached argument
+pages, using both shared and disjoint original GEMs: 96 pairs and 192 original
+Linux submissions. ASan/UBSan checks both pages, context/root and original-object
+identities, pending fence sequences, exact private code and unchanged data.
+Unexecuted scheduler cancellation consumes the real ECANCELED fences through
+normal context destruction; malformed code and partial admission also release
+all allocations and references.
+
+All 286 focused checks and the complete float Linux/MMU CPU regression pass,
+including 208 image-byte, 208 failed-receipt and 208 reset cases and bad-ACK
+resource retention. The fixed compiler image also runs the 96-pair C test with
+GCC/ASan/UBSan and 192 unchanged full-MD dependencies. Four original Linux
+capture modes pass 96 captures, 4080 source rejections and 32 native-input
+controls with all 258 software inputs bound. The complete-model executor
+compiles, links and passes MMIO discovery with three cache headers and 1051
+compiler dependencies; all 4497 model objects/archives and headers remain
+byte-identical. Ended CPU and native-build outputs are removed.
+
+The disjoint control remains pending on the device-wide retirement chain.
+The shared-GEM case has an additional pending reservation WRITE-fence edge,
+identified independently by its reservation pointer, usage and producer fence.
+Thus cross-context pending state alone cannot establish a forced GEM wait.
+This stage proves admission and attribution only: actual forced waiting still
+requires an independent producer edge, blocked dispatch/wait, genuine producer
+completion, actual consumer shader bytes and native cleanup/continuity proof.
+It provides no alternate legacy capture or hardware-dispatch path for the two
+queued owners, and does not close P10's reservation gate.
+
+Reproduce the CPU controls with:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts python3 -B -m unittest \
+  test_compute_reservation_admission test_compute_uc_cache_alias \
+  test_compute_uc_cache_alias_recovery test_compute_cached_kernarg \
+  test_compute_cache_alias_recovery test_compute_global_atomic_source \
+  test_compute_global_host_inputs test_qualify_compute_owner test_prepare_owner_executor \
+  test_prepare_owner_verilator_executor test_changed_test_suites test_compute_atomic_order
+OPENGPU_TEST_SANITIZERS=1 PYTHONDONTWRITEBYTECODE=1 \
+  python3 -B scripts/test_compute_host.py --image-float-stage
+```
 
 ## Global AMO translation and prior component checks
 

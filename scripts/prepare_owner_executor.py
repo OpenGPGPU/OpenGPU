@@ -61,6 +61,8 @@ COMPUTE_CHECKERS = (
     'scripts/compute_uc_cache_alias_cases.py', 'scripts/compute_uc_cache_alias_source.py',
     'scripts/test_compute_uc_cache_alias.py', 'scripts/compute_uc_cache_alias_recovery.py',
     'scripts/test_compute_uc_cache_alias_recovery.py',
+    'scripts/test_compute_reservation_admission.py',
+    'driver/tests/opengpu_compute_reservation_admission_test.c',
     'scripts/compute_global_host_producer.py',
     'scripts/compute_global_host_inputs.py',
     'scripts/test_compute_global_host_inputs.py',
@@ -99,6 +101,7 @@ COMPUTE_PRODUCER_ROOTS = (
     'userspace/gallium/opengpu_context.c', 'userspace/gallium/opengpu_screen.c',
     'userspace/gallium/opengpu_cs_emit.c', 'userspace/gallium/opengpu_fs_emit.c',
     'userspace/gallium/opengpu_vs_emit.c', 'userspace/pipe_opengpu.c', 'userspace/opengpu.c',
+    'driver/tests/opengpu_compute_reservation_fixture.c',
     'driver/tests/opengpu_compute_host_fixture.c', 'driver/opengpu_compute.c',
     'driver/opengpu_hw.c', 'driver/opengpu_device.h', 'driver/opengpu_memory.c',
     'driver/opengpu_scheduler.c', 'driver/opengpu_admission.c', 'driver/opengpu_drm_device.c')
