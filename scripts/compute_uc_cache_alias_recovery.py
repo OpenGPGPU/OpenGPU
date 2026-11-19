@@ -3,7 +3,7 @@ import struct
 from compute_global_atomic_cases import CASES
 from compute_cache_alias_cases import parameters
 from compute_uc_cache_alias_source import SCHEMA, verify_fault
-from compute_cache_alias_observation import checked_observation
+from compute_cache_alias_observation import checked_uc_observation
 from compute_global_recovery import BASE,STEP,require
 from compute_global_accepted_recovery import (COUNTERS,history,fault_receipt,
     check_round as accepted_round)
@@ -76,6 +76,6 @@ def check_cache(record,index,description,held,previous=None,done=None):
     if done is not None:
         require(start==uint(done['startCycle'],64) and end<=uint(done['endCycle'],64),
                 'cache observation left its native recovery round')
-    return checked_observation(record,command_id=held['commandId'],phase=index,
+    return checked_uc_observation(record,command_id=held['commandId'],phase=index,
         target_line=target_line(description),accepted_error=failed,
         target_attempts=held['faultTargetWriteAttempts'] if failed else 8,start_cycle=start,end_cycle=end)

@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import unittest
 
-from compute_cache_alias_observation import checked_observation,CYCLES
+from compute_cache_alias_observation import checked_observation,checked_uc_observation,CYCLES,UC_CYCLES,UC_COUNTS
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -88,12 +88,36 @@ class CacheObserver(unittest.TestCase):
         result=subprocess.run([str(out/'test')],capture_output=True,text=True,
             env=dict(os.environ,ASAN_OPTIONS='halt_on_error=1:abort_on_error=1',UBSAN_OPTIONS='halt_on_error=1'))
         if result.returncode:raise AssertionError(result.stderr)
-        cls.records=[json.loads(line) for line in result.stdout.splitlines()]
-        if len(cls.records)!=2:raise AssertionError(result.stdout)
+        records=[json.loads(line) for line in result.stdout.splitlines()]
+        if len(records)!=4:raise AssertionError(result.stdout)
+        cls.records,cls.uc_records=records[:2],records[2:]
 
-    def check(self,record,failed):
-        return checked_observation(record,command_id=42,phase=0 if failed else 1,target_line=0x20000,
+    def check(self,record,failed,uncached=False):
+        return (checked_uc_observation if uncached else checked_observation)(record,
+            command_id=42,phase=0 if failed else 1,target_line=0x20000,
             accepted_error=failed,target_attempts=3 if failed else 8,start_cycle=0,end_cycle=100)
+
+    def test_uc_requires_early_l2_drop_and_every_authoritative_read_and_nonallocating_retirement(self):
+        for record,failed in zip(self.uc_records,(True,False)):
+            self.assertIs(self.check(record,failed,True),record)
+            for key in (*UC_CYCLES,*UC_COUNTS):
+                missing=dict(record);del missing[key]
+                with self.assertRaises(ValueError):self.check(missing,failed,True)
+                for value in (None,True,'1',0):
+                    with self.assertRaises(ValueError):self.check(dict(record,**{key:value}),failed,True)
+            for key in UC_COUNTS:
+                with self.assertRaises(ValueError):self.check(dict(record,**{key:record[key]-1}),failed,True)
+            for change in ({'preAtomicL2InvalidatedCycle':record['warmCycle']},
+                    {'preAtomicL2InvalidatedCycle':record['invalidateCycle']+1},
+                    {'firstAuthoritativeReadRequestCycle':record['invalidateAckCycle']},
+                    {'firstAuthoritativeReadResponseCycle':record['firstTargetWriteCycle']}):
+                with self.assertRaises(ValueError):self.check(dict(record,**change),failed,True)
+
+    def test_cached_and_uc_observations_cannot_substitute_for_each_other(self):
+        for index,failed in enumerate((True,False)):
+            with self.assertRaises(ValueError):self.check(self.uc_records[index],failed)
+            with self.assertRaises(ValueError):self.check(self.records[index],failed,True)
+            with self.assertRaises(ValueError):self.check(dict(self.uc_records[index],foreign=True),failed,True)
 
     def test_sanitized_complete_geometry_preedge_hook_and_actual_port_shapes(self):
         for record,failed in zip(self.records,(True,False)):

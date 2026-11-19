@@ -387,15 +387,29 @@ bytes, including descriptors, page tables and previous allocations.
 The existing read-only complete-model observer supplies both CU L1s and all four
 L2 slices. Before the controller returns the original retired response, it
 requires both warm L1s/L2, real invalidate handshakes and ACKs, exact target AW/B
-pairing, and ordinary-read refills. An accepted error additionally requires the
-L2 invalidation, a matched lower AR/R refetch and later cache refill. Both the
+pairing, and ordinary-read refills. UC atomics invalidate the resident L2 line
+at lookup, before sending L1 invalidations. Their distinct
+`opengpu-compute-uc-cache-alias-observation-v1` proof requires that early drop
+after observed two-CU/L2 warmth, followed by both L1 acknowledgements. Every
+target write must have its own full-line lower AR/R after the preceding target
+B response, with no intervening cache allocation. Both L1s and L2 must remain
+absent at the write response and its retirement edge. A cached refill cannot
+authorize a later UC write, and the cached observer retains its original
+requirement that L2 is present at the first L1 invalidation.
+
+An accepted error additionally requires an observed invalid L2 after the error,
+a matched lower AR/R refetch and later cache refill. Both the
 outer qualifier and controller require the bound Verilator cache headers; CPU
 captures cannot substitute for this proof.
 
-All 306 focused checks pass, including the 48-phase CPU protocol peers and bad
+All 303 focused checks pass, including the 48-phase CPU protocol peers and bad
 observation/returned-byte controls that prevent cleanup and the next owner.
+Sanitized C++ controls cover early versus late L2 invalidation, every UC
+authoritative read, missing/short/incomplete reads, intervening cached fills,
+and allocation at either B observation edge. The Python checker rejects missing
+or mistyped bypass witnesses and substitution between cached and UC schemas.
 Four original Linux capture modes pass 96 captures, 4080 source rejections and
-32 compiler/header/object/link controls with all 254 software inputs bound.
+32 compiler/header/object/link controls with all 258 software inputs bound.
 The new actual C live-source controls reach two READY captures and wait for DUT
 receipts; 186 source, six controller-mode and twelve C option negatives pass.
 Existing cached live-source and UC capture controls also pass. These controls
@@ -408,12 +422,13 @@ outputs are removed after their consumers exit. Reproduce the focused checks:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=scripts python3 -B -m unittest \
-  test_compute_uc_cache_alias_recovery test_compute_uc_cache_alias \
-  test_compute_cached_kernarg test_compute_cache_alias_source \
+  test_compute_cache_alias_observer test_compute_cache_alias_cases \
+  test_compute_cache_alias_source test_compute_uc_cache_alias test_compute_uc_cache_alias_recovery \
+  test_compute_cached_kernarg \
   test_compute_cache_alias_recovery test_compute_global_atomic_source \
   test_compute_global_host_inputs test_qualify_compute_owner test_prepare_owner_executor \
   test_prepare_owner_verilator_executor test_changed_test_suites test_compute_atomic_order \
-  test_compute_owner test_compute_owner_controller test_compute_cache_alias_observer
+  test_compute_reservation_admission
 ```
 
 After a fresh guarded UC CPU capture in the fixed compiler image, exercise the

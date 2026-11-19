@@ -18,7 +18,7 @@ import unittest
 from unittest.mock import Mock,patch
 
 import compute_uc_cache_alias_recovery as contract
-from compute_cache_alias_observation import SCHEMA as OBSERVATION_SCHEMA
+from compute_cache_alias_observation import UC_SCHEMA as OBSERVATION_SCHEMA
 from compute_cache_alias_cases import CASES,parameters
 from test_compute_uc_cache_alias import returned
 from test_compute_global_accepted_recovery import held as accepted_held,done as accepted_done
@@ -111,10 +111,13 @@ def observation(index):
         invalidateMask=3,invalidateAckMask=3,targetWrites=5 if failed else 8,
         targetWriteResponses=5 if failed else 8,targetWriteErrors=int(failed),
         refetchedL1Mask=2 if failed else 3,refetchedL2=True,
-        warmCycle=start+1,invalidateCycle=start+2,invalidateAckCycle=start+3,
-        firstTargetWriteCycle=start+4,writeErrorCycle=start+5 if failed else 0,
-        l2InvalidatedCycle=start+6 if failed else 0,refetchRequestCycle=start+7 if failed else 0,
-        refetchResponseCycle=start+8 if failed else 0,refillCycle=start+9)
+        warmCycle=start+1,preAtomicL2InvalidatedCycle=start+2,invalidateCycle=start+3,invalidateAckCycle=start+4,
+        firstAuthoritativeReadRequestCycle=start+5,firstAuthoritativeReadResponseCycle=start+6,
+        firstTargetWriteCycle=start+7,writeErrorCycle=start+8 if failed else 0,
+        l2InvalidatedCycle=start+9 if failed else 0,refetchRequestCycle=start+10 if failed else 0,
+        refetchResponseCycle=start+11 if failed else 0,refillCycle=start+12,
+        uncachedReadBeforeWrites=5 if failed else 8,nonAllocatingWriteResponses=5 if failed else 8,
+        nonAllocatingRetiredWrites=5 if failed else 8)
 
 
 class UcCacheAliasRecovery(unittest.TestCase):

@@ -85,8 +85,8 @@ std::vector<Snapshot> trace(bool failed,unsigned attempts) {
   }
   return rows;
 }
-Tracker replay(const std::vector<Snapshot> &rows,bool failed) {
-  Tracker tracker(target,failed);
+Tracker replay(const std::vector<Snapshot> &rows,bool failed,bool uncached=false) {
+  Tracker tracker(target,failed,uncached);
   for(unsigned n=0;n<rows.size();++n)tracker.observe(n+1,rows[n]);
   return tracker;
 }
@@ -135,6 +135,66 @@ void histories() {
   replay(healthy,false).json(std::cout,42,1,8,0,100);
 }
 
+std::vector<Snapshot> uc_trace(bool failed,unsigned attempts) {
+  std::vector<Snapshot> rows(5);
+  rows[0].invalidate_mask=3;rows[1].ack_mask=3;
+  rows[2].l1_mask=3;rows[2].l2=true;
+  // The actual UC lookup drops L2 before asking the warm L1s to invalidate.
+  rows[3].l1_mask=3;rows[3].invalidate_mask=3;
+  rows[4].ack_mask=3;
+  for(unsigned n=0;n<attempts;++n) {
+    Snapshot read;read.ar={true,9,target,0,false,1,5};rows.push_back(read);
+    Snapshot data;data.r={true,9,0,0,false};rows.push_back(data);
+    data.r.last=true;rows.push_back(data);
+    Snapshot write;write.aw={true,7,target,0,false,1,5};rows.push_back(write);
+    Snapshot response;response.b={true,7,0,uint8_t(failed && !n?2:0),false};rows.push_back(response);
+    rows.push_back({}); // no allocation at the B retirement edge either
+    if(failed && !n) {
+      rows.push_back(read);rows.push_back(data);
+    }
+    Snapshot refill;refill.l1_mask=uint8_t(failed?2:n%2?2:1);refill.l2=true;rows.push_back(refill);
+  }
+  return rows;
+}
+void uncached_histories() {
+  for(bool failed:{false,true})for(unsigned attempts:{3u,5u,7u,8u}) {
+    if(failed==(attempts==8))continue;
+    const auto rows=uc_trace(failed,attempts);
+    replay(rows,failed,true).finish(attempts);
+    rejects([&]{replay(rows,failed).finish(attempts);});
+    auto late_drop=rows;late_drop[3].l2=true;
+    rejects([&]{replay(late_drop,failed,true).finish(attempts);});
+    for(unsigned index=5;index<rows.size();++index) {
+      if(rows[index].aw.fire) {
+        auto cached=rows;cached[index].l2=true;
+        rejects([&]{replay(cached,failed,true).finish(attempts);});
+        // Even a completed prior target read cannot authorize an RMW if a
+        // cache refill intervened before this write.
+        auto refill=rows;Snapshot allocated;allocated.l2=true;
+        refill.insert(refill.begin()+index,allocated);
+        rejects([&]{replay(refill,failed,true).finish(attempts);});
+      }
+      if(rows[index].b.fire) {
+        auto cached=rows;cached[index].l2=true;
+        rejects([&]{replay(cached,failed,true).finish(attempts);});
+        auto retired=rows;retired[index+1].l1_mask=1;
+        rejects([&]{replay(retired,failed,true).finish(attempts);});
+      }
+    }
+    auto missing_read=rows;missing_read.erase(missing_read.begin()+5,missing_read.begin()+8);
+    rejects([&]{replay(missing_read,failed,true).finish(attempts);});
+    auto incomplete=rows;incomplete[7].r.last=false;
+    rejects([&]{replay(incomplete,failed,true).finish(attempts);});
+    auto premature=rows;premature[4].ar=premature[5].ar;premature[5].ar={};
+    rejects([&]{replay(premature,failed,true).finish(attempts);});
+    auto short_read=rows;short_read[5].ar.length=0;
+    rejects([&]{replay(short_read,failed,true).finish(attempts);});
+  }
+  rejects([&]{replay(trace(false,8),false,true).finish(8);});
+  replay(uc_trace(true,3),true,true).json(std::cout,42,0,3,0,100);
+  replay(uc_trace(false,8),false,true).json(std::cout,42,1,8,0,100);
+}
+
 struct HookModel {Snapshot snapshot;};
 struct HookBase {
   std::unique_ptr<HookModel> model=std::make_unique<HookModel>();
@@ -160,4 +220,4 @@ void preedge_hook() {
   assert(agent==rows.size() && simulation.edges==rows.size() && controls==rows.size()/2);
   tracker.finish(3);simulation.detach();simulation.step(agent,rows.size()+1);
 }
-int main() {complete_geometry();histories();preedge_hook();}
+int main() {complete_geometry();histories();uncached_histories();preedge_hook();}
