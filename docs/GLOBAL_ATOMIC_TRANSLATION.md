@@ -452,9 +452,45 @@ PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/qualify_compute_owner.py \
   --case global-atomics-uc-cache-alias --timeout 14400
 ```
 
-The implementation and CPU/native-build checks above pass; the complete UC
-48-phase DUT run and its final source/model checks remain pending. The cached
-48-phase and normal cached 24-program gates remain separate. P10 is not closed.
+The implementation and CPU/native-build checks above pass. The complete UC
+48-phase results are below. The cached warm 48-phase gate remains separate;
+normal cached 24-program execution passed in its stated earlier source scope.
+P10 is not closed.
+
+## Complete-owner UC/cache-alias execution
+
+All 48 alternating committed-write-error/healthy phases pass on one complete
+assertion-enabled float DUT, one retained RAM, one reset and the original command
+ID. The 24 derived original programs preserve every required operation, operand
+and page endpoint. The independent source oracle verifies 240 returned old
+words, source-order constraints, ordinary cached reads, final target words and
+all current and preceding physical allocations. All 24 target B errors are
+physically injected and accepted after their writes commit; there are zero
+read errors. Real EIO/healthy Linux fences and PTE/context/MMU cleanup pass.
+
+Read-only actual cache witnesses pass in every phase: both CU L1s and L2 warm
+before the UC access; L2 drops before both L1 invalidations and acknowledgements;
+each target write has its own authoritative lower AR/R; target B responses and
+retirement allocate no cache line. Error phases additionally observe invalid L2,
+matched lower refetch and subsequent ordinary cached refill. The original
+retired response and cleanup authorization remain gated on those witnesses and
+independent byte checks.
+
+The exact execution source is `1c5f65b6e54527c65d4e9ba389ef99011f36b570` with
+258 qualified software inputs, byte-identical to merged #909 at
+`95ec6b9f00b8f616750e181b8338906cb9df1869`. Native, controller, original producer,
+outer qualifier and final input checks all return zero. An explicit final
+executor check and all 258 source hashes/Git blobs also pass; the original
+execution source is clean, and its container, process consumers and temporary
+session are gone. No raw process data is retained. The later 262-input
+reservation implementation has its own pending actual matrix and does not
+change this result's source scope.
+
+Reproduce from that exact software source and its source-qualified complete-float
+executor with the `global-atomics-uc-cache-alias` command above. These results
+close this UC alias execution gate. Warm cached recovery and forced reservation
+waits remain separate P10 requirements; P11 GPU-producer/cross-domain ordering,
+full resources and product qualification remain open.
 
 ## Cross-context reservation admission source
 
