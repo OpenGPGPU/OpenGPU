@@ -158,13 +158,19 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
  if(request==DRM_IOCTL_OPENGPU_COMPUTE_IMAGES){struct drm_opengpu_compute_images copy=*(struct drm_opengpu_compute_images *)arg;
   permission_views(copy.views);
   if(image_publication_case)image_publication_prepare_submission(&copy.launch);
-  if(texture_publication_case)texture_publication_prepare_submission(&copy.launch);
+  if(texture_publication_case){
+   texture_publication_prepare_submission(&copy.launch);
+   assert(!compute_host_align_texture_publication_command(session));
+  }
   int error=compute_host_submit_images(session,&copy);
   if(!error){if(image_case || image_publication_case || texture_publication_case)memcpy(accepted_images,copy.views,sizeof(accepted_images));submitted++;}return result(error);}
  if(request==DRM_IOCTL_OPENGPU_COMPUTE_IMAGE_RESOURCES){struct drm_opengpu_compute_image_resources copy=*(struct drm_opengpu_compute_image_resources *)arg;
   permission_views(copy.images);
   if(image_publication_case)image_publication_prepare_submission(&copy.launch);
-  if(texture_publication_case)texture_publication_prepare_submission(&copy.launch);
+  if(texture_publication_case){
+   texture_publication_prepare_submission(&copy.launch);
+   assert(!compute_host_align_texture_publication_command(session));
+  }
   int error=compute_host_submit_image_resources(session,&copy);
   if(!error){if(image_case || image_publication_case || texture_publication_case)memcpy(accepted_images,copy.images,sizeof(accepted_images));submitted++;}return result(error);}
  if(request==DRM_IOCTL_OPENGPU_COMPUTE_UNIFORM_RESOURCES){int error=compute_host_submit_uniforms(session,arg);
