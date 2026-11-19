@@ -96,6 +96,8 @@ def ready_inputs(directory, case, *, owner_profile=None, permission=None, profil
     from compute_storage_publication_cases import CASES as PUBLICATION_CASES
     from compute_image_publication_source import SCHEMA as IMAGE_PUBLICATION_SCHEMA, ready as image_publication_ready
     from compute_image_publication_cases import CASES as IMAGE_PUBLICATION_CASES
+    from compute_texture_publication_source import SCHEMA as TEXTURE_PUBLICATION_SCHEMA, ready as texture_publication_ready
+    from compute_texture_publication_cases import CASES as TEXTURE_PUBLICATION_CASES
     from compute_mixed_atomic_source import SCHEMA as MIXED_SCHEMA, ready as mixed_ready
     from compute_global_atomic_source import SCHEMA as GLOBAL_SCHEMA, CACHED_SCHEMA, ready as global_ready
     from compute_cache_alias_source import SCHEMA as ALIAS_SCHEMA, ready as alias_ready
@@ -117,6 +119,7 @@ def ready_inputs(directory, case, *, owner_profile=None, permission=None, profil
     storage=description.get('schema')==STORAGE_SCHEMA
     publication=description.get('schema')==PUBLICATION_SCHEMA
     image_publication=description.get('schema')==IMAGE_PUBLICATION_SCHEMA
+    texture_publication=description.get('schema')==TEXTURE_PUBLICATION_SCHEMA
     global_atomic=description.get('schema') in (GLOBAL_SCHEMA,CACHED_SCHEMA,ALIAS_SCHEMA,UC_ALIAS_SCHEMA)
     require(not global_atomic or description.get('schema')==(UC_ALIAS_SCHEMA if uc_cache_alias else ALIAS_SCHEMA if cache_alias else CACHED_SCHEMA if global_cached else GLOBAL_SCHEMA),
             'cached and uncached global READY contracts differ')
@@ -127,9 +130,11 @@ def ready_inputs(directory, case, *, owner_profile=None, permission=None, profil
     require(publication==(case in PUBLICATION_CASES), 'storage publication source requires distinct qualification/case binding')
     require(image_publication==(case in IMAGE_PUBLICATION_CASES),
             'image publication source requires distinct qualification/case binding')
+    require(texture_publication==(case in TEXTURE_PUBLICATION_CASES),
+            'texture publication source requires distinct qualification/case binding')
     require(global_atomic==(case in GLOBAL_ATOMIC_CASES), 'raw global source requires distinct qualification/case binding')
     inputs={}
-    if counter or image or storage or publication or image_publication or mixed or global_atomic:
+    if counter or image or storage or publication or image_publication or texture_publication or mixed or global_atomic:
         from owner_resource_contract import SAMPLE_PROFILE
         owner_profile=SAMPLE_PROFILE if owner_profile is None else owner_profile
         require(description.get('sourceCase')==case, 'source READY case differs from qualification')
@@ -142,6 +147,11 @@ def ready_inputs(directory, case, *, owner_profile=None, permission=None, profil
                 source_ready(before,description,data,(directory/'code.words').read_text().splitlines(),
                     strict_json(directory/'profile.json') if profile is None else profile,
                     **({} if cache_alias or uc_cache_alias else dict(cached=global_cached)))
+            elif texture_publication:
+                from owner_resource_contract import IMAGE_FLOAT_PROFILE
+                require(owner_profile==IMAGE_FLOAT_PROFILE, 'texture publication requires the full float owner')
+                texture_publication_ready(before,description,data,(directory/'code.words').read_text().splitlines(),
+                                          strict_json(directory/'profile.json') if profile is None else profile)
             elif image_publication:
                 from owner_resource_contract import IMAGE_FLOAT_PROFILE
                 require(owner_profile==IMAGE_FLOAT_PROFILE, 'image publication requires the full float owner')
@@ -166,7 +176,7 @@ def ready_inputs(directory, case, *, owner_profile=None, permission=None, profil
                 code_words=(directory/'code.words').read_text().splitlines() if contended else None)
             else:counter_ready(before,description,data,owner_profile=owner_profile)
         inputs={name:input_digest(directory/name) for name in ('union.memory','record-0.capture','oracle.json')}
-        if storage or publication or image_publication or contended or mixed or global_atomic:
+        if storage or publication or image_publication or texture_publication or contended or mixed or global_atomic:
             inputs['code.words']=input_digest(directory/'code.words')
     return description,inputs
 
@@ -360,9 +370,9 @@ def main():
                         help='new GPU-internal session owned/removed by qualify_compute_owner after container exit')
     parser.add_argument('--timeout', type=int, default=3600)
     from compute_owner_cases import (COUNTER_CASES, IMAGE_CASES, STORAGE_ATOMIC_CASES,
-        STORAGE_PUBLICATION_CASES, IMAGE_PUBLICATION_CASES, GLOBAL_ATOMIC_CASES)
+        STORAGE_PUBLICATION_CASES, IMAGE_PUBLICATION_CASES, TEXTURE_PUBLICATION_CASES, GLOBAL_ATOMIC_CASES)
     parser.add_argument('--case', choices=(*COUNTER_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES,
-        *STORAGE_PUBLICATION_CASES,*IMAGE_PUBLICATION_CASES,*GLOBAL_ATOMIC_CASES),
+        *STORAGE_PUBLICATION_CASES,*IMAGE_PUBLICATION_CASES,*TEXTURE_PUBLICATION_CASES,*GLOBAL_ATOMIC_CASES),
         help='distinct final112 source contract')
     parser.add_argument('--storage-matrix',action='store_true')
     parser.add_argument('--storage-delayed-ack',action='store_true')
@@ -370,6 +380,7 @@ def main():
     parser.add_argument('--storage-accepted-matrix',action='store_true')
     parser.add_argument('--storage-publication-matrix',action='store_true')
     parser.add_argument('--image-publication-matrix',action='store_true')
+    parser.add_argument('--texture-publication-matrix',action='store_true')
     parser.add_argument('--image-accepted-matrix',action='store_true')
     parser.add_argument('--contended-image-matrix',action='store_true')
     parser.add_argument('--mixed-atomic-matrix',action='store_true')
@@ -451,7 +462,7 @@ def main():
         'storage recovery requires its exact original matrix and distinct failed receipts')
     require(not args.storage_publication_matrix or (args.case==STORAGE_PUBLICATION_CASES[0] and not any((
         args.storage_matrix,args.storage_delayed_ack,args.storage_recovery_matrix,args.storage_accepted_matrix,
-        args.image_publication_matrix,args.image_accepted_matrix,args.contended_image_matrix,args.mixed_atomic_matrix,
+        args.image_publication_matrix,args.texture_publication_matrix,args.image_accepted_matrix,args.contended_image_matrix,args.mixed_atomic_matrix,
         args.global_atomic_matrix,args.global_cached_matrix,args.global_delayed_ack,args.global_recovery_matrix,
         args.global_accepted_matrix,args.cache_alias_matrix,args.uc_cache_alias_matrix,args.reservation_matrix,
         args.expect_image_source_fault,args.image_source_recovery,args.image_permission_recovery,
@@ -459,12 +470,20 @@ def main():
         'storage publication requires its exact warm source and distinct continuous receipts')
     require(not args.image_publication_matrix or (args.case==IMAGE_PUBLICATION_CASES[0] and not any((
         args.storage_matrix,args.storage_delayed_ack,args.storage_recovery_matrix,args.storage_accepted_matrix,
-        args.storage_publication_matrix,args.image_accepted_matrix,args.contended_image_matrix,args.mixed_atomic_matrix,
+        args.storage_publication_matrix,args.texture_publication_matrix,args.image_accepted_matrix,args.contended_image_matrix,args.mixed_atomic_matrix,
         args.global_atomic_matrix,args.global_cached_matrix,args.global_delayed_ack,args.global_recovery_matrix,
         args.global_accepted_matrix,args.cache_alias_matrix,args.uc_cache_alias_matrix,args.reservation_matrix,
         args.expect_image_source_fault,args.image_source_recovery,args.image_permission_recovery,
         args.image_reset_recovery))),
         'image publication requires its exact warm source and distinct continuous receipts')
+    require(not args.texture_publication_matrix or (args.case==TEXTURE_PUBLICATION_CASES[0] and not any((
+        args.storage_matrix,args.storage_delayed_ack,args.storage_recovery_matrix,args.storage_accepted_matrix,
+        args.storage_publication_matrix,args.image_publication_matrix,args.image_accepted_matrix,args.contended_image_matrix,args.mixed_atomic_matrix,
+        args.global_atomic_matrix,args.global_cached_matrix,args.global_delayed_ack,args.global_recovery_matrix,
+        args.global_accepted_matrix,args.cache_alias_matrix,args.uc_cache_alias_matrix,args.reservation_matrix,
+        args.expect_image_source_fault,args.image_source_recovery,args.image_permission_recovery,
+        args.image_reset_recovery))),
+        'texture publication requires its exact warm source and distinct continuous receipts')
     require(not args.storage_delayed_ack or args.storage_matrix,
             'storage ACK qualification requires the original complete source matrix')
     require(not args.storage_matrix or (args.case==STORAGE_ATOMIC_CASES[0] and
@@ -497,6 +516,9 @@ def main():
     if args.case in IMAGE_PUBLICATION_CASES or args.image_publication_matrix:
         from owner_resource_contract import IMAGE_FLOAT_PROFILE
         require(qualified_profile==IMAGE_FLOAT_PROFILE,'image publication requires the complete float owner')
+    if args.case in TEXTURE_PUBLICATION_CASES or args.texture_publication_matrix:
+        from owner_resource_contract import IMAGE_FLOAT_PROFILE
+        require(qualified_profile==IMAGE_FLOAT_PROFILE,'texture publication requires the complete float owner')
     if args.expect_image_source_fault or args.image_source_recovery or args.image_permission_recovery or args.image_reset_recovery:
         from owner_resource_contract import IMAGE_FLOAT_PROFILE
         require(args.case=='image-atomic-buffer-r32f' and qualified_profile==IMAGE_FLOAT_PROFILE,
@@ -579,6 +601,10 @@ def main():
                 return
             if args.image_publication_matrix:
                 from compute_image_publication_controller import run_publication_matrix
+                run_publication_matrix(args,command,directory,executor,env,qualified,qualified_profile)
+                return
+            if args.texture_publication_matrix:
+                from compute_texture_publication_controller import run_publication_matrix
                 run_publication_matrix(args,command,directory,executor,env,qualified,qualified_profile)
                 return
             if args.storage_recovery_matrix:

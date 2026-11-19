@@ -460,6 +460,22 @@ int compute_host_submit_image_resources(struct compute_host_session *s,const str
  }
  return error;
 }
+int compute_host_submit_resources(struct compute_host_session *s,const struct drm_opengpu_compute_resources *request)
+{
+ if(!s || !request || s->exported || s->head)return -EBUSY;
+ if(!request->views || !request->view_count)return -EINVAL;
+ compute_running=s;struct drm_opengpu_compute_resources copy=*request;
+ int error=opengpu_compute_resources_ioctl(&s->drm,&copy,&s->file);
+ if(!error){
+  memset(&s->submitted,0,sizeof(s->submitted));s->submitted.version=1;
+  s->submitted.resources.launch=copy.launch;
+  s->submitted.resources.resource_flags=OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE;
+  memcpy(s->submitted.resources.bindings,copy.bindings,sizeof(copy.bindings));
+  s->submitted.resources.textures=copy.views;s->submitted.resources.texture_count=copy.view_count;
+  s->context_id=copy.launch.context_id;s->context=opengpu_context_lookup(&s->render,s->context_id);assert(s->context);
+ }
+ return error;
+}
 int compute_host_submit_images(struct compute_host_session *s,const struct drm_opengpu_compute_images *request)
 {
  if(!s || !request || s->exported || s->head)return -EBUSY;
@@ -564,6 +580,8 @@ static int compute_host_snapshot_common(struct compute_host_session *s,struct co
   .counter_descriptor_physical=job->counter_records.dma,.counter_root=job->kernel.counter.base,
   .images=job->image_records.cpu,.image_bytes=job->image_records.size,
   .image_physical=job->image_records.dma,.image_root=job->kernel.image.base,
+  .textures=job->texture_records.cpu,.texture_bytes=job->texture_records.size,
+  .texture_physical=job->texture_records.dma,.texture_root=job->kernel.texture.root,
   .context=s->context_id,
   .kernarg_physical=s->context->bindings[s->submitted.resources.launch.kernarg_slot-1]->dma,
   .kernarg_bytes=s->context->bindings[s->submitted.resources.launch.kernarg_slot-1]->size,
