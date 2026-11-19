@@ -4,7 +4,7 @@ import subprocess
 import time
 from compute_owner_protocol import (strict_json, held_bytes, retired_bytes,
     checked_cleanup, cleanup_authorization, uint)
-from compute_owner_oracle import SparseMemory, verify, union_original_memory
+from compute_owner_oracle import SparseMemory, verify, union_retained_memory
 from compute_image_source import captured_page_tables, verify_cleaned_memory
 from compute_storage_publication import (PHASES, matrix_plan, retained_extents,
     check_round)
@@ -47,8 +47,10 @@ def run_publication_matrix(args, command, directory, executor, env, qualified, p
                         require(retained == extent, 'publication lost its retained SSBO data extent')
                         atomic(local / 'retained.extents', retained)
                         frozen['retained.extents'] = input_digest(local / 'retained.extents')
+                        start, end = struct.unpack('<QQ', retained)
                         with SparseMemory(previous_clean) as old:
-                            atomic(local / 'global-before.memory', union_original_memory(old, upload))
+                            atomic(local / 'global-before.memory',
+                                   union_retained_memory(old, upload, {(start, end)}))
                         frozen['global-before.memory'] = input_digest(local / 'global-before.memory')
                         baseline = local / 'global-before.memory'
                     else:

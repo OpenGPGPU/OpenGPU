@@ -95,6 +95,51 @@ def union_original_memory(previous, upload):
     return b''.join(parts)
 
 
+def union_retained_memory(previous, upload, retained):
+    """Prior DUT RAM with retained extents kept and non-retained overlaps replaced.
+
+    Retained physical extents keep measured DUT bytes even when a later Mesa
+    launch re-seeds the same PA. Other exact overlaps take the new upload.
+    """
+    if not upload.ranges or type(retained) is not set or not retained:
+        raise ValueError('retained publication upload lacks original extents')
+    ranges=[];sources=[]
+    covered=set()
+    for first,end,fill in upload.ranges:
+        if (first|end)&4095:
+            raise ValueError('retained publication upload is not page aligned')
+        overlap=[r for r in previous.ranges if first<r[1] and r[0]<end]
+        if not overlap:
+            ranges.append((first,end,fill));sources.append(upload);continue
+        if len(overlap)!=1 or overlap[0][0]!=first or overlap[0][1]!=end or overlap[0][2]!=fill:
+            raise ValueError('retained publication upload crosses live allocations')
+        covered.add((first,end))
+        if (first,end) in retained:
+            ranges.append(overlap[0]);sources.append(previous)
+        else:
+            ranges.append((first,end,fill));sources.append(upload)
+    for first,end,fill in previous.ranges:
+        if (first,end) in covered:
+            continue
+        if any(first<b and a<end for a,b,_ in ranges):
+            raise ValueError('retained publication baseline aliases itself')
+        ranges.append((first,end,fill));sources.append(previous)
+    order=sorted(range(len(ranges)),key=lambda i:ranges[i][0])
+    ranges=[ranges[i] for i in order];sources=[sources[i] for i in order]
+    if any(a[1]>b[0] for a,b in zip(ranges,ranges[1:])):
+        raise ValueError('retained publication baseline aliases itself')
+    pages=[];seen=set()
+    for (first,end,_),source in zip(ranges,sources):
+        for address in range(first,end,4096):
+            if address in source.pages and address not in seen:
+                pages.append((address,source));seen.add(address)
+    parts=[struct.pack('<8sII',b'OGMEM001',len(ranges),len(pages))]
+    parts.extend(struct.pack('<QQII',begin,end,fill,0) for begin,end,fill in ranges)
+    for address,memory in pages:
+        parts.extend((struct.pack('<Q',address),memory.read(address,4096)))
+    return b''.join(parts)
+
+
 def expected_shared(group, lane):
     # ESSL: data[id+128*r]=0xa1000000+(group<<16)+id+128*r;
     # after converged barriers each warp reads the peer (id^16) stripe.
