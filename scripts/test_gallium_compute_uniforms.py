@@ -420,6 +420,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         write_sources(sources)
     elif host_execution and (args.case in STORAGE_PUBLICATION_CASES or args.storage_publication_matrix):
         from compute_storage_publication_cases import write_sources
+        write_sources(sources)
     elif host_execution and args.case in STORAGE_ATOMIC_CASES:
         from compute_storage_atomic_cases import write_sources
         write_sources(sources)
