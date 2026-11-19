@@ -38,7 +38,7 @@ Qualify entry: `scripts/qualify_compute_owner.py --case counter-publication`
 
 ## Actual complete float DUT execution
 
-Execution source `PENDING` on the assertion-enabled
+Execution source `be3d9446f457c1bea68b48a233b583aee6af84bc` on the assertion-enabled
 `two-cu-vga60-owner-v2-image-float-stage` Verilator compute executor.
 All three phases passed independent returned-byte/guard oracles, cleanup ACK,
 one DUT/RAM/single reset, uncached fabric observation, and unchanged
