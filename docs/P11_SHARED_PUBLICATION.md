@@ -21,14 +21,14 @@ stay open. Count remains **10/40**.
 | `shared-publication-reload` | reload | `reload.comp` | 7 / 1 | 1 | 0 |
 
 Producer uses one 16-lane warp and a 32-word shared scratch (two own-stripe
-spans). The emitter rejects `UMIN` (`min()`) and admits `EXPR_PEER` only for
-`local_size=128` with `id^16`, so this float DUT corpus writes immediate
-`scratch[id]` / `scratch[16u+id]` fills, converges with
-`memoryBarrierShared();barrier()`, then lane 0 publishes those own-stripe loads
-through `memoryBarrierBuffer()` into `data.v[1]` / `data.v[17]`. Warm and reload
-consumers read the SSBO words into an output window. All three phases share
-physical base `0x01000000`. Retained SSBO extents keep measured DUT bytes across
-Mesa relaunches; other exact physical overlaps are replaced from the new upload.
+spans). The emitter CF path requires shared atomics, and `EXPR_PEER` only admits
+`local_size=128` with `id^16`, so this float DUT corpus is branch-free: immediate
+`scratch[id]` / `scratch[16u+id]` fills, `memoryBarrierShared();barrier()`, then
+every lane publishes the same own-stripe loads through `memoryBarrierBuffer()`
+into `data.v[1]` / `data.v[17]`. Warm and reload consumers read the SSBO words
+into an output window. All three phases share physical base `0x01000000`.
+Retained SSBO extents keep measured DUT bytes across Mesa relaunches; other
+exact physical overlaps are replaced from the new upload.
 
 The continuous session records warm AR → producer AW → reload AR on the retained
 data line through the Verilator cache observer (`publication.cache-target` /
