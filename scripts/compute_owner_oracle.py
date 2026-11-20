@@ -261,7 +261,8 @@ def verify(initial, returned, description):
         groups=counter_parameters(description.get('sourceCase'))['groups']
     else:groups=1 if storage_publication or image_publication or texture_publication or counter_publication or shared_publication else 2 if image or storage_atomic else 4
     required_flags(description, dict(viewBytes=8192, groups=groups,
-        local=1 if storage_publication or image_publication or texture_publication or counter_publication or shared_publication else 16 if global_atomic else 4 if counter or image or storage_atomic else 128,
+        local=(2 if shared_publication and description.get('role')=='producer' else
+               1 if storage_publication or image_publication or texture_publication or counter_publication or shared_publication else 16 if global_atomic else 4 if counter or image or storage_atomic else 128),
         guard=0xdeadbeef))
     if uc_cache_alias:
         from compute_uc_cache_alias_source import returned_outputs

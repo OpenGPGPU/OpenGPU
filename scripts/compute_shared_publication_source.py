@@ -18,7 +18,7 @@ def recipe(memory, description):
     p = parameters(description.get('sourceCase'))
     expected = dict(
         schema=SCHEMA, sourceCase=p['case'], role=p['role'], epoch=p['epoch'],
-        groups=1, local=1, viewBytes=8192, guard=0xdeadbeef,
+        groups=p['groups'], local=p['local'], viewBytes=8192, guard=0xdeadbeef,
         expectedData=p['expected_data'], expectedFlag=p['expected_flag'],
         sharedScratchBytes=p['shared_bytes'])
     required_flags(description, expected)
@@ -58,8 +58,8 @@ def ready(memory, description, data, code_words, profile):
     profile_bytes(profile)
     p, target, output = recipe(memory, description)
     _, args, writable, inactive, actions, staged = capture(data, 0, profile)
-    require(args is None and [staged.get(0xd4 + 4 * n) for n in range(3)] == [1, 1, 1] and
-            [staged.get(0xe0 + 4 * n) for n in range(3)] == [1, 1, 1],
+    require(args is None and [staged.get(0xd4 + 4 * n) for n in range(3)] == [p['groups'], 1, 1] and
+            [staged.get(0xe0 + 4 * n) for n in range(3)] == [p['local'], 1, 1],
             'original publication group/local shape differs')
     satp = staged.get(0x14c, 0)
     require(satp == staged.get(0x150), 'instruction/data namespace differs')

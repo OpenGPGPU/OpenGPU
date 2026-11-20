@@ -427,7 +427,8 @@ int main(int argc,char **argv)
  if(counter_case){grid.block[0]=4;if(counter_dynamic)grid.grid[0]=counter_index?1:2;}
  if(image_case){grid.block[0]=4;grid.grid[0]=2;}
  if(storage_case){grid.block[0]=4;grid.grid[0]=2;}
- if(publication_case || image_publication_case || texture_publication_case || counter_publication_case || shared_publication_case){grid.block[0]=1;grid.grid[0]=1;}
+ if(publication_case || image_publication_case || texture_publication_case || counter_publication_case || shared_publication_case){
+  grid.block[0]=shared_publication_case && shared_publication_index==1?2:1;grid.grid[0]=1;}
  if(uniform_case){grid.block[0]=8;grid.block[1]=4;grid.block[2]=4;}
  p->launch_grid(p,&grid);assert(submitted==1 && retired);
  marker("cleanup_wait","actual compute retired; independent byte/source/guard authorization required\n");
