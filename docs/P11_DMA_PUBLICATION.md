@@ -44,8 +44,20 @@ Qualify entry: `scripts/qualify_compute_owner.py --case dma-publication`
 
 ## Actual complete float DUT execution
 
-Pending: record the execution SHA after DUT PASS on the assertion-enabled
-`two-cu-vga60-owner-v2-image-float-stage` Verilator compute executor.
+Execution source `e388865620ec7d25f38b456d62a945c4e64d1824` on the
+assertion-enabled `two-cu-vga60-owner-v2-image-float-stage` Verilator compute
+executor. All three phases passed independent returned-byte/guard oracles,
+cleanup ACK, one DUT/RAM/single reset, host-visible retained GEM words after
+producer, uncached fabric observation, and unchanged source/model postchecks:
+
+```text
+original dma publication phase=0 role=warm full bytes/cleanup PASS
+host-visible retained GEM data=7 flag=1 PASS
+original dma publication phase=1 role=producer full bytes/cleanup PASS
+original dma publication phase=2 role=reload full bytes/cleanup PASS
+all three original dma publication phases PASS; one DUT/RAM/reset, warm/producer/host-visible/reload, uncached fabric observation, original source/model postchecks
+original Mesa compute dma-publication: actual full-DUT returned bytes and context cleanup PASS
+```
 
 Reproduce against a prepared float owner (see
 [COMPLETE_OWNER_COMPUTE_EXECUTOR.md](COMPLETE_OWNER_COMPUTE_EXECUTOR.md)):

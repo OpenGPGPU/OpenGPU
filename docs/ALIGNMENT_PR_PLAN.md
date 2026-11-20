@@ -146,12 +146,12 @@
   `framebuffer-blit-sample` 上 warm→producer→reload、retained color render-target
   GEM、Verilator下AR→AW→AR；qualify `scripts/qualify_attachment_publication.py`；
   [结果与复现](P11_ATTACHMENT_PUBLICATION.md)。
-- P11 DMA/host-visibility publication 完整float DUT路径已接线：原Mesa
+- P11 DMA/host-visibility publication 完整float DUT与uncached fabric观测已通过：原Mesa
   SSBO `data.v[1]=7`/`memoryBarrierBuffer`/`data.v[17]=1` warm→producer→
   host-visible retained GEM→reload（host-mapped 模型）三阶段、同物理基址
   retained extents、Verilator下warm AR→producer AW→reload AR及
   `hostVisibleAfterProducer`；qualify `--case dma-publication`；
-  [结果与复现](P11_DMA_PUBLICATION.md)（DUT PASS SHA 待记入）。
+  [结果与复现](P11_DMA_PUBLICATION.md)（执行源 `e388865620ec7d25f38b456d62a945c4e64d1824`）。
   ordinary L1 cached别名仍待闭合，不关闭 P11；计数仍为 **10/40**。
 - P15、P16、P17、P39、P40 已有下表列出的限定范围源码与检查，均未完成目标验收。
   当前112仍非完整资源资格；旧96模型不能替代P04的完整factory和原probe验收。
@@ -267,7 +267,7 @@ python3 -B scripts/test_framebuffer_blit_host.py
 | P08 | Typed image load/store/atomic live 提交 | 原 image view、format/pitch/layer/权限与精确 writable view；实际 shader 结果、边界、fault/cancel/reset 及独立 oracle 通过 | P04、P07 | 完成（随[#880](https://github.com/OpenGPGPU/OpenGPU/pull/880)受保护合入生效）；原70条load/store在完整112字sample DUT、15条R32I/UI/R32F atomic及15条坐标边界recipe在完整float DUT通过独立结果、有效端点/越界零值/无写入、全物理guard、retirement和实际PTE/context清理。全容量assertion模型、四执行器与三组MMIO probe已绑定；buffer R32F source-fault、读/写权限负例及各自同DUT/同RAM/同ID健康复用通过。延迟R/B取消另在准确执行源4a60abb3065通过原Linux RESET/IRQ、ECANCELED fence、实际drain、32周期无晚到流量、精确partial-cancel字节、严格清理和保留旧RAM的健康复用；两组均退出0且消费者清理确认。[最终结果、各自执行源与复现](TYPED_IMAGE_LIVE_OWNER.md)。单case矩阵分别reset；完整资源共存、跨命令coherence、完整API及clock/FPS保持后续独立门槛 |
 | P09 | Indirect compute 原始 source 与执行合同 | 专用 opcode14 capture；GPU产生的三维 grid、依赖 fence/snapshot、零工作、极限/越界、失败与复用均通过，不靠 opcode 白名单 | P04、P07 | 完成（随本交付受保护合入生效）；[#881](https://github.com/OpenGPGPU/OpenGPU/pull/881)–[#884](https://github.com/OpenGPGPU/OpenGPU/pull/884)交付v2驱动、原GEM路由、opcode14捕获与连续源生命周期；[#886](https://github.com/OpenGPGPU/OpenGPU/pull/886)修正完整shared发现下的storage SIMT接纳；[#887](https://github.com/OpenGPGPU/OpenGPU/pull/887)在完整float DUT通过原Mesa十阶段GPU三维计数、source WRITE fence/同一私有快照、真实RRESP失败及无写入、健康复用、零X/Y/Z及其余轴全u32、原驱动越界拒绝、同DUT/同RAM/单reset全物理字节与逐阶段/最终PTE/context/MMU清理。原进程退出0与末次输入复查通过；[结果、限制与复现](COMPUTE_INDIRECT_SUBMISSION.md#complete-continuous-version2-execution-p09)。live-kernel/API、完整资源/跨域coherence及clock/FPS保留后续独立验收 |
 | P10 | Storage/global/image atomic 完整操作与竞争 | 全规定操作、CAS 精确旧值、竞争与重排、延迟 ACK、reservation、只读/越界、故障后健康复用；实际完整 host 验证 | P07、P08 | 完成（随本收尾 PR 受保护合入生效）；十五类完整 assertion-enabled 2-CU float host 门槛均通过，覆盖全十整数操作、有限 R32F exchange、同 texel/同 GEM 竞争、页与末字边界、延迟 ACK、读/两类写故障复用、cached/UC 别名及原 GEM 外部 CPU producer 强制 reservation 等待。最后的 warm-cached 48 阶段在同 DUT/RAM/单 reset 上通过 240 个旧值、24 次已提交 B 错误、实际双 CU L1/L2 预热/失效 ACK/下层重取回填、全物理字节、真实 fence/清理和末次源/模型复查。[完整结果、每项准确源与复现](P10_ATOMIC_QUALIFICATION.md)。各矩阵保留逐 case 或连续执行范围；P08 取消切点、P11 GPU producer/跨域 coherence、P12 完整资源及产品 clock/FPS 保留各自范围 |
-| P11 | 多 owner、多命令和跨域 coherence/barrier | 同 RAM、无 reset，GPU producer 与 warmed consumer；SSBO/image/texture/attachment/DMA/counter/shared 的 publication、barrier、fence 和 cleanup 矩阵通过 | P05–P10 | SSBO/buffer-image/buffer-texture/atomic-counter/shared/attachment完整float DUT与uncached fabric观测已合入；DMA/host-visibility路径已接线／见[DMA](P11_DMA_PUBLICATION.md)；warm→producer→reload 同DUT/RAM/单reset及AR/AW/AR观测通过，[SSBO](P11_STORAGE_PUBLICATION.md)、[image](P11_IMAGE_PUBLICATION.md)、[texture](P11_TEXTURE_PUBLICATION.md)、[counter](P11_COUNTER_PUBLICATION.md)、[shared](P11_SHARED_PUBLICATION.md)、[attachment](P11_ATTACHMENT_PUBLICATION.md)、[DMA](P11_DMA_PUBLICATION.md)；ordinary L1 cached别名仍待闭合；计数仍10/40 |
+| P11 | 多 owner、多命令和跨域 coherence/barrier | 同 RAM、无 reset，GPU producer 与 warmed consumer；SSBO/image/texture/attachment/DMA/counter/shared 的 publication、barrier、fence 和 cleanup 矩阵通过 | P05–P10 | SSBO/buffer-image/buffer-texture/atomic-counter/shared/attachment完整float DUT与uncached fabric观测已合入；DMA/host-visibility完整float DUT与uncached fabric观测已合入／见[DMA](P11_DMA_PUBLICATION.md)；warm→producer→reload 同DUT/RAM/单reset及AR/AW/AR观测通过，[SSBO](P11_STORAGE_PUBLICATION.md)、[image](P11_IMAGE_PUBLICATION.md)、[texture](P11_TEXTURE_PUBLICATION.md)、[counter](P11_COUNTER_PUBLICATION.md)、[shared](P11_SHARED_PUBLICATION.md)、[attachment](P11_ATTACHMENT_PUBLICATION.md)、[DMA](P11_DMA_PUBLICATION.md)；ordinary L1 cached别名仍待闭合；计数仍10/40 |
 | P12 | Compute 资源共存、极限与 robustness | 保留128本地线程/16KiB共享及4SSBO、4image、8counter、32texture、12UBO/default；同时使用、末地址、namespace/alias/permission、cancel/reset 均有完整 host 证据 | P07–P11 | 待闭合 |
 | P13 | Compute ESSL/ISA/驱动语义闭合 | 原编译器字节和反射绑定；flow、barrier/mask、资源索引及实际 ioctl 路径覆盖 E31-01–05；接口和能力查询与实测一致 | P07–P12 | 待闭合 |
 
