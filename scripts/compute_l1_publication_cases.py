@@ -48,11 +48,8 @@ def _reader(output):
 def words(case):
     p = parameters(case)
     if p['role'] == 'producer':
-        arms = [[*_parameters(DATA_OFFSET, DATA_WORD), _request('exchange'),
-                 _extract(7, 12), _store(12, OUTPUT_OFFSET), FENCE,
-                 *_parameters(FLAG_OFFSET, FLAG_WORD), _request('exchange'),
-                 _extract(7, 12), _store(12, OUTPUT_OFFSET + 4), FENCE, CEASE]]
-        arms += [[CEASE] for _ in range(ORIGINAL_GROUPS - 1)]
+        from compute_uc_cache_alias_cases import words as uc_words
+        return uc_words('global-atomic-swap-add-base')
     else:
         output = p['warm_offset'] if p['role'] == 'warm' else p['refetch_offset']
         arms = [_reader(output + 4 * group) for group in range(ORIGINAL_GROUPS)]
