@@ -228,7 +228,9 @@ int main(int argc,char **argv)
   struct drm_opengpu_compute_storage storage={.launch=command};
   storage.bindings[0]=(struct drm_opengpu_compute_storage_binding){13,
    OPENGPU_COMPUTE_STORAGE_READ|OPENGPU_COMPUTE_STORAGE_WRITE};
-  assert(!opengpu_compute_storage(7,&storage) && submitted==1);
+  {int rc=opengpu_compute_storage(7,&storage);
+   if(rc||submitted!=1)fprintf(stderr,"storage submit failed rc=%d errno=%d %s submitted=%u\n",rc,errno,strerror(errno),submitted);
+   assert(!rc && submitted==1);}
  }else assert(!opengpu_compute(7,&command) && submitted==1);
  int status=opengpu_sync_wait_success(7,sync,OPENGPU_FENCE_TIMEOUT_MS);
  assert(retired);
