@@ -85,13 +85,14 @@ def verify_phase(initial, returned, description, role):
     verify_byte_changes(initial, returned, changes)
 
 
-def check_cache(record, index, description, held, previous=None, done=None):
+def check_cache(record, index, description, held, first=None, done=None):
     start, end = (uint(record.get(key), 64) for key in ('startCycle', 'endCycle'))
-    require(previous is None or start >= uint(previous['endCycle'], 64),
-            'L1 observation clock restarted across commands')
+    if first is not None:
+        require(start <= uint(first['startCycle'], 64),
+                'L1 observation started after the warm phase')
     if done is not None:
-        require(start == uint(done['startCycle'], 64) and end <= uint(done['endCycle'], 64),
-                'L1 observation left its native publication round')
+        require(uint(done['startCycle'], 64) < end and end >= uint(done['endCycle'], 64),
+                'L1 observation ended before the reload phase')
     expected = dict(schema=CACHE_SCHEMA, commandId=uint(held['commandId']), phase=uint(index),
                     targetLine=uint(source.target_line(description), 64),
                     startCycle=start, endCycle=end, warmL1Mask=3, warmL2=True,
