@@ -41,7 +41,7 @@ Qualify entry: `scripts/qualify_compute_owner.py --case shared-publication`
 
 ## Actual complete float DUT execution
 
-Execution source `PLACEHOLDER` on the assertion-enabled
+Execution source `4122c13f43d39eb14b699f868b46209216243f8f` on the assertion-enabled
 `two-cu-vga60-owner-v2-image-float-stage` Verilator compute executor.
 All three phases passed independent returned-byte/guard oracles, cleanup ACK,
 one DUT/RAM/single reset, uncached fabric observation, and unchanged
