@@ -55,7 +55,7 @@ def words(case):
         return uc_words(PRODUCER_CASE)
     else:
         output = p['warm_offset'] if p['role'] == 'warm' else p['refetch_offset']
-        arms = [_reader(output + 4 * group) for group in range(ORIGINAL_GROUPS)]
+        arms = [_reader(output + 8 * group) for group in range(ORIGINAL_GROUPS)]
     code = []
     for group, arm in enumerate(arms):
         if group + 1 < len(arms):
