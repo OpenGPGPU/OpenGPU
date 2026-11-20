@@ -11,7 +11,7 @@ from compute_global_atomic_cases import (CEASE, FENCE, _addi, _bne,
     GROUPS as ORIGINAL_GROUPS, OUTPUT_OFFSET, OUTPUT_GUARD, KERNARG_BYTES)
 from compute_cache_alias_cases import (VSET_ONE, GUARD, WARM_OFFSET, REFETCH_OFFSET,
     _store, _target, _vector_read)
-from compute_uc_cache_alias_cases import _parameters, _request
+from compute_uc_cache_alias_cases import _extract, _parameters, _request
 
 CASES = ('l1-publication-warm', 'l1-publication-1', 'l1-publication-reload')
 DATA_OFFSET = 4
@@ -49,9 +49,9 @@ def words(case):
     p = parameters(case)
     if p['role'] == 'producer':
         arms = [[*_parameters(DATA_OFFSET, DATA_WORD), _request('exchange'),
-                 _store(4, OUTPUT_OFFSET), FENCE,
+                 _extract(7, 12), _store(12, OUTPUT_OFFSET), FENCE,
                  *_parameters(FLAG_OFFSET, FLAG_WORD), _request('exchange'),
-                 _store(4, OUTPUT_OFFSET + 4), FENCE, CEASE]]
+                 _extract(7, 12), _store(12, OUTPUT_OFFSET + 4), FENCE, CEASE]]
         arms += [[CEASE] for _ in range(ORIGINAL_GROUPS - 1)]
     else:
         output = p['warm_offset'] if p['role'] == 'warm' else p['refetch_offset']

@@ -85,8 +85,8 @@ def changes(description, role):
     if role == 'producer':
         return [(kernarg + source.DATA_OFFSET, struct.pack('<I', source.DATA_WORD)),
                 (kernarg + source.FLAG_OFFSET, struct.pack('<I', source.FLAG_WORD)),
-                (kernarg + output, struct.pack('<I', source.DATA_WORD)),
-                (kernarg + output + 4, struct.pack('<I', source.FLAG_WORD))]
+                (kernarg + output, struct.pack('<I', 0)),
+                (kernarg + output + 4, struct.pack('<I', 0))]
     return [item for group in range(p['groups']) for item in (
         (kernarg + refetch + 4 * group, struct.pack('<I', source.DATA_WORD)),
         (kernarg + refetch + 4 * group + 4, struct.pack('<I', source.FLAG_WORD)))]
@@ -101,8 +101,8 @@ def returned_outputs(initial, returned, description):
         require(data == source.DATA_WORD and flag == source.FLAG_WORD,
                 'producer did not publish the original data/flag words')
         output = struct.unpack('<2I', returned.read(kernarg + source.OUTPUT_OFFSET, 8))
-        require(output == (source.DATA_WORD, source.FLAG_WORD),
-                'producer did not mirror its published words into the output window')
+        require(output == (0, 0),
+                'producer output window must retain the original AMO old values')
     else:
         slot = p['warm_offset'] if p['role'] == 'warm' else p['refetch_offset']
         data = 0 if p['role'] == 'warm' else source.DATA_WORD
