@@ -193,7 +193,7 @@ int main(int argc,char **argv)
  assert(!reservation_wait || (!capture_only && !cache_alias_source && !cache_alias_live &&
   !uc_cache_alias_source && !uc_cache_alias_live && !expect_global_fault));
  assert(!strncmp(source_case,"global-atomic-",14) || !strncmp(source_case,"l1-publication-",15));
- for(const char *c=source_case;*c;c++)assert((*c>='a' && *c<='z') || *c=='-');
+ for(const char *c=source_case;*c;c++)assert((*c>='a' && *c<='z') || (*c>='0' && *c<='9') || *c=='-');
  timeout_seconds=compute_host_timeout_seconds();assert(timeout_seconds);
  FILE *f=fopen(argv[2],"rb");assert(f);magic(f,"OGCP0003");unsigned count=read32(f);assert(count==112);
  struct compute_host_profile_word *profile=calloc(count+10,sizeof(*profile));assert(profile);
