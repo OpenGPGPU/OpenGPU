@@ -17,17 +17,18 @@ stay open. Count remains **10/40**.
 | Case | Role | Source | Expected data/flag | Local | Shared bytes |
 | --- | --- | ---: | --- | ---: | ---: |
 | `shared-publication-warm` | warm | `warm.comp` | 0 / 0 | 1 | 0 |
-| `shared-publication-1` | producer | `publication-1.comp` | 7 / 1 | 16 | 64 |
+| `shared-publication-1` | producer | `publication-1.comp` | 7 / 1 | 16 | 128 |
 | `shared-publication-reload` | reload | `reload.comp` | 7 / 1 | 1 | 0 |
 
-Producer uses one 16-lane warp and a 16-word shared scratch so the emitter's
-own-stripe span matches `local_size`: every lane writes `scratch[id]` (lanes 0/1
-hold the publication data/flag), the workgroup converges with `barrier()` /
-`memoryBarrierShared()`, then lane 0 publishes those words through
-`memoryBarrierBuffer()` into `data.v[1]` / `data.v[17]`. Warm and reload
-consumers read the SSBO words into an output window. All three phases share
-physical base `0x01000000`. Retained SSBO extents keep measured DUT bytes across
-Mesa relaunches; other exact physical overlaps are replaced from the new upload.
+Producer uses one 16-lane warp and a 32-word shared scratch (two own-stripe
+spans). Emitter `EXPR_PEER` requires `local_size=128` with `id^16`; this float
+DUT corpus stays on one warp and writes `scratch[id]` / `scratch[16u+id]`
+(data/flag), converges with `memoryBarrierShared();barrier()`, then lane 0
+publishes those own-stripe loads through `memoryBarrierBuffer()` into
+`data.v[1]` / `data.v[17]`. Warm and reload consumers read the SSBO words into
+an output window. All three phases share physical base `0x01000000`. Retained
+SSBO extents keep measured DUT bytes across Mesa relaunches; other exact
+physical overlaps are replaced from the new upload.
 
 The continuous session records warm AR → producer AW → reload AR on the retained
 data line through the Verilator cache observer (`publication.cache-target` /

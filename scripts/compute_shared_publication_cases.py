@@ -10,7 +10,9 @@ EPOCH = 1
 DATA_WORD = EPOCH * 7
 FLAG_WORD = EPOCH
 PRODUCER_LOCAL = 16
-SHARED_SCRATCH_BYTES = PRODUCER_LOCAL * 4
+# Two own-stripe spans (data + flag). Emitter admits EXPR_PEER only for
+# local_size=128 with id^16; float DUT uses a single warp and dual own-stripe.
+SHARED_SCRATCH_BYTES = PRODUCER_LOCAL * 4 * 2
 READER_PREFIX = (
     '#version 310 es\nprecision highp int;\n'
     'layout(local_size_x=1) in;\n'
@@ -22,13 +24,14 @@ READER_PREFIX = (
 PRODUCER = (
     '#version 310 es\nprecision highp int;\n'
     'layout(local_size_x=16) in;\n'
-    'shared uint scratch[16];\n'
+    'shared uint scratch[32];\n'
     'layout(std430,binding=0) buffer Data {uint v[];} data;\n'
     'layout(std430,binding=1) buffer Output {uint v[];} output_words;\n'
     'void main(){uint id=gl_LocalInvocationID.x;'
     'scratch[id]=%du-6u*min(id,1u);'
+    'scratch[16u+id]=%du;'
     'memoryBarrierShared();barrier();'
-    'uint published_data=scratch[id];uint published_flag=scratch[id^1u];'
+    'uint published_data=scratch[id];uint published_flag=scratch[16u+id];'
     'if(id==0u){data.v[1]=published_data;memoryBarrierBuffer();data.v[17]=published_flag;'
     'output_words.v[0]=data.v[1];output_words.v[1]=data.v[17];}}\n'
 )
@@ -63,4 +66,4 @@ def write_sources(out):
               'void main(){output_words.v[0]=data.v[1];output_words.v[1]=data.v[17];}\n')
     (out / 'warm.comp').write_text(reader)
     (out / 'reload.comp').write_text(reader)
-    (out / 'publication-1.comp').write_text(PRODUCER % (DATA_WORD,))
+    (out / 'publication-1.comp').write_text(PRODUCER % (DATA_WORD, FLAG_WORD))
