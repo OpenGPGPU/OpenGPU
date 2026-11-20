@@ -277,11 +277,11 @@ int main(int argc,char **argv)
  assert(argc>=5);uint64_t physical_base=0;storage_parse_case(argv[4]);publication_parse_case(argv[4]);
  image_publication_parse_case(argv[4]);texture_publication_parse_case(argv[4]);
  counter_publication_parse_case(argv[4]);shared_publication_parse_case(argv[4]);dma_publication_parse_case(argv[4]);image_parse_case(argv[4]);
- assert(!(storage_case && (publication_case || shared_publication_case)));
- assert(!(publication_case && shared_publication_case));
- assert(!(image_publication_case && (publication_case || image_case || storage_case || texture_publication_case || counter_publication_case || shared_publication_case)));
- assert(!(texture_publication_case && (publication_case || image_case || storage_case || image_publication_case || counter_publication_case || shared_publication_case)));
- assert(!(counter_publication_case && (publication_case || image_case || storage_case || image_publication_case || texture_publication_case || shared_publication_case || counter_case)));
+ assert(!(storage_case && (publication_case || shared_publication_case || dma_publication_case)));
+ assert(!(publication_case && (shared_publication_case || dma_publication_case)));
+ assert(!(image_publication_case && (publication_case || image_case || storage_case || texture_publication_case || counter_publication_case || shared_publication_case || dma_publication_case)));
+ assert(!(texture_publication_case && (publication_case || image_case || storage_case || image_publication_case || counter_publication_case || shared_publication_case || dma_publication_case)));
+ assert(!(counter_publication_case && (publication_case || image_case || storage_case || image_publication_case || texture_publication_case || shared_publication_case || dma_publication_case || counter_case)));
  assert(!(shared_publication_case && (publication_case || image_case || storage_case || image_publication_case || texture_publication_case || counter_publication_case || counter_case || dma_publication_case)));
  assert(!(dma_publication_case && (publication_case || image_case || storage_case || image_publication_case || texture_publication_case || counter_publication_case || shared_publication_case || counter_case)));
  for(int i=5;i<argc;i++){
