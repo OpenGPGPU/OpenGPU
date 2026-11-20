@@ -79,32 +79,33 @@ def target_line(description):
     return kernarg + (p['target_offset'] & ~63)
 
 
+AMO_OLD = (0xfffffff0, 0x80000001, 0, 0x80000002, 2, 0x80000003, 4, 0x80000004)
+
+
 def returned_outputs(initial, returned, description):
     p = source.parameters(description['sourceCase'])
-    if p['role'] == 'producer':
-        from compute_uc_cache_alias_source import returned_outputs as uc_returned
-        bound = dict(description)
-        bound['schema'] = 'opengpu-compute-uc-cache-alias-oracle-v1'
-        bound['sourceCase'] = source.PRODUCER_CASE
-        return uc_returned(initial, returned, bound)
     kernarg = uint(description['kernarg']['allocationPhysical'], 64)
-    if p['role'] == 'warm':
-        slot = source.WARM_OFFSET
-        data, flag = source.SEED, 0
+    if p['role'] == 'producer':
+        changes = [(kernarg + source.DATA_OFFSET, struct.pack('<I', source.PUBLISHED)),
+                   (kernarg + 192, struct.pack('<I', 2))]
+        for index, old in enumerate(AMO_OLD):
+            changes.append((kernarg + source.OUTPUT_OFFSET + 4 * index, struct.pack('<I', old)))
+        for group in range(p['groups']):
+            changes += [(kernarg + source.WARM_OFFSET + 8 * group, struct.pack('<I', source.SEED)),
+                        (kernarg + source.WARM_OFFSET + 8 * group + 4, struct.pack('<I', 0)),
+                        (kernarg + source.REFETCH_OFFSET + 8 * group, struct.pack('<I', source.PUBLISHED)),
+                        (kernarg + source.REFETCH_OFFSET + 8 * group + 4, struct.pack('<I', 0))]
     else:
-        slot = source.REFETCH_OFFSET
-        data, flag = source.PUBLISHED, 0
-    changes = []
-    for group in range(p['groups']):
-        changes += [(kernarg + slot + 8 * group, struct.pack('<I', data)),
-                    (kernarg + slot + 8 * group + 4, struct.pack('<I', flag))]
-    if p['role'] == 'reload':
-        changes.append((kernarg + source.DATA_OFFSET, struct.pack('<I', source.PUBLISHED)))
-    for group in range(p['groups']):
-        pair = struct.unpack('<2I', returned.read(kernarg + slot + 8 * group, 8))
-        require(pair == (data, flag),
-                'ordinary cached consumer missed the retained word pair: got %r expected %r' % (pair, (data, flag)))
-    if p['role'] == 'reload':
-        word = struct.unpack('<I', returned.read(kernarg + source.DATA_OFFSET, 4))[0]
-        require(word == source.PUBLISHED, 'reload missed the published data word')
+        slot = source.WARM_OFFSET if p['role'] == 'warm' else source.REFETCH_OFFSET
+        data, flag = (source.SEED if p['role'] == 'warm' else source.PUBLISHED), 0
+        changes = []
+        for group in range(p['groups']):
+            changes += [(kernarg + slot + 8 * group, struct.pack('<I', data)),
+                        (kernarg + slot + 8 * group + 4, struct.pack('<I', flag))]
+        if p['role'] == 'reload':
+            changes.append((kernarg + source.DATA_OFFSET, struct.pack('<I', source.PUBLISHED)))
+    for address, expected in changes:
+        actual = returned.read(address, len(expected))
+        require(actual == expected,
+                'L1 publication word at %#x differs: %r expected %r' % (address, actual, expected))
     return changes
