@@ -104,6 +104,13 @@ def returned_outputs(initial, returned, description):
                         (kernarg + slot + 8 * group + 4, struct.pack('<I', flag))]
         if p['role'] == 'reload':
             changes.append((kernarg + source.DATA_OFFSET, struct.pack('<I', source.PUBLISHED)))
+    if p['role'] == 'producer':
+        import sys
+        base = uint(description['kernarg']['allocationPhysical'], 64)
+        print('L1 producer diagnostic initial=%s returned=%s' % (
+            [hex(int.from_bytes(initial.read(base + 4 * i, 4), 'little')) for i in range(8)],
+            [hex(int.from_bytes(returned.read(base + 4 * i, 4), 'little')) for i in range(8)]),
+            file=sys.stderr, flush=True)
     for address, expected in changes:
         actual = returned.read(address, len(expected))
         require(actual == expected,
