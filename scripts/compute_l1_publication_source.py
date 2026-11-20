@@ -88,12 +88,12 @@ def returned_outputs(initial, returned, description):
         data, flag = source.PUBLISHED, 0
     changes = []
     for group in range(p['groups']):
-        changes += [(kernarg + slot + 4 * group, struct.pack('<I', data)),
-                    (kernarg + slot + 4 * group + 4, struct.pack('<I', flag))]
+        changes += [(kernarg + slot + 8 * group, struct.pack('<I', data)),
+                    (kernarg + slot + 8 * group + 4, struct.pack('<I', flag))]
     if p['role'] == 'reload':
         changes.append((kernarg + source.DATA_OFFSET, struct.pack('<I', source.PUBLISHED)))
     for group in range(p['groups']):
-        pair = struct.unpack('<2I', returned.read(kernarg + slot + 4 * group, 8))
+        pair = struct.unpack('<2I', returned.read(kernarg + slot + 8 * group, 8))
         require(pair == (data, flag),
                 'ordinary cached consumer missed the retained word pair: got %r expected %r' % (pair, (data, flag)))
     if p['role'] == 'reload':
