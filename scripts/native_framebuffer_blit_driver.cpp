@@ -166,11 +166,15 @@ Lifecycle lifecycle(Simulation &sim,native_frame::Agent &agent,Bus &bus,Memory &
   }
   return result;
 }
+#include "attachment_publication.hpp"
 } // namespace framebuffer_blit
 
 int main(int argc,char **argv) {
   try {
     using namespace framebuffer_blit;
+    if(argc==4 && std::string(argv[1])=="--active-attachment-publication") {
+      active_attachment_publication(argc,argv);return 0;
+    }
     require(argc>=3,"usage: native_framebuffer_blit_driver NEW.json ORIGINAL_INPUT.blit [...]");
     const std::filesystem::path output=argv[1];require(!std::filesystem::exists(output),"blit output already exists");
     // All packets/oracles are admitted before a model is created.

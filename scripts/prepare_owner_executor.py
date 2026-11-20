@@ -241,7 +241,8 @@ def driver_files(kind, profile=owner.PROFILE):
         return ([f'scripts/image_float_framebuffer_blit_sample_owner_driver.cpp'] if profile==IMAGE_FLOAT_PROFILE else []) + ['scripts/native_framebuffer_blit_sample_driver.cpp',
                 'scripts/native_framebuffer_blit_driver.cpp',
                 'scripts/native_framebuffer_blit_lease.hpp', 'scripts/native_framebuffer_blit_input.hpp',
-                'scripts/native_framebuffer_blit_simulation.hpp', 'driver/opengpu_storage_command_abi.h',
+                'scripts/native_framebuffer_blit_simulation.hpp', 'scripts/attachment_publication.hpp',
+                'driver/opengpu_storage_command_abi.h',
                 'scripts/native_sample_owner_runtime.hpp', 'scripts/native_sample_owner_capture.hpp', *SHARED]
     if kind == 'native-sample-graphics':
         return (['scripts/image_float_native_sample_graphics_owner_driver.cpp'] if profile==IMAGE_FLOAT_PROFILE else []) + ['scripts/native_sample_graphics_driver.cpp', 'scripts/native_sample_graphics_runtime.hpp',
