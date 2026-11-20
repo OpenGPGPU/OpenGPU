@@ -10,21 +10,24 @@ EPOCH = 1
 DATA_WORD = EPOCH * 7
 FLAG_WORD = EPOCH
 SHARED_SCRATCH_BYTES = 8
+PRODUCER_LOCAL = 2
 READER_PREFIX = (
     '#version 310 es\nprecision highp int;\n'
     'layout(local_size_x=1) in;\n'
     'layout(std430,binding=0) buffer Data {uint v[];} data;\n'
     'layout(std430,binding=1) buffer Output {uint v[];} output_words;\n'
 )
+# Two lanes force a real shared exchange; a single-lane scratch is demoted.
 PRODUCER = (
     '#version 310 es\nprecision highp int;\n'
-    'layout(local_size_x=1) in;\n'
+    'layout(local_size_x=2) in;\n'
     'shared uint scratch[2];\n'
     'layout(std430,binding=0) buffer Data {uint v[];} data;\n'
     'layout(std430,binding=1) buffer Output {uint v[];} output_words;\n'
-    'void main(){scratch[0]=%du;scratch[1]=%du;barrier();memoryBarrierShared();'
-    'data.v[1]=scratch[0];memoryBarrierBuffer();data.v[17]=scratch[1];'
-    'output_words.v[0]=data.v[1];output_words.v[1]=data.v[17];}\n'
+    'void main(){uint id=gl_LocalInvocationID.x;'
+    'scratch[id]=(id==0u)?%du:%du;barrier();memoryBarrierShared();'
+    'if(id==0u){data.v[1]=scratch[0];memoryBarrierBuffer();data.v[17]=scratch[1];'
+    'output_words.v[0]=data.v[1];output_words.v[1]=data.v[17];}}\n'
 )
 
 
@@ -43,7 +46,7 @@ def parameters(case):
         return dict(case=case, source='publication-1.comp', role='producer', epoch=EPOCH,
                     data_word=DATA_WORD, flag_word=FLAG_WORD,
                     expected_data=DATA_WORD, expected_flag=FLAG_WORD,
-                    groups=1, local=1, shared_bytes=SHARED_SCRATCH_BYTES)
+                    groups=1, local=PRODUCER_LOCAL, shared_bytes=SHARED_SCRATCH_BYTES)
     return dict(case=case, source='reload.comp', role='reload', epoch=EPOCH,
                 data_word=DATA_WORD, flag_word=FLAG_WORD,
                 expected_data=DATA_WORD, expected_flag=FLAG_WORD,
