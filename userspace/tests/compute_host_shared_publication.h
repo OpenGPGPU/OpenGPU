@@ -29,7 +29,7 @@ static void shared_publication_write_oracle(FILE *f)
   snapshot.storage_bytes==256 && snapshot.storage_root);
  const char *role=shared_publication_index==0?"warm":shared_publication_index==1?"producer":"reload";
  const unsigned expected_data=shared_publication_index?7u:0u,expected_flag=shared_publication_index?1u:0u;
- const unsigned shared_bytes=shared_publication_index==1?8u:0u;
+ const unsigned shared_bytes=shared_publication_index==1?64u:0u;
  const unsigned local=shared_publication_index==1?16u:1u;
  fprintf(f,"{\"schema\":\"opengpu-compute-shared-publication-oracle-v1\",\"sourceCase\":\"%s\","
   "\"role\":\"%s\",\"epoch\":1,\"groups\":1,\"local\":%u,\"viewBytes\":8192,\"guard\":3735928559,"

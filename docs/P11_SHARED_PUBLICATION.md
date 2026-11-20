@@ -17,12 +17,12 @@ stay open. Count remains **10/40**.
 | Case | Role | Source | Expected data/flag | Local | Shared bytes |
 | --- | --- | ---: | --- | ---: | ---: |
 | `shared-publication-warm` | warm | `warm.comp` | 0 / 0 | 1 | 0 |
-| `shared-publication-1` | producer | `publication-1.comp` | 7 / 1 | 16 | 8 |
+| `shared-publication-1` | producer | `publication-1.comp` | 7 / 1 | 16 | 64 |
 | `shared-publication-reload` | reload | `reload.comp` | 7 / 1 | 1 | 0 |
 
-Producer uses one 16-lane warp (`local_size_x` multiple of the float-factory
-shared lane width) so the shared scratch cannot be demoted: lanes 0/1 write
-`scratch[id]`, the workgroup converges with `barrier()` /
+Producer uses one 16-lane warp and a 16-word shared scratch so the emitter's
+own-stripe span matches `local_size`: every lane writes `scratch[id]` (lanes 0/1
+hold the publication data/flag), the workgroup converges with `barrier()` /
 `memoryBarrierShared()`, then lane 0 publishes those words through
 `memoryBarrierBuffer()` into `data.v[1]` / `data.v[17]`. Warm and reload
 consumers read the SSBO words into an output window. All three phases share
