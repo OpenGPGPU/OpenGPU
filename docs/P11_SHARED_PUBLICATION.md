@@ -17,16 +17,17 @@ stay open. Count remains **10/40**.
 | Case | Role | Source | Expected data/flag | Local | Shared bytes |
 | --- | --- | ---: | --- | ---: | ---: |
 | `shared-publication-warm` | warm | `warm.comp` | 0 / 0 | 1 | 0 |
-| `shared-publication-1` | producer | `publication-1.comp` | 7 / 1 | 2 | 8 |
+| `shared-publication-1` | producer | `publication-1.comp` | 7 / 1 | 16 | 8 |
 | `shared-publication-reload` | reload | `reload.comp` | 7 / 1 | 1 | 0 |
 
-Producer uses two lanes so the shared scratch cannot be demoted: each lane
-writes `scratch[id]`, converges with `barrier()` / `memoryBarrierShared()`, then
-lane 0 publishes those words through `memoryBarrierBuffer()` into `data.v[1]` /
-`data.v[17]`. Warm and reload consumers read the SSBO words into an output
-window. All three phases share physical base `0x01000000`. Retained SSBO extents
-keep measured DUT bytes across Mesa relaunches; other exact physical overlaps
-are replaced from the new upload.
+Producer uses one 16-lane warp (`local_size_x` multiple of the float-factory
+shared lane width) so the shared scratch cannot be demoted: lanes 0/1 write
+`scratch[id]`, the workgroup converges with `barrier()` /
+`memoryBarrierShared()`, then lane 0 publishes those words through
+`memoryBarrierBuffer()` into `data.v[1]` / `data.v[17]`. Warm and reload
+consumers read the SSBO words into an output window. All three phases share
+physical base `0x01000000`. Retained SSBO extents keep measured DUT bytes across
+Mesa relaunches; other exact physical overlaps are replaced from the new upload.
 
 The continuous session records warm AR → producer AW → reload AR on the retained
 data line through the Verilator cache observer (`publication.cache-target` /

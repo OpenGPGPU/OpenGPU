@@ -19,7 +19,7 @@ static void shared_publication_setup(void *frontend,struct pipe_resource *output
 }
 static void shared_publication_prepare_submission(struct drm_opengpu_compute_storage *request)
 {
- const unsigned local=shared_publication_index==1?2u:1u;
+ const unsigned local=shared_publication_index==1?16u:1u;
  assert(!submitted && request->launch.grid[0]==1 && request->launch.grid[1]==1 && request->launch.grid[2]==1 &&
   request->launch.local[0]==local && request->launch.local[1]==1 && request->launch.local[2]==1);
 }
@@ -30,7 +30,7 @@ static void shared_publication_write_oracle(FILE *f)
  const char *role=shared_publication_index==0?"warm":shared_publication_index==1?"producer":"reload";
  const unsigned expected_data=shared_publication_index?7u:0u,expected_flag=shared_publication_index?1u:0u;
  const unsigned shared_bytes=shared_publication_index==1?8u:0u;
- const unsigned local=shared_publication_index==1?2u:1u;
+ const unsigned local=shared_publication_index==1?16u:1u;
  fprintf(f,"{\"schema\":\"opengpu-compute-shared-publication-oracle-v1\",\"sourceCase\":\"%s\","
   "\"role\":\"%s\",\"epoch\":1,\"groups\":1,\"local\":%u,\"viewBytes\":8192,\"guard\":3735928559,"
   "\"expectedData\":%u,\"expectedFlag\":%u,\"sharedScratchBytes\":%u,\"context\":%u,\"storageBindings\":[%u,%u],"
