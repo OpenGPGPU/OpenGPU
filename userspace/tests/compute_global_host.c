@@ -24,6 +24,7 @@ static unsigned next_bo=1,submitted,retired,capture_only,timeout_seconds,expect_
 static unsigned cache_alias_source;
 static unsigned cache_alias_live,cache_alias_write_error;
 static unsigned uc_cache_alias_source,uc_cache_alias_live,uc_cache_alias_write_error;
+static unsigned l1_publication_source;
 static unsigned reservation_wait;
 static struct compute_reservation_producer *reservation_producer;
 static const char *directory,*source_case;
@@ -70,6 +71,7 @@ static void write_source(void)
  assert(!fclose(f));
  f=file("oracle.json","wx");
  fprintf(f,"{\"schema\":\"%s\",\"sourceCase\":\"%s\",\"viewBytes\":8192,\"groups\":4,\"local\":16,\"guard\":3735928559,\"context\":%u,\"codePhysical\":%llu,\"codeBytes\":%llu,\"shader\":",
+  l1_publication_source?"opengpu-compute-l1-publication-oracle-v1":
   uc_cache_alias_source?"opengpu-compute-uc-cache-alias-oracle-v1":
   cache_alias_source?"opengpu-compute-cache-alias-oracle-v1":
   cached_kernarg?"opengpu-compute-global-cached-atomic-oracle-v1":"opengpu-compute-global-atomic-oracle-v1",
@@ -157,6 +159,7 @@ int main(int argc,char **argv)
   else if(!strcmp(argv[i],"--reservation-wait")){assert(!reservation_wait);reservation_wait=1;}
   else if(!strcmp(argv[i],"--cache-alias-source")){assert(!cache_alias_source && !expect_global_fault);cache_alias_source=1;}
   else if(!strcmp(argv[i],"--uc-cache-alias-source")){assert(!uc_cache_alias_source);uc_cache_alias_source=1;}
+  else if(!strcmp(argv[i],"--l1-publication-source")){assert(!l1_publication_source);l1_publication_source=1;}
   else if(!strcmp(argv[i],"--uc-cache-alias-live")){assert(!uc_cache_alias_live && !capture_only);uc_cache_alias_live=1;}
   else if(!strcmp(argv[i],"--expect-uc-cache-alias-write-error")){
    assert(!uc_cache_alias_write_error && !expect_global_fault && !capture_only);
@@ -181,14 +184,15 @@ int main(int argc,char **argv)
  assert(!cache_alias_source || (cached_kernarg && (capture_only != cache_alias_live)));
  assert(!cache_alias_live || (cache_alias_source && cached_kernarg && !capture_only));
  assert(!cache_alias_write_error || (cache_alias_live && expect_global_fault==2));
- assert(!cache_alias_source || !expect_global_fault || cache_alias_write_error);
- assert(!uc_cache_alias_source || (cached_kernarg && (capture_only != uc_cache_alias_live) &&
+  assert(!cache_alias_source || !expect_global_fault || cache_alias_write_error);
+  assert(!l1_publication_source || (uc_cache_alias_source && cached_kernarg && !capture_only));
+  assert(!uc_cache_alias_source || (cached_kernarg && (capture_only != uc_cache_alias_live) &&
   !cache_alias_source && !cache_alias_live && (!expect_global_fault || uc_cache_alias_write_error)));
  assert(!uc_cache_alias_live || (uc_cache_alias_source && cached_kernarg && !capture_only));
  assert(!uc_cache_alias_write_error || (uc_cache_alias_live && expect_global_fault==2));
  assert(!reservation_wait || (!capture_only && !cache_alias_source && !cache_alias_live &&
   !uc_cache_alias_source && !uc_cache_alias_live && !expect_global_fault));
- assert(!strncmp(source_case,"global-atomic-",14));
+ assert(!strncmp(source_case,"global-atomic-",14) || !strncmp(source_case,"l1-publication-",15));
  for(const char *c=source_case;*c;c++)assert((*c>='a' && *c<='z') || *c=='-');
  timeout_seconds=compute_host_timeout_seconds();assert(timeout_seconds);
  FILE *f=fopen(argv[2],"rb");assert(f);magic(f,"OGCP0003");unsigned count=read32(f);assert(count==112);
