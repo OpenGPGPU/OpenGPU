@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main(control_flow=False, buffer_resources=False, shared_memory=False, memory_barriers=False,
-         storage_atomics=False, texture_namespaces=False, image_ordering=False, atomic_counters=False, shared_publication=False, host_execution=False, graphics_uniforms=False, sample_graphics=False, typed_images=False, image_atomics=False, indirect_compute=False, continuous_compute=False):
+         storage_atomics=False, texture_namespaces=False, image_ordering=False, atomic_counters=False, shared_publication=False, dma_publication=False, host_execution=False, graphics_uniforms=False, sample_graphics=False, typed_images=False, image_atomics=False, indirect_compute=False, continuous_compute=False):
     if continuous_compute:
         host_execution = shared_memory = buffer_resources = indirect_compute = True
     if indirect_compute:
@@ -30,19 +30,21 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         from compute_owner_cases import (CASES, COUNTER_CASES, counter_parameters, IMAGE_CASES,
             LEGACY_IMAGE_CASES, CONTENDED_IMAGE_CASES, MIXED_ATOMIC_CASES, STORAGE_ATOMIC_CASES,
             STORAGE_PUBLICATION_CASES, IMAGE_PUBLICATION_CASES, TEXTURE_PUBLICATION_CASES,
-            COUNTER_PUBLICATION_CASES, SHARED_PUBLICATION_CASES)
+            COUNTER_PUBLICATION_CASES, SHARED_PUBLICATION_CASES, DMA_PUBLICATION_CASES)
         from compute_storage_atomic_cases import parameters as storage_parameters
         from compute_storage_publication_cases import parameters as publication_parameters
         from compute_image_publication_cases import parameters as image_publication_parameters
         from compute_texture_publication_cases import parameters as texture_publication_parameters
         from compute_counter_publication_cases import parameters as counter_publication_parameters
         from compute_shared_publication_cases import parameters as shared_publication_parameters
+        from compute_dma_publication_cases import parameters as dma_publication_parameters
         from compute_storage_recovery import PHASES as STORAGE_RECOVERY_PHASES
         from compute_storage_publication import PHASES as STORAGE_PUBLICATION_PHASES
         from compute_image_publication import PHASES as IMAGE_PUBLICATION_PHASES
         from compute_texture_publication import PHASES as TEXTURE_PUBLICATION_PHASES
         from compute_counter_publication import PHASES as COUNTER_PUBLICATION_PHASES
         from compute_shared_publication import PHASES as SHARED_PUBLICATION_PHASES
+        from compute_dma_publication import PHASES as DMA_PUBLICATION_PHASES
         ap.add_argument('--case', choices=('indirect-pipeline',) if continuous_compute else CASES,
                         default='indirect-pipeline' if continuous_compute else 'shared')
         ap.add_argument('--profile-wire', type=Path, required=True)
@@ -76,6 +78,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
                         help='one original producer build for warm/producer/reload atomic-counter publication phases')
         ap.add_argument('--shared-publication-matrix',action='store_true',
                         help='one original producer build for warm/producer/reload shared→SSBO publication phases')
+        ap.add_argument('--dma-publication-matrix',action='store_true',
+                        help='one original producer build for warm/producer/reload DMA/host-visibility publication phases')
         ap.add_argument('--image-accepted-matrix',action='store_true',
                         help='all original contended image programs after committed-write errors and healthy reuse')
         ap.add_argument('--contended-image-matrix',action='store_true',
@@ -101,7 +105,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     if host_execution and args.image_accepted_matrix:
         if (args.case!=CONTENDED_IMAGE_CASES[0] or args.capture_only or args.capture_counter_matrix or
             args.capture_image_matrix or args.storage_matrix or args.storage_recovery_matrix or args.storage_accepted_matrix or
-            args.storage_publication_matrix or args.image_publication_matrix or args.texture_publication_matrix or args.counter_publication_matrix or args.shared_publication_matrix or
+            args.storage_publication_matrix or args.image_publication_matrix or args.texture_publication_matrix or args.counter_publication_matrix or args.shared_publication_matrix or args.dma_publication_matrix or
             args.contended_image_matrix or args.mixed_atomic_matrix or continuous_compute or
             args.expect_image_source_fault or args.expect_image_permission_fault or args.expect_image_reset or
             args.physical_base is not None):
@@ -110,7 +114,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     if host_execution and args.storage_accepted_matrix:
         if (args.case!=STORAGE_ATOMIC_CASES[0] or args.capture_only or args.capture_counter_matrix or
             args.capture_image_matrix or args.storage_matrix or args.storage_recovery_matrix or
-            args.storage_publication_matrix or args.image_publication_matrix or args.texture_publication_matrix or args.counter_publication_matrix or args.shared_publication_matrix or
+            args.storage_publication_matrix or args.image_publication_matrix or args.texture_publication_matrix or args.counter_publication_matrix or args.shared_publication_matrix or args.dma_publication_matrix or
             args.contended_image_matrix or args.mixed_atomic_matrix or continuous_compute or
             args.expect_image_source_fault or args.expect_image_permission_fault or args.expect_image_reset or
             args.physical_base is not None):
@@ -119,7 +123,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     if host_execution and args.storage_publication_matrix:
         if (args.case!=STORAGE_PUBLICATION_CASES[0] or args.capture_only or args.capture_counter_matrix or
             args.capture_image_matrix or args.storage_matrix or args.storage_recovery_matrix or
-            args.storage_accepted_matrix or args.image_publication_matrix or args.texture_publication_matrix or args.counter_publication_matrix or args.shared_publication_matrix or args.contended_image_matrix or
+            args.storage_accepted_matrix or args.image_publication_matrix or args.texture_publication_matrix or args.counter_publication_matrix or args.shared_publication_matrix or args.dma_publication_matrix or args.contended_image_matrix or
             args.mixed_atomic_matrix or continuous_compute or args.expect_image_source_fault or
             args.expect_image_permission_fault or args.expect_image_reset or args.physical_base is not None):
             ap.error('--storage-publication-matrix requires its exact warm source and live publication sequence')
@@ -127,7 +131,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     if host_execution and args.image_publication_matrix:
         if (args.case!=IMAGE_PUBLICATION_CASES[0] or args.capture_only or args.capture_counter_matrix or
             args.capture_image_matrix or args.storage_matrix or args.storage_recovery_matrix or
-            args.storage_accepted_matrix or args.storage_publication_matrix or args.texture_publication_matrix or args.counter_publication_matrix or args.shared_publication_matrix or args.contended_image_matrix or
+            args.storage_accepted_matrix or args.storage_publication_matrix or args.texture_publication_matrix or args.counter_publication_matrix or args.shared_publication_matrix or args.dma_publication_matrix or args.contended_image_matrix or
             args.mixed_atomic_matrix or continuous_compute or args.expect_image_source_fault or
             args.expect_image_permission_fault or args.expect_image_reset or args.physical_base is not None):
             ap.error('--image-publication-matrix requires its exact warm source and live publication sequence')
@@ -136,7 +140,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         if (args.case!=TEXTURE_PUBLICATION_CASES[0] or args.capture_only or args.capture_counter_matrix or
             args.capture_image_matrix or args.storage_matrix or args.storage_recovery_matrix or
             args.storage_accepted_matrix or args.storage_publication_matrix or args.image_publication_matrix or
-            args.counter_publication_matrix or args.shared_publication_matrix or
+            args.counter_publication_matrix or args.shared_publication_matrix or args.dma_publication_matrix or
             args.contended_image_matrix or args.mixed_atomic_matrix or continuous_compute or
             args.expect_image_source_fault or args.expect_image_permission_fault or args.expect_image_reset or
             args.physical_base is not None):
@@ -146,7 +150,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         if (args.case!=COUNTER_PUBLICATION_CASES[0] or args.capture_only or args.capture_counter_matrix or
             args.capture_image_matrix or args.storage_matrix or args.storage_recovery_matrix or
             args.storage_accepted_matrix or args.storage_publication_matrix or args.image_publication_matrix or
-            args.texture_publication_matrix or args.shared_publication_matrix or
+            args.texture_publication_matrix or args.shared_publication_matrix or args.dma_publication_matrix or
             args.contended_image_matrix or args.mixed_atomic_matrix or continuous_compute or
             args.expect_image_source_fault or args.expect_image_permission_fault or args.expect_image_reset or
             args.physical_base is not None):
@@ -156,16 +160,26 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         if (args.case!=SHARED_PUBLICATION_CASES[0] or args.capture_only or args.capture_counter_matrix or
             args.capture_image_matrix or args.storage_matrix or args.storage_recovery_matrix or
             args.storage_accepted_matrix or args.storage_publication_matrix or args.image_publication_matrix or
-            args.texture_publication_matrix or args.counter_publication_matrix or
+            args.texture_publication_matrix or args.counter_publication_matrix or args.dma_publication_matrix or
             args.contended_image_matrix or args.mixed_atomic_matrix or continuous_compute or
             args.expect_image_source_fault or args.expect_image_permission_fault or args.expect_image_reset or
             args.physical_base is not None):
             ap.error('--shared-publication-matrix requires its exact warm source and live publication sequence')
         STORAGE_RECOVERY_PHASES = SHARED_PUBLICATION_PHASES
+    if host_execution and args.dma_publication_matrix:
+        if (args.case!=DMA_PUBLICATION_CASES[0] or args.capture_only or args.capture_counter_matrix or
+            args.capture_image_matrix or args.storage_matrix or args.storage_recovery_matrix or
+            args.storage_accepted_matrix or args.storage_publication_matrix or args.image_publication_matrix or
+            args.texture_publication_matrix or args.counter_publication_matrix or args.shared_publication_matrix or
+            args.contended_image_matrix or args.mixed_atomic_matrix or continuous_compute or
+            args.expect_image_source_fault or args.expect_image_permission_fault or args.expect_image_reset or
+            args.physical_base is not None):
+            ap.error('--dma-publication-matrix requires its exact warm source and live publication sequence')
+        STORAGE_RECOVERY_PHASES = DMA_PUBLICATION_PHASES
     if host_execution and args.mixed_atomic_matrix and (
             args.case!=MIXED_ATOMIC_CASES[0] or args.capture_counter_matrix or args.capture_image_matrix or
             args.storage_matrix or args.storage_recovery_matrix or args.storage_publication_matrix or
-            args.image_publication_matrix or args.texture_publication_matrix or args.counter_publication_matrix or args.shared_publication_matrix or
+            args.image_publication_matrix or args.texture_publication_matrix or args.counter_publication_matrix or args.shared_publication_matrix or args.dma_publication_matrix or
             args.contended_image_matrix or continuous_compute or
             args.expect_image_source_fault or args.expect_image_permission_fault or args.expect_image_reset or
             args.physical_base is not None):
@@ -173,7 +187,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     if host_execution and args.contended_image_matrix and (
             args.case!=CONTENDED_IMAGE_CASES[0] or args.capture_counter_matrix or args.capture_image_matrix or
             args.storage_matrix or args.storage_recovery_matrix or args.storage_publication_matrix or
-            args.image_publication_matrix or args.texture_publication_matrix or args.counter_publication_matrix or args.shared_publication_matrix or
+            args.image_publication_matrix or args.texture_publication_matrix or args.counter_publication_matrix or args.shared_publication_matrix or args.dma_publication_matrix or
             continuous_compute or
             args.expect_image_source_fault or args.expect_image_permission_fault or args.expect_image_reset or
             args.physical_base is not None):
@@ -205,7 +219,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         ap.error('--storage-matrix requires its first distinct storage-atomic case')
     if host_execution and args.storage_recovery_matrix and (args.case!=STORAGE_ATOMIC_CASES[0] or
             args.capture_only or args.capture_counter_matrix or args.capture_image_matrix or args.storage_matrix or
-            args.storage_publication_matrix or args.image_publication_matrix or args.texture_publication_matrix or args.counter_publication_matrix or args.shared_publication_matrix or
+            args.storage_publication_matrix or args.image_publication_matrix or args.texture_publication_matrix or args.counter_publication_matrix or args.shared_publication_matrix or args.dma_publication_matrix or
             args.expect_image_source_fault or args.expect_image_permission_fault or args.expect_image_reset or
             args.physical_base is not None or continuous_compute):
         ap.error('--storage-recovery-matrix requires the complete original live storage sequence')
@@ -493,6 +507,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         write_sources(sources)
     elif host_execution and (args.case in SHARED_PUBLICATION_CASES or args.shared_publication_matrix):
         from compute_shared_publication_cases import write_sources
+    elif host_execution and (args.case in DMA_PUBLICATION_CASES or args.dma_publication_matrix):
+        from compute_dma_publication_cases import write_sources
         write_sources(sources)
     elif host_execution and (args.case in TEXTURE_PUBLICATION_CASES or args.texture_publication_matrix):
         from compute_texture_publication_cases import write_sources
@@ -625,13 +641,14 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         cases=(MIXED_ATOMIC_CASES if args.mixed_atomic_matrix else CONTENDED_IMAGE_CASES if args.contended_image_matrix else STORAGE_ATOMIC_CASES if args.storage_matrix else
                COUNTER_CASES if args.capture_counter_matrix else LEGACY_IMAGE_CASES if args.capture_image_matrix else (args.case,))
         entries=([(stage['case'],args.session/('round-'+str(stage['index'])),stage)
-                  for stage in STORAGE_RECOVERY_PHASES] if args.storage_recovery_matrix or args.storage_accepted_matrix or args.image_accepted_matrix or args.storage_publication_matrix or args.image_publication_matrix or args.texture_publication_matrix or args.counter_publication_matrix or args.shared_publication_matrix else
+                  for stage in STORAGE_RECOVERY_PHASES] if args.storage_recovery_matrix or args.storage_accepted_matrix or args.image_accepted_matrix or args.storage_publication_matrix or args.image_publication_matrix or args.texture_publication_matrix or args.counter_publication_matrix or args.shared_publication_matrix or args.dma_publication_matrix else
                  [(case,args.session/case if matrix else args.session,None) for case in cases])
         for case,session,stage in entries:
             if matrix or stage is not None:session.mkdir(exist_ok=False)
             source=('' if continuous_compute else 'full128.comp' if case=='uniforms' else 'full.comp' if case=='shared' else
                     counter_parameters(case)['source'] if case in COUNTER_CASES else
                     shared_publication_parameters(case)['source'] if case in SHARED_PUBLICATION_CASES else
+                    dma_publication_parameters(case)['source'] if case in DMA_PUBLICATION_CASES else
                     counter_publication_parameters(case)['source'] if case in COUNTER_PUBLICATION_CASES else
                     texture_publication_parameters(case)['source'] if case in TEXTURE_PUBLICATION_CASES else
                     image_publication_parameters(case)['source'] if case in IMAGE_PUBLICATION_CASES else

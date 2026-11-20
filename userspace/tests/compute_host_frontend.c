@@ -52,6 +52,7 @@ static FILE *file(const char *,const char *);
 #include "compute_host_texture_publication.h"
 #include "compute_host_counter_publication.h"
 #include "compute_host_shared_publication.h"
+#include "compute_host_dma_publication.h"
 #include "compute_host_mixed_atomics.h"
 static void permission_views(struct drm_opengpu_compute_image_view *views)
 {
@@ -152,6 +153,7 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
   if(storage_case)storage_prepare_submission(&copy);
   if(publication_case)publication_prepare_submission(&copy);
   if(shared_publication_case)shared_publication_prepare_submission(&copy);
+  if(dma_publication_case)dma_publication_prepare_submission(&copy);
   int error=compute_host_submit_storage(session,&copy);if(!error)submitted++;return result(error);}
  if(request==DRM_IOCTL_OPENGPU_COMPUTE_RESOURCES){struct drm_opengpu_compute_resources copy=*(struct drm_opengpu_compute_resources *)arg;
   assert(texture_publication_case && copy.view_count==1 && copy.views);
@@ -218,6 +220,7 @@ static void write_oracle(void)
  else if(texture_publication_case)texture_publication_write_oracle(f);
  else if(counter_publication_case)counter_publication_write_oracle(f);
  else if(shared_publication_case)shared_publication_write_oracle(f);
+ else if(dma_publication_case)dma_publication_write_oracle(f);
  else if(image_case)image_write_oracle(f);
  else if(counter_case){
   const struct drm_opengpu_compute_counter_source *v=&accepted_counter.source;
@@ -273,13 +276,14 @@ int main(int argc,char **argv)
 {
  assert(argc>=5);uint64_t physical_base=0;storage_parse_case(argv[4]);publication_parse_case(argv[4]);
  image_publication_parse_case(argv[4]);texture_publication_parse_case(argv[4]);
- counter_publication_parse_case(argv[4]);shared_publication_parse_case(argv[4]);image_parse_case(argv[4]);
+ counter_publication_parse_case(argv[4]);shared_publication_parse_case(argv[4]);dma_publication_parse_case(argv[4]);image_parse_case(argv[4]);
  assert(!(storage_case && (publication_case || shared_publication_case)));
  assert(!(publication_case && shared_publication_case));
  assert(!(image_publication_case && (publication_case || image_case || storage_case || texture_publication_case || counter_publication_case || shared_publication_case)));
  assert(!(texture_publication_case && (publication_case || image_case || storage_case || image_publication_case || counter_publication_case || shared_publication_case)));
  assert(!(counter_publication_case && (publication_case || image_case || storage_case || image_publication_case || texture_publication_case || shared_publication_case || counter_case)));
- assert(!(shared_publication_case && (publication_case || image_case || storage_case || image_publication_case || texture_publication_case || counter_publication_case || counter_case)));
+ assert(!(shared_publication_case && (publication_case || image_case || storage_case || image_publication_case || texture_publication_case || counter_publication_case || counter_case || dma_publication_case)));
+ assert(!(dma_publication_case && (publication_case || image_case || storage_case || image_publication_case || texture_publication_case || counter_publication_case || shared_publication_case || counter_case)));
  for(int i=5;i<argc;i++){
   if(!strcmp(argv[i],"--capture-only")){assert(!capture_only && !expect_compute_failure() && !image_reset);capture_only=1;}
   else if(!strcmp(argv[i],"--expect-image-source-fault")){assert(!capture_only && !expect_compute_failure() && !image_reset);expect_image_source_fault=1;}
@@ -310,7 +314,7 @@ int main(int argc,char **argv)
   }else assert(!"unknown compute host option");
  }
  assert(!physical_base || (!capture_only && ((image_case && image_mode==6) || !strcmp(argv[4],"image-atomic-buffer-r32f") ||
-  publication_case || image_publication_case || texture_publication_case || counter_publication_case || shared_publication_case ||
+  publication_case || image_publication_case || texture_publication_case || counter_publication_case || shared_publication_case || dma_publication_case ||
   (storage_case && storage_index!=14 && storage_index!=15))));
  assert(!expect_compute_failure() || expect_storage_fault || expect_image_write_fault || !strcmp(argv[4],"image-atomic-buffer-r32f"));
  host_timeout_seconds=compute_host_timeout_seconds();assert(host_timeout_seconds);
@@ -330,12 +334,12 @@ int main(int argc,char **argv)
  }
  const char *address_names[]={"shared-address-add","shared-address-cas-match","shared-address-cas-miss"};
  for(unsigned i=0;i<3;i++)if(!strcmp(argv[4],address_names[i])){address_case=1;address_kind=i;}
- assert(storage_case || publication_case || image_publication_case || texture_publication_case || counter_publication_case || shared_publication_case || image_case || counter_case || uniform_case || dynamic_case || address_case || !strcmp(argv[4],"shared"));
+ assert(storage_case || publication_case || image_publication_case || texture_publication_case || counter_publication_case || shared_publication_case || dma_publication_case || image_case || counter_case || uniform_case || dynamic_case || address_case || !strcmp(argv[4],"shared"));
  directory=argv[2];FILE *f=fopen(argv[1],"rb");assert(f);
  char wire[8];assert(fread(wire,1,8,f)==8 && (!memcmp(wire,"OGCP0001",8) ||
   !memcmp(wire,"OGCP0002",8) || !memcmp(wire,"OGCP0003",8)));
  unsigned version=wire[7]-'0',count=read32(f);
- if(counter_case || counter_publication_case || shared_publication_case || image_case || storage_case || publication_case || image_publication_case || texture_publication_case)assert(version==3 && count==112);
+ if(counter_case || counter_publication_case || shared_publication_case || dma_publication_case || image_case || storage_case || publication_case || image_publication_case || texture_publication_case)assert(version==3 && count==112);
  assert((version==3 && (count==104 || count==112)) || ((version==1 || version==2) && count==96));
  struct compute_host_profile_word *words=calloc(count+10,sizeof(*words));assert(words);
  for(unsigned i=0;i<count;i++){words[i].address=read32(f);words[i].value=read32(f);}
@@ -351,11 +355,11 @@ int main(int argc,char **argv)
   (features&OPENGPU_DRIVER_FEATURE_COMPUTE_SHARED_ATOMICS));}
  struct pipe_screen *s=opengpu_drm_screen_create(7,NULL);assert(s);struct pipe_context *p=s->context_create(s,NULL,0);assert(p);
  char dump[4096];path(dump,"actual-shared");void *frontend=(counter_case || counter_publication_case)?cs_frontend_compile_atomic_counters(argv[3],dump):
-  (image_case || storage_case || publication_case || image_publication_case || texture_publication_case || shared_publication_case)?cs_frontend_compile_buffers(argv[3],dump):cs_frontend_compile(argv[3],dump);assert(frontend);
+  (image_case || storage_case || publication_case || image_publication_case || texture_publication_case || shared_publication_case || dma_publication_case)?cs_frontend_compile_buffers(argv[3],dump):cs_frontend_compile(argv[3],dump);assert(frontend);
  {
   unsigned expected_shared=0;
   if(shared_publication_case && shared_publication_index==1)expected_shared=128; /* dual own-stripe */
-  else if(!(uniform_case || counter_case || counter_publication_case || shared_publication_case || image_case || storage_case || publication_case || image_publication_case || texture_publication_case))expected_shared=16384;
+  else if(!(uniform_case || counter_case || counter_publication_case || shared_publication_case || dma_publication_case || image_case || storage_case || publication_case || image_publication_case || texture_publication_case))expected_shared=16384;
   assert(cs_frontend_shared_bytes(frontend)==expected_shared);
  }
  struct pipe_compute_state state={.ir_type=PIPE_SHADER_IR_TGSI,.prog=cs_frontend_tokens(frontend),.req_local_mem=cs_frontend_shared_bytes(frontend)};
@@ -373,6 +377,7 @@ int main(int argc,char **argv)
  if(texture_publication_case)texture_publication_setup(s,p,frontend,output);
  if(counter_publication_case)counter_publication_setup(s,p,frontend,output);
  if(shared_publication_case)shared_publication_setup(frontend,output);
+ if(dma_publication_case)dma_publication_setup(frontend,output);
  if(mixed_case)mixed_setup(s,p,frontend,output);
  else if(image_case)image_setup(s,p,frontend);
  if(counter_case)for(unsigned i=0;i<4;i++)counter_storage_bindings[i]=cs_frontend_storage_binding(frontend,i);
@@ -429,7 +434,7 @@ int main(int argc,char **argv)
  if(counter_case){grid.block[0]=4;if(counter_dynamic)grid.grid[0]=counter_index?1:2;}
  if(image_case){grid.block[0]=4;grid.grid[0]=2;}
  if(storage_case){grid.block[0]=4;grid.grid[0]=2;}
- if(publication_case || image_publication_case || texture_publication_case || counter_publication_case || shared_publication_case){
+ if(publication_case || image_publication_case || texture_publication_case || counter_publication_case || shared_publication_case || dma_publication_case){
   grid.block[0]=shared_publication_case && shared_publication_index==1?16:1;grid.grid[0]=1;}
  if(uniform_case){grid.block[0]=8;grid.block[1]=4;grid.block[2]=4;}
  p->launch_grid(p,&grid);assert(submitted==1 && retired);

@@ -21,10 +21,11 @@ from compute_image_publication_cases import CASES as IMAGE_PUBLICATION_CASES
 from compute_texture_publication_cases import CASES as TEXTURE_PUBLICATION_CASES
 from compute_counter_publication_cases import CASES as COUNTER_PUBLICATION_CASES
 from compute_shared_publication_cases import CASES as SHARED_PUBLICATION_CASES
+from compute_dma_publication_cases import CASES as DMA_PUBLICATION_CASES
 from compute_global_atomic_cases import CASES as GLOBAL_ATOMIC_CASES
 CASES = (LEGACY_CASES + COUNTER_CASES + IMAGE_CASES + STORAGE_ATOMIC_CASES +
          STORAGE_PUBLICATION_CASES + IMAGE_PUBLICATION_CASES + TEXTURE_PUBLICATION_CASES +
-         COUNTER_PUBLICATION_CASES + SHARED_PUBLICATION_CASES + GLOBAL_ATOMIC_CASES)
+         COUNTER_PUBLICATION_CASES + SHARED_PUBLICATION_CASES + DMA_PUBLICATION_CASES + GLOBAL_ATOMIC_CASES)
 
 
 def counter_parameters(name):
