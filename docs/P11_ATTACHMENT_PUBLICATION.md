@@ -39,8 +39,13 @@ Qualify entry: `scripts/qualify_attachment_publication.py`
 
 ## Actual complete float DUT execution
 
-PLACEHOLDER — record execution source SHA and phase PASS lines after the first
-successful float DUT run.
+Execution source  on the assertion-enabled
+ Verilator 
+executor. All three phases passed independent round receipts, cleanup ACK,
+one DUT/RAM/single reset, uncached fabric observation, and unchanged
+source/model postchecks:
+
+
 
 Reproduce against a prepared float owner (see
 [COMPLETE_OWNER_COMPUTE_EXECUTOR.md](COMPLETE_OWNER_COMPUTE_EXECUTOR.md) and
