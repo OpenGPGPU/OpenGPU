@@ -5,7 +5,6 @@
 #include "tgsi/tgsi_parse.h"
 #include "opengpu_buffer_views.h"
 #include "opengpu_shared_own_proof.h"
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -604,12 +603,7 @@ static int shared_memory(struct build *b, const struct tgsi_full_instruction *in
         (store && address.kind != EXPR_LOCAL) ||
         (!store && end > b->shared_visible &&
          !(address.kind == EXPR_LOCAL &&
-           opengpu_shared_own_contains(&b->shared_own, address.offset, 4u * b->p.fixed_block[0])))) {
-        fprintf(stderr, "shared_memory reject store=%u cf=%u mem=%u kind=%u scale=%u off=%u end=%llu req=%u vis=%u wm=%u bind=%u\n",
-            store, b->cf_depth, i->Memory?1:0, address.kind, address.scale, address.offset,
-            (unsigned long long)end, b->shared?b->shared->required_bytes:0, b->shared_visible, d->WriteMask, binding);
-        return -1;
-    }
+           opengpu_shared_own_contains(&b->shared_own, address.offset, 4u * b->p.fixed_block[0])))) return -1;
     if (store && source_register(b, &in->Src[1], 0, 22, &value_reg)) return -1;
     /* A scalar load has no parallel components to preserve. Its address is
      * already captured above; an existing TEMP can receive the value directly
@@ -1401,8 +1395,6 @@ static int emit_program(const void *tokens, const struct opengpu_cs_shared *shar
             b.texture_position = p.Position - p.FullToken.FullInstruction.Instruction.NrTokens - 1;
             ret = instruction(&b, &p.FullToken.FullInstruction);
             if (ret == 1) { ended = 1; ret = 0; }
-            if (ret < 0) fprintf(stderr, "opengpu_cs_emit fail opcode=%u pos=%u cf_depth=%u shared_written=%u shared_visible=%u fixed=%u\n",
-                p.FullToken.FullInstruction.Instruction.Opcode, (unsigned)p.Position, b.cf_depth, b.shared_written, b.shared_visible, b.p.fixed_block[0]);
             /* A float exchange sequence can write more than twenty distinct
              * TGSI components while keeping fewer than twenty live. Recycle
              * only after the complete instruction has consumed its inputs.

@@ -10,8 +10,8 @@ EPOCH = 1
 DATA_WORD = EPOCH * 7
 FLAG_WORD = EPOCH
 PRODUCER_LOCAL = 16
-# Two own-stripe spans. Emitter has no UMIN/UMAX, and EXPR_PEER only admits
-# local_size=128 with id^16; float DUT stays on one warp with constant fills.
+# Two own-stripe spans. Emitter CF path requires shared atomics; keep the
+# producer branch-free. EXPR_PEER only admits local_size=128 with id^16.
 SHARED_SCRATCH_BYTES = PRODUCER_LOCAL * 4 * 2
 READER_PREFIX = (
     '#version 310 es\nprecision highp int;\n'
@@ -19,8 +19,8 @@ READER_PREFIX = (
     'layout(std430,binding=0) buffer Data {uint v[];} data;\n'
     'layout(std430,binding=1) buffer Output {uint v[];} output_words;\n'
 )
-# Unconditional own-stripe stores with immediate values (no min/ternary/CF).
-# memoryBarrierShared();barrier() order matches GALLIUM_SHARED_COMPUTE.
+# Branch-free: immediate own-stripe fills, converge, then every lane publishes
+# the same SSBO words (identical values; no UIF → control_program).
 PRODUCER = (
     '#version 310 es\nprecision highp int;\n'
     'layout(local_size_x=16) in;\n'
@@ -32,8 +32,8 @@ PRODUCER = (
     'scratch[16u+id]=%du;'
     'memoryBarrierShared();barrier();'
     'uint published_data=scratch[id];uint published_flag=scratch[16u+id];'
-    'if(id==0u){data.v[1]=published_data;memoryBarrierBuffer();data.v[17]=published_flag;'
-    'output_words.v[0]=data.v[1];output_words.v[1]=data.v[17];}}\n'
+    'data.v[1]=published_data;memoryBarrierBuffer();data.v[17]=published_flag;'
+    'output_words.v[0]=data.v[1];output_words.v[1]=data.v[17];}\n'
 )
 
 

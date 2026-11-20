@@ -32,6 +32,7 @@ class PublicationCases(unittest.TestCase):
             self.assertIn('scratch[16u+id]=%du;' % FLAG_WORD, producer)
             self.assertIn('published_data=scratch[id]', producer)
             self.assertIn('published_flag=scratch[16u+id]', producer)
+            self.assertNotIn('if(id==0u)', producer)
             self.assertEqual(parameters(CASES[1])['shared_bytes'], 128)
             self.assertEqual(parameters(CASES[1])['local'], 16)
             self.assertEqual(parameters(CASES[0])['shared_bytes'], 0)
