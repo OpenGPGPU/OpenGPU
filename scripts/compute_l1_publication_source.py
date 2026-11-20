@@ -94,7 +94,8 @@ def returned_outputs(initial, returned, description):
         changes.append((kernarg + source.DATA_OFFSET, struct.pack('<I', source.PUBLISHED)))
     for group in range(p['groups']):
         pair = struct.unpack('<2I', returned.read(kernarg + slot + 4 * group, 8))
-        require(pair == (data, flag), 'ordinary cached consumer missed the retained word pair')
+        require(pair == (data, flag),
+                'ordinary cached consumer missed the retained word pair: got %r expected %r' % (pair, (data, flag)))
     if p['role'] == 'reload':
         word = struct.unpack('<I', returned.read(kernarg + source.DATA_OFFSET, 4))[0]
         require(word == source.PUBLISHED, 'reload missed the published data word')
