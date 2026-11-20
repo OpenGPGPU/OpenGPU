@@ -90,5 +90,5 @@ git diff --check
   / `scripts/test_gallium_atomic_counter.py` and the P07 per-case reset live owner
   in [ATOMIC_COUNTER_LIVE_OWNER.md](ATOMIC_COUNTER_LIVE_OWNER.md) are not
   complete-owner substitutes for the remaining domains.
-- Attachment/DMA/shared publication, P12 full resources, and product
-  clock/FPS keep their own gates.
+- Attachment/DMA publication, P12 full resources, and product clock/FPS keep
+  their own gates.

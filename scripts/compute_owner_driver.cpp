@@ -336,6 +336,7 @@ inline void active_image_recovery(int argc,char **argv,const std::filesystem::pa
 #include "compute_image_publication.hpp"
 #include "compute_texture_publication.hpp"
 #include "compute_counter_publication.hpp"
+#include "compute_shared_publication.hpp"
 #include "compute_global_recovery.hpp"
 #include "compute_cache_alias_recovery.hpp"
 #include "compute_reservation_wait.hpp"
@@ -365,6 +366,9 @@ int main(int argc,char **argv) {
     }
     if(argc==4 && std::string(argv[1])=="--active-counter-publication") {
       active_counter_publication(argc,argv,argv[2],argv[3],response_timeout);return 0;
+    }
+    if(argc==4 && std::string(argv[1])=="--active-shared-publication") {
+      active_shared_publication(argc,argv,argv[2],argv[3],response_timeout);return 0;
     }
     if(argc==4 && std::string(argv[1])=="--active-storage-recovery-matrix") {
       active_storage_recovery_matrix(argc,argv,argv[2],argv[3],response_timeout);return 0;
