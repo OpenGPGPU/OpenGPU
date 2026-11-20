@@ -71,42 +71,31 @@ def target_line(description):
     return kernarg + (p['target_offset'] & ~63)
 
 
-def changes(description, role):
-    """Exact physical words the independent byte oracle must see change."""
-    p = source.parameters(description['sourceCase'])
-    kernarg = uint(description['kernarg']['allocationPhysical'], 64)
-    warm = source.WARM_OFFSET
-    refetch = source.REFETCH_OFFSET
-    output = source.OUTPUT_OFFSET
-    if role == 'warm':
-        return [item for group in range(p['groups']) for item in (
-            (kernarg + warm + 4 * group, struct.pack('<I', 0)),
-            (kernarg + warm + 4 * group + 4, struct.pack('<I', 0)))]
-    if role == 'producer':
-        return [(kernarg + source.DATA_OFFSET, struct.pack('<I', source.DATA_WORD)),
-                (kernarg + source.FLAG_OFFSET, struct.pack('<I', source.FLAG_WORD)),
-                (kernarg + output, struct.pack('<I', 0)),
-                (kernarg + output + 4, struct.pack('<I', 0))]
-    return [item for group in range(p['groups']) for item in (
-        (kernarg + refetch + 4 * group, struct.pack('<I', source.DATA_WORD)),
-        (kernarg + refetch + 4 * group + 4, struct.pack('<I', 0)))]
-
-
 def returned_outputs(initial, returned, description):
     p = source.parameters(description['sourceCase'])
-    kernarg = uint(description['kernarg']['allocationPhysical'], 64)
     if p['role'] == 'producer':
-        data = struct.unpack('<I', returned.read(kernarg + source.DATA_OFFSET, 4))[0]
-        require(data == source.DATA_WORD,
-                'producer did not publish the original data word')
-        output = struct.unpack('<I', returned.read(kernarg + source.OUTPUT_OFFSET, 4))[0]
-        require(output == 0,
-                'producer output window must retain the original AMO old value')
+        from compute_uc_cache_alias_source import returned_outputs as uc_returned
+        bound = dict(description)
+        bound['schema'] = 'opengpu-compute-uc-cache-alias-oracle-v1'
+        bound['sourceCase'] = source.PRODUCER_CASE
+        return uc_returned(initial, returned, bound)
+    kernarg = uint(description['kernarg']['allocationPhysical'], 64)
+    if p['role'] == 'warm':
+        slot = source.WARM_OFFSET
+        data, flag = source.SEED, 0
     else:
-        slot = p['warm_offset'] if p['role'] == 'warm' else p['refetch_offset']
-        data = 0 if p['role'] == 'warm' else source.DATA_WORD
-        flag = 0
-        for group in range(p['groups']):
-            pair = struct.unpack('<2I', returned.read(kernarg + slot + 4 * group, 8))
-            require(pair == (data, flag), 'ordinary cached consumer missed the retained word pair')
-    return changes(description, p['role'])
+        slot = source.REFETCH_OFFSET
+        data, flag = source.PUBLISHED, 0
+    changes = []
+    for group in range(p['groups']):
+        changes += [(kernarg + slot + 4 * group, struct.pack('<I', data)),
+                    (kernarg + slot + 4 * group + 4, struct.pack('<I', flag))]
+    if p['role'] == 'reload':
+        changes.append((kernarg + source.DATA_OFFSET, struct.pack('<I', source.PUBLISHED)))
+    for group in range(p['groups']):
+        pair = struct.unpack('<2I', returned.read(kernarg + slot + 4 * group, 8))
+        require(pair == (data, flag), 'ordinary cached consumer missed the retained word pair')
+    if p['role'] == 'reload':
+        word = struct.unpack('<I', returned.read(kernarg + source.DATA_OFFSET, 4))[0]
+        require(word == source.PUBLISHED, 'reload missed the published data word')
+    return changes
