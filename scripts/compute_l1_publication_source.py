@@ -25,16 +25,8 @@ def recipe(memory, description):
             'foreign or missing same-GEM cached/UC fields')
     required_flags(description, dict(schema=SCHEMA, storageSlot=13, storageBinding=0,
                                      retainedObjects=1, temporaryMappings=2))
-    try:
-        p, kernarg, code = _recipe(memory, {key: description[key] for key in CORE},
-                                   source, SCHEMA)
-    except ValueError as error:
-        import hashlib
-        case = description.get('sourceCase')
-        actual = hashlib.sha256(memory.read(uint(description['kernarg']['allocationPhysical']), 8192)).hexdigest()
-        expected = hashlib.sha256(source.initial_kernarg(case)).hexdigest()
-        raise ValueError('%s actual=%s expected=%s role=%s' % (error, actual, expected,
-                         source.parameters(case)['role'])) from error
+    p, kernarg, code = _recipe(memory, {key: description[key] for key in CORE},
+                               source, SCHEMA)
     required_flags(description['storageAlias'], description['kernarg'])
     require(set(description['storageAlias']) == set(description['kernarg']),
             'UC storage does not retain the same original GEM and exact view')
@@ -104,13 +96,6 @@ def returned_outputs(initial, returned, description):
                         (kernarg + slot + 8 * group + 4, struct.pack('<I', flag))]
         if p['role'] == 'reload':
             changes.append((kernarg + source.DATA_OFFSET, struct.pack('<I', source.PUBLISHED)))
-    if p['role'] == 'producer':
-        import sys
-        base = uint(description['kernarg']['allocationPhysical'], 64)
-        print('L1 producer diagnostic initial=%s returned=%s' % (
-            [hex(int.from_bytes(initial.read(base + 4 * i, 4), 'little')) for i in range(8)],
-            [hex(int.from_bytes(returned.read(base + 4 * i, 4), 'little')) for i in range(8)]),
-            file=sys.stderr, flush=True)
     for address, expected in changes:
         actual = returned.read(address, len(expected))
         require(actual == expected,
