@@ -57,7 +57,7 @@ def check_source_launch(command, index, build, session, profile):
 
 def target_plan(description, index):
     phase(index)
-    return struct.pack('<8sIIQ', TARGET_MAGIC, index, 0, source.target_line(description))
+    return struct.pack('<8sQ', TARGET_MAGIC, source.target_line(description))
 
 
 def check_round(record, index, held, previous=None):
