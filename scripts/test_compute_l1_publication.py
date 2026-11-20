@@ -45,8 +45,8 @@ class L1PublicationProtocol(unittest.TestCase):
     def test_target_plan(self):
         description = {'sourceCase': cases.CASES[0],
                        'kernarg': {'allocationPhysical': 0x01001000}}
-        self.assertEqual(struct.unpack('<8sIIQ', protocol.target_plan(description, 0)),
-                         (b'OGCLPT01', 0, 0, 0x01001000))
+        self.assertEqual(struct.unpack('<8sQ', protocol.target_plan(description, 0)),
+                         (b'OGCLPT01', 0x01001000))
 
     def test_round_identity(self):
         first = dict(schema=protocol.ROUND_SCHEMA, phase=0, role='warm', commandId=17,
