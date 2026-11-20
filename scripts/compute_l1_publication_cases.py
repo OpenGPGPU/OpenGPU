@@ -76,8 +76,8 @@ def initial_kernarg(case):
                      *([OUTPUT_GUARD] * (2 * ORIGINAL_GROUPS)))
     struct.pack_into('<I', data, DATA_OFFSET, SEED)
     struct.pack_into('<I', data, FLAG_OFFSET, 0)
-    struct.pack_into('<4I', data, WARM_OFFSET, *([GUARD] * 4))
-    struct.pack_into('<4I', data, REFETCH_OFFSET, *([GUARD] * 4))
+    struct.pack_into('<8I', data, WARM_OFFSET, *([GUARD] * 8))
+    struct.pack_into('<8I', data, REFETCH_OFFSET, *([GUARD] * 8))
     return bytes(data)
 
 
