@@ -89,7 +89,7 @@ def changes(description, role):
                 (kernarg + output + 4, struct.pack('<I', 0))]
     return [item for group in range(p['groups']) for item in (
         (kernarg + refetch + 4 * group, struct.pack('<I', source.DATA_WORD)),
-        (kernarg + refetch + 4 * group + 4, struct.pack('<I', source.FLAG_WORD)))]
+        (kernarg + refetch + 4 * group + 4, struct.pack('<I', 0)))]
 
 
 def returned_outputs(initial, returned, description):
@@ -97,16 +97,15 @@ def returned_outputs(initial, returned, description):
     kernarg = uint(description['kernarg']['allocationPhysical'], 64)
     if p['role'] == 'producer':
         data = struct.unpack('<I', returned.read(kernarg + source.DATA_OFFSET, 4))[0]
-        flag = struct.unpack('<I', returned.read(kernarg + source.FLAG_OFFSET, 4))[0]
-        require(data == source.DATA_WORD and flag == source.FLAG_WORD,
-                'producer did not publish the original data/flag words')
-        output = struct.unpack('<2I', returned.read(kernarg + source.OUTPUT_OFFSET, 8))
-        require(output == (0, 0),
-                'producer output window must retain the original AMO old values')
+        require(data == source.DATA_WORD,
+                'producer did not publish the original data word')
+        output = struct.unpack('<I', returned.read(kernarg + source.OUTPUT_OFFSET, 4))[0]
+        require(output == 0,
+                'producer output window must retain the original AMO old value')
     else:
         slot = p['warm_offset'] if p['role'] == 'warm' else p['refetch_offset']
         data = 0 if p['role'] == 'warm' else source.DATA_WORD
-        flag = 0 if p['role'] == 'warm' else source.FLAG_WORD
+        flag = 0
         for group in range(p['groups']):
             pair = struct.unpack('<2I', returned.read(kernarg + slot + 4 * group, 8))
             require(pair == (data, flag), 'ordinary cached consumer missed the retained word pair')
