@@ -13,8 +13,8 @@ class L1PublicationCases(unittest.TestCase):
     def test_roles_and_words(self):
         self.assertEqual([cases.parameters(c)['role'] for c in cases.CASES],
                          ['warm', 'producer', 'reload'])
-        self.assertEqual(cases.DATA_WORD, 7)
-        self.assertEqual(cases.FLAG_WORD, 1)
+        self.assertEqual(cases.SEED, 0xfffffff0)
+        self.assertEqual(cases.PUBLISHED, 6)
         self.assertEqual(cases.parameters(cases.CASES[0])['data_word'], 0)
 
     def test_sources_are_distinct_and_bounded(self):
@@ -28,7 +28,7 @@ class L1PublicationCases(unittest.TestCase):
             self.assertLessEqual(len(program) * 4, 4096)
         arg = cases.initial_kernarg(cases.CASES[0])
         self.assertEqual(len(arg), 8192)
-        self.assertEqual(struct.unpack_from('<I', arg, cases.DATA_OFFSET)[0], 0)
+        self.assertEqual(struct.unpack_from('<I', arg, cases.DATA_OFFSET)[0], cases.SEED)
 
     def test_same_gem_aliases(self):
         self.assertEqual(cases.CACHED_BASE, 0x80800000)

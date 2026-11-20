@@ -14,10 +14,13 @@ from compute_cache_alias_cases import (VSET_ONE, GUARD, WARM_OFFSET, REFETCH_OFF
 from compute_uc_cache_alias_cases import _extract, _parameters, _request
 
 CASES = ('l1-publication-warm', 'l1-publication-1', 'l1-publication-reload')
-DATA_OFFSET = 4
+DATA_OFFSET = 0
 FLAG_OFFSET = 68
-DATA_WORD = 7
-FLAG_WORD = 1
+SEED = 0xfffffff0
+PUBLISHED = 6
+DATA_WORD = PUBLISHED
+FLAG_WORD = 0
+PRODUCER_CASE = 'global-atomic-swap-add-base'
 STORAGE_BASE = 0xcfffc000
 CACHED_BASE = 0x80800000
 
@@ -33,7 +36,7 @@ def parameters(case):
     return dict(case=case, role=role, groups=ORIGINAL_GROUPS, local=16, epoch=1,
                 data_offset=DATA_OFFSET, flag_offset=FLAG_OFFSET,
                 data_word=DATA_WORD if role != 'warm' else 0,
-                flag_word=FLAG_WORD if role != 'warm' else 0,
+                flag_word=0,
                 warm_offset=WARM_OFFSET, refetch_offset=REFETCH_OFFSET,
                 output_offset=OUTPUT_OFFSET, kernarg_bytes=KERNARG_BYTES,
                 target_offset=DATA_OFFSET, seed=0)
@@ -48,8 +51,8 @@ def _reader(output):
 def words(case):
     p = parameters(case)
     if p['role'] == 'producer':
-        return (VSET_ONE, *_parameters(DATA_OFFSET, DATA_WORD), _request('exchange'),
-                _extract(7, 12), _store(12, OUTPUT_OFFSET), FENCE, CEASE)
+        from compute_uc_cache_alias_cases import words as uc_words
+        return uc_words(PRODUCER_CASE)
     else:
         output = p['warm_offset'] if p['role'] == 'warm' else p['refetch_offset']
         arms = [_reader(output + 4 * group) for group in range(ORIGINAL_GROUPS)]
@@ -71,7 +74,7 @@ def initial_kernarg(case):
     data = bytearray(b'\x6b' * KERNARG_BYTES)
     struct.pack_into('<%uI' % (2 * ORIGINAL_GROUPS), data, OUTPUT_OFFSET,
                      *([OUTPUT_GUARD] * (2 * ORIGINAL_GROUPS)))
-    struct.pack_into('<I', data, DATA_OFFSET, 0)
+    struct.pack_into('<I', data, DATA_OFFSET, SEED)
     struct.pack_into('<I', data, FLAG_OFFSET, 0)
     struct.pack_into('<4I', data, WARM_OFFSET, *([GUARD] * 4))
     struct.pack_into('<4I', data, REFETCH_OFFSET, *([GUARD] * 4))
