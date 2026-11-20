@@ -9,9 +9,9 @@ CASES = (
 EPOCH = 1
 DATA_WORD = EPOCH * 7
 FLAG_WORD = EPOCH
-SHARED_SCRATCH_BYTES = 8
-# Emitter requires fixed_block[0] % shared.lanes == 0; float factory lanes=16.
+# Emitter own-stripe checks span local_size words; float factory lanes=16.
 PRODUCER_LOCAL = 16
+SHARED_SCRATCH_BYTES = PRODUCER_LOCAL * 4
 READER_PREFIX = (
     '#version 310 es\nprecision highp int;\n'
     'layout(local_size_x=1) in;\n'
@@ -21,11 +21,11 @@ READER_PREFIX = (
 PRODUCER = (
     '#version 310 es\nprecision highp int;\n'
     'layout(local_size_x=16) in;\n'
-    'shared uint scratch[2];\n'
+    'shared uint scratch[16];\n'
     'layout(std430,binding=0) buffer Data {uint v[];} data;\n'
     'layout(std430,binding=1) buffer Output {uint v[];} output_words;\n'
     'void main(){uint id=gl_LocalInvocationID.x;'
-    'if(id<2u)scratch[id]=(id==0u)?%du:%du;'
+    'scratch[id]=(id==0u)?%du:(id==1u)?%du:0u;'
     'barrier();memoryBarrierShared();'
     'if(id==0u){data.v[1]=scratch[0];memoryBarrierBuffer();data.v[17]=scratch[1];'
     'output_words.v[0]=data.v[1];output_words.v[1]=data.v[17];}}\n'

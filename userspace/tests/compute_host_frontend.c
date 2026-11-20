@@ -353,18 +353,13 @@ int main(int argc,char **argv)
  char dump[4096];path(dump,"actual-shared");void *frontend=(counter_case || counter_publication_case)?cs_frontend_compile_atomic_counters(argv[3],dump):
   (image_case || storage_case || publication_case || image_publication_case || texture_publication_case || shared_publication_case)?cs_frontend_compile_buffers(argv[3],dump):cs_frontend_compile(argv[3],dump);assert(frontend);
  {
-  unsigned expected_shared=0,got_shared=cs_frontend_shared_bytes(frontend);
-  if(shared_publication_case && shared_publication_index==1)expected_shared=8;
+  unsigned expected_shared=0;
+  if(shared_publication_case && shared_publication_index==1)expected_shared=64;
   else if(!(uniform_case || counter_case || counter_publication_case || shared_publication_case || image_case || storage_case || publication_case || image_publication_case || texture_publication_case))expected_shared=16384;
-  if(got_shared!=expected_shared){
-   fprintf(stderr,"shared_bytes mismatch got=%u expected=%u case=%s\n",got_shared,expected_shared,argv[4]);
-   abort();
-  }
+  assert(cs_frontend_shared_bytes(frontend)==expected_shared);
  }
  struct pipe_compute_state state={.ir_type=PIPE_SHADER_IR_TGSI,.prog=cs_frontend_tokens(frontend),.req_local_mem=cs_frontend_shared_bytes(frontend)};
- void *cs=p->create_compute_state(p,&state);
- if(!cs){fprintf(stderr,"create_compute_state failed errno=%d req_local=%u case=%s\n",errno,(unsigned)state.req_local_mem,argv[4]);abort();}
- p->bind_compute_state(p,cs);
+ void *cs=p->create_compute_state(p,&state);assert(cs);p->bind_compute_state(p,cs);
  struct pipe_resource *output[4];
  for(unsigned binding=0;binding<4;binding++){output[binding]=mixed_case && !binding?mixed_target_buffer(s):buffer(s,8192);assert(output[binding]);
   output_handles[binding]=pipe_opengpu_resource_handle(opengpu_resource(output[binding])->gpu);
