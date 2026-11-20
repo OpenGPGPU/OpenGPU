@@ -9,29 +9,27 @@ CASES = (
 EPOCH = 1
 DATA_WORD = EPOCH * 7
 FLAG_WORD = EPOCH
-PRODUCER_LOCAL = 16
-# Two own-stripe spans (data + flag). Emitter admits EXPR_PEER only for
-# local_size=128 with id^16; float DUT uses a single warp and dual own-stripe.
-SHARED_SCRATCH_BYTES = PRODUCER_LOCAL * 4 * 2
+# EXPR_PEER admits only local_size=128 with id^16 (warp lanes=16).
+PRODUCER_LOCAL = 128
+SHARED_SCRATCH_BYTES = PRODUCER_LOCAL * 4
 READER_PREFIX = (
     '#version 310 es\nprecision highp int;\n'
     'layout(local_size_x=1) in;\n'
     'layout(std430,binding=0) buffer Data {uint v[];} data;\n'
     'layout(std430,binding=1) buffer Output {uint v[];} output_words;\n'
 )
-# Unconditional own-stripe stores; arithmetic avoids boolean/ternary CF.
+# Unconditional own-stripe store; peer load id^16 for the flag word.
 # memoryBarrierShared();barrier() order matches GALLIUM_SHARED_COMPUTE.
 PRODUCER = (
     '#version 310 es\nprecision highp int;\n'
-    'layout(local_size_x=16) in;\n'
-    'shared uint scratch[32];\n'
+    'layout(local_size_x=128) in;\n'
+    'shared uint scratch[128];\n'
     'layout(std430,binding=0) buffer Data {uint v[];} data;\n'
     'layout(std430,binding=1) buffer Output {uint v[];} output_words;\n'
     'void main(){uint id=gl_LocalInvocationID.x;'
-    'scratch[id]=%du-6u*min(id,1u);'
-    'scratch[16u+id]=%du;'
+    'scratch[id]=%du*uint(id==0u)+%du*uint(id==16u);'
     'memoryBarrierShared();barrier();'
-    'uint published_data=scratch[id];uint published_flag=scratch[16u+id];'
+    'uint published_data=scratch[id];uint published_flag=scratch[id^16u];'
     'if(id==0u){data.v[1]=published_data;memoryBarrierBuffer();data.v[17]=published_flag;'
     'output_words.v[0]=data.v[1];output_words.v[1]=data.v[17];}}\n'
 )
