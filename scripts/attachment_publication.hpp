@@ -173,6 +173,7 @@ inline void publication_revoke(Simulation &sim,native_frame::Agent &agent,Bus &b
 inline void active_attachment_publication(int argc,char **argv) {
   require(argc==4,"usage: executor --active-attachment-publication OUTPUT SESSION");
 #ifndef OPENGPU_FRAMEBUFFER_BLIT_SAMPLE_OWNER
+  (void)argv;
   require(false,"attachment publication requires framebuffer-blit-sample");
 #else
   const std::filesystem::path output=argv[2],session=argv[3];
