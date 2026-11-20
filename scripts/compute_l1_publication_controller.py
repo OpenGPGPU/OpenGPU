@@ -27,7 +27,7 @@ def run_publication_matrix(args, command, directory, executor, env, qualified, p
     bridge = running = None
     local = None
     stage = None
-    previous = previous_clean = previous_digest = None
+    first_done = previous = previous_clean = previous_digest = None
     retained = None
     try:
         with (directory / 'bridge.log').open('w') as log, (directory / 'execution.log').open('w') as output:
@@ -100,6 +100,8 @@ def run_publication_matrix(args, command, directory, executor, env, qualified, p
                 else:
                     require(running.poll() is None,
                             'L1 publication DUT exited between original source phases')
+                if not index:
+                    first_done = done
                 previous, previous_clean, previous_digest = done, cleaned, input_digest(cleaned)
                 for path, identities in inputs:
                     unchanged_inputs(path, identities)
@@ -108,7 +110,7 @@ def run_publication_matrix(args, command, directory, executor, env, qualified, p
                     index, role), flush=True)
             require(bridge.wait(timeout=remaining()) == 0, 'original Mesa publication producer failed')
             observation = strict_json(directory / 'publication.cache-observation.json')
-            check_cache(observation, len(PHASES) - 1, description, held, previous, done)
+            check_cache(observation, len(PHASES) - 1, description, held, first_done, done)
             qualified(env, output)
             for path, identities in inputs:
                 unchanged_inputs(path, identities)

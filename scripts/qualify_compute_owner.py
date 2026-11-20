@@ -141,7 +141,7 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
         'storage recovery requires its exact first source and continuous original receipts')
     require(not getattr(args,'storage_publication_matrix',False) or (case==STORAGE_PUBLICATION_CASES[0] and
         not any(getattr(args,key,False) for key in ('storage_matrix','storage_delayed_ack','storage_recovery_matrix',
-        'storage_accepted_matrix','image_publication_matrix','texture_publication_matrix','counter_publication_matrix','shared_publication_matrix','dma_publication_matrix','image_accepted_matrix',
+        'storage_accepted_matrix','image_publication_matrix','texture_publication_matrix','counter_publication_matrix','shared_publication_matrix','dma_publication_matrix','l1_publication_matrix','image_accepted_matrix',
         'contended_image_matrix','mixed_atomic_matrix','global_atomic_matrix','global_delayed_ack',
         'global_recovery_matrix','global_accepted_matrix','cache_alias_matrix','uc_cache_alias_matrix',
         'reservation_matrix')) and
@@ -149,7 +149,7 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
         'storage publication requires its exact first warm source and distinct continuous receipts')
     require(not getattr(args,'image_publication_matrix',False) or (case==IMAGE_PUBLICATION_CASES[0] and
         not any(getattr(args,key,False) for key in ('storage_matrix','storage_delayed_ack','storage_recovery_matrix',
-        'storage_accepted_matrix','storage_publication_matrix','texture_publication_matrix','counter_publication_matrix','shared_publication_matrix','dma_publication_matrix','image_accepted_matrix',
+        'storage_accepted_matrix','storage_publication_matrix','texture_publication_matrix','counter_publication_matrix','shared_publication_matrix','dma_publication_matrix','l1_publication_matrix','image_accepted_matrix',
         'contended_image_matrix','mixed_atomic_matrix','global_atomic_matrix','global_delayed_ack',
         'global_recovery_matrix','global_accepted_matrix','cache_alias_matrix','uc_cache_alias_matrix',
         'reservation_matrix')) and
@@ -157,7 +157,7 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
         'image publication requires its exact first warm source and distinct continuous receipts')
     require(not getattr(args,'texture_publication_matrix',False) or (case==TEXTURE_PUBLICATION_CASES[0] and
         not any(getattr(args,key,False) for key in ('storage_matrix','storage_delayed_ack','storage_recovery_matrix',
-        'storage_accepted_matrix','storage_publication_matrix','image_publication_matrix','counter_publication_matrix','shared_publication_matrix','dma_publication_matrix','image_accepted_matrix',
+        'storage_accepted_matrix','storage_publication_matrix','image_publication_matrix','counter_publication_matrix','shared_publication_matrix','dma_publication_matrix','l1_publication_matrix','image_accepted_matrix',
         'contended_image_matrix','mixed_atomic_matrix','global_atomic_matrix','global_delayed_ack',
         'global_recovery_matrix','global_accepted_matrix','cache_alias_matrix','uc_cache_alias_matrix',
         'reservation_matrix')) and
@@ -165,7 +165,7 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
         'texture publication requires its exact first warm source and distinct continuous receipts')
     require(not getattr(args,'counter_publication_matrix',False) or (case==COUNTER_PUBLICATION_CASES[0] and
         not any(getattr(args,key,False) for key in ('storage_matrix','storage_delayed_ack','storage_recovery_matrix',
-        'storage_accepted_matrix','storage_publication_matrix','image_publication_matrix','texture_publication_matrix','shared_publication_matrix','dma_publication_matrix','image_accepted_matrix',
+        'storage_accepted_matrix','storage_publication_matrix','image_publication_matrix','texture_publication_matrix','shared_publication_matrix','dma_publication_matrix','l1_publication_matrix','image_accepted_matrix',
         'contended_image_matrix','mixed_atomic_matrix','global_atomic_matrix','global_delayed_ack',
         'global_recovery_matrix','global_accepted_matrix','cache_alias_matrix','uc_cache_alias_matrix',
         'reservation_matrix')) and
@@ -173,7 +173,7 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
         'counter publication requires its exact first warm source and distinct continuous receipts')
     require(not getattr(args,'shared_publication_matrix',False) or (case==SHARED_PUBLICATION_CASES[0] and
         not any(getattr(args,key,False) for key in ('storage_matrix','storage_delayed_ack','storage_recovery_matrix',
-        'storage_accepted_matrix','storage_publication_matrix','image_publication_matrix','texture_publication_matrix','counter_publication_matrix','dma_publication_matrix','image_accepted_matrix',
+        'storage_accepted_matrix','storage_publication_matrix','image_publication_matrix','texture_publication_matrix','counter_publication_matrix','dma_publication_matrix','l1_publication_matrix','image_accepted_matrix',
         'contended_image_matrix','mixed_atomic_matrix','global_atomic_matrix','global_delayed_ack',
         'global_recovery_matrix','global_accepted_matrix','cache_alias_matrix','uc_cache_alias_matrix',
         'reservation_matrix')) and
@@ -181,7 +181,7 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
         'shared publication requires its exact first warm source and distinct continuous receipts')
     require(not getattr(args,'dma_publication_matrix',False) or (case==DMA_PUBLICATION_CASES[0] and
         not any(getattr(args,key,False) for key in ('storage_matrix','storage_delayed_ack','storage_recovery_matrix',
-        'storage_accepted_matrix','storage_publication_matrix','image_publication_matrix','texture_publication_matrix','counter_publication_matrix','shared_publication_matrix','image_accepted_matrix',
+        'storage_accepted_matrix','storage_publication_matrix','image_publication_matrix','texture_publication_matrix','counter_publication_matrix','shared_publication_matrix','l1_publication_matrix','image_accepted_matrix',
         'contended_image_matrix','mixed_atomic_matrix','global_atomic_matrix','global_delayed_ack',
         'global_recovery_matrix','global_accepted_matrix','cache_alias_matrix','uc_cache_alias_matrix',
         'reservation_matrix')) and
@@ -444,7 +444,9 @@ def main():
     args.cache_alias_matrix=args.case=='global-atomics-cache-alias'
     args.uc_cache_alias_matrix=args.case=='global-atomics-uc-cache-alias'
     args.reservation_matrix=args.case=='global-atomics-reservation-wait'
-    global_source=args.reservation_matrix or args.global_atomic_matrix or args.global_recovery_matrix or args.global_accepted_matrix or args.cache_alias_matrix or args.uc_cache_alias_matrix or args.case in GLOBAL_ATOMIC_CASES
+    global_source=(args.reservation_matrix or args.global_atomic_matrix or args.global_recovery_matrix or
+        args.global_accepted_matrix or args.cache_alias_matrix or args.uc_cache_alias_matrix or
+        args.l1_publication_matrix or args.case in GLOBAL_ATOMIC_CASES or args.case in L1_PUBLICATION_CASES)
     require(0 < args.timeout <= 604800, 'timeout must be 1..604800 seconds')
     args.executor = args.executor.absolute(); args.executor_qualification = args.executor_qualification.absolute()
     identity = checked_inputs(args)
