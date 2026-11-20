@@ -42,7 +42,8 @@ def run_publication_matrix(args, command, directory, executor, env, qualified, p
                 with SparseMemory(local / 'union.memory') as upload:
                     _, target, _ = recipe(upload, description)
                     extent = retained_extents(target, target + 8192)
-                    tables = captured_page_tables(upload, (local / 'record-0.capture').read_bytes())
+                    tables = captured_page_tables(upload, (local / 'record-0.capture').read_bytes(),
+                                  inactive_contexts=0)
                     if index:
                         require(input_digest(previous_clean) == previous_digest, 'previous cleaned RAM changed')
                         require(retained == extent, 'publication lost its retained cached/UC GEM extent')
