@@ -41,7 +41,7 @@ def parameters(case):
 
 def _reader(output):
     return _vector_read(DATA_OFFSET, output) + [
-        _target(FLAG_OFFSET), VSET_ONE, 0x0205e187, 0x42302757,
+        *_target(FLAG_OFFSET), VSET_ONE, 0x0205e187, 0x42302757,
         _store(14, output + 4), FENCE, CEASE]
 
 

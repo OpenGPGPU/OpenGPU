@@ -23,6 +23,7 @@ class L1PublicationCases(unittest.TestCase):
         self.assertNotEqual(words[0], words[2])
         self.assertNotEqual(words[0], words[1])
         for program in words:
+            self.assertTrue(all(type(word) is int for word in program))
             self.assertFalse(len(program) % 16)
             self.assertLessEqual(len(program) * 4, 4096)
         arg = cases.initial_kernarg(cases.CASES[0])
