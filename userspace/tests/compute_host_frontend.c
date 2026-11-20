@@ -354,7 +354,7 @@ int main(int argc,char **argv)
   (image_case || storage_case || publication_case || image_publication_case || texture_publication_case || shared_publication_case)?cs_frontend_compile_buffers(argv[3],dump):cs_frontend_compile(argv[3],dump);assert(frontend);
  {
   unsigned expected_shared=0;
-  if(shared_publication_case && shared_publication_index==1)expected_shared=64;
+  if(shared_publication_case && shared_publication_index==1)expected_shared=128; /* dual own-stripe scratch[32] */
   else if(!(uniform_case || counter_case || counter_publication_case || shared_publication_case || image_case || storage_case || publication_case || image_publication_case || texture_publication_case))expected_shared=16384;
   assert(cs_frontend_shared_bytes(frontend)==expected_shared);
  }
