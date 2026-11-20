@@ -39,13 +39,21 @@ Qualify entry: `scripts/qualify_attachment_publication.py`
 
 ## Actual complete float DUT execution
 
-Execution source  on the assertion-enabled
- Verilator 
+Execution source `57ba442870110903a6dd3552176b834ca46b7983` on the assertion-enabled
+`two-cu-vga60-owner-v2-image-float-stage` Verilator `framebuffer-blit-sample`
 executor. All three phases passed independent round receipts, cleanup ACK,
 one DUT/RAM/single reset, uncached fabric observation, and unchanged
 source/model postchecks:
 
-
+```text
+original attachment publication phase=0 role=warm full bytes/cleanup PASS
+original attachment publication phase=1 role=producer full bytes/cleanup PASS
+original attachment publication phase=2 role=reload full bytes/cleanup PASS
+all three original attachment publication phases PASS; one DUT/RAM/reset,
+warm/producer/reload, uncached fabric observation, original source/model postchecks
+original Mesa framebuffer attachment-publication: actual full-DUT returned bytes
+and context cleanup PASS
+```
 
 Reproduce against a prepared float owner (see
 [COMPLETE_OWNER_COMPUTE_EXECUTOR.md](COMPLETE_OWNER_COMPUTE_EXECUTOR.md) and
