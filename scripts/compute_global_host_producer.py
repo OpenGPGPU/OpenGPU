@@ -13,6 +13,7 @@ import subprocess
 import struct
 
 from compute_global_atomic_cases import CASES, initial_kernarg, words
+from compute_l1_publication_cases import CASES as L1_CASES
 from test_compute_host import write_bodies
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -67,7 +68,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--build', type=Path, required=True)
     parser.add_argument('--profile-wire', type=Path, required=True)
-    parser.add_argument('--case', choices=('all', *CASES), default='all')
+    parser.add_argument('--case', choices=('all', *CASES, *L1_CASES), default='all')
     parser.add_argument('--session', type=Path)
     parser.add_argument('--capture-only', action='store_true')
     parser.add_argument('--sanitize', action='store_true')
@@ -81,6 +82,7 @@ def main():
     parser.add_argument('--cache-alias-matrix',action='store_true')
     parser.add_argument('--uc-cache-alias-matrix',action='store_true')
     parser.add_argument('--reservation-matrix',action='store_true')
+    parser.add_argument('--l1-publication-matrix',action='store_true')
     parser.add_argument('--physical-base',type=int)
     args = parser.parse_args()
     if args.case == 'all' and not args.capture_only:
@@ -90,13 +92,20 @@ def main():
     if args.global_atomic_matrix and (args.case!=CASES[0] or args.session is None):
         parser.error('global matrix requires its exact first source and private session')
     recovery=args.global_recovery_matrix or args.global_accepted_matrix
-    matrix=recovery or args.cache_alias_matrix or args.uc_cache_alias_matrix or args.reservation_matrix
+    matrix=(recovery or args.cache_alias_matrix or args.uc_cache_alias_matrix or
+            args.reservation_matrix or args.l1_publication_matrix)
+    if args.l1_publication_matrix and (args.case!=L1_CASES[0] or args.session is None or args.capture_only or
+            recovery or args.cache_alias_matrix or args.uc_cache_alias_matrix or args.global_atomic_matrix or
+            args.reservation_matrix or not args.cached_kernarg or not args.uc_cache_alias_source):
+        parser.error('L1 publication matrix requires its distinct cached live first-source session')
     if args.reservation_matrix and (args.case!=CASES[0] or args.session is None or args.capture_only or
             any((recovery,args.cache_alias_matrix,args.uc_cache_alias_matrix,args.global_atomic_matrix,
-                 args.cached_kernarg,args.cache_alias_source,args.uc_cache_alias_source,args.physical_base))):
+                 args.cached_kernarg,args.cache_alias_source,args.uc_cache_alias_source,args.physical_base,
+                 args.l1_publication_matrix))):
         parser.error('reservation matrix requires its distinct live first-source session')
-    if args.uc_cache_alias_source and (not args.cached_kernarg or not (args.capture_only or args.uc_cache_alias_matrix) or
-            args.cache_alias_source or args.cache_alias_matrix or recovery or args.global_atomic_matrix):
+    if args.uc_cache_alias_source and (not args.cached_kernarg or not (args.capture_only or args.uc_cache_alias_matrix or
+            args.l1_publication_matrix) or args.cache_alias_source or args.cache_alias_matrix or recovery or
+            args.global_atomic_matrix):
         parser.error('UC cache alias source requires its distinct cached capture or live matrix')
     if args.uc_cache_alias_matrix and (args.case!=CASES[0] or args.session is None or args.capture_only or
             recovery or args.global_atomic_matrix or args.cache_alias_matrix or not args.cached_kernarg or
@@ -108,7 +117,8 @@ def main():
     if args.cache_alias_source and (not args.cached_kernarg or not (args.capture_only or args.cache_alias_matrix) or
             recovery or args.global_atomic_matrix or args.uc_cache_alias_matrix):
         parser.error('cache alias source requires its distinct cached capture or complete live matrix')
-    if args.cached_kernarg and (recovery or not (args.capture_only or args.global_atomic_matrix or args.cache_alias_matrix or args.uc_cache_alias_matrix)):
+    if args.cached_kernarg and (recovery or not (args.capture_only or args.global_atomic_matrix or args.cache_alias_matrix or
+            args.uc_cache_alias_matrix or args.l1_publication_matrix)):
         parser.error('cached kernarg requires distinct CPU capture or the original normal global matrix')
     if recovery and (args.case!=CASES[0] or args.session is None or
             args.global_atomic_matrix or args.capture_only):
@@ -146,7 +156,11 @@ def main():
         from compute_cache_alias_cases import words as source_words, initial_kernarg as source_kernarg
     if args.uc_cache_alias_source:
         from compute_uc_cache_alias_cases import words as source_words, initial_kernarg as source_kernarg
-    if matrix:
+    if args.l1_publication_matrix:
+        from compute_l1_publication import PHASES, source_launch, check_source_launch
+        from compute_l1_publication_cases import words as source_words, initial_kernarg as source_kernarg
+        selected=PHASES
+    elif matrix:
         if args.reservation_matrix:
             from compute_reservation_wait import PHASES, source_launch, check_source_launch
         elif args.uc_cache_alias_matrix:
@@ -179,6 +193,7 @@ def main():
             if args.cached_kernarg:command+=['--cached-kernarg']
             if args.cache_alias_source:command+=['--cache-alias-source']
             if args.uc_cache_alias_source:command+=['--uc-cache-alias-source']
+            if args.l1_publication_matrix:command+=['--l1-publication-source']
             if args.capture_only:command+=['--capture-only']
             if args.physical_base is not None:command+=['--physical-base',str(args.physical_base)]
         with log_path.open('w') as log:

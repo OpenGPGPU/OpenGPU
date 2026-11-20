@@ -26,7 +26,9 @@ REQUIRED = set(UNITS) | {'driver/tests/opengpu_compute_host_fixture.c','driver/t
     'scripts/compute_global_accepted_recovery.py', 'scripts/compute_cache_alias_cases.py',
     'scripts/compute_cache_alias_source.py', 'scripts/compute_cache_alias_recovery.py',
     'scripts/compute_uc_cache_alias_cases.py', 'scripts/compute_uc_cache_alias_source.py',
-    'scripts/compute_uc_cache_alias_recovery.py'}
+    'scripts/compute_uc_cache_alias_recovery.py',
+    'scripts/compute_l1_publication_cases.py', 'scripts/compute_l1_publication_source.py',
+    'scripts/compute_l1_publication.py', 'scripts/compute_l1_publication_controller.py'}
 UNRECORDED_ENV = ('CPATH', 'C_INCLUDE_PATH', 'CPLUS_INCLUDE_PATH', 'COMPILER_PATH',
     'GCC_EXEC_PREFIX', 'LIBRARY_PATH', 'LD_PRELOAD', 'LD_LIBRARY_PATH', 'CCC_OVERRIDE_OPTIONS',
     'CFLAGS', 'CPPFLAGS', 'LDFLAGS', 'SDKROOT')
