@@ -261,9 +261,14 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         argv = list(map(str, argv))
         commands.append({"argv": argv, "cwd": str(out), "label": label})
         (out / "commands.json").write_text(json.dumps(commands, indent=2) + "\n")
-        with (out / (label + ".log")).open("w") as log:
-            subprocess.run(argv, cwd=out, check=True, stdout=log, stderr=subprocess.STDOUT, env=env,
-                           input=input_text, text=input_text is not None)
+        log_path = out / (label + ".log")
+        with log_path.open("w") as log:
+            try:
+                subprocess.run(argv, cwd=out, check=True, stdout=log, stderr=subprocess.STDOUT, env=env,
+                               input=input_text, text=input_text is not None)
+            except subprocess.CalledProcessError:
+                print(log_path.read_text(errors='replace')[-8000:], flush=True)
+                raise
 
     def configured_flags(relative):
         source = mesa / "src" / relative
