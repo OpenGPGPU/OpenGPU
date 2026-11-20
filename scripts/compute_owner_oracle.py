@@ -252,6 +252,7 @@ def verify(initial, returned, description):
     texture_publication = description.get('schema') == 'opengpu-compute-texture-publication-oracle-v1'
     counter_publication = description.get('schema') == 'opengpu-compute-counter-publication-oracle-v1'
     shared_publication = description.get('schema') == 'opengpu-compute-shared-publication-oracle-v1'
+    dma_publication = description.get('schema') == 'opengpu-compute-dma-publication-oracle-v1'
     cache_alias = description.get('schema') == 'opengpu-compute-cache-alias-oracle-v1'
     uc_cache_alias = description.get('schema') == 'opengpu-compute-uc-cache-alias-oracle-v1'
     global_atomic = cache_alias or uc_cache_alias or description.get('schema') in ('opengpu-compute-global-atomic-oracle-v1',
@@ -259,10 +260,10 @@ def verify(initial, returned, description):
     if counter:
         from compute_owner_cases import counter_parameters
         groups=counter_parameters(description.get('sourceCase'))['groups']
-    else:groups=1 if storage_publication or image_publication or texture_publication or counter_publication or shared_publication else 2 if image or storage_atomic else 4
+    else:groups=1 if storage_publication or image_publication or texture_publication or counter_publication or shared_publication or dma_publication else 2 if image or storage_atomic else 4
     required_flags(description, dict(viewBytes=8192, groups=groups,
         local=(16 if shared_publication and description.get('role')=='producer' else
-               1 if storage_publication or image_publication or texture_publication or counter_publication or shared_publication else 16 if global_atomic else 4 if counter or image or storage_atomic else 128),
+               1 if storage_publication or image_publication or texture_publication or counter_publication or shared_publication or dma_publication else 16 if global_atomic else 4 if counter or image or storage_atomic else 128),
         guard=0xdeadbeef))
     if uc_cache_alias:
         from compute_uc_cache_alias_source import returned_outputs
@@ -277,6 +278,9 @@ def verify(initial, returned, description):
         from compute_counter_publication_source import returned_outputs
     elif shared_publication:
         from compute_shared_publication_source import returned_outputs
+        outputs = returned_outputs(initial, returned, description)
+    elif dma_publication:
+        from compute_dma_publication_source import returned_outputs
         outputs = returned_outputs(initial, returned, description)
     elif texture_publication:
         from compute_texture_publication_source import returned_outputs
@@ -342,7 +346,7 @@ def verify(initial, returned, description):
     else:
         raise ValueError('unknown original ESSL byte oracle')
     for first, expected in outputs:
-        if not (counter or image or storage_atomic or storage_publication or image_publication or texture_publication or counter_publication or shared_publication or global_atomic) and initial.read(first, 8192) != struct.pack('<I', 0xdeadbeef) * 2048:
+        if not (counter or image or storage_atomic or storage_publication or image_publication or texture_publication or counter_publication or shared_publication or dma_publication or global_atomic) and initial.read(first, 8192) != struct.pack('<I', 0xdeadbeef) * 2048:
             raise ValueError('output was not independently guard-initialized')
     verify_byte_changes(initial, returned, outputs)
 

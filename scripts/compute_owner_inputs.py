@@ -20,12 +20,14 @@ from compute_image_publication_cases import CASES as IMAGE_PUBLICATION_CASES, pa
 from compute_texture_publication_cases import CASES as TEXTURE_PUBLICATION_CASES, parameters as texture_publication_parameters
 from compute_counter_publication_cases import CASES as COUNTER_PUBLICATION_CASES, parameters as counter_publication_parameters
 from compute_shared_publication_cases import CASES as SHARED_PUBLICATION_CASES, parameters as shared_publication_parameters
+from compute_dma_publication_cases import CASES as DMA_PUBLICATION_CASES, parameters as dma_publication_parameters
 from compute_storage_recovery import PHASES as STORAGE_RECOVERY_PHASES, check_source_launch as check_storage_launch
 from compute_storage_publication import PHASES as PUBLICATION_PHASES, check_source_launch as check_publication_launch
 from compute_image_publication import PHASES as IMAGE_PUBLICATION_PHASES, check_source_launch as check_image_publication_launch
 from compute_texture_publication import PHASES as TEXTURE_PUBLICATION_PHASES, check_source_launch as check_texture_publication_launch
 from compute_counter_publication import PHASES as COUNTER_PUBLICATION_PHASES, check_source_launch as check_counter_publication_launch
 from compute_shared_publication import PHASES as SHARED_PUBLICATION_PHASES, check_source_launch as check_shared_publication_launch
+from compute_dma_publication import PHASES as DMA_PUBLICATION_PHASES, check_source_launch as check_dma_publication_launch
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -57,7 +59,7 @@ def guarded(request_path, builder_argv):
     dependencies=dict(bound)
     dependencies[str(paths['ntt'])]=[str(paths['ntt']),AFTER]
     argv=list(builder_argv)
-    require('--case' in argv and argv[argv.index('--case')+1] in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_CASES,*PUBLICATION_CASES,*IMAGE_PUBLICATION_CASES,*TEXTURE_PUBLICATION_CASES,*COUNTER_PUBLICATION_CASES,*SHARED_PUBLICATION_CASES,INDIRECT_CASE) and '--sanitize' in argv,
+    require('--case' in argv and argv[argv.index('--case')+1] in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_CASES,*PUBLICATION_CASES,*IMAGE_PUBLICATION_CASES,*TEXTURE_PUBLICATION_CASES,*COUNTER_PUBLICATION_CASES,*SHARED_PUBLICATION_CASES,*DMA_PUBLICATION_CASES,INDIRECT_CASE) and '--sanitize' in argv,
             'strict original counter source and sanitized producer required')
     case=argv[argv.index('--case')+1]
     indirect=case==INDIRECT_CASE
@@ -71,6 +73,7 @@ def guarded(request_path, builder_argv):
     texture_publication='--texture-publication-matrix' in argv
     counter_publication='--counter-publication-matrix' in argv
     shared_publication='--shared-publication-matrix' in argv
+    dma_publication='--dma-publication-matrix' in argv
     image_accepted='--image-accepted-matrix' in argv
     storage_phases,check_storage=STORAGE_RECOVERY_PHASES,check_storage_launch
     if storage_accepted:
@@ -87,11 +90,13 @@ def guarded(request_path, builder_argv):
         storage_phases,check_storage=COUNTER_PUBLICATION_PHASES,check_counter_publication_launch
     if shared_publication:
         storage_phases,check_storage=SHARED_PUBLICATION_PHASES,check_shared_publication_launch
+    if dma_publication:
+        storage_phases,check_storage=DMA_PUBLICATION_PHASES,check_dma_publication_launch
     contended_matrix='--contended-image-matrix' in argv
     mixed_matrix='--mixed-atomic-matrix' in argv
-    require(sum((image_matrix,counter_matrix,storage_matrix,storage_recovery,storage_accepted,storage_publication,image_publication,texture_publication,counter_publication,shared_publication,image_accepted,contended_matrix,mixed_matrix))<=1,
+    require(sum((image_matrix,counter_matrix,storage_matrix,storage_recovery,storage_accepted,storage_publication,image_publication,texture_publication,counter_publication,shared_publication,dma_publication,image_accepted,contended_matrix,mixed_matrix))<=1,
             'source matrices must remain distinct')
-    matrix=image_matrix or counter_matrix or storage_matrix or storage_recovery or storage_accepted or storage_publication or image_publication or texture_publication or counter_publication or shared_publication or image_accepted or contended_matrix or mixed_matrix
+    matrix=image_matrix or counter_matrix or storage_matrix or storage_recovery or storage_accepted or storage_publication or image_publication or texture_publication or counter_publication or shared_publication or dma_publication or image_accepted or contended_matrix or mixed_matrix
     source_fault='--expect-image-source-fault' in argv
     permission=None
     reset=None
@@ -133,14 +138,15 @@ def guarded(request_path, builder_argv):
         'mixed atomic matrix requires its exact first original same-GEM source')
     expected_cases=set(MIXED_ATOMIC_CASES if mixed_matrix else CONTENDED_IMAGE_CASES if contended_matrix else STORAGE_CASES if storage_matrix else
         LEGACY_IMAGE_CASES if image_matrix else COUNTER_CASES if counter_matrix else (case,))
-    if storage_recovery or storage_accepted or image_accepted or storage_publication or image_publication or texture_publication or counter_publication or shared_publication:
+    if storage_recovery or storage_accepted or image_accepted or storage_publication or image_publication or texture_publication or counter_publication or shared_publication or dma_publication:
         flag=('--image-accepted-matrix' if image_accepted else '--storage-accepted-matrix' if storage_accepted else
               '--shared-publication-matrix' if shared_publication else
+              '--dma-publication-matrix' if dma_publication else
               '--counter-publication-matrix' if counter_publication else
               '--texture-publication-matrix' if texture_publication else
               '--image-publication-matrix' if image_publication else
               '--storage-publication-matrix' if storage_publication else '--storage-recovery-matrix')
-        first=(SHARED_PUBLICATION_CASES[0] if shared_publication else COUNTER_PUBLICATION_CASES[0] if counter_publication else TEXTURE_PUBLICATION_CASES[0] if texture_publication else IMAGE_PUBLICATION_CASES[0] if image_publication else PUBLICATION_CASES[0] if storage_publication else
+        first=(SHARED_PUBLICATION_CASES[0] if shared_publication else DMA_PUBLICATION_CASES[0] if dma_publication else COUNTER_PUBLICATION_CASES[0] if counter_publication else TEXTURE_PUBLICATION_CASES[0] if texture_publication else IMAGE_PUBLICATION_CASES[0] if image_publication else PUBLICATION_CASES[0] if storage_publication else
                CONTENDED_IMAGE_CASES[0] if image_accepted else STORAGE_CASES[0])
         require(argv.count(flag)==1 and case==first and
             '--capture-only' not in argv and not source_fault and permission is None and reset is None and allocation_base is None,
@@ -194,6 +200,7 @@ def guarded(request_path, builder_argv):
             require(seen==units, 'incomplete actual host compiler closure')
             source_case=command[4] if len(command)>=5 else None
             parameters=(shared_publication_parameters(source_case) if source_case in SHARED_PUBLICATION_CASES else
+             dma_publication_parameters(source_case) if source_case in DMA_PUBLICATION_CASES else
                         counter_publication_parameters(source_case) if source_case in COUNTER_PUBLICATION_CASES else
                         texture_publication_parameters(source_case) if source_case in TEXTURE_PUBLICATION_CASES else
                         image_publication_parameters(source_case) if source_case in IMAGE_PUBLICATION_CASES else
@@ -202,7 +209,7 @@ def guarded(request_path, builder_argv):
                         image_parameters(source_case) if source_case in IMAGE_CASES else None if indirect else counter_parameters(source_case))
             expected_source=out/'glsl' if indirect else out/'glsl'/parameters['source']
             stage=None
-            if storage_recovery or storage_accepted or image_accepted or storage_publication or image_publication or texture_publication or counter_publication or shared_publication:
+            if storage_recovery or storage_accepted or image_accepted or storage_publication or image_publication or texture_publication or counter_publication or shared_publication or dma_publication:
                 require(len(launched)<len(storage_phases),'extra original storage recovery phase')
                 stage=storage_phases[len(launched)]
                 check_storage(command,stage['index'],out,
