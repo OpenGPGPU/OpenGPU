@@ -21,8 +21,7 @@ stay open. Count remains **10/40**.
 | `shared-publication-reload` | reload | `reload.comp` | 7 / 1 | 1 | 0 |
 
 Producer uses `local_size=128` (eight 16-lane warps) and a 128-word shared
-scratch so emitter `EXPR_PEER` admits `id^16`. Lane 0 stores data and lane 16
-stores the flag into `scratch[id]`; after `memoryBarrierShared();barrier()`,
+scratch so emitter `EXPR_PEER` admits `id^16`. An unconditional arithmetic own-stripe store fills `scratch[id]`; after `memoryBarrierShared();barrier()`,
 lane 0 loads `scratch[id]` / `scratch[id^16u]` and publishes through
 `memoryBarrierBuffer()` into
 `data.v[1]` / `data.v[17]`. Warm and reload consumers read the SSBO words into

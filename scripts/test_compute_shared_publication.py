@@ -28,7 +28,7 @@ class PublicationCases(unittest.TestCase):
             self.assertIn('layout(local_size_x=128)', producer)
             self.assertIn('memoryBarrierShared();barrier()', producer)
             self.assertIn('memoryBarrierBuffer()', producer)
-            self.assertIn('scratch[id]=%du*uint(id==0u)+%du*uint(id==16u)' % (DATA_WORD, FLAG_WORD), producer)
+            self.assertIn('scratch[id]=%du-6u*min(id,1u)' % DATA_WORD, producer)
             self.assertIn('published_flag=scratch[id^16u]', producer)
             self.assertIn('published_data=scratch[id]', producer)
             self.assertIn('layout(local_size_x=128)', producer)
