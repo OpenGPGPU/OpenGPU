@@ -46,8 +46,8 @@ struct L1PublicationCacheTracker {
         invalidate_mask|=s.invalidate_mask;
         if(s.invalidate_mask && !invalidate)invalidate=cycle;
         require(!(s.ack_mask&~invalidate_mask),"L1 publication ACK preceded cached-alias invalidation");
+        if(s.ack_mask & ~ack_mask)ack=cycle;
         ack_mask|=s.ack_mask;
-        if(s.ack_mask && !ack)ack=cycle;
       }
       if(!writing && invalidate_mask==3 && ack_mask==3 && ack && !s.l1_mask &&
          s.aw.fire && (s.aw.address&~uint64_t(63))==target) {

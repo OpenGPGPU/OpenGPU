@@ -98,10 +98,11 @@ def check_cache(record, index, description, held, previous=None, done=None):
                     invalidateMask=3, invalidateAckMask=3, refilledL1Mask=3, refilledL2=True,
                     ordinaryL1AliasRequired=True, uncachedStoragePath=True)
     required_flags(record, expected)
-    cycles = ('warmCycle', 'invalidateCycle', 'invalidateAckCycle', 'firstTargetWriteCycle',
-              'reloadReadRequestCycle', 'reloadReadResponseCycle', 'refillCycle')
+    cycles = ('warmCycle', 'l2DropCycle', 'invalidateCycle', 'invalidateAckCycle',
+              'firstTargetWriteCycle', 'reloadReadRequestCycle',
+              'reloadReadResponseCycle', 'refillCycle')
     require(set(record) == set(expected) | set(cycles), 'foreign or missing L1 observation fields')
-    warm, inv, ack, write, read, response, refill = (uint(record[key], 64) for key in cycles)
-    require(start < warm <= inv < ack < write < read < response <= refill < end,
+    warm, drop, inv, ack, write, read, response, refill = (uint(record[key], 64) for key in cycles)
+    require(start < warm <= drop <= inv < ack < write < read < response <= refill < end,
             'L1 warm/invalidate/ACK/write/reload/refill clock unordered')
     return record

@@ -11,16 +11,15 @@ from compute_global_atomic_cases import (CEASE, FENCE, _addi, _bne,
     GROUPS as ORIGINAL_GROUPS, OUTPUT_OFFSET, OUTPUT_GUARD, KERNARG_BYTES)
 from compute_cache_alias_cases import (VSET_ONE, GUARD, WARM_OFFSET, REFETCH_OFFSET,
     _store, _target, _vector_read)
-from compute_uc_cache_alias_cases import _extract, _parameters, _request
+from compute_uc_cache_alias_cases import _splat, _extract, _parameters, _request
 
 CASES = ('l1-publication-warm', 'l1-publication-1', 'l1-publication-reload')
-DATA_OFFSET = 0
+DATA_OFFSET = 4
 FLAG_OFFSET = 68
-SEED = 0xfffffff0
-PUBLISHED = 6
-DATA_WORD = PUBLISHED
-FLAG_WORD = 0
-PRODUCER_CASE = 'global-atomic-swap-add-base'
+SEED = 0
+PUBLISHED = 7
+DATA_WORD = 7
+FLAG_WORD = 1
 STORAGE_BASE = 0xcfffc000
 CACHED_BASE = 0x80800000
 
@@ -36,10 +35,10 @@ def parameters(case):
     return dict(case=case, role=role, groups=ORIGINAL_GROUPS, local=16, epoch=1,
                 data_offset=DATA_OFFSET, flag_offset=FLAG_OFFSET,
                 data_word=DATA_WORD if role != 'warm' else 0,
-                flag_word=0,
+                flag_word=FLAG_WORD if role != 'warm' else 0,
                 warm_offset=WARM_OFFSET, refetch_offset=REFETCH_OFFSET,
                 output_offset=OUTPUT_OFFSET, kernarg_bytes=KERNARG_BYTES,
-                target_offset=DATA_OFFSET, seed=0)
+                target_offset=DATA_OFFSET, seed=SEED)
 
 
 def _reader(output):
@@ -51,8 +50,12 @@ def _reader(output):
 def words(case):
     p = parameters(case)
     if p['role'] == 'producer':
-        from compute_uc_cache_alias_cases import words as uc_words
-        return uc_words(PRODUCER_CASE)
+        arms = [[VSET_ONE, *_splat(2, 0),
+                 *_parameters(DATA_OFFSET, DATA_WORD), _request('exchange'),
+                 _extract(7, 12), _store(12, OUTPUT_OFFSET), FENCE,
+                 *_parameters(FLAG_OFFSET, FLAG_WORD), _request('exchange'),
+                 _extract(7, 12), _store(12, OUTPUT_OFFSET + 4), FENCE, CEASE]]
+        arms += [[CEASE] for _ in range(ORIGINAL_GROUPS - 1)]
     else:
         output = p['warm_offset'] if p['role'] == 'warm' else p['refetch_offset']
         arms = [_reader(output + 8 * group) for group in range(ORIGINAL_GROUPS)]
