@@ -45,7 +45,8 @@ def source_launch(index, build, session, profile):
     return [str(build / 'compute_global_host'), str(session / ('round-' + str(index))),
             str(profile), str(inputs / (stage['case'] + '.bin')),
             str(inputs / (stage['case'] + '.kernarg')), stage['case'],
-            '--cached-kernarg', '--uc-cache-alias-source', '--uc-cache-alias-live',
+            '--cached-kernarg', '--uc-cache-alias-source', '--l1-publication-source',
+            '--uc-cache-alias-live',
             '--physical-base', str(stage['base'])]
 
 
