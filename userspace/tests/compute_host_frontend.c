@@ -354,7 +354,7 @@ int main(int argc,char **argv)
   (image_case || storage_case || publication_case || image_publication_case || texture_publication_case || shared_publication_case)?cs_frontend_compile_buffers(argv[3],dump):cs_frontend_compile(argv[3],dump);assert(frontend);
  {
   unsigned expected_shared=0;
-  if(shared_publication_case && shared_publication_index==1)expected_shared=512; /* local=128 own+peer */
+  if(shared_publication_case && shared_publication_index==1)expected_shared=128; /* dual own-stripe */
   else if(!(uniform_case || counter_case || counter_publication_case || shared_publication_case || image_case || storage_case || publication_case || image_publication_case || texture_publication_case))expected_shared=16384;
   assert(cs_frontend_shared_bytes(frontend)==expected_shared);
  }
@@ -430,7 +430,7 @@ int main(int argc,char **argv)
  if(image_case){grid.block[0]=4;grid.grid[0]=2;}
  if(storage_case){grid.block[0]=4;grid.grid[0]=2;}
  if(publication_case || image_publication_case || texture_publication_case || counter_publication_case || shared_publication_case){
-  grid.block[0]=shared_publication_case && shared_publication_index==1?128:1;grid.grid[0]=1;}
+  grid.block[0]=shared_publication_case && shared_publication_index==1?16:1;grid.grid[0]=1;}
  if(uniform_case){grid.block[0]=8;grid.block[1]=4;grid.block[2]=4;}
  p->launch_grid(p,&grid);assert(submitted==1 && retired);
  marker("cleanup_wait","actual compute retired; independent byte/source/guard authorization required\n");
