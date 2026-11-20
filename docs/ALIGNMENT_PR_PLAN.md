@@ -142,11 +142,11 @@
   shared scratch/`barrier`/`memoryBarrierShared`→SSBO `memoryBarrierBuffer` 三阶段、
   同物理基址retained SSBO extents、Verilator下warm AR→producer AW→reload AR；
   qualify `--case shared-publication`；[结果与复现](P11_SHARED_PUBLICATION.md)。
-- P11 color-attachment publication 源码/接线已交付：float
-  `framebuffer-blit-sample` 上 warm→producer→reload 连续会话、retained color
-  render-target GEM、fabric AR→AW→AR 观测与 qualify 入口；完整float DUT执行结果
-  见[范围与复现](P11_ATTACHMENT_PUBLICATION.md)。ordinary L1 cached别名及DMA
-  仍待闭合，不关闭 P11；计数仍为 **10/40**。
+- P11 color-attachment publication 完整float DUT与fabric观测已通过：float
+  `framebuffer-blit-sample` 上 warm→producer→reload、retained color render-target
+  GEM、Verilator下AR→AW→AR；qualify `scripts/qualify_attachment_publication.py`；
+  [结果与复现](P11_ATTACHMENT_PUBLICATION.md)。ordinary L1 cached别名及DMA仍待闭合，
+  不关闭 P11；计数仍为 **10/40**。
 - P15、P16、P17、P39、P40 已有下表列出的限定范围源码与检查，均未完成目标验收。
   当前112仍非完整资源资格；旧96模型不能替代P04的完整factory和原probe验收。
 
