@@ -71,31 +71,25 @@ def target_line(description):
     return kernarg + (p['target_offset'] & ~63)
 
 
-AMO_OLD = (0xfffffff0, 0x80000001, 0, 0x80000002, 2, 0x80000003, 4, 0x80000004)
-
-
 def returned_outputs(initial, returned, description):
     p = source.parameters(description['sourceCase'])
     kernarg = uint(description['kernarg']['allocationPhysical'], 64)
     if p['role'] == 'producer':
-        changes = [(kernarg + source.DATA_OFFSET, struct.pack('<I', source.PUBLISHED)),
-                   (kernarg + 192, struct.pack('<I', 2))]
-        for index, old in enumerate(AMO_OLD):
-            changes.append((kernarg + source.OUTPUT_OFFSET + 4 * index, struct.pack('<I', old)))
-        for group in range(p['groups']):
-            changes += [(kernarg + source.WARM_OFFSET + 8 * group, struct.pack('<I', source.SEED)),
-                        (kernarg + source.WARM_OFFSET + 8 * group + 4, struct.pack('<I', 0)),
-                        (kernarg + source.REFETCH_OFFSET + 8 * group, struct.pack('<I', source.PUBLISHED)),
-                        (kernarg + source.REFETCH_OFFSET + 8 * group + 4, struct.pack('<I', 0))]
+        changes = [(kernarg + source.DATA_OFFSET, struct.pack('<I', source.DATA_WORD)),
+                   (kernarg + source.FLAG_OFFSET, struct.pack('<I', source.FLAG_WORD)),
+                   (kernarg + source.OUTPUT_OFFSET, struct.pack('<I', source.SEED)),
+                   (kernarg + source.OUTPUT_OFFSET + 4, struct.pack('<I', 0))]
     else:
         slot = source.WARM_OFFSET if p['role'] == 'warm' else source.REFETCH_OFFSET
-        data, flag = (source.SEED if p['role'] == 'warm' else source.PUBLISHED), 0
+        data = source.SEED if p['role'] == 'warm' else source.DATA_WORD
+        flag = 0 if p['role'] == 'warm' else source.FLAG_WORD
         changes = []
         for group in range(p['groups']):
             changes += [(kernarg + slot + 8 * group, struct.pack('<I', data)),
                         (kernarg + slot + 8 * group + 4, struct.pack('<I', flag))]
         if p['role'] == 'reload':
-            changes.append((kernarg + source.DATA_OFFSET, struct.pack('<I', source.PUBLISHED)))
+            changes += [(kernarg + source.DATA_OFFSET, struct.pack('<I', source.DATA_WORD)),
+                        (kernarg + source.FLAG_OFFSET, struct.pack('<I', source.FLAG_WORD))]
     for address, expected in changes:
         actual = returned.read(address, len(expected))
         require(actual == expected,

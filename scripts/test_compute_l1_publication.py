@@ -13,8 +13,9 @@ class L1PublicationCases(unittest.TestCase):
     def test_roles_and_words(self):
         self.assertEqual([cases.parameters(c)['role'] for c in cases.CASES],
                          ['warm', 'producer', 'reload'])
-        self.assertEqual(cases.SEED, 0xfffffff0)
-        self.assertEqual(cases.PUBLISHED, 6)
+        self.assertEqual(cases.SEED, 0)
+        self.assertEqual(cases.DATA_WORD, 7)
+        self.assertEqual(cases.FLAG_WORD, 1)
         self.assertEqual(cases.parameters(cases.CASES[0])['data_word'], 0)
 
     def test_sources_are_distinct_and_bounded(self):
@@ -63,7 +64,7 @@ class L1PublicationProtocol(unittest.TestCase):
                       warmL1Mask=3, warmL2=True, invalidateMask=3, invalidateAckMask=3,
                       refilledL1Mask=3, refilledL2=True,
                       ordinaryL1AliasRequired=True, uncachedStoragePath=True,
-                      warmCycle=20, invalidateCycle=30, invalidateAckCycle=40,
+                      warmCycle=20, l2DropCycle=25, invalidateCycle=30, invalidateAckCycle=40,
                       firstTargetWriteCycle=50, reloadReadRequestCycle=60,
                       reloadReadResponseCycle=70, refillCycle=80)
         description = {'sourceCase': cases.CASES[2],
