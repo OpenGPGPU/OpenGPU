@@ -48,7 +48,7 @@ def _reader(output):
 def words(case):
     p = parameters(case)
     if p['role'] == 'producer':
-        return (*_parameters(DATA_OFFSET, DATA_WORD), _request('exchange'),
+        return (VSET_ONE, *_parameters(DATA_OFFSET, DATA_WORD), _request('exchange'),
                 _extract(7, 12), _store(12, OUTPUT_OFFSET), FENCE, CEASE)
     else:
         output = p['warm_offset'] if p['role'] == 'warm' else p['refetch_offset']
