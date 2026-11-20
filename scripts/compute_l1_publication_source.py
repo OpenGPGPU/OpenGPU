@@ -25,8 +25,16 @@ def recipe(memory, description):
             'foreign or missing same-GEM cached/UC fields')
     required_flags(description, dict(schema=SCHEMA, storageSlot=13, storageBinding=0,
                                      retainedObjects=1, temporaryMappings=2))
-    p, kernarg, code = _recipe(memory, {key: description[key] for key in CORE},
-                               source, SCHEMA)
+    try:
+        p, kernarg, code = _recipe(memory, {key: description[key] for key in CORE},
+                                   source, SCHEMA)
+    except ValueError as error:
+        import hashlib
+        case = description.get('sourceCase')
+        actual = hashlib.sha256(memory.read(uint(description['kernarg']['allocationPhysical']), 8192)).hexdigest()
+        expected = hashlib.sha256(source.initial_kernarg(case)).hexdigest()
+        raise ValueError('%s actual=%s expected=%s role=%s' % (error, actual, expected,
+                         source.parameters(case)['role'])) from error
     required_flags(description['storageAlias'], description['kernarg'])
     require(set(description['storageAlias']) == set(description['kernarg']),
             'UC storage does not retain the same original GEM and exact view')
