@@ -17,14 +17,14 @@ stay open. Count remains **10/40**.
 | Case | Role | Source | Expected data/flag | Local | Shared bytes |
 | --- | --- | ---: | --- | ---: | ---: |
 | `shared-publication-warm` | warm | `warm.comp` | 0 / 0 | 1 | 0 |
-| `shared-publication-1` | producer | `publication-1.comp` | 7 / 1 | 16 | 128 |
+| `shared-publication-1` | producer | `publication-1.comp` | 7 / 1 | 128 | 512 |
 | `shared-publication-reload` | reload | `reload.comp` | 7 / 1 | 1 | 0 |
 
-Producer uses one 16-lane warp and a 32-word shared scratch (two own-stripe
-spans). Emitter `EXPR_PEER` requires `local_size=128` with `id^16`; this float
-DUT corpus stays on one warp and writes `scratch[id]` / `scratch[16u+id]`
-(data/flag), converges with `memoryBarrierShared();barrier()`, then lane 0
-publishes those own-stripe loads through `memoryBarrierBuffer()` into
+Producer uses `local_size=128` (eight 16-lane warps) and a 128-word shared
+scratch so emitter `EXPR_PEER` admits `id^16`. Lane 0 stores data and lane 16
+stores the flag into `scratch[id]`; after `memoryBarrierShared();barrier()`,
+lane 0 loads `scratch[id]` / `scratch[id^16u]` and publishes through
+`memoryBarrierBuffer()` into
 `data.v[1]` / `data.v[17]`. Warm and reload consumers read the SSBO words into
 an output window. All three phases share physical base `0x01000000`. Retained
 SSBO extents keep measured DUT bytes across Mesa relaunches; other exact
