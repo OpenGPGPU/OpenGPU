@@ -266,7 +266,7 @@ class P12CounterOracle(unittest.TestCase):
                 self.assertEqual(snapshot_seed(memory, description), seed_oracle())
             seed = seed_oracle()
             good = copy.deepcopy(allocations)
-            olds = counter_old_values(seed)
+            olds = counter_old_values(0xfffffffe)
             for binding, address in enumerate(outputs):
                 values = [(old ^ seed ^ (binding * 0x10203)) & 0xffffffff for old in olds]
                 struct.pack_into('<128I', good[address], 0, *values)
