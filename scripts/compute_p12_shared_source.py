@@ -260,7 +260,7 @@ def ready(memory, description, data, *, owner_profile=IMAGE_FLOAT_PROFILE):
         print('P12_GUB1_ACTUAL=%d %s EXPECTED=%s' % (index, [hex(x) for x in actual], [hex(x) for x in record]), file=sys.stderr, flush=True)
         require(actual == tuple(record),
                 'P12 GUB1 UBO descriptor differs')
-        copied = memory.read(translate(memory, satp, base, 3), UBO_BYTES)
+        copied = memory.read(uniform_physical + 4096 + UBO_BYTES * index, UBO_BYTES)
         original = memory.read(ubo, UBO_BYTES)
         if copied != original:
             import sys
