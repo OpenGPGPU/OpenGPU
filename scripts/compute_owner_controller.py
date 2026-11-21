@@ -88,7 +88,9 @@ def input_digest(path):
 
 def ready_inputs(directory, case, *, owner_profile=None, permission=None, profile=None, global_cached=False, cache_alias=False, uc_cache_alias=False):
     from compute_counter_source import SCHEMA as COUNTER_SCHEMA, ready as counter_ready
-    from compute_owner_cases import COUNTER_CASES, IMAGE_CASES, MIXED_ATOMIC_CASES, GLOBAL_ATOMIC_CASES
+    from compute_p12_counter_source import SCHEMA as P12_COUNTER_SCHEMA, ready as p12_counter_ready
+    from compute_owner_cases import (COUNTER_CASES, P12_COUNTER_CASES, IMAGE_CASES, MIXED_ATOMIC_CASES,
+        GLOBAL_ATOMIC_CASES)
     from compute_image_source import SCHEMA as IMAGE_SCHEMA, CONTENDED_SCHEMA, ready as image_ready
     from compute_storage_atomic_source import SCHEMA as STORAGE_SCHEMA, ready as storage_ready
     from compute_storage_atomic_cases import CASES as STORAGE_CASES
@@ -121,6 +123,7 @@ def ready_inputs(directory, case, *, owner_profile=None, permission=None, profil
             'image permission denial requires the original float buffer case')
     description=strict_json(directory/'oracle.json')
     counter=description.get('schema')==COUNTER_SCHEMA
+    p12_counter=description.get('schema')==P12_COUNTER_SCHEMA
     image=description.get('schema') in (IMAGE_SCHEMA,CONTENDED_SCHEMA)
     contended=description.get('schema')==CONTENDED_SCHEMA
     mixed=description.get('schema')==MIXED_SCHEMA
@@ -135,7 +138,9 @@ def ready_inputs(directory, case, *, owner_profile=None, permission=None, profil
     global_atomic=description.get('schema') in (GLOBAL_SCHEMA,CACHED_SCHEMA,ALIAS_SCHEMA,UC_ALIAS_SCHEMA)
     require(not global_atomic or description.get('schema')==(UC_ALIAS_SCHEMA if uc_cache_alias else ALIAS_SCHEMA if cache_alias else CACHED_SCHEMA if global_cached else GLOBAL_SCHEMA),
             'cached and uncached global READY contracts differ')
-    require(counter==(case in COUNTER_CASES), 'counter source requires distinct qualification/case binding')
+    require(counter==(case in COUNTER_CASES and case not in P12_COUNTER_CASES),
+            'counter source requires distinct qualification/case binding')
+    require(p12_counter==(case in P12_COUNTER_CASES), 'P12 counter source requires distinct qualification/case binding')
     require((image or mixed)==(case in IMAGE_CASES), 'image source requires distinct qualification/case binding')
     require(mixed==(case in MIXED_ATOMIC_CASES),'mixed atomic source requires its distinct alias contract')
     require(storage==(case in STORAGE_CASES), 'storage atomic source requires distinct qualification/case binding')
@@ -154,13 +159,17 @@ def ready_inputs(directory, case, *, owner_profile=None, permission=None, profil
             'L1 publication source requires distinct qualification/case binding')
     require(global_atomic==(case in GLOBAL_ATOMIC_CASES), 'raw global source requires distinct qualification/case binding')
     inputs={}
-    if counter or image or storage or publication or image_publication or texture_publication or counter_publication or shared_publication or dma_publication or l1_publication or mixed or global_atomic:
+    if counter or p12_counter or image or storage or publication or image_publication or texture_publication or counter_publication or shared_publication or dma_publication or l1_publication or mixed or global_atomic:
         from owner_resource_contract import SAMPLE_PROFILE
         owner_profile=SAMPLE_PROFILE if owner_profile is None else owner_profile
         require(description.get('sourceCase')==case, 'source READY case differs from qualification')
         with SparseMemory(directory/'union.memory') as before:
             data=(directory/'record-0.capture').read_bytes()
-            if global_atomic:
+            if p12_counter:
+                from owner_resource_contract import IMAGE_FLOAT_PROFILE
+                require(owner_profile==IMAGE_FLOAT_PROFILE, 'P12 counter coexist requires the full float owner')
+                p12_counter_ready(before,description,data,owner_profile=owner_profile)
+            elif global_atomic:
                 from owner_resource_contract import IMAGE_FLOAT_PROFILE
                 require(owner_profile==IMAGE_FLOAT_PROFILE, 'global atomics require the full float owner')
                 source_ready=uc_alias_ready if uc_cache_alias else alias_ready if cache_alias else global_ready
@@ -409,7 +418,7 @@ def main():
     parser.add_argument('--managed-session-directory', type=Path,
                         help='new GPU-internal session owned/removed by qualify_compute_owner after container exit')
     parser.add_argument('--timeout', type=int, default=3600)
-    from compute_owner_cases import (COUNTER_CASES, IMAGE_CASES, STORAGE_ATOMIC_CASES,
+    from compute_owner_cases import (COUNTER_CASES, P12_COUNTER_CASES, IMAGE_CASES, STORAGE_ATOMIC_CASES,
         STORAGE_PUBLICATION_CASES, IMAGE_PUBLICATION_CASES, TEXTURE_PUBLICATION_CASES,
         COUNTER_PUBLICATION_CASES, SHARED_PUBLICATION_CASES, DMA_PUBLICATION_CASES,
         L1_PUBLICATION_CASES, GLOBAL_ATOMIC_CASES)
@@ -439,6 +448,7 @@ def main():
     parser.add_argument('--global-accepted-matrix',action='store_true')
     parser.add_argument('--cache-alias-matrix',action='store_true')
     parser.add_argument('--uc-cache-alias-matrix',action='store_true')
+    parser.add_argument('--p12-counter-matrix',action='store_true')
     parser.add_argument('--reservation-matrix',action='store_true')
     mode=parser.add_mutually_exclusive_group()
     mode.add_argument('--expect-image-source-fault', action='store_true')
@@ -462,6 +472,17 @@ def main():
         args.global_cached_matrix,args.global_delayed_ack,args.global_recovery_matrix,args.global_accepted_matrix,
         args.expect_image_source_fault,args.image_source_recovery,args.image_permission_recovery,args.image_reset_recovery))),
         'cache alias recovery requires its distinct original-source matrix')
+    require(not args.p12_counter_matrix or (args.case in P12_COUNTER_CASES and not any((
+        args.storage_matrix,args.storage_delayed_ack,args.storage_recovery_matrix,args.storage_accepted_matrix,
+        args.storage_publication_matrix,args.image_publication_matrix,args.texture_publication_matrix,
+        args.counter_publication_matrix,args.shared_publication_matrix,args.dma_publication_matrix,
+        args.l1_publication_matrix,args.image_accepted_matrix,args.contended_image_matrix,
+        args.mixed_atomic_matrix,args.global_atomic_matrix,args.global_cached_matrix,
+        args.global_delayed_ack,args.global_recovery_matrix,args.global_accepted_matrix,
+        args.cache_alias_matrix,args.uc_cache_alias_matrix,args.reservation_matrix,
+        args.expect_image_source_fault,args.image_source_recovery,
+        args.image_permission_recovery,args.image_reset_recovery))),
+        'P12 counter coexist requires its distinct full float owner source')
     require(not args.global_cached_matrix or (args.global_atomic_matrix and not args.global_delayed_ack and
         not args.global_recovery_matrix and not args.global_accepted_matrix),
         'cached global matrix requires its separate normal source sequence')
@@ -618,6 +639,9 @@ def main():
     if args.case in GLOBAL_ATOMIC_CASES:
         from owner_resource_contract import IMAGE_FLOAT_PROFILE
         require(qualified_profile==IMAGE_FLOAT_PROFILE, 'global atomics require the complete float owner')
+    if args.case in P12_COUNTER_CASES or args.p12_counter_matrix:
+        from owner_resource_contract import IMAGE_FLOAT_PROFILE
+        require(qualified_profile==IMAGE_FLOAT_PROFILE, 'P12 counter coexist requires the complete float owner')
     if args.case in (*COUNTER_CASES,*IMAGE_CASES):
         from owner_resource_contract import SAMPLE_FACTORY_CONTRACTS
         require(type(qualified_profile) is str and qualified_profile in SAMPLE_FACTORY_CONTRACTS,

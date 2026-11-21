@@ -243,6 +243,7 @@ def verify(initial, returned, description):
     if [(a, b) for a, b, _ in initial.ranges] != [(a, b) for a, b, _ in returned.ranges]:
         raise ValueError('DUT memory replaced original physical allocations')
     counter = description.get('schema') == 'opengpu-compute-counter-oracle-v1'
+    p12_counter = description.get('schema') == 'opengpu-compute-p12-counter-oracle-v1'
     mixed = description.get('schema') == 'opengpu-compute-mixed-atomic-oracle-v1'
     image = mixed or description.get('schema') in ('opengpu-compute-image-oracle-v1',
                                                   'opengpu-compute-contended-image-oracle-v1')
@@ -261,12 +262,15 @@ def verify(initial, returned, description):
     if counter:
         from compute_owner_cases import counter_parameters
         groups=counter_parameters(description.get('sourceCase'))['groups']
-    else:groups=1 if storage_publication or image_publication or texture_publication or counter_publication or shared_publication or dma_publication else 2 if image or storage_atomic else 4
+    else:groups=1 if p12_counter or storage_publication or image_publication or texture_publication or counter_publication or shared_publication or dma_publication else 2 if image or storage_atomic else 4
     required_flags(description, dict(viewBytes=8192, groups=groups,
-        local=(16 if shared_publication and description.get('role')=='producer' else
+        local=(128 if p12_counter else 16 if shared_publication and description.get('role')=='producer' else
                1 if storage_publication or image_publication or texture_publication or counter_publication or shared_publication or dma_publication else 16 if global_atomic or l1_publication else 4 if counter or image or storage_atomic else 128),
         guard=0xdeadbeef))
-    if l1_publication:
+    if p12_counter:
+        from compute_p12_counter_source import returned_outputs
+        outputs = returned_outputs(initial, returned, description)
+    elif l1_publication:
         from compute_l1_publication_source import returned_outputs
         outputs = returned_outputs(initial, returned, description)
     elif uc_cache_alias:
@@ -350,7 +354,7 @@ def verify(initial, returned, description):
     else:
         raise ValueError('unknown original ESSL byte oracle')
     for first, expected in outputs:
-        if not (counter or image or storage_atomic or storage_publication or image_publication or texture_publication or counter_publication or shared_publication or dma_publication or l1_publication or global_atomic) and initial.read(first, 8192) != struct.pack('<I', 0xdeadbeef) * 2048:
+        if not (counter or p12_counter or image or storage_atomic or storage_publication or image_publication or texture_publication or counter_publication or shared_publication or dma_publication or l1_publication or global_atomic) and initial.read(first, 8192) != struct.pack('<I', 0xdeadbeef) * 2048:
             raise ValueError('output was not independently guard-initialized')
     verify_byte_changes(initial, returned, outputs)
 
