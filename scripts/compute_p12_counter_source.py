@@ -275,7 +275,11 @@ def ready(memory, description, data, *, owner_profile=IMAGE_FLOAT_PROFILE):
     root_record = [0] * 16
     root_record[:15] = [0x47555201, 64, 1, context, 0, 0, 2, 0xfff, low, high,
                         uniform_root + 64, uniform_root + 64 + 24 * 64, 0, 0, 0]
-    require(memory.read(uniform_physical, 64) == struct.pack('<16I', *root_record),
+    actual_root = struct.unpack('<16I', memory.read(uniform_physical, 64))
+    if actual_root != tuple(root_record):
+        import sys
+        print('P12_GUR1_ACTUAL=%s EXPECTED=%s' % ([hex(x) for x in actual_root], [hex(x) for x in root_record]), file=sys.stderr, flush=True)
+    require(actual_root == tuple(root_record),
             'P12 GUR1 active mask/mapping differs')
     require(memory.read(uniform_physical + 64 + UBO_COUNT * 64,
                         4096 - 64 - UBO_COUNT * 64) == bytes(4096 - 64 - UBO_COUNT * 64),
