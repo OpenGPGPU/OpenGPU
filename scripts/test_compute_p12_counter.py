@@ -273,7 +273,7 @@ class P12CounterOracle(unittest.TestCase):
             for binding, address in enumerate(images):
                 values = [(old ^ seed ^ (binding * 0x20406)) & 0xffffffff for old in olds]
                 struct.pack_into('<128I', good[address], 0, *values)
-            struct.pack_into('<I', good[0x20000], COUNTER_INDEX * 4, (seed + 128) & 0xffffffff)
+            struct.pack_into('<I', good[0x20000], COUNTER_INDEX * 4, (0xfffffffe + 128) & 0xffffffff)
             emit(after, good)
             with SparseMemory(before) as initial, SparseMemory(after) as returned:
                 changed = returned_outputs(initial, returned, description)
