@@ -128,7 +128,7 @@ def recipe(memory, value):
 
 def returned_outputs(initial, returned, description):
     outputs, images, ubos = recipe(initial, description)
-    seed = snapshot_seed(initial, description)
+    seed = seed_oracle()
     result = []
     for binding, first in enumerate(outputs):
         data = returned.read(first, LOCAL * 4)
