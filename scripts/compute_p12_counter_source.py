@@ -142,7 +142,7 @@ def recipe(memory, value):
 def returned_outputs(initial, returned, description):
     source, outputs, images, ubos = recipe(initial, description)
     seed = snapshot_seed(initial, description)
-    olds = counter_old_values(seed)
+    olds = counter_old_values(SEED)
     result = []
     for binding, first in enumerate(outputs):
         data = returned.read(first, LOCAL * 4)
