@@ -174,8 +174,8 @@ def fixture():
         descriptor[37:40] = [4, 128, 512]
         struct.pack_into('<64I', allocations[0x80000], unit * 256, *descriptor)
         map_page(base, physical, 15)
-    low = sum((24 + index) << (5 * index) for index in range(6))
-    high = sum((24 + index) << (5 * (index - 6)) for index in range(6, 12))
+    low = sum(index << (5 * index) for index in range(6))
+    high = sum(index << (5 * (index - 6)) for index in range(6, 12))
     root_record = [0] * 16
     root_record[:15] = [0x47555201, 64, 1, context, 0, 0, 2, 0xfff, low, high,
                         uniform_root + 64, uniform_root + 64 + 24 * 64, 0, 0, 0]
