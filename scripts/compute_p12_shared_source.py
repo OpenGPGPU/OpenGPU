@@ -255,7 +255,10 @@ def ready(memory, description, data, *, owner_profile=IMAGE_FLOAT_PROFILE):
         record = [0] * 16
         record[:15] = [0x47554201, 64, 1, context, 0, 0, index, 4, base, base + UBO_BYTES, 0,
                        base, base + UBO_BYTES, 0, 1]
-        require(memory.read(uniform_physical + 64 + 64 * index, 64) == struct.pack('<16I', *record),
+        actual = struct.unpack('<16I', memory.read(uniform_physical + 64 + 64 * index, 64))
+        import sys
+        print('P12_GUB1_ACTUAL=%d %s EXPECTED=%s' % (index, [hex(x) for x in actual], [hex(x) for x in record]), file=sys.stderr, flush=True)
+        require(actual == tuple(record),
                 'P12 GUB1 UBO descriptor differs')
         require(memory.read(translate(memory, satp, base, 3), UBO_BYTES) == memory.read(ubo, UBO_BYTES),
                 'P12 copied UBO data differs from its original GEM')
