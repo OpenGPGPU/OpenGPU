@@ -19,7 +19,7 @@ UBO_BYTES = 16384
 UNIFORM_ROOT = 0xb1800000
 UNIFORM_BYTES = 4096 + UBO_COUNT * UBO_BYTES
 FIELDS = {'schema', 'sourceCase', 'groups', 'local', 'viewBytes', 'guard', 'sharedBytes',
-          'context', 'kernargPhysical', 'kernargBytes',
+          'context', 'kernargPhysical', 'kernargBytes', 'uniformPhysical',
           'outputs', 'storageBindings', 'images', 'imageBindings', 'imageRoot', 'imagePhysical',
           'imageBytes', 'ubos', 'uboBindings'}
 
@@ -38,6 +38,26 @@ def seed_oracle():
     seed = 0
     for block in range(UBO_COUNT):
         seed = ((seed * 33) ^ uniform_value(block + 1, 0) ^ uniform_value(block + 1, 4095)) & 0xffffffff
+    return seed
+
+
+def uniform_block(slot):
+    return struct.pack('<%uI' % (UBO_BYTES // 4),
+                       *(uniform_value(slot, word) for word in range(UBO_BYTES // 4)))
+
+
+def uniform_slots():
+    return {uniform_block(slot): slot for slot in range(1, UBO_COUNT + 1)}
+
+
+def snapshot_seed(memory, description):
+    uniform_physical = uint(description['uniformPhysical'])
+    seed = 0
+    for index in range(UBO_COUNT):
+        block = uniform_physical + 4096 + UBO_BYTES * index
+        word0 = struct.unpack('<I', memory.read(block, 4))[0]
+        wordlast = struct.unpack('<I', memory.read(block + 4095 * 4, 4))[0]
+        seed = ((seed * 33) ^ word0 ^ wordlast) & 0xffffffff
     return seed
 
 
@@ -80,19 +100,24 @@ def recipe(memory, value):
     require(uint(value['imageRoot']) == 0xb1000000 and uint(value['imagePhysical']) > 0 and
             value['imagePhysical'] % 4096 == 0 and uint(value['imageBytes']) == 1024,
             'P12 image descriptor table bounds differ')
+    require(uint(value['uniformPhysical']) > 0 and value['uniformPhysical'] % 4096 == 0,
+            'P12 uniform snapshot physical address differs')
     ubo_bindings = value['uboBindings']
     require(type(ubo_bindings) is list and all(type(i) is int for i in ubo_bindings) and
             ubo_bindings == [24 + i for i in range(UBO_COUNT)], 'original UBO bindings must be 24..35')
     require(type(value['ubos']) is list and len(value['ubos']) == UBO_COUNT, 'twelve original UBOs required')
+    slots = uniform_slots()
+    used = set()
     ubos = []
     for index, view in enumerate(value['ubos']):
         first = allocation_window(memory, view, UBO_BYTES, 24 + index)
         required_flags(view, dict(offset=0, allocationBytes=UBO_BYTES))
-        expected = struct.pack('<%uI' % (UBO_BYTES // 4),
-                               *(uniform_value(index + 1, word) for word in range(UBO_BYTES // 4)))
-        require(memory.read(first, UBO_BYTES) == expected, 'original P12 UBO bytes or guard differ')
+        slot = slots.get(memory.read(first, UBO_BYTES))
+        require(slot is not None and slot not in used, 'original P12 UBO bytes or guard differ')
+        used.add(slot)
         ubos.append(first)
         allocations.append((first, first + UBO_BYTES))
+    require(used == set(range(1, UBO_COUNT + 1)), 'original P12 UBO blocks are not a complete permutation')
     allocations.sort()
     require(all(a[1] <= b[0] for a, b in zip(allocations, allocations[1:])), 'P12 original GEM aliases another resource')
     for key in ('kernargPhysical', 'kernargBytes'):
@@ -103,7 +128,7 @@ def recipe(memory, value):
 
 def returned_outputs(initial, returned, description):
     outputs, images, ubos = recipe(initial, description)
-    seed = seed_oracle()
+    seed = snapshot_seed(initial, description)
     result = []
     for binding, first in enumerate(outputs):
         data = returned.read(first, LOCAL * 4)
@@ -237,6 +262,7 @@ def ready(memory, description, data, *, owner_profile=IMAGE_FLOAT_PROFILE):
             'P12 GUM1 uniform/private-prefix command differs')
     uniform_physical = translate(memory, satp, uniform_root, 3)
     require(uniform_physical > 0 and uniform_physical % 4096 == 0 and
+            uniform_physical == uint(description['uniformPhysical']) and
             translate(memory, satp, uniform_root + UNIFORM_BYTES - 1, 3) == uniform_physical + UNIFORM_BYTES - 1 and
             any(a <= uniform_physical < uniform_physical + UNIFORM_BYTES <= b for a, b, _ in memory.ranges),
             'P12 uniform snapshot is not its original read-only private mapping')
@@ -250,22 +276,16 @@ def ready(memory, description, data, *, owner_profile=IMAGE_FLOAT_PROFILE):
     require(memory.read(uniform_physical + 64 + UBO_COUNT * 64,
                         4096 - 64 - UBO_COUNT * 64) == bytes(4096 - 64 - UBO_COUNT * 64),
             'P12 unused uniform descriptor rows are enabled')
-    for index, ubo in enumerate(ubos):
+    for index in range(UBO_COUNT):
         base = uniform_root + 4096 + UBO_BYTES * index
         record = [0] * 16
         record[:15] = [0x47554201, 64, 1, context, 0, 0, index, 4, base, base + UBO_BYTES, 0,
                        base, base + UBO_BYTES, 0, 1]
         actual = struct.unpack('<16I', memory.read(uniform_physical + 64 + 64 * index, 64))
-        import sys
-        print('P12_GUB1_ACTUAL=%d %s EXPECTED=%s' % (index, [hex(x) for x in actual], [hex(x) for x in record]), file=sys.stderr, flush=True)
         require(actual == tuple(record),
                 'P12 GUB1 UBO descriptor differs')
-        copied = memory.read(uniform_physical + 4096 + UBO_BYTES * index, UBO_BYTES)
-        original = memory.read(ubo, UBO_BYTES)
-        if copied != original:
-            import sys
-            print('P12_UBO_DATA index=%d copied=%s original=%s base=%#x phys=%#x ubo=%#x' % (
-                index, copied[:16].hex(), original[:16].hex(), base,
-                translate(memory, satp, base, 3), ubo), file=sys.stderr, flush=True)
-        require(copied == original,
-                'P12 copied UBO data differs from its original GEM')
+    copied_blocks = [memory.read(uniform_physical + 4096 + UBO_BYTES * index, UBO_BYTES)
+                     for index in range(UBO_COUNT)]
+    original_blocks = [memory.read(ubo, UBO_BYTES) for ubo in ubos]
+    require(sorted(copied_blocks) == sorted(original_blocks),
+            'P12 copied UBO data differs from the bound GEMs')

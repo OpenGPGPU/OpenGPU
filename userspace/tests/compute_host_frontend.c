@@ -238,7 +238,7 @@ static void write_oracle(void)
   for(unsigned i=0;i<12;i++){if(i)fputc(',',f);source_window(f,uniform_handles[i],0,16384,24+i);}
   fputs("],\"uboBindings\":[",f);
   for(unsigned i=0;i<12;i++){if(i)fputc(',',f);fprintf(f,"%u",24+i);}
-  fputs("]}\n",f);
+  fprintf(f,"],\"uniformPhysical\":%llu}\n",(unsigned long long)snap.uniform_physical);
  }
  else if(p12_counter_coexist){
   const struct drm_opengpu_compute_counter_source *v=&accepted_counter.source;
@@ -264,7 +264,7 @@ static void write_oracle(void)
   for(unsigned i=0;i<12;i++){if(i)fputc(',',f);source_window(f,uniform_handles[i],0,16384,24+i);}
   fputs("],\"uboBindings\":[",f);
   for(unsigned i=0;i<12;i++){if(i)fputc(',',f);fprintf(f,"%u",24+i);}
-  fputs("]}\n",f);
+  fprintf(f,"],\"uniformPhysical\":%llu}\n",(unsigned long long)snap.uniform_physical);
  }else if(counter_case){
   const struct drm_opengpu_compute_counter_source *v=&accepted_counter.source;
   struct compute_host_snapshot snap;assert(!compute_host_snapshot_get(session,&snap));
