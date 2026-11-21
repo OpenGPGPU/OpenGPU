@@ -240,11 +240,11 @@ def ready(memory, description, data, *, owner_profile=IMAGE_FLOAT_PROFILE):
             translate(memory, satp, uniform_root + UNIFORM_BYTES - 1, 3) == uniform_physical + UNIFORM_BYTES - 1 and
             any(a <= uniform_physical < uniform_physical + UNIFORM_BYTES <= b for a, b, _ in memory.ranges),
             'P12 uniform snapshot is not its original read-only private mapping')
-    low = sum(index << (5 * index) for index in range(6))
-    high = sum(index << (5 * (index - 6)) for index in range(6, UBO_COUNT))
+    low = sum((24 + index) << (5 * index) for index in range(6))
+    high = sum((24 + index) << (5 * (index - 6)) for index in range(6, UBO_COUNT))
     root_record = [0] * 16
     root_record[:15] = [0x47555201, 64, 1, context, 0, 0, 2, 0xfff, low, high,
-                        uniform_root + 64, uniform_root + 64 + UBO_COUNT * 64, 0, 0, 0]
+                        uniform_root + 64, uniform_root + 64 + 24 * 64, 0, 0, 0]
     require(memory.read(uniform_physical, 64) == struct.pack('<16I', *root_record),
             'P12 GUR1 active mask/mapping differs')
     require(memory.read(uniform_physical + 64 + UBO_COUNT * 64,
