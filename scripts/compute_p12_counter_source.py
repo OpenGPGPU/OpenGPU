@@ -156,7 +156,7 @@ def returned_outputs(initial, returned, description):
         expected = sorted((old ^ seed ^ (binding * 0x20406)) & 0xffffffff for old in olds)
         require(sorted(actual) == expected, 'P12 counter image returned value multiset differs')
         result.append((first, data))
-    final = struct.pack('<I', (seed + LOCAL) & 0xffffffff)
+    final = struct.pack('<I', (SEED + LOCAL) & 0xffffffff)
     address = source + COUNTER_INDEX * 4
     require(returned.read(address, 4) == final, 'P12 counter final value/wrap differs')
     result.append((address, final))
