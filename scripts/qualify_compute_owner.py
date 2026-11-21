@@ -20,7 +20,7 @@ from compute_owner_protocol import strict_json, RECOVERY_CASE, RECOVERY_BASES, R
 from compute_owner_cases import (CASES, DYNAMIC_CASES, LEGACY_CASES, COUNTER_CASE, COUNTER_CASES,
     IMAGE_CASES, STORAGE_ATOMIC_CASES, STORAGE_PUBLICATION_CASES, IMAGE_PUBLICATION_CASES,
     TEXTURE_PUBLICATION_CASES, COUNTER_PUBLICATION_CASES, SHARED_PUBLICATION_CASES, DMA_PUBLICATION_CASES,
-    L1_PUBLICATION_CASES, GLOBAL_ATOMIC_CASES)
+    L1_PUBLICATION_CASES, GLOBAL_ATOMIC_CASES, P12_COUNTER_CASES)
 from owner_resource_contract import COMPUTE_STAGE, FULL_COMPUTE_CONTRACTS, SAMPLE_PROFILE, SAMPLE_FACTORY_CONTRACTS
 from owner_resource_contract import IMAGE_FLOAT_PROFILE
 from compute_image_cases import IMAGE_FLOAT_EXCHANGE_CASES
@@ -76,6 +76,8 @@ def checked_inputs(args):
             *L1_PUBLICATION_CASES):
         require(type(record.get('profile')) is str and record['profile'] in SAMPLE_FACTORY_CONTRACTS,
                 'source execution requires the exact final112 sample owner factory selected by qualification')
+    if getattr(args,'case',None) in P12_COUNTER_CASES:
+        require(record.get('profile')==IMAGE_FLOAT_PROFILE,'P12 counter coexist requires its qualified float owner')
     if getattr(args,'case',None) in (*IMAGE_FLOAT_EXCHANGE_CASES,
             *(case for case in CONTENDED_IMAGE_CASES if '-r32f-' in case),'image-atomics-contended',
             'image-atomics-accepted-write-error'):
@@ -195,6 +197,15 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
         'reservation_matrix')) and
         not source_fault and permission is None and reset is None and physical_base is None),
         'L1 publication requires its exact first warm source and distinct continuous receipts')
+    require(not getattr(args,'p12_counter_matrix',False) or (case==P12_COUNTER_CASES[0] and
+        not any(getattr(args,key,False) for key in ('storage_matrix','storage_delayed_ack','storage_recovery_matrix',
+        'storage_accepted_matrix','storage_publication_matrix','image_publication_matrix','texture_publication_matrix',
+        'counter_publication_matrix','shared_publication_matrix','dma_publication_matrix','l1_publication_matrix',
+        'image_accepted_matrix','contended_image_matrix','mixed_atomic_matrix','global_atomic_matrix','global_cached_matrix',
+        'global_delayed_ack','global_recovery_matrix','global_accepted_matrix','cache_alias_matrix',
+        'uc_cache_alias_matrix','reservation_matrix')) and
+        not source_fault and permission is None and reset is None and physical_base is None),
+        'P12 counter coexist requires its exact full float owner source')
     require(not getattr(args,'contended_image_matrix',False) or (case==CONTENDED_IMAGE_CASES[0] and
         not (getattr(args,'storage_matrix',False) or getattr(args,'storage_recovery_matrix',False)) and
         not source_fault and permission is None and reset is None and physical_base is None),
@@ -357,6 +368,7 @@ def run_case(args, *, gpu, source, temporary, ntt, image, case):
             *(['--shared-publication-matrix'] if getattr(args,'shared_publication_matrix',False) else []),
             *(['--dma-publication-matrix'] if getattr(args,'dma_publication_matrix',False) else []),
             *(['--l1-publication-matrix'] if getattr(args,'l1_publication_matrix',False) else []),
+            *(['--p12-counter-matrix'] if getattr(args,'p12_counter_matrix',False) else []),
             *(['--image-accepted-matrix'] if getattr(args,'image_accepted_matrix',False) else []),
             *(['--contended-image-matrix'] if getattr(args,'contended_image_matrix',False) else []),
             *(['--mixed-atomic-matrix'] if getattr(args,'mixed_atomic_matrix',False) else []),
@@ -433,6 +445,7 @@ def main():
     args.shared_publication_matrix=args.case=='shared-publication'
     args.dma_publication_matrix=args.case=='dma-publication'
     args.l1_publication_matrix=args.case=='l1-publication'
+    args.p12_counter_matrix=args.case==P12_COUNTER_CASES[0]
     args.image_accepted_matrix=args.case=='image-atomics-accepted-write-error'
     args.contended_image_matrix=args.case=='image-atomics-contended'
     args.mixed_atomic_matrix=args.case=='image-storage-atomics'
@@ -488,6 +501,7 @@ def main():
         cases = (GLOBAL_ATOMIC_CASES[:1] if args.reservation_matrix or args.global_atomic_matrix or args.global_recovery_matrix or args.global_accepted_matrix or args.cache_alias_matrix or args.uc_cache_alias_matrix else MIXED_ATOMIC_CASES[:1] if args.mixed_atomic_matrix else CONTENDED_IMAGE_CASES[:1] if args.contended_image_matrix or args.image_accepted_matrix else
                  SHARED_PUBLICATION_CASES[:1] if args.shared_publication_matrix else
                  L1_PUBLICATION_CASES[:1] if args.l1_publication_matrix else
+                 P12_COUNTER_CASES[:1] if args.p12_counter_matrix else
                  DMA_PUBLICATION_CASES[:1] if args.dma_publication_matrix else
                  COUNTER_PUBLICATION_CASES[:1] if args.counter_publication_matrix else
                  TEXTURE_PUBLICATION_CASES[:1] if args.texture_publication_matrix else

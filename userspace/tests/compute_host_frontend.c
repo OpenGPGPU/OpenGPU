@@ -29,7 +29,7 @@ static struct compute_host_session *session;
 static struct {void *data;uint64_t bytes;unsigned maps,closed;} bos[512];
 static unsigned next_bo=1,next_sync=1,submitted,retired;
 static const char *directory;
-static int capture_only,expect_image_source_fault,uniform_case,dynamic_case,address_case,counter_case,counter_dynamic,counter_coexist;
+static int capture_only,expect_image_source_fault,uniform_case,dynamic_case,address_case,counter_case,counter_dynamic,counter_coexist,p12_counter_coexist;
 static unsigned image_permission_fault;
 static unsigned image_reset;
 static unsigned storage_view_failure,expect_storage_fault,expect_image_write_fault;
@@ -222,7 +222,32 @@ static void write_oracle(void)
  else if(shared_publication_case)shared_publication_write_oracle(f);
  else if(dma_publication_case)dma_publication_write_oracle(f);
  else if(image_case)image_write_oracle(f);
- else if(counter_case){
+ else if(p12_counter_coexist){
+  const struct drm_opengpu_compute_counter_source *v=&accepted_counter.source;
+  struct compute_host_snapshot snap;assert(!compute_host_snapshot_get(session,&snap));
+  uint64_t physical,bytes;assert(!compute_host_original_physical(session,counter_handle,&physical,&bytes));
+  assert(accepted_counter.version==1 && v->handle==counter_handle && v->offset==counter_offset && v->count==counter_count &&
+   bytes==8192 && snap.counter_physical==physical+counter_offset && snap.counter_bytes==counter_count*4 && snap.counter_root);
+  fprintf(f,"{\"schema\":\"opengpu-compute-p12-counter-oracle-v1\",\"sourceCase\":\"p12-counter-coexist\",\"groups\":1,\"local\":128,\"viewBytes\":8192,\"guard\":3735928559,\"seed\":%u,\"index\":%u,\"count\":%u,\"counterHandle\":%u,\"context\":%u,\"descriptorPhysical\":%llu,\"descriptorRoot\":%u,\"kernargPhysical\":%llu,\"kernargBytes\":%llu,\"counter\":",
+   0xfffffffeu,counter_index,counter_count,v->handle,snap.context,
+   (unsigned long long)snap.counter_descriptor_physical,snap.counter_root,
+   (unsigned long long)snap.kernarg_physical,(unsigned long long)snap.kernarg_bytes);
+  source_window(f,counter_handle,counter_offset,counter_count*4,0);fputs(",\"outputs\":[",f);
+  for(unsigned i=0;i<4;i++){if(i)fputc(',',f);source_window(f,output_handles[i],0,8192,i);}
+  fprintf(f,"],\"storageBindings\":[%u,%u,%u,%u]",counter_storage_bindings[0],counter_storage_bindings[1],counter_storage_bindings[2],counter_storage_bindings[3]);
+  assert(snap.images && snap.image_bytes==1024 && snap.image_root &&
+   accepted_counter.resources.resources.resource_flags==(OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE|OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES));
+  fputs(",\"images\":[",f);
+  for(unsigned i=0;i<4;i++){if(i)fputc(',',f);source_window(f,image_handles[i],0,512,i);}
+  fprintf(f,"],\"imageBindings\":[%u,%u,%u,%u],\"imageRoot\":%u,\"imagePhysical\":%llu,\"imageBytes\":%llu",
+   counter_image_bindings[0],counter_image_bindings[1],counter_image_bindings[2],counter_image_bindings[3],snap.image_root,
+   (unsigned long long)snap.image_physical,(unsigned long long)snap.image_bytes);
+  fputs(",\"ubos\":[",f);
+  for(unsigned i=0;i<12;i++){if(i)fputc(',',f);source_window(f,uniform_handles[i],0,16384,24+i);}
+  fputs("],\"uboBindings\":[",f);
+  for(unsigned i=0;i<12;i++){if(i)fputc(',',f);fprintf(f,"%u",24+i);}
+  fputs("]}\n",f);
+ }else if(counter_case){
   const struct drm_opengpu_compute_counter_source *v=&accepted_counter.source;
   struct compute_host_snapshot snap;assert(!compute_host_snapshot_get(session,&snap));
   uint64_t physical,bytes;assert(!compute_host_original_physical(session,counter_handle,&physical,&bytes));
@@ -327,6 +352,7 @@ int main(int argc,char **argv)
  for(unsigned i=0;i<9;i++)if(!strcmp(argv[4],counter_names[i])){counter_case=1;counter_operation=i%3;counter_dynamic=i>=3;counter_index=i>=6?0:i>=3?4:7;counter_name=counter_names[i];}
  if(!strcmp(argv[4],"counter-scalar")){counter_case=1;counter_index=0;counter_offset=8188;counter_count=1;counter_name="counter-scalar";}
  if(!strcmp(argv[4],"counter-coexist")){counter_case=counter_coexist=1;counter_index=7;counter_name="counter-coexist";}
+ if(!strcmp(argv[4],"p12-counter-coexist")){counter_case=p12_counter_coexist=1;counter_index=7;counter_offset=0;counter_name="p12-counter-coexist";}
  for(unsigned variant=0;variant<16;variant++){
   const unsigned signed_operations[]={0,1,2,3,4,9};unsigned op=variant<10?variant:signed_operations[variant-10];
   char name[64];assert(snprintf(name,sizeof(name),variant<10?"shared-dynamic-%u":"shared-dynamic-i-%u",op)>0);
@@ -360,6 +386,8 @@ int main(int argc,char **argv)
   unsigned expected_shared=0;
   if(shared_publication_case && shared_publication_index==1)expected_shared=128; /* dual own-stripe */
   else if(!(uniform_case || counter_case || counter_publication_case || shared_publication_case || dma_publication_case || image_case || storage_case || publication_case || image_publication_case || texture_publication_case))expected_shared=16384;
+  /* P12 counter coexistence intentionally has no shared memory: the compiler
+   * profile cannot lower atomic counters and shared memory in one shader. */
   assert(cs_frontend_shared_bytes(frontend)==expected_shared);
  }
  struct pipe_compute_state state={.ir_type=PIPE_SHADER_IR_TGSI,.prog=cs_frontend_tokens(frontend),.req_local_mem=cs_frontend_shared_bytes(frontend)};
@@ -381,7 +409,7 @@ int main(int argc,char **argv)
  if(mixed_case)mixed_setup(s,p,frontend,output);
  else if(image_case)image_setup(s,p,frontend);
  if(counter_case)for(unsigned i=0;i<4;i++)counter_storage_bindings[i]=cs_frontend_storage_binding(frontend,i);
- if(counter_coexist){
+ if(counter_coexist || p12_counter_coexist){
   struct pipe_resource *images[4];struct pipe_image_view views[4]={0};
   for(unsigned i=0;i<4;i++){
    struct pipe_resource image={.target=PIPE_BUFFER,.format=PIPE_FORMAT_R32_UINT,
@@ -418,6 +446,15 @@ int main(int argc,char **argv)
   data[0]=counter_index;data[1]=0x13579bdfu;data[2]=0x2468ace0u;data[3]=0x11223344u;
   cs_frontend_ubos(frontend,p,ub,offsets,sizes);
  }
+ if(p12_counter_coexist){
+  for(unsigned i=0;i<12;i++){
+   ub[24+i]=buffer(s,16384);assert(ub[24+i]);sizes[24+i]=16384;
+   uniform_handles[i]=pipe_opengpu_resource_handle(opengpu_resource(ub[24+i])->gpu);
+   uint32_t *data=pipe_opengpu_resource_map(opengpu_resource(ub[24+i])->gpu);
+   for(unsigned w=0;w<4096;w++)data[w]=uniform_value(i+1,w);
+  }
+  cs_frontend_ubos(frontend,p,ub,offsets,sizes);
+ }
  if(counter_case){
   struct pipe_resource *counter=buffer(s,8192);assert(counter);
   counter_handle=pipe_opengpu_resource_handle(opengpu_resource(counter)->gpu);
@@ -432,6 +469,7 @@ int main(int argc,char **argv)
  }
  struct pipe_grid_info grid={.grid={4,1,1},.block={128,1,1}};
  if(counter_case){grid.block[0]=4;if(counter_dynamic)grid.grid[0]=counter_index?1:2;}
+ if(p12_counter_coexist){grid.grid[0]=1;grid.block[0]=128;}
  if(image_case){grid.block[0]=4;grid.grid[0]=2;}
  if(storage_case){grid.block[0]=4;grid.grid[0]=2;}
  if(publication_case || image_publication_case || texture_publication_case || counter_publication_case || shared_publication_case || dma_publication_case){

@@ -210,8 +210,8 @@ class Entry(unittest.TestCase):
                 for profile in ('two-cu-vga60-owner-v1',qualifier.COMPUTE_STAGE,*qualifier.FULL_COMPUTE_CONTRACTS):
                     qualification.write_text(json.dumps(dict(schema='opengpu-owner-executor-v1',kind='compute',profile=profile)))
                     with patch.object(qualifier.subprocess,'run'):
-                        if (case in qualifier.IMAGE_FLOAT_EXCHANGE_CASES or '-r32f-' in case or
-                                case in qualifier.MIXED_ATOMIC_CASES) and profile==qualifier.SAMPLE_PROFILE:
+                        if (case in qualifier.P12_COUNTER_CASES or case in qualifier.IMAGE_FLOAT_EXCHANGE_CASES or
+                                '-r32f-' in case or case in qualifier.MIXED_ATOMIC_CASES) and profile==qualifier.SAMPLE_PROFILE:
                             with self.assertRaisesRegex(ValueError,'qualified float owner'):qualifier.checked_inputs(args)
                         elif profile in (qualifier.SAMPLE_PROFILE,IMAGE_FLOAT_PROFILE):qualifier.checked_inputs(args)
                         else:
@@ -256,7 +256,7 @@ class Entry(unittest.TestCase):
                 *qualifier.STORAGE_PUBLICATION_CASES,*qualifier.IMAGE_PUBLICATION_CASES,
                 *qualifier.TEXTURE_PUBLICATION_CASES,*qualifier.COUNTER_PUBLICATION_CASES,
                 *qualifier.SHARED_PUBLICATION_CASES,*qualifier.DMA_PUBLICATION_CASES,
-                *qualifier.L1_PUBLICATION_CASES)
+                *qualifier.L1_PUBLICATION_CASES,*qualifier.P12_COUNTER_CASES)
             expected_memory='512m' if strict else '2g'
             self.assertEqual(command[command.index('--memory')+1],expected_memory)
             self.assertEqual(command[command.index('--memory-swap')+1],expected_memory)
@@ -534,6 +534,31 @@ class Entry(unittest.TestCase):
             keyword=dict(gpu=ROOT,source=ROOT,ntt=None,image='immutable-image',name='negative')
             for case in ('shared',qualifier.L1_PUBLICATION_CASES[1],qualifier.DMA_PUBLICATION_CASES[0]):
                 with self.subTest(case=case),self.assertRaisesRegex(ValueError,'exact first warm source'):
+                    qualifier.producer_command(args,case=case,**keyword)
+
+    def test_p12_counter_coexist_keeps_its_distinct_full_float_source(self):
+        with tempfile.TemporaryDirectory(prefix='p12-counter-command-') as temporary:
+            root=Path(temporary);q=root/'qualification.json'
+            q.write_text(json.dumps(dict(source_sha256={})))
+            args=argparse.Namespace(mesa=root,mesa_build=root,drm_include=root,library_directory=root,
+                mesa_link_libs='-lfixture',executor_qualification=q,executor=root/'executor',
+                executor_checker=root/'checker',executor_checker_python=sys.executable,timeout=60,
+                p12_counter_matrix=True)
+            with patch('compute_owner_inputs.snapshot',return_value={}),\
+                 patch.object(qualifier.subprocess,'Popen') as popen,\
+                 patch.object(qualifier,'stop_group'),patch.object(qualifier,'remove_container'):
+                popen.return_value.wait.return_value=0
+                qualifier.run_case(args,gpu=ROOT,source=ROOT,temporary=root,ntt=root/'ntt',
+                    image='immutable-image',case=qualifier.P12_COUNTER_CASES[0])
+                self.assertIn('--p12-counter-matrix',popen.call_args.args[0])
+                producer=json.loads((root/(qualifier.P12_COUNTER_CASES[0]+'.argv.json')).read_text())
+                self.assertEqual(producer[producer.index('--case')+1],qualifier.P12_COUNTER_CASES[0])
+                self.assertIn('scripts/compute_owner_inputs.py',producer)
+                self.assertNotIn('--l1-publication-matrix',producer)
+                self.assertNotIn('--capture-only',producer)
+            keyword=dict(gpu=ROOT,source=ROOT,ntt=root/'ntt',image='immutable-image',name='negative')
+            for case in ('counter-increment',qualifier.L1_PUBLICATION_CASES[0],qualifier.IMAGE_CASES[0]):
+                with self.subTest(case=case),self.assertRaisesRegex(ValueError,'exact full float owner source'):
                     qualifier.producer_command(args,case=case,**keyword)
 
     def test_storage_accepted_write_entry_binds_full_float_owner_and_original_source(self):

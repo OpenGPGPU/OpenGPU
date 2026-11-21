@@ -25,7 +25,8 @@ def write_sources(out):
     (out / "scalar.comp").write_text(prefix.replace("counters[8]", "counter") + outputs +
         "void main(){uint id=gl_GlobalInvocationID.x;uint value=atomicCounterIncrement(counter);"
         "out0.v[id]=value;out1.v[id]=value;out2.v[id]=value;out3.v[id]=value;}\n")
-
+    from compute_p12_counter_cases import write_sources as p12_write_sources
+    p12_write_sources(out)
 
 
 if __name__ == "__main__":

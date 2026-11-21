@@ -64,6 +64,8 @@ COMPUTE_CHECKERS = (
     'scripts/test_compute_uc_cache_alias_recovery.py',
     'scripts/compute_l1_publication_cases.py', 'scripts/compute_l1_publication_source.py',
     'scripts/compute_l1_publication.py', 'scripts/compute_l1_publication_controller.py',
+    'scripts/compute_p12_counter_cases.py', 'scripts/compute_p12_counter_source.py',
+    'scripts/test_compute_p12_counter.py',
     'scripts/test_compute_reservation_admission.py',
     'driver/tests/opengpu_compute_reservation_admission_test.c',
     'scripts/compute_global_host_producer.py',
