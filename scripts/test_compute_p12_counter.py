@@ -9,7 +9,7 @@ import unittest
 from compute_owner_cases import CASES, COUNTER_CASES, P12_COUNTER_CASES, counter_parameters, p12_counter_parameters
 from compute_p12_counter_cases import LOCAL, COUNTER_INDEX, COUNTER_BYTES, parameters, shader, write_sources
 from compute_p12_counter_source import (SCHEMA, UNIFORM_BYTES, ready, recipe, returned_outputs,
-    seed_oracle, uniform_value, counter_old_values)
+    seed_oracle, snapshot_seed, uniform_value, counter_old_values)
 from compute_owner_oracle import SparseMemory, verify
 from owner_resource_contract import IMAGE_FLOAT_PROFILE, IMAGE_FLOAT_WORDS
 
@@ -204,7 +204,7 @@ def fixture():
         images=[view(address, index, 512, 4096) for index, address in enumerate(images)],
         imageBindings=[0, 1, 2, 3], imageRoot=image_root, imagePhysical=0x80000, imageBytes=1024,
         ubos=[view(address, 24 + index, 16384, 16384) for index, address in enumerate(ubo_pas)],
-        uboBindings=[24 + index for index in range(12)])
+        uboBindings=[24 + index for index in range(12)], uniformPhysical=uniform_physical)
     discovery = [(word['address'], word['value']) for word in IMAGE_FLOAT_WORDS] + [
         (0, 0x47550002), (0x60, (1 << 6) | (1 << 22) | (1 << 23) | (1 << 25) | (1 << 29) | (128 << 8)),
         (0x68, 0x160), (0x320, 1048576), (0x158, 0x02020810), (0x494, 0x47544d01), (0x43c, 0x47534d01),
@@ -263,6 +263,7 @@ class P12CounterOracle(unittest.TestCase):
                 self.assertEqual(len(outputs), 4)
                 self.assertEqual(len(images), 4)
                 self.assertEqual(len(ubos), 12)
+                self.assertEqual(snapshot_seed(memory, description), seed_oracle())
             seed = seed_oracle()
             good = copy.deepcopy(allocations)
             olds = counter_old_values(seed)
