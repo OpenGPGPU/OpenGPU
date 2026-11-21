@@ -148,6 +148,11 @@ def returned_outputs(initial, returned, description):
         data = returned.read(first, LOCAL * 4)
         actual = struct.unpack('<%uI' % LOCAL, data)
         expected = sorted((old ^ seed ^ (binding * 0x10203)) & 0xffffffff for old in olds)
+        if sorted(actual) != expected:
+            import sys
+            print('P12_SSBO_MULTISET binding=%d seed=%#x actual=%s expected=%s' % (
+                binding, seed, [hex(x) for x in sorted(actual)[:6]], [hex(x) for x in expected[:6]]),
+                file=sys.stderr, flush=True)
         require(sorted(actual) == expected, 'P12 counter SSBO returned value multiset differs')
         result.append((first, data))
     for binding, first in enumerate(images):
