@@ -18,6 +18,8 @@ def write_sources(out):
         (out / ("producer-%d.comp" % epoch)).write_text(source.replace(
             "result.v[group*128u+id]=sum;}", "result.v[group*128u+id]=sum;barrier();"
             "memoryBarrierBuffer();result.v[128u+id]=%du;}" % epoch))
+    from compute_p12_shared_cases import write_sources as p12_write_sources
+    p12_write_sources(out)
 
 
 if __name__ == "__main__":

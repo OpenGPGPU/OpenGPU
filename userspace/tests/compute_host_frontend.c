@@ -29,7 +29,7 @@ static struct compute_host_session *session;
 static struct {void *data;uint64_t bytes;unsigned maps,closed;} bos[512];
 static unsigned next_bo=1,next_sync=1,submitted,retired;
 static const char *directory;
-static int capture_only,expect_image_source_fault,uniform_case,dynamic_case,address_case,counter_case,counter_dynamic,counter_coexist,p12_counter_coexist;
+static int capture_only,expect_image_source_fault,uniform_case,dynamic_case,address_case,counter_case,counter_dynamic,counter_coexist,p12_counter_coexist,p12_shared_coexist;
 static unsigned image_permission_fault;
 static unsigned image_reset;
 static unsigned storage_view_failure,expect_storage_fault,expect_image_write_fault;
@@ -222,6 +222,24 @@ static void write_oracle(void)
  else if(shared_publication_case)shared_publication_write_oracle(f);
  else if(dma_publication_case)dma_publication_write_oracle(f);
  else if(image_case)image_write_oracle(f);
+ else if(p12_shared_coexist){
+  struct compute_host_snapshot snap;assert(!compute_host_snapshot_get(session,&snap));
+  fprintf(f,"{\"schema\":\"opengpu-compute-p12-shared-oracle-v1\",\"sourceCase\":\"p12-shared-coexist\",\"groups\":1,\"local\":128,\"viewBytes\":8192,\"guard\":3735928559,\"sharedBytes\":16384,\"context\":%u,\"kernargPhysical\":%llu,\"kernargBytes\":%llu,\"outputs\":[",
+   snap.context,(unsigned long long)snap.kernarg_physical,(unsigned long long)snap.kernarg_bytes);
+  for(unsigned i=0;i<4;i++){if(i)fputc(',',f);source_window(f,output_handles[i],0,8192,i);}
+  fprintf(f,"],\"storageBindings\":[%u,%u,%u,%u]",counter_storage_bindings[0],counter_storage_bindings[1],counter_storage_bindings[2],counter_storage_bindings[3]);
+  assert(snap.images && snap.image_bytes==1024 && snap.image_root);
+  fputs(",\"images\":[",f);
+  for(unsigned i=0;i<4;i++){if(i)fputc(',',f);source_window(f,image_handles[i],0,512,i);}
+  fprintf(f,"],\"imageBindings\":[%u,%u,%u,%u],\"imageRoot\":%u,\"imagePhysical\":%llu,\"imageBytes\":%llu",
+   counter_image_bindings[0],counter_image_bindings[1],counter_image_bindings[2],counter_image_bindings[3],snap.image_root,
+   (unsigned long long)snap.image_physical,(unsigned long long)snap.image_bytes);
+  fputs(",\"ubos\":[",f);
+  for(unsigned i=0;i<12;i++){if(i)fputc(',',f);source_window(f,uniform_handles[i],0,16384,24+i);}
+  fputs("],\"uboBindings\":[",f);
+  for(unsigned i=0;i<12;i++){if(i)fputc(',',f);fprintf(f,"%u",24+i);}
+  fputs("]}\n",f);
+ }
  else if(p12_counter_coexist){
   const struct drm_opengpu_compute_counter_source *v=&accepted_counter.source;
   struct compute_host_snapshot snap;assert(!compute_host_snapshot_get(session,&snap));
@@ -353,6 +371,7 @@ int main(int argc,char **argv)
  if(!strcmp(argv[4],"counter-scalar")){counter_case=1;counter_index=0;counter_offset=8188;counter_count=1;counter_name="counter-scalar";}
  if(!strcmp(argv[4],"counter-coexist")){counter_case=counter_coexist=1;counter_index=7;counter_name="counter-coexist";}
  if(!strcmp(argv[4],"p12-counter-coexist")){counter_case=p12_counter_coexist=1;counter_index=7;counter_offset=0;counter_name="p12-counter-coexist";}
+ if(!strcmp(argv[4],"p12-shared-coexist")){p12_shared_coexist=1;}
  for(unsigned variant=0;variant<16;variant++){
   const unsigned signed_operations[]={0,1,2,3,4,9};unsigned op=variant<10?variant:signed_operations[variant-10];
   char name[64];assert(snprintf(name,sizeof(name),variant<10?"shared-dynamic-%u":"shared-dynamic-i-%u",op)>0);
@@ -360,12 +379,12 @@ int main(int argc,char **argv)
  }
  const char *address_names[]={"shared-address-add","shared-address-cas-match","shared-address-cas-miss"};
  for(unsigned i=0;i<3;i++)if(!strcmp(argv[4],address_names[i])){address_case=1;address_kind=i;}
- assert(storage_case || publication_case || image_publication_case || texture_publication_case || counter_publication_case || shared_publication_case || dma_publication_case || image_case || counter_case || uniform_case || dynamic_case || address_case || !strcmp(argv[4],"shared"));
+ assert(storage_case || publication_case || image_publication_case || texture_publication_case || counter_publication_case || shared_publication_case || dma_publication_case || image_case || counter_case || uniform_case || dynamic_case || address_case || p12_shared_coexist || !strcmp(argv[4],"shared"));
  directory=argv[2];FILE *f=fopen(argv[1],"rb");assert(f);
  char wire[8];assert(fread(wire,1,8,f)==8 && (!memcmp(wire,"OGCP0001",8) ||
   !memcmp(wire,"OGCP0002",8) || !memcmp(wire,"OGCP0003",8)));
  unsigned version=wire[7]-'0',count=read32(f);
- if(counter_case || counter_publication_case || shared_publication_case || dma_publication_case || image_case || storage_case || publication_case || image_publication_case || texture_publication_case)assert(version==3 && count==112);
+ if(counter_case || counter_publication_case || shared_publication_case || dma_publication_case || image_case || storage_case || publication_case || image_publication_case || texture_publication_case || p12_shared_coexist)assert(version==3 && count==112);
  assert((version==3 && (count==104 || count==112)) || ((version==1 || version==2) && count==96));
  struct compute_host_profile_word *words=calloc(count+10,sizeof(*words));assert(words);
  for(unsigned i=0;i<count;i++){words[i].address=read32(f);words[i].value=read32(f);}
@@ -381,7 +400,7 @@ int main(int argc,char **argv)
   (features&OPENGPU_DRIVER_FEATURE_COMPUTE_SHARED_ATOMICS));}
  struct pipe_screen *s=opengpu_drm_screen_create(7,NULL);assert(s);struct pipe_context *p=s->context_create(s,NULL,0);assert(p);
  char dump[4096];path(dump,"actual-shared");void *frontend=(counter_case || counter_publication_case)?cs_frontend_compile_atomic_counters(argv[3],dump):
-  (image_case || storage_case || publication_case || image_publication_case || texture_publication_case || shared_publication_case || dma_publication_case)?cs_frontend_compile_buffers(argv[3],dump):cs_frontend_compile(argv[3],dump);assert(frontend);
+  (image_case || storage_case || publication_case || image_publication_case || texture_publication_case || shared_publication_case || dma_publication_case || p12_shared_coexist)?cs_frontend_compile_buffers(argv[3],dump):cs_frontend_compile(argv[3],dump);assert(frontend);
  {
   unsigned expected_shared=0;
   if(shared_publication_case && shared_publication_index==1)expected_shared=128; /* dual own-stripe */
@@ -408,8 +427,8 @@ int main(int argc,char **argv)
  if(dma_publication_case)dma_publication_setup(frontend,output);
  if(mixed_case)mixed_setup(s,p,frontend,output);
  else if(image_case)image_setup(s,p,frontend);
- if(counter_case)for(unsigned i=0;i<4;i++)counter_storage_bindings[i]=cs_frontend_storage_binding(frontend,i);
- if(counter_coexist || p12_counter_coexist){
+ if(counter_case || p12_shared_coexist)for(unsigned i=0;i<4;i++)counter_storage_bindings[i]=cs_frontend_storage_binding(frontend,i);
+ if(counter_coexist || p12_counter_coexist || p12_shared_coexist){
   struct pipe_resource *images[4];struct pipe_image_view views[4]={0};
   for(unsigned i=0;i<4;i++){
    struct pipe_resource image={.target=PIPE_BUFFER,.format=PIPE_FORMAT_R32_UINT,
@@ -446,7 +465,7 @@ int main(int argc,char **argv)
   data[0]=counter_index;data[1]=0x13579bdfu;data[2]=0x2468ace0u;data[3]=0x11223344u;
   cs_frontend_ubos(frontend,p,ub,offsets,sizes);
  }
- if(p12_counter_coexist){
+ if(p12_counter_coexist || p12_shared_coexist){
   for(unsigned i=0;i<12;i++){
    ub[24+i]=buffer(s,16384);assert(ub[24+i]);sizes[24+i]=16384;
    uniform_handles[i]=pipe_opengpu_resource_handle(opengpu_resource(ub[24+i])->gpu);
@@ -469,7 +488,7 @@ int main(int argc,char **argv)
  }
  struct pipe_grid_info grid={.grid={4,1,1},.block={128,1,1}};
  if(counter_case){grid.block[0]=4;if(counter_dynamic)grid.grid[0]=counter_index?1:2;}
- if(p12_counter_coexist){grid.grid[0]=1;grid.block[0]=128;}
+ if(p12_counter_coexist || p12_shared_coexist){grid.grid[0]=1;grid.block[0]=128;}
  if(image_case){grid.block[0]=4;grid.grid[0]=2;}
  if(storage_case){grid.block[0]=4;grid.grid[0]=2;}
  if(publication_case || image_publication_case || texture_publication_case || counter_publication_case || shared_publication_case || dma_publication_case){
