@@ -139,6 +139,7 @@ python3 -B scripts/test_compute_shared_publication.py
 python3 -B scripts/test_compute_dma_publication.py
 python3 -B scripts/test_compute_l1_publication.py
 python3 -B scripts/test_compute_p12_counter.py
+python3 -B scripts/test_compute_p12_shared.py
 python3 -B scripts/test_compute_global_recovery.py
 python3 -B scripts/test_compute_global_accepted_recovery.py
 python3 -B scripts/test_compute_storage_accepted_recovery.py

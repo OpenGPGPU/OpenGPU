@@ -26,10 +26,18 @@ from compute_l1_publication_cases import CASES as L1_PUBLICATION_CASES
 from compute_global_atomic_cases import CASES as GLOBAL_ATOMIC_CASES
 from compute_p12_counter_cases import CASES as P12_COUNTER_CASES
 COUNTER_CASES = COUNTER_CASES + P12_COUNTER_CASES
+from compute_p12_shared_cases import CASES as P12_SHARED_CASES, parameters as p12_shared_source_parameters
 CASES = (LEGACY_CASES + COUNTER_CASES + IMAGE_CASES + STORAGE_ATOMIC_CASES +
          STORAGE_PUBLICATION_CASES + IMAGE_PUBLICATION_CASES + TEXTURE_PUBLICATION_CASES +
          COUNTER_PUBLICATION_CASES + SHARED_PUBLICATION_CASES + DMA_PUBLICATION_CASES +
-         L1_PUBLICATION_CASES + GLOBAL_ATOMIC_CASES)
+         L1_PUBLICATION_CASES + GLOBAL_ATOMIC_CASES + P12_SHARED_CASES)
+
+
+def p12_shared_parameters(name):
+    if name not in P12_SHARED_CASES:
+        raise ValueError('unknown P12 shared coexist source')
+    p = p12_shared_source_parameters(name)
+    return dict(source=name + '.comp', groups=p['groups'], local=p['local'], shared_bytes=p['shared_bytes'])
 
 
 def p12_counter_parameters(name):

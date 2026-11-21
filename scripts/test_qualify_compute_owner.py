@@ -256,7 +256,7 @@ class Entry(unittest.TestCase):
                 *qualifier.STORAGE_PUBLICATION_CASES,*qualifier.IMAGE_PUBLICATION_CASES,
                 *qualifier.TEXTURE_PUBLICATION_CASES,*qualifier.COUNTER_PUBLICATION_CASES,
                 *qualifier.SHARED_PUBLICATION_CASES,*qualifier.DMA_PUBLICATION_CASES,
-                *qualifier.L1_PUBLICATION_CASES,*qualifier.P12_COUNTER_CASES)
+                *qualifier.L1_PUBLICATION_CASES,*qualifier.P12_COUNTER_CASES,*qualifier.P12_SHARED_CASES)
             expected_memory='512m' if strict else '2g'
             self.assertEqual(command[command.index('--memory')+1],expected_memory)
             self.assertEqual(command[command.index('--memory-swap')+1],expected_memory)
@@ -558,6 +558,31 @@ class Entry(unittest.TestCase):
                 self.assertNotIn('--capture-only',producer)
             keyword=dict(gpu=ROOT,source=ROOT,ntt=root/'ntt',image='immutable-image',name='negative')
             for case in ('counter-increment',qualifier.L1_PUBLICATION_CASES[0],qualifier.IMAGE_CASES[0]):
+                with self.subTest(case=case),self.assertRaisesRegex(ValueError,'exact full float owner source'):
+                    qualifier.producer_command(args,case=case,**keyword)
+
+    def test_p12_shared_coexist_keeps_its_distinct_full_float_source(self):
+        with tempfile.TemporaryDirectory(prefix='p12-shared-command-') as temporary:
+            root=Path(temporary);q=root/'qualification.json'
+            q.write_text(json.dumps(dict(source_sha256={})))
+            args=argparse.Namespace(mesa=root,mesa_build=root,drm_include=root,library_directory=root,
+                mesa_link_libs='-lfixture',executor_qualification=q,executor=root/'executor',
+                executor_checker=root/'checker',executor_checker_python=sys.executable,timeout=60,
+                p12_shared_matrix=True)
+            with patch('compute_owner_inputs.snapshot',return_value={}),\
+                 patch.object(qualifier.subprocess,'Popen') as popen,\
+                 patch.object(qualifier,'stop_group'),patch.object(qualifier,'remove_container'):
+                popen.return_value.wait.return_value=0
+                qualifier.run_case(args,gpu=ROOT,source=ROOT,temporary=root,ntt=root/'ntt',
+                    image='immutable-image',case=qualifier.P12_SHARED_CASES[0])
+                self.assertIn('--p12-shared-matrix',popen.call_args.args[0])
+                producer=json.loads((root/(qualifier.P12_SHARED_CASES[0]+'.argv.json')).read_text())
+                self.assertEqual(producer[producer.index('--case')+1],qualifier.P12_SHARED_CASES[0])
+                self.assertIn('scripts/compute_owner_inputs.py',producer)
+                self.assertNotIn('--p12-counter-matrix',producer)
+                self.assertNotIn('--capture-only',producer)
+            keyword=dict(gpu=ROOT,source=ROOT,ntt=root/'ntt',image='immutable-image',name='negative')
+            for case in ('counter-increment',qualifier.P12_COUNTER_CASES[0],qualifier.IMAGE_CASES[0]):
                 with self.subTest(case=case),self.assertRaisesRegex(ValueError,'exact full float owner source'):
                     qualifier.producer_command(args,case=case,**keyword)
 
