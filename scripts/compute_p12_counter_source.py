@@ -290,5 +290,12 @@ def ready(memory, description, data, *, owner_profile=IMAGE_FLOAT_PROFILE):
         print('P12_GUB1_ACTUAL=%d %s EXPECTED=%s' % (index, [hex(x) for x in actual], [hex(x) for x in record]), file=sys.stderr, flush=True)
         require(actual == tuple(record),
                 'P12 GUB1 UBO descriptor differs')
-        require(memory.read(translate(memory, satp, base, 3), UBO_BYTES) == memory.read(ubo, UBO_BYTES),
+        copied = memory.read(translate(memory, satp, base, 3), UBO_BYTES)
+        original = memory.read(ubo, UBO_BYTES)
+        if copied != original:
+            import sys
+            print('P12_UBO_DATA index=%d copied=%s original=%s base=%#x phys=%#x ubo=%#x' % (
+                index, copied[:16].hex(), original[:16].hex(), base,
+                translate(memory, satp, base, 3), ubo), file=sys.stderr, flush=True)
+        require(copied == original,
                 'P12 copied UBO data differs from its original GEM')
