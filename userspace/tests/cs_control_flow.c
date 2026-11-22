@@ -380,7 +380,7 @@ int main(int argc,char **argv)
         uniform_mutate_after_snapshot=0;cu_name=NULL;assert(computes==before+1);full_output(out,3,125);
         clear_constants(p);p->delete_compute_state(p,cs);cs_frontend_destroy(f);
     }
-    const char *loops[] = {"constant-loop", "dynamic-loop", "loop-break", "storage-loop", "nested-loop"};
+    const char *loops[] = {"constant-loop", "dynamic-loop", "loop-break", "storage-loop", "nested-loop", "continue-loop", "masked-storage-loop"};
     for (unsigned k = 0; k < sizeof(loops) / sizeof(loops[0]); ++k) {
         f = frontend(loops[k]);
         struct opengpu_cs_program loop_code;
@@ -418,6 +418,13 @@ int main(int argc,char **argv)
                     for (unsigned outer = 0; outer < 3; ++outer)
                         for (unsigned inner = 0; inner < (i & 3u) + 1u; ++inner)
                             expected = expected * 3u + outer + inner;
+                } else if (!b && k == 6 && ((i / 128) & 1u) != (i & 1u)) {
+                    expected ^= i / 128;
+                } else if (!b && k == 5 && i < 128) {
+                    expected = i;
+                    for (unsigned step = 0; step < 6; ++step)
+                        if ((step & 1u) != (i & 1u))
+                            expected = expected * 3u + step;
                 } else if (!b && k < 3 && i < 128) {
                     unsigned limit = k == 0 ? 5 : k == 1 ? 6 : i & 3u;
                     expected = i;
@@ -444,6 +451,6 @@ int main(int argc,char **argv)
     p->destroy(p);for(unsigned i=24;i<36;i++)pipe_resource_reference(&ub[i],NULL);
     for(unsigned b=0;b<4;b++)pipe_resource_reference(&out[b],NULL);
     s->destroy(s);
-    no_leaks();puts("Real ESSL/Mesa/callback/lib forward SIMT if/else CPU acceptance PASS;CAP0,loops/break/hardware proof still open");
+    no_leaks();puts("Real ESSL/Mesa/callback/lib structured SIMT CPU acceptance PASS; no new capability");
     return 0;
 }

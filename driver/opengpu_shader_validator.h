@@ -197,7 +197,8 @@ static inline bool opengpu_shader_simt_loop_body(
             if (distance <= 0 || (distance & 3)) return false;
             end = i + (opengpu_shader_u32)distance / 4u;
             if (end >= marker - 1u || words[end] != OPENGPU_SHADER_SIMT_JOIN ||
-                (words[end - 1u] & 127u) != 0x6fu)
+                ((words[end - 1u] & 127u) != 0x6fu &&
+                 words[end - 1u] != OPENGPU_SHADER_SIMT_JOIN))
                 return false;
             /* The main walk validates the nested scope in its own state.
              * Include its writes in the parent backedge's invalidation. */
