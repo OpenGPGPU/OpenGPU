@@ -11,7 +11,8 @@ from compute_owner_oracle import SparseMemory
 from compute_p12_texture_cases import (CASES, GUARD, LOCAL, TEXTURE_COUNT, parameters, shader,
     write_sources)
 from compute_p12_texture_source import (FIELDS, SCHEMA, TEXTURE_BACKING_BYTES,
-    TEXTURE_VIEW_BYTES, UNIFORM_BYTES, recipe, ready, returned_outputs, texel_fetch_value,
+    TEXTURE_VIEW_BYTES, TEXTURE_TABLE_BYTES, TEXTURE_TABLE_PAGES, TEXTURE_LEVEL_STRIDE,
+    recipe, ready, returned_outputs, texel_fetch_value,
     texture_value)
 from owner_resource_contract import IMAGE_FLOAT_PROFILE, IMAGE_FLOAT_WORDS
 
@@ -33,7 +34,7 @@ class P12TextureCases(unittest.TestCase):
         self.assertEqual(source.count('buffer Output%d {uint v[];}' % 0), 1)
         for index in range(TEXTURE_COUNT):
             self.assertIn('layout(binding=%d) uniform highp usamplerBuffer t%d;\n' % (index, index), source)
-            self.assertIn('t^=texelFetch(t%d,int(id)).x;\n' % index, source)
+            self.assertIn('t^=texelFetch(t%d,int(2047u-id)).x;\n' % index, source)
         for index in range(4):
             self.assertIn('layout(std430,binding=%d) buffer Output%d {uint v[];} out%d;\n' %
                           (index, index, index), source)
@@ -56,7 +57,7 @@ class P12TextureCases(unittest.TestCase):
         for lane in range(LOCAL):
             expected = 0
             for unit in range(TEXTURE_COUNT):
-                expected ^= texture_value(unit, lane)
+                expected ^= texture_value(unit, 2047 - lane)
             self.assertEqual(texel_fetch_value(lane), expected & MASK)
             self.assertEqual(texel_fetch_value(lane), texel_fetch_value(lane))
         self.assertEqual(len({texel_fetch_value(lane) for lane in range(LOCAL)}), LOCAL)
@@ -85,7 +86,7 @@ def texture_view(pa, unit):
 def fixture():
     allocations = {0x1000: bytearray(4096), 0x41000: bytearray(4096),
                    0x42000: bytearray(4096), 0x70000: bytearray(4096),
-                   0x80000: bytearray(4096), 0xe1000: bytearray(4096)}
+                   0x80000: bytearray(4096), 0xe1000: bytearray(TEXTURE_TABLE_PAGES)}
     for address in (0x30000, 0x32000, 0x34000, 0x36000):
         allocations[address] = bytearray(struct.pack('<I', GUARD) * 2048)
     for index in range(4):
@@ -94,7 +95,6 @@ def fixture():
         texels = struct.pack('<%uI' % (TEXTURE_VIEW_BYTES // 4),
                              *(texture_value(unit, texel) for texel in range(TEXTURE_VIEW_BYTES // 4)))
         allocations[0xa0000 + 0x2000 * unit] = bytearray(texels)
-    allocations[0x120000] = bytearray(UNIFORM_BYTES)
     tables = {}
 
     def word(pa, value):
@@ -117,10 +117,9 @@ def fixture():
     outputs = [0x30000 + 0x2000 * index for index in range(4)]
     images = [0x90000 + 0x1000 * index for index in range(4)]
     textures = [0xa0000 + 0x2000 * unit for unit in range(TEXTURE_COUNT)]
-    storage_root, image_root, uniform_root, texture_root = 0xb0c00000, 0xb1000000, 0xb1800000, 0xb1c00000
+    storage_root, image_root, texture_root = 0xb0c00000, 0xb1000000, 0xb0800000
     map_page(storage_root, 0x41000, 15)
     map_page(image_root, 0x80000, 15)
-    map_page(texture_root, 0xe1000, 15)
     map_page(0x80800000, 0x42000, 15)
     for index, physical in enumerate(outputs):
         base = 0xcfffc000 + index * (128 * 1024 * 1024 + 4096)
@@ -142,25 +141,25 @@ def fixture():
         descriptor[37:40] = [4, LOCAL, 512]
         struct.pack_into('<64I', allocations[0x80000], unit * 256, *descriptor)
         map_page(base, physical, 15)
-    low = sum(index << (5 * index) for index in range(6))
-    high = sum(index << (5 * (index - 6)) for index in range(6, 12))
-    root_record = [0] * 16
-    root_record[:15] = [0x47555201, 64, 1, context, 0, 0, 2, 0xfff, low, high,
-                        uniform_root + 64, uniform_root + 64 + 24 * 64, 0, 0, 0]
-    struct.pack_into('<16I', allocations[0x120000], 0, *root_record)
-    for index in range(12):
-        base = uniform_root + 4096 + 16384 * index
-        record = [0] * 16
-        record[:15] = [0x47554201, 64, 1, context, 0, 0, index, 4, base, base + 16384, 0,
-                       base, base + 16384, 0, 1]
-        struct.pack_into('<16I', allocations[0x120000], 64 + 64 * index, *record)
-    for offset in range(0, UNIFORM_BYTES, 4096):
-        map_page(uniform_root + offset, 0x120000 + offset, 3)
-    root_table = tables[uniform_root >> 22]
-    for index in range(UNIFORM_BYTES // 4096):
-        pte = (((uniform_root >> 12) + index) & 1023) * 4
-        value = struct.unpack_from('<I', allocations[root_table], pte)[0]
-        struct.pack_into('<I', allocations[root_table], pte, value & ~0x80)
+    records = allocations[0xe1000]
+    for offset in range(0, TEXTURE_TABLE_PAGES, 4096):
+        map_page(texture_root + offset, 0xe1000 + offset, 15)
+    struct.pack_into('<13I', records, 0, 0x47585201, 128, 1, context, 0, 0, 2, 16,
+                     texture_root + 128, texture_root + 1152, 0, texture_root + 1152, texture_root + 3200)
+    for unit, physical in enumerate(textures):
+        base = 0xa0c00000 + unit * 0x400000
+        limit = base + 8192
+        level = 4224 + unit * TEXTURE_LEVEL_STRIDE
+        map_page(base, physical, 15)
+        map_page(base + 4096, physical + 4096, 15)
+        struct.pack_into('<12I', records, 128 + 64 * unit, 0x47584201, 64, 1, context,
+                         0, 0, 2, unit, unit, unit, 1, 5)
+        struct.pack_into('<30I', records, 1152 + 128 * unit, 0x47584901, 128, 1, context,
+                         0, 0, unit, 5, 14, 0, 0, 1, 1, 1, 1, base, limit, 0, 1,
+                         texture_root + level, texture_root + level + TEXTURE_LEVEL_STRIDE,
+                         0, 0, 1, 0, 1, 2, 3, 2048, 8192)
+        struct.pack_into('<27I', records, level, 0x47584c01, 128, 1, context, 0, 0, 0,
+                         5, 0, base, limit, 0, base, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 4, 2048, 8192)
     map_page(0x80400000, 0x70000, 15)
     description = dict(schema=SCHEMA, sourceCase=CASE, groups=1, local=LOCAL, viewBytes=8192,
         guard=GUARD, context=context, kernargPhysical=0x42000, kernargBytes=4096,
@@ -170,7 +169,7 @@ def fixture():
         imageBindings=[0, 1, 2, 3], imageRoot=image_root, imagePhysical=0x80000, imageBytes=1024,
         textures=[texture_view(address, unit) for unit, address in enumerate(textures)],
         textureBindings=[3 + unit for unit in range(TEXTURE_COUNT)], textureRoot=texture_root,
-        texturePhysical=0xe1000, textureBytes=4096)
+        texturePhysical=0xe1000, textureBytes=TEXTURE_TABLE_BYTES)
     discovery = [(word['address'], word['value']) for word in IMAGE_FLOAT_WORDS] + [
         (0, 0x47550002), (0x60, (1 << 6) | (1 << 22) | (1 << 23) | (1 << 25) | (1 << 29) | (128 << 8)),
         (0x68, 0x160), (0x320, 1048576), (0x158, 0x02020810), (0x494, 0x47544d01), (0x43c, 0x47534d01),
@@ -183,8 +182,8 @@ def fixture():
     for base, root, size in ((0x420, storage_root, 256), (0x3e0, image_root, 1024)):
         registers.update({base + 4 * index: value for index, value in
                           enumerate((257, root, root + size, 0, context, 0, 0))})
-    registers.update({0x440 + 4 * index: value for index, value in
-                      enumerate((257, uniform_root, context, 0, 0, 0x80800000, 0x80801000, 0))})
+    registers.update({0x480 + 4 * index: value for index, value in
+                      enumerate((257, texture_root, context, 0, 0))})
 
     def capture(discovery=discovery, writable=writable, registers=registers,
                 inactive=((1, 0x80400070),)):
@@ -332,6 +331,13 @@ class P12TextureOracle(unittest.TestCase):
                 wrong['textures'][0]['view']['format'] = 3
                 with self.assertRaises(ValueError):
                     ready(memory, wrong, capture(), owner_profile=IMAGE_FLOAT_PROFILE)
+            for offset in (128 + 15 * 64 + 8 * 4, 4224 + 15 * TEXTURE_LEVEL_STRIDE + 10 * 4):
+                wrong = copy.deepcopy(allocations)
+                wrong[description['texturePhysical']][offset] ^= 1
+                emit(before, wrong)
+                with SparseMemory(before) as memory:
+                    with self.subTest(offset=offset), self.assertRaises(ValueError):
+                        ready(memory, description, capture(), owner_profile=IMAGE_FLOAT_PROFILE)
 
 
 if __name__ == '__main__':

@@ -19,10 +19,11 @@ TEXTURE_BACKING_BYTES = 8192
 TEXTURE_TEXELS = TEXTURE_VIEW_BYTES // 4
 TEXTURE_SLOT_BASE = 3
 IMAGE_FORMAT = 14
-UBO_COUNT = 12
-UBO_BYTES = 16384
-UNIFORM_ROOT = 0xb1800000
-UNIFORM_BYTES = 4096 + UBO_COUNT * UBO_BYTES
+TEXTURE_LEVEL_STRIDE = 128 * 16
+TEXTURE_TABLE_BYTES = 128 + TEXTURE_COUNT * (64 + 128 + 64 + TEXTURE_LEVEL_STRIDE)
+TEXTURE_TABLE_PAGES = (TEXTURE_TABLE_BYTES + 4095) & ~4095
+TEXTURE_VA_BASE = 0xa0000000
+TEXTURE_VA_STRIDE = 4 * 1024 * 1024
 WINDOW_FIELDS = {'globalBinding', 'allocationPhysical', 'allocationBytes', 'offset', 'bytes'}
 TEXTURE_VIEW_FIELDS = {'slot', 'target', 'format', 'bufferTexels', 'bufferBytes'}
 FIELDS = {'schema', 'sourceCase', 'groups', 'local', 'viewBytes', 'guard', 'context',
@@ -49,7 +50,7 @@ def texture_block(unit):
 def texel_fetch_value(lane):
     value = 0
     for unit in range(TEXTURE_COUNT):
-        value ^= texture_value(unit, lane)
+        value ^= texture_value(unit, TEXTURE_TEXELS - 1 - lane)
     return value & 0xffffffff
 
 
@@ -90,14 +91,14 @@ def recipe(memory, value):
             'P12 image descriptor table bounds differ')
     bindings = value['textureBindings']
     require(type(bindings) is list and all(type(i) is int for i in bindings) and
-            bindings == [TEXTURE_SLOT_BASE + unit for unit in range(TEXTURE_COUNT)],
+            sorted(bindings) == list(range(TEXTURE_SLOT_BASE, TEXTURE_SLOT_BASE + TEXTURE_COUNT)),
             'original texture slots must be 3..18 in native unit order')
     require(type(value['textures']) is list and len(value['textures']) == TEXTURE_COUNT,
             'sixteen original buffer textures required')
     textures = []
     texture_allocations = {}
     for unit, view in enumerate(value['textures']):
-        slot = TEXTURE_SLOT_BASE + unit
+        slot = bindings[unit]
         require(type(view) is dict and set(view) == WINDOW_FIELDS | {'view'},
                 'foreign or missing original texture GEM view fields')
         require(type(view['view']) is dict and set(view['view']) == TEXTURE_VIEW_FIELDS,
@@ -114,8 +115,8 @@ def recipe(memory, value):
         allocations.append((first, first + TEXTURE_BACKING_BYTES))
     require(uint(value['textureRoot']) > 0 and value['textureRoot'] % 4096 == 0 and
             uint(value['texturePhysical']) > 0 and value['texturePhysical'] % 4096 == 0 and
-            uint(value['textureBytes']) >= 4096 and value['textureBytes'] % 4096 == 0 and
-            (value['texturePhysical'], value['texturePhysical'] + value['textureBytes']) in
+            uint(value['textureBytes']) == TEXTURE_TABLE_BYTES and
+            (value['texturePhysical'], value['texturePhysical'] + TEXTURE_TABLE_PAGES) in
             [(a, b) for a, b, _ in memory.ranges],
             'P12 texture descriptor table bounds differ')
     allocations.sort()
@@ -138,7 +139,7 @@ def returned_outputs(initial, returned, description):
 
 
 def ready(memory, description, data, *, owner_profile=IMAGE_FLOAT_PROFILE):
-    """Bind READY metadata to full112 float discovery, MMIO, GSM1/GUM1 and PTEs."""
+    """Bind READY metadata to full112 float discovery, MMIO, resource descriptors and PTEs."""
     require(owner_profile == IMAGE_FLOAT_PROFILE and owner_profile in SAMPLE_FACTORY_CONTRACTS,
             'P12 texture coexist requires the complete float owner')
     stage, expected_words = SAMPLE_FACTORY_CONTRACTS[owner_profile]
@@ -247,31 +248,42 @@ def ready(memory, description, data, *, owner_profile=IMAGE_FLOAT_PROFILE):
         require(translate(memory, satp, base, 15) == output and
                 translate(memory, satp, base + IMAGE_VIEW_BYTES - 1, 15) == output + IMAGE_VIEW_BYTES - 1,
                 'P12 image original GEM mapping differs')
-    uniform_root = r.get(0x444, 0)
-    require(uniform_root == UNIFORM_ROOT and
-            [r.get(0x440 + 4 * i) for i in range(8)] ==
-            [257, uniform_root, context, 0, 0, r.get(0xd0, 0), r.get(0xd0, 0) + argbytes, 0],
-            'P12 GUM1 uniform/private-prefix command differs')
-    uniform_physical = translate(memory, satp, uniform_root, 3)
-    require(uniform_physical > 0 and uniform_physical % 4096 == 0 and
-            translate(memory, satp, uniform_root + UNIFORM_BYTES - 1, 3) == uniform_physical + UNIFORM_BYTES - 1 and
-            any(a <= uniform_physical < uniform_physical + UNIFORM_BYTES <= b for a, b, _ in memory.ranges),
-            'P12 uniform snapshot is not its original read-only private mapping')
-    low = sum(index << (5 * index) for index in range(6))
-    high = sum(index << (5 * (index - 6)) for index in range(6, UBO_COUNT))
-    root_record = [0] * 16
-    root_record[:15] = [0x47555201, 64, 1, context, 0, 0, 2, 0xfff, low, high,
-                        uniform_root + 64, uniform_root + 64 + 24 * 64, 0, 0, 0]
-    require(memory.read(uniform_physical, 64) == struct.pack('<16I', *root_record),
-            'P12 GUR1 active mask/mapping differs')
-    require(memory.read(uniform_physical + 64 + UBO_COUNT * 64,
-                        4096 - 64 - UBO_COUNT * 64) == bytes(4096 - 64 - UBO_COUNT * 64),
-            'P12 unused uniform descriptor rows are enabled')
-    for index in range(UBO_COUNT):
-        base = uniform_root + 4096 + UBO_BYTES * index
-        record = [0] * 16
-        record[:15] = [0x47554201, 64, 1, context, 0, 0, index, 4, base, base + UBO_BYTES, 0,
-                       base, base + UBO_BYTES, 0, 1]
-        actual = struct.unpack('<16I', memory.read(uniform_physical + 64 + 64 * index, 64))
-        require(actual == tuple(record),
-                'P12 GUB1 UBO descriptor differs')
+    require(r.get(0x440, 0) == 0, 'unexpected uniform command in P12 texture capture')
+    root, physical = description['textureRoot'], description['texturePhysical']
+    require([r.get(0x480 + 4 * i) for i in range(5)] == [257, root, context, 0, 0],
+            'P12 texture command context differs')
+    for offset in range(0, TEXTURE_TABLE_PAGES, 4096):
+        require(translate(memory, satp, root + offset, 15) == physical + offset,
+                'P12 texture table page mapping differs')
+    binding_off = 128
+    image_off = binding_off + 64 * TEXTURE_COUNT
+    sampler_off = image_off + 128 * TEXTURE_COUNT
+    level_off = sampler_off + 64 * TEXTURE_COUNT
+    root_words = (0x47585201, 128, 1, context, 0, 0, 2, TEXTURE_COUNT,
+                  root + binding_off, root + image_off, 0, root + image_off, root + sampler_off)
+    require(memory.read(physical, 128) == struct.pack('<32I', *root_words, *([0] * 19)),
+            'P12 texture root or samplerless namespace differs')
+    require(memory.read(physical + sampler_off, level_off - sampler_off) == bytes(level_off - sampler_off),
+            'P12 samplerless table contains sampler records')
+    for unit in range(TEXTURE_COUNT):
+        slot = TEXTURE_SLOT_BASE + unit
+        texture = texture_allocations[slot]
+        base = TEXTURE_VA_BASE + slot * TEXTURE_VA_STRIDE
+        limit = base + TEXTURE_VIEW_BYTES
+        level = level_off + unit * TEXTURE_LEVEL_STRIDE
+        binding = (0x47584201, 64, 1, context, 0, 0, 2, unit, unit, unit, 1, 5, 0, 0, 0, 0)
+        require(memory.read(physical + binding_off + 64 * unit, 64) == struct.pack('<16I', *binding),
+                'P12 buffer texture binding differs')
+        image = (0x47584901, 128, 1, context, 0, 0, unit, 5, IMAGE_FORMAT, 0, 0, 1, 1, 1, 1,
+                 base, limit, 0, 1, root + level, root + level + TEXTURE_LEVEL_STRIDE,
+                 0, 0, 1, 0, 1, 2, 3, TEXTURE_TEXELS, TEXTURE_VIEW_BYTES, 0, 0)
+        require(memory.read(physical + image_off + 128 * unit, 128) == struct.pack('<32I', *image),
+                'P12 buffer texture image record differs')
+        level_header = (0x47584c01, 128, 1, context, 0, 0, 0, 5, 0, base, limit, 0, base,
+                        1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 4, TEXTURE_TEXELS, TEXTURE_VIEW_BYTES)
+        require(memory.read(physical + level, TEXTURE_LEVEL_STRIDE) ==
+                struct.pack('<27I', *level_header) + bytes(TEXTURE_LEVEL_STRIDE - 108),
+                'P12 buffer texture level or unused level bounds differ')
+        require(translate(memory, satp, base, 15) == texture and
+                translate(memory, satp, limit - 1, 15) == texture + TEXTURE_VIEW_BYTES - 1,
+                'P12 texture original GEM mapping differs')
