@@ -100,3 +100,10 @@ capture with its 4096-byte default uniform view. The independent oracle
 evaluates selected loads from original physical bytes and rejected unchanged
 RAM. Run the complete owner command with `--case indexed-uniform-loop`
 to reproduce the fixture on a DUT. That execution remains pending.
+
+The loop producer also compares Gallium's TGSI block and shared-memory limits
+against production driver queries before submission. It checks the 512-word
+and four-SSBO limits and, for uniform cases, the 13 constant-buffer slots and
+4096-byte default view. The full float-profile CPU capture passed these checks
+for storage, masked storage, uniform-bound and indexed-uniform loops. The
+public compute feature remains disabled while the wider API contract is open.
