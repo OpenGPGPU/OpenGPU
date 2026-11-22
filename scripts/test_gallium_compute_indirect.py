@@ -15,9 +15,8 @@ void main() {
 }
 """
     (out / "indirect-consumer.comp").write_text(consumer)
-    loop = consumer.replace("uint seed=0u;",
-        "uint seed=7u; for(uint step=0u;step<gl_NumWorkGroups.x;step++) seed=seed*3u+step;")
-    (out / "indirect-loop.comp").write_text(loop)
+    from compute_indirect_sources import LOOP_CONSUMER
+    (out / "indirect-loop.comp").write_text(LOOP_CONSUMER)
     uniform = consumer.replace("void main()", "uniform uint defaultSeed;\n"
         "layout(std140,binding=35) uniform Block { uvec4 value; } block;\nvoid main()")
     uniform = uniform.replace("uint seed=0u;", "uint seed=defaultSeed^block.value.x;")

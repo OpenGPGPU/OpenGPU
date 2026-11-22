@@ -5,7 +5,8 @@ import struct
 import tempfile
 import unittest
 from unittest.mock import patch
-from compute_indirect_oracle import Originals, RetainedMemory, equal_bytes, executable_physical, retained_callers
+from compute_indirect_oracle import (Originals, RetainedMemory, consumer_result, equal_bytes,
+                                     executable_physical, retained_callers)
 from compute_indirect_phase_protocol import execution, cleanup_authorization, phase_response, execution_result
 import prepare_owner_executor as owner
 
@@ -111,7 +112,10 @@ class TransportTests(unittest.TestCase):
 
     def test_consumer_3d_num_workgroups_and_all_64_invocations(self):
         before = Memory({0x1000: b'\xa7' * 8192})
-        expected = b''.join(struct.pack('<4I', 2, 2, 2, n) for n in range(64))
+        expected = b''.join(struct.pack('<4I', 2, 2, 2, n ^ 64) for n in range(64))
+        self.assertEqual(consumer_result((2, 2, 2)), expected)
+        self.assertEqual(consumer_result((1, 1, 1)), b''.join(
+            struct.pack('<4I', 1, 1, 1, n ^ 21) for n in range(8)))
         actual = Memory({0x1000: expected + b'\xa7' * (8192 - len(expected))})
         equal_bytes(before, actual, [(0x1000, expected)])
         changed = dict(actual.values)
