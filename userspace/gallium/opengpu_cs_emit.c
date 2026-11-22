@@ -1162,6 +1162,8 @@ static int materialize_control_temporaries(struct build *b,
     return b->failed ? -1 : 0;
 }
 
+static int span(struct build *b, const struct cf_instruction *ir, unsigned first, unsigned last);
+
 static int emit_loop(struct build *b, const struct cf_instruction *ir,
                      unsigned first, unsigned last)
 {
@@ -1178,10 +1180,14 @@ static int emit_loop(struct build *b, const struct cf_instruction *ir,
             if (node->end >= last || emit_loop(b, ir, i, node->end)) return -1;
             i = node->end;
         } else if (op == TGSI_OPCODE_UIF) {
+            if (node->end >= last) return -1;
             if (node->alternative != 512 || node->end != i + 2 ||
-                node->end >= last || ir[i + 1].in.Instruction.Opcode != TGSI_OPCODE_BRK ||
-                source(b, &node->in.Src[0], 0, 22))
-                return -1;
+                ir[i + 1].in.Instruction.Opcode != TGSI_OPCODE_BRK) {
+                if (span(b, ir, i, node->end + 1)) return -1;
+                i = node->end;
+                continue;
+            }
+            if (source(b, &node->in.Src[0], 0, 22)) return -1;
             splat(b, 23, 0);
             if (!exit_count) memcpy(exit_registers, b->reg, sizeof(exit_registers));
             else

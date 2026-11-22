@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Explicit CPU-only real ESSL/Mesa forward compute if/else acceptance.
+"""Explicit CPU-only real ESSL/Mesa structured compute control-flow acceptance.
 
 Uses the same real standalone/state-tracker/static-library builder as the
-uniform fixture. No GL capability, hardware execution or loop support claim.
+uniform fixture. Captures can also be consumed by the native CU replay.
 """
 
 
@@ -23,6 +23,8 @@ def write_sources(out):
         "loop-break": "uint a=id;for(uint i=0u;i<7u;i++){if(i==(id&3u))break;a=a*3u+i;}o0.v[id]=a;",
         "nested-loop": "uint a=id;for(uint i=0u;i<3u;i++){for(uint j=0u;j<(id&3u)+1u;j++)a=a*3u+i+j;}o0.v[id]=a;",
         "storage-loop": "for(uint i=0u;i<3u;i++)o0.v[id+i*128u]=o1.v[id]^i;",
+        "continue-loop": "uint a=id;for(uint i=0u;i<6u;i++){if((i&1u)==(id&1u))continue;a=a*3u+i;}o0.v[id]=a;",
+        "masked-storage-loop": "for(uint i=0u;i<4u;i++){if((i&1u)==(id&1u))continue;o0.v[id+i*128u]=o1.v[id]^i;}",
         "too-deep": "if((id&16u)!=0u){if((id&8u)!=0u){if((id&4u)!=0u){if((id&2u)!=0u){if((id&1u)!=0u)o0.v[id]=1u;else o0.v[id]=2u;}else o0.v[id]=3u;}else o0.v[id]=4u;}else o0.v[id]=5u;}else o0.v[id]=6u;",
     }
     for name, body in simple.items():
