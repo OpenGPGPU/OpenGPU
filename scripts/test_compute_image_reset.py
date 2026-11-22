@@ -3,6 +3,7 @@
 from copy import deepcopy
 import struct
 import unittest
+from unittest.mock import patch
 from compute_image_cases import parameters
 from compute_image_source import SCHEMA, source_view, initial_bytes
 from compute_image_reset import reset_plan, reset_receipt_bytes, verify_cancelled_memory, verify_cancelled_cleanup
@@ -73,6 +74,30 @@ def completed(memory):
 
 
 class ResetContracts(unittest.TestCase):
+    def test_combined_read_cut_requires_all_counters_and_preserves_output_guards(self):
+        from compute_p12_counter_cases import COMBINED
+        from compute_p12_texture_source import TEXTURE_TABLE_PAGES
+
+        counters, texture, output = 0x1000, 0x2000, 0x20000
+        original = Uploads({counters: b'\x5a' * 64, texture: bytes(TEXTURE_TABLE_PAGES),
+                            output: b'\x69' * 64})
+        description = dict(sourceCase=COMBINED, texturePhysical=texture)
+        cancelled = deepcopy(original)
+        for index in range(8):
+            cancelled.word(counters + 4 * index, (14 + index * 0x10203) & 0xffffffff)
+        with patch('compute_p12_counter_source.recipe', return_value=(counters, [], [], [])):
+            self.assertEqual(reset_plan(original, description, 'read', owner_profile=IMAGE_FLOAT_PROFILE),
+                             struct.pack('<8sIQQ', b'OGCRP001', 1, texture, texture + TEXTURE_TABLE_PAGES))
+            with self.assertRaises(ValueError):
+                reset_plan(original, description, 'write', owner_profile=IMAGE_FLOAT_PROFILE)
+            self.assertEqual(verify_cancelled_memory(original, cancelled, description, 'read'),
+                             dict(changedSourceWords=8))
+            for address in (counters, counters + 32, texture, output):
+                corrupt = deepcopy(cancelled)
+                corrupt.word(address, 1)
+                with self.subTest(address=address), self.assertRaises(ValueError):
+                    verify_cancelled_memory(original, corrupt, description, 'read')
+
     def test_busy_ready_reports_queue_capacity_and_never_authorizes_drain(self):
         held=observation('held','write')
         for status in (40,41):
