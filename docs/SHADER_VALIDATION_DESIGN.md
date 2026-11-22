@@ -36,10 +36,21 @@ Source reads only; no simulation has been run for this document.
 ## The gap: fault isolation is not complete
 
 Memory isolation between contexts is enforced by translation. Availability is
-not isolated. One context's fault resets the device and aborts other in-flight
-unified work. Data is not leaked, but other contexts can lose work. Removing
-validation without fixing this changes the failure mode from a rejected
-submission to a device-wide reset caused by user code.
+not isolated in the reset path: one context's fault resets the whole device
+(`GPU_REG_UCMD_RESET`), so every context pays the reset cost.
+
+Correction to an earlier revision of this section: that revision said a fault
+aborts other contexts' in-flight work. The driver does not allow that state.
+`opengpu_hw.c:1100-1121` waits for the device to go idle, activates the
+submitting ASID under `submit_lock`, and only then installs a single
+`unified_fence`. Other submitters block on the lock; they are not in flight.
+Context switches are coarse: `satp` is one global register pair, and the RTL
+exposes `vmContextIdle` as the quiescent boundary for switching it
+(`GpuSystem.scala:243-245`). Concurrent translated execution from two contexts
+is therefore not the model; the relevant question is sequential.
+
+Removing validation without fixing the reset would change the failure mode
+from a rejected submission to a device-wide reset caused by user code.
 
 ## Required evidence before any validator check is removed
 
@@ -47,10 +58,12 @@ submission to a device-wide reset caused by user code.
    faults; context B's accesses complete with correct data. The existing page
    fault specs (`GpuComputeUnitStoragePageFaultSpec`,
    `GpuComputeUnitInstructionPageFaultSpec`) cover single-context faults only.
-2. System test (driver/RTL level): the same two contexts through the unified
-   submission path. Expected result: B must not be aborted. Current driver
-   behavior (device reset on any fault) is expected to fail this test. Record
-   the actual result either way.
+2. Sequential system test (driver/RTL level): context A submits a faulting
+   kernel; the reset completes; context B then submits a valid kernel under its
+   own ASID. Expected result: B completes with correct data and its page tables
+   and TLB state are unaffected. Also measure the reset latency that B pays.
+   Not yet written; a harness exists in `GpuSystemStorageSpec` but has no
+   page-table or multi-ASID setup.
 3. Only if test 2 passes, or if the reset is changed to per-context, consider
    removing the memory range check. Keep all other rows of the table.
 
