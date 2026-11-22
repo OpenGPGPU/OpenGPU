@@ -157,7 +157,7 @@
   失效与ACK后提交写入）→ordinary cached reload缺失重取与双CU L1/L2回填三阶段、同物理基址
   retained GEM extents、同DUT/RAM/单reset；qualify `--case l1-publication`；
   [结果与复现](P11_L1_PUBLICATION.md)（执行源 `6a0e9039c33b9ab70cd11975b3e509f7677af8c0`）。
-  本交付受保护合入后关闭 P11，计为 **11/40**；下一串行目标为 P12。
+  P11 受保护合入时计为 **11/40**。P12 收尾合入后计为 **12/40**，下一串行目标为 P13。
 - P15、P16、P17、P39、P40 已有下表列出的限定范围源码与检查，均未完成目标验收。
   当前112仍非完整资源资格；旧96模型不能替代P04的完整factory和原probe验收。
 
