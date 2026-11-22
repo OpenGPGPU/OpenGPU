@@ -126,3 +126,7 @@ The same assertion-enabled two-CU float owner passed `dynamic-loop` on
 source `bdb598c78`. The independent oracle checked the original default
 uniform view, 128 returned result words and all other physical bytes.
 Command retirement and context cleanup passed.
+
+The assertion-enabled two-CU float owner passed `loop-break` on source
+`bdb598c78`. All 128 per-lane early-exit results, physical guards,
+command retirement and context cleanup passed.
