@@ -22,9 +22,12 @@ the other eight components of the Mesa linker's 1024-component budget.
 The separate `uniforms` case exercises all 1024 numeric components.
 
 The compute-stage texture target is 16 units. The project-wide combined target
-remains 96. The combined admission fixture also rejects a storage slot supplied as a
-texture and a writable counter window backed by a texture GEM, then captures
-the valid launch in the same original context. The combined launch passed the assertion-enabled two-CU float DUT at source
+remains 96. The combined admission fixture rejects a storage slot supplied as
+a texture, a texture slot supplied as storage or image, and a writable counter
+window backed by a texture, SSBO or image GEM. The production Linux ioctl
+rejected all six requests and accepted the valid launch in the same context.
+The expanded rejection set passed CPU capture and independent descriptor and
+page-table checks. The combined launch passed the assertion-enabled two-CU float DUT at source
 `90ffe52c3adde36e88c29e7d3949974412271046`. The independent oracle verified
 the counter old-value streams, final counter words, mirrored SSBO and image
 endpoints, all remaining physical bytes, and observed context cleanup.
