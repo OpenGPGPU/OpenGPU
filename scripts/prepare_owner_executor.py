@@ -68,6 +68,8 @@ COMPUTE_CHECKERS = (
     'scripts/test_compute_p12_counter.py',
     'scripts/compute_p12_shared_cases.py', 'scripts/compute_p12_shared_source.py',
     'scripts/test_compute_p12_shared.py',
+    'scripts/compute_p12_texture_cases.py', 'scripts/compute_p12_texture_source.py',
+    'scripts/test_compute_p12_texture.py',
     'scripts/test_compute_reservation_admission.py',
     'driver/tests/opengpu_compute_reservation_admission_test.c',
     'scripts/compute_global_host_producer.py',

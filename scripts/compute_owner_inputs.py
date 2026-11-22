@@ -11,7 +11,7 @@ from native_sample_graphics_inputs import (snapshot as base_snapshot, dependency
 from native_sample_compiler_inputs import sha256, MESA_UNITS, MESA_LIBRARIES
 from compute_owner_protocol import strict_json
 from compute_owner_cases import (COUNTER_CASES, counter_parameters, IMAGE_CASES, P12_SHARED_CASES, p12_shared_parameters,
-    LEGACY_IMAGE_CASES, CONTENDED_IMAGE_CASES, MIXED_ATOMIC_CASES)
+    P12_TEXTURE_CASES, p12_texture_parameters, LEGACY_IMAGE_CASES, CONTENDED_IMAGE_CASES, MIXED_ATOMIC_CASES)
 from compute_image_source import parameters as image_parameters
 from compute_indirect_sources import CASE as INDIRECT_CASE
 from compute_storage_atomic_cases import CASES as STORAGE_CASES, parameters as storage_parameters
@@ -59,7 +59,7 @@ def guarded(request_path, builder_argv):
     dependencies=dict(bound)
     dependencies[str(paths['ntt'])]=[str(paths['ntt']),AFTER]
     argv=list(builder_argv)
-    require('--case' in argv and argv[argv.index('--case')+1] in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_CASES,*PUBLICATION_CASES,*IMAGE_PUBLICATION_CASES,*TEXTURE_PUBLICATION_CASES,*COUNTER_PUBLICATION_CASES,*SHARED_PUBLICATION_CASES,*DMA_PUBLICATION_CASES,*P12_SHARED_CASES,INDIRECT_CASE) and '--sanitize' in argv,
+    require('--case' in argv and argv[argv.index('--case')+1] in (*COUNTER_CASES,*IMAGE_CASES,*STORAGE_CASES,*PUBLICATION_CASES,*IMAGE_PUBLICATION_CASES,*TEXTURE_PUBLICATION_CASES,*COUNTER_PUBLICATION_CASES,*SHARED_PUBLICATION_CASES,*DMA_PUBLICATION_CASES,*P12_SHARED_CASES,*P12_TEXTURE_CASES,INDIRECT_CASE) and '--sanitize' in argv,
             'strict original counter source and sanitized producer required')
     case=argv[argv.index('--case')+1]
     indirect=case==INDIRECT_CASE
@@ -200,6 +200,7 @@ def guarded(request_path, builder_argv):
             require(seen==units, 'incomplete actual host compiler closure')
             source_case=command[4] if len(command)>=5 else None
             parameters=(p12_shared_parameters(source_case) if source_case in P12_SHARED_CASES else
+                        p12_texture_parameters(source_case) if source_case in P12_TEXTURE_CASES else
                         shared_publication_parameters(source_case) if source_case in SHARED_PUBLICATION_CASES else
              dma_publication_parameters(source_case) if source_case in DMA_PUBLICATION_CASES else
                         counter_publication_parameters(source_case) if source_case in COUNTER_PUBLICATION_CASES else
