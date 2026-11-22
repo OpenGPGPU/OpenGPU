@@ -130,3 +130,7 @@ Command retirement and context cleanup passed.
 The assertion-enabled two-CU float owner passed `loop-break` on source
 `bdb598c78`. All 128 per-lane early-exit results, physical guards,
 command retirement and context cleanup passed.
+
+The assertion-enabled two-CU float owner passed `continue-loop` on source
+`bdb598c78`. All 128 per-lane arithmetic results, physical guards, command
+retirement and context cleanup passed.
