@@ -184,6 +184,25 @@ int main(void)
     p.w[loop + 2] = branch(0, 2, 1, 12);
     p.w[loop + 1] = capture;
     check(p, 0, 0); /* The exiting lanes must not leave a usable capture. */
+    p = start();
+    loop = p.n;
+    emit(&p, branch(3, 0, 0, 36));
+    emit(&p, branch(0, 2, 1, 32));
+    emit(&p, branch(3, 0, 0, 16));
+    emit(&p, branch(0, 2, 1, 12));
+    emit(&p, v(0, 0, 2, 1, 2));
+    emit(&p, jump(0, -8));
+    emit(&p, OPENGPU_SHADER_SIMT_JOIN);
+    emit(&p, v(0, 0, 2, 1, 2));
+    emit(&p, jump(0, -28));
+    emit(&p, OPENGPU_SHADER_SIMT_JOIN);
+    check(p, 1, 0);
+    struct program nested_loop = p;
+    p.w[loop + 3] = branch(0, 2, 1, 24); /* The inner exit must join its own scope. */
+    check(p, 0, 0);
+    p = nested_loop;
+    p.w[loop + 5] = jump(0, -16); /* The inner backedge must stay in its own scope. */
+    check(p, 0, 0);
     printf("Compute canonical SIMT validator:%u actual-function cases PASS;4 snapshots/8 physical entries;old profile unchanged\n",checks);
     return 0;
 }

@@ -56,8 +56,7 @@ The original submissions for all three loops also passed the native 16-lane,
 eight-warp CU replay. Each produced and acknowledged 128 output writes without
 traps, with exact guards, held completion, and stable address spaces. The
 dynamic loop issued 56 checked uniform loads. This replay covers the CU and
-its memory clients. Full-system Linux execution, nested loops and `continue`
-remain open.
+its memory clients. Full-system Linux execution and `continue` remain open.
 
 The `storage-loop` CPU fixture reads the original SSBO and publishes 384 words
 across three iterations. The Linux validator checks each storage operation
@@ -83,3 +82,10 @@ For the CPU capture, follow the
 [complete owner qualification command](P12_RESOURCE_COEXISTENCE.md#reproduce)
 with `qualify_p12 --case storage-loop` and an executor built from the current
 source. Full DUT execution and cleanup are pending.
+
+A nested-loop ESSL fixture compiles to 110 native words through the same Mesa
+CPU test. It varies the inner trip count by lane and checks all 128 results.
+The driver checks each nested scope's own join and backedge and invalidates
+proofs for registers written inside nested loops at the outer backedge. The
+sanitized validator suite rejects inner exits and backedges that target the
+outer scope. Native CU and full-system replay of this fixture are pending.
