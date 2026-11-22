@@ -29,6 +29,7 @@ static struct compute_host_session *session;
 static struct {void *data;uint64_t bytes;unsigned maps,closed;} bos[512];
 static unsigned next_bo=1,next_sync=1,submitted,retired;
 static const char *directory;
+static int storage_loop_case;
 static int capture_only,expect_image_source_fault,uniform_case,dynamic_case,address_case,counter_case,counter_dynamic,counter_coexist,p12_counter_coexist,p12_shared_coexist,p12_texture_coexist,p12_combined_coexist;
 static unsigned image_permission_fault;
 static unsigned image_reset;
@@ -353,6 +354,12 @@ static void write_oracle(void)
  }else if(dynamic_case){
   uint64_t physical,bytes;assert(!compute_host_original_physical(session,output_handles[0],&physical,&bytes));
   fprintf(f,"{\"schema\":\"opengpu-compute-shared-dynamic-oracle-v1\",\"outputPhysical\":%llu,\"allocationBytes\":%llu,\"viewBytes\":8192,\"groups\":4,\"local\":128,\"seed\":2147483648,\"operand\":4294967295,\"compare\":2147483648,\"operation\":%u,\"signed\":%s,\"guard\":3735928559}\n",(unsigned long long)physical,(unsigned long long)bytes,dynamic_operation,dynamic_signed?"true":"false");
+ }else if(storage_loop_case){
+  fputs("{\"schema\":\"opengpu-compute-storage-loop-oracle-v1\",\"sourceCase\":\"storage-loop\",\"viewBytes\":8192,\"groups\":1,\"local\":128,\"guard\":3735928559,\"input\":",f);
+  source_window(f,output_handles[1],0,8192,1);
+  fputs(",\"output\":",f);
+  source_window(f,output_handles[0],0,8192,0);
+  fputs("}\n",f);
  }else if(uniform_case){
   assert(accepted_uniforms.active_mask==4095 && accepted_uniforms.defaults.handle && accepted_uniforms.defaults.bytes==4096);
   fputs("{\"schema\":\"opengpu-compute-uniform-oracle-v1\",\"viewBytes\":8192,\"groups\":4,\"local\":128,\"guard\":3735928559,\"defaults\":",f);
@@ -416,6 +423,7 @@ int main(int argc,char **argv)
  assert(!expect_compute_failure() || expect_storage_fault || expect_image_write_fault || (p12_combined_coexist && image_permission_fault==2) ||
   !strcmp(argv[4],"image-atomic-buffer-r32f"));
  host_timeout_seconds=compute_host_timeout_seconds();assert(host_timeout_seconds);
+ storage_loop_case=!strcmp(argv[4],"storage-loop");
  uniform_case=!strcmp(argv[4],"uniforms");
  storage_view_failure=storage_case && (storage_index==14 || storage_index==15);
  mixed_parse_case(argv[4]);
@@ -437,7 +445,7 @@ int main(int argc,char **argv)
  }
  const char *address_names[]={"shared-address-add","shared-address-cas-match","shared-address-cas-miss"};
  for(unsigned i=0;i<3;i++)if(!strcmp(argv[4],address_names[i])){address_case=1;address_kind=i;}
- assert(storage_case || publication_case || image_publication_case || texture_publication_case || counter_publication_case || shared_publication_case || dma_publication_case || image_case || counter_case || uniform_case || dynamic_case || address_case || p12_shared_coexist || p12_texture_coexist || !strcmp(argv[4],"shared"));
+ assert(storage_case || publication_case || image_publication_case || texture_publication_case || counter_publication_case || shared_publication_case || dma_publication_case || image_case || counter_case || storage_loop_case || uniform_case || dynamic_case || address_case || p12_shared_coexist || p12_texture_coexist || !strcmp(argv[4],"shared"));
  directory=argv[2];FILE *f=fopen(argv[1],"rb");assert(f);
  char wire[8];assert(fread(wire,1,8,f)==8 && (!memcmp(wire,"OGCP0001",8) ||
   !memcmp(wire,"OGCP0002",8) || !memcmp(wire,"OGCP0003",8)));
@@ -458,11 +466,11 @@ int main(int argc,char **argv)
   (features&OPENGPU_DRIVER_FEATURE_COMPUTE_SHARED_ATOMICS));}
  struct pipe_screen *s=opengpu_drm_screen_create(7,NULL);assert(s);struct pipe_context *p=s->context_create(s,NULL,0);assert(p);
  char dump[4096];path(dump,"actual-shared");void *frontend=(counter_case || counter_publication_case)?cs_frontend_compile_atomic_counters(argv[3],dump):
-  (image_case || storage_case || publication_case || image_publication_case || texture_publication_case || shared_publication_case || dma_publication_case || p12_shared_coexist || p12_texture_coexist)?cs_frontend_compile_buffers(argv[3],dump):cs_frontend_compile(argv[3],dump);assert(frontend);
+  (storage_loop_case || image_case || storage_case || publication_case || image_publication_case || texture_publication_case || shared_publication_case || dma_publication_case || p12_shared_coexist || p12_texture_coexist)?cs_frontend_compile_buffers(argv[3],dump):cs_frontend_compile(argv[3],dump);assert(frontend);
  {
   unsigned expected_shared=0;
   if(shared_publication_case && shared_publication_index==1)expected_shared=128; /* dual own-stripe */
-  else if(p12_combined_coexist || !(uniform_case || counter_case || counter_publication_case || shared_publication_case || dma_publication_case || image_case || storage_case || publication_case || image_publication_case || texture_publication_case || p12_texture_coexist))expected_shared=16384;
+  else if(p12_combined_coexist || !(storage_loop_case || uniform_case || counter_case || counter_publication_case || shared_publication_case || dma_publication_case || image_case || storage_case || publication_case || image_publication_case || texture_publication_case || p12_texture_coexist))expected_shared=16384;
   assert(cs_frontend_shared_bytes(frontend)==expected_shared);
  }
  struct pipe_compute_state state={.ir_type=PIPE_SHADER_IR_TGSI,.prog=cs_frontend_tokens(frontend),.req_local_mem=cs_frontend_shared_bytes(frontend)};
@@ -473,6 +481,10 @@ int main(int argc,char **argv)
  for(unsigned binding=0;binding<4;binding++){output[binding]=mixed_case && !binding?mixed_target_buffer(s):buffer(s,8192);assert(output[binding]);
   output_handles[binding]=pipe_opengpu_resource_handle(opengpu_resource(output[binding])->gpu);
   uint32_t *data=pipe_opengpu_resource_map(opengpu_resource(output[binding])->gpu);for(unsigned i=0;i<2048;i++)data[i]=0xdeadbeefu;}
+ if(storage_loop_case){
+  uint32_t *input=pipe_opengpu_resource_map(opengpu_resource(output[1])->gpu);
+  for(unsigned lane=0;lane<128;lane++)input[lane]=uniform_value(1,lane);
+ }
  cs_frontend_storage(frontend,p,output);
  if(storage_case)storage_setup(frontend,output);
  if(publication_case)publication_setup(frontend,output);
@@ -556,7 +568,8 @@ int main(int argc,char **argv)
  if(storage_case){grid.block[0]=4;grid.grid[0]=2;}
  if(publication_case || image_publication_case || texture_publication_case || counter_publication_case || shared_publication_case || dma_publication_case){
   grid.block[0]=shared_publication_case && shared_publication_index==1?16:1;grid.grid[0]=1;}
- if(uniform_case){grid.block[0]=8;grid.block[1]=4;grid.block[2]=4;}
+ if(storage_loop_case)grid.grid[0]=1;
+ if(uniform_case || storage_loop_case){grid.block[0]=8;grid.block[1]=4;grid.block[2]=4;}
  p->launch_grid(p,&grid);assert(submitted==1 && retired);
  marker("cleanup_wait","actual compute retired; independent byte/source/guard authorization required\n");
  f=wait_file("BEGIN_CLEANUP");magic(f,"OGCMBA01");assert(read32(f)==1);end(f);
