@@ -378,7 +378,7 @@ int main(int argc,char **argv)
  for(unsigned i=0;i<9;i++)if(!strcmp(argv[4],counter_names[i])){counter_case=1;counter_operation=i%3;counter_dynamic=i>=3;counter_index=i>=6?0:i>=3?4:7;counter_name=counter_names[i];}
  if(!strcmp(argv[4],"counter-scalar")){counter_case=1;counter_index=0;counter_offset=8188;counter_count=1;counter_name="counter-scalar";}
  if(!strcmp(argv[4],"counter-coexist")){counter_case=counter_coexist=1;counter_index=7;counter_name="counter-coexist";}
- if(!strcmp(argv[4],"p12-counter-coexist")){counter_case=p12_counter_coexist=1;counter_index=7;counter_offset=0;counter_name="p12-counter-coexist";}
+ if(!strcmp(argv[4],"p12-counter-coexist")){counter_case=p12_counter_coexist=1;counter_index=7;counter_offset=8192-8*4;counter_name="p12-counter-coexist";}
  if(!strcmp(argv[4],"p12-shared-coexist")){p12_shared_coexist=1;}
  if(!strcmp(argv[4],"p12-texture-coexist")){p12_texture_coexist=1;}
  for(unsigned variant=0;variant<16;variant++){

@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 from compute_owner_cases import CASES, COUNTER_CASES, P12_COUNTER_CASES, counter_parameters, p12_counter_parameters
-from compute_p12_counter_cases import LOCAL, COUNTER_INDEX, COUNTER_BYTES, parameters, shader, write_sources
+from compute_p12_counter_cases import LOCAL, COUNTER_INDEX, COUNTER_BYTES, COUNTER_OFFSET, parameters, shader, write_sources
 from compute_p12_counter_source import (SCHEMA, UNIFORM_BYTES, ready, recipe, returned_outputs,
     seed_oracle, snapshot_seed, uniform_value, counter_old_values)
 from compute_owner_oracle import SparseMemory, verify
@@ -24,7 +24,7 @@ class P12Counter(unittest.TestCase):
         self.assertIn(CASE, CASES)
         self.assertEqual(counter_parameters(CASE), p12_counter_parameters(CASE))
         self.assertEqual(counter_parameters(CASE), dict(source=CASE + '.comp', operation='increment',
-            groups=1, local=LOCAL, dynamic=False, seed=0xfffffffe, index=COUNTER_INDEX, offset=0, count=8))
+            groups=1, local=LOCAL, dynamic=False, seed=0xfffffffe, index=COUNTER_INDEX, offset=COUNTER_OFFSET, count=8))
         with self.assertRaises(ValueError):
             p12_counter_parameters('counter-increment')
 
@@ -129,28 +129,28 @@ def fixture():
             word(0x1000 + upper * 4, (table >> 12) * 1024 + 1)
         word(tables[upper] + ((va >> 12) & 1023) * 4, (pa >> 12) * 1024 + flags + 704)
 
-    def view(pa, binding, count, allocation):
+    def view(pa, binding, count, allocation, offset=0):
         return dict(globalBinding=binding, allocationPhysical=pa, allocationBytes=allocation,
-                    offset=0, bytes=count)
+                    offset=offset, bytes=count)
 
     context = 2
     seed = 0xfffffffe
     for index in range(8):
-        word(0x20000 + index * 4, (seed + index * 0x10203) & 0xffffffff)
-    word(0x20000 + COUNTER_INDEX * 4, seed)
+        word(0x20000 + COUNTER_OFFSET + index * 4, (seed + index * 0x10203) & 0xffffffff)
+    word(0x20000 + COUNTER_OFFSET + COUNTER_INDEX * 4, seed)
     for index, physical in enumerate(ubo_pas):
         data = struct.pack('<4096I', *(uniform_value(index + 1, w) for w in range(4096)))
         allocations[physical][:] = data
     outputs = [0x30000 + 0x2000 * index for index in range(4)]
     images = [0x90000 + 0x1000 * index for index in range(4)]
     descriptor_root, storage_root, image_root, uniform_root = 0xb1400000, 0xb0c00000, 0xb1000000, 0xb1800000
-    counter_va = 0xb0000000 + 7 * 0x400000
+    counter_va = 0xb0000000 + 7 * 0x400000 + (COUNTER_OFFSET & 4095)
     record = [0x47534201, 64, 1, context, 0, 0, 0, 1, 1, 1, counter_va, counter_va + COUNTER_BYTES, 0,
               counter_va & ~63, (counter_va + COUNTER_BYTES + 63) & ~63, 0]
     for index, value in enumerate(record):
         word(0x40000 + index * 4, value)
     map_page(descriptor_root, 0x40000, 15)
-    map_page(counter_va, 0x20000, 15)
+    map_page(counter_va, 0x20000 + (COUNTER_OFFSET & ~4095), 15)
     map_page(storage_root, 0x41000, 15)
     map_page(image_root, 0x80000, 15)
     map_page(0x80800000, 0x42000, 15)
@@ -199,7 +199,7 @@ def fixture():
     description = dict(schema=SCHEMA, sourceCase=CASE, groups=1, local=128, viewBytes=8192, guard=0xdeadbeef,
         seed=seed, index=COUNTER_INDEX, count=8, counterHandle=4, context=context,
         descriptorPhysical=0x40000, descriptorRoot=descriptor_root, kernargPhysical=0x42000, kernargBytes=4096,
-        counter=view(0x20000, 0, COUNTER_BYTES, 8192), storageBindings=[0, 1, 2, 3],
+        counter=view(0x20000, 0, COUNTER_BYTES, 8192, COUNTER_OFFSET), storageBindings=[0, 1, 2, 3],
         outputs=[view(address, index, 8192, 8192) for index, address in enumerate(outputs)],
         images=[view(address, index, 512, 4096) for index, address in enumerate(images)],
         imageBindings=[0, 1, 2, 3], imageRoot=image_root, imagePhysical=0x80000, imageBytes=1024,
@@ -209,7 +209,7 @@ def fixture():
         (0, 0x47550002), (0x60, (1 << 6) | (1 << 22) | (1 << 23) | (1 << 25) | (1 << 29) | (128 << 8)),
         (0x68, 0x160), (0x320, 1048576), (0x158, 0x02020810), (0x494, 0x47544d01), (0x43c, 0x47534d01),
         (0x3fc, 0x47494d01), (0x4bc, 0x47414d01), (0x460, 0x47554d01)]
-    writable = sorted([(0x42000, 0x43000), (0x20000, 0x20000 + COUNTER_BYTES)] +
+    writable = sorted([(0x42000, 0x43000), (0x20000 + COUNTER_OFFSET, 0x20000 + COUNTER_OFFSET + COUNTER_BYTES)] +
                       [(address, address + 8192) for address in outputs] +
                       [(address, address + 512) for address in images])
     registers = {0xc8: 0, 0xd0: 0x80800000, 0x14c: 0x80800001, 0x150: 0x80800001,
@@ -273,7 +273,7 @@ class P12CounterOracle(unittest.TestCase):
             for binding, address in enumerate(images):
                 values = [(old ^ seed ^ (binding * 0x20406)) & 0xffffffff for old in olds]
                 struct.pack_into('<128I', good[address], 0, *values)
-            struct.pack_into('<I', good[0x20000], COUNTER_INDEX * 4, (0xfffffffe + 128) & 0xffffffff)
+            struct.pack_into('<I', good[0x20000], COUNTER_OFFSET + COUNTER_INDEX * 4, (0xfffffffe + 128) & 0xffffffff)
             emit(after, good)
             with SparseMemory(before) as initial, SparseMemory(after) as returned:
                 changed = returned_outputs(initial, returned, description)

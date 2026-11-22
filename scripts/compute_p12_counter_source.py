@@ -1,6 +1,8 @@
 """Strict P12 full-resource counter oracle: actual GEMs, READY and returned bytes."""
 import struct
 
+from compute_p12_counter_cases import COUNTER_OFFSET
+
 from compute_counter_source import translate
 from compute_owner_protocol import required_flags, profile_bytes, uint
 from compute_owner_oracle import allocation_window
@@ -77,7 +79,7 @@ def recipe(memory, value):
     require(0 < uint(value['counterHandle']) < 512 and 0 < uint(value['context']) < 512,
             'invalid original P12 counter owner')
     source = allocation_window(memory, value['counter'], COUNTER_BYTES, 0)
-    required_flags(value['counter'], dict(offset=0, allocationBytes=8192))
+    required_flags(value['counter'], dict(offset=COUNTER_OFFSET, allocationBytes=8192))
     bindings = value['storageBindings']
     require(type(bindings) is list and all(type(i) is int for i in bindings) and sorted(bindings) == [0, 1, 2, 3],
             'actual Mesa storage bindings must be a complete permutation')
@@ -128,8 +130,8 @@ def recipe(memory, value):
     require(all(a[1] <= b[0] for a, b in zip(allocations, allocations[1:])), 'P12 original GEM aliases another resource')
     original = bytearray(b'\x5a' * 8192)
     for index in range(COUNTER_COUNT):
-        struct.pack_into('<I', original, index * 4, (SEED + index * 0x10203) & 0xffffffff)
-    struct.pack_into('<I', original, COUNTER_INDEX * 4, SEED)
+        struct.pack_into('<I', original, COUNTER_OFFSET + index * 4, (SEED + index * 0x10203) & 0xffffffff)
+    struct.pack_into('<I', original, COUNTER_OFFSET + COUNTER_INDEX * 4, SEED)
     require(memory.read(source - value['counter']['offset'], 8192) == original,
             'P12 counter original source/guard initialization differs')
     for key in ('descriptorPhysical', 'descriptorRoot', 'kernargPhysical', 'kernargBytes'):
@@ -244,7 +246,7 @@ def ready(memory, description, data, *, owner_profile=IMAGE_FLOAT_PROFILE):
             'inactive graphics context is not an original separate empty root')
     physical = translate(memory, satp, root, 15)
     require(physical == description['descriptorPhysical'], 'P12 counter descriptor binding differs')
-    va = 0xb0000000 + 7 * 0x400000
+    va = 0xb0000000 + 7 * 0x400000 + (COUNTER_OFFSET & 4095)
     require(translate(memory, satp, va, 15) == source and
             translate(memory, satp, va + COUNTER_BYTES - 1, 15) == source + COUNTER_BYTES - 1,
             'P12 counter original source mapping differs')
