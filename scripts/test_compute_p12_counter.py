@@ -5,6 +5,8 @@ from pathlib import Path
 import struct
 import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from compute_owner_cases import CASES, COUNTER_CASES, P12_COUNTER_CASES, counter_parameters, p12_counter_parameters
 from compute_p12_counter_cases import COMBINED, LOCAL, COUNTER_BYTES, COUNTER_OFFSET, parameters, shader, write_sources
@@ -86,6 +88,45 @@ class P12Counter(unittest.TestCase):
                                                   for old in olds))
         self.assertEqual(sorted(olds), list(range(seed, seed + INCREMENTS)) if seed + INCREMENTS <= 0xffffffff else
                          sorted((seed + step) & 0xffffffff for step in range(INCREMENTS)))
+
+    def test_combined_oracle_preserves_counter_streams_and_output_mirrors(self):
+        from compute_p12_texture_source import texel_fetch_value
+
+        counter = 0x21fe0
+        buffers = [0x30000, 0x32000, 0x34000, 0x36000]
+        images = [0x90000, 0x91000, 0x92000, 0x93000]
+        endpoints = [base + 7680 for base in buffers] + images
+        seed = uniform_value(0, 0) ^ uniform_value(0, 1015)
+        for binding in range(1, 13):
+            seed ^= uniform_value(binding, 4095)
+        initial = [counter_seed(index) for index in range(8)]
+        lanes = [
+            ((initial[lane % 8] + 15 - lane // 8) & 0xffffffff) ^
+            seed ^ (lane * 3) ^ texel_fetch_value(lane)
+            for lane in range(128)
+        ]
+        data = struct.pack('<128I', *lanes)
+        final = struct.pack('<8I', *((value + 16) & 0xffffffff for value in initial))
+        memory = dict.fromkeys(endpoints, data)
+        memory[counter] = final
+
+        def read(address, size):
+            self.assertEqual(size, len(memory[address]))
+            return memory[address]
+
+        result = SimpleNamespace(read=read)
+        description = {'sourceCase': COMBINED}
+        with patch('compute_p12_counter_source.recipe', return_value=(counter, buffers, images, [])):
+            self.assertEqual(returned_outputs(None, result, description),
+                             [(address, data) for address in endpoints] + [(counter, final)])
+            for damaged_count in (1, len(endpoints)):
+                with self.subTest(damaged_count=damaged_count):
+                    lanes[0] ^= 0x80000000
+                    damaged = struct.pack('<128I', *lanes)
+                    lanes[0] ^= 0x80000000
+                    memory.update(dict.fromkeys(endpoints[:damaged_count], damaged))
+                    with self.assertRaises(ValueError):
+                        returned_outputs(None, result, description)
 
     def test_qualify_wiring_pins_case_and_float_owner(self):
         import qualify_compute_owner as qualifier
