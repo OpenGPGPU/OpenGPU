@@ -8,9 +8,8 @@ workgroup shared memory. The texture case binds 16 buffer textures at Mesa
 API units 16–31 and verifies the last word of every texture, SSBO and image view.
 
 All three endpoint shaders passed Mesa compilation, the production Linux
-ioctl CPU capture, and independent descriptor and page-table checks. The
-shared and counter endpoint cases passed the complete DUT. P12 remains open
-at **11/40**.
+ioctl CPU capture, independent descriptor and page-table checks, and complete
+DUT execution. P12 remains open at **11/40**.
 
 ## Compiler profile boundary
 
@@ -50,29 +49,40 @@ cleanup. Each case used its own DUT, RAM and single initial reset.
 | Case | Scope |
 | --- | --- |
 | `p12-shared-coexist` | 16 KiB shared endpoint, adjacent-warp reads and both endpoints of all 12 UBOs. |
+| `p12-texture-coexist` | 16 texture bindings, four SSBOs and four image views in one launch. The last word of every view and all other physical bytes passed independent checks. |
 | `p12-counter-coexist` | Sixteen increments per slot across all eight counters, including GEM end and wraparound. Each output passed independent old-value multiset checks. |
 | `uniforms` | 1024 default uniform components, 12 UBOs and original SSBO output bytes. |
 | `mixed-atomic-r32f-swap-swap-storage-first-endpoint` | SSBO and R32F image atomics alias the same original GEM word at the allocation end. |
 
-The full-DUT texture result is pending.
+Two further R32F buffer-image cases passed on the same factory. The write
+permission fault preserved physical guards. The delayed write response reset
+returned cancellation and preserved the expected partial writes. Each recovered
+with the same command ID on retained RAM and passed final context cleanup.
 
 ## Reproduce
 
 Against a prepared float owner (see
-[COMPLETE_OWNER_COMPUTE_EXECUTOR.md](COMPLETE_OWNER_COMPUTE_EXECUTOR.md)):
+[COMPLETE_OWNER_COMPUTE_EXECUTOR.md](COMPLETE_OWNER_COMPUTE_EXECUTOR.md)).
+This run prepared RTL with native Java 21, Espresso on `PATH` and
+`--java-heap 27G`.
 
 ```sh
 OWNER_OUTPUT=$PWD/.artifacts/p12-float-owner
-for case in p12-counter-coexist p12-shared-coexist p12-texture-coexist uniforms \
-  mixed-atomic-r32f-swap-swap-storage-first-endpoint; do
+qualify_p12() {
   PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/qualify_compute_owner.py \
     --executor "$OWNER_OUTPUT/executors/compute/executor" \
     --executor-qualification "$OWNER_OUTPUT/executors/compute/qualification.json" \
     --executor-checker scripts/prepare_owner_executor.py \
     --executor-checker-python "$(command -v python3)" \
     --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72 \
-    --case "$case" --timeout 7200 || exit
+    --timeout 7200 "$@"
+}
+for case in p12-counter-coexist p12-shared-coexist p12-texture-coexist uniforms \
+  mixed-atomic-r32f-swap-swap-storage-first-endpoint; do
+  qualify_p12 --case "$case" || exit
 done
+qualify_p12 --case image-atomic-buffer-r32f --image-permission-recovery write || exit
+qualify_p12 --case image-atomic-buffer-r32f --image-reset-recovery write
 ```
 
 ## Local checks
@@ -90,7 +100,7 @@ git diff --check
 - The 512-word Mesa emitter and driver validator limit applies to each
   shader. A straight-line shader with 16 texture fetches plus the complete
   12-UBO and eight-counter workload exceeds that limit.
-- Namespace isolation, resource aliases and permissions still need a complete
-  host matrix across the full resource set, including cancel/reset and
-  healthy reuse.
+- The same-GEM alias, write permission and delayed write-response reset are
+  scoped to the tested SSBO and buffer-image cases. The complete resource set
+  still needs the namespace, alias, permission and cancel/reset matrix.
 - The product clock and FPS target remains 2 CUs at 640×480 and 60 FPS.
