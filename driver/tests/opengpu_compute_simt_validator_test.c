@@ -14,6 +14,14 @@ static uint32_t branch(unsigned f,unsigned a,unsigned b,int bytes)
     return (n>>12&1u)<<31|(n>>5&63u)<<25|b<<20|a<<15|f<<12|
         (n>>1&15u)<<8|(n>>11&1u)<<7|0x5bu;
 }
+static uint32_t jump(unsigned rd, int bytes)
+{
+    uint32_t displacement = (uint32_t)bytes & 0x1fffffu;
+    return ((displacement >> 20) & 1u) << 31 |
+        ((displacement >> 1) & 1023u) << 21 |
+        ((displacement >> 11) & 1u) << 20 |
+        ((displacement >> 12) & 255u) << 12 | rd << 7 | 0x6fu;
+}
 static void emit(struct program *p,uint32_t w) { assert(p->n<512);p->w[p->n++]=w; }
 static struct program start(void)
 {
@@ -127,6 +135,29 @@ int main(void)
     checks++;
     p=start();emit(&p,OPENGPU_SHADER_CEASE);p.w[100]=0x5bu;
     assert(opengpu_compute_shader_validate_words_storage(p.w,512,12,128,false));checks++;
+    /* Lanes at their local-ID limit park at the marker. Only the remaining
+     * lanes increment v2 and take the backedge to the condition. */
+    p = start();
+    emit(&p, 1u << 20 | 10u << 7 | 0x13u);
+    emit(&p, v(0x17, 4, 3, 10, 0));
+    unsigned loop = p.n;
+    emit(&p, branch(3, 0, 0, 16));
+    emit(&p, branch(0, 2, 1, 12));
+    emit(&p, v(0, 0, 2, 3, 2));
+    emit(&p, jump(0, -8));
+    emit(&p, OPENGPU_SHADER_SIMT_JOIN);
+    emit(&p, v(0, 0, 4, 2, 2));
+    struct program loop_program = p;
+    p.w[loop + 3] = jump(0, -12); /* Re-entering sync would leak a scope. */
+    check(p, 0, 0);
+    p = loop_program;
+    p.w[loop + 3] = jump(1, -8); /* A backedge must preserve scalar ABI state. */
+    check(p, 0, 0);
+    p = loop_program;
+    p.w[loop + 2] = v(0, 0, 5, 3, 2);
+    p.w[loop + 5] = v(0, 0, 4, 5, 2); /* A lane can exit on the first test. */
+    check(p, 0, 0);
+    check(loop_program, 1, 0);
     printf("Compute canonical SIMT validator:%u actual-function cases PASS;4 snapshots/8 physical entries;old profile unchanged\n",checks);
     return 0;
 }
