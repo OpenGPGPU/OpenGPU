@@ -2,8 +2,7 @@
 threads, 16 usamplerBuffer textures, 4 SSBO and 4 buffer images. UBOs, atomic
 counters and shared memory are absent: those are covered by the existing
 p12-counter-coexist and p12-shared-coexist cases. The texture shader must stay
-below the 512-word compiler profile, so it carries no per-unit XOR constants
-(measured 462 native words for the v-noconst variant)."""
+within the 512-word compiler profile."""
 
 from pathlib import Path
 
@@ -41,7 +40,7 @@ def shader():
              'uint id=gl_GlobalInvocationID.x;\n'
              'uint t=0u;\n')
     for i in range(TEXTURE_COUNT):
-        glsl += 't^=texelFetch(t%d,int(id)).x;\n' % i
+        glsl += 't^=texelFetch(t%d,int(2047u-id)).x;\n' % i
     for i in range(4):
         glsl += 'out%d.v[id]=t;\n' % i
     for i in range(4):

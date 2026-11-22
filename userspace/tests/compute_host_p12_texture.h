@@ -12,9 +12,8 @@ static uint32_t p12_texture_value(unsigned unit, unsigned texel)
 
 static void p12_texture_setup(struct pipe_screen *s,struct pipe_context *p,void *frontend)
 {
- struct pipe_resource *resources[16];
- struct pipe_sampler_view *samplers[16];
- struct pipe_sampler_view descriptions[16]={0};
+ struct pipe_resource *resources[48]={0};
+ unsigned offsets[48]={0},sizes[48]={0};
  for(unsigned unit=0;unit<16;unit++){
   struct pipe_resource r={.target=PIPE_BUFFER,.format=PIPE_FORMAT_R32_UINT,
    .width0=8192,.height0=1,.depth0=1,.array_size=1,
@@ -23,14 +22,16 @@ static void p12_texture_setup(struct pipe_screen *s,struct pipe_context *p,void 
   texture_handles[unit]=pipe_opengpu_resource_handle(opengpu_resource(resources[unit])->gpu);
   uint32_t *data=pipe_opengpu_resource_map(opengpu_resource(resources[unit])->gpu);assert(data);
   for(unsigned texel=0;texel<2048;texel++)data[texel]=p12_texture_value(unit,texel);
-  texture_native_units[unit]=cs_frontend_sampler_binding(frontend,unit);
-  assert(texture_native_units[unit]<16);
-  descriptions[unit]=(struct pipe_sampler_view){.format=PIPE_FORMAT_R32_UINT,.target=PIPE_BUFFER,
-   .swizzle_r=0,.swizzle_g=1,.swizzle_b=2,.swizzle_a=3};
-  descriptions[unit].u.buf.offset=0;descriptions[unit].u.buf.size=8192;
-  samplers[unit]=p->create_sampler_view(p,resources[unit],&descriptions[unit]);assert(samplers[unit]);
+  sizes[unit]=8192;
  }
- p->set_sampler_views(p,PIPE_SHADER_COMPUTE,0,16,0,false,samplers);
+ unsigned seen=0;
+ for(unsigned native=0;native<16;native++){
+  unsigned api=cs_frontend_sampler_binding(frontend,native);
+  assert(api<16 && !(seen&(1u<<api)));
+  seen|=1u<<api;
+  texture_native_units[api]=native;
+ }
+ assert(cs_frontend_textures(frontend,p,resources,offsets,sizes,0,48)==16);
 }
 
 static void p12_texture_prepare_submission(struct drm_opengpu_compute *launch)
@@ -61,14 +62,14 @@ static void p12_texture_write_oracle(FILE *f)
   if(unit)fputc(',',f);
   const struct drm_opengpu_compute_texture_view *v=&accepted_p12_texture_views[texture_native_units[unit]];
   uint64_t physical,bytes;assert(!compute_host_original_physical(session,texture_handles[unit],&physical,&bytes) && bytes==8192);
-  assert(v->slot==3+unit && v->target==5 && v->format==14 && v->buffer_texels==2048 &&
+  assert(v->slot==3+texture_native_units[unit] && v->target==5 && v->format==14 && v->buffer_texels==2048 &&
    v->level_count==1 && v->levels[0].buffer_bytes==8192);
   fprintf(f,"{\"globalBinding\":%u,\"allocationPhysical\":%llu,\"allocationBytes\":8192,\"offset\":0,\"bytes\":8192,"
    "\"view\":{\"slot\":%u,\"target\":%u,\"format\":%u,\"bufferTexels\":%u,\"bufferBytes\":%llu}}",
-   3+unit,(unsigned long long)physical,v->slot,v->target,v->format,v->buffer_texels,(unsigned long long)v->levels[0].buffer_bytes);
+   v->slot,(unsigned long long)physical,v->slot,v->target,v->format,v->buffer_texels,(unsigned long long)v->levels[0].buffer_bytes);
  }
  fputs("],\"textureBindings\":[",f);
- for(unsigned unit=0;unit<16;unit++){if(unit)fputc(',',f);fprintf(f,"%u",3+unit);}
+ for(unsigned unit=0;unit<16;unit++){if(unit)fputc(',',f);fprintf(f,"%u",3+texture_native_units[unit]);}
  fprintf(f,"],\"textureRoot\":%u,\"texturePhysical\":%llu,\"textureBytes\":%llu}\n",
   snap.texture_root,(unsigned long long)snap.texture_physical,(unsigned long long)snap.texture_bytes);
 }
