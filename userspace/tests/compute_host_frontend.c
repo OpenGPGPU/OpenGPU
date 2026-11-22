@@ -158,15 +158,9 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
   if(dma_publication_case)dma_publication_prepare_submission(&copy);
   int error=compute_host_submit_storage(session,&copy);if(!error)submitted++;return result(error);}
  if(request==DRM_IOCTL_OPENGPU_COMPUTE_RESOURCES){struct drm_opengpu_compute_resources copy=*(struct drm_opengpu_compute_resources *)arg;
-  if(p12_texture_coexist){
-   assert(copy.view_count==16 && copy.views && !texture_publication_case);
-   p12_texture_prepare_submission(&copy.launch);
-   memcpy(accepted_p12_texture_views,(const void *)(uintptr_t)copy.views,sizeof(accepted_p12_texture_views));
-  }else{
-   assert(texture_publication_case && copy.view_count==1 && copy.views);
-   texture_publication_prepare_submission(&copy.launch);
-   memcpy(&accepted_texture_view,(const void *)(uintptr_t)copy.views,sizeof(accepted_texture_view));
-  }
+  assert(texture_publication_case && copy.view_count==1 && copy.views);
+  texture_publication_prepare_submission(&copy.launch);
+  memcpy(&accepted_texture_view,(const void *)(uintptr_t)copy.views,sizeof(accepted_texture_view));
   int error=compute_host_submit_resources(session,&copy);if(!error)submitted++;return result(error);}
  if(request==DRM_IOCTL_OPENGPU_COMPUTE_IMAGES){struct drm_opengpu_compute_images copy=*(struct drm_opengpu_compute_images *)arg;
   permission_views(copy.views);
@@ -183,6 +177,11 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
   if(texture_publication_case){
    texture_publication_prepare_submission(&copy.launch);
    assert(!compute_host_align_texture_publication_command(session));
+  }
+  if(p12_texture_coexist){
+   assert(copy.texture_count==16 && copy.textures);
+   p12_texture_prepare_submission(&copy.launch);
+   memcpy(accepted_p12_texture_views,(const void *)(uintptr_t)copy.textures,sizeof(accepted_p12_texture_views));
   }
   int error=compute_host_submit_image_resources(session,&copy);
   if(!error){if(image_case || image_publication_case || texture_publication_case)memcpy(accepted_images,copy.images,sizeof(accepted_images));submitted++;}return result(error);}
@@ -432,7 +431,7 @@ int main(int argc,char **argv)
  if(publication_case)publication_setup(frontend,output);
  if(image_publication_case)image_publication_setup(s,p,frontend,output);
  if(texture_publication_case)texture_publication_setup(s,p,frontend,output);
- if(p12_texture_coexist)p12_texture_setup(s,p,frontend,output);
+ if(p12_texture_coexist)p12_texture_setup(s,p,frontend);
  if(counter_publication_case)counter_publication_setup(s,p,frontend,output);
  if(shared_publication_case)shared_publication_setup(frontend,output);
  if(dma_publication_case)dma_publication_setup(frontend,output);
