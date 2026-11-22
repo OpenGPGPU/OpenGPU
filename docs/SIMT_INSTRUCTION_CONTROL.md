@@ -117,3 +117,7 @@ case produced 128 writes and acknowledgements. The masked storage case
 produced 256 checked reads, writes and acknowledgements, with exact results
 and guards. Neither case trapped. Direct TGSI `CONT` and full-system DUT
 execution of these two cases remain pending.
+
+The assertion-enabled two-CU float owner passed `constant-loop` on source
+`bdb598c78` in 11,353 service cycles. All 128 expected results, physical
+bytes outside the output, command retirement and context cleanup passed.
