@@ -17,8 +17,7 @@ MAGICS = (0x47544d01, 0x47534d01, 0x47494d01, 0x47414d01, 0x47554d01)
 
 
 def reset_case_supported(case, channel):
-    return ((case == RECOVERY_CASE and channel in ('read', 'write')) or
-            (case == COMBINED and channel == 'read'))
+    return case in (RECOVERY_CASE, COMBINED) and channel in ('read', 'write')
 
 
 def recovery_base_supported(case):

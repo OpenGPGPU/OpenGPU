@@ -24,10 +24,13 @@ def reset_plan(memory, description, channel, *, owner_profile):
         from compute_p12_counter_source import COUNTER_BYTES, recipe as combined_recipe
         from compute_p12_texture_source import TEXTURE_TABLE_PAGES
         source, _, _, _ = combined_recipe(memory,description)
-        counter_window = (source, source + COUNTER_BYTES)
-        # Every texel fetch needs this table. The workgroup barrier precedes
-        # the fetches, and all output stores depend on their results.
-        first,size=description['texturePhysical'],TEXTURE_TABLE_PAGES
+        if channel == 'read':
+            # The workgroup barrier precedes all texture-dependent stores.
+            first,size=description['texturePhysical'],TEXTURE_TABLE_PAGES
+            counter_window = (source, source + COUNTER_BYTES)
+        else:
+            # Stall the counter B response before the issuing lane can join the barrier.
+            first,size=(description['counter'][key] for key in ('allocationPhysical','allocationBytes'))
     else:
         recipe(memory,description)
         image=description['images'][0]
@@ -129,11 +132,23 @@ def verify_cancelled_memory(initial, returned, description, channel):
     require(reset_case_supported(case,channel),'unsupported cancellation recipe or channel')
     if case == COMBINED:
         from compute_owner_oracle import verify_byte_changes
+        from compute_p12_counter_source import COUNTER_BYTES, COUNTER_COUNT, INCREMENTS
         from compute_p12_counter_source import recipe as combined_recipe, final_counter_bytes
         source, _, _, _ = combined_recipe(initial,description)
-        final = final_counter_bytes()
-        verify_byte_changes(initial,returned,[(source,final)])
-        return dict(changedSourceWords=len(final)//4)
+        expected = final_counter_bytes()
+        changed = COUNTER_COUNT
+        if channel == 'write':
+            counter_format = '<%uI' % COUNTER_COUNT
+            before = struct.unpack(counter_format,initial.read(source,COUNTER_BYTES))
+            observed = returned.read(source,COUNTER_BYTES)
+            after = struct.unpack(counter_format,observed)
+            increments = [((new-old) & 0xffffffff) for old,new in zip(before,after)]
+            require(all(n<=INCREMENTS for n in increments) and 0<sum(increments)<COUNTER_COUNT*INCREMENTS,
+                    'counter write hold did not preserve a legal partial increment prefix')
+            expected = observed
+            changed = sum(n>0 for n in increments)
+        verify_byte_changes(initial,returned,[(source,expected)])
+        return dict(changedSourceWords=changed)
     words,sources=_cancel_words(initial,description,channel)
     require(initial.ranges==returned.ranges,'cancellation replaced original RAM')
     for first,end,_ in initial.ranges:

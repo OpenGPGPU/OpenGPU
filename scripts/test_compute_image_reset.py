@@ -89,8 +89,6 @@ class ResetContracts(unittest.TestCase):
             self.assertEqual(reset_plan(original, description, 'read', owner_profile=IMAGE_FLOAT_PROFILE),
                              struct.pack('<8sI4Q', b'OGCRP002', 1, texture, texture + TEXTURE_TABLE_PAGES,
                                          counters, counters + 32))
-            with self.assertRaises(ValueError):
-                reset_plan(original, description, 'write', owner_profile=IMAGE_FLOAT_PROFILE)
             self.assertEqual(verify_cancelled_memory(original, cancelled, description, 'read'),
                              dict(changedSourceWords=8))
             for address in (counters, counters + 32, texture, output):
@@ -98,6 +96,34 @@ class ResetContracts(unittest.TestCase):
                 corrupt.word(address, 1)
                 with self.subTest(address=address), self.assertRaises(ValueError):
                     verify_cancelled_memory(original, corrupt, description, 'read')
+
+    def test_combined_write_cut_requires_partial_wrapping_counters_and_exact_guards(self):
+        from compute_p12_counter_cases import COMBINED
+
+        allocation, output = 0x1000, 0x4000
+        counters = allocation + 8192 - 32
+        description = dict(sourceCase=COMBINED, counter=dict(allocationPhysical=allocation, allocationBytes=8192))
+        original = Uploads({allocation: b'\x5a' * 8192, output: b'\x69' * 64})
+        for index in range(8):
+            original.word(counters + 4 * index, (0xfffffffe + index * 0x10203) & 0xffffffff)
+        cancelled = deepcopy(original)
+        cancelled.word(counters, 0)
+        with patch('compute_p12_counter_source.recipe', return_value=(counters, [], [], [])):
+            self.assertEqual(reset_plan(original, description, 'write', owner_profile=IMAGE_FLOAT_PROFILE),
+                             struct.pack('<8sIQQ', b'OGCRP001', 2, allocation, allocation + 8192))
+            self.assertEqual(verify_cancelled_memory(original, cancelled, description, 'write'),
+                             dict(changedSourceWords=1))
+            with self.assertRaises(ValueError):
+                verify_cancelled_memory(original, original, description, 'write')
+            for address, value in ((counters, 15), (counters - 4, 0), (output, 0)):
+                corrupt = deepcopy(cancelled)
+                corrupt.word(address, value)
+                with self.subTest(address=address), self.assertRaises(ValueError):
+                    verify_cancelled_memory(original, corrupt, description, 'write')
+            for index in range(8):
+                cancelled.word(counters + 4 * index, 14 + index * 0x10203)
+            with self.assertRaises(ValueError):
+                verify_cancelled_memory(original, cancelled, description, 'write')
 
     def test_busy_ready_reports_queue_capacity_and_never_authorizes_drain(self):
         held=observation('held','write')
