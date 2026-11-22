@@ -44,3 +44,12 @@ loop/break compilation and admission remain open. No new capability bit is
 advertised. Existing hardware tests cover nested divergence,
 loops, capacity/missing-scope/misalignment faults, held offers and healthy reuse
 at compact and default 128-thread capacity. See [validation](EXECUTION_VALIDATION.md).
+
+The compute emitter and Linux word validator also accept fixed and uniform
+loop bounds and repeated conditional `break` statements targeting the same
+join. The real Mesa ESSL fixtures produce 73, 81 and 89 words for `constant-loop`,
+`dynamic-loop` and `loop-break`, respectively. Those streams pass the original
+Linux word validator in the sanitizer-enabled
+[`test_gallium_compute_control_flow.py` run](GALLIUM_COMPUTE.md#forward-ifelse-cpu-acceptance).
+Full DUT execution of the emitted loop words, nested loops, `continue`, and
+mutable resource operations inside loops remain open.

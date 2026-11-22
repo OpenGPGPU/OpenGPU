@@ -381,8 +381,18 @@ int main(int argc,char **argv)
         clear_constants(p);p->delete_compute_state(p,cs);cs_frontend_destroy(f);
         assert(cu_captures==5);puts("CF native exports:5 actual frontend/callback/validator parents with original grid/local/view/snapshot/input identities PASS (GPU UNRUN)");
     }
-    const char *negative[]={"constant-loop","dynamic-loop","loop-break","too-deep"};
-    for(unsigned k=0;k<4;k++){
+    const char *loops[] = {"constant-loop", "dynamic-loop", "loop-break"};
+    for (unsigned k = 0; k < sizeof(loops) / sizeof(loops[0]); ++k) {
+        f = frontend(loops[k]);
+        struct opengpu_cs_program loop_code;
+        assert(!opengpu_cs_emit(cs_frontend_tokens(f), &loop_code));
+        assert(opengpu_compute_shader_validate_words_uniform_resources(loop_code.code, 512, 12, 128,
+            false, false, false, true, false, false, false, false));
+        cs_frontend_destroy(f);
+        printf("CF actual Mesa %s: %u words accepted by Linux validator\n", loops[k], loop_code.words);
+    }
+    const char *negative[]={"too-deep"};
+    for(unsigned k=0;k<sizeof(negative)/sizeof(negative[0]);k++){
         f=frontend(negative[k]);st.prog=cs_frontend_tokens(f);unsigned before=computes;
         assert(!p->create_compute_state(p,&st) && computes==before);cs_frontend_destroy(f);
         printf("CF actual Mesa unsupported:%s fail-closed PASS\n",negative[k]);

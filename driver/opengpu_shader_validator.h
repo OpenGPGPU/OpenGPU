@@ -173,7 +173,8 @@ static inline bool opengpu_shader_simt_arm_instruction(opengpu_shader_u32 w)
 }
 
 /* A loop backedge may only enter the condition, after the scope marker was
- * pushed. The initial dialect permits lane-local integer ALU in the body. */
+ * pushed. The body uses lane-local integer ALU, scratch constants and checked
+ * uniform loads. */
 static inline bool opengpu_shader_simt_loop_body(
     const opengpu_shader_u32 *words, opengpu_shader_u32 condition,
     opengpu_shader_u32 marker, opengpu_shader_u32 *writes)
@@ -198,10 +199,13 @@ static inline bool opengpu_shader_simt_loop_body(
             has_exit = true;
             continue;
         }
-        if ((word & 127u) != 0x57u ||
+        opengpu_shader_u32 opcode = word & 127u;
+        bool uniform_load = opcode == 0x2bu && (word >> 26) == 7u;
+        if ((opcode != 0x57u && opcode != 0x13u && opcode != 0x37u && !uniform_load) ||
             !opengpu_shader_simt_arm_instruction(word))
             return false;
-        *writes |= 1u << ((word >> 7) & 31u);
+        if (opcode == 0x57u || uniform_load)
+            *writes |= 1u << ((word >> 7) & 31u);
     }
     return has_exit;
 }
@@ -1350,8 +1354,10 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
                     saved->target = marker + 1u;
                     opengpu_shader_simt_boundary(&state);
                 } else if (i == marker) {
-                    if (taken == marker)
+                    if (taken == marker) {
                         opengpu_shader_copy_state(&state, &branches[branch].state);
+                        opengpu_shader_simt_boundary(&state);
+                    }
                     --simt_depth;
                 } else if (i != marker - 1u) return false;
             } else return false;
