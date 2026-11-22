@@ -18,7 +18,8 @@ import time
 from compute_owner_protocol import (strict_json, profile_bytes, held_bytes,
     retired_bytes, failed_held_bytes, failed_retired_bytes, cleanup_authorization, checked_cleanup,
     uint, required_flags, RECOVERY_CASE, RECOVERY_BASES, RECOVERY_COMMAND_SCHEMA, reset_case_supported, permission_case_supported)
-from compute_owner_cases import STORAGE_LOOP_CASE, STORAGE_LOOP_SCHEMA
+from compute_owner_cases import (COMPUTE_LOOP_CASES, NESTED_LOOP_CASE, NESTED_LOOP_SCHEMA,
+    STORAGE_LOOP_CASE, STORAGE_LOOP_SCHEMA)
 from compute_owner_oracle import SparseMemory, verify, union_original_memory
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -125,8 +126,10 @@ def ready_inputs(directory, case, *, owner_profile=None, permission=None, profil
     require(permission is None or (permission_case_supported(case,permission)),
             'image permission denial requires a supported live recipe')
     description=strict_json(directory/'oracle.json')
-    require((description.get('schema') == STORAGE_LOOP_SCHEMA) == (case == STORAGE_LOOP_CASE),
-            'storage loop source requires its distinct byte oracle')
+    loop_schema = {STORAGE_LOOP_CASE: STORAGE_LOOP_SCHEMA, NESTED_LOOP_CASE: NESTED_LOOP_SCHEMA}
+    schema_case = next((name for name, schema in loop_schema.items() if description.get('schema') == schema), None)
+    require(schema_case == (case if case in loop_schema else None),
+            'compute loop source requires its distinct byte oracle')
     counter=description.get('schema')==COUNTER_SCHEMA
     p12_counter=description.get('schema')==P12_COUNTER_SCHEMA
     p12_shared=description.get('schema')==P12_SHARED_SCHEMA
@@ -168,7 +171,7 @@ def ready_inputs(directory, case, *, owner_profile=None, permission=None, profil
             'L1 publication source requires distinct qualification/case binding')
     require(global_atomic==(case in GLOBAL_ATOMIC_CASES), 'raw global source requires distinct qualification/case binding')
     inputs={}
-    if case == STORAGE_LOOP_CASE:
+    if case in COMPUTE_LOOP_CASES:
         inputs = {name: input_digest(directory/name)
                   for name in ('union.memory', 'record-0.capture', 'oracle.json')}
     if counter or p12_counter or p12_shared or p12_texture or image or storage or publication or image_publication or texture_publication or counter_publication or shared_publication or dma_publication or l1_publication or mixed or global_atomic:
