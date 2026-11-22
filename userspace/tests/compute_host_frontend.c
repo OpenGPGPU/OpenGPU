@@ -392,7 +392,7 @@ int main(int argc,char **argv)
   }
   else if(!strcmp(argv[i],"--expect-image-reset")){
    assert(!capture_only && !expect_compute_failure() && !image_reset && (p12_combined_coexist || !strcmp(argv[4],"image-atomic-buffer-r32f")) && ++i<argc);
-   image_reset=!strcmp(argv[i],"read")?1:!strcmp(argv[i],"write")?2:0;assert(image_reset && (!p12_combined_coexist || image_reset==1));
+   image_reset=!strcmp(argv[i],"read")?1:!strcmp(argv[i],"write")?2:0;assert(image_reset);
   }
   else if(!strcmp(argv[i],"--physical-base")){
    assert(!physical_base && ++i<argc);const char *v=argv[i];assert(*v);
