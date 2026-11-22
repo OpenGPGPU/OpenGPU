@@ -433,10 +433,11 @@ int main(int argc,char **argv)
  assert(!expect_compute_failure() || expect_storage_fault || expect_image_write_fault || (p12_combined_coexist && image_permission_fault==2) ||
   !strcmp(argv[4],"image-atomic-buffer-r32f"));
  host_timeout_seconds=compute_host_timeout_seconds();assert(host_timeout_seconds);
- storage_loop_case=!strcmp(argv[4],"storage-loop");
+ storage_loop_case=!strcmp(argv[4],"storage-loop") || !strcmp(argv[4],"masked-storage-loop");
  dynamic_loop_case=!strcmp(argv[4],"dynamic-loop");
  if(storage_loop_case || dynamic_loop_case || !strcmp(argv[4],"nested-loop") ||
-    !strcmp(argv[4],"constant-loop") || !strcmp(argv[4],"loop-break"))loop_case=argv[4];
+    !strcmp(argv[4],"constant-loop") || !strcmp(argv[4],"loop-break") ||
+    !strcmp(argv[4],"continue-loop"))loop_case=argv[4];
  uniform_case=!strcmp(argv[4],"uniforms");
  storage_view_failure=storage_case && (storage_index==14 || storage_index==15);
  mixed_parse_case(argv[4]);
