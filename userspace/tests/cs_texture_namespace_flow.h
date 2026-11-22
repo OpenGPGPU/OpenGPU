@@ -76,8 +76,8 @@ static void namespace_tgsi(const char *text,struct tgsi_token tokens[1024])
 }
 static uint32_t namespace_component(void *opaque,unsigned unit,uint32_t index,unsigned component,int query)
 {
-    struct namespace_components *c=opaque;assert(!unit&&!index&&!query&&component<4);
-    c->seen|=1u<<component;c->calls++;return (component+1)*11;
+    struct namespace_components *c=opaque;assert(!unit&&(index==0||index==7)&&!query&&component<4);
+    c->seen|=1u<<component;c->calls++;return (component+1)*11+index;
 }
 
 static void namespace_liveness(const char *directory)
@@ -135,9 +135,37 @@ static void namespace_liveness(const char *directory)
     }
 }
 
+static void namespace_coordinate_reuse(void)
+{
+    for(unsigned overwrite=0;overwrite<2;overwrite++) {
+        char text[1024];struct tgsi_token tokens[1024];struct opengpu_cs_program code;
+        assert(snprintf(text,sizeof(text),"COMP\nDCL SAMP[0]\nDCL SVIEW[0], BUFFER, UINT\n"
+            "DCL BUFFER[0]\nDCL TEMP[0..2]\nIMM[0] UINT32 {0,7,0,0}\n"
+            "MOV TEMP[0].x, IMM[0].xxxx\nTXF TEMP[1], TEMP[0].xxxx, SAMP[0], BUFFER\n"
+            "MOV TEMP[0].%c, IMM[0].yyyy\nTXF TEMP[2], TEMP[0].xxxx, SAMP[0], BUFFER\n"
+            "UADD TEMP[2].x, TEMP[1].xxxx, TEMP[2].xxxx\n"
+            "STORE BUFFER[0].x, IMM[0].xxxx, TEMP[2].xxxx\nEND\n",overwrite?'x':'y')>0);
+        namespace_tgsi(text,tokens);assert(!opengpu_cs_emit(tokens,&code));
+        assert(opengpu_compute_shader_validate_words_all_resources(code.code,code.words,
+            12,128,false,false,true,true,false,false,false));
+        unsigned setups=0;
+        for(unsigned i=0;i<code.words;i++)
+            setups+=(code.code[i]&0xfc007fffu)==0x0c00002bu;
+        assert(setups==1+overwrite);
+        uint32_t output[4]={0};
+        struct cs_vm_view views[4]={{output,sizeof(output),3},{0},{0},{0}};
+        struct namespace_components components={0};
+        const struct cs_vm_resources resources={&components,namespace_component,NULL};
+        const uint32_t one[3]={1,1,1},group[3]={0};
+        cs_vm_group_resources_checked(code.code,code.words,one,group,one,views,NULL,NULL,&resources);
+        assert(components.calls==2&&output[0]==22+7*overwrite);
+    }
+}
+
 static void texture_namespace_flow(const char *directory)
 {
     namespace_liveness(directory);
+    namespace_coordinate_reuse();
     const char *names[]={"full32","low16","middle16","high16","mixed16","rgba"};
     struct pipe_screen *s=opengpu_drm_screen_create(7,NULL);assert(s);
     struct pipe_context *p=s->context_create(s,NULL,0);assert(p);
