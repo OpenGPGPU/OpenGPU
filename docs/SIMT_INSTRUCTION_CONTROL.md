@@ -134,3 +134,8 @@ command retirement and context cleanup passed.
 The assertion-enabled two-CU float owner passed `continue-loop` on source
 `bdb598c78`. All 128 per-lane arithmetic results, physical guards, command
 retirement and context cleanup passed.
+
+The assertion-enabled two-CU float owner passed `masked-storage-loop`
+on source `bdb598c78`. The oracle checked 256 selected result words, all
+256 skipped output words, the original source data and every other physical
+byte. Command retirement and context cleanup passed.
