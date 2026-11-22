@@ -197,6 +197,19 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
    assert(resources->texture_count==16 && resources->textures && source->resources.defaults.bytes==P12_COMBINED_DEFAULT_COMPONENTS*4);
    p12_texture_prepare_submission(&resources->launch);
    memcpy(accepted_p12_texture_views,(const void *)(uintptr_t)resources->textures,sizeof(accepted_p12_texture_views));
+
+   /* The rejected requests share the original context and resource set.
+    * The successful submission below must still be the only kernel job. */
+   struct drm_opengpu_compute_counter_source_resources wrong=*source;
+   wrong.resources.resources.textures=(uintptr_t)accepted_p12_texture_views;
+   unsigned slot=accepted_p12_texture_views[0].slot;
+   accepted_p12_texture_views[0].slot=resources->bindings[0].slot;
+   assert(compute_host_submit_counter_source(session,&wrong)==-EINVAL);
+   accepted_p12_texture_views[0].slot=slot;
+
+   wrong=*source;
+   wrong.source.handle=texture_handles[0];
+   assert(compute_host_submit_counter_source(session,&wrong)==-EINVAL);
   }
   int error=compute_host_submit_counter_source(session,arg);
   if(!error){accepted_counter=*(const struct drm_opengpu_compute_counter_source_resources *)arg;submitted++;}return result(error);}

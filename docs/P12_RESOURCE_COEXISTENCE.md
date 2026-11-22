@@ -22,7 +22,10 @@ the other eight components of the Mesa linker's 1024-component budget.
 The separate `uniforms` case exercises all 1024 numeric components.
 
 The compute-stage texture target is 16 units. The project-wide combined target
-remains 96. The new combined shader awaits full-DUT qualification.
+remains 96. The combined admission fixture also rejects a storage slot supplied as a
+texture and a writable counter window backed by a texture GEM, then captures
+the valid launch in the same original context. The new combined shader awaits
+full-DUT qualification.
 
 ## Corpus
 
