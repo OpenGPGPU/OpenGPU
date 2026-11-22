@@ -4,6 +4,7 @@ from pathlib import Path
 import struct
 import tempfile
 import unittest
+from compute_owner_cases import STORAGE_LOOP_CASE, STORAGE_LOOP_SCHEMA
 from compute_owner_oracle import SparseMemory, expected_shared, verify, union_original_memory
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +28,42 @@ def memory(path, output=None, corrupt=()):
 
 
 class OracleTests(unittest.TestCase):
+    def test_storage_loop_rejects_wrong_lane_and_guard_changes(self):
+        parent = ROOT / '.artifacts'
+        parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='storage-loop-oracle-', dir=parent) as temporary:
+            initial_path, returned_path = (Path(temporary) / name for name in ('initial', 'returned'))
+            original = Path(temporary) / 'original'
+            memory(original)
+            fixture = bytearray(original.read_bytes())
+            # Extend the source allocation to two pages and initialize distinct input words.
+            struct.pack_into('<II', fixture, 8, 2, 4)
+            struct.pack_into('<QQ', fixture, 16, 0, 8192)
+            guard = struct.pack('<I', 0xdeadbeef)
+            values = tuple(range(0x1000, 0x1080))
+            fixture[64:64 + 4104] = (struct.pack('<Q128I', 0, *values) + guard * 896 +
+                                      struct.pack('<Q', 4096) + guard * 1024)
+            initial_path.write_bytes(fixture)
+            view = dict(allocationBytes=8192, offset=0, bytes=8192)
+            description = dict(schema=STORAGE_LOOP_SCHEMA, sourceCase=STORAGE_LOOP_CASE,
+                viewBytes=8192, groups=1, local=128, guard=0xdeadbeef,
+                input=dict(view, globalBinding=1, allocationPhysical=0),
+                output=dict(view, globalBinding=0, allocationPhysical=8192))
+            start = 64 + 2 * 4104 + 8
+            result = struct.pack('<384I', *values, *(value ^ 1 for value in values),
+                                 *(value ^ 2 for value in values))
+            fixture[start:start + len(result)] = result
+            returned_path.write_bytes(fixture)
+            with SparseMemory(initial_path) as initial:
+                with SparseMemory(returned_path) as returned:
+                    verify(initial, returned, description)
+                for offset in (72, start + 4, start + len(result)):
+                    corrupted = bytearray(fixture)
+                    corrupted[offset] ^= 1
+                    returned_path.write_bytes(corrupted)
+                    with SparseMemory(returned_path) as returned, self.assertRaises(ValueError):
+                        verify(initial, returned, description)
+
     def test_union_retains_old_bytes_and_new_original_uploads_without_aliases(self):
         parent=ROOT/'.artifacts';parent.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='retained-input-union-',dir=parent) as d:

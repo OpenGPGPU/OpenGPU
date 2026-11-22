@@ -68,3 +68,18 @@ across eight warps. Output guards, held completion and stable address spaces
 passed with zero traps. The full replay passed all nine captured submissions.
 Use the [capture and CU replay commands](GALLIUM_COMPUTE.md#explicit-forward-ifelse-cu-qualification)
 to reproduce. This result covers the native CU and memory clients.
+
+The complete compute-owner harness also accepts `--case storage-loop`. It
+compiles the same ESSL shader through Mesa and submits through the production
+Linux driver path. The sanitizer-enabled CPU capture passed command parsing.
+The independent physical-byte oracle rejected unchanged RAM and its tests
+rejected corruption in the input, result and output guard. The fixture uses
+128 distinct input words across one workgroup and checks the 384 expected
+result words and all other original physical bytes.
+
+For the CPU capture, follow the
+[owner capture setup](COMPLETE_OWNER_COMPUTE_EXECUTOR.md) with
+`CASE=storage-loop`. To run on RTL, use the
+[complete owner qualification command](P12_RESOURCE_COEXISTENCE.md#reproduce)
+with `qualify_p12 --case storage-loop` and an executor built from the current
+source. Full DUT execution and cleanup are pending.
