@@ -13,15 +13,16 @@ DUT execution. P12 remains open at **11/40**.
 
 ## Compiler profile boundary
 
-The Mesa compiler frontend cannot lower atomic counters and 16 KiB of shared
-memory in the same shader. With both present, `gl_nir_lower_atomics` transforms
-the shader so that `emit_shared` fails. A second constraint is the uniform
-budget: 1024 default uniforms plus 8 atomic counters exceed the profile's
-uniform budget for the same program.
+The combined shader reuses an unchanged buffer-texture coordinate packet
+across sampler instructions. The original Mesa frontend and Linux ioctl CPU
+capture accepted the 455-word shader with 128 local threads, 16 KiB shared
+memory, 16 texture units, four SSBOs, four buffer images, eight atomic counters,
+12 UBOs and 1016 numeric default-uniform components. The four images consume
+the other eight components of the Mesa linker's 1024-component budget.
+The separate `uniforms` case exercises all 1024 numeric components.
 
-The counter and shared cases use separate shaders because of this compiler
-limit. The compute-stage texture target is 16 units. The project-wide combined
-target remains 96.
+The compute-stage texture target is 16 units. The project-wide combined target
+remains 96. The new combined shader awaits full-DUT qualification.
 
 ## Corpus
 
@@ -77,7 +78,7 @@ qualify_p12() {
     --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72 \
     --timeout 7200 "$@"
 }
-for case in p12-counter-coexist p12-shared-coexist p12-texture-coexist uniforms \
+for case in p12-counter-coexist p12-shared-coexist p12-texture-coexist p12-combined-coexist uniforms \
   mixed-atomic-r32f-swap-swap-storage-first-endpoint; do
   qualify_p12 --case "$case" || exit
 done
@@ -97,9 +98,9 @@ git diff --check
 
 ## Limits
 
-- The 512-word Mesa emitter and driver validator limit applies to each
-  shader. A straight-line shader with 16 texture fetches plus the complete
-  12-UBO and eight-counter workload exceeds that limit.
+- The 512-word Mesa emitter and driver validator limit applies to each shader.
+  The combined case reads the last word of each UBO. The dedicated counter
+  and shared cases also read each UBO's first word.
 - The same-GEM alias, write permission and delayed write-response reset are
   scoped to the tested SSBO and buffer-image cases. The complete resource set
   still needs the namespace, alias, permission and cancel/reset matrix.

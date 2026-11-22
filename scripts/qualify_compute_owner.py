@@ -201,7 +201,7 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
         'reservation_matrix')) and
         not source_fault and permission is None and reset is None and physical_base is None),
         'L1 publication requires its exact first warm source and distinct continuous receipts')
-    require(not getattr(args,'p12_counter_matrix',False) or (case==P12_COUNTER_CASES[0] and
+    require(not getattr(args,'p12_counter_matrix',False) or (case in P12_COUNTER_CASES and
         not any(getattr(args,key,False) for key in ('storage_matrix','storage_delayed_ack','storage_recovery_matrix',
         'storage_accepted_matrix','storage_publication_matrix','image_publication_matrix','texture_publication_matrix',
         'counter_publication_matrix','shared_publication_matrix','dma_publication_matrix','l1_publication_matrix',
@@ -471,7 +471,7 @@ def main():
     args.shared_publication_matrix=args.case=='shared-publication'
     args.dma_publication_matrix=args.case=='dma-publication'
     args.l1_publication_matrix=args.case=='l1-publication'
-    args.p12_counter_matrix=args.case==P12_COUNTER_CASES[0]
+    args.p12_counter_matrix=args.case in P12_COUNTER_CASES
     args.p12_shared_matrix=args.case==P12_SHARED_CASES[0]
     args.p12_texture_matrix=args.case==P12_TEXTURE_CASES[0]
     args.image_accepted_matrix=args.case=='image-atomics-accepted-write-error'
@@ -529,7 +529,7 @@ def main():
         cases = (GLOBAL_ATOMIC_CASES[:1] if args.reservation_matrix or args.global_atomic_matrix or args.global_recovery_matrix or args.global_accepted_matrix or args.cache_alias_matrix or args.uc_cache_alias_matrix else MIXED_ATOMIC_CASES[:1] if args.mixed_atomic_matrix else CONTENDED_IMAGE_CASES[:1] if args.contended_image_matrix or args.image_accepted_matrix else
                  SHARED_PUBLICATION_CASES[:1] if args.shared_publication_matrix else
                  L1_PUBLICATION_CASES[:1] if args.l1_publication_matrix else
-                 P12_COUNTER_CASES[:1] if args.p12_counter_matrix else
+                 (args.case,) if args.p12_counter_matrix else
                   P12_SHARED_CASES[:1] if args.p12_shared_matrix else
                  P12_TEXTURE_CASES[:1] if args.p12_texture_matrix else
                  DMA_PUBLICATION_CASES[:1] if args.dma_publication_matrix else

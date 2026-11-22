@@ -37,10 +37,29 @@ static void p12_texture_setup(struct pipe_screen *s,struct pipe_context *p,void 
  p->set_sampler_views(p,PIPE_SHADER_COMPUTE,0,16,0,false,samplers);
 }
 
-static void p12_texture_prepare_submission(struct drm_opengpu_compute *launch)
+static void p12_texture_prepare_submission(const struct drm_opengpu_compute *launch)
 {
  assert(!submitted && launch->grid[0]==1 && launch->grid[1]==1 && launch->grid[2]==1 &&
   launch->local[0]==128 && launch->local[1]==1 && launch->local[2]==1);
+}
+
+static void p12_texture_write_bindings(FILE *f,const struct compute_host_snapshot *snap)
+{
+ fputs(",\"textures\":[",f);
+ for(unsigned unit=0;unit<16;unit++){
+  if(unit)fputc(',',f);
+  const struct drm_opengpu_compute_texture_view *v=&accepted_p12_texture_views[texture_native_units[unit]];
+  uint64_t physical,bytes;assert(!compute_host_original_physical(session,texture_handles[unit],&physical,&bytes) && bytes==8192);
+  assert(v->slot==3+texture_native_units[unit] && v->target==5 && v->format==14 && v->buffer_texels==2048 &&
+   v->level_count==1 && v->levels[0].buffer_bytes==8192);
+  fprintf(f,"{\"globalBinding\":%u,\"allocationPhysical\":%llu,\"allocationBytes\":8192,\"offset\":0,\"bytes\":8192,"
+   "\"view\":{\"slot\":%u,\"target\":%u,\"format\":%u,\"bufferTexels\":%u,\"bufferBytes\":%llu}}",
+   v->slot,(unsigned long long)physical,v->slot,v->target,v->format,v->buffer_texels,(unsigned long long)v->levels[0].buffer_bytes);
+ }
+ fputs("],\"textureBindings\":[",f);
+ for(unsigned unit=0;unit<16;unit++){if(unit)fputc(',',f);fprintf(f,"%u",3+texture_native_units[unit]);}
+ fprintf(f,"],\"textureRoot\":%u,\"texturePhysical\":%llu,\"textureBytes\":%llu",
+  snap->texture_root,(unsigned long long)snap->texture_physical,(unsigned long long)snap->texture_bytes);
 }
 
 static void p12_texture_write_oracle(FILE *f)
@@ -60,20 +79,7 @@ static void p12_texture_write_oracle(FILE *f)
  fprintf(f,"],\"imageBindings\":[%u,%u,%u,%u],\"imageRoot\":%u,\"imagePhysical\":%llu,\"imageBytes\":%llu",
   counter_image_bindings[0],counter_image_bindings[1],counter_image_bindings[2],counter_image_bindings[3],
   snap.image_root,(unsigned long long)snap.image_physical,(unsigned long long)snap.image_bytes);
- fputs(",\"textures\":[",f);
- for(unsigned unit=0;unit<16;unit++){
-  if(unit)fputc(',',f);
-  const struct drm_opengpu_compute_texture_view *v=&accepted_p12_texture_views[texture_native_units[unit]];
-  uint64_t physical,bytes;assert(!compute_host_original_physical(session,texture_handles[unit],&physical,&bytes) && bytes==8192);
-  assert(v->slot==3+texture_native_units[unit] && v->target==5 && v->format==14 && v->buffer_texels==2048 &&
-   v->level_count==1 && v->levels[0].buffer_bytes==8192);
-  fprintf(f,"{\"globalBinding\":%u,\"allocationPhysical\":%llu,\"allocationBytes\":8192,\"offset\":0,\"bytes\":8192,"
-   "\"view\":{\"slot\":%u,\"target\":%u,\"format\":%u,\"bufferTexels\":%u,\"bufferBytes\":%llu}}",
-   v->slot,(unsigned long long)physical,v->slot,v->target,v->format,v->buffer_texels,(unsigned long long)v->levels[0].buffer_bytes);
- }
- fputs("],\"textureBindings\":[",f);
- for(unsigned unit=0;unit<16;unit++){if(unit)fputc(',',f);fprintf(f,"%u",3+texture_native_units[unit]);}
- fprintf(f,"],\"textureRoot\":%u,\"texturePhysical\":%llu,\"textureBytes\":%llu}\n",
-  snap.texture_root,(unsigned long long)snap.texture_physical,(unsigned long long)snap.texture_bytes);
+ p12_texture_write_bindings(f,&snap);
+ fputs("}\n",f);
 }
 #endif

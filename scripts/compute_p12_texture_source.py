@@ -26,10 +26,10 @@ TEXTURE_VA_BASE = 0xa0000000
 TEXTURE_VA_STRIDE = 4 * 1024 * 1024
 WINDOW_FIELDS = {'globalBinding', 'allocationPhysical', 'allocationBytes', 'offset', 'bytes'}
 TEXTURE_VIEW_FIELDS = {'slot', 'target', 'format', 'bufferTexels', 'bufferBytes'}
-FIELDS = {'schema', 'sourceCase', 'groups', 'local', 'viewBytes', 'guard', 'context',
+TEXTURE_FIELDS = {'textures', 'textureBindings', 'textureRoot', 'texturePhysical', 'textureBytes'}
+FIELDS = TEXTURE_FIELDS | {'schema', 'sourceCase', 'groups', 'local', 'viewBytes', 'guard', 'context',
           'kernargPhysical', 'kernargBytes', 'outputs', 'storageBindings', 'images', 'imageBindings',
-          'imageRoot', 'imagePhysical', 'imageBytes', 'textures', 'textureBindings', 'textureRoot',
-          'texturePhysical', 'textureBytes'}
+          'imageRoot', 'imagePhysical', 'imageBytes'}
 
 
 def require(ok, message):
@@ -89,6 +89,16 @@ def recipe(memory, value):
     require(uint(value['imageRoot']) == 0xb1000000 and uint(value['imagePhysical']) > 0 and
             value['imagePhysical'] % 4096 == 0 and uint(value['imageBytes']) == 1024,
             'P12 image descriptor table bounds differ')
+    textures, texture_allocations = texture_recipe(memory, value, allocations)
+    allocations.sort()
+    require(all(a[1] <= b[0] for a, b in zip(allocations, allocations[1:])), 'P12 original GEM aliases another resource')
+    for key in ('kernargPhysical', 'kernargBytes'):
+        uint(value[key])
+    require(0 < value['kernargBytes'] <= 4096, 'invalid kernarg view')
+    return outputs, images, textures, texture_allocations
+
+
+def texture_recipe(memory, value, allocations):
     bindings = value['textureBindings']
     require(type(bindings) is list and all(type(i) is int for i in bindings) and
             sorted(bindings) == list(range(TEXTURE_SLOT_BASE, TEXTURE_SLOT_BASE + TEXTURE_COUNT)),
@@ -119,12 +129,7 @@ def recipe(memory, value):
             (value['texturePhysical'], value['texturePhysical'] + TEXTURE_TABLE_PAGES) in
             [(a, b) for a, b, _ in memory.ranges],
             'P12 texture descriptor table bounds differ')
-    allocations.sort()
-    require(all(a[1] <= b[0] for a, b in zip(allocations, allocations[1:])), 'P12 original GEM aliases another resource')
-    for key in ('kernargPhysical', 'kernargBytes'):
-        uint(value[key])
-    require(0 < value['kernargBytes'] <= 4096, 'invalid kernarg view')
-    return outputs, images, textures, texture_allocations
+    return textures, texture_allocations
 
 
 def returned_outputs(initial, returned, description):
@@ -250,8 +255,13 @@ def ready(memory, description, data, *, owner_profile=IMAGE_FLOAT_PROFILE):
                 translate(memory, satp, base + IMAGE_VIEW_BYTES - 1, 15) == output + IMAGE_VIEW_BYTES - 1,
                 'P12 image original GEM mapping differs')
     require(r.get(0x440, 0) == 0, 'unexpected uniform command in P12 texture capture')
+    texture_ready(memory, description, satp, r, texture_allocations)
+
+
+def texture_ready(memory, description, satp, registers, texture_allocations):
+    context = description['context']
     root, physical = description['textureRoot'], description['texturePhysical']
-    require([r.get(0x480 + 4 * i) for i in range(5)] == [257, root, context, 0, 0],
+    require([registers.get(0x480 + 4 * i) for i in range(5)] == [257, root, context, 0, 0],
             'P12 texture command context differs')
     for offset in range(0, TEXTURE_TABLE_PAGES, 4096):
         require(translate(memory, satp, root + offset, 15) == physical + offset,
