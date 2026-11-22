@@ -29,7 +29,7 @@ static struct compute_host_session *session;
 static struct {void *data;uint64_t bytes;unsigned maps,closed;} bos[512];
 static unsigned next_bo=1,next_sync=1,submitted,retired;
 static const char *directory;
-static int capture_only,expect_image_source_fault,uniform_case,dynamic_case,address_case,counter_case,counter_dynamic,counter_coexist,p12_counter_coexist,p12_shared_coexist,p12_texture_coexist;
+static int capture_only,expect_image_source_fault,uniform_case,dynamic_case,address_case,counter_case,counter_dynamic,counter_coexist,p12_counter_coexist,p12_shared_coexist,p12_texture_coexist,p12_combined_coexist;
 static unsigned image_permission_fault;
 static unsigned image_reset;
 static unsigned storage_view_failure,expect_storage_fault,expect_image_write_fault;
@@ -37,6 +37,7 @@ static int expect_compute_failure(void){return expect_image_source_fault || imag
 static unsigned dynamic_operation,dynamic_signed;
 static unsigned address_kind,counter_operation,counter_index;
 static unsigned counter_offset=4080,counter_count=8;
+enum { P12_COMBINED_DEFAULT_COMPONENTS = 1016 };
 static const char *counter_name;
 static unsigned host_timeout_seconds;
 static unsigned output_handles[4],uniform_handles[12],counter_handle,counter_storage_bindings[4],index_uniform_handle;
@@ -190,6 +191,13 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
  if(request==DRM_IOCTL_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES){
   assert(counter_case || counter_publication_case);
   if(counter_publication_case)counter_publication_prepare_submission(arg);
+  if(p12_combined_coexist){
+   const struct drm_opengpu_compute_counter_source_resources *source=arg;
+   const struct drm_opengpu_compute_counter_resources *resources=&source->resources.resources;
+   assert(resources->texture_count==16 && resources->textures && source->resources.defaults.bytes==P12_COMBINED_DEFAULT_COMPONENTS*4);
+   p12_texture_prepare_submission(&resources->launch);
+   memcpy(accepted_p12_texture_views,(const void *)(uintptr_t)resources->textures,sizeof(accepted_p12_texture_views));
+  }
   int error=compute_host_submit_counter_source(session,arg);
   if(!error){accepted_counter=*(const struct drm_opengpu_compute_counter_source_resources *)arg;submitted++;}return result(error);}
  if(request==DRM_IOCTL_SYNCOBJ_CREATE){struct drm_syncobj_create *p=arg;assert(!p->flags && next_sync<3);p->handle=next_sync++;return 0;}
@@ -254,8 +262,8 @@ static void write_oracle(void)
   uint64_t physical,bytes;assert(!compute_host_original_physical(session,counter_handle,&physical,&bytes));
   assert(accepted_counter.version==1 && v->handle==counter_handle && v->offset==counter_offset && v->count==counter_count &&
    bytes==8192 && snap.counter_physical==physical+counter_offset && snap.counter_bytes==counter_count*4 && snap.counter_root);
-  fprintf(f,"{\"schema\":\"opengpu-compute-p12-counter-oracle-v1\",\"sourceCase\":\"p12-counter-coexist\",\"groups\":1,\"local\":128,\"viewBytes\":8192,\"guard\":3735928559,\"seed\":%u,\"count\":%u,\"counterHandle\":%u,\"context\":%u,\"descriptorPhysical\":%llu,\"descriptorRoot\":%u,\"kernargPhysical\":%llu,\"kernargBytes\":%llu,\"counter\":",
-   0xfffffffeu,counter_count,v->handle,snap.context,
+  fprintf(f,"{\"schema\":\"opengpu-compute-p12-counter-oracle-v1\",\"sourceCase\":\"%s\",\"groups\":1,\"local\":128,\"viewBytes\":8192,\"guard\":3735928559,\"seed\":%u,\"count\":%u,\"counterHandle\":%u,\"context\":%u,\"descriptorPhysical\":%llu,\"descriptorRoot\":%u,\"kernargPhysical\":%llu,\"kernargBytes\":%llu,\"counter\":",
+   counter_name,0xfffffffeu,counter_count,v->handle,snap.context,
    (unsigned long long)snap.counter_descriptor_physical,snap.counter_root,
    (unsigned long long)snap.kernarg_physical,(unsigned long long)snap.kernarg_bytes);
   source_window(f,counter_handle,counter_offset,counter_count*4,0);fputs(",\"outputs\":[",f);
@@ -272,7 +280,9 @@ static void write_oracle(void)
   for(unsigned i=0;i<12;i++){if(i)fputc(',',f);source_window(f,uniform_handles[i],0,16384,24+i);}
   fputs("],\"uboBindings\":[",f);
   for(unsigned i=0;i<12;i++){if(i)fputc(',',f);fprintf(f,"%u",24+i);}
-  fprintf(f,"],\"uniformPhysical\":%llu}\n",(unsigned long long)snap.uniform_physical);
+  fprintf(f,"],\"uniformPhysical\":%llu",(unsigned long long)snap.uniform_physical);
+  if(p12_combined_coexist)p12_texture_write_bindings(f,&snap);
+  fputs("}\n",f);
  }else if(counter_case){
   const struct drm_opengpu_compute_counter_source *v=&accepted_counter.source;
   struct compute_host_snapshot snap;assert(!compute_host_snapshot_get(session,&snap));
@@ -378,7 +388,10 @@ int main(int argc,char **argv)
  for(unsigned i=0;i<9;i++)if(!strcmp(argv[4],counter_names[i])){counter_case=1;counter_operation=i%3;counter_dynamic=i>=3;counter_index=i>=6?0:i>=3?4:7;counter_name=counter_names[i];}
  if(!strcmp(argv[4],"counter-scalar")){counter_case=1;counter_index=0;counter_offset=8188;counter_count=1;counter_name="counter-scalar";}
  if(!strcmp(argv[4],"counter-coexist")){counter_case=counter_coexist=1;counter_index=7;counter_name="counter-coexist";}
- if(!strcmp(argv[4],"p12-counter-coexist")){counter_case=p12_counter_coexist=1;counter_offset=8192-8*4;counter_name="p12-counter-coexist";}
+ p12_combined_coexist=!strcmp(argv[4],"p12-combined-coexist");
+ if(p12_combined_coexist || !strcmp(argv[4],"p12-counter-coexist")){
+  counter_case=p12_counter_coexist=1;counter_offset=8192-8*4;counter_name=argv[4];
+ }
  if(!strcmp(argv[4],"p12-shared-coexist")){p12_shared_coexist=1;}
  if(!strcmp(argv[4],"p12-texture-coexist")){p12_texture_coexist=1;}
  for(unsigned variant=0;variant<16;variant++){
@@ -413,9 +426,7 @@ int main(int argc,char **argv)
  {
   unsigned expected_shared=0;
   if(shared_publication_case && shared_publication_index==1)expected_shared=128; /* dual own-stripe */
-  else if(!(uniform_case || counter_case || counter_publication_case || shared_publication_case || dma_publication_case || image_case || storage_case || publication_case || image_publication_case || texture_publication_case || p12_texture_coexist))expected_shared=16384;
-  /* P12 counter coexistence intentionally has no shared memory: the compiler
-   * profile cannot lower atomic counters and shared memory in one shader. */
+  else if(p12_combined_coexist || !(uniform_case || counter_case || counter_publication_case || shared_publication_case || dma_publication_case || image_case || storage_case || publication_case || image_publication_case || texture_publication_case || p12_texture_coexist))expected_shared=16384;
   assert(cs_frontend_shared_bytes(frontend)==expected_shared);
  }
  struct pipe_compute_state state={.ir_type=PIPE_SHADER_IR_TGSI,.prog=cs_frontend_tokens(frontend),.req_local_mem=cs_frontend_shared_bytes(frontend)};
@@ -431,7 +442,7 @@ int main(int argc,char **argv)
  if(publication_case)publication_setup(frontend,output);
  if(image_publication_case)image_publication_setup(s,p,frontend,output);
  if(texture_publication_case)texture_publication_setup(s,p,frontend,output);
- if(p12_texture_coexist)p12_texture_setup(s,p,frontend);
+ if(p12_texture_coexist || p12_combined_coexist)p12_texture_setup(s,p,frontend);
  if(counter_publication_case)counter_publication_setup(s,p,frontend,output);
  if(shared_publication_case)shared_publication_setup(frontend,output);
  if(dma_publication_case)dma_publication_setup(frontend,output);
@@ -467,6 +478,12 @@ int main(int argc,char **argv)
    for(unsigned w=0;w<4096;w++)data[w]=uniform_value(i+1,w);
   }
   cs_frontend_ubos(frontend,p,ub,offsets,sizes);
+ }
+ if(p12_combined_coexist){
+  uint32_t defaults[P12_COMBINED_DEFAULT_COMPONENTS];
+  assert(cs_frontend_default_components(frontend)==P12_COMBINED_DEFAULT_COMPONENTS);
+  for(unsigned w=0;w<P12_COMBINED_DEFAULT_COMPONENTS;w++)defaults[w]=uniform_value(0,w);
+  cs_frontend_defaults(frontend,p,defaults,P12_COMBINED_DEFAULT_COMPONENTS);
  }
  if(counter_dynamic){
   ub[35]=buffer(s,4096);assert(ub[35]);sizes[35]=16;

@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 from compute_owner_cases import CASES, COUNTER_CASES, P12_COUNTER_CASES, counter_parameters, p12_counter_parameters
-from compute_p12_counter_cases import LOCAL, COUNTER_BYTES, COUNTER_OFFSET, parameters, shader, write_sources
+from compute_p12_counter_cases import COMBINED, LOCAL, COUNTER_BYTES, COUNTER_OFFSET, parameters, shader, write_sources
 from compute_p12_counter_source import (SCHEMA, UNIFORM_BYTES, ready, recipe, returned_outputs,
     seed_oracle, snapshot_seed, uniform_value, counter_old_values, counter_seed, COUNTER_COUNT, INCREMENTS)
 from compute_owner_oracle import SparseMemory, verify
@@ -19,7 +19,8 @@ CASE = P12_COUNTER_CASES[0]
 
 class P12Counter(unittest.TestCase):
     def test_case_registration_and_parameters(self):
-        self.assertEqual(P12_COUNTER_CASES, (CASE,))
+        self.assertEqual(P12_COUNTER_CASES, (CASE, COMBINED))
+        self.assertIn(COMBINED, COUNTER_CASES)
         self.assertIn(CASE, COUNTER_CASES)
         self.assertIn(CASE, CASES)
         self.assertEqual(counter_parameters(CASE), p12_counter_parameters(CASE))

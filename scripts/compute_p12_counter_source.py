@@ -1,7 +1,8 @@
 """Strict P12 full-resource counter oracle: actual GEMs, READY and returned bytes."""
 import struct
 
-from compute_p12_counter_cases import COUNTER_OFFSET
+from compute_p12_counter_cases import COMBINED, COUNTER_OFFSET, DEFAULT_COMPONENTS
+from compute_p12_texture_source import TEXTURE_FIELDS, texel_fetch_value, texture_ready, texture_recipe
 
 from compute_counter_source import translate
 from compute_owner_protocol import required_flags, profile_bytes, uint
@@ -75,10 +76,12 @@ def counter_old_values(seed):
 
 
 def recipe(memory, value):
-    require(type(value) is dict and set(value) == FIELDS, 'foreign or missing P12 counter fields')
+    require(type(value) is dict, 'invalid P12 counter description')
     from compute_p12_counter_cases import parameters
-    parameters(value.get('sourceCase'))
-    required_flags(value, dict(schema=SCHEMA, sourceCase='p12-counter-coexist', groups=GROUPS,
+    case = parameters(value.get('sourceCase'))['case']
+    fields = FIELDS | TEXTURE_FIELDS if case == COMBINED else FIELDS
+    require(set(value) == fields, 'foreign or missing P12 counter fields')
+    required_flags(value, dict(schema=SCHEMA, sourceCase=case, groups=GROUPS,
         local=LOCAL, viewBytes=OUTPUT_BYTES, guard=GUARD, seed=SEED, count=COUNTER_COUNT))
     require(0 < uint(value['counterHandle']) < 512 and 0 < uint(value['context']) < 512,
             'invalid original P12 counter owner')
@@ -130,6 +133,8 @@ def recipe(memory, value):
         ubos.append(first)
         allocations.append((first, first + UBO_BYTES))
     require(used == set(range(1, UBO_COUNT + 1)), 'original P12 UBO blocks are not a complete permutation')
+    if case == COMBINED:
+        texture_recipe(memory, value, allocations)
     allocations.sort()
     require(all(a[1] <= b[0] for a, b in zip(allocations, allocations[1:])), 'P12 original GEM aliases another resource')
     original = bytearray(b'\x5a' * 8192)
@@ -146,15 +151,26 @@ def recipe(memory, value):
 
 def returned_outputs(initial, returned, description):
     source, outputs, images, ubos = recipe(initial, description)
-    seed = seed_oracle()
+    combined = description['sourceCase'] == COMBINED
+    if combined:
+        seed = uniform_value(0, 0) ^ uniform_value(0, DEFAULT_COMPONENTS - 1)
+        for slot in range(1, UBO_COUNT + 1):
+            seed ^= uniform_value(slot, 4095)
+        tags = [seed ^ (lane * 3) ^ texel_fetch_value(lane) for lane in range(LOCAL)]
+        outputs = [first + OUTPUT_BYTES - LOCAL * 4 for first in outputs]
+    else:
+        seed = seed_oracle()
     olds = [counter_old_values(counter_seed(index)) for index in range(COUNTER_COUNT)]
     result = []
     for addresses, multiplier in ((outputs, 0x10203), (images, 0x20406)):
         for binding, first in enumerate(addresses):
             data = returned.read(first, LOCAL * 4)
             actual = struct.unpack('<%uI' % LOCAL, data)
+            if combined:
+                require(not result or data == result[0][1], 'P12 combined output lanes differ across views')
+                actual = tuple(value ^ tag for value, tag in zip(actual, tags))
             for index, values in enumerate(olds):
-                expected = sorted(old ^ seed ^ (binding * multiplier) for old in values)
+                expected = sorted(values) if combined else sorted(old ^ seed ^ (binding * multiplier) for old in values)
                 require(sorted(actual[index::COUNTER_COUNT]) == expected,
                         'P12 counter returned values differ for slot %u' % index)
             result.append((first, data))
@@ -292,22 +308,43 @@ def ready(memory, description, data, *, owner_profile=IMAGE_FLOAT_PROFILE):
             [r.get(0x440 + 4 * i) for i in range(8)] ==
             [257, uniform_root, context, 0, 0, r.get(0xd0, 0), r.get(0xd0, 0) + argbytes, 0],
             'P12 GUM1 uniform/private-prefix command differs')
+    combined = description['sourceCase'] == COMBINED
+    uniform_bytes = UNIFORM_BYTES + (4096 if combined else 0)
     uniform_physical = translate(memory, satp, uniform_root, 3)
     require(uniform_physical > 0 and uniform_physical % 4096 == 0 and
             uniform_physical == uint(description['uniformPhysical']) and
-            translate(memory, satp, uniform_root + UNIFORM_BYTES - 1, 3) == uniform_physical + UNIFORM_BYTES - 1 and
-            any(a <= uniform_physical < uniform_physical + UNIFORM_BYTES <= b for a, b, _ in memory.ranges),
+            translate(memory, satp, uniform_root + uniform_bytes - 1, 3) == uniform_physical + uniform_bytes - 1 and
+            any(a <= uniform_physical < uniform_physical + uniform_bytes <= b for a, b, _ in memory.ranges),
             'P12 uniform snapshot is not its original read-only private mapping')
     low = sum(index << (5 * index) for index in range(6))
     high = sum(index << (5 * (index - 6)) for index in range(6, UBO_COUNT))
     root_record = [0] * 16
     root_record[:15] = [0x47555201, 64, 1, context, 0, 0, 2, 0xfff, low, high,
                         uniform_root + 64, uniform_root + 64 + 24 * 64, 0, 0, 0]
+    if combined:
+        root_record[13:15] = [uniform_root + 64 + 24 * 64, 1]
     require(memory.read(uniform_physical, 64) == struct.pack('<16I', *root_record),
             'P12 GUR1 active mask/mapping differs')
-    require(memory.read(uniform_physical + 64 + UBO_COUNT * 64,
-                        4096 - 64 - UBO_COUNT * 64) == bytes(4096 - 64 - UBO_COUNT * 64),
+    unused = (24 - UBO_COUNT) * 64
+    require(memory.read(uniform_physical + 64 + UBO_COUNT * 64, unused) == bytes(unused),
             'P12 unused uniform descriptor rows are enabled')
+    default_offset = 64 + 24 * 64
+    if combined:
+        base = uniform_root + UNIFORM_BYTES
+        limit = base + DEFAULT_COMPONENTS * 4
+        default_record = (0x47554201, 64, 1, context, 0, 0, 31, 4, base, limit, 0,
+                          base, base + 4096, 0, 1, 0)
+        require(memory.read(uniform_physical + default_offset, 64) == struct.pack('<16I', *default_record),
+                'P12 default uniform descriptor differs')
+        expected = struct.pack('<%uI' % DEFAULT_COMPONENTS,
+                               *(uniform_value(0, word) for word in range(DEFAULT_COMPONENTS)))
+        require(memory.read(uniform_physical + UNIFORM_BYTES, 4096) ==
+                expected + bytes(4096 - len(expected)), 'P12 default uniform snapshot differs')
+        default_offset += 64
+        _, textures = texture_recipe(memory, description, [])
+        texture_ready(memory, description, satp, r, textures)
+    require(memory.read(uniform_physical + default_offset, 4096 - default_offset) ==
+            bytes(4096 - default_offset), 'P12 unexpected uniform metadata')
     for index in range(UBO_COUNT):
         base = uniform_root + 4096 + UBO_BYTES * index
         record = [0] * 16
