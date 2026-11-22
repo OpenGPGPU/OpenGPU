@@ -52,7 +52,7 @@ def p12_counter_parameters(name):
     if name not in P12_COUNTER_CASES:
         raise ValueError('unknown P12 counter coexist source')
     return dict(source=name + '.comp', operation='increment', groups=1, local=128,
-                dynamic=False, seed=0xfffffffe, index=7, offset=P12_COUNTER_OFFSET, count=8)
+                dynamic=True, seed=0xfffffffe, index=0, offset=P12_COUNTER_OFFSET, count=8)
 
 
 def counter_parameters(name):
