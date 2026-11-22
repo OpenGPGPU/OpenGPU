@@ -107,7 +107,8 @@ static inline bool opengpu_shader_simt_scope_at(const opengpu_shader_u32 *words,
                 (opengpu_shader_u32)opengpu_shader_simt_displacement(words[k]) / 4u;
             if (end >= i) {
                 *branch = k + 1u; *marker = end;
-                *taken = k + 1u + (opengpu_shader_u32)
+                *taken = (words[end - 1u] & 127u) == 0x6fu ? end :
+                    k + 1u + (opengpu_shader_u32)
                     opengpu_shader_simt_displacement(words[k + 1u]) / 4u;
                 return true;
             }
@@ -177,6 +178,7 @@ static inline bool opengpu_shader_simt_loop_body(
     const opengpu_shader_u32 *words, opengpu_shader_u32 condition,
     opengpu_shader_u32 marker, opengpu_shader_u32 *writes)
 {
+    bool has_exit = false;
     opengpu_shader_u32 i, backedge = (condition - (marker - 1u)) * 4u;
     opengpu_shader_u32 encoded = ((backedge >> 20) & 1u) << 31 |
         ((backedge >> 1) & 1023u) << 21 |
@@ -186,14 +188,22 @@ static inline bool opengpu_shader_simt_loop_body(
         words[marker] != OPENGPU_SHADER_SIMT_JOIN)
         return false;
     *writes = 0;
-    for (i = condition + 1u; i < marker - 1u; ++i) {
+    for (i = condition; i < marker - 1u; ++i) {
         opengpu_shader_u32 word = words[i];
+        if ((word & 127u) == 0x5bu) {
+            if (((word >> 12) & 7u) > 1u ||
+                opengpu_shader_simt_displacement(word) !=
+                    (opengpu_shader_s32)((marker - i) * 4u))
+                return false;
+            has_exit = true;
+            continue;
+        }
         if ((word & 127u) != 0x57u ||
             !opengpu_shader_simt_arm_instruction(word))
             return false;
         *writes |= 1u << ((word >> 7) & 31u);
     }
-    return true;
+    return has_exit;
 }
 
 static inline bool opengpu_shader_shared_simt_arm_instruction(
@@ -1269,12 +1279,17 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
                     i + 1u >= word_count)
                     return false;
                 marker = i + (opengpu_shader_u32)distance / 4u;
-                b = words[i + 1u];
-                if ((b & 127u) != 0x5bu || ((b >> 12) & 7u) > 1u)
-                    return false;
-                distance = opengpu_shader_simt_displacement(b);
-                if (distance <= 0 || (distance & 3)) return false;
-                taken = i + 1u + (opengpu_shader_u32)distance / 4u;
+                if (marker >= word_count) return false;
+                if ((words[marker - 1u] & 127u) == 0x6fu) {
+                    taken = marker;
+                } else {
+                    b = words[i + 1u];
+                    if ((b & 127u) != 0x5bu || ((b >> 12) & 7u) > 1u)
+                        return false;
+                    distance = opengpu_shader_simt_displacement(b);
+                    if (distance <= 0 || (distance & 3)) return false;
+                    taken = i + 1u + (opengpu_shader_u32)distance / 4u;
+                }
                 if (simt_depth) {
                     opengpu_shader_u32 parent_taken, parent_marker;
                     if (!opengpu_shader_simt_scope_at(words, i, &branch_pc,
@@ -1308,13 +1323,18 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
             } else if (funct3 <= 1u) {
                 if (!simt_depth || !opengpu_shader_simt_scope_at(words, i,
                         &branch_pc, &taken, &marker)) return false;
-                if (i != branch_pc || !vector_defined[rs1] || !vector_defined[rs2])
-                    return false;
+                if (!vector_defined[rs1] || !vector_defined[rs2]) return false;
+                if (taken == marker) {
+                    if (!opengpu_shader_queue_branch(branches, marker + 1u, &state))
+                        return false;
+                    break;
+                }
+                if (i != branch_pc) return false;
                 for (branch = 0; branch < OPENGPU_SHADER_MAX_FORWARD_BRANCHES; ++branch)
                     if (!branches[branch].used) break;
                 if (branch == OPENGPU_SHADER_MAX_FORWARD_BRANCHES) return false;
                 branches[branch].used = true;
-                branches[branch].target = taken == marker ? marker + 1u : taken;
+                branches[branch].target = taken;
                 opengpu_shader_copy_state(&branches[branch].state, &state);
             } else if (insn == OPENGPU_SHADER_SIMT_JOIN) {
                 if (!simt_depth || !opengpu_shader_simt_scope_at(words, i,
