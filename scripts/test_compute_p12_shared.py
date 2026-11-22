@@ -46,7 +46,7 @@ class P12SharedCases(unittest.TestCase):
             self.assertIn('out%d.v[id]=peer^%du;\n' % (index, index * 0x10203), source)
             self.assertIn('imageStore(image%d,int(id),uvec4(peer^%du));\n' %
                           (index, index * 0x20406), source)
-        self.assertIn('data[id]=seed^(id<<8u);data[3968u+id]=id;memoryBarrierShared();barrier();uint peer=data[(id^16u)]^data[3968u+id];\n', source)
+        self.assertIn('data[id]=seed^id;data[3968u+id]=id*3u;memoryBarrierShared();barrier();uint peer=data[(id^16u)]^data[3968u+id];\n', source)
         self.assertIn('memoryBarrierBuffer();memoryBarrierImage();\n}\n', source)
         for forbidden in ('atomic', 'if(', 'defaults'):
             self.assertNotIn(forbidden, source)
@@ -67,9 +67,9 @@ class P12SharedCases(unittest.TestCase):
             seed = ((seed * 33) ^ uniform_value(block + 1, 0) ^ uniform_value(block + 1, 4095)) & mask
         self.assertEqual(seed_oracle(), seed)
         for lane in (0, 1, 15, 16, 127):
-            self.assertEqual(peer_value(lane, seed), seed ^ ((lane ^ 16) << 8) ^ lane)
+            self.assertEqual(peer_value(lane, seed), seed ^ (lane ^ 16) ^ (lane * 3))
         self.assertEqual({peer_value(lane, seed) for lane in range(LOCAL)},
-                         {seed ^ ((lane ^ 16) << 8) ^ lane for lane in range(LOCAL)})
+                         {seed ^ (lane ^ 16) ^ (lane * 3) for lane in range(LOCAL)})
 
     def test_qualify_wiring_pins_case_and_float_owner(self):
         import qualify_compute_owner as qualifier
