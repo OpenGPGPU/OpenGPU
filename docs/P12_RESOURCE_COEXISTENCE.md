@@ -108,8 +108,12 @@ git diff --check
 
 - This first increment does **not** close P12; count stays **11/40** and P12
   remains open.
-- The 32 texture units must still be exercised in the combined launch; neither
-  case here binds texture units.
+- The P12 texture target is 16 units per stage (the GLSL ES 3.10 minimum), and
+  they must be exercised in the combined launch; neither case here binds
+  texture units. A 16-fetch program alone measured 467 words, above the
+  existing 449-word P12 counter program's remaining headroom under the 512-word
+  limit, so the texture target cannot be met in the combined launch without
+  changing that limit or the fetch sequence.
 - The end-address, namespace, alias and permission matrices over the full
   resource set remain unclosed.
 - Cancel/reset/robustness with the full resource set remains unclosed.
