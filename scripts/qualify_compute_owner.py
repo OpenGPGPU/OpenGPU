@@ -16,7 +16,8 @@ import subprocess
 import sys
 import tempfile
 import uuid
-from compute_owner_protocol import strict_json, RECOVERY_CASE, RECOVERY_BASES, RECOVERY_COMMAND_SCHEMA
+from compute_owner_protocol import (strict_json, RECOVERY_CASE, RECOVERY_BASES, RECOVERY_COMMAND_SCHEMA,
+    reset_case_supported, recovery_base_supported)
 from compute_owner_cases import (CASES, DYNAMIC_CASES, LEGACY_CASES, COUNTER_CASE, COUNTER_CASES,
     IMAGE_CASES, STORAGE_ATOMIC_CASES, STORAGE_PUBLICATION_CASES, IMAGE_PUBLICATION_CASES,
     TEXTURE_PUBLICATION_CASES, COUNTER_PUBLICATION_CASES, SHARED_PUBLICATION_CASES, DMA_PUBLICATION_CASES,
@@ -58,9 +59,10 @@ def checked_inputs(args):
     require(sum(bool(x) for x in (getattr(args,'expect_image_source_fault',False),
             getattr(args,'image_source_recovery',False),permission,reset))<=1,
             'single source fault and continuous recovery modes are mutually exclusive')
-    require(not (getattr(args,'expect_image_source_fault',False) or getattr(args,'image_source_recovery',False) or permission or reset) or
+    require(not (getattr(args,'expect_image_source_fault',False) or getattr(args,'image_source_recovery',False) or permission) or
             getattr(args,'case',None)==RECOVERY_CASE,
             'source fault requires exactly the original float buffer exchange')
+    require(reset is None or reset_case_supported(args.case,reset), 'unsupported source for response reset')
     # Refuse absent qualification before any archive, container or CPU build.
     require(args.executor_qualification.is_file() and not args.executor_qualification.is_symlink(),
             'a real guarded compute executor qualification is required')
@@ -118,10 +120,10 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
             'source fault requires exactly the original float buffer exchange')
     require(permission is None or (permission in ('read','write') and not source_fault and case==RECOVERY_CASE),
             'permission denial requires one original float buffer request')
-    require(reset is None or (reset in ('read','write') and not source_fault and permission is None and case==RECOVERY_CASE),
-            'reset requires one original live float buffer request')
+    require(reset is None or (reset_case_supported(case,reset) and not source_fault and permission is None),
+            'reset requires one supported live request')
     require(physical_base is None or (type(physical_base) is int and 0<physical_base<=0xfffff000 and
-            physical_base%4096==0 and case==RECOVERY_CASE),'invalid original recovery allocation base')
+            physical_base%4096==0 and recovery_base_supported(case)),'invalid original recovery allocation base')
     require(not getattr(args,'image_accepted_matrix',False) or (case==CONTENDED_IMAGE_CASES[0] and
         not source_fault and permission is None and reset is None and physical_base is None and
         not any(getattr(args,key,False) for key in ('storage_matrix','storage_delayed_ack','storage_recovery_matrix',
@@ -471,7 +473,7 @@ def main():
     args.shared_publication_matrix=args.case=='shared-publication'
     args.dma_publication_matrix=args.case=='dma-publication'
     args.l1_publication_matrix=args.case=='l1-publication'
-    args.p12_counter_matrix=args.case in P12_COUNTER_CASES
+    args.p12_counter_matrix=args.case in P12_COUNTER_CASES and args.image_reset_recovery is None
     args.p12_shared_matrix=args.case==P12_SHARED_CASES[0]
     args.p12_texture_matrix=args.case==P12_TEXTURE_CASES[0]
     args.image_accepted_matrix=args.case=='image-atomics-accepted-write-error'
@@ -493,9 +495,9 @@ def main():
     identity = checked_inputs(args)
     if args.expect_image_source_fault or args.image_source_recovery or args.image_permission_recovery or args.image_reset_recovery:
         from owner_resource_contract import IMAGE_FLOAT_PROFILE
-        require(args.case=='image-atomic-buffer-r32f' and
+        require((args.case==RECOVERY_CASE or reset_case_supported(args.case,args.image_reset_recovery)) and
                 strict_json(args.executor_qualification).get('profile')==IMAGE_FLOAT_PROFILE,
-                'source fault requires exactly the original buffer exchange and qualified float owner')
+                'fault and reset recovery require a qualified float owner')
     for key in ('executor', 'executor_qualification', 'executor_checker', *(() if global_source else
             ('mesa', 'mesa_build', 'drm_include', 'library_directory'))):
         setattr(args, key, inside(getattr(args, key), gpu))

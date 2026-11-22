@@ -348,7 +348,9 @@ static void write_oracle(void)
  assert(!fclose(f));}
 int main(int argc,char **argv)
 {
- assert(argc>=5);uint64_t physical_base=0;storage_parse_case(argv[4]);publication_parse_case(argv[4]);
+ assert(argc>=5);uint64_t physical_base=0;
+ p12_combined_coexist=!strcmp(argv[4],"p12-combined-coexist");
+ storage_parse_case(argv[4]);publication_parse_case(argv[4]);
  image_publication_parse_case(argv[4]);texture_publication_parse_case(argv[4]);
  counter_publication_parse_case(argv[4]);shared_publication_parse_case(argv[4]);dma_publication_parse_case(argv[4]);image_parse_case(argv[4]);
  assert(!(storage_case && (publication_case || shared_publication_case || dma_publication_case)));
@@ -377,8 +379,8 @@ int main(int argc,char **argv)
    assert(image_permission_fault);
   }
   else if(!strcmp(argv[i],"--expect-image-reset")){
-   assert(!capture_only && !expect_compute_failure() && !image_reset && !strcmp(argv[4],"image-atomic-buffer-r32f") && ++i<argc);
-   image_reset=!strcmp(argv[i],"read")?1:!strcmp(argv[i],"write")?2:0;assert(image_reset);
+   assert(!capture_only && !expect_compute_failure() && !image_reset && (p12_combined_coexist || !strcmp(argv[4],"image-atomic-buffer-r32f")) && ++i<argc);
+   image_reset=!strcmp(argv[i],"read")?1:!strcmp(argv[i],"write")?2:0;assert(image_reset && (!p12_combined_coexist || image_reset==1));
   }
   else if(!strcmp(argv[i],"--physical-base")){
    assert(!physical_base && ++i<argc);const char *v=argv[i];assert(*v);
@@ -388,7 +390,7 @@ int main(int argc,char **argv)
   }else assert(!"unknown compute host option");
  }
  assert(!physical_base || (!capture_only && ((image_case && image_mode==6) || !strcmp(argv[4],"image-atomic-buffer-r32f") ||
-  publication_case || image_publication_case || texture_publication_case || counter_publication_case || shared_publication_case || dma_publication_case ||
+  p12_combined_coexist || publication_case || image_publication_case || texture_publication_case || counter_publication_case || shared_publication_case || dma_publication_case ||
   (storage_case && storage_index!=14 && storage_index!=15))));
  assert(!expect_compute_failure() || expect_storage_fault || expect_image_write_fault || !strcmp(argv[4],"image-atomic-buffer-r32f"));
  host_timeout_seconds=compute_host_timeout_seconds();assert(host_timeout_seconds);
@@ -401,7 +403,6 @@ int main(int argc,char **argv)
  for(unsigned i=0;i<9;i++)if(!strcmp(argv[4],counter_names[i])){counter_case=1;counter_operation=i%3;counter_dynamic=i>=3;counter_index=i>=6?0:i>=3?4:7;counter_name=counter_names[i];}
  if(!strcmp(argv[4],"counter-scalar")){counter_case=1;counter_index=0;counter_offset=8188;counter_count=1;counter_name="counter-scalar";}
  if(!strcmp(argv[4],"counter-coexist")){counter_case=counter_coexist=1;counter_index=7;counter_name="counter-coexist";}
- p12_combined_coexist=!strcmp(argv[4],"p12-combined-coexist");
  if(p12_combined_coexist || !strcmp(argv[4],"p12-counter-coexist")){
   counter_case=p12_counter_coexist=1;counter_offset=8192-8*4;counter_name=argv[4];
  }

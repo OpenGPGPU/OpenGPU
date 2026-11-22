@@ -9,7 +9,7 @@ import sys
 from native_sample_graphics_inputs import (snapshot as base_snapshot, dependency_inputs,
     generated_inputs, unchanged, regular)
 from native_sample_compiler_inputs import sha256, MESA_UNITS, MESA_LIBRARIES
-from compute_owner_protocol import strict_json
+from compute_owner_protocol import strict_json, reset_case_supported, recovery_base_supported
 from compute_owner_cases import (COUNTER_CASES, counter_parameters, IMAGE_CASES, P12_SHARED_CASES, p12_shared_parameters,
     P12_TEXTURE_CASES, p12_texture_parameters, LEGACY_IMAGE_CASES, CONTENDED_IMAGE_CASES, MIXED_ATOMIC_CASES)
 from compute_image_source import parameters as image_parameters
@@ -104,9 +104,9 @@ def guarded(request_path, builder_argv):
     if '--expect-image-reset' in argv:
         index=argv.index('--expect-image-reset');require(index+1<len(argv),'missing image reset channel')
         reset=argv[index+1]
-        require(reset in ('read','write') and not source_fault and '--expect-image-permission-fault' not in argv and
-                case=='image-atomic-buffer-r32f' and not matrix and '--capture-only' not in argv,
-                'reset requires one original live float buffer and distinct reset receipts')
+        require(not source_fault and '--expect-image-permission-fault' not in argv and
+                reset_case_supported(case,reset) and not matrix and '--capture-only' not in argv,
+                'reset requires one supported live recipe and distinct reset receipts')
     require(argv.count('--expect-image-permission-fault')<=1,'repeated image permission denial')
     if '--expect-image-permission-fault' in argv:
         index=argv.index('--expect-image-permission-fault')
@@ -122,9 +122,9 @@ def guarded(request_path, builder_argv):
         require(argv.index('--physical-base')+1<len(argv),'missing original allocation namespace')
         value=argv[argv.index('--physical-base')+1]
         allocation_base=int(value)
-        require(str(allocation_base)==value and case=='image-atomic-buffer-r32f' and not matrix and
+        require(str(allocation_base)==value and recovery_base_supported(case) and not matrix and
                 '--capture-only' not in argv and 0<allocation_base<=0xfffff000 and allocation_base%4096==0,
-                'allocation namespace requires one original live float buffer source')
+                'allocation namespace requires one supported live recipe')
     require(not (image_matrix or counter_matrix) or '--capture-only' in argv, 'counter/image matrix is CPU capture only')
     launched=set()
     require(not image_matrix or case==IMAGE_CASES[0], 'image matrix must start at its first original source')

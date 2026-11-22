@@ -1,10 +1,11 @@
-"""Original R32F cancellation receipts and independent accepted-work bytes.
+"""Original compute cancellation receipts and independent accepted-work bytes.
 
 No shader is interpreted and no returned memory is manufactured. Reset
 observations are distinct from both successful and failed kernel completions.
 """
 import struct
-from compute_owner_protocol import uint, required_flags, RECOVERY_CASE
+from compute_owner_protocol import uint, required_flags, reset_case_supported
+from compute_p12_counter_cases import COMBINED
 from compute_image_source import recipe, texel_address, atomic_values, verify_cleaned_memory
 
 
@@ -15,12 +16,20 @@ def require(value, message):
 
 def reset_plan(memory, description, channel, *, owner_profile):
     from owner_resource_contract import IMAGE_FLOAT_PROFILE
-    require(channel in ('read','write') and owner_profile==IMAGE_FLOAT_PROFILE and
-            description.get('sourceCase')==RECOVERY_CASE,
-            'response hold requires the original float buffer and complete float owner')
-    recipe(memory,description)
-    image=description['images'][0]
-    first,size=uint(image['allocationPhysical']),uint(image['allocationBytes'])
+    case = description.get('sourceCase')
+    require(owner_profile==IMAGE_FLOAT_PROFILE and reset_case_supported(case,channel),
+            'response hold requires a supported live recipe and complete float owner')
+    if case == COMBINED:
+        from compute_p12_counter_source import recipe as combined_recipe
+        from compute_p12_texture_source import TEXTURE_TABLE_PAGES
+        combined_recipe(memory,description)
+        # Every texel fetch needs this table. The workgroup barrier precedes
+        # the fetches, and all output stores depend on their results.
+        first,size=description['texturePhysical'],TEXTURE_TABLE_PAGES
+    else:
+        recipe(memory,description)
+        image=description['images'][0]
+        first,size=uint(image['allocationPhysical']),uint(image['allocationBytes'])
     require(first%64==0 and size>0 and size%64==0 and first+size<=1<<32,
             'response hold is not a complete original allocation')
     return struct.pack('<8sIQQ',b'OGCRP001',1 if channel=='read' else 2,first,first+size)
@@ -112,8 +121,15 @@ def verify_cancelled_memory(initial, returned, description, channel):
     accepted operations to drain. An accepted atomic may write its source
     even when its result is suppressed. No CPU result or memory is created.
     """
-    require(channel in ('read','write'),'unknown cancellation channel')
-    require(description.get('sourceCase')==RECOVERY_CASE,'wrong cancelled source recipe')
+    case = description.get('sourceCase')
+    require(reset_case_supported(case,channel),'unsupported cancellation recipe or channel')
+    if case == COMBINED:
+        from compute_owner_oracle import verify_byte_changes
+        from compute_p12_counter_source import recipe as combined_recipe, final_counter_bytes
+        source, _, _, _ = combined_recipe(initial,description)
+        final = final_counter_bytes()
+        verify_byte_changes(initial,returned,[(source,final)])
+        return dict(changedSourceWords=len(final)//4)
     words,sources=_cancel_words(initial,description,channel)
     require(initial.ranges==returned.ranges,'cancellation replaced original RAM')
     for first,end,_ in initial.ranges:

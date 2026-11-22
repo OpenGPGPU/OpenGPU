@@ -202,14 +202,15 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
             args.case!='image-atomic-buffer-r32f' or args.capture_only or args.capture_counter_matrix or
             args.capture_image_matrix or args.expect_image_source_fault or args.expect_image_reset):
         ap.error('--expect-image-permission-fault requires one live float buffer permission variant')
+    from compute_owner_protocol import reset_case_supported, recovery_base_supported
     if host_execution and args.expect_image_reset is not None and (
-            args.case!='image-atomic-buffer-r32f' or args.capture_only or args.capture_counter_matrix or
+            not reset_case_supported(args.case,args.expect_image_reset) or args.capture_only or args.capture_counter_matrix or
             args.capture_image_matrix or args.expect_image_source_fault or args.expect_image_permission_fault):
-        ap.error('--expect-image-reset requires one live original float buffer and distinct reset receipts')
+        ap.error('--expect-image-reset requires one supported live recipe and distinct reset receipts')
     if host_execution and args.physical_base is not None and (
-            args.case!='image-atomic-buffer-r32f' or args.capture_only or
+            not recovery_base_supported(args.case) or args.capture_only or
             not 0<args.physical_base<=0xfffff000 or args.physical_base%4096):
-        ap.error('--physical-base requires one live float buffer recipe and an aligned RV32 allocation base')
+        ap.error('--physical-base requires one supported live recipe and an aligned RV32 allocation base')
     if host_execution and args.capture_counter_matrix and (not args.capture_only or args.case != 'counter-increment'):
         ap.error('--capture-counter-matrix requires --case counter-increment --capture-only')
     if host_execution and args.capture_image_matrix and (not args.capture_only or args.case != IMAGE_CASES[0] or args.capture_counter_matrix):
