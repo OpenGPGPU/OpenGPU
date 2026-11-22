@@ -97,7 +97,9 @@ preserved guards, and completed with zero traps. The complete compute-owner
 harness accepts `--case nested-loop` using the same source and a separate
 128-word result oracle. Its sanitizer-enabled Mesa/Linux CPU capture passed
 command parsing and source binding. The oracle rejected unchanged RAM.
-Full-system RTL execution and cleanup are pending.
+The assertion-enabled two-CU float owner also passed full DUT execution of
+`nested-loop` using source `bdb598c78`. All 128 lane results, physical guards,
+command retirement and context cleanup passed.
 
 The complete compute-owner harness also accepts `constant-loop`,
 `dynamic-loop` and `loop-break`. All five loop cases passed sanitizer-enabled
