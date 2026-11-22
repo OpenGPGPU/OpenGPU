@@ -131,7 +131,8 @@ def returned_outputs(initial, returned, description):
     outputs, images, textures, texture_allocations = recipe(initial, description)
     expected = struct.pack('<%uI' % LOCAL, *(texel_fetch_value(lane) for lane in range(LOCAL)))
     result = []
-    for first in outputs + images:
+    storage_endpoints = [first + OUTPUT_BYTES - LOCAL * 4 for first in outputs]
+    for first in storage_endpoints + images:
         data = returned.read(first, LOCAL * 4)
         require(data == expected, 'P12 texture SSBO/image returned value differs')
         result.append((first, data))

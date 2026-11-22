@@ -42,7 +42,7 @@ def shader():
     for i in range(TEXTURE_COUNT):
         glsl += 't^=texelFetch(t%d,int(2047u^id)).x;\n' % i
     for i in range(4):
-        glsl += 'out%d.v[id]=t;\n' % i
+        glsl += 'out%d.v[1920u+id]=t;\n' % i
     for i in range(4):
         glsl += 'imageStore(image%d,int(id),uvec4(t));\n' % i
     glsl += 'memoryBarrierBuffer();memoryBarrierImage();\n}\n'

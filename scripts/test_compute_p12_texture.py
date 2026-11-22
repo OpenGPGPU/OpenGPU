@@ -40,7 +40,7 @@ class P12TextureCases(unittest.TestCase):
                           (index, index, index), source)
             self.assertIn('layout(r32ui,binding=%d) writeonly uniform highp uimageBuffer image%d;\n' %
                           (index, index), source)
-            self.assertIn('out%d.v[id]=t;\n' % index, source)
+            self.assertIn('out%d.v[1920u+id]=t;\n' % index, source)
             self.assertIn('imageStore(image%d,int(id),uvec4(t));\n' % index, source)
         self.assertIn('layout(local_size_x=128,local_size_y=1,local_size_z=1) in;\n', source)
         self.assertIn('#extension GL_EXT_texture_buffer : require\n', source)
@@ -292,20 +292,22 @@ class P12TextureOracle(unittest.TestCase):
                 ready(memory, description, capture(), owner_profile=IMAGE_FLOAT_PROFILE)
             good = copy.deepcopy(allocations)
             data = struct.pack('<%uI' % LOCAL, *(texel_fetch_value(lane) for lane in range(LOCAL)))
-            for address in outputs + images:
-                good[address][0:LOCAL * 4] = data
+            windows = [(address, 8192 - LOCAL * 4) for address in outputs]
+            windows += [(address, 0) for address in images]
+            for address, offset in windows:
+                good[address][offset:offset + LOCAL * 4] = data
             emit(after, good)
             with SparseMemory(before) as initial, SparseMemory(after) as returned:
                 changed = returned_outputs(initial, returned, description)
-                self.assertEqual([first for first, _ in changed], outputs + images)
+                self.assertEqual([first for first, _ in changed], [address + offset for address, offset in windows])
                 self.assertTrue(all(value == data for _, value in changed))
             emit(after, allocations)
             with SparseMemory(before) as initial, SparseMemory(after) as returned:
                 with self.assertRaises(ValueError):
                     returned_outputs(initial, returned, description)
-            for address in outputs + images:
+            for address, offset in windows:
                 wrong = copy.deepcopy(good)
-                wrong[address][0] ^= 1
+                wrong[address][offset] ^= 1
                 emit(after, wrong)
                 with SparseMemory(before) as initial, SparseMemory(after) as returned:
                     with self.subTest(address=hex(address)), self.assertRaises(ValueError):
