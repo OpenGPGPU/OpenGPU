@@ -32,6 +32,8 @@ struct build {
     uint32_t samplers, sampler_views;
     const unsigned *texture_observed;
     unsigned texture_position;
+    int texture_coordinate_temp;
+    unsigned texture_coordinate_component;
     unsigned recycle_temporaries;
     unsigned images, image_writable, image_target[4], image_atomics, image_float_exchange, compact_image_atomics;
     unsigned cf, cf_depth, cf_count, planned[CS_TEMPS][4];
@@ -702,10 +704,21 @@ static int texture(struct build *b, const struct tgsi_full_instruction *in)
             (unsigned)d->Index < CS_TEMPS && d->WriteMask == 15 &&
             (b->declared[d->Index] & 15) == 15)
             used_destination.WriteMask = b->texture_observed[b->texture_position];
-        if (source(b, &in->Src[0], 0, 22)) return -1;
+        const struct tgsi_src_register *coordinate = &in->Src[0].Register;
+        int coordinate_temp = coordinate->File == TGSI_FILE_TEMPORARY ? coordinate->Index : -1;
+        unsigned component = swizzle(coordinate, 0);
+        /* Fetch consumes the per-warp packet without changing it. Reuse only
+         * a direct, unchanged TGSI component in the straight-line program. */
+        int reuse = coordinate_temp >= 0 && coordinate_temp == b->texture_coordinate_temp &&
+            component == b->texture_coordinate_component;
+        if (!reuse && source(b, &in->Src[0], 0, 22)) return -1;
         splat(b, 23, 0);
-        resource_word(b, 3, 0, 0, 22, 23);
-        for (unsigned pair = 1; pair < 8; pair++) resource_word(b, 3, pair, 0, 23, 23);
+        if (!reuse) {
+            resource_word(b, 3, 0, 0, 22, 23);
+            for (unsigned pair = 1; pair < 8; pair++) resource_word(b, 3, pair, 0, 23, 23);
+            b->texture_coordinate_temp = coordinate_temp;
+            b->texture_coordinate_component = component;
+        }
         splat(b, 24, index);
         unsigned fetched = used_destination.WriteMask ? used_destination.WriteMask : 1u;
         for (unsigned c = 0; c < 4; c++) if (fetched & (1u << c))
@@ -1360,6 +1373,7 @@ static int emit_program(const void *tokens, const struct opengpu_cs_shared *shar
     tgsi_parse_free(&p);
     memset(&b, 0, sizeof(b));
     b.texture_observed = observed;
+    b.texture_coordinate_temp = -1;
     b.shared = shared;
     b.compact_image_atomics=compact_images;
     b.recycle_temporaries=float_images;
@@ -1391,9 +1405,15 @@ static int emit_program(const void *tokens, const struct opengpu_cs_shared *shar
             else b.p.fixed_block[n - TGSI_PROPERTY_CS_FIXED_BLOCK_WIDTH] = v->u[0].Data;
             break;
         }
-        case TGSI_TOKEN_TYPE_INSTRUCTION:
-            b.texture_position = p.Position - p.FullToken.FullInstruction.Instruction.NrTokens - 1;
-            ret = instruction(&b, &p.FullToken.FullInstruction);
+        case TGSI_TOKEN_TYPE_INSTRUCTION: {
+            const struct tgsi_full_instruction *in = &p.FullToken.FullInstruction;
+            b.texture_position = p.Position - in->Instruction.NrTokens - 1;
+            ret = instruction(&b, in);
+            if (in->Instruction.NumDstRegs &&
+                in->Dst[0].Register.File == TGSI_FILE_TEMPORARY &&
+                in->Dst[0].Register.Index == b.texture_coordinate_temp &&
+                (in->Dst[0].Register.WriteMask & (1u << b.texture_coordinate_component)))
+                b.texture_coordinate_temp = -1;
             if (ret == 1) { ended = 1; ret = 0; }
             /* A float exchange sequence can write more than twenty distinct
              * TGSI components while keeping fewer than twenty live. Recycle
@@ -1404,6 +1424,7 @@ static int emit_program(const void *tokens, const struct opengpu_cs_shared *shar
                 for (unsigned c=0;c<4;c++) if (last_use[t][c]<=b.texture_position)
                     b.reg[t][c]=0;
             break;
+        }
         default: ret = -1;
         }
         if (ret < 0) { b.failed = 1; break; }
