@@ -88,4 +88,27 @@ CPU test. It varies the inner trip count by lane and checks all 128 results.
 The driver checks each nested scope's own join and backedge and invalidates
 proofs for registers written inside nested loops at the outer backedge. The
 sanitized validator suite rejects inner exits and backedges that target the
-outer scope. Native CU and full-system replay of this fixture are pending.
+outer scope. The native CU replay passed all ten submissions, including the
+nested loop. Its eight warps produced and acknowledged 128 exact writes,
+preserved guards, and completed with zero traps. The complete compute-owner
+harness accepts `--case nested-loop` using the same source and a separate
+128-word result oracle. Its sanitizer-enabled Mesa/Linux CPU capture passed
+command parsing and source binding. The oracle rejected unchanged RAM.
+Full-system RTL execution and cleanup are pending.
+
+The complete compute-owner harness also accepts `constant-loop`,
+`dynamic-loop` and `loop-break`. All five loop cases passed sanitizer-enabled
+Mesa/Linux CPU capture, independent command parsing and unchanged-RAM
+rejection. The dynamic-loop oracle checks the original 16-byte default uniform
+view contains `{6, 0, 0, 0}`. Run the same owner qualification command with
+each case name for full DUT execution.
+
+Two ESSL `continue` fixtures passed the sanitizer-enabled Mesa/Gallium CPU
+test and Linux word validator. Mesa lowers the 97-word arithmetic case to a
+conditional select and the 116-word storage case to a branch inside the loop.
+The storage oracle checks each skipped word, each selected store and all
+guards. The native CU replay passed all twelve submissions. The arithmetic
+case produced 128 writes and acknowledgements. The masked storage case
+produced 256 checked reads, writes and acknowledgements, with exact results
+and guards. Neither case trapped. Direct TGSI `CONT` and full-system DUT
+execution of these two cases remain pending.
