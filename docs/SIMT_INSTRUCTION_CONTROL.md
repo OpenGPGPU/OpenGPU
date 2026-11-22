@@ -121,3 +121,8 @@ execution of these two cases remain pending.
 The assertion-enabled two-CU float owner passed `constant-loop` on source
 `bdb598c78` in 11,353 service cycles. All 128 expected results, physical
 bytes outside the output, command retirement and context cleanup passed.
+
+The same assertion-enabled two-CU float owner passed `dynamic-loop` on
+source `bdb598c78`. The independent oracle checked the original default
+uniform view, 128 returned result words and all other physical bytes.
+Command retirement and context cleanup passed.
