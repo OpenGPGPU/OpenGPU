@@ -120,6 +120,27 @@ class Entry(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'source fault requires'):qualifier.checked_inputs(args)
                 run.assert_not_called()
 
+    def test_loop_cases_reach_controller_with_the_selected_source(self):
+        from compute_owner_cases import COMPUTE_LOOP_CASES
+        parent = ROOT / '.artifacts'
+        parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='loop-source-', dir=parent) as directory:
+            root = Path(directory)
+            qualification = root / 'qualification.json'
+            qualification.write_text('{}')
+            args = argparse.Namespace(mesa=root, mesa_build=root, drm_include=root,
+                library_directory=root, mesa_link_libs='', executor=root/'executor',
+                executor_qualification=qualification, executor_checker=root/'checker',
+                executor_checker_python=sys.executable, timeout=30)
+            with patch.object(qualifier.subprocess, 'Popen') as popen, \
+                 patch.object(qualifier, 'stop_group'), patch.object(qualifier, 'remove_container'):
+                popen.return_value.wait.return_value = 0
+                for case in COMPUTE_LOOP_CASES:
+                    qualifier.run_case(args, gpu=ROOT, source=ROOT, temporary=root,
+                                       ntt=root/'ntt', image='sha256:fixture', case=case)
+                    command = popen.call_args.args[0]
+                    self.assertEqual(command[command.index('--case') + 1], case)
+
     def test_recovery_attempts_both_container_cleanups_when_one_fails(self):
         # Process/container handles are CPU mocks; no execution is qualified.
         import compute_owner_inputs
