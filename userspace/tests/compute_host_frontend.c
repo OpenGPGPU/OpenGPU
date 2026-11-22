@@ -262,6 +262,27 @@ static void source_window(FILE *f,unsigned handle,uint64_t offset,unsigned bytes
  assert(offset<=allocation && bytes<=allocation-offset);
  fprintf(f,"{\"globalBinding\":%u,\"allocationPhysical\":%llu,\"allocationBytes\":%llu,\"offset\":%llu,\"bytes\":%u}",binding,
   (unsigned long long)physical,(unsigned long long)allocation,(unsigned long long)offset,bytes);}
+static void check_loop_caps(struct pipe_screen *screen)
+{
+ uint64_t items=0,axis=0,block[3]={0},threads=0,shared=0,driver_shared=0;
+ assert(!compute_host_query(session,OPENGPU_PARAM_COMPUTE_LOCAL_ITEMS,&items) && items==128);
+ assert(!compute_host_query(session,OPENGPU_PARAM_COMPUTE_LOCAL_AXIS,&axis) && axis>=8);
+ assert(screen->get_compute_param(screen,PIPE_SHADER_IR_TGSI,PIPE_COMPUTE_CAP_MAX_THREADS_PER_BLOCK,&threads)==sizeof(threads) &&
+        threads==items);
+ assert(screen->get_compute_param(screen,PIPE_SHADER_IR_TGSI,PIPE_COMPUTE_CAP_MAX_BLOCK_SIZE,block)==sizeof(block));
+ for(unsigned d=0;d<3;d++)assert(block[d]==axis);
+ assert(!screen->get_compute_param(screen,PIPE_SHADER_IR_NIR,PIPE_COMPUTE_CAP_MAX_BLOCK_SIZE,NULL));
+ assert(!compute_host_query(session,OPENGPU_PARAM_COMPUTE_SHARED_BYTES,&driver_shared));
+ assert(screen->get_compute_param(screen,PIPE_SHADER_IR_TGSI,PIPE_COMPUTE_CAP_MAX_LOCAL_SIZE,&shared)==sizeof(shared) &&
+        shared==driver_shared);
+ assert(screen->get_shader_param(screen,PIPE_SHADER_COMPUTE,PIPE_SHADER_CAP_MAX_SHADER_BUFFERS)==4);
+ assert(screen->get_shader_param(screen,PIPE_SHADER_COMPUTE,PIPE_SHADER_CAP_MAX_INSTRUCTIONS)==512);
+ if(dynamic_loop_case || indexed_uniform_loop_case){
+  assert(screen->get_shader_param(screen,PIPE_SHADER_COMPUTE,PIPE_SHADER_CAP_MAX_CONST_BUFFERS)==13);
+  assert(screen->get_shader_param(screen,PIPE_SHADER_COMPUTE,PIPE_SHADER_CAP_MAX_CONST_BUFFER0_SIZE)==4096);
+ }
+ assert(!screen->get_param(screen,PIPE_CAP_COMPUTE));
+}
 static void write_oracle(void)
 {FILE *f=file("oracle.json","wx");assert(f);
  if(mixed_case)mixed_write_oracle(f);
@@ -482,6 +503,7 @@ int main(int argc,char **argv)
  if(dynamic_case || address_case){uint64_t features=0;assert((version==2 || version==3) && !compute_host_query(session,OPENGPU_PARAM_DRIVER_FEATURES,&features) &&
   (features&OPENGPU_DRIVER_FEATURE_COMPUTE_SHARED_ATOMICS));}
  struct pipe_screen *s=opengpu_drm_screen_create(7,NULL);assert(s);struct pipe_context *p=s->context_create(s,NULL,0);assert(p);
+ if(loop_case)check_loop_caps(s);
  char dump[4096];path(dump,"actual-shared");void *frontend=(counter_case || counter_publication_case)?cs_frontend_compile_atomic_counters(argv[3],dump):
   (loop_case || image_case || storage_case || publication_case || image_publication_case || texture_publication_case || shared_publication_case || dma_publication_case || p12_shared_coexist || p12_texture_coexist)?cs_frontend_compile_buffers(argv[3],dump):cs_frontend_compile(argv[3],dump);assert(frontend);
  {
