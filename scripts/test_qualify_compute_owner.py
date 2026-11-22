@@ -245,8 +245,8 @@ class Entry(unittest.TestCase):
         for case in qualifier.CASES:
             command = qualifier.producer_command(args, gpu=gpu, source=gpu / '.artifacts/source',
                 ntt=gpu / '.artifacts/ntt.c', image='sha256:' + '1' * 64, name='unique-owned-container', case=case)
-            self.assertIn(f'{gpu}:{gpu}:ro', command)
-            self.assertIn('{ipc}:{ipc}:rw', command)
+            self.assertIn(f'type=bind,source={gpu},target={gpu},readonly', command)
+            self.assertIn('type=bind,source={ipc},target={ipc}', command)
             self.assertIn('TMPDIR={ipc}', command)
             self.assertIn('--memory-swap', command)
             self.assertIn('--network=none', command)

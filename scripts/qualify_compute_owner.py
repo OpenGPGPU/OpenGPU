@@ -282,7 +282,8 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
     if case in GLOBAL_ATOMIC_CASES or case in L1_PUBLICATION_CASES:
         require(isinstance(getattr(args,'global_inputs',None),Path), 'raw global source requires bound compiler inputs')
         command=['docker','run','--rm','--init','--name',name,'--memory','512m','--memory-swap','512m',
-            '--cpus','1','--network=none','--read-only','-v',f'{gpu}:{gpu}:ro','-v','{ipc}:{ipc}:rw','-w',str(source)]
+            '--cpus','1','--network=none','--read-only','--mount',f'type=bind,source={gpu},target={gpu},readonly',
+            '--mount','type=bind,source={ipc},target={ipc}','-w',str(source)]
         environment=dict(PYTHONDONTWRITEBYTECODE='1',CC='cc',TMPDIR='{ipc}',
             OPENGPU_COMPILER_IMAGE=image,OPENGPU_COMPUTE_HOST_TIMEOUT=str(args.timeout))
         for key,value in environment.items():command+=['-e',key+'='+value]
@@ -305,7 +306,8 @@ def producer_command(args, *, gpu, source, ntt, image, name, case, source_fault=
                        *SHARED_PUBLICATION_CASES,*DMA_PUBLICATION_CASES)
     command = ['docker', 'run', '--rm', '--init', '--name', name, '--memory', '512m' if counter else '2g',
                '--memory-swap', '512m' if counter else '2g', '--cpus', '1' if counter else '2', '--network=none', '--read-only',
-               '-v', f'{gpu}:{gpu}:ro', '-v', '{ipc}:{ipc}:rw', '-w', str(source)]
+               '--mount', f'type=bind,source={gpu},target={gpu},readonly',
+               '--mount', 'type=bind,source={ipc},target={ipc}', '-w', str(source)]
     environment = dict(PYTHONDONTWRITEBYTECODE='1', CC='cc', CXX='c++', OPENGPU_MESA_DIR=str(args.mesa),
         OPENGPU_MESA_BUILD=str(args.mesa_build), OPENGPU_DRM_INCLUDE=str(args.drm_include),
         OPENGPU_MESA_LINK_LIBS=args.mesa_link_libs, LD_LIBRARY_PATH=str(args.library_directory), TMPDIR='{ipc}',
