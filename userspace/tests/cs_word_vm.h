@@ -26,7 +26,7 @@ static void cs_vm_group_resources_counters_checked(const uint32_t *code, unsigne
         uint32_t x[32] = {0}, v[32][16] = {{0}}, stored[16] = {0};
         unsigned active = total - base < 16 ? total - base : 16;
         uint32_t control = (1u << active) - 1u;
-        struct { unsigned pc; uint32_t mask; } stack[8];
+        struct { unsigned pc, marker; uint32_t mask; } stack[8];
         unsigned depth = 0, steps = 0;
         unsigned ended = 0, captured = 0, fences = 0;
         uint32_t atomic_operand[16]={0},atomic_compare[16]={0},atomic_valid=0;
@@ -36,7 +36,7 @@ static void cs_vm_group_resources_counters_checked(const uint32_t *code, unsigne
         x[8] = base; x[9] = 128;
         for (unsigned lane = 0; lane < 16; lane++) v[1][lane] = base + lane;
         for (unsigned pc = 0; pc < words; pc++) {
-            assert(++steps <= words * 4u);
+            assert(++steps <= words * 32u);
             uint32_t w = code[pc], opcode = w & 127, rd = w >> 7 & 31;
             unsigned a = w >> 15 & 31, z = w >> 20 & 31, f = w >> 12 & 7, fn = w >> 26;
             int32_t imm = (int32_t)w >> 20;
@@ -44,13 +44,13 @@ static void cs_vm_group_resources_counters_checked(const uint32_t *code, unsigne
             if (opcode == 0x5b) {
                 uint32_t displacement = (w >> 31) << 12 | (w >> 7 & 1) << 11 |
                     (w >> 25 & 63) << 5 | (w >> 8 & 15) << 1;
-                /* Only the forward compiler dialect is modeled. The stack
-                 * follows the ISA's marker/alternate PCs and taken-first
+                /* The stack follows the ISA's marker/alternate PCs and taken-first
                  * mask restoration; it is an arithmetic oracle, not a model
                  * of hardware scheduling, traps, cancellation or drain. */
                 if (f == 3) {
                     assert(!(displacement & 3) && !(displacement & 4096) && depth < 8);
                     stack[depth].pc = pc + displacement / 4 + 1;
+                    stack[depth].marker = pc + displacement / 4;
                     stack[depth++].mask = control;
                 } else if (f <= 1) {
                     uint32_t take = 0;
@@ -59,9 +59,16 @@ static void cs_vm_group_resources_counters_checked(const uint32_t *code, unsigne
                         if ((control & (1u << lane)) && ((v[a][lane] == v[z][lane]) == (f == 0)))
                             take |= 1u << lane;
                     uint32_t fall = control & ~take;
+                    unsigned target = pc + displacement / 4;
+                    if (take && fall && target == stack[depth - 1].marker) {
+                        control = fall;
+                        captured = 0;
+                        continue;
+                    }
                     if (take && fall) {
                         assert(depth < 8);
                         stack[depth].pc = pc + 1;
+                        stack[depth].marker = stack[depth - 1].marker;
                         stack[depth++].mask = fall;
                     }
                     if (take) { control = take; pc += displacement / 4 - 1; }
@@ -71,6 +78,15 @@ static void cs_vm_group_resources_counters_checked(const uint32_t *code, unsigne
                     --depth; control = stack[depth].mask; pc = stack[depth].pc - 1;
                 }
                 assert(control); captured = 0;
+                continue;
+            }
+            if (opcode == 0x6f) {
+                uint32_t displacement = (w >> 31) << 20 | (w >> 12 & 255u) << 12 |
+                    (w >> 20 & 1u) << 11 | (w >> 21 & 1023u) << 1;
+                int offset = (int)displacement - (displacement & 0x100000u ? 0x200000 : 0);
+                int target = (int)pc + offset / 4;
+                assert(depth && !rd && !(displacement & 3u) && offset < 0 && target > 0);
+                pc = (unsigned)target - 1u;
                 continue;
             }
             if (w == 0x0330000fu) { fences++; continue; }

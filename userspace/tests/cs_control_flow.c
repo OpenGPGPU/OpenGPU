@@ -388,8 +388,36 @@ int main(int argc,char **argv)
         assert(!opengpu_cs_emit(cs_frontend_tokens(f), &loop_code));
         assert(opengpu_compute_shader_validate_words_uniform_resources(loop_code.code, 512, 12, 128,
             false, false, false, true, false, false, false, false));
+        st.prog = cs_frontend_tokens(f);
+        cs = p->create_compute_state(p, &st);
+        assert(cs);
+        p->bind_compute_state(p, cs);
+        bind_storage(f, p, out);
+        if (k == 1) {
+            uint32_t loop_defaults[4] = {6};
+            cs_frontend_defaults(f, p, loop_defaults, 4);
+        }
+        initialize_outputs(out);
+        struct pipe_grid_info loop_grid = {.grid = {1, 1, 1}, .block = {8, 4, 4}};
+        unsigned before = computes;
+        p->launch_grid(p, &loop_grid);
+        assert(computes == before + 1);
+        for (unsigned b = 0; b < 4; ++b) {
+            const uint32_t *output = pipe_opengpu_resource_map(opengpu_resource(out[b])->gpu);
+            for (unsigned i = 0; i < 512; ++i) {
+                uint32_t expected = 0xdeadbeefu;
+                if (!b && i < 128) {
+                    unsigned limit = k == 0 ? 5 : k == 1 ? 6 : i & 3u;
+                    expected = i;
+                    for (unsigned step = 0; step < limit; ++step)
+                        expected = expected * 3u + step;
+                }
+                assert(output[i] == expected);
+            }
+        }
+        p->delete_compute_state(p, cs);
         cs_frontend_destroy(f);
-        printf("CF actual Mesa %s: %u words accepted by Linux validator\n", loops[k], loop_code.words);
+        printf("CF actual Mesa %s: %u words, Linux validation and CPU output PASS\n", loops[k], loop_code.words);
     }
     const char *negative[]={"too-deep"};
     for(unsigned k=0;k<sizeof(negative)/sizeof(negative[0]);k++){

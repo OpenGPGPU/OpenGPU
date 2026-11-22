@@ -49,7 +49,9 @@ The compute emitter and Linux word validator also accept fixed and uniform
 loop bounds and repeated conditional `break` statements targeting the same
 join. The real Mesa ESSL fixtures produce 73, 81 and 89 words for `constant-loop`,
 `dynamic-loop` and `loop-break`, respectively. Those streams pass the original
-Linux word validator in the sanitizer-enabled
+Linux word validator and the Gallium submission fixture in the sanitizer-enabled
 [`test_gallium_compute_control_flow.py` run](GALLIUM_COMPUTE.md#forward-ifelse-cpu-acceptance).
+An independent CPU decoder executes the submitted words and checks each of
+128 lane results plus output guards against source-level expectations.
 Full DUT execution of the emitted loop words, nested loops, `continue`, and
 mutable resource operations inside loops remain open.
