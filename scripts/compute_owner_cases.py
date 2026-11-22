@@ -24,7 +24,7 @@ from compute_shared_publication_cases import CASES as SHARED_PUBLICATION_CASES
 from compute_dma_publication_cases import CASES as DMA_PUBLICATION_CASES
 from compute_l1_publication_cases import CASES as L1_PUBLICATION_CASES
 from compute_global_atomic_cases import CASES as GLOBAL_ATOMIC_CASES
-from compute_p12_counter_cases import CASES as P12_COUNTER_CASES
+from compute_p12_counter_cases import CASES as P12_COUNTER_CASES, COUNTER_OFFSET as P12_COUNTER_OFFSET
 COUNTER_CASES = COUNTER_CASES + P12_COUNTER_CASES
 from compute_p12_shared_cases import CASES as P12_SHARED_CASES, parameters as p12_shared_source_parameters
 from compute_p12_texture_cases import CASES as P12_TEXTURE_CASES, parameters as p12_texture_source_parameters
@@ -52,7 +52,7 @@ def p12_counter_parameters(name):
     if name not in P12_COUNTER_CASES:
         raise ValueError('unknown P12 counter coexist source')
     return dict(source=name + '.comp', operation='increment', groups=1, local=128,
-                dynamic=False, seed=0xfffffffe, index=7, offset=0, count=8)
+                dynamic=False, seed=0xfffffffe, index=7, offset=P12_COUNTER_OFFSET, count=8)
 
 
 def counter_parameters(name):
