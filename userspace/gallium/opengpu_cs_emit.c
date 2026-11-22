@@ -1174,7 +1174,10 @@ static int emit_loop(struct build *b, const struct cf_instruction *ir,
     for (unsigned i = first + 1; i < last; ++i) {
         const struct cf_instruction *node = &ir[i];
         unsigned op = node->in.Instruction.Opcode;
-        if (op == TGSI_OPCODE_UIF) {
+        if (op == TGSI_OPCODE_BGNLOOP) {
+            if (node->end >= last || emit_loop(b, ir, i, node->end)) return -1;
+            i = node->end;
+        } else if (op == TGSI_OPCODE_UIF) {
             if (node->alternative != 512 || node->end != i + 2 ||
                 node->end >= last || ir[i + 1].in.Instruction.Opcode != TGSI_OPCODE_BRK ||
                 source(b, &node->in.Src[0], 0, 22))

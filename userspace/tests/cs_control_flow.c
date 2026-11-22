@@ -380,7 +380,7 @@ int main(int argc,char **argv)
         uniform_mutate_after_snapshot=0;cu_name=NULL;assert(computes==before+1);full_output(out,3,125);
         clear_constants(p);p->delete_compute_state(p,cs);cs_frontend_destroy(f);
     }
-    const char *loops[] = {"constant-loop", "dynamic-loop", "loop-break", "storage-loop"};
+    const char *loops[] = {"constant-loop", "dynamic-loop", "loop-break", "storage-loop", "nested-loop"};
     for (unsigned k = 0; k < sizeof(loops) / sizeof(loops[0]); ++k) {
         f = frontend(loops[k]);
         struct opengpu_cs_program loop_code;
@@ -399,7 +399,7 @@ int main(int argc,char **argv)
         initialize_outputs(out);
         struct pipe_grid_info loop_grid = {.grid = {1, 1, 1}, .block = {8, 4, 4}};
         unsigned before = computes;
-        if (cu_directory) {
+        if (cu_directory && k < 4) {
             cu_name = loops[k];
             cu_frontend = f;
             cu_epoch = 0;
@@ -413,6 +413,11 @@ int main(int argc,char **argv)
                 uint32_t expected = 0xdeadbeefu;
                 if (!b && k == 3 && i < 384) {
                     expected ^= i / 128;
+                } else if (!b && k == 4 && i < 128) {
+                    expected = i;
+                    for (unsigned outer = 0; outer < 3; ++outer)
+                        for (unsigned inner = 0; inner < (i & 3u) + 1u; ++inner)
+                            expected = expected * 3u + outer + inner;
                 } else if (!b && k < 3 && i < 128) {
                     unsigned limit = k == 0 ? 5 : k == 1 ? 6 : i & 3u;
                     expected = i;

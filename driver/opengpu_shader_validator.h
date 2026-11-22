@@ -191,6 +191,24 @@ static inline bool opengpu_shader_simt_loop_body(
     *writes = 0;
     for (i = condition; i < marker - 1u; ++i) {
         opengpu_shader_u32 word = words[i];
+        if ((word & 0x707fu) == 0x305bu) {
+            opengpu_shader_s32 distance = opengpu_shader_simt_displacement(word);
+            opengpu_shader_u32 end;
+            if (distance <= 0 || (distance & 3)) return false;
+            end = i + (opengpu_shader_u32)distance / 4u;
+            if (end >= marker - 1u || words[end] != OPENGPU_SHADER_SIMT_JOIN ||
+                (words[end - 1u] & 127u) != 0x6fu)
+                return false;
+            /* The main walk validates the nested scope in its own state.
+             * Include its writes in the parent backedge's invalidation. */
+            for (++i; i < end; ++i) {
+                opengpu_shader_u32 nested = words[i];
+                opengpu_shader_u32 opcode = nested & 127u, function = nested >> 26;
+                if (opcode == 0x57u || (opcode == 0x2bu && (function == 7u || function == 15u)))
+                    *writes |= 1u << ((nested >> 7) & 31u);
+            }
+            continue;
+        }
         if ((word & 127u) == 0x5bu) {
             if (((word >> 12) & 7u) > 1u ||
                 opengpu_shader_simt_displacement(word) !=
