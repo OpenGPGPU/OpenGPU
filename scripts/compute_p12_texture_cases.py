@@ -9,6 +9,7 @@ from pathlib import Path
 CASES = ('p12-texture-coexist',)
 LOCAL = 128
 TEXTURE_COUNT = 16
+TEXTURE_API_BASE = 16
 OUTPUT_BYTES = 8192
 IMAGE_VIEW_BYTES = 512
 IMAGE_BACKING_BYTES = 4096
@@ -31,7 +32,7 @@ def shader():
             'precision highp int;\n'
             'layout(local_size_x=128,local_size_y=1,local_size_z=1) in;\n')
     for i in range(TEXTURE_COUNT):
-        glsl += 'layout(binding=%d) uniform highp usamplerBuffer t%d;\n' % (i, i)
+        glsl += 'layout(binding=%d) uniform highp usamplerBuffer t%d;\n' % (TEXTURE_API_BASE + i, i)
     for i in range(4):
         glsl += 'layout(std430,binding=%d) buffer Output%d {uint v[];} out%d;\n' % (i, i, i)
     for i in range(4):

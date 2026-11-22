@@ -26,13 +26,14 @@ static void p12_texture_setup(struct pipe_screen *s,struct pipe_context *p,void 
  unsigned seen=0;
  for(unsigned native=0;native<16;native++){
   unsigned api=cs_frontend_sampler_binding(frontend,native);
-  assert(api<16 && !(seen&(1u<<api)));
-  seen|=1u<<api;
-  texture_native_units[api]=native;
+  assert(api>=16 && api<32 && !(seen&(1u<<(api-16))));
+  unsigned unit=api-16;
+  seen|=1u<<unit;
+  texture_native_units[unit]=native;
   struct pipe_sampler_view view={.format=PIPE_FORMAT_R32_UINT,.target=PIPE_BUFFER,
    .swizzle_r=0,.swizzle_g=1,.swizzle_b=2,.swizzle_a=3};
   view.u.buf.size=8192;
-  samplers[native]=p->create_sampler_view(p,resources[api],&view);assert(samplers[native]);
+  samplers[native]=p->create_sampler_view(p,resources[unit],&view);assert(samplers[native]);
  }
  p->set_sampler_views(p,PIPE_SHADER_COMPUTE,0,16,0,false,samplers);
 }
