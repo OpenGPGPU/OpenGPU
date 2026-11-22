@@ -34,7 +34,7 @@ class P12TextureCases(unittest.TestCase):
         self.assertEqual(source.count('buffer Output%d {uint v[];}' % 0), 1)
         for index in range(TEXTURE_COUNT):
             self.assertIn('layout(binding=%d) uniform highp usamplerBuffer t%d;\n' % (index, index), source)
-            self.assertIn('t^=texelFetch(t%d,int(2047u-id)).x;\n' % index, source)
+            self.assertIn('t^=texelFetch(t%d,int(2047u^id)).x;\n' % index, source)
         for index in range(4):
             self.assertIn('layout(std430,binding=%d) buffer Output%d {uint v[];} out%d;\n' %
                           (index, index, index), source)

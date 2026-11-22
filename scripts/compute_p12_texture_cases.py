@@ -40,7 +40,7 @@ def shader():
              'uint id=gl_GlobalInvocationID.x;\n'
              'uint t=0u;\n')
     for i in range(TEXTURE_COUNT):
-        glsl += 't^=texelFetch(t%d,int(2047u-id)).x;\n' % i
+        glsl += 't^=texelFetch(t%d,int(2047u^id)).x;\n' % i
     for i in range(4):
         glsl += 'out%d.v[id]=t;\n' % i
     for i in range(4):
