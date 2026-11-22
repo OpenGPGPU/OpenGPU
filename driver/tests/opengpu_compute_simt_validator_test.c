@@ -158,6 +158,20 @@ int main(void)
     p.w[loop + 5] = v(0, 0, 4, 5, 2); /* A lane can exit on the first test. */
     check(p, 0, 0);
     check(loop_program, 1, 0);
+    p = start();
+    emit(&p, 1u << 20 | 10u << 7 | 0x13u);
+    emit(&p, v(0x17, 4, 3, 10, 0));
+    loop = p.n;
+    emit(&p, branch(3, 0, 0, 24));
+    emit(&p, v(0, 0, 4, 2, 2));
+    emit(&p, branch(0, 4, 1, 16));
+    emit(&p, v(0, 0, 2, 3, 2));
+    emit(&p, branch(0, 2, 1, 8));
+    emit(&p, jump(0, -16));
+    emit(&p, OPENGPU_SHADER_SIMT_JOIN);
+    check(p, 1, 0);
+    p.w[loop + 4] = branch(0, 2, 1, 4); /* Every exit must park at the marker. */
+    check(p, 0, 0);
     printf("Compute canonical SIMT validator:%u actual-function cases PASS;4 snapshots/8 physical entries;old profile unchanged\n",checks);
     return 0;
 }
