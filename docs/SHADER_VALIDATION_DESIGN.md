@@ -73,8 +73,29 @@ Keep the shader validator unchanged. The memory row is a candidate for removal
 only after test 2 passes. Until then, the validator is the only protection
 against a faulting submission resetting the whole device.
 
+## Measured validator cost
+
+Local userspace benchmark on this development host (`cc -O2`, `clock_gettime`;
+not kernel, not the DUT). Two program families:
+
+- Simple nop programs (`addi 0,0,0` + `CEASE`), `opengpu_shader_validate_words`:
+  32 words 0.32 us, 64 words 0.41 us, 128 words 0.82 us, 256 words 1.61 us,
+  512 words 3.16 us. Linear, about 6 ns/word.
+- Real compute programs from `driver/tests/opengpu_compute_uniform_counter_source_program.h`,
+  validated via `opengpu_compute_shader_validate_words_discovered_resources`
+  with the matching profile flags enabled:
+  17 words 0.27 us, 20 words 0.38 us, 45 words 0.97 us, 281 words 6.71 us,
+  512-word shared program 14.32 us.
+
+The detailed resource/proof checks make real programs roughly 4-5x slower than
+nop programs of the same length. Even the worst case is about 14 us on this
+host. That is small enough that removing validation has little performance
+benefit; the risk to safety and correctness is not justified by this data.
+These are userspace numbers; the kernel submission path (copy, lock,
+allocation) was not measured, and fault/branch-heavy programs were not measured.
+
 ## Not verified
 
 - Whether the GPU reset can be made per-context in RTL.
 - Behavior of instruction fetch faults through the full path.
-- Performance of validation; see the separate measurement plan.
+- Kernel-path validation cost and full dispatch latency.
