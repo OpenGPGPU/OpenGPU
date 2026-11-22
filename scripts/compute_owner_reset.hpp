@@ -79,13 +79,26 @@ struct ComputeResetTrace {
 struct ComputeResetPlan {
   ResponseChannel channel=ResponseChannel::read;
   uint64_t first=0,end=0;
+  std::vector<Writable> prior_writes;
   static ComputeResetPlan read(std::istream &in,ResponseChannel channel) {
     require(channel==ResponseChannel::read || channel==ResponseChannel::write,"unknown response-hold channel");
-    magic(in,"OGCRP001");const auto selected=read_le(in,4);
+    char header[8];
+    require(bool(in.read(header,sizeof(header))),"short reset response-hold plan");
+    const std::string version(header,sizeof(header));
+    const auto selected=read_le(in,4);
     ComputeResetPlan plan;plan.channel=channel;plan.first=read_le(in,8);plan.end=read_le(in,8);
     require(selected==(channel==ResponseChannel::read?1u:2u) && plan.first<plan.end &&
-      !(plan.first&63) && !(plan.end&63) && plan.end<=Memory::limit && in.peek()==EOF,
-      "invalid original response-hold plan");return plan;
+      !(plan.first&63) && !(plan.end&63) && plan.end<=Memory::limit,
+      "invalid original response-hold plan");
+    if(version=="OGCRP002") {
+      const auto first=read_le(in,8),end=read_le(in,8);
+      require(channel==ResponseChannel::read && first<end && !(first&31) && end-first==32 &&
+        end<=Memory::limit && (end<=plan.first || first>=plan.end),
+        "invalid counter window before the combined texture hold");
+      plan.prior_writes.push_back({first,end});
+    } else require(version=="OGCRP001","unknown reset response-hold plan");
+    require(in.peek()==EOF,"trailing reset response-hold plan bytes");
+    return plan;
   }
 };
 struct ComputeResetResult {
@@ -150,6 +163,10 @@ void active_cancel_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &mem
   wait_input(session/"record-0.reset.plan",session,timeout);
   std::ifstream input(session/"record-0.reset.plan",std::ios::binary);
   const auto plan=ComputeResetPlan::read(input,channel);
+  for(const auto &prior:plan.prior_writes)
+    require(std::any_of(capture.writable.begin(),capture.writable.end(),[&](const auto &captured) {
+      return captured.first==prior.first && captured.end==prior.end;
+    }),"pre-hold counter window differs from the original writable capture");
   require(!agent.held_read_cycles() && !agent.held_write_cycles(),"cancellation reused a preceding response-hold history");
   agent.arm_response_hold(channel,plan.first,plan.end);
   const auto initial=memory;const auto start=bus.cycles;
@@ -164,7 +181,7 @@ void active_cancel_compute(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &mem
   auto publish=[&](const ComputeResetResult &r,const char *phase) {
     atomic_json(session/(std::string("record-0.reset.")+phase+".json"),[&](auto &out){compute_reset_json(out,r,phase,channel);});
   };
-  verify_reset_readonly(initial,memory,channel==ResponseChannel::read?std::vector<Writable>{}:capture.writable,"held before RESET");
+  verify_reset_readonly(initial,memory,channel==ResponseChannel::read?plan.prior_writes:capture.writable,"held before RESET");
   const auto held=observe_compute_reset(sim,agent,bus,capture.command_id,start);
   require((held.status&GPU_UCMD_STATUS_VM_BUSY) && !(held.status&~(GPU_UCMD_STATUS_VM_BUSY|GPU_UCMD_STATUS_READY)) &&
     (held.irq&GPU_IRQ_ENABLE) && !(held.irq&~(GPU_IRQ_ENABLE|GPU_IRQ_PENDING)) &&

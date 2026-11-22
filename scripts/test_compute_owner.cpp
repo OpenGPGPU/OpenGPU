@@ -265,6 +265,20 @@ static void reset_parser_checks() {
       std::istringstream in(broken);rejects([&]{ComputeResetTrace::read(in,phase,17);});
     }
   }
+  {
+    std::ostringstream out;out.write("OGCRP002",8);write_le(out,1,4);
+    for(uint64_t address:{0x5000,0x6000,0x7fe0,0x8000})write_le(out,address,8);
+    const auto wire=out.str();
+    std::istringstream in(wire);
+    const auto plan=ComputeResetPlan::read(in,ResponseChannel::read);
+    require(plan.prior_writes.size()==1 && plan.prior_writes[0].first==0x7fe0 &&
+      plan.prior_writes[0].end==0x8000,"combined read hold lost its exact pre-hold counter window");
+    std::istringstream wrong_channel(wire);rejects([&]{ComputeResetPlan::read(wrong_channel,ResponseChannel::write);});
+    for(unsigned offset:{28u,36u}) {
+      auto wrong=wire;wrong[offset]^=1;
+      std::istringstream changed(wrong);rejects([&]{ComputeResetPlan::read(changed,ResponseChannel::read);});
+    }
+  }
   for(auto channel:{ResponseChannel::read,ResponseChannel::write}) {
     std::ostringstream out;out.write("OGCRP001",8);write_le(out,channel==ResponseChannel::read?1:2,4);
     write_le(out,0x5000,8);write_le(out,0x6000,8);const auto good=out.str();
