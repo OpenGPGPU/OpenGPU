@@ -30,7 +30,7 @@ static struct {void *data;uint64_t bytes;unsigned maps,closed;} bos[512];
 static unsigned next_bo=1,next_sync=1,submitted,retired;
 static const char *directory;
 static const char *loop_case;
-static int storage_loop_case;
+static int storage_loop_case,dynamic_loop_case;
 static int capture_only,expect_image_source_fault,uniform_case,dynamic_case,address_case,counter_case,counter_dynamic,counter_coexist,p12_counter_coexist,p12_shared_coexist,p12_texture_coexist,p12_combined_coexist;
 static unsigned image_permission_fault;
 static unsigned image_reset;
@@ -362,6 +362,11 @@ static void write_oracle(void)
    fputs(",\"input\":",f);
    source_window(f,output_handles[1],0,8192,1);
   }
+  if(dynamic_loop_case){
+   assert(!accepted_uniforms.active_mask && accepted_uniforms.defaults.handle && accepted_uniforms.defaults.bytes==16);
+   fputs(",\"defaults\":",f);
+   source_window(f,accepted_uniforms.defaults.handle,accepted_uniforms.defaults.offset,16,0);
+  }
   fputs(",\"output\":",f);
   source_window(f,output_handles[0],0,8192,0);
   fputs("}\n",f);
@@ -429,7 +434,9 @@ int main(int argc,char **argv)
   !strcmp(argv[4],"image-atomic-buffer-r32f"));
  host_timeout_seconds=compute_host_timeout_seconds();assert(host_timeout_seconds);
  storage_loop_case=!strcmp(argv[4],"storage-loop");
- if(storage_loop_case || !strcmp(argv[4],"nested-loop"))loop_case=argv[4];
+ dynamic_loop_case=!strcmp(argv[4],"dynamic-loop");
+ if(storage_loop_case || dynamic_loop_case || !strcmp(argv[4],"nested-loop") ||
+    !strcmp(argv[4],"constant-loop") || !strcmp(argv[4],"loop-break"))loop_case=argv[4];
  uniform_case=!strcmp(argv[4],"uniforms");
  storage_view_failure=storage_case && (storage_index==14 || storage_index==15);
  mixed_parse_case(argv[4]);
@@ -492,6 +499,10 @@ int main(int argc,char **argv)
   for(unsigned lane=0;lane<128;lane++)input[lane]=uniform_value(1,lane);
  }
  cs_frontend_storage(frontend,p,output);
+ if(dynamic_loop_case){
+  const uint32_t defaults[4]={6};
+  cs_frontend_defaults(frontend,p,defaults,4);
+ }
  if(storage_case)storage_setup(frontend,output);
  if(publication_case)publication_setup(frontend,output);
  if(image_publication_case)image_publication_setup(s,p,frontend,output);

@@ -18,8 +18,7 @@ import time
 from compute_owner_protocol import (strict_json, profile_bytes, held_bytes,
     retired_bytes, failed_held_bytes, failed_retired_bytes, cleanup_authorization, checked_cleanup,
     uint, required_flags, RECOVERY_CASE, RECOVERY_BASES, RECOVERY_COMMAND_SCHEMA, reset_case_supported, permission_case_supported)
-from compute_owner_cases import (COMPUTE_LOOP_CASES, NESTED_LOOP_CASE, NESTED_LOOP_SCHEMA,
-    STORAGE_LOOP_CASE, STORAGE_LOOP_SCHEMA)
+from compute_owner_cases import COMPUTE_LOOP_CASES, COMPUTE_LOOP_SCHEMAS
 from compute_owner_oracle import SparseMemory, verify, union_original_memory
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -126,9 +125,9 @@ def ready_inputs(directory, case, *, owner_profile=None, permission=None, profil
     require(permission is None or (permission_case_supported(case,permission)),
             'image permission denial requires a supported live recipe')
     description=strict_json(directory/'oracle.json')
-    loop_schema = {STORAGE_LOOP_CASE: STORAGE_LOOP_SCHEMA, NESTED_LOOP_CASE: NESTED_LOOP_SCHEMA}
-    schema_case = next((name for name, schema in loop_schema.items() if description.get('schema') == schema), None)
-    require(schema_case == (case if case in loop_schema else None),
+    schema = description.get('schema')
+    require((schema in COMPUTE_LOOP_SCHEMAS.values()) == (case in COMPUTE_LOOP_SCHEMAS) and
+            (case not in COMPUTE_LOOP_SCHEMAS or schema == COMPUTE_LOOP_SCHEMAS[case]),
             'compute loop source requires its distinct byte oracle')
     counter=description.get('schema')==COUNTER_SCHEMA
     p12_counter=description.get('schema')==P12_COUNTER_SCHEMA

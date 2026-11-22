@@ -30,9 +30,9 @@ from compute_p12_shared_cases import CASES as P12_SHARED_CASES, parameters as p1
 from compute_p12_texture_cases import CASES as P12_TEXTURE_CASES, parameters as p12_texture_source_parameters
 STORAGE_LOOP_CASE = "storage-loop"
 NESTED_LOOP_CASE = "nested-loop"
-COMPUTE_LOOP_CASES = (STORAGE_LOOP_CASE, NESTED_LOOP_CASE)
-NESTED_LOOP_SCHEMA = "opengpu-compute-nested-loop-oracle-v1"
-STORAGE_LOOP_SCHEMA = "opengpu-compute-storage-loop-oracle-v1"
+COMPUTE_LOOP_CASES = (STORAGE_LOOP_CASE, NESTED_LOOP_CASE, "constant-loop", "dynamic-loop", "loop-break")
+COMPUTE_LOOP_SCHEMAS = {case: "opengpu-compute-" + case + "-oracle-v1" for case in COMPUTE_LOOP_CASES}
+STORAGE_LOOP_SCHEMA = COMPUTE_LOOP_SCHEMAS[STORAGE_LOOP_CASE]
 CASES = (LEGACY_CASES + COMPUTE_LOOP_CASES + COUNTER_CASES + IMAGE_CASES + STORAGE_ATOMIC_CASES +
          STORAGE_PUBLICATION_CASES + IMAGE_PUBLICATION_CASES + TEXTURE_PUBLICATION_CASES +
          COUNTER_PUBLICATION_CASES + SHARED_PUBLICATION_CASES + DMA_PUBLICATION_CASES +

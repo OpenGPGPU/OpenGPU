@@ -8,7 +8,7 @@ import bisect
 import mmap
 from pathlib import Path
 import struct
-from compute_owner_cases import NESTED_LOOP_CASE, NESTED_LOOP_SCHEMA, STORAGE_LOOP_CASE, STORAGE_LOOP_SCHEMA
+from compute_owner_cases import COMPUTE_LOOP_SCHEMAS, NESTED_LOOP_CASE, STORAGE_LOOP_CASE
 from compute_owner_protocol import required_flags, strict_json, uint
 
 
@@ -244,15 +244,16 @@ def verify(initial, returned, description):
     if [(a, b) for a, b, _ in initial.ranges] != [(a, b) for a, b, _ in returned.ranges]:
         raise ValueError('DUT memory replaced original physical allocations')
     schema = description.get('schema')
-    if schema in (STORAGE_LOOP_SCHEMA, NESTED_LOOP_SCHEMA):
-        storage = schema == STORAGE_LOOP_SCHEMA
-        required_flags(description, dict(sourceCase=STORAGE_LOOP_CASE if storage else NESTED_LOOP_CASE,
-                                         viewBytes=8192, groups=1, local=128, guard=0xdeadbeef))
+    if schema in COMPUTE_LOOP_SCHEMAS.values():
+        case = description.get('sourceCase')
+        if not isinstance(case, str) or COMPUTE_LOOP_SCHEMAS.get(case) != schema:
+            raise ValueError('compute loop source and byte oracle differ')
+        required_flags(description, dict(viewBytes=8192, groups=1, local=128, guard=0xdeadbeef))
         output = allocation_window(initial, description.get('output'), 8192, 0)
         guard = struct.pack('<I', 0xdeadbeef)
         if initial.read(output, 8192) != guard * 2048:
             raise ValueError('compute loop requires guard-initialized output')
-        if storage:
+        if case == STORAGE_LOOP_CASE:
             source = allocation_window(initial, description.get('input'), 8192, 1)
             if abs(source - output) < 8192:
                 raise ValueError('storage loop requires distinct input and output')
@@ -261,12 +262,20 @@ def verify(initial, returned, description):
                 raise ValueError('storage loop requires distinct lane inputs and intact input guard')
             expected = struct.pack('<384I', *(value ^ step for step in range(3) for value in values))
         else:
+            if case == 'dynamic-loop':
+                defaults = allocation_window(initial, description.get('defaults'), 16, 0)
+                if (defaults < output + 8192 and output < defaults + 16 or
+                        initial.read(defaults, 16) != struct.pack('<4I', 6, 0, 0, 0)):
+                    raise ValueError('dynamic loop did not retain its original default uniform')
             values = []
             for lane in range(128):
+                if case == NESTED_LOOP_CASE:
+                    terms = (outer + inner for outer in range(3) for inner in range((lane & 3) + 1))
+                else:
+                    terms = range(5 if case == 'constant-loop' else 6 if case == 'dynamic-loop' else (lane & 3))
                 value = lane
-                for outer in range(3):
-                    for inner in range((lane & 3) + 1):
-                        value = (value * 3 + outer + inner) & 0xffffffff
+                for term in terms:
+                    value = (value * 3 + term) & 0xffffffff
                 values.append(value)
             expected = struct.pack('<128I', *values)
         verify_byte_changes(initial, returned, [(output, expected)])
