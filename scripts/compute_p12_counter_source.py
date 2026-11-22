@@ -154,14 +154,43 @@ def final_counter_bytes():
                         *((counter_seed(index) + INCREMENTS) & 0xffffffff for index in range(COUNTER_COUNT)))
 
 
+def combined_tags():
+    seed = uniform_value(0, 0) ^ uniform_value(0, DEFAULT_COMPONENTS - 1)
+    for slot in range(1, UBO_COUNT + 1):
+        seed ^= uniform_value(slot, 4095)
+    return [seed ^ (lane * 3) ^ texel_fetch_value(lane) for lane in range(LOCAL)]
+
+
+def verify_write_denial(initial, returned, description):
+    from compute_owner_oracle import verify_byte_changes
+    require(description.get('sourceCase') == COMBINED, 'wrong combined permission recipe')
+    source, outputs, _, _ = recipe(initial, description)
+    tags = combined_tags()
+    old_values = [set(counter_old_values(counter_seed(index))) for index in range(COUNTER_COUNT)]
+    written = {}
+    expected = [(source, final_counter_bytes())]
+    for output in outputs:
+        first = output + OUTPUT_BYTES - LOCAL * 4
+        data = returned.read(first, LOCAL * 4)
+        for lane, value in enumerate(struct.unpack('<%uI' % LOCAL, data)):
+            if value == GUARD:
+                continue
+            old = value ^ tags[lane]
+            require(old in old_values[lane % COUNTER_COUNT] and written.setdefault(lane, old) == old,
+                    'combined write denial published an invalid or inconsistent SSBO lane')
+        expected.append((first, data))
+    for index in range(COUNTER_COUNT):
+        values = [old for lane, old in written.items() if lane % COUNTER_COUNT == index]
+        require(len(values) == len(set(values)), 'combined write denial duplicated counter old values')
+    require(written, 'combined write denial preceded all SSBO stores')
+    verify_byte_changes(initial, returned, expected)
+
+
 def returned_outputs(initial, returned, description):
     source, outputs, images, ubos = recipe(initial, description)
     combined = description['sourceCase'] == COMBINED
     if combined:
-        seed = uniform_value(0, 0) ^ uniform_value(0, DEFAULT_COMPONENTS - 1)
-        for slot in range(1, UBO_COUNT + 1):
-            seed ^= uniform_value(slot, 4095)
-        tags = [seed ^ (lane * 3) ^ texel_fetch_value(lane) for lane in range(LOCAL)]
+        tags = combined_tags()
         outputs = [first + OUTPUT_BYTES - LOCAL * 4 for first in outputs]
     else:
         seed = seed_oracle()
@@ -185,7 +214,7 @@ def returned_outputs(initial, returned, description):
     return result
 
 
-def ready(memory, description, data, *, owner_profile=IMAGE_FLOAT_PROFILE):
+def ready(memory, description, data, *, owner_profile=IMAGE_FLOAT_PROFILE, deny_image_write=False):
     """Bind READY metadata to full112 float discovery, MMIO, GSB1/GUM1 and PTEs."""
     require(owner_profile == IMAGE_FLOAT_PROFILE and owner_profile in SAMPLE_FACTORY_CONTRACTS,
             'P12 counter coexist requires the complete float owner')
@@ -215,13 +244,14 @@ def ready(memory, description, data, *, owner_profile=IMAGE_FLOAT_PROFILE):
         words=[dict(address=a, value=v) for a, v in discovery[:112]],
         registers=[dict(address=a, value=v) for a, v in discovery[112:]]))
     count, = take('<I')
-    require(count == 10, 'P12 counter capture writable view count differs')
+    require(count == (6 if deny_image_write else 10), 'P12 counter capture writable view count differs')
     writable = [take('<QQ') for _ in range(count)]
     arg, argbytes = description['kernargPhysical'], description['kernargBytes']
     require(any(a <= arg < arg + argbytes <= b for a, b, _ in memory.ranges), 'kernarg outside original allocation')
     expected = [(arg, arg + argbytes), (source, source + COUNTER_BYTES)]
     expected += [(first, first + OUTPUT_BYTES) for first in outputs]
-    expected += [(first, first + IMAGE_VIEW_BYTES) for first in images]
+    if not deny_image_write:
+        expected += [(first, first + IMAGE_VIEW_BYTES) for first in images]
     expected.sort()
     require(writable == expected and all(a[1] <= b[0] for a, b in zip(expected, expected[1:])),
             'P12 capture writable windows widened, aliased or missing')
@@ -295,6 +325,8 @@ def ready(memory, description, data, *, owner_profile=IMAGE_FLOAT_PROFILE):
         base = 0xc7ffb000 if unit == 3 else 0x87ffd000 + unit * (128 * 1024 * 1024 + 4096)
         descriptor = [0] * 64
         descriptor[:14] = [0x47495501, 256, 1, context, 0, 0, unit, 1, 1, 4, 0, 1, 14, 14]
+        if deny_image_write:
+            descriptor[10:12] = [1, 0]
         descriptor[20] = 5
         descriptor[22] = base
         descriptor[23] = base + IMAGE_BACKING_BYTES

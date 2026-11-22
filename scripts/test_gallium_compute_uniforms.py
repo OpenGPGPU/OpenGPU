@@ -198,11 +198,11 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
             args.case != 'image-atomic-buffer-r32f' or args.capture_only or
             args.capture_counter_matrix or args.capture_image_matrix or args.expect_image_permission_fault or args.expect_image_reset):
         ap.error('--expect-image-source-fault requires one live image-atomic-buffer-r32f case')
+    from compute_owner_protocol import reset_case_supported, recovery_base_supported, permission_case_supported
     if host_execution and args.expect_image_permission_fault is not None and (
-            args.case!='image-atomic-buffer-r32f' or args.capture_only or args.capture_counter_matrix or
+            not permission_case_supported(args.case,args.expect_image_permission_fault) or args.capture_only or args.capture_counter_matrix or
             args.capture_image_matrix or args.expect_image_source_fault or args.expect_image_reset):
-        ap.error('--expect-image-permission-fault requires one live float buffer permission variant')
-    from compute_owner_protocol import reset_case_supported, recovery_base_supported
+        ap.error('--expect-image-permission-fault requires one supported live permission variant')
     if host_execution and args.expect_image_reset is not None and (
             not reset_case_supported(args.case,args.expect_image_reset) or args.capture_only or args.capture_counter_matrix or
             args.capture_image_matrix or args.expect_image_source_fault or args.expect_image_permission_fault):

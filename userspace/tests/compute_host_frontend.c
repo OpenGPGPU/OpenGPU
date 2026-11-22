@@ -223,8 +223,17 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
     assert(compute_host_submit_counter_source(session,&wrong)==-EINVAL);
    }
   }
-  int error=compute_host_submit_counter_source(session,arg);
-  if(!error){accepted_counter=*(const struct drm_opengpu_compute_counter_source_resources *)arg;submitted++;}return result(error);}
+  struct drm_opengpu_compute_counter_source_resources submit=*(const struct drm_opengpu_compute_counter_source_resources *)arg;
+  if(p12_combined_coexist && image_permission_fault){
+   assert(image_permission_fault==2);
+   for(unsigned unit=0;unit<4;unit++){
+    struct drm_opengpu_compute_image_view *view=&submit.resources.resources.images[unit];
+    assert(view->flags==OPENGPU_COMPUTE_IMAGE_WRITE);
+    view->flags=OPENGPU_COMPUTE_IMAGE_READ;
+   }
+  }
+  int error=compute_host_submit_counter_source(session,&submit);
+  if(!error){accepted_counter=submit;submitted++;}return result(error);}
  if(request==DRM_IOCTL_SYNCOBJ_CREATE){struct drm_syncobj_create *p=arg;assert(!p->flags && next_sync<3);p->handle=next_sync++;return 0;}
  if(request==DRM_IOCTL_SYNCOBJ_DESTROY)return 0;
  if(request==DRM_IOCTL_SYNCOBJ_WAIT){struct drm_syncobj_wait *p=arg;assert(p->count_handles==1);return wait_execution();}
@@ -388,7 +397,7 @@ int main(int argc,char **argv)
   else if(!strcmp(argv[i],"--expect-image-permission-fault")){
    assert(!capture_only && !expect_compute_failure() && !image_reset && ++i<argc);
    image_permission_fault=!strcmp(argv[i],"read")?1:!strcmp(argv[i],"write")?2:0;
-   assert(image_permission_fault);
+   assert(image_permission_fault && (!p12_combined_coexist || image_permission_fault==2));
   }
   else if(!strcmp(argv[i],"--expect-image-reset")){
    assert(!capture_only && !expect_compute_failure() && !image_reset && (p12_combined_coexist || !strcmp(argv[4],"image-atomic-buffer-r32f")) && ++i<argc);
@@ -404,7 +413,8 @@ int main(int argc,char **argv)
  assert(!physical_base || (!capture_only && ((image_case && image_mode==6) || !strcmp(argv[4],"image-atomic-buffer-r32f") ||
   p12_combined_coexist || publication_case || image_publication_case || texture_publication_case || counter_publication_case || shared_publication_case || dma_publication_case ||
   (storage_case && storage_index!=14 && storage_index!=15))));
- assert(!expect_compute_failure() || expect_storage_fault || expect_image_write_fault || !strcmp(argv[4],"image-atomic-buffer-r32f"));
+ assert(!expect_compute_failure() || expect_storage_fault || expect_image_write_fault || (p12_combined_coexist && image_permission_fault==2) ||
+  !strcmp(argv[4],"image-atomic-buffer-r32f"));
  host_timeout_seconds=compute_host_timeout_seconds();assert(host_timeout_seconds);
  uniform_case=!strcmp(argv[4],"uniforms");
  storage_view_failure=storage_case && (storage_index==14 || storage_index==15);
