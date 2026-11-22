@@ -2,7 +2,6 @@
 #define OPENGPU_COMPUTE_HOST_P12_TEXTURE_H
 /* P12 texture coexistence: 16 usamplerBuffer views in one compute launch. */
 static struct drm_opengpu_compute_texture_view accepted_p12_texture_views[16];
-static const char *const p12_texture_names[]={"p12-texture-coexist"};
 
 static uint32_t p12_texture_value(unsigned unit, unsigned texel)
 {

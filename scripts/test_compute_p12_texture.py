@@ -7,7 +7,7 @@ import struct
 import tempfile
 import unittest
 
-from compute_owner_oracle import SparseMemory
+from compute_owner_oracle import SparseMemory, verify
 from compute_p12_texture_cases import (CASES, GUARD, LOCAL, TEXTURE_COUNT, parameters, shader,
     write_sources)
 from compute_p12_texture_source import (FIELDS, SCHEMA, TEXTURE_BACKING_BYTES,
@@ -301,6 +301,13 @@ class P12TextureOracle(unittest.TestCase):
                 changed = returned_outputs(initial, returned, description)
                 self.assertEqual([first for first, _ in changed], [address + offset for address, offset in windows])
                 self.assertTrue(all(value == data for _, value in changed))
+                verify(initial, returned, description)
+            wrong = copy.deepcopy(good)
+            wrong[outputs[0]][0] ^= 1
+            emit(after, wrong)
+            with SparseMemory(before) as initial, SparseMemory(after) as returned:
+                with self.assertRaises(ValueError):
+                    verify(initial, returned, description)
             emit(after, allocations)
             with SparseMemory(before) as initial, SparseMemory(after) as returned:
                 with self.assertRaises(ValueError):
