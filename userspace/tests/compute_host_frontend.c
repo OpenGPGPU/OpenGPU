@@ -208,8 +208,20 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
    accepted_p12_texture_views[0].slot=slot;
 
    wrong=*source;
-   wrong.source.handle=texture_handles[0];
+   wrong.resources.resources.bindings[0].slot=slot;
    assert(compute_host_submit_counter_source(session,&wrong)==-EINVAL);
+
+   wrong=*source;
+   wrong.resources.resources.images[0].slot=slot;
+   assert(compute_host_submit_counter_source(session,&wrong)==-EINVAL);
+
+   const unsigned aliases[]={texture_handles[0],output_handles[0],image_handles[0]};
+   for(unsigned i=0;i<sizeof(aliases)/sizeof(aliases[0]);i++){
+    wrong=*source;
+    wrong.source.offset=0;
+    wrong.source.handle=aliases[i];
+    assert(compute_host_submit_counter_source(session,&wrong)==-EINVAL);
+   }
   }
   int error=compute_host_submit_counter_source(session,arg);
   if(!error){accepted_counter=*(const struct drm_opengpu_compute_counter_source_resources *)arg;submitted++;}return result(error);}
