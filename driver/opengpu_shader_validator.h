@@ -171,6 +171,31 @@ static inline bool opengpu_shader_simt_arm_instruction(opengpu_shader_u32 w)
     return f == 6u && (fn == 0x20u || fn == 0x22u);
 }
 
+/* A loop backedge may only enter the condition, after the scope marker was
+ * pushed. The initial dialect permits lane-local integer ALU in the body. */
+static inline bool opengpu_shader_simt_loop_body(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 condition,
+    opengpu_shader_u32 marker, opengpu_shader_u32 *writes)
+{
+    opengpu_shader_u32 i, backedge = (condition - (marker - 1u)) * 4u;
+    opengpu_shader_u32 encoded = ((backedge >> 20) & 1u) << 31 |
+        ((backedge >> 1) & 1023u) << 21 |
+        ((backedge >> 11) & 1u) << 20 |
+        ((backedge >> 12) & 255u) << 12 | 0x6fu;
+    if (marker <= condition + 2u || words[marker - 1u] != encoded ||
+        words[marker] != OPENGPU_SHADER_SIMT_JOIN)
+        return false;
+    *writes = 0;
+    for (i = condition + 1u; i < marker - 1u; ++i) {
+        opengpu_shader_u32 word = words[i];
+        if ((word & 127u) != 0x57u ||
+            !opengpu_shader_simt_arm_instruction(word))
+            return false;
+        *writes |= 1u << ((word >> 7) & 31u);
+    }
+    return true;
+}
+
 static inline bool opengpu_shader_shared_simt_arm_instruction(
     const struct opengpu_shader_state *s, opengpu_shader_u32 w, opengpu_shader_u32 lanes)
 {
@@ -1165,6 +1190,15 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
         reachable |= target_reachable;
         if (!reachable)
             continue;
+        if (opcode == 0x6fu) {
+            opengpu_shader_u32 condition, taken, marker;
+            if (!simt_depth || !opengpu_shader_simt_scope_at(words, i,
+                    &condition, &taken, &marker) ||
+                taken != marker || i + 1u != marker)
+                return false;
+            /* The scope setup already checked the exact JAL x0 encoding. */
+            continue;
+        }
         if (insn == OPENGPU_SHADER_CEASE) {
             if (simt_depth) return false;
             for (branch = 0;
@@ -1247,9 +1281,25 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
                             &parent_taken, &parent_marker)) return false;
                     bound = i < parent_taken ? parent_taken - 1u : parent_marker - 1u;
                 }
-                if (taken <= i + 2u || marker <= taken || marker >= bound ||
-                    marker >= word_count ||
-                    words[taken - 1u] != OPENGPU_SHADER_SIMT_JOIN ||
+                if (taken <= i + 2u || marker < taken || marker >= bound ||
+                    marker >= word_count)
+                    return false;
+                if (taken == marker) {
+                    opengpu_shader_u32 writes, reg;
+                    if (!opengpu_shader_simt_loop_body(words, i + 1u,
+                            marker, &writes))
+                        return false;
+                    /* A first-iteration value cannot prove subsequent iterations
+                     * or lanes that exit at different iterations. */
+                    state.vector_local_indices &= ~writes;
+                    state.vector_local_bytes &= ~writes;
+                    state.vector_packet_valid &= ~writes;
+                    state.vector_local_packets &= ~writes;
+                    if (state.shared_own)
+                        for (reg = 0; reg < 32; ++reg)
+                            if (writes & (1u << reg))
+                                state.shared_own->vectors[reg] = (struct opengpu_shared_range){0};
+                } else if (words[taken - 1u] != OPENGPU_SHADER_SIMT_JOIN ||
                     words[marker - 1u] != OPENGPU_SHADER_SIMT_JOIN ||
                     words[marker] != OPENGPU_SHADER_SIMT_JOIN)
                     return false;
@@ -1264,7 +1314,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
                     if (!branches[branch].used) break;
                 if (branch == OPENGPU_SHADER_MAX_FORWARD_BRANCHES) return false;
                 branches[branch].used = true;
-                branches[branch].target = taken;
+                branches[branch].target = taken == marker ? marker + 1u : taken;
                 opengpu_shader_copy_state(&branches[branch].state, &state);
             } else if (insn == OPENGPU_SHADER_SIMT_JOIN) {
                 if (!simt_depth || !opengpu_shader_simt_scope_at(words, i,
@@ -1280,6 +1330,8 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
                     saved->target = marker + 1u;
                     opengpu_shader_simt_boundary(&state);
                 } else if (i == marker) {
+                    if (taken == marker)
+                        opengpu_shader_copy_state(&state, &branches[branch].state);
                     --simt_depth;
                 } else if (i != marker - 1u) return false;
             } else return false;
