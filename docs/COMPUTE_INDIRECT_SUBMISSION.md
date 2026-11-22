@@ -207,9 +207,14 @@ suite passed 533 checks, including rejection of a fourth dispatch word.
 The continuous-owner producer now compiles the same grid-bound consumer.
 Its oracle requires the captured opcode14 shader to contain a SIMT scope
 and backward jump, evaluates the loop from the original GPU-produced grid,
-and checks all output and guard bytes. The revised ten-phase chain remains
-pending on the complete DUT. Use the continuous-owner command below with
-a model prepared from the checked-out source.
+and checks all output and guard bytes. The revised ten-phase chain passed
+on the assertion-enabled two-CU float owner at source `e1819b156`.
+Both healthy opcode14 consumers used the GPU-produced `{2,2,2}` grid and
+returned all 64 expected vectors in 20,311 service cycles each. The injected
+count-read fault drained with zero writes, and the retry passed on the
+same DUT and RAM. Zero X, Y and Z preserved physical bytes, and final
+context cleanup passed. Use the continuous-owner command below with a
+model prepared from the checked-out source.
 
 With pinned Mesa22.3.6 source/build, the checked uniform-index patch and DRM
 headers selected through `OPENGPU_MESA_DIR`, `OPENGPU_MESA_BUILD` and
