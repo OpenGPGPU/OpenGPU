@@ -8,7 +8,7 @@ import bisect
 import mmap
 from pathlib import Path
 import struct
-from compute_owner_cases import COMPUTE_LOOP_SCHEMAS, NESTED_LOOP_CASE, STORAGE_LOOP_CASE
+from compute_owner_cases import COMPUTE_LOOP_SCHEMAS, MASKED_STORAGE_LOOP_CASE, NESTED_LOOP_CASE, STORAGE_LOOP_CASE
 from compute_owner_protocol import required_flags, strict_json, uint
 
 
@@ -253,13 +253,19 @@ def verify(initial, returned, description):
         guard = struct.pack('<I', 0xdeadbeef)
         if initial.read(output, 8192) != guard * 2048:
             raise ValueError('compute loop requires guard-initialized output')
-        if case == STORAGE_LOOP_CASE:
+        if case in (STORAGE_LOOP_CASE, MASKED_STORAGE_LOOP_CASE):
             source = allocation_window(initial, description.get('input'), 8192, 1)
             if abs(source - output) < 8192:
                 raise ValueError('storage loop requires distinct input and output')
             values = struct.unpack('<128I', initial.read(source, 512))
             if len(set(values)) != 128 or initial.read(source + 512, 7680) != guard * 1920:
                 raise ValueError('storage loop requires distinct lane inputs and intact input guard')
+            if case == MASKED_STORAGE_LOOP_CASE:
+                outputs = [(output + 4 * (step * 128 + lane), struct.pack('<I', value ^ step))
+                           for step in range(4) for lane, value in enumerate(values)
+                           if (step & 1) != (lane & 1)]
+                verify_byte_changes(initial, returned, outputs)
+                return
             expected = struct.pack('<384I', *(value ^ step for step in range(3) for value in values))
         else:
             if case == 'dynamic-loop':
@@ -271,6 +277,8 @@ def verify(initial, returned, description):
             for lane in range(128):
                 if case == NESTED_LOOP_CASE:
                     terms = (outer + inner for outer in range(3) for inner in range((lane & 3) + 1))
+                elif case == 'continue-loop':
+                    terms = (step for step in range(6) if (step & 1) != (lane & 1))
                 else:
                     terms = range(5 if case == 'constant-loop' else 6 if case == 'dynamic-loop' else (lane & 3))
                 value = lane
