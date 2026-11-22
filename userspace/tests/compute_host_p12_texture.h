@@ -10,8 +10,7 @@ static uint32_t p12_texture_value(unsigned unit, unsigned texel)
  return v^((unit+7u)<<(texel%19u));
 }
 
-static void p12_texture_setup(struct pipe_screen *s,struct pipe_context *p,void *frontend,
- struct pipe_resource *outputs[4])
+static void p12_texture_setup(struct pipe_screen *s,struct pipe_context *p,void *frontend)
 {
  struct pipe_resource *resources[16];
  struct pipe_sampler_view *samplers[16];
@@ -32,8 +31,6 @@ static void p12_texture_setup(struct pipe_screen *s,struct pipe_context *p,void 
   samplers[unit]=p->create_sampler_view(p,resources[unit],&descriptions[unit]);assert(samplers[unit]);
  }
  p->set_sampler_views(p,PIPE_SHADER_COMPUTE,0,16,0,false,samplers);
- void *output=pipe_opengpu_resource_map(opengpu_resource(outputs[0])->gpu);
- assert(output);memset(output,0xa7,8192);
 }
 
 static void p12_texture_prepare_submission(struct drm_opengpu_compute *launch)
