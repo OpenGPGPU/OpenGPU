@@ -62,7 +62,7 @@ def snapshot_seed(memory, description):
 
 
 def peer_value(lane, seed):
-    return seed ^ lane
+    return seed ^ ((lane ^ 16) << 8) ^ lane
 
 
 def recipe(memory, value):
