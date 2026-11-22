@@ -446,8 +446,6 @@ int compute_host_submit_storage(struct compute_host_session *s,const struct drm_
 int compute_host_submit_image_resources(struct compute_host_session *s,const struct drm_opengpu_compute_image_resources *request)
 {
  if(!s || !request || s->exported || s->head)return -EBUSY;
- /* Texture owners have a separate live capture contract. */
- if(request->textures || request->texture_count)return -EOPNOTSUPP;
  compute_running=s;struct drm_opengpu_compute_image_resources copy=*request;
  int error=opengpu_compute_image_resources_ioctl(&s->drm,&copy,&s->file);
  if(!error){
@@ -456,6 +454,7 @@ int compute_host_submit_image_resources(struct compute_host_session *s,const str
   s->submitted.resources.resource_flags=OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE|OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES;
   memcpy(s->submitted.resources.bindings,copy.bindings,sizeof(copy.bindings));
   memcpy(s->submitted.resources.images,copy.images,sizeof(copy.images));
+  s->submitted.resources.textures=copy.textures;s->submitted.resources.texture_count=copy.texture_count;
   s->context_id=copy.launch.context_id;s->context=opengpu_context_lookup(&s->render,s->context_id);assert(s->context);
  }
  return error;
