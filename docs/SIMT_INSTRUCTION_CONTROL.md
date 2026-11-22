@@ -35,107 +35,57 @@ attributed faults before a partial push. The trap offer remains stable under
 backpressure. Fault retirement clears the owning warp; peer stacks and a
 healthy successor kernel remain usable.
 
-## Integration
+## Mesa and Linux integration
 
-The bounded Gallium integer compiler and compute kernel admission now accept a
-canonical forward if/else subset; see [its CPU evidence](GALLIUM_COMPUTE.md#forward-ifelse-cpu-acceptance)
-and [actual compiler-word CU qualification](GALLIUM_COMPUTE.md#explicit-forward-ifelse-cu-qualification). No new capability bit is
-advertised. Existing hardware tests cover nested divergence,
-loops, capacity/missing-scope/misalignment faults, held offers and healthy reuse
-at compact and default 128-thread capacity. See [validation](EXECUTION_VALIDATION.md).
+The Gallium integer compiler lowers forward conditionals, fixed and uniform
+loop bounds, nested loops and conditional breaks. The Linux validator checks
+each scope's own join and backedge, invalidates proofs for registers written
+inside nested loops at the outer backedge, and rejects storage capture reused
+across a loop exit. Negative tests reject inner exits and backedges that
+target the outer scope.
 
-The compute emitter and Linux word validator also accept fixed and uniform
-loop bounds and repeated conditional `break` statements targeting the same
-join. The real Mesa ESSL fixtures produce 73, 81 and 89 words for `constant-loop`,
-`dynamic-loop` and `loop-break`, respectively. Those streams pass the original
-Linux word validator and the Gallium submission fixture in the sanitizer-enabled
-[`test_gallium_compute_control_flow.py` run](GALLIUM_COMPUTE.md#forward-ifelse-cpu-acceptance).
-An independent CPU decoder executes the submitted words and checks each of
-128 lane results plus output guards against source-level expectations.
-The original submissions for all three loops also passed the native 16-lane,
-eight-warp CU replay. Each produced and acknowledged 128 output writes without
-traps, with exact guards, held completion, and stable address spaces. The
-dynamic loop issued 56 checked uniform loads. This replay covers the CU and
-its memory clients. Full-system Linux execution and `continue` remain open.
+Mesa lowered the arithmetic ESSL `continue` fixture to a conditional select
+and the SSBO fixture to a conditional inside the loop. Direct TGSI `CONT`
+remains unsupported. This work adds no Gallium capability bit.
 
-The `storage-loop` CPU fixture reads the original SSBO and publishes 384 words
-across three iterations. The Linux validator checks each storage operation
-and rejects a store whose operand capture is separated from it by a loop exit.
-The native CU replay passed for the same 86-word Mesa submission. It observed
-384 checked SSBO reads, 384 output writes and 384 write acknowledgements
-across eight warps. Output guards, held completion and stable address spaces
-passed with zero traps. The full replay passed all nine captured submissions.
-Use the [capture and CU replay commands](GALLIUM_COMPUTE.md#explicit-forward-ifelse-cu-qualification)
-to reproduce. This result covers the native CU and memory clients.
+The sanitizer-enabled [Mesa/Gallium control-flow test](GALLIUM_COMPUTE.md#forward-ifelse-cpu-acceptance)
+checks the actual submitted compiler words against an independent ESSL oracle.
+All twelve original submissions passed the
+[native 16-lane, eight-warp CU replay](GALLIUM_COMPUTE.md#explicit-forward-ifelse-cu-qualification).
+For the loop cases, the replay checked outputs, guards, held completion,
+stable address spaces and zero traps. The dynamic loop issued 56 checked
+uniform loads. The storage loop observed 384 reads, writes and acknowledgements.
+The masked storage loop observed 256 reads, writes and acknowledgements.
 
-The complete compute-owner harness also accepts `--case storage-loop`. It
-compiles the same ESSL shader through Mesa and submits through the production
-Linux driver path. The sanitizer-enabled CPU capture passed command parsing.
-The independent physical-byte oracle rejected unchanged RAM and its tests
-rejected corruption in the input, result and output guard. The fixture uses
-128 distinct input words across one workgroup and checks the 384 expected
-result words and all other original physical bytes.
+## Complete dual-CU execution
 
-For the CPU capture, follow the
-[owner capture setup](COMPLETE_OWNER_COMPUTE_EXECUTOR.md) with
-`CASE=storage-loop`. To run on RTL, use the
-[complete owner qualification command](P12_RESOURCE_COEXISTENCE.md#reproduce)
-with `qualify_p12 --case storage-loop` and an executor built from the current
-source. The assertion-enabled two-CU float owner passed full DUT execution
-of `storage-loop` using source `bdb598c78`. All 384 expected result words,
-the remaining physical bytes, command retirement and context cleanup passed
-the independent checks.
+The assertion-enabled `two-cu-vga60-owner-v2-image-float-stage` Verilator
+executor passed all seven cases at source `bdb598c78`. Each ran original
+Mesa ESSL compilation and production Linux driver submission. The independent
+oracle checked returned bytes and every other physical byte. Observed command
+retirement and context cleanup passed for each case.
 
-A nested-loop ESSL fixture compiles to 110 native words through the same Mesa
-CPU test. It varies the inner trip count by lane and checks all 128 results.
-The driver checks each nested scope's own join and backedge and invalidates
-proofs for registers written inside nested loops at the outer backedge. The
-sanitized validator suite rejects inner exits and backedges that target the
-outer scope. The native CU replay passed all ten submissions, including the
-nested loop. Its eight warps produced and acknowledged 128 exact writes,
-preserved guards, and completed with zero traps. The complete compute-owner
-harness accepts `--case nested-loop` using the same source and a separate
-128-word result oracle. Its sanitizer-enabled Mesa/Linux CPU capture passed
-command parsing and source binding. The oracle rejected unchanged RAM.
-The assertion-enabled two-CU float owner also passed full DUT execution of
-`nested-loop` using source `bdb598c78`. All 128 lane results, physical guards,
-command retirement and context cleanup passed.
+| Case | Native words | Checked result |
+| --- | ---: | --- |
+| `constant-loop` | 73 | 128 results, 11,353 DUT service cycles |
+| `dynamic-loop` | 81 | 128 results and original 16-byte default uniform view |
+| `loop-break` | 89 | 128 per-lane early-exit results |
+| `storage-loop` | 86 | 384 results and unchanged original SSBO input |
+| `nested-loop` | 110 | 128 results with lane-dependent inner trip counts |
+| `continue-loop` | 97 | 128 results with lane-dependent skipped arithmetic |
+| `masked-storage-loop` | 116 | 256 selected results and 256 skipped words preserved |
 
-The complete compute-owner harness also accepts `constant-loop`,
-`dynamic-loop` and `loop-break`. All five loop cases passed sanitizer-enabled
-Mesa/Linux CPU capture, independent command parsing and unchanged-RAM
-rejection. The dynamic-loop oracle checks the original 16-byte default uniform
-view contains `{6, 0, 0, 0}`. Run the same owner qualification command with
-each case name for full DUT execution.
+Follow the [owner CPU capture setup](COMPLETE_OWNER_COMPUTE_EXECUTOR.md) or
+[complete owner qualification setup](P12_RESOURCE_COEXISTENCE.md#reproduce)
+with an executor built from the checked-out source. Run each listed case:
 
-Two ESSL `continue` fixtures passed the sanitizer-enabled Mesa/Gallium CPU
-test and Linux word validator. Mesa lowers the 97-word arithmetic case to a
-conditional select and the 116-word storage case to a branch inside the loop.
-The storage oracle checks each skipped word, each selected store and all
-guards. The native CU replay passed all twelve submissions. The arithmetic
-case produced 128 writes and acknowledgements. The masked storage case
-produced 256 checked reads, writes and acknowledgements, with exact results
-and guards. Neither case trapped. Direct TGSI `CONT` and full-system DUT
-execution of these two cases remain pending.
+```sh
+for case in constant-loop dynamic-loop loop-break storage-loop nested-loop \
+  continue-loop masked-storage-loop; do
+  qualify_p12 --case "$case" || exit
+done
+```
 
-The assertion-enabled two-CU float owner passed `constant-loop` on source
-`bdb598c78` in 11,353 service cycles. All 128 expected results, physical
-bytes outside the output, command retirement and context cleanup passed.
-
-The same assertion-enabled two-CU float owner passed `dynamic-loop` on
-source `bdb598c78`. The independent oracle checked the original default
-uniform view, 128 returned result words and all other physical bytes.
-Command retirement and context cleanup passed.
-
-The assertion-enabled two-CU float owner passed `loop-break` on source
-`bdb598c78`. All 128 per-lane early-exit results, physical guards,
-command retirement and context cleanup passed.
-
-The assertion-enabled two-CU float owner passed `continue-loop` on source
-`bdb598c78`. All 128 per-lane arithmetic results, physical guards, command
-retirement and context cleanup passed.
-
-The assertion-enabled two-CU float owner passed `masked-storage-loop`
-on source `bdb598c78`. The oracle checked 256 selected result words, all
-256 skipped output words, the original source data and every other physical
-byte. Command retirement and context cleanup passed.
+The cases qualify these structured loop and resource paths. The broader
+P13 barrier, resource-index, indirect-work and capability-query matrix and
+product clock/FPS qualification remain open.
