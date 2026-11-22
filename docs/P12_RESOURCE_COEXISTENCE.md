@@ -68,6 +68,13 @@ permission fault preserved physical guards. The delayed write response reset
 returned cancellation and preserved the expected partial writes. Each recovered
 with the same command ID on retained RAM and passed final context cleanup.
 
+The combined texture read-response reset passed on the assertion-enabled
+two-CU float owner at source `0c3837e95783083f914372fd392bc4c8d897d2dd`.
+The held response drained before reset acknowledgement. The cancelled dispatch
+committed all eight counter words and preserved every other physical byte.
+A healthy dispatch with the same command ID on the same DUT and retained RAM
+passed the independent output oracle and final context cleanup.
+
 ## Reproduce
 
 Against a prepared float owner (see
@@ -91,7 +98,8 @@ for case in p12-counter-coexist p12-shared-coexist p12-texture-coexist p12-combi
   qualify_p12 --case "$case" || exit
 done
 qualify_p12 --case image-atomic-buffer-r32f --image-permission-recovery write || exit
-qualify_p12 --case image-atomic-buffer-r32f --image-reset-recovery write
+qualify_p12 --case image-atomic-buffer-r32f --image-reset-recovery write || exit
+qualify_p12 --case p12-combined-coexist --image-reset-recovery read
 ```
 
 ## Local checks
