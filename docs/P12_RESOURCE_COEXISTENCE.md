@@ -22,7 +22,8 @@ the other eight components of the Mesa linker's 1024-component budget.
 The separate `uniforms` case exercises all 1024 numeric components.
 
 The compute-stage texture target is 16 units. The project-wide combined target
-remains 96. The combined admission fixture rejects a storage slot supplied as
+remains 96 and its cross-stage accounting and mapping are tracked by
+[P19](ALIGNMENT_PR_PLAN.md). The combined admission fixture rejects a storage slot supplied as
 a texture, a texture slot supplied as storage or image, and a writable counter
 window backed by a texture, SSBO or image GEM. The production Linux ioctl
 rejected all six requests and accepted the valid launch in the same context.
@@ -117,7 +118,8 @@ git diff --check
 - The 512-word Mesa emitter and driver validator limit applies to each shader.
   The combined case reads the last word of each UBO. The dedicated counter
   and shared cases also read each UBO's first word.
-- The same-GEM alias, write permission and delayed write-response reset are
-  scoped to the tested SSBO and buffer-image cases. The complete resource set
-  still needs the namespace, alias, permission and cancel/reset matrix.
+- The same-GEM atomic endpoint alias is scoped to the tested SSBO and R32F
+  buffer-image case. Combined resource admission and texture read-response
+  recovery are covered above. Joint qualification of image write denial and
+  delayed write-response recovery remains pending.
 - The product clock and FPS target remains 2 CUs at 640×480 and 60 FPS.
