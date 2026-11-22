@@ -7,9 +7,9 @@ import tempfile
 import unittest
 
 from compute_owner_cases import CASES, COUNTER_CASES, P12_COUNTER_CASES, counter_parameters, p12_counter_parameters
-from compute_p12_counter_cases import LOCAL, COUNTER_INDEX, COUNTER_BYTES, COUNTER_OFFSET, parameters, shader, write_sources
+from compute_p12_counter_cases import LOCAL, COUNTER_BYTES, COUNTER_OFFSET, parameters, shader, write_sources
 from compute_p12_counter_source import (SCHEMA, UNIFORM_BYTES, ready, recipe, returned_outputs,
-    seed_oracle, snapshot_seed, uniform_value, counter_old_values)
+    seed_oracle, snapshot_seed, uniform_value, counter_old_values, counter_seed, COUNTER_COUNT, INCREMENTS)
 from compute_owner_oracle import SparseMemory, verify
 from owner_resource_contract import IMAGE_FLOAT_PROFILE, IMAGE_FLOAT_WORDS
 
@@ -24,7 +24,7 @@ class P12Counter(unittest.TestCase):
         self.assertIn(CASE, CASES)
         self.assertEqual(counter_parameters(CASE), p12_counter_parameters(CASE))
         self.assertEqual(counter_parameters(CASE), dict(source=CASE + '.comp', operation='increment',
-            groups=1, local=LOCAL, dynamic=False, seed=0xfffffffe, index=COUNTER_INDEX, offset=COUNTER_OFFSET, count=8))
+            groups=1, local=LOCAL, dynamic=True, seed=0xfffffffe, index=0, offset=COUNTER_OFFSET, count=8))
         with self.assertRaises(ValueError):
             p12_counter_parameters('counter-increment')
 
@@ -44,7 +44,7 @@ class P12Counter(unittest.TestCase):
             self.assertIn('out%d.v[id]=value^%du;\n' % (index, index * 0x10203), source)
             self.assertIn('imageStore(image%d,int(id),uvec4(value^%du));\n' %
                           (index, index * 0x20406), source)
-        self.assertIn('uint value=atomicCounterIncrement(counters[7])^seed;\n', source)
+        self.assertIn('uint value=atomicCounterIncrement(counters[id&7u])^seed;\n', source)
         for barrier in ('memoryBarrierBuffer()', 'memoryBarrierImage()', 'memoryBarrierAtomicCounter()'):
             self.assertIn(barrier, source)
         self.assertNotIn('shared ', source)
@@ -65,9 +65,9 @@ class P12Counter(unittest.TestCase):
         for block in range(12):
             seed = ((seed * 33) ^ uniform_value(block + 1, 0) ^ uniform_value(block + 1, 4095)) & mask
         self.assertEqual(seed_oracle(), seed)
-        self.assertEqual(len(counter_old_values(seed)), LOCAL)
+        self.assertEqual(len(counter_old_values(seed)), INCREMENTS)
         self.assertEqual(counter_old_values(seed)[0], seed)
-        self.assertEqual(counter_old_values(seed)[-1], (seed + LOCAL - 1) & mask)
+        self.assertEqual(counter_old_values(seed)[-1], (seed + INCREMENTS - 1) & mask)
 
     def test_returned_value_multisets(self):
         seed = seed_oracle()
@@ -75,16 +75,16 @@ class P12Counter(unittest.TestCase):
         for binding in range(4):
             ssbo = sorted((old ^ seed ^ (binding * 0x10203)) & 0xffffffff for old in olds)
             image = sorted((old ^ seed ^ (binding * 0x20406)) & 0xffffffff for old in olds)
-            self.assertEqual(len(ssbo), 128)
-            self.assertEqual(len(image), 128)
+            self.assertEqual(len(ssbo), INCREMENTS)
+            self.assertEqual(len(image), INCREMENTS)
             if binding == 0:
                 self.assertEqual(ssbo, image)
             else:
                 self.assertNotEqual(ssbo, image)
                 self.assertNotEqual(ssbo, sorted((old ^ seed ^ (binding * 0x20406)) & 0xffffffff
                                                   for old in olds))
-        self.assertEqual(sorted(olds), list(range(seed, seed + 128)) if seed + 128 <= 0xffffffff else
-                         sorted((seed + step) & 0xffffffff for step in range(128)))
+        self.assertEqual(sorted(olds), list(range(seed, seed + INCREMENTS)) if seed + INCREMENTS <= 0xffffffff else
+                         sorted((seed + step) & 0xffffffff for step in range(INCREMENTS)))
 
     def test_qualify_wiring_pins_case_and_float_owner(self):
         import qualify_compute_owner as qualifier
@@ -137,7 +137,6 @@ def fixture():
     seed = 0xfffffffe
     for index in range(8):
         word(0x20000 + COUNTER_OFFSET + index * 4, (seed + index * 0x10203) & 0xffffffff)
-    word(0x20000 + COUNTER_OFFSET + COUNTER_INDEX * 4, seed)
     for index, physical in enumerate(ubo_pas):
         data = struct.pack('<4096I', *(uniform_value(index + 1, w) for w in range(4096)))
         allocations[physical][:] = data
@@ -197,7 +196,7 @@ def fixture():
         struct.pack_into('<I', allocations[root_table], pte, value & ~0x80)
     map_page(0x80400000, 0x70000, 15)
     description = dict(schema=SCHEMA, sourceCase=CASE, groups=1, local=128, viewBytes=8192, guard=0xdeadbeef,
-        seed=seed, index=COUNTER_INDEX, count=8, counterHandle=4, context=context,
+        seed=seed, count=8, counterHandle=4, context=context,
         descriptorPhysical=0x40000, descriptorRoot=descriptor_root, kernargPhysical=0x42000, kernargBytes=4096,
         counter=view(0x20000, 0, COUNTER_BYTES, 8192, COUNTER_OFFSET), storageBindings=[0, 1, 2, 3],
         outputs=[view(address, index, 8192, 8192) for index, address in enumerate(outputs)],
@@ -266,14 +265,17 @@ class P12CounterOracle(unittest.TestCase):
                 self.assertEqual(snapshot_seed(memory, description), seed_oracle())
             seed = seed_oracle()
             good = copy.deepcopy(allocations)
-            olds = counter_old_values(0xfffffffe)
+            olds = [counter_old_values(counter_seed(lane % COUNTER_COUNT))[lane // COUNTER_COUNT]
+                    for lane in range(LOCAL)]
             for binding, address in enumerate(outputs):
                 values = [(old ^ seed ^ (binding * 0x10203)) & 0xffffffff for old in olds]
                 struct.pack_into('<128I', good[address], 0, *values)
             for binding, address in enumerate(images):
                 values = [(old ^ seed ^ (binding * 0x20406)) & 0xffffffff for old in olds]
                 struct.pack_into('<128I', good[address], 0, *values)
-            struct.pack_into('<I', good[0x20000], COUNTER_OFFSET + COUNTER_INDEX * 4, (0xfffffffe + 128) & 0xffffffff)
+            for index in range(COUNTER_COUNT):
+                struct.pack_into('<I', good[0x20000], COUNTER_OFFSET + index * 4,
+                                 (counter_seed(index) + INCREMENTS) & 0xffffffff)
             emit(after, good)
             with SparseMemory(before) as initial, SparseMemory(after) as returned:
                 changed = returned_outputs(initial, returned, description)

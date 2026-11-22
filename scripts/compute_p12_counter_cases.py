@@ -43,7 +43,7 @@ def shader():
              'uint seed=0u;\n')
     for i in range(12):
         glsl += 'seed=seed*33u^b%d.v[0].x^b%d.v[1023].w;\n' % (i, i)
-    glsl += 'uint value=atomicCounterIncrement(counters[7])^seed;\n'
+    glsl += 'uint value=atomicCounterIncrement(counters[id&7u])^seed;\n'
     for i in range(4):
         glsl += 'out%d.v[id]=value^%du;\n' % (i, i * 0x10203)
     for i in range(4):

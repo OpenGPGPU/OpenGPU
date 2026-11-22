@@ -13,9 +13,9 @@ GROUPS = 1
 LOCAL = 128
 GUARD = 0xdeadbeef
 SEED = 0xfffffffe
-COUNTER_INDEX = 7
 COUNTER_COUNT = 8
 COUNTER_BYTES = 32
+INCREMENTS = LOCAL // COUNTER_COUNT
 OUTPUT_BYTES = 8192
 IMAGE_VIEW_BYTES = 512
 IMAGE_BACKING_BYTES = 4096
@@ -23,7 +23,7 @@ UBO_COUNT = 12
 UBO_BYTES = 16384
 UNIFORM_ROOT = 0xb1800000
 UNIFORM_BYTES = 4096 + UBO_COUNT * UBO_BYTES
-FIELDS = {'schema', 'sourceCase', 'groups', 'local', 'viewBytes', 'guard', 'seed', 'index', 'count',
+FIELDS = {'schema', 'sourceCase', 'groups', 'local', 'viewBytes', 'guard', 'seed', 'count',
           'counterHandle', 'context', 'descriptorPhysical', 'descriptorRoot', 'kernargPhysical', 'kernargBytes',
           'counter', 'outputs', 'storageBindings', 'images', 'imageBindings', 'imageRoot', 'imagePhysical',
           'imageBytes', 'ubos', 'uboBindings', 'uniformPhysical'}
@@ -66,8 +66,12 @@ def snapshot_seed(memory, description):
     return seed
 
 
+def counter_seed(index):
+    return (SEED + index * 0x10203) & 0xffffffff
+
+
 def counter_old_values(seed):
-    return [(seed + step) & 0xffffffff for step in range(LOCAL)]
+    return [(seed + step) & 0xffffffff for step in range(INCREMENTS)]
 
 
 def recipe(memory, value):
@@ -75,7 +79,7 @@ def recipe(memory, value):
     from compute_p12_counter_cases import parameters
     parameters(value.get('sourceCase'))
     required_flags(value, dict(schema=SCHEMA, sourceCase='p12-counter-coexist', groups=GROUPS,
-        local=LOCAL, viewBytes=OUTPUT_BYTES, guard=GUARD, seed=SEED, index=COUNTER_INDEX, count=COUNTER_COUNT))
+        local=LOCAL, viewBytes=OUTPUT_BYTES, guard=GUARD, seed=SEED, count=COUNTER_COUNT))
     require(0 < uint(value['counterHandle']) < 512 and 0 < uint(value['context']) < 512,
             'invalid original P12 counter owner')
     source = allocation_window(memory, value['counter'], COUNTER_BYTES, 0)
@@ -130,8 +134,7 @@ def recipe(memory, value):
     require(all(a[1] <= b[0] for a, b in zip(allocations, allocations[1:])), 'P12 original GEM aliases another resource')
     original = bytearray(b'\x5a' * 8192)
     for index in range(COUNTER_COUNT):
-        struct.pack_into('<I', original, COUNTER_OFFSET + index * 4, (SEED + index * 0x10203) & 0xffffffff)
-    struct.pack_into('<I', original, COUNTER_OFFSET + COUNTER_INDEX * 4, SEED)
+        struct.pack_into('<I', original, COUNTER_OFFSET + index * 4, counter_seed(index))
     require(memory.read(source - value['counter']['offset'], 8192) == original,
             'P12 counter original source/guard initialization differs')
     for key in ('descriptorPhysical', 'descriptorRoot', 'kernargPhysical', 'kernargBytes'):
@@ -144,24 +147,21 @@ def recipe(memory, value):
 def returned_outputs(initial, returned, description):
     source, outputs, images, ubos = recipe(initial, description)
     seed = seed_oracle()
-    olds = counter_old_values(SEED)
+    olds = [counter_old_values(counter_seed(index)) for index in range(COUNTER_COUNT)]
     result = []
-    for binding, first in enumerate(outputs):
-        data = returned.read(first, LOCAL * 4)
-        actual = struct.unpack('<%uI' % LOCAL, data)
-        expected = sorted((old ^ seed ^ (binding * 0x10203)) & 0xffffffff for old in olds)
-        require(sorted(actual) == expected, 'P12 counter SSBO returned value multiset differs')
-        result.append((first, data))
-    for binding, first in enumerate(images):
-        data = returned.read(first, LOCAL * 4)
-        actual = struct.unpack('<%uI' % LOCAL, data)
-        expected = sorted((old ^ seed ^ (binding * 0x20406)) & 0xffffffff for old in olds)
-        require(sorted(actual) == expected, 'P12 counter image returned value multiset differs')
-        result.append((first, data))
-    final = struct.pack('<I', (SEED + LOCAL) & 0xffffffff)
-    address = source + COUNTER_INDEX * 4
-    require(returned.read(address, 4) == final, 'P12 counter final value/wrap differs')
-    result.append((address, final))
+    for addresses, multiplier in ((outputs, 0x10203), (images, 0x20406)):
+        for binding, first in enumerate(addresses):
+            data = returned.read(first, LOCAL * 4)
+            actual = struct.unpack('<%uI' % LOCAL, data)
+            for index, values in enumerate(olds):
+                expected = sorted(old ^ seed ^ (binding * multiplier) for old in values)
+                require(sorted(actual[index::COUNTER_COUNT]) == expected,
+                        'P12 counter returned values differ for slot %u' % index)
+            result.append((first, data))
+    final = struct.pack('<%uI' % COUNTER_COUNT,
+                        *((counter_seed(index) + INCREMENTS) & 0xffffffff for index in range(COUNTER_COUNT)))
+    require(returned.read(source, COUNTER_BYTES) == final, 'P12 counter final values or wrap differ')
+    result.append((source, final))
     return result
 
 
