@@ -89,3 +89,14 @@ done
 The cases qualify these structured loop and resource paths. The broader
 P13 barrier, resource-index, indirect-work and capability-query matrix and
 product clock/FPS qualification remain open.
+
+## Indexed uniforms inside a masked loop
+
+The `indexed-uniform-loop` fixture compiles through Mesa to 191 native
+words. Different lanes and iterations select 128 distinct array elements,
+including element 255. The sanitizer-enabled Gallium CPU run checked all
+128 lane results. The complete owner fixture passed original Linux CPU
+capture with its 4096-byte default uniform view. The independent oracle
+evaluates selected loads from original physical bytes and rejected unchanged
+RAM. Run the complete owner command with `--case indexed-uniform-loop`
+to reproduce the fixture on a DUT. That execution remains pending.

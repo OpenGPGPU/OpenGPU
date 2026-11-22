@@ -30,7 +30,7 @@ static struct {void *data;uint64_t bytes;unsigned maps,closed;} bos[512];
 static unsigned next_bo=1,next_sync=1,submitted,retired;
 static const char *directory;
 static const char *loop_case;
-static int storage_loop_case,dynamic_loop_case,loop_barrier_case;
+static int storage_loop_case,dynamic_loop_case,loop_barrier_case,indexed_uniform_loop_case;
 static int capture_only,expect_image_source_fault,uniform_case,dynamic_case,address_case,counter_case,counter_dynamic,counter_coexist,p12_counter_coexist,p12_shared_coexist,p12_texture_coexist,p12_combined_coexist;
 static unsigned image_permission_fault;
 static unsigned image_reset;
@@ -362,10 +362,11 @@ static void write_oracle(void)
    fputs(",\"input\":",f);
    source_window(f,output_handles[1],0,8192,1);
   }
-  if(dynamic_loop_case){
-   assert(!accepted_uniforms.active_mask && accepted_uniforms.defaults.handle && accepted_uniforms.defaults.bytes==16);
+  if(dynamic_loop_case || indexed_uniform_loop_case){
+   unsigned bytes=indexed_uniform_loop_case?4096u:16u;
+   assert(!accepted_uniforms.active_mask && accepted_uniforms.defaults.handle && accepted_uniforms.defaults.bytes==bytes);
    fputs(",\"defaults\":",f);
-   source_window(f,accepted_uniforms.defaults.handle,accepted_uniforms.defaults.offset,16,0);
+   source_window(f,accepted_uniforms.defaults.handle,accepted_uniforms.defaults.offset,bytes,0);
   }
   fputs(",\"output\":",f);
   source_window(f,output_handles[0],0,8192,0);
@@ -436,7 +437,8 @@ int main(int argc,char **argv)
  storage_loop_case=!strcmp(argv[4],"storage-loop") || !strcmp(argv[4],"masked-storage-loop");
  dynamic_loop_case=!strcmp(argv[4],"dynamic-loop");
  loop_barrier_case=!strcmp(argv[4],"loop-branch");
- if(storage_loop_case || dynamic_loop_case || loop_barrier_case || !strcmp(argv[4],"nested-loop") ||
+ indexed_uniform_loop_case=!strcmp(argv[4],"indexed-uniform-loop");
+ if(storage_loop_case || dynamic_loop_case || loop_barrier_case || indexed_uniform_loop_case || !strcmp(argv[4],"nested-loop") ||
     !strcmp(argv[4],"constant-loop") || !strcmp(argv[4],"loop-break") ||
     !strcmp(argv[4],"continue-loop"))loop_case=argv[4];
  uniform_case=!strcmp(argv[4],"uniforms");
@@ -504,6 +506,10 @@ int main(int argc,char **argv)
  if(dynamic_loop_case){
   const uint32_t defaults[4]={6};
   cs_frontend_defaults(frontend,p,defaults,4);
+ }else if(indexed_uniform_loop_case){
+  uint32_t defaults[1024];
+  for(unsigned word=0;word<1024;word++)defaults[word]=uniform_value(0,word);
+  cs_frontend_defaults(frontend,p,defaults,1024);
  }
  if(storage_case)storage_setup(frontend,output);
  if(publication_case)publication_setup(frontend,output);

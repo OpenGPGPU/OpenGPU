@@ -380,7 +380,7 @@ int main(int argc,char **argv)
         uniform_mutate_after_snapshot=0;cu_name=NULL;assert(computes==before+1);full_output(out,3,125);
         clear_constants(p);p->delete_compute_state(p,cs);cs_frontend_destroy(f);
     }
-    const char *loops[] = {"constant-loop", "dynamic-loop", "loop-break", "storage-loop", "nested-loop", "continue-loop", "masked-storage-loop"};
+    const char *loops[] = {"constant-loop", "dynamic-loop", "loop-break", "storage-loop", "nested-loop", "continue-loop", "masked-storage-loop", "indexed-uniform-loop"};
     for (unsigned k = 0; k < sizeof(loops) / sizeof(loops[0]); ++k) {
         f = frontend(loops[k]);
         struct opengpu_cs_program loop_code;
@@ -396,10 +396,16 @@ int main(int argc,char **argv)
             uint32_t loop_defaults[4] = {6};
             cs_frontend_defaults(f, p, loop_defaults, 4);
         }
+        if (k == 7) {
+            uint32_t defaults[1024];
+            for (unsigned word = 0; word < 1024; ++word)
+                defaults[word] = uniform_value(23, 0, word);
+            cs_frontend_defaults(f, p, defaults, 1024);
+        }
         initialize_outputs(out);
         struct pipe_grid_info loop_grid = {.grid = {1, 1, 1}, .block = {8, 4, 4}};
         unsigned before = computes;
-        if (cu_directory) {
+        if (cu_directory && k < 7) {
             cu_name = loops[k];
             cu_frontend = f;
             cu_epoch = 0;
@@ -425,6 +431,11 @@ int main(int argc,char **argv)
                     for (unsigned step = 0; step < 6; ++step)
                         if ((step & 1u) != (i & 1u))
                             expected = expected * 3u + step;
+                } else if (!b && k == 7 && i < 128) {
+                    expected = i;
+                    for (unsigned step = 0; step < 3; ++step)
+                        if ((step & 1u) != (i & 1u))
+                            expected = expected * 3u + uniform_value(23, 0, 4 * ((i + step * 127u) & 255u) + 3);
                 } else if (!b && k < 3 && i < 128) {
                     unsigned limit = k == 0 ? 5 : k == 1 ? 6 : i & 3u;
                     expected = i;

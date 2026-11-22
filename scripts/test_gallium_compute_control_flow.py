@@ -25,10 +25,11 @@ def write_sources(out):
         "storage-loop": "for(uint i=0u;i<3u;i++)o0.v[id+i*128u]=o1.v[id]^i;",
         "continue-loop": "uint a=id;for(uint i=0u;i<6u;i++){if((i&1u)==(id&1u))continue;a=a*3u+i;}o0.v[id]=a;",
         "masked-storage-loop": "for(uint i=0u;i<4u;i++){if((i&1u)==(id&1u))continue;o0.v[id+i*128u]=o1.v[id]^i;}",
+        "indexed-uniform-loop": "uint a=id;for(uint i=0u;i<3u;i++){if((i&1u)!=(id&1u))a=a*3u+defaults[(id+i*127u)&255u].w;}o0.v[id]=a;",
         "too-deep": "if((id&16u)!=0u){if((id&8u)!=0u){if((id&4u)!=0u){if((id&2u)!=0u){if((id&1u)!=0u)o0.v[id]=1u;else o0.v[id]=2u;}else o0.v[id]=3u;}else o0.v[id]=4u;}else o0.v[id]=5u;}else o0.v[id]=6u;",
     }
     for name, body in simple.items():
-        uniforms = "uniform uvec4 defaults[256];\n" if name == "dynamic-loop" else ""
+        uniforms = "uniform uvec4 defaults[256];\n" if name in ("dynamic-loop", "indexed-uniform-loop") else ""
         (out / (name + ".comp")).write_text(prefix() + buffers + uniforms +
             "void main(){uint id=gl_LocalInvocationIndex;" + body + "}\n")
     # The invalid default-array indices belong exclusively to inactive lanes.
