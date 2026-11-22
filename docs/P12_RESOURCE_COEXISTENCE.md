@@ -76,6 +76,12 @@ committed all eight counter words and preserved every other physical byte.
 A healthy dispatch with the same command ID on the same DUT and retained RAM
 passed the independent output oracle and final context cleanup.
 
+The combined counter write-response reset passed on the same owner and
+source revision. The cancelled dispatch committed one counter word and
+preserved all other physical bytes. Command ID 23 completed cancellation
+at cycle 23837 and healthy recovery at cycle 345993 on the same DUT and
+retained RAM. Independent output and final context cleanup checks passed.
+
 ## Reproduce
 
 Against a prepared float owner (see
@@ -100,7 +106,8 @@ for case in p12-counter-coexist p12-shared-coexist p12-texture-coexist p12-combi
 done
 qualify_p12 --case image-atomic-buffer-r32f --image-permission-recovery write || exit
 qualify_p12 --case image-atomic-buffer-r32f --image-reset-recovery write || exit
-qualify_p12 --case p12-combined-coexist --image-reset-recovery read
+qualify_p12 --case p12-combined-coexist --image-reset-recovery read || exit
+qualify_p12 --case p12-combined-coexist --image-reset-recovery write
 ```
 
 ## Local checks
@@ -119,7 +126,5 @@ git diff --check
   The combined case reads the last word of each UBO. The dedicated counter
   and shared cases also read each UBO's first word.
 - The same-GEM atomic endpoint alias is scoped to the tested SSBO and R32F
-  buffer-image case. Combined resource admission and texture read-response
-  recovery are covered above. Joint qualification of image write denial and
-  delayed write-response recovery remains pending.
+  buffer-image case. Combined image write-denial recovery remains pending.
 - The product clock and FPS target remains 2 CUs at 640×480 and 60 FPS.
