@@ -197,6 +197,15 @@ publication/teardown ownership. The unchanged legacy callback suite passes
 GCC11.4 ASan/UBSan with leak checking, including CPU indirect fallback,
 full128-item local shapes and four128MiB sparse metadata views.
 
+The P13 regression adds an original Mesa loop whose trip count comes from
+`gl_NumWorkGroups.x`. Indirect counts `{2,2,2}` and `{1,2,2}` exercise
+different loop results through the production opcode14 submission and the
+independent CPU oracle. The validator permits only the already checked
+dispatch XYZ loads inside this loop dialect. ASan/UBSan runs passed 20
+accepted indirect submissions across five shaders, and the SIMT validator
+suite passed 533 checks, including rejection of a fourth dispatch word.
+This grid-bound loop remains pending on the complete DUT.
+
 With pinned Mesa22.3.6 source/build, the checked uniform-index patch and DRM
 headers selected through `OPENGPU_MESA_DIR`, `OPENGPU_MESA_BUILD` and
 `OPENGPU_DRM_INCLUDE`, reproduce on Linux with new private build directories:

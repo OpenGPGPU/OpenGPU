@@ -203,6 +203,16 @@ int main(void)
     p = nested_loop;
     p.w[loop + 5] = jump(0, -16); /* The inner backedge must stay in its own scope. */
     check(p, 0, 0);
+    p = start();
+    loop = p.n;
+    emit(&p, branch(3, 0, 0, 20));
+    body(&p, 11); /* Immutable grid word through the dispatch kernarg. */
+    emit(&p, branch(0, 2, 3, 8));
+    emit(&p, jump(0, -12));
+    emit(&p, OPENGPU_SHADER_SIMT_JOIN);
+    check(p, 1, 0);
+    p.w[loop + 1] |= 8u << 20; /* A fourth scalar word is outside XYZ. */
+    check(p, 0, 0);
     printf("Compute canonical SIMT validator:%u actual-function cases PASS;4 snapshots/8 physical entries;old profile unchanged\n",checks);
     return 0;
 }

@@ -174,7 +174,7 @@ static inline bool opengpu_shader_simt_arm_instruction(opengpu_shader_u32 w)
 
 /* A loop backedge may only enter the condition, after the scope marker was
  * pushed. The body uses lane-local integer ALU, scratch constants and checked
- * uniform and storage operations. */
+ * uniform and storage operations, and immutable dispatch grid words. */
 static inline bool opengpu_shader_simt_loop_body(
     const opengpu_shader_u32 *words, opengpu_shader_u32 condition,
     opengpu_shader_u32 marker, opengpu_shader_u32 *writes)
@@ -223,7 +223,7 @@ static inline bool opengpu_shader_simt_loop_body(
         bool resource = opcode == 0x2bu &&
             (function == 7u || (function >= 14u && function <= 16u));
         if ((opcode != 0x57u && opcode != 0x13u && opcode != 0x37u &&
-                opcode != 0x0fu && !resource) ||
+                opcode != 0x0fu && opcode != 0x03u && !resource) ||
             !opengpu_shader_simt_arm_instruction(word))
             return false;
         if (opcode == 0x57u || (resource && (function == 7u || function == 15u)))

@@ -104,9 +104,9 @@ static void indirect_reject_views(struct pipe_screen *s, struct pipe_resource *s
 static void indirect_compute_flow(const char *directory)
 {
     const uint32_t two[3] = {2, 2, 2}, one[3] = {1, 1, 1}, zero[3] = {0};
-    const char *names[] = {"indirect-consumer", "indirect-uniform", "indirect-counter"};
+    const char *names[] = {"indirect-consumer", "indirect-uniform", "indirect-counter", "indirect-loop"};
     indirect_observer = indirect_observe;
-    for (unsigned test = 0; test < 3; test++) {
+    for (unsigned test = 0; test < sizeof(names) / sizeof(names[0]); test++) {
         /* Storage-only v2 must not require the unrelated legacy combined
          * resources, texture, image, uniform or atomic-counter features. */
         features = OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE |
@@ -163,6 +163,7 @@ static void indirect_compute_flow(const char *directory)
             assert(original_kernarg && !memcmp(bos[original_kernarg].data, one, 12));
             indirect_reject_views(s, source, outputs[2], &program);
         }
+        if (test == 3) seed = 64; /* Two iterations: (7 * 3) * 3 + 1. */
         const unsigned offsets[] = {0, 52, 4084, 4092, 8180};
         for (unsigned n = 0; n < (test ? 1u : 5u); n++) {
             grid.indirect_offset = test ? 4092 : offsets[n];
@@ -172,6 +173,15 @@ static void indirect_compute_flow(const char *directory)
             assert(indirect_submissions == before + 1 && indirect_groups == groups + 8);
             indirect_result(outputs, two, seed);
             if (original_kernarg) assert(!memcmp(bos[original_kernarg].data, one, 12));
+        }
+        if (test == 3) {
+            const uint32_t narrow[3] = {1, 2, 2};
+            indirect_counts(source, grid.indirect_offset, narrow);
+            indirect_clear(outputs);
+            unsigned before = indirect_submissions, groups = indirect_groups;
+            indirect_launch(p, &grid);
+            assert(indirect_submissions == before + 1 && indirect_groups == groups + 4);
+            indirect_result(outputs, narrow, 21);
         }
         if (counter) {
             const uint32_t *words = pipe_opengpu_resource_map(opengpu_resource(counter)->gpu);
@@ -268,7 +278,7 @@ static void indirect_compute_flow(const char *directory)
     }
     assert(indirect_observations == indirect_submissions);
     indirect_observer = NULL; indirect_program = NULL;
-    printf("INDIRECT_CPU_PASS programs=4 submissions=%u originalSource=true privateCounts=true "
+    printf("INDIRECT_CPU_PASS programs=5 submissions=%u originalSource=true privateCounts=true "
         "threeDimensional=true protectedSourceMap=true unchangedKernarg=true logicalBounds=true "
-        "zeroAndLargeGrids=true uniformAndCounter=true failureReuse=true noGPU=true\n", indirect_submissions);
+        "zeroAndLargeGrids=true uniformAndCounter=true gridBoundLoop=true failureReuse=true noGPU=true\n", indirect_submissions);
 }
