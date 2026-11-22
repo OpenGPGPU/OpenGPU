@@ -9,7 +9,8 @@ API units 16–31 and verifies the last word of every texture, SSBO and image vi
 
 All three endpoint shaders passed Mesa compilation, the production Linux
 ioctl CPU capture, and independent descriptor and page-table checks. The
-full-DUT run for the endpoint shaders is pending. P12 remains open at **11/40**.
+shared and counter endpoint cases passed the complete DUT. P12 remains open
+at **11/40**.
 
 ## Compiler profile boundary
 
@@ -38,19 +39,22 @@ the production ioctl accepted all resources in a CPU capture. The independent
 capture check passed for the command registers, all 16 texture descriptor
 chains and page mappings, four SSBOs, and four image views.
 
-## Execution result
+## Complete host execution
 
-The original counter and shared shaders ran at source SHA
-`178dbb9457aca6524c337034c2b59ec6a103d96b` on the assertion-enabled `two-cu-vga60-owner-v2-image-float-stage` Verilator compute
-executor. Both cases passed independent returned-byte/guard oracles (multiset
-for counter outputs, exact array for shared), full112 float discovery,
-GAM1/GSM1/GUM1/GUB1/GUR1 descriptors, PTE/MMU, cleanup ACK, and unchanged
-source/model postchecks, each on one DUT/RAM/single reset:
+The assertion-enabled `two-cu-vga60-owner-v2-image-float-stage` Verilator
+compute executor ran source `636caa78af084145a44c8b925711167aa9858bc4`. The
+following cases passed original Mesa compilation, production Linux ioctls,
+returned-byte and physical guard checks, and observed retirement and context
+cleanup. Each case used its own DUT, RAM and single initial reset.
 
-```text
-original Mesa compute p12-counter-coexist: actual full-DUT returned bytes and context cleanup PASS
-original Mesa compute p12-shared-coexist: actual full-DUT returned bytes and context cleanup PASS
-```
+| Case | Scope |
+| --- | --- |
+| `p12-shared-coexist` | 16 KiB shared endpoint, adjacent-warp reads and both endpoints of all 12 UBOs. |
+| `p12-counter-coexist` | Sixteen increments per slot across all eight counters, including GEM end and wraparound. Each output passed independent old-value multiset checks. |
+| `uniforms` | 1024 default uniform components, 12 UBOs and original SSBO output bytes. |
+| `mixed-atomic-r32f-swap-swap-storage-first-endpoint` | SSBO and R32F image atomics alias the same original GEM word at the allocation end. |
+
+The full-DUT texture result is pending.
 
 ## Reproduce
 
@@ -59,7 +63,8 @@ Against a prepared float owner (see
 
 ```sh
 OWNER_OUTPUT=$PWD/.artifacts/p12-float-owner
-for case in p12-counter-coexist p12-shared-coexist p12-texture-coexist; do
+for case in p12-counter-coexist p12-shared-coexist p12-texture-coexist uniforms \
+  mixed-atomic-r32f-swap-swap-storage-first-endpoint; do
   PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/qualify_compute_owner.py \
     --executor "$OWNER_OUTPUT/executors/compute/executor" \
     --executor-qualification "$OWNER_OUTPUT/executors/compute/qualification.json" \
