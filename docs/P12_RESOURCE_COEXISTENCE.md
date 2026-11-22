@@ -1,13 +1,15 @@
 # P12 compute resource coexistence
 
-The counter and shared cases each passed one original Mesa launch on the
-assertion-enabled float DUT with 128 local threads, 12 UBOs, four SSBOs, and four
-buffer images. The counter case binds eight atomic counters. The shared case
-allocates 16 KiB of workgroup shared memory.
+Each case uses one 128-thread compute launch with four SSBOs and four R32UI
+buffer images. The counter and shared cases each use 12 UBOs. The counter
+case increments all eight atomic counters in the last 32 bytes of their GEM.
+The shared case reads across warps and exercises the last word of 16 KiB of
+workgroup shared memory. The texture case binds 16 buffer textures at Mesa
+API units 16–31 and verifies the last word of every texture, SSBO and image view.
 
-The texture case exercises 16 compute-stage buffer textures with four SSBOs and
-four buffer images in one 128-thread launch. The float DUT run is pending. P12
-remains open at **11/40**.
+All three endpoint shaders passed Mesa compilation, the production Linux
+ioctl CPU capture, and independent descriptor and page-table checks. The
+full-DUT run for the endpoint shaders is pending. P12 remains open at **11/40**.
 
 ## Compiler profile boundary
 
@@ -25,8 +27,8 @@ target remains 96.
 
 | Case | Threads | Shared | UBO | SSBO | Images | Counters | Shader / oracle |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `p12-counter-coexist` | 128 | none | 12, bindings 24..35, `uvec4 v[1024]`, endpoint `v[1023].w` | 4, 8192-byte views, bindings 0..3 | 4 R32UI buffer images, 512-byte views, bindings 0..3 | 8, binding 0 offset 0, index 7 | `value = atomicCounterIncrement(counters[7]) ^ UBO_seed` written to all 4 SSBO and 4 image outputs with per-unit XOR constants; `memoryBarrierBuffer()` / `memoryBarrierImage()` / `memoryBarrierAtomicCounter()`. Native program ≤512 words (measured 449 words via compile probe). Counter outputs checked as multisets. |
-| `p12-shared-coexist` | 128 | 16 KiB, `shared uint data[4096]` | 12, bindings 24..35, `uvec4 v[1024]`, endpoint `v[1023].w` | 4, 8192-byte views, bindings 0..3 | 4 R32UI buffer images, 512-byte views, bindings 0..3 | none (compiler-profile incompatibility) | `data[id]=seed`, `memoryBarrierShared();barrier();`, `peer=data[(id^16)]`; peer value written to all 4 SSBO and 4 image outputs with per-unit XOR constants; `memoryBarrierBuffer()` / `memoryBarrierImage()`. Outputs checked as exact arrays. |
+| `p12-counter-coexist` | 128 | none | 12, bindings 24..35, `uvec4 v[1024]`, endpoint `v[1023].w` | 4, 8192-byte views, bindings 0..3 | 4 R32UI buffer images, 512-byte views, bindings 0..3 | 8 at GEM offset 8160 | `value = atomicCounterIncrement(counters[id & 7]) ^ UBO_seed` written to all 4 SSBO and 4 image outputs with per-unit XOR constants; `memoryBarrierBuffer()` / `memoryBarrierImage()` / `memoryBarrierAtomicCounter()`. 487 native words. The oracle checks one old-value multiset per counter in each output and all eight final counter values. |
+| `p12-shared-coexist` | 128 | 16 KiB, `shared uint data[4096]` | 12, bindings 24..35, `uvec4 v[1024]`, endpoint `v[1023].w` | 4, 8192-byte views, bindings 0..3 | 4 R32UI buffer images, 512-byte views, bindings 0..3 | none (compiler-profile incompatibility) | `data[id]=seed^id` and `data[3968+id]=id*3`, then `memoryBarrierShared();barrier();` and `peer=data[id^16]^data[3968+id]`. The result is written to all 4 SSBO and 4 image outputs with per-unit XOR constants; `memoryBarrierBuffer()` / `memoryBarrierImage()`. 399 native words with exact-array output checks. |
 | `p12-texture-coexist` | 128 | none | none | 4, 8192-byte views, bindings 0..3 | 4 R32UI buffer images, 512-byte views, bindings 0..3 | none | XORs the values from the same coordinate in all 16 textures. Each lane reads texel `2047 ^ id`, writes SSBO word `1920 + id` and writes image texel `id`. The program is 468 native words. |
 
 The counter and shared cases derive the UBO seed from each block's `v[0].x` and
@@ -38,8 +40,8 @@ chains and page mappings, four SSBOs, and four image views.
 
 ## Execution result
 
-Execution source SHA `178dbb9457aca6524c337034c2b59ec6a103d96b` on the
-assertion-enabled `two-cu-vga60-owner-v2-image-float-stage` Verilator compute
+The original counter and shared shaders ran at source SHA
+`178dbb9457aca6524c337034c2b59ec6a103d96b` on the assertion-enabled `two-cu-vga60-owner-v2-image-float-stage` Verilator compute
 executor. Both cases passed independent returned-byte/guard oracles (multiset
 for counter outputs, exact array for shared), full112 float discovery,
 GAM1/GSM1/GUM1/GUB1/GUR1 descriptors, PTE/MMU, cleanup ACK, and unchanged
@@ -85,5 +87,5 @@ git diff --check
   12-UBO and eight-counter workload exceeds that limit.
 - Namespace isolation, resource aliases and permissions still need a complete
   host matrix across the full resource set, including cancel/reset and
-  healthy reuse. The 16 KiB shared endpoint also remains to be exercised.
+  healthy reuse.
 - The product clock and FPS target remains 2 CUs at 640×480 and 60 FPS.
