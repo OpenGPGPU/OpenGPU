@@ -174,7 +174,7 @@ static inline bool opengpu_shader_simt_arm_instruction(opengpu_shader_u32 w)
 
 /* A loop backedge may only enter the condition, after the scope marker was
  * pushed. The body uses lane-local integer ALU, scratch constants and checked
- * uniform loads. */
+ * uniform and storage operations. */
 static inline bool opengpu_shader_simt_loop_body(
     const opengpu_shader_u32 *words, opengpu_shader_u32 condition,
     opengpu_shader_u32 marker, opengpu_shader_u32 *writes)
@@ -200,11 +200,14 @@ static inline bool opengpu_shader_simt_loop_body(
             continue;
         }
         opengpu_shader_u32 opcode = word & 127u;
-        bool uniform_load = opcode == 0x2bu && (word >> 26) == 7u;
-        if ((opcode != 0x57u && opcode != 0x13u && opcode != 0x37u && !uniform_load) ||
+        opengpu_shader_u32 function = word >> 26;
+        bool resource = opcode == 0x2bu &&
+            (function == 7u || (function >= 14u && function <= 16u));
+        if ((opcode != 0x57u && opcode != 0x13u && opcode != 0x37u &&
+                opcode != 0x0fu && !resource) ||
             !opengpu_shader_simt_arm_instruction(word))
             return false;
-        if (opcode == 0x57u || uniform_load)
+        if (opcode == 0x57u || (resource && (function == 7u || function == 15u)))
             *writes |= 1u << ((word >> 7) & 31u);
     }
     return has_exit;
@@ -1331,6 +1334,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
                 if (taken == marker) {
                     if (!opengpu_shader_queue_branch(branches, marker + 1u, &state))
                         return false;
+                    opengpu_shader_simt_boundary(&state);
                     break;
                 }
                 if (i != branch_pc) return false;

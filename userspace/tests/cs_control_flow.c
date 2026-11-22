@@ -380,7 +380,7 @@ int main(int argc,char **argv)
         uniform_mutate_after_snapshot=0;cu_name=NULL;assert(computes==before+1);full_output(out,3,125);
         clear_constants(p);p->delete_compute_state(p,cs);cs_frontend_destroy(f);
     }
-    const char *loops[] = {"constant-loop", "dynamic-loop", "loop-break"};
+    const char *loops[] = {"constant-loop", "dynamic-loop", "loop-break", "storage-loop"};
     for (unsigned k = 0; k < sizeof(loops) / sizeof(loops[0]); ++k) {
         f = frontend(loops[k]);
         struct opengpu_cs_program loop_code;
@@ -411,7 +411,9 @@ int main(int argc,char **argv)
             const uint32_t *output = pipe_opengpu_resource_map(opengpu_resource(out[b])->gpu);
             for (unsigned i = 0; i < 512; ++i) {
                 uint32_t expected = 0xdeadbeefu;
-                if (!b && i < 128) {
+                if (!b && k == 3 && i < 384) {
+                    expected ^= i / 128;
+                } else if (!b && k < 3 && i < 128) {
                     unsigned limit = k == 0 ? 5 : k == 1 ? 6 : i & 3u;
                     expected = i;
                     for (unsigned step = 0; step < limit; ++step)
@@ -425,8 +427,8 @@ int main(int argc,char **argv)
         printf("CF actual Mesa %s: %u words, Linux validation and CPU output PASS\n", loops[k], loop_code.words);
     }
     if (cu_directory) {
-        assert(cu_captures == 8);
-        puts("CF native exports:8 original frontend/callback/validator submissions (GPU UNRUN)");
+        assert(cu_captures == 9);
+        puts("CF native exports:9 original frontend/callback/validator submissions (GPU UNRUN)");
     }
     const char *negative[]={"too-deep"};
     for(unsigned k=0;k<sizeof(negative)/sizeof(negative[0]);k++){

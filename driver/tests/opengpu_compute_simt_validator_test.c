@@ -172,6 +172,18 @@ int main(void)
     check(p, 1, 0);
     p.w[loop + 4] = branch(0, 2, 1, 4); /* Every exit must park at the marker. */
     check(p, 0, 0);
+    p = start();
+    loop = p.n;
+    emit(&p, branch(3, 0, 0, 20));
+    emit(&p, branch(0, 2, 1, 16));
+    body(&p, 9); /* Capture and store on the same continuing path. */
+    emit(&p, jump(0, -12));
+    emit(&p, OPENGPU_SHADER_SIMT_JOIN);
+    check(p, 1, 0);
+    uint32_t capture = p.w[loop + 2];
+    p.w[loop + 2] = branch(0, 2, 1, 12);
+    p.w[loop + 1] = capture;
+    check(p, 0, 0); /* The exiting lanes must not leave a usable capture. */
     printf("Compute canonical SIMT validator:%u actual-function cases PASS;4 snapshots/8 physical entries;old profile unchanged\n",checks);
     return 0;
 }

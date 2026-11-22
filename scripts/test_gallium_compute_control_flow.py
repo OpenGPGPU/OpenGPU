@@ -21,6 +21,7 @@ def write_sources(out):
         "constant-loop": "uint a=id;for(uint i=0u;i<5u;i++)a=a*3u+i;o0.v[id]=a;",
         "dynamic-loop": "uint a=id;for(uint i=0u;i<(defaults[0].x&7u);i++)a=a*3u+i;o0.v[id]=a;",
         "loop-break": "uint a=id;for(uint i=0u;i<7u;i++){if(i==(id&3u))break;a=a*3u+i;}o0.v[id]=a;",
+        "storage-loop": "for(uint i=0u;i<3u;i++)o0.v[id+i*128u]=o1.v[id]^i;",
         "too-deep": "if((id&16u)!=0u){if((id&8u)!=0u){if((id&4u)!=0u){if((id&2u)!=0u){if((id&1u)!=0u)o0.v[id]=1u;else o0.v[id]=2u;}else o0.v[id]=3u;}else o0.v[id]=4u;}else o0.v[id]=5u;}else o0.v[id]=6u;",
     }
     for name, body in simple.items():
