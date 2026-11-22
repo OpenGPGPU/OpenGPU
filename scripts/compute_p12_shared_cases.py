@@ -40,9 +40,9 @@ def shader():
              'uint seed=0u;\n')
     for i in range(UBO_COUNT):
         glsl += 'seed=seed*33u^b%d.v[0].x^b%d.v[1023].w;\n' % (i, i)
-    glsl += ('data[id]=seed;'
+    glsl += ('data[id]=seed;data[3968u+id]=id;'
              'memoryBarrierShared();barrier();'
-             'uint peer=data[(id^16u)];\n')
+             'uint peer=data[(id^16u)]^data[3968u+id];\n')
     for i in range(4):
         glsl += 'out%d.v[id]=peer^%du;\n' % (i, i * 0x10203)
     for i in range(4):
