@@ -379,7 +379,6 @@ int main(int argc,char **argv)
         unsigned before=computes;uniform_mutate_after_snapshot=1;p->launch_grid(p,&g);
         uniform_mutate_after_snapshot=0;cu_name=NULL;assert(computes==before+1);full_output(out,3,125);
         clear_constants(p);p->delete_compute_state(p,cs);cs_frontend_destroy(f);
-        assert(cu_captures==5);puts("CF native exports:5 actual frontend/callback/validator parents with original grid/local/view/snapshot/input identities PASS (GPU UNRUN)");
     }
     const char *loops[] = {"constant-loop", "dynamic-loop", "loop-break"};
     for (unsigned k = 0; k < sizeof(loops) / sizeof(loops[0]); ++k) {
@@ -400,7 +399,13 @@ int main(int argc,char **argv)
         initialize_outputs(out);
         struct pipe_grid_info loop_grid = {.grid = {1, 1, 1}, .block = {8, 4, 4}};
         unsigned before = computes;
+        if (cu_directory) {
+            cu_name = loops[k];
+            cu_frontend = f;
+            cu_epoch = 0;
+        }
         p->launch_grid(p, &loop_grid);
+        cu_name = NULL;
         assert(computes == before + 1);
         for (unsigned b = 0; b < 4; ++b) {
             const uint32_t *output = pipe_opengpu_resource_map(opengpu_resource(out[b])->gpu);
@@ -418,6 +423,10 @@ int main(int argc,char **argv)
         p->delete_compute_state(p, cs);
         cs_frontend_destroy(f);
         printf("CF actual Mesa %s: %u words, Linux validation and CPU output PASS\n", loops[k], loop_code.words);
+    }
+    if (cu_directory) {
+        assert(cu_captures == 8);
+        puts("CF native exports:8 original frontend/callback/validator submissions (GPU UNRUN)");
     }
     const char *negative[]={"too-deep"};
     for(unsigned k=0;k<sizeof(negative)/sizeof(negative[0]);k++){

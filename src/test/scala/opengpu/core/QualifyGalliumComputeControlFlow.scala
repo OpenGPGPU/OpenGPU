@@ -36,7 +36,8 @@ private class GalliumControlHarness extends Module {
 }
 
 private object GalliumControlArtifacts {
-  val names=Seq("full128","nested","masked","selected-fault","fresh125")
+  val loopWords=Map("constant-loop"->73,"dynamic-loop"->81,"loop-break"->89)
+  val names=Seq("full128","nested","masked","selected-fault","fresh125","constant-loop","dynamic-loop","loop-break")
   def sha(p: Path): String=MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(p))
     .map(b=>f"${b&255}%02x").mkString
   def properties(p: Path): Properties={
@@ -52,29 +53,31 @@ private object GalliumControlArtifacts {
       throw new IllegalArgumentException(s"missing $name $key")))
     val full=name=="full128" || name=="fresh125"
     val healthy=name!="selected-fault"
+    val loop=loopWords.contains(name)
+    val dynamicLoop=name=="dynamic-loop"
     val grid=(0 until 3).map(a=>n(s"grid.$a"));val local=(0 until 3).map(a=>n(s"local.$a"))
     val codeWords=n("code.words").toInt
     val items=(grid.product*local.product).toInt
     val uniformEnabled=n("uniform.enabled")==1
     val uniformWord=words.indexWhere(w=>(w&127)==0x2b && (w>>26)==7)
-    val checkedUniformLoads=if(full)416 else if(name=="masked")256 else if(!healthy)8 else 0
-    val storageWordOperations=if(full)items*4 else if(name=="nested")128 else if(healthy)320 else 128
-    val cycleBudget=if(full)524288 else if(name=="masked")196608 else 131072
+    val checkedUniformLoads=if(full)416 else if(name=="masked")256 else if(!healthy)8 else if(dynamicLoop)56 else 0
+    val storageWordOperations=if(full)items*4 else if(name=="nested" || loop)128 else if(healthy)320 else 128
+    val cycleBudget=if(full)524288 else if(name=="masked")196608 else if(loop)262144 else 131072
     require(n("format")==1 && meta.getProperty("name")==name && words.size==512 &&
       n("shader.bytes")==2048 && n("shader.offset")==0 && n("kernarg.bytes")>=12 && kernarg.length==12)
     require(grid==(if(full)Seq(2,1,1)else Seq(1,1,1)) &&
       local==(if(name=="fresh125")Seq(5,5,5)else Seq(8,4,4)))
-    require(codeWords==(if(full)439 else if(name=="nested")194 else 222) &&
+    require(codeWords==loopWords.getOrElse(name,if(full)439 else if(name=="nested")194 else 222) &&
       words(codeWords-1)==BigInt("30500073",16) && words.drop(codeWords).forall(_==0))
     require(words.count(w=>(w&0x707f)==0x305b)==(if(name=="nested")4 else 1))
-    require(words.count(w=>(w&127)==0x2b && (w>>26)==7)==(if(full)26 else if(name=="nested")0 else 4))
-    require(!words.exists(w=>(w&127)==3),"actual five programs use init builtins, not kernarg loads")
+    require(words.count(w=>(w&127)==0x2b && (w>>26)==7)==(if(full)26 else if(dynamicLoop)1 else if(name=="nested" || loop)0 else 4))
+    require(!words.exists(w=>(w&127)==3),"actual programs use init builtins, not kernarg loads")
     val divides=words.count(w=>(w&127)==0x57 && ((w>>12)&7)==6 && ((w>>26)==0x20 || (w>>26)==0x22))
     require(divides==5)
     // Finite text is visited at most once per physical warp. Charge all text
     // (including skipped markers), all serial lane memory work, full divider
     // iteration time and cold startup separately; see the frozen budget note.
-    val staticCycles=codeWords*(grid.product*8).toInt*32+divides*(grid.product*8).toInt*40+
+    val staticCycles=codeWords*(if(loop)8 else 1)*(grid.product*8).toInt*32+divides*(grid.product*8).toInt*40+
       storageWordOperations*80+checkedUniformLoads*192+8192
     require(staticCycles<=cycleBudget,s"$name static $staticCycles exceeds frozen $cycleBudget")
     for(a<-0 until 3)require(word(kernarg,4*a)==grid(a))
@@ -83,9 +86,10 @@ private object GalliumControlArtifacts {
     for(b<-0 until 4)require(n(s"binding.$b.slot")==35+b && n(s"binding.$b.offset")==0 &&
       n(s"binding.$b.bytes")== (if(full)BigInt(128)*1024*1024 else BigInt(65536)) &&
       n(s"binding.$b.access")==3 && input(b).length==4096)
-    require(uniformEnabled==(name!="nested"))
+    require(uniformEnabled==(if(loop)dynamicLoop else name!="nested"))
     for(s<-0 until 13)require(uniform(s).length==n(s"uniform.$s.bytes") &&
-      uniform(s).length==(if(full) {if(s==0)4096 else 16384} else if(s==0 && uniformEnabled)4096 else 0))
+      uniform(s).length==(if(full) {if(s==0)4096 else 16384} else if(s==0 && uniformEnabled) {if(dynamicLoop)16 else 4096} else 0))
+    if(dynamicLoop)require(word(uniform(0),0)==6)
     if(name=="masked" || !healthy) {
       val source=input((0 until 4).find(b=>n(s"binding.$b.api")==0).get)
       for(i<-0 until 128)require(word(source,4*i)==
@@ -115,7 +119,7 @@ private object GalliumControlArtifacts {
     // The 128/125 programs retain their real, different local-ID div/mod
     // constants. Only the healthy/fault pair shares exactly the same program.
     require(exports(2).words==exports(3).words &&
-      exports.last.n("context")!=exports(3).n("context"),"fresh reuse must retain actual source and context identity")
+      exports(4).n("context")!=exports(3).n("context"),"fresh reuse must retain actual source and context identity")
     exports
   }
 }
@@ -149,7 +153,7 @@ class GalliumComputeControlFlowQualification extends AnyFlatSpec {
       val d=top.io.compute;zero(top.io);top.reset.poke(true.B);top.clock.step(2);top.reset.poke(false.B)
       top.io.modelsPresent.expect(true.B);d.l1InvalidateDone.ready.poke(true.B)
       val mappings=Vector(23,0,21,2,19,4,17,6,15,8,13,10)
-      val totalBudget=1507328 // two524288 + masked196608 + two131072
+      val totalBudget=exports.map(_.cycleBudget).sum
       var totalCycles=0;var kernelStarts=0;var allWarpStarts=0
       for((e,epoch)<-exports.zipWithIndex) {
         val cycleBudget=e.cycleBudget
@@ -216,7 +220,8 @@ class GalliumComputeControlFlowQualification extends AnyFlatSpec {
           }
           // Actual Mesa emits a vec4 indirect CONST load. Preserve all four
           // components even though the source result uses only its .y word.
-          if(!e.full && e.healthy)for(i<-1 until 128 by 2)uniformDataExpected(uniformP(0)+((i*16)/64)*64)+=4
+          if(e.dynamicLoop)uniformDataExpected(uniformP(0))=e.checkedUniformLoads
+          if(!e.full && e.healthy && !e.loop)for(i<-1 until 128 by 2)uniformDataExpected(uniformP(0)+((i*16)/64)*64)+=4
         }
         val expected=mutable.Map.empty[BigInt,BigInt]
         val sourceSlot=(0 until 4).find(b=>e.n(s"binding.$b.api")==0).get
@@ -227,7 +232,10 @@ class GalliumComputeControlFlowQualification extends AnyFlatSpec {
             result=Some(if(api==0) {if(i%2==1)a^i else (a+i)&mask32} else changed^i^(api*0x10203))
           } else if(e.name=="nested" && api==0)
             result=Some(BigInt(if((i&8)==0)5 else if((i&4)==0)4 else if((i&2)==0)3 else if((i&1)==0)2 else 1))
-          else if(e.healthy && e.name=="masked") {
+          else if(e.loop && api==0) {
+            val limit=if(e.dynamicLoop)6 else if(e.name=="constant-loop")5 else i&3
+            result=Some((0 until limit).foldLeft(BigInt(i))((acc,step)=>(acc*3+step)&mask32))
+          } else if(e.healthy && e.name=="masked") {
             if(api==1) {val a=value(19,0,i*4+1);result=Some(if(i%2==0)BigInt(i+11)else if(a<BigInt("80000000",16)) (a+3)&mask32 else a^7)}
             if(api==2)result=Some(BigInt(if(i<31)"12345678"else"89abcdef",16))
           } else if(!e.healthy && api==1 && i%2==0)result=Some(BigInt(i+11))
@@ -343,7 +351,7 @@ class GalliumComputeControlFlowQualification extends AnyFlatSpec {
         val rawUniforms=e.checkedUniformLoads
         assert(uniformRootReads==rawUniforms && uniformBindingReads==rawUniforms)
         assert(storageReads==(if(e.name=="masked" || !e.healthy)64 else 0))
-        val neededApis=if(e.full)Set(0,1,2,3)else if(e.name=="nested")Set(0)else if(e.healthy)Set(0,1,2)else Set(0,1)
+        val neededApis=if(e.full)Set(0,1,2,3)else if(e.name=="nested" || e.loop)Set(0)else if(e.healthy)Set(0,1,2)else Set(0,1)
         assert(descriptors.toSet==(0 until 4).filter(b=>neededApis(e.n(s"binding.$b.api").toInt)).toSet)
         if(storageReads>0)assert(inputLines.toSet==(0 until 8).map(w=>dataP(sourceSlot)+w*64).toSet)
         if(e.healthy)assert(trapped.isEmpty)else assert(trapped.toSet==(0 until 8).toSet && heldTrapCycles>=9)
@@ -360,8 +368,8 @@ class GalliumComputeControlFlowQualification extends AnyFlatSpec {
         allWarpStarts+=warpStarts
         info(s"GALLIUM_CF_CU case=${e.name} PASS codeWords=${e.codeWords} grid=${e.grid.mkString("x")} local=${e.local.mkString("x")} actualWarpStarts=$warpStarts lastWarpActive=${(e.local.product.toInt-1)%16+1} writes=${written.size} acks=${acknowledged.size} storageReads=$storageReads uniformWordReads=${uniformDataLines.values.sum} checkedUniformLoads=$rawUniforms traps=${trapped.size} heldCompletion=true stableActiveSatp=true responseHoldCycles=$responseStalls cycles=$cycles")
       }
-      assert(kernelStarts==5 && allWarpStarts==56 && totalCycles<=totalBudget)
-      info(s"GALLIUM_CF_CU PASS parents=5 workgroups=7 actualWarpStarts=$allWarpStarts healthyItems=762 nativeLanes=16 nativeWarps=8 realSram=true full13CBAnd4SSBO=true totalCycles=$totalCycles hostLinuxAPIQualified=false H7Complete=false")
+      assert(kernelStarts==8 && allWarpStarts==80 && totalCycles<=totalBudget)
+      info(s"GALLIUM_CF_CU PASS parents=8 workgroups=10 actualWarpStarts=$allWarpStarts healthyItems=1146 nativeLanes=16 nativeWarps=8 realSram=true full13CBAnd4SSBO=true totalCycles=$totalCycles hostLinuxAPIQualified=false H7Complete=false")
     }
   }
 }
