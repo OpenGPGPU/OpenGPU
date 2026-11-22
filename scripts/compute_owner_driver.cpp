@@ -40,7 +40,7 @@ struct ComputeResult {
   bool accepted_history=false;
   bool held_pin=false,retired_pin=false,drained=false;
 };
-enum class ImageFailure { none, source_read, permission, first_write, global_first_write, global_accepted_write,
+enum class ImageFailure { none, source_read, permission, combined_permission, first_write, global_first_write, global_accepted_write,
   storage_accepted_write, image_accepted_write, image_accepted_float_write, uc_cache_alias_accepted_write };
 struct ComputeHeld {
   ComputeResult result;
@@ -56,7 +56,7 @@ ComputeHeld hold_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory
     ImageFailure failure=ImageFailure::none,uint64_t prior_read_faults=0,const Traffic *prior_traffic=nullptr,
     StorageAckDelay *ack_delay=nullptr) {
   require(failure==ImageFailure::none || failure==ImageFailure::source_read ||
-    failure==ImageFailure::permission || failure==ImageFailure::first_write || failure==ImageFailure::global_first_write ||
+    failure==ImageFailure::permission || failure==ImageFailure::combined_permission || failure==ImageFailure::first_write || failure==ImageFailure::global_first_write ||
     failure==ImageFailure::global_accepted_write || failure==ImageFailure::storage_accepted_write ||
     failure==ImageFailure::image_accepted_write || failure==ImageFailure::image_accepted_float_write ||
     failure==ImageFailure::uc_cache_alias_accepted_write,
@@ -158,9 +158,10 @@ ComputeHeld hold_compute_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory
     else require(agent.traffic.read_faults==prior_read_faults && agent.injected_read_faults()==prior_read_faults,
       "source-view failure encountered physical read errors");
     require(agent.traffic.write_faults==held.start.write_faults &&
-      agent.injected_write_faults()==held.start.write_faults && agent.traffic.writes==held.start.writes,
+      agent.injected_write_faults()==held.start.write_faults &&
+      (failure==ImageFailure::combined_permission || agent.traffic.writes==held.start.writes),
       "failed compute issued physical writes");
-    verify_readonly(held.initial,memory,{});
+    verify_readonly(held.initial,memory,failure==ImageFailure::combined_permission?capture.writable:std::vector<Writable>{});
   }else {
     require(agent.traffic.read_faults==prior_read_faults && agent.injected_read_faults()==prior_read_faults &&
       agent.traffic.write_faults==held.start.write_faults &&
@@ -269,10 +270,11 @@ inline void authorize_recovery_round(const std::filesystem::path &session,unsign
   require(read_le(in,4)==index && in.peek()==EOF,"wrong recovery round authorization");
 }
 inline void active_image_recovery(int argc,char **argv,const std::filesystem::path &output,
-    const std::filesystem::path &session,std::chrono::milliseconds timeout,bool permission=false,unsigned reset=0) {
+    const std::filesystem::path &session,std::chrono::milliseconds timeout,bool permission=false,unsigned reset=0,bool combined_permission=false) {
   require(compute_owner_factory()==OwnerFactory::image_float_stage,
     "image recovery requires the distinct complete float factory");
-  require(reset<=2 && !(reset && permission),"ambiguous image recovery mode");
+  require(reset<=2 && !(reset && permission) && (!combined_permission || permission),
+    "ambiguous image recovery mode");
   require(std::filesystem::is_directory(session) && !std::filesystem::is_symlink(session) &&
     !std::filesystem::exists(output),"invalid recovery session or existing output");
   const auto first_session=session/"round-0";
@@ -299,7 +301,8 @@ inline void active_image_recovery(int argc,char **argv,const std::filesystem::pa
     require(std::filesystem::create_directory(destination),"recovery output round already exists");
     const auto start=bus.cycles;
     if(!index && !permission && !reset)arm_source_fault(agent,local,timeout);
-    const auto failure=index?ImageFailure::none:permission?ImageFailure::permission:ImageFailure::source_read;
+    const auto failure=index?ImageFailure::none:combined_permission?ImageFailure::combined_permission:
+      permission?ImageFailure::permission:ImageFailure::source_read;
     if(!index && reset)
       active_cancel_compute(sim,agent,bus,memory,capture,destination,local,
         reset==1?ResponseChannel::read:ResponseChannel::write,timeout);
@@ -403,6 +406,9 @@ int main(int argc,char **argv) {
         std::string(argv[1])=="--active-image-permission-recovery")) {
       active_image_recovery(argc,argv,argv[2],argv[3],response_timeout,
         std::string(argv[1])=="--active-image-permission-recovery");return 0;
+    }
+    if(argc==4 && std::string(argv[1])=="--active-p12-image-permission-recovery") {
+      active_image_recovery(argc,argv,argv[2],argv[3],response_timeout,true,0,true);return 0;
     }
     if(argc==5 && std::string(argv[1])=="--active-image-reset-recovery") {
       const std::string channel=argv[4];require(channel=="read" || channel=="write","unknown image reset response channel");

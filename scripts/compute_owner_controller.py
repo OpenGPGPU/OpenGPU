@@ -17,7 +17,7 @@ import tempfile
 import time
 from compute_owner_protocol import (strict_json, profile_bytes, held_bytes,
     retired_bytes, failed_held_bytes, failed_retired_bytes, cleanup_authorization, checked_cleanup,
-    uint, required_flags, RECOVERY_CASE, RECOVERY_BASES, RECOVERY_COMMAND_SCHEMA, reset_case_supported)
+    uint, required_flags, RECOVERY_CASE, RECOVERY_BASES, RECOVERY_COMMAND_SCHEMA, reset_case_supported, permission_case_supported)
 from compute_owner_oracle import SparseMemory, verify, union_original_memory
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -121,8 +121,8 @@ def ready_inputs(directory, case, *, owner_profile=None, permission=None, profil
             'cache alias qualification requires its distinct original source')
     require(type(global_cached) is bool and (not global_cached or case in GLOBAL_ATOMIC_CASES),
             'cached global qualification requires its original source')
-    require(permission is None or (case==RECOVERY_CASE and permission in ('read','write')),
-            'image permission denial requires the original float buffer case')
+    require(permission is None or (permission_case_supported(case,permission)),
+            'image permission denial requires a supported live recipe')
     description=strict_json(directory/'oracle.json')
     counter=description.get('schema')==COUNTER_SCHEMA
     p12_counter=description.get('schema')==P12_COUNTER_SCHEMA
@@ -174,7 +174,7 @@ def ready_inputs(directory, case, *, owner_profile=None, permission=None, profil
             if p12_counter:
                 from owner_resource_contract import IMAGE_FLOAT_PROFILE
                 require(owner_profile==IMAGE_FLOAT_PROFILE, 'P12 counter coexist requires the full float owner')
-                p12_counter_ready(before,description,data,owner_profile=owner_profile)
+                p12_counter_ready(before,description,data,owner_profile=owner_profile,deny_image_write=permission=='write')
             elif p12_shared:
                 from owner_resource_contract import IMAGE_FLOAT_PROFILE
                 require(owner_profile==IMAGE_FLOAT_PROFILE, 'P12 shared coexist requires the full float owner')
@@ -250,7 +250,7 @@ def unchanged_inputs(directory, inputs):
 
 
 def recovery_commands(value, *, case=RECOVERY_CASE, permission=None, reset=None):
-    require(case==RECOVERY_CASE or reset_case_supported(case,reset),
+    require(case==RECOVERY_CASE or reset_case_supported(case,reset) or permission_case_supported(case,permission),
             'unsupported source for continuous recovery')
     require(permission is None or permission in ('read','write'),'unknown image permission denial')
     require(reset is None or (reset in ('read','write') and permission is None),'unknown/ambiguous image reset')
@@ -365,6 +365,8 @@ def exchange_recovery(args,commands,directory,executor,env,qualified,qualified_p
                     atomic(local/'BEGIN_EXECUTION',struct.pack('<8sI',b'OGCMEX01',index))
                     if index==0:
                         execution_mode='--active-image-reset-recovery' if reset else '--active-image-permission-recovery' if permission else '--active-image-source-recovery'
+                        if permission and args.case != RECOVERY_CASE:
+                            execution_mode='--active-p12-image-permission-recovery'
                         running=subprocess.Popen([executor,execution_mode,directory/'results',directory,*([reset] if reset else [])],
                             env=env,stdout=output,stderr=subprocess.STDOUT)
                     destination=directory/'results'/('round-'+str(index))
@@ -382,6 +384,9 @@ def exchange_recovery(args,commands,directory,executor,env,qualified,qualified_p
                         for path,identities in input_sets:unchanged_inputs(path,identities)
                         with SparseMemory(baseline) as before,SparseMemory(destination/'record-0.memory') as after:
                             if index:verify(before,after,description)
+                            elif permission and args.case != RECOVERY_CASE:
+                                from compute_p12_counter_source import verify_write_denial
+                                verify_write_denial(before,after,description)
                             elif permission:verify_image_permission_fault(before,after,description,permission=permission)
                             else:verify_source_read_fault(before,after,description)
                         atomic(local/'record-0.retired.response',response)
@@ -674,7 +679,8 @@ def main():
         require(qualified_profile==IMAGE_FLOAT_PROFILE,'L1 publication requires the complete float owner')
     if args.expect_image_source_fault or args.image_source_recovery or args.image_permission_recovery or args.image_reset_recovery:
         from owner_resource_contract import IMAGE_FLOAT_PROFILE
-        require((args.case==RECOVERY_CASE or reset_case_supported(args.case,args.image_reset_recovery)) and
+        require((args.case==RECOVERY_CASE or reset_case_supported(args.case,args.image_reset_recovery) or
+                 permission_case_supported(args.case,args.image_permission_recovery)) and
                 qualified_profile==IMAGE_FLOAT_PROFILE,
                 'fault and reset recovery require a qualified float executor')
     if args.case in GLOBAL_ATOMIC_CASES:

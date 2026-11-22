@@ -20,6 +20,10 @@ def reset_case_supported(case, channel):
     return case in (RECOVERY_CASE, COMBINED) and channel in ('read', 'write')
 
 
+def permission_case_supported(case, access):
+    return (case == RECOVERY_CASE and access in ('read', 'write')) or (case == COMBINED and access == 'write')
+
+
 def recovery_base_supported(case):
     return reset_case_supported(case, 'read')
 

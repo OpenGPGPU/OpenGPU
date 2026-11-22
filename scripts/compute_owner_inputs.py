@@ -9,7 +9,7 @@ import sys
 from native_sample_graphics_inputs import (snapshot as base_snapshot, dependency_inputs,
     generated_inputs, unchanged, regular)
 from native_sample_compiler_inputs import sha256, MESA_UNITS, MESA_LIBRARIES
-from compute_owner_protocol import strict_json, reset_case_supported, recovery_base_supported
+from compute_owner_protocol import strict_json, reset_case_supported, recovery_base_supported, permission_case_supported
 from compute_owner_cases import (COUNTER_CASES, counter_parameters, IMAGE_CASES, P12_SHARED_CASES, p12_shared_parameters,
     P12_TEXTURE_CASES, p12_texture_parameters, LEGACY_IMAGE_CASES, CONTENDED_IMAGE_CASES, MIXED_ATOMIC_CASES)
 from compute_image_source import parameters as image_parameters
@@ -112,8 +112,8 @@ def guarded(request_path, builder_argv):
         index=argv.index('--expect-image-permission-fault')
         require(index+1<len(argv),'missing denied image access')
         permission=argv[index+1]
-        require(permission in ('read','write') and not source_fault and case=='image-atomic-buffer-r32f' and
-                not reset and not matrix and '--capture-only' not in argv,'permission denial requires one original live float buffer')
+        require(permission_case_supported(case,permission) and not source_fault and
+                not reset and not matrix and '--capture-only' not in argv,'permission denial requires one supported live recipe')
     require(not source_fault or (case=='image-atomic-buffer-r32f' and not matrix and '--capture-only' not in argv),
             'source fault requires one original live R32F buffer recipe')
     allocation_base=None

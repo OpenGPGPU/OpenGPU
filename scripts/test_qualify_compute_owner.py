@@ -79,19 +79,23 @@ class Entry(unittest.TestCase):
         args=argparse.Namespace(mesa=ROOT/'mesa',mesa_build=ROOT/'mesa-build',
             drm_include=ROOT/'drm',library_directory=ROOT/'lib',mesa_link_libs='-lfixture',
             counter_inputs=ROOT/'inputs',timeout=30,expect_image_source_fault=False,image_source_recovery=False)
-        for permission in ('read','write'):
+        from compute_p12_counter_cases import COMBINED
+        for source_case,permission in ((RECOVERY_CASE,'read'),(RECOVERY_CASE,'write'),(COMBINED,'write')):
             args.image_permission_recovery=permission
             commands=[qualifier.producer_command(args,gpu=ROOT,source=ROOT,ntt=ROOT/'ntt',
-                image='sha256:fixture',name='permission-'+str(i),case=RECOVERY_CASE,
+                image='sha256:fixture',name='permission-'+str(i),case=source_case,
                 source_fault=False,physical_base=base,permission=permission if i==0 else None)
                 for i,base in enumerate(RECOVERY_BASES)]
-            recovery_commands(dict(schema=RECOVERY_COMMAND_SCHEMA,rounds=commands),permission=permission)
+            recovery_commands(dict(schema=RECOVERY_COMMAND_SCHEMA,rounds=commands),case=source_case,permission=permission)
             self.assertNotIn('--expect-image-source-fault',commands[0])
             for case in ('image-atomic-2d-r32f','counter-increment','both'):
                 args.case=case
                 with self.subTest(permission=permission,case=case),patch.object(qualifier.subprocess,'run') as run:
                     with self.assertRaises(ValueError):qualifier.checked_inputs(args)
                     run.assert_not_called()
+        with self.assertRaises(ValueError):
+            qualifier.producer_command(args,gpu=ROOT,source=ROOT,ntt=ROOT/'ntt',
+                image='sha256:fixture',name='combined-read',case=COMBINED,permission='read')
         for permission in (True,'rw',''):
             with self.assertRaises(ValueError):qualifier.producer_command(args,gpu=ROOT,source=ROOT,ntt=ROOT/'ntt',
                 image='sha256:fixture',name='permission-negative',case=RECOVERY_CASE,permission=permission)

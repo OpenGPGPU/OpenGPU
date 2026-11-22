@@ -128,6 +128,30 @@ class P12Counter(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         returned_outputs(None, result, description)
 
+    def test_combined_permission_denial_checks_partial_storage_and_all_image_guards(self):
+        from compute_p12_counter_source import combined_tags, verify_write_denial
+        from test_compute_image_reset import Uploads
+
+        counters, first, second, image = 0x1000, 0x2000, 0x4000, 0x6000
+        guard = struct.pack('<I', 0xdeadbeef)
+        original = Uploads({counters: bytes(32), first: guard * 2048, second: guard * 2048,
+                            image: b'\x69' * 4096})
+        result = copy.deepcopy(original)
+        for index in range(8):
+            result.word(counters + 4 * index, (counter_seed(index) + 16) & 0xffffffff)
+        tags = combined_tags()
+        endpoint = first + 7680
+        result.word(endpoint, counter_seed(0) ^ tags[0])
+        result.word(second + 7680, counter_seed(0) ^ tags[0])
+        with patch('compute_p12_counter_source.recipe', return_value=(counters, [first, second], [image], [])):
+            verify_write_denial(original, result, {'sourceCase': COMBINED})
+            for address, value in ((first, 0), (image, 0), (endpoint + 32, counter_seed(0) ^ tags[8]),
+                                   (second + 7680, ((counter_seed(0) + 1) & 0xffffffff) ^ tags[0])):
+                corrupt = copy.deepcopy(result)
+                corrupt.word(address, value)
+                with self.subTest(address=address), self.assertRaises(ValueError):
+                    verify_write_denial(original, corrupt, {'sourceCase': COMBINED})
+
     def test_qualify_wiring_pins_case_and_float_owner(self):
         import qualify_compute_owner as qualifier
         self.assertIn(CASE, qualifier.CASES)
