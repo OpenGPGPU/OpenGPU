@@ -209,10 +209,11 @@ class GalliumComputeControlFlowQualification extends AnyFlatSpec {
           for(s<-0 until 13 if e.uniform(s).nonEmpty) {
             val at=if(s==0)defaultRecordP else uniformTableP+64*mappings(s-1)
             val logicalEnd=uniformV(s)+e.uniform(s).length
+            val allocationEnd=(logicalEnd+63)& ~BigInt(63)
             record(at,Seq[(Int,BigInt)](0->ShaderUniformBindingLayout.magic,1->64,2->1,
               3->e.n("context"),4->7,5->(epoch+1),6->(if(s==0)31 else mappings(s-1)),7->4,
               8->uniformV(s),9->(logicalEnd&mask32),10->(logicalEnd>>32),11->uniformV(s),
-              12->(logicalEnd&mask32),13->(logicalEnd>>32),14->1))
+              12->(allocationEnd&mask32),13->(allocationEnd>>32),14->1))
             uniformDescriptorLines+=at
             for(offset<-e.uniform(s).indices by 4096)map(vRoot,uniformV(s)+offset,uniformP(s)+offset,0x43)
             e.uniform(s).zipWithIndex.foreach {case(b,i)=>memory(uniformP(s)+i)=b&255}
@@ -262,7 +263,8 @@ class GalliumComputeControlFlowQualification extends AnyFlatSpec {
           warpStarts+=(active & ~priorActive).bitCount;priorActive=active
           d.globalAtomicRequest.valid.expect(false.B);d.texSample.valid.expect(false.B);d.vectorTexSample.valid.expect(false.B)
           if(d.trap.valid.peek().litToBoolean) {
-            assert(!e.healthy);val t=d.trap.bits;val warp=t.warpId.peek().litValue.toInt
+            val t=d.trap.bits;val warp=t.warpId.peek().litValue.toInt
+            assert(!e.healthy,s"${e.name}: unexpected trap warp=$warp pc=${t.pc.peek().litValue.toString(16)} cause=${t.cause.peek().litValue} value=${t.tval.peek().litValue.toString(16)} mask=${t.laneFaultMask.peek().litValue.toString(16)}")
             t.pc.expect((pc+4*e.uniformWord).U);t.cause.expect(5.U);t.tval.expect(0.U);t.laneFaultMask.expect(2.U)
             val bits=t.peek().litValue;heldTrap.foreach(v=>assert(v==bits,"held trap changed"))
             d.trap.ready.poke((heldTrapCycles>=9).B)
