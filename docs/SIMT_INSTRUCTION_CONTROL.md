@@ -81,7 +81,10 @@ For the CPU capture, follow the
 `CASE=storage-loop`. To run on RTL, use the
 [complete owner qualification command](P12_RESOURCE_COEXISTENCE.md#reproduce)
 with `qualify_p12 --case storage-loop` and an executor built from the current
-source. Full DUT execution and cleanup are pending.
+source. The assertion-enabled two-CU float owner passed full DUT execution
+of `storage-loop` using source `bdb598c78`. All 384 expected result words,
+the remaining physical bytes, command retirement and context cleanup passed
+the independent checks.
 
 A nested-loop ESSL fixture compiles to 110 native words through the same Mesa
 CPU test. It varies the inner trip count by lane and checks all 128 results.
