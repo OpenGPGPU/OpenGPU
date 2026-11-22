@@ -9,7 +9,7 @@ API units 16–31 and verifies the last word of every texture, SSBO and image vi
 
 All three endpoint shaders passed Mesa compilation, the production Linux
 ioctl CPU capture, independent descriptor and page-table checks, and complete
-DUT execution. P12 remains open at **11/40**.
+DUT execution. P12 counts as **12/40** after protected merge.
 
 ## Compiler profile boundary
 
@@ -82,6 +82,16 @@ preserved all other physical bytes. Command ID 23 completed cancellation
 at cycle 23837 and healthy recovery at cycle 345993 on the same DUT and
 retained RAM. Independent output and final context cleanup checks passed.
 
+The combined image write-permission recovery passed at source
+`400c0f4feba3cc3385ac09f59abc6d65a7f9427b`. The original Linux ioctl
+submission bound four read-only image views. The DUT returned a failed
+kernel receipt with zero physical bus faults. Independent checks verified
+all eight final counters, the committed SSBO values and every remaining
+physical byte, including the four image allocations. On the same DUT and
+retained RAM, command ID 23 completed the rejected round at cycle 294991
+and the healthy round at cycle 617147. Healthy outputs and final context
+cleanup passed.
+
 ## Reproduce
 
 Against a prepared float owner (see
@@ -107,7 +117,8 @@ done
 qualify_p12 --case image-atomic-buffer-r32f --image-permission-recovery write || exit
 qualify_p12 --case image-atomic-buffer-r32f --image-reset-recovery write || exit
 qualify_p12 --case p12-combined-coexist --image-reset-recovery read || exit
-qualify_p12 --case p12-combined-coexist --image-reset-recovery write
+qualify_p12 --case p12-combined-coexist --image-reset-recovery write || exit
+qualify_p12 --case p12-combined-coexist --image-permission-recovery write
 ```
 
 ## Local checks
@@ -126,5 +137,5 @@ git diff --check
   The combined case reads the last word of each UBO. The dedicated counter
   and shared cases also read each UBO's first word.
 - The same-GEM atomic endpoint alias is scoped to the tested SSBO and R32F
-  buffer-image case. Combined image write-denial recovery remains pending.
+  buffer-image case.
 - The product clock and FPS target remains 2 CUs at 640×480 and 60 FPS.
