@@ -12,8 +12,8 @@ static uint32_t p12_texture_value(unsigned unit, unsigned texel)
 
 static void p12_texture_setup(struct pipe_screen *s,struct pipe_context *p,void *frontend)
 {
- struct pipe_resource *resources[48]={0};
- unsigned offsets[48]={0},sizes[48]={0};
+ struct pipe_resource *resources[16];
+ struct pipe_sampler_view *samplers[16];
  for(unsigned unit=0;unit<16;unit++){
   struct pipe_resource r={.target=PIPE_BUFFER,.format=PIPE_FORMAT_R32_UINT,
    .width0=8192,.height0=1,.depth0=1,.array_size=1,
@@ -22,7 +22,6 @@ static void p12_texture_setup(struct pipe_screen *s,struct pipe_context *p,void 
   texture_handles[unit]=pipe_opengpu_resource_handle(opengpu_resource(resources[unit])->gpu);
   uint32_t *data=pipe_opengpu_resource_map(opengpu_resource(resources[unit])->gpu);assert(data);
   for(unsigned texel=0;texel<2048;texel++)data[texel]=p12_texture_value(unit,texel);
-  sizes[unit]=8192;
  }
  unsigned seen=0;
  for(unsigned native=0;native<16;native++){
@@ -30,8 +29,12 @@ static void p12_texture_setup(struct pipe_screen *s,struct pipe_context *p,void 
   assert(api<16 && !(seen&(1u<<api)));
   seen|=1u<<api;
   texture_native_units[api]=native;
+  struct pipe_sampler_view view={.format=PIPE_FORMAT_R32_UINT,.target=PIPE_BUFFER,
+   .swizzle_r=0,.swizzle_g=1,.swizzle_b=2,.swizzle_a=3};
+  view.u.buf.size=8192;
+  samplers[native]=p->create_sampler_view(p,resources[api],&view);assert(samplers[native]);
  }
- assert(cs_frontend_textures(frontend,p,resources,offsets,sizes,0,48)==16);
+ p->set_sampler_views(p,PIPE_SHADER_COMPUTE,0,16,0,false,samplers);
 }
 
 static void p12_texture_prepare_submission(struct drm_opengpu_compute *launch)
