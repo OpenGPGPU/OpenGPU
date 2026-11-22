@@ -256,7 +256,7 @@ class Entry(unittest.TestCase):
                 *qualifier.STORAGE_PUBLICATION_CASES,*qualifier.IMAGE_PUBLICATION_CASES,
                 *qualifier.TEXTURE_PUBLICATION_CASES,*qualifier.COUNTER_PUBLICATION_CASES,
                 *qualifier.SHARED_PUBLICATION_CASES,*qualifier.DMA_PUBLICATION_CASES,
-                *qualifier.L1_PUBLICATION_CASES,*qualifier.P12_COUNTER_CASES,*qualifier.P12_SHARED_CASES)
+                *qualifier.L1_PUBLICATION_CASES,*qualifier.P12_COUNTER_CASES,*qualifier.P12_SHARED_CASES,*qualifier.P12_TEXTURE_CASES)
             expected_memory='512m' if strict else '2g'
             self.assertEqual(command[command.index('--memory')+1],expected_memory)
             self.assertEqual(command[command.index('--memory-swap')+1],expected_memory)

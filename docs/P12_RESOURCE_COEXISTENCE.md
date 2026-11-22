@@ -114,10 +114,12 @@ git diff --check
 - Measured native cost per `texelFetch` (Mesa frontend and `opengpu_cs_emit`,
   512-word limit): about 20 words each when results are accumulated, about 29
   when each result is stored separately. Coordinates do not change the cost.
-  16 accumulated fetches alone are 329 words and fit. The existing P12 counter
-  program is 449 words, leaving 63 words, so 16 fetches (about 320 words) cannot
-  share one launch under the 512-word limit. Fetch compaction cannot close this
-  gap; the limit or the program structure must change.
+  16 accumulated fetches alone are 329 words. Combining 16 textures with the
+  existing 12-UBO + 4-SSBO + 4-image + 8-counter set exceeds 512 words. But a
+  third case `p12-texture-coexist` with 16 textures + 4 SSBO + 4 images (no UBO,
+  counter or shared) compiles to 462 words and fits. Together with the two
+  existing cases this gives all resources complete DUT coverage across three
+  single-launch cases, preserving the existing cross-case coverage model.
 - The end-address, namespace, alias and permission matrices over the full
   resource set remain unclosed.
 - Cancel/reset/robustness with the full resource set remains unclosed.

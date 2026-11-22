@@ -29,7 +29,7 @@ static struct compute_host_session *session;
 static struct {void *data;uint64_t bytes;unsigned maps,closed;} bos[512];
 static unsigned next_bo=1,next_sync=1,submitted,retired;
 static const char *directory;
-static int capture_only,expect_image_source_fault,uniform_case,dynamic_case,address_case,counter_case,counter_dynamic,counter_coexist,p12_counter_coexist,p12_shared_coexist;
+static int capture_only,expect_image_source_fault,uniform_case,dynamic_case,address_case,counter_case,counter_dynamic,counter_coexist,p12_counter_coexist,p12_shared_coexist,p12_texture_coexist;
 static unsigned image_permission_fault;
 static unsigned image_reset;
 static unsigned storage_view_failure,expect_storage_fault,expect_image_write_fault;
@@ -41,6 +41,7 @@ static const char *counter_name;
 static unsigned host_timeout_seconds;
 static unsigned output_handles[4],uniform_handles[12],counter_handle,counter_storage_bindings[4],index_uniform_handle;
 static unsigned image_handles[4],counter_image_bindings[4];
+static unsigned texture_handles[16],texture_native_units[16];
 static struct drm_opengpu_compute_counter_source_resources accepted_counter;
 static struct drm_opengpu_compute_uniform_resources accepted_uniforms;
 static void source_window(FILE *,unsigned,uint64_t,unsigned,unsigned);
@@ -50,6 +51,7 @@ static FILE *file(const char *,const char *);
 #include "compute_host_typed_images.h"
 #include "compute_host_image_publication.h"
 #include "compute_host_texture_publication.h"
+#include "compute_host_p12_texture.h"
 #include "compute_host_counter_publication.h"
 #include "compute_host_shared_publication.h"
 #include "compute_host_dma_publication.h"
@@ -156,9 +158,15 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
   if(dma_publication_case)dma_publication_prepare_submission(&copy);
   int error=compute_host_submit_storage(session,&copy);if(!error)submitted++;return result(error);}
  if(request==DRM_IOCTL_OPENGPU_COMPUTE_RESOURCES){struct drm_opengpu_compute_resources copy=*(struct drm_opengpu_compute_resources *)arg;
-  assert(texture_publication_case && copy.view_count==1 && copy.views);
-  if(texture_publication_case)texture_publication_prepare_submission(&copy.launch);
-  memcpy(&accepted_texture_view,(const void *)(uintptr_t)copy.views,sizeof(accepted_texture_view));
+  if(p12_texture_coexist){
+   assert(copy.view_count==16 && copy.views && !texture_publication_case);
+   p12_texture_prepare_submission(&copy.launch);
+   memcpy(accepted_p12_texture_views,(const void *)(uintptr_t)copy.views,sizeof(accepted_p12_texture_views));
+  }else{
+   assert(texture_publication_case && copy.view_count==1 && copy.views);
+   texture_publication_prepare_submission(&copy.launch);
+   memcpy(&accepted_texture_view,(const void *)(uintptr_t)copy.views,sizeof(accepted_texture_view));
+  }
   int error=compute_host_submit_resources(session,&copy);if(!error)submitted++;return result(error);}
  if(request==DRM_IOCTL_OPENGPU_COMPUTE_IMAGES){struct drm_opengpu_compute_images copy=*(struct drm_opengpu_compute_images *)arg;
   permission_views(copy.views);
@@ -222,6 +230,7 @@ static void write_oracle(void)
  else if(shared_publication_case)shared_publication_write_oracle(f);
  else if(dma_publication_case)dma_publication_write_oracle(f);
  else if(image_case)image_write_oracle(f);
+ else if(p12_texture_coexist){p12_texture_write_oracle(f);}
  else if(p12_shared_coexist){
   struct compute_host_snapshot snap;assert(!compute_host_snapshot_get(session,&snap));
   fprintf(f,"{\"schema\":\"opengpu-compute-p12-shared-oracle-v1\",\"sourceCase\":\"p12-shared-coexist\",\"groups\":1,\"local\":128,\"viewBytes\":8192,\"guard\":3735928559,\"sharedBytes\":16384,\"context\":%u,\"kernargPhysical\":%llu,\"kernargBytes\":%llu,\"outputs\":[",
@@ -372,6 +381,7 @@ int main(int argc,char **argv)
  if(!strcmp(argv[4],"counter-coexist")){counter_case=counter_coexist=1;counter_index=7;counter_name="counter-coexist";}
  if(!strcmp(argv[4],"p12-counter-coexist")){counter_case=p12_counter_coexist=1;counter_index=7;counter_offset=0;counter_name="p12-counter-coexist";}
  if(!strcmp(argv[4],"p12-shared-coexist")){p12_shared_coexist=1;}
+ if(!strcmp(argv[4],"p12-texture-coexist")){p12_texture_coexist=1;}
  for(unsigned variant=0;variant<16;variant++){
   const unsigned signed_operations[]={0,1,2,3,4,9};unsigned op=variant<10?variant:signed_operations[variant-10];
   char name[64];assert(snprintf(name,sizeof(name),variant<10?"shared-dynamic-%u":"shared-dynamic-i-%u",op)>0);
@@ -379,12 +389,12 @@ int main(int argc,char **argv)
  }
  const char *address_names[]={"shared-address-add","shared-address-cas-match","shared-address-cas-miss"};
  for(unsigned i=0;i<3;i++)if(!strcmp(argv[4],address_names[i])){address_case=1;address_kind=i;}
- assert(storage_case || publication_case || image_publication_case || texture_publication_case || counter_publication_case || shared_publication_case || dma_publication_case || image_case || counter_case || uniform_case || dynamic_case || address_case || p12_shared_coexist || !strcmp(argv[4],"shared"));
+ assert(storage_case || publication_case || image_publication_case || texture_publication_case || counter_publication_case || shared_publication_case || dma_publication_case || image_case || counter_case || uniform_case || dynamic_case || address_case || p12_shared_coexist || p12_texture_coexist || !strcmp(argv[4],"shared"));
  directory=argv[2];FILE *f=fopen(argv[1],"rb");assert(f);
  char wire[8];assert(fread(wire,1,8,f)==8 && (!memcmp(wire,"OGCP0001",8) ||
   !memcmp(wire,"OGCP0002",8) || !memcmp(wire,"OGCP0003",8)));
  unsigned version=wire[7]-'0',count=read32(f);
- if(counter_case || counter_publication_case || shared_publication_case || dma_publication_case || image_case || storage_case || publication_case || image_publication_case || texture_publication_case || p12_shared_coexist)assert(version==3 && count==112);
+ if(counter_case || counter_publication_case || shared_publication_case || dma_publication_case || image_case || storage_case || publication_case || image_publication_case || p12_texture_coexist || texture_publication_case || p12_shared_coexist)assert(version==3 && count==112);
  assert((version==3 && (count==104 || count==112)) || ((version==1 || version==2) && count==96));
  struct compute_host_profile_word *words=calloc(count+10,sizeof(*words));assert(words);
  for(unsigned i=0;i<count;i++){words[i].address=read32(f);words[i].value=read32(f);}
@@ -400,11 +410,11 @@ int main(int argc,char **argv)
   (features&OPENGPU_DRIVER_FEATURE_COMPUTE_SHARED_ATOMICS));}
  struct pipe_screen *s=opengpu_drm_screen_create(7,NULL);assert(s);struct pipe_context *p=s->context_create(s,NULL,0);assert(p);
  char dump[4096];path(dump,"actual-shared");void *frontend=(counter_case || counter_publication_case)?cs_frontend_compile_atomic_counters(argv[3],dump):
-  (image_case || storage_case || publication_case || image_publication_case || texture_publication_case || shared_publication_case || dma_publication_case || p12_shared_coexist)?cs_frontend_compile_buffers(argv[3],dump):cs_frontend_compile(argv[3],dump);assert(frontend);
+  (image_case || storage_case || publication_case || image_publication_case || texture_publication_case || shared_publication_case || dma_publication_case || p12_shared_coexist || p12_texture_coexist)?cs_frontend_compile_buffers(argv[3],dump):cs_frontend_compile(argv[3],dump);assert(frontend);
  {
   unsigned expected_shared=0;
   if(shared_publication_case && shared_publication_index==1)expected_shared=128; /* dual own-stripe */
-  else if(!(uniform_case || counter_case || counter_publication_case || shared_publication_case || dma_publication_case || image_case || storage_case || publication_case || image_publication_case || texture_publication_case))expected_shared=16384;
+  else if(!(uniform_case || counter_case || counter_publication_case || shared_publication_case || dma_publication_case || image_case || storage_case || publication_case || image_publication_case || texture_publication_case || p12_texture_coexist))expected_shared=16384;
   /* P12 counter coexistence intentionally has no shared memory: the compiler
    * profile cannot lower atomic counters and shared memory in one shader. */
   assert(cs_frontend_shared_bytes(frontend)==expected_shared);
@@ -422,13 +432,14 @@ int main(int argc,char **argv)
  if(publication_case)publication_setup(frontend,output);
  if(image_publication_case)image_publication_setup(s,p,frontend,output);
  if(texture_publication_case)texture_publication_setup(s,p,frontend,output);
+ if(p12_texture_coexist)p12_texture_setup(s,p,frontend,output);
  if(counter_publication_case)counter_publication_setup(s,p,frontend,output);
  if(shared_publication_case)shared_publication_setup(frontend,output);
  if(dma_publication_case)dma_publication_setup(frontend,output);
  if(mixed_case)mixed_setup(s,p,frontend,output);
  else if(image_case)image_setup(s,p,frontend);
- if(counter_case || p12_shared_coexist)for(unsigned i=0;i<4;i++)counter_storage_bindings[i]=cs_frontend_storage_binding(frontend,i);
- if(counter_coexist || p12_counter_coexist || p12_shared_coexist){
+ if(counter_case || p12_shared_coexist || p12_texture_coexist)for(unsigned i=0;i<4;i++)counter_storage_bindings[i]=cs_frontend_storage_binding(frontend,i);
+ if(counter_coexist || p12_counter_coexist || p12_shared_coexist || p12_texture_coexist){
   struct pipe_resource *images[4];struct pipe_image_view views[4]={0};
   for(unsigned i=0;i<4;i++){
    struct pipe_resource image={.target=PIPE_BUFFER,.format=PIPE_FORMAT_R32_UINT,
@@ -488,7 +499,7 @@ int main(int argc,char **argv)
  }
  struct pipe_grid_info grid={.grid={4,1,1},.block={128,1,1}};
  if(counter_case){grid.block[0]=4;if(counter_dynamic)grid.grid[0]=counter_index?1:2;}
- if(p12_counter_coexist || p12_shared_coexist){grid.grid[0]=1;grid.block[0]=128;}
+ if(p12_counter_coexist || p12_shared_coexist || p12_texture_coexist){grid.grid[0]=1;grid.block[0]=128;}
  if(image_case){grid.block[0]=4;grid.grid[0]=2;}
  if(storage_case){grid.block[0]=4;grid.grid[0]=2;}
  if(publication_case || image_publication_case || texture_publication_case || counter_publication_case || shared_publication_case || dma_publication_case){

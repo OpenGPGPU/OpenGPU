@@ -20,6 +20,8 @@ def write_sources(out):
             "memoryBarrierBuffer();result.v[128u+id]=%du;}" % epoch))
     from compute_p12_shared_cases import write_sources as p12_write_sources
     p12_write_sources(out)
+    from compute_p12_texture_cases import write_sources as p12_texture_write_sources
+    p12_texture_write_sources(out)
 
 
 if __name__ == "__main__":
