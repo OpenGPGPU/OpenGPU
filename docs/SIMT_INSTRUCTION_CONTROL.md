@@ -53,5 +53,13 @@ Linux word validator and the Gallium submission fixture in the sanitizer-enabled
 [`test_gallium_compute_control_flow.py` run](GALLIUM_COMPUTE.md#forward-ifelse-cpu-acceptance).
 An independent CPU decoder executes the submitted words and checks each of
 128 lane results plus output guards against source-level expectations.
-Full DUT execution of the emitted loop words, nested loops, `continue`, and
-mutable resource operations inside loops remain open.
+The original submissions for all three loops also passed the native 16-lane,
+eight-warp CU replay. Each produced and acknowledged 128 output writes without
+traps, with exact guards, held completion, and stable address spaces. The
+dynamic loop issued 56 checked uniform loads. This replay covers the CU and
+its memory clients. Full-system Linux execution, nested loops and `continue`
+remain open.
+
+The `storage-loop` CPU fixture reads the original SSBO and publishes 384 words
+across three iterations. The Linux validator checks each storage operation
+and rejects a store whose operand capture is separated from it by a loop exit.
