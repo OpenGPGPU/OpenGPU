@@ -123,8 +123,12 @@ no raw evidence archive is needed.
 
 The sanitizer-enabled `test_gallium_compute_barriers.py` run compiled ten
 original ESSL shaders. The new four-lane fixture places
-`memoryBarrierBuffer()` between storage operations on the selected lanes
-of a three-iteration loop. The emitted native fence stayed inside the
-conditional scope and before the loop backedge, and the production Linux
-word validator accepted the stream without a workgroup rendezvous.
-Full DUT execution of this loop fixture remains pending.
+`memoryBarrierBuffer()` after a store and before a reload of the same SSBO
+word on selected lanes of a three-iteration loop. Mesa emits the store,
+fence, reload and result store inside the conditional scope and before
+the loop backedge. The Linux word validator accepted the stream.
+The complete owner harness accepts `--case loop-branch`. Its sanitized
+Mesa/Linux CPU capture passed. The byte oracle requires twelve selected
+result words and preserves every other physical byte. Tests reject damaged
+results, writes to skipped positions and unchanged RAM. Full DUT execution
+of this fixture remains pending.

@@ -30,7 +30,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         from compute_owner_cases import (CASES, COUNTER_CASES, counter_parameters, IMAGE_CASES,
             LEGACY_IMAGE_CASES, CONTENDED_IMAGE_CASES, MIXED_ATOMIC_CASES, STORAGE_ATOMIC_CASES,
             STORAGE_PUBLICATION_CASES, IMAGE_PUBLICATION_CASES, TEXTURE_PUBLICATION_CASES,
-            COUNTER_PUBLICATION_CASES, SHARED_PUBLICATION_CASES, DMA_PUBLICATION_CASES, P12_SHARED_CASES, P12_TEXTURE_CASES, COMPUTE_LOOP_CASES)
+            COUNTER_PUBLICATION_CASES, SHARED_PUBLICATION_CASES, DMA_PUBLICATION_CASES, P12_SHARED_CASES, P12_TEXTURE_CASES, COMPUTE_LOOP_CASES, LOOP_BARRIER_CASE)
         from compute_storage_atomic_cases import parameters as storage_parameters
         from compute_storage_publication_cases import parameters as publication_parameters
         from compute_image_publication_cases import parameters as image_publication_parameters
@@ -561,6 +561,9 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         write_sources(sources)
     elif host_execution and args.case in P12_TEXTURE_CASES:
         from test_gallium_shared_publication import write_sources
+        write_sources(sources)
+    elif host_execution and args.case == LOOP_BARRIER_CASE:
+        from test_gallium_compute_barriers import write_sources
         write_sources(sources)
     elif host_execution and args.case in COMPUTE_LOOP_CASES:
         from test_gallium_compute_control_flow import write_sources

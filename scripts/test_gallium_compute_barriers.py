@@ -14,10 +14,11 @@ def write_sources(out):
     (out / "branch.comp").write_text(prefix.replace("local_size_x=1", "local_size_x=4") +
         "void main(){uint id=gl_LocalInvocationID.x;if((id&1u)!=0u){"
         "data.v[id]=7u;memoryBarrierBuffer();data.v[id+4u]=data.v[id+8u]+3u;}}\n")
-    (out / "loop-branch.comp").write_text(prefix.replace("local_size_x=1", "local_size_x=4") +
+    guarded = prefix.replace("local_size_x=1", "local_size_x=4")
+    (out / "loop-branch.comp").write_text(guarded +
         "void main(){uint id=gl_LocalInvocationID.x;for(uint step=0u;step<3u;step++){"
         "if((step&1u)!=(id&1u)){uint i=id+step*16u;data.v[i]=step^id;"
-        "memoryBarrierBuffer();data.v[i+4u]=data.v[i+8u]+3u;}}}")
+        "memoryBarrierBuffer();data.v[i+4u]=data.v[i]+3u;}}}")
     for epoch in (1, 2):
         (out / ("publication-%d.comp" % epoch)).write_text(prefix +
             "void main(){data.v[1]=%du;memoryBarrierBuffer();data.v[17]=%du;}\n" % (epoch * 7, epoch))
