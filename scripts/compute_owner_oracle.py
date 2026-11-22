@@ -8,7 +8,7 @@ import bisect
 import mmap
 from pathlib import Path
 import struct
-from compute_owner_cases import STORAGE_LOOP_CASE, STORAGE_LOOP_SCHEMA
+from compute_owner_cases import NESTED_LOOP_CASE, NESTED_LOOP_SCHEMA, STORAGE_LOOP_CASE, STORAGE_LOOP_SCHEMA
 from compute_owner_protocol import required_flags, strict_json, uint
 
 
@@ -243,18 +243,32 @@ def allocation_window(memory, value, count, binding):
 def verify(initial, returned, description):
     if [(a, b) for a, b, _ in initial.ranges] != [(a, b) for a, b, _ in returned.ranges]:
         raise ValueError('DUT memory replaced original physical allocations')
-    if description.get('schema') == STORAGE_LOOP_SCHEMA:
-        required_flags(description, dict(sourceCase=STORAGE_LOOP_CASE, viewBytes=8192,
-                                         groups=1, local=128, guard=0xdeadbeef))
-        source = allocation_window(initial, description.get('input'), 8192, 1)
+    schema = description.get('schema')
+    if schema in (STORAGE_LOOP_SCHEMA, NESTED_LOOP_SCHEMA):
+        storage = schema == STORAGE_LOOP_SCHEMA
+        required_flags(description, dict(sourceCase=STORAGE_LOOP_CASE if storage else NESTED_LOOP_CASE,
+                                         viewBytes=8192, groups=1, local=128, guard=0xdeadbeef))
         output = allocation_window(initial, description.get('output'), 8192, 0)
         guard = struct.pack('<I', 0xdeadbeef)
-        if abs(source - output) < 8192 or initial.read(output, 8192) != guard * 2048:
-            raise ValueError('storage loop requires distinct guarded output')
-        values = struct.unpack('<128I', initial.read(source, 512))
-        if len(set(values)) != 128 or initial.read(source + 512, 7680) != guard * 1920:
-            raise ValueError('storage loop requires distinct lane inputs and intact input guard')
-        expected = struct.pack('<384I', *(value ^ step for step in range(3) for value in values))
+        if initial.read(output, 8192) != guard * 2048:
+            raise ValueError('compute loop requires guard-initialized output')
+        if storage:
+            source = allocation_window(initial, description.get('input'), 8192, 1)
+            if abs(source - output) < 8192:
+                raise ValueError('storage loop requires distinct input and output')
+            values = struct.unpack('<128I', initial.read(source, 512))
+            if len(set(values)) != 128 or initial.read(source + 512, 7680) != guard * 1920:
+                raise ValueError('storage loop requires distinct lane inputs and intact input guard')
+            expected = struct.pack('<384I', *(value ^ step for step in range(3) for value in values))
+        else:
+            values = []
+            for lane in range(128):
+                value = lane
+                for outer in range(3):
+                    for inner in range((lane & 3) + 1):
+                        value = (value * 3 + outer + inner) & 0xffffffff
+                values.append(value)
+            expected = struct.pack('<128I', *values)
         verify_byte_changes(initial, returned, [(output, expected)])
         return
     counter = description.get('schema') == 'opengpu-compute-counter-oracle-v1'
