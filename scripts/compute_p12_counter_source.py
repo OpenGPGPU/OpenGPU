@@ -149,6 +149,11 @@ def recipe(memory, value):
     return source, outputs, images, ubos
 
 
+def final_counter_bytes():
+    return struct.pack('<%uI' % COUNTER_COUNT,
+                        *((counter_seed(index) + INCREMENTS) & 0xffffffff for index in range(COUNTER_COUNT)))
+
+
 def returned_outputs(initial, returned, description):
     source, outputs, images, ubos = recipe(initial, description)
     combined = description['sourceCase'] == COMBINED
@@ -174,8 +179,7 @@ def returned_outputs(initial, returned, description):
                 require(sorted(actual[index::COUNTER_COUNT]) == expected,
                         'P12 counter returned values differ for slot %u' % index)
             result.append((first, data))
-    final = struct.pack('<%uI' % COUNTER_COUNT,
-                        *((counter_seed(index) + INCREMENTS) & 0xffffffff for index in range(COUNTER_COUNT)))
+    final = final_counter_bytes()
     require(returned.read(source, COUNTER_BYTES) == final, 'P12 counter final values or wrap differ')
     result.append((source, final))
     return result

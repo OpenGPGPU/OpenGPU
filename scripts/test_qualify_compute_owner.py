@@ -55,13 +55,14 @@ class Entry(unittest.TestCase):
         args=argparse.Namespace(mesa=ROOT/'mesa',mesa_build=ROOT/'mesa-build',
             drm_include=ROOT/'drm',library_directory=ROOT/'lib',mesa_link_libs='-lfixture',
             counter_inputs=ROOT/'inputs',timeout=30,expect_image_source_fault=False,image_source_recovery=False)
-        for channel in ('read','write'):
+        from compute_p12_counter_cases import COMBINED
+        for case,channel in ((RECOVERY_CASE,'read'),(RECOVERY_CASE,'write'),(COMBINED,'read')):
             args.image_reset_recovery=channel
             commands=[qualifier.producer_command(args,gpu=ROOT,source=ROOT,ntt=ROOT/'ntt',
-                image='sha256:fixture',name='reset-'+str(i),case=RECOVERY_CASE,
+                image='sha256:fixture',name='reset-'+str(i),case=case,
                 source_fault=False,physical_base=base,reset=channel if i==0 else None)
                 for i,base in enumerate(RECOVERY_BASES)]
-            recovery_commands(dict(schema=RECOVERY_COMMAND_SCHEMA,rounds=commands),reset=channel)
+            recovery_commands(dict(schema=RECOVERY_COMMAND_SCHEMA,rounds=commands),case=case,reset=channel)
             self.assertNotIn('--expect-image-source-fault',commands[0])
             self.assertNotIn('--expect-image-reset',commands[1])
             for case in ('image-atomic-2d-r32f','counter-increment','both'):
@@ -69,6 +70,9 @@ class Entry(unittest.TestCase):
                 with patch.object(qualifier.subprocess,'run') as run:
                     with self.assertRaises(ValueError):qualifier.checked_inputs(args)
                     run.assert_not_called()
+        with self.assertRaises(ValueError):
+            qualifier.producer_command(args,gpu=ROOT,source=ROOT,ntt=ROOT/'ntt',
+                image='sha256:fixture',name='combined-write',case=COMBINED,reset='write')
         for options in (dict(reset=True),dict(reset='rw'),dict(reset='read',source_fault=True),
                         dict(reset='read',permission='write')):
             with self.assertRaises(ValueError):qualifier.producer_command(args,gpu=ROOT,source=ROOT,ntt=ROOT/'ntt',

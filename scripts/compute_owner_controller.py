@@ -17,7 +17,7 @@ import tempfile
 import time
 from compute_owner_protocol import (strict_json, profile_bytes, held_bytes,
     retired_bytes, failed_held_bytes, failed_retired_bytes, cleanup_authorization, checked_cleanup,
-    uint, required_flags, RECOVERY_CASE, RECOVERY_BASES, RECOVERY_COMMAND_SCHEMA)
+    uint, required_flags, RECOVERY_CASE, RECOVERY_BASES, RECOVERY_COMMAND_SCHEMA, reset_case_supported)
 from compute_owner_oracle import SparseMemory, verify, union_original_memory
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -249,7 +249,9 @@ def unchanged_inputs(directory, inputs):
         require(input_digest(directory/name)==digest, 'counter immutable READY input changed: '+name)
 
 
-def recovery_commands(value, *, permission=None, reset=None):
+def recovery_commands(value, *, case=RECOVERY_CASE, permission=None, reset=None):
+    require(case==RECOVERY_CASE or reset_case_supported(case,reset),
+            'unsupported source for continuous recovery')
     require(permission is None or permission in ('read','write'),'unknown image permission denial')
     require(reset is None or (reset in ('read','write') and permission is None),'unknown/ambiguous image reset')
     require(type(value) is dict and set(value)=={'schema','rounds'} and
@@ -269,7 +271,7 @@ def recovery_commands(value, *, permission=None, reset=None):
         if index==0 and reset is not None:
             position=command.index('--expect-image-reset')
             require(position+1<len(command) and command[position+1]==reset,'wrong delayed image response channel')
-        for flag,wanted in [('--case',RECOVERY_CASE),('--physical-base',str(RECOVERY_BASES[index]))]:
+        for flag,wanted in [('--case',case),('--physical-base',str(RECOVERY_BASES[index]))]:
             require(command.count(flag)==1 and command.index(flag)+1<len(command) and
                     command[command.index(flag)+1]==wanted,'wrong original recovery recipe/allocation namespace')
     return value['rounds']
@@ -631,7 +633,7 @@ def main():
     require(0 < args.timeout <= 604800, 'timeout must be 1..604800 seconds')
     command = strict_json(args.bridge_command)
     if args.image_source_recovery or args.image_permission_recovery or args.image_reset_recovery:
-        command=recovery_commands(command,permission=args.image_permission_recovery,reset=args.image_reset_recovery)
+        command=recovery_commands(command,case=args.case,permission=args.image_permission_recovery,reset=args.image_reset_recovery)
     else:
         require(type(command) is list and command and all(type(x) is str and x for x in command),
                 'bridge command must be a nonempty argv array')
@@ -672,8 +674,9 @@ def main():
         require(qualified_profile==IMAGE_FLOAT_PROFILE,'L1 publication requires the complete float owner')
     if args.expect_image_source_fault or args.image_source_recovery or args.image_permission_recovery or args.image_reset_recovery:
         from owner_resource_contract import IMAGE_FLOAT_PROFILE
-        require(args.case=='image-atomic-buffer-r32f' and qualified_profile==IMAGE_FLOAT_PROFILE,
-                'source fault requires the original buffer exchange and qualified float executor')
+        require((args.case==RECOVERY_CASE or reset_case_supported(args.case,args.image_reset_recovery)) and
+                qualified_profile==IMAGE_FLOAT_PROFILE,
+                'fault and reset recovery require a qualified float executor')
     if args.case in GLOBAL_ATOMIC_CASES:
         from owner_resource_contract import IMAGE_FLOAT_PROFILE
         require(qualified_profile==IMAGE_FLOAT_PROFILE, 'global atomics require the complete float owner')
