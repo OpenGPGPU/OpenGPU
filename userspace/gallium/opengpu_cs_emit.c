@@ -158,7 +158,8 @@ static int packets(const struct tgsi_token *t)
             /* TGSI instruction NrTokens counts its following tokens, unlike
              * declaration/immediate/property lengths, which include the head. */
             n = 1u + insn.NrTokens;
-            if ((insn.Label && insn.Opcode != TGSI_OPCODE_UIF && insn.Opcode != TGSI_OPCODE_ELSE) ||
+            bool loop_label = insn.Opcode == TGSI_OPCODE_BGNLOOP || insn.Opcode == TGSI_OPCODE_ENDLOOP;
+            if ((insn.Label && !loop_label && insn.Opcode != TGSI_OPCODE_UIF && insn.Opcode != TGSI_OPCODE_ELSE) ||
                 insn.Padding || insn.Saturate || (insn.Memory && insn.Texture) ||
                 insn.NumDstRegs > 1 ||
                 insn.NumSrcRegs > (insn.Opcode == TGSI_OPCODE_ATOMCAS ? 4u :
@@ -169,7 +170,7 @@ static int packets(const struct tgsi_token *t)
                 struct tgsi_instruction_label label;
                 if (q >= pos + n) return -1;
                 memcpy(&label, t + q++, 4);
-                if (label.Padding) return -1;
+                if (label.Padding || (loop_label && label.Label)) return -1;
             }
             if (insn.Texture) {
                 struct tgsi_instruction_texture tex;
@@ -1161,10 +1162,64 @@ static int materialize_control_temporaries(struct build *b,
     return b->failed ? -1 : 0;
 }
 
+static int emit_loop(struct build *b, const struct cf_instruction *ir,
+                     unsigned first, unsigned last)
+{
+    unsigned exits[512], exit_count = 0;
+    unsigned exit_registers[CS_TEMPS][4];
+    if (b->shared || last <= first) return -1;
+    unsigned sync = b->p.words;
+    word(b, 0);
+    ++b->cf_depth;
+    for (unsigned i = first + 1; i < last; ++i) {
+        const struct cf_instruction *node = &ir[i];
+        unsigned op = node->in.Instruction.Opcode;
+        if (op == TGSI_OPCODE_UIF) {
+            if (node->alternative != 512 || node->end != i + 2 ||
+                node->end >= last || ir[i + 1].in.Instruction.Opcode != TGSI_OPCODE_BRK ||
+                source(b, &node->in.Src[0], 0, 22))
+                return -1;
+            splat(b, 23, 0);
+            if (!exit_count) memcpy(exit_registers, b->reg, sizeof(exit_registers));
+            else
+                for (unsigned t = 0; t < CS_TEMPS; ++t)
+                    for (unsigned c = 0; c < 4; ++c)
+                        if (exit_registers[t][c] != b->reg[t][c])
+                            exit_registers[t][c] = 0;
+            exits[exit_count++] = b->p.words;
+            word(b, 0);
+            i = node->end;
+        } else if (instruction(b, &node->in)) {
+            return -1;
+        }
+    }
+    --b->cf_depth;
+    if (!exit_count || b->failed) return -1;
+    unsigned displacement = ((sync + 1u - b->p.words) * 4u) & 0x1fffffu;
+    word(b, ((displacement >> 20) & 1u) << 31 |
+         ((displacement >> 1) & 1023u) << 21 |
+         ((displacement >> 11) & 1u) << 20 |
+         ((displacement >> 12) & 255u) << 12 | 0x6fu);
+    unsigned marker = b->p.words;
+    word(b, 0x205bu);
+    if (b->failed) return -1;
+    b->p.code[sync] = branch_word(3, 0, 0, (marker - sync) * 4u);
+    for (unsigned i = 0; i < exit_count; ++i)
+        b->p.code[exits[i]] = branch_word(1, 22, 23, (marker - exits[i]) * 4u);
+    memcpy(b->reg, exit_registers, sizeof(exit_registers));
+    b->address_defined = 0;
+    return 0;
+}
+
 static int span(struct build *b, const struct cf_instruction *ir, unsigned first, unsigned last)
 {
     for (unsigned i = first; i < last; i++) {
         const struct cf_instruction *node = &ir[i];
+        if (node->in.Instruction.Opcode == TGSI_OPCODE_BGNLOOP) {
+            if (node->end >= last || emit_loop(b, ir, i, node->end)) return -1;
+            i = node->end;
+            continue;
+        }
         if (node->in.Instruction.Opcode != TGSI_OPCODE_UIF) {
             if (instruction(b, &node->in)) return -1;
             continue;
@@ -1267,7 +1322,19 @@ static int control_program(const void *tokens, const struct opengpu_cs_shared *s
             node->in = p.FullToken.FullInstruction; node->alternative = node->end = 512;
             const struct tgsi_instruction *in = &node->in.Instruction;
             unsigned op = in->Opcode;
-            if (op == TGSI_OPCODE_UIF || op == TGSI_OPCODE_ELSE || op == TGSI_OPCODE_ENDIF) {
+            if (op == TGSI_OPCODE_BGNLOOP || op == TGSI_OPCODE_ENDLOOP) {
+                if (in->Memory || in->NumDstRegs || in->NumSrcRegs) goto parsed;
+                if (op == TGSI_OPCODE_BGNLOOP) {
+                    if (depth == CS_IF_DEPTH) goto parsed;
+                    stack[depth++] = count;
+                } else {
+                    if (!depth) goto parsed;
+                    struct cf_instruction *owner = &ir[stack[depth - 1]];
+                    if (owner->in.Instruction.Opcode != TGSI_OPCODE_BGNLOOP) goto parsed;
+                    owner->end = count;
+                    depth--;
+                }
+            } else if (op == TGSI_OPCODE_UIF || op == TGSI_OPCODE_ELSE || op == TGSI_OPCODE_ENDIF) {
                 if (in->Memory || in->NumDstRegs || in->NumSrcRegs != (op == TGSI_OPCODE_UIF ? 1u : 0u)) goto parsed;
                 if (op == TGSI_OPCODE_UIF) {
                     if (depth == CS_IF_DEPTH) goto parsed;
@@ -1275,6 +1342,7 @@ static int control_program(const void *tokens, const struct opengpu_cs_shared *s
                 } else {
                     if (!depth) goto parsed;
                     struct cf_instruction *owner = &ir[stack[depth - 1]];
+                    if (owner->in.Instruction.Opcode != TGSI_OPCODE_UIF) goto parsed;
                     if (op == TGSI_OPCODE_ELSE) {
                         if (owner->alternative != 512) goto parsed;
                         owner->alternative = count;
@@ -1288,6 +1356,8 @@ static int control_program(const void *tokens, const struct opengpu_cs_shared *s
                         }
                     }
                 }
+            } else if (op == TGSI_OPCODE_BRK) {
+                if (in->Memory || in->NumDstRegs || in->NumSrcRegs) goto parsed;
             } else if (op == TGSI_OPCODE_END) {
                 if (depth || in->NumDstRegs || in->NumSrcRegs || in->Memory) goto parsed;
                 ended = 1;
@@ -1365,7 +1435,9 @@ static int emit_program(const void *tokens, const struct opengpu_cs_shared *shar
         if (p.FullToken.Token.Type == TGSI_TOKEN_TYPE_INSTRUCTION &&
             (p.FullToken.FullInstruction.Instruction.Opcode == TGSI_OPCODE_UIF ||
              p.FullToken.FullInstruction.Instruction.Opcode == TGSI_OPCODE_ELSE ||
-             p.FullToken.FullInstruction.Instruction.Opcode == TGSI_OPCODE_ENDIF)) {
+             p.FullToken.FullInstruction.Instruction.Opcode == TGSI_OPCODE_ENDIF ||
+             p.FullToken.FullInstruction.Instruction.Opcode == TGSI_OPCODE_BGNLOOP ||
+             p.FullToken.FullInstruction.Instruction.Opcode == TGSI_OPCODE_ENDLOOP)) {
             tgsi_parse_free(&p);
             return control_program(tokens, shared, out, images);
         }
