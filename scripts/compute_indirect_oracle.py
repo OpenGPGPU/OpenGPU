@@ -1,5 +1,6 @@
 """Check actual RAM against original ESSL stores without executing instructions."""
 import bisect
+from math import prod
 from dataclasses import dataclass
 from pathlib import Path
 import re
@@ -12,6 +13,14 @@ from compute_counter_source import translate
 def require(ok, message):
     if not ok:
         raise ValueError('indirect bytes: ' + message)
+
+
+def consumer_result(grid):
+    seed = 7
+    for step in range(grid[0]):
+        seed = (seed * 3 + step) & 0xffffffff
+    return b''.join(struct.pack('<4I', *grid, index ^ seed)
+                    for index in range(prod(grid) * 8))
 
 
 class Reader:
@@ -269,7 +278,12 @@ class Chain:
                         'private counts lack their exact RO/NX/UC2 mapping')
         words = (directory / 'code.words').read_text().splitlines()
         require(words and all(re.fullmatch('[0-9a-f]{8}', word) for word in words), 'invalid actual code words')
-        code = b''.join(struct.pack('<I', int(word, 16)) for word in words)
+        instructions = tuple(int(word, 16) for word in words)
+        if opcode == 14:
+            require(any((word & 0x707f) == 0x305b for word in instructions) and
+                    any((word & 0x80000fff) == 0x8000006f for word in instructions),
+                    'actual indirect consumer lost its loop scope or backward jump')
+        code = struct.pack('<%dI' % len(instructions), *instructions)
         require(len(code) == uint(d['codeBytes'], 64) and before.read(uint(d['codePhysical']), len(code)) == code,
                 'actual compiler code snapshot differs')
         for offset in range(0, len(code), 4):
@@ -279,7 +293,7 @@ class Chain:
         self.command, self.context, self.opcode = command, d['context'], opcode
         self.args, self.actions, self.inactive = args, actions, inactive
         self.expected = [(source.physical + 4092, struct.pack('<3I', *grid))] if opcode == 0 else (
-            [(output.physical, b''.join(struct.pack('<4I', 2, 2, 2, n) for n in range(64)))]
+            [(output.physical, consumer_result(grid))]
             if self.index in (1, 3) else [])
         return d
 

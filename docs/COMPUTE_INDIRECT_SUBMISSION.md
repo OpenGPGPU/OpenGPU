@@ -204,7 +204,12 @@ independent CPU oracle. The validator permits only the already checked
 dispatch XYZ loads inside this loop dialect. ASan/UBSan runs passed 20
 accepted indirect submissions across five shaders, and the SIMT validator
 suite passed 533 checks, including rejection of a fourth dispatch word.
-This grid-bound loop remains pending on the complete DUT.
+The continuous-owner producer now compiles the same grid-bound consumer.
+Its oracle requires the captured opcode14 shader to contain a SIMT scope
+and backward jump, evaluates the loop from the original GPU-produced grid,
+and checks all output and guard bytes. The revised ten-phase chain remains
+pending on the complete DUT. Use the continuous-owner command below with
+a model prepared from the checked-out source.
 
 With pinned Mesa22.3.6 source/build, the checked uniform-index patch and DRM
 headers selected through `OPENGPU_MESA_DIR`, `OPENGPU_MESA_BUILD` and

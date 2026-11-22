@@ -10,6 +10,19 @@ PHASES = ((0, 0, 0), (4, 0, 0), (4, 13, 0), (4, 0, 0), (1, 0, 1),
           (4, 0, 1), (2, 0, 2), (4, 0, 2), (3, 0, 3), (4, 0, 3))
 
 
+LOOP_CONSUMER = '''#version 310 es
+precision highp int;
+layout(local_size_x=4,local_size_y=2,local_size_z=1) in;
+layout(std430,binding=2) buffer Output { uvec4 values[]; };
+void main() {
+  uint group=gl_WorkGroupID.x+gl_NumWorkGroups.x*(gl_WorkGroupID.y+gl_NumWorkGroups.y*gl_WorkGroupID.z);
+  uint index=group*8u+gl_LocalInvocationIndex;
+  uint seed=7u;
+  for(uint step=0u;step<gl_NumWorkGroups.x;step++) seed=seed*3u+step;
+  values[index]=uvec4(gl_NumWorkGroups,index^seed);
+}
+'''
+
 def write_sources(directory):
     directory = Path(directory)
     for name, grid in zip(PROGRAMS[:4], GRIDS):
@@ -23,13 +36,4 @@ void main() {
   }
 }
 ''' % grid)
-    directory.joinpath(PROGRAMS[4]).write_text('''#version 310 es
-precision highp int;
-layout(local_size_x=4,local_size_y=2,local_size_z=1) in;
-layout(std430,binding=2) buffer Output { uvec4 values[]; };
-void main() {
-  uint group=gl_WorkGroupID.x+gl_NumWorkGroups.x*(gl_WorkGroupID.y+gl_NumWorkGroups.y*gl_WorkGroupID.z);
-  uint index=group*8u+gl_LocalInvocationIndex;
-  values[index]=uvec4(gl_NumWorkGroups,index);
-}
-''')
+    directory.joinpath(PROGRAMS[4]).write_text(LOOP_CONSUMER)
