@@ -110,10 +110,14 @@ git diff --check
   remains open.
 - The P12 texture target is 16 units per stage (the GLSL ES 3.10 minimum), and
   they must be exercised in the combined launch; neither case here binds
-  texture units. A 16-fetch program alone measured 467 words, above the
-  existing 449-word P12 counter program's remaining headroom under the 512-word
-  limit, so the texture target cannot be met in the combined launch without
-  changing that limit or the fetch sequence.
+  texture units.
+- Measured native cost per `texelFetch` (Mesa frontend and `opengpu_cs_emit`,
+  512-word limit): about 20 words each when results are accumulated, about 29
+  when each result is stored separately. Coordinates do not change the cost.
+  16 accumulated fetches alone are 329 words and fit. The existing P12 counter
+  program is 449 words, leaving 63 words, so 16 fetches (about 320 words) cannot
+  share one launch under the 512-word limit. Fetch compaction cannot close this
+  gap; the limit or the program structure must change.
 - The end-address, namespace, alias and permission matrices over the full
   resource set remain unclosed.
 - Cancel/reset/robustness with the full resource set remains unclosed.
