@@ -39,8 +39,7 @@ healthy successor kernel remain usable.
 
 The bounded Gallium integer compiler and compute kernel admission now accept a
 canonical forward if/else subset; see [its CPU evidence](GALLIUM_COMPUTE.md#forward-ifelse-cpu-acceptance)
-and [actual compiler-word CU qualification](GALLIUM_COMPUTE.md#explicit-forward-ifelse-cu-qualification). General
-loop/break compilation and admission remain open. No new capability bit is
+and [actual compiler-word CU qualification](GALLIUM_COMPUTE.md#explicit-forward-ifelse-cu-qualification). No new capability bit is
 advertised. Existing hardware tests cover nested divergence,
 loops, capacity/missing-scope/misalignment faults, held offers and healthy reuse
 at compact and default 128-thread capacity. See [validation](EXECUTION_VALIDATION.md).
@@ -63,3 +62,9 @@ remain open.
 The `storage-loop` CPU fixture reads the original SSBO and publishes 384 words
 across three iterations. The Linux validator checks each storage operation
 and rejects a store whose operand capture is separated from it by a loop exit.
+The native CU replay passed for the same 86-word Mesa submission. It observed
+384 checked SSBO reads, 384 output writes and 384 write acknowledgements
+across eight warps. Output guards, held completion and stable address spaces
+passed with zero traps. The full replay passed all nine captured submissions.
+Use the [capture and CU replay commands](GALLIUM_COMPUTE.md#explicit-forward-ifelse-cu-qualification)
+to reproduce. This result covers the native CU and memory clients.
