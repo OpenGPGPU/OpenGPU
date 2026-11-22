@@ -8,7 +8,8 @@ import bisect
 import mmap
 from pathlib import Path
 import struct
-from compute_owner_cases import COMPUTE_LOOP_SCHEMAS, LOOP_BARRIER_CASE, MASKED_STORAGE_LOOP_CASE, NESTED_LOOP_CASE, STORAGE_LOOP_CASE
+from compute_owner_cases import (COMPUTE_LOOP_SCHEMAS, INDEXED_UNIFORM_LOOP_CASE, LOOP_BARRIER_CASE,
+    MASKED_STORAGE_LOOP_CASE, NESTED_LOOP_CASE, STORAGE_LOOP_CASE)
 from compute_owner_protocol import required_flags, strict_json, uint
 
 
@@ -264,6 +265,23 @@ def verify(initial, returned, description):
                         writes.extend(((output + 4 * word, struct.pack('<I', value)),
                                        (output + 4 * (word + 4), struct.pack('<I', value + 3))))
             verify_byte_changes(initial, returned, writes)
+            return
+        if case == INDEXED_UNIFORM_LOOP_CASE:
+            defaults = allocation_window(initial, description.get('defaults'), 4096, 0)
+            if defaults < output + 8192 and output < defaults + 4096:
+                raise ValueError('indexed uniform loop requires distinct default and output views')
+            components = struct.unpack('<1024I', initial.read(defaults, 4096))
+            if len(set(components[3::4])) != 256:
+                raise ValueError('indexed uniform loop needs distinct array elements')
+            values = []
+            for lane in range(128):
+                value = lane
+                for step in range(3):
+                    if (step & 1) != (lane & 1):
+                        index = (lane + step * 127) & 255
+                        value = (value * 3 + components[4 * index + 3]) & 0xffffffff
+                values.append(value)
+            verify_byte_changes(initial, returned, [(output, struct.pack('<128I', *values))])
             return
         if case in (STORAGE_LOOP_CASE, MASKED_STORAGE_LOOP_CASE):
             source = allocation_window(initial, description.get('input'), 8192, 1)
