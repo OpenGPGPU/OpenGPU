@@ -118,3 +118,13 @@ discovered by default CI. No frame is rendered.
 Delete task-specific CPU objects, generated inputs, models, caches and logs
 when validation/diagnosis ends. Keep source and these concise results/commands;
 no raw evidence archive is needed.
+
+## Conditional fences inside a loop
+
+The sanitizer-enabled `test_gallium_compute_barriers.py` run compiled ten
+original ESSL shaders. The new four-lane fixture places
+`memoryBarrierBuffer()` between storage operations on the selected lanes
+of a three-iteration loop. The emitted native fence stayed inside the
+conditional scope and before the loop backedge, and the production Linux
+word validator accepted the stream without a workgroup rendezvous.
+Full DUT execution of this loop fixture remains pending.
