@@ -19,10 +19,12 @@ def reset_plan(memory, description, channel, *, owner_profile):
     case = description.get('sourceCase')
     require(owner_profile==IMAGE_FLOAT_PROFILE and reset_case_supported(case,channel),
             'response hold requires a supported live recipe and complete float owner')
+    counter_window = None
     if case == COMBINED:
-        from compute_p12_counter_source import recipe as combined_recipe
+        from compute_p12_counter_source import COUNTER_BYTES, recipe as combined_recipe
         from compute_p12_texture_source import TEXTURE_TABLE_PAGES
-        combined_recipe(memory,description)
+        source, _, _, _ = combined_recipe(memory,description)
+        counter_window = (source, source + COUNTER_BYTES)
         # Every texel fetch needs this table. The workgroup barrier precedes
         # the fetches, and all output stores depend on their results.
         first,size=description['texturePhysical'],TEXTURE_TABLE_PAGES
@@ -32,6 +34,8 @@ def reset_plan(memory, description, channel, *, owner_profile):
         first,size=uint(image['allocationPhysical']),uint(image['allocationBytes'])
     require(first%64==0 and size>0 and size%64==0 and first+size<=1<<32,
             'response hold is not a complete original allocation')
+    if counter_window is not None:
+        return struct.pack('<8sI4Q',b'OGCRP002',1,first,first+size,*counter_window)
     return struct.pack('<8sIQQ',b'OGCRP001',1 if channel=='read' else 2,first,first+size)
 
 

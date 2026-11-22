@@ -87,7 +87,8 @@ class ResetContracts(unittest.TestCase):
             cancelled.word(counters + 4 * index, (14 + index * 0x10203) & 0xffffffff)
         with patch('compute_p12_counter_source.recipe', return_value=(counters, [], [], [])):
             self.assertEqual(reset_plan(original, description, 'read', owner_profile=IMAGE_FLOAT_PROFILE),
-                             struct.pack('<8sIQQ', b'OGCRP001', 1, texture, texture + TEXTURE_TABLE_PAGES))
+                             struct.pack('<8sI4Q', b'OGCRP002', 1, texture, texture + TEXTURE_TABLE_PAGES,
+                                         counters, counters + 32))
             with self.assertRaises(ValueError):
                 reset_plan(original, description, 'write', owner_profile=IMAGE_FLOAT_PROFILE)
             self.assertEqual(verify_cancelled_memory(original, cancelled, description, 'read'),
