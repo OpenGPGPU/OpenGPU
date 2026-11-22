@@ -8,7 +8,7 @@ import bisect
 import mmap
 from pathlib import Path
 import struct
-from compute_owner_cases import COMPUTE_LOOP_SCHEMAS, MASKED_STORAGE_LOOP_CASE, NESTED_LOOP_CASE, STORAGE_LOOP_CASE
+from compute_owner_cases import COMPUTE_LOOP_SCHEMAS, LOOP_BARRIER_CASE, MASKED_STORAGE_LOOP_CASE, NESTED_LOOP_CASE, STORAGE_LOOP_CASE
 from compute_owner_protocol import required_flags, strict_json, uint
 
 
@@ -248,11 +248,23 @@ def verify(initial, returned, description):
         case = description.get('sourceCase')
         if not isinstance(case, str) or COMPUTE_LOOP_SCHEMAS.get(case) != schema:
             raise ValueError('compute loop source and byte oracle differ')
-        required_flags(description, dict(viewBytes=8192, groups=1, local=128, guard=0xdeadbeef))
+        required_flags(description, dict(viewBytes=8192, groups=1,
+                                         local=4 if case == LOOP_BARRIER_CASE else 128, guard=0xdeadbeef))
         output = allocation_window(initial, description.get('output'), 8192, 0)
         guard = struct.pack('<I', 0xdeadbeef)
         if initial.read(output, 8192) != guard * 2048:
             raise ValueError('compute loop requires guard-initialized output')
+        if case == LOOP_BARRIER_CASE:
+            writes = []
+            for step in range(3):
+                for lane in range(4):
+                    if (step & 1) != (lane & 1):
+                        word = lane + step * 16
+                        value = step ^ lane
+                        writes.extend(((output + 4 * word, struct.pack('<I', value)),
+                                       (output + 4 * (word + 4), struct.pack('<I', value + 3))))
+            verify_byte_changes(initial, returned, writes)
+            return
         if case in (STORAGE_LOOP_CASE, MASKED_STORAGE_LOOP_CASE):
             source = allocation_window(initial, description.get('input'), 8192, 1)
             if abs(source - output) < 8192:

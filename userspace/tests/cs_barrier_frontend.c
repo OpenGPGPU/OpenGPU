@@ -68,9 +68,17 @@ int main(int argc,char **argv)
             assert(loop && branch>loop && backedge>branch);
             unsigned join=branch+opengpu_shader_simt_displacement(code.code[branch])/4;
             assert(join<backedge && code.code[join]==OPENGPU_SHADER_SIMT_JOIN);
-            unsigned inside=0;
-            for(unsigned w=branch+2;w<join;w++) inside+=code.code[w]==0x0330000fu;
-            assert(inside>=1);
+            unsigned store=0, fence=0, load=0, publish=0;
+            for(unsigned w=branch+2;w<join;w++) {
+                uint32_t insn=code.code[w];
+                if((insn&127u)==0x2bu && (insn>>26)==16u) {
+                    if(!store) store=w;
+                    else publish=w;
+                }
+                if(insn==0x0330000fu && store && !fence) fence=w;
+                if((insn&127u)==0x2bu && (insn>>26)==15u) load=w;
+            }
+            assert(store && store<fence && fence<load && load<publish);
         }
         assert(snprintf(path,sizeof(path),"%s/%s.native.words",argv[1],names[c])>0);
         FILE *out=fopen(path,"wx");assert(out);

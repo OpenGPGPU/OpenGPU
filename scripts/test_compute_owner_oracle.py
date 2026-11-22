@@ -4,7 +4,7 @@ from pathlib import Path
 import struct
 import tempfile
 import unittest
-from compute_owner_cases import STORAGE_LOOP_CASE, STORAGE_LOOP_SCHEMA
+from compute_owner_cases import COMPUTE_LOOP_SCHEMAS, LOOP_BARRIER_CASE, STORAGE_LOOP_CASE, STORAGE_LOOP_SCHEMA
 from compute_owner_oracle import SparseMemory, expected_shared, verify, union_original_memory
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +28,29 @@ def memory(path, output=None, corrupt=()):
 
 
 class OracleTests(unittest.TestCase):
+    def test_masked_loop_fence_preserves_skipped_words(self):
+        parent = ROOT / '.artifacts'
+        parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='loop-fence-oracle-', dir=parent) as directory:
+            initial, returned = (Path(directory) / name for name in ('initial', 'returned'))
+            memory(initial)
+            description = dict(schema=COMPUTE_LOOP_SCHEMAS[LOOP_BARRIER_CASE],
+                sourceCase=LOOP_BARRIER_CASE, groups=1, local=4, viewBytes=8192, guard=0xdeadbeef,
+                output=dict(globalBinding=0, allocationPhysical=0x2000, allocationBytes=8192,
+                            offset=0, bytes=8192))
+            expected = bytearray(struct.pack('<I', 0xdeadbeef) * 2048)
+            for word, value in ((1, 1), (3, 3), (5, 4), (7, 6), (16, 1), (18, 3),
+                                (20, 4), (22, 6), (33, 3), (35, 1), (37, 6), (39, 4)):
+                struct.pack_into('<I', expected, word * 4, value)
+            memory(returned, expected)
+            with SparseMemory(initial) as before, SparseMemory(returned) as after:
+                verify(before, after, description)
+            for word in (0, 5):
+                memory(returned, expected, [(0x2000 + 4 * word, 1)])
+                with SparseMemory(initial) as before, SparseMemory(returned) as after:
+                    with self.assertRaises(ValueError):
+                        verify(before, after, description)
+
     def test_storage_loop_rejects_wrong_lane_and_guard_changes(self):
         parent = ROOT / '.artifacts'
         parent.mkdir(exist_ok=True)
