@@ -337,6 +337,12 @@ the 1,877 RTL and bind inputs enumerated by FlashSim. The emitted hierarchy
 contains both physical CUs and all three domain uniform services. The temporary
 FIRRTL was removed after lowering.
 
+The assertion-enabled CIRCT import of this factory passed with FlashSim
+`23333d0` and CIRCT `80c4ed9b9`. With four CIRCT workers, the guarded import
+took 192.3 seconds with 6.70 GiB peak process-group memory. Reusing the
+verified MLIR took 3.4 seconds. The six-worker trial reached the 7 GiB
+guard, so the retained import uses four workers.
+
 Complete FlashSim model generation, native linking and the actual MMIO probe
 for this factory remain pending. With the pinned SRAM submodule initialized
 and the FlashSim/CIRCT environment above, use a new `OWNER` directory inside
@@ -346,11 +352,11 @@ this checkout's `.artifacts`.
 "$PYTHON" -B scripts/run_owner_bounded.py --memory-mib 7168 --timeout-seconds 1800 -- \
   "$PYTHON" -B scripts/prepare_native_owner_flashsim.py --stage prepare \
   --tessellation-uniforms --output "$OWNER"
-"$PYTHON" -B scripts/prepare_native_owner_flashsim.py --stage generate \
+FLASHSIM_CIRCT_THREADS=4 "$PYTHON" -B scripts/prepare_native_owner_flashsim.py --stage generate \
   --flashsim-dir "$FLASHSIM_DIR" --output "$OWNER" --shards 64
 "$PYTHON" -B scripts/prepare_owner_executor.py --stage build --backend flashsim \
   --kind native-sample --owner-output "$OWNER" --flashsim-dir "$FLASHSIM_DIR" \
-  --shards 64 --jobs 4 --precompiled-header --conservative-alias
+  --shards 64 --jobs 2 --precompiled-header --conservative-alias
 "$PYTHON" -B scripts/prepare_owner_executor.py --stage probe --backend flashsim \
   --kind native-sample --qualification "$OWNER/executors/native-sample/qualification.json"
 ```
