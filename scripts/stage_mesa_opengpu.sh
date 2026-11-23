@@ -24,6 +24,7 @@ cp "$GPU_DIR/userspace/pipe_opengpu.c" "$GPU_DIR/userspace/pipe_opengpu.h" "$GPU
    "$GPU_DIR/userspace/opengpu_retry.h" "$GPU_DIR/userspace/opengpu_buffer_texture.h" \
     "$GPU_DIR/userspace/opengpu.c" "$GPU_DIR/userspace/opengpu.h" \
     "$GPU_DIR/userspace/opengpu_native_sample_graphics.c" "$GPU_DIR/userspace/opengpu_native_sample_graphics.h" \
+    "$GPU_DIR/userspace/opengpu_framebuffer_blit.h" \
     "$GPU_DIR/driver/opengpu_native_sample_transport_features.h" "$GPU_DIR/driver/opengpu_native_sample_transport_abi.h" \
     "$GPU_DIR/driver/opengpu_native_geometry_transport_features.h" "$GPU_DIR/driver/opengpu_native_geometry_transport_abi.h" \
     "$GPU_DIR/driver/opengpu_native_sources_features.h" "$GPU_DIR/driver/opengpu_native_preflight_features.h" \
