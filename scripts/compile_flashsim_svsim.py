@@ -130,20 +130,34 @@ def build_executable(build, generated, bridge, output, jobs):
         raise ValueError("CXX must identify a compiler")
     scripts = Path(__file__).resolve().parent
     options = ["-std=c++17", "-w", "-I", str(build), "-I", str(generated), "-I", str(scripts)]
-    if "clang" in subprocess.check_output([*compiler, "--version"], text=True).lower():
+    shards = sorted(build.glob("dut_*.cpp"), key=lambda source: (-source.stat().st_size, source.name))
+    clang = "clang" in subprocess.check_output([*compiler, "--version"], text=True).lower()
+    fixed_commit_arrays = False
+    if clang:
         options.append("-fbracket-depth=4096")
+        if any(source.name.startswith("dut_commit_part") for source in shards):
+            probe = subprocess.run(
+                [*compiler, "-fstrict-flex-arrays=1", "-x", "c++", "-fsyntax-only", "-"],
+                input=b"", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            fixed_commit_arrays = probe.returncode == 0
 
     def compile_source(source):
         target = build / (source.stem + ".o")
         optimization = "-O0" if source.name == "dut_commit.cpp" else "-O1"
-        subprocess.run([*compiler, *options, optimization, "-c", source, "-o", target], check=True)
+        shard_options = [optimization]
+        if clang and source != bridge and optimization != "-O0":
+            shard_options.append("-fno-strict-aliasing")
+        if fixed_commit_arrays and source.name.startswith("dut_commit_part"):
+            shard_options.append("-fstrict-flex-arrays=1")
+        subprocess.run([*compiler, *options, *shard_options, "-c", source, "-o", target], check=True)
         return target
 
-    objects = [compile_source(bridge)]
+    driver = compile_source(bridge)
     with ThreadPoolExecutor(max_workers=jobs) as pool:
-        objects.extend(pool.map(compile_source, sorted(build.glob("dut_*.cpp"))))
+        objects = sorted(pool.map(compile_source, shards))
     linked = build / "simulation"
-    subprocess.run([*compiler, *objects, "-o", linked], check=True)
+    subprocess.run([*compiler, driver, *objects, "-o", linked], check=True)
     linked.replace(output)
 
 

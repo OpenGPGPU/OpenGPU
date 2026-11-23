@@ -265,8 +265,8 @@ whose response was held during cancellation, four corrupt TES descriptors and a
 TES data fault. Every error returned a stable completion under backpressure and
 the following submission succeeded with the same command ID. The separate AXI
 host elaboration check found the three domain services and both physical CUs
-with the option enabled. Whole three-domain execution, full product limits
-and protected admission remain pending.
+with the option enabled. Full product limits and protected admission remain
+pending.
 
 For this run use FlashSim `870c391` with the assertion-enabled CIRCT importer.
 The synchronous backend uses the existing Chisel stimulus, little-endian
@@ -291,4 +291,42 @@ each domain's patch sequencer with a GPU-supplied record.
 ```sh
 sbt -Dopengpu.simBackend=flashsim -Dopengpu.flashsimPython="$PYTHON" \
   'testOnly opengpu.system.TessellationNativeSequenceReaderSpec opengpu.system.TessellationNativeTriangleSequenceReaderSpec opengpu.system.TessellationNativeQuadSequenceReaderSpec'
+```
+
+### Three-domain AXI host execution
+
+Both FlashSim cases passed with two physical 16-lane, eight-warp CUs, an
+eight-set/two-way L2 fixture and a 17×9 frame. Each case used one DUT, one
+reset and one live transform feedback capture across isoline, triangle, quad
+and a second isoline draw. Every draw observed physical AXI reads for both stages' uniform
+root, binding and data lines. The cases used distinct program addresses or
+explicit invalidation before reusing the same control program address. Both
+matched all 22 feedback words, byte and element counts, and buffer guards.
+
+Use FlashSim `db65773` and the assertion-enabled CIRCT build `80c4ed9b9`
+with the environment above. Set `FLASHSIM_CIRCT_LARGEST_FIRST=1` for that
+importer. The qualification reused one executable after comparing the ordered
+RTL inputs, bind sources, testbench, driver, macros and compiler identities.
+
+```sh
+sbt -Dopengpu.simBackend=flashsim -Dopengpu.flashsimPython="$PYTHON" \
+  -Dopengpu.simJobs=2 -Dopengpu.flashsimShards=32 -Dopengpu.tessellationUniformFullCu=1 \
+  'testOnly opengpu.graphics.tessellation.TessellationNativeThreeDomainFeedbackHostAxiSpec'
+```
+
+The svsim adapter schedules the largest C++ sources first. Apple Clang 16
+compiled the same `dut_10.cpp` at `-O1` in about 231 seconds with default
+alias analysis and 89.3 seconds with `-fno-strict-aliasing`. Adding
+`-fstrict-flex-arrays=1` to the conservative alias flags reduced the same
+31 MiB `dut_commit_part014.cpp` from 211.9 to 35.1 seconds at `-O1`. The
+two commit objects were byte-identical. Compare the flags using the same
+generated header and shards from a single elaboration.
+
+```sh
+time c++ -std=c++17 -w -I "$DUT_GEN" -I "$PWD/scripts" -fbracket-depth=4096 \
+  -O1 -fno-strict-aliasing -c "$DUT_GEN/dut_commit_part014.cpp" -o "$DUT_GEN/baseline.o"
+time c++ -std=c++17 -w -I "$DUT_GEN" -I "$PWD/scripts" -fbracket-depth=4096 \
+  -O1 -fno-strict-aliasing -fstrict-flex-arrays=1 \
+  -c "$DUT_GEN/dut_commit_part014.cpp" -o "$DUT_GEN/fixed-arrays.o"
+cmp "$DUT_GEN/baseline.o" "$DUT_GEN/fixed-arrays.o"
 ```
