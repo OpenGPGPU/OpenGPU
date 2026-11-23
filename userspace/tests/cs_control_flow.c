@@ -266,6 +266,8 @@ static void malformed_labels(struct pipe_context *p,const void *tokens)
     }
     assert(labels==2);free(copy);
 }
+extern void cs_check_mesa_extensions(struct pipe_screen *screen, int gl_compat, int es2);
+
 int main(int argc,char **argv)
 {
     assert(argc==2);setvbuf(stdout,NULL,_IONBF,0);directory=argv[1];
@@ -281,6 +283,7 @@ int main(int argc,char **argv)
     assert(gl_core < 43 && gl_compat < 43 && es2 >= 20 && es2 < 31);
     printf("Mesa DRI version query: GL core %d, compatibility %d, ES1 %d, ES %d\n",
            gl_core,gl_compat,es1,es2);
+    cs_check_mesa_extensions(s,gl_compat,es2);
     struct pipe_context *p=s->context_create(s,NULL,0);assert(p);
     definition_tests(p);
     struct pipe_resource *out[4],*ub[36]={0};

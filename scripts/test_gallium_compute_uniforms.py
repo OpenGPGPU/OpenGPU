@@ -325,6 +325,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
                 "mesa/main/extensions_table.c", "mesa/program/prog_parameter.c",
                 "mesa/program/symbol_table.c", "mesa/program/dummy_errors.c"]
     for relative in official:
+        if control_flow and relative == "mesa/main/extensions_table.c":
+            continue  # The selected state tracker already owns this table.
         source = private_standalone if relative.endswith("/standalone.cpp") else mesa / "src" / relative
         obj = out / (relative.replace("/", "_") + ".o")
         compiler = cxx if relative.endswith(".cpp") else cc
@@ -429,7 +431,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     obj = out / "cs_glsl_frontend.o"
     run(cxx + configured_flags("compiler/glsl/standalone.cpp") + ["-UNDEBUG", "-Wall", "-Wextra", "-Werror",
         "-Wno-unused-parameter", "-I" + str(mesa / "src/compiler/nir"), "-I" + str(mb / "src/compiler/nir")] +
-        inc + san + ["-MMD", "-MF", obj.with_suffix(".d"), "-c", ROOT / ("userspace/tests/graphics_uniform_frontend.cpp" if graphics_uniforms else "userspace/tests/cs_glsl_frontend.cpp"), "-o", obj],
+        inc + san + (["-DOPENGPU_CS_CHECK_MESA_CAPABILITIES"] if control_flow else []) +
+        ["-MMD", "-MF", obj.with_suffix(".d"), "-c", ROOT / ("userspace/tests/graphics_uniform_frontend.cpp" if graphics_uniforms else "userspace/tests/cs_glsl_frontend.cpp"), "-o", obj],
         "compile-cs_glsl_frontend")
     objects.append(obj)
     obj = out / "checked-nir-lower-io.o"
@@ -477,7 +480,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         # compiler's libraries. Full GL context objects need a separate fixture.
         versions = out / "actual-mesa-versions.o"
         run(cc + ["-r", "-nostdlib", "-Wl,--gc-sections", "-Wl,-u,st_api_query_versions",
-                  mb / "src/mesa/libmesa.a", "-o", versions], "select-actual-mesa-versions")
+                  "-Wl,-u,_mesa_make_extension_string", mb / "src/mesa/libmesa.a", "-o", versions], "select-actual-mesa-versions")
         objects.append(versions)
     if not all(p.is_file() for p in libraries):
         raise RuntimeError("configured real Mesa static libraries required")
