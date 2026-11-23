@@ -126,8 +126,12 @@ def emit_bridge(module, top, ports, path):
 
 def build_executable(build, generated, bridge, output, jobs):
     compiler = shlex.split(os.environ.get("CXX", "c++"))
+    if not compiler:
+        raise ValueError("CXX must identify a compiler")
     scripts = Path(__file__).resolve().parent
     options = ["-std=c++17", "-w", "-I", str(build), "-I", str(generated), "-I", str(scripts)]
+    if "clang" in subprocess.check_output([*compiler, "--version"], text=True).lower():
+        options.append("-fbracket-depth=4096")
 
     def compile_source(source):
         target = build / (source.stem + ".o")
