@@ -17,7 +17,7 @@ import shutil
 import subprocess
 import sys
 
-from build_native_flashsim import ENVIRONMENT, generated_digest
+from build_native_flashsim import ENVIRONMENT, compiler_version, generated_digest
 
 PLAN_ENV = "OPENGPU_NATIVE_CACHE_PLAN"
 UNRECORDED_ENV = (
@@ -76,6 +76,13 @@ def check_environment(environment):
         raise ValueError("an unrecorded compiler override is set")
 
 
+def matches_compiler_version(compiler, expected):
+    if compiler_version(compiler) == expected:
+        return True
+    # Older build receipts used the compiler alias when recording GCC's banner.
+    return subprocess.check_output([str(compiler), "--version"], text=True) == expected
+
+
 def write_new(path: Path, data) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("x") as stream:
@@ -110,7 +117,7 @@ def prepare(dut: Path, build: Path, cache: Path, plan: Path, events: Path) -> di
     with compiler.open("rb") as stream:
         if stream.read(2) == b"#!":
             raise ValueError("cached compiler must be a compiler binary")
-    if subprocess.check_output([str(compiler), "--version"], text=True) != previous["compiler_version"]:
+    if not matches_compiler_version(compiler, previous["compiler_version"]):
         raise ValueError("compiler version differs from the cache")
     check_environment(previous["environment"])
     candidates = {}
@@ -213,6 +220,12 @@ def compile_adapter(args) -> int:
     plan_path = Path(location).resolve()
     plan = load_plan(plan_path)
     compiler = plan["compiler"]
+    if args == ["--version"]:
+        version = plan["compiler_version"]
+        if not matches_compiler_version(compiler, version):
+            raise ValueError("compiler version differs from the cache")
+        sys.stdout.write(version)
+        return 0
     if "--version" in args or "-c" not in args or "-o" not in args:
         os.execv(compiler, [compiler, *args])
     try:
@@ -265,7 +278,7 @@ def verify(plan_path: Path, witness: Path) -> dict:
             manifest["environment"] != plan["environment"] or manifest["dut_header_sha256"] != plan["header_sha256"] or
             digest(dut / "dut.h") != plan["header_sha256"] or digest(Path(plan["old_dut"]) / "dut.h") != plan["header_sha256"] or
             digest(Path(plan["compiler"])) != plan["compiler_sha256"] or
-            subprocess.check_output([plan["compiler"], "--version"], text=True) != plan["compiler_version"] or
+            not matches_compiler_version(plan["compiler"], plan["compiler_version"]) or
             digest(Path(plan["reference_manifest"])) != plan["reference_manifest_sha256"]):
         raise ValueError("build, compiler, header or cache identity differs")
     clean_include_dir(dut)

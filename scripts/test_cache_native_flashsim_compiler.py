@@ -87,8 +87,18 @@ class NativeCompilerCacheTest(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         return Fixture(Path(tmp.name), **kwargs)
 
-    def check_reuse_and_audit(self, pch):
+    def check_reuse_and_audit(self, pch, *, legacy=False):
         f = self.fixture(pch=pch)
+        if legacy:
+            legacy_version = f.run([CXX, "--version"]).stdout
+            manifest_path = f.old_build / "native-flashsim-build.json"
+            manifest = json.loads(manifest_path.read_text())
+            manifest["compiler_version"] = legacy_version
+            manifest_path.write_text(json.dumps(manifest))
+            for shard_path in f.old_build.glob("dut_*.json"):
+                shard = json.loads(shard_path.read_text())
+                shard["context"]["compiler_version"] = legacy_version
+                shard_path.write_text(json.dumps(shard))
         (f.new / "dut_0.cpp").write_text('#include "dut.h"\nint value() { return 41; }\n')
         f.driver.write_text('#include "dut.h"\nint main() { return value()+commit_value()==43 ? 0 : 1; }\n')
         f.prepare()
@@ -110,6 +120,9 @@ class NativeCompilerCacheTest(unittest.TestCase):
 
     def test_mixed_reuse_and_audit(self):
         self.check_reuse_and_audit(False)
+
+    def test_mixed_reuse_with_legacy_compiler_version(self):
+        self.check_reuse_and_audit(False, legacy=True)
 
     @unittest.skipUnless(CLANG, "Clang required for PCH")
     def test_mixed_reuse_with_precompiled_header(self):
