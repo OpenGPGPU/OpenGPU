@@ -822,10 +822,13 @@ EGL context creation and GL queries over the live DRI driver remain to be
 verified.
 
 The framebuffer-blit guest binary has a capability-only mode. It opens the
-OpenGPU GBM device, creates a GLES 2.0 context, checks the GL version and
-extension strings, and expects `EGL_BAD_MATCH` from a GLES 3.1 context request.
-The capability-only mode passed the AArch64 cross-build. Run it in a guest
-with the OpenGPU DRI libraries installed and Mesa overrides unset:
+OpenGPU GBM device, checks that its EGL config offers GLES 2 and creates a
+GLES 2.0 context. It verifies the GL version and extensions, and expects
+`EGL_BAD_CONFIG` when the same config is used to request GLES 3.1.
+The AArch64 binary passed in a real Debian guest on the archived 64×64
+FlashSim-linked OpenGPU model with ABI 2 and Mesa 22.3.6. Repeat against a
+fresh model for the current RTL. Run the probe with the OpenGPU DRI libraries
+installed and Mesa overrides unset:
 
 ```sh
 OPENGPU_GL_COMPUTE_CAPS_ONLY=1 LD_LIBRARY_PATH=/root LIBGL_DRIVERS_PATH=/root \

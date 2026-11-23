@@ -33,13 +33,21 @@ static void check_compute_capabilities(EGLDisplay display, EGLConfig config)
     if (!version || strncmp(version,"OpenGL ES 2.0 ",14) || !extensions ||
         strstr(extensions,"GL_ARB_compute_shader") || glGetError()!=GL_NO_ERROR)
         fail("unexpected GLES compute capability");
+    EGLint renderable=0;
+    if (!eglGetConfigAttrib(display,config,EGL_RENDERABLE_TYPE,&renderable) ||
+        !(renderable&EGL_OPENGL_ES2_BIT) || (renderable&EGL_OPENGL_ES3_BIT))
+        fail("unexpected EGL renderable types");
     const EGLint compute_attrs[]={EGL_CONTEXT_MAJOR_VERSION,3,EGL_CONTEXT_MINOR_VERSION,1,EGL_NONE};
     EGLContext compute=eglCreateContext(display,config,EGL_NO_CONTEXT,compute_attrs);
     if (compute!=EGL_NO_CONTEXT) {
         eglDestroyContext(display,compute);
         fail("unexpected GLES 3.1 context");
     }
-    if (eglGetError()!=EGL_BAD_MATCH) fail("unexpected GLES 3.1 rejection");
+    EGLint error=eglGetError();
+    if (error!=EGL_BAD_CONFIG) {
+        fprintf(stderr,"gl_framebuffer_blit: GLES 3.1 request returned EGL 0x%x\n",error);
+        exit(1);
+    }
 }
 
 static GLuint target(unsigned width, unsigned height, const uint8_t *data,
