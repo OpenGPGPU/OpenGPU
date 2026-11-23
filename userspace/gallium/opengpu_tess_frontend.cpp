@@ -160,7 +160,7 @@ static void *compile(const char *const files[5], const char *prefix,bool joint)
         nir->num_uniforms = (params->NumParameterValues + 3) / 4;
         if (nir->options->lower_uniforms_to_ubo)
             NIR_PASS_V(nir, nir_lower_uniforms_to_ubo, false, false);
-        if (stage != MESA_SHADER_VERTEX)
+        if (stage != MESA_SHADER_VERTEX || geometry)
             nir_assign_io_var_locations(nir, nir_var_shader_in, &nir->num_inputs, stage);
         nir_assign_io_var_locations(nir, nir_var_shader_out, &nir->num_outputs, stage);
         if(stage!=MESA_SHADER_FRAGMENT) {

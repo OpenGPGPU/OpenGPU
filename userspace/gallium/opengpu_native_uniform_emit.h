@@ -25,6 +25,10 @@ int opengpu_native_uniform_emit(const void *tokens,
 int opengpu_native_uniform_compile(const void *tokens, unsigned stage,
     unsigned capacity, struct opengpu_native_uniform_layout *layout,
     struct opengpu_native_uniform_program *program);
+/* Explicit VS-to-GS path with FP32 add in the native vertex SoA layout. */
+int opengpu_native_vertex_geometry_compile(const void *tokens, unsigned token_words,
+    unsigned capacity, struct opengpu_native_uniform_layout *layout,
+    struct opengpu_native_uniform_program *program);
 /* Independent FS8/9 entry; old VS/FS1 API and word streams are unchanged. */
 int opengpu_native_fragment_uniform_compile_v2(const void *tokens,unsigned token_words,
     const struct opengpu_native_fragment_reflection_v2 *,const struct opengpu_native_fragment_config_v2 *,
