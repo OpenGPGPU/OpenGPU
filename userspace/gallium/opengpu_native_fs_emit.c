@@ -8,13 +8,14 @@
 
 #define LIMIT 4096u
 #define REGS 64u
-struct semantic { unsigned declared, mask, name, index; };
+struct semantic { unsigned declared, mask, name, index, flat; };
 struct builder {
     struct opengpu_native_fs_program p;
     struct opengpu_native_fragment_metadata_v2 *v2;
     struct semantic input[REGS], system[REGS], output[REGS];
     unsigned temp[REGS], reg[REGS][4], defined[REGS], next;
     uint32_t imm[64][4];
+    uint64_t geometry_flat_mask;
     unsigned nimm, color_written[4], depth, sample_mask, failed;
 };
 static void emit(struct builder *b, uint32_t w)
@@ -138,16 +139,21 @@ static int source(struct builder *b,const struct tgsi_full_src_register *s,unsig
     case TGSI_FILE_IMMEDIATE:
         if(i>=b->nimm)return -1;
         splat(b,scratch,b->imm[i][c]);break;
-    case TGSI_FILE_INPUT:case TGSI_FILE_SYSTEM_VALUE:
-        if(input_slice(b,s->Register.File==TGSI_FILE_INPUT?b->input+i:b->system+i,c,&slice))return -1;
+    case TGSI_FILE_INPUT:case TGSI_FILE_SYSTEM_VALUE:{
+        const struct semantic *input=s->Register.File==TGSI_FILE_INPUT?b->input+i:b->system+i;
+        if(input_slice(b,input,c,&slice))return -1;
         if(slice==~0u)splat(b,scratch,0);
         else if(slice==~1u){
             load(b,scratch,4);emit(b,vec(0x28,3,scratch,1,scratch));
             emit(b,vec(9,3,scratch,1,scratch));emit(b,vec(11,3,scratch,31,scratch));emit(b,vec(0,3,scratch,1,scratch));
         }else load(b,scratch,slice);
-        if(b->v2&&s->Register.File==TGSI_FILE_INPUT&&b->input[i].name==TGSI_SEMANTIC_GENERIC)
-            b->v2->varying_mask|=UINT64_C(1)<<(4*b->input[i].index+c);
+        if(s->Register.File==TGSI_FILE_INPUT && input->name==TGSI_SEMANTIC_GENERIC){
+            const uint64_t component=UINT64_C(1)<<(4*input->index+c);
+            if(b->v2)b->v2->varying_mask|=component;
+            if(input->flat)b->geometry_flat_mask|=component;
+        }
         break;
+    }
     default:return -1;
     }
     *r=scratch;return 0;
@@ -213,7 +219,7 @@ static int instruction(struct builder *b,const struct tgsi_full_instruction *in)
 }
 static int emit_internal(const void *tokens,unsigned token_words,
     const struct opengpu_native_fs_config *config,struct opengpu_native_fs_program *out,
-    struct opengpu_native_fragment_metadata_v2 *v2)
+    struct opengpu_native_fragment_metadata_v2 *v2,uint64_t *geometry_flat_mask)
 {
     struct builder b={0};struct tgsi_parse_context parser;unsigned ended=0,result=-1;
     if(!config||!out||(!v2&&(config->abi_version!=6&&config->abi_version!=7))||
@@ -250,7 +256,8 @@ static int emit_internal(const void *tokens,unsigned token_words,
                     struct semantic *s=d->Declaration.File==TGSI_FILE_INPUT?b.input+i:
                         d->Declaration.File==TGSI_FILE_SYSTEM_VALUE?b.system+i:b.output+i;
                     if(!d->Declaration.Semantic||s->declared)goto done;
-                    *s=(struct semantic){1,d->Declaration.UsageMask,d->Semantic.Name,d->Semantic.Index+i-first};
+                    *s=(struct semantic){.declared=1,.mask=d->Declaration.UsageMask,
+                        .name=d->Semantic.Name,.index=d->Semantic.Index+i-first};
                     unsigned dummy,old_used=b.p.metadata.used_sysvals;
                     if(d->Declaration.File!=TGSI_FILE_OUTPUT){
                         /* Scalar system-value declarations may use the default
@@ -275,8 +282,11 @@ static int emit_internal(const void *tokens,unsigned token_words,
                                          d->Interp.Location!=TGSI_INTERPOLATE_LOC_CENTER)goto done;
                             } else {
                                 unsigned mode = TGSI_INTERPOLATE_LINEAR;
-                                if (s->name == TGSI_SEMANTIC_GENERIC)
-                                    mode = TGSI_INTERPOLATE_PERSPECTIVE;
+                                if (s->name == TGSI_SEMANTIC_GENERIC) {
+                                    s->flat = geometry_flat_mask &&
+                                        d->Interp.Interpolate == TGSI_INTERPOLATE_CONSTANT;
+                                    mode = s->flat ? TGSI_INTERPOLATE_CONSTANT : TGSI_INTERPOLATE_PERSPECTIVE;
+                                }
                                 else if (s->name == TGSI_SEMANTIC_PRIMID || s->name == TGSI_SEMANTIC_LAYER)
                                     mode = TGSI_INTERPOLATE_CONSTANT;
                                 else if (s->name != TGSI_SEMANTIC_POSITION)
@@ -331,12 +341,22 @@ static int emit_internal(const void *tokens,unsigned token_words,
     }else splat(&b,31,control);
     store(&b,31,b.p.metadata.input_arrays+4*b.p.metadata.color_slots+1);
     emit(&b,0x0330000fu);emit(&b,0x30500073u);
-    if(!b.failed){*out=b.p;result=0;}
+    if(!b.failed){
+        *out=b.p;
+        if(geometry_flat_mask)*geometry_flat_mask=b.geometry_flat_mask;
+        result=0;
+    }
 done:tgsi_parse_free(&parser);return (int)result;
 }
 int opengpu_native_fs_emit(const void *tokens,unsigned words,const struct opengpu_native_fs_config *c,
     struct opengpu_native_fs_program *out)
-{ return emit_internal(tokens,words,c,out,NULL); }
+{ return emit_internal(tokens,words,c,out,NULL,NULL); }
+int opengpu_native_fs_emit_geometry(const void *tokens,unsigned words,const struct opengpu_native_fs_config *c,
+    struct opengpu_native_fs_program *out,uint64_t *flat_components)
+{
+    if(!c || c->abi_version!=7 || !flat_components)return -1;
+    return emit_internal(tokens,words,c,out,NULL,flat_components);
+}
 int opengpu_native_fs_emit_v2(const void *tokens,unsigned words,
     const struct opengpu_native_fragment_reflection_v2 *r,const struct opengpu_native_fragment_config_v2 *c,
     struct opengpu_native_fragment_program_v2 *out)
@@ -344,7 +364,7 @@ int opengpu_native_fs_emit_v2(const void *tokens,unsigned words,
     struct opengpu_native_fragment_program_v2 p={0};struct opengpu_native_fs_program raw;
     if(!out||opengpu_native_fragment_metadata_init_v2(r,c,&p.metadata))return -1;
     struct opengpu_native_fs_config config={p.metadata.abi_version,128,c->varying_slots,c->color_slots,c->sample_transport,0};
-    if(emit_internal(tokens,words,&config,&raw,&p.metadata))return -1;
+    if(emit_internal(tokens,words,&config,&raw,&p.metadata,NULL))return -1;
     p.words=raw.words;memcpy(p.code,raw.code,p.words*4);
     p.metadata.used_sysvals=raw.metadata.used_sysvals;p.metadata.output_color_mask=raw.metadata.output_color_mask;
     p.metadata.writes_depth=raw.metadata.writes_depth;p.metadata.writes_sample_mask=raw.metadata.writes_sample_mask;

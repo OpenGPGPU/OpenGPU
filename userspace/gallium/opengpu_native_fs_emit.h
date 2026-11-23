@@ -39,6 +39,11 @@ struct opengpu_native_fs_program {
  * require lower-left/half-integer convention; no qualifier conversion occurs. */
 int opengpu_native_fs_emit(const void *tokens, unsigned token_words,
     const struct opengpu_native_fs_config *, struct opengpu_native_fs_program *out);
+/* Linked ABI7 geometry path. Flat inputs are reported as consumed varying
+ * components so the caller can populate GNG1 before clipping and raster. */
+int opengpu_native_fs_emit_geometry(const void *tokens, unsigned token_words,
+    const struct opengpu_native_fs_config *, struct opengpu_native_fs_program *out,
+    uint64_t *flat_components);
 /* Portable qualification artifact: OGNSF001, fifteen LE u32 fields, raw code,
  * exact EOF. It conveys compiler output, not hardware qualification. */
 int opengpu_native_fs_emit_v2(const void *tokens, unsigned token_words,
