@@ -112,8 +112,11 @@ class GpuHostSystemAxi(
   nativeProtectedSources: Boolean = false, nativeGeometryTransport: Boolean = false,
   nativeSampleTransport: Boolean = false,
   tessellationFragmentImages: Boolean = false, tessellationSampleShading: Boolean = false,
-  imageFloatExchangeAvailable: Boolean = false
+  imageFloatExchangeAvailable: Boolean = false,
+  tessellationUniforms: Boolean = false
 ) extends RawModule {
+  require(!tessellationUniforms || tessellationNative,
+    "checked tessellation uniforms require the native three-domain owner")
   require(!tessellationFragmentImages || (tessellationNative && nativeFragmentImages),
     "tessellation fragment images require the actual shared image path")
   require(!tessellationSampleShading || (tessellationNative && nativeSampleTransport),
@@ -224,7 +227,7 @@ class GpuHostSystemAxi(
     NativeRgba8TextureMemoryFabric.transactions(baseGraphicsHostTransactions,(numComputeUnits+1)/2)
     else baseGraphicsHostTransactions
   private val tessellationTransactions = nativeBinnedGraphics.map { n =>
-    TessellationNativeThreeDomainJobImage.transactions(n.engines,n.writeCredits,n.pagedCapacity)
+    TessellationNativeThreeDomainJobImage.transactions(n.engines,n.writeCredits,n.pagedCapacity,tessellationUniforms)
   }.getOrElse(1)
   private val graphicsHostTransactions = if(tessellationNative)
     TessellationHostMemoryFabric.transactions(legacyGraphicsHostTransactions,tessellationTransactions)
@@ -392,7 +395,8 @@ class GpuHostSystemAxi(
       Some(Module(new TessellationNativeThreeDomainJobImage(gpuConfig,n.vertex,n.fragment,sharedShader.get,n.renderGraphics(graphicsConfig),
         engines=n.engines,pageBytes=n.pageBytes,writeCredits=n.writeCredits,tileSlots=n.tileSlots,pagedCapacity=n.pagedCapacity,
         storage=n.storage,useSramBlackBoxes=useBlackBoxes,payload=localPayload,transformFeedback=nativeFeedback,
-        fragmentImageAvailable=tessellationFragmentImages,sampleShading=tessellationSampleShading)))}else None
+        fragmentImageAvailable=tessellationFragmentImages,sampleShading=tessellationSampleShading,
+        tessellationUniforms=tessellationUniforms)))}else None
     val tessellationMemory=if(tessellationNative)Some(Module(new TessellationHostMemoryFabric(gpuConfig,legacyGraphicsHostTransactions,tessellationTransactions)))else None
     val tessellationRouter=if(tessellationNative)Some(Module(new TessellationHostShaderRouter(gpuConfig,numComputeUnits,commandIdWidth,hostShaderTasksPerClient,localPayload,
       imageAvailable=nativeFragmentImages,legacyGeometry=nativeBinnedGraphics.exists(_.nativeGeometry),
