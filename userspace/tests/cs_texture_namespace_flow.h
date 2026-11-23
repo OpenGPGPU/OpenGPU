@@ -162,10 +162,38 @@ static void namespace_coordinate_reuse(void)
     }
 }
 
+static void namespace_indirect_bindings(void)
+{
+    const char *declarations =
+        "COMP\nDCL SV[0], THREAD_ID\nDCL TEMP[0]\nDCL ADDR[0].x\n"
+        "DCL SAMP[0]\nDCL SVIEW[0], BUFFER, UINT\nDCL IMAGE[0], BUFFER, PIPE_FORMAT_R32_UINT, WR\n"
+        "UARL ADDR[0].x, SV[0].xxxx\n";
+    const char *operations[][2] = {
+        {"TXF TEMP[0], SV[0].xxxx, SAMP[0], BUFFER\n",
+         "TXF TEMP[0], SV[0].xxxx, SAMP[ADDR[0].x], BUFFER\n"},
+        {"LOAD TEMP[0], IMAGE[0], SV[0].xxxx, BUFFER, PIPE_FORMAT_R32_UINT\n",
+         "LOAD TEMP[0], IMAGE[ADDR[0].x], SV[0].xxxx, BUFFER, PIPE_FORMAT_R32_UINT\n"},
+        {"MOV TEMP[0], SV[0].xxxx\nSTORE IMAGE[0], SV[0].xxxx, TEMP[0], BUFFER, PIPE_FORMAT_R32_UINT\n",
+         "MOV TEMP[0], SV[0].xxxx\nSTORE IMAGE[ADDR[0].x], SV[0].xxxx, TEMP[0], BUFFER, PIPE_FORMAT_R32_UINT\n"},
+    };
+    for (unsigned op=0;op<sizeof(operations)/sizeof(operations[0]);op++) {
+        char text[1024];
+        struct tgsi_token tokens[1024];
+        struct opengpu_cs_program code;
+        assert(snprintf(text,sizeof(text),"%s%sEND\n",declarations,operations[op][0])>0);
+        namespace_tgsi(text,tokens);
+        assert(!opengpu_cs_emit(tokens,&code));
+        assert(snprintf(text,sizeof(text),"%s%sEND\n",declarations,operations[op][1])>0);
+        namespace_tgsi(text,tokens);
+        namespace_reject(tokens);
+    }
+}
+
 static void texture_namespace_flow(const char *directory)
 {
     namespace_liveness(directory);
     namespace_coordinate_reuse();
+    namespace_indirect_bindings();
     const char *names[]={"full32","low16","middle16","high16","mixed16","rgba"};
     struct pipe_screen *s=opengpu_drm_screen_create(7,NULL);assert(s);
     struct pipe_context *p=s->context_create(s,NULL,0);assert(p);
