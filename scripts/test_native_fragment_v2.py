@@ -35,6 +35,7 @@ def main():
     st_object = mb/'src/mesa/libmesa.a.p/state_tracker_st_atom_constbuf.c.o'
     direct = {str(st_object): sha256(st_object)}
     owned = ('userspace/gallium/opengpu_native_fragment_v2.h','userspace/gallium/opengpu_native_fragment_v2.c',
+             'userspace/gallium/opengpu_native_fragment_reflection_v2.h',
              'userspace/gallium/opengpu_native_fs_emit.h','userspace/gallium/opengpu_native_fs_emit.c',
              'userspace/gallium/opengpu_native_uniform_emit.h','userspace/gallium/opengpu_native_uniform_emit.c',
              'userspace/tests/fs_glsl_frontend.h','userspace/tests/fs_glsl_frontend.cpp',
