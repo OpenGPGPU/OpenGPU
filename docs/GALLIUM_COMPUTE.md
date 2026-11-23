@@ -808,3 +808,12 @@ public command/fault/fresh-reuse oracles, normal shutdown and unchanged inputs.
 This CPU-only tooling result proves neither actual allocation/CMA headroom nor
 guest layout, hardware ordering, resource coexistence, physical qualification
 or full H7. Product capacities and API capability declarations are unchanged.
+
+## Mesa version query
+
+The sanitizer-enabled `test_gallium_compute_control_flow.py` run calls the
+pinned Mesa state tracker's DRI version query using the real OpenGPU Gallium
+screen and modeled Linux queries. With Mesa version overrides unset, it
+reports no desktop core version, desktop compatibility 1.3, ES1 1.1 and
+ES 2.0. This exercises capability calculation at the DRI boundary. Public EGL
+context creation and GL extension strings remain to be verified.
