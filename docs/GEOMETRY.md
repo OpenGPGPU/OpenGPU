@@ -1251,22 +1251,23 @@ distinct position and seed attributes and checks every position and varying
 word across 128 lanes, including untouched input and guard bytes.
 
 The geometry shader emits three vertices and ends the primitive. The scalar
-backend converts the linked GS
-tokens into 480 instruction words. The CPU oracle checks all 52 position and
-varying words, layer and primitive ID for each vertex, and the final
-end-primitive event. The backend accepts direct moves and stream-zero events
-with a complete output record at each emit.
+backend converts the linked GS tokens into 480 instruction words. The CPU
+oracle checks all 52 position and varying words, layer and primitive ID for
+each vertex, and the final end-primitive event. The backend accepts direct
+moves and stream-zero events with a complete output record at each emit.
 
 The same link produces a 500-word ABI7 fragment program using primitive ID,
-layer, sample ID, sample mask and four
-color outputs. The color reflection uses MRT locations and the ABI7 emitter
-accepts Mesa's constant-interpolated geometry inputs and the precise
-arithmetic used by this fixture.
+layer, sample ID, sample masks and four color outputs. The ABI7 emitter
+reflects the three consumed components of flat slot 15 into the GNG1 mask.
+The CPU oracle checks every output color and sample mask word across 128 lanes.
 
-The protected driver snapshot accepts the compiler's GS bytes and GNG1 layout.
-The CPU sanitizer test overwrites the source buffer and checks the original
-code in private RX pages and metadata in private RO pages. It also checks entry
-and allocation bounds, relocation and retirement.
+The protected version 2 ioctl accepts all three original programs for a 4×4
+draw with two layers, four samples and four RGBA32F targets. The CPU sanitizer
+test models the hardware kick and checks the private RX code after overwriting
+and closing the source GEMs, the GNG1 flat mask in private RO pages, GNY
+completion storage and release of the original references on retirement.
+Admission rejects the same submission with sample transport disabled or with
+a corrupted FS instruction.
 
 Run the CPU compiler case with the pinned Mesa source, static objects and
 compiler image described in the [native linked compiler
@@ -1278,10 +1279,11 @@ python3 -B scripts/test_tessellation_uniform_frontend.py --geometry --sanitize \
 python3 -B scripts/test_geometry_snapshot.py --sanitize --compiled-source \
   "$GEOMETRY_BUILD/geometry.native-gs-code.bin" \
   "$GEOMETRY_BUILD/geometry.native-gs-gng.bin"
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_layered_submit.py \
+  --compiled-prefix "$GEOMETRY_BUILD/geometry"
 ```
 
-Complete protected draw submission and same-DUT transform feedback remain
-required for geometry execution qualification.
+Rendering and transform feedback on the same full FlashSim DUT remain pending.
 
 ### Linux version-two publication
 

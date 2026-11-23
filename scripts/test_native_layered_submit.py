@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Versioned layered Linux submission composed with the actual private owner."""
+import argparse
 from pathlib import Path
 import os
 import shlex
@@ -9,6 +10,15 @@ import sys
 from test_native_submit import write_bodies
 ROOT = Path(__file__).resolve().parents[1]
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--compiled-prefix', type=Path,
+                        help='also submit the original linked VS/GS/ABI7 FS and GNG1 from --geometry')
+    args = parser.parse_args()
+    files = []
+    if args.compiled_prefix is not None:
+        files = [str(Path(str(args.compiled_prefix) + suffix).resolve(strict=True))
+                 for suffix in ('.native-vs-code.bin', '.native-gs-code.bin',
+                                '.native-fs-code.bin', '.native-gs-gng.bin')]
     parent = ROOT / '.artifacts'
     parent.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='layered-submit-', dir=parent) as directory:
@@ -23,7 +33,7 @@ if __name__ == '__main__':
         subprocess.run(shlex.split(os.environ.get('CC', 'cc')) + flags + ['-I'+str(p) for p in includes] + [
             str(ROOT/'driver/tests/opengpu_native_layered_submit_test.c'),
             str(ROOT/'driver/opengpu_native_frame.c'), '-o', str(out/'test')], env=env, check=True)
-        subprocess.run([str(out/'test')], env=env, check=True)
+        subprocess.run([str(out/'test'), *files], env=env, check=True)
         # No host/kernel headers or multilib runtime are involved in the
         # freestanding i386/x64/ARM64 shape checks.
         (out/'drm').mkdir()

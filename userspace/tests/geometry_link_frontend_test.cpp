@@ -208,10 +208,11 @@ static void write_code(const std::string &path, const uint32_t *code, unsigned w
     assert(!std::fclose(file));
 }
 
-static void write_geometry(const std::string &prefix, const opengpu_native_gs_program &gs)
+static void write_geometry(const std::string &prefix, const opengpu_native_gs_program &gs,
+                           uint64_t flat_components)
 {
     opengpu_native_geometry_program metadata;
-    assert(!opengpu_native_gs_metadata(&gs, 7, 11, 13, 0, &metadata));
+    assert(!opengpu_native_gs_metadata(&gs, 7, 11, 13, flat_components, &metadata));
     FILE *file = std::fopen((prefix + ".native-gs-gng.bin").c_str(), "wb");
     assert(file);
     assert(std::fwrite(&metadata, sizeof(metadata), 1, file) == 1);
@@ -259,7 +260,10 @@ int main(int argc, char **argv)
 
     const opengpu_native_fs_config config = {7, 128, 16, 4, 1, 1};
     opengpu_native_fs_program native = {};
-    assert(!opengpu_native_fs_emit(fs, tgsi_num_tokens(fs), &config, &native));
+    uint64_t flat_components = 0;
+    assert(!opengpu_native_fs_emit_geometry(fs, tgsi_num_tokens(fs), &config, &native,
+                                          &flat_components));
+    assert(flat_components == (UINT64_C(7) << 60));
     assert(native.metadata.abi_version == 7 && native.metadata.input_arrays == 77);
     assert(native.metadata.requires_geometry_owner && native.metadata.requires_sample_owner);
     assert(native.metadata.output_color_mask == 15 && native.metadata.writes_sample_mask == 1);
@@ -269,9 +273,14 @@ int main(int argc, char **argv)
     assert(native.words && native.words <= 512);
     const opengpu_native_fs_config no_geometry = {6, 128, 16, 4, 1, 0};
     opengpu_native_fs_program rejected = {};
-    assert(opengpu_native_fs_emit(fs, tgsi_num_tokens(fs), &no_geometry, &rejected));
+    uint64_t unchanged = UINT64_MAX;
+    assert(opengpu_native_fs_emit_geometry(fs, tgsi_num_tokens(fs), &no_geometry, &rejected,
+                                         &unchanged));
+    assert(unchanged == UINT64_MAX);
+    assert(opengpu_native_fs_emit(fs, tgsi_num_tokens(fs), &config, &rejected));
     assert(!rejected.words);
-    write_geometry(argv[2], native_gs);
+    write_geometry(argv[2], native_gs, flat_components);
+    write_code(std::string(argv[2]) + ".native-fs-code.bin", native.code, native.words);
     opengpu_tess_frontend_destroy(program);
 
     files[3] = nullptr;

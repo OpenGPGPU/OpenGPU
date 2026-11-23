@@ -2,7 +2,8 @@
 precision highp float;
 layout(location=0) in vec4 position;
 layout(location=1) in vec3 seed;
-layout(location=0) out vec3 fromVertex[16];
+layout(location=0) out vec3 fromVertex[15];
+layout(location=15) out vec3 flatVertex;
 
 vec3 varyingAt(int slot) {
     float base = float(slot * 8 + 1);
@@ -26,5 +27,5 @@ void main() {
     fromVertex[12] = varyingAt(12);
     fromVertex[13] = varyingAt(13);
     fromVertex[14] = varyingAt(14);
-    fromVertex[15] = varyingAt(15);
+    flatVertex = varyingAt(15);
 }

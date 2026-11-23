@@ -12,12 +12,16 @@ LIBS=("src/compiler/glsl/libglsl.a","src/compiler/nir/libnir.a","src/compiler/li
       "src/util/format/libmesa_format.a","src/c11/impl/libmesa_util_c11.a")
 
 
+def geometry_code(path):
+    data = path.read_bytes()
+    assert len(data) % 4 == 0 and 0 < len(data) <= 512 * 4
+    return [word for word, in struct.iter_unpack('<I', data)]
+
+
 def verify_geometry_vertex(path):
     from native_fs_cpu_oracle import execute
 
-    data = path.read_bytes()
-    assert len(data) % 4 == 0 and 0 < len(data) <= 512 * 4
-    code = [word for word, in struct.iter_unpack('<I', data)]
+    code = geometry_code(path)
     capacity, kernarg = 128, 64
     position_out, varying_out = 11, 15
     memory = bytearray(b'\xcd' * (kernarg + (varying_out + 16 * 4) * capacity * 4 + 64))
@@ -43,6 +47,48 @@ def verify_geometry_vertex(path):
         execute(code, memory, first, kernarg=kernarg)
     assert memory == expected
     print('Original Mesa VS bytes match position and all 16 varying slots on 128 lanes (CPU only)')
+
+
+def verify_geometry_fragment(path):
+    from native_fs_cpu_oracle import bits, execute
+
+    code = geometry_code(path)
+    capacity, kernarg = 128, 64
+    mrt_start, control = 77, 94
+    memory = bytearray(b'\xcb' * (kernarg + (control + 1) * capacity * 4 + 64))
+    expected = memory.copy()
+
+    def put(destination, array, lane, value):
+        struct.pack_into('<I', destination, kernarg + 4 * (array * capacity + lane), value)
+
+    def input_word(array, lane, value):
+        put(memory, array, lane, value)
+        put(expected, array, lane, value)
+
+    for lane in range(capacity):
+        values = [[slot * 8 + channel * 2 + 1 + (96 if slot == 15 else lane) / 128
+                   for channel in range(3)] for slot in range(16)]
+        for slot, channels in enumerate(values):
+            for channel, value in enumerate(channels):
+                input_word(6 + slot * 4 + channel, lane, bits(value))
+
+        primitive, layer, sample = 50 + lane // 4, 1 + lane % 2, lane % 4
+        coverage = (lane + 3) & 15
+        input_word(72, lane, primitive)
+        input_word(73, lane, layer)
+        input_word(74, lane, sample)
+        input_word(5, lane, coverage)
+        for mrt, alpha in enumerate((primitive, layer, sample, 1)):
+            for channel in range(3):
+                value = sum(values[4 * mrt + slot][channel] * (slot + 1) for slot in range(4))
+                put(expected, mrt_start + 4 * mrt + channel, lane, bits(value))
+            put(expected, mrt_start + 4 * mrt + 3, lane, bits(alpha))
+        put(expected, control, lane, 125 | ((coverage & 5) << 7))
+
+    for first in range(0, capacity, 16):
+        execute(code, memory, first, kernarg=kernarg)
+    assert memory == expected
+    print('Original Mesa ABI7 FS bytes match all four MRTs and sample masks on 128 lanes (CPU only)')
 
 
 def main():
@@ -141,6 +187,7 @@ def main():
     if a.geometry:
         run([binary, ROOT/'userspace/tests/geometry_essl', out/'geometry'], 'actual-geometry-ESSL320')
         verify_geometry_vertex(out/'geometry.native-vs-code.bin')
+        verify_geometry_fragment(out/'geometry.native-fs-code.bin')
         return
     for name in (('language','language-conditional','language-full') if a.language else ('dynamic','adjacent','capacity','edge','component') if a.dynamic else ('uniform','full','conditional')):(out/'programs'/name).mkdir(parents=True)
     run([binary,ROOT/'userspace/tests/tess_uniform_essl',out/'programs'],'actual-ESSL320')
