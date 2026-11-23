@@ -1241,6 +1241,29 @@ The ABI generator/check and 3,979 malformed-wire C cases pass. Hardware-discover
 protected GNJ2 execution, transform feedback, composed four-owner execution and
 the full host/API gates remain required; these component results do not close H8.
 
+### Linked geometry and ABI7 fragment source
+
+The private ESSL 3.20 frontend links the original VS, GS and FS with empty TCS
+and TES entries. The Mesa 22.3.6 sanitizer run captured sixteen linked
+varying slots through all three stages. The geometry shader emits three
+vertices and ends the primitive. The same link produces a 500-word ABI7
+fragment program using primitive ID, layer, sample ID, sample mask and four
+color outputs. The color reflection uses MRT locations and the ABI7 emitter
+accepts Mesa's constant-interpolated geometry inputs and the precise
+arithmetic used by this fixture.
+
+Run the CPU compiler case with the pinned Mesa source, static objects and
+compiler image described in the [native linked compiler
+reproduction](NATIVE_JOINT_COMPILER_SOURCE.md#reproduction).
+
+```sh
+python3 -B scripts/test_tessellation_uniform_frontend.py --geometry --sanitize \
+  --build "$GEOMETRY_BUILD"
+```
+
+Scalar GS lowering, protected submission and same-DUT transform feedback
+remain required for the complete geometry execution result.
+
 ### Linux version-two publication
 
 The existing 128-byte native ioctl has a distinct version 2 with a 2,056-byte

@@ -1,4 +1,4 @@
-/* Compiler-only linked ESSL320 VS/TCS/TES/(GS)/FS frontend.
+/* Compiler-only linked ESSL320 VS/TCS/TES/(GS)/FS and VS/GS/FS frontend.
  * Device capability reporting is deliberately separate from this fixture. */
 #include <cassert>
 #include <cstdio>
@@ -13,6 +13,7 @@
 #include "compiler/glsl/gl_nir.h"
 #include "compiler/glsl/gl_nir_linker.h"
 #include "compiler/nir/nir.h"
+#include "util/ralloc.h"
 extern "C" {
 #include "nir/nir_to_tgsi.h"
 }
@@ -87,7 +88,10 @@ static int type_size(const glsl_type *type, bool) { return glsl_count_vec4_slots
 
 static void *compile(const char *const files[5], const char *prefix,bool joint)
 {
-    if(!files || !files[0] || !files[1] || !files[2] || !files[4])return nullptr;
+    if (!files || !files[0] || !files[4]) return nullptr;
+    const bool tessellation = files[1] && files[2];
+    const bool geometry = !files[1] && !files[2] && files[3] && !joint;
+    if (!tessellation && !geometry) return nullptr;
     auto *f = new graphics_program{};
     f->options.glsl_version = 300;
     f->options.do_link = 1; f->options.just_log = 1;
@@ -100,6 +104,18 @@ static void *compile(const char *const files[5], const char *prefix,bool joint)
         opengpu_tess_frontend_destroy(f); return nullptr;
     }
     auto *program = f->program;
+    if (geometry) {
+        if (!program->IsES || program->data->Version != 320) {
+            opengpu_tess_frontend_destroy(f);
+            return nullptr;
+        }
+        for (unsigned i = 0; i < 5; ++i) {
+            if (bool(program->_LinkedShaders[stages[i]]) != bool(files[i])) {
+                opengpu_tess_frontend_destroy(f);
+                return nullptr;
+            }
+        }
+    }
     if(joint){
         if(!native_fragment_reflect_v2(program,&f->captured.fragment)){opengpu_tess_frontend_destroy(f);return nullptr;}
         f->joint=true;
@@ -201,12 +217,15 @@ static void *compile(const char *const files[5], const char *prefix,bool joint)
         nir_validate_shader(nir, "actual linked graphics uniform frontend");
         nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir)); shader->Program->info = nir->info;
         if (stage == MESA_SHADER_FRAGMENT) nir_foreach_shader_out_variable(var, nir) {
-            if(joint&&(var->data.location<FRAG_RESULT_DATA0||var->data.location>=FRAG_RESULT_DATA0+4))continue;
-            assert(var->data.driver_location < 4 && glsl_get_components(var->type) <= 4);
+            if ((joint || geometry) && (var->data.location < FRAG_RESULT_DATA0 ||
+                                        var->data.location >= FRAG_RESULT_DATA0 + 4)) continue;
+            const unsigned color = geometry ? var->data.location - FRAG_RESULT_DATA0
+                                            : var->data.driver_location;
+            assert(color < 4 && glsl_get_components(var->type) <= 4);
             auto type = glsl_get_base_type(var->type);
             assert(type == GLSL_TYPE_FLOAT || type == GLSL_TYPE_UINT || type == GLSL_TYPE_INT);
-            f->color_types[var->data.driver_location] = type == GLSL_TYPE_UINT ? 1 : type == GLSL_TYPE_INT ? 2 : 0;
-            if(joint)f->captured.fragment.color_types[var->data.driver_location]=f->color_types[var->data.driver_location];
+            f->color_types[color] = type == GLSL_TYPE_UINT ? 1 : type == GLSL_TYPE_INT ? 2 : 0;
+            if(joint)f->captured.fragment.color_types[color]=f->color_types[color];
         }
         f->tokens[i] = static_cast<const tgsi_token *>(nir_to_tgsi(nir, &screen));
         shader->Program->nir = nullptr; assert(f->tokens[i]);
@@ -251,7 +270,9 @@ extern "C" int opengpu_tess_frontend_ubos(void *p,pipe_context *pipe,
     }
     for(auto stage:stages)if(f->program->_LinkedShaders[stage])
         f->ctx._Shader->CurrentProgram[stage]=f->program->_LinkedShaders[stage]->Program;
-    st_bind_vs_ubos(&st);st_bind_tcs_ubos(&st);st_bind_tes_ubos(&st);
+    st_bind_vs_ubos(&st);
+    if (f->program->_LinkedShaders[MESA_SHADER_TESS_CTRL]) st_bind_tcs_ubos(&st);
+    if (f->program->_LinkedShaders[MESA_SHADER_TESS_EVAL]) st_bind_tes_ubos(&st);
     if(f->program->_LinkedShaders[MESA_SHADER_GEOMETRY])st_bind_gs_ubos(&st);
     st_bind_fs_ubos(&st);
     for(unsigned i=0;i<72;i++)f->ctx.UniformBufferBindings[i].BufferObject=nullptr;
@@ -272,7 +293,20 @@ extern "C" void opengpu_tess_frontend_destroy(void *p)
 {
     auto *f=static_cast<graphics_program *>(p);if(!f)return;
     for(auto *t:f->tokens)if(t)ureg_free_tokens(t);
-    if(f->program)standalone_compiler_cleanup(f->program);
+    if (f->program) {
+        for (auto stage : stages) {
+            auto *shader = f->program->_LinkedShaders[stage];
+            if (shader && shader->Program) {
+                ralloc_free(shader->Program->nir);
+                shader->Program->nir = nullptr;
+                if (shader->Program->Parameters) {
+                    _mesa_free_parameter_list(shader->Program->Parameters);
+                    shader->Program->Parameters = nullptr;
+                }
+            }
+        }
+        standalone_compiler_cleanup(f->program);
+    }
     delete f;
 }
 

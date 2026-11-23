@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in real Mesa22.3.6 ESSL320 tess frontend test; CPU only, never a GPU oracle.
+"""Opt-in real Mesa22.3.6 ESSL320 tessellation and geometry frontend tests.
 
 Link configured, immutable Mesa libraries; compile only private scaffolding
 and GPU frontend/tests. Use a fresh --build directory; delete ended outputs.
@@ -12,7 +12,9 @@ LIBS=("src/compiler/glsl/libglsl.a","src/compiler/nir/libnir.a","src/compiler/li
       "src/util/format/libmesa_format.a","src/c11/impl/libmesa_util_c11.a")
 def main():
     ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('--build',type=Path,required=True)
-    ap.add_argument('--sanitize',action='store_true');ap.add_argument('--baseline-source',type=Path,help='explicit original v2 production emitter for old-byte comparison, never a replacement runtime');ap.add_argument('--regressions',action='store_true',help='with --language, reuse this immutable build for old v1/v2 ESSL suites');mode=ap.add_mutually_exclusive_group();mode.add_argument('--dynamic',action='store_true',help='private TES v2 CPU compiler cases');mode.add_argument('--language',action='store_true',help='private TCS/TES v3 language input-patch ID CPU cases');a=ap.parse_args()
+    ap.add_argument('--sanitize',action='store_true');ap.add_argument('--baseline-source',type=Path,help='explicit original v2 production emitter for old-byte comparison, never a replacement runtime');ap.add_argument('--regressions',action='store_true',help='with --language, reuse this immutable build for old v1/v2 ESSL suites');mode=ap.add_mutually_exclusive_group();mode.add_argument('--dynamic',action='store_true',help='private TES v2 CPU compiler cases');mode.add_argument('--language',action='store_true',help='private TCS/TES v3 language input-patch ID CPU cases')
+    mode.add_argument('--geometry', action='store_true', help='linked VS/GS/FS and native ABI7 CPU compiler case')
+    a=ap.parse_args()
     if a.regressions and not a.language:ap.error('--regressions requires --language')
     if a.baseline_source and not a.regressions:ap.error('--baseline-source requires --regressions')
     out=a.build.resolve();out.mkdir(parents=True,exist_ok=False)
@@ -52,7 +54,11 @@ def main():
             ['-MMD','-MF',obj.with_suffix('.d'),'-c',source,'-o',obj],'compile-'+obj.stem);objects.append(obj)
     inc=['-I'+str(p) for p in (ROOT/'userspace/gallium',ROOT/'userspace',ROOT/'driver',mesa/'src/gallium/include',
         mesa/'src/gallium/auxiliary',ROOT/'userspace/tests',Path(os.environ.get('OPENGPU_DRM_INCLUDE',ROOT/'depends/aarch64-root/include')),mesa/'src/compiler/nir',mb/'src/compiler/nir',mesa/'src',mesa/'include')]
-    for name in ('userspace/gallium/opengpu_tess_frontend.cpp',('userspace/tests/tessellation_language_frontend_test.cpp' if a.language else 'userspace/tests/tessellation_dynamic_frontend_test.cpp' if a.dynamic else 'userspace/tests/tessellation_uniform_frontend_test.cpp')):
+    test_source = ('geometry_link_frontend_test.cpp' if a.geometry else
+                   'tessellation_language_frontend_test.cpp' if a.language else
+                   'tessellation_dynamic_frontend_test.cpp' if a.dynamic else
+                   'tessellation_uniform_frontend_test.cpp')
+    for name in ('userspace/gallium/opengpu_tess_frontend.cpp', 'userspace/tests/' + test_source):
         obj=out/(Path(name).stem+'.o')
         run(cxx+flags(units[0])+['-UNDEBUG','-Wall','-Wextra','-Werror','-Wno-unused-parameter']+inc+san+
             ['-MMD','-MF',obj.with_suffix('.d'),'-c',ROOT/name,'-o',obj],'compile-'+obj.stem);objects.append(obj)
@@ -63,6 +69,8 @@ def main():
         'userspace/gallium/opengpu_context.c','userspace/gallium/opengpu_screen.c',
         'userspace/gallium/opengpu_cs_emit.c','userspace/gallium/opengpu_fs_emit.c','userspace/gallium/opengpu_vs_emit.c',
         'userspace/pipe_opengpu.c','userspace/opengpu.c')
+    if a.geometry:
+        gpu_units += ('userspace/gallium/opengpu_native_fs_emit.c',)
     for name in gpu_units:
         obj=out/(Path(name).stem+'.o')
         extra=['-D'+n+'=cs_fixture_'+n for n in ('ioctl','mmap','munmap','dup','close')] if name in ('userspace/pipe_opengpu.c','userspace/opengpu.c') else []
@@ -94,6 +102,9 @@ def main():
     binary=out/'tess-frontend'
     run(cxx+san+['-rdynamic','-Wl,--gc-sections']+objects+['-Wl,--start-group']+[mb/p for p in LIBS]+['-Wl,--end-group']+
         shlex.split(os.environ.get('OPENGPU_MESA_LINK_LIBS','-lz -lexpat'))+['-ldl','-lm','-pthread','-o',binary],'link')
+    if a.geometry:
+        run([binary, ROOT/'userspace/tests/geometry_essl', out/'geometry'], 'actual-geometry-ESSL320')
+        return
     for name in (('language','language-conditional','language-full') if a.language else ('dynamic','adjacent','capacity','edge','component') if a.dynamic else ('uniform','full','conditional')):(out/'programs'/name).mkdir(parents=True)
     run([binary,ROOT/'userspace/tests/tess_uniform_essl',out/'programs'],'actual-ESSL320')
     if a.regressions:

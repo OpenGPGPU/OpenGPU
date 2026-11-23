@@ -8,7 +8,8 @@ struct pipe_context; struct pipe_resource; struct gl_context;
 struct opengpu_native_tess_input_map;
 /* Compiler/private-source path only. Stage arguments are GPU resource tags,
  * never Mesa enums: VS=0, FS=1, GS=3, TCS=4, TES=5. No public caps change.
- * filenames order VS,TCS,TES,GS(optional NULL),FS. Linked limits: API72,
+ * filenames order VS,TCS,TES,GS,FS. Supply TCS and TES together, with optional
+ * GS, or set both tessellation entries to NULL and supply GS. Linked limits: API72,
  * graphics60 references, 12 blocks/stage, 1024 default components, 16KiB UBOs.
  */
 void opengpu_tess_frontend_limits(struct gl_context *);
