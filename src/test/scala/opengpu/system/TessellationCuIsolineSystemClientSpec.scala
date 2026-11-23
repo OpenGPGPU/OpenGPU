@@ -231,8 +231,50 @@ class TessellationCuIsolineSystemClientSpec extends AnyFlatSpec {
         memory.faultAt = Set.empty
         successfulOutputs += 1
         start(); done(0, successfulOutputs)
+
+        val tesRoot = BigInt(0x5000)
+        val beforeReset = memory.seen.size
+        memory.beforeRequest = request => {
+          if (request.tag == 1 && request.address == tesRoot) memory.holdResponses = true
+        }
+        start()
+        until("accepted TES root before reset") {
+          memory.pending.exists(request => request.tag == 1 && request.address == tesRoot)
+        }
+        assert(memory.seen.drop(beforeReset).exists(request => request.tag == 1 && request.address == tesRoot))
+        assert(memory.holdResponses && memory.reply.isEmpty)
+        d.io.evaluationOwned.expect(true.B)
+        d.io.completion.valid.expect(false.B)
+
+        // The system reset also resets both memory transport peers. Their
+        // backing bytes survive, while old transaction IDs are retired.
+        sys.memoryRequest.ready.poke(false.B)
+        sys.memoryResponse.valid.poke(false.B)
+        d.io.uniformMemoryRequest.get.ready.poke(false.B)
+        d.io.uniformMemoryResponse.get.valid.poke(false.B)
+        d.reset.poke(true.B)
+        d.clock.step(2)
+        cycle += 2
+        pending.clear()
+        memory.pending.clear()
+        memory.held = None
+        memory.reply = None
+        memory.holdResponses = false
+        memory.beforeRequest = _ => ()
+        d.reset.poke(false.B)
+        val afterReset = memory.seen.size
+        for (_ <- 0 until 8) {
+          d.io.evaluationOwned.expect(false.B)
+          d.io.completion.valid.expect(false.B)
+          d.io.out.valid.expect(false.B)
+          tick()
+        }
+        assert(memory.seen.size == afterReset && outputs == successfulOutputs)
+        successfulOutputs += 1
+        start(); done(0, successfulOutputs)
+        assert(memory.seen.drop(afterReset).exists(request => request.tag == 1 && request.address == tesRoot))
         info(s"P15_ISOLINE_FLASHSIM cus=2 lanes=${config.lanes} warps=${config.warps} controlVertices=$controlVertices " +
-          s"healthy=$successfulOutputs cancelled=1 faulted=${badTesWords.size + 1}")
+          s"healthy=$successfulOutputs cancelled=1 faulted=${badTesWords.size + 1} resetWithHeldTesRead=true")
       }
     }
   }
