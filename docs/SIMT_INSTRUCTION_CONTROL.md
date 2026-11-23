@@ -98,8 +98,11 @@ including element 255. The sanitizer-enabled Gallium CPU run checked all
 128 lane results. The complete owner fixture passed original Linux CPU
 capture with its 4096-byte default uniform view. The independent oracle
 evaluates selected loads from original physical bytes and rejected unchanged
-RAM. Run the complete owner command with `--case indexed-uniform-loop`
-to reproduce the fixture on a DUT. That execution remains pending.
+RAM. The assertion-enabled two-CU float owner passed this case at source
+`f91f860e7` in 95,486 service cycles. All 128 returned results, the original
+uniform bytes, physical guards, command retirement and context cleanup
+passed. Reproduce with the complete owner command and
+`--case indexed-uniform-loop`.
 
 The loop producer also compares Gallium's TGSI block and shared-memory limits
 against production driver queries before submission. It checks the 512-word
