@@ -37,6 +37,7 @@ DEFAULT_DEPENDENCIES = ('scripts/flashsim_native/VGpuHostSystemAxi.h',
     'scripts/native_execution_progress.hpp', 'scripts/native_frame_axi.hpp',
     'scripts/native_frame_fixture.hpp')
 CHECKERS = ('scripts/prepare_owner_executor.py', 'scripts/build_native_flashsim.py',
+    'scripts/run_owner_bounded.py', 'scripts/owner_process_memory.py', 'scripts/owner_process_lifetime.py',
     'scripts/prepare_native_owner_flashsim.py', 'scripts/qualify_native_product_flashsim.py',
     'scripts/qualify_native_product_compiled.py')
 COMPUTE_CHECKERS = (
@@ -574,7 +575,7 @@ def shared_owner_shards(qualification, model, compiler, options, shards):
     return dut, dict(directory=str(directory / 'flashsim-build'), objects=objects), compiled_model
 
 
-def verify_qualification(path, *, executor=None, kind='compute'):
+def verify_qualification(path, *, executor=None, kind='compute', backend=None):
     """Recheck original source/tool/model/build/binary identity; executes no GPU job."""
     require(not Path(path).is_symlink(), 'owner qualification must not be aliased')
     path = inside(path)
@@ -585,10 +586,13 @@ def verify_qualification(path, *, executor=None, kind='compute'):
                     clockQualified=False, fpsQualified=False)
     require(all(type(record.get(k)) is type(v) and record[k] == v for k, v in required.items()),
             'owner executor qualification has the wrong kind, schema, profile or scope')
-    if record.get('backend') == 'verilator':
+    record_backend = record.get('backend', 'flashsim')
+    require(backend is None or record_backend == backend,
+            'owner qualification backend differs from the requested backend')
+    if record_backend == 'verilator':
         import prepare_owner_verilator_executor as verilator
         return verilator.verify_qualification(path, record, executor=executor, kind=kind)
-    require(record.get('backend', 'flashsim') == 'flashsim', 'unsupported owner executor backend')
+    require(record_backend == 'flashsim', 'unsupported owner executor backend')
     directory = inside(record['owner_output'])
     model = model_identity(directory, Path(record['flashsim']), record['shards'])
     contract = profile_contract(model['profile'], kind)
@@ -634,6 +638,61 @@ def verify_qualification(path, *, executor=None, kind='compute'):
     require(record.get('executable_sha256') == common.sha(executable) == built.get('executable_sha256'),
             'owner executor binary changed or belongs to another build')
     return record
+
+
+def probe_executor(path, *, executor=None, kind, backend=None):
+    """Run discovery on the qualified executable and validate its hardware observations."""
+    from compute_owner_protocol import profile_bytes, strict_json
+    from owner_process_lifetime import CleanupIncomplete
+    from run_owner_bounded import run_bounded
+
+    require(kind in ('compute', *SAMPLE_KINDS), 'owner executor kind has no discovery probe')
+    record = verify_qualification(path, executor=executor, kind=kind, backend=backend)
+    binary = inside(path).parent / 'executor'
+    with ExitStack() as locks:
+        for lock_path in build_lock_paths(inside(record['owner_output']), kind):
+            require(not lock_path.is_symlink(), 'owner probe lock must not be aliased')
+            lock = locks.enter_context(lock_path.open('a'))
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        require(verify_qualification(path, executor=executor, kind=kind, backend=backend) == record,
+                'owner inputs changed before the MMIO probe')
+        temporary = Path(tempfile.mkdtemp(prefix='owner-probe-', dir=ROOT / '.artifacts'))
+        cleanup_known = True
+
+        def interrupted(signum, _frame):
+            raise InterruptedError('owner probe interrupted by signal ' + str(signum))
+
+        previous = {sig: signal.signal(sig, interrupted) for sig in (signal.SIGINT, signal.SIGTERM)}
+        try:
+            observed = temporary / 'profile.json'
+            code = run_bounded([str(binary), '--probe-profile', str(observed)], 8192, 600)
+            require(code == 0, 'owner MMIO probe exited with code ' + str(code))
+            require(observed.is_file() and not observed.is_symlink(), 'missing or aliased MMIO probe output')
+            profile = strict_json(observed)
+            if kind == 'compute':
+                name = None if record['profile'] == owner.PROFILE else record['profile']
+                require(isinstance(profile, dict) and profile.get('ownerProfile') == name,
+                        'MMIO probe read another compute owner factory')
+                profile_bytes(profile)
+            else:
+                from native_sample_owner_protocol import profile_bytes as sample_profile_bytes
+                sample_profile_bytes(profile, owner_profile=record['profile'])
+            require(verify_qualification(path, executor=executor, kind=kind, backend=backend) == record,
+                    'owner inputs changed during the MMIO probe')
+            print('Actual original probe PASS kind=' + kind + ' words=' + str(len(profile['words'])) +
+                  ' registers=' + str(len(profile['registers'])) +
+                  ' resetCount=1 gpuExecution=false clockQualified=false fpsQualified=false', flush=True)
+        except CleanupIncomplete:
+            cleanup_known = False
+            print('Consumer exit unproven; preserve probe inputs: ' + str(temporary), file=sys.stderr)
+            raise
+        finally:
+            try:
+                if cleanup_known:
+                    shutil.rmtree(temporary)
+            finally:
+                for sig, handler in previous.items():
+                    signal.signal(sig, handler)
 
 
 def build_executor(directory, flashsim, kind, *, shards=32, jobs=1,
@@ -735,7 +794,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--stage', required=True, choices=('build', 'check', 'probe'))
     parser.add_argument('--kind', required=True, choices=KINDS)
-    parser.add_argument('--backend', choices=('flashsim', 'verilator'), default='flashsim')
+    parser.add_argument('--backend', choices=('flashsim', 'verilator'),
+                        help='build with this backend or require it when checking or probing a qualification')
     parser.add_argument('--owner-output', type=Path)
     parser.add_argument('--flashsim-dir', type=Path)
     parser.add_argument('--qualification', type=Path)
@@ -748,21 +808,20 @@ def main():
     parser.add_argument('--reuse-shards-from', type=Path,
                         help='qualification.json for a successful FlashSim build of the identical DUT')
     args = parser.parse_args()
-    if args.reuse_shards_from is not None and (args.stage != 'build' or args.backend != 'flashsim'):
+    if args.reuse_shards_from is not None and (args.stage != 'build' or args.backend == 'verilator'):
         parser.error('--reuse-shards-from requires --stage build with FlashSim')
     if args.stage in ('check', 'probe'):
         if args.qualification is None:
             parser.error('--stage ' + args.stage + ' requires --qualification')
-        verified = verify_qualification(args.qualification, executor=args.executor, kind=args.kind)
         if args.stage == 'probe':
-            if verified.get('backend') != 'verilator':
-                parser.error('--stage probe currently requires a qualified Verilator executor')
-            import prepare_owner_verilator_executor as verilator
-            verilator.probe(args.qualification, executor=args.executor, kind=args.kind)
+            probe_executor(args.qualification, executor=args.executor, kind=args.kind, backend=args.backend)
+        else:
+            verify_qualification(args.qualification, executor=args.executor, kind=args.kind, backend=args.backend)
     else:
-        if args.owner_output is None or (args.backend == 'flashsim' and args.flashsim_dir is None):
+        backend = args.backend or 'flashsim'
+        if args.owner_output is None or (backend == 'flashsim' and args.flashsim_dir is None):
             parser.error('--stage build requires --owner-output and FlashSim also requires --flashsim-dir')
-        if args.backend == 'verilator' and (args.flashsim_dir is not None or args.jobs != 1
+        if backend == 'verilator' and (args.flashsim_dir is not None or args.jobs != 1
                 or args.precompiled_header or args.conservative_alias or args.shard_opt != '-O2'):
             parser.error('Verilator executors use the bound native model and one original driver compilation')
         directory = inside(args.owner_output)
@@ -774,7 +833,7 @@ def main():
                 for lock_path in build_lock_paths(directory, args.kind):
                     lock = stack.enter_context(lock_path.open('a'))
                     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                if args.backend == 'verilator':
+                if backend == 'verilator':
                     import prepare_owner_verilator_executor as verilator
                     path = verilator.build_executor(directory, args.kind)
                 else:

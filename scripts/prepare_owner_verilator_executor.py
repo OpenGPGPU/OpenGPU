@@ -4,17 +4,13 @@ import os
 from pathlib import Path
 import re
 import shlex
-import shutil
-import signal
 import subprocess
 import sys
-import tempfile
 
 import build_owner_verilator as native
 import generate_owner_verilator as generator
 import prepare_owner_executor as owner
 from compute_owner_protocol import strict_json
-from owner_process_lifetime import CleanupIncomplete
 from owner_resource_contract import SAMPLE_PROFILE, IMAGE_FLOAT_PROFILE
 from run_owner_bounded import run_bounded
 
@@ -245,40 +241,3 @@ def build_executor(directory, kind):
     (target / 'driver.o').unlink()
     (target / 'driver.d').unlink()
     return path
-
-
-def probe(path, *, executor=None, kind):
-    require(kind in ('native-sample', 'native-sample-graphics', 'compute'),
-            'Only the three original discovery probes belong to P04')
-    record = owner.verify_qualification(path, executor=executor, kind=kind)
-    binary = Path(path).parent / 'executor'
-    temporary = Path(tempfile.mkdtemp(prefix='owner-verilator-probe-', dir=ROOT / '.artifacts'))
-    cleanup_known = True
-    def interrupted(signum, _frame):
-        raise InterruptedError('Original owner probe interrupted by signal ' + str(signum))
-    previous = {sig: signal.signal(sig, interrupted) for sig in (signal.SIGINT, signal.SIGTERM)}
-    try:
-        observed = temporary / 'profile.json'
-        execute(temporary / 'probe.log', [str(binary), '--probe-profile', str(observed)], 8192, 600)
-        profile = strict_json(regular(observed))
-        require(profile.get('ownerProfile') == record['profile'], 'Original probe read another owner factory')
-        if kind == 'compute':
-            from compute_owner_protocol import profile_bytes
-            profile_bytes(profile)
-        else:
-            from native_sample_owner_protocol import profile_bytes
-            profile_bytes(profile,owner_profile=record['profile'])
-        require(owner.verify_qualification(path, executor=executor, kind=kind) == record,
-                'Original owner inputs changed during the actual MMIO probe')
-        print('Actual original probe PASS kind=' + kind + ' words=' + str(len(profile['words'])) +
-              ' registers=' + str(len(profile['registers'])) +
-              ' resetCount=1 gpuExecution=false clockQualified=false fpsQualified=false', flush=True)
-    except CleanupIncomplete:
-        cleanup_known = False
-        print('Consumer exit unproven; preserve probe inputs: ' + str(temporary), file=sys.stderr)
-        raise
-    finally:
-        if cleanup_known:
-            shutil.rmtree(temporary)
-        for sig, handler in previous.items():
-            signal.signal(sig, handler)
