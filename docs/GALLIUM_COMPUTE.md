@@ -825,10 +825,27 @@ The framebuffer-blit guest binary has a capability-only mode. It opens the
 OpenGPU GBM device, checks that its EGL config offers GLES 2 and creates a
 GLES 2.0 context. It verifies the GL version and extensions, and expects
 `EGL_BAD_CONFIG` when the same config is used to request GLES 3.1.
-The AArch64 binary passed in a real Debian guest on the archived 64×64
-FlashSim-linked OpenGPU model with ABI 2 and Mesa 22.3.6. Repeat against a
-fresh model for the current RTL. Run the probe with the OpenGPU DRI libraries
-installed and Mesa overrides unset:
+The AArch64 probe passed in a Debian 12 arm64 guest with a fresh 64×64
+`GpuHostSystemAxi` model from the RTL at OpenGPU `8a1919172`. The emitter used
+two compute CUs with sixteen lanes and eight warps each, the legacy graphics
+path and a 32-byte AXI interface. FlashSim `670b3a9` generated the
+assertion-enabled model. The linked ARTI bridge used `f1b2c29`.
+Linux 7.2 discovered hardware ABI 11 and registered OpenGPU DRM. Mesa 22.3.6
+reported OpenGL ES 2.0. The probe, the staged DRI library and the kernel module
+matched the fresh AArch64 build. The guest powered down normally and QEMU exited
+zero. The complete 640×480 owner has its own execution qualification.
+
+Use the following RTL emission profile for the public capability probe.
+Generate the FlashSim model with `flashsim arti-model --frontend circt --assertions`
+and link it into the ARTI QEMU build.
+
+```sh
+sbt -J-Xmx7G -J-XX:ActiveProcessorCount=2 \
+  "runMain opengpu.elaboration.EmitGpuHostSystemAxi $RTL --frag-core --vert-core --width 64 --height 64 --compute-units 2 --cu-lanes 16 --cu-warps 8 --memory-axi-data-bytes 32"
+```
+
+Install the matching OpenGPU DRI libraries and probe in the guest and leave the
+Mesa overrides unset:
 
 ```sh
 OPENGPU_GL_COMPUTE_CAPS_ONLY=1 LD_LIBRARY_PATH=/root LIBGL_DRIVERS_PATH=/root \
