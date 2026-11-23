@@ -130,5 +130,9 @@ the loop backedge. The Linux word validator accepted the stream.
 The complete owner harness accepts `--case loop-branch`. Its sanitized
 Mesa/Linux CPU capture passed. The byte oracle requires twelve selected
 result words and preserves every other physical byte. Tests reject damaged
-results, writes to skipped positions and unchanged RAM. Full DUT execution
-of this fixture remains pending.
+results, writes to skipped positions and unchanged RAM. The assertion-enabled
+two-CU float owner passed `loop-branch` at source `f91f860e7` in 7,324
+service cycles. All selected result words, skipped positions, physical
+guards, command retirement and context cleanup passed. Reproduce with the
+[complete owner qualification command](P12_RESOURCE_COEXISTENCE.md#reproduce)
+and `--case loop-branch`.
