@@ -14,7 +14,9 @@ import scala.collection.mutable
 /** Local full-host qualification for live feedback across native domains. */
 class TessellationNativeThreeDomainFeedbackHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
   import TypedColorReference.fp
-  private val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
+  private val checkedUniforms = sys.props.get("opengpu.tessellationUniformFullCu").contains("1")
+  private val gpu = if (checkedUniforms) GpuConfig(l2Sets = 8, l2Ways = 2)
+    else GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
   private val graphics=GraphicsConfig(screenWidth=math.min(17,GraphicsTestResolution.width),screenHeight=math.min(9,GraphicsTestResolution.height))
   private val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2)
   private val f=FragmentShaderConfig(2,4)
@@ -24,7 +26,8 @@ class TessellationNativeThreeDomainFeedbackHostAxiSpec extends AnyFlatSpec with 
       transformFeedback=true)
     new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
-      exposePerformance=true,nativeBinnedGraphics=Some(profile),tessellationNative=true)
+      exposePerformance=true,nativeBinnedGraphics=Some(profile),tessellationNative=true,
+      tessellationUniforms=checkedUniforms)
   }
   private def parkMemory(d:GpuHostSystemAxi):Unit={
     d.io.m_axi_arready.poke(false.B);d.io.m_axi_awready.poke(false.B);d.io.m_axi_wready.poke(false.B)
@@ -44,6 +47,61 @@ class TessellationNativeThreeDomainFeedbackHostAxiSpec extends AnyFlatSpec with 
     def pop():Unit={axiWrite(d,GpuCommandMmioRegs.COMPLETION_POP,1);axiWrite(d,RenderHostRegs.IRQ,3)
       for(i<-0 until 12)assert(axiRead(d,0x180+i*4)==0,"popped native details must not remain visible")}
   }
+  private def useCheckedUniforms(image: Image, domain: Int, evaluationPcWord: Int): Set[BigInt] = {
+    val draw = 0x8e0000
+    val version = 4 + domain
+    image.word(draw, BigInt("474e5400", 16) + version)
+    image.word(draw + 8, version)
+    Vector(7, 8, 9).zipWithIndex.foreach { case (value, i) => image.word(draw + (496 + i) * 4, value) }
+    val lines = (0 until 2).flatMap { provider =>
+      val stage = 4 + provider
+      val root = 0x90000 + domain * 0x4000 + provider * 0x2000
+      val binding = root + 64
+      val value = root + 0x1000
+      val scopeWord = 499 + provider * 5
+      image.word(draw + scopeWord * 4, 3)
+      image.word(draw + (scopeWord + 1) * 4, root)
+      val rootWords = Vector[BigInt](BigInt("47555203", 16), 64, 3, 7, 8, 9, stage,
+        0, 0, 0, 0, 0, 0, binding, 1, 0)
+      val bindingWords = Vector[BigInt](BigInt("47554203", 16), 64, 3, 7, 8, 9, 31,
+        1 << stage, value, value + 64, 0, value, value + 64, 0, 1, 0)
+      for ((base, words) <- Seq(root -> rootWords, binding -> bindingWords);
+           (data, i) <- words.zipWithIndex) image.word(base + 4 * i, data)
+      image.word(value, fp(1))
+      Seq(BigInt(root), BigInt(binding), BigInt(value))
+    }.toSet
+
+    def program(base: Int): Vector[BigInt] = {
+      val ret = BigInt("30500073", 16)
+      val words = (0 until 64).iterator.map { i =>
+        (image.read(base + (4 * i & ~63)) >> (32 * (i % 16))) & 0xffffffffL
+      }
+        .takeWhile(_ != ret).toVector
+      assert(words.nonEmpty && words.size < 64, s"missing return at 0x${base.toHexString}")
+      words :+ ret
+    }
+    def loadDefault(rd: Int, selector: Int, offset: Int): Vector[BigInt] =
+      Vector((BigInt(31) << 20) | (BigInt(selector) << 7) | 0x13,
+        (BigInt(offset) << 7) | 0x13,
+        (BigInt(7) << 25) | (BigInt(offset) << 20) | (BigInt(selector) << 15) | (BigInt(rd) << 7) | 0x0b)
+
+    val control = program(0x1000)
+    assert(control(3) == BigInt("5601052b", 16), "fixture must read the per-patch level before its barrier")
+    val moveScalarToVector = (BigInt(23) << 26) | (BigInt(1) << 25) | (BigInt(10) << 15) |
+      (BigInt(4) << 12) | (BigInt(10) << 7) | 0x57
+    val checkedControl = control.take(3) ++ loadDefault(10, 1, 2) ++ Vector(moveScalarToVector) ++ control.drop(4)
+    checkedControl.zipWithIndex.foreach { case (word, i) => image.word(0x1000 + i * 4, word) }
+
+    val evaluation = program(0x3000)
+    val wImmediate = BigInt("3f8002b7", 16)
+    assert(evaluation.count(_ == wImmediate) == 1)
+    val checkedEvaluation = evaluation.flatMap(word =>
+      if (word == wImmediate) loadDefault(5, 11, 12) else Vector(word))
+    val evaluationPc = 0x21000 + domain * 0x1000
+    checkedEvaluation.zipWithIndex.foreach { case (word, i) => image.word(evaluationPc + i * 4, word) }
+    image.word(draw + evaluationPcWord * 4, evaluationPc)
+    lines
+  }
   for (reuseExecutable <- Seq(false, true)) {
   it should s"preserve a live point capture across domains with reused executable=$reuseExecutable" in {
     val isoline=TessellationNativeHostFixture.build();val triangle=TessellationNativeTriangleHostFixture.build();val quad=TessellationNativeQuadHostFixture.build()
@@ -57,6 +115,12 @@ class TessellationNativeThreeDomainFeedbackHostAxiSpec extends AnyFlatSpec with 
     val isoPoint=isoFields.find(_.name==pointName).get.word;val triPoint=triFields.find(_.name==pointName).get.word;val quadPoint=quadFields.find(_.name==pointName).get.word
     val controlName="template.source.viewport.system.patch.control.kernel.kernelPc"
     val isoControl=isoFields.find(_.name==controlName).get.word;val triControl=triFields.find(_.name==controlName).get.word;val quadControl=quadFields.find(_.name==controlName).get.word
+    val evaluationName = "template.source.viewport.system.patch.evaluationKernel.kernelPc"
+    val evaluationPcWords = Seq(
+      isoFields.find(_.name == evaluationName).get.word,
+      triFields.find(_.name == evaluationName).get.word,
+      quadFields.find(_.name == evaluationName).get.word
+    )
     simulate(host(local=true)){d=>
       initialize(d);val image=new Image(d);image.memory++=isoline;image.word(0x30000,0xcf);vm(d)
       val record=BigInt(0x30400000);val recordPa=BigInt(0x18400000)
@@ -84,9 +148,11 @@ class TessellationNativeThreeDomainFeedbackHostAxiSpec extends AnyFlatSpec with 
         val fixture=if(domain==2)quad else if(domain==1)triangle else isoline
         // Replace the complete published range, including any trailing bytes
         // left by a longer program from the preceding domain.
-        if (reuseExecutable) for(i<-0 until 256)image.memory(BigInt(0x1000)+i)=0
+        if (reuseExecutable || checkedUniforms) for(i<-0 until 256)image.memory(BigInt(0x1000)+i)=0
         image.memory++=fixture;image.word(0x30000,0xcf)
         image.word(0x8e0000+(if(domain==2)quadPoint else if(domain==1)triPoint else isoPoint)*4,1)
+        val uniformLines = if (checkedUniforms) useCheckedUniforms(image, domain, evaluationPcWords(domain))
+          else Set.empty[BigInt]
         if (reuseExecutable) {
           val controlPc=if(domain==2)quadControl else if(domain==1)triControl else isoControl
           assert(word(0x8e0000+controlPc*4)==0x1000,"fixture must reuse the control-program address")
@@ -108,7 +174,8 @@ class TessellationNativeThreeDomainFeedbackHostAxiSpec extends AnyFlatSpec with 
           // Distinct executable snapshots provide an independent baseline.
           val controlPc=if(domain==2)quadControl else if(domain==1)triControl else isoControl
           val programPc=BigInt(0x11000+domain*0x1000)
-          for(i<-0 until 256)image.memory(programPc+i)=fixture.getOrElse(BigInt(0x1000)+i,0)
+          val code = if (checkedUniforms) image.memory else fixture
+          for(i<-0 until 256)image.memory(programPc+i)=code.getOrElse(BigInt(0x1000)+i,0)
           image.word(0x8e0000+controlPc*4,programPc)
         }
         parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,15)
@@ -116,9 +183,16 @@ class TessellationNativeThreeDomainFeedbackHostAxiSpec extends AnyFlatSpec with 
         axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.BYTES,512)
         axiWrite(d,GpuCommandMmioRegs.WIDTH,context.toInt);axiWrite(d,GpuCommandMmioRegs.HEIGHT,program)
         axiWrite(d,GpuCommandMmioRegs.SOURCE_STRIDE,cookie);axiWrite(d,GpuCommandMmioRegs.FLAGS,24);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
-        serviceMemoryMaster(d,image.read,readResponseDelay=3,writeAckDelay=7,maxCycles=1000000,noProgressLimit=50000)(image.write){d.io.m_irq.peek().litToBoolean}
+        val observedUniforms = mutable.Set.empty[BigInt]
+        def read(address: BigInt): BigInt = {
+          val line = address & ~BigInt(63)
+          if (uniformLines(line)) observedUniforms += line
+          image.read(address)
+        }
+        serviceMemoryMaster(d,read,readResponseDelay=3,writeAckDelay=7,maxCycles=1000000,noProgressLimit=50000)(image.write){d.io.m_irq.peek().litToBoolean}
         val result=axiRead(d,GpuCommandMmioRegs.COMPLETION);val opcode=((result>>8)&7)|(((result>>16)&1)<<3)
         assert((result&255)==id && opcode==15 && ((result>>11)&15)==0 && result.testBit(15),s"domain job completion=$result")
+        assert(uniformLines == observedUniforms.toSet, s"domain=$domain missing checked-uniform reads")
         image.pop()
       }
       control(TransformFeedbackAction.begin,210);draw(211,0);draw(212,1);draw(213,2);draw(214,0);control(TransformFeedbackAction.end,215)
