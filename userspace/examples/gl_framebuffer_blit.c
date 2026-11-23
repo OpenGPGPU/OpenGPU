@@ -26,6 +26,22 @@ static void fail(const char *where)
     exit(1);
 }
 
+static void check_compute_capabilities(EGLDisplay display, EGLConfig config)
+{
+    const char *version=(const char *)glGetString(GL_VERSION);
+    const char *extensions=(const char *)glGetString(GL_EXTENSIONS);
+    if (!version || strncmp(version,"OpenGL ES 2.0 ",14) || !extensions ||
+        strstr(extensions,"GL_ARB_compute_shader") || glGetError()!=GL_NO_ERROR)
+        fail("unexpected GLES compute capability");
+    const EGLint compute_attrs[]={EGL_CONTEXT_MAJOR_VERSION,3,EGL_CONTEXT_MINOR_VERSION,1,EGL_NONE};
+    EGLContext compute=eglCreateContext(display,config,EGL_NO_CONTEXT,compute_attrs);
+    if (compute!=EGL_NO_CONTEXT) {
+        eglDestroyContext(display,compute);
+        fail("unexpected GLES 3.1 context");
+    }
+    if (eglGetError()!=EGL_BAD_MATCH) fail("unexpected GLES 3.1 rejection");
+}
+
 static GLuint target(unsigned width, unsigned height, const uint8_t *data,
                      GLuint *texture)
 {
@@ -315,6 +331,8 @@ int main(void)
         EGL_RENDERABLE_TYPE,EGL_OPENGL_ES2_BIT,EGL_NONE};
     const EGLint pbuffer_attrs[]={EGL_WIDTH,8,EGL_HEIGHT,8,EGL_NONE};
     const EGLint context_attrs[]={EGL_CONTEXT_CLIENT_VERSION,3,EGL_NONE};
+    const EGLint es2_attrs[]={EGL_CONTEXT_CLIENT_VERSION,2,EGL_NONE};
+    int capability_only=getenv("OPENGPU_GL_COMPUTE_CAPS_ONLY")!=NULL;
     const char *device=getenv("OPENGPU_DRM_DEVICE"), *renderer;
     int software=getenv("OPENGPU_GL_SURFACELESS")!=NULL, fd=-1;
     EGLDisplay display; EGLSurface surface; EGLContext context;
@@ -322,6 +340,9 @@ int main(void)
     struct gbm_device *gbm=NULL; struct gbm_surface *window=NULL;
     GLuint src, dst, src_tex, dst_tex; uint8_t source[4][4][4];
 
+    if (capability_only && (software || getenv("MESA_GL_VERSION_OVERRIDE") ||
+        getenv("MESA_GLES_VERSION_OVERRIDE") || getenv("MESA_EXTENSION_OVERRIDE")))
+        fail("compute capability check requires OpenGPU with default Mesa capabilities");
     if (software) {
         if (!getenv("OPENGPU_GL_ALLOW_SOFTWARE")) fail("software oracle not enabled");
         display=eglGetPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA,EGL_DEFAULT_DISPLAY,NULL);
@@ -343,13 +364,17 @@ int main(void)
             fail("choose window config");
         surface=eglCreateWindowSurface(display,config,(EGLNativeWindowType)window,NULL);
     }
-    context=eglCreateContext(display,config,EGL_NO_CONTEXT,context_attrs);
+    context=eglCreateContext(display,config,EGL_NO_CONTEXT,capability_only ? es2_attrs : context_attrs);
     if (surface==EGL_NO_SURFACE || context==EGL_NO_CONTEXT ||
-        !eglMakeCurrent(display,surface,surface,context)) fail("create GLES3 context");
+        !eglMakeCurrent(display,surface,surface,context)) fail("create GLES context");
     renderer=(const char *)glGetString(GL_RENDERER);
     if (!renderer || (!strstr(renderer,"opengpu") && !software)) fail("unexpected renderer");
     printf("gl_framebuffer_blit: renderer %s, version %s\n",renderer,glGetString(GL_VERSION));
 
+    if (capability_only) {
+        check_compute_capabilities(display,config);
+        goto cleanup;
+    }
     for (int y=0;y<4;y++) for (int x=0;x<4;x++) {
         source[y][x][0]=(uint8_t)(17+50*x); source[y][x][1]=(uint8_t)(21+50*y);
         source[y][x][2]=(uint8_t)(11+7*x+11*y); source[y][x][3]=255;
@@ -383,11 +408,12 @@ int main(void)
     glDeleteTextures(1,&src_tex); glDeleteTextures(1,&dst_tex);
     if (!getenv("OPENGPU_GL_LINEAR_BLIT_ONLY"))
         check_depth_stencil_blits();
+cleanup:
     eglMakeCurrent(display,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT);
     eglDestroyContext(display,context); eglDestroySurface(display,surface); eglTerminate(display);
     if (window) gbm_surface_destroy(window);
     if (gbm) gbm_device_destroy(gbm);
     if (fd>=0) close(fd);
-    puts("gl_framebuffer_blit: all cases PASS");
+    puts(capability_only ? "OpenGPU EGL/GL compute capabilities PASS" : "gl_framebuffer_blit: all cases PASS");
     return 0;
 }

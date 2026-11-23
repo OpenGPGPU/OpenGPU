@@ -820,3 +820,14 @@ ES 2.0. Mesa's GL extension-string generator also omits
 The test covers Mesa capability calculation and string generation. Public
 EGL context creation and GL queries over the live DRI driver remain to be
 verified.
+
+The framebuffer-blit guest binary has a capability-only mode. It opens the
+OpenGPU GBM device, creates a GLES 2.0 context, checks the GL version and
+extension strings, and expects `EGL_BAD_MATCH` from a GLES 3.1 context request.
+The capability-only mode passed the AArch64 cross-build. Run it in a guest
+with the OpenGPU DRI libraries installed and Mesa overrides unset:
+
+```sh
+OPENGPU_GL_COMPUTE_CAPS_ONLY=1 LD_LIBRARY_PATH=/root LIBGL_DRIVERS_PATH=/root \
+  /root/opengpu_gl_framebuffer_blit.bin
+```
