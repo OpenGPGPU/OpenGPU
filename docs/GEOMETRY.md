@@ -1292,7 +1292,30 @@ inputs, all eight two-layer image and resolve views, and writable completion
 storage. The capture reader accepted the float profile, and the producer
 rejected the earlier sample profile and a foreign held receipt. The
 preflight uses controlled discovery words and ends before retirement.
-Rendering and transform feedback on the same full FlashSim DUT remain pending.
+
+The live render launcher builds all 29 Mesa and driver producer units in the
+pinned compiler image and checks their actual input closure. The triangle
+crosses the left clip plane at two edge midpoints. The image oracle checks
+both layers, both surviving sample IDs, the flat value from the last emitted
+vertex, and each pixel's four-sample resolve. The CPU checker exercised
+rejection of a changed sample, a changed GNY2 word and a changed guard byte.
+
+Select a guarded native-sample executable built from the full 112-word float
+factory with this checkout's preparation and source bindings. Keep the
+FlashSim generator environment used for the model.
+
+```sh
+python3 -B scripts/prepare_owner_executor.py --stage build --backend flashsim \
+  --kind native-sample --owner-output "$OWNER" --flashsim-dir "$FLASHSIM" \
+  --shards 64 --jobs 4 --precompiled-header --conservative-alias
+python3 -B scripts/qualify_native_geometry_owner.py \
+  --executor "$OWNER/executors/native-sample/executor" \
+  --executor-qualification "$OWNER/executors/native-sample/qualification.json" \
+  --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72
+```
+
+The full-host render, transform feedback, failure recovery and no-reset
+reuse qualifications remain pending.
 
 ### Linux version-two publication
 

@@ -1,4 +1,5 @@
 """Build the live geometry producer and verify the original submitted inputs."""
+from dataclasses import dataclass
 import os
 from pathlib import Path
 import shlex
@@ -6,6 +7,7 @@ import struct
 import subprocess
 
 from compute_owner_protocol import required_flags, uint
+from native_sample_graphics_gny2_oracle import record_layout
 from native_sample_owner_oracle import AddressSpace, capture, field, fields, require
 from native_sample_owner_protocol import AUXILIARY
 from owner_resource_contract import IMAGE_FLOAT_PROFILE, IMAGE_FLOAT_WORDS
@@ -13,6 +15,13 @@ from test_native_mmio_capture import write_bodies
 
 ROOT = Path(__file__).resolve().parents[1]
 SUFFIXES = ('.native-vs-code.bin', '.native-gs-code.bin', '.native-fs-code.bin', '.native-gs-gng.bin')
+
+
+@dataclass(frozen=True)
+class GeometryOutputs:
+    command_id: int
+    completion: int
+    writable: tuple[tuple[int, int], ...]
 
 
 def program_paths(prefix):
@@ -37,9 +46,14 @@ def build_producer(directory, *, sanitize=False):
     if sanitize:
         flags += ['-fsanitize=address,undefined', '-fno-omit-frame-pointer']
     binary = directory / 'native-geometry-live-producer'
-    subprocess.run([*shlex.split(os.environ.get('CC', 'cc')), *flags,
-                    *('-I' + str(p) for p in includes), str(ROOT/'scripts/native_geometry_live_producer.c'),
-                    str(ROOT/'driver/opengpu_native_frame.c'), '-o', str(binary)], check=True)
+    compiler = shlex.split(os.environ.get('CC', 'cc'))
+    objects = []
+    for source in (ROOT/'scripts/native_geometry_live_producer.c', ROOT/'driver/opengpu_native_frame.c'):
+        obj = directory / (source.stem + '.o')
+        subprocess.run([*compiler, *flags, *('-I' + str(p) for p in includes),
+                        '-MMD', '-MF', obj.with_suffix('.d'), '-c', source, '-o', obj], check=True)
+        objects.append(obj)
+    subprocess.run([*compiler, *flags, *objects, '-o', binary], check=True)
     return binary
 
 
@@ -88,6 +102,8 @@ def verify_inputs(memory, description, compiler_products, capture_data, observed
     draw = space.read(description['drawVA'], 2048)
     require(struct.unpack_from('<3I', frame) == (0x474e4603, 2048, 3) and
             field(frame, frames, 'LAYERED_LAYERS') == 2 and
+            field(frame, frames, 'FRAME_BINS_BINS_TILECOUNT') == 1 and
+            field(frame, frames, 'FRAME_BINS_BINS_RESUME') == 0 and
             field(frame, frames, 'FRAME_STATES_BASE') == uint(description['stateVA']) and
             field(frame, frames, 'FRAME_STATES_LIMIT') - description['stateVA'] == 512 and
             struct.unpack_from('<I', draw, 509 * 4)[0] == uint(description['geometryVA']),
@@ -116,23 +132,48 @@ def verify_inputs(memory, description, compiler_products, capture_data, observed
                 memory.read(private, len(code)) == code, 'geometry original/RX code bytes changed')
 
     vertex = field(draw, draws, 'DRAW_VERTEX_GEOMETRY_VERTEX_INPUT_BINDINGS0_BASE')
-    data = struct.pack('<24f', -1.5, -.75, 0, 1, .25, .5, .75, 0, .75, -.75, 0, 1,
-                       1.25, 1.5, 1.75, 0, 0, .75, 0, 1, 2.25, 2.5, 2.75, 0)
+    data = struct.pack('<24f', -2, -1, 0, 1, .25, .5, .75, 0, 0, -1, 0, 1,
+                       1.25, 1.5, 1.75, 0, 0, 0, 0, 1, 2.25, 2.5, 2.75, 0)
     original = original_window(memory, description['vertices'], len(data))
     require(space.physical(vertex, len(data)) == original and memory.read(original, len(data)) == data,
             'geometry vertex binding lost the original positions/seeds')
 
-    def mapped_output(va, original, count):
-        require(space.physical(va, count, writable=True) == original and
-                any(first <= original and original + count <= end for first, end in writable),
-                'geometry output is outside its original mapped writable range')
+    def mapped_output(va, count):
+        pa = space.physical(va, count, writable=True)
+        require(any(first <= pa and pa + count <= end for first, end in writable),
+                'geometry output escapes captured writable mappings')
+        return pa
+
+    allowed = []
+
+    def allow_view(data, catalog, stem, capacity, used):
+        va = field(data, catalog, stem + 'BASE')
+        require(field(data, catalog, stem + 'LIMIT') == va + capacity,
+                'geometry work view has unexpected capacity: ' + stem)
+        pa = mapped_output(va, capacity)
+        allowed.append((pa, pa + used))
 
     completion = original_window(memory, description['completion'], 16384)
-    mapped_output(description['completionVA'], completion, 16384)
+    require(mapped_output(description['completionVA'], 16384) == completion,
+            'geometry completion must use its original GEM')
+    allowed.append((completion, completion + 16384))
+    allow_view(draw, draws, 'DRAW_VERTEX_GEOMETRY_VERTEX_SCRATCH_', 79 * 512, 79 * 512)
+    for engine in range(4):
+        allow_view(frame, frames, f'FRAME_SCRATCH{engine}_', 95 * 512, 95 * 512)
+    allow_view(frame, frames, 'FRAME_BINS_BINS_DIRECTORY', 64, 64)
+    allow_view(frame, frames, 'FRAME_BINS_BINS_POOL_', 4096, 32 + 2 * 16)
+    allow_view(frame, frames, 'FRAME_BINS_PRODUCER_ARENA_', 4096, 2 * record_layout()[1] * 64)
+
     attachments = description.get('attachments')
     require(type(attachments) is list and len(attachments) == 4, 'geometry draw requires four original MRTs')
     for mrt, attachment in enumerate(attachments):
         required_flags(attachment, dict(imageRowPitch=256, resolveRowPitch=64))
+        color = f'FRAME_IMAGE_PIXELS_COLORS_COLORS{mrt}_'
+        require([field(frame, binned, color + name) for name in
+                 ('ENABLED', 'FORMAT', 'LOADOP', 'CHANNELMASK')] == [1, 35, 1, 15] and
+                all(field(frame, binned, color + f'CLEAR{channel}') == 0 for channel in range(4)) and
+                field(frame, binned, f'FRAME_IMAGE_RESOLVES{mrt}_ENABLE') == 1,
+                'geometry clear/store/resolve policy changed')
         for kind, pitch, stem, span, sentinel in (
             ('image', 'SOURCEPITCH', f'FRAME_IMAGE_VIEWS{mrt}_', 1024, 0x51 + mrt),
             ('resolve', 'RESOLVEPITCH', f'FRAME_IMAGE_RESOLVES{mrt}_DESTINATION_', 256, 0x71 + mrt),
@@ -143,8 +184,16 @@ def verify_inputs(memory, description, compiler_products, capture_data, observed
             length = 4096 + span
             view = attachment[kind]
             pa = original_window(memory, view, length)
-            mapped_output(base, pa, length)
-            require(field(frame, binned, stem + 'LIMIT') == base + length and
+            require(mapped_output(base, length) == pa and
+                    [field(frame, binned, stem + name) for name in
+                     ('IMAGEWIDTH', 'IMAGEHEIGHT', 'ROWPITCH', 'STORE', 'WRITABLE')] == [4, 4, span // 4, 1, 1] and
+                    field(frame, binned, stem + 'LIMIT') == base + length and
                     memory.read(view['physical'], view['allocationBytes']) == bytes([sentinel]) * view['allocationBytes'],
                     'geometry initial layer bounds or guard pattern changed')
-    return command_id
+            for layer in range(2):
+                start = pa + layer * 4096
+                allowed.append((start, start + span))
+    allowed.sort()
+    require(all(a[1] <= b[0] for a, b in zip(allowed, allowed[1:])),
+            'geometry work and output views overlap')
+    return GeometryOutputs(command_id, completion, tuple(allowed))
