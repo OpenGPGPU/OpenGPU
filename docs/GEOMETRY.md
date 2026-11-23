@@ -1340,8 +1340,13 @@ python3 -B scripts/qualify_native_geometry_owner.py \
   --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72
 ```
 
-Full-host render, feedback, fault recovery and cancellation await FlashSim
-execution on the complete model.
+The complete FlashSim owner matched the original geometry draw's sample and
+resolve bytes in all four targets and both layers. The GNY2 oracle expects
+5120 descriptor bytes. Preflight fills the 512-byte GFS cache and execution
+reuses it, while both traversals fetch GNG1. The sanitized CPU oracle also
+rejects a descriptor count that includes a second GFS read. A full GNY2 and
+guard check, feedback, fault recovery and cancellation require a complete
+replay with this oracle.
 
 For independently prepared owners with identical generated model contents,
 the build command can also take `--reuse-shards-from "$OTHER_QUALIFICATION"`.
