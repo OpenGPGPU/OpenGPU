@@ -86,7 +86,10 @@ class TessellationNativeThreeDomainFeedbackHostAxiSpec extends AnyFlatSpec with 
         (BigInt(7) << 25) | (BigInt(offset) << 20) | (BigInt(selector) << 15) | (BigInt(rd) << 7) | 0x0b)
 
     val control = program(0x1000)
-    assert(control(3) == BigInt("5601052b", 16), "fixture must read the per-patch level before its barrier")
+    val readPatchLevel = BigInt("5641052b", 16)
+    val patchBarrier = BigInt("5205002b", 16)
+    assert(control.lift(3).contains(readPatchLevel) && control.lift(4).contains(patchBarrier),
+      s"domain=$domain fixture must read the per-patch level before its barrier")
     val moveScalarToVector = (BigInt(23) << 26) | (BigInt(1) << 25) | (BigInt(10) << 15) |
       (BigInt(4) << 12) | (BigInt(10) << 7) | 0x57
     val checkedControl = control.take(3) ++ loadDefault(10, 1, 2) ++ Vector(moveScalarToVector) ++ control.drop(4)
