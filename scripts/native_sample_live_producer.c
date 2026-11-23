@@ -9,45 +9,12 @@
 #include "native_sample_submit_producer.c"
 #undef OPENGPU_NATIVE_SAMPLE_CPU_ENTRY
 
-static const char *live_directory;
-static void live_require(bool ok,const char *message)
-{if(!ok){fprintf(stderr,"native sample live producer: %s\n",message);fflush(stderr);_Exit(2);}}
-static void live_path(char out[4096],const char *name)
-{int n=snprintf(out,4096,"%s/%s",live_directory,name);live_require(n>0 && n<4096,"path overflow");}
-static void live_end(FILE *f)
-{live_require(fgetc(f)==EOF && !ferror(f),"noncanonical trailing receipt bytes");live_require(!fclose(f),"receipt close");}
-static u32 live_u32(FILE *f)
-{u32 v;live_require(read_le(f,&v),"truncated wire word");return v;}
-static void live_magic(FILE *f,const char *magic)
-{char b[8];live_require(fread(b,1,8,f)==8 && !memcmp(b,magic,8),"wrong private wire magic");}
-static FILE *live_wait(const char *name)
-{
-    char path[4096],error[4096];live_path(path,name);live_path(error,"error");
-    struct timespec start,now,pause={.tv_nsec=10000000};live_require(!clock_gettime(CLOCK_MONOTONIC,&start),"clock");
-    unsigned timeout;live_require(!native_mmio_timeout_seconds(&timeout),"timeout configuration");
-    for(;;){FILE *f=fopen(path,"rb");if(f)return f;live_require(errno==ENOENT,"receipt open");
-        struct stat st;live_require(lstat(error,&st) && errno==ENOENT,"controller error");
-        live_require(!clock_gettime(CLOCK_MONOTONIC,&now) && now.tv_sec-start.tv_sec<(time_t)timeout,"controller receipt timeout");
-        live_require(!nanosleep(&pause,NULL) || errno==EINTR,"receipt wait");}
-}
-static void live_marker(const char *name,const char *text)
-{
-    char path[4096],temp[4096];live_path(path,name);int n=snprintf(temp,sizeof(temp),"%s.tmp",path);
-    live_require(n>0 && (size_t)n<sizeof(temp),"marker path");FILE *f=fopen(temp,"wx");live_require(f!=NULL,"marker exists");
-    live_require(fputs(text,f)>=0 && !fclose(f) && !link(temp,path) && !unlink(temp),"marker publication");
-}
+#include "native_sample_live_transport.h"
+
 static void live_profile(struct native_kernel_session *s,const char *path)
 {
-    FILE *f=fopen(path,"rb");live_require(f!=NULL,"profile open");live_magic(f,"OGNP0002");
-    struct native_kernel_profile_word words[117];live_require(live_u32(f)==112,"profile count");
-    for(unsigned i=0;i<112;i++){
-        words[i]=(struct native_kernel_profile_word){live_u32(f),live_u32(f)};
-        live_require(words[i].address==sample_expected_profile[i].address && words[i].value==sample_expected_profile[i].value,"sample profile identity");}
-    live_require(live_u32(f)==5,"auxiliary count");
-    for(unsigned i=112;i<117;i++){
-        words[i]=(struct native_kernel_profile_word){live_u32(f),live_u32(f)};
-        live_require(words[i].address==sample_expected_profile[i].address,"auxiliary order");}
-    live_end(f);
+    struct native_kernel_profile_word words[117];
+    live_profile_words(path,sample_expected_profile,words);
     struct bridge_profile p={words,117};struct opengpu_native_source_limits limits={0};bool layered=false,sample=false;
     u32 id=profile_read(&p,GPU_REG_ID),caps=profile_read(&p,GPU_REG_CAPABILITIES);
     live_require((id&0xffff0000u)==0x47550000u && profile_read(&p,0x320)==1048576 &&
@@ -117,13 +84,6 @@ static u32 live_resource_va(const struct opengpu_private_snapshot *owner,u64 phy
                 return (u32)(r->reservation.va+m->offset+physical-m->physical);
     live_require(false,"original view is not mapped in actual owner");return 0;
 }
-struct live_pte_output {FILE *file;unsigned count;};
-static int live_pte_range(void *opaque,dma_addr_t physical,const void *data,size_t bytes)
-{
-    struct live_pte_output *out=opaque;(void)data;
-    return fprintf(out->file,"%s{\"first\":%llu,\"end\":%llu}",out->count++?",":"",
-        (unsigned long long)physical,(unsigned long long)(physical+bytes))<0?-EIO:0;
-}
 static void live_inputs(struct native_kernel_session *s,struct native_test_record *r,
     const struct sample_program *p,const char *case_id,unsigned samples,u32 job_va,unsigned vs_words)
 {
@@ -172,32 +132,13 @@ static void live_inputs(struct native_kernel_session *s,struct native_test_recor
     fprintf(f,"],\"vertexScratch\":{\"handle\":%u,\"offset\":%llu,\"viewBytes\":%llu,\"viewVA\":%u,\"allocationPhysical\":%llu,\"allocationBytes\":%llu}",
         scratch->handle,(unsigned long long)scratch->offset,(unsigned long long)scratch->bytes,live_resource_va(owner,pa+scratch->offset,scratch->bytes),
         (unsigned long long)pa,(unsigned long long)bytes);
-    fputs(",\"privateSegments\":[",f);unsigned segments=0;
-    for(const struct snapshot_segment *segment=owner->segments;segment;segment=segment->next)
-        fprintf(f,"%s{\"va\":%llu,\"physical\":%llu,\"bytes\":%llu,\"allocationBytes\":%llu,\"executable\":%s}",segments++?",":"",
-            (unsigned long long)segment->va,(unsigned long long)segment->backing.dma,(unsigned long long)segment->bytes,
-            (unsigned long long)segment->backing.size,segment->executable?"true":"false");
-    fputs("],\"resourceMaps\":[",f);unsigned maps=0;
-    for(const struct snapshot_resource *resource=owner->resources;resource;resource=resource->next)
-        for(const struct snapshot_resource_map *map=resource->maps;map;map=map->next)
-            fprintf(f,"%s{\"va\":%llu,\"physical\":%llu,\"bytes\":%llu,\"writable\":%s}",maps++?",":"",
-                (unsigned long long)(resource->reservation.va+map->offset),(unsigned long long)map->physical,
-                (unsigned long long)map->bytes,map->writable?"true":"false");
-    fputs("],\"pteRanges\":[",f);struct live_pte_output ptes={.file=f};
-    live_require(!fixture_mmu_visit_pte_pages(&s->gpu,live_pte_range,&ptes),"PTE range enumeration");
-    fputs("]}\n",f);live_require(!native_mmio_close(f,path,temporary),"inputs publication");
-}
-static struct native_kernel_held_receipt live_held(FILE *f)
-{
-    struct native_kernel_held_receipt h={0};h.record_index=live_u32(f);h.command_id=live_u32(f);h.completion=live_u32(f);
-    for(unsigned i=0;i<12;i++)h.gnx[i]=live_u32(f);
-    h.append_read_bytes=live_u32(f);h.append_read_bytes|=(u64)live_u32(f)<<32;
-    h.held_legacy_status=live_u32(f);h.held_status=live_u32(f);h.held_irq=live_u32(f);h.held_irq_asserted=live_u32(f);return h;
+    live_maps_json(f,s,owner);
+    fputs("}\n",f);live_require(!native_mmio_close(f,path,temporary),"inputs publication");
 }
 int main(int argc,char **argv)
 {
     live_require(argc==6,"usage: producer program.ognsf profile.ognp session-directory 1|2|4 case-id");
-    live_directory=argv[3];struct stat st;live_require(!lstat(live_directory,&st) && S_ISDIR(st.st_mode),"session directory");
+    live_set_directory(argv[3]);
     live_require(!strcmp(argv[4],"1") || !strcmp(argv[4],"2") || !strcmp(argv[4],"4"),"sample count");
     live_require(*argv[5]!=0,"case ID");for(const char *q=argv[5];*q;q++)live_require((*q>='a'&&*q<='z')||(*q>='0'&&*q<='9')||*q=='-'||*q=='_',"case ID characters");
     struct sample_program p={0};live_require(read_program(argv[1],&p) && valid_program(&p),"ordinary ABI6 compiler contract");
@@ -213,17 +154,7 @@ int main(int argc,char **argv)
     struct opengpu_sched_job *job=native_record(s,0);u32 va=0;live_require(job && !opengpu_private_snapshot_native_layered_job_address(job->native_owner,job->native_job_segment,&va),"private GNJ2");
     u32 frame=test_read_va(s,va+21*4),states=test_read_va(s,frame+292*4);live_require(test_read_va(s,states+29*4)==p.meta[7],"rewritten GFS depth override policy");assert_rx(s,test_read_va(s,states+54*4),&p);
     live_inputs(s,r,&p,argv[5],samples,va,vs_words);
-    char path[4096];live_path(path,"union.memory");live_require(!native_kernel_export_memory(s,path),"union export");
-    live_path(path,"record-0.capture");live_require(!native_kernel_capture(s,0,path,1000000000,37),"capture enqueue");
-    live_marker("READY","native sample live owner waiting for actual DUT receipts; no GPU result\n");
-    FILE *f=live_wait("record-0.held.response");live_magic(f,"OGNSH001");struct native_kernel_held_receipt h=live_held(f);live_end(f);
-    live_path(path,"record-0.retire");live_require(!native_kernel_drain_held(s,0,&h,path),"actual held drain");
-    f=live_wait("record-0.retired.response");live_magic(f,"OGNSR001");struct native_kernel_observed_receipt observed={.held=live_held(f)};
-    observed.retired_status=live_u32(f);observed.retired_irq=live_u32(f);observed.retired_irq_asserted=live_u32(f);observed.external_drained=live_u32(f);live_end(f);
-    live_require(!native_kernel_observe_retired(s,0,&observed),"actual retired observation");
-    f=live_wait("oracle-authorized.response");live_magic(f,"OGNSBA01");live_require(live_u32(f)==1,"oracle authorization");live_end(f);
-    live_require(!native_kernel_begin_cleanup(s,live_directory) && !native_kernel_finish_observed(s,0) && !native_kernel_end_cleanup(s),"ACK-gated owner cleanup");
-    f=live_wait("final-authorized.response");live_magic(f,"OGNSOK01");live_require(live_u32(f)==1,"final oracle authorization");live_end(f);
+    live_run_record(s);
     live_require(!native_kernel_session_destroy(s) && !live_allocations && !fixture_buffers,"session destruction");free(plan);free(r);
     puts("native sample live owner: actual observations and oracle authorized cleanup completed");return 0;
 }

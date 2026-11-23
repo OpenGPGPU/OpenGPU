@@ -1281,8 +1281,17 @@ python3 -B scripts/test_geometry_snapshot.py --sanitize --compiled-source \
   "$GEOMETRY_BUILD/geometry.native-gs-gng.bin"
 OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_layered_submit.py \
   --compiled-prefix "$GEOMETRY_BUILD/geometry"
+python3 -B scripts/test_native_geometry_live.py --sanitize \
+  --compiled-prefix "$GEOMETRY_BUILD/geometry"
 ```
 
+The live producer uses the exact 112-word float owner discovery and exports
+the original driver's enqueue, mapped RAM and private geometry descriptors.
+Its preflight checked the original and copied RX program bytes, GNG1, vertex
+inputs, all eight two-layer image and resolve views, and writable completion
+storage. The capture reader accepted the float profile, and the producer
+rejected the earlier sample profile and a foreign held receipt. The
+preflight uses controlled discovery words and ends before retirement.
 Rendering and transform feedback on the same full FlashSim DUT remain pending.
 
 ### Linux version-two publication
