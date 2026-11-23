@@ -58,16 +58,27 @@ class TessellationCuIsolineSystemClientSpec extends AnyFlatSpec {
   private def geo(fn: Int, rd: Int = 0, rs1: Int = 0, rs2: Int = 0): BigInt =
     (BigInt(fn)<<25)|(BigInt(rs2)<<20)|(BigInt(rs1)<<15)|(BigInt(rd)<<7)|0x0b
   for(uniforms<-Seq(false,true))it should s"run actual shared CU control/evaluation with checked-uniform service=$uniforms" in {
-    val config = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
+    val fullCu = uniforms && sys.props.get("opengpu.tessellationUniformFullCu").contains("1")
+    val config = if (fullCu) GpuConfig(l2Sets = 8, l2Ways = 2)
+      else GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
     simulate(new TessellationSystemHarness(config,uniforms,if(uniforms)2 else 1)) { d =>
       zero(d.io); d.reset.poke(true.B); d.clock.step(2); d.reset.poke(false.B)
       val sys = d.io.system; sys.graphicsDrained.poke(true.B); sys.graphicsShaderL1Invalidate.ready.poke(true.B)
       d.io.trap.ready.poke(true.B)
-      val uniformPrefix=Vector(BigInt("0104f057",16),BigInt("01f00093",16),BigInt("00000113",16),
-        (BigInt(7)<<25)|(BigInt(2)<<20)|(BigInt(1)<<15)|(BigInt(10)<<7)|0x0b,
-        vector(23,4,5,10),vector(23,3,2,11),vector(23,3,4,0),
-        (BigInt(7)<<26)|(BigInt(1)<<25)|(BigInt(4)<<20)|(BigInt(2)<<15)|(BigInt(3)<<7)|0x2b,
-        vector(0,1,3,5)|(BigInt(3)<<20))
+      def addUniform(rd: Int, first: Int, second: Int): BigInt =
+        vector(0, 1, rd, first) | (BigInt(second) << 20)
+      def vectorUniform(rd: Int, block: Int, offset: Int): BigInt =
+        (BigInt(7) << 26) | (BigInt(1) << 25) | (BigInt(offset) << 20) |
+          (BigInt(block) << 15) | (BigInt(rd) << 7) | 0x2b
+      val defaultOffset = if (fullCu) Vector(BigInt("00001137", 16), BigInt("ffc10113", 16))
+        else Vector(BigInt("00000113", 16))
+      val blockOffset = if (fullCu) Vector(BigInt("00004137", 16), BigInt("ffc10113", 16), vector(23, 4, 4, 2))
+        else Vector(vector(23, 3, 4, 0))
+      val blockZero = if (fullCu) Vector(vector(23, 3, 2, 0), vector(23, 3, 4, 0),
+        vectorUniform(6, 2, 4), addUniform(3, 3, 6)) else Vector.empty
+      val uniformPrefix = Vector(BigInt("0104f057", 16), BigInt("01f00093", 16)) ++ defaultOffset ++
+        Vector(geo(7, 10, 1, 2), vector(23, 4, 5, 10), vector(23, 3, 2, 11)) ++ blockOffset ++
+        Vector(vectorUniform(3, 2, 4), addUniform(3, 5, 3)) ++ blockZero
       val originalControl = Vector(BigInt("0104f057",16), BigInt("3f800537",16), vector(23,4,3,10), vector(23,3,2,0),
         vector(23,3,4,7), patch(20,vs1=3), patch(22,vs1=2,vs2=4), vector(23,3,4,15), patch(22,vs1=2,vs2=4),
         vector(23,3,4,3), patch(22,vs1=2,vs2=4), BigInt("0000000b",16), BigInt("30500073",16))
@@ -81,15 +92,31 @@ class TessellationCuIsolineSystemClientSpec extends AnyFlatSpec {
       val uniformMemory=if(uniforms)Some(new WindowRecordTest.Memory(d.io.uniformMemoryRequest.get.bits,d.io.uniformMemoryResponse.get.bits,
         d.io.uniformMemoryRequest.get.valid,d.io.uniformMemoryRequest.get.ready,d.io.uniformMemoryResponse.get.valid,d.io.uniformMemoryResponse.get.ready))else None
       def put(address:Int,words:Seq[BigInt]):Unit=uniformMemory.foreach(m=>words.zipWithIndex.foreach{case(v,i)=>m.putWord(address+4*i,v)})
-      for((stage,root,table,data,default,defaultData)<-Seq((4,0x3000,0x4000,0x10000,0x4800,0x19000),(5,0x5000,0x6000,0x20000,0x6800,0x29000))){
-        val header=Vector[BigInt](BigInt("47555203",16),64,3,7,11,13,stage,1<<11,0,0,table,table+1536,0,default,1,0)
-        put(root,header) // block11 maps to private slot0; defaults retain index31.
-        def view(index:Int,base:Int)=Vector[BigInt](BigInt("47554203",16),64,3,7,11,13,index,1<<stage,base,base+4096,0,base,base+4096,0,1,0)
-        put(table,view(0,data));put(default,view(31,defaultData))
-        uniformMemory.foreach{m=>m.putWord(data,if(stage==4)BigInt("3f000000",16)else BigInt("3fc00000",16));m.putWord(defaultData,BigInt("3f000000",16))}
+      val uniformImages = Seq((4, 0x3000, 0x4000, 0x10000, 0x4800, 0x19000),
+        (5, 0x5000, 0x6000, 0x20000, 0x6800, 0x29000))
+      for ((stage, root, table, data, default, defaultData) <- uniformImages) {
+        val blockMask = (1 << 11) | (if (fullCu) 1 else 0)
+        val mapLow = if (fullCu) 23 else 0
+        val header = Vector[BigInt](BigInt("47555203", 16), 64, 3, 7, 11, 13, stage,
+          blockMask, mapLow, 0, table, table + 1536, 0, default, 1, 0)
+        put(root, header)
+        def view(index: Int, base: Int, length: Int) =
+          Vector[BigInt](BigInt("47554203", 16), 64, 3, 7, 11, 13, index, 1 << stage,
+            base, base + length, 0, base, base + length, 0, 1, 0)
+        val blockBytes = if (fullCu) 16384 else 4096
+        put(table, view(0, data, blockBytes))
+        put(default, view(31, defaultData, 4096))
+        if (fullCu) put(table + 23 * 64, view(23, data + 0xc000, 4096))
+        uniformMemory.foreach { memory =>
+          val blockValue = if (stage == 4) (if (fullCu) "3e800000" else "3f000000")
+            else (if (fullCu) "3f800000" else "3fc00000")
+          memory.putWord(data + (if (fullCu) blockBytes - 4 else 0), BigInt(blockValue, 16))
+          memory.putWord(defaultData + (if (fullCu) 4092 else 0), BigInt("3f000000", 16))
+          if (fullCu) memory.putWord(data + 0xc000, BigInt(if (stage == 4) "3e800000" else "3f000000", 16))
+        }
       }
       def line(p: Vector[BigInt]): BigInt = p.zipWithIndex.map { case (w,i) => w << (32*i) }.sum
-      val pending = mutable.Queue.empty[(BigInt, BigInt, Int)]; var cycle = 0; var outputs = 0; var cancelling = false
+      val pending = mutable.Queue.empty[(BigInt, BigInt, Int)]; var cycle = 0; var outputs = 0; var allowFaultTrap = false
       def tick(): Unit = {
         uniformMemory.foreach(m=>{m.drive();m.capture()})
         sys.memoryRequest.ready.poke((cycle%3 != 0).B)
@@ -103,7 +130,10 @@ class TessellationCuIsolineSystemClientSpec extends AnyFlatSpec {
           val offset=((addr-pc)/4).toInt
           pending.enqueue((sys.memoryRequest.bits.transactionId.peek().litValue,line(program.slice(offset,offset+16)),cycle+3))
         }
-        if (d.io.trap.valid.peek().litToBoolean) assert(cancelling, s"unexpected trap at $cycle")
+        if (d.io.trap.valid.peek().litToBoolean) {
+          assert(allowFaultTrap, s"unexpected trap at $cycle")
+          d.io.trap.bits.taskId.expect(3.U)
+        }
         d.io.out.ready.poke((cycle%4 != 0).B)
         if (d.io.out.valid.peek().litToBoolean && d.io.out.ready.peek().litToBoolean) {
           d.io.out.bits.vertices(0)(0).expect(0.U); d.io.out.bits.vertices(1)(0).expect("h3f800000".U)
@@ -117,10 +147,11 @@ class TessellationCuIsolineSystemClientSpec extends AnyFlatSpec {
         scope.control.resources.version.poke(3.U);scope.control.resources.address.poke(0x3000.U)
         scope.evaluation.resources.version.poke(3.U);scope.evaluation.resources.address.poke(0x5000.U)}
       val t = d.io.task.bits.patch; val ctl = t.control; ctl.patch.context.taskId.poke(31.U)
-      ctl.patch.context.layout.inputVertices.poke(1.U); ctl.patch.context.layout.outputVertices.poke(4.U)
+      val controlVertices = if (fullCu) 32 else 4
+      ctl.patch.context.layout.inputVertices.poke(1.U); ctl.patch.context.layout.outputVertices.poke(controlVertices.U)
       ctl.patch.context.layout.patchComponents.poke(1.U); ctl.kernel.kernelPc.poke(0x1000.U)
-      for (i <- 0 until 3) { ctl.kernel.gridSize(i).poke(1.U); ctl.kernel.localSize(i).poke((if(i==0) 4 else 1).U) }
-      ctl.bases(0).poke(0.U); ctl.bases(1).poke(4.U)
+      for (i <- 0 until 3) { ctl.kernel.gridSize(i).poke(1.U); ctl.kernel.localSize(i).poke((if(i==0) controlVertices else 1).U) }
+      ctl.bases(0).poke(0.U); ctl.bases(1).poke(config.lanes.U)
       t.commandId.poke(3.U); t.evaluationKernel.kernelPc.poke(0x2000.U); t.outputComponents.poke(2.U)
       t.patchInputCount.poke(1.U); t.patchInputs(0).perPatch.poke(true.B)
       def start(): Unit = {
@@ -139,9 +170,27 @@ class TessellationCuIsolineSystemClientSpec extends AnyFlatSpec {
         until("completion")(d.io.completion.valid.peek().litToBoolean); d.io.completion.bits.status.expect(status.U)
         d.io.completion.bits.control.barriers.expect(1.U); d.io.completion.bits.published.expect((if (status == 0) 1 else 0).U)
         assert(outputs == expectedOutputs && pending.isEmpty); d.io.evaluationOwned.expect(false.B)
+        assert(uniformMemory.forall(m => m.pending.isEmpty && m.reply.isEmpty))
+        if (fullCu && status != 0) {
+          val held = d.io.completion.bits.peek().litValue
+          for (_ <- 0 until 4) {
+            tick()
+            d.io.completion.valid.expect(true.B)
+            assert(d.io.completion.bits.peek().litValue == held)
+          }
+        }
         d.io.completion.ready.poke(true.B); tick(); d.io.completion.ready.poke(false.B)
       }
       start(); done(0, 1)
+      if (fullCu) {
+        val observed = uniformMemory.get.seen
+        assert(observed.forall(!_.write))
+        for ((stage, root, table, data, default, defaultData) <- uniformImages) {
+          val addresses = Set(root, table, table + 23 * 64, default, data + 16320, defaultData + 4032, data + 0xc000)
+          assert(addresses.subsetOf(observed.filter(_.tag == stage - 4).map(_.address.toInt).toSet),
+            s"no actual uniform traffic for all stage $stage endpoints")
+        }
+      }
       val before=uniformMemory.map(_.seen.size).getOrElse(0)
       if(uniforms)uniformMemory.get.beforeRequest=r=>{
         if(r.address==0x5000)uniformMemory.get.holdResponses=true
@@ -152,14 +201,39 @@ class TessellationCuIsolineSystemClientSpec extends AnyFlatSpec {
           uniformMemory.get.seen.drop(before).exists(_.address==0x5000) &&
           (uniformMemory.get.pending.nonEmpty || uniformMemory.get.reply.nonEmpty))
       }else until("evaluation ownership")(d.io.evaluationOwned.peek().litToBoolean)
-      cancelling = true; d.io.cancel.poke(true.B); tick(); d.io.cancel.poke(false.B)
+      allowFaultTrap = true; d.io.cancel.poke(true.B); tick(); d.io.cancel.poke(false.B)
       if(uniforms){
         for(_<-0 until 8){tick();d.io.completion.valid.expect(false.B)}
         uniformMemory.get.holdResponses=false;uniformMemory.get.beforeRequest=_=>()
       }
-      done(4, 1); cancelling = false
-      assert(uniformMemory.forall(m=>m.pending.isEmpty && m.reply.isEmpty))
-      start(); done(0, 2)
+      done(4, 1); allowFaultTrap = false
+      var successfulOutputs = 2
+      start(); done(0, successfulOutputs)
+      if (fullCu) {
+        val memory = uniformMemory.get
+        val badTesWords = Seq((0x5000 + 6 * 4, 4), (0x5000 + 2 * 4, 2),
+          (0x5000 + 8 * 4, 24), (0x6800 + 7 * 4, 1 << 4))
+        def fault(): Unit = {
+          allowFaultTrap = true
+          start(); done(2, successfulOutputs)
+          allowFaultTrap = false
+        }
+        for ((address, value) <- badTesWords) {
+          val previous = memory.word(address)
+          memory.putWord(address, value)
+          fault()
+          memory.putWord(address, previous)
+          successfulOutputs += 1
+          start(); done(0, successfulOutputs)
+        }
+        memory.faultAt = Set(BigInt(0x29000 + 4032))
+        fault()
+        memory.faultAt = Set.empty
+        successfulOutputs += 1
+        start(); done(0, successfulOutputs)
+        info(s"P15_ISOLINE_FLASHSIM cus=2 lanes=${config.lanes} warps=${config.warps} controlVertices=$controlVertices " +
+          s"healthy=$successfulOutputs cancelled=1 faulted=${badTesWords.size + 1}")
+      }
     }
   }
 }
