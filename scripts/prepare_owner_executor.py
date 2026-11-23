@@ -257,7 +257,9 @@ def driver_files(kind, profile=owner.PROFILE):
         return (['scripts/image_float_native_sample_graphics_owner_driver.cpp'] if profile==IMAGE_FLOAT_PROFILE else []) + ['scripts/native_sample_graphics_driver.cpp', 'scripts/native_sample_graphics_runtime.hpp',
                 'scripts/native_sample_owner_runtime.hpp', 'scripts/native_sample_owner_capture.hpp', *SHARED]
     if kind == 'native-sample':
-        return (['scripts/image_float_native_sample_owner_driver.cpp'] if profile==IMAGE_FLOAT_PROFILE else []) + ['scripts/native_sample_owner_driver.cpp', 'scripts/native_sample_owner_runtime.hpp',
+        geometry = ['scripts/image_float_native_sample_owner_driver.cpp',
+            'scripts/native_geometry_feedback_runtime.hpp', 'driver/opengpu_transform_feedback_abi.h']
+        return (geometry if profile==IMAGE_FLOAT_PROFILE else []) + ['scripts/native_sample_owner_driver.cpp', 'scripts/native_sample_owner_runtime.hpp',
                 'scripts/native_sample_owner_capture.hpp', *SHARED]
     if profile == COMPUTE_STAGE or profile in FULL_COMPUTE_CONTRACTS:
         wrapper = {COMPUTE_STAGE: 'compute_stage', FULL_PROFILE: 'geometry_compute',

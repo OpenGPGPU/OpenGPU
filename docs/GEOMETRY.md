@@ -1300,6 +1300,23 @@ both layers, both surviving sample IDs, the flat value from the last emitted
 vertex, and each pixel's four-sample resolve. The CPU checker exercised
 rejection of a changed sample, a changed GNY2 word and a changed guard byte.
 
+The same live owner retains the original GS private mapping after the first
+draw. The feedback cases use four GTF1 checkpoints in the writable tail of
+the original bin pool. The first capture uses raster discard, with the image
+and resolve clear rules still applied. After pause and resume, a second
+capture uses normal rasterization and the original sample and GNY2 checks.
+The independent feedback oracle checks three unclipped positions, all 48
+linked varying components, both primitive counts, all four checkpoints and
+physical guards. It checks distinct pre-flat values for every GS vertex. The
+executor holds the eighth checkpoint acknowledgement, verifies that the
+preceding seven lines were acknowledged, and checks VM protection until
+completion POP. The fixture uses one initial DUT reset for the sequence.
+
+Pinned Linux compilation verified 358 actual dependencies including the
+GTF1 ABI. The CPU preflight matched all four original GTF1 inputs against the
+active Sv32 maps and exercised rejection of altered clip/flat output, a
+changed written count, a missing commit ACK and an out-of-range store.
+
 Select a guarded native-sample executable built from the full 112-word float
 factory with this checkout's preparation and source bindings. Keep the
 FlashSim generator environment used for the model.
@@ -1314,8 +1331,8 @@ python3 -B scripts/qualify_native_geometry_owner.py \
   --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72
 ```
 
-The full-host render, transform feedback, failure recovery and no-reset
-reuse qualifications remain pending.
+The full-host render and healthy feedback sequence await FlashSim execution.
+The same-host fault and cancellation matrix remains pending.
 
 ### Linux version-two publication
 

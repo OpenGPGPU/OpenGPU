@@ -28,7 +28,13 @@ int main(int argc,char **argv) {
       atomic_json(argv[2],[&](auto &out){sample_profile_json(out,observed);});
       sim.model->final();return 0;
     }
-    require(argc==5 && std::string(argv[1])=="--active-owner",
+    const std::string mode=argc==5?argv[1]:"";
+#ifdef OPENGPU_OWNER_IMAGE_FLOAT_STAGE
+    const bool feedback=mode=="--active-geometry-feedback";
+#else
+    const bool feedback=false;
+#endif
+    require(mode=="--active-owner" || feedback,
       "usage: native_sample_owner_driver --probe-profile NEW.json | --active-owner INPUT.memory NEW_OUTPUT SESSION");
     const std::filesystem::path output=argv[3],session=argv[4];
     require(std::filesystem::is_directory(session) && !std::filesystem::is_symlink(session),"invalid native sample session");
@@ -38,7 +44,11 @@ int main(int argc,char **argv) {
     Memory memory=Memory::read(argv[2]);verify_readonly(memory,memory,capture.writable);
     require(std::filesystem::create_directory(output),"cannot create native sample output");
     Simulation sim(argc,argv);sim.reset();Agent agent(memory);ReplayBus<Simulation> bus(sim,agent,100000);
-    active_sample_owner(sim,agent,bus,memory,capture,output,session,timeout);
+    std::function<void()> after_retirement;
+#ifdef OPENGPU_OWNER_IMAGE_FLOAT_STAGE
+    if(feedback)after_retirement=[&]{run_geometry_feedback(sim,agent,bus,memory,capture,output,session,timeout);};
+#endif
+    active_sample_owner(sim,agent,bus,memory,capture,output,session,timeout,after_retirement);
     sim.model->final();return 0;
   }catch(const std::exception &error) {
     std::cerr<<"native sample owner execution failed: "<<error.what()<<'\n';return 1;

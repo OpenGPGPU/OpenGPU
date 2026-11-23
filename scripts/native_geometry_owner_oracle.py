@@ -1,6 +1,8 @@
 """Exact image, completion and physical-byte checks for the linked geometry draw."""
 import struct
 
+from native_geometry_feedback_oracle import (ACTIONS, DRAW_BYTES, DRAW_COUNT, RECORD_BYTES, RENDER_COMMAND,
+    packet, raw_primitive, verify_feedback, verify_feedback_receipts)
 from native_geometry_owner_inputs import verify_inputs
 from native_sample_graphics_gny2_oracle import completion_words, record_layout, values, verify_words
 from native_sample_owner_oracle import require, verify_guards
@@ -67,19 +69,50 @@ def geometry_completion(command_id):
     return completion_words(expected)
 
 
-def verify(initial, returned, description, programs, capture_data, observed_profile):
-    outputs = verify_inputs(initial, description, programs, capture_data, observed_profile)
-    if returned is None:
-        return outputs.command_id
+def verify_images(returned, description, *, discard=False):
     for mrt, attachment in enumerate(description['attachments']):
         for kind in ('image', 'resolve'):
             view = attachment[kind]
             for layer in range(2):
                 address = view['physical'] + view['offset'] + layer * 4096
                 expected = layer_bytes(mrt, layer, resolve=(kind == 'resolve'))
+                if discard:
+                    expected = bytes(len(expected))
                 require(returned.read(address, len(expected)) == expected,
                         'geometry %s MRT %d layer %d differs' % (kind, mrt, layer))
+
+
+def verify(initial, returned, description, programs, capture_data, observed_profile):
+    outputs = verify_inputs(initial, description, programs, capture_data, observed_profile)
+    if returned is None:
+        return outputs.command_id
+    verify_images(returned, description)
     verify_words(returned.read(outputs.completion, 16384),
                  geometry_completion(outputs.command_id), label='geometry')
     verify_guards(initial, returned, outputs.writable)
     return outputs.command_id
+
+
+def feedback_plan(initial, description, programs, capture_data, observed_profile):
+    return verify_inputs(initial, description, programs, capture_data, observed_profile).feedback.plan()
+
+
+def verify_feedback_run(initial, discard, rendered, description, programs, capture_data, observed_profile, receipts):
+    verify_feedback_receipts(receipts)
+    outputs = verify_inputs(initial, description, programs, capture_data, observed_profile)
+    feedback = outputs.feedback
+    verify_images(discard, description, discard=True)
+    verify_images(rendered, description)
+    require(discard.read(feedback.checkpoint(0), RECORD_BYTES) == packet(feedback, 0, observed=True),
+            'geometry feedback discard lost its begin checkpoint')
+    require(discard.read(feedback.stream, DRAW_BYTES) == raw_primitive(),
+            'geometry raster discard did not capture one original GS primitive')
+    verify_guards(initial, discard, (*outputs.writable,
+        (feedback.checkpoint(0), feedback.checkpoint(1)), (feedback.stream, feedback.stream + DRAW_BYTES)))
+
+    verify_feedback(rendered, feedback)
+    verify_words(rendered.read(outputs.completion, 16384), geometry_completion(RENDER_COMMAND),
+                 label='geometry feedback render')
+    verify_guards(discard, rendered, (*outputs.writable,
+        (feedback.checkpoint(1), feedback.checkpoint(len(ACTIONS))),
+        (feedback.stream + DRAW_BYTES, feedback.stream + DRAW_BYTES * DRAW_COUNT)))

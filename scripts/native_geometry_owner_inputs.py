@@ -7,6 +7,7 @@ import struct
 import subprocess
 
 from compute_owner_protocol import required_flags, uint
+from native_geometry_feedback_oracle import Feedback, POOL_BYTES, preflight
 from native_sample_graphics_gny2_oracle import record_layout
 from native_sample_owner_oracle import AddressSpace, capture, field, fields, require
 from native_sample_owner_protocol import AUXILIARY
@@ -22,6 +23,7 @@ class GeometryOutputs:
     command_id: int
     completion: int
     writable: tuple[tuple[int, int], ...]
+    feedback: Feedback
 
 
 def program_paths(prefix):
@@ -161,7 +163,13 @@ def verify_inputs(memory, description, compiler_products, capture_data, observed
     for engine in range(4):
         allow_view(frame, frames, f'FRAME_SCRATCH{engine}_', 95 * 512, 95 * 512)
     allow_view(frame, frames, 'FRAME_BINS_BINS_DIRECTORY', 64, 64)
-    allow_view(frame, frames, 'FRAME_BINS_BINS_POOL_', 4096, 32 + 2 * 16)
+    allow_view(frame, frames, 'FRAME_BINS_BINS_POOL_', POOL_BYTES, 32 + 2 * 16)
+    pool = field(frame, frames, 'FRAME_BINS_BINS_POOL_BASE')
+    pool_physical = original_window(memory, description['feedbackPool'], POOL_BYTES)
+    require(pool == uint(description['feedbackPoolVA']) and mapped_output(pool, POOL_BYTES) == pool_physical,
+            'geometry feedback tail does not belong to the original bin pool')
+    feedback = Feedback(pool, pool_physical, registers[0x14c], pcs[1])
+    preflight(memory, feedback)
     allow_view(frame, frames, 'FRAME_BINS_PRODUCER_ARENA_', 4096, 2 * record_layout()[1] * 64)
 
     attachments = description.get('attachments')
@@ -196,4 +204,4 @@ def verify_inputs(memory, description, compiler_products, capture_data, observed
     allowed.sort()
     require(all(a[1] <= b[0] for a, b in zip(allowed, allowed[1:])),
             'geometry work and output views overlap')
-    return GeometryOutputs(command_id, completion, tuple(allowed))
+    return GeometryOutputs(command_id, completion, tuple(allowed), feedback)

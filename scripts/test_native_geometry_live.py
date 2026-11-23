@@ -11,8 +11,11 @@ import tempfile
 
 from compute_owner_oracle import SparseMemory
 from compute_owner_protocol import strict_json
+from native_geometry_feedback_oracle import (ACTIONS, COMMAND_BASE, DRAW_BYTES, RENDER_COMMAND,
+    packet, raw_primitive)
 from native_geometry_owner_inputs import ROOT, build_producer, program_paths, verify_inputs
-from native_geometry_owner_oracle import geometry_completion, layer_bytes, verify as verify_returned
+from native_geometry_owner_oracle import (geometry_completion, layer_bytes, verify as verify_returned,
+    verify_feedback_run)
 from native_sample_owner_controller import atomic, wait_file
 from native_sample_owner_protocol import AUXILIARY, profile_bytes
 from owner_process_lifetime import CleanupIncomplete, stop_group
@@ -108,6 +111,68 @@ def check_return_oracle(directory, memory, snapshot, description, outputs, progr
             else:
                 raise AssertionError('geometry oracle accepted a changed ' + reason)
 
+    feedback = outputs.feedback
+    raw = raw_primitive()
+    assert len(raw) == DRAW_BYTES and struct.unpack_from('<4f', raw) == (-2, -1, 0, 1)
+    flat_slot = 4 * (4 + 3 * 15)
+    assert [struct.unpack_from('<3f', raw, n * 208 + flat_slot)
+            for n in range(3)] == [(121.25, 123.5, 125.75),
+                                   (122.25, 124.5, 126.75),
+                                   (123.25, 125.5, 127.75)]
+    ordinary_render = bytes(candidate)
+    for mrt in range(4):
+        for kind in ('image', 'resolve'):
+            for layer in range(2):
+                overlay(address(mrt, kind, layer), bytes(256 if kind == 'resolve' else 1024))
+    overlay(feedback.checkpoint(0), packet(feedback, 0, observed=True))
+    overlay(feedback.stream, raw)
+    discarded = directory / 'oracle-feedback-discard.memory'
+    discarded.write_bytes(candidate)
+    candidate[:] = ordinary_render
+    for index, _ in enumerate(ACTIONS):
+        overlay(feedback.checkpoint(index), packet(feedback, index, observed=True))
+    overlay(feedback.stream, raw * 2)
+    overlay(outputs.completion, struct.pack('<4096I', *geometry_completion(RENDER_COMMAND)))
+    # Controlled observations exercise the same phase/byte checks as the
+    # guarded executor. This fixture reports CPU preflight only.
+    receipts = []
+    for command, (opcode, data) in enumerate(((12, 7), (7, 0), (12, 7), (12, 7), (7, 0), (12, 6)), COMMAND_BASE):
+        receipts.append(dict(command=command, opcode=opcode, data=data, heldStatus=0x22,
+            completion=0x8000 | (opcode & 7) << 8 | (opcode >> 3) << 16 | command,
+            heldIrq=3, retiredStatus=1, retiredIrq=1))
+    telemetry = dict(schema='opengpu-native-geometry-feedback-v1', resetCount=1,
+                     commitAckHeldCycles=23, receipts=receipts)
+    returned.write_bytes(candidate)
+    with SparseMemory(discarded) as discard:
+        def check_feedback(acknowledgement=telemetry):
+            with SparseMemory(returned) as result:
+                verify_feedback_run(snapshot, discard, result, description, programs, capture,
+                                    observed, acknowledgement)
+
+        check_feedback()
+        for address, canonical, wrong, diagnostic in (
+            (feedback.stream, struct.pack('<f', -2), struct.pack('<f', -1), 'unclipped'),
+            (feedback.stream + flat_slot, struct.pack('<f', 121.25), struct.pack('<f', 123.25), 'unflattened'),
+            (feedback.checkpoint(3) + 36 * 4, struct.pack('<I', 2), struct.pack('<I', 4), 'GTF1'),
+            (feedback.stream + 2 * DRAW_BYTES, b'\xa7', b'\x81', 'guard changed'),
+        ):
+            overlay(address, wrong)
+            returned.write_bytes(candidate)
+            overlay(address, canonical)
+            try:
+                check_feedback()
+            except ValueError as error:
+                assert diagnostic in str(error), error
+            else:
+                raise AssertionError('geometry feedback oracle accepted changed ' + diagnostic + ' bytes')
+        returned.write_bytes(candidate)
+        try:
+            check_feedback(dict(telemetry, commitAckHeldCycles=0))
+        except ValueError as error:
+            assert 'ACK was not held' in str(error), error
+        else:
+            raise AssertionError('geometry feedback oracle accepted an unobserved commit ACK')
+
 
 def check(directory, products, *, sanitize):
     binary = build_producer(directory, sanitize=sanitize)
@@ -148,7 +213,7 @@ def check(directory, products, *, sanitize):
         _, error = process.communicate()
         if error and b'wrong private wire magic' not in error:
             print(error.decode(errors='replace'), end='')
-    print('Original Mesa geometry RX, GNJ2 and four two-layer MRT/resolve views matched the captured driver bytes (CPU preflight)')
+    print('Original Mesa geometry RX, GNJ2, four two-layer MRT/resolve views and GTF1 matched captured driver bytes (CPU preflight)')
 
 
 def main():

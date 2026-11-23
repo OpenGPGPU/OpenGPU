@@ -82,7 +82,8 @@ def digest(path):
     return hashlib.sha256(regular(path).read_bytes()).digest()
 
 
-def run(args, *, owner_profile, input_name, source_paths, verify_case, context, backend=None):
+def run(args, *, owner_profile, input_name, source_paths, verify_case, context, backend=None,
+        geometry_feedback=False):
     require(0 < args.timeout <= 86400, 'timeout must be 1..86400 seconds')
     executor = regular(args.executor.absolute())
     qualification = regular(args.executor_qualification.absolute())
@@ -141,13 +142,19 @@ def run(args, *, owner_profile, input_name, source_paths, verify_case, context, 
             original = tuple(packet.read_bytes() for packet in packets)
             description = strict_json(directory / input_name)
             guarded = [*packets, directory / 'record-0.capture', directory / input_name, directory / 'union.memory']
-            identities = [digest(path) for path in guarded]
             capture_data = (directory / 'record-0.capture').read_bytes()
             with SparseMemory(directory / 'union.memory') as before:
                 command_id = verify_case(before, None, description, original, capture_data, observed)
+                if geometry_feedback:
+                    from native_geometry_owner_oracle import feedback_plan, verify_feedback_run
+                    plan = directory / 'geometry-feedback.plan'
+                    atomic(plan, feedback_plan(before, description, original, capture_data, observed))
+                    guarded.append(plan)
+            identities = [digest(path) for path in guarded]
             qualified(output)
             results = directory / 'results'
-            running = subprocess.Popen([executor, '--active-owner', directory / 'union.memory', results, directory],
+            mode = '--active-geometry-feedback' if geometry_feedback else '--active-owner'
+            running = subprocess.Popen([executor, mode, directory / 'union.memory', results, directory],
                 env=env, stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
             wait_file(directory / 'record-0.held.json', bridge, running, args.timeout)
             held = strict_json(directory / 'record-0.held.json')
@@ -157,10 +164,18 @@ def run(args, *, owner_profile, input_name, source_paths, verify_case, context, 
             wait_file(directory / 'record-0.retired.json', bridge, running, args.timeout)
             retired = strict_json(directory / 'record-0.retired.json')
             response = retired_bytes(retired, held, owner_profile=owner_profile)
+            if geometry_feedback:
+                feedback = directory / 'geometry-feedback.json'
+                wait_file(feedback, bridge, running, args.timeout)
             require([digest(path) for path in guarded] == identities, 'original live source inputs changed during DUT execution')
             with SparseMemory(directory / 'union.memory') as before, SparseMemory(regular(results / 'record-0.memory')) as after:
                 require(verify_case(before, after, description, original, capture_data, observed) == command_id,
                         'returned sample verification changed the command identity')
+                if geometry_feedback:
+                    with (SparseMemory(regular(results / 'feedback-discard.memory')) as discard,
+                          SparseMemory(regular(results / 'feedback-render.memory')) as rendered):
+                        verify_feedback_run(before, discard, rendered, description, original,
+                                            capture_data, observed, strict_json(feedback))
             require(bridge.poll() is None and running.poll() is None, 'owner did not remain live through sample/GNY2/guard oracles')
             atomic(directory / 'record-0.retired.response', response)
             atomic(directory / 'oracle-authorized.response', cleanup_authorization())

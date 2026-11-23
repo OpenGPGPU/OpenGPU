@@ -1,6 +1,7 @@
 #pragma once
 #include "native_sample_owner_capture.hpp"
 #include "native_owner_runtime.hpp"
+#include <functional>
 #include <sstream>
 
 namespace native_owner {
@@ -54,7 +55,7 @@ inline void sample_receipt_json(std::ostream &out,const RecordResult &result,uin
 template<class Sim>
 void active_sample_owner(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
     const SampleCapture &capture,const std::filesystem::path &output,const std::filesystem::path &session,
-    std::chrono::milliseconds timeout) {
+    std::chrono::milliseconds timeout,const std::function<void()> &after_retirement={}) {
   capture.validate(true);
   const auto profile=probe_sample_profile(sim,agent,bus);match_profile(capture,profile);
   PtePages pte;pte.observe(memory,capture);
@@ -65,6 +66,7 @@ void active_sample_owner(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memor
   const auto result=retire_record(sim,agent,bus,memory,capture,held,&retirement);
   memory.write((output/"record-0.memory").string());
   atomic_json(session/"record-0.retired.json",[&](auto &out){sample_receipt_json(out,result,capture.command_id,bus.cycles,true);});
+  if(after_retirement)after_retirement();
   // The live producer may request PTE release only after the controller has
   // independently checked stored samples, images, GNY2 and all original bytes.
   cleanup_records(sim,agent,bus,memory,session,pte,1,timeout);
