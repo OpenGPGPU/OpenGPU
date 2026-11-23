@@ -38,9 +38,29 @@ class SampleOwnerManifestTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):owner.check_manifest(bad)
         bad=self.manifest();bad['imageFloatExchange']=True
         with self.assertRaises(RuntimeError):owner.check_manifest(bad)
-        for old in ('compute_stage','full_resources','sample_resources'):
+        for old in ('compute_stage','full_resources','sample_resources','tessellation_uniforms'):
             with self.subTest(old=old),self.assertRaisesRegex(RuntimeError,'one exact owner factory'):
                 owner.prepare(None,'1G',float_resources=True,**{old:True})
+
+    def test_tessellation_uniform_factory_requires_its_own_identity_and_enabled_service(self):
+        from owner_resource_contract import (IMAGE_FLOAT_PROFILE, IMAGE_FLOAT_STAGE, IMAGE_FLOAT_WORDS,
+            TESSELLATION_UNIFORM_PROFILE, TESSELLATION_UNIFORM_STAGE)
+        valid = self.manifest()
+        valid.update(profile=TESSELLATION_UNIFORM_PROFILE, ownerResourceStage=TESSELLATION_UNIFORM_STAGE,
+            imageFloatExchange=True, computeFeatureFlags=0x3fffff, tessellationUniforms=True,
+            requiredDiscovery=copy.deepcopy(IMAGE_FLOAT_WORDS))
+        owner.check_manifest(valid)
+        owner.check_manifest(dict(valid, assertionMode='inline'))
+        for changed in (dict(tessellationUniforms=False), dict(tessellationUniforms=1),
+                        dict(ownerResourceStage=IMAGE_FLOAT_STAGE),
+                        dict(profile=IMAGE_FLOAT_PROFILE, ownerResourceStage=IMAGE_FLOAT_STAGE),
+                        dict(frameWidth=17), dict(pagedCapacity=8)):
+            with self.subTest(changed=changed), self.assertRaises(RuntimeError):
+                owner.check_manifest(dict(valid, **changed))
+        del valid['tessellationUniforms']
+        with self.assertRaises(RuntimeError):
+            owner.check_manifest(valid)
+        owner.check_manifest(dict(valid, profile=IMAGE_FLOAT_PROFILE, ownerResourceStage=IMAGE_FLOAT_STAGE))
 
     def test_inline_assertions_require_the_complete_emitted_sample_factory(self):
         valid = self.manifest()

@@ -14,7 +14,7 @@ final case class NativeAlignmentHostConfig(graphics: GraphicsConfig,
     transactionsPerCu: Int = 16, axiDataBytes: Int = 32,
     nativeProtectedSources: Boolean = false, nativeGeometryTransport: Boolean = false,
     tessellationFragmentImages: Boolean = false, tessellationSampleShading: Boolean = false,
-    imageFloatExchange: Boolean = false) {
+    imageFloatExchange: Boolean = false, tessellationUniforms: Boolean = false) {
   require(computeUnits > 0 && transactionsPerCu >= 16,
     "the integrated resource paths require sixteen CU transaction IDs")
   require(native.transformFeedback, "primitive queries require native feedback ownership")
@@ -116,4 +116,5 @@ class NativeAlignmentHostSystemAxi(profile: NativeAlignmentHostConfig,
     nativeGeometryTransport = profile.nativeGeometryTransport,
     nativeSampleTransport = profile.nativeSampleTransport,
     tessellationFragmentImages = profile.tessellationFragmentImages,
-    tessellationSampleShading = profile.tessellationSampleShading)
+    tessellationSampleShading = profile.tessellationSampleShading,
+    tessellationUniforms = profile.tessellationUniforms)
