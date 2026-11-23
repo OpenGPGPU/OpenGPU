@@ -383,7 +383,7 @@ def run_case(args, *, gpu, source, temporary, ntt, image, case):
             '--executor', args.executor, '--executor-qualification', args.executor_qualification,
             '--executor-checker', args.executor_checker, '--executor-checker-python', args.executor_checker_python,
             '--bridge-command', command_file, '--timeout', str(args.timeout),
-            *(['--case', case] if case in (*COMPUTE_LOOP_CASES,*COUNTER_CASES,*P12_SHARED_CASES,*P12_TEXTURE_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES,*STORAGE_PUBLICATION_CASES,*IMAGE_PUBLICATION_CASES,*TEXTURE_PUBLICATION_CASES,*COUNTER_PUBLICATION_CASES,*SHARED_PUBLICATION_CASES,*DMA_PUBLICATION_CASES,*L1_PUBLICATION_CASES,*GLOBAL_ATOMIC_CASES) else []),
+            *(['--case', case] if case in (*COMPUTE_LOOP_CASES,*DYNAMIC_CASES,*COUNTER_CASES,*P12_SHARED_CASES,*P12_TEXTURE_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES,*STORAGE_PUBLICATION_CASES,*IMAGE_PUBLICATION_CASES,*TEXTURE_PUBLICATION_CASES,*COUNTER_PUBLICATION_CASES,*SHARED_PUBLICATION_CASES,*DMA_PUBLICATION_CASES,*L1_PUBLICATION_CASES,*GLOBAL_ATOMIC_CASES) else []),
             *(['--storage-matrix'] if getattr(args,'storage_matrix',False) else []),
             *(['--storage-delayed-ack'] if getattr(args,'storage_delayed_ack',False) else []),
             *(['--storage-recovery-matrix'] if getattr(args,'storage_recovery_matrix',False) else []),

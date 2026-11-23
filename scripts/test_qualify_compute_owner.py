@@ -120,8 +120,8 @@ class Entry(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'source fault requires'):qualifier.checked_inputs(args)
                 run.assert_not_called()
 
-    def test_loop_cases_reach_controller_with_the_selected_source(self):
-        from compute_owner_cases import COMPUTE_LOOP_CASES
+    def test_loop_and_shared_atomic_cases_reach_controller_with_the_selected_source(self):
+        from compute_owner_cases import COMPUTE_LOOP_CASES, DYNAMIC_CASES
         parent = ROOT / '.artifacts'
         parent.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='loop-source-', dir=parent) as directory:
@@ -135,11 +135,40 @@ class Entry(unittest.TestCase):
             with patch.object(qualifier.subprocess, 'Popen') as popen, \
                  patch.object(qualifier, 'stop_group'), patch.object(qualifier, 'remove_container'):
                 popen.return_value.wait.return_value = 0
-                for case in COMPUTE_LOOP_CASES:
+                for case in (*COMPUTE_LOOP_CASES, *DYNAMIC_CASES):
                     qualifier.run_case(args, gpu=ROOT, source=ROOT, temporary=root,
                                        ntt=root/'ntt', image='sha256:fixture', case=case)
                     command = popen.call_args.args[0]
                     self.assertEqual(command[command.index('--case') + 1], case)
+
+    def test_shared_atomic_ready_binds_the_selected_case(self):
+        from compute_owner_controller import ready_inputs, unchanged_inputs
+        dynamic = dict(schema='opengpu-compute-shared-dynamic-oracle-v1',
+                       operation=1, signed=True)
+        address = dict(schema='opengpu-compute-shared-address-oracle-v1',
+                       sourceCase='shared-address-cas-match')
+        parent = ROOT / '.artifacts'
+        parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=parent) as directory:
+            root = Path(directory)
+            for name in ('union.memory', 'record-0.capture'):
+                (root / name).write_bytes(b'fixture')
+            for description, correct, wrong in (
+                (dynamic, 'shared-dynamic-i-1', 'shared-dynamic-1'),
+                (dynamic, 'shared-dynamic-i-1', 'shared-dynamic-i-2'),
+                (address, 'shared-address-cas-match', 'shared-address-cas-miss'),
+            ):
+                oracle = root / 'oracle.json'
+                oracle.write_text(json.dumps(description))
+                recorded, inputs = ready_inputs(root, correct)
+                self.assertEqual(recorded, description)
+                self.assertEqual(set(inputs), {'union.memory', 'record-0.capture', 'oracle.json'})
+                for case in (wrong, None):
+                    with self.assertRaisesRegex(ValueError, 'shared atomic'):
+                        ready_inputs(root, case)
+                oracle.write_text('{}')
+                with self.assertRaises(ValueError):
+                    unchanged_inputs(root, inputs)
 
     def test_recovery_attempts_both_container_cleanups_when_one_fails(self):
         # Process/container handles are CPU mocks; no execution is qualified.

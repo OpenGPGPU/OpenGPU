@@ -109,3 +109,13 @@ after its reconvergence marker. The emitter rejects an additional ESSL
 barrier inside the selected arm after shared memory has already been
 initialized and published. The Linux validator also rejects a native
 variant with a workgroup barrier inside the scope.
+
+The complete-owner controller binds each shared-atomic run to its selected
+source by checking the exact operation and signedness or the address-case
+name. It rechecks the captured command, initial memory and byte oracle
+through execution and cleanup. The CPU qualifier regression exercises the
+case handoff and rejects substituted cases or a changed oracle.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_qualify_compute_owner.py
+```
