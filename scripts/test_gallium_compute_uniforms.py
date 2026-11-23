@@ -428,13 +428,16 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
             run(cc + common + inc + san + ["-MMD", "-MF", obj.with_suffix(".d"), "-c", source, "-o", obj],
                 "compile-" + source.stem)
             objects.append(obj)
-    obj = out / "cs_glsl_frontend.o"
-    run(cxx + configured_flags("compiler/glsl/standalone.cpp") + ["-UNDEBUG", "-Wall", "-Wextra", "-Werror",
-        "-Wno-unused-parameter", "-I" + str(mesa / "src/compiler/nir"), "-I" + str(mb / "src/compiler/nir")] +
-        inc + san + (["-DOPENGPU_CS_CHECK_MESA_CAPABILITIES"] if control_flow else []) +
-        ["-MMD", "-MF", obj.with_suffix(".d"), "-c", ROOT / ("userspace/tests/graphics_uniform_frontend.cpp" if graphics_uniforms else "userspace/tests/cs_glsl_frontend.cpp"), "-o", obj],
-        "compile-cs_glsl_frontend")
-    objects.append(obj)
+    frontends = [("cs_glsl_frontend", "graphics_uniform_frontend" if graphics_uniforms else "cs_glsl_frontend")]
+    if control_flow:
+        frontends.append(("cs_control_flow_mesa_caps", "cs_control_flow_mesa_caps"))
+    for unit, frontend in frontends:
+        obj = out / (unit + ".o")
+        run(cxx + configured_flags("compiler/glsl/standalone.cpp") + ["-UNDEBUG", "-Wall", "-Wextra", "-Werror",
+            "-Wno-unused-parameter", "-I" + str(mesa / "src/compiler/nir"), "-I" + str(mb / "src/compiler/nir")] +
+            inc + san + ["-MMD", "-MF", obj.with_suffix(".d"), "-c", ROOT / "userspace/tests" / (frontend + ".cpp"),
+                         "-o", obj], "compile-" + unit)
+        objects.append(obj)
     obj = out / "checked-nir-lower-io.o"
     run(cc + configured_flags("compiler/nir/nir_lower_io.c") + ["-UNDEBUG"] + san +
         ["-MMD", "-MF", obj.with_suffix(".d"), "-c", checked_source, "-o", obj],
