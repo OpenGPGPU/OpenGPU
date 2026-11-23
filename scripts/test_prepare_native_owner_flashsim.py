@@ -1,11 +1,50 @@
 #!/usr/bin/env python3
 """CPU-only stale/falsely labeled owner-DUT input rejection checks."""
-import copy,json,tempfile,unittest
+import copy,json,subprocess,tempfile,unittest
 from pathlib import Path
 from unittest.mock import patch
 import prepare_native_owner_flashsim as owner
 
 class OwnerInputTests(unittest.TestCase):
+    def test_staged_lowering_failure_does_not_publish_an_owner(self):
+        parent = owner.ROOT / '.artifacts'
+        parent.mkdir(exist_ok=True)
+        temporary = []
+        commands = []
+        with tempfile.TemporaryDirectory(prefix='staged-owner-guard-', dir=parent) as base:
+            out = Path(base) / 'owner'
+            common_directory = subprocess.check_output(
+                ['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'],
+                cwd=owner.ROOT, text=True)
+
+            def run(command, *, cwd, env, check):
+                self.assertEqual(cwd, owner.ROOT)
+                self.assertTrue(check)
+                self.assertFalse(out.exists())
+                temporary.append(Path(env['TMPDIR']))
+                staged = temporary[-1] / 'staged'
+                commands.append(command[0])
+                if command[0] == 'sbt':
+                    self.assertIn('PrepareOwnerResourceTessellationUniformHost --firrtl-output', command[-1])
+                    staged.mkdir()
+                    (staged / 'firtool-command').write_text('fixture-firtool\n')
+                    (staged / 'owner.fir').write_text('fixture')
+                else:
+                    self.assertEqual(command, ['fixture-firtool'])
+                    self.assertTrue((staged / 'owner.fir').is_file())
+                    raise subprocess.CalledProcessError(7, command)
+
+            with (patch.object(owner, 'source_inputs', return_value={}),
+                  patch.object(owner.subprocess, 'check_output', return_value=common_directory),
+                  patch.object(owner.subprocess, 'run', side_effect=run)):
+                with self.assertRaises(subprocess.CalledProcessError) as failure:
+                    owner.prepare(out, '5G', tessellation_uniforms=True)
+            self.assertEqual(failure.exception.returncode, 7)
+            self.assertEqual(commands, ['sbt', 'fixture-firtool'])
+            self.assertFalse(out.exists())
+            self.assertEqual(temporary[0], temporary[1])
+            self.assertFalse(temporary[0].exists())
+
     def test_full_geometry_factory_requires_its_new_packets_words_and_scope(self):
         from owner_resource_contract import PROFILE, FULL_STAGE, FULL_WORDS, COMPUTE_STAGE, COMPUTE_WORDS
         full=self.manifest()

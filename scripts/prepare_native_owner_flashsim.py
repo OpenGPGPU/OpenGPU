@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Prepare an exact owner factory; execution qualification is separate."""
-import argparse,json,os,re,subprocess,sys,tempfile
+import argparse,json,os,re,shutil,subprocess,sys,tempfile
 from pathlib import Path
 sys.dont_write_bytecode=True
 import qualify_native_product_compiled as common
@@ -135,11 +135,26 @@ def prepare(out, heap, compute_stage=False, full_resources=False, sample_resourc
     temporary=main/'.artifacts';temporary.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='o',dir=temporary) as directory:
         if len(directory.encode())>52:raise RuntimeError('JVM temporary path exceeds Unix-socket limit')
+        environment = dict(os.environ, TMPDIR=directory)
+        staged = Path(directory) / 'staged'
+        argument = ('--firrtl-output ' + json.dumps(str(staged)) if tessellation_uniforms else
+                    '--output ' + json.dumps(str(out)))
         command=['sbt','-J-Xmx'+heap,'-J-XX:ActiveProcessorCount=2','-J-Djava.io.tmpdir='+directory,
             '-Dopengpu.fullHostQualification=1',
-            'Test / runMain opengpu.system.'+entry+' --output '+json.dumps(str(out))+
+            'Test / runMain opengpu.system.'+entry+' '+argument+
             (' --inline-assertions' if inline_assertions else '')]
-        subprocess.run(command,cwd=ROOT,env=dict(os.environ,TMPDIR=directory),check=True)
+        subprocess.run(command,cwd=ROOT,env=environment,check=True)
+        if tessellation_uniforms:
+            # The JVM has exited. Lower the serialized input with the same
+            # firtool and options chosen by the Scala factory.
+            lower = (staged / 'firtool-command').read_text().splitlines()
+            subprocess.run(lower, cwd=ROOT, env=environment, check=True)
+            rtl = staged / 'rtl'
+            macro = staged / 'NativeFourEngineSramModels.sv'
+            shutil.copyfile(macro, rtl / macro.name)
+            out.mkdir(parents=True, exist_ok=False)
+            rtl.rename(out / 'rtl')
+            (staged / 'owner-manifest.json').rename(out / 'owner-manifest.json')
     if sources!=source_inputs():raise RuntimeError('Source changed during owner RTL preparation')
     manifest=out/'owner-manifest.json';description=json.loads(manifest.read_text());check_manifest(description)
     if description['profile'] != expected_profile:
@@ -180,7 +195,7 @@ def main():
                         help='prepare the complete sample/float owner with checked TCS/TES uniforms')
     parser.add_argument('--inline-assertions',action='store_true',
                         help='inline the complete sample factory checks for hierarchical compilation')
-    parser.add_argument('--java-heap',default='24G')
+    parser.add_argument('--java-heap', help='JVM heap for preparation (5G for staged checked uniforms, otherwise 24G)')
     parser.add_argument('--flashsim-dir',type=Path)
     parser.add_argument('--shards',type=int,default=32)
     args=parser.parse_args();out=args.output.resolve()
@@ -193,7 +208,8 @@ def main():
             args.sample_resources or args.image_float_resources or args.tessellation_uniforms)):
         parser.error('--inline-assertions requires --stage prepare with a complete sample factory')
     if args.stage=='prepare':
-        prepare(out, args.java_heap, args.compute_stage, args.full_resources, args.sample_resources,
+        heap = args.java_heap or ('5G' if args.tessellation_uniforms else '24G')
+        prepare(out, heap, args.compute_stage, args.full_resources, args.sample_resources,
                 args.inline_assertions, args.image_float_resources, args.tessellation_uniforms)
     elif args.stage=='generate':
         if args.flashsim_dir is None:parser.error('--stage generate requires --flashsim-dir')

@@ -322,15 +322,20 @@ source-bound executor builds the original float native-sample probe against
 this factory's RTL and verifies its 112 discovery words and five auxiliary
 registers.
 
-The Scala factory description and Python manifest and probe guards passed.
-A staged RTL emission experiment also passed source-set and assertion-binding
-checks for 2,331 inputs. The emitted hierarchy contains two physical CUs and
-all three domain uniform services. Separating Chisel FIRRTL serialization and
-firtool 1.158.0 reduced the highest measured process-group memory from 10.42
-GiB at the original run's guard stop to 5.25 GiB for a completed staged run.
-The two stages took 74.4 and 200.2 seconds. The staged experiment supplied the
-factory's SRAM model source explicitly after firtool reported an unprocessed
-annotation for it. It has yet to be integrated into the preparation command.
+The preparation command serializes FIRRTL directly from the Chisel circuit.
+The JVM exits before the same Chisel-selected firtool lowers the RTL. The
+factory retains the original lowering options and explicitly supplies its SRAM
+model source. Both flows reported the SRAM annotation warning and produced
+byte-identical RTL and file lists in a comparison fixture with both bound and
+inline assertions.
+
+The complete staged preparation passed in 412.6 seconds with 6.25 GiB peak
+process-group memory, including a fresh main and test Scala compile and
+firtool 1.158.0. The original combined attempt reached 10.42 GiB when its
+10 GiB guard stopped it. The completed output sealed 2,331 files and matched
+the 1,877 RTL and bind inputs enumerated by FlashSim. The emitted hierarchy
+contains both physical CUs and all three domain uniform services. The temporary
+FIRRTL was removed after lowering.
 
 Complete FlashSim model generation, native linking and the actual MMIO probe
 for this factory remain pending. With the pinned SRAM submodule initialized
@@ -338,7 +343,8 @@ and the FlashSim/CIRCT environment above, use a new `OWNER` directory inside
 this checkout's `.artifacts`.
 
 ```sh
-"$PYTHON" -B scripts/prepare_native_owner_flashsim.py --stage prepare \
+"$PYTHON" -B scripts/run_owner_bounded.py --memory-mib 7168 --timeout-seconds 1800 -- \
+  "$PYTHON" -B scripts/prepare_native_owner_flashsim.py --stage prepare \
   --tessellation-uniforms --output "$OWNER"
 "$PYTHON" -B scripts/prepare_native_owner_flashsim.py --stage generate \
   --flashsim-dir "$FLASHSIM_DIR" --output "$OWNER" --shards 64
