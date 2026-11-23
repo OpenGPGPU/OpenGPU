@@ -120,7 +120,8 @@ def run_geometry(args, *, gpu, source, output, image, binary, programs):
     ]) + '\n')
     args.executor_checker = ROOT / 'scripts/prepare_owner_executor.py'
     run(args, owner_profile=IMAGE_FLOAT_PROFILE, input_name='geometry-inputs.json',
-        source_paths=programs, verify_case=verify, context=(7, 11, 13), backend='flashsim')
+        source_paths=programs, verify_case=verify, context=(7, 11, 13), backend='flashsim',
+        geometry_feedback=True)
 
 
 def main():
@@ -187,7 +188,8 @@ def main():
                 shutil.rmtree(output)
         finally:
             signal.signal(signal.SIGTERM, previous)
-    print('ORIGINAL_GEOMETRY_FLASH_SIM_PASS images=4 layers=2 samples=4 fullGNY2=true cleanupACK=true')
+    print('ORIGINAL_GEOMETRY_FLASH_SIM_PASS images=4 layers=2 samples=4 fullGNY2=true '
+          'rawFeedbackPrimitives=2 feedbackCommitAck=true resetCount=1 cleanupACK=true')
 
 
 if __name__ == '__main__':

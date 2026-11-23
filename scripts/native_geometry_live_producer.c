@@ -8,6 +8,7 @@
 #include "../driver/tests/opengpu_native_submit_fixture.c"
 #undef OPENGPU_NATIVE_SUBMIT_FIXTURE_MAIN
 #include "../driver/opengpu_native_sample_transport_features.h"
+#include "../driver/opengpu_transform_feedback_abi.h"
 #include "../driver/tests/opengpu_geometry_submit_fixture.h"
 #include "native_sample_live_transport.h"
 #include "native_geometry_expected_profile.inc"
@@ -62,8 +63,52 @@ static void geometry_buffer_json(FILE *f, struct native_kernel_session *s, u32 h
         (unsigned long long)offset, (unsigned long long)bytes);
 }
 
+enum {
+    FEEDBACK_CONTEXT = 0x71000007, FEEDBACK_COOKIE = 101,
+    FEEDBACK_RECORD_OFFSET = 512, FEEDBACK_DATA_OFFSET = 2620,
+    FEEDBACK_WORDS = 4 + 16 * 3, FEEDBACK_DATA_BYTES = 2 * 3 * FEEDBACK_WORDS * 4
+};
+
+static u32 geometry_feedback_inputs(struct native_kernel_session *s,
+    const struct geometry_submit_fixture *fixture, const struct geometry_published *va)
+{
+    const struct opengpu_native_frame_gem *pool = &fixture->frame.pool[0];
+    struct native_original *original = original_handle(s, pool->handle);
+    const u32 base = test_read_va(s, va->frame + 4 * OPENGPU_NATIVE_LAYERED_FRAME_FRAME_BINS_BINS_POOL_BASE_WORD);
+    const struct opengpu_vm *vm = &s->context.vm;
+    const u32 root = GPU_SATP_ENABLE | (vm->asid << GPU_SATP_ASID_SHIFT) | (u32)(vm->root.dma >> 12);
+    const u32 actions[] = {OPENGPU_TF_ACTION_BEGIN, OPENGPU_TF_ACTION_PAUSE,
+        OPENGPU_TF_ACTION_RESUME, OPENGPU_TF_ACTION_END};
+    live_require(original && !pool->offset && pool->bytes == 4096 && vm->enabled && vm->asid &&
+        FEEDBACK_RECORD_OFFSET + sizeof(actions) / sizeof(*actions) * OPENGPU_TF_RECORD_BYTES <= FEEDBACK_DATA_OFFSET &&
+        FEEDBACK_DATA_OFFSET + FEEDBACK_DATA_BYTES < pool->bytes, "geometry feedback pool bounds");
+    geometry_check_pte(s, base, 7);
+    unsigned char *bytes = original->backing.cpu;
+    /* This 4x4 two-part draw uses only the first cache line of the bin pool.
+     * Keep each checkpoint and the raw stream in disjoint mapped tail views. */
+    memset(bytes + FEEDBACK_RECORD_OFFSET, 0xa7, pool->bytes - FEEDBACK_RECORD_OFFSET);
+    for (unsigned i = 0; i < sizeof(actions) / sizeof(*actions); i++) {
+        struct opengpu_transform_feedback_record record = {
+            .magic = OPENGPU_TF_RECORD_MAGIC, .bytes = OPENGPU_TF_RECORD_BYTES,
+            .version = OPENGPU_TF_RECORD_VERSION, .action = actions[i],
+            .context = FEEDBACK_CONTEXT, .cookie = FEEDBACK_COOKIE, .program = va->program[1],
+            .kind = 2, .layout_flags = OPENGPU_TF_LAYOUT_INTERLEAVED, .buffers = 1,
+            .components = {FEEDBACK_WORDS},
+            .views = {{base + FEEDBACK_DATA_OFFSET, base + FEEDBACK_DATA_OFFSET + FEEDBACK_DATA_BYTES, 0}},
+            .root = root
+        };
+        for (unsigned component = 0; component < 4; component++)
+            record.selectors[component] = component;
+        for (unsigned slot = 0; slot < 16; slot++)
+            for (unsigned component = 0; component < 3; component++)
+                record.selectors[4 + 3 * slot + component] = 4 + 4 * slot + component;
+        memcpy(bytes + FEEDBACK_RECORD_OFFSET + i * OPENGPU_TF_RECORD_BYTES, &record, sizeof(record));
+    }
+    return base;
+}
+
 static void geometry_inputs(struct native_kernel_session *s, const struct geometry_submit_fixture *fixture,
-    const struct geometry_published *va)
+    const struct geometry_published *va, u32 feedback_pool)
 {
     char path[4096], *temporary;
     live_path(path, "geometry-inputs.json");
@@ -101,6 +146,9 @@ static void geometry_inputs(struct native_kernel_session *s, const struct geomet
         fputc('}', f);
     }
     fputc(']', f);
+    fprintf(f, ",\"feedbackPoolVA\":%u,\"feedbackPool\":", feedback_pool);
+    const struct opengpu_native_frame_gem *pool = &fixture->frame.pool[0];
+    geometry_buffer_json(f, s, pool->handle, pool->offset, pool->bytes);
     live_maps_json(f, s, native_record(s, 0)->native_owner);
     fputs("}\n", f);
     live_require(!native_mmio_close(f, path, temporary), "geometry inputs publication");
@@ -129,7 +177,8 @@ int main(int argc, char **argv)
             "geometry original code lease");
     }
     const struct geometry_published va = geometry_check_publication(s, fixture);
-    geometry_inputs(s, fixture, &va);
+    const u32 feedback_pool = geometry_feedback_inputs(s, fixture, &va);
+    geometry_inputs(s, fixture, &va, feedback_pool);
     live_run_record(s);
     for (unsigned stage = 0; stage < 3; stage++)
         live_require(!native_kernel_original_refcount(s, fixture->programs[stage]->handle),

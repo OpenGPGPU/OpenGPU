@@ -23,11 +23,12 @@ template<class Sim> class ReplayBus {
   Sim &sim;
   Agent &agent;
   uint64_t limit;
-  void check_response(uint32_t response,const char *operation,uint32_t address,uint32_t value) const {
-    if(!response)return;
+  void check_response(uint32_t response,const char *operation,uint32_t address,uint32_t value,
+      uint32_t expected=0) const {
+    if(response==expected)return;
     std::ostringstream message;
     message<<"captured MMIO "<<operation<<" fault: address=0x"<<std::hex<<address
-      <<" value=0x"<<value<<" response=0x"<<response<<std::dec<<" cycles="<<cycles;
+      <<" value=0x"<<value<<" response=0x"<<response<<" expected=0x"<<expected<<std::dec<<" cycles="<<cycles;
     throw std::runtime_error(message.str());
   }
 public:
@@ -61,7 +62,7 @@ public:
     d.io_s_axi_arvalid=d.io_s_axi_rready=0;
     require(r,"captured MMIO read handshake timed out");return value;
   }
-  void write(uint32_t address,uint32_t value) {
+  void write(uint32_t address,uint32_t value,uint32_t expected=0) {
     auto &d=*sim.model;bool aw=false,w=false,b=false;
     d.io_s_axi_awaddr=address;d.io_s_axi_awlen=0;d.io_s_axi_awsize=2;d.io_s_axi_awburst=0;
     d.io_s_axi_wdata=value;d.io_s_axi_wstrb=15;d.io_s_axi_wlast=1;
@@ -72,7 +73,7 @@ public:
         if(m.io_s_axi_wvalid && m.io_s_axi_wready)w=true;
         if(m.io_s_axi_bvalid && m.io_s_axi_bready) {
           require(aw && w,"captured MMIO response preceded its write request");
-          check_response(m.io_s_axi_bresp,"write",address,value);b=true;
+          check_response(m.io_s_axi_bresp,"write",address,value,expected);b=true;
         }
       });
       if(aw)d.io_s_axi_awvalid=0;
