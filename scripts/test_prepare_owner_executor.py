@@ -125,6 +125,63 @@ class ExecutorTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'shared generated sources changed'):
                 q.shared_owner_shards(source, model, qualified['compiler'], qualified['options'], 1)
 
+    def test_shared_reshard_links_verified_data_without_recompiling(self):
+        original = self.out / 'flashsim-dut'
+        (original / 'dut.h').write_text((original / 'dut.h').read_text() +
+            'static const unsigned pages[] = {3, 7, 3};\n')
+        (original / 'dut_0.cpp').write_text('#include "dut.h"\nint cpu_fixture() { return pages[1]; }\n')
+        raw = q.flash.generated_sources(original, 1)
+        generation = original / 'generation.json'
+        manifest = json.loads(generation.read_text())
+        q.common.write_json(generation, {**manifest, 'generated': raw})
+        donor = self.out / 'donor'
+        shutil.copytree(original, donor / 'flashsim-dut')
+        for name in ('owner-manifest.json', 'preparation.json'):
+            shutil.copyfile(self.out / name, donor / name)
+        derived = donor / 'derived'
+        derived.mkdir()
+        (derived / 'dut.h').write_text((original / 'dut.h').read_text().replace(
+            'static const unsigned pages[] = {3, 7, 3};', 'extern const unsigned pages[3];'))
+        shutil.copyfile(original / 'dut_0.cpp', derived / 'dut_0.cpp')
+        table = derived / 'dut_invalidation_part0000.cpp'
+        table.write_text('extern const unsigned pages[3] = {3, 7, 3};\n')
+        driver = self.out / 'driver.cpp'
+        driver.write_text('#include "dut.h"\nextern int cpu_fixture();\n'
+                          'int main() { return cpu_fixture() != 7; }\n')
+        cache = donor / 'flashsim-build'
+        subprocess.run([q.sys.executable, str(q.ROOT / 'scripts/build_native_flashsim.py'),
+                        '--dut-dir', str(derived), '--build-dir', str(cache),
+                        '--driver', str(driver)], check=True, capture_output=True, text=True)
+        target = donor / 'executors/compute'
+        target.mkdir(parents=True)
+        snapshot = target / 'builder.json'
+        shutil.copyfile(cache / 'native-flashsim-build.json', snapshot)
+        compiled = q.flash.generated_sources(derived, 1)
+        receipt = dict(manifest_sha256='manifest', tool_sha256='transformer', emitter_sha256='emitter')
+        model = q.model_identity(donor, self.flashsim, 1)
+        model.update(dut_directory=str(derived), generated=compiled,
+                     reshard=dict(tool=str(self.flashsim), **receipt))
+        source = target / 'qualification.json'
+        q.common.write_json(source, dict(schema='opengpu-owner-executor-v1', version=1,
+            kind='compute', owner_output=str(donor), flashsim=str(self.flashsim),
+            executorBuildVerified=True, model=model, compiler=self.compiler, options=self.options,
+            builder_sha256=q.common.sha(snapshot)))
+
+        def checked(runner, generated):
+            self.assertEqual((runner.reshard, runner.reshard_tool, generated), (derived, self.flashsim, raw))
+            return {**receipt, 'derived': q.flash.generated_sources(derived, 1)}
+
+        with (patch.object(q, 'driver_files', return_value=[str(driver.relative_to(q.ROOT))]),
+              patch.object(q.flash.Runner, 'checked_reshard', autospec=True, side_effect=checked)):
+            result = q.build_executor(self.out, self.flashsim, 'native', shards=1, reuse_shards_from=source)
+            progress = json.loads((self.out / 'flashsim-build/native-flashsim-progress.json').read_text())
+            self.assertEqual((progress['compiled_shards'], progress['cached_shards']), (0, 2))
+            subprocess.run([str(result.parent / 'executor')], check=True)
+            self.assertEqual(q.verify_qualification(result, kind='native')['model']['generated'], raw)
+            table.write_text('extern const unsigned pages[3] = {7, 3, 3};\n')
+            with self.assertRaisesRegex(RuntimeError, 'sources differ from the qualified model'):
+                q.verify_qualification(result, kind='native')
+
     def test_stage_qualification_requires_its_actual_factory_and_distinct_driver(self):
         path,record=self.fixture(profile=q.COMPUTE_STAGE)
         files=q.driver_files('compute',q.COMPUTE_STAGE)
