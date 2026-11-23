@@ -216,6 +216,12 @@ same DUT and RAM. Zero X, Y and Z preserved physical bytes, and final
 context cleanup passed. Use the continuous-owner command below with a
 model prepared from the checked-out source.
 
+The same ten phases passed on the assertion-enabled complete two-CU FlashSim
+owner at source `cbf8e2b72`. The run kept one DUT and one RAM through the
+producer, count-read fault, retry, three zero-axis consumers and cleanup.
+Use the same continuous-owner command with a `compute-indirect` executor
+built with `--backend flashsim`.
+
 With pinned Mesa22.3.6 source/build, the checked uniform-index patch and DRM
 headers selected through `OPENGPU_MESA_DIR`, `OPENGPU_MESA_BUILD` and
 `OPENGPU_DRM_INCLUDE`, reproduce on Linux with new private build directories:
