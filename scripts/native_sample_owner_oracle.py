@@ -11,6 +11,7 @@ import struct
 from compute_owner_oracle import SparseMemory
 from compute_owner_protocol import required_flags, uint
 from native_sample_owner_protocol import profile_bytes
+from owner_resource_contract import SAMPLE_PROFILE
 
 ROOT = Path(__file__).resolve().parents[1]
 CASES = {'sample': (7, 1, 0, 0), 'mask-depth': (7, 1, 1, 1),
@@ -35,7 +36,7 @@ def program(data, case):
     return meta, data[68:]
 
 
-def capture(data, observed_profile):
+def capture(data, observed_profile, *, owner_profile=SAMPLE_PROFILE):
     require(type(data) is bytes and data[:8] == b'OGCAP002', 'wrong sample capture magic')
     cursor = 8
 
@@ -58,7 +59,7 @@ def capture(data, observed_profile):
     discovery = section('II', 256)
     # Reuse the exact public Python profile contract, not a second permissive
     # table. C++ SampleCapture independently validates the complete enqueue.
-    wire = profile_bytes(observed_profile)
+    wire = profile_bytes(observed_profile, owner_profile=owner_profile)
     expected = [struct.unpack_from('<II', wire, 12 + i * 8) for i in range(112)]
     expected += [struct.unpack_from('<II', wire, 912 + i * 8) for i in range(5)]
     require(discovery == expected, 'capture/profile discovery mismatch')
