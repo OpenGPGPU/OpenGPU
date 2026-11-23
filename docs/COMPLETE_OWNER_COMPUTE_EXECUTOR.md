@@ -205,3 +205,26 @@ The qualification command requires local Mesa/compiler dependencies. All raw
 CPU builds, captures and IPC are temporary and removed after their consumers
 exit. Successful execution of the complete case registry still leaves full API,
 clock and 60 FPS qualification separate.
+
+### Building the full C++ model with outlined invalidation tables
+
+The assertion-enabled dual-CU owner's original 2.22 GB header exceeded
+Clang's translation-unit source limit. FlashSim resharding verified all 78,666
+original invalidation arrays and moved their definitions into 60 data-only
+translation units. The derived header is 0.73 GB. Deriving and verifying the
+sources took 68.8 seconds with 72 MiB peak aggregate memory.
+
+Use the tool checkout that supports outlining and use the original generation
+checkout for the RTL and generator checks. The executor qualification records
+the derived source hashes and verifies them against the original generation
+before and after the build.
+
+```sh
+PYTHONPATH="$RESHARD_TOOL" "$GENERATION_PYTHON" -B -m flashsim.reshard create \
+  --source "$OWNER_OUTPUT/flashsim-dut" --output "$OWNER_OUTPUT/flashsim-outlined" \
+  --max-mib 48 --outline-invalidation-mib 24
+"$GENERATION_PYTHON" -B scripts/prepare_owner_executor.py --stage build --kind compute \
+  --backend flashsim --owner-output "$OWNER_OUTPUT" --flashsim-dir "$FLASHSIM_DIR" \
+  --reshard-dir "$OWNER_OUTPUT/flashsim-outlined" --reshard-tool "$RESHARD_TOOL" \
+  --shards 64 --jobs 2 --precompiled-header --conservative-alias
+```
