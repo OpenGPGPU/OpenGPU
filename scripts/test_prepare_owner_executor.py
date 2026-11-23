@@ -267,6 +267,31 @@ class ExecutorTests(unittest.TestCase):
         self.assertEqual(len(observations), 2)
         self.assertTrue(all(not path.parent.exists() for path in observations))
 
+    def test_checked_tessellation_uniform_executor_binds_the_original_float_probe(self):
+        from test_native_sample_owner import profile as sample_profile
+        factory = q.TESSELLATION_UNIFORM_PROFILE
+        path, record = self.fixture(kind='native-sample', profile=factory)
+        binary = path.parent / 'executor'
+        expected = sample_profile(q.IMAGE_FLOAT_PROFILE)
+        self.assertEqual(record['ownerResourceStage'], q.TESSELLATION_UNIFORM_STAGE)
+        self.assertEqual(q.driver_files('native-sample', factory)[0],
+                         'scripts/image_float_native_sample_owner_driver.cpp')
+        with self.assertRaises(RuntimeError):
+            q.profile_contract(factory, 'compute')
+
+        def probe(command, memory_mib, timeout):
+            self.assertEqual(command[:2], [str(binary), '--probe-profile'])
+            Path(command[2]).write_text(json.dumps(expected))
+            return 0
+
+        with patch('run_owner_bounded.run_bounded', side_effect=probe):
+            with redirect_stdout(io.StringIO()) as message:
+                q.probe_executor(path, executor=binary, kind='native-sample', backend='flashsim')
+            self.assertIn('kind=native-sample words=112 registers=5', message.getvalue())
+            expected['words'][2]['value'] ^= 1
+            with self.assertRaises(ValueError):
+                q.probe_executor(path, executor=binary, kind='native-sample', backend='flashsim')
+
     def test_blit112_requires_its_actual_translation_unit_factory_and_include_closure(self):
         path,record=self.fixture(kind=q.BLIT_KIND,profile=q.SAMPLE_PROFILE)
         files=q.driver_files(q.BLIT_KIND,q.SAMPLE_PROFILE)
