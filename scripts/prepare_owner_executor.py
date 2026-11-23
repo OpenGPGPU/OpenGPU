@@ -450,7 +450,7 @@ def compiler_identity(path):
                 version=subprocess.check_output([str(path), '--version'], text=True))
 
 
-def model_identity(directory, flashsim, shards):
+def model_identity(directory, flashsim, shards, *, reshard_dir=None, reshard_tool=None):
     require(type(shards) is int and shards > 0, 'invalid owner shard count')
     prepared = owner.prepared(directory)
     # prepared() binds this strict factory manifest to the emitted RTL and all
@@ -466,11 +466,23 @@ def model_identity(directory, flashsim, shards):
             record.get('generated') == generated and
             record.get('mlir_sha256') == common.sha(directory / 'flashsim-dut/hw.mlir'),
             'owner generation does not match the complete prepared RTL, assertions or toolchain')
-    return dict(profile=manifest['profile'], dut_directory=str(directory / 'flashsim-dut'),
+    model = dict(profile=manifest['profile'], dut_directory=str(directory / 'flashsim-dut'),
                 preparation_sha256=common.sha(directory / 'preparation.json'),
                 profile_manifest_sha256=prepared['manifest_sha256'],
                 generation_sha256=common.sha(directory / 'flashsim-dut/generation.json'),
                 rtl_sha256=prepared['rtl_sha256'], generated=generated, generator=generator)
+    require((reshard_dir is None) == (reshard_tool is None),
+            'owner reshard directory and tool must be supplied together')
+    if reshard_dir is not None:
+        derived = inside(reshard_dir)
+        require(derived == Path(reshard_dir).absolute(), 'owner reshard directory must not be aliased')
+        tool = Path(reshard_tool).resolve(strict=True)
+        runner = flash.Runner(directory, True, flashsim, shards=shards,
+                              reshard=derived, reshard_tool=tool, two_cu_vga=True)
+        reshard = runner.checked_reshard(generated)
+        model.update(dut_directory=str(derived), generated=reshard.pop('derived'),
+                     reshard=dict(tool=str(tool), **reshard))
+    return model
 
 
 def checked_builder(record, model, kind, options, compiler, *, compiled_dut=None):
@@ -594,7 +606,11 @@ def verify_qualification(path, *, executor=None, kind='compute', backend=None):
         return verilator.verify_qualification(path, record, executor=executor, kind=kind)
     require(record_backend == 'flashsim', 'unsupported owner executor backend')
     directory = inside(record['owner_output'])
-    model = model_identity(directory, Path(record['flashsim']), record['shards'])
+    recorded_model = record['model']
+    reshard = recorded_model.get('reshard')
+    model_args = (dict(reshard_dir=recorded_model['dut_directory'], reshard_tool=reshard['tool'])
+                  if reshard is not None else {})
+    model = model_identity(directory, Path(record['flashsim']), record['shards'], **model_args)
     contract = profile_contract(model['profile'], kind)
     require(all(type(record.get(k)) is type(v) and record[k] == v for k, v in contract.items()),
             'owner executor profile differs from its exact prepared factory')
@@ -628,10 +644,13 @@ def verify_qualification(path, *, executor=None, kind='compute', backend=None):
     native_model = model
     donor = record.get('reshard_donor')
     if donor is not None:
+        require(reshard is None, 'owner executor cannot combine direct and shared resharding')
         selected, _, native_model = shared_owner_shards(
             donor, model, compiler, record['options'], record['shards'])
         require(str(selected) == compiled_dut and native_model is not model,
                 'recorded shared reshard does not match the compiled path')
+    elif reshard is not None:
+        require(compiled_dut == model['dut_directory'], 'invalid recorded derived model path')
     else:
         require(Path(compiled_dut).name == 'flashsim-dut', 'invalid recorded original model path')
     checked_builder(built, native_model, kind, record['options'], compiler, compiled_dut=compiled_dut)
@@ -697,10 +716,12 @@ def probe_executor(path, *, executor=None, kind, backend=None):
 
 def build_executor(directory, flashsim, kind, *, shards=32, jobs=1,
                    precompiled_header=False, conservative_alias=False, shard_opt='-O2',
-                   reuse_shards_from=None):
+                   reuse_shards_from=None, reshard_dir=None, reshard_tool=None):
     directory = inside(directory)
     require(kind in KINDS and type(jobs) is int and jobs > 0, 'invalid executor kind or compiler jobs')
     require(shard_opt in ('-O0', '-O1', '-O2', '-O3'), 'invalid owner shard optimization')
+    require(reuse_shards_from is None or (reshard_dir is None and reshard_tool is None),
+            'select direct resharding or a shared shard qualification')
     target = directory / 'executors' / kind
     require(target.resolve() == target, 'owner executor output directory must not be aliased')
     target.mkdir(parents=True, exist_ok=True)
@@ -709,7 +730,9 @@ def build_executor(directory, flashsim, kind, *, shards=32, jobs=1,
     path = target / 'qualification.json'
     # A failed fresh attempt cannot leave an earlier success reusable.
     path.unlink(missing_ok=True)
-    model = model_identity(directory, flashsim, shards)
+    model_args = (dict(reshard_dir=reshard_dir, reshard_tool=reshard_tool)
+                  if reshard_dir is not None or reshard_tool is not None else {})
+    model = model_identity(directory, flashsim, shards, **model_args)
     contract = profile_contract(model['profile'], kind)
     files = driver_files(kind, model['profile'])
     if kind == BLIT_KIND:
@@ -728,7 +751,7 @@ def build_executor(directory, flashsim, kind, *, shards=32, jobs=1,
     # Share only the guarded shard/object cache, not a mutable executor identity.
     build = directory / 'flashsim-build'
     require(build.resolve() == build, 'owner shard cache must not be aliased')
-    dut, shard_cache = directory / 'flashsim-dut', None
+    dut, shard_cache = Path(model['dut_directory']), None
     native_model = model
     if reuse_shards_from is not None:
         dut, shard_cache, native_model = shared_owner_shards(
@@ -761,7 +784,7 @@ def build_executor(directory, flashsim, kind, *, shards=32, jobs=1,
                 process.wait()  # The builder handles SIGTERM and joins its compilers.
             raise
         require(code == 0, 'owner executor compilation failed')
-    require(model == model_identity(directory, flashsim, shards) and
+    require(model == model_identity(directory, flashsim, shards, **model_args) and
             sources == hashes([*files, *DEFAULT_DEPENDENCIES, *checker_files(kind)]) and
             compiler == compiler_identity(compiler['path']), 'owner inputs changed during executor build')
     snapshot = build / 'native-flashsim-build.json'
@@ -798,6 +821,8 @@ def main():
                         help='build with this backend or require it when checking or probing a qualification')
     parser.add_argument('--owner-output', type=Path)
     parser.add_argument('--flashsim-dir', type=Path)
+    parser.add_argument('--reshard-dir', type=Path, help='verified derived FlashSim DUT sources')
+    parser.add_argument('--reshard-tool', type=Path, help='FlashSim checkout that derived the DUT')
     parser.add_argument('--qualification', type=Path)
     parser.add_argument('--executor', type=Path)
     parser.add_argument('--shards', type=int, default=32)
@@ -810,6 +835,12 @@ def main():
     args = parser.parse_args()
     if args.reuse_shards_from is not None and (args.stage != 'build' or args.backend == 'verilator'):
         parser.error('--reuse-shards-from requires --stage build with FlashSim')
+    if (args.reshard_dir is None) != (args.reshard_tool is None):
+        parser.error('--reshard-dir and --reshard-tool are required together')
+    if args.reshard_dir is not None and (args.stage != 'build' or args.backend == 'verilator'):
+        parser.error('DUT resharding applies to a FlashSim build')
+    if args.reshard_dir is not None and args.reuse_shards_from is not None:
+        parser.error('select --reshard-dir or --reuse-shards-from')
     if args.stage in ('check', 'probe'):
         if args.qualification is None:
             parser.error('--stage ' + args.stage + ' requires --qualification')
@@ -840,7 +871,8 @@ def main():
                     path = build_executor(directory, args.flashsim_dir.resolve(), args.kind,
                         shards=args.shards, jobs=args.jobs, precompiled_header=args.precompiled_header,
                         conservative_alias=args.conservative_alias, shard_opt=args.shard_opt,
-                        reuse_shards_from=args.reuse_shards_from)
+                        reuse_shards_from=args.reuse_shards_from,
+                        reshard_dir=args.reshard_dir, reshard_tool=args.reshard_tool)
         finally:
             signal.signal(signal.SIGTERM, previous)
         print('OWNER_EXECUTOR_QUALIFICATION ' + str(path), flush=True)
