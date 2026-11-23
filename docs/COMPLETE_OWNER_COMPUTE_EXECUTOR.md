@@ -187,8 +187,9 @@ FlashSim and CIRCT environment:
 
 ```sh
 python3 scripts/prepare_owner_executor.py --stage build --kind compute \
-  --owner-output "$OWNER_OUTPUT" --flashsim-dir "$FLASHSIM_DIR" --shards 32 --jobs 1
-python3 scripts/prepare_owner_executor.py --stage check --kind compute \
+  --backend flashsim --owner-output "$OWNER_OUTPUT" --flashsim-dir "$FLASHSIM_DIR" \
+  --shards 32 --jobs 1
+python3 scripts/prepare_owner_executor.py --stage probe --backend flashsim --kind compute \
   --qualification "$OWNER_OUTPUT/executors/compute/qualification.json" \
   --executor "$OWNER_OUTPUT/executors/compute/executor"
 python3 scripts/qualify_compute_owner.py \
@@ -198,6 +199,8 @@ python3 scripts/qualify_compute_owner.py \
   --executor-checker-python "$GENERATION_PYTHON" --case mandatory-compute
 ```
 
+The FlashSim probe resets the model and checks the exact discovery words and
+auxiliary registers through the compute executor before shader submission.
 The qualification command requires local Mesa/compiler dependencies. All raw
 CPU builds, captures and IPC are temporary and removed after their consumers
 exit. Successful execution of the complete case registry still leaves full API,

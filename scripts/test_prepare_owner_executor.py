@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """CPU-only rejection of stale/mixed executor identities; no GPU model runs."""
 import copy
+from contextlib import redirect_stdout
+import io
 import json
 import os
 from pathlib import Path
@@ -11,6 +13,8 @@ import unittest
 from unittest.mock import patch
 
 import prepare_owner_executor as q
+from owner_resource_contract import FULL_COMPUTE_SCHEMA
+from test_compute_owner_protocol import profile as compute_profile
 
 
 class ExecutorTests(unittest.TestCase):
@@ -214,6 +218,39 @@ class ExecutorTests(unittest.TestCase):
         record['builder_sha256']=q.common.sha(path.parent/'builder.json');q.common.write_json(path,record)
         with self.assertRaises(RuntimeError):q.verify_qualification(path)
         with self.assertRaises(RuntimeError):q.driver_files('native',q.COMPUTE_STAGE)
+
+    def test_flashsim_probe_cli_checks_actual_profile_shape_and_cleans_output(self):
+        path, record = self.fixture(profile=q.IMAGE_FLOAT_PROFILE)
+        binary = path.parent / 'executor'
+        stage, words = q.FULL_COMPUTE_CONTRACTS[record['profile']]
+        profile = compute_profile()
+        profile.update(schema=FULL_COMPUTE_SCHEMA, ownerProfile=record['profile'],
+                       ownerResourceStage=stage, ownerResourceVersion=2,
+                       fullResourceQualification=False, words=copy.deepcopy(words))
+        argv = ['prepare_owner_executor.py', '--stage', 'probe', '--backend', 'flashsim',
+                '--kind', 'compute', '--qualification', str(path), '--executor', str(binary)]
+        observations = []
+
+        def probe(command, memory_mib, timeout):
+            self.assertEqual(command[:2], [str(binary), '--probe-profile'])
+            self.assertEqual((memory_mib, timeout), (8192, 600))
+            observed = Path(command[2])
+            observations.append(observed)
+            observed.write_text(json.dumps(profile))
+            return 0
+
+        with patch.object(q.sys, 'argv', argv), patch('run_owner_bounded.run_bounded', side_effect=probe):
+            with redirect_stdout(io.StringIO()) as message:
+                q.main()
+            self.assertIn('kind=compute words=112 registers=10', message.getvalue())
+            profile['words'][-1]['value'] ^= 1
+            with self.assertRaisesRegex(ValueError, 'mismatched complete owner factory'):
+                q.main()
+            argv[4] = 'verilator'
+            with self.assertRaisesRegex(RuntimeError, 'backend differs'):
+                q.main()
+        self.assertEqual(len(observations), 2)
+        self.assertTrue(all(not path.parent.exists() for path in observations))
 
     def test_blit112_requires_its_actual_translation_unit_factory_and_include_closure(self):
         path,record=self.fixture(kind=q.BLIT_KIND,profile=q.SAMPLE_PROFILE)
