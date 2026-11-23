@@ -81,3 +81,36 @@ for phase in idle scanout; do
   done
 done
 ```
+
+## Profile-guided build on the current two-CU RTL
+
+Both builds used the 64×64 host RTL emitted from OpenGPU `8a1919172`,
+FlashSim `670b3a9` and the same ARTI AXI bridge from `f1b2c29`. The model
+shards used Clang `-O2` with precompiled headers and conservative aliasing,
+and the wrapper used `-O1`. Both QEMU builds used the same Linux Image and
+examples initramfs with HVF on the same Apple Silicon host.
+
+Two instrumented boots of the examples workload supplied the profile. In
+seven alternating rounds, the baseline wall-time median was **5.182 s** and
+the PGO median was **4.444 s**, a **14.2% reduction**. All rounds checked DRM
+registration, compute, vertex draw and ALU output, resolve output and normal
+shutdown. The result applies to this bounded workload, which also supplied
+the training profile. The complete 640×480 workload has a separate qualification.
+
+Build with `FLASHSIM_PRECOMPILED_HEADER=1`, `FLASHSIM_CONSERVATIVE_ALIAS=1`
+and `FLASHSIM_SHARD_OPT=-O2` for all variants. Use the same generated model
+and bridge, and link each archive into the same ARTI QEMU source build.
+Generate the training archive with `FLASHSIM_PGO_GENERATE=1`; its QEMU link
+also needs `-fprofile-instr-generate`. Collect and merge the profiles, then
+rebuild with `FLASHSIM_PGO_PROFILE="$PROFILE_DIR/merged.profdata"`.
+
+```sh
+LLVM_PROFILE_FILE="$PROFILE_DIR/%p.profraw" \
+  python3 -B scripts/bench_flashsim_arti.py --qemu "$TRAINING_QEMU" \
+    --kernel "$LINUX_IMAGE" --firmware "$QEMU_FW_DIR" --initrd "$EXAMPLES_INITRD" \
+    --workload examples --accel hvf --cpu host --rounds 2
+llvm-profdata merge -output="$PROFILE_DIR/merged.profdata" "$PROFILE_DIR/"*.profraw
+python3 -B scripts/bench_flashsim_arti.py --qemu "$BASELINE_QEMU" --candidate "$PGO_QEMU" \
+  --kernel "$LINUX_IMAGE" --firmware "$QEMU_FW_DIR" --initrd "$EXAMPLES_INITRD" \
+  --workload examples --accel hvf --cpu host --rounds 7
+```
