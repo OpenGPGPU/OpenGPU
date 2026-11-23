@@ -526,21 +526,40 @@ def shared_owner_shards(qualification, model, compiler, options, shards):
             and record.get('compiler') == compiler and record.get('options') == options,
             'shared shards require a successful FlashSim build with the same compiler options')
     donor_model = record['model']
-    require(donor_model.get('dut_directory') == str(dut)
-            and record.get('compiled_dut_directory', str(dut)) == str(dut)
-            and all(donor_model.get(key) == value for key, value in model.items()
-                    if key not in ('dut_directory', 'preparation_sha256')),
+    require(all(donor_model.get(key) == value for key, value in model.items()
+                if key not in ('dut_directory', 'preparation_sha256', 'generated')),
             'shared shards belong to a different prepared model')
     generation = dut / 'generation.json'
     require(dut.resolve() == dut and not generation.is_symlink()
             and common.sha(generation) == model['generation_sha256']
             and flash.generated_sources(dut, shards) == model['generated'],
             'shared generated sources changed after qualification')
+    compiled_model = model
+    reshard = donor_model.get('reshard')
+    if reshard is not None:
+        compiled = Path(donor_model['dut_directory'])
+        require(compiled.is_absolute() and compiled == compiled.resolve(strict=True)
+                and compiled != dut, 'shared reshard directory is invalid or aliased')
+        tool = Path(reshard['tool']).resolve(strict=True)
+        runner = flash.Runner(directory, True, Path(record['flashsim']), shards=shards,
+                              reshard=compiled, reshard_tool=tool, two_cu_vga=True)
+        receipt = runner.checked_reshard(model['generated'])
+        compiled_model = {**model, 'dut_directory': str(compiled), 'generated': receipt.pop('derived')}
+        require(reshard == dict(tool=str(tool), **receipt)
+                and record.get('compiled_dut_directory', str(compiled)) == str(compiled),
+                'shared reshard receipt differs from the verified transformation')
+        dut = compiled
+    else:
+        require(donor_model.get('dut_directory') == str(dut)
+                and record.get('compiled_dut_directory', str(dut)) == str(dut),
+                'shared generated model path differs')
+    require(donor_model['generated'] == compiled_model['generated'],
+            'shared native object sources differ from the qualified model')
     snapshot = path.parent / 'builder.json'
     require(snapshot.is_file() and not snapshot.is_symlink()
             and record.get('builder_sha256') == common.sha(snapshot), 'shared builder snapshot changed')
     built = json.loads(snapshot.read_text())
-    generated = model['generated']['files']
+    generated = compiled_model['generated']['files']
     sources = {name: digest for name, digest in generated.items() if name != 'dut.h'}
     require(built.get('dut_header_sha256') == generated['dut.h'] and built.get('dut_sources') == sources
             and built.get('base_flags', [])[-2:] == ['-I', str(dut)]
@@ -552,7 +571,7 @@ def shared_owner_shards(qualification, model, compiler, options, shards):
             and set(objects) == {Path(name).stem + '.o' for name in sources}
             and all(type(value) is str and re.fullmatch('[0-9a-f]{64}', value) for value in objects.values()),
             'shared builder does not record the complete object set')
-    return dut, dict(directory=str(directory / 'flashsim-build'), objects=objects)
+    return dut, dict(directory=str(directory / 'flashsim-build'), objects=objects), compiled_model
 
 
 def verify_qualification(path, *, executor=None, kind='compute'):
@@ -600,9 +619,18 @@ def verify_qualification(path, *, executor=None, kind='compute'):
     built = json.loads(snapshot.read_text())
     compiled_dut = record.get('compiled_dut_directory', model['dut_directory'])
     require(type(compiled_dut) is str and Path(compiled_dut).is_absolute()
-            and Path(compiled_dut).name == 'flashsim-dut' and '..' not in Path(compiled_dut).parts,
+            and '..' not in Path(compiled_dut).parts,
             'invalid recorded compiler model path')
-    checked_builder(built, model, kind, record['options'], compiler, compiled_dut=compiled_dut)
+    native_model = model
+    donor = record.get('reshard_donor')
+    if donor is not None:
+        selected, _, native_model = shared_owner_shards(
+            donor, model, compiler, record['options'], record['shards'])
+        require(str(selected) == compiled_dut and native_model is not model,
+                'recorded shared reshard does not match the compiled path')
+    else:
+        require(Path(compiled_dut).name == 'flashsim-dut', 'invalid recorded original model path')
+    checked_builder(built, native_model, kind, record['options'], compiler, compiled_dut=compiled_dut)
     require(record.get('executable_sha256') == common.sha(executable) == built.get('executable_sha256'),
             'owner executor binary changed or belongs to another build')
     return record
@@ -642,8 +670,10 @@ def build_executor(directory, flashsim, kind, *, shards=32, jobs=1,
     build = directory / 'flashsim-build'
     require(build.resolve() == build, 'owner shard cache must not be aliased')
     dut, shard_cache = directory / 'flashsim-dut', None
+    native_model = model
     if reuse_shards_from is not None:
-        dut, shard_cache = shared_owner_shards(reuse_shards_from, model, compiler, options, shards)
+        dut, shard_cache, native_model = shared_owner_shards(
+            reuse_shards_from, model, compiler, options, shards)
         require(dut.parent != directory, 'select a different owner output for shared shards')
     # Compile the new driver with the exact include path used by the shared
     # objects, including path-dependent header expansions in inline code.
@@ -677,7 +707,7 @@ def build_executor(directory, flashsim, kind, *, shards=32, jobs=1,
             compiler == compiler_identity(compiler['path']), 'owner inputs changed during executor build')
     snapshot = build / 'native-flashsim-build.json'
     built = json.loads(snapshot.read_text())
-    checked_builder(built, model, kind, options, compiler, compiled_dut=str(dut))
+    checked_builder(built, native_model, kind, options, compiler, compiled_dut=str(dut))
     executable = build / 'native_product_driver'
     require(built.get('executable_sha256') == common.sha(executable), 'owner executable differs from builder')
     shutil.copy2(executable, target / 'executor')
@@ -690,6 +720,8 @@ def build_executor(directory, flashsim, kind, *, shards=32, jobs=1,
         builder_sha256=common.sha(target / 'builder.json'), executable_sha256=common.sha(target / 'executor'))
     if shard_cache is not None:
         qualification['compiled_dut_directory'] = str(dut)
+        if native_model is not model:
+            qualification['reshard_donor'] = str(Path(reuse_shards_from).absolute())
     common.write_json(path, qualification)
     try:
         verify_qualification(path, executor=target / 'executor', kind=kind)

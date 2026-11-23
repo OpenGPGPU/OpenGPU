@@ -1350,6 +1350,14 @@ linking with the current checkout's driver. A CPU build fixture reused its
 complete shard set, rebuilt a corrupt cached shard and verified the new
 executable after moving the directory that supplied the objects.
 
+The same command accepts a donor built from verified FlashSim resharded
+sources. It verifies the transformation against the independently matched
+original model and includes the outlined invalidation data objects in the
+linked set. A compiled CPU fixture reused both its method object and its
+invalidation object, linked the current driver, and rejected altered table
+ordering. The donor's resharded sources and receipt are used while checking
+that derived qualification.
+
 ### Linux version-two publication
 
 The existing 128-byte native ioctl has a distinct version 2 with a 2,056-byte
