@@ -197,6 +197,17 @@ static void definition_tests(struct pipe_context *p)
     text_program(p,"ELSE\nEND\n",0);
     text_program(p,"UIF TEMP[0].xxxx\nEND\n",0);
     text_program(p,"ENDIF\nEND\n",0);
+    const char *offset = "SHL TEMP[1].x, SV[0].xxxx, IMM[0].yyyy\n"
+        "UARL ADDR[0].x, TEMP[0].xxxx\n";
+    char indexed[512];
+    const char *stores[] = {
+        "STORE BUFFER[0].x, TEMP[1].xxxx, TEMP[0].xxxx\nEND\n",
+        "STORE BUFFER[ADDR[0].x].x, TEMP[1].xxxx, TEMP[0].xxxx\nEND\n",
+    };
+    for (unsigned i=0;i<2;i++) {
+        assert(snprintf(indexed,sizeof(indexed),"%s%s",offset,stores[i])>0);
+        text_program(p,indexed,i==0);
+    }
     puts("CF actual TGSI definitions:branch TEMP/ADDR0 intersections,prior values,malformed structure fail-closed PASS");
     char body[2048]="UIF TEMP[0].xxxx\n";
     for(unsigned arm=0;arm<2;arm++){
