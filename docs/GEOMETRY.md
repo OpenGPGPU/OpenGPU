@@ -1246,11 +1246,22 @@ the full host/API gates remain required; these component results do not close H8
 The private ESSL 3.20 frontend links the original VS, GS and FS with empty TCS
 and TES entries. The Mesa 22.3.6 sanitizer run captured sixteen linked
 varying slots through all three stages. The geometry shader emits three
-vertices and ends the primitive. The same link produces a 500-word ABI7
-fragment program using primitive ID, layer, sample ID, sample mask and four
+vertices and ends the primitive. The scalar backend converts the linked GS
+tokens into 480 instruction words. The CPU oracle checks all 52 position and
+varying words, layer and primitive ID for each vertex, and the final
+end-primitive event. The backend accepts direct moves and stream-zero events
+with a complete output record at each emit.
+
+The same link produces a 500-word ABI7 fragment program using primitive ID,
+layer, sample ID, sample mask and four
 color outputs. The color reflection uses MRT locations and the ABI7 emitter
 accepts Mesa's constant-interpolated geometry inputs and the precise
 arithmetic used by this fixture.
+
+The protected driver snapshot accepts the compiler's GS bytes and GNG1 layout.
+The CPU sanitizer test overwrites the source buffer and checks the original
+code in private RX pages and metadata in private RO pages. It also checks entry
+and allocation bounds, relocation and retirement.
 
 Run the CPU compiler case with the pinned Mesa source, static objects and
 compiler image described in the [native linked compiler
@@ -1259,10 +1270,13 @@ reproduction](NATIVE_JOINT_COMPILER_SOURCE.md#reproduction).
 ```sh
 python3 -B scripts/test_tessellation_uniform_frontend.py --geometry --sanitize \
   --build "$GEOMETRY_BUILD"
+python3 -B scripts/test_geometry_snapshot.py --sanitize --compiled-source \
+  "$GEOMETRY_BUILD/geometry.native-gs-code.bin" \
+  "$GEOMETRY_BUILD/geometry.native-gs-gng.bin"
 ```
 
-Scalar GS lowering, protected submission and same-DUT transform feedback
-remain required for the complete geometry execution result.
+Complete protected draw submission and same-DUT transform feedback remain
+required for geometry execution qualification.
 
 ### Linux version-two publication
 

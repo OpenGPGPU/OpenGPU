@@ -13,6 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--sanitize', action='store_true')
+    parser.add_argument('--compiled-source', type=Path, nargs=2, metavar=('CODE', 'GNG'),
+                        help='also snapshot the exact compiler-emitted GS code and GNG1 pair')
     args = parser.parse_args()
     temporary_root = ROOT / '.artifacts'
     temporary_root.mkdir(exist_ok=True)
@@ -33,7 +35,8 @@ def main():
                        ['-I' + str(path) for path in includes] +
                        [str(ROOT / 'driver/tests/opengpu_geometry_snapshot_test.c'), '-o', str(out / 'test')],
                        check=True, env=environment)
-        subprocess.run([str(out / 'test')], check=True, env=environment)
+        compiled = [str(path.resolve(strict=True)) for path in args.compiled_source or ()]
+        subprocess.run([str(out / 'test'), *compiled], check=True, env=environment)
         probe = out / 'abi.c'
         probe.write_text('#include "opengpu_native_geometry_abi.h"\n'
                          '_Static_assert(sizeof(struct opengpu_native_geometry_program)==1024,"program");\n'
