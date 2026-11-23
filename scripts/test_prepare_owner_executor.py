@@ -83,6 +83,48 @@ class ExecutorTests(unittest.TestCase):
         q.verify_qualification(path,executor=target/'executor',kind=kind)
         return path,record
 
+    def test_shared_flashsim_shards_keep_independent_executor_qualification(self):
+        donor = self.out / 'donor'
+        donor.mkdir()
+        shutil.copytree(self.out / 'flashsim-dut', donor / 'flashsim-dut')
+        for name in ('owner-manifest.json', 'preparation.json'):
+            shutil.copyfile(self.out / name, donor / name)
+        drivers = {}
+        for kind, increment in (('compute', 0), ('native', 1)):
+            driver = self.out / (kind + '.cpp')
+            driver.write_text('#include "dut.h"\n#include <cstdio>\nextern int cpu_fixture();\n'
+                              f'int main() {{ std::printf("%d\\n", cpu_fixture() + {increment}); }}\n')
+            drivers[kind] = (str(driver.relative_to(q.ROOT)),)
+        version = q.compiler_identity(shutil.which('c++'))['version'].lower()
+        flags = dict(shards=1, precompiled_header='clang' in version, conservative_alias=True)
+        with patch.object(q, 'driver_files', side_effect=lambda kind, profile: drivers[kind]):
+            source = q.build_executor(donor, self.flashsim, 'compute', **flags)
+            result = q.build_executor(self.out, self.flashsim, 'native', reuse_shards_from=source, **flags)
+            build = self.out / 'flashsim-build'
+            progress = json.loads((build / 'native-flashsim-progress.json').read_text())
+            self.assertEqual((progress['compiled_shards'], progress['cached_shards']), (0, 1))
+            self.assertFalse((build / 'dut_0.o').exists())
+            self.assertEqual(subprocess.check_output([result.parent / 'executor'], text=True), '2\n')
+            retired = self.out / 'retired-donor'
+            donor.rename(retired)
+            verified = q.verify_qualification(result, kind='native')
+            self.assertEqual(verified['model']['dut_directory'], str(self.out / 'flashsim-dut'))
+            retired.rename(donor)
+
+            shared = donor / 'flashsim-build/dut_0.o'
+            shared.write_bytes(b'broken object')
+            result = q.build_executor(self.out, self.flashsim, 'native', reuse_shards_from=source, **flags)
+            progress = json.loads((build / 'native-flashsim-progress.json').read_text())
+            self.assertEqual((progress['compiled_shards'], progress['cached_shards']), (1, 0))
+            self.assertEqual(subprocess.check_output([result.parent / 'executor'], text=True), '2\n')
+
+            donor_model = donor / 'flashsim-dut/dut_0.cpp'
+            donor_model.write_text(donor_model.read_text() + '// different generated model\n')
+            model = q.model_identity(self.out, self.flashsim, 1)
+            qualified = json.loads(source.read_text())
+            with self.assertRaisesRegex(RuntimeError, 'shared generated sources changed'):
+                q.shared_owner_shards(source, model, qualified['compiler'], qualified['options'], 1)
+
     def test_stage_qualification_requires_its_actual_factory_and_distinct_driver(self):
         path,record=self.fixture(profile=q.COMPUTE_STAGE)
         files=q.driver_files('compute',q.COMPUTE_STAGE)

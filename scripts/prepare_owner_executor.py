@@ -472,7 +472,7 @@ def model_identity(directory, flashsim, shards):
                 rtl_sha256=prepared['rtl_sha256'], generated=generated, generator=generator)
 
 
-def checked_builder(record, model, kind, options, compiler):
+def checked_builder(record, model, kind, options, compiler, *, compiled_dut=None):
     files = driver_files(kind, model['profile'])
     if kind in SAMPLE_FACTORY_KINDS:
         builder.validate_driver_includes([ROOT / name for name in
@@ -500,7 +500,7 @@ def checked_builder(record, model, kind, options, compiler):
     flags = ['c++', '-std=gnu++17', '-fPIC', '-fPIE', '-w']
     if 'clang' in compiler['version'].lower():
         flags += ['-Wno-parentheses-equality', '-fbracket-depth=4096']
-    flags += ['-I', model['dut_directory']]
+    flags += ['-I', compiled_dut or model['dut_directory']]
     driver_flags = flags[:-2] + ['-I', str(ROOT / 'scripts/flashsim_native'),
                                 '-I', str(ROOT / 'scripts'), *flags[-2:], '-O1']
     require(record.get('base_flags') == flags and record.get('driver_flags') == driver_flags and
@@ -508,6 +508,51 @@ def checked_builder(record, model, kind, options, compiler):
             all(type(h) is str and len(h) == 64 and all(c in '0123456789abcdef' for c in h)
                 for h in record['objects'].values()),
             'owner executor compile flags or linked shard set differ')
+
+
+def shared_owner_shards(qualification, model, compiler, options, shards):
+    """Pin another successful build of this exact generated DUT."""
+    path = Path(qualification).absolute()
+    require(path.is_file() and path == path.resolve() and path.name == 'qualification.json'
+            and path.parent.parent.name == 'executors', 'invalid shared shard qualification path')
+    directory = path.parents[2]
+    dut = directory / 'flashsim-dut'
+    record = json.loads(path.read_text())
+    require(record.get('schema') == 'opengpu-owner-executor-v1' and type(record.get('version')) is int
+            and record['version'] == 1
+            and record.get('kind') == path.parent.name and record.get('owner_output') == str(directory)
+            and record.get('backend', 'flashsim') == 'flashsim'
+            and record.get('executorBuildVerified') is True
+            and record.get('compiler') == compiler and record.get('options') == options,
+            'shared shards require a successful FlashSim build with the same compiler options')
+    donor_model = record['model']
+    require(donor_model.get('dut_directory') == str(dut)
+            and record.get('compiled_dut_directory', str(dut)) == str(dut)
+            and all(donor_model.get(key) == value for key, value in model.items()
+                    if key not in ('dut_directory', 'preparation_sha256')),
+            'shared shards belong to a different prepared model')
+    generation = dut / 'generation.json'
+    require(dut.resolve() == dut and not generation.is_symlink()
+            and common.sha(generation) == model['generation_sha256']
+            and flash.generated_sources(dut, shards) == model['generated'],
+            'shared generated sources changed after qualification')
+    snapshot = path.parent / 'builder.json'
+    require(snapshot.is_file() and not snapshot.is_symlink()
+            and record.get('builder_sha256') == common.sha(snapshot), 'shared builder snapshot changed')
+    built = json.loads(snapshot.read_text())
+    generated = model['generated']['files']
+    sources = {name: digest for name, digest in generated.items() if name != 'dut.h'}
+    require(built.get('dut_header_sha256') == generated['dut.h'] and built.get('dut_sources') == sources
+            and built.get('base_flags', [])[-2:] == ['-I', str(dut)]
+            and str(Path(built['compiler']).resolve()) == compiler['path']
+            and built.get('compiler_version') == compiler['version'],
+            'shared builder snapshot differs from the generated sources or compiler')
+    objects = built.get('objects', {})
+    require(type(objects) is dict
+            and set(objects) == {Path(name).stem + '.o' for name in sources}
+            and all(type(value) is str and re.fullmatch('[0-9a-f]{64}', value) for value in objects.values()),
+            'shared builder does not record the complete object set')
+    return dut, dict(directory=str(directory / 'flashsim-build'), objects=objects)
 
 
 def verify_qualification(path, *, executor=None, kind='compute'):
@@ -553,14 +598,19 @@ def verify_qualification(path, *, executor=None, kind='compute'):
             record.get('builder_sha256') == common.sha(snapshot),
             'owner executor build snapshot changed or is aliased')
     built = json.loads(snapshot.read_text())
-    checked_builder(built, model, kind, record['options'], compiler)
+    compiled_dut = record.get('compiled_dut_directory', model['dut_directory'])
+    require(type(compiled_dut) is str and Path(compiled_dut).is_absolute()
+            and Path(compiled_dut).name == 'flashsim-dut' and '..' not in Path(compiled_dut).parts,
+            'invalid recorded compiler model path')
+    checked_builder(built, model, kind, record['options'], compiler, compiled_dut=compiled_dut)
     require(record.get('executable_sha256') == common.sha(executable) == built.get('executable_sha256'),
             'owner executor binary changed or belongs to another build')
     return record
 
 
 def build_executor(directory, flashsim, kind, *, shards=32, jobs=1,
-                   precompiled_header=False, conservative_alias=False, shard_opt='-O2'):
+                   precompiled_header=False, conservative_alias=False, shard_opt='-O2',
+                   reuse_shards_from=None):
     directory = inside(directory)
     require(kind in KINDS and type(jobs) is int and jobs > 0, 'invalid executor kind or compiler jobs')
     require(shard_opt in ('-O0', '-O1', '-O2', '-O3'), 'invalid owner shard optimization')
@@ -591,8 +641,14 @@ def build_executor(directory, flashsim, kind, *, shards=32, jobs=1,
     # Share only the guarded shard/object cache, not a mutable executor identity.
     build = directory / 'flashsim-build'
     require(build.resolve() == build, 'owner shard cache must not be aliased')
+    dut, shard_cache = directory / 'flashsim-dut', None
+    if reuse_shards_from is not None:
+        dut, shard_cache = shared_owner_shards(reuse_shards_from, model, compiler, options, shards)
+        require(dut.parent != directory, 'select a different owner output for shared shards')
+    # Compile the new driver with the exact include path used by the shared
+    # objects, including path-dependent header expansions in inline code.
     command = [sys.executable, str(ROOT / 'scripts/build_native_flashsim.py'),
-               '--dut-dir', str(directory / 'flashsim-dut'), '--build-dir', str(build),
+               '--dut-dir', str(dut), '--build-dir', str(build),
                '--driver', str(ROOT / files[0]), '--jobs', str(jobs),
                '--cxx', 'c++', '--shard-opt=' + shard_opt]
     for name in files[1:]:
@@ -602,6 +658,10 @@ def build_executor(directory, flashsim, kind, *, shards=32, jobs=1,
     if conservative_alias:
         command += ['--conservative-alias']
     with tempfile.TemporaryDirectory(prefix='executor-', dir=ROOT / '.artifacts') as temporary:
+        if shard_cache is not None:
+            cache = Path(temporary) / 'shards.json'
+            common.write_json(cache, shard_cache)
+            command += ['--shard-cache', str(cache)]
         process = subprocess.Popen(command, cwd=ROOT, start_new_session=True,
             env=dict(os.environ, TMPDIR=temporary, PYTHONDONTWRITEBYTECODE='1'))
         try:
@@ -617,17 +677,20 @@ def build_executor(directory, flashsim, kind, *, shards=32, jobs=1,
             compiler == compiler_identity(compiler['path']), 'owner inputs changed during executor build')
     snapshot = build / 'native-flashsim-build.json'
     built = json.loads(snapshot.read_text())
-    checked_builder(built, model, kind, options, compiler)
+    checked_builder(built, model, kind, options, compiler, compiled_dut=str(dut))
     executable = build / 'native_product_driver'
     require(built.get('executable_sha256') == common.sha(executable), 'owner executable differs from builder')
     shutil.copy2(executable, target / 'executor')
     shutil.copyfile(snapshot, target / 'builder.json')
-    common.write_json(path, dict(schema='opengpu-owner-executor-v1', version=1, kind=kind,
+    qualification = dict(schema='opengpu-owner-executor-v1', version=1, kind=kind,
         **contract, executorBuildVerified=True, sourceQualificationRequired=True,
         gpuExecution=False, clockQualified=False, fpsQualified=False, source_root=str(ROOT),
         owner_output=str(directory), flashsim=str(flashsim.resolve()), shards=shards,
         source_sha256=sources, model=model, compiler=compiler, options=options,
-        builder_sha256=common.sha(target / 'builder.json'), executable_sha256=common.sha(target / 'executor')))
+        builder_sha256=common.sha(target / 'builder.json'), executable_sha256=common.sha(target / 'executor'))
+    if shard_cache is not None:
+        qualification['compiled_dut_directory'] = str(dut)
+    common.write_json(path, qualification)
     try:
         verify_qualification(path, executor=target / 'executor', kind=kind)
     except BaseException:
@@ -650,7 +713,11 @@ def main():
     parser.add_argument('--precompiled-header', action='store_true')
     parser.add_argument('--conservative-alias', action='store_true')
     parser.add_argument('--shard-opt', choices=('-O0', '-O1', '-O2', '-O3'), default='-O2')
+    parser.add_argument('--reuse-shards-from', type=Path,
+                        help='qualification.json for a successful FlashSim build of the identical DUT')
     args = parser.parse_args()
+    if args.reuse_shards_from is not None and (args.stage != 'build' or args.backend != 'flashsim'):
+        parser.error('--reuse-shards-from requires --stage build with FlashSim')
     if args.stage in ('check', 'probe'):
         if args.qualification is None:
             parser.error('--stage ' + args.stage + ' requires --qualification')
@@ -681,7 +748,8 @@ def main():
                 else:
                     path = build_executor(directory, args.flashsim_dir.resolve(), args.kind,
                         shards=args.shards, jobs=args.jobs, precompiled_header=args.precompiled_header,
-                        conservative_alias=args.conservative_alias, shard_opt=args.shard_opt)
+                        conservative_alias=args.conservative_alias, shard_opt=args.shard_opt,
+                        reuse_shards_from=args.reuse_shards_from)
         finally:
             signal.signal(signal.SIGTERM, previous)
         print('OWNER_EXECUTOR_QUALIFICATION ' + str(path), flush=True)

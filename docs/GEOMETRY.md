@@ -1343,6 +1343,13 @@ python3 -B scripts/qualify_native_geometry_owner.py \
 Full-host render, feedback, fault recovery and cancellation await FlashSim
 execution on the complete model.
 
+For independently prepared owners with identical generated model contents,
+the build command can also take `--reuse-shards-from "$OTHER_QUALIFICATION"`.
+It checks the generated model, compiler, options and shard object hashes before
+linking with the current checkout's driver. A CPU build fixture reused its
+complete shard set, rebuilt a corrupt cached shard and verified the new
+executable after moving the directory that supplied the objects.
+
 ### Linux version-two publication
 
 The existing 128-byte native ioctl has a distinct version 2 with a 2,056-byte

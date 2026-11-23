@@ -2,6 +2,7 @@
 """Build the native product driver against an already emitted FlashSim DUT."""
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 import argparse
+from contextlib import ExitStack
 from datetime import datetime, timezone
 import fcntl
 import hashlib
@@ -137,7 +138,8 @@ class BuildProgress:
 
 
 def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservative_alias,
-          strict_flex_arrays, progress, precompiled_header=False, driver_dependencies=()):
+          strict_flex_arrays, progress, precompiled_header=False, driver_dependencies=(),
+          shard_cache=None):
     header = dut / "dut.h"
     sources = sorted(dut.glob("dut_*.cpp"), key=lambda path: path.stat().st_size, reverse=True)
     if not header.is_file() or not sources:
@@ -206,26 +208,40 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
             expected["precompiled_header"] = True
         return opt, effective, expected
 
+    def cached_object(directory, source, expected, pinned=None):
+        obj = directory / (source.stem + ".o")
+        metadata = directory / (source.stem + ".json")
+        if any(path.is_symlink() or not path.is_file() for path in (obj, metadata)):
+            return None
+        try:
+            prior = json.loads(metadata.read_text())
+            if prior.get("context") != expected:
+                return None
+            saved = prior.get("output_sha256")
+            if pinned is not None and pinned.get(obj.name) != saved:
+                return None
+            return obj if saved == digest(obj) else None
+        except (OSError, ValueError, AttributeError):
+            return None
+
     def reusable_object(source, expected):
-        obj = output / (source.stem + ".o")
-        metadata = output / (source.stem + ".json")
-        if obj.is_file() and metadata.is_file():
-            try:
-                prior = json.loads(metadata.read_text())
-                return prior.get("context") == expected and prior.get("output_sha256") == digest(obj)
-            except (OSError, ValueError):
-                pass
-        return False
+        local = cached_object(output, source, expected)
+        if local is not None or shard_cache is None:
+            return local
+        directory, pinned = shard_cache
+        return cached_object(directory, source, expected, pinned)
 
     def compile_one(source):
         opt, effective, expected = compile_context(source)
         obj = output / (source.stem + ".o")
         metadata = output / (source.stem + ".json")
         temporary = output / (source.stem + ".o.tmp")
-        if reusable_object(source, expected):
+        cached = reusable_object(source, expected)
+        if cached is not None:
             progress.finish_shard(source, cached=True)
-            print(source.name + ": cached", flush=True)
-            return obj
+            suffix = " from shared build" if cached.parent != output else ""
+            print(source.name + ": cached" + suffix, flush=True)
+            return cached
         if pch_sources[source] and (pch_dir is None or not (pch_dir / (opt[1:] + ".pch")).is_file()):
             raise RuntimeError("cached shard changed after precompiled-header planning: " + source.name)
         pch_flags = ["-include-pch", str(pch_dir / (opt[1:] + ".pch"))] if pch_sources[source] else []
@@ -320,6 +336,7 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
     else:
         objects = compile_shards()
 
+    objects.sort(key=lambda path: path.name)
     driver_obj = output / "native-driver.o"
     driver_tmp = output / "native-driver.o.tmp"
     # The adapter must precede the DUT include directory so a colocated
@@ -331,13 +348,19 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
         run_final([*driver_flags, "-O1", "-c", str(driver), "-o", str(driver_tmp)],
                   output / "native-driver.log", "compiling-driver")
         driver_tmp.replace(driver_obj)
-        run_final([compiler, str(driver_obj), *map(str, sorted(objects)), "-pthread",
+        run_final([compiler, str(driver_obj), *map(str, objects), "-pthread",
                    "-o", str(temporary)], output / "native-link.log", "linking")
         progress.update(stage="checking-final-inputs", child_pid=None)
         if (digest(header) != context["header_sha256"] or
                 any(digest(path) != value for path, value in source_hashes.items()) or
                 any(digest(Path(path)) != value for path, value in driver_inputs.items())):
             raise RuntimeError("DUT or driver input changed during the build")
+        object_hashes = {path.name: digest(path) for path in objects}
+        if shard_cache is not None:
+            cache_dir, pinned = shard_cache
+            if any(object_hashes[path.name] != pinned[path.name]
+                   for path in objects if path.parent == cache_dir):
+                raise RuntimeError("shared shard changed during the build")
         temporary.replace(result)
     finally:
         driver_tmp.unlink(missing_ok=True)
@@ -345,7 +368,7 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
     write_json(output / "native-flashsim-build.json", {
         "executable_sha256": digest(result), "dut_header_sha256": context["header_sha256"],
         "dut_sources": {path.name: value for path, value in source_hashes.items()},
-        "objects": {path.name: digest(path) for path in sorted(objects)},
+        "objects": object_hashes,
         "driver_source": str(driver), "driver_inputs": driver_inputs,
         "compiler": executable, "compiler_version": version, "base_flags": flags,
         "driver_flags": driver_flags + ["-O1"], "environment": context["environment"],
@@ -364,6 +387,8 @@ def main():
     parser.add_argument("--driver", type=Path, default=ROOT / "scripts/native_product_driver.cpp")
     parser.add_argument("--driver-dependency", type=Path, action="append", default=[],
                         help="explicit extra quoted include; recorded and checked before/after build")
+    parser.add_argument("--shard-cache", type=Path,
+                        help="read-only build directory and pinned object hashes in a JSON file")
     parser.add_argument("--cxx", default=os.environ.get("CXX", "c++"))
     parser.add_argument("--jobs", type=int, default=1)
     parser.add_argument("--shard-opt", choices=("-O0", "-O1", "-O2", "-O3"), default="-O2")
@@ -379,20 +404,33 @@ def main():
     dut, output, driver = args.dut_dir.resolve(), args.build_dir.resolve(), args.driver.resolve()
     if not driver.is_file():
         parser.error("driver source does not exist")
+    shard_cache = None
+    if args.shard_cache is not None:
+        record = json.loads(args.shard_cache.read_text())
+        cache_dir = Path(record["directory"]).resolve(strict=True)
+        cache_lock = cache_dir / ".native-flashsim-build.lock"
+        if (cache_dir == output or not cache_lock.is_file() or cache_lock.is_symlink()
+                or type(record["objects"]) is not dict):
+            parser.error("--shard-cache requires a distinct existing build directory and object hashes")
+        shard_cache = cache_dir, record["objects"]
     output.mkdir(parents=True, exist_ok=True)
     def terminate(_signum, _frame):
         raise KeyboardInterrupt("build terminated")
 
     previous = signal.signal(signal.SIGTERM, terminate)
     try:
-        with (output / ".native-flashsim-build.lock").open("w") as lock:
+        with ExitStack() as stack:
+            lock = stack.enter_context((output / ".native-flashsim-build.lock").open("w"))
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            if shard_cache is not None:
+                read_lock = stack.enter_context(cache_lock.open("rb"))
+                fcntl.flock(read_lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
             progress = BuildProgress(output)
             try:
                 result = build(dut, output, driver, args.cxx, args.jobs, args.shard_opt,
                                args.commit_opt, args.conservative_alias, args.strict_flex_arrays,
                                progress, args.precompiled_header,
-                               tuple(path.resolve() for path in args.driver_dependency))
+                               tuple(path.resolve() for path in args.driver_dependency), shard_cache)
             except BaseException as exc:
                 with progress.lock:
                     progress.active.clear()
