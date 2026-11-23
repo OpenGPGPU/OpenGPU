@@ -19,6 +19,7 @@ DRAW_COUNT = 2
 FILL = 0xa7
 COMMAND_BASE = 192
 RENDER_COMMAND = COMMAND_BASE + 4
+CANCEL_COMMAND = COMMAND_BASE + 13
 
 
 @dataclass(frozen=True)
@@ -39,18 +40,39 @@ class Feedback:
         return b'OGGTF001' + struct.pack('<4I', self.virtual, self.physical, self.root, self.program)
 
 
-def packet(feedback, index, *, observed=False):
+@dataclass(frozen=True)
+class Recovery:
+    name: str
+    cookie: int
+    draw_command: int
+    draw_status: int
+    end_status: int
+
+
+RECOVERY = (
+    Recovery('fault', COOKIE + 1, COMMAND_BASE + 7, 3, 3),
+    Recovery('fault-reuse', COOKIE + 2, COMMAND_BASE + 10, 0, 0),
+    Recovery('cancel', COOKIE + 3, CANCEL_COMMAND, 4, 5),
+    Recovery('cancel-reuse', COOKIE + 4, COMMAND_BASE + 16, 0, 0),
+)
+SNAPSHOTS = ('discard', 'render', *(case.name for case in RECOVERY))
+
+
+def packet(feedback, index, *, observed=False, cookie=COOKIE, captures=None, status=0):
     action = ACTIONS[index]
     words = [0] * 128
-    words[:11] = [0x47544601, RECORD_BYTES, 1, action, CONTEXT, COOKIE, feedback.program,
+    words[:11] = [0x47544601, RECORD_BYTES, 1, action, CONTEXT, cookie, feedback.program,
                   2, 3 if observed and action == 2 else 1, 1, len(SELECTORS)]
     words[16:18] = [feedback.virtual + DATA_OFFSET, feedback.virtual + DATA_OFFSET + DRAW_COUNT * DRAW_BYTES]
     words[41] = feedback.root
     words[48:48 + len(SELECTORS)] = SELECTORS
     if observed:
-        captures = (0, 1, 1, DRAW_COUNT)[index]
+        if captures is None:
+            captures = (0, 1, 1, DRAW_COUNT)[index]
         words[28], words[36], words[38] = captures * DRAW_BYTES, captures, 3 * captures
-        words[43] = 6 if action == 1 else 7
+        words[40] = 3 if status == 3 else 0
+        words[42] = status
+        words[43] = 2 if status == 5 else (6 if action == 1 else 7)
     return struct.pack('<128I', *words)
 
 
@@ -83,14 +105,42 @@ def verify_feedback(memory, feedback):
             'geometry feedback differs from the unclipped, unflattened GS output')
 
 
+def recovery_bytes(feedback, case):
+    captures = int(case.draw_status == 0)
+    checkpoints = []
+    for index in range(len(ACTIONS)):
+        before = index == 0
+        end = index == len(ACTIONS) - 1
+        checkpoints.append(packet(feedback, index, observed=before or end, cookie=case.cookie,
+                                  captures=captures if end else 0, status=case.end_status if end else 0))
+    # A rejected first write commits zero bytes. A reset during the first
+    # accepted line owns its four enabled bytes at the end of that line.
+    amount = DRAW_BYTES if captures else (4 if case.draw_status == 4 else 0)
+    return b''.join(checkpoints), raw_primitive()[:amount]
+
+
+def feedback_phases():
+    healthy = ((12, 0, 7), (7, 0, None), (12, 0, 7),
+               (12, 0, 7), (7, 0, None), (12, 0, 6))
+    yield from ((idx, *phase) for idx, phase in enumerate(healthy, COMMAND_BASE))
+    for case in RECOVERY:
+        yield case.draw_command - 1, 12, 0, 7
+        if case.draw_status != 4:
+            yield case.draw_command, 7, case.draw_status, None
+        yield case.draw_command + 1, 12, case.end_status, 2 if case.end_status == 5 else 6
+
+
 def verify_feedback_receipts(value):
-    required_flags(value, dict(schema='opengpu-native-geometry-feedback-v1', resetCount=1))
+    required_flags(value, dict(schema='opengpu-native-geometry-feedback-v1', resetCount=1,
+                               writeFaults=1, cancelCommand=CANCEL_COMMAND, cancelDrainedStatus=1))
     require(uint(value.get('commitAckHeldCycles')) >= 17, 'geometry GTF1 commit ACK was not held')
+    require(uint(value.get('cancelAckHeldCycles')) >= 17 and uint(value.get('cancelBusyStatus')) in (0x28, 0x29),
+            'geometry cancellation did not retain its accepted store until ACK')
     receipts = value.get('receipts')
-    phases = ((12, 7), (7, None), (12, 7), (12, 7), (7, None), (12, 6))
+    phases = tuple(feedback_phases())
     require(type(receipts) is list and len(receipts) == len(phases), 'geometry feedback lost phase receipts')
-    for command, ((opcode, data), result) in enumerate(zip(phases, receipts, strict=True), COMMAND_BASE):
-        completion = 0x8000 | (opcode & 7) << 8 | (opcode >> 3) << 16 | command
+    for (command, opcode, status, data), result in zip(phases, receipts, strict=True):
+        completion = (0x8000 if status == 0 else 0) | status << 11 | (opcode & 7) << 8 | (opcode >> 3) << 16 | command
         required_flags(result, dict(command=command, opcode=opcode, completion=completion,
                                      heldIrq=3, retiredStatus=1, retiredIrq=1))
         require(uint(result.get('heldStatus')) in (0x22, 0x23),

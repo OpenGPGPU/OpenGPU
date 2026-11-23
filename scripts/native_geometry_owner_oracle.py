@@ -1,10 +1,10 @@
 """Exact image, completion and physical-byte checks for the linked geometry draw."""
 import struct
 
-from native_geometry_feedback_oracle import (ACTIONS, DRAW_BYTES, DRAW_COUNT, RECORD_BYTES, RENDER_COMMAND,
-    packet, raw_primitive, verify_feedback, verify_feedback_receipts)
+from native_geometry_feedback_oracle import (ACTIONS, DRAW_BYTES, DRAW_COUNT, FILL, RECORD_BYTES, RECOVERY, RENDER_COMMAND,
+    packet, raw_primitive, recovery_bytes, verify_feedback, verify_feedback_receipts)
 from native_geometry_owner_inputs import verify_inputs
-from native_sample_graphics_gny2_oracle import completion_words, record_layout, values, verify_words
+from native_sample_graphics_gny2_oracle import _layout, completion_words, record_layout, values, verify_words
 from native_sample_owner_oracle import require, verify_guards
 
 
@@ -97,10 +97,11 @@ def feedback_plan(initial, description, programs, capture_data, observed_profile
     return verify_inputs(initial, description, programs, capture_data, observed_profile).feedback.plan()
 
 
-def verify_feedback_run(initial, discard, rendered, description, programs, capture_data, observed_profile, receipts):
+def verify_feedback_run(initial, snapshots, description, programs, capture_data, observed_profile, receipts):
     verify_feedback_receipts(receipts)
     outputs = verify_inputs(initial, description, programs, capture_data, observed_profile)
     feedback = outputs.feedback
+    discard, rendered = snapshots['discard'], snapshots['render']
     verify_images(discard, description, discard=True)
     verify_images(rendered, description)
     require(discard.read(feedback.checkpoint(0), RECORD_BYTES) == packet(feedback, 0, observed=True),
@@ -116,3 +117,29 @@ def verify_feedback_run(initial, discard, rendered, description, programs, captu
     verify_guards(discard, rendered, (*outputs.writable,
         (feedback.checkpoint(1), feedback.checkpoint(len(ACTIONS))),
         (feedback.stream + DRAW_BYTES, feedback.stream + DRAW_BYTES * DRAW_COUNT)))
+
+    for case in RECOVERY:
+        candidate = snapshots[case.name]
+        verify_images(candidate, description)
+        checkpoints, raw = recovery_bytes(feedback, case)
+        require(candidate.read(feedback.checkpoint(0), len(checkpoints)) == checkpoints,
+                'geometry feedback GTF1 mismatch after ' + case.name)
+        visible = raw + bytes([FILL]) * (DRAW_COUNT * DRAW_BYTES - len(raw))
+        require(candidate.read(feedback.stream, len(visible)) == visible,
+                'geometry feedback stream mismatch after ' + case.name)
+        gny = candidate.read(outputs.completion, 16384)
+        if case.draw_status:
+            expected_header = (0x474e5902, 16384, 2, case.draw_command)
+            require(struct.unpack_from('<4I', gny) == expected_header,
+                    'geometry GNY2 completion identity or error differs after ' + case.name)
+            expected = {'identity.context': 7, 'identity.pass': 11, 'identity.generation': 13,
+                        'status': case.draw_status, 'faultStage': 3 if case.draw_status == 3 else 0}
+            for name, word, _, _ in _layout():
+                if name in expected:
+                    require(struct.unpack_from('<I', gny, word * 4)[0] == expected[name],
+                            'geometry GNY2 ' + name + ' differs after ' + case.name)
+        else:
+            verify_words(gny, geometry_completion(case.draw_command), label='geometry ' + case.name)
+        verify_guards(initial, candidate, (*outputs.writable,
+            (feedback.checkpoint(0), feedback.checkpoint(len(ACTIONS))),
+            (feedback.stream, feedback.stream + len(raw))))

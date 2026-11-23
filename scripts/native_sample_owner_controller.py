@@ -5,6 +5,7 @@ Low-level packet execution only. The caller must separately qualify original
 ESSL compilation; a filename or CPU peer cannot establish that provenance.
 """
 import argparse
+from contextlib import ExitStack
 import fcntl
 import hashlib
 import os
@@ -146,6 +147,7 @@ def run(args, *, owner_profile, input_name, source_paths, verify_case, context, 
             with SparseMemory(directory / 'union.memory') as before:
                 command_id = verify_case(before, None, description, original, capture_data, observed)
                 if geometry_feedback:
+                    from native_geometry_feedback_oracle import SNAPSHOTS
                     from native_geometry_owner_oracle import feedback_plan, verify_feedback_run
                     plan = directory / 'geometry-feedback.plan'
                     atomic(plan, feedback_plan(before, description, original, capture_data, observed))
@@ -172,10 +174,12 @@ def run(args, *, owner_profile, input_name, source_paths, verify_case, context, 
                 require(verify_case(before, after, description, original, capture_data, observed) == command_id,
                         'returned sample verification changed the command identity')
                 if geometry_feedback:
-                    with (SparseMemory(regular(results / 'feedback-discard.memory')) as discard,
-                          SparseMemory(regular(results / 'feedback-render.memory')) as rendered):
-                        verify_feedback_run(before, discard, rendered, description, original,
-                                            capture_data, observed, strict_json(feedback))
+                    with ExitStack() as observations:
+                        snapshots = {name: observations.enter_context(
+                            SparseMemory(regular(results / ('feedback-' + name + '.memory'))))
+                            for name in SNAPSHOTS}
+                        verify_feedback_run(before, snapshots, description, original, capture_data,
+                                            observed, strict_json(feedback))
             require(bridge.poll() is None and running.poll() is None, 'owner did not remain live through sample/GNY2/guard oracles')
             atomic(directory / 'record-0.retired.response', response)
             atomic(directory / 'oracle-authorized.response', cleanup_authorization())

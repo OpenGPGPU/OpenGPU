@@ -1312,6 +1312,15 @@ executor holds the eighth checkpoint acknowledgement, verifies that the
 preceding seven lines were acknowledged, and checks VM protection until
 completion POP. The fixture uses one initial DUT reset for the sequence.
 
+The same executor rejects the first feedback data store with a physical AXI
+write error and checks the faulted GTF1 checkpoint, zero committed raw
+bytes and a healthy follow-up draw. It then requests command reset with the
+first data-store ACK held. The cancellation checks the four owned bytes in
+that partial line, the empty public completion slot after draining, the stale
+cookie rejection and healthy reuse with a fresh cookie. The geometry GEMs
+and private program stay owned until the original driver receives the
+verified retirement and cleanup acknowledgement.
+
 Pinned Linux compilation verified 358 actual dependencies including the
 GTF1 ABI. The CPU preflight matched all four original GTF1 inputs against the
 active Sv32 maps and exercised rejection of altered clip/flat output, a
@@ -1331,8 +1340,8 @@ python3 -B scripts/qualify_native_geometry_owner.py \
   --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72
 ```
 
-The full-host render and healthy feedback sequence await FlashSim execution.
-The same-host fault and cancellation matrix remains pending.
+Full-host render, feedback, fault recovery and cancellation await FlashSim
+execution on the complete model.
 
 ### Linux version-two publication
 

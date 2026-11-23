@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check the original geometry ioctl and MMIO capture before DUT execution."""
 import argparse
+from contextlib import ExitStack
 import os
 from pathlib import Path
 import shlex
@@ -11,12 +12,13 @@ import tempfile
 
 from compute_owner_oracle import SparseMemory
 from compute_owner_protocol import strict_json
-from native_geometry_feedback_oracle import (ACTIONS, COMMAND_BASE, DRAW_BYTES, RENDER_COMMAND,
-    packet, raw_primitive)
+from native_geometry_feedback_oracle import (ACTIONS, CANCEL_COMMAND, DRAW_BYTES, RECOVERY, RENDER_COMMAND,
+    feedback_phases, packet, raw_primitive, recovery_bytes)
 from native_geometry_owner_inputs import ROOT, build_producer, program_paths, verify_inputs
 from native_geometry_owner_oracle import (geometry_completion, layer_bytes, verify as verify_returned,
     verify_feedback_run)
 from native_sample_owner_controller import atomic, wait_file
+from native_sample_graphics_gny2_oracle import _layout
 from native_sample_owner_protocol import AUXILIARY, profile_bytes
 from owner_process_lifetime import CleanupIncomplete, stop_group
 from owner_resource_contract import IMAGE_FLOAT_PROFILE, SAMPLE_FACTORY_CONTRACTS, SAMPLE_PROFILE
@@ -133,45 +135,73 @@ def check_return_oracle(directory, memory, snapshot, description, outputs, progr
         overlay(feedback.checkpoint(index), packet(feedback, index, observed=True))
     overlay(feedback.stream, raw * 2)
     overlay(outputs.completion, struct.pack('<4096I', *geometry_completion(RENDER_COMMAND)))
+    complete_render = bytes(candidate)
+    paths = {'discard': discarded, 'render': returned}
+    words = {name: idx for name, idx, _, _ in _layout()}
+    for case in RECOVERY:
+        candidate[:] = ordinary_render
+        checkpoints, partial = recovery_bytes(feedback, case)
+        overlay(feedback.checkpoint(0), checkpoints)
+        overlay(feedback.stream, partial)
+        completion = list(geometry_completion(case.draw_command))
+        completion[words['status']] = case.draw_status
+        completion[words['faultStage']] = 3 if case.draw_status == 3 else 0
+        overlay(outputs.completion, struct.pack('<4096I', *completion))
+        paths[case.name] = directory / ('oracle-feedback-' + case.name + '.memory')
+        paths[case.name].write_bytes(candidate)
+    candidate[:] = complete_render
     # Controlled observations exercise the same phase/byte checks as the
     # guarded executor. This fixture reports CPU preflight only.
     receipts = []
-    for command, (opcode, data) in enumerate(((12, 7), (7, 0), (12, 7), (12, 7), (7, 0), (12, 6)), COMMAND_BASE):
-        receipts.append(dict(command=command, opcode=opcode, data=data, heldStatus=0x22,
-            completion=0x8000 | (opcode & 7) << 8 | (opcode >> 3) << 16 | command,
+    for command, opcode, status, data in feedback_phases():
+        receipts.append(dict(command=command, opcode=opcode, data=data or 0, heldStatus=0x22,
+            completion=(0x8000 if not status else 0) | status << 11 | (opcode & 7) << 8 | (opcode >> 3) << 16 | command,
             heldIrq=3, retiredStatus=1, retiredIrq=1))
-    telemetry = dict(schema='opengpu-native-geometry-feedback-v1', resetCount=1,
-                     commitAckHeldCycles=23, receipts=receipts)
+    telemetry = dict(schema='opengpu-native-geometry-feedback-v1', resetCount=1, commitAckHeldCycles=23,
+                     cancelAckHeldCycles=23, cancelCommand=CANCEL_COMMAND, cancelBusyStatus=0x29,
+                     cancelDrainedStatus=1, writeFaults=1, receipts=receipts)
     returned.write_bytes(candidate)
-    with SparseMemory(discarded) as discard:
-        def check_feedback(acknowledgement=telemetry):
-            with SparseMemory(returned) as result:
-                verify_feedback_run(snapshot, discard, result, description, programs, capture,
-                                    observed, acknowledgement)
 
-        check_feedback()
-        for address, canonical, wrong, diagnostic in (
-            (feedback.stream, struct.pack('<f', -2), struct.pack('<f', -1), 'unclipped'),
-            (feedback.stream + flat_slot, struct.pack('<f', 121.25), struct.pack('<f', 123.25), 'unflattened'),
-            (feedback.checkpoint(3) + 36 * 4, struct.pack('<I', 2), struct.pack('<I', 4), 'GTF1'),
-            (feedback.stream + 2 * DRAW_BYTES, b'\xa7', b'\x81', 'guard changed'),
-        ):
-            overlay(address, wrong)
-            returned.write_bytes(candidate)
-            overlay(address, canonical)
-            try:
-                check_feedback()
-            except ValueError as error:
-                assert diagnostic in str(error), error
-            else:
-                raise AssertionError('geometry feedback oracle accepted changed ' + diagnostic + ' bytes')
+    def check_feedback(acknowledgement=telemetry):
+        with ExitStack() as observations:
+            results = {k: observations.enter_context(SparseMemory(path)) for k, path in paths.items()}
+            verify_feedback_run(snapshot, results, description, programs, capture, observed, acknowledgement)
+
+    check_feedback()
+    for address, canonical, wrong, diagnostic in (
+        (feedback.stream, struct.pack('<f', -2), struct.pack('<f', -1), 'unclipped'),
+        (feedback.stream + flat_slot, struct.pack('<f', 121.25), struct.pack('<f', 123.25), 'unflattened'),
+        (feedback.checkpoint(3) + 36 * 4, struct.pack('<I', 2), struct.pack('<I', 4), 'GTF1'),
+        (feedback.stream + 2 * DRAW_BYTES, b'\xa7', b'\x81', 'guard changed'),
+    ):
+        overlay(address, wrong)
         returned.write_bytes(candidate)
+        overlay(address, canonical)
         try:
-            check_feedback(dict(telemetry, commitAckHeldCycles=0))
+            check_feedback()
         except ValueError as error:
-            assert 'ACK was not held' in str(error), error
+            assert diagnostic in str(error), error
         else:
-            raise AssertionError('geometry feedback oracle accepted an unobserved commit ACK')
+            raise AssertionError('geometry feedback oracle accepted changed ' + diagnostic + ' bytes')
+    returned.write_bytes(candidate)
+    for changed, problem in ((dict(telemetry, commitAckHeldCycles=0), 'ACK was not held'),
+                             (dict(telemetry, cancelBusyStatus=0x21), 'retain its accepted store')):
+        try:
+            check_feedback(changed)
+        except ValueError as error:
+            assert problem in str(error), error
+        else:
+            raise AssertionError('geometry feedback oracle accepted missing ' + problem)
+    # Reject a faulted line that changes its backing despite the rejected B.
+    candidate[:] = paths['fault'].read_bytes()
+    overlay(feedback.stream, raw[:4])
+    paths['fault'].write_bytes(candidate)
+    try:
+        check_feedback()
+    except ValueError as error:
+        assert 'stream mismatch after fault' in str(error), error
+    else:
+        raise AssertionError('geometry feedback oracle accepted a committed failed first line')
 
 
 def check(directory, products, *, sanitize):

@@ -44,9 +44,9 @@ int main(int argc,char **argv) {
     Memory memory=Memory::read(argv[2]);verify_readonly(memory,memory,capture.writable);
     require(std::filesystem::create_directory(output),"cannot create native sample output");
     Simulation sim(argc,argv);sim.reset();Agent agent(memory);ReplayBus<Simulation> bus(sim,agent,100000);
-    std::function<void()> after_retirement;
+    std::function<uint64_t()> after_retirement;
 #ifdef OPENGPU_OWNER_IMAGE_FLOAT_STAGE
-    if(feedback)after_retirement=[&]{run_geometry_feedback(sim,agent,bus,memory,capture,output,session,timeout);};
+    if(feedback)after_retirement=[&]{return run_geometry_feedback(sim,agent,bus,memory,capture,output,session,timeout);};
 #endif
     active_sample_owner(sim,agent,bus,memory,capture,output,session,timeout,after_retirement);
     sim.model->final();return 0;
