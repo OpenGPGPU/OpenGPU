@@ -295,13 +295,14 @@ sbt -Dopengpu.simBackend=flashsim -Dopengpu.flashsimPython="$PYTHON" \
 
 ### Three-domain AXI host execution
 
-Both FlashSim cases passed with two physical 16-lane, eight-warp CUs, an
-eight-set/two-way L2 fixture and a 17×9 frame. Each case used one DUT, one
-reset and one live transform feedback capture across isoline, triangle, quad
-and a second isoline draw. Every draw observed physical AXI reads for both stages' uniform
-root, binding and data lines. The cases used distinct program addresses or
-explicit invalidation before reusing the same control program address. Both
-matched all 22 feedback words, byte and element counts, and buffer guards.
+Both FlashSim cases passed with the adapter's compiler flags on two physical
+16-lane, eight-warp CUs, an eight-set/two-way L2 fixture and a 17×9 frame. Each
+case used one DUT, one reset and one live transform feedback capture across
+isoline, triangle, quad and a second isoline draw. Every draw observed physical
+AXI reads for both stages' uniform root, binding and data lines. The cases used
+distinct program addresses or explicit invalidation before reusing the same
+control program address. Both matched all 22 feedback words, byte and element
+counts, and buffer guards.
 
 Use FlashSim `db65773` and the assertion-enabled CIRCT build `80c4ed9b9`
 with the environment above. Set `FLASHSIM_CIRCT_LARGEST_FIRST=1` for that
