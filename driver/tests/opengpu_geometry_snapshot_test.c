@@ -99,8 +99,56 @@ static void gng_reject(struct opengpu_device *gpu,struct opengpu_render_context 
     if(cheap)assert(gng_copies==before && !o->segments);
     assert(!opengpu_private_snapshot_retire(o));
 }
-int main(void)
+static unsigned gng_read_fixture(const char *path,u8 *bytes,unsigned capacity)
 {
+    FILE *file=fopen(path,"rb");
+    assert(file);
+    unsigned count=fread(bytes,1,capacity,file);
+    assert(fgetc(file)==EOF && !ferror(file));
+    assert(!fclose(file));
+    return count;
+}
+
+static void gng_compiled_source(struct opengpu_device *gpu,struct opengpu_render_context *ctx,
+    const char *code_path,const char *metadata_path)
+{
+    u8 code[4*OPENGPU_NATIVE_GEOMETRY_MAX_CODE_WORDS] = {0};
+    unsigned bytes=gng_read_fixture(code_path,code,sizeof(code));
+    assert(bytes && !(bytes&3u));
+    assert(gng_read_fixture(metadata_path,gng_raw,sizeof(gng_raw))==sizeof(gng_raw));
+    memcpy(gng_original[14]+64,code,bytes);
+    gng_program=(struct drm_opengpu_native_program_view){.handle=14,.offset=64,.bytes=bytes};
+    memset(&gng_uniforms,0,sizeof(gng_uniforms));
+    gng_copies=0;gng_producer=true;gng_mutate=false;
+    struct opengpu_geometry_source s=gng_source();
+    s.topology=4;s.scalar_fpu=false;
+
+    struct opengpu_private_snapshot *owner=opengpu_private_snapshot_create(gpu,ctx);
+    assert(!IS_ERR(owner));
+    u32 segment;
+    assert(!opengpu_geometry_snapshot_append(owner,&s,gng_copy_source,gng_original,&segment));
+    assert(gng_copies==1);
+    memset(gng_original[14]+64,0xa5,bytes);
+    assert(!opengpu_private_snapshot_prepare(owner) && !opengpu_private_snapshot_publish(owner));
+    u32 va;
+    assert(!opengpu_private_snapshot_address(owner,segment,&va));
+    for(unsigned i=0;i<256;i++)
+        if(i<16 || i>24)
+            assert(gng_vm_read(&ctx->vm,va+i*4,3)==gng_get(gng_raw,i));
+    u32 rx=gng_vm_read(&ctx->vm,va+17*4,3);
+    const unsigned allocation=(bytes+63u)&~63u;
+    const u32 relocated[9]={rx,rx,rx+bytes,0,rx,rx+allocation,0,0,0};
+    for(unsigned i=0;i<9;i++)
+        assert(gng_vm_read(&ctx->vm,va+(16+i)*4,3)==relocated[i]);
+    for(unsigned i=0;i<allocation/4;i++)
+        assert(gng_vm_read(&ctx->vm,rx+i*4,11)==gng_get(code,i));
+    assert(!opengpu_private_snapshot_retire(owner));
+    puts("Original Mesa GS code and GNG1 private RX/RO snapshot PASS (CPU only)");
+}
+
+int main(int argc,char **argv)
+{
+    assert(argc==1 || argc==3);
     struct opengpu_device gpu={0};struct opengpu_render_context ctx={.gpu=&gpu,.references=1,.id=7};
     gpu.hw.capabilities=GPU_CAP_UNIFIED_COMMANDS;
     assert(!opengpu_mmu_init(&gpu) && !opengpu_mmu_vm_create(&gpu,&ctx.vm));copy_gpu=&gpu;
@@ -151,6 +199,7 @@ int main(void)
     assert(!opengpu_private_snapshot_prepare(o) && !opengpu_private_snapshot_publish(o));u32 va;
     assert(!opengpu_private_snapshot_address(o,segment,&va));assert(!gng_vm_read(&ctx.vm,va+23*4,3) && !gng_vm_read(&ctx.vm,va+24*4,3));
     assert(!opengpu_private_snapshot_retire(o));
+    if(argc==3)gng_compiled_source(&gpu,&ctx,argv[1],argv[2]);
     opengpu_mmu_vm_destroy(&gpu,&ctx.vm);opengpu_mmu_fini(&gpu);
     assert(ctx.references==1 && !live_allocations && !fixture_buffers);
     puts("GNG1 actual RX/RO graph: full12x16KiB/1024defaults, fixed64/68 mappings, immutable metadata/code/data, dual owners, failures/reuse PASS (CPU only)");

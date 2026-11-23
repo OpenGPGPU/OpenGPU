@@ -13,7 +13,7 @@ LIBS=("src/compiler/glsl/libglsl.a","src/compiler/nir/libnir.a","src/compiler/li
 def main():
     ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('--build',type=Path,required=True)
     ap.add_argument('--sanitize',action='store_true');ap.add_argument('--baseline-source',type=Path,help='explicit original v2 production emitter for old-byte comparison, never a replacement runtime');ap.add_argument('--regressions',action='store_true',help='with --language, reuse this immutable build for old v1/v2 ESSL suites');mode=ap.add_mutually_exclusive_group();mode.add_argument('--dynamic',action='store_true',help='private TES v2 CPU compiler cases');mode.add_argument('--language',action='store_true',help='private TCS/TES v3 language input-patch ID CPU cases')
-    mode.add_argument('--geometry', action='store_true', help='linked VS/GS/FS and native ABI7 CPU compiler case')
+    mode.add_argument('--geometry', action='store_true', help='linked VS/GS/FS and native GS/ABI7 CPU compiler case')
     a=ap.parse_args()
     if a.regressions and not a.language:ap.error('--regressions requires --language')
     if a.baseline_source and not a.regressions:ap.error('--baseline-source requires --regressions')
@@ -70,7 +70,8 @@ def main():
         'userspace/gallium/opengpu_cs_emit.c','userspace/gallium/opengpu_fs_emit.c','userspace/gallium/opengpu_vs_emit.c',
         'userspace/pipe_opengpu.c','userspace/opengpu.c')
     if a.geometry:
-        gpu_units += ('userspace/gallium/opengpu_native_fs_emit.c',)
+        gpu_units += ('userspace/gallium/opengpu_native_fs_emit.c',
+                      'userspace/gallium/opengpu_native_gs_emit.c')
     for name in gpu_units:
         obj=out/(Path(name).stem+'.o')
         extra=['-D'+n+'=cs_fixture_'+n for n in ('ioctl','mmap','munmap','dup','close')] if name in ('userspace/pipe_opengpu.c','userspace/opengpu.c') else []
