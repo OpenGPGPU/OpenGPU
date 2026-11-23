@@ -99,3 +99,13 @@ product coexistence and physical qualification remain separate H7 gates.
 The observer's active-CU peak of two is process-lifetime evidence, not
 attribution of simultaneous full-resource execution to both CUs. The observed
 `pendingBeforeConsumer=true` does not establish a forced reservation wait.
+
+### Rendezvous after SIMT reconvergence
+
+The sanitizer-enabled `test_gallium_compute_shared.py` run checks all
+nineteen original shared-atomic shaders with a divergent arm. Their native
+words place the first workgroup barrier before the scope and the second
+after its reconvergence marker. The emitter rejects an additional ESSL
+barrier inside the selected arm after shared memory has already been
+initialized and published. The Linux validator also rejects a native
+variant with a workgroup barrier inside the scope.
