@@ -189,7 +189,8 @@ def main():
         finally:
             signal.signal(signal.SIGTERM, previous)
     print('ORIGINAL_GEOMETRY_FLASH_SIM_PASS images=4 layers=2 samples=4 fullGNY2=true '
-          'rawFeedbackPrimitives=2 feedbackCommitAck=true resetCount=1 cleanupACK=true')
+          'rawFeedbackPrimitives=2 feedbackCommitAck=true feedbackWriteFaults=1 '
+          'feedbackFaultReuse=true feedbackCancelDrain=true feedbackCancelReuse=true cleanupACK=true')
 
 
 if __name__ == '__main__':
