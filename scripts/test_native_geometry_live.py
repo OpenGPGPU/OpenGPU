@@ -5,12 +5,14 @@ import os
 from pathlib import Path
 import shlex
 import shutil
+import struct
 import subprocess
 import tempfile
 
 from compute_owner_oracle import SparseMemory
 from compute_owner_protocol import strict_json
 from native_geometry_owner_inputs import ROOT, build_producer, program_paths, verify_inputs
+from native_geometry_owner_oracle import geometry_completion, layer_bytes, verify as verify_returned
 from native_sample_owner_controller import atomic, wait_file
 from native_sample_owner_protocol import AUXILIARY, profile_bytes
 from owner_process_lifetime import CleanupIncomplete, stop_group
@@ -52,6 +54,61 @@ int main(int argc, char **argv) {
     return binary
 
 
+def check_return_oracle(directory, memory, snapshot, description, outputs, programs, capture, observed):
+    # The captured RAM is real driver state. These deliberately written
+    # return bytes only exercise the checker and its failure paths.
+    candidate = bytearray(memory.read_bytes())
+
+    def overlay(address, payload):
+        while payload:
+            page = address & ~4095
+            within = address - page
+            position = snapshot.pages[page] + within
+            length = min(len(payload), 4096 - within)
+            candidate[position:position + length] = payload[:length]
+            address += length
+            payload = payload[length:]
+
+    def address(mrt, kind, layer):
+        gem = description['attachments'][mrt][kind]
+        return gem['physical'] + gem['offset'] + layer * 4096
+
+    # First pixel covers both left-column samples. Keep both SampleID alpha
+    # values, quarter-average the result and preserve the provoking slot.
+    assert struct.unpack_from('<16f', layer_bytes(2, 1)) == (
+        819.375, 841.875, 864.375, 0, 0, 0, 0, 0,
+        821.875, 844.375, 866.875, 2, 0, 0, 0, 0)
+    assert struct.unpack_from('<4f', layer_bytes(2, 1, resolve=True)) == (410.3125, 421.5625, 432.8125, .5)
+    assert struct.unpack_from('<4f', layer_bytes(3, 1)) == (1144.625, 1167.125, 1189.625, 1)
+    assert layer_bytes(3, 1)[128:192] == bytes(64)
+
+    for mrt in range(4):
+        for kind in ('image', 'resolve'):
+            for layer in range(2):
+                overlay(address(mrt, kind, layer), layer_bytes(mrt, layer, resolve=(kind == 'resolve')))
+    overlay(outputs.completion, struct.pack('<4096I', *geometry_completion(outputs.command_id)))
+    returned = directory / 'oracle-return.memory'
+    returned.write_bytes(candidate)
+    with SparseMemory(returned) as result:
+        assert verify_returned(snapshot, result, description, programs, capture, observed) == outputs.command_id
+
+    for changed, reason in (
+            (address(2, 'image', 1) + 32 + 12, 'geometry image MRT 2 layer 1'),
+            (outputs.completion, 'geometry GNY2 word 0'),
+            (address(0, 'image', 0) + 1024, 'guard changed')):
+        index = snapshot.pages[changed & ~4095] + (changed & 4095)
+        candidate[index] ^= 1
+        returned.write_bytes(candidate)
+        candidate[index] ^= 1
+        with SparseMemory(returned) as result:
+            try:
+                verify_returned(snapshot, result, description, programs, capture, observed)
+            except ValueError as error:
+                assert reason in str(error), error
+            else:
+                raise AssertionError('geometry oracle accepted a changed ' + reason)
+
+
 def check(directory, products, *, sanitize):
     binary = build_producer(directory, sanitize=sanitize)
     inspector = reader(directory, sanitize=sanitize)
@@ -76,13 +133,15 @@ def check(directory, products, *, sanitize):
         capture = active / 'record-0.capture'
         memory = active / 'union.memory'
         description = strict_json(active / 'geometry-inputs.json')
+        original = tuple(path.read_bytes() for path in products)
+        capture_bytes = capture.read_bytes()
         with SparseMemory(memory) as snapshot:
-            command = verify_inputs(snapshot, description, tuple(path.read_bytes() for path in products),
-                                    capture.read_bytes(), observed)
+            outputs = verify_inputs(snapshot, description, original, capture_bytes, observed)
+            check_return_oracle(directory, memory, snapshot, description, outputs, original, capture_bytes, observed)
         subprocess.run([inspector, capture, memory], env=env, check=True, timeout=20)
         atomic(active / 'record-0.held.response', b'OGCMH001')
         _, error = process.communicate(timeout=20)
-        assert command > 0 and process.returncode == 2 and b'wrong private wire magic' in error, error
+        assert outputs.command_id > 0 and process.returncode == 2 and b'wrong private wire magic' in error, error
         assert not (active / 'record-0.retire').exists()
     finally:
         stop_group(process)

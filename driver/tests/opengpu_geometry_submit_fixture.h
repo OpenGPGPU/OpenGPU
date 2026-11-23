@@ -135,10 +135,11 @@ static struct geometry_submit_fixture *geometry_prepare_draw(struct native_kerne
     memcpy(r->draw, draw, sizeof(draw));
     memcpy(r->state, state, sizeof(state));
 
+    /* Clipping the first vertex produces intersections at edge midpoints. */
     const float vertices[3][8] = {
-        {-1.5f, -0.75f, 0, 1, 0.25f, 0.5f, 0.75f, 0},
-        {0.75f, -0.75f, 0, 1, 1.25f, 1.5f, 1.75f, 0},
-        {0, 0.75f, 0, 1, 2.25f, 2.5f, 2.75f, 0}};
+        {-2, -1, 0, 1, 0.25f, 0.5f, 0.75f, 0},
+        {0, -1, 0, 1, 1.25f, 1.5f, 1.75f, 0},
+        {0, 0, 0, 1, 2.25f, 2.5f, 2.75f, 0}};
     u32 vertex_handle = ++test_next_handle;
     void *vertex = native_kernel_original_allocate(s, vertex_handle, 4096);
     assert(vertex);

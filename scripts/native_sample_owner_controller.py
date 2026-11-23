@@ -56,10 +56,10 @@ def wait_file(path, bridge, executor, timeout):
     require(bridge.poll() is None, 'producer exited before receipt ' + path.name)
 
 
-def lock_owner(qualification):
+def lock_owner(qualification, *, owner_profile=SAMPLE_PROFILE):
     record = strict_json(qualification)
     require(record.get('schema') == 'opengpu-owner-executor-v1' and
-            record.get('kind') == 'native-sample' and record.get('profile') == SAMPLE_PROFILE and
+            record.get('kind') == 'native-sample' and record.get('profile') == owner_profile and
             record.get('source_root') == str(ROOT), 'wrong sample executor qualification/source')
     owner = Path(record['owner_output']).resolve(strict=True)
     target = owner / 'executors/native-sample'
@@ -82,18 +82,7 @@ def digest(path):
     return hashlib.sha256(regular(path).read_bytes()).digest()
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--executor', type=Path, required=True)
-    parser.add_argument('--executor-qualification', type=Path, required=True)
-    parser.add_argument('--executor-checker', type=Path, required=True)
-    parser.add_argument('--executor-checker-python', type=Path, required=True)
-    parser.add_argument('--bridge-command', type=Path, required=True, help='argv JSON, {ipc} placeholder, no shell')
-    parser.add_argument('--bridge-container-name', help='exact owned Docker --name; exit is proved before deleting IPC')
-    parser.add_argument('--program', required=True, help='original OGNSF file; may contain {ipc} for a live compiler')
-    parser.add_argument('--case', choices=('sample', 'mask-depth', 'mask-depth-keep', 'mrt', 'varying', 'signedness', 'truncation'), required=True)
-    parser.add_argument('--timeout', type=int, default=3600)
-    args = parser.parse_args()
+def run(args, *, owner_profile, input_name, source_paths, verify_case, context, backend=None):
     require(0 < args.timeout <= 86400, 'timeout must be 1..86400 seconds')
     executor = regular(args.executor.absolute())
     qualification = regular(args.executor_qualification.absolute())
@@ -122,52 +111,56 @@ def main():
         raise KeyboardInterrupt('sample qualification terminated')
     previous = signal.signal(signal.SIGTERM, terminate)
 
+    backend_args = [] if backend is None else ['--backend', backend]
+
     def qualified(log):
+        if backend is not None:
+            require(strict_json(qualification).get('backend', 'flashsim') == backend,
+                    'sample executor backend changed')
         subprocess.run([checker_python, checker, '--stage', 'check', '--kind', 'native-sample',
-            '--qualification', qualification, '--executor', executor], env=env,
+            '--qualification', qualification, '--executor', executor, *backend_args], env=env,
             stdout=log, stderr=subprocess.STDOUT, timeout=args.timeout, check=True)
 
     try:
         with (directory / 'probe.log').open('w') as log:
             qualified(log)
-            locks = lock_owner(qualification)
+            locks = lock_owner(qualification, owner_profile=owner_profile)
             qualified(log)
             subprocess.run([executor, '--probe-profile', directory / 'profile.json'], env=env,
                 stdout=log, stderr=subprocess.STDOUT, timeout=args.timeout, check=True)
         observed = strict_json(directory / 'profile.json')
-        atomic(directory / 'profile.bin', profile_bytes(observed))
+        atomic(directory / 'profile.bin', profile_bytes(observed, owner_profile=owner_profile))
         with (directory / 'bridge.log').open('w') as log, (directory / 'execution.log').open('w') as output:
             bridge = subprocess.Popen([x.replace('{ipc}', str(directory)) for x in command], env=env,
                 stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
             wait_file(directory / 'READY', bridge, None, args.timeout)
-            for name in ('union.memory', 'record-0.capture', 'sample-inputs.json'):
+            for name in ('union.memory', 'record-0.capture', input_name):
                 wait_file(directory / name, bridge, None, args.timeout)
-            packet = regular(Path(args.program.replace('{ipc}', str(directory))).absolute())
-            original = packet.read_bytes()
-            program(original, args.case)
-            description = strict_json(directory / 'sample-inputs.json')
-            require(description.get('caseId') == args.case, 'live driver changed source case identity')
-            guarded = [packet, directory / 'record-0.capture', directory / 'sample-inputs.json', directory / 'union.memory']
+            packets = [regular(Path(str(path).replace('{ipc}', str(directory))).absolute())
+                       for path in source_paths]
+            original = tuple(packet.read_bytes() for packet in packets)
+            description = strict_json(directory / input_name)
+            guarded = [*packets, directory / 'record-0.capture', directory / input_name, directory / 'union.memory']
             identities = [digest(path) for path in guarded]
             capture_data = (directory / 'record-0.capture').read_bytes()
-            command_id, _, _ = capture(capture_data, observed)
             with SparseMemory(directory / 'union.memory') as before:
-                verify(before, None, description, original, capture_data, observed)
+                command_id = verify_case(before, None, description, original, capture_data, observed)
             qualified(output)
             results = directory / 'results'
             running = subprocess.Popen([executor, '--active-owner', directory / 'union.memory', results, directory],
                 env=env, stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
             wait_file(directory / 'record-0.held.json', bridge, running, args.timeout)
             held = strict_json(directory / 'record-0.held.json')
-            require(held.get('commandId') == command_id and held.get('gnx', [])[6:9] == [7, 8, 9],
+            require(held.get('commandId') == command_id and held.get('gnx', [])[6:9] == list(context),
                     'actual held receipt changed original enqueue/context identity')
-            atomic(directory / 'record-0.held.response', held_bytes(held))
+            atomic(directory / 'record-0.held.response', held_bytes(held, owner_profile=owner_profile))
             wait_file(directory / 'record-0.retired.json', bridge, running, args.timeout)
             retired = strict_json(directory / 'record-0.retired.json')
-            response = retired_bytes(retired, held)
+            response = retired_bytes(retired, held, owner_profile=owner_profile)
             require([digest(path) for path in guarded] == identities, 'original live source inputs changed during DUT execution')
             with SparseMemory(directory / 'union.memory') as before, SparseMemory(regular(results / 'record-0.memory')) as after:
-                verify(before, after, description, original, capture_data, observed)
+                require(verify_case(before, after, description, original, capture_data, observed) == command_id,
+                        'returned sample verification changed the command identity')
             require(bridge.poll() is None and running.poll() is None, 'owner did not remain live through sample/GNY2/guard oracles')
             atomic(directory / 'record-0.retired.response', response)
             atomic(directory / 'oracle-authorized.response', cleanup_authorization())
@@ -178,7 +171,6 @@ def main():
             qualified(output)
             atomic(directory / 'final-authorized.response', final_authorization())
             require(bridge.wait(timeout=args.timeout) == 0, 'producer rejected final observed cleanup')
-        print('actual sample packet returned images, full GNY2, physical guards and observed context cleanup: PASS; original ESSL provenance, clock and FPS require separate qualification')
     except BaseException:
         if bridge is not None and bridge.poll() is None:
             try:
@@ -212,6 +204,32 @@ def main():
                     shutil.rmtree(directory)
             finally:
                 signal.signal(signal.SIGTERM, previous)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--executor', type=Path, required=True)
+    parser.add_argument('--executor-qualification', type=Path, required=True)
+    parser.add_argument('--executor-checker', type=Path, required=True)
+    parser.add_argument('--executor-checker-python', type=Path, required=True)
+    parser.add_argument('--bridge-command', type=Path, required=True, help='argv JSON, {ipc} placeholder, no shell')
+    parser.add_argument('--bridge-container-name', help='exact owned Docker --name; exit is proved before deleting IPC')
+    parser.add_argument('--program', required=True, help='original OGNSF file; may contain {ipc} for a live compiler')
+    parser.add_argument('--case', choices=('sample', 'mask-depth', 'mask-depth-keep', 'mrt', 'varying', 'signedness', 'truncation'), required=True)
+    parser.add_argument('--timeout', type=int, default=3600)
+    args = parser.parse_args()
+
+    def verify_case(initial, returned, description, packets, capture_data, observed):
+        original, = packets
+        program(original, args.case)
+        require(description.get('caseId') == args.case, 'live driver changed source case identity')
+        command_id, _, _ = capture(capture_data, observed)
+        verify(initial, returned, description, original, capture_data, observed)
+        return command_id
+
+    run(args, owner_profile=SAMPLE_PROFILE, input_name='sample-inputs.json',
+        source_paths=(args.program,), verify_case=verify_case, context=(7, 8, 9))
+    print('actual sample packet returned images, full GNY2, physical guards and observed context cleanup: PASS')
 
 
 if __name__ == '__main__':

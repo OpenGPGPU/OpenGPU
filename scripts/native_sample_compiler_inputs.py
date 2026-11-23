@@ -63,7 +63,7 @@ def snapshot(mesa, build, libraries, gpu):
     return result
 
 
-def check_dependencies(cpu, source, bound, qualified_sources=None):
+def check_dependencies(cpu, source, bound, qualified_sources=None, *, expected_count=len(MESA_UNITS)+7):
     """Actual compiler-generated make dependencies must have been bound.
 
     -MMD excludes immutable image system headers. Fresh private scaffold and
@@ -72,7 +72,7 @@ def check_dependencies(cpu, source, bound, qualified_sources=None):
     source hash. Every other actual header/source must match the pre-build map.
     """
     dependencies = sorted(cpu.rglob('*.d'))
-    require(len(dependencies) == len(MESA_UNITS)+7, 'incomplete actual compiler dependency set')
+    require(len(dependencies) == expected_count, 'incomplete actual compiler dependency set')
     observed = set()
     for path in dependencies:
         text = path.read_text().replace('\\\n', '')

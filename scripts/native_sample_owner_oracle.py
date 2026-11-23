@@ -166,6 +166,23 @@ def sample_value(case, slot, sample, samples):
     return (.25,) * 4
 
 
+def verify_guards(initial, returned, allowed):
+    allowed = sorted(allowed)
+    require(all(a[1] <= b[0] for a, b in zip(allowed, allowed[1:])), 'overlapping output/work views')
+    require(initial.ranges == returned.ranges, 'returned memory replaced original physical allocations')
+    for begin, end, _ in initial.ranges:
+        for address in range(begin, end, 4096):
+            size = min(4096, end - address)
+            before, after = initial.read(address, size), returned.read(address, size)
+            kept = bytearray(b'\x01' * size)
+            for first, last in allowed:
+                lo, hi = max(address, first) - address, min(address + size, last) - address
+                if lo < hi:
+                    kept[lo:hi] = b'\x00' * (hi - lo)
+            require(not any(before[i] != after[i] for i in range(size) if kept[i]),
+                    'original source/program/PTE/descriptor/backing guard changed')
+
+
 def verify(initial, returned, description, program_data, capture_data, observed_profile):
     required_flags(description, dict(schema='opengpu-native-sample-inputs-v1', gpuExecuted=False,
         width=4, height=4, context=7, **{'pass': 8}, generation=9,
@@ -272,18 +289,8 @@ def verify(initial, returned, description, program_data, capture_data, observed_
     if returned is not None:
         from native_sample_gny2_oracle import verify as verify_gny2
         verify_gny2(returned.read(pa, 16384), command, samples)
-    allowed.sort()
-    require(all(a[1] <= b[0] for a, b in zip(allowed, allowed[1:])), 'overlapping output/work views')
     if returned is None:
+        allowed.sort()
+        require(all(a[1] <= b[0] for a, b in zip(allowed, allowed[1:])), 'overlapping output/work views')
         return allowed
-    for begin, end, _ in initial.ranges:
-        for address in range(begin, end, 4096):
-            size = min(4096, end - address)
-            before, after = initial.read(address, size), returned.read(address, size)
-            kept = bytearray(b'\x01' * size)
-            for first, last in allowed:
-                lo, hi = max(address, first) - address, min(address + size, last) - address
-                if lo < hi:
-                    kept[lo:hi] = b'\x00' * (hi - lo)
-            require(not any(before[i] != after[i] for i in range(size) if kept[i]),
-                    'original source/program/PTE/descriptor/backing guard changed')
+    verify_guards(initial, returned, allowed)

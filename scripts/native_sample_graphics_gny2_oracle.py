@@ -209,17 +209,31 @@ def _layout():
     return classify_layout(json.loads(CATALOG.read_text())['completion'])
 
 
-@lru_cache(maxsize=128)
-def _expected_words(command_id, context):
-    expected = values(command_id, context)
+def completion_words(expected):
     words = [0]*4096
     words[:3] = [0x474e5902, 16384, 2]
-    for name, word, bits, signed in _layout():
-        value = 0 if any(name.startswith(prefix) for prefix in ZERO_SNAPSHOTS) else expected[name]
-        require(0 <= value < 1 << (bits-int(signed)), 'expected field does not fit: '+name)
+    layout = _layout()
+    known = {name for name, *_ in layout if not name.startswith(tuple(ZERO_SNAPSHOTS))}
+    require(expected.keys() == known, 'incomplete GNY2 expected fields')
+    for name, word, bits, signed in layout:
+        value = 0 if name.startswith(tuple(ZERO_SNAPSHOTS)) else expected[name]
+        require(type(value) is int and 0 <= value < 1 << (bits-int(signed)),
+                'expected field does not fit: '+name)
         for offset in range((bits+31)//32):
             words[word+offset] = value >> (32*offset) & 0xffffffff
     return tuple(words)
+
+
+@lru_cache(maxsize=128)
+def _expected_words(command_id, context):
+    return completion_words(values(command_id, context))
+
+
+def verify_words(data, expected, *, label):
+    require(type(data) is bytes and len(data) == 16384, 'GNY2 must be exactly 16384 bytes')
+    for index, (got, want) in enumerate(zip(struct.unpack('<4096I', data), expected, strict=True)):
+        if got != want:
+            raise ValueError('%s GNY2 word %d differs (%#x, expected %#x)' % (label, index, got, want))
 
 
 def verify(data, *, command_id, context):
@@ -231,7 +245,4 @@ def verify(data, *, command_id, context):
     require(type(data) is bytes and len(data) == 16384, 'GNY2 must be exactly 16384 bytes')
     # Validate before the cache: Python bool/int equality must not alias keys.
     values(command_id, context)
-    expected = _expected_words(command_id, context)
-    for index, (got, want) in enumerate(zip(struct.unpack('<4096I', data), expected)):
-        if got != want:
-            raise ValueError('ordinary112 GNY2: word %d: %#x != %#x' % (index, got, want))
+    verify_words(data, _expected_words(command_id, context), label='ordinary112')
