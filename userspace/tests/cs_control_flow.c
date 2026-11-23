@@ -8,6 +8,7 @@
 #undef main
 #include "cs_glsl_frontend.h"
 #include "tgsi/tgsi_text.h"
+#include "frontend/api.h"
 
 static const char *directory;
 static const char *capture_name;
@@ -272,6 +273,14 @@ int main(int argc,char **argv)
     cu_directory=getenv("OPENGPU_CF_ARTIFACTS");submission_capture=capture_submission;
     features|=OPENGPU_DRIVER_FEATURE_COMPUTE_UNIFORMS;
     struct pipe_screen *s=opengpu_drm_screen_create(7,NULL);assert(s && !s->get_param(s,PIPE_CAP_COMPUTE));
+    struct st_manager manager = {.screen=s};
+    struct st_config_options options = {0};
+    int gl_core, gl_compat, es1, es2;
+    assert(!getenv("MESA_GL_VERSION_OVERRIDE") && !getenv("MESA_GLES_VERSION_OVERRIDE"));
+    st_api_query_versions(&manager,&options,&gl_core,&gl_compat,&es1,&es2);
+    assert(gl_core < 43 && gl_compat < 43 && es2 >= 20 && es2 < 31);
+    printf("Mesa DRI version query: GL core %d, compatibility %d, ES1 %d, ES %d\n",
+           gl_core,gl_compat,es1,es2);
     struct pipe_context *p=s->context_create(s,NULL,0);assert(p);
     definition_tests(p);
     struct pipe_resource *out[4],*ub[36]={0};

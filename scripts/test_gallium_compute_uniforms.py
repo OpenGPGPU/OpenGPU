@@ -472,6 +472,13 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
             "-Wl,--wrap=st_get_texture_sampler_view_from_stobj"] + texture_objects +
             ["-o", selected], "select-actual-texture-state-tracker")
         objects.append(selected)
+    if control_flow:
+        # Select the DRI version-query path before resolving the standalone
+        # compiler's libraries. Full GL context objects need a separate fixture.
+        versions = out / "actual-mesa-versions.o"
+        run(cc + ["-r", "-nostdlib", "-Wl,--gc-sections", "-Wl,-u,st_api_query_versions",
+                  mb / "src/mesa/libmesa.a", "-o", versions], "select-actual-mesa-versions")
+        objects.append(versions)
     if not all(p.is_file() for p in libraries):
         raise RuntimeError("configured real Mesa static libraries required")
     if shared_memory or shared_publication:
