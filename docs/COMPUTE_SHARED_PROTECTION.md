@@ -114,7 +114,12 @@ The complete-owner controller binds each shared-atomic run to its selected
 source by checking the exact operation and signedness or the address-case
 name. It rechecks the captured command, initial memory and byte oracle
 through execution and cleanup. The CPU qualifier regression exercises the
-case handoff and rejects substituted cases or a changed oracle.
+case handoff and rejects substituted cases or a changed oracle. The
+sanitizer-enabled Mesa/Linux CPU capture also passed the controller checks
+for `shared-dynamic-1`, `shared-dynamic-i-1` and
+`shared-address-cas-miss` using the sample profile. Use the capture procedure
+in [the complete owner executor guide](COMPLETE_OWNER_COMPUTE_EXECUTOR.md)
+to reproduce those three captures.
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_qualify_compute_owner.py
