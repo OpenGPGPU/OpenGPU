@@ -253,20 +253,37 @@ int main(int argc,char **argv)
             false,false,false,true,false,false,false,false,false,cfg.base,cfg.bytes,cfg.lanes,false,true));
         assert(!admitted(&actual,cfg.base,cfg.bytes,cfg.lanes));
         unsigned params=0,atomics=0,stores=0,loads=0,barriers=0,scopes=0;
+        unsigned scope=0, first_barrier=0, last_barrier=0;
         for(unsigned i=0;i<actual.words;i++) {
             uint32_t w=actual.code[i];unsigned fn=w>>26;
             params+=(w&127)==0x2b && fn==30;
             atomics+=(w&127)==0x2b && (fn==31 || fn==32);
-            stores+=(w&127)==0x27;loads+=(w&127)==0x07;barriers+=w==0xb;
-            scopes+=(w&0x707f)==0x305b;
+            stores+=(w&127)==0x27;loads+=(w&127)==0x07;
+            if(w==0x0000000bu){
+                if(!barriers)first_barrier=i;
+                last_barrier=i;
+                barriers++;
+            }
+            if((w&0x707fu)==0x305bu){scope=i;scopes++;}
         }
         assert(params==2 && atomics==2 && stores==32 && loads==2 && barriers==2 && scopes==1);
+        unsigned join=scope+opengpu_shader_simt_displacement(actual.code[scope])/4;
+        assert(first_barrier<scope && join>scope+2 && join<last_barrier && actual.code[join]==OPENGPU_SHADER_SIMT_JOIN);
+        if(variant==1){
+            struct opengpu_cs_program divergent=actual;
+            divergent.code[last_barrier]=0x0330000fu;
+            divergent.code[scope+2]=0x0000000bu;
+            assert(!opengpu_compute_shader_validate_words_shared_atomics(divergent.code,divergent.words,12,128,
+                false,false,false,true,false,false,false,false,false,cfg.base,cfg.bytes,cfg.lanes,false,true));
+        }
         printf("SHARED_DYNAMIC_COMPILER actualESSL310 operation=%u words=%u items=128 sharedBytes=16384 activeScope=1 compilerOnly=true noGPU=true\n",operation,actual.words);
         preserve_program(argv[1],name,&actual);cs_frontend_destroy(dynamic);
     }
-    for(unsigned n=0;n<3;n++) {
-        const char *name[]={"dynamic-no-barrier","dynamic-uninitialized-tail","dynamic-conditional-init"};
-        void *negative=front(argv[1],name[n],"shared-dynamic-negative");
+    const char *dynamic_negative[]={"dynamic-no-barrier","dynamic-uninitialized-tail","dynamic-conditional-init",
+        "dynamic-divergent-rendezvous"};
+    for(unsigned n=0;n<sizeof(dynamic_negative)/sizeof(dynamic_negative[0]);n++) {
+        const char *name=dynamic_negative[n];
+        void *negative=front(argv[1],name,"shared-dynamic-negative");
         struct opengpu_cs_shared cfg=profile;cfg.required_bytes=cs_frontend_shared_bytes(negative);
         reject_shared(cs_frontend_tokens(negative),&cfg);cs_frontend_destroy(negative);
     }

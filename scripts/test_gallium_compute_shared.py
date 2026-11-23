@@ -52,6 +52,8 @@ def write_sources(out):
         (out / name.replace('shared-atomic-', 'shared-dynamic-')).write_text(dynamic)
         if op == 1 and not signed:
             (out / 'dynamic-no-barrier.comp').write_text(dynamic.replace('memoryBarrierShared();barrier();', '', 1))
+            (out / 'dynamic-divergent-rendezvous.comp').write_text(
+                dynamic.replace('if((id&1u)==0u){first=', 'if((id&1u)==0u){barrier();first=', 1))
             (out / 'dynamic-uninitialized-tail.comp').write_text(dynamic.replace(initialize,
                 'data[id]=0x80000000u;\n', 1))
             (out / 'dynamic-conditional-init.comp').write_text(dynamic.replace(initialize,
