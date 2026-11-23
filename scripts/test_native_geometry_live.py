@@ -91,7 +91,9 @@ def check_return_oracle(directory, memory, snapshot, description, outputs, progr
         for kind in ('image', 'resolve'):
             for layer in range(2):
                 overlay(address(mrt, kind, layer), layer_bytes(mrt, layer, resolve=(kind == 'resolve')))
-    overlay(outputs.completion, struct.pack('<4096I', *geometry_completion(outputs.command_id)))
+    completion = geometry_completion(outputs.command_id)
+    assert completion[5] == 0x1400
+    overlay(outputs.completion, struct.pack('<4096I', *completion))
     returned = directory / 'oracle-return.memory'
     returned.write_bytes(candidate)
     with SparseMemory(returned) as result:
@@ -100,6 +102,7 @@ def check_return_oracle(directory, memory, snapshot, description, outputs, progr
     for changed, reason in (
             (address(2, 'image', 1) + 32 + 12, 'geometry image MRT 2 layer 1'),
             (outputs.completion, 'geometry GNY2 word 0'),
+            (outputs.completion + 5 * 4 + 1, 'geometry GNY2 word 5'),
             (address(0, 'image', 0) + 1024, 'guard changed')):
         index = snapshot.pages[changed & ~4095] + (changed & 4095)
         candidate[index] ^= 1

@@ -53,10 +53,11 @@ def layer_bytes(mrt, layer, *, resolve=False):
 def geometry_completion(command_id):
     expected = values(command_id, 7)
     lines = record_layout()[1]
-    # Scan and execute one GND2, with a GFS and GNG1 fetch on each pass.
+    # Fetch GNJ2 and GNF3 once. Preflight fills the GFS cache for the sole
+    # GND2, and execution reuses it. GNG1 is fetched in both traversals.
     # The two clipped parts share a tile chain, traversed once for each layer.
     expected.update({
-        'descriptorReadBytes': 512 + 2048 + 2 * (512 + 1024),
+        'descriptorReadBytes': 512 + 2048 + 512 + 2 * 1024,
         'frame.submittedGeometryPrimitives': 1,
         'frame.completedGeometryInvocations': 1,
         'frame.emittedGeometryPrimitives': 1,
