@@ -815,5 +815,8 @@ The sanitizer-enabled `test_gallium_compute_control_flow.py` run calls the
 pinned Mesa state tracker's DRI version query using the real OpenGPU Gallium
 screen and modeled Linux queries. With Mesa version overrides unset, it
 reports no desktop core version, desktop compatibility 1.3, ES1 1.1 and
-ES 2.0. This exercises capability calculation at the DRI boundary. Public EGL
-context creation and GL extension strings remain to be verified.
+ES 2.0. Mesa's GL extension-string generator also omits
+`GL_ARB_compute_shader` from the desktop compatibility and GLES2 profiles.
+The test covers Mesa capability calculation and string generation. Public
+EGL context creation and GL queries over the live DRI driver remain to be
+verified.
