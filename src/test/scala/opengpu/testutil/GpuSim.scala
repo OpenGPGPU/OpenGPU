@@ -1,7 +1,7 @@
 package opengpu.testutil
 
 import chisel3.RawModule
-import chisel3.simulator.{PeekPokeAPI, Simulator}
+import chisel3.simulator.{PeekPokeAPI, Randomization, Settings, Simulator}
 import svsim.CommonCompilationSettings
 import svsim.verilator.Backend
 
@@ -49,6 +49,9 @@ import scala.jdk.CollectionConverters._
   * With caching off,
   * `opengpu.simWorkspace` can isolate temporary files; requested options still
   * apply. Without these properties, the normal flat cache path is unchanged.
+  * `opengpu.simBackend=flashsim` selects the synchronous FlashSim backend.
+  * It uses the same Chisel test body, the staged assertion layers and the
+  * installed FlashSim model compiler.
   */
 object GpuSim extends PeekPokeAPI {
 
@@ -89,7 +92,7 @@ object GpuSim extends PeekPokeAPI {
   private val slots = new AtomicInteger(0)
 
   // The shim also keeps svsim's exported DPI names intact when caching is off.
-  private val backend: Backend = locateVerilator() match {
+  private lazy val backend: Backend = locateVerilator() match {
     case Some(verilator) =>
       for (tool <- (if (compilerCache.nonEmpty) Seq("ccache", "python3")
                     else if (separateBuild) Seq("python3") else Seq.empty)) {
@@ -119,6 +122,14 @@ object GpuSim extends PeekPokeAPI {
     val backendSpecificCompilationSettings: Backend.CompilationSettings = new Backend.CompilationSettings()
   }
 
+  private final class FlashSimRunner(val workspacePath: String) extends Simulator[FlashSimBackend] {
+    val backend = new FlashSimBackend
+    val tag = "flashsim"
+    val commonCompilationSettings: CommonCompilationSettings = CommonCompilationSettings.default
+    val backendSpecificCompilationSettings = FlashSimCompilationSettings(
+      buildJobs.getOrElse(1), sys.props.getOrElse("opengpu.flashsimShards", "0").toInt)
+  }
+
   /** Simulate `module`, handing `body` the elaborated module exactly like
     * `chisel3.simulator.EphemeralSimulator.simulate`.
     */
@@ -126,9 +137,20 @@ object GpuSim extends PeekPokeAPI {
     Files.createDirectories(runDirectory)
     val workspace = runDirectory.resolve(s"slot-${slots.getAndIncrement()}")
     try {
-      new Runner(workspace.toString)
-        .simulate(module)(simulated => body(simulated.wrapped))
-        .result
+      sys.props.getOrElse("opengpu.simBackend", "verilator") match {
+        case "verilator" =>
+          new Runner(workspace.toString)
+            .simulate(module)(simulated => body(simulated.wrapped))
+            .result
+        case "flashsim" =>
+          new FlashSimRunner(workspace.toString)
+            .simulate(module,
+              firtoolOpts = Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"),
+              settings = Settings.defaultRaw[T].copy(randomization = Randomization.uninitialized)
+            )(simulated => body(simulated.wrapped))
+            .result
+        case other => throw new IllegalArgumentException(s"Unknown OpenGPU simulation backend $other")
+      }
     } finally {
       delete(workspace)
     }
