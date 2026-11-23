@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "opengpu_native_graphics.h"
+#include "opengpu_native_graphics_internal.h"
 #include "opengpu_internal.h"
 #include "pipe/p_context.h"
 #include <errno.h>

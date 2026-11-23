@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* Native graphics uniform loads retain the existing GUR1/GUB1 checked service.
  * SoA input/output access stays inside the native stage's private payload. */
+#include "opengpu_native_tess_uniform_emit.h"
 #include "opengpu_native_uniform_emit.h"
 #include "pipe/p_defines.h"
 #include "tgsi/tgsi_parse.h"
