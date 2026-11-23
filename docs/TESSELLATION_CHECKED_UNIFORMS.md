@@ -312,6 +312,43 @@ sbt -Dopengpu.simBackend=flashsim -Dopengpu.flashsimPython="$PYTHON" \
   'testOnly opengpu.system.TessellationNativeSequenceReaderSpec opengpu.system.TessellationNativeTriangleSequenceReaderSpec opengpu.system.TessellationNativeQuadSequenceReaderSpec'
 ```
 
+### Complete checked-uniform owner qualification
+
+The `two-cu-vga60-owner-v2-tessellation-uniform-stage` factory selects the full
+640×480 dual-CU float owner and enables checked TCS/TES uniforms on all three
+domains. The preparation guard requires the dedicated factory identity, the
+enabled service and the exact 112-word image-float MMIO contract. The
+source-bound executor builds the original float native-sample probe against
+this factory's RTL and verifies its 112 discovery words and five auxiliary
+registers.
+
+The Scala factory description and Python manifest and probe guards passed.
+A staged RTL emission experiment also passed source-set and assertion-binding
+checks for 2,331 inputs. The emitted hierarchy contains two physical CUs and
+all three domain uniform services. Separating Chisel FIRRTL serialization and
+firtool 1.158.0 reduced the highest measured process-group memory from 10.42
+GiB at the original run's guard stop to 5.25 GiB for a completed staged run.
+The two stages took 74.4 and 200.2 seconds. The staged experiment supplied the
+factory's SRAM model source explicitly after firtool reported an unprocessed
+annotation for it. It has yet to be integrated into the preparation command.
+
+Complete FlashSim model generation, native linking and the actual MMIO probe
+for this factory remain pending. With the pinned SRAM submodule initialized
+and the FlashSim/CIRCT environment above, use a new `OWNER` directory inside
+this checkout's `.artifacts`.
+
+```sh
+"$PYTHON" -B scripts/prepare_native_owner_flashsim.py --stage prepare \
+  --tessellation-uniforms --output "$OWNER"
+"$PYTHON" -B scripts/prepare_native_owner_flashsim.py --stage generate \
+  --flashsim-dir "$FLASHSIM_DIR" --output "$OWNER" --shards 64
+"$PYTHON" -B scripts/prepare_owner_executor.py --stage build --backend flashsim \
+  --kind native-sample --owner-output "$OWNER" --flashsim-dir "$FLASHSIM_DIR" \
+  --shards 64 --jobs 4 --precompiled-header --conservative-alias
+"$PYTHON" -B scripts/prepare_owner_executor.py --stage probe --backend flashsim \
+  --kind native-sample --qualification "$OWNER/executors/native-sample/qualification.json"
+```
+
 ### Three-domain AXI host execution
 
 Both FlashSim cases passed with the adapter's compiler flags on two physical
