@@ -162,14 +162,18 @@ sources together; place private output before the frozen dependencies. The
 current `NativeTypedGraphicsDescriptors` and old ABI callers are necessary:
 their stale compiled method signatures cannot be reused. Use the same owned
 process-group ceilings described above.
+Set up the FlashSim and CIRCT environment from the physical CU checks below
+and set `PYTHON` to the Python executable used by FlashSim.
 
 ```sh
 P15_CORE=(
-  src/main/scala/opengpu/graphics/{NativeTypedGraphicsDescriptors,NativeUniformCapabilities,ShaderUniformResources,ShaderUniformLoadUnit,ShaderUniformExecuteUnit}.scala
-  src/main/scala/opengpu/system/{TessellationUniformCuService,TessellationUniformSequenceLayout,TessellationCuIsolineSystemClient,TessellationCuTriangleSystemClient,TessellationCuQuadSystemClient,TessellationNativeSequenceReader,TessellationNativeTriangleSequenceReader,TessellationNativeQuadSequenceReader}.scala
+  src/main/scala/opengpu/graphics/host/NativeTypedGraphicsDescriptors.scala
+  src/main/scala/opengpu/graphics/shader/{NativeUniformCapabilities,ShaderUniformResources,ShaderUniformLoadUnit,ShaderUniformExecuteUnit}.scala
+  src/main/scala/opengpu/system/tessellation/{TessellationUniformCuService,TessellationUniformSequenceLayout,TessellationCuIsolineSystemClient,TessellationCuTriangleSystemClient,TessellationCuQuadSystemClient,TessellationNativeSequenceReader,TessellationNativeTriangleSequenceReader,TessellationNativeQuadSequenceReader}.scala
   src/main/scala/opengpu/elaboration/{EmitTessellationUniformAbi,EmitTessellationUniformSequenceAbi,EmitTessellationNativeSequenceAbi,EmitTessellationNativeTriangleSequenceAbi,EmitTessellationNativeQuadSequenceAbi}.scala
   src/test/scala/opengpu/graphics/{WindowPrimitiveRecordsSpec,ShaderUniformLoadUnitSpec,ShaderUniformExecuteUnitSpec}.scala
   src/test/scala/opengpu/system/{TessellationUniformCuServiceSpec,TessellationUniformAbiSpec,TessellationCuIsolineSystemClientSpec,TessellationNativeSequenceReaderSpec,TessellationNativeTriangleSequenceReaderSpec,TessellationNativeQuadSequenceReaderSpec}.scala
+  src/test/scala/opengpu/testutil/{GpuSim,FlashSimBackend}.scala
 )
 JAVA_LIMITS=(-Xmx128m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m
   -XX:ActiveProcessorCount=1 -XX:+UseSerialGC)
@@ -177,7 +181,8 @@ java "${JAVA_LIMITS[@]}" -Dscala.usejavacp=true -cp "$SCALA_COMPILER_CP" \
   scala.tools.nsc.Main -classpath "$FROZEN_CP" -Xplugin:"$CHISEL_PLUGIN_JAR" \
   -language:reflectiveCalls -Ymacro-annotations -d "$GPU_TMP/classes" "${P15_CORE[@]}"
 P15_CP="$GPU_TMP/classes:$FROZEN_CP"
-SIM_FLAGS=(-Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=0
+SIM_FLAGS=(-Dopengpu.simBackend=flashsim -Dopengpu.flashsimPython="$PYTHON"
+  -Dopengpu.simJobs=1
   -Dopengpu.simCache=off -Dopengpu.simWorkspace="$GPU_TMP/sim")
 for filter in 'full sixteen-lane' 'distinct TCS/TES'; do
   java "${JAVA_LIMITS[@]}" "${SIM_FLAGS[@]}" -cp "$P15_CP" \
@@ -214,9 +219,11 @@ Reproduce each case separately under the same 180-second process ceiling:
 
 ```sh
 P15_RETIREMENT=(
-  src/main/scala/opengpu/graphics/{NativeTypedGraphicsDescriptors,ShaderUniformResources,ShaderUniformLoadUnit,ShaderUniformExecuteUnit}.scala
-  src/main/scala/opengpu/system/{TessellationUniformCuService,TessellationCuIsolineSystemClient,TessellationCuTriangleSystemClient,TessellationCuQuadSystemClient}.scala
+  src/main/scala/opengpu/graphics/host/NativeTypedGraphicsDescriptors.scala
+  src/main/scala/opengpu/graphics/shader/{ShaderUniformResources,ShaderUniformLoadUnit,ShaderUniformExecuteUnit}.scala
+  src/main/scala/opengpu/system/tessellation/{TessellationUniformCuService,TessellationCuIsolineSystemClient,TessellationCuTriangleSystemClient,TessellationCuQuadSystemClient}.scala
   src/test/scala/opengpu/graphics/TessellationSystemClientRetirementSpec.scala
+  src/test/scala/opengpu/testutil/{GpuSim,FlashSimBackend}.scala
 )
 java "${JAVA_LIMITS[@]}" -Dscala.usejavacp=true -cp "$SCALA_COMPILER_CP" \
   scala.tools.nsc.Main -classpath "$FROZEN_CP" -Xplugin:"$CHISEL_PLUGIN_JAR" \
@@ -238,7 +245,9 @@ enable or dispatch that workflow.
 
 ```sh
 sbt Test/compile
-sbt 'testOnly opengpu.graphics.ShaderUniformLoadUnitSpec opengpu.graphics.ShaderUniformExecuteUnitSpec opengpu.system.TessellationUniformAbiSpec opengpu.system.TessellationUniformCuServiceSpec opengpu.system.TessellationNativeSequenceReaderSpec opengpu.system.TessellationNativeTriangleSequenceReaderSpec opengpu.system.TessellationNativeQuadSequenceReaderSpec opengpu.system.TessellationCuIsolineSystemClientSpec'
+sbt -Dopengpu.simBackend=flashsim -Dopengpu.flashsimPython="$PYTHON" \
+  -Dopengpu.simJobs=1 \
+  'testOnly opengpu.graphics.ShaderUniformLoadUnitSpec opengpu.graphics.ShaderUniformExecuteUnitSpec opengpu.system.TessellationUniformAbiSpec opengpu.system.TessellationUniformCuServiceSpec opengpu.system.TessellationNativeSequenceReaderSpec opengpu.system.TessellationNativeTriangleSequenceReaderSpec opengpu.system.TessellationNativeQuadSequenceReaderSpec opengpu.system.TessellationCuIsolineSystemClientSpec'
 ```
 
 The added tests cover both stages' full block/default capacity and upper private
