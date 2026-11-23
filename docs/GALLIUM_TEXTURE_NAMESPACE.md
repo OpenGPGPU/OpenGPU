@@ -111,3 +111,9 @@ The RTL qualification is excluded from default discovery. It requires the
 explicit property and actual compiler/publication inputs; missing files and
 failed assertions fail the command. Delete generated inputs, private builds,
 simulation models and logs after their active validation use ends.
+
+The sanitizer-enabled namespace regression also checks TGSI buffer texture
+fetch, buffer image load and buffer image store with invocation-dependent
+coordinates. Each operation emits with a fixed resource binding. The same
+operation using an indirect sampler or image binding is rejected and leaves
+the caller's output program untouched.
