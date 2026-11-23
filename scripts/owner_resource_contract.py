@@ -34,6 +34,8 @@ IMAGE_FLOAT_PROFILE = PROFILE + '-image-float-stage'
 IMAGE_FLOAT_STAGE = 'geometry-compute-sample-image-float'
 IMAGE_FLOAT_WORDS = [dict(word, value=0x3fffff if word['address'] == 0x368 else word['value'])
                      for word in SAMPLE_WORDS]
+TESSELLATION_UNIFORM_PROFILE = PROFILE + '-tessellation-uniform-stage'
+TESSELLATION_UNIFORM_STAGE = IMAGE_FLOAT_STAGE + '-tessellation-uniform'
 SAMPLE_FACTORY_CONTRACTS = {
     SAMPLE_PROFILE: (SAMPLE_STAGE, SAMPLE_WORDS),
     IMAGE_FLOAT_PROFILE: (IMAGE_FLOAT_STAGE, IMAGE_FLOAT_WORDS),

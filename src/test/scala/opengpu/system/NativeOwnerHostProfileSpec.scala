@@ -5,6 +5,17 @@ import opengpu.graphics._
 import org.scalatest.flatspec.AnyFlatSpec
 
 class NativeOwnerHostProfileSpec extends AnyFlatSpec {
+  it should "prepare checked tessellation uniforms on the full two-CU float owner" in {
+    val float = OwnerResourceProfile.imageFloatStage
+    val uniform = OwnerResourceProfile.tessellationUniformStage
+    assert(uniform.tessellationUniforms && uniform.copy(tessellationUniforms = false) == float)
+    assert(uniform.requiredDiscovery == float.requiredDiscovery)
+    val manifest = PrepareOwnerResourceImageFloatHost.manifest(false, tessellationUniforms = true)
+    assert(manifest.contains(s""""profile":"${OwnerResourceProfile.tessellationUniformStageId}""""))
+    assert(manifest.contains("\"tessellationUniforms\":true"))
+    assert(!PrepareOwnerResourceImageFloatHost.manifest(false).contains("\"tessellationUniforms\""))
+  }
+
   it should "add R32F exchange under a distinct full sample owner identity without reducing any resource" in {
     val before=OwnerResourceProfile.sampleStage
     val p=OwnerResourceProfile.imageFloatStage

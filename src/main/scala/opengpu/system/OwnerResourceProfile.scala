@@ -64,6 +64,12 @@ object OwnerResourceProfile {
       sampleStage.requiredDiscovery.filterNot(_._1 == 0x368),
     "float exchange stage preserves every complete sample owner resource")
 
+  val tessellationUniformStageId = id + "-tessellation-uniform-stage"
+  val tessellationUniformStageName = imageFloatStageName + "-tessellation-uniform"
+  val tessellationUniformStage: NativeAlignmentHostConfig = imageFloatStage.copy(tessellationUniforms = true)
+  require(tessellationUniformStage.requiredDiscovery == imageFloatStage.requiredDiscovery,
+    "the checked tessellation uniform factory uses the existing discovery contract")
+
   require(target.requiredDiscovery.size == 104 &&
     target.requiredDiscovery.toMap.apply(0x368) == 0xfffff &&
     target.native.transformFeedback && target.native.engines == 4 &&
