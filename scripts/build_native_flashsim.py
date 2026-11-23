@@ -157,7 +157,8 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
     executable = shutil.which(compiler)
     if not executable:
         raise ValueError("C++ compiler not found: " + compiler)
-    version = subprocess.check_output([compiler, "--version"], text=True)
+    # GCC reports the invoked executable name as part of its version.
+    version = subprocess.check_output([str(Path(executable).resolve()), "--version"], text=True)
     flags = [compiler, "-std=gnu++17", "-fPIC", "-fPIE", "-w"]
     if "clang" in version.lower():
         flags += ["-Wno-parentheses-equality", "-fbracket-depth=4096"]
