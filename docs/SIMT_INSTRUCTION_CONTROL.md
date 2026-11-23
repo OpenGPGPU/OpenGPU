@@ -113,3 +113,12 @@ and four-SSBO limits and, for uniform cases, the 13 constant-buffer slots and
 4096-byte default view. The full float-profile CPU capture passed these checks
 for storage, masked storage, uniform-bound and indexed-uniform loops. The
 public compute feature remains disabled while the wider API contract is open.
+
+At `2614c2b65`, all nine cases in `COMPUTE_LOOP_CASES` passed the original
+Mesa/Linux CPU capture using the 112-word float-profile fixture. The sanitized
+capture parser accepted each submission. The independent byte oracle rejected
+unchanged output memory for every case. Reuse the
+[complete owner CPU capture procedure](COMPLETE_OWNER_COMPUTE_EXECUTOR.md)
+with `IMAGE_FLOAT_PROFILE`, `IMAGE_FLOAT_STAGE` and `IMAGE_FLOAT_WORDS` in the
+profile wire. Compile the parser with `-DOPENGPU_OWNER_IMAGE_FLOAT_STAGE=1`.
+Run each case in `COMPUTE_LOOP_CASES` with `--capture-only`.
