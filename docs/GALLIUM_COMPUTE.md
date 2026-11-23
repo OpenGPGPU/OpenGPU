@@ -817,9 +817,7 @@ screen and modeled Linux queries. With Mesa version overrides unset, it
 reports no desktop core version, desktop compatibility 1.3, ES1 1.1 and
 ES 2.0. Mesa's GL extension-string generator also omits
 `GL_ARB_compute_shader` from the desktop compatibility and GLES2 profiles.
-The test covers Mesa capability calculation and string generation. Public
-EGL context creation and GL queries over the live DRI driver remain to be
-verified.
+The test covers Mesa capability calculation and extension-string generation.
 
 The framebuffer-blit guest binary has a capability-only mode. It opens the
 OpenGPU GBM device, checks that its EGL config offers GLES 2 and creates a
@@ -835,13 +833,17 @@ reported OpenGL ES 2.0. The probe, the staged DRI library and the kernel module
 matched the fresh AArch64 build. The guest powered down normally and QEMU exited
 zero. The complete 640×480 owner has its own execution qualification.
 
-Use the following RTL emission profile for the public capability probe.
-Generate the FlashSim model with `flashsim arti-model --frontend circt --assertions`
-and link it into the ARTI QEMU build.
+Select CIRCT and its loader environment as described in the
+[FlashSim compiler prerequisite](OWNER_FULL_FACTORY_REPRODUCTION.md#flashsim-compiler-prerequisite).
+Use the following RTL emission and FlashSim profiles for the capability probe,
+then link the model into the ARTI QEMU build.
 
 ```sh
 sbt -J-Xmx7G -J-XX:ActiveProcessorCount=2 \
   "runMain opengpu.elaboration.EmitGpuHostSystemAxi $RTL --frag-core --vert-core --width 64 --height 64 --compute-units 2 --cu-lanes 16 --cu-warps 8 --memory-axi-data-bytes 32"
+PYTHONPATH="$FLASHSIM_DIR" FLASHSIM_PREFLATTEN_WIRES=1 FLASHSIM_GC_POLICY=defer \
+  FLASHSIM_COMMIT_PARTS=8 python3 -B -m flashsim arti-model \
+  "$RTL/GpuHostSystemAxi.sv" -o "$MODEL" --frontend circt --assertions
 ```
 
 Install the matching OpenGPU DRI libraries and probe in the guest and leave the
