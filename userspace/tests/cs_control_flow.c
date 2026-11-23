@@ -405,10 +405,10 @@ int main(int argc,char **argv)
         initialize_outputs(out);
         struct pipe_grid_info loop_grid = {.grid = {1, 1, 1}, .block = {8, 4, 4}};
         unsigned before = computes;
-        if (cu_directory && k < 7) {
+        if (cu_directory) {
             cu_name = loops[k];
             cu_frontend = f;
-            cu_epoch = 0;
+            cu_epoch = k == 7 ? 23 : 0;
         }
         p->launch_grid(p, &loop_grid);
         cu_name = NULL;
@@ -450,8 +450,8 @@ int main(int argc,char **argv)
         printf("CF actual Mesa %s: %u words, Linux validation and CPU output PASS\n", loops[k], loop_code.words);
     }
     if (cu_directory) {
-        assert(cu_captures == 12);
-        puts("CF native exports:12 original frontend/callback/validator submissions (GPU UNRUN)");
+        assert(cu_captures == 13);
+        puts("CF native exports:13 original frontend/callback/validator submissions (GPU UNRUN)");
     }
     const char *negative[]={"too-deep"};
     for(unsigned k=0;k<sizeof(negative)/sizeof(negative[0]);k++){

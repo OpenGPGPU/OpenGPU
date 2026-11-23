@@ -36,8 +36,8 @@ private class GalliumControlHarness extends Module {
 }
 
 private object GalliumControlArtifacts {
-  val loopWords=Map("constant-loop"->73,"dynamic-loop"->81,"loop-break"->89,"storage-loop"->86,"nested-loop"->110,"continue-loop"->97,"masked-storage-loop"->116)
-  val names=Seq("full128","nested","masked","selected-fault","fresh125","constant-loop","dynamic-loop","loop-break","storage-loop","nested-loop","continue-loop","masked-storage-loop")
+  val loopWords=Map("constant-loop"->73,"dynamic-loop"->81,"loop-break"->89,"storage-loop"->86,"nested-loop"->110,"continue-loop"->97,"masked-storage-loop"->116,"indexed-uniform-loop"->191)
+  val names=Seq("full128","nested","masked","selected-fault","fresh125","constant-loop","dynamic-loop","loop-break","storage-loop","nested-loop","continue-loop","masked-storage-loop","indexed-uniform-loop")
   def sha(p: Path): String=MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(p))
     .map(b=>f"${b&255}%02x").mkString
   def properties(p: Path): Properties={
@@ -55,6 +55,7 @@ private object GalliumControlArtifacts {
     val healthy=name!="selected-fault"
     val loop=loopWords.contains(name)
     val dynamicLoop=name=="dynamic-loop"
+    val indexedLoop=name=="indexed-uniform-loop"
     val maskedStorageLoop=name=="masked-storage-loop"
     val storageLoop=name=="storage-loop" || maskedStorageLoop
     val nestedLoop=name=="nested-loop"
@@ -65,9 +66,9 @@ private object GalliumControlArtifacts {
     val outputExtent=if(maskedStorageLoop)items*4 else if(storageLoop)items*3 else items
     val uniformEnabled=n("uniform.enabled")==1
     val uniformWord=words.indexWhere(w=>(w&127)==0x2b && (w>>26)==7)
-    val checkedUniformLoads=if(full)416 else if(name=="masked")256 else if(!healthy)8 else if(dynamicLoop)56 else 0
+    val checkedUniformLoads=if(full)416 else if(name=="masked")256 else if(!healthy)8 else if(dynamicLoop)56 else if(indexedLoop)1536 else 0
     val storageWordOperations=if(full)items*4 else if(maskedStorageLoop)items*4 else if(storageLoop)items*6 else if(name=="nested" || loop)128 else if(healthy)320 else 128
-    val cycleBudget=if(full || nestedLoop || maskedStorageLoop)524288 else if(name=="masked")196608 else if(loop)262144 else 131072
+    val cycleBudget=if(full || nestedLoop || maskedStorageLoop || indexedLoop)786432 else if(name=="masked")196608 else if(loop)262144 else 131072
     require(n("format")==1 && meta.getProperty("name")==name && words.size==512 &&
       n("shader.bytes")==2048 && n("shader.offset")==0 && n("kernarg.bytes")>=12 && kernarg.length==12)
     require(grid==(if(full)Seq(2,1,1)else Seq(1,1,1)) &&
@@ -75,7 +76,7 @@ private object GalliumControlArtifacts {
     require(codeWords==loopWords.getOrElse(name,if(full)439 else if(name=="nested")194 else 222) &&
       words(codeWords-1)==BigInt("30500073",16) && words.drop(codeWords).forall(_==0))
     require(words.count(w=>(w&0x707f)==0x305b)==(if(name=="nested")4 else if(nestedLoop || maskedStorageLoop)2 else 1))
-    require(words.count(w=>(w&127)==0x2b && (w>>26)==7)==(if(full)26 else if(dynamicLoop)1 else if(name=="nested" || loop)0 else 4))
+    require(words.count(w=>(w&127)==0x2b && (w>>26)==7)==(if(full)26 else if(dynamicLoop)1 else if(indexedLoop)4 else if(name=="nested" || loop)0 else 4))
     require(!words.exists(w=>(w&127)==3),"actual programs use init builtins, not kernarg loads")
     val divides=words.count(w=>(w&127)==0x57 && ((w>>12)&7)==6 && ((w>>26)==0x20 || (w>>26)==0x22))
     require(divides==5)
@@ -90,7 +91,7 @@ private object GalliumControlArtifacts {
     for(b<-0 until 4)require(n(s"binding.$b.slot")==35+b && n(s"binding.$b.offset")==0 &&
       n(s"binding.$b.bytes")== (if(full)BigInt(128)*1024*1024 else BigInt(65536)) &&
       n(s"binding.$b.access")==3 && input(b).length==4096)
-    require(uniformEnabled==(if(loop)dynamicLoop else name!="nested"))
+    require(uniformEnabled==(if(loop)dynamicLoop || indexedLoop else name!="nested"))
     for(s<-0 until 13)require(uniform(s).length==n(s"uniform.$s.bytes") &&
       uniform(s).length==(if(full) {if(s==0)4096 else 16384} else if(s==0 && uniformEnabled) {if(dynamicLoop)16 else 4096} else 0))
     if(dynamicLoop)require(word(uniform(0),0)==6)
@@ -226,6 +227,10 @@ class GalliumComputeControlFlowQualification extends AnyFlatSpec {
           // Actual Mesa emits a vec4 indirect CONST load. Preserve all four
           // components even though the source result uses only its .y word.
           if(e.dynamicLoop)uniformDataExpected(uniformP(0))=e.checkedUniformLoads
+          if(e.indexedLoop)for(step<-0 until 3;lane<-0 until 128) {
+            val index=(lane+step*127)&255
+            uniformDataExpected(uniformP(0)+(index/4)*64)+=4
+          }
           if(!e.full && e.healthy && !e.loop)for(i<-1 until 128 by 2)uniformDataExpected(uniformP(0)+((i*16)/64)*64)+=4
         }
         val expected=mutable.Map.empty[BigInt,BigInt]
@@ -245,6 +250,12 @@ class GalliumComputeControlFlowQualification extends AnyFlatSpec {
           else if(e.nestedLoop && api==0) {
             val terms=for(outer<-0 until 3;inner<-0 until ((i&3)+1))yield outer+inner
             result=Some(terms.foldLeft(BigInt(i))((acc,term)=>(acc*3+term)&mask32))
+          } else if(e.indexedLoop && api==0) {
+            val steps=(0 until 3).filter(step=>(step&1)!=(i&1))
+            result=Some(steps.foldLeft(BigInt(i)) { (acc,step)=>
+              val index=(i+step*127)&255
+              (acc*3+GalliumControlArtifacts.word(e.uniform(0),16*index+12))&mask32
+            })
           } else if(e.loop && api==0) {
             val steps=if(e.name=="continue-loop")(0 until 6).filter(step=>(step&1)!=(i&1))
               else 0 until (if(e.dynamicLoop)6 else if(e.name=="constant-loop")5 else i&3)
@@ -383,8 +394,8 @@ class GalliumComputeControlFlowQualification extends AnyFlatSpec {
         allWarpStarts+=warpStarts
         info(s"GALLIUM_CF_CU case=${e.name} PASS codeWords=${e.codeWords} grid=${e.grid.mkString("x")} local=${e.local.mkString("x")} actualWarpStarts=$warpStarts lastWarpActive=${(e.local.product.toInt-1)%16+1} writes=${written.size} acks=${acknowledged.size} storageReads=$storageReads uniformWordReads=${uniformDataLines.values.sum} checkedUniformLoads=$rawUniforms traps=${trapped.size} heldCompletion=true stableActiveSatp=true responseHoldCycles=$responseStalls cycles=$cycles")
       }
-      assert(kernelStarts==12 && allWarpStarts==112 && totalCycles<=totalBudget)
-      info(s"GALLIUM_CF_CU PASS parents=12 workgroups=14 actualWarpStarts=$allWarpStarts healthyItems=1658 nativeLanes=16 nativeWarps=8 realSram=true full13CBAnd4SSBO=true totalCycles=$totalCycles hostLinuxAPIQualified=false H7Complete=false")
+      assert(kernelStarts==13 && allWarpStarts==120 && totalCycles<=totalBudget)
+      info(s"GALLIUM_CF_CU PASS parents=13 workgroups=15 actualWarpStarts=$allWarpStarts healthyItems=1786 nativeLanes=16 nativeWarps=8 realSram=true full13CBAnd4SSBO=true totalCycles=$totalCycles hostLinuxAPIQualified=false H7Complete=false")
     }
   }
 }

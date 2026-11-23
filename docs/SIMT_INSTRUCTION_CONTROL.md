@@ -50,7 +50,7 @@ remains unsupported. This work adds no Gallium capability bit.
 
 The sanitizer-enabled [Mesa/Gallium control-flow test](GALLIUM_COMPUTE.md#forward-ifelse-cpu-acceptance)
 checks the actual submitted compiler words against an independent ESSL oracle.
-All twelve original submissions passed the
+All thirteen original submissions passed the
 [native 16-lane, eight-warp CU replay](GALLIUM_COMPUTE.md#explicit-forward-ifelse-cu-qualification).
 For the loop cases, the replay checked outputs, guards, held completion,
 stable address spaces and zero traps. The dynamic loop issued 56 checked
@@ -95,7 +95,10 @@ product clock/FPS qualification remain open.
 The `indexed-uniform-loop` fixture compiles through Mesa to 191 native
 words. Different lanes and iterations select 128 distinct array elements,
 including element 255. The sanitizer-enabled Gallium CPU run checked all
-128 lane results. The complete owner fixture passed original Linux CPU
+128 lane results. Native CU replay verified 1,536 checked uniform word
+reads, 128 stores and acknowledgements, and zero traps. Mesa evaluates
+the uniform reads each iteration and selects the lane's accumulator
+afterwards. The complete owner fixture passed original Linux CPU
 capture with its 4096-byte default uniform view. The independent oracle
 evaluates selected loads from original physical bytes and rejected unchanged
 RAM. The assertion-enabled two-CU float owner passed this case at source
