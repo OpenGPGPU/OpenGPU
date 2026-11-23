@@ -25,6 +25,11 @@ INCLUDE = re.compile(rb"(?m)^[ \t]*#[ \t]*include\b[^\r\n]*")
 GENERATED_STANDARD_HEADERS = ("cstdint", "cstdio", "cstring", "stdexcept", "string")
 
 
+def compiler_version(executable):
+    # GCC includes the invoked executable name in its version output.
+    return subprocess.check_output([str(Path(executable).resolve()), "--version"], text=True)
+
+
 def digest(path):
     value = hashlib.sha256()
     with path.open("rb") as stream:
@@ -157,8 +162,7 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
     executable = shutil.which(compiler)
     if not executable:
         raise ValueError("C++ compiler not found: " + compiler)
-    # GCC reports the invoked executable name as part of its version.
-    version = subprocess.check_output([str(Path(executable).resolve()), "--version"], text=True)
+    version = compiler_version(executable)
     flags = [compiler, "-std=gnu++17", "-fPIC", "-fPIE", "-w"]
     if "clang" in version.lower():
         flags += ["-Wno-parentheses-equality", "-fbracket-depth=4096"]
