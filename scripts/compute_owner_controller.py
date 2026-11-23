@@ -18,7 +18,8 @@ import time
 from compute_owner_protocol import (strict_json, profile_bytes, held_bytes,
     retired_bytes, failed_held_bytes, failed_retired_bytes, cleanup_authorization, checked_cleanup,
     uint, required_flags, RECOVERY_CASE, RECOVERY_BASES, RECOVERY_COMMAND_SCHEMA, reset_case_supported, permission_case_supported)
-from compute_owner_cases import COMPUTE_LOOP_CASES, COMPUTE_LOOP_SCHEMAS
+from compute_owner_cases import (ADDRESS_CASES, COMPUTE_LOOP_CASES, COMPUTE_LOOP_SCHEMAS,
+    DYNAMIC_CASES, LEGACY_DYNAMIC_CASES, dynamic_case)
 from compute_owner_oracle import SparseMemory, verify, union_original_memory
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -129,6 +130,17 @@ def ready_inputs(directory, case, *, owner_profile=None, permission=None, profil
     require((schema in COMPUTE_LOOP_SCHEMAS.values()) == (case in COMPUTE_LOOP_SCHEMAS) and
             (case not in COMPUTE_LOOP_SCHEMAS or schema == COMPUTE_LOOP_SCHEMAS[case]),
             'compute loop source requires its distinct byte oracle')
+    shared_dynamic = schema == 'opengpu-compute-shared-dynamic-oracle-v1'
+    shared_address = schema == 'opengpu-compute-shared-address-oracle-v1'
+    require(shared_dynamic == (case in LEGACY_DYNAMIC_CASES) and
+            shared_address == (case in ADDRESS_CASES),
+            'shared atomic source requires its distinct byte oracle')
+    if shared_dynamic:
+        operation, signed = dynamic_case(case)
+        require(type(description.get('operation')) is int and description['operation'] == operation
+                and description.get('signed') is signed, 'shared atomic operation differs from selected source')
+    if shared_address:
+        require(description.get('sourceCase') == case, 'shared atomic address differs from selected source')
     counter=description.get('schema')==COUNTER_SCHEMA
     p12_counter=description.get('schema')==P12_COUNTER_SCHEMA
     p12_shared=description.get('schema')==P12_SHARED_SCHEMA
@@ -170,7 +182,7 @@ def ready_inputs(directory, case, *, owner_profile=None, permission=None, profil
             'L1 publication source requires distinct qualification/case binding')
     require(global_atomic==(case in GLOBAL_ATOMIC_CASES), 'raw global source requires distinct qualification/case binding')
     inputs={}
-    if case in COMPUTE_LOOP_CASES:
+    if case in (*COMPUTE_LOOP_CASES, *DYNAMIC_CASES):
         inputs = {name: input_digest(directory/name)
                   for name in ('union.memory', 'record-0.capture', 'oracle.json')}
     if counter or p12_counter or p12_shared or p12_texture or image or storage or publication or image_publication or texture_publication or counter_publication or shared_publication or dma_publication or l1_publication or mixed or global_atomic:
@@ -451,7 +463,7 @@ def main():
         STORAGE_PUBLICATION_CASES, IMAGE_PUBLICATION_CASES, TEXTURE_PUBLICATION_CASES,
         COUNTER_PUBLICATION_CASES, SHARED_PUBLICATION_CASES, DMA_PUBLICATION_CASES,
         L1_PUBLICATION_CASES, GLOBAL_ATOMIC_CASES)
-    parser.add_argument('--case', choices=(*COMPUTE_LOOP_CASES,*COUNTER_CASES,*P12_SHARED_CASES,*P12_TEXTURE_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES,
+    parser.add_argument('--case', choices=(*COMPUTE_LOOP_CASES,*DYNAMIC_CASES,*COUNTER_CASES,*P12_SHARED_CASES,*P12_TEXTURE_CASES,*IMAGE_CASES,*STORAGE_ATOMIC_CASES,
         *STORAGE_PUBLICATION_CASES,*IMAGE_PUBLICATION_CASES,*TEXTURE_PUBLICATION_CASES,
         *COUNTER_PUBLICATION_CASES,*SHARED_PUBLICATION_CASES,*DMA_PUBLICATION_CASES,
         *L1_PUBLICATION_CASES,*GLOBAL_ATOMIC_CASES),
