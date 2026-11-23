@@ -9,6 +9,7 @@
 #include "compiler/glsl/gl_nir.h"
 #include "compiler/glsl/gl_nir_linker.h"
 #include "compiler/nir/nir.h"
+#include "util/ralloc.h"
 extern "C" {
 #include "nir/nir_to_tgsi.h"
 }
@@ -54,7 +55,18 @@ extern "C" void native_fs_frontend_destroy(void *handle)
 {
     auto *f=static_cast<frontend_program *>(handle);if(!f)return;
     if(f->tokens)ureg_free_tokens(f->tokens);
-    if(f->program)standalone_compiler_cleanup(f->program);
+    if (f->program) {
+        auto *shader = f->program->_LinkedShaders[MESA_SHADER_FRAGMENT];
+        if (shader && shader->Program) {
+            ralloc_free(shader->Program->nir);
+            shader->Program->nir = nullptr;
+            if (shader->Program->Parameters) {
+                _mesa_free_parameter_list(shader->Program->Parameters);
+                shader->Program->Parameters = nullptr;
+            }
+        }
+        standalone_compiler_cleanup(f->program);
+    }
     delete f;
 }
 static void *compile(const char *path,const char *dump_prefix,bool v2)

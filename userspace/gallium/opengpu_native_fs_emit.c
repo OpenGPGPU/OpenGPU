@@ -47,7 +47,7 @@ static void store(struct builder *b,unsigned s,unsigned slice)
 
 /* Parse only after all packet lengths and optional-field shapes were bounded.
  * In particular no indirect/dimension/texture/label token reader may run. */
-static int packets(const struct tgsi_token *t,unsigned words,unsigned v2)
+static int packets(const struct tgsi_token *t,unsigned words,unsigned v2,unsigned abi_version)
 {
     struct tgsi_header h;struct tgsi_processor p;unsigned at;
     if(!t||words<3||words>LIMIT+2)return -1;
@@ -69,7 +69,11 @@ static int packets(const struct tgsi_token *t,unsigned words,unsigned v2)
             struct tgsi_property p2;memcpy(&p2,t+at,4);if(p2.NrTokens!=2||p2.Padding)return -1;
         }else if(token.Type==TGSI_TOKEN_TYPE_INSTRUCTION){
             struct tgsi_instruction i;unsigned j;memcpy(&i,t+at,4);n=1u+i.NrTokens;
-            if(i.Label||i.Texture||i.Memory||i.Precise||i.Saturate||i.Padding||
+            /* ABI7 emits these operations separately and preserves rounding. */
+            unsigned precise = abi_version == 7 &&
+                (i.Opcode == TGSI_OPCODE_ADD || i.Opcode == TGSI_OPCODE_MUL ||
+                 i.Opcode == TGSI_OPCODE_I2F);
+            if(i.Label||i.Texture||i.Memory||(i.Precise&&!precise)||i.Saturate||i.Padding||
                i.NumDstRegs>1||i.NumSrcRegs>(v2&&i.Opcode==TGSI_OPCODE_UCMP?3u:2u)||n!=1u+i.NumDstRegs+i.NumSrcRegs||n>words-at)return -1;
             for(j=0;j<i.NumDstRegs;j++){
                 struct tgsi_dst_register d;memcpy(&d,t+at+1+j,4);
@@ -215,7 +219,8 @@ static int emit_internal(const void *tokens,unsigned token_words,
     if(!config||!out||(!v2&&(config->abi_version!=6&&config->abi_version!=7))||
        config->thread_capacity!=128||(!v2&&(config->varying_slots!=16||config->color_slots!=4))||
        (!v2&&config->sample_transport!=1)||config->geometry_transport>1||
-       (config->abi_version==7&&!config->geometry_transport)||packets(tokens,token_words,v2!=NULL))return -1;
+       (config->abi_version==7&&!config->geometry_transport)||
+       packets(tokens,token_words,v2!=NULL,config->abi_version))return -1;
     b.v2=v2;b.next=2;b.p.metadata=(struct opengpu_native_fs_metadata){
         .abi_version=config->abi_version,.input_arrays=config->abi_version==6?75:77,
         .array_stride=512,.thread_capacity=128,.varying_slots=16,.color_slots=4,
@@ -268,9 +273,18 @@ static int emit_internal(const void *tokens,unsigned token_words,
                                     if(d->Interp.Interpolate!=TGSI_INTERPOLATE_CONSTANT||d->Interp.Location!=TGSI_INTERPOLATE_LOC_CENTER)goto done;
                                 }else if(s->name!=TGSI_SEMANTIC_POSITION||d->Interp.Interpolate!=TGSI_INTERPOLATE_LINEAR||
                                          d->Interp.Location!=TGSI_INTERPOLATE_LOC_CENTER)goto done;
-                            }else if((s->name!=TGSI_SEMANTIC_GENERIC&&s->name!=TGSI_SEMANTIC_POSITION)||
-                                !d->Declaration.Interpolate||d->Interp.Padding||d->Interp.Location!=TGSI_INTERPOLATE_LOC_CENTER||
-                                d->Interp.Interpolate!=(s->name==TGSI_SEMANTIC_GENERIC?TGSI_INTERPOLATE_PERSPECTIVE:TGSI_INTERPOLATE_LINEAR))goto done;
+                            } else {
+                                unsigned mode = TGSI_INTERPOLATE_LINEAR;
+                                if (s->name == TGSI_SEMANTIC_GENERIC)
+                                    mode = TGSI_INTERPOLATE_PERSPECTIVE;
+                                else if (s->name == TGSI_SEMANTIC_PRIMID || s->name == TGSI_SEMANTIC_LAYER)
+                                    mode = TGSI_INTERPOLATE_CONSTANT;
+                                else if (s->name != TGSI_SEMANTIC_POSITION)
+                                    goto done;
+                                if (!d->Declaration.Interpolate || d->Interp.Padding ||
+                                    d->Interp.Location != TGSI_INTERPOLATE_LOC_CENTER ||
+                                    d->Interp.Interpolate != mode) goto done;
+                            }
                         }else if(s->name==TGSI_SEMANTIC_GENERIC||s->name==TGSI_SEMANTIC_POSITION||
                             (v2&&(s->name==TGSI_SEMANTIC_PRIMID||s->name==TGSI_SEMANTIC_LAYER)))goto done;
                         if(v2)b.p.metadata.used_sysvals=old_used;
