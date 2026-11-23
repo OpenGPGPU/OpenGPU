@@ -4,12 +4,47 @@
 Link configured, immutable Mesa libraries; compile only private scaffolding
 and GPU frontend/tests. Use a fresh --build directory; delete ended outputs.
 """
-import argparse, json, os, shlex, subprocess
+import argparse, json, os, shlex, struct, subprocess
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 LIBS=("src/compiler/glsl/libglsl.a","src/compiler/nir/libnir.a","src/compiler/libcompiler.a",
       "src/compiler/glsl/glcpp/libglcpp.a","src/gallium/auxiliary/libgallium.a","src/util/libmesa_util.a",
       "src/util/format/libmesa_format.a","src/c11/impl/libmesa_util_c11.a")
+
+
+def verify_geometry_vertex(path):
+    from native_fs_cpu_oracle import execute
+
+    data = path.read_bytes()
+    assert len(data) % 4 == 0 and 0 < len(data) <= 512 * 4
+    code = [word for word, in struct.iter_unpack('<I', data)]
+    capacity, kernarg = 128, 64
+    position_out, varying_out = 11, 15
+    memory = bytearray(b'\xcd' * (kernarg + (varying_out + 16 * 4) * capacity * 4 + 64))
+
+    def put(destination, array, lane, value):
+        struct.pack_into('<f', destination, kernarg + 4 * (array * capacity + lane), value)
+
+    expected = memory.copy()
+    for lane in range(capacity):
+        position = (-0.875 + lane / 256, 0.125 - lane / 512, 0.375, 1.0)
+        seed = (0.25 + lane / 256, 0.5 + lane / 128, 0.75 + lane / 64)
+        for component, value in enumerate(position):
+            put(memory, component, lane, value)
+            put(expected, component, lane, value)
+            put(expected, position_out + component, lane, value)
+        for component, value in enumerate(seed):
+            put(memory, 4 + component, lane, value)
+            put(expected, 4 + component, lane, value)
+            for slot in range(16):
+                put(expected, varying_out + 4 * slot + component, lane,
+                    value + 8 * slot + 1 + 2 * component)
+    for first in range(0, capacity, 16):
+        execute(code, memory, first, kernarg=kernarg)
+    assert memory == expected
+    print('Original Mesa VS bytes match position and all 16 varying slots on 128 lanes (CPU only)')
+
+
 def main():
     ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('--build',type=Path,required=True)
     ap.add_argument('--sanitize',action='store_true');ap.add_argument('--baseline-source',type=Path,help='explicit original v2 production emitter for old-byte comparison, never a replacement runtime');ap.add_argument('--regressions',action='store_true',help='with --language, reuse this immutable build for old v1/v2 ESSL suites');mode=ap.add_mutually_exclusive_group();mode.add_argument('--dynamic',action='store_true',help='private TES v2 CPU compiler cases');mode.add_argument('--language',action='store_true',help='private TCS/TES v3 language input-patch ID CPU cases')
@@ -105,6 +140,7 @@ def main():
         shlex.split(os.environ.get('OPENGPU_MESA_LINK_LIBS','-lz -lexpat'))+['-ldl','-lm','-pthread','-o',binary],'link')
     if a.geometry:
         run([binary, ROOT/'userspace/tests/geometry_essl', out/'geometry'], 'actual-geometry-ESSL320')
+        verify_geometry_vertex(out/'geometry.native-vs-code.bin')
         return
     for name in (('language','language-conditional','language-full') if a.language else ('dynamic','adjacent','capacity','edge','component') if a.dynamic else ('uniform','full','conditional')):(out/'programs'/name).mkdir(parents=True)
     run([binary,ROOT/'userspace/tests/tess_uniform_essl',out/'programs'],'actual-ESSL320')

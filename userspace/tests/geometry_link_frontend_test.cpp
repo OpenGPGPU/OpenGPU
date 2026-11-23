@@ -3,6 +3,9 @@
 #include "opengpu_native_gs_emit.h"
 #include "opengpu_tess_frontend.h"
 #include "tgsi/tgsi_parse.h"
+extern "C" {
+#include "opengpu_native_uniform_emit.h"
+}
 #include <array>
 #include <cassert>
 #include <cstdio>
@@ -195,6 +198,16 @@ static void check_geometry(const tgsi_token *tokens, unsigned size, const opengp
     assert(layers == 1 && dimensions == 1 && events == 1);
 }
 
+static void write_code(const std::string &path, const uint32_t *code, unsigned words)
+{
+    FILE *file = std::fopen(path.c_str(), "wb");
+    assert(file);
+    for (unsigned i = 0; i < words; ++i)
+        for (unsigned byte = 0; byte < 4; ++byte)
+            assert(std::fputc((code[i] >> (8 * byte)) & 255, file) != EOF);
+    assert(!std::fclose(file));
+}
+
 static void write_geometry(const std::string &prefix, const opengpu_native_gs_program &gs)
 {
     opengpu_native_geometry_program metadata;
@@ -204,12 +217,7 @@ static void write_geometry(const std::string &prefix, const opengpu_native_gs_pr
     assert(std::fwrite(&metadata, sizeof(metadata), 1, file) == 1);
     assert(!std::fclose(file));
 
-    file = std::fopen((prefix + ".native-gs-code.bin").c_str(), "wb");
-    assert(file);
-    for (unsigned i = 0; i < gs.words; ++i)
-        for (unsigned byte = 0; byte < 4; ++byte)
-            assert(std::fputc((gs.code[i] >> (8 * byte)) & 255, file) != EOF);
-    assert(!std::fclose(file));
+    write_code(prefix + ".native-gs-code.bin", gs.code, gs.words);
 }
 
 int main(int argc, char **argv)
@@ -231,6 +239,18 @@ int main(int argc, char **argv)
     assert(geometry_io.inputs == 0xffff && geometry_io.outputs == 0xffff);
     assert(geometry_io.emits == 3 && geometry_io.ends == 1);
     assert(inspect(fs).inputs == 0xffff);
+
+    opengpu_native_uniform_layout vertex_layout = {};
+    opengpu_native_uniform_program native_vs = {};
+    const unsigned vs_words = tgsi_num_tokens(vs);
+    assert(!opengpu_native_vertex_geometry_compile(vs, vs_words, 128, &vertex_layout, &native_vs));
+    assert(vertex_layout.attributes == 2 && vertex_layout.varyings == 16);
+    assert(native_vs.varying_mask == UINT64_C(0x7777777777777777));
+    opengpu_native_uniform_program rejected_vs = {};
+    assert(opengpu_native_vertex_geometry_compile(vs, vs_words - 1, 128, &vertex_layout, &rejected_vs));
+    assert(opengpu_native_uniform_compile(vs, 0, 128, &vertex_layout, &rejected_vs));
+    assert(!rejected_vs.words);
+    write_code(std::string(argv[2]) + ".native-vs-code.bin", native_vs.code, native_vs.words);
 
     opengpu_native_gs_program native_gs = {};
     const unsigned gs_words = tgsi_num_tokens(gs);
@@ -259,6 +279,6 @@ int main(int argc, char **argv)
     files[1] = vertex.c_str();
     files[3] = geometry.c_str();
     assert(!opengpu_tess_frontend_compile(files, nullptr));
-    std::printf("Actual linked ESSL320 VS/GS/FS CPU PASS with 16 varying slots, %u GS words and %u ABI7 FS words\n",
-                native_gs.words, native.words);
+    std::printf("Actual linked ESSL320 VS/GS/FS CPU PASS with 16 varying slots and %u/%u/%u native instruction words\n",
+                native_vs.words, native_gs.words, native.words);
 }

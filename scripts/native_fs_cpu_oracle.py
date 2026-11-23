@@ -18,9 +18,10 @@ def signed(value, width=32):
     return value - (1 << width) if value & (1 << (width - 1)) else value
 
 
-def execute(code, memory, base):
+def execute(code, memory, base, *, kernarg=0):
     x = [0] * 32
     v = [[0] * 16 for _ in range(32)]
+    x[1] = kernarg
     x[8] = base
     x[9] = 128
     vl = 0
@@ -39,6 +40,8 @@ def execute(code, memory, base):
             x[d] = x[a] << z & 0xffffffff
         elif op == 0x33 and f3 == 0 and not w >> 25:
             x[d] = x[a] + x[z] & 0xffffffff
+        elif op == 0x33 and f3 == 0 and w >> 25 == 1:
+            x[d] = x[a] * x[z] & 0xffffffff
         elif op == 0x57 and f3 == 7:
             assert w == 0x01007557
             vl = 16

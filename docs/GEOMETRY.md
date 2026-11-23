@@ -1245,8 +1245,13 @@ the full host/API gates remain required; these component results do not close H8
 
 The private ESSL 3.20 frontend links the original VS, GS and FS with empty TCS
 and TES entries. The Mesa 22.3.6 sanitizer run captured sixteen linked
-varying slots through all three stages. The geometry shader emits three
-vertices and ends the primitive. The scalar backend converts the linked GS
+varying slots through all three stages. The VS compiler accepts Mesa's
+geometry successor and produces 510 instruction words. The CPU oracle uses
+distinct position and seed attributes and checks every position and varying
+word across 128 lanes, including untouched input and guard bytes.
+
+The geometry shader emits three vertices and ends the primitive. The scalar
+backend converts the linked GS
 tokens into 480 instruction words. The CPU oracle checks all 52 position and
 varying words, layer and primitive ID for each vertex, and the final
 end-primitive event. The backend accepts direct moves and stream-zero events

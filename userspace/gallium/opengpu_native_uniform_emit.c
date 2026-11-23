@@ -11,6 +11,7 @@ struct build {
     struct opengpu_native_uniform_program p;
     struct opengpu_native_uniform_layout layout;
     struct opengpu_native_fragment_metadata_v2 *v2;
+    bool geometry_vertex;
     unsigned input_kind[32], output_kind[32], system_decl[32], system_array[32][4], system_kind[32];
     unsigned depth, sample_mask;
     unsigned temp_decl[32], temp[32][4], next;
@@ -53,24 +54,25 @@ static void load(struct build *b, unsigned to, unsigned array)
 { address(b, array); word(b, 1u << 25 | 6u << 15 | 6u << 12 | to << 7 | 7u); }
 static void store(struct build *b, unsigned from, unsigned array)
 { address(b, array); word(b, 1u << 25 | 6u << 15 | 6u << 12 | from << 7 | 0x27u); }
-static int sources(unsigned op,unsigned v2)
+static int sources(unsigned op, bool v2, bool geometry_vertex)
 {
     switch (op) {
     case TGSI_OPCODE_END: return 0;
     case TGSI_OPCODE_MOV: return 1;
+    case TGSI_OPCODE_ADD: return v2 || geometry_vertex ? 2 : -1;
     case TGSI_OPCODE_UADD: case TGSI_OPCODE_UMUL: case TGSI_OPCODE_XOR:
     case TGSI_OPCODE_AND: case TGSI_OPCODE_OR: case TGSI_OPCODE_SHL: case TGSI_OPCODE_USHR: return 2;
     default:
         if(v2){
             if(op==TGSI_OPCODE_UCMP)return 3;
             if(op==TGSI_OPCODE_U2F||op==TGSI_OPCODE_I2F||op==TGSI_OPCODE_F2U||op==TGSI_OPCODE_F2I)return 1;
-            if(op==TGSI_OPCODE_ADD||op==TGSI_OPCODE_MUL||op==TGSI_OPCODE_ISHR)return 2;
+            if(op==TGSI_OPCODE_MUL||op==TGSI_OPCODE_ISHR)return 2;
         }
         return -1;
     }
 }
 /* Count and validate every optional token before calling Mesa's real parser. */
-static int packets_mode(const struct tgsi_token *t, unsigned stage,unsigned v2)
+static int packets_mode(const struct tgsi_token *t, unsigned stage, bool v2, unsigned next_stage)
 {
     struct tgsi_header h; struct tgsi_processor p;
     memcpy(&h, t, 4); memcpy(&p, t + 1, 4);
@@ -100,7 +102,9 @@ static int packets_mode(const struct tgsi_token *t, unsigned stage,unsigned v2)
                 if(v.PropertyName!=TGSI_PROPERTY_FS_COORD_ORIGIN&&v.PropertyName!=TGSI_PROPERTY_FS_COORD_PIXEL_CENTER)return -1;
             }else if(stage||v.PropertyName!=TGSI_PROPERTY_NEXT_SHADER)return -1;
         } else if (token.Type == TGSI_TOKEN_TYPE_INSTRUCTION) {
-            struct tgsi_instruction i; memcpy(&i, t + pos, 4); int count = sources(i.Opcode,v2);
+            struct tgsi_instruction i;
+            memcpy(&i, t + pos, 4);
+            int count = sources(i.Opcode, v2, !stage && next_stage == PIPE_SHADER_GEOMETRY);
             n = i.NrTokens + 1;
             if (count < 0 || i.NumSrcRegs != (unsigned)count || i.NumDstRegs != (i.Opcode != TGSI_OPCODE_END) ||
                 (v2&&i.Precise) || i.Saturate || i.Label || i.Texture || i.Memory || i.Padding || n > end - pos) return -1;
@@ -124,8 +128,6 @@ static int packets_mode(const struct tgsi_token *t, unsigned stage,unsigned v2)
     }
     return 0;
 }
-static int packets(const struct tgsi_token *t,unsigned stage)
-{ return packets_mode(t,stage,0); }
 static int declaration_v2(struct build *b,const struct tgsi_full_declaration *d)
 {
     unsigned first=d->Range.First,last=d->Range.Last,name=d->Semantic.Name,mask=d->Declaration.UsageMask;
@@ -299,6 +301,10 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
     if (mask & ~declared) return -1;
     switch (op) {
     case TGSI_OPCODE_MOV: break;
+    case TGSI_OPCODE_ADD:
+        if (!b->v2 && !b->geometry_vertex) return -1;
+        f3 = 1;
+        break;
     case TGSI_OPCODE_UADD: break;
     case TGSI_OPCODE_UMUL: fn = 0x25; f3 = 2; break;
     case TGSI_OPCODE_XOR: fn = 11; break;
@@ -312,7 +318,7 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
         case TGSI_OPCODE_UCMP:break;
         case TGSI_OPCODE_U2F:convert=2;break;case TGSI_OPCODE_I2F:convert=3;break;
         case TGSI_OPCODE_F2U:convert=6;break;case TGSI_OPCODE_F2I:convert=7;break;
-        case TGSI_OPCODE_ADD:f3=1;break;case TGSI_OPCODE_MUL:fn=0x24;f3=1;break;
+        case TGSI_OPCODE_MUL:fn=0x24;f3=1;break;
         case TGSI_OPCODE_ISHR:fn=0x29;break;default:return -1;
         }
     }
@@ -322,6 +328,10 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
     }
     /* Read all source channels before committing any destination channel. */
     for (unsigned c = 0; c < 4; c++) if (mask & (1u << c)) {
+        if (b->geometry_vertex && op == TGSI_OPCODE_MOV) {
+            if (source(b, &in->Src[0], c, 22 + c)) return -1;
+            continue;
+        }
         if (source(b, &in->Src[0], c, 26)) return -1;
         if (op == TGSI_OPCODE_MOV) copy(b, 22 + c, 26);
         else if(op==TGSI_OPCODE_UCMP){
@@ -359,8 +369,10 @@ static int emit_mode(const void *tokens, const struct opengpu_native_uniform_lay
     if (!tokens || !layout || !out || layout->stage > 1 || !layout->capacity ||
         layout->attributes > 16 || layout->varyings > 16 || layout->colors > 4 ||
         (layout->stage ? layout->attributes != 0 : layout->colors != 0) ||
-        layout->capacity > UINT_MAX / (4u * 136u) || packets_mode(tokens,layout->stage,v2!=NULL)) return -1;
+        layout->capacity > UINT_MAX / (4u * 136u) ||
+        packets_mode(tokens, layout->stage, v2 != NULL, next_stage)) return -1;
     b.layout = *layout; b.next = 2;b.v2=v2;
+    b.geometry_vertex = !layout->stage && next_stage == PIPE_SHADER_GEOMETRY;
     word(&b, 0x01007557u); /* e32 VLMAX; decoder retains the task active mask. */
     word(&b, 0x00241393u); word(&b, 0x007083b3u); /* x7 = kernarg + 4*local base */
     word(&b, 0x00249293u); /* x5 = 4*trusted physical task capacity */
@@ -430,7 +442,8 @@ static int compile_next(const void *tokens, unsigned stage,
     struct opengpu_native_uniform_program program;
     struct tgsi_parse_context parse;
     int failed = 0; unsigned next_count=0;
-    if (!tokens || !out_layout || !out_program || stage > 1 || !capacity || packets(tokens,stage) ||
+    if (!tokens || !out_layout || !out_program || stage > 1 || !capacity ||
+        packets_mode(tokens, stage, false, next_stage) ||
         tgsi_parse_init(&parse,tokens) != TGSI_PARSE_OK) return -1;
     while (!tgsi_parse_end_of_tokens(&parse)) {
         tgsi_parse_token(&parse);
@@ -456,7 +469,8 @@ static int compile_next(const void *tokens, unsigned stage,
         }
     }
     tgsi_parse_free(&parse);
-    if (failed || (next_stage==PIPE_SHADER_TESS_CTRL && next_count!=1) || emit_next(tokens,&layout,&program,next_stage)) return -1;
+    if (failed || (next_stage != PIPE_SHADER_FRAGMENT && next_count != 1) ||
+        emit_next(tokens, &layout, &program, next_stage)) return -1;
     *out_layout = layout; *out_program = program; return 0;
 }
 
@@ -472,3 +486,16 @@ int opengpu_native_uniform_compile(const void *tokens,unsigned stage,unsigned ca
 int opengpu_native_vertex_tess_compile(const void *tokens,unsigned capacity,
     struct opengpu_native_uniform_layout *layout,struct opengpu_native_uniform_program *out)
 { return compile_next(tokens,0,capacity,layout,out,PIPE_SHADER_TESS_CTRL); }
+
+int opengpu_native_vertex_geometry_compile(const void *tokens, unsigned token_words,
+    unsigned capacity, struct opengpu_native_uniform_layout *layout,
+    struct opengpu_native_uniform_program *out)
+{
+    struct tgsi_header header;
+    if (!tokens || token_words < 3 || token_words > 4098)
+        return -1;
+    memcpy(&header, tokens, sizeof(header));
+    if (header.HeaderSize != 2 || header.BodySize != token_words - 2)
+        return -1;
+    return compile_next(tokens, 0, capacity, layout, out, PIPE_SHADER_GEOMETRY);
+}
