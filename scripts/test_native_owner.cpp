@@ -198,6 +198,13 @@ static void mmio_fault_diagnostics(int argc,char **argv) {
   Memory memory;Agent agent(memory);Peer healthy(argc,argv);ReplayBus<Peer> bus(healthy,agent,1000);
   bus.write(0x2e4,0x12345678);
   require(bus.read(0x2e8)==0x89abcdef && bus.cycles==2,"healthy MMIO response behavior changed");
+  Peer fault_peer(argc,argv);ReplayBus<Peer> fault_bus(fault_peer,agent,1000);
+  fault_peer.response=2;fault_bus.write(0x2e4,1,2);
+  fault_peer.response=0;std::string mismatch;
+  try {fault_bus.write(0x2e4,1,2);}
+  catch(const std::runtime_error &e){mismatch=e.what();}
+  require(mismatch=="captured MMIO write fault: address=0x2e4 value=0x1 response=0x0 expected=0x2 cycles=2",
+    "an expected AXI fault was not checked against the observed response");
 }
 static void record_series(int argc,char **argv,bool corrupt) {
   auto a=fixture(),b=a;a.max_cycles=b.max_cycles=400;

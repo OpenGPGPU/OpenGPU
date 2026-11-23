@@ -28,7 +28,9 @@ template<class Sim> class ReplayBus {
     if(response==expected)return;
     std::ostringstream message;
     message<<"captured MMIO "<<operation<<" fault: address=0x"<<std::hex<<address
-      <<" value=0x"<<value<<" response=0x"<<response<<" expected=0x"<<expected<<std::dec<<" cycles="<<cycles;
+      <<" value=0x"<<value<<" response=0x"<<response;
+    if(expected)message<<" expected=0x"<<expected;
+    message<<std::dec<<" cycles="<<cycles;
     throw std::runtime_error(message.str());
   }
 public:
