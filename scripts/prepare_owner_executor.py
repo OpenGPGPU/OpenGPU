@@ -21,7 +21,8 @@ import prepare_native_owner_flashsim as owner
 import qualify_native_product_compiled as common
 import qualify_native_product_flashsim as flash
 from owner_resource_contract import (COMPUTE_STAGE, FULL_COMPUTE_CONTRACTS, PROFILE as FULL_PROFILE,
-    SAMPLE_PROFILE, IMAGE_FLOAT_PROFILE, SAMPLE_FACTORY_CONTRACTS)
+    SAMPLE_PROFILE, IMAGE_FLOAT_PROFILE, SAMPLE_FACTORY_CONTRACTS,
+    TESSELLATION_UNIFORM_PROFILE, TESSELLATION_UNIFORM_STAGE)
 
 ROOT = Path(__file__).resolve().parents[1]
 BLIT_KIND = 'framebuffer-blit-sample'
@@ -214,6 +215,10 @@ def require(condition, message):
 
 def profile_contract(profile, kind):
     require(kind in KINDS, 'unknown owner executor kind')
+    if profile == TESSELLATION_UNIFORM_PROFILE:
+        require(kind == 'native-sample', 'checked tessellation uniforms require the native sample probe')
+        return dict(profile=profile, ownerResourceVersion=2, ownerResourceStage=TESSELLATION_UNIFORM_STAGE,
+                    fullResourceQualification=False)
     require((profile == IMAGE_FLOAT_PROFILE if kind == INDIRECT_KIND else
              profile in SAMPLE_FACTORY_CONTRACTS if kind in SAMPLE_FACTORY_KINDS else
              profile == owner.PROFILE or ((profile == COMPUTE_STAGE or profile in FULL_COMPUTE_CONTRACTS) and kind == 'compute')),
@@ -258,10 +263,12 @@ def driver_files(kind, profile=owner.PROFILE):
         return (['scripts/image_float_native_sample_graphics_owner_driver.cpp'] if profile==IMAGE_FLOAT_PROFILE else []) + ['scripts/native_sample_graphics_driver.cpp', 'scripts/native_sample_graphics_runtime.hpp',
                 'scripts/native_sample_owner_runtime.hpp', 'scripts/native_sample_owner_capture.hpp', *SHARED]
     if kind == 'native-sample':
+        float_probe = profile in (IMAGE_FLOAT_PROFILE, TESSELLATION_UNIFORM_PROFILE)
         geometry = ['scripts/image_float_native_sample_owner_driver.cpp',
             'scripts/native_geometry_feedback_runtime.hpp', 'driver/opengpu_transform_feedback_abi.h']
-        return (geometry if profile==IMAGE_FLOAT_PROFILE else []) + ['scripts/native_sample_owner_driver.cpp', 'scripts/native_sample_owner_runtime.hpp',
-                'scripts/native_sample_owner_capture.hpp', *SHARED]
+        return (geometry if float_probe else []) + [
+            'scripts/native_sample_owner_driver.cpp', 'scripts/native_sample_owner_runtime.hpp',
+            'scripts/native_sample_owner_capture.hpp', *SHARED]
     if profile == COMPUTE_STAGE or profile in FULL_COMPUTE_CONTRACTS:
         wrapper = {COMPUTE_STAGE: 'compute_stage', FULL_PROFILE: 'geometry_compute',
                    SAMPLE_PROFILE: 'geometry_compute_sample', IMAGE_FLOAT_PROFILE: 'image_float'}[profile]
@@ -695,7 +702,11 @@ def probe_executor(path, *, executor=None, kind, backend=None):
                 profile_bytes(profile)
             else:
                 from native_sample_owner_protocol import profile_bytes as sample_profile_bytes
-                sample_profile_bytes(profile, owner_profile=record['profile'])
+                # The private TCS/TES configuration keeps the float owner's
+                # published MMIO words. The build receipt pins its own RTL.
+                public_profile = (IMAGE_FLOAT_PROFILE if record['profile'] == TESSELLATION_UNIFORM_PROFILE
+                                  else record['profile'])
+                sample_profile_bytes(profile, owner_profile=public_profile)
             require(verify_qualification(path, executor=executor, kind=kind, backend=backend) == record,
                     'owner inputs changed during the MMIO probe')
             print('Actual original probe PASS kind=' + kind + ' words=' + str(len(profile['words'])) +
