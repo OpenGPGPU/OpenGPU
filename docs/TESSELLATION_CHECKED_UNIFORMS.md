@@ -283,3 +283,12 @@ sbt -Dopengpu.simBackend=flashsim -Dopengpu.flashsimPython="$PYTHON" \
   -Dopengpu.simJobs=2 -Dopengpu.flashsimShards=32 -Dopengpu.tessellationUniformFullCu=1 \
   'testOnly opengpu.system.TessellationCuIsolineSystemClientSpec -- -z service=true'
 ```
+
+Nine FlashSim reader tests passed across isoline, triangle and quad. They
+checked the original and extended GNT contracts, cancellation drain, and
+each domain's patch sequencer with a GPU-supplied record.
+
+```sh
+sbt -Dopengpu.simBackend=flashsim -Dopengpu.flashsimPython="$PYTHON" \
+  'testOnly opengpu.system.TessellationNativeSequenceReaderSpec opengpu.system.TessellationNativeTriangleSequenceReaderSpec opengpu.system.TessellationNativeQuadSequenceReaderSpec'
+```
