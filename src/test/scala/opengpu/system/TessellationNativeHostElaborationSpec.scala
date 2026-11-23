@@ -6,6 +6,31 @@ import opengpu.testutil.GraphicsTestResolution
 import org.scalatest.flatspec.AnyFlatSpec
 
 class TessellationNativeHostElaborationSpec extends AnyFlatSpec {
+  it should "connect checked uniform services for all three domains on the physical host" in {
+    val gpu = GpuConfig(l2Sets = 8, l2Ways = 2)
+    val graphics = GraphicsConfig(screenWidth = math.min(4, GraphicsTestResolution.width),
+      screenHeight = math.min(4, GraphicsTestResolution.height))
+    val vertex = VertexShaderStageConfig(VertexInputFetchConfig(2, 2), 2)
+    val fragment = FragmentShaderConfig(2, 4)
+    val config = NativeBinnedGraphicsConfig(vertex, fragment, engines = 2, pageBytes = 128,
+      writeCredits = 2, tileSlots = 1, pagedCapacity = 8, transformFeedback = true,
+      payload = Some(ShaderPayloadConfig(capacityBytes = 4096, maxPayloadBytes = 1024, owners = 3, ports = 6)))
+    val error = intercept[IllegalArgumentException] {
+      circt.stage.ChiselStage.elaborate(new GpuHostSystemAxi(tessellationUniforms = true))
+    }
+    assert(error.getMessage.contains("require the native three-domain owner"))
+
+    val circuit = circt.stage.ChiselStage.elaborate(new GpuHostSystemAxi(graphics, gpu,
+      numComputeUnits = 2, fragCore = true, sharedGraphics = true, parallelGraphics = true,
+      memoryAxiDataBytes = 32, instructionCacheSets = 4, instructionCacheWays = 1,
+      vectorCacheSets = 4, vectorCacheWays = 1, nativeBinnedGraphics = Some(config),
+      tessellationNative = true, tessellationUniforms = true))
+    val instances = circuit.lazilySerialize.iterator.flatMap(_.linesIterator)
+      .map(_.trim).filter(_.startsWith("inst ")).toVector
+    assert(instances.count(_.matches("inst service of TessellationUniformCuService(_[0-9]+)?( .*|$)")) == 3)
+    assert(instances.count(_.matches("inst computeUnits_[01] of GpuComputeUnit(_[0-9]+)?( .*|$)")) == 2)
+  }
+
   it should "reject primitive queries without feedback ownership" in {
     val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
     val g=GraphicsConfig(screenWidth=math.min(4,GraphicsTestResolution.width),screenHeight=math.min(4,GraphicsTestResolution.height))
