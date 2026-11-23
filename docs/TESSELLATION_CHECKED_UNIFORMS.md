@@ -3,8 +3,9 @@
 The optional `tessellationUniforms` constructor connects TCS stage4 and TES
 stage 5 to independent checked scalar/vector uniform engines on the actual
 shared-CU source/writeback ports. It defaults to false throughout the three
-image domains and native sequence/job wrappers. Existing host factories,
-discovery tables, GUC1 and public API capabilities do not enable it.
+image domains and native sequence/job wrappers. The AXI host also accepts the
+explicit option and uses it when allocating the three-domain transaction range.
+The existing factories and public discovery contracts retain their defaults.
 
 For the checked-uniform delivery before the retirement follow-up, protected
 PR `Scala CI` passed a fresh compilation of all 759 main and 1099 test sources,
@@ -12,11 +13,10 @@ its host checks and unit lane. Bounded local validation also
 passed a 128MiB, single-CPU parser check of 49 changed Scala sources and
 Chisel-plugin compilation of the 27-unit core closure below. Thirteen actual
 component RTL cases, one layout contract and five ABI generator checks passed.
-The local incremental checks use unchanged frozen dependencies. Compilation
-does not establish actual CU execution: the shared-system cancellation/reuse
-checks still require a passing run after the task-retirement fix. P15 remains
-unqualified until its full execution checks pass; component results do not
-prove an image, protected submit, complete-host clock or FPS.
+The local incremental checks use unchanged frozen dependencies. See the
+FlashSim checks below for physical CU execution after the task-retirement fix.
+The complete three-domain execution and product checks remain separate
+requirements.
 
 ## Resource and draw contracts
 
@@ -249,9 +249,37 @@ positions and old/new/cross-domain draw rejection. The shared-system case uses
 two physical CUs at four lanes/two warps and makes TCS/TES load values affect
 patch levels and evaluated output, and cancels an actual CU after accepting a
 uniform read while its response is held, then reuses the same owner without
-reset. Its cancellation/reuse check failed before the retirement fix; a passing
-post-fix run is required. That fixture is not the target
-16-lane/eight-warp execution profile.
-Actual CU execution at full capacity, whole three-domain image execution under
-contention, full 128-thread host admission and final factory/source qualification
-remain pending; none is inferred from component results or unexecuted tests.
+reset. Its cancellation/reuse check exposed the task-retirement bug.
+
+### FlashSim physical CU checks
+
+The isoline shared-system fixture passed with two physical 16-lane, eight-warp
+CUs, an eight-set/two-way L2 fixture and a 32-control-vertex patch. The actual TCS and TES programs each used
+scalar default selector 31 at component 1023, vector block 11 at byte 16380
+of a 16 KiB binding and vector block 0 at private table entry 23. Both stages'
+root, binding and data requests used their separate transaction IDs. The loaded
+values affected the patch level and both evaluated vertices.
+
+One DUT and reset covered seven healthy submissions, an accepted TES read
+whose response was held during cancellation, four corrupt TES descriptors and a
+TES data fault. Every error returned a stable completion under backpressure and
+the following submission succeeded with the same command ID. The separate AXI
+host elaboration check found the three domain services and both physical CUs
+with the option enabled. Whole three-domain execution, full product limits
+and protected admission remain pending.
+
+For this run use FlashSim `870c391` with the assertion-enabled CIRCT importer.
+The synchronous backend uses the existing Chisel stimulus, little-endian
+ports and the hardware's input clock. On macOS, the library path setting makes
+the compiler overlays visible through the system Make launcher.
+
+```sh
+export FLASHSIM_DIR="$FLASH_SIM_CHECKOUT"
+export CIRCT_VERILOG="$CIRCT_TOOL_DIRECTORY/circt-verilog"
+export FLASHSIM_CIRCT_LIBRARY_PATH="$CIRCT_TOOL_DIRECTORY"
+export FLASHSIM_CIRCT_THREADS=4 FLASHSIM_GC_POLICY=defer
+export FLASHSIM_PREFLATTEN_WIRES=1 FLASHSIM_COMMIT_PARTS=16
+sbt -Dopengpu.simBackend=flashsim -Dopengpu.flashsimPython="$PYTHON" \
+  -Dopengpu.simJobs=2 -Dopengpu.flashsimShards=32 -Dopengpu.tessellationUniformFullCu=1 \
+  'testOnly opengpu.system.TessellationCuIsolineSystemClientSpec -- -z service=true'
+```
