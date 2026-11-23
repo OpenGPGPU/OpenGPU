@@ -343,19 +343,32 @@ took 192.3 seconds with 6.70 GiB peak process-group memory. Reusing the
 verified MLIR took 3.4 seconds. The six-worker trial reached the 7 GiB
 guard, so the retained import uses four workers.
 
+The native executor accepts an outlined model after verifying every derived
+C++ file against the original assertion-enabled generation. The C++ fixture
+linked the outlined tables, ran its bound assertions, and rejected a reordered
+table even with a refreshed file hash. The 46 owner preparation, executor and
+native builder checks passed.
+
 Complete FlashSim model generation, native linking and the actual MMIO probe
 for this factory remain pending. With the pinned SRAM submodule initialized
-and the FlashSim/CIRCT environment above, use a new `OWNER` directory inside
-this checkout's `.artifacts`.
+and the FlashSim/CIRCT environment above, set `OWNER` to a new absolute path
+inside this checkout's `.artifacts`.
 
 ```sh
+export FLASHSIM_CIRCT_THREADS=4
 "$PYTHON" -B scripts/run_owner_bounded.py --memory-mib 7168 --timeout-seconds 1800 -- \
   "$PYTHON" -B scripts/prepare_native_owner_flashsim.py --stage prepare \
   --tessellation-uniforms --output "$OWNER"
-FLASHSIM_CIRCT_THREADS=4 "$PYTHON" -B scripts/prepare_native_owner_flashsim.py --stage generate \
+"$PYTHON" -B scripts/prepare_native_owner_flashsim.py --stage generate \
   --flashsim-dir "$FLASHSIM_DIR" --output "$OWNER" --shards 64
+(
+  cd "$FLASHSIM_DIR"
+  "$PYTHON" -B -m flashsim.reshard create --source "$OWNER/flashsim-dut" \
+    --output "$OWNER/flashsim-outlined" --max-mib 48 --outline-invalidation-mib 24
+)
 "$PYTHON" -B scripts/prepare_owner_executor.py --stage build --backend flashsim \
   --kind native-sample --owner-output "$OWNER" --flashsim-dir "$FLASHSIM_DIR" \
+  --reshard-dir "$OWNER/flashsim-outlined" --reshard-tool "$FLASHSIM_DIR" \
   --shards 64 --jobs 2 --precompiled-header --conservative-alias
 "$PYTHON" -B scripts/prepare_owner_executor.py --stage probe --backend flashsim \
   --kind native-sample --qualification "$OWNER/executors/native-sample/qualification.json"
