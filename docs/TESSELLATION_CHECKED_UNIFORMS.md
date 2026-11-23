@@ -269,27 +269,37 @@ of a 16 KiB binding and vector block 0 at private table entry 23. Both stages'
 root, binding and data requests used their separate transaction IDs. The loaded
 values affected the patch level and both evaluated vertices.
 
-One DUT and reset covered seven healthy submissions, an accepted TES read
-whose response was held during cancellation, four corrupt TES descriptors and a
-TES data fault. Every error returned a stable completion under backpressure and
-the following submission succeeded with the same command ID. The separate AXI
-host elaboration check found the three domain services and both physical CUs
-with the option enabled. Full product limits and protected admission remain
-pending.
+The same DUT covered seven healthy submissions, an accepted TES read whose
+response was held during cancellation, four corrupt TES descriptors and a TES
+data fault. Every error returned a stable completion under backpressure and
+the following submission succeeded with the same command ID.
 
-For this run use FlashSim `870c391` with the assertion-enabled CIRCT importer.
-The synchronous backend uses the existing Chisel stimulus, little-endian
-ports and the hardware's input clock. On macOS, the library path setting makes
-the compiler overlays visible through the system Make launcher.
+A system reset then cleared an active task after its TES root read was
+accepted and before the response was delivered. Both memory peers reset their
+transport state and kept their backing bytes. The idle interval after reset
+produced no old completion, vertex or uniform request. The same command ID
+then issued a fresh TES root read and produced the expected vertices. The run
+passed eight healthy submissions, one cancellation and five faults in 290.7
+seconds, with 2.51 GiB peak aggregate memory.
+
+The separate AXI host elaboration check found the three domain services and
+both physical CUs with the option enabled. Full product limits and protected
+admission remain pending.
+
+The reset run used FlashSim `39c920f` and the assertion-enabled CIRCT build
+`80c4ed9b9`. The test and its local dependencies were rebuilt against the
+existing classpath from OpenGPU `8a1919172`. On macOS, the library path setting
+makes the compiler overlays visible through the system Make launcher.
 
 ```sh
 export FLASHSIM_DIR="$FLASH_SIM_CHECKOUT"
 export CIRCT_VERILOG="$CIRCT_TOOL_DIRECTORY/circt-verilog"
 export FLASHSIM_CIRCT_LIBRARY_PATH="$CIRCT_TOOL_DIRECTORY"
-export FLASHSIM_CIRCT_THREADS=4 FLASHSIM_GC_POLICY=defer
+export FLASHSIM_CIRCT_THREADS=2 FLASHSIM_GC_POLICY=defer
+export FLASHSIM_CIRCT_LARGEST_FIRST=1
 export FLASHSIM_PREFLATTEN_WIRES=1 FLASHSIM_COMMIT_PARTS=16
 sbt -Dopengpu.simBackend=flashsim -Dopengpu.flashsimPython="$PYTHON" \
-  -Dopengpu.simJobs=2 -Dopengpu.flashsimShards=32 -Dopengpu.tessellationUniformFullCu=1 \
+  -Dopengpu.simJobs=1 -Dopengpu.flashsimShards=32 -Dopengpu.tessellationUniformFullCu=1 \
   'testOnly opengpu.system.TessellationCuIsolineSystemClientSpec -- -z service=true'
 ```
 
