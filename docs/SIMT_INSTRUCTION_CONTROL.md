@@ -59,36 +59,38 @@ The masked storage loop observed 256 reads, writes and acknowledgements.
 
 ## Complete dual-CU execution
 
-The assertion-enabled `two-cu-vga60-owner-v2-image-float-stage` Verilator
-executor passed all seven cases at source `bdb598c78`. Each ran original
+The assertion-enabled `two-cu-vga60-owner-v2-image-float-stage` FlashSim
+executor passed all nine cases at source `cbf8e2b72`. Each ran original
 Mesa ESSL compilation and production Linux driver submission. The independent
 oracle checked returned bytes and every other physical byte. Observed command
 retirement and context cleanup passed for each case.
 
 | Case | Native words | Checked result |
 | --- | ---: | --- |
-| `constant-loop` | 73 | 128 results, 11,353 DUT service cycles |
+| `constant-loop` | 73 | 128 results |
 | `dynamic-loop` | 81 | 128 results and original 16-byte default uniform view |
 | `loop-break` | 89 | 128 per-lane early-exit results |
 | `storage-loop` | 86 | 384 results and unchanged original SSBO input |
 | `nested-loop` | 110 | 128 results with lane-dependent inner trip counts |
 | `continue-loop` | 97 | 128 results with lane-dependent skipped arithmetic |
 | `masked-storage-loop` | 116 | 256 selected results and 256 skipped words preserved |
+| `loop-branch` | | 12 results after conditional SSBO fences and preserved skipped words |
+| `indexed-uniform-loop` | 191 | 128 results and unchanged original 4096-byte default view |
 
 Follow the [owner CPU capture setup](COMPLETE_OWNER_COMPUTE_EXECUTOR.md) or
 [complete owner qualification setup](P12_RESOURCE_COEXISTENCE.md#reproduce)
-with an executor built from the checked-out source. Run each listed case:
+with a FlashSim executor built from the checked-out source. Run each listed case.
 
 ```sh
 for case in constant-loop dynamic-loop loop-break storage-loop nested-loop \
-  continue-loop masked-storage-loop; do
+  continue-loop masked-storage-loop loop-branch indexed-uniform-loop; do
   qualify_p12 --case "$case" || exit
 done
 ```
 
-The cases qualify these structured loop and resource paths. The broader
-P13 barrier, resource-index, indirect-work and capability-query matrix and
-product clock/FPS qualification remain open.
+The compiler currently rejects workgroup execution barriers inside control
+flow. Workgroup barriers combined with loops and product clock/FPS
+qualification remain open.
 
 ## Indexed uniforms inside a masked loop
 
