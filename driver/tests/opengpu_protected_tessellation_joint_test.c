@@ -178,6 +178,59 @@ static int joint_prepare_test(struct opengpu_private_snapshot *o,u32 segment)
     if(ret && root && root->executable)fprintf(stderr,"joint prepare root must be RO/NX\n");
     return ret;
 }
+static int joint_request(struct opengpu_private_snapshot *o,struct opengpu_device *gpu,
+    struct opengpu_render_context *ctx,u32 segment,struct opengpu_private_snapshot_joint_request *request)
+{
+    mutex_lock(&gpu->hw.submit_lock);
+    int ret=opengpu_private_snapshot_joint_request_locked(o,gpu,ctx,segment,request);
+    mutex_unlock(&gpu->hw.submit_lock);
+    return ret;
+}
+
+static void joint_request_rejected(struct opengpu_private_snapshot *o,struct opengpu_device *gpu,
+    struct opengpu_render_context *ctx,u32 segment)
+{
+    struct opengpu_private_snapshot_joint_request request;
+    unsigned char original[sizeof(request)];
+    memset(original,0xa7,sizeof(original));
+    memcpy(&request,original,sizeof(request));
+    assert(joint_request(o,gpu,ctx,segment,&request)<0);
+    assert(!memcmp(&request,original,sizeof(request)));
+}
+
+static void joint_request_oracle(struct opengpu_private_snapshot *o,struct opengpu_device *gpu,
+    struct opengpu_render_context *ctx,u32 segment,u32 domain)
+{
+    struct opengpu_private_snapshot_joint_request request;
+    const struct snapshot_segment *root=snapshot_segment_find(o,segment);
+    u64 first=1ULL<<32,last=0;
+    assert(root && !joint_request(o,gpu,ctx,segment,&request));
+    for(const struct snapshot_segment *s=o->segments;s;s=s->next) {
+        if(s->va<first)first=s->va;
+        if(s->va+s->backing.size>last)last=s->va+s->backing.size;
+    }
+    for(const struct snapshot_resource *r=o->resources;r;r=r->next) {
+        if(r->reservation.va<first)first=r->reservation.va;
+        if(r->reservation.va+r->reservation.size>last)last=r->reservation.va+r->reservation.size;
+    }
+    assert(request.job_base==root->va && request.job_limit==root->va+512 &&
+           request.job_allocation_base==root->va && request.job_allocation_limit==root->va+root->backing.size);
+    assert(request.owner_base==first && request.owner_limit==last && request.owner_limit>=request.job_allocation_limit);
+    assert(request.domain==domain && request.context==ctx->id && request.pass==8 && request.generation==9);
+    joint_request_rejected(o,gpu,ctx,segment+1);
+    struct opengpu_render_context foreign={.gpu=gpu,.id=ctx->id};
+    joint_request_rejected(o,gpu,&foreign,segment);
+
+    const struct opengpu_buffer *l1=vm_live_l1(&ctx->vm,request.job_base/MMU_SUPERPAGE_SIZE);
+    assert(l1);
+    u32 *leaf=(u32 *)l1->cpu+(request.job_base%MMU_SUPERPAGE_SIZE)/MMU_PAGE_SIZE;
+    u32 saved=*leaf;
+    *leaf|=MMU_PTE_W;
+    joint_request_rejected(o,gpu,ctx,segment);
+    *leaf=saved;
+    assert(!joint_request(o,gpu,ctx,segment,&request));
+}
+
 static void joint_oracle(struct opengpu_private_snapshot *o,struct opengpu_render_context *ctx,u32 segment,u32 domain)
 {
     u32 address;
@@ -585,7 +638,7 @@ static void joint_engine_header_capacity(struct joint_fixture *f,struct opengpu_
 static void joint_placement(struct joint_fixture *f,struct opengpu_device *gpu,
     struct opengpu_render_context *ctx)
 {
-    for(u32 kind=0;kind<4;kind++) {
+    for(u32 kind=0;kind<5;kind++) {
         struct opengpu_private_snapshot *o=opengpu_private_snapshot_create(gpu,ctx);u32 segment;
         assert(!IS_ERR(o) && !opengpu_protected_tessellation_joint_build(o,&f->source,&joint_callbacks,&segment));
         u64 total=0;
@@ -596,6 +649,7 @@ static void joint_placement(struct joint_fixture *f,struct opengpu_device *gpu,
          * addresses or allocating/touching a 256-MiB backing buffer. */
         u64 prefix_bytes=kind<2?0x10000000ULL-4096-total+(u64)kind*4096:
             (kind==2?0x10000000ULL-4096:0x10004000ULL-4096);
+        if(kind==4)prefix_bytes=(1ULL<<32)-4096-total;
         struct opengpu_vm_reservation occupied={0};
         assert(!opengpu_mmu_vm_reserve(gpu,&ctx->vm,(size_t)prefix_bytes,&occupied) && occupied.va==4096);
         int ret=joint_prepare_test(o,segment),expected=(kind==1 || kind==2)?-EINVAL:0;
@@ -614,7 +668,12 @@ static void joint_placement(struct joint_fixture *f,struct opengpu_device *gpu,
         if(kind==1)assert(last==0x10001000ULL);
         if(kind==2)assert(first==0x10000000ULL);
         if(kind==3)assert(first==0x10004000ULL);
+        if(kind==4)assert(last==(1ULL<<32));
         assert(opengpu_private_snapshot_publish(o)==(expected?-EINVAL:0));
+        if(kind==4) {
+            struct opengpu_private_snapshot_joint_request request;
+            assert(!joint_request(o,gpu,ctx,segment,&request) && request.owner_limit==(1ULL<<32));
+        }
         if(kind==1) {
             int allocations=live_allocations;idle_error=-ETIMEDOUT;
             assert(opengpu_private_snapshot_retire(o)==-ETIMEDOUT && live_allocations==allocations && ctx->references==2);
@@ -650,6 +709,13 @@ static void joint_placement(struct joint_fixture *f,struct opengpu_device *gpu,
         if(leaf)*leaf=saved;
         assert(!opengpu_private_snapshot_retire(o));
     }
+
+    /* A generic prepared/published graph never obtains a joint request. */
+    struct opengpu_private_snapshot *o=opengpu_private_snapshot_create(gpu,ctx);u32 segment;
+    assert(!IS_ERR(o) && !opengpu_protected_tessellation_joint_build(o,&f->source,&joint_callbacks,&segment));
+    assert(!opengpu_private_snapshot_prepare(o) && !opengpu_private_snapshot_publish(o));
+    joint_request_rejected(o,gpu,ctx,segment);
+    assert(!opengpu_private_snapshot_retire(o));
 }
 #ifndef OPENGPU_TESS_JOINT_TEST_MAIN
 #define OPENGPU_TESS_JOINT_TEST_MAIN main
@@ -678,17 +744,24 @@ int OPENGPU_TESS_JOINT_TEST_MAIN(void)
             fprintf(stderr,"joint positive domain%u got%d\n",domain,ret);
         }
         assert(!ret && graph_copies>70);
-        assert(!joint_prepare_test(o,segment) && !opengpu_private_snapshot_publish(o));
+        joint_request_rejected(o,&gpu,&ctx,segment);
+        assert(!joint_prepare_test(o,segment));
+        joint_request_rejected(o,&gpu,&ctx,segment);
+        assert(!opengpu_private_snapshot_publish(o));
+        joint_request_oracle(o,&gpu,&ctx,segment,domain);
         joint_oracle(o,&ctx,segment,domain);
         int allocations=live_allocations;idle_error=-ETIMEDOUT;
         assert(opengpu_private_snapshot_retire(o)==-ETIMEDOUT && live_allocations==allocations && ctx.references==2);
+        joint_request_rejected(o,&gpu,&ctx,segment);
         idle_error=0;gpu.hw.wedged=false;asid_flush_failures=1;
         assert(opengpu_private_snapshot_retire(o)==-EIO && live_allocations==allocations && ctx.references==2);
+        joint_request_rejected(o,&gpu,&ctx,segment);
         gpu.hw.wedged=false;assert(!opengpu_private_snapshot_retire(o));
         pt_free_originals(&gpu);free(f);
         opengpu_mmu_vm_destroy(&gpu,&ctx.vm);opengpu_mmu_fini(&gpu);
         assert(ctx.references==1 && !live_allocations && !fixture_buffers);
     }
+    puts("joint published root request: all domains, LIMIT33, unpublished and foreign roots, live leaves and quarantine PASS");
     puts("joint GNQ4/5/6 original VS/GVS/GND/GUR1+GUR3/v3/RX/FS8+9/private owner/MMU PASS (BUILD only)");
     return 0;
 }

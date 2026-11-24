@@ -95,6 +95,7 @@ blend restrictions. Old GFS and protected BUILD APIs are unchanged.
 | Captured source preflight | Full canonical words, identity, zero source PC/scratch/GUR/image/resource addresses, legal GFS metadata, scratch stride, GNT/GFS/frame samples and attachment types |
 | Actual RX/GUR/frame helpers | Original instruction validation/copy, bound GUR1/GUR3 publication, exact scratch allocation/logical views, complete frame roles and physical aliases |
 | Joint prepare gate | Real MMU placement, root/owner/frame/directory identity and exact bound views, live leases/leaves, every segment/resource envelope outside fixed LDS |
+| Published launch request | Exact prepared root, live leaves rechecked under the submit lock, checked domain and identity, logical job extent, job allocation and owner envelope |
 | Future hardware route | Full GNQ/directory/GNT/GVS/GND admission and actual three-domain shader/frame execution; pending |
 
 `TypedReplayTileImagePipeline.checkState` receives the exact engine count,
@@ -147,8 +148,16 @@ the new gate rejects an unsafe placement instead of publishing it. Original
 frame/scratch roles obtain distinct actual MMU reservations, while source
 physical-alias checks reject conflicting underlying pages. Prepared fixture
 checks independently verify the full fragment scratch prefixes, allocation
-bounds, pairwise separation, arena separation and R/W/NX leaves. No usable
-joint command-address getter or queue path is added.
+bounds, pairwise separation, arena separation and R/W/NX leaves.
+
+The kernel-only `opengpu_private_snapshot_joint_request_locked` accessor
+returns launch parameters for the exact published root that passed the joint
+prepare gate. It rechecks live mappings and leases under `submit_lock` against
+the original device and context. The root's logical extent and actual mapped
+allocation are separate, and the owner envelope spans the real private
+segments and reservations. Exclusive limits retain all 33 bits. The original
+owner retains authority over the referenced mappings through retirement.
+The hardware queue and provider discovery remain separate integration gates.
 
 
 No production getter supplies the joint profile. An unavailable or incomplete
@@ -156,9 +165,9 @@ profile fails before source copy, resolution or owner append. Compiler metadata
 and GSS1 cannot grant it. Existing native/protected job accessors reject the
 new job magic.
 
-A future root request must carry a separately verified owner scope and expected
-frame identity. A numeric scope envelope does not prove every hole is owned;
-immutable authorized references and actual MMU/leases remain mandatory. Empty
+The hardware start must carry the verified owner scope and expected frame
+identity from the published request. Authorization still follows the immutable
+references and live MMU mappings and leases inside the scope. Empty
 no-state frames require a real clear/store/resolve path: the old replay's
 nonempty-state admission cannot be bypassed with a dummy shader. Arbitrary
 64-bit invocation IDs remain original BUILD-checked identities; a bounded
@@ -185,6 +194,13 @@ cover coupled 2048-word boundaries, exact `2^32` limits, repeated catalog
 invocations, both kinds of empty work, every copy/resolve/allocation/segment/
 relocation failure, quarantine and healthy retirement/reuse. These are bounded
 CPU ownership/metadata tests; literal programs do not supply shader results.
+
+The published request passed all three domains in the actual owner/MMU
+fixture, including an owner limit at exactly 4 GiB. The fixture rejects
+pre-publication calls, a root published without the joint gate, foreign
+context/root inputs, changed write permissions and quarantined owners while
+preserving the caller's request on every rejection. The fixture passed
+under AddressSanitizer and UndefinedBehaviorSanitizer.
 
 The old protected builder's seven controls, GVM2's ten controls, the actual
 private-owner/frame/enqueue fixtures and original native graph regression
