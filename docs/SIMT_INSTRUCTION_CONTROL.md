@@ -141,6 +141,12 @@ all skipped writes and physical guards.
 The sanitized Mesa/Linux capture and float-owner capture parser passed. The
 oracle rejected a wrong peer warp, modifications to skipped words and
 unchanged returned memory. Reproduce with the CPU capture procedure above and
-`--case shared-barrier-mask --capture-only`. The complete FlashSim owner can
-run the same case with `qualify_p12 --case shared-barrier-mask` after building
-the executor from these sources. Its full-DUT execution is pending.
+`--case shared-barrier-mask --capture-only`.
+
+At source `e28e76da4`, the assertion-enabled dual-CU FlashSim owner ran the
+original Mesa/Linux submission in 15,118 service cycles. The oracle checked
+all 256 results and the physical guards. The command held its completion and
+IRQ through external memory drain, then retired. Context cleanup cleared five
+page-table entries and observed all seven shootdowns while preserving RAM.
+Reproduce with `qualify_p12 --case shared-barrier-mask` using the complete
+owner built from the checked-out source.
