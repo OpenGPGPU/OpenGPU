@@ -419,8 +419,38 @@ FLASHSIM_CIRCT_LARGEST_FIRST=0 sbt -Dopengpu.simBackend=flashsim \
 ```
 
 The fixture uses small draw descriptors on the complete 640×480 owner.
-Full-owner fault and cancellation recovery across all three domains, product
-frequency and FPS remain open.
+
+### Full-owner fault and cancellation recovery
+
+The source-generated capacity corpus at `c3cc62e83` reused all 285 native
+FlashSim objects from the verified dual-CU checked-uniform model. The 22
+feedback fixture files matched the prior corpus byte for byte. The generator
+also supplied the six stage targets for physical fault injection and response
+holds.
+
+| Case | Checked events | Service cycles |
+| --- | --- | ---: |
+| `malformed` | 24 rejections across TCS and TES in all three domains. Wrong GUR3 stage, version and block map and wrong GUB3 default-stage mask returned the exact failure completion. | 68,853 |
+| `read-fault` | Six real AXI read errors reached the TCS and TES default inputs, with one error per command. | 42,256 |
+| `cancel` | Six command resets held a real TCS or TES read response for 71 cycles each. Reset acknowledged after drain and preserved both address spaces. | 42,351 |
+
+Each run used one model reset. The failure completions and IRQs stayed stable
+while held and retired through MMIO. Cancelled commands left no result
+details. The same model and RAM produced 22 healthy feedback words and
+three counters after recovery. All uniform input lines and output guards
+were checked. The `distinct`, `invalidate` and `capacity` cases also
+reproduced their original service cycle counts.
+
+Generate the fixture with the command above. Run the recovery cases using
+the qualified checked-uniform owner from the same sources.
+
+```sh
+"$PYTHON" -B scripts/qualify_tessellation_uniform_owner.py \
+  --qualification "$OWNER/executors/native-sample/qualification.json" --fixture "$FIXTURE" \
+  --case malformed --case read-fault --case cancel
+```
+
+Product frequency and FPS remain part of the product qualification.
 
 ### Three-domain AXI host execution
 
