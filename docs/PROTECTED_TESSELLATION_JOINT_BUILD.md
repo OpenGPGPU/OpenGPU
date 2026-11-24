@@ -306,7 +306,11 @@ host uses the production 4 KiB bin pages required by the Linux GNF encoder.
 ```sh
 OUT=$(mktemp -d "$PWD/.artifacts/joint-live.XXXXXX")
 mkdir "$OUT/rtl"
-sbt -batch -J-Xmx3g "Test / runMain opengpu.system.PrepareProtectedJointOwnerHost $OUT/host.fir"
+sbt -batch -J-Xmx3g -J-XX:ActiveProcessorCount=2 \
+  'set Test / sources ~= (_.filter(p => Set("GraphicsTestResolution.scala", "GpuSim.scala", "FlashSimBackend.scala", "GpuHostTestSupport.scala", "QualifyNativeFourEngineSramHost.scala", "PrepareOwnerResourceSampleHost.scala", "PrepareOwnerResourceImageFloatHost.scala", "TessellationNativeHostElaborationSpec.scala").contains(p.getName)))' \
+  "set Test / classDirectory := file(\"$OUT/classes\")" \
+  "set Test / compileAnalysisFile := file(\"$OUT/analysis.zip\")" \
+  "Test / runMain opengpu.system.PrepareProtectedJointOwnerHost $OUT/host.fir"
 "$FIRTOOL" "$OUT/host.fir" -format=fir --split-verilog "-o=$OUT/rtl" \\
   --lowering-options=disallowLocalVariables,disallowPackedArrays
 (
