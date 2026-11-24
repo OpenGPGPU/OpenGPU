@@ -43,7 +43,7 @@
   完整资源和2-CU VGA60仍待其各自目标验收。阶段源码合入不自动增加闭环计数。
   P01 / #819、P02 / #820、P03 / #821 已完成各自的源码交付验收。
 - 当前基线共有 **40 个 PR 工作包**，包括源码交付 3 项、功能/资源/API 闭合 31 项、
-  性能与最终验收 6 项。P14 随 #938 受保护合入后，验收完成并合入 **13/40**，剩余 **27 项**。
+  性能与最终验收 6 项。P14 随 #938 完成。P13 随本 PR 受保护合入后，验收完成 **14/40**，剩余 **26 项**。
   清单显式包含 P39（原 VS→patch）和 P40（完整动态 TES patch read），
   不再把两者隐含在已经存在的组件结果中；原编号保持不变。
 - P15 源码已合入；三域客户端在实际报告消费后清理取消/故障状态，六项定向
@@ -162,7 +162,7 @@
 - P15、P16、P17、P39、P40 已有下表列出的限定范围源码与检查，均未完成目标验收。
   当前112仍非完整资源资格；旧96模型不能替代P04的完整factory和原probe验收。
 
-这里的 13/40 以本清单的 40 个工作包为分母。
+这里的 14/40 以本清单的 40 个工作包为分母。
 现有源码和组件证据不因列入闭合任务而被当作从零开始，也不会据此推算
 一个未经验收的总完成百分比。
 
@@ -275,7 +275,7 @@ python3 -B scripts/test_framebuffer_blit_host.py
 | P10 | Storage/global/image atomic 完整操作与竞争 | 全规定操作、CAS 精确旧值、竞争与重排、延迟 ACK、reservation、只读/越界、故障后健康复用；实际完整 host 验证 | P07、P08 | 完成（随本收尾 PR 受保护合入生效）；十五类完整 assertion-enabled 2-CU float host 门槛均通过，覆盖全十整数操作、有限 R32F exchange、同 texel/同 GEM 竞争、页与末字边界、延迟 ACK、读/两类写故障复用、cached/UC 别名及原 GEM 外部 CPU producer 强制 reservation 等待。最后的 warm-cached 48 阶段在同 DUT/RAM/单 reset 上通过 240 个旧值、24 次已提交 B 错误、实际双 CU L1/L2 预热/失效 ACK/下层重取回填、全物理字节、真实 fence/清理和末次源/模型复查。[完整结果、每项准确源与复现](P10_ATOMIC_QUALIFICATION.md)。各矩阵保留逐 case 或连续执行范围；P08 取消切点、P11 GPU producer/跨域 coherence、P12 完整资源及产品 clock/FPS 保留各自范围 |
 | P11 | 多 owner、多命令和跨域 coherence/barrier | 同 RAM、无 reset，GPU producer 与 warmed consumer；SSBO/image/texture/attachment/DMA/counter/shared 的 publication、barrier、fence 和 cleanup 矩阵通过 | P05–P10 | 完成（随本收尾 PR 受保护合入生效）；SSBO/buffer-image/buffer-texture/atomic-counter/shared/attachment/DMA完整float DUT与fabric观测及ordinary L1 cached-alias跨命令双CU L1/L2预热→L2 drop/L1失效ACK→UC写入→缺失重取回填全部通过，warm→producer→reload 同DUT/RAM/单reset、独立返回字节/全物理guard、真实fence/PTE/context/MMU清理与末次源/模型复查均通过：[SSBO](P11_STORAGE_PUBLICATION.md)、[image](P11_IMAGE_PUBLICATION.md)、[texture](P11_TEXTURE_PUBLICATION.md)、[counter](P11_COUNTER_PUBLICATION.md)、[shared](P11_SHARED_PUBLICATION.md)、[attachment](P11_ATTACHMENT_PUBLICATION.md)、[DMA](P11_DMA_PUBLICATION.md)、[ordinary L1 cached-alias](P11_L1_PUBLICATION.md)；计数11/40。P12完整资源共存及产品clock/FPS保留各自范围 |
 | P12 | Compute 资源共存、极限与 robustness | 保留128本地线程/16KiB共享及4SSBO、4image、8counter、16texture（单stage，GLSL ES 3.10 最低值；合计 combined 48 个为标准最低值，项目 combined 目标保留 96 以对齐实际硬件）、12UBO/default；同时使用、末地址、namespace/alias/permission、cancel/reset 均有完整 host 证据 | P07–P11 | 完成（随本收尾 PR 受保护合入生效）。三条 128 线程端点用例在完整 float DUT 通过，覆盖 16 纹理、4 SSBO、4 image、16 KiB 共享内存、12 UBO 和全部 8 个 counter；默认 uniforms 另项通过。同 GEM 端点 alias、R32F 写权限故障及延迟写响应 reset 与同 ID 恢复已通过定向验证。455 字联合 shader 在完整 float DUT 通过原始提交、返回字节、全物理 guard 和上下文清理。联合提交拒绝 texture、SSBO 和 image 之间的错误命名空间绑定，以及可写 counter 与 texture、SSBO 和 image 的 GEM 别名。联合纹理读响应和 counter 写响应取消及同 DUT、同 RAM、同命令 ID 恢复通过；联合 image 写拒绝及同 ID 恢复通过，四个 image 的物理字节、已提交的 SSBO 与 counter 字节、健康输出和上下文清理均通过独立校验。96 单元的跨阶段计数和映射在 P19 验收。计数 12/40。详见[结果与复现](P12_RESOURCE_COEXISTENCE.md) |
-| P13 | Compute ESSL/ISA/驱动语义闭合 | 原编译器字节和反射绑定；flow、barrier/mask、资源索引及实际 ioctl 路径覆盖 E31-01–05；接口和能力查询与实测一致 | P07–P12 | 验收进行中。完整双 CU DUT 已通过七种结构化循环、分歧循环内 SSBO fence、动态 uniform 索引和十阶段 GPU 生成网格的间接调度。Gallium 与 Linux 的已支持资源限制通过 CPU 捕获核对。P12 的原始 ESSL 双 CU 结果覆盖固定反射绑定上的动态 SSBO 字索引、image 和 texture 坐标，以及 counter 数组索引。CPU TGSI 回归确认 SSBO 字偏移可由线程计算，间接选择 SSBO 绑定的写入在着色器创建时拒绝。[纹理与 image 的 TGSI 回归](GALLIUM_TEXTURE_NAMESPACE.md)确认固定绑定可使用动态坐标，间接选择绑定会在编译时拒绝。[Mesa DRI 版本查询](GALLIUM_COMPUTE.md#mesa-version-query)确认默认 GLES 2.0 和 desktop GL 1.3。最新 RTL 的 64×64 双 CU FlashSim Debian guest 已通过公开 EGL/GL 能力检查和同配置 GLES 3.1 拒绝校验。阶段 PR #937 已合入。完整双 CU FlashSim 已通过分歧收敛后的工作组屏障。分支和循环内的工作组一致屏障仍待验收。参见 [循环与索引](SIMT_INSTRUCTION_CONTROL.md)、[内存 fence](GALLIUM_COMPUTE_MEMORY_BARRIERS.md)、[间接调度](COMPUTE_INDIRECT_SUBMISSION.md)。 |
+| P13 | Compute ESSL/ISA/驱动语义闭合 | 原编译器字节和反射绑定；flow、barrier/mask、资源索引及实际 ioctl 路径覆盖 E31-01–05；接口和能力查询与实测一致 | P07–P12 | 完成（随本 PR 受保护合入生效）。完整双 CU DUT 已通过七种结构化循环、分歧循环内 SSBO fence、动态 uniform 索引和十阶段 GPU 生成网格的间接调度。Gallium 与 Linux 的已支持资源限制通过 CPU 捕获核对。P12 的原始 ESSL 双 CU 结果覆盖固定反射绑定上的动态 SSBO 字索引、image 和 texture 坐标，以及 counter 数组索引。CPU TGSI 回归确认 SSBO 字偏移可由线程计算，间接选择 SSBO 绑定的写入在着色器创建时拒绝。[纹理与 image 的 TGSI 回归](GALLIUM_TEXTURE_NAMESPACE.md)确认固定绑定可使用动态坐标，间接选择绑定会在编译时拒绝。[Mesa DRI 版本查询](GALLIUM_COMPUTE.md#mesa-version-query)确认默认 GLES 2.0 和 desktop GL 1.3。最新 RTL 的 64×64 双 CU FlashSim Debian guest 已通过公开 EGL/GL 能力检查和同配置 GLES 3.1 拒绝校验。阶段 PR #937 已合入。完整双 CU FlashSim 已通过分歧收敛后的工作组屏障，以及工作组一致的分支和循环内屏障。两项工作组一致用例各核对 256 个输出字、物理 guard、命令退休和上下文清理。参见 [循环与索引](SIMT_INSTRUCTION_CONTROL.md)、[内存 fence](GALLIUM_COMPUTE_MEMORY_BARRIERS.md)、[间接调度](COMPUTE_INDIRECT_SUBMISSION.md)。 |
 
 P07 已通过原提交链和资源共存的实际 DUT 验收；各case分别reset，
 跨命令、同RAM无reset的H7 coherence仍按P11验收。
