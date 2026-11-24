@@ -605,8 +605,7 @@ int native_kernel_observe_retired(struct native_kernel_session *s,unsigned index
     /* The actual hardware drain has signaled the returned fence. This models
      * DRM's finished propagation, without releasing the job/owner or PTEs. */
     r->observed=*observation;r->verified=true;
-    if(r->hardware->error)
-        dma_fence_set_error(&r->job->base.s_fence->finished,r->hardware->error);
+    if(r->hardware->error)r->job->base.s_fence->finished.error=r->hardware->error;
     dma_fence_signal(&r->job->base.s_fence->finished);
     return 0;
 }
