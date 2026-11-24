@@ -46,11 +46,22 @@ struct native_kernel_observed_receipt {
     struct native_kernel_held_receipt held;
     uint32_t retired_status,retired_irq,retired_irq_asserted,external_drained;
 };
+struct native_kernel_reset_receipt {
+    uint32_t record_index,command_id,legacy_status,status,irq,irq_asserted,external_drained;
+};
 int native_kernel_export_memory(struct native_kernel_session *,const char *path);
 int native_kernel_capture(struct native_kernel_session *,unsigned record,const char *path,
     uint64_t cycle_budget,uint32_t hold_cycles);
 int native_kernel_capture_joint_write_fault(struct native_kernel_session *,unsigned record,
     const char *path,uint64_t cycle_budget,uint32_t hold_cycles);
+int native_kernel_capture_joint_cancel(struct native_kernel_session *,unsigned record,
+    const char *path,uint64_t cycle_budget,uint32_t hold_cycles);
+int native_kernel_cancel_joint(struct native_kernel_session *,
+    const struct native_kernel_reset_receipt *,const char *request_trace);
+int native_kernel_drain_joint_reset(struct native_kernel_session *,
+    const struct native_kernel_reset_receipt *,const char *irq_trace);
+int native_kernel_observe_joint_reset_retired(struct native_kernel_session *,
+    const struct native_kernel_reset_receipt *);
 int native_kernel_drain_held(struct native_kernel_session *,unsigned record,
     const struct native_kernel_held_receipt *,const char *retire_trace_path);
 /* Confirms actual DUT application of the driver's traced drain/POP. Only then

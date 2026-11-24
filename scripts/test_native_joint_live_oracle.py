@@ -3,8 +3,8 @@
 import struct
 import unittest
 
-from native_joint_live_oracle import RECORDS, expected_image, verify_image
-from qualify_native_joint_live import cleanup_checked, receipt_words, retired_receipt
+from native_joint_live_oracle import RECORDS, SOURCE_CANCEL_RECORD, expected_image, verify_image
+from qualify_native_joint_live import cleanup_checked, receipt_words, reset_receipt, retired_receipt
 
 
 class ImagePage:
@@ -98,6 +98,38 @@ class JointOracle(unittest.TestCase):
             cleanup_checked(dict(cleanup,records=RECORDS-1))
         with self.assertRaisesRegex(ValueError,'pteClears'):
             cleanup_checked(dict(cleanup,pteClears=0))
+
+    def test_cancel_requires_the_selected_axi_read_to_survive_until_reset_drain(self):
+        record, command, index_line, satp = SOURCE_CANCEL_RECORD,17,0x5000,0x80400001
+        held = dict(phase='held',record=record,commandId=command,legacyStatus=0,status=0x21,irq=1,
+            irqAsserted=False,externalDrained=False,physicalIndexLine=index_line,satp=satp,
+            heldReadCycles=5,resetHeldReadCycles=0,serviceCycles=100)
+        ack = dict(held,phase='ack',status=1,irq=3,irqAsserted=True,externalDrained=True,
+                   heldReadCycles=45,resetHeldReadCycles=35,serviceCycles=190)
+        retired = dict(ack,phase='retired',irq=1,irqAsserted=False,serviceCycles=200)
+
+        def receipt(value, phase, previous=None):
+            return reset_receipt(value,phase,command,record,index_line,satp,previous)
+
+        self.assertEqual(receipt(held,'held'), b'OGJCH001'+struct.pack('<7I',record,command,0,0x21,1,0,0))
+        self.assertEqual(receipt(ack,'ack',held),b'OGJCA001'+struct.pack('<7I',record,command,0,1,3,1,1))
+        self.assertEqual(receipt(retired,'retired',ack),b'OGJCV001'+struct.pack('<7I',record,command,0,1,1,0,1))
+        with self.assertRaisesRegex(ValueError,'physicalIndexLine'):
+            receipt(dict(held,physicalIndexLine=index_line+64),'held')
+        with self.assertRaisesRegex(ValueError,'before the reset drain'):
+            receipt(dict(ack,resetHeldReadCycles=31),'ack',held)
+        with self.assertRaisesRegex(ValueError,'satp'):
+            receipt(dict(ack,satp=satp+1),'ack',held)
+        with self.assertRaisesRegex(ValueError,'changed the drain'):
+            receipt(dict(retired,heldReadCycles=46),'retired',ack)
+
+        row = dict(self.row,record=record,domain=1)
+        initial, observed = ImagePage(), ImagePage()
+        allowed = [(0x1000,0x2000)]
+        verify_image(initial,observed,row,allowed)
+        observed.data[64] ^= 1
+        with self.assertRaisesRegex(ValueError,'pixel'):
+            verify_image(initial,observed,row,allowed)
 
 
 if __name__ == '__main__':

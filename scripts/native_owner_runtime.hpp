@@ -216,14 +216,9 @@ struct HeldRecord {
   Traffic start_traffic,completed;
   uint64_t start_cycles;
 };
-template<class Sim,class CaptureType>
-HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
-                       Memory &memory,const CaptureType &capture,bool prefix_only=false) {
-  capture.validate(prefix_only);
+template<class Sim>
+void replay_enqueue_prefix(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,const Capture &capture) {
   require(agent.drained() && !sim.model->io_m_irq,"owner record starts before prior retirement/drain");
-  HeldRecord held_record;held_record.initial=memory;
-  verify_readonly(held_record.initial,memory,capture.writable);
-  held_record.start_cycles=bus.cycles;held_record.start_traffic=agent.traffic;
   bus.begin_record(capture.max_cycles);
   // GCR's explicit protected-source presence guarantee must be checked before
   // probing GUC/GSE/GNC. A standalone GNP host need not map those windows.
@@ -238,6 +233,15 @@ HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
   require(!(bus.read(GPU_REG_UCMD_STATUS)&GPU_UCMD_STATUS_COMPLETION),
     "owner record starts with an unretired completion");
   for(auto it=capture.trace.begin();it!=capture.trace.end()-1;++it)bus.action(*it);
+}
+template<class Sim,class CaptureType>
+HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
+                       Memory &memory,const CaptureType &capture,bool prefix_only=false) {
+  capture.validate(prefix_only);
+  HeldRecord held_record;held_record.initial=memory;
+  verify_readonly(held_record.initial,memory,capture.writable);
+  held_record.start_cycles=bus.cycles;held_record.start_traffic=agent.traffic;
+  replay_enqueue_prefix(sim,agent,bus,capture);
   const auto initial_injected_writes=agent.injected_write_faults();
   if constexpr(CaptureType::joint_completion) {
     if(capture.write_fault) {
@@ -423,6 +427,113 @@ inline void match_profile(const Capture &capture,const ProfileObservation &profi
     require(at!=words.end() && at->second==word.value,"active capture differs from actual probe identity/quota");
   }
 }
+template<class Sim>
+void cancel_joint_index_read(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
+    const JointCapture &capture,const std::filesystem::path &output,const std::filesystem::path &session,
+    uint64_t index,std::chrono::milliseconds timeout) {
+  const auto stem="record-"+std::to_string(index);
+  const auto reset_stem=stem+".reset.";
+  const auto plan_path=session/(reset_stem+"plan");
+  wait_input(plan_path,session,timeout);
+  std::ifstream plan(plan_path,std::ios::binary);
+  magic(plan,"OGJCP001");
+  const auto physical=read_le(plan,8);
+  require(physical && physical<Memory::limit && !(physical&63) && plan.peek()==EOF &&
+    std::none_of(capture.writable.begin(),capture.writable.end(),[physical](const auto &r) {
+      return physical<r.end && r.first<physical+64;
+    }),"cancel plan does not select a read-only original index line");
+
+  const auto initial=memory;
+  const auto traffic=agent.traffic;
+  const auto start=bus.cycles;
+  const auto previous_holds=agent.held_read_cycles();
+  replay_enqueue_prefix(sim,agent,bus,capture);
+  const auto satp=bus.read(GPU_REG_UCMD_VECTOR_SATP);
+  auto verify_vm=[&] {
+    require((satp&GPU_SATP_ENABLE) && bus.read(GPU_REG_UCMD_VECTOR_SATP)==satp &&
+      bus.read(GPU_REG_UCMD_INSTRUCTION_SATP)==satp,"joint reset changed the original Sv32 context");
+  };
+  verify_vm();
+  agent.arm_response_hold(ResponseChannel::read,physical,physical+64);
+  bus.action(capture.trace.back());
+  while(agent.held_read_cycles()==previous_holds) {
+    bus.step();
+    if((bus.cycles-start)%64==0)
+      require(!(bus.read(GPU_REG_UCMD_STATUS)&GPU_UCMD_STATUS_COMPLETION),
+        "joint job completed before the original index response was held");
+  }
+  auto held_cycles=[&] {return agent.held_read_cycles()-previous_holds;};
+  struct ResetState {
+    uint32_t legacy,status,irq;
+    bool pin,drained;
+  };
+  auto observe=[&] {
+    const auto legacy=bus.read(GPU_REG_STATUS);
+    const auto status=bus.read(GPU_REG_UCMD_STATUS);
+    const auto irq=bus.read(GPU_REG_IRQ);
+    return ResetState{legacy,status,irq,bool(sim.model->io_m_irq),agent.drained()};
+  };
+  auto publish=[&](const char *phase,const ResetState &s,uint64_t reset_holds) {
+    atomic_json(session/(reset_stem+phase+".json"),[&](auto &out) {
+      out<<"{\"phase\":\""<<phase<<"\",\"record\":"<<index<<",\"commandId\":"<<capture.command_id
+        <<",\"legacyStatus\":"<<s.legacy<<",\"status\":"<<s.status<<",\"irq\":"<<s.irq
+        <<",\"irqAsserted\":"<<(s.pin?"true":"false")<<",\"externalDrained\":"<<(s.drained?"true":"false")
+        <<",\"physicalIndexLine\":"<<physical<<",\"satp\":"<<satp<<",\"heldReadCycles\":"<<held_cycles()
+        <<",\"resetHeldReadCycles\":"<<reset_holds<<",\"serviceCycles\":"<<bus.cycles-start<<"}\n";
+    });
+  };
+  const auto held=observe();
+  require(!held.legacy && !held.drained && (held.status&GPU_UCMD_STATUS_VM_BUSY) &&
+    !(held.status&~(GPU_UCMD_STATUS_READY|GPU_UCMD_STATUS_VM_BUSY)) && (held.irq&GPU_IRQ_ENABLE) &&
+    !(held.irq&~(GPU_IRQ_ENABLE|GPU_IRQ_PENDING)) && held.pin==bool(held.irq&GPU_IRQ_PENDING),
+    "joint index response was not held by a live command");
+  publish("held",held,0);
+  auto replay=[&](const char *suffix,ResetPhase phase) {
+    const auto path=session/(reset_stem+suffix);
+    wait_input(path,session,timeout);
+    const auto trace=OwnerResetTrace::read(path,phase,capture.command_id);
+    for(const auto &a:trace.actions)bus.action(a);
+  };
+  replay("request",ResetPhase::request_with_irq);
+  const auto before_reset_hold=held_cycles();
+  for(unsigned cycle=0;cycle<capture.hold_cycles;++cycle) {
+    bus.step();
+    require((bus.read(GPU_REG_UCMD_STATUS)&~GPU_UCMD_STATUS_READY)==
+      (GPU_UCMD_STATUS_RESET_BUSY|GPU_UCMD_STATUS_VM_BUSY) && !agent.drained(),
+      "joint reset released the owner before its index response drained");
+  }
+  verify_vm();
+  const auto reset_holds=held_cycles()-before_reset_hold;
+  require(reset_holds>=capture.hold_cycles,"joint reset lost its withheld index response");
+  agent.release_response_hold();
+  while(bus.read(GPU_REG_UCMD_STATUS)&GPU_UCMD_STATUS_RESET_BUSY)bus.step();
+  require(agent.drained(),"joint reset acknowledged before external drain");
+  agent.disarm_response_hold();
+  verify_vm();
+  require(!bus.read(GPU_REG_UCMD_COMPLETION) && !bus.read(GPU_REG_UCMD_COMPLETION_BYTES_LO) &&
+    !bus.read(GPU_REG_UCMD_COMPLETION_BYTES_HI),"cancelled joint job exposed stale completion data");
+  for(unsigned word=0;word<OPENGPU_TESS_JOINT_HOST_COMPLETION_WORDS;++word)
+    require(!bus.read(joint_detail_address(word)),"cancelled joint job exposed stale GNZ2");
+  require(agent.traffic.read_faults==traffic.read_faults && agent.traffic.write_faults==traffic.write_faults,
+    "joint cancellation encountered an unexpected AXI fault");
+  const auto completed=agent.traffic;
+  for(unsigned cycle=0;cycle<32;++cycle)bus.step();
+  const auto ack=observe();
+  require(!ack.legacy && ack.status==GPU_UCMD_STATUS_READY && ack.irq==(GPU_IRQ_ENABLE|GPU_IRQ_PENDING) &&
+    ack.pin && ack.drained,"joint reset did not acknowledge an idle drained command path");
+  traffic_unchanged(completed,agent.traffic);
+  verify_readonly(initial,memory,capture.writable);
+  memory.write((output/(stem+".memory")).string());
+  publish("ack",ack,reset_holds);
+
+  replay("irq",ResetPhase::retire);
+  const auto retired=observe();
+  require(!retired.legacy && retired.status==GPU_UCMD_STATUS_READY && retired.irq==GPU_IRQ_ENABLE &&
+    !retired.pin && retired.drained,"original joint reset IRQ did not retire idle and drained");
+  verify_vm();
+  traffic_unchanged(completed,agent.traffic);
+  publish("retired",retired,reset_holds);
+}
 template<class Sim,class CaptureType>
 uint64_t active_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
     const std::filesystem::path &output,const std::filesystem::path &session,
@@ -442,6 +553,12 @@ uint64_t active_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory
     }else match_profile(capture,profile);
     verify_readonly(memory,memory,capture.writable);
     if(pte)pte->observe(memory,capture);
+    if constexpr(CaptureType::joint_completion) {
+      if(capture.cancel_index_read) {
+        cancel_joint_index_read(sim,agent,bus,memory,capture,output,session,n,response_timeout);
+        continue;
+      }
+    }
     auto held=hold_record(sim,agent,bus,memory,capture,true);
     atomic_json(session/(stem+".held.json"),[&](auto &out){held_json(out,held.result,n,capture.command_id);});
     wait_input(session/(stem+".retire"),session,response_timeout);

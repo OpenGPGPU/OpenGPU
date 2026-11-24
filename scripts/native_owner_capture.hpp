@@ -72,7 +72,7 @@ private:
   friend struct SampleCapture;
   friend struct JointCapture;
   void validate_contract(const std::vector<Command> &required_profile,bool prefix_only,bool joint=false,
-      const JointImageWriteFault *write_fault=nullptr) const {
+      const JointImageWriteFault *write_fault=nullptr,bool cancel_index_read=false) const {
     require(max_cycles>0 && max_cycles<=1000000000 && hold_cycles>=8 && hold_cycles<=4096 && command_id<256,
       "invalid capture execution bounds");
     std::map<uint32_t,uint32_t> found;
@@ -151,6 +151,12 @@ private:
       staged[a.address]=a.value;
     }
     require(native==1 && pending,"capture has no held final native command");
+    if(cancel_index_read) {
+      require(joint && !write_fault && prefix_only && checks.empty() && finish.empty() &&
+        (found.at(GPU_REG_CAPABILITIES)&GPU_CAP_UNIFIED_RESET),
+        "source cancellation requires an owned joint command and unified reset");
+      return;
+    }
     std::map<uint32_t,Check> checked;
     for(const auto &c:checks) {address(c.address);
       // Successful GNX retains raw reader address/draw fields. Their values
@@ -231,6 +237,7 @@ struct JointCapture : Capture {
   static constexpr uint32_t resource_flags=0x4367ff;
   static constexpr unsigned auxiliary_words=5;
   std::optional<JointImageWriteFault> write_fault;
+  bool cancel_index_read=false;
   static std::vector<uint32_t> discovery_addresses() {
     std::vector<uint32_t> addresses;
     auto expected=Capture::profile();
@@ -274,14 +281,15 @@ struct JointCapture : Capture {
   }
   void validate(bool prefix_only=true) const {
     validate_discovery(discovery);
-    validate_contract({},prefix_only,true,write_fault?&*write_fault:nullptr);
+    validate_contract({},prefix_only,true,write_fault?&*write_fault:nullptr,cancel_index_read);
   }
   static JointCapture read(std::istream &in,bool prefix_only=true) {
     std::string format(8,'\0');
     in.read(format.data(),format.size());
-    require(format=="OGCAP003" || format=="OGCAP004","unknown protected joint capture format");
+    require(format=="OGCAP003" || format=="OGCAP004" || format=="OGCAP005","unknown protected joint capture format");
     JointCapture capture;
     if(format=="OGCAP004")capture.write_fault=JointImageWriteFault{read_le(in,8),uint32_t(read_le(in,4))};
+    capture.cancel_index_read=format=="OGCAP005";
     static_cast<Capture &>(capture)=Capture::payload(in);
     capture.validate(prefix_only);
     return capture;
@@ -341,6 +349,60 @@ struct Retirement {
   }
   static Retirement read(const std::string &path,bool joint=false) {
     std::ifstream in(path,std::ios::binary);require(bool(in),"cannot open driver retirement trace");return read(in,joint);
+  }
+};
+
+enum class ResetPhase { request,tail,retire,request_with_irq };
+struct OwnerResetTrace {
+  uint32_t command_id=0;
+  std::vector<Action> actions;
+  void validate(ResetPhase phase,uint32_t expected) const {
+    require(command_id==expected && command_id>0 && command_id<256,"reset trace changed command identity");
+    const uint32_t status_mask=GPU_UCMD_STATUS_READY|GPU_UCMD_STATUS_COMPLETION|GPU_UCMD_STATUS_OVERFLOW|
+      GPU_UCMD_STATUS_RESET_BUSY|GPU_UCMD_STATUS_RESET_REJECTED|GPU_UCMD_STATUS_VM_BUSY;
+    auto write=[&](size_t n,uint32_t address,uint32_t value) {
+      require(n<actions.size() && actions[n].kind==Kind::write && actions[n].address==address &&
+        actions[n].value==value && !actions[n].mask,"reset trace changed an original MMIO write");
+    };
+    auto read=[&](size_t n,Kind kind,uint32_t address,uint32_t value,uint32_t mask) {
+      require(n<actions.size() && actions[n].kind==kind && actions[n].address==address &&
+        actions[n].value==value && actions[n].mask==mask,"reset trace changed an original MMIO observation");
+    };
+    if(phase==ResetPhase::request || phase==ResetPhase::request_with_irq) {
+      const bool enable_irq=phase==ResetPhase::request_with_irq;
+      require(actions.size()==(enable_irq?4u:3u),"reset request differs from the original abort");
+      write(0,GPU_REG_IRQ,0);
+      const auto status=actions[1].value;
+      require((status&GPU_UCMD_STATUS_VM_BUSY) && !(status&~(GPU_UCMD_STATUS_VM_BUSY|GPU_UCMD_STATUS_READY)),
+        "abort status owns a completion or has already entered reset");
+      read(1,Kind::poll,GPU_REG_UCMD_STATUS,status,status_mask);
+      write(2,GPU_REG_UCMD_RESET,GPU_UCMD_RESET_REQUEST);
+      if(enable_irq)write(3,GPU_REG_IRQ,GPU_IRQ_ENABLE);
+    }else if(phase==ResetPhase::tail) {
+      require(actions.size()==1,"reset tail crossed the original IRQ enable");write(0,GPU_REG_IRQ,GPU_IRQ_ENABLE);
+    }else {
+      require(phase==ResetPhase::retire && actions.size()==6,"reset retirement differs from original IRQ path");
+      read(0,Kind::check,GPU_REG_STATUS,0,0xffffffffu);
+      read(1,Kind::check,GPU_REG_IRQ,GPU_IRQ_ENABLE|GPU_IRQ_PENDING,0xffffffffu);
+      write(2,GPU_REG_IRQ,GPU_IRQ_ENABLE|GPU_IRQ_PENDING);write(3,GPU_REG_IRQ,GPU_IRQ_ENABLE);
+      read(4,Kind::poll,GPU_REG_UCMD_STATUS,GPU_UCMD_STATUS_READY,status_mask);
+      read(5,Kind::poll,GPU_REG_UCMD_STATUS,GPU_UCMD_STATUS_READY,status_mask);
+    }
+  }
+  static OwnerResetTrace read(std::istream &in,ResetPhase phase,uint32_t command) {
+    const char *format=phase==ResetPhase::request_with_irq?"OGJCQ001":
+      phase==ResetPhase::request?"OGCRQ001":phase==ResetPhase::tail?"OGCRL001":"OGCRV001";
+    magic(in,format);
+    OwnerResetTrace trace;trace.command_id=read_le(in,4);const auto count=read_le(in,4);
+    require(count<=1024,"oversized original reset trace");
+    for(uint64_t n=0;n<count;n++) {
+      const auto k=read_le(in,4),a=read_le(in,4),v=read_le(in,4),m=read_le(in,4);
+      trace.actions.push_back({Kind(k),uint32_t(a),uint32_t(v),uint32_t(m)});
+    }
+    require(in.peek()==EOF,"trailing original reset trace");trace.validate(phase,command);return trace;
+  }
+  static OwnerResetTrace read(const std::filesystem::path &path,ResetPhase phase,uint32_t command) {
+    std::ifstream in(path,std::ios::binary);require(bool(in),"cannot open original reset trace");return read(in,phase,command);
   }
 };
 

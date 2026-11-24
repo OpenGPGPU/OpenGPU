@@ -12,7 +12,9 @@ CASES = (
     (1, False, False), (1, True, False),
     (2, False, False), (2, True, False),
     (1, False, True), (1, False, False),
+    (1, False, False), (1, False, False),
 )
+SOURCE_CANCEL_RECORD = 8
 RECORDS = len(CASES)
 WIDTH = HEIGHT = 4
 IMAGE_BYTES = WIDTH * HEIGHT * 16
@@ -41,7 +43,9 @@ def original_records(value, initial, engines, *, preflight=False):
 
 def capture(data, discovery, context, row):
     write_fault = CASES[row['record']][2]
-    require(data[:8] == (b'OGCAP004' if write_fault else b'OGCAP003'), 'wrong protected joint capture format')
+    cancel = row['record'] == SOURCE_CANCEL_RECORD
+    magic = b'OGCAP005' if cancel else b'OGCAP004' if write_fault else b'OGCAP003'
+    require(data[:8] == magic, 'wrong protected joint capture format')
     cursor = 8
 
     def take(fmt):
@@ -65,7 +69,7 @@ def capture(data, discovery, context, row):
     writable = section('QQ', 4096)
     trace = section('IIII', 65536)
     checks = section('III', 256)
-    require(not section('II', 256) and cursor == len(data) and len(checks) == 17,
+    require(not section('II', 256) and cursor == len(data) and len(checks) == (0 if cancel else 17),
             'invalid protected capture completion witnesses')
     end = 0
     for first, last in writable:
@@ -150,7 +154,10 @@ def original_graph(memory, regs, context, row, *, frame_version, fault=None):
             'actual frame/store view is not the original image allocation')
     require(not fault or fault[1] == frame[210], 'write fault address differs from the published frame view')
     pc = draw[342]
-    return hashlib.sha256(view(pc,4096-(pc & 4095),11)).digest()
+    # The original GND declares UINT8 indices. Bind the response hold to the
+    # cache line containing the first index through the real Sv32 table.
+    index_line = physical(memory,satp,(draw[322]+draw[312])&~63,64,3)
+    return hashlib.sha256(view(pc,4096-(pc & 4095),11)).digest(), index_line
 
 
 def expected_image(domain, mutation):
@@ -173,14 +180,15 @@ def verify_image(previous, returned, row, writable):
     image = row['allocation'] + row['imageOffset']
     actual = returned.read(image, IMAGE_BYTES)
     domain, mutation, write_fault = CASES[row['record']]
-    expected = previous.read(image, IMAGE_BYTES) if write_fault else expected_image(domain, mutation)
+    preserved = write_fault or row['record'] == SOURCE_CANCEL_RECORD
+    expected = previous.read(image, IMAGE_BYTES) if preserved else expected_image(domain, mutation)
     for offset in range(0, IMAGE_BYTES, 16):
         require(actual[offset:offset+16] == expected[offset:offset+16],
                 f"record {row['record']} pixel {(offset//16) % WIDTH},{offset//(16*WIDTH)} differs")
     # Each record may update its working buffers. Narrow the image interval
     # to the actual view, so its entire physical allocation guard is checked.
     allocation, end = row['allocation'], row['allocation'] + row['allocationBytes']
-    allowed = [] if write_fault else [(image,image+IMAGE_BYTES)]
+    allowed = [] if preserved else [(image,image+IMAGE_BYTES)]
     for first, last in writable:
         if first < allocation:
             allowed.append((first,min(last,allocation)))

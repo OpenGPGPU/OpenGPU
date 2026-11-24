@@ -60,6 +60,39 @@ static struct native_kernel_held_receipt joint_held(FILE *f)
     receipt.held_irq_asserted=live_u32(f);
     return receipt;
 }
+static struct native_kernel_reset_receipt joint_reset_receipt(unsigned index,const char *phase,
+    const char *magic)
+{
+    char name[96];
+    snprintf(name,sizeof(name),"record-%u.reset.%s.response",index,phase);
+    FILE *f=live_wait(name);
+    live_magic(f,magic);
+    struct native_kernel_reset_receipt receipt={0};
+    receipt.record_index=live_u32(f);
+    receipt.command_id=live_u32(f);
+    receipt.legacy_status=live_u32(f);
+    receipt.status=live_u32(f);
+    receipt.irq=live_u32(f);
+    receipt.irq_asserted=live_u32(f);
+    receipt.external_drained=live_u32(f);
+    live_end(f);
+    live_require(receipt.record_index==index,"joint reset record identity");
+    return receipt;
+}
+static void joint_live_cancel(struct native_kernel_session *session,unsigned index)
+{
+    char name[96],path[4096];
+    struct native_kernel_reset_receipt receipt=joint_reset_receipt(index,"held","OGJCH001");
+    snprintf(name,sizeof(name),"record-%u.reset.request",index);
+    live_path(path,name);
+    live_require(!native_kernel_cancel_joint(session,&receipt,path),"joint source abort");
+    receipt=joint_reset_receipt(index,"ack","OGJCA001");
+    snprintf(name,sizeof(name),"record-%u.reset.irq",index);
+    live_path(path,name);
+    live_require(!native_kernel_drain_joint_reset(session,&receipt,path),"joint reset IRQ drain");
+    receipt=joint_reset_receipt(index,"retired","OGJCV001");
+    live_require(!native_kernel_observe_joint_reset_retired(session,&receipt),"joint reset retirement");
+}
 
 void joint_live_export(struct native_kernel_session *session,const char *directory)
 {
@@ -85,10 +118,18 @@ void joint_live_run(struct native_kernel_session *session,unsigned count,bool cp
     for (unsigned i=0;i<count;++i) {
         snprintf(name,sizeof(name),"record-%u.capture",i);
         live_path(path,name);
-        int error=i==JOINT_LIVE_WRITE_FAULT_RECORD?
-            native_kernel_capture_joint_write_fault(session,i,path,100000000,32):
-            native_kernel_capture(session,i,path,100000000,32);
+        int error;
+        if(i==JOINT_LIVE_SOURCE_CANCEL_RECORD)
+            error=native_kernel_capture_joint_cancel(session,i,path,100000000,32);
+        else if(i==JOINT_LIVE_WRITE_FAULT_RECORD)
+            error=native_kernel_capture_joint_write_fault(session,i,path,100000000,32);
+        else
+            error=native_kernel_capture(session,i,path,100000000,32);
         live_require(!error,"joint capture enqueue");
+        if(i==JOINT_LIVE_SOURCE_CANCEL_RECORD) {
+            joint_live_cancel(session,i);
+            continue;
+        }
         snprintf(name,sizeof(name),"record-%u.held.response",i);
         FILE *f=live_wait(name);
         live_magic(f,"OGJH0001");

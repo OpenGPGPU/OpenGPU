@@ -120,10 +120,11 @@ struct native_kernel_record {
     struct native_kernel_held_receipt held;
     struct native_kernel_observed_receipt observed;
     u32 joint_sequence_count,joint_directory_count,joint_write_fault_address;
-    bool captured,drained,verified,freed;void *mmio_state;
+    bool captured,drained,verified,freed,joint_source_cancel;void *mmio_state;
 };
 static int native_kernel_expected_error(const struct native_kernel_record *r)
 {
+    if(r->joint_source_cancel)return -ECANCELED;
     return r->joint_write_fault_address ? -EIO : 0;
 }
 struct native_kernel_session {bool context_destroyed;struct native_kernel_profile *profile;
@@ -593,7 +594,7 @@ int native_kernel_observe_retired(struct native_kernel_session *s,unsigned index
     struct native_kernel_record *r=native_session_record(s,index);
     const u32 busy=GPU_UCMD_STATUS_COMPLETION|GPU_UCMD_STATUS_OVERFLOW|
         GPU_UCMD_STATUS_RESET_BUSY|GPU_UCMD_STATUS_RESET_REJECTED|GPU_UCMD_STATUS_VM_BUSY;
-    if(!r || !r->job || !observation || !r->captured || !r->drained || r->verified ||
+    if(!r || !r->job || !observation || !r->captured || !r->drained || r->verified || r->joint_source_cancel ||
         observation->held.record_index!=index || !native_same_held(&r->held,&observation->held,!!r->job->joint_report) ||
         observation->external_drained!=1 || observation->retired_irq_asserted ||
         observation->retired_irq!=GPU_IRQ_ENABLE ||
