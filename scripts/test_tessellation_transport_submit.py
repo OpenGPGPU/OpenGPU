@@ -8,7 +8,7 @@ import tempfile
 
 root = Path(__file__).resolve().parents[1]
 source = (root / "driver/opengpu_hw.c").read_text()
-submit_start = source.index("static int opengpu_hw_unified_submit_locked(")
+submit_start = source.index("struct opengpu_hw_joint_submission {")
 submit_end = source.index("static int opengpu_hw_unified_dma_submit_locked(", submit_start)
 tess_start = source.index("static int opengpu_hw_invalidate_snapshots_locked(")
 tess_end = source.index("/* Publish one draw as a unified render command.", tess_start)

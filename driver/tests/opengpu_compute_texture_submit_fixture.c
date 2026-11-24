@@ -27,12 +27,15 @@ struct opengpu_kernel_launch { u32 indirect_base,indirect_bytes,indirect_offset;
     bool uniform_enabled; struct opengpu_compute_uniform_command_context uniform;
 };
 struct opengpu_command_events { u32 flags, wait_event, signal_event; };
+#include "opengpu_tessellation_joint_host.h"
 struct opengpu_device {
     struct { bool compute_texture_transport, compute_storage_transport, compute_image_transport, compute_counter_transport, compute_uniform_transport, compute_indirect_transport, wedged, reset_pending;
         u32 capabilities;
         bool tessellation_transport, tessellation_feedback_transport;
         u32 tessellation_engines;
         struct dma_fence *unified_fence, *active_fence;
+        struct opengpu_tessellation_joint_completion *joint_pending_completion;
+        u32 native_context,native_pass,native_generation;
         u32 aborting, unified_command_id, unified_opcode, unified_completion_delay_ms;
         u64 unified_expected_bytes, fence_context, fence_seqno; int fence_lock, submit_lock;
     } hw;
@@ -63,7 +66,7 @@ static int submit(struct opengpu_device *g, const struct opengpu_kernel_launch *
 {
     struct dma_fence *f = NULL;
     int ret = opengpu_hw_unified_submit_locked(g, launch, NULL, opcode,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, 0, &f);
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, 0, NULL, &f);
     if (!ret) { assert(f == g->hw.unified_fence); dma_fence_put(f); g->hw.unified_fence = NULL; }
     else assert(!f);
     return ret;

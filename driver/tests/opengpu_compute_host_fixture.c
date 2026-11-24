@@ -31,6 +31,7 @@
 #include "opengpu_compute_uniform_counter_source_program.h"
 #include "opengpu_kernarg_va.h"
 #include "opengpu_tessellation_completion.h"
+#include "opengpu_tessellation_joint_host.h"
 #include "opengpu_native_completion.h"
 #include "opengpu_unified_completion.h"
 #include <stddef.h>
@@ -91,6 +92,8 @@ static int compute_mmio_disable_mmu(struct opengpu_device *);
     u32 compute_resource_flags,shader_config; \
     struct opengpu_compute_local_limits compute_local_limits; \
     struct opengpu_compute_shared_limits compute_shared_limits; \
+    struct opengpu_protected_tessellation_joint_profile joint_tessellation; \
+    struct opengpu_tessellation_joint_completion *joint_pending_completion; \
     void *compute_mmio;bool reset_pending;unsigned int aborting; \
     struct dma_fence *unified_fence,*active_fence; \
     u32 unified_command_id,unified_opcode,unified_completion_delay_ms,active_completion_delay_ms,job_seqno; \

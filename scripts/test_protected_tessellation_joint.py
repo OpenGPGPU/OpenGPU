@@ -107,6 +107,22 @@ def inputs():
     return {str(p): (p.stat().st_size, p.stat().st_mtime_ns, p.stat().st_ino,
                      hashlib.sha256(p.read_bytes()).hexdigest()) for p in paths}
 
+def hw_bodies():
+    source = (ROOT / 'driver/opengpu_hw.c').read_text()
+    snapshot = source.index('int opengpu_hw_snapshot_submission_lock(')
+    snapshot_end = source.index('\n}\n', snapshot) + 2
+    submission = source.index('struct opengpu_hw_joint_submission {')
+    submission_end = source.index('\nstatic int opengpu_hw_unified_submit_locked(', submission)
+    profile = source.index('int opengpu_hw_protected_tessellation_joint_profile(')
+    submit = source.index('int opengpu_hw_protected_tessellation_joint_async(', profile)
+    submit_end = source.index('\n}\n', submit) + 2
+    return {
+        'snapshot_submission_under_test.inc': source[snapshot:snapshot_end],
+        'joint_hw_submission_under_test.inc': source[submission:submission_end],
+        'joint_enqueue_under_test.inc': source[profile:submit_end],
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--sanitize', action='store_true')
@@ -117,16 +133,8 @@ def main():
     temporary_root.mkdir(exist_ok=True)
     with workspace(temporary_root) as out:
         temporary = str(out)
-        source = (ROOT / 'driver/opengpu_hw.c').read_text()
-        first = source.index('int opengpu_hw_snapshot_submission_lock(')
-        last = source.index('\n}\n', first) + 2
-        (out / 'snapshot_submission_under_test.inc').write_text(source[first:last])
-        first = source.index('struct opengpu_hw_joint_submission {')
-        last = source.index('\nstatic int opengpu_hw_unified_submit_locked(', first)
-        (out / 'joint_hw_submission_under_test.inc').write_text(source[first:last])
-        first = source.index('int opengpu_hw_protected_tessellation_joint_profile(')
-        last = source.index('\n}\n', source.index('int opengpu_hw_protected_tessellation_joint_async(', first)) + 2
-        (out / 'joint_enqueue_under_test.inc').write_text(source[first:last])
+        for name, body in hw_bodies().items():
+            (out / name).write_text(body)
         flags = ['-std=c11', '-O1', '-Wall', '-Wextra', '-Werror']
         if args.sanitize or os.environ.get('OPENGPU_TEST_SANITIZERS') == '1':
             flags += ['-fsanitize=address,undefined', '-fno-omit-frame-pointer']

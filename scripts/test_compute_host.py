@@ -93,6 +93,7 @@ def write_bodies(out, compute_stage=False, full_profile=None):
         while hw.find(';', first, hw.index('{', first)) != -1:
             first = hw.index(start, first + len(start))
         last = hw.index('\n}\n', first) + 2
+        if name=='submit':first=hw.index('struct opengpu_hw_joint_submission {')
         body=hw[first:last]
         if name=='reset_request':body=reset_config[0]+'\n'+body
         (out / ('compute_host_hw_' + name + '_under_test.inc')).write_text(body)

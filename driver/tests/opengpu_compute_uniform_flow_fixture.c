@@ -25,6 +25,7 @@
 #include "opengpu_compute_uniform_counter_source_program.h"
 #include "opengpu_kernarg_va.h"
 #include "opengpu_tessellation_completion.h"
+#include "opengpu_tessellation_joint_host.h"
 #include "opengpu_native_completion.h"
 #include "opengpu_unified_completion.h"
 #include <stddef.h>
@@ -113,6 +114,7 @@ struct opengpu_kernel_launch { u32 indirect_base,indirect_bytes,indirect_offset;
 };
 struct opengpu_device { struct {
     void *native_pending_owner;
+    struct opengpu_tessellation_joint_completion *joint_pending_completion;
     struct { bool available; } native_sources;
     u32 native_context,native_pass,native_generation;
     bool compute_texture_transport,compute_storage_transport,compute_image_transport,compute_counter_transport,compute_uniform_transport,compute_indirect_transport,wedged,reset_pending;
@@ -413,7 +415,7 @@ static void finish(struct opengpu_device *g,struct opengpu_sched_job *j,int erro
         struct dma_fence *rejected=NULL;u32 root=g->active_root;
         mutex_lock(&g->hw.submit_lock);
         assert(opengpu_hw_unified_submit_locked(g,&j->kernel,NULL,opcode,
-            0,0,0,0,0,0,0,0,0,0,j->vm,0,&rejected)==-EBUSY&&!rejected);
+            0,0,0,0,0,0,0,0,0,0,j->vm,0,NULL,&rejected)==-EBUSY&&!rejected);
         mutex_unlock(&g->hw.submit_lock);
         assert(!hw->signaled&&g->active_root==root&&buffers==pinned&&j->objects[j->object_count-1]->refs==(int)refs);
     }
