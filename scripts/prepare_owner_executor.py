@@ -153,7 +153,8 @@ SAMPLE_GENERATED_INCLUDES = frozenset((
     'native_enqueue_under_test.inc', 'native_scheduler_under_test.inc',
     'native_admission_under_test.inc', 'native_submit_under_test.inc',
     *(f'native_mmio_{name}_under_test.inc' for name in
-      ('fault', 'fence', 'fault_record', 'job_id', 'reset_pending', 'result_error',
+      ('fault', 'fence', 'fault_record', 'job_id', 'complete', 'reset_request',
+       'abort', 'reset_pending', 'result_error',
        'drain', 'irq', 'enable_irqs', 'quiesce', 'kick', 'set_satp', 'activate_locked',
        'busy', 'wait_idle', 'activate', 'enable', 'flush', 'flush_asid', 'disable',
        'submit', 'invalidate', 'joint_scope', 'joint_profile', 'joint_submit'))))
