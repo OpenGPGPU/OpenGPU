@@ -95,6 +95,20 @@ int opengpu_private_snapshot_native_layered_job_address(const struct opengpu_pri
  * GNJ accessors continue to reject it. New trusted builder owns full semantics. */
 int opengpu_private_snapshot_protected_tessellation_job_address(const struct opengpu_private_snapshot *owner,
     u32 segment,u32 *address);
+/* Protected GNQ4/5/6 launch parameters from a live, published private owner.
+ * The enclosing job keeps the actual mappings through hardware retirement.
+ * The owner envelope bounds address arithmetic and does not authorize holes. */
+struct opengpu_private_snapshot_joint_request {
+    u64 job_limit, job_allocation_limit, owner_limit;
+    u32 job_base, job_allocation_base, owner_base;
+    u32 domain, context, pass, generation;
+};
+/* Kernel-only, under submit_lock. The exact root must have passed the joint
+ * prepare gate. Recheck every live leaf and leave request untouched on error. */
+int opengpu_private_snapshot_joint_request_locked(
+    const struct opengpu_private_snapshot *owner, struct opengpu_device *gpu,
+    const struct opengpu_render_context *context, u32 segment,
+    struct opengpu_private_snapshot_joint_request *request);
 int opengpu_private_snapshot_retire(struct opengpu_private_snapshot *owner);
 
 #endif

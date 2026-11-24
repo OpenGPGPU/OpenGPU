@@ -58,6 +58,8 @@ struct opengpu_private_snapshot {
     struct snapshot_resource *resources;
     enum snapshot_phase phase;
     u32 count, resource_count;
+    const struct snapshot_segment *joint_root;
+    struct opengpu_private_snapshot_joint_request joint_request;
 };
 
 static struct snapshot_resource *snapshot_resource_find(
@@ -454,19 +456,38 @@ static bool snapshot_joint_view(const struct opengpu_private_snapshot *owner,u32
     return target && target->mapped && !target->executable && target->bytes==bytes;
 }
 
-/* Independent prepare-only gate. Fixed LDS addresses are a hardware property,
- * never a caller assertion. This returns no usable command address and does
- * not enable the old GNQ1..3 accessors for the new dialect. */
+static bool snapshot_joint_extent(u64 base, u64 bytes, u64 *first, u64 *last)
+{
+    u64 end;
+
+    if (!bytes || ((base | bytes) & 63u) || base >= (1ULL << 32) ||
+        bytes > (1ULL << 32) - base)
+        return false;
+    end = base + bytes;
+    if (base < 0x10004000ULL && end > 0x10000000ULL)
+        return false;
+    if (base < *first)
+        *first = base;
+    if (end > *last)
+        *last = end;
+    return true;
+}
+
+/* Seal the exact joint root and its allocation envelope after validating the
+ * prepared graph. Fixed LDS addresses are a hardware property. */
 int opengpu_private_snapshot_check_prepared_joint(struct opengpu_private_snapshot *owner,u32 id)
 {
     const struct snapshot_segment *root,*segment;
     const struct snapshot_resource *resource;
     const u32 header[]={512,2,16,16,16,4,4};
     u32 words[128];u64 extent;
+    u64 first = 1ULL << 32, last = 0;
     int ret=-EINVAL;
     if(!owner || owner->phase!=SNAPSHOT_PREPARED)return -EINVAL;
     root=snapshot_segment_find(owner,id);
-    if(!root || root->executable || !root->mapped || root->bytes!=512)goto fail;
+    if(!root || (owner->joint_root && owner->joint_root != root) ||
+        root->executable || !root->mapped || root->bytes!=512 ||
+        root->bytes > root->backing.size)goto fail;
     for(u32 i=0;i<128;i++) {
         if(opengpu_private_snapshot_read32(owner,id,4u*i,&words[i]))goto fail;
         u32 bits=opengpu_tess_joint_word_rules[i];
@@ -502,24 +523,53 @@ int opengpu_private_snapshot_check_prepared_joint(struct opengpu_private_snapsho
         if(words[16] || words[18] || words[19] || words[20])goto fail;
         for(u32 i=27;i<36;i++)if(words[i])goto fail;
     }
-    for(segment=owner->segments;segment;segment=segment->next) {
-        u64 end=(u64)segment->va+segment->allocation_bytes;
-        if(!segment->mapped || end>(1ULL<<32) ||
-            ((u64)segment->va<0x10004000ULL && end>0x10000000ULL))goto fail;
-    }
+    for(segment=owner->segments;segment;segment=segment->next)
+        if(!segment->mapped || !snapshot_joint_extent(segment->va, segment->backing.size, &first, &last))
+            goto fail;
     for(resource=owner->resources;resource;resource=resource->next) {
-        u64 end=(u64)resource->reservation.va+resource->bytes;
         if(!resource->reservation.active || resource->reservation.owner!=&owner->context->vm ||
-            resource->reservation.size!=resource->bytes || end>(1ULL<<32) ||
-            ((u64)resource->reservation.va<0x10004000ULL && end>0x10000000ULL))goto fail;
+            resource->reservation.size!=resource->bytes ||
+            !snapshot_joint_extent(resource->reservation.va, resource->reservation.size, &first, &last))
+            goto fail;
     }
     mutex_lock(&owner->gpu->hw.submit_lock);
     ret=snapshot_verify_phase_locked(owner,owner->gpu,owner->context,SNAPSHOT_PREPARED);
+    if (!ret) {
+        owner->joint_root = root;
+        owner->joint_request = (struct opengpu_private_snapshot_joint_request) {
+            .job_base = (u32)root->va,
+            .job_limit = (u64)root->va + root->bytes,
+            .job_allocation_base = (u32)root->va,
+            .job_allocation_limit = (u64)root->va + root->backing.size,
+            .owner_base = (u32)first,
+            .owner_limit = last,
+            .domain = words[0] - OPENGPU_TESS_JOINT_ISOLINE_MAGIC,
+            .context = owner->context->id,
+            .pass = words[OPENGPU_TESS_JOINT_IDENTITY_PASS_WORD],
+            .generation = words[OPENGPU_TESS_JOINT_IDENTITY_GENERATION_WORD],
+        };
+    }
     mutex_unlock(&owner->gpu->hw.submit_lock);
     if(!ret)return 0;
 fail:
     owner->phase=SNAPSHOT_FAILED;
     return ret;
+}
+
+int opengpu_private_snapshot_joint_request_locked(
+    const struct opengpu_private_snapshot *owner, struct opengpu_device *gpu,
+    const struct opengpu_render_context *context, u32 segment,
+    struct opengpu_private_snapshot_joint_request *request)
+{
+    int ret;
+
+    if (!owner || !request || !owner->joint_root || owner->joint_root->id != segment)
+        return -EINVAL;
+    ret = opengpu_private_snapshot_verify_locked(owner, gpu, context);
+    if (ret)
+        return ret;
+    *request = owner->joint_request;
+    return 0;
 }
 
 int opengpu_private_snapshot_invalidate_locked(const struct opengpu_private_snapshot *owner,
