@@ -598,3 +598,40 @@ int opengpu_protected_tessellation_joint_prepare(struct opengpu_private_snapshot
     if(!ret)ret=opengpu_private_snapshot_check_prepared_joint(owner,segment);
     return ret;
 }
+
+int opengpu_protected_tessellation_joint_command_locked(
+    const struct opengpu_private_snapshot *owner, struct opengpu_device *gpu,
+    const struct opengpu_render_context *context, u32 segment,
+    struct opengpu_protected_tessellation_joint_host_command *command)
+{
+    struct opengpu_private_snapshot_joint_request request;
+    int ret;
+
+    if (!command)
+        return -EINVAL;
+    ret = opengpu_private_snapshot_joint_request_locked(owner, gpu, context, segment, &request);
+    if (ret)
+        return ret;
+    /* The tagged op derives both root ends from its VA. Verify those exact
+     * arithmetic results against the published allocation before packing it. */
+    if ((request.job_base & (OPENGPU_TESS_JOINT_HOST_ROOT_ALLOCATION_BYTES - 1u)) ||
+        request.job_allocation_base != request.job_base ||
+        request.job_limit != (u64)request.job_base + OPENGPU_TESS_JOINT_BYTES ||
+        request.job_allocation_limit != (u64)request.job_base + OPENGPU_TESS_JOINT_HOST_ROOT_ALLOCATION_BYTES)
+        return -EINVAL;
+
+    *command = (struct opengpu_protected_tessellation_joint_host_command) {
+        .opcode = OPENGPU_TESS_JOINT_HOST_OPCODE,
+        .source = request.job_base,
+        .destination = request.owner_base,
+        .bytes = OPENGPU_TESS_JOINT_BYTES,
+        .pattern = OPENGPU_TESS_JOINT_HOST_COMMAND_TAG |
+            ((u32)(request.owner_limit >> 32) << OPENGPU_TESS_JOINT_HOST_OWNER_LIMIT_HIGH_BIT) |
+            (request.domain << OPENGPU_TESS_JOINT_HOST_DOMAIN_SHIFT),
+        .width = (u32)request.owner_limit,
+        .height = request.context,
+        .source_stride = request.pass,
+        .destination_stride = request.generation,
+    };
+    return 0;
+}

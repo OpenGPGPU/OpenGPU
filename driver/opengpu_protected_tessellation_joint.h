@@ -53,4 +53,15 @@ int opengpu_protected_tessellation_joint_build(struct opengpu_private_snapshot *
  * It validates the actual placed graph, not a caller's LDS-reserved promise.
  * On failure retire/quarantine the whole owner. The old prepare API is unchanged. */
 int opengpu_protected_tessellation_joint_prepare(struct opengpu_private_snapshot *owner,u32 job_segment);
+
+/* Exact unified command fields for the protected joint root. Feedback
+ * command state, when requested, remains a separate authorized host scope. */
+struct opengpu_protected_tessellation_joint_host_command {
+    u32 opcode, source, destination, bytes, pattern;
+    u32 width, height, source_stride, destination_stride;
+};
+int opengpu_protected_tessellation_joint_command_locked(
+    const struct opengpu_private_snapshot *owner, struct opengpu_device *gpu,
+    const struct opengpu_render_context *context, u32 segment,
+    struct opengpu_protected_tessellation_joint_host_command *command);
 #endif

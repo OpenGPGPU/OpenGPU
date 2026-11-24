@@ -157,7 +157,49 @@ the original device and context. The root's logical extent and actual mapped
 allocation are separate, and the owner envelope spans the real private
 segments and reservations. Exclusive limits retain all 33 bits. The original
 owner retains authority over the referenced mappings through retirement.
-The hardware queue and provider discovery remain separate integration gates.
+The Linux hardware enqueue and provider discovery remain integration gates.
+
+### Private host command and completion
+
+The locked kernel encoder packs the published request into unified opcode
+15. The tagged pattern selects the joint request when the AXI host has the
+joint port enabled. The physical joint renderer validates the decoded
+request before taking its bank or issuing a fetch.
+
+| Command register | Joint value |
+| --- | --- |
+| `SOURCE`, `BYTES` | Page-aligned GNQ base and exactly 512 logical bytes |
+| `DESTINATION`, `WIDTH` | Owner base and low 32 bits of its exclusive limit |
+| `PATTERN` | `0x474a0100` with domain in bits 2:1 and owner limit bit 32 in bit 0 |
+| `HEIGHT`, `SOURCE_STRIDE`, `DEST_STRIDE` | Context, pass and generation |
+| `GRID_X`, `GRID_Y` | Program and cookie of the separately authorized feedback scope |
+
+The command reconstructs the exact one-page root allocation and checks the
+root extent and scope before execution. DMA and event dependency flags are
+rejected for this command. The joint and original tessellation queues can
+share the opcode using their distinct command patterns.
+
+GNZ2 detail words 0–11 use the existing completion area at
+`0x180–0x1ac`. They carry the magic `0x474e5a02`, status bits 2:0, fault
+stage bits 5:3, clear-only bit 6, fault address, context, pass, generation,
+captured entries, retired ranges, retired patches and published primitives.
+Words 12–15 at `0x540–0x54c` carry stored and resolved byte counts. Every
+64-bit field is low word first. Metadata bytes read use the unified completion
+byte registers. The joint report occupies one software completion slot and
+all words stay stable until pop. The extended words read zero for legacy
+results in the joint-enabled host.
+
+The FlashSim host AXI fixture checks the tagged command, a 4 GiB exclusive
+limit, queue backpressure and VM exclusion, all sixteen completion words,
+foreign completion identity and the legacy command in the same host. The
+driver fixture checks encoding from the actual published owner for all three
+domains. The typed host AXI fixture uses peers at the joint execution ports.
+
+```sh
+sbt -Dopengpu.simBackend=flashsim -Dopengpu.flashsimPython=python3.13 \
+  'testOnly opengpu.system.TessellationHostAxiCommandSpec opengpu.graphics.TileBinHostCommandPortSpec'
+python3 scripts/test_protected_tessellation_joint.py --sanitize
+```
 
 
 No production getter supplies the joint profile. An unavailable or incomplete
