@@ -29,7 +29,9 @@ int main(int argc,char **argv) {
     if(mode=="--probe-profile" || compute_probe || joint_probe) {
       require(argc==3,"usage: native_owner_driver --probe[-compute|-joint]-profile NEW_OUTPUT.json");
       require(!std::filesystem::exists(argv[2]),"profile output already exists");
-      Memory memory;Simulation sim(argc,argv);sim.reset();Agent agent(memory);
+      Memory memory;Simulation sim(argc,argv);
+      sim.reset(joint_probe ? Simulation::SramPresence::functional : Simulation::SramPresence::required);
+      Agent agent(memory);
       ReplayBus<Simulation> bus(sim,agent,100000);
       std::ostringstream observed;
       if(joint_probe)joint_profile_json(observed,probe_joint_profile(sim,agent,bus));
@@ -53,7 +55,9 @@ int main(int argc,char **argv) {
       auto run=[&](const auto &first) {
         verify_readonly(memory,memory,first.writable);
         require(std::filesystem::create_directory(output),"cannot create active output directory");
-        Simulation sim(argc,argv);sim.reset();Agent agent(memory);ReplayBus<Simulation> bus(sim,agent,100000);
+        Simulation sim(argc,argv);
+        sim.reset(joint ? Simulation::SramPresence::functional : Simulation::SramPresence::required);
+        Agent agent(memory);ReplayBus<Simulation> bus(sim,agent,100000);
         PtePages pte;
         const auto write_faults=active_records(sim,agent,bus,memory,output,session,first,count,std::cout,
           response_timeout,cleanup?&pte:nullptr);

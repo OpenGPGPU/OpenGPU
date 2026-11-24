@@ -12,18 +12,38 @@ class VGpuHostSystemAxi : public GpuHostSystemAxiDut {
       -> decltype(dut.io_s_axi_aclk = value, void()) { dut.io_s_axi_aclk = value; }
   // Older implicit-clock models omit the clock member entirely.
   template<class T> static void drive_model_clock(T &, uint8_t, long) {}
+  template<class T>
+  static auto evaluate_sram_presence(T &dut, int)
+      -> decltype(dut.eval_macroModelsPresent(), void()) {
+    dut.eval_macroModelsPresent();
+  }
+  template<class T> static void evaluate_sram_presence(T &, long) {}
+  template<class T>
+  static auto evaluate_counters(T &dut, int)
+      -> decltype(dut.eval_io_performance_system_cycles(), void()) {
+    dut.eval_io_performance_system_cycles();
+    dut.eval_io_performance_fragmentPhaseWorkerCycles_0();
+    dut.eval_io_performance_fragmentPhaseWorkerCycles_1();
+    dut.eval_io_performance_fragmentPhaseWorkerCycles_2();
+    dut.eval_io_performance_fragmentPhaseWorkerCycles_3();
+    dut.eval_io_performance_fragmentPhaseWorkerCycles_4();
+    dut.eval_io_performance_fragmentPhaseWorkerCycles_5();
+  }
+  template<class T> static void evaluate_counters(T &, long) {}
 public:
   uint8_t io_s_axi_aclk = 0;
   uint32_t io_m_axi_rdata[8] = {};
   uint32_t io_m_axi_wdata[8] = {};
   explicit VGpuHostSystemAxi(VerilatedContext *) {}
   // Evaluate lazy monitoring outputs without advancing the clock.
+  template<class T = GpuHostSystemAxiDut>
   void sample_performance() {
-    eval_io_performance_system_activeCuCycles();
-    eval_io_performance_stagingOutstandingCycles();
-    eval_io_performance_stagingBlockedCycles();
-    eval_io_performance_fragmentOutputBlockedCycles();
-    eval_io_performance_payloadSpills();
+    auto &dut = static_cast<T &>(*this);
+    dut.eval_io_performance_system_activeCuCycles();
+    dut.eval_io_performance_stagingOutstandingCycles();
+    dut.eval_io_performance_stagingBlockedCycles();
+    dut.eval_io_performance_fragmentOutputBlockedCycles();
+    dut.eval_io_performance_payloadSpills();
   }
   void eval() {
     static_assert(sizeof(GpuHostSystemAxiDut::io_m_axi_rdata) == 32, "H6 read width");
@@ -62,14 +82,9 @@ public:
     eval_io_m_axi_rready();
     eval_io_m_axi_bready();
     eval_io_m_irq();
-    eval_macroModelsPresent();
-    eval_io_performance_system_cycles();
-    eval_io_performance_fragmentPhaseWorkerCycles_0();
-    eval_io_performance_fragmentPhaseWorkerCycles_1();
-    eval_io_performance_fragmentPhaseWorkerCycles_2();
-    eval_io_performance_fragmentPhaseWorkerCycles_3();
-    eval_io_performance_fragmentPhaseWorkerCycles_4();
-    eval_io_performance_fragmentPhaseWorkerCycles_5();
+    auto &dut = static_cast<GpuHostSystemAxiDut &>(*this);
+    evaluate_sram_presence(dut, 0);
+    evaluate_counters(dut, 0);
     for (unsigned i = 0; i < 4; ++i) {
       io_m_axi_wdata[2*i] = uint32_t(GpuHostSystemAxiDut::io_m_axi_wdata[i]);
       io_m_axi_wdata[2*i+1] = uint32_t(GpuHostSystemAxiDut::io_m_axi_wdata[i] >> 32);

@@ -7,6 +7,8 @@
 namespace native_frame {
 class Simulation {
 public:
+  enum class SramPresence { required, functional };
+
   VerilatedContext context;
   std::unique_ptr<VGpuHostSystemAxi> model;
   // Driver-observed rising edges, including reset and control transactions.
@@ -27,14 +29,14 @@ public:
     d.io_m_axi_awready = d.io_m_axi_wready = d.io_m_axi_bvalid = 0;
     settle();
   }
-  void reset() {
+  void reset(SramPresence sram = SramPresence::required) {
     auto &d = *model;
     d.io_s_axi_awvalid = d.io_s_axi_wvalid = d.io_s_axi_wlast = d.io_s_axi_bready = 0;
     d.io_s_axi_arvalid = d.io_s_axi_rready = 0;
     d.io_m_axi_bid = d.io_m_axi_bresp = d.io_m_axi_rid = d.io_m_axi_rresp = 0;
     for (unsigned w = 0; w < 8; ++w) d.io_m_axi_rdata[w] = 0;
     pause_memory(); d.io_s_axi_aresetn = 0; tick(); d.io_s_axi_aresetn = 1; tick();
-    require(d.macroModelsPresent, "characterized SRAM simulation resources missing");
+    require(sram_models_present(d, sram, 0), "characterized SRAM simulation resources missing");
   }
   void write(uint32_t address, uint32_t value) {
     auto &d = *model;
@@ -115,6 +117,16 @@ public:
   }
 
 private:
+  template<class Model>
+  static auto sram_models_present(const Model &dut, SramPresence, int)
+      -> decltype(bool(dut.macroModelsPresent)) {
+    return dut.macroModelsPresent;
+  }
+  template<class Model>
+  static bool sram_models_present(const Model &, SramPresence sram, long) {
+    return sram == SramPresence::functional;
+  }
+
   void advance_settled() {
     context.timeInc(5);
     model->io_s_axi_aclk = 1; settle(); context.timeInc(5);
