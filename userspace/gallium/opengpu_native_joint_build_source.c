@@ -98,7 +98,9 @@ static int draw(struct opengpu_native_joint_build_source *s,const struct opengpu
     d[D(VERTEX_GEOMETRY_VERTEX_VERSION)]=1;
     d[D(VERTEX_VIEWPORT_VERSION)]=1;d[D(VERTEX_VIEWPORT_EXTENTX)]=d[D(RASTER_SCREENW)];
     d[D(VERTEX_VIEWPORT_EXTENTY)]=d[D(RASTER_SCREENH)];d[D(VERTEX_VIEWPORT_FARDEPTH)]=fp32(1);
+    if(r->primitive_restart>1)return -1;
     d[I(VERSION)]=2;d[I(COUNT)]=r->count;d[I(INSTANCES)]=r->instances;
+    d[I(RESTART)]=r->primitive_restart;
     d[I(FIRSTVERTEX)]=r->first_vertex;d[I(BASEVERTEX)]=(uint32_t)r->base_vertex;d[I(BASEINSTANCE)]=r->base_instance;
     d[I(IDENTITY_CONTEXT)]=s->d.context;d[I(IDENTITY_PASS)]=s->d.pass;d[I(IDENTITY_GENERATION)]=s->d.generation;
     unsigned used=0;

@@ -14,6 +14,7 @@ struct opengpu_native_joint_catalog_draw {
     struct opengpu_native_draw_attribute attributes[16];
     struct opengpu_native_joint_binding bindings[16];
     struct opengpu_native_joint_view indices,scratch;
+    unsigned primitive_restart;
 };
 struct opengpu_native_joint_invocation {
     uint64_t invocation_id;unsigned draw_index,patch_vertices;
