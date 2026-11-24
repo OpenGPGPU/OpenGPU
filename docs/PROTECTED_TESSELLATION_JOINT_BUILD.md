@@ -300,7 +300,8 @@ the owner and context revocations before accepting the final receipt.
 
 For the routine 4×4 configuration, set `FIRTOOL` to the pinned FIRTool
 binary and `FLASHSIM` to the selected FlashSim checkout. Prepare the
-assertion-enabled model with its configured CIRCT installation.
+assertion-enabled model with its configured CIRCT installation. The functional
+host uses the production 4 KiB bin pages required by the Linux GNF encoder.
 
 ```sh
 OUT=$(mktemp -d "$PWD/.artifacts/joint-live.XXXXXX")

@@ -8,14 +8,14 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 object PrepareProtectedJointOwnerHost {
   private[system] def profile: NativeAlignmentHostConfig = {
+    val target = NativeAlignmentHostProfile.protectedTessellationTarget
     val gpu = GpuConfig(lanes = 16, warps = 8, l2Sets = 8, l2Ways = 2)
     val graphics = GraphicsConfig(screenWidth = math.min(4, GraphicsTestResolution.width),
       screenHeight = math.min(4, GraphicsTestResolution.height))
-    val native = NativeBinnedGraphicsConfig(engines = 1, pageBytes = 128, writeCredits = 2,
+    val native = NativeBinnedGraphicsConfig(engines = 1, pageBytes = target.native.pageBytes, writeCredits = 2,
       tileSlots = 1, pagedCapacity = 8, preflightDescriptors = true, transformFeedback = true,
       payload = Some(ShaderPayloadConfig(capacityBytes = 4096, maxPayloadBytes = 1024, owners = 2, ports = 4)))
-    NativeAlignmentHostProfile.protectedTessellationTarget.copy(
-      graphics = graphics, execution = gpu, native = native)
+    target.copy(graphics = graphics, execution = gpu, native = native)
   }
 
   def main(args: Array[String]): Unit = {
@@ -29,6 +29,7 @@ object PrepareProtectedJointOwnerHost {
 class TessellationNativeHostElaborationSpec extends AnyFlatSpec {
   it should "connect protected joint tessellation to two physical CUs and the shared host fabrics" in {
     val profile = PrepareProtectedJointOwnerHost.profile
+    assert(profile.native.pageBytes == 4096)
     val registers = profile.requiredDiscovery.toMap
     val flags = registers(ComputeResourceCapabilities.base + 8)
     assert((flags & (1 << 22)) != 0 && (flags & ((1 << 11) | (1 << 12))) == 0)
