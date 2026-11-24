@@ -60,17 +60,37 @@ int opengpu_native_layout(int fd, uint64_t *value)
     return 0;
 }
 
+static int get_param_words(int fd, uint32_t base, uint32_t *words, unsigned count)
+{
+    for (unsigned i = 0; i < count; i++) {
+        struct drm_opengpu_param param = { .param = base + i };
+        if (ioctl(fd, DRM_IOCTL_OPENGPU_GET_PARAM, &param) < 0) return -1;
+        if (param.value > UINT32_MAX) { errno = EPROTO; return -1; }
+        words[i] = (uint32_t)param.value;
+    }
+    return 0;
+}
+
 int opengpu_native_caps(int fd, uint32_t words[OPENGPU_PARAM_NATIVE_CAPS_WORDS])
 {
     uint32_t result[OPENGPU_PARAM_NATIVE_CAPS_WORDS];
     if (!words) { errno = EINVAL; return -1; }
-    for (unsigned i = 0; i < OPENGPU_PARAM_NATIVE_CAPS_WORDS; i++) {
-        struct drm_opengpu_param param = { .param = OPENGPU_PARAM_NATIVE_CAPS_BASE + i };
-        if (ioctl(fd, DRM_IOCTL_OPENGPU_GET_PARAM, &param) < 0) return -1;
-        if (param.value > UINT32_MAX) { errno = EPROTO; return -1; }
-        result[i] = (uint32_t)param.value;
-    }
+    if (get_param_words(fd, OPENGPU_PARAM_NATIVE_CAPS_BASE, result, OPENGPU_PARAM_NATIVE_CAPS_WORDS))
+        return -1;
     memcpy(words,result,sizeof(result));
+    return 0;
+}
+
+int opengpu_tessellation_joint_caps(int fd, uint32_t *profile, uint32_t *frame)
+{
+    uint32_t caps[OPENGPU_PARAM_TESS_JOINT_PROFILE_WORDS];
+    uint32_t native[OPENGPU_PARAM_TESS_JOINT_FRAME_WORDS];
+    if (!profile || !frame) { errno = EINVAL; return -1; }
+    if (get_param_words(fd, OPENGPU_PARAM_TESS_JOINT_PROFILE_BASE, caps, OPENGPU_PARAM_TESS_JOINT_PROFILE_WORDS) ||
+        get_param_words(fd, OPENGPU_PARAM_TESS_JOINT_FRAME_BASE, native, OPENGPU_PARAM_TESS_JOINT_FRAME_WORDS))
+        return -1;
+    memcpy(profile, caps, sizeof(caps));
+    memcpy(frame, native, sizeof(native));
     return 0;
 }
 
@@ -81,6 +101,16 @@ int opengpu_native_submit(int fd, const struct drm_opengpu_submit_native_binned 
     struct drm_opengpu_submit_native_binned command=*request;
     if (ioctl(fd,DRM_IOCTL_OPENGPU_SUBMIT_NATIVE_BINNED,&command)<0) return -1;
     *fence_sequence=command.fence_seqno;
+    return 0;
+}
+
+int opengpu_tessellation_joint_submit(int fd, const struct drm_opengpu_submit_tessellation_joint *request,
+    uint64_t *fence_sequence)
+{
+    if (!request || !fence_sequence) { errno = EINVAL; return -1; }
+    struct drm_opengpu_submit_tessellation_joint command = *request;
+    if (ioctl(fd, DRM_IOCTL_OPENGPU_SUBMIT_TESSELLATION_JOINT, &command) < 0) return -1;
+    *fence_sequence = command.fence_seqno;
     return 0;
 }
 

@@ -7,7 +7,11 @@
 #include "gpu_abi.h"
 #include "opengpu_compute_resource_abi.h"
 #include "opengpu_compute_features.h"
-struct opengpu_device { struct { bool clip_depth,sampler_nearest,pixel_center,sampler_axis_wrap,sampler_biased_clamp,sampler_mirrored_repeat,viewport,depth_range,constant_blend,compute_texture_transport,compute_storage_transport,compute_image_transport,compute_counter_transport,compute_uniform_transport,compute_indirect_transport; u32 capabilities,shader_config,compute_resource_flags; struct opengpu_compute_local_limits compute_local_limits; struct opengpu_compute_shared_limits compute_shared_limits; } hw; };
+#include "opengpu_tessellation_joint_host.h"
+struct opengpu_device { struct { bool clip_depth,sampler_nearest,pixel_center,sampler_axis_wrap,sampler_biased_clamp,sampler_mirrored_repeat,viewport,depth_range,constant_blend,compute_texture_transport,compute_storage_transport,compute_image_transport,compute_counter_transport,compute_uniform_transport,compute_indirect_transport; u32 capabilities,shader_config,compute_resource_flags; struct opengpu_compute_local_limits compute_local_limits; struct opengpu_compute_shared_limits compute_shared_limits;
+    struct opengpu_protected_tessellation_joint_profile joint_tessellation;
+    struct opengpu_native_source_limits native_sources;
+} hw; };
 struct drm_device { struct opengpu_device *dev; };
 struct drm_file { int unused; };
 static struct opengpu_device *dev_get_drvdata(struct opengpu_device *d) { return d; }
@@ -29,6 +33,29 @@ int main(void)
         assert(opengpu_compute_get_param_ioctl(&drm,&native,&file)==-EINVAL);
         assert(!opengpu_compute_get_param_ioctl(&drm,&p,&file));
         assert(!(p.value&OPENGPU_DRIVER_FEATURE_NATIVE_BINNED));
+    }
+    {
+        const u32 expected[]={0x474a5001,0x4ff,0x08100207,4};
+        const u32 frame[]={0x474e4303,8,0x474e4a01,0x08000200,0xc2100800,0x08000800,0xe4908000,0x8813d902};
+        for(unsigned available=0;available<2;available++){
+            gpu.hw.joint_tessellation=(struct opengpu_protected_tessellation_joint_profile){
+                .available=!!available,.scalar_fpu=true,.transform_feedback=true,
+                .domains=7,.compute_units=2,.lanes=16,.warps=8,.engines=4,
+            };
+            for(unsigned i=0;i<OPENGPU_PARAM_TESS_JOINT_PROFILE_WORDS;i++){
+                struct drm_opengpu_param request={
+                    .param=OPENGPU_PARAM_TESS_JOINT_PROFILE_BASE+i,.value=~0ull,
+                };
+                assert(!opengpu_compute_get_param_ioctl(&drm,&request,&file) &&
+                    request.value==(available?expected[i]:0));
+            }
+            for(unsigned i=0;i<OPENGPU_PARAM_TESS_JOINT_FRAME_WORDS;i++){
+                struct drm_opengpu_param request={.param=OPENGPU_PARAM_TESS_JOINT_FRAME_BASE+i,.value=~0ull};
+                gpu.hw.native_sources.frame.words[i]=frame[i];
+                assert(!opengpu_compute_get_param_ioctl(&drm,&request,&file) &&
+                    request.value==(available?frame[i]:0));
+            }
+        }
     }
     for (unsigned clip=0; clip<2; ++clip) {
         gpu.hw.clip_depth=clip;

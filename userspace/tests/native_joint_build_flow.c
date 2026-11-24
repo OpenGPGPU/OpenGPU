@@ -128,6 +128,8 @@ void native_joint_test(struct opengpu_native_joint_link *link,const char *output
     }
     struct opengpu_native_joint_build_source *bundle=opengpu_native_joint_build_source_create(&request);assert(bundle);
     struct opengpu_native_joint_build_description d;assert(!opengpu_native_joint_build_source_describe(bundle,&d));
+    uint64_t sequence=0xfeed;
+    assert(opengpu_native_joint_build_source_submit(bundle,0,0,&sequence)==-1 && errno==ENOTSUP && sequence==0xfeed);
     struct opengpu_native_joint_build_request zero_request=request;
     struct opengpu_native_joint_catalog_draw zero_draws[2];memcpy(zero_draws,draws,sizeof(zero_draws));
     zero_draws[0].count=0;zero_draws[1].instances=0;zero_request.draws=zero_draws;

@@ -2,6 +2,7 @@
 #ifndef OPENGPU_NATIVE_JOINT_INTERNAL_H
 #define OPENGPU_NATIVE_JOINT_INTERNAL_H
 #include "opengpu_native_joint.h"
+#include "opengpu_native_runtime.h"
 /* Internal same-link compiler snapshot; never a permission or UAPI. */
 struct opengpu_native_joint_input {
     const void *tokens[4];unsigned words[4];
@@ -13,6 +14,8 @@ struct opengpu_native_joint_input {
 extern "C" {
 #endif
 int opengpu_native_joint_link_capture(const struct opengpu_native_joint_link *,struct opengpu_native_joint_input *);
+int opengpu_native_joint_source_runtime(struct pipe_context *,struct opengpu_native_joint_runtime *,
+    unsigned *context_id,bool *driver_profile);
 struct opengpu_native_joint_program *opengpu_native_joint_compile(struct pipe_context *,const struct opengpu_native_joint_input *,unsigned);
 struct opengpu_native_joint_bindings;
 struct opengpu_native_joint_bindings *opengpu_native_joint_capture(struct opengpu_native_joint_constants *,struct pipe_context *,const unsigned [4][13],struct drm_opengpu_native_uniform_stage [4]);

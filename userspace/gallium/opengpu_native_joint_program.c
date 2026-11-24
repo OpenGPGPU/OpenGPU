@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "opengpu_native_joint_internal.h"
+#include "opengpu_native_graphics_internal.h"
 #include "opengpu_internal.h"
 #include "pipe/p_context.h"
 #include "tgsi/tgsi_parse.h"
@@ -8,6 +9,32 @@
 #include <string.h>
 struct opengpu_native_joint_program {unsigned refs;struct pipe_context *pipe;struct pipe_opengpu_screen *screen;struct opengpu_native_joint_description d;struct pipe_opengpu_resource *code[4];};
 struct opengpu_native_joint_source {unsigned refs;struct opengpu_native_joint_program *program;struct opengpu_native_joint_bindings *bindings;struct opengpu_native_joint_description d;};
+int opengpu_native_joint_context_enable(struct pipe_context *pipe)
+{
+    struct opengpu_native_joint_runtime runtime;
+    if(!pipe){errno=EINVAL;return -1;}
+    const int fd=pipe_opengpu_screen_fd(opengpu_screen_gpu(pipe->screen));
+    if(opengpu_native_joint_runtime_query(fd,&runtime))return -1;
+    return opengpu_native_joint_cache_install(pipe,&runtime);
+}
+int opengpu_native_joint_source_runtime(struct pipe_context *pipe,struct opengpu_native_joint_runtime *runtime,
+    unsigned *context,bool *driver_profile)
+{
+    if(!opengpu_native_joint_cache_read(pipe,runtime,context)){
+        *driver_profile=true;
+        return 0;
+    }
+    if(errno!=ENOTSUP)return -1;
+    /* Existing sample contexts can prepare sources for compiler validation.
+     * Only a joint DRM context can publish a joint job. */
+    struct opengpu_native_sample_runtime sample;
+    if(opengpu_native_sample_context_runtime(pipe,&sample,context))return -1;
+    if(sample.limits.capacity!=128){errno=ENOTSUP;return -1;}
+    *runtime=(struct opengpu_native_joint_runtime){.frame=sample.limits.frame,
+        .engines=sample.limits.engines,.sample_inputs=true};
+    *driver_profile=false;
+    return 0;
+}
 static unsigned bits(unsigned x){unsigned n=0;for(;x;x>>=1)n+=x&1;return n;}
 void opengpu_native_joint_program_destroy(struct opengpu_native_joint_program *p){
     if(!p||--p->refs)return;
@@ -55,8 +82,9 @@ struct opengpu_native_joint_program *opengpu_native_joint_compile(struct pipe_co
         memcpy(tokens[s],input->tokens[s],input->words[s]*4);captured.tokens[s]=tokens[s];
     }
     p=calloc(1,sizeof(*p));if(!p)goto fail;p->refs=1;p->pipe=pipe;p->screen=opengpu_screen_gpu(pipe->screen);
-    struct opengpu_native_sample_runtime runtime;
-    if(opengpu_native_sample_context_runtime(pipe,&runtime,&p->d.context_id)||runtime.limits.capacity!=128)goto fail;
+    struct opengpu_native_joint_runtime runtime;
+    bool driver_profile;
+    if(opengpu_native_joint_source_runtime(pipe,&runtime,&p->d.context_id,&driver_profile))goto fail;
     struct opengpu_native_tess_packing a,b,c;
     if(opengpu_native_tess_pack(captured.maps+1,&a)||opengpu_native_tess_pack(captured.maps+2,&b)||
         opengpu_native_tess_pack(captured.maps+4,&c)||!c.position)goto fail;
@@ -71,7 +99,7 @@ struct opengpu_native_joint_program *opengpu_native_joint_compile(struct pipe_co
        opengpu_native_tess_linked_emit(tokens[2],captured.words[2],layout+1,captured.maps+3,&b,&c,p->d.tess+1))goto fail;
     /* Validate original FS packets before inspecting their GENERIC semantics.
      * Final re-emission uses TES->FS prefix, independent of VS->TC. */
-    struct opengpu_native_fragment_config_v2 fs={128,16,4,1,1};
+    struct opengpu_native_fragment_config_v2 fs={128,16,4,1,runtime.sample_inputs};
     if(opengpu_native_fragment_uniform_compile_v2(tokens[3],captured.words[3],&captured.fragment,&fs,&p->d.fragment)||
         masks_from_tokens(tokens[3],&fs.varying_slots,&fs.color_slots)||
         opengpu_native_fragment_uniform_compile_v2(tokens[3],captured.words[3],&captured.fragment,&fs,&p->d.fragment))goto fail;

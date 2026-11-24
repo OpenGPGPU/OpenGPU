@@ -1,0 +1,186 @@
+/* SPDX-License-Identifier: MIT */
+/* Original ESSL linked by Mesa, with Gallium creating every original GEM and
+ * the production joint source builder issuing the protected ioctl. */
+#define OPENGPU_CS_NATIVE_LAYOUT
+#include "native_graphics_v2_resources.c"
+#include "opengpu_native_joint_build_source.h"
+#include "opengpu_native_joint_internal.h"
+#include "../../scripts/native_joint_live_bridge.h"
+
+static struct native_kernel_profile *joint_profile;
+static struct native_kernel_session *joint_session;
+
+static int joint_parameter(unsigned param,uint64_t *value)
+{
+    return native_kernel_profile_query(joint_profile,param,value);
+}
+static int joint_ioctl(unsigned long request,void *argument)
+{
+    assert(request==DRM_IOCTL_OPENGPU_SUBMIT_TESSELLATION_JOINT);
+    int error=native_kernel_submit_joint(joint_session,argument,NULL,NULL);
+    if (!error) return 0;
+    errno=-error;
+    return -1;
+}
+static void *joint_allocate(unsigned handle,uint64_t bytes)
+{
+    return native_kernel_original_allocate(joint_session,handle,bytes);
+}
+static int joint_close(unsigned handle)
+{
+    return native_kernel_original_close(joint_session,handle);
+}
+static int joint_references(unsigned handle)
+{
+    return native_kernel_original_refcount(joint_session,handle);
+}
+static struct opengpu_native_joint_view joint_view(struct pipe_screen *screen,unsigned bytes,unsigned offset,
+    struct pipe_resource **resources,unsigned *count,void **mapped)
+{
+    assert(*count<12);
+    struct pipe_resource *resource=buffer(screen,bytes+offset);
+    assert(resource);
+    resources[(*count)++]=resource;
+    unsigned char *base=pipe_opengpu_resource_map(opengpu_resource(resource)->gpu);
+    assert(base);
+    memset(base,0xa5,bytes+offset);
+    if (mapped) *mapped=base+offset;
+    return (struct opengpu_native_joint_view){resource,offset,bytes};
+}
+static void joint_source_path(char path[4096],const char *directory,const char *name)
+{
+    int length=snprintf(path,4096,"%s/%s",directory,name);
+    assert(length>0 && length<4096);
+}
+static void joint_case(struct pipe_context *pipe,const char *sources,unsigned index,unsigned engines,FILE *layout)
+{
+    static const char *evaluation[]={"isoline.tese","triangle.tese","quad.tese"};
+    static const uint32_t seed[4]={7,19,43,61};
+    unsigned domain=index/2;
+    assert(domain<3 && engines>=1 && engines<=4);
+    const char *names[]={index%2?"mutation.vert":"original.vert","shared.tesc",evaluation[domain],"shared.frag"};
+    char paths[4][4096];
+    const char *files[4];
+    for (unsigned i=0;i<4;++i) {
+        joint_source_path(paths[i],sources,names[i]);
+        files[i]=paths[i];
+    }
+    fprintf(stderr,"joint linked submission %u (%s, %s)\n",index,names[2],names[0]);
+    struct opengpu_native_joint_link *link=opengpu_native_joint_link_create(files);
+    assert(link);
+    struct opengpu_native_joint_program *program=opengpu_native_joint_program_create(pipe,link,2);
+    assert(program);
+    struct opengpu_native_joint_constants *constants=opengpu_native_joint_constants_create(pipe);
+    assert(constants);
+    struct pipe_context *sink=opengpu_native_joint_constants_pipe(constants);
+    assert(opengpu_native_joint_defaults(link,PIPE_SHADER_VERTEX)==4);
+    assert(!opengpu_native_joint_bind_defaults(link,sink,PIPE_SHADER_VERTEX,seed,4));
+    struct opengpu_native_joint_source *source=opengpu_native_joint_source_create(program,constants);
+    assert(source);
+    struct opengpu_native_joint_description shader;
+    assert(!opengpu_native_joint_source_describe(source,&shader));
+    assert(shader.fragment.metadata.abi_version==8 && shader.fragment.metadata.color_types[0]==1);
+
+    struct pipe_resource *resources[12]={0};
+    unsigned resource_count=0;
+    void *data;
+    struct pipe_screen *screen=pipe->screen;
+    struct opengpu_native_joint_view vertices=joint_view(screen,64,64,resources,&resource_count,&data);
+    float position[4][4]={{-7,10,0,1},{-1,-1,0,1},{4,4,0,1},{7,-10,0,1}};
+    if (domain==0) position[1][1]=-0.25f;
+    if (domain==1) position[1][0]=position[1][1]=-1.5f;
+    memcpy(data,position,sizeof(position));
+    const struct opengpu_native_joint_view indices=joint_view(screen,8,2,resources,&resource_count,&data);
+    const uint16_t index_words[]={4,2,3,0};
+    memcpy(data,index_words,sizeof(index_words));
+    const unsigned vertex_scratch=(7+4*shader.vertex_layout.attributes+4*shader.vertex_layout.varyings)*512;
+    struct opengpu_native_joint_catalog_draw draw={
+        .count=2,.instances=1,.base_instance=7,.token=41+index,
+        .indexed=1,.index_format=2,.first_index=1,.base_vertex=-1,.indices=indices,
+        .scratch=joint_view(screen,vertex_scratch,64,resources,&resource_count,NULL),
+    };
+    draw.attributes[0]=(struct opengpu_native_draw_attribute){.enabled=1,.binding=15,.components=4};
+    draw.bindings[15]=(struct opengpu_native_joint_binding){.view=vertices,.stride=16};
+    struct opengpu_native_joint_invocation invocation={(UINT64_C(1)<<32)+index+3,0,2};
+    struct opengpu_native_joint_range_request range={
+        .flags=3,.task_id_base=100+8*index,.patch_count=1,.patches_per_instance=1,.instances=1,
+    };
+    struct opengpu_native_joint_build_request request={
+        .context=pipe,.source=source,.pass=11+index,.generation=41+index,.state_count=1,
+        .draws=&draw,.draw_count=1,.invocations=&invocation,.invocation_count=1,.ranges=&range,.range_count=1,
+        .frame={.width=4,.height=4,.samples=1,.color_mask=1,.tile_log2=3},
+    };
+    const struct opengpu_native_joint_view image=joint_view(screen,256,64,resources,&resource_count,NULL);
+    request.frame.attachments[0]=(struct opengpu_native_joint_attachment){
+        .format=26,.load_op=1,.channel_mask=15,.image={.view=image,.row_pitch=64,.store=1},
+    };
+    request.frame.primitives=joint_view(screen,65536,64,resources,&resource_count,NULL);
+    request.frame.directory=joint_view(screen,4096,64,resources,&resource_count,NULL);
+    request.frame.pool[0]=joint_view(screen,65536,0,resources,&resource_count,NULL);
+    for (unsigned e=0;e<engines;++e)
+        request.frame.scratch[e]=joint_view(screen,shader.fragment.metadata.prefix_bytes,64,resources,&resource_count,NULL);
+    struct opengpu_native_joint_build_source *owner=opengpu_native_joint_build_source_create(&request);
+    assert(owner);
+    unsigned handle=pipe_opengpu_resource_handle(opengpu_resource(image.resource)->gpu);
+    uint64_t physical,allocation;
+    assert(!native_kernel_original_physical(joint_session,handle,&physical,&allocation));
+    uint64_t fence=0;
+    assert(!opengpu_native_joint_build_source_submit(owner,0,0,&fence) && fence);
+    fprintf(layout,"%s{\"record\":%u,\"domain\":%u,\"pass\":%u,\"generation\":%u,"
+        "\"allocation\":%llu,\"allocationBytes\":%llu,\"imageOffset\":%llu,\"imageBytes\":%llu}",
+        index?",":"",index,domain,request.pass,request.generation,
+        (unsigned long long)physical,(unsigned long long)allocation,
+        (unsigned long long)image.offset,(unsigned long long)image.bytes);
+
+    opengpu_native_joint_build_source_destroy(owner);
+    opengpu_native_joint_source_destroy(source);
+    opengpu_native_joint_constants_destroy(constants);
+    opengpu_native_joint_program_destroy(program);
+    opengpu_native_joint_link_destroy(link);
+    for (unsigned i=0;i<resource_count;++i) pipe_resource_reference(resources+i,NULL);
+    for (unsigned stage=0;stage<4;++stage)
+        assert(joint_references(shader.code[stage].handle)>0);
+}
+
+int main(int argc,char **argv)
+{
+    if (argc!=4) {
+        fprintf(stderr,"usage: native-joint ESSL_DIR PROFILE_OR_--cpu-preflight SESSION_DIR\n");
+        return 2;
+    }
+    const bool cpu_preflight=!strcmp(argv[2],"--cpu-preflight");
+    joint_profile=joint_live_profile(cpu_preflight?NULL:argv[2]);
+    assert(joint_profile);
+    native_parameter_query=joint_parameter;
+    struct pipe_screen *screen=opengpu_drm_screen_create(7,NULL);
+    assert(screen);
+    struct pipe_context *pipe=screen->context_create(screen,NULL,0);
+    assert(pipe && !opengpu_native_joint_context_enable(pipe));
+    struct opengpu_native_joint_runtime runtime;
+    bool driver_profile;
+    unsigned context;
+    assert(!opengpu_native_joint_source_runtime(pipe,&runtime,&context,&driver_profile) && driver_profile);
+    joint_session=native_kernel_session_create_profile(context,joint_profile);
+    assert(joint_session);
+    native_original_allocate=joint_allocate;
+    native_original_close=joint_close;
+    native_original_refcount=joint_references;
+    resource_ioctl=joint_ioctl;
+    char path[4096];
+    joint_source_path(path,argv[3],"original-inputs.json");
+    FILE *layout=fopen(path,"wx");
+    assert(layout);
+    fprintf(layout,"{\"context\":%u,\"engines\":%u,\"cpuPreflight\":%s,\"records\":[",
+        context,runtime.engines,cpu_preflight?"true":"false");
+    for (unsigned i=0;i<6;++i) joint_case(pipe,argv[1],i,runtime.engines,layout);
+    fputs("]}\n",layout);
+    assert(!fclose(layout));
+    joint_live_export(joint_session,argv[3]);
+    joint_live_run(joint_session,6,cpu_preflight);
+    assert(!native_kernel_session_destroy(joint_session));
+    pipe->destroy(pipe);
+    screen->destroy(screen);
+    native_kernel_profile_destroy(joint_profile);
+    puts("Six original Mesa tessellation submissions retired with acknowledged cleanup");
+    return 0;
+}

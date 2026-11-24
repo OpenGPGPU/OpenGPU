@@ -6,8 +6,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-/* Four stages in original linked order VS,TCS,TES,FS. No GS, public callback,
- * capability, runtime permission or submit path is introduced. */
+/* Four stages in original linked order VS,TCS,TES,FS. */
 struct pipe_resource;
 struct opengpu_native_joint_link;
 struct opengpu_native_joint_program;
@@ -29,6 +28,8 @@ struct opengpu_native_joint_description {
 /* files are VS,TCS,TES,FS. Linked once; the opaque link owns original token
  * packets, NIR variable spans, binding order and original HIR static facts. */
 struct opengpu_native_joint_link *opengpu_native_joint_link_create(const char *const files[4]);
+/* Select the dedicated, verified joint DRM profile for this context. */
+int opengpu_native_joint_context_enable(struct pipe_context *);
 void opengpu_native_joint_link_destroy(struct opengpu_native_joint_link *);
 unsigned opengpu_native_joint_blocks(const struct opengpu_native_joint_link *,unsigned stage);
 unsigned opengpu_native_joint_binding(const struct opengpu_native_joint_link *,unsigned stage,unsigned block);

@@ -234,9 +234,11 @@ struct JointCapture : Capture {
     }
     const auto engines=found.at(0x55c);
     const auto gnc=found.at(GPU_REG_BIN_CAPABILITIES+4*OPENGPU_NATIVE_BINNED_HOST_ENGINES_WORD);
+    const auto gnc_magic=found.at(GPU_REG_BIN_CAPABILITIES);
     const auto id=found.at(GPU_REG_ID),caps=found.at(GPU_REG_CAPABILITIES);
     require((id&0xffff0000u)==0x47550000u && (id&0xffffu)>=GPU_ABI_COMPUTE_RESOURCE_VERSION &&
       (caps&required_owner_caps)==required_owner_caps && found.at(0x320) &&
+      (gnc_magic==OPENGPU_NATIVE_BINNED_HOST_MAGIC || gnc_magic==OPENGPU_NATIVE_BINNED_HOST_WIDE_MAGIC) &&
       engines>=1 && engines<=4 &&
       ((gnc&OPENGPU_NATIVE_BINNED_HOST_ENGINES_MASK)>>OPENGPU_NATIVE_BINNED_HOST_ENGINES_SHIFT)==engines,
       "joint capture lacks the required GPU discovery and engine topology");
@@ -245,7 +247,7 @@ struct JointCapture : Capture {
       {0x360,0x47435201},{0x364,16},{0x368,resource_flags},{0x36c,2},{0x370,16},{0x374,8},
       {0x378,128},{0x37c,128},{0x384,OPENGPU_TESS_JOINT_HOST_LDS_BYTES},
       {0x390,OPENGPU_TESS_JOINT_HOST_LDS_BASE},{0x394,32},
-      {GPU_REG_BIN_CAPABILITY_PTR,GPU_REG_BIN_CAPABILITIES},{0x160,0x474e4303},
+      {GPU_REG_BIN_CAPABILITY_PTR,GPU_REG_BIN_CAPABILITIES},
       {0x550,OPENGPU_TESS_JOINT_HOST_PROFILE_MAGIC},{0x554,0x4ff},{0x558,0x08100207},
     };
     for(const auto &word:required)

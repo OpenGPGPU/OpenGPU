@@ -28,6 +28,7 @@ struct opengpu_native_joint_build_source {
     struct opengpu_native_joint_state_plan *state_plans;
     struct pipe_resource **holds;size_t held,hold_capacity;
     struct pipe_context *context;
+    bool driver_profile;
 };
 static uint32_t fp32(float f){uint32_t u;memcpy(&u,&f,4);return u;}
 static void envelope(uint32_t *w,uint32_t magic,unsigned bytes)
@@ -139,7 +140,7 @@ static int draw(struct opengpu_native_joint_build_source *s,const struct opengpu
     p->vertex_uniforms=s->program.uniforms[0];p->fragment_uniforms=s->program.uniforms[3];return 0;
 }
 static int frame(struct opengpu_native_joint_build_source *s,const struct opengpu_native_joint_frame *r,
-    const struct opengpu_native_sample_runtime *runtime)
+    const struct opengpu_native_joint_runtime *runtime)
 {
     struct opengpu_native_frame_request q={.width=r->width,.height=r->height,.samples=r->samples,
         .color_mask=r->color_mask,.tile_log2=r->tile_log2,.context=s->d.context,.pass=s->d.pass,
@@ -156,7 +157,7 @@ static int frame(struct opengpu_native_joint_build_source *s,const struct opengp
     if(gem(s,&r->primitives,&q.primitives)||gem(s,&r->directory,&q.directory))return -1;
     for(unsigned i=0;i<9;i++)if(gem(s,r->pool+i,q.pool+i))return -1;
     for(unsigned i=0;i<4;i++)if(gem(s,r->scratch+i,q.scratch+i))return -1;
-    const struct opengpu_native_binned_host_caps *c=&runtime->limits.frame;
+    const struct opengpu_native_binned_host_caps *c=&runtime->frame;
     struct opengpu_native_frame_limits limits={C(c,FRAME_WIDTH),C(c,FRAME_HEIGHT),C(c,SAMPLES),
         C(c,COLORS),C(c,ENGINES),C(c,STORAGE_BYTES),C(c,TILE8),C(c,TILE16),2};
     /* Generate GNF1 directly with the existing wide frame.version=2. This is
@@ -314,8 +315,9 @@ struct opengpu_native_joint_build_source *opengpu_native_joint_build_source_crea
     if(opengpu_native_joint_source_matches(r.source,r.context))goto fail;
     s->source=opengpu_native_joint_source_retain(r.source);if(!s->source)goto fail;
     if(opengpu_native_joint_source_describe(s->source,&s->program))goto fail;
-    struct opengpu_native_sample_runtime runtime;unsigned context;
-    if(opengpu_native_sample_context_runtime(r.context,&runtime,&context) || context!=s->program.context_id)goto fail;
+    struct opengpu_native_joint_runtime runtime;unsigned context;
+    if(opengpu_native_joint_source_runtime(r.context,&runtime,&context,&s->driver_profile) ||
+        context!=s->program.context_id)goto fail;
     const struct opengpu_native_tess_layout *tc=&s->program.tess[0].layout,*te=&s->program.tess[1].layout;
     if(tc->version!=3||te->version!=3||tc->stage!=4||te->stage!=5||tc->capacity!=128||te->capacity!=128||
         !te->owned_patch_reads||!te->owned_tessellation_info||s->program.tess[1].selection_count||
@@ -329,7 +331,7 @@ struct opengpu_native_joint_build_source *opengpu_native_joint_build_source_crea
         .draw_plans=r.draw_count?s->draw_plans:NULL,.invocations=r.invocation_count?s->invocations:NULL,.ranges=r.range_count?s->ranges:NULL,.plans=r.range_count?s->plans:NULL,
         .state_plans=r.state_count?s->state_plans:NULL,.frame=&s->frame};
     if(frame(s,&r.frame,&runtime))goto fail;
-    for(unsigned i=0;i<r.state_count;i++)state(s,i,runtime.limits.engines);
+    for(unsigned i=0;i<r.state_count;i++)state(s,i,runtime.engines);
     for(unsigned i=0;i<r.draw_count;i++)if(draw(s,draws+i,i))goto fail;
     for(unsigned i=0;i<r.range_count;i++)if(sequence(s,ranges+i,draws))goto fail;
     if(coverage(s,draws))goto fail;
@@ -339,4 +341,73 @@ struct opengpu_native_joint_build_source *opengpu_native_joint_build_source_crea
     free(draws);free(ranges);return s;
 fail:
     free(draws);free(ranges);opengpu_native_joint_build_source_destroy(s);if(!errno)errno=EINVAL;return NULL;
+}
+
+int opengpu_native_joint_build_source_submit(const struct opengpu_native_joint_build_source *s,
+    unsigned in_syncobj,unsigned out_syncobj,uint64_t *fence_sequence)
+{
+    if(!s || !fence_sequence){errno=EINVAL;return -1;}
+    if(!s->driver_profile){errno=ENOTSUP;return -1;}
+    const struct opengpu_native_joint_build_description *d=&s->d;
+    struct opengpu_protected_tessellation_joint_plan *plans=NULL;
+    struct opengpu_protected_tessellation_state_plan *states=NULL;
+    struct opengpu_tessellation_vertex_outer_invocation_v2 *invocations=NULL;
+    struct opengpu_tessellation_vertex_outer_range_v2 *ranges=NULL;
+    int ret=-1;
+    if(d->range_count){
+        plans=calloc(d->range_count,sizeof(*plans));
+        ranges=calloc(d->range_count,sizeof(*ranges));
+        states=calloc(d->state_count,sizeof(*states));
+        invocations=calloc(d->invocation_count,sizeof(*invocations));
+        if(!plans || !ranges || !states || !invocations){errno=ENOMEM;goto done;}
+    }
+    for(unsigned i=0;i<d->range_count;i++){
+        const struct opengpu_native_joint_build_plan *p=&d->plans[i];
+        const struct opengpu_native_joint_range *r=&d->ranges[i];
+        plans[i]=(struct opengpu_protected_tessellation_joint_plan){
+            .sequence_index=p->sequence_index,.state_handle=p->state_handle,
+            .control_program=p->control_program,.evaluation_program=p->evaluation_program,
+            .control_uniforms=p->control_uniforms,.evaluation_uniforms=p->evaluation_uniforms,
+        };
+        ranges[i]=(struct opengpu_tessellation_vertex_outer_range_v2){
+            .sequence_index=r->sequence_index,.invocation_index=r->invocation_index,
+            .original_draw_index=r->original_draw_index,.range_ordinal=r->range_ordinal,
+            .flags=r->flags,.task_id_base=r->task_id_base,.patch_count=r->patch_count,
+            .slice={r->slice_version,r->first_ordinal,r->patches_per_instance,r->first_instance,r->instances},
+            .layout={r->layout.input_vertices,r->layout.input_components,r->layout.output_vertices,
+                r->layout.output_components,r->layout.patch_components},
+        };
+        for(unsigned j=0;j<64;j++){
+            ranges[i].components[j].kind=r->components[j].kind;
+            ranges[i].components[j].component=r->components[j].component;
+        }
+    }
+    for(unsigned i=0;i<d->invocation_count;i++){
+        invocations[i]=(struct opengpu_tessellation_vertex_outer_invocation_v2){
+            .invocation_id=d->invocations[i].invocation_id,
+            .original_draw_index=d->invocations[i].draw_index,
+            .input_patch_vertices=d->invocations[i].patch_vertices,
+        };
+    }
+    for(unsigned i=0;i<d->state_count;i++){
+        states[i]=(struct opengpu_protected_tessellation_state_plan){
+            .state_handle=d->state_plans[i].state_handle,.fragment_program=d->state_plans[i].fragment_program,
+            .fragment_uniforms=d->state_plans[i].fragment_uniforms,
+        };
+    }
+    const struct drm_opengpu_submit_tessellation_joint submit={
+        .version=1,.context_id=d->context,.in_syncobj=in_syncobj,.out_syncobj=out_syncobj,
+        .draw_count=d->draw_count,.invocation_count=d->invocation_count,
+        .range_count=d->range_count,.state_count=d->state_count,.resource_count=d->frame->resource_count,
+        .job=(uintptr_t)d->job,.frame=(uintptr_t)&d->frame->frame,
+        .sequences=(uintptr_t)d->sequences,.sequences_bytes=(uint64_t)d->range_count*2048,
+        .states=(uintptr_t)d->states,.draws=(uintptr_t)d->draws,.draw_plans=(uintptr_t)d->draw_plans,
+        .invocations=(uintptr_t)invocations,.ranges=(uintptr_t)ranges,
+        .plans=(uintptr_t)plans,.state_plans=(uintptr_t)states,.resources=(uintptr_t)d->frame->resources,
+    };
+    int fd=pipe_opengpu_screen_fd(opengpu_screen_gpu(s->context->screen));
+    ret=opengpu_tessellation_joint_submit(fd,&submit,fence_sequence);
+done:
+    free(plans);free(ranges);free(states);free(invocations);
+    return ret;
 }

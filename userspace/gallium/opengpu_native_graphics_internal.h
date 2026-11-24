@@ -15,6 +15,8 @@ int opengpu_native_draw_encode_checked(const struct opengpu_native_draw_request 
 int opengpu_native_sample_cache_install(struct pipe_context *,const void *,size_t,
     const struct opengpu_native_shader_layout *);
 int opengpu_native_sample_cache_read(struct pipe_context *,void *,size_t,unsigned *);
+int opengpu_native_joint_cache_install(struct pipe_context *,const struct opengpu_native_joint_runtime *);
+int opengpu_native_joint_cache_read(struct pipe_context *,struct opengpu_native_joint_runtime *,unsigned *);
 int opengpu_native_sample_uniform_sources(struct pipe_context *,const unsigned [2][13],
     struct drm_opengpu_native_uniform_stage [2]);
 /* Context-owned bindings are retained independently for a source lease. */

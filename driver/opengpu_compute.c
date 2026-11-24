@@ -392,6 +392,18 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
         args->value = 0;
         return 0;
     }
+    if (args->param >= OPENGPU_PARAM_TESS_JOINT_PROFILE_BASE &&
+        args->param < OPENGPU_PARAM_TESS_JOINT_PROFILE_BASE + OPENGPU_PARAM_TESS_JOINT_PROFILE_WORDS) {
+        args->value = opengpu_tessellation_joint_profile_word(&gpu->hw.joint_tessellation,
+            args->param - OPENGPU_PARAM_TESS_JOINT_PROFILE_BASE);
+        return 0;
+    }
+    if (args->param >= OPENGPU_PARAM_TESS_JOINT_FRAME_BASE &&
+        args->param < OPENGPU_PARAM_TESS_JOINT_FRAME_BASE + OPENGPU_PARAM_TESS_JOINT_FRAME_WORDS) {
+        args->value = gpu->hw.joint_tessellation.available ?
+            gpu->hw.native_sources.frame.words[args->param - OPENGPU_PARAM_TESS_JOINT_FRAME_BASE] : 0;
+        return 0;
+    }
     switch (args->param) {
     case OPENGPU_PARAM_CAPABILITIES:
         args->value = gpu->hw.capabilities;

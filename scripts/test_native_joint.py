@@ -73,10 +73,13 @@ def verify_records(output):
     if output.name.startswith('full'):assert m[24:37]==(4096,)+(16384,)*12
 
 
-def main():
+def main(*, build_only=False):
     ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('--build',type=Path,required=True)
-    ap.add_argument('--legacy-source',type=Path,required=True);ap.add_argument('--tess-baseline-source',type=Path,required=True)
-    ap.add_argument('--reuse-objects',action='store_true',help='reuse only private objects with exact argv/object/MMD-input SHA receipts from an earlier active build');ap.add_argument('--sanitize',action='store_true');ap.add_argument('--negative-controls',action='store_true');a=ap.parse_args()
+    ap.add_argument('--legacy-source',type=Path,required=True)
+    if not build_only:
+        ap.add_argument('--tess-baseline-source',type=Path,required=True)
+        ap.add_argument('--negative-controls',action='store_true')
+    ap.add_argument('--reuse-objects',action='store_true',help='reuse only private objects with exact argv/object/MMD-input SHA receipts from an earlier active build');ap.add_argument('--sanitize',action='store_true');a=ap.parse_args()
     out=a.build.resolve();out.mkdir(parents=True,exist_ok=a.reuse_objects)
     mesa=Path(os.environ['OPENGPU_MESA_DIR']).resolve();mb=Path(os.environ['OPENGPU_MESA_BUILD']).resolve()
     drm=Path(os.environ['OPENGPU_DRM_INCLUDE']).absolute();gpu=mesa.parents[1];libraries=drm.parent/'lib'
@@ -87,7 +90,8 @@ def main():
            for p in (ROOT/root).rglob('*') if p.is_file() and not p.is_symlink() and
            p.suffix in ('.c','.cpp','.h','.inc','.py','.json','.vert','.frag','.tesc','.tese','.geom','.glsl')}
     baseline=a.legacy_source.resolve(strict=True);bound[str(baseline)]=sha256(baseline)
-    tess_baseline=a.tess_baseline_source.resolve(strict=True);bound[str(tess_baseline)]=sha256(tess_baseline)
+    if not build_only:
+        tess_baseline=a.tess_baseline_source.resolve(strict=True);bound[str(tess_baseline)]=sha256(tess_baseline)
     private={};commands=[];objects=[]
     def unchanged():
         assert all(sha256(Path(p))==h for p,h in {**bound,**private}.items())
@@ -180,6 +184,9 @@ def main():
             assert str(path) in bound or str(path) in private or str(path) in external,'unbound MMD '+str(path)
     assert len(mmd_paths())==len(objects)
     assert snapshot(mesa,mb,libraries,drm,gpu)==external;unchanged()
+    if build_only:
+        print(f'Mesa joint producer compiled with {len(objects)} objects and {len(dependencies)} bound dependencies.')
+        return
     sources=out/'sources';sources.mkdir(exist_ok=a.reuse_objects)
     from test_gallium_graphics_uniforms import write_sources as legacy_sources
     legacy_sources(sources)
