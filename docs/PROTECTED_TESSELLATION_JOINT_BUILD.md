@@ -211,8 +211,7 @@ the tagged command at a 4 GiB exclusive limit, queue backpressure and VM
 exclusion, all sixteen completion words and legacy routing. It uses peers
 at the joint execution ports. ASan/UBSan passed the published-owner enqueue
 checks for all three domains and the IRQ/poll/abort races with modeled MMIO.
-The full ARM64 Linux 7.2 module compiled and linked with GCC 15.2. The
-original Mesa execution on the three-domain hardware remains pending.
+The full ARM64 Linux 7.2 module compiled and linked with GCC 15.2.
 
 ```sh
 sbt -Dopengpu.simBackend=flashsim -Dopengpu.flashsimPython=python3.13 \
@@ -267,43 +266,63 @@ recorded POP and cleanup. Both joint modes support the 4×4 functional AXI
 interface. Product qualification requires the characterized SRAM presence
 signal and hardware performance counters.
 
-The Mesa 22.3.6 Linux preflight linked and submitted the baseline and VS
-mutation for each domain and two repeated baseline triangle draws. Each of the
-eight DRM submissions retained the four linked programs after the original
+The Mesa 22.3.6 Linux producer linked the baseline and a VS mutation for
+each domain and submitted four additional baseline triangle draws. Each of
+the ten DRM submissions retained the four linked programs after the original
 handles closed and published a separate 4×4 writable image and protected Sv32
-owner. The two VS inputs occupy distinct linked slots. The preflight verified
-the original index data, base vertex of
-−1, two instances with base instance 7 and divisor 2, and a fixed-index marker
-that stays a regular index for ES PATCHES. The actual prepared GND clears the
-global restart enable for this primitive mode. The CPU preflight exported
-the original RAM and first MMIO command before GPU execution.
+owner. The two VS inputs occupy distinct linked slots. The source checks
+covered the original index data, base vertex of −1, two instances with base
+instance 7 and divisor 2, and a fixed-index marker that stays a regular index
+for ES PATCHES. The prepared GND clears the global restart enable for this
+primitive mode.
 
 Inside the pinned Linux environment from the
 [linked BUILD reproduction](NATIVE_JOINT_BUILD_SOURCE.md#reproduction), use
 an empty private `SESSION` and the independent vertex/fragment emitter source.
 
 ```sh
-python3 -B scripts/build_native_joint_live_producer.py --sanitize \\
+python3 -B scripts/build_native_joint_live_producer.py --sanitize \
   --build "$OUT/build" --legacy-source "$OUT/reference-uniform.c"
 "$OUT/build/native-joint" userspace/tests/tess_joint_live_essl --cpu-preflight "$SESSION"
 ```
 
-The live controller checks the original published graph against the real
-Sv32 page tables, including the indexed source and the retained RX bytes.
-For the first repeated triangle draw, FlashSim injects one AXI write failure
-at the first line of the original image. The controller requires GNZ2 status 3,
-stage 6, the exact image address, zero acknowledged store bytes and an untouched
-image. The driver IRQ path must propagate `-EIO` through retirement. The final
-draw uses the same baseline VS and must produce its exact RGBA32UI image.
-The eight-record series uses one reset and verifies allocation guards and
-the owner and context revocations before accepting the final receipt.
+The live controller verified the original published graph against the
+captured Sv32 page tables, including the indexed source and retained RX
+bytes. All ten records passed on one model with two physical CUs, each with
+16 lanes and 8 warps, and one 4×4 image bank. The controller checked exact RGBA32UI output for the
+six domain and VS combinations and both healthy reuse draws, plus untouched
+images for the two failure cases. It verified the allocation guards, owner
+and context revocations, and the driver's cleanup acknowledgment.
 
-For the routine 4×4 configuration, set `FIRTOOL` to the pinned FIRTool
-binary and `FLASHSIM` to the selected FlashSim checkout. Prepare the
-assertion-enabled model with its configured CIRCT installation. The functional
-host uses the production 4 KiB bin pages required by the Linux GNF encoder.
+FlashSim injected a physical AXI write fault at the first line of the original
+triangle image. The driver IRQ path retired with `-EIO` and GNZ2 reported
+status 3, stage 6, the exact fault address and zero acknowledged store bytes.
+The next draw produced the expected image on the same DUT and RAM.
+
+For cancellation, FlashSim held a physical AXI response for the original
+VS index read. The Linux driver issued the command reset and the DUT kept
+reset and VM busy asserted for at least 32 service cycles while the response
+was held. After the response drained, the DUT preserved both SATP values
+and the previous raw completion registers, cleared completion validity,
+returned zero for GNZ2 detail and kept AXI idle. The Linux IRQ path retired with
+`-ECANCELED`, and the next original draw produced the expected image and
+completed cleanup on the same DUT and RAM.
+
+The ten-record run took 67.69 seconds with 334 MiB peak charged memory.
+On the same 4×4 model, cold FlashSim generation took 1325.39 seconds at
+5.07 GiB peak charged memory. CIRCT import took 56.52 seconds, Python
+flattening took 296.40 seconds and C++ emission took 176.85 seconds.
+The initial two-worker native build took 1205.76 seconds at 9.65 GiB peak.
+The cancellation rerun reused all 89 verified FlashSim objects and rebuilt
+the executor in 28.22 seconds with 2.48 GiB peak charged memory.
+
+For the routine 4×4 configuration, set `FIRTOOL` to FIRTool 1.158 and
+`FLASHSIM` to checkout `e8039c6768` with its configured CIRCT installation.
+Use Python 3.13 to prepare the assertion-enabled model. The functional host
+uses the production 4 KiB bin pages required by the Linux GNF encoder.
 
 ```sh
+mkdir -p .artifacts
 OUT=$(mktemp -d "$PWD/.artifacts/joint-live.XXXXXX")
 mkdir "$OUT/rtl"
 sbt -batch -J-Xmx3g -J-XX:ActiveProcessorCount=2 \
@@ -311,24 +330,31 @@ sbt -batch -J-Xmx3g -J-XX:ActiveProcessorCount=2 \
   "set Test / classDirectory := file(\"$OUT/classes\")" \
   "set Test / compileAnalysisFile := file(\"$OUT/analysis.zip\")" \
   "Test / runMain opengpu.system.PrepareProtectedJointOwnerHost $OUT/host.fir"
-"$FIRTOOL" "$OUT/host.fir" -format=fir --split-verilog "-o=$OUT/rtl" \\
+"$FIRTOOL" "$OUT/host.fir" -format=fir --split-verilog "-o=$OUT/rtl" \
   --lowering-options=disallowLocalVariables,disallowPackedArrays
 (
   cd "$FLASHSIM"
-  FLASHSIM_PREFLATTEN_WIRES=1 FLASHSIM_MODULE_JOBS=1 \\
-    python3 -B -c 'from pathlib import Path; import sys; from flashsim.compile import compile_file; compile_file(Path(sys.argv[1]),Path(sys.argv[2]),frontend="circt",assertions=True,split=64)' \\
+  FLASHSIM_PREFLATTEN_WIRES=1 FLASHSIM_MODULE_JOBS=2 \
+    python3.13 -B -c 'from pathlib import Path; import sys; from flashsim.compile import compile_file; compile_file(Path(sys.argv[1]),Path(sys.argv[2]),frontend="circt",assertions=True,split=64)' \
     "$OUT/rtl/GpuHostSystemAxi.sv" "$OUT/dut/dut.h"
+  python3.13 -B -m flashsim.reshard create --source "$OUT/dut" \
+    --output "$OUT/resharded" --max-mib 32 --outline-invalidation-mib 24
+  python3.13 -B -m flashsim.reshard verify --source "$OUT/dut" --output "$OUT/resharded"
 )
-python3 -B scripts/qualify_native_joint_live.py --build-only \\
-  --dut-dir "$OUT/dut" --executor-build "$OUT/executor"
-python3 -B scripts/qualify_native_joint_live.py \\
-  --dut-dir "$OUT/dut" --executor-build "$OUT/executor"
+python3.13 -B scripts/run_owner_bounded.py --memory-mib 11264 --timeout-seconds 2400 -- \
+  python3.13 -B scripts/qualify_native_joint_live.py --build-only --jobs 2 \
+  --dut-dir "$OUT/resharded" --executor-build "$OUT/executor"
+python3.13 -B scripts/run_owner_bounded.py --memory-mib 4096 --timeout-seconds 2700 -- \
+  python3.13 -B scripts/qualify_native_joint_live.py --timeout 600 \
+  --dut-dir "$OUT/resharded" --executor-build "$OUT/executor"
 ```
 
 `NativeAlignmentHostProfile.protectedTessellationTarget` selects the joint
 host, checked tessellation uniforms and protected sources at 640×480. Its
 discovery table includes GJP1 and the same factory elaborates the 4×4 test
-configuration. Product throughput requires a full timed run.
+configuration. Full-capacity and product qualification still require the
+640×480 host with characterized memory, hardware performance counters and
+timing closure for 60 FPS.
 
 ```sh
 OPENGPU_TEST_SANITIZERS=1 python3 scripts/test_protected_tessellation_submit.py
@@ -353,10 +379,9 @@ Reader ownership changes only after actual completion consumption and pending
 memory drain. Held offers survive cancellation until accepted or actual frame
 stop. Patch advance requires actual source load/reply/seal, TCS/TES retirement,
 typed task report and task drain. Final end, actual frame completion and full
-fabric drain are all required. The live Linux-to-RTL original shader runs on
-the protected two-CU DUT remain pending.
+fabric drain are all required.
 
-## CPU validation and limits
+## Earlier CPU validation and limits
 
 Apple Clang 16 and immutable Linux GCC 13.3 passed the actual owner/MMU fixture
 for all three domains and all 16 source-copy semantic controls. Each control
@@ -412,14 +437,10 @@ bounds applied. The module was never loaded. That result covers #828, not
 subsequent changes to `opengpu_native_frame.c`; see the separate
 [original linked source-to-BUILD proof](NATIVE_JOINT_BUILD_SOURCE.md).
 
-This BUILD block did not run actual DUT/frame qualification. The accompanying default-off GNQ/GVM metadata readers passed
-separate bounded ABI/component RTL and test-catalog checks after their
-source replay; see
+The accompanying default-off GNQ/GVM metadata readers passed separate bounded
+ABI/component RTL and test-catalog checks after their source replay. See
 [TESSELLATION_JOINT_METADATA_CAPTURE.md](TESSELLATION_JOINT_METADATA_CAPTURE.md).
 The Scala regression workflow remains disabled and was not triggered.
-Actual GNT/GVS/GND capture and parent ownership, correct production VA placement,
-no-state clear execution, a verified factory/getter/runtime and the mandatory
-2-CU 640×480/60FPS product qualification remain pending.
 
 ## Reproduction
 
