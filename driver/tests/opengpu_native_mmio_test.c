@@ -115,7 +115,7 @@ static struct native_kernel_held_receipt test_held(struct native_kernel_session 
 static struct native_kernel_observed_receipt test_observed(struct native_kernel_held_receipt held)
 {return (struct native_kernel_observed_receipt){.held=held,.retired_status=GPU_UCMD_STATUS_READY,
     .retired_irq=GPU_IRQ_ENABLE,.external_drained=1};}
-static void test_joint_mmio(const char *directory)
+static void test_joint_mmio(const char *directory,bool write_fault)
 {
     struct native_kernel_profile_word base[96],registers[5],words[92];
     native_test_profile_words(base,registers);
@@ -149,13 +149,15 @@ static void test_joint_mmio(const char *directory)
     assert(!native_kernel_original_close(s,code) && native_kernel_original_refcount(s,code)>0);
 
     char memory[4096],capture[4096],retire[4096],cleanup[4096];
-    test_path(memory,sizeof(memory),directory,"joint.memory");
-    test_path(capture,sizeof(capture),directory,"joint.capture");
-    test_path(retire,sizeof(retire),directory,"joint.retire");
-    test_path(cleanup,sizeof(cleanup),directory,"joint-cleanup");
+    test_path(memory,sizeof(memory),directory,write_fault?"joint-fault.memory":"joint.memory");
+    test_path(capture,sizeof(capture),directory,write_fault?"joint-fault.capture":"joint.capture");
+    test_path(retire,sizeof(retire),directory,write_fault?"joint-fault.retire":"joint.retire");
+    test_path(cleanup,sizeof(cleanup),directory,write_fault?"joint-fault-cleanup":"joint-cleanup");
     assert(!mkdir(cleanup,0700));
     assert(!native_kernel_export_memory(s,memory));
-    assert(!native_kernel_capture(s,0,capture,1000000,16));
+    int error=write_fault?native_kernel_capture_joint_write_fault(s,0,capture,1000000,16):
+        native_kernel_capture(s,0,capture,1000000,16);
+    assert(!error);
     struct native_mmio_state *mmio=native_mmio_state(&s->gpu);
     assert(mmio->native_waiting && mmio->invalidates && s->gpu.hw.unified_opcode==15);
     assert(mmio->regs[GPU_REG_UCMD_PATTERN/4]==0x474a0102);
@@ -170,6 +172,16 @@ static void test_joint_mmio(const char *directory)
         .held_irq=GPU_IRQ_ENABLE|GPU_IRQ_PENDING,.held_irq_asserted=1,
         .gnz2={0x474e5a02,0,0,17,8,9,1,1,2,0,3,0,4,2,5,3},
     };
+    if(write_fault) {
+        assert(record->joint_write_fault_address);
+        held.completion=0x11f00|id;
+        held.gnz2[1]=51;
+        held.gnz2[2]=record->joint_write_fault_address;
+        memset(held.gnz2+12,0,4*sizeof(u32));
+        struct native_kernel_held_receipt wrong_line=held;
+        wrong_line.gnz2[2]+=64;
+        assert(native_kernel_drain_held(s,0,&wrong_line,retire)==-EINVAL);
+    }
     struct native_kernel_held_receipt alien=held;
     alien.gnz2[5]++;
     assert(native_kernel_drain_held(s,0,&alien,retire)==-EINVAL);
@@ -180,13 +192,18 @@ static void test_joint_mmio(const char *directory)
     assert(!native_kernel_drain_held(s,0,&held,retire));
     const struct opengpu_tessellation_joint_completion *report=record->job->joint_report;
     assert(report->valid && report->read_bytes==held.append_read_bytes &&
-        report->stored_bytes==0x200000004ull && report->resolved_bytes==0x300000005ull);
+        report->status==(write_fault?3u:0u) && report->fault_stage==(write_fault?6u:0u) &&
+        report->fault_address==record->joint_write_fault_address &&
+        report->stored_bytes==(write_fault?0:0x200000004ull) &&
+        report->resolved_bytes==(write_fault?0:0x300000005ull));
+    assert(record->hardware->error==(write_fault?-EIO:0));
     assert(!mmio->native_waiting && !s->gpu.hw.joint_pending_completion);
     struct native_kernel_observed_receipt observed=test_observed(held);
     observed.held.gnz2[15]^=1;
     assert(native_kernel_observe_retired(s,0,&observed)==-EINVAL);
     observed=test_observed(held);
     assert(!native_kernel_observe_retired(s,0,&observed));
+    assert(record->job->base.s_fence->finished.error==record->hardware->error);
     assert(!native_kernel_begin_cleanup(s,cleanup));
     assert(!native_kernel_finish_observed(s,0) && !native_kernel_original_refcount(s,code));
     assert(!native_kernel_end_cleanup(s));
@@ -273,6 +290,7 @@ int main(int argc,char **argv)
     /* Final session bookkeeping must issue no unobserved MMIO. */
     assert(actions==native_mmio_state(&s->gpu)->cleanup_start);
     assert(!native_kernel_session_destroy(s));assert(!live_allocations && !fixture_buffers);
-    test_joint_mmio(argv[1]);
+    test_joint_mmio(argv[1],false);
+    test_joint_mmio(argv[1],true);
     puts("native and joint MMIO production composition CPU checks: PASS");return 0;
 }

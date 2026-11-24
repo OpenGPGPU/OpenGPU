@@ -100,6 +100,7 @@ inline void traffic_unchanged(const Traffic &a,const Traffic &b) {
 // must never be substituted for MMIO read results when authorizing release.
 struct RecordResult {
   uint64_t cycles=0, read_bytes=0, write_bytes=0, append_read_bytes=0;
+  uint64_t physical_write_faults=0;
   uint32_t completion=0, held_legacy_status=0, held_status=0, held_irq=0, retired_status=0, retired_irq=0;
   std::array<uint32_t,12> gnx{};
   std::array<uint32_t,OPENGPU_TESS_JOINT_HOST_COMPLETION_WORDS> gnz2{};
@@ -236,7 +237,15 @@ HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
     require(bus.read(r.address)==r.value,"actual DUT differs from captured discovery");
   require(!(bus.read(GPU_REG_UCMD_STATUS)&GPU_UCMD_STATUS_COMPLETION),
     "owner record starts with an unretired completion");
-  for(const auto &a:capture.trace)bus.action(a);
+  for(auto it=capture.trace.begin();it!=capture.trace.end()-1;++it)bus.action(*it);
+  const auto initial_injected_writes=agent.injected_write_faults();
+  if constexpr(CaptureType::joint_completion) {
+    if(capture.write_fault) {
+      const auto address=capture.write_fault->physical;
+      agent.arm_first_write_fault(address,address+64);
+    }
+  }
+  bus.action(capture.trace.back());
   // IRQ is sticky and may still describe a preceding invalidation whose
   // result was drained by polling. Observe the actual unified slot before
   // treating this record as complete; polling continues to service AXI.
@@ -247,6 +256,18 @@ HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
   const auto completion=bus.read(GPU_REG_UCMD_COMPLETION);
   auto &result=held_record.result;result.completion=completion;
   result.joint_completion=CaptureType::joint_completion;
+  if constexpr(CaptureType::joint_completion) {
+    const unsigned expected_writes=bool(capture.write_fault);
+    require(completed.read_faults==held_record.start_traffic.read_faults &&
+      completed.write_faults==held_record.start_traffic.write_faults+expected_writes &&
+      agent.injected_write_faults()==initial_injected_writes+expected_writes,
+      "protected joint completion has unexpected physical fault traffic");
+    if(capture.write_fault) {
+      require(agent.first_write_attempts()==1,"protected joint store retried a failed physical line");
+      agent.disarm_first_write_fault();
+    }
+    result.physical_write_faults=expected_writes;
+  }
   result.held_legacy_status=bus.read(GPU_REG_STATUS);
   result.held_status=bus.read(GPU_REG_UCMD_STATUS);
   result.held_irq=bus.read(GPU_REG_IRQ);result.held_irq_asserted=bool(sim.model->io_m_irq);
@@ -313,8 +334,9 @@ RecordResult retire_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
   for(unsigned n=0;n<8;++n)bus.step();
   result.retired_irq=bus.read(GPU_REG_IRQ);result.retired_irq_asserted=bool(sim.model->io_m_irq);
   traffic_unchanged(held_record.completed,agent.traffic);
-  require(agent.drained() && !agent.traffic.read_faults && !agent.traffic.write_faults,
-    "owner replay faulted or left external traffic");
+  require(agent.drained(),"owner replay left external traffic");
+  if constexpr(!CaptureType::joint_completion)
+    require(!agent.traffic.read_faults && !agent.traffic.write_faults,"owner replay faulted");
   require(!sim.model->io_m_irq,"native completion retirement left an asserted IRQ");
   verify_readonly(held_record.initial,memory,capture.writable);
   result.cycles=bus.cycles-held_record.start_cycles;
@@ -335,6 +357,7 @@ inline void completion_detail_json(std::ostream &out,const RecordResult &result)
     for(size_t n=0;n<result.gnx.size();++n)out<<(n?",":"")<<result.gnx[n];
   }
   out<<']';
+  if(result.joint_completion)out<<",\"physicalWriteFaults\":"<<result.physical_write_faults;
 }
 inline void held_json(std::ostream &out,const RecordResult &r,size_t index,uint32_t command_id) {
   out<<"{\"phase\":\"held\",\"record\":"<<index<<",\"commandId\":"<<command_id
@@ -393,12 +416,13 @@ inline void match_profile(const Capture &capture,const ProfileObservation &profi
   }
 }
 template<class Sim,class CaptureType>
-void active_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
+uint64_t active_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
     const std::filesystem::path &output,const std::filesystem::path &session,
     const CaptureType &first,uint64_t count,std::ostream &report=std::cout,
     std::chrono::milliseconds response_timeout=std::chrono::minutes(5),PtePages *pte=nullptr) {
   ProfileObservation profile;
   if constexpr(!CaptureType::joint_completion)profile=probe_profile(sim,agent,bus);
+  uint64_t completed_write_faults=0;
   for(uint64_t n=0;n<count;n++) {
     const auto stem="record-"+std::to_string(n);
     if(n)wait_input(session/(stem+".capture"),session,response_timeout);
@@ -415,10 +439,12 @@ void active_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
     wait_input(session/(stem+".retire"),session,response_timeout);
     const auto retirement=Retirement::read((session/(stem+".retire")).string(),CaptureType::joint_completion);
     const auto result=retire_record(sim,agent,bus,memory,capture,held,&retirement);
+    completed_write_faults+=result.physical_write_faults;
     memory.write((output/(stem+".memory")).string());
     atomic_json(session/(stem+".retired.json"),[&](auto &out){report_record(result,n,capture.command_id,bus.cycles,out);});
     report_record(result,n,capture.command_id,bus.cycles,report);
   }
+  return completed_write_faults;
 }
 template<class Sim>
 void cleanup_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,

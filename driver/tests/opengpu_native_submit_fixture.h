@@ -49,6 +49,8 @@ struct native_kernel_observed_receipt {
 int native_kernel_export_memory(struct native_kernel_session *,const char *path);
 int native_kernel_capture(struct native_kernel_session *,unsigned record,const char *path,
     uint64_t cycle_budget,uint32_t hold_cycles);
+int native_kernel_capture_joint_write_fault(struct native_kernel_session *,unsigned record,
+    const char *path,uint64_t cycle_budget,uint32_t hold_cycles);
 int native_kernel_drain_held(struct native_kernel_session *,unsigned record,
     const struct native_kernel_held_receipt *,const char *retire_trace_path);
 /* Confirms actual DUT application of the driver's traced drain/POP. Only then

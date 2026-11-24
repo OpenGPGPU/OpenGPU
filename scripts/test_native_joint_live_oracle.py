@@ -3,7 +3,7 @@
 import struct
 import unittest
 
-from native_joint_live_oracle import expected_image, verify_image
+from native_joint_live_oracle import RECORDS, expected_image, verify_image
 from qualify_native_joint_live import cleanup_checked, receipt_words, retired_receipt
 
 
@@ -48,7 +48,7 @@ class JointOracle(unittest.TestCase):
         held = dict(phase='held',record=0,commandId=5,completion=0x18705,
                     gnz2=[0x474e5a02,0,0,7,11,41,1,1,2,0,2,0,256,0,0,0],
                     heldIrq=3,heldIrqAsserted=True,heldLegacyStatus=0,heldStatus=0x22,
-                    metadataReadBytes=384,heldCompletionDrained=True,readOnlyGuards=True,
+                    physicalWriteFaults=0,metadataReadBytes=384,heldCompletionDrained=True,readOnlyGuards=True,
                     sourceQualificationRequired=True)
         payload = receipt_words(held,'held',5,7,self.row)
         retired = dict(held,phase='retired',ownerReplay=True,retiredStatus=1,retiredIrq=1,
@@ -64,14 +64,38 @@ class JointOracle(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'resetsBetweenRecords'):
             retired_receipt(dict(retired,resetsBetweenRecords=True),payload,5,7,self.row)
 
+    def test_failed_first_store_preserves_image_and_reports_exact_address(self):
+        row = {**self.row, 'record':6, 'domain':1, 'pass':17, 'generation':47}
+        initial, observed = ImagePage(), ImagePage()
+        intervals = [(0x1000,0x2000)]
+        verify_image(initial, observed, row, intervals)
+        observed.data[64] = 0
+        with self.assertRaisesRegex(ValueError, 'pixel'):
+            verify_image(initial, observed, row, intervals)
+
+        address = 0x2040
+        held = dict(phase='held', record=6, commandId=5, completion=0x11f05,
+                    gnz2=[0x474e5a02,51,address,7,17,47,1,1,2,0,2,0,0,0,0,0],
+                    heldIrq=3, heldIrqAsserted=True, heldLegacyStatus=0, heldStatus=0x22,
+                    physicalWriteFaults=1, metadataReadBytes=384, heldCompletionDrained=True,
+                    readOnlyGuards=True, sourceQualificationRequired=True)
+        self.assertTrue(receipt_words(held, 'held', 5, 7, row, address))
+        with self.assertRaisesRegex(ValueError, 'physicalWriteFaults'):
+            receipt_words(dict(held, physicalWriteFaults=0), 'held', 5, 7, row, address)
+        with self.assertRaisesRegex(ValueError, 'GNZ2'):
+            receipt_words(held, 'held', 5, 7, row, address + 64)
+        held['gnz2'][12] = 64
+        with self.assertRaisesRegex(ValueError, 'GNZ2'):
+            receipt_words(held, 'held', 5, 7, row, address)
+
     def test_complete_owner_cleanup_is_required(self):
-        cleanup = dict(phase='cleanup',ownerCleanupObserved=True,contextCleanupObserved=True,records=6,
+        cleanup = dict(phase='cleanup',ownerCleanupObserved=True,contextCleanupObserved=True,records=RECORDS,
                        resetCount=1,ramReplaced=False,imagesPreserved=True,externalDrained=True,
                        sourceQualificationRequired=True,clockQualified=False,fpsQualified=False,
                        batches=2,pteClears=1,shootdowns=1)
         cleanup_checked(cleanup)
         with self.assertRaisesRegex(ValueError,'records'):
-            cleanup_checked(dict(cleanup,records=5))
+            cleanup_checked(dict(cleanup,records=RECORDS-1))
         with self.assertRaisesRegex(ValueError,'pteClears'):
             cleanup_checked(dict(cleanup,pteClears=0))
 

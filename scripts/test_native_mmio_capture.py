@@ -61,11 +61,11 @@ static uint32_t pa_word(const Memory &m,uint64_t address) {
   require(std::any_of(m.ranges.begin(),m.ranges.end(),[&](const auto &r){return address>=r.start && address+4<=r.end;}),"PTE/record escapes real allocation");
   uint32_t value=0;for(unsigned n=0;n<4;n++)value|=uint32_t(m.byte(address+n))<<(n*8);return value;
 }
-static uint64_t translate(const Memory &m,uint32_t satp,uint32_t va,bool executable=false) {
+static uint64_t translate(const Memory &m,uint32_t satp,uint32_t va,uint32_t access=3) {
   auto upper=pa_word(m,uint64_t(satp&0xfffff)<<12|(uint64_t(va>>22)*4));
   require((upper&15)==1,"context root is not a real next-level table");
   auto leaf=pa_word(m,(uint64_t(upper>>10)<<12)+((va>>12)&1023)*4);
-  require((leaf&15)==(executable?11u:3u),"private leaf is not exact R/NX or R/X without W");
+  require((leaf&15)==access,"private leaf does not have the exact expected permissions");
   return (uint64_t(leaf>>10)<<12)|(va&4095);
 }
 #ifdef OPENGPU_TEST_JOINT_CAPTURE
@@ -106,6 +106,24 @@ static void joint_capture(const std::filesystem::path &base) {
   retirement.actions.erase(std::remove_if(retirement.actions.begin(),retirement.actions.end(),
     [](const auto &a){return a.address==0x54c;}),retirement.actions.end());
   rejects([&]{retirement.validate(true);});
+  auto fault=JointCapture::read((base/"joint-fault.capture").string());
+  auto fault_memory=Memory::read((base/"joint-fault.memory").string());
+  Retirement::read((base/"joint-fault.retire").string(),true);
+  require(!capture.write_fault && fault.write_fault,"only an explicit joint capture may request a fault");
+  uint32_t fault_satp=0;
+  for(const auto &a:fault.trace)
+    if(a.kind==Kind::write && a.address==GPU_REG_UCMD_VECTOR_SATP)fault_satp=a.value;
+  require(fault.write_fault->physical==translate(fault_memory,fault_satp,fault.write_fault->address,7),
+    "fault target lost its original writable Sv32 mapping");
+  auto unexpected=fault;
+  unexpected.write_fault.reset();
+  rejects([&]{unexpected.validate();});
+  unexpected=fault;
+  unexpected.write_fault->physical+=1;
+  rejects([&]{unexpected.validate();});
+  unexpected=fault;
+  unexpected.write_fault->address+=64;
+  rejects([&]{unexpected.validate();});
 }
 #endif
 int main(int argc,char **argv) {

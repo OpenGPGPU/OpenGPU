@@ -266,9 +266,10 @@ waits for physical memory drain and then applies the original driver's
 recorded POP and cleanup.
 
 The Mesa 22.3.6 Linux preflight linked and submitted the baseline and VS
-mutation for each domain. Each of the six DRM submissions retained the four
-linked programs after the original handles closed and published a separate
-4×4 writable image and protected Sv32 owner. The two VS inputs occupy distinct
+mutation for each domain and two repeated baseline triangle draws. Each of the
+eight DRM submissions retained the four linked programs after the original
+handles closed and published a separate 4×4 writable image and protected Sv32
+owner. The two VS inputs occupy distinct
 linked slots. The preflight verified the original index data, base vertex of
 −1, two instances with base instance 7 and divisor 2, and a fixed-index marker
 that stays a regular index for ES PATCHES. The actual prepared GND clears the
@@ -287,9 +288,13 @@ python3 -B scripts/build_native_joint_live_producer.py --sanitize \\
 
 The live controller checks the original published graph against the real
 Sv32 page tables, including the indexed source and the retained RX bytes.
-It checks the 4×4 RGBA32UI images and physical allocation guards before
-authorizing cleanup. The six-record series uses one reset and waits for the
-actual owner and context revocations before accepting the final receipt.
+For the first repeated triangle draw, FlashSim injects one AXI write failure
+at the first line of the original image. The controller requires GNZ2 status 3,
+stage 6, the exact image address, zero acknowledged store bytes and an untouched
+image. The driver IRQ path must propagate `-EIO` through retirement. The final
+draw uses the same baseline VS and must produce its exact RGBA32UI image.
+The eight-record series uses one reset and verifies allocation guards and
+the owner and context revocations before accepting the final receipt.
 
 For the routine 4×4 configuration, set `FIRTOOL` to the pinned FIRTool
 binary and `FLASHSIM` to the selected FlashSim checkout. Prepare the
@@ -322,6 +327,7 @@ configuration. Product throughput requires a full timed run.
 OPENGPU_TEST_SANITIZERS=1 python3 scripts/test_protected_tessellation_submit.py
 OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_mmio_capture.py --executor-root .
 OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_owner.py
+python3 -B scripts/test_native_joint_live_oracle.py
 ```
 
 The hardware start must carry the verified owner scope and expected frame

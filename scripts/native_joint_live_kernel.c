@@ -85,7 +85,10 @@ void joint_live_run(struct native_kernel_session *session,unsigned count,bool cp
     for (unsigned i=0;i<count;++i) {
         snprintf(name,sizeof(name),"record-%u.capture",i);
         live_path(path,name);
-        live_require(!native_kernel_capture(session,i,path,100000000,32),"joint capture enqueue");
+        int error=i==JOINT_LIVE_WRITE_FAULT_RECORD?
+            native_kernel_capture_joint_write_fault(session,i,path,100000000,32):
+            native_kernel_capture(session,i,path,100000000,32);
+        live_require(!error,"joint capture enqueue");
         snprintf(name,sizeof(name),"record-%u.held.response",i);
         FILE *f=live_wait(name);
         live_magic(f,"OGJH0001");

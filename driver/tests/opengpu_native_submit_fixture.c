@@ -119,9 +119,13 @@ struct native_kernel_record {
     struct opengpu_sched_job *job;struct dma_fence *hardware;
     struct native_kernel_held_receipt held;
     struct native_kernel_observed_receipt observed;
-    u32 joint_sequence_count,joint_directory_count;
+    u32 joint_sequence_count,joint_directory_count,joint_write_fault_address;
     bool captured,drained,verified,freed;void *mmio_state;
 };
+static int native_kernel_expected_error(const struct native_kernel_record *r)
+{
+    return r->joint_write_fault_address ? -EIO : 0;
+}
 struct native_kernel_session {bool context_destroyed;struct native_kernel_profile *profile;
     struct native_kernel_record *records,*pending_record;unsigned record_count;struct opengpu_device gpu;struct opengpu_render_context context;
     struct opengpu_file render;struct drm_file file;struct drm_device drm;
@@ -594,11 +598,14 @@ int native_kernel_observe_retired(struct native_kernel_session *s,unsigned index
         observation->external_drained!=1 || observation->retired_irq_asserted ||
         observation->retired_irq!=GPU_IRQ_ENABLE ||
         !(observation->retired_status&GPU_UCMD_STATUS_READY) || (observation->retired_status&busy) ||
-        !r->hardware || !dma_fence_is_signaled(r->hardware) || r->hardware->error ||
+        !r->hardware || !dma_fence_is_signaled(r->hardware) ||
+        r->hardware->error!=native_kernel_expected_error(r) ||
         s->gpu.hw.native_pending_owner || r->job->base.s_fence->finished.signaled)return -EINVAL;
     /* The actual hardware drain has signaled the returned fence. This models
      * DRM's finished propagation, without releasing the job/owner or PTEs. */
     r->observed=*observation;r->verified=true;
+    if(r->hardware->error)
+        dma_fence_set_error(&r->job->base.s_fence->finished,r->hardware->error);
     dma_fence_signal(&r->job->base.s_fence->finished);
     return 0;
 }
@@ -607,7 +614,8 @@ int native_kernel_finish_observed(struct native_kernel_session *s,unsigned index
     struct native_kernel_record *r=native_session_record(s,index);
     struct drm_sched_job **link;
     if(!r || !r->job || !r->verified || r->freed || !r->hardware ||
-        !dma_fence_is_signaled(r->hardware) || r->hardware->error || s->gpu.hw.wedged)return -EINVAL;
+        !dma_fence_is_signaled(r->hardware) || r->hardware->error!=native_kernel_expected_error(r) ||
+        r->job->base.s_fence->finished.error!=r->hardware->error || s->gpu.hw.wedged)return -EINVAL;
     for(struct native_kernel_record *other=s->records;other;other=other->next)
         if(!other->verified)return -EBUSY;
 #ifdef OPENGPU_NATIVE_MMIO

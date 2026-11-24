@@ -7,7 +7,13 @@ from native_graphics_uniform_oracle import require
 from native_sample_graphics_owner_oracle import guards
 
 
-RECORDS = 6
+CASES = (
+    (0, False, False), (0, True, False),
+    (1, False, False), (1, True, False),
+    (2, False, False), (2, True, False),
+    (1, False, True), (1, False, False),
+)
+RECORDS = len(CASES)
 WIDTH = HEIGHT = 4
 IMAGE_BYTES = WIDTH * HEIGHT * 16
 
@@ -20,7 +26,7 @@ def original_records(value, initial, engines, *, preflight=False):
     allocations = set()
     available = {(first, end) for first, end, _ in initial.ranges}
     for i, row in enumerate(rows):
-        required_flags(row, {'record':i,'domain':i//2,'pass':11+i,'generation':41+i,
+        required_flags(row, {'record':i,'domain':CASES[i][0],'pass':11+i,'generation':41+i,
                              'imageOffset':64,'imageBytes':IMAGE_BYTES})
         allocation, size = uint(row.get('allocation'), 64), uint(row.get('allocationBytes'), 64)
         require(allocation % 4096 == 0 and allocation + size <= 1 << 32 and
@@ -34,7 +40,8 @@ def original_records(value, initial, engines, *, preflight=False):
 
 
 def capture(data, discovery, context, row):
-    require(data[:8] == b'OGCAP003', 'wrong protected joint capture format')
+    write_fault = CASES[row['record']][2]
+    require(data[:8] == (b'OGCAP004' if write_fault else b'OGCAP003'), 'wrong protected joint capture format')
     cursor = 8
 
     def take(fmt):
@@ -50,6 +57,7 @@ def capture(data, discovery, context, row):
         require(count <= maximum, 'oversize protected joint capture section')
         return [take(fmt) for _ in range(count)]
 
+    fault = take('QI') if write_fault else None
     budget, hold, command = take('QII')
     require(0 < budget <= 1000000000 and 8 <= hold <= 4096 and command < 256,
             'invalid protected joint execution bounds')
@@ -66,6 +74,9 @@ def capture(data, discovery, context, row):
     image = row['allocation'] + row['imageOffset']
     require(any(first <= image and image + IMAGE_BYTES <= last for first, last in writable),
             'protected command does not own its original image')
+    if fault:
+        require(fault[0] == image and fault[1] and not fault[1]&63,
+                'write fault is outside the first original image line')
     regs = {address:value for kind, address, value, mask in trace if kind == 1}
     fixed = {0xc4: command, 0xc8: 15, 0xfc: 512, 0x108: context, 0x10c: row['pass'],
              0x110: row['generation']}
@@ -76,7 +87,7 @@ def capture(data, discovery, context, row):
     require(satp >> 31 == 1 and (satp >> 22 & 0x1ff) and satp == regs.get(0x150) and
             regs.get(0xf4,1) % 4096 == 0,
             'protected joint submission lost its original Sv32 context/root')
-    return command, regs, writable
+    return command, regs, writable, fault
 
 
 def physical(memory, satp, va, count, permission):
@@ -97,7 +108,7 @@ def physical(memory, satp, va, count, permission):
     return first
 
 
-def original_graph(memory, regs, context, row):
+def original_graph(memory, regs, context, row, fault):
     """Check the published owner's descriptors and original input selection."""
     satp, root = regs[0x14c], regs[0xf4]
 
@@ -136,6 +147,7 @@ def original_graph(memory, regs, context, row):
             frame[216:219] == (WIDTH*16,1,1) and
             physical(memory,satp,frame[210],IMAGE_BYTES,7) == row['allocation']+row['imageOffset'],
             'actual frame/store view is not the original image allocation')
+    require(not fault or fault[1] == frame[210], 'write fault address differs from the published frame view')
     pc = draw[342]
     return hashlib.sha256(view(pc,4096-(pc & 4095),11)).digest()
 
@@ -159,14 +171,15 @@ def expected_image(domain, mutation):
 def verify_image(previous, returned, row, writable):
     image = row['allocation'] + row['imageOffset']
     actual = returned.read(image, IMAGE_BYTES)
-    expected = expected_image(row['domain'], bool(row['record'] & 1))
+    domain, mutation, write_fault = CASES[row['record']]
+    expected = previous.read(image, IMAGE_BYTES) if write_fault else expected_image(domain, mutation)
     for offset in range(0, IMAGE_BYTES, 16):
         require(actual[offset:offset+16] == expected[offset:offset+16],
                 f"record {row['record']} pixel {(offset//16) % WIDTH},{offset//(16*WIDTH)} differs")
     # Each record may update its working buffers. Narrow the image interval
     # to the actual view, so its entire physical allocation guard is checked.
     allocation, end = row['allocation'], row['allocation'] + row['allocationBytes']
-    allowed = [(image,image+IMAGE_BYTES)]
+    allowed = [] if write_fault else [(image,image+IMAGE_BYTES)]
     for first, last in writable:
         if first < allocation:
             allowed.append((first,min(last,allocation)))

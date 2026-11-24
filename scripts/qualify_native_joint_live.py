@@ -16,7 +16,7 @@ import uuid
 from build_native_flashsim import digest
 from compute_owner_protocol import required_flags, strict_json, uint
 from native_graphics_uniform_oracle import SparseMemory, require
-from native_joint_live_oracle import RECORDS, capture, original_graph, original_records, verify_image
+from native_joint_live_oracle import CASES, RECORDS, capture, original_graph, original_records, verify_image
 from native_sample_graphics_controller import wait_cleanup
 from native_sample_owner_controller import atomic, regular, wait_file
 from owner_process_lifetime import CleanupIncomplete, remove_container, stop_group
@@ -75,27 +75,30 @@ def profile_words(profile):
     return words+registers, values[0x55c], bytes(wire)
 
 
-def receipt_words(value, phase, command, context, row):
+def receipt_words(value, phase, command, context, row, fault_address=0):
+    write_fault = bool(fault_address)
     required_flags(value,dict(phase=phase, record=row['record'], commandId=command,
-        completion=0x18700|command,heldIrq=3,heldIrqAsserted=True,heldCompletionDrained=True,
+        completion=(0x11f00 if write_fault else 0x18700)|command,physicalWriteFaults=int(write_fault),
+        heldIrq=3,heldIrqAsserted=True,heldCompletionDrained=True,
         readOnlyGuards=True,sourceQualificationRequired=True))
     detail = value.get('gnz2')
     require(type(detail) is list and len(detail) == 16, 'held GNZ2 is incomplete')
     detail = tuple(uint(word) for word in detail)
     read = uint(value.get('metadataReadBytes'),64)
     legacy, status = uint(value.get('heldLegacyStatus')),uint(value.get('heldStatus'))
-    require(detail[:10]==(0x474e5a02,0,0,context,row['pass'],row['generation'],1,1,2,0) and
-            0 < (detail[10] | detail[11]<<32) and detail[12:]==(row['imageBytes'],0,0,0) and
+    require(detail[:10]==(0x474e5a02,51 if write_fault else 0,fault_address,context,
+                          row['pass'],row['generation'],1,1,2,0) and
+            0 < (detail[10] | detail[11]<<32) and detail[12:]==(0 if write_fault else row['imageBytes'],0,0,0) and
             read and not read&63 and status&2 and not status&~0x23,
             'GNZ2 does not describe the expected complete two-instance render')
     return struct.pack('<19IQ4I',row['record'],command,value['completion'],*detail,read,legacy,status,3,1)
 
 
-def retired_receipt(value, held, command, context, row):
+def retired_receipt(value, held, command, context, row, fault_address=0):
     required_flags(value,dict(ownerReplay=True,retiredStatus=1,retiredIrq=1,
         retiredIrqAsserted=False,externalDrained=True,resets=1,resetsBetweenRecords=False,
         independentImagesRequired=True,clockQualified=False,fpsQualified=False))
-    payload = receipt_words(value,'retired',command,context,row)
+    payload = receipt_words(value,'retired',command,context,row,fault_address)
     require(payload==held, 'retired DUT receipt changed held ownership or counters')
     require(uint(value.get('serviceCycles'),64)>0 and uint(value.get('writeBusBytes'),64)>0,
             'no observed service or writes for the joint frame')
@@ -140,7 +143,7 @@ def exchange(directory, executor, bridge, discovery, engines, identities, timeou
     identities.update({path:digest(regular(path)) for path in (memory,layout,first)})
     running = executor(memory,results,session)
     try:
-        commands, shaders, records = set(),[],[]
+        commands, baseline_shaders, records = set(),{},[]
         previous = memory
         with SparseMemory(memory) as initial:
             for index,row in enumerate(rows):
@@ -149,7 +152,7 @@ def exchange(directory, executor, bridge, discovery, engines, identities, timeou
                 wait_file(packet,bridge,running,timeout)
                 data = packet.read_bytes()
                 identities[packet] = hashlib.sha256(data).hexdigest()
-                command, regs, writable = capture(data,discovery,context,row)
+                command, regs, writable, fault = capture(data,discovery,context,row)
                 require(command not in commands,'joint command identity was reused')
                 for other in rows:
                     if other is row:
@@ -158,17 +161,22 @@ def exchange(directory, executor, bridge, discovery, engines, identities, timeou
                     require(all(last<=start or first>=start+other['allocationBytes'] for first,last in writable),
                             'joint command includes a foreign image allocation in its writable ranges')
                 commands.add(command)
-                shaders.append(original_graph(initial,regs,context,row))
-                if index&1:
-                    require(shaders[-2]!=shaders[-1],'original VS mutation did not change executable bytes')
+                shader = original_graph(initial,regs,context,row,fault)
+                domain, mutation, _ = CASES[index]
+                if mutation:
+                    require(baseline_shaders[domain]!=shader,'original VS mutation did not change executable bytes')
+                else:
+                    require(baseline_shaders.setdefault(domain,shader)==shader,
+                            'write-fault or recovery draw lost the original baseline VS')
+                fault_address = fault[1] if fault else 0
                 held_path = session/(stem+'.held.json')
                 wait_file(held_path,bridge,running,timeout)
-                held = receipt_words(strict_json(held_path),'held',command,context,row)
+                held = receipt_words(strict_json(held_path),'held',command,context,row,fault_address)
                 atomic(session/(stem+'.held.response'),b'OGJH0001'+held)
                 retired_path = session/(stem+'.retired.json')
                 wait_file(retired_path,bridge,running,timeout)
                 retired = strict_json(retired_path)
-                response = retired_receipt(retired,held,command,context,row)
+                response = retired_receipt(retired,held,command,context,row,fault_address)
                 result = results/(stem+'.memory')
                 wait_file(result,bridge,running,timeout)
                 with SparseMemory(previous) as old, SparseMemory(result) as after:
@@ -236,7 +244,7 @@ def run(build, dut, timeout):
                                             stdout=run_log,stderr=subprocess.STDOUT,env=env,start_new_session=True)
 
                 records = exchange(directory,start,bridge,discovery,engines,identities,timeout)
-            require('Six original Mesa tessellation submissions retired with acknowledged cleanup' in
+            require('Original Mesa tessellation submissions retired with acknowledged cleanup' in
                     (directory/'producer.log').read_text().splitlines(), 'original producer did not confirm cleanup')
             return records
     except BaseException as error:
