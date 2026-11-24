@@ -88,9 +88,11 @@ for case in constant-loop dynamic-loop loop-break storage-loop nested-loop \
 done
 ```
 
-The compiler currently rejects workgroup execution barriers inside control
-flow. Workgroup barriers combined with loops and product clock/FPS
-qualification remain open.
+The compiler currently admits workgroup execution barriers at reconverged
+points. The [ESSL 3.10 invocation control contract](https://registry.khronos.org/OpenGL/specs/es/3.1/GLSL_ES_Specification_3.10.pdf)
+also covers barriers inside workgroup-uniform control flow. Lowering and
+admission of those barriers, their complete-owner qualification, and product
+clock/FPS qualification remain open.
 
 ## Indexed uniforms inside a masked loop
 
@@ -128,11 +130,13 @@ Run each case in `COMPUTE_LOOP_CASES` with `--capture-only`.
 ### Workgroup barriers with a divergent branch
 
 The `shared-barrier-mask` ESSL case runs 128 invocations in a 1D workgroup.
-Every lane publishes one shared word and enters the first execution barrier.
+Every lane writes one shared word and orders that write with
+`memoryBarrierShared()` before the first execution barrier.
 Each lane atomically adds three to a different warp's word. A divergent
 branch uses each returned old value in one of two disjoint output ranges.
-After the second barrier all lanes read the updated shared values. The byte
-oracle requires 256 words and checks all skipped writes and physical guards.
+After the branch reconverges, a second shared memory barrier and execution
+rendezvous precede the readback. The byte oracle requires 256 words and checks
+all skipped writes and physical guards.
 
 The sanitized Mesa/Linux capture and float-owner capture parser passed. The
 oracle rejected a wrong peer warp, modifications to skipped words and
