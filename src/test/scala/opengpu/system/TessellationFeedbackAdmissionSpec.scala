@@ -129,4 +129,55 @@ class TessellationFeedbackAdmissionSpec extends AnyFlatSpec {
       d.io.render(1).bits.commandId.expect(10.U);tick();d.io.busy.expect(false.B)
     }
   }
+  it should "validate the typed joint root before moving feedback ownership" in {
+    simulate(new TessellationFeedbackAdmission(8, jointTessellation = true)) { d =>
+      zero(d.io)
+      d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
+      val submit = d.io.jointSubmit.get
+      val render = d.io.jointRender.get
+      val failure = d.io.jointFailure.get
+      def accept(domain: Int, id: Int, malformed: Boolean = false): Unit = {
+        TessellationJointReaderTestSupport.request(submit.bits, domain)
+        submit.bits.commandId.poke(id.U)
+        if (malformed) submit.bits.view.limit.poke(0.U)
+        submit.valid.poke(true.B); submit.ready.expect(true.B)
+        d.clock.step(); submit.valid.poke(false.B)
+        zero(submit.bits)
+      }
+      def retireFailure(id: Int, status: Int, stage: Int, address: Int): Unit = {
+        failure.valid.expect(true.B)
+        failure.bits.commandId.expect(id.U); failure.bits.status.expect(status.U)
+        failure.bits.faultStage.expect(stage.U); failure.bits.faultAddress.expect(address.U)
+        failure.bits.identity.context.expect(7.U); failure.bits.identity.pass.expect(8.U)
+        failure.bits.identity.generation.expect(9.U)
+        val held = failure.bits.peek().litValue
+        for (_ <- 0 until 3) {
+          d.io.switch.valid.expect(false.B); render.valid.expect(false.B)
+          d.clock.step()
+          failure.valid.expect(true.B); assert(failure.bits.peek().litValue == held)
+        }
+        failure.ready.poke(true.B); d.clock.step(); failure.ready.poke(false.B)
+      }
+
+      d.io.switch.ready.poke(true.B); render.ready.poke(true.B)
+      accept(2, 40, malformed = true)
+      retireFailure(40, 1, 1, 0x1000)
+      accept(1, 41)
+      d.io.switch.valid.expect(true.B); d.io.switch.bits.expect(true.B)
+      d.clock.step()
+      d.io.cancel.poke(true.B); d.clock.step(); d.io.cancel.poke(false.B)
+      d.io.switchReply.ready.expect(true.B); failure.valid.expect(false.B)
+      d.io.switchReply.valid.poke(true.B); d.io.selected.poke(true.B)
+      d.clock.step(); d.io.switchReply.valid.poke(false.B)
+      retireFailure(41, 4, 0, 0)
+
+      accept(2, 42)
+      d.clock.step()
+      render.valid.expect(true.B); render.bits.commandId.expect(42.U)
+      render.bits.domain.expect(2.U); render.bits.identity.context.expect(7.U)
+      render.bits.view.base.expect(0x1000.U); render.bits.view.limit.expect(0x1200.U)
+      d.io.render(1).valid.expect(false.B)
+      d.clock.step(); d.io.busy.expect(false.B)
+    }
+  }
 }

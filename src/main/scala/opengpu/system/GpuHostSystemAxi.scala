@@ -113,8 +113,12 @@ class GpuHostSystemAxi(
   nativeSampleTransport: Boolean = false,
   tessellationFragmentImages: Boolean = false, tessellationSampleShading: Boolean = false,
   imageFloatExchangeAvailable: Boolean = false,
-  tessellationUniforms: Boolean = false
+  tessellationUniforms: Boolean = false,
+  jointTessellationNative: Boolean = false
 ) extends RawModule {
+  require(!jointTessellationNative || (tessellationNative && tessellationUniforms && nativeProtectedSources),
+    "joint tessellation requires the protected native source and checked tessellation uniform routes")
+  private val legacyTessellationNative = tessellationNative && !jointTessellationNative
   require(!tessellationUniforms || tessellationNative,
     "checked tessellation uniforms require the native three-domain owner")
   require(!tessellationFragmentImages || (tessellationNative && nativeFragmentImages),
@@ -227,8 +231,14 @@ class GpuHostSystemAxi(
     NativeRgba8TextureMemoryFabric.transactions(baseGraphicsHostTransactions,(numComputeUnits+1)/2)
     else baseGraphicsHostTransactions
   private val tessellationTransactions = nativeBinnedGraphics.map { n =>
-    TessellationNativeThreeDomainJobImage.transactions(n.engines,n.writeCredits,n.pagedCapacity,tessellationUniforms)
+    if (jointTessellationNative)
+      TessellationJointThreeDomainJobImage.transactions(n.engines,n.writeCredits,n.pagedCapacity,tessellationUniforms)
+    else TessellationNativeThreeDomainJobImage.transactions(n.engines,n.writeCredits,n.pagedCapacity,tessellationUniforms)
   }.getOrElse(1)
+  private val tessellationPayloadPins = nativeBinnedGraphics.map { n =>
+    if (jointTessellationNative) TessellationJointThreeDomainJobImage.payloadPins(n.engines)
+    else TessellationNativeThreeDomainJobImage.payloadPins(n.engines)
+  }.getOrElse(0)
   private val graphicsHostTransactions = if(tessellationNative)
     TessellationHostMemoryFabric.transactions(legacyGraphicsHostTransactions,tessellationTransactions)
     else legacyGraphicsHostTransactions
@@ -349,8 +359,8 @@ class GpuHostSystemAxi(
       enableIndirectCompute=enableIndirectCompute,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,computeTextureAvailable=computeTextureAvailable,atomicCounterAvailable=atomicCounterAvailable,
       computeResources=Some(opengpu.config.ComputeResourceProfile(gpuConfig,numComputeUnits,memoryAxiDataBytes)),
       primitiveQueries=primitiveQueries,transformFeedback=nativeFeedback,transformFeedbackSourceWords=5+4*typedGraphics.map(_.vertex.varyings).orElse(nativeBinnedGraphics.map(_.vertex.varyings)).getOrElse(16),
-      tessellationHost=tessellationNative,imageAtomicAvailable=imageAtomicAvailable,storageAtomicAvailable=storageAtomicAvailable,
-      tessellationDiscovery=tessellationNative && version>=2,
+      tessellationHost=legacyTessellationNative,imageAtomicAvailable=imageAtomicAvailable,storageAtomicAvailable=storageAtomicAvailable,
+      tessellationDiscovery=legacyTessellationNative && version>=2,jointTessellationHost=jointTessellationNative,
       nativeDescriptorPreflight=nativeBinnedGraphics.exists(_.descriptorPreflight),
       nativeProtectedSources=nativeProtectedSources,nativeGeometryTransport=nativeGeometryTransport,
       nativeSampleTransport=nativeSampleTransport,
@@ -372,7 +382,7 @@ class GpuHostSystemAxi(
       vectorCacheWays = vectorCacheWays,
       enableGraphicsKernels = sharedGraphics,shaderPayload=localPayload,
       producerPayloadPins=if(localPayload.nonEmpty){if(tessellationNative)MemoryNativeBinnedGraphicsPipeline.payloadPins(nativeBinnedGraphics.get)+
-        TessellationNativeThreeDomainJobImage.payloadPins(nativeBinnedGraphics.get.engines)+hostShaderPins
+        tessellationPayloadPins+hostShaderPins
         else if(nativeBinnedGraphics.nonEmpty)MemoryNativeBinnedGraphicsPipeline.payloadPins(nativeBinnedGraphics.get)
         else if(typedGraphics.nonEmpty)4 else sharedShader.get.binPayloadPins(binnedRendering.get.tileEngines)}else 0,
       drainGraphicsPayloadWork=localPayload.nonEmpty,shaderExecutionLimits=nativeExecutionLimits,
@@ -380,7 +390,8 @@ class GpuHostSystemAxi(
       // must use their actual local backend even without graphics quotas.
       enableIndirectCompute=enableIndirectCompute,nativeExecutionProfile=true,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,computeTextureAvailable=computeTextureAvailable,atomicCounterAvailable=atomicCounterAvailable,
       geometryAvailable=tessellationNative || nativeBinnedGraphics.exists(_.nativeGeometry),tessellationAvailable=tessellationNative,graphicsImageAvailable=nativeFragmentImages,
-      imageAtomicAvailable=imageAtomicAvailable,storageAtomicAvailable=storageAtomicAvailable))
+      imageAtomicAvailable=imageAtomicAvailable,storageAtomicAvailable=storageAtomicAvailable,
+      evaluationPatchAvailable=jointTessellationNative,tessellationInfoAvailable=jointTessellationNative))
     if (nativeExecutionLimits) system.io.graphicsInstructionLimit.get := host.io.shaderInstructionLimit.get
     val binned=binnedRendering.map(m=>Module(new MemoryTileBinRenderPipeline(
       graphicsConfig,gpuConfig,commandIdWidth,m.tileEngines,m.binPageBytes,m.binWriteCredits,
@@ -391,16 +402,28 @@ class GpuHostSystemAxi(
     val nativeBinned=nativeBinnedGraphics.map(n=>Module(new MemoryNativeBinnedGraphicsPipeline(
       gpuConfig,n,sharedShader.get,graphicsConfig,commandIdWidth,useSramBlackBoxes=useBlackBoxes,
       fragmentImageAvailable=nativeFragmentImages)))
-    val tessellation=if(tessellationNative){val n=nativeBinnedGraphics.get
+    val tessellation=if(legacyTessellationNative){val n=nativeBinnedGraphics.get
       Some(Module(new TessellationNativeThreeDomainJobImage(gpuConfig,n.vertex,n.fragment,sharedShader.get,n.renderGraphics(graphicsConfig),
         engines=n.engines,pageBytes=n.pageBytes,writeCredits=n.writeCredits,tileSlots=n.tileSlots,pagedCapacity=n.pagedCapacity,
         storage=n.storage,useSramBlackBoxes=useBlackBoxes,payload=localPayload,transformFeedback=nativeFeedback,
         fragmentImageAvailable=tessellationFragmentImages,sampleShading=tessellationSampleShading,
         tessellationUniforms=tessellationUniforms)))}else None
+    val jointTessellation = Option.when(jointTessellationNative) {
+      val n = nativeBinnedGraphics.get
+      Module(new TessellationJointThreeDomainJobImage(gpuConfig,n.vertex,n.fragment,sharedShader.get,
+        n.renderGraphics(graphicsConfig),engines=n.engines,pageBytes=n.pageBytes,writeCredits=n.writeCredits,
+        tileSlots=n.tileSlots,pagedCapacity=n.pagedCapacity,storage=n.storage,useSramBlackBoxes=useBlackBoxes,
+        payload=localPayload,transformFeedback=nativeFeedback,fragmentImageAvailable=tessellationFragmentImages,
+        sampleShading=tessellationSampleShading,tessellationUniforms=tessellationUniforms,
+        evaluationPatchAvailable=true,tessellationInfoAvailable=true,primitiveIdInput=true,enabled=true))
+    }
+    val tessellationPorts = tessellation.map[TessellationHostPhysicalPorts](_.io)
+      .orElse(jointTessellation.map(_.io))
     val tessellationMemory=if(tessellationNative)Some(Module(new TessellationHostMemoryFabric(gpuConfig,legacyGraphicsHostTransactions,tessellationTransactions)))else None
     val tessellationRouter=if(tessellationNative)Some(Module(new TessellationHostShaderRouter(gpuConfig,numComputeUnits,commandIdWidth,hostShaderTasksPerClient,localPayload,
       imageAvailable=nativeFragmentImages,legacyGeometry=nativeBinnedGraphics.exists(_.nativeGeometry),
-      tessellationImageAvailable=tessellationFragmentImages)))else None
+      tessellationImageAvailable=tessellationFragmentImages,evaluationPatchAvailable=jointTessellationNative,
+      tessellationInfoAvailable=jointTessellationNative)))else None
     val tessellationPayload=if(tessellationNative)localPayload.map(p=>Module(new TessellationHostPayloadOwner(p)))else None
     val queries=if(visibilityQueries)Some(Module(new opengpu.graphics.NativeVisibilityQueryEngine(gpuConfig,
       contexts=opengpu.graphics.NativeVisibilityQueryCapabilities.activeContexts,
@@ -417,7 +440,8 @@ class GpuHostSystemAxi(
     }
     val feedbackControl=if(nativeFeedback)Some(Module(new opengpu.graphics.NativeTransformFeedbackControl(gpuConfig)))else None
     val feedbackTransfer=if(tessellationNative && nativeFeedback)Some(Module(new opengpu.graphics.TransformFeedbackOwnerTransfer()))else None
-    val feedbackAdmission=if(tessellationNative && nativeFeedback)Some(Module(new TessellationFeedbackAdmission(commandIdWidth)))else None
+    val feedbackAdmission=if(tessellationNative && nativeFeedback)
+      Some(Module(new TessellationFeedbackAdmission(commandIdWidth,jointTessellationNative)))else None
     feedbackControl.foreach { f=>
       f.io.command<>host.io.feedbackCommand.get;host.io.feedbackReply.get<>f.io.reply
       f.io.satp:=host.io.vectorSatp;f.io.cancel:=host.io.binCancel.get
@@ -430,11 +454,11 @@ class GpuHostSystemAxi(
     val nativeTextureGroupEvent=WireDefault(0.U(5.W))
     val nativeTextureDataEvents=WireDefault(VecInit(Seq.fill(8)(false.B)))
     val nativeTextureWalkEvents=WireDefault(VecInit(Seq.fill(8)(false.B)))
-    tessellation.foreach { t=>
+    tessellationPorts.foreach { t=>
       val memory=tessellationMemory.get
-      memory.io.tessellationRequest<>t.io.memoryRequest;t.io.memoryResponse<>memory.io.tessellationResponse
-      t.io.satp:=host.io.vectorSatp;t.io.flush:=host.io.tlbFlush;t.io.cancel:=host.io.tessellationCancel.get
-      t.io.out.foreach(_.ready:=true.B)
+      memory.io.tessellationRequest<>t.memoryRequest;t.memoryResponse<>memory.io.tessellationResponse
+      t.satp:=host.io.vectorSatp;t.flush:=host.io.tlbFlush;t.cancel:=host.io.tessellationCancel.get
+      t.out.foreach(_.ready:=true.B)
     }
     def connectPhysicalGraphics(request: DecoupledIO[ComputeMemoryRequest],response: DecoupledIO[ComputeMemoryResponse]): Bool =
       tessellationMemory match {
@@ -806,69 +830,123 @@ class GpuHostSystemAxi(
       val routeReady=WireDefault(true.B)
       val payloadRetired=WireDefault(true.B)
       if(tessellationNative){
-        val t=tessellation.get;val router=tessellationRouter.get;val memory=tessellationMemory.get
-        router.io.legacy<>renderer.io.shared;router.io.tessellation<>t.io.shared;system.io.graphicsKernels.get<>router.io.pool
-        host.io.tessellationDrained.get:= !t.io.busy && memory.io.tessellationDrained && router.io.drained &&
+        val t=tessellationPorts.get;val router=tessellationRouter.get;val memory=tessellationMemory.get
+        router.io.legacy<>renderer.io.shared;router.io.tessellation<>t.shared;system.io.graphicsKernels.get<>router.io.pool
+        host.io.tessellationDrained.get:= !t.busy && memory.io.tessellationDrained && router.io.drained &&
           !tessellationPayload.map(_.io.active).getOrElse(false.B) && !feedbackTransfer.map(_.io.busy).getOrElse(false.B) &&
           !feedbackAdmission.map(_.io.busy).getOrElse(false.B)
         routeReady:=router.io.drained && memory.io.tessellationDrained
         val legacy=Wire(Decoupled(new opengpu.graphics.TileJobDescriptorRequest(commandIdWidth)))
-        val next=Wire(Decoupled(new opengpu.graphics.TileJobDescriptorRequest(commandIdWidth)))
         feedbackAdmission match {
-          case Some(admission)=>
-            admission.io.submit(0)<>host.io.binSubmit.get;admission.io.submit(1)<>host.io.tessellationSubmit.get
-            legacy<>admission.io.render(0);next<>admission.io.render(1)
-            attachSharedFeedback(renderer.io.feedback.get,t.io.feedback.get,
-              !renderer.io.busy && !t.io.busy && fabric.io.drained && textureDrained && routeReady && payloadRetired,textureDrained)
-          case None=>legacy<>host.io.binSubmit.get;next<>host.io.tessellationSubmit.get
+          case Some(admission) =>
+            admission.io.submit(0) <> host.io.binSubmit.get
+            legacy <> admission.io.render(0)
+            attachSharedFeedback(renderer.io.feedback.get,t.feedback.get,
+              !renderer.io.busy && !t.busy && fabric.io.drained && textureDrained && routeReady && payloadRetired,textureDrained)
+          case None => legacy <> host.io.binSubmit.get
         }
-        tessellationPayload match {
-          case None => renderer.io.submit<>legacy;t.io.submit<>next
-          case Some(owner) =>
-            owner.io.acquire.valid:=(legacy.valid && renderer.io.submit.ready) || (next.valid && t.io.submit.ready)
-            owner.io.acquire.bits:=next.valid
-            when(owner.io.acquire.valid){assert(!(legacy.valid && next.valid),"one host command must select one renderer")}
-            renderer.io.submit.valid:=legacy.valid && owner.io.acquire.ready;renderer.io.submit.bits:=legacy.bits
-            legacy.ready:=renderer.io.submit.ready && owner.io.acquire.ready
-            t.io.submit.valid:=next.valid && owner.io.acquire.ready;t.io.submit.bits:=next.bits
-            next.ready:=t.io.submit.ready && owner.io.acquire.ready
-            val selected=RegEnable(owner.io.acquire.bits,false.B,owner.io.acquire.fire)
-            owner.io.end.valid:=owner.io.active && router.io.drained && Mux(selected,
-              t.io.completion.valid && memory.io.tessellationDrained,renderer.io.completion.valid && textureDrained)
-            owner.io.end.bits:=true.B
-            payloadRetired:= !owner.io.active
-            router.io.clientPayload.get(0):=renderer.io.poolPayload.get
-            router.io.clientPayload.get(1):=t.io.poolPayload.get
-            system.io.graphicsPayload.get:=router.io.poolPayload.get
-            val pins=renderer.io.payloadPins.get.toSeq++t.io.payloadPins.get.toSeq++router.io.payloadPins.get.toSeq
-            for(i<-pins.indices)system.io.payloadProducerPins.get(i):=pins(i)
-            val management=system.io.payloadManagement.get
-            for(i<-0 until localPayload.get.owners){
-              val legacyPort=renderer.io.payload.get(i);val tessPort=t.io.payload.get(i)
-              owner.io.legacy(i).control<>legacyPort.control;legacyPort.controlResponse<>owner.io.legacy(i).controlResponse
-              owner.io.legacy(i).request<>legacyPort.request;legacyPort.response<>owner.io.legacy(i).response
-              owner.io.tessellation(i).control<>tessPort.control;tessPort.controlResponse<>owner.io.tessellation(i).controlResponse
-              owner.io.tessellation(i).request<>tessPort.request;tessPort.response<>owner.io.tessellation(i).response
-              management.control(i)<>owner.io.pool(i).control;owner.io.pool(i).controlResponse<>management.controlResponse(i)
-              management.request(i)<>owner.io.pool(i).request;owner.io.pool(i).response<>management.response(i)
-              legacyPort.context:=host.io.vectorSatp;legacyPort.cancel:=host.io.binCancel.get
-              tessPort.context:=host.io.vectorSatp;tessPort.cancel:=host.io.tessellationCancel.get
-            }
+
+        // Acquire both the shared job route and the selected renderer on the
+        // same edge, then retain the producer until its completion and drain.
+        def dispatchTessellation[Q <: Data](next: DecoupledIO[Q], submit: DecoupledIO[Q], completed: Bool): Unit =
+          tessellationPayload match {
+            case None => renderer.io.submit <> legacy; submit <> next
+            case Some(owner) =>
+              owner.io.acquire.valid := (legacy.valid && renderer.io.submit.ready) || (next.valid && submit.ready)
+              owner.io.acquire.bits := next.valid
+              when(owner.io.acquire.valid) {
+                assert(!(legacy.valid && next.valid), "one host command must select one renderer")
+              }
+              renderer.io.submit.valid := legacy.valid && owner.io.acquire.ready
+              renderer.io.submit.bits := legacy.bits
+              legacy.ready := renderer.io.submit.ready && owner.io.acquire.ready
+              submit.valid := next.valid && owner.io.acquire.ready
+              submit.bits := next.bits
+              next.ready := submit.ready && owner.io.acquire.ready
+              val selected = RegEnable(owner.io.acquire.bits, false.B, owner.io.acquire.fire)
+              owner.io.end.valid := owner.io.active && router.io.drained && Mux(selected,
+                completed && memory.io.tessellationDrained, renderer.io.completion.valid && textureDrained)
+              owner.io.end.bits := true.B
+              payloadRetired := !owner.io.active
+              router.io.clientPayload.get(0) := renderer.io.poolPayload.get
+              router.io.clientPayload.get(1) := t.poolPayload.get
+              system.io.graphicsPayload.get := router.io.poolPayload.get
+              val pins = renderer.io.payloadPins.get.toSeq ++ t.payloadPins.get.toSeq ++ router.io.payloadPins.get.toSeq
+              require(pins.size == system.io.payloadProducerPins.get.length)
+              for (i <- pins.indices) system.io.payloadProducerPins.get(i) := pins(i)
+              val management = system.io.payloadManagement.get
+              for (i <- 0 until localPayload.get.owners) {
+                val legacyPort = renderer.io.payload.get(i)
+                val tessPort = t.payload.get(i)
+                owner.io.legacy(i).control <> legacyPort.control
+                legacyPort.controlResponse <> owner.io.legacy(i).controlResponse
+                owner.io.legacy(i).request <> legacyPort.request
+                legacyPort.response <> owner.io.legacy(i).response
+                owner.io.tessellation(i).control <> tessPort.control
+                tessPort.controlResponse <> owner.io.tessellation(i).controlResponse
+                owner.io.tessellation(i).request <> tessPort.request
+                tessPort.response <> owner.io.tessellation(i).response
+                management.control(i) <> owner.io.pool(i).control
+                owner.io.pool(i).controlResponse <> management.controlResponse(i)
+                management.request(i) <> owner.io.pool(i).request
+                owner.io.pool(i).response <> management.response(i)
+                legacyPort.context := host.io.vectorSatp
+                legacyPort.cancel := host.io.binCancel.get
+                tessPort.context := host.io.vectorSatp
+                tessPort.cancel := host.io.tessellationCancel.get
+              }
+          }
+
+        tessellation.foreach { path =>
+          val next = Wire(Decoupled(new opengpu.graphics.TileJobDescriptorRequest(commandIdWidth)))
+          feedbackAdmission match {
+            case Some(admission) =>
+              admission.io.submit(1) <> host.io.tessellationSubmit.get
+              next <> admission.io.render(1)
+            case None => next <> host.io.tessellationSubmit.get
+          }
+          dispatchTessellation(next,path.io.submit,path.io.completion.valid)
+          val tessCompletion=host.io.tessellationCompletion.get
+          val failed=feedbackAdmission.map(_.io.failure(1).valid).getOrElse(false.B)
+          tessCompletion.valid:=failed || (path.io.completion.valid && routeReady && payloadRetired)
+          tessCompletion.bits:=0.U.asTypeOf(tessCompletion.bits)
+          tessCompletion.bits.commandId:=path.io.completion.bits.commandId
+          tessCompletion.bits.status:=path.io.completion.bits.status
+          tessCompletion.bits.descriptorReadBytes:=path.io.completion.bits.descriptorReadBytes(15,0)
+          // Native tessellation does not yet report draw-record bytes independently.
+          tessCompletion.bits.appendReadBytes:=0.U
+          tessCompletion.bits.acceptedAppends:=path.io.completion.bits.completedDraws
+          feedbackAdmission.foreach { a=>when(failed){tessCompletion.bits:=a.io.failure(1).bits};a.io.failure(1).ready:=tessCompletion.ready }
+          val tessDetails=WireDefault(path.io.completion.bits.details)
+          feedbackAdmission.foreach { a=>when(failed){tessDetails:=a.io.failureDetails(1)} }
+          host.io.tessellationCompletionDetails.get:=tessDetails
+          path.io.completion.ready:= !failed && tessCompletion.ready && routeReady && payloadRetired
         }
-        val tessCompletion=host.io.tessellationCompletion.get
-        val failed=feedbackAdmission.map(_.io.failure(1).valid).getOrElse(false.B)
-        tessCompletion.valid:=failed || (t.io.completion.valid && memory.io.tessellationDrained && router.io.drained && payloadRetired)
-        tessCompletion.bits:=0.U.asTypeOf(tessCompletion.bits)
-        tessCompletion.bits.commandId:=t.io.completion.bits.commandId;tessCompletion.bits.status:=t.io.completion.bits.status
-        tessCompletion.bits.descriptorReadBytes:=t.io.completion.bits.descriptorReadBytes(15,0)
-        // Native tessellation does not yet report draw-record bytes independently.
-        tessCompletion.bits.appendReadBytes:=0.U
-        tessCompletion.bits.acceptedAppends:=t.io.completion.bits.completedDraws
-        feedbackAdmission.foreach { a=>when(failed){tessCompletion.bits:=a.io.failure(1).bits};a.io.failure(1).ready:=tessCompletion.ready }
-        val tessDetails=WireDefault(t.io.completion.bits.details)
-        feedbackAdmission.foreach { a=>when(failed){tessDetails:=a.io.failureDetails(1)} }
-        host.io.tessellationCompletionDetails.get:=tessDetails
-        t.io.completion.ready:= !failed && tessCompletion.ready && memory.io.tessellationDrained && router.io.drained && payloadRetired
+
+        jointTessellation.foreach { path =>
+          val next = Wire(Decoupled(new TessellationJointJobRequest(commandIdWidth)))
+          feedbackAdmission match {
+            case Some(admission) =>
+              admission.io.submit(1).valid := false.B
+              admission.io.submit(1).bits := 0.U.asTypeOf(admission.io.submit(1).bits)
+              admission.io.render(1).ready := false.B
+              admission.io.failure(1).ready := false.B
+              admission.io.jointSubmit.get <> host.io.jointTessellationSubmit.get
+              next <> admission.io.jointRender.get
+            case None => next <> host.io.jointTessellationSubmit.get
+          }
+          dispatchTessellation(next, path.io.submit, path.io.completion.valid)
+          val completion = host.io.jointTessellationCompletion.get
+          val failure = feedbackAdmission.flatMap(_.io.jointFailure)
+          val failed = failure.map(_.valid).getOrElse(false.B)
+          completion.valid := failed || (path.io.completion.valid && routeReady && payloadRetired)
+          completion.bits := path.io.completion.bits
+          failure.foreach { reply =>
+            when(failed) { completion.bits := reply.bits }
+            reply.ready := completion.ready
+          }
+          path.io.completion.ready := !failed && completion.ready && routeReady && payloadRetired
+        }
       } else renderer.io.submit<>host.io.binSubmit.get
       renderer.io.cancel:=host.io.binCancel.get
       if(nativeFeedback && !tessellationNative)attachFeedback(renderer.io.feedback.get)
@@ -888,23 +966,26 @@ class GpuHostSystemAxi(
       host.io.binCompletionDetails.get:=legacyDetails
       renderer.io.completion.ready:= !failedLegacy && completion.ready && textureDrained && routeReady && payloadRetired
       host.io.binCapabilityWords.get:=VecInit(NativeBinnedGraphicsCapabilities.words(n,numComputeUnits,graphicsConfig).map(_.U(32.W)))
-      val renderIdle= !renderer.io.busy && !tessellation.map(_.io.busy).getOrElse(false.B) && fabric.io.drained && textureDrained && routeReady && payloadRetired
+      val renderIdle= !renderer.io.busy && !tessellationPorts.map(_.busy).getOrElse(false.B) && fabric.io.drained && textureDrained && routeReady && payloadRetired
       val queryFence=if(visibilityQueries || primitiveQueries)Some(Module(new TessellationQueryAdmissionFence))else None
       queryFence.foreach { f=>
-        f.io.accepted:=host.io.binSubmit.get.fire || host.io.tessellationSubmit.map(_.fire).getOrElse(false.B)
+        f.io.accepted:=host.io.binSubmit.get.fire || host.io.tessellationSubmit.map(_.fire).getOrElse(false.B) ||
+          host.io.jointTessellationSubmit.map(_.fire).getOrElse(false.B)
         f.io.context:=host.io.renderQueryContext.orElse(host.io.renderFeedbackScope.map(_.context)).get
         f.io.root:=host.io.vectorSatp;f.io.renderIdle:=renderIdle
         f.io.admissionBusy:=feedbackAdmission.map(_.io.busy).getOrElse(false.B)
         val tessCompletion=host.io.tessellationCompletion
         f.io.legacyFault.valid:=completion.fire && completion.bits.status=/=0.U
         f.io.legacyFault.bits:=completion.bits.status
-        f.io.tessFault.valid:=tessCompletion.map(c=>c.fire && c.bits.status=/=0.U).getOrElse(false.B)
-        f.io.tessFault.bits:=tessCompletion.map(_.bits.status).getOrElse(0.U)
+        val jointCompletion=host.io.jointTessellationCompletion
+        f.io.tessFault.valid:=jointCompletion.map(c=>c.fire && c.bits.status=/=0.U)
+          .orElse(tessCompletion.map(c=>c.fire && c.bits.status=/=0.U)).getOrElse(false.B)
+        f.io.tessFault.bits:=jointCompletion.map(_.bits.status).orElse(tessCompletion.map(_.bits.status)).getOrElse(0.U)
       }
       queries.foreach { q=>
         val context=queryFence.get.io.scopeContext;val root=queryFence.get.io.scopeRoot
         for(e<-0 until n.engines){
-          val tessSample=tessellation.map(_.io.out(e))
+          val tessSample=tessellationPorts.map(_.out(e))
           val tessFire=tessSample.map(_.fire).getOrElse(false.B)
           assert(!(renderer.io.out(e).fire && tessFire),"one query sample producer owns the host")
           q.io.samples(e).valid:=renderer.io.out(e).fire || tessFire
@@ -1163,7 +1244,7 @@ class GpuHostSystemAxi(
       perf.rasterStallCycles := count(host.io.performance.rasterStall.asUInt)
       val ordinaryFragmentEvents = typed.map(_.io.fragmentEvents).orElse(nativeBinned.map(_.io.fragmentEvents))
         .orElse(binned.map(_.io.fragmentEvents)).getOrElse(host.io.performance.fragment)
-      val fragmentEvents = if(tessellationNative)Mux(tessellation.get.io.busy,tessellation.get.io.fragmentEvents,ordinaryFragmentEvents)
+      val fragmentEvents = if(tessellationNative)Mux(tessellationPorts.get.busy,tessellationPorts.get.fragmentEvents,ordinaryFragmentEvents)
         else ordinaryFragmentEvents
       for (phase <- 0 until 6)
         perf.fragmentPhaseWorkerCycles(phase) := count(fragmentEvents.phaseWorkers(phase))

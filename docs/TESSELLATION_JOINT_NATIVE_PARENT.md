@@ -53,6 +53,22 @@ checked uniforms, dynamic TES and fragment image interfaces enabled.
 Protected Linux submission and actual original Mesa shaders on the two
 physical CUs remain end-to-end acceptance gates.
 
+## Physical AXI host
+
+`GpuHostSystemAxi` selects the joint renderer with `jointTessellationNative`
+enabled, checked tessellation uniforms and protected sources. It connects
+the three-domain parent to the shared memory, shader, payload and feedback
+fabrics. Both physical CUs expose their evaluation-patch and tessellation-info
+ports. The host validates the typed GNQ root before switching feedback
+ownership. Cancellation waits for an accepted switch to drain and preserves
+the accepted command identity through the held result.
+
+The 4×4 one-engine host with two 16-lane, eight-warp CUs elaborated and lowered
+to split SystemVerilog with FIRTool 1.158.0. All eight focused FlashSim cases
+passed, including held AXI completion, invalid joint range rejection before
+feedback transfer and safe reuse after cancellation. The original Mesa
+shader and protected Linux submission runs remain pending.
+
 ## Empty state tables
 
 `allowEmptyStates=false` preserves the existing replay and image contracts.
@@ -109,6 +125,10 @@ Run the shared-parent elaboration check with:
     sbt 'testOnly opengpu.system.TessellationJointThreeDomainElaborationSpec'
 
 ```sh
+sbt 'testOnly opengpu.system.TessellationNativeHostElaborationSpec -- -z "protected joint tessellation"'
+sbt -Dopengpu.simBackend=flashsim -Dopengpu.flashsimPython=python3.13 \
+  -Dopengpu.simJobs=2 \
+  'testOnly opengpu.system.TessellationFeedbackAdmissionSpec opengpu.system.TessellationHostAxiCommandSpec'
 sbt -Dopengpu.simBackend=flashsim -Dopengpu.flashsimPython=python3.13 \
   -Dopengpu.simJobs=2 -Dopengpu.flashsimShards=12 \
   'testOnly opengpu.system.TessellationJointRangeCursorSpec opengpu.system.TileBinHostMemoryFabricJointClearSpec opengpu.system.TessellationJointNativeControllerSpec opengpu.graphics.TessellationVertexTypedRangeSpec opengpu.system.TessellationViewportPublicationEndpointSpec'
