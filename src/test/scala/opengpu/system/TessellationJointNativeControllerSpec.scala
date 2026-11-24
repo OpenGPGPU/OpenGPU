@@ -112,10 +112,11 @@ class TessellationJointNativeControllerSpec extends AnyFlatSpec {
           d.io.out.valid.expect(false.B);d.io.end.valid.expect(false.B)}
         d.io.rb.poke(false.B);d.io.rd.poke(true.B)
       }
-      def retireFrame(status:Int=0,lateFault:Boolean=false):Unit={
+      def retireFrame(status:Int=0,lateFault:Boolean=false,address:BigInt=0,wrongIdentity:Boolean=false):Unit={
         m.until("real end offer")(d.io.end.valid.peek().litToBoolean)
         d.io.out.valid.expect(false.B);d.io.end.ready.poke(true.B);m.tick();d.io.end.ready.poke(false.B)
-        identity(d.io.ff.bits.identity);d.io.ff.bits.status.poke(status.U)
+        identity(d.io.ff.bits.identity);if(wrongIdentity)d.io.ff.bits.identity.context.poke(99.U)
+        d.io.ff.bits.status.poke(status.U);d.io.ff.bits.faultAddress.poke(address.U)
         d.io.ff.bits.storedBytes.poke(4096.U);d.io.ff.bits.resolvedBytes.poke(1024.U)
         d.io.ff.valid.poke(true.B);if(lateFault)d.io.cancel.poke(true.B)
         m.until("actual frame report accepted")(d.io.ff.ready.peek().litToBoolean);m.tick();d.io.ff.valid.poke(false.B)
@@ -123,9 +124,11 @@ class TessellationJointNativeControllerSpec extends AnyFlatSpec {
         for(_<-0 until 3){m.tick();d.io.out.valid.expect(false.B)}
         d.io.fb.poke(false.B);d.io.fd.poke(true.B)
       }
-      def finish(status:Int,ranges:Int,patches:Int,published:Int,entries:Int,empty:Boolean=false,stage:Int=0):Unit={
+      def finish(status:Int,ranges:Int,patches:Int,published:Int,entries:Int,empty:Boolean=false,stage:Int=0,
+          address:Option[BigInt]=None):Unit={
         m.until("native retired report")(d.io.out.valid.peek().litToBoolean)
         val out=d.io.out.bits;out.status.expect(status.U);out.faultStage.expect(stage.U)
+        address.foreach(a=>out.faultAddress.expect(a.U))
         out.retiredRanges.expect(ranges.U);out.retiredPatches.expect(patches.U);out.published.expect(published.U)
         out.capturedEntries.expect(entries.U);out.clearOnly.expect(empty.B);out.readBytes.expect((m.reads.size*64).U)
         out.commandId.expect(5.U)
@@ -145,12 +148,15 @@ class TessellationJointNativeControllerSpec extends AnyFlatSpec {
       val offered=d.io.g.peek().litValue;d.io.cancel.poke(true.B);d.io.rc.expect(false.B)
       for(_<-0 until 3){m.tick();d.io.rv.expect(true.B);assert(d.io.g.peek().litValue==offered)}
       d.io.rr.poke(true.B);m.tick();d.io.rr.poke(false.B);d.io.rb.poke(true.B);d.io.rd.poke(false.B);d.io.rc.expect(true.B)
-      retireRange(0,0,10,20,status=4);retireFrame(status=2,lateFault=true);finish(2,0,0,0,1,stage=6)
+      val writeFault=BigInt(0x1100140)
+      retireRange(0,0,10,20,status=4);retireFrame(status=3,lateFault=true,address=writeFault)
+      finish(3,0,0,0,1,stage=6,address=Some(writeFault))
       // The actual range report has already transferred; its physical drain
       // now coincides with a late actual frame fault. That new fault must
       // block cursor/statistics commit on this very edge, not one cycle later.
       begin();acceptFrame();acceptRange(0,10,20,4);retireRange(4,7,17,27)
-      identity(d.io.ff.bits.identity);d.io.ff.bits.status.poke(2.U);d.io.ff.valid.poke(true.B)
+      identity(d.io.ff.bits.identity);d.io.ff.bits.status.poke(2.U)
+      d.io.ff.bits.faultAddress.poke((writeFault+64).U);d.io.ff.valid.poke(true.B)
       d.io.ff.ready.expect(true.B);m.tick();d.io.ff.valid.poke(false.B)
       m.until("end after simultaneous frame fault and range drain")(d.io.end.valid.peek().litToBoolean)
       d.io.end.ready.poke(true.B);m.tick();d.io.end.ready.poke(false.B)
@@ -159,7 +165,7 @@ class TessellationJointNativeControllerSpec extends AnyFlatSpec {
       m.until("same-cycle fault native report")(d.io.out.valid.peek().litToBoolean)
       assert(d.io.out.bits.retiredRanges.peek().litValue==0 && d.io.out.bits.published.peek().litValue==0,
         "same-cycle frame fault committed a range cursor/statistics")
-      finish(2,0,0,0,1,stage=6)
+      finish(2,0,0,0,1,stage=6,address=Some(writeFault+64))
       assert(!m.reads.contains(BigInt(0x8080)),"late fault released a second directory entry")
       // A wrong directory/GNT source link is rejected before any GVS read.
       begin(n=1,wrongRoot=true);acceptFrame();retireFrame(status=4);finish(1,0,0,0,1,stage=4)
@@ -172,6 +178,10 @@ class TessellationJointNativeControllerSpec extends AnyFlatSpec {
       // transport peer here does not claim execution of clear/store/resolve.
       begin(n=0);acceptFrame(empty=true);retireFrame();finish(0,0,0,0,0,empty=true)
       assert(m.reads.size==40)
+      // A mismatched identity raises a protocol failure without adopting the
+      // returned address from a different frame.
+      begin(n=0);acceptFrame(empty=true);retireFrame(status=3,address=writeFault,wrongIdentity=true)
+      finish(3,0,0,0,0,empty=true,stage=6,address=Some(BigInt(0)))
       // A held real request survives cancellation, and the late fault wins.
       begin(n=0);m.until("frame read offer")(d.io.memoryRequest.valid.peek().litToBoolean &&
         d.io.memoryRequest.bits.address.peek().litValue==0x2000)
