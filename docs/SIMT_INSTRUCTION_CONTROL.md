@@ -88,11 +88,10 @@ for case in constant-loop dynamic-loop loop-break storage-loop nested-loop \
 done
 ```
 
-The compiler currently admits workgroup execution barriers at reconverged
-points. The [ESSL 3.10 invocation control contract](https://registry.khronos.org/OpenGL/specs/es/3.1/GLSL_ES_Specification_3.10.pdf)
-also covers barriers inside workgroup-uniform control flow. Lowering and
-admission of those barriers, their complete-owner qualification, and product
-clock/FPS qualification remain open.
+The compiler admits workgroup execution barriers at reconverged points and
+inside control flow proved uniform across the workgroup. For loops, Linux
+admission checks the condition at the backedge and requires each exit to be
+uniform. The proof tracks vector values and packed masks independently.
 
 ## Indexed uniforms inside a masked loop
 
@@ -150,3 +149,34 @@ IRQ through external memory drain, then retired. Context cleanup cleared five
 page-table entries and observed all seven shootdowns while preserving RAM.
 Reproduce with `qualify_p12 --case shared-barrier-mask` using the complete
 owner built from the checked-out source.
+
+### Workgroup-uniform branch and loop barriers
+
+Two original Mesa ESSL shaders dispatched two workgroups of 128 invocations
+with 512 bytes of shared allocation per workgroup. The workgroup ID selects
+the branch or loop behavior independently in each group. Each shader orders
+shared writes with `memoryBarrierShared()` before each execution barrier.
+
+| Case | OpenGPU execution source | Native words | Service cycles |
+| --- | --- | ---: | ---: |
+| `workgroup-barrier-if` | `e24182430` | 78 | 9,082 |
+| `workgroup-barrier-loop` | `899d35eee` | 86 | 11,458 |
+
+Both used the complete assertion-enabled dual-CU FlashSim float owner.
+The independent oracle checked 256 returned words and the physical guards
+in each run. Both runs verified completion and IRQ retirement. Context cleanup
+cleared five page-table entries and observed seven shootdowns while retaining RAM. The CPU compiler and
+kernel admission tests rejected barrier paths with lane-dependent conditions.
+The ARM64 Linux 7.2 module compiled and linked with GCC 15.2 after shrinking
+the validator's branch state.
+
+Build the complete owner and use the [P12 replay setup](P12_RESOURCE_COEXISTENCE.md#reproduce).
+
+```sh
+qualify_p12 --case workgroup-barrier-if
+qualify_p12 --case workgroup-barrier-loop
+```
+
+These results qualify the documented native compute path. Public API
+integration and product clock and FPS are covered by their respective work
+packages.
