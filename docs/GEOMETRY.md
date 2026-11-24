@@ -1333,20 +1333,28 @@ FlashSim generator environment used for the model.
 ```sh
 python3 -B scripts/prepare_owner_executor.py --stage build --backend flashsim \
   --kind native-sample --owner-output "$OWNER" --flashsim-dir "$FLASHSIM" \
-  --shards 64 --jobs 4 --precompiled-header --conservative-alias
+  --shards 64 --jobs 2 --precompiled-header --conservative-alias
 python3 -B scripts/qualify_native_geometry_owner.py \
   --executor "$OWNER/executors/native-sample/executor" \
   --executor-qualification "$OWNER/executors/native-sample/qualification.json" \
   --compiler-image sha256:cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72
 ```
 
-The complete FlashSim owner matched the original geometry draw's sample and
-resolve bytes in all four targets and both layers. The GNY2 oracle expects
-5120 descriptor bytes. Preflight fills the 512-byte GFS cache and execution
-reuses it, while both traversals fetch GNG1. The sanitized CPU oracle also
-rejects a descriptor count that includes a second GFS read. A full GNY2 and
-guard check, feedback, fault recovery and cancellation require a complete
-replay with this oracle.
+The assertion-enabled two-CU FlashSim owner at `dd44f0d72` passed
+`qualify_native_geometry_owner.py`. The original Mesa shaders produced the
+exact samples and resolves across four targets, two 4×4 layers and four
+samples per pixel. The replay verified all 4096 GNY2 words and all physical
+guards. The 5120 descriptor bytes include the GFS preflight fill and both GNG1
+reads. Execution reused the cached GFS.
+
+The same run checked two raw GS feedback primitives and all GTF1 checkpoints,
+held the final checkpoint write acknowledgement, injected one AXI write
+fault, and held a pending write across cancel before draining it. Both
+recoveries reused the live DUT and memory. The original driver acknowledged
+retirement and context cleanup. The guarded command completed in 627.9
+seconds with 667 MiB peak charged process-tree memory. The fixture verifies
+functional execution. Product 640×480 frame rate and physical timing require
+their own qualification.
 
 For independently prepared owners with identical generated model contents,
 the build command can also take `--reuse-shards-from "$OTHER_QUALIFICATION"`.
