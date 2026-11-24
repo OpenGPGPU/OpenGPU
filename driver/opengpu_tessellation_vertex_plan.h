@@ -3,25 +3,7 @@
 #define OPENGPU_TESSELLATION_VERTEX_PLAN_H
 #include "opengpu_tessellation_vertex_source.h"
 
-#define OPENGPU_VERTEX_OUTER_VERSION 2u
 #define OPENGPU_VERTEX_OUTER_MAP_MAGIC 0x47564d02u
-#define OPENGPU_VERTEX_OUTER_FIRST 1u
-#define OPENGPU_VERTEX_OUTER_LAST 2u
-#define OPENGPU_VERTEX_OUTER_CONTINUATION 4u
-
-/* API invocation identity is independent of both catalog and GNQ ordinal.
- * These are already copied kernel plans, never userspace nested pointers. */
-struct opengpu_tessellation_vertex_outer_invocation_v2 {
-    u64 invocation_id;
-    u32 original_draw_index, input_patch_vertices, reserved[2];
-};
-struct opengpu_tessellation_vertex_outer_range_v2 {
-    u32 sequence_index, invocation_index, original_draw_index, range_ordinal;
-    u32 flags, task_id_base, patch_count, reserved;
-    struct opengpu_tessellation_vertex_slice slice;
-    struct opengpu_tessellation_patch_layout layout;
-    struct opengpu_tessellation_vertex_component components[64];
-};
 struct opengpu_tessellation_vertex_outer_source_v2 {
     u32 version, context, pass, generation, reserved[2];
     const void *draws; /* draw_count tightly packed original 2048-byte GND1s */

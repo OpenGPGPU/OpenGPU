@@ -63,14 +63,14 @@ ports. The host validates the typed GNQ root before switching feedback
 ownership. Cancellation waits for an accepted switch to drain and preserves
 the accepted command identity through the held result.
 
-The 4×4 one-engine host with two 16-lane, eight-warp CUs elaborated and lowered
-to split SystemVerilog with FIRTool 1.158.0. Lowering with the GJP1 read-only
-registers took 40.6 seconds at a sampled 2.47 GiB peak. All eight focused FlashSim cases
-passed, including held AXI completion, invalid joint range rejection before
+The 4×4 one-engine factory host with two 16-lane, eight-warp CUs elaborated
+and lowered to split SystemVerilog with FIRTool 1.158.0. Lowering took 44.2
+seconds at a sampled 2.76 GiB peak. All eight focused FlashSim cases passed,
+including held AXI completion, invalid joint range rejection before
 feedback transfer, safe reuse after cancellation and read-only GJP1 profile
 discovery. The [kernel MMIO path](PROTECTED_TESSELLATION_JOINT_BUILD.md#private-host-command-and-completion)
 uses that profile to enqueue and validate GNZ2 before pop. The original Mesa
-shader and protected DRM submission runs remain pending.
+shader run through the protected DRM entry point remains pending.
 
 ## Empty state tables
 

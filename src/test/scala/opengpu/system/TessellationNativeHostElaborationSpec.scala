@@ -13,12 +13,15 @@ class TessellationNativeHostElaborationSpec extends AnyFlatSpec {
     val native = NativeBinnedGraphicsConfig(engines = 1, pageBytes = 128, writeCredits = 2,
       tileSlots = 1, pagedCapacity = 8, preflightDescriptors = true, transformFeedback = true,
       payload = Some(ShaderPayloadConfig(capacityBytes = 4096, maxPayloadBytes = 1024, owners = 2, ports = 4)))
-    val circuit = circt.stage.ChiselStage.elaborate(new GpuHostSystemAxi(graphics, gpu, numComputeUnits = 2,
-      fragCore = true, sharedGraphics = true, parallelGraphics = true, memoryAxiDataBytes = 32,
-      instructionCacheSets = 4, instructionCacheWays = 1, vectorCacheSets = 4, vectorCacheWays = 1,
-      nativeBinnedGraphics = Some(native), tessellationNative = true, tessellationUniforms = true,
-      jointTessellationNative = true, nativeProtectedSources = true,
-      visibilityQueries = true, primitiveQueries = true))
+    val profile = NativeAlignmentHostProfile.protectedTessellationTarget.copy(
+      graphics = graphics, execution = gpu, native = native)
+    val registers = profile.requiredDiscovery.toMap
+    val flags = registers(ComputeResourceCapabilities.base + 8)
+    assert((flags & (1 << 22)) != 0 && (flags & ((1 << 11) | (1 << 12))) == 0)
+    assert((0 until 4).map(i => registers(0x550 + 4 * i)) ==
+      Seq[BigInt](0x474a5001, 0x4ff, 0x08100207, 1))
+    intercept[IllegalArgumentException] { profile.copy(tessellationUniforms = false) }
+    val circuit = circt.stage.ChiselStage.elaborate(new NativeAlignmentHostSystemAxi(profile))
     val modules = circuit.lazilySerialize.iterator.flatMap(_.linesIterator).map(_.trim)
       .filter(_.startsWith("inst ")).map(_.split("\\s+")(3).replaceFirst("_[0-9]+$", "")).toVector
     for (name <- Seq("TessellationJointThreeDomainJobImage", "TessellationHostShaderRouter",

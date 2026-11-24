@@ -89,7 +89,8 @@ class GpuHostAxi(
 ) extends Module {
   require(jointTessellationProfile.isEmpty || (jointTessellationHost && nativeProtectedSources &&
     !tessellationDiscovery && computeResources.exists(p =>
-      p.computeUnits == 2 && p.gpu.lanes == 16 && p.gpu.warps == 8)),
+      p.computeUnits == 2 && p.gpu.lanes == 16 && p.gpu.warps == 8 &&
+        p.gpu.sharedMemoryBase == 0x10000000L && p.gpu.sharedMemoryBytes == 16384)),
     "joint tessellation discovery requires the protected two-CU execution profile")
   require(!nativeSampleTransport || nativeGeometryTransport,
     "GSS1 discovery requires the protected layered geometry transport")

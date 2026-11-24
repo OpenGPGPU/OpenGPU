@@ -35,6 +35,8 @@ def write_bodies(out):
         while hw.find(';',first,hw.index('{',first))!=-1:
             first=hw.index(start,first+len(start))
         last=hw.index('\n}\n',first)+2
+        if name == 'submit':
+            first = hw.index('struct opengpu_hw_joint_submission {')
         (out/('native_mmio_'+name+'_under_test.inc')).write_text(hw[first:last])
     first=hw.index('struct opengpu_fence {');last=hw.index('static u32 opengpu_reg_read(',first)
     (out/'native_mmio_fence_under_test.inc').write_text(hw[first:last])

@@ -642,6 +642,12 @@ int opengpu_hw_init(struct opengpu_device *gpu, struct platform_device *pdev)
             &gpu->hw.compute_shared_limits))
         return dev_err_probe(gpu->dev, -EINVAL,
                              "invalid ABI v2 compute shared limits\n");
+    if (gpu->hw.joint_tessellation.available &&
+        (!gpu->hw.compute_shared_limits.discovered ||
+         gpu->hw.compute_shared_limits.base != OPENGPU_TESS_JOINT_HOST_LDS_BASE ||
+         gpu->hw.compute_shared_limits.bytes != OPENGPU_TESS_JOINT_HOST_LDS_BYTES))
+        return dev_err_probe(gpu->dev, -EINVAL,
+                             "protected joint tessellation shared memory disagrees with GJP1\n");
     if (!opengpu_read_compute_indirect_support(
             of_property_read_bool(pdev->dev.of_node, "opengpu,gci1"), id,
             gpu->hw.regs_size, gpu->hw.capabilities, &gpu->hw.compute_local_limits,

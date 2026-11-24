@@ -146,12 +146,10 @@ class GpuHostSystemAxi(
     n.translateImageViews) && sharedGraphics && version>=2),
     "native protected source discovery requires translated preflight and the shared native shader path")
   private val nativeFeedback=typedGraphics.exists(_.transformFeedback) || nativeBinnedGraphics.exists(_.transformFeedback)
-  private val jointTessellationProfile = nativeBinnedGraphics.filter { n =>
-    jointTessellationNative && numComputeUnits == 2 && gpuConfig.lanes == 16 && gpuConfig.warps == 8 &&
-      n.vertex.input.attributes == 16 && n.vertex.input.bindings == 16 && n.vertex.varyings == 16 &&
-      graphicsConfig.maxSampleCount == 4
-  }.map(n => TessellationJointHostProtocol.Profile(n.engines, enableFpuBackend && gpuConfig.enableFpu,
-    n.storage.nativeAdvancedDraws, tessellationSampleShading, nativeFeedback))
+  private val jointTessellationProfile = nativeBinnedGraphics.filter(_ => jointTessellationNative).flatMap { n =>
+    TessellationJointHostProtocol.profileFor(graphicsConfig, gpuConfig, numComputeUnits, n,
+      enableFpuBackend && gpuConfig.enableFpu, tessellationSampleShading, nativeFeedback)
+  }
   require(!tessellationNative || nativeBinnedGraphics.nonEmpty,
     "internal tessellation host integration requires native binned graphics")
   require(!primitiveQueries || nativeFeedback,"primitive queries require native transform feedback")

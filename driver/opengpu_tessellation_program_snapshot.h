@@ -3,10 +3,6 @@
 #define OPENGPU_TESSELLATION_PROGRAM_SNAPSHOT_H
 #include <linux/types.h>
 #include "opengpu_native_program_snapshot.h"
-/* Exact task-owned patch layout captured independently of TES exports. */
-struct opengpu_tessellation_patch_layout {
-    u32 input_vertices, input_components, output_vertices, output_components, patch_components;
-};
 /* Internal verified-owner profile, never caller metadata permission. Version 1
  * is the current checked-patch TCS / static-selection one-point TES dialect.
  * Version 2 is TES-only checked CUSTOM1 fn33 reads from the captured owned

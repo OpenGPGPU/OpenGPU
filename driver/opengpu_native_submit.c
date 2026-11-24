@@ -17,8 +17,11 @@
 #include "opengpu_native_job_snapshot.h"
 #include "opengpu_native_binned_abi.h"
 #include "opengpu_native_advanced_blend_gfs.h"
+#include "opengpu_native_tessellation_sequence_abi.h"
+#include "opengpu_typed_fragment_state_abi.h"
 #include "opengpu_admission.h"
 #include "opengpu_protected_tessellation_submit.h"
+#include "opengpu_protected_tessellation_joint.h"
 
 struct native_reference {
     struct drm_gem_object *object;
@@ -284,7 +287,15 @@ int opengpu_hw_protected_tessellation_profile(struct opengpu_device *gpu,
 struct dma_fence *opengpu_protected_tessellation_job_run(struct opengpu_sched_job *job)
 {
     struct opengpu_protected_tessellation_profile profile;
-    int ret=opengpu_hw_protected_tessellation_profile(job->gpu,&profile);
+    struct dma_fence *fence;
+    int ret;
+
+    if (job->joint_report) {
+        ret = opengpu_hw_protected_tessellation_joint_async(job->gpu, job->native_owner,
+            job->context, job->native_job_segment, NULL, job->joint_report, &fence);
+        return ret ? ERR_PTR(ret) : fence;
+    }
+    ret = opengpu_hw_protected_tessellation_profile(job->gpu, &profile);
     /* Even a future profile getter cannot silently enable a legacy kick. A
      * matched private-owner hardware route must be supplied independently. */
     return ERR_PTR(ret?ret:-EOPNOTSUPP);
@@ -451,4 +462,307 @@ int opengpu_protected_tessellation_ioctl(struct drm_device *drm,void *data,struc
     ret=opengpu_hw_protected_tessellation_profile(dev_get_drvdata(drm->dev),&profile);
     if(ret)return ret; /* Before request dereference, lookup, usercopy or allocation. */
     return protected_tessellation_submit_verified(drm,data,file,&profile);
+}
+
+enum joint_record {
+    JOINT_JOB, JOINT_FRAME, JOINT_SEQUENCES, JOINT_STATES, JOINT_DRAWS,
+    JOINT_DRAW_PLANS, JOINT_INVOCATIONS, JOINT_RANGES, JOINT_PLANS, JOINT_STATE_PLANS,
+    JOINT_RESOURCES, JOINT_RECORD_COUNT,
+};
+
+static int joint_capture_request(const struct drm_opengpu_submit_tessellation_joint *args,
+    const struct opengpu_protected_tessellation_joint_profile *profile,
+    void **records, struct opengpu_protected_tessellation_joint_source *source)
+{
+    const u64 pointers[JOINT_RECORD_COUNT] = {
+        args->job, args->frame, args->sequences, args->states, args->draws,
+        args->draw_plans, args->invocations, args->ranges, args->plans, args->state_plans,
+        args->resources,
+    };
+    const u64 sizes[JOINT_RECORD_COUNT] = {
+        OPENGPU_TESS_JOINT_BYTES, OPENGPU_NATIVE_BINNED_FRAME_BYTES,
+        args->sequences_bytes, (u64)args->state_count * OPENGPU_TYPED_FRAGMENT_STATE_BYTES,
+        (u64)args->draw_count * OPENGPU_NATIVE_BINNED_DRAW_BYTES,
+        (u64)args->draw_count * sizeof(*source->draw_plans),
+        (u64)args->invocation_count * sizeof(*source->invocations),
+        (u64)args->range_count * sizeof(*source->ranges),
+        (u64)args->range_count * sizeof(*source->plans),
+        (u64)args->state_count * sizeof(*source->state_plans),
+        (u64)args->resource_count * sizeof(*source->resources),
+    };
+    u32 i, stride;
+
+    if (args->version != OPENGPU_TESSELLATION_JOINT_SUBMIT_VERSION ||
+        args->flags || args->reserved[0] || args->reserved[1] ||
+        !args->resource_count || args->resource_count > 27 ||
+        args->invocation_count > args->range_count || (args->range_count && !args->state_count) ||
+        (!args->range_count && (args->draw_count || args->invocation_count || args->state_count)) ||
+        sizes[JOINT_SEQUENCES] > (1ULL << 32) || sizes[JOINT_STATES] > (1ULL << 32) ||
+        sizes[JOINT_DRAWS] > (1ULL << 32))
+        return -EINVAL;
+    for (i = 0; i < JOINT_RECORD_COUNT; i++) {
+        if (!!pointers[i] != !!sizes[i] || !native_pointer_valid(pointers[i]))
+            return -EINVAL;
+        if (sizes[i] > (size_t)-1 || sizes[i] > (1ULL << 32))
+            return -ERANGE;
+    }
+    /* Match the small canonical root before copying variable-length arrays. */
+    records[JOINT_JOB] = vmemdup_user(u64_to_user_ptr(args->job), OPENGPU_TESS_JOINT_BYTES);
+    if (IS_ERR(records[JOINT_JOB])) {
+        int ret = PTR_ERR(records[JOINT_JOB]);
+
+        records[JOINT_JOB] = NULL;
+        return ret;
+    }
+    if (!opengpu_protected_tessellation_joint_job_canonical(records[JOINT_JOB],
+            OPENGPU_TESS_JOINT_BYTES, false))
+        return -EINVAL;
+#define JOINT_WORD(field) opengpu_native_advanced_blend_word(records[JOINT_JOB], OPENGPU_TESS_JOINT_##field##_WORD)
+    stride = JOINT_WORD(SEQUENCE_STRIDE);
+    if (JOINT_WORD(IDENTITY_CONTEXT) != args->context_id ||
+        JOINT_WORD(SEQUENCE_COUNT) != args->range_count ||
+        JOINT_WORD(DIRECTORY_DRAWCOUNT) != args->draw_count ||
+        JOINT_WORD(DIRECTORY_INVOCATIONCOUNT) != args->invocation_count ||
+        sizes[JOINT_SEQUENCES] != (args->range_count ?
+            (u64)(args->range_count - 1) * stride + OPENGPU_NATIVE_TESSELLATION_SEQUENCE_BYTES : 0))
+        return -EINVAL;
+
+    for (i = JOINT_FRAME; i < JOINT_RECORD_COUNT; i++) {
+        if (!sizes[i])
+            continue;
+        records[i] = vmemdup_user(u64_to_user_ptr(pointers[i]), (size_t)sizes[i]);
+        if (IS_ERR(records[i])) {
+            int ret = PTR_ERR(records[i]);
+
+            records[i] = NULL;
+            return ret;
+        }
+    }
+    *source = (struct opengpu_protected_tessellation_joint_source) {
+        .job = records[JOINT_JOB], .frame = records[JOINT_FRAME],
+        .sequences = records[JOINT_SEQUENCES], .states = records[JOINT_STATES],
+        .draws = records[JOINT_DRAWS], .sequences_bytes = sizes[JOINT_SEQUENCES],
+        .states_bytes = sizes[JOINT_STATES], .draws_bytes = sizes[JOINT_DRAWS],
+        .draw_plans = records[JOINT_DRAW_PLANS], .invocations = records[JOINT_INVOCATIONS],
+        .ranges = records[JOINT_RANGES], .plans = records[JOINT_PLANS],
+        .state_plans = records[JOINT_STATE_PLANS], .resources = records[JOINT_RESOURCES],
+        .draw_count = args->draw_count, .draw_plan_count = args->draw_count,
+        .invocation_count = args->invocation_count, .range_count = args->range_count,
+        .plan_count = args->range_count, .state_plan_count = args->state_count,
+        .resource_count = args->resource_count, .context = args->context_id,
+        .pass = JOINT_WORD(IDENTITY_PASS), .generation = JOINT_WORD(IDENTITY_GENERATION),
+        .profile = *profile,
+    };
+#undef JOINT_WORD
+    return 0;
+}
+
+static int joint_retain_stage(struct native_sources *sources,
+    const struct drm_opengpu_native_program_view *code,
+    const struct drm_opengpu_native_uniform_stage *uniforms)
+{
+    const struct drm_opengpu_compute_uniform_view view = {
+        .handle = code->handle, .offset = code->offset, .bytes = code->bytes,
+    };
+    int ret = native_view(sources, &view, false);
+    u32 i;
+
+    for (i = 0; !ret && i < OPENGPU_NATIVE_UNIFORM_BLOCKS; i++)
+        ret = native_view(sources, &uniforms->blocks[i], false);
+    return ret ? ret : native_view(sources, &uniforms->defaults, false);
+}
+
+static int joint_collect_sources(struct native_sources *sources,
+    const struct opengpu_protected_tessellation_joint_source *s)
+{
+    const struct opengpu_native_job_source draws_and_frame = {
+        .plans = s->draw_plans, .plan_count = s->draw_plan_count,
+        .resources = s->resources, .resource_count = s->resource_count,
+    };
+    int ret = native_collect(sources, &draws_and_frame);
+    u32 i;
+
+    for (i = 0; !ret && i < s->plan_count; i++) {
+        const struct opengpu_protected_tessellation_joint_plan *p = &s->plans[i];
+
+        ret = joint_retain_stage(sources, &p->control_program, &p->control_uniforms);
+        if (!ret)
+            ret = joint_retain_stage(sources, &p->evaluation_program, &p->evaluation_uniforms);
+    }
+    for (i = 0; !ret && i < s->state_plan_count; i++) {
+        const struct opengpu_protected_tessellation_state_plan *p = &s->state_plans[i];
+
+        ret = joint_retain_stage(sources, &p->fragment_program, &p->fragment_uniforms);
+    }
+    return ret;
+}
+
+struct native_joint_job {
+    struct opengpu_sched_job job;
+    struct opengpu_tessellation_joint_completion report;
+};
+
+int opengpu_protected_tessellation_joint_ioctl(struct drm_device *drm, void *data, struct drm_file *file)
+{
+    struct drm_opengpu_submit_tessellation_joint *args = data, captured;
+    struct opengpu_protected_tessellation_joint_profile profile;
+    struct opengpu_protected_tessellation_joint_source source;
+    struct native_sources sources = {.file = file};
+    const struct opengpu_native_job_copy copy = {native_copy, native_resolve, &sources};
+    void *records[JOINT_RECORD_COUNT] = {0};
+    struct opengpu_sched_dep *deps = NULL;
+    struct drm_syncobj *out_sync = NULL;
+    struct opengpu_sched_job *job = NULL;
+    struct native_joint_job *joint;
+    struct opengpu_device *gpu;
+    struct opengpu_file *render_file;
+    struct opengpu_render_context *context;
+    struct drm_exec exec;
+    const u32 stage_refs = OPENGPU_NATIVE_UNIFORM_BLOCKS + 2;
+    u64 max_refs, seqno = 0;
+    u32 i;
+    int ret;
+
+    if (!drm || !file || !data)
+        return -EINVAL;
+    gpu = dev_get_drvdata(drm->dev);
+    ret = opengpu_hw_protected_tessellation_joint_profile(gpu, &profile);
+    if (ret)
+        return ret;
+    render_file = file->driver_priv;
+    if (!render_file)
+        return -EINVAL;
+    captured = *args;
+    max_refs = (u64)captured.draw_count * (2 * stage_refs + OPENGPU_NATIVE_VERTEX_BINDINGS + 3) +
+        (u64)captured.range_count * 2 * stage_refs + (u64)captured.state_count * stage_refs +
+        captured.resource_count;
+    if (max_refs > (u32)-1 || max_refs > (size_t)-1 / sizeof(*sources.refs) ||
+        max_refs > (size_t)-1 / sizeof(*deps))
+        return -ERANGE;
+    ret = joint_capture_request(&captured, &profile, records, &source);
+    if (ret)
+        goto out;
+    sources.capacity = (u32)max_refs;
+    sources.refs = kvzalloc((size_t)max_refs * sizeof(*sources.refs), GFP_KERNEL);
+    deps = kvzalloc((size_t)max_refs * sizeof(*deps), GFP_KERNEL);
+    if (!sources.refs || !deps) {
+        ret = -ENOMEM;
+        goto out;
+    }
+    if (captured.in_syncobj) {
+        struct dma_fence *input = NULL;
+
+        ret = drm_syncobj_find_fence(file, captured.in_syncobj, 0, 0, &input);
+        if (ret)
+            goto out;
+        ret = opengpu_hw_fence_wait(gpu, input, OPENGPU_DRAW_WAIT_MS + 100, true);
+        dma_fence_put(input);
+        if (ret)
+            goto out;
+    }
+
+    mutex_lock(&render_file->lock);
+    context = opengpu_context_lookup(render_file, captured.context_id);
+    if (!context || !context->vm.enabled) {
+        ret = -EINVAL;
+        goto out_file;
+    }
+    ret = joint_collect_sources(&sources, &source);
+    if (ret)
+        goto out_file;
+    if (captured.out_syncobj) {
+        out_sync = drm_syncobj_find(file, captured.out_syncobj);
+        if (!out_sync) {
+            ret = -ENOENT;
+            goto out_file;
+        }
+    }
+    for (i = 0; i < sources.count; i++)
+        deps[i] = (struct opengpu_sched_dep) {
+            sources.refs[i].object,
+            sources.refs[i].writable ? DMA_RESV_USAGE_READ : DMA_RESV_USAGE_WRITE,
+            sources.refs[i].writable ? DMA_RESV_USAGE_WRITE : DMA_RESV_USAGE_READ,
+        };
+    drm_exec_init(&exec, DRM_EXEC_INTERRUPTIBLE_WAIT | DRM_EXEC_IGNORE_DUPLICATES, 0);
+    drm_exec_until_all_locked(&exec) {
+        for (i = 0, ret = 0; !ret && i < sources.count; i++)
+            ret = drm_exec_prepare_obj(&exec, sources.refs[i].object, 1);
+        drm_exec_retry_on_contention(&exec);
+        if (ret)
+            goto out_exec;
+    }
+    for (i = 0; i < sources.count; i++) {
+        struct dma_resv_iter cursor;
+        struct dma_fence *producer;
+
+        dma_resv_for_each_fence(&cursor, sources.refs[i].object->resv, deps[i].wait_usage, producer) {
+            ret = opengpu_hw_fence_wait(gpu, producer, OPENGPU_DRAW_WAIT_MS + 100, true);
+            if (ret)
+                goto out_exec;
+        }
+    }
+    sources.producers_complete = true;
+    joint = kzalloc(sizeof(*joint), GFP_KERNEL);
+    if (!joint) {
+        ret = -ENOMEM;
+        goto out_exec;
+    }
+    job = &joint->job;
+    job->joint_report = &joint->report;
+    job->gpu = gpu;
+    job->context = context;
+    job->vm = &context->vm;
+    job->type = OPENGPU_SCHED_PROTECTED_TESSELLATION;
+    job->native_owner = opengpu_private_snapshot_create(gpu, context);
+    if (IS_ERR(job->native_owner)) {
+        ret = PTR_ERR(job->native_owner);
+        job->native_owner = NULL;
+        goto out_exec;
+    }
+    ret = opengpu_protected_tessellation_joint_build(job->native_owner, &source, &copy,
+        &job->native_job_segment);
+    if (!ret)
+        ret = opengpu_admission_native_lock(gpu);
+    if (!ret) {
+        ret = opengpu_protected_tessellation_joint_prepare(job->native_owner, job->native_job_segment);
+        if (!ret)
+            ret = opengpu_private_snapshot_publish(job->native_owner);
+        if (!ret)
+            ret = opengpu_sched_job_submit_locked(render_file, file, context, job, 0, out_sync,
+                deps, sources.count, &seqno);
+        opengpu_admission_unlock(gpu);
+    }
+    if (!ret) {
+        job = NULL;
+        args->fence_seqno = seqno;
+    }
+out_exec:
+    if (job) {
+        int revoke = job->native_owner ? opengpu_private_snapshot_retire(job->native_owner) : 0;
+
+        if (revoke) {
+            WRITE_ONCE(gpu->hw.wedged, true);
+            job->native_quarantine_refs = sources.refs;
+            job->native_quarantine_refcount = sources.count;
+            sources.refs = NULL;
+            sources.count = 0;
+            ret = revoke;
+            dev_err(gpu->dev, "retaining joint tessellation originals after revocation failure: %d\n", revoke);
+        } else {
+            kfree(job);
+        }
+    }
+    drm_exec_fini(&exec);
+out_file:
+    if (out_sync)
+        drm_syncobj_put(out_sync);
+    mutex_unlock(&render_file->lock);
+out:
+    for (i = 0; i < sources.count; i++)
+        drm_gem_object_put(sources.refs[i].object);
+    kvfree(deps);
+    kvfree(sources.refs);
+    for (i = 0; i < JOINT_RECORD_COUNT; i++)
+        kvfree(records[i]);
+    return ret;
 }

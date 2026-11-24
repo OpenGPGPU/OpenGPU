@@ -746,7 +746,7 @@ static void joint_engine_header_capacity(struct joint_fixture *f,struct opengpu_
 static void joint_placement(struct joint_fixture *f,struct opengpu_device *gpu,
     struct opengpu_render_context *ctx)
 {
-    for(u32 kind=0;kind<5;kind++) {
+    for(u32 kind=0;kind<6;kind++) {
         struct opengpu_private_snapshot *o=opengpu_private_snapshot_create(gpu,ctx);u32 segment;
         assert(!IS_ERR(o) && !opengpu_protected_tessellation_joint_build(o,&f->source,&joint_callbacks,&segment));
         u64 total=0;
@@ -756,10 +756,11 @@ static void joint_placement(struct joint_fixture *f,struct opengpu_device *gpu,
         /* Actual MMU reservations occupy VA, without fabricating relocated
          * addresses or allocating/touching a 256-MiB backing buffer. */
         u64 prefix_bytes=kind<2?0x10000000ULL-4096-total+(u64)kind*4096:
-            (kind==2?0x10000000ULL-4096:0x10004000ULL-4096);
+            (kind==2 || kind==5?0x10000000ULL-4096:0x10004000ULL-4096);
         if(kind==4)prefix_bytes=(1ULL<<32)-4096-total;
         struct opengpu_vm_reservation occupied={0};
         assert(!opengpu_mmu_vm_reserve(gpu,&ctx->vm,(size_t)prefix_bytes,&occupied) && occupied.va==4096);
+        ctx->vm.reserve_joint_lds=kind==5;
         int ret=joint_prepare_test(o,segment),expected=(kind==1 || kind==2)?-EINVAL:0;
         if(ret!=expected)fprintf(stderr,"joint placement case%u expected%d got%d\n",300+kind,expected,ret);
         assert(ret==expected);
@@ -775,7 +776,7 @@ static void joint_placement(struct joint_fixture *f,struct opengpu_device *gpu,
         if(kind==0)assert(last==0x10000000ULL);
         if(kind==1)assert(last==0x10001000ULL);
         if(kind==2)assert(first==0x10000000ULL);
-        if(kind==3)assert(first==0x10004000ULL);
+        if(kind==3 || kind==5)assert(first==0x10004000ULL);
         if(kind==4)assert(last==(1ULL<<32));
         assert(opengpu_private_snapshot_publish(o)==(expected?-EINVAL:0));
         if(kind==4) {
@@ -795,6 +796,7 @@ static void joint_placement(struct joint_fixture *f,struct opengpu_device *gpu,
         assert(!opengpu_private_snapshot_retire(o));
         assert(!opengpu_mmu_vm_release_reservation(gpu,&occupied));
         assert(ctx->references==1 && !gpu->mmu.snapshot_leases);
+        ctx->vm.reserve_joint_lds=false;
     }
     /* Real prepared metadata and leaf faults fail publication, then retire. */
     for(u32 kind=0;kind<7;kind++) {

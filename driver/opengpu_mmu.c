@@ -23,6 +23,7 @@
 #include <linux/overflow.h>
 
 #include "opengpu_device.h"
+#include "opengpu_protected_tessellation_joint_abi.h"
 
 #define MMU_PAGE_SIZE       4096u
 #define MMU_SUPERPAGE_SIZE  (4u * 1024u * 1024u)
@@ -575,7 +576,9 @@ static int mmu_snapshot_free_va(const struct opengpu_vm *vm, u64 bytes, u64 *va)
         for(i=0;i<MMU_L1_ENTRIES;++i){
             u64 address=base+(u64)i*MMU_PAGE_SIZE;
             if(!address)continue;
-            if((table && ((u32 *)table->cpu)[i]) || vm_reserved(vm,address,address+MMU_PAGE_SIZE,NULL)){
+            bool lds = vm->reserve_joint_lds && address >= OPENGPU_TESS_JOINT_HOST_LDS_BASE &&
+                address < OPENGPU_TESS_JOINT_HOST_LDS_BASE + OPENGPU_TESS_JOINT_HOST_LDS_BYTES;
+            if(lds || (table && ((u32 *)table->cpu)[i]) || vm_reserved(vm,address,address+MMU_PAGE_SIZE,NULL)){
                 length=0;continue;
             }
             if(!length)start=address;

@@ -14,7 +14,8 @@ final case class NativeAlignmentHostConfig(graphics: GraphicsConfig,
     transactionsPerCu: Int = 16, axiDataBytes: Int = 32,
     nativeProtectedSources: Boolean = false, nativeGeometryTransport: Boolean = false,
     tessellationFragmentImages: Boolean = false, tessellationSampleShading: Boolean = false,
-    imageFloatExchange: Boolean = false, tessellationUniforms: Boolean = false) {
+    imageFloatExchange: Boolean = false, tessellationUniforms: Boolean = false,
+    jointTessellationNative: Boolean = false) {
   require(computeUnits > 0 && transactionsPerCu >= 16,
     "the integrated resource paths require sixteen CU transaction IDs")
   require(native.transformFeedback, "primitive queries require native feedback ownership")
@@ -33,6 +34,12 @@ final case class NativeAlignmentHostConfig(graphics: GraphicsConfig,
 
   require(!tessellationSampleShading || native.sampleShading,
     "tessellation sample shading requires the complete sample transport")
+  private val jointTessellationProfile = Option.when(jointTessellationNative)(
+    TessellationJointHostProtocol.profileFor(graphics, execution, computeUnits, native,
+      execution.enableFpu, tessellationSampleShading, native.transformFeedback)).flatten
+  require(!jointTessellationNative ||
+    (nativeProtectedSources && tessellationUniforms && jointTessellationProfile.nonEmpty),
+    "joint tessellation requires the verified protected two-CU profile and checked uniforms")
 
   private def block(base: Int, words: Seq[BigInt]): Vector[(Int, BigInt)] =
     words.zipWithIndex.map { case (word, index) => (base + 4 * index, word) }.toVector
@@ -46,13 +53,15 @@ final case class NativeAlignmentHostConfig(graphics: GraphicsConfig,
       imageAvailable = true, storageAvailable = true, computeUniformAvailable = true,
       computeTextureAvailable = true, atomicCounterAvailable = true,
       imageAtomicAvailable = true, storageAtomicAvailable = true,
-      tessellationAvailable = true, tessellationFeedbackAvailable = true,
+      tessellationAvailable = !jointTessellationNative,
+      tessellationFeedbackAvailable = !jointTessellationNative,
       nativeAdvancedBlendAvailable = native.storage.nativeAdvancedDraws,
       nativeDescriptorPreflightAvailable = native.descriptorPreflight,
       nativeProtectedSourcesAvailable = nativeProtectedSources,
       nativeGeometryTransportAvailable = nativeGeometryTransport,
       nativeSampleTransportAvailable = nativeSampleTransport,
-      imageFloatExchangeAvailable = imageFloatExchange)) ++
+      imageFloatExchangeAvailable = imageFloatExchange,
+      jointTessellationAvailable = jointTessellationNative)) ++
     block(0x160, NativeBinnedGraphicsCapabilities.words(native, computeUnits, graphics)) ++
     block(ComputeIndirectCapabilities.base, ComputeIndirectCapabilities.words(execution)) ++
     block(NativeVisibilityQueryCapabilities.base, NativeVisibilityQueryCapabilities.words) ++
@@ -74,8 +83,10 @@ final case class NativeAlignmentHostConfig(graphics: GraphicsConfig,
     else Vector.empty) ++
     (if (nativeSampleTransport)
       block(NativeSampleTransportCapabilities.base, NativeSampleTransportCapabilities.words)
-    else Vector.empty)
-  private val discoveryWords = 72 + (if (native.storage.nativeAdvancedDraws) 8 else 0) + (if (native.descriptorPreflight) 8 else 0) + (if (nativeProtectedSources) 8 else 0) + (if (nativeGeometryTransport) 8 else 0) + (if (nativeSampleTransport) 8 else 0)
+    else Vector.empty) ++
+    jointTessellationProfile.toVector.flatMap(p => block(TessellationJointHostProtocol.profileBase, p.words))
+  private val discoveryWords = 72 + (if (native.storage.nativeAdvancedDraws) 8 else 0) + (if (native.descriptorPreflight) 8 else 0) + (if (nativeProtectedSources) 8 else 0) + (if (nativeGeometryTransport) 8 else 0) + (if (nativeSampleTransport) 8 else 0) +
+    jointTessellationProfile.size * TessellationJointHostProtocol.profileWordCount
   require(requiredDiscovery.size == discoveryWords &&
     requiredDiscovery.map(_._1).distinct.size == discoveryWords,
     "the integrated configuration requires its complete distinct discovery words")
@@ -88,6 +99,9 @@ object NativeAlignmentHostProfile {
     GraphicsConfig(screenWidth = 640, screenHeight = 480),
     GpuConfig(l2Sets = 512, l2StoreEntries = 8), computeUnits = 2,
     native = NativeBinnedGraphicsConfig.fourEngineApiExtent.copy(transformFeedback = true))
+  val protectedTessellationTarget: NativeAlignmentHostConfig = target.copy(
+    native = target.native.copy(preflightDescriptors = true),
+    nativeProtectedSources = true, tessellationUniforms = true, jointTessellationNative = true)
   // This frozen product target leaves ordinary native GS and advanced blend
   // disabled. An advanced-enabled custom transport configuration is not v2
   // product qualification and reports its additional GAB1 discovery record.
@@ -117,4 +131,5 @@ class NativeAlignmentHostSystemAxi(profile: NativeAlignmentHostConfig,
     nativeSampleTransport = profile.nativeSampleTransport,
     tessellationFragmentImages = profile.tessellationFragmentImages,
     tessellationSampleShading = profile.tessellationSampleShading,
-    tessellationUniforms = profile.tessellationUniforms)
+    tessellationUniforms = profile.tessellationUniforms,
+    jointTessellationNative = profile.jointTessellationNative)
