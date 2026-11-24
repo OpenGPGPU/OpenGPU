@@ -422,11 +422,14 @@ The fixture uses small draw descriptors on the complete 640×480 owner.
 
 ### Full-owner fault and cancellation recovery
 
-The source-generated capacity corpus at `c3cc62e83` reused all 285 native
-FlashSim objects from the verified dual-CU checked-uniform model. The 22
-feedback fixture files matched the prior corpus byte for byte. The generator
-also supplied the six stage targets for physical fault injection and response
-holds.
+The generator produced the 22 feedback fixture files and a record of the
+six stage targets for physical fault injection and held responses. At source
+`ab4dfbe2e`, a fresh export of the checked-uniform owner, including all Scala
+compilation, took 475 seconds at a 6.19 GiB peak. All 2,331 RTL and bind files
+and the factory manifest matched the verified dual-CU checked-uniform model
+byte for byte. The qualified executor reused all 285 model objects. The
+formal replay command verified the binding, linked its driver and ran all
+six cases in 242 seconds.
 
 | Case | Checked events | Service cycles |
 | --- | --- | ---: |
@@ -439,14 +442,17 @@ while held and retired through MMIO. Cancelled commands left no result
 details. The same model and RAM produced 22 healthy feedback words and
 three counters after recovery. All uniform input lines and output guards
 were checked. The `distinct`, `invalidate` and `capacity` cases also
-reproduced their original service cycle counts.
+reproduced their original service cycle counts. Three ABI and snapshot
+tests and all nine FlashSim sequence-reader tests passed, including both GNT
+versions, cancel drain and the three real patch sequencers.
 
-Generate the fixture with the command above. Run the recovery cases using
-the qualified checked-uniform owner from the same sources.
+Generate the fixture with the command above and run the six cases together
+on the qualified checked-uniform owner.
 
 ```sh
 "$PYTHON" -B scripts/qualify_tessellation_uniform_owner.py \
   --qualification "$OWNER/executors/native-sample/qualification.json" --fixture "$FIXTURE" \
+  --case distinct --case invalidate --case capacity \
   --case malformed --case read-fault --case cancel
 ```
 
