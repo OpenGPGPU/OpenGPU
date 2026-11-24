@@ -7,6 +7,12 @@ import prepare_native_owner_flashsim as owner
 
 class OwnerInputTests(unittest.TestCase):
     def test_staged_lowering_failure_does_not_publish_an_owner(self):
+        for option, entry in (('tessellation_uniforms', 'PrepareOwnerResourceTessellationUniformHost'),
+                              ('float_resources', 'PrepareOwnerResourceImageFloatHost')):
+            with self.subTest(factory=option):
+                self.check_staged_lowering_failure(option, entry)
+
+    def check_staged_lowering_failure(self, option, entry):
         parent = owner.ROOT / '.artifacts'
         parent.mkdir(exist_ok=True)
         temporary = []
@@ -27,7 +33,7 @@ class OwnerInputTests(unittest.TestCase):
                 self.assertLessEqual(len(os.fsencode(temporary[-1])), 52)
                 commands.append(command[0])
                 if command[0] == 'sbt':
-                    self.assertIn('PrepareOwnerResourceTessellationUniformHost --firrtl-output', command[-1])
+                    self.assertIn(entry + ' --firrtl-output', command[-1])
                     self.assertIn('-J-Djava.io.tmpdir=' + str(temporary[-1]), command)
                     staged = Path(shlex.split(command[-1])[-1])
                     self.assertTrue(staged.is_relative_to(repository / '.artifacts'))
@@ -43,7 +49,7 @@ class OwnerInputTests(unittest.TestCase):
                   patch.object(owner.subprocess, 'check_output', return_value=common_directory),
                   patch.object(owner.subprocess, 'run', side_effect=run)):
                 with self.assertRaises(subprocess.CalledProcessError) as failure:
-                    owner.prepare(out, '5G', tessellation_uniforms=True)
+                    owner.prepare(out, '5G', **{option: True})
             self.assertEqual(failure.exception.returncode, 7)
             self.assertEqual(commands, ['sbt', 'fixture-firtool'])
             self.assertFalse(out.exists())
