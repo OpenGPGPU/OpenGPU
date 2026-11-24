@@ -1,4 +1,5 @@
 """Independent input and RGBA32UI oracle for the three joint Mesa domains."""
+from dataclasses import dataclass
 import hashlib
 import struct
 
@@ -16,33 +17,54 @@ CASES = (
 )
 SOURCE_CANCEL_RECORD = 8
 RECORDS = len(CASES)
-WIDTH = HEIGHT = 4
-IMAGE_BYTES = WIDTH * HEIGHT * 16
 
 
-def original_records(value, initial, engines, *, preflight=False):
+@dataclass(frozen=True)
+class ReplayFixture:
+    width: int
+    height: int
+    tile_log2: int
+    cases: tuple[tuple[int, bool, bool], ...]
+
+    @property
+    def image_bytes(self):
+        return self.width * self.height * 16
+
+    @property
+    def tiles(self):
+        tile = 1 << self.tile_log2
+        return ((self.width+tile-1)//tile) * ((self.height+tile-1)//tile)
+
+
+SMALL = ReplayFixture(4,4,3,CASES)
+VGA_QUAD = ReplayFixture(640,480,4,CASES[4:6])
+
+
+def original_records(value, initial, engines, *, preflight=False, fixture=SMALL):
     required_flags(value, dict(cpuPreflight=preflight, engines=engines))
     context = uint(value.get('context'))
     rows = value.get('records')
-    require(context and type(rows) is list and len(rows) == RECORDS, 'invalid original joint record set')
+    require(context and type(rows) is list and len(rows) == len(fixture.cases), 'invalid original joint record set')
     allocations = set()
     available = {(first, end) for first, end, _ in initial.ranges}
+    image_bytes = fixture.image_bytes
+    sentinel = b'\xa5' * image_bytes
     for i, row in enumerate(rows):
-        required_flags(row, {'record':i,'domain':CASES[i][0],'pass':11+i,'generation':41+i,
-                             'imageOffset':64,'imageBytes':IMAGE_BYTES})
+        required_flags(row, {'record':i,'domain':fixture.cases[i][0],'pass':11+i,'generation':41+i,
+                             'imageOffset':64,'imageBytes':image_bytes})
         allocation, size = uint(row.get('allocation'), 64), uint(row.get('allocationBytes'), 64)
         require(allocation % 4096 == 0 and allocation + size <= 1 << 32 and
-                row['imageOffset'] + IMAGE_BYTES <= size and
+                row['imageOffset'] + image_bytes <= size and
                 (allocation, allocation + size) in available and allocation not in allocations,
                 'missing or aliased original image allocation')
         allocations.add(allocation)
-        require(initial.read(allocation + row['imageOffset'], IMAGE_BYTES) == b'\xa5' * IMAGE_BYTES,
+        require(initial.read(allocation + row['imageOffset'], image_bytes) == sentinel,
                 'original image was modified before executing the joint command')
     return context, rows
 
 
-def capture(data, discovery, context, row):
-    write_fault = CASES[row['record']][2]
+def capture(data, discovery, context, row, *, fixture=SMALL):
+    write_fault = fixture.cases[row['record']][2]
     cancel = row['record'] == SOURCE_CANCEL_RECORD
     magic = b'OGCAP005' if cancel else b'OGCAP004' if write_fault else b'OGCAP003'
     require(data[:8] == magic, 'wrong protected joint capture format')
@@ -76,7 +98,7 @@ def capture(data, discovery, context, row):
         require(end <= first < last <= 1 << 32, 'invalid protected writable interval')
         end = last
     image = row['allocation'] + row['imageOffset']
-    require(any(first <= image and image + IMAGE_BYTES <= last for first, last in writable),
+    require(any(first <= image and image + fixture.image_bytes <= last for first, last in writable),
             'protected command does not own its original image')
     if fault:
         require(fault[0] == image and fault[1] and not fault[1]&63,
@@ -112,7 +134,7 @@ def physical(memory, satp, va, count, permission):
     return first
 
 
-def original_graph(memory, regs, context, row, *, frame_version, fault=None):
+def original_graph(memory, regs, context, row, *, frame_version, fault=None, fixture=SMALL):
     """Check the published owner's descriptors and original input selection."""
     satp, root = regs[0x14c], regs[0xf4]
 
@@ -148,9 +170,13 @@ def original_graph(memory, regs, context, row, *, frame_version, fault=None):
             'vertex/index/divisor route is missing its original distinguishable data')
     frame = words(job[21], 512)
     require(frame[299] == frame_version, 'original GNF payload version differs from DUT discovery')
-    require(frame[0] == 0x474e4601 and frame[211:213] == (HEIGHT,WIDTH) and
-            frame[216:219] == (WIDTH*16,1,1) and
-            physical(memory,satp,frame[210],IMAGE_BYTES,7) == row['allocation']+row['imageOffset'],
+    shape = (fixture.height,fixture.width)
+    require(frame[55] == fixture.tiles and frame[64:67] == (*shape,fixture.tile_log2) and
+            frame[112] == fixture.tile_log2 and frame[73:76] == (1,26,1),
+            'published frame changed the viewport, tile count or RGBA32UI attachment')
+    require(frame[0] == 0x474e4601 and frame[211:213] == shape and
+            frame[216:219] == (fixture.width*16,1,1) and
+            physical(memory,satp,frame[210],fixture.image_bytes,7) == row['allocation']+row['imageOffset'],
             'actual frame/store view is not the original image allocation')
     require(not fault or fault[1] == frame[210], 'write fault address differs from the published frame view')
     pc = draw[342]
@@ -160,35 +186,42 @@ def original_graph(memory, regs, context, row, *, frame_version, fault=None):
     return hashlib.sha256(view(pc,4096-(pc & 4095),11)).digest(), index_line
 
 
-def expected_image(domain, mutation):
+def expected_image(domain, mutation, *, fixture=SMALL):
     # Independent 4x4 sample centers. The isoline runs from viewport x=0
     # to 3.5 through row 1 and ends inside the last pixel's diamond. The
     # triangle's hypotenuse is x+y=0.75 in NDC, between the sample sums.
     require(domain in (0,1,2) and type(mutation) is bool, 'invalid joint image recipe')
     base = (6,17,47,53)
     color = struct.pack('<4I',*(c^m for c,m in zip(base,(5,9,17,33)))) if mutation else struct.pack('<4I',*base)
+    if domain == 2:
+        # The unmodified quad recipe covers all pixel centers in the viewport.
+        return color * (fixture.width * fixture.height)
+    require(fixture == SMALL, 'line and triangle coverage requires the 4x4 fixture')
     clear = bytes(16)
     output = bytearray()
-    for y in range(HEIGHT):
-        for x in range(WIDTH):
-            covered = (y==1 and x<3) if domain==0 else (x+y<=4 if domain==1 else True)
+    for y in range(fixture.height):
+        for x in range(fixture.width):
+            covered = (y==1 and x<3) if domain==0 else x+y<=4
             output.extend(color if covered else clear)
     return bytes(output)
 
 
-def verify_image(previous, returned, row, writable):
+def verify_image(previous, returned, row, writable, *, fixture=SMALL):
     image = row['allocation'] + row['imageOffset']
-    actual = returned.read(image, IMAGE_BYTES)
-    domain, mutation, write_fault = CASES[row['record']]
+    image_bytes = fixture.image_bytes
+    actual = returned.read(image, image_bytes)
+    domain, mutation, write_fault = fixture.cases[row['record']]
     preserved = write_fault or row['record'] == SOURCE_CANCEL_RECORD
-    expected = previous.read(image, IMAGE_BYTES) if preserved else expected_image(domain, mutation)
-    for offset in range(0, IMAGE_BYTES, 16):
-        require(actual[offset:offset+16] == expected[offset:offset+16],
-                f"record {row['record']} pixel {(offset//16) % WIDTH},{offset//(16*WIDTH)} differs")
+    expected = previous.read(image, image_bytes) if preserved else expected_image(domain, mutation, fixture=fixture)
+    if actual != expected:
+        for offset in range(0, image_bytes, 16):
+            if actual[offset:offset+16] != expected[offset:offset+16]:
+                pixel = offset//16
+                raise ValueError(f"record {row['record']} pixel {pixel % fixture.width},{pixel // fixture.width} differs")
     # Each record may update its working buffers. Narrow the image interval
     # to the actual view, so its entire physical allocation guard is checked.
     allocation, end = row['allocation'], row['allocation'] + row['allocationBytes']
-    allowed = [] if preserved else [(image,image+IMAGE_BYTES)]
+    allowed = [] if preserved else [(image,image+image_bytes)]
     for first, last in writable:
         if first < allocation:
             allowed.append((first,min(last,allocation)))

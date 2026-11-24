@@ -3,15 +3,14 @@
 import struct
 import unittest
 
-from native_joint_live_oracle import RECORDS, SOURCE_CANCEL_RECORD, expected_image, verify_image
+from native_joint_live_oracle import RECORDS, SOURCE_CANCEL_RECORD, VGA_QUAD, expected_image, verify_image
 from qualify_native_joint_live import cleanup_checked, receipt_words, reset_receipt, retired_receipt
 
 
 class ImagePage:
-    ranges = [(0x1000,0x2000,0xa5)]
-
-    def __init__(self, fill=0xa5):
-        self.data = bytearray([fill])*4096
+    def __init__(self, size=4096):
+        self.ranges = [(0x1000,0x1000+size,0xa5)]
+        self.data = bytearray([0xa5])*size
 
     def read(self, address, size):
         offset = address - 0x1000
@@ -43,6 +42,26 @@ class JointOracle(unittest.TestCase):
         observed.data[64] ^= 1
         with self.assertRaisesRegex(ValueError,'pixel'):
             verify_image(initial,observed,self.row,interval)
+
+    def test_vga_quad_checks_the_last_pixel_and_its_guard(self):
+        image_bytes = 640*480*16
+        size = (image_bytes+64+4095)&~4095
+        base = dict(self.row,domain=2,allocationBytes=size,imageBytes=image_bytes)
+        initial, observed = ImagePage(size), ImagePage(size)
+        interval = [(0x1000,0x1000+size)]
+        end = 64+image_bytes
+        self.assertEqual(VGA_QUAD.tiles,1200)
+        for record, color in enumerate(((6,17,47,53),(3,24,62,20))):
+            row = base | {'record':record,'pass':11+record,'generation':41+record}
+            observed.data[64:end] = struct.pack('<4I',*color)*(640*480)
+            verify_image(initial,observed,row,interval,fixture=VGA_QUAD)
+        observed.data[end-1] ^= 1
+        with self.assertRaisesRegex(ValueError,'pixel 639,479'):
+            verify_image(initial,observed,row,interval,fixture=VGA_QUAD)
+        observed.data[end-1] ^= 1
+        observed.data[end] ^= 1
+        with self.assertRaisesRegex(ValueError,'guard'):
+            verify_image(initial,observed,row,interval,fixture=VGA_QUAD)
 
     def test_retirement_cannot_change_held_identity_or_byte_count(self):
         held = dict(phase='held',record=0,commandId=5,completion=0x18705,
