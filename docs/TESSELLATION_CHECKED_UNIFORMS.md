@@ -358,11 +358,11 @@ build took 6,119 seconds and peaked at 15.86 GiB. At source `cd36805a8`, all
 
 The rebased executor passed the actual MMIO probe. It verified 112 discovery
 words, five auxiliary registers and idle state after one reset without
-external memory traffic. Draw execution and product frequency and FPS
-remain separate checks.
+external memory traffic.
 
 With the pinned SRAM submodule initialized and the FlashSim/CIRCT environment
-above, set `OWNER` to a new absolute path inside this checkout's `.artifacts`.
+above, put Espresso on `PATH` for the full decoder and set `OWNER` to a new
+absolute path inside this checkout's `.artifacts`.
 
 ```sh
 export FLASHSIM_CIRCT_THREADS=4
@@ -383,6 +383,44 @@ export FLASHSIM_CIRCT_THREADS=4
 "$PYTHON" -B scripts/prepare_owner_executor.py --stage probe --backend flashsim \
   --kind native-sample --qualification "$OWNER/executors/native-sample/qualification.json"
 ```
+
+### Full-owner feedback replay
+
+At source `70a16f300`, freshly preparing the dual-CU owner took 222 seconds
+with 6.31 GiB peak memory. All 2,331 RTL and bind files and the factory
+manifest matched the qualified model. All 285 compiled objects were reused.
+The executor linked and verified in 287 seconds with 7.35 GiB peak memory.
+The replay driver linked against the same objects in 106 seconds.
+
+Each case used one reset and one live feedback capture through isoline,
+triangle, quad and a second isoline draw. Completion arrived after external
+drain, and the result and IRQ remained stable while held. The replay checked 22 feedback words, three
+counters, the untouched input lines and the buffer guards.
+
+| Case | Commands | Service cycles | Resource coverage |
+| --- | ---: | ---: | --- |
+| `distinct` | 6 | 18,539 | Separate executable addresses and both stages' default selector 31 |
+| `invalidate` | 10 | 19,360 | Four code invalidations before reusing the control program address |
+| `capacity` | 6 | 33,065 | TCS and TES read block 0, block 11 and the default view at the 16 KiB and 1024-component endpoints |
+
+Generate the four-engine fixture from the Scala descriptor sources before
+running the qualified owner. Set `FIXTURE` to a new absolute path under
+`.artifacts` and use a Python executable path accepted by the FlashSim
+Scala adapter. The descriptor fixture uses FlashSim with the largest-first
+CIRCT option disabled. The executor verification uses the environment
+recorded by the complete model.
+
+```sh
+FLASHSIM_CIRCT_LARGEST_FIRST=0 sbt -Dopengpu.simBackend=flashsim \
+  -Dopengpu.flashsimPython="$PYTHON" -Dopengpu.simJobs=1 -Dopengpu.simCache=off \
+  "Test / runMain opengpu.graphics.tessellation.TessellationUniformOwnerFixture \"$FIXTURE\""
+"$PYTHON" -B scripts/qualify_tessellation_uniform_owner.py \
+  --qualification "$OWNER/executors/native-sample/qualification.json" --fixture "$FIXTURE"
+```
+
+The fixture uses small draw descriptors on the complete 640×480 owner.
+Full-owner fault and cancellation recovery across all three domains, product
+frequency and FPS remain open.
 
 ### Three-domain AXI host execution
 
