@@ -6,6 +6,8 @@ and streams the original invocation/range entries. Both constructors default to
 `enabled=false`, returning unavailable without a memory request. They introduce
 no public capability, factory, discovery, getter, queue or ioctl route. GNQ1/2/3
 and their existing readers are unchanged.
+The follow-on [frame and source capture](TESSELLATION_JOINT_RANGE_CAPTURE.md)
+reads GNF1 and cross-checks actual GNT7/8/9, GVS1 and GND1 observations.
 
 The external layout is
 [`abi/protected-tessellation-joint-v2.json`](abi/protected-tessellation-joint-v2.json).
