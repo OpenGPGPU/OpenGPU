@@ -69,6 +69,7 @@ struct opengpu_vm {
     struct opengpu_buffer root, l1[OPENGPU_VM_MAX_TABLES];
     u32 asid, l1_region[OPENGPU_VM_MAX_TABLES], l1_count;
     bool enabled;
+    bool reserve_joint_lds;
 };
 struct opengpu_mmu {
     struct mutex lock;
