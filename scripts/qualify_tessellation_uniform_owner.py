@@ -16,7 +16,8 @@ from owner_resource_contract import TESSELLATION_UNIFORM_PROFILE
 from run_owner_bounded import run_bounded
 
 KIND = 'native-sample'
-CASES = ('distinct', 'invalidate', 'capacity')
+FEEDBACK_CASES = ('distinct', 'invalidate', 'capacity')
+CASES = FEEDBACK_CASES + ('malformed', 'read-fault', 'cancel')
 DRIVER = 'scripts/tessellation_uniform_owner_replay.cpp'
 DEPENDENCIES = (
     'scripts/native_sample_owner_runtime.hpp',
@@ -27,6 +28,7 @@ DEPENDENCIES = (
     'driver/gpu_abi.h',
     'driver/opengpu_formats.h',
     'driver/opengpu_shader_resources.h',
+    'driver/opengpu_tessellation_uniform_abi.h',
 )
 
 
@@ -101,7 +103,7 @@ def main():
 
     previous = {sig: signal.signal(sig, interrupted) for sig in (signal.SIGINT, signal.SIGTERM)}
     try:
-        replay(args.qualification, args.fixture, args.case or CASES)
+        replay(args.qualification, args.fixture, args.case or FEEDBACK_CASES)
         return 0
     except (OSError, RuntimeError, ValueError) as error:
         print(str(error), file=sys.stderr)

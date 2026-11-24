@@ -20,7 +20,8 @@ object TessellationUniformOwnerFixture {
   private type Writes = Vector[(Int, Long)]
   private final case class Phase(id: Int, opcode: Int, writes: Writes, after: Writes = Vector.empty,
     reads: Vector[Long] = Vector.empty, upload: Boolean = true)
-  private final case class Draw(patch: Bytes, reads: Vector[Long])
+  private final case class UniformRead(root: Long, defaultBinding: Long, defaultLine: Long)
+  private final case class Draw(patch: Bytes, reads: Vector[Long], uniformReads: Vector[UniformRead])
 
   private val drawOffset = 0x8e0000L
   private val codeOffset = 0x1000L
@@ -127,6 +128,7 @@ object TessellationUniformOwnerFixture {
     val uniformStart = TessellationUniformSequenceLayout.firstWord
     Vector(7L, 8L, 9L).zipWithIndex.foreach { case (value, i) => setDraw(uniformStart+i, value) }
 
+    val uniformReads = Vector.newBuilder[UniformRead]
     val reads = (0 until 2).flatMap { stageIndex =>
       val stage = 4+stageIndex
       val root = 0x90000L+domain*0x4000+stageIndex*0x2000
@@ -140,6 +142,7 @@ object TessellationUniformOwnerFixture {
         val data = 0x290000L + (2*domain+stageIndex)*0x10000
         val block11 = root+0x600
         val defaults = root+0x800
+        uniformReads += UniformRead(root, defaults, data+32768+4096-64)
         words(bytes, root, Vector(0x47555203L, 64, 3, 7, 8, 9, stage,
           0x801, 23, 0, binding, block11+64, 0, defaults, 1, 0))
         val items = Vector((binding, 0, data, 16384), (block11, 23, data+16384, 16384),
@@ -188,7 +191,7 @@ object TessellationUniformOwnerFixture {
     words(bytes, tesOffset, tes)
     setDraw(field("control.kernel.kernelPc"), tcsOffset)
     setDraw(field("evaluationKernel.kernelPc"), tesOffset)
-    Draw(bytes, reads)
+    Draw(bytes, reads, uniformReads.result())
   }
 
   private def setupFeedback(base: Bytes): Bytes = {
@@ -223,6 +226,17 @@ object TessellationUniformOwnerFixture {
     val extent = if (control) Vector(BYTES -> 512L, PATTERN -> 0L) else Vector(PATTERN -> 0L, BYTES -> 512L)
     Vector(COMMAND_ID -> id.toLong, OPCODE -> opcode.toLong) ++ address ++ extent ++
       Vector(WIDTH -> context, HEIGHT -> height, SOURCE_STRIDE -> stride, FLAGS -> flags, submit)
+  }
+
+  private def emitUniformReads(file: Path, draws: Seq[Draw]): Unit = {
+    require(draws.size == 3 && draws.forall(_.uniformReads.size == 2))
+    val out = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(file)))
+    try {
+      out.writeBytes("OGTUR001")
+      for (draw <- draws; read <- draw.uniformReads;
+          address <- Vector(read.root, read.defaultBinding, read.defaultLine))
+        (0 until 4).foreach(i => out.writeByte((address >>> (i*8)).toInt))
+    } finally out.close()
   }
 
   private def emitPlan(file: Path, phases: Seq[Phase]): Unit = {
@@ -282,6 +296,7 @@ object TessellationUniformOwnerFixture {
     for (name <- Vector("distinct", "capacity", "invalidate")) {
       val reuse = name == "invalidate"
       val draws = bases.indices.map(i => draw(bases(i), i, fields(i), name == "capacity", reuse))
+      if (name == "capacity") emitUniformReads(directory.resolve("capacity.resources"), draws)
       val phases = mutable.ArrayBuffer.empty[Phase]
       def append(phase: Phase, patch: Option[Bytes]): Unit = {
         require(phase.upload == patch.isDefined)
