@@ -146,14 +146,15 @@ class TessellationJointEmptyFrameSpec extends AnyFlatSpec {
     }
   }
 
-  it should "capture a real GNQ and clear store resolve through the actual four-bank isoline owner" in {
+  it should "clear real GNQ frames and preserve a delayed write fault through the four-bank isoline owner" in {
     // Encode/validate every catalog field before expensive hardware elaboration.
     checkRecipe()
     val recipes=Seq(4,16).map(recipe)
+    val frames=Seq((recipes.head,false),(recipes.head,true),(recipes(1),false))
     simulate(new JointEmptyIsoline){d=>
       zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
-      // Both runtime frames use the same VGA-capacity model with no reset.
-      for(r<-recipes){
+      // The faulting frame and both healthy frames share one VGA-capacity DUT.
+      for((r,faultWrite)<-frames){
       val mem=new Memory(d.io.memoryRequest.bits,d.io.memoryResponse.bits,
         d.io.memoryRequest.valid,d.io.memoryRequest.ready,d.io.memoryResponse.valid,d.io.memoryResponse.ready)
       mem.bytes++=r.initial
@@ -196,23 +197,28 @@ class TessellationJointEmptyFrameSpec extends AnyFlatSpec {
       d.io.submit.bits.owner.limit.poke(0x3000000.U)
       d.io.submit.valid.poke(true.B);until("actual GNQ admission")(d.io.submit.ready.peek().litToBoolean)
       tick();d.io.submit.valid.poke(false.B);zero(d.io.submit.bits)
-      until("actual image backing store accepted")(mem.pending.exists(request=>request.write && request.address>=0x1100000))
+      def pendingBackingWrite=mem.pending.find(request=>request.write && request.address>=0x1100000)
+      until("actual image backing store accepted")(pendingBackingWrite.nonEmpty)
+      val firstWrite=pendingBackingWrite.get.address
       mem.holdResponses=true;heldWrite=true
+      if(faultWrite){d.io.cancel.poke(true.B);mem.faultAt=Set(firstWrite)}
       for(_<-0 until 12)tick()
       mem.holdResponses=false
       until("actual GNQ image retirement")(d.io.completion.valid.peek().litToBoolean)
       val c=d.io.completion.bits
       c.commandId.expect(5.U);c.identity.context.expect(7.U);c.identity.pass.expect(8.U);c.identity.generation.expect(9.U)
-      c.status.expect(0.U);c.clearOnly.expect(true.B);c.readBytes.expect(2560.U)
-      c.faultStage.expect(0.U);c.faultAddress.expect(0.U)
+      c.status.expect((if(faultWrite)3 else 0).U);c.clearOnly.expect(true.B);c.readBytes.expect(2560.U)
+      c.faultStage.expect((if(faultWrite)6 else 0).U);c.faultAddress.expect((if(faultWrite)firstWrite else BigInt(0)).U)
       c.capturedEntries.expect(0.U);c.retiredRanges.expect(0.U);c.retiredPatches.expect(0.U);c.published.expect(0.U)
-      c.storedBytes.expect(r.stored.U);c.resolvedBytes.expect(r.resolved.U)
-      assert(tiles.toVector==r.tiles,s"${r.side}x${r.side} must retire the expected real tiles across the four instantiated banks")
-      val contentsMatch=expected.forall{case(a,b)=>mem.bytes.get(a).contains(b)} &&
-        r.blocks.forall(block=>block.expected.indices.forall(i=>
-          mem.bytes.get(block.base+i).contains(block.expected(i)&255)))
-      assert(contentsMatch && mem.bytes.size==r.initial.size+r.blocks.map(_.initial.length).sum,
-        "actual composed clear/store/resolve or directory/padding oracle differs")
+      if(!faultWrite){
+        c.storedBytes.expect(r.stored.U);c.resolvedBytes.expect(r.resolved.U)
+        assert(tiles.toVector==r.tiles,s"${r.side}x${r.side} must retire the expected real tiles across the four instantiated banks")
+        val contentsMatch=expected.forall{case(a,b)=>mem.bytes.get(a).contains(b)} &&
+          r.blocks.forall(block=>block.expected.indices.forall(i=>
+            mem.bytes.get(block.base+i).contains(block.expected(i)&255)))
+        assert(contentsMatch && mem.bytes.size==r.initial.size+r.blocks.map(_.initial.length).sum,
+          "actual composed clear/store/resolve or directory/padding oracle differs")
+      }
       assert(immutable.forall{case(a,b)=>mem.bytes(a)==b},"immutable GNQ/GNF bytes changed")
       assert(mem.pending.isEmpty && mem.reply.isEmpty && mem.held.isEmpty,"frame report escaped actual memory drain")
       val snapshot=c.peek().litValue;d.io.cancel.poke(true.B)

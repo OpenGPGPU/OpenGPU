@@ -22,6 +22,7 @@ class TessellationJointFrameExecution extends Bundle {
 }
 class TessellationJointFrameExecutionRetirement extends Bundle {
   val identity=new GraphicsWorkIdentity;val status=UInt(3.W)
+  val faultAddress=UInt(32.W)
   val storedBytes=UInt(64.W);val resolvedBytes=UInt(64.W)
 }
 class TessellationJointNativeCompletion(idWidth:Int) extends Bundle {
@@ -173,7 +174,10 @@ class TessellationJointNativeController[D <: Data](config:GpuConfig,p:VertexShad
   fault(4,io.rangeRetired.fire,rangeStatus,5)
   private val frameIdentity=io.frameRetired.bits.identity.asUInt===request.identity.asUInt
   private val frameStatus=Mux(!frameIdentity,3.U,Mux(io.frameRetired.bits.status===0.U && !ended && !io.end.fire,3.U,io.frameRetired.bits.status))
-  fault(5,io.frameRetired.fire,frameStatus,6)
+  private val frameFaultAddress=Mux(
+    frameIdentity && io.frameRetired.bits.status=/=0.U && io.frameRetired.bits.status=/=4.U,
+    io.frameRetired.bits.faultAddress,0.U)
+  fault(5,io.frameRetired.fire,frameStatus,6,frameFaultAddress)
   private val capturedCursorDomain=candidateCursor.sequence<=(BigInt(1)<<64).U && candidateCursor.primitiveId<=(BigInt(1)<<32).U
   fault(6,state===State.rangeStart && !stop && !capturedCursorDomain,3.U,7)
   private val progressPublished=result.published+&candidatePublished

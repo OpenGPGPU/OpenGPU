@@ -12,6 +12,7 @@ class TessellationSystemTriangleImageCompletion(p:VertexShaderStageConfig) exten
   val identity=new GraphicsWorkIdentity;val status=UInt(3.W)
   /** 0 success/cancel, 1 admission, 2 triangle/bins, 3 image execution/publication. */
   val faultStage=UInt(2.W);val faultTileValid=Bool();val faultTile=UInt(32.W)
+  val faultAddress=UInt(32.W)
   val source=new TessellationSystemTriangleBinCompletion(p)
   val tiles=UInt(64.W);val primitives=UInt(64.W)
   val loadBytes=UInt(64.W);val storedBytes=UInt(64.W);val resolvedBytes=UInt(64.W)
@@ -151,6 +152,7 @@ class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:Ver
   private val contexts=Reg(Vec(engines+1,UInt(32.W)))
   private val status=RegInit(0.U(3.W));private val faultStage=RegInit(0.U(2.W))
   private val faultTileValid=RegInit(false.B);private val faultTile=Reg(UInt(32.W))
+  private val faultAddress=RegInit(0.U(32.W))
   private val externalCancel=io.cancel || io.feedback.map(_.cancel).getOrElse(false.B) || io.payload.map(v=>VecInit(v.map(_.cancel)).asUInt.orR).getOrElse(false.B)
   private val sourceFailure=(source.io.completion.valid && source.io.completion.bits.status=/=0.U) ||
     (source.io.taskCompletion.valid && source.io.taskCompletion.bits.status=/=0.U)
@@ -172,10 +174,13 @@ class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:Ver
     (source.io.tileDone.fire && !stop && primary(tileCode)) || images.map(i=>i.completion.fire && primary(i.completion.bits.status)).reduce(_ || _)
   private val tileSize=1.U(17.W)<<descriptor.bins.producer.tileLog2
   private def fail(code:UInt,stage:Int,tileValid:Bool=false.B,which:UInt=0.U):Unit=
-    when(status===0.U && !externalCancel){status:=code;faultStage:=stage.U;faultTileValid:=tileValid;faultTile:=which}
-  private def failChild(code:UInt,stage:Int,tileValid:Bool=false.B,which:UInt=0.U):Unit=
+    when(status===0.U && !externalCancel){
+      status:=code;faultStage:=stage.U;faultTileValid:=tileValid;faultTile:=which;faultAddress:=0.U
+    }
+  private def failChild(code:UInt,stage:Int,tileValid:Bool=false.B,which:UInt=0.U,address:UInt=0.U):Unit=
     when((status===0.U && (!externalCancel || primary(code))) || (status===4.U && primary(code))){
       status:=code;faultStage:=stage.U;faultTileValid:=tileValid;faultTile:=which
+      faultAddress:=Mux(primary(code),address,0.U)
     }
   private def overlap(a:UInt,b:UInt,c:UInt,d:UInt):Bool=a<b && c<d && a<d && c<b
   private def legalSpan(a:UInt,b:UInt):Bool=a(5,0)===0.U && b(5,0)===0.U && b>=a && b<=(BigInt(1)<<32).U
@@ -289,7 +294,9 @@ class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:Ver
     io.primitiveDone(e)<>image.primitiveDone;io.out(e)<>image.out
     image.completion.ready:=imageStarted(e) && !imageDone(e)
     when(image.completion.fire){imageDone(e):=true.B;imageResult(e):=image.completion.bits
-      when(image.completion.bits.status=/=0.U){failChild(image.completion.bits.status,3,true.B,tile(e))}}
+      when(image.completion.bits.status=/=0.U){
+        failChild(image.completion.bits.status,3,true.B,tile(e),image.completion.bits.faultAddress)
+      }}
     router.io.clients(e)<>image.shared
     payload.foreach{_=>
       tieInputs(image.payload.get(0));io.payload.get(e+1)<>image.payload.get(1)
@@ -348,7 +355,7 @@ class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:Ver
     inFlight===0.U && requests.io.count===0.U
   when(active && externalCancel && status===0.U && !childPrimary){status:=4.U;faultStage:=0.U;faultTileValid:=false.B}
   switch(phase){
-    is(State.idle){when(io.begin.fire){descriptor:=io.begin.bits;status:=0.U;faultStage:=0.U;faultTileValid:=false.B
+    is(State.idle){when(io.begin.fire){descriptor:=io.begin.bits;status:=0.U;faultStage:=0.U;faultTileValid:=false.B;faultAddress:=0.U
       sourceOffered:=false.B;sourceStarted:=false.B;sourceDone:=false.B;sourceResult:=0.U.asTypeOf(sourceResult)
       tasks:=0.U;localTaskValid:=false.B;scanX:=0.U;scanY:=0.U
       for(e<-0 until engines){owned(e):=false.B;imageOffered(e):=false.B;imageStarted(e):=false.B;imageDone(e):=false.B;haveBin(e):=false.B
@@ -398,6 +405,7 @@ class TessellationSystemTriangleImagePipeline(config:GpuConfig=GpuConfig(),p:Ver
     is(State.closing){when(drained){phase:=State.finish}}
     is(State.finish){result:=0.U.asTypeOf(result);result.identity:=descriptor.states.identity
       result.status:=Mux(externalCancel && status===0.U,4.U,status);result.faultStage:=faultStage;result.faultTileValid:=faultTileValid;result.faultTile:=faultTile
+      result.faultAddress:=faultAddress
       result.source:=sourceResult;result.tiles:=tileCounts.reduce(_+_);result.primitives:=primitiveCounts.reduce(_+_)
       result.loadBytes:=loads.reduce(_+_);result.storedBytes:=stores.reduce(_+_);result.resolvedBytes:=resolves.reduce(_+_);phase:=State.complete}
     is(State.complete){when(io.completion.fire){phase:=State.idle}}

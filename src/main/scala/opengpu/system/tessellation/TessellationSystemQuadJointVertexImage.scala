@@ -71,6 +71,7 @@ class TessellationSystemQuadJointVertexImage(config:GpuConfig,p:VertexShaderStag
   owner.io.frameRetired.valid:=image.io.completion.valid;image.io.completion.ready:=owner.io.frameRetired.ready
   owner.io.frameRetired.bits.identity:=image.io.completion.bits.img.identity
   owner.io.frameRetired.bits.status:=image.io.completion.bits.status
+  owner.io.frameRetired.bits.faultAddress:=image.io.completion.bits.img.faultAddress
   owner.io.frameRetired.bits.storedBytes:=image.io.completion.bits.img.storedBytes
   owner.io.frameRetired.bits.resolvedBytes:=image.io.completion.bits.img.resolvedBytes
   owner.io.frameBusy:=image.io.busy;owner.io.frameDrained:=memory.io.drained
