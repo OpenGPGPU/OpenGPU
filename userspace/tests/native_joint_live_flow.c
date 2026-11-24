@@ -52,11 +52,13 @@ static void joint_source_path(char path[4096],const char *directory,const char *
     int length=snprintf(path,4096,"%s/%s",directory,name);
     assert(length>0 && length<4096);
 }
-static void joint_case(struct pipe_context *pipe,const char *sources,unsigned index,unsigned engines,FILE *layout)
+static void joint_case(struct pipe_context *pipe,const char *sources,unsigned index,unsigned engines,
+    bool vga_quad,FILE *layout)
 {
     static const char *evaluation[]={"isoline.tese","triangle.tese","quad.tese"};
     static const uint32_t seed[4]={7,19,43,61};
     unsigned domain=index<JOINT_LIVE_BASE_RECORDS?index/2:1;
+    if (vga_quad) domain=2;
     bool mutation=index<JOINT_LIVE_BASE_RECORDS && (index&1);
     assert(domain<3 && engines>=1 && engines<=4);
     const char *names[]={mutation?"mutation.vert":"original.vert","shared.tesc",evaluation[domain],"shared.frag"};
@@ -117,18 +119,22 @@ static void joint_case(struct pipe_context *pipe,const char *sources,unsigned in
     struct opengpu_native_joint_range_request range={
         .flags=3,.task_id_base=100+8*index,.patch_count=2,.patches_per_instance=1,.instances=2,
     };
+    const unsigned width=vga_quad?640:4, height=vga_quad?480:4;
+    const unsigned tile_log2=vga_quad?4:3, pitch=width*16;
+    const unsigned tile=1u<<tile_log2;
+    const unsigned tiles=((width+tile-1)/tile)*((height+tile-1)/tile);
     struct opengpu_native_joint_build_request request={
         .context=pipe,.source=source,.pass=11+index,.generation=41+index,.state_count=1,
         .draws=&draw,.draw_count=1,.invocations=&invocation,.invocation_count=1,.ranges=&range,.range_count=1,
-        .frame={.width=4,.height=4,.samples=1,.color_mask=1,.tile_log2=3},
+        .frame={.width=width,.height=height,.samples=1,.color_mask=1,.tile_log2=tile_log2},
     };
-    const struct opengpu_native_joint_view image=joint_view(screen,256,64,resources,&resource_count,NULL);
+    const struct opengpu_native_joint_view image=joint_view(screen,pitch*height,64,resources,&resource_count,NULL);
     request.frame.attachments[0]=(struct opengpu_native_joint_attachment){
-        .format=26,.load_op=1,.channel_mask=15,.image={.view=image,.row_pitch=64,.store=1},
+        .format=26,.load_op=1,.channel_mask=15,.image={.view=image,.row_pitch=pitch,.store=1},
     };
     request.frame.primitives=joint_view(screen,65536,64,resources,&resource_count,NULL);
-    request.frame.directory=joint_view(screen,4096,64,resources,&resource_count,NULL);
-    request.frame.pool[0]=joint_view(screen,65536,0,resources,&resource_count,NULL);
+    request.frame.directory=joint_view(screen,vga_quad?tiles*64:4096,64,resources,&resource_count,NULL);
+    request.frame.pool[0]=joint_view(screen,vga_quad?tiles*4096:65536,0,resources,&resource_count,NULL);
     for (unsigned e=0;e<engines;++e)
         request.frame.scratch[e]=joint_view(screen,shader.fragment.metadata.prefix_bytes,64,resources,&resource_count,NULL);
     struct opengpu_native_joint_build_source *owner=opengpu_native_joint_build_source_create(&request);
@@ -159,8 +165,9 @@ static void joint_case(struct pipe_context *pipe,const char *sources,unsigned in
 
 int main(int argc,char **argv)
 {
-    if (argc!=4) {
-        fprintf(stderr,"usage: native-joint ESSL_DIR PROFILE_OR_--cpu-preflight SESSION_DIR\n");
+    const bool vga_quad=argc==5 && !strcmp(argv[4],"--vga-quad");
+    if (argc!=4 && !vga_quad) {
+        fprintf(stderr,"usage: native-joint ESSL_DIR PROFILE_OR_--cpu-preflight SESSION_DIR [--vga-quad]\n");
         return 2;
     }
     const bool cpu_preflight=!strcmp(argv[2],"--cpu-preflight");
@@ -175,6 +182,7 @@ int main(int argc,char **argv)
     bool driver_profile;
     unsigned context;
     assert(!opengpu_native_joint_source_runtime(pipe,&runtime,&context,&driver_profile) && driver_profile);
+    assert(!vga_quad || runtime.engines==4);
     joint_session=native_kernel_session_create_profile(context,joint_profile);
     assert(joint_session);
     native_original_allocate=joint_allocate;
@@ -187,11 +195,12 @@ int main(int argc,char **argv)
     assert(layout);
     fprintf(layout,"{\"context\":%u,\"engines\":%u,\"cpuPreflight\":%s,\"records\":[",
         context,runtime.engines,cpu_preflight?"true":"false");
-    for (unsigned i=0;i<JOINT_LIVE_RECORDS;++i) joint_case(pipe,argv[1],i,runtime.engines,layout);
+    const unsigned records=vga_quad?2:JOINT_LIVE_RECORDS;
+    for (unsigned i=0;i<records;++i) joint_case(pipe,argv[1],i,runtime.engines,vga_quad,layout);
     fputs("]}\n",layout);
     assert(!fclose(layout));
     joint_live_export(joint_session,argv[3]);
-    joint_live_run(joint_session,JOINT_LIVE_RECORDS,cpu_preflight);
+    joint_live_run(joint_session,records,cpu_preflight);
     assert(!native_kernel_session_destroy(joint_session));
     pipe->destroy(pipe);
     screen->destroy(screen);

@@ -17,7 +17,7 @@ from build_native_flashsim import digest, model_library_path
 from compute_owner_protocol import required_flags, strict_json, uint
 from native_graphics_uniform_oracle import SparseMemory, require
 from native_joint_live_oracle import (
-    CASES, RECORDS, SOURCE_CANCEL_RECORD, capture, original_graph, original_records, verify_image,
+    RECORDS, SMALL, SOURCE_CANCEL_RECORD, VGA_QUAD, capture, original_graph, original_records, verify_image,
 )
 from native_sample_graphics_controller import wait_cleanup
 from native_sample_owner_controller import atomic, regular, wait_file
@@ -143,15 +143,15 @@ def reset_receipt(value, phase, command, record, index_line, satp, previous=None
     return magic+struct.pack('<7I',record,command,0,status,irq,int(pin),int(value['externalDrained']))
 
 
-def cleanup_checked(value):
+def cleanup_checked(value, records=RECORDS):
     required_flags(value,dict(phase='cleanup',ownerCleanupObserved=True,contextCleanupObserved=True,
-        records=RECORDS,resetCount=1,ramReplaced=False,imagesPreserved=True,
+        records=records,resetCount=1,ramReplaced=False,imagesPreserved=True,
         externalDrained=True,sourceQualificationRequired=True,clockQualified=False,fpsQualified=False))
     for key in ('batches','pteClears','shootdowns'):
         require(uint(value.get(key))>0,'missing joint cleanup '+key)
 
 
-def docker_command(gpu, directory, name, timeout):
+def docker_command(gpu, directory, name, timeout, fixture=SMALL):
     mesa, build, sdk = (gpu/'depends'/dep for dep in ('mesa','mesa-build','aarch64-root'))
     command = ['docker','run','--rm','--init','--pull=never','--memory=512m','--memory-swap=512m',
                '--cpus=1','--network=none','--read-only','--name',name]
@@ -164,20 +164,24 @@ def docker_command(gpu, directory, name, timeout):
         ASAN_OPTIONS='detect_leaks=0:halt_on_error=1',UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1')
     for key,value in environment.items():
         command.extend(('-e',f'{key}={value}'))
-    return [*command,'-w','/joint-src',IMAGE,'/bin/bash','-ec',
+    recipe = (
         'python3 -B scripts/build_native_joint_live_producer.py --sanitize --build /joint-out/build '
         '--legacy-source /joint-out/reference-uniform.c && '
-        'exec /joint-out/build/native-joint userspace/tests/tess_joint_live_essl /joint-out/profile.bin /joint-out/session']
+        'exec /joint-out/build/native-joint userspace/tests/tess_joint_live_essl /joint-out/profile.bin /joint-out/session'
+    )
+    if fixture == VGA_QUAD:
+        recipe += ' --vga-quad'
+    return [*command,'-w','/joint-src',IMAGE,'/bin/bash','-ec',recipe]
 
 
-def exchange(directory, executor, bridge, discovery, engines, identities, timeout):
+def exchange(directory, executor, bridge, discovery, engines, identities, timeout, fixture=SMALL):
     session, results = directory/'session',directory/'results'
     memory, layout = session/'union.memory',session/'original-inputs.json'
     first = session/'record-0.capture'
     for path in (layout,memory,first):
         wait_file(path,bridge,None,timeout)
     with SparseMemory(memory) as initial:
-        context, rows = original_records(strict_json(layout),initial,engines)
+        context, rows = original_records(strict_json(layout),initial,engines,fixture=fixture)
     gnc_magic = dict(discovery).get(0x160)
     require(gnc_magic in (0x474e4302,0x474e4303),'joint replay requires discovered GNC2 or GNC3')
     frame_version = 1 if gnc_magic == 0x474e4302 else 2
@@ -193,7 +197,7 @@ def exchange(directory, executor, bridge, discovery, engines, identities, timeou
                 wait_file(packet,bridge,running,timeout)
                 data = packet.read_bytes()
                 identities[packet] = hashlib.sha256(data).hexdigest()
-                command, regs, writable, fault = capture(data,discovery,context,row)
+                command, regs, writable, fault = capture(data,discovery,context,row,fixture=fixture)
                 require(command not in commands,'joint command identity was reused')
                 for other in rows:
                     if other is row:
@@ -202,8 +206,9 @@ def exchange(directory, executor, bridge, discovery, engines, identities, timeou
                     require(all(last<=start or first>=start+other['allocationBytes'] for first,last in writable),
                             'joint command includes a foreign image allocation in its writable ranges')
                 commands.add(command)
-                shader, index_line = original_graph(initial,regs,context,row,frame_version=frame_version,fault=fault)
-                domain, mutation, _ = CASES[index]
+                shader, index_line = original_graph(initial,regs,context,row,
+                    frame_version=frame_version,fault=fault,fixture=fixture)
+                domain, mutation, _ = fixture.cases[index]
                 if mutation:
                     require(baseline_shaders[domain]!=shader,'original VS mutation did not change executable bytes')
                 else:
@@ -240,7 +245,7 @@ def exchange(directory, executor, bridge, discovery, engines, identities, timeou
                 result = results/(stem+'.memory')
                 wait_file(result,bridge,running,timeout)
                 with SparseMemory(previous) as old, SparseMemory(result) as after:
-                    verify_image(old,after,row,writable)
+                    verify_image(old,after,row,writable,fixture=fixture)
                 previous = result
                 identities[result] = digest(regular(result))
                 atomic(response_path,response)
@@ -253,12 +258,12 @@ def exchange(directory, executor, bridge, discovery, engines, identities, timeou
                 records.append(retired)
                 print(f'Joint record {index} verified in {retired["serviceCycles"]} service cycles',flush=True)
         check_inputs(identities)
-        atomic(session/'oracle-authorized.response',b'OGJBA001'+struct.pack('<I',RECORDS))
+        atomic(session/'oracle-authorized.response',b'OGJBA001'+struct.pack('<I',len(rows)))
         wait_cleanup(session/'cleanup.json',bridge,running,timeout)
-        cleanup_checked(strict_json(session/'cleanup.json'))
+        cleanup_checked(strict_json(session/'cleanup.json'),len(rows))
         require(running.wait(timeout=timeout)==0,'DUT rejected joint cleanup')
         check_inputs(identities)
-        atomic(session/'final-authorized.response',b'OGJOK001'+struct.pack('<I',RECORDS))
+        atomic(session/'final-authorized.response',b'OGJOK001'+struct.pack('<I',len(rows)))
         require(bridge.wait(timeout=timeout)==0,'original joint driver rejected final release')
         return records
     finally:
@@ -269,7 +274,7 @@ def check_inputs(identities):
     require(all(digest(regular(path))==value for path,value in identities.items()),'joint qualification input changed')
 
 
-def run(build, dut, timeout):
+def run(build, dut, timeout, fixture=SMALL):
     git_common = subprocess.check_output(['git','rev-parse','--path-format=absolute','--git-common-dir'],
                                          cwd=ROOT,text=True).strip()
     gpu = Path(git_common).parent
@@ -296,20 +301,22 @@ def run(build, dut, timeout):
                                          stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
                 require(probe.wait(timeout=timeout)==0,'protected joint DUT discovery failed')
             discovery, engines, profile_packet = profile_words(strict_json(regular(profile)))
+            require(fixture != VGA_QUAD or engines == 4, 'the VGA quad replay requires four discovered engines')
             atomic(directory/'profile.bin',profile_packet)
             ref = subprocess.check_output(['git','show',REFERENCE],cwd=ROOT)
             atomic(directory/'reference-uniform.c',ref)
             (directory/'session').mkdir()
             identities.update({path:digest(regular(path)) for path in (profile,directory/'profile.bin')})
             with (directory/'producer.log').open('xb') as log, (directory/'executor.log').open('xb') as run_log:
-                bridge = subprocess.Popen(docker_command(gpu,directory,name,timeout),stdout=log,
+                bridge = subprocess.Popen(docker_command(gpu,directory,name,timeout,fixture),stdout=log,
                                           stderr=subprocess.STDOUT,start_new_session=True)
 
                 def start(memory,results,session):
-                    return subprocess.Popen([executable,'--active-joint-owner-series',memory,results,session,str(RECORDS)],
-                                            stdout=run_log,stderr=subprocess.STDOUT,env=env,start_new_session=True)
+                    return subprocess.Popen(
+                        [executable,'--active-joint-owner-series',memory,results,session,str(len(fixture.cases))],
+                        stdout=run_log,stderr=subprocess.STDOUT,env=env,start_new_session=True)
 
-                records = exchange(directory,start,bridge,discovery,engines,identities,timeout)
+                records = exchange(directory,start,bridge,discovery,engines,identities,timeout,fixture)
             require('Original Mesa tessellation submissions retired with acknowledged cleanup' in
                     (directory/'producer.log').read_text().splitlines(), 'original producer did not confirm cleanup')
             return records
@@ -353,13 +360,16 @@ def main():
                         help='extra compiler-driver flag for linking in build-only mode (repeatable)')
     parser.add_argument('--shared-model',action='store_true',
                         help='link the Darwin DUT as a library in build-only mode')
+    parser.add_argument('--vga-quad',action='store_true',
+                        help='replay the original and mutated quad at 640x480 on the four-engine factory')
     args = parser.parse_args()
     require(0 < args.timeout <= 86400 and args.jobs > 0, 'invalid joint timeout or C++ job count')
     dut = args.dut_dir.resolve(strict=True)
     if args.build_only:
         build_executor(args.executor_build.resolve(),dut,args.jobs,args.shard_opt,args.link_flag,args.shared_model)
         return
-    records = run(args.executor_build.resolve(strict=True),dut,args.timeout)
+    fixture = VGA_QUAD if args.vga_quad else SMALL
+    records = run(args.executor_build.resolve(strict=True),dut,args.timeout,fixture)
     print(f'Joint FlashSim run passed {len(records)} image oracles, actual driver retirement and acknowledged cleanup.')
 
 
