@@ -64,6 +64,10 @@
   [交付范围、限制与复现](P39_SOURCE_DELIVERY.md)。准确 head 的临时交付树、
   本地分支经清洁、进程、打开文件和跨工作树消费者检查后已清理，远端已自动删除。
   原 VS 实际执行、联合 native/三域路径仍是 P39 的目标验收条件。
+- P39 的三域内部执行父级已接通 GNQ4/5/6、原始顶点输入、发布游标和 typed image。当前 RTL 的
+  16 项组件用例、isoline 四 bank 真实空帧和三个单 bank FlashSim 用例均通过，覆盖
+  字节与保护区、故障优先级、管线排空和无复位复用。[结果与复现](TESSELLATION_JOINT_NATIVE_PARENT.md)。
+  原 Mesa VS→实际双 CU→owned patch→TCS/TES→原图像的三域 protected 链仍待验收。
 - P16 原 draw catalog/invocation range 捕获、内部语言程序 v3、程序快照
   权限边界与 FS8/9 私有程序验证的六个逻辑提交已通过 #825 合入。
   [交付范围、结果与限制](P16_INVOCATION_SOURCE_DELIVERY.md)：准确交付源完整 host
