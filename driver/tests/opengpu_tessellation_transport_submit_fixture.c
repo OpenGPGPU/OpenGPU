@@ -277,16 +277,16 @@ int main(void)
     assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, &vm, &f) == -EINVAL);
     assert(!f && !invalidations);
     assert(opengpu_hw_unified_submit_locked(&g, NULL, NULL, GPU_UCMD_OP_INVALIDATE,
-        0x1000, 0, 64, 0, 0, 64, 0, 0, 0, 64, NULL, 0, &f) == 0);
+        0x1000, 0, 64, 0, 0, 64, 0, 0, 0, 64, NULL, 0, NULL, &f) == 0);
     assert(g.regs[GPU_REG_UCMD_WIDTH / 4] == 64 && g.hw.unified_expected_bytes == 64);
     release_fence(&g, f); f = NULL;
     struct opengpu_command_events invalid = { .flags = GPU_UCMD_FLAG_WAIT_EVENT, .wait_event = 7 };
     const u32 kicks = g.kicks;
     assert(opengpu_hw_unified_submit_locked(&g, NULL, &invalid, GPU_UCMD_OP_TESSELLATION,
-        0x4000, 0x4200, 512, 0, 0, context, 0, 0, 0, 0, NULL, 0, &f) == -EINVAL);
+        0x4000, 0x4200, 512, 0, 0, context, 0, 0, 0, 0, NULL, 0, NULL, &f) == -EINVAL);
     invalid.flags = GPU_UCMD_FLAG_RASTER_DISCARD; invalid.wait_event = 0;
     assert(opengpu_hw_unified_submit_locked(&g, NULL, &invalid, GPU_UCMD_OP_INVALIDATE,
-        0x1000, 0, 64, 0, 0, 64, 0, 0, 0, 64, NULL, 0, &f) == -EINVAL);
+        0x1000, 0, 64, 0, 0, 64, 0, 0, 0, 64, NULL, 0, NULL, &f) == -EINVAL);
     assert(!f && g.kicks == kicks);
     return 0;
 }

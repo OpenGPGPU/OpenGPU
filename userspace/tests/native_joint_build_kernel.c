@@ -7,8 +7,6 @@
 /* The OS fixture and userspace both have a private type named opengpu_buffer.
  * Only the unused userspace declaration is namespaced in this test TU; no
  * production function or captured object representation is replaced. */
-enum { fixture_unified_commands=GPU_CAP_UNIFIED_COMMANDS };
-#undef GPU_CAP_UNIFIED_COMMANDS
 #define opengpu_buffer userspace_buffer_declaration
 #include "opengpu_native_joint_build_source.h"
 #undef opengpu_buffer
@@ -23,7 +21,7 @@ struct native_joint_build_session *native_joint_build_session_create(unsigned co
     struct native_joint_build_session *s=calloc(1,sizeof(*s));assert(s);
     s->original=calloc(4096,sizeof(*s->original));s->references=calloc(4096,sizeof(*s->references));assert(s->original&&s->references);
     s->context=(struct opengpu_render_context){.gpu=&s->gpu,.references=1,.id=context};
-    s->gpu.hw.capabilities=fixture_unified_commands;
+    s->gpu.hw.capabilities=GPU_CAP_UNIFIED_COMMANDS;
     assert(!opengpu_mmu_init(&s->gpu)&&!opengpu_mmu_vm_create(&s->gpu,&s->context.vm));
     copy_gpu=&s->gpu;s->producers_complete=true;return s;
 }

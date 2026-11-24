@@ -35,7 +35,7 @@ def write_bodies(path):
         "uniform_job.inc": between(compute, "int opengpu_job_track_mapping(",
                                    "    if (job->type == OPENGPU_SCHED_BLIT)") +
                            "    return ERR_PTR(-EINVAL);\n}\n",
-        "uniform_submit.inc": between(hw, "static int opengpu_hw_unified_submit_locked(",
+        "uniform_submit.inc": between(hw, "struct opengpu_hw_joint_submission {",
                                       "static int opengpu_hw_unified_dma_submit_locked("),
         "uniform_hw.inc": between(hw, "int opengpu_hw_compute_async(",
                                   "\n/* Drop shared-L2 lines"),

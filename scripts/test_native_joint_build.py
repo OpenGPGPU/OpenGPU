@@ -5,6 +5,7 @@ Requires the original read-only Mesa/SDK setup and explicit private output and
 baseline arguments of test_native_joint.py. Never executes ISA or submits work.
 """
 import test_native_joint as original
+from test_protected_tessellation_joint import hw_bodies
 
 KERNEL='userspace/tests/native_joint_build_kernel.c'
 
@@ -38,10 +39,7 @@ def main():
                             for u in original.GPU_UNITS)+(
         'userspace/gallium/opengpu_native_joint_build_source.c','userspace/tests/native_joint_build_link.cpp',KERNEL)
     original.GPU_UNIT_FLAGS={KERNEL:['-I'+str(original.ROOT/'driver/tests'/name) for name in ('private_snapshot_stubs','mmu_stubs','compute_submit_stubs')]}
-    source=(original.ROOT/'driver/opengpu_hw.c').read_text()
-    first=source.index('int opengpu_hw_snapshot_submission_lock(')
-    last=source.index('\n}\n',first)+2
-    original.GENERATED_INPUTS={'snapshot_submission_under_test.inc':source[first:last]}
+    original.GENERATED_INPUTS=hw_bodies()
     original.__doc__=__doc__
     original.EXTRA_CASES=domain_cases
     original.EXTRA_NEGATIVE_CONTROLS=build_negative_controls

@@ -8,7 +8,7 @@ import tempfile
 
 root = Path(__file__).resolve().parents[1]
 source = (root / 'driver/opengpu_hw.c').read_text()
-start = source.index('static int opengpu_hw_unified_submit_locked(')
+start = source.index('struct opengpu_hw_joint_submission {')
 end = source.index('static int opengpu_hw_unified_dma_submit_locked(', start)
 with tempfile.TemporaryDirectory(prefix='opengpu-texture-submit-') as tmp:
     path = Path(tmp)
