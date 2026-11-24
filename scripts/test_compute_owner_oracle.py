@@ -5,7 +5,7 @@ import struct
 import tempfile
 import unittest
 from compute_owner_cases import (COMPUTE_LOOP_SCHEMAS, LOOP_BARRIER_CASE, SHARED_BARRIER_MASK_CASE,
-                                 STORAGE_LOOP_CASE, STORAGE_LOOP_SCHEMA)
+                                 STORAGE_LOOP_CASE, STORAGE_LOOP_SCHEMA, WORKGROUP_BARRIER_CASES)
 from compute_owner_oracle import SparseMemory, expected_shared, verify, union_original_memory
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +29,28 @@ def memory(path, output=None, corrupt=()):
 
 
 class OracleTests(unittest.TestCase):
+    def test_workgroup_barriers_check_distinct_groups_and_guard(self):
+        parent = ROOT / '.artifacts'
+        parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='workgroup-barrier-oracle-', dir=parent) as directory:
+            initial, returned = (Path(directory) / name for name in ('initial', 'returned'))
+            memory(initial)
+            for case, first, second in zip(WORKGROUP_BARRIER_CASES, (100, 103), (103, 106)):
+                with self.subTest(case=case):
+                    description = dict(schema=COMPUTE_LOOP_SCHEMAS[case], sourceCase=case,
+                        groups=2, local=128, viewBytes=8192, guard=0xdeadbeef,
+                        output=dict(globalBinding=0, allocationPhysical=0x2000,
+                                    allocationBytes=8192, offset=0, bytes=8192))
+                    expected = struct.pack('<256I', *range(first, first + 128), *range(second, second + 128))
+                    memory(returned, expected)
+                    with SparseMemory(initial) as before, SparseMemory(returned) as after:
+                        verify(before, after, description)
+                    for word in (0, 128, 256):
+                        memory(returned, expected, [(0x2000 + 4 * word, 1)])
+                        with SparseMemory(initial) as before, SparseMemory(returned) as after:
+                            with self.assertRaises(ValueError):
+                                verify(before, after, description)
+
     def test_shared_barrier_mask_checks_peer_warp_and_lane_masks(self):
         parent = ROOT / '.artifacts'
         parent.mkdir(exist_ok=True)
