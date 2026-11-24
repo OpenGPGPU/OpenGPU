@@ -68,10 +68,29 @@ def check_builder_reuses_only_matching_objects(tmp_path):
     progress = json.loads((build / "native-flashsim-progress.json").read_text())
     assert progress["compiled_shards"] == 0 and progress["cached_shards"] == 2
 
+    linked = run(("--link-flag=-v", "--link-flag=-pipe"))
+    assert "dut_0.cpp: cached" in linked and "dut_commit_part000.cpp: cached" in linked
+    assert subprocess.check_output([str(build / "native_product_driver")], text=True).strip() == "42"
+    receipt = json.loads((build / "native-flashsim-build.json").read_text())
+    assert receipt["link_flags"] == ["-v", "-pipe"] and receipt["objects"] == manifest["objects"]
+    assert "native_product_driver.tmp" in (build / "native-link.log").read_text()
+    assert not (build / "native-driver.log").read_text()
+
+    library = None
+    if sys.platform == "darwin":
+        linked = run(("--shared-model",))
+        assert "dut_0.cpp: cached" in linked and "dut_commit_part000.cpp: cached" in linked
+        assert subprocess.check_output([str(build / "native_product_driver")], text=True).strip() == "42"
+        receipt = json.loads((build / "native-flashsim-build.json").read_text())
+        library = build / receipt["model_library"]["name"]
+        assert hashlib.sha256(library.read_bytes()).hexdigest() == receipt["model_library"]["sha256"]
+        assert receipt["objects"] == manifest["objects"]
+
     shard.write_text('#include "dut.h"\nint value() { return 41; }\n')
     third = run()
     assert "dut_0.cpp: compiled" in third and "dut_commit_part000.cpp: cached" in third
     assert subprocess.check_output([str(build / "native_product_driver")], text=True).strip() == "43"
+    assert library is None or not library.exists()
     changed_opt = run(("--commit-opt=-O1",))
     assert "dut_0.cpp: cached" in changed_opt and "dut_commit_part000.cpp: compiled" in changed_opt
     commit = json.loads((build / "dut_commit_part000.json").read_text())

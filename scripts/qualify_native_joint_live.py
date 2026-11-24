@@ -13,7 +13,7 @@ import sys
 import tempfile
 import uuid
 
-from build_native_flashsim import digest
+from build_native_flashsim import digest, model_library_path
 from compute_owner_protocol import required_flags, strict_json, uint
 from native_graphics_uniform_oracle import SparseMemory, require
 from native_joint_live_oracle import (
@@ -42,14 +42,23 @@ def driver_qualification(build, dut):
             'executor does not match the current owner driver and prepared FlashSim model')
     shards = {path.name:digest(regular(path)) for path in dut.glob('dut_*.cpp')}
     require(shards and receipt.get('dut_sources') == shards, 'executor used different FlashSim shards')
-    return executor, {Path(path):sha for path,sha in paths.items()} | {executor:receipt['executable_sha256']}
+    identities = {Path(path):sha for path,sha in paths.items()} | {executor:receipt['executable_sha256']}
+    model_record = receipt.get('model_library')
+    library = model_library_path(build,model_record)
+    if library is not None:
+        require(digest(regular(library))==model_record['sha256'], 'executor used a different FlashSim model library')
+        identities[library] = model_record['sha256']
+    return executor, identities
 
 
-def build_executor(build, dut, jobs):
+def build_executor(build, dut, jobs, shard_opt='-O2', link_flags=(), shared_model=False):
     files = driver_files('native')
     command = [sys.executable,'-B',ROOT/'scripts/build_native_flashsim.py','--dut-dir',dut,
                '--build-dir',build,'--driver',ROOT/files[0],'--jobs',str(jobs),
-               '--precompiled-header','--conservative-alias']
+               f'--shard-opt={shard_opt}','--precompiled-header','--conservative-alias']
+    command.extend(f'--link-flag={flag}' for flag in link_flags)
+    if shared_model:
+        command.append('--shared-model')
     for name in files[1:]:
         command.extend(('--driver-dependency',ROOT/name))
     subprocess.run(command,cwd=ROOT,check=True)
@@ -338,11 +347,17 @@ def main():
     parser.add_argument('--timeout',type=int,default=900)
     parser.add_argument('--build-only',action='store_true',help='link the joint owner driver against the prepared FlashSim model')
     parser.add_argument('--jobs',type=int,default=2,help='C++ compilation jobs in build-only mode')
+    parser.add_argument('--shard-opt',choices=('-O0','-O1','-O2','-O3'),default='-O2',
+                        help='C++ shard optimization level in build-only mode')
+    parser.add_argument('--link-flag',action='append',default=[],
+                        help='extra compiler-driver flag for linking in build-only mode (repeatable)')
+    parser.add_argument('--shared-model',action='store_true',
+                        help='link the Darwin DUT as a library in build-only mode')
     args = parser.parse_args()
     require(0 < args.timeout <= 86400 and args.jobs > 0, 'invalid joint timeout or C++ job count')
     dut = args.dut_dir.resolve(strict=True)
     if args.build_only:
-        build_executor(args.executor_build.resolve(),dut,args.jobs)
+        build_executor(args.executor_build.resolve(),dut,args.jobs,args.shard_opt,args.link_flag,args.shared_model)
         return
     records = run(args.executor_build.resolve(strict=True),dut,args.timeout)
     print(f'Joint FlashSim run passed {len(records)} image oracles, actual driver retirement and acknowledged cleanup.')
