@@ -38,6 +38,7 @@ def write_sources(out):
         "void main() {\n"
         "  uint lane = gl_LocalInvocationID.x;\n"
         "  published[lane] = 0xa1000000u + lane;\n"
+        "  memoryBarrierShared();\n"
         "  barrier();\n"
         "  uint peer = atomicAdd(published[lane ^ 16u], 3u);\n"
         "  if ((lane & 1u) != 0u) {\n"
@@ -45,6 +46,7 @@ def write_sources(out):
         "  } else {\n"
         "    result.v[128u + lane] = peer ^ 7u;\n"
         "  }\n"
+        "  memoryBarrierShared();\n"
         "  barrier();\n"
         "  result.v[512u + lane] = published[lane];\n"
         "}\n")
