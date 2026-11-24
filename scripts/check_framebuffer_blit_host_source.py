@@ -68,6 +68,10 @@ def main():
         "scripts/native_frame_axi.hpp", "scripts/native_frame_fixture.hpp"]
     if (owner / 'scripts/owner_factory.hpp').is_file():
         owner_dependencies.append('scripts/owner_factory.hpp')
+    capture_source = (owner / "scripts/native_owner_capture.hpp").read_text()
+    for name in ("opengpu_native_binned_host_abi.h", "opengpu_protected_tessellation_joint_abi.h"):
+        if f'#include "../driver/{name}"' in capture_source:
+            owner_dependencies.append('driver/' + name)
     if args.sample_owner:
         files.insert(0, ROOT / 'scripts/native_framebuffer_blit_sample_driver.cpp')
         own_dependencies.append('scripts/native_framebuffer_blit_driver.cpp')

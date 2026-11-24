@@ -28,6 +28,8 @@ DEPENDENCIES = (
     'driver/gpu_abi.h',
     'driver/opengpu_formats.h',
     'driver/opengpu_shader_resources.h',
+    'driver/opengpu_native_binned_host_abi.h',
+    'driver/opengpu_protected_tessellation_joint_abi.h',
     'driver/opengpu_tessellation_uniform_abi.h',
 )
 

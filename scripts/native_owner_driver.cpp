@@ -23,35 +23,45 @@ int main(int argc,char **argv) {
   try {
     using namespace native_owner;
     const auto response_timeout=native_response_timeout();
-    const bool compute_probe=argc>1 && std::string(argv[1])=="--probe-compute-profile";
-    if(argc>1 && (std::string(argv[1])=="--probe-profile" || compute_probe)) {
-      require(argc==3,"usage: native_owner_driver --probe[-compute]-profile NEW_OUTPUT.json");
+    const std::string mode=argc>1?argv[1]:"";
+    const bool compute_probe=mode=="--probe-compute-profile";
+    const bool joint_probe=mode=="--probe-joint-profile";
+    if(mode=="--probe-profile" || compute_probe || joint_probe) {
+      require(argc==3,"usage: native_owner_driver --probe[-compute|-joint]-profile NEW_OUTPUT.json");
       require(!std::filesystem::exists(argv[2]),"profile output already exists");
       Memory memory;Simulation sim(argc,argv);sim.reset();Agent agent(memory);
       ReplayBus<Simulation> bus(sim,agent,100000);
-      const auto words=probe_profile(sim,agent,bus,compute_probe);
+      std::ostringstream observed;
+      if(joint_probe)joint_profile_json(observed,probe_joint_profile(sim,agent,bus));
+      else profile_json(observed,probe_profile(sim,agent,bus,compute_probe),compute_probe);
       std::ofstream output(argv[2],std::ios::binary);require(bool(output),"cannot create profile output");
-      profile_json(output,words,compute_probe);output.close();require(bool(output),"cannot write profile output");
+      output<<observed.str();output.close();require(bool(output),"cannot write profile output");
       sim.model->final();return 0;
     }
-    if(argc>1 && (std::string(argv[1])=="--active-series" || std::string(argv[1])=="--active-owner-series")) {
-      const bool cleanup=std::string(argv[1])=="--active-owner-series";
-      require(argc==6,"usage: native_owner_driver --active[-owner]-series UNION.memory NEW_OUTPUT_DIR SESSION_DIR COUNT");
+    const bool joint=mode=="--active-joint-owner-series";
+    if(mode=="--active-series" || mode=="--active-owner-series" || joint) {
+      const bool cleanup=mode!="--active-series";
+      require(argc==6,"usage: native_owner_driver --active[-owner|-joint-owner]-series UNION.memory NEW_OUTPUT_DIR SESSION_DIR COUNT");
       size_t used=0;const auto count=std::stoull(argv[5],&used);
-      require(used==std::string(argv[5]).size() && count>=2 && count<=0xffffffffu,"invalid active record count");
+      require(used==std::string(argv[5]).size() && count>=(joint?1u:2u) && count<=0xffffffffu,"invalid active record count");
       const std::filesystem::path output=argv[3],session=argv[4];
       require(std::filesystem::is_directory(session) && !std::filesystem::is_symlink(session),"invalid active session directory");
       require(!std::filesystem::exists(output),"owner replay output already exists");
       Memory memory=Memory::read(argv[2]);
       wait_input(session/"record-0.capture",session,response_timeout);
-      auto first=Capture::read((session/"record-0.capture").string(),true);
-      verify_readonly(memory,memory,first.writable);
-      require(std::filesystem::create_directory(output),"cannot create active output directory");
-      Simulation sim(argc,argv);sim.reset();Agent agent(memory);ReplayBus<Simulation> bus(sim,agent,100000);
-      PtePages pte;
-      active_records(sim,agent,bus,memory,output,session,first,count,std::cout,response_timeout,cleanup?&pte:nullptr);
-      if(cleanup)cleanup_records(sim,agent,bus,memory,session,pte,count,response_timeout);
-      sim.model->final();return 0;
+      const auto first_path=(session/"record-0.capture").string();
+      auto run=[&](const auto &first) {
+        verify_readonly(memory,memory,first.writable);
+        require(std::filesystem::create_directory(output),"cannot create active output directory");
+        Simulation sim(argc,argv);sim.reset();Agent agent(memory);ReplayBus<Simulation> bus(sim,agent,100000);
+        PtePages pte;
+        active_records(sim,agent,bus,memory,output,session,first,count,std::cout,response_timeout,cleanup?&pte:nullptr);
+        if(cleanup)cleanup_records(sim,agent,bus,memory,session,pte,count,response_timeout);
+        sim.model->final();
+      };
+      if(joint)run(JointCapture::read(first_path));
+      else run(Capture::read(first_path,true));
+      return 0;
     }
     const bool series=argc>1 && std::string(argv[1])=="--series";
     require(series?argc>=6:argc==4,

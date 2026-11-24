@@ -11,6 +11,7 @@
 #include "../opengpu_storage_command.h"
 #include "../opengpu_shader_image_command.h"
 #include "native_mmio_fault_under_test.inc"
+#include "native_mmio_joint_scope_under_test.inc"
 struct opengpu_vm;
 struct opengpu_buffer;
 static int native_mmio_wait_idle(struct opengpu_device *);
@@ -31,6 +32,7 @@ static void native_mmio_dma_wmb(void);
     bool reset_pending,aborting; \
     struct dma_fence *unified_fence,*active_fence; \
     struct opengpu_tessellation_joint_completion *joint_pending_completion; \
+    struct opengpu_protected_tessellation_joint_profile joint_tessellation; \
     u32 unified_command_id,unified_opcode,unified_completion_delay_ms,active_completion_delay_ms; \
     u64 unified_expected_bytes,fence_context,fence_seqno,regs_size; \
     u32 job_seqno; \
@@ -102,6 +104,12 @@ static u32 opengpu_reg_read(struct opengpu_device *gpu,u32 address)
             GPU_UCMD_STATUS_OVERFLOW|GPU_UCMD_STATUS_RESET_REJECTED;}
     native_mmio_action(m,kind,address,value&mask,mask);return value;
 }
+static u32 native_mmio_joint_detail_address(unsigned word)
+{
+    const unsigned head=OPENGPU_TESS_JOINT_HOST_COMPLETION_HEAD_WORDS;
+    return word<head?OPENGPU_TESS_JOINT_HOST_COMPLETION_HEAD_BASE+4u*word:
+        OPENGPU_TESS_JOINT_HOST_COMPLETION_TAIL_BASE+4u*(word-head);
+}
 static void opengpu_reg_write(struct opengpu_device *gpu,u32 address,u32 value)
 {
     struct native_mmio_state *m=native_mmio_state(gpu);native_mmio_action(m,1,address,value,0);
@@ -116,7 +124,12 @@ static void opengpu_reg_write(struct opengpu_device *gpu,u32 address,u32 value)
             m->regs[GPU_REG_UCMD_COMPLETION/4]=0x8000u|(opcode<<8)|m->regs[GPU_REG_UCMD_ID/4];
             m->regs[GPU_REG_UCMD_COMPLETION_BYTES_LO/4]=m->regs[GPU_REG_UCMD_BYTES/4];
             m->regs[GPU_REG_UCMD_COMPLETION_BYTES_HI/4]=0;
-        }else{assert(opcode==GPU_UCMD_OP_NATIVE_BINNED_RENDER && !m->native_waiting);
+        }else{
+            assert(!m->native_waiting);
+            if(opcode==OPENGPU_TESS_JOINT_HOST_OPCODE){
+                assert(gpu->hw.joint_pending_completion &&
+                    (m->regs[GPU_REG_UCMD_PATTERN/4]&~7u)==OPENGPU_TESS_JOINT_HOST_COMMAND_TAG);
+            }else assert(opcode==GPU_UCMD_OP_NATIVE_BINNED_RENDER && !gpu->hw.joint_pending_completion);
             m->native_waiting=true;++m->native_submissions;m->regs[GPU_REG_UCMD_STATUS/4]=GPU_UCMD_STATUS_VM_BUSY;}
     }else if(address==GPU_REG_UCMD_COMPLETION_POP){
         assert(value==1 && (m->regs[GPU_REG_UCMD_STATUS/4]&GPU_UCMD_STATUS_COMPLETION));
@@ -124,7 +137,8 @@ static void opengpu_reg_write(struct opengpu_device *gpu,u32 address,u32 value)
         m->regs[GPU_REG_UCMD_STATUS/4]=GPU_UCMD_STATUS_READY;
         m->regs[GPU_REG_UCMD_COMPLETION/4]=0;
         m->regs[GPU_REG_UCMD_COMPLETION_BYTES_LO/4]=m->regs[GPU_REG_UCMD_COMPLETION_BYTES_HI/4]=0;
-        for(unsigned n=0;n<12;n++)m->regs[0x180/4+n]=0;
+        for(unsigned n=0;n<OPENGPU_TESS_JOINT_HOST_COMPLETION_WORDS;n++)
+            m->regs[native_mmio_joint_detail_address(n)/4]=0;
         m->native_waiting=false;m->receipt_loaded=false;
     }else if(address==GPU_REG_IRQ){
         m->regs[address/4]=(m->regs[address/4]&~(value&6u)&~1u)|(value&1u);
@@ -211,6 +225,10 @@ static int native_mmio_flush_asid(struct opengpu_device *gpu,u32 asid)
 #define opengpu_hw_invalidate_buffer_locked native_mmio_invalidate
 #include "native_mmio_invalidate_under_test.inc"
 #undef opengpu_hw_invalidate_buffer_locked
+#include "native_mmio_joint_profile_under_test.inc"
+#define opengpu_hw_wait_idle_locked native_mmio_wait_idle
+#include "native_mmio_joint_submit_under_test.inc"
+#undef opengpu_hw_wait_idle_locked
 #pragma GCC diagnostic pop
 static void native_mmio_progress(struct opengpu_device *gpu)
 {struct native_mmio_state *m=native_mmio_state(gpu);
@@ -444,15 +462,48 @@ int opengpu_hw_native_binned_async(struct opengpu_device *,struct opengpu_privat
 #endif
 _Static_assert(OPENGPU_NATIVE_CAPTURE_DISCOVERY_WORDS<=OPENGPU_NATIVE_PROFILE_STORAGE_WORDS,
     "capture exceeds private profile storage");
+static u32 native_mmio_success_completion(u32 command_id,bool joint)
+{
+    u32 opcode=joint?OPENGPU_TESS_JOINT_HOST_OPCODE:GPU_UCMD_OP_NATIVE_BINNED_RENDER;
+    return command_id|((opcode&7u)<<8)|((opcode&8u)<<13)|(1u<<15);
+}
+static void native_mmio_capture_expect(FILE *file,u32 address,u32 mask,u32 value)
+{
+    native_mmio_le(file,address,4);
+    native_mmio_le(file,mask,4);
+    native_mmio_le(file,value,4);
+}
+static void native_mmio_capture_joint_detail(FILE *file,const struct native_kernel_session *s,
+    const struct native_kernel_record *record)
+{
+    const u32 expected[] = {
+        OPENGPU_TESS_JOINT_HOST_COMPLETION_MAGIC,
+        record->joint_sequence_count?0u:0x40u,0,
+        s->gpu.hw.native_context,s->gpu.hw.native_pass,s->gpu.hw.native_generation,
+        record->joint_directory_count,record->joint_directory_count,
+    };
+    const unsigned known=sizeof(expected)/sizeof(expected[0]);
+    /* The device supplies the patch, primitive and physical byte counters.
+     * Record every word for stability, retirement and the separate oracle. */
+    for(unsigned i=0;i<OPENGPU_TESS_JOINT_HOST_COMPLETION_WORDS;++i)
+        native_mmio_capture_expect(file,native_mmio_joint_detail_address(i),
+            i<known?UINT32_MAX:0,i<known?expected[i]:0);
+}
 int native_kernel_capture(struct native_kernel_session *s,unsigned index,const char *path,u64 budget,u32 hold)
 {
     struct native_kernel_record *r=native_session_record(s,index);
     struct opengpu_sched_job *job=native_mmio_record_job(s,index);
     if(!r || !job || !s->profile || r->captured || r->freed || !budget || budget>1000000000 || hold<8 || hold>4096)return -EINVAL;
+    bool joint=job->type==OPENGPU_SCHED_PROTECTED_TESSELLATION && job->joint_report;
+    if(joint!=s->profile->joint.available || (!joint && job->type!=OPENGPU_SCHED_NATIVE_BINNED))return -EINVAL;
     struct native_mmio_state *m=native_mmio_state(&s->gpu);
     if(!m->exported || m->native_waiting || m->allocation_signature!=native_mmio_allocation_signature())return -EBUSY;
     for(struct native_kernel_record *old=s->records;old && old!=r;old=old->next)if(!old->verified)return -EBUSY;
     for(struct fixture_dependency *d=job->base.dependencies;d;d=d->next)if(!dma_fence_is_signaled(d->fence))return -EBUSY;
+    if(joint && (opengpu_private_snapshot_read32(job->native_owner,job->native_job_segment,
+        4u*OPENGPU_TESS_JOINT_SEQUENCE_COUNT_WORD,&r->joint_sequence_count) ||
+        opengpu_private_snapshot_read32(job->native_owner,job->native_job_segment,
+        4u*OPENGPU_TESS_JOINT_DIRECTORY_COUNT_WORD,&r->joint_directory_count)))return -EINVAL;
     struct native_mmio_range *ranges=NULL;size_t count=0;
     for(struct snapshot_resource *resource=job->native_owner->resources;resource;resource=resource->next)
         for(struct snapshot_resource_map *map=resource->maps;map;map=map->next)if(map->writable){
@@ -469,26 +520,35 @@ int native_kernel_capture(struct native_kernel_session *s,unsigned index,const c
     char *temporary=NULL;FILE *f=native_mmio_file(path,&temporary);if(!f){free(ranges);return -EIO;}
     running=s;copy_gpu=&s->gpu;
     if(!m->native_submissions)opengpu_hw_enable_irqs(&s->gpu);
-    int error=opengpu_hw_native_binned_async(&s->gpu,job->native_owner,job->context,job->native_job_segment,&r->hardware);
+    int error=0;
+    if(joint){
+        struct dma_fence *fence=opengpu_protected_tessellation_job_run(job);
+        if(IS_ERR(fence))error=PTR_ERR(fence);
+        else r->hardware=fence;
+    }else error=opengpu_hw_native_binned_async(&s->gpu,job->native_owner,job->context,job->native_job_segment,&r->hardware);
     if(error){fclose(f);remove(temporary);free(temporary);free(ranges);return error;}
     assert(m->native_waiting && r->hardware && !dma_fence_is_signaled(r->hardware));
     if(m->allocation_signature!=native_mmio_allocation_signature()){fclose(f);remove(temporary);free(temporary);free(ranges);return -EIO;}
-    fwrite(OPENGPU_NATIVE_CAPTURE_MAGIC,1,8,f);native_mmio_le(f,budget,8);native_mmio_le(f,hold,4);
-    native_mmio_le(f,s->gpu.hw.unified_command_id,4);native_mmio_le(f,OPENGPU_NATIVE_CAPTURE_DISCOVERY_WORDS,4);
-    for(unsigned i=0;i<OPENGPU_NATIVE_CAPTURE_DISCOVERY_WORDS;i++){
-        native_mmio_le(f,OPENGPU_NATIVE_CAPTURE_WORD(s,i).address,4);native_mmio_le(f,OPENGPU_NATIVE_CAPTURE_WORD(s,i).value,4);
+    fwrite(joint?"OGCAP003":OPENGPU_NATIVE_CAPTURE_MAGIC,1,8,f);
+    native_mmio_le(f,budget,8);native_mmio_le(f,hold,4);
+    unsigned discovery_words=joint?s->profile->word_count:OPENGPU_NATIVE_CAPTURE_DISCOVERY_WORDS;
+    native_mmio_le(f,s->gpu.hw.unified_command_id,4);native_mmio_le(f,discovery_words,4);
+    for(unsigned i=0;i<discovery_words;i++){
+        struct native_kernel_profile_word word=joint?s->profile->words[i]:OPENGPU_NATIVE_CAPTURE_WORD(s,i);
+        native_mmio_le(f,word.address,4);native_mmio_le(f,word.value,4);
     }
     native_mmio_le(f,merged,4);for(size_t i=0;i<merged;i++){
         native_mmio_le(f,ranges[i].first,8);native_mmio_le(f,ranges[i].end,8);
     }free(ranges);
     native_mmio_le(f,m->count-m->start,4);native_mmio_actions(f,m,m->start);
-    native_mmio_le(f,13,4);
-    native_mmio_le(f,GPU_REG_UCMD_COMPLETION,4);native_mmio_le(f,UINT32_MAX,4);
-    native_mmio_le(f,0x8700u|s->gpu.hw.unified_command_id,4);
-    for(unsigned i=0;i<12;i++){
+    native_mmio_le(f,joint?1u+OPENGPU_TESS_JOINT_HOST_COMPLETION_WORDS:13u,4);
+    native_mmio_capture_expect(f,GPU_REG_UCMD_COMPLETION,UINT32_MAX,
+        native_mmio_success_completion(s->gpu.hw.unified_command_id,joint));
+    if(joint)native_mmio_capture_joint_detail(f,s,r);
+    else for(unsigned i=0;i<12;i++){
         u32 expected=i==0?OPENGPU_NATIVE_BINNED_COMPLETION_MAGIC:
             i==6?s->gpu.hw.native_context:i==7?s->gpu.hw.native_pass:i==8?s->gpu.hw.native_generation:0;
-        native_mmio_le(f,0x180+4*i,4);native_mmio_le(f,(i==2||i==3)?0:UINT32_MAX,4);native_mmio_le(f,expected,4);
+        native_mmio_capture_expect(f,0x180+4*i,(i==2||i==3)?0:UINT32_MAX,expected);
     }
     native_mmio_le(f,0,4);error=native_mmio_close(f,path,temporary);
     if(!error){r->captured=true;m->start=m->count;}return error;
@@ -497,11 +557,21 @@ int native_kernel_drain_held(struct native_kernel_session *s,unsigned index,
     const struct native_kernel_held_receipt *held,const char *path)
 {
     struct native_kernel_record *r=native_session_record(s,index);struct opengpu_native_completion decoded;
+    bool joint=r && r->job && r->job->joint_report;
     if(!r || !r->job || !held || !r->captured || r->drained || r->freed || held->record_index!=index ||
-        held->command_id!=s->gpu.hw.unified_command_id || held->completion!=(0x8700u|held->command_id) ||
+        held->command_id!=s->gpu.hw.unified_command_id ||
+        held->completion!=native_mmio_success_completion(held->command_id,joint) ||
         !(held->held_status&GPU_UCMD_STATUS_COMPLETION) || held->held_irq!=(GPU_IRQ_ENABLE|GPU_IRQ_PENDING) ||
-        held->held_irq_asserted!=1 || !r->hardware || dma_fence_is_signaled(r->hardware) ||
-        s->gpu.hw.native_pending_owner!=r->job->native_owner ||
+        held->held_irq_asserted!=1 || !r->hardware || dma_fence_is_signaled(r->hardware))return -EINVAL;
+    if(joint){
+        const u32 *words=held->gnz2;
+        if(s->gpu.hw.joint_pending_completion!=r->job->joint_report ||
+            (held->append_read_bytes&63u) || words[0]!=OPENGPU_TESS_JOINT_HOST_COMPLETION_MAGIC ||
+            words[1]!=(r->joint_sequence_count?0u:0x40u) || words[2] ||
+            words[3]!=s->gpu.hw.native_context || words[4]!=s->gpu.hw.native_pass ||
+            words[5]!=s->gpu.hw.native_generation || words[6]!=r->joint_directory_count ||
+            words[7]!=r->joint_directory_count)return -EINVAL;
+    }else if(s->gpu.hw.native_pending_owner!=r->job->native_owner ||
         !opengpu_native_completion_decode(held->gnx,12,0,held->append_read_bytes,
             s->gpu.hw.native_context,s->gpu.hw.native_pass,s->gpu.hw.native_generation,&decoded))return -EINVAL;
     struct native_mmio_state *m=native_mmio_state(&s->gpu);
@@ -512,13 +582,16 @@ int native_kernel_drain_held(struct native_kernel_session *s,unsigned index,
     m->regs[GPU_REG_IRQ/4]=held->held_irq;m->regs[GPU_REG_UCMD_COMPLETION/4]=held->completion;
     m->regs[GPU_REG_UCMD_COMPLETION_BYTES_LO/4]=(u32)held->append_read_bytes;
     m->regs[GPU_REG_UCMD_COMPLETION_BYTES_HI/4]=(u32)(held->append_read_bytes>>32);
-    for(unsigned i=0;i<12;i++)m->regs[0x180/4+i]=held->gnx[i];
+    if(joint)for(unsigned i=0;i<OPENGPU_TESS_JOINT_HOST_COMPLETION_WORDS;++i)
+        m->regs[native_mmio_joint_detail_address(i)/4]=held->gnz2[i];
+    else for(unsigned i=0;i<12;i++)m->regs[0x180/4+i]=held->gnx[i];
     m->receipt_loaded=true;
     opengpu_irq_handler(0,&s->gpu);
-    if(!dma_fence_is_signaled(r->hardware) || r->hardware->error || s->gpu.hw.native_pending_owner || m->native_waiting){
+    if(!dma_fence_is_signaled(r->hardware) || r->hardware->error || s->gpu.hw.native_pending_owner ||
+        s->gpu.hw.joint_pending_completion || m->native_waiting || (joint && !r->job->joint_report->valid)){
         fclose(f);remove(temporary);free(temporary);return -EIO;
     }
-    fwrite("OGRTR001",1,8,f);native_mmio_le(f,m->count-start,4);native_mmio_actions(f,m,start);
+    fwrite(joint?"OGRTR002":"OGRTR001",1,8,f);native_mmio_le(f,m->count-start,4);native_mmio_actions(f,m,start);
     int error=native_mmio_close(f,path,temporary);if(!error){r->held=*held;r->drained=true;m->start=m->count;}
     return error;
 }

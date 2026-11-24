@@ -12,6 +12,9 @@ struct native_kernel_profile_word { uint32_t address,value; };
 struct native_kernel_profile *native_kernel_profile_create(
     const struct native_kernel_profile_word *words,size_t count,
     const struct native_kernel_profile_word *registers,size_t register_count);
+struct native_kernel_profile *native_kernel_joint_profile_create(
+    const struct native_kernel_profile_word *words,size_t count,
+    const struct native_kernel_profile_word *registers,size_t register_count);
 void native_kernel_profile_destroy(struct native_kernel_profile *);
 int native_kernel_profile_query(const struct native_kernel_profile *,uint32_t param,uint64_t *output);
 struct native_kernel_session *native_kernel_session_create_profile(uint32_t context_id,
@@ -26,10 +29,16 @@ int native_kernel_original_refcount(struct native_kernel_session *,uint32_t hand
 int native_kernel_original_physical(struct native_kernel_session *,uint32_t handle,uint64_t *physical,uint64_t *bytes);
 int native_kernel_submit(struct native_kernel_session *,struct drm_opengpu_submit_native_binned *,
     native_kernel_source_observer observer,void *record);
+int native_kernel_submit_joint(struct native_kernel_session *,struct drm_opengpu_submit_tessellation_joint *,
+    native_kernel_source_observer observer,void *record);
 /* Active qualification has two receipt phases. Fields are decoded explicitly
  * from LE wire records; C structure padding is never serialized. */
 struct native_kernel_held_receipt {
-    uint32_t record_index,command_id,completion,gnx[12];
+    uint32_t record_index,command_id,completion;
+    union {
+        uint32_t gnx[12];
+        uint32_t gnz2[16];
+    };
     uint64_t append_read_bytes;
     uint32_t held_legacy_status,held_status,held_irq,held_irq_asserted;
 };

@@ -28,6 +28,8 @@ def write_bodies(out):
         'flush_asid':'int opengpu_hw_flush_tlb_asid(',
         'submit':'static int opengpu_hw_unified_submit_locked(',
         'invalidate':'int opengpu_hw_invalidate_buffer_locked(',
+        'joint_profile':'int opengpu_hw_protected_tessellation_joint_profile(',
+        'joint_submit':'int opengpu_hw_protected_tessellation_joint_async(',
     }
     for name,start in functions.items():
         first=hw.index(start)
@@ -43,6 +45,9 @@ def write_bodies(out):
     device=(ROOT/'driver/opengpu_device.h').read_text();first=device.index('struct opengpu_fault_snapshot {')
     last=device.index('\n};',first)+3
     (out/'native_mmio_fault_under_test.inc').write_text(device[first:last])
+    first=device.index('struct opengpu_tessellation_scope {')
+    last=device.index('\n};',first)+3
+    (out/'native_mmio_joint_scope_under_test.inc').write_text(device[first:last])
 
 def check_capture_parser(out,executor_root,env):
     # Use the same parser and physical-memory view as the real DUT executor.
@@ -63,6 +68,46 @@ static uint64_t translate(const Memory &m,uint32_t satp,uint32_t va,bool executa
   require((leaf&15)==(executable?11u:3u),"private leaf is not exact R/NX or R/X without W");
   return (uint64_t(leaf>>10)<<12)|(va&4095);
 }
+#ifdef OPENGPU_TEST_JOINT_CAPTURE
+static void joint_capture(const std::filesystem::path &base) {
+  auto memory=Memory::read((base/"joint.memory").string());
+  auto capture=JointCapture::read((base/"joint.capture").string());
+  auto retirement=Retirement::read((base/"joint.retire").string(),true);
+  auto rejects=[](auto run) {
+    try {run();}catch(const std::runtime_error &) {return;}
+    throw std::runtime_error("invalid joint capture or retirement was accepted");
+  };
+  rejects([&]{Capture::read((base/"joint.capture").string(),true);});
+  rejects([&]{Retirement::read((base/"joint.retire").string());});
+  PtePages pte;pte.observe(memory,capture);
+  verify_readonly(memory,memory,capture.writable);
+  std::map<uint32_t,uint32_t> regs;
+  for(const auto &action:capture.trace)if(action.kind==Kind::write)regs[action.address]=action.value;
+  auto va=regs.at(GPU_REG_UCMD_SOURCE),satp=regs.at(GPU_REG_UCMD_VECTOR_SATP);
+  auto word=[&](uint32_t address){return pa_word(memory,translate(memory,satp,address));};
+  require(word(va)==0x474e5105 && word(va+17*4)==1 && word(va+31*4)==1 &&
+    regs.at(GPU_REG_UCMD_PATTERN)==0x474a0102,"joint command lost its actual GNQ owner or triangle tag");
+  require(word(word(va+16*4))==0x474e5408,"joint command lost its original private GNT8");
+  std::map<uint32_t,uint32_t> before_pop;
+  for(const auto &action:retirement.actions) {
+    if(action.kind==Kind::write && action.address==GPU_REG_UCMD_COMPLETION_POP)break;
+    if(action.kind==Kind::check)before_pop[action.address]=action.value;
+  }
+  require(before_pop.at(0x544)==2 && before_pop.at(0x54c)==3 &&
+    before_pop.at(GPU_REG_UCMD_COMPLETION_BYTES_HI)==1,
+    "driver retirement lost observed high words before POP");
+  auto foreign=capture;
+  for(auto &action:foreign.trace)if(action.kind==Kind::write && action.address==GPU_REG_UCMD_PATTERN &&
+    action.value==0x474a0102)action.value|=4;
+  rejects([&]{foreign.validate();});
+  foreign=capture;
+  for(auto &check:foreign.checks)if(check.address==joint_detail_address(5))++check.expected;
+  rejects([&]{foreign.validate();});
+  retirement.actions.erase(std::remove_if(retirement.actions.begin(),retirement.actions.end(),
+    [](const auto &a){return a.address==0x54c;}),retirement.actions.end());
+  rejects([&]{retirement.validate(true);});
+}
+#endif
 int main(int argc,char **argv) {
   require(argc==2,"missing actual C fixture directory");const std::filesystem::path base=argv[1];
   auto memory=Memory::read((base/"union.memory").string());std::set<uint32_t> ids,roots;PtePages pte;
@@ -97,10 +142,14 @@ int main(int argc,char **argv) {
     for(const auto &a:batch.actions)if(a.kind==Kind::pte_clear){pte.clear(memory,a);++cleared;}
   }
   require(cleared,"actual cleanup cleared no PTEs");pte.revoked(memory);
+#ifdef OPENGPU_TEST_JOINT_CAPTURE
+  joint_capture(base);
+#endif
   std::cout<<"actual C capture parser/physical owner checks: PASS\n";
 }
 ''')
-    subprocess.run(shlex.split(os.environ.get('CXX','c++'))+['-std=c++17','-O1','-Wall','-Wextra','-Werror',
+    local=['-DOPENGPU_TEST_JOINT_CAPTURE'] if executor_root==ROOT else []
+    subprocess.run(shlex.split(os.environ.get('CXX','c++'))+local+['-std=c++17','-O1','-Wall','-Wextra','-Werror',
         '-I'+str(executor_root/'scripts'),str(source),'-o',str(out/'check')],env=env,check=True)
     subprocess.run([str(out/'check'),str(out)],env=env,check=True)
 

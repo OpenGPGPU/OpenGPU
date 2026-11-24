@@ -102,6 +102,8 @@ struct RecordResult {
   uint64_t cycles=0, read_bytes=0, write_bytes=0, append_read_bytes=0;
   uint32_t completion=0, held_legacy_status=0, held_status=0, held_irq=0, retired_status=0, retired_irq=0;
   std::array<uint32_t,12> gnx{};
+  std::array<uint32_t,OPENGPU_TESS_JOINT_HOST_COMPLETION_WORDS> gnz2{};
+  bool joint_completion=false;
   bool held_irq_asserted=false, retired_irq_asserted=false, external_drained=false;
 };
 struct ProfileObservation {
@@ -179,6 +181,34 @@ inline void profile_json(std::ostream &out,const ProfileObservation &profile,boo
   out<<"],\"resetCount\":1,\"sourceQualificationRequired\":true,\"gpuExecution\":false,"
     "\"clockQualified\":false,\"fpsQualified\":false}\n";
 }
+template<class Sim>
+std::vector<Command> probe_joint_profile(Sim &sim,Agent &agent,ReplayBus<Sim> &bus) {
+  require(agent.drained() && !sim.model->io_m_irq,"joint profile probe requires idle memory and IRQ");
+  const auto initial=agent.traffic;
+  const auto id=bus.read(GPU_REG_ID),caps=bus.read(GPU_REG_CAPABILITIES);
+  require((id&0xffff0000u)==0x47550000u && (id&0xffffu)>=GPU_ABI_COMPUTE_RESOURCE_VERSION &&
+    (caps&required_owner_caps)==required_owner_caps && bus.read(0x360)==0x47435201 &&
+    bus.read(0x364)==16 && bus.read(0x368)==JointCapture::resource_flags,
+    "actual DUT lacks the protected joint discovery guarantee");
+  std::vector<Command> words;
+  for(const auto address:JointCapture::discovery_addresses())words.push_back({address,bus.read(address)});
+  JointCapture::validate_discovery(words);
+  require(agent.drained() && !sim.model->io_m_irq &&
+    !(bus.read(GPU_REG_UCMD_STATUS)&GPU_UCMD_STATUS_COMPLETION),"joint profile probe encountered active work");
+  traffic_unchanged(initial,agent.traffic);
+  return words;
+}
+inline void joint_profile_json(std::ostream &out,const std::vector<Command> &words) {
+  JointCapture::validate_discovery(words);
+  const auto boundary=words.size()-JointCapture::auxiliary_words;
+  out<<"{\"schema\":\"opengpu-protected-joint-owner-profile-v1\",\"words\":[";
+  for(size_t n=0;n<words.size();++n) {
+    if(n==boundary)out<<"],\"registers\":[";
+    else if(n)out<<',';
+    out<<"{\"address\":"<<words[n].address<<",\"value\":"<<words[n].value<<'}';
+  }
+  out<<"],\"resetCount\":1,\"gpuExecution\":false}\n";
+}
 struct HeldRecord {
   RecordResult result;
   Memory initial;
@@ -196,9 +226,12 @@ HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
   bus.begin_record(capture.max_cycles);
   // GCR's explicit protected-source presence guarantee must be checked before
   // probing GUC/GSE/GNC. A standalone GNP host need not map those windows.
-  const auto profile=CaptureType::profile();
-  for(unsigned n=0;n<16;++n)
-    require(bus.read(profile[n].address)==profile[n].value,"actual DUT lacks the captured source profile");
+  for(uint32_t address=0x360;address<0x3a0;address+=4) {
+    auto word=std::find_if(capture.discovery.begin(),capture.discovery.end(),
+      [address](const auto &item){return item.address==address;});
+    require(word!=capture.discovery.end() && bus.read(address)==word->value,
+      "actual DUT lacks the captured source profile");
+  }
   for(const auto &r:capture.discovery) if(r.address<0x360 || r.address>=0x3a0)
     require(bus.read(r.address)==r.value,"actual DUT differs from captured discovery");
   require(!(bus.read(GPU_REG_UCMD_STATUS)&GPU_UCMD_STATUS_COMPLETION),
@@ -213,6 +246,7 @@ HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
   const auto completed=agent.traffic;
   const auto completion=bus.read(GPU_REG_UCMD_COMPLETION);
   auto &result=held_record.result;result.completion=completion;
+  result.joint_completion=CaptureType::joint_completion;
   result.held_legacy_status=bus.read(GPU_REG_STATUS);
   result.held_status=bus.read(GPU_REG_UCMD_STATUS);
   result.held_irq=bus.read(GPU_REG_IRQ);result.held_irq_asserted=bool(sim.model->io_m_irq);
@@ -233,12 +267,16 @@ HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
     const auto value=bus.read(c.address);
     if((value&c.mask)!=c.expected) {
       std::ostringstream message;
-      message<<"native completion/GNX check differs: address=0x"<<std::hex<<c.address
+      message<<(CaptureType::joint_completion?"joint completion/GNZ2 check differs: address=0x":
+        "native completion/GNX check differs: address=0x")<<std::hex<<c.address
         <<" actual=0x"<<value<<" mask=0x"<<c.mask<<" expected=0x"<<c.expected;
       throw std::runtime_error(message.str());
     }
     held.push_back(value);
-    if(c.address>=0x180 && c.address<0x1b0)result.gnx[(c.address-0x180)/4]=value;
+    if constexpr(CaptureType::joint_completion) {
+      for(unsigned word=0;word<result.gnz2.size();++word)
+        if(c.address==joint_detail_address(word))result.gnz2[word]=value;
+    } else if(c.address>=0x180 && c.address<0x1b0)result.gnx[(c.address-0x180)/4]=value;
   }
   for(uint32_t n=0;n<capture.hold_cycles;++n) {
     require(sim.model->io_m_irq,"native completion IRQ disappeared while held");bus.step();
@@ -246,7 +284,8 @@ HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
   }
   require(bus.read(GPU_REG_UCMD_COMPLETION)==completion,"held native completion changed");
   for(size_t n=0;n<capture.checks.size();++n)
-    require(bus.read(capture.checks[n].address)==held[n],"held native completion/GNX changed");
+    require(bus.read(capture.checks[n].address)==held[n],
+      CaptureType::joint_completion?"held joint completion/GNZ2 changed":"held native completion/GNX changed");
   require(bus.read(GPU_REG_UCMD_STATUS)==result.held_status && bus.read(GPU_REG_IRQ)==result.held_irq &&
     bus.read(GPU_REG_UCMD_COMPLETION_BYTES_LO)==append_lo && bus.read(GPU_REG_UCMD_COMPLETION_BYTES_HI)==append_hi,
     "held native completion status, IRQ or append telemetry changed");
@@ -265,7 +304,9 @@ RecordResult retire_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
   require(sim.model->io_m_irq && agent.drained(),"driver retirement lost held completion ownership");
   traffic_unchanged(held_record.completed,agent.traffic);
   auto &result=held_record.result;
-  if(retirement){retirement->validate();for(const auto &a:retirement->actions)bus.action(a);}
+  if constexpr(CaptureType::joint_completion)
+    require(retirement,"protected joint owner requires an observed driver retirement");
+  if(retirement){retirement->validate(CaptureType::joint_completion);for(const auto &a:retirement->actions)bus.action(a);}
   else {capture.validate();for(const auto &w:capture.finish)bus.write(w.address,w.value);}
   result.retired_status=bus.read(GPU_REG_UCMD_STATUS);
   require(!(result.retired_status&GPU_UCMD_STATUS_COMPLETION),"native completion POP did not retire the slot");
@@ -286,11 +327,20 @@ RecordResult replay_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &mem
   auto held=hold_record(sim,agent,bus,memory,capture);
   return retire_record(sim,agent,bus,memory,capture,held);
 }
+inline void completion_detail_json(std::ostream &out,const RecordResult &result) {
+  out<<(result.joint_completion?",\"gnz2\":[":",\"gnx\":[");
+  if(result.joint_completion) {
+    for(size_t n=0;n<result.gnz2.size();++n)out<<(n?",":"")<<result.gnz2[n];
+  }else {
+    for(size_t n=0;n<result.gnx.size();++n)out<<(n?",":"")<<result.gnx[n];
+  }
+  out<<']';
+}
 inline void held_json(std::ostream &out,const RecordResult &r,size_t index,uint32_t command_id) {
   out<<"{\"phase\":\"held\",\"record\":"<<index<<",\"commandId\":"<<command_id
-    <<",\"completion\":"<<r.completion<<",\"gnx\":[";
-  for(size_t n=0;n<r.gnx.size();++n)out<<(n?",":"")<<r.gnx[n];
-  out<<"],\"appendReadBytes\":"<<r.append_read_bytes
+    <<",\"completion\":"<<r.completion;
+  completion_detail_json(out,r);
+  out<<(r.joint_completion?",\"metadataReadBytes\":":",\"appendReadBytes\":")<<r.append_read_bytes
     <<",\"heldLegacyStatus\":"<<r.held_legacy_status<<",\"heldStatus\":"<<r.held_status<<",\"heldIrq\":"<<r.held_irq
     <<",\"heldIrqAsserted\":"<<(r.held_irq_asserted?"true":"false")
     <<",\"heldCompletionDrained\":"<<(r.external_drained?"true":"false")
@@ -300,9 +350,9 @@ inline void report_record(const RecordResult &r,size_t index,uint32_t command_id
   out<<"{\"phase\":\"retired\",\"ownerReplay\":true,\"record\":"<<index<<",\"commandId\":"<<command_id
     <<",\"serviceCycles\":"<<r.cycles<<",\"cumulativeServiceCycles\":"<<cycles
     <<",\"readBusBytes\":"<<r.read_bytes<<",\"writeBusBytes\":"<<r.write_bytes
-    <<",\"completion\":"<<r.completion<<",\"gnx\":[";
-  for(size_t n=0;n<r.gnx.size();++n)out<<(n?",":"")<<r.gnx[n];
-  out<<"],\"appendReadBytes\":"<<r.append_read_bytes
+    <<",\"completion\":"<<r.completion;
+  completion_detail_json(out,r);
+  out<<(r.joint_completion?",\"metadataReadBytes\":":",\"appendReadBytes\":")<<r.append_read_bytes
     <<",\"heldLegacyStatus\":"<<r.held_legacy_status<<",\"heldStatus\":"<<r.held_status<<",\"heldIrq\":"<<r.held_irq
     <<",\"heldIrqAsserted\":"<<(r.held_irq_asserted?"true":"false")
     <<",\"retiredStatus\":"<<r.retired_status<<",\"retiredIrq\":"<<r.retired_irq
@@ -342,22 +392,28 @@ inline void match_profile(const Capture &capture,const ProfileObservation &profi
     require(at!=words.end() && at->second==word.value,"active capture differs from actual probe identity/quota");
   }
 }
-template<class Sim>
+template<class Sim,class CaptureType>
 void active_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
     const std::filesystem::path &output,const std::filesystem::path &session,
-    const Capture &first,uint64_t count,std::ostream &report=std::cout,
+    const CaptureType &first,uint64_t count,std::ostream &report=std::cout,
     std::chrono::milliseconds response_timeout=std::chrono::minutes(5),PtePages *pte=nullptr) {
-  const auto profile=probe_profile(sim,agent,bus);
+  ProfileObservation profile;
+  if constexpr(!CaptureType::joint_completion)profile=probe_profile(sim,agent,bus);
   for(uint64_t n=0;n<count;n++) {
     const auto stem="record-"+std::to_string(n);
     if(n)wait_input(session/(stem+".capture"),session,response_timeout);
-    const auto capture=n?Capture::read((session/(stem+".capture")).string(),true):first;
-    match_profile(capture,profile);verify_readonly(memory,memory,capture.writable);
+    const auto capture=n?CaptureType::read((session/(stem+".capture")).string(),true):first;
+    if constexpr(CaptureType::joint_completion) {
+      require(std::equal(first.discovery.begin(),first.discovery.end(),capture.discovery.begin(),capture.discovery.end(),
+        [](const auto &a,const auto &b){return a.address==b.address && a.value==b.value;}),
+        "joint capture changed the bound device discovery within a session");
+    }else match_profile(capture,profile);
+    verify_readonly(memory,memory,capture.writable);
     if(pte)pte->observe(memory,capture);
     auto held=hold_record(sim,agent,bus,memory,capture,true);
     atomic_json(session/(stem+".held.json"),[&](auto &out){held_json(out,held.result,n,capture.command_id);});
     wait_input(session/(stem+".retire"),session,response_timeout);
-    const auto retirement=Retirement::read((session/(stem+".retire")).string());
+    const auto retirement=Retirement::read((session/(stem+".retire")).string(),CaptureType::joint_completion);
     const auto result=retire_record(sim,agent,bus,memory,capture,held,&retirement);
     memory.write((output/(stem+".memory")).string());
     atomic_json(session/(stem+".retired.json"),[&](auto &out){report_record(result,n,capture.command_id,bus.cycles,out);});

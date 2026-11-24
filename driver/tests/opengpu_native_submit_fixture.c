@@ -36,6 +36,10 @@ static void native_fixture_progress(struct opengpu_device *);
 #include "../opengpu_native_frame.h"
 #include "../opengpu_native_sources_features.h"
 #include "../opengpu_native_advanced_blend_features.h"
+#ifdef OPENGPU_NATIVE_MMIO
+#include "../opengpu_compute_features.h"
+#include "../opengpu_native_preflight_features.h"
+#endif
 #include "../opengpu_native_layout.h"
 #include "../opengpu_native_frame_snapshot.c"
 #include "../opengpu_native_program_snapshot.c"
@@ -106,12 +110,16 @@ static struct native_kernel_session *running;
 #define OPENGPU_NATIVE_PROFILE_STORAGE_WORDS 101
 #endif
 struct native_kernel_profile {struct native_kernel_profile_word words[OPENGPU_NATIVE_PROFILE_STORAGE_WORDS];
-    struct opengpu_native_source_limits limits;u32 capabilities;bool advanced,missing;};
+    struct opengpu_native_source_limits limits;u32 capabilities;bool advanced,missing;
+    unsigned word_count;
+    struct opengpu_protected_tessellation_joint_profile joint;
+};
 struct native_kernel_record {
     struct native_kernel_record *next;unsigned index;
     struct opengpu_sched_job *job;struct dma_fence *hardware;
     struct native_kernel_held_receipt held;
     struct native_kernel_observed_receipt observed;
+    u32 joint_sequence_count,joint_directory_count;
     bool captured,drained,verified,freed;void *mmio_state;
 };
 struct native_kernel_session {bool context_destroyed;struct native_kernel_profile *profile;
@@ -251,6 +259,14 @@ static void *native_memcpy(void *to,const void *from,size_t bytes)
  * pre-enqueue quarantine container without changing its production lifetime. */
 static void *native_submission_alloc(size_t bytes,int flags)
 {void *p=kzalloc(bytes,flags);if(p && bytes==sizeof(struct opengpu_sched_job))running->submission_allocation=p;return p;}
+#ifdef OPENGPU_NATIVE_MMIO
+int opengpu_hw_protected_tessellation_joint_profile(const struct opengpu_device *,
+    struct opengpu_protected_tessellation_joint_profile *);
+int opengpu_hw_protected_tessellation_joint_async(struct opengpu_device *,
+    struct opengpu_private_snapshot *,const struct opengpu_render_context *,u32,
+    const struct opengpu_tessellation_scope *,struct opengpu_tessellation_joint_completion *,
+    struct dma_fence **);
+#else
 static int opengpu_hw_protected_tessellation_joint_profile(const struct opengpu_device *gpu,
     struct opengpu_protected_tessellation_joint_profile *profile)
 {
@@ -286,6 +302,7 @@ static int opengpu_hw_protected_tessellation_joint_async(struct opengpu_device *
     running->hardware = *fence;
     return 0;
 }
+#endif
 #define kzalloc native_submission_alloc
 #define memcpy native_memcpy
 #include "native_submit_under_test.inc"
@@ -317,7 +334,7 @@ static int opengpu_hw_unified_submit_locked(struct opengpu_device *gpu,
 static u32 native_profile_read(void *opaque,u32 address)
 {
     struct native_kernel_profile *p=opaque;
-    for(unsigned i=0;i<101;i++)if(p->words[i].address==address)return p->words[i].value;
+    for(unsigned i=0;i<p->word_count;i++)if(p->words[i].address==address)return p->words[i].value;
     p->missing=true;return 0;
 }
 struct native_kernel_profile *native_kernel_profile_create(
@@ -331,6 +348,7 @@ struct native_kernel_profile *native_kernel_profile_create(
     if(!words || count!=96 || !registers || register_count!=5)return NULL;
     p=calloc(1,sizeof(*p));if(!p)return NULL;
     memcpy(p->words,words,96*sizeof(*words));memcpy(p->words+96,registers,5*sizeof(*registers));
+    p->word_count=101;
     for(unsigned i=0;i<101;i++){
         bool allowed=false;
         for(unsigned j=0;j<i;j++)if(p->words[j].address==p->words[i].address)goto fail;
@@ -352,6 +370,60 @@ struct native_kernel_profile *native_kernel_profile_create(
     return p;
 fail:free(p);return NULL;
 }
+#ifdef OPENGPU_NATIVE_MMIO
+struct native_kernel_profile *native_kernel_joint_profile_create(
+    const struct native_kernel_profile_word *words,size_t count,
+    const struct native_kernel_profile_word *registers,size_t register_count)
+{
+    /* The dedicated protected target advertises the base blocks, descriptor
+     * preflight, protected shader admission and GJP1 in this wire order. */
+    static const struct {u32 base,words;} blocks[] = {
+        {0x360,16},{0x160,8},{0x340,8},{0x240,8},{0x260,8},{0x280,8},{0x3a0,16},
+        {OPENGPU_NATIVE_PREFLIGHT_CAPABILITIES,8},{0x300,8},
+        {OPENGPU_TESS_JOINT_HOST_PROFILE_BASE,OPENGPU_TESS_JOINT_HOST_PROFILE_WORDS},
+    };
+    static const u32 extra[] = {
+        GPU_REG_ID,GPU_REG_CAPABILITIES,GPU_REG_BIN_CAPABILITY_PTR,0x320,GPU_REG_SHADER_CONFIG,
+    };
+    size_t index=0;
+    if(!words || !registers || register_count!=sizeof(extra)/sizeof(extra[0]) ||
+        count>OPENGPU_NATIVE_PROFILE_STORAGE_WORDS-register_count)return NULL;
+    for(size_t block=0;block<sizeof(blocks)/sizeof(blocks[0]);++block)
+        for(u32 offset=0;offset<blocks[block].words;++offset)
+            if(index>=count || words[index++].address!=blocks[block].base+4u*offset)return NULL;
+    if(index!=count)return NULL;
+    for(size_t i=0;i<register_count;++i)
+        if(registers[i].address!=extra[i])return NULL;
+    struct native_kernel_profile *p=calloc(1,sizeof(*p));
+    if(!p)return NULL;
+    memcpy(p->words,words,count*sizeof(*words));
+    memcpy(p->words+count,registers,register_count*sizeof(*registers));
+    p->word_count=count+register_count;
+    u32 id=native_profile_read(p,GPU_REG_ID);
+    u32 flags=native_profile_read(p,OPENGPU_COMPUTE_RESOURCE_REG_FLAGS);
+    u32 source_flags=flags & ~OPENGPU_COMPUTE_RESOURCE_JOINT_TESSELLATION_V1;
+    p->capabilities=native_profile_read(p,GPU_REG_CAPABILITIES);
+    bool preflight;
+    struct opengpu_compute_shared_limits shared;
+    if((id&0xffff0000u)!=0x47550000u ||
+        !opengpu_read_native_preflight_support(id,flags,p->capabilities,0x1000,p,native_profile_read,&preflight) ||
+        !preflight ||
+        !opengpu_read_native_source_limits(id,source_flags,p->capabilities,0x1000,p,native_profile_read,&p->limits) ||
+        !opengpu_read_native_advanced_blend_support(id,flags,p->capabilities,0x1000,p,native_profile_read,&p->advanced) ||
+        !opengpu_read_tessellation_joint_profile(flags,p->capabilities,0x1000,&p->limits,
+            p->advanced,false,p,native_profile_read,&p->joint) ||
+        !opengpu_protected_tessellation_joint_profile_valid(&p->joint) ||
+        !opengpu_read_compute_shared_limits(id,0x1000,flags,p,native_profile_read,&shared) ||
+        !shared.discovered || shared.base!=OPENGPU_TESS_JOINT_HOST_LDS_BASE ||
+        shared.bytes!=OPENGPU_TESS_JOINT_HOST_LDS_BYTES ||
+        !opengpu_native_source_shader_config_valid(&p->limits,p->capabilities,
+            native_profile_read(p,GPU_REG_SHADER_CONFIG)) || p->missing){
+        free(p);
+        return NULL;
+    }
+    return p;
+}
+#endif
 void native_kernel_profile_destroy(struct native_kernel_profile *p){free(p);}
 int native_kernel_profile_query(const struct native_kernel_profile *p,uint32_t param,uint64_t *output)
 {
@@ -360,7 +432,7 @@ int native_kernel_profile_query(const struct native_kernel_profile *p,uint32_t p
     if(param==OPENGPU_PARAM_DRIVER_FEATURES)value=OPENGPU_DRIVER_FEATURE_NATIVE_BINNED;
     else if(param==OPENGPU_PARAM_CAPABILITIES)value=p->capabilities;
     else if(param==OPENGPU_PARAM_SHADER_CONFIG){
-        for(unsigned i=0;i<101;i++)if(p->words[i].address==GPU_REG_SHADER_CONFIG)value=p->words[i].value;
+        for(unsigned i=0;i<p->word_count;i++)if(p->words[i].address==GPU_REG_SHADER_CONFIG)value=p->words[i].value;
     }
     else if(param==OPENGPU_PARAM_NATIVE_LAYOUT){
         const struct opengpu_native_binned_host_caps *c=&p->limits.frame;
@@ -399,6 +471,10 @@ struct native_kernel_session *native_kernel_session_create_profile(uint32_t id,c
     s->gpu.hw.native_sources.available=p->limits.available;
     s->gpu.hw.native_sources.capacity=p->limits.capacity;s->gpu.hw.native_sources.engines=p->limits.engines;
     s->gpu.hw.native_sources.frame=p->limits.frame;s->gpu.hw.native_advanced_blend_transport=p->advanced;
+#ifdef OPENGPU_NATIVE_MMIO
+    s->gpu.hw.joint_tessellation=p->joint;
+    s->context.vm.reserve_joint_lds=s->context.vm.enabled && p->joint.available;
+#endif
     return s;
 }
 void *native_kernel_original_allocate(struct native_kernel_session *s,uint32_t h,uint64_t bytes)
@@ -423,16 +499,27 @@ int native_kernel_original_refcount(struct native_kernel_session *s,uint32_t h)
 int native_kernel_original_physical(struct native_kernel_session *s,uint32_t h,uint64_t *physical,uint64_t *bytes)
 {struct native_original *o=s?original_handle(s,h):NULL;if(!o || !o->refs || !physical || !bytes)return -ENOENT;
  *physical=o->gem.dma_addr;*bytes=o->gem.base.size;return 0;}
-int native_kernel_submit(struct native_kernel_session *s,struct drm_opengpu_submit_native_binned *request,
+static int native_kernel_submit_record(struct native_kernel_session *s,void *request,
+    int (*submit)(struct drm_device *,void *,struct drm_file *),
     native_kernel_source_observer observer,void *record)
 {
     if(!s || !request)return -EINVAL;
     struct native_kernel_record *prepared=calloc(1,sizeof(*prepared));if(!prepared)return -ENOMEM;
     assert(!s->pending_record);s->pending_record=prepared;
     running=s;copy_gpu=&s->gpu;s->observer=observer;s->record=record;
-    int ret=opengpu_native_binned_ioctl(&s->drm,request,&s->file);
+    int ret=submit(&s->drm,request,&s->file);
     if(ret){assert(!prepared->job);free(prepared);}else assert(prepared->job);
     s->pending_record=NULL;s->observer=NULL;s->record=NULL;return ret;
+}
+int native_kernel_submit(struct native_kernel_session *s,struct drm_opengpu_submit_native_binned *request,
+    native_kernel_source_observer observer,void *record)
+{
+    return native_kernel_submit_record(s,request,opengpu_native_binned_ioctl,observer,record);
+}
+int native_kernel_submit_joint(struct native_kernel_session *s,struct drm_opengpu_submit_tessellation_joint *request,
+    native_kernel_source_observer observer,void *record)
+{
+    return native_kernel_submit_record(s,request,opengpu_protected_tessellation_joint_ioctl,observer,record);
 }
 static struct opengpu_sched_job *native_record(struct native_kernel_session *s,unsigned index)
 {struct drm_sched_job *j=s->head;while(index-- && j)j=j->next;return j?opengpu_sched_job_from_base(j):NULL;}
@@ -479,10 +566,11 @@ int native_kernel_retire(struct native_kernel_session *s,unsigned index,int erro
     --s->count;opengpu_sched_free_job(&job->base);return 0;
 }
 static bool native_same_held(const struct native_kernel_held_receipt *a,
-    const struct native_kernel_held_receipt *b)
+    const struct native_kernel_held_receipt *b,bool joint)
 {
+    bool same_detail=joint?!memcmp(a->gnz2,b->gnz2,sizeof(a->gnz2)):!memcmp(a->gnx,b->gnx,sizeof(a->gnx));
     return a->record_index==b->record_index && a->command_id==b->command_id &&
-        a->completion==b->completion && !memcmp(a->gnx,b->gnx,sizeof(a->gnx)) &&
+        a->completion==b->completion && same_detail &&
         a->append_read_bytes==b->append_read_bytes && a->held_legacy_status==b->held_legacy_status &&
         a->held_status==b->held_status && a->held_irq==b->held_irq &&
         a->held_irq_asserted==b->held_irq_asserted;
@@ -494,7 +582,7 @@ int native_kernel_observe_retired(struct native_kernel_session *s,unsigned index
     const u32 busy=GPU_UCMD_STATUS_COMPLETION|GPU_UCMD_STATUS_OVERFLOW|
         GPU_UCMD_STATUS_RESET_BUSY|GPU_UCMD_STATUS_RESET_REJECTED|GPU_UCMD_STATUS_VM_BUSY;
     if(!r || !r->job || !observation || !r->captured || !r->drained || r->verified ||
-        observation->held.record_index!=index || !native_same_held(&r->held,&observation->held) ||
+        observation->held.record_index!=index || !native_same_held(&r->held,&observation->held,!!r->job->joint_report) ||
         observation->external_drained!=1 || observation->retired_irq_asserted ||
         observation->retired_irq!=GPU_IRQ_ENABLE ||
         !(observation->retired_status&GPU_UCMD_STATUS_READY) || (observation->retired_status&busy) ||
