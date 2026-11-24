@@ -48,7 +48,10 @@ class JointAbi(unittest.TestCase):
                      lambda s:s['directory']['entryFields'][2].update(bits=32),
                      lambda s:s['directory']['entryFields'][-1].update(bits=32),
                      lambda s:s['directory'].update(entryBytes=128),
-                     lambda s:s['sourceAddressesZero'].pop()]
+                     lambda s:s['sourceAddressesZero'].pop(),
+                     lambda s:s['hostSubmission'].update(commandTag='0x474a0200'),
+                     lambda s:s['hostSubmission'].update(rootAllocationBytes=512),
+                     lambda s:s['hostSubmission'].update(completionTailBase='0x1b0')]
         artifacts = abi.ROOT/'.artifacts'
         artifacts.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='joint-abi-', dir=artifacts) as tmp:

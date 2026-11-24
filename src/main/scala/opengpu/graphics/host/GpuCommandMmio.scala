@@ -169,7 +169,8 @@ class GpuCommandMmio(
   storageAvailable: Boolean = false,
   computeUniformAvailable: Boolean = false,
   computeTextureAvailable: Boolean = false,
-  atomicCounterAvailable: Boolean = false
+  atomicCounterAvailable: Boolean = false,
+  jointTessellationCompletion: Boolean = false
 ) extends Module {
   require(commandIdWidth > 0 && commandIdWidth <= 8)
   require(queueDepth > 0)
@@ -178,6 +179,9 @@ class GpuCommandMmio(
   require(!computeUniformAvailable || protectVmState, "compute uniform commands retain protected VM ownership")
   require(!computeTextureAvailable || protectVmState, "compute texture commands retain protected VM ownership")
   require(!atomicCounterAvailable || protectVmState, "atomic counter commands retain protected VM ownership")
+  require(!jointTessellationCompletion || (nativeCompletionInfo && protectVmState))
+  private val detailWords = if (jointTessellationCompletion) TessellationJointHostProtocol.completionWords
+    else NativeBinnedCompletionInfo.wordCount
   private val shaderConfigWord = ShaderResourceConfig.encode(
     config.lanes, config.warps, shaderKernargBanks, shaderComputeUnits)
 
@@ -189,7 +193,7 @@ class GpuCommandMmio(
     val command = Decoupled(new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable, atomicCounterAvailable))
     val completion = Flipped(Decoupled(
       new GpuCommandResult(commandIdWidth)))
-    val completionDetails=if(nativeCompletionInfo)Some(Input(Vec(NativeBinnedCompletionInfo.wordCount,UInt(32.W))))else None
+    val completionDetails=if(nativeCompletionInfo)Some(Input(Vec(detailWords,UInt(32.W))))else None
     val completionEvent = Output(Bool())
     /** Held from a RESET request until the system's command path reports a
       * completed drain and state reset via `resetDone`.  While active this
@@ -458,7 +462,7 @@ class GpuCommandMmio(
 
   private val completionValid = RegInit(false.B)
   private val completion = Reg(new GpuCommandResult(commandIdWidth))
-  private val completionDetails=if(nativeCompletionInfo)Some(Reg(Vec(NativeBinnedCompletionInfo.wordCount,UInt(32.W))))else None
+  private val completionDetails=if(nativeCompletionInfo)Some(Reg(Vec(detailWords,UInt(32.W))))else None
   private val popCompletion = wFire &&
     io.reg.req.bits.addr === GpuCommandMmioRegs.COMPLETION_POP.U &&
     io.reg.req.bits.data(0)
@@ -609,7 +613,9 @@ class GpuCommandMmio(
     GpuCommandMmioRegs.COMPLETION.U -> completionMeta,
     GpuCommandMmioRegs.COMPLETION_BYTES_LO.U -> completion.bytesProcessed(31, 0),
     GpuCommandMmioRegs.COMPLETION_BYTES_HI.U -> completion.bytesProcessed(63, 32))++
-    completionDetails.toSeq.flatMap(ws=>ws.zipWithIndex.map{case(word,i)=>(NativeBinnedCompletionInfo.base+i*4).U -> Mux(completionValid && !resetActive,word,0.U)}) ++
+    completionDetails.toSeq.flatMap(ws => ws.zipWithIndex.map { case (word, index) =>
+      TessellationJointHostProtocol.completionAddress(index).U -> Mux(completionValid && !resetActive, word, 0.U)
+    }) ++
     imageWords.toSeq.flatMap(ws => ws.zipWithIndex.map { case (word, i) =>
       (ShaderImageCommandMmioRegs.base + i * 4).U -> word
     } :+ (ShaderImageCommandMmioRegs.MAGIC.U -> ShaderImageCommandMmioRegs.magic.U(32.W))) ++
@@ -630,9 +636,13 @@ class GpuCommandMmio(
   io.reg.resp.valid := io.reg.req.valid && !io.reg.req.bits.isWrite
   io.reg.resp.bits.data := readData
   val detailAddress=if(nativeCompletionInfo)io.reg.req.bits.addr>=NativeBinnedCompletionInfo.base.U && io.reg.req.bits.addr<NativeBinnedCompletionInfo.end.U else false.B
+  val jointDetailAddress = if (jointTessellationCompletion)
+    io.reg.req.bits.addr >= TessellationJointHostProtocol.completionTailBase.U &&
+      io.reg.req.bits.addr < TessellationJointHostProtocol.completionTailEnd.U
+    else false.B
   io.reg.resp.bits.ok := ((io.reg.req.bits.addr >= GpuCommandMmioRegs.COMMAND_ID.U &&
     io.reg.req.bits.addr < GpuCommandMmioRegs.END.U &&
-    (!vmMutation || vmWriteAllowed)) || (detailAddress && !io.reg.req.bits.isWrite) ||
+    (!vmMutation || vmWriteAllowed)) || ((detailAddress || jointDetailAddress) && !io.reg.req.bits.isWrite) ||
     (imageAddress && (!io.reg.req.bits.isWrite || imageWriteOk)) ||
     (storageAddress && (!io.reg.req.bits.isWrite || storageWriteOk)) ||
     (atomicCounterAddress && (!io.reg.req.bits.isWrite || atomicCounterWriteOk)) ||

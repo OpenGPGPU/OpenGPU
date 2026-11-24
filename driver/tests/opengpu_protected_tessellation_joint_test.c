@@ -196,6 +196,11 @@ static void joint_request_rejected(struct opengpu_private_snapshot *o,struct ope
     memcpy(&request,original,sizeof(request));
     assert(joint_request(o,gpu,ctx,segment,&request)<0);
     assert(!memcmp(&request,original,sizeof(request)));
+    struct opengpu_protected_tessellation_joint_host_command command={.opcode=0xa7,.width=0xa7};
+    mutex_lock(&gpu->hw.submit_lock);
+    int ret=opengpu_protected_tessellation_joint_command_locked(o,gpu,ctx,segment,&command);
+    mutex_unlock(&gpu->hw.submit_lock);
+    assert(ret<0 && command.opcode==0xa7 && command.width==0xa7);
 }
 
 static void joint_request_oracle(struct opengpu_private_snapshot *o,struct opengpu_device *gpu,
@@ -217,6 +222,14 @@ static void joint_request_oracle(struct opengpu_private_snapshot *o,struct openg
            request.job_allocation_base==root->va && request.job_allocation_limit==root->va+root->backing.size);
     assert(request.owner_base==first && request.owner_limit==last && request.owner_limit>=request.job_allocation_limit);
     assert(request.domain==domain && request.context==ctx->id && request.pass==8 && request.generation==9);
+    struct opengpu_protected_tessellation_joint_host_command command;
+    mutex_lock(&gpu->hw.submit_lock);
+    int ret=opengpu_protected_tessellation_joint_command_locked(o,gpu,ctx,segment,&command);
+    mutex_unlock(&gpu->hw.submit_lock);
+    assert(!ret && command.opcode==15 && command.bytes==512 && command.source==root->va);
+    assert(command.destination==first && command.width==(u32)last);
+    assert(command.pattern==(0x474a0100u | domain<<1 | (u32)(last>>32)));
+    assert(command.height==ctx->id && command.source_stride==8 && command.destination_stride==9);
     joint_request_rejected(o,gpu,ctx,segment+1);
     struct opengpu_render_context foreign={.gpu=gpu,.id=ctx->id};
     joint_request_rejected(o,gpu,&foreign,segment);
@@ -673,6 +686,11 @@ static void joint_placement(struct joint_fixture *f,struct opengpu_device *gpu,
         if(kind==4) {
             struct opengpu_private_snapshot_joint_request request;
             assert(!joint_request(o,gpu,ctx,segment,&request) && request.owner_limit==(1ULL<<32));
+            struct opengpu_protected_tessellation_joint_host_command command;
+            mutex_lock(&gpu->hw.submit_lock);
+            int ret=opengpu_protected_tessellation_joint_command_locked(o,gpu,ctx,segment,&command);
+            mutex_unlock(&gpu->hw.submit_lock);
+            assert(!ret && command.pattern==0x474a0101u && !command.width);
         }
         if(kind==1) {
             int allocations=live_allocations;idle_error=-ETIMEDOUT;

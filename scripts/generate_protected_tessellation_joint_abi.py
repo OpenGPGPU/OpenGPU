@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Generate the independent GNQ4/5/6 BUILD ABI, without enabling a route."""
+"""Generate the independent GNQ4/5/6 BUILD and private host envelopes."""
 import argparse
 import json
 from pathlib import Path
+import re
 from generate_tessellation_vertex_source_abi import rules
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,6 +14,13 @@ def generate():
     s = json.loads((ROOT / 'docs/abi/protected-tessellation-joint-v2.json').read_text())
     if (s['version'], s['words'], s['bytes'], s['header']) != (2, 128, 512, [512, 2, 16, 16, 16, 4, 4]):
         raise ValueError('wrong joint envelope')
+    host = dict(opcode=15, commandTag='0x474a0100', ownerLimitHighBit=0,
+                domainShift=1, domainBits=2, rootAllocationBytes=4096,
+                completionMagic='0x474e5a02', completionWords=16,
+                completionHeadBase='0x180', completionHeadWords=12,
+                completionTailBase='0x540')
+    if s['hostSubmission'] != host:
+        raise ValueError('wrong private joint host envelope')
     if [(r['domain'], int(r['magic'], 16), int(r['sequenceMagic'], 16), r['sequenceVersion']) for r in s['records']] != [
             (d, 0x474e5104+i, 0x474e5407+i, 7+i) for i, d in enumerate(('isoline', 'triangle', 'quad'))]:
         raise ValueError('wrong joint domain pairing')
@@ -46,6 +54,9 @@ def generate():
            '#ifndef OPENGPU_PROTECTED_TESSELLATION_JOINT_ABI_H',
            '#define OPENGPU_PROTECTED_TESSELLATION_JOINT_ABI_H',
            '#define OPENGPU_TESS_JOINT_BYTES 512u', '#define OPENGPU_TESS_JOINT_VERSION 2u']
+    for name, value in host.items():
+        macro = re.sub(r'(?<!^)(?=[A-Z])', '_', name).upper()
+        out.append(f'#define OPENGPU_TESS_JOINT_HOST_{macro} {value}u')
     for r in s['records']:
         p = 'OPENGPU_TESS_JOINT_' + r['domain'].upper()
         out += [f'#define {p}_MAGIC {r["magic"]}u', f'#define {p}_SEQUENCE_MAGIC {r["sequenceMagic"]}u']

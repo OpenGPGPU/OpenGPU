@@ -20,6 +20,7 @@ import opengpu.graphics.{
   OmMemoryResponse,
   RenderHost,
   RenderHostRegs,
+  TessellationJointHostProtocol,
   TileBinHostCommandPort, TileBinHostRegs, TileBinJobCompletion, TileJobDescriptorRequest, NativeBinnedCompletionInfo, NativeVertexInputCapabilities, NativeFragmentInputCapabilities, NativeRasterCapabilities
 }
 
@@ -82,7 +83,8 @@ class GpuHostAxi(
   nativeAdvancedDraws: Boolean = false, nativeDescriptorPreflight: Boolean = false,
   nativeProtectedSources: Boolean = false, nativeGeometryTransport: Boolean = false,
   nativeSampleTransport: Boolean = false,
-  imageFloatExchangeAvailable: Boolean = false
+  imageFloatExchangeAvailable: Boolean = false,
+  jointTessellationHost: Boolean = false
 ) extends Module {
   require(!nativeSampleTransport || nativeGeometryTransport,
     "GSS1 discovery requires the protected layered geometry transport")
@@ -105,6 +107,8 @@ class GpuHostAxi(
   require(!persistentAttachments || (unifiedCommandMmio && protectVmState))
   require(!externalBinnedRender || (unifiedCommandMmio && protectVmState && !persistentAttachments))
   require(!tessellationHost || externalBinnedRender, "tessellation host routing requires the protected binned command port")
+  require(!jointTessellationHost || (externalBinnedRender && nativeCompletionInfo && gpuConfig.xLen == 32),
+    "joint tessellation requires the protected binned command port and completion details")
   require(!tessellationDiscovery || (tessellationHost && nativeCompletionInfo && computeResources.nonEmpty && version >= 2),
     "tessellation discovery requires the protected native host and GCR1")
   require(!nativeCompletionInfo || externalBinnedRender)
@@ -217,8 +221,12 @@ class GpuHostAxi(
     val tessellationSubmit = if (tessellationHost) Some(Decoupled(new TileJobDescriptorRequest(commandIdWidth))) else None
     val tessellationCompletion = if (tessellationHost) Some(Flipped(Decoupled(new TileBinJobCompletion(commandIdWidth)))) else None
     val tessellationCompletionDetails = if (tessellationHost && nativeCompletionInfo) Some(Input(Vec(NativeBinnedCompletionInfo.wordCount,UInt(32.W)))) else None
-    val tessellationDrained = if (tessellationHost) Some(Input(Bool())) else None
-    val tessellationCancel = if (tessellationHost) Some(Output(Bool())) else None
+    val jointTessellationSubmit = Option.when(jointTessellationHost)(
+      Decoupled(new TessellationJointJobRequest(commandIdWidth)))
+    val jointTessellationCompletion = Option.when(jointTessellationHost)(
+      Flipped(Decoupled(new TessellationJointNativeCompletion(commandIdWidth))))
+    val tessellationDrained = Option.when(tessellationHost || jointTessellationHost)(Input(Bool()))
+    val tessellationCancel = Option.when(tessellationHost || jointTessellationHost)(Output(Bool()))
     val queryCommand=if(visibilityQueries)Some(Decoupled(new opengpu.graphics.VisibilityQueryCommand))else None
     val queryReply=if(visibilityQueries)Some(Flipped(Decoupled(new opengpu.graphics.VisibilityQueryReply)))else None
     val renderQueryContext=if(visibilityQueries)Some(Output(UInt(32.W)))else None
@@ -288,7 +296,8 @@ class GpuHostAxi(
         gpuConfig, commandIdWidth, gpuConfig.commandQueueDepth,
         shaderComputeUnits = sharedShader.map(_.numComputeUnits).getOrElse(1),
         shaderKernargBanks = sharedShader.map(_.fragmentBanks).getOrElse(2),
-        protectVmState = protectVmState,nativeCompletionInfo=nativeCompletionInfo,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,computeTextureAvailable=computeTextureAvailable,atomicCounterAvailable=atomicCounterAvailable)))
+        protectVmState = protectVmState,nativeCompletionInfo=nativeCompletionInfo,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,computeTextureAvailable=computeTextureAvailable,atomicCounterAvailable=atomicCounterAvailable,
+        jointTessellationCompletion=jointTessellationHost)))
     } else None
 
     // Command distribution lives here, next to the graphics engine: a render
@@ -300,7 +309,8 @@ class GpuHostAxi(
     host.io.renderCompletion.ready := false.B
     unified.foreach { bridge =>
       if (externalBinnedRender) {
-        val port=Module(new TileBinHostCommandPort(gpuConfig,commandIdWidth,nativeCompletionInfo,visibilityQueries,transformFeedback,primitiveQueries,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable,atomicCounterAvailable,tessellationAvailable=tessellationHost))
+        val port=Module(new TileBinHostCommandPort(gpuConfig,commandIdWidth,nativeCompletionInfo,visibilityQueries,transformFeedback,primitiveQueries,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable,atomicCounterAvailable,tessellationAvailable=tessellationHost,
+          jointTessellationAvailable=jointTessellationHost))
         port.io.command <> bridge.io.command
         io.binSubmit.get <> port.io.submit
         port.io.renderCompletion <> io.binCompletion.get
@@ -308,8 +318,12 @@ class GpuHostAxi(
           io.tessellationSubmit.get <> port.io.tessellationSubmit.get
           port.io.tessellationCompletion.get <> io.tessellationCompletion.get
           if(nativeCompletionInfo)port.io.tessellationCompletionDetails.get:=io.tessellationCompletionDetails.get
-          io.tessellationCancel.get:=port.io.cancel
         }
+        if(jointTessellationHost) {
+          io.jointTessellationSubmit.get <> port.io.jointTessellationSubmit.get
+          port.io.jointTessellationCompletion.get <> io.jointTessellationCompletion.get
+        }
+        io.tessellationCancel.foreach(_ := port.io.cancel)
         io.gpuCommand.get <> port.io.otherCommand
         port.io.otherCompletion <> io.gpuCompletion.get
         bridge.io.completion <> port.io.completion
@@ -482,6 +496,10 @@ class GpuHostAxi(
     val targetBinCapabilities = if (externalBinnedRender)
       beatAddr>=TileBinHostRegs.CAPABILITIES.U && beatAddr<TileBinHostRegs.END.U else false.B
     val targetNativeDetails=if(nativeCompletionInfo)beatAddr>=NativeBinnedCompletionInfo.base.U && beatAddr<NativeBinnedCompletionInfo.end.U else false.B
+    val targetJointDetails = if (jointTessellationHost)
+      beatAddr >= TessellationJointHostProtocol.completionTailBase.U &&
+        beatAddr < TessellationJointHostProtocol.completionTailEnd.U
+      else false.B
     val targetNativeInput=if(nativeVertexInput)beatAddr>=NativeVertexInputCapabilities.base.U && beatAddr<NativeVertexInputCapabilities.end.U else false.B
     val targetFragmentInput=if(nativeVertexInput)beatAddr>=NativeFragmentInputCapabilities.base.U && beatAddr<NativeFragmentInputCapabilities.end.U else false.B
     val targetRaster=if(nativeVertexInput)beatAddr>=NativeRasterCapabilities.base.U && beatAddr<NativeRasterCapabilities.end.U else false.B
@@ -536,7 +554,7 @@ class GpuHostAxi(
       beatAddr >= opengpu.graphics.AtomicCounterCommandMmioRegs.base.U &&
         beatAddr < opengpu.graphics.AtomicCounterCommandMmioRegs.end.U else false.B
     val beatOk = transferOk && !beatAddrWide(32) && (beatAddr & 0x3.U) === 0.U &&
-      (beatAddr < mappedEnd || targetBinCapabilities || targetNativeDetails || targetNativeInput || targetFragmentInput || targetTexturePolicy || targetTextureFormats || targetRaster || targetVisibilityQueries || targetFeedback || targetPrimitiveQuery || targetShaderExecution || targetTextureOperations || targetIndirectCompute || targetComputeResources || targetUniformResources || targetBlendResources || targetAdvancedBlend || targetNativePreflight || targetNativeGeometry || targetNativeSample || targetImages || targetStorage || targetComputeUniform || targetComputeTexture || targetAtomicCounter)
+      (beatAddr < mappedEnd || targetBinCapabilities || targetNativeDetails || targetJointDetails || targetNativeInput || targetFragmentInput || targetTexturePolicy || targetTextureFormats || targetRaster || targetVisibilityQueries || targetFeedback || targetPrimitiveQuery || targetShaderExecution || targetTextureOperations || targetIndirectCompute || targetComputeResources || targetUniformResources || targetBlendResources || targetAdvancedBlend || targetNativePreflight || targetNativeGeometry || targetNativeSample || targetImages || targetStorage || targetComputeUniform || targetComputeTexture || targetAtomicCounter)
 
     val writeBeat = writeActive && !bPending
     val wBeatFire = writeBeat && io.s_axi_wvalid && io.s_axi_wready
@@ -551,7 +569,7 @@ class GpuHostAxi(
         beatAddr < RenderHostRegs.MSAA_CONFIG.U) ||
         beatAddr === GpuCommandMmioRegs.RESET.U ||
         (beatAddr >= GpuCommandMmioRegs.SAMPLE_MODE.U &&
-          beatAddr < GpuCommandMmioRegs.END.U) || targetNativeDetails || targetImages || targetStorage || targetComputeUniform || targetComputeTexture || targetAtomicCounter
+          beatAddr < GpuCommandMmioRegs.END.U) || targetNativeDetails || targetJointDetails || targetImages || targetStorage || targetComputeUniform || targetComputeTexture || targetAtomicCounter
     reg.req.valid := busRegValid && beatOk && !targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback && !targetShaderExecution && !targetPrimitiveQuery && !targetTextureOperations && !targetIndirectCompute && !targetComputeResources && !targetUniformResources && !targetBlendResources && !targetAdvancedBlend && !targetNativePreflight && !targetNativeGeometry && !targetNativeSample
     reg.req.bits.isWrite := writeActive
     reg.req.bits.addr := beatAddr(9, 0)

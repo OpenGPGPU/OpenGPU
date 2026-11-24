@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.util._
 import opengpu.command.{GpuCommand,GpuCommandOpcode,GpuCommandResult}
 import opengpu.config.GpuConfig
+import opengpu.system.{TessellationJointJobRequest, TessellationJointNativeCompletion}
 
 object TileBinHostRegs {
   /** Always mapped legacy reserved word: zero on older profiles. */
@@ -16,16 +17,20 @@ object TileBinHostRegs {
   * rendering in the same pinned VM; memory/DMA commands serialize with it.
   * The upstream MMIO bridge retains queued commands and software completions.
   */
-class TileBinHostResult(commandIdWidth: Int,withDetails: Boolean) extends Bundle {
+class TileBinHostResult(commandIdWidth: Int,withDetails: Boolean,detailWords: Int) extends Bundle {
   val result=new GpuCommandResult(commandIdWidth)
-  val details=if(withDetails)Some(Vec(NativeBinnedCompletionInfo.wordCount,UInt(32.W)))else None
+  val details=if(withDetails)Some(Vec(detailWords,UInt(32.W)))else None
 }
 class TileBinHostCommandPort(config: GpuConfig=GpuConfig(),commandIdWidth: Int=8,nativeCompletionInfo: Boolean=false,
     visibilityQueries: Boolean=false,transformFeedback: Boolean=false,primitiveQueries: Boolean=false,
     imageAvailable: Boolean=false,storageAvailable: Boolean=false,computeUniformAvailable: Boolean=false,
     computeTextureAvailable: Boolean=false,atomicCounterAvailable: Boolean=false,
-    tessellationAvailable: Boolean=false) extends Module {
+    tessellationAvailable: Boolean=false,jointTessellationAvailable: Boolean=false) extends Module {
   require(!primitiveQueries || transformFeedback)
+  require(!jointTessellationAvailable || (config.xLen == 32 && nativeCompletionInfo))
+  private val tessellationEnabled = tessellationAvailable || jointTessellationAvailable
+  private val detailWords = if (jointTessellationAvailable) TessellationJointHostProtocol.completionWords
+    else NativeBinnedCompletionInfo.wordCount
   val io=IO(new Bundle {
     val command=Flipped(Decoupled(new GpuCommand(config,commandIdWidth,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable,atomicCounterAvailable)))
     val otherCommand=Decoupled(new GpuCommand(config,commandIdWidth,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable,atomicCounterAvailable))
@@ -34,10 +39,14 @@ class TileBinHostCommandPort(config: GpuConfig=GpuConfig(),commandIdWidth: Int=8
     val tessellationSubmit=if(tessellationAvailable)Some(Decoupled(new TileJobDescriptorRequest(commandIdWidth)))else None
     val tessellationCompletion=if(tessellationAvailable)Some(Flipped(Decoupled(new TileBinJobCompletion(commandIdWidth))))else None
     val tessellationCompletionDetails=if(tessellationAvailable && nativeCompletionInfo)Some(Input(Vec(NativeBinnedCompletionInfo.wordCount,UInt(32.W))))else None
+    val jointTessellationSubmit = Option.when(jointTessellationAvailable)(
+      Decoupled(new TessellationJointJobRequest(commandIdWidth)))
+    val jointTessellationCompletion = Option.when(jointTessellationAvailable)(
+      Flipped(Decoupled(new TessellationJointNativeCompletion(commandIdWidth))))
     val otherCompletion=Flipped(Decoupled(new GpuCommandResult(commandIdWidth)))
     val completion=Decoupled(new GpuCommandResult(commandIdWidth))
     val renderCompletionDetails=if(nativeCompletionInfo)Some(Input(Vec(NativeBinnedCompletionInfo.wordCount,UInt(32.W))))else None
-    val completionDetails=if(nativeCompletionInfo)Some(Output(Vec(NativeBinnedCompletionInfo.wordCount,UInt(32.W))))else None
+    val completionDetails=if(nativeCompletionInfo)Some(Output(Vec(detailWords,UInt(32.W))))else None
     val queryCommand=if(visibilityQueries)Some(Decoupled(new VisibilityQueryCommand))else None
     val queryReply=if(visibilityQueries)Some(Flipped(Decoupled(new VisibilityQueryReply)))else None
     /** Opaque query namespace for the one submitted native render job. */
@@ -58,9 +67,15 @@ class TileBinHostCommandPort(config: GpuConfig=GpuConfig(),commandIdWidth: Int=8
   })
   private val c=io.command.bits
   private val isRender=c.opcode===GpuCommandOpcode.tileRender
-  private val isTessellation=if(tessellationAvailable)c.opcode===GpuCommandOpcode.tessellationJob else false.B
-  private val tessellationPending=if(tessellationAvailable)Some(RegInit(false.B))else None
-  private val pendingTessellation=tessellationPending.getOrElse(false.B)
+  private val tessellationOpcode = c.opcode === GpuCommandOpcode.tessellationJob
+  private val isJointTessellation = if (jointTessellationAvailable)
+    tessellationOpcode && (if (tessellationAvailable) TessellationJointHostProtocol.tagged(c) else true.B)
+    else false.B
+  private val isLegacyTessellation = if (tessellationAvailable) tessellationOpcode && !isJointTessellation else false.B
+  private val isTessellation = isLegacyTessellation || isJointTessellation
+  private val tessellationPending = Option.when(tessellationEnabled)(RegInit(false.B))
+  private val pendingTessellation = tessellationPending.getOrElse(false.B)
+  private val pendingJoint = Option.when(jointTessellationAvailable)(RegInit(false.B))
   private val isQuery=if(visibilityQueries)GpuCommandOpcode.visibilityQuery(c.opcode)else false.B
   private val isFeedback=if(transformFeedback)c.opcode===GpuCommandOpcode.transformFeedback else false.B
   private val isPrimitiveQuery=if(primitiveQueries)c.opcode===GpuCommandOpcode.primitiveQuery else false.B
@@ -73,7 +88,7 @@ class TileBinHostCommandPort(config: GpuConfig=GpuConfig(),commandIdWidth: Int=8
   private val pendingControl=pendingQuery || pendingFeedback || pendingPrimitiveQuery
   private val otherAllowed=c.opcode===GpuCommandOpcode.kernel || (io.renderIdle && !pendingTessellation)
   io.renderPending:= !io.renderIdle || pendingTessellation || pendingControl || (io.command.valid && (isRender || isTessellation || isQuery || isFeedback || isPrimitiveQuery))
-  private val renderAvailable=if(tessellationAvailable)io.renderIdle && !pendingTessellation else true.B
+  private val renderAvailable=if(tessellationEnabled)io.renderIdle && !pendingTessellation else true.B
   io.submit.valid:=io.command.valid && isRender && io.dependencyIdle && renderAvailable && !io.resetActive && !pendingControl
   io.submit.bits.commandId:=c.commandId; io.submit.bits.base:=c.sourceAddress
   io.submit.bits.limit:=Cat(c.pattern(0),c.destinationAddress)
@@ -82,20 +97,36 @@ class TileBinHostCommandPort(config: GpuConfig=GpuConfig(),commandIdWidth: Int=8
     (if(transformFeedback)true.B else !c.rasterDiscard && !c.feedbackCapture)
   if(tessellationAvailable){
     val submit=io.tessellationSubmit.get
-    submit.valid:=io.command.valid && isTessellation && io.dependencyIdle && io.renderIdle && !pendingTessellation && !io.resetActive && !pendingControl
+    submit.valid:=io.command.valid && isLegacyTessellation && io.dependencyIdle && io.renderIdle && !pendingTessellation && !io.resetActive && !pendingControl
     submit.bits:=io.submit.bits
     submit.bits.envelopeValid:=io.submit.bits.envelopeValid && (if(transformFeedback)true.B else !c.rasterDiscard && !c.feedbackCapture)
   }
+  io.jointTessellationSubmit.foreach { submit =>
+    submit.valid := io.command.valid && isJointTessellation && io.dependencyIdle && io.renderIdle &&
+      !pendingTessellation && !io.resetActive && !pendingControl
+    TessellationJointHostProtocol.decode(c, submit.bits, transformFeedback)
+  }
+  private val tessellationReady = Mux(isJointTessellation,
+    io.jointTessellationSubmit.map(_.ready).getOrElse(false.B),
+    io.tessellationSubmit.map(_.ready).getOrElse(false.B))
+  private val renderFire = io.submit.fire || io.tessellationSubmit.map(_.fire).getOrElse(false.B) ||
+    io.jointTessellationSubmit.map(_.fire).getOrElse(false.B)
+  private val renderContextValue = Mux(isJointTessellation, c.height, c.widthBytes)
   io.otherCommand.valid:=io.command.valid && !isRender && !isTessellation && !isQuery && !isFeedback && !isPrimitiveQuery && otherAllowed && !io.resetActive && !pendingControl
   io.otherCommand.bits:=c
   io.command.ready:= !io.resetActive && !pendingControl && Mux(isPrimitiveQuery,
     io.primitiveQueryCommand.map(_.ready).getOrElse(false.B),Mux(isFeedback,
     io.feedbackCommand.map(_.ready).getOrElse(false.B) && io.renderIdle && !pendingTessellation && io.dependencyIdle,Mux(isQuery,
     io.queryCommand.map(_.ready).getOrElse(false.B),Mux(isTessellation,
-      io.tessellationSubmit.map(_.ready).getOrElse(false.B) && io.renderIdle && !pendingTessellation && io.dependencyIdle,Mux(isRender,
+      tessellationReady && io.renderIdle && !pendingTessellation && io.dependencyIdle,Mux(isRender,
       io.submit.ready && io.dependencyIdle && renderAvailable,io.otherCommand.ready && otherAllowed)))))
   io.cancel:=io.resetActive
-  private val completions=Module(new RRArbiter(new TileBinHostResult(commandIdWidth,nativeCompletionInfo),2+(if(visibilityQueries)1 else 0)+(if(transformFeedback)1 else 0)+(if(primitiveQueries)1 else 0)+(if(tessellationAvailable)1 else 0)))
+  private val tessellationPort = 2 + Seq(visibilityQueries, transformFeedback, primitiveQueries).count(identity)
+  private val completionPorts = tessellationPort + Seq(tessellationAvailable, jointTessellationAvailable).count(identity)
+  private val completions = Module(new RRArbiter(
+    new TileBinHostResult(commandIdWidth,nativeCompletionInfo,detailWords), completionPorts))
+  private def legacyDetails(words: Vec[UInt]): Vec[UInt] = VecInit(
+    words.toSeq ++ Seq.fill(detailWords - NativeBinnedCompletionInfo.wordCount)(0.U(32.W)))
   completions.io.in(0).valid:=io.renderCompletion.valid
   completions.io.in(0).bits.result.commandId:=io.renderCompletion.bits.commandId
   completions.io.in(0).bits.result.opcode:=GpuCommandOpcode.tileRender
@@ -107,31 +138,69 @@ class TileBinHostCommandPort(config: GpuConfig=GpuConfig(),commandIdWidth: Int=8
   completions.io.in(1).valid:=io.otherCompletion.valid;completions.io.in(1).bits.result:=io.otherCompletion.bits
   io.otherCompletion.ready:=completions.io.in(1).ready
   if(nativeCompletionInfo){
-    completions.io.in(0).bits.details.get:=io.renderCompletionDetails.get
+    completions.io.in(0).bits.details.get:=legacyDetails(io.renderCompletionDetails.get)
     completions.io.in(1).bits.details.get:=0.U.asTypeOf(completions.io.in(1).bits.details.get)
   }
   if(tessellationAvailable){
     val reply=io.tessellationCompletion.get
     val owner=Reg(UInt(commandIdWidth.W))
+    val jointOwns = pendingJoint.getOrElse(false.B)
     when(io.tessellationSubmit.get.fire){tessellationPending.get:=true.B;owner:=c.commandId}
-    when(reply.valid){assert(pendingTessellation && reply.bits.commandId===owner,"tessellation completion lacks command ownership")}
+    when(reply.valid){assert(pendingTessellation && !jointOwns && reply.bits.commandId===owner,"tessellation completion lacks command ownership")}
     when(reply.fire){tessellationPending.get:=false.B}
-    val port=completions.io.in(2+(if(visibilityQueries)1 else 0)+(if(transformFeedback)1 else 0)+(if(primitiveQueries)1 else 0))
-    port.valid:=reply.valid;port.bits:=0.U.asTypeOf(port.bits)
+    val port=completions.io.in(tessellationPort)
+    port.valid:=reply.valid && !jointOwns;port.bits:=0.U.asTypeOf(port.bits)
     port.bits.result.commandId:=reply.bits.commandId;port.bits.result.opcode:=GpuCommandOpcode.tessellationJob
     port.bits.result.status:=reply.bits.status;port.bits.result.success:=reply.bits.status===0.U
     port.bits.result.bytesProcessed:=reply.bits.appendReadBytes
-    if(nativeCompletionInfo)port.bits.details.get:=io.tessellationCompletionDetails.get
-    reply.ready:=port.ready
+    if(nativeCompletionInfo)port.bits.details.get:=legacyDetails(io.tessellationCompletionDetails.get)
+    reply.ready:=port.ready && !jointOwns
   }
+
+  if (jointTessellationAvailable) {
+    val submit = io.jointTessellationSubmit.get
+    val reply = io.jointTessellationCompletion.get
+    val command = Reg(UInt(commandIdWidth.W))
+    val identity = Reg(new GraphicsWorkIdentity)
+    val owns = pendingTessellation && pendingJoint.get
+    when(submit.fire) {
+      tessellationPending.get := true.B
+      pendingJoint.get := true.B
+      command := submit.bits.commandId
+      identity := submit.bits.identity
+    }
+    when(reply.fire) {
+      tessellationPending.get := false.B
+      pendingJoint.get := false.B
+    }
+    when(reply.valid) { assert(owns, "joint tessellation completion lacks command ownership") }
+
+    val report = WireDefault(reply.bits)
+    when(reply.bits.commandId =/= command || reply.bits.identity.asUInt =/= identity.asUInt) {
+      report := 0.U.asTypeOf(report)
+      report.commandId := command
+      report.identity := identity
+      report.status := 3.U
+      report.faultStage := 7.U
+    }
+    val port = completions.io.in(tessellationPort + (if (tessellationAvailable) 1 else 0))
+    port.valid := owns && reply.valid
+    port.bits.result.commandId := report.commandId
+    port.bits.result.opcode := GpuCommandOpcode.tessellationJob
+    port.bits.result.status := report.status
+    port.bits.result.success := report.status === 0.U
+    port.bits.result.bytesProcessed := report.readBytes
+    port.bits.details.get := TessellationJointHostProtocol.completionDetails(report)
+    reply.ready := owns && port.ready
+  }
+
   if(visibilityQueries){
     val request=io.queryCommand.get;val reply=io.queryReply.get
     val queryId=Reg(UInt(commandIdWidth.W));val queryOpcode=Reg(UInt(GpuCommandOpcode.width.W))
     val queryContext=Reg(UInt(32.W));val queryCookie=Reg(UInt(32.W));val queryAddress=Reg(UInt(32.W))
     val renderContext=RegInit(0.U(32.W))
-    val renderFire=io.submit.fire || io.tessellationSubmit.map(_.fire).getOrElse(false.B)
-    io.renderQueryContext.get:=Mux(renderFire,c.widthBytes,renderContext)
-    when(renderFire){renderContext:=c.widthBytes}
+    io.renderQueryContext.get:=Mux(renderFire,renderContextValue,renderContext)
+    when(renderFire){renderContext:=renderContextValue}
     val envelope=c.bytes===VisibilityQueryRecord.bytes.U && !c.pattern(31,2).orR &&
       !c.waitForDma && !c.waitForEvent && !c.signalEvent && !c.rasterDiscard && !c.feedbackCapture
     request.valid:=io.command.valid && isQuery && !pendingControl && !io.resetActive
@@ -162,9 +231,10 @@ class TileBinHostCommandPort(config: GpuConfig=GpuConfig(),commandIdWidth: Int=8
     val id=Reg(UInt(commandIdWidth.W));val context=Reg(UInt(32.W));val cookie=Reg(UInt(32.W));val address=Reg(UInt(32.W))
     val scope=RegInit(0.U.asTypeOf(new TransformFeedbackScope))
     val next=Wire(new TransformFeedbackScope)
-    next.context:=c.widthBytes;next.root:=io.feedbackSatp.get;next.program:=c.height
-    next.cookie:=c.sourceStride;next.mode:=Mux(c.feedbackCapture,1.U,2.U);next.rasterDiscard:=c.rasterDiscard
-    val renderFire=io.submit.fire || io.tessellationSubmit.map(_.fire).getOrElse(false.B)
+    next.context:=renderContextValue;next.root:=io.feedbackSatp.get
+    next.program:=Mux(isJointTessellation,c.launch.gridSize(0),c.height)
+    next.cookie:=Mux(isJointTessellation,c.launch.gridSize(1),c.sourceStride)
+    next.mode:=Mux(c.feedbackCapture,1.U,2.U);next.rasterDiscard:=c.rasterDiscard
     io.renderFeedbackScope.get:=Mux(renderFire,next,scope)
     when(renderFire){scope:=next}
     val envelope=c.bytes===NativeTransformFeedbackRecord.bytes.U && !c.pattern(31,1).orR &&
@@ -203,11 +273,12 @@ class TileBinHostCommandPort(config: GpuConfig=GpuConfig(),commandIdWidth: Int=8
       reply.bits.cookie===cookie && reply.bits.address===address,"primitive query reply lost unified-command ownership")}
     when(reply.fire){primitiveQueryPending.get:=false.B}
   }
-  private val results=Module(new Queue(new TileBinHostResult(commandIdWidth,nativeCompletionInfo),2,pipe=true))
+  private val results=Module(new Queue(new TileBinHostResult(commandIdWidth,nativeCompletionInfo,detailWords),2,pipe=true))
   results.io.enq <> completions.io.out
   io.completion.valid:=results.io.deq.valid;io.completion.bits:=results.io.deq.bits.result
   results.io.deq.ready:=io.completion.ready
   if(nativeCompletionInfo)io.completionDetails.get:=Mux(results.io.deq.valid,results.io.deq.bits.details.get,0.U.asTypeOf(io.completionDetails.get))
   io.drained:= !results.io.deq.valid && !io.renderCompletion.valid && !io.otherCompletion.valid &&
-    !pendingControl && !pendingTessellation && !io.tessellationCompletion.map(_.valid).getOrElse(false.B) && !io.queryReply.map(_.valid).getOrElse(false.B) && !io.feedbackReply.map(_.valid).getOrElse(false.B) && !io.primitiveQueryReply.map(_.valid).getOrElse(false.B)
+    !pendingControl && !pendingTessellation && !io.tessellationCompletion.map(_.valid).getOrElse(false.B) &&
+    !io.jointTessellationCompletion.map(_.valid).getOrElse(false.B) && !io.queryReply.map(_.valid).getOrElse(false.B) && !io.feedbackReply.map(_.valid).getOrElse(false.B) && !io.primitiveQueryReply.map(_.valid).getOrElse(false.B)
 }

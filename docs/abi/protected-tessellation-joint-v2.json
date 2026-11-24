@@ -2,6 +2,19 @@
   "version": 2,
   "words": 128,
   "bytes": 512,
+  "hostSubmission": {
+    "opcode": 15,
+    "commandTag": "0x474a0100",
+    "ownerLimitHighBit": 0,
+    "domainShift": 1,
+    "domainBits": 2,
+    "rootAllocationBytes": 4096,
+    "completionMagic": "0x474e5a02",
+    "completionWords": 16,
+    "completionHeadBase": "0x180",
+    "completionHeadWords": 12,
+    "completionTailBase": "0x540"
+  },
   "records": [
     {
       "domain": "isoline",

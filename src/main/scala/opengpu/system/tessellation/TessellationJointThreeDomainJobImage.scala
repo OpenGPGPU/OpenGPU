@@ -179,10 +179,13 @@ class TessellationJointThreeDomainJobImage(
     result.commandId := io.submit.bits.commandId
     result.identity := io.submit.bits.identity
     if (enabled) {
-      when(io.submit.bits.domain < 3.U) {
+      when(TessellationJointJobLayout.requestLegal(io.submit.bits)) {
         selected := io.submit.bits.domain
         phase := Phase.select
-      }.otherwise { reject(1, 1) }
+      }.otherwise {
+        result.faultAddress := io.submit.bits.view.base
+        reject(1, 1)
+      }
     } else {
       reject(6, 1)
     }
