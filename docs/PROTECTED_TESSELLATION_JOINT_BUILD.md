@@ -268,8 +268,12 @@ recorded POP and cleanup.
 The Mesa 22.3.6 Linux preflight linked and submitted the baseline and VS
 mutation for each domain. Each of the six DRM submissions retained the four
 linked programs after the original handles closed and published a separate
-4×4 writable image and protected Sv32 owner. The CPU preflight exported the
-original RAM and first MMIO command before GPU execution.
+4×4 writable image and protected Sv32 owner. The two VS inputs occupy distinct
+linked slots. The preflight verified the original index data, base vertex of
+−1, two instances with base instance 7 and divisor 2, and a fixed-index marker
+that stays a regular index for ES PATCHES. The actual prepared GND clears the
+global restart enable for this primitive mode. The CPU preflight exported
+the original RAM and first MMIO command before GPU execution.
 
 Inside the pinned Linux environment from the
 [linked BUILD reproduction](NATIVE_JOINT_BUILD_SOURCE.md#reproduction), use
@@ -279,6 +283,34 @@ an empty private `SESSION` and the independent vertex/fragment emitter source.
 python3 -B scripts/build_native_joint_live_producer.py --sanitize \\
   --build "$OUT/build" --legacy-source "$OUT/reference-uniform.c"
 "$OUT/build/native-joint" userspace/tests/tess_joint_live_essl --cpu-preflight "$SESSION"
+```
+
+The live controller checks the original published graph against the real
+Sv32 page tables, including the indexed source and the retained RX bytes.
+It checks the 4×4 RGBA32UI images and physical allocation guards before
+authorizing cleanup. The six-record series uses one reset and waits for the
+actual owner and context revocations before accepting the final receipt.
+
+For the routine 4×4 configuration, set `FIRTOOL` to the pinned FIRTool
+binary and `FLASHSIM` to the selected FlashSim checkout. Prepare the
+assertion-enabled model with its configured CIRCT installation.
+
+```sh
+OUT=$(mktemp -d "$PWD/.artifacts/joint-live.XXXXXX")
+mkdir "$OUT/rtl"
+sbt -batch -J-Xmx3g "Test / runMain opengpu.system.PrepareProtectedJointOwnerHost $OUT/host.fir"
+"$FIRTOOL" "$OUT/host.fir" -format=fir --split-verilog "-o=$OUT/rtl" \\
+  --lowering-options=disallowLocalVariables,disallowPackedArrays
+(
+  cd "$FLASHSIM"
+  FLASHSIM_PREFLATTEN_WIRES=1 FLASHSIM_MODULE_JOBS=1 \\
+    python3 -B -c 'from pathlib import Path; import sys; from flashsim.compile import compile_file; compile_file(Path(sys.argv[1]),Path(sys.argv[2]),frontend="circt",assertions=True,split=64)' \\
+    "$OUT/rtl/GpuHostSystemAxi.sv" "$OUT/dut/dut.h"
+)
+python3 -B scripts/qualify_native_joint_live.py --build-only \\
+  --dut-dir "$OUT/dut" --executor-build "$OUT/executor"
+python3 -B scripts/qualify_native_joint_live.py \\
+  --dut-dir "$OUT/dut" --executor-build "$OUT/executor"
 ```
 
 `NativeAlignmentHostProfile.protectedTessellationTarget` selects the joint
