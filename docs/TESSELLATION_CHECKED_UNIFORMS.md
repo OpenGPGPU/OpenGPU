@@ -349,10 +349,20 @@ linked the outlined tables, ran its bound assertions, and rejected a reordered
 table even with a refreshed file hash. The 46 owner preparation, executor and
 native builder checks passed.
 
-Complete FlashSim model generation, native linking and the actual MMIO probe
-for this factory remain pending. With the pinned SRAM submodule initialized
-and the FlashSim/CIRCT environment above, set `OWNER` to a new absolute path
-inside this checkout's `.artifacts`.
+With FlashSim `23333d0`, the full assertion-enabled model generated in
+5,210 seconds and peaked at 24.41 GiB of charged memory. The initial native
+build took 6,119 seconds and peaked at 15.86 GiB. At source `cd36805a8`, all
+1,962 factory input hashes matched. The rebased native executor reused all
+285 compiled model objects and linked and verified in 288 seconds with
+7.36 GiB peak memory.
+
+The rebased executor passed the actual MMIO probe. It verified 112 discovery
+words, five auxiliary registers and idle state after one reset without
+external memory traffic. Draw execution and product frequency and FPS
+remain separate checks.
+
+With the pinned SRAM submodule initialized and the FlashSim/CIRCT environment
+above, set `OWNER` to a new absolute path inside this checkout's `.artifacts`.
 
 ```sh
 export FLASHSIM_CIRCT_THREADS=4
