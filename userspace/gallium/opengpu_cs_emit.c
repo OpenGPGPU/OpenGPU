@@ -5,6 +5,7 @@
 #include "tgsi/tgsi_parse.h"
 #include "opengpu_buffer_views.h"
 #include "opengpu_shared_own_proof.h"
+#include "opengpu_shader_validator.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -36,7 +37,7 @@ struct build {
     unsigned texture_coordinate_component;
     unsigned recycle_temporaries;
     unsigned images, image_writable, image_target[4], image_atomics, image_float_exchange, compact_image_atomics;
-    unsigned cf, cf_depth, cf_count, planned[CS_TEMPS][4];
+    unsigned cf, cf_depth, cf_count, loop_depth, scoped_barrier, planned[CS_TEMPS][4];
     uint32_t imm[CS_IMMS][4];
     unsigned nimm;
     const struct opengpu_cs_shared *shared;
@@ -651,7 +652,7 @@ static int shared_symbolic(struct build *b, const struct tgsi_full_instruction *
 {
     const struct tgsi_dst_register *d = &in->Dst[0].Register;
     struct shared_expr values[4] = {{0}};
-    if (!b->shared || d->File != TGSI_FILE_TEMPORARY || d->Index < 0 ||
+    if (!b->shared || b->loop_depth || d->File != TGSI_FILE_TEMPORARY || d->Index < 0 ||
         (unsigned)d->Index >= CS_TEMPS || (d->WriteMask & ~b->declared[d->Index])) return 0;
     for (unsigned c = 0; c < 4; c++) if (d->WriteMask & (1u << c)) {
         values[c] = expression_op(in->Instruction.Opcode, expression(b, &in->Src[0], c),
@@ -968,8 +969,9 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
         return 0;
     }
     if (op == TGSI_OPCODE_BARRIER) {
-        if (!b->shared || !b->shared_declared || b->cf_depth || i->NumDstRegs ||
+        if (!b->shared || !b->shared_declared || i->NumDstRegs ||
             i->NumSrcRegs || i->Memory || i->Texture || i->Label) return -1;
+        if (b->cf_depth) b->scoped_barrier = 1;
         word(b, 0x0330000fu);
         word(b, 0x0000000bu); b->shared_visible = b->shared_written;
         return 0;
@@ -1164,15 +1166,39 @@ static int materialize_control_temporaries(struct build *b,
 
 static int span(struct build *b, const struct cf_instruction *ir, unsigned first, unsigned last);
 
+static void forget_loop_ranges(struct build *b, const unsigned written[CS_TEMPS])
+{
+    for (unsigned t = 0; t < CS_TEMPS; ++t)
+        for (unsigned c = 0; c < 4; ++c) if (written[t] & (1u << c)) {
+            b->expr[t][c] = (struct shared_expr){0};
+            b->ranges[t][c] = (struct opengpu_shared_range){0};
+        }
+}
+
 static int emit_loop(struct build *b, const struct cf_instruction *ir,
                      unsigned first, unsigned last)
 {
     unsigned exits[512], exit_count = 0;
     unsigned exit_registers[CS_TEMPS][4];
-    if (b->shared || last <= first) return -1;
+    unsigned written[CS_TEMPS] = {0};
+    unsigned visible = b->shared_visible;
+    if (last <= first) return -1;
+    if (b->shared) {
+        if (materialize_control_temporaries(b, ir, first + 1u)) return -1;
+        for (unsigned i = first + 1u; i < last; ++i) {
+            const struct tgsi_full_instruction *in = &ir[i].in;
+            const struct tgsi_dst_register *dest = &in->Dst[0].Register;
+            if (in->Instruction.NumDstRegs && dest->File == TGSI_FILE_TEMPORARY)
+                written[dest->Index] |= dest->WriteMask;
+        }
+        /* Materialized slots carry the actual next-iteration values across
+         * the backedge. The first visit's symbolic ranges do not. */
+        forget_loop_ranges(b, written);
+    }
     unsigned sync = b->p.words;
     word(b, 0);
     ++b->cf_depth;
+    ++b->loop_depth;
     for (unsigned i = first + 1; i < last; ++i) {
         const struct cf_instruction *node = &ir[i];
         unsigned op = node->in.Instruction.Opcode;
@@ -1202,6 +1228,7 @@ static int emit_loop(struct build *b, const struct cf_instruction *ir,
             return -1;
         }
     }
+    --b->loop_depth;
     --b->cf_depth;
     if (!exit_count || b->failed) return -1;
     unsigned displacement = ((sync + 1u - b->p.words) * 4u) & 0x1fffffu;
@@ -1216,6 +1243,10 @@ static int emit_loop(struct build *b, const struct cf_instruction *ir,
     for (unsigned i = 0; i < exit_count; ++i)
         b->p.code[exits[i]] = branch_word(1, 22, 23, (marker - exits[i]) * 4u);
     memcpy(b->reg, exit_registers, sizeof(exit_registers));
+    if (b->shared) {
+        forget_loop_ranges(b, written);
+        b->shared_visible = visible;
+    }
     b->address_defined = 0;
     return 0;
 }
@@ -1237,6 +1268,7 @@ static int span(struct build *b, const struct cf_instruction *ir, unsigned first
         struct shared_expr expr_before[CS_TEMPS][4], expr_yes[CS_TEMPS][4];
         struct opengpu_shared_range range_before[CS_TEMPS][4], range_yes[CS_TEMPS][4];
         unsigned address_before = b->address_defined, address_yes;
+        unsigned visible_before = b->shared_visible, visible_yes;
         if (materialize_control_temporaries(b, ir, i)) return -1;
         if (source(b, &node->in.Src[0], 0, 22)) return -1;
         splat(b, 23, 0);
@@ -1251,9 +1283,11 @@ static int span(struct build *b, const struct cf_instruction *ir, unsigned first
         word(b, 0x205bu);
         unsigned taken = b->p.words;
         memcpy(yes, b->reg, sizeof(yes)); address_yes = b->address_defined;
+        visible_yes = b->shared_visible;
         memcpy(expr_yes, b->expr, sizeof(expr_yes));
         memcpy(range_yes, b->ranges, sizeof(range_yes));
         memcpy(b->reg, before, sizeof(before)); b->address_defined = address_before;
+        b->shared_visible = visible_before;
         memcpy(b->expr, expr_before, sizeof(expr_before));
         memcpy(b->ranges, range_before, sizeof(range_before));
         ++b->cf_depth;
@@ -1279,6 +1313,7 @@ static int span(struct build *b, const struct cf_instruction *ir, unsigned first
             }
         }
         b->address_defined &= address_yes;
+        if (b->shared_visible > visible_yes) b->shared_visible = visible_yes;
         i = node->end;
     }
     return b->failed ? -1 : 0;
@@ -1391,7 +1426,9 @@ static int control_program(const void *tokens, const struct opengpu_cs_shared *s
     if (shared) word(&b, 0xc1007057u | shared->lanes << 15);
     if (span(&b, ir, 0, count - 1)) goto parsed;
     word(&b, 0x0330000fu); word(&b, 0x30500073u);
-    if (!b.failed && (!shared || (b.shared_used && b.p.shared_atomics && b.p.fixed_block[0] &&
+    if (!b.failed &&
+        (!b.scoped_barrier || opengpu_shader_uniform_barriers(b.p.code, b.p.words - 1u)) &&
+        (!shared || (b.shared_used && (b.p.shared_atomics || b.scoped_barrier) && b.p.fixed_block[0] &&
         b.p.fixed_block[0] <= 128 && b.p.fixed_block[1] == 1 && b.p.fixed_block[2] == 1 &&
         !(b.p.fixed_block[0] % shared->lanes)))) { *out = b.p; image_info(&b,images); result = 0; }
 parsed:

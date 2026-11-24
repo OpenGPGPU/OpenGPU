@@ -280,12 +280,34 @@ int main(int argc,char **argv)
         preserve_program(argv[1],name,&actual);cs_frontend_destroy(dynamic);
     }
     const char *dynamic_negative[]={"dynamic-no-barrier","dynamic-uninitialized-tail","dynamic-conditional-init",
-        "dynamic-divergent-rendezvous"};
+        "dynamic-divergent-rendezvous", "workgroup-barrier-divergent-loop"};
     for(unsigned n=0;n<sizeof(dynamic_negative)/sizeof(dynamic_negative[0]);n++) {
         const char *name=dynamic_negative[n];
         void *negative=front(argv[1],name,"shared-dynamic-negative");
         struct opengpu_cs_shared cfg=profile;cfg.required_bytes=cs_frontend_shared_bytes(negative);
         reject_shared(cs_frontend_tokens(negative),&cfg);cs_frontend_destroy(negative);
+    }
+    const char *workgroup_barriers[] = {"workgroup-barrier-if", "workgroup-barrier-loop"};
+    for (unsigned n = 0; n < sizeof(workgroup_barriers)/sizeof(workgroup_barriers[0]); n++) {
+        const char *name = workgroup_barriers[n];
+        void *original = front(argv[1], name, "workgroup-uniform-barrier");
+        struct opengpu_cs_shared cfg = profile;
+        cfg.required_bytes = cs_frontend_shared_bytes(original);
+        struct opengpu_cs_program actual;
+        assert(!opengpu_cs_emit_shared(cs_frontend_tokens(original), &cfg, &actual));
+        assert(opengpu_compute_shader_validate_words_shared_atomics(actual.code,actual.words,12,128,
+            false,false,false,true,false,false,false,false,false,cfg.base,cfg.bytes,cfg.lanes,false,true));
+        bool scoped = false;
+        for (unsigned i = 0; i < actual.words; i++) {
+            uint32_t branch_pc, taken, marker;
+            if (actual.code[i] == 0x0000000bu &&
+                opengpu_shader_simt_scope_at(actual.code, i, &branch_pc, &taken, &marker))
+                scoped |= (taken == marker) == (n == 1);
+        }
+        assert(scoped);
+        printf("WORKGROUP_BARRIER_CPU %s words=%u\n", name, actual.words);
+        preserve_program(argv[1], name, &actual);
+        cs_frontend_destroy(original);
     }
     /* Real Gallium state creation and screen query consume production discovery.
      * No shared submit is routed through the legacy no-shared CPU word VM. */
