@@ -3,7 +3,6 @@ package opengpu.system
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
-import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse,ShaderPayloadBinding,VectorTlbFlush}
 import opengpu.graphics._
 import opengpu.graphics.tessellation._
 
@@ -23,31 +22,12 @@ class TessellationSystemTriangleJointVertexImage(config:GpuConfig,p:VertexShader
     enabled:Boolean=false) extends Module {
   require(config.lanes==16 && config.warps==8 && config.xLen==32 && shared.numComputeUnits==2)
   require(p.input.attributes==16 && p.input.bindings==16 && p.varyings==16 && f.varyings==16 && f.colors==4)
-  private val idWidth=shared.taskIdWidth;private val cus=shared.numComputeUnits
-  private val payloadConfig=payload;private val sharedConfig=shared
+  private val idWidth=shared.taskIdWidth
   private val renderIds=TessellationSystemTriangleImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity,tessellationUniforms)
   val memoryTransactions=TessellationInputMemoryFabric.transactions(renderIds)
-  val io=IO(new Bundle {
-    val submit=Flipped(Decoupled(new TessellationJointJobRequest(idWidth)))
-    val completion=Decoupled(new TessellationJointNativeCompletion(idWidth))
-    val images=if(externalImages)Some(Flipped(Vec(engines,new TypedReplayTileImagePipelineIO(config,p,sharedConfig,payloadConfig,
-      fragmentImageAvailable=fragmentImageAvailable))))else None
-    val primitiveDone=Vec(engines,Decoupled(new TypedReplayPrimitiveCompletion))
-    val out=Vec(engines,Decoupled(new TypedTilePixelQuadCompletion));val tileDone=Vec(engines,Decoupled(new TypedVertexBinImageTileCompletion))
-    val inspect=Flipped(Decoupled(new TessellationPatchAccess));val reply=Decoupled(new TessellationContextReply)
-    val shared=Flipped(new SharedCuGraphicsPort(config,idWidth,cus,geometryAvailable=true,tessellationAvailable=true,
-      imageAvailable=fragmentImageAvailable,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable))
-    val payload=payloadConfig.map(q=>Vec(engines+1,new FragmentPayloadPort(config,q)))
-    val poolPayload=payloadConfig.map(q=>Output(Valid(new ShaderPayloadBinding(config,q))))
-    val payloadPins=payloadConfig.map(q=>Output(Vec(TessellationSystemTriangleImagePipeline.payloadPins(engines,ownedVertexSource=true),Valid(new ShaderPayloadPin(q)))))
-    val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
-    val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,memoryTransactions))
-    val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,memoryTransactions)))
-    val satp=Input(UInt(32.W));val flush=Flipped(Valid(new VectorTlbFlush(config)))
-    val translationStall=Output(Vec(4,UInt(3.W)));val translationMiss=Output(Vec(4,UInt(3.W)))
-    val walkActive=Output(Vec(4,UInt(3.W)));val fragmentEvents=Output(new FragmentPerformanceEvents)
-    val cancel=Input(Bool());val busy=Output(Bool());val drained=Output(Bool())
-  })
+  val io=IO(new TessellationJointDomainIO(config,p,shared,engines,memoryTransactions,payload,
+    TessellationSystemTriangleImagePipeline.payloadPins(engines,ownedVertexSource=true),
+    transformFeedback,externalImages,fragmentImageAvailable,evaluationPatchAvailable,tessellationInfoAvailable))
   private val owner=Module(new TessellationJointNativeController(config,p,idWidth,1,
     new TessellationTrianglePatchSequenceDescriptor(config,p,idWidth),engines,pagedCapacity,enabled))
   private val range=Module(new TessellationSystemTriangleVertexTypedRange(config,p,idWidth,
