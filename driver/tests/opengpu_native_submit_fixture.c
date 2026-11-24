@@ -262,9 +262,9 @@ static int opengpu_hw_unified_submit_locked(struct opengpu_device *gpu,
     const struct opengpu_kernel_launch *launch,const struct opengpu_command_events *events,
     u32 opcode,u32 source,u32 destination,u32 bytes,u32 pattern,u32 sample_mode,
     u32 width,u32 height,u32 source_stride,u32 destination_stride,u64 expected_bytes,
-    const struct opengpu_vm *vm,u32 delay,struct dma_fence **output)
+    const struct opengpu_vm *vm,u32 delay,const void *joint,struct dma_fence **output)
 {
-    assert(gpu->hw.submit_lock.held && !gpu->hw.fence_lock && !launch && !events);
+    assert(gpu->hw.submit_lock.held && !gpu->hw.fence_lock && !launch && !events && !joint);
     assert(opcode==7 && !(source&63) && (u64)destination+((u64)pattern<<32)==(u64)source+512);
     assert(bytes==512 && !sample_mode && width==running->context.id && !height && !source_stride && !destination_stride);
     assert(!expected_bytes && vm==&running->context.vm && !delay && !running->hardware);

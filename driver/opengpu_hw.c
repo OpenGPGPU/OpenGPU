@@ -33,6 +33,7 @@
 #include "opengpu_tessellation_transport.h"
 #include "opengpu_unified_completion.h"
 #include "opengpu_private_snapshot.h"
+#include "opengpu_protected_tessellation_joint.h"
 #include "opengpu_scheduler.h"
 
 struct opengpu_fence {
@@ -365,6 +366,7 @@ void opengpu_hw_abort(struct opengpu_device *gpu, int error)
     unified = gpu->hw.unified_fence;
     gpu->hw.unified_fence = NULL;
     gpu->hw.native_pending_owner = NULL;
+    gpu->hw.joint_pending_completion = NULL;
     if (unified) {
         u32 fault_flags = OPENGPU_FAULT_ABORTED;
 
@@ -415,6 +417,7 @@ static void opengpu_timeout_work(struct work_struct *work)
 
         gpu->hw.unified_fence = NULL;
         gpu->hw.native_pending_owner = NULL;
+        gpu->hw.joint_pending_completion = NULL;
         if (gpu->hw.capabilities & GPU_CAP_UNIFIED_RESET)
             fault_flags |= OPENGPU_FAULT_RESET_ISSUED;
         opengpu_hw_record_fault_locked(
@@ -544,7 +547,7 @@ static void opengpu_hw_enable_irqs(struct opengpu_device *gpu)
 int opengpu_hw_init(struct opengpu_device *gpu, struct platform_device *pdev)
 {
     struct resource *res;
-    u32 id;
+    u32 id, source_flags;
     int ret;
 
     mutex_init(&gpu->hw.submit_lock);
@@ -604,24 +607,31 @@ int opengpu_hw_init(struct opengpu_device *gpu, struct platform_device *pdev)
                              "invalid native descriptor preflight record\n");
     gpu->hw.native_layered_transport = false;
     gpu->hw.native_sample_transport = false;
+    source_flags = gpu->hw.compute_resource_flags & ~OPENGPU_COMPUTE_RESOURCE_JOINT_TESSELLATION_V1;
     if ((gpu->hw.compute_resource_flags & OPENGPU_NATIVE_SAMPLE_TRANSPORT_PRESENCE) &&
         !(gpu->hw.compute_resource_flags & OPENGPU_NATIVE_GEOMETRY_TRANSPORT_PRESENCE))
         return dev_err_probe(gpu->dev, -EINVAL,
                              "native sample transport requires geometry transport\n");
     if (gpu->hw.compute_resource_flags & OPENGPU_NATIVE_GEOMETRY_TRANSPORT_PRESENCE) {
         if (!opengpu_read_native_sample_transport_limits(id,
-                gpu->hw.compute_resource_flags, gpu->hw.capabilities,
+                source_flags, gpu->hw.capabilities,
                 gpu->hw.regs_size, gpu, opengpu_mmio_read_callback,
                 &gpu->hw.native_sources, &gpu->hw.native_layered_transport,
                 &gpu->hw.native_sample_transport))
             return dev_err_probe(gpu->dev, -EINVAL,
                                  "invalid native geometry transport profile record\n");
     } else if (!opengpu_read_native_source_limits(id,
-            gpu->hw.compute_resource_flags, gpu->hw.capabilities,
+            source_flags, gpu->hw.capabilities,
             gpu->hw.regs_size, gpu, opengpu_mmio_read_callback,
             &gpu->hw.native_sources))
         return dev_err_probe(gpu->dev, -EINVAL,
                              "invalid protected native source profile record\n");
+    if (!opengpu_read_tessellation_joint_profile(gpu->hw.compute_resource_flags,
+            gpu->hw.capabilities, gpu->hw.regs_size, &gpu->hw.native_sources,
+            gpu->hw.native_advanced_blend_transport, gpu->hw.native_sample_transport,
+            gpu, opengpu_mmio_read_callback, &gpu->hw.joint_tessellation))
+        return dev_err_probe(gpu->dev, -EINVAL,
+                             "invalid protected joint tessellation profile record\n");
     if (!opengpu_read_compute_local_limits(id, gpu->hw.regs_size,
             gpu->hw.compute_resource_flags, gpu, opengpu_mmio_read_callback,
             &gpu->hw.compute_local_limits))
@@ -866,6 +876,7 @@ static bool opengpu_hw_unified_drain(struct opengpu_device *gpu)
     struct opengpu_tessellation_completion tessellation;
     struct opengpu_native_completion native;
     bool tessellation_valid = false, native_valid = false, native_expected = false;
+    bool joint_expected, joint_valid = false;
     int ret;
 
     if (!(gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
@@ -885,12 +896,24 @@ static bool opengpu_hw_unified_drain(struct opengpu_device *gpu)
         GPU_REG_UCMD_COMPLETION_BYTES_LO);
     processed |= (u64)opengpu_reg_read(gpu,
         GPU_REG_UCMD_COMPLETION_BYTES_HI) << 32;
+    joint_expected = gpu->hw.unified_fence && gpu->hw.joint_pending_completion;
     /* The completion window is invalidated by POP. Do not probe it for other
      * opcodes or when the device aperture does not contain the full window. */
-    if (GPU_UCMD_COMPLETION_OPCODE(completion) == GPU_UCMD_OP_TESSELLATION)
+    if (joint_expected) {
+        u32 status = GPU_UCMD_COMPLETION_STATUS(completion);
+
+        if (GPU_UCMD_COMPLETION_ID(completion) == gpu->hw.unified_command_id &&
+            GPU_UCMD_COMPLETION_OPCODE(completion) == GPU_UCMD_OP_TESSELLATION &&
+            GPU_UCMD_COMPLETION_SUCCESS(completion) == !status)
+            joint_valid = opengpu_capture_tessellation_joint_completion(status,
+                processed, gpu->hw.regs_size, gpu->hw.native_context, gpu->hw.native_pass,
+                gpu->hw.native_generation, gpu, opengpu_mmio_read_callback,
+                gpu->hw.joint_pending_completion);
+    } else if (GPU_UCMD_COMPLETION_OPCODE(completion) == GPU_UCMD_OP_TESSELLATION) {
         tessellation_valid = opengpu_tessellation_completion_capture(
             GPU_UCMD_COMPLETION_STATUS(completion), gpu->hw.regs_size, gpu,
             opengpu_mmio_read_callback, &tessellation);
+    }
     /* Opcode seven is also used by older GTJ/GBJ profiles. Only a pending
      * protected owner on the verified source profile permits GNX probing. */
     native_expected = gpu->hw.native_pending_owner && gpu->hw.native_sources.available &&
@@ -909,6 +932,7 @@ static bool opengpu_hw_unified_drain(struct opengpu_device *gpu)
     expected_bytes = gpu->hw.unified_expected_bytes;
     gpu->hw.unified_fence = NULL;
     gpu->hw.native_pending_owner = NULL;
+    gpu->hw.joint_pending_completion = NULL;
     if (fence) {
         u32 fault_flags = 0;
         u32 actual_id = GPU_UCMD_COMPLETION_ID(completion);
@@ -916,8 +940,10 @@ static bool opengpu_hw_unified_drain(struct opengpu_device *gpu)
         u32 actual_status = GPU_UCMD_COMPLETION_STATUS(completion);
         bool actual_success = GPU_UCMD_COMPLETION_SUCCESS(completion);
 
-        ret = opengpu_hw_unified_result_error(opcode,
-            actual_status);
+        if (joint_expected && actual_status == 4)
+            ret = -ECANCELED;
+        else
+            ret = opengpu_hw_unified_result_error(opcode, actual_status);
         if (ret)
             fault_flags |= OPENGPU_FAULT_COMPLETION_ERROR;
         if (actual_id != command_id)
@@ -926,7 +952,7 @@ static bool opengpu_hw_unified_drain(struct opengpu_device *gpu)
             fault_flags |= OPENGPU_FAULT_OPCODE_MISMATCH;
         if (actual_success != !ret)
             fault_flags |= OPENGPU_FAULT_SUCCESS_MISMATCH;
-        if (native_expected ? !native_valid :
+        if (joint_expected ? !joint_valid : native_expected ? !native_valid :
             (!ret && !opengpu_unified_completion_data_valid(opcode, processed, expected_bytes)))
             fault_flags |= OPENGPU_FAULT_BYTES_MISMATCH;
         if (fault_flags & ~OPENGPU_FAULT_COMPLETION_ERROR)
@@ -1002,6 +1028,11 @@ static void opengpu_hw_unified_kick(struct opengpu_device *gpu,
     spin_unlock_irqrestore(&gpu->hw.fence_lock, flags);
 }
 
+struct opengpu_hw_joint_submission {
+    struct opengpu_tessellation_joint_completion *completion;
+    u32 feedback_program, feedback_cookie;
+};
+
 static int opengpu_hw_unified_submit_locked(
     struct opengpu_device *gpu,
     const struct opengpu_kernel_launch *launch,
@@ -1010,6 +1041,7 @@ static int opengpu_hw_unified_submit_locked(
     u32 bytes, u32 pattern, u32 sample_mode, u32 width, u32 height,
     u32 source_stride, u32 destination_stride, u64 expected_bytes,
     const struct opengpu_vm *vm, u32 completion_delay_ms,
+    const struct opengpu_hw_joint_submission *joint,
     struct dma_fence **out_fence)
 {
     struct opengpu_fence *fence;
@@ -1031,6 +1063,8 @@ static int opengpu_hw_unified_submit_locked(
     if (!out_fence)
         return -EINVAL;
     *out_fence = NULL;
+    if (joint && (opcode != GPU_UCMD_OP_TESSELLATION || launch || !joint->completion))
+        return -EINVAL;
     if ((opcode == GPU_UCMD_OP_KERNEL_INDIRECT) !=
             !!(launch && launch->indirect_enabled) ||
         (opcode == GPU_UCMD_OP_KERNEL_INDIRECT && !gpu->hw.compute_indirect_transport))
@@ -1123,6 +1157,13 @@ static int opengpu_hw_unified_submit_locked(
         gpu->hw.unified_opcode = opcode;
         gpu->hw.unified_expected_bytes = expected_bytes;
         gpu->hw.unified_completion_delay_ms = completion_delay_ms;
+        if (joint) {
+            *joint->completion = (struct opengpu_tessellation_joint_completion){0};
+            gpu->hw.joint_pending_completion = joint->completion;
+            gpu->hw.native_context = height;
+            gpu->hw.native_pass = source_stride;
+            gpu->hw.native_generation = destination_stride;
+        }
         *out_fence = dma_fence_get(&fence->base);
     }
     spin_unlock_irqrestore(&gpu->hw.fence_lock, flags);
@@ -1153,9 +1194,9 @@ static int opengpu_hw_unified_submit_locked(
     opengpu_reg_write(gpu, GPU_REG_UCMD_KERNARG,
                       launch ? lower_32_bits(launch->kernarg) : 0);
     opengpu_reg_write(gpu, GPU_REG_UCMD_GRID_X,
-                      launch ? launch->grid[0] : 1);
+                      joint ? joint->feedback_program : launch ? launch->grid[0] : 1);
     opengpu_reg_write(gpu, GPU_REG_UCMD_GRID_Y,
-                      launch ? launch->grid[1] : 1);
+                      joint ? joint->feedback_cookie : launch ? launch->grid[1] : 1);
     opengpu_reg_write(gpu, GPU_REG_UCMD_GRID_Z,
                       launch ? launch->grid[2] : 1);
     opengpu_reg_write(gpu, GPU_REG_UCMD_LOCAL_X,
@@ -1195,7 +1236,7 @@ static int opengpu_hw_unified_dma_submit_locked(
     return opengpu_hw_unified_submit_locked(
         gpu, NULL, events, opcode, source, destination, bytes, pattern, 0,
         bytes, height, source_stride, destination_stride, expected_bytes, vm, 0,
-        out_fence);
+        NULL, out_fence);
 }
 
 /* Submit one DMA operation through the integrated common command payload.
@@ -1647,7 +1688,7 @@ int opengpu_hw_invalidate_async(struct opengpu_device *gpu, u32 address,
     ret = opengpu_hw_execution_busy(gpu) ? -EBUSY :
         opengpu_hw_unified_submit_locked(
             gpu, NULL, events, GPU_UCMD_OP_INVALIDATE, address, 0, bytes, 0,
-            0, bytes, 0, 0, 0, bytes, vm, 0, out_fence);
+            0, bytes, 0, 0, 0, bytes, vm, 0, NULL, out_fence);
     mutex_unlock(&gpu->hw.submit_lock);
     return ret;
 }
@@ -1669,7 +1710,7 @@ int opengpu_hw_invalidate_sync(struct opengpu_device *gpu, u32 address,
     if (!ret)
         ret = opengpu_hw_unified_submit_locked(
             gpu, NULL, NULL, GPU_UCMD_OP_INVALIDATE, address, 0, bytes, 0,
-            0, bytes, 0, 0, 0, bytes, NULL, 0, &fence);
+            0, bytes, 0, 0, 0, bytes, NULL, 0, NULL, &fence);
     if (!ret) {
         ret = opengpu_hw_fence_wait(gpu, fence, OPENGPU_DRAW_WAIT_MS + 100,
                                     interruptible);
@@ -1740,7 +1781,7 @@ int opengpu_hw_resolve_async(struct opengpu_device *gpu, u32 source,
         opengpu_hw_unified_submit_locked(
             gpu, NULL, events, GPU_UCMD_OP_RESOLVE, source, destination,
             width, pattern, sample_mode, width, height, source_stride,
-            destination_stride, (u64)width * height * 4ull, vm, 0, out_fence);
+            destination_stride, (u64)width * height * 4ull, vm, 0, NULL, out_fence);
     mutex_unlock(&gpu->hw.submit_lock);
     return ret;
 }
@@ -1950,7 +1991,7 @@ int opengpu_hw_compute_async(struct opengpu_device *gpu,
                 gpu, launch, events,
                 launch->indirect_enabled ? GPU_UCMD_OP_KERNEL_INDIRECT : GPU_UCMD_OP_KERNEL,
                 launch->indirect_base, 0, launch->indirect_bytes, 0, 0, launch->indirect_offset, 0,
-                0, 0, 0, vm, 0, out_fence);
+                0, 0, 0, vm, 0, NULL, out_fence);
     mutex_unlock(&gpu->hw.submit_lock);
     return ret;
 }
@@ -1984,7 +2025,7 @@ int opengpu_hw_invalidate_buffer_locked(
 
     ret = opengpu_hw_unified_submit_locked(
         gpu, NULL, NULL, GPU_UCMD_OP_INVALIDATE, (u32)start, 0, bytes, 0, 0,
-        bytes, 0, 0, 0, bytes, NULL, 0, &fence);
+        bytes, 0, 0, 0, bytes, NULL, 0, NULL, &fence);
     if (ret)
         return ret;
     ret = opengpu_hw_fence_wait(gpu, fence, OPENGPU_DRAW_WAIT_MS + 100,
@@ -2122,7 +2163,7 @@ int opengpu_hw_tessellation_async(struct opengpu_device *gpu,
                 descriptor_va, lower_32_bits(descriptor_limit),
                 OPENGPU_NATIVE_TESSELLATION_JOB_BYTES,
                 (u32)(descriptor_limit >> 32), 0, job.context, program,
-                cookie, 0, 0, vm, 0, out_fence);
+                cookie, 0, 0, vm, 0, NULL, out_fence);
 out_unlock:
     mutex_unlock(&gpu->hw.submit_lock);
     return ret;
@@ -2167,7 +2208,7 @@ int opengpu_hw_render_async(struct opengpu_device *gpu,
         ret = opengpu_hw_unified_submit_locked(
             gpu, NULL, events, GPU_UCMD_OP_RENDER, descriptor_va, 0,
             descriptor_bytes, 0, 0, descriptor_bytes, 0, 0, 0, descriptor_bytes, vm,
-            job->completion_delay_ms, out_fence);
+            job->completion_delay_ms, NULL, out_fence);
     mutex_unlock(&gpu->hw.submit_lock);
     return ret;
 }
@@ -2333,13 +2374,78 @@ int opengpu_hw_native_binned_async(struct opengpu_device *gpu,
     ret = opengpu_hw_unified_submit_locked(gpu, NULL, NULL,
         GPU_UCMD_OP_NATIVE_BINNED_RENDER, address, lower_32_bits(limit),
         OPENGPU_NATIVE_BINNED_JOB_BYTES, (u32)(limit >> 32), 0,
-        context->id, 0, 0, 0, 0, &context->vm, 0, out_fence);
+        context->id, 0, 0, 0, 0, &context->vm, 0, NULL, out_fence);
     if (ret) {
         spin_lock_irqsave(&gpu->hw.fence_lock, irq_flags);
         gpu->hw.native_pending_owner = NULL;
         spin_unlock_irqrestore(&gpu->hw.fence_lock, irq_flags);
     }
 out:
+    mutex_unlock(&gpu->hw.submit_lock);
+    return ret;
+}
+
+int opengpu_hw_protected_tessellation_joint_profile(const struct opengpu_device *gpu,
+    struct opengpu_protected_tessellation_joint_profile *profile)
+{
+    if (!gpu || !profile)
+        return -EINVAL;
+    if (!opengpu_protected_tessellation_joint_profile_valid(&gpu->hw.joint_tessellation))
+        return -EOPNOTSUPP;
+    *profile = gpu->hw.joint_tessellation;
+    return 0;
+}
+
+int opengpu_hw_protected_tessellation_joint_async(struct opengpu_device *gpu,
+    struct opengpu_private_snapshot *owner, const struct opengpu_render_context *context,
+    u32 job_segment, const struct opengpu_tessellation_scope *scope,
+    struct opengpu_tessellation_joint_completion *completion, struct dma_fence **out_fence)
+{
+    struct opengpu_protected_tessellation_joint_host_command command;
+    struct opengpu_protected_tessellation_joint_profile profile;
+    struct opengpu_hw_joint_submission joint = {.completion = completion};
+    struct opengpu_command_events events = {0};
+    int ret;
+
+    if (!out_fence)
+        return -EINVAL;
+    *out_fence = NULL;
+    if (!gpu || !owner || !context || context->gpu != gpu || !completion)
+        return -EINVAL;
+    ret = opengpu_hw_protected_tessellation_joint_profile(gpu, &profile);
+    if (ret)
+        return ret;
+    if (scope) {
+        events.flags = scope->flags;
+        joint.feedback_program = scope->program;
+        joint.feedback_cookie = scope->cookie;
+        if (events.flags & ~(GPU_UCMD_FLAG_RASTER_DISCARD | GPU_UCMD_FLAG_FEEDBACK_CAPTURE))
+            return -EINVAL;
+        if ((events.flags || joint.feedback_program || joint.feedback_cookie) &&
+            !profile.transform_feedback)
+            return -EOPNOTSUPP;
+    }
+
+    /* This published owner already holds an MMU lease. Ordinary admission
+     * waits for that lease, so the private path acquires submit_lock directly. */
+    mutex_lock(&gpu->hw.submit_lock);
+    if (READ_ONCE(gpu->hw.wedged)) {
+        ret = -EIO;
+        goto unlock;
+    }
+    ret = opengpu_hw_execution_busy(gpu) ? -EBUSY : opengpu_hw_wait_idle_locked(gpu);
+    if (ret)
+        goto unlock;
+    ret = opengpu_protected_tessellation_joint_command_locked(owner, gpu, context,
+        job_segment, &command);
+    if (!ret)
+        ret = opengpu_private_snapshot_invalidate_locked(owner, gpu, context);
+    if (!ret)
+        ret = opengpu_hw_unified_submit_locked(gpu, NULL, &events, command.opcode,
+            command.source, command.destination, command.bytes, command.pattern, 0,
+            command.width, command.height, command.source_stride, command.destination_stride,
+            0, &context->vm, 0, &joint, out_fence);
+unlock:
     mutex_unlock(&gpu->hw.submit_lock);
     return ret;
 }

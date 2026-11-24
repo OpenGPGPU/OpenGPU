@@ -38,11 +38,12 @@ object ComputeResourceCapabilities {
   val nativeGeometryTransport=1 << 19
   val nativeSampleTransport=1 << 20
   val imageFloatExchange=1 << 21
+  val jointTessellation=1 << 22
   val flags=7 | wordAtomics
   val fields=Seq("MAGIC","WORDS","FLAGS","COMPUTE_UNITS","LANES","WARPS",
     "LOCAL_ITEMS","LOCAL_AXIS","GRID_AXIS","SHARED_BYTES","SHARED_BANKS",
     "SIMT_STACK_ENTRIES","SHARED_BASE","AXI_DATA_BYTES","L2_DATA_BYTES","L2_BANKS")
-  def words(p: ComputeResourceProfile, imageAvailable: Boolean=false, storageAvailable: Boolean=false, computeUniformAvailable: Boolean=false, computeTextureAvailable: Boolean=false, atomicCounterAvailable: Boolean=false, imageAtomicAvailable: Boolean=false, storageAtomicAvailable: Boolean=false, tessellationAvailable: Boolean=false, tessellationFeedbackAvailable: Boolean=false,nativeAdvancedBlendAvailable: Boolean=false,nativeDescriptorPreflightAvailable: Boolean=false,nativeProtectedSourcesAvailable: Boolean=false,nativeGeometryTransportAvailable: Boolean=false,nativeSampleTransportAvailable: Boolean=false,imageFloatExchangeAvailable: Boolean=false): Seq[BigInt]={
+  def words(p: ComputeResourceProfile, imageAvailable: Boolean=false, storageAvailable: Boolean=false, computeUniformAvailable: Boolean=false, computeTextureAvailable: Boolean=false, atomicCounterAvailable: Boolean=false, imageAtomicAvailable: Boolean=false, storageAtomicAvailable: Boolean=false, tessellationAvailable: Boolean=false, tessellationFeedbackAvailable: Boolean=false,nativeAdvancedBlendAvailable: Boolean=false,nativeDescriptorPreflightAvailable: Boolean=false,nativeProtectedSourcesAvailable: Boolean=false,nativeGeometryTransportAvailable: Boolean=false,nativeSampleTransportAvailable: Boolean=false,imageFloatExchangeAvailable: Boolean=false,jointTessellationAvailable: Boolean=false): Seq[BigInt]={
     require(!imageAtomicAvailable || imageAvailable, "image atomics require images")
     require(!imageFloatExchangeAvailable || imageAtomicAvailable, "float image exchange requires image atomics")
     require(!storageAtomicAvailable || storageAvailable, "storage atomics require storage")
@@ -53,7 +54,10 @@ object ComputeResourceCapabilities {
       "native geometry transport discovery requires protected sources")
     require(!nativeSampleTransportAvailable || nativeGeometryTransportAvailable,
       "native sample transport discovery requires the protected layered geometry path")
-    val values=Seq[BigInt](magic,wordCount,flags | (if(p.gpu.enableSharedVectorAtomics)sharedVectorAtomics else 0) | (if(imageAvailable)imageCommands | bufferImages else 0) | (if(storageAvailable)storageCommands else 0) | (if(computeUniformAvailable)uniformCommands else 0) | (if(computeTextureAvailable)textureCommands | bufferTextures else 0) | (if(atomicCounterAvailable)atomicCounterCommands else 0) | (if(imageAtomicAvailable)imageAtomics else 0) | (if(storageAtomicAvailable)storageAtomics else 0) | (if(tessellationAvailable)tessellationCommands else 0) | (if(tessellationFeedbackAvailable)tessellationFeedback else 0) | (if(nativeAdvancedBlendAvailable)nativeAdvancedBlend else 0) | (if(nativeDescriptorPreflightAvailable)nativeDescriptorPreflight else 0) | (if(nativeProtectedSourcesAvailable)nativeProtectedSources else 0) | (if(nativeGeometryTransportAvailable)nativeGeometryTransport else 0) | (if(nativeSampleTransportAvailable)nativeSampleTransport else 0) | (if(imageFloatExchangeAvailable)imageFloatExchange else 0),p.computeUnits,p.gpu.lanes,p.gpu.warps,
+    require(!jointTessellationAvailable || (nativeProtectedSourcesAvailable && !tessellationAvailable),
+      "joint tessellation discovery requires the protected joint owner")
+    val jointFlags = if(jointTessellationAvailable) jointTessellation else 0
+    val values=Seq[BigInt](magic,wordCount,flags | jointFlags | (if(p.gpu.enableSharedVectorAtomics)sharedVectorAtomics else 0) | (if(imageAvailable)imageCommands | bufferImages else 0) | (if(storageAvailable)storageCommands else 0) | (if(computeUniformAvailable)uniformCommands else 0) | (if(computeTextureAvailable)textureCommands | bufferTextures else 0) | (if(atomicCounterAvailable)atomicCounterCommands else 0) | (if(imageAtomicAvailable)imageAtomics else 0) | (if(storageAtomicAvailable)storageAtomics else 0) | (if(tessellationAvailable)tessellationCommands else 0) | (if(tessellationFeedbackAvailable)tessellationFeedback else 0) | (if(nativeAdvancedBlendAvailable)nativeAdvancedBlend else 0) | (if(nativeDescriptorPreflightAvailable)nativeDescriptorPreflight else 0) | (if(nativeProtectedSourcesAvailable)nativeProtectedSources else 0) | (if(nativeGeometryTransportAvailable)nativeGeometryTransport else 0) | (if(nativeSampleTransportAvailable)nativeSampleTransport else 0) | (if(imageFloatExchangeAvailable)imageFloatExchange else 0),p.computeUnits,p.gpu.lanes,p.gpu.warps,
       p.localItems,p.localAxis,BigInt("ffffffff",16),p.gpu.sharedMemoryBytes,p.gpu.sharedMemoryBanks,
       p.gpu.simtStackDepth,BigInt(p.gpu.sharedMemoryBase),p.axiDataBytes,p.l2DataBytes,p.gpu.l2Banks)
     require(values.size==wordCount && values.forall(v=>v>=0 && v<(BigInt(1)<<32)))

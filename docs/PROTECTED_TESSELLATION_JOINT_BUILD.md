@@ -3,9 +3,10 @@
 `opengpu_protected_tessellation_joint_build` creates an independent private
 GNQ4/5/6 graph from original vertex, control, evaluation and fragment sources.
 The old GNQ1/2/3 BUILD, GNT4/5/6, submit request, accessors and getters retain
-their contracts. No ioctl, queue route, hardware discovery or factory is
-enabled by this helper. The mandatory product target remains two CUs at
-640×480/60FPS with the full resource capacities.
+their contracts. The opt-in joint host and the kernel's private MMIO path
+share the versioned provider and completion records below. The mandatory
+product target remains two CUs at 640×480/60FPS with the full resource
+capacities.
 
 The formal source is
 [`abi/protected-tessellation-joint-v2.json`](abi/protected-tessellation-joint-v2.json).
@@ -157,9 +158,18 @@ the original device and context. The root's logical extent and actual mapped
 allocation are separate, and the owner envelope spans the real private
 segments and reservations. Exclusive limits retain all 33 bits. The original
 owner retains authority over the referenced mappings through retirement.
-The Linux hardware enqueue and provider discovery remain integration gates.
 
 ### Private host command and completion
+
+GCR1 bit 22 guarantees the four read-only GJP1 words at `0x550–0x55c`.
+They report magic `0x474a5001`, provider flags, the three-domain mask and
+two-CU/16-lane/eight-warp shape, and the number of image engines. Flags
+0–6 certify the owned vertex source, initialized patch state, owned patch
+reads, tessellation information, original primitive inputs, directory route
+and whole-owner retirement. Flags 7–10 report scalar FP, advanced blending,
+sample inputs and transform feedback. The driver checks the record against
+the verified native source profile and the mapped aperture before enabling
+the private submission path. Legacy profiles leave bit 22 clear.
 
 The locked kernel encoder packs the published request into unified opcode
 15. The tagged pattern selects the joint request when the AXI host has the
@@ -189,23 +199,35 @@ byte registers. The joint report occupies one software completion slot and
 all words stay stable until pop. The extended words read zero for legacy
 results in the joint-enabled host.
 
-The FlashSim host AXI fixture checks the tagged command, a 4 GiB exclusive
-limit, queue backpressure and VM exclusion, all sixteen completion words,
-foreign completion identity and the legacy command in the same host. The
-driver fixture checks encoding from the actual published owner for all three
-domains. The typed host AXI fixture uses peers at the joint execution ports.
+The kernel checks the published owner again under `submit_lock`, invalidates
+its private pages, stages its translated VM and attaches report storage to
+the execution fence before ringing the doorbell. IRQ and polling share
+`fence_lock` through the GNZ2 snapshot and pop. The snapshot validates the
+command ID, opcode, status and the expected context/pass/generation before
+publishing counters. A valid cancellation reports `-ECANCELED` and a valid
+write fault preserves its address in the snapshot.
+
+The FlashSim host AXI fixture passed profile discovery and write rejection,
+the tagged command at a 4 GiB exclusive limit, queue backpressure and VM
+exclusion, all sixteen completion words and legacy routing. It uses peers
+at the joint execution ports. ASan/UBSan passed the published-owner enqueue
+checks for all three domains and the IRQ/poll/abort races with modeled MMIO.
+The full ARM64 Linux 7.2 module compiled and linked with GCC 15.2 in 17.8
+seconds. Protected DRM submission and original Mesa execution on the
+three-domain hardware remain pending.
 
 ```sh
 sbt -Dopengpu.simBackend=flashsim -Dopengpu.flashsimPython=python3.13 \
   'testOnly opengpu.system.TessellationHostAxiCommandSpec opengpu.graphics.TileBinHostCommandPortSpec'
 python3 scripts/test_protected_tessellation_joint.py --sanitize
+OPENGPU_TEST_SANITIZERS=1 python3 scripts/test_unified_completion_race.py
+gmake -C "$OPENGPU_KERNEL_BUILD" -j1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+  M="$OPENGPU_DRIVER_SOURCE" MO="$OPENGPU_DRIVER_BUILD" modules
 ```
 
-
-No production getter supplies the joint profile. An unavailable or incomplete
-profile fails before source copy, resolution or owner append. Compiler metadata
-and GSS1 cannot grant it. Existing native/protected job accessors reject the
-new job magic.
+Use a fresh private copy of the current driver for `OPENGPU_DRIVER_SOURCE`
+and a separate output directory for `OPENGPU_DRIVER_BUILD`. The private
+hardware profile comes from the verified GCR1/GJP1 records.
 
 The hardware start must carry the verified owner scope and expected frame
 identity from the published request. Authorization still follows the immutable
@@ -215,15 +237,15 @@ nonempty-state admission cannot be bypassed with a dummy shader. Arbitrary
 64-bit invocation IDs remain original BUILD-checked identities; a bounded
 stream reader checks range boundaries, not unbounded global ID uniqueness.
 
-A future real route must consume GNQ → directory → GNT → GVS/GND capture →
+The joint hardware route consumes GNQ → directory → GNT → GVS/GND capture →
 the matching three-domain typed range/image parent. The directory supplies
 expected draw/sequence indices; GVS cannot authorize its own expected values.
 Reader ownership changes only after actual completion consumption and pending
 memory drain. Held offers survive cancellation until accepted or actual frame
 stop. Patch advance requires actual source load/reply/seal, TCS/TES retirement,
 typed task report and task drain. Final end, actual frame completion and full
-fabric drain are all required. These reader/parent/factory/runtime and actual
-CU/DUT qualifications remain pending; a constructed graph proves none of them.
+fabric drain are all required. The complete factory and original shader runs
+on the protected two-CU DUT remain pending.
 
 ## CPU validation and limits
 

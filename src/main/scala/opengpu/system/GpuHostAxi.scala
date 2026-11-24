@@ -84,8 +84,13 @@ class GpuHostAxi(
   nativeProtectedSources: Boolean = false, nativeGeometryTransport: Boolean = false,
   nativeSampleTransport: Boolean = false,
   imageFloatExchangeAvailable: Boolean = false,
-  jointTessellationHost: Boolean = false
+  jointTessellationHost: Boolean = false,
+  jointTessellationProfile: Option[TessellationJointHostProtocol.Profile] = None
 ) extends Module {
+  require(jointTessellationProfile.isEmpty || (jointTessellationHost && nativeProtectedSources &&
+    !tessellationDiscovery && computeResources.exists(p =>
+      p.computeUnits == 2 && p.gpu.lanes == 16 && p.gpu.warps == 8)),
+    "joint tessellation discovery requires the protected two-CU execution profile")
   require(!nativeSampleTransport || nativeGeometryTransport,
     "GSS1 discovery requires the protected layered geometry transport")
   require(!nativeGeometryTransport || nativeProtectedSources,
@@ -538,6 +543,9 @@ class GpuHostAxi(
     val targetNativeSample = if(nativeSampleTransport)
       beatAddr >= opengpu.graphics.NativeSampleTransportCapabilities.base.U &&
         beatAddr < opengpu.graphics.NativeSampleTransportCapabilities.end.U else false.B
+    val targetJointProfile = if (jointTessellationProfile.nonEmpty)
+      beatAddr >= TessellationJointHostProtocol.profileBase.U &&
+        beatAddr < TessellationJointHostProtocol.profileEnd.U else false.B
     val targetImages = if(imageAvailable)
       beatAddr >= opengpu.graphics.ShaderImageCommandMmioRegs.base.U &&
         beatAddr < opengpu.graphics.ShaderImageCommandMmioRegs.end.U else false.B
@@ -554,7 +562,7 @@ class GpuHostAxi(
       beatAddr >= opengpu.graphics.AtomicCounterCommandMmioRegs.base.U &&
         beatAddr < opengpu.graphics.AtomicCounterCommandMmioRegs.end.U else false.B
     val beatOk = transferOk && !beatAddrWide(32) && (beatAddr & 0x3.U) === 0.U &&
-      (beatAddr < mappedEnd || targetBinCapabilities || targetNativeDetails || targetJointDetails || targetNativeInput || targetFragmentInput || targetTexturePolicy || targetTextureFormats || targetRaster || targetVisibilityQueries || targetFeedback || targetPrimitiveQuery || targetShaderExecution || targetTextureOperations || targetIndirectCompute || targetComputeResources || targetUniformResources || targetBlendResources || targetAdvancedBlend || targetNativePreflight || targetNativeGeometry || targetNativeSample || targetImages || targetStorage || targetComputeUniform || targetComputeTexture || targetAtomicCounter)
+      (beatAddr < mappedEnd || targetBinCapabilities || targetNativeDetails || targetJointDetails || targetNativeInput || targetFragmentInput || targetTexturePolicy || targetTextureFormats || targetRaster || targetVisibilityQueries || targetFeedback || targetPrimitiveQuery || targetShaderExecution || targetTextureOperations || targetIndirectCompute || targetComputeResources || targetUniformResources || targetBlendResources || targetAdvancedBlend || targetNativePreflight || targetNativeGeometry || targetNativeSample || targetJointProfile || targetImages || targetStorage || targetComputeUniform || targetComputeTexture || targetAtomicCounter)
 
     val writeBeat = writeActive && !bPending
     val wBeatFire = writeBeat && io.s_axi_wvalid && io.s_axi_wready
@@ -570,7 +578,7 @@ class GpuHostAxi(
         beatAddr === GpuCommandMmioRegs.RESET.U ||
         (beatAddr >= GpuCommandMmioRegs.SAMPLE_MODE.U &&
           beatAddr < GpuCommandMmioRegs.END.U) || targetNativeDetails || targetJointDetails || targetImages || targetStorage || targetComputeUniform || targetComputeTexture || targetAtomicCounter
-    reg.req.valid := busRegValid && beatOk && !targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback && !targetShaderExecution && !targetPrimitiveQuery && !targetTextureOperations && !targetIndirectCompute && !targetComputeResources && !targetUniformResources && !targetBlendResources && !targetAdvancedBlend && !targetNativePreflight && !targetNativeGeometry && !targetNativeSample
+    reg.req.valid := busRegValid && beatOk && !targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback && !targetShaderExecution && !targetPrimitiveQuery && !targetTextureOperations && !targetIndirectCompute && !targetComputeResources && !targetUniformResources && !targetBlendResources && !targetAdvancedBlend && !targetNativePreflight && !targetNativeGeometry && !targetNativeSample && !targetJointProfile
     reg.req.bits.isWrite := writeActive
     reg.req.bits.addr := beatAddr(9, 0)
     reg.req.bits.data := io.s_axi_wdata
@@ -652,7 +660,7 @@ class GpuHostAxi(
           ((beatAddr-opengpu.command.ComputeIndirectCapabilities.base.U)>>2)(2,0))
       }
       if(computeResources.nonEmpty)when(targetComputeResources) {
-        rdata := VecInit(ComputeResourceCapabilities.words(computeResources.get,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable,atomicCounterAvailable,imageAtomicAvailable,storageAtomicAvailable,tessellationDiscovery,tessellationDiscovery && transformFeedback,nativeAdvancedDraws,nativeDescriptorPreflight,nativeProtectedSources,nativeGeometryTransport,nativeSampleTransport,imageFloatExchangeAvailable).map(_.U(32.W)))(
+        rdata := VecInit(ComputeResourceCapabilities.words(computeResources.get,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable,atomicCounterAvailable,imageAtomicAvailable,storageAtomicAvailable,tessellationDiscovery,tessellationDiscovery && transformFeedback,nativeAdvancedDraws,nativeDescriptorPreflight,nativeProtectedSources,nativeGeometryTransport,nativeSampleTransport,imageFloatExchangeAvailable,jointTessellationAvailable=jointTessellationProfile.nonEmpty).map(_.U(32.W)))(
           ((beatAddr-ComputeResourceCapabilities.base.U)>>2)(3,0))
       }
       if(nativeVertexInput)when(targetBlendResources) {
@@ -674,6 +682,12 @@ class GpuHostAxi(
       if(nativeSampleTransport)when(targetNativeSample) {
         rdata := VecInit(opengpu.graphics.NativeSampleTransportCapabilities.words.map(_.U(32.W)))(
           ((beatAddr-opengpu.graphics.NativeSampleTransportCapabilities.base.U)>>2)(2,0))
+      }
+      jointTessellationProfile.foreach { profile =>
+        when(targetJointProfile) {
+          val word = ((beatAddr - TessellationJointHostProtocol.profileBase.U) >> 2)(1, 0)
+          rdata := VecInit(profile.words.map(_.U(32.W)))(word)
+        }
       }
       if(nativeUniformResources)when(targetUniformResources) {
         rdata := VecInit(opengpu.graphics.NativeUniformCapabilities.words.map(_.U(32.W)))(

@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <time.h>
 #include "opengpu_tessellation_completion.h"
+#include "opengpu_tessellation_joint_host.h"
 #include "opengpu_native_completion.h"
 #include "gpu_abi.h"
 #include "opengpu_unified_completion.h"
@@ -38,6 +39,7 @@ struct opengpu_device {
         unsigned int aborting;
         u64 unified_expected_bytes;
         void *native_pending_owner;
+        struct opengpu_tessellation_joint_completion *joint_pending_completion;
         struct { bool available; } native_sources;
         u32 native_context, native_pass, native_generation;
         struct {
@@ -55,6 +57,8 @@ struct opengpu_device {
     u32 recorded_fault_flags;
     u32 words[12], native_words[12];
     unsigned native_reads;
+    u32 joint_words[16], joint_profile[4];
+    unsigned joint_reads, joint_profile_reads;
 };
 
 static u32 opengpu_reg_read(struct opengpu_device *g, u32 reg)
@@ -75,6 +79,16 @@ static u32 opengpu_reg_read(struct opengpu_device *g, u32 reg)
         return (u32)g->completion_data;
     if (reg == GPU_REG_UCMD_COMPLETION_BYTES_HI)
         return (u32)(g->completion_data >> 32);
+    if (reg >= 0x550 && reg < 0x560) {
+        ++g->joint_profile_reads;
+        return g->joint_profile[(reg - 0x550) / 4];
+    }
+    if (g->hw.joint_pending_completion &&
+        ((reg >= 0x180 && reg < 0x1b0) || (reg >= 0x540 && reg < 0x550))) {
+        assert(atomic_load(&g->slot));
+        ++g->joint_reads;
+        return g->joint_words[reg < 0x540 ? (reg - 0x180) / 4 : 12 + (reg - 0x540) / 4];
+    }
     if (g->hw.unified_opcode == GPU_UCMD_OP_NATIVE_BINNED_RENDER &&
         reg >= OPENGPU_NATIVE_BINNED_COMPLETION_BASE &&
         reg < OPENGPU_NATIVE_BINNED_COMPLETION_BASE + 48) {
@@ -144,6 +158,101 @@ static void mod_delayed_work(void *queue, int *work, u32 delay)
 }
 static void opengpu_hw_unified_reset_request(struct opengpu_device *g) { (void)g; }
 #include "drain_under_test.inc"
+
+static void test_joint_profile(void)
+{
+    struct opengpu_device g = {
+        .joint_profile = {0x474a5001, 0x7ff, 0x08100207, 4},
+    };
+    struct opengpu_native_source_limits native = {
+        .engines = 4, .lanes = 16, .warps = 8, .available = true,
+    };
+    struct opengpu_protected_tessellation_joint_profile profile = {0};
+    const u32 flags = OPENGPU_COMPUTE_RESOURCE_NATIVE_PROTECTED_SOURCES_V1 |
+        OPENGPU_COMPUTE_RESOURCE_JOINT_TESSELLATION_V1;
+    const u32 caps = GPU_CAP_UNIFIED_COMMANDS | GPU_CAP_PROTECTED_VM_STATE |
+        GPU_CAP_COMPUTE_SCALAR_FPU;
+
+    native.frame.words[4] = (16u << 16) | (16u << 21) | (16u << 26);
+    native.frame.words[6] = (4u << 21) | (4u << 24);
+    native.frame.words[7] = 2;
+    assert(opengpu_read_tessellation_joint_profile(0, caps, 0, NULL, false, false,
+        &g, NULL, &profile) && !profile.available && !g.joint_profile_reads);
+    assert(!opengpu_read_tessellation_joint_profile(flags, caps, 0x55f, &native, true, true,
+        &g, opengpu_mmio_read_callback, &profile) && !g.joint_profile_reads);
+    assert(!opengpu_read_tessellation_joint_profile(flags | OPENGPU_COMPUTE_RESOURCE_TESSELLATION_COMMANDS,
+        caps, 0x560, &native, true, true, &g, opengpu_mmio_read_callback, &profile) &&
+        !g.joint_profile_reads);
+    assert(opengpu_read_tessellation_joint_profile(flags, caps, 0x560, &native, true, true,
+        &g, opengpu_mmio_read_callback, &profile) && g.joint_profile_reads == 4);
+    assert(profile.available && profile.version == 1 && profile.domains == 7 &&
+        profile.compute_units == 2 && profile.lanes == 16 && profile.warps == 8 && profile.engines == 4);
+    assert(profile.scalar_fpu && profile.advanced_blend && profile.sample_inputs &&
+        profile.transform_feedback && profile.owned_patch_reads && profile.whole_owner_retirement);
+    assert(!opengpu_read_tessellation_joint_profile(flags, caps, 0x560, &native, true, false,
+        &g, opengpu_mmio_read_callback, &profile) && profile.sample_inputs);
+    g.joint_profile[1] ^= 1u;
+    assert(!opengpu_read_tessellation_joint_profile(flags, caps, 0x560, &native, true, true,
+        &g, opengpu_mmio_read_callback, &profile) && profile.available);
+    g.joint_profile[1] ^= 1u;
+    g.joint_profile[3] = 1;
+    assert(!opengpu_read_tessellation_joint_profile(flags, caps, 0x560, &native, true, true,
+        &g, opengpu_mmio_read_callback, &profile) && profile.engines == 4);
+}
+
+static void test_joint_completion(void)
+{
+    for (unsigned mode = 0; mode < 9; ++mode) {
+        struct opengpu_tessellation_joint_completion result = {0};
+        struct dma_fence fence = {0};
+        struct opengpu_device g = {
+            .hw.capabilities = GPU_CAP_UNIFIED_COMMANDS,
+            .hw.regs_size = mode == 7 ? 0x54f : 0x550,
+            .hw.unified_fence = &fence, .hw.unified_command_id = 17, .hw.unified_opcode = 15,
+            .hw.native_context = 42, .hw.native_pass = 8, .hw.native_generation = 9,
+            .hw.joint_pending_completion = &result,
+            .completion_data = 0x100000040ull,
+            .joint_words = {0x474e5a02, 0x40, 0, 42, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19},
+        };
+        const u32 status = mode == 1 ? 3u : mode == 2 ? 4u : 0u;
+
+        assert(!pthread_mutex_init(&g.hw.fence_lock, NULL));
+        g.completion_override = (mode == 3 ? 18u : 17u) | (7u << 8) | (1u << 16) |
+            (status << 11) | ((!status && mode != 8) ? (1u << 15) : 0u);
+        g.joint_words[1] |= status;
+        if (mode == 1) {
+            g.joint_words[1] |= 6u << 3;
+            g.joint_words[2] = 0xfedcba00u;
+        }
+        if (mode == 4)
+            g.joint_words[4]++;
+        if (mode == 5)
+            g.joint_words[0] = OPENGPU_NATIVE_TESSELLATION_COMPLETION_MAGIC;
+        if (mode == 6)
+            g.joint_words[1] |= 1u << 7;
+        atomic_store(&g.slot, 1);
+        atomic_store(&g.status_observers, 2);
+        assert(opengpu_hw_unified_drain(&g) && !g.hw.joint_pending_completion);
+        assert(atomic_load(&g.pops) == 1 && fence.signals == 1 && fence.puts == 1);
+        assert(fence.error == (mode == 0 ? 0 : mode == 2 ? -ECANCELED : -EIO));
+        assert(result.valid == (mode <= 2));
+        if (result.valid) {
+            assert(g.joint_reads == 16 && result.status == status && result.clear_only);
+            assert(result.context == 42 && result.pass == 8 && result.generation == 9);
+            assert(result.fault_stage == (mode == 1 ? 6u : 0u));
+            assert(result.fault_address == (mode == 1 ? 0xfedcba00u : 0u));
+            assert(result.read_bytes == 0x100000040ull && result.captured_entries == 10 &&
+                result.retired_ranges == 11 && result.retired_patches == ((13ull << 32) | 12) &&
+                result.published == ((15ull << 32) | 14) && result.stored_bytes == ((17ull << 32) | 16) &&
+                result.resolved_bytes == ((19ull << 32) | 18));
+        } else {
+            assert(g.joint_reads == (mode == 4 || mode == 6 ? 12u : mode == 5 ? 1u : 0u));
+            assert(g.recorded_fault_flags & OPENGPU_FAULT_BYTES_MISMATCH);
+        }
+        assert(!g.hw.last_fault.tessellation_valid && !g.hw.last_fault.native_valid);
+        assert(!pthread_mutex_destroy(&g.hw.fence_lock));
+    }
+}
 
 struct worker { struct opengpu_device *g; atomic_int *ready, *go; bool result, abort; };
 struct quiesce_worker { struct opengpu_device *g; atomic_bool done; int result; };
@@ -323,17 +432,19 @@ int main(void)
         assert(f.error == (cancel ? -ECANCELED : success ? 0 : -EIO));
         assert(pthread_mutex_destroy(&g.hw.fence_lock) == 0);
     }
-    for (int i = 0; i < 128; i++) {
-        bool native = i >= 64;
+    for (int i = 0; i < 192; i++) {
+        bool joint = i >= 128;
+        bool native = i >= 64 && !joint;
         struct opengpu_device g = {0};
         struct dma_fence f = {0};
+        struct opengpu_tessellation_joint_completion joint_result = {0};
         pthread_t a, b;
         atomic_int ready = 0, go = 0;
         struct worker x = {&g, &ready, &go, false, false};
         struct worker y = {&g, &ready, &go, false, (i % 32) < 16};
         assert(pthread_mutex_init(&g.hw.fence_lock, NULL) == 0);
         g.hw.capabilities = GPU_CAP_UNIFIED_COMMANDS;
-        g.hw.regs_size = 0x1b0;
+        g.hw.regs_size = joint ? 0x550 : 0x1b0;
         g.hw.unified_fence = &f;
         g.hw.unified_command_id = 17;
         g.hw.unified_opcode = native ? 7 : 15;
@@ -343,6 +454,14 @@ int main(void)
             g.native_words[0] = OPENGPU_NATIVE_BINNED_COMPLETION_MAGIC;
             g.native_words[1] = 3; g.native_words[6] = 42;
             g.completion_override = 17u | (7u << 8) | (3u << 11);
+        }
+        if (joint) {
+            g.hw.joint_pending_completion = &joint_result;
+            g.hw.native_context = 42;
+            g.joint_words[0] = OPENGPU_TESS_JOINT_HOST_COMPLETION_MAGIC;
+            g.joint_words[1] = 3u | (6u << 3);
+            g.joint_words[2] = 0x1240u;
+            g.joint_words[3] = 42;
         }
         g.words[0] = OPENGPU_NATIVE_TESSELLATION_COMPLETION_MAGIC;
         g.words[1] = 3;
@@ -360,7 +479,8 @@ int main(void)
             assert(__atomic_load_n(&g.hw.completion_work, __ATOMIC_SEQ_CST) == 50);
             opengpu_hw_complete(&g, 0);
         }
-        bool captured = native ? (g.hw.last_fault.native_valid &&
+        bool captured = joint ? (joint_result.valid && joint_result.fault_address == 0x1240u &&
+            g.joint_reads == 16) : native ? (g.hw.last_fault.native_valid &&
             g.hw.last_fault.native.info.words[6] == 42) :
             (g.hw.last_fault.tessellation_valid && g.hw.last_fault.tessellation.context == 42);
         if (atomic_load(&g.pops) != 1 || atomic_load(&g.reads_after_pop) != 0 ||
@@ -374,6 +494,8 @@ int main(void)
         }
         assert(pthread_mutex_destroy(&g.hw.fence_lock) == 0);
     }
+    test_joint_profile();
+    test_joint_completion();
     puts("completion race: PASS");
     return 0;
 }

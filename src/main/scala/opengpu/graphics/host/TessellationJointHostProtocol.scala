@@ -13,6 +13,19 @@ object TessellationJointHostProtocol {
   val completionWords = 16
   val completionTailBase = 0x540
   val completionTailEnd = completionTailBase + (completionWords - NativeBinnedCompletionInfo.wordCount) * 4
+  val profileBase = 0x550
+  val profileMagic = BigInt("474a5001", 16)
+  val profileWordCount = 4
+  val profileEnd = profileBase + profileWordCount * 4
+
+  final case class Profile(engines: Int, scalarFpu: Boolean, advancedBlend: Boolean,
+      sampleInputs: Boolean, feedback: Boolean) {
+    require(engines >= 1 && engines <= 4)
+    def words: Seq[BigInt] = Seq(profileMagic,
+      0x7f | (if (scalarFpu) 1 << 7 else 0) | (if (advancedBlend) 1 << 8 else 0) |
+        (if (sampleInputs) 1 << 9 else 0) | (if (feedback) 1 << 10 else 0),
+      (8 << 24) | (16 << 16) | (2 << 8) | 7, engines)
+  }
 
   def completionAddress(word: Int): Int =
     if (word < NativeBinnedCompletionInfo.wordCount) NativeBinnedCompletionInfo.base + word * 4

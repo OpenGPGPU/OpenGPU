@@ -121,6 +121,12 @@ def main():
         first = source.index('int opengpu_hw_snapshot_submission_lock(')
         last = source.index('\n}\n', first) + 2
         (out / 'snapshot_submission_under_test.inc').write_text(source[first:last])
+        first = source.index('struct opengpu_hw_joint_submission {')
+        last = source.index('\nstatic int opengpu_hw_unified_submit_locked(', first)
+        (out / 'joint_hw_submission_under_test.inc').write_text(source[first:last])
+        first = source.index('int opengpu_hw_protected_tessellation_joint_profile(')
+        last = source.index('\n}\n', source.index('int opengpu_hw_protected_tessellation_joint_async(', first)) + 2
+        (out / 'joint_enqueue_under_test.inc').write_text(source[first:last])
         flags = ['-std=c11', '-O1', '-Wall', '-Wextra', '-Werror']
         if args.sanitize or os.environ.get('OPENGPU_TEST_SANITIZERS') == '1':
             flags += ['-fsanitize=address,undefined', '-fno-omit-frame-pointer']
@@ -132,8 +138,8 @@ def main():
         compiler = shlex.split(os.environ.get('CC', 'cc'))
         base = compiler + flags + ['-I' + str(path) for path in includes]
         fixture = str(ROOT / 'driver/tests/opengpu_protected_tessellation_joint_test.c')
-        generated = {str(out/'snapshot_submission_under_test.inc'):
-                     hashlib.sha256((out/'snapshot_submission_under_test.inc').read_bytes()).hexdigest()}
+        generated = {str(path): hashlib.sha256(path.read_bytes()).hexdigest()
+                     for path in out.glob('*_under_test.inc')}
         all_dependencies = set()
         compiled_units = 0
 
