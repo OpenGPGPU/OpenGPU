@@ -8,7 +8,8 @@
 enum {
     JOINT_LIVE_BASE_RECORDS = 6,
     JOINT_LIVE_WRITE_FAULT_RECORD = JOINT_LIVE_BASE_RECORDS,
-    JOINT_LIVE_RECORDS = JOINT_LIVE_BASE_RECORDS + 2,
+    JOINT_LIVE_SOURCE_CANCEL_RECORD = JOINT_LIVE_WRITE_FAULT_RECORD + 2,
+    JOINT_LIVE_RECORDS = JOINT_LIVE_SOURCE_CANCEL_RECORD + 2,
 };
 struct native_kernel_profile *joint_live_profile(const char *path);
 void joint_live_export(struct native_kernel_session *,const char *directory);

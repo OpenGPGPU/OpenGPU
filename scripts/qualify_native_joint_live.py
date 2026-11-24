@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute six original Mesa joint submissions and check actual DUT receipts."""
+"""Execute original Mesa joint submissions and check actual DUT receipts."""
 import argparse
 import fcntl
 import hashlib
@@ -16,7 +16,9 @@ import uuid
 from build_native_flashsim import digest
 from compute_owner_protocol import required_flags, strict_json, uint
 from native_graphics_uniform_oracle import SparseMemory, require
-from native_joint_live_oracle import CASES, RECORDS, capture, original_graph, original_records, verify_image
+from native_joint_live_oracle import (
+    CASES, RECORDS, SOURCE_CANCEL_RECORD, capture, original_graph, original_records, verify_image,
+)
 from native_sample_graphics_controller import wait_cleanup
 from native_sample_owner_controller import atomic, regular, wait_file
 from owner_process_lifetime import CleanupIncomplete, remove_container, stop_group
@@ -105,6 +107,33 @@ def retired_receipt(value, held, command, context, row, fault_address=0):
     return b'OGJR0001'+payload+struct.pack('<4I',1,1,0,1)
 
 
+def reset_receipt(value, phase, command, record, index_line, satp, previous=None):
+    require((phase=='held')==(previous is None), 'joint reset phase lacks its preceding receipt')
+    required_flags(value,dict(phase=phase,record=record,commandId=command,legacyStatus=0,
+        physicalIndexLine=index_line,satp=satp,externalDrained=phase!='held'))
+    status, irq = uint(value.get('status')), uint(value.get('irq'))
+    pin = value.get('irqAsserted')
+    holds = uint(value.get('heldReadCycles'),64)
+    reset_holds = uint(value.get('resetHeldReadCycles'),64)
+    cycles = uint(value.get('serviceCycles'),64)
+    require(type(pin) is bool and pin==bool(irq&2) and holds and cycles, 'missing original held AXI response')
+    if phase=='held':
+        require(status in (0x20,0x21) and irq in (1,3) and reset_holds==0,
+                'original index read is outside an active command')
+        magic = b'OGJCH001'
+    elif phase=='ack':
+        require(status==1 and irq==3 and reset_holds>=32 and holds>=previous['heldReadCycles']+reset_holds,
+                'joint reset released the held response before the reset drain')
+        magic = b'OGJCA001'
+    else:
+        require(phase=='retired' and status==irq==1 and holds==previous['heldReadCycles'] and
+                reset_holds==previous['resetHeldReadCycles'], 'joint reset IRQ retirement changed the drain')
+        magic = b'OGJCV001'
+    if previous:
+        require(cycles>previous['serviceCycles'], 'joint reset receipt did not advance')
+    return magic+struct.pack('<7I',record,command,0,status,irq,int(pin),int(value['externalDrained']))
+
+
 def cleanup_checked(value):
     required_flags(value,dict(phase='cleanup',ownerCleanupObserved=True,contextCleanupObserved=True,
         records=RECORDS,resetCount=1,ramReplaced=False,imagesPreserved=True,
@@ -164,29 +193,54 @@ def exchange(directory, executor, bridge, discovery, engines, identities, timeou
                     require(all(last<=start or first>=start+other['allocationBytes'] for first,last in writable),
                             'joint command includes a foreign image allocation in its writable ranges')
                 commands.add(command)
-                shader = original_graph(initial,regs,context,row,frame_version=frame_version,fault=fault)
+                shader, index_line = original_graph(initial,regs,context,row,frame_version=frame_version,fault=fault)
                 domain, mutation, _ = CASES[index]
                 if mutation:
                     require(baseline_shaders[domain]!=shader,'original VS mutation did not change executable bytes')
                 else:
                     require(baseline_shaders.setdefault(domain,shader)==shader,
-                            'write-fault or recovery draw lost the original baseline VS')
-                fault_address = fault[1] if fault else 0
-                held_path = session/(stem+'.held.json')
-                wait_file(held_path,bridge,running,timeout)
-                held = receipt_words(strict_json(held_path),'held',command,context,row,fault_address)
-                atomic(session/(stem+'.held.response'),b'OGJH0001'+held)
-                retired_path = session/(stem+'.retired.json')
-                wait_file(retired_path,bridge,running,timeout)
-                retired = strict_json(retired_path)
-                response = retired_receipt(retired,held,command,context,row,fault_address)
+                            'fault, cancel or recovery draw lost the original baseline VS')
+                cancel = index==SOURCE_CANCEL_RECORD
+                if cancel:
+                    reset_stem = stem+'.reset.'
+                    plan = session/(reset_stem+'plan')
+                    target = b'OGJCP001'+struct.pack('<Q',index_line)
+                    atomic(plan,target)
+                    identities[plan] = hashlib.sha256(target).hexdigest()
+                    held_path = session/(reset_stem+'held.json')
+                    wait_file(held_path,bridge,running,timeout)
+                    reset_held = strict_json(held_path)
+                    response = reset_receipt(reset_held,'held',command,index,index_line,regs[0x14c])
+                    atomic(session/(reset_stem+'held.response'),response)
+                    ack_path = session/(reset_stem+'ack.json')
+                    wait_file(ack_path,bridge,running,timeout)
+                    ack = strict_json(ack_path)
+                    response = reset_receipt(ack,'ack',command,index,index_line,regs[0x14c],reset_held)
+                    response_path = session/(reset_stem+'ack.response')
+                else:
+                    fault_address = fault[1] if fault else 0
+                    held_path = session/(stem+'.held.json')
+                    wait_file(held_path,bridge,running,timeout)
+                    normal_held = receipt_words(strict_json(held_path),'held',command,context,row,fault_address)
+                    atomic(session/(stem+'.held.response'),b'OGJH0001'+normal_held)
+                    retired_path = session/(stem+'.retired.json')
+                    wait_file(retired_path,bridge,running,timeout)
+                    retired = strict_json(retired_path)
+                    response = retired_receipt(retired,normal_held,command,context,row,fault_address)
+                    response_path = session/(stem+'.retired.response')
                 result = results/(stem+'.memory')
                 wait_file(result,bridge,running,timeout)
                 with SparseMemory(previous) as old, SparseMemory(result) as after:
                     verify_image(old,after,row,writable)
                 previous = result
                 identities[result] = digest(regular(result))
-                atomic(session/(stem+'.retired.response'),response)
+                atomic(response_path,response)
+                if cancel:
+                    retired_path = session/(reset_stem+'retired.json')
+                    wait_file(retired_path,bridge,running,timeout)
+                    retired = strict_json(retired_path)
+                    response = reset_receipt(retired,'retired',command,index,index_line,regs[0x14c],ack)
+                    atomic(session/(reset_stem+'retired.response'),response)
                 records.append(retired)
                 print(f'Joint record {index} verified in {retired["serviceCycles"]} service cycles',flush=True)
         check_inputs(identities)

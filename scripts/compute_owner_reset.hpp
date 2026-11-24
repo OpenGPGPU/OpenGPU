@@ -26,55 +26,7 @@ void verify_compute_upload(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &mem
   verify_readonly(memory,memory,capture.writable);
 }
 
-enum class ResetPhase { request,tail,retire };
-struct ComputeResetTrace {
-  uint32_t command_id=0;
-  std::vector<Action> actions;
-  void validate(ResetPhase phase,uint32_t expected) const {
-    require(command_id==expected && command_id>0 && command_id<256,"reset trace changed command identity");
-    const uint32_t status_mask=GPU_UCMD_STATUS_READY|GPU_UCMD_STATUS_COMPLETION|GPU_UCMD_STATUS_OVERFLOW|
-      GPU_UCMD_STATUS_RESET_BUSY|GPU_UCMD_STATUS_RESET_REJECTED|GPU_UCMD_STATUS_VM_BUSY;
-    auto write=[&](size_t n,uint32_t address,uint32_t value) {
-      require(n<actions.size() && actions[n].kind==Kind::write && actions[n].address==address &&
-        actions[n].value==value && !actions[n].mask,"reset trace changed an original MMIO write");
-    };
-    auto read=[&](size_t n,Kind kind,uint32_t address,uint32_t value,uint32_t mask) {
-      require(n<actions.size() && actions[n].kind==kind && actions[n].address==address &&
-        actions[n].value==value && actions[n].mask==mask,"reset trace changed an original MMIO observation");
-    };
-    if(phase==ResetPhase::request) {
-      require(actions.size()==3,"reset request must end at the original RESET write");
-      write(0,GPU_REG_IRQ,0);
-      const auto status=actions[1].value;
-      require((status&GPU_UCMD_STATUS_VM_BUSY) && !(status&~(GPU_UCMD_STATUS_VM_BUSY|GPU_UCMD_STATUS_READY)),
-        "abort status owns a completion or has already entered reset");
-      read(1,Kind::poll,GPU_REG_UCMD_STATUS,status,status_mask);
-      write(2,GPU_REG_UCMD_RESET,GPU_UCMD_RESET_REQUEST);
-    }else if(phase==ResetPhase::tail) {
-      require(actions.size()==1,"reset tail crossed the original IRQ enable");write(0,GPU_REG_IRQ,GPU_IRQ_ENABLE);
-    }else {
-      require(phase==ResetPhase::retire && actions.size()==6,"reset retirement differs from original IRQ path");
-      read(0,Kind::check,GPU_REG_STATUS,0,0xffffffffu);
-      read(1,Kind::check,GPU_REG_IRQ,GPU_IRQ_ENABLE|GPU_IRQ_PENDING,0xffffffffu);
-      write(2,GPU_REG_IRQ,GPU_IRQ_ENABLE|GPU_IRQ_PENDING);write(3,GPU_REG_IRQ,GPU_IRQ_ENABLE);
-      read(4,Kind::poll,GPU_REG_UCMD_STATUS,GPU_UCMD_STATUS_READY,status_mask);
-      read(5,Kind::poll,GPU_REG_UCMD_STATUS,GPU_UCMD_STATUS_READY,status_mask);
-    }
-  }
-  static ComputeResetTrace read(std::istream &in,ResetPhase phase,uint32_t command) {
-    magic(in,phase==ResetPhase::request?"OGCRQ001":phase==ResetPhase::tail?"OGCRL001":"OGCRV001");
-    ComputeResetTrace trace;trace.command_id=read_le(in,4);const auto count=read_le(in,4);
-    require(count<=1024,"oversized original reset trace");
-    for(uint64_t n=0;n<count;n++) {
-      const auto k=read_le(in,4),a=read_le(in,4),v=read_le(in,4),m=read_le(in,4);
-      trace.actions.push_back({Kind(k),uint32_t(a),uint32_t(v),uint32_t(m)});
-    }
-    require(in.peek()==EOF,"trailing original reset trace");trace.validate(phase,command);return trace;
-  }
-  static ComputeResetTrace read(const std::filesystem::path &path,ResetPhase phase,uint32_t command) {
-    std::ifstream in(path,std::ios::binary);require(bool(in),"cannot open original reset trace");return read(in,phase,command);
-  }
-};
+using ComputeResetTrace = native_owner::OwnerResetTrace;
 
 struct ComputeResetPlan {
   ResponseChannel channel=ResponseChannel::read;

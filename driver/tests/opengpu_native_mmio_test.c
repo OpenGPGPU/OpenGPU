@@ -115,54 +115,10 @@ static struct native_kernel_held_receipt test_held(struct native_kernel_session 
 static struct native_kernel_observed_receipt test_observed(struct native_kernel_held_receipt held)
 {return (struct native_kernel_observed_receipt){.held=held,.retired_status=GPU_UCMD_STATUS_READY,
     .retired_irq=GPU_IRQ_ENABLE,.external_drained=1};}
-static void test_joint_mmio(const char *directory,bool write_fault)
+static void test_joint_completion(struct native_kernel_session *s,struct native_kernel_record *record,
+    const char *retire,bool write_fault)
 {
-    struct native_kernel_profile_word base[96],registers[5],words[92];
-    native_test_profile_words(base,registers);
-    unsigned count=0;
-    for(unsigned i=0;i<96;++i)
-        if(base[i].address<0x4c0 || base[i].address>=0x4e0)words[count++]=base[i];
-    words[2].value=0x4367ff;
-    const u32 gjp[]={0x474a5001,0x4ff,0x08100207,4};
-    for(unsigned i=0;i<4;++i)
-        words[count++]=(struct native_kernel_profile_word){0x550+4u*i,gjp[i]};
-    assert(count==92);
-    registers[1].value|=GPU_CAP_NATIVE_PIXEL_FORMATS|(128u<<GPU_CAP_FRAGMENT_BATCH_SHIFT);
-    assert(!native_kernel_joint_profile_create(words,count-1,registers,5));
-    words[count-1].value=1;
-    assert(!native_kernel_joint_profile_create(words,count,registers,5));
-    words[count-1].value=4;
-    struct native_kernel_profile *profile=native_kernel_joint_profile_create(words,count,registers,5);
-    assert(profile);
-    struct native_kernel_session *s=native_kernel_session_create_profile(17,profile);
-    assert(s && s->context.vm.reserve_joint_lds);
-    native_kernel_profile_destroy(profile);
-
-    test_next_handle=0;
-    u32 code=test_gem(s,4096).handle,defaults=test_gem(s,4096).handle;
-    word(original_handle(s,code)->gem.vaddr,0,0x30500073);
-    struct joint_drm_inputs original;
-    joint_drm_inputs_init(s,&original,1,code,defaults);
-    assert(!native_kernel_submit_joint(s,&original.request,NULL,NULL));
-    struct native_kernel_record *record=native_session_record(s,0);
-    assert(record && record->job && record->job->joint_report);
-    assert(!native_kernel_original_close(s,code) && native_kernel_original_refcount(s,code)>0);
-
-    char memory[4096],capture[4096],retire[4096],cleanup[4096];
-    test_path(memory,sizeof(memory),directory,write_fault?"joint-fault.memory":"joint.memory");
-    test_path(capture,sizeof(capture),directory,write_fault?"joint-fault.capture":"joint.capture");
-    test_path(retire,sizeof(retire),directory,write_fault?"joint-fault.retire":"joint.retire");
-    test_path(cleanup,sizeof(cleanup),directory,write_fault?"joint-fault-cleanup":"joint-cleanup");
-    assert(!mkdir(cleanup,0700));
-    assert(!native_kernel_export_memory(s,memory));
-    int error=write_fault?native_kernel_capture_joint_write_fault(s,0,capture,1000000,16):
-        native_kernel_capture(s,0,capture,1000000,16);
-    assert(!error);
     struct native_mmio_state *mmio=native_mmio_state(&s->gpu);
-    assert(mmio->native_waiting && mmio->invalidates && s->gpu.hw.unified_opcode==15);
-    assert(mmio->regs[GPU_REG_UCMD_PATTERN/4]==0x474a0102);
-    assert(!record->job->joint_report->valid && !dma_fence_is_signaled(record->hardware));
-
     /* A CPU control receipt tests the production drain's wire ordering and
      * high words. Live qualification obtains these values from the model. */
     u32 id=s->gpu.hw.unified_command_id;
@@ -204,6 +160,93 @@ static void test_joint_mmio(const char *directory,bool write_fault)
     observed=test_observed(held);
     assert(!native_kernel_observe_retired(s,0,&observed));
     assert(record->job->base.s_fence->finished.error==record->hardware->error);
+}
+static void test_joint_reset(struct native_kernel_session *s,struct native_kernel_record *record,
+    const char *directory,const char *retire)
+{
+    char request[4096];
+    test_path(request,sizeof(request),directory,"joint-cancel.request");
+    struct native_kernel_reset_receipt held={
+        .command_id=s->gpu.hw.unified_command_id,
+        .status=GPU_UCMD_STATUS_READY|GPU_UCMD_STATUS_VM_BUSY,
+        .irq=GPU_IRQ_ENABLE,
+    };
+    struct native_kernel_reset_receipt wrong=held;
+    wrong.external_drained=1;
+    assert(native_kernel_cancel_joint(s,&wrong,request)==-EINVAL);
+    assert(!dma_fence_is_signaled(record->hardware));
+    assert(!native_kernel_cancel_joint(s,&held,request));
+    assert(s->gpu.hw.reset_pending && dma_fence_is_signaled(record->hardware) &&
+        record->hardware->error==-ECANCELED && !record->job->base.s_fence->finished.signaled);
+    assert(native_kernel_drain_joint_reset(s,&held,retire)==-EINVAL);
+    assert(native_kernel_finish_observed(s,0)==-EINVAL);
+
+    struct native_kernel_reset_receipt ack=held;
+    ack.status=GPU_UCMD_STATUS_READY;
+    ack.irq=GPU_IRQ_ENABLE|GPU_IRQ_PENDING;
+    ack.irq_asserted=ack.external_drained=1;
+    assert(!native_kernel_drain_joint_reset(s,&ack,retire));
+    assert(!s->gpu.hw.reset_pending && !record->job->joint_report->valid &&
+        !record->job->base.s_fence->finished.signaled);
+    assert(native_kernel_observe_joint_reset_retired(s,&ack)==-EINVAL);
+    assert(native_kernel_finish_observed(s,0)==-EINVAL);
+    ack.irq=GPU_IRQ_ENABLE;ack.irq_asserted=0;
+    assert(!native_kernel_observe_joint_reset_retired(s,&ack));
+    assert(record->job->base.s_fence->finished.signaled &&
+        record->job->base.s_fence->finished.error==-ECANCELED);
+}
+static void test_joint_mmio(const char *directory,enum native_joint_replay mode)
+{
+    bool write_fault=mode==NATIVE_JOINT_WRITE_FAULT,cancel=mode==NATIVE_JOINT_CANCEL;
+    struct native_kernel_profile_word base[96],registers[5],words[92];
+    native_test_profile_words(base,registers);
+    unsigned count=0;
+    for(unsigned i=0;i<96;++i)
+        if(base[i].address<0x4c0 || base[i].address>=0x4e0)words[count++]=base[i];
+    words[2].value=0x4367ff;
+    const u32 gjp[]={0x474a5001,0x4ff,0x08100207,4};
+    for(unsigned i=0;i<4;++i)
+        words[count++]=(struct native_kernel_profile_word){0x550+4u*i,gjp[i]};
+    assert(count==92);
+    registers[1].value|=GPU_CAP_NATIVE_PIXEL_FORMATS|GPU_CAP_UNIFIED_RESET|(128u<<GPU_CAP_FRAGMENT_BATCH_SHIFT);
+    assert(!native_kernel_joint_profile_create(words,count-1,registers,5));
+    words[count-1].value=1;
+    assert(!native_kernel_joint_profile_create(words,count,registers,5));
+    words[count-1].value=4;
+    struct native_kernel_profile *profile=native_kernel_joint_profile_create(words,count,registers,5);
+    assert(profile);
+    struct native_kernel_session *s=native_kernel_session_create_profile(17,profile);
+    assert(s && s->context.vm.reserve_joint_lds);
+    native_kernel_profile_destroy(profile);
+
+    test_next_handle=0;
+    u32 code=test_gem(s,4096).handle,defaults=test_gem(s,4096).handle;
+    word(original_handle(s,code)->gem.vaddr,0,0x30500073);
+    struct joint_drm_inputs original;
+    joint_drm_inputs_init(s,&original,1,code,defaults);
+    assert(!native_kernel_submit_joint(s,&original.request,NULL,NULL));
+    struct native_kernel_record *record=native_session_record(s,0);
+    assert(record && record->job && record->job->joint_report);
+    assert(!native_kernel_original_close(s,code) && native_kernel_original_refcount(s,code)>0);
+
+    char memory[4096],capture[4096],retire[4096],cleanup[4096];
+    const char *stem=cancel?"joint-cancel":write_fault?"joint-fault":"joint";
+    char name[64];
+    snprintf(name,sizeof(name),"%s.memory",stem);test_path(memory,sizeof(memory),directory,name);
+    snprintf(name,sizeof(name),"%s.capture",stem);test_path(capture,sizeof(capture),directory,name);
+    snprintf(name,sizeof(name),"%s.retire",stem);test_path(retire,sizeof(retire),directory,name);
+    snprintf(name,sizeof(name),"%s-cleanup",stem);test_path(cleanup,sizeof(cleanup),directory,name);
+    assert(!mkdir(cleanup,0700));
+    assert(!native_kernel_export_memory(s,memory));
+    assert(!native_mmio_capture(s,0,capture,1000000,16,mode));
+    struct native_mmio_state *mmio=native_mmio_state(&s->gpu);
+    assert(mmio->native_waiting && mmio->invalidates && s->gpu.hw.unified_opcode==15);
+    assert(mmio->regs[GPU_REG_UCMD_PATTERN/4]==0x474a0102);
+    assert(!record->job->joint_report->valid && !dma_fence_is_signaled(record->hardware));
+
+    if(cancel) test_joint_reset(s,record,directory,retire);
+    else test_joint_completion(s,record,retire,write_fault);
+    assert(native_kernel_original_refcount(s,code)>0);
     assert(!native_kernel_begin_cleanup(s,cleanup));
     assert(!native_kernel_finish_observed(s,0) && !native_kernel_original_refcount(s,code));
     assert(!native_kernel_end_cleanup(s));
@@ -290,7 +333,8 @@ int main(int argc,char **argv)
     /* Final session bookkeeping must issue no unobserved MMIO. */
     assert(actions==native_mmio_state(&s->gpu)->cleanup_start);
     assert(!native_kernel_session_destroy(s));assert(!live_allocations && !fixture_buffers);
-    test_joint_mmio(argv[1],false);
-    test_joint_mmio(argv[1],true);
+    test_joint_mmio(argv[1],NATIVE_JOINT_RENDER);
+    test_joint_mmio(argv[1],NATIVE_JOINT_WRITE_FAULT);
+    test_joint_mmio(argv[1],NATIVE_JOINT_CANCEL);
     puts("native and joint MMIO production composition CPU checks: PASS");return 0;
 }

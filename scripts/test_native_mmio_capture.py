@@ -7,9 +7,16 @@ ROOT=Path(__file__).resolve().parents[1]
 def write_bodies(out):
     runpy.run_path(str(ROOT/'scripts/test_native_submit.py'))['write_bodies'](out)
     hw=(ROOT/'driver/opengpu_hw.c').read_text()
+    device=(ROOT/'driver/opengpu_device.h').read_text()
+    reset_config=[line for line in device.splitlines() if line.startswith('#define OPENGPU_RESET_WAIT_MS ')]
+    if len(reset_config)!=1:
+        raise ValueError('original reset timeout definition is missing or repeated')
     functions={
         'fault_record':'static void opengpu_hw_record_fault_locked(',
         'job_id':'static u32 opengpu_next_job_id(',
+        'complete':'static void opengpu_hw_complete(',
+        'reset_request':'static void opengpu_hw_unified_reset_request(',
+        'abort':'void opengpu_hw_abort(',
         'reset_pending':'static bool opengpu_hw_unified_reset_pending(',
         'result_error':'static int opengpu_hw_unified_result_error(',
         'drain':'static bool opengpu_hw_unified_drain(',
@@ -39,10 +46,11 @@ def write_bodies(out):
         last=hw.index('\n}\n',first)+2
         if name == 'submit':
             first = hw.index('struct opengpu_hw_joint_submission {')
-        (out/('native_mmio_'+name+'_under_test.inc')).write_text(hw[first:last])
+        prefix=reset_config[0]+'\n' if name=='reset_request' else ''
+        (out/('native_mmio_'+name+'_under_test.inc')).write_text(prefix+hw[first:last])
     first=hw.index('struct opengpu_fence {');last=hw.index('static u32 opengpu_reg_read(',first)
     (out/'native_mmio_fence_under_test.inc').write_text(hw[first:last])
-    device=(ROOT/'driver/opengpu_device.h').read_text();first=device.index('struct opengpu_fault_snapshot {')
+    first=device.index('struct opengpu_fault_snapshot {')
     last=device.index('\n};',first)+3
     (out/'native_mmio_fault_under_test.inc').write_text(device[first:last])
     first=device.index('struct opengpu_tessellation_scope {')
@@ -124,6 +132,17 @@ static void joint_capture(const std::filesystem::path &base) {
   unexpected=fault;
   unexpected.write_fault->address+=64;
   rejects([&]{unexpected.validate();});
+  auto cancel=JointCapture::read((base/"joint-cancel.capture").string());
+  require(cancel.cancel_index_read && !cancel.write_fault && cancel.checks.empty(),
+    "cancel capture contains a predicted completion or write fault");
+  const auto request=OwnerResetTrace::read(base/"joint-cancel.request",ResetPhase::request_with_irq,cancel.command_id);
+  const auto ack=OwnerResetTrace::read(base/"joint-cancel.retire",ResetPhase::retire,cancel.command_id);
+  auto premature=request;
+  std::swap(premature.actions[2],premature.actions[3]);
+  rejects([&]{premature.validate(ResetPhase::request_with_irq,cancel.command_id);});
+  auto pop=ack;
+  pop.actions[2].address=GPU_REG_UCMD_COMPLETION_POP;
+  rejects([&]{pop.validate(ResetPhase::retire,cancel.command_id);});
 }
 #endif
 int main(int argc,char **argv) {
