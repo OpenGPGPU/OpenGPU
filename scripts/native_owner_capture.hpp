@@ -19,6 +19,11 @@ inline void require_owner_shader_profile(uint32_t caps,uint32_t shader) {
 }
 struct SampleCapture;
 struct JointCapture;
+struct JointImageWriteFault {
+  static constexpr uint32_t status=3, stage=6;
+  uint64_t physical;
+  uint32_t address;
+};
 inline uint32_t joint_detail_address(unsigned word) {
   constexpr auto head=OPENGPU_TESS_JOINT_HOST_COMPLETION_HEAD_WORDS;
   return word<head?OPENGPU_TESS_JOINT_HOST_COMPLETION_HEAD_BASE+4*word:
@@ -66,7 +71,8 @@ struct Capture {
 private:
   friend struct SampleCapture;
   friend struct JointCapture;
-  void validate_contract(const std::vector<Command> &required_profile,bool prefix_only,bool joint=false) const {
+  void validate_contract(const std::vector<Command> &required_profile,bool prefix_only,bool joint=false,
+      const JointImageWriteFault *write_fault=nullptr) const {
     require(max_cycles>0 && max_cycles<=1000000000 && hold_cycles>=8 && hold_cycles<=4096 && command_id<256,
       "invalid capture execution bounds");
     std::map<uint32_t,uint32_t> found;
@@ -79,6 +85,14 @@ private:
     for(const auto &r:writable) {
       require(previous<=r.first && r.first<r.end && r.end<=Memory::limit,"invalid or overlapping physical writable intervals");
       previous=r.end;
+    }
+    if(write_fault) {
+      const auto physical=write_fault->physical;
+      require(joint && physical && physical<Memory::limit && write_fault->address &&
+        !((physical|write_fault->address)&63) &&
+        std::any_of(writable.begin(),writable.end(),[physical](const auto &r) {
+          return r.first<=physical && physical+64<=r.end;
+        }),"joint write fault requires one aligned, owned physical line and an exact device address");
     }
     require(!trace.empty(),"empty captured enqueue trace");
     std::map<uint32_t,uint32_t> staged;
@@ -151,9 +165,11 @@ private:
       GPU_UCMD_COMPLETION_ID(final->second.expected)==command_id &&
       GPU_UCMD_COMPLETION_OPCODE(final->second.expected)==final_opcode,"missing exact native completion identity");
     if(joint) {
-      require(final->second.expected==(0x18700u|command_id) &&
+      const uint32_t completion=0x10700u|command_id|
+        (write_fault?(JointImageWriteFault::status<<11):(1u<<15));
+      require(final->second.expected==completion &&
         checked.size()==1+OPENGPU_TESS_JOINT_HOST_COMPLETION_WORDS && prefix_only && finish.empty(),
-        "joint capture requires a successful held command with separate retirement");
+        "joint capture requires the exact held completion with separate retirement");
       std::array<uint32_t,8> detail{};
       for(unsigned word=0;word<OPENGPU_TESS_JOINT_HOST_COMPLETION_WORDS;++word) {
         auto at=checked.find(joint_detail_address(word));
@@ -161,8 +177,10 @@ private:
           "incomplete or inexact GNZ2 held-completion checks");
         if(word<detail.size())detail[word]=at->second.expected;
       }
-      require(detail[0]==OPENGPU_TESS_JOINT_HOST_COMPLETION_MAGIC &&
-        detail[1]==(detail[6]?0:0x40u) && !detail[2] &&
+      const uint32_t status=write_fault?((JointImageWriteFault::stage<<3)|JointImageWriteFault::status):
+        (detail[6]?0:0x40u);
+      require(detail[0]==OPENGPU_TESS_JOINT_HOST_COMPLETION_MAGIC && (!write_fault || detail[6]) &&
+        detail[1]==status && detail[2]==(write_fault?write_fault->address:0) &&
         detail[3]==field(GPU_REG_UCMD_HEIGHT) && detail[4]==field(GPU_REG_UCMD_SOURCE_STRIDE) &&
         detail[5]==field(GPU_REG_UCMD_DEST_STRIDE) && detail[6]==detail[7],
         "GNZ2 status, scope or directory count disagrees with the captured owner");
@@ -212,6 +230,7 @@ struct JointCapture : Capture {
   static constexpr bool joint_completion=true;
   static constexpr uint32_t resource_flags=0x4367ff;
   static constexpr unsigned auxiliary_words=5;
+  std::optional<JointImageWriteFault> write_fault;
   static std::vector<uint32_t> discovery_addresses() {
     std::vector<uint32_t> addresses;
     auto expected=Capture::profile();
@@ -255,11 +274,14 @@ struct JointCapture : Capture {
   }
   void validate(bool prefix_only=true) const {
     validate_discovery(discovery);
-    validate_contract({},prefix_only,true);
+    validate_contract({},prefix_only,true,write_fault?&*write_fault:nullptr);
   }
   static JointCapture read(std::istream &in,bool prefix_only=true) {
-    magic(in,"OGCAP003");
+    std::string format(8,'\0');
+    in.read(format.data(),format.size());
+    require(format=="OGCAP003" || format=="OGCAP004","unknown protected joint capture format");
     JointCapture capture;
+    if(format=="OGCAP004")capture.write_fault=JointImageWriteFault{read_le(in,8),uint32_t(read_le(in,4))};
     static_cast<Capture &>(capture)=Capture::payload(in);
     capture.validate(prefix_only);
     return capture;

@@ -56,9 +56,10 @@ static void joint_case(struct pipe_context *pipe,const char *sources,unsigned in
 {
     static const char *evaluation[]={"isoline.tese","triangle.tese","quad.tese"};
     static const uint32_t seed[4]={7,19,43,61};
-    unsigned domain=index/2;
+    unsigned domain=index<JOINT_LIVE_BASE_RECORDS?index/2:1;
+    bool mutation=index<JOINT_LIVE_BASE_RECORDS && (index&1);
     assert(domain<3 && engines>=1 && engines<=4);
-    const char *names[]={index%2?"mutation.vert":"original.vert","shared.tesc",evaluation[domain],"shared.frag"};
+    const char *names[]={mutation?"mutation.vert":"original.vert","shared.tesc",evaluation[domain],"shared.frag"};
     char paths[4][4096];
     const char *files[4];
     for (unsigned i=0;i<4;++i) {
@@ -186,15 +187,15 @@ int main(int argc,char **argv)
     assert(layout);
     fprintf(layout,"{\"context\":%u,\"engines\":%u,\"cpuPreflight\":%s,\"records\":[",
         context,runtime.engines,cpu_preflight?"true":"false");
-    for (unsigned i=0;i<6;++i) joint_case(pipe,argv[1],i,runtime.engines,layout);
+    for (unsigned i=0;i<JOINT_LIVE_RECORDS;++i) joint_case(pipe,argv[1],i,runtime.engines,layout);
     fputs("]}\n",layout);
     assert(!fclose(layout));
     joint_live_export(joint_session,argv[3]);
-    joint_live_run(joint_session,6,cpu_preflight);
+    joint_live_run(joint_session,JOINT_LIVE_RECORDS,cpu_preflight);
     assert(!native_kernel_session_destroy(joint_session));
     pipe->destroy(pipe);
     screen->destroy(screen);
     native_kernel_profile_destroy(joint_profile);
-    puts("Six original Mesa tessellation submissions retired with acknowledged cleanup");
+    puts("Original Mesa tessellation submissions retired with acknowledged cleanup");
     return 0;
 }

@@ -55,8 +55,9 @@ int main(int argc,char **argv) {
         require(std::filesystem::create_directory(output),"cannot create active output directory");
         Simulation sim(argc,argv);sim.reset();Agent agent(memory);ReplayBus<Simulation> bus(sim,agent,100000);
         PtePages pte;
-        active_records(sim,agent,bus,memory,output,session,first,count,std::cout,response_timeout,cleanup?&pte:nullptr);
-        if(cleanup)cleanup_records(sim,agent,bus,memory,session,pte,count,response_timeout);
+        const auto write_faults=active_records(sim,agent,bus,memory,output,session,first,count,std::cout,
+          response_timeout,cleanup?&pte:nullptr);
+        if(cleanup)cleanup_records(sim,agent,bus,memory,session,pte,count,response_timeout,0,write_faults);
         sim.model->final();
       };
       if(joint)run(JointCapture::read(first_path));
