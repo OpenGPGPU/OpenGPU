@@ -6,7 +6,9 @@ This guard never signals a PID or authorizes removal of a process's inputs.
 import ctypes
 from dataclasses import dataclass
 import errno
+import os
 from pathlib import Path
+import subprocess
 import sys
 
 
@@ -36,6 +38,27 @@ class _RusageInfoV0(ctypes.Structure):
             'ri_proc_exit_abstime')]
 
 
+def _darwin_exit_confirmed(pid):
+    # A short-lived child can lose its task port before the next rusage
+    # sample. A missing PID or a zombie is independent evidence of exit.
+    try:
+        state = subprocess.run(['/bin/ps', '-p', str(pid), '-o', 'stat='],
+            capture_output=True, text=True, timeout=1)
+        fields = state.stdout.split()
+        if (state.returncode == 0 and not state.stderr.strip() and
+                len(fields) == 1 and fields[0].startswith(('Z', 'X'))):
+            return True
+    except (OSError, subprocess.SubprocessError):
+        pass
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    except OSError:
+        return False
+    return False
+
+
 def _darwin_usage(pid):
     libproc = ctypes.CDLL('/usr/lib/libproc.dylib', use_errno=True)
     read = libproc.proc_pid_rusage
@@ -44,7 +67,7 @@ def _darwin_usage(pid):
     usage = _RusageInfoV0()
     if read(pid, 0, ctypes.byref(usage)) != 0:
         error = ctypes.get_errno()
-        if error == errno.ESRCH:
+        if error == errno.ESRCH or (error == errno.EPERM and _darwin_exit_confirmed(pid)):
             return None
         raise OSError(error, 'proc_pid_rusage failed', str(pid))
     if usage.ri_proc_exit_abstime:
