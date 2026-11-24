@@ -79,31 +79,42 @@ static void joint_case(struct pipe_context *pipe,const char *sources,unsigned in
     assert(source);
     struct opengpu_native_joint_description shader;
     assert(!opengpu_native_joint_source_describe(source,&shader));
+    assert(shader.vertex_layout.attributes==2);
     assert(shader.fragment.metadata.abi_version==8 && shader.fragment.metadata.color_types[0]==1);
 
     struct pipe_resource *resources[12]={0};
     unsigned resource_count=0;
     void *data;
     struct pipe_screen *screen=pipe->screen;
-    struct opengpu_native_joint_view vertices=joint_view(screen,64,64,resources,&resource_count,&data);
-    float position[4][4]={{-7,10,0,1},{-1,-1,0,1},{4,4,0,1},{7,-10,0,1}};
-    if (domain==0) position[1][1]=-0.25f;
-    if (domain==1) position[1][0]=position[1][1]=-1.5f;
-    memcpy(data,position,sizeof(position));
-    const struct opengpu_native_joint_view indices=joint_view(screen,8,2,resources,&resource_count,&data);
-    const uint16_t index_words[]={4,2,3,0};
+    struct opengpu_native_joint_view vertices=joint_view(screen,256*16,64,resources,&resource_count,&data);
+    float first[4]={-1,-1,0,1};
+    const float second[4]={4,4,0,1};
+    if (domain==0) first[1]=-0.25f;
+    if (domain==1) first[0]=first[1]=-1.5f;
+    memcpy((unsigned char *)data+254*16,first,sizeof(first));
+    memcpy((unsigned char *)data+2*16,second,sizeof(second));
+    const struct opengpu_native_joint_view per_instance=joint_view(screen,192,64,resources,&resource_count,&data);
+    const uint32_t first_pair[]={1,2,4,8}, wrong_divisor[]={128,64,32,16};
+    memcpy((unsigned char *)data+7*16,first_pair,sizeof(first_pair));
+    memcpy((unsigned char *)data+8*16,wrong_divisor,sizeof(wrong_divisor));
+    const struct opengpu_native_joint_view indices=joint_view(screen,4,2,resources,&resource_count,&data);
+    /* The fixed marker is a real index for ES PATCHES, even when the original
+     * draw has global fixed-index restart enabled. Base vertex -1 applies. */
+    const uint8_t index_words[]={4,0xff,3,0};
     memcpy(data,index_words,sizeof(index_words));
     const unsigned vertex_scratch=(7+4*shader.vertex_layout.attributes+4*shader.vertex_layout.varyings)*512;
     struct opengpu_native_joint_catalog_draw draw={
-        .count=2,.instances=1,.base_instance=7,.token=41+index,
-        .indexed=1,.index_format=2,.first_index=1,.base_vertex=-1,.indices=indices,
+        .count=2,.instances=2,.base_instance=7,.token=41+index,
+        .indexed=1,.index_format=1,.first_index=1,.base_vertex=-1,.indices=indices,.primitive_restart=1,
         .scratch=joint_view(screen,vertex_scratch,64,resources,&resource_count,NULL),
     };
     draw.attributes[0]=(struct opengpu_native_draw_attribute){.enabled=1,.binding=15,.components=4};
+    draw.attributes[1]=(struct opengpu_native_draw_attribute){.enabled=1,.binding=0,.components=4,.format=1};
+    draw.bindings[0]=(struct opengpu_native_joint_binding){.view=per_instance,.stride=16,.divisor=2};
     draw.bindings[15]=(struct opengpu_native_joint_binding){.view=vertices,.stride=16};
     struct opengpu_native_joint_invocation invocation={(UINT64_C(1)<<32)+index+3,0,2};
     struct opengpu_native_joint_range_request range={
-        .flags=3,.task_id_base=100+8*index,.patch_count=1,.patches_per_instance=1,.instances=1,
+        .flags=3,.task_id_base=100+8*index,.patch_count=2,.patches_per_instance=1,.instances=2,
     };
     struct opengpu_native_joint_build_request request={
         .context=pipe,.source=source,.pass=11+index,.generation=41+index,.state_count=1,
@@ -121,6 +132,9 @@ static void joint_case(struct pipe_context *pipe,const char *sources,unsigned in
         request.frame.scratch[e]=joint_view(screen,shader.fragment.metadata.prefix_bytes,64,resources,&resource_count,NULL);
     struct opengpu_native_joint_build_source *owner=opengpu_native_joint_build_source_create(&request);
     assert(owner);
+    struct opengpu_native_joint_build_description original;
+    assert(!opengpu_native_joint_build_source_describe(owner,&original));
+    assert(original.draws[326]==1);
     unsigned handle=pipe_opengpu_resource_handle(opengpu_resource(image.resource)->gpu);
     uint64_t physical,allocation;
     assert(!native_kernel_original_physical(joint_session,handle,&physical,&allocation));
