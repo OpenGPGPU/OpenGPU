@@ -160,10 +160,14 @@ static int frame(struct opengpu_native_joint_build_source *s,const struct opengp
     for(unsigned i=0;i<9;i++)if(gem(s,r->pool+i,q.pool+i))return -1;
     for(unsigned i=0;i<4;i++)if(gem(s,r->scratch+i,q.scratch+i))return -1;
     const struct opengpu_native_binned_host_caps *c=&runtime->frame;
+    if(C(c,MAGIC)==OPENGPU_NATIVE_BINNED_HOST_MAGIC ||
+        C(c,MAGIC)==OPENGPU_NATIVE_BINNED_HOST_WIDE_MAGIC) {
+        q.caps=c;
+        return opengpu_native_frame_encode(&q,&s->frame);
+    }
+    /* GNC5 advertises the wide layout. The joint command uses its GNF1 envelope. */
     struct opengpu_native_frame_limits limits={C(c,FRAME_WIDTH),C(c,FRAME_HEIGHT),C(c,SAMPLES),
         C(c,COLORS),C(c,ENGINES),C(c,STORAGE_BYTES),C(c,TILE8),C(c,TILE16),2};
-    /* Generate GNF1 directly with the existing wide frame.version=2. This is
-     * neither a copied GNF3 nor a fabricated GNC2/3 observation. */
     return opengpu_native_frame_encode_joint(&q,&limits,&s->frame);
 }
 static void state(struct opengpu_native_joint_build_source *s,unsigned index,unsigned engines)

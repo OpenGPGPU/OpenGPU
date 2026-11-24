@@ -291,6 +291,14 @@ HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
       message<<(CaptureType::joint_completion?"joint completion/GNZ2 check differs: address=0x":
         "native completion/GNX check differs: address=0x")<<std::hex<<c.address
         <<" actual=0x"<<value<<" mask=0x"<<c.mask<<" expected=0x"<<c.expected;
+      if constexpr(CaptureType::joint_completion) {
+        message<<" GNZ2=";
+        for(unsigned word=0;word<result.gnz2.size();++word)
+          message<<(word?",":"")<<bus.read(joint_detail_address(word));
+        message<<std::dec<<" metadataReadBytes="<<result.append_read_bytes
+          <<" readBusBytes="<<completed.read_bus_bytes-held_record.start_traffic.read_bus_bytes
+          <<" writeBusBytes="<<completed.write_bus_bytes-held_record.start_traffic.write_bus_bytes;
+      }
       throw std::runtime_error(message.str());
     }
     held.push_back(value);
