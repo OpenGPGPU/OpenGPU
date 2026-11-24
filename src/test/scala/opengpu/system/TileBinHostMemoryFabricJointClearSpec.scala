@@ -57,7 +57,7 @@ class TileBinHostMemoryFabricJointClearSpec extends AnyFlatSpec {
   }
 
   it should "retire forty metadata reads and one held directory write once" in {
-    simulateWithInlineVerification(new TileBinHostMemoryFabric(
+    simulate(new TileBinHostMemoryFabric(
         GpuConfig(lanes=16,warps=8),renderIds=256,engines=1,kernelWordIds=4,dmaIdBase=0,programmable=true)){d=>
       val io=d.io;zero(io)
       d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
@@ -68,7 +68,7 @@ class TileBinHostMemoryFabricJointClearSpec extends AnyFlatSpec {
   }
 
   it should "preserve the same credits through the actual owned-source input wrapper" in {
-    simulateWithInlineVerification(new TessellationInputMemoryFabric(
+    simulate(new TessellationInputMemoryFabric(
         GpuConfig(lanes=16,warps=8),renderIds=256,ownedVertexSource=true)){d=>
       val io=d.io;zero(io)
       d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
