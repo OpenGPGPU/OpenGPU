@@ -6,6 +6,31 @@ import opengpu.testutil.GraphicsTestResolution
 import org.scalatest.flatspec.AnyFlatSpec
 
 class TessellationNativeHostElaborationSpec extends AnyFlatSpec {
+  it should "connect protected joint tessellation to two physical CUs and the shared host fabrics" in {
+    val gpu = GpuConfig(lanes = 16, warps = 8, l2Sets = 8, l2Ways = 2)
+    val graphics = GraphicsConfig(screenWidth = math.min(4, GraphicsTestResolution.width),
+      screenHeight = math.min(4, GraphicsTestResolution.height))
+    val native = NativeBinnedGraphicsConfig(engines = 1, pageBytes = 128, writeCredits = 2,
+      tileSlots = 1, pagedCapacity = 8, preflightDescriptors = true, transformFeedback = true,
+      payload = Some(ShaderPayloadConfig(capacityBytes = 4096, maxPayloadBytes = 1024, owners = 2, ports = 4)))
+    val circuit = circt.stage.ChiselStage.elaborate(new GpuHostSystemAxi(graphics, gpu, numComputeUnits = 2,
+      fragCore = true, sharedGraphics = true, parallelGraphics = true, memoryAxiDataBytes = 32,
+      instructionCacheSets = 4, instructionCacheWays = 1, vectorCacheSets = 4, vectorCacheWays = 1,
+      nativeBinnedGraphics = Some(native), tessellationNative = true, tessellationUniforms = true,
+      jointTessellationNative = true, nativeProtectedSources = true,
+      visibilityQueries = true, primitiveQueries = true))
+    val modules = circuit.lazilySerialize.iterator.flatMap(_.linesIterator).map(_.trim)
+      .filter(_.startsWith("inst ")).map(_.split("\\s+")(3).replaceFirst("_[0-9]+$", "")).toVector
+    for (name <- Seq("TessellationJointThreeDomainJobImage", "TessellationHostShaderRouter",
+        "TessellationFeedbackAdmission", "TessellationQueryAdmissionFence")) {
+      assert(modules.count(_ == name) == 1, s"expected one ${name} in the protected system")
+    }
+    assert(modules.count(_ == "GpuComputeUnit") == 2)
+    assert(modules.count(_ == "TessellationEvaluationVectorAccess") == 2)
+    assert(modules.count(_ == "TessellationEvaluationPatchProvider") == 3)
+    assert(!modules.contains("TessellationNativeThreeDomainJobImage"))
+  }
+
   it should "connect checked uniform services for all three domains on the physical host" in {
     val gpu = GpuConfig(l2Sets = 8, l2Ways = 2)
     val graphics = GraphicsConfig(screenWidth = math.min(4, GraphicsTestResolution.width),

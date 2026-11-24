@@ -63,7 +63,7 @@ class TessellationJointThreeDomainJobImage(
   private val ids = domainTransactions(engines, writeCredits, pagedCapacity, tessellationUniforms)
   private val slots = transactions(engines, writeCredits, pagedCapacity, tessellationUniforms)
   private val payloadConfig = payload
-  val io = IO(new Bundle {
+  val io = IO(new Bundle with TessellationHostPhysicalPorts {
     val submit = Flipped(Decoupled(new TessellationJointJobRequest(idWidth)))
     val completion = Decoupled(new TessellationJointNativeCompletion(idWidth))
     val out = Vec(engines, Decoupled(new TypedTilePixelQuadCompletion))

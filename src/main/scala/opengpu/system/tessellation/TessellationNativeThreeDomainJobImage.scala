@@ -38,7 +38,7 @@ class TessellationNativeThreeDomainJobImage(config:GpuConfig,p:VertexShaderStage
   require(TessellationSystemTriangleImagePipeline.payloadPins(engines)==TessellationSystemIsolineImagePipeline.payloadPins(engines) &&
     TessellationSystemQuadImagePipeline.payloadPins(engines)==TessellationSystemIsolineImagePipeline.payloadPins(engines))
   require(payload.forall(_.owners==engines+1))
-  val io=IO(new Bundle {
+  val io=IO(new Bundle with TessellationHostPhysicalPorts {
     val submit=Flipped(Decoupled(new TileJobDescriptorRequest(idWidth)))
     val completion=Decoupled(new Bundle {
       val commandId=UInt(idWidth.W);val status=UInt(3.W);val descriptorReadBytes=UInt(64.W);val completedDraws=UInt(32.W)
