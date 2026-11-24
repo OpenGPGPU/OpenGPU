@@ -8,7 +8,7 @@ import opengpu.core.memory.{
   TranslatedWordClient
 }
 import opengpu.graphics.{GraphicsConfig, TextureUnit,MemoryTileBinRenderPipeline,NativeTypedGraphicsConfig,MemoryNativeTypedGraphicsPipeline,
-  NativeBinnedGraphicsConfig,MemoryNativeBinnedGraphicsPipeline,NativeBinnedGraphicsCapabilities,TypedVertexBinImagePipeline,NativeBinnedCompletionInfo,NativeRgba8TextureRendererPorts,NativeRgba8TexturePool}
+  NativeBinnedGraphicsConfig,MemoryNativeBinnedGraphicsPipeline,NativeBinnedGraphicsCapabilities,TypedVertexBinImagePipeline,NativeBinnedCompletionInfo,NativeRgba8TextureRendererPorts,NativeRgba8TexturePool,TessellationJointHostProtocol}
 
 /** Optional simulation counters; the default product port list is unchanged. */
 class GpuHostPerformanceCounters extends Bundle {
@@ -146,6 +146,12 @@ class GpuHostSystemAxi(
     n.translateImageViews) && sharedGraphics && version>=2),
     "native protected source discovery requires translated preflight and the shared native shader path")
   private val nativeFeedback=typedGraphics.exists(_.transformFeedback) || nativeBinnedGraphics.exists(_.transformFeedback)
+  private val jointTessellationProfile = nativeBinnedGraphics.filter { n =>
+    jointTessellationNative && numComputeUnits == 2 && gpuConfig.lanes == 16 && gpuConfig.warps == 8 &&
+      n.vertex.input.attributes == 16 && n.vertex.input.bindings == 16 && n.vertex.varyings == 16 &&
+      graphicsConfig.maxSampleCount == 4
+  }.map(n => TessellationJointHostProtocol.Profile(n.engines, enableFpuBackend && gpuConfig.enableFpu,
+    n.storage.nativeAdvancedDraws, tessellationSampleShading, nativeFeedback))
   require(!tessellationNative || nativeBinnedGraphics.nonEmpty,
     "internal tessellation host integration requires native binned graphics")
   require(!primitiveQueries || nativeFeedback,"primitive queries require native transform feedback")
@@ -361,6 +367,7 @@ class GpuHostSystemAxi(
       primitiveQueries=primitiveQueries,transformFeedback=nativeFeedback,transformFeedbackSourceWords=5+4*typedGraphics.map(_.vertex.varyings).orElse(nativeBinnedGraphics.map(_.vertex.varyings)).getOrElse(16),
       tessellationHost=legacyTessellationNative,imageAtomicAvailable=imageAtomicAvailable,storageAtomicAvailable=storageAtomicAvailable,
       tessellationDiscovery=legacyTessellationNative && version>=2,jointTessellationHost=jointTessellationNative,
+      jointTessellationProfile=jointTessellationProfile,
       nativeDescriptorPreflight=nativeBinnedGraphics.exists(_.descriptorPreflight),
       nativeProtectedSources=nativeProtectedSources,nativeGeometryTransport=nativeGeometryTransport,
       nativeSampleTransport=nativeSampleTransport,

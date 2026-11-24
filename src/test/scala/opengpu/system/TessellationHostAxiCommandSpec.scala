@@ -3,7 +3,7 @@ package opengpu.system
 import chisel3._
 import chisel3.reflect.DataMirror
 import opengpu.config.{ComputeResourceProfile, GpuConfig}
-import opengpu.graphics.{GpuCommandMmioRegs, NativeVertexInputCapabilities, RenderHostRegs}
+import opengpu.graphics.{GpuCommandMmioRegs, NativeVertexInputCapabilities, RenderHostRegs, TessellationJointHostProtocol}
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
@@ -29,11 +29,11 @@ class TessellationHostAxiCommandSpec extends AnyFlatSpec {
     until(d)(d.io.s_axi_bvalid.peek().litToBoolean);d.io.s_axi_bresp.expect(response.U)
     d.io.s_axi_bready.poke(true.B);d.clock.step();d.io.s_axi_bready.poke(false.B)
   }
-  private def read(d: GpuHostAxi,address: Int): BigInt = {
+  private def read(d: GpuHostAxi,address: Int,response: Int=0): BigInt = {
     d.io.s_axi_araddr.poke(address.U);d.io.s_axi_arvalid.poke(true.B)
     until(d)(d.io.s_axi_arready.peek().litToBoolean);d.clock.step();d.io.s_axi_arvalid.poke(false.B)
     until(d)(d.io.s_axi_rvalid.peek().litToBoolean);val value=d.io.s_axi_rdata.peek().litValue
-    d.io.s_axi_rresp.expect(0.U);d.io.s_axi_rready.poke(true.B);d.clock.step();d.io.s_axi_rready.poke(false.B);value
+    d.io.s_axi_rresp.expect(response.U);d.io.s_axi_rready.poke(true.B);d.clock.step();d.io.s_axi_rready.poke(false.B);value
   }
   it should "route a tessellation job through protected host AXI and pin VM state through completion" in {
     val gpu=GpuConfig(lanes=4,warps=2)
@@ -49,6 +49,8 @@ class TessellationHostAxiCommandSpec extends AnyFlatSpec {
       val flags=read(d,ComputeResourceCapabilities.base+8)
       assert((flags & ComputeResourceCapabilities.tessellationCommands)!=0)
       assert((flags & ComputeResourceCapabilities.tessellationFeedback)==0)
+      assert((flags & ComputeResourceCapabilities.jointTessellation)==0)
+      assert(read(d, TessellationJointHostProtocol.profileBase, response = 2) == 0)
       write(d,RenderHostRegs.IRQ,1)
       write(d,r.COMMAND_ID,41);write(d,r.OPCODE,15);write(d,r.SOURCE,0x4000);write(d,r.DESTINATION,0x4200)
       write(d,r.PATTERN,0);write(d,r.BYTES,512);write(d,r.SUBMIT,1)
@@ -116,12 +118,16 @@ class TessellationHostAxiCommandSpec extends AnyFlatSpec {
   }
 
   it should "route private joint tessellation and hold its complete GNZ2 report through AXI" in {
-    val gpu = GpuConfig(lanes = 4, warps = 2)
+    val gpu = GpuConfig(lanes = 16, warps = 8)
+    val profile = TessellationJointHostProtocol.Profile(4, scalarFpu = false, advancedBlend = false,
+      sampleInputs = false, feedback = true)
     simulate(new GpuHostAxi(gpuConfig = gpu, version = 2, unifiedCommandMmio = true,
         protectVmState = true, externalBinnedRender = true, nativeCompletionInfo = true,
         nativeVertexInput = true, tessellationHost = true, jointTessellationHost = true,
-        visibilityQueries = true, transformFeedback = true,
-        computeResources = Some(ComputeResourceProfile(gpu, 1, 8)))) { d =>
+        visibilityQueries = true, transformFeedback = true, nativeUniformResources = true,
+        shaderExecutionLimits = true, nativeDescriptorPreflight = true, nativeProtectedSources = true,
+        jointTessellationProfile = Some(profile),
+        computeResources = Some(ComputeResourceProfile(gpu, 2, 32)))) { d =>
       zero(d.io)
       d.io.s_axi_aresetn.poke(false.B); d.clock.step(3)
       d.io.s_axi_aresetn.poke(true.B); d.clock.step()
@@ -133,6 +139,14 @@ class TessellationHostAxiCommandSpec extends AnyFlatSpec {
       val r = GpuCommandMmioRegs
       val vertexCapability = read(d, NativeVertexInputCapabilities.base)
       assert(vertexCapability != 0)
+      val flags = read(d, ComputeResourceCapabilities.base + 8)
+      assert((flags & ComputeResourceCapabilities.jointTessellation) != 0)
+      assert((flags & ComputeResourceCapabilities.tessellationCommands) == 0)
+      val profileAddress = TessellationJointHostProtocol.profileBase
+      val expectedProfile = Seq[BigInt](0x474a5001, 0x47f, 0x08100207, 4)
+      for (i <- expectedProfile.indices) assert(read(d, profileAddress + 4 * i) == expectedProfile(i))
+      write(d, profileAddress + 12, 1, response = 2)
+      assert(read(d, profileAddress + 12) == 4)
       write(d, RenderHostRegs.IRQ, 1)
       write(d, r.VECTOR_SATP, 0x80000030)
       write(d, r.COMMAND_ID, 42); write(d, r.OPCODE, 15)

@@ -36,7 +36,8 @@ object EmitComputeResourceAbi {
       "#define OPENGPU_COMPUTE_RESOURCE_SHARED_VECTOR_ATOMICS_V1 (1u << 18)\n"+
       "#define OPENGPU_COMPUTE_RESOURCE_NATIVE_GEOMETRY_TRANSPORT_V1 (1u << 19)\n"+
       "#define OPENGPU_COMPUTE_RESOURCE_NATIVE_SAMPLE_TRANSPORT_V1 (1u << 20)\n"+
-      "#define OPENGPU_COMPUTE_RESOURCE_IMAGE_FLOAT_EXCHANGE (1u << 21)\n#endif\n"
+      "#define OPENGPU_COMPUTE_RESOURCE_IMAGE_FLOAT_EXCHANGE (1u << 21)\n"+
+      "#define OPENGPU_COMPUTE_RESOURCE_JOINT_TESSELLATION_V1 (1u << 22)\n#endif\n"
     val defaults=c.words(ComputeResourceProfile(GpuConfig(),1,8))
     val mobile=c.words(ComputeResourceProfile(GpuConfig(),4,32))
     val json=s"""{

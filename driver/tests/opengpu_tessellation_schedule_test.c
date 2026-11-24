@@ -259,9 +259,9 @@ static int opengpu_hw_unified_submit_locked(struct opengpu_device *gpu,
     const struct opengpu_kernel_launch *launch, const struct opengpu_command_events *events,
     u32 opcode, u32 source, u32 destination, u32 bytes, u32 pattern, u32 sample_mode,
     u32 width, u32 height, u32 source_stride, u32 destination_stride, u64 expected,
-    const struct opengpu_vm *vm, u32 delay, struct dma_fence **out)
+    const struct opengpu_vm *vm, u32 delay, const void *joint, struct dma_fence **out)
 {
-    assert(gpu->hw.submit_lock.held && !launch && vm && opcode == GPU_UCMD_OP_TESSELLATION);
+    assert(gpu->hw.submit_lock.held && !launch && vm && !joint && opcode == GPU_UCMD_OP_TESSELLATION);
     assert(bytes == 512 && destination == source + bytes && !pattern && !sample_mode &&
            !destination_stride && !expected && !delay);
     submitted_command.opcode = opcode; submitted_command.source = source;

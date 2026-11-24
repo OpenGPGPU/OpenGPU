@@ -1,14 +1,61 @@
-/* Actual owner/MMU BUILD graph only. Literal CEASE/emit programs are NOT
- * shader results, VS output, patch bytes or GPU-execution evidence. */
+/* Actual owner/MMU BUILD graph and verified kernel enqueue with modeled MMIO. */
+#include "../opengpu_tessellation_joint_host.h"
+#define OPENGPU_MMU_TEST_HW_EXTRA struct opengpu_protected_tessellation_joint_profile joint_tessellation;
 #define OPENGPU_PROTECTED_TESS_TEST_MAIN joint_old_protected_regression_main
 #include "opengpu_protected_tessellation_test.c"
 #undef OPENGPU_PROTECTED_TESS_TEST_MAIN
+#undef OPENGPU_MMU_TEST_HW_EXTRA
 #include "../opengpu_tessellation_vertex_source.c"
 #include "../opengpu_tessellation_vertex_plan.c"
 #ifndef OPENGPU_JOINT_SOURCE
 #define OPENGPU_JOINT_SOURCE "../opengpu_protected_tessellation_joint.c"
 #endif
 #include OPENGPU_JOINT_SOURCE
+
+struct opengpu_tessellation_scope { u32 flags, program, cookie; };
+struct opengpu_command_events { u32 flags, wait_event, signal_event; };
+struct opengpu_kernel_launch;
+struct dma_fence;
+#include "joint_hw_submission_under_test.inc"
+
+static bool joint_busy, joint_kick_fail;
+static unsigned joint_kicks;
+static int joint_fence_token;
+static struct opengpu_tessellation_scope joint_expected_scope;
+static struct opengpu_protected_tessellation_joint_host_command joint_expected_command;
+
+static bool opengpu_hw_execution_busy(struct opengpu_device *gpu)
+{
+    assert(gpu->hw.submit_lock.held);
+    return joint_busy;
+}
+
+static int opengpu_hw_unified_submit_locked(struct opengpu_device *gpu,
+    const struct opengpu_kernel_launch *launch, const struct opengpu_command_events *events,
+    u32 opcode, u32 source, u32 destination, u32 bytes, u32 pattern, u32 sample_mode,
+    u32 width, u32 height, u32 source_stride, u32 destination_stride, u64 expected_bytes,
+    const struct opengpu_vm *vm, u32 delay,
+    const struct opengpu_hw_joint_submission *joint, struct dma_fence **output)
+{
+    assert(gpu->hw.submit_lock.held && gpu->mmu.snapshot_leases && vm && vm->enabled);
+    assert(!launch && events && !events->wait_event && !events->signal_event);
+    assert(joint && joint->completion && !sample_mode && !expected_bytes && !delay);
+    assert(opcode == 15 && source == joint_expected_command.source &&
+        destination == joint_expected_command.destination && bytes == 512 &&
+        pattern == joint_expected_command.pattern && width == joint_expected_command.width);
+    assert(height == joint_expected_command.height && source_stride == joint_expected_command.source_stride &&
+        destination_stride == joint_expected_command.destination_stride);
+    assert(events->flags == joint_expected_scope.flags &&
+        joint->feedback_program == joint_expected_scope.program &&
+        joint->feedback_cookie == joint_expected_scope.cookie);
+    ++joint_kicks;
+    if (joint_kick_fail)
+        return -ENOMEM;
+    *output = (struct dma_fence *)&joint_fence_token;
+    return 0;
+}
+
+#include "joint_enqueue_under_test.inc"
 
 struct joint_fixture {
     struct pt_records old;
@@ -203,6 +250,53 @@ static void joint_request_rejected(struct opengpu_private_snapshot *o,struct ope
     assert(ret<0 && command.opcode==0xa7 && command.width==0xa7);
 }
 
+static void joint_enqueue_oracle(struct opengpu_private_snapshot *owner, struct opengpu_device *gpu,
+    const struct opengpu_render_context *context, u32 segment,
+    const struct opengpu_protected_tessellation_joint_host_command *command)
+{
+    struct opengpu_tessellation_joint_completion completion = {0};
+    struct dma_fence *fence = NULL;
+    struct opengpu_tessellation_scope scope = {
+        .flags = GPU_UCMD_FLAG_RASTER_DISCARD | GPU_UCMD_FLAG_FEEDBACK_CAPTURE,
+        .program = 33, .cookie = 44,
+    };
+    unsigned kicks = joint_kicks, cached = invalidations;
+
+    joint_expected_command = *command;
+    gpu->hw.joint_tessellation = (struct opengpu_protected_tessellation_joint_profile){0};
+    assert(opengpu_hw_protected_tessellation_joint_async(gpu, owner, context, segment, NULL,
+        &completion, &fence) == -EOPNOTSUPP && !fence && invalidations == cached);
+    gpu->hw.joint_tessellation = (struct opengpu_protected_tessellation_joint_profile) {
+        .version = 1, .domains = 7, .compute_units = 2, .lanes = 16, .warps = 8,
+        .engines = 4, .available = true, .owned_vertex_source = true,
+        .patch_zero_initialized = true, .owned_patch_reads = true, .owned_tessellation_info = true,
+        .primitive_inputs = true, .joint_directory_route = true, .whole_owner_retirement = true,
+    };
+    assert(opengpu_hw_protected_tessellation_joint_async(gpu, owner, context, segment, &scope,
+        &completion, &fence) == -EOPNOTSUPP && !fence && invalidations == cached);
+    joint_busy = true;
+    assert(opengpu_hw_protected_tessellation_joint_async(gpu, owner, context, segment, NULL,
+        &completion, &fence) == -EBUSY && !fence && invalidations == cached);
+    joint_busy = false;
+    assert(opengpu_hw_protected_tessellation_joint_async(gpu, owner, context, segment + 1, NULL,
+        &completion, &fence) == -EINVAL && !fence && invalidations == cached);
+    invalidate_failure = (int)cached + 1;
+    assert(opengpu_hw_protected_tessellation_joint_async(gpu, owner, context, segment, NULL,
+        &completion, &fence) == -EIO && !fence && invalidations == cached + 1);
+    invalidate_failure = 0;
+    assert(joint_kicks == kicks && !gpu->hw.submit_lock.held);
+    joint_expected_scope = (struct opengpu_tessellation_scope){0};
+    joint_kick_fail = true;
+    assert(opengpu_hw_protected_tessellation_joint_async(gpu, owner, context, segment, NULL,
+        &completion, &fence) == -ENOMEM && !fence && joint_kicks == kicks + 1);
+    joint_kick_fail = false;
+    gpu->hw.joint_tessellation.transform_feedback = true;
+    joint_expected_scope = scope;
+    assert(!opengpu_hw_protected_tessellation_joint_async(gpu, owner, context, segment, &scope,
+        &completion, &fence) && fence == (struct dma_fence *)&joint_fence_token);
+    assert(joint_kicks == kicks + 2 && !gpu->hw.submit_lock.held);
+}
+
 static void joint_request_oracle(struct opengpu_private_snapshot *o,struct opengpu_device *gpu,
     struct opengpu_render_context *ctx,u32 segment,u32 domain)
 {
@@ -242,6 +336,7 @@ static void joint_request_oracle(struct opengpu_private_snapshot *o,struct openg
     joint_request_rejected(o,gpu,ctx,segment);
     *leaf=saved;
     assert(!joint_request(o,gpu,ctx,segment,&request));
+    joint_enqueue_oracle(o,gpu,ctx,segment,&command);
 }
 
 static void joint_oracle(struct opengpu_private_snapshot *o,struct opengpu_render_context *ctx,u32 segment,u32 domain)

@@ -25,6 +25,7 @@
 #include "opengpu_shader_image_command.h"
 #include "opengpu_storage_command.h"
 #include "opengpu_tessellation_completion.h"
+#include "opengpu_tessellation_joint_host.h"
 #include "opengpu_native_sources_features.h"
 #include "opengpu_native_geometry_transport_features.h"
 #include "opengpu_native_completion.h"
@@ -149,6 +150,8 @@ struct opengpu_hw {
     /* Immutable identity of the verified native command's held completion. */
     u32 native_context, native_pass, native_generation;
     struct opengpu_private_snapshot *native_pending_owner;
+    struct opengpu_protected_tessellation_joint_profile joint_tessellation;
+    struct opengpu_tessellation_joint_completion *joint_pending_completion;
     struct opengpu_compute_local_limits compute_local_limits;
     struct opengpu_compute_shared_limits compute_shared_limits;
     bool compute_texture_transport;
@@ -419,6 +422,14 @@ int opengpu_hw_native_binned_async(struct opengpu_device *gpu,
     struct opengpu_private_snapshot *owner,
     const struct opengpu_render_context *context, u32 job_segment,
     struct dma_fence **fence);
+int opengpu_hw_protected_tessellation_joint_profile(const struct opengpu_device *gpu,
+    struct opengpu_protected_tessellation_joint_profile *profile);
+/* A protected joint job retains its owner through retirement and its report
+ * storage through the returned execution fence. Scope is kernel-authorized. */
+int opengpu_hw_protected_tessellation_joint_async(struct opengpu_device *gpu,
+    struct opengpu_private_snapshot *owner, const struct opengpu_render_context *context,
+    u32 job_segment, const struct opengpu_tessellation_scope *scope,
+    struct opengpu_tessellation_joint_completion *completion, struct dma_fence **fence);
 void opengpu_hw_abort(struct opengpu_device *gpu, int error);
 void opengpu_hw_progress_tick(struct opengpu_device *gpu);
 int opengpu_hw_fence_wait(struct opengpu_device *gpu, struct dma_fence *fence,

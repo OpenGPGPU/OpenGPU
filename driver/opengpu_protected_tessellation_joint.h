@@ -3,16 +3,11 @@
 #define OPENGPU_PROTECTED_TESSELLATION_JOINT_H
 #include "opengpu_protected_tessellation.h"
 #include "opengpu_tessellation_vertex_plan.h"
+#include "opengpu_tessellation_joint_host.h"
 
-/* Kernel-verified exact joint provider contract, not compiler/GSS permission.
- * No getter, factory, ioctl or queue currently supplies this profile. */
-struct opengpu_protected_tessellation_joint_profile {
-    u32 version, domains, compute_units, lanes, warps, engines;
-    bool available, scalar_fpu, advanced_blend;
-    bool owned_vertex_source, patch_zero_initialized, owned_patch_reads;
-    bool owned_tessellation_info, primitive_inputs, sample_inputs;
-    bool joint_directory_route, whole_owner_retirement;
-};
+struct opengpu_device;
+struct opengpu_render_context;
+
 struct opengpu_protected_tessellation_joint_plan {
     u32 sequence_index, state_handle;
     struct drm_opengpu_native_program_view control_program, evaluation_program;

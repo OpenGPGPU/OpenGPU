@@ -18,7 +18,10 @@ def generate():
                 domainShift=1, domainBits=2, rootAllocationBytes=4096,
                 completionMagic='0x474e5a02', completionWords=16,
                 completionHeadBase='0x180', completionHeadWords=12,
-                completionTailBase='0x540')
+                completionTailBase='0x540', profileBase='0x550',
+                profileMagic='0x474a5001', profileWords=4, profileDomains=7,
+                profileRequiredFlags='0x7f', profileScalarFpuBit=7,
+                profileAdvancedBlendBit=8, profileSamplesBit=9, profileFeedbackBit=10)
     if s['hostSubmission'] != host:
         raise ValueError('wrong private joint host envelope')
     if [(r['domain'], int(r['magic'], 16), int(r['sequenceMagic'], 16), r['sequenceVersion']) for r in s['records']] != [
