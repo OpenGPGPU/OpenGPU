@@ -58,7 +58,7 @@ object PrepareOwnerResourceImageFloatHost {
     }
     require(sys.props.get("opengpu.fullHostQualification").contains("1"),
       "complete owner host emission requires explicit full-host qualification")
-    val staged = args.headOption.contains("--firrtl-output") && tessellationUniforms
+    val staged = args.headOption.contains("--firrtl-output")
     require((args.length==2 || (args.length==3 && args(2)=="--inline-assertions")) &&
       (args(0)=="--output" || staged), "expected a new owner output directory")
     val inlineAssertions=args.length==3

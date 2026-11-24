@@ -131,7 +131,8 @@ def prepare(out, heap, compute_stage=False, full_resources=False, sample_resourc
     entry, expected_profile = selected[0] if selected else ('PrepareNativeOwnerHost', PROFILE)
     if out.exists():raise RuntimeError('Owner preparation requires a new output directory')
     if not re.fullmatch(r'[1-9][0-9]*[kKmMgG]',heap):raise ValueError('Invalid Java heap size')
-    sources=source_inputs()
+    source_snapshot=source_inputs()
+    staged_lowering = float_resources or tessellation_uniforms
     main=Path(subprocess.check_output(['git','rev-parse','--path-format=absolute','--git-common-dir'],cwd=ROOT,text=True).strip()).parent
     temporary=main/'.artifacts';temporary.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='o',dir=temporary) as directory, ExitStack() as stack:
@@ -142,14 +143,14 @@ def prepare(out, heap, compute_stage=False, full_resources=False, sample_resourc
             jvm_directory = stack.enter_context(tempfile.TemporaryDirectory(prefix='opengpu-jvm-', dir='/tmp'))
         environment = dict(os.environ, TMPDIR=jvm_directory)
         staged = Path(directory) / 'staged'
-        argument = ('--firrtl-output ' + json.dumps(str(staged)) if tessellation_uniforms else
+        argument = ('--firrtl-output ' + json.dumps(str(staged)) if staged_lowering else
                     '--output ' + json.dumps(str(out)))
         command=['sbt','-J-Xmx'+heap,'-J-XX:ActiveProcessorCount=2','-J-Djava.io.tmpdir='+jvm_directory,
             '-Dopengpu.fullHostQualification=1',
             'Test / runMain opengpu.system.'+entry+' '+argument+
             (' --inline-assertions' if inline_assertions else '')]
         subprocess.run(command,cwd=ROOT,env=environment,check=True)
-        if tessellation_uniforms:
+        if staged_lowering:
             # The JVM has exited. Lower the serialized input with the same
             # firtool and options chosen by the Scala factory.
             lower = (staged / 'firtool-command').read_text().splitlines()
@@ -160,7 +161,7 @@ def prepare(out, heap, compute_stage=False, full_resources=False, sample_resourc
             out.mkdir(parents=True, exist_ok=False)
             rtl.rename(out / 'rtl')
             (staged / 'owner-manifest.json').rename(out / 'owner-manifest.json')
-    if sources!=source_inputs():raise RuntimeError('Source changed during owner RTL preparation')
+    if source_snapshot!=source_inputs():raise RuntimeError('Source changed during owner RTL preparation')
     manifest=out/'owner-manifest.json';description=json.loads(manifest.read_text());check_manifest(description)
     if description['profile'] != expected_profile:
         raise RuntimeError('Emitted owner profile differs from the requested factory')
@@ -169,7 +170,7 @@ def prepare(out, heap, compute_stage=False, full_resources=False, sample_resourc
     rtl=common.tree_hashes(out/'rtl')
     check_assertion_format(out,description,rtl)
     common.simulation_inputs(out/'rtl')
-    common.write_json(out/'preparation.json',dict(version=1,exit_code=0,source_sha256=sources,
+    common.write_json(out/'preparation.json',dict(version=1,exit_code=0,source_sha256=source_snapshot,
         manifest_sha256=common.sha(manifest),rtl_sha256=rtl))
     prepared(out)
 
@@ -200,7 +201,7 @@ def main():
                         help='prepare the complete sample/float owner with checked TCS/TES uniforms')
     parser.add_argument('--inline-assertions',action='store_true',
                         help='inline the complete sample factory checks for hierarchical compilation')
-    parser.add_argument('--java-heap', help='JVM heap for preparation (5G for staged checked uniforms, otherwise 24G)')
+    parser.add_argument('--java-heap', help='JVM heap for preparation (5G for staged image-float or checked uniforms, otherwise 24G)')
     parser.add_argument('--flashsim-dir',type=Path)
     parser.add_argument('--shards',type=int,default=32)
     args=parser.parse_args();out=args.output.resolve()
@@ -213,7 +214,7 @@ def main():
             args.sample_resources or args.image_float_resources or args.tessellation_uniforms)):
         parser.error('--inline-assertions requires --stage prepare with a complete sample factory')
     if args.stage=='prepare':
-        heap = args.java_heap or ('5G' if args.tessellation_uniforms else '24G')
+        heap = args.java_heap or ('5G' if args.image_float_resources or args.tessellation_uniforms else '24G')
         prepare(out, heap, args.compute_stage, args.full_resources, args.sample_resources,
                 args.inline_assertions, args.image_float_resources, args.tessellation_uniforms)
     elif args.stage=='generate':
