@@ -125,6 +125,9 @@ assert set(assigned) == all_specs - ci_skip, (
     sorted(set(assigned) - (all_specs - ci_skip)),
 )
 assert ci_skip.isdisjoint(assigned)
+assert assigned["opengpu.system.TileBinHostMemoryFabricJointClearSpec"] == "system-mem"
+assert "opengpu.system.TessellationJointEmptyFrameSpec" in local_only
+assert "opengpu.graphics.TypedReplayEmptyStateSpec" in local_only
 assert assigned["opengpu.system.GpuHostAxiOwnershipSpec"] == "system-mem"
 assert assigned["opengpu.system.ComputeResourceCapabilitiesAxiSpec"] == "system-mem"
 assert assigned["opengpu.system.NativeAdvancedBlendCapabilitiesAxiSpec"] == "system-mem"

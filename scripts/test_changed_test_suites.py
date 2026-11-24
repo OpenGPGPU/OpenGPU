@@ -1738,6 +1738,47 @@ class ChangedTestSuitesTest(unittest.TestCase):
             for suite in ("FrameCaptureReaderSpec", "RangeCaptureControllerSpec", "ZeroWorkCaptureSpec"):
                 self.assertIn(expected.format(suite), selected)
 
+    def test_joint_clear_fabric_is_routine_but_composed_model_is_local(self):
+        root = REPO_ROOT
+        suite = "opengpu.system.TileBinHostMemoryFabricJointClearSpec"
+        for source in ("system/TileBinHostMemoryFabric", "system/tessellation/TessellationInputMemoryFabric",
+                       "core/memory/TranslatedLineClient", "core/memory/GraphicsAddressTranslator"):
+            self.assertIn(suite, changed_suites(root, [f"src/main/scala/opengpu/{source}.scala"]))
+        qualification = "opengpu.system.TessellationJointEmptyFrameSpec"
+        self.assertTrue(is_local_only_suite(root, qualification))
+        selected = changed_suites(root, ["src/test/scala/opengpu/system/TessellationJointEmptyFrameSpec.scala"])
+        self.assertNotIn(qualification, selected)
+        self.assertIn(suite, selected)
+
+    def test_joint_execution_owner_and_no_state_clear_dependencies(self):
+        root = Path(__file__).resolve().parents[1]
+        for source in ("system/tessellation/TessellationJointNativeController", "system/tessellation/TessellationJointDirectoryCaptureReader",
+                       "system/tessellation/TessellationJointRangeCaptureController", "system/tessellation/TessellationJointFrameCaptureReader",
+                       "system/tessellation/TessellationJointJobLayout", "system/tessellation/TessellationVertexTypedRangeControl"):
+            self.assertIn("opengpu.system.TessellationJointNativeControllerSpec", changed_suites(root,
+                          [f"src/main/scala/opengpu/{source}.scala"]))
+        for source in ("graphics/raster/TypedReplayTileImagePipeline", "graphics/raster/TypedTileImagePipeline",
+                       "graphics/raster/TypedTileImageTransfer", "graphics/raster/TypedTileColorStore"):
+            self.assertIn("opengpu.system.TileBinHostMemoryFabricJointClearSpec", changed_suites(root,
+                          [f"src/main/scala/opengpu/{source}.scala"]))
+        for domain in ("Isoline", "Triangle", "Quad"):
+            selected = changed_suites(root, [f"src/main/scala/opengpu/system/tessellation/TessellationSystem{domain}JointVertexImage.scala"])
+            self.assertIn("opengpu.system.TessellationJointNativeControllerSpec", selected)
+            self.assertIn("opengpu.system.TileBinHostMemoryFabricJointClearSpec", selected)
+
+    def test_joint_cursor_and_actual_viewport_endpoints_have_specific_dependencies(self):
+        root = Path(__file__).resolve().parents[1]
+        for domain in ("Isoline", "Triangle", "Quad"):
+            for kind in ("VertexTypedRange", "VertexInputImage"):
+                selected = changed_suites(root, [f"src/main/scala/opengpu/system/tessellation/TessellationSystem{domain}{kind}.scala"])
+                self.assertIn("opengpu.system.TessellationJointRangeCursorSpec", selected)
+            for path in (f"system/tessellation/TessellationSystem{domain}Viewport", f"system/tessellation/TessellationCu{domain}SharedEvaluator",
+                         f"system/tessellation/TessellationCu{domain}SystemClient"):
+                selected = changed_suites(root, [f"src/main/scala/opengpu/{path}.scala"])
+                self.assertIn("opengpu.system.TessellationViewportPublicationEndpointSpec", selected)
+        selected = changed_suites(root, ["src/main/scala/opengpu/system/tessellation/TessellationVertexTypedRangeControl.scala"])
+        self.assertIn("opengpu.system.TessellationJointRangeCursorSpec", selected)
+
     def test_dynamic_tes_patch_keeps_service_and_actual_cu_checks(self):
         root = Path(__file__).resolve().parents[1]
         expected = {"opengpu.core.TessellationEvaluationKernelContractSpec",

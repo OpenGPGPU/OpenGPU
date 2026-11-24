@@ -15,6 +15,14 @@ import sys
 # These checks cover configuration, descriptor ownership and image bounds;
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
+    "opengpu.system.TessellationJointEmptyFrameSpec": {
+        "opengpu.system.TileBinHostMemoryFabricJointClearSpec",
+        "opengpu.system.TessellationJointFrameCaptureReaderSpec",
+    },
+    "opengpu.graphics.TypedReplayEmptyStateSpec": {
+        "opengpu.graphics.TypedFragmentImageStateReaderSpec",
+        "opengpu.system.TileBinHostMemoryFabricJointClearSpec",
+    },
     "opengpu.graphics.FragmentPrimitiveInputPackingSpec": {
         "opengpu.graphics.FragmentPrimitiveInputAbiSpec",
         "opengpu.graphics.TypedFragmentImageStateReaderSpec",
@@ -602,6 +610,34 @@ def changed_suites(root, changed, *, test_index=None):
         affected.add("src/test/scala/opengpu/system/TessellationJointRangeCaptureControllerSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationJointZeroWorkCaptureSpec.scala")
     if changed & {
+        "src/main/scala/opengpu/system/TileBinHostMemoryFabric.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationInputMemoryFabric.scala",
+        "src/main/scala/opengpu/core/memory/TranslatedLineClient.scala",
+        "src/main/scala/opengpu/core/memory/GraphicsAddressTranslator.scala",
+    }:
+        affected.add("src/test/scala/opengpu/system/TileBinHostMemoryFabricJointClearSpec.scala")
+    if changed & (joint_common | {
+        "src/main/scala/opengpu/system/tessellation/TessellationJointNativeController.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationJointJobCaptureReader.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationJointFrameCaptureReader.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationJointDirectoryCaptureReader.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationJointRangeCaptureController.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationJointSourceCrosslink.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationVertexTypedRangeControl.scala",
+    } | {f"src/main/scala/opengpu/system/tessellation/TessellationSystem{d}JointVertexImage.scala"
+         for d in ("Isoline", "Triangle", "Quad")}):
+        affected.add("src/test/scala/opengpu/system/TessellationJointNativeControllerSpec.scala")
+    if changed & {
+        "src/main/scala/opengpu/graphics/raster/TypedReplayTileImagePipeline.scala",
+        "src/main/scala/opengpu/graphics/raster/TypedTileImagePipeline.scala",
+        "src/main/scala/opengpu/graphics/raster/TypedTileImageTransfer.scala",
+        "src/main/scala/opengpu/graphics/raster/TypedTileColorStore.scala",
+        "src/main/scala/opengpu/graphics/raster/TypedTilePixelBackend.scala",
+    } or any(f"src/main/scala/opengpu/system/tessellation/TessellationSystem{d}{kind}.scala" in changed
+             for d in ("Isoline", "Triangle", "Quad")
+             for kind in ("ImagePipeline", "VertexInputImage", "JointVertexImage")):
+        affected.add("src/test/scala/opengpu/graphics/TypedReplayEmptyStateSpec.scala")
+    if changed & {
         "src/main/scala/opengpu/graphics/raster/FragmentInputAbi.scala",
         "src/main/scala/opengpu/graphics/raster/FragmentSampleAbi.scala",
         "src/main/scala/opengpu/graphics/raster/FragmentShaderStage.scala",
@@ -756,6 +792,14 @@ def changed_suites(root, changed, *, test_index=None):
             for stem in (f"System{domain}VertexTypedRange", f"System{domain}VertexInputImage",
                          f"{'' if domain == 'Isoline' else domain}PatchSequence")):
         affected.add("src/test/scala/opengpu/graphics/TessellationVertexTypedRangeSpec.scala")
+        affected.add("src/test/scala/opengpu/system/TessellationJointRangeCursorSpec.scala")
+    if any(f"src/main/scala/opengpu/system/tessellation/TessellationSystem{domain}Viewport.scala" in changed
+           for domain in ("Isoline", "Triangle", "Quad")) or changed & {
+            "src/main/scala/opengpu/graphics/tessellation/TessellationPatchContext.scala",
+            "src/main/scala/opengpu/graphics/tessellation/TessellationPatchStore.scala"} or any(
+            f"src/main/scala/opengpu/system/tessellation/TessellationCu{domain}{kind}.scala" in changed
+            for domain in ("Isoline", "Triangle", "Quad") for kind in ("SystemClient", "SharedEvaluator")):
+        affected.add("src/test/scala/opengpu/system/TessellationViewportPublicationEndpointSpec.scala")
     if "src/main/scala/opengpu/graphics/raster/TypedFragmentState.scala" in changed:
         affected.add("src/test/scala/opengpu/graphics/TypedFragmentStateReaderSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/TypedFragmentImageStateReaderSpec.scala")
