@@ -397,6 +397,7 @@ for width in 32 64; do
   cat "depends/asap7_sram_0p0/generated/verilog/srambank_64x4x${width}_6t122.v"
   printf '\n'
 done > "$OUT/rtl/NativeFourEngineSramModels.sv"
+printf '%s\n' NativeFourEngineSramModels.sv >> "$OUT/rtl/filelist.f"
 (
   cd "$FLASHSIM"
   export CIRCT_VERILOG="$CIRCT_OVERLAY/circt-verilog" DYLD_LIBRARY_PATH="$CIRCT_OVERLAY"
