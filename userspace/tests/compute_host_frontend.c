@@ -31,7 +31,7 @@ static unsigned next_bo=1,next_sync=1,submitted,retired;
 static const char *directory;
 static const char *loop_case;
 static int storage_loop_case,dynamic_loop_case,loop_barrier_case,indexed_uniform_loop_case;
-static int shared_barrier_mask_case;
+static int shared_barrier_mask_case, workgroup_barrier_case;
 static int capture_only,expect_image_source_fault,uniform_case,dynamic_case,address_case,counter_case,counter_dynamic,counter_coexist,p12_counter_coexist,p12_shared_coexist,p12_texture_coexist,p12_combined_coexist;
 static unsigned image_permission_fault;
 static unsigned image_reset;
@@ -378,8 +378,8 @@ static void write_oracle(void)
   uint64_t physical,bytes;assert(!compute_host_original_physical(session,output_handles[0],&physical,&bytes));
   fprintf(f,"{\"schema\":\"opengpu-compute-shared-dynamic-oracle-v1\",\"outputPhysical\":%llu,\"allocationBytes\":%llu,\"viewBytes\":8192,\"groups\":4,\"local\":128,\"seed\":2147483648,\"operand\":4294967295,\"compare\":2147483648,\"operation\":%u,\"signed\":%s,\"guard\":3735928559}\n",(unsigned long long)physical,(unsigned long long)bytes,dynamic_operation,dynamic_signed?"true":"false");
  }else if(loop_case){
-  fprintf(f,"{\"schema\":\"opengpu-compute-%s-oracle-v1\",\"sourceCase\":\"%s\",\"viewBytes\":8192,\"groups\":1,\"local\":%u,\"guard\":3735928559",
-   loop_case,loop_case,loop_barrier_case?4u:128u);
+  fprintf(f,"{\"schema\":\"opengpu-compute-%s-oracle-v1\",\"sourceCase\":\"%s\",\"viewBytes\":8192,\"groups\":%u,\"local\":%u,\"guard\":3735928559",
+   loop_case,loop_case,workgroup_barrier_case?2u:1u,loop_barrier_case?4u:128u);
   if(storage_loop_case){
    fputs(",\"input\":",f);
    source_window(f,output_handles[1],0,8192,1);
@@ -461,8 +461,9 @@ int main(int argc,char **argv)
  loop_barrier_case=!strcmp(argv[4],"loop-branch");
  indexed_uniform_loop_case=!strcmp(argv[4],"indexed-uniform-loop");
  shared_barrier_mask_case=!strcmp(argv[4],"shared-barrier-mask");
+ workgroup_barrier_case=!strcmp(argv[4],"workgroup-barrier-if") || !strcmp(argv[4],"workgroup-barrier-loop");
  if(storage_loop_case || dynamic_loop_case || loop_barrier_case || indexed_uniform_loop_case ||
-    shared_barrier_mask_case || !strcmp(argv[4],"nested-loop") ||
+    shared_barrier_mask_case || workgroup_barrier_case || !strcmp(argv[4],"nested-loop") ||
     !strcmp(argv[4],"constant-loop") || !strcmp(argv[4],"loop-break") ||
     !strcmp(argv[4],"continue-loop"))loop_case=argv[4];
  uniform_case=!strcmp(argv[4],"uniforms");
@@ -511,7 +512,7 @@ int main(int argc,char **argv)
   (loop_case || image_case || storage_case || publication_case || image_publication_case || texture_publication_case || shared_publication_case || dma_publication_case || p12_shared_coexist || p12_texture_coexist)?cs_frontend_compile_buffers(argv[3],dump):cs_frontend_compile(argv[3],dump);assert(frontend);
  {
   unsigned expected_shared=0;
-  if(shared_barrier_mask_case)expected_shared=128*sizeof(uint32_t);
+  if(shared_barrier_mask_case || workgroup_barrier_case)expected_shared=128*sizeof(uint32_t);
   else if(shared_publication_case && shared_publication_index==1)expected_shared=128; /* dual own-stripe */
   else if(p12_combined_coexist || !(loop_case || uniform_case || counter_case || counter_publication_case || shared_publication_case || dma_publication_case || image_case || storage_case || publication_case || image_publication_case || texture_publication_case || p12_texture_coexist))expected_shared=16384;
   assert(cs_frontend_shared_bytes(frontend)==expected_shared);
@@ -622,7 +623,8 @@ int main(int argc,char **argv)
  if(loop_case)grid.grid[0]=1;
  if(uniform_case || loop_case){grid.block[0]=8;grid.block[1]=4;grid.block[2]=4;}
  if(loop_barrier_case){grid.block[0]=4;grid.block[1]=1;grid.block[2]=1;}
- if(shared_barrier_mask_case){grid.block[0]=128;grid.block[1]=1;grid.block[2]=1;}
+ if(shared_barrier_mask_case || workgroup_barrier_case){grid.block[0]=128;grid.block[1]=1;grid.block[2]=1;}
+ if(workgroup_barrier_case)grid.grid[0]=2;
  p->launch_grid(p,&grid);assert(submitted==1 && retired);
  marker("cleanup_wait","actual compute retired; independent byte/source/guard authorization required\n");
  f=wait_file("BEGIN_CLEANUP");magic(f,"OGCMBA01");assert(read32(f)==1);end(f);

@@ -2,6 +2,22 @@
 """Explicit CPU-only real ESSL shared uint32/stripe/barrier acceptance."""
 
 
+def write_workgroup_barrier_sources(out):
+    setup = ("#version 310 es\nprecision highp int;\n"
+             "layout(local_size_x=128,local_size_y=1,local_size_z=1) in;\n"
+             "layout(std430,binding=0) buffer Output {uint v[];} result;\n"
+             "shared uint data[128];\nvoid main(){uint id=gl_LocalInvocationID.x;uint group=gl_WorkGroupID.x;\n"
+             "data[id]=100u+id;memoryBarrierShared();barrier();\n")
+    rendezvous = "atomicAdd(data[id^16u],3u);memoryBarrierShared();barrier();"
+    result = "result.v[group*128u+id]=data[id];}\n"
+    (out / "workgroup-barrier-if.comp").write_text(setup +
+        "if((group&1u)!=0u){" + rendezvous + "}\n" + result)
+    loop = "for(uint i=0u;i<(group&1u)+1u;++i){" + rendezvous + "}\n"
+    (out / "workgroup-barrier-loop.comp").write_text(setup + loop + result)
+    (out / "workgroup-barrier-divergent-loop.comp").write_text(
+        setup + loop.replace("group&1u", "id&1u") + result)
+
+
 def write_sources(out):
     prefix = ("#version 310 es\nprecision highp int;\n"
               "layout(local_size_x=128,local_size_y=1,local_size_z=1) in;\n"
@@ -24,15 +40,7 @@ def write_sources(out):
         reads.replace("(id^16u)", "id") + "result.v[group*128u+id]=sum;}\n")
     (out / "own-shifted.comp").write_text(prefix +
         "data[id]=id;memoryBarrierShared();result.v[group*128u+id]=data[id+1u];}\n")
-    setup = prefix + "data[id]=100u+id;memoryBarrierShared();barrier();\n"
-    rendezvous = "atomicAdd(data[id^16u],3u);memoryBarrierShared();barrier();"
-    result = "result.v[group*128u+id]=data[id];}\n"
-    (out / "workgroup-barrier-if.comp").write_text(setup +
-        "if((group&1u)!=0u){" + rendezvous + "}\n" + result)
-    loop = "for(uint i=0u;i<(group&1u)+1u;++i){" + rendezvous + "}\n"
-    (out / "workgroup-barrier-loop.comp").write_text(setup + loop + result)
-    (out / "workgroup-barrier-divergent-loop.comp").write_text(
-        setup + loop.replace("group&1u", "id&1u") + result)
+    write_workgroup_barrier_sources(out)
 
     functions = ('atomicExchange', 'atomicAdd', 'atomicXor', 'atomicOr', 'atomicAnd',
                  'atomicMin', 'atomicMax', 'atomicMin', 'atomicMax', 'atomicCompSwap')

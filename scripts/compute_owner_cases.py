@@ -34,9 +34,10 @@ MASKED_STORAGE_LOOP_CASE = "masked-storage-loop"
 LOOP_BARRIER_CASE = "loop-branch"
 INDEXED_UNIFORM_LOOP_CASE = "indexed-uniform-loop"
 SHARED_BARRIER_MASK_CASE = "shared-barrier-mask"
+WORKGROUP_BARRIER_CASES = ("workgroup-barrier-if", "workgroup-barrier-loop")
 COMPUTE_LOOP_CASES = (STORAGE_LOOP_CASE, NESTED_LOOP_CASE, "constant-loop", "dynamic-loop", "loop-break",
                       "continue-loop", MASKED_STORAGE_LOOP_CASE, LOOP_BARRIER_CASE, INDEXED_UNIFORM_LOOP_CASE,
-                      SHARED_BARRIER_MASK_CASE)
+                      SHARED_BARRIER_MASK_CASE, *WORKGROUP_BARRIER_CASES)
 COMPUTE_LOOP_SCHEMAS = {case: "opengpu-compute-" + case + "-oracle-v1" for case in COMPUTE_LOOP_CASES}
 STORAGE_LOOP_SCHEMA = COMPUTE_LOOP_SCHEMAS[STORAGE_LOOP_CASE]
 CASES = (LEGACY_CASES + COMPUTE_LOOP_CASES + COUNTER_CASES + IMAGE_CASES + STORAGE_ATOMIC_CASES +
