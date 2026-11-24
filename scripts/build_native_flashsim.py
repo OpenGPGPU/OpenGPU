@@ -13,9 +13,11 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import threading
 import time
+import uuid
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +38,17 @@ def digest(path):
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             value.update(block)
     return value.hexdigest()
+
+
+def model_library_path(build, record):
+    if record is None:
+        return None
+    if (not isinstance(record, dict) or not isinstance(record.get("name"), str)
+            or not re.fullmatch(r"native_dut_[0-9a-f]{32}\.dylib", record["name"])
+            or not isinstance(record.get("sha256"), str)
+            or not re.fullmatch(r"[0-9a-f]{64}", record["sha256"])):
+        raise ValueError("invalid native FlashSim model library identity")
+    return build / record["name"]
 
 
 def generated_digest(path, *, header=False):
@@ -144,7 +157,7 @@ class BuildProgress:
 
 def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservative_alias,
           strict_flex_arrays, progress, precompiled_header=False, driver_dependencies=(),
-          shard_cache=None):
+          shard_cache=None, link_flags=(), shared_model=False):
     header = dut / "dut.h"
     sources = sorted(dut.glob("dut_*.cpp"), key=lambda path: path.stat().st_size, reverse=True)
     if not header.is_file() or not sources:
@@ -349,11 +362,30 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
     driver_flags = flags[:-2] + ["-I", str(ADAPTER), "-I", str(ROOT / "scripts"), *flags[-2:]]
     result = output / "native_product_driver"
     temporary = output / "native_product_driver.tmp"
+    receipt = output / "native-flashsim-build.json"
+    previous_library = None
+    try:
+        previous = json.loads(receipt.read_text())
+        if isinstance(previous, dict):
+            previous_library = model_library_path(output, previous.get("model_library"))
+    except (OSError, ValueError):
+        # Unrecognized output has no builder-owned library eligible for cleanup.
+        pass
+    library = None
+    library_identity = None
     try:
         run_final([*driver_flags, "-O1", "-c", str(driver), "-o", str(driver_tmp)],
                   output / "native-driver.log", "compiling-driver")
         driver_tmp.replace(driver_obj)
-        run_final([compiler, str(driver_obj), *map(str, objects), "-pthread",
+        link_inputs = objects
+        if shared_model:
+            library = output / f"native_dut_{uuid.uuid4().hex}.dylib"
+            install_name = f"-Wl,-install_name,@loader_path/{library.name}"
+            run_final([compiler, "-dynamiclib", install_name, *map(str, objects), "-pthread",
+                       *link_flags, "-o", str(library)], output / "native-model-link.log", "linking-model")
+            library_identity = {"name": library.name, "sha256": digest(library)}
+            link_inputs = [library]
+        run_final([compiler, str(driver_obj), *map(str, link_inputs), "-pthread", *link_flags,
                    "-o", str(temporary)], output / "native-link.log", "linking")
         progress.update(stage="checking-final-inputs", child_pid=None)
         if (digest(header) != context["header_sha256"] or
@@ -366,21 +398,35 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
             if any(object_hashes[path.name] != pinned[path.name]
                    for path in objects if path.parent == cache_dir):
                 raise RuntimeError("shared shard changed during the build")
-        temporary.replace(result)
+        executable_digest = digest(temporary)
+    except BaseException:
+        if library is not None:
+            library.unlink(missing_ok=True)
+        temporary.unlink(missing_ok=True)
+        raise
     finally:
         driver_tmp.unlink(missing_ok=True)
+    try:
+        temporary.replace(result)
+    except OSError:
+        if library is not None:
+            library.unlink(missing_ok=True)
         temporary.unlink(missing_ok=True)
-    write_json(output / "native-flashsim-build.json", {
-        "executable_sha256": digest(result), "dut_header_sha256": context["header_sha256"],
+        raise
+    write_json(receipt, {
+        "executable_sha256": executable_digest, "dut_header_sha256": context["header_sha256"],
         "dut_sources": {path.name: value for path, value in source_hashes.items()},
-        "objects": object_hashes,
+        "objects": object_hashes, "model_library": library_identity,
         "driver_source": str(driver), "driver_inputs": driver_inputs,
         "compiler": executable, "compiler_version": version, "base_flags": flags,
-        "driver_flags": driver_flags + ["-O1"], "environment": context["environment"],
+        "driver_flags": driver_flags + ["-O1"], "link_flags": list(link_flags),
+        "environment": context["environment"],
         "shard_opt": shard_opt,
         "commit_opt": commit_opt, "conservative_alias": conservative_alias,
         "strict_flex_arrays": strict_flex_arrays, "precompiled_header": precompiled_header,
         "scope": "Native FlashSim build identity; assertion coverage and product qualification require separate validation"})
+    if previous_library is not None and previous_library != library:
+        previous_library.unlink(missing_ok=True)
     progress.update(stage="built", child_pid=None)
     return result
 
@@ -395,6 +441,10 @@ def main():
     parser.add_argument("--shard-cache", type=Path,
                         help="read-only build directory and pinned object hashes in a JSON file")
     parser.add_argument("--cxx", default=os.environ.get("CXX", "c++"))
+    parser.add_argument("--link-flag", action="append", default=[],
+                        help="extra compiler-driver flag for linking only (repeatable)")
+    parser.add_argument("--shared-model", action="store_true",
+                        help="link the Darwin DUT shards as a library next to the executor")
     parser.add_argument("--jobs", type=int, default=1)
     parser.add_argument("--shard-opt", choices=("-O0", "-O1", "-O2", "-O3"), default="-O2")
     parser.add_argument("--commit-opt", choices=("-O0", "-O1", "-O2", "-O3"), default="-O0")
@@ -406,6 +456,8 @@ def main():
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error("--jobs must be positive")
+    if args.shared_model and sys.platform != "darwin":
+        parser.error("--shared-model requires Darwin")
     dut, output, driver = args.dut_dir.resolve(), args.build_dir.resolve(), args.driver.resolve()
     if not driver.is_file():
         parser.error("driver source does not exist")
@@ -435,7 +487,8 @@ def main():
                 result = build(dut, output, driver, args.cxx, args.jobs, args.shard_opt,
                                args.commit_opt, args.conservative_alias, args.strict_flex_arrays,
                                progress, args.precompiled_header,
-                               tuple(path.resolve() for path in args.driver_dependency), shard_cache)
+                               tuple(path.resolve() for path in args.driver_dependency), shard_cache,
+                               link_flags=args.link_flag, shared_model=args.shared_model)
             except BaseException as exc:
                 with progress.lock:
                     progress.active.clear()
