@@ -88,6 +88,76 @@ static void check(struct program p,int want,unsigned uniforms)
             malformed[n][0],malformed[n][1],malformed[n][2],false,true));checks++;
     }
 }
+static void scoped_barrier_check(struct program p, bool want)
+{
+    const unsigned local_items[] = {16, 128};
+    assert(p.n >= 1 && p.n + 2 <= 512);
+    memmove(p.w + 2, p.w + 1, (p.n - 1)*sizeof(p.w[0]));
+    p.w[1] = 0xc1087057u; /* Full 16-lane VL on a multi-warp launch. */
+    p.n++;
+    emit(&p, OPENGPU_SHADER_CEASE);
+    for (unsigned i = 0; i < sizeof(local_items)/sizeof(local_items[0]); i++) {
+        bool got = opengpu_compute_shader_validate_words_shared_atomics(p.w, 512, 12, local_items[i],
+            false, false, false, true, false, false, false, false, true,
+            0x10000000u, 16384, 16, false, true);
+        if (got != want)
+            fprintf(stderr, "workgroup barrier case%u, local%u: expected%d got%d\n",
+                    checks, local_items[i], want, got);
+        assert(got == want);
+        checks++;
+    }
+    assert(!opengpu_compute_shader_validate_words_storage(p.w, 512, 12, 128, false));
+    checks++;
+}
+
+static void check_uniform_barriers(void)
+{
+    struct program p = start();
+    emit(&p, v(0x17, 4, 3, 2, 0)); /* Workgroup ID broadcast. */
+    unsigned guard = scope(&p, 8, 0, 0) + 1;
+    int displacement = opengpu_shader_simt_displacement(p.w[guard]);
+    p.w[guard] = branch(0, 3, 2, displacement);
+    scoped_barrier_check(p, true);
+    p.w[2] = v(0, 4, 3, 0, 1); /* A lane ID cannot authorize a barrier. */
+    scoped_barrier_check(p, false);
+
+    p = start();
+    emit(&p, v(0x17, 4, 3, 2, 0));
+    emit(&p, v(0x19, 0, 0, 2, 3));
+    emit(&p, v(0x17, 3, 3, 31, 3) & ~(1u << 25));
+    guard = scope(&p, 8, 0, 0) + 1;
+    displacement = opengpu_shader_simt_displacement(p.w[guard]);
+    p.w[guard] = branch(0, 3, 2, displacement);
+    scoped_barrier_check(p, true);
+    p.w[guard] = branch(0, 0, 2, displacement); /* A packed mask is not a vector splat. */
+    scoped_barrier_check(p, false);
+
+    p = start();
+    unsigned divergent = scope(&p, 2, 2, 0) + 1;
+    unsigned second_arm = divergent + opengpu_shader_simt_displacement(p.w[divergent])/4;
+    p.w[second_arm] = 9u << 20 | 10u << 7 | 0x13u;
+    guard = scope(&p, 8, 0, 0) + 1;
+    p.w[guard] = branch(0, 3, 2, opengpu_shader_simt_displacement(p.w[guard]));
+    scoped_barrier_check(p, false); /* Individually uniform arms assign different values. */
+    p.w[divergent] = branch(0, 2, 2, opengpu_shader_simt_displacement(p.w[divergent]));
+    scoped_barrier_check(p, true);
+
+    p = start();
+    emit(&p, 1u << 20 | 10u << 7 | 0x13u);
+    emit(&p, v(0x17, 4, 3, 10, 0));
+    emit(&p, v(0x17, 4, 4, 5, 0)); /* Workgroup size broadcast. */
+    unsigned loop = p.n;
+    emit(&p, branch(3, 0, 0, 20));
+    emit(&p, branch(0, 2, 4, 16));
+    emit(&p, 0x0000000bu);
+    emit(&p, v(0, 0, 2, 3, 2));
+    emit(&p, jump(0, -12));
+    emit(&p, OPENGPU_SHADER_SIMT_JOIN);
+    scoped_barrier_check(p, true);
+    p.w[loop + 3] = v(0, 0, 2, 3, 1);
+    scoped_barrier_check(p, false); /* First iteration can start uniform and then diverge. */
+}
+
 int main(void)
 {
     struct program p=start();scope(&p,1,1,0);emit(&p,v(0,4,4,0,3));check(p,1,0);
@@ -213,6 +283,7 @@ int main(void)
     check(p, 1, 0);
     p.w[loop + 1] |= 8u << 20; /* A fourth scalar word is outside XYZ. */
     check(p, 0, 0);
+    check_uniform_barriers();
     printf("Compute canonical SIMT validator:%u actual-function cases PASS;4 snapshots/8 physical entries;old profile unchanged\n",checks);
     return 0;
 }

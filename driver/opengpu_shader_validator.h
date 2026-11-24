@@ -172,12 +172,19 @@ static inline bool opengpu_shader_simt_arm_instruction(opengpu_shader_u32 w)
     return f == 6u && (fn == 0x20u || fn == 0x22u);
 }
 
+static inline bool opengpu_shader_shared_simt_resource_instruction(opengpu_shader_u32 w)
+{
+    opengpu_shader_u32 f = (w >> 12) & 7u, fn = w >> 26;
+    return (w & 127u) == 0x2bu && (w & (1u << 25)) &&
+        ((!f && fn == 30u) || fn == 31u || (fn == 32u && f < 2u));
+}
+
 /* A loop backedge may only enter the condition, after the scope marker was
  * pushed. The body uses lane-local integer ALU, scratch constants and checked
  * uniform and storage operations, and immutable dispatch grid words. */
 static inline bool opengpu_shader_simt_loop_body(
     const opengpu_shader_u32 *words, opengpu_shader_u32 condition,
-    opengpu_shader_u32 marker, opengpu_shader_u32 *writes)
+    opengpu_shader_u32 marker, opengpu_shader_u32 *writes, bool shared)
 {
     bool has_exit = false;
     opengpu_shader_u32 i, backedge = (condition - (marker - 1u)) * 4u;
@@ -205,7 +212,8 @@ static inline bool opengpu_shader_simt_loop_body(
             for (++i; i < end; ++i) {
                 opengpu_shader_u32 nested = words[i];
                 opengpu_shader_u32 opcode = nested & 127u, function = nested >> 26;
-                if (opcode == 0x57u || (opcode == 0x2bu && (function == 7u || function == 15u)))
+                if (opcode == 0x57u || (opcode == 0x2bu &&
+                    (function == 7u || function == 15u || (shared && (function == 31u || function == 32u)))))
                     *writes |= 1u << ((nested >> 7) & 31u);
             }
             continue;
@@ -218,15 +226,24 @@ static inline bool opengpu_shader_simt_loop_body(
             has_exit = true;
             continue;
         }
+        if (shared && word == 0x0000000bu)
+            continue;
         opengpu_shader_u32 opcode = word & 127u;
         opengpu_shader_u32 function = word >> 26;
         bool resource = opcode == 0x2bu &&
             (function == 7u || (function >= 14u && function <= 16u));
-        if ((opcode != 0x57u && opcode != 0x13u && opcode != 0x37u &&
+        opengpu_shader_u32 form = (word >> 12) & 7u;
+        bool shared_resource = shared && opengpu_shader_shared_simt_resource_instruction(word);
+        bool shared_vector = shared && opcode == 0x57u && (word & (1u << 25)) &&
+            ((form == 3u && (function == 0x25u || function == 0x28u)) ||
+             (form == 4u && function == 11u && ((word >> 15) & 31u) == 10u));
+        if (!shared_resource && !shared_vector &&
+            ((opcode != 0x57u && opcode != 0x13u && opcode != 0x37u &&
                 opcode != 0x0fu && opcode != 0x03u && !resource) ||
-            !opengpu_shader_simt_arm_instruction(word))
+             !opengpu_shader_simt_arm_instruction(word)))
             return false;
-        if (opcode == 0x57u || (resource && (function == 7u || function == 15u)))
+        if (opcode == 0x57u || (resource && (function == 7u || function == 15u)) ||
+            (shared_resource && function != 30u))
             *writes |= 1u << ((word >> 7) & 31u);
     }
     return has_exit;
@@ -237,7 +254,7 @@ static inline bool opengpu_shader_shared_simt_arm_instruction(
 {
     opengpu_shader_u32 op = w & 127u, fn = w >> 26, f = w >> 12 & 7u;
     if (!(w & (1u << 25))) return false;
-    if (op == 0x2bu) return (!f && fn == 30u) || fn == 31u || (fn == 32u && f < 2u);
+    if (op == 0x2bu) return opengpu_shader_shared_simt_resource_instruction(w);
     /* Pure per-lane shifts used to rematerialize checked byte addresses.
      * Configuration, predication, CSR and unrelated resource owners are not
      * part of this opt-in extension. The legacy arm helper stays unchanged. */
@@ -1045,6 +1062,209 @@ static inline bool opengpu_shader_writes_vector(opengpu_shader_u32 w)
         fn != 16u && fn != 24u && fn != 30u;
 }
 
+/* The ordinary validator establishes the native SIMT envelope before this
+ * proof runs. Workgroup uniformity tracks every invocation, including
+ * invocations in different warps. Keep v0's packed mask separate from v0
+ * used as an ordinary vector operand.
+ */
+struct opengpu_shader_uniformity {
+    opengpu_shader_u32 scalar, vector;
+    bool mask;
+};
+
+static inline struct opengpu_shader_uniformity opengpu_shader_uniformity_intersect(
+    struct opengpu_shader_uniformity a, struct opengpu_shader_uniformity b)
+{
+    return (struct opengpu_shader_uniformity){a.scalar & b.scalar,
+        a.vector & b.vector, a.mask && b.mask};
+}
+
+struct opengpu_shader_uniform_span {
+    struct opengpu_shader_uniformity value, written, exit_value;
+    bool has_exit, divergent_exit;
+};
+
+static inline void opengpu_shader_uniform_write_set(
+    struct opengpu_shader_uniform_span *to, const struct opengpu_shader_uniform_span *from)
+{
+    to->written.scalar |= from->written.scalar;
+    to->written.vector |= from->written.vector;
+    to->written.mask |= from->written.mask;
+}
+
+static inline void opengpu_shader_uniformity_kill_writes(struct opengpu_shader_uniform_span *flow)
+{
+    flow->value.scalar &= ~flow->written.scalar;
+    flow->value.vector &= ~flow->written.vector;
+    flow->value.mask &= !flow->written.mask;
+}
+
+static inline bool opengpu_shader_uniform_branch(
+    const struct opengpu_shader_uniformity *group, opengpu_shader_u32 w)
+{
+    opengpu_shader_u32 a = (w >> 15) & 31u, b = (w >> 20) & 31u;
+    return (group->vector & (1u << a)) && (group->vector & (1u << b));
+}
+
+static inline void opengpu_shader_uniform_instruction(
+    struct opengpu_shader_uniform_span *flow, opengpu_shader_u32 w)
+{
+    opengpu_shader_u32 op = w & 127u, fn = w >> 26, f = (w >> 12) & 7u;
+    opengpu_shader_u32 rd = (w >> 7) & 31u, rs1 = (w >> 15) & 31u, rs2 = (w >> 20) & 31u;
+    bool vm = (w & (1u << 25)) != 0;
+    bool a = (flow->value.vector & (1u << rs1)) != 0;
+    bool b = (flow->value.vector & (1u << rs2)) != 0;
+    bool sa = (flow->value.scalar & (1u << rs1)) != 0;
+    bool set = false, predicate = false;
+    if (op == 0x57u && f == 7u) {
+        /* Different VLs can expose previously inactive vector elements. */
+        flow->value.vector = 0;
+        flow->value.mask = false;
+        flow->written.vector = ~0u;
+        flow->written.mask = true;
+        return;
+    }
+    if (opengpu_shader_writes_vector(w)) {
+        if (op == 0x57u && opengpu_shader_simt_arm_instruction(w)) {
+            if (fn == 0x17u) {
+                if (vm) set = f == 3u || (f == 4u ? sa : a);
+                else set = flow->value.mask && b && (f == 3u || a);
+            } else if (fn == 0x18u || fn == 0x19u || fn == 0x1au || fn == 0x1cu) {
+                predicate = vm && b && (f == 4u ? sa : a);
+            } else if (vm && f != 6u) {
+                set = b && (f == 3u || (f == 4u ? sa : a));
+            }
+        } else if (op == 0x2bu && fn == 7u && !f && vm) {
+            /* The protected submit path pins a read-only uniform view. */
+            set = a && b;
+        }
+        flow->value.vector = (flow->value.vector & ~(1u << rd)) | ((opengpu_shader_u32)set << rd);
+        flow->written.vector |= 1u << rd;
+        if (rd == 0) {
+            flow->value.mask = predicate;
+            flow->written.mask = true;
+        }
+        return;
+    }
+    if (!rd) return; /* x0 is immutable. */
+    if (op == 0x37u) set = true;
+    else if (op == 0x13u) set = sa;
+    else if (op == 0x03u && f == 2u && rs1 == 1u && (w >> 20) <= 8u && !(w & (3u << 20)))
+        set = true; /* The immutable dispatch grid words. */
+    /* A scalar result from a resource client or an extracted lane cannot
+     * keep the preceding register's workgroup-uniform proof. */
+    flow->value.scalar = (flow->value.scalar & ~(1u << rd)) | ((opengpu_shader_u32)set << rd);
+    flow->written.scalar |= 1u << rd;
+}
+
+static bool opengpu_shader_uniform_span(const opengpu_shader_u32 *words,
+    opengpu_shader_u32 first, opengpu_shader_u32 last, struct opengpu_shader_uniform_span *flow,
+    bool workgroup, bool check, bool loop, unsigned depth, opengpu_shader_u32 *budget)
+{
+    opengpu_shader_u32 i;
+    if (depth > OPENGPU_SHADER_MAX_FORWARD_BRANCHES) return false;
+    for (i = first; i < last; ++i) {
+        opengpu_shader_u32 w = words[i], marker;
+        opengpu_shader_s32 distance;
+        if (!*budget) return false;
+        --*budget;
+        if (w == 0x0000000bu) {
+            if (check && !workgroup) return false;
+            continue;
+        }
+        if ((w & 127u) != 0x5bu) {
+            opengpu_shader_uniform_instruction(flow, w);
+            continue;
+        }
+        if (((w >> 12) & 7u) <= 1u && loop) {
+            /* Direct loop exits have already been required to target their
+             * own marker. If any is divergent, later loop iterations can
+             * reach a barrier with only part of the workgroup.
+             */
+            flow->exit_value = flow->has_exit ?
+                opengpu_shader_uniformity_intersect(flow->exit_value, flow->value) : flow->value;
+            flow->has_exit = true;
+            flow->divergent_exit |= !opengpu_shader_uniform_branch(&flow->value, w);
+            flow->value.scalar &= ~(1u << 10);
+            continue;
+        }
+        if ((w & 0x707fu) != 0x305bu) return false;
+        distance = opengpu_shader_simt_displacement(w);
+        if (distance <= 0 || (distance & 3)) return false;
+        marker = i + (opengpu_shader_u32)distance / 4u;
+        if (marker <= i + 2u || marker >= last || words[marker] != OPENGPU_SHADER_SIMT_JOIN)
+            return false;
+        flow->value.scalar &= ~(1u << 10);
+        if ((words[marker - 1u] & 127u) == 0x6fu) {
+            struct opengpu_shader_uniformity entry = flow->value;
+            struct opengpu_shader_uniform_span body;
+            bool uniform_exits;
+            /* Induction over the backedge. A first-iteration proof can only
+             * enter the stable loop state if the body re-establishes it. */
+            for (;;) {
+                struct opengpu_shader_uniformity next;
+                body = (struct opengpu_shader_uniform_span){.value = entry};
+                if (!opengpu_shader_uniform_span(words, i + 1u, marker - 1u, &body,
+                        false, false, true, depth + 1u, budget) || !body.has_exit)
+                    return false;
+                next = opengpu_shader_uniformity_intersect(entry, body.value);
+                if (next.scalar == entry.scalar && next.vector == entry.vector && next.mask == entry.mask)
+                    break;
+                entry = next;
+            }
+            uniform_exits = !body.divergent_exit;
+            if (check) {
+                body = (struct opengpu_shader_uniform_span){.value = entry};
+                if (!opengpu_shader_uniform_span(words, i + 1u, marker - 1u, &body,
+                        workgroup && uniform_exits, true, true, depth + 1u, budget))
+                    return false;
+            }
+            body.value = body.exit_value;
+            if (!uniform_exits)
+                opengpu_shader_uniformity_kill_writes(&body);
+            flow->value = body.value;
+            opengpu_shader_uniform_write_set(flow, &body);
+        } else {
+            struct opengpu_shader_uniform_span yes = {.value = flow->value}, no = yes;
+            opengpu_shader_u32 taken;
+            bool branch_uniform = opengpu_shader_uniform_branch(&flow->value, words[i + 1u]);
+            distance = opengpu_shader_simt_displacement(words[i + 1u]);
+            if (distance <= 0 || (distance & 3)) return false;
+            taken = i + 1u + (opengpu_shader_u32)distance / 4u;
+            if (taken <= i + 2u || taken >= marker ||
+                words[taken - 1u] != OPENGPU_SHADER_SIMT_JOIN ||
+                words[marker - 1u] != OPENGPU_SHADER_SIMT_JOIN)
+                return false;
+            if (!opengpu_shader_uniform_span(words, i + 2u, taken - 1u, &yes,
+                    workgroup && branch_uniform, check, false, depth + 1u, budget) ||
+                !opengpu_shader_uniform_span(words, taken, marker - 1u, &no,
+                    workgroup && branch_uniform, check, false, depth + 1u, budget))
+                return false;
+            yes.value = opengpu_shader_uniformity_intersect(yes.value, no.value);
+            opengpu_shader_uniform_write_set(&yes, &no);
+            if (!branch_uniform)
+                opengpu_shader_uniformity_kill_writes(&yes);
+            flow->value = yes.value;
+            opengpu_shader_uniform_write_set(flow, &yes);
+        }
+        flow->value.scalar &= ~(1u << 10);
+        i = marker;
+    }
+    return true;
+}
+
+/* Only invoke the extra control-flow proof when a validated program contains
+ * a barrier inside a scope. At entry x2..x4 hold the workgroup ID and x5..x7
+ * hold the local shape. x8 and v1 depend on the lane/warp.
+ */
+static inline bool opengpu_shader_uniform_barriers(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 count)
+{
+    struct opengpu_shader_uniform_span flow = {.value = {.scalar = 0xfdu}};
+    opengpu_shader_u32 budget = count * 128u;
+    return opengpu_shader_uniform_span(words, 0, count, &flow, true, true, false, 0, &budget);
+}
+
 /* Keep range transfer outside the large branch-state frame on kernel builds.
  * Its by-value operands otherwise add spill slots to every analyzer instance. */
 #ifdef __KERNEL__
@@ -1129,7 +1349,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
     bool reachable = true;
     bool divergent_exit = false;
     bool simt_program = false, scalar_branch_seen = false;
-    bool simt_compatible = true;
+    bool simt_compatible = true, scoped_barrier = false;
     opengpu_shader_u32 simt_depth = 0;
     opengpu_shader_u32 i, branch, input_reads = 0, output_writes = 0;
 
@@ -1243,6 +1463,8 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
                     break;
             }
             if (branch == OPENGPU_SHADER_MAX_FORWARD_BRANCHES) {
+                if (scoped_barrier && !opengpu_shader_uniform_barriers(words, i))
+                    return false;
                 if (input_read_mask)
                     *input_read_mask = input_reads;
                 if (output_write_mask)
@@ -1268,12 +1490,12 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
         {
             bool shared_simt = shared_atomics_enabled && shared_bytes;
             bool arm_instruction = opengpu_shader_simt_arm_instruction(insn) ||
+                (shared_simt && insn == 0x0000000bu) ||
                 (shared_simt && opengpu_shader_shared_simt_arm_instruction(&state, insn, shared_lanes));
             if (!arm_instruction && insn != 0x01007557u) {
-                /* Shared initialization and rendezvous are allowed only outside
-                 * scopes. Their ordinary validators still prove actual stores
-                 * and converged publication. A short-VL vector definition cannot
-                 * authorize lanes after a later VL restore. Legacy stays exact. */
+                /* The ordinary validator still proves shared initialization and
+                 * publication. A short-VL definition cannot authorize lanes
+                 * after a later VL restore. */
                 bool shared_prefix = shared_simt && !simt_depth &&
                     opengpu_shader_shared_simt_prefix_instruction(&state, insn, shared_lanes);
                 bool vector_write = opengpu_shader_writes_vector(insn);
@@ -1328,7 +1550,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
                 if (taken == marker) {
                     opengpu_shader_u32 writes, reg;
                     if (!opengpu_shader_simt_loop_body(words, i + 1u,
-                            marker, &writes))
+                            marker, &writes, shared_atomics_enabled && shared_bytes))
                         return false;
                     /* A first-iteration value cannot prove subsequent iterations
                      * or lanes that exit at different iterations. */
@@ -1918,14 +2140,20 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
                 break;
             }
             if (insn == 0x0000000bu) {
-                /* Every live path must have reconverged here, and no peer
-                 * may have terminated before reaching this generation. */
+                /* A converged barrier has no pending lanes. Scoped barriers
+                 * require the separate whole-workgroup proof before admission. */
                 if (!all_kernarg_writable || fragment_ops_enabled || divergent_exit)
                     return false;
-                for (branch = 0; branch < OPENGPU_SHADER_MAX_FORWARD_BRANCHES;
-                     ++branch)
-                    if (branches[branch].used)
+                if (simt_depth) {
+                    if (!shared_atomics_enabled || !shared_bytes)
                         return false;
+                    scoped_barrier = true;
+                } else {
+                    for (branch = 0; branch < OPENGPU_SHADER_MAX_FORWARD_BRANCHES;
+                         ++branch)
+                        if (branches[branch].used)
+                            return false;
+                }
                 state.shared_visible_prefix = state.shared_written_prefix;
                 break;
             }
