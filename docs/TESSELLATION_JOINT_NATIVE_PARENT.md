@@ -56,7 +56,11 @@ and reset-free reuse. The typed ranges and publication endpoints covered
 actual result accounting and overflow attribution. The two input fabric
 cases checked held directory acknowledgement and exact tag retirement.
 
-The actual four-bank isoline clear and its byte-level oracle passed.
+The three domain controllers retained the image fault address from the
+matching frame through completion and physical drain. The actual four-bank
+isoline owner returned the exact address of a delayed backing-store write
+fault during cancellation. Its next frame completed without reset and matched
+the byte oracle across all four banks.
 [Scope and reproduction](TESSELLATION_JOINT_EMPTY_FRAME.md).
 
 All three single-bank cases passed with FlashSim `e8039c6` in 1,874 seconds

@@ -6,12 +6,13 @@ only peer is physical memory. It supplies no shader result, patch contents,
 frame completion or retirement completion.
 
 The supported graphics bounds are 640×480 through `GraphicsTestResolution`;
-`productQualification=1` is rejected. Runtime frames are 4×4 then 16×16 in the
-same model without reset. Configuration retains 16 lanes × 8 warps, two shared
+`productQualification=1` is rejected. The runtime sequence is a healthy 4×4
+frame, a faulted 4×4 frame and a healthy 16×16 frame without a reset between
+them. Configuration retains 16 lanes × 8 warps, two shared
 CU interfaces, all 16 attributes/bindings/varyings, four RGBA32F attachments,
 D32F, four samples, four instantiated banks and the original 32 KiB native tile
-storage with vendor SRAM models. The 4×4 case uses one bank; the 16×16 case must
-retire one actual tile from each bank. Neither case measures VGA throughput.
+storage with vendor SRAM models. Each 4×4 frame uses one bank. The final 16×16
+frame retires one actual tile from each bank.
 
 The independent byte oracle checks every image allocation, row padding,
 resolve allocation and unused directory byte. Expected useful stored/resolved
@@ -23,14 +24,15 @@ fault stage/address and read-byte count.
 
 ## FlashSim result
 
-The assertion-enabled isoline parent passed both frames in one reset session on
-current RTL. The hardware read exactly 2,560 GNQ/GNF bytes for each frame,
-reported success after the held physical acknowledgements drained, and
-retired the expected tiles across the four banks. Stored and resolved bytes
-matched the independent oracle together with directory entries, all pitch
-padding, allocation guards and immutable metadata. The final report stayed
-stable under cancellation while held. The next frame reused the same owner
-without reset.
+The assertion-enabled isoline parent passed all three frames with FlashSim
+`e8039c6`. The hardware read exactly 2,560 GNQ/GNF bytes for each frame. The
+faulted frame held the response to an accepted backing-store write for 12
+cycles during cancellation. After physical drain, its completion reported
+status 3, stage 6 and the exact write address. The held completion stayed
+stable and the same owner completed the 16×16 frame without reset. The healthy
+frames matched the independent image, resolve and directory byte oracle,
+including pitch padding and allocation guards. GNQ and GNF metadata remained
+immutable in all three frames.
 
 `TessellationJointEmptyFrameRecipeCheck` passed the two runtime recipes and
 the invalid pool controls. The two fabric cases each retired 40 metadata
@@ -40,11 +42,12 @@ response and exactly one acknowledgement, including the owned-source wrapper.
 ### Reproduction
 
 Initialize `depends/asap7_sram_0p0` at the repository's pinned revision
-`9f5af0939`. Point `FLASHSIM_DIR` and `CIRCT_VERILOG` to the FlashSim and
-CIRCT installations. Use Python 3.13 and compile the current Scala sources.
+`9f5af0939`. Point `FLASHSIM_DIR` to FlashSim `e8039c6` and `CIRCT_VERILOG` to
+the CIRCT installation. Use Python 3.13 and compile the current Scala sources.
 
 ```sh
 export FLASHSIM_CIRCT_THREADS=4 FLASHSIM_MODULE_JOBS=2
+export FLASHSIM_CIRCT_LARGEST_FIRST=1 FLASHSIM_DATA_REGION_FIELDS=0
 export FLASHSIM_PREFLATTEN_WIRES=1 FLASHSIM_COMMIT_PARTS=16
 sbt -Dopengpu.simBackend=flashsim -Dopengpu.flashsimPython=python3.13 \
   -Dopengpu.productQualification=0 -Dopengpu.simJobs=2 \
@@ -53,19 +56,14 @@ sbt -Dopengpu.simBackend=flashsim -Dopengpu.flashsimPython=python3.13 \
   'testOnly opengpu.system.TessellationJointEmptyFrameSpec'
 ```
 
-The measured run used FlashSim `3230040` for C++ generation and `8632e96`
-for file-backed splitting. It reused an assertion-bound CIRCT import and ran
-generation and splitting in separate processes. Their sampled aggregate
-peaks were 7.48 GiB and 2.94 GiB. The first two-job native build reached its
-6.5 GiB guard during compilation. The verified `flashsim.reshard` step used
-a 32 MiB method shard target and a 24 MiB invalidation-table limit, producing
-159 units. Two Clang jobs with precompiled headers built and linked that
-model in 1,412 seconds under an 11 GiB process-group guard.
+The staged cold build ran CIRCT import in 33 seconds at 2.70 GiB peak and
+file-backed C++ generation in 2,128 seconds at 7.90 GiB peak. The verified
+`flashsim.reshard` step produced 157 units with a 32 MiB method shard target
+and a 24 MiB invalidation-table limit. Two Clang jobs with precompiled headers
+built and linked the model in 1,313 seconds under an 11 GiB process-group guard.
 
-Fresh elaboration matched 921 source and bridge files by digest, the 609
-ordered inputs, the enabled assertion defines and all 2,459 svsim ports.
-Fresh elaboration and replay then completed in 108 seconds with a sampled
-4.75 GiB peak under a 6.5 GiB guard. The staged measurements cover the
-isoline empty-frame transport. Triangle and quad complete parents, original
-shader execution, protected submission and the VGA60 product run remain
-separate qualification gates.
+Replay first matched the freshly elaborated RTL and bridge sources, ordered
+inputs, assertion defines and svsim ports to the built model. Fresh elaboration
+and replay completed in 114 seconds at a sampled 4.72 GiB peak. The complete
+triangle and quad parents, original shader execution, protected submission
+and the VGA60 product run remain separate qualification gates.
