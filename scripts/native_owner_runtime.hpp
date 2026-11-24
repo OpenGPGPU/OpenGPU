@@ -487,6 +487,11 @@ void cancel_joint_index_read(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &m
     !(held.status&~(GPU_UCMD_STATUS_READY|GPU_UCMD_STATUS_VM_BUSY)) && (held.irq&GPU_IRQ_ENABLE) &&
     !(held.irq&~(GPU_IRQ_ENABLE|GPU_IRQ_PENDING)) && held.pin==bool(held.irq&GPU_IRQ_PENDING),
     "joint index response was not held by a live command");
+  auto last_completion=[&] {
+    return std::array{bus.read(GPU_REG_UCMD_COMPLETION),bus.read(GPU_REG_UCMD_COMPLETION_BYTES_LO),
+      bus.read(GPU_REG_UCMD_COMPLETION_BYTES_HI)};
+  };
+  const auto previous_completion=last_completion();
   publish("held",held,0);
   auto replay=[&](const char *suffix,ResetPhase phase) {
     const auto path=session/(reset_stem+suffix);
@@ -510,8 +515,8 @@ void cancel_joint_index_read(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &m
   require(agent.drained(),"joint reset acknowledged before external drain");
   agent.disarm_response_hold();
   verify_vm();
-  require(!bus.read(GPU_REG_UCMD_COMPLETION) && !bus.read(GPU_REG_UCMD_COMPLETION_BYTES_LO) &&
-    !bus.read(GPU_REG_UCMD_COMPLETION_BYTES_HI),"cancelled joint job exposed stale completion data");
+  // The raw completion registers retain the last result after its valid bit clears.
+  require(last_completion()==previous_completion,"cancelled joint job replaced the last completion");
   for(unsigned word=0;word<OPENGPU_TESS_JOINT_HOST_COMPLETION_WORDS;++word)
     require(!bus.read(joint_detail_address(word)),"cancelled joint job exposed stale GNZ2");
   require(agent.traffic.read_faults==traffic.read_faults && agent.traffic.write_faults==traffic.write_faults,
