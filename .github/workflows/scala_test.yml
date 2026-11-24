@@ -182,6 +182,27 @@ jobs:
     - name: Set up simulation toolchain
       id: toolchain
       uses: ./.github/actions/setup-simulation
+      with:
+        verilator: ${{ matrix.partition.id != 'opengpu.testutil.GpuSimFlashSimSpec' }}
+    - name: Set up FlashSim Python
+      if: matrix.partition.id == 'opengpu.testutil.GpuSimFlashSimSpec'
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Check out pinned FlashSim
+      if: matrix.partition.id == 'opengpu.testutil.GpuSimFlashSimSpec'
+      uses: actions/checkout@v4
+      with:
+        repository: OpenGPGPU/FlashSim
+        ref: 00cdc562fa8a3b075448555d821ff92c76d7eb63
+        path: .artifacts/ci-flashsim
+        persist-credentials: false
+    - name: Set up CIRCT for FlashSim
+      if: matrix.partition.id == 'opengpu.testutil.GpuSimFlashSimSpec'
+      working-directory: .artifacts/ci-flashsim
+      run: |
+        python3 -B -m flashsim setup-circt
+        echo "FLASHSIM_DIR=$PWD" >> "$GITHUB_ENV"
     - name: Cache incremental Scala compilation
       uses: actions/cache@v4
       with:
@@ -192,6 +213,7 @@ jobs:
         restore-keys: |
           sbt-build-v1-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/*.properties') }}-
     - name: Restore affected simulation models
+      if: steps.toolchain.outputs.verilator-key != ''
       id: models
       uses: actions/cache/restore@v4
       with:
@@ -201,6 +223,7 @@ jobs:
           simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-affected-${{ matrix.partition.cache }}-
           simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-affected-${{ matrix.partition.suites[0] }}-
     - name: Restore compiler objects
+      if: steps.toolchain.outputs.verilator-key != ''
       id: compiler-cache
       uses: actions/cache/restore@v4
       with:
@@ -210,6 +233,7 @@ jobs:
           sim-ccache-v1-${{ steps.toolchain.outputs.verilator-key }}-${{ matrix.partition.suites[0] }}-
           sim-ccache-v1-${{ steps.toolchain.outputs.verilator-key }}-
     - name: Reset compiler-cache counters
+      if: steps.toolchain.outputs.verilator-key != ''
       run: ccache --zero-stats
     - name: Run required partition
       # Leave time inside the 90-minute job limit to retain completed builds.
@@ -221,7 +245,11 @@ jobs:
         EXPECTED_JSON: ${{ toJson(matrix.partition.expected) }}
         SBT_FLAGS: -Dopengpu.simJobs=1 -Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine,Rgba8BlendFmaEngine -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simCcache=target/ccache -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1
         CI_TEST_LOG: ${{ runner.temp }}/affected-tests.log
-      run: python3 scripts/run_ci_partition.py
+      run: |
+        if [ "$PARTITION_ID" = "opengpu.testutil.GpuSimFlashSimSpec" ]; then
+          export SBT_FLAGS="-Dopengpu.simBackend=flashsim -Dopengpu.simJobs=1"
+        fi
+        python3 scripts/run_ci_partition.py
     - name: Remove incomplete model copies
       if: always()
       run: rm -f target/chiselsim/cache/*.tmp.*
@@ -234,7 +262,7 @@ jobs:
 
     - name: Summarize compiler-object reuse
       id: compiler-stats
-      if: always()
+      if: always() && steps.toolchain.outputs.verilator-key != ''
       shell: bash
       run: |
         ccache --show-stats >> "$GITHUB_STEP_SUMMARY"
