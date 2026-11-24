@@ -356,6 +356,68 @@ configuration. Full-capacity and product qualification still require the
 640×480 host with characterized memory, hardware performance counters and
 timing closure for 60 FPS.
 
+## Four-engine target replay
+
+The complete protected VGA factory reported 92 discovery words, two 16-lane
+eight-warp CUs and four engines. All ten original Mesa submissions passed on
+that factory with 4×4 frames, including the three domains, VS mutation,
+physical store fault, held original index read across reset, both healthy
+reuses and the actual driver's retirement and cleanup acknowledgment. The
+assertion-enabled FlashSim replay took 206.86 seconds with 1.58 GiB peak
+charged memory. Full-frame 640×480 execution, characterized memory and
+60 FPS timing remain pending.
+
+The RTL inputs matched GPU main at `82d3574f25`. The full model used FlashSim
+`38e050ebe2` and contained 14,670 assertions. With two CIRCT threads and the
+bounded-deadness overlay, import took 133.62 seconds. The stock import was
+still running when stopped at 343.17 seconds. Whole C++ generation through
+emission took 3,972.86 seconds at 14.39 GiB peak charged memory. Verified
+resharding brought the largest C++ unit from 872.35 to 74.52 MiB.
+
+On ARM64 macOS the 351 objects linked into a separate model library beside
+the small executable. This layout keeps the large model clear of the
+executable's shared-cache address conflict. The build receipt binds both
+files and the replay checks both hashes. With both build workers set to
+`-O0` for the model shards, the final cached build reused all 351 objects,
+took 116.74 seconds and peaked at 7.34 GiB. The build used the installed
+classic Apple linker for the large model.
+
+Use a new `OUT` and add `--full-factory` to the Scala `runMain` command
+above. Initialize the pinned `depends/asap7_sram_0p0` submodule and set
+`CIRCT_OVERLAY` to the directory with the verified compiler and libraries
+from [the CIRCT prerequisite](OWNER_FULL_FACTORY_REPRODUCTION.md#flashsim-compiler-prerequisite).
+Set `FLASHSIM` to checkout `38e050ebe2`.
+
+```sh
+GPU="$PWD"
+python3.13 -B scripts/run_owner_bounded.py --memory-mib 5120 --timeout-seconds 900 -- \
+  "$FIRTOOL" "$OUT/host.fir" -format=fir --mlir-disable-threading --split-verilog \
+  "-o=$OUT/rtl" --lowering-options=disallowLocalVariables,disallowPackedArrays
+for width in 32 64; do
+  cat "depends/asap7_sram_0p0/generated/verilog/srambank_64x4x${width}_6t122.v"
+  printf '\n'
+done > "$OUT/rtl/NativeFourEngineSramModels.sv"
+(
+  cd "$FLASHSIM"
+  export CIRCT_VERILOG="$CIRCT_OVERLAY/circt-verilog" DYLD_LIBRARY_PATH="$CIRCT_OVERLAY"
+  export FLASHSIM_CIRCT_THREADS=2 FLASHSIM_CIRCT_SERIAL=0 FLASHSIM_CIRCT_LARGEST_FIRST=1
+  export FLASHSIM_MODULE_JOBS=2 FLASHSIM_PREFLATTEN_WIRES=1 FLASHSIM_GC_POLICY=defer
+  python3.13 -B "$GPU/scripts/run_owner_bounded.py" --memory-mib 16384 --timeout-seconds 7200 -- \
+    python3.13 -B -c 'from pathlib import Path; import sys; from flashsim.compile import compile_file; compile_file(Path(sys.argv[1]),Path(sys.argv[2]),frontend="circt",assertions=True,split=128)' \
+    "$OUT/rtl/GpuHostSystemAxi.sv" "$OUT/dut/dut.h"
+  python3.13 -B -m flashsim.reshard create --source "$OUT/dut" --output "$OUT/resharded" \
+    --max-mib 32 --commit-parts 32 --outline-invalidation-mib 24
+  python3.13 -B -m flashsim.reshard verify --source "$OUT/dut" --output "$OUT/resharded"
+)
+python3.13 -B scripts/run_owner_bounded.py --memory-mib 12288 --timeout-seconds 7200 -- \
+  python3.13 -B scripts/qualify_native_joint_live.py --build-only --jobs 2 --shard-opt=-O0 \
+  --shared-model --link-flag=-Wl,-ld_classic --link-flag=-isysroot \
+  --link-flag="$(xcrun --show-sdk-path)" --dut-dir "$OUT/resharded" --executor-build "$OUT/executor"
+python3.13 -B scripts/run_owner_bounded.py --memory-mib 4096 --timeout-seconds 3600 -- \
+  python3.13 -B scripts/qualify_native_joint_live.py --timeout 900 \
+  --dut-dir "$OUT/resharded" --executor-build "$OUT/executor"
+```
+
 ```sh
 OPENGPU_TEST_SANITIZERS=1 python3 scripts/test_protected_tessellation_submit.py
 OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_mmio_capture.py --executor-root .

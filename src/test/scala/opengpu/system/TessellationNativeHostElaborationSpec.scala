@@ -19,10 +19,13 @@ object PrepareProtectedJointOwnerHost {
   }
 
   def main(args: Array[String]): Unit = {
-    require(args.length == 1, "pass the new protected joint FIRRTL output path")
+    val fullFactory = args.length == 2 && args(1) == "--full-factory"
+    require(args.length == 1 || fullFactory, "pass a new protected joint FIRRTL path and optional --full-factory")
     val output = Paths.get(args(0))
     require(!Files.exists(output), "protected joint FIRRTL output already exists")
-    PrepareOwnerResourceImageFloatHost.writeFirrtl(new NativeAlignmentHostSystemAxi(profile), output)
+    val config = if (fullFactory) NativeAlignmentHostProfile.protectedTessellationTarget else profile
+    PrepareOwnerResourceImageFloatHost.writeFirrtl(
+      new NativeAlignmentHostSystemAxi(config, useBlackBoxes = fullFactory, exposePerformance = fullFactory), output)
   }
 }
 

@@ -65,10 +65,11 @@
   本地分支经清洁、进程、打开文件和跨工作树消费者检查后已清理，远端已自动删除。
   原 VS 实际执行、联合 native/三域路径仍是 P39 的目标验收条件。
 - P39 的三域内部执行父级已接通 GNQ4/5/6、原始顶点输入、发布游标和 typed image。
-  原 Mesa VS→双 CU→owned patch→TCS/TES→原图像已通过 4×4 FlashSim 的十笔
-  protected 回放，含三域图像、物理写故障、原索引读取消排空及两次健康复用。
+  原 Mesa VS→双 CU→owned patch→TCS/TES→原图像已在小型配置和完整四引擎 VGA
+  factory 上分别通过十笔 4×4 FlashSim protected 回放，含三域图像、物理写故障、
+  原索引读取消排空及两次健康复用。
   全容量联合覆盖与 2 CU 640×480 60 FPS 的产品验收仍待完成。
-  [结果与复现](PROTECTED_TESSELLATION_JOINT_BUILD.md#protected-drm-submission)。
+  [结果与复现](PROTECTED_TESSELLATION_JOINT_BUILD.md#four-engine-target-replay)。
 - P16 原 draw catalog/invocation range 捕获、内部语言程序 v3、程序快照
   权限边界与 FS8/9 私有程序验证的六个逻辑提交已通过 #825 合入。
   [交付范围、结果与限制](P16_INVOCATION_SOURCE_DELIVERY.md)：准确交付源完整 host
