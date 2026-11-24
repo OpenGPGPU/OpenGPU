@@ -464,7 +464,8 @@ static bool snapshot_joint_extent(u64 base, u64 bytes, u64 *first, u64 *last)
         bytes > (1ULL << 32) - base)
         return false;
     end = base + bytes;
-    if (base < 0x10004000ULL && end > 0x10000000ULL)
+    if (base < OPENGPU_TESS_JOINT_HOST_LDS_BASE + OPENGPU_TESS_JOINT_HOST_LDS_BYTES &&
+        end > OPENGPU_TESS_JOINT_HOST_LDS_BASE)
         return false;
     if (base < *first)
         *first = base;

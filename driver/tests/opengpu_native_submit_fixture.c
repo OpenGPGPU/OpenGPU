@@ -56,6 +56,9 @@ static void native_fixture_progress(struct opengpu_device *);
 #endif
 #include OPENGPU_PROTECTED_TESS_SOURCE
 #include "../opengpu_protected_tessellation_submit.h"
+#include "../opengpu_tessellation_vertex_source.c"
+#include "../opengpu_tessellation_vertex_plan.c"
+#include "../opengpu_protected_tessellation_joint.c"
 #define DMA_RESV_USAGE_READ 1
 #define DMA_RESV_USAGE_WRITE 2
 #define DRM_EXEC_INTERRUPTIBLE_WAIT 1
@@ -89,6 +92,7 @@ enum {OPENGPU_SCHED_NATIVE_BINNED=8,OPENGPU_SCHED_TESSELLATION=7,OPENGPU_SCHED_P
 struct opengpu_sched_job {struct drm_sched_job base;struct opengpu_device *gpu;
     struct opengpu_render_context *context;const struct opengpu_vm *vm;unsigned type;
     struct opengpu_private_snapshot *native_owner;u32 native_job_segment;void *native_quarantine_refs;u32 native_quarantine_refcount;
+    struct opengpu_tessellation_joint_completion *joint_report;
     struct dma_fence *retirement_fence,*admission_chain;bool ordinary_pending;
     struct dma_fence_chain *execution_chain;bool admission_armed;
     struct drm_gem_object **objects;u32 object_count,temporary_mapping_count;
@@ -117,6 +121,7 @@ struct native_kernel_session {bool context_destroyed;struct native_kernel_profil
     struct drm_syncobj sync[3];u64 next_seq;unsigned count;
     native_kernel_source_observer observer;void *record;struct dma_fence *hardware;
     struct opengpu_sched_job *submission_allocation;
+    struct opengpu_protected_tessellation_joint_profile joint_profile;
     int copy_error,wait_error,submit_error,submit_revoke_error;void (*progress)(struct native_kernel_session *);};
 static struct native_kernel_record *native_session_record(struct native_kernel_session *s,unsigned index)
 {if(!s)return NULL;for(struct native_kernel_record *r=s->records;r;r=r->next)if(r->index==index)return r;return NULL;}
@@ -246,6 +251,41 @@ static void *native_memcpy(void *to,const void *from,size_t bytes)
  * pre-enqueue quarantine container without changing its production lifetime. */
 static void *native_submission_alloc(size_t bytes,int flags)
 {void *p=kzalloc(bytes,flags);if(p && bytes==sizeof(struct opengpu_sched_job))running->submission_allocation=p;return p;}
+static int opengpu_hw_protected_tessellation_joint_profile(const struct opengpu_device *gpu,
+    struct opengpu_protected_tessellation_joint_profile *profile)
+{
+    if (!running || gpu != &running->gpu || !running->joint_profile.available)
+        return -EOPNOTSUPP;
+    *profile = running->joint_profile;
+    return 0;
+}
+
+struct opengpu_tessellation_scope;
+static int opengpu_hw_protected_tessellation_joint_async(struct opengpu_device *gpu,
+    struct opengpu_private_snapshot *owner, const struct opengpu_render_context *context,
+    u32 segment, const struct opengpu_tessellation_scope *scope,
+    struct opengpu_tessellation_joint_completion *report, struct dma_fence **fence)
+{
+    struct opengpu_protected_tessellation_joint_host_command command;
+    int ret;
+
+    assert(running && gpu == &running->gpu && report && !scope && !running->hardware);
+    mutex_lock(&gpu->hw.submit_lock);
+    ret = opengpu_protected_tessellation_joint_command_locked(owner, gpu, context, segment, &command);
+    if (!ret)
+        ret = opengpu_private_snapshot_invalidate_locked(owner, gpu, context);
+    mutex_unlock(&gpu->hw.submit_lock);
+    if (ret)
+        return ret;
+    assert(command.opcode == 15 && command.height == context->id);
+    *fence = calloc(1, sizeof(**fence));
+    if (!*fence)
+        return -ENOMEM;
+    (*fence)->refs = 1;
+    (*fence)->seqno = ++running->next_seq;
+    running->hardware = *fence;
+    return 0;
+}
 #define kzalloc native_submission_alloc
 #define memcpy native_memcpy
 #include "native_submit_under_test.inc"
@@ -403,6 +443,10 @@ int native_kernel_run(struct native_kernel_session *s,unsigned index)
     (void)native_session_record(s,index);
     running=s;copy_gpu=&s->gpu;
     for(struct fixture_dependency *d=j->base.dependencies;d;d=d->next)if(!dma_fence_is_signaled(d->fence))return -EBUSY;
+    if (j->type == OPENGPU_SCHED_PROTECTED_TESSELLATION && j->joint_report) {
+        fence = opengpu_protected_tessellation_job_run(j);
+        return IS_ERR(fence) ? PTR_ERR(fence) : 0;
+    }
     if(j->type!=OPENGPU_SCHED_NATIVE_BINNED){
         int ret=opengpu_hw_snapshot_submission_lock(&s->gpu);
         if(!ret)mutex_unlock(&s->gpu.hw.submit_lock);

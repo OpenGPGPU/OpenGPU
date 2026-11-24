@@ -22,7 +22,9 @@
     "profileScalarFpuBit": 7,
     "profileAdvancedBlendBit": 8,
     "profileSamplesBit": 9,
-    "profileFeedbackBit": 10
+    "profileFeedbackBit": 10,
+    "ldsBase": "0x10000000",
+    "ldsBytes": 16384
   },
   "records": [
     {

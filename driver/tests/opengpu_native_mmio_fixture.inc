@@ -4,6 +4,7 @@
 #ifdef OPENGPU_NATIVE_MMIO_DECLARE
 #include "../opengpu_native_completion.h"
 #include "../opengpu_tessellation_completion.h"
+#include "../opengpu_tessellation_joint_host.h"
 #include "../opengpu_atomic_counter_command.h"
 #include "../opengpu_compute_texture_command.h"
 #include "../opengpu_compute_uniform_command.h"
@@ -29,6 +30,7 @@ static void native_mmio_dma_wmb(void);
     bool compute_counter_transport,compute_uniform_transport,compute_indirect_transport; \
     bool reset_pending,aborting; \
     struct dma_fence *unified_fence,*active_fence; \
+    struct opengpu_tessellation_joint_completion *joint_pending_completion; \
     u32 unified_command_id,unified_opcode,unified_completion_delay_ms,active_completion_delay_ms; \
     u64 unified_expected_bytes,fence_context,fence_seqno,regs_size; \
     u32 job_seqno; \

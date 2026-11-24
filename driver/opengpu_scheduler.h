@@ -83,6 +83,7 @@ struct opengpu_sched_job {
     struct opengpu_job hw;
     struct opengpu_private_snapshot *native_owner;
     u32 native_job_segment;
+    struct opengpu_tessellation_joint_completion *joint_report;
     /* Only populated on failed pre-enqueue revocation; the entire job and
      * original reference container are quarantined with the owner. */
     void *native_quarantine_refs;

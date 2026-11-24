@@ -60,6 +60,7 @@ struct opengpu_vm {
     struct opengpu_buffer root;
     u32 asid;
     bool enabled;
+    bool reserve_joint_lds;
     struct opengpu_buffer l1[OPENGPU_VM_MAX_TABLES];
     u32 l1_region[OPENGPU_VM_MAX_TABLES];
     u32 l1_count;

@@ -3,6 +3,7 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 import opengpu.command.GpuCommand
+import opengpu.config.GpuConfig
 import opengpu.system.{TessellationJointJobLayout, TessellationJointJobRequest, TessellationJointNativeCompletion}
 
 /** Private opcode-15 GNQ4/5/6 command and GNZ2 completion words. */
@@ -26,6 +27,16 @@ object TessellationJointHostProtocol {
         (if (sampleInputs) 1 << 9 else 0) | (if (feedback) 1 << 10 else 0),
       (8 << 24) | (16 << 16) | (2 << 8) | 7, engines)
   }
+
+  def profileFor(graphics: GraphicsConfig, gpu: GpuConfig, computeUnits: Int,
+      native: NativeBinnedGraphicsConfig, scalarFpu: Boolean, sampleInputs: Boolean,
+      feedback: Boolean): Option[Profile] =
+    Option.when(computeUnits == 2 && gpu.lanes == 16 && gpu.warps == 8 &&
+      gpu.sharedMemoryBase == 0x10000000L && gpu.sharedMemoryBytes == 16384 &&
+      native.vertex.input.attributes == 16 && native.vertex.input.bindings == 16 &&
+      native.vertex.varyings == 16 && graphics.maxSampleCount == 4) {
+      Profile(native.engines, scalarFpu, native.storage.nativeAdvancedDraws, sampleInputs, feedback)
+    }
 
   def completionAddress(word: Int): Int =
     if (word < NativeBinnedCompletionInfo.wordCount) NativeBinnedCompletionInfo.base + word * 4

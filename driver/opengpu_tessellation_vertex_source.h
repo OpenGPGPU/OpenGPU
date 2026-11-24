@@ -9,10 +9,6 @@ struct opengpu_tessellation_vertex_source_profile {
     u32 version, compute_units, lanes, warps;
     bool available, scalar_fpu, patch_zero_initialized;
 };
-struct opengpu_tessellation_vertex_slice {
-    u32 version, first_ordinal, patches_per_instance, first_instance, instances;
-};
-struct opengpu_tessellation_vertex_component { u32 kind, component; };
 /* Original local GEM views. Indirect, legacy sampler and texture-root sources
  * retain explicit provenance slots but remain unsupported/nonzero-rejected.
  * They are not an opcode permission or an arbitrary GPU-address escape. */

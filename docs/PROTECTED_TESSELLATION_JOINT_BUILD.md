@@ -143,11 +143,10 @@ at either end is allowed. The check verifies actual live mappings and leases;
 it does not accept a caller's claim that LDS was reserved. Any rejection closes
 publication and requires whole-owner retirement/quarantine.
 
-The ordinary allocator is unchanged and does not automatically skip LDS.
-Correct placement selection in a future production route remains necessary;
-the new gate rejects an unsafe placement instead of publishing it. Original
-frame/scratch roles obtain distinct actual MMU reservations, while source
-physical-alias checks reject conflicting underlying pages. Prepared fixture
+On the verified joint profile, private allocations skip the 16 KiB LDS
+window at `0x10000000`. The prepare gate also checks the actual mapped
+spans before publication. Original frame and scratch roles obtain distinct
+MMU reservations. Source alias checks reject conflicting physical pages. Prepared fixture
 checks independently verify the full fragment scratch prefixes, allocation
 bounds, pairwise separation, arena separation and R/W/NX leaves.
 
@@ -212,9 +211,8 @@ the tagged command at a 4 GiB exclusive limit, queue backpressure and VM
 exclusion, all sixteen completion words and legacy routing. It uses peers
 at the joint execution ports. ASan/UBSan passed the published-owner enqueue
 checks for all three domains and the IRQ/poll/abort races with modeled MMIO.
-The full ARM64 Linux 7.2 module compiled and linked with GCC 15.2 in 17.8
-seconds. Protected DRM submission and original Mesa execution on the
-three-domain hardware remain pending.
+The full ARM64 Linux 7.2 module compiled and linked with GCC 15.2. The
+original Mesa execution on the three-domain hardware remains pending.
 
 ```sh
 sbt -Dopengpu.simBackend=flashsim -Dopengpu.flashsimPython=python3.13 \
@@ -228,6 +226,38 @@ gmake -C "$OPENGPU_KERNEL_BUILD" -j1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
 Use a fresh private copy of the current driver for `OPENGPU_DRIVER_SOURCE`
 and a separate output directory for `OPENGPU_DRIVER_BUILD`. The private
 hardware profile comes from the verified GCR1/GJP1 records.
+
+### Protected DRM submission
+
+`DRM_IOCTL_OPENGPU_SUBMIT_TESSELLATION_JOINT` uses a 152-byte version 1
+request. It takes the unbound GNQ, GNF, GNT and original GND/GFS records,
+typed draw, invocation, range and shader plans, and the frame's original
+GEM handles. The kernel probes the verified joint profile before copying
+variable-length arrays. It checks the canonical GNQ root against the
+request's context and counts before reading those arrays.
+
+The kernel waits the input sync object and the original GEM producers
+before reading linked programs and uniforms. It places and publishes the
+complete owner under the native admission lock. The scheduler dispatches the
+private MMIO command, retains the GNZ2 storage through the execution fence,
+and holds original GEM references until the owner retires. The ioctl returns
+the execution fence sequence and can publish it to an output sync object.
+
+The ASan/UBSan composition exercised the registered ioctl handler with one
+original draw, a 64-bit invocation ID and six patches for each of isoline,
+triangle and quad. It checked producer waits, rollback after an enqueue
+failure, the actual published MMU root and retirement after closing the
+original code handle. The fixture models the final hardware kick.
+
+`NativeAlignmentHostProfile.protectedTessellationTarget` selects the joint
+host, checked tessellation uniforms and protected sources at 640×480. Its
+discovery table includes GJP1 and the same factory elaborates the 4×4 test
+configuration. Product throughput requires a full timed run.
+
+```sh
+OPENGPU_TEST_SANITIZERS=1 python3 scripts/test_protected_tessellation_submit.py
+OPENGPU_TEST_SANITIZERS=1 python3 scripts/test_native_mmio_capture.py
+```
 
 The hardware start must carry the verified owner scope and expected frame
 identity from the published request. Authorization still follows the immutable
@@ -244,8 +274,8 @@ Reader ownership changes only after actual completion consumption and pending
 memory drain. Held offers survive cancellation until accepted or actual frame
 stop. Patch advance requires actual source load/reply/seal, TCS/TES retirement,
 typed task report and task drain. Final end, actual frame completion and full
-fabric drain are all required. The complete factory and original shader runs
-on the protected two-CU DUT remain pending.
+fabric drain are all required. The live Linux-to-RTL original shader runs on
+the protected two-CU DUT remain pending.
 
 ## CPU validation and limits
 

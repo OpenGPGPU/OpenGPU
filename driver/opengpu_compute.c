@@ -611,6 +611,7 @@ int opengpu_compute_context_create_ioctl(struct drm_device *drm, void *data,
     ret = opengpu_mmu_vm_create(gpu, &context->vm);
     if (ret && ret != -EOPNOTSUPP)
         goto err_entity;
+    context->vm.reserve_joint_lds = context->vm.enabled && gpu->hw.joint_tessellation.available;
 
     mutex_lock(&render_file->lock);
     ret = idr_alloc(&render_file->contexts, context, 1, 0, GFP_KERNEL);

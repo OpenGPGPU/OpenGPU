@@ -271,6 +271,7 @@ struct opengpu_vm {
     struct opengpu_buffer root;
     u32 asid;
     bool enabled;
+    bool reserve_joint_lds;
     /* Private second-level tables for regions this VM maps itself.  Their
      * leaves are non-global, so a translation is only valid under this VM's
      * ASID. */
@@ -618,6 +619,8 @@ void opengpu_compute_drm_postclose(struct drm_device *drm,
 int opengpu_compute_context_create_ioctl(struct drm_device *drm, void *data,
                                          struct drm_file *file);
 int opengpu_native_binned_ioctl(struct drm_device *drm, void *data, struct drm_file *file);
+int opengpu_protected_tessellation_joint_ioctl(struct drm_device *drm, void *data,
+                                              struct drm_file *file);
 int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
                                     struct drm_file *file);
 int opengpu_compute_get_fault_ioctl(struct drm_device *drm, void *data,

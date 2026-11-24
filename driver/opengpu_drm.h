@@ -762,6 +762,58 @@ struct drm_opengpu_submit_native_binned {
     __aligned_u64 reserved[2];
 };
 
+/* Original vertex input ranges for the protected GNQ4/5/6 submission. */
+#define OPENGPU_VERTEX_OUTER_VERSION 2u
+#define OPENGPU_VERTEX_OUTER_FIRST 1u
+#define OPENGPU_VERTEX_OUTER_LAST 2u
+#define OPENGPU_VERTEX_OUTER_CONTINUATION 4u
+struct opengpu_tessellation_vertex_slice {
+    __u32 version, first_ordinal, patches_per_instance, first_instance, instances;
+};
+struct opengpu_tessellation_vertex_component {
+    __u32 kind, component;
+};
+struct opengpu_tessellation_patch_layout {
+    __u32 input_vertices, input_components, output_vertices, output_components, patch_components;
+};
+struct opengpu_tessellation_vertex_outer_invocation_v2 {
+    __aligned_u64 invocation_id;
+    __u32 original_draw_index, input_patch_vertices, reserved[2];
+};
+struct opengpu_tessellation_vertex_outer_range_v2 {
+    __u32 sequence_index, invocation_index, original_draw_index, range_ordinal;
+    __u32 flags, task_id_base, patch_count, reserved;
+    struct opengpu_tessellation_vertex_slice slice;
+    struct opengpu_tessellation_patch_layout layout;
+    struct opengpu_tessellation_vertex_component components[64];
+};
+struct opengpu_protected_tessellation_joint_plan {
+    __u32 sequence_index, state_handle;
+    struct drm_opengpu_native_program_view control_program, evaluation_program;
+    struct drm_opengpu_native_uniform_stage control_uniforms, evaluation_uniforms;
+};
+struct opengpu_protected_tessellation_state_plan {
+    __u32 state_handle, reserved;
+    struct drm_opengpu_native_program_view fragment_program;
+    struct drm_opengpu_native_uniform_stage fragment_uniforms;
+};
+
+#define OPENGPU_TESSELLATION_JOINT_SUBMIT_VERSION 1u
+/* Pointers name original, unbound metadata or the typed plan arrays above.
+ * Each draw has one native draw plan, each range has one sequence and joint
+ * plan, and each 512-byte state has one state plan. The resource array uses
+ * opengpu_native_frame_resource. An empty clear has zero draw, range,
+ * invocation and state arrays. Later CPU mutations of copied sources have
+ * no effect on execution. The caller excludes CPU writes during capture. */
+struct drm_opengpu_submit_tessellation_joint {
+    __u32 version, context_id, in_syncobj, out_syncobj;
+    __u32 draw_count, invocation_count, range_count, state_count;
+    __u32 resource_count, flags, reserved[2];
+    __aligned_u64 job, frame, sequences, sequences_bytes, states, draws;
+    __aligned_u64 draw_plans, invocations, ranges, plans, state_plans, resources;
+    __aligned_u64 fence_seqno;
+};
+
 /* Version 1 keeps the original counter GEM mutable until job retirement. The
  * nested legacy counter binding and COUNTERS flag must be zero. Uniform views
  * may all be zero; otherwise every nested version-1 uniform rule applies. */
@@ -869,6 +921,7 @@ struct drm_opengpu_compute_indirect_resources {
 #define DRM_OPENGPU_COMPUTE_INDIRECT_RESOURCES 0x17
 #define DRM_OPENGPU_QUERY 0x18
 #define DRM_OPENGPU_SUBMIT_NATIVE_BINNED 0x19
+#define DRM_OPENGPU_SUBMIT_TESSELLATION_JOINT 0x1a
 #define DRM_IOCTL_OPENGPU_SUBMIT \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_SUBMIT, \
              struct drm_opengpu_submit)
@@ -949,6 +1002,9 @@ struct drm_opengpu_compute_indirect_resources {
 #define DRM_IOCTL_OPENGPU_SUBMIT_NATIVE_BINNED \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_SUBMIT_NATIVE_BINNED, \
              struct drm_opengpu_submit_native_binned)
+#define DRM_IOCTL_OPENGPU_SUBMIT_TESSELLATION_JOINT \
+    DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_SUBMIT_TESSELLATION_JOINT, \
+             struct drm_opengpu_submit_tessellation_joint)
 #define DRM_IOCTL_OPENGPU_QUERY \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_QUERY, \
              struct drm_opengpu_query)

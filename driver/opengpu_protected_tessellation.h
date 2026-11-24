@@ -23,11 +23,6 @@ struct opengpu_protected_tessellation_plan {
     struct drm_opengpu_native_uniform_stage control_uniforms, evaluation_uniforms;
     struct opengpu_protected_tessellation_input input;
 };
-struct opengpu_protected_tessellation_state_plan {
-    u32 state_handle, reserved;
-    struct drm_opengpu_native_program_view fragment_program;
-    struct drm_opengpu_native_uniform_stage fragment_uniforms;
-};
 /* All pointer targets are already one-time kernel copies, never userspace or
  * raw GPU addresses. Build captures this complete graph before any callback.
  * Exact GNQ magic selects the domain; there is no duplicate domain selector.

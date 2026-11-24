@@ -8,11 +8,6 @@
 struct opengpu_device;
 struct opengpu_render_context;
 
-struct opengpu_protected_tessellation_joint_plan {
-    u32 sequence_index, state_handle;
-    struct drm_opengpu_native_program_view control_program, evaluation_program;
-    struct drm_opengpu_native_uniform_stage control_uniforms, evaluation_uniforms;
-};
 /* All targets are already one-time kernel copies. BUILD makes its own complete
  * owned copy before any callback. Catalog plans preserve original GND ordinal;
  * their FS views must equal the corresponding state plan, including unused
