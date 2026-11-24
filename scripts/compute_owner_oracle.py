@@ -9,7 +9,7 @@ import mmap
 from pathlib import Path
 import struct
 from compute_owner_cases import (COMPUTE_LOOP_SCHEMAS, INDEXED_UNIFORM_LOOP_CASE, LOOP_BARRIER_CASE,
-    MASKED_STORAGE_LOOP_CASE, NESTED_LOOP_CASE, STORAGE_LOOP_CASE)
+    MASKED_STORAGE_LOOP_CASE, NESTED_LOOP_CASE, SHARED_BARRIER_MASK_CASE, STORAGE_LOOP_CASE)
 from compute_owner_protocol import required_flags, strict_json, uint
 
 
@@ -264,6 +264,15 @@ def verify(initial, returned, description):
                         value = step ^ lane
                         writes.extend(((output + 4 * word, struct.pack('<I', value)),
                                        (output + 4 * (word + 4), struct.pack('<I', value + 3))))
+            verify_byte_changes(initial, returned, writes)
+            return
+        if case == SHARED_BARRIER_MASK_CASE:
+            writes = []
+            for lane in range(128):
+                peer = 0xa1000000 + (lane ^ 16)
+                word, value = (lane, peer + 1) if lane & 1 else (128 + lane, peer ^ 7)
+                writes.extend(((output + 4 * word, struct.pack('<I', value)),
+                               (output + 4 * (512 + lane), struct.pack('<I', 0xa1000003 + lane))))
             verify_byte_changes(initial, returned, writes)
             return
         if case == INDEXED_UNIFORM_LOOP_CASE:
