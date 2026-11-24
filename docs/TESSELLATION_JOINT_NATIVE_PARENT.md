@@ -35,6 +35,24 @@ table. An actual invocation with zero work still reads GNT/GVS/GND and obtains
 its actual zero-task range retirement. Both paths require the real frame end
 barrier, frame completion and complete memory drain.
 
+## Shared three-domain parent
+
+`TessellationJointThreeDomainJobImage` routes an admitted GNQ by its explicit
+domain to the corresponding original-vertex parent. The three parents share
+one image bank, one physical memory fabric and one shader router with two CU
+interfaces. Payload leases and feedback transactions drain under the same
+owner. The accepted root, feedback scope and payload contexts follow the job
+through domain handoff. A held child offer survives cancellation until the
+child accepts it. The bank remains assigned until the outer completion is
+consumed.
+
+`TessellationJointThreeDomainElaborationSpec` checks the three domain
+instances and a single physical image engine in the one-engine profile.
+That configuration also lowers to SystemVerilog with payload, feedback,
+checked uniforms, dynamic TES and fragment image interfaces enabled.
+Protected Linux submission and actual original Mesa shaders on the two
+physical CUs remain end-to-end acceptance gates.
+
 ## Empty state tables
 
 `allowEmptyStates=false` preserves the existing replay and image contracts.
@@ -85,6 +103,10 @@ end-to-end runs.
 Configure FlashSim and CIRCT as in the
 [empty-frame recipe](TESSELLATION_JOINT_EMPTY_FRAME.md). Compile the current
 Scala sources and initialize the pinned vendor SRAM submodule.
+
+Run the shared-parent elaboration check with:
+
+    sbt 'testOnly opengpu.system.TessellationJointThreeDomainElaborationSpec'
 
 ```sh
 sbt -Dopengpu.simBackend=flashsim -Dopengpu.flashsimPython=python3.13 \

@@ -191,7 +191,9 @@ class TessellationJointThreeDomainJobImage(
   if (transformFeedback) {
     val bridge = Module(new TessellationThreeDomainFeedbackBridge(config))
     val feedback = io.feedback.get
-    TransformFeedbackPipelineIO.forward(feedback, bridge.io.feedback, feedback.scope, phase === Phase.idle)
+    val acceptedScope = RegEnable(feedback.scope, io.submit.fire)
+    val scope = Mux(phase === Phase.idle, feedback.scope, acceptedScope)
+    TransformFeedbackPipelineIO.forward(feedback, bridge.io.feedback, scope, phase === Phase.idle)
     bridge.io.ownerIdle := VecInit(Seq.fill(3)(commonDrained && payloadDrained))
     bridge.io.memoryIdle := true.B
     for ((port, index) <- domains.zipWithIndex) bridge.io.owners(index) <> port.feedback.get
@@ -261,6 +263,8 @@ class TessellationJointThreeDomainJobImage(
     payloadDrained := owner.io.drained
     for (slot <- 0 until p.owners) {
       val output = io.payload.get(slot)
+      val acceptedContext = RegEnable(output.context, io.submit.fire)
+      val context = Mux(phase === Phase.idle, output.context, acceptedContext)
       val inputs = domains.map(_.payload.get(slot))
       for ((port, index) <- inputs.zipWithIndex) {
         val client = owner.io.clients(index)(slot)
@@ -268,7 +272,7 @@ class TessellationJointThreeDomainJobImage(
         port.controlResponse <> client.controlResponse
         client.request <> port.request
         port.response <> client.response
-        port.context := output.context
+        port.context := context
         port.cancel := phase === Phase.running && selected === index.U && output.cancel
       }
       val pool = owner.io.pool(slot)
