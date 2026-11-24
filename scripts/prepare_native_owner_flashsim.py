@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Prepare an exact owner factory; execution qualification is separate."""
 import argparse,json,os,re,shutil,subprocess,sys,tempfile
+from contextlib import ExitStack
 from pathlib import Path
 sys.dont_write_bytecode=True
 import qualify_native_product_compiled as common
@@ -133,13 +134,17 @@ def prepare(out, heap, compute_stage=False, full_resources=False, sample_resourc
     sources=source_inputs()
     main=Path(subprocess.check_output(['git','rev-parse','--path-format=absolute','--git-common-dir'],cwd=ROOT,text=True).strip()).parent
     temporary=main/'.artifacts';temporary.mkdir(exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='o',dir=temporary) as directory:
-        if len(directory.encode())>52:raise RuntimeError('JVM temporary path exceeds Unix-socket limit')
-        environment = dict(os.environ, TMPDIR=directory)
+    with tempfile.TemporaryDirectory(prefix='o',dir=temporary) as directory, ExitStack() as stack:
+        jvm_directory = directory
+        if len(os.fsencode(directory)) > 52:
+            # sbt's Unix-domain socket adds its own path suffix. Keep the
+            # staged RTL on the workspace filesystem for the final rename.
+            jvm_directory = stack.enter_context(tempfile.TemporaryDirectory(prefix='opengpu-jvm-', dir='/tmp'))
+        environment = dict(os.environ, TMPDIR=jvm_directory)
         staged = Path(directory) / 'staged'
         argument = ('--firrtl-output ' + json.dumps(str(staged)) if tessellation_uniforms else
                     '--output ' + json.dumps(str(out)))
-        command=['sbt','-J-Xmx'+heap,'-J-XX:ActiveProcessorCount=2','-J-Djava.io.tmpdir='+directory,
+        command=['sbt','-J-Xmx'+heap,'-J-XX:ActiveProcessorCount=2','-J-Djava.io.tmpdir='+jvm_directory,
             '-Dopengpu.fullHostQualification=1',
             'Test / runMain opengpu.system.'+entry+' '+argument+
             (' --inline-assertions' if inline_assertions else '')]

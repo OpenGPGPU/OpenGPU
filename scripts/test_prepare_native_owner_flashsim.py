@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """CPU-only stale/falsely labeled owner-DUT input rejection checks."""
-import copy,json,subprocess,tempfile,unittest
+import copy,json,os,shlex,subprocess,tempfile,unittest
 from pathlib import Path
 from unittest.mock import patch
 import prepare_native_owner_flashsim as owner
@@ -10,22 +10,27 @@ class OwnerInputTests(unittest.TestCase):
         parent = owner.ROOT / '.artifacts'
         parent.mkdir(exist_ok=True)
         temporary = []
+        staged = None
         commands = []
         with tempfile.TemporaryDirectory(prefix='staged-owner-guard-', dir=parent) as base:
             out = Path(base) / 'owner'
-            common_directory = subprocess.check_output(
-                ['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'],
-                cwd=owner.ROOT, text=True)
+            repository = Path(base) / ('workspace-' + 'long-' * 12)
+            repository.mkdir()
+            common_directory = str(repository / '.git') + '\n'
 
             def run(command, *, cwd, env, check):
+                nonlocal staged
                 self.assertEqual(cwd, owner.ROOT)
                 self.assertTrue(check)
                 self.assertFalse(out.exists())
                 temporary.append(Path(env['TMPDIR']))
-                staged = temporary[-1] / 'staged'
+                self.assertLessEqual(len(os.fsencode(temporary[-1])), 52)
                 commands.append(command[0])
                 if command[0] == 'sbt':
                     self.assertIn('PrepareOwnerResourceTessellationUniformHost --firrtl-output', command[-1])
+                    self.assertIn('-J-Djava.io.tmpdir=' + str(temporary[-1]), command)
+                    staged = Path(shlex.split(command[-1])[-1])
+                    self.assertTrue(staged.is_relative_to(repository / '.artifacts'))
                     staged.mkdir()
                     (staged / 'firtool-command').write_text('fixture-firtool\n')
                     (staged / 'owner.fir').write_text('fixture')
@@ -44,6 +49,7 @@ class OwnerInputTests(unittest.TestCase):
             self.assertFalse(out.exists())
             self.assertEqual(temporary[0], temporary[1])
             self.assertFalse(temporary[0].exists())
+            self.assertFalse(staged.parent.exists())
 
     def test_full_geometry_factory_requires_its_new_packets_words_and_scope(self):
         from owner_resource_contract import PROFILE, FULL_STAGE, FULL_WORDS, COMPUTE_STAGE, COMPUTE_WORDS
