@@ -1,5 +1,9 @@
 name: Simulation toolchain
-description: Set up Java, sbt and the pinned Verilator toolchain.
+description: Set up Java, sbt, firtool and the optional pinned Verilator toolchain.
+inputs:
+  verilator:
+    description: Set up Verilator and its model-build dependencies.
+    default: 'true'
 outputs:
   verilator-key:
     description: Runner-compatible Verilator cache namespace.
@@ -16,6 +20,7 @@ runs:
       - name: Set up sbt
         uses: sbt/setup-sbt@v1
       - name: Compute Verilator cache key
+        if: inputs.verilator == 'true'
         id: verilator-key
         # ImageOS is injected into the runner's process environment but is not
         # part of the expression context, so read it from the shell. Keying on the
@@ -24,12 +29,14 @@ runs:
         shell: bash
         run: echo "key=verilator-5.050-${ImageOS:-unknown}-${{ runner.arch }}" >> "$GITHUB_OUTPUT"
       - name: Cache Verilator
+        if: inputs.verilator == 'true'
         id: verilator-cache
         uses: actions/cache@v4
         with:
           path: /opt/verilator
           key: ${{ steps.verilator-key.outputs.key }}
       - name: Install Verilator (v5.050 from source) and espresso
+        if: inputs.verilator == 'true'
         shell: bash
         run: |
           # An unreachable Ubuntu mirror previously held a nightly runner for
