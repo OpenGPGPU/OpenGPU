@@ -21,60 +21,51 @@ truncated initial interval, a nonzero spill count and nonzero unused spill
 metadata. Unexpected actual completion is reported immediately with status,
 fault stage/address and read-byte count.
 
-## Verified scope and remaining limit
+## FlashSim result
 
-The final Spec freshly compiles with the Chisel plugin. The CPU encoder checks
-both runtime recipes and rejects the 720p support-profile selection before
-elaboration. These are not hardware execution results. Test selection has 171
-passing checks, with catalog selection and shell syntax also passing.
+The assertion-enabled isoline parent passed both frames in one reset session on
+current RTL. The hardware read exactly 2,560 GNQ/GNF bytes for each frame,
+reported success after the held physical acknowledgements drained, and
+retired the expected tiles across the four banks. Stored and resolved bytes
+matched the independent oracle together with directory entries, all pitch
+padding, allocation guards and immutable metadata. The final report stayed
+stable under cancellation while held. The next frame reused the same owner
+without reset.
 
-The earlier composed model with static 4×4 bounds failed after 2,733.64 seconds
-(sampled peak 8,016,048 KiB) while waiting for a backing store. Its limit was
-3,600 seconds/10 GiB; this was not a resource-limit failure. Same-binary diagnosis
-observed actual status 5 after exactly 2,560 metadata bytes and no writes: the
-fixture's zero-spill pool did not cover its reservation. Changing only that
-input's initial limit reached a real directory write, then triggered the
-unchanged outer fabric's `unowned translated input` assertion. That diagnostic
-input is not qualification of the revised Spec.
+`TessellationJointEmptyFrameRecipeCheck` passed the two runtime recipes and
+the invalid pool controls. The two fabric cases each retired 40 metadata
+reads on physical tag 260 and one directory write on tag 16 with a held
+response and exactly one acknowledgement, including the owned-source wrapper.
 
-Two real component tests cover the exact outer fabric configuration
-(16×8, render IDs 256, one staging engine, four staging IDs), including the actual
-owned-source input wrapper. Each sends 40 metadata reads on physical tag 260,
-then a directory write on tag 16 with a held response and exactly one ACK.
-The final two-case run passes in 23.60 seconds with a sampled peak of 409,856 KiB,
-with all production assertions enabled. They have not reproduced the
-old composed-model assertion and do not establish full-parent clear success.
-Production fabric logic and assertions were not weakened. The revised VGA-bound
-composed model, its 4×4→16×16 execution, other domains and actual CU execution
-remain pending.
+### Reproduction
 
-## Reproduction
-
-Use a fresh current-source test classpath as `CURRENT_TEST_CP`; bind every actual
-loaded `SourceFile` to its real compiler producer/current source before native
-generation. An old same-named class is not a valid substitute. No SBT or Scala
-regression workflow is required or enabled.
+Initialize `depends/asap7_sram_0p0` at the repository's pinned revision
+`9f5af0939`. Point `FLASHSIM_DIR` and `CIRCT_VERILOG` to the FlashSim and
+CIRCT installations. Use Python 3.13 and compile the current Scala sources.
 
 ```sh
-java -Xmx128m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m \
-  -XX:ActiveProcessorCount=1 -XX:+UseSerialGC -Dopengpu.productQualification=0 \
-  -cp "$CURRENT_TEST_CP" opengpu.system.TessellationJointEmptyFrameRecipeCheck
-java -Xmx128m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m \
-  -XX:ActiveProcessorCount=1 -XX:+UseSerialGC -Dopengpu.simJobs=1 \
-  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=0 -Dopengpu.simCache=off \
-  -cp "$CURRENT_TEST_CP" org.scalatest.tools.Runner -oD \
-  -s opengpu.system.TileBinHostMemoryFabricJointClearSpec
+export FLASHSIM_CIRCT_THREADS=4 FLASHSIM_MODULE_JOBS=2
+export FLASHSIM_PREFLATTEN_WIRES=1 FLASHSIM_COMMIT_PARTS=16
+sbt -Dopengpu.simBackend=flashsim -Dopengpu.flashsimPython=python3.13 \
+  -Dopengpu.productQualification=0 -Dopengpu.simJobs=2 \
+  -Dopengpu.flashsimShards=64 \
+  'Test/runMain opengpu.system.TessellationJointEmptyFrameRecipeCheck' \
+  'testOnly opengpu.system.TessellationJointEmptyFrameSpec'
 ```
 
-The small component/CPU groups use a 180-second deadline and 512 MiB sampled
-aggregate process-group limit. The complete qualification is explicitly local
-only, outside routine PR/nightly execution. For a separately reviewed full run,
-use the same freshly bound classpath, the actual vendor SRAM source directory,
-`productQualification=0`, `simJobs=1`, `simSeparateBuild=1`, `simReleaseHeap=1` and
-`simHierarchy=TypedTileImagePipeline`, and run
-`org.scalatest.tools.Runner -oD -s opengpu.system.TessellationJointEmptyFrameSpec`
-under an owned process-group guard. Preserve inline assertions and verify the
-actual emitted hierarchy before Verilator. The prior full-run resource envelope
-was 2 GiB Java heap/256 MiB metaspace/32 MiB code, 10 GiB aggregate and 3,600
-seconds; a future run must report its own limits and outcome. Retain no ended
-models or raw diagnostic outputs after their consumer finishes.
+The measured run used FlashSim `3230040` for C++ generation and `8632e96`
+for file-backed splitting. It reused an assertion-bound CIRCT import and ran
+generation and splitting in separate processes. Their sampled aggregate
+peaks were 7.48 GiB and 2.94 GiB. The first two-job native build reached its
+6.5 GiB guard during compilation. The verified `flashsim.reshard` step used
+a 32 MiB method shard target and a 24 MiB invalidation-table limit, producing
+159 units. Two Clang jobs with precompiled headers built and linked that
+model in 1,412 seconds under an 11 GiB process-group guard.
+
+Fresh elaboration matched 921 source and bridge files by digest, the 609
+ordered inputs, the enabled assertion defines and all 2,459 svsim ports.
+Fresh elaboration and replay then completed in 108 seconds with a sampled
+4.75 GiB peak under a 6.5 GiB guard. The staged measurements cover the
+isoline empty-frame transport. Triangle and quad complete parents, original
+shader execution, protected submission and the VGA60 product run remain
+separate qualification gates.
