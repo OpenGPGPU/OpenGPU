@@ -32,6 +32,22 @@ def write_sources(out):
         uniforms = "uniform uvec4 defaults[256];\n" if name in ("dynamic-loop", "indexed-uniform-loop") else ""
         (out / (name + ".comp")).write_text(prefix() + buffers + uniforms +
             "void main(){uint id=gl_LocalInvocationIndex;" + body + "}\n")
+    (out / "shared-barrier-mask.comp").write_text(prefix((128, 1, 1)) +
+        "layout(std430,binding=0) buffer Output {uint v[];} result;\n"
+        "shared uint published[128];\n"
+        "void main() {\n"
+        "  uint lane = gl_LocalInvocationID.x;\n"
+        "  published[lane] = 0xa1000000u + lane;\n"
+        "  barrier();\n"
+        "  uint peer = atomicAdd(published[lane ^ 16u], 3u);\n"
+        "  if ((lane & 1u) != 0u) {\n"
+        "    result.v[lane] = peer + 1u;\n"
+        "  } else {\n"
+        "    result.v[128u + lane] = peer ^ 7u;\n"
+        "  }\n"
+        "  barrier();\n"
+        "  result.v[512u + lane] = published[lane];\n"
+        "}\n")
     # The invalid default-array indices belong exclusively to inactive lanes.
     # Dynamic CONST changes packed v0, independently from the outer warp mask.
     (out / "masked-uniform.comp").write_text(prefix() + buffers +

@@ -124,3 +124,19 @@ unchanged output memory for every case. Reuse the
 with `IMAGE_FLOAT_PROFILE`, `IMAGE_FLOAT_STAGE` and `IMAGE_FLOAT_WORDS` in the
 profile wire. Compile the parser with `-DOPENGPU_OWNER_IMAGE_FLOAT_STAGE=1`.
 Run each case in `COMPUTE_LOOP_CASES` with `--capture-only`.
+
+### Workgroup barriers with a divergent branch
+
+The `shared-barrier-mask` ESSL case runs 128 invocations in a 1D workgroup.
+Every lane publishes one shared word and enters the first execution barrier.
+Each lane atomically adds three to a different warp's word. A divergent
+branch uses each returned old value in one of two disjoint output ranges.
+After the second barrier all lanes read the updated shared values. The byte
+oracle requires 256 words and checks all skipped writes and physical guards.
+
+The sanitized Mesa/Linux capture and float-owner capture parser passed. The
+oracle rejected a wrong peer warp, modifications to skipped words and
+unchanged returned memory. Reproduce with the CPU capture procedure above and
+`--case shared-barrier-mask --capture-only`. The complete FlashSim owner can
+run the same case with `qualify_p12 --case shared-barrier-mask` after building
+the executor from these sources. Its full-DUT execution is pending.
