@@ -32,7 +32,8 @@ SAMPLE_KINDS = ('native-sample', 'native-sample-graphics')
 SAMPLE_FACTORY_KINDS = (*SAMPLE_KINDS, BLIT_KIND)
 SHARED = ('scripts/native_owner_runtime.hpp', 'scripts/native_owner_capture.hpp',
           'scripts/owner_factory.hpp',
-          'driver/gpu_abi.h', 'driver/opengpu_formats.h', 'driver/opengpu_shader_resources.h')
+          'driver/gpu_abi.h', 'driver/opengpu_formats.h', 'driver/opengpu_shader_resources.h',
+          'driver/opengpu_native_binned_host_abi.h', 'driver/opengpu_protected_tessellation_joint_abi.h')
 DEFAULT_DEPENDENCIES = ('scripts/flashsim_native/VGpuHostSystemAxi.h',
     'scripts/flashsim_native/verilated.h', 'scripts/native_host_simulation.hpp',
     'scripts/native_execution_progress.hpp', 'scripts/native_frame_axi.hpp',
@@ -155,7 +156,7 @@ SAMPLE_GENERATED_INCLUDES = frozenset((
       ('fault', 'fence', 'fault_record', 'job_id', 'reset_pending', 'result_error',
        'drain', 'irq', 'enable_irqs', 'quiesce', 'kick', 'set_satp', 'activate_locked',
        'busy', 'wait_idle', 'activate', 'enable', 'flush', 'flush_asid', 'disable',
-       'submit', 'invalidate'))))
+       'submit', 'invalidate', 'joint_scope', 'joint_profile', 'joint_submit'))))
 SAMPLE_PRODUCER_ROOTS = (
     'scripts/native_sample_live_producer.c', 'scripts/native_sample_submit_producer.c',
     'driver/opengpu_native_frame.c', 'driver/opengpu_native_frame_internal.h',

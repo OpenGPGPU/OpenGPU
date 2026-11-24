@@ -1,7 +1,10 @@
 #pragma once
 #include "native_frame_fixture.hpp"
 #include "../driver/gpu_abi.h"
+#include "../driver/opengpu_native_binned_host_abi.h"
+#include "../driver/opengpu_protected_tessellation_joint_abi.h"
 #include "../driver/opengpu_shader_resources.h"
+#include <array>
 #include <set>
 
 namespace native_owner {
@@ -15,6 +18,17 @@ inline void require_owner_shader_profile(uint32_t caps,uint32_t shader) {
   require_product_owner_shader_profile(caps,shader);
 }
 struct SampleCapture;
+struct JointCapture;
+inline uint32_t joint_detail_address(unsigned word) {
+  constexpr auto head=OPENGPU_TESS_JOINT_HOST_COMPLETION_HEAD_WORDS;
+  return word<head?OPENGPU_TESS_JOINT_HOST_COMPLETION_HEAD_BASE+4*word:
+    OPENGPU_TESS_JOINT_HOST_COMPLETION_TAIL_BASE+4*(word-head);
+}
+inline bool joint_observed_detail(uint32_t address) {
+  for(unsigned word=8;word<OPENGPU_TESS_JOINT_HOST_COMPLETION_WORDS;++word)
+    if(address==joint_detail_address(word))return true;
+  return false;
+}
 struct Capture {
   uint64_t max_cycles;
   uint32_t hold_cycles, command_id;
@@ -51,7 +65,8 @@ struct Capture {
   }
 private:
   friend struct SampleCapture;
-  void validate_contract(const std::vector<Command> &required_profile,bool prefix_only) const {
+  friend struct JointCapture;
+  void validate_contract(const std::vector<Command> &required_profile,bool prefix_only,bool joint=false) const {
     require(max_cycles>0 && max_cycles<=1000000000 && hold_cycles>=8 && hold_cycles<=4096 && command_id<256,
       "invalid capture execution bounds");
     std::map<uint32_t,uint32_t> found;
@@ -67,6 +82,12 @@ private:
     }
     require(!trace.empty(),"empty captured enqueue trace");
     std::map<uint32_t,uint32_t> staged;
+    const auto final_opcode=joint?OPENGPU_TESS_JOINT_HOST_OPCODE:GPU_UCMD_OP_NATIVE_BINNED_RENDER;
+    auto field=[&](uint32_t key) {
+      auto at=staged.find(key);
+      require(at!=staged.end(),"missing captured owner command field");
+      return at->second;
+    };
     bool pending=false, witnessed=false; unsigned native=0;
     for(size_t i=0;i<trace.size();++i) {
       const auto &a=trace[i];address(a.address);
@@ -85,18 +106,28 @@ private:
         require(a.value==1 && !pending,"captured submission crosses an unretired command");
         const auto op=staged.find(GPU_REG_UCMD_OPCODE);
         require(op!=staged.end(),"captured submission has no opcode");
-        if(op->second==GPU_UCMD_OP_NATIVE_BINNED_RENDER) {
+        if(op->second==final_opcode) {
           require(++native==1 && i+1==trace.size(),"native enqueue must end the capture trace");
-          auto field=[&](uint32_t key) {auto at=staged.find(key);require(at!=staged.end(),"missing native command field");return at->second;};
-          require(field(GPU_REG_UCMD_ID)==command_id && field(GPU_REG_UCMD_BYTES)==512 &&
-            !(field(GPU_REG_UCMD_SOURCE)&63),"native GNJ command identity or bounds differ");
+          const uint32_t source=field(GPU_REG_UCMD_SOURCE);
+          require(field(GPU_REG_UCMD_ID)==command_id && field(GPU_REG_UCMD_BYTES)==512,
+            "captured owner command identity or size differs");
           const uint32_t pattern=field(GPU_REG_UCMD_PATTERN);
-          const uint64_t limit=(uint64_t(pattern&1)<<32)|field(GPU_REG_UCMD_DESTINATION);
-          require(pattern<=1 && limit<=Memory::limit &&
-            uint64_t(field(GPU_REG_UCMD_SOURCE))+512<=limit,
-            "native GNJ command has an invalid exclusive view limit");
-          require(!(field(GPU_REG_UCMD_FLAGS)&~(GPU_UCMD_FLAG_RASTER_DISCARD|GPU_UCMD_FLAG_FEEDBACK_CAPTURE)),
-            "native GNJ command has unsupported DMA/event or reserved flags");
+          if(joint) {
+            const uint32_t owner=field(GPU_REG_UCMD_DESTINATION);
+            const uint64_t limit=(uint64_t(pattern&1)<<32)|field(GPU_REG_UCMD_WIDTH);
+            constexpr auto root=OPENGPU_TESS_JOINT_HOST_ROOT_ALLOCATION_BYTES;
+            require((pattern&~7u)==OPENGPU_TESS_JOINT_HOST_COMMAND_TAG && ((pattern>>1)&3u)<3,
+              "protected joint command is missing its exact tag or domain");
+            require(!((source|owner|limit)&(root-1)) && owner && owner<=source && limit<=Memory::limit &&
+              uint64_t(source)+root<=limit && !field(GPU_REG_UCMD_FLAGS),
+              "protected joint command has an invalid owner interval or scope");
+          } else {
+            const uint64_t limit=(uint64_t(pattern&1)<<32)|field(GPU_REG_UCMD_DESTINATION);
+            require(!(source&63) && pattern<=1 && limit<=Memory::limit && uint64_t(source)+512<=limit,
+              "native GNJ command has an invalid exclusive view limit");
+            require(!(field(GPU_REG_UCMD_FLAGS)&~(GPU_UCMD_FLAG_RASTER_DISCARD|GPU_UCMD_FLAG_FEEDBACK_CAPTURE)),
+              "native GNJ command has unsupported DMA/event or reserved flags");
+          }
           require((field(GPU_REG_UCMD_VECTOR_SATP)&GPU_SATP_ENABLE) &&
             field(GPU_REG_UCMD_VECTOR_SATP)==field(GPU_REG_UCMD_INSTRUCTION_SATP),
             "production native capture requires the real shared Sv32 context");
@@ -111,14 +142,32 @@ private:
       // Successful GNX retains raw reader address/draw fields. Their values
       // are observations, not predeclared predictions; retirement still checks
       // every raw word with a full mask before POP.
-      if(!c.mask)require((c.address==0x188 || c.address==0x18c) && !c.expected,
-        "only raw GNX reader observations may omit an expected predicate");
+      if(!c.mask)require((joint?joint_observed_detail(c.address):(c.address==0x188 || c.address==0x18c)) &&
+        !c.expected,"only designated raw completion observations may omit an expected predicate");
       else predicate(c.mask,c.expected);
       require(checked.emplace(c.address,c).second,"duplicate held-completion check");}
     auto final=checked.find(GPU_REG_UCMD_COMPLETION);
     require(final!=checked.end() && final->second.mask==0xffffffffu &&
       GPU_UCMD_COMPLETION_ID(final->second.expected)==command_id &&
-      GPU_UCMD_COMPLETION_OPCODE(final->second.expected)==GPU_UCMD_OP_NATIVE_BINNED_RENDER,"missing exact native completion identity");
+      GPU_UCMD_COMPLETION_OPCODE(final->second.expected)==final_opcode,"missing exact native completion identity");
+    if(joint) {
+      require(final->second.expected==(0x18700u|command_id) &&
+        checked.size()==1+OPENGPU_TESS_JOINT_HOST_COMPLETION_WORDS && prefix_only && finish.empty(),
+        "joint capture requires a successful held command with separate retirement");
+      std::array<uint32_t,8> detail{};
+      for(unsigned word=0;word<OPENGPU_TESS_JOINT_HOST_COMPLETION_WORDS;++word) {
+        auto at=checked.find(joint_detail_address(word));
+        require(at!=checked.end() && at->second.mask==(word<detail.size()?0xffffffffu:0),
+          "incomplete or inexact GNZ2 held-completion checks");
+        if(word<detail.size())detail[word]=at->second.expected;
+      }
+      require(detail[0]==OPENGPU_TESS_JOINT_HOST_COMPLETION_MAGIC &&
+        detail[1]==(detail[6]?0:0x40u) && !detail[2] &&
+        detail[3]==field(GPU_REG_UCMD_HEIGHT) && detail[4]==field(GPU_REG_UCMD_SOURCE_STRIDE) &&
+        detail[5]==field(GPU_REG_UCMD_DEST_STRIDE) && detail[6]==detail[7],
+        "GNZ2 status, scope or directory count disagrees with the captured owner");
+      return;
+    }
     for(unsigned n=0;n<12;++n) require(checked.count(0x180+4*n),"incomplete GNX held-completion checks");
     require(checked.at(0x180).mask==0xffffffffu && checked.at(0x180).expected==0x474e5801,
       "missing GNX completion magic");
@@ -147,6 +196,7 @@ private:
     c.finish=commands();require(in.peek()==EOF,"trailing owner capture bytes");return c;
   }
 public:
+  static constexpr bool joint_completion=false;
   void validate(bool prefix_only=false) const {validate_contract(profile(),prefix_only);}
   static Capture read(std::istream &in,bool prefix_only=false) {
     magic(in,"OGCAP001");auto c=payload(in);c.validate(prefix_only);return c;
@@ -156,11 +206,74 @@ public:
   }
 };
 
+// The dedicated joint host has the protected source blocks and GJP1.
+// GNC geometry, storage size and bank count are obtained from the DUT.
+struct JointCapture : Capture {
+  static constexpr bool joint_completion=true;
+  static constexpr uint32_t resource_flags=0x4367ff;
+  static constexpr unsigned auxiliary_words=5;
+  static std::vector<uint32_t> discovery_addresses() {
+    std::vector<uint32_t> addresses;
+    auto expected=Capture::profile();
+    for(const auto &word:expected)
+      if(word.address<0x4c0 || word.address>=0x4e0)addresses.push_back(word.address);
+    for(uint32_t word=0;word<OPENGPU_TESS_JOINT_HOST_PROFILE_WORDS;++word)
+      addresses.push_back(OPENGPU_TESS_JOINT_HOST_PROFILE_BASE+4*word);
+    for(uint32_t address:std::array<uint32_t,auxiliary_words>{
+        GPU_REG_ID,GPU_REG_CAPABILITIES,GPU_REG_BIN_CAPABILITY_PTR,0x320,GPU_REG_SHADER_CONFIG})
+      addresses.push_back(address);
+    return addresses;
+  }
+  static void validate_discovery(const std::vector<Command> &discovery) {
+    auto expected=discovery_addresses();
+    require(discovery.size()==expected.size(),"joint capture discovery length differs from the dedicated host");
+    std::map<uint32_t,uint32_t> found;
+    for(size_t i=0;i<expected.size();++i) {
+      require(discovery[i].address==expected[i],"joint capture has unexpected discovery addresses");
+      found.emplace(discovery[i].address,discovery[i].value);
+    }
+    const auto engines=found.at(0x55c);
+    const auto gnc=found.at(GPU_REG_BIN_CAPABILITIES+4*OPENGPU_NATIVE_BINNED_HOST_ENGINES_WORD);
+    const auto id=found.at(GPU_REG_ID),caps=found.at(GPU_REG_CAPABILITIES);
+    require((id&0xffff0000u)==0x47550000u && (id&0xffffu)>=GPU_ABI_COMPUTE_RESOURCE_VERSION &&
+      (caps&required_owner_caps)==required_owner_caps && found.at(0x320) &&
+      engines>=1 && engines<=4 &&
+      ((gnc&OPENGPU_NATIVE_BINNED_HOST_ENGINES_MASK)>>OPENGPU_NATIVE_BINNED_HOST_ENGINES_SHIFT)==engines,
+      "joint capture lacks the required GPU discovery and engine topology");
+    require_owner_shader_profile(caps,found.at(GPU_REG_SHADER_CONFIG));
+    const std::vector<Command> required{
+      {0x360,0x47435201},{0x364,16},{0x368,resource_flags},{0x36c,2},{0x370,16},{0x374,8},
+      {0x378,128},{0x37c,128},{0x384,OPENGPU_TESS_JOINT_HOST_LDS_BYTES},
+      {0x390,OPENGPU_TESS_JOINT_HOST_LDS_BASE},{0x394,32},
+      {GPU_REG_BIN_CAPABILITY_PTR,GPU_REG_BIN_CAPABILITIES},{0x160,0x474e4303},
+      {0x550,OPENGPU_TESS_JOINT_HOST_PROFILE_MAGIC},{0x554,0x4ff},{0x558,0x08100207},
+    };
+    for(const auto &word:required)
+      require(found.at(word.address)==word.value,"joint capture lacks the required source or completion profile");
+  }
+  void validate(bool prefix_only=true) const {
+    validate_discovery(discovery);
+    validate_contract({},prefix_only,true);
+  }
+  static JointCapture read(std::istream &in,bool prefix_only=true) {
+    magic(in,"OGCAP003");
+    JointCapture capture;
+    static_cast<Capture &>(capture)=Capture::payload(in);
+    capture.validate(prefix_only);
+    return capture;
+  }
+  static JointCapture read(const std::string &path,bool prefix_only=true) {
+    std::ifstream in(path,std::ios::binary);
+    require(bool(in),"cannot open protected joint capture");
+    return read(in,prefix_only);
+  }
+};
+
 // Emitted only after the original driver's drain consumes a real held receipt.
 // Expected retirement actions cannot be supplied before that execution point.
 struct Retirement {
   std::vector<Action> actions;
-  void validate() const {
+  void validate(bool joint=false) const {
     require(!actions.empty() && actions.size()<=1024,"invalid native retirement action count");
     unsigned pops=0;bool witnessed=false;std::set<uint32_t> read_before_pop;
     for(const auto &a:actions) {
@@ -171,7 +284,10 @@ struct Retirement {
           require(!pops && a.value==1 && witnessed,"retirement POP lacks an observed held completion");
           for(uint32_t address:{GPU_REG_UCMD_COMPLETION,GPU_REG_UCMD_COMPLETION_BYTES_LO,GPU_REG_UCMD_COMPLETION_BYTES_HI})
             require(read_before_pop.count(address),"retirement lost command/telemetry before POP");
-          for(unsigned n=0;n<12;n++)require(read_before_pop.count(0x180+4*n),"retirement lost GNX before POP");
+          const auto count=joint?OPENGPU_TESS_JOINT_HOST_COMPLETION_WORDS:
+            OPENGPU_TESS_JOINT_HOST_COMPLETION_HEAD_WORDS;
+          for(unsigned n=0;n<count;n++)
+            require(read_before_pop.count(joint_detail_address(n)),"retirement lost completion detail before POP");
           pops++;
         }else require(a.address==GPU_REG_IRQ && !(a.value&~7u),"retirement may only POP and acknowledge IRQ");
       }else {
@@ -179,7 +295,7 @@ struct Retirement {
         Capture::predicate(a.mask,a.value);
         const bool window=a.address==GPU_REG_UCMD_COMPLETION ||
           a.address==GPU_REG_UCMD_COMPLETION_BYTES_LO || a.address==GPU_REG_UCMD_COMPLETION_BYTES_HI ||
-          (a.address>=0x180 && a.address<0x1b0);
+          (a.address>=0x180 && a.address<0x1b0) || (joint && a.address>=0x540 && a.address<0x550);
         require(window || a.address==GPU_REG_STATUS || a.address==GPU_REG_UCMD_STATUS || a.address==GPU_REG_IRQ,
           "retirement read is outside the completion interface");
         require(!pops || !window,"retirement reads cleared completion data after POP");
@@ -190,17 +306,17 @@ struct Retirement {
     }
     require(pops==1,"retirement must POP exactly one command");
   }
-  static Retirement read(std::istream &in) {
-    magic(in,"OGRTR001");const auto count=read_le(in,4);
+  static Retirement read(std::istream &in,bool joint=false) {
+    magic(in,joint?"OGRTR002":"OGRTR001");const auto count=read_le(in,4);
     require(count<=1024,"oversized retirement trace");Retirement retirement;
     for(uint64_t n=0;n<count;n++) {
       const auto kind=read_le(in,4),address=read_le(in,4),value=read_le(in,4),mask=read_le(in,4);
       retirement.actions.push_back({Kind(kind),uint32_t(address),uint32_t(value),uint32_t(mask)});
     }
-    require(in.peek()==EOF,"trailing retirement bytes");retirement.validate();return retirement;
+    require(in.peek()==EOF,"trailing retirement bytes");retirement.validate(joint);return retirement;
   }
-  static Retirement read(const std::string &path) {
-    std::ifstream in(path,std::ios::binary);require(bool(in),"cannot open driver retirement trace");return read(in);
+  static Retirement read(const std::string &path,bool joint=false) {
+    std::ifstream in(path,std::ios::binary);require(bool(in),"cannot open driver retirement trace");return read(in,joint);
   }
 };
 

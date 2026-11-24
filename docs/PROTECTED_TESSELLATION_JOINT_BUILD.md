@@ -249,6 +249,16 @@ triangle and quad. It checked producer waits, rollback after an enqueue
 failure, the actual published MMU root and retirement after closing the
 original code handle. The fixture models the final hardware kick.
 
+The MMIO composition calls the production joint scheduler, opcode encoder
+and IRQ drain. The CPU control peer checks the tagged triangle command, the
+original Sv32 owner pages and all 16 held GNZ2 words before completion POP.
+It also checks the high words of the byte counters and rejects a different
+command or owner identity. The replay executor can probe a dedicated joint
+host with `--probe-joint-profile` and consume its protected captures with
+`--active-joint-owner-series`. That path rechecks discovery from the DUT,
+waits for physical memory drain and then applies the original driver's
+recorded POP and cleanup. Full Mesa replay remains a separate validation.
+
 `NativeAlignmentHostProfile.protectedTessellationTarget` selects the joint
 host, checked tessellation uniforms and protected sources at 640×480. Its
 discovery table includes GJP1 and the same factory elaborates the 4×4 test
@@ -256,7 +266,8 @@ configuration. Product throughput requires a full timed run.
 
 ```sh
 OPENGPU_TEST_SANITIZERS=1 python3 scripts/test_protected_tessellation_submit.py
-OPENGPU_TEST_SANITIZERS=1 python3 scripts/test_native_mmio_capture.py
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_mmio_capture.py --executor-root .
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_owner.py
 ```
 
 The hardware start must carry the verified owner scope and expected frame
