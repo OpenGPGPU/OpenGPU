@@ -605,7 +605,7 @@ struct native_joint_job {
 int opengpu_protected_tessellation_joint_ioctl(struct drm_device *drm, void *data, struct drm_file *file)
 {
     struct drm_opengpu_submit_tessellation_joint *args = data, captured;
-    struct opengpu_protected_tessellation_joint_profile profile;
+    struct opengpu_protected_tessellation_joint_profile profile = {0};
     struct opengpu_protected_tessellation_joint_source source;
     struct native_sources sources = {.file = file};
     const struct opengpu_native_job_copy copy = {native_copy, native_resolve, &sources};
