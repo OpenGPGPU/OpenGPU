@@ -243,6 +243,12 @@ private MMIO command, retains the GNZ2 storage through the execution fence,
 and holds original GEM references until the owner retires. The ioctl returns
 the execution fence sequence and can publish it to an output sync object.
 
+The compiler's joint context reads the frozen GJP1 and GNC words through
+dedicated `GET_PARAM` ranges. The existing native query stays reserved.
+After `opengpu_native_joint_context_enable` succeeds, the linked Mesa program
+and BUILD bundle supply the records, original GEMs and optional sync objects
+directly to `opengpu_native_joint_build_source_submit`.
+
 The ASan/UBSan composition exercised the registered ioctl handler with one
 original draw, a 64-bit invocation ID and six patches for each of isoline,
 triangle and quad. It checked producer waits, rollback after an enqueue
@@ -257,7 +263,23 @@ command or owner identity. The replay executor can probe a dedicated joint
 host with `--probe-joint-profile` and consume its protected captures with
 `--active-joint-owner-series`. That path rechecks discovery from the DUT,
 waits for physical memory drain and then applies the original driver's
-recorded POP and cleanup. Full Mesa replay remains a separate validation.
+recorded POP and cleanup.
+
+The Mesa 22.3.6 Linux preflight linked and submitted the baseline and VS
+mutation for each domain. Each of the six DRM submissions retained the four
+linked programs after the original handles closed and published a separate
+4×4 writable image and protected Sv32 owner. The CPU preflight exported the
+original RAM and first MMIO command before GPU execution.
+
+Inside the pinned Linux environment from the
+[linked BUILD reproduction](NATIVE_JOINT_BUILD_SOURCE.md#reproduction), use
+an empty private `SESSION` and the independent vertex/fragment emitter source.
+
+```sh
+python3 -B scripts/build_native_joint_live_producer.py --sanitize \\
+  --build "$OUT/build" --legacy-source "$OUT/reference-uniform.c"
+"$OUT/build/native-joint" userspace/tests/tess_joint_live_essl --cpu-preflight "$SESSION"
+```
 
 `NativeAlignmentHostProfile.protectedTessellationTarget` selects the joint
 host, checked tessellation uniforms and protected sources at 640×480. Its

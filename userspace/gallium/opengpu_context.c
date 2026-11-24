@@ -157,6 +157,7 @@ struct opengpu_context {
     bool native_layout_valid;
     void *native_sample_cache;
     size_t native_sample_cache_bytes;
+    struct opengpu_native_joint_runtime native_joint_runtime;
     unsigned cs_access[4];
     int cs_binding_error;
     struct pipe_sampler_view *cs_sampler_views[32];
@@ -4643,7 +4644,7 @@ int opengpu_native_sample_cache_install(struct pipe_context *pipe,const void *ca
 {
     if(!pipe || !cache || !bytes || !layout){errno=EINVAL;return -1;}
     struct opengpu_context *ctx=octx(pipe);
-    if(ctx->native_layout_valid || ctx->native_sample_cache){errno=EBUSY;return -1;}
+    if(ctx->native_layout_valid || ctx->native_sample_cache || ctx->native_joint_runtime.engines){errno=EBUSY;return -1;}
     void *copy=malloc(bytes);if(!copy)return -1;
     memcpy(copy,cache,bytes);ctx->native_sample_cache=copy;ctx->native_sample_cache_bytes=bytes;
     ctx->native_layout=*layout;return 0;
@@ -4654,6 +4655,24 @@ int opengpu_native_sample_cache_read(struct pipe_context *pipe,void *cache,size_
     struct opengpu_context *ctx=octx(pipe);
     if(!ctx->native_sample_cache || ctx->native_sample_cache_bytes!=bytes){errno=ENOTSUP;return -1;}
     memcpy(cache,ctx->native_sample_cache,bytes);*context=pipe_opengpu_context_id(ctx->gpu);return 0;
+}
+int opengpu_native_joint_cache_install(struct pipe_context *pipe,const struct opengpu_native_joint_runtime *runtime)
+{
+    if(!pipe || !runtime || !runtime->engines){errno=EINVAL;return -1;}
+    struct opengpu_context *ctx=octx(pipe);
+    if(ctx->native_sample_cache || ctx->native_joint_runtime.engines){errno=EBUSY;return -1;}
+    ctx->native_joint_runtime=*runtime;
+    return 0;
+}
+int opengpu_native_joint_cache_read(struct pipe_context *pipe,struct opengpu_native_joint_runtime *runtime,
+    unsigned *context)
+{
+    if(!pipe || !runtime || !context){errno=EINVAL;return -1;}
+    struct opengpu_context *ctx=octx(pipe);
+    if(!ctx->native_joint_runtime.engines){errno=ENOTSUP;return -1;}
+    *runtime=ctx->native_joint_runtime;
+    *context=pipe_opengpu_context_id(ctx->gpu);
+    return 0;
 }
 uint32_t opengpu_native_graphics_context_id(struct pipe_context *pipe)
 {

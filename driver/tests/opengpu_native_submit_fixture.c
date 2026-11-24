@@ -429,12 +429,12 @@ int native_kernel_profile_query(const struct native_kernel_profile *p,uint32_t p
 {
     u64 value=0;
     if(!p || !output || !p->limits.available || p->missing)return -EINVAL;
-    if(param==OPENGPU_PARAM_DRIVER_FEATURES)value=OPENGPU_DRIVER_FEATURE_NATIVE_BINNED;
+    if(param==OPENGPU_PARAM_DRIVER_FEATURES)value=p->joint.available?0:OPENGPU_DRIVER_FEATURE_NATIVE_BINNED;
     else if(param==OPENGPU_PARAM_CAPABILITIES)value=p->capabilities;
     else if(param==OPENGPU_PARAM_SHADER_CONFIG){
         for(unsigned i=0;i<p->word_count;i++)if(p->words[i].address==GPU_REG_SHADER_CONFIG)value=p->words[i].value;
     }
-    else if(param==OPENGPU_PARAM_NATIVE_LAYOUT){
+    else if(param==OPENGPU_PARAM_NATIVE_LAYOUT && !p->joint.available){
         const struct opengpu_native_binned_host_caps *c=&p->limits.frame;
         value=p->limits.capacity;
 #define SLOT(field,shift) value|=(u64)((c->words[OPENGPU_NATIVE_BINNED_HOST_##field##_WORD]&OPENGPU_NATIVE_BINNED_HOST_##field##_MASK)>>OPENGPU_NATIVE_BINNED_HOST_##field##_SHIFT)<<shift
@@ -445,8 +445,16 @@ int native_kernel_profile_query(const struct native_kernel_profile *p,uint32_t p
 #undef SLOT
         value|=(u64)OPENGPU_NATIVE_LAYOUT_VERTEX_VERSIONS<<OPENGPU_NATIVE_LAYOUT_VERTEX_VERSIONS_SHIFT;
         value|=(u64)OPENGPU_NATIVE_LAYOUT_FRAGMENT_VERSIONS<<OPENGPU_NATIVE_LAYOUT_FRAGMENT_VERSIONS_SHIFT;
-    }else if(param>=OPENGPU_PARAM_NATIVE_CAPS_BASE && param<OPENGPU_PARAM_NATIVE_CAPS_BASE+8)
-        value=p->limits.frame.words[param-OPENGPU_PARAM_NATIVE_CAPS_BASE];
+    }else if(param==OPENGPU_PARAM_NATIVE_LAYOUT)
+        value=0;
+    else if(param>=OPENGPU_PARAM_NATIVE_CAPS_BASE && param<OPENGPU_PARAM_NATIVE_CAPS_BASE+8)
+        value=p->joint.available?0:p->limits.frame.words[param-OPENGPU_PARAM_NATIVE_CAPS_BASE];
+    else if(param>=OPENGPU_PARAM_TESS_JOINT_PROFILE_BASE &&
+        param<OPENGPU_PARAM_TESS_JOINT_PROFILE_BASE+OPENGPU_PARAM_TESS_JOINT_PROFILE_WORDS)
+        value=opengpu_tessellation_joint_profile_word(&p->joint,param-OPENGPU_PARAM_TESS_JOINT_PROFILE_BASE);
+    else if(param>=OPENGPU_PARAM_TESS_JOINT_FRAME_BASE &&
+        param<OPENGPU_PARAM_TESS_JOINT_FRAME_BASE+OPENGPU_PARAM_TESS_JOINT_FRAME_WORDS)
+        value=p->joint.available?p->limits.frame.words[param-OPENGPU_PARAM_TESS_JOINT_FRAME_BASE]:0;
     else return -EINVAL;
     *output=value;return 0;
 }

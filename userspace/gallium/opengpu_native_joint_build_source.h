@@ -86,6 +86,10 @@ void opengpu_native_joint_build_source_destroy(struct opengpu_native_joint_build
  * Changing a returned value copy cannot alter a bundle or compiler metadata. */
 int opengpu_native_joint_build_source_describe(const struct opengpu_native_joint_build_source *,
     struct opengpu_native_joint_build_description *);
+/* Submit the retained original objects through the dedicated joint DRM route.
+ * The originating context must have selected its verified joint profile. */
+int opengpu_native_joint_build_source_submit(const struct opengpu_native_joint_build_source *,
+    unsigned in_syncobj,unsigned out_syncobj,uint64_t *fence_sequence);
 #ifdef __cplusplus
 }
 #endif

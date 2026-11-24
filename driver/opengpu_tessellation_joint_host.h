@@ -13,6 +13,32 @@ struct opengpu_protected_tessellation_joint_profile {
     bool joint_directory_route, whole_owner_retirement, transform_feedback;
 };
 
+/* Export the same verified GJP1 and GNC records through DRM GET_PARAM.
+ * The kernel cache is populated only after the hardware and LDS probes. */
+static inline u32 opengpu_tessellation_joint_profile_word(
+    const struct opengpu_protected_tessellation_joint_profile *profile, unsigned word)
+{
+    if (!profile->available)
+        return 0;
+    switch (word) {
+    case 0:
+        return OPENGPU_TESS_JOINT_HOST_PROFILE_MAGIC;
+    case 1:
+        return OPENGPU_TESS_JOINT_HOST_PROFILE_REQUIRED_FLAGS |
+            ((u32)profile->scalar_fpu << OPENGPU_TESS_JOINT_HOST_PROFILE_SCALAR_FPU_BIT) |
+            ((u32)profile->advanced_blend << OPENGPU_TESS_JOINT_HOST_PROFILE_ADVANCED_BLEND_BIT) |
+            ((u32)profile->sample_inputs << OPENGPU_TESS_JOINT_HOST_PROFILE_SAMPLES_BIT) |
+            ((u32)profile->transform_feedback << OPENGPU_TESS_JOINT_HOST_PROFILE_FEEDBACK_BIT);
+    case 2:
+        return profile->warps << 24 | profile->lanes << 16 |
+            profile->compute_units << 8 | profile->domains;
+    case 3:
+        return profile->engines;
+    default:
+        return 0;
+    }
+}
+
 /* GCR1 guarantees this separate read-only record. Verify it against the
  * already validated native source provider and preserve old-device probing. */
 static inline bool opengpu_read_tessellation_joint_profile(u32 flags, u32 capabilities,

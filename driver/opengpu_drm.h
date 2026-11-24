@@ -205,6 +205,12 @@ struct drm_opengpu_param {
  * all return zero until DRIVER_FEATURE_NATIVE_BINNED is available. */
 #define OPENGPU_PARAM_NATIVE_CAPS_BASE 0x100u
 #define OPENGPU_PARAM_NATIVE_CAPS_WORDS 8u
+/* Frozen GJP1 and GNC records for SUBMIT_TESSELLATION_JOINT only.
+ * All words are zero when the protected joint route is unavailable. */
+#define OPENGPU_PARAM_TESS_JOINT_PROFILE_BASE 0x110u
+#define OPENGPU_PARAM_TESS_JOINT_PROFILE_WORDS 4u
+#define OPENGPU_PARAM_TESS_JOINT_FRAME_BASE 0x114u
+#define OPENGPU_PARAM_TESS_JOINT_FRAME_WORDS 8u
 #define OPENGPU_DRIVER_FEATURE_DISCARD_PRIVATE_DEPTH (1u << 0)
 #define OPENGPU_DRIVER_FEATURE_TRANSIENT_FRAGMENT_STAGING (1u << 1)
 /* Relaxed 32-bit AMOs/CAS within a compute submission's bound kernarg. */

@@ -233,14 +233,17 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
         request==DRM_IOCTL_OPENGPU_COMPUTE_UNIFORM_RESOURCES ||
         request==DRM_IOCTL_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES ||
         request==DRM_IOCTL_OPENGPU_COMPUTE_INDIRECT_RESOURCES ||
-        request==DRM_IOCTL_OPENGPU_SUBMIT_NATIVE_BINNED)) return resource_ioctl(request,arg);
+        request==DRM_IOCTL_OPENGPU_SUBMIT_NATIVE_BINNED ||
+        request==DRM_IOCTL_OPENGPU_SUBMIT_TESSELLATION_JOINT)) return resource_ioctl(request,arg);
     if(request==DRM_IOCTL_OPENGPU_GET_PARAM){
         struct drm_opengpu_param *p=arg;
 #ifdef OPENGPU_CS_NATIVE_LAYOUT
         if(native_parameter_query && (p->param==OPENGPU_PARAM_CAPABILITIES ||
             p->param==OPENGPU_PARAM_SHADER_CONFIG || p->param==OPENGPU_PARAM_DRIVER_FEATURES ||
             p->param==OPENGPU_PARAM_NATIVE_LAYOUT || (p->param>=OPENGPU_PARAM_NATIVE_CAPS_BASE &&
-            p->param<OPENGPU_PARAM_NATIVE_CAPS_BASE+OPENGPU_PARAM_NATIVE_CAPS_WORDS))) {
+            p->param<OPENGPU_PARAM_NATIVE_CAPS_BASE+OPENGPU_PARAM_NATIVE_CAPS_WORDS) ||
+            (p->param>=OPENGPU_PARAM_TESS_JOINT_PROFILE_BASE &&
+             p->param<OPENGPU_PARAM_TESS_JOINT_FRAME_BASE+OPENGPU_PARAM_TESS_JOINT_FRAME_WORDS))) {
             if(p->pad){errno=EINVAL;return -1;}
             uint64_t value;int result=native_parameter_query(p->param,&value);
             if(result){errno=-result;return -1;}
