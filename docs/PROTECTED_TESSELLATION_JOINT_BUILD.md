@@ -263,14 +263,16 @@ command or owner identity. The replay executor can probe a dedicated joint
 host with `--probe-joint-profile` and consume its protected captures with
 `--active-joint-owner-series`. That path rechecks discovery from the DUT,
 waits for physical memory drain and then applies the original driver's
-recorded POP and cleanup.
+recorded POP and cleanup. Both joint modes support the 4×4 functional AXI
+interface. Product qualification requires the characterized SRAM presence
+signal and hardware performance counters.
 
 The Mesa 22.3.6 Linux preflight linked and submitted the baseline and VS
 mutation for each domain and two repeated baseline triangle draws. Each of the
 eight DRM submissions retained the four linked programs after the original
 handles closed and published a separate 4×4 writable image and protected Sv32
-owner. The two VS inputs occupy distinct
-linked slots. The preflight verified the original index data, base vertex of
+owner. The two VS inputs occupy distinct linked slots. The preflight verified
+the original index data, base vertex of
 −1, two instances with base instance 7 and divisor 2, and a fixed-index marker
 that stays a regular index for ES PATCHES. The actual prepared GND clears the
 global restart enable for this primitive mode. The CPU preflight exported
@@ -327,6 +329,7 @@ configuration. Product throughput requires a full timed run.
 OPENGPU_TEST_SANITIZERS=1 python3 scripts/test_protected_tessellation_submit.py
 OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_mmio_capture.py --executor-root .
 OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_owner.py
+python3 -B scripts/test_flashsim_native_adapter.py
 python3 -B scripts/test_native_joint_live_oracle.py
 ```
 
