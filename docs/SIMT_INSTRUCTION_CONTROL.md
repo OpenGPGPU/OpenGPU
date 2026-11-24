@@ -170,7 +170,22 @@ kernel admission tests rejected barrier paths with lane-dependent conditions.
 The ARM64 Linux 7.2 module compiled and linked with GCC 15.2 after shrinking
 the validator's branch state.
 
-Build the complete owner and use the [P12 replay setup](P12_RESOURCE_COEXISTENCE.md#reproduce).
+After rebasing onto `0cf8b1251`, the image-float factory was exported again
+from `b068c9136`. All 2,310 RTL and bind inputs and the factory manifest were
+checked against the exercised model. The 32 files with changed bytes
+differed only in generated source-location comments. The fresh export took
+226 seconds with a 6.30 GiB process-tree peak. The Java process wrote FIRRTL
+with a 5 GiB heap and exited before CIRCT lowered it.
+
+Set `OWNER_OUTPUT` to a new directory under `.artifacts` and prepare the
+complete owner.
+
+```sh
+python3 -B scripts/prepare_native_owner_flashsim.py --stage prepare \
+  --image-float-resources --output "$OWNER_OUTPUT"
+```
+
+Use the [P12 replay setup](P12_RESOURCE_COEXISTENCE.md#reproduce).
 
 ```sh
 qualify_p12 --case workgroup-barrier-if
