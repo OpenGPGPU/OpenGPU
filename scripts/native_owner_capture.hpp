@@ -5,6 +5,8 @@
 #include "../driver/opengpu_protected_tessellation_joint_abi.h"
 #include "../driver/opengpu_shader_resources.h"
 #include <array>
+#include <filesystem>
+#include <fstream>
 #include <set>
 
 namespace native_owner {
