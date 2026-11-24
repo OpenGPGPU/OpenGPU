@@ -2,12 +2,14 @@
 // Replay only actual production-owner captures. No shader, descriptor, VA or
 // output byte is generated here. An independent image oracle remains required.
 #include "owner_factory.hpp"
+#include "native_execution_progress.hpp"
 #include "native_host_simulation.hpp"
 #include <array>
 #include <chrono>
 #include <filesystem>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <sstream>
 #include <thread>
 
@@ -236,7 +238,8 @@ void replay_enqueue_prefix(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,const Captu
 }
 template<class Sim,class CaptureType>
 HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
-                       Memory &memory,const CaptureType &capture,bool prefix_only=false) {
+                       Memory &memory,const CaptureType &capture,bool prefix_only=false,
+                       native_frame::ExecutionProgress *progress=nullptr) {
   capture.validate(prefix_only);
   HeldRecord held_record;held_record.initial=memory;
   verify_readonly(held_record.initial,memory,capture.writable);
@@ -253,7 +256,14 @@ HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
   // IRQ is sticky and may still describe a preceding invalidation whose
   // result was drained by polling. Observe the actual unified slot before
   // treating this record as complete; polling continues to service AXI.
-  while(!(bus.read(GPU_REG_UCMD_STATUS)&GPU_UCMD_STATUS_COMPLETION))bus.step();
+  auto last_progress=bus.cycles;
+  while(!(bus.read(GPU_REG_UCMD_STATUS)&GPU_UCMD_STATUS_COMPLETION)) {
+    bus.step();
+    if(progress && bus.cycles-last_progress>=256) {
+      progress->update(native_frame::progress_counters(bus.cycles-held_record.start_cycles,bus.cycles,agent.traffic));
+      last_progress=bus.cycles;
+    }
+  }
   require(sim.model->io_m_irq,"native unified completion has no asserted IRQ");
   require(agent.drained(),"native completion preceded external memory drain");
   const auto completed=agent.traffic;
@@ -546,6 +556,8 @@ uint64_t active_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory
     std::chrono::milliseconds response_timeout=std::chrono::minutes(5),PtePages *pte=nullptr) {
   ProfileObservation profile;
   if constexpr(!CaptureType::joint_completion)profile=probe_profile(sim,agent,bus);
+  std::optional<native_frame::ExecutionProgress> progress;
+  if constexpr(CaptureType::joint_completion)progress.emplace(output);
   uint64_t completed_write_faults=0;
   for(uint64_t n=0;n<count;n++) {
     const auto stem="record-"+std::to_string(n);
@@ -564,7 +576,9 @@ uint64_t active_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory
         continue;
       }
     }
-    auto held=hold_record(sim,agent,bus,memory,capture,true);
+    if(progress)progress->begin(stem,n+1,count,capture.max_cycles,
+      native_frame::progress_counters(0,bus.cycles,agent.traffic));
+    auto held=hold_record(sim,agent,bus,memory,capture,true,progress?&*progress:nullptr);
     atomic_json(session/(stem+".held.json"),[&](auto &out){held_json(out,held.result,n,capture.command_id);});
     wait_input(session/(stem+".retire"),session,response_timeout);
     const auto retirement=Retirement::read((session/(stem+".retire")).string(),CaptureType::joint_completion);
@@ -573,6 +587,7 @@ uint64_t active_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory
     memory.write((output/(stem+".memory")).string());
     atomic_json(session/(stem+".retired.json"),[&](auto &out){report_record(result,n,capture.command_id,bus.cycles,out);});
     report_record(result,n,capture.command_id,bus.cycles,report);
+    if(progress)progress->finish(native_frame::progress_counters(result.cycles,bus.cycles,agent.traffic));
   }
   return completed_write_faults;
 }
