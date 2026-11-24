@@ -163,6 +163,37 @@ if not {early_exit!r}:time.sleep(30)
                 tree._signal_groups(signal.SIGKILL)
             kill.assert_not_called()
 
+    def test_child_starting_its_own_session_refreshes_process_rows(self):
+        leader = bounded.ProcessRow(os.getpid(), 42, 'S', 'leader')
+        initial = {42: leader, 77: bounded.ProcessRow(42, 42, 'S', 'child')}
+        for parent, expected in ((42, {42, 77}), (1, {42})):
+            birth = 'child' if parent == 42 else 'reused pid'
+            current = {42: leader, 77: bounded.ProcessRow(parent, 77, 'S', birth)}
+            tree = bounded.OwnedProcesses(Mock(pid=42))
+            with self.subTest(parent=parent), \
+                 patch.object(bounded, 'process_rows', side_effect=[initial.copy(), current]), \
+                 patch.object(bounded.os, 'getsid', side_effect=lambda pid: pid), \
+                 patch.object(bounded.os, 'getpgid', side_effect=lambda pid: pid), \
+                 patch.object(bounded, 'process_birth', side_effect=lambda pid: pid):
+                rows, owned, exited = tree.observe()
+                self.assertEqual(rows[77], current[77])
+                self.assertEqual(owned, expected)
+                self.assertEqual(tree.groups, expected)
+                self.assertFalse(exited)
+
+    def test_inconsistent_session_in_pinned_group_is_rejected(self):
+        tree = bounded.OwnedProcesses(Mock(pid=42))
+        rows = {42: bounded.ProcessRow(os.getpid(), 42, 'S', 'leader'),
+                77: bounded.ProcessRow(42, 42, 'S', 'child')}
+        with patch.object(bounded, 'process_rows', return_value=rows), \
+             patch.object(bounded.os, 'getsid', side_effect=lambda pid: pid), \
+             patch.object(bounded.os, 'getpgid', return_value=42), \
+             patch.object(bounded, 'process_birth', side_effect=lambda pid: pid), \
+             patch.object(bounded.os, 'killpg') as kill:
+            with self.assertRaisesRegex(CleanupIncomplete, 'foreign process'):
+                tree._signal_groups(signal.SIGTERM)
+            kill.assert_not_called()
+
     def test_departed_process_does_not_become_a_foreign_live_member(self):
         row = bounded.ProcessRow(os.getpid(), 42, 'S', 'earlier ps snapshot')
         for exit_at in ('session', 'footprint'):

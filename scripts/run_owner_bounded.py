@@ -84,7 +84,19 @@ class OwnedProcesses:
                 if root_group:
                     try:
                         if os.getsid(pid) != self.process.pid:
-                            raise CleanupIncomplete('foreign process in the pinned command group')
+                            if os.getpgid(pid) == self.process.pid:
+                                raise CleanupIncomplete('foreign process in the pinned command group')
+                            # A freshly forked child can call setsid after ps.
+                            # Refresh its ancestry and group together so a reused
+                            # PID cannot inherit the old row's ownership.
+                            refreshed = process_rows().get(pid)
+                            if refreshed is None:
+                                raise ProcessLookupError(pid)
+                            if refreshed.group == self.process.pid:
+                                raise CleanupIncomplete('pinned command group observation remained stale')
+                            rows[pid] = refreshed
+                            changed = True
+                            continue
                     except ProcessLookupError:
                         rows[pid] = ProcessRow(row.parent, row.group, 'X', row.birth)
                         pending.remove(pid)
