@@ -48,7 +48,10 @@ class MemoryTests(unittest.TestCase):
                 self.assertEqual(memory._darwin_memory(42), memory.ProcessMemory(123, resident, 2 * MIB))
 
     def test_failed_native_observation_never_falls_back_to_rss(self):
-        with patch.object(memory.sys, 'platform', 'darwin'):
+        running = subprocess.CompletedProcess([], 0, 'S+\n', '')
+        with (patch.object(memory.sys, 'platform', 'darwin'),
+              patch.object(memory.subprocess, 'run', return_value=running),
+              patch.object(memory.os, 'kill', return_value=None)):
             for error in (errno.EPERM, errno.EACCES, errno.EINVAL):
                 with self.subTest(error=error), self.darwin_reader(0, 0, error=error):
                     with self.assertRaises(memory.MemoryObservationError):
@@ -60,6 +63,27 @@ class MemoryTests(unittest.TestCase):
             with self.darwin_reader(0, 0, birth=0):
                 with self.assertRaises(memory.MemoryObservationError):
                     memory.process_memory(42)
+
+    def test_darwin_permission_error_allows_only_a_confirmed_departure(self):
+        for inspect in (memory.process_birth, memory.process_memory):
+            with self.subTest(inspect=inspect.__name__), \
+                 patch.object(memory.sys, 'platform', 'darwin'), \
+                 self.darwin_reader(0, 0, error=errno.EPERM):
+                with (patch.object(memory.subprocess, 'run',
+                                   return_value=subprocess.CompletedProcess([], 0, 'Z+\n', '')),
+                      patch.object(memory.os, 'kill') as check_pid):
+                    self.assertIsNone(inspect(42))
+                    check_pid.assert_not_called()
+                with (patch.object(memory.subprocess, 'run',
+                                   return_value=subprocess.CompletedProcess([], 1, '', '')),
+                      patch.object(memory.os, 'kill', side_effect=ProcessLookupError) as check_pid):
+                    self.assertIsNone(inspect(42))
+                    check_pid.assert_called_once_with(42, 0)
+                with (patch.object(memory.subprocess, 'run',
+                                   side_effect=subprocess.TimeoutExpired('/bin/ps', 1)),
+                      patch.object(memory.os, 'kill', side_effect=PermissionError)):
+                    with self.assertRaises(memory.MemoryObservationError):
+                        inspect(42)
 
     def test_aggregate_limit_and_peaks_cover_all_owned_processes(self):
         guard = memory.ProcessMemoryBudget(3)
