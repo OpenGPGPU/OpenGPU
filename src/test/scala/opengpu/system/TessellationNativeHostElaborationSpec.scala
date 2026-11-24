@@ -1,20 +1,34 @@
 package opengpu.system
 
+import java.nio.file.{Files, Paths}
 import opengpu.config.GpuConfig
 import opengpu.graphics._
 import opengpu.testutil.GraphicsTestResolution
 import org.scalatest.flatspec.AnyFlatSpec
 
-class TessellationNativeHostElaborationSpec extends AnyFlatSpec {
-  it should "connect protected joint tessellation to two physical CUs and the shared host fabrics" in {
+object PrepareProtectedJointOwnerHost {
+  private[system] def profile: NativeAlignmentHostConfig = {
     val gpu = GpuConfig(lanes = 16, warps = 8, l2Sets = 8, l2Ways = 2)
     val graphics = GraphicsConfig(screenWidth = math.min(4, GraphicsTestResolution.width),
       screenHeight = math.min(4, GraphicsTestResolution.height))
     val native = NativeBinnedGraphicsConfig(engines = 1, pageBytes = 128, writeCredits = 2,
       tileSlots = 1, pagedCapacity = 8, preflightDescriptors = true, transformFeedback = true,
       payload = Some(ShaderPayloadConfig(capacityBytes = 4096, maxPayloadBytes = 1024, owners = 2, ports = 4)))
-    val profile = NativeAlignmentHostProfile.protectedTessellationTarget.copy(
+    NativeAlignmentHostProfile.protectedTessellationTarget.copy(
       graphics = graphics, execution = gpu, native = native)
+  }
+
+  def main(args: Array[String]): Unit = {
+    require(args.length == 1, "pass the new protected joint FIRRTL output path")
+    val output = Paths.get(args(0))
+    require(!Files.exists(output), "protected joint FIRRTL output already exists")
+    PrepareOwnerResourceImageFloatHost.writeFirrtl(new NativeAlignmentHostSystemAxi(profile), output)
+  }
+}
+
+class TessellationNativeHostElaborationSpec extends AnyFlatSpec {
+  it should "connect protected joint tessellation to two physical CUs and the shared host fabrics" in {
+    val profile = PrepareProtectedJointOwnerHost.profile
     val registers = profile.requiredDiscovery.toMap
     val flags = registers(ComputeResourceCapabilities.base + 8)
     assert((flags & (1 << 22)) != 0 && (flags & ((1 << 11) | (1 << 12))) == 0)

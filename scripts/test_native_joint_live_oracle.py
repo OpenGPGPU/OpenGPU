@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""Exercise the joint replay checks without obtaining a device receipt."""
+import struct
+import unittest
+
+from native_joint_live_oracle import expected_image, verify_image
+from qualify_native_joint_live import cleanup_checked, receipt_words, retired_receipt
+
+
+class ImagePage:
+    ranges = [(0x1000,0x2000,0xa5)]
+
+    def __init__(self, fill=0xa5):
+        self.data = bytearray([fill])*4096
+
+    def read(self, address, size):
+        offset = address - 0x1000
+        return bytes(self.data[offset:offset+size])
+
+
+class JointOracle(unittest.TestCase):
+    row = {'record':0,'domain':0,'pass':11,'generation':41,
+           'allocation':0x1000,'allocationBytes':4096,'imageOffset':64,'imageBytes':256}
+
+    def test_coverage_and_original_color(self):
+        color, mutation = struct.pack('<4I',6,17,47,53), struct.pack('<4I',3,24,62,20)
+        zero = bytes(16)
+        for domain, covered in enumerate(({4,5,6},set(range(16))-{11,14,15},set(range(16)))):
+            self.assertEqual(expected_image(domain,False),
+                             b''.join(color if i in covered else zero for i in range(16)))
+            self.assertEqual(expected_image(domain,True),
+                             b''.join(mutation if i in covered else zero for i in range(16)))
+
+    def test_writable_image_allocation_guards(self):
+        initial, observed = ImagePage(), ImagePage()
+        observed.data[64:320] = expected_image(0,False)
+        interval = [(0x1000,0x2000)]
+        verify_image(initial,observed,self.row,interval)
+        observed.data[16] ^= 1
+        with self.assertRaisesRegex(ValueError,'guard'):
+            verify_image(initial,observed,self.row,interval)
+        observed.data[16] ^= 1
+        observed.data[64] ^= 1
+        with self.assertRaisesRegex(ValueError,'pixel'):
+            verify_image(initial,observed,self.row,interval)
+
+    def test_retirement_cannot_change_held_identity_or_byte_count(self):
+        held = dict(phase='held',record=0,commandId=5,completion=0x18705,
+                    gnz2=[0x474e5a02,0,0,7,11,41,1,1,2,0,2,0,256,0,0,0],
+                    heldIrq=3,heldIrqAsserted=True,heldLegacyStatus=0,heldStatus=0x22,
+                    metadataReadBytes=384,heldCompletionDrained=True,readOnlyGuards=True,
+                    sourceQualificationRequired=True)
+        payload = receipt_words(held,'held',5,7,self.row)
+        retired = dict(held,phase='retired',ownerReplay=True,retiredStatus=1,retiredIrq=1,
+                       retiredIrqAsserted=False,externalDrained=True,resets=1,resetsBetweenRecords=False,
+                       independentImagesRequired=True,clockQualified=False,fpsQualified=False,
+                       serviceCycles=5000,writeBusBytes=256)
+        self.assertEqual(retired_receipt(retired,payload,5,7,self.row),
+                         b'OGJR0001'+payload+struct.pack('<4I',1,1,0,1))
+        with self.assertRaisesRegex(ValueError,'changed held'):
+            retired_receipt(dict(retired,metadataReadBytes=448),payload,5,7,self.row)
+        with self.assertRaisesRegex(ValueError,'generation|GNZ2'):
+            receipt_words(dict(held,gnz2=held['gnz2'][:5]+[42]+held['gnz2'][6:]),'held',5,7,self.row)
+        with self.assertRaisesRegex(ValueError,'resetsBetweenRecords'):
+            retired_receipt(dict(retired,resetsBetweenRecords=True),payload,5,7,self.row)
+
+    def test_complete_owner_cleanup_is_required(self):
+        cleanup = dict(phase='cleanup',ownerCleanupObserved=True,contextCleanupObserved=True,records=6,
+                       resetCount=1,ramReplaced=False,imagesPreserved=True,externalDrained=True,
+                       sourceQualificationRequired=True,clockQualified=False,fpsQualified=False,
+                       batches=2,pteClears=1,shootdowns=1)
+        cleanup_checked(cleanup)
+        with self.assertRaisesRegex(ValueError,'records'):
+            cleanup_checked(dict(cleanup,records=5))
+        with self.assertRaisesRegex(ValueError,'pteClears'):
+            cleanup_checked(dict(cleanup,pteClears=0))
+
+
+if __name__ == '__main__':
+    unittest.main()
