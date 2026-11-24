@@ -58,15 +58,15 @@ struct opengpu_shader_state {
     opengpu_shader_u32 vector_packet_indexed;
     opengpu_shader_u32 vector_local_packets;
     unsigned char vector_packet_sources[32];
-    /* VL is bounded by the 255-entry ABI. Pack resource-result flags into
-     * its spare bits so each of the five branch states stays compact. */
-    opengpu_shader_u32 vector_length:28;
+    /* VL is bounded by the 255-entry ABI. Each parameter pair has
+     * a three-bit selector. Keep their masks and result flags together. */
+    opengpu_shader_u32 vector_length:8;
+    opengpu_shader_u32 texture_parameter_pairs:8;
+    opengpu_shader_u32 image_parameter_pairs:8;
     opengpu_shader_u32 image_result_valid:1;
     opengpu_shader_u32 storage_values_valid:1;
     opengpu_shader_u32 storage_atomic_values_valid:1;
     opengpu_shader_u32 shared_atomic_values_valid:1;
-    opengpu_shader_u32 texture_parameter_pairs;
-    opengpu_shader_u32 image_parameter_pairs;
     opengpu_shader_u32 shared_written_prefix;
     opengpu_shader_u32 shared_visible_prefix;
     struct opengpu_shared_own_proof *shared_own;
@@ -1257,7 +1257,12 @@ static bool opengpu_shader_uniform_span(const opengpu_shader_u32 *words,
  * a barrier inside a scope. At entry x2..x4 hold the workgroup ID and x5..x7
  * hold the local shape. x8 and v1 depend on the lane/warp.
  */
-static inline bool opengpu_shader_uniform_barriers(
+#ifdef __KERNEL__
+static __attribute__((__noinline__)) bool
+#else
+static inline bool
+#endif
+opengpu_shader_uniform_barriers(
     const opengpu_shader_u32 *words, opengpu_shader_u32 count)
 {
     struct opengpu_shader_uniform_span flow = {.value = {.scalar = 0xfdu}};
