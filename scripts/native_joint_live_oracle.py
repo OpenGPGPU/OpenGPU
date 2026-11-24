@@ -108,7 +108,7 @@ def physical(memory, satp, va, count, permission):
     return first
 
 
-def original_graph(memory, regs, context, row, fault):
+def original_graph(memory, regs, context, row, *, frame_version, fault=None):
     """Check the published owner's descriptors and original input selection."""
     satp, root = regs[0x14c], regs[0xf4]
 
@@ -143,6 +143,7 @@ def original_graph(memory, regs, context, row, fault):
             view(draw[185]+7*16,32) == struct.pack('<8I',1,2,4,8,128,64,32,16),
             'vertex/index/divisor route is missing its original distinguishable data')
     frame = words(job[21], 512)
+    require(frame[299] == frame_version, 'original GNF payload version differs from DUT discovery')
     require(frame[0] == 0x474e4601 and frame[211:213] == (HEIGHT,WIDTH) and
             frame[216:219] == (WIDTH*16,1,1) and
             physical(memory,satp,frame[210],IMAGE_BYTES,7) == row['allocation']+row['imageOffset'],

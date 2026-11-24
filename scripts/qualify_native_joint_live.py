@@ -140,6 +140,9 @@ def exchange(directory, executor, bridge, discovery, engines, identities, timeou
         wait_file(path,bridge,None,timeout)
     with SparseMemory(memory) as initial:
         context, rows = original_records(strict_json(layout),initial,engines)
+    gnc_magic = dict(discovery).get(0x160)
+    require(gnc_magic in (0x474e4302,0x474e4303),'joint replay requires discovered GNC2 or GNC3')
+    frame_version = 1 if gnc_magic == 0x474e4302 else 2
     identities.update({path:digest(regular(path)) for path in (memory,layout,first)})
     running = executor(memory,results,session)
     try:
@@ -161,7 +164,7 @@ def exchange(directory, executor, bridge, discovery, engines, identities, timeou
                     require(all(last<=start or first>=start+other['allocationBytes'] for first,last in writable),
                             'joint command includes a foreign image allocation in its writable ranges')
                 commands.add(command)
-                shader = original_graph(initial,regs,context,row,fault)
+                shader = original_graph(initial,regs,context,row,frame_version=frame_version,fault=fault)
                 domain, mutation, _ = CASES[index]
                 if mutation:
                     require(baseline_shaders[domain]!=shader,'original VS mutation did not change executable bytes')
