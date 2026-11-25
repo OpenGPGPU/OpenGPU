@@ -3,7 +3,10 @@
 import struct
 import unittest
 
-from native_joint_live_oracle import RECORDS, SOURCE_CANCEL_RECORD, VGA_QUAD, expected_image, verify_image
+from native_joint_live_oracle import (
+    FULL_PATCH_ENDPOINTS, PATCH_ENDPOINTS, RECORDS, SOURCE_CANCEL_RECORD, VGA_QUAD,
+    expected_image, verify_image,
+)
 from qualify_native_joint_live import cleanup_checked, receipt_words, reset_receipt, retired_receipt
 
 
@@ -62,6 +65,18 @@ class JointOracle(unittest.TestCase):
         observed.data[end] ^= 1
         with self.assertRaisesRegex(ValueError,'guard'):
             verify_image(initial,observed,row,interval,fixture=VGA_QUAD)
+
+    def test_patch_endpoint_variants_require_the_last_vertex_and_patch_words(self):
+        initial, observed = ImagePage(), ImagePage()
+        interval = [(0x1000,0x2000)]
+        for fixture, record, third in ((PATCH_ENDPOINTS,5,956),(FULL_PATCH_ENDPOINTS,1,0x3f800136)):
+            row = dict(self.row,record=record,domain=2)
+            observed.data[64:320] = struct.pack('<4I',0x43000000,0x3f800154,third,0x7f800000)*16
+            verify_image(initial,observed,row,interval,fixture=fixture)
+            # Substitute the value for vertex 0 at the last column for vertex 31.
+            observed.data[68:72] = struct.pack('<I',0x3f800135)
+            with self.assertRaisesRegex(ValueError,'pixel 0,0'):
+                verify_image(initial,observed,row,interval,fixture=fixture)
 
     def test_retirement_cannot_change_held_identity_or_byte_count(self):
         held = dict(phase='held',record=0,commandId=5,completion=0x18705,
