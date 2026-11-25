@@ -17,7 +17,8 @@ from build_native_flashsim import digest, model_library_path
 from compute_owner_protocol import required_flags, strict_json, uint
 from native_graphics_uniform_oracle import SparseMemory, require
 from native_joint_live_oracle import (
-    RECORDS, SMALL, SOURCE_CANCEL_RECORD, VGA_QUAD, capture, original_graph, original_records, verify_image,
+    FULL_PATCH_ENDPOINTS, PATCH_ENDPOINTS, RECORDS, SMALL, SOURCE_CANCEL_RECORD, VGA_QUAD,
+    capture, original_graph, original_records, verify_image,
 )
 from native_sample_graphics_controller import wait_cleanup
 from native_sample_owner_controller import atomic, regular, wait_file
@@ -169,8 +170,8 @@ def docker_command(gpu, directory, name, timeout, fixture=SMALL):
         '--legacy-source /joint-out/reference-uniform.c && '
         'exec /joint-out/build/native-joint userspace/tests/tess_joint_live_essl /joint-out/profile.bin /joint-out/session'
     )
-    if fixture == VGA_QUAD:
-        recipe += ' --vga-quad'
+    recipe += {VGA_QUAD: ' --vga-quad', PATCH_ENDPOINTS: ' --patch-endpoints',
+               FULL_PATCH_ENDPOINTS: ' --full-patch-endpoints'}.get(fixture, '')
     return [*command,'-w','/joint-src',IMAGE,'/bin/bash','-ec',recipe]
 
 
@@ -209,11 +210,11 @@ def exchange(directory, executor, bridge, discovery, engines, identities, timeou
                 shader, index_line = original_graph(initial,regs,context,row,
                     frame_version=frame_version,fault=fault,fixture=fixture)
                 domain, mutation, _ = fixture.cases[index]
-                if mutation:
+                if mutation and fixture.patch_layout is None:
                     require(baseline_shaders[domain]!=shader,'original VS mutation did not change executable bytes')
                 else:
                     require(baseline_shaders.setdefault(domain,shader)==shader,
-                            'fault, cancel or recovery draw lost the original baseline VS')
+                            'joint replay variant changed its original source program')
                 cancel = index==SOURCE_CANCEL_RECORD
                 if cancel:
                     reset_stem = stem+'.reset.'
@@ -360,16 +361,21 @@ def main():
                         help='extra compiler-driver flag for linking in build-only mode (repeatable)')
     parser.add_argument('--shared-model',action='store_true',
                         help='link the Darwin DUT as a library in build-only mode')
-    parser.add_argument('--vga-quad',action='store_true',
-                        help='replay the original and mutated quad at 640x480 on the four-engine factory')
+    recipes = parser.add_mutually_exclusive_group()
+    recipes.add_argument('--vga-quad',dest='fixture',action='store_const',const=VGA_QUAD,
+                         help='replay the original and mutated quad at 640x480 on the four-engine factory')
+    recipes.add_argument('--patch-endpoints',dest='fixture',action='store_const',const=PATCH_ENDPOINTS,
+                         help='replay the 32x60 vertex and 120 per-patch word endpoints on all three domains')
+    recipes.add_argument('--full-patch-endpoints',dest='fixture',action='store_const',const=FULL_PATCH_ENDPOINTS,
+                         help='replay the 32x64 vertex word endpoints in the quad domain')
+    parser.set_defaults(fixture=SMALL)
     args = parser.parse_args()
     require(0 < args.timeout <= 86400 and args.jobs > 0, 'invalid joint timeout or C++ job count')
     dut = args.dut_dir.resolve(strict=True)
     if args.build_only:
         build_executor(args.executor_build.resolve(),dut,args.jobs,args.shard_opt,args.link_flag,args.shared_model)
         return
-    fixture = VGA_QUAD if args.vga_quad else SMALL
-    records = run(args.executor_build.resolve(strict=True),dut,args.timeout,fixture)
+    records = run(args.executor_build.resolve(strict=True),dut,args.timeout,args.fixture)
     print(f'Joint FlashSim run passed {len(records)} image oracles, actual driver retirement and acknowledged cleanup.')
 
 

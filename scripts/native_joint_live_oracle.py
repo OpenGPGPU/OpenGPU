@@ -25,6 +25,7 @@ class ReplayFixture:
     height: int
     tile_log2: int
     cases: tuple[tuple[int, bool, bool], ...]
+    patch_layout: tuple[int, int] | None = None
 
     @property
     def image_bytes(self):
@@ -38,6 +39,8 @@ class ReplayFixture:
 
 SMALL = ReplayFixture(4,4,3,CASES)
 VGA_QUAD = ReplayFixture(640,480,4,CASES[4:6])
+PATCH_ENDPOINTS = ReplayFixture(4,4,3,CASES[:6],patch_layout=(60,120))
+FULL_PATCH_ENDPOINTS = ReplayFixture(4,4,3,CASES[4:6],patch_layout=(64,0))
 
 
 def original_records(value, initial, engines, *, preflight=False, fixture=SMALL):
@@ -151,6 +154,30 @@ def original_graph(memory, regs, context, row, *, frame_version, fault=None, fix
     sequence = words(job[16], 512)
     require(sequence[0] == 0x474e5407 + row['domain'] and sequence[16] == 2,
             'published GNT lost the original per-instance patch range')
+    tes_code = b''
+    if fixture.patch_layout is not None:
+        layout_word = 214 if row['domain'] == 0 else 215
+        vertex_words, patch_words = fixture.patch_layout
+        require(sequence[layout_word:layout_word+5] == (8,2,vertex_words,32,patch_words) and
+                sequence[layout_word+23] == 0,
+                'published GNT changed the dynamic patch layout or added static selections')
+        tes_pc = sequence[layout_word+18]
+        require(tes_pc and tes_pc % 4 == 0, 'missing original TES executable')
+        tes_code = view(tes_pc,4096-(tes_pc & 4095),11)
+        require(any(word & 0xfc00707f == 0x8400002b for word, in struct.iter_unpack('<I',tes_code)),
+                'original TES omitted the owned patch-read instruction')
+        uniform = words(sequence[505],16)
+        identity = (context,row['pass'],row['generation'])
+        require(sequence[504] == 3 and uniform[0] == 0x47555203 and
+                uniform[3:8] == (*identity,5,0) and uniform[14] == 1,
+                'dynamic TES lost its private default uniform root')
+        binding = words(uniform[13],16)
+        require(binding[0] == 0x47554203 and binding[3:8] == (*identity,31,32) and
+                binding[9:11] == (binding[8]+16,0) and binding[14] == 1,
+                'dynamic TES lost its read-only endpoint selectors')
+        column_or_patch = 2 if fixture == FULL_PATCH_ENDPOINTS else 29
+        expected_indices = (31,3,column_or_patch,3) if row['record'] & 1 else (0,0,0,0)
+        require(words(binding[8],4) == expected_indices, 'protected defaults changed the TES endpoint selectors')
     directory = words(job[28], 32)
     entry = directory[16:]
     require(entry[:5] == (0, 0, row['record']+3, 1, 3) and entry[6:10] == (0,2,0,1) and entry[11] == 2,
@@ -183,7 +210,7 @@ def original_graph(memory, regs, context, row, *, frame_version, fault=None, fix
     # The original GND declares UINT8 indices. Bind the response hold to the
     # cache line containing the first index through the real Sv32 table.
     index_line = physical(memory,satp,(draw[322]+draw[312])&~63,64,3)
-    return hashlib.sha256(view(pc,4096-(pc & 4095),11)).digest(), index_line
+    return hashlib.sha256(view(pc,4096-(pc & 4095),11)+tes_code).digest(), index_line
 
 
 def expected_image(domain, mutation, *, fixture=SMALL):
@@ -192,11 +219,22 @@ def expected_image(domain, mutation, *, fixture=SMALL):
     # triangle's hypotenuse is x+y=0.75 in NDC, between the sample sums.
     require(domain in (0,1,2) and type(mutation) is bool, 'invalid joint image recipe')
     base = (6,17,47,53)
-    color = struct.pack('<4I',*(c^m for c,m in zip(base,(5,9,17,33)))) if mutation else struct.pack('<4I',*base)
+    if fixture == FULL_PATCH_ENDPOINTS:
+        front = (0x3e800000,0x3f800004,0x3f800004,0x7f800000)
+        back = (0x43000000,0x3f800154,0x3f800136,0x7f800000)
+        color = struct.pack('<4I',*(back if mutation else front))
+    elif fixture == PATCH_ENDPOINTS:
+        # The channels identify matrix columns, the selected vertex's final
+        # matrix word, the selected per-patch word and the two tess levels.
+        front = (0x3e800000,0x3f800004,153,0x7f800000)
+        back = (0x43000000,0x3f800154,956,0x7f800000)
+        color = struct.pack('<4I',*(back if mutation else front))
+    else:
+        color = struct.pack('<4I',*(c^m for c,m in zip(base,(5,9,17,33)))) if mutation else struct.pack('<4I',*base)
     if domain == 2:
         # The unmodified quad recipe covers all pixel centers in the viewport.
         return color * (fixture.width * fixture.height)
-    require(fixture == SMALL, 'line and triangle coverage requires the 4x4 fixture')
+    require((fixture.width,fixture.height) == (4,4), 'line and triangle coverage requires the 4x4 fixture')
     clear = bytes(16)
     output = bytearray()
     for y in range(fixture.height):

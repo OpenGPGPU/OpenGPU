@@ -5,6 +5,7 @@
 #include "native_graphics_v2_resources.c"
 #include "opengpu_native_joint_build_source.h"
 #include "opengpu_native_joint_internal.h"
+#include "../../driver/opengpu_tessellation_uniform_abi.h"
 #include "../../scripts/native_joint_live_bridge.h"
 
 static struct native_kernel_profile *joint_profile;
@@ -52,16 +53,23 @@ static void joint_source_path(char path[4096],const char *directory,const char *
     int length=snprintf(path,4096,"%s/%s",directory,name);
     assert(length>0 && length<4096);
 }
+enum joint_mode { JOINT_SMALL, JOINT_VGA_QUAD, JOINT_PATCH_ENDPOINTS, JOINT_FULL_PATCH_ENDPOINTS };
+
 static void joint_case(struct pipe_context *pipe,const char *sources,unsigned index,unsigned engines,
-    bool vga_quad,FILE *layout)
+    enum joint_mode mode,FILE *layout)
 {
     static const char *evaluation[]={"isoline.tese","triangle.tese","quad.tese"};
+    static const char *patch_evaluation[]={"patch-isoline.tese","patch-triangle.tese","patch-quad.tese"};
     static const uint32_t seed[4]={7,19,43,61};
+    const bool vga_quad=mode==JOINT_VGA_QUAD, full_patch=mode==JOINT_FULL_PATCH_ENDPOINTS;
+    const bool patch_endpoints=mode==JOINT_PATCH_ENDPOINTS || full_patch;
     unsigned domain=index<JOINT_LIVE_BASE_RECORDS?index/2:1;
-    if (vga_quad) domain=2;
-    bool mutation=index<JOINT_LIVE_BASE_RECORDS && (index&1);
+    if (vga_quad || full_patch) domain=2;
+    bool mutation=!patch_endpoints && index<JOINT_LIVE_BASE_RECORDS && (index&1);
     assert(domain<3 && engines>=1 && engines<=4);
-    const char *names[]={mutation?"mutation.vert":"original.vert","shared.tesc",evaluation[domain],"shared.frag"};
+    const char *control=full_patch?"patch-full.tesc":patch_endpoints?"patch-capacity.tesc":"shared.tesc";
+    const char *tes=full_patch?"patch-full-quad.tese":patch_endpoints?patch_evaluation[domain]:evaluation[domain];
+    const char *names[]={mutation?"mutation.vert":"original.vert",control,tes,"shared.frag"};
     char paths[4][4096];
     const char *files[4];
     for (unsigned i=0;i<4;++i) {
@@ -78,12 +86,24 @@ static void joint_case(struct pipe_context *pipe,const char *sources,unsigned in
     struct pipe_context *sink=opengpu_native_joint_constants_pipe(constants);
     assert(opengpu_native_joint_defaults(link,PIPE_SHADER_VERTEX)==4);
     assert(!opengpu_native_joint_bind_defaults(link,sink,PIPE_SHADER_VERTEX,seed,4));
+    if (patch_endpoints) {
+        const uint32_t indices[2][4]={{0,0,0,0},{31,3,full_patch?2u:29u,3}};
+        const unsigned stage=OPENGPU_TESSELLATION_UNIFORM_EVALUATION_STAGE;
+        assert(opengpu_native_joint_defaults(link,stage)==4);
+        assert(!opengpu_native_joint_bind_defaults(link,sink,stage,indices[index&1],4));
+    }
     struct opengpu_native_joint_source *source=opengpu_native_joint_source_create(program,constants);
     assert(source);
     struct opengpu_native_joint_description shader;
     assert(!opengpu_native_joint_source_describe(source,&shader));
     assert(shader.vertex_layout.attributes==2);
     assert(shader.fragment.metadata.abi_version==8 && shader.fragment.metadata.color_types[0]==1);
+    if (patch_endpoints) {
+        const struct opengpu_native_tess_layout *control=&shader.tess[0].layout;
+        assert(control->output_vertices==32 && control->output_components==(full_patch?64u:60u) &&
+            control->patch_components==(full_patch?0u:120u));
+        assert(shader.tess[1].layout.owned_patch_reads && shader.tess[1].selection_count==0);
+    }
 
     struct pipe_resource *resources[12]={0};
     unsigned resource_count=0;
@@ -165,9 +185,13 @@ static void joint_case(struct pipe_context *pipe,const char *sources,unsigned in
 
 int main(int argc,char **argv)
 {
-    const bool vga_quad=argc==5 && !strcmp(argv[4],"--vga-quad");
-    if (argc!=4 && !vga_quad) {
-        fprintf(stderr,"usage: native-joint ESSL_DIR PROFILE_OR_--cpu-preflight SESSION_DIR [--vga-quad]\n");
+    enum joint_mode mode=JOINT_SMALL;
+    if (argc==5 && !strcmp(argv[4],"--vga-quad")) mode=JOINT_VGA_QUAD;
+    if (argc==5 && !strcmp(argv[4],"--patch-endpoints")) mode=JOINT_PATCH_ENDPOINTS;
+    if (argc==5 && !strcmp(argv[4],"--full-patch-endpoints")) mode=JOINT_FULL_PATCH_ENDPOINTS;
+    if (argc!=4 && mode==JOINT_SMALL) {
+        fprintf(stderr,"usage: native-joint ESSL_DIR PROFILE_OR_--cpu-preflight SESSION_DIR "
+            "[--vga-quad|--patch-endpoints|--full-patch-endpoints]\n");
         return 2;
     }
     const bool cpu_preflight=!strcmp(argv[2],"--cpu-preflight");
@@ -182,7 +206,7 @@ int main(int argc,char **argv)
     bool driver_profile;
     unsigned context;
     assert(!opengpu_native_joint_source_runtime(pipe,&runtime,&context,&driver_profile) && driver_profile);
-    assert(!vga_quad || runtime.engines==4);
+    assert(mode!=JOINT_VGA_QUAD || runtime.engines==4);
     joint_session=native_kernel_session_create_profile(context,joint_profile);
     assert(joint_session);
     native_original_allocate=joint_allocate;
@@ -195,8 +219,10 @@ int main(int argc,char **argv)
     assert(layout);
     fprintf(layout,"{\"context\":%u,\"engines\":%u,\"cpuPreflight\":%s,\"records\":[",
         context,runtime.engines,cpu_preflight?"true":"false");
-    const unsigned records=vga_quad?2:JOINT_LIVE_RECORDS;
-    for (unsigned i=0;i<records;++i) joint_case(pipe,argv[1],i,runtime.engines,vga_quad,layout);
+    unsigned records=JOINT_LIVE_RECORDS;
+    if (mode==JOINT_PATCH_ENDPOINTS) records=JOINT_LIVE_BASE_RECORDS;
+    if (mode==JOINT_VGA_QUAD || mode==JOINT_FULL_PATCH_ENDPOINTS) records=2;
+    for (unsigned i=0;i<records;++i) joint_case(pipe,argv[1],i,runtime.engines,mode,layout);
     fputs("]}\n",layout);
     assert(!fclose(layout));
     joint_live_export(joint_session,argv[3]);
