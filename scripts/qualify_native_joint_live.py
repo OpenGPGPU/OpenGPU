@@ -17,7 +17,7 @@ from build_native_flashsim import digest, model_library_path
 from compute_owner_protocol import required_flags, strict_json, uint
 from native_graphics_uniform_oracle import SparseMemory, require
 from native_joint_live_oracle import (
-    FULL_PATCH_ENDPOINTS, PATCH_ENDPOINTS, RECORDS, SMALL, SOURCE_CANCEL_RECORD, TESS_UNIFORMS, VGA_QUAD,
+    FULL_PATCH_ENDPOINTS, PATCH_ENDPOINTS, RECORDS, SMALL, TESS_UNIFORMS, TESS_UNIFORM_RECOVERY, VGA_QUAD,
     capture, original_graph, original_records, verify_image,
 )
 from native_sample_graphics_controller import wait_cleanup
@@ -87,40 +87,55 @@ def profile_words(profile):
     return words+registers, values[0x55c], bytes(wire)
 
 
-def receipt_words(value, phase, command, context, row, fault_address=0):
+def receipt_words(value, phase, command, context, row, fault_address=0, *, read_fault_line=0):
     write_fault = bool(fault_address)
+    read_fault = bool(read_fault_line)
+    require(not (write_fault and read_fault),'joint receipt cannot combine read and write faults')
+    status_code = 0x10f00 if read_fault else 0x11f00 if write_fault else 0x18700
     required_flags(value,dict(phase=phase, record=row['record'], commandId=command,
-        completion=(0x11f00 if write_fault else 0x18700)|command,physicalWriteFaults=int(write_fault),
+        completion=status_code|command,physicalWriteFaults=int(write_fault),
         heldIrq=3,heldIrqAsserted=True,heldCompletionDrained=True,
         readOnlyGuards=True,sourceQualificationRequired=True))
+    require(uint(value.get('physicalReadFaults',0),64) == int(read_fault) and
+            uint(value.get('physicalReadFaultLine',0),64) == read_fault_line,
+            'physical read fault does not match the selected uniform line')
     detail = value.get('gnz2')
     require(type(detail) is list and len(detail) == 16, 'held GNZ2 is incomplete')
     detail = tuple(uint(word) for word in detail)
     read = uint(value.get('metadataReadBytes'),64)
     legacy, status = uint(value.get('heldLegacyStatus')),uint(value.get('heldStatus'))
-    require(detail[:10]==(0x474e5a02,51 if write_fault else 0,fault_address,context,
-                          row['pass'],row['generation'],1,1,2,0) and
-            0 < (detail[10] | detail[11]<<32) and detail[12:]==(0 if write_fault else row['imageBytes'],0,0,0) and
+    # GNZ2 reports a uniform read failure at the range owner and a write
+    # failure at the image store. The selected physical line identifies
+    # which shader stage received the bus error.
+    fault_status = (5 << 3) | 1 if read_fault else (6 << 3) | 3 if write_fault else 0
+    range_counters = (1,0,0,0) if read_fault else (1,1,2,0)
+    published = detail[10] | detail[11] << 32
+    stored = 0 if (read_fault or write_fault) else row['imageBytes']
+    require(detail[:10]==(0x474e5a02,fault_status,fault_address,context,
+                          row['pass'],row['generation'],*range_counters) and
+            (published==0 if read_fault else published>0) and detail[12:]==(stored,0,0,0) and
             read and not read&63 and status&2 and not status&~0x23,
-            'GNZ2 does not describe the expected complete two-instance render')
+            'GNZ2 does not describe the expected joint retirement')
     return struct.pack('<19IQ4I',row['record'],command,value['completion'],*detail,read,legacy,status,3,1)
 
 
-def retired_receipt(value, held, command, context, row, fault_address=0):
+def retired_receipt(value, held, command, context, row, fault_address=0, *, read_fault_line=0):
     required_flags(value,dict(ownerReplay=True,retiredStatus=1,retiredIrq=1,
         retiredIrqAsserted=False,externalDrained=True,resets=1,resetsBetweenRecords=False,
         independentImagesRequired=True,clockQualified=False,fpsQualified=False))
-    payload = receipt_words(value,'retired',command,context,row,fault_address)
+    payload = receipt_words(value,'retired',command,context,row,fault_address,read_fault_line=read_fault_line)
     require(payload==held, 'retired DUT receipt changed held ownership or counters')
-    require(uint(value.get('serviceCycles'),64)>0 and uint(value.get('writeBusBytes'),64)>0,
-            'no observed service or writes for the joint frame')
+    write_bytes = uint(value.get('writeBusBytes'),64)
+    require(uint(value.get('serviceCycles'),64)>0 and (write_bytes>0 or read_fault_line),
+            'no observed service or required writes for the joint record')
     return b'OGJR0001'+payload+struct.pack('<4I',1,1,0,1)
 
 
-def reset_receipt(value, phase, command, record, index_line, satp, previous=None):
+def reset_receipt(value, phase, command, record, read_line, satp, previous=None, *, uniform=False):
     require((phase=='held')==(previous is None), 'joint reset phase lacks its preceding receipt')
-    required_flags(value,dict(phase=phase,record=record,commandId=command,legacyStatus=0,
-        physicalIndexLine=index_line,satp=satp,externalDrained=phase!='held'))
+    line_key = 'physicalReadLine' if uniform else 'physicalIndexLine'
+    required_flags(value,{**dict(phase=phase,record=record,commandId=command,legacyStatus=0,
+                                  satp=satp,externalDrained=phase!='held'), line_key:read_line})
     status, irq = uint(value.get('status')), uint(value.get('irq'))
     pin = value.get('irqAsserted')
     holds = uint(value.get('heldReadCycles'),64)
@@ -129,7 +144,7 @@ def reset_receipt(value, phase, command, record, index_line, satp, previous=None
     require(type(pin) is bool and pin==bool(irq&2) and holds and cycles, 'missing original held AXI response')
     if phase=='held':
         require(status in (0x20,0x21) and irq in (1,3) and reset_holds==0,
-                'original index read is outside an active command')
+                'selected read is outside an active joint command')
         magic = b'OGJCH001'
     elif phase=='ack':
         require(status==1 and irq==3 and reset_holds>=32 and holds>=previous['heldReadCycles']+reset_holds,
@@ -171,7 +186,8 @@ def docker_command(gpu, directory, name, timeout, fixture=SMALL):
         'exec /joint-out/build/native-joint userspace/tests/tess_joint_live_essl /joint-out/profile.bin /joint-out/session'
     )
     recipe += {VGA_QUAD: ' --vga-quad', PATCH_ENDPOINTS: ' --patch-endpoints',
-               FULL_PATCH_ENDPOINTS: ' --full-patch-endpoints', TESS_UNIFORMS: ' --tess-uniforms'}.get(fixture, '')
+               FULL_PATCH_ENDPOINTS: ' --full-patch-endpoints', TESS_UNIFORMS: ' --tess-uniforms',
+               TESS_UNIFORM_RECOVERY: ' --tess-uniform-recovery'}.get(fixture, '')
     return [*command,'-w','/joint-src',IMAGE,'/bin/bash','-ec',recipe]
 
 
@@ -207,41 +223,54 @@ def exchange(directory, executor, bridge, discovery, engines, identities, timeou
                     require(all(last<=start or first>=start+other['allocationBytes'] for first,last in writable),
                             'joint command includes a foreign image allocation in its writable ranges')
                 commands.add(command)
-                shader, index_line = original_graph(initial,regs,context,row,
+                shader, read_line = original_graph(initial,regs,context,row,
                     frame_version=frame_version,fault=fault,fixture=fixture)
                 domain, mutation, _ = fixture.cases[index]
-                if mutation and fixture.patch_layout is None and fixture != TESS_UNIFORMS:
+                if mutation and fixture.patch_layout is None and not fixture.tess_uniforms:
                     require(baseline_shaders[domain]!=shader,'original VS mutation did not change executable bytes')
                 else:
                     require(baseline_shaders.setdefault(domain,shader)==shader,
                             'joint replay variant changed its original source program')
-                cancel = index==SOURCE_CANCEL_RECORD
+                read = fixture.uniform_read(index)
+                cancel = fixture.cancels_read(index)
                 if cancel:
                     reset_stem = stem+'.reset.'
                     plan = session/(reset_stem+'plan')
-                    target = b'OGJCP001'+struct.pack('<Q',index_line)
+                    target = (b'OGJCP002' if read is not None else b'OGJCP001')+struct.pack('<Q',read_line)
                     atomic(plan,target)
                     identities[plan] = hashlib.sha256(target).hexdigest()
                     held_path = session/(reset_stem+'held.json')
                     wait_file(held_path,bridge,running,timeout)
                     reset_held = strict_json(held_path)
-                    response = reset_receipt(reset_held,'held',command,index,index_line,regs[0x14c])
+                    response = reset_receipt(reset_held,'held',command,index,read_line,regs[0x14c],
+                                             uniform=read is not None)
                     atomic(session/(reset_stem+'held.response'),response)
                     ack_path = session/(reset_stem+'ack.json')
                     wait_file(ack_path,bridge,running,timeout)
                     ack = strict_json(ack_path)
-                    response = reset_receipt(ack,'ack',command,index,index_line,regs[0x14c],reset_held)
+                    response = reset_receipt(ack,'ack',command,index,read_line,regs[0x14c],reset_held,
+                                             uniform=read is not None)
                     response_path = session/(reset_stem+'ack.response')
                 else:
                     fault_address = fault[1] if fault else 0
+                    read_fault_line = 0
+                    if read is not None:
+                        require(read.fault,'uniform cancellation entered the fault path')
+                        read_fault_line = read_line
+                        plan = session/(stem+'.uniform-fault.plan')
+                        target = b'OGJFP001'+struct.pack('<Q',read_line)
+                        atomic(plan,target)
+                        identities[plan] = hashlib.sha256(target).hexdigest()
                     held_path = session/(stem+'.held.json')
                     wait_file(held_path,bridge,running,timeout)
-                    normal_held = receipt_words(strict_json(held_path),'held',command,context,row,fault_address)
+                    normal_held = receipt_words(strict_json(held_path),'held',command,context,row,fault_address,
+                                                read_fault_line=read_fault_line)
                     atomic(session/(stem+'.held.response'),b'OGJH0001'+normal_held)
                     retired_path = session/(stem+'.retired.json')
                     wait_file(retired_path,bridge,running,timeout)
                     retired = strict_json(retired_path)
-                    response = retired_receipt(retired,normal_held,command,context,row,fault_address)
+                    response = retired_receipt(retired,normal_held,command,context,row,fault_address,
+                                               read_fault_line=read_fault_line)
                     response_path = session/(stem+'.retired.response')
                 result = results/(stem+'.memory')
                 wait_file(result,bridge,running,timeout)
@@ -254,7 +283,8 @@ def exchange(directory, executor, bridge, discovery, engines, identities, timeou
                     retired_path = session/(reset_stem+'retired.json')
                     wait_file(retired_path,bridge,running,timeout)
                     retired = strict_json(retired_path)
-                    response = reset_receipt(retired,'retired',command,index,index_line,regs[0x14c],ack)
+                    response = reset_receipt(retired,'retired',command,index,read_line,regs[0x14c],ack,
+                                             uniform=read is not None)
                     atomic(session/(reset_stem+'retired.response'),response)
                 records.append(retired)
                 print(f'Joint record {index} verified in {retired["serviceCycles"]} service cycles',flush=True)
@@ -302,7 +332,8 @@ def run(build, dut, timeout, fixture=SMALL):
                                          stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
                 require(probe.wait(timeout=timeout)==0,'protected joint DUT discovery failed')
             discovery, engines, profile_packet = profile_words(strict_json(regular(profile)))
-            require(fixture != VGA_QUAD or engines == 4, 'the VGA quad replay requires four discovered engines')
+            if fixture == VGA_QUAD or fixture.recover_uniform_reads:
+                require(engines == 4,'complete joint replay requires four discovered engines')
             atomic(directory/'profile.bin',profile_packet)
             ref = subprocess.check_output(['git','show',REFERENCE],cwd=ROOT)
             atomic(directory/'reference-uniform.c',ref)
@@ -370,6 +401,8 @@ def main():
                          help='replay the 32x64 vertex word endpoints in the quad domain')
     recipes.add_argument('--tess-uniforms',dest='fixture',action='store_const',const=TESS_UNIFORMS,
                          help='replay original TCS/TES GUR3 UBOs and defaults in all three domains')
+    recipes.add_argument('--tess-uniform-recovery',dest='fixture',action='store_const',const=TESS_UNIFORM_RECOVERY,
+                         help='check original TCS/TES uniform read faults and cancellation on the complete factory')
     parser.set_defaults(fixture=SMALL)
     args = parser.parse_args()
     require(0 < args.timeout <= 86400 and args.jobs > 0, 'invalid joint timeout or C++ job count')

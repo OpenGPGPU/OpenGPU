@@ -4,7 +4,8 @@ import struct
 import unittest
 
 from native_joint_live_oracle import (
-    FULL_PATCH_ENDPOINTS, PATCH_ENDPOINTS, RECORDS, SOURCE_CANCEL_RECORD, TESS_UNIFORMS, VGA_QUAD,
+    FULL_PATCH_ENDPOINTS, PATCH_ENDPOINTS, RECORDS, SOURCE_CANCEL_RECORD, TESS_UNIFORMS,
+    TESS_UNIFORM_RECOVERY, VGA_QUAD,
     expected_image, verify_image,
 )
 from qualify_native_joint_live import cleanup_checked, receipt_words, reset_receipt, retired_receipt
@@ -149,6 +150,30 @@ class JointOracle(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'pteClears'):
             cleanup_checked(dict(cleanup,pteClears=0))
 
+    def test_uniform_read_fault_requires_exact_physical_line_and_no_publication(self):
+        row = self.row | {'record':2,'pass':13,'generation':43}
+        line = 0x5000
+        detail = [0x474e5a02,41,0,7,13,43,1,0,0,0,0,0,0,0,0,0]
+        held = dict(phase='held',record=2,commandId=5,completion=0x10f05,gnz2=detail,
+                    heldIrq=3,heldIrqAsserted=True,heldLegacyStatus=0,heldStatus=0x22,
+                    physicalWriteFaults=0,physicalReadFaults=1,physicalReadFaultLine=line,
+                    metadataReadBytes=384,heldCompletionDrained=True,
+                    readOnlyGuards=True,sourceQualificationRequired=True)
+        self.assertTrue(receipt_words(held,'held',5,7,row,read_fault_line=line))
+        with self.assertRaisesRegex(ValueError,'selected uniform line'):
+            receipt_words(held,'held',5,7,row,read_fault_line=line+64)
+        for counter in (7,8,10,12):
+            wrong = detail.copy()
+            wrong[counter] = 1
+            with self.assertRaisesRegex(ValueError,'GNZ2'):
+                receipt_words(dict(held,gnz2=wrong),'held',5,7,row,read_fault_line=line)
+        initial, observed = ImagePage(), ImagePage()
+        allowed = [(0x1000,0x2000)]
+        verify_image(initial,observed,row,allowed,fixture=TESS_UNIFORM_RECOVERY)
+        observed.data[64] ^= 1
+        with self.assertRaisesRegex(ValueError,'pixel'):
+            verify_image(initial,observed,row,allowed,fixture=TESS_UNIFORM_RECOVERY)
+
     def test_cancel_requires_the_selected_axi_read_to_survive_until_reset_drain(self):
         record, command, index_line, satp = SOURCE_CANCEL_RECORD,17,0x5000,0x80400001
         held = dict(phase='held',record=record,commandId=command,legacyStatus=0,status=0x21,irq=1,
@@ -180,6 +205,22 @@ class JointOracle(unittest.TestCase):
         observed.data[64] ^= 1
         with self.assertRaisesRegex(ValueError,'pixel'):
             verify_image(initial,observed,row,allowed)
+
+    def test_uniform_cancel_requires_the_default_line_for_the_selected_stage(self):
+        fixture = TESS_UNIFORM_RECOVERY
+        command, line, satp = 17, 0x6000, 0x80400001
+        for record, stage in ((16,4),(18,5)):
+            read = fixture.uniform_read(record)
+            self.assertEqual((read.stage, read.binding), (stage, None))
+            self.assertTrue(fixture.cancels_read(record))
+            self.assertIsNone(fixture.uniform_read(record+1))
+            held = dict(phase='held',record=record,commandId=command,legacyStatus=0,status=0x21,
+                        irq=1,irqAsserted=False,externalDrained=False,physicalReadLine=line,satp=satp,
+                        heldReadCycles=5,resetHeldReadCycles=0,serviceCycles=100)
+            self.assertEqual(reset_receipt(held,'held',command,record,line,satp,uniform=True),
+                             b'OGJCH001'+struct.pack('<7I',record,command,0,0x21,1,0,0))
+            with self.assertRaisesRegex(ValueError,'physicalReadLine'):
+                reset_receipt(held,'held',command,record,line+64,satp,uniform=True)
 
 
 if __name__ == '__main__':

@@ -20,6 +20,23 @@ CASES = (
 SOURCE_CANCEL_RECORD = 8
 RECORDS = len(CASES)
 
+UNIFORM_RECOVERY_PER_DOMAIN = 10
+
+
+@dataclass(frozen=True)
+class UniformRead:
+    stage: int
+    binding: int | None
+    fault: bool
+
+
+UNIFORM_RECOVERY_READS = {
+    2: UniformRead(4, 71, fault=True),
+    4: UniformRead(5, 1, fault=True),
+    6: UniformRead(4, None, fault=False),
+    8: UniformRead(5, None, fault=False),
+}
+
 
 @dataclass(frozen=True)
 class ReplayFixture:
@@ -28,6 +45,19 @@ class ReplayFixture:
     tile_log2: int
     cases: tuple[tuple[int, bool, bool], ...]
     patch_layout: tuple[int, int] | None = None
+    tess_uniforms: bool = False
+    recover_uniform_reads: bool = False
+
+    def uniform_read(self, record):
+        if self.recover_uniform_reads:
+            return UNIFORM_RECOVERY_READS.get(record % UNIFORM_RECOVERY_PER_DOMAIN)
+        return None
+
+    def cancels_read(self, record):
+        if self.recover_uniform_reads:
+            read = self.uniform_read(record)
+            return read is not None and not read.fault
+        return record == SOURCE_CANCEL_RECORD
 
     @property
     def image_bytes(self):
@@ -43,7 +73,11 @@ SMALL = ReplayFixture(4,4,3,CASES)
 VGA_QUAD = ReplayFixture(640,480,4,CASES[4:6])
 PATCH_ENDPOINTS = ReplayFixture(4,4,3,CASES[:6],patch_layout=(60,120))
 FULL_PATCH_ENDPOINTS = ReplayFixture(4,4,3,CASES[4:6],patch_layout=(64,0))
-TESS_UNIFORMS = ReplayFixture(4,4,3,CASES[:6])
+TESS_UNIFORMS = ReplayFixture(4,4,3,CASES[:6],tess_uniforms=True)
+TESS_UNIFORM_RECOVERY = ReplayFixture(
+    4,4,3,tuple((domain,bool(i & 1),False)
+                for domain in range(3) for i in range(UNIFORM_RECOVERY_PER_DOMAIN)),
+    tess_uniforms=True,recover_uniform_reads=True)
 
 TESS_UBO_BINDINGS = (
     (71,63,32,31,0,18,7,41,55,12,69,23),
@@ -78,8 +112,15 @@ def original_records(value, initial, engines, *, preflight=False, fixture=SMALL)
 
 def capture(data, discovery, context, row, *, fixture=SMALL):
     write_fault = fixture.cases[row['record']][2]
-    cancel = row['record'] == SOURCE_CANCEL_RECORD
-    magic = b'OGCAP005' if cancel else b'OGCAP004' if write_fault else b'OGCAP003'
+    read = fixture.uniform_read(row['record'])
+    cancel = fixture.cancels_read(row['record'])
+    magic = b'OGCAP003'
+    if write_fault:
+        magic = b'OGCAP004'
+    if cancel:
+        magic = b'OGCAP005'
+    if read is not None and read.fault:
+        magic = b'OGCAP006'
     require(data[:8] == magic, 'wrong protected joint capture format')
     cursor = 8
 
@@ -170,7 +211,7 @@ def tess_binding(binding, identity, slot, stage_mask, length):
     return base
 
 
-def check_tess_uniforms(words, sequence, identity, record):
+def check_tess_uniforms(words, sequence, identity, record, read=None):
     windows = tess_ubo_windows(record)
     users = {window: sum(1 << stage for stage, owned in enumerate(windows,4) if window in owned)
              for window in set(windows[0]) | set(windows[1])}
@@ -179,7 +220,7 @@ def check_tess_uniforms(words, sequence, identity, record):
             'protected GNT lost its independent TCS/TES roots or exposed writable scratch')
     table = sequence[500]+128
     table_end = table+24*64
-    known, spans = {}, []
+    known, spans, defaults = {}, [], []
     for index, owned in enumerate(windows):
         stage = 4+index
         default = table_end+64*index
@@ -190,6 +231,7 @@ def check_tess_uniforms(words, sequence, identity, record):
         slots = tuple(word >> shift & 31 for word in root[8:10] for shift in range(0,30,5))
         require(len(set(slots)) == 12 and max(slots) < 24, 'invalid protected GUR3 stage mapping')
         default_base = tess_binding(words(default,16),identity,31,1 << stage,TESS_DEFAULT_WORDS*4)
+        defaults.append(default_base)
         require(words(default_base,TESS_DEFAULT_WORDS) ==
                 tuple(tess_default_word(stage,record,word) for word in range(TESS_DEFAULT_WORDS)),
                 'protected GUR3 default data changed after rebinding')
@@ -212,6 +254,12 @@ def check_tess_uniforms(words, sequence, identity, record):
     spans.sort()
     require(all(right >= left_end for (_,left_end),(right,_) in zip(spans,spans[1:])),
             'different original GUR3 views overlap')
+    if read is None:
+        return None
+    if read.binding is None:
+        return defaults[read.stage-4]+TESS_DEFAULT_WORDS*4-64
+    require(users.get(read.binding) == 1 << read.stage,'uniform recovery UBO is not private to its tested stage')
+    return known[read.binding][1]+TESS_BLOCK_WORDS*4-64
 
 
 def original_graph(memory, regs, context, row, *, frame_version, fault=None, fixture=SMALL):
@@ -232,6 +280,7 @@ def original_graph(memory, regs, context, row, *, frame_version, fault=None, fix
     require(sequence[0] == 0x474e5407 + row['domain'] and sequence[16] == 2,
             'published GNT lost the original per-instance patch range')
     tess_code = b''
+    read_va = None
     if fixture.patch_layout is not None:
         layout_word = 214 if row['domain'] == 0 else 215
         vertex_words, patch_words = fixture.patch_layout
@@ -255,8 +304,9 @@ def original_graph(memory, regs, context, row, *, frame_version, fault=None, fix
         column_or_patch = 2 if fixture == FULL_PATCH_ENDPOINTS else 29
         expected_indices = (31,3,column_or_patch,3) if row['record'] & 1 else (0,0,0,0)
         require(words(binding[8],4) == expected_indices, 'protected defaults changed the TES endpoint selectors')
-    elif fixture == TESS_UNIFORMS:
-        check_tess_uniforms(words,sequence,(context,row['pass'],row['generation']),row['record'])
+    elif fixture.tess_uniforms:
+        read_va = check_tess_uniforms(words,sequence,(context,row['pass'],row['generation']),
+                                      row['record'],fixture.uniform_read(row['record']))
         for pc in (sequence[210],sequence[232 if row['domain'] == 0 else 233]):
             require(pc and pc % 4 == 0,'missing original TCS/TES executable')
             code = view(pc,4096-(pc & 4095),11)
@@ -293,13 +343,15 @@ def original_graph(memory, regs, context, row, *, frame_version, fault=None, fix
             'actual frame/store view is not the original image allocation')
     require(not fault or fault[1] == frame[210], 'write fault address differs from the published frame view')
     pc = draw[342]
-    # The original GND declares UINT8 indices. Bind the response hold to the
-    # cache line containing the first index through the real Sv32 table.
-    index_line = physical(memory,satp,(draw[322]+draw[312])&~63,64,3)
-    return hashlib.sha256(view(pc,4096-(pc & 4095),11)+tess_code).digest(), index_line
+    # Bind read injection to an actual read-only Sv32 leaf. The original
+    # source-cancel fixture selects the line containing its first UINT8 index.
+    if read_va is None:
+        read_va = (draw[322]+draw[312])&~63
+    read_line = physical(memory,satp,read_va,64,3)
+    return hashlib.sha256(view(pc,4096-(pc & 4095),11)+tess_code).digest(), read_line
 
 
-def expected_image(domain, mutation, *, fixture=SMALL):
+def expected_image(domain, mutation, *, fixture=SMALL, record=None):
     # Independent 4x4 sample centers. The isoline runs from viewport x=0
     # to 3.5 through row 1 and ends inside the last pixel's diamond. The
     # triangle's hypotenuse is x+y=0.75 in NDC, between the sample sums.
@@ -315,8 +367,11 @@ def expected_image(domain, mutation, *, fixture=SMALL):
         front = (0x3e800000,0x3f800004,153,0x7f800000)
         back = (0x43000000,0x3f800154,956,0x7f800000)
         color = struct.pack('<4I',*(back if mutation else front))
-    elif fixture == TESS_UNIFORMS:
-        record = 2*domain+int(mutation)
+    elif fixture.tess_uniforms:
+        require(record is not None or not fixture.recover_uniform_reads,
+                'uniform recovery image requires its original record number')
+        if record is None:
+            record = 2*domain+int(mutation)
         control, evaluation = (reduce(xor,(tess_ubo_word(window,record,TESS_BLOCK_WORDS-1) for window in stage))
                                for stage in tess_ubo_windows(record))
         color = struct.pack('<4I',base[0]^tess_default_word(4,record,TESS_DEFAULT_WORDS-1),control,
@@ -340,9 +395,11 @@ def verify_image(previous, returned, row, writable, *, fixture=SMALL):
     image = row['allocation'] + row['imageOffset']
     image_bytes = fixture.image_bytes
     actual = returned.read(image, image_bytes)
-    domain, mutation, write_fault = fixture.cases[row['record']]
-    preserved = write_fault or row['record'] == SOURCE_CANCEL_RECORD
-    expected = previous.read(image, image_bytes) if preserved else expected_image(domain, mutation, fixture=fixture)
+    record = row['record']
+    domain, mutation, write_fault = fixture.cases[record]
+    preserved = write_fault or fixture.cancels_read(record) or fixture.uniform_read(record) is not None
+    expected = (previous.read(image, image_bytes) if preserved else
+                expected_image(domain, mutation, fixture=fixture, record=record))
     if actual != expected:
         for offset in range(0, image_bytes, 16):
             found, wanted = actual[offset:offset+16], expected[offset:offset+16]

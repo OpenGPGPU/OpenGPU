@@ -132,8 +132,18 @@ static void joint_capture(const std::filesystem::path &base) {
   unexpected=fault;
   unexpected.write_fault->address+=64;
   rejects([&]{unexpected.validate();});
+  auto read_fault=JointCapture::read((base/"joint-uniform-fault.capture").string());
+  Retirement::read((base/"joint-uniform-fault.retire").string(),true);
+  require(read_fault.uniform_read_fault && !read_fault.write_fault && !read_fault.cancel_read,
+    "uniform read fault lost its distinct capture format");
+  auto wrong_fault=read_fault;
+  wrong_fault.uniform_read_fault=false;
+  rejects([&]{wrong_fault.validate();});
+  wrong_fault=read_fault;
+  for(auto &check:wrong_fault.checks)if(check.address==joint_detail_address(7))check.expected=1;
+  rejects([&]{wrong_fault.validate();});
   auto cancel=JointCapture::read((base/"joint-cancel.capture").string());
-  require(cancel.cancel_index_read && !cancel.write_fault && cancel.checks.empty(),
+  require(cancel.cancel_read && !cancel.write_fault && cancel.checks.empty(),
     "cancel capture contains a predicted completion or write fault");
   const auto request=OwnerResetTrace::read(base/"joint-cancel.request",ResetPhase::request_with_irq,cancel.command_id);
   const auto ack=OwnerResetTrace::read(base/"joint-cancel.retire",ResetPhase::retire,cancel.command_id);

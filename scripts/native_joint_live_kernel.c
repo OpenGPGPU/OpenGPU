@@ -85,7 +85,7 @@ static void joint_live_cancel(struct native_kernel_session *session,unsigned ind
     struct native_kernel_reset_receipt receipt=joint_reset_receipt(index,"held","OGJCH001");
     snprintf(name,sizeof(name),"record-%u.reset.request",index);
     live_path(path,name);
-    live_require(!native_kernel_cancel_joint(session,&receipt,path),"joint source abort");
+    live_require(!native_kernel_cancel_joint(session,&receipt,path),"joint command abort");
     receipt=joint_reset_receipt(index,"ack","OGJCA001");
     snprintf(name,sizeof(name),"record-%u.reset.irq",index);
     live_path(path,name);
@@ -102,7 +102,7 @@ void joint_live_export(struct native_kernel_session *session,const char *directo
     live_require(!native_kernel_export_memory(session,path),"joint union export");
 }
 
-void joint_live_run(struct native_kernel_session *session,unsigned count,bool cpu_preflight)
+void joint_live_run(struct native_kernel_session *session,unsigned count,bool cpu_preflight,bool uniform_recovery)
 {
     char name[96],path[4096];
     if (cpu_preflight) {
@@ -116,17 +116,23 @@ void joint_live_run(struct native_kernel_session *session,unsigned count,bool cp
         _Exit(0);
     }
     for (unsigned i=0;i<count;++i) {
+        /* The controller checks the domain and capture before selecting the
+         * TCS or TES response line from the original owner graph. */
+        unsigned position=i%JOINT_LIVE_RECOVERY_PER_DOMAIN;
+        bool cancel=uniform_recovery ? (position==6 || position==8) : i==JOINT_LIVE_SOURCE_CANCEL_RECORD;
         snprintf(name,sizeof(name),"record-%u.capture",i);
         live_path(path,name);
         int error;
-        if(i==JOINT_LIVE_SOURCE_CANCEL_RECORD)
+        if(cancel)
             error=native_kernel_capture_joint_cancel(session,i,path,100000000,32);
-        else if(i==JOINT_LIVE_WRITE_FAULT_RECORD)
+        else if(uniform_recovery && (position==2 || position==4))
+            error=native_kernel_capture_joint_uniform_read_fault(session,i,path,100000000,32);
+        else if(!uniform_recovery && i==JOINT_LIVE_WRITE_FAULT_RECORD)
             error=native_kernel_capture_joint_write_fault(session,i,path,100000000,32);
         else
             error=native_kernel_capture(session,i,path,100000000,32);
         live_require(!error,"joint capture enqueue");
-        if(i==JOINT_LIVE_SOURCE_CANCEL_RECORD) {
+        if(cancel) {
             joint_live_cancel(session,i);
             continue;
         }
