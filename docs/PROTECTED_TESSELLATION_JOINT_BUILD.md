@@ -496,6 +496,31 @@ stop. Patch advance requires actual source load/reply/seal, TCS/TES retirement,
 typed task report and task drain. Final end, actual frame completion and full
 fabric drain are all required.
 
+## Joint replay completion polling
+
+The protected joint replay services AXI for 32 cycles between unsuccessful
+completion polls. It returns to one cycle between polls near the record
+limit. Completion still requires the unified status, asserted IRQ and
+drained traffic before the actual driver can retire the slot.
+
+On the same assertion-enabled two-CU, four-engine model, the 720,000 to
+980,000 cycle window of the original 640×480 quad took 203.39 versus
+194.59 seconds, then 173.78 versus 170.80 seconds. Each pair matched the
+AXI counters and the full sparse memory snapshot at the endpoint. The C++
+build used `-O1` for the regular shards and the default `-O0` commit profile.
+
+The complete ten-record 4×4 suite passed with independent images and guards,
+actual retirement, acknowledged cleanup and healthy reuse after both fault
+and reset. Rebuild the owner executor and run the 4×4 recipe above. To
+compare the full-resolution replay, use `--vga-quad` and sample
+`serviceCycles` and `elapsedMilliseconds` from its progress output.
+
+The sanitized CPU driver checks use the same entry point.
+
+```sh
+OPENGPU_TEST_SANITIZERS=1 python3.13 -B scripts/test_native_owner.py
+```
+
 ## Earlier CPU validation and limits
 
 Apple Clang 16 and immutable Linux GCC 13.3 passed the actual owner/MMU fixture
