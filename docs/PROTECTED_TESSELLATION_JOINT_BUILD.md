@@ -521,6 +521,24 @@ The sanitized CPU driver checks use the same entry point.
 OPENGPU_TEST_SANITIZERS=1 python3.13 -B scripts/test_native_owner.py
 ```
 
+## Generated C++ input validation
+
+The native builder hashes the complete model and inspects every chunk
+containing a preprocessor marker. On the same 352 generated files
+(9.69 GiB), all SHA-256 values matched. Input validation fell from
+59.15–59.39 seconds to 8.47–8.58 seconds.
+
+With all 351 objects cached, the one-worker shared-library executor rebuild
+fell from 102.79 to 51.02 seconds, including model linking. Peak charged
+memory was 7.28 and 7.08 GiB, respectively. Repeat the `-O1` shared-model
+build command above with `--jobs 1` and the same executor directory to time
+a cached rebuild. The builder's CPU tests include an unsupported include
+that crosses a read boundary.
+
+```sh
+python3.13 -B scripts/test_build_native_flashsim.py
+```
+
 ## Earlier CPU validation and limits
 
 Apple Clang 16 and immutable Linux GCC 13.3 passed the actual owner/MMU fixture
