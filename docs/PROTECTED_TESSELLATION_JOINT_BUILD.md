@@ -428,13 +428,20 @@ Sv32 view. The independent oracle checks 307,200 pixels and allocation guards
 per draw. The run requires actual driver retirement, traffic drain and
 acknowledged cleanup.
 
-The original quad passed the independent image and guard checks and actual
-driver retirement in 7,790,226 service cycles. At an assumed 1 GHz this
-is 7.79 ms, equivalent to 128.4 FPS within a 16.67 ms frame budget. The
-cycle count includes replayed MMIO and retirement checks. The functional
+Both draws passed the independent image and guard checks, actual driver
+retirement and acknowledged cleanup without a reset between draws. The
+FlashSim run took 11,088.77 seconds at 0.83 GiB peak charged memory.
+
+| Draw | Service cycles | Frame time at 1 GHz | Equivalent FPS at 1 GHz |
+| --- | ---: | ---: | ---: |
+| Original quad | 7,790,226 | 7.79 ms | 128.4 |
+| VS mutation | 7,805,005 | 7.81 ms | 128.1 |
+
+At an assumed 1 GHz, both draws fit the 16.67 ms frame budget for 60 FPS.
+Service cycles include replayed MMIO and retirement checks. The functional
 AXI agent makes ordinary read responses eligible after three cycles and
 write acknowledgments eligible after seven cycles. Product qualification
-requires matched memory timing and all six product scenes.
+requires physically matched whole-host timing and memory and all six scenes.
 
 For the matching model, use GPU RTL from `02f7f45e17`, FlashSim
 `149ff07181` and the full-factory recipe above through verified resharding.
