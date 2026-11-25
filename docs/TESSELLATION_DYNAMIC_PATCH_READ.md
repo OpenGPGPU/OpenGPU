@@ -136,10 +136,16 @@ pass. The unchanged evaluator and load-reply sources also pass the three
 original-routing semantic controls described in the
 [input reply guide](TESSELLATION_INPUT_REPLY_ROUTING.md).
 
-This source/limited-ISA stage does not qualify original Mesa execution, the
-complete three-domain CU chain, full-capacity dynamic accesses, native
-protected admission, the final host profile or the two-CU VGA60 product.
-P39/P40 and the whole alignment target remain open.
+The patch-provider component also checks divergent active lanes and bounds:
+an invalid inactive lane is ignored, an active per-patch component 120 request
+is rejected before inspection with zero retired lanes, and two active lanes
+return distinct legal per-vertex/per-patch words with an exact retired-lane
+count and inactive zero result. The existing held/cancel behavior remains
+covered. Five focused suites passed 14 tests, and the complete sanitized host
+regression passed. This is component evidence only; it does not qualify
+original Mesa execution, the complete three-domain CU chain, full-capacity
+dynamic accesses, native protected admission, the final host profile or the
+two-CU VGA60 product. P39/P40 and the whole alignment target remain open.
 
 Reproduce with the repository toolchain; do not dispatch Scala regression:
 
