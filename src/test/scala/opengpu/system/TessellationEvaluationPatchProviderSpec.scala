@@ -38,10 +38,11 @@ class TessellationEvaluationPatchProviderSpec extends AnyFlatSpec {
         b.layout.inputComponents.poke(64.U);b.layout.outputVertices.poke(32.U)
         b.layout.outputComponents.poke(60.U);b.layout.patchComponents.poke(120.U);d.io.scope.valid.poke(true.B)}
       def until(p: =>Boolean):Unit={var n=0;while(!p && n<100){d.clock.step();n+=1};assert(p)}
-      def issue(stale:Boolean):Unit={val q=d.io.ports(1).request.bits;zero(q);scope()
+      def issue(stale:Boolean,patchWord:Int=119):Unit={val q=d.io.ports(1).request.bits;zero(q);scope()
         q.scope.poke(d.io.scope.bits.peek());if(stale)q.scope.sequence.poke(30.U)
         q.warp.poke(3.U);q.mask.poke(3.U);q.vertices(0).poke(31.U);q.addresses(0).poke((59*8+1).U)
-        q.vertices(1).poke(0.U);q.addresses(1).poke((119*8+3).U)
+        q.vertices(1).poke(0.U);q.addresses(1).poke((patchWord*8+3).U)
+        q.vertices(2).poke("hffffffff".U)
         d.io.ports(1).request.valid.poke(true.B);until(d.io.ports(1).request.ready.peek().litToBoolean)
         d.clock.step();d.io.ports(1).request.valid.poke(false.B);zero(q)}
       def result(status:Int):Unit={until(d.io.ports(1).result.valid.peek().litToBoolean)
@@ -50,6 +51,26 @@ class TessellationEvaluationPatchProviderSpec extends AnyFlatSpec {
         for(_<-0 until 3){d.clock.step();assert(d.io.ports(1).result.bits.peek().litValue==held)}
         d.io.ports(1).result.ready.poke(true.B);d.clock.step();d.io.ports(1).result.ready.poke(false.B);d.io.busy.expect(false.B)}
       issue(true);until(d.io.ports(1).result.valid.peek().litToBoolean);d.io.inspect.valid.expect(false.B);result(1)
+      issue(false,patchWord=120)
+      until(d.io.ports(1).result.valid.peek().litToBoolean)
+      d.io.inspect.valid.expect(false.B);d.io.ports(1).result.bits.retired.expect(0.U)
+      result(1)
+
+      issue(false)
+      for((vertex,component,perPatch,data)<-Seq((31,59,false,0x12345678),(0,119,true,0x23456789))){
+        until(d.io.inspect.valid.peek().litToBoolean)
+        d.io.inspect.bits.vertex.expect(vertex.U);d.io.inspect.bits.component.expect(component.U)
+        d.io.inspect.bits.perPatch.expect(perPatch.B);d.io.inspect.bits.write.expect(false.B)
+        d.io.ports(1).result.valid.expect(false.B)
+        d.io.inspect.ready.poke(true.B);d.clock.step();d.io.inspect.ready.poke(false.B)
+        zero(d.io.reply.bits);d.io.reply.bits.source.poke(2.U);d.io.reply.bits.result.data.poke(data.U)
+        d.io.reply.valid.poke(true.B)
+        until(d.io.reply.ready.peek().litToBoolean);d.clock.step();d.io.reply.valid.poke(false.B)
+      }
+      d.io.ports(1).result.bits.retired.expect(3.U)
+      d.io.ports(1).result.bits.data(0).expect(0x12345678.U);d.io.ports(1).result.bits.data(1).expect(0x23456789.U)
+      d.io.ports(1).result.bits.data(2).expect(0.U);result(0)
+
       issue(false);until(d.io.inspect.valid.peek().litToBoolean)
       d.io.inspect.bits.vertex.expect(31.U);d.io.inspect.bits.component.expect(59.U);d.io.inspect.bits.write.expect(false.B)
       val held=d.io.inspect.bits.peek().litValue;d.io.cancel.poke(true.B)
