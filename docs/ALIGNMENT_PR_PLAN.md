@@ -68,8 +68,10 @@
   原 Mesa VS→双 CU→owned patch→TCS/TES→原图像已在小型配置和完整四引擎 VGA
   factory 上分别通过十笔 4×4 FlashSim protected 回放，含三域图像、物理写故障、
   原索引读取消排空及两次健康复用。
+  完整配置的原版 quad 与 VS 变体在 640×480 通过独立图像、保护区、实际退役和清理检查。
+  两帧分别耗时 7,790,226 和 7,805,005 服务周期，按 1 GHz 计算均满足该场景的 60 FPS 周期预算。
   全容量联合覆盖与 2 CU 640×480 60 FPS 的产品验收仍待完成。
-  [结果与复现](PROTECTED_TESSELLATION_JOINT_BUILD.md#four-engine-target-replay)。
+  [结果与复现](PROTECTED_TESSELLATION_JOINT_BUILD.md#full-viewport-protected-quad-replay)。
 - P16 原 draw catalog/invocation range 捕获、内部语言程序 v3、程序快照
   权限边界与 FS8/9 私有程序验证的六个逻辑提交已通过 #825 合入。
   [交付范围、结果与限制](P16_INVOCATION_SOURCE_DELIVERY.md)：准确交付源完整 host
