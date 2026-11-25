@@ -94,7 +94,7 @@ static void *compile(const char *const files[5], const char *prefix,unsigned fam
     if (!files || !files[0] || !files[4]) return nullptr;
     bool joint=family==1,five=family==2;
     if(family>2||(five&&!files[3]))return nullptr;
-    const bool tessellation = family==0 && files[1] && files[2] && !files[3];
+    const bool tessellation = family==0 && files[1] && files[2];
     const bool geometry = family==0 && !files[1] && !files[2] && files[3];
     if ((family==0 && !tessellation && !geometry) ||
         (joint && (!files[1] || !files[2] || files[3]))) return nullptr;

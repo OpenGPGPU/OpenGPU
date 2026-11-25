@@ -397,9 +397,9 @@ wrong-version and wrong-recipe receipt fields are rejected by the CPU reader.
 
 Fresh GCC 13.3/ASan/UBSan validation passed in the immutable CPU image below,
 with 512 MiB combined memory/swap and one CPU: 52 fresh translation units,
-zero reused objects, 276 actual MMD dependencies and 8,101 guarded Mesa/external
-inputs. The complete run, including the independent protected consumer,
-finished in 95.66 seconds. Source/archive guards passed before and after.
+zero reused objects, 280 actual MMD dependencies and 8,101 guarded Mesa/external
+inputs. The producer finished in 56.20 seconds; the independent protected
+consumer then passed both recipes. Source/archive guards passed before and after.
 
 | Actual linked recipe | VS / TCS / TES words | Patch input → output; per-patch components | TES exports |
 | --- | --- | --- | ---: |
@@ -414,10 +414,10 @@ checks. Four source-copy controls individually removed the domain, spacing,
 clockwise or point-mode comparison from the production emitter; each failed
 the exact metadata-rejection assertion, rather than compilation or a timeout.
 
-A separate, fixed official-main driver consumer (`057cfaf74385293f3ac425c9536b7af577ff2537`)
-accepted both original TCS/TES pairs through the actual v3 validator,
-private RX snapshot, Sv32 MMU and retirement paths. This is four actual
-program-byte consumptions; only OS/GEM primitives are modeled. A final
+The independent protected consumer in this delivery accepted both original
+TCS/TES pairs through the actual v3 validator, private RX snapshot, Sv32 MMU
+and retirement paths. This is four actual program-byte consumptions; only
+OS/GEM primitives are modeled. A final
 host-only check also rejects `--domains` without its required frozen fixture
 before creating any output or entering compilation. All three lightweight
 recipe/receipt/CLI tests pass and run once in `scripts/test_scripts.sh`; this

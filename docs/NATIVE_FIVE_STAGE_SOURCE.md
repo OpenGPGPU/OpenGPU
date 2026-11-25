@@ -99,8 +99,8 @@ additional independent provider requirement. No old artifact is relabeled.
 The old FS5/7 offline consumer deliberately continues rejecting ABI10 inputs.
 
 A fresh 37-TU Linux CPU build passed all seven original-source cases and the
-three precise source controls in 42.688 seconds, with 37 MMD files/255 distinct
-dependencies. All 1060 GPU/reference and 8101 external inputs were unchanged.
+three precise source controls in 30.71 seconds, with 37 MMD files/257 distinct
+dependencies. All 1311 GPU/reference and 8101 external inputs were unchanged.
 The default six cases' 36 code/artifact files stayed byte-for-byte identical.
 The same original pixel-mask ESSL is rejected by the default API and compiles
 only with explicit options into a 436-word FS ABI10 program. It preserves
@@ -136,8 +136,8 @@ default retention, corrupt TES-to-GS mapping, or replace GS Layer with zero;
 each must hit its own exact assertion, not a compilation error or timeout.
 
 The final current-source build compiled 37 translation units from scratch
-(including three source-copy controls), checked 37 MMD files and 255 distinct
-dependencies, and passed in 41.609 seconds. The 1060 GPU/reference inputs and
+(including three source-copy controls), checked 37 MMD files and 257 distinct
+dependencies, and passed in 30.71 seconds. The 1311 GPU/reference inputs and
 8101 external Mesa/SDK/library inputs were unchanged before and after use.
 All cases retain 65 uniform references, five code GEMs, 16 varying slots,
 four MRTs and capacity128. VS/TC/TE/GS are 308/478/362/289 words:
@@ -164,7 +164,7 @@ scalar-GS validator/private-RX/MMU fixture in 3.069 seconds, with maximum
 sampled aggregate RSS 203392 KiB and 649 unchanged inputs.
 
 The old four-stage family was rebuilt from scratch against the final common
-source: 47 translation units, 47 MMD files/271 dependencies, 57.447 seconds.
+source: 47 translation units, 47 MMD files/275 dependencies, 41.77 seconds.
 Original 308/301 programs and all old v1/v2 byte comparisons against independent
 original emitter sources passed, along with its four precise controls.
 No cached object was counted as a fresh compilation.
