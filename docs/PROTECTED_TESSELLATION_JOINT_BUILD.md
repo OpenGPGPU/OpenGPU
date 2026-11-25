@@ -364,8 +364,8 @@ that factory with 4×4 frames, including the three domains, VS mutation,
 physical store fault, held original index read across reset, both healthy
 reuses and the actual driver's retirement and cleanup acknowledgment. The
 assertion-enabled FlashSim replay took 206.86 seconds with 1.58 GiB peak
-charged memory. Full-frame 640×480 execution, characterized memory and
-60 FPS timing remain pending.
+charged memory. Full product qualification requires characterized memory
+and matched whole-host timing.
 
 The RTL inputs matched GPU main at `82d3574f25`. The full model used FlashSim
 `38e050ebe2` and contained 14,670 assertions. With two CIRCT threads and the
@@ -417,6 +417,51 @@ python3.13 -B scripts/run_owner_bounded.py --memory-mib 12288 --timeout-seconds 
 python3.13 -B scripts/run_owner_bounded.py --memory-mib 4096 --timeout-seconds 3600 -- \
   python3.13 -B scripts/qualify_native_joint_live.py --timeout 900 \
   --dut-dir "$OUT/resharded" --executor-build "$OUT/executor"
+```
+
+### Full-viewport protected quad replay
+
+The `--vga-quad` mode runs the original Mesa quad and its VS mutation at
+640×480 on a single full-factory DUT and driver context. Each command uses
+1,200 16×16 tiles and stores an RGBA32UI attachment through the original
+Sv32 view. The independent oracle checks 307,200 pixels and allocation guards
+per draw. The run requires actual driver retirement, traffic drain and
+acknowledged cleanup.
+
+The original quad passed the independent image and guard checks and actual
+driver retirement in 7,790,226 service cycles. At an assumed 1 GHz this
+is 7.79 ms, equivalent to 128.4 FPS within a 16.67 ms frame budget. The
+cycle count includes replayed MMIO and retirement checks. The functional
+AXI agent makes ordinary read responses eligible after three cycles and
+write acknowledgments eligible after seven cycles. Product qualification
+requires matched memory timing and all six product scenes.
+
+For the matching model, use GPU RTL from `02f7f45e17`, FlashSim
+`149ff07181` and the full-factory recipe above through verified resharding.
+The assertion-enabled generation took 4,091.50 seconds and peaked at
+15.55 GiB charged memory. CIRCT import took 128.02 seconds, Python
+optimization took 2,334.84 seconds and C++ emission took 770.96 seconds.
+
+The longer replay uses `-O1` for regular C++ shards with the builder's
+default `-O0` commit profile. The two-worker cold
+build took 4,000.61 seconds at 9.27 GiB peak charged memory. The matching
+`-O0` build took 1,823.47 seconds at 8.83 GiB. On the original draw,
+`-O1` advanced past 2,519,469 service cycles within 1,726 seconds.
+`-O0` reached that cycle in 5,476 seconds. The three-hour controller
+bound expired during the `-O0` draw.
+
+The same `-O1` executor verified all ten 4×4 records in 100.50 seconds
+at 0.74 GiB peak charged memory. Run the earlier 4×4 command with
+`$OUT/executor-o1` to reproduce that check.
+
+```sh
+python3.13 -B scripts/run_owner_bounded.py --memory-mib 12288 --timeout-seconds 14400 -- \
+  python3.13 -B scripts/qualify_native_joint_live.py --build-only --jobs 2 --shard-opt=-O1 \
+  --shared-model --link-flag=-Wl,-ld_classic --link-flag=-isysroot \
+  --link-flag="$(xcrun --show-sdk-path)" --dut-dir "$OUT/resharded" --executor-build "$OUT/executor-o1"
+python3.13 -B scripts/run_owner_bounded.py --memory-mib 4096 --timeout-seconds 64800 -- \
+  python3.13 -B scripts/qualify_native_joint_live.py --vga-quad --timeout 28800 \
+  --dut-dir "$OUT/resharded" --executor-build "$OUT/executor-o1"
 ```
 
 ```sh
