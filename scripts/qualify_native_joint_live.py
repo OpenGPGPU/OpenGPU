@@ -14,6 +14,7 @@ import tempfile
 import uuid
 
 from build_native_flashsim import digest, model_library_path
+from build_native_joint_live_producer import producer_sources
 from compute_owner_protocol import required_flags, strict_json, uint
 from native_graphics_uniform_oracle import SparseMemory, require
 from native_joint_live_oracle import (
@@ -169,7 +170,8 @@ def cleanup_checked(value, records=RECORDS):
 
 def docker_command(gpu, directory, name, timeout, fixture=SMALL):
     mesa, build, sdk = (gpu/'depends'/dep for dep in ('mesa','mesa-build','aarch64-root'))
-    command = ['docker','run','--rm','--init','--pull=never','--memory=512m','--memory-swap=512m',
+    memory = '768m' if fixture == TESS_UNIFORM_RECOVERY else '512m'
+    command = ['docker','run','--rm','--init','--pull=never',f'--memory={memory}',f'--memory-swap={memory}',
                '--cpus=1','--network=none','--read-only','--name',name]
     for source,dest,mode in ((mesa,mesa,'ro'),(build,build,'ro'),(sdk,sdk,'ro'),
                              (ROOT,'/joint-src','ro'),(directory,'/joint-out','rw')):
@@ -324,6 +326,7 @@ def run(build, dut, timeout, fixture=SMALL):
         with regular(build/'.native-flashsim-build.lock').open('rb') as lock:
             fcntl.flock(lock,fcntl.LOCK_SH|fcntl.LOCK_NB)
             executable, identities = driver_qualification(build,dut)
+            identities.update({path:digest(regular(path)) for path in producer_sources()})
             identities.update({path:digest(regular(path)) for path in ESSL.iterdir()})
             env = dict(os.environ,OPENGPU_NATIVE_HOST_TIMEOUT=str(timeout))
             profile = directory/'profile.json'
@@ -338,7 +341,8 @@ def run(build, dut, timeout, fixture=SMALL):
             ref = subprocess.check_output(['git','show',REFERENCE],cwd=ROOT)
             atomic(directory/'reference-uniform.c',ref)
             (directory/'session').mkdir()
-            identities.update({path:digest(regular(path)) for path in (profile,directory/'profile.bin')})
+            identities.update({path:digest(regular(path)) for path in
+                               (profile,directory/'profile.bin',directory/'reference-uniform.c')})
             with (directory/'producer.log').open('xb') as log, (directory/'executor.log').open('xb') as run_log:
                 bridge = subprocess.Popen(docker_command(gpu,directory,name,timeout,fixture),stdout=log,
                                           stderr=subprocess.STDOUT,start_new_session=True)

@@ -37,6 +37,12 @@ EXTRA_CASES=None  # Optional actual-source cases in the explicit BUILD proof run
 GENERATED_INPUTS={}  # Exact test-only production-body captures, bound before compile.
 
 
+def source_inputs():
+    return tuple(path for root in ('userspace','driver','scripts','docs/abi')
+                 for path in (ROOT/root).rglob('*') if path.is_file() and not path.is_symlink() and
+                 path.suffix in ('.c','.cpp','.h','.inc','.py','.json','.vert','.frag','.tesc','.tese','.geom','.glsl'))
+
+
 def verify_records(output):
     """Canonical reserved/high bits and all private addresses from public ABI.
 
@@ -86,9 +92,7 @@ def main(*, build_only=False):
     external=snapshot(mesa,mb,libraries,drm,gpu)
     # All actual quoted GPU inputs including .inc, Python, three public schemas
     # are fixed BEFORE compilation. Actual MMD must be a subset, not posthoc.
-    bound={str(p.resolve()):sha256(p) for root in ('userspace','driver','scripts','docs/abi')
-           for p in (ROOT/root).rglob('*') if p.is_file() and not p.is_symlink() and
-           p.suffix in ('.c','.cpp','.h','.inc','.py','.json','.vert','.frag','.tesc','.tese','.geom','.glsl')}
+    bound={str(p.resolve()):sha256(p) for p in source_inputs()}
     baseline=a.legacy_source.resolve(strict=True);bound[str(baseline)]=sha256(baseline)
     if not build_only:
         tess_baseline=a.tess_baseline_source.resolve(strict=True);bound[str(tess_baseline)]=sha256(tess_baseline)
