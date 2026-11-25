@@ -53,22 +53,74 @@ static void joint_source_path(char path[4096],const char *directory,const char *
     int length=snprintf(path,4096,"%s/%s",directory,name);
     assert(length>0 && length<4096);
 }
-enum joint_mode { JOINT_SMALL, JOINT_VGA_QUAD, JOINT_PATCH_ENDPOINTS, JOINT_FULL_PATCH_ENDPOINTS };
+enum joint_mode {
+    JOINT_SMALL, JOINT_VGA_QUAD, JOINT_PATCH_ENDPOINTS, JOINT_FULL_PATCH_ENDPOINTS, JOINT_TESS_UNIFORMS
+};
+
+enum { JOINT_API_BINDINGS=72, JOINT_UBO_STRIDE=OPENGPU_TESSELLATION_UNIFORM_BLOCK_BYTES+64 };
+
+static struct pipe_resource *joint_tess_uniform_buffer(struct pipe_screen *screen,unsigned record)
+{
+    const unsigned words_per_block=OPENGPU_TESSELLATION_UNIFORM_BLOCK_BYTES/4;
+    struct pipe_resource *resource=buffer(screen,JOINT_API_BINDINGS*JOINT_UBO_STRIDE);
+    assert(resource);
+    unsigned char *base=pipe_opengpu_resource_map(opengpu_resource(resource)->gpu);
+    assert(base);
+    for (unsigned binding=0;binding<JOINT_API_BINDINGS;++binding) {
+        uint32_t *words=(void *)(base+4+binding*JOINT_UBO_STRIDE);
+        for (unsigned i=0;i<words_per_block;++i)
+            words[i]=0x12000000u+0x10000u*binding+(i+record*words_per_block)*(13+binding);
+    }
+    return resource;
+}
+
+static void joint_bind_tess_uniforms(struct opengpu_native_joint_link *link,struct pipe_context *sink,
+    struct pipe_resource *resource,unsigned record,bool rebind)
+{
+    struct pipe_resource *views[JOINT_API_BINDINGS]={0};
+    unsigned offsets[JOINT_API_BINDINGS]={0},sizes[JOINT_API_BINDINGS]={0};
+    for (unsigned stage=OPENGPU_TESSELLATION_UNIFORM_CONTROL_STAGE;
+            stage<=OPENGPU_TESSELLATION_UNIFORM_EVALUATION_STAGE;++stage) {
+        assert(opengpu_native_joint_blocks(link,stage)==OPENGPU_TESSELLATION_UNIFORM_BLOCKS_PER_STAGE);
+        for (unsigned block=0;block<OPENGPU_TESSELLATION_UNIFORM_BLOCKS_PER_STAGE;++block) {
+            unsigned binding=opengpu_native_joint_binding(link,stage,block);
+            assert(binding<JOINT_API_BINDINGS && !views[binding]);
+            /* Odd records share one exact original window between the stages. */
+            unsigned window=(record&1) && binding==1?71:binding;
+            views[binding]=resource;
+            offsets[binding]=4+(rebind?0:window)*JOINT_UBO_STRIDE;
+            sizes[binding]=OPENGPU_TESSELLATION_UNIFORM_BLOCK_BYTES;
+        }
+        uint32_t defaults[OPENGPU_TESSELLATION_UNIFORM_DEFAULT_COMPONENTS];
+        assert(opengpu_native_joint_defaults(link,stage)==OPENGPU_TESSELLATION_UNIFORM_DEFAULT_COMPONENTS);
+        for (unsigned i=0;i<OPENGPU_TESSELLATION_UNIFORM_DEFAULT_COMPONENTS;++i)
+            defaults[i]=rebind?0xa5a5a5a5u:(0x64000000u|(stage<<20)|(record<<12)|i);
+        assert(!opengpu_native_joint_bind_defaults(link,sink,stage,defaults,
+            OPENGPU_TESSELLATION_UNIFORM_DEFAULT_COMPONENTS));
+    }
+    assert(!opengpu_native_joint_bind_ubos(link,sink,views,offsets,sizes));
+}
 
 static void joint_case(struct pipe_context *pipe,const char *sources,unsigned index,unsigned engines,
     enum joint_mode mode,FILE *layout)
 {
     static const char *evaluation[]={"isoline.tese","triangle.tese","quad.tese"};
     static const char *patch_evaluation[]={"patch-isoline.tese","patch-triangle.tese","patch-quad.tese"};
+    static const char *uniform_evaluation[]={"uniform-isoline.tese","uniform-triangle.tese","uniform-quad.tese"};
     static const uint32_t seed[4]={7,19,43,61};
     const bool vga_quad=mode==JOINT_VGA_QUAD, full_patch=mode==JOINT_FULL_PATCH_ENDPOINTS;
     const bool patch_endpoints=mode==JOINT_PATCH_ENDPOINTS || full_patch;
+    const bool tess_uniforms=mode==JOINT_TESS_UNIFORMS;
     unsigned domain=index<JOINT_LIVE_BASE_RECORDS?index/2:1;
     if (vga_quad || full_patch) domain=2;
-    bool mutation=!patch_endpoints && index<JOINT_LIVE_BASE_RECORDS && (index&1);
+    bool mutation=!patch_endpoints && !tess_uniforms && index<JOINT_LIVE_BASE_RECORDS && (index&1);
     assert(domain<3 && engines>=1 && engines<=4);
     const char *control=full_patch?"patch-full.tesc":patch_endpoints?"patch-capacity.tesc":"shared.tesc";
     const char *tes=full_patch?"patch-full-quad.tese":patch_endpoints?patch_evaluation[domain]:evaluation[domain];
+    if (tess_uniforms) {
+        control="uniform-control.tesc";
+        tes=uniform_evaluation[domain];
+    }
     const char *names[]={mutation?"mutation.vert":"original.vert",control,tes,"shared.frag"};
     char paths[4][4096];
     const char *files[4];
@@ -86,6 +138,11 @@ static void joint_case(struct pipe_context *pipe,const char *sources,unsigned in
     struct pipe_context *sink=opengpu_native_joint_constants_pipe(constants);
     assert(opengpu_native_joint_defaults(link,PIPE_SHADER_VERTEX)==4);
     assert(!opengpu_native_joint_bind_defaults(link,sink,PIPE_SHADER_VERTEX,seed,4));
+    struct pipe_resource *tess_ubos=NULL;
+    if (tess_uniforms) {
+        tess_ubos=joint_tess_uniform_buffer(pipe->screen,index);
+        joint_bind_tess_uniforms(link,sink,tess_ubos,index,false);
+    }
     if (patch_endpoints) {
         const uint32_t indices[2][4]={{0,0,0,0},{31,3,full_patch?2u:29u,3}};
         const unsigned stage=OPENGPU_TESSELLATION_UNIFORM_EVALUATION_STAGE;
@@ -98,6 +155,13 @@ static void joint_case(struct pipe_context *pipe,const char *sources,unsigned in
     assert(!opengpu_native_joint_source_describe(source,&shader));
     assert(shader.vertex_layout.attributes==2);
     assert(shader.fragment.metadata.abi_version==8 && shader.fragment.metadata.color_types[0]==1);
+    if (tess_uniforms) {
+        assert(shader.uniforms[1].active_mask==0xfff && shader.uniforms[2].active_mask==0xfff);
+        /* Replace the state-tracker bindings before protected BUILD consumes
+         * the captured source. Each captured stage must keep its own views. */
+        joint_bind_tess_uniforms(link,sink,tess_ubos,index,true);
+        pipe_resource_reference(&tess_ubos,NULL);
+    }
     if (patch_endpoints) {
         const struct opengpu_native_tess_layout *control=&shader.tess[0].layout;
         assert(control->output_vertices==32 && control->output_components==(full_patch?64u:60u) &&
@@ -181,6 +245,11 @@ static void joint_case(struct pipe_context *pipe,const char *sources,unsigned in
     for (unsigned i=0;i<resource_count;++i) pipe_resource_reference(resources+i,NULL);
     for (unsigned stage=0;stage<4;++stage)
         assert(joint_references(shader.code[stage].handle)>0);
+    if (tess_uniforms) {
+        assert(joint_references(shader.uniforms[1].blocks[0].handle)>0);
+        for (unsigned stage=1;stage<=2;++stage)
+            assert(joint_references(shader.uniforms[stage].defaults.handle)>0);
+    }
 }
 
 int main(int argc,char **argv)
@@ -189,9 +258,10 @@ int main(int argc,char **argv)
     if (argc==5 && !strcmp(argv[4],"--vga-quad")) mode=JOINT_VGA_QUAD;
     if (argc==5 && !strcmp(argv[4],"--patch-endpoints")) mode=JOINT_PATCH_ENDPOINTS;
     if (argc==5 && !strcmp(argv[4],"--full-patch-endpoints")) mode=JOINT_FULL_PATCH_ENDPOINTS;
+    if (argc==5 && !strcmp(argv[4],"--tess-uniforms")) mode=JOINT_TESS_UNIFORMS;
     if (argc!=4 && mode==JOINT_SMALL) {
         fprintf(stderr,"usage: native-joint ESSL_DIR PROFILE_OR_--cpu-preflight SESSION_DIR "
-            "[--vga-quad|--patch-endpoints|--full-patch-endpoints]\n");
+            "[--vga-quad|--patch-endpoints|--full-patch-endpoints|--tess-uniforms]\n");
         return 2;
     }
     const bool cpu_preflight=!strcmp(argv[2],"--cpu-preflight");
@@ -220,7 +290,7 @@ int main(int argc,char **argv)
     fprintf(layout,"{\"context\":%u,\"engines\":%u,\"cpuPreflight\":%s,\"records\":[",
         context,runtime.engines,cpu_preflight?"true":"false");
     unsigned records=JOINT_LIVE_RECORDS;
-    if (mode==JOINT_PATCH_ENDPOINTS) records=JOINT_LIVE_BASE_RECORDS;
+    if (mode==JOINT_PATCH_ENDPOINTS || mode==JOINT_TESS_UNIFORMS) records=JOINT_LIVE_BASE_RECORDS;
     if (mode==JOINT_VGA_QUAD || mode==JOINT_FULL_PATCH_ENDPOINTS) records=2;
     for (unsigned i=0;i<records;++i) joint_case(pipe,argv[1],i,runtime.engines,mode,layout);
     fputs("]}\n",layout);

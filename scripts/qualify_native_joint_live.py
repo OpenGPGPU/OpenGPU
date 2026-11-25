@@ -17,7 +17,7 @@ from build_native_flashsim import digest, model_library_path
 from compute_owner_protocol import required_flags, strict_json, uint
 from native_graphics_uniform_oracle import SparseMemory, require
 from native_joint_live_oracle import (
-    FULL_PATCH_ENDPOINTS, PATCH_ENDPOINTS, RECORDS, SMALL, SOURCE_CANCEL_RECORD, VGA_QUAD,
+    FULL_PATCH_ENDPOINTS, PATCH_ENDPOINTS, RECORDS, SMALL, SOURCE_CANCEL_RECORD, TESS_UNIFORMS, VGA_QUAD,
     capture, original_graph, original_records, verify_image,
 )
 from native_sample_graphics_controller import wait_cleanup
@@ -171,7 +171,7 @@ def docker_command(gpu, directory, name, timeout, fixture=SMALL):
         'exec /joint-out/build/native-joint userspace/tests/tess_joint_live_essl /joint-out/profile.bin /joint-out/session'
     )
     recipe += {VGA_QUAD: ' --vga-quad', PATCH_ENDPOINTS: ' --patch-endpoints',
-               FULL_PATCH_ENDPOINTS: ' --full-patch-endpoints'}.get(fixture, '')
+               FULL_PATCH_ENDPOINTS: ' --full-patch-endpoints', TESS_UNIFORMS: ' --tess-uniforms'}.get(fixture, '')
     return [*command,'-w','/joint-src',IMAGE,'/bin/bash','-ec',recipe]
 
 
@@ -210,7 +210,7 @@ def exchange(directory, executor, bridge, discovery, engines, identities, timeou
                 shader, index_line = original_graph(initial,regs,context,row,
                     frame_version=frame_version,fault=fault,fixture=fixture)
                 domain, mutation, _ = fixture.cases[index]
-                if mutation and fixture.patch_layout is None:
+                if mutation and fixture.patch_layout is None and fixture != TESS_UNIFORMS:
                     require(baseline_shaders[domain]!=shader,'original VS mutation did not change executable bytes')
                 else:
                     require(baseline_shaders.setdefault(domain,shader)==shader,
@@ -368,6 +368,8 @@ def main():
                          help='replay the 32x60 vertex and 120 per-patch word endpoints on all three domains')
     recipes.add_argument('--full-patch-endpoints',dest='fixture',action='store_const',const=FULL_PATCH_ENDPOINTS,
                          help='replay the 32x64 vertex word endpoints in the quad domain')
+    recipes.add_argument('--tess-uniforms',dest='fixture',action='store_const',const=TESS_UNIFORMS,
+                         help='replay original TCS/TES GUR3 UBOs and defaults in all three domains')
     parser.set_defaults(fixture=SMALL)
     args = parser.parse_args()
     require(0 < args.timeout <= 86400 and args.jobs > 0, 'invalid joint timeout or C++ job count')
