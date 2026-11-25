@@ -249,12 +249,11 @@ python3 -B scripts/test_tessellation_program_snapshot.py --sanitize --programs .
 
 The frontend command is opt-in and needs the immutable Mesa/DRM/link environment
 and bounded container recipe in [the static frontend instructions](TESSELLATION_MESA_UNIFORMS.md),
-adding `--dynamic` and choosing a fresh output directory. Remove its outputs after consumers finish. The
-independent validator/RX test does not interpret or execute instructions. The LLVM
-MC declaration uses the mnemonic above; complete new-tool roundtrip remains a
-separate qualification. Real three-domain CU execution, native submission/ABI
-assignment, original VS-to-patch provenance and final host qualification remain
-uncompleted dependencies.
+adding `--dynamic` and choosing a fresh output directory. Remove its outputs
+after consumers finish. The independent validator/RX test checks program
+admission. The protected execution checks below use the same original Mesa
+frontend and add an independent image oracle. The LLVM MC declaration uses the
+mnemonic above.
 
 
 Source dependencies include the two original P17 compiler/resource-plan commits
@@ -263,3 +262,58 @@ and the P16 validator/RX commits `7f07da63a`, `56a0d9451`, `e031887c1` and
 `PROTECTED_TESSELLATION_OWNER.md` and absent P16 builder test were not imported
 into this compiler-only dependency tree; the original P16 topic retains them.
 This does not register the complete P16 Linux/native submission path.
+
+## Protected Mesa patch endpoints
+
+The compact 4×4 protected host executed eight original Mesa 22.3.6 submissions
+on a FlashSim model with two physical 16-lane, eight-warp CUs and one rendering
+engine. Each submission passed the independent RGBA32UI image and guard checks,
+actual driver retirement and acknowledged cleanup. The driver snapshots TES
+selectors through the stage-5 GUR3 root. For each domain and layout, both
+selector sets use the same original VS and TES executable bytes.
+
+| Domain | TCS output layout | First endpoint cycles | Last endpoint cycles |
+| --- | --- | ---: | ---: |
+| Isoline | 32 × 60 vertex words + 120 per-patch words | 83,960 | 82,832 |
+| Triangle | 32 × 60 vertex words + 120 per-patch words | 127,950 | 127,950 |
+| Quad | 32 × 60 vertex words + 120 per-patch words | 651,686 | 651,516 |
+| Quad | 32 × 64 vertex words | 576,070 | 575,594 |
+
+The low/high selector pairs exercise vertices 0/31, components 0/63 across the
+tested layouts, and per-patch words 0/119 in each of the three domains. Both
+recipes read tessellation levels 0 and 5. The 2040-word recipe took 136.49 seconds
+and the 2048-word recipe took 102.13 seconds of host time, including original
+producer compilation and protected submission. Peak charged memory was about
+578 MiB and 541 MiB, respectively.
+
+The joint BUILD had used the read-only GUR3 snapshot bounds as the GNT interval
+for excluding writable shader scratch. The uniform loader rejected the root
+before reading it. BUILD now publishes the stage roots with empty scratch
+intervals for protected TCS and TES. The ASan/UBSan joint BUILD test checks
+both intervals and the original read-only Sv32 graph. Sixteen semantic
+negative controls passed.
+
+Prepare the routine 4×4 protected model with FIRTool 1.158 and FlashSim
+`bfe7f2c1d8`. The measured build used the CIRCT overlay with two CIRCT
+threads, `FLASHSIM_CIRCT_LARGEST_FIRST=1`,
+`FLASHSIM_MODULE_JOBS=2`, `FLASHSIM_PREFLATTEN_WIRES=1` and
+`FLASHSIM_GC_POLICY=defer`. Keep assertions enabled and use a file with a
+`__main__` guard when invoking `compile_file` with multiple module workers.
+The Darwin executor used two build jobs, `--shard-opt=-O0`, `--shared-model`
+and the classic linker. [4×4 model preparation](PROTECTED_TESSELLATION_JOINT_BUILD.md#protected-drm-submission)
+[CIRCT overlay setup](OWNER_FULL_FACTORY_REPRODUCTION.md#flashsim-compiler-prerequisite)
+
+```sh
+python3.13 -B scripts/test_protected_tessellation_joint.py --sanitize --negative-controls
+python3.13 -B scripts/test_native_joint_live_oracle.py
+for recipe in --patch-endpoints --full-patch-endpoints; do
+  python3.13 -B scripts/run_owner_bounded.py --memory-mib 4096 --timeout-seconds 7200 -- \
+    python3.13 -B scripts/qualify_native_joint_live.py "$recipe" --timeout 900 \
+    --dut-dir "$OUT/resharded" --executor-build "$OUT/executor" || exit
+done
+```
+
+The original ten-record 4×4 regression also passed on this model. A
+full-capacity TES source-code mutation, the full rendering factory,
+production LLVM integration and the two-CU VGA60 product qualification
+remain pending.
