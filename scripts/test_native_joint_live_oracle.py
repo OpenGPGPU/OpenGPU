@@ -4,7 +4,7 @@ import struct
 import unittest
 
 from native_joint_live_oracle import (
-    FULL_PATCH_ENDPOINTS, PATCH_ENDPOINTS, RECORDS, SOURCE_CANCEL_RECORD, VGA_QUAD,
+    FULL_PATCH_ENDPOINTS, PATCH_ENDPOINTS, RECORDS, SOURCE_CANCEL_RECORD, TESS_UNIFORMS, VGA_QUAD,
     expected_image, verify_image,
 )
 from qualify_native_joint_live import cleanup_checked, receipt_words, reset_receipt, retired_receipt
@@ -77,6 +77,22 @@ class JointOracle(unittest.TestCase):
             observed.data[68:72] = struct.pack('<I',0x3f800135)
             with self.assertRaisesRegex(ValueError,'pixel 0,0'):
                 verify_image(initial,observed,row,interval,fixture=fixture)
+
+    def test_tess_uniform_variants_require_all_four_stage_contributions(self):
+        initial, observed = ImagePage(), ImagePage()
+        interval = [(0x1000,0x2000)]
+        old_color = (0x644043f9,0x3d2002,0x645043d0,0x5f006d)
+        new_color = (0x644053f9,0x0a4002,0x645053d0,0x0fc033)
+        for record, color in ((4,old_color),(5,new_color)):
+            row = dict(self.row,record=record,domain=2)
+            observed.data[64:320] = struct.pack('<4I',*color)*16
+            verify_image(initial,observed,row,interval,fixture=TESS_UNIFORMS)
+        for channel,value in enumerate(old_color):
+            offset = 64+4*channel
+            observed.data[offset:offset+4] = struct.pack('<I',value)
+            with self.assertRaisesRegex(ValueError,'pixel 0,0'):
+                verify_image(initial,observed,row,interval,fixture=TESS_UNIFORMS)
+            observed.data[offset:offset+4] = struct.pack('<I',new_color[channel])
 
     def test_retirement_cannot_change_held_identity_or_byte_count(self):
         held = dict(phase='held',record=0,commandId=5,completion=0x18705,

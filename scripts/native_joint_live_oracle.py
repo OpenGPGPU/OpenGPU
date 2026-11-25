@@ -1,6 +1,8 @@
 """Independent input and RGBA32UI oracle for the three joint Mesa domains."""
 from dataclasses import dataclass
+from functools import reduce
 import hashlib
+from operator import xor
 import struct
 
 from compute_owner_protocol import required_flags, uint
@@ -41,6 +43,14 @@ SMALL = ReplayFixture(4,4,3,CASES)
 VGA_QUAD = ReplayFixture(640,480,4,CASES[4:6])
 PATCH_ENDPOINTS = ReplayFixture(4,4,3,CASES[:6],patch_layout=(60,120))
 FULL_PATCH_ENDPOINTS = ReplayFixture(4,4,3,CASES[4:6],patch_layout=(64,0))
+TESS_UNIFORMS = ReplayFixture(4,4,3,CASES[:6])
+
+TESS_UBO_BINDINGS = (
+    (71,63,32,31,0,18,7,41,55,12,69,23),
+    (1,62,33,30,2,19,8,42,56,13,70,24),
+)
+TESS_BLOCK_WORDS = 4096
+TESS_DEFAULT_WORDS = 1024
 
 
 def original_records(value, initial, engines, *, preflight=False, fixture=SMALL):
@@ -137,6 +147,73 @@ def physical(memory, satp, va, count, permission):
     return first
 
 
+def tess_ubo_windows(record):
+    # The second draw for each domain aliases binding 1 to binding 71.
+    return tuple(tuple(71 if record & 1 and binding == 1 else binding for binding in stage)
+                 for stage in TESS_UBO_BINDINGS)
+
+
+def tess_ubo_word(window, record, component):
+    return 0x12000000 + 0x10000*window + (component + record*TESS_BLOCK_WORDS)*(13+window)
+
+
+def tess_default_word(stage, record, component):
+    return 0x64000000 | stage << 20 | record << 12 | component
+
+
+def tess_binding(binding, identity, slot, stage_mask, length):
+    base = binding[8]
+    end = base + length
+    require(base % 256 == 0 and
+            binding == (0x47554203,64,3,*identity,slot,stage_mask,base,end,0,base,end,0,1,0),
+            'protected GUB3 binding differs from its original read-only view')
+    return base
+
+
+def check_tess_uniforms(words, sequence, identity, record):
+    windows = tess_ubo_windows(record)
+    users = {window: sum(1 << stage for stage, owned in enumerate(windows,4) if window in owned)
+             for window in set(windows[0]) | set(windows[1])}
+    require(sequence[499] == sequence[504] == 3 and sequence[505] == sequence[500]+64 and
+            sequence[501:504] == sequence[506:509] == (0,0,0),
+            'protected GNT lost its independent TCS/TES roots or exposed writable scratch')
+    table = sequence[500]+128
+    table_end = table+24*64
+    known, spans = {}, []
+    for index, owned in enumerate(windows):
+        stage = 4+index
+        default = table_end+64*index
+        root = words(sequence[500+5*index],16)
+        require(root[:8] == (0x47555203,64,3,*identity,stage,0xfff) and
+                root[10:] == (table,table_end,0,default,1,0) and max(root[8:10]) < 1 << 30,
+                'protected GUR3 root changed its owner, stage, table or default')
+        slots = tuple(word >> shift & 31 for word in root[8:10] for shift in range(0,30,5))
+        require(len(set(slots)) == 12 and max(slots) < 24, 'invalid protected GUR3 stage mapping')
+        default_base = tess_binding(words(default,16),identity,31,1 << stage,TESS_DEFAULT_WORDS*4)
+        require(words(default_base,TESS_DEFAULT_WORDS) ==
+                tuple(tess_default_word(stage,record,word) for word in range(TESS_DEFAULT_WORDS)),
+                'protected GUR3 default data changed after rebinding')
+        spans.append((default_base,default_base+TESS_DEFAULT_WORDS*4))
+        expected = {tess_ubo_word(window,record,0):window for window in owned}
+        for slot in slots:
+            binding = words(table+64*slot,16)
+            first, = words(binding[8],1)
+            window = expected.pop(first,None)
+            require(window is not None, 'protected GUR3 UBO mapping changed after rebinding')
+            base = tess_binding(binding,identity,slot,users[window],TESS_BLOCK_WORDS*4)
+            if window in known:
+                require(known[window] == (slot,base), 'identical original UBO view was copied twice')
+            else:
+                known[window] = (slot,base)
+                spans.append((base,base+TESS_BLOCK_WORDS*4))
+                require(words(base,TESS_BLOCK_WORDS) ==
+                        tuple(tess_ubo_word(window,record,word) for word in range(TESS_BLOCK_WORDS)),
+                        'protected GUR3 changed an original UBO window')
+    spans.sort()
+    require(all(right >= left_end for (_,left_end),(right,_) in zip(spans,spans[1:])),
+            'different original GUR3 views overlap')
+
+
 def original_graph(memory, regs, context, row, *, frame_version, fault=None, fixture=SMALL):
     """Check the published owner's descriptors and original input selection."""
     satp, root = regs[0x14c], regs[0xf4]
@@ -154,7 +231,7 @@ def original_graph(memory, regs, context, row, *, frame_version, fault=None, fix
     sequence = words(job[16], 512)
     require(sequence[0] == 0x474e5407 + row['domain'] and sequence[16] == 2,
             'published GNT lost the original per-instance patch range')
-    tes_code = b''
+    tess_code = b''
     if fixture.patch_layout is not None:
         layout_word = 214 if row['domain'] == 0 else 215
         vertex_words, patch_words = fixture.patch_layout
@@ -163,8 +240,8 @@ def original_graph(memory, regs, context, row, *, frame_version, fault=None, fix
                 'published GNT changed the dynamic patch layout or added static selections')
         tes_pc = sequence[layout_word+18]
         require(tes_pc and tes_pc % 4 == 0, 'missing original TES executable')
-        tes_code = view(tes_pc,4096-(tes_pc & 4095),11)
-        require(any(word & 0xfc00707f == 0x8400002b for word, in struct.iter_unpack('<I',tes_code)),
+        tess_code = view(tes_pc,4096-(tes_pc & 4095),11)
+        require(any(word & 0xfc00707f == 0x8400002b for word, in struct.iter_unpack('<I',tess_code)),
                 'original TES omitted the owned patch-read instruction')
         uniform = words(sequence[505],16)
         identity = (context,row['pass'],row['generation'])
@@ -178,6 +255,15 @@ def original_graph(memory, regs, context, row, *, frame_version, fault=None, fix
         column_or_patch = 2 if fixture == FULL_PATCH_ENDPOINTS else 29
         expected_indices = (31,3,column_or_patch,3) if row['record'] & 1 else (0,0,0,0)
         require(words(binding[8],4) == expected_indices, 'protected defaults changed the TES endpoint selectors')
+    elif fixture == TESS_UNIFORMS:
+        check_tess_uniforms(words,sequence,(context,row['pass'],row['generation']),row['record'])
+        for pc in (sequence[210],sequence[232 if row['domain'] == 0 else 233]):
+            require(pc and pc % 4 == 0,'missing original TCS/TES executable')
+            code = view(pc,4096-(pc & 4095),11)
+            uniform_loads = sum((word & 0xfc00707f == 0x1c00002b or
+                                 word & 0xfe00707f == 0x0e00000b) for word, in struct.iter_unpack('<I',code))
+            require(uniform_loads >= 13,'original TCS/TES omitted a checked uniform load')
+            tess_code += code
     directory = words(job[28], 32)
     entry = directory[16:]
     require(entry[:5] == (0, 0, row['record']+3, 1, 3) and entry[6:10] == (0,2,0,1) and entry[11] == 2,
@@ -210,7 +296,7 @@ def original_graph(memory, regs, context, row, *, frame_version, fault=None, fix
     # The original GND declares UINT8 indices. Bind the response hold to the
     # cache line containing the first index through the real Sv32 table.
     index_line = physical(memory,satp,(draw[322]+draw[312])&~63,64,3)
-    return hashlib.sha256(view(pc,4096-(pc & 4095),11)+tes_code).digest(), index_line
+    return hashlib.sha256(view(pc,4096-(pc & 4095),11)+tess_code).digest(), index_line
 
 
 def expected_image(domain, mutation, *, fixture=SMALL):
@@ -229,6 +315,12 @@ def expected_image(domain, mutation, *, fixture=SMALL):
         front = (0x3e800000,0x3f800004,153,0x7f800000)
         back = (0x43000000,0x3f800154,956,0x7f800000)
         color = struct.pack('<4I',*(back if mutation else front))
+    elif fixture == TESS_UNIFORMS:
+        record = 2*domain+int(mutation)
+        control, evaluation = (reduce(xor,(tess_ubo_word(window,record,TESS_BLOCK_WORDS-1) for window in stage))
+                               for stage in tess_ubo_windows(record))
+        color = struct.pack('<4I',base[0]^tess_default_word(4,record,TESS_DEFAULT_WORDS-1),control,
+                            base[2]^tess_default_word(5,record,TESS_DEFAULT_WORDS-1),base[3]^evaluation)
     else:
         color = struct.pack('<4I',*(c^m for c,m in zip(base,(5,9,17,33)))) if mutation else struct.pack('<4I',*base)
     if domain == 2:
