@@ -356,6 +356,67 @@ configuration. Full-capacity and product qualification still require the
 640×480 host with characterized memory, hardware performance counters and
 timing closure for 60 FPS.
 
+### Original TCS and TES uniform replay
+
+The `--tess-uniforms` recipe ran six original Mesa 22.3.6 submissions through
+the protected DRM path. The assertion-enabled 4×4 FlashSim model has two
+physical 16-lane, eight-warp CUs and one rendering engine. Each TCS and TES
+program reads the last word of twelve 16 KiB UBOs and a 1024-component default
+view. Four RGBA32UI channels separately check the TCS default, TCS UBOs, TES
+default and TES UBOs.
+
+Each domain uses two owners with the same original VS, TCS and TES executable
+bytes. The first uses 24 distinct, nonzero-offset windows of one original
+GEM. The second shares one exact window between TCS and TES, giving 23 GUB3 views
+and a shared stage mask of `0x30`. Each owner captures its original views
+before rebinding both stages and replacing their defaults in the state
+tracker. The submission retains the original code, UBO GEM and both default
+copies through the execution fence after the caller releases its references.
+
+The independent oracle traverses the actual Sv32 page tables and checks the
+GNT, both GUR3 roots, the GUB3 stage masks and every copied uniform word. It
+checks the original TCS/TES code pages as RX and the uniform views as R/NX.
+All six records passed their image and guard checks, actual driver retirement
+and acknowledged cleanup on the same DUT and RAM.
+
+| Domain | Distinct-window cycles | Shared-window cycles |
+| --- | ---: | ---: |
+| Isoline | 57,508 | 56,380 |
+| Triangle | 91,196 | 91,128 |
+| Quad | 98,336 | 98,234 |
+
+The six records took 98.02 seconds of host time, including Mesa producer
+compilation, with about 644 MiB peak charged memory. FlashSim model generation
+and the 89-shard native build took 928.66 and 311.14 seconds, peaking at 5.02
+and 8.38 GiB respectively. The original ten-record replay also passed on the
+same model.
+
+The ASan/UBSan joint BUILD suite passed 16 semantic negative controls.
+Three focused FlashSim component tests passed, covering packed patch RAM and
+level initialization, cancellation followed by healthy reuse, and distinct
+TCS/TES root and CU ownership.
+
+Use the routine 4×4 model and executor with pinned FIRTool 1.158 and FlashSim
+`bfe7f2c1d8`. The model was built with two CIRCT threads, two Python module
+workers and two C++ jobs using `-O0` model shards. [Pinned model setup](TESSELLATION_DYNAMIC_PATCH_READ.md#protected-mesa-patch-endpoints)
+
+```sh
+python3.13 -B scripts/test_native_joint_live_oracle.py
+python3.13 -B scripts/test_protected_tessellation_joint.py --sanitize --negative-controls
+python3.13 -B scripts/run_owner_bounded.py --memory-mib 4096 --timeout-seconds 3600 -- \
+  python3.13 -B scripts/qualify_native_joint_live.py --tess-uniforms --timeout 900 \
+  --dut-dir "$OUT/resharded" --executor-build "$OUT/executor"
+sbt -batch -J-Xmx1536m -J-XX:ActiveProcessorCount=1 \
+  -Dopengpu.simBackend=flashsim -Dopengpu.flashsimPython=python3.13 -Dopengpu.simJobs=1 \
+  'set Test / parallelExecution := false' \
+  'set Test / sources ~= (_.filter(p => Set("GraphicsTestResolution.scala", "GpuSim.scala", "FlashSimBackend.scala", "WindowPrimitiveRecordsSpec.scala", "TessellationPatchStoreSpec.scala", "TessellationPatchContextSpec.scala", "TessellationUniformCuServiceSpec.scala").contains(p.getName)))' \
+  'testOnly opengpu.graphics.tessellation.TessellationOwnedPatchStoreSpec opengpu.graphics.tessellation.TessellationOwnedPatchContextSpec opengpu.system.TessellationUniformCuServiceSpec'
+```
+
+Qualification of these original uniform workloads on the complete factory,
+joint fault and cancellation coverage at the uniform service, and the
+two-CU VGA60 product gate remain pending.
+
 ## Four-engine target replay
 
 The complete protected VGA factory reported 92 discovery words, two 16-lane
