@@ -12,6 +12,7 @@
 #include <optional>
 #include <sstream>
 #include <thread>
+#include <utility>
 
 #ifdef OPENGPU_FLASHSIM_NATIVE
 static_assert(GpuHostSystemAxiDut::assertion_count > 0,"assertion-free owner replay DUT");
@@ -108,7 +109,7 @@ inline void traffic_unchanged(const Traffic &a,const Traffic &b) {
 // must never be substituted for MMIO read results when authorizing release.
 struct RecordResult {
   uint64_t cycles=0, read_bytes=0, write_bytes=0, append_read_bytes=0;
-  uint64_t physical_write_faults=0;
+  uint64_t physical_read_faults=0, physical_read_fault_line=0, physical_write_faults=0;
   uint32_t completion=0, held_legacy_status=0, held_status=0, held_irq=0, retired_status=0, retired_irq=0;
   std::array<uint32_t,12> gnx{};
   std::array<uint32_t,OPENGPU_TESS_JOINT_HOST_COMPLETION_WORDS> gnz2{};
@@ -245,14 +246,17 @@ void replay_enqueue_prefix(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,const Captu
 template<class Sim,class CaptureType>
 HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
                        Memory &memory,const CaptureType &capture,bool prefix_only=false,
-                       native_frame::ExecutionProgress *progress=nullptr) {
+                       native_frame::ExecutionProgress *progress=nullptr,uint64_t read_fault_line=0) {
   capture.validate(prefix_only);
   HeldRecord held_record;held_record.initial=memory;
   verify_readonly(held_record.initial,memory,capture.writable);
   held_record.start_cycles=bus.cycles;held_record.start_traffic=agent.traffic;
   replay_enqueue_prefix(sim,agent,bus,capture);
+  const auto initial_injected_reads=agent.injected_read_faults();
   const auto initial_injected_writes=agent.injected_write_faults();
   if constexpr(CaptureType::joint_completion) {
+    require(bool(read_fault_line)==capture.uniform_read_fault,"joint uniform fault is missing its exact read line");
+    if(read_fault_line)agent.arm_read_faults(read_fault_line,read_fault_line+64);
     if(capture.write_fault) {
       const auto address=capture.write_fault->physical;
       agent.arm_first_write_fault(address,address+64);
@@ -277,15 +281,19 @@ HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
   auto &result=held_record.result;result.completion=completion;
   result.joint_completion=CaptureType::joint_completion;
   if constexpr(CaptureType::joint_completion) {
+    const unsigned expected_reads=bool(read_fault_line);
     const unsigned expected_writes=bool(capture.write_fault);
-    require(completed.read_faults==held_record.start_traffic.read_faults &&
+    require(completed.read_faults==held_record.start_traffic.read_faults+expected_reads &&
       completed.write_faults==held_record.start_traffic.write_faults+expected_writes &&
+      agent.injected_read_faults()==initial_injected_reads+expected_reads &&
       agent.injected_write_faults()==initial_injected_writes+expected_writes,
       "protected joint completion has unexpected physical fault traffic");
+    if(read_fault_line)agent.disarm_read_faults();
     if(capture.write_fault) {
       require(agent.first_write_attempts()==1,"protected joint store retried a failed physical line");
       agent.disarm_first_write_fault();
     }
+    result.physical_read_faults=expected_reads;result.physical_read_fault_line=read_fault_line;
     result.physical_write_faults=expected_writes;
   }
   result.held_legacy_status=bus.read(GPU_REG_STATUS);
@@ -385,7 +393,9 @@ inline void completion_detail_json(std::ostream &out,const RecordResult &result)
     for(size_t n=0;n<result.gnx.size();++n)out<<(n?",":"")<<result.gnx[n];
   }
   out<<']';
-  if(result.joint_completion)out<<",\"physicalWriteFaults\":"<<result.physical_write_faults;
+  if(result.joint_completion)out<<",\"physicalWriteFaults\":"<<result.physical_write_faults
+    <<",\"physicalReadFaults\":"<<result.physical_read_faults
+    <<",\"physicalReadFaultLine\":"<<result.physical_read_fault_line;
 }
 inline void held_json(std::ostream &out,const RecordResult &r,size_t index,uint32_t command_id) {
   out<<"{\"phase\":\"held\",\"record\":"<<index<<",\"commandId\":"<<command_id
@@ -443,8 +453,16 @@ inline void match_profile(const Capture &capture,const ProfileObservation &profi
     require(at!=words.end() && at->second==word.value,"active capture differs from actual probe identity/quota");
   }
 }
+inline uint64_t joint_read_line(std::istream &plan,const JointCapture &capture) {
+  const auto physical=read_le(plan,8);
+  require(physical && physical<Memory::limit && !(physical&63) && plan.peek()==EOF &&
+    std::none_of(capture.writable.begin(),capture.writable.end(),[physical](const auto &r) {
+      return physical<r.end && r.first<physical+64;
+    }),"joint read plan requires one aligned read-only physical line");
+  return physical;
+}
 template<class Sim>
-void cancel_joint_index_read(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
+void cancel_joint_read(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
     const JointCapture &capture,const std::filesystem::path &output,const std::filesystem::path &session,
     uint64_t index,std::chrono::milliseconds timeout) {
   const auto stem="record-"+std::to_string(index);
@@ -452,12 +470,10 @@ void cancel_joint_index_read(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &m
   const auto plan_path=session/(reset_stem+"plan");
   wait_input(plan_path,session,timeout);
   std::ifstream plan(plan_path,std::ios::binary);
-  magic(plan,"OGJCP001");
-  const auto physical=read_le(plan,8);
-  require(physical && physical<Memory::limit && !(physical&63) && plan.peek()==EOF &&
-    std::none_of(capture.writable.begin(),capture.writable.end(),[physical](const auto &r) {
-      return physical<r.end && r.first<physical+64;
-    }),"cancel plan does not select a read-only original index line");
+  std::string format(8,'\0');
+  plan.read(format.data(),format.size());
+  require(format=="OGJCP001" || format=="OGJCP002","unknown joint read hold plan");
+  const auto physical=joint_read_line(plan,capture);
 
   const auto initial=memory;
   const auto traffic=agent.traffic;
@@ -476,7 +492,7 @@ void cancel_joint_index_read(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &m
     bus.step();
     if((bus.cycles-start)%64==0)
       require(!(bus.read(GPU_REG_UCMD_STATUS)&GPU_UCMD_STATUS_COMPLETION),
-        "joint job completed before the original index response was held");
+        "joint job completed before the selected read response was held");
   }
   auto held_cycles=[&] {return agent.held_read_cycles()-previous_holds;};
   struct ResetState {
@@ -494,7 +510,8 @@ void cancel_joint_index_read(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &m
       out<<"{\"phase\":\""<<phase<<"\",\"record\":"<<index<<",\"commandId\":"<<capture.command_id
         <<",\"legacyStatus\":"<<s.legacy<<",\"status\":"<<s.status<<",\"irq\":"<<s.irq
         <<",\"irqAsserted\":"<<(s.pin?"true":"false")<<",\"externalDrained\":"<<(s.drained?"true":"false")
-        <<",\"physicalIndexLine\":"<<physical<<",\"satp\":"<<satp<<",\"heldReadCycles\":"<<held_cycles()
+        <<(format=="OGJCP001"?",\"physicalIndexLine\":":",\"physicalReadLine\":")<<physical
+        <<",\"satp\":"<<satp<<",\"heldReadCycles\":"<<held_cycles()
         <<",\"resetHeldReadCycles\":"<<reset_holds<<",\"serviceCycles\":"<<bus.cycles-start<<"}\n";
     });
   };
@@ -502,7 +519,7 @@ void cancel_joint_index_read(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &m
   require(!held.legacy && !held.drained && (held.status&GPU_UCMD_STATUS_VM_BUSY) &&
     !(held.status&~(GPU_UCMD_STATUS_READY|GPU_UCMD_STATUS_VM_BUSY)) && (held.irq&GPU_IRQ_ENABLE) &&
     !(held.irq&~(GPU_IRQ_ENABLE|GPU_IRQ_PENDING)) && held.pin==bool(held.irq&GPU_IRQ_PENDING),
-    "joint index response was not held by a live command");
+    "joint read response was not held by a live command");
   auto last_completion=[&] {
     return std::array{bus.read(GPU_REG_UCMD_COMPLETION),bus.read(GPU_REG_UCMD_COMPLETION_BYTES_LO),
       bus.read(GPU_REG_UCMD_COMPLETION_BYTES_HI)};
@@ -521,11 +538,11 @@ void cancel_joint_index_read(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &m
     bus.step();
     require((bus.read(GPU_REG_UCMD_STATUS)&~GPU_UCMD_STATUS_READY)==
       (GPU_UCMD_STATUS_RESET_BUSY|GPU_UCMD_STATUS_VM_BUSY) && !agent.drained(),
-      "joint reset released the owner before its index response drained");
+      "joint reset released the owner before its held read response drained");
   }
   verify_vm();
   const auto reset_holds=held_cycles()-before_reset_hold;
-  require(reset_holds>=capture.hold_cycles,"joint reset lost its withheld index response");
+  require(reset_holds>=capture.hold_cycles,"joint reset lost its withheld read response");
   agent.release_response_hold();
   while(bus.read(GPU_REG_UCMD_STATUS)&GPU_UCMD_STATUS_RESET_BUSY)bus.step();
   require(agent.drained(),"joint reset acknowledged before external drain");
@@ -556,7 +573,7 @@ void cancel_joint_index_read(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &m
   publish("retired",retired,reset_holds);
 }
 template<class Sim,class CaptureType>
-uint64_t active_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
+std::pair<uint64_t,uint64_t> active_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
     const std::filesystem::path &output,const std::filesystem::path &session,
     const CaptureType &first,uint64_t count,std::ostream &report=std::cout,
     std::chrono::milliseconds response_timeout=std::chrono::minutes(5),PtePages *pte=nullptr) {
@@ -564,7 +581,7 @@ uint64_t active_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory
   if constexpr(!CaptureType::joint_completion)profile=probe_profile(sim,agent,bus);
   std::optional<native_frame::ExecutionProgress> progress;
   if constexpr(CaptureType::joint_completion)progress.emplace(output);
-  uint64_t completed_write_faults=0;
+  uint64_t completed_read_faults=0, completed_write_faults=0;
   for(uint64_t n=0;n<count;n++) {
     const auto stem="record-"+std::to_string(n);
     if(n)wait_input(session/(stem+".capture"),session,response_timeout);
@@ -576,26 +593,35 @@ uint64_t active_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory
     }else match_profile(capture,profile);
     verify_readonly(memory,memory,capture.writable);
     if(pte)pte->observe(memory,capture);
+    uint64_t read_fault_line=0;
     if constexpr(CaptureType::joint_completion) {
-      if(capture.cancel_index_read) {
-        cancel_joint_index_read(sim,agent,bus,memory,capture,output,session,n,response_timeout);
+      if(capture.cancel_read) {
+        cancel_joint_read(sim,agent,bus,memory,capture,output,session,n,response_timeout);
         continue;
+      }
+      if(capture.uniform_read_fault) {
+        const auto path=session/(stem+".uniform-fault.plan");
+        wait_input(path,session,response_timeout);
+        std::ifstream plan(path,std::ios::binary);
+        magic(plan,"OGJFP001");
+        read_fault_line=joint_read_line(plan,capture);
       }
     }
     if(progress)progress->begin(stem,n+1,count,capture.max_cycles,
       native_frame::progress_counters(0,bus.cycles,agent.traffic));
-    auto held=hold_record(sim,agent,bus,memory,capture,true,progress?&*progress:nullptr);
+    auto held=hold_record(sim,agent,bus,memory,capture,true,progress?&*progress:nullptr,read_fault_line);
     atomic_json(session/(stem+".held.json"),[&](auto &out){held_json(out,held.result,n,capture.command_id);});
     wait_input(session/(stem+".retire"),session,response_timeout);
     const auto retirement=Retirement::read((session/(stem+".retire")).string(),CaptureType::joint_completion);
     const auto result=retire_record(sim,agent,bus,memory,capture,held,&retirement);
+    completed_read_faults+=result.physical_read_faults;
     completed_write_faults+=result.physical_write_faults;
     memory.write((output/(stem+".memory")).string());
     atomic_json(session/(stem+".retired.json"),[&](auto &out){report_record(result,n,capture.command_id,bus.cycles,out);});
     report_record(result,n,capture.command_id,bus.cycles,report);
     if(progress)progress->finish(native_frame::progress_counters(result.cycles,bus.cycles,agent.traffic));
   }
-  return completed_write_faults;
+  return {completed_read_faults,completed_write_faults};
 }
 template<class Sim>
 void cleanup_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,

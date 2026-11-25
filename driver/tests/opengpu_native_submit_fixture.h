@@ -54,6 +54,8 @@ int native_kernel_capture(struct native_kernel_session *,unsigned record,const c
     uint64_t cycle_budget,uint32_t hold_cycles);
 int native_kernel_capture_joint_write_fault(struct native_kernel_session *,unsigned record,
     const char *path,uint64_t cycle_budget,uint32_t hold_cycles);
+int native_kernel_capture_joint_uniform_read_fault(struct native_kernel_session *,unsigned record,
+    const char *path,uint64_t cycle_budget,uint32_t hold_cycles);
 int native_kernel_capture_joint_cancel(struct native_kernel_session *,unsigned record,
     const char *path,uint64_t cycle_budget,uint32_t hold_cycles);
 int native_kernel_cancel_joint(struct native_kernel_session *,

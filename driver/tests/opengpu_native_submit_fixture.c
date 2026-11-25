@@ -120,12 +120,12 @@ struct native_kernel_record {
     struct native_kernel_held_receipt held;
     struct native_kernel_observed_receipt observed;
     u32 joint_sequence_count,joint_directory_count,joint_write_fault_address;
-    bool captured,drained,verified,freed,joint_source_cancel;void *mmio_state;
+    bool captured,drained,verified,freed,joint_source_cancel,joint_uniform_read_fault;void *mmio_state;
 };
 static int native_kernel_expected_error(const struct native_kernel_record *r)
 {
     if(r->joint_source_cancel)return -ECANCELED;
-    return r->joint_write_fault_address ? -EIO : 0;
+    return r->joint_write_fault_address || r->joint_uniform_read_fault ? -EIO : 0;
 }
 struct native_kernel_session {bool context_destroyed;struct native_kernel_profile *profile;
     struct native_kernel_record *records,*pending_record;unsigned record_count;struct opengpu_device gpu;struct opengpu_render_context context;

@@ -10,8 +10,10 @@ enum {
     JOINT_LIVE_WRITE_FAULT_RECORD = JOINT_LIVE_BASE_RECORDS,
     JOINT_LIVE_SOURCE_CANCEL_RECORD = JOINT_LIVE_WRITE_FAULT_RECORD + 2,
     JOINT_LIVE_RECORDS = JOINT_LIVE_SOURCE_CANCEL_RECORD + 2,
+    JOINT_LIVE_RECOVERY_PER_DOMAIN = 10,
+    JOINT_LIVE_UNIFORM_RECOVERY_RECORDS = 3 * JOINT_LIVE_RECOVERY_PER_DOMAIN,
 };
 struct native_kernel_profile *joint_live_profile(const char *path);
 void joint_live_export(struct native_kernel_session *,const char *directory);
-void joint_live_run(struct native_kernel_session *,unsigned count,bool cpu_preflight);
+void joint_live_run(struct native_kernel_session *,unsigned count,bool cpu_preflight,bool uniform_recovery);
 #endif

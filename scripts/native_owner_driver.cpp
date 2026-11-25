@@ -59,9 +59,9 @@ int main(int argc,char **argv) {
         sim.reset(joint ? Simulation::SramPresence::functional : Simulation::SramPresence::required);
         Agent agent(memory);ReplayBus<Simulation> bus(sim,agent,100000);
         PtePages pte;
-        const auto write_faults=active_records(sim,agent,bus,memory,output,session,first,count,std::cout,
+        const auto [read_faults,write_faults]=active_records(sim,agent,bus,memory,output,session,first,count,std::cout,
           response_timeout,cleanup?&pte:nullptr);
-        if(cleanup)cleanup_records(sim,agent,bus,memory,session,pte,count,response_timeout,0,write_faults);
+        if(cleanup)cleanup_records(sim,agent,bus,memory,session,pte,count,response_timeout,read_faults,write_faults);
         sim.model->final();
       };
       if(joint)run(JointCapture::read(first_path));

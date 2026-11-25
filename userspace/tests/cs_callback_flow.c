@@ -28,13 +28,17 @@
 
 #define N 512u
 #define TOKENS 2048u
+#ifndef OPENGPU_CS_CALLBACK_BO_SLOTS
+#define OPENGPU_CS_CALLBACK_BO_SLOTS N
+#endif
 #ifndef OPENGPU_CS_CALLBACK_MAX_GRID_AXIS
 #define OPENGPU_CS_CALLBACK_MAX_GRID_AXIS 2u
 #endif
-static struct bo { unsigned handle, maps, binds, jobs, sparse, native_owned; uint64_t size; uint8_t *data; } bos[N];
+static struct bo { unsigned handle, maps, binds, jobs, sparse, native_owned; uint64_t size; uint8_t *data; }
+    bos[OPENGPU_CS_CALLBACK_BO_SLOTS];
 static struct context { unsigned live, closing; struct drm_opengpu_resource b[OPENGPU_MAX_RESOURCE_BINDINGS + 1]; } contexts[N];
 static struct job {
-    unsigned live, context, kind, uniform, refs[N];
+    unsigned live, context, kind, uniform, refs[OPENGPU_CS_CALLBACK_BO_SLOTS];
     int status;
     struct drm_opengpu_compute_storage compute;
     struct drm_opengpu_fill fill;
@@ -299,7 +303,7 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
     }
     if(request==DRM_IOCTL_OPENGPU_CREATE_BUFFER){
         struct drm_opengpu_create_buffer *p=arg;unsigned h=next_bo++;
-        assert(h<N && p->width && p->height && p->bpp==32);
+        assert(h<OPENGPU_CS_CALLBACK_BO_SLOTS && p->width && p->height && p->bpp==32);
         p->pitch=(p->width*4+63)&~63u;p->size=(uint64_t)p->pitch*p->height;
         if(page_pad_next){p->size=(p->size+4095)&~UINT64_C(4095);page_pad_next=0;}
 #ifdef OPENGPU_CS_NATIVE_LAYOUT

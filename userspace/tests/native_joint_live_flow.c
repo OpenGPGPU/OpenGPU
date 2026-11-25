@@ -2,6 +2,9 @@
 /* Original ESSL linked by Mesa, with Gallium creating every original GEM and
  * the production joint source builder issuing the protected ioctl. */
 #define OPENGPU_CS_NATIVE_LAYOUT
+/* All original buffers from the three ten-record recovery sequences remain
+ * leased until observed retirement and cleanup. */
+#define OPENGPU_CS_CALLBACK_BO_SLOTS 1024u
 #include "native_graphics_v2_resources.c"
 #include "opengpu_native_joint_build_source.h"
 #include "opengpu_native_joint_internal.h"
@@ -54,7 +57,8 @@ static void joint_source_path(char path[4096],const char *directory,const char *
     assert(length>0 && length<4096);
 }
 enum joint_mode {
-    JOINT_SMALL, JOINT_VGA_QUAD, JOINT_PATCH_ENDPOINTS, JOINT_FULL_PATCH_ENDPOINTS, JOINT_TESS_UNIFORMS
+    JOINT_SMALL, JOINT_VGA_QUAD, JOINT_PATCH_ENDPOINTS, JOINT_FULL_PATCH_ENDPOINTS,
+    JOINT_TESS_UNIFORMS, JOINT_TESS_UNIFORM_RECOVERY
 };
 
 enum { JOINT_API_BINDINGS=72, JOINT_UBO_STRIDE=OPENGPU_TESSELLATION_UNIFORM_BLOCK_BYTES+64 };
@@ -110,8 +114,9 @@ static void joint_case(struct pipe_context *pipe,const char *sources,unsigned in
     static const uint32_t seed[4]={7,19,43,61};
     const bool vga_quad=mode==JOINT_VGA_QUAD, full_patch=mode==JOINT_FULL_PATCH_ENDPOINTS;
     const bool patch_endpoints=mode==JOINT_PATCH_ENDPOINTS || full_patch;
-    const bool tess_uniforms=mode==JOINT_TESS_UNIFORMS;
+    const bool tess_uniforms=mode==JOINT_TESS_UNIFORMS || mode==JOINT_TESS_UNIFORM_RECOVERY;
     unsigned domain=index<JOINT_LIVE_BASE_RECORDS?index/2:1;
+    if (mode==JOINT_TESS_UNIFORM_RECOVERY) domain=index/JOINT_LIVE_RECOVERY_PER_DOMAIN;
     if (vga_quad || full_patch) domain=2;
     bool mutation=!patch_endpoints && !tess_uniforms && index<JOINT_LIVE_BASE_RECORDS && (index&1);
     assert(domain<3 && engines>=1 && engines<=4);
@@ -259,9 +264,10 @@ int main(int argc,char **argv)
     if (argc==5 && !strcmp(argv[4],"--patch-endpoints")) mode=JOINT_PATCH_ENDPOINTS;
     if (argc==5 && !strcmp(argv[4],"--full-patch-endpoints")) mode=JOINT_FULL_PATCH_ENDPOINTS;
     if (argc==5 && !strcmp(argv[4],"--tess-uniforms")) mode=JOINT_TESS_UNIFORMS;
+    if (argc==5 && !strcmp(argv[4],"--tess-uniform-recovery")) mode=JOINT_TESS_UNIFORM_RECOVERY;
     if (argc!=4 && mode==JOINT_SMALL) {
         fprintf(stderr,"usage: native-joint ESSL_DIR PROFILE_OR_--cpu-preflight SESSION_DIR "
-            "[--vga-quad|--patch-endpoints|--full-patch-endpoints|--tess-uniforms]\n");
+            "[--vga-quad|--patch-endpoints|--full-patch-endpoints|--tess-uniforms|--tess-uniform-recovery]\n");
         return 2;
     }
     const bool cpu_preflight=!strcmp(argv[2],"--cpu-preflight");
@@ -276,7 +282,7 @@ int main(int argc,char **argv)
     bool driver_profile;
     unsigned context;
     assert(!opengpu_native_joint_source_runtime(pipe,&runtime,&context,&driver_profile) && driver_profile);
-    assert(mode!=JOINT_VGA_QUAD || runtime.engines==4);
+    assert((mode!=JOINT_VGA_QUAD && mode!=JOINT_TESS_UNIFORM_RECOVERY) || runtime.engines==4);
     joint_session=native_kernel_session_create_profile(context,joint_profile);
     assert(joint_session);
     native_original_allocate=joint_allocate;
@@ -292,11 +298,12 @@ int main(int argc,char **argv)
     unsigned records=JOINT_LIVE_RECORDS;
     if (mode==JOINT_PATCH_ENDPOINTS || mode==JOINT_TESS_UNIFORMS) records=JOINT_LIVE_BASE_RECORDS;
     if (mode==JOINT_VGA_QUAD || mode==JOINT_FULL_PATCH_ENDPOINTS) records=2;
+    if (mode==JOINT_TESS_UNIFORM_RECOVERY) records=JOINT_LIVE_UNIFORM_RECOVERY_RECORDS;
     for (unsigned i=0;i<records;++i) joint_case(pipe,argv[1],i,runtime.engines,mode,layout);
     fputs("]}\n",layout);
     assert(!fclose(layout));
     joint_live_export(joint_session,argv[3]);
-    joint_live_run(joint_session,records,cpu_preflight);
+    joint_live_run(joint_session,records,cpu_preflight,mode==JOINT_TESS_UNIFORM_RECOVERY);
     assert(!native_kernel_session_destroy(joint_session));
     pipe->destroy(pipe);
     screen->destroy(screen);

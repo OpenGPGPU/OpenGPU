@@ -116,9 +116,10 @@ static struct native_kernel_observed_receipt test_observed(struct native_kernel_
 {return (struct native_kernel_observed_receipt){.held=held,.retired_status=GPU_UCMD_STATUS_READY,
     .retired_irq=GPU_IRQ_ENABLE,.external_drained=1};}
 static void test_joint_completion(struct native_kernel_session *s,struct native_kernel_record *record,
-    const char *retire,bool write_fault)
+    const char *retire,enum native_joint_replay mode)
 {
     struct native_mmio_state *mmio=native_mmio_state(&s->gpu);
+    bool write_fault=mode==NATIVE_JOINT_WRITE_FAULT,read_fault=mode==NATIVE_JOINT_UNIFORM_READ_FAULT;
     /* A CPU control receipt tests the production drain's wire ordering and
      * high words. Live qualification obtains these values from the model. */
     u32 id=s->gpu.hw.unified_command_id;
@@ -138,6 +139,15 @@ static void test_joint_completion(struct native_kernel_session *s,struct native_
         wrong_line.gnz2[2]+=64;
         assert(native_kernel_drain_held(s,0,&wrong_line,retire)==-EINVAL);
     }
+    if(read_fault) {
+        assert(record->joint_uniform_read_fault);
+        held.completion=0x10f00|id;
+        held.gnz2[1]=41;
+        memset(held.gnz2+7,0,9*sizeof(u32));
+        struct native_kernel_held_receipt wrong_range=held;
+        wrong_range.gnz2[7]=1;
+        assert(native_kernel_drain_held(s,0,&wrong_range,retire)==-EINVAL);
+    }
     struct native_kernel_held_receipt alien=held;
     alien.gnz2[5]++;
     assert(native_kernel_drain_held(s,0,&alien,retire)==-EINVAL);
@@ -148,11 +158,12 @@ static void test_joint_completion(struct native_kernel_session *s,struct native_
     assert(!native_kernel_drain_held(s,0,&held,retire));
     const struct opengpu_tessellation_joint_completion *report=record->job->joint_report;
     assert(report->valid && report->read_bytes==held.append_read_bytes &&
-        report->status==(write_fault?3u:0u) && report->fault_stage==(write_fault?6u:0u) &&
+        report->status==(held.gnz2[1]&7u) && report->fault_stage==(held.gnz2[1]>>3) &&
+        report->retired_ranges==held.gnz2[7] &&
         report->fault_address==record->joint_write_fault_address &&
-        report->stored_bytes==(write_fault?0:0x200000004ull) &&
-        report->resolved_bytes==(write_fault?0:0x300000005ull));
-    assert(record->hardware->error==(write_fault?-EIO:0));
+        report->stored_bytes==((write_fault || read_fault)?0:0x200000004ull) &&
+        report->resolved_bytes==((write_fault || read_fault)?0:0x300000005ull));
+    assert(record->hardware->error==((write_fault || read_fault)?-EIO:0));
     assert(!mmio->native_waiting && !s->gpu.hw.joint_pending_completion);
     struct native_kernel_observed_receipt observed=test_observed(held);
     observed.held.gnz2[15]^=1;
@@ -230,7 +241,10 @@ static void test_joint_mmio(const char *directory,enum native_joint_replay mode)
     assert(!native_kernel_original_close(s,code) && native_kernel_original_refcount(s,code)>0);
 
     char memory[4096],capture[4096],retire[4096],cleanup[4096];
-    const char *stem=cancel?"joint-cancel":write_fault?"joint-fault":"joint";
+    const char *stem="joint";
+    if(cancel)stem="joint-cancel";
+    if(write_fault)stem="joint-fault";
+    if(mode==NATIVE_JOINT_UNIFORM_READ_FAULT)stem="joint-uniform-fault";
     char name[64];
     snprintf(name,sizeof(name),"%s.memory",stem);test_path(memory,sizeof(memory),directory,name);
     snprintf(name,sizeof(name),"%s.capture",stem);test_path(capture,sizeof(capture),directory,name);
@@ -245,7 +259,7 @@ static void test_joint_mmio(const char *directory,enum native_joint_replay mode)
     assert(!record->job->joint_report->valid && !dma_fence_is_signaled(record->hardware));
 
     if(cancel) test_joint_reset(s,record,directory,retire);
-    else test_joint_completion(s,record,retire,write_fault);
+    else test_joint_completion(s,record,retire,mode);
     assert(native_kernel_original_refcount(s,code)>0);
     assert(!native_kernel_begin_cleanup(s,cleanup));
     assert(!native_kernel_finish_observed(s,0) && !native_kernel_original_refcount(s,code));
@@ -336,5 +350,6 @@ int main(int argc,char **argv)
     test_joint_mmio(argv[1],NATIVE_JOINT_RENDER);
     test_joint_mmio(argv[1],NATIVE_JOINT_WRITE_FAULT);
     test_joint_mmio(argv[1],NATIVE_JOINT_CANCEL);
+    test_joint_mmio(argv[1],NATIVE_JOINT_UNIFORM_READ_FAULT);
     puts("native and joint MMIO production composition CPU checks: PASS");return 0;
 }

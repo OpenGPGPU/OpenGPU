@@ -472,18 +472,24 @@ int opengpu_hw_native_binned_async(struct opengpu_device *,struct opengpu_privat
 #endif
 _Static_assert(OPENGPU_NATIVE_CAPTURE_DISCOVERY_WORDS<=OPENGPU_NATIVE_PROFILE_STORAGE_WORDS,
     "capture exceeds private profile storage");
-enum { NATIVE_JOINT_WRITE_FAULT_STATUS=3, NATIVE_JOINT_WRITE_FAULT_STAGE=6 };
-static u32 native_mmio_completion(u32 command_id,bool joint,const struct native_kernel_record *record)
-{
-    u32 opcode=joint?OPENGPU_TESS_JOINT_HOST_OPCODE:GPU_UCMD_OP_NATIVE_BINNED_RENDER;
-    u32 result=record->joint_write_fault_address?NATIVE_JOINT_WRITE_FAULT_STATUS<<11:1u<<15;
-    return command_id|((opcode&7u)<<8)|((opcode&8u)<<13)|result;
-}
+enum {
+    NATIVE_JOINT_READ_FAULT_STATUS=1, NATIVE_JOINT_READ_FAULT_STAGE=5,
+    NATIVE_JOINT_WRITE_FAULT_STATUS=3, NATIVE_JOINT_WRITE_FAULT_STAGE=6,
+};
 static u32 native_mmio_joint_status(const struct native_kernel_record *record)
 {
     if(record->joint_write_fault_address)
         return (NATIVE_JOINT_WRITE_FAULT_STAGE<<3)|NATIVE_JOINT_WRITE_FAULT_STATUS;
+    if(record->joint_uniform_read_fault)
+        return (NATIVE_JOINT_READ_FAULT_STAGE<<3)|NATIVE_JOINT_READ_FAULT_STATUS;
     return record->joint_sequence_count?0u:0x40u;
+}
+static u32 native_mmio_completion(u32 command_id,bool joint,const struct native_kernel_record *record)
+{
+    u32 opcode=joint?OPENGPU_TESS_JOINT_HOST_OPCODE:GPU_UCMD_OP_NATIVE_BINNED_RENDER;
+    u32 status=joint?(native_mmio_joint_status(record)&7u):0;
+    u32 result=status?status<<11:1u<<15;
+    return command_id|((opcode&7u)<<8)|((opcode&8u)<<13)|result;
 }
 static void native_mmio_capture_expect(FILE *file,u32 address,u32 mask,u32 value)
 {
@@ -498,7 +504,7 @@ static void native_mmio_capture_joint_detail(FILE *file,const struct native_kern
         OPENGPU_TESS_JOINT_HOST_COMPLETION_MAGIC,
         native_mmio_joint_status(record),record->joint_write_fault_address,
         s->gpu.hw.native_context,s->gpu.hw.native_pass,s->gpu.hw.native_generation,
-        record->joint_directory_count,record->joint_directory_count,
+        record->joint_directory_count,record->joint_uniform_read_fault?0:record->joint_directory_count,
     };
     const unsigned known=sizeof(expected)/sizeof(expected[0]);
     /* The device supplies the patch, primitive and physical byte counters.
@@ -534,7 +540,7 @@ static int native_mmio_joint_image_line(const struct opengpu_sched_job *job,u32 
         }
     return -EINVAL;
 }
-enum native_joint_replay {NATIVE_JOINT_RENDER,NATIVE_JOINT_WRITE_FAULT,NATIVE_JOINT_CANCEL};
+enum native_joint_replay {NATIVE_JOINT_RENDER,NATIVE_JOINT_WRITE_FAULT,NATIVE_JOINT_CANCEL,NATIVE_JOINT_UNIFORM_READ_FAULT};
 static int native_mmio_capture(struct native_kernel_session *s,unsigned index,const char *path,
     u64 budget,u32 hold,enum native_joint_replay replay)
 {
@@ -554,10 +560,11 @@ static int native_mmio_capture(struct native_kernel_session *s,unsigned index,co
         4u*OPENGPU_TESS_JOINT_DIRECTORY_COUNT_WORD,&r->joint_directory_count)))return -EINVAL;
     if(replay==NATIVE_JOINT_CANCEL &&
         (!r->joint_sequence_count || !(s->gpu.hw.capabilities&GPU_CAP_UNIFIED_RESET)))return -EINVAL;
+    if((replay==NATIVE_JOINT_WRITE_FAULT || replay==NATIVE_JOINT_UNIFORM_READ_FAULT) &&
+        (!r->joint_sequence_count || !r->joint_directory_count))return -EINVAL;
     u32 fault_address=0;
     u64 fault_physical=0;
     if(replay==NATIVE_JOINT_WRITE_FAULT) {
-        if(!r->joint_sequence_count || !r->joint_directory_count)return -EINVAL;
         int error=native_mmio_joint_image_line(job,&fault_address,&fault_physical);
         if(error)return error;
     }
@@ -588,8 +595,14 @@ static int native_mmio_capture(struct native_kernel_session *s,unsigned index,co
     if(m->allocation_signature!=native_mmio_allocation_signature()){fclose(f);remove(temporary);free(temporary);free(ranges);return -EIO;}
     r->joint_write_fault_address=fault_address;
     r->joint_source_cancel=replay==NATIVE_JOINT_CANCEL;
+    r->joint_uniform_read_fault=replay==NATIVE_JOINT_UNIFORM_READ_FAULT;
     const char *magic=OPENGPU_NATIVE_CAPTURE_MAGIC;
-    if(joint)magic=r->joint_source_cancel?"OGCAP005":fault_address?"OGCAP004":"OGCAP003";
+    if(joint) {
+        magic="OGCAP003";
+        if(fault_address)magic="OGCAP004";
+        if(r->joint_source_cancel)magic="OGCAP005";
+        if(r->joint_uniform_read_fault)magic="OGCAP006";
+    }
     fwrite(magic,1,8,f);
     if(fault_address){native_mmio_le(f,fault_physical,8);native_mmio_le(f,fault_address,4);}
     native_mmio_le(f,budget,8);native_mmio_le(f,hold,4);
@@ -626,6 +639,11 @@ int native_kernel_capture_joint_write_fault(struct native_kernel_session *s,unsi
 {
     return native_mmio_capture(s,index,path,budget,hold,NATIVE_JOINT_WRITE_FAULT);
 }
+int native_kernel_capture_joint_uniform_read_fault(struct native_kernel_session *s,unsigned index,
+    const char *path,u64 budget,u32 hold)
+{
+    return native_mmio_capture(s,index,path,budget,hold,NATIVE_JOINT_UNIFORM_READ_FAULT);
+}
 int native_kernel_capture_joint_cancel(struct native_kernel_session *s,unsigned index,
     const char *path,u64 budget,u32 hold)
 {
@@ -649,7 +667,7 @@ int native_kernel_drain_held(struct native_kernel_session *s,unsigned index,
             words[1]!=native_mmio_joint_status(r) || words[2]!=r->joint_write_fault_address ||
             words[3]!=s->gpu.hw.native_context || words[4]!=s->gpu.hw.native_pass ||
             words[5]!=s->gpu.hw.native_generation || words[6]!=r->joint_directory_count ||
-            words[7]!=r->joint_directory_count)return -EINVAL;
+            words[7]!=(r->joint_uniform_read_fault?0:r->joint_directory_count))return -EINVAL;
     }else if(s->gpu.hw.native_pending_owner!=r->job->native_owner ||
         !opengpu_native_completion_decode(held->gnx,12,0,held->append_read_bytes,
             s->gpu.hw.native_context,s->gpu.hw.native_pass,s->gpu.hw.native_generation,&decoded))return -EINVAL;
