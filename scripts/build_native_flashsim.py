@@ -60,6 +60,8 @@ def generated_digest(path, *, header=False):
         allowed.add(b'"dut.h"')
 
     def check(data):
+        if b"#" not in data:
+            return
         for match in INCLUDE.finditer(data):
             directive = re.sub(rb"^[ \t]*#[ \t]*include[ \t]*", b"", match[0]).strip()
             directive = directive.split(b"//", 1)[0].strip()
