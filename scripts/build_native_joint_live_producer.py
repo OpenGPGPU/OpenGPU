@@ -7,6 +7,10 @@ import tempfile
 import test_native_joint as original
 
 
+def producer_sources():
+    return original.source_inputs()
+
+
 def main():
     kernel = 'scripts/native_joint_live_kernel.c'
     units = ('userspace/tests/native_joint_resources.c', 'userspace/tests/native_joint_frontend.cpp')

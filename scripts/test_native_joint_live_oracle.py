@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Exercise the joint replay checks without obtaining a device receipt."""
+from pathlib import Path
 import struct
 import unittest
 
+from build_native_joint_live_producer import producer_sources
 from native_joint_live_oracle import (
-    FULL_PATCH_ENDPOINTS, PATCH_ENDPOINTS, RECORDS, SOURCE_CANCEL_RECORD, TESS_UNIFORMS,
-    TESS_UNIFORM_RECOVERY, VGA_QUAD,
-    expected_image, verify_image,
+    FULL_PATCH_ENDPOINTS, PATCH_ENDPOINTS, RECORDS, SOURCE_CANCEL_RECORD, TESS_BLOCK_WORDS,
+    TESS_DEFAULT_WORDS, TESS_UNIFORMS, TESS_UNIFORM_RECOVERY, UNIFORM_RECOVERY_PER_DOMAIN,
+    UniformRead, VGA_QUAD, check_tess_uniforms, expected_image, tess_default_word,
+    tess_ubo_windows, tess_ubo_word, verify_image,
 )
 from qualify_native_joint_live import cleanup_checked, receipt_words, reset_receipt, retired_receipt
 
@@ -206,21 +209,112 @@ class JointOracle(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'pixel'):
             verify_image(initial,observed,row,allowed)
 
-    def test_uniform_cancel_requires_the_default_line_for_the_selected_stage(self):
+    def test_uniform_recovery_matrix_covers_each_stage_view_and_fault_mode(self):
+        fixture = TESS_UNIFORM_RECOVERY
+        expected = {
+            2: (4,71,True), 4: (5,1,True), 6: (4,None,True), 8: (5,None,True),
+            10: (4,71,False), 12: (5,1,False), 14: (4,None,False), 16: (5,None,False),
+        }
+        self.assertEqual(UNIFORM_RECOVERY_PER_DOMAIN,18)
+        self.assertEqual(len(fixture.cases),54)
+        header = (Path(__file__).resolve().parents[1]/'scripts/native_joint_live_bridge.h').read_text()
+        self.assertIn('JOINT_LIVE_RECOVERY_PER_DOMAIN = 18',header)
+        self.assertIn('JOINT_LIVE_UNIFORM_FAULT_FIRST = 2',header)
+        self.assertIn('JOINT_LIVE_UNIFORM_CANCEL_FIRST = 10',header)
+        for domain in range(3):
+            for position, wanted in expected.items():
+                record = domain*UNIFORM_RECOVERY_PER_DOMAIN+position
+                read = fixture.uniform_read(record)
+                self.assertEqual((read.stage,read.binding,read.fault),wanted)
+                self.assertFalse(fixture.cases[record][1])
+                self.assertEqual(fixture.cancels_read(record),not read.fault)
+                self.assertIsNone(fixture.uniform_read(record+1))
+                self.assertFalse(fixture.cancels_read(record+1))
+                initial, observed = ImagePage(), ImagePage()
+                row = dict(self.row,record=record)
+                verify_image(initial,observed,row,[(0x1000,0x2000)],fixture=fixture)
+                observed.data[64] ^= 1
+                with self.assertRaisesRegex(ValueError,'pixel'):
+                    verify_image(initial,observed,row,[(0x1000,0x2000)],fixture=fixture)
+                initial, observed = ImagePage(), ImagePage()
+                row = dict(self.row,record=record+1)
+                observed.data[64:320] = expected_image(domain,True,fixture=fixture,record=record+1)
+                verify_image(initial,observed,row,[(0x1000,0x2000)],fixture=fixture)
+
+    def test_uniform_read_lines_select_the_private_ubo_and_default_endpoints(self):
+        identity, record = (7,13,43), 2
+        windows = tess_ubo_windows(record)
+        table = 0x10080
+        table_end = table+24*64
+        sequence = [0]*512
+        sequence[499] = sequence[504] = 3
+        sequence[500] = 0x10000
+        sequence[505] = sequence[500]+64
+        sequence[501:504] = sequence[506:509] = (0,0,0)
+        values = {}
+        defaults = []
+        for index, owned in enumerate(windows):
+            stage = 4+index
+            slots = tuple(range(index*12,index*12+12))
+            mapping = tuple(sum(slot<<(5*position) for position,slot in enumerate(slots[part*6:part*6+6]))
+                            for part in range(2))
+            default_descriptor = table_end+64*index
+            default_base = 0x30000+index*0x1000
+            defaults.append(default_base)
+            values[default_descriptor] = (0x47554203,64,3,*identity,31,1<<stage,
+                default_base,default_base+TESS_DEFAULT_WORDS*4,0,default_base,
+                default_base+TESS_DEFAULT_WORDS*4,0,1,0)
+            values[default_base] = tuple(tess_default_word(stage,record,word)
+                                         for word in range(TESS_DEFAULT_WORDS))
+            values[sequence[500+5*index]] = (0x47555203,64,3,*identity,stage,0xfff,
+                *mapping,table,table_end,0,default_descriptor,1,0)
+            for slot,window in zip(slots,owned):
+                base = 0x40000+window*0x4000
+                values[table+64*slot] = (0x47554203,64,3,*identity,slot,1<<stage,
+                    base,base+TESS_BLOCK_WORDS*4,0,base,base+TESS_BLOCK_WORDS*4,0,1,0)
+                values[base] = tuple(tess_ubo_word(window,record,word)
+                                     for word in range(TESS_BLOCK_WORDS))
+
+        sequence = tuple(sequence)
+
+        def words(address,count):
+            return values[address][:count]
+
+        self.assertEqual(check_tess_uniforms(words,sequence,identity,record,UniformRead(4,71,True)),
+                         0x40000+71*0x4000+TESS_BLOCK_WORDS*4-64)
+        self.assertEqual(check_tess_uniforms(words,sequence,identity,record,UniformRead(5,1,True)),
+                         0x40000+1*0x4000+TESS_BLOCK_WORDS*4-64)
+        self.assertEqual(check_tess_uniforms(words,sequence,identity,record,UniformRead(4,None,False)),
+                         defaults[0]+TESS_DEFAULT_WORDS*4-64)
+        self.assertEqual(check_tess_uniforms(words,sequence,identity,record,UniformRead(5,None,False)),
+                         defaults[1]+TESS_DEFAULT_WORDS*4-64)
+
+    def test_uniform_cancel_requires_the_selected_line_for_each_stage_view(self):
         fixture = TESS_UNIFORM_RECOVERY
         command, line, satp = 17, 0x6000, 0x80400001
-        for record, stage in ((16,4),(18,5)):
-            read = fixture.uniform_read(record)
-            self.assertEqual((read.stage, read.binding), (stage, None))
-            self.assertTrue(fixture.cancels_read(record))
-            self.assertIsNone(fixture.uniform_read(record+1))
-            held = dict(phase='held',record=record,commandId=command,legacyStatus=0,status=0x21,
-                        irq=1,irqAsserted=False,externalDrained=False,physicalReadLine=line,satp=satp,
-                        heldReadCycles=5,resetHeldReadCycles=0,serviceCycles=100)
-            self.assertEqual(reset_receipt(held,'held',command,record,line,satp,uniform=True),
-                             b'OGJCH001'+struct.pack('<7I',record,command,0,0x21,1,0,0))
-            with self.assertRaisesRegex(ValueError,'physicalReadLine'):
-                reset_receipt(held,'held',command,record,line+64,satp,uniform=True)
+        for domain in range(3):
+            for position, stage, binding in ((10,4,71),(12,5,1),(14,4,None),(16,5,None)):
+                record = domain*UNIFORM_RECOVERY_PER_DOMAIN+position
+                read = fixture.uniform_read(record)
+                self.assertEqual((read.stage,read.binding,read.fault),(stage,binding,False))
+                self.assertTrue(fixture.cancels_read(record))
+                self.assertIsNone(fixture.uniform_read(record+1))
+                held = dict(phase='held',record=record,commandId=command,legacyStatus=0,status=0x21,
+                            irq=1,irqAsserted=False,externalDrained=False,physicalReadLine=line,satp=satp,
+                            heldReadCycles=5,resetHeldReadCycles=0,serviceCycles=100)
+                self.assertEqual(reset_receipt(held,'held',command,record,line,satp,uniform=True),
+                                 b'OGJCH001'+struct.pack('<7I',record,command,0,0x21,1,0,0))
+                with self.assertRaisesRegex(ValueError,'physicalReadLine'):
+                    reset_receipt(held,'held',command,record,line+64,satp,uniform=True)
+
+    def test_qualification_binds_the_complete_producer_and_oracle_sources(self):
+        root = Path(__file__).resolve().parents[1]
+        sources = {path.relative_to(root).as_posix() for path in producer_sources()}
+        for name in ('scripts/build_native_joint_live_producer.py','scripts/native_joint_live_kernel.c',
+                     'scripts/native_joint_live_bridge.h','scripts/native_joint_live_oracle.py',
+                     'scripts/qualify_native_joint_live.py','scripts/test_native_joint.py',
+                     'userspace/tests/native_joint_live_flow.c','userspace/tests/cs_callback_flow.c'):
+            self.assertIn(name,sources)
 
 
 if __name__ == '__main__':

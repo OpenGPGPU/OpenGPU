@@ -20,7 +20,7 @@ CASES = (
 SOURCE_CANCEL_RECORD = 8
 RECORDS = len(CASES)
 
-UNIFORM_RECOVERY_PER_DOMAIN = 10
+UNIFORM_RECOVERY_PER_DOMAIN = 18
 
 
 @dataclass(frozen=True)
@@ -33,8 +33,12 @@ class UniformRead:
 UNIFORM_RECOVERY_READS = {
     2: UniformRead(4, 71, fault=True),
     4: UniformRead(5, 1, fault=True),
-    6: UniformRead(4, None, fault=False),
-    8: UniformRead(5, None, fault=False),
+    6: UniformRead(4, None, fault=True),
+    8: UniformRead(5, None, fault=True),
+    10: UniformRead(4, 71, fault=False),
+    12: UniformRead(5, 1, fault=False),
+    14: UniformRead(4, None, fault=False),
+    16: UniformRead(5, None, fault=False),
 }
 
 

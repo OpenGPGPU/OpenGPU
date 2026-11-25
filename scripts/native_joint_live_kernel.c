@@ -119,13 +119,16 @@ void joint_live_run(struct native_kernel_session *session,unsigned count,bool cp
         /* The controller checks the domain and capture before selecting the
          * TCS or TES response line from the original owner graph. */
         unsigned position=i%JOINT_LIVE_RECOVERY_PER_DOMAIN;
-        bool cancel=uniform_recovery ? (position==6 || position==8) : i==JOINT_LIVE_SOURCE_CANCEL_RECORD;
+        bool cancel=uniform_recovery ? position>=JOINT_LIVE_UNIFORM_CANCEL_FIRST && !(position&1) :
+            i==JOINT_LIVE_SOURCE_CANCEL_RECORD;
+        bool read_fault=uniform_recovery && position>=JOINT_LIVE_UNIFORM_FAULT_FIRST &&
+            position<JOINT_LIVE_UNIFORM_CANCEL_FIRST && !(position&1);
         snprintf(name,sizeof(name),"record-%u.capture",i);
         live_path(path,name);
         int error;
         if(cancel)
             error=native_kernel_capture_joint_cancel(session,i,path,100000000,32);
-        else if(uniform_recovery && (position==2 || position==4))
+        else if(read_fault)
             error=native_kernel_capture_joint_uniform_read_fault(session,i,path,100000000,32);
         else if(!uniform_recovery && i==JOINT_LIVE_WRITE_FAULT_RECORD)
             error=native_kernel_capture_joint_write_fault(session,i,path,100000000,32);

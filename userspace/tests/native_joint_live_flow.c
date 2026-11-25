@@ -2,9 +2,9 @@
 /* Original ESSL linked by Mesa, with Gallium creating every original GEM and
  * the production joint source builder issuing the protected ioctl. */
 #define OPENGPU_CS_NATIVE_LAYOUT
-/* All original buffers from the three ten-record recovery sequences remain
- * leased until observed retirement and cleanup. */
-#define OPENGPU_CS_CALLBACK_BO_SLOTS 1024u
+/* All original buffers from the three recovery sequences remain leased until
+ * observed retirement and cleanup. */
+#define OPENGPU_CS_CALLBACK_BO_SLOTS 2048u
 #include "native_graphics_v2_resources.c"
 #include "opengpu_native_joint_build_source.h"
 #include "opengpu_native_joint_internal.h"
