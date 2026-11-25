@@ -54,15 +54,13 @@ The 512-word bound remains strict.
 
 ## Final CPU validation
 
-The immutable Linux/GCC 13.3/ASan+UBSan build compiled 30 translation units
-fresh, with no object reuse. It completed in 28.394 seconds inside the
-512-MiB combined-memory, one-CPU, no-network container, under a 180-second
-process-group deadline. The before/after guard covered 1043 GPU source inputs
-and 8101 external inputs. All 30 MMD files (243 distinct dependencies) were
-checked against the original/source or private generated-input closure.
-A final whitespace-only emitter cleanup rebuilt that one translation unit
-and reused the other 29 exact objects in 2.664 seconds, with the same
-before/after guards. All four original GS instruction files stayed identical.
+The final integrated Linux/GCC 13.3/ASan+UBSan run compiled 30 translation
+units fresh, with no object reuse, inside the 512-MiB combined-memory,
+one-CPU, no-network container under a 180-second process-group deadline.
+All 30 MMD files (250 distinct dependencies) were checked against the
+original/source or private generated-input closure. The before/after guard
+covered 1311 GPU/reference and 8101 external inputs. All five original GS
+cases and the old v1/v2 byte regressions passed.
 
 | Original linked ESSL GS case | Words | Coverage |
 |---|---:|---|
@@ -82,11 +80,8 @@ explicit synthetic CPU profiles, not producer-authorized device profiles.
 The callback isolation controls and their limits are described in
 [Geometry](GEOMETRY.md).
 
-A final current-source raw-GS run compiled 26 translation units from scratch
-and checked 26 MMD files/244 distinct dependencies in 25.073 seconds. All five
-original programs in the table passed; the original four instruction files
-retained their listed lengths. The 1060 GPU/reference and 8101 external inputs
-were unchanged. The matrix program carries actual Mesa
+The integrated run compiled all five original programs in the table and
+retained their listed lengths. The matrix program carries actual Mesa
 `IN[ADDR[1].x][ADDR[0].x+1]` with independent runtime vertex and matrix-column
 indices and original NIR mask7/two-column span. Its 269 original words passed
 the independent production GS validator/private-RX/MMU fixture; this checks
