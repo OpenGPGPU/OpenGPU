@@ -559,12 +559,10 @@ int opengpu_protected_tessellation_joint_build(struct opengpu_private_snapshot *
             ret=opengpu_tessellation_program_snapshot_append(owner,k?&p->evaluation_program:&p->control_program,
                 profile,copy.copy,copy.context,&program);
             if(!ret)ret=jt_reloc(owner,sequences,offset,k?l->evaluation_pc:l->control_pc,program.segment,program.entry_offset,false);
-            if(!ret && ur.present[k]) {
-                u32 first=k?504:499;
-                ret=jt_reloc(owner,sequences,offset,first+1,ur.segment,ur.root_offset[k],false);
-                if(!ret)ret=jt_reloc(owner,sequences,offset,first+2,ur.segment,0,false);
-                if(!ret)ret=jt_reloc(owner,sequences,offset,first+3,ur.segment,ur.bytes,true);
-            }
+            /* GNT's private bounds exclude writable shader scratch from uniform reads.
+             * Protected TCS/TES have no such scratch. The GUR3 snapshot is read-only. */
+            if(!ret && ur.present[k])
+                ret=jt_reloc(owner,sequences,offset,k?505:500,ur.segment,ur.root_offset[k],false);
         }
         if(!ret)ret=jt_reloc(owner,sequences,offset,509,roots.root_segments[n],0,false);
         if(!ret)ret=jt_reloc(owner,sequences,offset,510,roots.root_segments[n],512,true);

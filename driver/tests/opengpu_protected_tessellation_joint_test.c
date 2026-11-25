@@ -379,7 +379,10 @@ static void joint_oracle(struct opengpu_private_snapshot *o,struct opengpu_rende
         u32 tcs=graph_read(&ctx->vm,d+l->control_pc*4,3),tes=graph_read(&ctx->vm,d+l->evaluation_pc*4,3);
         assert(graph_read(&ctx->vm,tcs,11)==0x30500073 && graph_read(&ctx->vm,tes,11)==(35u<<25|0xb));
         for(u32 k=0;k<2;k++) {
-            u32 ur=graph_read(&ctx->vm,d+(500+5*k)*4,3);
+            u32 scope=d+(500+5*k)*4;
+            u32 ur=graph_read(&ctx->vm,scope,3);
+            assert(!graph_read(&ctx->vm,scope+4,3) && !graph_read(&ctx->vm,scope+8,3) &&
+                !graph_read(&ctx->vm,scope+12,3));
             joint_uniform_oracle(&ctx->vm,ur,4+k);
         }
         assert(!graph_read(&ctx->vm,d+17*4,3) && !graph_read(&ctx->vm,d+21*4,3));
