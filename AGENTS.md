@@ -28,13 +28,13 @@ topic branch over additional stacked PRs. Close superseded or deferred PRs while
 preserving all unmerged source branches; reopen an existing PR when it is ready
 and a slot is available.
 
-After implementation and relevant local validation pass, automatically mark a
-Codex PR ready for review (or create it without draft mode) and enable GitHub
-auto-merge with the rebase method. The user has authorized this workflow; do not
-ask for another merge confirmation. Preserve logical commits; do not squash.
-GitHub must still require the current protected `ci-ok` check and an up-to-date
-branch. Update the topic branch when needed; never bypass protection or push to
-`main`/`master`. Keep genuinely unfinished implementation in draft mode.
+After implementation and relevant local validation pass, mark a Codex PR ready
+for review (or create it without draft mode), but do not enable GitHub auto-merge.
+Every PR requires human review and manual merge approval. Preserve logical
+commits; do not squash. GitHub must still require the current protected `ci-ok`
+check, an up-to-date branch and the required approving review. Update the topic
+branch when needed; never bypass protection or push to `main`/`master`. Keep
+genuinely unfinished implementation in draft mode.
 
 Remove task-specific build outputs, simulation data, caches and logs as soon as
 their development, validation or diagnosis use ends; do not wait for PR merge.
