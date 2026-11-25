@@ -413,9 +413,64 @@ sbt -batch -J-Xmx1536m -J-XX:ActiveProcessorCount=1 \
   'testOnly opengpu.graphics.tessellation.TessellationOwnedPatchStoreSpec opengpu.graphics.tessellation.TessellationOwnedPatchContextSpec opengpu.system.TessellationUniformCuServiceSpec'
 ```
 
-Qualification of these original uniform workloads on the complete factory,
-joint fault and cancellation coverage at the uniform service, and the
-two-CU VGA60 product gate remain pending.
+Qualification of these original uniform workloads on the complete factory and
+joint fault/cancellation coverage at the uniform service passed as recorded
+below. The P39/P40 complete joint acceptance and two-CU VGA60 product gate
+remain pending.
+
+### Complete-factory uniform fault and cancellation recovery
+
+The `--tess-uniform-recovery` recipe requires the complete four-engine factory;
+the routine one-engine `--tess-uniforms` model cannot run this matrix. It
+exercises 54 original Mesa submissions on one DUT, RAM and driver context with
+one initial reset. Each domain starts with distinct- and shared-window healthy
+views, then covers TCS/TES × UBO/default-view × read-fault/cancellation. Every
+negative record is followed by a healthy record on the same DUT and RAM.
+
+| Domain | Records | Read faults | Cancellations | Healthy records | Service cycles |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Isoline | 18 | 4 | 4 | 10 | 667,502 |
+| Triangle | 18 | 4 | 4 | 10 | 925,483 |
+| Quad | 18 | 4 | 4 | 10 | 1,036,479 |
+| Total | 54 | 12 | 12 | 30 | 2,629,464 |
+
+The independent oracle translates each selected UBO/default endpoint through
+the actual Sv32 tables and arms the exact read-only physical line. It requires
+no image publication on faults or cancellation, a held response through reset
+drain, unchanged guards/SATP/completion state, healthy reuse, actual retirement
+and acknowledged PTE/context cleanup. Producer, controller and oracle sources,
+the reference emitter, model shards, executor and model library are rechecked
+after the run.
+
+The final replay passed in 1,412.37 seconds with 1.21 GiB peak charged memory.
+The 54-record producer uses a 768 MiB Docker limit; routine joint fixtures keep
+the existing 512 MiB limit. Verified resharding took 96.95 seconds to create and
+36.02 seconds to verify. The `-O1` shared-model executor build took 3,739.19
+seconds and peaked at 9.13 GiB charged memory. The RTL inputs are unchanged by
+this recovery increment and the FlashSim checkout is `bfe7f2c1d8`.
+
+Use the complete four-engine recipe in
+[Four-engine target replay](#four-engine-target-replay), selecting FlashSim
+`bfe7f2c1d8` and keeping that recipe's `OUT`, then reproduce the focused checks
+and qualification with:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_native_joint_live_oracle.py
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_mmio_capture.py --executor-root .
+OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_native_owner.py
+PATH=/opt/homebrew/bin:$PATH PYTHONDONTWRITEBYTECODE=1 \
+  OPENGPU_TEST_SANITIZERS=1 ASAN_OPTIONS=detect_leaks=0 bash scripts/test_scripts.sh
+python3.13 -B scripts/run_owner_bounded.py --memory-mib 12288 --timeout-seconds 14400 -- \
+  python3.13 -B scripts/qualify_native_joint_live.py --build-only --jobs 2 --shard-opt=-O1 \
+  --shared-model --link-flag=-Wl,-ld_classic --link-flag=-isysroot \
+  --link-flag="$(xcrun --show-sdk-path)" --dut-dir "$OUT/resharded" --executor-build "$OUT/executor"
+python3.13 -B scripts/run_owner_bounded.py --memory-mib 4096 --timeout-seconds 7200 -- \
+  python3.13 -B scripts/qualify_native_joint_live.py --tess-uniform-recovery --timeout 900 \
+  --dut-dir "$OUT/resharded" --executor-build "$OUT/executor"
+```
+
+This is a 4×4 functional qualification. It does not establish product clock/FPS,
+complete P39/P40 acceptance or the six-scene VGA60 gate.
 
 ## Four-engine target replay
 
@@ -447,7 +502,8 @@ Use a new `OUT` and add `--full-factory` to the Scala `runMain` command
 above. Initialize the pinned `depends/asap7_sram_0p0` submodule and set
 `CIRCT_OVERLAY` to the directory with the verified compiler and libraries
 from [the CIRCT prerequisite](OWNER_FULL_FACTORY_REPRODUCTION.md#flashsim-compiler-prerequisite).
-Set `FLASHSIM` to checkout `38e050ebe2`.
+Set `FLASHSIM` to checkout `38e050ebe2`. For the uniform recovery result above,
+use `bfe7f2c1d8` instead.
 
 ```sh
 GPU="$PWD"
