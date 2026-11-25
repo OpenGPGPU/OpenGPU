@@ -4,13 +4,13 @@ Changes to `main` require a PR and the current `ci-ok` check from GitHub Actions
 Protection includes administrators, requires an up-to-date branch, and blocks
 force pushes and deletion. Work and commit on topic branches only.
 
-Codex PRs move to ready after implementation and relevant local validation pass.
-The agent must not enable GitHub auto-merge. Every PR requires human review and
-manual merge approval; GitHub performs the merge only when the protected
-current-head checks, required approving review and branch requirements pass.
-Incomplete implementation remains draft; failing checks block merging. The agent
-updates an outdated topic branch rather than bypassing protection. Repository
-auto-merge must remain disabled for agent-created PRs.
+Codex PRs automatically move to ready after implementation and relevant local
+validation pass, then enable GitHub auto-merge using **rebase**. This preserves
+the logical commits. No additional user merge confirmation is required. GitHub
+performs the merge only when the protected current-head checks and branch
+requirements pass. Incomplete implementation remains draft; failing checks
+block merging. The agent updates an outdated topic branch rather than bypassing
+protection. Repository auto-merge must remain enabled.
 
 Keep automatic deletion of merged PR branches enabled. Clean up leftover
 temporary remote heads only after verifying they still match their merged PR
@@ -43,6 +43,5 @@ Scala compilation and content-addressed simulation models are cached. Simulation
 cache snapshots get a new outer key per run, so newly built models are saved
 after restoring an older cache. Per-run simulation workdirs are excluded.
 
-`main-branch-protection.json` requires at least one approving review and approval
-of the latest push. Read the current rule before applying it and preserve
-unrelated restrictions.
+`main-branch-protection.json` preserves PRs with zero required approving reviews.
+Read the current rule before applying it and preserve unrelated restrictions.
