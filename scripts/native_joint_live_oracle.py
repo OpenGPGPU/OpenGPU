@@ -253,9 +253,13 @@ def verify_image(previous, returned, row, writable, *, fixture=SMALL):
     expected = previous.read(image, image_bytes) if preserved else expected_image(domain, mutation, fixture=fixture)
     if actual != expected:
         for offset in range(0, image_bytes, 16):
-            if actual[offset:offset+16] != expected[offset:offset+16]:
+            found, wanted = actual[offset:offset+16], expected[offset:offset+16]
+            if found != wanted:
                 pixel = offset//16
-                raise ValueError(f"record {row['record']} pixel {pixel % fixture.width},{pixel // fixture.width} differs")
+                raise ValueError(
+                    f"record {row['record']} pixel {pixel % fixture.width},{pixel // fixture.width} differs "
+                    f"(expected {wanted.hex()}, observed {found.hex()})"
+                )
     # Each record may update its working buffers. Narrow the image interval
     # to the actual view, so its entire physical allocation guard is checked.
     allocation, end = row['allocation'], row['allocation'] + row['allocationBytes']
