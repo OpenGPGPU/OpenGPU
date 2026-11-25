@@ -22,6 +22,7 @@ static_assert(GpuHostSystemAxiDut::assertion_count == OPENGPU_EXPECTED_ASSERTION
 
 namespace native_owner {
 template<class Sim> class ReplayBus {
+  static constexpr unsigned control_response_limit=1024;
   Sim &sim;
   Agent &agent;
   uint64_t limit;
@@ -48,11 +49,16 @@ public:
     sim.step(agent,cycles++,observe);
   }
   void step() {step([](const auto &) {});}
+  void wait_before_status_poll(unsigned interval) {
+    // Keep polling at the original cadence near the record deadline.
+    const unsigned steps=limit-cycles>uint64_t(interval)+control_response_limit?interval:1;
+    for(unsigned n=0;n<steps;++n)step();
+  }
   uint32_t read(uint32_t address) {
     auto &d=*sim.model;uint32_t value=0;bool ar=false,r=false;
     d.io_s_axi_araddr=address;d.io_s_axi_arlen=0;d.io_s_axi_arsize=2;d.io_s_axi_arburst=0;
     d.io_s_axi_arvalid=d.io_s_axi_rready=1;
-    for(unsigned n=0;n<1024 && !r;++n) {
+    for(unsigned n=0;n<control_response_limit && !r;++n) {
       step([&](const auto &m) {
         if(m.io_s_axi_arvalid && m.io_s_axi_arready)ar=true;
         if(m.io_s_axi_rvalid && m.io_s_axi_rready) {
@@ -71,7 +77,7 @@ public:
     d.io_s_axi_awaddr=address;d.io_s_axi_awlen=0;d.io_s_axi_awsize=2;d.io_s_axi_awburst=0;
     d.io_s_axi_wdata=value;d.io_s_axi_wstrb=15;d.io_s_axi_wlast=1;
     d.io_s_axi_awvalid=d.io_s_axi_wvalid=d.io_s_axi_bready=1;
-    for(unsigned n=0;n<1024 && !b;++n) {
+    for(unsigned n=0;n<control_response_limit && !b;++n) {
       step([&](const auto &m) {
         if(m.io_s_axi_awvalid && m.io_s_axi_awready)aw=true;
         if(m.io_s_axi_wvalid && m.io_s_axi_wready)w=true;
@@ -258,7 +264,7 @@ HeldRecord hold_record(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,
   // treating this record as complete; polling continues to service AXI.
   auto last_progress=bus.cycles;
   while(!(bus.read(GPU_REG_UCMD_STATUS)&GPU_UCMD_STATUS_COMPLETION)) {
-    bus.step();
+    bus.wait_before_status_poll(CaptureType::joint_completion?32:1);
     if(progress && bus.cycles-last_progress>=256) {
       progress->update(native_frame::progress_counters(bus.cycles-held_record.start_cycles,bus.cycles,agent.traffic));
       last_progress=bus.cycles;
