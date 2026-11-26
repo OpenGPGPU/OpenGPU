@@ -194,7 +194,7 @@ def compare_model_shape(binding,shape):
  require({port['name'] for port in ports}==set(shape),'retained ABI differs from actual Bundle CPU shape')
  for port in ports:
   leaf=shape[port['name']]
-  require(port['width']==leaf['width'] and port['settable']==leaf['settable'] and port['gettable']==(not leaf['settable']),'retained ABI leaf mismatch: '+port['name'])
+  require(port['width']==leaf['width'] and port['settable']==leaf['settable'] and port['gettable'] is True,'retained ABI leaf mismatch: '+port['name'])
 
 
 def source_binding(plan_path,plan):
