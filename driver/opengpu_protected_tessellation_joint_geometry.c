@@ -295,7 +295,7 @@ static int jg_sequence(struct jg_capture *c,u32 index,u32 domain)
     return 0;
 }
 /* Source-side equivalents of TypedFragmentStateLayout.errors and
- * FragmentShaderDescriptor.errors for the exact 16x8, primitive-only ABI8/9
+ * FragmentShaderDescriptor.errors for the exact 16x8, GS-linked ABI5/7
  * route. Address-dependent checks are made on the later bound graph; source
  * scratch/PC/GUR fields must remain zero until their real relocations. */
 static bool jg_fragment_semantics(const void *f,
@@ -322,7 +322,7 @@ static bool jg_fragment_semantics(const void *f,
             (format>=36 || type!=opengpu_compute_texture_formats[format].kind));
         if(bad_type)return false;
     }
-    u64 prefix=((abi==5?11u:15u)+4u*varyings+4u*colors)*128u*4u;
+    u64 prefix=((abi==5?12u:15u)+4u*varyings+4u*colors)*128u*4u;
     if(prefix>jg_get(s->frame,JW(SCRATCHSTRIDE)))return false;
     const u32 shared[]={JF(BLEND_ENABLE),JF(BLEND_SRCRGB),JF(BLEND_DSTRGB),
         JF(BLEND_SRCALPHA),JF(BLEND_DSTALPHA),JF(BLEND_EQUATIONRGB),JF(BLEND_EQUATIONALPHA)};
