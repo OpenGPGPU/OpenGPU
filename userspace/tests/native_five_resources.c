@@ -13,6 +13,9 @@
 #ifdef OPENGPU_TEST_GEOMETRY_HANDOFF
 #include "native_geometry_mesa_handoff.inc"
 #endif
+#ifdef OPENGPU_TEST_FIVE_CHAIN_HANDOFF
+#include "native_five_chain_handoff.inc"
+#endif
 static const unsigned five_stages[5]={0,4,5,3,1};
 static void write_words(const char *prefix,const char *stage,const uint32_t *code,unsigned words){
     char path[4096];assert(snprintf(path,sizeof(path),"%s.%s.words",prefix,stage)>0);
@@ -175,6 +178,9 @@ void native_five_test(struct opengpu_native_five_link *link,const char *output,u
     write_words(output,"tes",d.tess[1].code,d.tess[1].words);write_words(output,"gs",d.geometry.code,d.geometry.words);write_words(output,"fs",d.fragment.code,d.fragment.words);
 #ifdef OPENGPU_TEST_GEOMETRY_HANDOFF
     geometry_mesa_handoff(output,&d);
+#endif
+#ifdef OPENGPU_TEST_FIVE_CHAIN_HANDOFF
+    five_chain_handoff(link,output,&d,&input);
 #endif
     printf("NATIVE_FIVE_CPU words=%u/%u/%u/%u/%u refs65 code5 ABI%u GPU=false submit=false\n",d.vertex.words,d.tess[0].words,d.tess[1].words,d.geometry.words,d.fragment.words,d.fragment.metadata.abi_version);
     opengpu_native_five_source_destroy(lease);assert(!bos[handle].handle);
