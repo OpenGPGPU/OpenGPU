@@ -228,10 +228,41 @@ The real Ubuntu GCC13 Mesa compiler run passed with 65 retained references, five
 code objects, 258 actual MMD dependencies and three semantic source controls.
 Fresh-input private GUR1/GUR3/GUR2 owner generation passed with ASan/UBSan for
 both cases, including 17 runtime rejection mutations. The Bundle-only shape
-check passed 5,309 leaves and 1,404 assignments with no feedback leaves. The
-retained full-capacity Verilator reset/idle build and two-case actual CU/frame
-replay are still pending; no shader execution or product result is claimed by
-these CPU checks.
+check passed 5,309 leaves and 1,404 assignments with no feedback leaves.
+
+The retained full-capacity Verilator reset/idle build and two-case actual replay
+also passed with `ACTUAL_ORIGINAL_FIVE_STAGE_ISOLINE_PASS cases=2 noReset=true
+noTf=true physicalGraphicsCUs=2`. `full5` executed VS/TCS/TES/GS, produced zero
+complete GS primitives and retained the independent clear image. `pointcoord`
+executed all five stages, produced one point covering exactly four pixels with
+the expected PointCoord/color values, and passed all four MRT image, padding and
+guard checks. The real compute-store blocker held CU0 while graphics writebacks
+committed on CU1; final acceptance observed committed graphics writeback on both
+physical CUs, no traps and complete payload/source/task/memory drain.
+
+This is a direct typed-isoline simulator qualification, not GNQ7/8/9 protected
+host submission, public API execution, TF/ABI10 admission or product-FPS proof.
+Reproduce the two-case path with:
+
+```sh
+WORK="$GPU/.artifacts/five-stage-qualification"
+MODEL="$GPU/.artifacts/five-stage-model"
+python3 -B scripts/test_native_five.py --five-chain-only --five-chain-handoff \
+  --sanitize --negative-controls --build "$WORK/compiler"
+python3 -B scripts/test_five_stage_runtime.py --build "$WORK/compiler" \
+  --output "$WORK/runtime-plan.json" --sanitize
+python3 -B scripts/qualify_five_stage.py --runtime-plan "$WORK/runtime-plan.json" \
+  --input-root "$WORK/compiler" --build --work "$MODEL" \
+  --memory-mib 24576 --timeout-seconds 13472
+python3 -B scripts/qualify_five_stage.py --runtime-plan "$MODEL/runtime-plan.json" \
+  --input-root "$WORK/compiler" --replay-model "$MODEL/model" \
+  --memory-mib 4096 --timeout-seconds 7200
+```
+
+The qualifier removes the retained model/work directory after successful replay.
+For hosts with shorter process limits, `--resume-workspace` can publish an exact
+already-built slot after bounded direct Verilator/make continuation; it never
+weakens source, port-ABI or option binding.
 
 ## Reproduction
 
