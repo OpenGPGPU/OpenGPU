@@ -64,6 +64,9 @@ int opengpu_private_snapshot_prepare(struct opengpu_private_snapshot *owner);
  * actual live leaves and all segment/resource VAs outside fixed LDS. Status
  * only, before publish. Any failure closes publication; retire whole owner. */
 int opengpu_private_snapshot_check_prepared_joint(struct opengpu_private_snapshot *owner,u32 segment);
+/* GNQ7..9/GGA1: prepared-owner and actual attachment/program link validation.
+ * Process context; full-record scratch may sleep. ENOMEM also closes publish. */
+int opengpu_private_snapshot_check_prepared_joint_geometry(struct opengpu_private_snapshot *owner,u32 segment);
 int opengpu_private_snapshot_address(const struct opengpu_private_snapshot *owner,
     u32 segment, u32 *address);
 

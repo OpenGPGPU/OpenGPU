@@ -1,0 +1,102 @@
+{
+  "name": "Protected five-stage geometry joint BUILD",
+  "status": "Versioned native BUILD/prepare contract for GNQ7/8/9 v3 and GGA1/GNG1; discovery, submission and transform feedback remain unavailable.",
+  "root": {
+    "bytes": 512,
+    "version": 3,
+    "domain_magics": [
+      "0x474e5107",
+      "0x474e5108",
+      "0x474e5109"
+    ],
+    "unchanged_fields": "words0..35 preserve structural layout and retain their own canonical validator",
+    "geometry_version": 36,
+    "geometry_base": 37,
+    "geometry_limit": {
+      "word": 38,
+      "bits": 33
+    },
+    "geometry_count": 40,
+    "geometry_entry_bytes": 41,
+    "geometry_bytes": 42,
+    "reserved_zero": {
+      "word": 43,
+      "count": 85
+    }
+  },
+  "attachment": {
+    "magic": "0x47474101",
+    "version": 1,
+    "header_bytes": 64,
+    "entry_bytes": 1024,
+    "header": {
+      "magic": 0,
+      "bytes": 1,
+      "version": 2,
+      "entry_bytes": 3,
+      "count": 4,
+      "context": 5,
+      "pass": 6,
+      "generation": 7,
+      "reserved_zero": {
+        "word": 8,
+        "count": 8
+      }
+    },
+    "entry": {
+      "sequence_index": 0,
+      "state_handle": 1,
+      "domain": 2,
+      "flags": 3,
+      "context": 4,
+      "pass": 5,
+      "generation": 6,
+      "command_id": 7,
+      "gs_task_id_base": 8,
+      "first_input_primitive_id": 9,
+      "first_output_sequence": {
+        "word": 10,
+        "bits": 64
+      },
+      "gng_base": 12,
+      "gng_limit": {
+        "word": 13,
+        "bits": 33
+      },
+      "gng_bytes": 15,
+      "evaluation_components": {
+        "word": 16,
+        "count": 64,
+        "bits": 8,
+        "encoding": "valid=bit7; source=bits0..6; invalid must zero"
+      },
+      "feedback_reserved_zero": {
+        "word": 80,
+        "count": 100
+      },
+      "raster_discard": 180,
+      "reserved_zero": [
+        {
+          "word": 181,
+          "count": 43
+        },
+        {
+          "word": 226,
+          "count": 30
+        }
+      ],
+      "input_sequence": {
+        "word": 224,
+        "bits": 64
+      }
+    }
+  },
+  "source_rules": [
+    "all raw addresses zero; typed original views only",
+    "flags and words80..179 are zero; no transform-feedback descriptor, resource or permission is admitted",
+    "GS program permissions are independent verified kernel profile inputs",
+    "full physical cache-line alias exclusion across five stages, VS scratch and frame resources",
+    "GNT7/8/9 and GVM2 bytes remain unchanged; geometry table is separate",
+    "linked fragment shaders use GS-aware ABI5 or ABI7 only"
+  ]
+}
