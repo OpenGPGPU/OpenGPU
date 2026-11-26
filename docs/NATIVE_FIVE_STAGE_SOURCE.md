@@ -189,13 +189,31 @@ unchanged. It checks original bytes, opaque nonzero entry, short scratch,
 atomic failures, RX permissions and retirement; it does not execute shader
 instructions. The original and variant source packages are separate.
 
-The scalar GS compiler and five-stage graph are still incomplete product
-work. Maximum-output GS lowering, remaining GLSL arithmetic/builtins and
-PointSize, dynamic/ordered GS execution, TF, GS-capable protected joint BUILD,
-shader values and full-frame execution remain pending. No original
-four-stage CPU result or individual RX validator substitutes for those paths.
-The mandatory two-CU 640x480/60-FPS target remains unchanged. No Scala
-regression, full model or actual CU is run by this CPU test.
+The protected GS-linked ABI5/7 BUILD/prepare is now in main through GPU PRs
+#959 and #960. PR #961 adds the no-TF geometry RTL source stage: GGA1/GNG1
+readers, raw GS bridge, primitive/viewport/patch/bin pipeline, third router
+client and all three image/vertex-input parents. Native geometry is disabled by
+default, ordinary TF remains available when it is disabled, and ABI10 mask
+control is not enabled. JDK21 focused tests pass 35/35, including 2/2 parent
+elaboration checks; changed-suite selection passes 176 tests.
+
+Actual original five-stage CU/frame execution remains pending. The next harness
+keeps only `full5` and `pointcoord` at 4×4, with two CUs, all 65 uniform views,
+four MRTs, independent image/clear/padding/guard checks and no-reset reuse.
+Maximum-output GS lowering, remaining GLSL arithmetic/builtins and PointSize,
+dynamic/ordered GS execution, TF, ABI10 provider/admission, protected host
+submission and product qualification remain open. No component or CPU result
+substitutes for those paths. The mandatory two-CU 640×480/60-FPS target remains
+unchanged.
+
+Reproduce the source/component stage with JDK 21 and Scala 2.13:
+
+```sh
+sbt 'testOnly opengpu.graphics.TessellationGeometryRawBridgeSpec opengpu.system.TessellationGeometryPipelineControlSpec opengpu.graphics.TessellationGeometryClientTransportSpec opengpu.graphics.TessellationGeometryVertexTupleSpec opengpu.system.TessellationJointGeometryJobCaptureReaderSpec opengpu.system.TessellationJointGeometryAttachmentReaderSpec opengpu.graphics.WindowPrimitiveRecordFaultPrioritySpec opengpu.graphics.TessellationVertexShaderRouterSpec opengpu.testutil.GpuSimInlineVerificationSpec opengpu.system.TessellationGeometryParentElaborationSpec'
+python3 -B scripts/test_changed_test_suites.py
+python3 -B scripts/test_test_selection.py
+git diff --check
+```
 
 ## Reproduction
 
