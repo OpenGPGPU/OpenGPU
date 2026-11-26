@@ -661,7 +661,7 @@ int opengpu_protected_tessellation_joint_geometry_build(struct opengpu_private_s
     struct jg_alias aliases={.capture=&captured};
     struct opengpu_tessellation_vertex_outer_roots roots={0};
     struct opengpu_native_job_copy copy={jg_copy,jg_resolve,&aliases};
-    u32 domain,states=0,sequences=0,frame,job,geometry;
+    u32 domain,states=0,sequences=0,frame=0,job=0,geometry=0;
     int ret;
     if(!owner || !source || !callbacks || !callbacks->copy || !callbacks->resolve || !output)return -EINVAL;
     if(!opengpu_protected_tessellation_joint_geometry_profile_valid(&source->profile))return -EOPNOTSUPP;
