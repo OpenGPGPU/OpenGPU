@@ -34,13 +34,43 @@ On 2026-10-20, `clang --target=opengpu -O0 -mno-relax` of every shader in
 A fresh `-O2` compile of those guest images still matches
 `userspace/gallium/opengpu_shaders.h`.
 The `OpenGPGPU/llvm-project` branch `opengpu` is pinned at
-`4d61da24beb78f6f48997de0015be63beb8f7898`.
+`2ba9912b981d8819ffecda059cc41872f986bcf3`.
 Hardware work that changes the CU ISA or the shader ABI below has to update
 the LLVM branch in the same change.
 
 This document defines the plan for a shader/compute toolchain for the OpenGPU
 RISC-V SIMT GPU. It supersedes the earlier "independent LLVM target" sketch and
 records the decisions made while grounding the work in the actual device ISA.
+
+### Production tessellation ISA integration, 2026-11-26
+
+LLVM PR #4 merged the coherent RISCV toolchain lineage into `opengpu` at
+`2ba9912b981d8819ffecda059cc41872f986bcf3`, including typed/captured texture
+operations, texture-size queries, explicit SIMT scopes, CUSTOM-1 fn33
+`opengpu.vtes.patch.read` and CUSTOM-0 fn37 `opengpu.tess.info`. A complete
+Release Clang/LLVM 24 build with the RISCV target passed in 2,386.87 seconds at
+3.66 GiB peak charged memory. The focused LLVM lane passed all 14 MC, TableGen
+and Clang inline-assembly tests.
+
+The GPU-side smoke assembles fn33 through `llvm-mc` and Clang, checks exact
+masked/unmasked encodings and object roundtrips, rejects extension-off assembly,
+and assembles the existing texture consumer. The full shader/fatbin corpus then
+passed with the pinned compiler, ending in `LLVM device code vs shader corpus:
+PASS`. Reproduce with an explicit source-matching build:
+
+```sh
+OPENGPU_LLVM_SOURCE=/path/to/llvm-project \
+OPENGPU_LLVM_BUILD=/path/to/llvm-build \
+  python3 -B scripts/test_opengpu_llvm_isa.py
+python3 -B scripts/validate_offload_kernel.py \
+  --clang /path/to/llvm-build/bin/clang \
+  --objcopy /path/to/llvm-build/bin/llvm-objcopy \
+  --packager /path/to/llvm-build/bin/clang-offload-packager
+```
+
+The default host lane runs the ISA smoke with `--allow-missing`; that skip is
+not production qualification. MC/inline-assembly integration does not add
+automatic TCS/TES/GS lowering, task-resource dependencies or shader execution.
 
 ### Current-main LLVM validation, 2026-11-09
 
@@ -103,6 +133,8 @@ The device ISA is defined by the Chisel decoders in
   | `opengpu.vtex.sample vd, vs1, vs2` | custom-1 (`0x2b`), `funct6=000001`, `funct3=000` |
   | `opengpu.vquad.dfdx vd, vs2` | custom-1, `funct6=001100`, `funct3=000` |
   | `opengpu.vquad.dfdy vd, vs2` | custom-1, `funct6=001101`, `funct3=000` |
+  | `opengpu.vtes.patch.read vd, vs1, vs2[, v0.t]` | custom-1 (`0x2b`), `funct6=100001`, `funct3=000` |
+  | `opengpu.tess.info rd, rs1` | custom-0, `funct7=0100101`, `funct3=000`, reserved rs2=0 |
   | custom vector-branch family + `join` | custom-2 (`0x5b`), `funct3`-selected |
 
 - Execution constraints enforced by the driver/validator
@@ -201,7 +233,7 @@ The device ISA is defined by the Chisel decoders in
 - LLVM changes live in the `OpenGPGPU/llvm-project` fork on the `opengpu`
   branch, kept rebaseable onto `upstream/main` (upstream added as a remote).
 - This repository follows the sibling-checkout pattern and pins that branch
-  at `4d61da24beb78f6f48997de0015be63beb8f7898`.
+  at `2ba9912b981d8819ffecda059cc41872f986bcf3`.
 
 ## 6. Resolved decisions
 

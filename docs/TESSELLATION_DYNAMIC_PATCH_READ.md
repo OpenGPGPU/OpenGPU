@@ -166,10 +166,12 @@ python3 -B scripts/test_test_selection.py
 git diff --check
 ```
 
-The independent LLVM candidate `codex/p40-tes-patch-isa` at `cc37fd175`
-contains the matching fn33 MC declaration. Its existing 21 RUN/11-file MC
-result retains its documented scope; no fresh MC or production-tool migration
-is claimed for this GPU delivery.
+The production `OpenGPGPU/llvm-project` `opengpu` branch is pinned at
+`2ba9912b981d8819ffecda059cc41872f986bcf3` after LLVM PR #4. A complete
+Release Clang/LLVM 24 build passed all 14 focused MC/TableGen/Clang tests. The
+GPU ISA smoke and full shader/fatbin corpus also passed with that compiler.
+This integrates fn33/fn37 assembly and inline assembly only; automatic lowering,
+task-resource dependencies and complete P39/P40 acceptance remain pending.
 
 ## Real Mesa dynamic TES compiler
 
