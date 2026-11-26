@@ -303,6 +303,8 @@ def verify_runtime(plan, build, repo=ROOT):
             "io_task_bits_source_viewport_firstPrimitiveId": 201,
             "io_task_bits_vertex_draw_shaderPc": case["codePcs"][0],
             "io_task_bits_source_geometryLink_program_pc": case["codePcs"][3],
+            "io_task_bits_source_geometryLink_program_code_allocationLimit":
+                case["codePcs"][3] + ((case["codeWords"][3] * 4 + 63) & ~63),
             "io_task_bits_vertex_draw_uniforms_address": roots[0],
             "io_task_bits_source_geometryLink_program_uniforms_address": roots[3],
             "io_task_bits_vertex_draw_input_bindings_0_base": case["vertexBase"],

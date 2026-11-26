@@ -164,7 +164,8 @@ def _task(case, roots, pcs, vertex_base, vs_scratch):
                        ("vertexVaryingSlots", 9), ("fragmentVaryingSlots", 10)):
         _leaf(assignment, program + key, geometry[index])
     _leaf(assignment, program + "pc", pcs[3])
-    _view(assignment, program + "code_", pcs[3], len(read_regular(case.directory / f"{case.name}.gs.words")))
+    code_bytes = len(read_regular(case.directory / f"{case.name}.gs.words"))
+    _view(assignment, program + "code_", pcs[3], code_bytes, (code_bytes + 63) & ~63)
     _leaf(assignment, program + "uniforms_version", 2)
     _leaf(assignment, program + "uniforms_address", roots[3])
     _leaf(assignment, program + "flatMask", 15 << 60)
