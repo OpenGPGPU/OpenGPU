@@ -536,6 +536,35 @@ python3.13 -B scripts/run_owner_bounded.py --memory-mib 4096 --timeout-seconds 3
   --dut-dir "$OUT/resharded" --executor-build "$OUT/executor"
 ```
 
+### Complete-factory dynamic patch endpoints
+
+The complete four-engine factory passed the three dynamic endpoint recipes on
+one assertion-enabled FlashSim `38e050ebe2` model. Each run used original Mesa
+22.3.6 sources, independent RGBA32UI images and allocation guards, actual driver
+retirement, traffic drain and acknowledged cleanup.
+
+| Recipe | Records | Service cycles | Host time | Peak charged memory |
+| --- | ---: | --- | ---: | ---: |
+| `--patch-endpoints` | 6 | 75,396; 73,876; 111,276; 111,276; 624,914; 624,812 | 161.23 s | 728 MiB |
+| `--full-patch-endpoints` | 2 | 549,474; 548,856 | 128.98 s | 691 MiB |
+| `--full-patch-mutation` | 2 | 549,474; 555,214 | 128.56 s | 694 MiB |
+
+The model used split128 generation and a two-job `-O1` shared-model executor.
+Generation took 4,178.45 seconds at 15.56 GiB peak charged memory; reshard
+creation/verification and the executor build passed. Reproduce after the
+full-factory preparation above with:
+
+```sh
+for recipe in --patch-endpoints --full-patch-endpoints --full-patch-mutation; do
+  python3.13 -B scripts/run_owner_bounded.py --memory-mib 4096 --timeout-seconds 7200 -- \
+    python3.13 -B scripts/qualify_native_joint_live.py "$recipe" --timeout 900 \
+    --dut-dir "$OUT/resharded" --executor-build "$OUT/executor" || exit
+done
+```
+
+This closes the full-factory endpoint gap for these recipes. Production LLVM
+integration, complete P39/P40 acceptance and product clock/FPS remain pending.
+
 ### Full-viewport protected quad replay
 
 The `--vga-quad` mode runs the original Mesa quad and its VS mutation at

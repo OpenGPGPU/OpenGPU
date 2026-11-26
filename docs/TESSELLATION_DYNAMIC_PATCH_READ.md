@@ -302,6 +302,22 @@ original/mutated RGBA32UI images. On a fresh compact model the pair passed in
 passed on that model in 72.12 and 85.42 seconds. The assertion-enabled model
 used FlashSim `e8039c6768`, split64 generation and a two-job `-O2` executor.
 
+The complete four-engine factory also passed all three recipes. The 2040-word
+three-domain pair set completed in 161.23 seconds at 728 MiB peak charged memory,
+the 2048-word original pair in 128.98 seconds at 691 MiB, and the source-mutation
+pair in 128.56 seconds at 694 MiB. Their service cycles were:
+
+| Recipe | Record cycles |
+| --- | --- |
+| `--patch-endpoints` | 75,396; 73,876; 111,276; 111,276; 624,914; 624,812 |
+| `--full-patch-endpoints` | 549,474; 548,856 |
+| `--full-patch-mutation` | 549,474; 555,214 |
+
+The assertion-enabled model used FlashSim `38e050ebe2`, split128 generation and
+a two-job `-O1` shared-model executor. Model generation took 4,178.45 seconds
+at 15.56 GiB peak charged memory; verified resharding and the executor build
+also passed.
+
 The joint BUILD had used the read-only GUR3 snapshot bounds as the GNT interval
 for excluding writable shader scratch. The uniform loader rejected the root
 before reading it. BUILD now publishes the stage roots with empty scratch
@@ -329,7 +345,7 @@ for recipe in --patch-endpoints --full-patch-endpoints --full-patch-mutation; do
 done
 ```
 
-The original ten-record 4×4 regression also passed on this model. The
-full-capacity TES source mutation is now covered on the compact host; the full
-rendering factory, production LLVM integration, complete P39/P40 acceptance
-and the two-CU VGA60 product qualification remain pending.
+The original ten-record 4×4 regression also passed on this model. Full-capacity
+endpoint and source-mutation recipes now pass on both the compact host and the
+complete four-engine factory. Production LLVM integration, complete P39/P40
+acceptance and the two-CU VGA60 product qualification remain pending.
