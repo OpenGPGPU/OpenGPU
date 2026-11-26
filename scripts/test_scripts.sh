@@ -62,6 +62,7 @@ python3 scripts/test_context_lifetime.py
 python3 scripts/test_job_track_mapping.py
 python3 scripts/test_blit_aliases.py
 python3 scripts/validate_offload_kernel.py
+python3 scripts/test_opengpu_llvm_isa.py --allow-missing
 python3 scripts/test_test_selection.py
 python3 scripts/test_check_pr_test_results.py
 python3 scripts/test_check_ci_job_results.py
