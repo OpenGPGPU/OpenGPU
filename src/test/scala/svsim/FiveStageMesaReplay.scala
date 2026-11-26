@@ -165,7 +165,7 @@ object FiveStageMesaReplay {
   val tiles=mutable.ArrayBuffer.empty[Snapshot]
   def tick():Unit={
     io.frameDrained.poke(memory.idle.B);memory.drive()
-    if(cycles%2000==0)println(s"FIVE_STAGE_PROGRESS cycle=$cycles lower=${memory.seen.size} pending=${memory.pending.size} wb=${writebacks.size} owned=${value(io.owned)} traps=${value(io.traps)}")
+    if(cycles%2000==0)println(s"FIVE_STAGE_PROGRESS cycle=$cycles lower=${memory.seen.size} pending=${memory.pending.size} wb=${writebacks.size} owned=${value(io.owned)} traps=${value(io.traps)} beginReady=${yes(io.begin.ready)} beginValid=${yes(io.begin.valid)} taskReady=${yes(io.task.ready)} frameDrained=${yes(io.frameDrained)}")
     for(c<-0 until 2 if yes(io.writeback(c).valid) && value(io.owned).testBit(c)){
       val tag=value(io.tags(c));val stage=accepted.getOrElse(tag,throw new AssertionError(s"graphics WB without accepted launch tag=$tag"))._1
       writebacks+=((c,stage,tag,value(io.writeback(c).bits.rd),value(io.writeback(c).bits.data),cycles))}
