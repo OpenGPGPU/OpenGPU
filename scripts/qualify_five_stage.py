@@ -303,7 +303,7 @@ def build(args,plan,root,memory_mib,timeout_seconds):
   regular(binary);regular(compile_log)
   if model.exists():shutil.rmtree(model)
   command=sbt_command(['Test/runMain svsim.FiveStageMesaReplay --retain-reset-idle '+shlex.quote(str(resume))+' '+shlex.quote(str(model))+' '+shlex.quote(str(source_path))+' '+shlex.quote(str(shape_path))],'1G')
-  env=environment(work/'tmp')
+  env=environment(work/'tmp');env['JAVA_OPTS']=java_options(build_properties(work))
  code,text=run_logged(command,env,build_log,memory_mib,timeout_seconds)
  require(code==0,'retained model build failed: '+text[-4000:])
  require(text.count('FIVE_STAGE_MODEL_RESET_IDLE_ONLY originalShaderExecuted=false noTf=true physicalGraphicsCUs=2')==1,'retained reset/idle marker missing')
