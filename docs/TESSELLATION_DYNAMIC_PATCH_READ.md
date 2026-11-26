@@ -292,6 +292,16 @@ and the 2048-word recipe took 102.13 seconds of host time, including original
 producer compilation and protected submission. Peak charged memory was about
 578 MiB and 541 MiB, respectively.
 
+The `--full-patch-mutation` recipe adds a second original TES source at the
+same 32×64/2048-word endpoint. Both records select vertex31/component3 and
+patch column2, while only the second source XORs `0x5a5a5a5a` into `shade.z`.
+The independent oracle requires different TES executable hashes and exact
+original/mutated RGBA32UI images. On a fresh compact model the pair passed in
+66.44 seconds at 281 MiB peak charged memory; service cycles were 576,070 and
+581,952. The original full-capacity pair and three-domain endpoint recipe also
+passed on that model in 72.12 and 85.42 seconds. The assertion-enabled model
+used FlashSim `e8039c6768`, split64 generation and a two-job `-O2` executor.
+
 The joint BUILD had used the read-only GUR3 snapshot bounds as the GNT interval
 for excluding writable shader scratch. The uniform loader rejected the root
 before reading it. BUILD now publishes the stage roots with empty scratch
@@ -312,14 +322,14 @@ and the classic linker. [4×4 model preparation](PROTECTED_TESSELLATION_JOINT_BU
 ```sh
 python3.13 -B scripts/test_protected_tessellation_joint.py --sanitize --negative-controls
 python3.13 -B scripts/test_native_joint_live_oracle.py
-for recipe in --patch-endpoints --full-patch-endpoints; do
+for recipe in --patch-endpoints --full-patch-endpoints --full-patch-mutation; do
   python3.13 -B scripts/run_owner_bounded.py --memory-mib 4096 --timeout-seconds 7200 -- \
     python3.13 -B scripts/qualify_native_joint_live.py "$recipe" --timeout 900 \
     --dut-dir "$OUT/resharded" --executor-build "$OUT/executor" || exit
 done
 ```
 
-The original ten-record 4×4 regression also passed on this model. A
-full-capacity TES source-code mutation, the full rendering factory,
-production LLVM integration and the two-CU VGA60 product qualification
-remain pending.
+The original ten-record 4×4 regression also passed on this model. The
+full-capacity TES source mutation is now covered on the compact host; the full
+rendering factory, production LLVM integration, complete P39/P40 acceptance
+and the two-CU VGA60 product qualification remain pending.
