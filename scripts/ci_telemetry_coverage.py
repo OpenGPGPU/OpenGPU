@@ -13,7 +13,7 @@ from changed_test_suites import changed_suites
 
 GRAPHICS = "src/main/scala/opengpu/graphics/"
 TESTS = "src/test/scala/opengpu/graphics/"
-SYSTEM = "src/main/scala/opengpu/system/GpuHostSystemAxi.scala"
+SYSTEM = "src/main/scala/opengpu/system/top/GpuHostSystemAxi.scala"
 TYPED = "opengpu.graphics.NativeTypedGraphicsHostAxiSpec"
 BINNED = "opengpu.graphics.NativeBinnedGraphicsHostAxiSpec"
 WITNESSES = {

@@ -29,6 +29,7 @@ object EmitRegistry {
     e("EmitGeometryExperiment", EmitGeometryExperiment.main),
     e("EmitGpuHostAxi", EmitGpuHostAxi.main),
     e("EmitGpuHostSystemAxi", EmitGpuHostSystemAxi.main),
+    e("EmitGpuTop", EmitGpuTop.main),
     e("EmitIndirectCompute", EmitIndirectCompute.main),
     e("EmitInstructionSimtControl", EmitInstructionSimtControl.main),
     e("EmitLegacyInterpolationDivider", EmitLegacyInterpolationDivider.main),

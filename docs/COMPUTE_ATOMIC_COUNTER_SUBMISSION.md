@@ -94,7 +94,7 @@ and `GPU_COMPUTE_RESOURCES=1`; it can select a small compute profile through
 For example, emit a 16×16 one-CU test profile without rendering a frame:
 
 ```sh
-sbt 'runMain opengpu.elaboration.EmitGpuHostSystemAxi .artifacts/counter-rtl --width 16 --height 16 --compute-units 1 --cu-lanes 4 --cu-warps 2 --memory-axi-data-bytes 8 --atomic-counters'
+sbt 'runMain opengpu.elaboration.EmitGpuTop .artifacts/counter-rtl --width 16 --height 16 --compute-units 1 --cu-lanes 4 --cu-warps 2 --memory-axi-data-bytes 8 --atomic-counters'
 make -C userspace examples/compute_counter
 ./userspace/examples/compute_counter /dev/dri/renderD128
 ```

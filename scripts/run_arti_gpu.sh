@@ -297,19 +297,19 @@ if [ "${SKIP_RTL_EMIT:-0}" = "1" ]; then
 elif [ "$GPU_VERT_CORE" = "1" ]; then
     emit_stamp="$(mktemp)"
     (cd "$GPU_DIR" && \
-        "${SBT_EMIT[@]}" "runMain opengpu.elaboration.EmitGpuHostSystemAxi $GPU_RTL_DIR --frag-core --vert-core --width $GPU_WIDTH --height $GPU_HEIGHT $EMIT_OPTIONS $TILE_OPTIONS")
+        "${SBT_EMIT[@]}" "runMain opengpu.elaboration.EmitGpuTop $GPU_RTL_DIR --frag-core --vert-core --width $GPU_WIDTH --height $GPU_HEIGHT $EMIT_OPTIONS $TILE_OPTIONS")
     TIMEOUT="${TIMEOUT:-3600}"
 elif [ "$GPU_FRAG_CORE" = "1" ]; then
     emit_stamp="$(mktemp)"
     (cd "$GPU_DIR" && \
-        "${SBT_EMIT[@]}" "runMain opengpu.elaboration.EmitGpuHostSystemAxi $GPU_RTL_DIR --frag-core --width $GPU_WIDTH --height $GPU_HEIGHT $EMIT_OPTIONS $TILE_OPTIONS")
+        "${SBT_EMIT[@]}" "runMain opengpu.elaboration.EmitGpuTop $GPU_RTL_DIR --frag-core --width $GPU_WIDTH --height $GPU_HEIGHT $EMIT_OPTIONS $TILE_OPTIONS")
     # The 3-draw fragment stencil job has a 15x watchdog; allow the full
     # userspace suite to continue after that job completes.
     TIMEOUT="${TIMEOUT:-2400}"
 else
     emit_stamp="$(mktemp)"
     (cd "$GPU_DIR" && \
-        "${SBT_EMIT[@]}" "runMain opengpu.elaboration.EmitGpuHostSystemAxi $GPU_RTL_DIR --width $GPU_WIDTH --height $GPU_HEIGHT $EMIT_OPTIONS $TILE_OPTIONS")
+        "${SBT_EMIT[@]}" "runMain opengpu.elaboration.EmitGpuTop $GPU_RTL_DIR --width $GPU_WIDTH --height $GPU_HEIGHT $EMIT_OPTIONS $TILE_OPTIONS")
     # FF + MSAA/persistent-depth DRM suite needs ~5+ minutes under FlashSim.
     TIMEOUT="${TIMEOUT:-600}"
 fi

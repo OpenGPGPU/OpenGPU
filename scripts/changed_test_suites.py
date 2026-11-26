@@ -1104,7 +1104,7 @@ def changed_suites(root, changed, *, test_index=None):
     if changed & {"src/main/scala/opengpu/system/tessellation/TessellationDomainSampleMux.scala",
                   "src/main/scala/opengpu/graphics/host/NativeVisibilityQueryEngine.scala",
                   "src/main/scala/opengpu/system/tessellation/TessellationNativeDomainJobImage.scala",
-                  "src/main/scala/opengpu/system/GpuHostSystemAxi.scala"}:
+                  "src/main/scala/opengpu/system/top/GpuHostSystemAxi.scala"}:
         affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationDomainVisibilityQuerySpec.scala")
     if "src/main/scala/opengpu/system/tessellation/TessellationHostPayloadOwner.scala" in changed:
         affected.add("src/test/scala/opengpu/system/TessellationThreeDomainPayloadOwnerSpec.scala")
@@ -1121,7 +1121,7 @@ def changed_suites(root, changed, *, test_index=None):
         affected.add("src/test/scala/opengpu/system/TessellationNativeThreeDomainJobImageElaborationSpec.scala")
     if changed & {"src/main/scala/opengpu/system/tessellation/TessellationThreeDomainSampleMux.scala",
                   "src/main/scala/opengpu/system/tessellation/TessellationNativeThreeDomainJobImage.scala",
-                  "src/main/scala/opengpu/system/GpuHostSystemAxi.scala",
+                  "src/main/scala/opengpu/system/top/GpuHostSystemAxi.scala",
                   "src/main/scala/opengpu/graphics/host/NativeVisibilityQueryEngine.scala"}:
         affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationThreeDomainVisibilityQuerySpec.scala")
     if "src/main/scala/opengpu/system/tessellation/TessellationHostMemoryFabric.scala" in changed:

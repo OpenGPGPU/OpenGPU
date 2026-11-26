@@ -226,7 +226,7 @@ a guest path is blocked.
 Simulation wall-clock is not a correctness gate.
 
 An opt-in tile-order raster traversal is available through
-`EmitGpuHostSystemAxi ... --tile-size 16`. It visits every pixel or 2x2 helper
+`EmitGpuTop ... --tile-size 16`. It visits every pixel or 2x2 helper
 quad in 16x16 tile order, preserving edge planes, coverage masks, scissor,
 MSAA, and backpressure. The default remains scanline order. This is a first
 step toward mobile tile rendering: the output merger still reads and writes
