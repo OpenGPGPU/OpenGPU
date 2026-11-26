@@ -185,9 +185,15 @@ int main(void)
         if(domain==2){geometry_mutate_plans=gs;geometry_mutate_source=&s;callbacks.resolve=geometry_mutating_resolve;}
         struct opengpu_private_snapshot *o=opengpu_private_snapshot_create(&gpu,&ctx);u32 out=0x5aa5;
         assert(!IS_ERR(o));int ret=opengpu_protected_tessellation_joint_geometry_build(o,&s,&callbacks,&out);
-        if(ret)fprintf(stderr,"geometry build domain%u ret%d\n",domain,ret);assert(!ret);
+        if(ret) {
+            fprintf(stderr,"geometry build domain%u ret%d\n",domain,ret);
+            assert(!ret);
+        }
         ret=opengpu_protected_tessellation_joint_geometry_prepare(o,out);
-        if(ret)fprintf(stderr,"geometry prepare domain%u ret%d\n",domain,ret);assert(!ret);
+        if(ret) {
+            fprintf(stderr,"geometry prepare domain%u ret%d\n",domain,ret);
+            assert(!ret);
+        }
         assert(!opengpu_private_snapshot_publish(o));geometry_graph_oracle(o,&ctx,out,domain);
         assert(!opengpu_private_snapshot_retire(o));pt_free_originals(&gpu);free(f);
         opengpu_mmu_vm_destroy(&gpu,&ctx.vm);opengpu_mmu_fini(&gpu);assert(!fixture_buffers && !live_allocations);

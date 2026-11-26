@@ -36,7 +36,8 @@ or prove GPU behavior.
 - The Clang ASan/UBSan owner/MMU runner passes the existing joint suite and all
   three geometry domains. It compiles 27 translation units, checks 125 distinct
   dependencies and 397 consumed inputs, and rejects all 16 existing plus 8 new
-  geometry semantic controls.
+  geometry semantic controls. The same positive fixture passes Ubuntu GCC13 with
+  `-O2 -Wall -Wextra -Werror` and ASan/UBSan.
 - The sanitizer host lane passes every `scripts/test_scripts.sh` command except
   the optional LLVM ISA smoke. That smoke already passed on the unchanged pinned
   LLVM `2ba9912b981d8819ffecda059cc41872f986bcf3` in GPU PR #957; its ended build
