@@ -165,7 +165,7 @@ object FiveStageMesaReplay {
   val tiles=mutable.ArrayBuffer.empty[Snapshot]
   def tick():Unit={
     io.frameDrained.poke(memory.idle.B);memory.drive()
-    if(cycles%2000==0)println(s"FIVE_STAGE_PROGRESS cycle=$cycles lower=${memory.seen.size} pending=${memory.pending.size} wb=${writebacks.size} owned=${value(io.owned)} traps=${value(io.traps)} beginReady=${yes(io.begin.ready)} beginValid=${yes(io.begin.valid)} taskReady=${yes(io.task.ready)} frameDrained=${yes(io.frameDrained)}")
+    if(cycles%2000==0)println(s"FIVE_STAGE_PROGRESS cycle=$cycles lower=${memory.seen.size} pending=${memory.pending.size} wb=${writebacks.size} owned=${value(io.owned)} traps=${value(io.traps)} beginReady=${yes(io.begin.ready)} beginValid=${yes(io.begin.valid)} taskReady=${yes(io.task.ready)} taskValid=${yes(io.task.valid)} completion=${yes(io.taskCompletion.valid)} launch=${yes(io.launch.valid)} busy=${yes(io.busy)} frameDrained=${yes(io.frameDrained)}")
     for(c<-0 until 2 if yes(io.writeback(c).valid) && value(io.owned).testBit(c)){
       val tag=value(io.tags(c));val stage=accepted.getOrElse(tag,throw new AssertionError(s"graphics WB without accepted launch tag=$tag"))._1
       writebacks+=((c,stage,tag,value(io.writeback(c).bits.rd),value(io.writeback(c).bits.data),cycles))}
@@ -176,9 +176,9 @@ object FiveStageMesaReplay {
     if(yes(io.computeDone.valid)){io.computeDone.bits.commandId.expect(99);io.computeDone.bits.success.expect(1);computeDone=true}
     memory.capture();clock.step();cycles+=1;io.traps.expect(0)
   }
-  def until(label:String)(p: =>Boolean):Unit={var n=0;while(!p && n<1000000){tick();n+=1};assert(p,s"$label no actual progress at cycle=$cycles pending=${memory.pending.size}")}
-  def assignments(j:ujson.Value):Unit=j.obj.foreach{case(k,v)=>Node(k).poke(integer(v))}
-  def handshake(port:Node,label:String):Unit={port.valid.poke(true.B);until(label)(yes(port.ready));tick();port.valid.poke(false.B)}
+   def until(label:String)(p: =>Boolean):Unit={var n=0;while(!p && n<1000000){tick();n+=1};assert(p,s"$label no actual progress at cycle=$cycles pending=${memory.pending.size}")}
+   def assignments(j:ujson.Value):Unit=j.obj.foreach{case(k,v)=>Node(k).poke(integer(v))}
+   def handshake(port:Node,label:String):Unit={until(label)(yes(port.ready));port.valid.poke(true.B);tick();port.valid.poke(false.B);println(s"FIVE_STAGE_HANDSHAKE $label valid=${yes(port.valid)} ready=${yes(port.ready)} cycle=$cycles")}
   def hold(port:Node):Unit={val snapshot=port.bits.peek();for(_<-0 until 5){tick();assert(yes(port.valid) && port.bits.peek()==snapshot,s"$port report changed while held")}}
   def computeBlocked():Boolean = !computeDone && memory.pending.exists(r=>r.address==blocker && r.write) && value(io.active(0))!=0 && memory.word(blocker)==0x12345678
   io.context.poke(101);io.computeDone.ready.poke(true.B)
