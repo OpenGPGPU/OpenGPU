@@ -80,6 +80,19 @@ local_only = {line.strip() for line in (root / "scripts/ci_local_only_suites.txt
               if line.strip() and not line.lstrip().startswith("#")}
 assert local_only <= all_specs
 assert "opengpu.graphics.NativeFourEngineDefaultHostAxiSpec" in local_only
+geometry_ci_suites = {
+    "opengpu.graphics.TessellationGeometryRawBridgeSpec",
+    "opengpu.system.TessellationGeometryPipelineControlSpec",
+    "opengpu.graphics.TessellationGeometryClientTransportSpec",
+    "opengpu.graphics.TessellationGeometryVertexTupleSpec",
+    "opengpu.system.TessellationJointGeometryJobCaptureReaderSpec",
+    "opengpu.system.TessellationJointGeometryAttachmentReaderSpec",
+    "opengpu.graphics.WindowPrimitiveRecordFaultPrioritySpec",
+    "opengpu.graphics.TessellationVertexShaderRouterSpec",
+    "opengpu.testutil.GpuSimInlineVerificationSpec",
+}
+assert geometry_ci_suites <= all_specs
+assert geometry_ci_suites.isdisjoint(local_only)
 assert "opengpu.graphics.SharedShaderTaskRouterSpec" in local_only
 assert "opengpu.graphics.tessellation.TessellationSampleImageSharedSystemSpec" in local_only
 assert "opengpu.graphics.tessellation.TessellationSampleImageOpsSharedSystemSpec" in local_only
@@ -127,6 +140,7 @@ assert set(assigned) == all_specs - ci_skip, (
 assert ci_skip.isdisjoint(assigned)
 assert assigned["opengpu.system.TileBinHostMemoryFabricJointClearSpec"] == "system-mem"
 assert "opengpu.system.TessellationJointEmptyFrameSpec" in local_only
+assert "opengpu.system.TessellationGeometryParentElaborationSpec" in local_only
 assert "opengpu.graphics.TypedReplayEmptyStateSpec" in local_only
 assert assigned["opengpu.system.GpuHostAxiOwnershipSpec"] == "system-mem"
 assert assigned["opengpu.system.ComputeResourceCapabilitiesAxiSpec"] == "system-mem"
@@ -183,6 +197,7 @@ for name in ("IsolineGeometryCuRendererSpec", "IsolineGeometryCuClipSpec", "Isol
     if suite in all_specs:
         assert assigned[suite] == "system-core"
 assert assigned["opengpu.system.GeometryPrimitivePipelineSpec"] == "system-core"
+assert assigned["opengpu.system.TessellationGeometryPipelineControlSpec"] == "system-core"
 assert assigned["opengpu.system.NativeGeometryPrimitivePipelineSpec"] == "system-core"
 assert assigned["opengpu.system.NativeGeometrySharedCuSpec"] == "system-core"
 assert assigned["opengpu.system.NativeGeometryVertexPipelineSpec"] == "system-core"
