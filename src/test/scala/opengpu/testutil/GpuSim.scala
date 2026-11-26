@@ -5,7 +5,8 @@ import chisel3.simulator.{PeekPokeAPI, Randomization, Settings, Simulator}
 import svsim.CommonCompilationSettings
 import svsim.verilator.Backend
 
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.{Files, Path, Paths, LinkOption, StandardOpenOption}
+import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicInteger
 import scala.jdk.CollectionConverters._
 
@@ -115,10 +116,18 @@ object GpuSim extends PeekPokeAPI {
       Backend.initializeFromProcessEnvironment()
   }
 
-  private final class Runner(val workspacePath: String) extends Simulator[Backend] {
+  private final class Runner(val workspacePath: String, inlineVerification: Boolean = false) extends Simulator[Backend] {
     val backend: Backend = GpuSim.backend
     val tag: String = "verilator"
-    val commonCompilationSettings: CommonCompilationSettings = CommonCompilationSettings.default
+    val commonCompilationSettings: CommonCompilationSettings = {
+      val defaults = CommonCompilationSettings.default
+      if (inlineVerification) defaults.copy(
+        availableParallelism = buildJobs.map(CommonCompilationSettings.AvailableParallelism.UpTo(_))
+          .getOrElse(defaults.availableParallelism),
+        verilogPreprocessorDefines = defaults.verilogPreprocessorDefines :+
+          CommonCompilationSettings.VerilogPreprocessorDefine("OPENGPU_SIM_INLINE_VERIFICATION", "1"))
+      else defaults
+    }
     val backendSpecificCompilationSettings: Backend.CompilationSettings = new Backend.CompilationSettings()
   }
 
@@ -133,26 +142,169 @@ object GpuSim extends PeekPokeAPI {
   /** Simulate `module`, handing `body` the elaborated module exactly like
     * `chisel3.simulator.EphemeralSimulator.simulate`.
     */
-  def simulate[T <: RawModule](module: => T)(body: T => Unit): Unit = {
+  def simulate[T <: RawModule](module: => T)(body: T => Unit): Unit =
+    simulateConfigured(module, inlineVerification = false)(body)
+
+  /** Explicit qualification mode for hierarchy tools that cannot resolve bind
+    * assertions reaching internal signals across a compiled module boundary.
+    * Permanently enables/inlines layers, retaining the assertion conditions.
+    * Its compiler define also separates the normal model/cache identity.
+    */
+  def simulateWithInlineVerification[T <: RawModule](module: => T)(body: T => Unit): Unit =
+    simulateConfigured(module, inlineVerification = true)(body)
+
+  /** An explicitly registered next consumer, not a model qualification receipt.
+    * `inputBinding` is the caller's immutable source/tool/options binding. The
+    * caller must check its contents again before consuming the retained model.
+    * Only the executable, ordered port ABI and binding survive normal cleanup.
+    */
+  final case class RetainedModelConsumer(directory: Path, purpose: String, inputBinding: Path)
+
+  def simulateWithInlineVerificationRetainingModel[T <: RawModule](
+      module: => T, consumer: RetainedModelConsumer)(body: T => Unit): Unit =
+    simulateConfigured(module, inlineVerification = true, consumer = Some(consumer))(body)
+
+  private def digest(bytes: Array[Byte]): String =
+    MessageDigest.getInstance("SHA-256").digest(bytes).map(b => f"${b & 255}%02x").mkString
+
+  private def fileDigest(path: Path): String = {
+    val hash = MessageDigest.getInstance("SHA-256")
+    val in = Files.newInputStream(path)
+    try {
+      val buffer = new Array[Byte](65536)
+      var n = in.read(buffer)
+      while (n >= 0) { if (n > 0) hash.update(buffer, 0, n); n = in.read(buffer) }
+    } finally in.close()
+    hash.digest().map(b => f"${b & 255}%02x").mkString
+  }
+
+  private final case class ConsumerState(spec: RetainedModelConsumer, bytes: Array[Byte]) {
+    val directory: Path = spec.directory.toAbsolutePath.normalize()
+    private val directoryKey = Files.readAttributes(directory, classOf[java.nio.file.attribute.BasicFileAttributes],
+      LinkOption.NOFOLLOW_LINKS).fileKey()
+    require(directoryKey != null, "model consumer filesystem has no stable directory identity")
+    private def checkDirectory(): Unit = {
+      require(!Files.isSymbolicLink(directory) && directory.toRealPath() == directory &&
+        Files.readAttributes(directory, classOf[java.nio.file.attribute.BasicFileAttributes], LinkOption.NOFOLLOW_LINKS)
+          .fileKey() == directoryKey, "model consumer directory changed or is aliased")
+      val copy = directory.resolve("source-binding.json")
+      require(Files.isRegularFile(copy, LinkOption.NOFOLLOW_LINKS) &&
+        java.util.Arrays.equals(Files.readAllBytes(copy), bytes), "model consumer copied binding changed")
+    }
+    def save(workspace: Path, ports: Seq[ujson.Value], moduleName: String, completed: Boolean): Unit = {
+      checkDirectory()
+      require(java.util.Arrays.equals(Files.readAllBytes(spec.inputBinding), bytes), "model consumer input binding changed")
+      val binary = workspace.resolve("workdir-verilator/simulation")
+      require(Files.isRegularFile(binary, LinkOption.NOFOLLOW_LINKS) && Files.isExecutable(binary),
+        "retained model executable is missing or aliased")
+      require(ports.nonEmpty, "retained model has no captured port ABI")
+      val binaryHash = fileDigest(binary)
+      val retained = directory.resolve("simulation")
+      Files.createLink(retained, binary)
+      require(Files.isSameFile(retained, binary) && fileDigest(retained) == binaryHash,
+        "retained executable differs from the compiled model")
+      val stream = Files.walk(workspace)
+      val rtl = try stream.iterator().asScala.filter(p => Files.isRegularFile(p) && p.toString.endsWith(".sv"))
+        .toVector.sortBy(p => workspace.relativize(p).toString) finally stream.close()
+      val rtlHash = MessageDigest.getInstance("SHA-256")
+      rtl.foreach { path =>
+        rtlHash.update(workspace.relativize(path).toString.getBytes("UTF-8"))
+        rtlHash.update(0.toByte)
+        rtlHash.update(fileDigest(path).getBytes("US-ASCII"))
+        rtlHash.update(0.toByte)
+      }
+      val metadata = ujson.Obj(
+        "schema" -> "opengpu-svsim-active-consumer-v1", "purpose" -> spec.purpose,
+        "qualification" -> false, "simulation_body_returned" -> completed,
+        "module" -> moduleName, "binary_sha256" -> binaryHash,
+        "source_binding_sha256" -> digest(bytes), "port_bindings" -> ujson.Arr.from(ports),
+        "rtl_files" -> rtl.size, "rtl_digest" -> rtlHash.digest().map(b => f"${b & 255}%02x").mkString,
+        "inline_verification" -> true, "firtool_options" -> ujson.Arr("--default-layer-specialization=enable"),
+        "options" -> ujson.Obj("hierarchy" -> ujson.Arr.from(hierarchyModules),
+          "build_jobs" -> buildJobs.map(n => ujson.Num(n)).getOrElse(ujson.Null),
+          "low_memory" -> lowMemBuild, "optimization" -> lowMemOpt, "separate_build" -> separateBuild,
+          "cache_enabled" -> enabled, "compiler_cache" -> compilerCache.map(p => ujson.Str(p.toString)).getOrElse(ujson.Null),
+          "release_heap" -> releaseHeap),
+        "compile_makefile_sha256" -> fileDigest(workspace.resolve("workdir-verilator/Makefile")),
+        "compile_log_sha256" -> fileDigest(workspace.resolve("workdir-verilator/compilation-log.txt")),
+        "testbench_sha256" -> fileDigest(workspace.resolve("generated-sources/testbench.sv")))
+      val temporary = directory.resolve("binding.tmp")
+      Files.write(temporary, ujson.write(metadata, indent = 2).getBytes("UTF-8"), StandardOpenOption.CREATE_NEW)
+      checkDirectory()
+      require(java.util.Arrays.equals(Files.readAllBytes(spec.inputBinding), bytes), "model consumer input binding changed")
+      // A hard-link publication is atomic and never replaces an existing ready record.
+      Files.createLink(directory.resolve("binding.json"), temporary)
+      Files.delete(temporary)
+    }
+  }
+
+  private def prepareConsumer(spec: RetainedModelConsumer): ConsumerState = {
+    require(spec.purpose.matches("[A-Za-z0-9][A-Za-z0-9_.-]{0,95}"), "model consumer purpose must be explicit")
+    val target = spec.directory.toAbsolutePath.normalize()
+    val binding = spec.inputBinding.toAbsolutePath.normalize()
+    require(target.getParent.toRealPath() == target.getParent, "model consumer directory parent is aliased")
+    require(!Files.exists(target, LinkOption.NOFOLLOW_LINKS), "model consumer directory already exists")
+    require(Files.isRegularFile(binding, LinkOption.NOFOLLOW_LINKS) && binding.toRealPath() == binding,
+      "model consumer input binding is missing or aliased")
+    val bytes = Files.readAllBytes(binding)
+    require(bytes.nonEmpty && bytes.length <= 16 * 1024 * 1024, "model consumer input binding size is invalid")
+    Files.createDirectory(target)
+    try Files.write(target.resolve("source-binding.json"), bytes, StandardOpenOption.CREATE_NEW)
+    catch { case e: Throwable => delete(target); throw e }
+    ConsumerState(spec.copy(directory = target, inputBinding = binding), bytes)
+  }
+
+  private def simulateConfigured[T <: RawModule](module: => T, inlineVerification: Boolean,
+      consumer: Option[RetainedModelConsumer] = None)(body: T => Unit): Unit = {
+    val retained = consumer.map(prepareConsumer)
     Files.createDirectories(runDirectory)
     val workspace = runDirectory.resolve(s"slot-${slots.getAndIncrement()}")
+    var ports = Seq.empty[ujson.Value]
+    var moduleName = ""
+    var completed = false
     try {
       sys.props.getOrElse("opengpu.simBackend", "verilator") match {
         case "verilator" =>
-          new Runner(workspace.toString)
-            .simulate(module)(simulated => body(simulated.wrapped))
+          val options = if (inlineVerification) Array("--default-layer-specialization=enable") else Array.empty[String]
+          implicit val modification: chisel3.simulator.FirtoolOptionsModifications = new chisel3.simulator.FirtoolOptionsModifications {
+            def apply(existing: Array[String]): Array[String] = existing ++ options
+          }
+          new Runner(workspace.toString, inlineVerification)
+            .simulate(module) { simulated =>
+              if (retained.nonEmpty) {
+                val snapshot = chisel3.simulator.GpuSimModelPortABI.capture(simulated)
+                moduleName = snapshot.module
+                ports = snapshot.ports.map { port =>
+                  ujson.Obj("id" -> port.id, "name" -> port.name, "width" -> port.width,
+                    "settable" -> port.settable, "gettable" -> port.gettable)
+                }
+              }
+              body(simulated.wrapped)
+            }
             .result
-        case "flashsim" =>
+        case "flashsim" if !inlineVerification && retained.isEmpty =>
           new FlashSimRunner(workspace.toString)
             .simulate(module,
               firtoolOpts = Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"),
               settings = Settings.defaultRaw[T].copy(randomization = Randomization.uninitialized)
             )(simulated => body(simulated.wrapped))
             .result
+        case "flashsim" =>
+          throw new IllegalArgumentException("Inline verification and retained models require the Verilator backend")
         case other => throw new IllegalArgumentException(s"Unknown OpenGPU simulation backend $other")
       }
+      completed = true
     } finally {
-      delete(workspace)
+      retained match {
+        case Some(state) if Files.isRegularFile(workspace.resolve("workdir-verilator/simulation")) =>
+          try state.save(workspace, ports, moduleName, completed)
+          catch { case e: Throwable =>
+            throw new IllegalStateException(s"Model retention failed; compiled model remains at $workspace; consumer ${state.directory}", e)
+          }
+          delete(workspace)
+        case Some(state) => delete(workspace); delete(state.directory)
+        case None => delete(workspace)
+      }
     }
   }
 
@@ -217,9 +369,20 @@ object GpuSim extends PeekPokeAPI {
       |for index, arg in enumerate(args):
       |    if arg.startswith('+incdir+') or (index and args[index - 1] in path_flags):
       |        arg = relative(arg)
-      |    normalized.append(arg)
-      |if ${compilerCache.nonEmpty.toString.capitalize}:
-      |    args = normalized
+       |    normalized.append(arg)
+       |# svsim UpTo(n) supplies make flags but leaves Verilator's own -j at 0.
+       |# Only the explicit inline qualification mode normalizes this exact pair.
+       |inline_jobs = None
+       |if '+define+OPENGPU_SIM_INLINE_VERIFICATION=1' in args and ${buildJobs.nonEmpty.toString.capitalize}:
+       |    inline_jobs = '${buildJobs.getOrElse(1)}'
+       |    if args.count('-MAKEFLAGS') != 1 or args.count('-j') != 1:
+       |        sys.exit('Inline qualification requires exact simulator parallelism flags')
+       |    make_index, job_index = args.index('-MAKEFLAGS'), args.index('-j')
+       |    if make_index + 1 >= len(args) or args[make_index + 1] != '-j ' + inline_jobs or args[job_index + 1] != '0':
+       |        sys.exit('Unexpected inline qualification parallelism flags')
+       |    args[job_index + 1] = inline_jobs
+       |if ${compilerCache.nonEmpty.toString.capitalize}:
+       |    args = normalized
       |if not ${separateBuild.toString.capitalize}:
       |    os.execv(sys.argv[1], [sys.argv[1], *args])
       |# svsim supplies --cc --exe --build and an explicit top module. Generate
@@ -229,7 +392,7 @@ object GpuSim extends PeekPokeAPI {
       |if not all(flag in args for flag in ('--cc', '--exe', '--build')):
       |    sys.exit('Separate native build requires --cc --exe --build')
       |top = option('--top-module')
-      |if not top or '-MAKEFLAGS' in args or '--binary' in args:
+       |if not top or ('-MAKEFLAGS' in args and inline_jobs is None) or '--binary' in args:
       |    sys.exit('Unsupported separate native build arguments')
       |mdir = option('--Mdir', 'obj_dir')
       |prefix = option('--prefix', 'V' + top)
