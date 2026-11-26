@@ -259,6 +259,9 @@ def main():
                     'if(!ret){int alias_ret=jg_alias(&aliases);ret=alias_ret==-EINVAL?0:alias_ret;}'),
                 'geometry-admit-abi10': (
                     '(abi!=5 && abi!=7) ||', '(abi!=5 && abi!=7 && abi!=10) ||'),
+                'geometry-understate-abi5-prefix': (
+                    'u64 prefix=((abi==5?12u:15u)+4u*varyings+4u*colors)*128u*4u;',
+                    'u64 prefix=((abi==5?11u:15u)+4u*varyings+4u*colors)*128u*4u;'),
                 'geometry-unbound-evaluation-export': (
                     '(v&127u)>=64 || (v&127u)>=exports', '(v&127u)>=64 || ((void)exports,false)'),
                 'geometry-unbounded-command-id': (
@@ -277,6 +280,7 @@ def main():
                 'geometry-unverified-availability': f'geometry negative owner-version expected-{errno.EOPNOTSUPP} got0',
                 'geometry-skip-physical-alias': 'geometry negative GS-source-frame-writer-alias expected-22 got0',
                 'geometry-admit-abi10': 'Assertion failed: (graph_copies==copies)',
+                'geometry-understate-abi5-prefix': 'Assertion failed: (graph_copies==copies)',
                 'geometry-unbound-evaluation-export': 'geometry negative export-bound expected-22 got0',
                 'geometry-unbounded-command-id': 'geometry negative command-id expected-22 got0',
                 'geometry-inconsistent-draw-source': 'Assertion failed',

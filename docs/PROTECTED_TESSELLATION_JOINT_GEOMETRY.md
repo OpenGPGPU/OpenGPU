@@ -12,7 +12,8 @@ GS task/input-primitive bases, independent input/output sequences, a separately
 bounded GNG1 record and 64 TES-packed-to-GS-input mappings. Entry flags and words
 80..179 are zero: this BUILD route does not admit transform-feedback descriptors,
 resources or permissions. Linked fragment shaders are limited to GS-aware ABI5
-and ABI7.
+and ABI7. Their full 16-varying/four-color prefixes are 47,104 and 48,640 bytes;
+smaller ABI5 prefixes are rejected before any source copy.
 
 BUILD captures every nested input before invoking callbacks, checks exact source
 and identity relationships, rejects physical cache-line aliases across the five
@@ -34,8 +35,8 @@ or prove GPU behavior.
 - The generated ABI/schema suite passes all 9 tests, including exact header
   regeneration and fail-closed schema mutations.
 - The Clang ASan/UBSan owner/MMU runner passes the existing joint suite and all
-  three geometry domains. It compiles 27 translation units, checks 125 distinct
-  dependencies and 397 consumed inputs, and rejects all 16 existing plus 8 new
+  three geometry domains. It compiles 28 translation units, checks 126 distinct
+  dependencies and 397 consumed inputs, and rejects all 16 existing plus 9 new
   geometry semantic controls. The same positive fixture passes Ubuntu GCC13 with
   `-O2 -Wall -Wextra -Werror` and ASan/UBSan.
 - The sanitizer host lane passes every `scripts/test_scripts.sh` command except
