@@ -577,6 +577,22 @@ def changed_suites(root, changed, *, test_index=None):
     files, nodes = index_test_sources(root) if test_index is None else test_index
 
     affected = set(changed) & files.keys()
+    geometry_joint_common = {
+        "src/main/scala/opengpu/system/tessellation/TessellationJointGeometryJobLayout.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationJointJobLayout.scala",
+        "src/test/scala/opengpu/system/TessellationJointReaderTestSupport.scala",
+    }
+    if changed & (geometry_joint_common | {
+        "src/main/scala/opengpu/system/tessellation/TessellationJointGeometryJobCaptureReader.scala",
+    }):
+        affected.add("src/test/scala/opengpu/system/TessellationJointGeometryJobCaptureReaderSpec.scala")
+    if changed & (geometry_joint_common | {
+        "src/main/scala/opengpu/system/tessellation/TessellationJointGeometryAttachmentReader.scala",
+        "src/main/scala/opengpu/graphics/host/NativeGeometryDescriptors.scala",
+        "src/main/scala/opengpu/graphics/host/NativeTypedGraphicsDescriptors.scala",
+        "src/main/scala/opengpu/graphics/TessellationGeometryRawBridge.scala",
+    }):
+        affected.add("src/test/scala/opengpu/system/TessellationJointGeometryAttachmentReaderSpec.scala")
     joint_common = {
         "src/main/scala/opengpu/system/tessellation/TessellationJointJobLayout.scala",
         "src/main/scala/opengpu/graphics/host/NativeTypedGraphicsDescriptors.scala",
@@ -800,6 +816,35 @@ def changed_suites(root, changed, *, test_index=None):
             f"src/main/scala/opengpu/system/tessellation/TessellationCu{domain}{kind}.scala" in changed
             for domain in ("Isoline", "Triangle", "Quad") for kind in ("SystemClient", "SharedEvaluator")):
         affected.add("src/test/scala/opengpu/system/TessellationViewportPublicationEndpointSpec.scala")
+    geometry_control_sources = {
+        "src/main/scala/opengpu/system/tessellation/TessellationGeometryPipelineControl.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationGeometryPrimitivePipeline.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationGeometryViewportPipeline.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationGeometryPatchDispatch.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationGeometryPatchPipelines.scala",
+        "src/main/scala/opengpu/graphics/TessellationGeometryRawBridge.scala",
+        "src/main/scala/opengpu/system/native/NativeGeometryPrimitivePipeline.scala",
+    }
+    if changed & geometry_control_sources:
+        affected.add("src/test/scala/opengpu/system/TessellationGeometryPipelineControlSpec.scala")
+    geometry_image_sources = {
+        "src/main/scala/opengpu/system/tessellation/TessellationGeometryBinPass.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationGeometryImageBinSource.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationGeometryClientTransport.scala",
+    } | {
+        f"src/main/scala/opengpu/system/tessellation/TessellationSystem{domain}{kind}.scala"
+        for domain in ("Isoline", "Triangle", "Quad")
+        for kind in ("ImagePipeline", "VertexInputImage")
+    }
+    if changed & geometry_image_sources:
+        affected.update({
+            "src/test/scala/opengpu/graphics/TessellationGeometryClientTransportSpec.scala",
+            "src/test/scala/opengpu/graphics/TessellationGeometryVertexTupleSpec.scala",
+        })
+    if changed & {"src/main/scala/opengpu/graphics/raster/WindowPrimitiveRecords.scala",
+                  "src/main/scala/opengpu/graphics/raster/WindowPrimitiveBinProducer.scala",
+                  "src/main/scala/opengpu/graphics/raster/WindowPrimitiveBinReplayPass.scala"}:
+        affected.add("src/test/scala/opengpu/graphics/WindowPrimitiveRecordFaultPrioritySpec.scala")
     if "src/main/scala/opengpu/graphics/raster/TypedFragmentState.scala" in changed:
         affected.add("src/test/scala/opengpu/graphics/TypedFragmentStateReaderSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/TypedFragmentImageStateReaderSpec.scala")
@@ -827,6 +872,12 @@ def changed_suites(root, changed, *, test_index=None):
     if changed & ci_inputs:
         # Exercise the actual required matrix when its own plumbing changes.
         affected.add("src/test/scala/opengpu/testutil/GpuSimSpec.scala")
+    if "src/test/scala/opengpu/testutil/GpuSim.scala" in changed:
+        affected.update({
+            "src/test/scala/opengpu/testutil/GpuSimSpec.scala",
+            "src/test/scala/opengpu/testutil/GpuSimFlashSimSpec.scala",
+            "src/test/scala/opengpu/testutil/GpuSimInlineVerificationSpec.scala",
+        })
     if changed & {"src/main/scala/opengpu/graphics/tessellation/TessellationLevels.scala",
                   "src/main/scala/opengpu/graphics/tessellation/TessellationEdgeCoordinate.scala"}:
         affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationTriangleInteriorSpec.scala")

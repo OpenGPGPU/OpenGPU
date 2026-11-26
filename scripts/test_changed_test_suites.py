@@ -18,6 +18,44 @@ def changed_suites(root, changed):
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_tes_geometry_composition_selects_bounded_control_protocol_checks(self):
+        for path in ("system/tessellation/TessellationGeometryPipelineControl",
+                     "system/tessellation/TessellationGeometryPrimitivePipeline",
+                     "system/tessellation/TessellationGeometryViewportPipeline",
+                     "system/tessellation/TessellationGeometryPatchDispatch",
+                     "system/tessellation/TessellationGeometryPatchPipelines",
+                     "graphics/TessellationGeometryRawBridge",
+                     "system/native/NativeGeometryPrimitivePipeline"):
+            with self.subTest(path=path):
+                selected = changed_suites(REPO_ROOT, [f"src/main/scala/opengpu/{path}.scala"])
+                self.assertIn("opengpu.system.TessellationGeometryPipelineControlSpec", selected)
+
+    def test_geometry_image_sources_select_transport_and_tuple_checks(self):
+        paths = ["system/tessellation/TessellationGeometryBinPass",
+                 "system/tessellation/TessellationGeometryImageBinSource",
+                 "system/tessellation/TessellationGeometryClientTransport"]
+        paths += [f"system/tessellation/TessellationSystem{domain}{kind}"
+                  for domain in ("Isoline", "Triangle", "Quad")
+                  for kind in ("ImagePipeline", "VertexInputImage")]
+        for path in paths:
+            with self.subTest(path=path):
+                selected = set(changed_suites(REPO_ROOT, [f"src/main/scala/opengpu/{path}.scala"]))
+                self.assertTrue({"opengpu.graphics.TessellationGeometryClientTransportSpec",
+                                 "opengpu.graphics.TessellationGeometryVertexTupleSpec"} <= selected)
+
+    def test_record_fault_priority_runs_for_each_actual_production_owner(self):
+        for name in ("WindowPrimitiveRecords", "WindowPrimitiveBinProducer", "WindowPrimitiveBinReplayPass"):
+            with self.subTest(name=name):
+                selected = changed_suites(REPO_ROOT,
+                    [f"src/main/scala/opengpu/graphics/raster/{name}.scala"])
+                self.assertIn("opengpu.graphics.WindowPrimitiveRecordFaultPrioritySpec", selected)
+
+    def test_gpu_sim_inline_and_retained_model_apis_keep_both_backends_checked(self):
+        selected = set(changed_suites(REPO_ROOT, ["src/test/scala/opengpu/testutil/GpuSim.scala"]))
+        self.assertTrue({"opengpu.testutil.GpuSimSpec",
+                         "opengpu.testutil.GpuSimFlashSimSpec",
+                         "opengpu.testutil.GpuSimInlineVerificationSpec"} <= selected)
+
     def test_shared_patch_reply_changes_select_actual_input_acknowledgements(self):
         paths = ["graphics/tessellation/TessellationPatchContext",
                  "system/tessellation/TessellationEvaluationPatchProvider"]
@@ -1716,6 +1754,25 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertNotIn("opengpu.graphics.TypedTileImagePipelineSpec", actual)
                 self.assertNotIn("opengpu.graphics.TypedTileRenderPipelineSpec", actual)
 
+
+    def test_joint_geometry_readers_select_real_memory_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        job = "opengpu.system.TessellationJointGeometryJobCaptureReaderSpec"
+        attachment = "opengpu.system.TessellationJointGeometryAttachmentReaderSpec"
+        for path in ("src/main/scala/opengpu/system/tessellation/TessellationJointGeometryJobLayout.scala",
+                     "src/main/scala/opengpu/system/tessellation/TessellationJointJobLayout.scala",
+                     "src/test/scala/opengpu/system/TessellationJointReaderTestSupport.scala"):
+            with self.subTest(path=path):
+                selected = set(changed_suites(root, [path]))
+                self.assertTrue({job, attachment} <= selected)
+        self.assertIn(job, changed_suites(root,
+            ["src/main/scala/opengpu/system/tessellation/TessellationJointGeometryJobCaptureReader.scala"]))
+        for source in ("system/tessellation/TessellationJointGeometryAttachmentReader",
+                       "graphics/host/NativeGeometryDescriptors",
+                       "graphics/host/NativeTypedGraphicsDescriptors",
+                       "graphics/TessellationGeometryRawBridge"):
+            with self.subTest(source=source):
+                self.assertIn(attachment, changed_suites(root, [f"src/main/scala/opengpu/{source}.scala"]))
 
     def test_joint_frame_and_range_capture_select_real_memory_checks(self):
         root = Path(__file__).resolve().parents[1]
