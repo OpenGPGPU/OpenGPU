@@ -3,6 +3,7 @@ package svsim
 import chisel3._
 import scala.collection.mutable
 import scala.language.dynamics
+import scala.jdk.CollectionConverters._
 import java.nio.file.{Files,Path,Paths,LinkOption}
 import opengpu.testutil.GpuSim
 
@@ -241,13 +242,20 @@ object FiveStageMesaReplay {
   def retainResetIdle(workspace:String,model:String,source:String,shapePath:String):Unit={
    val shape=ujson.read(Files.readString(Paths.get(shapePath)))
    val names=shape.obj.keys.toVector.sorted
-   val bindings=names.zipWithIndex.map{case(name,id)=>
-    val leaf=shape(name);ujson.Obj("id"->ujson.Num(id),"name"->ujson.Str(name),"width"->leaf("width"),
+   val ids=Files.readAllLines(Paths.get(workspace).resolve("generated-sources/c-dpi-bridge.cpp")).asScala.flatMap{line=>
+    val text=line.trim
+    if(text.startsWith("case ") && text.contains(": // ")){
+     val id=text.stripPrefix("case ").takeWhile(_.isDigit).toInt
+     Some(text.split(": // ",2)(1)->id)
+    }else None}.toMap
+   require(ids.keySet==names.toSet && ids.values.toSet==names.indices.toSet,s"generated model port IDs differ from Bundle shape names=${names.size} ids=${ids.size} unique=${ids.values.toSet.size} missing=${(names.toSet--ids.keySet).size} extra=${(ids.keySet--names.toSet).size} range=${ids.values.min}/${ids.values.max}")
+   val bindings=names.sortBy(ids).map{name=>
+    val leaf=shape(name);ujson.Obj("id"->ujson.Num(ids(name)),"name"->ujson.Str(name),"width"->leaf("width"),
      "settable"->leaf("settable"),"gettable"->true)}
    val info=ModuleInfo("FiveStageIsolineMesaTop",bindings.map{b=>ModuleInfo.Port(b("name").str,b("settable").bool,b("gettable").bool)})
    GpuSimRetainedReplay.run(Paths.get(workspace).resolve("workdir-verilator").toString,info){c=>
     controller=c;entries=bindings;ports=entries.map(e=>e("name").str->c.port(e("name").str)).toMap
-    entries.foreach{e=>val p=ports(e("name").str);require(p.info.isSettable==e("settable").bool && p.info.isGettable==e("gettable").bool && p.get().bitCount==e("width").num.toInt)}
+    entries.foreach{e=>val p=ports(e("name").str);require(p.info.isSettable==e("settable").bool && p.info.isGettable==e("gettable").bool && p.get().bitCount==e("width").num.toInt,s"retained port ${e("name")} shape=${e("width")} actual=${p.get().bitCount} settable=${p.info.isSettable}/${e("settable")} gettable=${p.info.isGettable}/${e("gettable")}")}
     zero(io);io.frameDrained.poke(true.B);reset.poke(true.B);clock.step(3);reset.poke(false.B);clock.step(5)
     io.traps.expect(0);io.busy.expect(0);io.sourceLive.expect(0);io.sourceDrained.expect(1)
     io.poolReserved.expect(0);io.poolDrained.expect(1)
