@@ -58,7 +58,7 @@ static void joint_source_path(char path[4096],const char *directory,const char *
 }
 enum joint_mode {
     JOINT_SMALL, JOINT_VGA_QUAD, JOINT_PATCH_ENDPOINTS, JOINT_FULL_PATCH_ENDPOINTS,
-    JOINT_TESS_UNIFORMS, JOINT_TESS_UNIFORM_RECOVERY
+    JOINT_FULL_PATCH_MUTATION, JOINT_TESS_UNIFORMS, JOINT_TESS_UNIFORM_RECOVERY
 };
 
 enum { JOINT_API_BINDINGS=72, JOINT_UBO_STRIDE=OPENGPU_TESSELLATION_UNIFORM_BLOCK_BYTES+64 };
@@ -112,7 +112,9 @@ static void joint_case(struct pipe_context *pipe,const char *sources,unsigned in
     static const char *patch_evaluation[]={"patch-isoline.tese","patch-triangle.tese","patch-quad.tese"};
     static const char *uniform_evaluation[]={"uniform-isoline.tese","uniform-triangle.tese","uniform-quad.tese"};
     static const uint32_t seed[4]={7,19,43,61};
-    const bool vga_quad=mode==JOINT_VGA_QUAD, full_patch=mode==JOINT_FULL_PATCH_ENDPOINTS;
+    const bool vga_quad=mode==JOINT_VGA_QUAD;
+    const bool source_mutation=mode==JOINT_FULL_PATCH_MUTATION;
+    const bool full_patch=mode==JOINT_FULL_PATCH_ENDPOINTS || source_mutation;
     const bool patch_endpoints=mode==JOINT_PATCH_ENDPOINTS || full_patch;
     const bool tess_uniforms=mode==JOINT_TESS_UNIFORMS || mode==JOINT_TESS_UNIFORM_RECOVERY;
     unsigned domain=index<JOINT_LIVE_BASE_RECORDS?index/2:1;
@@ -121,7 +123,8 @@ static void joint_case(struct pipe_context *pipe,const char *sources,unsigned in
     bool mutation=!patch_endpoints && !tess_uniforms && index<JOINT_LIVE_BASE_RECORDS && (index&1);
     assert(domain<3 && engines>=1 && engines<=4);
     const char *control=full_patch?"patch-full.tesc":patch_endpoints?"patch-capacity.tesc":"shared.tesc";
-    const char *tes=full_patch?"patch-full-quad.tese":patch_endpoints?patch_evaluation[domain]:evaluation[domain];
+    const char *tes=full_patch?(source_mutation && index&1?"patch-full-quad-mutation.tese":"patch-full-quad.tese"):
+        patch_endpoints?patch_evaluation[domain]:evaluation[domain];
     if (tess_uniforms) {
         control="uniform-control.tesc";
         tes=uniform_evaluation[domain];
@@ -152,7 +155,7 @@ static void joint_case(struct pipe_context *pipe,const char *sources,unsigned in
         const uint32_t indices[2][4]={{0,0,0,0},{31,3,full_patch?2u:29u,3}};
         const unsigned stage=OPENGPU_TESSELLATION_UNIFORM_EVALUATION_STAGE;
         assert(opengpu_native_joint_defaults(link,stage)==4);
-        assert(!opengpu_native_joint_bind_defaults(link,sink,stage,indices[index&1],4));
+        assert(!opengpu_native_joint_bind_defaults(link,sink,stage,indices[source_mutation || index&1],4));
     }
     struct opengpu_native_joint_source *source=opengpu_native_joint_source_create(program,constants);
     assert(source);
@@ -263,11 +266,12 @@ int main(int argc,char **argv)
     if (argc==5 && !strcmp(argv[4],"--vga-quad")) mode=JOINT_VGA_QUAD;
     if (argc==5 && !strcmp(argv[4],"--patch-endpoints")) mode=JOINT_PATCH_ENDPOINTS;
     if (argc==5 && !strcmp(argv[4],"--full-patch-endpoints")) mode=JOINT_FULL_PATCH_ENDPOINTS;
+    if (argc==5 && !strcmp(argv[4],"--full-patch-mutation")) mode=JOINT_FULL_PATCH_MUTATION;
     if (argc==5 && !strcmp(argv[4],"--tess-uniforms")) mode=JOINT_TESS_UNIFORMS;
     if (argc==5 && !strcmp(argv[4],"--tess-uniform-recovery")) mode=JOINT_TESS_UNIFORM_RECOVERY;
     if (argc!=4 && mode==JOINT_SMALL) {
         fprintf(stderr,"usage: native-joint ESSL_DIR PROFILE_OR_--cpu-preflight SESSION_DIR "
-            "[--vga-quad|--patch-endpoints|--full-patch-endpoints|--tess-uniforms|--tess-uniform-recovery]\n");
+            "[--vga-quad|--patch-endpoints|--full-patch-endpoints|--full-patch-mutation|--tess-uniforms|--tess-uniform-recovery]\n");
         return 2;
     }
     const bool cpu_preflight=!strcmp(argv[2],"--cpu-preflight");
@@ -297,7 +301,7 @@ int main(int argc,char **argv)
         context,runtime.engines,cpu_preflight?"true":"false");
     unsigned records=JOINT_LIVE_RECORDS;
     if (mode==JOINT_PATCH_ENDPOINTS || mode==JOINT_TESS_UNIFORMS) records=JOINT_LIVE_BASE_RECORDS;
-    if (mode==JOINT_VGA_QUAD || mode==JOINT_FULL_PATCH_ENDPOINTS) records=2;
+    if (mode==JOINT_VGA_QUAD || mode==JOINT_FULL_PATCH_ENDPOINTS || mode==JOINT_FULL_PATCH_MUTATION) records=2;
     if (mode==JOINT_TESS_UNIFORM_RECOVERY) records=JOINT_LIVE_UNIFORM_RECOVERY_RECORDS;
     for (unsigned i=0;i<records;++i) joint_case(pipe,argv[1],i,runtime.engines,mode,layout);
     fputs("]}\n",layout);

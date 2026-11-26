@@ -18,7 +18,8 @@ from build_native_joint_live_producer import producer_sources
 from compute_owner_protocol import required_flags, strict_json, uint
 from native_graphics_uniform_oracle import SparseMemory, require
 from native_joint_live_oracle import (
-    FULL_PATCH_ENDPOINTS, PATCH_ENDPOINTS, RECORDS, SMALL, TESS_UNIFORMS, TESS_UNIFORM_RECOVERY, VGA_QUAD,
+    FULL_PATCH_ENDPOINTS, FULL_PATCH_MUTATION, PATCH_ENDPOINTS, RECORDS, SMALL, TESS_UNIFORMS,
+    TESS_UNIFORM_RECOVERY, VGA_QUAD,
     capture, original_graph, original_records, verify_image,
 )
 from native_sample_graphics_controller import wait_cleanup
@@ -188,9 +189,19 @@ def docker_command(gpu, directory, name, timeout, fixture=SMALL):
         'exec /joint-out/build/native-joint userspace/tests/tess_joint_live_essl /joint-out/profile.bin /joint-out/session'
     )
     recipe += {VGA_QUAD: ' --vga-quad', PATCH_ENDPOINTS: ' --patch-endpoints',
-               FULL_PATCH_ENDPOINTS: ' --full-patch-endpoints', TESS_UNIFORMS: ' --tess-uniforms',
+               FULL_PATCH_ENDPOINTS: ' --full-patch-endpoints', FULL_PATCH_MUTATION: ' --full-patch-mutation',
+               TESS_UNIFORMS: ' --tess-uniforms',
                TESS_UNIFORM_RECOVERY: ' --tess-uniform-recovery'}.get(fixture, '')
     return [*command,'-w','/joint-src',IMAGE,'/bin/bash','-ec',recipe]
+
+
+def check_source_mutation(index, stages, baseline):
+    vertex, tessellation = stages
+    if index==0:
+        baseline.update(vertex=vertex,tessellation=tessellation)
+        return
+    require(index==1 and baseline.get('vertex')==vertex,'TES source mutation changed the original VS executable')
+    require(baseline.get('tessellation')!=tessellation,'TES source mutation did not change the TES executable')
 
 
 def exchange(directory, executor, bridge, discovery, engines, identities, timeout, fixture=SMALL):
@@ -207,7 +218,7 @@ def exchange(directory, executor, bridge, discovery, engines, identities, timeou
     identities.update({path:digest(regular(path)) for path in (memory,layout,first)})
     running = executor(memory,results,session)
     try:
-        commands, baseline_shaders, records = set(),{},[]
+        commands, baseline_shaders, baseline_stages, records = set(),{},{},[]
         previous = memory
         with SparseMemory(memory) as initial:
             for index,row in enumerate(rows):
@@ -225,10 +236,12 @@ def exchange(directory, executor, bridge, discovery, engines, identities, timeou
                     require(all(last<=start or first>=start+other['allocationBytes'] for first,last in writable),
                             'joint command includes a foreign image allocation in its writable ranges')
                 commands.add(command)
-                shader, read_line = original_graph(initial,regs,context,row,
+                shader, stages, read_line = original_graph(initial,regs,context,row,
                     frame_version=frame_version,fault=fault,fixture=fixture)
                 domain, mutation, _ = fixture.cases[index]
-                if mutation and fixture.patch_layout is None and not fixture.tess_uniforms:
+                if fixture.source_mutation:
+                    check_source_mutation(index,stages,baseline_stages)
+                elif mutation and fixture.patch_layout is None and not fixture.tess_uniforms:
                     require(baseline_shaders[domain]!=shader,'original VS mutation did not change executable bytes')
                 else:
                     require(baseline_shaders.setdefault(domain,shader)==shader,
@@ -403,6 +416,8 @@ def main():
                          help='replay the 32x60 vertex and 120 per-patch word endpoints on all three domains')
     recipes.add_argument('--full-patch-endpoints',dest='fixture',action='store_const',const=FULL_PATCH_ENDPOINTS,
                          help='replay the 32x64 vertex word endpoints in the quad domain')
+    recipes.add_argument('--full-patch-mutation',dest='fixture',action='store_const',const=FULL_PATCH_MUTATION,
+                         help='replay original and mutated full-capacity TES sources at the 2048-word boundary')
     recipes.add_argument('--tess-uniforms',dest='fixture',action='store_const',const=TESS_UNIFORMS,
                          help='replay original TCS/TES GUR3 UBOs and defaults in all three domains')
     recipes.add_argument('--tess-uniform-recovery',dest='fixture',action='store_const',const=TESS_UNIFORM_RECOVERY,

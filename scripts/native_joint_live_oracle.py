@@ -51,6 +51,7 @@ class ReplayFixture:
     patch_layout: tuple[int, int] | None = None
     tess_uniforms: bool = False
     recover_uniform_reads: bool = False
+    source_mutation: bool = False
 
     def uniform_read(self, record):
         if self.recover_uniform_reads:
@@ -77,6 +78,7 @@ SMALL = ReplayFixture(4,4,3,CASES)
 VGA_QUAD = ReplayFixture(640,480,4,CASES[4:6])
 PATCH_ENDPOINTS = ReplayFixture(4,4,3,CASES[:6],patch_layout=(60,120))
 FULL_PATCH_ENDPOINTS = ReplayFixture(4,4,3,CASES[4:6],patch_layout=(64,0))
+FULL_PATCH_MUTATION = ReplayFixture(4,4,3,CASES[4:6],patch_layout=(64,0),source_mutation=True)
 TESS_UNIFORMS = ReplayFixture(4,4,3,CASES[:6],tess_uniforms=True)
 TESS_UNIFORM_RECOVERY = ReplayFixture(
     4,4,3,tuple((domain,bool(i & 1),False)
@@ -305,8 +307,8 @@ def original_graph(memory, regs, context, row, *, frame_version, fault=None, fix
         require(binding[0] == 0x47554203 and binding[3:8] == (*identity,31,32) and
                 binding[9:11] == (binding[8]+16,0) and binding[14] == 1,
                 'dynamic TES lost its read-only endpoint selectors')
-        column_or_patch = 2 if fixture == FULL_PATCH_ENDPOINTS else 29
-        expected_indices = (31,3,column_or_patch,3) if row['record'] & 1 else (0,0,0,0)
+        column_or_patch = 2 if fixture in (FULL_PATCH_ENDPOINTS,FULL_PATCH_MUTATION) else 29
+        expected_indices = (31,3,column_or_patch,3) if fixture.source_mutation or row['record'] & 1 else (0,0,0,0)
         require(words(binding[8],4) == expected_indices, 'protected defaults changed the TES endpoint selectors')
     elif fixture.tess_uniforms:
         read_va = check_tess_uniforms(words,sequence,(context,row['pass'],row['generation']),
@@ -352,7 +354,9 @@ def original_graph(memory, regs, context, row, *, frame_version, fault=None, fix
     if read_va is None:
         read_va = (draw[322]+draw[312])&~63
     read_line = physical(memory,satp,read_va,64,3)
-    return hashlib.sha256(view(pc,4096-(pc & 4095),11)+tess_code).digest(), read_line
+    vertex_code = view(pc,4096-(pc & 4095),11)
+    return (hashlib.sha256(vertex_code+tess_code).digest(),
+            (hashlib.sha256(vertex_code).digest(),hashlib.sha256(tess_code).digest()),read_line)
 
 
 def expected_image(domain, mutation, *, fixture=SMALL, record=None):
@@ -361,10 +365,16 @@ def expected_image(domain, mutation, *, fixture=SMALL, record=None):
     # triangle's hypotenuse is x+y=0.75 in NDC, between the sample sums.
     require(domain in (0,1,2) and type(mutation) is bool, 'invalid joint image recipe')
     base = (6,17,47,53)
-    if fixture == FULL_PATCH_ENDPOINTS:
+    if fixture in (FULL_PATCH_ENDPOINTS,FULL_PATCH_MUTATION):
         front = (0x3e800000,0x3f800004,0x3f800004,0x7f800000)
         back = (0x43000000,0x3f800154,0x3f800136,0x7f800000)
-        color = struct.pack('<4I',*(back if mutation else front))
+        if fixture.source_mutation:
+            require(record is not None,'full-capacity source mutation requires its original record')
+            if record & 1:
+                back = (0x43000000,0x3f800154,0x65da5b6c,0x7f800000)
+            color = struct.pack('<4I',*back)
+        else:
+            color = struct.pack('<4I',*(back if mutation else front))
     elif fixture == PATCH_ENDPOINTS:
         # The channels identify matrix columns, the selected vertex's final
         # matrix word, the selected per-patch word and the two tess levels.
