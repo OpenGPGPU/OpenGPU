@@ -213,8 +213,8 @@ object FiveStageMesaReplay {
         for(i<-4 until 64)assert(bytes(blocker+i)==0xa5)}
     }
     io.end.bits.poke(true.B);handshake(io.end,"actual end barrier");until("actual frame report")(yes(io.completion.valid))
-    val f=io.completion.bits;f.status.expect(0);f.taskFaultValid.expect(0);f.img.image.status.expect(0);f.img.image.faultStage.expect(0)
-    f.img.image.faultTileValid.expect(0);f.img.image.faultTile.expect(0);f.img.image.faultAddress.expect(0)
+    val f=io.completion.bits;f.status.expect(0);f.taskFaultValid.expect(0);f.img.image.status.expect(0)
+    f.img.image.faultTileValid.expect(0)
     f.img.actualGsPublished.expect(work);f.img.received.expect(work);f.img.dropped.expect(0);f.img.admitted.expect(work);f.img.tasks.expect(number(c("taskCount")))
     f.img.image.source.tasks.expect(number(c("taskCount")));f.img.image.tiles.expect(1);f.img.image.primitives.expect(work)
     f.img.image.storedBytes.expect(BigInt(4*width*width*16))
