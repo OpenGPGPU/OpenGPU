@@ -243,7 +243,7 @@ object FiveStageMesaReplay {
    val names=shape.obj.keys.toVector.sorted
    val bindings=names.zipWithIndex.map{case(name,id)=>
     val leaf=shape(name);ujson.Obj("id"->ujson.Num(id),"name"->ujson.Str(name),"width"->leaf("width"),
-     "settable"->leaf("settable"),"gettable"->leaf("gettable"))}
+     "settable"->leaf("settable"),"gettable"->(!leaf("settable").bool))}
    val info=ModuleInfo("FiveStageIsolineMesaTop",bindings.map{b=>ModuleInfo.Port(b("name").str,b("settable").bool,b("gettable").bool)})
    GpuSimRetainedReplay.run(workspace,info){c=>
     controller=c;entries=bindings;ports=entries.map(e=>e("name").str->c.port(e("name").str)).toMap
