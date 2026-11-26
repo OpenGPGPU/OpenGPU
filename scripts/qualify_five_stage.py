@@ -279,9 +279,15 @@ def cpu_only(args,plan,memory_mib,timeout_seconds):
 
 def build(args,plan,root,memory_mib,timeout_seconds):
  require(args.work is not None,'--build requires --work')
- work=output_directory(args.work);work.mkdir();(work/'tmp').mkdir()
+ if args.resume_workspace is None:
+  work=output_directory(args.work);work.mkdir()
+ else:
+  work=Path(args.work).absolute()
+  require(work.parent.resolve()==ARTIFACTS.resolve() and work.name.startswith('five-stage-') and work.is_dir(),'resume work must be an existing dedicated five-stage artifacts directory')
+ (work/'tmp').mkdir(exist_ok=True)
  plan_path=work/'runtime-plan.json';write_json(plan_path,normalize_plan(plan,root));validate_plan(plan_path,root)
  shape_path=work/'host-shape.json';shape_log=work/'shape.log'
+ shape_path.unlink(missing_ok=True);shape_log.unlink(missing_ok=True)
  code,text=run_logged(shape_command(plan_path,shape_path),environment(work/'tmp'),shape_log,memory_mib,timeout_seconds)
  require(code==0,'Bundle CPU check failed: '+text[-4000:])
  shape=validate_shape(shape_path);shape_log.unlink()
