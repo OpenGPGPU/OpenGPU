@@ -245,7 +245,7 @@ object FiveStageMesaReplay {
     val leaf=shape(name);ujson.Obj("id"->ujson.Num(id),"name"->ujson.Str(name),"width"->leaf("width"),
      "settable"->leaf("settable"),"gettable"->(!leaf("settable").bool))}
    val info=ModuleInfo("FiveStageIsolineMesaTop",bindings.map{b=>ModuleInfo.Port(b("name").str,b("settable").bool,b("gettable").bool)})
-   GpuSimRetainedReplay.run(workspace,info){c=>
+   GpuSimRetainedReplay.run(Paths.get(workspace).resolve("workdir-verilator").toString,info){c=>
     controller=c;entries=bindings;ports=entries.map(e=>e("name").str->c.port(e("name").str)).toMap
     entries.foreach{e=>val p=ports(e("name").str);require(p.info.isSettable==e("settable").bool && p.info.isGettable==e("gettable").bool && p.get().bitCount==e("width").num.toInt)}
     zero(io);io.frameDrained.poke(true.B);reset.poke(true.B);clock.step(3);reset.poke(false.B);clock.step(5)
