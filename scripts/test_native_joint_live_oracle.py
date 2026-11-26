@@ -6,12 +6,12 @@ import unittest
 
 from build_native_joint_live_producer import producer_sources
 from native_joint_live_oracle import (
-    FULL_PATCH_ENDPOINTS, PATCH_ENDPOINTS, RECORDS, SOURCE_CANCEL_RECORD, TESS_BLOCK_WORDS,
+    FULL_PATCH_ENDPOINTS, FULL_PATCH_MUTATION, PATCH_ENDPOINTS, RECORDS, SOURCE_CANCEL_RECORD, TESS_BLOCK_WORDS,
     TESS_DEFAULT_WORDS, TESS_UNIFORMS, TESS_UNIFORM_RECOVERY, UNIFORM_RECOVERY_PER_DOMAIN,
     UniformRead, VGA_QUAD, check_tess_uniforms, expected_image, tess_default_word,
     tess_ubo_windows, tess_ubo_word, verify_image,
 )
-from qualify_native_joint_live import cleanup_checked, receipt_words, reset_receipt, retired_receipt
+from qualify_native_joint_live import check_source_mutation, cleanup_checked, receipt_words, reset_receipt, retired_receipt
 
 
 class ImagePage:
@@ -73,7 +73,8 @@ class JointOracle(unittest.TestCase):
     def test_patch_endpoint_variants_require_the_last_vertex_and_patch_words(self):
         initial, observed = ImagePage(), ImagePage()
         interval = [(0x1000,0x2000)]
-        for fixture, record, third in ((PATCH_ENDPOINTS,5,956),(FULL_PATCH_ENDPOINTS,1,0x3f800136)):
+        for fixture, record, third in ((PATCH_ENDPOINTS,5,956),(FULL_PATCH_ENDPOINTS,1,0x3f800136),
+                                       (FULL_PATCH_MUTATION,1,0x65da5b6c)):
             row = dict(self.row,record=record,domain=2)
             observed.data[64:320] = struct.pack('<4I',0x43000000,0x3f800154,third,0x7f800000)*16
             verify_image(initial,observed,row,interval,fixture=fixture)
@@ -81,6 +82,34 @@ class JointOracle(unittest.TestCase):
             observed.data[68:72] = struct.pack('<I',0x3f800135)
             with self.assertRaisesRegex(ValueError,'pixel 0,0'):
                 verify_image(initial,observed,row,interval,fixture=fixture)
+
+    def test_full_patch_mutation_changes_only_the_original_tes_result(self):
+        root = Path(__file__).resolve().parents[1]/'userspace/tests/tess_joint_live_essl'
+        original = (root/'patch-full-quad.tese').read_text()
+        mutated = (root/'patch-full-quad-mutation.tese').read_text()
+        self.assertNotEqual(original,mutated)
+        self.assertNotIn('0x5a5a5a5au',original)
+        self.assertIn('^ indices.w ^ 0x5a5a5a5au;',mutated)
+        initial, observed = ImagePage(), ImagePage()
+        interval = [(0x1000,0x2000)]
+        row = dict(self.row,record=0,domain=2)
+        observed.data[64:320] = expected_image(2,False,fixture=FULL_PATCH_MUTATION,record=0)
+        verify_image(initial,observed,row,interval,fixture=FULL_PATCH_MUTATION)
+        row = dict(self.row,record=1,domain=2)
+        observed.data[64:320] = expected_image(2,True,fixture=FULL_PATCH_MUTATION,record=1)
+        verify_image(initial,observed,row,interval,fixture=FULL_PATCH_MUTATION)
+        observed.data[72:76] = struct.pack('<I',0x3f800136)
+        with self.assertRaisesRegex(ValueError,'pixel 0,0'):
+            verify_image(initial,observed,row,interval,fixture=FULL_PATCH_MUTATION)
+
+    def test_source_mutation_requires_the_same_vs_and_a_different_tes(self):
+        baseline = {}
+        check_source_mutation(0,(b'vertex',b'tes-original'),baseline)
+        check_source_mutation(1,(b'vertex',b'tes-mutated'),baseline)
+        with self.assertRaisesRegex(ValueError,'TES executable'):
+            check_source_mutation(1,(b'vertex',b'tes-original'),baseline)
+        with self.assertRaisesRegex(ValueError,'VS executable'):
+            check_source_mutation(1,(b'changed-vertex',b'tes-mutated'),baseline)
 
     def test_tess_uniform_variants_require_all_four_stage_contributions(self):
         initial, observed = ImagePage(), ImagePage()
