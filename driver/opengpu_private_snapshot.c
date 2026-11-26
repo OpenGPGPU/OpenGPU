@@ -774,3 +774,5 @@ quarantine:
     WRITE_ONCE(gpu->hw.wedged, true);
     return ret;
 }
+
+#include "opengpu_private_snapshot_geometry.inc"

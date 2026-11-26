@@ -99,6 +99,7 @@ def inputs():
     paths = [p for p in (ROOT/'driver').rglob('*') if p.is_file() and p.suffix in ('.c','.h','.inc')]
     paths += [ROOT/'scripts/test_protected_tessellation_joint.py',
               ROOT/'scripts/generate_protected_tessellation_joint_abi.py',
+              ROOT/'scripts/generate_protected_tessellation_joint_geometry_abi.py',
               ROOT/'scripts/test_protected_tessellation_joint_abi.py',
               ROOT/'scripts/test_driver.py', ROOT/'scripts/test_scripts.sh',
               ROOT/'scripts/generate_tessellation_vertex_source_abi.py',
@@ -177,6 +178,13 @@ def main():
         print(result.stdout, end='')
         if result.returncode:
             raise SystemExit('joint fixture failed: ' + str(result.returncode))
+        geometry_fixture = ROOT/'driver/tests/opengpu_protected_tessellation_joint_geometry_test.c'
+        geometry_object = compile_unit(Path(geometry_fixture), 'geometry-positive')
+        geometry_binary = link('geometry-test', [geometry_object, frame_object])
+        result = bounded([str(geometry_binary)], env=environment)
+        print(result.stdout, end='')
+        if result.returncode:
+            raise SystemExit('joint geometry fixture failed: ' + str(result.returncode))
         if args.negative_controls:
             production = (ROOT / 'driver/opengpu_protected_tessellation_joint.c').read_text()
             mutations = {
@@ -241,6 +249,53 @@ def main():
                         not re.search(r'assertion.*failed', result.stdout, re.I | re.S)):
                     raise SystemExit('negative control did not fail a semantic assertion: '+name+'\n'+result.stdout)
                 print('joint semantic negative control rejected:', name, '; boundary:', expected[name])
+            geometry_production = (ROOT/'driver/opengpu_protected_tessellation_joint_geometry.c').read_text()
+            geometry_mutations = {
+                'geometry-unverified-availability': (
+                    'if(!opengpu_protected_tessellation_joint_geometry_profile_valid(&source->profile))return -EOPNOTSUPP;',
+                    'if(!opengpu_protected_tessellation_joint_geometry_profile_valid(&source->profile) && false)return -EOPNOTSUPP;'),
+                'geometry-skip-physical-alias': (
+                    'if(!ret)ret=jg_alias(&aliases);',
+                    'if(!ret){int alias_ret=jg_alias(&aliases);ret=alias_ret==-EINVAL?0:alias_ret;}'),
+                'geometry-admit-abi10': (
+                    '(abi!=5 && abi!=7) ||', '(abi!=5 && abi!=7 && abi!=10) ||'),
+                'geometry-unbound-evaluation-export': (
+                    '(v&127u)>=64 || (v&127u)>=exports', '(v&127u)>=64 || ((void)exports,false)'),
+                'geometry-unbounded-command-id': (
+                    'g->command_id>=32 ||', 'false ||'),
+                'geometry-inconsistent-draw-source': (
+                    'a->state_handle==b->state_handle && a->raster_discard==b->raster_discard &&',
+                    'a->state_handle==b->state_handle &&'),
+                'geometry-inconsistent-invocation-seeds': (
+                    'a->input_sequence==b->input_sequence && a->first_output_sequence==b->first_output_sequence;',
+                    'a->first_output_sequence==b->first_output_sequence;'),
+                'geometry-omit-table-relocation': (
+                    'if(!ret && s->range_count)ret=jg_reloc(owner,job,0,37,geometry,0,false);',
+                    'if(false && s->range_count)ret=jg_reloc(owner,job,0,37,geometry,0,false);'),
+            }
+            geometry_expected = {
+                'geometry-unverified-availability': f'geometry negative owner-version expected-{errno.EOPNOTSUPP} got0',
+                'geometry-skip-physical-alias': 'geometry negative GS-source-frame-writer-alias expected-22 got0',
+                'geometry-admit-abi10': 'Assertion failed: (graph_copies==copies)',
+                'geometry-unbound-evaluation-export': 'geometry negative export-bound expected-22 got0',
+                'geometry-unbounded-command-id': 'geometry negative command-id expected-22 got0',
+                'geometry-inconsistent-draw-source': 'Assertion failed',
+                'geometry-inconsistent-invocation-seeds': 'Assertion failed',
+                'geometry-omit-table-relocation': 'Assertion failed',
+            }
+            for name, (old, new) in geometry_mutations.items():
+                assert geometry_production.count(old) == 1, name
+                mutant = out/(name+'.c')
+                mutant.write_text(geometry_production.replace(old, new))
+                generated[str(mutant)] = hashlib.sha256(mutant.read_bytes()).hexdigest()
+                obj = compile_unit(Path(geometry_fixture), name,
+                                   ['-DOPENGPU_JOINT_GEOMETRY_SOURCE="'+str(mutant)+'"'])
+                binary = link(name, [obj, frame_object])
+                result = bounded([str(binary)], env=environment)
+                if (not result.returncode or geometry_expected[name] not in result.stdout or
+                        not re.search(r'assertion.*failed', result.stdout, re.I | re.S)):
+                    raise SystemExit('geometry negative control did not fail a semantic assertion: '+name+'\n'+result.stdout)
+                print('joint geometry semantic negative control rejected:', name, '; boundary:', geometry_expected[name])
         print('joint actual MMD closure PASS:', compiled_units, 'TUs;', len(all_dependencies), 'dependencies')
     if inputs() != before:
         raise SystemExit('joint consumed source inputs changed during validation')

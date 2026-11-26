@@ -15,8 +15,50 @@ import unittest
 from unittest.mock import patch
 
 import generate_protected_tessellation_joint_abi as abi
+import generate_protected_tessellation_joint_geometry_abi as geometry_abi
 import test_protected_tessellation_joint as runner
 from owner_process_lifetime import CleanupIncomplete, group_dead, stop_group
+
+
+class JointGeometryAbi(unittest.TestCase):
+    def test_exact_generated_header_and_reserved_feedback_area(self):
+        self.assertEqual(geometry_abi.OUTPUT.read_text(), geometry_abi.generate())
+        schema = json.loads(geometry_abi.SCHEMA.read_text())
+        self.assertEqual(schema['root']['domain_magics'], [hex(0x474e5107+i) for i in range(3)])
+        self.assertEqual((schema['root']['bytes'], schema['root']['version']), (512, 3))
+        self.assertEqual(schema['attachment']['entry']['feedback_reserved_zero'], {'word': 80, 'count': 100})
+        self.assertEqual(schema['attachment']['entry']['flags'], 3)
+        header = geometry_abi.OUTPUT.read_text()
+        self.assertIn('#define OPENGPU_JOINT_GEOMETRY_ENTRY_FEEDBACK_RESERVED_ZERO_WORD 80u', header)
+        self.assertIn('#define OPENGPU_JOINT_GEOMETRY_ENTRY_FEEDBACK_RESERVED_ZERO_COUNT 100u', header)
+        self.assertNotIn('OPENGPU_JOINT_GEOMETRY_ENTRY_TF_', header)
+
+    def test_changed_schema_fails_closed(self):
+        original = json.loads(geometry_abi.SCHEMA.read_text())
+        mutations = [
+            lambda s: s['root'].update(version=2),
+            lambda s: s['root']['domain_magics'].__setitem__(1, '0x474e5107'),
+            lambda s: s['root']['geometry_limit'].update(bits=32),
+            lambda s: s['root'].update(geometry_count=4),
+            lambda s: s['attachment'].update(entry_bytes=512),
+            lambda s: s['attachment']['header'].update(count=5),
+            lambda s: s['attachment']['entry'].update(flags=4),
+            lambda s: s['attachment']['entry']['feedback_reserved_zero'].update(count=99),
+            lambda s: s['attachment']['entry']['input_sequence'].update(bits=32),
+            lambda s: s['attachment']['entry']['reserved_zero'][0].update(word=180),
+            lambda s: s['source_rules'].pop(),
+        ]
+        artifacts = geometry_abi.ROOT/'.artifacts'
+        artifacts.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='joint-geometry-abi-', dir=artifacts) as tmp:
+            root = Path(tmp)
+            (root/'docs/abi').mkdir(parents=True)
+            for mutate in mutations:
+                schema = copy.deepcopy(original)
+                mutate(schema)
+                (root/'docs/abi/protected-tessellation-joint-geometry-v1.json').write_text(json.dumps(schema))
+                with patch.object(geometry_abi, 'ROOT', root), self.assertRaises(ValueError):
+                    geometry_abi.generate()
 
 
 class JointAbi(unittest.TestCase):
