@@ -215,6 +215,24 @@ python3 -B scripts/test_test_selection.py
 git diff --check
 ```
 
+## No-TF direct typed-isoline harness
+
+GPU PR #962 adds a direct typed-isoline harness for the original `full5` and
+`pointcoord` programs at 4×4 on two physical CUs. It uses the native-geometry
+vertex-input parent, all five original code objects, all 65 uniform views, four
+MRTs, the full payload/cache/storage capacities and a real compute-store blocker.
+The top and runtime contain no transform-feedback ports or fields, reject ABI10,
+and do not instantiate the public/protected GNQ host route.
+
+The real Ubuntu GCC13 Mesa compiler run passed with 65 retained references, five
+code objects, 258 actual MMD dependencies and three semantic source controls.
+Fresh-input private GUR1/GUR3/GUR2 owner generation passed with ASan/UBSan for
+both cases, including 17 runtime rejection mutations. The Bundle-only shape
+check passed 5,309 leaves and 1,404 assignments with no feedback leaves. The
+retained full-capacity Verilator reset/idle build and two-case actual CU/frame
+replay are still pending; no shader execution or product result is claimed by
+these CPU checks.
+
 ## Reproduction
 
 Use the pinned immutable `cc860b33283c55bb906f73dbe48621b6dbb4dcce6d65098f7f29550e49459d72`
