@@ -79,7 +79,10 @@ class WindowPrimitiveBinReplayPass(config: GpuConfig=GpuConfig(),p: VertexShader
   private val resolved=RegInit(VecInit(Seq.fill(engines)(0.U(64.W))))
   private val readLines=RegInit(VecInit(Seq.fill(engines)(0.U(64.W))))
   private val stop=status=/=0.U || io.cancel
-  private def fail(code: UInt): Unit=when(status===0.U && !io.cancel){status:=code}
+  // Cancellation is provisional until all accepted child replies drain.
+  when(io.cancel && phase=/=State.idle && phase=/=State.complete && status===0.U){status:=4.U}
+  private def fail(code: UInt): Unit=when(code=/=0.U && (status===0.U || (status===4.U && code=/=4.U))){status:=code}
+  private def binCode(code: UInt): UInt=Mux(code===PrimitiveBinStatus.cancelled.U,4.U,5.U)
   io.begin.ready:=phase===State.idle && !io.cancel;io.busy:=phase=/=State.idle
   io.cancelSource:=phase=/=State.idle && phase=/=State.complete && stop
   io.completion.valid:=phase===State.complete;io.completion.bits:=result
@@ -102,7 +105,7 @@ class WindowPrimitiveBinReplayPass(config: GpuConfig=GpuConfig(),p: VertexShader
   bins.io.cancel:=binsStarted && producerDone && stop && !endOffered
   bins.io.completion.ready:=binsStarted && !binsDone
   when(bins.io.completion.fire){binResult:=bins.io.completion.bits;binsDone:=true.B
-    when(bins.io.completion.bits.status=/=0.U){fail(5.U)}}
+    when(bins.io.completion.bits.status=/=0.U){fail(binCode(bins.io.completion.bits.status))}}
 
   private object Bridge extends ChiselEnum {val empty,offer,waitReply,reply=Value}
   private val bridge=RegInit(Bridge.empty);private val append=Reg(new TileBinAppend);private val reply=Reg(new TileBinAppendResult)
@@ -117,7 +120,7 @@ class WindowPrimitiveBinReplayPass(config: GpuConfig=GpuConfig(),p: VertexShader
       .elsewhen(bins.io.append.fire){bridge:=Bridge.waitReply}
   }
   when(bins.io.appended.fire){reply:=bins.io.appended.bits;bridge:=Bridge.reply
-    when(bins.io.appended.bits.status=/=0.U){fail(5.U)}}
+    when(bins.io.appended.bits.status=/=0.U){fail(binCode(bins.io.appended.bits.status))}}
   when(producer.io.appended.fire){bridge:=Bridge.empty}
 
   for(e<-0 until engines){
@@ -194,7 +197,6 @@ class WindowPrimitiveBinReplayPass(config: GpuConfig=GpuConfig(),p: VertexShader
       when(!binResponse && !writerResponse){io.memoryResponse.ready:=cache.io.memoryResponse.ready}
   }
 
-  when(io.cancel && phase=/=State.idle && phase=/=State.complete && status===0.U){status:=4.U}
   switch(phase){
     is(State.idle){when(io.begin.fire){descriptor:=io.begin.bits;status:=0.U;producerStarted:=false.B;binsStarted:=false.B
       // Capture rounded dimensions with the descriptor. Capacity validation

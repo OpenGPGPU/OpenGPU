@@ -137,7 +137,8 @@ class WindowPrimitiveRecordTransfer(config: GpuConfig=GpuConfig(),p: VertexShade
     is(State.waitReply){when(io.memoryResponse.fire){
       assert(io.memoryResponse.bits.transactionId===transactionId.U,"record response tag is not owned")
       lines:=lines+1.U
-      when(io.memoryResponse.bits.fault && status===0.U && !io.cancel){status:=3.U}
+      // An accepted memory fault remains authoritative while cancellation drains.
+      when(io.memoryResponse.bits.fault && (status===0.U || status===4.U)){status:=3.U}
       when(!descriptor.write && !io.memoryResponse.bits.fault){
         val incoming=io.memoryResponse.bits.readData.asTypeOf(Vec(16,UInt(32.W)))
         val errors=collection.mutable.ArrayBuffer.empty[Bool]

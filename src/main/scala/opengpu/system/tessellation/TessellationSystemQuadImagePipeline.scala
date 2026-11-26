@@ -19,9 +19,14 @@ class TessellationSystemQuadImageCompletion(p:VertexShaderStageConfig) extends B
 }
 object TessellationSystemQuadImagePipeline {
   def memoryTransactions(engines:Int,writeCredits:Int,pagedCapacity:Int,tessellationUniforms:Boolean=false):Int=
-    1<<log2Ceil(VertexBinPipeline.binTransactions(engines,writeCredits,pagedCapacity)+32*engines+(if(tessellationUniforms)2 else 0))
-  def payloadPins(engines:Int,ownedVertexSource:Boolean=false):Int=
-    4+2*engines+4*engines+(if(ownedVertexSource)4 else 0)
+    memoryTransactions(engines,writeCredits,pagedCapacity,tessellationUniforms,false)
+  def memoryTransactions(engines:Int,writeCredits:Int,pagedCapacity:Int,tessellationUniforms:Boolean,nativeGeometryAvailable:Boolean):Int=
+    1<<log2Ceil(VertexBinPipeline.binTransactions(engines,writeCredits,pagedCapacity)+32*engines+(if(tessellationUniforms)2 else 0)+(if(nativeGeometryAvailable)1 else 0))
+  def payloadPins(engines:Int,ownedVertexSource:Boolean=false):Int=payloadPins(engines,ownedVertexSource,false)
+  def payloadPins(engines:Int,ownedVertexSource:Boolean,nativeGeometryAvailable:Boolean):Int={
+    require(!nativeGeometryAvailable || ownedVertexSource)
+    4+2*engines+4*engines+(if(ownedVertexSource){if(nativeGeometryAvailable)6 else 4}else 0)
+  }
 }
 
 /** Controlled-quad window-bin records feed independent typed image engines.
@@ -36,14 +41,18 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
     payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false,externalImages:Boolean=false,
     fragmentImageAvailable:Boolean=false,sampleShading:Boolean=false,tessellationUniforms:Boolean=false,evaluationPatchAvailable:Boolean=false,
-    ownedVertexSource:Boolean=false,primitiveIdInput:Boolean=false,tessellationInfoAvailable:Boolean=false,allowEmptyStates:Boolean=false) extends Module {
-  // The previous complete constructor retains nonempty-state admission.
+    ownedVertexSource:Boolean=false,primitiveIdInput:Boolean=false,tessellationInfoAvailable:Boolean=false,nativeGeometryAvailable:Boolean=false,allowEmptyStates:Boolean=false) extends Module {
+  // Preserve the complete previous JVM constructor with native GS disabled.
+  // Retain the GS-topic constructor with independent empty-state admission off.
+  def this(config:GpuConfig,p:VertexShaderStageConfig,f:FragmentShaderConfig,shared:SharedCuShaderConfig,g:GraphicsConfig,viewport:Fp32ViewportConfig,engines:Int,pageBytes:Int,writeCredits:Int,tileSlots:Int,pagedCapacity:Int,storage:TypedTileColorConfig,useSramBlackBoxes:Boolean,payload:Option[ShaderPayloadConfig],payloadOwner:Int,transformFeedback:Boolean,externalImages:Boolean,fragmentImageAvailable:Boolean,sampleShading:Boolean,tessellationUniforms:Boolean,evaluationPatchAvailable:Boolean,ownedVertexSource:Boolean,primitiveIdInput:Boolean,tessellationInfoAvailable:Boolean,nativeGeometryAvailable:Boolean) =
+    this(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading,tessellationUniforms,evaluationPatchAvailable,ownedVertexSource,primitiveIdInput,tessellationInfoAvailable,nativeGeometryAvailable,false)
+
   def this(config:GpuConfig,p:VertexShaderStageConfig,f:FragmentShaderConfig,shared:SharedCuShaderConfig,g:GraphicsConfig,viewport:Fp32ViewportConfig,engines:Int,pageBytes:Int,writeCredits:Int,tileSlots:Int,pagedCapacity:Int,storage:TypedTileColorConfig,useSramBlackBoxes:Boolean,payload:Option[ShaderPayloadConfig],payloadOwner:Int,transformFeedback:Boolean,externalImages:Boolean,fragmentImageAvailable:Boolean,sampleShading:Boolean,tessellationUniforms:Boolean,evaluationPatchAvailable:Boolean,ownedVertexSource:Boolean,primitiveIdInput:Boolean,tessellationInfoAvailable:Boolean) =
-    this(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading,tessellationUniforms,evaluationPatchAvailable,ownedVertexSource,primitiveIdInput,tessellationInfoAvailable,false)
+    this(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading,tessellationUniforms,evaluationPatchAvailable,ownedVertexSource,primitiveIdInput,tessellationInfoAvailable,false,false)
 
   // Preserve the previous full JVM constructor with the language service disabled.
   def this(config:GpuConfig,p:VertexShaderStageConfig,f:FragmentShaderConfig,shared:SharedCuShaderConfig,g:GraphicsConfig,viewport:Fp32ViewportConfig,engines:Int,pageBytes:Int,writeCredits:Int,tileSlots:Int,pagedCapacity:Int,storage:TypedTileColorConfig,useSramBlackBoxes:Boolean,payload:Option[ShaderPayloadConfig],payloadOwner:Int,transformFeedback:Boolean,externalImages:Boolean,fragmentImageAvailable:Boolean,sampleShading:Boolean,tessellationUniforms:Boolean,evaluationPatchAvailable:Boolean,ownedVertexSource:Boolean,primitiveIdInput:Boolean) =
-    this(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading,tessellationUniforms,evaluationPatchAvailable,ownedVertexSource,primitiveIdInput,false)
+    this(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading,tessellationUniforms,evaluationPatchAvailable,ownedVertexSource,primitiveIdInput,false,false)
 
   // Preserve the previous full JVM constructor; it never enables ABI8/9.
   def this(config:GpuConfig,p:VertexShaderStageConfig,f:FragmentShaderConfig,shared:SharedCuShaderConfig,
@@ -52,14 +61,16 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
       useSramBlackBoxes:Boolean,payload:Option[ShaderPayloadConfig],payloadOwner:Int,transformFeedback:Boolean,
       externalImages:Boolean,fragmentImageAvailable:Boolean,sampleShading:Boolean,tessellationUniforms:Boolean,
       evaluationPatchAvailable:Boolean,ownedVertexSource:Boolean) =
-    this(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading,tessellationUniforms,evaluationPatchAvailable,ownedVertexSource,false)
+    this(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages,fragmentImageAvailable,sampleShading,tessellationUniforms,evaluationPatchAvailable,ownedVertexSource,false,false,false)
 
+  require(!nativeGeometryAvailable || !transformFeedback,"native GS and transform feedback are mutually exclusive")
+  require(!nativeGeometryAvailable || ownedVertexSource,"native GS requires the original-VS router")
   require(engines>=1 && engines<=4 && p.varyings==f.varyings && f.colors==4)
   payload.foreach(q=>require(payloadOwner>=0 && payloadOwner+engines<q.owners))
   private val sharedConfig=shared;private val payloadConfig=payload
   private val idWidth=shared.taskIdWidth;private val cus=shared.numComputeUnits
   private val binSlots=VertexBinPipeline.binTransactions(engines,writeCredits,pagedCapacity)
-  val memoryTransactions=TessellationSystemQuadImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity,tessellationUniforms)
+  val memoryTransactions=TessellationSystemQuadImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity,tessellationUniforms,nativeGeometryAvailable)
   private val replaySharedConfig=shared
   val io=IO(new Bundle {
     val inputPatchBinding=if(tessellationInfoAvailable)Some(Input(Valid(new TessellationInputPatchBinding)))else None
@@ -78,6 +89,14 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
     val shared=Flipped(new SharedCuGraphicsPort(config,idWidth,cus,geometryAvailable=true,tessellationAvailable=true,imageAvailable=fragmentImageAvailable,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable))
     /** Ordinary VS capability only; admission and the actual producer belong to the parent. */
     val vertexShared=if(ownedVertexSource)Some(new SharedCuGraphicsPort(config,idWidth,cus))else None
+    /** Independent scalar GS logical client; it has no payload or TCS/TES permissions. */
+    val geometryTask=if(nativeGeometryAvailable)Some(Flipped(Decoupled(new TessellationSystemQuadGeometryBinTask(config,p,idWidth))))else None
+    val geometryTaskCompletion=if(nativeGeometryAvailable)Some(Decoupled(new TessellationSystemQuadGeometryBinTaskCompletion(config,p,idWidth)))else None
+    val geometryCompletion=if(nativeGeometryAvailable)Some(Decoupled(new TessellationGeometryImageResult(new TessellationSystemQuadImageCompletion(p))))else None
+    val geometryInvalidate=if(nativeGeometryAvailable)Some(Flipped(Decoupled(new opengpu.core.memory.CacheLineInvalidate(config))))else None
+    val geometryInvalidateDone=if(nativeGeometryAvailable)Some(Decoupled(new opengpu.core.memory.CacheLineInvalidate(config)))else None
+    val geometryTransportDrained=if(nativeGeometryAvailable)Some(Output(Bool()))else None
+    val geometryCancel=if(nativeGeometryAvailable)Some(Output(Bool()))else None
     /** Inner VS/TCS/TES router credits only, not complete patch or frame retirement. */
     val vertexRouterDrained=if(ownedVertexSource)Some(Output(Bool()))else None
     val vertexPayload=if(ownedVertexSource)payloadConfig.map(q=>Flipped(new FragmentPayloadPort(config,q)))else None
@@ -86,19 +105,19 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
       */
     val payload=payloadConfig.map(q=>Vec(engines+1,new FragmentPayloadPort(config,q)))
     val poolPayload=payloadConfig.map(q=>Output(Valid(new ShaderPayloadBinding(config,q))))
-    val payloadPins=payloadConfig.map(q=>Output(Vec(TessellationSystemQuadImagePipeline.payloadPins(engines,ownedVertexSource),Valid(new ShaderPayloadPin(q)))))
+    val payloadPins=payloadConfig.map(q=>Output(Vec(TessellationSystemQuadImagePipeline.payloadPins(engines,ownedVertexSource,nativeGeometryAvailable),Valid(new ShaderPayloadPin(q)))))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,memoryTransactions))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,memoryTransactions)))
     val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
     val fragmentEvents=Output(new FragmentPerformanceEvents)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val source=Module(new TessellationSystemQuadBinPass(config,p,idWidth,cus,g,viewport,engines,pageBytes,writeCredits,
-    tileSlots,pagedCapacity,useSramBlackBoxes,rendererCredits=true,transformFeedback=transformFeedback,tessellationUniforms=tessellationUniforms,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable))
+  private val source=Module(new TessellationSystemQuadImageBinSource(config,p,idWidth,cus,g,viewport,engines,pageBytes,writeCredits,
+    tileSlots,pagedCapacity,useSramBlackBoxes,rendererCredits=true,transformFeedback=transformFeedback,tessellationUniforms=tessellationUniforms,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable,nativeGeometryAvailable=nativeGeometryAvailable))
   val recordBytes=source.recordBytes
   private val images:Seq[TypedReplayTileImagePipelineIO]=if(externalImages)io.images.get.toSeq else
     Seq.tabulate(engines)(e=>Module(new TypedReplayTileImagePipeline(config,p,f,shared,g,storage,
-      engine=e,useSramBlackBoxes=useSramBlackBoxes,payload=payload,payloadOwner=payloadOwner+e,fragmentImageAvailable=fragmentImageAvailable,sampleShading=sampleShading,primitiveIdInput=primitiveIdInput,allowEmptyStates=allowEmptyStates)).io)
+      engine=e,useSramBlackBoxes=useSramBlackBoxes,payload=payload,payloadOwner=payloadOwner+e,fragmentImageAvailable=fragmentImageAvailable,geometryInput=nativeGeometryAvailable,sampleShading=sampleShading,primitiveIdInput=primitiveIdInput,allowEmptyStates=allowEmptyStates)).io)
   for(phase<-0 until 6)io.fragmentEvents.phaseWorkers(phase):=
     images.map(_.fragmentEvents.phaseWorkers(phase)).reduce(_+&_)
   io.fragmentEvents.stagingOutstanding:=images.map(_.fragmentEvents.stagingOutstanding).reduce(_+&_)
@@ -107,10 +126,16 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
   private val mux=Module(new GeometryFragmentShaderRouter(config,cus,idWidth,payload,tessellationAvailable=true,imageAvailable=fragmentImageAvailable,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable))
   private val router=Module(new SharedShaderTaskRouter(config,cus,engines,idWidth,shaderPayload=payload,imageAvailable=fragmentImageAvailable))
   private val vertexRouter=if(ownedVertexSource)Some(Module(new TessellationVertexShaderRouter(config,cus,idWidth,payload,
-    tessellationAvailable=true,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable)))else None
+    tessellationAvailable=true,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable,nativeGeometryAvailable=nativeGeometryAvailable)))else None
+  private val geometryAccepting=WireDefault(false.B)
   if(ownedVertexSource){
     val inner=vertexRouter.get
     inner.io.patch<>source.io.shared;inner.io.vertex<>io.vertexShared.get
+    if(nativeGeometryAvailable){
+      inner.io.geometry.get<>source.io.geometryShared.get
+      inner.io.geometry.get.launch.valid:=source.io.geometryShared.get.launch.valid && geometryAccepting
+      source.io.geometryShared.get.launch.ready:=inner.io.geometry.get.launch.ready && geometryAccepting
+    }
     if(fragmentImageAvailable)GeometryFragmentShaderRouter.connectWithoutImages(mux.io.geometry,inner.io.pool)
     else inner.io.pool<>mux.io.geometry
     io.vertexRouterDrained.get:=inner.io.drained
@@ -134,6 +159,11 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
   private val columns=Reg(UInt(17.W));private val scanX=Reg(UInt(17.W));private val scanY=Reg(UInt(17.W))
   private val sourceOffered=RegInit(false.B);private val sourceStarted=RegInit(false.B);private val sourceDone=RegInit(false.B)
   private val sourceResult=Reg(new TessellationSystemQuadBinCompletion(p));private val result=Reg(new TessellationSystemQuadImageCompletion(p))
+  private val localGeometryTask=if(nativeGeometryAvailable)Some(Reg(new TessellationSystemQuadGeometryBinTaskCompletion(config,p,idWidth)))else None
+  private val geometryResult=Reg(new TessellationGeometryImageResult(new TessellationSystemQuadImageCompletion(p)))
+  private val gsPublished=RegInit(0.U(158.W));private val gsReceived=RegInit(0.U(161.W));private val gsDropped=RegInit(0.U(161.W))
+  private val gsAdmitted=RegInit(0.U(97.W));private val gsTasks=RegInit(0.U(64.W));private val gsNext=RegInit(0.U(64.W));private val gsBinNext=RegInit(0.U(33.W))
+  private val geometryTaskFault=source.io.geometryTaskCompletion.map(x=>x.valid && x.bits.status=/=0.U).getOrElse(false.B)
   private val tasks=RegInit(0.U(64.W));private val localTaskValid=RegInit(false.B);private val localTask=Reg(new TessellationSystemQuadBinTaskCompletion)
   private val owned=RegInit(VecInit(Seq.fill(engines)(false.B)));private val tile=Reg(Vec(engines,UInt(32.W)))
   private val imageBinding=Reg(Vec(engines,new TypedReplayTileDescriptor))
@@ -155,11 +185,16 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
   private val faultAddress=RegInit(0.U(32.W))
   private val externalCancel=io.cancel || io.feedback.map(_.cancel).getOrElse(false.B) || io.payload.map(v=>VecInit(v.map(_.cancel)).asUInt.orR).getOrElse(false.B)
   private val sourceFailure=(source.io.completion.valid && source.io.completion.bits.status=/=0.U) ||
-    (source.io.taskCompletion.valid && source.io.taskCompletion.bits.status=/=0.U)
+    (source.io.taskCompletion.valid && source.io.taskCompletion.bits.status=/=0.U) || geometryTaskFault
   private val imageFailure=images.map(i=>i.completion.valid && i.completion.bits.status=/=0.U).reduce(_ || _)
   private val stop=status=/=0.U || externalCancel || sourceFailure || imageFailure
   private val running=phase===State.run || phase===State.closing
   private val active=phase=/=State.idle && phase=/=State.complete
+  private val geometryTransportDrained=WireDefault(true.B)
+  private val geometrySourceDrained=if(nativeGeometryAvailable)source.io.taskDrained else true.B
+  private val geometryReady=geometrySourceDrained && geometryTransportDrained
+  private val geometryExecutionDrained=WireDefault(true.B)
+  if(nativeGeometryAvailable){geometryAccepting:=active;io.geometryCancel.get:=active && stop}
   private val feedbackReady=io.feedback.map(f=> !f.busy && !f.command.valid && !f.cancel).getOrElse(true.B)
   if(transformFeedback){
     val scope=Reg(new TransformFeedbackScope)
@@ -171,6 +206,7 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
   private val tileCode=Mux(source.io.tileDone.bits.recordStatus=/=0.U,source.io.tileDone.bits.recordStatus,source.io.tileDone.bits.bins.status)
   private val childPrimary=(source.io.completion.fire && primary(source.io.completion.bits.status)) ||
     (source.io.taskCompletion.valid && primary(source.io.taskCompletion.bits.status)) ||
+    source.io.geometryTaskCompletion.map(x=>x.valid && primary(x.bits.status)).getOrElse(false.B) ||
     (source.io.tileDone.fire && !stop && primary(tileCode)) || images.map(i=>i.completion.fire && primary(i.completion.bits.status)).reduce(_ || _)
   private val tileSize=1.U(17.W)<<descriptor.bins.producer.tileLog2
   private def fail(code:UInt,stage:Int,tileValid:Bool=false.B,which:UInt=0.U):Unit=
@@ -203,8 +239,16 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
     d.protectedMemory(2).limit:=(if(pagedCapacity>0)descriptor.bins.bins.directoryLimit else 0.U)
     d
   }
-  io.begin.ready:=phase===State.idle && !externalCancel && feedbackReady;io.busy:=phase=/=State.idle || io.feedback.map(_.busy).getOrElse(false.B)
-  io.completion.valid:=phase===State.complete;io.completion.bits:=result
+  io.begin.ready:=phase===State.idle && !externalCancel && feedbackReady && geometryReady && geometrySourceDrained
+  io.busy:=phase=/=State.idle || io.feedback.map(_.busy).getOrElse(false.B) || !geometryReady || !geometrySourceDrained
+  io.completion.valid:=phase===State.complete && (!nativeGeometryAvailable).B;io.completion.bits:=result
+  private val frameReportFire=if(nativeGeometryAvailable)io.geometryCompletion.get.fire else io.completion.fire
+  if(nativeGeometryAvailable) {
+    io.geometryCompletion.get.valid:=phase===State.complete;io.geometryCompletion.get.bits:=geometryResult
+    io.geometryCompletion.get.bits.image:=result
+    source.io.geometryInvalidate.get<>io.geometryInvalidate.get
+    io.geometryInvalidateDone.get<>source.io.geometryInvalidateDone.get
+  }
   source.io.begin.valid:=sourceOffered;source.io.begin.bits:=descriptor.bins
   when(source.io.begin.fire){sourceOffered:=false.B;sourceStarted:=true.B}
   source.io.cancel:=sourceStarted && !sourceDone && stop
@@ -212,18 +256,45 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
   when(source.io.completion.fire){sourceDone:=true.B;sourceResult:=source.io.completion.bits
     when(source.io.completion.bits.status=/=0.U){failChild(source.io.completion.bits.status,2)}}
 
-  private val taskLegal=descriptor.states.base.pad(64)+(io.task.bits.state.pad(64)<<9)+512.U<=descriptor.states.limit &&
-    io.task.bits.raster.sampleMode===descriptor.image.pixels.colors.sampleMode
-  io.task.ready:=phase===State.run && !stop && !localTaskValid && source.io.task.ready
-  source.io.task.valid:=io.task.valid && io.task.ready && taskLegal;source.io.task.bits:=io.task.bits
-  when(io.task.fire){tasks:=tasks+1.U;when(!taskLegal){
-    localTask:=0.U.asTypeOf(localTask);localTask.status:=1.U;localTaskValid:=true.B;fail(1.U,1)}}
-  io.taskCompletion.valid:=localTaskValid || source.io.taskCompletion.valid
-  io.taskCompletion.bits:=Mux(localTaskValid,localTask,source.io.taskCompletion.bits)
-  source.io.taskCompletion.ready:=io.taskCompletion.ready && !localTaskValid
-  when(io.taskCompletion.fire && localTaskValid){localTaskValid:=false.B}
-  when(source.io.taskCompletion.valid && source.io.taskCompletion.bits.status=/=0.U){failChild(source.io.taskCompletion.bits.status,2)}
-  io.end.ready:=phase===State.run && !stop && !io.task.valid && !localTaskValid && source.io.end.ready
+  if(nativeGeometryAvailable){
+    val incoming=io.geometryTask.get;val offered=source.io.geometryTask.get;val actual=source.io.geometryTaskCompletion.get
+    val legal=descriptor.states.base.pad(64)+(incoming.bits.state.pad(64)<<9)+512.U<=descriptor.states.limit &&
+      incoming.bits.raster.sampleMode===descriptor.image.pixels.colors.sampleMode
+    io.task.ready:=false.B;source.io.task.valid:=false.B;source.io.task.bits:=0.U.asTypeOf(source.io.task.bits)
+    io.taskCompletion.valid:=false.B;io.taskCompletion.bits:=0.U.asTypeOf(io.taskCompletion.bits);source.io.taskCompletion.ready:=true.B
+    incoming.ready:=active && phase=/=State.finish && !localTaskValid && !actual.valid &&
+      ((phase===State.run && !stop && offered.ready) || stop)
+    offered.valid:=incoming.valid && incoming.ready && legal && !stop;offered.bits:=incoming.bits
+    when(incoming.fire){tasks:=tasks+1.U;when(!legal || stop){
+      localGeometryTask.get:=0.U.asTypeOf(localGeometryTask.get);localGeometryTask.get.task:=incoming.bits
+      localGeometryTask.get.status:=Mux(!legal,1.U,Mux(status=/=0.U,status,4.U));localTaskValid:=true.B
+      when(!legal){fail(1.U,1)}}}
+    io.geometryTaskCompletion.get.valid:=localTaskValid || actual.valid
+    io.geometryTaskCompletion.get.bits:=Mux(localTaskValid,localGeometryTask.get,actual.bits)
+    actual.ready:=io.geometryTaskCompletion.get.ready && !localTaskValid
+    when(io.geometryTaskCompletion.get.fire){
+      when(localTaskValid){localTaskValid:=false.B}
+      .otherwise{gsTasks:=gsTasks+1.U;gsReceived:=gsReceived+actual.bits.received;gsDropped:=gsDropped+actual.bits.dropped
+        gsAdmitted:=gsAdmitted+actual.bits.admitted;gsBinNext:=actual.bits.nextSequence
+        when(actual.bits.publicationValid){gsPublished:=gsPublished+actual.bits.actualGsPublished;gsNext:=actual.bits.nextGsSequence}}
+    }
+    when(actual.valid && actual.bits.status=/=0.U){failChild(actual.bits.status,2)}
+    io.end.ready:=sourceStarted && !sourceDone && (phase===State.run || phase===State.closing) &&
+      !incoming.valid && !localTaskValid && source.io.end.ready
+  }else{
+    val taskLegal=descriptor.states.base.pad(64)+(io.task.bits.state.pad(64)<<9)+512.U<=descriptor.states.limit &&
+      io.task.bits.raster.sampleMode===descriptor.image.pixels.colors.sampleMode
+    io.task.ready:=phase===State.run && !stop && !localTaskValid && source.io.task.ready
+    source.io.task.valid:=io.task.valid && io.task.ready && taskLegal;source.io.task.bits:=io.task.bits
+    when(io.task.fire){tasks:=tasks+1.U;when(!taskLegal){
+      localTask:=0.U.asTypeOf(localTask);localTask.status:=1.U;localTaskValid:=true.B;fail(1.U,1)}}
+    io.taskCompletion.valid:=localTaskValid || source.io.taskCompletion.valid
+    io.taskCompletion.bits:=Mux(localTaskValid,localTask,source.io.taskCompletion.bits)
+    source.io.taskCompletion.ready:=io.taskCompletion.ready && !localTaskValid
+    when(io.taskCompletion.fire && localTaskValid){localTaskValid:=false.B}
+    when(source.io.taskCompletion.valid && source.io.taskCompletion.bits.status=/=0.U){failChild(source.io.taskCompletion.bits.status,2)}
+    io.end.ready:=phase===State.run && !stop && !io.task.valid && !localTaskValid && source.io.end.ready
+  }
   source.io.end.valid:=io.end.valid && io.end.ready;source.io.end.bits:=io.end.bits
 
   io.opened<>source.io.opened;source.io.load<>io.load;source.io.seal<>io.seal
@@ -247,7 +318,7 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
       inner.io.clientPayload.get(1):=vertex.task
       mux.io.clientPayload.get(0):=inner.io.poolPayload.get
       val pinBase=TessellationSystemQuadImagePipeline.payloadPins(engines)
-      for(i<-0 until 4)io.payloadPins.get(pinBase+i):=inner.io.payloadPins.get(i)
+      for(i<-0 until (if(nativeGeometryAvailable)6 else 4))io.payloadPins.get(pinBase+i):=inner.io.payloadPins.get(i)
     }else{
       val idle=io.payload.get(0)
       idle.control.valid:=false.B;idle.control.bits:=0.U.asTypeOf(idle.control.bits)
@@ -317,7 +388,7 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
       resolves(e):=resolves(e)+imageResult(e).image.transfers.resolvedBytes}
   }
 
-  private val arbiter=Module(new RRArbiter(new ComputeMemoryRequest(config,64,memoryTransactions),engines+1+(if(tessellationUniforms)1 else 0)))
+  private val arbiter=Module(new RRArbiter(new ComputeMemoryRequest(config,64,memoryTransactions),engines+1+(if(tessellationUniforms)1 else 0)+(if(nativeGeometryAvailable)1 else 0)))
   private val requests=Module(new Queue(new ComputeMemoryRequest(config,64,memoryTransactions),2,pipe=true))
   arbiter.io.in(0).valid:=source.io.memoryRequest.valid;arbiter.io.in(0).bits:=source.io.memoryRequest.bits
   source.io.memoryRequest.ready:=arbiter.io.in(0).ready
@@ -344,19 +415,65 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
     reply.bits.transactionId:=io.memoryResponse.bits.transactionId-base.U
     uniformReply:=selected && reply.ready
   }
+  private val patchLaunchPending=RegInit(false.B);private val patchInvalidatePending=RegInit(false.B)
+  when(source.io.shared.launch.fire){patchLaunchPending:=true.B}
+  when(source.io.shared.completion.fire){patchLaunchPending:=false.B}
+  when(source.io.shared.invalidate.fire){patchInvalidatePending:=true.B}
+  when(source.io.shared.invalidateDone.fire){patchInvalidatePending:=false.B}
+  private val uniformPending=RegInit(0.U(2.W))
+  if(tessellationUniforms){
+    val request=source.io.uniformMemoryRequest.get;val response=source.io.uniformMemoryResponse.get
+    val add=Mux(request.fire,UIntToOH(request.bits.transactionId,2),0.U(2.W))
+    val remove=Mux(response.fire,UIntToOH(response.bits.transactionId,2),0.U(2.W))
+    uniformPending:=(uniformPending & ~remove) | add
+  }
+  source.io.sourceTransportDrained:= !patchLaunchPending && !patchInvalidatePending && !uniformPending.orR &&
+    TessellationGeometryPatchPipelineLink.offersDrained(source.io.shared,source.io.texture.toSeq,
+      source.io.uniformMemoryRequest.map(_.valid).getOrElse(false.B),source.io.trap.valid,
+      source.io.invalidate.valid,source.io.invalidateDone.valid)
+  source.io.geometryTransportDrained:=geometryTransportDrained
+  private val geometryReply=WireDefault(false.B)
+  if(nativeGeometryAvailable){
+    val gs=source.io.geometryShared.get
+    val transport=Module(new TessellationGeometryClientTransport(config))
+    transport.io.launchAccepted:=gs.launch.fire;transport.io.completionAccepted:=gs.completion.fire
+    transport.io.invalidateAccepted:=gs.invalidate.fire;transport.io.invalidateDoneAccepted:=gs.invalidateDone.fire
+    transport.io.memoryRequest.valid:=source.io.geometryMemoryRequest.get.valid
+    transport.io.memoryRequest.bits:=source.io.geometryMemoryRequest.get.bits
+    source.io.geometryMemoryRequest.get.ready:=transport.io.memoryRequest.ready
+    source.io.geometryMemoryResponse.get<>transport.io.memoryResponse
+    val base=binSlots+32*engines+(if(tessellationUniforms)2 else 0)
+    val port=arbiter.io.in(engines+1+(if(tessellationUniforms)1 else 0))
+    val request=transport.io.request;val reply=transport.io.response
+    port.valid:=request.valid;port.bits:=request.bits;port.bits.transactionId:=base.U
+    request.ready:=port.ready
+    val selected=io.memoryResponse.bits.transactionId===base.U
+    reply.valid:=io.memoryResponse.valid && selected;reply.bits:=io.memoryResponse.bits;reply.bits.transactionId:=0.U
+    geometryReply:=selected && reply.ready
+    val requestsLive=gs.texture.map(t=>t.scalar.valid || t.vector.valid || t.scalarWriteback.valid || t.vectorWriteback.valid).reduce(_ || _)
+    val eventsLive=gs.geometryEvent.get.map(_.valid).reduce(_ || _)
+    transport.io.executionOffersLive:=gs.launch.valid || source.io.geometryMemoryRequest.get.valid ||
+      gs.completion.valid || gs.trap.valid || gs.owned.orR || requestsLive || eventsLive
+    transport.io.invalidateOffersLive:=gs.invalidate.valid || gs.invalidateDone.valid
+    geometryExecutionDrained:=transport.io.executionDrained
+    geometryTransportDrained:=transport.io.drained
+    io.geometryTransportDrained.get:=geometryTransportDrained
+  }
   requests.io.enq<>arbiter.io.out;io.memoryRequest<>requests.io.deq
-  io.memoryResponse.ready:=Mux(io.memoryResponse.bits.transactionId<binSlots.U,source.io.memoryResponse.ready,imageReplies.asUInt.orR || uniformReply)
+  io.memoryResponse.ready:=Mux(io.memoryResponse.bits.transactionId<binSlots.U,source.io.memoryResponse.ready,imageReplies.asUInt.orR || uniformReply || geometryReply)
   private val inFlight=RegInit(0.U(log2Ceil(memoryTransactions+3).W))
   inFlight:=inFlight+io.memoryRequest.fire.asUInt-io.memoryResponse.fire.asUInt
   when(io.memoryResponse.fire){assert(inFlight.orR || io.memoryRequest.fire,"unowned quad bin image response")}
-  private val drained= !sourceOffered && (!sourceStarted || (sourceDone && !source.io.busy)) && !owned.asUInt.orR &&
+  private val executionChildrenDrained= !sourceOffered && (!sourceStarted || (sourceDone && !source.io.busy)) && !owned.asUInt.orR &&
     !imageOffered.asUInt.orR && !images.map(_.busy).reduce(_ || _) && tileQueues.map(q=> !q.io.deq.valid).reduce(_ && _) &&
-    !localTaskValid && mux.io.drained && router.io.drained && vertexRouter.map(_.io.drained).getOrElse(true.B) &&
-    inFlight===0.U && requests.io.count===0.U
+    !localTaskValid && inFlight===0.U && requests.io.count===0.U
+  private val drained=executionChildrenDrained && mux.io.drained && router.io.drained &&
+    vertexRouter.map(_.io.drained).getOrElse(true.B) && geometryReady && geometrySourceDrained
   when(active && externalCancel && status===0.U && !childPrimary){status:=4.U;faultStage:=0.U;faultTileValid:=false.B}
   switch(phase){
     is(State.idle){when(io.begin.fire){descriptor:=io.begin.bits;status:=0.U;faultStage:=0.U;faultTileValid:=false.B;faultAddress:=0.U
       sourceOffered:=false.B;sourceStarted:=false.B;sourceDone:=false.B;sourceResult:=0.U.asTypeOf(sourceResult)
+      gsPublished:=0.U;gsReceived:=0.U;gsDropped:=0.U;gsAdmitted:=0.U;gsTasks:=0.U;gsNext:=0.U;gsBinNext:=0.U
       tasks:=0.U;localTaskValid:=false.B;scanX:=0.U;scanY:=0.U
       for(e<-0 until engines){owned(e):=false.B;imageOffered(e):=false.B;imageStarted(e):=false.B;imageDone(e):=false.B;haveBin(e):=false.B
         tileCounts(e):=0.U;primitiveCounts(e):=0.U;loads(e):=0.U;stores(e):=0.U;resolves(e):=0.U}
@@ -400,17 +517,36 @@ class TessellationSystemQuadImagePipeline(config:GpuConfig=GpuConfig(),p:VertexS
             .otherwise{scanX:=0.U;scanY:=scanY+tileSize}}
         .otherwise{scanX:=scanX+tileSize}
     }
-    is(State.sourceOffer){when(stop || sourceDone){phase:=State.closing}.elsewhen(sourceStarted && source.io.task.ready){phase:=State.run}}
+    is(State.sourceOffer){when(stop || sourceDone){phase:=State.closing}.elsewhen(sourceStarted && (if(nativeGeometryAvailable)source.io.geometryTask.get.ready else source.io.task.ready)){phase:=State.run}}
     is(State.run){when(stop || sourceDone){phase:=State.closing}.elsewhen(io.end.fire){when(!io.end.bits){fail(1.U,1)};phase:=State.closing}}
     is(State.closing){when(drained){phase:=State.finish}}
-    is(State.finish){result:=0.U.asTypeOf(result);result.identity:=descriptor.states.identity
+    is(State.finish){when(if(nativeGeometryAvailable)drained else true.B){
+        geometryResult.image:=0.U.asTypeOf(geometryResult.image)
+        geometryResult.actualGsPublished:=gsPublished;geometryResult.received:=gsReceived;geometryResult.dropped:=gsDropped
+        geometryResult.admitted:=gsAdmitted;geometryResult.tasks:=gsTasks;geometryResult.nextGsSequence:=gsNext;geometryResult.nextSequence:=gsBinNext
+      result:=0.U.asTypeOf(result);result.identity:=descriptor.states.identity
       result.status:=Mux(externalCancel && status===0.U,4.U,status);result.faultStage:=faultStage;result.faultTileValid:=faultTileValid;result.faultTile:=faultTile
       result.faultAddress:=faultAddress
       result.source:=sourceResult;result.tiles:=tileCounts.reduce(_+_);result.primitives:=primitiveCounts.reduce(_+_)
       result.loadBytes:=loads.reduce(_+_);result.storedBytes:=stores.reduce(_+_);result.resolvedBytes:=resolves.reduce(_+_);phase:=State.complete}
-    is(State.complete){when(io.completion.fire){phase:=State.idle}}
+      if(nativeGeometryAvailable)when(!drained){phase:=State.closing}}
+    is(State.complete){when(frameReportFire){phase:=State.idle}}
   }
-  when(io.completion.valid){assert(drained,"quad bin image completion escaped source/render/publication drain")}
+  if(nativeGeometryAvailable){
+    // Full live drain was rechecked on the finish capture edge. A later idle
+    // cache flush cannot revoke that report, but no execution credit may return.
+    when(io.geometryCompletion.get.valid){
+      assert(executionChildrenDrained && geometryExecutionDrained,
+        "held quad GS frame report acquired execution debt")
+      assert(!source.io.geometryShared.get.launch.valid && !source.io.geometryMemoryRequest.get.valid,
+        "held GS frame report admitted a new execution task")
+      assert(!source.io.shared.launch.valid && !io.vertexShared.get.launch.valid &&
+        !VecInit(images.map(_.shared.launch.valid)).asUInt.orR,
+        "held GS frame report acquired source/render launch offers")
+    }
+  }else{
+    when(io.completion.valid){assert(drained,"quad bin image completion escaped source/render/publication drain")}
+  }
 
   if(tessellationInfoAvailable)source.io.inputPatchBinding.get:=io.inputPatchBinding.get
 }
