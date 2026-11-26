@@ -287,8 +287,17 @@ def build(args,plan,root,memory_mib,timeout_seconds):
  shape=validate_shape(shape_path);shape_log.unlink()
  source=source_binding(plan_path,strict_json(plan_path));source_path=work/'source-binding.json';write_json(source_path,source)
  model=work/'model';build_log=work/'build.log'
- command=sbt_command(['Test/runMain opengpu.system.RetainFiveStageMesaModel '+shlex.quote(str(model))+' '+shlex.quote(str(source_path))],'3G')
- env=environment(work/'tmp');env['JAVA_OPTS']=java_options(build_properties(work))
+ if args.resume_workspace is None:
+  command=sbt_command(['Test/runMain opengpu.system.RetainFiveStageMesaModel '+shlex.quote(str(model))+' '+shlex.quote(str(source_path))],'3G')
+  env=environment(work/'tmp');env['JAVA_OPTS']=java_options(build_properties(work))
+ else:
+  resume=Path(args.resume_workspace).resolve()
+  require(resume.is_relative_to((work/'sim-workspace').resolve()) and resume.name=='slot-0','resume workspace must be the active five-stage slot')
+  binary=resume/'workdir-verilator/simulation';compile_log=resume/'workdir-verilator/compilation-log.txt'
+  regular(binary);regular(compile_log)
+  if model.exists():shutil.rmtree(model)
+  command=sbt_command(['Test/runMain svsim.FiveStageMesaReplay --retain-reset-idle '+shlex.quote(str(resume))+' '+shlex.quote(str(model))+' '+shlex.quote(str(source_path))+' '+shlex.quote(str(shape_path))],'1G')
+  env=environment(work/'tmp')
  code,text=run_logged(command,env,build_log,memory_mib,timeout_seconds)
  require(code==0,'retained model build failed: '+text[-4000:])
  require(text.count('FIVE_STAGE_MODEL_RESET_IDLE_ONLY originalShaderExecuted=false noTf=true physicalGraphicsCUs=2')==1,'retained reset/idle marker missing')
@@ -329,6 +338,7 @@ def main():
  modes.add_argument('--replay-model',type=Path)
  parser.add_argument('--work',type=Path)
  parser.add_argument('--shape-output',type=Path)
+ parser.add_argument('--resume-workspace',type=Path)
  parser.add_argument('--memory-mib',type=int,default=10240)
  parser.add_argument('--timeout-seconds',type=float,default=13472)
  args=parser.parse_args()

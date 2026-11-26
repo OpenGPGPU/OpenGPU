@@ -499,6 +499,29 @@ class OracleUnitTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 _no_tf({key: 0})
 
+    def test_qualifier_forwards_environment_and_explicit_heap(self):
+        import qualify_five_stage as qualifier
+        from unittest.mock import patch
+
+        observed = {}
+
+        def bounded(command, memory_mib, timeout_seconds):
+            observed.update(os.environ)
+            return 0
+
+        environment = dict(os.environ, JAVA_HOME="/custom/jdk", PATH="/custom/jdk/bin",
+                           TMPDIR="/custom/tmp")
+        with tempfile.TemporaryDirectory() as temporary:
+            log = Path(temporary) / "qualifier.log"
+            with patch.object(qualifier, "run_bounded", side_effect=bounded):
+                code, _ = qualifier.run_logged(["true"], environment, log, 128, 10)
+        self.assertEqual(code, 0)
+        self.assertEqual(observed["JAVA_HOME"], "/custom/jdk")
+        self.assertEqual(observed["PATH"], "/custom/jdk/bin")
+        self.assertEqual(observed["TMPDIR"], "/custom/tmp")
+        self.assertEqual(qualifier.sbt_command(["Test/compile"], "3G")[:4],
+                         ["sbt", "-batch", "-J-Xmx3G", "-J-XX:+ExitOnOutOfMemoryError"])
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)

@@ -164,6 +164,16 @@ object GpuSim extends PeekPokeAPI {
       module: => T, consumer: RetainedModelConsumer)(body: T => Unit): Unit =
     simulateConfigured(module, inlineVerification = true, consumer = Some(consumer))(body)
 
+  def publishRetainedModel(workspace: Path, consumer: RetainedModelConsumer,
+      ports: Seq[ujson.Value], moduleName: String, completed: Boolean): Unit = {
+    val state = prepareConsumer(consumer)
+    try state.save(workspace, ports, moduleName, completed)
+    catch { case error: Throwable =>
+      delete(state.directory)
+      throw new IllegalStateException(s"Model publication failed for ${state.directory}", error)
+    }
+  }
+
   private def digest(bytes: Array[Byte]): String =
     MessageDigest.getInstance("SHA-256").digest(bytes).map(b => f"${b & 255}%02x").mkString
 
