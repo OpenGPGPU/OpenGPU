@@ -24,7 +24,10 @@ import opengpu.graphics.{
   TileBinHostCommandPort, TileBinHostRegs, TileBinJobCompletion, TileJobDescriptorRequest, NativeBinnedCompletionInfo, NativeVertexInputCapabilities, NativeFragmentInputCapabilities, NativeRasterCapabilities
 }
 
-/** AXI4 slave control interface for the graphics renderer.
+/** CPU-facing AXI4 MMIO front end in [[GpuHostSystemAxi]].
+  *
+  * Handles register accesses, unified-command routing and interrupt delivery.
+  * The standalone graphics-host export also exposes renderer memory clients.
   *
   * This is the M6 host-facing port that ARTI (the RTL-to-QEMU integration
   * framework) can auto-bridge: it exposes the standard AXI4 memory-mapped

@@ -58,7 +58,11 @@ class GpuHostPerformanceCounters extends Bundle {
   val binFourSampleCycles=Vec(4,UInt(64.W))
 }
 
-/** AXI-controlled graphics host attached to the GPU-internal shared L2.
+/** Product GPU top for SoC integration.
+  *
+  * Connects the CPU-facing [[GpuHostAxi]], the [[GpuSystem]] execution
+  * subsystem and the selected graphics pipeline. [[ComputeMemoryAxiMaster]]
+  * carries lower-memory traffic from the shared L2 to the SoC fabric.
   *
   * CPU and GPU L2 caches are separate. The AXI memory master carries GPU L2
   * lower-memory traffic to the SoC fabric and shared DRAM; the control slave

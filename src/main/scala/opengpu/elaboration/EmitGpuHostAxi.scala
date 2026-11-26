@@ -4,10 +4,10 @@ import opengpu.config.GpuConfig
 import opengpu.graphics.GraphicsConfig
 import opengpu.system.GpuHostAxi
 
-/** Emits the M6 host-control interface (`GpuHostAxi`) as SystemVerilog.
+/** Emits the standalone graphics host (`GpuHostAxi`) as SystemVerilog.
   *
-  * This is the single top the ARTI framework (RTL-to-QEMU integration) parses:
-  * it exposes the standard AXI4 memory-mapped control channels
+  * Use [[EmitGpuTop]] for the complete GPU. This standalone target exposes the
+  * standard AXI4 memory-mapped control channels
   * (`s_axi_aw*`, w, b, `s_axi_ar*`) and a completion interrupt (`m_irq`),
   * so ARTI's naming-based inferencer detects an AXI4 slave and generates the
   * embedded QEMU device model and device-tree node.  The renderer's shared

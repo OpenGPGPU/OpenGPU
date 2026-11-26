@@ -504,7 +504,7 @@ CPU cache coherence or synchronize unrelated shader side effects.
 For a matching small shared-CU bring-up emission:
 
 ```sh
-sbt -J-Xmx8G 'runMain opengpu.elaboration.EmitGpuHostSystemAxi generated/tile-host --persistent-tile-jobs --buffer-command-reads --frag-core --shared-graphics --parallel-graphics --cu-lanes 4 --cu-warps 2 --compute-units 2 --width 16 --height 16 --memory-axi-data-bytes 32'
+sbt -J-Xmx8G 'runMain opengpu.elaboration.EmitGpuTop generated/tile-host --persistent-tile-jobs --buffer-command-reads --frag-core --shared-graphics --parallel-graphics --cu-lanes 4 --cu-warps 2 --compute-units 2 --width 16 --height 16 --memory-axi-data-bytes 32'
 ```
 
 `--tile-store-credits` selects transfer capacity from the common mobile proposal.

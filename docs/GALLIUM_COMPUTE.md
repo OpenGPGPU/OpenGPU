@@ -840,7 +840,7 @@ then link the model into the ARTI QEMU build.
 
 ```sh
 sbt -J-Xmx7G -J-XX:ActiveProcessorCount=2 \
-  "runMain opengpu.elaboration.EmitGpuHostSystemAxi $RTL --frag-core --vert-core --width 64 --height 64 --compute-units 2 --cu-lanes 16 --cu-warps 8 --memory-axi-data-bytes 32"
+  "runMain opengpu.elaboration.EmitGpuTop $RTL --frag-core --vert-core --width 64 --height 64 --compute-units 2 --cu-lanes 16 --cu-warps 8 --memory-axi-data-bytes 32"
 PYTHONPATH="$FLASHSIM_DIR" FLASHSIM_PREFLATTEN_WIRES=1 FLASHSIM_GC_POLICY=defer \
   FLASHSIM_COMMIT_PARTS=8 python3 -B -m flashsim arti-model \
   "$RTL/GpuHostSystemAxi.sv" -o "$MODEL" --frontend circt --assertions

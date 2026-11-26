@@ -385,7 +385,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/system/tessellation/TessellationThreeDomainSampleMux.scala",
                      "src/main/scala/opengpu/system/tessellation/TessellationNativeThreeDomainJobImage.scala",
-                     "src/main/scala/opengpu/system/GpuHostSystemAxi.scala",
+                     "src/main/scala/opengpu/system/top/GpuHostSystemAxi.scala",
                      "src/main/scala/opengpu/graphics/host/NativeVisibilityQueryEngine.scala"):
             with self.subTest(path=path):
                 self.assertIn("opengpu.graphics.tessellation.TessellationThreeDomainVisibilityQuerySpec", changed_suites(root, [path]))
@@ -513,7 +513,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
         for path in ("src/main/scala/opengpu/system/tessellation/TessellationDomainSampleMux.scala",
                      "src/main/scala/opengpu/graphics/host/NativeVisibilityQueryEngine.scala",
                      "src/main/scala/opengpu/system/tessellation/TessellationNativeDomainJobImage.scala",
-                     "src/main/scala/opengpu/system/GpuHostSystemAxi.scala"):
+                     "src/main/scala/opengpu/system/top/GpuHostSystemAxi.scala"):
             self.assertIn("opengpu.graphics.tessellation.TessellationDomainVisibilityQuerySpec",
                           changed_suites(root, [path]))
 

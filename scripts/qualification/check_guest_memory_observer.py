@@ -65,7 +65,7 @@ def main():
                 pin(path)
         for name in ('scripts/build_arti_native_compute_model.py', 'scripts/set_arti_guest_extent.py',
                      'userspace/examples/gallium_compute_glsl.c', 'userspace/examples/qualification_pagemap.h',
-                     'src/main/scala/opengpu/system/GpuHostSystemAxi.scala',
+                     'src/main/scala/opengpu/system/top/GpuHostSystemAxi.scala',
                      'src/test/scala/opengpu/system/EmitNativeLinuxResourceGuest.scala'):
             pin(ROOT / name)
         for path in (a.arti_root / 'src/arti').rglob('*.py'):
@@ -87,7 +87,7 @@ def main():
         # Render the actual ARTI generator against the pinned ResourceGuest
         # public pin declaration shape. This is a CPU code-generation/adapter
         # check with synthetic signals, not an emitted hardware model.
-        main_source = (ROOT / 'src/main/scala/opengpu/system/GpuHostSystemAxi.scala').read_text()
+        main_source = (ROOT / 'src/main/scala/opengpu/system/top/GpuHostSystemAxi.scala').read_text()
         declared = re.findall(r'val ((?:[sm]_axi_)\w+) = (Input|Output)\(([^\n]+)\)', main_source)
         if not declared:
             raise RuntimeError('actual host pin declarations not found')

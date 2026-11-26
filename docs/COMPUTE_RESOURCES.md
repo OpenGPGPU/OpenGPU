@@ -30,7 +30,7 @@ with native SRAM and a 256-bit memory AXI bus:
 ```sh
 git submodule update --init depends/asap7_sram_0p0
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -J-XX:+ExitOnOutOfMemoryError \
-  'runMain opengpu.elaboration.EmitGpuHostSystemAxi .artifacts/compute-resources-rtl --width 16 --height 16 --memory-axi-data-bytes 32 --sram-black-boxes --compute-resources --compute-uniforms --atomic-counters --image-atomics --storage-atomics'
+  'runMain opengpu.elaboration.EmitGpuTop .artifacts/compute-resources-rtl --width 16 --height 16 --memory-axi-data-bytes 32 --sram-black-boxes --compute-resources --compute-uniforms --atomic-counters --image-atomics --storage-atomics'
 ```
 
 The 16x16 graphics metadata does not reduce compute capacities or render a

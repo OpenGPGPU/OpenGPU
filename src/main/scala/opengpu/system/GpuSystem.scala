@@ -45,7 +45,10 @@ object GpuSystem {
     dmaWalkTransactions + graphicsHostTransactions + (if(enableIndirectCompute) 2 else 0)
 }
 
-/** Scalable compute-first GPU integration point.
+/** GPU execution subsystem with CUs, DMA engines and a shared L2.
+  *
+  * Inside [[GpuHostSystemAxi]], commands come from [[GpuHostAxi]] and
+  * lower-memory traffic goes to [[ComputeMemoryAxiMaster]].
   *
   * Kernels carry host command tags, CUs execute independently, and one shared
   * memory port supports out-of-order responses through globally unique
