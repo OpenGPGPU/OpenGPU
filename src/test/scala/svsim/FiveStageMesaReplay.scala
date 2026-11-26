@@ -4,6 +4,7 @@ import chisel3._
 import scala.collection.mutable
 import scala.language.dynamics
 import java.nio.file.{Files,Path,Paths,LinkOption}
+import opengpu.testutil.GpuSim
 
 object FiveStageMesaReplay {
  private var controller:Simulation.Controller=null
@@ -237,22 +238,44 @@ object FiveStageMesaReplay {
   println(s"ACTUAL_ORIGINAL_FIVE_STAGE_ISOLINE_PASS cases=2 noReset=true noTf=true physicalGraphicsCUs=2 cycles=$cycles committedGraphicsWB=${writebacks.size}")
  }
 
- def main(args:Array[String]):Unit={
-  if(args.toVector==Vector("--cpu-memory-test")){
+  def retainResetIdle(workspace:String,model:String,source:String,shapePath:String):Unit={
+   val shape=ujson.read(Files.readString(Paths.get(shapePath)))
+   val names=shape.obj.keys.toVector.sorted
+   val bindings=names.zipWithIndex.map{case(name,id)=>
+    val leaf=shape(name);ujson.Obj("id"->ujson.Num(id),"name"->ujson.Str(name),"width"->leaf("width"),
+     "settable"->leaf("settable"),"gettable"->leaf("gettable"))}
+   val info=ModuleInfo("FiveStageIsolineMesaTop",bindings.map{b=>ModuleInfo.Port(b("name").str,b("settable").bool,b("gettable").bool)})
+   GpuSimRetainedReplay.run(workspace,info){c=>
+    controller=c;entries=bindings;ports=entries.map(e=>e("name").str->c.port(e("name").str)).toMap
+    entries.foreach{e=>val p=ports(e("name").str);require(p.info.isSettable==e("settable").bool && p.info.isGettable==e("gettable").bool && p.get().bitCount==e("width").num.toInt)}
+    zero(io);io.frameDrained.poke(true.B);reset.poke(true.B);clock.step(3);reset.poke(false.B);clock.step(5)
+    io.traps.expect(0);io.busy.expect(0);io.sourceLive.expect(0);io.sourceDrained.expect(1)
+    io.poolReserved.expect(0);io.poolDrained.expect(1)
+    GpuSim.publishRetainedModel(Paths.get(workspace),GpuSim.RetainedModelConsumer(Paths.get(model),"original-linked-five-isoline-no-tf",Paths.get(source)),
+     bindings,"FiveStageIsolineMesaTop",true)
+    println("FIVE_STAGE_MODEL_RESET_IDLE_ONLY originalShaderExecuted=false noTf=true physicalGraphicsCUs=2")
+   }
+  }
+
+  def main(args:Array[String]):Unit={
+   if(args.toVector==Vector("--cpu-memory-test")){
     val b=mutable.Map.empty[BigInt,Int];for(i<-0 until 64)b(BigInt(i))=i
     val m=new Memory("cpu-only",b)
     assert(m.word(0)==BigInt("03020100",16) && m.word(60)==BigInt("3f3e3d3c",16));m.line(0)
     def rejected(f: =>Unit):Unit={val caught=try{f;false}catch{case _:AssertionError=>true};require(caught,"unknown backing byte accepted")}
     rejected{m.word(61);()};rejected{m.line(64);()};b.remove(31);rejected{m.line(0);()}
     println("FIVE_BACKING_CPU_PASS explicitTail=true word/line/holeRejects=3 nativeSpawn=false GPU=false");return
-  }
-  if(args.length==2 && args(0)=="--cpu-bound-input-test"){
+   }
+   if(args.length==2 && args(0)=="--cpu-bound-input-test"){
     val fixture=ujson.read(Files.readString(Paths.get(args(1))));var rejected=0
     for(c<-fixture("cases").arr){val passed=try{boundInput(Paths.get(c("path").str),c("sha256").str,c("tools"));true}catch{case _:IllegalArgumentException=>false}
-      require(passed==c("accepted").bool,s"bound input gate mismatch ${c("name").str}");if(!passed)rejected+=1}
+     require(passed==c("accepted").bool,s"bound input gate mismatch ${c("name").str}");if(!passed)rejected+=1}
     println(s"FIVE_BOUND_TOOL_CPU_PASS cases=${fixture("cases").arr.size} rejects=$rejected nativeSpawn=false");return
-  }
-  require(args.length==4,"model-directory replay-directory runtime-plan.json host-binding.json")
+   }
+   if(args.length==5 && args(0)=="--retain-reset-idle"){
+    retainResetIdle(args(1),args(2),args(3),args(4));return
+   }
+   require(args.length==4,"model-directory replay-directory runtime-plan.json host-binding.json")
   val model=Paths.get(args(0)).toAbsolutePath.normalize();val replay=Paths.get(args(1)).toAbsolutePath.normalize()
   val planPath=Paths.get(args(2)).toAbsolutePath.normalize();val guardPath=Paths.get(args(3)).toAbsolutePath.normalize()
   for(p<-Vector(model.resolve("simulation"),model.resolve("binding.json"),model.resolve("source-binding.json"),replay.resolve("simulation"),replay.resolve("source-binding.json"),planPath,guardPath))regular(p)
