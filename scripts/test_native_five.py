@@ -75,11 +75,20 @@ def check_geometry_handoff(prefix):
     require(len({v['offset'] for v in j['uniforms'][1:]})==12,'same-GEM distinct views lost')
     return j,files
 
+def check_five_chain_handoff(prefix):
+    from five_stage_source_preflight import verify_case
+    prefix=Path(prefix)
+    case=verify_case(prefix.parent,prefix.name)
+    return case.metadata,{str((prefix.parent/name).resolve()):digest for name,digest in case.files.items()}
+
 def main():
     ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('--build',type=Path,required=True)
     ap.add_argument('--geometry-handoff',action='store_true',help='export original GS layout/maps and 13 retained byte views for explicit offline ISA qualification; no provider permission')
+    ap.add_argument('--five-chain-only',action='store_true',help='run only original full5 and pointcoord; skip ABI7/ABI10/pixel-mask/centroid/depth')
+    ap.add_argument('--five-chain-handoff',action='store_true',help='export and bind the original five-stage description, geometry handoff and all 65 uniform views')
 
     ap.add_argument('--reuse-objects',action='store_true',help='reuse only private objects with exact argv/object/MMD-input SHA receipts from an earlier active build');ap.add_argument('--sanitize',action='store_true');ap.add_argument('--negative-controls',action='store_true');a=ap.parse_args()
+    if a.five_chain_handoff:a.five_chain_only=True
     out=a.build.resolve();out.mkdir(parents=True,exist_ok=a.reuse_objects)
     mesa=Path(os.environ['OPENGPU_MESA_DIR']).resolve();mb=Path(os.environ['OPENGPU_MESA_BUILD']).resolve()
     drm=Path(os.environ['OPENGPU_DRM_INCLUDE']).absolute();gpu=mesa.parents[1];libraries=drm.parent/'lib'
@@ -120,6 +129,8 @@ def main():
         elif code!=expected:raise RuntimeError(f'{label}: exit {code}, expected {expected}\n'+(out/(label+'.log')).read_text()[-6000:])
         if a.geometry_handoff and not code and Path(argv[0]).name=='native-five' and int(argv[-1])!=2:
             _,exported=check_geometry_handoff(Path(argv[6]));private.update(exported)
+        if a.five_chain_handoff and not code and Path(argv[0]).name=='native-five' and int(argv[-1])==0:
+            _,exported=check_five_chain_handoff(Path(argv[6]));private.update(exported)
         if not code and '-o' in argv:
             target=Path(argv[argv.index('-o')+1]);private[str(target)]=sha256(target)
             if '-MF' in argv:
@@ -167,7 +178,8 @@ def main():
     for unit in GPU_UNITS:
         obj=out/(Path(unit).stem+'.o');cpp=unit.endswith('.cpp')
         extra=['-D'+n+'=cs_fixture_'+n for n in ('ioctl','mmap','munmap','dup','close')] if unit in primitive_units else []
-        if a.geometry_handoff and unit=='userspace/tests/native_five_resources.c':extra+=['-DOPENGPU_TEST_GEOMETRY_HANDOFF=1']
+        if (a.geometry_handoff or a.five_chain_handoff) and unit=='userspace/tests/native_five_resources.c':extra+=['-DOPENGPU_TEST_GEOMETRY_HANDOFF=1']
+        if a.five_chain_handoff and unit=='userspace/tests/native_five_resources.c':extra+=['-DOPENGPU_TEST_FIVE_CHAIN_HANDOFF=1']
         run((cxx if cpp else cc)+(flags(MESA_UNITS[0])+['-UNDEBUG','-Wall','-Wextra','-Werror','-Wno-unused-parameter'] if cpp else common)+extra+inc+san+
             ['-MMD','-MF',obj.with_suffix('.d'),'-c',ROOT/unit,'-o',obj],obj.stem);objects.append(obj)
     binary=out/'native-five'
@@ -181,7 +193,7 @@ def main():
             assert str(path) in bound or str(path) in private or str(path) in external,'unbound MMD '+str(path)
     assert snapshot(mesa,mb,libraries,drm,gpu)==external;unchanged()
     sources=out/'sources';sources.mkdir(exist_ok=a.reuse_objects)
-    for sample in (False,True):
+    for sample in ((False,) if a.five_chain_only else (False,True)):
         name='full7' if sample else 'full5';write_sources(sources,name,sample)
         for path in sources.iterdir():private[str(path)]=sha256(path)
         for suffix in ('.ognsf','.vs.words','.tcs.words','.tes.words','.gs.words','.fs.words'):
@@ -189,14 +201,15 @@ def main():
         run([binary,*[sources/(name+'.'+suffix) for suffix in ('vert','tesc','tese','geom','frag')],out/name,int(sample)],'actual-'+name)
         for suffix in ('.ognsf','.vs.words','.tcs.words','.tes.words','.gs.words','.fs.words'):
             path=out/(name+suffix);private[str(path)]=sha256(path)
-    write_sources(sources,'pixel-inputs',False)
-    fragment=sources/'pixel-inputs.frag'
-    generated(fragment,fragment.read_text().replace('color1=color0;', 'color0^=uvec4(uint(gl_HelperInvocation)^uint(gl_SampleMaskIn[0]));color1=color0;'))
-    for path in sources.iterdir():private[str(path)]=sha256(path)
-    for suffix in ('.ognsf','.vs.words','.tcs.words','.tes.words','.gs.words','.fs.words'):(out/('pixel-inputs'+suffix)).unlink(missing_ok=True)
-    run([binary,*[sources/('pixel-inputs.'+s) for s in ('vert','tesc','tese','geom','frag')],out/'pixel-inputs',0],'actual-pixel-inputs-without-planes')
-    for suffix in ('.ognsf','.vs.words','.tcs.words','.tes.words','.gs.words','.fs.words'):
-        path=out/('pixel-inputs'+suffix);private[str(path)]=sha256(path)
+    if not a.five_chain_only:
+        write_sources(sources,'pixel-inputs',False)
+        fragment=sources/'pixel-inputs.frag'
+        generated(fragment,fragment.read_text().replace('color1=color0;', 'color0^=uvec4(uint(gl_HelperInvocation)^uint(gl_SampleMaskIn[0]));color1=color0;'))
+        for path in sources.iterdir():private[str(path)]=sha256(path)
+        for suffix in ('.ognsf','.vs.words','.tcs.words','.tes.words','.gs.words','.fs.words'):(out/('pixel-inputs'+suffix)).unlink(missing_ok=True)
+        run([binary,*[sources/('pixel-inputs.'+s) for s in ('vert','tesc','tese','geom','frag')],out/'pixel-inputs',0],'actual-pixel-inputs-without-planes')
+        for suffix in ('.ognsf','.vs.words','.tcs.words','.tes.words','.gs.words','.fs.words'):
+            path=out/('pixel-inputs'+suffix);private[str(path)]=sha256(path)
     write_sources(sources,'pointcoord',False)
     fragment=sources/'pointcoord.frag';geometry=sources/'pointcoord.geom'
     generated(fragment,fragment.read_text().replace('color1=color0;', 'color0^=uvec4(floatBitsToUint(gl_PointCoord.x)^floatBitsToUint(gl_PointCoord.y));color1=color0;'))
@@ -206,27 +219,28 @@ def main():
     run([binary,*[sources/('pointcoord.'+s) for s in ('vert','tesc','tese','geom','frag')],out/'pointcoord',0],'actual-pointcoord-without-planes')
     for suffix in ('.ognsf','.vs.words','.tcs.words','.tes.words','.gs.words','.fs.words'):
         path=out/('pointcoord'+suffix);private[str(path)]=sha256(path)
-    for name,mode in (('centroid',3),('depth',4)):
-        write_sources(sources,name,False)
-        fragment=sources/(name+'.frag');geometry=sources/(name+'.geom')
-        if name=='centroid':
-            generated(geometry,geometry.read_text().replace('flat out uvec4 forwarded;', 'out vec4 forwarded;').replace('forwarded=values[0]^uvec4(sum);','forwarded=uintBitsToFloat(values[0]^uvec4(sum));'))
-            generated(fragment,fragment.read_text().replace('flat in uvec4 forwarded;', 'centroid in vec4 forwarded;').replace('color0=forwarded^', 'color0=floatBitsToUint(forwarded)^'))
-        else:generated(fragment,fragment.read_text().replace('color1=color0;', 'gl_FragDepth=0.5;color1=color0;'))
+    if not a.five_chain_only:
+        for name,mode in (('centroid',3),('depth',4)):
+            write_sources(sources,name,False)
+            fragment=sources/(name+'.frag');geometry=sources/(name+'.geom')
+            if name=='centroid':
+                generated(geometry,geometry.read_text().replace('flat out uvec4 forwarded;', 'out vec4 forwarded;').replace('forwarded=values[0]^uvec4(sum);','forwarded=uintBitsToFloat(values[0]^uvec4(sum));'))
+                generated(fragment,fragment.read_text().replace('flat in uvec4 forwarded;', 'centroid in vec4 forwarded;').replace('color0=forwarded^', 'color0=floatBitsToUint(forwarded)^'))
+            else:generated(fragment,fragment.read_text().replace('color1=color0;', 'gl_FragDepth=0.5;color1=color0;'))
+            for path in sources.iterdir():private[str(path)]=sha256(path)
+            for suffix in ('.ognsf','.vs.words','.tcs.words','.tes.words','.gs.words','.fs.words'):(out/(name+suffix)).unlink(missing_ok=True)
+            run([binary,*[sources/(name+'.'+s) for s in ('vert','tesc','tese','geom','frag')],out/name,mode],'actual-'+name)
+            for suffix in ('.ognsf','.vs.words','.tcs.words','.tes.words','.gs.words','.fs.words'):
+                path=out/(name+suffix);private[str(path)]=sha256(path)
+        write_sources(sources,'pixel-mask',False)
+        fragment=sources/'pixel-mask.frag'
+        generated(fragment,fragment.read_text().replace('color1=color0;', 'color0^=uvec4(uint(gl_HelperInvocation));gl_SampleMask[0]=gl_SampleMaskIn[0];color1=color0;'))
         for path in sources.iterdir():private[str(path)]=sha256(path)
-        for suffix in ('.ognsf','.vs.words','.tcs.words','.tes.words','.gs.words','.fs.words'):(out/(name+suffix)).unlink(missing_ok=True)
-        run([binary,*[sources/(name+'.'+s) for s in ('vert','tesc','tese','geom','frag')],out/name,mode],'actual-'+name)
+        run([binary,*[sources/('pixel-mask.'+s) for s in ('vert','tesc','tese','geom','frag')],out/'pixel-mask',2],'original-pixel-mask-rejected')
+        for suffix in ('.ognsf','.vs.words','.tcs.words','.tes.words','.gs.words','.fs.words'):(out/('pixel-mask-enabled'+suffix)).unlink(missing_ok=True)
+        run([binary,*[sources/('pixel-mask.'+s) for s in ('vert','tesc','tese','geom','frag')],out/'pixel-mask-enabled',5],'explicit-pixel-mask-ABI10')
         for suffix in ('.ognsf','.vs.words','.tcs.words','.tes.words','.gs.words','.fs.words'):
-            path=out/(name+suffix);private[str(path)]=sha256(path)
-    write_sources(sources,'pixel-mask',False)
-    fragment=sources/'pixel-mask.frag'
-    generated(fragment,fragment.read_text().replace('color1=color0;', 'color0^=uvec4(uint(gl_HelperInvocation));gl_SampleMask[0]=gl_SampleMaskIn[0];color1=color0;'))
-    for path in sources.iterdir():private[str(path)]=sha256(path)
-    run([binary,*[sources/('pixel-mask.'+s) for s in ('vert','tesc','tese','geom','frag')],out/'pixel-mask',2],'original-pixel-mask-rejected')
-    for suffix in ('.ognsf','.vs.words','.tcs.words','.tes.words','.gs.words','.fs.words'):(out/('pixel-mask-enabled'+suffix)).unlink(missing_ok=True)
-    run([binary,*[sources/('pixel-mask.'+s) for s in ('vert','tesc','tese','geom','frag')],out/'pixel-mask-enabled',5],'explicit-pixel-mask-ABI10')
-    for suffix in ('.ognsf','.vs.words','.tcs.words','.tes.words','.gs.words','.fs.words'):
-        path=out/('pixel-mask-enabled'+suffix);private[str(path)]=sha256(path)
+            path=out/('pixel-mask-enabled'+suffix);private[str(path)]=sha256(path)
     if a.negative_controls:
         controls=(
           ('gs-default-retention','userspace/gallium/opengpu_native_five_constants.c',
