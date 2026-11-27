@@ -174,7 +174,8 @@ class GpuCommandMmio(
     computeUniformAvailable: Boolean = false,
     computeTextureAvailable: Boolean = false,
     atomicCounterAvailable: Boolean = false,
-    jointTessellationCompletion: Boolean = false
+    jointTessellationCompletion: Boolean = false,
+    jointTessellationGeometryCompletion: Boolean = false
 ) extends Module {
   require(commandIdWidth > 0 && commandIdWidth <= 8)
   require(queueDepth > 0)
@@ -184,8 +185,10 @@ class GpuCommandMmio(
   require(!computeTextureAvailable || protectVmState, "compute texture commands retain protected VM ownership")
   require(!atomicCounterAvailable || protectVmState, "atomic counter commands retain protected VM ownership")
   require(!jointTessellationCompletion || (nativeCompletionInfo && protectVmState))
+  require(!jointTessellationGeometryCompletion || (nativeCompletionInfo && protectVmState))
   private val detailWords =
-    if (jointTessellationCompletion) TessellationJointHostProtocol.completionWords
+    if (jointTessellationGeometryCompletion) TessellationJointGeometryHostProtocol.completionWords
+    else if (jointTessellationCompletion) TessellationJointHostProtocol.completionWords
     else NativeBinnedCompletionInfo.wordCount
   private val shaderConfigWord =
     ShaderResourceConfig.encode(config.lanes, config.warps, shaderKernargBanks, shaderComputeUnits)
@@ -541,6 +544,7 @@ class GpuCommandMmio(
       (io.completion.fire && resetActive)
   ) {
     completionValid := false.B
+    completionDetails.foreach(_ := 0.U.asTypeOf(completionDetails.get))
   }
 
   io.vectorSatp := vectorSatp
@@ -670,7 +674,10 @@ class GpuCommandMmio(
     ) ++
       completionDetails.toSeq.flatMap(ws =>
         ws.zipWithIndex.map { case (word, index) =>
-          TessellationJointHostProtocol.completionAddress(index).U -> Mux(completionValid && !resetActive, word, 0.U)
+          val address =
+            if (jointTessellationGeometryCompletion) TessellationJointGeometryHostProtocol.completionAddress(index)
+            else TessellationJointHostProtocol.completionAddress(index)
+          address.U -> Mux(completionValid && !resetActive, word, 0.U)
         }
       ) ++
       imageWords.toSeq.flatMap(ws =>
@@ -707,9 +714,11 @@ class GpuCommandMmio(
     io.reg.req.bits.addr >= NativeBinnedCompletionInfo.base.U && io.reg.req.bits.addr < NativeBinnedCompletionInfo.end.U
   else false.B
   val jointDetailAddress =
-    if (jointTessellationCompletion)
+    if (jointTessellationCompletion || jointTessellationGeometryCompletion)
       io.reg.req.bits.addr >= TessellationJointHostProtocol.completionTailBase.U &&
-      io.reg.req.bits.addr < TessellationJointHostProtocol.completionTailEnd.U
+      io.reg.req.bits.addr < (if (jointTessellationGeometryCompletion)
+                                TessellationJointGeometryHostProtocol.completionTailEnd
+                              else TessellationJointHostProtocol.completionTailEnd).U
     else false.B
   io.reg.resp.bits.ok := ((io.reg.req.bits.addr >= GpuCommandMmioRegs.COMMAND_ID.U &&
     io.reg.req.bits.addr < GpuCommandMmioRegs.END.U &&
