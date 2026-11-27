@@ -76,6 +76,16 @@ class TessellationSystemTriangleJointGeometryVertexImage(
       tessellationInfoAvailable = true
     )
   )
+  private val rangeGate = Module(
+    new TessellationJointGeometryRangeInvalidationGate(
+      config,
+      new TessellationJointGeometryRangeExecution(
+        new TessellationTrianglePatchSequenceDescriptor(config, p, idWidth),
+        p,
+        idWidth
+      )
+    )
+  )
   private val image = Module(
     new TessellationSystemTriangleVertexInputImage(
       config,
@@ -138,22 +148,26 @@ class TessellationSystemTriangleJointGeometryVertexImage(
   owner.io.frameRetired.bits.nextBinSequence := geometryCompletion.bits.img.nextSequence
   owner.io.frameBusy := image.io.busy; owner.io.frameDrained := memory.io.drained
 
-  range.io.begin.valid := owner.io.range.valid; owner.io.range.ready := range.io.begin.ready
-  range.io.begin.bits.gnt := owner.io.range.bits.captured.base.gnt
-  range.io.begin.bits.capture := owner.io.range.bits.captured.base.capture
-  range.io.begin.bits.attachment := owner.io.range.bits.captured.attachment
-  range.io.cursor := owner.io.range.bits.cursor
+  rangeGate.io.request <> owner.io.range
+  rangeGate.io.cancel := owner.io.cancelRange
+  range.io.begin.valid := rangeGate.io.begin.valid
+  rangeGate.io.begin.ready := range.io.begin.ready
+  range.io.begin.bits.gnt := rangeGate.io.begin.bits.captured.base.gnt
+  range.io.begin.bits.capture := rangeGate.io.begin.bits.captured.base.capture
+  range.io.begin.bits.attachment := rangeGate.io.begin.bits.captured.attachment
+  range.io.cursor := rangeGate.io.begin.bits.cursor
   range.io.nextGsSequenceExclusive := geometryTaskCompletion.bits.source.nextGsSequenceExclusive
   image.io.task.valid := false.B; image.io.task.bits := 0.U.asTypeOf(image.io.task.bits)
   image.io.taskCompletion.ready := true.B; image.io.completion.ready := true.B
   range.io.task <> image.io.geometryTask.get
   range.io.taskCompletion <> geometryTaskCompletion
-  range.io.taskDrained := image.io.taskDrained; range.io.cancel := owner.io.cancelRange
+  range.io.taskDrained := image.io.taskDrained; range.io.cancel := rangeGate.io.cancelChild
   image.io.cancel := owner.io.cancelFrame || range.io.cancelChild
   owner.io.rangeRetired.valid := range.io.completion.valid; range.io.completion.ready := owner.io.rangeRetired.ready
   owner.io.rangeRetired.bits.result := range.io.completion.bits.result
   owner.io.rangeRetired.bits.geometry := range.io.completion.bits.geometry
-  owner.io.rangeBusy := range.io.busy; owner.io.rangeDrained := range.io.drained
+  owner.io.rangeBusy := range.io.busy || rangeGate.io.busy
+  owner.io.rangeDrained := range.io.drained && rangeGate.io.drained
 
   memory.io.inputRequest <> owner.io.memoryRequest; owner.io.memoryResponse <> memory.io.inputResponse
   memory.io.renderRequest <> image.io.memoryRequest; image.io.memoryResponse <> memory.io.renderResponse
@@ -167,14 +181,16 @@ class TessellationSystemTriangleJointGeometryVertexImage(
   io.walkActive := memory.io.walkActive
   io.shared <> image.io.shared; image.io.inspect <> io.inspect; io.reply <> image.io.reply
   io.primitiveDone <> image.io.primitiveDone; io.out <> image.io.out; io.tileDone <> image.io.tileDone
-  io.geometryInvalidate <> image.io.geometryInvalidate.get
-  io.geometryInvalidateDone <> image.io.geometryInvalidateDone.get
+  rangeGate.io.externalInvalidate <> io.geometryInvalidate
+  io.geometryInvalidateDone <> rangeGate.io.externalInvalidateDone
+  rangeGate.io.peerInvalidate <> image.io.geometryInvalidate.get
+  image.io.geometryInvalidateDone.get <> rangeGate.io.peerInvalidateDone
   if (externalImages) io.images.get <> image.io.images.get
   if (payload.nonEmpty) {
     io.payload.get <> image.io.payload.get; io.poolPayload.get := image.io.poolPayload.get
     io.payloadPins.get := image.io.payloadPins.get
   }
   io.fragmentEvents := image.io.fragmentEvents
-  io.busy := owner.io.busy || range.io.busy || image.io.busy
-  io.drained := owner.io.drained && range.io.drained && !image.io.busy && memory.io.drained
+  io.busy := owner.io.busy || range.io.busy || rangeGate.io.busy || image.io.busy
+  io.drained := owner.io.drained && range.io.drained && rangeGate.io.drained && !image.io.busy && memory.io.drained
 }

@@ -1,6 +1,7 @@
 package opengpu.system
 
 import java.nio.file.{Files, Paths}
+import chisel3.util.log2Ceil
 import opengpu.config.GpuConfig
 import opengpu.graphics._
 import opengpu.testutil.GraphicsTestResolution
@@ -370,5 +371,106 @@ class TessellationNativeHostElaborationSpec extends AnyFlatSpec {
       assert(found._1 && found._2 && (!tessellation || found._3))
     }
   }
-
+  it should "elaborate a geometry-only protected top with one shared owner and per-range invalidation gates" in {
+    val gpu = GpuConfig(lanes = 16, warps = 8, l2Sets = 8, l2Ways = 2)
+    val graphics = GraphicsConfig(
+      screenWidth = math.min(4, GraphicsTestResolution.width),
+      screenHeight = math.min(4, GraphicsTestResolution.height)
+    )
+    val payload = ShaderPayloadConfig(capacityBytes = 4096, maxPayloadBytes = 1024, owners = 2, ports = 4)
+    val native = NativeBinnedGraphicsConfig(
+      engines = 1,
+      pageBytes = 128,
+      writeCredits = 2,
+      tileSlots = 1,
+      pagedCapacity = 8,
+      preflightDescriptors = true,
+      transformFeedback = true,
+      payload = Some(payload)
+    )
+    val both = intercept[IllegalArgumentException] {
+      circt.stage.ChiselStage.emitCHIRRTL(
+        new GpuHostSystemAxi(
+          graphics,
+          gpu,
+          numComputeUnits = 2,
+          fragCore = true,
+          sharedGraphics = true,
+          parallelGraphics = true,
+          memoryAxiDataBytes = 32,
+          instructionCacheSets = 4,
+          instructionCacheWays = 1,
+          vectorCacheSets = 4,
+          vectorCacheWays = 1,
+          nativeBinnedGraphics = Some(native),
+          tessellationNative = true,
+          tessellationUniforms = true,
+          nativeProtectedSources = true,
+          jointTessellationNative = true,
+          jointTessellationGeometryNative = true
+        )
+      )
+    }
+    assert(both.getMessage.contains("mutually exclusive"))
+    val circuit = circt.stage.ChiselStage.elaborate(
+      new GpuHostSystemAxi(
+        graphics,
+        gpu,
+        numComputeUnits = 2,
+        transactionsPerCu = 16,
+        fragCore = true,
+        sharedGraphics = true,
+        parallelGraphics = true,
+        memoryAxiDataBytes = 32,
+        instructionCacheSets = 4,
+        instructionCacheWays = 1,
+        vectorCacheSets = 4,
+        vectorCacheWays = 1,
+        nativeBinnedGraphics = Some(native),
+        tessellationNative = true,
+        tessellationUniforms = true,
+        nativeProtectedSources = true,
+        jointTessellationGeometryNative = true
+      )
+    )
+    val chirrtl = circuit.lazilySerialize.iterator.flatMap(_.linesIterator).mkString("\n")
+    val modules = chirrtl.linesIterator
+      .map(_.trim)
+      .filter(_.startsWith("inst "))
+      .map(_.split("\\s+")(3).replaceFirst("_[0-9]+$", ""))
+      .toVector
+    assert(modules.count(_ == "TessellationJointThreeDomainGeometryJobImage") == 1)
+    assert(modules.count(_ == "TessellationJointGeometryRangeInvalidationGate") == 3)
+    assert(modules.count(_ == "TessellationImageBankOwner") == 1)
+    assert(modules.count(_ == "TessellationImageBankMux") == 1)
+    assert(modules.count(_ == "TessellationHostShaderRouter") == 1)
+    assert(modules.count(_ == "NativeTransformFeedbackControl") == 1)
+    assert(modules.contains("TransformFeedbackExport"))
+    for (
+      name <- Seq(
+        "TessellationJointThreeDomainJobImage",
+        "TessellationNativeThreeDomainJobImage",
+        "TessellationFeedbackAdmission",
+        "TessellationThreeDomainFeedbackBridge",
+        "TransformFeedbackOwnerTransfer"
+      )
+    ) assert(!modules.contains(name), s"unexpected ordinary or feedback module $name")
+    val geometryTransactions = TessellationJointThreeDomainGeometryJobImage.transactions(1, 2, 8, true)
+    val geometryPins = TessellationJointThreeDomainGeometryJobImage.payloadPins(1)
+    val geometryStart = chirrtl.indexOf("module TessellationJointThreeDomainGeometryJobImage :")
+    val geometryEnd = chirrtl.indexOf("\nmodule ", geometryStart + 1)
+    val geometryBody =
+      if (geometryEnd < 0) chirrtl.substring(geometryStart) else chirrtl.substring(geometryStart, geometryEnd)
+    assert(geometryStart >= 0)
+    assert(geometryBody.contains(s"}}[$geometryPins], memoryRequest"))
+    assert(geometryBody.contains(s"transactionId : UInt<${log2Ceil(geometryTransactions)}>"))
+    assert(
+      (ComputeResourceCapabilities.words(
+        opengpu.config.ComputeResourceProfile(gpu, 2, 32),
+        nativeProtectedSourcesAvailable = true,
+        nativeDescriptorPreflightAvailable = true,
+        jointTessellationGeometryAvailable = true
+      )(2) & ComputeResourceCapabilities.jointTessellationGeometry) != 0
+    )
+  }
 }

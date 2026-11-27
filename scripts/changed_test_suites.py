@@ -829,6 +829,20 @@ def changed_suites(root, changed, *, test_index=None):
     }
     if changed & geometry_host_abi_paths:
         affected.add("src/test/scala/opengpu/graphics/TessellationJointGeometryHostProtocolSpec.scala")
+    geometry_transport_sources = {
+        "src/main/scala/opengpu/graphics/host/TileBinHostCommandPort.scala",
+        "src/main/scala/opengpu/graphics/host/GpuCommandMmio.scala",
+        "src/main/scala/opengpu/system/GpuHostAxi.scala",
+        "src/main/scala/opengpu/system/top/GpuHostSystemAxi.scala",
+    }
+    if changed & geometry_transport_sources:
+        affected.update({
+            "src/test/scala/opengpu/graphics/TileBinHostCommandPortSpec.scala",
+            "src/test/scala/opengpu/graphics/GpuCommandMmioSpec.scala",
+            "src/test/scala/opengpu/system/TessellationHostAxiCommandSpec.scala",
+            "src/test/scala/opengpu/system/TessellationJointThreeDomainGeometrySpec.scala",
+            "src/test/scala/opengpu/system/TessellationJointGeometryRangeInvalidationGateSpec.scala",
+        })
     geometry_control_sources = {
         "src/main/scala/opengpu/system/tessellation/TessellationGeometryPipelineControl.scala",
         "src/main/scala/opengpu/system/tessellation/TessellationGeometryPrimitivePipeline.scala",
@@ -1126,6 +1140,8 @@ def changed_suites(root, changed, *, test_index=None):
                   "driver/opengpu_compute_resource_abi.h", "docs/abi/compute-resource-v1.json"}:
         for suite in ("ShaderImageCommandAbiSpec", "StorageCommandAbiSpec", "ComputeUniformCommandAbiSpec"):
             affected.add(f"src/test/scala/opengpu/graphics/{suite}.scala")
+        if "src/main/scala/opengpu/system/ComputeResourceCapabilities.scala" in changed:
+            affected.add("src/test/scala/opengpu/system/ComputeResourceCapabilitiesAxiSpec.scala")
     if changed & {"src/main/scala/opengpu/system/OwnerResourceProfile.scala",
                   "src/test/scala/opengpu/system/PrepareOwnerResourceHost.scala",
                   "src/main/scala/opengpu/system/native/NativeOwnerHostProfile.scala",
