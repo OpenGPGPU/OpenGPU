@@ -81,6 +81,7 @@ local_only = {line.strip() for line in (root / "scripts/ci_local_only_suites.txt
 assert local_only <= all_specs
 assert "opengpu.graphics.NativeFourEngineDefaultHostAxiSpec" in local_only
 geometry_ci_suites = {
+    "opengpu.graphics.TessellationJointGeometryHostProtocolSpec",
     "opengpu.graphics.TessellationGeometryRawBridgeSpec",
     "opengpu.system.TessellationGeometryPipelineControlSpec",
     "opengpu.system.TessellationGeometryPatchDispatchSpec",
@@ -147,6 +148,7 @@ assert set(assigned) == all_specs - ci_skip, (
     sorted(set(assigned) - (all_specs - ci_skip)),
 )
 assert ci_skip.isdisjoint(assigned)
+assert assigned["opengpu.graphics.TessellationJointGeometryHostProtocolSpec"].startswith("graphics-")
 assert assigned["opengpu.system.TileBinHostMemoryFabricJointClearSpec"] == "system-mem"
 assert "opengpu.system.TessellationJointEmptyFrameSpec" in local_only
 assert "opengpu.system.TessellationGeometryParentElaborationSpec" in local_only

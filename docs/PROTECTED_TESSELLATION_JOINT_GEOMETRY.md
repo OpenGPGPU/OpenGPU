@@ -5,6 +5,15 @@ geometry attachments. GNQ1–6, GNT7–9 and GVM2 retain their existing formats 
 validators. The [word contract](abi/protected-tessellation-joint-geometry-v1.json)
 is explicit little-endian data; Scala Bundle packing is not a wire ABI.
 
+The schema now also freezes the independent private host command, GNZ3
+completion and GJP2 internal profile probe. The command uses tag `0x474a0200`;
+GNZ3 has 46 words and retains the GNZ2 prefix addresses; GJP2 uses
+`0x474a5002` at `0x600–0x60c`. The codec, exact wide-field validation, address
+map and test results are recorded in
+[the geometry host ABI section](GEOMETRY.md#private-geometry-host-abi-codec).
+No production host, driver or public discovery route is enabled by this
+contract.
+
 The root retains the original sequence/frame/directory structure and adds an
 exact GGA1 table. Its 64-byte header binds count and context/pass/generation.
 Each 1,024-byte entry binds sequence index, state handle, domain, GS command ID,
@@ -59,8 +68,12 @@ and does not claim original-shader CU/frame execution or product acceptance.
 
 ## Validation
 
-- The generated ABI/schema suite passes all 9 tests, including exact header
+- The generated ABI/schema suite passes all 10 tests, including exact header
   regeneration and fail-closed schema mutations.
+- JDK21 production/test compilation passes. The private geometry host protocol
+  spec passes 9/9, and the focused new/legacy host and GNQ4/5/6 ABI regression
+  set passes 19/19. The changed-suite selector passes 181 tests plus both
+  integration/large-PR catalogs; `bash -n` and `git diff --check` pass.
 - The Clang ASan/UBSan owner/MMU runner passes the existing joint suite and all
   three geometry domains. It compiles 28 translation units, checks 126 distinct
   dependencies and 397 consumed inputs, and rejects all 16 existing plus 9 new
@@ -78,7 +91,10 @@ and does not claim original-shader CU/frame execution or product acceptance.
 ## Limits
 
 This delivery does not enable discovery, a getter, ioctl, queue, host submission,
-transform feedback or an execution route. It does not close P17, P39 or P40 and
+transform feedback or an execution route. The private command/completion/profile
+codec is not connected to `TileBinHostCommandPort`, `GpuCommandMmio`, `GpuHostAxi`,
+`GpuHostSystemAxi`, driver C execution, scheduler/IRQ or public discovery.
+It does not close P17, P39 or P40 and
 does not replace their actual CU/frame, range/image ownership or product checks.
 No Scala/RTL, actual CU, frame, image, fault/drain or product-FPS result is
 claimed by these CPU and Kbuild checks. The later #961/#962 direct typed-isoline
@@ -88,6 +104,12 @@ product limits described above.
 ## Reproduction
 
 ```sh
+export JAVA_HOME=/opt/homebrew/opt/openjdk@21
+export JAVA_OPTS='-Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8'
+export JVM_OPTS="$JAVA_OPTS"
+sbt -batch -Dopengpu.productQualification=0 -Dopengpu.simJobs=2 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.TessellationJointGeometryHostProtocolSpec opengpu.system.TessellationHostAxiCommandSpec opengpu.graphics.TileBinHostCommandPortSpec opengpu.graphics.tessellation.TessellationHostCommandPortSpec opengpu.system.TessellationJointJobAbiSpec'
 sbt -batch 'testOnly opengpu.system.TessellationJointThreeDomainGeometrySpec'
 sbt -batch 'testOnly opengpu.system.TessellationJointEmptyFrameSpec -- -z "GNQ7 GNQ8 GNQ9"'
 python3 -B scripts/generate_protected_tessellation_joint_geometry_abi.py --check

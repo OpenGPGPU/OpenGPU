@@ -31,6 +31,20 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertTrue({"opengpu.system.TessellationGeometryPipelineControlSpec",
                                  "opengpu.system.TessellationGeometryPatchDispatchSpec"} <= selected)
 
+    def test_geometry_host_abi_selects_protocol_spec(self):
+        paths = (
+            "src/main/scala/opengpu/graphics/host/TessellationJointGeometryHostProtocol.scala",
+            "src/test/scala/opengpu/graphics/TessellationJointGeometryHostProtocolSpec.scala",
+            "docs/abi/protected-tessellation-joint-geometry-v1.json",
+            "driver/opengpu_protected_tessellation_joint_geometry_abi.h",
+            "scripts/generate_protected_tessellation_joint_geometry_abi.py",
+            "scripts/test_protected_tessellation_joint_abi.py",
+        )
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertIn("opengpu.graphics.TessellationJointGeometryHostProtocolSpec",
+                              set(changed_suites(REPO_ROOT, [path])))
+
     def test_geometry_range_sources_select_controller_cursor_and_adapter_checks(self):
         paths = [
             "system/tessellation/TessellationJointGeometryJobLayout",

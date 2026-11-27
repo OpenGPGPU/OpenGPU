@@ -91,6 +91,13 @@
    已用命名参数修正。尚未接 protected host/driver/public discovery/submission/TF/
    ABI10，也未执行三域原 shader 的实际 CU/frame 或产品验收；不增加 15/40 闭环计数。
    [结果、限制与复现](TESSELLATION_JOINT_NATIVE_PARENT.md#shared-gnq789-geometry-owner)。
+- P39/P40 的独立 private geometry host ABI/codec 已定义 command tag
+  `0x474a0200`、46 词 GNZ3 completion 和四词 GJP2 internal probe；旧 GNQ4/5/6、
+  GJP1/GNZ2 常量和地址不变。JDK21 编译、新 protocol 9/9、新/旧 host 与 GNQ ABI
+  回归 19/19、Python ABI 10 项、selector 181 项及两套 catalog 通过。该 codec 未接入
+  `TileBinHostCommandPort`、MMIO/AXI、driver C、scheduler/IRQ、DRM/userspace/public
+  ioctl、TF 或 ABI10，也不增加 driver feature/GET_PARAM/public discovery；不执行 CU/frame，
+  不增加 15/40 闭环计数。[合同、限制与复现](GEOMETRY.md#private-geometry-host-abi-codec)。
 - P16 原 draw catalog/invocation range 捕获、内部语言程序 v3、程序快照
   权限边界与 FS8/9 私有程序验证的六个逻辑提交已通过 #825 合入。
   [交付范围、结果与限制](P16_INVOCATION_SOURCE_DELIVERY.md)：准确交付源完整 host
@@ -260,7 +267,7 @@ GPU 的正式交付入口是受保护的 [`main`](https://github.com/OpenGPGPU/O
 
 | 仓库 / 分支 | 用途与交付方式 |
 |---|---|
-| GPU `main` | 已通过受保护 CI 并合入的正式源码，最近基线为 #973（`25c2ccc5db0d62b74d5eb53e0111adbfe9ce1711`）；无 TF 原五阶段 harness 的真实 Mesa 与 retained Verilator 两例实际 CU/frame replay 已通过，thin GNQ7/8/9 geometry parent 已合入。P15/P16/P17/P39/P40 部分源码与限定资格已合入，完整目标验收待完成。 |
+| GPU `main` | 已通过受保护 CI 并合入的正式源码，最近基线为 #974（`ce9fb991a64b2d37697447a76f00f3ac9d3f29fd`）；无 TF 原五阶段 harness 的真实 Mesa 与 retained Verilator 两例实际 CU/frame replay 已通过，thin GNQ7/8/9 geometry parent 与共享三域 geometry owner 已合入。P15/P16/P17/P39/P40 部分源码与限定资格已合入，完整目标验收待完成。 |
 | GPU #828 已合入 | 联合 BUILD 与 GNQ/GVM 元数据捕获；准确 head1dba3adbd/merge346d96cfd，正常CI八job成功，临时交付树/分支已清理；完整P16仍待验收 |
 | GPU #829 已合入 | [PR #829](https://github.com/OpenGPGPU/OpenGPU/pull/829) 整合 linked TCS 间接输出存储和同一原四阶段/52引用到 joint BUILD 的源码与独立检查；已通过受保护 CI 并 rebase 合入正式 main |
 | GPU `codex/native-sample-dut-bridge` | 保留 P02/P03 的原开发源码，按本清单分批交付；不另外开放并行 PR |

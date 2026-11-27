@@ -140,6 +140,9 @@
     "legacyTailBase": "0x540",
     "geometryBase": "0x560",
     "geometryWords": 30,
+    "geometryEnd": "0x5d8",
+    "reservedBase": "0x5d8",
+    "reservedWords": 4,
     "end": "0x5e8",
     "packedFields": [
       {
@@ -284,7 +287,8 @@
       "status zero requires faultStage and faultAddress zero",
       "faultStage zero forces faultAddress zero; nonzero faultStage requires nonzero status",
       "identity and status must match the unified completion",
-      "2^64 is a legal nextGsSequenceExclusive value"
+      "2^64 is a legal nextGsSequenceExclusive value",
+      "0x5d8..0x5e7 is readable zero padding outside the 46 GNZ3 words"
     ]
   },
   "profile": {
