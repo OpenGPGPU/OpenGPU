@@ -826,7 +826,31 @@ def changed_suites(root, changed, *, test_index=None):
         "src/main/scala/opengpu/system/native/NativeGeometryPrimitivePipeline.scala",
     }
     if changed & geometry_control_sources:
-        affected.add("src/test/scala/opengpu/system/TessellationGeometryPipelineControlSpec.scala")
+        affected.update({
+            "src/test/scala/opengpu/system/TessellationGeometryPipelineControlSpec.scala",
+            "src/test/scala/opengpu/system/NativeGeometryPrimitivePipelineSpec.scala",
+        })
+    geometry_range_sources = {
+        "src/main/scala/opengpu/system/tessellation/TessellationJointGeometryJobLayout.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationJointGeometryJobCaptureReader.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationJointGeometryAttachmentReader.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationJointFrameCaptureReader.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationJointDirectoryCaptureReader.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationJointRangeCaptureController.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationJointGeometryRangeTypes.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationJointGeometryRangeCaptureController.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationJointGeometryNativeController.scala",
+        "src/main/scala/opengpu/system/tessellation/TessellationGeometryVertexRangeControl.scala",
+    } | {
+        f"src/main/scala/opengpu/system/tessellation/TessellationSystem{domain}GeometryVertexTypedRange.scala"
+        for domain in ("Isoline", "Triangle", "Quad")
+    }
+    if changed & geometry_range_sources:
+        affected.update({
+            "src/test/scala/opengpu/system/TessellationJointGeometryNativeControllerSpec.scala",
+            "src/test/scala/opengpu/system/TessellationGeometryVertexRangeControlSpec.scala",
+            "src/test/scala/opengpu/system/TessellationGeometryVertexTypedRangeTagSpec.scala",
+        })
     geometry_image_sources = {
         "src/main/scala/opengpu/system/tessellation/TessellationGeometryBinPass.scala",
         "src/main/scala/opengpu/system/tessellation/TessellationGeometryImageBinSource.scala",
