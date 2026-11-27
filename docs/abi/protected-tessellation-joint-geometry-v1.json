@@ -284,6 +284,7 @@
       "nextGsSequence equals the low 64 bits of nextGsSequenceExclusive",
       "received equals admitted plus dropped without truncation",
       "geometryReportValid false forces words16..45 to zero",
+      "status zero requires geometryReportValid true",
       "status zero requires faultStage and faultAddress zero",
       "faultStage zero forces faultAddress zero; nonzero faultStage requires nonzero status",
       "identity and status must match the unified completion",

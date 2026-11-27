@@ -258,6 +258,22 @@ class TessellationJointGeometryHostProtocolSpec extends AnyFlatSpec {
     val report = completion()
     val words = protocol.pack(report)
     assert(protocol.completionDetails(words).get == report)
+    val zeroGeometry = completion(
+      actualGsPublished = 0,
+      received = 0,
+      dropped = 0,
+      admitted = 0,
+      geometryTasks = 0,
+      nextGsSequenceExclusive = 0,
+      nextGsSequence = 0,
+      nextBinSequence = 0
+    )
+    val successWords = protocol.pack(zeroGeometry)
+    assert(protocol.completionDetails(successWords).get == zeroGeometry)
+    intercept[IllegalArgumentException] {
+      protocol.pack(zeroGeometry.copy(geometryReportValid = false))
+    }
+    rejected(successWords.updated(1, successWords(1) & ~BigInt(128)))
     intercept[IllegalArgumentException] {
       protocol.validateCompletion(report, identity.copy(context = identity.context + 1), 0)
     }
