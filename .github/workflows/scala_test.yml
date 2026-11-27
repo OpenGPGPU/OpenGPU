@@ -19,9 +19,12 @@ jobs:
     name: Scala source autofix
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      JVM_OPTS: -Xms256M -Xmx4G -Xss4M -Dfile.encoding=UTF-8
     outputs:
       changed: ${{ steps.fix.outputs.changed }}
       can_push: ${{ steps.select.outputs.can_push }}
+      format_replay_base: ${{ steps.replay.outputs.base }}
     steps:
     - uses: actions/checkout@v4
       with:
@@ -75,6 +78,17 @@ jobs:
         path: ${{ runner.temp }}/scala-autofix.patch
         if-no-files-found: error
         retention-days: 3
+    - name: Verify bulk Scala formatting
+      if: steps.fix.outputs.changed == 'false' && steps.select.outputs.has_files == 'true'
+      id: replay
+      env:
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      run: |
+        base=$(git merge-base "$BASE_SHA" HEAD)
+        if bash scripts/check_scala_format_replay.sh "$base"; then
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo 'Scalafmt reproduced the bulk Scala diff byte for byte from the PR base.' >> "$GITHUB_STEP_SUMMARY"
+        fi
 
   autofix:
     name: Commit Scala autofixes
@@ -154,12 +168,20 @@ jobs:
         PATH="$PWD/.artifacts/host-tests-venv/bin:$PATH" bash scripts/test_scripts.sh
     - name: Select PR unit regressions
       id: select
+      env:
+        FORMAT_REPLAY_BASE: ${{ needs.style.outputs.format_replay_base }}
       run: |
         BASE=$(git merge-base origin/main HEAD)
         mapfile -t CHANGED < <(git diff --name-only "$BASE" HEAD)
         # Exact renames (R100) keep package/compile selection via CHANGED, but must
         # not each expand into a Spec job or layout moves blow the 256-job budget.
-        mapfile -t SUITE_CHANGED < <(git diff -M100% --name-status "$BASE" HEAD | awk '$1 !~ /^R100/ { print $NF }')
+        SUITE_PATHS=()
+        if [ "$FORMAT_REPLAY_BASE" = "$BASE" ]; then
+          # Keep compile and baseline test selection for the complete diff.
+          # The replay proved that each of these source edits is formatting.
+          SUITE_PATHS=(':(exclude,glob)src/main/scala/**/*.scala' ':(exclude,glob)src/test/scala/**/*.scala')
+        fi
+        mapfile -t SUITE_CHANGED < <(git diff -M100% --name-status "$BASE" HEAD -- "${SUITE_PATHS[@]}" | awk '$1 !~ /^R100/ { print $NF }')
         SELECTED=$(bash scripts/select_tests.sh "${CHANGED[@]}")
         SUITES=$(bash scripts/ci_shard_tests.sh pr-suites "$SELECTED")
         echo "selected=$SELECTED" >> "$GITHUB_OUTPUT"

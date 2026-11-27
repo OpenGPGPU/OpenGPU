@@ -18,6 +18,13 @@ Compile / scalacOptions ++= Seq("-language:reflectiveCalls", "-Ymacro-annotation
 Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oD")
 
 lazy val scalaAutofixFiles = taskKey[Option[Seq[File]]]("Files selected by scripts/scala_autofix.sh")
+lazy val scalaFormatReplayConfig = taskKey[Unit]("Verify and prepare the config for a formatting replay")
+
+scalaFormatReplayConfig := ScalaFormatReplay.prepareConfig(
+  file(sys.env("SCALA_FORMAT_BASE_CONFIG")),
+  scalafmtConfig.value,
+  file(sys.env("SCALA_FORMAT_REPLAY_CONFIG"))
+)
 
 scalaAutofixFiles := {
   val root = baseDirectory.value
