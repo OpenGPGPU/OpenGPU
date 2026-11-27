@@ -164,14 +164,26 @@ class TessellationGeometryViewportPipeline(
     numComputeUnits: Int,
     domain: Int,
     viewport: Fp32ViewportConfig = Fp32ViewportConfig(),
-    useSramBlackBoxes: Boolean = false
+    useSramBlackBoxes: Boolean = false,
+    exclusiveGsSequence: Boolean = false
 ) extends Module {
+  def this(
+      config: GpuConfig,
+      p: VertexShaderStageConfig,
+      w: Int,
+      numComputeUnits: Int,
+      domain: Int,
+      viewport: Fp32ViewportConfig,
+      useSramBlackBoxes: Boolean
+  ) =
+    this(config, p, w, numComputeUnits, domain, viewport, useSramBlackBoxes, false)
   require(domain >= 0 && domain <= 2)
   val io = IO(new Bundle {
     val task = Flipped(Decoupled(new TessellationGeometryViewportTask(p, w)))
     val out = Decoupled(new GeometryWindowPrimitive(p))
     val outProvenance = Valid(new TessellationGeometryViewportProvenance(w))
     val completion = Decoupled(new TessellationGeometryViewportCompletion(w))
+    val nextSequenceExclusive = if (exclusiveGsSequence) Some(Output(UInt(65.W))) else None
     val shared = Flipped(new SharedCuGraphicsPort(config, w, numComputeUnits, geometryAvailable = true))
     val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, 1))
     val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, 1)))
@@ -181,7 +193,9 @@ class TessellationGeometryViewportPipeline(
     val busy = Output(Bool()); val drained = Output(Bool())
   })
   private val owner = Module(new TessellationGeometryViewportControl(p, w))
-  private val source = Module(new TessellationGeometryPrimitivePipeline(config, p, w, numComputeUnits, domain))
+  private val source = Module(
+    new TessellationGeometryPrimitivePipeline(config, p, w, numComputeUnits, domain, exclusiveGsSequence)
+  )
   private val clip = Module(new PrimitiveClipStage(p, useSramBlackBoxes))
   private val prep = Module(new Fp32ViewportStage(p, viewport))
   private val counts = Reg(new TessellationGeometryViewportCounts)
@@ -189,6 +203,7 @@ class TessellationGeometryViewportPipeline(
   private val prepGeometry = Reg(new WindowPrimitiveGeometryMetadata)
   owner.io.task <> io.task; io.completion <> owner.io.completion
   source.io.task <> owner.io.sourceTask; owner.io.sourceCompletion <> source.io.completion
+  if (exclusiveGsSequence) io.nextSequenceExclusive.get := source.io.nextSequenceExclusive.get
   source.io.cancel := owner.io.sourceCancel; owner.io.sourceDrained := source.io.drained
   source.io.ownerTransportDrained := io.ownerTransportDrained
   io.shared <> source.io.shared; io.memoryRequest <> source.io.memoryRequest

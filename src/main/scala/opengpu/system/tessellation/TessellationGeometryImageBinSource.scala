@@ -56,7 +56,8 @@ object TessellationGeometryVertexInputTuple {
 class TessellationGeometryImageResult[F <: Data](frameType: F) extends Bundle {
   val image = frameType.cloneType
   val actualGsPublished = UInt(158.W); val received = UInt(161.W); val dropped = UInt(161.W)
-  val admitted = UInt(97.W); val tasks = UInt(64.W); val nextGsSequence = UInt(64.W); val nextSequence = UInt(33.W)
+  val admitted = UInt(97.W); val tasks = UInt(64.W); val nextGsSequence = UInt(64.W)
+  val nextGsSequenceExclusive = UInt(65.W); val nextSequence = UInt(33.W)
 }
 
 /** One actual source, selected at construction. The old task/report retain their meaning; a GS task/report has a
