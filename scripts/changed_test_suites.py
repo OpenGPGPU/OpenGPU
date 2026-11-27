@@ -861,18 +861,22 @@ def changed_suites(root, changed, *, test_index=None):
         f"src/main/scala/opengpu/system/tessellation/TessellationSystem{domain}JointGeometryVertexImage.scala"
         for domain in ("Isoline", "Triangle", "Quad")
     }
-    if changed & geometry_parent_sources:
-        affected.update({
-            "src/test/scala/opengpu/system/TessellationJointGeometryParentSpec.scala",
+    geometry_parent_tests = {
+        f"src/test/scala/opengpu/system/TessellationJoint{domain}GeometryParentSpec.scala"
+        for domain in ("Isoline", "Triangle", "Quad")
+    }
+    if changed & (geometry_parent_sources | {
+        "src/test/scala/opengpu/system/TessellationJointGeometryParentSupport.scala",
+    }):
+        affected.update(geometry_parent_tests | {
             "src/test/scala/opengpu/system/TessellationJointGeometryNativeControllerSpec.scala",
             "src/test/scala/opengpu/system/TessellationGeometryVertexTypedRangeTagSpec.scala",
             "src/test/scala/opengpu/system/TessellationInputMemoryFabricSpec.scala",
             "src/test/scala/opengpu/graphics/TypedReplayEmptyStateSpec.scala",
         })
     if "src/main/scala/opengpu/system/tessellation/TessellationJointThreeDomainGeometryJobImage.scala" in changed:
-        affected.update({
+        affected.update(geometry_parent_tests | {
             "src/test/scala/opengpu/system/TessellationJointThreeDomainGeometrySpec.scala",
-            "src/test/scala/opengpu/system/TessellationJointGeometryParentSpec.scala",
             "src/test/scala/opengpu/system/TessellationJointGeometryNativeControllerSpec.scala",
             "src/test/scala/opengpu/system/TessellationJointEmptyFrameSpec.scala",
             "src/test/scala/opengpu/system/TessellationImageBankSpec.scala",

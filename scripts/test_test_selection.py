@@ -85,7 +85,9 @@ geometry_ci_suites = {
     "opengpu.system.TessellationGeometryPipelineControlSpec",
     "opengpu.system.TessellationGeometryPatchDispatchSpec",
     "opengpu.system.TessellationJointGeometryNativeControllerSpec",
-    "opengpu.system.TessellationJointGeometryParentSpec",
+    "opengpu.system.TessellationJointIsolineGeometryParentSpec",
+    "opengpu.system.TessellationJointTriangleGeometryParentSpec",
+    "opengpu.system.TessellationJointQuadGeometryParentSpec",
     "opengpu.system.TessellationJointThreeDomainGeometrySpec",
     "opengpu.system.TessellationGeometryVertexRangeControlSpec",
     "opengpu.system.TessellationGeometryVertexTypedRangeTagSpec",
@@ -98,6 +100,7 @@ geometry_ci_suites = {
     "opengpu.testutil.GpuSimInlineVerificationSpec",
 }
 assert geometry_ci_suites <= all_specs
+assert "opengpu.system.TessellationJointGeometryParentSpec" not in all_specs
 assert geometry_ci_suites.isdisjoint(local_only)
 assert "opengpu.graphics.SharedShaderTaskRouterSpec" in local_only
 assert "opengpu.graphics.tessellation.TessellationSampleImageSharedSystemSpec" in local_only
@@ -206,7 +209,9 @@ assert assigned["opengpu.system.GeometryPrimitivePipelineSpec"] == "system-core"
 assert assigned["opengpu.system.TessellationGeometryPipelineControlSpec"] == "system-core"
 assert assigned["opengpu.system.TessellationGeometryPatchDispatchSpec"] == "system-core"
 assert assigned["opengpu.system.TessellationJointGeometryNativeControllerSpec"] == "system-core"
-assert assigned["opengpu.system.TessellationJointGeometryParentSpec"] == "system-core"
+for name in ("TessellationJointIsolineGeometryParentSpec", "TessellationJointTriangleGeometryParentSpec",
+             "TessellationJointQuadGeometryParentSpec"):
+    assert assigned["opengpu.system." + name] == "system-core"
 assert assigned["opengpu.system.TessellationJointThreeDomainGeometrySpec"] == "system-core"
 assert assigned["opengpu.system.TessellationGeometryVertexRangeControlSpec"] == "system-core"
 assert assigned["opengpu.system.TessellationGeometryVertexTypedRangeTagSpec"] == "system-core"

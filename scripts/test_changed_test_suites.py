@@ -69,7 +69,9 @@ class ChangedTestSuitesTest(unittest.TestCase):
         paths += [f"system/tessellation/TessellationSystem{domain}JointGeometryVertexImage"
                   for domain in ("Isoline", "Triangle", "Quad")]
         expected = {
-            "opengpu.system.TessellationJointGeometryParentSpec",
+            "opengpu.system.TessellationJointIsolineGeometryParentSpec",
+            "opengpu.system.TessellationJointTriangleGeometryParentSpec",
+            "opengpu.system.TessellationJointQuadGeometryParentSpec",
             "opengpu.system.TessellationJointGeometryNativeControllerSpec",
             "opengpu.system.TessellationGeometryVertexTypedRangeTagSpec",
             "opengpu.system.TessellationInputMemoryFabricSpec",
@@ -87,13 +89,25 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertTrue(expected <= selected, selected)
                 self.assertNotIn("opengpu.system.TessellationGeometryParentElaborationSpec", selected)
 
+    def test_geometry_parent_support_selects_each_bounded_domain_suite(self):
+        selected = set(changed_suites(REPO_ROOT, [
+            "src/test/scala/opengpu/system/TessellationJointGeometryParentSupport.scala",
+        ]))
+        self.assertTrue({
+            "opengpu.system.TessellationJointIsolineGeometryParentSpec",
+            "opengpu.system.TessellationJointTriangleGeometryParentSpec",
+            "opengpu.system.TessellationJointQuadGeometryParentSpec",
+        } <= selected, selected)
+
     def test_geometry_shared_owner_selects_composed_and_physical_resource_checks(self):
         selected = set(changed_suites(REPO_ROOT, [
             "src/main/scala/opengpu/system/tessellation/TessellationJointThreeDomainGeometryJobImage.scala",
         ]))
         self.assertTrue({
             "opengpu.system.TessellationJointThreeDomainGeometrySpec",
-            "opengpu.system.TessellationJointGeometryParentSpec",
+            "opengpu.system.TessellationJointIsolineGeometryParentSpec",
+            "opengpu.system.TessellationJointTriangleGeometryParentSpec",
+            "opengpu.system.TessellationJointQuadGeometryParentSpec",
             "opengpu.system.TessellationJointGeometryNativeControllerSpec",
             "opengpu.system.TessellationImageBankOwnerSpec",
             "opengpu.system.TessellationImageBankMuxSpec",

@@ -7,22 +7,22 @@ import opengpu.testutil.GpuSim._
 import opengpu.testutil.GraphicsTestResolution
 import org.scalatest.flatspec.AnyFlatSpec
 
-class TessellationJointGeometryParentSpec extends AnyFlatSpec {
+abstract class TessellationJointGeometryParentChecks extends AnyFlatSpec {
   import TessellationJointReaderTestSupport._
 
-  private val config = GpuConfig(lanes = 16, warps = 8)
-  private val p = VertexShaderStageConfig()
-  private val f = FragmentShaderConfig()
-  private val shared = SharedCuShaderConfig(2)
-  private val graphics = GraphicsConfig(
+  protected val config = GpuConfig(lanes = 16, warps = 8)
+  protected val p = VertexShaderStageConfig()
+  protected val f = FragmentShaderConfig()
+  protected val shared = SharedCuShaderConfig(2)
+  protected val graphics = GraphicsConfig(
     screenWidth = math.min(4, GraphicsTestResolution.width),
     screenHeight = math.min(4, GraphicsTestResolution.height)
   )
-  private val engines = 1
-  private val writeCredits = 26
-  private val pagedCapacity = 8
+  protected val engines = 1
+  protected val writeCredits = 26
+  protected val pagedCapacity = 8
 
-  private def ordinaryTransactions(domain: Int): Int = {
+  protected def ordinaryTransactions(domain: Int): Int = {
     val renderIds = domain match {
       case 0 =>
         TessellationSystemIsolineImagePipeline.memoryTransactions(
@@ -52,7 +52,7 @@ class TessellationJointGeometryParentSpec extends AnyFlatSpec {
     TessellationInputMemoryFabric.transactions(renderIds)
   }
 
-  private def checkClosed(d: Module, io: TessellationJointGeometryDomainIO, domain: Int): Unit = {
+  protected def checkClosed(d: Module, io: TessellationJointGeometryDomainIO, domain: Int): Unit = {
     zero(io); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
     io.primitiveDone.foreach(_.ready.poke(true.B)); io.out.foreach(_.ready.poke(true.B))
     io.tileDone.foreach(_.ready.poke(true.B)); io.reply.ready.poke(true.B)
@@ -95,69 +95,4 @@ class TessellationJointGeometryParentSpec extends AnyFlatSpec {
     io.busy.expect(false.B); io.drained.expect(true.B); io.submit.ready.expect(true.B)
   }
 
-  it should "remain unavailable and traffic-free for a default-closed isoline geometry parent" in {
-    simulate(
-      new TessellationSystemIsolineJointGeometryVertexImage(
-        config,
-        p,
-        f,
-        shared,
-        graphics,
-        engines = engines,
-        pageBytes = 128,
-        writeCredits = writeCredits,
-        tileSlots = 1,
-        pagedCapacity = pagedCapacity,
-        tessellationUniforms = true,
-        primitiveIdInput = true
-      )
-    ) { d =>
-      assert(d.memoryTransactions > ordinaryTransactions(0))
-      checkClosed(d, d.io, 0)
-    }
-  }
-
-  it should "remain unavailable and traffic-free for a default-closed triangle geometry parent" in {
-    simulate(
-      new TessellationSystemTriangleJointGeometryVertexImage(
-        config,
-        p,
-        f,
-        shared,
-        graphics,
-        engines = engines,
-        pageBytes = 128,
-        writeCredits = writeCredits,
-        tileSlots = 1,
-        pagedCapacity = pagedCapacity,
-        tessellationUniforms = true,
-        primitiveIdInput = true
-      )
-    ) { d =>
-      assert(d.memoryTransactions > ordinaryTransactions(1))
-      checkClosed(d, d.io, 1)
-    }
-  }
-
-  it should "remain unavailable and traffic-free for a default-closed quad geometry parent" in {
-    simulate(
-      new TessellationSystemQuadJointGeometryVertexImage(
-        config,
-        p,
-        f,
-        shared,
-        graphics,
-        engines = engines,
-        pageBytes = 128,
-        writeCredits = writeCredits,
-        tileSlots = 1,
-        pagedCapacity = pagedCapacity,
-        tessellationUniforms = true,
-        primitiveIdInput = true
-      )
-    ) { d =>
-      assert(d.memoryTransactions > ordinaryTransactions(2))
-      checkClosed(d, d.io, 2)
-    }
-  }
 }
