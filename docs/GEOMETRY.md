@@ -30,13 +30,16 @@ identity/status mismatches, invalid report tails, fault/status inconsistencies,
 `received != admitted + dropped`, and a low64 GS sequence mismatch. An exclusive
 GS sequence of `2^64` with low64 zero is valid.
 
-The exact GJP2 words are `474a5002 00803dff 08100207 8ce58b2c`. They select two
-CUs, 16 lanes, eight warps, four engines, the seven-domain mask, a 524288-byte
-payload pool with 69632-byte maximum reservation, five owners, twelve ports,
-34 image-producer pins and 37 single-domain total pins. The provider is
-`two-cu-vga60-owner-v3-five-stage`. The capacity word stores payload bytes as
-log2 and maximum payload bytes in 4 KiB units. Parsing accepts only this exact
-internal read-only profile.
+The exact GJP2 words are `474a5002 0080387f 08100207 8ce58b2c`. Bits0..6 retain
+the GJP1 required owner mask `0x7f`; bit7 is scalar FP; bits11..13 require the
+geometry route, geometry uniforms and shared three-domain owner. Advanced blend
+(bit8), sample inputs (bit9) and feedback (bit10) are closed, with feedback
+required to remain zero. The words select two CUs, 16 lanes, eight warps, four
+engines, the seven-domain mask, a 524288-byte payload pool with 69632-byte maximum
+reservation, five owners, twelve ports, 34 image-producer pins and 37 single-domain
+total pins. The provider is `two-cu-vga60-owner-v3-five-stage`. The capacity word
+stores payload bytes as log2 and maximum payload bytes in 4 KiB units. Parsing
+accepts only this exact internal read-only profile.
 
 JDK21 production/test compilation passed. The new protocol spec passed 9/9;
 the new spec plus `TessellationHostAxiCommandSpec`,

@@ -3,10 +3,7 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 import opengpu.command.{GpuCommand, GpuCommandOpcode}
-import opengpu.system.{
-  TessellationJointGeometryJobRequest,
-  TessellationJointGeometryNativeCompletion
-}
+import opengpu.system.{TessellationJointGeometryJobRequest, TessellationJointGeometryNativeCompletion}
 import scala.util.Try
 
 object TessellationJointGeometryHostProtocol {
@@ -41,27 +38,30 @@ object TessellationJointGeometryHostProtocol {
   val profileEnd = 0x610
   val profileWordCount = 4
   val profileGcr1PresenceBit = 23
+  val profileRequiredOwnerMask = 0x7f
   val profileOwnedVertexSource = 1 << 0
   val profilePatchZeroInitialized = 1 << 1
   val profileOwnedPatchReads = 1 << 2
   val profileOwnedTessellationInfo = 1 << 3
   val profileGeometryInputs = 1 << 4
-  val profileGeometryRoute = 1 << 5
-  val profileJointDirectoryRoute = 1 << 6
-  val profileWholeOwnerRetirement = 1 << 7
-  val profileScalarFpu = 1 << 8
-  val profileAdvancedBlend = 1 << 9
-  val profileSampleInputs = 1 << 10
-  val profileGeometryPixelMask = 1 << 11
+  val profileJointDirectoryRoute = 1 << 5
+  val profileWholeOwnerRetirement = 1 << 6
+  val profileScalarFpu = 1 << 7
+  val profileAdvancedBlend = 1 << 8
+  val profileSampleInputs = 1 << 9
+  val profileFeedback = 1 << 10
+  val profileGeometryRoute = 1 << 11
   val profileGeometryUniforms = 1 << 12
-  val profileGeometryTransformFeedback = 1 << 13
+  val profileSharedThreeDomainOwner = 1 << 13
   val profileGcr1Presence = 1 << profileGcr1PresenceBit
   val profileFeatureFlags = profileOwnedVertexSource | profilePatchZeroInitialized |
     profileOwnedPatchReads | profileOwnedTessellationInfo | profileGeometryInputs |
-    profileGeometryRoute | profileJointDirectoryRoute | profileWholeOwnerRetirement |
-    profileScalarFpu | profileSampleInputs | profileGeometryPixelMask | profileGeometryUniforms |
-    profileGeometryTransformFeedback
-  val profileFlags = BigInt(profileFeatureFlags | profileGcr1Presence)
+    profileJointDirectoryRoute | profileWholeOwnerRetirement |
+    profileGeometryRoute | profileGeometryUniforms | profileSharedThreeDomainOwner
+  val profileTargetFlags = 0x387f
+  require((profileFeatureFlags & profileRequiredOwnerMask) == profileRequiredOwnerMask)
+  require(profileFeatureFlags == profileTargetFlags)
+  val profileFlags = BigInt(profileTargetFlags | profileGcr1Presence)
   val profileProvider = "two-cu-vga60-owner-v3-five-stage"
   val profileShapeWord = BigInt("08100207", 16)
   val profileCapacityWord = BigInt("8ce58b2c", 16)
@@ -235,12 +235,12 @@ object TessellationJointGeometryHostProtocol {
   def commandValid(command: GpuCommand): Bool = {
     val ownerLimit = Cat(command.pattern(commandPatternOwnerLimitHighShift), command.widthBytes)
     command.opcode === GpuCommandOpcode.tessellationJob && tagged(command) &&
-      command.pattern(2, 1) =/= domainCount.U && command.bytes === rootBytes.U &&
-      command.sourceAddress(11, 0) === 0.U &&
-      command.sourceAddress.pad(33) <= (ownerLimitMaximum - rootAllocationBytes).U(33.W) &&
-      ownerLimit > command.destinationAddress.pad(33) &&
-      ownerLimit <= ownerLimitMaximum.U(33.W) && !command.waitForDma && !command.waitForEvent &&
-      !command.signalEvent && !command.rasterDiscard && !command.feedbackCapture
+    command.pattern(2, 1) =/= domainCount.U && command.bytes === rootBytes.U &&
+    command.sourceAddress(11, 0) === 0.U &&
+    command.sourceAddress.pad(33) <= (ownerLimitMaximum - rootAllocationBytes).U(33.W) &&
+    ownerLimit > command.destinationAddress.pad(33) &&
+    ownerLimit <= ownerLimitMaximum.U(33.W) && !command.waitForDma && !command.waitForEvent &&
+    !command.signalEvent && !command.rasterDiscard && !command.feedbackCapture
   }
 
   def decode(command: GpuCommand, request: TessellationJointGeometryJobRequest): Unit = {
@@ -352,9 +352,12 @@ object TessellationJointGeometryHostProtocol {
       require((w(index) & ~BigInt("7fffffff", 16)) == 0, s"nonzero GNZ3 word$index high bits")
     }
     def wide(word: Int, count: Int): BigInt =
-      w.slice(word, word + count).zipWithIndex.map { case (value, index) =>
-        value << (32 * index)
-      }.reduce(_ | _)
+      w.slice(word, word + count)
+        .zipWithIndex
+        .map { case (value, index) =>
+          value << (32 * index)
+        }
+        .reduce(_ | _)
     val flags = w(1)
     val completion = Completion(
       status = (flags & 7).toInt,
