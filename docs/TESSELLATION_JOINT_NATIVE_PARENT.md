@@ -61,6 +61,15 @@ bank/mux outer owner. `TessellationJointThreeDomainGeometryJobImage` below adds
 that composition without enabling protected host/driver, public discovery or
 submission, transform feedback, ABI10, actual CUs or product acceptance.
 
+The default-closed checks are split into the independent
+`TessellationJointIsolineGeometryParentSpec`,
+`TessellationJointTriangleGeometryParentSpec` and
+`TessellationJointQuadGeometryParentSpec` suites. Geometry-parent and shared-owner
+source changes select all three, and each is registered in `system-core` so the
+affected CI partitions can run in parallel. This is only a bounded parallel CI
+split: assertions, `GraphicsTestResolution` fixtures at no more than 640x480,
+coverage and acceptance boundaries are unchanged.
+
 ## Shared GNQ7/8/9 geometry owner
 
 `TessellationJointThreeDomainGeometryJobImage` is disabled by default and
@@ -99,7 +108,7 @@ held a physical write response and cancelled with status 3/stage 6 before health
 GNQ9 reuse, and GNQ7 held invalidate/done across outer completion without early
 bank retirement. The existing geometry controller does not copy the image fault
 address into the final report, so the delayed-fault check asserts status/stage,
-not that address. Python changed-suite selection passed 179 checks; integration
+not that address. Python changed-suite selection passed 180 checks; integration
 and large-catalog selection checks also passed.
 
 ```sh
@@ -109,7 +118,10 @@ export JVM_OPTS="$JAVA_OPTS"
 bash scripts/scala_autofix.sh origin/main
 sbt -batch 'Test / compile'
 sbt -batch 'testOnly opengpu.system.TessellationJointThreeDomainGeometrySpec'
-sbt -batch 'testOnly opengpu.system.TessellationImageBankOwnerSpec opengpu.system.TessellationImageBankMuxSpec opengpu.system.TessellationThreeDomainMemoryFabricSpec opengpu.system.TessellationThreeDomainPayloadOwnerSpec opengpu.system.TessellationThreeDomainSampleMuxSpec opengpu.system.TessellationJointThreeDomainElaborationSpec opengpu.system.TessellationGeometryParentElaborationSpec opengpu.system.TessellationJointGeometryParentSpec'
+sbt -batch 'testOnly opengpu.system.TessellationImageBankOwnerSpec opengpu.system.TessellationImageBankMuxSpec opengpu.system.TessellationThreeDomainMemoryFabricSpec opengpu.system.TessellationThreeDomainPayloadOwnerSpec opengpu.system.TessellationThreeDomainSampleMuxSpec opengpu.system.TessellationJointThreeDomainElaborationSpec opengpu.system.TessellationGeometryParentElaborationSpec'
+sbt -batch 'testOnly opengpu.system.TessellationJointIsolineGeometryParentSpec'
+sbt -batch 'testOnly opengpu.system.TessellationJointTriangleGeometryParentSpec'
+sbt -batch 'testOnly opengpu.system.TessellationJointQuadGeometryParentSpec'
 sbt -batch -Dopengpu.testSramRoot=/Users/duckdonald/workspace/gpu/depends/asap7_sram_0p0/generated/verilog 'testOnly opengpu.graphics.TypedReplayEmptyStateSpec'
 sbt -batch 'testOnly opengpu.system.TessellationJointEmptyFrameSpec -- -z "GNQ7 GNQ8 GNQ9"'
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_changed_test_suites.py
@@ -128,11 +140,13 @@ TF/ABI10 and the 2-CU 640×480/60-FPS product gate remain pending.
 
 ### Focused thin-parent result and reproduction
 
-JDK 21 compilation passed. The three default-closed parent simulations passed
-3/3: status 6, zero metadata/shared/memory traffic and stable held reports. The
-focused controller/range/image/transport/elaboration run passed 29/29. CHIRRTL
-checks cover all three real raw-bridge/patch-dispatch/bin-pass compositions,
-65-bit endpoints, top-level invalidation peers and absence of TF.
+JDK 21 compilation passed. Each independent default-closed parent suite passed
+1/1 locally: isoline in 4m15s, triangle in 4m20s and quad in 4m10s. All retained
+status 6, zero metadata/shared/memory traffic, stable held reports and the
+per-domain `memoryTransactions > ordinaryTransactions` check. The focused
+controller/range/image/transport/elaboration run passed 29/29. CHIRRTL checks
+cover all three real raw-bridge/patch-dispatch/bin-pass compositions, 65-bit
+endpoints, top-level invalidation peers and absence of TF.
 
 The GNQ7 isoline clear-only composition passed two consecutive 4x4 frames
 without reset through the real reader, four image banks, physical memory and
@@ -148,7 +162,9 @@ export JAVA_OPTS='-Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8'
 export JVM_OPTS="$JAVA_OPTS"
 bash scripts/scala_autofix.sh origin/main
 sbt -batch 'Test / compile'
-sbt -batch 'testOnly opengpu.system.TessellationJointGeometryParentSpec'
+sbt -batch 'testOnly opengpu.system.TessellationJointIsolineGeometryParentSpec'
+sbt -batch 'testOnly opengpu.system.TessellationJointTriangleGeometryParentSpec'
+sbt -batch 'testOnly opengpu.system.TessellationJointQuadGeometryParentSpec'
 sbt -batch 'testOnly opengpu.system.TessellationJointEmptyFrameSpec -- -z "GNQ7"'
 sbt -batch 'testOnly opengpu.system.TessellationJointGeometryNativeControllerSpec opengpu.system.TessellationGeometryVertexTypedRangeTagSpec opengpu.graphics.TessellationVertexInputImageSpec opengpu.graphics.TessellationGeometryClientTransportSpec opengpu.graphics.TessellationGeometryVertexTupleSpec opengpu.system.TessellationInputMemoryFabricSpec opengpu.system.TessellationGeometryParentElaborationSpec'
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_changed_test_suites.py
@@ -157,8 +173,10 @@ bash -n scripts/ci_shard_tests.sh
 git diff --check
 ```
 
-The selector suite passed 178 checks; both integration/catalog selection checks
-passed. Routine frames use `GraphicsTestResolution` and remain below 640x480.
+The selector suite passed 180 checks; both integration/catalog selection checks
+passed. Each geometry-parent and shared-owner source produced three distinct
+affected partitions, one per domain suite. Routine frames use
+`GraphicsTestResolution` and remain below 640x480.
 
 ## Ordinary shared three-domain parent
 

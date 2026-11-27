@@ -214,10 +214,17 @@ geometry physical image bank/owner/mux, three-domain memory/payload, a
 three-client shader router and sample mux. It computes each domain's
 native-geometry memory/payload capacity independently, requires equal capacity,
 routes invalidation only to the retained owner and retires the bank only after
-outer completion fire plus complete physical drain.
+outer completion fire plus complete physical drain. The default-closed checks
+use independent `TessellationJointIsolineGeometryParentSpec`,
+`TessellationJointTriangleGeometryParentSpec` and
+`TessellationJointQuadGeometryParentSpec` suites selected by geometry-parent and
+shared-owner changes. Their `system-core` registration permits bounded parallel
+CI without changing assertions, `GraphicsTestResolution` fixtures at no more
+than 640x480, coverage or acceptance boundaries.
 
 The composition spec passed 3/3; existing bank/memory/payload/sample/parent and
-elaboration checks and `TypedReplayEmptyStateSpec` 3/3 passed. One DUT completed
+elaboration checks and `TypedReplayEmptyStateSpec` 3/3 passed. The three split
+default-closed parent suites passed 1/1 each locally. One DUT completed
 GNQ7→GNQ8→GNQ9 4×4 clear-only without reset with independent oracles, delayed
 write fault/cancellation, held completion, held invalidate/done and healthy
 reuse. The existing geometry controller does not propagate the image fault
@@ -229,7 +236,10 @@ submission, TF/ABI10 or product acceptance.
 Reproduce the source/component stage with JDK 21 and Scala 2.13:
 
 ```sh
-sbt 'testOnly opengpu.graphics.TessellationGeometryRawBridgeSpec opengpu.system.TessellationGeometryPipelineControlSpec opengpu.graphics.TessellationGeometryClientTransportSpec opengpu.graphics.TessellationGeometryVertexTupleSpec opengpu.system.TessellationJointGeometryJobCaptureReaderSpec opengpu.system.TessellationJointGeometryAttachmentReaderSpec opengpu.graphics.WindowPrimitiveRecordFaultPrioritySpec opengpu.graphics.TessellationVertexShaderRouterSpec opengpu.testutil.GpuSimInlineVerificationSpec opengpu.system.TessellationJointGeometryParentSpec opengpu.system.TessellationJointGeometryNativeControllerSpec opengpu.system.TessellationGeometryVertexTypedRangeTagSpec opengpu.system.TessellationGeometryParentElaborationSpec'
+sbt 'testOnly opengpu.graphics.TessellationGeometryRawBridgeSpec opengpu.system.TessellationGeometryPipelineControlSpec opengpu.graphics.TessellationGeometryClientTransportSpec opengpu.graphics.TessellationGeometryVertexTupleSpec opengpu.system.TessellationJointGeometryJobCaptureReaderSpec opengpu.system.TessellationJointGeometryAttachmentReaderSpec opengpu.graphics.WindowPrimitiveRecordFaultPrioritySpec opengpu.graphics.TessellationVertexShaderRouterSpec opengpu.testutil.GpuSimInlineVerificationSpec opengpu.system.TessellationJointGeometryNativeControllerSpec opengpu.system.TessellationGeometryVertexTypedRangeTagSpec opengpu.system.TessellationGeometryParentElaborationSpec'
+sbt -batch 'testOnly opengpu.system.TessellationJointIsolineGeometryParentSpec'
+sbt -batch 'testOnly opengpu.system.TessellationJointTriangleGeometryParentSpec'
+sbt -batch 'testOnly opengpu.system.TessellationJointQuadGeometryParentSpec'
 sbt -batch 'testOnly opengpu.system.TessellationJointThreeDomainGeometrySpec'
 sbt -batch 'testOnly opengpu.system.TessellationJointEmptyFrameSpec -- -z "GNQ7 GNQ8 GNQ9"'
 python3 -B scripts/test_changed_test_suites.py
