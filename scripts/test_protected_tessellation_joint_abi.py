@@ -33,6 +33,27 @@ class JointGeometryAbi(unittest.TestCase):
         self.assertIn('#define OPENGPU_JOINT_GEOMETRY_ENTRY_FEEDBACK_RESERVED_ZERO_COUNT 100u', header)
         self.assertNotIn('OPENGPU_JOINT_GEOMETRY_ENTRY_TF_', header)
 
+    def test_host_command_completion_and_profile_constants(self):
+        schema = json.loads(geometry_abi.SCHEMA.read_text())
+        host = schema['hostSubmission']
+        completion = schema['completion']
+        profile = schema['profile']
+        self.assertEqual(host['commandTag'], '0x474a0200')
+        self.assertEqual((host['rootBytes'], host['rootAllocationBytes']), (512, 4096))
+        self.assertEqual(host['ownerLimitMaximum'], '0x100000000')
+        self.assertEqual((completion['magic'], completion['words']), ('0x474e5a03', 46))
+        self.assertEqual((completion['prefixBase'], completion['legacyTailBase'],
+                          completion['geometryBase'], completion['end']),
+                         ('0x180', '0x540', '0x560', '0x5e8'))
+        self.assertEqual(geometry_abi.profile_words(profile),
+                         [0x474a5002, 0x803dff, 0x08100207, 0x8ce58b2c])
+        header = geometry_abi.OUTPUT.read_text()
+        self.assertIn('#define OPENGPU_JOINT_GEOMETRY_HOST_COMMAND_TAG 0x474a0200u', header)
+        self.assertIn('#define OPENGPU_JOINT_GEOMETRY_COMPLETION_WORDS 0x2eu', header)
+        self.assertIn('#define OPENGPU_JOINT_GEOMETRY_COMPLETION_GEOMETRY_BASE 0x560u', header)
+        self.assertIn('#define OPENGPU_JOINT_GEOMETRY_PROFILE_CAPACITY_WORD 0x8ce58b2cu', header)
+        self.assertIn('#define OPENGPU_JOINT_GEOMETRY_PROFILE_GCR1_PRESENCE_BIT 0x17u', header)
+
     def test_changed_schema_fails_closed(self):
         original = json.loads(geometry_abi.SCHEMA.read_text())
         mutations = [
@@ -46,6 +67,19 @@ class JointGeometryAbi(unittest.TestCase):
             lambda s: s['attachment']['entry']['feedback_reserved_zero'].update(count=99),
             lambda s: s['attachment']['entry']['input_sequence'].update(bits=32),
             lambda s: s['attachment']['entry']['reserved_zero'][0].update(word=180),
+            lambda s: s['hostSubmission'].update(commandTag='0x474a0100'),
+            lambda s: s['hostSubmission'].update(rootAllocationBytes=512),
+            lambda s: s['hostSubmission'].update(ownerLimitMaximum='0x100000001'),
+            lambda s: s['hostSubmission']['rejectedFlags'].pop(),
+            lambda s: s['completion'].update(words=45),
+            lambda s: s['completion'].update(geometryBase='0x55c'),
+            lambda s: s['completion']['fields'][-3].update(bits=64),
+            lambda s: s['completion']['rules'].pop(),
+            lambda s: s['profile'].update(magic='0x474a5001'),
+            lambda s: s['profile'].update(gcr1PresenceBit=22),
+            lambda s: s['profile']['capacities'].update(payloadBytes=262144),
+            lambda s: s['profile']['capacityEncoding'][-1].update(shift=26),
+            lambda s: s['profile'].update(provider='two-cu-vga60-owner-v2'),
             lambda s: s['source_rules'].pop(),
         ]
         artifacts = geometry_abi.ROOT/'.artifacts'
