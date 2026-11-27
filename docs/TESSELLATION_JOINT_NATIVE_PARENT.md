@@ -9,9 +9,9 @@ capability is enabled by this change.
 
 The caller must retain the immutable BUILD graph and its actual authorized MMU
 mappings until both the report and complete physical retirement. An owner
-address envelope does not authorize holes inside it. Metadata uses the existing
-single tag-zero credit; the real vertex source uses the existing source adapter.
-No memory IDs or hardware capacities are added.
+address envelope does not authorize holes inside it. The GNQ4/5/6 parents do
+not add memory IDs or hardware capacities. Metadata uses the existing single
+tag-zero credit; the real vertex source uses the existing source adapter.
 
 ## Ownership and progress
 
@@ -34,6 +34,65 @@ No invocation means a captured clear-only frame with an exact absent state
 table. An actual invocation with zero work still reads GNT/GVS/GND and obtains
 its actual zero-task range retirement. Both paths require the real frame end
 barrier, frame completion and complete memory drain.
+
+## Thin GNQ7/8/9 geometry parents
+
+`TessellationSystem{Isoline,Triangle,Quad}JointGeometryVertexImage` are three
+independent, default-closed parents. Each instantiates the matching
+`TessellationJointGeometryNativeController`, geometry typed range and vertex
+input image. The image has native geometry, empty-state admission, evaluation
+patch and tessellation-info services enabled, with transform feedback disabled.
+`TessellationJointGeometryDomainIO` exposes the common submit/completion,
+memory, frame/range retirement, cancel/busy/drained and real geometry
+invalidate/invalidate-done peer ports.
+
+Frame retirement is captured only from the actual image geometry completion;
+range retirement only from the actual typed-range completion. The directory
+lease remains held through range retirement and physical drain. The existing
+tag-zero metadata path and owned original-VS source adapter are retained. Render
+transaction capacity uses each domain's native-geometry formula, including the
+additional geometry-uniform client, before the input fabric rounds the physical
+ID capacity. The 65-bit `nextGsSequenceExclusive` is preserved, and all three
+image pipelines clear it when a new frame starts so zero-work reuse cannot
+report a previous frame's endpoint.
+
+These are thin parents only: they do not add a shared three-domain image
+bank/mux outer owner and do not connect protected host/driver, public discovery
+or submission, transform feedback, ABI10, actual CUs or product acceptance.
+
+### Focused result and reproduction
+
+JDK 21 compilation passed. The three default-closed parent simulations passed
+3/3: status 6, zero metadata/shared/memory traffic and stable held reports. The
+focused controller/range/image/transport/elaboration run passed 29/29. CHIRRTL
+checks cover all three real raw-bridge/patch-dispatch/bin-pass compositions,
+65-bit endpoints, top-level invalidation peers and absence of TF.
+
+The GNQ7 isoline clear-only composition passed two consecutive 4x4 frames
+without reset through the real reader, four image banks, physical memory and
+drain. Each frame read 2,560 metadata bytes plus one directory line, reported
+4,352 stored and 1,088 resolved bytes, and matched the independent image,
+padding, directory and guard oracle without a CU launch. Triangle and quad
+clear-only parent execution, original shader execution on actual CUs, protected
+three-domain submission and the 2-CU 640x480/60-FPS gate remain pending.
+
+```sh
+export JAVA_HOME=/opt/homebrew/opt/openjdk@21
+export JAVA_OPTS='-Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8'
+export JVM_OPTS="$JAVA_OPTS"
+bash scripts/scala_autofix.sh origin/main
+sbt -batch 'Test / compile'
+sbt -batch 'testOnly opengpu.system.TessellationJointGeometryParentSpec'
+sbt -batch 'testOnly opengpu.system.TessellationJointEmptyFrameSpec -- -z "GNQ7"'
+sbt -batch 'testOnly opengpu.system.TessellationJointGeometryNativeControllerSpec opengpu.system.TessellationGeometryVertexTypedRangeTagSpec opengpu.graphics.TessellationVertexInputImageSpec opengpu.graphics.TessellationGeometryClientTransportSpec opengpu.graphics.TessellationGeometryVertexTupleSpec opengpu.system.TessellationInputMemoryFabricSpec opengpu.system.TessellationGeometryParentElaborationSpec'
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_changed_test_suites.py
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_test_selection.py
+bash -n scripts/ci_shard_tests.sh
+git diff --check
+```
+
+The selector suite passed 178 checks; both integration/catalog selection checks
+passed. Routine frames use `GraphicsTestResolution` and remain below 640x480.
 
 ## Shared three-domain parent
 

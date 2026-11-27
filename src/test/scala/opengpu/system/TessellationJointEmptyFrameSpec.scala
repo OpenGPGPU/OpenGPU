@@ -48,6 +48,33 @@ private class JointEmptyIsoline
   macroModelPresent := models.io.present
 }
 
+private class JointGeometryEmptyIsoline
+    extends TessellationSystemIsolineJointGeometryVertexImage(
+      GpuConfig(lanes = 16, warps = 8),
+      VertexShaderStageConfig(),
+      FragmentShaderConfig(),
+      SharedCuShaderConfig(2),
+      GraphicsConfig(screenWidth = GraphicsTestResolution.width, screenHeight = GraphicsTestResolution.height),
+      engines = 4,
+      storage = TypedTileColorConfig(
+        parallelLanes = true,
+        parallelDepth = true,
+        nativeSamples = true,
+        advancedBlend = true,
+        nativeAdvancedDraws = true
+      ),
+      useSramBlackBoxes = false,
+      externalImages = false,
+      tessellationUniforms = true,
+      primitiveIdInput = true,
+      enabled = true
+    ) {
+  require(
+    !GraphicsTestResolution.productQualification,
+    "joint geometry clear qualification requires the VGA support profile"
+  )
+}
+
 class TessellationJointEmptyFrameSpec extends AnyFlatSpec {
   import WindowRecordTest.{Memory, zero}
   import TessellationJointCaptureTestPackets.{frame, frameSet}
@@ -91,7 +118,7 @@ class TessellationJointEmptyFrameSpec extends AnyFlatSpec {
     require(value(w, prefix + "spillCount") == 0)
     for (name <- frameFields.keys if name.startsWith(prefix + "spills[")) require(value(w, name) == 0)
   }
-  private def recipe(side: Int): Recipe = {
+  private def recipe(side: Int, geometryJob: Boolean = false): Recipe = {
     require(side == 4 || side == 16)
     val tileCount = ((side + 7) / 8) * ((side + 7) / 8)
     val allocationBytes = if (side == 4) 4096 else 65536
@@ -148,7 +175,9 @@ class TessellationJointEmptyFrameSpec extends AnyFlatSpec {
       for ((w, i) <- directory.zipWithIndex; k <- 0 until 4)
         directoryExpected(64 * tile + 4 * i + k) = ((w >> (8 * k)) & 255).toByte
     }
-    put(0x1000, TessellationJointReaderTestSupport.job(count = 0)); put(0x2000, gnf)
+    val jointJob = TessellationJointReaderTestSupport.job(count = 0)
+    if (geometryJob) { jointJob(0) = BigInt("474e5107", 16); jointJob(2) = 3 }
+    put(0x1000, jointJob); put(0x2000, gnf)
     blocks = blocks :+ Block(0x100000, directoryInitial, directoryExpected)
     Recipe(
       side,
@@ -207,7 +236,7 @@ class TessellationJointEmptyFrameSpec extends AnyFlatSpec {
   it should "clear real GNQ frames and preserve a delayed write fault through the four-bank isoline owner" in {
     // Encode/validate every catalog field before expensive hardware elaboration.
     checkRecipe()
-    val recipes = Seq(4, 16).map(recipe)
+    val recipes = Seq(4, 16).map(side => recipe(side))
     val frames = Seq((recipes.head, false), (recipes.head, true), (recipes(1), false))
     simulate(new JointEmptyIsoline) { d =>
       zero(d.io); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
@@ -303,6 +332,82 @@ class TessellationJointEmptyFrameSpec extends AnyFlatSpec {
         }
         assert(immutable.forall { case (a, b) => mem.bytes(a) == b }, "immutable GNQ/GNF bytes changed")
         assert(mem.pending.isEmpty && mem.reply.isEmpty && mem.held.isEmpty, "frame report escaped actual memory drain")
+        val snapshot = c.peek().litValue; d.io.cancel.poke(true.B)
+        for (_ <- 0 until 4) { tick(); d.io.completion.valid.expect(true.B); assert(c.peek().litValue == snapshot) }
+        d.io.completion.ready.poke(true.B); tick(); d.io.completion.ready.poke(false.B); d.io.cancel.poke(false.B)
+        until("physical owner reuse gate")(d.io.drained.peek().litToBoolean)
+        d.io.busy.expect(false.B); d.io.submit.ready.expect(true.B)
+      }
+    }
+  }
+
+  it should "retire GNQ7 clear-only geometry through the real reader image and physical drain" in {
+    val r = recipe(4, geometryJob = true)
+    simulate(new JointGeometryEmptyIsoline) { d =>
+      zero(d.io); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
+      for (_ <- 0 until 2) {
+        val mem = new Memory(
+          d.io.memoryRequest.bits,
+          d.io.memoryResponse.bits,
+          d.io.memoryRequest.valid,
+          d.io.memoryRequest.ready,
+          d.io.memoryResponse.valid,
+          d.io.memoryResponse.ready
+        )
+        mem.bytes ++= r.initial
+        for (block <- r.blocks; i <- block.initial.indices) mem.bytes(block.base + i) = block.initial(i) & 255
+        val immutable = mem.bytes.filter { case (a, _) => a >= 0x1000 && a < 0x2800 }.toMap
+        mem.beforeRequest = request => {
+          val image = r.allocations.exists { case (a, b) => request.address >= a && request.address + 64 <= b }
+          val directory = request.address >= 0x100000 && request.address < 0x110000
+          if (request.write) assert(image || directory, "GNQ7 clear wrote outside image/directory allocations")
+          else
+            assert(
+              (request.address >= 0x1000 && request.address < 0x1200) ||
+                (request.address >= 0x2000 && request.address < 0x2800) || directory,
+              "GNQ7 clear fetched an undeclared allocation"
+            )
+        }
+        val tiles = Array.fill(4)(0)
+        def tick(): Unit = {
+          mem.drive(); d.io.shared.launch.valid.expect(false.B)
+          d.io.shared.geometryEvent.foreach(_.foreach(_.valid.expect(false.B)))
+          d.io.inspect.valid.expect(false.B); d.io.reply.valid.expect(false.B)
+          for (i <- 0 until 4)
+            if (d.io.tileDone(i).valid.peek().litToBoolean && d.io.tileDone(i).ready.peek().litToBoolean) tiles(i) += 1
+          mem.capture(); d.clock.step()
+        }
+        def until(label: String)(condition: => Boolean): Unit = {
+          var n = 0
+          while (!condition && n < 100000) { tick(); n += 1 }
+          assert(condition, s"GNQ7 geometry $label timed out after $n cycles")
+        }
+        d.io.out.foreach(_.ready.poke(true.B)); d.io.tileDone.foreach(_.ready.poke(true.B))
+        d.io.primitiveDone.foreach(_.ready.poke(true.B)); d.io.reply.ready.poke(true.B)
+        TessellationJointReaderTestSupport.request(d.io.submit.bits)
+        d.io.submit.bits.owner.limit.poke(0x3000000.U)
+        d.io.submit.valid.poke(true.B); until("GNQ admission")(d.io.submit.ready.peek().litToBoolean)
+        tick(); d.io.submit.valid.poke(false.B); zero(d.io.submit.bits)
+        until("actual image retirement")(d.io.completion.valid.peek().litToBoolean)
+        val c = d.io.completion.bits
+        c.base.status.expect(0.U); c.base.faultStage.expect(0.U); c.base.faultAddress.expect(0.U)
+        c.base.clearOnly.expect(true.B); c.base.readBytes.expect(2560.U); c.base.commandId.expect(5.U)
+        c.base.capturedEntries.expect(0.U); c.base.retiredRanges.expect(0.U); c.base.retiredPatches.expect(0.U)
+        c.base.published.expect(0.U); c.base.storedBytes.expect(r.stored.U); c.base.resolvedBytes.expect(r.resolved.U)
+        c.geometryReportValid.expect(true.B); c.actualGsPublished.expect(0.U); c.received.expect(0.U)
+        c.dropped.expect(0.U); c.admitted.expect(0.U); c.geometryTasks.expect(0.U)
+        c.nextGsSequenceExclusive.expect(0.U); c.nextGsSequence.expect(0.U); c.nextBinSequence.expect(0.U)
+        assert(tiles.toVector == r.tiles)
+        assert(mem.seen.count(!_.write) == 41)
+        assert(
+          r.expected.forall { case (a, b) => mem.bytes.get(a).contains(b) } &&
+            r.blocks.forall(block =>
+              block.expected.indices.forall(i => mem.bytes.get(block.base + i).contains(block.expected(i) & 255))
+            ),
+          "actual GNQ7 clear/store/resolve or directory/padding oracle differs"
+        )
+        assert(immutable.forall { case (a, b) => mem.bytes(a) == b }, "GNQ7/GNF metadata changed")
+        assert(mem.pending.isEmpty && mem.reply.isEmpty && mem.held.isEmpty, "GNQ7 report escaped memory drain")
         val snapshot = c.peek().litValue; d.io.cancel.poke(true.B)
         for (_ <- 0 until 4) { tick(); d.io.completion.valid.expect(true.B); assert(c.peek().litValue == snapshot) }
         d.io.completion.ready.poke(true.B); tick(); d.io.completion.ready.poke(false.B); d.io.cancel.poke(false.B)

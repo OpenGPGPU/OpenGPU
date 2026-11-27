@@ -207,10 +207,21 @@ submission and product qualification remain open. No component or CPU result
 substitutes for those paths. The mandatory two-CU 640×480/60-FPS target remains
 unchanged.
 
+The three thin GNQ7/8/9 joint-geometry parents are default-closed and retain the
+65-bit exclusive GS endpoint from actual task/frame completion. They expose real
+geometry invalidation peers, include the extra geometry-uniform memory client,
+and do not instantiate an outer image-bank/mux owner or any TF path. Default
+closed parent checks passed 3/3, focused controller/range/image/elaboration
+checks passed 29/29, and the GNQ7 isoline clear-only composition passed two
+4×4 frames without reset through real readers, images, memory and drain. The
+[scope and reproduction](TESSELLATION_JOINT_NATIVE_PARENT.md#thin-gnq789-geometry-parents)
+do not claim actual CU/frame, protected three-domain submission or product
+acceptance.
+
 Reproduce the source/component stage with JDK 21 and Scala 2.13:
 
 ```sh
-sbt 'testOnly opengpu.graphics.TessellationGeometryRawBridgeSpec opengpu.system.TessellationGeometryPipelineControlSpec opengpu.graphics.TessellationGeometryClientTransportSpec opengpu.graphics.TessellationGeometryVertexTupleSpec opengpu.system.TessellationJointGeometryJobCaptureReaderSpec opengpu.system.TessellationJointGeometryAttachmentReaderSpec opengpu.graphics.WindowPrimitiveRecordFaultPrioritySpec opengpu.graphics.TessellationVertexShaderRouterSpec opengpu.testutil.GpuSimInlineVerificationSpec opengpu.system.TessellationGeometryParentElaborationSpec'
+sbt 'testOnly opengpu.graphics.TessellationGeometryRawBridgeSpec opengpu.system.TessellationGeometryPipelineControlSpec opengpu.graphics.TessellationGeometryClientTransportSpec opengpu.graphics.TessellationGeometryVertexTupleSpec opengpu.system.TessellationJointGeometryJobCaptureReaderSpec opengpu.system.TessellationJointGeometryAttachmentReaderSpec opengpu.graphics.WindowPrimitiveRecordFaultPrioritySpec opengpu.graphics.TessellationVertexShaderRouterSpec opengpu.testutil.GpuSimInlineVerificationSpec opengpu.system.TessellationJointGeometryParentSpec opengpu.system.TessellationJointGeometryNativeControllerSpec opengpu.system.TessellationGeometryVertexTypedRangeTagSpec opengpu.system.TessellationGeometryParentElaborationSpec'
 python3 -B scripts/test_changed_test_suites.py
 python3 -B scripts/test_test_selection.py
 git diff --check

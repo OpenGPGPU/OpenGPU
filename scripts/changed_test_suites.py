@@ -695,13 +695,15 @@ def changed_suites(root, changed, *, test_index=None):
         "graphics/shader/SharedShaderTaskRouter", "system/SharedCuGraphicsPort", "system/GpuSystem",
         "system/geometry/IsolineGeometryCuExecutor", "system/tessellation/TessellationVertexShaderRouter",
         "system/geometry/GeometryFragmentShaderRouter", "system/tessellation/TessellationHostShaderRouter",
-        "system/tessellation/TessellationVertexInputImageControl", "system/tessellation/TessellationVertexPatchSequence",
+        "system/tessellation/TessellationVertexInputImageControl", "system/tessellation/TessellationJointGeometryDomainIO",
+        "system/tessellation/TessellationVertexPatchSequence",
         "system/tessellation/TessellationTriangleCuEvaluator", "system/tessellation/TessellationQuadCuEvaluator",
     }
     input_patch_sources.update(
         f"system/tessellation/TessellationSystem{domain}{suffix}"
         for domain in ("Isoline", "Triangle", "Quad")
-        for suffix in ("VertexTypedRange", "VertexInputImage", "ImagePipeline", "BinPass", "Viewport"))
+        for suffix in ("VertexTypedRange", "VertexInputImage", "ImagePipeline", "BinPass", "Viewport",
+                       "JointGeometryVertexImage"))
     input_patch_sources.update(
         f"system/tessellation/TessellationCu{domain}{suffix}"
         for domain in ("Isoline", "Triangle", "Quad")
@@ -852,14 +854,29 @@ def changed_suites(root, changed, *, test_index=None):
             "src/test/scala/opengpu/system/TessellationGeometryVertexRangeControlSpec.scala",
             "src/test/scala/opengpu/system/TessellationGeometryVertexTypedRangeTagSpec.scala",
         })
+    geometry_parent_sources = {
+        "src/main/scala/opengpu/system/tessellation/TessellationJointGeometryDomainIO.scala",
+    } | {
+        f"src/main/scala/opengpu/system/tessellation/TessellationSystem{domain}JointGeometryVertexImage.scala"
+        for domain in ("Isoline", "Triangle", "Quad")
+    }
+    if changed & geometry_parent_sources:
+        affected.update({
+            "src/test/scala/opengpu/system/TessellationJointGeometryParentSpec.scala",
+            "src/test/scala/opengpu/system/TessellationJointGeometryNativeControllerSpec.scala",
+            "src/test/scala/opengpu/system/TessellationGeometryVertexTypedRangeTagSpec.scala",
+            "src/test/scala/opengpu/system/TessellationInputMemoryFabricSpec.scala",
+            "src/test/scala/opengpu/graphics/TypedReplayEmptyStateSpec.scala",
+        })
     geometry_image_sources = {
+        "src/main/scala/opengpu/system/tessellation/TessellationJointGeometryDomainIO.scala",
         "src/main/scala/opengpu/system/tessellation/TessellationGeometryBinPass.scala",
         "src/main/scala/opengpu/system/tessellation/TessellationGeometryImageBinSource.scala",
         "src/main/scala/opengpu/system/tessellation/TessellationGeometryClientTransport.scala",
     } | {
         f"src/main/scala/opengpu/system/tessellation/TessellationSystem{domain}{kind}.scala"
         for domain in ("Isoline", "Triangle", "Quad")
-        for kind in ("ImagePipeline", "VertexInputImage")
+        for kind in ("ImagePipeline", "VertexInputImage", "JointGeometryVertexImage")
     }
     if changed & geometry_image_sources:
         affected.update({

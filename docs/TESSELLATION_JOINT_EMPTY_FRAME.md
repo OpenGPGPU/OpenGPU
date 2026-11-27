@@ -2,8 +2,9 @@
 
 `TessellationJointEmptyFrameSpec` exercises the actual isoline GNQ/GNF owner,
 input memory fabric, four image banks, clear, backing stores and resolves. Its
-only peer is physical memory. It supplies no shader result, patch contents,
-frame completion or retirement completion.
+GNQ7 geometry case uses the thin native-geometry parent instead of the GNQ4
+parent. The only peer is physical memory. It supplies no shader result, patch
+contents, frame completion or retirement completion.
 
 The supported graphics bounds are 640×480 through `GraphicsTestResolution`;
 `productQualification=1` is rejected. The runtime sequence is a healthy 4×4
@@ -21,6 +22,28 @@ pool covers its complete original reservation. CPU checks reject the former
 truncated initial interval, a nonzero spill count and nonzero unused spill
 metadata. Unexpected actual completion is reported immediately with status,
 fault stage/address and read-byte count.
+
+## GNQ7 thin geometry parent result
+
+The native-geometry isoline parent passed two consecutive 4x4 clear-only frames
+without reset. Each frame used the real GNQ7/GNF readers, geometry image
+composition, four banks and physical memory responder. It read exactly 2,560
+metadata bytes and one 64-byte directory line, reported 4,352 stored and 1,088
+resolved bytes, and retired the expected single tile. The independent oracle
+matched all image allocations, row padding, resolve allocation, directory bytes
+and guards; GNQ/GNF metadata stayed immutable. No shader/CU launch, range task or
+retirement peer was supplied. The held completion remained stable under cancel,
+and the same owner accepted the next frame only after physical drain.
+
+This case uses behavioral SRAM (`useSramBlackBoxes=false`) and does not require
+the vendor macro models. Triangle/quad clear-only parent execution and actual
+original VS/TCS/TES/GS CU/frame qualification remain pending.
+
+Reproduce with JDK 21 and the repository JVM options:
+
+```sh
+sbt -batch 'testOnly opengpu.system.TessellationJointEmptyFrameSpec -- -z "GNQ7"'
+```
 
 ## FlashSim result
 
@@ -64,6 +87,7 @@ built and linked the model in 1,313 seconds under an 11 GiB process-group guard.
 
 Replay first matched the freshly elaborated RTL and bridge sources, ordered
 inputs, assertion defines and svsim ports to the built model. Fresh elaboration
-and replay completed in 114 seconds at a sampled 4.72 GiB peak. The complete
-triangle and quad parents, original shader execution, protected submission
-and the VGA60 product run remain separate qualification gates.
+and replay completed in 114 seconds at a sampled 4.72 GiB peak. Triangle/quad
+clear-only parent execution, complete three-domain original shader execution,
+protected submission and the VGA60 product run remain separate qualification
+gates.

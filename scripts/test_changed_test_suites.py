@@ -64,6 +64,29 @@ class ChangedTestSuitesTest(unittest.TestCase):
                                  "opengpu.graphics.TessellationGeometryVertexTupleSpec",
                                  "opengpu.system.TessellationGeometryPatchDispatchSpec"} <= selected)
 
+    def test_geometry_parent_sources_select_composition_and_bounded_children(self):
+        paths = ["system/tessellation/TessellationJointGeometryDomainIO"]
+        paths += [f"system/tessellation/TessellationSystem{domain}JointGeometryVertexImage"
+                  for domain in ("Isoline", "Triangle", "Quad")]
+        expected = {
+            "opengpu.system.TessellationJointGeometryParentSpec",
+            "opengpu.system.TessellationJointGeometryNativeControllerSpec",
+            "opengpu.system.TessellationGeometryVertexTypedRangeTagSpec",
+            "opengpu.system.TessellationInputMemoryFabricSpec",
+            "opengpu.graphics.TypedFragmentImageStateReaderSpec",
+            "opengpu.system.TileBinHostMemoryFabricJointClearSpec",
+            "opengpu.graphics.TessellationGeometryClientTransportSpec",
+            "opengpu.graphics.TessellationGeometryVertexTupleSpec",
+            "opengpu.system.TessellationGeometryPatchDispatchSpec",
+            "opengpu.graphics.TessellationInputPatchBindingSpec",
+            "opengpu.graphics.TessellationVertexTypedRangeSpec",
+        }
+        for path in paths:
+            with self.subTest(path=path):
+                selected = set(changed_suites(REPO_ROOT, [f"src/main/scala/opengpu/{path}.scala"]))
+                self.assertTrue(expected <= selected, selected)
+                self.assertNotIn("opengpu.system.TessellationGeometryParentElaborationSpec", selected)
+
     def test_record_fault_priority_runs_for_each_actual_production_owner(self):
         for name in ("WindowPrimitiveRecords", "WindowPrimitiveBinProducer", "WindowPrimitiveBinReplayPass"):
             with self.subTest(name=name):

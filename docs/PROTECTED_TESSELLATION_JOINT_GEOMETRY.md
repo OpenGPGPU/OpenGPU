@@ -35,6 +35,14 @@ direct typed-isoline `full5`/`pointcoord` two-CU retained Verilator replay. Thos
 results are separate from this BUILD/prepare contract: they do not connect the
 GNQ7/8/9 protected host, driver submission or public discovery route.
 
+The three thin `TessellationSystem*JointGeometryVertexImage` parents now connect
+the GNQ7/8/9 controller, typed range and native-geometry image internally, with
+default-closed admission and real invalidation peer ports. Their default-closed
+3/3, focused component/elaboration 29/29 and GNQ7 isoline clear-only two-frame
+checks passed; see [joint parent results](TESSELLATION_JOINT_NATIVE_PARENT.md#thin-gnq789-geometry-parents).
+They do not instantiate a shared image-bank/mux outer owner or enable the
+protected host, driver, public submission, TF or ABI10.
+
 ## Validation
 
 - The generated ABI/schema suite passes all 9 tests, including exact header
