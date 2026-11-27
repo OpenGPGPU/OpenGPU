@@ -26,7 +26,8 @@ class TessellationGeometryPipelineResult(commandIdWidth:Int) extends Bundle {
   * offer, even when cancellation precedes the GS acceptance. Only that offer's
   * handshake authorizes forwarding cancellation to the child's !cancel gate.
   */
-class TessellationGeometryPipelineControl(p:VertexShaderStageConfig,commandIdWidth:Int) extends Module {
+class TessellationGeometryPipelineControl(p:VertexShaderStageConfig,commandIdWidth:Int,exclusiveGsSequence:Boolean=false) extends Module {
+  def this(p:VertexShaderStageConfig,commandIdWidth:Int)=this(p,commandIdWidth,false)
   require(commandIdWidth>0)
   val io=IO(new Bundle {
     val task=Flipped(Decoupled(new TessellationGeometryPipelineTask(p,commandIdWidth)))
@@ -37,6 +38,8 @@ class TessellationGeometryPipelineControl(p:VertexShaderStageConfig,commandIdWid
     val rawBusy=Input(Bool());val rawCancel=Output(Bool())
     val geometryTask=Decoupled(new NativeGeometryPrimitivePipelineTask(p,commandIdWidth))
     val geometryCompletion=Flipped(Decoupled(new GeometryPrimitivePipelineResult))
+    val geometryNextSequenceExclusive=if(exclusiveGsSequence)Some(Input(UInt(65.W)))else None
+    val nextSequenceExclusive=if(exclusiveGsSequence)Some(Output(UInt(65.W)))else None
     val geometryBusy=Input(Bool());val geometryOffersDrained=Input(Bool());val geometryCancel=Output(Bool())
     /** Precise extra debt of this logical GS client/command: router, translation
       * and invalidation. Never shared-system/other-owner idle or permission. */
@@ -47,6 +50,8 @@ class TessellationGeometryPipelineControl(p:VertexShaderStageConfig,commandIdWid
   private val phase=RegInit(Phase.idle)
   private val result=Reg(new TessellationGeometryPipelineResult(commandIdWidth))
   private val slot=Reg(new NativeGeometryPrimitivePipelineTask(p,commandIdWidth))
+  private val exclusiveResult=if(exclusiveGsSequence)Some(Reg(UInt(65.W)))else None
+  if(exclusiveGsSequence)io.nextSequenceExclusive.get:=exclusiveResult.get
   private val cancelled=RegInit(false.B);private val protocolFault=RegInit(false.B)
   private val active=phase=/=Phase.idle && phase=/=Phase.report
   private val childrenDrained= !io.rawBusy && !io.geometryBusy && io.geometryOffersDrained && io.ownerTransportDrained
@@ -73,6 +78,7 @@ class TessellationGeometryPipelineControl(p:VertexShaderStageConfig,commandIdWid
     result.tesTaskId:=t.tesTaskId;result.tesSequence:=t.tesSequence;result.tesLanguagePatchId:=b.tesLanguagePatchId
     result.gsTaskId:=b.gsTaskId;result.gsInputPrimitiveId:=b.gsInputPrimitiveId
     result.inputSequence:=b.inputSequence;result.firstOutputSequence:=b.firstOutputSequence
+    if(exclusiveGsSequence)exclusiveResult.get:=b.firstOutputSequence
     cancelled:=io.cancel;protocolFault:=false.B;phase:=Phase.raw
   }
   when(active && io.cancel){cancelled:=true.B}
@@ -101,6 +107,14 @@ class TessellationGeometryPipelineControl(p:VertexShaderStageConfig,commandIdWid
   when(io.geometryTask.fire){phase:=Phase.running}
   when(io.geometryCompletion.fire){
     result.geometryValid:=true.B;result.geometry:=io.geometryCompletion.bits
+    if(exclusiveGsSequence){
+      exclusiveResult.get:=io.geometryNextSequenceExclusive.get
+      when(io.geometryNextSequenceExclusive.get(63,0)=/=io.geometryCompletion.bits.nextSequence ||
+        io.geometryNextSequenceExclusive.get<result.firstOutputSequence ||
+        (io.geometryNextSequenceExclusive.get-result.firstOutputSequence).pad(65)=/=io.geometryCompletion.bits.producedPrimitives.pad(65)){
+        protocolFault:=true.B
+      }
+    }
     when(io.geometryCompletion.bits.taskId=/=result.gsTaskId ||
       io.geometryCompletion.bits.inputPrimitiveId=/=result.gsInputPrimitiveId){protocolFault:=true.B}
     phase:=Phase.drain

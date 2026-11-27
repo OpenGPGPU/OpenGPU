@@ -20,12 +20,15 @@ class NativeGeometryPrimitivePipelineTask(p: VertexShaderStageConfig,commandIdWi
   * not implement the remaining texture/image/storage geometry resource ABI.
   */
 class NativeGeometryPrimitivePipeline(config: GpuConfig,p: VertexShaderStageConfig,
-    commandIdWidth: Int,numComputeUnits: Int,rawOutputs:Boolean=false) extends Module {
+    commandIdWidth: Int,numComputeUnits: Int,rawOutputs:Boolean=false,exclusiveGsSequence:Boolean=false) extends Module {
+  def this(config:GpuConfig,p:VertexShaderStageConfig,commandIdWidth:Int,numComputeUnits:Int,rawOutputs:Boolean)=
+    this(config,p,commandIdWidth,numComputeUnits,rawOutputs,false)
   require(numComputeUnits>0 && commandIdWidth>0)
   val io=IO(new Bundle {
     val task=Flipped(Decoupled(new NativeGeometryPrimitivePipelineTask(p,commandIdWidth)))
     val primitive=Decoupled(new GeometryMappedPrimitive(p))
     val completion=Decoupled(new GeometryPrimitivePipelineResult)
+    val nextSequenceExclusive=if(exclusiveGsSequence)Some(Output(UInt(65.W)))else None
     val shared=Flipped(new SharedCuGraphicsPort(config,commandIdWidth,numComputeUnits,geometryAvailable=true))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,1))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,1)))
@@ -38,6 +41,10 @@ class NativeGeometryPrimitivePipeline(config: GpuConfig,p: VertexShaderStageConf
   private val saved=Reg(new NativeGeometryPrimitivePipelineTask(p,commandIdWidth))
   private val result=Reg(new GeometryPrimitivePipelineResult)
   private val sequence=Reg(UInt(64.W));private val cancelled=RegInit(false.B)
+  private val exclusive=if(exclusiveGsSequence)Some(Reg(UInt(65.W)))else None
+  private val exclusiveResult=if(exclusiveGsSequence)Some(Reg(UInt(65.W)))else None
+  if(exclusiveGsSequence)io.nextSequenceExclusive.get:=exclusiveResult.get
+  private val exhausted=exclusive.map(_(64)).getOrElse(false.B)
   private val outputFault=RegInit(false.B);private val mapperBusy=RegInit(false.B)
   private val workerRetired=RegInit(false.B)
   private val input=Module(new NativeGeometryInputMapper(p))
@@ -53,6 +60,7 @@ class NativeGeometryPrimitivePipeline(config: GpuConfig,p: VertexShaderStageConf
   when(io.task.fire){
     saved:=io.task.bits;result:=0.U.asTypeOf(result);cancelled:=false.B;outputFault:=false.B;mapperBusy:=false.B;workerRetired:=false.B
     sequence:=io.task.bits.firstSequence;result.nextSequence:=io.task.bits.firstSequence
+    if(exclusiveGsSequence){exclusive.get:=io.task.bits.firstSequence;exclusiveResult.get:=io.task.bits.firstSequence}
     result.taskId:=io.task.bits.input.taskId;result.inputPrimitiveId:=io.task.bits.input.primitive.primitiveId
     phase:=inputWait
   }
@@ -138,8 +146,9 @@ class NativeGeometryPrimitivePipeline(config: GpuConfig,p: VertexShaderStageConf
   when(io.shared.trap.fire){assert(io.shared.trap.bits.taskId===saved.commandId)}
   when(trapFault){outputFault:=true.B}
 
-  output.io.in.valid:=phase===running && scheduler.io.primitive.valid
-  scheduler.io.primitive.ready:=phase===running && output.io.in.ready
+  output.io.in.valid:=phase===running && scheduler.io.primitive.valid && !exhausted
+  scheduler.io.primitive.ready:=phase===running && (output.io.in.ready || exhausted)
+  if(exclusiveGsSequence)when(phase===running && exhausted && scheduler.io.primitive.fire){outputFault:=true.B}
   output.io.in.bits:=0.U.asTypeOf(output.io.in.bits)
   output.io.in.bits.geometry:=scheduler.io.primitive.bits
   private val source=output.io.in.bits.source;private val primitive=saved.input.primitive
@@ -153,12 +162,16 @@ class NativeGeometryPrimitivePipeline(config: GpuConfig,p: VertexShaderStageConf
   for(i<-0 until 4+4*p.varyings)output.io.in.bits.componentSources(i):=saved.input.program.outputSources(i)
   io.primitive<>output.io.out;output.io.fault.ready:=phase===running
   when(output.io.in.fire){mapperBusy:=true.B
-    when(sequence.andR){outputFault:=true.B}.otherwise{sequence:=sequence+1.U}}
+    if(exclusiveGsSequence){
+      val next=exclusive.get+&1.U
+      exclusive.get:=next(64,0);sequence:=next(63,0)
+    }else{when(sequence.andR){outputFault:=true.B}.otherwise{sequence:=sequence+1.U}}}
   when(io.primitive.fire){mapperBusy:=false.B;result.producedPrimitives:=result.producedPrimitives+1.U}
   when(output.io.fault.fire){mapperBusy:=false.B;outputFault:=true.B}
   scheduler.io.completion.ready:=phase===running && !mapperBusy && !output.io.in.valid && !uniform.io.busy && !io.memoryRequest.valid && !launches.io.deq.valid
   when(scheduler.io.completion.fire){
     result.completedInvocations:=scheduler.io.completion.bits.completedInvocations;result.nextSequence:=sequence
+    if(exclusiveGsSequence)exclusiveResult.get:=exclusive.get
     result.status:=Mux(outputFault || trapFault,GeometryInvocationStatus.workerFault,
       Mux(cancelled || io.cancel,GeometryInvocationStatus.cancelled,scheduler.io.completion.bits.status))
     phase:=report

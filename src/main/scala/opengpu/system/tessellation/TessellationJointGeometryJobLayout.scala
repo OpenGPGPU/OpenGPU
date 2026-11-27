@@ -59,5 +59,6 @@ class TessellationJointGeometryNativeCompletion(idWidth:Int) extends Bundle {
   val base=new TessellationJointNativeCompletion(idWidth)
   val geometryReportValid=Bool();val actualGsPublished=UInt(158.W)
   val received=UInt(161.W);val dropped=UInt(161.W);val admitted=UInt(97.W)
-  val geometryTasks=UInt(64.W);val nextGsSequence=UInt(64.W);val nextBinSequence=UInt(33.W)
+  val geometryTasks=UInt(64.W);val nextGsSequenceExclusive=UInt(65.W)
+  val nextGsSequence=UInt(64.W);val nextBinSequence=UInt(33.W)
 }
