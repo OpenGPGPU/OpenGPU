@@ -17,12 +17,16 @@ class TessellationGeometryPrimitivePipeline(
     p: VertexShaderStageConfig,
     commandIdWidth: Int,
     numComputeUnits: Int,
-    domain: Int
+    domain: Int,
+    exclusiveGsSequence: Boolean = false
 ) extends Module {
+  def this(config: GpuConfig, p: VertexShaderStageConfig, commandIdWidth: Int, numComputeUnits: Int, domain: Int) =
+    this(config, p, commandIdWidth, numComputeUnits, domain, false)
   val io = IO(new Bundle {
     val task = Flipped(Decoupled(new TessellationGeometryPipelineTask(p, commandIdWidth)))
     val primitive = Decoupled(new GeometryMappedPrimitive(p))
     val completion = Decoupled(new TessellationGeometryPipelineResult(commandIdWidth))
+    val nextSequenceExclusive = if (exclusiveGsSequence) Some(Output(UInt(65.W))) else None
     val shared = Flipped(new SharedCuGraphicsPort(config, commandIdWidth, numComputeUnits, geometryAvailable = true))
     val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, 1))
     val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, 1)))
@@ -31,15 +35,26 @@ class TessellationGeometryPrimitivePipeline(
     val ownerTransportDrained = Input(Bool()); val cancel = Input(Bool())
     val busy = Output(Bool()); val drained = Output(Bool())
   })
-  private val control = Module(new TessellationGeometryPipelineControl(p, commandIdWidth))
+  private val control = Module(new TessellationGeometryPipelineControl(p, commandIdWidth, exclusiveGsSequence))
   private val raw = Module(new TessellationGeometryRawBridge(p, domain))
   private val geometry = Module(
-    new NativeGeometryPrimitivePipeline(config, p, commandIdWidth, numComputeUnits, rawOutputs = true)
+    new NativeGeometryPrimitivePipeline(
+      config,
+      p,
+      commandIdWidth,
+      numComputeUnits,
+      rawOutputs = true,
+      exclusiveGsSequence = exclusiveGsSequence
+    )
   )
   control.io.task <> io.task; io.completion <> control.io.completion
   raw.io.in <> control.io.rawIn; control.io.rawOut <> raw.io.out; control.io.rawFault <> raw.io.fault
   raw.io.cancel := control.io.rawCancel; control.io.rawBusy := raw.io.busy
   geometry.io.task <> control.io.geometryTask; control.io.geometryCompletion <> geometry.io.completion
+  if (exclusiveGsSequence) {
+    control.io.geometryNextSequenceExclusive.get := geometry.io.nextSequenceExclusive.get
+    io.nextSequenceExclusive.get := control.io.nextSequenceExclusive.get
+  }
   geometry.io.cancel := control.io.geometryCancel; control.io.geometryBusy := geometry.io.busy
   io.primitive <> geometry.io.primitive; io.shared <> geometry.io.shared
   io.memoryRequest <> geometry.io.memoryRequest; geometry.io.memoryResponse <> io.memoryResponse
