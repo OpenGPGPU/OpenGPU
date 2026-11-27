@@ -96,8 +96,10 @@ shaders. No physical CU, image bank, rendering, protected submission or public
 API is exercised here. Supported 16-lane/eight-warp metadata and full vertex
 interfaces are retained; there is no frame throughput/FPS result.
 
-Checked GNQ→original-draw/invocation mapping, independent input-patch language
-identity, joint-frame capture, exclusive cursors across separate ranges, complete
-three-domain parent execution, original shaders/resources, protected/API paths
-and the 2-CU 640×480 at 60-FPS product remain unfinished. This stage does not
-close P39/P40 or change the alignment acceptance count of 3/40.
+Subsequent main deliveries added checked GNQ→original-draw/invocation mapping,
+independent input-patch language identity, joint-frame capture, exclusive cursors,
+three-domain GNQ4/5/6 parent execution and bounded protected replay. The remaining
+gap is the GNQ7/8/9 geometry joint controller/parent/protected-host chain, full
+resource/configuration and two-owner/fault/cancel qualification. This historical
+stage does not close P39/P40; the current alignment acceptance count remains
+15/40.

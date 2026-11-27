@@ -197,10 +197,11 @@ default, ordinary TF remains available when it is disabled, and ABI10 mask
 control is not enabled. JDK21 focused tests pass 35/35, including 2/2 parent
 elaboration checks; changed-suite selection passes 176 tests.
 
-Actual original five-stage CU/frame execution remains pending. The next harness
-keeps only `full5` and `pointcoord` at 4×4, with two CUs, all 65 uniform views,
-four MRTs, independent image/clear/padding/guard checks and no-reset reuse.
-Maximum-output GS lowering, remaining GLSL arithmetic/builtins and PointSize,
+PR #962 then passed actual original five-stage CU/frame replay for `full5` and
+`pointcoord` at 4×4 on two CUs, with all 65 uniform views, four MRTs, independent
+image/clear/padding/guard checks and no-reset reuse. This is direct typed-isoline
+evidence; protected GNQ7/8/9 host execution remains pending. Maximum-output GS
+lowering, remaining GLSL arithmetic/builtins and PointSize,
 dynamic/ordered GS execution, TF, ABI10 provider/admission, protected host
 submission and product qualification remain open. No component or CPU result
 substitutes for those paths. The mandatory two-CU 640×480/60-FPS target remains
