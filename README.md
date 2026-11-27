@@ -95,12 +95,12 @@ Scalafix applies syntactic rewrites to sbt main and test sources. Scalafmt then
 formats changed Scala and sbt files. To run both tools across all sbt sources,
 use `sbt 'scalafixAll --syntactic' scalafmtAll scalafmtSbt`.
 
-Scala CI publishes a `scala-autofix` patch when either tool changes a file. For
-an up-to-date PR branch in this repository, CI also commits the fixes to that
-branch. GitHub requires approval to run CI for the bot commit. For a
-fork or a branch that needs updating, apply the patch with
-`git apply scala-autofix.patch` after updating your branch, or run the command
-above and push the fixes.
+The Scala CI `lint-fix` job runs both tools and directly commits and pushes any
+fixes to the PR branch when it belongs to this repository and matches the tested
+merge tree. Approve the follow-up run on the PR to check the new bot commit.
+The job also uploads a `scala-autofix` patch. For a fork or a branch that needs
+updating, apply it with `git apply scala-autofix.patch` after updating your
+branch, or run the command above and push the fixes.
 
 The tests use `opengpu.testutil.GpuSim`, which caches compiled Verilator models
 under `target/chiselsim`. The first run spends most of its time compiling RTL;

@@ -121,7 +121,7 @@ const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
                 self.assertLess(checkout, script.start())
                 self.assertIn("ref: ${{ github.sha }}", body[checkout:script.start()])
             checked.add(name)
-        self.assertEqual(checked, {"style", "checks", "unit-tests", "affected-tests", "ci-ok"})
+        self.assertEqual(checked, {"lint-fix", "checks", "unit-tests", "affected-tests", "ci-ok"})
 
     def test_host_only_affected_cases_enable_compilation_and_registration(self):
         from changed_test_suites import changed_suites
