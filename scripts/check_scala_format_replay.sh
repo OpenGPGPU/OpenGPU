@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Verify that the changed sbt sources exactly match Scalafmt's output on the base.
+# Verify that the changed Scala sources exactly match Scalafmt's output on the base.
 set -euo pipefail
 
 root=$(git rev-parse --show-toplevel)
 cd "$root"
 base=$(git merge-base HEAD "$1")
-sources=(':(glob)src/main/scala/**/*.scala' ':(glob)src/test/scala/**/*.scala')
+# Keep new sbt build definitions in the normal affected-suite selection.
+sources=('*.scala' ':(exclude,glob)project/**')
 
 # Additions, deletions, renames and mode changes require normal suite selection.
 [[ -z "$(git diff --summary --no-renames "$base" HEAD -- "${sources[@]}")" ]] || exit 1
@@ -53,4 +54,4 @@ while IFS= read -r -d '' path; do
     exit 1
   fi
 done < "$scratch/paths"
-printf 'Scalafmt replay matched %s changed Scala files.\n' "$changed"
+printf 'Scalafmt replay matched %d changed Scala files.\n' "$changed"
