@@ -30,8 +30,8 @@ identity/status mismatches, invalid report tails, fault/status inconsistencies,
 `received != admitted + dropped`, and a low64 GS sequence mismatch. An exclusive
 GS sequence of `2^64` with low64 zero is valid.
 
-The exact GJP2 words are `474a5002 0080387f 08100207 8ce58b2c`. Bits0..6 retain
-the GJP1 required owner mask `0x7f`; bit7 is scalar FP; bits11..13 require the
+The exact GJP2 words are `474a5002 008038ff 08100207 8ce58b2c`. Bits0..6 retain
+the GJP1 required owner mask `0x7f`; bit7 is required scalar FP; bits11..13 require the
 geometry route, geometry uniforms and shared three-domain owner. Advanced blend
 (bit8), sample inputs (bit9) and feedback (bit10) are closed, with feedback
 required to remain zero. The words select two CUs, 16 lanes, eight warps, four

@@ -48,7 +48,7 @@ class JointGeometryAbi(unittest.TestCase):
                           completion['end']),
                          ('0x180', '0x540', '0x560', '0x5d8', '0x5d8', 4, '0x5e8'))
         self.assertEqual(geometry_abi.profile_words(profile),
-                         [0x474a5002, 0x80387f, 0x08100207, 0x8ce58b2c])
+                         [0x474a5002, 0x8038ff, 0x08100207, 0x8ce58b2c])
         flags = {item['name']: item for item in profile['flags']}
         self.assertEqual(set(flags), {
             'OWNED_VERTEX_SOURCE', 'PATCH_ZERO_INITIALIZED', 'OWNED_PATCH_READS',
@@ -57,12 +57,12 @@ class JointGeometryAbi(unittest.TestCase):
             'FEEDBACK', 'GEOMETRY_ROUTE', 'GEOMETRY_UNIFORMS', 'SHARED_THREE_DOMAIN_OWNER',
         })
         self.assertEqual(profile['requiredOwnerMask'], '0x7f')
-        self.assertEqual(profile['targetFlags'], '0x387f')
+        self.assertEqual(profile['targetFlags'], '0x38ff')
         self.assertTrue(all(flags[name]['required'] for name in (
             'OWNED_VERTEX_SOURCE', 'PATCH_ZERO_INITIALIZED', 'OWNED_PATCH_READS',
             'OWNED_TESSELLATION_INFO', 'GEOMETRY_INPUTS', 'JOINT_DIRECTORY_ROUTE',
             'WHOLE_OWNER_RETIREMENT')))
-        self.assertEqual((flags['SCALAR_FPU']['bit'], flags['SCALAR_FPU']['required']), (7, False))
+        self.assertEqual((flags['SCALAR_FPU']['bit'], flags['SCALAR_FPU']['required']), (7, True))
         self.assertEqual((flags['ADVANCED_BLEND']['bit'], flags['ADVANCED_BLEND']['required']), (8, False))
         self.assertEqual((flags['SAMPLE_INPUTS']['bit'], flags['SAMPLE_INPUTS']['required']), (9, False))
         self.assertEqual((flags['FEEDBACK']['bit'], flags['FEEDBACK']['required']), (10, False))
@@ -78,8 +78,8 @@ class JointGeometryAbi(unittest.TestCase):
         self.assertIn('#define OPENGPU_JOINT_GEOMETRY_PROFILE_CAPACITY_WORD 0x8ce58b2cu', header)
         self.assertIn('#define OPENGPU_JOINT_GEOMETRY_PROFILE_GCR1_PRESENCE_BIT 0x17u', header)
         self.assertIn('#define OPENGPU_JOINT_GEOMETRY_PROFILE_REQUIRED_OWNER_MASK 0x7fu', header)
-        self.assertIn('#define OPENGPU_JOINT_GEOMETRY_PROFILE_TARGET_FLAGS 0x387fu', header)
-        self.assertIn('#define OPENGPU_JOINT_GEOMETRY_PROFILE_FLAGS 0x80387fu', header)
+        self.assertIn('#define OPENGPU_JOINT_GEOMETRY_PROFILE_TARGET_FLAGS 0x38ffu', header)
+        self.assertIn('#define OPENGPU_JOINT_GEOMETRY_PROFILE_FLAGS 0x8038ffu', header)
         self.assertIn('#define OPENGPU_JOINT_GEOMETRY_PROFILE_FLAG_FEEDBACK_REQUIRED 0x0u', header)
         self.assertNotIn('TRANSFORM_FEEDBACK', header)
 

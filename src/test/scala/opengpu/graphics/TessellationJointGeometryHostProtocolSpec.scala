@@ -328,9 +328,10 @@ class TessellationJointGeometryHostProtocolSpec extends AnyFlatSpec {
     assert(protocol.profileWordCount == 4)
     assert(protocol.profileGcr1PresenceBit == 23)
     assert(protocol.profileRequiredOwnerMask == 0x7f)
-    assert(protocol.profileTargetFlags == 0x387f)
+    assert(protocol.profileTargetFlags == 0x38ff)
     assert((protocol.profileFeatureFlags & 0x7f) == 0x7f)
     assert(protocol.profileScalarFpu == 1 << 7)
+    assert((protocol.profileFeatureFlags & protocol.profileScalarFpu) != 0)
     assert((protocol.profileFeatureFlags & (protocol.profileAdvancedBlend | protocol.profileSampleInputs)) == 0)
     assert((protocol.profileFeatureFlags & protocol.profileFeedback) == 0)
     val geometryFlags = protocol.profileGeometryRoute | protocol.profileGeometryUniforms |
@@ -340,7 +341,7 @@ class TessellationJointGeometryHostProtocolSpec extends AnyFlatSpec {
     assert(
       protocol.profileWords == Vector(
         BigInt("474a5002", 16),
-        BigInt("0080387f", 16),
+        BigInt("008038ff", 16),
         BigInt("08100207", 16),
         BigInt("8ce58b2c", 16)
       )

@@ -56,9 +56,9 @@ object TessellationJointGeometryHostProtocol {
   val profileGcr1Presence = 1 << profileGcr1PresenceBit
   val profileFeatureFlags = profileOwnedVertexSource | profilePatchZeroInitialized |
     profileOwnedPatchReads | profileOwnedTessellationInfo | profileGeometryInputs |
-    profileJointDirectoryRoute | profileWholeOwnerRetirement |
+    profileJointDirectoryRoute | profileWholeOwnerRetirement | profileScalarFpu |
     profileGeometryRoute | profileGeometryUniforms | profileSharedThreeDomainOwner
-  val profileTargetFlags = 0x387f
+  val profileTargetFlags = 0x38ff
   require((profileFeatureFlags & profileRequiredOwnerMask) == profileRequiredOwnerMask)
   require(profileFeatureFlags == profileTargetFlags)
   val profileFlags = BigInt(profileTargetFlags | profileGcr1Presence)

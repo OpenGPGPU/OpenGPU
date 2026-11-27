@@ -75,7 +75,7 @@ EXPECTED_COMPLETION = {
 
 EXPECTED_PROFILE = {
     'magic': '0x474a5002', 'base': '0x600', 'end': '0x610', 'words': 4,
-    'gcr1PresenceBit': 23, 'requiredOwnerMask': '0x7f', 'targetFlags': '0x387f',
+    'gcr1PresenceBit': 23, 'requiredOwnerMask': '0x7f', 'targetFlags': '0x38ff',
     'flags': [
         {'name': 'OWNED_VERTEX_SOURCE', 'bit': 0, 'required': True},
         {'name': 'PATCH_ZERO_INITIALIZED', 'bit': 1, 'required': True},
@@ -84,7 +84,7 @@ EXPECTED_PROFILE = {
         {'name': 'GEOMETRY_INPUTS', 'bit': 4, 'required': True},
         {'name': 'JOINT_DIRECTORY_ROUTE', 'bit': 5, 'required': True},
         {'name': 'WHOLE_OWNER_RETIREMENT', 'bit': 6, 'required': True},
-        {'name': 'SCALAR_FPU', 'bit': 7, 'required': False},
+        {'name': 'SCALAR_FPU', 'bit': 7, 'required': True},
         {'name': 'ADVANCED_BLEND', 'bit': 8, 'required': False},
         {'name': 'SAMPLE_INPUTS', 'bit': 9, 'required': False},
         {'name': 'FEEDBACK', 'bit': 10, 'required': False},
@@ -200,7 +200,7 @@ def generate():
         raise ValueError('changed joint geometry completion')
     if profile != EXPECTED_PROFILE:
         raise ValueError('changed joint geometry profile')
-    if profile_words(profile) != [0x474a5002, 0x80387f, 0x08100207, 0x8ce58b2c]:
+    if profile_words(profile) != [0x474a5002, 0x8038ff, 0x08100207, 0x8ce58b2c]:
         raise ValueError('wrong joint geometry profile words')
 
     out = [
