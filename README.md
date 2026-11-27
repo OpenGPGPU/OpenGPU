@@ -84,6 +84,24 @@ sbt compile
 sbt test
 ```
 
+To apply the same Scala fixes as PR CI to your changed files, run the following
+command from your branch. Stage new files first so Git includes them in the diff.
+
+```sh
+bash scripts/scala_autofix.sh origin/main
+```
+
+Scalafix applies syntactic rewrites to sbt main and test sources. Scalafmt then
+formats changed Scala and sbt files. To run both tools across all sbt sources,
+use `sbt 'scalafixAll --syntactic' scalafmtAll scalafmtSbt`.
+
+Scala CI publishes a `scala-autofix` patch when either tool changes a file. For
+an up-to-date PR branch in this repository, CI also commits the fixes to that
+branch. GitHub may ask a maintainer to approve CI for the bot commit. For a
+fork or a branch that needs updating, apply the patch with
+`git apply scala-autofix.patch` after updating your branch, or run the command
+above and push the fixes.
+
 The tests use `opengpu.testutil.GpuSim`, which caches compiled Verilator models
 under `target/chiselsim`. The first run spends most of its time compiling RTL;
 later runs reuse models by content hash. Use the uncached path when diagnosing

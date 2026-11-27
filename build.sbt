@@ -17,6 +17,26 @@ Compile / scalacOptions ++= Seq("-language:reflectiveCalls", "-Ymacro-annotation
 
 Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oD")
 
+lazy val scalaAutofixFiles = taskKey[Option[Seq[File]]]("Files selected by scripts/scala_autofix.sh")
+
+scalaAutofixFiles := {
+  val root = baseDirectory.value
+  sys.env.get("SCALA_AUTOFIX_FILES").map { path =>
+    IO.read(file(path)).split('\u0000').toSeq.map(root / _)
+  }
+}
+
+// The scoped run feeds all selected files to Scalafmt, including build files and standalone scripts.
+Compile / scalafmt / unmanagedSources :=
+  scalaAutofixFiles.value.getOrElse((Compile / unmanagedSources).value)
+
+Seq(Compile, Test).map { config =>
+  config / scalafix / unmanagedSources := {
+    val sources = (config / unmanagedSources).value
+    scalaAutofixFiles.value.fold(sources)(files => sources.filter(files.toSet))
+  }
+}
+
 // FloatFMA is vendored at src/main/scala/yunsuan/fpu/FloatFMA.scala (a local
 // copy of YunSuan's FMA with an explicit intermediate register for the
 // infinity-sign selection, used by the FpuBackend timing closure) so the
