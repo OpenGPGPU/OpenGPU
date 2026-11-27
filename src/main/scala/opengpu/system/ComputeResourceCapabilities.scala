@@ -39,6 +39,7 @@ object ComputeResourceCapabilities {
   val nativeSampleTransport = 1 << 20
   val imageFloatExchange = 1 << 21
   val jointTessellation = 1 << 22
+  val jointTessellationGeometry = 1 << 23
   val flags = 7 | wordAtomics
   val fields = Seq(
     "MAGIC",
@@ -75,7 +76,8 @@ object ComputeResourceCapabilities {
       nativeGeometryTransportAvailable: Boolean = false,
       nativeSampleTransportAvailable: Boolean = false,
       imageFloatExchangeAvailable: Boolean = false,
-      jointTessellationAvailable: Boolean = false
+      jointTessellationAvailable: Boolean = false,
+      jointTessellationGeometryAvailable: Boolean = false
   ): Seq[BigInt] = {
     require(!imageAtomicAvailable || imageAvailable, "image atomics require images")
     require(!imageFloatExchangeAvailable || imageAtomicAvailable, "float image exchange requires image atomics")
@@ -97,11 +99,22 @@ object ComputeResourceCapabilities {
       !jointTessellationAvailable || (nativeProtectedSourcesAvailable && !tessellationAvailable),
       "joint tessellation discovery requires the protected joint owner"
     )
+    require(
+      !jointTessellationGeometryAvailable || (nativeProtectedSourcesAvailable && !tessellationAvailable),
+      "joint geometry discovery requires the protected geometry owner"
+    )
     val jointFlags =
-      if (jointTessellationAvailable)
-        jointTessellation
-      else
-        0
+      (
+        if (jointTessellationAvailable)
+          jointTessellation
+        else
+          0
+      ) | (
+        if (jointTessellationGeometryAvailable)
+          jointTessellationGeometry
+        else
+          0
+      )
     val values = Seq[BigInt](
       magic,
       wordCount,
