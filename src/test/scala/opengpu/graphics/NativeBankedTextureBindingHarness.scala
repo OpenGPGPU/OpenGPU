@@ -12,22 +12,26 @@ import opengpu.system.{GpuSystem, SharedCuShaderConfig}
 /** Use the same characterized synchronous SRAM models as the physical pool. */
 private[graphics] class NativeBankedTextureSramModels extends BlackBox with HasBlackBoxInline {
   val io = IO(new Bundle { val present = Output(Bool()) })
-  setInline("NativeBankedTextureSramModels.sv",
+  setInline(
+    "NativeBankedTextureSramModels.sv",
     "module NativeBankedTextureSramModels(output present); assign present=1'b1; endmodule\n" +
-      Seq(32,64).map(width => Files.readString(Paths.get(
-        s"depends/asap7_sram_0p0/generated/verilog/srambank_64x4x${width}_6t122.v"))).mkString("\n"))
+      Seq(32, 64)
+        .map(width =>
+          Files.readString(Paths.get(s"depends/asap7_sram_0p0/generated/verilog/srambank_64x4x${width}_6t122.v"))
+        )
+        .mkString("\n")
+  )
 }
 
-/** Full-thread native stages sharing the production two-cluster texture pool.
-  * A test compute task can occupy CU0 so the real dispatcher places the two
-  * graphics owners on CU1/CU2, exercising both physical cluster destinations.
+/** Full-thread native stages sharing the production two-cluster texture pool. A test compute task can occupy CU0 so the
+  * real dispatcher places the two graphics owners on CU1/CU2, exercising both physical cluster destinations.
   */
 private[graphics] class NativeBankedTextureBindingHarness extends Module {
-  val config = GpuConfig(lanes=16, warps=8, l2Sets=8, l2Ways=2)
+  val config = GpuConfig(lanes = 16, warps = 8, l2Sets = 8, l2Ways = 2)
   val vertex = VertexShaderStageConfig()
   val fragment = FragmentShaderConfig()
   val graphics = GraphicsConfig()
-  val payload = ShaderPayloadConfig(maxPayloadBytes=16384, owners=2, ports=6)
+  val payload = ShaderPayloadConfig(maxPayloadBytes = 16384, owners = 2, ports = 6)
   private val hostTransactions = 64
   private val transactions = GpuSystem.totalMemoryTransactions(4, 4, hostTransactions)
   val io = IO(new Bundle {
@@ -61,25 +65,61 @@ private[graphics] class NativeBankedTextureBindingHarness extends Module {
     val retired = Output(Vec(2, Valid(new NativeRgba8TextureResult)))
     val clusterRead = Output(Vec(2, Bool()))
   })
-  private val v = Module(new VertexShaderStage(config, vertex, SharedCuShaderConfig(4),
-    payload=Some(payload), payloadOwner=0, groupedTexture=true))
-  private val f = Module(new FragmentShaderStage(config, fragment, SharedCuShaderConfig(4),
-    payload=Some(payload), payloadOwner=1, groupedTexture=true))
-  private val router = Module(new SharedShaderTaskRouter(config, 4, 2, shaderPayload=Some(payload)))
-  private val system = Module(new GpuSystem(config, numComputeUnits=4, enableGraphicsKernels=true,
-    enableFpuBackend=false, enableUnifiedCommands=true, graphicsHostTransactions=hostTransactions,
-    instructionCacheSets=4, instructionCacheWays=1, vectorCacheSets=4, vectorCacheWays=1,
-    shaderPayload=Some(payload), producerPayloadPins=4, nativeExecutionProfile=true))
-  private val texture = Module(new NativeRgba8TextureSharedPool(config, numComputeUnits=4,
-    clients=5, useBlackBoxes=true, rowsPerCluster=128))
+  private val v = Module(
+    new VertexShaderStage(
+      config,
+      vertex,
+      SharedCuShaderConfig(4),
+      payload = Some(payload),
+      payloadOwner = 0,
+      groupedTexture = true
+    )
+  )
+  private val f = Module(
+    new FragmentShaderStage(
+      config,
+      fragment,
+      SharedCuShaderConfig(4),
+      payload = Some(payload),
+      payloadOwner = 1,
+      groupedTexture = true
+    )
+  )
+  private val router = Module(new SharedShaderTaskRouter(config, 4, 2, shaderPayload = Some(payload)))
+  private val system = Module(
+    new GpuSystem(
+      config,
+      numComputeUnits = 4,
+      enableGraphicsKernels = true,
+      enableFpuBackend = false,
+      enableUnifiedCommands = true,
+      graphicsHostTransactions = hostTransactions,
+      instructionCacheSets = 4,
+      instructionCacheWays = 1,
+      vectorCacheSets = 4,
+      vectorCacheWays = 1,
+      shaderPayload = Some(payload),
+      producerPayloadPins = 4,
+      nativeExecutionProfile = true
+    )
+  )
+  private val texture = Module(
+    new NativeRgba8TextureSharedPool(
+      config,
+      numComputeUnits = 4,
+      clients = 5,
+      useBlackBoxes = true,
+      rowsPerCluster = 128
+    )
+  )
   io.sramModelsPresent := Module(new NativeBankedTextureSramModels).io.present
   private def tie(data: Data): Unit = data match {
-    case r: Record => r.elements.values.foreach(tie)
-    case a: Vec[_] => a.foreach(tie)
-    case b: Bool if DataMirror.directionOf(b)==ActualDirection.Input => b := false.B
-    case s: SInt if DataMirror.directionOf(s)==ActualDirection.Input => s := 0.S
-    case u: UInt if DataMirror.directionOf(u)==ActualDirection.Input => u := 0.U
-    case _ => ()
+    case r: Record                                                     => r.elements.values.foreach(tie)
+    case a: Vec[_]                                                     => a.foreach(tie)
+    case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b := false.B
+    case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s := 0.S
+    case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u := 0.U
+    case _                                                             => ()
   }
   tie(system.io)
   system.io.gpuCommand <> io.gpuCommand
@@ -121,7 +161,7 @@ private[graphics] class NativeBankedTextureBindingHarness extends Module {
     router.io.clientPayload.get(i) := port.task
     io.owned(i) := router.io.clients(i).owned
     val queued = RegInit(false.B)
-    when(if(i==0) io.vertexDraw.fire else io.fragmentDraw.fire) { queued := false.B }
+    when(if (i == 0) io.vertexDraw.fire else io.fragmentDraw.fire) { queued := false.B }
     when(router.io.clients(i).launch.fire) { queued := true.B }
     io.queued(i) := queued
   }
@@ -148,18 +188,18 @@ private[graphics] class NativeBankedTextureBindingHarness extends Module {
     texture.io.memoryRequest.toSeq ++ texture.io.pageWalk.toSeq
   private val replies = Seq(v.io.memoryResponse, f.io.memoryResponse) ++
     texture.io.memoryResponse.toSeq ++ texture.io.pageWalkResponse.toSeq
-  private val ranges = Seq((0,4), (4,4), (8,16), (24,16), (40,4), (44,4))
-  private val arbiter = Module(new RRArbiter(new ComputeMemoryRequest(config,64,hostTransactions),6))
-  private val queue = Module(new Queue(new ComputeMemoryRequest(config,64,hostTransactions),2,pipe=true))
+  private val ranges = Seq((0, 4), (4, 4), (8, 16), (24, 16), (40, 4), (44, 4))
+  private val arbiter = Module(new RRArbiter(new ComputeMemoryRequest(config, 64, hostTransactions), 6))
+  private val queue = Module(new Queue(new ComputeMemoryRequest(config, 64, hostTransactions), 2, pipe = true))
   private val response = system.io.graphicsHostResponse
-  private val selected = Wire(Vec(6,Bool()))
+  private val selected = Wire(Vec(6, Bool()))
   for (i <- requests.indices) {
     val (base, count) = ranges(i)
     arbiter.io.in(i).valid := requests(i).valid
     arbiter.io.in(i).bits := requests(i).bits
     arbiter.io.in(i).bits.transactionId := requests(i).bits.transactionId.pad(6) + base.U
     requests(i).ready := arbiter.io.in(i).ready
-    selected(i) := response.bits.transactionId >= base.U && response.bits.transactionId < (base+count).U
+    selected(i) := response.bits.transactionId >= base.U && response.bits.transactionId < (base + count).U
     replies(i).valid := response.valid && selected(i)
     replies(i).bits := response.bits
     replies(i).bits.transactionId := response.bits.transactionId - base.U
@@ -167,7 +207,7 @@ private[graphics] class NativeBankedTextureBindingHarness extends Module {
   }
   queue.io.enq <> arbiter.io.out
   system.io.graphicsHostRequest <> queue.io.deq
-  response.ready := (selected.zip(replies).map { case (s,r) => s && r.ready }).reduce(_ || _)
+  response.ready := (selected.zip(replies).map { case (s, r) => s && r.ready }).reduce(_ || _)
   when(response.valid) { assert(PopCount(selected) === 1.U) }
   for (i <- 0 until 2) {
     io.clusterRead(i) := texture.io.memoryRequest(i).fire && !texture.io.memoryRequest(i).bits.isWrite

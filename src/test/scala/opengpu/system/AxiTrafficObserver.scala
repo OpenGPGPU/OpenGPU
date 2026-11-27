@@ -4,9 +4,8 @@ import chisel3.Record
 import opengpu.testutil.AxiTrafficCounters
 import opengpu.testutil.GpuSim._
 
-/** Read-only opt-in sampling from serviceMemoryMaster's pre-edge onCycle hook.
-  * The stimulus has driven all channels before this hook. It must never be
-  * called during unrelated MMIO clocks or used to drive DUT inputs.
+/** Read-only opt-in sampling from serviceMemoryMaster's pre-edge onCycle hook. The stimulus has driven all channels
+  * before this hook. It must never be called during unrelated MMIO clocks or used to drive DUT inputs.
   */
 private[opengpu] final class AxiTrafficObserver(signals: Record, counts: AxiTrafficCounters) {
   private val port = new AxiMemoryMasterPort(signals)

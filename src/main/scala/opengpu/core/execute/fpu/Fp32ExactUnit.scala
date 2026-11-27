@@ -67,12 +67,10 @@ private class Fp32ExactShift(tagWidth: Int) extends Bundle {
 
 /** Five-stage exact FP32 operations not covered by the FMA datapath.
   *
-  * Float-to-integer shifts and rounding are split from final saturation;
-  * integer-to-float leading-one detection is split from the shift/round
-  * stage, which is split again from exponent/result formation.  Float-to-
-  * integer alignment shifting is split from its rounding/overflow decision.
-  * Simple sign/min-max/compare/classify operations pass through with the
-  * same latency.
+  * Float-to-integer shifts and rounding are split from final saturation; integer-to-float leading-one detection is
+  * split from the shift/round stage, which is split again from exponent/result formation. Float-to- integer alignment
+  * shifting is split from its rounding/overflow decision. Simple sign/min-max/compare/classify operations pass through
+  * with the same latency.
   */
 class Fp32ExactUnit(tagWidth: Int = 16) extends Module {
   require(tagWidth > 0)
@@ -182,8 +180,7 @@ class Fp32ExactUnit(tagWidth: Int = 16) extends Module {
   private val fpMant = a(22, 0)
   private val fpInfinity = fpExp === 0xff.U && fpMant === 0.U
   private val fpToIntUnsigned = io.in.bits.exactFunction === 1.U
-  private val significand = Mux(
-    fpExp === 0.U, fpMant, Cat(1.U, fpMant))
+  private val significand = Mux(fpExp === 0.U, fpMant, Cat(1.U, fpMant))
   private val magnitudeShiftRight = Mux(
     fpExp === 0.U,
     149.U,
@@ -276,14 +273,17 @@ class Fp32ExactUnit(tagWidth: Int = 16) extends Module {
       shiftBits.fpToIntFraction >= preHalfFraction
   private val preAnyFraction = shiftBits.fpToIntFraction =/= 0.U
   private val preRoundUp = MuxLookup(
-    shiftBits.roundingMode, preRoundUpNearestEven
-  )(Seq(
-    "b000".U -> preRoundUpNearestEven,
-    "b001".U -> false.B,
-    "b010".U -> Mux(shiftBits.fpToIntNegative, preAnyFraction, false.B),
-    "b011".U -> Mux(shiftBits.fpToIntNegative, false.B, preAnyFraction),
-    "b100".U -> preRoundUpMaxMagnitude
-  ))
+    shiftBits.roundingMode,
+    preRoundUpNearestEven
+  )(
+    Seq(
+      "b000".U -> preRoundUpNearestEven,
+      "b001".U -> false.B,
+      "b010".U -> Mux(shiftBits.fpToIntNegative, preAnyFraction, false.B),
+      "b011".U -> Mux(shiftBits.fpToIntNegative, false.B, preAnyFraction),
+      "b100".U -> preRoundUpMaxMagnitude
+    )
+  )
   private val preRounded = shiftBits.fpToIntTruncated +& preRoundUp
   private val preRoundedLow = preRounded(31, 0)
   private val preSignedOverflow = Mux(
@@ -372,11 +372,9 @@ class Fp32ExactUnit(tagWidth: Int = 16) extends Module {
     preBits.intToFpMagnitude >> midShiftRight,
     preBits.intToFpMagnitude << midShiftLeft
   )
-  private val midDroppedMask = Mux(
-    midShiftRight > 0.U, (1.U << midShiftRight) - 1.U, 0.U)
+  private val midDroppedMask = Mux(midShiftRight > 0.U, (1.U << midShiftRight) - 1.U, 0.U)
   private val midDropped = preBits.intToFpMagnitude & midDroppedMask
-  private val midHalfDropped = Mux(
-    midShiftRight > 0.U, 1.U << (midShiftRight - 1.U), 0.U)
+  private val midHalfDropped = Mux(midShiftRight > 0.U, 1.U << (midShiftRight - 1.U), 0.U)
   private val midRoundUpNearestEven =
     midShiftRight > 0.U &&
       (midDropped > midHalfDropped ||
@@ -385,14 +383,17 @@ class Fp32ExactUnit(tagWidth: Int = 16) extends Module {
     midShiftRight > 0.U && midDropped >= midHalfDropped
   private val midRoundUpAny = midShiftRight > 0.U && midDropped =/= 0.U
   private val midRoundUp = MuxLookup(
-    preBits.roundingMode, midRoundUpNearestEven
-  )(Seq(
-    "b000".U -> midRoundUpNearestEven,
-    "b001".U -> false.B,
-    "b010".U -> Mux(preBits.intToFpSign, midRoundUpAny, false.B),
-    "b011".U -> Mux(preBits.intToFpSign, false.B, midRoundUpAny),
-    "b100".U -> midRoundUpMaxMagnitude
-  ))
+    preBits.roundingMode,
+    midRoundUpNearestEven
+  )(
+    Seq(
+      "b000".U -> midRoundUpNearestEven,
+      "b001".U -> false.B,
+      "b010".U -> Mux(preBits.intToFpSign, midRoundUpAny, false.B),
+      "b011".U -> Mux(preBits.intToFpSign, false.B, midRoundUpAny),
+      "b100".U -> midRoundUpMaxMagnitude
+    )
+  )
   private val midRoundedSig = midIntSig(23, 0) +& midRoundUp
   private val midIntCarry = midRoundedSig(24)
   private val midIntToFpInexact = midDropped =/= 0.U

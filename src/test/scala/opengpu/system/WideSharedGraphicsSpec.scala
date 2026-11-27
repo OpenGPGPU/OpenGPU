@@ -3,7 +3,7 @@ package opengpu.system
 import chisel3._
 import opengpu.command.GpuCommandOpcode
 import opengpu.config.GpuConfig
-import opengpu.graphics.{GpuCommandMmioRegs, GraphicsConfig, RenderHostRegs,ShaderResourceConfig}
+import opengpu.graphics.{GpuCommandMmioRegs, GraphicsConfig, RenderHostRegs, ShaderResourceConfig}
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.BeforeAndAfterAll
@@ -11,31 +11,64 @@ import scala.collection.mutable
 import java.nio.file.{Files, Paths}
 
 /** Qualify the real 16-lane/eight-warp pool before migrating stock Mesa shaders. */
-abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coalesce: Boolean = false,
-    side: Int = 32, aluIterations: Int = 0, omInflight: Int = 16, omLocality: Boolean = false,
-    fragmentBatchLimit: Int = 0, bufferCommandReads: Boolean = false,
-    lanes: Int = 16, warps: Int = 8, runtimeShader: Boolean = false,
-    enableFpuBackend: Boolean = false, vertCore: Boolean = false,
-    gpuConfig: Option[GpuConfig] = None, textureExtent: Int = 0,
-    bufferTextureReads: Boolean = false, fragmentWorkerCount: Int = 0)
-    extends AnyFlatSpec with GpuHostTestSupport {
-  protected def recordScalingResult(cus: Int,workers: Int,cycles: BigInt,invariant: String): Unit=()
+abstract class WideSharedGraphicsChecks(
+    axiBytes: Int,
+    cuCounts: Seq[Int],
+    coalesce: Boolean = false,
+    side: Int = 32,
+    aluIterations: Int = 0,
+    omInflight: Int = 16,
+    omLocality: Boolean = false,
+    fragmentBatchLimit: Int = 0,
+    bufferCommandReads: Boolean = false,
+    lanes: Int = 16,
+    warps: Int = 8,
+    runtimeShader: Boolean = false,
+    enableFpuBackend: Boolean = false,
+    vertCore: Boolean = false,
+    gpuConfig: Option[GpuConfig] = None,
+    textureExtent: Int = 0,
+    bufferTextureReads: Boolean = false,
+    fragmentWorkerCount: Int = 0
+) extends AnyFlatSpec
+    with GpuHostTestSupport {
+  protected def recordScalingResult(cus: Int, workers: Int, cycles: BigInt, invariant: String): Unit = ()
   for (cus <- cuCounts) {
     it should s"shade every wide-batch lane through $cus shared CUs on ${axiBytes * 8}-bit AXI (side=$side ALU-loops=$aluIterations OM=$omInflight cap=$fragmentBatchLimit lanes=$lanes warps=$warps runtime=$runtimeShader)" in {
       val capacity = lanes * warps
-      val workers=if(fragmentWorkerCount==0)cus else fragmentWorkerCount
+      val workers = if (fragmentWorkerCount == 0) cus else fragmentWorkerCount
       val stride = 4 * capacity
       val bankStride = (9 * stride + 32 + 63) & ~63
       val gpu = gpuConfig.getOrElse(GpuConfig(lanes = lanes, warps = warps, l2Sets = 8, l2Ways = 2))
       require(gpu.lanes == lanes && gpu.warps == warps)
-      simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = side, screenHeight = side, omInflight = omInflight, omLocality = omLocality, fragmentBatchLimit = fragmentBatchLimit),
-        gpu, numComputeUnits = cus, fragCore = true, vertCore = vertCore,
-        enableFpuBackend = enableFpuBackend, sharedGraphics = true,
-        parallelGraphics = true, exposePerformance = true, memoryAxiDataBytes = axiBytes,
-        coalesceFramebufferWrites = coalesce, bufferCommandReads = bufferCommandReads,
-        bufferTextureReads = bufferTextureReads,fragmentWorkerCount=fragmentWorkerCount)) { dut =>
+      simulate(
+        new GpuHostSystemAxi(
+          GraphicsConfig(
+            screenWidth = side,
+            screenHeight = side,
+            omInflight = omInflight,
+            omLocality = omLocality,
+            fragmentBatchLimit = fragmentBatchLimit
+          ),
+          gpu,
+          numComputeUnits = cus,
+          fragCore = true,
+          vertCore = vertCore,
+          enableFpuBackend = enableFpuBackend,
+          sharedGraphics = true,
+          parallelGraphics = true,
+          exposePerformance = true,
+          memoryAxiDataBytes = axiBytes,
+          coalesceFramebufferWrites = coalesce,
+          bufferCommandReads = bufferCommandReads,
+          bufferTextureReads = bufferTextureReads,
+          fragmentWorkerCount = fragmentWorkerCount
+        )
+      ) { dut =>
         initialize(dut)
-        assert(axiRead(dut,GpuCommandMmioRegs.SHADER_CONFIG)==ShaderResourceConfig.encode(lanes,warps,2*workers,cus))
+        assert(
+          axiRead(dut, GpuCommandMmioRegs.SHADER_CONFIG) == ShaderResourceConfig.encode(lanes, warps, 2 * workers, cus)
+        )
         val words = mutable.LongMap.empty[BigInt]
         val descriptor = 0x1000
         val commands = 0x2000
@@ -52,8 +85,8 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
         require(textureExtent == 0 || runtimeShader)
         val vertexBankStride = 16 * stride + 256
         val sentinel = 0x13579bdfL
-        def store(base: Int, data: Seq[Long]): Unit = data.zipWithIndex.foreach {
-          case (value, i) => words(base.toLong + i * 4) = BigInt(value & 0xffffffffL)
+        def store(base: Int, data: Seq[Long]): Unit = data.zipWithIndex.foreach { case (value, i) =>
+          words(base.toLong + i * 4) = BigInt(value & 0xffffffffL)
         }
         def address(offset: Int): Seq[Long] = {
           var remaining = offset
@@ -73,15 +106,17 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
         // A separate diagnostic workload isolates CU throughput: sixteen
         // dependent vadd.vx operations per loop leave v2 unchanged (x0=0).
         // Scalar loop overhead is explicit, and all pixels still get checked.
-        val arithmetic = if (aluIterations == 0) Seq.empty[Long] else {
-          val offset = -4 * 17 // back over sixteen vector adds and the decrement
-          val imm = offset & 0x1fff
-          val branch = ((imm.toLong >> 12 & 1) << 31) | ((imm.toLong >> 5 & 63) << 25) |
-            (7L << 15) | (1L << 12) | ((imm.toLong >> 1 & 15) << 8) |
-            ((imm.toLong >> 11 & 1) << 7) | 0x63L
-          Seq((aluIterations.toLong << 20) | (7L << 7) | 0x13L) ++
-            Seq.fill(16)(0x02204157L) ++ Seq(0xfff38393L, branch)
-        }
+        val arithmetic =
+          if (aluIterations == 0) Seq.empty[Long]
+          else {
+            val offset = -4 * 17 // back over sixteen vector adds and the decrement
+            val imm = offset & 0x1fff
+            val branch = ((imm.toLong >> 12 & 1) << 31) | ((imm.toLong >> 5 & 63) << 25) |
+              (7L << 15) | (1L << 12) | ((imm.toLong >> 1 & 15) << 8) |
+              ((imm.toLong >> 11 & 1) << 7) | 0x63L
+            Seq((aluIterations.toLong << 20) | (7L << 7) | 0x13L) ++
+              Seq.fill(16)(0x02204157L) ++ Seq(0xfff38393L, branch)
+          }
         val shader = if (textureExtent > 0) {
           // Runtime VLMAX and physical-capacity stride, identical on 1/4 CUs.
           // UVs vary across a uniformly coloured texture, exercising line
@@ -95,16 +130,15 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
         } else if (runtimeShader) {
           // The exact same binary for every lane/warp/CU count. x9 supplies
           // capacity, x8 the warp base; vsetvli selects VLMAX at execution.
-          Seq(0x00249f13L, 0x00241293L, 0x005082b3L, 0x01007357L,
-            0x00300313L, 0x03e30333L, 0x00628333L, 0x02036107L) ++ arithmetic ++ Seq(
-            0x00600313L, 0x03e30333L, 0x00628333L, 0x02036127L,0x30500073L)
-        } else Seq(0x00241293L, 0x005082b3L, 0xc1087057L) ++
-          address(3 * stride) ++ Seq(0x02036107L) ++ arithmetic ++
-          address(6 * stride) ++ Seq(0x02036127L, 0x30500073L)
+          Seq(0x00249f13L, 0x00241293L, 0x005082b3L, 0x01007357L, 0x00300313L, 0x03e30333L, 0x00628333L,
+            0x02036107L) ++ arithmetic ++ Seq(0x00600313L, 0x03e30333L, 0x00628333L, 0x02036127L, 0x30500073L)
+        } else
+          Seq(0x00241293L, 0x005082b3L, 0xc1087057L) ++
+            address(3 * stride) ++ Seq(0x02036107L) ++ arithmetic ++
+            address(6 * stride) ++ Seq(0x02036127L, 0x30500073L)
         require(runtimeShader || (lanes == 16 && warps == 8))
         store(program, shader)
-        val vertices = Seq(-65536L, -65536L, 0L, 65536L,
-          65536L, -65536L, 0L, 65536L, -65536L, 65536L, 0L, 65536L)
+        val vertices = Seq(-65536L, -65536L, 0L, 65536L, 65536L, -65536L, 0L, 65536L, -65536L, 65536L, 0L, 65536L)
         val vertexShader = if (vertCore) {
           def sliceAddress(slice: Int): Seq[Long] =
             if (slice == 0) Seq(0x00028313L)
@@ -118,37 +152,66 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
           for (v <- 0 until 3) {
             val packed = Seq(0xff0000ffL, 0x00ff00ffL, 0x0000ffffL)(v)
             val z = Seq(0L, 4096L, 2048L)(v)
-            store(vertexBuffer + v * 32, vertices.slice(v * 4, v * 4 + 4) ++
-              Seq(packed, z, if (textureExtent > 0 && v == 1) 65536L else 0L,
-                if (textureExtent > 0 && v == 2) 65536L else 0L))
+            store(
+              vertexBuffer + v * 32,
+              vertices.slice(v * 4, v * 4 + 4) ++
+                Seq(
+                  packed,
+                  z,
+                  if (textureExtent > 0 && v == 1) 65536L else 0L,
+                  if (textureExtent > 0 && v == 2) 65536L else 0L
+                )
+            )
           }
           code
         } else Seq.empty[Long]
-        val record = if (vertCore)
-          Seq(vertexBuffer.toLong, 3L, 32L, vertexProgram.toLong,
-            vertexKernarg.toLong, vertexBankStride.toLong, 0L) ++ Seq.fill(17)(0L) ++
-            Seq(program.toLong, kernarg.toLong) ++ Seq.fill(8)(0L) ++
-            Seq(bankStride.toLong) ++ Seq.fill(5)(0L)
-        else vertices ++ Seq(255L, 0L, 0L, 0L, 255L, 0L, 0L, 0L, 255L) ++
-          Seq(0L, 4096L, 2048L) ++ Seq(program.toLong, kernarg.toLong) ++
-          (if (textureExtent > 0) Seq(0L, 0L, 65536L, 0L, 0L, 65536L, 0L, 0L)
-           else Seq.fill(8)(0L)) ++
-          Seq(bankStride.toLong) ++ Seq.fill(5)(0L)
+        val record =
+          if (vertCore)
+            Seq(
+              vertexBuffer.toLong,
+              3L,
+              32L,
+              vertexProgram.toLong,
+              vertexKernarg.toLong,
+              vertexBankStride.toLong,
+              0L
+            ) ++ Seq.fill(17)(0L) ++
+              Seq(program.toLong, kernarg.toLong) ++ Seq.fill(8)(0L) ++
+              Seq(bankStride.toLong) ++ Seq.fill(5)(0L)
+          else
+            vertices ++ Seq(255L, 0L, 0L, 0L, 255L, 0L, 0L, 0L, 255L) ++
+              Seq(0L, 4096L, 2048L) ++ Seq(program.toLong, kernarg.toLong) ++
+              (if (textureExtent > 0) Seq(0L, 0L, 65536L, 0L, 0L, 65536L, 0L, 0L)
+               else Seq.fill(8)(0L)) ++
+              Seq(bankStride.toLong) ++ Seq.fill(5)(0L)
         val skip = sys.props.get("opengpu.testFragInputSkip").map(_.toInt).getOrElse(0)
         require(skip >= 0 && skip < 64)
         val outputSkip = sys.props.get("opengpu.testFragOutputSkip").map(_.toInt).getOrElse(0)
         require(outputSkip >= 0 && outputSkip < 16)
         def omitted(slice: Int): Boolean =
           (slice < 6 && (skip & (1 << slice)) != 0) ||
-          (slice == 7 && (outputSkip & 5) == 5) ||
-          (slice == 8 && (outputSkip & 10) == 10)
+            (slice == 7 && (outputSkip & 5) == 5) ||
+            (slice == 8 && (outputSkip & 10) == 10)
         store(commands, record.updated(32, record(32) | (skip.toLong << 19) | (outputSkip.toLong << 25)))
-        for (bank <- 0 until 2*workers; slice <- 0 until 9; lane <- 0 until capacity if omitted(slice))
-          store(kernarg+bank*bankStride+slice*stride+lane*4,Seq(0x5a000000L+bank*0x100000L+slice*0x10000L+lane))
-        store(descriptor, Seq(1L << 16, commands.toLong, color.toLong, depth.toLong,
-          side * 4L, 0x81L, if (textureExtent > 0) texture.toLong else 0L,
-          textureExtent.toLong | textureExtent.toLong << 16,
-          if (textureExtent > 0) 0x101L else 0L) ++ Seq.fill(7)(0L))
+        for (bank <- 0 until 2 * workers; slice <- 0 until 9; lane <- 0 until capacity if omitted(slice))
+          store(
+            kernarg + bank * bankStride + slice * stride + lane * 4,
+            Seq(0x5a000000L + bank * 0x100000L + slice * 0x10000L + lane)
+          )
+        store(
+          descriptor,
+          Seq(
+            1L << 16,
+            commands.toLong,
+            color.toLong,
+            depth.toLong,
+            side * 4L,
+            0x81L,
+            if (textureExtent > 0) texture.toLong else 0L,
+            textureExtent.toLong | textureExtent.toLong << 16,
+            if (textureExtent > 0) 0x101L else 0L
+          ) ++ Seq.fill(7)(0L)
+        )
         if (textureExtent > 0) store(texture, Seq.fill(textureExtent * textureExtent)(textureColor))
         store(color, Seq.fill(side * side)(0x12345678L))
         store(depth, Seq.fill(side * side)(0x00ffffffL))
@@ -159,28 +222,30 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
           s"-l2-${gpu.l2Sets}x${gpu.l2Ways}-fpu-$enableFpuBackend-vert-$vertCore" +
           s"-runtime-$runtimeShader-coalesce-$coalesce-locality-$omLocality-buffer-$bufferCommandReads" +
           s"-texture-$textureExtent-texbuffer-$bufferTextureReads" +
-          (if(fragmentWorkerCount>0)s"-workers-$workers" else "")
+          (if (fragmentWorkerCount > 0) s"-workers-$workers" else "")
         val traceDirectory = sys.env.get("WIDE_GRAPHICS_TRACE_DIR").map(Paths.get(_))
         val cycleTrace = new StringBuilder("start_cycle,duration,events_hex\n")
         val memoryTrace = new StringBuilder("cycle,operation,address_hex\n")
         var traceCycle = 0
         var traceStart = 0
         var lastTrace: Option[BigInt] = None
-        var peakWorkers=0
+        var peakWorkers = 0
         def recordCycle(): Unit = {
-          if(fragmentWorkerCount>0){
-            val trace=dut.io.performance.get.fragmentTrace.peek().litValue
-            val active=(1 until 6).map(i=>((trace>>(8*i))&255).toInt).sum
-            peakWorkers=math.max(peakWorkers,active)
+          if (fragmentWorkerCount > 0) {
+            val trace = dut.io.performance.get.fragmentTrace.peek().litValue
+            val active = (1 until 6).map(i => ((trace >> (8 * i)) & 255).toInt).sum
+            peakWorkers = math.max(peakWorkers, active)
           }
           traceDirectory.foreach { _ =>
-          val event = dut.io.performance.get.fragmentTrace.peek().litValue
-          if (!lastTrace.contains(event)) {
-            lastTrace.foreach(old => cycleTrace.append(s"$traceStart,${traceCycle - traceStart},${old.toString(16)}\n"))
-            traceStart = traceCycle
-            lastTrace = Some(event)
-          }
-          traceCycle += 1
+            val event = dut.io.performance.get.fragmentTrace.peek().litValue
+            if (!lastTrace.contains(event)) {
+              lastTrace.foreach(old =>
+                cycleTrace.append(s"$traceStart,${traceCycle - traceStart},${old.toString(16)}\n")
+              )
+              traceStart = traceCycle
+              lastTrace = Some(event)
+            }
+            traceCycle += 1
           }
         }
         def readLine(address: BigInt): BigInt = {
@@ -196,8 +261,8 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
           for (b <- 0 until 64 if mask.testBit(b)) {
             val a = base + (b / 4) * 4
             val shift = (b % 4) * 8
-            if (a >= kernarg && a < kernarg + 2L*workers*bankStride) {
-              val slice = ((a-kernarg)%bankStride/stride).toInt
+            if (a >= kernarg && a < kernarg + 2L * workers * bankStride) {
+              val slice = ((a - kernarg) % bankStride / stride).toInt
               assert(!omitted(slice), "wrote omitted fragment scratch")
             }
             words(a) = (words.getOrElse(a, BigInt(0)) & ~(BigInt(255) << shift)) |
@@ -241,51 +306,69 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
           Files.writeString(dir.resolve(s"$tracePrefix-metadata.json"), metadata)
         }
         def saveTrace(): Unit = traceDirectory.foreach { dir =>
-          val finalCycleTrace = cycleTrace.toString + lastTrace.map(old =>
-            s"$traceStart,${traceCycle - traceStart},${old.toString(16)}\n").getOrElse("")
+          val finalCycleTrace = cycleTrace.toString + lastTrace
+            .map(old => s"$traceStart,${traceCycle - traceStart},${old.toString(16)}\n")
+            .getOrElse("")
           Files.createDirectories(dir)
           Files.writeString(dir.resolve(s"$tracePrefix-cycles.csv"), finalCycleTrace)
           Files.writeString(dir.resolve(s"$tracePrefix-memory.csv"), memoryTrace.toString)
           saveMetadata()
         }
         try {
-          serviceMemoryMaster(dut, readLine, writeAckDelay = 12,
-            readResponseDelay = 2, maxCycles = 2000000, onCycle = () => recordCycle(),
-            noProgressLimit = if (aluIterations == 0) 10000 else 100000)(writeLine) {
+          serviceMemoryMaster(
+            dut,
+            readLine,
+            writeAckDelay = 12,
+            readResponseDelay = 2,
+            maxCycles = 2000000,
+            onCycle = () => recordCycle(),
+            noProgressLimit = if (aluIterations == 0) 10000 else 100000
+          )(writeLine) {
             dut.io.m_irq.peek().litToBoolean
           }
         } catch {
           case failure: Throwable =>
-            println(s"WIDE_SHARED_GRAPHICS_FAILURE CUs=$cus cycle=$traceCycle " +
-              s"fragment_trace=${dut.io.performance.get.fragmentTrace.peek().litValue.toString(16)} " +
-              s"AR=${dut.io.m_axi_arvalid.peek().litValue}/${dut.io.m_axi_arready.peek().litValue} " +
-              s"R=${dut.io.m_axi_rvalid.peek().litValue}/${dut.io.m_axi_rready.peek().litValue} " +
-              s"AW=${dut.io.m_axi_awvalid.peek().litValue}/${dut.io.m_axi_awready.peek().litValue} " +
-              s"W=${dut.io.m_axi_wvalid.peek().litValue}/${dut.io.m_axi_wready.peek().litValue} " +
-              s"B=${dut.io.m_axi_bvalid.peek().litValue}/${dut.io.m_axi_bready.peek().litValue}")
+            println(
+              s"WIDE_SHARED_GRAPHICS_FAILURE CUs=$cus cycle=$traceCycle " +
+                s"fragment_trace=${dut.io.performance.get.fragmentTrace.peek().litValue.toString(16)} " +
+                s"AR=${dut.io.m_axi_arvalid.peek().litValue}/${dut.io.m_axi_arready.peek().litValue} " +
+                s"R=${dut.io.m_axi_rvalid.peek().litValue}/${dut.io.m_axi_rready.peek().litValue} " +
+                s"AW=${dut.io.m_axi_awvalid.peek().litValue}/${dut.io.m_axi_awready.peek().litValue} " +
+                s"W=${dut.io.m_axi_wvalid.peek().litValue}/${dut.io.m_axi_wready.peek().litValue} " +
+                s"B=${dut.io.m_axi_bvalid.peek().litValue}/${dut.io.m_axi_bready.peek().litValue}"
+            )
             throw failure
         } finally { saveTrace() }
         val cycles = dut.io.performance.get.system.cycles.peek().litValue - startCycles
         val cuCycles = dut.io.performance.get.system.activeCuCycles.peek().litValue - startCuCycles
         val textureWords = dut.io.performance.get.textureWordReads.peek().litValue - startTextureWords
         val textureLines = dut.io.performance.get.textureLineReads.peek().litValue - startTextureLines
-        val phases = (0 until 6).map(i => dut.io.performance.get.fragmentPhaseWorkerCycles(i).peek().litValue - startPhases(i))
+        val phases =
+          (0 until 6).map(i => dut.io.performance.get.fragmentPhaseWorkerCycles(i).peek().litValue - startPhases(i))
         val outstanding = dut.io.performance.get.stagingOutstandingCycles.peek().litValue - startOutstanding
         val blocked = dut.io.performance.get.stagingBlockedCycles.peek().litValue - startStagingBlocked
         val outputBlocked = dut.io.performance.get.fragmentOutputBlockedCycles.peek().litValue - startOutputBlocked
         val omStall = dut.io.performance.get.omStallCycles.peek().litValue - startOmStall
         val rasterStall = dut.io.performance.get.rasterStallCycles.peek().litValue - startRasterStall
-        println(s"WIDE_SHARED_GRAPHICS_PHASES CUs=$cus axi_bytes=$axiBytes side=$side alu_loops=$aluIterations om_inflight=$omInflight phases=${phases.mkString(",")} staging_outstanding_cycles=$outstanding staging_blocked=$blocked output_blocked=$outputBlocked om_stall=$omStall raster_stall=$rasterStall")
+        println(
+          s"WIDE_SHARED_GRAPHICS_PHASES CUs=$cus axi_bytes=$axiBytes side=$side alu_loops=$aluIterations om_inflight=$omInflight phases=${phases.mkString(",")} staging_outstanding_cycles=$outstanding staging_blocked=$blocked output_blocked=$outputBlocked om_stall=$omStall raster_stall=$rasterStall"
+        )
         val completion = axiRead(dut, GpuCommandMmioRegs.COMPLETION)
         assert((completion & 0xff) == 91 && completion.testBit(15))
         val peakCus = dut.io.performance.get.system.maxActiveComputeUnits.peek().litValue
-        assert(peakCus == math.min(cus,workers), s"render used at most $peakCus of $cus configured CUs with $workers workers")
-        if(fragmentWorkerCount>0)assert(peakWorkers==workers,s"only $peakWorkers of $workers fragment workers became active")
-        println(s"WIDE_SHARED_GRAPHICS_METRICS CUs=$cus axi_bytes=$axiBytes side=$side alu_loops=$aluIterations om_inflight=$omInflight fragment_batch_limit=$fragmentBatchLimit lanes=$lanes warps=$warps runtime_shader=$runtimeShader cycles=$cycles active_cu_cycles=$cuCycles peak_cus=$peakCus texture_extent=$textureExtent buffer_texture_reads=$bufferTextureReads texture_words=$textureWords texture_lines=$textureLines workers=$workers peak_workers=$peakWorkers")
+        assert(
+          peakCus == math.min(cus, workers),
+          s"render used at most $peakCus of $cus configured CUs with $workers workers"
+        )
+        if (fragmentWorkerCount > 0)
+          assert(peakWorkers == workers, s"only $peakWorkers of $workers fragment workers became active")
+        println(
+          s"WIDE_SHARED_GRAPHICS_METRICS CUs=$cus axi_bytes=$axiBytes side=$side alu_loops=$aluIterations om_inflight=$omInflight fragment_batch_limit=$fragmentBatchLimit lanes=$lanes warps=$warps runtime_shader=$runtimeShader cycles=$cycles active_cu_cycles=$cuCycles peak_cus=$peakCus texture_extent=$textureExtent buffer_texture_reads=$bufferTextureReads texture_words=$textureWords texture_lines=$textureLines workers=$workers peak_workers=$peakWorkers"
+        )
         if (textureExtent > 0) {
           assert(textureWords > 0 && textureLines > 0)
-          if (bufferTextureReads) assert(textureLines < textureWords,
-            "buffered texture sampling must reuse lines, not only pass pixels")
+          if (bufferTextureReads)
+            assert(textureLines < textureWords, "buffered texture sampling must reuse lines, not only pass pixels")
           else assert(textureLines == textureWords)
         }
         val pixelDump = new StringBuilder("x,y,color_hex,expected_color_hex,depth,expected_depth\n")
@@ -298,7 +381,9 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
           val r = 255L * (side - x - y) / side
           val g = 255L * x / side
           val b = 255L * y / side
-          val expected = if (!covered) 0x12345678L else if (textureExtent > 0) textureColor
+          val expected =
+            if (!covered) 0x12345678L
+            else if (textureExtent > 0) textureColor
             else (r << 24) | (g << 16) | (b << 8) | 255L
           val expectedDepth = if (covered) 4096L * x / side + 2048L * y / side else 0x00ffffffL
           val actual = words(color + offset)
@@ -313,15 +398,38 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
         assert(mismatches.isEmpty, s"CUs=$cus: ${mismatches.size} mismatches: ${mismatches.take(12).mkString("; ")}")
         for (bank <- 0 until 2 * workers; word <- 0 until (bankStride - 9 * stride) / 4)
           assert(words(kernarg + bank * bankStride + 9L * stride + word * 4) == BigInt(sentinel))
-        for (bank <- 0 until 2*workers; slice <- 0 until 9; lane <- 0 until capacity if omitted(slice))
-          assert(words(kernarg+bank*bankStride+slice.toLong*stride+lane*4)==BigInt(0x5a000000L+bank*0x100000L+slice*0x10000L+lane), "omitted input sentinel changed")
+        for (bank <- 0 until 2 * workers; slice <- 0 until 9; lane <- 0 until capacity if omitted(slice))
+          assert(
+            words(kernarg + bank * bankStride + slice.toLong * stride + lane * 4) == BigInt(
+              0x5a000000L + bank * 0x100000L + slice * 0x10000L + lane
+            ),
+            "omitted input sentinel changed"
+          )
         println(s"FRAGMENT_OUTPUT_USAGE input=$skip output=$outputSkip all_omitted_bytes_preserved=true")
         pixelsPassed = true
         saveMetadata()
-        val invariant=Seq(gpu.toString,workers,capacity,bankStride,axiBytes,side,aluIterations,
-          omInflight,omLocality,fragmentBatchLimit,coalesce,bufferCommandReads,bufferTextureReads,
-          runtimeShader,enableFpuBackend,vertCore,textureExtent,shader.mkString(","),record.mkString(",")).mkString("|")
-        recordScalingResult(cus,workers,cycles,invariant)
+        val invariant = Seq(
+          gpu.toString,
+          workers,
+          capacity,
+          bankStride,
+          axiBytes,
+          side,
+          aluIterations,
+          omInflight,
+          omLocality,
+          fragmentBatchLimit,
+          coalesce,
+          bufferCommandReads,
+          bufferTextureReads,
+          runtimeShader,
+          enableFpuBackend,
+          vertCore,
+          textureExtent,
+          shader.mkString(","),
+          record.mkString(",")
+        ).mkString("|")
+        recordScalingResult(cus, workers, cycles, invariant)
       }
     }
   }
@@ -334,30 +442,47 @@ class CoalescedWideAxiSharedGraphicsSpec extends WideSharedGraphicsChecks(64, Se
 class LargeCoalescedWideAxiSharedGraphicsSpec
     extends WideSharedGraphicsChecks(64, Seq(1, 4), coalesce = true, side = 64)
 private object ArithmeticScalingOptions {
-  val workers=sys.props.get("opengpu.scalingFragmentWorkers").map(_.toInt).getOrElse(0)
-  val counts=sys.props.get("opengpu.scalingCuCounts").map(_.split(',').toSeq.map(_.toInt)).getOrElse(Seq(1,4))
-  val minimum=sys.props.get("opengpu.scalingMinSpeedup").map(BigDecimal(_))
-  require(counts.nonEmpty && counts.distinct==counts && counts.forall(n=>n>=1 && n<=4))
-  minimum.foreach{n=>require(n>=BigDecimal("3.2") && workers==4 && counts.toSet==Set(1,2,4),
-    "scaling qualification requires fixed four workers, 1/2/4 CUs and a target of at least 3.2x")}
+  val workers = sys.props.get("opengpu.scalingFragmentWorkers").map(_.toInt).getOrElse(0)
+  val counts = sys.props.get("opengpu.scalingCuCounts").map(_.split(',').toSeq.map(_.toInt)).getOrElse(Seq(1, 4))
+  val minimum = sys.props.get("opengpu.scalingMinSpeedup").map(BigDecimal(_))
+  require(counts.nonEmpty && counts.distinct == counts && counts.forall(n => n >= 1 && n <= 4))
+  minimum.foreach { n =>
+    require(
+      n >= BigDecimal("3.2") && workers == 4 && counts.toSet == Set(1, 2, 4),
+      "scaling qualification requires fixed four workers, 1/2/4 CUs and a target of at least 3.2x"
+    )
+  }
 }
 class ArithmeticCoalescedWideAxiSharedGraphicsSpec
-    extends WideSharedGraphicsChecks(64, ArithmeticScalingOptions.counts, coalesce = true, side = 64,
-      aluIterations = 64,fragmentWorkerCount=ArithmeticScalingOptions.workers) with BeforeAndAfterAll {
-  override val invokeBeforeAllAndAfterAllEvenIfNoTestsAreExpected=ArithmeticScalingOptions.minimum.nonEmpty
-  private val measured=mutable.Map.empty[Int,(Int,BigInt,String)]
-  override protected def recordScalingResult(cus: Int,workers: Int,cycles: BigInt,invariant: String): Unit=measured.synchronized{
-    assert(!measured.contains(cus) && cycles>0);measured(cus)=(workers,cycles,invariant)
-  }
-  override protected def afterAll(): Unit=try {
-    ArithmeticScalingOptions.minimum.foreach{target=>
-      val results=measured.synchronized{measured.toMap}
-      assert(results.keySet==Set(1,2,4),"all three exact image/guard checks must finish before qualifying scaling")
-      assert(results.values.forall(_._1==4))
-      assert(results.values.map(_._3).toSet.size==1,"shader, draw and non-CU resource configuration must match across the CU sweep")
-      val speedup=BigDecimal(results(1)._2)/BigDecimal(results(4)._2)
-      println(s"FIXED_RESOURCE_CU_SCALING workers=4 CUs=1,2,4 cycles=${Seq(1,2,4).map(n=>results(n)._2).mkString(",")} speedup=$speedup target=$target sameShader=true sameBatchCapacity=true exactImagesAndGuards=true")
-      assert(speedup>=target,s"fixed-resource shader-bound scaling $speedup is below $target")
+    extends WideSharedGraphicsChecks(
+      64,
+      ArithmeticScalingOptions.counts,
+      coalesce = true,
+      side = 64,
+      aluIterations = 64,
+      fragmentWorkerCount = ArithmeticScalingOptions.workers
+    )
+    with BeforeAndAfterAll {
+  override val invokeBeforeAllAndAfterAllEvenIfNoTestsAreExpected = ArithmeticScalingOptions.minimum.nonEmpty
+  private val measured = mutable.Map.empty[Int, (Int, BigInt, String)]
+  override protected def recordScalingResult(cus: Int, workers: Int, cycles: BigInt, invariant: String): Unit =
+    measured.synchronized {
+      assert(!measured.contains(cus) && cycles > 0); measured(cus) = (workers, cycles, invariant)
+    }
+  override protected def afterAll(): Unit = try {
+    ArithmeticScalingOptions.minimum.foreach { target =>
+      val results = measured.synchronized { measured.toMap }
+      assert(results.keySet == Set(1, 2, 4), "all three exact image/guard checks must finish before qualifying scaling")
+      assert(results.values.forall(_._1 == 4))
+      assert(
+        results.values.map(_._3).toSet.size == 1,
+        "shader, draw and non-CU resource configuration must match across the CU sweep"
+      )
+      val speedup = BigDecimal(results(1)._2) / BigDecimal(results(4)._2)
+      println(
+        s"FIXED_RESOURCE_CU_SCALING workers=4 CUs=1,2,4 cycles=${Seq(1, 2, 4).map(n => results(n)._2).mkString(",")} speedup=$speedup target=$target sameShader=true sameBatchCapacity=true exactImagesAndGuards=true"
+      )
+      assert(speedup >= target, s"fixed-resource shader-bound scaling $speedup is below $target")
     }
   } finally super.afterAll()
 }
@@ -366,45 +491,98 @@ class DeepOmCoalescedWideAxiSharedGraphicsSpec
     extends WideSharedGraphicsChecks(64, Seq(1, 4), coalesce = true, side = 64, omInflight = 32)
 
 class LocalityCoalescedWideAxiSharedGraphicsSpec
-    extends WideSharedGraphicsChecks(64, Seq(1, 4), coalesce = true, side = 64,
-      omInflight = 32, omLocality = true)
+    extends WideSharedGraphicsChecks(64, Seq(1, 4), coalesce = true, side = 64, omInflight = 32, omLocality = true)
 
 class CappedLocalityWideSharedGraphicsSpec
-    extends WideSharedGraphicsChecks(64, Seq(1, 4), coalesce = true, side = 64,
-      omInflight = 32, omLocality = true, fragmentBatchLimit = 96)
+    extends WideSharedGraphicsChecks(
+      64,
+      Seq(1, 4),
+      coalesce = true,
+      side = 64,
+      omInflight = 32,
+      omLocality = true,
+      fragmentBatchLimit = 96
+    )
 
 class BatchGranularityOneCu112Spec
-    extends WideSharedGraphicsChecks(64, Seq(1), coalesce = true, side = 64,
-      omInflight = 32, omLocality = true, fragmentBatchLimit = 112)
+    extends WideSharedGraphicsChecks(
+      64,
+      Seq(1),
+      coalesce = true,
+      side = 64,
+      omInflight = 32,
+      omLocality = true,
+      fragmentBatchLimit = 112
+    )
 class BatchGranularitySmallControlSpec
-    extends WideSharedGraphicsChecks(64, Seq(4), coalesce = true, side = 32,
-      omInflight = 32, omLocality = true)
+    extends WideSharedGraphicsChecks(64, Seq(4), coalesce = true, side = 32, omInflight = 32, omLocality = true)
 class BatchGranularitySmall96Spec
-    extends WideSharedGraphicsChecks(64, Seq(4), coalesce = true, side = 32,
-      omInflight = 32, omLocality = true, fragmentBatchLimit = 96)
+    extends WideSharedGraphicsChecks(
+      64,
+      Seq(4),
+      coalesce = true,
+      side = 32,
+      omInflight = 32,
+      omLocality = true,
+      fragmentBatchLimit = 96
+    )
 class BatchGranularityLargeControlSpec
-    extends WideSharedGraphicsChecks(64, Seq(4), coalesce = true, side = 128,
-      omInflight = 32, omLocality = true)
+    extends WideSharedGraphicsChecks(64, Seq(4), coalesce = true, side = 128, omInflight = 32, omLocality = true)
 class BatchGranularityLarge96Spec
-    extends WideSharedGraphicsChecks(64, Seq(4), coalesce = true, side = 128,
-      omInflight = 32, omLocality = true, fragmentBatchLimit = 96)
+    extends WideSharedGraphicsChecks(
+      64,
+      Seq(4),
+      coalesce = true,
+      side = 128,
+      omInflight = 32,
+      omLocality = true,
+      fragmentBatchLimit = 96
+    )
 
 class SevenWarpBatchCoalescedWideAxiSharedGraphicsSpec
-    extends WideSharedGraphicsChecks(64, Seq(4), coalesce = true, side = 64,
-      omInflight = 32, omLocality = true, fragmentBatchLimit = 112)
+    extends WideSharedGraphicsChecks(
+      64,
+      Seq(4),
+      coalesce = true,
+      side = 64,
+      omInflight = 32,
+      omLocality = true,
+      fragmentBatchLimit = 112
+    )
 
 class WiderOm64LocalitySharedGraphicsSpec
-    extends WideSharedGraphicsChecks(64, Seq(1, 4), coalesce = true, side = 64,
-      omInflight = 64, omLocality = true)
+    extends WideSharedGraphicsChecks(64, Seq(1, 4), coalesce = true, side = 64, omInflight = 64, omLocality = true)
 
 class WiderOm64SevenWarpSharedGraphicsSpec
-    extends WideSharedGraphicsChecks(64, Seq(4), coalesce = true, side = 64,
-      omInflight = 64, omLocality = true, fragmentBatchLimit = 112)
+    extends WideSharedGraphicsChecks(
+      64,
+      Seq(4),
+      coalesce = true,
+      side = 64,
+      omInflight = 64,
+      omLocality = true,
+      fragmentBatchLimit = 112
+    )
 
 class WiderOm64OneCuSevenWarpSharedGraphicsSpec
-    extends WideSharedGraphicsChecks(64, Seq(1), coalesce = true, side = 64,
-      omInflight = 64, omLocality = true, fragmentBatchLimit = 112)
+    extends WideSharedGraphicsChecks(
+      64,
+      Seq(1),
+      coalesce = true,
+      side = 64,
+      omInflight = 64,
+      omLocality = true,
+      fragmentBatchLimit = 112
+    )
 
 class BufferedCommandWideSharedGraphicsSpec
-    extends WideSharedGraphicsChecks(64, Seq(1, 4), coalesce = true, side = 64,
-      omInflight = 64, omLocality = true, fragmentBatchLimit = 112, bufferCommandReads = true)
+    extends WideSharedGraphicsChecks(
+      64,
+      Seq(1, 4),
+      coalesce = true,
+      side = 64,
+      omInflight = 64,
+      omLocality = true,
+      fragmentBatchLimit = 112,
+      bufferCommandReads = true
+    )

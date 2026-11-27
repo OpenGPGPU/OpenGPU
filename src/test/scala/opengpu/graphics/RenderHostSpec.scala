@@ -7,9 +7,8 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 import scala.collection.mutable
 
-/** Verifies the M6 host interface: the MMIO register file, the engine control
-  * state machine (START -> BUSY -> DONE), the completion interrupt, and that a
-  * host programmes the registers and drives a real draw through `RenderCore`.
+/** Verifies the M6 host interface: the MMIO register file, the engine control state machine (START -> BUSY -> DONE),
+  * the completion interrupt, and that a host programmes the registers and drives a real draw through `RenderCore`.
   */
 class RenderHostSpec extends AnyFlatSpec {
   behavior of "RenderHost"
@@ -21,8 +20,8 @@ class RenderHostSpec extends AnyFlatSpec {
     val words = mutable.LongMap[Int]()
     def word(a: Long): Long = words.getOrElse(a, 0) & 0xffffffffL
     def wwrite(a: Long, d: Int): Unit = words(a) = d & 0xffffffff
-    def line(a: Long): BigInt = (0 until 16).foldLeft(BigInt(0)) {
-      case (value, i) => value | (BigInt(word(a + i * 4)) << (i * 32))
+    def line(a: Long): BigInt = (0 until 16).foldLeft(BigInt(0)) { case (value, i) =>
+      value | (BigInt(word(a + i * 4)) << (i * 32))
     }
     def lwrite(a: Long, d: BigInt): Unit =
       for (i <- 0 until 16)
@@ -30,7 +29,7 @@ class RenderHostSpec extends AnyFlatSpec {
   }
 
   private def encode(
-    tri: Seq[((Int, Int, Int, Int), (Int, Int, Int), Int)]
+      tri: Seq[((Int, Int, Int, Int), (Int, Int, Int), Int)]
   ): Seq[Int] = {
     val w = Seq.newBuilder[Int]
     for (i <- 0 until 3) { w += tri(i)._1._1; w += tri(i)._1._2; w += tri(i)._1._3; w += tri(i)._1._4 }
@@ -43,9 +42,9 @@ class RenderHostSpec extends AnyFlatSpec {
   }
 
   private def regWrite(
-    dut: RenderHost,
-    addr: Int,
-    data: Int
+      dut: RenderHost,
+      addr: Int,
+      data: Int
   ): Unit = {
     dut.io.reg.req.valid.poke(true.B)
     dut.io.reg.req.bits.isWrite.poke(true.B)
@@ -62,27 +61,24 @@ class RenderHostSpec extends AnyFlatSpec {
     dut.io.reg.req.bits.addr.poke(addr.U)
     dut.io.reg.req.bits.data.poke(0.U)
     dut.io.reg.req.bits.strb.poke(0xf.U)
-    assert(dut.io.reg.resp.valid.peek().litToBoolean,
-      s"read of 0x$addr%x must produce a response")
+    assert(dut.io.reg.resp.valid.peek().litToBoolean, s"read of 0x$addr%x must produce a response")
     val data = dut.io.reg.resp.bits.data.peek().litValue
     dut.clock.step()
     dut.io.reg.req.valid.poke(false.B)
     data
   }
 
-  /** Serves the renderer's command-buffer / framebuffer word ports against the
-    * memory model until `until` holds (command-port writes, e.g. IH record
-    * writes from the job queue, are acknowledged with a write response).  Once
-    * `until` holds, `drainCycles` further serviced cycles run so in-flight
-    * responses and pointer updates settle before the caller inspects state.
-    * Both ports are multi-outstanding: requests are captured on fire and their
-    * address-tagged responses presented on a later cycle (the parallel output
-    * merger keeps several reads in flight). */
+  /** Serves the renderer's command-buffer / framebuffer word ports against the memory model until `until` holds
+    * (command-port writes, e.g. IH record writes from the job queue, are acknowledged with a write response). Once
+    * `until` holds, `drainCycles` further serviced cycles run so in-flight responses and pointer updates settle before
+    * the caller inspects state. Both ports are multi-outstanding: requests are captured on fire and their
+    * address-tagged responses presented on a later cycle (the parallel output merger keeps several reads in flight).
+    */
   private def serviceMem(
-    dut: RenderHost,
-    m: MemModel,
-    maxCycles: Int,
-    drainCycles: Int = 0
+      dut: RenderHost,
+      m: MemModel,
+      maxCycles: Int,
+      drainCycles: Int = 0
   )(until: => Boolean): Unit = {
     val cbQ = scala.collection.mutable.Queue.empty[(Boolean, Long, Long)]
     val fbQ = scala.collection.mutable.Queue.empty[(Boolean, Long, Long)]
@@ -104,8 +100,10 @@ class RenderHostSpec extends AnyFlatSpec {
         dut.io.cbMem.resp.bits.addr.poke(a.U)
         if (dut.io.cbMem.resp.ready.peek().litToBoolean) cbQ.dequeue()
       } else dut.io.cbMem.resp.valid.poke(false.B)
-      if (dut.io.cbMem.req.valid.peek().litToBoolean &&
-          dut.io.cbMem.req.ready.peek().litToBoolean) {
+      if (
+        dut.io.cbMem.req.valid.peek().litToBoolean &&
+        dut.io.cbMem.req.ready.peek().litToBoolean
+      ) {
         val a = dut.io.cbMem.req.bits.addr.peek().litValue.toLong
         if (dut.io.cbMem.req.bits.write.peek().litToBoolean) {
           m.wwrite(a, dut.io.cbMem.req.bits.data.peek().litValue.toInt)
@@ -123,8 +121,10 @@ class RenderHostSpec extends AnyFlatSpec {
         dut.io.fbMem.resp.bits.addr.poke(a.U)
         if (dut.io.fbMem.resp.ready.peek().litToBoolean) fbQ.dequeue()
       } else dut.io.fbMem.resp.valid.poke(false.B)
-      if (dut.io.fbMem.req.valid.peek().litToBoolean &&
-          dut.io.fbMem.req.ready.peek().litToBoolean) {
+      if (
+        dut.io.fbMem.req.valid.peek().litToBoolean &&
+        dut.io.fbMem.req.ready.peek().litToBoolean
+      ) {
         val a = dut.io.fbMem.req.bits.addr.peek().litValue.toLong
         if (dut.io.fbMem.req.bits.write.peek().litToBoolean)
           m.wwrite(a, dut.io.fbMem.req.bits.data.peek().litValue.toInt)
@@ -141,8 +141,10 @@ class RenderHostSpec extends AnyFlatSpec {
         dut.io.kernelWordMemResp.bits.fault.poke(false.B)
         if (dut.io.kernelWordMemResp.ready.peek().litToBoolean) kwQ.dequeue()
       } else dut.io.kernelWordMemResp.valid.poke(false.B)
-      if (dut.io.kernelWordMemReq.valid.peek().litToBoolean &&
-          dut.io.kernelWordMemReq.ready.peek().litToBoolean) {
+      if (
+        dut.io.kernelWordMemReq.valid.peek().litToBoolean &&
+        dut.io.kernelWordMemReq.ready.peek().litToBoolean
+      ) {
         val a = dut.io.kernelWordMemReq.bits.address.peek().litValue.toLong
         val id = dut.io.kernelWordMemReq.bits.transactionId.peek().litValue
         val isWrite = dut.io.kernelWordMemReq.bits.isWrite.peek().litToBoolean
@@ -162,15 +164,16 @@ class RenderHostSpec extends AnyFlatSpec {
   }
 
   it should "expose the device ID and a program-able register file" in {
-    simulate(new RenderHost(
-      gpuConfig = GpuConfig(lanes = 4, warps = 2), fragCore = true,
-      deviceId = 0x4755, version = 0x0001)) { dut =>
+    simulate(
+      new RenderHost(gpuConfig = GpuConfig(lanes = 4, warps = 2), fragCore = true, deviceId = 0x4755, version = 0x0001)
+    ) { dut =>
       dut.io.externalCompletion.poke(false.B)
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
-      assert(regRead(dut, RenderHostRegs.ID) == 0x47550001L,
-        "device ID register must report device<<16 | version")
-      assert(regRead(dut, RenderHostRegs.CAPABILITIES) == 0x2a08b9L,
-         "fragment-core builds must advertise support, batch capacity, persistent depth and programmable MSAA")
+      assert(regRead(dut, RenderHostRegs.ID) == 0x47550001L, "device ID register must report device<<16 | version")
+      assert(
+        regRead(dut, RenderHostRegs.CAPABILITIES) == 0x2a08b9L,
+        "fragment-core builds must advertise support, batch capacity, persistent depth and programmable MSAA"
+      )
 
       // An unmapped address yields ok=false.
       dut.io.reg.req.valid.poke(true.B)
@@ -234,21 +237,19 @@ class RenderHostSpec extends AnyFlatSpec {
   }
 
   it should "advertise the vertex-core capability when elaborated" in {
-    simulate(new RenderHost(
-      gpuConfig = GpuConfig(lanes = 4, warps = 2), fragCore = true,
-      vertCore = true)) { dut =>
+    simulate(new RenderHost(gpuConfig = GpuConfig(lanes = 4, warps = 2), fragCore = true, vertCore = true)) { dut =>
       dut.io.externalCompletion.poke(false.B)
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
-      assert(regRead(dut, RenderHostRegs.CAPABILITIES) == 0x2a08bdL,
-        "shared vertex/fragment-core builds must advertise both shader stages and programmable MSAA")
+      assert(
+        regRead(dut, RenderHostRegs.CAPABILITIES) == 0x2a08bdL,
+        "shared vertex/fragment-core builds must advertise both shader stages and programmable MSAA"
+      )
     }
   }
 
   it should "advertise the compute scalar FPU only when elaborated with it" in {
     for (scalarFpu <- Seq(false, true)) {
-      simulate(new RenderHost(
-        gpuConfig = GpuConfig(lanes = 4, warps = 2),
-        computeScalarFpu = scalarFpu)) { dut =>
+      simulate(new RenderHost(gpuConfig = GpuConfig(lanes = 4, warps = 2), computeScalarFpu = scalarFpu)) { dut =>
         dut.io.externalCompletion.poke(false.B)
         dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
         val bit = (regRead(dut, RenderHostRegs.CAPABILITIES) >>
@@ -259,70 +260,70 @@ class RenderHostSpec extends AnyFlatSpec {
   }
 
   it should "latch an external completion in the shared IRQ pending bit" in {
-    simulate(new RenderHost(gpuConfig = GpuConfig(lanes = 4, warps = 2))) {
-      dut =>
-        dut.io.externalCompletion.poke(false.B)
-        dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
-        regWrite(dut, RenderHostRegs.IRQ, 1)
+    simulate(new RenderHost(gpuConfig = GpuConfig(lanes = 4, warps = 2))) { dut =>
+      dut.io.externalCompletion.poke(false.B)
+      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+      regWrite(dut, RenderHostRegs.IRQ, 1)
 
-        dut.io.externalCompletion.poke(true.B)
-        dut.clock.step()
-        dut.io.externalCompletion.poke(false.B)
-        dut.io.irq.expect(true.B)
-        assert((regRead(dut, RenderHostRegs.IRQ) & 0x3L) == 0x3L)
+      dut.io.externalCompletion.poke(true.B)
+      dut.clock.step()
+      dut.io.externalCompletion.poke(false.B)
+      dut.io.irq.expect(true.B)
+      assert((regRead(dut, RenderHostRegs.IRQ) & 0x3L) == 0x3L)
 
-        regWrite(dut, RenderHostRegs.IRQ, 3)
-        dut.io.irq.expect(false.B)
-        assert((regRead(dut, RenderHostRegs.IRQ) & 0x3L) == 0x1L)
+      regWrite(dut, RenderHostRegs.IRQ, 3)
+      dut.io.irq.expect(false.B)
+      assert((regRead(dut, RenderHostRegs.IRQ) & 0x3L) == 0x1L)
     }
   }
 
   it should "raise a hardware vblank on the shared IRQ while scanout is active" in {
-    simulate(new RenderHost(gpuConfig = GpuConfig(lanes = 4, warps = 2))) {
-      dut =>
-        dut.io.externalCompletion.poke(false.B)
-        dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
-        assert((regRead(dut, RenderHostRegs.CAPABILITIES) &
-          (1L << GpuCapabilities.HwVblank)) != 0L)
-        regWrite(dut, RenderHostRegs.IRQ, 1)
-        regWrite(dut, RenderHostRegs.SCANOUT_BASE, 0xb000)
-        regWrite(dut, RenderHostRegs.SCANOUT_STRIDE, 64)
-        regWrite(dut, RenderHostRegs.SCANOUT_WIDTH, 16)
-        regWrite(dut, RenderHostRegs.SCANOUT_HEIGHT, 16)
-        regWrite(dut, RenderHostRegs.SCANOUT_PERIOD, 16)
-        regWrite(dut, RenderHostRegs.SCANOUT_CONTROL, 0x3) // ENABLE | VBLANK_EN
+    simulate(new RenderHost(gpuConfig = GpuConfig(lanes = 4, warps = 2))) { dut =>
+      dut.io.externalCompletion.poke(false.B)
+      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+      assert(
+        (regRead(dut, RenderHostRegs.CAPABILITIES) &
+          (1L << GpuCapabilities.HwVblank)) != 0L
+      )
+      regWrite(dut, RenderHostRegs.IRQ, 1)
+      regWrite(dut, RenderHostRegs.SCANOUT_BASE, 0xb000)
+      regWrite(dut, RenderHostRegs.SCANOUT_STRIDE, 64)
+      regWrite(dut, RenderHostRegs.SCANOUT_WIDTH, 16)
+      regWrite(dut, RenderHostRegs.SCANOUT_HEIGHT, 16)
+      regWrite(dut, RenderHostRegs.SCANOUT_PERIOD, 16)
+      regWrite(dut, RenderHostRegs.SCANOUT_CONTROL, 0x3) // ENABLE | VBLANK_EN
 
-        // Counter arms from zero and reloads every PERIOD clocks.
-        var raised = false
-        var i = 0
-        while (i < 32 && !raised) {
-          dut.clock.step()
-          raised = dut.io.irq.peek().litToBoolean
-          i += 1
-        }
-        assert(raised, "expected hardware vblank IRQ")
-        assert((regRead(dut, RenderHostRegs.IRQ) & 0x5L) == 0x5L)
+      // Counter arms from zero and reloads every PERIOD clocks.
+      var raised = false
+      var i = 0
+      while (i < 32 && !raised) {
+        dut.clock.step()
+        raised = dut.io.irq.peek().litToBoolean
+        i += 1
+      }
+      assert(raised, "expected hardware vblank IRQ")
+      assert((regRead(dut, RenderHostRegs.IRQ) & 0x5L) == 0x5L)
 
-        regWrite(dut, RenderHostRegs.IRQ, 0x5) // keep enable, clear vblank
+      regWrite(dut, RenderHostRegs.IRQ, 0x5) // keep enable, clear vblank
+      dut.io.irq.expect(false.B)
+      assert((regRead(dut, RenderHostRegs.IRQ) & 0x5L) == 0x1L)
+
+      raised = false
+      i = 0
+      while (i < 32 && !raised) {
+        dut.clock.step()
+        raised = dut.io.irq.peek().litToBoolean
+        i += 1
+      }
+      assert(raised, "expected a second hardware vblank IRQ")
+
+      regWrite(dut, RenderHostRegs.SCANOUT_CONTROL, 0)
+      regWrite(dut, RenderHostRegs.IRQ, 0x5)
+      dut.io.irq.expect(false.B)
+      for (_ <- 0 until 32) {
+        dut.clock.step()
         dut.io.irq.expect(false.B)
-        assert((regRead(dut, RenderHostRegs.IRQ) & 0x5L) == 0x1L)
-
-        raised = false
-        i = 0
-        while (i < 32 && !raised) {
-          dut.clock.step()
-          raised = dut.io.irq.peek().litToBoolean
-          i += 1
-        }
-        assert(raised, "expected a second hardware vblank IRQ")
-
-        regWrite(dut, RenderHostRegs.SCANOUT_CONTROL, 0)
-        regWrite(dut, RenderHostRegs.IRQ, 0x5)
-        dut.io.irq.expect(false.B)
-        for (_ <- 0 until 32) {
-          dut.clock.step()
-          dut.io.irq.expect(false.B)
-        }
+      }
     }
   }
 
@@ -348,11 +349,12 @@ class RenderHostSpec extends AnyFlatSpec {
       regWrite(dut, RenderHostRegs.BLIT_BYTES, 64)
       regWrite(dut, RenderHostRegs.BLIT_START, 1)
       serviceMem(dut, m, 100, drainCycles = 8) {
-        (0 until 16).forall(i =>
-          m.word(destination + i * 4) == m.word(source + i * 4))
+        (0 until 16).forall(i => m.word(destination + i * 4) == m.word(source + i * 4))
       }
-      assert((regRead(dut, RenderHostRegs.STATUS) & 0x14) == 0,
-        "successful blit must clear BLIT_BUSY without setting ERROR")
+      assert(
+        (regRead(dut, RenderHostRegs.STATUS) & 0x14) == 0,
+        "successful blit must clear BLIT_BUSY without setting ERROR"
+      )
     }
   }
 
@@ -364,8 +366,7 @@ class RenderHostSpec extends AnyFlatSpec {
     val destinationStride = 192
     val m = new MemModel
     for (row <- 0 until 2; i <- 0 until 16)
-      m.wwrite(source + row * sourceStride + i * 4,
-        0x10203040 + row * 0x100 + i)
+      m.wwrite(source + row * sourceStride + i * 4, 0x10203040 + row * 0x100 + i)
 
     simulate(new RenderHost(gpuConfig = cfg)) { dut =>
       dut.io.externalCompletion.poke(false.B)
@@ -385,45 +386,48 @@ class RenderHostSpec extends AnyFlatSpec {
       regWrite(dut, RenderHostRegs.STRIDED_DST_STRIDE, destinationStride)
       regWrite(dut, RenderHostRegs.STRIDED_START, 1)
       serviceMem(dut, m, 200, drainCycles = 8) {
-        (0 until 2).forall(row => (0 until 16).forall(i =>
-          m.word(destination + row * destinationStride + i * 4) ==
-            m.word(source + row * sourceStride + i * 4)))
+        (0 until 2).forall(row =>
+          (0 until 16).forall(i =>
+            m.word(destination + row * destinationStride + i * 4) ==
+              m.word(source + row * sourceStride + i * 4)
+          )
+        )
       }
-      assert((regRead(dut, RenderHostRegs.STATUS) & 0x24) == 0,
-        "successful strided copy must clear STRIDED_BUSY without ERROR")
-      assert(m.word(destination + 64) == 0,
-        "strided copy must preserve the destination row gap")
+      assert(
+        (regRead(dut, RenderHostRegs.STATUS) & 0x24) == 0,
+        "successful strided copy must clear STRIDED_BUSY without ERROR"
+      )
+      assert(m.word(destination + 64) == 0, "strided copy must preserve the destination row gap")
     }
   }
 
   it should "advertise MSAA on both backends, selecting the backend by bit 0" in {
     val cfg = GpuConfig(lanes = 4, warps = 2)
-    simulate(new RenderHost(
-      GraphicsConfig(maxSampleCount = 1, tileSize = 16,
-        tileAttachments = true), cfg)) { dut =>
+    simulate(new RenderHost(GraphicsConfig(maxSampleCount = 1, tileSize = 16, tileAttachments = true), cfg)) { dut =>
       dut.io.externalCompletion.poke(false.B)
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
       val cap = regRead(dut, RenderHostRegs.CAPABILITIES)
-      assert((cap & (1L << GpuCapabilities.Msaa)) == 0L,
-        "the 1x-only tile configuration must not advertise MSAA")
+      assert((cap & (1L << GpuCapabilities.Msaa)) == 0L, "the 1x-only tile configuration must not advertise MSAA")
     }
     for ((fragCore, expected) <- Seq(false -> 0x2a08b8L, true -> 0x2a08b9L)) {
       simulate(new RenderHost(gpuConfig = cfg, fragCore = fragCore)) { dut =>
         dut.io.externalCompletion.poke(false.B)
         dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
         val cap = regRead(dut, RenderHostRegs.CAPABILITIES)
-        assert((cap & (1L << 7)) != 0L,
-          s"fragCore=$fragCore must advertise MSAA, got 0x${cap.toString(16)}")
-        assert(((cap >> 16) & 0x3L) == 2L,
-          s"maximum sample mode must be log2(4) = 2, got 0x${cap.toString(16)}")
-        assert(cap == expected,
-          s"fragCore=$fragCore capability word 0x${cap.toString(16)} != 0x${expected.toHexString}")
+        assert((cap & (1L << 7)) != 0L, s"fragCore=$fragCore must advertise MSAA, got 0x${cap.toString(16)}")
+        assert(((cap >> 16) & 0x3L) == 2L, s"maximum sample mode must be log2(4) = 2, got 0x${cap.toString(16)}")
+        assert(
+          cap == expected,
+          s"fragCore=$fragCore capability word 0x${cap.toString(16)} != 0x${expected.toHexString}"
+        )
         // The render backend is the fragment-core bit's business: bit 7 says
         // only that a nonzero sampleMode is accepted by whichever path bit 7
         // pairs with.
-        assert(((cap >> GpuCapabilities.FragmentCore) & 1L) ==
-          (if (fragCore) 1L else 0L),
-          "the backend must be selected by the fragment-core bit, not the MSAA bit")
+        assert(
+          ((cap >> GpuCapabilities.FragmentCore) & 1L) ==
+            (if (fragCore) 1L else 0L),
+          "the backend must be selected by the fragment-core bit, not the MSAA bit"
+        )
       }
     }
   }
@@ -436,8 +440,7 @@ class RenderHostSpec extends AnyFlatSpec {
     val colorBase = 0x8000
     val stride = 64 * 4
     val sentinel = 0x12345678
-    val points = Seq((q(-0.82), q(-0.6)), (q(0.82), q(-0.6)),
-      (q(0.82), q(0.6)), (q(-0.82), q(0.6)))
+    val points = Seq((q(-0.82), q(-0.6)), (q(0.82), q(-0.6)), (q(0.82), q(0.6)), (q(-0.82), q(0.6)))
     val records = Seq(Seq(0, 1, 2), Seq(0, 2, 3)).flatMap { indices =>
       encode(indices.map { i =>
         ((points(i)._1, points(i)._2, 0, q(1.0)), (0, 255, 0), 0)
@@ -456,12 +459,29 @@ class RenderHostSpec extends AnyFlatSpec {
       regWrite(dut, RenderHostRegs.SCANOUT_CONTROL, 1)
       // Change offscreen size between jobs, then submit a legacy descriptor.
       // Padding remains allocated so incorrect viewport writes hit canaries.
-      for (((width, height, explicit), job) <-
-           Seq((14, 10, true), (26, 18, true), (64, 48, false)).zipWithIndex) {
+      for (
+        ((width, height, explicit), job) <-
+          Seq((14, 10, true), (26, 18, true), (64, 48, false)).zipWithIndex
+      ) {
         for (i <- 0 until 64 * 48) m.wwrite(colorBase + i * 4, sentinel)
-        val descriptor = Seq(2 << 16, cmdBase, colorBase, 0x18000,
-          stride, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          if (explicit) width else 0, if (explicit) height else 0)
+        val descriptor = Seq(
+          2 << 16,
+          cmdBase,
+          colorBase,
+          0x18000,
+          stride,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          if (explicit) width else 0,
+          if (explicit) height else 0
+        )
         descriptor.zipWithIndex.foreach { case (word, i) =>
           m.wwrite(descriptorBase + i * 4, word)
         }
@@ -474,14 +494,20 @@ class RenderHostSpec extends AnyFlatSpec {
         }
         dut.io.renderCommand.valid.poke(false.B)
         dut.io.renderCompletion.bits.success.expect(true.B)
-        for (y <- height / 3 until height * 2 / 3;
-             x <- width / 3 until width * 2 / 3) {
-          assert(m.word(colorBase + y * stride + x * 4) == 0x00ff00ffL,
-            s"$width x $height target pixel ($x,$y) must use its own viewport")
+        for (
+          y <- height / 3 until height * 2 / 3;
+          x <- width / 3 until width * 2 / 3
+        ) {
+          assert(
+            m.word(colorBase + y * stride + x * 4) == 0x00ff00ffL,
+            s"$width x $height target pixel ($x,$y) must use its own viewport"
+          )
         }
         for (y <- 0 until 48; x <- 0 until 64 if x >= width || y >= height)
-          assert(m.word(colorBase + y * stride + x * 4) == sentinel,
-            s"$width x $height target must preserve padding ($x,$y)")
+          assert(
+            m.word(colorBase + y * stride + x * 4) == sentinel,
+            s"$width x $height target must preserve padding ($x,$y)"
+          )
         assert(regRead(dut, RenderHostRegs.SCANOUT_WIDTH) == 64)
         assert(regRead(dut, RenderHostRegs.SCANOUT_HEIGHT) == 48)
         dut.io.renderCompletion.ready.poke(true.B)
@@ -516,11 +542,10 @@ class RenderHostSpec extends AnyFlatSpec {
       }
       // Word 5: depth-test enable (bit0), LESS (bits 6:4 = 0), depth write (bit7).
       // Word 9: sample mode.
-      val descriptor = Seq((1 << 16) | 3, cmdBase, colorBase, depthBase,
-        stride, 0x81, 0, 0, 0, mode) ++ Seq.fill(6)(0)
+      val descriptor = Seq((1 << 16) | 3, cmdBase, colorBase, depthBase, stride, 0x81, 0, 0, 0, mode) ++ Seq.fill(6)(0)
       record.zipWithIndex.foreach { case (w, i) => m.wwrite(cmdBase + i * 4, w) }
-      descriptor.zipWithIndex.foreach {
-        case (w, i) => m.wwrite(descriptorBase + i * 4, w)
+      descriptor.zipWithIndex.foreach { case (w, i) =>
+        m.wwrite(descriptorBase + i * 4, w)
       }
       val words = 16 * 16 * samples
       for (i <- 0 until words) m.wwrite(colorBase + i * 4, 0x12345678)
@@ -547,21 +572,25 @@ class RenderHostSpec extends AnyFlatSpec {
         // Every covered sample of pixel (5,5) takes the draw colour.
         for (s <- 0 until samples) {
           val addr = colorBase + 5 * stride + (5 * samples + s) * 4
-          assert(m.word(addr) == 0xff0000ffL,
+          assert(
+            m.word(addr) == 0xff0000ffL,
             s"mode=$mode sample $s of (5,5) should be red, " +
-              f"got 0x${m.word(addr)}%08x")
+              f"got 0x${m.word(addr)}%08x"
+          )
         }
-        assert(m.word(colorBase) == 0x12345678L,
-          "an uncovered pixel must keep its caller-initialized sentinel")
+        assert(m.word(colorBase) == 0x12345678L, "an uncovered pixel must keep its caller-initialized sentinel")
       }
     }
   }
 
   for (capacity <- Seq(1, 2, 4)) {
     it should s"reject invalid descriptor sample words and recover (capacity=$capacity)" in {
-      simulate(new RenderHost(
-        GraphicsConfig(screenWidth = 16, screenHeight = 16, maxSampleCount = capacity),
-        GpuConfig(lanes = 4, warps = 2))) { dut =>
+      simulate(
+        new RenderHost(
+          GraphicsConfig(screenWidth = 16, screenHeight = 16, maxSampleCount = capacity),
+          GpuConfig(lanes = 4, warps = 2)
+        )
+      ) { dut =>
         dut.io.externalCompletion.poke(false.B)
         dut.io.renderCommand.valid.poke(false.B)
         dut.io.renderCompletion.ready.poke(false.B)
@@ -601,9 +630,13 @@ class RenderHostSpec extends AnyFlatSpec {
   }
 
   it should "fail a descriptor fetch fault before launch and retain it until completion" in {
-    simulate(new RenderHost(
-      GraphicsConfig(screenWidth = 16, screenHeight = 16),
-      GpuConfig(lanes = 4, warps = 2), textureFaultReporting = true)) { dut =>
+    simulate(
+      new RenderHost(
+        GraphicsConfig(screenWidth = 16, screenHeight = 16),
+        GpuConfig(lanes = 4, warps = 2),
+        textureFaultReporting = true
+      )
+    ) { dut =>
       dut.io.externalCompletion.poke(false.B)
       dut.io.textureFault.get.poke(false.B)
       dut.io.renderCompletion.ready.poke(false.B)

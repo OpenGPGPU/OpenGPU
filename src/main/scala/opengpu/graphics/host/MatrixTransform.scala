@@ -10,10 +10,9 @@ class Matrix4x4 extends Bundle {
 
 /** Transform a clip/object-space 4-vector by a 4x4 matrix (fixed-point).
   *
-  * clip = M * v, where each component is the dot product of a row of M with
-  * the vertex.  This is the programmable model/view/projection transform of
-  * the geometry front-end; it runs on the FPU/SIMT lanes in M5 and this block
-  * is then retired.
+  * clip = M * v, where each component is the dot product of a row of M with the vertex. This is the programmable
+  * model/view/projection transform of the geometry front-end; it runs on the FPU/SIMT lanes in M5 and this block is
+  * then retired.
   */
 class MatrixTransform extends Module {
   val io = IO(new Bundle {

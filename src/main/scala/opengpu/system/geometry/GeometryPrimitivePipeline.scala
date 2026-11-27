@@ -12,8 +12,8 @@ class GeometryPrimitivePipelineTask(config: GpuConfig, p: VertexShaderStageConfi
   val kernel = new KernelLaunch(config)
   val firstSequence = UInt(64.W)
   val varyingSlots = UInt(5.W)
-  val flatMask = UInt((4*p.varyings).W)
-  val outputSources = Vec(4 + 4*p.varyings, Valid(UInt(7.W)))
+  val flatMask = UInt((4 * p.varyings).W)
+  val outputSources = Vec(4 + 4 * p.varyings, Valid(UInt(7.W)))
 }
 class GeometryPrimitivePipelineResult extends Bundle {
   val taskId = UInt(32.W)
@@ -24,33 +24,38 @@ class GeometryPrimitivePipelineResult extends Bundle {
   val nextSequence = UInt(64.W)
 }
 
-/** One input primitive owns the adapters and CU task until all results drain.
-  * The command tag is reserved by the enclosing graphics router until completion.
+/** One input primitive owns the adapters and CU task until all results drain. The command tag is reserved by the
+  * enclosing graphics router until completion.
   */
-class GeometryPrimitivePipeline(config: GpuConfig, p: VertexShaderStageConfig, commandIdWidth: Int, numComputeUnits: Int) extends Module {
+class GeometryPrimitivePipeline(
+    config: GpuConfig,
+    p: VertexShaderStageConfig,
+    commandIdWidth: Int,
+    numComputeUnits: Int
+) extends Module {
   val io = IO(new Bundle {
-    val task = Flipped(Decoupled(new GeometryPrimitivePipelineTask(config,p,commandIdWidth)))
+    val task = Flipped(Decoupled(new GeometryPrimitivePipelineTask(config, p, commandIdWidth)))
     val primitive = Decoupled(new GeometryMappedPrimitive(p))
     val completion = Decoupled(new GeometryPrimitivePipelineResult)
     val cancel = Input(Bool())
-    val launch = Decoupled(new TaggedKernelLaunch(config,commandIdWidth))
+    val launch = Decoupled(new TaggedKernelLaunch(config, commandIdWidth))
     val geometryTask = Output(Valid(new GeometryInvocationLaunch))
     val kernelCompletion = Flipped(Decoupled(new TaggedKernelCompletion(commandIdWidth)))
-    val event = Flipped(Vec(numComputeUnits,Decoupled(new GeometryOutputCommand)))
+    val event = Flipped(Vec(numComputeUnits, Decoupled(new GeometryOutputCommand)))
     val owner = Input(UInt(numComputeUnits.W))
-    val taskIds = Input(Vec(numComputeUnits,UInt(commandIdWidth.W)))
-    val cancelCu = Output(Vec(numComputeUnits,Bool()))
+    val taskIds = Input(Vec(numComputeUnits, UInt(commandIdWidth.W)))
+    val cancelCu = Output(Vec(numComputeUnits, Bool()))
   })
   private val idle :: inputWait :: running :: report :: Nil = Enum(4)
   private val state = RegInit(idle)
-  private val saved = Reg(new GeometryPrimitivePipelineTask(config,p,commandIdWidth))
+  private val saved = Reg(new GeometryPrimitivePipelineTask(config, p, commandIdWidth))
   private val result = Reg(new GeometryPrimitivePipelineResult)
   private val cancelled = RegInit(false.B)
   private val outputFault = RegInit(false.B)
   private val mapperBusy = RegInit(false.B)
   private val sequence = Reg(UInt(64.W))
   private val input = Module(new GeometryPrimitiveInput(p))
-  private val scheduler = Module(new GeometrySharedCuScheduler(config,commandIdWidth,numComputeUnits))
+  private val scheduler = Module(new GeometrySharedCuScheduler(config, commandIdWidth, numComputeUnits))
   private val output = Module(new GeometryPrimitiveOutput(p))
 
   input.io.in.valid := state === idle && io.task.valid && !io.cancel
@@ -102,8 +107,11 @@ class GeometryPrimitivePipeline(config: GpuConfig, p: VertexShaderStageConfig, c
   when(scheduler.io.completion.fire) {
     result.completedInvocations := scheduler.io.completion.bits.completedInvocations
     result.nextSequence := sequence
-    result.status := Mux(outputFault, GeometryInvocationStatus.invalid,
-      Mux(cancelled || io.cancel, GeometryInvocationStatus.cancelled, scheduler.io.completion.bits.status))
+    result.status := Mux(
+      outputFault,
+      GeometryInvocationStatus.invalid,
+      Mux(cancelled || io.cancel, GeometryInvocationStatus.cancelled, scheduler.io.completion.bits.status)
+    )
     state := report
   }
   io.completion.valid := state === report; io.completion.bits := result

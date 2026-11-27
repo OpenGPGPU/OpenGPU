@@ -21,44 +21,39 @@ class TileBinReplayPassCompletion extends Bundle {
   val readLines = UInt(32.W)
 }
 
-/** One pass over the scalable bin path: build per-tile chains through a
-  * TileBinDirectory, seal them, and replay each completed chain through the
-  * two-engine TileBinReplayScheduler while both share one tagged line client.
+/** One pass over the scalable bin path: build per-tile chains through a TileBinDirectory, seal them, and replay each
+  * completed chain through the two-engine TileBinReplayScheduler while both share one tagged line client.
   *
-  * The directory's word port is adapted to 64-byte lines and tagged with
-  * transaction ids below `writeCredits`; scheduler reads use the ids from
-  * `writeCredits` to `writeCredits+engines-1`. A round-robin arbiter places
-  * both on the public request port, and responses are demultiplexed by range.
+  * The directory's word port is adapted to 64-byte lines and tagged with transaction ids below `writeCredits`;
+  * scheduler reads use the ids from `writeCredits` to `writeCredits+engines-1`. A round-robin arbiter places both on
+  * the public request port, and responses are demultiplexed by range.
   *
-  * Begin is offered to both blocks together; tile completions flow directly
-  * from the directory to the scheduler. End is sent to the directory first;
-  * once the directory has reported every tile, the scheduler end drains the
-  * last replays and produces the pass summary. Cancellation drives both blocks
-  * and waits for a directory completion and a replay summary. A directory that
-  * finishes without an end (invalid descriptor or fault) also ends the
-  * scheduler so the pass always reports one merged status.
+  * Begin is offered to both blocks together; tile completions flow directly from the directory to the scheduler. End is
+  * sent to the directory first; once the directory has reported every tile, the scheduler end drains the last replays
+  * and produces the pass summary. Cancellation drives both blocks and waits for a directory completion and a replay
+  * summary. A directory that finishes without an end (invalid descriptor or fault) also ends the scheduler so the pass
+  * always reports one merged status.
   *
-  * The caller must drain per-tile replay completions and all references during
-  * the pass, keep the arena owned until the pass summary, and publish any
-  * bin-arena stores into this memory domain before replay begins.
+  * The caller must drain per-tile replay completions and all references during the pass, keep the arena owned until the
+  * pass summary, and publish any bin-arena stores into this memory domain before replay begins.
   */
 class TileBinReplayPass(
-  config: GpuConfig = GpuConfig(),
-  engines: Int = 2,
-  pageBytes: Int = 4096,
-  writeCredits: Int = 8,
-  tileSlots: Int = 8,
-  pagedCapacity: Int = 0,
-  useDirectorySramBlackBoxes: Boolean = false,
-  externalDispatchCredits: Boolean = false
+    config: GpuConfig = GpuConfig(),
+    engines: Int = 2,
+    pageBytes: Int = 4096,
+    writeCredits: Int = 8,
+    tileSlots: Int = 8,
+    pagedCapacity: Int = 0,
+    useDirectorySramBlackBoxes: Boolean = false,
+    externalDispatchCredits: Boolean = false
 ) extends Module {
   require(config.xLen == 32)
   require(engines >= 1 && engines <= 4)
-  require(pageBytes >= 64 && pageBytes <= 65536 && (pageBytes & (pageBytes-1)) == 0)
+  require(pageBytes >= 64 && pageBytes <= 65536 && (pageBytes & (pageBytes - 1)) == 0)
   require(writeCredits >= 1 && writeCredits <= 32)
   require(tileSlots >= 1 && tileSlots <= 64)
-  private val metadataId = writeCredits+engines
-  private val txCount = metadataId+(if (pagedCapacity > 0) 1 else 0)
+  private val metadataId = writeCredits + engines
+  private val txCount = metadataId + (if (pagedCapacity > 0) 1 else 0)
   val io = IO(new Bundle {
     val begin = Flipped(Decoupled(new TileBinDirectoryDescriptor))
     val append = Flipped(Decoupled(new TileBinAppend))
@@ -69,19 +64,24 @@ class TileBinReplayPass(
     val cancel = Input(Bool())
     val completion = Decoupled(new TileBinReplayPassCompletion)
     val reference = Vec(engines, Decoupled(new PrimitiveBinReference))
-    val memoryRequest = Decoupled(new ComputeMemoryRequest(config,64,txCount))
-    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64,txCount)))
+    val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, txCount))
+    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, txCount)))
     val busy = Output(Bool())
     val engineBusy = Output(Vec(engines, Bool()))
-    val dispatchPermit = if (externalDispatchCredits) Some(Input(Vec(engines,Bool()))) else None
-    val tileAssigned = if (externalDispatchCredits) Some(Output(Vec(engines,Bool()))) else None
+    val dispatchPermit = if (externalDispatchCredits) Some(Input(Vec(engines, Bool()))) else None
+    val tileAssigned = if (externalDispatchCredits) Some(Output(Vec(engines, Bool()))) else None
   })
-  private val directory = Module(new TileBinDirectory(tileSlots,pageBytes,writeCredits,pagedCapacity,config,useDirectorySramBlackBoxes))
-  private val scheduler = Module(new TileBinReplayScheduler(
-    config,engines,pageBytes,txCount,writeCredits,externalDispatchCredits))
-  private val words = Module(new OmWordToLinePort(config,64,writeCredits,uncached=true))
-  private val arbiter = Module(new RRArbiter(new ComputeMemoryRequest(config,64,txCount),if (pagedCapacity > 0) 3 else 2))
-  private val requests = Module(new Queue(new ComputeMemoryRequest(config,64,txCount),2,pipe=true))
+  private val directory = Module(
+    new TileBinDirectory(tileSlots, pageBytes, writeCredits, pagedCapacity, config, useDirectorySramBlackBoxes)
+  )
+  private val scheduler = Module(
+    new TileBinReplayScheduler(config, engines, pageBytes, txCount, writeCredits, externalDispatchCredits)
+  )
+  private val words = Module(new OmWordToLinePort(config, 64, writeCredits, uncached = true))
+  private val arbiter = Module(
+    new RRArbiter(new ComputeMemoryRequest(config, 64, txCount), if (pagedCapacity > 0) 3 else 2)
+  )
+  private val requests = Module(new Queue(new ComputeMemoryRequest(config, 64, txCount), 2, pipe = true))
   private val started = RegInit(false.B)
   private val cancelled = RegInit(false.B)
   private val identity = Reg(new GraphicsWorkIdentity)
@@ -123,8 +123,8 @@ class TileBinReplayPass(
   for (e <- 0 until engines) { io.reference(e) <> scheduler.io.reference(e) }
   io.engineBusy := scheduler.io.engineBusy
   if (externalDispatchCredits) {
-    scheduler.io.dispatchPermit.get:=io.dispatchPermit.get
-    io.tileAssigned.get:=scheduler.io.tileAssigned.get
+    scheduler.io.dispatchPermit.get := io.dispatchPermit.get
+    io.tileAssigned.get := scheduler.io.tileAssigned.get
   }
 
   directory.io.end.valid := io.end.valid
@@ -152,23 +152,27 @@ class TileBinReplayPass(
     replayDone := true.B
   }
 
-  private def mergeStatus(a: UInt,b: UInt): UInt =
-    Mux(a === PrimitiveBinStatus.memoryFault.U || b === PrimitiveBinStatus.memoryFault.U,
+  private def mergeStatus(a: UInt, b: UInt): UInt =
+    Mux(
+      a === PrimitiveBinStatus.memoryFault.U || b === PrimitiveBinStatus.memoryFault.U,
       PrimitiveBinStatus.memoryFault.U,
-      Mux(a === PrimitiveBinStatus.cancelled.U || b === PrimitiveBinStatus.cancelled.U,
+      Mux(
+        a === PrimitiveBinStatus.cancelled.U || b === PrimitiveBinStatus.cancelled.U,
         PrimitiveBinStatus.cancelled.U,
-        Mux(a === PrimitiveBinStatus.success.U,b,a)))
+        Mux(a === PrimitiveBinStatus.success.U, b, a)
+      )
+    )
   io.completion.valid := summaryValid
   io.completion.bits := result
   when(started && dirDone && replayDone && !summaryValid) {
     result.identity := identity
-    result.status := mergeStatus(dirResult.status,replayResult.status)
+    result.status := mergeStatus(dirResult.status, replayResult.status)
     result.tilesOpened := dirResult.tilesOpened
     result.directoryReadBytes := dirResult.directoryReadBytes
     result.directoryWriteBytes := dirResult.directoryWriteBytes
     result.directoryMisses := dirResult.directoryMisses
     result.allocatedPages := dirResult.allocatedPages
-    result.spillTransitions:=dirResult.spillTransitions
+    result.spillTransitions := dirResult.spillTransitions
     result.committed := dirResult.committedCount
     result.tiles := replayResult.tiles
     result.references := replayResult.references
@@ -204,18 +208,21 @@ class TileBinReplayPass(
   scheduler.io.memoryResponse.bits := io.memoryResponse.bits
   words.io.memoryResponse.valid := io.memoryResponse.valid && wordResponse
   words.io.memoryResponse.bits := io.memoryResponse.bits
-  io.memoryResponse.ready := Mux(replayResponse,scheduler.io.memoryResponse.ready,
-    wordResponse && words.io.memoryResponse.ready)
+  io.memoryResponse.ready := Mux(
+    replayResponse,
+    scheduler.io.memoryResponse.ready,
+    wordResponse && words.io.memoryResponse.ready
+  )
   if (pagedCapacity > 0) {
-    val request=directory.io.directoryMemoryRequest.get
-    val response=directory.io.directoryMemoryResponse.get
-    arbiter.io.in(2).valid:=request.valid
-    arbiter.io.in(2).bits:=request.bits
-    arbiter.io.in(2).bits.transactionId:=metadataId.U
-    request.ready:=arbiter.io.in(2).ready
-    val selected=io.memoryResponse.bits.transactionId===metadataId.U
-    response.valid:=io.memoryResponse.valid && selected
-    response.bits:=io.memoryResponse.bits; response.bits.transactionId:=0.U
-    when(selected) { io.memoryResponse.ready:=response.ready }
+    val request = directory.io.directoryMemoryRequest.get
+    val response = directory.io.directoryMemoryResponse.get
+    arbiter.io.in(2).valid := request.valid
+    arbiter.io.in(2).bits := request.bits
+    arbiter.io.in(2).bits.transactionId := metadataId.U
+    request.ready := arbiter.io.in(2).ready
+    val selected = io.memoryResponse.bits.transactionId === metadataId.U
+    response.valid := io.memoryResponse.valid && selected
+    response.bits := io.memoryResponse.bits; response.bits.transactionId := 0.U
+    when(selected) { io.memoryResponse.ready := response.ready }
   }
 }

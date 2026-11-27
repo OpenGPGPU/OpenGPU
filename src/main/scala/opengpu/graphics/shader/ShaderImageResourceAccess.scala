@@ -25,13 +25,15 @@ class ShaderImageResourceAccessResult extends ShaderImageAccessResult {
   val descriptorHit = Bool()
 }
 
-/** Immutable GPU image-unit admission through acknowledged typed texel access.
-  * Descriptor and data transactions occupy disjoint reply IDs. A task parent
-  * retains publication, VM and coherence ownership through public retirement
-  * and invalidates the descriptor cache on rebinding or VM identity reuse.
+/** Immutable GPU image-unit admission through acknowledged typed texel access. Descriptor and data transactions occupy
+  * disjoint reply IDs. A task parent retains publication, VM and coherence ownership through public retirement and
+  * invalidates the descriptor cache on rebinding or VM identity reuse.
   */
-class ShaderImageResourceAccess(config: GpuConfig = GpuConfig(),
-    p: TextureImageAddressConfig = TextureImageAddressConfig(), imageUnits: Int = 4) extends Module {
+class ShaderImageResourceAccess(
+    config: GpuConfig = GpuConfig(),
+    p: TextureImageAddressConfig = TextureImageAddressConfig(),
+    imageUnits: Int = 4
+) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ShaderImageResourceAccessRequest))
     val out = Decoupled(new ShaderImageResourceAccessResult)
@@ -41,7 +43,9 @@ class ShaderImageResourceAccess(config: GpuConfig = GpuConfig(),
     val cancel = Input(Bool())
     val busy = Output(Bool())
   })
-  private object State extends ChiselEnum { val idle, offerDescriptor, waitDescriptor, offerAccess, waitAccess, finish, complete = Value }
+  private object State extends ChiselEnum {
+    val idle, offerDescriptor, waitDescriptor, offerAccess, waitAccess, finish, complete = Value
+  }
   private val phase = RegInit(State.idle)
   private val request = Reg(new ShaderImageResourceAccessRequest)
   private val snapshot = Reg(new ShaderImageBindingSnapshot)
@@ -73,7 +77,8 @@ class ShaderImageResourceAccess(config: GpuConfig = GpuConfig(),
   access.io.in.bits.access.shaderTarget := request.shaderTarget; access.io.in.bits.access.colorType := request.colorType
   access.io.in.bits.access.hasFormatQualifier := request.hasFormatQualifier
   access.io.in.bits.access.shaderFormat := request.shaderFormat
-  access.io.in.bits.access.x := request.x; access.io.in.bits.access.y := request.y; access.io.in.bits.access.z := request.z
+  access.io.in.bits.access.x := request.x; access.io.in.bits.access.y := request.y;
+  access.io.in.bits.access.z := request.z
   access.io.in.bits.access.imageBinding := snapshot; access.io.in.bits.rgba := request.rgba
   access.io.out.ready := phase === State.waitAccess
   access.io.cancel := accessOwned && cancelled
@@ -103,11 +108,15 @@ class ShaderImageResourceAccess(config: GpuConfig = GpuConfig(),
         phase := State.offerDescriptor
       }
     }
-    is(State.offerDescriptor) { when(descriptor.io.in.fire) { descriptorOwned := true.B; phase := State.waitDescriptor } }
+    is(State.offerDescriptor) {
+      when(descriptor.io.in.fire) { descriptorOwned := true.B; phase := State.waitDescriptor }
+    }
     is(State.waitDescriptor) {
       when(descriptor.io.out.fire) {
         val r = descriptor.io.out.bits
-        assert(r.identity.asUInt === request.table.identity.asUInt && r.tag === request.tag && r.unitIndex === request.unitIndex)
+        assert(
+          r.identity.asUInt === request.table.identity.asUInt && r.tag === request.tag && r.unitIndex === request.unitIndex
+        )
         descriptorOwned := false.B; result.descriptorReadLines := r.readLines; result.descriptorHit := r.hit
         result.faultAddressValid := r.faultAddressValid; result.faultAddress := r.faultAddress
         when(r.status =/= 0.U) { status := r.status; phase := State.finish }
@@ -119,7 +128,9 @@ class ShaderImageResourceAccess(config: GpuConfig = GpuConfig(),
     is(State.waitAccess) {
       when(access.io.out.fire) {
         val r = access.io.out.bits
-        assert(r.identity.asUInt === request.table.identity.asUInt && r.tag === request.tag && r.unitIndex === request.unitIndex)
+        assert(
+          r.identity.asUInt === request.table.identity.asUInt && r.tag === request.tag && r.unitIndex === request.unitIndex
+        )
         assert(r.isWrite === request.isWrite)
         accessOwned := false.B
         when(r.status =/= 0.U) { status := r.status }.elsewhen(!stop) { result.rgba := r.rgba }
@@ -128,8 +139,10 @@ class ShaderImageResourceAccess(config: GpuConfig = GpuConfig(),
       }
     }
     is(State.finish) {
-      assert(!descriptorOwned && !accessOwned && !descriptor.io.busy && !access.io.busy,
-        "image operation retired before descriptor and data ownership drained")
+      assert(
+        !descriptorOwned && !accessOwned && !descriptor.io.busy && !access.io.busy,
+        "image operation retired before descriptor and data ownership drained"
+      )
       result.status := Mux(io.cancel && status === 0.U, ShaderImageAccessStatus.cancelled.U, status)
       when(stop) { result.rgba := 0.U.asTypeOf(result.rgba) }
       phase := State.complete

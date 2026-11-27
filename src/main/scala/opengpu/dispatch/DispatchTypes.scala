@@ -4,8 +4,8 @@ import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
 
-/** One host-visible kernel launch. Grid dimensions count workgroups; local
-  * dimensions count work-items within each workgroup.
+/** One host-visible kernel launch. Grid dimensions count workgroups; local dimensions count work-items within each
+  * workgroup.
   */
 class KernelLaunch(config: GpuConfig) extends Bundle {
   val invocations = new opengpu.core.memory.KernelInvocationPolicy(config)
@@ -15,8 +15,8 @@ class KernelLaunch(config: GpuConfig) extends Bundle {
   val localSize = Vec(3, UInt(16.W))
 }
 
-/** Optional CU admission sideband. Original grid dimensions remain in KernelLaunch.
-  * A single workgroup owns the CU until its real completion is accepted.
+/** Optional CU admission sideband. Original grid dimensions remain in KernelLaunch. A single workgroup owns the CU
+  * until its real completion is accepted.
   */
 class KernelGridSlice extends Bundle {
   val singleGroup = Bool()
@@ -58,17 +58,25 @@ class KernelCompletion extends Bundle {
   val success = Bool()
 }
 
-/** Host-visible tagged command. The tag is retained outside a compute unit so
-  * independently completing CUs never rely on completion order.
+/** Host-visible tagged command. The tag is retained outside a compute unit so independently completing CUs never rely
+  * on completion order.
   */
-class TaggedKernelLaunch(config: GpuConfig, val commandIdWidth: Int, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false) extends Bundle {
+class TaggedKernelLaunch(
+    config: GpuConfig,
+    val commandIdWidth: Int,
+    imageAvailable: Boolean = false,
+    storageAvailable: Boolean = false,
+    computeUniformAvailable: Boolean = false,
+    computeTextureAvailable: Boolean = false,
+    atomicCounterAvailable: Boolean = false
+) extends Bundle {
   require(commandIdWidth > 0)
   val commandId = UInt(commandIdWidth.W)
-  val images = if(imageAvailable) Some(new opengpu.graphics.ShaderImageTask) else None
-  val storage = if(storageAvailable) Some(new opengpu.core.memory.StorageTask) else None
-  val computeUniform = if(computeUniformAvailable) Some(new opengpu.core.memory.ComputeUniformTask) else None
-  val computeTexture = if(computeTextureAvailable) Some(new opengpu.core.memory.ComputeTextureTask) else None
-  val atomicCounter = if(atomicCounterAvailable) Some(new opengpu.core.memory.AtomicCounterTask) else None
+  val images = if (imageAvailable) Some(new opengpu.graphics.ShaderImageTask) else None
+  val storage = if (storageAvailable) Some(new opengpu.core.memory.StorageTask) else None
+  val computeUniform = if (computeUniformAvailable) Some(new opengpu.core.memory.ComputeUniformTask) else None
+  val computeTexture = if (computeTextureAvailable) Some(new opengpu.core.memory.ComputeTextureTask) else None
+  val atomicCounter = if (atomicCounterAvailable) Some(new opengpu.core.memory.AtomicCounterTask) else None
   val launch = new KernelLaunch(config)
 }
 
@@ -78,18 +86,25 @@ class TaggedKernelCompletion(val commandIdWidth: Int) extends Bundle {
   val success = Bool()
 }
 
-/** Host-visible command descriptor. The launch payload remains shared with
-  * the internal dispatcher so software queueing does not duplicate execution
-  * semantics.
+/** Host-visible command descriptor. The launch payload remains shared with the internal dispatcher so software queueing
+  * does not duplicate execution semantics.
   */
-class KernelCommand(config: GpuConfig, val commandIdWidth: Int, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false) extends Bundle {
+class KernelCommand(
+    config: GpuConfig,
+    val commandIdWidth: Int,
+    imageAvailable: Boolean = false,
+    storageAvailable: Boolean = false,
+    computeUniformAvailable: Boolean = false,
+    computeTextureAvailable: Boolean = false,
+    atomicCounterAvailable: Boolean = false
+) extends Bundle {
   require(commandIdWidth > 0)
   val commandId = UInt(commandIdWidth.W)
-  val images = if(imageAvailable) Some(new opengpu.graphics.ShaderImageTask) else None
-  val storage = if(storageAvailable) Some(new opengpu.core.memory.StorageTask) else None
-  val computeUniform = if(computeUniformAvailable) Some(new opengpu.core.memory.ComputeUniformTask) else None
-  val computeTexture = if(computeTextureAvailable) Some(new opengpu.core.memory.ComputeTextureTask) else None
-  val atomicCounter = if(atomicCounterAvailable) Some(new opengpu.core.memory.AtomicCounterTask) else None
+  val images = if (imageAvailable) Some(new opengpu.graphics.ShaderImageTask) else None
+  val storage = if (storageAvailable) Some(new opengpu.core.memory.StorageTask) else None
+  val computeUniform = if (computeUniformAvailable) Some(new opengpu.core.memory.ComputeUniformTask) else None
+  val computeTexture = if (computeTextureAvailable) Some(new opengpu.core.memory.ComputeTextureTask) else None
+  val atomicCounter = if (atomicCounterAvailable) Some(new opengpu.core.memory.AtomicCounterTask) else None
   val launch = new KernelLaunch(config)
   val waitForDma = Bool()
   val dmaSource = UInt(DmaEventSource.width.W)

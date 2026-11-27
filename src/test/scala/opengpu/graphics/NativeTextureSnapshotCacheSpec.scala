@@ -6,8 +6,15 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 class NativeTextureSnapshotCacheSpec extends AnyFlatSpec {
   import WindowRecordTest._
-  private def key(k: NativeTextureSnapshotKey, unit: Int = 0, generation: Int = 13,
-      resource: BigInt = 0x9000, lod: BigInt = 0, context: Int = 7, pass: Int = 11): Unit = {
+  private def key(
+      k: NativeTextureSnapshotKey,
+      unit: Int = 0,
+      generation: Int = 13,
+      resource: BigInt = 0x9000,
+      lod: BigInt = 0,
+      context: Int = 7,
+      pass: Int = 11
+  ): Unit = {
     k.resources.version.poke(1.U); k.resources.address.poke(resource.U)
     k.identity.context.poke(context.U); k.identity.pass.poke(pass.U); k.identity.generation.poke(generation.U)
     k.unit.poke(unit.U); k.lod.poke(lod.U)

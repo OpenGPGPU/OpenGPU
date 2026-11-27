@@ -51,7 +51,8 @@ class WorkgroupBarrierEpochSpec extends AnyFlatSpec {
           d.io.kernel.bits.gridSize(i).poke((if (i == 0) 3 else 1).U)
           d.io.kernel.bits.localSize(i).poke((if (i == 0) lanes * warps else 1).U)
         }
-        d.io.kernel.valid.poke(true.B); d.io.kernel.ready.expect(true.B); d.clock.step(); d.io.kernel.valid.poke(false.B)
+        d.io.kernel.valid.poke(true.B); d.io.kernel.ready.expect(true.B); d.clock.step();
+        d.io.kernel.valid.poke(false.B)
         def until(condition: => Boolean): Unit = {
           var n = 0; while (!condition && n < 200) { d.clock.step(); n += 1 }
           assert(condition, "workgroup context initialization failed to progress")
@@ -83,7 +84,9 @@ class WorkgroupBarrierEpochSpec extends AnyFlatSpec {
           }
           until(d.io.release.valid.peek().litToBoolean)
           val held = d.io.release.bits.peek().litValue
-          for (_ <- 0 until 7) { assert(d.io.release.bits.peek().litValue == held); d.io.release.valid.expect(true.B); d.clock.step() }
+          for (_ <- 0 until 7) {
+            assert(d.io.release.bits.peek().litValue == held); d.io.release.valid.expect(true.B); d.clock.step()
+          }
           d.io.release.ready.poke(true.B)
           for (warp <- 0 until warps) {
             d.io.release.valid.expect(true.B); d.io.release.bits.warpId.expect(warp.U)
@@ -100,7 +103,9 @@ class WorkgroupBarrierEpochSpec extends AnyFlatSpec {
         until(d.io.completion.valid.peek().litToBoolean); d.io.completion.bits.success.expect(true.B)
         for (_ <- 0 until 7) { d.io.completion.valid.expect(true.B); d.io.waiting.expect(0.U); d.clock.step() }
         d.io.completion.ready.poke(true.B); d.clock.step()
-        info(s"WORKGROUP_BARRIER_EPOCH lanes=$lanes warps=$warps groups=3 fullCapacity=${lanes * warps} stalledPeerInitialization=true exactReleasePCs=true heldRelease=true heldCompletion=true")
+        info(
+          s"WORKGROUP_BARRIER_EPOCH lanes=$lanes warps=$warps groups=3 fullCapacity=${lanes * warps} stalledPeerInitialization=true exactReleasePCs=true heldRelease=true heldCompletion=true"
+        )
       }
     }
   }

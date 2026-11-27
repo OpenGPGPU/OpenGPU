@@ -26,12 +26,12 @@ class TileJobDescriptorReaderSpec extends AnyFlatSpec {
   behavior of "bounded tile descriptor ownership"
   private class Driver(val d: TileJobDescriptorReader) {
     def zero(data: Data): Unit = data match {
-      case r: Record => r.elements.values.foreach(zero)
-      case v: Vec[_] => v.foreach(zero)
+      case r: Record                                                     => r.elements.values.foreach(zero)
+      case v: Vec[_]                                                     => v.foreach(zero)
       case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
       case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
       case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
-      case _ => ()
+      case _                                                             => ()
     }
     zero(d.io); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
     var id = 0
@@ -103,8 +103,11 @@ class TileJobDescriptorReaderSpec extends AnyFlatSpec {
     }
   }
   private def reader: TileJobDescriptorReader = new TileJobDescriptorReader(
-    GpuConfig(lanes = 4, warps = 2), GraphicsConfig(screenWidth = 64, screenHeight = 64),
-    memoryTransactions = 8, transactionId = 3)
+    GpuConfig(lanes = 4, warps = 2),
+    GraphicsConfig(screenWidth = 64, screenHeight = 64),
+    memoryTransactions = 8,
+    transactionId = 3
+  )
 
   it should "select typed command version two without changing attachment descriptor version" in {
     simulate(reader) { dut =>
@@ -140,7 +143,8 @@ class TileJobDescriptorReaderSpec extends AnyFlatSpec {
       c.cullMode.expect(2.U); c.blendEnable.expect(true.B); c.stencilTestEnable.expect(true.B)
       c.stencilFunc.expect(1.U); c.stencilFailOp.expect(2.U); c.stencilZFailOp.expect(3.U); c.stencilZPassOp.expect(4.U)
       c.stencilRef.expect(0x12.U); c.stencilReadMask.expect(0x34.U); c.stencilWriteMask.expect(0x56.U)
-      c.blendCfgEnable.expect(true.B); c.blendSrcFactor.expect(4.U); c.blendDstFactor.expect(5.U); c.blendEquation.expect(2.U)
+      c.blendCfgEnable.expect(true.B); c.blendSrcFactor.expect(4.U); c.blendDstFactor.expect(5.U);
+      c.blendEquation.expect(2.U)
       c.texBase.expect(0x60000.U); c.texWidth.expect(127.U); c.texHeight.expect(61.U)
       c.texEnable.expect(true.B); c.texWrapClamp.expect(true.B); c.texMaxLevel.expect(9.U)
       c.texMinLevel.expect(3.U); c.texLodBias.expect((-3).S); c.texFormat.expect(2.U)
@@ -157,14 +161,43 @@ class TileJobDescriptorReaderSpec extends AnyFlatSpec {
   it should "reject allocation, encoding and future-version errors without launching a partial job" in {
     simulate(reader) { dut =>
       val h = new Driver(dut)
-      for ((base, limit, envelope) <- Seq((0x1004L,0x1200L,true),(0x1000L,0x10ffL,true),
-          (0xffffffc0L,1L<<32,true),(0x1000L,(1L<<32)+1,true),(0x1000L,0x1100L,false))) {
-        h.submit(base,limit,envelope); dut.clock.step(); dut.io.memoryRequest.valid.expect(false.B)
+      for (
+        (base, limit, envelope) <- Seq(
+          (0x1004L, 0x1200L, true),
+          (0x1000L, 0x10ffL, true),
+          (0xffffffc0L, 1L << 32, true),
+          (0x1000L, (1L << 32) + 1, true),
+          (0x1000L, 0x1100L, false)
+        )
+      ) {
+        h.submit(base, limit, envelope); dut.clock.step(); dut.io.memoryRequest.valid.expect(false.B)
         h.complete(TilePassStatus.invalidDescriptor)
       }
-      for ((index, bit) <- Seq((0,0),(1,0),(6,16),(8,1),(9,16),(10,16),(12,3),
-          (15,1),(17,3),(21,1),(23,3),(27,1),(29,2),(30,12),(31,24),
-          (32,1),(34,14),(35,1),(36,3),(37,0),(63,31))) {
+      for (
+        (index, bit) <- Seq(
+          (0, 0),
+          (1, 0),
+          (6, 16),
+          (8, 1),
+          (9, 16),
+          (10, 16),
+          (12, 3),
+          (15, 1),
+          (17, 3),
+          (21, 1),
+          (23, 3),
+          (27, 1),
+          (29, 2),
+          (30, 12),
+          (31, 24),
+          (32, 1),
+          (34, 14),
+          (35, 1),
+          (36, 3),
+          (37, 0),
+          (63, 31)
+        )
+      ) {
         val w = TileDescriptorTestData.words(); w(index) ^= 1L << bit
         h.submit(); h.fetch(w); h.complete(TilePassStatus.invalidDescriptor)
         dut.io.job.valid.expect(false.B)
@@ -190,7 +223,7 @@ class TileJobDescriptorReaderSpec extends AnyFlatSpec {
       dut.io.cancel.poke(false.B); dut.io.memoryRequest.ready.poke(true.B); dut.clock.step()
       dut.io.memoryRequest.ready.poke(false.B)
       for (_ <- 0 until 5) { dut.clock.step(); dut.io.completion.valid.expect(false.B) }
-      h.returnLine(TileDescriptorTestData.words(),0); h.complete(TilePassStatus.cancelled)
+      h.returnLine(TileDescriptorTestData.words(), 0); h.complete(TilePassStatus.cancelled)
       h.submit(); h.fetch(); h.waitFor(dut.io.job.valid.peek().litToBoolean)
       dut.io.cancel.poke(true.B); dut.clock.step(); dut.io.cancel.poke(false.B)
       for (_ <- 0 until 4) {

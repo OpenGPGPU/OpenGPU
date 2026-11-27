@@ -25,15 +25,21 @@ object NearClipStage {
   val InterpolatedFields = 11
 }
 
-/** Preserve every signed34 distance while sharing a bounded carry tree.
-  * Select the coordinate before arithmetic; all planes use w +/- coordinate.
+/** Preserve every signed34 distance while sharing a bounded carry tree. Select the coordinate before arithmetic; all
+  * planes use w +/- coordinate.
   */
 private[graphics] object ClipDistanceMath {
   def apply(v: ClipVertexColor, which: UInt, near: UInt): SInt = {
-    val coordinate = MuxLookup(which, near.pad(34).asSInt)(Seq(
-      1.U -> v.x.pad(34), 2.U -> v.x.pad(34),
-      3.U -> v.y.pad(34), 4.U -> v.y.pad(34),
-      5.U -> v.z.pad(34), 6.U -> v.z.pad(34)))
+    val coordinate = MuxLookup(which, near.pad(34).asSInt)(
+      Seq(
+        1.U -> v.x.pad(34),
+        2.U -> v.x.pad(34),
+        3.U -> v.y.pad(34),
+        4.U -> v.y.pad(34),
+        5.U -> v.z.pad(34),
+        6.U -> v.z.pad(34)
+      )
+    )
     val add = which === 1.U || which === 3.U || which === 5.U
     val adder = Module(new BlockPrefixAdder(34))
     adder.io.a := v.w.pad(34).asUInt
@@ -45,14 +51,11 @@ private[graphics] object ClipDistanceMath {
 
 /** Sequential Sutherland-Hodgman clipping against the complete view volume.
   *
-  * The positive-w guard (`w >= wNear`) keeps the perspective divide finite;
-  * the remaining planes implement `-w <= x,y,z <= w`. A triangle can grow
-  * into a convex polygon with at most ten vertices and is returned as a fan of
-  * up to eight triangles. Position, colour, depth and UV are all interpolated
-  * at newly created vertices.
+  * The positive-w guard (`w >= wNear`) keeps the perspective divide finite; the remaining planes implement
+  * `-w <= x,y,z <= w`. A triangle can grow into a convex polygon with at most ten vertices and is returned as a fan of
+  * up to eight triangles. Position, colour, depth and UV are all interpolated at newly created vertices.
   *
-  * `start` is accepted while idle. `done` and the result remain asserted and
-  * stable until the next accepted start.
+  * `start` is accepted while idle. `done` and the result remain asserted and stable until the next accepted start.
   */
 class NearClipStage(config: GraphicsConfig) extends Module {
   import NearClipStage._
@@ -71,7 +74,8 @@ class NearClipStage(config: GraphicsConfig) extends Module {
     val outValid = Output(UInt(log2Ceil(MaxTriangles + 1).W))
   })
 
-  private val sIdle :: sCheckInside :: sEdges :: sClassify :: sInterpolate :: sParts :: sAssemble :: sDivide :: sRetire :: sAppend :: sAdvance :: Nil = Enum(11)
+  private val sIdle :: sCheckInside :: sEdges :: sClassify :: sInterpolate :: sParts :: sAssemble :: sDivide :: sRetire :: sAppend :: sAdvance :: Nil =
+    Enum(11)
   private val state = RegInit(sIdle)
   private val ready = RegInit(false.B)
   private val current = Reg(Vec(MaxVertices, new ClipVertexColor(config)))
@@ -102,6 +106,7 @@ class NearClipStage(config: GraphicsConfig) extends Module {
   divider.io.in.bits.numerator := numeratorReg
   divider.io.in.bits.denominator := denominatorReg
   divider.io.out.ready := state === sRetire
+
   /** Signed distance with inside represented by distance >= 0. */
   private def distance(v: ClipVertexColor, which: UInt): SInt =
     ClipDistanceMath(v, which, io.wNear)
@@ -157,8 +162,7 @@ class NearClipStage(config: GraphicsConfig) extends Module {
       field := 0.U
       state := sInterpolate
     }.elsewhen(curIn) {
-      assert(outputCount < MaxVertices.U,
-        "frustum clip polygon exceeded its vertex bound")
+      assert(outputCount < MaxVertices.U, "frustum clip polygon exceeded its vertex bound")
       outputCount := outputCount + 1.U
     }
 
@@ -174,32 +178,36 @@ class NearClipStage(config: GraphicsConfig) extends Module {
     // Signed32 positions/depth and unsigned32 UVs all fit in signed34.
     // Their difference fits signed34 too; multiplying by a signed34 edge
     // distance needs68 bits. Preserve the original34-bit denominator subtract.
-    val a = MuxLookup(field, edgePrev.x.pad(34))(Seq(
-      0.U -> edgePrev.x.pad(34),
-      1.U -> edgePrev.y.pad(34),
-      2.U -> edgePrev.z.pad(34),
-      3.U -> edgePrev.w.pad(34),
-      4.U -> edgePrev.color.r.pad(34).asSInt,
-      5.U -> edgePrev.color.g.pad(34).asSInt,
-      6.U -> edgePrev.color.b.pad(34).asSInt,
-      10.U -> edgePrev.alpha.pad(34).asSInt,
-      7.U -> edgePrev.depth.pad(34),
-      8.U -> edgePrev.uv.u.pad(34).asSInt,
-      9.U -> edgePrev.uv.v.pad(34).asSInt
-    ))
-    val b = MuxLookup(field, edgeCur.x.pad(34))(Seq(
-      0.U -> edgeCur.x.pad(34),
-      1.U -> edgeCur.y.pad(34),
-      2.U -> edgeCur.z.pad(34),
-      3.U -> edgeCur.w.pad(34),
-      4.U -> edgeCur.color.r.pad(34).asSInt,
-      5.U -> edgeCur.color.g.pad(34).asSInt,
-      6.U -> edgeCur.color.b.pad(34).asSInt,
-      10.U -> edgeCur.alpha.pad(34).asSInt,
-      7.U -> edgeCur.depth.pad(34),
-      8.U -> edgeCur.uv.u.pad(34).asSInt,
-      9.U -> edgeCur.uv.v.pad(34).asSInt
-    ))
+    val a = MuxLookup(field, edgePrev.x.pad(34))(
+      Seq(
+        0.U -> edgePrev.x.pad(34),
+        1.U -> edgePrev.y.pad(34),
+        2.U -> edgePrev.z.pad(34),
+        3.U -> edgePrev.w.pad(34),
+        4.U -> edgePrev.color.r.pad(34).asSInt,
+        5.U -> edgePrev.color.g.pad(34).asSInt,
+        6.U -> edgePrev.color.b.pad(34).asSInt,
+        10.U -> edgePrev.alpha.pad(34).asSInt,
+        7.U -> edgePrev.depth.pad(34),
+        8.U -> edgePrev.uv.u.pad(34).asSInt,
+        9.U -> edgePrev.uv.v.pad(34).asSInt
+      )
+    )
+    val b = MuxLookup(field, edgeCur.x.pad(34))(
+      Seq(
+        0.U -> edgeCur.x.pad(34),
+        1.U -> edgeCur.y.pad(34),
+        2.U -> edgeCur.z.pad(34),
+        3.U -> edgeCur.w.pad(34),
+        4.U -> edgeCur.color.r.pad(34).asSInt,
+        5.U -> edgeCur.color.g.pad(34).asSInt,
+        6.U -> edgeCur.color.b.pad(34).asSInt,
+        10.U -> edgeCur.alpha.pad(34).asSInt,
+        7.U -> edgeCur.depth.pad(34),
+        8.U -> edgeCur.uv.u.pad(34).asSInt,
+        9.U -> edgeCur.uv.v.pad(34).asSInt
+      )
+    )
     deltaReg := b - a
     denominatorReg := edgePrevDistance - edgeCurDistance
     intersectionBase := a(31, 0)
@@ -215,8 +223,7 @@ class NearClipStage(config: GraphicsConfig) extends Module {
     when(divider.io.in.fire) { state := sRetire }
   }.elsewhen(state === sRetire && divider.io.out.fire) {
     assert(!divider.io.out.bits.divideByZero)
-    assert(!divider.io.out.bits.magnitudeOverflow,
-      "crossing interpolation quotient must fit32 magnitude bits")
+    assert(!divider.io.out.bits.magnitudeOverflow, "crossing interpolation quotient must fit32 magnitude bits")
     // Only low32 result bits are observable; addition commutes with truncation.
     val value = intersectionBase + divider.io.out.bits.quotient(31, 0)
     switch(field) {
@@ -240,14 +247,12 @@ class NearClipStage(config: GraphicsConfig) extends Module {
     }
   }.elsewhen(state === sAppend) {
     when(edgeEntering) {
-      assert(outputCount + 1.U < MaxVertices.U,
-        "frustum clip polygon exceeded its vertex bound")
+      assert(outputCount + 1.U < MaxVertices.U, "frustum clip polygon exceeded its vertex bound")
       next(outputCount) := intersection
       next(outputCount + 1.U) := edgeCur
       outputCount := outputCount + 2.U
     }.otherwise {
-      assert(outputCount < MaxVertices.U,
-        "frustum clip polygon exceeded its vertex bound")
+      assert(outputCount < MaxVertices.U, "frustum clip polygon exceeded its vertex bound")
       next(outputCount) := intersection
       outputCount := outputCount + 1.U
     }
@@ -288,11 +293,8 @@ class NearClipStage(config: GraphicsConfig) extends Module {
     // Registered per-triangle enables avoid finalCount decode on every wide
     // output. They clear on admission/reset and publish only the final fan.
     val valid = triangleValid(i)
-    io.out(i * 3) := Mux(valid, current(0),
-      0.U.asTypeOf(new ClipVertexColor(config)))
-    io.out(i * 3 + 1) := Mux(valid, current(i + 1),
-      0.U.asTypeOf(new ClipVertexColor(config)))
-    io.out(i * 3 + 2) := Mux(valid, current(i + 2),
-      0.U.asTypeOf(new ClipVertexColor(config)))
+    io.out(i * 3) := Mux(valid, current(0), 0.U.asTypeOf(new ClipVertexColor(config)))
+    io.out(i * 3 + 1) := Mux(valid, current(i + 1), 0.U.asTypeOf(new ClipVertexColor(config)))
+    io.out(i * 3 + 2) := Mux(valid, current(i + 2), 0.U.asTypeOf(new ClipVertexColor(config)))
   }
 }

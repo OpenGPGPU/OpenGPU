@@ -5,9 +5,8 @@ import chisel3.util._
 
 /** One byte operation per cycle with one-cycle read latency.
   *
-  * Characterized memories have 256 rows and a minimum width of 32 bits. Each
-  * segment uses its low byte; padding preserves independent byte-bank writes
-  * without a read/modify/write cycle or a reduction in bank throughput.
+  * Characterized memories have 256 rows and a minimum width of 32 bits. Each segment uses its low byte; padding
+  * preserves independent byte-bank writes without a read/modify/write cycle or a reduction in bank throughput.
   */
 class SharedMemoryByteBank(depth: Int, useBlackBoxes: Boolean = false) extends Module {
   require(depth > 0 && isPow2(depth))
@@ -35,7 +34,7 @@ class SharedMemoryByteBank(depth: Int, useBlackBoxes: Boolean = false) extends M
       memory.io.writeData := io.writeData
     }
     io.readData := (if (segments == 1) memories.head.io.readData
-      else VecInit(memories.map(_.io.readData))(heldSegment))
+                    else VecInit(memories.map(_.io.readData))(heldSegment))
   } else {
     val memory = SyncReadMem(depth, UInt(8.W))
     io.readData := memory.read(io.readAddress, io.readEnable && !io.writeEnable)

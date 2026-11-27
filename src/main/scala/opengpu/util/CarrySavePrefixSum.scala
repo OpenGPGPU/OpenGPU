@@ -2,9 +2,8 @@ package opengpu.util
 
 import chisel3._
 
-/** Full-precision sum of three unsigned terms: bitwise carry-save reduction
-  * followed by one block-prefix carry propagation. Truncating its low N bits
-  * also gives the exact modular sum of N-bit two's-complement operands.
+/** Full-precision sum of three unsigned terms: bitwise carry-save reduction followed by one block-prefix carry
+  * propagation. Truncating its low N bits also gives the exact modular sum of N-bit two's-complement operands.
   */
 class CarrySavePrefixSum(width: Int = 64) extends Module {
   require(width > 0)

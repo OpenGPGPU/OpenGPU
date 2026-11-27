@@ -7,9 +7,8 @@ import opengpu.core.execute.control.SimtPath
 
 /** CU-local workgroup barrier.
   *
-  * The dispatcher guarantees that all resident warps belong to one workgroup.
-  * Arriving warps remain blocked in the frontend. Once the final warp has been
-  * dispatched and every resident warp has arrived, saved next-PC/mask records
+  * The dispatcher guarantees that all resident warps belong to one workgroup. Arriving warps remain blocked in the
+  * frontend. Once the final warp has been dispatched and every resident warp has arrived, saved next-PC/mask records
   * are replayed one per cycle to make the entire workgroup runnable again.
   */
 class WorkgroupBarrierController(config: GpuConfig = GpuConfig()) extends Module {
@@ -41,8 +40,10 @@ class WorkgroupBarrierController(config: GpuConfig = GpuConfig()) extends Module
   private val arrivedAfterInput = Mux(io.arrive.fire, arrived | arrivalOH, arrived)
   private val allResidentArrived = io.residentWarps.orR &&
     (arrivedAfterInput & io.residentWarps) === io.residentWarps
-  when(state === collecting && io.dispatchComplete && io.memoryIdle &&
-      allResidentArrived) {
+  when(
+    state === collecting && io.dispatchComplete && io.memoryIdle &&
+      allResidentArrived
+  ) {
     releasePending := arrivedAfterInput & io.residentWarps
     state := releasing
   }
@@ -62,7 +63,6 @@ class WorkgroupBarrierController(config: GpuConfig = GpuConfig()) extends Module
   io.waiting := Mux(state === collecting, arrived, releasePending)
   when(io.arrive.valid) {
     assert(arrivalInRange, "barrier arrival must identify a resident warp")
-    assert((io.residentWarps & arrivalOH).orR,
-      "only a resident warp may enter its workgroup barrier")
+    assert((io.residentWarps & arrivalOH).orR, "only a resident warp may enter its workgroup barrier")
   }
 }

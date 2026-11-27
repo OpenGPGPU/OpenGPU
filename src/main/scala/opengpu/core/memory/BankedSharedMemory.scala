@@ -2,7 +2,7 @@ package opengpu.core.memory
 
 import chisel3._
 import chisel3.util._
-import opengpu.config.{CachePolicy,GpuConfig}
+import opengpu.config.{CachePolicy, GpuConfig}
 
 object AtomicMemoryOp {
   val width = 4
@@ -36,13 +36,12 @@ class SharedAtomicResponse(config: GpuConfig) extends Bundle {
 
 /** Byte-interleaved CU-local shared memory.
   *
-  * Every bank accepts one byte operation per cycle. Conflict-free lane bytes
-  * therefore proceed in parallel, while accesses mapping to the same bank are
-  * replayed until the captured vector transaction is complete.
+  * Every bank accepts one byte operation per cycle. Conflict-free lane bytes therefore proceed in parallel, while
+  * accesses mapping to the same bank are replayed until the captured vector transaction is complete.
   */
 class BankedSharedMemory(
-  config: GpuConfig = GpuConfig(),
-  useSramBlackBoxes: Boolean = false
+    config: GpuConfig = GpuConfig(),
+    useSramBlackBoxes: Boolean = false
 ) extends Module {
   private val bytesPerBank = config.sharedMemoryBytes / config.sharedMemoryBanks
   private val bankWidth = log2Ceil(config.sharedMemoryBanks)
@@ -56,8 +55,8 @@ class BankedSharedMemory(
     val idle = Output(Bool())
   })
 
-  private val banks = Seq.fill(config.sharedMemoryBanks)(
-    Module(new SharedMemoryByteBank(bytesPerBank, useSramBlackBoxes)))
+  private val banks =
+    Seq.fill(config.sharedMemoryBanks)(Module(new SharedMemoryByteBank(bytesPerBank, useSramBlackBoxes)))
   private val transaction = Reg(new VectorMemoryTransaction(config))
   private val pending = RegInit(0.U(operationCount.W))
   private val busy = RegInit(false.B)
@@ -101,7 +100,7 @@ class BankedSharedMemory(
   private val atomicAddressFault = io.atomicIn.bits.address(1, 0).orR ||
     io.atomicIn.bits.address < config.sharedMemoryBase.U ||
     (io.atomicIn.bits.address +& 4.U) >
-      (config.sharedMemoryBase + config.sharedMemoryBytes).U
+    (config.sharedMemoryBase + config.sharedMemoryBytes).U
   when(io.atomicIn.fire) {
     atomicRequest := io.atomicIn.bits
     atomicFault := atomicAddressFault
@@ -135,8 +134,7 @@ class BankedSharedMemory(
     val selectedOffset =
       transaction.addresses(selectedLane) - config.sharedMemoryBase.U + selectedByte
     val bankAddress = selectedOffset >> bankWidth
-    servicedByBank(bank) := Mux(hasCandidate,
-      UIntToOH(selected, operationCount), 0.U)
+    servicedByBank(bank) := Mux(hasCandidate, UIntToOH(selected, operationCount), 0.U)
     val issueVectorRead = hasCandidate && !transaction.isStore
     val atomicOffset = atomicRequest.address - config.sharedMemoryBase.U
     val atomicByteMatch = Wire(Vec(4, Bool()))
@@ -184,9 +182,11 @@ class BankedSharedMemory(
 
   when(busy) {
     for (lane <- 0 until config.lanes) {
-      val laneUpdates = (0 until config.sharedMemoryBanks).map { bank =>
-        Mux(readValid(bank) && readLane(bank) === lane.U, readData(bank), 0.U)
-      }.reduce(_ | _)
+      val laneUpdates = (0 until config.sharedMemoryBanks)
+        .map { bank =>
+          Mux(readValid(bank) && readLane(bank) === lane.U, readData(bank), 0.U)
+        }
+        .reduce(_ | _)
       result(lane) := result(lane) | laneUpdates
     }
     val remaining = pending & ~serviced
@@ -214,29 +214,34 @@ class BankedSharedMemory(
     atomicNewValue := MuxLookup(
       atomicRequest.operation,
       atomicRequest.operand
-    )(Seq(
-      // A failed word CAS writes back the captured old value. Both paths
-      // retain the ordinary atomic write/acknowledgement ownership boundary.
-      AtomicMemoryOp.compareSwap -> Mux(atomicReadWord === atomicRequest.compareValue,
-        atomicRequest.operand, atomicReadWord),
-      AtomicMemoryOp.swap -> atomicRequest.operand,
-      AtomicMemoryOp.add -> (atomicReadWord + atomicRequest.operand),
-      AtomicMemoryOp.xor -> (atomicReadWord ^ atomicRequest.operand),
-      AtomicMemoryOp.or -> (atomicReadWord | atomicRequest.operand),
-      AtomicMemoryOp.and -> (atomicReadWord & atomicRequest.operand),
-      AtomicMemoryOp.min -> Mux(
-        atomicReadWord.asSInt < atomicRequest.operand.asSInt,
-        atomicReadWord, atomicRequest.operand),
-      AtomicMemoryOp.max -> Mux(
-        atomicReadWord.asSInt > atomicRequest.operand.asSInt,
-        atomicReadWord, atomicRequest.operand),
-      AtomicMemoryOp.minu -> Mux(
-        atomicReadWord < atomicRequest.operand,
-        atomicReadWord, atomicRequest.operand),
-      AtomicMemoryOp.maxu -> Mux(
-        atomicReadWord > atomicRequest.operand,
-        atomicReadWord, atomicRequest.operand)
-    ))
+    )(
+      Seq(
+        // A failed word CAS writes back the captured old value. Both paths
+        // retain the ordinary atomic write/acknowledgement ownership boundary.
+        AtomicMemoryOp.compareSwap -> Mux(
+          atomicReadWord === atomicRequest.compareValue,
+          atomicRequest.operand,
+          atomicReadWord
+        ),
+        AtomicMemoryOp.swap -> atomicRequest.operand,
+        AtomicMemoryOp.add -> (atomicReadWord + atomicRequest.operand),
+        AtomicMemoryOp.xor -> (atomicReadWord ^ atomicRequest.operand),
+        AtomicMemoryOp.or -> (atomicReadWord | atomicRequest.operand),
+        AtomicMemoryOp.and -> (atomicReadWord & atomicRequest.operand),
+        AtomicMemoryOp.min -> Mux(
+          atomicReadWord.asSInt < atomicRequest.operand.asSInt,
+          atomicReadWord,
+          atomicRequest.operand
+        ),
+        AtomicMemoryOp.max -> Mux(
+          atomicReadWord.asSInt > atomicRequest.operand.asSInt,
+          atomicReadWord,
+          atomicRequest.operand
+        ),
+        AtomicMemoryOp.minu -> Mux(atomicReadWord < atomicRequest.operand, atomicReadWord, atomicRequest.operand),
+        AtomicMemoryOp.maxu -> Mux(atomicReadWord > atomicRequest.operand, atomicReadWord, atomicRequest.operand)
+      )
+    )
     atomicState := AtomicState.write
   }
   when(atomicState === AtomicState.write) {
@@ -254,8 +259,8 @@ class BankedSharedMemory(
   io.idle := !busy && !outputValid && atomicState === AtomicState.idle
 }
 
-/** Routes a complete vector transaction to either CU-local shared memory or
-  * the normal translated global-memory path and locks that choice to response.
+/** Routes a complete vector transaction to either CU-local shared memory or the normal translated global-memory path
+  * and locks that choice to response.
   */
 class VectorMemorySpaceRouter(config: GpuConfig = GpuConfig()) extends Module {
   private val idle :: global :: local :: Nil = Enum(3)
@@ -274,7 +279,7 @@ class VectorMemorySpaceRouter(config: GpuConfig = GpuConfig()) extends Module {
     localLane(lane) := io.in.bits.laneMask(lane) &&
       io.in.bits.addresses(lane) >= config.sharedMemoryBase.U &&
       io.in.bits.addresses(lane) <
-        (config.sharedMemoryBase + config.sharedMemoryBytes).U
+      (config.sharedMemoryBase + config.sharedMemoryBytes).U
   }
   private val selectLocal = localLane.asUInt.orR
   io.globalRequest.valid := state === idle && io.in.valid && !selectLocal
@@ -285,8 +290,7 @@ class VectorMemorySpaceRouter(config: GpuConfig = GpuConfig()) extends Module {
     state === idle
   when(io.in.fire) { state := Mux(selectLocal, local, global) }
 
-  io.out.valid := Mux(state === local, io.localResponse.valid,
-    Mux(state === global, io.globalResponse.valid, false.B))
+  io.out.valid := Mux(state === local, io.localResponse.valid, Mux(state === global, io.globalResponse.valid, false.B))
   io.out.bits := Mux(state === local, io.localResponse.bits, io.globalResponse.bits)
   io.localResponse.ready := state === local && io.out.ready
   io.globalResponse.ready := state === global && io.out.ready

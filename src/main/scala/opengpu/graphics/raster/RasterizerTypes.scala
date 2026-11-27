@@ -4,42 +4,43 @@ import chisel3._
 
 /** Fixed-point rasterization parameters. */
 case class GraphicsConfig(
-  /** Elaborated maximum. Tile storage is sized to this; a runtime mode may
-    * be smaller. Zero selects this maximum. */
-  screenWidth: Int = 128,
-  /** Elaborated maximum, paired with `screenWidth`. */
-  screenHeight: Int = 128,
-  subPixelBits: Int = 8,
-  drawFifoDepth: Int = 8,
-  maxSampleCount: Int = 4,
-  /** Zero keeps scanline order; a power of two scans each tile to completion
-    * before moving to the next tile in row-major tile order. */
-  tileSize: Int = 0,
-  /** Cache one 16x16 tile of per-sample color/depth words behind the OM. */
-  tileAttachments: Boolean = false,
-  /** Replay ordered groups of draw commands in tile order. */
-  tileBinning: Boolean = false,
-  /** Concurrent output-merger RMW slots. */
-  omInflight: Int = 16,
-  /** Prefer a bounded burst to one memory line between fair OM grants. */
-  omLocality: Boolean = false,
-  /** Optional dispatch cap in fragments. */
-  fragmentBatchLimit: Int = 0
+    /** Elaborated maximum. Tile storage is sized to this; a runtime mode may be smaller. Zero selects this maximum.
+      */
+    screenWidth: Int = 128,
+    /** Elaborated maximum, paired with `screenWidth`. */
+    screenHeight: Int = 128,
+    subPixelBits: Int = 8,
+    drawFifoDepth: Int = 8,
+    maxSampleCount: Int = 4,
+    /** Zero keeps scanline order; a power of two scans each tile to completion before moving to the next tile in
+      * row-major tile order.
+      */
+    tileSize: Int = 0,
+    /** Cache one 16x16 tile of per-sample color/depth words behind the OM. */
+    tileAttachments: Boolean = false,
+    /** Replay ordered groups of draw commands in tile order. */
+    tileBinning: Boolean = false,
+    /** Concurrent output-merger RMW slots. */
+    omInflight: Int = 16,
+    /** Prefer a bounded burst to one memory line between fair OM grants. */
+    omLocality: Boolean = false,
+    /** Optional dispatch cap in fragments. */
+    fragmentBatchLimit: Int = 0
 ) {
   require(drawFifoDepth >= 2, "draw FIFO must hold at least two records")
-  require(Set(1, 2, 4)(maxSampleCount),
-    "maxSampleCount must be 1, 2, or 4")
-  require(tileSize == 0 || (tileSize >= 2 && tileSize <= 64 &&
-    (tileSize & (tileSize - 1)) == 0),
-    "tileSize must be zero or a power of two in [2, 64]")
-  require(!tileAttachments || tileSize == 16,
-    "tile attachments currently require tileSize=16")
-  require(!tileBinning || tileAttachments,
-    "tile binning requires tile attachments")
-  require(omInflight >= 1 && omInflight <= 64,
-    "omInflight must be in [1, 64]")
-  require(fragmentBatchLimit >= 0 && fragmentBatchLimit % 4 == 0,
-    "fragment batch limit must be zero or a whole number of quads")
+  require(Set(1, 2, 4)(maxSampleCount), "maxSampleCount must be 1, 2, or 4")
+  require(
+    tileSize == 0 || (tileSize >= 2 && tileSize <= 64 &&
+      (tileSize & (tileSize - 1)) == 0),
+    "tileSize must be zero or a power of two in [2, 64]"
+  )
+  require(!tileAttachments || tileSize == 16, "tile attachments currently require tileSize=16")
+  require(!tileBinning || tileAttachments, "tile binning requires tile attachments")
+  require(omInflight >= 1 && omInflight <= 64, "omInflight must be in [1, 64]")
+  require(
+    fragmentBatchLimit >= 0 && fragmentBatchLimit % 4 == 0,
+    "fragment batch limit must be zero or a whole number of quads"
+  )
   def coordWidth: Int = 32
   def edgeWidth: Int = 64
 
@@ -85,10 +86,13 @@ class RasterPixel(config: GraphicsConfig) extends Bundle {
   val e0 = SInt(config.edgeWidth.W)
   val e1 = SInt(config.edgeWidth.W)
   val e2 = SInt(config.edgeWidth.W)
+
   /** Twice the signed triangle area (edge/weight normalization). */
   val area = SInt(config.edgeWidth.W)
+
   /** True when any sample is covered; false identifies a fragment-shader helper lane. */
   val covered = Bool()
+
   /** Per-sample coverage; bit 0 is exactly `covered` in sample mode 0. */
   val coverageMask = UInt(config.maxSampleCount.W)
 }
@@ -140,8 +144,7 @@ private[graphics] object FixedPointMath {
     val ab = signedLessEqual32(a, b)
     val ac = signedLessEqual32(a, c)
     val bc = signedLessEqual32(b, c)
-    (Mux(ab, Mux(ac, a, c), Mux(bc, b, c)),
-      Mux(ab, Mux(bc, c, b), Mux(ac, c, a)))
+    (Mux(ab, Mux(ac, a, c), Mux(bc, b, c)), Mux(ab, Mux(bc, c, b), Mux(ac, c, a)))
   }
 
   def topLeft(a: SInt, b: SInt, front: Bool): Bool = {
@@ -163,7 +166,6 @@ private[graphics] object FixedPointMath {
     val x = trim64(a).asUInt
     val y = trim64(b).asUInt
     val z = trim64(c).asUInt
-    ((x ^ y ^ z).asSInt,
-      (((x & y) | (x & z) | (y & z)) << 1)(63, 0).asSInt)
+    ((x ^ y ^ z).asSInt, (((x & y) | (x & z) | (y & z)) << 1)(63, 0).asSInt)
   }
 }

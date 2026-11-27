@@ -4,12 +4,12 @@ import chisel3._
 import chisel3.util._
 import opengpu.graphics.{ShaderPayloadConfig, ShaderPayloadProducerPort}
 
-/** Exclusive payload ownership for isoline, triangle and quad jobs.
-  * Both stages acquire and retire together, so a domain change cannot bypass
-  * a live reply or allocation retained by either stage.
+/** Exclusive payload ownership for isoline, triangle and quad jobs. Both stages acquire and retire together, so a
+  * domain change cannot bypass a live reply or allocation retained by either stage.
   */
 class TessellationThreeDomainPayloadOwner(p: ShaderPayloadConfig) extends Module {
   val io = IO(new Bundle {
+
     /** 0: isoline, 1: triangle, 2: quad. */
     val acquire = Flipped(Decoupled(UInt(2.W)))
     val end = Flipped(Decoupled(Bool()))

@@ -51,11 +51,11 @@ class VectorConfigurationUnitSpec extends AnyFlatSpec {
   }
 
   private def issue(
-    dut: VectorConfigurationUnit,
-    instruction: BigInt,
-    warp: Int,
-    rs1Data: BigInt = 0,
-    rs2Data: BigInt = 0
+      dut: VectorConfigurationUnit,
+      instruction: BigInt,
+      warp: Int,
+      rs1Data: BigInt = 0,
+      rs2Data: BigInt = 0
   ): Unit = {
     dut.io.in.valid.poke(true.B)
     dut.io.in.bits.instruction.poke(instruction.U)

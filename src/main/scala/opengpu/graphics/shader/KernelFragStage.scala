@@ -6,12 +6,12 @@ import opengpu.config.GpuConfig
 import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse}
 
 class KernelFragStage(
-  config: GpuConfig = GpuConfig(),
-  gfxConfig: GraphicsConfig = GraphicsConfig(),
-  stagingTransactions: Int = 2,
-  quadExports: Boolean = false,
-  shaderPayload: Option[ShaderPayloadConfig] = None,
-  payloadOwner: Int = 0
+    config: GpuConfig = GpuConfig(),
+    gfxConfig: GraphicsConfig = GraphicsConfig(),
+    stagingTransactions: Int = 2,
+    quadExports: Boolean = false,
+    shaderPayload: Option[ShaderPayloadConfig] = None,
+    payloadOwner: Int = 0
 ) extends Module {
   def this(config: GpuConfig, gfxConfig: GraphicsConfig) = this(config, gfxConfig, 2)
   require(stagingTransactions >= 2 && isPow2(stagingTransactions))
@@ -21,15 +21,16 @@ class KernelFragStage(
   // Per-array byte stride of the SoA kernarg layout (see the class doc).
   private val arrayStride = 4 * batchCap
 
-  val io = IO(new KernelFragStageIO(config, gfxConfig, stagingTransactions,quadExports,shaderPayload))
-  private val stagingResponse=Wire(Decoupled(new ComputeMemoryResponse(64,stagingTransactions)))
-  private val payloadTransport=shaderPayload.map(p=>Module(new FragmentPayloadTransport(config,p,payloadOwner,stagingTransactions)))
-  payloadTransport.foreach(t=>t.io.pool<>io.payload.get)
-  private val payloadAbort=shaderPayload.map(_=>RegInit(false.B))
-  private val payloadExportAllowed=payloadAbort.map(a=> !a && !io.payload.get.cancel).getOrElse(true.B)
-  private val exportValid=Wire(Bool())
-  private val exportReady=if(quadExports)io.quadOut.get.ready else io.out.ready
-  private val exportFire=exportValid && exportReady
+  val io = IO(new KernelFragStageIO(config, gfxConfig, stagingTransactions, quadExports, shaderPayload))
+  private val stagingResponse = Wire(Decoupled(new ComputeMemoryResponse(64, stagingTransactions)))
+  private val payloadTransport =
+    shaderPayload.map(p => Module(new FragmentPayloadTransport(config, p, payloadOwner, stagingTransactions)))
+  payloadTransport.foreach(t => t.io.pool <> io.payload.get)
+  private val payloadAbort = shaderPayload.map(_ => RegInit(false.B))
+  private val payloadExportAllowed = payloadAbort.map(a => !a && !io.payload.get.cancel).getOrElse(true.B)
+  private val exportValid = Wire(Bool())
+  private val exportReady = if (quadExports) io.quadOut.get.ready else io.out.ready
+  private val exportFire = exportValid && exportReady
 
   // Word-client request/response interface to the bridge (driven by the FSM).
   private val wordValid = Wire(Bool())
@@ -39,19 +40,21 @@ class KernelFragStage(
   // and leave through `io.texMem` so the caller can translate the texture VA.
   // Reserve independent tags for coalesced requests. The shared router maps
   // them into the CU-scaled staging window and restores local IDs on return.
-  private val bridge = Module(new OmWordToLinePort(
-    config, uncached = true, maxOutstanding = stagingTransactions))
+  private val bridge = Module(new OmWordToLinePort(config, uncached = true, maxOutstanding = stagingTransactions))
   // Stage whole lines, masking colour outputs, inactive lanes and uniforms.
   // Keep the legacy word path for small/non-line-aligned batch layouts.
   private val coalesceStaging = batchCap == 8 || batchCap % 16 == 0
   private val stagingLineCount = (9 * arrayStride + 63) / 64
   private val outputFirstLine = 6 * arrayStride / 64
   private val outputLastLine = (9 * arrayStride - 1) / 64
-  private val lineReqReg = if (coalesceStaging)
-    Some(Reg(new ComputeMemoryRequest(config, 64, stagingTransactions))) else None
+  private val lineReqReg =
+    if (coalesceStaging)
+      Some(Reg(new ComputeMemoryRequest(config, 64, stagingTransactions)))
+    else None
   private val lineReqValid = RegInit(false.B)
   private val wordMemReqPipe = Module(
-    new Queue(new ComputeMemoryRequest(config, 64, stagingTransactions), 1, pipe = false, flow = false))
+    new Queue(new ComputeMemoryRequest(config, 64, stagingTransactions), 1, pipe = false, flow = false)
+  )
   private val texUnit = Module(new TexSampleUnit(config, gfxConfig, nearestInput = true, axisWrapInput = true))
 
   texUnit.io.in.valid := io.kernelTexSample.valid
@@ -69,7 +72,7 @@ class KernelFragStage(
   io.texMem.req <> texUnit.io.mem.req
   texUnit.io.mem.resp <> io.texMem.resp
 
-  io.kernelLaunch.invocations:=0.U.asTypeOf(io.kernelLaunch.invocations)
+  io.kernelLaunch.invocations := 0.U.asTypeOf(io.kernelLaunch.invocations)
   io.kernelLaunch.kernelPc := 0.U
   io.kernelLaunch.kernargAddress := 0.U
   io.kernelLaunch.gridX := 1.U
@@ -162,14 +165,12 @@ class KernelFragStage(
   texUnit.io.lodBias := slotTexLodBias(execSlot)
   texUnit.io.minLevel := slotTexMinLevel(execSlot)
 
-  private def bankedKernarg(slot: UInt): UInt = Mux(
-    slot === 1.U && io.kernargBankStride.orR,
-    io.kernargBase + io.kernargBankStride,
-    io.kernargBase)
+  private def bankedKernarg(slot: UInt): UInt =
+    Mux(slot === 1.U && io.kernargBankStride.orR, io.kernargBase + io.kernargBankStride, io.kernargBase)
 
   private val sIdle :: sWrite :: sLaunch :: sRun :: sRead :: sEmit :: sAllocate :: sRelease :: Nil =
     Enum(8)
-  private val writeStart=if(shaderPayload.nonEmpty)sAllocate else sWrite
+  private val writeStart = if (shaderPayload.nonEmpty) sAllocate else sWrite
   private val state = RegInit(sIdle)
 
   private val execCount = RegInit(0.U(countWidth.W))
@@ -230,7 +231,8 @@ class KernelFragStage(
     Mux(
       execSlot.asBool,
       Mux1H(sel, VecInit(Seq.tabulate(quadCount)(q => f(fragRecords(1)(q))))),
-      Mux1H(sel, VecInit(Seq.tabulate(quadCount)(q => f(fragRecords(0)(q))))))
+      Mux1H(sel, VecInit(Seq.tabulate(quadCount)(q => f(fragRecords(0)(q)))))
+    )
   }
   // Lane-static record field read for the emit quad cache: `lane` is a Scala
   // Int so only the quad (and slot) is selected dynamically, and the lane
@@ -238,13 +240,13 @@ class KernelFragStage(
   // per-cycle lane selector.  The quad is selected by the registered one-hot
   // `emitQuadSel` (statically indexed entries) so the binary `emitQuadPtr`
   // no longer drives thousands of mux inputs.
-  private def loadQuadField[T <: Data](lane: Int)(
-      f: RasterFragment => T): T = {
+  private def loadQuadField[T <: Data](lane: Int)(f: RasterFragment => T): T = {
     val sel = emitQuadSel.asBools
     Mux(
       execSlot.asBool,
       Mux1H(sel, VecInit(Seq.tabulate(quadCount)(q => f(fragRecords(1)(q).lanes(lane))))),
-      Mux1H(sel, VecInit(Seq.tabulate(quadCount)(q => f(fragRecords(0)(q).lanes(lane))))))
+      Mux1H(sel, VecInit(Seq.tabulate(quadCount)(q => f(fragRecords(0)(q).lanes(lane)))))
+    )
   }
   // Lane/sample-static read of the record's depth sideband for the emit quad
   // cache, same one-hot selector as `loadQuadField` (the sideband sits beside
@@ -254,7 +256,8 @@ class KernelFragStage(
     Mux(
       execSlot.asBool,
       Mux1H(sel, VecInit(Seq.tabulate(quadCount)(q => fragRecords(1)(q).depths(lane)(sample)))),
-      Mux1H(sel, VecInit(Seq.tabulate(quadCount)(q => fragRecords(0)(q).depths(lane)(sample)))))
+      Mux1H(sel, VecInit(Seq.tabulate(quadCount)(q => fragRecords(0)(q).depths(lane)(sample))))
+    )
   }
   private val execCovered = slotField(quadIdx, laneIdx)(r => r.lanes(laneIdx).covered)
   private val requestX = requestQuad.lanes(requestLaneIdx).x
@@ -316,8 +319,7 @@ class KernelFragStage(
   private val wpValid = RegInit(false.B)
   private val wpSlot = Reg(UInt(1.W))
   private val wpFirst = Reg(Bool())
-  private val wpWrite = RegInit(VecInit(Seq.fill(2)(
-    VecInit(Seq.fill(batchCap / 4)(false.B)))))
+  private val wpWrite = RegInit(VecInit(Seq.fill(2)(VecInit(Seq.fill(batchCap / 4)(false.B)))))
   private val wpRecord = Reg(new KernelFragQuadRecord(gfxConfig))
   private val wpShaderPc = Reg(UInt(32.W))
   private val wpKernarg = Reg(UInt(32.W))
@@ -334,12 +336,12 @@ class KernelFragStage(
   private val wpAbi1 = Reg(Bool())
   private val wpInputSkip = Reg(UInt(6.W))
   private val wpOutputSkip = Reg(UInt(4.W))
-  private val wpPayloadContext=shaderPayload.map(_=>Reg(UInt(32.W)))
-  private val slotPayloadContext=shaderPayload.map(_=>Reg(Vec(2,UInt(32.W))))
+  private val wpPayloadContext = shaderPayload.map(_ => Reg(UInt(32.W)))
+  private val slotPayloadContext = shaderPayload.map(_ => Reg(Vec(2, UInt(32.W))))
 
   io.fragIn.ready := !pendingValid && prodCount < batchCap.U
   io.drained := state === sIdle && !pendingValid
-  assert(!(state===sIdle && pendingValid),"an idle fragment consumer cannot strand a committed batch")
+  assert(!(state === sIdle && pendingValid), "an idle fragment consumer cannot strand a committed batch")
 
   // ---------------------------------------------------------------------
   // Draw-boundary commit and the ordered retire queue.
@@ -361,8 +363,8 @@ class KernelFragStage(
   private val execFailed = RegInit(false.B)
   private val outputRetirePending = RegInit(false.B)
   private val outputRetireEntry = Reg(UInt(1.W))
-  private val payloadRetireWait=shaderPayload.map(_=>RegInit(false.B))
-  private val payloadRetireEntry=shaderPayload.map(_=>Reg(UInt(1.W)))
+  private val payloadRetireWait = shaderPayload.map(_ => RegInit(false.B))
+  private val payloadRetireEntry = shaderPayload.map(_ => Reg(UInt(1.W)))
 
   private val prevFlush = RegInit(true.B)
   prevFlush := io.flush
@@ -401,7 +403,7 @@ class KernelFragStage(
     wpAbi1 := io.abi1
     wpInputSkip := io.inputSkip
     wpOutputSkip := io.outputSkip
-    shaderPayload.foreach(_=>wpPayloadContext.get:=io.payload.get.context)
+    shaderPayload.foreach(_ => wpPayloadContext.get := io.payload.get.context)
     wpKernarg := bankedKernarg(prodSlot)
     wpTexBase := io.texBase
     wpTexWidth := io.texWidth
@@ -420,7 +422,8 @@ class KernelFragStage(
       assert(
         io.shaderPc === Mux(snapLive, wpShaderPc, slotShaderPc(prodSlot)) &&
           bankedKernarg(prodSlot) === Mux(snapLive, wpKernarg, slotKernarg(prodSlot)),
-        "a fragment batch must not mix draw descriptors")
+        "a fragment batch must not mix draw descriptors"
+      )
     }
     when(!(commitAny && state === sIdle)) {
       slotCount(prodSlot) := prodCountNext
@@ -451,7 +454,7 @@ class KernelFragStage(
       slotAbi1(wpSlot) := wpAbi1
       slotInputSkip(wpSlot) := wpInputSkip
       slotOutputSkip(wpSlot) := wpOutputSkip
-      shaderPayload.foreach(_=>slotPayloadContext.get(wpSlot):=wpPayloadContext.get)
+      shaderPayload.foreach(_ => slotPayloadContext.get(wpSlot) := wpPayloadContext.get)
     }
   }
 
@@ -503,12 +506,14 @@ class KernelFragStage(
       execCarries := true.B
       execEntryIdx := qTail
       pushEntry(false.B)
-    }.elsewhen((state === sIdle || state === sRelease) && !pendingValid && exportValid &&
-        !exportReady && !outputRetirePending) {
+    }.elsewhen(
+      (state === sIdle || state === sRelease) && !pendingValid && exportValid &&
+        !exportReady && !outputRetirePending
+    ) {
       outputRetirePending := true.B
       outputRetireEntry := qTail
-      shaderPayload.foreach { _=>
-        when(state===sRelease){payloadRetireWait.get:=true.B;payloadRetireEntry.get:=qTail}
+      shaderPayload.foreach { _ =>
+        when(state === sRelease) { payloadRetireWait.get := true.B; payloadRetireEntry.get := qTail }
       }
       pushEntry(false.B)
     }.otherwise {
@@ -542,36 +547,34 @@ class KernelFragStage(
   wordValid := ((state === sWrite && requestQuadLoaded) || state === sRead) &&
     !wordPending && !wordReqValid
   wordBits.write := state === sWrite
-  private val writeSlice = MuxLookup(field, 8.U)(Seq(
-    0.U -> 0.U, 1.U -> 1.U, 2.U -> 2.U, 3.U -> 3.U,
-    4.U -> 4.U, 5.U -> 5.U, 6.U -> 7.U))
+  private val writeSlice =
+    MuxLookup(field, 8.U)(Seq(0.U -> 0.U, 1.U -> 1.U, 2.U -> 2.U, 3.U -> 3.U, 4.U -> 4.U, 5.U -> 5.U, 6.U -> 7.U))
   // Per-word byte offset within the kernarg bank: slice * arrayStride, where
   // the write slice is [0,1,2,3,4,5,7,8] and the read slice is 6 + field.
-  private val sliceOffset = MuxLookup(field, (8 * arrayStride).U)(Seq(
-    0.U -> 0.U,
-    1.U -> arrayStride.U,
-    2.U -> (2 * arrayStride).U,
-    3.U -> (3 * arrayStride).U,
-    4.U -> (4 * arrayStride).U,
-    5.U -> (5 * arrayStride).U,
-    6.U -> (7 * arrayStride).U))
+  private val sliceOffset = MuxLookup(field, (8 * arrayStride).U)(
+    Seq(
+      0.U -> 0.U,
+      1.U -> arrayStride.U,
+      2.U -> (2 * arrayStride).U,
+      3.U -> (3 * arrayStride).U,
+      4.U -> (4 * arrayStride).U,
+      5.U -> (5 * arrayStride).U,
+      6.U -> (7 * arrayStride).U
+    )
+  )
   // `wordBase` tracks slotKernarg + index*4 in a register, so `index` never
   // drives the request address adder: each word is a 2-operand add of a
   // registered base and the small slice-offset mux.  It re-bases at index 0
   // (once per kernarg write/read burst) and steps by one fragment (4 bytes)
   // whenever `index` advances.
   private val wordBase = Reg(UInt(32.W))
-  wordBits.addr := wordBase + Mux(
-    state === sWrite,
-    sliceOffset,
-    (6 * arrayStride).U +& sliceOffset)
+  wordBits.addr := wordBase + Mux(state === sWrite, sliceOffset, (6 * arrayStride).U +& sliceOffset)
   wordBits.data := MuxLookup(field, requestCovered.asUInt)(
     Seq(
       0.U -> requestX.pad(32).asUInt,
       1.U -> requestY.pad(32).asUInt,
       2.U -> requestDepth.asUInt,
-      3.U -> Cat(requestR, requestG,
-        requestB, requestAlpha),
+      3.U -> Cat(requestR, requestG, requestB, requestAlpha),
       4.U -> requestU,
       5.U -> requestV,
       6.U -> requestDepth.asUInt
@@ -588,11 +591,11 @@ class KernelFragStage(
   // The payload is held until the consumer accepts it, so `bits` stays stable
   // while `valid && !ready`.
   private val outValidReg = RegInit(false.B)
-  exportValid:=outValidReg
-  io.out.valid:=false.B
-  io.out.bits:=0.U.asTypeOf(io.out.bits)
-  io.outDepths:=0.U.asTypeOf(io.outDepths)
-  io.depthOverride:=false.B
+  exportValid := outValidReg
+  io.out.valid := false.B
+  io.out.bits := 0.U.asTypeOf(io.out.bits)
+  io.outDepths := 0.U.asTypeOf(io.outDepths)
+  io.depthOverride := false.B
 
   // Emit cache fill: capture quad 0 on entry to sEmit, then reload quad N+1 on
   // the edge that steps out of quad N's last lane.  `execCount` is always a
@@ -603,10 +606,12 @@ class KernelFragStage(
   // fragment (it is empty, or its current payload fires this cycle).
   private val outCanStep = !outValidReg || exportReady
   private val emitAdvance = state === sEmit && emitQuadValid && outCanStep
-  private val emitLast=index===(execCount-(if(quadExports)4 else 1).U)
-  private val emitHasOutput=payloadExportAllowed && (if(quadExports)VecInit((0 until 4).map(p=>
-    emitHitQ(p) && emitQuad(p).coverageMask.orR)).asUInt.orR else emitHitQ(laneIdx))
-  private val emitQuadEnd = emitAdvance && (if(quadExports)true.B else laneIdx === 3.U) && !emitLast
+  private val emitLast = index === (execCount - (if (quadExports) 4 else 1).U)
+  private val emitHasOutput =
+    payloadExportAllowed && (if (quadExports)
+                               VecInit((0 until 4).map(p => emitHitQ(p) && emitQuad(p).coverageMask.orR)).asUInt.orR
+                             else emitHitQ(laneIdx))
+  private val emitQuadEnd = emitAdvance && (if (quadExports) true.B else laneIdx === 3.U) && !emitLast
   private val emitLoad = state === sEmit && (!emitQuadValid || emitQuadEnd)
   when(emitLoad) {
     emitQuadValid := true.B
@@ -634,29 +639,29 @@ class KernelFragStage(
   // accept edge after the load keeps the last fragment of a batch visible
   // after the FSM has already left sEmit.
   when(exportFire) { outValidReg := false.B }
-  when(emitAdvance) {outValidReg:=emitHasOutput}
-  if(quadExports) {
-    val packet=Reg(Vec(4,new SamplePixel(gfxConfig.maxSampleCount)))
-    io.quadOut.get.valid:=outValidReg
-    io.quadOut.get.bits:=packet
+  when(emitAdvance) { outValidReg := emitHasOutput }
+  if (quadExports) {
+    val packet = Reg(Vec(4, new SamplePixel(gfxConfig.maxSampleCount)))
+    io.quadOut.get.valid := outValidReg
+    io.quadOut.get.bits := packet
     when(emitAdvance) {
-      for(p <- 0 until 4) {
-        packet(p).x:=emitQuad(p).x(15,0).asUInt
-        packet(p).y:=emitQuad(p).y(15,0).asUInt
-        packet(p).color:=emitColorQ(p)
-        packet(p).coverageMask:=Mux(emitHitQ(p),emitQuad(p).coverageMask,0.U)
-        for(s <- 0 until gfxConfig.maxSampleCount)
-          packet(p).depths(s):=Mux(emitOverrideQ(p),emitDepthQ(p)(23,0).asUInt.pad(30),emitDepthsQ(p)(s))
+      for (p <- 0 until 4) {
+        packet(p).x := emitQuad(p).x(15, 0).asUInt
+        packet(p).y := emitQuad(p).y(15, 0).asUInt
+        packet(p).color := emitColorQ(p)
+        packet(p).coverageMask := Mux(emitHitQ(p), emitQuad(p).coverageMask, 0.U)
+        for (s <- 0 until gfxConfig.maxSampleCount)
+          packet(p).depths(s) := Mux(emitOverrideQ(p), emitDepthQ(p)(23, 0).asUInt.pad(30), emitDepthsQ(p)(s))
       }
     }
-  }else {
-    val outBitsReg=Reg(new RasterFragment(gfxConfig))
-    val outDepthsReg=Reg(Vec(gfxConfig.maxSampleCount,UInt(30.W)))
-    val outOverrideReg=RegInit(false.B)
-    io.out.valid:=outValidReg
-    io.out.bits:=outBitsReg
-    io.outDepths:=outDepthsReg
-    io.depthOverride:=outOverrideReg
+  } else {
+    val outBitsReg = Reg(new RasterFragment(gfxConfig))
+    val outDepthsReg = Reg(Vec(gfxConfig.maxSampleCount, UInt(30.W)))
+    val outOverrideReg = RegInit(false.B)
+    io.out.valid := outValidReg
+    io.out.bits := outBitsReg
+    io.outDepths := outDepthsReg
+    io.depthOverride := outOverrideReg
     when(emitAdvance) {
       outBitsReg.x := emitQuad(laneIdx).x
       outBitsReg.y := emitQuad(laneIdx).y
@@ -686,18 +691,17 @@ class KernelFragStage(
     def value(r: KernelFragQuadRecord): UInt = {
       val p = r.lanes(lane % 4)
       slice match {
-        case 0 => p.x.pad(32).asUInt
-        case 1 => p.y.pad(32).asUInt
+        case 0     => p.x.pad(32).asUInt
+        case 1     => p.y.pad(32).asUInt
         case 2 | 7 => p.depth.asUInt
-        case 3 => Cat(p.color.r, p.color.g, p.color.b, p.alpha)
-        case 4 => r.u(lane % 4)
-        case 5 => r.v(lane % 4)
-        case 8 => Mux(p.covered, 1.U(32.W), 0.U(32.W))
-        case _ => 0.U(32.W)
+        case 3     => Cat(p.color.r, p.color.g, p.color.b, p.alpha)
+        case 4     => r.u(lane % 4)
+        case 5     => r.v(lane % 4)
+        case 8     => Mux(p.covered, 1.U(32.W), 0.U(32.W))
+        case _     => 0.U(32.W)
       }
     }
-    Mux(execSlot.asBool, value(fragRecords(1)(lane / 4)),
-      value(fragRecords(0)(lane / 4)))
+    Mux(execSlot.asBool, value(fragRecords(1)(lane / 4)), value(fragRecords(0)(lane / 4)))
   }
   private val stagedLines = if (coalesceStaging) (0 until stagingLineCount).map { line =>
     val data = Cat((0 until 16).reverse.map { word =>
@@ -709,7 +713,8 @@ class KernelFragStage(
       val slice = position / batchCap
       if (slice == 6 || slice > 8) 0.U(4.W)
       else {
-        val enabled = if (slice < 6) !slotInputSkip(execSlot)(slice)
+        val enabled =
+          if (slice < 6) !slotInputSkip(execSlot)(slice)
           else if (slice == 7 || slice == 8)
             !(slotOutputSkip(execSlot)(slice - 5) && slotOutputSkip(execSlot)(slice - 7))
           else true.B
@@ -717,7 +722,8 @@ class KernelFragStage(
       }
     })
     (line.U, data, mask)
-  } else Seq.empty
+  }
+  else Seq.empty
 
   private def advanceStagingWrite(): Unit = {
     when(field === (stagingLineCount - 1).U) {
@@ -743,44 +749,44 @@ class KernelFragStage(
     // release acknowledgement. Consume that incoming batch directly instead
     // of parking it while simultaneously returning the consumer to idle.
     when(pendingValid || commitAny) {
-      val takePending=pendingValid
-      val nextSlot=Mux(takePending,pendingSlot,prodSlot)
-      val bindPendingNow=flushRise && bindPending
-      execSlot:=nextSlot
-      execCount:=Mux(takePending,slotCount(pendingSlot),prodCountNext)
-      execCarries:=Mux(takePending,pendingCarries || bindPendingNow,commitFlush)
-      execEntryIdx:=Mux(takePending && !bindPendingNow,pendingEntryIdx,qTail)
-      slotCount(nextSlot):=0.U
-      pendingValid:=false.B
-      prodSlot:=execSlot
-      index:=0.U
-      requestQuadIdx:=0.U;requestQuadSel:=1.U;requestLaneIdx:=0.U
-      requestQuadLoaded:=false.B;field:=0.U;wordPending:=false.B
-      state:=writeStart
-    }.otherwise {state:=sIdle}
+      val takePending = pendingValid
+      val nextSlot = Mux(takePending, pendingSlot, prodSlot)
+      val bindPendingNow = flushRise && bindPending
+      execSlot := nextSlot
+      execCount := Mux(takePending, slotCount(pendingSlot), prodCountNext)
+      execCarries := Mux(takePending, pendingCarries || bindPendingNow, commitFlush)
+      execEntryIdx := Mux(takePending && !bindPendingNow, pendingEntryIdx, qTail)
+      slotCount(nextSlot) := 0.U
+      pendingValid := false.B
+      prodSlot := execSlot
+      index := 0.U
+      requestQuadIdx := 0.U; requestQuadSel := 1.U; requestLaneIdx := 0.U
+      requestQuadLoaded := false.B; field := 0.U; wordPending := false.B
+      state := writeStart
+    }.otherwise { state := sIdle }
   }
-  payloadTransport.foreach { transport=>
-    when(state=/=sIdle && io.payload.get.cancel){payloadAbort.get:=true.B}
-    when(transport.io.begin.fire){payloadAbort.get:=io.payload.get.cancel}
-    transport.io.begin.valid:=state===sAllocate && !(wpValid && wpSlot===execSlot)
-    transport.io.begin.bits.base:=slotKernarg(execSlot)
-    transport.io.begin.bits.bytes:=(9*arrayStride).U
-    transport.io.begin.bits.context:=slotPayloadContext.get(execSlot)
-    transport.io.prepared.ready:=state===sAllocate
+  payloadTransport.foreach { transport =>
+    when(state =/= sIdle && io.payload.get.cancel) { payloadAbort.get := true.B }
+    when(transport.io.begin.fire) { payloadAbort.get := io.payload.get.cancel }
+    transport.io.begin.valid := state === sAllocate && !(wpValid && wpSlot === execSlot)
+    transport.io.begin.bits.base := slotKernarg(execSlot)
+    transport.io.begin.bits.bytes := (9 * arrayStride).U
+    transport.io.begin.bits.context := slotPayloadContext.get(execSlot)
+    transport.io.prepared.ready := state === sAllocate
     when(transport.io.prepared.fire) {
       when(transport.io.prepared.bits.fault) {
-        for(lane <- 0 until batchCap)outValid(lane):=false.B
+        for (lane <- 0 until batchCap) outValid(lane) := false.B
         beginStagingEmit()
-      }.otherwise {state:=sWrite}
+      }.otherwise { state := sWrite }
     }
-    when(io.drawRetire.fire && qHead===payloadRetireEntry.get){payloadRetireWait.get:=false.B}
-    transport.io.finish.valid:=state===sRelease && !exportValid && !payloadRetireWait.get
-    transport.io.finish.bits:=true.B
-    transport.io.done.ready:=state===sRelease
-    when(transport.io.done.fire){advanceBatch()}
-    io.executionFault:=io.kernelTrap.fire ||
-    (io.kernelCompletion.fire && !io.kernelCompletion.bits.success) ||
-    (stagingResponse.fire && stagingResponse.bits.fault) || (transport.io.prepared.fire && transport.io.prepared.bits.fault) ||
+    when(io.drawRetire.fire && qHead === payloadRetireEntry.get) { payloadRetireWait.get := false.B }
+    transport.io.finish.valid := state === sRelease && !exportValid && !payloadRetireWait.get
+    transport.io.finish.bits := true.B
+    transport.io.done.ready := state === sRelease
+    when(transport.io.done.fire) { advanceBatch() }
+    io.executionFault := io.kernelTrap.fire ||
+      (io.kernelCompletion.fire && !io.kernelCompletion.bits.success) ||
+      (stagingResponse.fire && stagingResponse.bits.fault) || (transport.io.prepared.fire && transport.io.prepared.bits.fault) ||
       (transport.io.done.fire && transport.io.done.bits)
   }
 
@@ -794,15 +800,15 @@ class KernelFragStage(
         // A fullness commit can enter sWrite on the same edge that captures
         // the last producer quad. Wait for that quad's registered write to
         // drain before snapshotting a line containing both quad records.
-        when(!lineScanDone && !lineBusy.asUInt.andR && !lineReqValid &&
-            !(wpValid && wpSlot === execSlot)) {
+        when(
+          !lineScanDone && !lineBusy.asUInt.andR && !lineReqValid &&
+            !(wpValid && wpSlot === execSlot)
+        ) {
           val req = lineReqReg.get
           req := 0.U.asTypeOf(req)
           req.address := slotKernarg(execSlot) + (field << 6)
-          req.writeData := MuxLookup(field, 0.U(512.W))(
-            stagedLines.map { case (i, data, _) => i -> data })
-          val mask = MuxLookup(field, 0.U(64.W))(
-            stagedLines.map { case (i, _, mask) => i -> mask })
+          req.writeData := MuxLookup(field, 0.U(512.W))(stagedLines.map { case (i, data, _) => i -> data })
+          val mask = MuxLookup(field, 0.U(64.W))(stagedLines.map { case (i, _, mask) => i -> mask })
           req.byteMask := mask
           req.isWrite := true.B
           req.sizeLog2 := 6.U
@@ -831,72 +837,73 @@ class KernelFragStage(
           }.otherwise { state := sLaunch }
         }
       } else {
-      // A one-quad batch can commit on its first producer handshake. Its
-      // records and descriptor are still in the write pipe on entry here.
-      when(!requestQuadLoaded && !(wpValid && wpSlot === execSlot)) {
-        // Re-base the request address at the start of the burst.  The slot's
-        // kernarg snapshot has been staged by this point.
-        when(requestQuadIdx === 0.U) { wordBase := slotKernarg(execSlot) }
-        for (lane <- 0 until 4) {
-          requestQuad.lanes(lane).x := requestQuadField(_.lanes(lane).x)
-          requestQuad.lanes(lane).y := requestQuadField(_.lanes(lane).y)
-          requestQuad.lanes(lane).depth := requestQuadField(_.lanes(lane).depth)
-          requestQuad.lanes(lane).color.r := requestQuadField(_.lanes(lane).color.r)
-          requestQuad.lanes(lane).color.g := requestQuadField(_.lanes(lane).color.g)
-          requestQuad.lanes(lane).color.b := requestQuadField(_.lanes(lane).color.b)
-          requestQuad.lanes(lane).alpha := requestQuadField(_.lanes(lane).alpha)
-          requestQuad.lanes(lane).covered := requestQuadField(_.lanes(lane).covered)
-          requestQuad.lanes(lane).coverageMask :=
-            requestQuadField(_.lanes(lane).coverageMask)
-          requestQuad.u(lane) := requestQuadField(_.u(lane))
-          requestQuad.v(lane) := requestQuadField(_.v(lane))
+        // A one-quad batch can commit on its first producer handshake. Its
+        // records and descriptor are still in the write pipe on entry here.
+        when(!requestQuadLoaded && !(wpValid && wpSlot === execSlot)) {
+          // Re-base the request address at the start of the burst.  The slot's
+          // kernarg snapshot has been staged by this point.
+          when(requestQuadIdx === 0.U) { wordBase := slotKernarg(execSlot) }
+          for (lane <- 0 until 4) {
+            requestQuad.lanes(lane).x := requestQuadField(_.lanes(lane).x)
+            requestQuad.lanes(lane).y := requestQuadField(_.lanes(lane).y)
+            requestQuad.lanes(lane).depth := requestQuadField(_.lanes(lane).depth)
+            requestQuad.lanes(lane).color.r := requestQuadField(_.lanes(lane).color.r)
+            requestQuad.lanes(lane).color.g := requestQuadField(_.lanes(lane).color.g)
+            requestQuad.lanes(lane).color.b := requestQuadField(_.lanes(lane).color.b)
+            requestQuad.lanes(lane).alpha := requestQuadField(_.lanes(lane).alpha)
+            requestQuad.lanes(lane).covered := requestQuadField(_.lanes(lane).covered)
+            requestQuad.lanes(lane).coverageMask :=
+              requestQuadField(_.lanes(lane).coverageMask)
+            requestQuad.u(lane) := requestQuadField(_.u(lane))
+            requestQuad.v(lane) := requestQuadField(_.v(lane))
+          }
+          requestQuadLoaded := true.B
         }
-        requestQuadLoaded := true.B
-      }
-      when(requestQuadLoaded && !wordPending && !wordReqValid && bridge.io.in.ready) {
-        wordReqReg := wordBits
-        wordReqValid := true.B
-      }
-      when(wordReqValid && bridge.io.in.fire) { wordReqValid := false.B; wordPending := true.B }
-      when(wordPending && bridge.io.out.fire) {
-        wordPending := false.B
-        when(field =/= 7.U) {
-          field := field + 1.U
-        }.otherwise {
-          field := 0.U
-          when(index === execCount - 1.U) {
-            index := 0.U
-            requestQuadIdx := 0.U
-            requestLaneIdx := 0.U
-            requestQuadLoaded := false.B
-            when(stagingFaultNow) {
-              for (lane <- 0 until batchCap) { outValid(lane) := false.B }
-              lineFault := false.B
-              beginStagingEmit()
-            }.otherwise { state := sLaunch }
+        when(requestQuadLoaded && !wordPending && !wordReqValid && bridge.io.in.ready) {
+          wordReqReg := wordBits
+          wordReqValid := true.B
+        }
+        when(wordReqValid && bridge.io.in.fire) { wordReqValid := false.B; wordPending := true.B }
+        when(wordPending && bridge.io.out.fire) {
+          wordPending := false.B
+          when(field =/= 7.U) {
+            field := field + 1.U
           }.otherwise {
-            index := index + 1.U
-            wordBase := wordBase + 4.U
-            when(requestLaneIdx === 3.U) {
+            field := 0.U
+            when(index === execCount - 1.U) {
+              index := 0.U
+              requestQuadIdx := 0.U
               requestLaneIdx := 0.U
-              requestQuadIdx := requestQuadIdx + 1.U
-              requestQuadSel := requestQuadSel << 1
               requestQuadLoaded := false.B
+              when(stagingFaultNow) {
+                for (lane <- 0 until batchCap) { outValid(lane) := false.B }
+                lineFault := false.B
+                beginStagingEmit()
+              }.otherwise { state := sLaunch }
             }.otherwise {
-              requestLaneIdx := requestLaneIdx + 1.U
+              index := index + 1.U
+              wordBase := wordBase + 4.U
+              when(requestLaneIdx === 3.U) {
+                requestLaneIdx := 0.U
+                requestQuadIdx := requestQuadIdx + 1.U
+                requestQuadSel := requestQuadSel << 1
+                requestQuadLoaded := false.B
+              }.otherwise {
+                requestLaneIdx := requestLaneIdx + 1.U
+              }
             }
           }
         }
-      }
       }
     }
     is(sLaunch) {
       // Every helper keeps executing for quad derivatives. Its trusted private
       // prefix permits spills/outputs; external memory effects are suppressed.
-      io.kernelLaunch.invocations.helpers:=VecInit((0 until batchCap).map(i=>
-        i.U<execCount && !fragRecords(execSlot)(i/4).lanes(i%4).covered)).asUInt
-      io.kernelLaunch.invocations.privateBase:=slotKernarg(execSlot)
-      io.kernelLaunch.invocations.privateBytes:=(9*arrayStride).U
+      io.kernelLaunch.invocations.helpers := VecInit(
+        (0 until batchCap).map(i => i.U < execCount && !fragRecords(execSlot)(i / 4).lanes(i % 4).covered)
+      ).asUInt
+      io.kernelLaunch.invocations.privateBase := slotKernarg(execSlot)
+      io.kernelLaunch.invocations.privateBytes := (9 * arrayStride).U
       io.kernelLaunch.kernelPc := slotShaderPc(execSlot)
       io.kernelLaunch.kernargAddress := slotKernarg(execSlot)
       io.kernelLaunch.localX := execCount
@@ -940,19 +947,18 @@ class KernelFragStage(
           req.sizeLog2 := 6.U
           req.cachePolicy := opengpu.config.CachePolicy.uncached
           // A partial wide batch need not fetch output lines beyond its tail.
-          val needed = MuxLookup(field, false.B)(
-            (outputFirstLine to outputLastLine).map { line =>
-              val words = (0 until 16).map { word =>
-                val position = line * 16 + word
-                val slice = position / batchCap
-                val active = (position % batchCap).U < execCount
-                if (slice == 6) active
-                else if (slice == 7 || slice == 8)
-                  active && !slotOutputSkip(execSlot)(slice - 7)
-                else false.B
-              }
-              line.U -> VecInit(words).asUInt.orR
-            })
+          val needed = MuxLookup(field, false.B)((outputFirstLine to outputLastLine).map { line =>
+            val words = (0 until 16).map { word =>
+              val position = line * 16 + word
+              val slice = position / batchCap
+              val active = (position % batchCap).U < execCount
+              if (slice == 6) active
+              else if (slice == 7 || slice == 8)
+                active && !slotOutputSkip(execSlot)(slice - 7)
+              else false.B
+            }
+            line.U -> VecInit(words).asUInt.orR
+          })
           when(needed) {
             req.transactionId := freeLineId
             lineFields(freeLineId) := field
@@ -976,16 +982,17 @@ class KernelFragStage(
                 if (slice == 6) outWords(lane) := data
                 else if (slice == 7) {
                   when(!slotOutputSkip(execSlot)(0)) { outDepth(lane) := data.asSInt }
-                }
-                else if (slice == 8) {
+                } else if (slice == 8) {
                   when(!slotOutputSkip(execSlot)(1)) {
-                  val covered = Mux(execSlot.asBool,
-                    fragRecords(1)(lane / 4).lanes(lane % 4).covered,
-                    fragRecords(0)(lane / 4).lanes(lane % 4).covered)
-                  outValid(lane) := FragmentShaderAbi.emits(data, slotAbi1(execSlot)) &&
-                    covered && !execFailed
-                  outOverride(lane) := FragmentShaderAbi.overridesDepth(data, slotAbi1(execSlot))
-                }
+                    val covered = Mux(
+                      execSlot.asBool,
+                      fragRecords(1)(lane / 4).lanes(lane % 4).covered,
+                      fragRecords(0)(lane / 4).lanes(lane % 4).covered
+                    )
+                    outValid(lane) := FragmentShaderAbi.emits(data, slotAbi1(execSlot)) &&
+                      covered && !execFailed
+                    outOverride(lane) := FragmentShaderAbi.overridesDepth(data, slotAbi1(execSlot))
+                  }
                 }
               }
             }
@@ -1001,10 +1008,10 @@ class KernelFragStage(
           beginStagingEmit()
         }
       } else {
-      when(!wordPending && !wordReqValid && bridge.io.in.ready) {
-        wordReqReg := wordBits
-        wordReqValid := true.B
-      }
+        when(!wordPending && !wordReqValid && bridge.io.in.ready) {
+          wordReqReg := wordBits
+          wordReqValid := true.B
+        }
       }
       when(wordReqValid && bridge.io.in.fire) { wordReqValid := false.B; wordPending := true.B }
       when(wordPending && bridge.io.out.fire) {
@@ -1066,13 +1073,13 @@ class KernelFragStage(
           }
           execCarries := false.B
           slotCount(execSlot) := 0.U
-          if(shaderPayload.nonEmpty) {
-            payloadRetireWait.get:=execCarries
-            payloadRetireEntry.get:=execEntryIdx
-            state:=sRelease
-          }else {advanceBatch()}
+          if (shaderPayload.nonEmpty) {
+            payloadRetireWait.get := execCarries
+            payloadRetireEntry.get := execEntryIdx
+            state := sRelease
+          } else { advanceBatch() }
         }.otherwise {
-          index := index + (if(quadExports)4 else 1).U
+          index := index + (if (quadExports) 4 else 1).U
         }
       }
     }
@@ -1104,25 +1111,25 @@ class KernelFragStage(
   }
   for (phase <- 0 until 6)
     io.performance.phaseWorkers(phase) := (state === phase.U).asUInt
-  if(shaderPayload.nonEmpty) {
+  if (shaderPayload.nonEmpty) {
     // Reservation/release waits are charged to staging/output ownership.
-    io.performance.phaseWorkers(1):=(state===sWrite || state===sAllocate).asUInt
-    io.performance.phaseWorkers(5):=(state===sEmit || state===sRelease).asUInt
+    io.performance.phaseWorkers(1) := (state === sWrite || state === sAllocate).asUInt
+    io.performance.phaseWorkers(5) := (state === sEmit || state === sRelease).asUInt
   }
   io.performance.stagingOutstanding :=
     (if (coalesceStaging) PopCount(lineBusy) else wordPending.asUInt)
   io.performance.stagingBlocked := wordMemReqPipe.io.deq.valid && !wordMemReqPipe.io.deq.ready
   io.performance.outputBlocked := exportValid && !exportReady
   payloadTransport match {
-    case Some(t)=>
-      t.io.stageRequest<>wordMemReqPipe.io.deq
-      stagingResponse<>t.io.stageResponse
-      io.wordMemReq<>t.io.memoryRequest
-      t.io.memoryResponse<>io.wordMemResp
-    case None=>
-      io.wordMemReq<>wordMemReqPipe.io.deq
-      stagingResponse.valid:=io.wordMemResp.valid
-      stagingResponse.bits:=io.wordMemResp.bits
-      io.wordMemResp.ready:=stagingResponse.ready
+    case Some(t) =>
+      t.io.stageRequest <> wordMemReqPipe.io.deq
+      stagingResponse <> t.io.stageResponse
+      io.wordMemReq <> t.io.memoryRequest
+      t.io.memoryResponse <> io.wordMemResp
+    case None =>
+      io.wordMemReq <> wordMemReqPipe.io.deq
+      stagingResponse.valid := io.wordMemResp.valid
+      stagingResponse.bits := io.wordMemResp.bits
+      io.wordMemResp.ready := stagingResponse.ready
   }
 }

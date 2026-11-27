@@ -4,9 +4,8 @@ import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
 
-/** Converts a workgroup into ceil(local-work-items / lanes) logical warps.
-  * Warps are streamed independently and completion is counted separately, so
-  * up to the CU's hardware-warp capacity may reside concurrently. This is the
+/** Converts a workgroup into ceil(local-work-items / lanes) logical warps. Warps are streamed independently and
+  * completion is counted separately, so up to the CU's hardware-warp capacity may reside concurrently. This is the
   * execution model required by workgroup barriers.
   */
 class WorkgroupDispatcher(config: GpuConfig = GpuConfig()) extends Module {
@@ -40,9 +39,16 @@ class WorkgroupDispatcher(config: GpuConfig = GpuConfig()) extends Module {
 
   io.workgroup.ready := state === idle
   io.warp.valid := state === active && issuedWarps < totalWarps
-  private val helperSlices=VecInit((0 until config.warps).map(i=>task.invocations.helpers((i+1)*config.lanes-1,i*config.lanes)))
-  private val warpHelpers=if(config.warps==1)helperSlices(0)else helperSlices(issuedWarps(log2Ceil(config.warps)-1,0))
-  io.warp.bits.invocations.helpers := Mux(issuedWarps<config.warps.U,warpHelpers,0.U) & Mux(lastWarp,tailMask,fullMask)
+  private val helperSlices = VecInit(
+    (0 until config.warps).map(i => task.invocations.helpers((i + 1) * config.lanes - 1, i * config.lanes))
+  )
+  private val warpHelpers =
+    if (config.warps == 1) helperSlices(0) else helperSlices(issuedWarps(log2Ceil(config.warps) - 1, 0))
+  io.warp.bits.invocations.helpers := Mux(issuedWarps < config.warps.U, warpHelpers, 0.U) & Mux(
+    lastWarp,
+    tailMask,
+    fullMask
+  )
   io.warp.bits.invocations.privateBase := task.invocations.privateBase
   io.warp.bits.invocations.privateBytes := task.invocations.privateBytes
   io.warp.bits.kernelPc := task.kernelPc
@@ -97,8 +103,7 @@ class WorkgroupDispatcher(config: GpuConfig = GpuConfig()) extends Module {
     when(completedWarps + 1.U === totalWarps) {
       state := finish
     }
-    assert(completedWarps < issuedWarps,
-      "a workgroup cannot complete more warps than it dispatched")
+    assert(completedWarps < issuedWarps, "a workgroup cannot complete more warps than it dispatched")
   }
 
   when(io.completion.fire) {

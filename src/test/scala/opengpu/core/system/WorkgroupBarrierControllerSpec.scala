@@ -44,8 +44,7 @@ class WorkgroupBarrierControllerSpec extends AnyFlatSpec {
       dut.clock.step()
       dut.io.release.valid.expect(true.B)
       dut.io.release.ready.poke(true.B)
-      Seq((0, 0x104), (1, 0x204), (2, 0x304)).foreach {
-        case (warp, pc) =>
+      Seq((0, 0x104), (1, 0x204), (2, 0x304)).foreach { case (warp, pc) =>
         dut.io.release.valid.expect(true.B)
         dut.io.release.bits.warpId.expect(warp.U)
         dut.io.release.bits.pc.expect(pc.U)

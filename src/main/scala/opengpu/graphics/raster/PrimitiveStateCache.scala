@@ -7,14 +7,14 @@ import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse}
 
 /** Immutable primitive/state arena bound to one pass.
   *
-  * Handles are arena-relative 64-byte line ordinals, so `handle` zero is the
-  * line at `base`. A handle outside `[0,(limit-base)/64)` is rejected before
-  * any memory request, and lines are never read across the arena bound.
+  * Handles are arena-relative 64-byte line ordinals, so `handle` zero is the line at `base`. A handle outside
+  * `[0,(limit-base)/64)` is rejected before any memory request, and lines are never read across the arena bound.
   */
 class PrimitiveStateDescriptor extends Bundle {
   val version = UInt(8.W)
   val identity = new GraphicsWorkIdentity
   val base = UInt(32.W)
+
   /** Exclusive bound; 4 GiB is representable without wrapping to zero. */
   val limit = UInt(33.W)
 }
@@ -32,9 +32,8 @@ class PrimitiveStateLookup extends Bundle {
   val handle = UInt(32.W)
 }
 
-/** One 32-bit word of a resolved line. `last` marks the final word of a
-  * successful lookup; a cancelled or faulted lookup emits no `last` word and
-  * is reported through its completion instead.
+/** One 32-bit word of a resolved line. `last` marks the final word of a successful lookup; a cancelled or faulted
+  * lookup emits no `last` word and is reported through its completion instead.
   */
 class PrimitiveStateWord extends Bundle {
   val handle = UInt(32.W)
@@ -63,31 +62,27 @@ class PrimitiveStateSummary extends Bundle {
 
 /** Bounded direct-mapped cache for immutable primitive and draw-state records.
   *
-  * Each 64-byte line is fetched once per residency and then served as sixteen
-  * ordered 32-bit words. Lookups are admitted one at a time and complete in
-  * order. A miss holds the lookup stream until its tagged read returns; a
-  * faulted line is reported as `memoryFault` rather than replacing the record
-  * with zero words. `invalidate` drops resident lines for one or more rebinds
-  * without touching a fill already offered; each pass starts with no residents,
+  * Each 64-byte line is fetched once per residency and then served as sixteen ordered 32-bit words. Lookups are
+  * admitted one at a time and complete in order. A miss holds the lookup stream until its tagged read returns; a
+  * faulted line is reported as `memoryFault` rather than replacing the record with zero words. `invalidate` drops
+  * resident lines for one or more rebinds without touching a fill already offered; each pass starts with no residents,
   * so a handle cannot hit data retained from an earlier identity.
   *
-  * One tagged read may be outstanding. Cancel stops admitting lookups, drains
-  * the offered read and any offered word, and reports the active lookup (if
-  * any) as cancelled before the pass summary. End is accepted only after the
-  * last word and lookup completion are accepted. The caller must publish
-  * primitive/state stores to this memory domain and discard outputs from a
-  * failed pass.
+  * One tagged read may be outstanding. Cancel stops admitting lookups, drains the offered read and any offered word,
+  * and reports the active lookup (if any) as cancelled before the pass summary. End is accepted only after the last
+  * word and lookup completion are accepted. The caller must publish primitive/state stores to this memory domain and
+  * discard outputs from a failed pass.
   *
   * This block does not schedule tile engines or own page/bin descriptors.
   */
 class PrimitiveStateCache(
-  config: GpuConfig = GpuConfig(),
-  entries: Int = 8,
-  memoryTransactions: Int = 8,
-  transactionId: Int = 0
+    config: GpuConfig = GpuConfig(),
+    entries: Int = 8,
+    memoryTransactions: Int = 8,
+    transactionId: Int = 0
 ) extends Module {
   require(config.xLen == 32)
-  require(entries >= 1 && entries <= 32 && (entries & (entries-1)) == 0)
+  require(entries >= 1 && entries <= 32 && (entries & (entries - 1)) == 0)
   require(transactionId >= 0 && transactionId < memoryTransactions)
   val lineBytes = 64
   private val wordsPerLine = lineBytes / 4
@@ -102,11 +97,11 @@ class PrimitiveStateCache(
     val cancel = Input(Bool())
     val invalidate = Input(Bool())
     val completion = Decoupled(new PrimitiveStateSummary)
-    val memoryRequest = Decoupled(new ComputeMemoryRequest(config,lineBytes,memoryTransactions))
-    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(lineBytes,memoryTransactions)))
+    val memoryRequest = Decoupled(new ComputeMemoryRequest(config, lineBytes, memoryTransactions))
+    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(lineBytes, memoryTransactions)))
     val busy = Output(Bool())
   })
-  private val Seq(idle,check,run,offer,waitLine,done) = Enum(6)
+  private val Seq(idle, check, run, offer, waitLine, done) = Enum(6)
   private val state = RegInit(idle)
   private val descriptor = Reg(new PrimitiveStateDescriptor)
   private val lineCount = Reg(UInt(33.W))
@@ -141,14 +136,18 @@ class PrimitiveStateCache(
   private val wordsOut = RegInit(0.U(32.W))
   private val stop = cancelled || io.cancel
   private val faultNow = io.memoryResponse.fire && io.memoryResponse.bits.fault
-  private def effectiveStatus: UInt = Mux(stop && passStatus === PrimitiveStateStatus.success.U,
-    PrimitiveStateStatus.cancelled.U,passStatus)
-  private def mergeStatus(a: UInt,b: UInt): UInt =
-    Mux(a === PrimitiveStateStatus.memoryFault.U || b === PrimitiveStateStatus.memoryFault.U,
+  private def effectiveStatus: UInt =
+    Mux(stop && passStatus === PrimitiveStateStatus.success.U, PrimitiveStateStatus.cancelled.U, passStatus)
+  private def mergeStatus(a: UInt, b: UInt): UInt =
+    Mux(
+      a === PrimitiveStateStatus.memoryFault.U || b === PrimitiveStateStatus.memoryFault.U,
       PrimitiveStateStatus.memoryFault.U,
-      Mux(a === PrimitiveStateStatus.cancelled.U || b === PrimitiveStateStatus.cancelled.U,
+      Mux(
+        a === PrimitiveStateStatus.cancelled.U || b === PrimitiveStateStatus.cancelled.U,
         PrimitiveStateStatus.cancelled.U,
-        Mux(a === PrimitiveStateStatus.success.U,b,a)))
+        Mux(a === PrimitiveStateStatus.success.U, b, a)
+      )
+    )
 
   io.begin.ready := state === idle && !io.cancel
   io.lookup.ready := state === run && active && !terminal && !endPending &&
@@ -162,7 +161,7 @@ class PrimitiveStateCache(
   io.word.bits.handle := lookupHandle
   io.word.bits.index := serveWord
   io.word.bits.data := data(serveWord)(lookupIndex)
-  io.word.bits.last := serveWord === (wordsPerLine-1).U
+  io.word.bits.last := serveWord === (wordsPerLine - 1).U
   io.lookupDone.valid := lookupValid
   io.lookupDone.bits := lookupResult
 
@@ -191,10 +190,10 @@ class PrimitiveStateCache(
   switch(state) {
     is(check) {
       val legal = descriptor.version === 1.U &&
-        (descriptor.base & (lineBytes-1).U) === 0.U &&
-        (descriptor.limit & (lineBytes-1).U(33.W)) === 0.U &&
+        (descriptor.base & (lineBytes - 1).U) === 0.U &&
+        (descriptor.limit & (lineBytes - 1).U(33.W)) === 0.U &&
         descriptor.base.pad(33) <= descriptor.limit &&
-        descriptor.limit <= (BigInt(1)<<32).U(33.W)
+        descriptor.limit <= (BigInt(1) << 32).U(33.W)
       when(!legal) {
         passStatus := PrimitiveStateStatus.invalidDescriptor.U
         terminal := true.B
@@ -208,7 +207,7 @@ class PrimitiveStateCache(
     is(run) {
       when(io.lookup.fire) {
         val handle = io.lookup.bits.handle
-        val idx = handle(indexBits-1,0)
+        val idx = handle(indexBits - 1, 0)
         val inRange = handle.pad(33) < lineCount
         val hit = valid(idx) && tag(idx) === handle
         lookupHandle := handle
@@ -221,7 +220,7 @@ class PrimitiveStateCache(
           lookupResult.words := 0.U
           lookupResult.hit := false.B
           lookupValid := true.B
-          passStatus := mergeStatus(passStatus,PrimitiveStateStatus.invalidHandle.U)
+          passStatus := mergeStatus(passStatus, PrimitiveStateStatus.invalidHandle.U)
         }.elsewhen(hit) {
           hits := hits + 1.U
           lookupHit := true.B
@@ -233,7 +232,7 @@ class PrimitiveStateCache(
           fillIndex := idx
           fillHandle := handle
           requestAddress := (descriptor.base.pad(34) +
-            (handle << 6).pad(34))(31,0)
+            (handle << 6).pad(34))(31, 0)
           state := offer
         }
       }
@@ -268,7 +267,7 @@ class PrimitiveStateCache(
           state := run
         }.otherwise {
           for (w <- 0 until wordsPerLine) {
-            data(w)(fillIndex) := bits.readData(32*w+31,32*w)
+            data(w)(fillIndex) := bits.readData(32 * w + 31, 32 * w)
           }
           tag(fillIndex) := fillHandle
           valid(fillIndex) := true.B
@@ -289,7 +288,7 @@ class PrimitiveStateCache(
       lookupResult.words := served + 1.U
       lookupResult.hit := lookupHit
       lookupValid := true.B
-    }.elsewhen(serveWord === (wordsPerLine-1).U) {
+    }.elsewhen(serveWord === (wordsPerLine - 1).U) {
       serveValid := false.B
       lookupResult.handle := lookupHandle
       lookupResult.status := PrimitiveStateStatus.success.U

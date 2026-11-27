@@ -6,8 +6,8 @@ import opengpu.config.GpuConfig
 import opengpu.core.backend.{VectorCommitRequest, VectorTextureRequest}
 import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse}
 
-/** CUSTOM-1 vector image operations. Parameter pairs stay on chip; a load
-  * obtains all four components once, then component reads use that snapshot.
+/** CUSTOM-1 vector image operations. Parameter pairs stay on chip; a load obtains all four components once, then
+  * component reads use that snapshot.
   */
 object ShaderImageOpcode {
   private def function(i: UInt, n: Int): Bool = i(6, 0) === "h2b".U && i(31, 26) === n.U
@@ -26,20 +26,25 @@ object ShaderImageOpcode {
 }
 
 class ShaderImageExecuteRequest(config: GpuConfig) extends VectorTextureRequest(config) {
-  /** Trusted invocation policy, captured with the instruction. Only stores
-    * intersect this mask; helper lanes may still compute/load image values.
+
+  /** Trusted invocation policy, captured with the instruction. Only stores intersect this mask; helper lanes may still
+    * compute/load image values.
     */
   val sideEffectMask = UInt(config.lanes.W)
 }
 
-/** One vector image instruction through checked GPU descriptors and ACK drain.
-  * The task parent supplies the immutable table and retains its publication,
-  * translation and coherence lease through instruction retirement. It must
-  * clear parameters on every task launch, even if the identity is reused.
-  * This module does not independently install an opcode in the CU decoder.
+/** One vector image instruction through checked GPU descriptors and ACK drain. The task parent supplies the immutable
+  * table and retains its publication, translation and coherence lease through instruction retirement. It must clear
+  * parameters on every task launch, even if the identity is reused. This module does not independently install an
+  * opcode in the CU decoder.
   */
-class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = GraphicsStage.compute,
-    imageUnits: Int = 4, dynamicStage: Boolean = false, atomicAvailable: Boolean = false) extends Module {
+class ShaderImageExecuteUnit(
+    config: GpuConfig = GpuConfig(),
+    stage: Int = GraphicsStage.compute,
+    imageUnits: Int = 4,
+    dynamicStage: Boolean = false,
+    atomicAvailable: Boolean = false
+) extends Module {
   require(stage >= GraphicsStage.vertex && stage <= GraphicsStage.tessEvaluation)
   require(TextureImageFormat.width <= 8)
   val io = IO(new Bundle {
@@ -64,7 +69,9 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
     val faultAddress = Output(UInt(32.W))
     val faultMask = Output(UInt(config.lanes.W))
   })
-  private object State extends ChiselEnum { val idle, check, parameters, next, offer, waitResult, offerAtomic, waitAtomic, finish, commit = Value }
+  private object State extends ChiselEnum {
+    val idle, check, parameters, next, offer, waitResult, offerAtomic, waitAtomic, finish, commit = Value
+  }
   private val phase = RegInit(State.idle)
   private val values = Reg(Vec(config.warps, Vec(config.lanes, Vec(8, UInt(32.W)))))
   private val valid = RegInit(VecInit(Seq.fill(config.warps)(VecInit(Seq.fill(config.lanes)(0.U(4.W))))))
@@ -120,8 +127,10 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
   }
   when(io.warpStart.valid) {
     assert(io.warpStart.bits < config.warps.U)
-    assert(phase === State.idle || warp =/= io.warpStart.bits,
-      "image warp slot reused before its prior instruction retired")
+    assert(
+      phase === State.idle || warp =/= io.warpStart.bits,
+      "image warp slot reused before its prior instruction retired"
+    )
     valid(io.warpStart.bits).foreach(_ := 0.U)
     loadedValid(io.warpStart.bits) := 0.U
   }
@@ -149,13 +158,21 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
         instruction := d.instruction; warp := d.warpId; pc := d.pc; active := d.activeMask
         val execution = q.executionMask & d.activeMask
         faultMask := execution
-        val selected = Mux(ShaderImageOpcode.store(d.instruction) ||
-          (if (atomicAvailable) ShaderImageOpcode.atomic(d.instruction) else false.B), execution & q.sideEffectMask, execution)
+        val selected = Mux(
+          ShaderImageOpcode.store(d.instruction) ||
+            (if (atomicAvailable) ShaderImageOpcode.atomic(d.instruction) else false.B),
+          execution & q.sideEffectMask,
+          execution
+        )
         mask := selected; remaining := selected
         left := q.issued.vs1Data; right := q.issued.vs2Data; data := q.issued.oldVdData
-        table := io.table; instructionStage := io.taskStage.getOrElse(stage.U); faultValid := false.B; faultAddress := 0.U; owned := false.B
-        status := Mux(!io.enabled, ShaderImageAccessStatus.permission.U,
-          Mux(io.cancel, ShaderImageAccessStatus.cancelled.U, 0.U))
+        table := io.table; instructionStage := io.taskStage.getOrElse(stage.U); faultValid := false.B;
+        faultAddress := 0.U; owned := false.B
+        status := Mux(
+          !io.enabled,
+          ShaderImageAccessStatus.permission.U,
+          Mux(io.cancel, ShaderImageAccessStatus.cancelled.U, 0.U)
+        )
         if (atomicAvailable) { atomicPageFault.get := false.B; atomicFaultMask.get := selected }
         when(ShaderImageOpcode.load(d.instruction)) {
           loadedValid(d.warpId) := loadedValid(d.warpId) & ~selected
@@ -174,18 +191,21 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
         mask(l) && Mux(sizeQuery, queryBad, tupleBad)
       }).asUInt.orR
       when(stopped) { phase := State.finish }
-        .elsewhen(!ShaderImageOpcode.legal(instruction) && !atomic) { status := ShaderImageAccessStatus.shaderType.U; phase := State.finish }
+        .elsewhen(!ShaderImageOpcode.legal(instruction) && !atomic) {
+          status := ShaderImageAccessStatus.shaderType.U; phase := State.finish
+        }
         .elsewhen(parameters) { phase := State.parameters }
         .elsewhen(component) {
           when((mask & ~loadedValid(warp)).orR) { status := ShaderImageAccessStatus.shaderType.U }
-            .otherwise { for(l <- 0 until config.lanes) { when(mask(l)) { data(l) := loaded(warp)(l)(pair) } } }
+            .otherwise { for (l <- 0 until config.lanes) { when(mask(l)) { data(l) := loaded(warp)(l)(pair) } } }
           phase := State.finish
-        }.elsewhen(bad) { status := ShaderImageAccessStatus.shaderType.U; phase := State.finish }
+        }
+        .elsewhen(bad) { status := ShaderImageAccessStatus.shaderType.U; phase := State.finish }
         .otherwise { phase := State.next }
     }
     is(State.parameters) {
       when(!stopped) {
-        for(l <- 0 until config.lanes) {
+        for (l <- 0 until config.lanes) {
           when(mask(l)) {
             values(warp)(l)(Cat(pair, 0.U(1.W))) := left(l)
             values(warp)(l)(Cat(pair, 1.U(1.W))) := right(l)
@@ -219,7 +239,8 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
           request.table := table; request.tag := selected; request.unitIndex := Mux(sizeQuery, left(selected), w(0))
           request.stage := instructionStage; request.isWrite := store; request.sizeQuery := sizeQuery
           request.shaderTarget := controls(2, 0); request.colorType := controls(4, 3)
-          request.hasFormatQualifier := controls(5); request.shaderFormat := controls(6 + TextureImageFormat.width - 1, 6)
+          request.hasFormatQualifier := controls(5);
+          request.shaderFormat := controls(6 + TextureImageFormat.width - 1, 6)
           request.x := Mux(sizeQuery, 0.U, left(selected)); request.y := Mux(sizeQuery, 0.U, right(selected))
           request.z := Mux(sizeQuery, 0.U, w(2))
           request.rgba := Mux(sizeQuery, 0.U.asTypeOf(request.rgba), VecInit(w.slice(4, 8)))
@@ -252,8 +273,10 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
       if (atomicAvailable) {
         when(io.atomicResponse.get.fire) {
           val r = io.atomicResponse.get.bits
-          assert(owned && r.tag === lane && r.unitIndex === atomicRequest.get.unitIndex &&
-            r.identity.asUInt === table.identity.asUInt)
+          assert(
+            owned && r.tag === lane && r.unitIndex === atomicRequest.get.unitIndex &&
+              r.identity.asUInt === table.identity.asUInt
+          )
           owned := false.B
           when(r.status =/= 0.U && r.status =/= ShaderImageAccessStatus.cancelled.U) {
             status := r.status; faultValid := r.faultAddressValid; faultAddress := r.faultAddress
@@ -269,7 +292,7 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
     is(State.finish) {
       assert(!owned && !access.io.busy && !io.memoryRequest.valid, "image instruction escaped memory drain")
       when(load && !stopped) {
-        for(l <- 0 until config.lanes) { when(mask(l)) { loaded(warp)(l) := pendingLoad(l) } }
+        for (l <- 0 until config.lanes) { when(mask(l)) { loaded(warp)(l) := pendingLoad(l) } }
         loadedValid(warp) := loadedValid(warp) | mask
       }
       phase := State.commit

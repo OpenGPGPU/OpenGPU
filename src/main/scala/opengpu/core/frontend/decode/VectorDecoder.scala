@@ -2,34 +2,28 @@ package opengpu.core.frontend.decode
 
 import chisel3._
 import chisel3.util._
-import chisel3.util.experimental.decode.{
-  BoolDecodeField,
-  DecodeField,
-  DecodePattern,
-  DecodeTable
-}
+import chisel3.util.experimental.decode.{BoolDecodeField, DecodeField, DecodePattern, DecodeTable}
 
 private case class VectorPattern(
-  name: String,
-  encoding: String,
-  unit: Int,
-  readsVs1: Boolean = false,
-  readsVs2: Boolean = false,
-  readsVs2Pair: Boolean = false,
-  readsScalar: Boolean = false,
-  readsFloat: Boolean = false,
-  writesVd: Boolean = false,
-  writesScalar: Boolean = false,
-  writesFloat: Boolean = false,
-  memoryRead: Boolean = false,
-  memoryWrite: Boolean = false,
-  configure: Boolean = false
+    name: String,
+    encoding: String,
+    unit: Int,
+    readsVs1: Boolean = false,
+    readsVs2: Boolean = false,
+    readsVs2Pair: Boolean = false,
+    readsScalar: Boolean = false,
+    readsFloat: Boolean = false,
+    writesVd: Boolean = false,
+    writesScalar: Boolean = false,
+    writesFloat: Boolean = false,
+    memoryRead: Boolean = false,
+    memoryWrite: Boolean = false,
+    configure: Boolean = false
 ) extends DecodePattern {
   override def bitPat: BitPat = BitPat("b" + encoding)
 }
 
-private abstract class VectorBoolField(override val name: String)
-    extends BoolDecodeField[VectorPattern] {
+private abstract class VectorBoolField(override val name: String) extends BoolDecodeField[VectorPattern] {
   override def default: BitPat = n
   protected def value(pattern: VectorPattern): Boolean
   override def genTable(pattern: VectorPattern): BitPat = if (value(pattern)) y else n
@@ -115,11 +109,11 @@ private object VectorDecodeTable {
   }
 
   private case class VectorInstruction(
-    name: String,
-    funct6: Int,
-    forms: Seq[OperandForm],
-    unit: Int = 1,
-    readsVs2Pair: Boolean = false
+      name: String,
+      funct6: Int,
+      forms: Seq[OperandForm],
+      unit: Int = 1,
+      readsVs2Pair: Boolean = false
   )
 
   /*
@@ -129,107 +123,107 @@ private object VectorDecodeTable {
    * or special unary handling are deliberately absent until implemented.
    */
   private val integerAluInstructions = Seq(
-    VectorInstruction("vadd",   0x00, Seq(IVV, IVX, IVI)),
-    VectorInstruction("vsub",   0x02, Seq(IVV, IVX)),
-    VectorInstruction("vrsub",  0x03, Seq(IVX, IVI)),
-    VectorInstruction("vminu",  0x04, Seq(IVV, IVX)),
-    VectorInstruction("vmin",   0x05, Seq(IVV, IVX)),
-    VectorInstruction("vmaxu",  0x06, Seq(IVV, IVX)),
-    VectorInstruction("vmax",   0x07, Seq(IVV, IVX)),
-    VectorInstruction("vand",   0x09, Seq(IVV, IVX, IVI)),
-    VectorInstruction("vor",    0x0a, Seq(IVV, IVX, IVI)),
-    VectorInstruction("vxor",   0x0b, Seq(IVV, IVX, IVI)),
+    VectorInstruction("vadd", 0x00, Seq(IVV, IVX, IVI)),
+    VectorInstruction("vsub", 0x02, Seq(IVV, IVX)),
+    VectorInstruction("vrsub", 0x03, Seq(IVX, IVI)),
+    VectorInstruction("vminu", 0x04, Seq(IVV, IVX)),
+    VectorInstruction("vmin", 0x05, Seq(IVV, IVX)),
+    VectorInstruction("vmaxu", 0x06, Seq(IVV, IVX)),
+    VectorInstruction("vmax", 0x07, Seq(IVV, IVX)),
+    VectorInstruction("vand", 0x09, Seq(IVV, IVX, IVI)),
+    VectorInstruction("vor", 0x0a, Seq(IVV, IVX, IVI)),
+    VectorInstruction("vxor", 0x0b, Seq(IVV, IVX, IVI)),
     VectorInstruction("vrgather", 0x0c, Seq(IVV, IVX, IVI)),
     VectorInstruction("vslideup", 0x0e, Seq(IVV, IVX, IVI)),
     VectorInstruction("vslidedown", 0x0f, Seq(IVV, IVX, IVI)),
     // OPMVX inserts the integer scalar and shifts by one element.
     VectorInstruction("vslide1up", 0x0e, Seq(MVX)),
     VectorInstruction("vslide1down", 0x0f, Seq(MVX)),
-    VectorInstruction("vredsum",  0x00, Seq(MVV)),
-    VectorInstruction("vredand",  0x01, Seq(MVV)),
-    VectorInstruction("vredor",   0x02, Seq(MVV)),
-    VectorInstruction("vredxor",  0x03, Seq(MVV)),
+    VectorInstruction("vredsum", 0x00, Seq(MVV)),
+    VectorInstruction("vredand", 0x01, Seq(MVV)),
+    VectorInstruction("vredor", 0x02, Seq(MVV)),
+    VectorInstruction("vredxor", 0x03, Seq(MVV)),
     VectorInstruction("vredminu", 0x04, Seq(MVV)),
-    VectorInstruction("vredmin",  0x05, Seq(MVV)),
+    VectorInstruction("vredmin", 0x05, Seq(MVV)),
     VectorInstruction("vredmaxu", 0x06, Seq(MVV)),
-    VectorInstruction("vredmax",  0x07, Seq(MVV)),
-    VectorInstruction("vmseq",  0x18, Seq(IVV, IVX, IVI), unit = 7),
-    VectorInstruction("vmsne",  0x19, Seq(IVV, IVX, IVI), unit = 7),
+    VectorInstruction("vredmax", 0x07, Seq(MVV)),
+    VectorInstruction("vmseq", 0x18, Seq(IVV, IVX, IVI), unit = 7),
+    VectorInstruction("vmsne", 0x19, Seq(IVV, IVX, IVI), unit = 7),
     VectorInstruction("vmsltu", 0x1a, Seq(IVV, IVX), unit = 7),
-    VectorInstruction("vmslt",  0x1b, Seq(IVV, IVX), unit = 7),
+    VectorInstruction("vmslt", 0x1b, Seq(IVV, IVX), unit = 7),
     VectorInstruction("vmsleu", 0x1c, Seq(IVV, IVX, IVI), unit = 7),
-    VectorInstruction("vmsle",  0x1d, Seq(IVV, IVX, IVI), unit = 7),
+    VectorInstruction("vmsle", 0x1d, Seq(IVV, IVX, IVI), unit = 7),
     VectorInstruction("vmsgtu", 0x1e, Seq(IVX, IVI), unit = 7),
-    VectorInstruction("vmsgt",  0x1f, Seq(IVX, IVI), unit = 7),
+    VectorInstruction("vmsgt", 0x1f, Seq(IVX, IVI), unit = 7),
     VectorInstruction("vsaddu", 0x20, Seq(IVV, IVX, IVI)),
-    VectorInstruction("vsadd",  0x21, Seq(IVV, IVX, IVI)),
+    VectorInstruction("vsadd", 0x21, Seq(IVV, IVX, IVI)),
     VectorInstruction("vssubu", 0x22, Seq(IVV, IVX)),
-    VectorInstruction("vssub",  0x23, Seq(IVV, IVX)),
-    VectorInstruction("vsll",   0x25, Seq(IVV, IVX, IVI)),
-    VectorInstruction("vsmul",  0x27, Seq(IVV, IVX), unit = 2),
-    VectorInstruction("vsrl",   0x28, Seq(IVV, IVX, IVI)),
-    VectorInstruction("vsra",   0x29, Seq(IVV, IVX, IVI)),
-    VectorInstruction("vssrl",  0x2a, Seq(IVV, IVX, IVI)),
-    VectorInstruction("vssra",  0x2b, Seq(IVV, IVX, IVI)),
+    VectorInstruction("vssub", 0x23, Seq(IVV, IVX)),
+    VectorInstruction("vsll", 0x25, Seq(IVV, IVX, IVI)),
+    VectorInstruction("vsmul", 0x27, Seq(IVV, IVX), unit = 2),
+    VectorInstruction("vsrl", 0x28, Seq(IVV, IVX, IVI)),
+    VectorInstruction("vsra", 0x29, Seq(IVV, IVX, IVI)),
+    VectorInstruction("vssrl", 0x2a, Seq(IVV, IVX, IVI)),
+    VectorInstruction("vssra", 0x2b, Seq(IVV, IVX, IVI)),
     // Fixed-profile narrowing shifts consume the even/odd pair vs2/vs2+1
     // as one 64-bit source per lane.
-    VectorInstruction("vnsrl",  0x2c, Seq(IVV, IVX, IVI), readsVs2Pair = true),
-    VectorInstruction("vnsra",  0x2d, Seq(IVV, IVX, IVI), readsVs2Pair = true),
+    VectorInstruction("vnsrl", 0x2c, Seq(IVV, IVX, IVI), readsVs2Pair = true),
+    VectorInstruction("vnsra", 0x2d, Seq(IVV, IVX, IVI), readsVs2Pair = true),
     VectorInstruction("vnclipu", 0x2e, Seq(IVV, IVX, IVI), readsVs2Pair = true),
-    VectorInstruction("vnclip",  0x2f, Seq(IVV, IVX, IVI), readsVs2Pair = true),
+    VectorInstruction("vnclip", 0x2f, Seq(IVV, IVX, IVI), readsVs2Pair = true),
     // Widening integer operations: take the lower 16 bits of each 32-bit lane,
     // sign/zero-extend to 32 bits, and perform the operation.
-    VectorInstruction("vwadd",  0x30, Seq(IVV, IVX, IVI)),
-    VectorInstruction("vwsub",  0x31, Seq(IVV, IVX)),
-    VectorInstruction("vwmul",  0x32, Seq(IVV, IVX)),
+    VectorInstruction("vwadd", 0x30, Seq(IVV, IVX, IVI)),
+    VectorInstruction("vwsub", 0x31, Seq(IVV, IVX)),
+    VectorInstruction("vwmul", 0x32, Seq(IVV, IVX)),
     VectorInstruction("vwmulu", 0x33, Seq(IVV, IVX)),
-    VectorInstruction("vwmulsu",0x34, Seq(IVV))
+    VectorInstruction("vwmulsu", 0x34, Seq(IVV))
   )
 
   private val integerMultiplyDivideInstructions = Seq(
-    VectorInstruction("vdivu",   0x20, Seq(MVV, MVX), unit = 3),
-    VectorInstruction("vdiv",    0x21, Seq(MVV, MVX), unit = 3),
-    VectorInstruction("vremu",   0x22, Seq(MVV, MVX), unit = 3),
-    VectorInstruction("vrem",    0x23, Seq(MVV, MVX), unit = 3),
-    VectorInstruction("vmulhu",  0x24, Seq(MVV, MVX), unit = 2),
-    VectorInstruction("vmul",    0x25, Seq(MVV, MVX), unit = 2),
+    VectorInstruction("vdivu", 0x20, Seq(MVV, MVX), unit = 3),
+    VectorInstruction("vdiv", 0x21, Seq(MVV, MVX), unit = 3),
+    VectorInstruction("vremu", 0x22, Seq(MVV, MVX), unit = 3),
+    VectorInstruction("vrem", 0x23, Seq(MVV, MVX), unit = 3),
+    VectorInstruction("vmulhu", 0x24, Seq(MVV, MVX), unit = 2),
+    VectorInstruction("vmul", 0x25, Seq(MVV, MVX), unit = 2),
     VectorInstruction("vmulhsu", 0x26, Seq(MVV, MVX), unit = 2),
-    VectorInstruction("vmulh",   0x27, Seq(MVV, MVX), unit = 2),
+    VectorInstruction("vmulh", 0x27, Seq(MVV, MVX), unit = 2),
     // Single-width multiply-accumulate. The destination is an operand, so the
     // low half of the product is added to or subtracted from it: vmacc and
     // vnmsac accumulate into vd, vmadd and vnmsub into vs2.
-    VectorInstruction("vmadd",   0x29, Seq(MVV, MVX), unit = 2),
-    VectorInstruction("vnmsub",  0x2b, Seq(MVV, MVX), unit = 2),
-    VectorInstruction("vmacc",   0x2d, Seq(MVV, MVX), unit = 2),
-    VectorInstruction("vnmsac",  0x2f, Seq(MVV, MVX), unit = 2)
+    VectorInstruction("vmadd", 0x29, Seq(MVV, MVX), unit = 2),
+    VectorInstruction("vnmsub", 0x2b, Seq(MVV, MVX), unit = 2),
+    VectorInstruction("vmacc", 0x2d, Seq(MVV, MVX), unit = 2),
+    VectorInstruction("vnmsac", 0x2f, Seq(MVV, MVX), unit = 2)
   )
 
   private val floatingPointInstructions = Seq(
-    VectorInstruction("vfadd",   0x00, Seq(FVV, FVF), unit = 4),
-    VectorInstruction("vfsub",   0x02, Seq(FVV, FVF), unit = 4),
-    VectorInstruction("vfmin",   0x04, Seq(FVV, FVF), unit = 4),
-    VectorInstruction("vfmax",   0x06, Seq(FVV, FVF), unit = 4),
-    VectorInstruction("vfsgnj",  0x08, Seq(FVV, FVF), unit = 4),
+    VectorInstruction("vfadd", 0x00, Seq(FVV, FVF), unit = 4),
+    VectorInstruction("vfsub", 0x02, Seq(FVV, FVF), unit = 4),
+    VectorInstruction("vfmin", 0x04, Seq(FVV, FVF), unit = 4),
+    VectorInstruction("vfmax", 0x06, Seq(FVV, FVF), unit = 4),
+    VectorInstruction("vfsgnj", 0x08, Seq(FVV, FVF), unit = 4),
     VectorInstruction("vfsgnjn", 0x09, Seq(FVV, FVF), unit = 4),
     VectorInstruction("vfsgnjx", 0x0a, Seq(FVV, FVF), unit = 4),
     VectorInstruction("vfmerge", 0x17, Seq(FVF), unit = 4),
-    VectorInstruction("vmfeq",   0x18, Seq(FVV, FVF), unit = 4),
-    VectorInstruction("vmfle",   0x19, Seq(FVV, FVF), unit = 4),
-    VectorInstruction("vmflt",   0x1b, Seq(FVV, FVF), unit = 4),
-    VectorInstruction("vmfne",   0x1c, Seq(FVV, FVF), unit = 4),
-    VectorInstruction("vmfgt",   0x1d, Seq(FVF), unit = 4),
-    VectorInstruction("vmfge",   0x1f, Seq(FVF), unit = 4),
-    VectorInstruction("vfdiv",   0x20, Seq(FVV, FVF), unit = 4),
-    VectorInstruction("vfrdiv",  0x21, Seq(FVF), unit = 4),
-    VectorInstruction("vfmul",   0x24, Seq(FVV, FVF), unit = 4),
-    VectorInstruction("vfrsub",  0x27, Seq(FVF), unit = 4),
-    VectorInstruction("vfmadd",  0x28, Seq(FVV, FVF), unit = 4),
+    VectorInstruction("vmfeq", 0x18, Seq(FVV, FVF), unit = 4),
+    VectorInstruction("vmfle", 0x19, Seq(FVV, FVF), unit = 4),
+    VectorInstruction("vmflt", 0x1b, Seq(FVV, FVF), unit = 4),
+    VectorInstruction("vmfne", 0x1c, Seq(FVV, FVF), unit = 4),
+    VectorInstruction("vmfgt", 0x1d, Seq(FVF), unit = 4),
+    VectorInstruction("vmfge", 0x1f, Seq(FVF), unit = 4),
+    VectorInstruction("vfdiv", 0x20, Seq(FVV, FVF), unit = 4),
+    VectorInstruction("vfrdiv", 0x21, Seq(FVF), unit = 4),
+    VectorInstruction("vfmul", 0x24, Seq(FVV, FVF), unit = 4),
+    VectorInstruction("vfrsub", 0x27, Seq(FVF), unit = 4),
+    VectorInstruction("vfmadd", 0x28, Seq(FVV, FVF), unit = 4),
     VectorInstruction("vfnmadd", 0x29, Seq(FVV, FVF), unit = 4),
-    VectorInstruction("vfmsub",  0x2a, Seq(FVV, FVF), unit = 4),
+    VectorInstruction("vfmsub", 0x2a, Seq(FVV, FVF), unit = 4),
     VectorInstruction("vfnmsub", 0x2b, Seq(FVV, FVF), unit = 4),
-    VectorInstruction("vfmacc",  0x2c, Seq(FVV, FVF), unit = 4),
+    VectorInstruction("vfmacc", 0x2c, Seq(FVV, FVF), unit = 4),
     VectorInstruction("vfnmacc", 0x2d, Seq(FVV, FVF), unit = 4),
-    VectorInstruction("vfmsac",  0x2e, Seq(FVV, FVF), unit = 4),
+    VectorInstruction("vfmsac", 0x2e, Seq(FVV, FVF), unit = 4),
     VectorInstruction("vfnmsac", 0x2f, Seq(FVV, FVF), unit = 4)
   )
 
@@ -237,34 +231,20 @@ private object VectorDecodeTable {
   // Only the implemented SEW=32 conversions are allow-listed.
   private val unary0Patterns = Seq(
     // Fixed-profile integer widening from low 16/8/4 bits to SEW=32.
-    VectorPattern("vsext_vf2", "010010??????00111010?????1010111", 1,
-      readsVs2 = true, writesVd = true),
-    VectorPattern("vzext_vf2", "010010??????00110010?????1010111", 1,
-      readsVs2 = true, writesVd = true),
-    VectorPattern("vsext_vf4", "010010??????00101010?????1010111", 1,
-      readsVs2 = true, writesVd = true),
-    VectorPattern("vzext_vf4", "010010??????00100010?????1010111", 1,
-      readsVs2 = true, writesVd = true),
-    VectorPattern("vsext_vf8", "010010??????00011010?????1010111", 1,
-      readsVs2 = true, writesVd = true),
-    VectorPattern("vzext_vf8", "010010??????00010010?????1010111", 1,
-      readsVs2 = true, writesVd = true),
-    VectorPattern("vfcvt_xu_f_v", "010010??????00000001?????1010111", 4,
-      readsVs2 = true, writesVd = true),
-    VectorPattern("vfcvt_x_f_v", "010010??????00001001?????1010111", 4,
-      readsVs2 = true, writesVd = true),
-    VectorPattern("vfcvt_f_xu_v", "010010??????00010001?????1010111", 4,
-      readsVs2 = true, writesVd = true),
-    VectorPattern("vfcvt_f_x_v", "010010??????00011001?????1010111", 4,
-      readsVs2 = true, writesVd = true),
-    VectorPattern("vfcvt_rtz_xu_f_v", "010010??????00110001?????1010111", 4,
-      readsVs2 = true, writesVd = true),
-    VectorPattern("vfcvt_rtz_x_f_v", "010010??????00111001?????1010111", 4,
-      readsVs2 = true, writesVd = true),
-    VectorPattern("vfcvt_rtz_f_xu_v", "010010??????00100001?????1010111", 4,
-      readsVs2 = true, writesVd = true),
-    VectorPattern("vfcvt_rtz_f_x_v", "010010??????00101001?????1010111", 4,
-      readsVs2 = true, writesVd = true)
+    VectorPattern("vsext_vf2", "010010??????00111010?????1010111", 1, readsVs2 = true, writesVd = true),
+    VectorPattern("vzext_vf2", "010010??????00110010?????1010111", 1, readsVs2 = true, writesVd = true),
+    VectorPattern("vsext_vf4", "010010??????00101010?????1010111", 1, readsVs2 = true, writesVd = true),
+    VectorPattern("vzext_vf4", "010010??????00100010?????1010111", 1, readsVs2 = true, writesVd = true),
+    VectorPattern("vsext_vf8", "010010??????00011010?????1010111", 1, readsVs2 = true, writesVd = true),
+    VectorPattern("vzext_vf8", "010010??????00010010?????1010111", 1, readsVs2 = true, writesVd = true),
+    VectorPattern("vfcvt_xu_f_v", "010010??????00000001?????1010111", 4, readsVs2 = true, writesVd = true),
+    VectorPattern("vfcvt_x_f_v", "010010??????00001001?????1010111", 4, readsVs2 = true, writesVd = true),
+    VectorPattern("vfcvt_f_xu_v", "010010??????00010001?????1010111", 4, readsVs2 = true, writesVd = true),
+    VectorPattern("vfcvt_f_x_v", "010010??????00011001?????1010111", 4, readsVs2 = true, writesVd = true),
+    VectorPattern("vfcvt_rtz_xu_f_v", "010010??????00110001?????1010111", 4, readsVs2 = true, writesVd = true),
+    VectorPattern("vfcvt_rtz_x_f_v", "010010??????00111001?????1010111", 4, readsVs2 = true, writesVd = true),
+    VectorPattern("vfcvt_rtz_f_xu_v", "010010??????00100001?????1010111", 4, readsVs2 = true, writesVd = true),
+    VectorPattern("vfcvt_rtz_f_x_v", "010010??????00101001?????1010111", 4, readsVs2 = true, writesVd = true)
   )
 
   // OPFRED: the two FP32 sum reductions. funct6 selects the form and vs1 stays
@@ -274,10 +254,22 @@ private object VectorDecodeTable {
   // vfsgnjx.vv, so the min/max reductions and the widening
   // vfwredusum/vfwredosum forms stay reserved.
   private val fpReductionPatterns = Seq(
-    VectorPattern("vfredusum_vs", "000001???????????001?????1010111", 4,
-      readsVs1 = true, readsVs2 = true, writesVd = true),
-    VectorPattern("vfredosum_vs", "000011???????????001?????1010111", 4,
-      readsVs1 = true, readsVs2 = true, writesVd = true)
+    VectorPattern(
+      "vfredusum_vs",
+      "000001???????????001?????1010111",
+      4,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesVd = true
+    ),
+    VectorPattern(
+      "vfredosum_vs",
+      "000011???????????001?????1010111",
+      4,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesVd = true
+    )
   )
 
   // funct6 010100 in OPMVV is a family selected by the vs1 field rather than
@@ -285,65 +277,69 @@ private object VectorDecodeTable {
   // reads no vector source at all, and 10000 is viota.m, whose vs2 is the
   // mask register it accumulates. vmsbf.m (vs1 = 00001) is not implemented.
   private val maskScanPatterns = Seq(
-    VectorPattern("vid_v", "010100?0000010001010?????1010111", 1,
-      writesVd = true),
-    VectorPattern("viota_m", "010100??????10000010?????1010111", 1,
-      readsVs2 = true, writesVd = true)
+    VectorPattern("vid_v", "010100?0000010001010?????1010111", 1, writesVd = true),
+    VectorPattern("viota_m", "010100??????10000010?????1010111", 1, readsVs2 = true, writesVd = true)
   )
 
   // vcompress.vm shares funct6 010111 with vmerge/vmv, which the core decodes
   // in OPIVV/OPIVI/OPIVX, so the OPMVV form is free. vm=1 is the only legal
   // encoding; the masked form of the same funct6 is reserved.
   private val compressPatterns = Seq(
-    VectorPattern("vcompress_vm", "0101111??????????010?????1010111", 1,
-      readsVs1 = true, readsVs2 = true, writesVd = true)
+    VectorPattern(
+      "vcompress_vm",
+      "0101111??????????010?????1010111",
+      1,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesVd = true
+    )
   )
 
   // VFUNARY1: funct6 010011 carries the unary FP opcode in the vs1 field.
   private val unary1Patterns = Seq(
-    VectorPattern("vfsqrt_v", "010011??????00000001?????1010111", 4,
-      readsVs2 = true, writesVd = true),
-    VectorPattern("vfrsqrt7_v", "010011??????00100001?????1010111", 4,
-      readsVs2 = true, writesVd = true),
-    VectorPattern("vfrec7_v", "010011??????00101001?????1010111", 4,
-      readsVs2 = true, writesVd = true),
-    VectorPattern("vfclass_v", "010011??????10000001?????1010111", 4,
-      readsVs2 = true, writesVd = true)
+    VectorPattern("vfsqrt_v", "010011??????00000001?????1010111", 4, readsVs2 = true, writesVd = true),
+    VectorPattern("vfrsqrt7_v", "010011??????00100001?????1010111", 4, readsVs2 = true, writesVd = true),
+    VectorPattern("vfrec7_v", "010011??????00101001?????1010111", 4, readsVs2 = true, writesVd = true),
+    VectorPattern("vfclass_v", "010011??????10000001?????1010111", 4, readsVs2 = true, writesVd = true)
   )
 
   // vmerge is masked (vm=0). vmv is the same funct6 with vm=1 and vs2=v0;
   // any other vs2 is reserved.
   private val mergePatterns = Seq(
-    VectorPattern("vmerge_vvm", "0101110??????????000?????1010111", 1,
-      readsVs1 = true, readsVs2 = true, writesVd = true),
-    VectorPattern("vmv_v_v", "010111100000?????000?????1010111", 1,
-      readsVs1 = true, writesVd = true),
-    VectorPattern("vmerge_vxm", "0101110??????????100?????1010111", 1,
-      readsVs2 = true, readsScalar = true, writesVd = true),
-    VectorPattern("vmv_v_x", "010111100000?????100?????1010111", 1,
-      readsScalar = true, writesVd = true),
-    VectorPattern("vmerge_vim", "0101110??????????011?????1010111", 1,
-      readsVs2 = true, writesVd = true),
-    VectorPattern("vmv_v_i", "010111100000?????011?????1010111", 1,
-      writesVd = true)
+    VectorPattern(
+      "vmerge_vvm",
+      "0101110??????????000?????1010111",
+      1,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesVd = true
+    ),
+    VectorPattern("vmv_v_v", "010111100000?????000?????1010111", 1, readsVs1 = true, writesVd = true),
+    VectorPattern(
+      "vmerge_vxm",
+      "0101110??????????100?????1010111",
+      1,
+      readsVs2 = true,
+      readsScalar = true,
+      writesVd = true
+    ),
+    VectorPattern("vmv_v_x", "010111100000?????100?????1010111", 1, readsScalar = true, writesVd = true),
+    VectorPattern("vmerge_vim", "0101110??????????011?????1010111", 1, readsVs2 = true, writesVd = true),
+    VectorPattern("vmv_v_i", "010111100000?????011?????1010111", 1, writesVd = true)
   )
 
   // vmv.x.s is VWXUNARY0 (OPMVV, vs1 = 0). vmv.s.x is VRXUNARY0 (OPMVX, vs2 = v0).
   // Other unary opcodes in that space, and the masked forms, stay reserved.
   private val scalarMovePatterns = Seq(
-    VectorPattern("vmv_x_s", "0100001?????00000010?????1010111", 1,
-      readsVs2 = true, writesScalar = true),
-    VectorPattern("vmv_s_x", "010000100000?????110?????1010111", 1,
-      readsScalar = true, writesVd = true)
+    VectorPattern("vmv_x_s", "0100001?????00000010?????1010111", 1, readsVs2 = true, writesScalar = true),
+    VectorPattern("vmv_s_x", "010000100000?????110?????1010111", 1, readsScalar = true, writesVd = true)
   )
 
   // vfmv.f.s is OPFVV with vs1 = 0. vfmv.s.f is OPFVF with vs2 = v0.
   // Other unary opcodes in that space, and the masked forms, stay reserved.
   private val floatMovePatterns = Seq(
-    VectorPattern("vfmv_f_s", "0100001?????00000001?????1010111", 4,
-      readsVs2 = true, writesFloat = true),
-    VectorPattern("vfmv_s_f", "010000100000?????101?????1010111", 4,
-      readsFloat = true, writesVd = true)
+    VectorPattern("vfmv_f_s", "0100001?????00000001?????1010111", 4, readsVs2 = true, writesFloat = true),
+    VectorPattern("vfmv_s_f", "010000100000?????101?????1010111", 4, readsFloat = true, writesVd = true)
   )
 
   // OPMVV mask logical. The masked encoding (vm=0) is reserved.
@@ -391,102 +387,222 @@ private object VectorDecodeTable {
   // execution profile.
   private val memoryPatterns = Seq("000", "101", "110").flatMap { width =>
     Seq(
-      VectorPattern(s"vload_$width", s"000000?00000?????$width?????0000111", 5,
-        readsScalar = true, writesVd = true, memoryRead = true),
-      VectorPattern(s"vstore_$width", s"000000?00000?????$width?????0100111", 5,
-        readsScalar = true, memoryWrite = true),
-      VectorPattern(s"vstrided_load_$width", s"000010???????????$width?????0000111", 5,
-        readsScalar = true, writesVd = true, memoryRead = true),
-      VectorPattern(s"vstrided_store_$width", s"000010???????????$width?????0100111", 5,
-        readsScalar = true, memoryWrite = true)
+      VectorPattern(
+        s"vload_$width",
+        s"000000?00000?????$width?????0000111",
+        5,
+        readsScalar = true,
+        writesVd = true,
+        memoryRead = true
+      ),
+      VectorPattern(
+        s"vstore_$width",
+        s"000000?00000?????$width?????0100111",
+        5,
+        readsScalar = true,
+        memoryWrite = true
+      ),
+      VectorPattern(
+        s"vstrided_load_$width",
+        s"000010???????????$width?????0000111",
+        5,
+        readsScalar = true,
+        writesVd = true,
+        memoryRead = true
+      ),
+      VectorPattern(
+        s"vstrided_store_$width",
+        s"000010???????????$width?????0100111",
+        5,
+        readsScalar = true,
+        memoryWrite = true
+      )
     )
   } ++ Seq("000001", "000011").flatMap { prefix =>
     Seq(
-      VectorPattern(s"vindexed_load_$prefix",
-        s"$prefix???????????110?????0000111", 5,
-        readsVs2 = true, readsScalar = true, writesVd = true,
-        memoryRead = true),
-      VectorPattern(s"vindexed_store_$prefix",
-        s"$prefix???????????110?????0100111", 5,
-        readsVs2 = true, readsScalar = true, memoryWrite = true)
+      VectorPattern(
+        s"vindexed_load_$prefix",
+        s"$prefix???????????110?????0000111",
+        5,
+        readsVs2 = true,
+        readsScalar = true,
+        writesVd = true,
+        memoryRead = true
+      ),
+      VectorPattern(
+        s"vindexed_store_$prefix",
+        s"$prefix???????????110?????0100111",
+        5,
+        readsVs2 = true,
+        readsScalar = true,
+        memoryWrite = true
+      )
     )
   }
 
   private val configPatterns = Seq(
-    VectorPattern("vsetvli",  "0????????????????111?????1010111", 6, configure = true),
+    VectorPattern("vsetvli", "0????????????????111?????1010111", 6, configure = true),
     VectorPattern("vsetivli", "11???????????????111?????1010111", 6, configure = true),
-    VectorPattern("vsetvl",   "1000000??????????111?????1010111", 6, configure = true)
+    VectorPattern("vsetvl", "1000000??????????111?????1010111", 6, configure = true)
   )
 
   // vtex.sample vd, vs1, vs2: lane-local Q16.16 coordinates to packed
   // RGBA8888. custom-1 opcode, funct6=000001, funct3=000; bit 25 retains
   // RVV's vm meaning so masked sampling has ordinary vector semantics.
   private val texturePatterns = Seq(
-    VectorPattern("vpatch_params", "010100???????????000000000101011", 8,
-      readsVs1 = true, writesScalar = true),
-    VectorPattern("vpatch_load", "010101???????????000?????0101011", 8,
-      readsVs1 = true, readsVs2 = true, writesVd = true),
-    VectorPattern("vpatch_store", "010110???????????000000000101011", 8,
-      readsVs1 = true, readsVs2 = true, writesScalar = true),
-    VectorPattern("vcounter_read", "010001?00000?????000?????0101011", 8,
-      readsVs1 = true, writesVd = true),
-    VectorPattern("vcounter_increment", "010010?00000?????000?????0101011", 8,
-      readsVs1 = true, writesVd = true),
-    VectorPattern("vcounter_decrement", "010011?00000?????000?????0101011", 8,
-      readsVs1 = true, writesVd = true),
-    VectorPattern("vstorage_params", "001110???????????000000000101011", 8,
-      readsVs1 = true, writesScalar = true),
-    VectorPattern("vstorage_load", "001111???????????000?????0101011", 8,
-      readsVs1 = true, readsVs2 = true, writesVd = true),
-    VectorPattern("vstorage_store", "010000???????????000000000101011", 8,
-      readsVs1 = true, readsVs2 = true, writesScalar = true),
-    VectorPattern("vimage_params", "001000???????????0??000000101011", 8,
-      readsVs1 = true, readsVs2 = true, writesScalar = true),
-    VectorPattern("vimage_load", "001001???????????000?????0101011", 8,
-      readsVs1 = true, readsVs2 = true, writesVd = true),
-    VectorPattern("vimage_store", "001010???????????000000000101011", 8,
-      readsVs1 = true, readsVs2 = true, writesScalar = true),
+    VectorPattern("vpatch_params", "010100???????????000000000101011", 8, readsVs1 = true, writesScalar = true),
+    VectorPattern(
+      "vpatch_load",
+      "010101???????????000?????0101011",
+      8,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesVd = true
+    ),
+    VectorPattern(
+      "vpatch_store",
+      "010110???????????000000000101011",
+      8,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesScalar = true
+    ),
+    VectorPattern("vcounter_read", "010001?00000?????000?????0101011", 8, readsVs1 = true, writesVd = true),
+    VectorPattern("vcounter_increment", "010010?00000?????000?????0101011", 8, readsVs1 = true, writesVd = true),
+    VectorPattern("vcounter_decrement", "010011?00000?????000?????0101011", 8, readsVs1 = true, writesVd = true),
+    VectorPattern("vstorage_params", "001110???????????000000000101011", 8, readsVs1 = true, writesScalar = true),
+    VectorPattern(
+      "vstorage_load",
+      "001111???????????000?????0101011",
+      8,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesVd = true
+    ),
+    VectorPattern(
+      "vstorage_store",
+      "010000???????????000000000101011",
+      8,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesScalar = true
+    ),
+    VectorPattern(
+      "vimage_params",
+      "001000???????????0??000000101011",
+      8,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesScalar = true
+    ),
+    VectorPattern(
+      "vimage_load",
+      "001001???????????000?????0101011",
+      8,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesVd = true
+    ),
+    VectorPattern(
+      "vimage_store",
+      "001010???????????000000000101011",
+      8,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesScalar = true
+    ),
     VectorPattern("vimage_green", "001011?0000000000001?????0101011", 8, writesVd = true),
     VectorPattern("vimage_blue", "001011?0000000000010?????0101011", 8, writesVd = true),
     VectorPattern("vimage_alpha", "001011?0000000000011?????0101011", 8, writesVd = true),
-    VectorPattern("vimage_size", "011011???????????000?????0101011", 8,
-      readsVs1 = true, readsVs2 = true, writesVd = true),
-    VectorPattern("vuniform", "000111???????????000?????0101011", 8,
-      readsVs1 = true, readsVs2 = true, writesVd = true),
-    VectorPattern("vtex_sample",
-      "000001???????????000?????0101011", 8,
-      readsVs1 = true, readsVs2 = true, writesVd = true),
-    VectorPattern("vtex_fetch",
-      "000010???????????0???????0101011", 8,
-      readsVs1 = true, readsVs2 = true, writesVd = true),
-    VectorPattern("vtex_fetchms",
-      "011101???????????0???????0101011", 8,
-      readsVs1 = true, readsVs2 = true, writesVd = true),
-    VectorPattern("vtex_params", "000011??????????????000000101011", 8,
-      readsVs1 = true, readsVs2 = true, writesScalar = true),
-    VectorPattern("vtex_samplef", "000100???????????0???????0101011", 8,
-      readsVs1 = true, readsVs2 = true, writesVd = true),
-    VectorPattern("vtex_fetchi", "000101???????????0???????0101011", 8,
-      readsVs1 = true, readsVs2 = true, writesVd = true),
-    VectorPattern("vtex_gather",
-      "011100???????????0???????0101011", 8,
-      readsVs1 = true, readsVs2 = true, writesVd = true),
-    VectorPattern("vtex_size0", "000110???????????00??????0101011", 8,
-      readsVs1 = true, readsVs2 = true, writesVd = true),
-    VectorPattern("vtex_size1", "000110???????????010?????0101011", 8,
-      readsVs1 = true, readsVs2 = true, writesVd = true)
+    VectorPattern(
+      "vimage_size",
+      "011011???????????000?????0101011",
+      8,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesVd = true
+    ),
+    VectorPattern("vuniform", "000111???????????000?????0101011", 8, readsVs1 = true, readsVs2 = true, writesVd = true),
+    VectorPattern(
+      "vtex_sample",
+      "000001???????????000?????0101011",
+      8,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesVd = true
+    ),
+    VectorPattern(
+      "vtex_fetch",
+      "000010???????????0???????0101011",
+      8,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesVd = true
+    ),
+    VectorPattern(
+      "vtex_fetchms",
+      "011101???????????0???????0101011",
+      8,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesVd = true
+    ),
+    VectorPattern(
+      "vtex_params",
+      "000011??????????????000000101011",
+      8,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesScalar = true
+    ),
+    VectorPattern(
+      "vtex_samplef",
+      "000100???????????0???????0101011",
+      8,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesVd = true
+    ),
+    VectorPattern(
+      "vtex_fetchi",
+      "000101???????????0???????0101011",
+      8,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesVd = true
+    ),
+    VectorPattern(
+      "vtex_gather",
+      "011100???????????0???????0101011",
+      8,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesVd = true
+    ),
+    VectorPattern(
+      "vtex_size0",
+      "000110???????????00??????0101011",
+      8,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesVd = true
+    ),
+    VectorPattern(
+      "vtex_size1",
+      "000110???????????010?????0101011",
+      8,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesVd = true
+    )
   )
 
   // Fragment-quad derivatives. custom-1 keeps the operation outside standard
   // RVV encodings; vs2 is the varying and lane groups are ordered TL,TR,BL,BR.
   // Driver profile v8 admits these after true quad dispatch is established.
   private val quadPatterns = Seq(
-    VectorPattern("vquad_dfdx",
-      "001100???????????000?????0101011", 1,
-      readsVs2 = true, writesVd = true),
-    VectorPattern("vquad_dfdy",
-      "001101???????????000?????0101011", 1,
-      readsVs2 = true, writesVd = true)
+    VectorPattern("vquad_dfdx", "001100???????????000?????0101011", 1, readsVs2 = true, writesVd = true),
+    VectorPattern("vquad_dfdy", "001101???????????000?????0101011", 1, readsVs2 = true, writesVd = true)
   )
 
   val patterns: Seq[VectorPattern] =
@@ -515,34 +631,102 @@ private object VectorDecodeTable {
   )
   val table = new DecodeTable(patterns, fields)
   private val imageAtomicPatterns = Seq(
-    VectorPattern("vimage_atomic", "010111???????????????????0101011", 8,
-      readsVs1 = true, readsVs2 = true, writesVd = true))
+    VectorPattern(
+      "vimage_atomic",
+      "010111???????????????????0101011",
+      8,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesVd = true
+    )
+  )
   private val storageAtomicPatterns = Seq(
-    VectorPattern("vstorage_atomic_params", "011000???????????000000000101011", 8,
-      readsVs1 = true, readsVs2 = true, writesScalar = true),
-    VectorPattern("vstorage_atomic_0_7", "011001???????????????????0101011", 8,
-      readsVs1 = true, readsVs2 = true, writesVd = true),
-    VectorPattern("vstorage_atomic_8_9", "011010???????????00??????0101011", 8,
-      readsVs1 = true, readsVs2 = true, writesVd = true))
+    VectorPattern(
+      "vstorage_atomic_params",
+      "011000???????????000000000101011",
+      8,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesScalar = true
+    ),
+    VectorPattern(
+      "vstorage_atomic_0_7",
+      "011001???????????????????0101011",
+      8,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesVd = true
+    ),
+    VectorPattern(
+      "vstorage_atomic_8_9",
+      "011010???????????00??????0101011",
+      8,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesVd = true
+    )
+  )
   private val sharedAtomicPatterns = Seq(
-    VectorPattern("vshared_atomic_params", "011110???????????000000000101011", 8,
-      readsVs1 = true, readsVs2 = true, writesScalar = true),
-    VectorPattern("vshared_atomic_0_7", "011111???????????????????0101011", 8,
-      readsVs2 = true, readsScalar = true, writesVd = true),
-    VectorPattern("vshared_atomic_8_9", "100000???????????00??????0101011", 8,
-      readsVs2 = true, readsScalar = true, writesVd = true))
-  private val evaluationPatchPatterns=Seq(VectorPattern("veval_patch_load", "100001???????????000?????0101011",8,
-    readsVs1=true,readsVs2=true,writesVd=true))
-  def atomicTable(image: Boolean, storage: Boolean, shared: Boolean, evaluationPatch:Boolean=false): DecodeTable[VectorPattern] =
-    new DecodeTable(patterns ++ (if(image) imageAtomicPatterns else Nil) ++
-      (if(storage) storageAtomicPatterns else Nil) ++ (if(shared) sharedAtomicPatterns else Nil) ++ (if(evaluationPatch) evaluationPatchPatterns else Nil), fields)
+    VectorPattern(
+      "vshared_atomic_params",
+      "011110???????????000000000101011",
+      8,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesScalar = true
+    ),
+    VectorPattern(
+      "vshared_atomic_0_7",
+      "011111???????????????????0101011",
+      8,
+      readsVs2 = true,
+      readsScalar = true,
+      writesVd = true
+    ),
+    VectorPattern(
+      "vshared_atomic_8_9",
+      "100000???????????00??????0101011",
+      8,
+      readsVs2 = true,
+      readsScalar = true,
+      writesVd = true
+    )
+  )
+  private val evaluationPatchPatterns = Seq(
+    VectorPattern(
+      "veval_patch_load",
+      "100001???????????000?????0101011",
+      8,
+      readsVs1 = true,
+      readsVs2 = true,
+      writesVd = true
+    )
+  )
+  def atomicTable(
+      image: Boolean,
+      storage: Boolean,
+      shared: Boolean,
+      evaluationPatch: Boolean = false
+  ): DecodeTable[VectorPattern] =
+    new DecodeTable(
+      patterns ++ (if (image) imageAtomicPatterns else Nil) ++
+        (if (storage) storageAtomicPatterns else Nil) ++ (if (shared) sharedAtomicPatterns
+                                                          else Nil) ++ (if (evaluationPatch) evaluationPatchPatterns
+                                                                        else Nil),
+      fields
+    )
   val imageAtomicTable = new DecodeTable(patterns ++ imageAtomicPatterns, fields)
   val storageAtomicTable = new DecodeTable(patterns ++ storageAtomicPatterns, fields)
   val allAtomicTable = new DecodeTable(patterns ++ imageAtomicPatterns ++ storageAtomicPatterns, fields)
 }
 
 /** Table-driven decoder for the implemented RVV subset. */
-class VectorDecoder(imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false, sharedAtomicAvailable: Boolean = false,evaluationPatchAvailable:Boolean=false) extends Module {
+class VectorDecoder(
+    imageAtomicAvailable: Boolean = false,
+    storageAtomicAvailable: Boolean = false,
+    sharedAtomicAvailable: Boolean = false,
+    evaluationPatchAvailable: Boolean = false
+) extends Module {
   val io = IO(new Bundle {
     val instruction = Input(UInt(32.W))
     val decoded = Output(new VectorDecodeSignals)
@@ -551,7 +735,9 @@ class VectorDecoder(imageAtomicAvailable: Boolean = false, storageAtomicAvailabl
   val opcode = io.instruction(6, 0)
   val recognized = opcode === "b1010111".U || opcode === "b0000111".U ||
     opcode === "b0100111".U || opcode === "b0101011".U || opcode === "b1011011".U
-  private val table = if(evaluationPatchAvailable) VectorDecodeTable.atomicTable(imageAtomicAvailable,storageAtomicAvailable,sharedAtomicAvailable,true)
+  private val table =
+    if (evaluationPatchAvailable)
+      VectorDecodeTable.atomicTable(imageAtomicAvailable, storageAtomicAvailable, sharedAtomicAvailable, true)
     else if (sharedAtomicAvailable) VectorDecodeTable.atomicTable(imageAtomicAvailable, storageAtomicAvailable, true)
     else if (imageAtomicAvailable && storageAtomicAvailable) VectorDecodeTable.allAtomicTable
     else if (imageAtomicAvailable) VectorDecodeTable.imageAtomicTable

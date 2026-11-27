@@ -20,8 +20,8 @@ object TilePassStatus {
   val textureFault = 6
 }
 
-/** Stable identity retained through completion and fault drain. Stage tags
-  * reserve geometry/tessellation without claiming those stages exist yet.
+/** Stable identity retained through completion and fault drain. Stage tags reserve geometry/tessellation without
+  * claiming those stages exist yet.
   */
 class GraphicsWorkIdentity extends Bundle {
   val context = UInt(32.W)
@@ -39,9 +39,8 @@ object GraphicsStage {
   val tessEvaluation = 5
 }
 
-/** One bounded 32-bit attachment view. Addresses are byte addresses; limit is
-  * exclusive and 33 bits so an allocation may end exactly at 4 GiB.
-  * Clear values are already packed in the attachment's memory format.
+/** One bounded 32-bit attachment view. Addresses are byte addresses; limit is exclusive and 33 bits so an allocation
+  * may end exactly at 4 GiB. Clear values are already packed in the attachment's memory format.
   */
 class TileAttachmentView extends Bundle {
   val base = UInt(32.W)
@@ -52,9 +51,8 @@ class TileAttachmentView extends Bundle {
   val clearValue = UInt(32.W)
 }
 
-/** H1 descriptor: one resident 8x8 or 16x16 tile, one color and one D24S8 plane.
-  * Later render-pass descriptors can reference many such tile jobs. Reject
-  * unsupported versions/limits instead of interpreting future layouts.
+/** H1 descriptor: one resident 8x8 or 16x16 tile, one color and one D24S8 plane. Later render-pass descriptors can
+  * reference many such tile jobs. Reject unsupported versions/limits instead of interpreting future layouts.
   */
 class TileRenderPassDescriptor extends Bundle {
   val version = UInt(8.W)
@@ -68,8 +66,9 @@ class TileRenderPassDescriptor extends Bundle {
   val colorFormat = UInt(PixelFormat.width.W)
   val color = new TileAttachmentView
   val depth = new TileAttachmentView
-  /** Byte-wise half-up RGBA8 resolve into a disjoint single-sample view.
-    * Independent of color.store: an MSAA source can be discarded after resolve.
+
+  /** Byte-wise half-up RGBA8 resolve into a disjoint single-sample view. Independent of color.store: an MSAA source can
+    * be discarded after resolve.
     */
   val resolve = Bool()
   val resolveBase = UInt(32.W)
@@ -82,9 +81,8 @@ class TileRenderPassCompletion extends Bundle {
   val status = UInt(TilePassStatus.width.W)
 }
 
-/** Half-open rectangle in tile-local pixel coordinates. A bit mask preserves
-  * unselected color channels or the other half of a D24S8 word. All active
-  * samples of selected pixels are cleared; values use memory byte order.
+/** Half-open rectangle in tile-local pixel coordinates. A bit mask preserves unselected color channels or the other
+  * half of a D24S8 word. All active samples of selected pixels are cleared; values use memory byte order.
   */
 class TileAttachmentClear extends Bundle {
   val minX = UInt(5.W)
@@ -97,18 +95,19 @@ class TileAttachmentClear extends Bundle {
   val depthValue = UInt(32.W)
 }
 
-/** begin/end/clear use ready/valid; cancel is a synchronous cancellation request.
-  * The owner stops producing draws before end and
-  * waits for completion before a dependent texture/DMA/CPU operation. This
-  * completion acknowledges the memory port, not CPU cache coherence.
+/** begin/end/clear use ready/valid; cancel is a synchronous cancellation request. The owner stops producing draws
+  * before end and waits for completion before a dependent texture/DMA/CPU operation. This completion acknowledges the
+  * memory port, not CPU cache coherence.
   */
 class TileRenderPassPort extends Bundle {
   val begin = Flipped(Decoupled(new TileRenderPassDescriptor))
   val end = Flipped(Decoupled(Bool()))
   val clear = Flipped(Decoupled(new TileAttachmentClear))
+
   /** Accepted commands complete in order; false also fails/closes the pass. */
   val clearDone = Decoupled(Bool())
   val cancel = Input(Bool())
+
   /** Applies only to a memory response accepted on this cycle. */
   val memoryFault = Input(Bool())
   val completion = Decoupled(new TileRenderPassCompletion)
@@ -116,10 +115,9 @@ class TileRenderPassPort extends Bundle {
   val descriptor = Output(new TileRenderPassDescriptor)
 }
 
-/** Cycle events, not accumulated totals. Byte counts are useful attachment
-  * bytes: loaded words delivered to the SRAM owner and issued write masks.
-  * Two independent slots can issue up to 128 useful write bytes in a cycle.
-  * Line-bus request counts are separate from these logical byte totals.
+/** Cycle events, not accumulated totals. Byte counts are useful attachment bytes: loaded words delivered to the SRAM
+  * owner and issued write masks. Two independent slots can issue up to 128 useful write bytes in a cycle. Line-bus
+  * request counts are separate from these logical byte totals.
   */
 class TileAttachmentEvents extends Bundle {
   val resident = Bool()
@@ -127,11 +125,14 @@ class TileAttachmentEvents extends Bundle {
   val completed = Bool()
   val loadBytes = UInt(8.W)
   val storeBytes = UInt(8.W)
+
   /** Subset of storeBytes belonging to resolved single-sample output. */
   val resolveBytes = UInt(8.W)
+
   /** Clear-tag read accepted on the preceding cycle; count once per pulse. */
   val clearRead = Bool()
   val attachmentStall = Bool()
+
   /** Allocated transfer credits, including buffered requests and pending acks. */
   val transferOccupancy = UInt(6.W)
 }

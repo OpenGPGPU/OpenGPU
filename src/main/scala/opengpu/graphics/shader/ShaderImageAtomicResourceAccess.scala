@@ -20,11 +20,14 @@ class ShaderImageAtomicResourceResult extends ShaderImageAtomicResult {
   val descriptorHit = Bool()
 }
 
-/** Descriptor-backed atomic request. The parent owns the descriptor and VM
-  * lifetime, translation and shared atomic arbitration until result retirement.
+/** Descriptor-backed atomic request. The parent owns the descriptor and VM lifetime, translation and shared atomic
+  * arbitration until result retirement.
   */
-class ShaderImageAtomicResourceAccess(config: GpuConfig = GpuConfig(),
-    p: TextureImageAddressConfig = TextureImageAddressConfig(), imageUnits: Int = 4) extends Module {
+class ShaderImageAtomicResourceAccess(
+    config: GpuConfig = GpuConfig(),
+    p: TextureImageAddressConfig = TextureImageAddressConfig(),
+    imageUnits: Int = 4
+) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ShaderImageAtomicResourceRequest(config)))
     val out = Decoupled(new ShaderImageAtomicResourceResult)
@@ -34,7 +37,9 @@ class ShaderImageAtomicResourceAccess(config: GpuConfig = GpuConfig(),
     val atomicResponse = Flipped(Decoupled(new SharedAtomicResponse(config)))
     val invalidate = Input(Bool()); val cancel = Input(Bool()); val busy = Output(Bool())
   })
-  private object State extends ChiselEnum { val idle, offerDescriptor, waitDescriptor, offerAtomic, waitAtomic, finish, complete = Value }
+  private object State extends ChiselEnum {
+    val idle, offerDescriptor, waitDescriptor, offerAtomic, waitAtomic, finish, complete = Value
+  }
   private val state = RegInit(State.idle)
   private val request = Reg(new ShaderImageAtomicResourceRequest(config))
   private val snapshot = Reg(new ShaderImageBindingSnapshot)
@@ -61,9 +66,11 @@ class ShaderImageAtomicResourceAccess(config: GpuConfig = GpuConfig(),
   atomic.io.in.bits.access.identity := request.table.identity
   atomic.io.in.bits.access.tag := request.tag; atomic.io.in.bits.access.unitIndex := request.unitIndex
   atomic.io.in.bits.access.stage := request.stage; atomic.io.in.bits.access.shaderTarget := request.shaderTarget
-  atomic.io.in.bits.access.colorType := request.colorType; atomic.io.in.bits.access.hasFormatQualifier := request.hasFormatQualifier
+  atomic.io.in.bits.access.colorType := request.colorType;
+  atomic.io.in.bits.access.hasFormatQualifier := request.hasFormatQualifier
   atomic.io.in.bits.access.shaderFormat := request.shaderFormat
-  atomic.io.in.bits.access.x := request.x; atomic.io.in.bits.access.y := request.y; atomic.io.in.bits.access.z := request.z
+  atomic.io.in.bits.access.x := request.x; atomic.io.in.bits.access.y := request.y;
+  atomic.io.in.bits.access.z := request.z
   atomic.io.in.bits.access.imageBinding := snapshot
   atomic.io.in.bits.warpId := request.warpId; atomic.io.in.bits.operation := request.operation
   atomic.io.in.bits.operand := request.operand; atomic.io.in.bits.compareValue := request.compareValue
@@ -78,15 +85,20 @@ class ShaderImageAtomicResourceAccess(config: GpuConfig = GpuConfig(),
       when(io.in.fire) {
         assert(!descriptor.io.busy && !atomic.io.busy && !descriptorOwned && !atomicOwned)
         request := io.in.bits; result := 0.U.asTypeOf(result); status := 0.U
-        result.identity := io.in.bits.table.identity; result.tag := io.in.bits.tag; result.unitIndex := io.in.bits.unitIndex
+        result.identity := io.in.bits.table.identity; result.tag := io.in.bits.tag;
+        result.unitIndex := io.in.bits.unitIndex
         state := State.offerDescriptor
       }
     }
-    is(State.offerDescriptor) { when(descriptor.io.in.fire) { descriptorOwned := true.B; state := State.waitDescriptor } }
+    is(State.offerDescriptor) {
+      when(descriptor.io.in.fire) { descriptorOwned := true.B; state := State.waitDescriptor }
+    }
     is(State.waitDescriptor) {
       when(descriptor.io.out.fire) {
         val r = descriptor.io.out.bits
-        assert(r.identity.asUInt === request.table.identity.asUInt && r.tag === request.tag && r.unitIndex === request.unitIndex)
+        assert(
+          r.identity.asUInt === request.table.identity.asUInt && r.tag === request.tag && r.unitIndex === request.unitIndex
+        )
         descriptorOwned := false.B; result.descriptorReadLines := r.readLines; result.descriptorHit := r.hit
         result.faultAddressValid := r.faultAddressValid; result.faultAddress := r.faultAddress
         when(r.status =/= 0.U) { status := r.status; state := State.finish }
@@ -98,16 +110,21 @@ class ShaderImageAtomicResourceAccess(config: GpuConfig = GpuConfig(),
     is(State.waitAtomic) {
       when(atomic.io.out.fire) {
         val r = atomic.io.out.bits
-        assert(r.identity.asUInt === request.table.identity.asUInt && r.tag === request.tag && r.unitIndex === request.unitIndex)
+        assert(
+          r.identity.asUInt === request.table.identity.asUInt && r.tag === request.tag && r.unitIndex === request.unitIndex
+        )
         atomicOwned := false.B
         when(r.status =/= 0.U) { status := r.status }.elsewhen(!stop) { result.value := r.value }
-        result.faultAddressValid := r.faultAddressValid; result.faultAddress := r.faultAddress; result.pageFault := r.pageFault
+        result.faultAddressValid := r.faultAddressValid; result.faultAddress := r.faultAddress;
+        result.pageFault := r.pageFault
         state := State.finish
       }
     }
     is(State.finish) {
-      assert(!descriptorOwned && !atomicOwned && !descriptor.io.busy && !atomic.io.busy,
-        "image atomic retired before descriptor and atomic ownership drained")
+      assert(
+        !descriptorOwned && !atomicOwned && !descriptor.io.busy && !atomic.io.busy,
+        "image atomic retired before descriptor and atomic ownership drained"
+      )
       result.status := Mux(io.cancel && status === 0.U, ShaderImageAccessStatus.cancelled.U, status)
       when(stop) { result.value := 0.U }
       state := State.complete

@@ -4,9 +4,8 @@ import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
 
-/** A checked instruction snapshot. Operand tuples remain in the execution
-  * unit's per-warp bank until this instruction retires or resumes there.
-  * Only coordinates and offsets are copied into the lane issue contexts.
+/** A checked instruction snapshot. Operand tuples remain in the execution unit's per-warp bank until this instruction
+  * retires or resumes there. Only coordinates and offsets are copied into the lane issue contexts.
   */
 class NativeTextureStreamInstruction(config: GpuConfig) extends Bundle {
   val template = new NativeRgba8TextureLaneTemplate
@@ -33,11 +32,11 @@ class NativeTextureStreamCompletion(config: GpuConfig) extends Bundle {
   val faultAddress = UInt(32.W)
 }
 
-/** Bounded lane contexts share one request port and the existing physical
-  * cluster. A context never aliases a live warp or reuses its response tags
-  * before public retirement. General descriptor/LOD execution stays singular.
+/** Bounded lane contexts share one request port and the existing physical cluster. A context never aliases a live warp
+  * or reuses its response tags before public retirement. General descriptor/LOD execution stays singular.
   */
-class NativeTextureInstructionStream(config: GpuConfig, contexts: Int, instructionBurst: Boolean = true) extends Module {
+class NativeTextureInstructionStream(config: GpuConfig, contexts: Int, instructionBurst: Boolean = true)
+    extends Module {
   require(contexts > 0 && contexts <= config.warps)
   private val laneWidth = math.max(1, log2Ceil(config.lanes))
   private val contextWidth = math.max(1, log2Ceil(contexts))
@@ -67,7 +66,9 @@ class NativeTextureInstructionStream(config: GpuConfig, contexts: Int, instructi
     (BigInt(1) << 31).U(32.W) | (c.pad(32) << laneWidth) | l.pad(32)
   private val free = PriorityEncoder(VecInit(live.map(x => !x)).asUInt)
   io.busy := live.asUInt.orR
-  io.warpBusy := (0 until contexts).map(c => Mux(live(c), UIntToOH(instruction(c).warp, config.warps), 0.U)).reduce(_ | _)
+  io.warpBusy := (0 until contexts)
+    .map(c => Mux(live(c), UIntToOH(instruction(c).warp, config.warps), 0.U))
+    .reduce(_ | _)
   io.in.ready := !live.asUInt.andR && !io.warpBusy(io.in.bits.warp)
   when(io.in.fire) {
     val c = row(free)
@@ -83,8 +84,8 @@ class NativeTextureInstructionStream(config: GpuConfig, contexts: Int, instructi
   // Bound arbitration to one vector's remaining lanes. Interleaving the last
   // lanes of every context delays all instruction retirements by another full
   // numeric latency, leaving an empty issue window even when credits remain.
-  private val burstLocked = if(instructionBurst)Some(RegInit(false.B))else None
-  private val burstOwner = if(instructionBurst)Some(Reg(UInt(contextWidth.W)))else None
+  private val burstLocked = if (instructionBurst) Some(RegInit(false.B)) else None
+  private val burstOwner = if (instructionBurst) Some(Reg(UInt(contextWidth.W))) else None
   // Once accepted internally, this queue owns the offer through external
   // stalls, invalidation and cancellation. Its tag remains live in pending.
   private val requests = Module(new Queue(new TextureRgba8GroupRequest, 2))
@@ -104,17 +105,19 @@ class NativeTextureInstructionStream(config: GpuConfig, contexts: Int, instructi
     val q = instruction(c)
     val stop = status(c) =/= 0.U || io.cancel || noFill(c) || io.invalidate
     val offer = live(c) && !done(c) && !issuedAll(c) && q.mask(q.lane) && !stop
-    issue.io.in(c).valid := offer && (if(instructionBurst)!burstLocked.get || burstOwner.get === c.U else true.B)
+    issue.io.in(c).valid := offer && (if (instructionBurst) !burstLocked.get || burstOwner.get === c.U else true.B)
     issue.io.in(c).bits := q.template.group
     issue.io.in(c).bits.tag := privateTag(c.U, q.lane)
     issue.io.in(c).bits.coordinates := q.coordinates(q.lane)
     issue.io.in(c).bits.offsets := q.offsets(q.lane)
     val accepting = issue.io.in(c).fire
     val replying = io.grouped.response.fire && replyContext === c.U
-    if(instructionBurst){
-      when(accepting){burstLocked.get := q.lane =/= (config.lanes-1).U; burstOwner.get := c.U}
-      when(burstLocked.get && burstOwner.get === c.U &&
-        (stop || !live(c) || done(c) || issuedAll(c) || (!q.mask(q.lane) && q.lane === (config.lanes-1).U))){
+    if (instructionBurst) {
+      when(accepting) { burstLocked.get := q.lane =/= (config.lanes - 1).U; burstOwner.get := c.U }
+      when(
+        burstLocked.get && burstOwner.get === c.U &&
+          (stop || !live(c) || done(c) || issuedAll(c) || (!q.mask(q.lane) && q.lane === (config.lanes - 1).U))
+      ) {
         burstLocked.get := false.B
       }
     }

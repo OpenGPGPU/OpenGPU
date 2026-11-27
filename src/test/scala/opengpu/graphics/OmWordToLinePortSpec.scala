@@ -33,8 +33,7 @@ class OmWordToLinePortSpec extends AnyFlatSpec {
 
       // Response: put a known value in word 10.
       dut.io.memoryResponse.valid.poke(true.B)
-      dut.io.memoryResponse.bits.readData.poke(
-        (BigInt("deadbeef", 16) << (10 * 32)).U)
+      dut.io.memoryResponse.bits.readData.poke((BigInt("deadbeef", 16) << (10 * 32)).U)
       dut.io.memoryResponse.bits.transactionId.poke(reId.U)
       dut.io.in.valid.poke(false.B)
       dut.io.out.valid.expect(true.B)
@@ -67,8 +66,7 @@ class OmWordToLinePortSpec extends AnyFlatSpec {
       dut.io.memoryRequest.bits.address.expect(0x3000.U)
       dut.io.memoryRequest.bits.isWrite.expect(true.B)
       dut.io.memoryRequest.bits.byteMask.expect(0xf000L.U)
-      dut.io.memoryRequest.bits.writeData.expect(
-        (BigInt("76543210", 16) << (3 * 32)).U)
+      dut.io.memoryRequest.bits.writeData.expect((BigInt("76543210", 16) << (3 * 32)).U)
       val wrId = dut.io.memoryRequest.bits.transactionId.peek().litValue
       dut.clock.step(); dut.io.in.valid.poke(false.B)
 
@@ -158,8 +156,7 @@ class OmWordToLinePortSpec extends AnyFlatSpec {
       // the correct slice and the original byte address from its slot.
       dut.io.memoryResponse.valid.poke(true.B)
       dut.io.memoryResponse.bits.transactionId.poke(secondId.U)
-      dut.io.memoryResponse.bits.readData.poke(
-        (BigInt("22222222", 16) << (2 * 32)).U)
+      dut.io.memoryResponse.bits.readData.poke((BigInt("22222222", 16) << (2 * 32)).U)
       dut.io.out.valid.expect(true.B)
       dut.io.out.bits.data.expect("h22222222".U)
       dut.io.out.bits.addr.expect(0x2088.U)
@@ -167,8 +164,7 @@ class OmWordToLinePortSpec extends AnyFlatSpec {
       dut.clock.step()
 
       dut.io.memoryResponse.bits.transactionId.poke(firstId.U)
-      dut.io.memoryResponse.bits.readData.poke(
-        (BigInt("11111111", 16) << (5 * 32)).U)
+      dut.io.memoryResponse.bits.readData.poke((BigInt("11111111", 16) << (5 * 32)).U)
       dut.io.out.valid.expect(true.B)
       dut.io.out.bits.data.expect("h11111111".U)
       dut.io.out.bits.addr.expect(0x1014.U)

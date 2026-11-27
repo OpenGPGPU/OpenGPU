@@ -73,8 +73,7 @@ class VectorFdivAlu(config: GpuConfig = GpuConfig()) extends Module {
   private val laneFlags = Wire(Vec(config.lanes, UInt(5.W)))
   private val capturedData = Wire(Vec(config.lanes, UInt(32.W)))
   for ((lane, index) <- lanes.zipWithIndex) {
-    val scalarOperand = Mux(
-      inputIsFvf, inputBits.scalarFpData, inputBits.vs1(index))
+    val scalarOperand = Mux(inputIsFvf, inputBits.scalarFpData, inputBits.vs1(index))
     lane.io.in.valid := issue
     lane.io.in.bits.operation := Fp32Operation.div
     lane.io.in.bits.roundingMode := inputBits.roundingMode

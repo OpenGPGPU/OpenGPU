@@ -13,8 +13,13 @@ class ShaderImageBindingAddressSpec extends AnyFlatSpec {
     var expectedUnit = BigInt(0); var expectedFormat = BigInt(0); var expectedKind = BigInt(0)
     var expectedWrite = false
     def tick(): Unit = d.clock.step()
-    def begin(target: Int = 0, layered: Boolean = true, selected: BigInt = 0, write: Boolean = false,
-        configure: ShaderImageBindingAddressRequest => Unit = _ => ()): Unit = {
+    def begin(
+        target: Int = 0,
+        layered: Boolean = true,
+        selected: BigInt = 0,
+        write: Boolean = false,
+        configure: ShaderImageBindingAddressRequest => Unit = _ => ()
+    ): Unit = {
       d.io.in.ready.expect(true.B)
       val q = d.io.in.bits; zero(q)
       operations += 1; expectedTag = BigInt("e0000000", 16) + operations
@@ -46,8 +51,12 @@ class ShaderImageBindingAddressSpec extends AnyFlatSpec {
       expectedWrite = q.isWrite.peek().litToBoolean
       d.io.in.valid.poke(true.B); tick(); d.io.in.valid.poke(false.B); zero(q)
     }
-    def finish(address: Option[BigInt] = None, status: Int = 0,
-        allocationBase: BigInt = 0x1000, allocationLimit: BigInt = 0x2000): Unit = {
+    def finish(
+        address: Option[BigInt] = None,
+        status: Int = 0,
+        allocationBase: BigInt = 0x1000,
+        allocationLimit: BigInt = 0x2000
+    ): Unit = {
       var steps = 0
       while (!d.io.out.valid.peek().litToBoolean && steps < 40) { tick(); steps += 1 }
       assert(d.io.out.valid.peek().litToBoolean, "image binding did not drain")
@@ -76,10 +85,16 @@ class ShaderImageBindingAddressSpec extends AnyFlatSpec {
       val t = new Driver(d)
       for (target <- 0 to 3; layered <- Seq(false, true); write <- Seq(false, true)) {
         val selected = Seq(0, 2, 5, 1)(target)
-        t.begin(target, layered, selected, write, q => {
-          if (target == 0) { q.imageBinding.layer.poke("hffffffff".U); q.z.poke("hffffffff".U) }
-          else if (!layered) q.z.poke("hffffffff".U)
-        })
+        t.begin(
+          target,
+          layered,
+          selected,
+          write,
+          q => {
+            if (target == 0) { q.imageBinding.layer.poke("hffffffff".U); q.z.poke("hffffffff".U) }
+            else if (!layered) q.z.poke("hffffffff".U)
+          }
+        )
         val plane = Seq(0, 128, 256, 128)(target)
         t.finish(Some(BigInt(0x1000 + 64 + 32 + selected * plane)))
       }
@@ -107,7 +122,9 @@ class ShaderImageBindingAddressSpec extends AnyFlatSpec {
       t.begin(write = true, configure = q => { q.hasFormatQualifier.poke(false.B); q.shaderFormat.poke(63.U) })
       t.finish(Some(BigInt(0x1060)))
       assert(t.operations == 32)
-      info("SHADER_IMAGE_BINDING targets=4 layeredAndSingle=true formats=13 operations=32 fourUnits=true sizeVsClass=true heldSnapshots=true")
+      info(
+        "SHADER_IMAGE_BINDING targets=4 layeredAndSingle=true formats=13 operations=32 fourUnits=true sizeVsClass=true heldSnapshots=true"
+      )
     }
   }
 
@@ -122,13 +139,19 @@ class ShaderImageBindingAddressSpec extends AnyFlatSpec {
         q => q.imageBinding.storageFormat.poke(TextureImageFormat.id("RGBA16UI").U),
         q => q.imageBinding.storageFormat.poke(TextureImageFormat.id("R8").U),
         q => q.x.poke("hffffffff".U),
-        q => q.y.poke("hffffffff".U))
+        q => q.y.poke("hffffffff".U)
+      )
       for (write <- Seq(false, true); change <- changes) { t.begin(write = write, configure = change); t.finish() }
-      for (write <- Seq(false, true); layered <- Seq(false, true); (target, selected) <- Seq(1 -> 0x10002, 2 -> 13, 3 -> 0x10001)) {
+      for (
+        write <- Seq(false, true); layered <- Seq(false, true);
+        (target, selected) <- Seq(1 -> 0x10002, 2 -> 13, 3 -> 0x10001)
+      ) {
         t.begin(target, layered, selected, write); t.finish()
       }
       assert(t.operations == 28)
-      info("SHADER_IMAGE_BINDING invalidNoOps=28 fullWidthCoordinates=true cubeFacesCheckedBeforeNarrowing=true loadStoreSymmetry=true")
+      info(
+        "SHADER_IMAGE_BINDING invalidNoOps=28 fullWidthCoordinates=true cubeFacesCheckedBeforeNarrowing=true loadStoreSymmetry=true"
+      )
     }
   }
 
@@ -152,11 +175,14 @@ class ShaderImageBindingAddressSpec extends AnyFlatSpec {
         6 -> (q => q.shaderFormat.poke(TextureImageFormat.id("RGBA32I").U)),
         4 -> (q => q.imageBinding.view.rowPitch.poke(16.U)),
         4 -> (q => q.imageBinding.view.allocationLimit.poke(0x1040.U)),
-        4 -> (q => q.imageBinding.view.allocationLimit.poke(((BigInt(1) << 32) + 64).U)))
+        4 -> (q => q.imageBinding.view.allocationLimit.poke(((BigInt(1) << 32) + 64).U))
+      )
       for ((status, change) <- changes) { t.begin(configure = change); t.finish(status = status) }
       t.begin(write = true, configure = q => q.imageBinding.writable.poke(false.B)); t.finish(status = 3)
       t.begin(); t.finish(Some(BigInt(0x1060)))
-      info("SHADER_IMAGE_BINDING rejected=18 identityAndStage=true shaderQualifierAndKind=true completeLevelBounds=true healthyReuse=true")
+      info(
+        "SHADER_IMAGE_BINDING rejected=18 identityAndStage=true shaderQualifierAndKind=true completeLevelBounds=true healthyReuse=true"
+      )
     }
   }
 
@@ -164,11 +190,14 @@ class ShaderImageBindingAddressSpec extends AnyFlatSpec {
     simulate(new ShaderImageBindingAddress) { d =>
       val t = new Driver(d)
       for (readable <- Seq(false, true); writable <- Seq(false, true)) {
-        t.begin(write = true, configure = q => {
-          q.requireReadWrite.poke(true.B)
-          q.imageBinding.readable.poke(readable.B)
-          q.imageBinding.writable.poke(writable.B)
-        })
+        t.begin(
+          write = true,
+          configure = q => {
+            q.requireReadWrite.poke(true.B)
+            q.imageBinding.readable.poke(readable.B)
+            q.imageBinding.writable.poke(writable.B)
+          }
+        )
         if (readable && writable) t.finish(Some(BigInt(0x1060)))
         else t.finish(status = ShaderImageBindingAddressStatus.permission)
       }
@@ -192,7 +221,9 @@ class ShaderImageBindingAddressSpec extends AnyFlatSpec {
       for (_ <- 0 until 3) t.tick()
       d.io.cancel.poke(true.B); t.finish(status = 4); d.io.cancel.poke(false.B)
       t.begin(); t.finish(Some(BigInt(0x1060)))
-      info("SHADER_IMAGE_BINDING cancelBeforeAndAfterAddressAdmission=true drain=true primaryBoundsPreserved=true healthyReuse=true")
+      info(
+        "SHADER_IMAGE_BINDING cancelBeforeAndAfterAddressAdmission=true drain=true primaryBoundsPreserved=true healthyReuse=true"
+      )
     }
   }
 }

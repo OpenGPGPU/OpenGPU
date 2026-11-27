@@ -52,8 +52,8 @@ class VectorDivideAluSpec extends AnyFlatSpec {
         // funct6, vs2, rhs, operand form, expected
         (0x20, 0xfffffff0L, 4L, 0x2, 0x3ffffffcL), // vdivu.vv
         (0x21, 0xfffffff9L, 3L, 0x6, 0xfffffffeL), // vdiv.vx (-7/3)
-        (0x22, 7L, 3L, 0x2, 1L),                   // vremu.vv
-        (0x23, 0xfffffff9L, 3L, 0x6, 0xffffffffL)  // vrem.vx (-7%3)
+        (0x22, 7L, 3L, 0x2, 1L), // vremu.vv
+        (0x23, 0xfffffff9L, 3L, 0x6, 0xffffffffL) // vrem.vx (-7%3)
       )
 
       for ((funct6, lhs, rhs, form, expected) <- cases) {

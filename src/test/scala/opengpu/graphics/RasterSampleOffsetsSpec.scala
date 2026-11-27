@@ -30,16 +30,16 @@ class RasterSampleOffsetsSpec extends AnyFlatSpec {
           val low = (value << bits) & (modulus - 1)
           (if (low.testBit(63)) low - modulus else low) >> 2
         }
-        val limits = Seq(-(BigInt(1) << 33), -(BigInt(1) << 33) + 1,
-          BigInt(-1), BigInt(0), BigInt(1), (BigInt(1) << 33) - 1)
+        val limits =
+          Seq(-(BigInt(1) << 33), -(BigInt(1) << 33) + 1, BigInt(-1), BigInt(0), BigInt(1), (BigInt(1) << 33) - 1)
         val boundary = for (a <- limits; b <- limits) yield (a, b)
-        val cases = boundary ++ Seq.fill(128)((BigInt(34, random) - (BigInt(1) << 33),
-          BigInt(34, random) - (BigInt(1) << 33)))
+        val cases =
+          boundary ++ Seq.fill(128)((BigInt(34, random) - (BigInt(1) << 33), BigInt(34, random) - (BigInt(1) << 33)))
         for ((a, b) <- cases) {
           dut.io.a.poke(a.S); dut.io.b.poke(b.S); dut.clock.step(2)
           val x = quarter(a); val y = quarter(b)
-          Seq(-x - y, x - y, -x + y, x + y).zipWithIndex.foreach {
-            case (expected, slot) => dut.io.offsets(slot).expect(expected.S)
+          Seq(-x - y, x - y, -x + y, x + y).zipWithIndex.foreach { case (expected, slot) =>
+            dut.io.offsets(slot).expect(expected.S)
           }
         }
       }

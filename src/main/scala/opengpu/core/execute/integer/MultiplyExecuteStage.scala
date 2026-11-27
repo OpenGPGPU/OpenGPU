@@ -42,14 +42,11 @@ private class BoothStageFour(config: GpuConfig) extends Bundle {
 
 /** Five-stage elastic radix-4 Booth RV32M multiplier.
   *
-  * Seventeen Booth partial products are reduced by carry-save compressors
-  * without propagating carry. The first boundary is deliberately close to
-  * Booth generation, following the timing structure used by XiangShan's
-  * multiplier: it prevents partial-product generation and a deep compressor
-  * tree from occupying one cycle. The tree is split 17→12, 12→4, and 4→2;
-  * stage four registers carry-select halves of the final add; the output
-  * stage mux-assembles and selects the high/low half. Once full, the unit
-  * accepts and completes one multiply per cycle.
+  * Seventeen Booth partial products are reduced by carry-save compressors without propagating carry. The first boundary
+  * is deliberately close to Booth generation, following the timing structure used by XiangShan's multiplier: it
+  * prevents partial-product generation and a deep compressor tree from occupying one cycle. The tree is split 17→12,
+  * 12→4, and 4→2; stage four registers carry-select halves of the final add; the output stage mux-assembles and selects
+  * the high/low half. Once full, the unit accepts and completes one multiply per cycle.
   */
 class MultiplyExecuteStage(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {
@@ -58,9 +55,9 @@ class MultiplyExecuteStage(config: GpuConfig = GpuConfig()) extends Module {
   })
 
   private def csa(
-    a: UInt,
-    b: UInt,
-    c: UInt
+      a: UInt,
+      b: UInt,
+      c: UInt
   ): (UInt, UInt) = {
     val sum = a ^ b ^ c
     val carry = ((a & b) | (a & c) | (b & c)) << 1
@@ -127,14 +124,16 @@ class MultiplyExecuteStage(config: GpuConfig = GpuConfig()) extends Module {
 
   private val partialProducts = (0 until 17).map { index =>
     val code = boothBits(2 * index + 2, 2 * index)
-    val multiple = MuxLookup(code, 0.S(68.W))(Seq(
-      "b001".U -> lhsWide,
-      "b010".U -> lhsWide,
-      "b011".U -> (lhsWide << 1).asSInt,
-      "b100".U -> (-(lhsWide << 1)).asSInt,
-      "b101".U -> (-lhsWide).asSInt,
-      "b110".U -> (-lhsWide).asSInt
-    ))
+    val multiple = MuxLookup(code, 0.S(68.W))(
+      Seq(
+        "b001".U -> lhsWide,
+        "b010".U -> lhsWide,
+        "b011".U -> (lhsWide << 1).asSInt,
+        "b100".U -> (-(lhsWide << 1)).asSInt,
+        "b101".U -> (-lhsWide).asSInt,
+        "b110".U -> (-lhsWide).asSInt
+      )
+    )
     (multiple.asUInt << (2 * index))(67, 0)
   }
   private val firstReduction = reduceTo(partialProducts, 12)
@@ -151,10 +150,7 @@ class MultiplyExecuteStage(config: GpuConfig = GpuConfig()) extends Module {
       stageThreeBits.terms(1)(67, productSplit)
   private val productHigh1 = (productHigh0 +& 1.U)(34, 0)
   private val product = {
-    val highSum = Mux(
-      stageFourBits.lowSum(productSplit),
-      stageFourBits.highSum1,
-      stageFourBits.highSum0)
+    val highSum = Mux(stageFourBits.lowSum(productSplit), stageFourBits.highSum1, stageFourBits.highSum0)
     Cat(highSum(67 - productSplit, 0), stageFourBits.lowSum(productSplit - 1, 0))
   }
 

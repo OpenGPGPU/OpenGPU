@@ -235,8 +235,7 @@ class VectorIntegerAluSpec extends AnyFlatSpec {
   it should "mask every integer extension scale and hold results under backpressure" in {
     simulate(new VectorIntegerAlu(config)) { dut =>
       defaults(dut)
-      val inputs = Seq(BigInt("abcd8008", 16), BigInt("ffff7f77", 16),
-        BigInt("1234ffff", 16), BigInt("ffff8080", 16))
+      val inputs = Seq(BigInt("abcd8008", 16), BigInt("ffff7f77", 16), BigInt("1234ffff", 16), BigInt("ffff8080", 16))
       dut.io.in.bits.funct6.poke("h12".U)
       dut.io.in.bits.operandType.poke(2.U)
       dut.io.in.bits.vm.poke(false.B)
@@ -256,10 +255,13 @@ class VectorIntegerAluSpec extends AnyFlatSpec {
         val width = 1 << (selector / 2 + 1)
         val expected = inputs.zipWithIndex.map { case (value, lane) =>
           val low = value & ((BigInt(1) << width) - 1)
-          val extended = if (selector % 2 == 1 && low.testBit(width - 1))
-            low - (BigInt(1) << width) else low
+          val extended =
+            if (selector % 2 == 1 && low.testBit(width - 1))
+              low - (BigInt(1) << width)
+            else low
           if (((mask & 7) & (1 << lane)) != 0)
-            extended & BigInt("ffffffff", 16) else BigInt(100 + lane)
+            extended & BigInt("ffffffff", 16)
+          else BigInt(100 + lane)
         }
         for (_ <- 0 until 3) {
           dut.io.out.valid.expect(true.B)
@@ -280,18 +282,16 @@ class VectorIntegerAluSpec extends AnyFlatSpec {
   it should "narrow 64-bit register pairs with logical and arithmetic shifts" in {
     simulate(new VectorIntegerAlu(config)) { dut =>
       defaults(dut)
-      val lows = Seq(BigInt("80000000", 16), BigInt("12345678", 16),
-        BigInt("ffffffff", 16), BigInt(0))
-      val highs = Seq(BigInt("00000001", 16), BigInt("deadbeef", 16),
-        BigInt("ffffffff", 16), BigInt("7fffffff", 16))
+      val lows = Seq(BigInt("80000000", 16), BigInt("12345678", 16), BigInt("ffffffff", 16), BigInt(0))
+      val highs = Seq(BigInt("00000001", 16), BigInt("deadbeef", 16), BigInt("ffffffff", 16), BigInt("7fffffff", 16))
 
       def issue(
-        funct6: Int,
-        form: Int,
-        shiftAmounts: Seq[Long],
-        masked: Boolean = false,
-        predicate: Int = 0xf,
-        stall: Boolean = false
+          funct6: Int,
+          form: Int,
+          shiftAmounts: Seq[Long],
+          masked: Boolean = false,
+          predicate: Int = 0xf,
+          stall: Boolean = false
       ): Unit = {
         dut.io.in.bits.funct6.poke(funct6.U)
         dut.io.in.bits.operandType.poke(form.U)
@@ -309,21 +309,20 @@ class VectorIntegerAluSpec extends AnyFlatSpec {
         dut.clock.step()
         dut.io.in.valid.poke(false.B)
         dut.clock.step(7)
-        val expected = lows.zip(highs).zipWithIndex.map {
-          case ((low, high), lane) =>
-            val wide = (high << 32) | low
-            val narrowed = funct6 match {
-              case 0x2c =>
-                (wide >> (shiftAmounts(lane) & 63).toInt) &
-                  BigInt("ffffffff", 16)
-              case _ =>
-                val signed = wide - (if (wide.testBit(63)) BigInt(1) << 64
-                                     else BigInt(0))
-                (signed >> (shiftAmounts(lane) & 63).toInt) &
-                  BigInt("ffffffff", 16)
-            }
-            if (masked && (predicate & (1 << lane)) == 0) BigInt(100 + lane)
-            else narrowed
+        val expected = lows.zip(highs).zipWithIndex.map { case ((low, high), lane) =>
+          val wide = (high << 32) | low
+          val narrowed = funct6 match {
+            case 0x2c =>
+              (wide >> (shiftAmounts(lane) & 63).toInt) &
+                BigInt("ffffffff", 16)
+            case _ =>
+              val signed = wide - (if (wide.testBit(63)) BigInt(1) << 64
+                                   else BigInt(0))
+              (signed >> (shiftAmounts(lane) & 63).toInt) &
+                BigInt("ffffffff", 16)
+          }
+          if (masked && (predicate & (1 << lane)) == 0) BigInt(100 + lane)
+          else narrowed
         }
         val checks = if (stall) 3 else 1
         for (_ <- 0 until checks) {
@@ -356,8 +355,7 @@ class VectorIntegerAluSpec extends AnyFlatSpec {
       issue(0x2c, 3, Seq(31, 31, 31, 31))
       issue(0x2d, 3, Seq(0, 0, 0, 0))
       // Masked lanes keep their old destination under output backpressure.
-      issue(0x2c, 0, Seq(8, 8, 8, 8), masked = true, predicate = 5,
-        stall = true)
+      issue(0x2c, 0, Seq(8, 8, 8, 8), masked = true, predicate = 5, stall = true)
     }
   }
 
@@ -365,47 +363,73 @@ class VectorIntegerAluSpec extends AnyFlatSpec {
     simulate(new VectorIntegerAlu(config)) { dut =>
       defaults(dut)
       val mask32 = (BigInt(1) << 32) - 1
-      case class Operation(signed: Boolean, form: Int, mode: Int,
-        values: Seq[BigInt], amounts: Seq[Int], active: Int, predicate: Int,
-        vm: Boolean)
+      case class Operation(
+          signed: Boolean,
+          form: Int,
+          mode: Int,
+          values: Seq[BigInt],
+          amounts: Seq[Int],
+          active: Int,
+          predicate: Int,
+          vm: Boolean
+      )
       val values = Seq(
         Seq("00000005", "00000007", "fffffffb", "fffffff9"),
         Seq("ffffffff", "80000000", "7fffffff", "00000000"),
         Seq("00000001", "00000002", "00000003", "fffffffe"),
         Seq("80000001", "7ffffffe", "40000001", "bfffffff")
       ).map(_.map(BigInt(_, 16)))
-      val amounts = Seq(Seq(0, 1, 31, 32), Seq(1, 1, 1, 1),
-        Seq(31, 63, 32, 0), Seq(33, 65, 255, 16))
-      val directed = for (signed <- Seq(false, true); mode <- 0 until 4;
-        form <- Seq(0, 3, 4); sample <- values.indices) yield
-        Operation(signed, form, mode, values(sample), amounts(sample),
-          if (sample == 2) 7 else 15, if (sample == 3) 5 else 15, sample != 3)
+      val amounts = Seq(Seq(0, 1, 31, 32), Seq(1, 1, 1, 1), Seq(31, 63, 32, 0), Seq(33, 65, 255, 16))
+      val directed =
+        for (
+          signed <- Seq(false, true); mode <- 0 until 4;
+          form <- Seq(0, 3, 4); sample <- values.indices
+        )
+          yield Operation(
+            signed,
+            form,
+            mode,
+            values(sample),
+            amounts(sample),
+            if (sample == 2) 7 else 15,
+            if (sample == 3) 5 else 15,
+            sample != 3
+          )
       val random = new scala.util.Random(0x2a2b)
       val randomized = (0 until 80).map { _ =>
-        Operation(random.nextBoolean(), Seq(0, 3, 4)(random.nextInt(3)),
-          random.nextInt(4), Seq.fill(4)(BigInt(32, random)),
-          Seq.fill(4)(random.nextInt(256)), random.nextInt(16),
-          random.nextInt(16), random.nextBoolean())
+        Operation(
+          random.nextBoolean(),
+          Seq(0, 3, 4)(random.nextInt(3)),
+          random.nextInt(4),
+          Seq.fill(4)(BigInt(32, random)),
+          Seq.fill(4)(random.nextInt(256)),
+          random.nextInt(16),
+          random.nextInt(16),
+          random.nextBoolean()
+        )
       }
       val operations = directed ++ randomized
-      def reference(op: Operation): Seq[BigInt] = op.values.zipWithIndex.map {
-        case (raw, lane) =>
-          val amount = (if (op.form == 0) op.amounts(lane) else op.amounts.head) & 31
-          val divisor = BigInt(1) << amount
-          val value = if (op.signed && raw.testBit(31)) raw - (BigInt(1) << 32) else raw
-          val quotient = if (value < 0) -((-value + divisor - 1) / divisor)
-            else value / divisor
-          val remainder = value - quotient * divisor
-          val round = op.mode match {
-            case 0 => 2 * remainder >= divisor
-            case 1 => 2 * remainder > divisor ||
-              (2 * remainder == divisor && quotient.testBit(0))
-            case 2 => false
-            case 3 => remainder != 0 && !quotient.testBit(0)
-          }
-          if ((op.active & (1 << lane)) == 0 ||
-            (!op.vm && (op.predicate & (1 << lane)) == 0)) BigInt(100 + lane)
-          else (quotient + (if (round) 1 else 0)) & mask32
+      def reference(op: Operation): Seq[BigInt] = op.values.zipWithIndex.map { case (raw, lane) =>
+        val amount = (if (op.form == 0) op.amounts(lane) else op.amounts.head) & 31
+        val divisor = BigInt(1) << amount
+        val value = if (op.signed && raw.testBit(31)) raw - (BigInt(1) << 32) else raw
+        val quotient =
+          if (value < 0) -((-value + divisor - 1) / divisor)
+          else value / divisor
+        val remainder = value - quotient * divisor
+        val round = op.mode match {
+          case 0 => 2 * remainder >= divisor
+          case 1 =>
+            2 * remainder > divisor ||
+            (2 * remainder == divisor && quotient.testBit(0))
+          case 2 => false
+          case 3 => remainder != 0 && !quotient.testBit(0)
+        }
+        if (
+          (op.active & (1 << lane)) == 0 ||
+          (!op.vm && (op.predicate & (1 << lane)) == 0)
+        ) BigInt(100 + lane)
+        else (quotient + (if (round) 1 else 0)) & mask32
       }
       val pending = scala.collection.mutable.Queue.empty[(Int, Seq[BigInt])]
       var sent = 0
@@ -478,9 +502,16 @@ class VectorIntegerAluSpec extends AnyFlatSpec {
       val signedMin = -(BigInt(1) << 31)
       val random = new scala.util.Random(0x2e2f)
 
-      def issue(values: Seq[BigInt], shifts: Seq[Int], signed: Boolean,
-                form: Int, mode: Int, active: Int = 15, predicate: Int = 15,
-                masked: Boolean = false): Unit = {
+      def issue(
+          values: Seq[BigInt],
+          shifts: Seq[Int],
+          signed: Boolean,
+          form: Int,
+          mode: Int,
+          active: Int = 15,
+          predicate: Int = 15,
+          masked: Boolean = false
+      ): Unit = {
         dut.io.in.bits.funct6.poke((if (signed) 0x2f else 0x2e).U)
         dut.io.in.bits.operandType.poke(form.U)
         dut.io.in.bits.vxrm.poke(mode.U)
@@ -498,16 +529,19 @@ class VectorIntegerAluSpec extends AnyFlatSpec {
         val expected = values.zipWithIndex.map { case (value, lane) =>
           val raw = value & wideMask
           val number = if (signed && raw.testBit(63)) raw - (BigInt(1) << 64) else raw
-          val amount = if (form == 0) shifts(lane) & 63
+          val amount =
+            if (form == 0) shifts(lane) & 63
             else shifts.head & (if (form == 3) 31 else 63)
           val divisor = BigInt(1) << amount
           // Mathematical floor division, independent of the RTL bit equations.
-          val quotient = if (number < 0) -((-number + divisor - 1) / divisor)
+          val quotient =
+            if (number < 0) -((-number + divisor - 1) / divisor)
             else number / divisor
           val remainder = number - quotient * divisor
           val increment = mode match {
             case 0 => remainder * 2 >= divisor
-            case 1 => remainder * 2 > divisor ||
+            case 1 =>
+              remainder * 2 > divisor ||
               (remainder * 2 == divisor && quotient.testBit(0))
             case 2 => false
             case 3 => remainder != 0 && !quotient.testBit(0)
@@ -518,8 +552,7 @@ class VectorIntegerAluSpec extends AnyFlatSpec {
           val clipped = rounded.max(minimum).min(maximum)
           val enabled = (active & (1 << lane)) != 0 &&
             (!masked || (predicate & (1 << lane)) != 0)
-          (if (enabled) clipped & wordMask else BigInt(100 + lane),
-            enabled && clipped != rounded)
+          (if (enabled) clipped & wordMask else BigInt(100 + lane), enabled && clipped != rounded)
         }
         dut.io.out.ready.poke(false.B)
         dut.io.in.ready.expect(true.B)
@@ -551,25 +584,26 @@ class VectorIntegerAluSpec extends AnyFlatSpec {
         val maximum = if (signed) signedMax else wordMask
         val minimum = if (signed) signedMin else BigInt(0)
         // Rounding can create positive overflow or remove negative overflow.
-        issue(Seq(maximum * 2 + 1, minimum * 2 - 1, 5, 7),
-          Seq.fill(4)(1), signed, 0, mode)
-        issue(Seq(-5, -7, -8, -9).map(BigInt(_)),
-          Seq.fill(4)(1), signed, 0, mode)
-        issue(Seq(maximum, maximum + 1, minimum, minimum - 1),
-          Seq.fill(4)(0), signed, 0, mode)
-        issue(Seq(wideMask, BigInt(1) << 63, (BigInt(1) << 63) - 1, 0),
-          Seq(63, 32, 64, 127), signed, 0, mode)
+        issue(Seq(maximum * 2 + 1, minimum * 2 - 1, 5, 7), Seq.fill(4)(1), signed, 0, mode)
+        issue(Seq(-5, -7, -8, -9).map(BigInt(_)), Seq.fill(4)(1), signed, 0, mode)
+        issue(Seq(maximum, maximum + 1, minimum, minimum - 1), Seq.fill(4)(0), signed, 0, mode)
+        issue(Seq(wideMask, BigInt(1) << 63, (BigInt(1) << 63) - 1, 0), Seq(63, 32, 64, 127), signed, 0, mode)
         for (form <- Seq(3, 4); shift <- Seq(0, 1, 16, 31, 32, 63)) {
-          issue(Seq.fill(4)(BigInt(64, random)), Seq.fill(4)(shift),
-            signed, form, mode)
+          issue(Seq.fill(4)(BigInt(64, random)), Seq.fill(4)(shift), signed, form, mode)
         }
         // Overflow in disabled lanes must not set the aggregate saturation bit.
-        issue(Seq(0, maximum + 1, 1, minimum - 1), Seq.fill(4)(0),
-          signed, 0, mode, active = 7, predicate = 5, masked = true)
-        issue(Seq.fill(4)(maximum + 1), Seq.fill(4)(0), signed, 0, mode,
-          active = 0)
-        issue(Seq.fill(4)(maximum + 1), Seq.fill(4)(0), signed, 0, mode,
-          predicate = 0, masked = true)
+        issue(
+          Seq(0, maximum + 1, 1, minimum - 1),
+          Seq.fill(4)(0),
+          signed,
+          0,
+          mode,
+          active = 7,
+          predicate = 5,
+          masked = true
+        )
+        issue(Seq.fill(4)(maximum + 1), Seq.fill(4)(0), signed, 0, mode, active = 0)
+        issue(Seq.fill(4)(maximum + 1), Seq.fill(4)(0), signed, 0, mode, predicate = 0, masked = true)
       }
     }
   }
@@ -963,12 +997,12 @@ class VectorIntegerAluSpec extends AnyFlatSpec {
       defaults(dut)
 
       def issue(
-        funct6: Int,
-        initial: Long,
-        values: Seq[Long],
-        expected: Long,
-        vm: Boolean = true,
-        predicate: Int = 0xf
+          funct6: Int,
+          initial: Long,
+          values: Seq[Long],
+          expected: Long,
+          vm: Boolean = true,
+          predicate: Int = 0xf
       ): Unit = {
         dut.io.in.bits.funct6.poke(funct6.U)
         dut.io.in.bits.operandType.poke("b010".U)
@@ -1088,9 +1122,9 @@ class VectorIntegerAluSpec extends AnyFlatSpec {
       dut.clock.step()
       dut.io.in.valid.poke(false.B)
       dut.clock.step(7)
-      dut.io.out.bits.data(0).expect("h0000000f".U)  // 3 * 5 = 15
-      dut.io.out.bits.data(1).expect("hfffffffa".U)  // -2 * 3 = -6
-      dut.io.out.bits.data(2).expect("h3fff0001".U)  // 32767 * 32767 = 1073676289 = 0x3FFF0001
+      dut.io.out.bits.data(0).expect("h0000000f".U) // 3 * 5 = 15
+      dut.io.out.bits.data(1).expect("hfffffffa".U) // -2 * 3 = -6
+      dut.io.out.bits.data(2).expect("h3fff0001".U) // 32767 * 32767 = 1073676289 = 0x3FFF0001
 
       // vwmulu.vv (0x33): zext(lhs[15:0]) * zext(rhs[15:0])
       dut.io.in.valid.poke(true.B)
@@ -1119,7 +1153,7 @@ class VectorIntegerAluSpec extends AnyFlatSpec {
       dut.io.in.bits.funct6.poke("h30".U)
       dut.io.in.bits.operandType.poke("b100".U) // VX
       dut.io.in.bits.vs2(0).poke("h00000010".U) // lower16: +16
-      dut.io.in.bits.scalar.poke("h00000005".U)  // lower16: +5
+      dut.io.in.bits.scalar.poke("h00000005".U) // lower16: +5
       dut.clock.step()
       dut.io.in.valid.poke(false.B)
       dut.clock.step(7)
@@ -1130,7 +1164,7 @@ class VectorIntegerAluSpec extends AnyFlatSpec {
       dut.io.in.bits.funct6.poke("h30".U)
       dut.io.in.bits.operandType.poke("b011".U) // VI
       dut.io.in.bits.vs2(0).poke("h00000010".U) // lower16: +16
-      dut.io.in.bits.immediate.poke("b00101".U)  // imm = 5
+      dut.io.in.bits.immediate.poke("b00101".U) // imm = 5
       dut.clock.step()
       dut.io.in.valid.poke(false.B)
       dut.clock.step(7)

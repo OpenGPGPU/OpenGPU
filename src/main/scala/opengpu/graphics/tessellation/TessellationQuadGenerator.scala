@@ -19,10 +19,9 @@ class TessellationQuadCompletion extends Bundle {
   val status = UInt(3.W); val discarded = Bool()
 }
 
-/** Generate a quad patch's points or oriented triangles. Coordinates are Q0.24.
-  * Patch-local axis and boundary coordinates are retained while the interior
-  * cells and four independently subdivided strips are emitted. Shader execution
-  * and integration into the native render path are outside this module.
+/** Generate a quad patch's points or oriented triangles. Coordinates are Q0.24. Patch-local axis and boundary
+  * coordinates are retained while the interior cells and four independently subdivided strips are emitted. Shader
+  * execution and integration into the native render path are outside this module.
   */
 class TessellationQuadGenerator extends Module {
   val io = IO(new Bundle {
@@ -32,8 +31,8 @@ class TessellationQuadGenerator extends Module {
     val cancel = Input(Bool()); val busy = Output(Bool())
   })
   private object State extends ChiselEnum {
-    val idle, prepareOffer, prepareWait, boundaryStart, boundaryRun, interiorStart, interiorRun,
-      cells, stripStart, stripRun, pointsOuter, pointsInner, trivial, complete = Value
+    val idle, prepareOffer, prepareWait, boundaryStart, boundaryRun, interiorStart, interiorRun, cells, stripStart,
+        stripRun, pointsOuter, pointsInner, trivial, complete = Value
   }
   private val state = RegInit(State.idle)
   private val task = Reg(new TessellationQuadTask)
@@ -64,14 +63,17 @@ class TessellationQuadGenerator extends Module {
   private val endCorner = corners((side + 1.U)(1, 0))
   private val outerCoordinate = outerValues(side)(outerFeed(5, 0))
   private val outerPoint = Wire(new TessellationQuadStripPoint)
-  outerPoint := Mux(outerFeed === outerCount, endCorner,
-    MuxLookup(side, point(0.U, outerCoordinate))(Seq(
-      0.U -> point(outerCoordinate, 0.U), 1.U -> point(one, outerCoordinate),
-      2.U -> point(outerCoordinate, one))))
-  private val innerUIndex = MuxLookup(side, 1.U(7.W))(Seq(
-    0.U -> (1.U + innerFeed), 1.U -> (n - 1.U), 2.U -> (n - 1.U - innerFeed)))
-  private val innerVIndex = MuxLookup(side, 1.U(7.W))(Seq(
-    1.U -> (1.U + innerFeed), 2.U -> (m - 1.U), 3.U -> (m - 1.U - innerFeed)))
+  outerPoint := Mux(
+    outerFeed === outerCount,
+    endCorner,
+    MuxLookup(side, point(0.U, outerCoordinate))(
+      Seq(0.U -> point(outerCoordinate, 0.U), 1.U -> point(one, outerCoordinate), 2.U -> point(outerCoordinate, one))
+    )
+  )
+  private val innerUIndex =
+    MuxLookup(side, 1.U(7.W))(Seq(0.U -> (1.U + innerFeed), 1.U -> (n - 1.U), 2.U -> (n - 1.U - innerFeed)))
+  private val innerVIndex =
+    MuxLookup(side, 1.U(7.W))(Seq(1.U -> (1.U + innerFeed), 2.U -> (m - 1.U), 3.U -> (m - 1.U - innerFeed)))
   private val innerPoint = point(uValues(innerUIndex(5, 0)), vValues(innerVIndex(5, 0)))
 
   levels.io.in.valid := state === State.prepareOffer
@@ -122,8 +124,13 @@ class TessellationQuadGenerator extends Module {
     .elsewhen(state === State.trivial && !task.pointMode) {
       p.vertices(0) := trivial0; p.vertices(1) := Mux(task.clockwise, trivial2, trivial1)
       p.vertices(2) := Mux(task.clockwise, trivial1, trivial2)
-    }.otherwise {
-      val v = Mux(state === State.pointsOuter, outerPoint, Mux(state === State.pointsInner, innerVertex, corners(trivialIndex(1, 0))))
+    }
+    .otherwise {
+      val v = Mux(
+        state === State.pointsOuter,
+        outerPoint,
+        Mux(state === State.pointsInner, innerVertex, corners(trivialIndex(1, 0)))
+      )
       p.point := true.B; p.vertices := VecInit(Seq.fill(3)(v))
     }
   io.out.valid := state === State.cells || state === State.pointsOuter || state === State.pointsInner ||
@@ -143,7 +150,9 @@ class TessellationQuadGenerator extends Module {
     when(stop) { result.status := 4.U; state := State.complete }
       .elsewhen(levels.io.out.bits.invalid) { result.status := 1.U; state := State.complete }
       .elsewhen(levels.io.out.bits.discard) { result.discarded := true.B; state := State.complete }
-      .elsewhen(levels.io.out.bits.inner(0).segments === 1.U && levels.io.out.bits.inner(1).segments === 1.U) { state := State.trivial }
+      .elsewhen(levels.io.out.bits.inner(0).segments === 1.U && levels.io.out.bits.inner(1).segments === 1.U) {
+        state := State.trivial
+      }
       .otherwise { state := State.boundaryStart }
   }
   when(state === State.boundaryStart) {
@@ -201,18 +210,21 @@ class TessellationQuadGenerator extends Module {
               .otherwise { cellV := cellV + 1.U }
           }.otherwise { cellU := cellU + 1.U }
         }
-      }.elsewhen(state === State.pointsOuter) {
+      }
+      .elsewhen(state === State.pointsOuter) {
         when(outerFeed +& 1.U === outerCount) {
           outerFeed := 0.U
           when(side === 3.U) { cellU := 1.U; cellV := 1.U; state := State.pointsInner }
             .otherwise { side := side + 1.U }
         }.otherwise { outerFeed := outerFeed + 1.U }
-      }.elsewhen(state === State.pointsInner) {
+      }
+      .elsewhen(state === State.pointsInner) {
         when(cellU +& 1.U === n) {
           cellU := 1.U
           when(cellV +& 1.U === m) { state := State.complete }.otherwise { cellV := cellV + 1.U }
         }.otherwise { cellU := cellU + 1.U }
-      }.elsewhen(state === State.trivial) {
+      }
+      .elsewhen(state === State.trivial) {
         when(trivialIndex +& 1.U === Mux(task.pointMode, 4.U, 2.U)) { state := State.complete }
           .otherwise { trivialIndex := trivialIndex + 1.U }
       }

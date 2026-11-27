@@ -13,8 +13,7 @@ object FpuUnit extends ChiselEnum {
 }
 
 object VectorUnit extends ChiselEnum {
-  val none, alu, multiply, divide, floatingPoint, loadStore, configuration,
-    mask, texture, branch = Value
+  val none, alu, multiply, divide, floatingPoint, loadStore, configuration, mask, texture, branch = Value
 }
 
 /** RV32F controls carried from decode to the floating-point issue path. */
@@ -123,23 +122,58 @@ class VectorDecodeResponse(config: GpuConfig) extends Bundle {
   val decoded = new VectorDecodeSignals
 }
 
-class DecodePipeIO(config: GpuConfig, taskTextureAvailability: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false, evaluationPatchAvailable: Boolean = false, tessellationInfoAvailable: Boolean = false) extends Bundle {
+class DecodePipeIO(
+    config: GpuConfig,
+    taskTextureAvailability: Boolean = false,
+    imageAvailable: Boolean = false,
+    storageAvailable: Boolean = false,
+    computeUniformAvailable: Boolean = false,
+    geometryAvailable: Boolean = false,
+    computeTextureAvailable: Boolean = false,
+    atomicCounterAvailable: Boolean = false,
+    tessellationAvailable: Boolean = false,
+    evaluationPatchAvailable: Boolean = false,
+    tessellationInfoAvailable: Boolean = false
+) extends Bundle {
   // Preserve the previous full JVM constructor for frozen default-off callers.
-  def this(config: GpuConfig, taskTextureAvailability: Boolean, imageAvailable: Boolean, storageAvailable: Boolean, computeUniformAvailable: Boolean, geometryAvailable: Boolean, computeTextureAvailable: Boolean, atomicCounterAvailable: Boolean, tessellationAvailable: Boolean, evaluationPatchAvailable: Boolean) =
-    this(config, taskTextureAvailability, imageAvailable, storageAvailable, computeUniformAvailable, geometryAvailable, computeTextureAvailable, atomicCounterAvailable, tessellationAvailable, evaluationPatchAvailable, false)
+  def this(
+      config: GpuConfig,
+      taskTextureAvailability: Boolean,
+      imageAvailable: Boolean,
+      storageAvailable: Boolean,
+      computeUniformAvailable: Boolean,
+      geometryAvailable: Boolean,
+      computeTextureAvailable: Boolean,
+      atomicCounterAvailable: Boolean,
+      tessellationAvailable: Boolean,
+      evaluationPatchAvailable: Boolean
+  ) =
+    this(
+      config,
+      taskTextureAvailability,
+      imageAvailable,
+      storageAvailable,
+      computeUniformAvailable,
+      geometryAvailable,
+      computeTextureAvailable,
+      atomicCounterAvailable,
+      tessellationAvailable,
+      evaluationPatchAvailable,
+      false
+    )
 
-  val imageEnabled = if(imageAvailable) Some(Input(Bool())) else None
-  val storageEnabled = if(storageAvailable) Some(Input(Bool())) else None
-  val computeUniformEnabled = if(computeUniformAvailable) Some(Input(Bool())) else None
-  val geometryEnabled = if(geometryAvailable) Some(Input(Bool())) else None
-  val tessellationEnabled = if(tessellationAvailable) Some(Input(Bool())) else None
-  val evaluationPatchEnabled = if(evaluationPatchAvailable) Some(Input(Bool())) else None
-    val tessellationInfoEnabled = if(tessellationInfoAvailable) Some(Input(Bool())) else None
-    val computeTextureEnabled = if(computeTextureAvailable) Some(Input(Bool())) else None
-    val atomicCounterEnabled = if(atomicCounterAvailable) Some(Input(Bool())) else None
-  val textureEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
-  val nativeResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
-  val uniformResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
+  val imageEnabled = if (imageAvailable) Some(Input(Bool())) else None
+  val storageEnabled = if (storageAvailable) Some(Input(Bool())) else None
+  val computeUniformEnabled = if (computeUniformAvailable) Some(Input(Bool())) else None
+  val geometryEnabled = if (geometryAvailable) Some(Input(Bool())) else None
+  val tessellationEnabled = if (tessellationAvailable) Some(Input(Bool())) else None
+  val evaluationPatchEnabled = if (evaluationPatchAvailable) Some(Input(Bool())) else None
+  val tessellationInfoEnabled = if (tessellationInfoAvailable) Some(Input(Bool())) else None
+  val computeTextureEnabled = if (computeTextureAvailable) Some(Input(Bool())) else None
+  val atomicCounterEnabled = if (atomicCounterAvailable) Some(Input(Bool())) else None
+  val textureEnabled = if (taskTextureAvailability) Some(Input(Bool())) else None
+  val nativeResourcesEnabled = if (taskTextureAvailability) Some(Input(Bool())) else None
+  val uniformResourcesEnabled = if (taskTextureAvailability) Some(Input(Bool())) else None
   val in = Flipped(Decoupled(new DecodeRequest(config)))
   val scalarOut = Decoupled(new ScalarDecodeResponse(config))
   val fpuOut = Decoupled(new FpuDecodeResponse(config))

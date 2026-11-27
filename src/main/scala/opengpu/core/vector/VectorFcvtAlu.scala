@@ -16,9 +16,8 @@ private class VectorFcvtMetadata(config: GpuConfig) extends Bundle {
 
 /** Lane-local RVV FP32/SEW=32 conversion and classification wrapper.
   *
-  * Implements vfcvt.xu.f.v, vfcvt.x.f.v, vfcvt.f.xu.v, vfcvt.f.x.v, and the
-  * two rtz float-to-integer variants, plus vfclass.v.  The non-rtz conversion
-  * forms use the per-warp dynamic rounding mode supplied on the request.
+  * Implements vfcvt.xu.f.v, vfcvt.x.f.v, vfcvt.f.xu.v, vfcvt.f.x.v, and the two rtz float-to-integer variants, plus
+  * vfclass.v. The non-rtz conversion forms use the per-warp dynamic rounding mode supplied on the request.
   */
 class VectorFcvtAlu(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {

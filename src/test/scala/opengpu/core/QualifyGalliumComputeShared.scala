@@ -16,22 +16,37 @@ import scala.jdk.CollectionConverters._
 
 private class GalliumSharedSramModels extends BlackBox with HasBlackBoxInline {
   val io = IO(new Bundle { val present = Output(Bool()) })
-  setInline("GalliumSharedSramModels.sv",
+  setInline(
+    "GalliumSharedSramModels.sv",
     "module GalliumSharedSramModels(output present); assign present=1'b1; endmodule\n" +
-      Seq(32, 64).map(w => Files.readString(Paths.get(
-        s"depends/asap7_sram_0p0/generated/verilog/srambank_64x4x${w}_6t122.v"))).mkString("\n"))
+      Seq(32, 64)
+        .map(w => Files.readString(Paths.get(s"depends/asap7_sram_0p0/generated/verilog/srambank_64x4x${w}_6t122.v")))
+        .mkString("\n")
+  )
 }
 
 /** The stock full native CU factory, including FPU and both checked services. */
 private class GalliumSharedComputeHarness extends Module {
   private val c = GpuConfig()
-  require(c.lanes == 16 && c.warps == 8 && c.simtStackDepth == 8 &&
-    c.sharedMemoryBytes == 16384 && c.sharedMemoryBanks == 16 &&
-    c.sharedMemoryBase == 0x10000000L && c.enableFpu && c.enableVector)
-  val cu = Module(new GpuComputeUnit(c, useBlackBoxes = true, enableFpuBackend = true,
-    finishOnTrap = true, textureAvailable = false, taskTextureAvailability = true,
-    nativeResourcesAvailable = false, storageAvailable = true, computeUniformAvailable = true,
-    nativeExecutionProfile = true))
+  require(
+    c.lanes == 16 && c.warps == 8 && c.simtStackDepth == 8 &&
+      c.sharedMemoryBytes == 16384 && c.sharedMemoryBanks == 16 &&
+      c.sharedMemoryBase == 0x10000000L && c.enableFpu && c.enableVector
+  )
+  val cu = Module(
+    new GpuComputeUnit(
+      c,
+      useBlackBoxes = true,
+      enableFpuBackend = true,
+      finishOnTrap = true,
+      textureAvailable = false,
+      taskTextureAvailability = true,
+      nativeResourcesAvailable = false,
+      storageAvailable = true,
+      computeUniformAvailable = true,
+      nativeExecutionProfile = true
+    )
+  )
   val io = IO(new Bundle { val compute = chiselTypeOf(cu.io); val modelsPresent = Output(Bool()) })
   io.compute <> cu.io
   io.modelsPresent := Module(new GalliumSharedSramModels).io.present
@@ -41,26 +56,45 @@ private[core] object GalliumSharedArtifacts {
   val names = Vector("full", "epoch-b")
   val codeWords = 486
   val cycleBudget = 524288
-  def sha(p: Path): String = MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(p))
-    .map(b => f"${b & 255}%02x").mkString
+  def sha(p: Path): String = MessageDigest
+    .getInstance("SHA-256")
+    .digest(Files.readAllBytes(p))
+    .map(b => f"${b & 255}%02x")
+    .mkString
   def load(directory: Path, expected: String): Vector[Vector[BigInt]] = {
     val manifest = directory.resolve("manifest.properties")
-    require(expected.matches("[a-f0-9]{64}") && sha(manifest) == expected,
-      "actual CPU-qualified manifest changed")
+    require(expected.matches("[a-f0-9]{64}") && sha(manifest) == expected, "actual CPU-qualified manifest changed")
     val p = new Properties
     val stream = Files.newInputStream(manifest)
-    try p.load(stream) finally stream.close()
-    val fixed = Map("format" -> "1", "native.words" -> "486", "shared.bytes" -> "16384",
-      "shared.base" -> "10000000", "lanes" -> "16", "warps" -> "8",
-      "local.x" -> "128", "local.y" -> "1", "local.z" -> "1",
-      "grid.x" -> "2", "grid.y" -> "1", "grid.z" -> "1")
-    require(p.stringPropertyNames().asScala.toSet ==
-      fixed.keySet ++ names.map(_ + ".words.sha256") + "cpu.result.sha256")
+    try p.load(stream)
+    finally stream.close()
+    val fixed = Map(
+      "format" -> "1",
+      "native.words" -> "486",
+      "shared.bytes" -> "16384",
+      "shared.base" -> "10000000",
+      "lanes" -> "16",
+      "warps" -> "8",
+      "local.x" -> "128",
+      "local.y" -> "1",
+      "local.z" -> "1",
+      "grid.x" -> "2",
+      "grid.y" -> "1",
+      "grid.z" -> "1"
+    )
+    require(
+      p.stringPropertyNames().asScala.toSet ==
+        fixed.keySet ++ names.map(_ + ".words.sha256") + "cpu.result.sha256"
+    )
     fixed.foreach { case (key, value) => require(p.getProperty(key) == value, key) }
     require(p.getProperty("cpu.result.sha256").matches("[a-f0-9]{64}"))
     val entries = Files.list(directory)
-    try require(entries.iterator().asScala.map(_.getFileName.toString).toSet ==
-      Set("manifest.properties", "full.words", "epoch-b.words")) finally entries.close()
+    try
+      require(
+        entries.iterator().asScala.map(_.getFileName.toString).toSet ==
+          Set("manifest.properties", "full.words", "epoch-b.words")
+      )
+    finally entries.close()
     names.map { name =>
       val path = directory.resolve(name + ".words")
       require(sha(path) == p.getProperty(name + ".words.sha256"), name + " actual words changed")
@@ -79,22 +113,26 @@ private[core] object GalliumSharedArtifacts {
 @DoNotDiscover
 class GalliumComputeSharedQualification extends AnyFlatSpec {
   private def zero(d: Data): Unit = d match {
-    case r: Record => r.elements.values.foreach(zero)
-    case v: Vec[_] => v.foreach(zero)
+    case r: Record                                                     => r.elements.values.foreach(zero)
+    case v: Vec[_]                                                     => v.foreach(zero)
     case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
     case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
     case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
-    case _ => ()
+    case _                                                             => ()
   }
   private val mask32 = (BigInt(1) << 32) - 1
   private def expected(seed: BigInt, group: Int, local: Int): BigInt =
     (0 until 32).map(r => seed + (group << 16) + (local ^ 16) + r * 128).sum & mask32
 
   it should "execute actual full shared ESSL words with eight warps, two barriers and held completion" in {
-    require(sys.props.get("opengpu.galliumComputeSharedQualification").contains("1"),
-      "explicit local qualification only")
-    val programs = GalliumSharedArtifacts.load(Paths.get(sys.props("opengpu.galliumSharedArtifacts")),
-      sys.props("opengpu.galliumSharedArtifactSha256"))
+    require(
+      sys.props.get("opengpu.galliumComputeSharedQualification").contains("1"),
+      "explicit local qualification only"
+    )
+    val programs = GalliumSharedArtifacts.load(
+      Paths.get(sys.props("opengpu.galliumSharedArtifacts")),
+      sys.props("opengpu.galliumSharedArtifactSha256")
+    )
     simulate(new GalliumSharedComputeHarness) { top =>
       val d = top.io.compute
       zero(top.io); top.reset.poke(true.B); top.clock.step(2); top.reset.poke(false.B)
@@ -125,19 +163,34 @@ class GalliumComputeSharedQualification extends AnyFlatSpec {
         val levels = mutable.Map.empty[(BigInt, BigInt), BigInt]
         for (root <- Seq(iRoot, vRoot)) { blank(root, 4096); pageTables += root }
         def map(root: BigInt, virtual: BigInt, physical: BigInt, flags: Int): Unit = {
-          val level = levels.getOrElseUpdate((root, virtual >> 22), {
-            val a = root + 4096 * (1 + levels.keys.count(_._1 == root))
-            blank(a, 4096); pageTables += a; a
-          })
+          val level = levels.getOrElseUpdate(
+            (root, virtual >> 22), {
+              val a = root + 4096 * (1 + levels.keys.count(_._1 == root))
+              blank(a, 4096); pageTables += a; a
+            }
+          )
           put(root + (virtual >> 22) * 4, ((level >> 12) << 10) | 1)
           put(level + ((virtual >> 12) & 1023) * 4, ((physical >> 12) << 10) | flags)
         }
         blank(codeP, 4096); words.zipWithIndex.foreach { case (w, i) => put(codeP + 4 * i, w) }
         Seq(2, 1, 1).zipWithIndex.foreach { case (n, i) => put(kernargP + 4 * i, BigInt(n)) }
         blank(tableP, 256)
-        Seq[(Int, BigInt)](0 -> StorageDescriptorLayout.magic, 1 -> 64, 2 -> 1,
-          3 -> (epoch + 1), 4 -> 7, 5 -> (epoch + 1), 6 -> 0, 7 -> 1, 8 -> 1, 9 -> 1,
-          10 -> outputV, 11 -> (outputV + 1024), 13 -> outputV, 14 -> (outputV + 4096))
+        Seq[(Int, BigInt)](
+          0 -> StorageDescriptorLayout.magic,
+          1 -> 64,
+          2 -> 1,
+          3 -> (epoch + 1),
+          4 -> 7,
+          5 -> (epoch + 1),
+          6 -> 0,
+          7 -> 1,
+          8 -> 1,
+          9 -> 1,
+          10 -> outputV,
+          11 -> (outputV + 1024),
+          13 -> outputV,
+          14 -> (outputV + 4096)
+        )
           .foreach { case (i, v) => put(tableP + 4 * i, v) }
         for (i <- -64 until 4160) memory(outputP + i) = 0xa5
         map(iRoot, pc, codeP, 0x4b); map(vRoot, kernargV, kernargP, 0x43)
@@ -145,8 +198,7 @@ class GalliumComputeSharedQualification extends AnyFlatSpec {
         val expectedWords = (for (group <- 0 until 2; local <- 0 until 128)
           yield (outputP + 4 * (group * 128 + local)) -> expected(seed, group, local)).toMap
         val frozen = memory.toMap
-        case class Reply(id: BigInt, address: BigInt, value: BigInt, due: Int,
-                         write: Option[(BigInt, BigInt, BigInt)])
+        case class Reply(id: BigInt, address: BigInt, value: BigInt, due: Int, write: Option[(BigInt, BigInt, BigInt)])
         val pending = mutable.ArrayBuffer.empty[Reply]
         var offered = Option.empty[Reply]
         val outstanding = mutable.Set.empty[BigInt]
@@ -161,8 +213,10 @@ class GalliumComputeSharedQualification extends AnyFlatSpec {
           heldRequest.isEmpty && !d.memoryRequest.valid.peek().litToBoolean &&
           !d.memoryResponse.valid.peek().litToBoolean
         def tick(): Unit = {
-          assert(cycles < GalliumSharedArtifacts.cycleBudget && totalCycles < 1048576,
-            s"shared epoch=$epoch bounded cycles $cycles/$totalCycles")
+          assert(
+            cycles < GalliumSharedArtifacts.cycleBudget && totalCycles < 1048576,
+            s"shared epoch=$epoch bounded cycles $cycles/$totalCycles"
+          )
           if (admission) {
             d.instructionSatp.expect(iSatp.U); d.vectorSatp.expect(vSatp.U)
             d.storageLease.get.expect(true.B); d.computeUniformLease.get.expect(false.B)
@@ -210,8 +264,11 @@ class GalliumComputeSharedQualification extends AnyFlatSpec {
               val size = q.sizeLog2.peek().litValue.toInt; val wr = q.isWrite.peek().litToBoolean
               assert(!outstanding(id) && (id < 4 || (id >= 8 && id <= 12))); outstanding += id
               if (size == 2) {
-                assert(!wr && (id < 4 || id == 10 || id == 12) && (a & 3) == 0 &&
-                  pageTables(a & ~BigInt(4095))); walks += 1
+                assert(
+                  !wr && (id < 4 || id == 10 || id == 12) && (a & 3) == 0 &&
+                    pageTables(a & ~BigInt(4095))
+                );
+                walks += 1
               } else {
                 assert(size == 6 && (a & 63) == 0)
                 if (id == 8) {
@@ -219,19 +276,27 @@ class GalliumComputeSharedQualification extends AnyFlatSpec {
                 } else if (id == 9) {
                   q.cachePolicy.expect(CachePolicy.uncached); assert(wr, "unexpected storage read")
                   val m = q.byteMask.peek().litValue; val first = m.lowestSetBit; val at = a + first
-                  assert(first >= 0 && (first & 3) == 0 && m == (BigInt(15) << first) &&
-                    expectedWords.contains(at) && !written(at))
+                  assert(
+                    first >= 0 && (first & 3) == 0 && m == (BigInt(15) << first) &&
+                      expectedWords.contains(at) && !written(at)
+                  )
                   assert(((q.writeData.peek().litValue >> (8 * first)) & mask32) == expectedWords(at))
                   written += at
                 } else {
-                  assert(id < 4 && !wr && a >= codeP && a < codeP + 4096,
-                    "unexpected uniform, kernarg, shared or other external access")
+                  assert(
+                    id < 4 && !wr && a >= codeP && a < codeP + 4096,
+                    "unexpected uniform, kernarg, shared or other external access"
+                  )
                   codeReads += 1
                 }
               }
-              pending += Reply(id, a, if (wr) BigInt(0) else read(a, if (size == 2) 4 else 64),
+              pending += Reply(
+                id,
+                a,
+                if (wr) BigInt(0) else read(a, if (size == 2) 4 else 64),
                 totalCycles + (if (wr) 17 else 3),
-                if (wr) Some((a, q.writeData.peek().litValue, q.byteMask.peek().litValue)) else None)
+                if (wr) Some((a, q.writeData.peek().litValue, q.byteMask.peek().litValue)) else None
+              )
             } else { heldRequest = Some(bits); requestStalls += 1 }
           } else assert(heldRequest.isEmpty, "held request withdrawn")
           top.clock.step(); cycles += 1; totalCycles += 1
@@ -258,10 +323,14 @@ class GalliumComputeSharedQualification extends AnyFlatSpec {
         admission = true; d.kernel.valid.poke(false.B); zero(storage)
         until("completion")(d.completion.valid.peek().litToBoolean)
         d.completion.bits.success.expect(true.B); tick(); assert(drained)
-        assert(peakWarps == 8 && warpStarts == 16 && maxBarrierWaiting > 0 &&
-          walks > 0 && codeReads > 0 && requestStalls > 0)
-        assert(written.toSet == expectedWords.keySet && acknowledged.toSet == expectedWords.keySet &&
-          descriptorAddresses.toSet == Set(tableP))
+        assert(
+          peakWarps == 8 && warpStarts == 16 && maxBarrierWaiting > 0 &&
+            walks > 0 && codeReads > 0 && requestStalls > 0
+        )
+        assert(
+          written.toSet == expectedWords.keySet && acknowledged.toSet == expectedWords.keySet &&
+            descriptorAddresses.toSet == Set(tableP)
+        )
         val golden = mutable.Map.empty[BigInt, Int] ++ frozen
         expectedWords.foreach { case (a, v) => for (i <- 0 until 4) golden(a + i) = ((v >> (8 * i)) & 255).toInt }
         assert(memory.toMap == golden.toMap, "output, allocation guard, descriptor or code changed")
@@ -277,24 +346,35 @@ class GalliumComputeSharedQualification extends AnyFlatSpec {
         for (_ <- 0 until 16) { tick(); d.active.expect(0.U); d.barrierWaiting.expect(0.U); assert(drained) }
         assert(memory.toMap == golden.toMap)
         totalWarpStarts += warpStarts
-        info(s"GALLIUM_SHARED_CU epoch=${epoch + 1} PASS codeWords=486 groups=2 local=128 warpStarts=$warpStarts peakWarps=$peakWarps sharedBytes=16384 outputWords=${written.size} acks=${acknowledged.size} walks=$walks codeReads=$codeReads maxBarrierWaiting=$maxBarrierWaiting requestStalls=$requestStalls responseStalls=$responseStalls heldCompletion=13 quietTail=16 cycles=$cycles")
+        info(
+          s"GALLIUM_SHARED_CU epoch=${epoch + 1} PASS codeWords=486 groups=2 local=128 warpStarts=$warpStarts peakWarps=$peakWarps sharedBytes=16384 outputWords=${written.size} acks=${acknowledged.size} walks=$walks codeReads=$codeReads maxBarrierWaiting=$maxBarrierWaiting requestStalls=$requestStalls responseStalls=$responseStalls heldCompletion=13 quietTail=16 cycles=$cycles"
+        )
       }
       assert(totalWarpStarts == 32)
-      info(s"GALLIUM_SHARED_CU PASS parents=2 groups=4 nativeWarpStarts=32 outputWords=512 lanes=16 warps=8 sharedBytes=16384 realSram=true fpuRetained=true cycles=$totalCycles hostLinuxAPIQualified=false H7Complete=false")
+      info(
+        s"GALLIUM_SHARED_CU PASS parents=2 groups=4 nativeWarpStarts=32 outputWords=512 lanes=16 warps=8 sharedBytes=16384 realSram=true fpuRetained=true cycles=$totalCycles hostLinuxAPIQualified=false H7Complete=false"
+      )
     }
   }
 }
 
 object QualifyGalliumComputeShared {
   def main(args: Array[String]): Unit = {
-    require(sys.props.get("opengpu.galliumComputeSharedQualification").contains("1"),
-      "explicit local qualification only")
-    require(args.length == 6 && args(0) == "--artifacts" && args(2) == "--manifest-sha256" && args(4) == "--reports",
-      "usage: --artifacts DIRECTORY --manifest-sha256 SHA256 --reports DIRECTORY")
+    require(
+      sys.props.get("opengpu.galliumComputeSharedQualification").contains("1"),
+      "explicit local qualification only"
+    )
+    require(
+      args.length == 6 && args(0) == "--artifacts" && args(2) == "--manifest-sha256" && args(4) == "--reports",
+      "usage: --artifacts DIRECTORY --manifest-sha256 SHA256 --reports DIRECTORY"
+    )
     GalliumSharedArtifacts.load(Paths.get(args(1)), args(3)) // before elaboration/cache lookup
     sys.props("opengpu.galliumSharedArtifacts") = args(1)
     sys.props("opengpu.galliumSharedArtifactSha256") = args(3)
-    require(org.scalatest.tools.Runner.run(Array("-s", classOf[GalliumComputeSharedQualification].getName,
-      "-oD", "-u", args(5))), "Gallium shared qualification failed")
+    require(
+      org.scalatest.tools.Runner
+        .run(Array("-s", classOf[GalliumComputeSharedQualification].getName, "-oD", "-u", args(5))),
+      "Gallium shared qualification failed"
+    )
   }
 }

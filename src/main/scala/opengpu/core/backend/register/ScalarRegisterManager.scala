@@ -3,11 +3,7 @@ package opengpu.core.backend.register
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
-import opengpu.core.backend.scoreboard.{
-  RegisterReservation,
-  RegisterScoreboard,
-  RegisterRelease
-}
+import opengpu.core.backend.scoreboard.{RegisterReservation, RegisterScoreboard, RegisterRelease}
 
 class ScalarIssueOperands(config: GpuConfig) extends Bundle {
   val request = new RegisterReservation(config)
@@ -18,9 +14,8 @@ class ScalarIssueOperands(config: GpuConfig) extends Bundle {
 
 /** Two-stage atomic scalar register/scoreboard issue boundary.
   *
-  * The request register isolates decoder inputs from the large RF/scoreboard
-  * selection network. The registered operand output isolates that network
-  * from execution. Both stages are elastic and sustain one request per cycle.
+  * The request register isolates decoder inputs from the large RF/scoreboard selection network. The registered operand
+  * output isolates that network from execution. Both stages are elastic and sustain one request per cycle.
   */
 class ScalarRegisterManager(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {
@@ -50,8 +45,8 @@ class ScalarRegisterManager(config: GpuConfig = GpuConfig()) extends Module {
   scoreboard.io.release.bits.rd := io.writeback.bits.rd
   scoreboard.io.cancel := io.cancel
 
-  registerFile.io.read.warpId := Mux(comparePending,compareOperands.request.warpId,requestBits.warpId)
-  registerFile.io.read.rs1 := Mux(comparePending,compareOperands.request.rd,requestBits.rs1)
+  registerFile.io.read.warpId := Mux(comparePending, compareOperands.request.warpId, requestBits.warpId)
+  registerFile.io.read.rs1 := Mux(comparePending, compareOperands.request.rd, requestBits.rs1)
   registerFile.io.read.rs2 := requestBits.rs2
   registerFile.io.write := io.writeback
 

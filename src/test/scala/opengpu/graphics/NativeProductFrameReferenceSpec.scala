@@ -39,12 +39,10 @@ class NativeProductFrameReferenceSpec extends AnyFlatSpec {
   }
 
   it should "select perspective UVs rather than affine UVs on the same screen triangle" in {
-    val perspective = Triangle(Vertex(-1, -1, 0, 1), Vertex(2, -2, 0, 2, 1, 0),
-      Vertex(-4, 4, 0, 4))
-    val affine = Triangle(Vertex(-1, -1, 0, 1), Vertex(1, -1, 0, 1, 1, 0),
-      Vertex(-1, 1, 0, 1))
-    def reference(t: Triangle) = new NativeProductFrameReference(Scene("uv-probe", 16, 16, 1,
-      Vector(Draw(Vector(t), white, textured = true))))
+    val perspective = Triangle(Vertex(-1, -1, 0, 1), Vertex(2, -2, 0, 2, 1, 0), Vertex(-4, 4, 0, 4))
+    val affine = Triangle(Vertex(-1, -1, 0, 1), Vertex(1, -1, 0, 1, 1, 0), Vertex(-1, 1, 0, 1))
+    def reference(t: Triangle) =
+      new NativeProductFrameReference(Scene("uv-probe", 16, 16, 1, Vector(Draw(Vector(t), white, textured = true))))
     // At (4.5,4.5), barycentrics are 7/16,9/32,9/32. Perspective U=18/83,
     // selecting texel1; affine U=9/32 selects texel2. V is identically zero.
     assert(reference(perspective).pixel(4, 4).color == Vector(textureRgba8(1)))
@@ -53,10 +51,10 @@ class NativeProductFrameReferenceSpec extends AnyFlatSpec {
   }
 
   it should "keep distinct sample depths and resolve partially covered 4x edges" in {
-    val triangle = Triangle(Vertex(-1, -1, -0.5f, 1), Vertex(1, -1, 0.5f, 1),
-      Vertex(-1, 1, 0.5f, 1))
-    val ref = new NativeProductFrameReference(Scene("sloped-edge", 16, 16, 4,
-      Vector(Draw(Vector(triangle), white, depthTest = true, depthWrite = true))))
+    val triangle = Triangle(Vertex(-1, -1, -0.5f, 1), Vertex(1, -1, 0.5f, 1), Vertex(-1, 1, 0.5f, 1))
+    val ref = new NativeProductFrameReference(
+      Scene("sloped-edge", 16, 16, 4, Vector(Draw(Vector(triangle), white, depthTest = true, depthWrite = true)))
+    )
     val p = ref.pixel(7, 8)
     assert(p.coveredSamples == 3 && p.passedSamples == 3)
     assert(p.color == Vector(-1, -1, -1, 0))
@@ -76,8 +74,7 @@ class NativeProductFrameReferenceSpec extends AnyFlatSpec {
   }
 
   it should "retain the first equal-depth owner and wrap negative texture coordinates" in {
-    val t = Triangle(Vertex(-1, -1, 0, 1, -0.125f, 0),
-      Vertex(1, -1, 0, 1, -0.125f, 0), Vertex(-1, 1, 0, 1, -0.125f, 0))
+    val t = Triangle(Vertex(-1, -1, 0, 1, -0.125f, 0), Vertex(1, -1, 0, 1, -0.125f, 0), Vertex(-1, 1, 0, 1, -0.125f, 0))
     val first = Draw(Vector(t), white, textured = true, depthTest = true, depthWrite = true)
     val second = Draw(Vector(t), Vector(1f, 0f, 0f, 1f), depthTest = true, depthWrite = true)
     val ref = new NativeProductFrameReference(Scene("equal-depth", 16, 16, 1, Vector(first, second)))

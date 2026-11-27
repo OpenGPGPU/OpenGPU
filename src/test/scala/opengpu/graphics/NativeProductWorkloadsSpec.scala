@@ -10,8 +10,7 @@ class NativeProductWorkloadsSpec extends AnyFlatSpec {
     for ((w, h) <- Seq((32, 32), (64, 48))) {
       val scenes = suite(w, h)
       assert(scenes.map(_.id) == ids && scenes.map(_.id).distinct.size == 6)
-      assert(scenes.map(_.primitiveCount) == Vector(8, 24, 16, 16,
-        ((w + 7) / 8) * ((h + 7) / 8), 24))
+      assert(scenes.map(_.primitiveCount) == Vector(8, 24, 16, 16, ((w + 7) / 8) * ((h + 7) / 8), 24))
       assert(scenes.forall(_.finalColorBytes == w.toLong * h * 4))
       assert(scenes.map(_.samples) == Vector(1, 1, 1, 1, 1, 4))
       assert(scenes.head.draws.count(_.blend) == 3)

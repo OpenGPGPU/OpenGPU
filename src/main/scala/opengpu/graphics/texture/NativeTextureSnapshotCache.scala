@@ -15,9 +15,8 @@ class NativeTextureSnapshot extends Bundle {
   val template = new NativeRgba8TextureLaneTemplate
 }
 
-/** Task-scoped checked nonmip snapshots. GXR1/GXB1/image/sampler metadata is
-  * immutable until publication invalidation or the next trusted task launch.
-  * Coordinates, offsets, component and warp are deliberately not cached.
+/** Task-scoped checked nonmip snapshots. GXR1/GXB1/image/sampler metadata is immutable until publication invalidation
+  * or the next trusted task launch. Coordinates, offsets, component and warp are deliberately not cached.
   */
 class NativeTextureSnapshotCache(entries: Int = 4) extends Module {
   require(entries > 0 && isPow2(entries))
@@ -33,13 +32,17 @@ class NativeTextureSnapshotCache(entries: Int = 4) extends Module {
   private val snapshots = Reg(Vec(entries, new NativeTextureSnapshot))
   private val replacement = RegInit(0.U(indexWidth.W))
   private val hits = VecInit((0 until entries).map(i => valid(i) && snapshots(i).key.asUInt === io.lookup.asUInt))
-  private val writeHits = VecInit((0 until entries).map(i => valid(i) && snapshots(i).key.asUInt === io.write.bits.key.asUInt))
+  private val writeHits = VecInit(
+    (0 until entries).map(i => valid(i) && snapshots(i).key.asUInt === io.write.bits.key.asUInt)
+  )
   io.hit := hits.asUInt.orR && !io.clear
   io.template := Mux1H(hits, snapshots.map(_.template))
   assert(PopCount(hits) <= 1.U && PopCount(writeHits) <= 1.U, "checked snapshot key has duplicate live entries")
   private val free = PriorityEncoder(VecInit(valid.map(x => !x)).asUInt)
-  private val selected = if (entries == 1) 0.U else
-    Mux(writeHits.asUInt.orR, PriorityEncoder(writeHits.asUInt), Mux(valid.asUInt.andR, replacement, free))
+  private val selected =
+    if (entries == 1) 0.U
+    else
+      Mux(writeHits.asUInt.orR, PriorityEncoder(writeHits.asUInt), Mux(valid.asUInt.andR, replacement, free))
   when(io.write.valid && !io.clear) {
     snapshots(selected) := io.write.bits
     valid(selected) := true.B

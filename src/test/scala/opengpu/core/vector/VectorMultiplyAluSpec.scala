@@ -107,8 +107,11 @@ class VectorMultiplyAluSpec extends AnyFlatSpec {
       // vmadd/vnmsub accumulate into vs2 with the destination as the
       // multiplicand, so lane 0 adds 8 + 4*0x100 and subtracts it again.
       run(0x29, 0b010, Seq(0x408, 0x40c, 0x410, 0x414))
-      run(0x2b, 0b010, Seq(BigInt("fffffc08", 16), BigInt("fffffc04", 16),
-        BigInt("fffffc00", 16), BigInt("fffffbfc", 16)))
+      run(
+        0x2b,
+        0b010,
+        Seq(BigInt("fffffc08", 16), BigInt("fffffc04", 16), BigInt("fffffc00", 16), BigInt("fffffbfc", 16))
+      )
 
       // The vector-scalar forms take the scalar in place of vs1.
       defaults(dut)

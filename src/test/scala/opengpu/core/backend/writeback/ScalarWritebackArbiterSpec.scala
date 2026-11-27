@@ -9,10 +9,10 @@ class ScalarWritebackArbiterSpec extends AnyFlatSpec {
   behavior of "ScalarWritebackArbiter"
 
   private def drive(
-    dut: ScalarWritebackArbiter,
-    source: Int,
-    rd: Int,
-    data: Int
+      dut: ScalarWritebackArbiter,
+      source: Int,
+      rd: Int,
+      data: Int
   ): Unit = {
     dut.io.in(source).valid.poke(true.B)
     dut.io.in(source).bits.warpId.poke(source.U)

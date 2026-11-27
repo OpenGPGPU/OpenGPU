@@ -16,9 +16,8 @@ private class VectorFmaMetadata(config: GpuConfig) extends Bundle {
 
 /** Lane-local RVV FP32 FMA/add/sub/mul wrapper around the scalar FMA lanes.
   *
-  * All lanes are issued and retired as one vector operation so results stay
-  * aligned. Each lane uses the existing elastic Fp32FmaLane pipeline. The
-  * unit covers vfadd/vfsub/vfmul plus all eight fused add/subtract forms.
+  * All lanes are issued and retired as one vector operation so results stay aligned. Each lane uses the existing
+  * elastic Fp32FmaLane pipeline. The unit covers vfadd/vfsub/vfmul plus all eight fused add/subtract forms.
   */
 class VectorFmaAlu(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {
@@ -97,12 +96,9 @@ class VectorFmaAlu(config: GpuConfig = GpuConfig()) extends Module {
   private val laneFlags = Wire(Vec(config.lanes, UInt(5.W)))
   private val capturedData = Wire(Vec(config.lanes, UInt(32.W)))
   for ((lane, index) <- lanes.zipWithIndex) {
-    val scalarOperand = Mux(
-      inputIsFvf, inputBits.scalarFpData, inputBits.vs1(index))
-    val fmaA = Mux(
-      inputIsMacc, scalarOperand, inputBits.vs2(index))
-    val fmaB = Mux(
-      inputIsMacc, inputBits.vs2(index), scalarOperand)
+    val scalarOperand = Mux(inputIsFvf, inputBits.scalarFpData, inputBits.vs1(index))
+    val fmaA = Mux(inputIsMacc, scalarOperand, inputBits.vs2(index))
+    val fmaB = Mux(inputIsMacc, inputBits.vs2(index), scalarOperand)
     val fmaC = inputBits.oldVd(index)
     val addC = scalarOperand
     lane.io.in.valid := issue
@@ -112,8 +108,7 @@ class VectorFmaAlu(config: GpuConfig = GpuConfig()) extends Module {
       Mux(inputFmaNegate, Fp32Operation.fnmsub, Fp32Operation.fmadd),
       Mux(inputIsMul, Fp32Operation.mul, Fp32Operation.add)
     )
-    lane.io.in.bits.operationModifier := Mux(
-      inputIsFma, inputFmaSubtract, inputIsSub || inputIsRsub)
+    lane.io.in.bits.operationModifier := Mux(inputIsFma, inputFmaSubtract, inputIsSub || inputIsRsub)
     lane.io.in.bits.exactFunction := 0.U
     lane.io.in.bits.operandA := Mux(inputIsFma, fmaA, inputBits.vs2(index))
     lane.io.in.bits.operandB := Mux(

@@ -17,10 +17,11 @@ class SampleCoverageCarrySpec extends AnyFlatSpec {
           if (low.testBit(width - 1)) low - modulus else low
         }
         def term(): BigInt = signed(BigInt(width, random))
-        val limits = Seq(-modulus / 2, -modulus / 2 + 1, BigInt(-1), BigInt(0),
-          BigInt(1), modulus / 2 - 2, modulus / 2 - 1)
-        val boundaries = for (a <- limits; b <- limits; c <- limits)
-          yield Seq(a, b, c)
+        val limits =
+          Seq(-modulus / 2, -modulus / 2 + 1, BigInt(-1), BigInt(0), BigInt(1), modulus / 2 - 2, modulus / 2 - 1)
+        val boundaries =
+          for (a <- limits; b <- limits; c <- limits)
+            yield Seq(a, b, c)
         val cases = boundaries ++ Seq.fill(512)(Seq(term(), term(), term()))
         for ((terms, index) <- cases.zipWithIndex) {
           val edges = terms
@@ -41,13 +42,15 @@ class SampleCoverageCarrySpec extends AnyFlatSpec {
               case 1 => Seq((-1, -1), (1, 1))
               case 2 => Seq((-1, -1), (1, -1), (-1, 1), (1, 1))
             }
-            val expected = offsets.zipWithIndex.map { case ((x, y), bit) =>
-              val inside = (0 until 3).forall { i =>
-                val value = edges(i) + signed(dx(i) * x) + signed(dy(i) * y)
-                (if (front) value > 0 else value < 0) || (value == 0 && topLeft(i))
+            val expected = offsets.zipWithIndex
+              .map { case ((x, y), bit) =>
+                val inside = (0 until 3).forall { i =>
+                  val value = edges(i) + signed(dx(i) * x) + signed(dy(i) * y)
+                  (if (front) value > 0 else value < 0) || (value == 0 && topLeft(i))
+                }
+                if (inside) 1 << bit else 0
               }
-              if (inside) 1 << bit else 0
-            }.foldLeft(0)(_ | _)
+              .foldLeft(0)(_ | _)
             dut.io.sampleMode.poke(mode.U); dut.io.mask.expect(expected.U)
           }
         }

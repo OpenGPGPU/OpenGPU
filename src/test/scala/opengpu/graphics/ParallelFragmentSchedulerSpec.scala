@@ -49,8 +49,12 @@ class ParallelFragmentSchedulerSpec extends AnyFlatSpec {
         }
         dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
         case class Sample(x: Int, covered: Boolean)
-        case class Worker(input: mutable.ArrayBuffer[Sample], output: mutable.Queue[Sample],
-          var started: Boolean = false, var delay: Int = 0)
+        case class Worker(
+            input: mutable.ArrayBuffer[Sample],
+            output: mutable.Queue[Sample],
+            var started: Boolean = false,
+            var delay: Int = 0
+        )
         val models = Array.fill(count)(Worker(mutable.ArrayBuffer.empty, mutable.Queue.empty))
         val expected = mutable.ArrayBuffer.empty[Int]
         val observed = mutable.ArrayBuffer.empty[Int]
@@ -81,8 +85,10 @@ class ParallelFragmentSchedulerSpec extends AnyFlatSpec {
               for (s <- 0 until 4) port.outDepths(s).poke((sample.x * 10 + s).U)
             }
           }
-          if (count > 1 && models(0).started && models(0).delay > 0 &&
-              models.drop(1).exists(m => m.started && m.delay == 0)) outOfOrderReady = true
+          if (
+            count > 1 && models(0).started && models(0).delay > 0 &&
+            models.drop(1).exists(m => m.started && m.delay == 0)
+          ) outOfOrderReady = true
           val accepted = front.fragIn.valid.peek().litToBoolean && front.fragIn.ready.peek().litToBoolean
           if (accepted) {
             for (lane <- 0 until 4 if front.fragIn.bits.lanes(lane).covered.peek().litToBoolean)
@@ -97,8 +103,10 @@ class ParallelFragmentSchedulerSpec extends AnyFlatSpec {
                 // Helpers must be delivered intact; worker output may omit them.
                 port.fragIn.bits.lanes(lane).x.expect(front.fragIn.bits.lanes(lane).x.peek())
                 port.fragUv(lane).u.expect(front.fragUv(lane).u.peek())
-                Sample(port.fragIn.bits.lanes(lane).x.peek().litValue.toInt,
-                  port.fragIn.bits.lanes(lane).covered.peek().litToBoolean)
+                Sample(
+                  port.fragIn.bits.lanes(lane).x.peek().litValue.toInt,
+                  port.fragIn.bits.lanes(lane).covered.peek().litToBoolean
+                )
               }
               if (stride == 0) assert(i == 0, "zero-stride binding escaped worker zero")
               Some(samples)
@@ -106,8 +114,11 @@ class ParallelFragmentSchedulerSpec extends AnyFlatSpec {
           }
           assert(inputs.count(_.nonEmpty) == (if (accepted) 1 else 0))
           if (front.out.valid.peek().litToBoolean) {
-            val value = (front.out.bits.x.peek().litValue.toInt,
-              front.outDepths.map(_.peek().litValue).toSeq, front.depthOverride.peek().litToBoolean)
+            val value = (
+              front.out.bits.x.peek().litValue.toInt,
+              front.outDepths.map(_.peek().litValue).toSeq,
+              front.depthOverride.peek().litToBoolean
+            )
             stalled.foreach(old => assert(value == old, "stalled fragment or depth sideband changed"))
             assert(value._2 == (0 until 4).map(s => BigInt(value._1 * 10 + s)))
             assert(value._3 == (value._1 % 2 != 0))
@@ -117,7 +128,8 @@ class ParallelFragmentSchedulerSpec extends AnyFlatSpec {
           if (front.drawRetire.valid.peek().litToBoolean && front.drawRetire.ready.peek().litToBoolean)
             retireCount += 1
           val outputFires = dut.io.workers.map(p => p.out.valid.peek().litToBoolean && p.out.ready.peek().litToBoolean)
-          val retireFires = dut.io.workers.map(p => p.drawRetire.valid.peek().litToBoolean && p.drawRetire.ready.peek().litToBoolean)
+          val retireFires =
+            dut.io.workers.map(p => p.drawRetire.valid.peek().litToBoolean && p.drawRetire.ready.peek().litToBoolean)
           dut.clock.step(); cycles += 1
           for (i <- 0 until count) {
             val model = models(i)

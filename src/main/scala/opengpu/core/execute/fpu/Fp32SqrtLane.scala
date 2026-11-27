@@ -5,10 +5,9 @@ import chisel3.util._
 
 /** Iterative FP32 square-root lane with RISC-V rounding and flags.
   *
-  * The normalized 24-bit significand is scaled into a 54-bit radicand and
-  * reduced with one restoring-square-root bit per cycle. 27 iterations
-  * produce a 27-bit fixed-point root (one integer bit plus 26 fraction bits),
-  * from which the FP32 mantissa plus guard, round, and sticky bits are taken.
+  * The normalized 24-bit significand is scaled into a 54-bit radicand and reduced with one restoring-square-root bit
+  * per cycle. 27 iterations produce a 27-bit fixed-point root (one integer bit plus 26 fraction bits), from which the
+  * FP32 mantissa plus guard, round, and sticky bits are taken.
   */
 class Fp32SqrtLane(tagWidth: Int = 16) extends Module {
   require(tagWidth > 0)
@@ -115,12 +114,12 @@ class Fp32SqrtLane(tagWidth: Int = 16) extends Module {
   private val nextRadicand = (radicandReg << 2)(53, 0)
 
   private def roundUp(
-    candidate: UInt,
-    guard: Bool,
-    roundBit: Bool,
-    sticky: Bool,
-    sign: Bool,
-    roundingMode: UInt
+      candidate: UInt,
+      guard: Bool,
+      roundBit: Bool,
+      sticky: Bool,
+      sign: Bool,
+      roundingMode: UInt
   ): Bool = {
     val inexact = guard || roundBit || sticky
     MuxCase(
@@ -143,8 +142,7 @@ class Fp32SqrtLane(tagWidth: Int = 16) extends Module {
   private val guard = finalQ(2)
   private val roundBit = finalQ(1)
   private val sticky = finalQ(0) || finalRemainder.orR
-  private val rounded = mantissa +& roundUp(
-    mantissa, guard, roundBit, sticky, false.B, resultRound)
+  private val rounded = mantissa +& roundUp(mantissa, guard, roundBit, sticky, false.B, resultRound)
   private val carry = rounded(23)
   private val finalExp = resultExp + Mux(carry, 1.S, 0.S)
   private val inexact = guard || roundBit || sticky
@@ -176,7 +174,6 @@ class Fp32SqrtLane(tagWidth: Int = 16) extends Module {
   }
 
   when(io.in.valid) {
-    assert(io.in.bits.operation === Fp32Operation.sqrt,
-      "Fp32SqrtLane received a non-sqrt operation")
+    assert(io.in.bits.operation === Fp32Operation.sqrt, "Fp32SqrtLane received a non-sqrt operation")
   }
 }

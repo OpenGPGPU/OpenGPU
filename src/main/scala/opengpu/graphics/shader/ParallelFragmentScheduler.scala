@@ -9,38 +9,41 @@ private class FragmentRetirementToken(workerWidth: Int) extends Bundle {
   val worker = UInt(workerWidth.W)
 }
 
-/** Partition the quad stream into independent worker batches, then restore
-  * submission order before the sample expander/output merger.
+/** Partition the quad stream into independent worker batches, then restore submission order before the sample
+  * expander/output merger.
   *
-  * Each worker receives at most one batch. Its flush seals that batch and its
-  * existing drawRetire handshake reports batch retirement. Real draw ends
-  * occupy separate ordered tokens, including empty draws and a flush arriving
-  * after every batch has already retired. Complete helper quads are passed
-  * through unchanged. Worker i owns kernarg banks 2*i and 2*i+1.
+  * Each worker receives at most one batch. Its flush seals that batch and its existing drawRetire handshake reports
+  * batch retirement. Real draw ends occupy separate ordered tokens, including empty draws and a flush arriving after
+  * every batch has already retired. Complete helper quads are passed through unchanged. Worker i owns kernarg banks 2*i
+  * and 2*i+1.
   */
 class ParallelFragmentScheduler(
-  config: GpuConfig,
-  gfxConfig: GraphicsConfig,
-  numWorkers: Int,
-  maxDraws: Int = 2,
-  quadExports: Boolean = false
+    config: GpuConfig,
+    gfxConfig: GraphicsConfig,
+    numWorkers: Int,
+    maxDraws: Int = 2,
+    quadExports: Boolean = false
 ) extends Module {
   require(numWorkers > 0 && numWorkers <= ShaderResourceConfig.FieldMask / 2)
   require(maxDraws > 0)
   private val batchCapacity = config.lanes * config.warps
   require(batchCapacity % 4 == 0)
-  private val dispatchCapacity = if (gfxConfig.fragmentBatchLimit == 0)
-    batchCapacity else gfxConfig.fragmentBatchLimit
-  require(dispatchCapacity > 0 && dispatchCapacity <= batchCapacity &&
-    dispatchCapacity % config.lanes == 0,
-    "fragment dispatch must fit the physical batch and preserve whole warps")
+  private val dispatchCapacity =
+    if (gfxConfig.fragmentBatchLimit == 0)
+      batchCapacity
+    else gfxConfig.fragmentBatchLimit
+  require(
+    dispatchCapacity > 0 && dispatchCapacity <= batchCapacity &&
+      dispatchCapacity % config.lanes == 0,
+    "fragment dispatch must fit the physical batch and preserve whole warps"
+  )
   private val quadsPerBatch = dispatchCapacity / 4
   private val workerWidth = math.max(1, log2Ceil(numWorkers))
   private val quadCountWidth = math.max(1, log2Ceil(quadsPerBatch + 1))
 
   val io = IO(new Bundle {
-    val front = new KernelFragFrontendIO(config, gfxConfig,quadExports)
-    val workers = Vec(numWorkers, Flipped(new KernelFragFrontendIO(config, gfxConfig,quadExports)))
+    val front = new KernelFragFrontendIO(config, gfxConfig, quadExports)
+    val workers = Vec(numWorkers, Flipped(new KernelFragFrontendIO(config, gfxConfig, quadExports)))
     val assignedWorkers = Output(UInt(numWorkers.W))
   })
   private val tokens = Module(new Queue(new FragmentRetirementToken(workerWidth), numWorkers + maxDraws))
@@ -101,29 +104,36 @@ class ParallelFragmentScheduler(
   private val headWorker = VecInit((0 until numWorkers).map { worker =>
     tokens.io.deq.valid && !tokens.io.deq.bits.drawEnd && tokens.io.deq.bits.worker === worker.U
   })
-  io.front.out.valid := (0 until numWorkers).map { worker =>
-    headWorker(worker) && io.workers(worker).out.valid
-  }.reduce(_ || _)
+  io.front.out.valid := (0 until numWorkers)
+    .map { worker =>
+      headWorker(worker) && io.workers(worker).out.valid
+    }
+    .reduce(_ || _)
   io.front.out.bits := Mux1H((0 until numWorkers).map { worker =>
     headWorker(worker) -> io.workers(worker).out.bits
   })
   io.front.outDepths := Mux1H((0 until numWorkers).map { worker =>
     headWorker(worker) -> io.workers(worker).outDepths
   })
-  io.front.depthOverride := (0 until numWorkers).map { worker =>
-    headWorker(worker) && io.workers(worker).depthOverride
-  }.reduce(_ || _)
-  if(quadExports) {
-    io.front.quadOut.get.valid:=(0 until numWorkers).map(w=>headWorker(w) && io.workers(w).quadOut.get.valid).reduce(_||_)
-    io.front.quadOut.get.bits:=Mux1H((0 until numWorkers).map(w=>headWorker(w)->io.workers(w).quadOut.get.bits))
+  io.front.depthOverride := (0 until numWorkers)
+    .map { worker =>
+      headWorker(worker) && io.workers(worker).depthOverride
+    }
+    .reduce(_ || _)
+  if (quadExports) {
+    io.front.quadOut.get.valid := (0 until numWorkers)
+      .map(w => headWorker(w) && io.workers(w).quadOut.get.valid)
+      .reduce(_ || _)
+    io.front.quadOut.get.bits := Mux1H((0 until numWorkers).map(w => headWorker(w) -> io.workers(w).quadOut.get.bits))
   }
   io.front.drawRetire.valid := tokens.io.deq.valid && tokens.io.deq.bits.drawEnd
   io.front.drawRetire.bits := true.B
-  private val batchRetired = (0 until numWorkers).map { worker =>
-    headWorker(worker) && io.workers(worker).drawRetire.valid
-  }.reduce(_ || _)
-  tokens.io.deq.ready := Mux(tokens.io.deq.bits.drawEnd,
-    io.front.drawRetire.ready, batchRetired)
+  private val batchRetired = (0 until numWorkers)
+    .map { worker =>
+      headWorker(worker) && io.workers(worker).drawRetire.valid
+    }
+    .reduce(_ || _)
+  tokens.io.deq.ready := Mux(tokens.io.deq.bits.drawEnd, io.front.drawRetire.ready, batchRetired)
 
   for (worker <- 0 until numWorkers) {
     val port = io.workers(worker)
@@ -149,13 +159,15 @@ class ParallelFragmentScheduler(
     port.texMinLevel := io.front.texMinLevel
     port.flush := sealedBatch(worker)
     port.out.ready := headWorker(worker) && io.front.out.ready
-    port.quadOut.foreach(_.ready:=headWorker(worker) && io.front.quadOut.get.ready)
+    port.quadOut.foreach(_.ready := headWorker(worker) && io.front.quadOut.get.ready)
     port.drawRetire.ready := headWorker(worker)
 
     when(io.front.fragIn.fire && chosen === worker.U) {
       when(!collecting) { allocated(worker) := true.B }
-      when((!collecting && (quadsPerBatch == 1).B) ||
-          (collecting && quadCount === (quadsPerBatch - 1).U)) {
+      when(
+        (!collecting && (quadsPerBatch == 1).B) ||
+          (collecting && quadCount === (quadsPerBatch - 1).U)
+      ) {
         sealedBatch(worker) := true.B
       }
     }

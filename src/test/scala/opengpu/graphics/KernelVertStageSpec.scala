@@ -84,8 +84,18 @@ class KernelVertStageSpec extends AnyFlatSpec {
     mem.putWord(lineAddr, wordIdx, instr)
   }
 
-  private def loadVertex(mem: MemModel, vertIdx: Int, posX: Int, posY: Int,
-      posZ: Int, posW: Int, color: Long, depth: Int, texU: Int, texV: Int): Unit = {
+  private def loadVertex(
+      mem: MemModel,
+      vertIdx: Int,
+      posX: Int,
+      posY: Int,
+      posZ: Int,
+      posW: Int,
+      color: Long,
+      depth: Int,
+      texU: Int,
+      texV: Int
+  ): Unit = {
     val base = vbBase + vertIdx * vertStride
     val lineAddr = base & ~63L
     val wordBase = ((base & 63L) >> 2).toInt
@@ -103,9 +113,9 @@ class KernelVertStageSpec extends AnyFlatSpec {
       dut: KernelVertStage,
       mem: MemModel,
       maxCycles: Int = 20000,
-      captured: Option[scala.collection.mutable.ArrayBuffer[
-          Seq[(BigInt, BigInt, BigInt, BigInt)]]] = None,
-      expectedConstant: Option[BigInt] = None): Unit = {
+      captured: Option[scala.collection.mutable.ArrayBuffer[Seq[(BigInt, BigInt, BigInt, BigInt)]]] = None,
+      expectedConstant: Option[BigInt] = None
+  ): Unit = {
     var kResp = false; var kId = BigInt(0); var kData = BigInt(0)
     var wResp = false; var wId = BigInt(0); var wData = BigInt(0)
     var cycles = 0
@@ -117,14 +127,18 @@ class KernelVertStageSpec extends AnyFlatSpec {
           constantChecks += 1
         }
       }
-      for (buffer <- captured; if buffer != null &&
+      for (
+        buffer <- captured; if buffer != null &&
           dut.io.vertOut.valid.peek().litToBoolean &&
-          dut.io.vertOut.ready.peek().litToBoolean) {
+          dut.io.vertOut.ready.peek().litToBoolean
+      ) {
         buffer += (0 until 3).map { k =>
-          (dut.io.vertOut.bits.clip(k).x.peek().litValue,
+          (
+            dut.io.vertOut.bits.clip(k).x.peek().litValue,
             dut.io.vertOut.bits.clip(k).y.peek().litValue,
             dut.io.vertOut.bits.uv(k).u.peek().litValue,
-            dut.io.vertOut.bits.uv(k).v.peek().litValue)
+            dut.io.vertOut.bits.uv(k).v.peek().litValue
+          )
         }
       }
       dut.io.memResp.valid.poke(kResp)
@@ -228,11 +242,11 @@ class KernelVertStageSpec extends AnyFlatSpec {
     var pc = 0
     for (f <- 0 until 4) {
       // Load pos_f from kernarg + f*stride
-      putInstr(mem, pc, addi(10, 1, f * arrayStride)); pc += 1  // x10 = kernarg + f*stride
-      putInstr(mem, pc, lw(11, 10, 0)); pc += 1  // x11 = pos_f[0]
+      putInstr(mem, pc, addi(10, 1, f * arrayStride)); pc += 1 // x10 = kernarg + f*stride
+      putInstr(mem, pc, lw(11, 10, 0)); pc += 1 // x11 = pos_f[0]
       // Store to kernarg + (8+f)*stride
-      putInstr(mem, pc, addi(12, 1, (8 + f) * arrayStride)); pc += 1  // x12 = kernarg + (8+f)*stride
-      putInstr(mem, pc, sw(11, 12, 0)); pc += 1  // clip_f[0] = x11
+      putInstr(mem, pc, addi(12, 1, (8 + f) * arrayStride)); pc += 1 // x12 = kernarg + (8+f)*stride
+      putInstr(mem, pc, sw(11, 12, 0)); pc += 1 // clip_f[0] = x11
     }
     putInstr(mem, pc, cease); pc += 1
 
@@ -240,7 +254,7 @@ class KernelVertStageSpec extends AnyFlatSpec {
     // We'll use 3 vertices but only check the first one
     val verts = Seq(
       (0x00010000, 0x00020000, 0x00030000, 0x00010000, 0xff0000ffL, 100, 0x8000, 0x8000),
-      (0x00040000, 0x00050000, 0x00060000, 0x00010000, 0x00ff00ffL, 200, 0xC000, 0xC000),
+      (0x00040000, 0x00050000, 0x00060000, 0x00010000, 0x00ff00ffL, 200, 0xc000, 0xc000),
       (0x00070000, 0x00080000, 0x00090000, 0x00010000, 0x0000ffffL, 300, 0x4000, 0x4000)
     )
     for ((v, i) <- verts.zipWithIndex)
@@ -269,14 +283,10 @@ class KernelVertStageSpec extends AnyFlatSpec {
       // Check that vertex 0's outputs were written correctly
       // The shader uses fixed offsets, so it only processes vertex 0 (x8=0)
       val v = verts(0)
-      assert(mem.getWord(kernargBase + 8 * arrayStride) == BigInt(v._1),
-        s"vertex 0 clip_x mismatch")
-      assert(mem.getWord(kernargBase + 9 * arrayStride) == BigInt(v._2),
-        s"vertex 0 clip_y mismatch")
-      assert(mem.getWord(kernargBase + 10 * arrayStride) == BigInt(v._3),
-        s"vertex 0 clip_z mismatch")
-      assert(mem.getWord(kernargBase + 11 * arrayStride) == BigInt(v._4),
-        s"vertex 0 clip_w mismatch")
+      assert(mem.getWord(kernargBase + 8 * arrayStride) == BigInt(v._1), s"vertex 0 clip_x mismatch")
+      assert(mem.getWord(kernargBase + 9 * arrayStride) == BigInt(v._2), s"vertex 0 clip_y mismatch")
+      assert(mem.getWord(kernargBase + 10 * arrayStride) == BigInt(v._3), s"vertex 0 clip_z mismatch")
+      assert(mem.getWord(kernargBase + 11 * arrayStride) == BigInt(v._4), s"vertex 0 clip_w mismatch")
     }
   }
 
@@ -303,7 +313,8 @@ class KernelVertStageSpec extends AnyFlatSpec {
     val verts = Seq(
       (0x00010000, 0x00020000, 0x00030000, 0x00010000, 0xff0000ffL, 100, 0x1000, 0x9000),
       (0x00040000, 0x00050000, 0x00060000, 0x00010000, 0x00ff00ffL, 200, 0x2000, 0xa000),
-      (0x00070000, 0x00080000, 0x00090000, 0x00010000, 0x0000ffffL, 300, 0x3000, 0xb000))
+      (0x00070000, 0x00080000, 0x00090000, 0x00010000, 0x0000ffffL, 300, 0x3000, 0xb000)
+    )
     for ((v, i) <- verts.zipWithIndex)
       loadVertex(mem, i, v._1, v._2, v._3, v._4, v._5, v._6, v._7, v._8)
 
@@ -366,8 +377,7 @@ class KernelVertStageSpec extends AnyFlatSpec {
     putInstr(mem, 0, cease)
     val bankStride = 0x1000
     for (i <- 0 until 9)
-      loadVertex(mem, i, 0x10000 + i, 0, 0, 0x10000,
-        0xff0000ffL, i, 0, 0)
+      loadVertex(mem, i, 0x10000 + i, 0, 0, 0x10000, 0xff0000ffL, i, 0, 0)
 
     simulate(new KernelVertStage(smallConfig)) { dut =>
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
@@ -385,10 +395,8 @@ class KernelVertStageSpec extends AnyFlatSpec {
       pump(dut, mem)
 
       assert(dut.io.done.peek().litToBoolean, "stage must return to idle")
-      assert(mem.getWord(kernargBase) == BigInt(0x10000),
-        "first batch must use kernarg bank zero")
-      assert(mem.getWord(kernargBase + bankStride) == BigInt(0x10006),
-        "second batch must use kernarg bank one")
+      assert(mem.getWord(kernargBase) == BigInt(0x10000), "first batch must use kernarg bank zero")
+      assert(mem.getWord(kernargBase + bankStride) == BigInt(0x10006), "second batch must use kernarg bank one")
     }
   }
 }

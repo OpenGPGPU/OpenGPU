@@ -24,7 +24,8 @@ class TessellationQuadBoundarySpec extends AnyFlatSpec {
     val bits = java.lang.Float.floatToRawIntBits(value)
     val fixed = BigInt((bits & 0x7fffff) | 0x800000) << (((bits >>> 23) & 255) - 127)
     (0 to n).map { i =>
-      if (i == 0) BigInt(0) else if (i == n) one
+      if (i == 0) BigInt(0)
+      else if (i == n) one
       else if (spacing == 0) roundEven(BigInt(i) * one, n)
       else roundEven((fixed + (BigInt(2 * i - n) << 23)) * one, fixed << 1)
     }.toVector
@@ -58,9 +59,14 @@ class TessellationQuadBoundarySpec extends AnyFlatSpec {
         d.io.completion.bits.emitted.expect(count.U); d.io.completion.bits.discarded.expect(discarded.B)
         d.io.completion.ready.poke(true.B); d.clock.step(); d.io.completion.ready.poke(false.B)
       }
-      for (spacing <- 0 to 2; levels <- Vector(
-        Vector(1.0f, 1.0f, 1.0f, 1.0f), Vector(2.25f, 3.0f, 1.5f, 4.125f),
-        Vector(64.0f, 64.0f, 64.0f, 64.0f))) {
+      for (
+        spacing <- 0 to 2;
+        levels <- Vector(
+          Vector(1.0f, 1.0f, 1.0f, 1.0f),
+          Vector(2.25f, 3.0f, 1.5f, 4.125f),
+          Vector(64.0f, 64.0f, 64.0f, 64.0f)
+        )
+      ) {
         begin(levels, spacing)
         val want = expected(levels, spacing)
         val got = ArrayBuffer.empty[(Int, BigInt, BigInt)]
@@ -91,7 +97,10 @@ class TessellationQuadBoundarySpec extends AnyFlatSpec {
       begin(Vector(1.0f, 0.0f, 1.0f, 1.0f), 0); finish(0, 0, discarded = true)
       begin(Vector.fill(4)(1.0f), 3); finish(1, 0)
       begin(Vector.fill(4)(1.0f), 0)
-      for (_ <- 0 until 4) { waitFor(d.io.out.valid.peek().litToBoolean); d.io.out.ready.poke(true.B); d.clock.step(); d.io.out.ready.poke(false.B) }
+      for (_ <- 0 until 4) {
+        waitFor(d.io.out.valid.peek().litToBoolean); d.io.out.ready.poke(true.B); d.clock.step();
+        d.io.out.ready.poke(false.B)
+      }
       finish(0, 4)
     }
   }

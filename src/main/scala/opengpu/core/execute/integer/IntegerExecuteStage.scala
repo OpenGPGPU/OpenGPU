@@ -28,12 +28,10 @@ private class PreparedIntegerOperation(config: GpuConfig) extends Bundle {
 
 /** Operand-preparation plus RV32I ALU elastic execution boundary.
   *
-  * M-extension operations are intentionally excluded until dedicated
-  * multiply/divide units exist; accepting them here would silently execute the
-  * decoder's default ALU operation. The first stage registers the final ALU
-  * operands and metadata, isolating execution from issue/dispatch selection.
-  * The second stage performs the complete ALU operation. Both stages are
-  * elastic and sustain one instruction per cycle.
+  * M-extension operations are intentionally excluded until dedicated multiply/divide units exist; accepting them here
+  * would silently execute the decoder's default ALU operation. The first stage registers the final ALU operands and
+  * metadata, isolating execution from issue/dispatch selection. The second stage performs the complete ALU operation.
+  * Both stages are elastic and sustain one instruction per cycle.
   */
 class IntegerExecuteStage(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {

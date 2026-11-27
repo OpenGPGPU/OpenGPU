@@ -14,24 +14,27 @@ class GeometryFragmentDrawStreamResult extends Bundle {
   val outputQuads = UInt(64.W)
 }
 
-/** Serial draw ownership around the one-primitive geometry/fragment pipeline.
-  * The producer retains a primitive until accepted and reports its end only
-  * after its output stream drains. The child retains offered quads through
+/** Serial draw ownership around the one-primitive geometry/fragment pipeline. The producer retains a primitive until
+  * accepted and reports its end only after its output stream drains. The child retains offered quads through
   * cancellation and reports completion after its own output drains.
   */
-class GeometryFragmentDrawStream(config: GpuConfig, p: FragmentShaderConfig,
-    taskIdWidth: Int, g: GraphicsConfig = GraphicsConfig(),
-    payload: Option[ShaderPayloadConfig] = None) extends Module {
+class GeometryFragmentDrawStream(
+    config: GpuConfig,
+    p: FragmentShaderConfig,
+    taskIdWidth: Int,
+    g: GraphicsConfig = GraphicsConfig(),
+    payload: Option[ShaderPayloadConfig] = None
+) extends Module {
   val io = IO(new Bundle {
-    val begin = Flipped(Decoupled(new GeometryFragmentDraw(config,p,taskIdWidth,payload)))
+    val begin = Flipped(Decoupled(new GeometryFragmentDraw(config, p, taskIdWidth, payload)))
     val primitive = Flipped(Decoupled(new AssembledPrimitive(p.vertices)))
     val inputEnd = Flipped(Decoupled(new PrimitiveAssemblyCompletion))
-    val childDraw = Decoupled(new GeometryFragmentDraw(config,p,taskIdWidth,payload))
-    val childOut = Flipped(Decoupled(new FragmentShaderQuad(p,g)))
+    val childDraw = Decoupled(new GeometryFragmentDraw(config, p, taskIdWidth, payload))
+    val childOut = Flipped(Decoupled(new FragmentShaderQuad(p, g)))
     val childCompletion = Flipped(Decoupled(new GeometryFragmentCompletion))
     val childCancel = Output(Bool())
     val sourceCancel = Output(Bool())
-    val out = Decoupled(new FragmentShaderQuad(p,g))
+    val out = Decoupled(new FragmentShaderQuad(p, g))
     val completion = Decoupled(new GeometryFragmentDrawStreamResult)
     val cancel = Input(Bool())
     val busy = Output(Bool())
@@ -41,8 +44,8 @@ class GeometryFragmentDrawStream(config: GpuConfig, p: FragmentShaderConfig,
   private val pending = RegInit(false.B)
   private val childActive = RegInit(false.B)
   private val endSeen = RegInit(false.B)
-  private val template = Reg(new GeometryFragmentDraw(config,p,taskIdWidth,payload))
-  private val offer = Reg(new GeometryFragmentDraw(config,p,taskIdWidth,payload))
+  private val template = Reg(new GeometryFragmentDraw(config, p, taskIdWidth, payload))
+  private val offer = Reg(new GeometryFragmentDraw(config, p, taskIdWidth, payload))
   private val source = Reg(new PrimitiveAssemblyCompletion)
   private val result = Reg(new GeometryFragmentDrawStreamResult)
   private val status = RegInit(0.U(3.W))
@@ -95,9 +98,11 @@ class GeometryFragmentDrawStream(config: GpuConfig, p: FragmentShaderConfig,
     childActive := false.B
     val produced = io.childCompletion.bits.raster.source.source.geometry.producedPrimitives
     val total = geometryCount +& produced
-    when(total(64)) { status := 1.U }.otherwise { geometryCount := total(63,0) }
-    when(io.childCompletion.bits.status =/= 0.U && status === 0.U && !io.cancel &&
-      !(endSeen && source.status =/= 0.U) && !(io.inputEnd.fire && io.inputEnd.bits.status =/= 0.U)) {
+    when(total(64)) { status := 1.U }.otherwise { geometryCount := total(63, 0) }
+    when(
+      io.childCompletion.bits.status =/= 0.U && status === 0.U && !io.cancel &&
+        !(endSeen && source.status =/= 0.U) && !(io.inputEnd.fire && io.inputEnd.bits.status =/= 0.U)
+    ) {
       status := io.childCompletion.bits.status
     }
     when(io.childCompletion.bits.status === 0.U) {
@@ -111,9 +116,23 @@ class GeometryFragmentDrawStream(config: GpuConfig, p: FragmentShaderConfig,
     result.inputPrimitives := inputCount
     result.geometryPrimitives := geometryCount
     result.outputQuads := quadCount
-    result.status := Mux(io.cancel,4.U,Mux(status =/= 0.U,status,
-      Mux(source.status =/= 0.U,source.status,
-        Mux(source.identity.asUInt =/= template.fragment.identity.asUInt || source.primitives =/= inputCount,1.U,0.U))))
+    result.status := Mux(
+      io.cancel,
+      4.U,
+      Mux(
+        status =/= 0.U,
+        status,
+        Mux(
+          source.status =/= 0.U,
+          source.status,
+          Mux(
+            source.identity.asUInt =/= template.fragment.identity.asUInt || source.primitives =/= inputCount,
+            1.U,
+            0.U
+          )
+        )
+      )
+    )
     active := false.B; done := true.B
   }
   io.completion.valid := done

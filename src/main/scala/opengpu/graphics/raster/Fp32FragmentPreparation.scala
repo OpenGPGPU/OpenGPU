@@ -4,16 +4,19 @@ import chisel3._
 import chisel3.util._
 import chisel3.experimental.hierarchy.Instantiate
 
-/** Privately owns one raw quad through weight, depth, sample and location
-  * preparation. Smooth/flat component evaluation is delegated to the spatial
-  * owner. A failed or cancelled request still transfers one immutable prepared
-  * result, retaining its identity and arithmetic accounting for ordered drain.
-  * Four private lane services prepare the quad concurrently. Setup accounting
-  * is included once and lane prefixes preserve scalar first-error ordering.
+/** Privately owns one raw quad through weight, depth, sample and location preparation. Smooth/flat component evaluation
+  * is delegated to the spatial owner. A failed or cancelled request still transfers one immutable prepared result,
+  * retaining its identity and arithmetic accounting for ordered drain. Four private lane services prepare the quad
+  * concurrently. Setup accounting is included once and lane prefixes preserve scalar first-error ordering.
   */
-class Fp32FragmentPreparation(p: VertexShaderStageConfig = VertexShaderStageConfig(),
-    g: GraphicsConfig = GraphicsConfig(), parallelLanes: Boolean = true, reuseSetup: Boolean = true,
-    finiteZeroShortcut: Boolean = true, powerTwoMultiplyShortcut: Boolean = true) extends Module {
+class Fp32FragmentPreparation(
+    p: VertexShaderStageConfig = VertexShaderStageConfig(),
+    g: GraphicsConfig = GraphicsConfig(),
+    parallelLanes: Boolean = true,
+    reuseSetup: Boolean = true,
+    finiteZeroShortcut: Boolean = true,
+    powerTwoMultiplyShortcut: Boolean = true
+) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new FragmentInterpolationRequest(p, g)))
     val out = Decoupled(new PreparedFragmentInterpolation(p, g))
@@ -22,9 +25,10 @@ class Fp32FragmentPreparation(p: VertexShaderStageConfig = VertexShaderStageConf
   })
   // Cache elaboration by the complete constructor tuple. Every Instance still
   // has private registers and ports; neither owner capacity nor lane II changes.
-  if(!parallelLanes) {
-    val preparation = Instantiate(new Fp32FragmentInterpolator(p, g, false, true, None, false,
-      false, finiteZeroShortcut, powerTwoMultiplyShortcut))
+  if (!parallelLanes) {
+    val preparation = Instantiate(
+      new Fp32FragmentInterpolator(p, g, false, true, None, false, false, finiteZeroShortcut, powerTwoMultiplyShortcut)
+    )
     preparation.io.in <> io.in
     io.out <> preparation.io.prepared.get
     preparation.io.out.ready := false.B
@@ -34,20 +38,33 @@ class Fp32FragmentPreparation(p: VertexShaderStageConfig = VertexShaderStageConf
   } else {
     // All four lanes admit and retire together. Capture the immutable raw
     // request once; each lane first consumes it in edgeCheck on the next cycle.
-    val snapshot = Reg(new FragmentInterpolationRequest(p,g))
+    val snapshot = Reg(new FragmentInterpolationRequest(p, g))
     when(io.in.fire) {
       assert(!io.busy, "shared preparation input changed while lanes still owned it")
       snapshot := io.in.bits
     }
-    val lanes = Seq.tabulate(4)(i => Instantiate(new Fp32FragmentInterpolator(p, g,
-      false, true, Some(i), true, reuseSetup, finiteZeroShortcut, powerTwoMultiplyShortcut)))
+    val lanes = Seq.tabulate(4)(i =>
+      Instantiate(
+        new Fp32FragmentInterpolator(
+          p,
+          g,
+          false,
+          true,
+          Some(i),
+          true,
+          reuseSetup,
+          finiteZeroShortcut,
+          powerTwoMultiplyShortcut
+        )
+      )
+    )
     val ready = VecInit(lanes.map(_.io.in.ready)).asUInt.andR
     val valid = VecInit(lanes.map(_.io.prepared.get.valid)).asUInt.andR
     val prepared = lanes.map(_.io.prepared.get.bits)
     io.in.ready := ready
     io.out.valid := valid
     io.busy := VecInit(lanes.map(_.io.busy)).asUInt.orR
-    for(stage <- lanes) {
+    for (stage <- lanes) {
       stage.io.in.valid := io.in.valid && ready
       stage.io.in.bits := io.in.bits
       stage.io.sharedInput.get := snapshot
@@ -59,7 +76,7 @@ class Fp32FragmentPreparation(p: VertexShaderStageConfig = VertexShaderStageConf
       assert(stage.io.prepared.get.fire === io.out.fire, "quad preparation released a lane before join")
     }
     io.out.bits := prepared.head
-    for(i <- 0 until 4) {
+    for (i <- 0 until 4) {
       io.out.bits.quad.lanes(i) := prepared(i).quad.lanes(i)
       io.out.bits.weights(i) := prepared(i).weights(i)
       io.out.bits.denominators(i) := prepared(i).denominators(i)
@@ -69,7 +86,7 @@ class Fp32FragmentPreparation(p: VertexShaderStageConfig = VertexShaderStageConf
       io.out.bits.laneArithmeticStatus(i) := prepared(i).laneArithmeticStatus(i)
       io.out.bits.lanePackingStatus(i) := prepared(i).lanePackingStatus(i)
     }
-    io.out.bits.centroidActive := VecInit(prepared.zipWithIndex.map { case (q,i) => q.centroidActive(i) }).asUInt
+    io.out.bits.centroidActive := VecInit(prepared.zipWithIndex.map { case (q, i) => q.centroidActive(i) }).asUInt
     io.out.bits.invalidHelpers := prepared.map(_.invalidHelpers).reduce(_ | _)
     val failures = VecInit(prepared.map(_.preparationStatus =/= 0.U)).asUInt
     val first = PriorityEncoder(failures)

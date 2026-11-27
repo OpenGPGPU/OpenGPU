@@ -8,12 +8,10 @@ import opengpu.core.frontend.decode.ExecutionType
 
 /** Iterative RV32M divide/remainder execution.
   *
-  * One radix-2 quotient bit is produced per cycle, then a finalize cycle
-  * applies sign correction. This keeps the iteration critical path to a
-  * 33-bit compare/subtract instead of stacking negate onto that CPA or
-  * inferring a combinational divider. Divide-by-zero and signed overflow
-  * follow the RISC-V architectural results and complete without entering
-  * the iteration loop.
+  * One radix-2 quotient bit is produced per cycle, then a finalize cycle applies sign correction. This keeps the
+  * iteration critical path to a 33-bit compare/subtract instead of stacking negate onto that CPA or inferring a
+  * combinational divider. Divide-by-zero and signed overflow follow the RISC-V architectural results and complete
+  * without entering the iteration loop.
   */
 class DivideExecuteStage(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {

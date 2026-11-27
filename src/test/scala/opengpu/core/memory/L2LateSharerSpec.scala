@@ -7,8 +7,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 class L2LateSharerSpec extends AnyFlatSpec {
   it should "retain a new waiter when a held reply retires with its merge commit" in {
-    simulate(new L2MshrTable(GpuConfig(lanes = 4), entries = 4,
-      maxOutstanding = 8, numComputeUnits = 4)) { d =>
+    simulate(new L2MshrTable(GpuConfig(lanes = 4), entries = 4, maxOutstanding = 8, numComputeUnits = 4)) { d =>
       d.io.request.valid.poke(false.B)
       d.io.request.bits.poke(0.U.asTypeOf(d.io.request.bits))
       d.io.request.bits.lineAddress.poke(0x1000.U)
@@ -49,8 +48,7 @@ class L2LateSharerSpec extends AnyFlatSpec {
   }
 
   it should "publish a late merged private reader before returning its refill" in {
-    simulate(new L2MshrTable(GpuConfig(lanes = 4), entries = 4,
-      maxOutstanding = 8, numComputeUnits = 4)) { d =>
+    simulate(new L2MshrTable(GpuConfig(lanes = 4), entries = 4, maxOutstanding = 8, numComputeUnits = 4)) { d =>
       d.io.request.valid.poke(false.B)
       d.io.request.bits.poke(0.U.asTypeOf(d.io.request.bits))
       d.io.request.bits.lineAddress.poke(0x1000.U)

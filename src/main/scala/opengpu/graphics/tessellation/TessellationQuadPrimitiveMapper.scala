@@ -5,9 +5,8 @@ import opengpu.graphics._
 import chisel3._
 import chisel3.util._
 
-/** Link TES output words to clip position, varyings and optional point size.
-  * The enclosing draw owner supplies unique downstream sequence/primitive IDs
-  * and holds the patch's linked output layout with every accepted primitive.
+/** Link TES output words to clip position, varyings and optional point size. The enclosing draw owner supplies unique
+  * downstream sequence/primitive IDs and holds the patch's linked output layout with every accepted primitive.
   */
 class QuadPrimitiveMapRequest(p: VertexShaderStageConfig) extends Bundle {
   val evaluated = new EvaluatedQuadPrimitive
@@ -15,14 +14,17 @@ class QuadPrimitiveMapRequest(p: VertexShaderStageConfig) extends Bundle {
   val sequence = UInt(64.W); val primitiveId = UInt(32.W)
   val instanceId = UInt(32.W); val baseInstance = UInt(32.W)
   val outputComponents = UInt(7.W); val varyingSlots = UInt(5.W)
-  val flatMask = UInt((4*p.varyings).W)
-  val componentSources = Vec(4 + 4*p.varyings, Valid(UInt(6.W)))
+  val flatMask = UInt((4 * p.varyings).W)
+  val componentSources = Vec(4 + 4 * p.varyings, Valid(UInt(6.W)))
   val pointSizeSource = Valid(UInt(6.W))
 }
 class QuadPrimitiveMapFault extends Bundle {
   val taskId = UInt(32.W); val sequence = UInt(14.W)
 }
-class TessellationQuadPrimitiveMapper(p: VertexShaderStageConfig = VertexShaderStageConfig(), flatShading: Boolean = true) extends Module {
+class TessellationQuadPrimitiveMapper(
+    p: VertexShaderStageConfig = VertexShaderStageConfig(),
+    flatShading: Boolean = true
+) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new QuadPrimitiveMapRequest(p)))
     val out = Decoupled(new AssembledPrimitive(p))
@@ -33,10 +35,11 @@ class TessellationQuadPrimitiveMapper(p: VertexShaderStageConfig = VertexShaderS
   private val request = Reg(new QuadPrimitiveMapRequest(p))
   private val output = Reg(new AssembledPrimitive(p))
   private val vertex = RegInit(0.U(2.W)); private val component = RegInit(0.U(7.W))
-  private val mapping = request.componentSources(component(log2Ceil(4 + 4*p.varyings)-1, 0))
+  private val mapping = request.componentSources(component(log2Ceil(4 + 4 * p.varyings) - 1, 0))
   private val varying = component >= 4.U
-  private val flatIndex = (component - 4.U)(log2Ceil(4*p.varyings)-1, 0)
-  private val sourceVertex = if(flatShading) Mux(varying && request.flatMask(flatIndex) && !request.evaluated.point, 2.U, vertex) else vertex
+  private val flatIndex = (component - 4.U)(log2Ceil(4 * p.varyings) - 1, 0)
+  private val sourceVertex =
+    if (flatShading) Mux(varying && request.flatMask(flatIndex) && !request.evaluated.point, 2.U, vertex) else vertex
   private val value = Mux(mapping.valid, request.evaluated.vertices(sourceVertex)(mapping.bits), 0.U)
   private val mappingValid = !mapping.valid || mapping.bits < request.outputComponents
   private val inputValid = io.in.bits.outputComponents <= 64.U && io.in.bits.varyingSlots <= p.varyings.U &&
@@ -59,10 +62,14 @@ class TessellationQuadPrimitiveMapper(p: VertexShaderStageConfig = VertexShaderS
     for (v <- 0 until 3) {
       when((v == 0).B || !io.in.bits.evaluated.point) {
         output.vertices(v).identity := io.in.bits.identity
-        output.vertices(v).instanceId := io.in.bits.instanceId; output.vertices(v).baseInstance := io.in.bits.baseInstance
+        output.vertices(v).instanceId := io.in.bits.instanceId;
+        output.vertices(v).baseInstance := io.in.bits.baseInstance
         output.vertices(v).pointSizeWritten := io.in.bits.pointSizeSource.valid
-        output.vertices(v).pointSize := Mux(io.in.bits.pointSizeSource.valid,
-          io.in.bits.evaluated.vertices(v)(io.in.bits.pointSizeSource.bits), 0.U)
+        output.vertices(v).pointSize := Mux(
+          io.in.bits.pointSizeSource.valid,
+          io.in.bits.evaluated.vertices(v)(io.in.bits.pointSizeSource.bits),
+          0.U
+        )
       }
     }
     vertex := 0.U; component := 0.U; state := Mux(inputValid, copy, fault)
@@ -72,7 +79,7 @@ class TessellationQuadPrimitiveMapper(p: VertexShaderStageConfig = VertexShaderS
       when(component < 4.U) { output.vertices(vertex.pad(2)).position(component(1, 0)) := value }
         .otherwise {
           for (v <- 0 until p.varyings; c <- 0 until 4) {
-            when(component === (4 + 4*v+c).U) { output.vertices(vertex.pad(2)).varyings(v)(c) := value }
+            when(component === (4 + 4 * v + c).U) { output.vertices(vertex.pad(2)).varyings(v)(c) := value }
           }
         }
       when(component +& 1.U === 4.U +& (request.varyingSlots << 2)) {

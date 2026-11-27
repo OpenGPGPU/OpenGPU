@@ -7,8 +7,8 @@ import opengpu.core.backend.issue.ScalarIssuedInstruction
 import opengpu.core.backend.writeback.ScalarCommitRequest
 import opengpu.graphics.GeometryScalarOpcode
 
-/** Internal original-input-patch identity; independent of generated TES output order.
-  * The producer captures this binding with the accepted original-VS tuple.
+/** Internal original-input-patch identity; independent of generated TES output order. The producer captures this
+  * binding with the accepted original-VS tuple.
   */
 class TessellationInputPatchBinding extends Bundle {
   val version = UInt(8.W)
@@ -16,24 +16,23 @@ class TessellationInputPatchBinding extends Bundle {
   val inputPatchPrimitiveId = UInt(32.W)
 }
 object TessellationInputPatchBinding {
-  def legal(binding:ValidIO[TessellationInputPatchBinding],taskId:UInt):Bool =
-    binding.valid && binding.bits.version===1.U && binding.bits.taskId===taskId
-  /** Safe full-width division: even rejected inputs never divide by zero.
-    * Ordinals are within an original draw instance; indexed values/baseInstance
-    * and generated primitive sequence have no role in this language identity.
+  def legal(binding: ValidIO[TessellationInputPatchBinding], taskId: UInt): Bool =
+    binding.valid && binding.bits.version === 1.U && binding.bits.taskId === taskId
+
+  /** Safe full-width division: even rejected inputs never divide by zero. Ordinals are within an original draw
+    * instance; indexed values/baseInstance and generated primitive sequence have no role in this language identity.
     */
-  def aligned(firstOrdinal:UInt,inputVertices:UInt):Bool = {
-    val valid=inputVertices>=1.U && inputVertices<=32.U
-    val divisor=Mux(valid,inputVertices,1.U)
-    valid && firstOrdinal%divisor===0.U && firstOrdinal.pad(33)+&inputVertices.pad(33)<=(BigInt(1)<<32).U
+  def aligned(firstOrdinal: UInt, inputVertices: UInt): Bool = {
+    val valid = inputVertices >= 1.U && inputVertices <= 32.U
+    val divisor = Mux(valid, inputVertices, 1.U)
+    valid && firstOrdinal % divisor === 0.U && firstOrdinal.pad(33) +& inputVertices.pad(33) <= (BigInt(1) << 32).U
   }
-  def primitiveId(firstOrdinal:UInt,inputVertices:UInt):UInt =
-    firstOrdinal/Mux(inputVertices>=1.U && inputVertices<=32.U,inputVertices,1.U)
+  def primitiveId(firstOrdinal: UInt, inputVertices: UInt): UInt =
+    firstOrdinal / Mux(inputVertices >= 1.U && inputVertices <= 32.U, inputVertices, 1.U)
 }
 
-/** Internal language-input binding, independent of geometry output metadata.
-  * taskId is an ownership crosslink, never the shader-visible primitive ID.
-  * Version 1 binds one original input patch, shared by every launched warp.
+/** Internal language-input binding, independent of geometry output metadata. taskId is an ownership crosslink, never
+  * the shader-visible primitive ID. Version 1 binds one original input patch, shared by every launched warp.
   */
 class TessellationShaderTaskBinding extends Bundle {
   val version = UInt(8.W)
@@ -42,11 +41,10 @@ class TessellationShaderTaskBinding extends Bundle {
   val inputPatchPrimitiveId = UInt(32.W)
 }
 
-/** Read-only CUSTOM0 fn37 selector6. This grants no geometry operations.
-  * Starts are actual kernel/warp acceptance events. A held commit is immutable
-  * through cancellation; its owner cannot release or replace the binding until
-  * that commit has transferred. A rejected instruction uses the scalar
-  * backend's failed-resource-commit trap path (writeRd=false).
+/** Read-only CUSTOM0 fn37 selector6. This grants no geometry operations. Starts are actual kernel/warp acceptance
+  * events. A held commit is immutable through cancellation; its owner cannot release or replace the binding until that
+  * commit has transferred. A rejected instruction uses the scalar backend's failed-resource-commit trap path
+  * (writeRd=false).
   */
 class TessellationScalarInfoWorker(config: GpuConfig = GpuConfig()) extends Module {
   require(config.xLen == 32 && config.warps > 0 && isPow2(config.warps))
@@ -96,12 +94,12 @@ class TessellationScalarInfoWorker(config: GpuConfig = GpuConfig()) extends Modu
     val d = io.in.bits.decode
     val i = d.instruction
     val valid = legalBinding && !cancelled && !io.cancel && started(d.warpId) &&
-      GeometryScalarOpcode.info(i) && i(24,20) === 0.U && io.in.bits.rs1Data === 6.U
+      GeometryScalarOpcode.info(i) && i(24, 20) === 0.U && io.in.bits.rs1Data === 6.U
     result := 0.U.asTypeOf(result)
     result.warpId := d.warpId
     result.nextPc := d.pc + 4.U
     result.activeMask := d.activeMask
-    result.rd := i(11,7)
+    result.rd := i(11, 7)
     result.writeRd := valid
     result.data := Mux(valid, binding.inputPatchPrimitiveId, 0.U)
     pending := true.B
@@ -109,9 +107,8 @@ class TessellationScalarInfoWorker(config: GpuConfig = GpuConfig()) extends Modu
   when(io.commit.fire) { pending := false.B }
 }
 
-/** The actual CU scalar-service boundary. Old geometry selectors retain their
-  * meaning only with a real geometry owner. A TES language binding alone must
-  * never send those selectors to an unserviced external texture port.
+/** The actual CU scalar-service boundary. Old geometry selectors retain their meaning only with a real geometry owner.
+  * A TES language binding alone must never send those selectors to an unserviced external texture port.
   */
 class TessellationScalarInfoMux(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {

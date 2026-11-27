@@ -73,8 +73,10 @@ class TexSampleUnitSpec extends AnyFlatSpec {
           }
         } else dut.io.mem.resp.valid.poke(false.B)
 
-        if (dut.io.mem.req.valid.peek().litToBoolean &&
-          dut.io.mem.req.ready.peek().litToBoolean) {
+        if (
+          dut.io.mem.req.valid.peek().litToBoolean &&
+          dut.io.mem.req.ready.peek().litToBoolean
+        ) {
           pending.enqueue(dut.io.mem.req.bits.addr.peek().litValue.toLong)
           requests += 1
         }
@@ -82,8 +84,10 @@ class TexSampleUnitSpec extends AnyFlatSpec {
         guard += 1
       }
 
-      assert(dut.io.vectorCommit.valid.peek().litToBoolean,
-        s"vector sample did not complete (requests=$requests, responses=$responses, pending=$pending)")
+      assert(
+        dut.io.vectorCommit.valid.peek().litToBoolean,
+        s"vector sample did not complete (requests=$requests, responses=$responses, pending=$pending)"
+      )
       dut.io.vectorCommit.bits.writeback.warpId.expect(1.U)
       dut.io.vectorCommit.bits.writeback.vd.expect(3.U)
       dut.io.vectorCommit.bits.writeback.data(0).expect(texel(0, 0, 0).U)
@@ -142,21 +146,24 @@ class TexSampleUnitSpec extends AnyFlatSpec {
           val addr = pending.front
           // Packed 4x4 base [0x2000,0x2040), 2x2 mip1
           // [0x2040,0x2050), 1x1 mip2 [0x2050,0x2054).
-          val word = if (addr < 0x2040L) green
-            else if (addr < 0x2050L) red else blue
+          val word =
+            if (addr < 0x2040L) green
+            else if (addr < 0x2050L) red
+            else blue
           dut.io.mem.resp.valid.poke(true.B)
           dut.io.mem.resp.bits.data.poke(word.U)
           dut.io.mem.resp.bits.write.poke(false.B)
           dut.io.mem.resp.bits.addr.poke(addr.U)
           if (dut.io.mem.resp.ready.peek().litToBoolean) pending.dequeue()
         } else dut.io.mem.resp.valid.poke(false.B)
-        if (dut.io.mem.req.valid.peek().litToBoolean &&
-          dut.io.mem.req.ready.peek().litToBoolean)
+        if (
+          dut.io.mem.req.valid.peek().litToBoolean &&
+          dut.io.mem.req.ready.peek().litToBoolean
+        )
           pending.enqueue(dut.io.mem.req.bits.addr.peek().litValue.toLong)
         dut.clock.step(); guard += 1
       }
-      assert(dut.io.vectorCommit.valid.peek().litToBoolean,
-        "gradient-derived mip sample did not complete")
+      assert(dut.io.vectorCommit.valid.peek().litToBoolean, "gradient-derived mip sample did not complete")
       // Gradient chooses mip1; +1 bias selects mip2 without exceeding max=2.
       for (lane <- 0 until 4)
         dut.io.vectorCommit.bits.writeback.data(lane).expect(blue.U)
@@ -205,13 +212,14 @@ class TexSampleUnitSpec extends AnyFlatSpec {
           dut.io.mem.resp.bits.addr.poke(addr.U)
           if (dut.io.mem.resp.ready.peek().litToBoolean) pending.dequeue()
         } else dut.io.mem.resp.valid.poke(false.B)
-        if (dut.io.mem.req.valid.peek().litToBoolean &&
-          dut.io.mem.req.ready.peek().litToBoolean)
+        if (
+          dut.io.mem.req.valid.peek().litToBoolean &&
+          dut.io.mem.req.ready.peek().litToBoolean
+        )
           pending.enqueue(dut.io.mem.req.bits.addr.peek().litValue.toLong)
         dut.clock.step(); guard += 1
       }
-      assert(dut.io.vectorCommit.valid.peek().litToBoolean,
-        "fractional-LOD vector sample did not complete")
+      assert(dut.io.vectorCommit.valid.peek().litToBoolean, "fractional-LOD vector sample did not complete")
       // Channel values use the sampler's truncating Q0.8 multiply:
       // red=floor(255*149/256)=148, green=floor(255*107/256)=106.
       val expected = texel(148, 106, 0)
@@ -239,13 +247,17 @@ class TexSampleUnitSpec extends AnyFlatSpec {
         (16, 1, Seq(0L, 0x08000000L, 0L, 0L), Seq.fill(4)(0L)),
         (1, 16383, Seq(0xffffffffL, 0L, 0xffffL, 0x10000L), Seq.fill(4)(0L)),
         (16383, 1, Seq.fill(4)(0L), Seq(0L, 0xffffffffL, 0L, 0x10001L)),
-        (16383, 16382, Seq(0xffffffffL, 0L, 0x10001L, 0L),
-          Seq(0L, 0xffffffffL, 0L, 0x10001L)),
-        (3, 7, Seq.fill(4)(0L), Seq.fill(4)(0L)))
+        (16383, 16382, Seq(0xffffffffL, 0L, 0x10001L, 0L), Seq(0L, 0xffffffffL, 0L, 0x10001L)),
+        (3, 7, Seq.fill(4)(0L), Seq.fill(4)(0L))
+      )
       val cases = fixed ++ Seq.tabulate(27) { i =>
         val mask = if (i % 3 == 0) 0xffffffffL else 0x1ffffL
-        (1 + random.nextInt(16), 1 + random.nextInt(16),
-          Seq.fill(4)(random.nextLong() & mask), Seq.fill(4)(random.nextLong() & mask))
+        (
+          1 + random.nextInt(16),
+          1 + random.nextInt(16),
+          Seq.fill(4)(random.nextLong() & mask),
+          Seq.fill(4)(random.nextLong() & mask)
+        )
       }
       for (((width, height, u, v), trial) <- cases.zipWithIndex) {
         val maxLevel = 4
@@ -261,7 +273,8 @@ class TexSampleUnitSpec extends AnyFlatSpec {
         val biased = automatic + bias
         val level = math.max(minLevel, math.min(maxLevel, biased))
         val normal = rho >> automatic
-        val fraction = if (biased < minLevel || biased > maxLevel || normal <= 65536 || level == maxLevel) 0
+        val fraction =
+          if (biased < minLevel || biased > maxLevel || normal <= 65536 || level == maxLevel) 0
           else math.floor(math.log(1.0 + ((normal >> 8) & 255).toDouble / 256.0) / math.log(2.0) * 256).toInt
         val colors = Seq.tabulate(5)(l => 20 + l * 40)
         val expected = (colors(level) * (256 - fraction) + colors(math.min(level + 1, maxLevel)) * fraction) >> 8
@@ -382,7 +395,8 @@ class TexSampleUnitSpec extends AnyFlatSpec {
         for (_ <- 0 until 3) {
           dut.io.vectorCommit.valid.expect(true.B)
           for (lane <- 0 until 16) {
-            val expected = if ((mask & (1 << lane)) != 0) texel(colors(levels(lane / 4)), 0, 0)
+            val expected =
+              if ((mask & (1 << lane)) != 0) texel(colors(levels(lane / 4)), 0, 0)
               else BigInt(0x100 + lane)
             dut.io.vectorCommit.bits.writeback.data(lane).expect(expected.U)
           }
@@ -411,9 +425,15 @@ class TexSampleUnitSpec extends AnyFlatSpec {
       // Alternate fixed/nonfixed ranges, including bias endpoints, empty
       // quads and an empty instruction. Helper coordinates have independent
       // gradients even when their destination lanes are masked off.
-      val trials = Seq((0, 0, 15, 0xffff), (0, 3, 0, 0xffff),
-        (2, 2, -16, 0x1111), (3, 3, 15, 0xf00f),
-        (1, 1, 0, 0x00f0), (0, 0, -16, 0), (1, 3, 1, 0xf00f))
+      val trials = Seq(
+        (0, 0, 15, 0xffff),
+        (0, 3, 0, 0xffff),
+        (2, 2, -16, 0x1111),
+        (3, 3, 15, 0xf00f),
+        (1, 1, 0, 0x00f0),
+        (0, 0, -16, 0),
+        (1, 3, 1, 0xf00f)
+      )
       for (((minimum, maximum, bias, mask), trial) <- trials.zipWithIndex) {
         dut.io.minLevel.poke(minimum.U); dut.io.texMaxLevel.poke(maximum.U)
         dut.io.lodBias.poke(bias.S)
@@ -469,20 +489,25 @@ class TexSampleUnitSpec extends AnyFlatSpec {
         for (_ <- 0 until 4) {
           dut.io.vectorCommit.valid.expect(true.B)
           for (lane <- 0 until 16) {
-            val expected = if ((mask & (1 << lane)) != 0) texel(colors(levels(lane / 4)), 0, 0)
+            val expected =
+              if ((mask & (1 << lane)) != 0) texel(colors(levels(lane / 4)), 0, 0)
               else BigInt(0x1200 + lane)
             dut.io.vectorCommit.bits.writeback.data(lane).expect(expected.U)
           }
           dut.clock.step()
         }
-        println(s"FIXED_LOD trial=$trial min=$minimum max=$maximum bias=$bias mask=$mask first_request=$firstRequest cycles=$cycle requests=$requests")
+        println(
+          s"FIXED_LOD trial=$trial min=$minimum max=$maximum bias=$bias mask=$mask first_request=$firstRequest cycles=$cycle requests=$requests"
+        )
         if (minimum == maximum && mask != 0) {
           val firstLane = (0 until 16).find(l => (mask & (1 << l)) != 0).get
           // Each nonzero mip also requires its packed-base address walk;
           // this is sampler addressing latency, independent of derivatives.
           val budget = firstLane + 5 + minimum
-          assert(firstRequest <= budget,
-            s"fixed mip incurred derivative startup latency: first request $firstRequest, budget $budget")
+          assert(
+            firstRequest <= budget,
+            s"fixed mip incurred derivative startup latency: first request $firstRequest, budget $budget"
+          )
         }
         if (mask == 0) assert(requests == 0 && cycle <= 16)
         dut.io.vectorCommit.ready.poke(true.B); dut.clock.step()
@@ -547,12 +572,19 @@ class TexSampleUnitSpec extends AnyFlatSpec {
           val offset = if (trial >= 6 && trial <= 8) 17 * (trial - 5) else 0
           texel(pixel * 11 + offset, pixel * 7 + offset, pixel * 3 + offset)
         }
-        val trials = Seq((1, 1, 0, 0, all), (8, 4, 3, 3, sparse),
-          (1, 1, 0, 2, all), (4, 4, 0, 0, all),
-          (1, 1, 0, 0, BigInt(0)), (1, 1, 0, 0, all),
-          (4, 4, 0, 0, all), (4, 4, 0, 0, all),
+        val trials = Seq(
+          (1, 1, 0, 0, all),
+          (8, 4, 3, 3, sparse),
+          (1, 1, 0, 2, all),
+          (4, 4, 0, 0, all),
+          (1, 1, 0, 0, BigInt(0)),
+          (1, 1, 0, 0, all),
+          (4, 4, 0, 0, all),
+          (4, 4, 0, 0, all),
           (4, 4, 0, 0, BigInt(0)),
-          (4, 4, 0, 0, (BigInt(3) << (lanes - 2))), (1, 1, 0, 0, all))
+          (4, 4, 0, 0, (BigInt(3) << (lanes - 2))),
+          (1, 1, 0, 0, all)
+        )
         for (((width, height, minimum, maximum, mask), trial) <- trials.zipWithIndex) {
           // Unaccepted masks may change freely, including an empty mask and
           // the final lane. None may issue work or affect the next snapshot.

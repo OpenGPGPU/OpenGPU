@@ -8,15 +8,29 @@ import scala.collection.mutable
 class ShaderImageAccessSpec extends AnyFlatSpec {
   import WindowRecordTest.{zero, identity}
   import TypedColorReference.{fp, value}
-  private val formats = Vector("RGBA32F", "RGBA16F", "R32F", "RGBA32UI", "RGBA16UI",
-    "RGBA8UI", "R32UI", "RGBA32I", "RGBA16I", "RGBA8I", "R32I", "RGBA8", "RGBA8_SNORM")
+  private val formats = Vector(
+    "RGBA32F",
+    "RGBA16F",
+    "R32F",
+    "RGBA32UI",
+    "RGBA16UI",
+    "RGBA8UI",
+    "R32UI",
+    "RGBA32I",
+    "RGBA16I",
+    "RGBA8I",
+    "R32I",
+    "RGBA8",
+    "RGBA8_SNORM"
+  )
   private def packed(name: String, values: Seq[BigInt]): BigInt = {
     if (name != "RGBA8_SNORM") TypedColorReference.encode(name, values)._1
-    else values.zipWithIndex.foldLeft(BigInt(0)) { case (out, (raw, c)) =>
-      val x = value(raw)
-      val bounded = if (x.isNaN) 0.0 else math.max(-1.0, math.min(1.0, x))
-      out | (BigInt(math.rint(bounded * 127.0).toLong & 255) << (c * 8))
-    }
+    else
+      values.zipWithIndex.foldLeft(BigInt(0)) { case (out, (raw, c)) =>
+        val x = value(raw)
+        val bounded = if (x.isNaN) 0.0 else math.max(-1.0, math.min(1.0, x))
+        out | (BigInt(math.rint(bounded * 127.0).toLong & 255) << (c * 8))
+      }
   }
   private class Driver(val d: ShaderImageAccess) {
     zero(d.io); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
@@ -54,7 +68,8 @@ class ShaderImageAccessSpec extends AnyFlatSpec {
         val data = (0 until 64).foldLeft(BigInt(0))((v, i) => v | (BigInt(byte(a + i)) << (8 * i)))
         if (req.bits.isWrite.peek().litToBoolean) {
           val mask = req.bits.byteMask.peek().litValue; val write = req.bits.writeData.peek().litValue
-          val expectedMask = (0 until 64).filter(i => a + i >= texelAddress && a + i < texelAddress + texelBytes)
+          val expectedMask = (0 until 64)
+            .filter(i => a + i >= texelAddress && a + i < texelAddress + texelBytes)
             .foldLeft(BigInt(0))((m, i) => m.setBit(i))
           assert(mask == expectedMask, "store byte enables differ from the resolved texel interval")
           for (i <- 0 until 64 if mask.testBit(i)) memory(a + i) = ((write >> (8 * i)) & 255).toInt
@@ -68,10 +83,15 @@ class ShaderImageAccessSpec extends AnyFlatSpec {
       while (!condition && steps < 256) { tick(); steps += 1 }
       assert(condition, s"image operation stalled at cycle=$cycle")
     }
-    def begin(name: String = "RGBA32UI", target: Int = 0, layered: Boolean = true,
-        write: Boolean = false, values: Seq[BigInt] = Vector.fill(4)(BigInt(0)),
+    def begin(
+        name: String = "RGBA32UI",
+        target: Int = 0,
+        layered: Boolean = true,
+        write: Boolean = false,
+        values: Seq[BigInt] = Vector.fill(4)(BigInt(0)),
         configure: ShaderImageBindingAddressRequest => Unit = _ => (),
-        lines: Option[Vector[BigInt]] = None): Unit = {
+        lines: Option[Vector[BigInt]] = None
+    ): Unit = {
       assert(pending.isEmpty && heldOffer.isEmpty)
       val f = ImageFormatReference.format(name)
       val selected = Seq(0, 2, 5, 1)(target)
@@ -134,20 +154,25 @@ class ShaderImageAccessSpec extends AnyFlatSpec {
       for (name <- formats; target <- 0 to 3; layered <- Seq(false, true)) {
         val f = ImageFormatReference.format(name)
         val address = BigInt(0x103f + Seq(0, 2, 5, 1)(target) * 128)
-        val values = if (f.kind == 0) Vector(-2.0, 0.5, 1.25, 65504.0).map(fp)
+        val values =
+          if (f.kind == 0) Vector(-2.0, 0.5, 1.25, 65504.0).map(fp)
           else Vector[BigInt](0xffffffffL, 0x80000000L, 0x12345678L, 0x10001)
         val expected = packed(name, values)
         val before = Vector.tabulate(1024)(i => t.byte(BigInt(0x1000 + i)))
         t.begin(name, target, layered, write = true, values = values); t.finish()
         for (i <- 0 until 1024) {
           val a = BigInt(0x1000 + i)
-          val wanted = if (a >= address && a < address + f.bytes) ((expected >> (8 * (a - address).toInt)) & 255).toInt else before(i)
+          val wanted =
+            if (a >= address && a < address + f.bytes) ((expected >> (8 * (a - address).toInt)) & 255).toInt
+            else before(i)
           assert(t.byte(a) == wanted, s"composed image store changed guard byte$i format=$name target=$target")
         }
         t.begin(name, target, layered); t.finish(values = ImageFormatReference.decode(name, expected))
       }
       assert(t.operations == 208)
-      info("SHADER_IMAGE_ACCESS formats=13 targets=4 layeredAndSingle=true operations=208 splitLines=true guards=true poisonedInputs=true")
+      info(
+        "SHADER_IMAGE_ACCESS formats=13 targets=4 layeredAndSingle=true operations=208 splitLines=true guards=true poisonedInputs=true"
+      )
     }
   }
 
@@ -163,7 +188,8 @@ class ShaderImageAccessSpec extends AnyFlatSpec {
         3 -> (q => { q.imageBinding.readable.poke(false.B); q.imageBinding.writable.poke(false.B) }),
         3 -> (q => q.imageBinding.stageMask.poke(1.U)),
         6 -> (q => q.colorType.poke(0.U)),
-        4 -> (q => q.imageBinding.view.allocationLimit.poke(0x1040.U)))
+        4 -> (q => q.imageBinding.view.allocationLimit.poke(0x1040.U))
+      )
       for (write <- Seq(false, true); (status, change) <- changes) {
         t.begin(write = write, configure = change, lines = Some(Vector.empty)); t.finish(status = status)
       }
@@ -172,7 +198,9 @@ class ShaderImageAccessSpec extends AnyFlatSpec {
       t.begin(configure = q => q.imageBinding.view.allocationLimit.poke(0x104f.U), lines = Some(Vector.empty))
       t.finish(status = 4)
       assert(t.operations == 20)
-      info("SHADER_IMAGE_ACCESS rejectedOrNoOp=20 memoryRequests=0 permissionBeforeMemory=true fullBackingLinesChecked=true")
+      info(
+        "SHADER_IMAGE_ACCESS rejectedOrNoOp=20 memoryRequests=0 permissionBeforeMemory=true fullBackingLinesChecked=true"
+      )
     }
   }
 
@@ -200,7 +228,9 @@ class ShaderImageAccessSpec extends AnyFlatSpec {
       t.finish(status = 7, fault = Some(BigInt(0x1040))); d.io.cancel.poke(false.B)
       t.install(0x103f, 0x01020304, 4)
       t.begin("R32UI"); t.finish(values = Vector[BigInt](0x01020304, 0, 0, 1))
-      info("SHADER_IMAGE_ACCESS heldOffer=true delayedStoreAck=true wrongReplyID=true cancelDrain=true primaryFault=true healthyReuse=true")
+      info(
+        "SHADER_IMAGE_ACCESS heldOffer=true delayedStoreAck=true wrongReplyID=true cancelDrain=true primaryFault=true healthyReuse=true"
+      )
     }
   }
 
@@ -215,8 +245,7 @@ class ShaderImageAccessSpec extends AnyFlatSpec {
         d.io.cancel.poke(true.B)
         t.until(d.io.out.valid.peek().litToBoolean)
         t.expectedLines = t.expectedLines.take(t.requests)
-        t.finish(status = if (completed) 0 else 5,
-          values = if (completed) result else Vector.fill(4)(BigInt(0)))
+        t.finish(status = if (completed) 0 else 5, values = if (completed) result else Vector.fill(4)(BigInt(0)))
         d.io.cancel.poke(false.B)
       }
       t.install(0x103f, 0x10203040, 4)

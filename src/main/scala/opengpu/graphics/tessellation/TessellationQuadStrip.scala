@@ -10,6 +10,7 @@ class TessellationQuadStripPoint extends Bundle {
 }
 class TessellationQuadStripTask extends Bundle {
   val taskId = UInt(32.W)
+
   /** Outer must have 1–64 segments; inner may be a single point. */
   val outerSegments = UInt(7.W); val innerSegments = UInt(7.W)
   val clockwise = Bool()
@@ -20,16 +21,15 @@ class TessellationQuadStripTriangle extends Bundle {
 }
 class TessellationQuadStripCompletion extends Bundle {
   val taskId = UInt(32.W); val emitted = UInt(8.W)
+
   /** 0 success, 1 invalid segment count, 4 cancellation. */
   val status = UInt(3.W)
 }
 
-/** Stitch two ordered sides of a quad ring without storing the whole strip.
-  * Each input supplies segments + 1 vertices, in the same boundary direction.
-  * The outer side must run counter-clockwise with the inner side on its left;
-  * the caller guarantees monotone non-crossing sides and supplies both corners.
-  * An inner side of zero segments is a single point, producing a triangle fan.
-  * Triangles are held under backpressure, including an asserted cancellation.
+/** Stitch two ordered sides of a quad ring without storing the whole strip. Each input supplies segments + 1 vertices,
+  * in the same boundary direction. The outer side must run counter-clockwise with the inner side on its left; the
+  * caller guarantees monotone non-crossing sides and supplies both corners. An inner side of zero segments is a single
+  * point, producing a triangle fan. Triangles are held under backpressure, including an asserted cancellation.
   */
 class TessellationQuadStrip extends Module {
   val io = IO(new Bundle {
@@ -74,8 +74,10 @@ class TessellationQuadStrip extends Module {
   when(io.begin.fire) {
     task := io.begin.bits; result := 0.U.asTypeOf(result); result.taskId := io.begin.bits.taskId
     outerIndex := 0.U; innerIndex := 0.U; cancelled := false.B
-    when(io.begin.bits.outerSegments === 0.U || io.begin.bits.outerSegments > 64.U ||
-      io.begin.bits.innerSegments > 64.U) { result.status := 1.U; state := State.complete }
+    when(
+      io.begin.bits.outerSegments === 0.U || io.begin.bits.outerSegments > 64.U ||
+        io.begin.bits.innerSegments > 64.U
+    ) { result.status := 1.U; state := State.complete }
       .otherwise { state := State.firstOuter }
   }
   when(state =/= State.idle && state =/= State.complete && io.cancel) { cancelled := true.B }

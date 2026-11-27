@@ -63,10 +63,25 @@ class StorageCuServiceSpec extends AnyFlatSpec {
         d.io.in.bits.byteMask.poke(15.U); d.io.in.bits.tag.poke(99.U)
         d.io.in.valid.poke(true.B); d.io.in.ready.expect(true.B); d.clock.step(); d.io.in.valid.poke(false.B)
         val words = Array.fill[BigInt](16)(0)
-        for ((n,v) <- Seq[(Int, BigInt)](0 -> StorageDescriptorLayout.magic, 1 -> 64, 2 -> 1,
-          3 -> 7, 4 -> 11, 5 -> 13, 6 -> 3, 7 -> 1, 8 -> 1, 9 -> 1,
-          10 -> 0x10000, 11 -> 0x10100, 13 -> 0x10000, 14 -> 0x10100)) words(n) = v
-        val record = words.zipWithIndex.map { case(v,n) => v << (32*n) }.sum
+        for (
+          (n, v) <- Seq[(Int, BigInt)](
+            0 -> StorageDescriptorLayout.magic,
+            1 -> 64,
+            2 -> 1,
+            3 -> 7,
+            4 -> 11,
+            5 -> 13,
+            6 -> 3,
+            7 -> 1,
+            8 -> 1,
+            9 -> 1,
+            10 -> 0x10000,
+            11 -> 0x10100,
+            13 -> 0x10000,
+            14 -> 0x10100
+          )
+        ) words(n) = v
+        val record = words.zipWithIndex.map { case (v, n) => v << (32 * n) }.sum
         val physical = if (translated) 0x400000 else 0
         var walks = 0; var descriptors = 0; var writes = 0
         var pending: Option[(BigInt, BigInt)] = None
@@ -74,7 +89,7 @@ class StorageCuServiceSpec extends AnyFlatSpec {
         while (!d.io.out.valid.peek().litToBoolean && cycle < 300) {
           d.io.memoryRequest.ready.poke((cycle % 3 != 0).B)
           d.io.memoryResponse.valid.poke(pending.nonEmpty.B)
-          pending.foreach { case(id,data) =>
+          pending.foreach { case (id, data) =>
             d.io.memoryResponse.bits.transactionId.poke(id.U); d.io.memoryResponse.bits.readData.poke(data.U)
           }
           val taken = pending.nonEmpty && d.io.memoryResponse.ready.peek().litToBoolean
@@ -90,7 +105,7 @@ class StorageCuServiceSpec extends AnyFlatSpec {
             } else {
               assert(id == 1 && address == physical + 0x10000); writes += 1
               r.isWrite.expect(true.B); r.byteMask.expect((BigInt(15) << 12).U)
-              r.writeData.expect((BigInt("12345678",16) << 96).U); BigInt(0)
+              r.writeData.expect((BigInt("12345678", 16) << 96).U); BigInt(0)
             }
             Some(id -> data)
           } else None
@@ -101,8 +116,10 @@ class StorageCuServiceSpec extends AnyFlatSpec {
         assert(d.io.out.valid.peek().litToBoolean && pending.isEmpty)
         d.io.out.bits.tag.expect(99.U); d.io.out.bits.bindingIndex.expect(3.U)
         d.io.out.bits.status.expect(StorageWordStatus.ok.U); d.io.out.bits.source.expect(2.U)
-        assert(descriptors == 1 && writes == 1 && (if (translated) walks > 0 else walks == 0),
-          s"descriptors=$descriptors writes=$writes walks=$walks")
+        assert(
+          descriptors == 1 && writes == 1 && (if (translated) walks > 0 else walks == 0),
+          s"descriptors=$descriptors writes=$writes walks=$walks"
+        )
         val held = d.io.out.bits.peek().litValue; d.clock.step(3); assert(d.io.out.bits.peek().litValue == held)
         d.io.out.ready.poke(true.B); d.clock.step(); d.io.out.ready.poke(false.B)
         d.io.busy.expect(false.B); d.io.kernelCompletion.poke(true.B); d.clock.step()
@@ -120,38 +137,56 @@ class StorageCuServiceSpec extends AnyFlatSpec {
       d.io.task.enabled.poke(true.B); d.io.task.table.version.poke(1.U)
       d.io.task.table.base.poke(0x4000.U); d.io.task.table.limit.poke(0x4100.U)
       d.io.task.table.identity.context.poke(7.U); d.io.task.table.identity.pass.poke(11.U)
-      d.io.task.table.identity.generation.poke(13.U); d.io.satp.poke(BigInt("80000080",16).U)
+      d.io.task.table.identity.generation.poke(13.U); d.io.satp.poke(BigInt("80000080", 16).U)
       d.io.kernelStart.poke(true.B); d.clock.step(); d.io.kernelStart.poke(false.B)
       d.io.in.bits.bindingIndex.poke(0.U); d.io.in.bits.offset.poke(0.U)
       d.io.in.bits.write.poke(true.B); d.io.in.bits.data.poke(1.U)
       d.io.in.bits.byteMask.poke(15.U); d.io.in.bits.tag.poke(1.U)
       d.io.in.valid.poke(true.B); d.clock.step(); d.io.in.valid.poke(false.B)
       val words = Array.fill[BigInt](16)(0)
-      for ((n,v) <- Seq[(Int, BigInt)](0 -> StorageDescriptorLayout.magic, 1 -> 64, 2 -> 1,
-        3 -> 7, 4 -> 11, 5 -> 13, 6 -> 0, 7 -> 1, 8 -> 1, 9 -> 1,
-        10 -> 0x10000, 11 -> 0x10100, 13 -> 0x10000, 14 -> 0x10100)) words(n) = v
-      val record = words.zipWithIndex.map { case(v,n) => v << (32*n) }.sum
-      var pending: Option[(BigInt,BigInt)] = None; var walks=0; var descriptors=0; var dataRequests=0; var cycles=0
+      for (
+        (n, v) <- Seq[(Int, BigInt)](
+          0 -> StorageDescriptorLayout.magic,
+          1 -> 64,
+          2 -> 1,
+          3 -> 7,
+          4 -> 11,
+          5 -> 13,
+          6 -> 0,
+          7 -> 1,
+          8 -> 1,
+          9 -> 1,
+          10 -> 0x10000,
+          11 -> 0x10100,
+          13 -> 0x10000,
+          14 -> 0x10100
+        )
+      ) words(n) = v
+      val record = words.zipWithIndex.map { case (v, n) => v << (32 * n) }.sum
+      var pending: Option[(BigInt, BigInt)] = None; var walks = 0; var descriptors = 0; var dataRequests = 0;
+      var cycles = 0
       while (!d.io.out.valid.peek().litToBoolean && cycles < 300) {
         d.io.memoryResponse.valid.poke(pending.nonEmpty.B)
-        pending.foreach { case(id,data) => d.io.memoryResponse.bits.transactionId.poke(id.U); d.io.memoryResponse.bits.readData.poke(data.U) }
-        val taken=pending.nonEmpty && d.io.memoryResponse.ready.peek().litToBoolean
-        val req=if (d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.ready.peek().litToBoolean) {
+        pending.foreach { case (id, data) =>
+          d.io.memoryResponse.bits.transactionId.poke(id.U); d.io.memoryResponse.bits.readData.poke(data.U)
+        }
+        val taken = pending.nonEmpty && d.io.memoryResponse.ready.peek().litToBoolean
+        val req = if (d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.ready.peek().litToBoolean) {
           assert(pending.isEmpty || taken)
-          val r=d.io.memoryRequest.bits;val id=r.transactionId.peek().litValue;val a=r.address.peek().litValue
-          val data=if(id==2){assert(a==0x80000);walks+=1;(BigInt(0x400)<<10)|0xc3}
-            else if(id==0){assert(a==0x404000);descriptors+=1;record}
-            else {dataRequests+=1;BigInt(0)}
-          Some(id->data)
+          val r = d.io.memoryRequest.bits; val id = r.transactionId.peek().litValue; val a = r.address.peek().litValue
+          val data = if (id == 2) { assert(a == 0x80000); walks += 1; (BigInt(0x400) << 10) | 0xc3 }
+          else if (id == 0) { assert(a == 0x404000); descriptors += 1; record }
+          else { dataRequests += 1; BigInt(0) }
+          Some(id -> data)
         } else None
-        if(taken)pending=None
-        d.clock.step();cycles+=1;req.foreach(x=>pending=Some(x))
+        if (taken) pending = None
+        d.clock.step(); cycles += 1; req.foreach(x => pending = Some(x))
       }
-      d.io.out.valid.expect(true.B);d.io.out.bits.source.expect(2.U)
+      d.io.out.valid.expect(true.B); d.io.out.bits.source.expect(2.U)
       d.io.out.bits.status.expect(StorageWordStatus.memoryFault.U)
       d.io.out.bits.pageFault.expect(true.B)
-      d.io.out.bits.faultAddressValid.expect(true.B);d.io.out.bits.faultAddress.expect(0x10000.U)
-      assert(walks>0 && descriptors==1 && dataRequests==0 && pending.isEmpty)
+      d.io.out.bits.faultAddressValid.expect(true.B); d.io.out.bits.faultAddress.expect(0x10000.U)
+      assert(walks > 0 && descriptors == 1 && dataRequests == 0 && pending.isEmpty)
     }
   }
 

@@ -34,13 +34,12 @@ class VectorIssuedInstruction(config: GpuConfig) extends Bundle {
 
 /** Couples vector decode metadata to four-operand vector RF operand issue.
   *
-  * The scalar read request is exposed so the eventual unified backend can
-  * arbitrate the scalar RF ports between scalar and vector issue. Scalar
-  * values are captured atomically with the decoded instruction.
+  * The scalar read request is exposed so the eventual unified backend can arbitrate the scalar RF ports between scalar
+  * and vector issue. Scalar values are captured atomically with the decoded instruction.
   */
 class VectorIssueStage(
-  config: GpuConfig = GpuConfig(),
-  useBlackBox: Boolean = false
+    config: GpuConfig = GpuConfig(),
+    useBlackBox: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new VectorDecodeResponse(config)))
@@ -58,8 +57,7 @@ class VectorIssueStage(
   })
 
   private val registers = Module(new VectorRegisterManager(config, useBlackBox))
-  private val reservationQueue = Module(
-    new Queue(new VectorRegisterReservation(config), 2))
+  private val reservationQueue = Module(new Queue(new VectorRegisterReservation(config), 2))
   private val metadata =
     Module(new Queue(new VectorIssueMetadata(config), entries = 4))
 

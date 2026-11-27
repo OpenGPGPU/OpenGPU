@@ -3,9 +3,8 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 
-/** Per-vertex attributes handed to the fragment stage.  A fragment shader that
-  * later runs on the SIMT lanes consumes interpolated values of these as its
-  * inputs; for now (M3a) we interpolate an 8-bit per-channel colour.
+/** Per-vertex attributes handed to the fragment stage. A fragment shader that later runs on the SIMT lanes consumes
+  * interpolated values of these as its inputs; for now (M3a) we interpolate an 8-bit per-channel colour.
   */
 class Varyings extends Bundle {
   val r = UInt(8.W)
@@ -15,12 +14,11 @@ class Varyings extends Bundle {
 
 /** Barycentric attribute interpolation for the legacy immediate path.
   *
-  * `RasterShader` (same file) instantiates this for `RenderPipeline` /
-  * tile-bin engines. Native/typed raster uses the FP32 streaming generation
-  * instead; see `graphics/README.md`. Each screen-space channel uses the
-  * rasterizer edge weights:
+  * `RasterShader` (same file) instantiates this for `RenderPipeline` / tile-bin engines. Native/typed raster uses the
+  * FP32 streaming generation instead; see `graphics/README.md`. Each screen-space channel uses the rasterizer edge
+  * weights:
   *
-  *   attr = (e0*attr0 + e1*attr1 + e2*attr2) / area
+  * attr = (e0*attr0 + e1*attr1 + e2*attr2) / area
   *
   * where area = e0 + e1 + e2 is twice the signed triangle area.
   */
@@ -61,14 +59,15 @@ class FragmentInterpolator(config: GraphicsConfig) extends Module {
   io.depth := interpS(io.d0, io.d1, io.d2)
 }
 
-/** A shaded fragment: screen position, interpolated colour, depth, and the
-  * raw barycentric edge values of its source pixel (consumers that need a
-  * second interpolation pass -- e.g. texture coordinates -- reuse them
-  * instead of re-deriving; texture-disabled consumers ignore them). */
+/** A shaded fragment: screen position, interpolated colour, depth, and the raw barycentric edge values of its source
+  * pixel (consumers that need a second interpolation pass -- e.g. texture coordinates -- reuse them instead of
+  * re-deriving; texture-disabled consumers ignore them).
+  */
 class RasterFragment(config: GraphicsConfig) extends Bundle {
   val x = SInt(config.coordWidth.W)
   val y = SInt(config.coordWidth.W)
   val color = new Varyings
+
   /** Alpha is kept separately because legacy vertex varyings are RGB-only. */
   val alpha = UInt(8.W)
   val depth = SInt(32.W)
@@ -76,31 +75,29 @@ class RasterFragment(config: GraphicsConfig) extends Bundle {
   val e1 = SInt(config.edgeWidth.W)
   val e2 = SInt(config.edgeWidth.W)
   val covered = Bool()
+
   /** Per-sample coverage carried from the rasterizer to the sample expander. */
   val coverageMask = UInt(config.maxSampleCount.W)
 }
 
-/** A shaded 2x2 quad emitted in one beat: lane 0=TL, 1=TR, 2=BL, 3=BR.  The
-  * per-lane `covered` flags are the helper-lane mask consumed by the
-  * fragment dispatcher. */
+/** A shaded 2x2 quad emitted in one beat: lane 0=TL, 1=TR, 2=BL, 3=BR. The per-lane `covered` flags are the helper-lane
+  * mask consumed by the fragment dispatcher.
+  */
 class FragmentQuad(config: GraphicsConfig) extends Bundle {
   val lanes = Vec(4, new RasterFragment(config))
 }
 
 /** Shades a rasterized triangle into fixed-point screen fragments.
   *
-  * This owned streaming pipeline, given one triangle, emits
-  * every covered pixel's barycentrically-interpolated colour and depth together
-  * with its screen position on `pixel`.
+  * This owned streaming pipeline, given one triangle, emits every covered pixel's barycentrically-interpolated colour
+  * and depth together with its screen position on `pixel`.
   *
-  * With `quadMode` the rasterizer's whole-quad stream is shaded instead: four
-  * attribute lanes produce a complete TL/TR/BL/BR
-  * [[FragmentQuad]] per cycle on `quad`, helper lanes included, for the
-  * core-backed fragment dispatcher.  The unused port of each configuration is
-  * tied off.
+  * With `quadMode` the rasterizer's whole-quad stream is shaded instead: four attribute lanes produce a complete
+  * TL/TR/BL/BR [[FragmentQuad]] per cycle on `quad`, helper lanes included, for the core-backed fragment dispatcher.
+  * The unused port of each configuration is tied off.
   */
-class RasterShader(config: GraphicsConfig, quadMode: Boolean = false,
-                   pixelCenterInput: Boolean = false) extends Module {
+class RasterShader(config: GraphicsConfig, quadMode: Boolean = false, pixelCenterInput: Boolean = false)
+    extends Module {
   val io = IO(new Bundle {
     val draw = Flipped(Decoupled(new TriangleVertices(config)))
     val colors = Input(Vec(3, new Varyings))
@@ -114,23 +111,25 @@ class RasterShader(config: GraphicsConfig, quadMode: Boolean = false,
     val scissorMinY = Input(UInt(16.W))
     val scissorMaxX = Input(UInt(16.W))
     val scissorMaxY = Input(UInt(16.W))
+
     /** Active mode. Zero uses the elaborated maximum. */
     val screenW = Input(UInt(16.W))
     val screenH = Input(UInt(16.W))
     val done = Output(Bool())
     val pixel = Decoupled(new RasterFragment(config))
     val quad = Decoupled(new FragmentQuad(config))
-    /** Per-sample depths for the scalar pixel, valid with `pixel`; tied to
-      * zero in quad mode, which carries the equivalent per-lane values on
-      * `quadDepths` instead. */
+
+    /** Per-sample depths for the scalar pixel, valid with `pixel`; tied to zero in quad mode, which carries the
+      * equivalent per-lane values on `quadDepths` instead.
+      */
     val depthSamples = Output(Vec(config.maxSampleCount, UInt(30.W)))
-    /** Per-lane per-sample depths, valid with `quad`.  Tied to zero in scalar
-      * mode. */
+
+    /** Per-lane per-sample depths, valid with `quad`. Tied to zero in scalar mode.
+      */
     val quadDepths = Output(Vec(4, Vec(config.maxSampleCount, UInt(30.W))))
   })
 
-  private val raster = Module(new TriangleRasterizer(config, quadMode,
-    pixelCenterInput = pixelCenterInput))
+  private val raster = Module(new TriangleRasterizer(config, quadMode, pixelCenterInput = pixelCenterInput))
   if (pixelCenterInput) raster.io.pixelCenter.get := io.pixelCenter.get
   private val attributes = Module(new PipelinedRasterAttributes(config, if (quadMode) 4 else 1))
   // Draw ownership includes all queued arithmetic and publicly held outputs.

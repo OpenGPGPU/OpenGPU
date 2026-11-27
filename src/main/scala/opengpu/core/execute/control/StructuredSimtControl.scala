@@ -6,9 +6,8 @@ import opengpu.config.GpuConfig
 import opengpu.core.frontend.simt.{SimtStackRead, SimtStackWrite}
 import opengpu.core.trap.{CoreTrapEvent, TrapCause}
 
-/** Instruction control client of the physical per-warp SIMT stack bank.
-  * The caller grants exclusive stack access from request acceptance until
-  * current/fault acceptance. This block never owns a second hidden stack.
+/** Instruction control client of the physical per-warp SIMT stack bank. The caller grants exclusive stack access from
+  * request acceptance until current/fault acceptance. This block never owns a second hidden stack.
   */
 class StructuredSimtControl(config: GpuConfig = GpuConfig()) extends Module {
   private val countWidth = math.max(1, log2Ceil(config.simtStackDepth + 1))
@@ -75,8 +74,7 @@ class StructuredSimtControl(config: GpuConfig = GpuConfig()) extends Module {
   private val needAlternate = divergent && !takenAtJoin && !fallAtJoin
   when(state === State.inspect) {
     path.warpId := saved.warpId
-    path.pc := Mux(isSync, saved.pc + 4.U,
-      Mux(takeCurrent, saved.targetPc, saved.fallthroughPc))
+    path.pc := Mux(isSync, saved.pc + 4.U, Mux(takeCurrent, saved.targetPc, saved.fallthroughPc))
     path.activeMask := Mux(isSync, saved.activeMask, Mux(takeCurrent, taken, fall))
     entry := 0.U.asTypeOf(entry)
     entry.warpId := saved.warpId

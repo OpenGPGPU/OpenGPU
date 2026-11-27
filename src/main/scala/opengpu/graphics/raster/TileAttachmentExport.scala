@@ -10,12 +10,10 @@ class TileAttachmentExportWord extends Bundle {
   val depth = Bool()
 }
 
-/** One synchronous SRAM-read stage followed by two registered export words.
-  * The scanner issues its SRAM read on prepare.fire; readData arrives in the
-  * following cycle. A stalled result is captured once, since an inactive
-  * SyncReadMem output need not hold its value. Private acknowledgements may
-  * retire and be replaced together;
-  * the enclosing transfer service owns actual external writes until drain.
+/** One synchronous SRAM-read stage followed by two registered export words. The scanner issues its SRAM read on
+  * prepare.fire; readData arrives in the following cycle. A stalled result is captured once, since an inactive
+  * SyncReadMem output need not hold its value. Private acknowledgements may retire and be replaced together; the
+  * enclosing transfer service owns actual external writes until drain.
   */
 class TileAttachmentExport extends Module {
   val io = IO(new Bundle {
@@ -33,14 +31,13 @@ class TileAttachmentExport extends Module {
   private val word = Reg(new TileAttachmentExportWord)
   private val captured = RegInit(false.B)
   private val sramData = Reg(UInt(32.W))
-  private val selectedData = Mux(word.depth,io.depthData,io.colorData)
-  private val queue = Module(new Queue(new OmMemoryRequest,2))
+  private val selectedData = Mux(word.depth, io.depthData, io.colorData)
+  private val queue = Module(new Queue(new OmMemoryRequest, 2))
   io.prepare.ready := !pending || queue.io.enq.ready
   queue.io.enq.valid := pending
   queue.io.enq.bits.write := true.B
   queue.io.enq.bits.addr := word.address
-  queue.io.enq.bits.data := Mux(word.fromSram,
-    Mux(captured,sramData,selectedData),word.clearValue)
+  queue.io.enq.bits.data := Mux(word.fromSram, Mux(captured, sramData, selectedData), word.clearValue)
   when(pending && word.fromSram && !captured) { sramData := selectedData; captured := true.B }
   when(queue.io.enq.fire) { pending := false.B }
   when(io.prepare.fire) { pending := true.B; word := io.prepare.bits; captured := false.B }
@@ -52,11 +49,13 @@ class TileAttachmentExport extends Module {
   io.local.req.bits := queue.io.deq.bits
   queue.io.deq.ready := io.local.req.ready && (!ackLive || io.local.resp.fire)
   when(io.local.resp.fire) {
-    assert(io.local.resp.bits.write && io.local.resp.bits.addr === ackAddress,
-      "export preparation acknowledgement must retain its exact word owner")
+    assert(
+      io.local.resp.bits.write && io.local.resp.bits.addr === ackAddress,
+      "export preparation acknowledgement must retain its exact word owner"
+    )
     ackLive := false.B
   }
   when(io.local.req.fire) { ackLive := true.B; ackAddress := io.local.req.bits.addr }
   io.drained := !pending && !queue.io.deq.valid && !ackLive
-  when(io.begin) { assert(io.drained,"an export pipeline cannot change owner before private drain") }
+  when(io.begin) { assert(io.drained, "an export pipeline cannot change owner before private drain") }
 }

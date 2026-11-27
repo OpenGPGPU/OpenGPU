@@ -9,8 +9,8 @@ class VectorFsqrtAluSpec extends AnyFlatSpec {
   behavior of "VectorFsqrtAlu"
 
   private def run(
-    config: GpuConfig,
-    request: VectorFpuRequest => Unit
+      config: GpuConfig,
+      request: VectorFpuRequest => Unit
   ): (Vector[BigInt], BigInt) = {
     var data = Vector.fill(config.lanes)(BigInt(0))
     var flags = BigInt(0)
@@ -41,9 +41,9 @@ class VectorFsqrtAluSpec extends AnyFlatSpec {
   }
 
   private def configure(
-    bits: VectorFpuRequest,
-    config: GpuConfig,
-    vs2: Seq[String]
+      bits: VectorFpuRequest,
+      config: GpuConfig,
+      vs2: Seq[String]
   ): Unit = {
     bits.warpId.poke(0.U)
     bits.vd.poke(3.U)
@@ -60,9 +60,12 @@ class VectorFsqrtAluSpec extends AnyFlatSpec {
 
   it should "execute vfsqrt per lane" in {
     val config = GpuConfig(lanes = 2)
-    val (data, flags) = run(config, { bits =>
-      configure(bits, config, Seq("h40800000", "h3f800000"))
-    })
+    val (data, flags) = run(
+      config,
+      { bits =>
+        configure(bits, config, Seq("h40800000", "h3f800000"))
+      }
+    )
     assert(data(0) == BigInt("40000000", 16)) // sqrt(4) = 2
     assert(data(1) == BigInt("3f800000", 16)) // sqrt(1) = 1
     assert(flags == 0)
@@ -70,18 +73,24 @@ class VectorFsqrtAluSpec extends AnyFlatSpec {
 
   it should "retain a zero lane until a normal square root finishes" in {
     val config = GpuConfig(lanes = 2)
-    val (data, flags) = run(config, { bits =>
-      configure(bits, config, Seq("h40800000", "h00000000"))
-    })
+    val (data, flags) = run(
+      config,
+      { bits =>
+        configure(bits, config, Seq("h40800000", "h00000000"))
+      }
+    )
     assert(data == Vector(BigInt("40000000", 16), BigInt(0)))
     assert(flags == 0)
   }
 
   it should "round inexact roots to nearest even and report NX" in {
     val config = GpuConfig(lanes = 2)
-    val (data, flags) = run(config, { bits =>
-      configure(bits, config, Seq("h40000000", "h3fc00000"))
-    })
+    val (data, flags) = run(
+      config,
+      { bits =>
+        configure(bits, config, Seq("h40000000", "h3fc00000"))
+      }
+    )
     assert(data(0) == BigInt("3fb504f3", 16)) // sqrt(2)
     assert(data(1) == BigInt("3f9cc471", 16)) // sqrt(1.5)
     assert((flags & BigInt("1", 16)) != 0)
@@ -89,21 +98,27 @@ class VectorFsqrtAluSpec extends AnyFlatSpec {
 
   it should "honor the routed dynamic rounding mode" in {
     val config = GpuConfig(lanes = 2)
-    val (data, _) = run(config, { bits =>
-      configure(bits, config, Seq("h40000000", "h40000000"))
-      bits.roundingMode.poke("b011".U) // RUP
-    })
+    val (data, _) = run(
+      config,
+      { bits =>
+        configure(bits, config, Seq("h40000000", "h40000000"))
+        bits.roundingMode.poke("b011".U) // RUP
+      }
+    )
     assert(data(0) == BigInt("3fb504f4", 16))
     assert(data(1) == BigInt("3fb504f4", 16))
   }
 
   it should "preserve masked-off lanes and skip their flags" in {
     val config = GpuConfig(lanes = 2)
-    val (data, flags) = run(config, { bits =>
-      configure(bits, config, Seq("h40000000", "hc0000000"))
-      bits.activeMask.poke("b01".U)
-      bits.oldVd(1).poke("h22222222".U)
-    })
+    val (data, flags) = run(
+      config,
+      { bits =>
+        configure(bits, config, Seq("h40000000", "hc0000000"))
+        bits.activeMask.poke("b01".U)
+        bits.oldVd(1).poke("h22222222".U)
+      }
+    )
     assert(data(0) == BigInt("3fb504f3", 16))
     assert(data(1) == BigInt("22222222", 16))
     assert((flags & BigInt("1", 16)) != 0)

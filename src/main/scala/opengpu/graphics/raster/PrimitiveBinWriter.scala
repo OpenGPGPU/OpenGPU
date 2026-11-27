@@ -16,6 +16,7 @@ object PrimitiveBinPageLayout {
 }
 
 class BinPrimitiveReference extends Bundle {
+
   /** Opaque handles to immutable primitive and draw-state records. */
   val primitive = UInt(32.W)
   val state = UInt(32.W)
@@ -37,6 +38,7 @@ object PrimitiveBinStatus {
   val exhausted = 3
   val memoryFault = 4
   val invalidOrder = 5
+
   /** Append to a tile whose chain was already sealed. */
   val closed = 7
 }
@@ -46,6 +48,7 @@ class PrimitiveBinAppendResult extends Bundle {
   val tile = UInt(32.W)
   val reference = new BinPrimitiveReference
   val status = UInt(PrimitiveBinStatus.width.W)
+
   /** Valid only on success. Address zero is legal when explicitly successful. */
   val recordAddress = UInt(32.W)
   val committedCount = UInt(32.W)
@@ -55,6 +58,7 @@ class PrimitiveBinCompletion extends Bundle {
   val identity = new GraphicsWorkIdentity
   val tile = UInt(32.W)
   val status = UInt(PrimitiveBinStatus.width.W)
+
   /** Only success/exhaustion exposes a usable committed prefix. */
   val prefixUsable = Bool()
   val headValid = Bool()
@@ -67,20 +71,17 @@ class PrimitiveBinCompletion extends Bundle {
   val restart = new BinPrimitiveReference
 }
 
-/** Build one ordered, memory-backed bin chain in a bounded software arena.
-  * A header is [magic,next,count,context,pass,generation,tile,pageOrdinal].
-  * Each reference is [primitive,state,sequence,token]. Sequences may have gaps
-  * but cannot repeat or wrap within a binding. Readers wait for completion.
+/** Build one ordered, memory-backed bin chain in a bounded software arena. A header is
+  * [magic,next,count,context,pass,generation,tile,pageOrdinal]. Each reference is [primitive,state,sequence,token].
+  * Sequences may have gaps but cannot repeat or wrap within a binding. Readers wait for completion.
   *
-  * Header initialization precedes linking a page. All four reference stores
-  * drain before its count store; that store's successful acknowledgement is
-  * the commit point. Exhaustion leaves an exact committed prefix and returns
-  * the rejected reference. Memory faults invalidate the whole binding, since
-  * an errored store may have changed memory. Cancellation preserves offered
-  * memory requests and allocation/append replies through drain.
+  * Header initialization precedes linking a page. All four reference stores drain before its count store; that store's
+  * successful acknowledgement is the commit point. Exhaustion leaves an exact committed prefix and returns the rejected
+  * reference. Memory faults invalidate the whole binding, since an errored store may have changed memory. Cancellation
+  * preserves offered memory requests and allocation/append replies through drain.
   *
-  * This is the page-writer component. Primitive/state caches, a multi-tile
-  * directory, replay and spill/restart scheduling are separate integrations.
+  * This is the page-writer component. Primitive/state caches, a multi-tile directory, replay and spill/restart
+  * scheduling are separate integrations.
   */
 class PrimitiveBinWriter(pageBytes: Int = 4096, writeCredits: Int = 8) extends Module {
   private val capacity = PrimitiveBinPageLayout.recordsPerPage(pageBytes)
@@ -103,9 +104,27 @@ class PrimitiveBinWriter(pageBytes: Int = 4096, writeCredits: Int = 8) extends M
     val storeBytes = Output(UInt(3.W))
     val pageAllocated = Output(Bool())
   })
-  private val Seq(idle, binding, ready, check, allocate, allocationWait,
-    header, headerWait, link, linkWait, payload, payloadWait, commit,
-    commitWait, reply, abortDrain, close, poolWait, done) = Enum(19)
+  private val Seq(
+    idle,
+    binding,
+    ready,
+    check,
+    allocate,
+    allocationWait,
+    header,
+    headerWait,
+    link,
+    linkWait,
+    payload,
+    payloadWait,
+    commit,
+    commitWait,
+    reply,
+    abortDrain,
+    close,
+    poolWait,
+    done
+  ) = Enum(19)
   private val state = RegInit(idle)
   private val descriptor = Reg(new PrimitiveBinDescriptor)
   private val current = Reg(new BinPrimitiveReference)
@@ -143,9 +162,11 @@ class PrimitiveBinWriter(pageBytes: Int = 4096, writeCredits: Int = 8) extends M
   io.mem.resp.ready := writes.io.response.ready
   private val faultNow = io.mem.resp.fire && io.mem.responseFault
   private val stop = aborting || io.cancel || faultNow
-  private val effectiveStatus = Mux(faultNow || passStatus === PrimitiveBinStatus.memoryFault.U,
-    PrimitiveBinStatus.memoryFault.U, Mux(io.cancel || aborting,
-      PrimitiveBinStatus.cancelled.U, passStatus))
+  private val effectiveStatus = Mux(
+    faultNow || passStatus === PrimitiveBinStatus.memoryFault.U,
+    PrimitiveBinStatus.memoryFault.U,
+    Mux(io.cancel || aborting, PrimitiveBinStatus.cancelled.U, passStatus)
+  )
   writes.io.abort := stop
   writes.io.begin := io.begin.fire
   writes.io.enqueue.valid := false.B
@@ -239,8 +260,10 @@ class PrimitiveBinWriter(pageBytes: Int = 4096, writeCredits: Int = 8) extends M
     is(allocationWait) {
       when(pool.io.allocation.fire && !stop) {
         assert(pool.io.allocation.bits.identity.asUInt === descriptor.pool.identity.asUInt)
-        assert(pool.io.allocation.bits.request.tile === descriptor.tile &&
-          pool.io.allocation.bits.request.token === current.token)
+        assert(
+          pool.io.allocation.bits.request.tile === descriptor.tile &&
+            pool.io.allocation.bits.request.token === current.token
+        )
         when(pool.io.allocation.bits.status === BinPageStatus.success.U) {
           newPage := pool.io.allocation.bits.address
           newOrdinal := pool.io.allocation.bits.ordinal
@@ -255,9 +278,18 @@ class PrimitiveBinWriter(pageBytes: Int = 4096, writeCredits: Int = 8) extends M
       }
     }
     is(header) {
-      val words = VecInit(Seq(PrimitiveBinPageLayout.magic.U(32.W), 0.U(32.W), 0.U(32.W),
-        descriptor.pool.identity.context, descriptor.pool.identity.pass,
-        descriptor.pool.identity.generation, descriptor.tile, newOrdinal))
+      val words = VecInit(
+        Seq(
+          PrimitiveBinPageLayout.magic.U(32.W),
+          0.U(32.W),
+          0.U(32.W),
+          descriptor.pool.identity.context,
+          descriptor.pool.identity.pass,
+          descriptor.pool.identity.generation,
+          descriptor.tile,
+          newOrdinal
+        )
+      )
       store(newPage + (wordIndex << 2), words(wordIndex(2, 0)))
       when(writes.io.enqueue.fire) {
         wordIndex := wordIndex + 1.U
@@ -311,8 +343,10 @@ class PrimitiveBinWriter(pageBytes: Int = 4096, writeCredits: Int = 8) extends M
   private val commitAcknowledged = commitLive && io.mem.resp.fire && !io.mem.responseFault &&
     io.mem.resp.bits.addr === page + PrimitiveBinPageLayout.countOffset.U
   io.committed := commitAcknowledged
-  when(stop && state =/= idle && state =/= binding && state =/= done &&
-      state =/= reply && state =/= abortDrain && state =/= poolWait) { state := abortDrain }
+  when(
+    stop && state =/= idle && state =/= binding && state =/= done &&
+      state =/= reply && state =/= abortDrain && state =/= poolWait
+  ) { state := abortDrain }
   when(commitAcknowledged) {
     commitLive := false.B
     count := count + 1.U
@@ -328,8 +362,7 @@ class PrimitiveBinWriter(pageBytes: Int = 4096, writeCredits: Int = 8) extends M
     aborting := true.B
   }
   when(pool.io.completion.fire) {
-    val status = Mux(effectiveStatus === PrimitiveBinStatus.success.U,
-      pool.io.completion.bits.status, effectiveStatus)
+    val status = Mux(effectiveStatus === PrimitiveBinStatus.success.U, pool.io.completion.bits.status, effectiveStatus)
     result.identity := descriptor.pool.identity
     result.tile := descriptor.tile
     result.status := status
@@ -339,7 +372,7 @@ class PrimitiveBinWriter(pageBytes: Int = 4096, writeCredits: Int = 8) extends M
     result.tail := page
     result.committedCount := count
     result.allocatedPages := pool.io.completion.bits.allocatedPages
-    result.spillTransitions:=pool.io.completion.bits.spillTransitions
+    result.spillTransitions := pool.io.completion.bits.spillTransitions
     result.restartValid := status === PrimitiveBinStatus.exhausted.U
     result.restart := restart
     state := done

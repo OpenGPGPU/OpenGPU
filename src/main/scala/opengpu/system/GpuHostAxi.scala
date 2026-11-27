@@ -21,139 +21,176 @@ import opengpu.graphics.{
   RenderHost,
   RenderHostRegs,
   TessellationJointHostProtocol,
-  TileBinHostCommandPort, TileBinHostRegs, TileBinJobCompletion, TileJobDescriptorRequest, NativeBinnedCompletionInfo, NativeVertexInputCapabilities, NativeFragmentInputCapabilities, NativeRasterCapabilities
+  TileBinHostCommandPort,
+  TileBinHostRegs,
+  TileBinJobCompletion,
+  TileJobDescriptorRequest,
+  NativeBinnedCompletionInfo,
+  NativeVertexInputCapabilities,
+  NativeFragmentInputCapabilities,
+  NativeRasterCapabilities
 }
 
 /** CPU-facing AXI4 MMIO front end in [[GpuHostSystemAxi]].
   *
-  * Handles register accesses, unified-command routing and interrupt delivery.
-  * The standalone graphics-host export also exposes renderer memory clients.
+  * Handles register accesses, unified-command routing and interrupt delivery. The standalone graphics-host export also
+  * exposes renderer memory clients.
   *
-  * This is the M6 host-facing port that ARTI (the RTL-to-QEMU integration
-  * framework) can auto-bridge: it exposes the standard AXI4 memory-mapped
-  * write and read channels (s_axi_aw*, s_axi_w*, s_axi_b*, s_axi_ar*,
-  * s_axi_r*), plus the single-clock / active-low-reset infrastructure and an
-  * interrupt output (m_irq), so ARTI's naming-based inferencer detects an
-  * AXI4 slave, maps the registers, and generates the embedded QEMU device
-  * model and device-tree node.  Internally it forwards every access to
-  * `RenderHost`'s register file and forwards the renderer's shared-memory
-  * ports unchanged.
+  * This is the M6 host-facing port that ARTI (the RTL-to-QEMU integration framework) can auto-bridge: it exposes the
+  * standard AXI4 memory-mapped write and read channels (s_axi_aw*, s_axi_w*, s_axi_b*, s_axi_ar*, s_axi_r*), plus the
+  * single-clock / active-low-reset infrastructure and an interrupt output (m_irq), so ARTI's naming-based inferencer
+  * detects an AXI4 slave, maps the registers, and generates the embedded QEMU device model and device-tree node.
+  * Internally it forwards every access to `RenderHost`'s register file and forwards the renderer's shared-memory ports
+  * unchanged.
   *
-  * AXI4 bursts are handled word-at-a-time (32-bit data, size = 2): a write
-  * burst issues one register write per beat at awaddr + beat*4 (INCR) or at
-  * the base address (FIXED), and a read burst returns one word per beat.
-  * Unsupported burst types/sizes and 4 KiB crossings return SLVERR.
-  * Unaligned or out-of-map accesses are acknowledged with SLVERR (RRESP/BRESP = 2'b10); successful accesses
-  * return `OKAY`.  The register file is single-ported, so at most one AXI
-  * transaction (read or write) is in flight at a time; the handshakes
-  * backpressure the host accordingly.
+  * AXI4 bursts are handled word-at-a-time (32-bit data, size = 2): a write burst issues one register write per beat at
+  * awaddr + beat*4 (INCR) or at the base address (FIXED), and a read burst returns one word per beat. Unsupported burst
+  * types/sizes and 4 KiB crossings return SLVERR. Unaligned or out-of-map accesses are acknowledged with SLVERR
+  * (RRESP/BRESP = 2'b10); successful accesses return `OKAY`. The register file is single-ported, so at most one AXI
+  * transaction (read or write) is in flight at a time; the handshakes backpressure the host accordingly.
   */
 class GpuHostAxi(
-  config: GraphicsConfig = GraphicsConfig(),
-  gpuConfig: GpuConfig = GpuConfig(),
-  fragCore: Boolean = false,
-  vertCore: Boolean = false,
-  deviceId: Int = 0x4755,
-  version: Int = 0x0001,
-  externalCompletionIrq: Boolean = false,
-  unifiedCommandMmio: Boolean = false,
-  commandIdWidth: Int = 8,
-  textureFaultReporting: Boolean = false,
-  computeScalarFpu: Boolean = false,
-  graphicsScalarFpu: Boolean = true,
-  sharedShader: Option[SharedCuShaderConfig] = None,
-  protectVmState: Boolean = false,
-  persistentAttachments: Boolean = false,
-  tileStoreCredits: Int = opengpu.config.MobileGpuConfig().attachmentStoreCredits,
-  useTileSramBlackBoxes: Boolean = false,
-  externalBinnedRender: Boolean = false,
-  nativeCompletionInfo: Boolean = false,
-  nativeVertexInput: Boolean = false,
-  visibilityQueries: Boolean = false,
-  transformFeedback: Boolean = false,transformFeedbackSourceWords: Int = 69,
-  primitiveQueries: Boolean = false,
-  shaderExecutionLimits: Boolean = false,
-  enableIndirectCompute: Boolean = false,
-  computeResources: Option[opengpu.config.ComputeResourceProfile] = None,
-  nativeVertexReuseEntries: Int = 0,
-  nativeIndirectDraw: Boolean = false,
-  nativeUniformResources: Boolean = false,
-  imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false,
-  computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false,
-  tessellationHost: Boolean = false,
-  imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false,
-  tessellationDiscovery: Boolean = false,
-  nativeAdvancedDraws: Boolean = false, nativeDescriptorPreflight: Boolean = false,
-  nativeProtectedSources: Boolean = false, nativeGeometryTransport: Boolean = false,
-  nativeSampleTransport: Boolean = false,
-  imageFloatExchangeAvailable: Boolean = false,
-  jointTessellationHost: Boolean = false,
-  jointTessellationProfile: Option[TessellationJointHostProtocol.Profile] = None
+    config: GraphicsConfig = GraphicsConfig(),
+    gpuConfig: GpuConfig = GpuConfig(),
+    fragCore: Boolean = false,
+    vertCore: Boolean = false,
+    deviceId: Int = 0x4755,
+    version: Int = 0x0001,
+    externalCompletionIrq: Boolean = false,
+    unifiedCommandMmio: Boolean = false,
+    commandIdWidth: Int = 8,
+    textureFaultReporting: Boolean = false,
+    computeScalarFpu: Boolean = false,
+    graphicsScalarFpu: Boolean = true,
+    sharedShader: Option[SharedCuShaderConfig] = None,
+    protectVmState: Boolean = false,
+    persistentAttachments: Boolean = false,
+    tileStoreCredits: Int = opengpu.config.MobileGpuConfig().attachmentStoreCredits,
+    useTileSramBlackBoxes: Boolean = false,
+    externalBinnedRender: Boolean = false,
+    nativeCompletionInfo: Boolean = false,
+    nativeVertexInput: Boolean = false,
+    visibilityQueries: Boolean = false,
+    transformFeedback: Boolean = false,
+    transformFeedbackSourceWords: Int = 69,
+    primitiveQueries: Boolean = false,
+    shaderExecutionLimits: Boolean = false,
+    enableIndirectCompute: Boolean = false,
+    computeResources: Option[opengpu.config.ComputeResourceProfile] = None,
+    nativeVertexReuseEntries: Int = 0,
+    nativeIndirectDraw: Boolean = false,
+    nativeUniformResources: Boolean = false,
+    imageAvailable: Boolean = false,
+    storageAvailable: Boolean = false,
+    computeUniformAvailable: Boolean = false,
+    computeTextureAvailable: Boolean = false,
+    atomicCounterAvailable: Boolean = false,
+    tessellationHost: Boolean = false,
+    imageAtomicAvailable: Boolean = false,
+    storageAtomicAvailable: Boolean = false,
+    tessellationDiscovery: Boolean = false,
+    nativeAdvancedDraws: Boolean = false,
+    nativeDescriptorPreflight: Boolean = false,
+    nativeProtectedSources: Boolean = false,
+    nativeGeometryTransport: Boolean = false,
+    nativeSampleTransport: Boolean = false,
+    imageFloatExchangeAvailable: Boolean = false,
+    jointTessellationHost: Boolean = false,
+    jointTessellationProfile: Option[TessellationJointHostProtocol.Profile] = None
 ) extends Module {
-  require(jointTessellationProfile.isEmpty || (jointTessellationHost && nativeProtectedSources &&
-    !tessellationDiscovery && computeResources.exists(p =>
-      p.computeUnits == 2 && p.gpu.lanes == 16 && p.gpu.warps == 8 &&
-        p.gpu.sharedMemoryBase == 0x10000000L && p.gpu.sharedMemoryBytes == 16384)),
-    "joint tessellation discovery requires the protected two-CU execution profile")
-  require(!nativeSampleTransport || nativeGeometryTransport,
-    "GSS1 discovery requires the protected layered geometry transport")
-  require(!nativeGeometryTransport || nativeProtectedSources,
-    "GGS1 transport discovery requires protected source routing")
-  require(!nativeProtectedSources || (nativeDescriptorPreflight && nativeUniformResources &&
-    shaderExecutionLimits && nativeCompletionInfo && nativeVertexInput && externalBinnedRender &&
-    unifiedCommandMmio && protectVmState && computeResources.nonEmpty && version>=2),
-    "native protected sources require GNP1, GUC1, GSL1 and protected native routing")
-  require(!nativeDescriptorPreflight || (nativeVertexInput && externalBinnedRender && unifiedCommandMmio &&
-    protectVmState && computeResources.nonEmpty && version>=2),
-    "native metadata preflight discovery requires protected native routing and GCR1")
-  require(!nativeAdvancedDraws || (nativeVertexInput && externalBinnedRender && unifiedCommandMmio &&
-    protectVmState && computeResources.nonEmpty && version>=2),
-    "native advanced discovery requires protected native routing and the guaranteed GCR1 block")
+  require(
+    jointTessellationProfile.isEmpty || (jointTessellationHost && nativeProtectedSources &&
+      !tessellationDiscovery && computeResources.exists(p =>
+        p.computeUnits == 2 && p.gpu.lanes == 16 && p.gpu.warps == 8 &&
+          p.gpu.sharedMemoryBase == 0x10000000L && p.gpu.sharedMemoryBytes == 16384
+      )),
+    "joint tessellation discovery requires the protected two-CU execution profile"
+  )
+  require(
+    !nativeSampleTransport || nativeGeometryTransport,
+    "GSS1 discovery requires the protected layered geometry transport"
+  )
+  require(
+    !nativeGeometryTransport || nativeProtectedSources,
+    "GGS1 transport discovery requires protected source routing"
+  )
+  require(
+    !nativeProtectedSources || (nativeDescriptorPreflight && nativeUniformResources &&
+      shaderExecutionLimits && nativeCompletionInfo && nativeVertexInput && externalBinnedRender &&
+      unifiedCommandMmio && protectVmState && computeResources.nonEmpty && version >= 2),
+    "native protected sources require GNP1, GUC1, GSL1 and protected native routing"
+  )
+  require(
+    !nativeDescriptorPreflight || (nativeVertexInput && externalBinnedRender && unifiedCommandMmio &&
+      protectVmState && computeResources.nonEmpty && version >= 2),
+    "native metadata preflight discovery requires protected native routing and GCR1"
+  )
+  require(
+    !nativeAdvancedDraws || (nativeVertexInput && externalBinnedRender && unifiedCommandMmio &&
+      protectVmState && computeResources.nonEmpty && version >= 2),
+    "native advanced discovery requires protected native routing and the guaranteed GCR1 block"
+  )
   require(!imageAtomicAvailable || imageAvailable, "image atomics require images")
   require(!imageFloatExchangeAvailable || imageAtomicAvailable, "float image exchange requires image atomics")
   require(!storageAtomicAvailable || storageAvailable, "storage atomics require storage")
   require(!protectVmState || unifiedCommandMmio)
   require(!persistentAttachments || (unifiedCommandMmio && protectVmState))
   require(!externalBinnedRender || (unifiedCommandMmio && protectVmState && !persistentAttachments))
-  require(!tessellationHost || externalBinnedRender, "tessellation host routing requires the protected binned command port")
-  require(!jointTessellationHost || (externalBinnedRender && nativeCompletionInfo && gpuConfig.xLen == 32),
-    "joint tessellation requires the protected binned command port and completion details")
-  require(!tessellationDiscovery || (tessellationHost && nativeCompletionInfo && computeResources.nonEmpty && version >= 2),
-    "tessellation discovery requires the protected native host and GCR1")
+  require(
+    !tessellationHost || externalBinnedRender,
+    "tessellation host routing requires the protected binned command port"
+  )
+  require(
+    !jointTessellationHost || (externalBinnedRender && nativeCompletionInfo && gpuConfig.xLen == 32),
+    "joint tessellation requires the protected binned command port and completion details"
+  )
+  require(
+    !tessellationDiscovery || (tessellationHost && nativeCompletionInfo && computeResources.nonEmpty && version >= 2),
+    "tessellation discovery requires the protected native host and GCR1"
+  )
   require(!nativeCompletionInfo || externalBinnedRender)
   require(!nativeVertexInput || externalBinnedRender)
   require(!nativeUniformResources || nativeVertexInput)
-  require(nativeVertexInput || (nativeVertexReuseEntries==0 && !nativeIndirectDraw))
-  private val nativeVertexWords=NativeVertexInputCapabilities.wordsFor(nativeVertexReuseEntries,nativeIndirectDraw)
+  require(nativeVertexInput || (nativeVertexReuseEntries == 0 && !nativeIndirectDraw))
+  private val nativeVertexWords = NativeVertexInputCapabilities.wordsFor(nativeVertexReuseEntries, nativeIndirectDraw)
   require(!visibilityQueries || nativeVertexInput)
   require(!transformFeedback || nativeVertexInput)
   require(!primitiveQueries || transformFeedback)
   require(!shaderExecutionLimits || (nativeVertexInput && protectVmState))
   require(!enableIndirectCompute || (unifiedCommandMmio && protectVmState))
   require(!imageAvailable || (unifiedCommandMmio && protectVmState))
-  require(!imageAvailable || computeResources.nonEmpty,
-    "image command transport requires GCR1 feature discovery")
-  require(!imageAvailable || version >= 2,
-    "image command discovery requires the GCR1 host ABI version")
-  require(!storageAvailable || (unifiedCommandMmio && protectVmState && computeResources.nonEmpty && version >= 2),
-    "storage command transport requires protected VM ownership and GCR1 discovery")
-  require(!computeUniformAvailable || (unifiedCommandMmio && protectVmState && computeResources.nonEmpty && version >= 2),
-    "compute uniform transport requires protected VM ownership and GCR1 discovery")
-  require(!computeTextureAvailable || (unifiedCommandMmio && protectVmState && computeResources.nonEmpty && version >= 2),
-    "compute texture transport requires protected VM ownership and GCR1 discovery")
-  require(!atomicCounterAvailable || (unifiedCommandMmio && protectVmState && computeResources.nonEmpty && version >= 2),
-    "atomic counter transport requires protected VM ownership and GCR1 discovery")
+  require(!imageAvailable || computeResources.nonEmpty, "image command transport requires GCR1 feature discovery")
+  require(!imageAvailable || version >= 2, "image command discovery requires the GCR1 host ABI version")
+  require(
+    !storageAvailable || (unifiedCommandMmio && protectVmState && computeResources.nonEmpty && version >= 2),
+    "storage command transport requires protected VM ownership and GCR1 discovery"
+  )
+  require(
+    !computeUniformAvailable || (unifiedCommandMmio && protectVmState && computeResources.nonEmpty && version >= 2),
+    "compute uniform transport requires protected VM ownership and GCR1 discovery"
+  )
+  require(
+    !computeTextureAvailable || (unifiedCommandMmio && protectVmState && computeResources.nonEmpty && version >= 2),
+    "compute texture transport requires protected VM ownership and GCR1 discovery"
+  )
+  require(
+    !atomicCounterAvailable || (unifiedCommandMmio && protectVmState && computeResources.nonEmpty && version >= 2),
+    "atomic counter transport requires protected VM ownership and GCR1 discovery"
+  )
   require(computeResources.isEmpty || (unifiedCommandMmio && protectVmState))
   require(version >= 0 && version <= 0xffff, "host ABI version must fit its 16-bit field")
-  require(version < 2 || computeResources.nonEmpty,
-    "host ABI v2 and later require the read-only GCR1 compute discovery block")
+  require(
+    version < 2 || computeResources.nonEmpty,
+    "host ABI v2 and later require the read-only GCR1 compute discovery block"
+  )
   private val computeConfig = computeResources.map(_.gpu).getOrElse(gpuConfig)
   override def desiredName: String = "GpuHostAxi"
 
   val io = IO(new Bundle {
     val shaderInstructionLimit = if (shaderExecutionLimits) Some(Output(UInt(32.W))) else None
-    val shared = sharedShader.filter(_ => !externalBinnedRender).map(pool => Flipped(new SharedCuGraphicsPort(
-      gpuConfig, pool.taskIdWidth, pool.numComputeUnits)))
+    val shared = sharedShader
+      .filter(_ => !externalBinnedRender)
+      .map(pool => Flipped(new SharedCuGraphicsPort(gpuConfig, pool.taskIdWidth, pool.numComputeUnits)))
     val s_axi_aclk = Input(Clock())
     val s_axi_aresetn = Input(Bool())
 
@@ -193,22 +230,37 @@ class GpuHostAxi(
       Some(Input(Bool()))
     } else None
     val gpuCommand = if (unifiedCommandMmio) {
-      Some(Decoupled(new GpuCommand(gpuConfig, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable, atomicCounterAvailable)))
+      Some(
+        Decoupled(
+          new GpuCommand(
+            gpuConfig,
+            commandIdWidth,
+            imageAvailable,
+            storageAvailable,
+            computeUniformAvailable,
+            computeTextureAvailable,
+            atomicCounterAvailable
+          )
+        )
+      )
     } else None
     val gpuCompletion = if (unifiedCommandMmio) {
       Some(Flipped(Decoupled(new GpuCommandResult(commandIdWidth))))
     } else None
-    /** Safe unified-command reset handshake to the system: the bridge holds
-      * `commandResetActive` from the RESET register write until the system
-      * pulses `commandResetDone` (drain complete, command path reset). */
+
+    /** Safe unified-command reset handshake to the system: the bridge holds `commandResetActive` from the RESET
+      * register write until the system pulses `commandResetDone` (drain complete, command path reset).
+      */
     val commandResetActive = if (unifiedCommandMmio) {
       Some(Output(Bool()))
     } else None
     val commandResetDone = if (unifiedCommandMmio) {
       Some(Input(Bool()))
     } else None
-    /** Sv32 page-table state for the vector and instruction MMUs, plus a
-      * one-cycle scoped TLB flush, programmed through the unified bridge. */
+
+    /** Sv32 page-table state for the vector and instruction MMUs, plus a one-cycle scoped TLB flush, programmed through
+      * the unified bridge.
+      */
     val graphicsDrained = Output(Bool())
     val performance = Output(new opengpu.graphics.GraphicsPerformanceEvents)
     val vectorSatp = Output(UInt(32.W))
@@ -222,29 +274,40 @@ class GpuHostAxi(
     val graphicsDependencyIdle = if (persistentAttachments || externalBinnedRender) Some(Input(Bool())) else None
 
     val binSubmit = if (externalBinnedRender) Some(Decoupled(new TileJobDescriptorRequest(commandIdWidth))) else None
-    val binCompletion = if (externalBinnedRender) Some(Flipped(Decoupled(new TileBinJobCompletion(commandIdWidth)))) else None
-    val binCompletionDetails=if(nativeCompletionInfo)Some(Input(Vec(NativeBinnedCompletionInfo.wordCount,UInt(32.W))))else None
-    val binCapabilityWords = if (externalBinnedRender) Some(Input(Vec(8,UInt(32.W)))) else None
+    val binCompletion =
+      if (externalBinnedRender) Some(Flipped(Decoupled(new TileBinJobCompletion(commandIdWidth)))) else None
+    val binCompletionDetails =
+      if (nativeCompletionInfo) Some(Input(Vec(NativeBinnedCompletionInfo.wordCount, UInt(32.W)))) else None
+    val binCapabilityWords = if (externalBinnedRender) Some(Input(Vec(8, UInt(32.W)))) else None
     val binDrained = if (externalBinnedRender) Some(Input(Bool())) else None
     val binCancel = if (externalBinnedRender) Some(Output(Bool())) else None
-    val tessellationSubmit = if (tessellationHost) Some(Decoupled(new TileJobDescriptorRequest(commandIdWidth))) else None
-    val tessellationCompletion = if (tessellationHost) Some(Flipped(Decoupled(new TileBinJobCompletion(commandIdWidth)))) else None
-    val tessellationCompletionDetails = if (tessellationHost && nativeCompletionInfo) Some(Input(Vec(NativeBinnedCompletionInfo.wordCount,UInt(32.W)))) else None
-    val jointTessellationSubmit = Option.when(jointTessellationHost)(
-      Decoupled(new TessellationJointJobRequest(commandIdWidth)))
-    val jointTessellationCompletion = Option.when(jointTessellationHost)(
-      Flipped(Decoupled(new TessellationJointNativeCompletion(commandIdWidth))))
+    val tessellationSubmit =
+      if (tessellationHost) Some(Decoupled(new TileJobDescriptorRequest(commandIdWidth))) else None
+    val tessellationCompletion =
+      if (tessellationHost) Some(Flipped(Decoupled(new TileBinJobCompletion(commandIdWidth)))) else None
+    val tessellationCompletionDetails =
+      if (tessellationHost && nativeCompletionInfo) Some(Input(Vec(NativeBinnedCompletionInfo.wordCount, UInt(32.W))))
+      else None
+    val jointTessellationSubmit =
+      Option.when(jointTessellationHost)(Decoupled(new TessellationJointJobRequest(commandIdWidth)))
+    val jointTessellationCompletion =
+      Option.when(jointTessellationHost)(Flipped(Decoupled(new TessellationJointNativeCompletion(commandIdWidth))))
     val tessellationDrained = Option.when(tessellationHost || jointTessellationHost)(Input(Bool()))
     val tessellationCancel = Option.when(tessellationHost || jointTessellationHost)(Output(Bool()))
-    val queryCommand=if(visibilityQueries)Some(Decoupled(new opengpu.graphics.VisibilityQueryCommand))else None
-    val queryReply=if(visibilityQueries)Some(Flipped(Decoupled(new opengpu.graphics.VisibilityQueryReply)))else None
-    val renderQueryContext=if(visibilityQueries)Some(Output(UInt(32.W)))else None
-    val feedbackCommand=if(transformFeedback)Some(Decoupled(new opengpu.graphics.NativeTransformFeedbackRequest))else None
-    val feedbackReply=if(transformFeedback)Some(Flipped(Decoupled(new opengpu.graphics.NativeTransformFeedbackReply)))else None
-    val renderFeedbackScope=if(transformFeedback)Some(Output(new opengpu.graphics.TransformFeedbackScope))else None
+    val queryCommand = if (visibilityQueries) Some(Decoupled(new opengpu.graphics.VisibilityQueryCommand)) else None
+    val queryReply =
+      if (visibilityQueries) Some(Flipped(Decoupled(new opengpu.graphics.VisibilityQueryReply))) else None
+    val renderQueryContext = if (visibilityQueries) Some(Output(UInt(32.W))) else None
+    val feedbackCommand =
+      if (transformFeedback) Some(Decoupled(new opengpu.graphics.NativeTransformFeedbackRequest)) else None
+    val feedbackReply =
+      if (transformFeedback) Some(Flipped(Decoupled(new opengpu.graphics.NativeTransformFeedbackReply))) else None
+    val renderFeedbackScope = if (transformFeedback) Some(Output(new opengpu.graphics.TransformFeedbackScope)) else None
 
-    val primitiveQueryCommand=if(primitiveQueries)Some(Decoupled(new opengpu.graphics.PrimitiveQueryCommand))else None
-    val primitiveQueryReply=if(primitiveQueries)Some(Flipped(Decoupled(new opengpu.graphics.PrimitiveQueryReply)))else None
+    val primitiveQueryCommand =
+      if (primitiveQueries) Some(Decoupled(new opengpu.graphics.PrimitiveQueryCommand)) else None
+    val primitiveQueryReply =
+      if (primitiveQueries) Some(Flipped(Decoupled(new opengpu.graphics.PrimitiveQueryReply))) else None
 
     // Renderer shared-memory ports (command buffer + framebuffer words, and the
     // core-backed shader kernel's line/coherence side ports) pass straight
@@ -260,8 +323,10 @@ class GpuHostAxi(
     }
     val kernelMemReq = Decoupled(new ComputeMemoryRequest(gpuConfig))
     val kernelMemResp = Flipped(Decoupled(new ComputeMemoryResponse()))
-    val kernelWordMemReq = Decoupled(new ComputeMemoryRequest(gpuConfig, 64, SharedCuShaderConfig.kernelWordTransactions(sharedShader)))
-    val kernelWordMemResp = Flipped(Decoupled(new ComputeMemoryResponse(64, SharedCuShaderConfig.kernelWordTransactions(sharedShader))))
+    val kernelWordMemReq =
+      Decoupled(new ComputeMemoryRequest(gpuConfig, 64, SharedCuShaderConfig.kernelWordTransactions(sharedShader)))
+    val kernelWordMemResp =
+      Flipped(Decoupled(new ComputeMemoryResponse(64, SharedCuShaderConfig.kernelWordTransactions(sharedShader))))
     val kernelL1Invalidate = Flipped(Decoupled(new CacheLineInvalidate(gpuConfig)))
     val kernelL1InvalidateDone = Decoupled(new CacheLineInvalidate(gpuConfig))
     val kernelGlobalAtomicRequest = Decoupled(new SharedAtomicRequest(gpuConfig))
@@ -274,17 +339,27 @@ class GpuHostAxi(
   })
 
   withClockAndReset(clock, !io.s_axi_aresetn) {
-    val host = Module(new RenderHost(
-      config, gpuConfig, fragCore, vertCore, deviceId, version,
-      unifiedCommands = unifiedCommandMmio,
-      textureFaultReporting = textureFaultReporting,
-      commandIdWidth = commandIdWidth,
-      computeScalarFpu = computeScalarFpu,
-      graphicsScalarFpu = graphicsScalarFpu,
-      sharedShader = sharedShader,
-      protectedVmState = protectVmState,
-      persistentAttachments = persistentAttachments, tileStoreCredits = tileStoreCredits,
-      useTileSramBlackBoxes = useTileSramBlackBoxes, externalBinnedRender = externalBinnedRender))
+    val host = Module(
+      new RenderHost(
+        config,
+        gpuConfig,
+        fragCore,
+        vertCore,
+        deviceId,
+        version,
+        unifiedCommands = unifiedCommandMmio,
+        textureFaultReporting = textureFaultReporting,
+        commandIdWidth = commandIdWidth,
+        computeScalarFpu = computeScalarFpu,
+        graphicsScalarFpu = graphicsScalarFpu,
+        sharedShader = sharedShader,
+        protectedVmState = protectVmState,
+        persistentAttachments = persistentAttachments,
+        tileStoreCredits = tileStoreCredits,
+        useTileSramBlackBoxes = useTileSramBlackBoxes,
+        externalBinnedRender = externalBinnedRender
+      )
+    )
     sharedShader.filter(_ => !externalBinnedRender).foreach(_ => host.io.shared.get <> io.shared.get)
     host.io.textureFault.foreach(_ := io.textureFault.get)
     if (persistentAttachments) {
@@ -293,20 +368,36 @@ class GpuHostAxi(
       host.io.tileTextureFault.get := io.tileTextureFault.get
       host.io.tileCancel.get := io.commandResetActive.get
     }
-    val binCompletionDrained=WireDefault(true.B)
-    val shaderQuota = if (shaderExecutionLimits) Some(RegInit(NativeShaderExecutionCapabilities.defaultQuota.U(32.W))) else None
+    val binCompletionDrained = WireDefault(true.B)
+    val shaderQuota =
+      if (shaderExecutionLimits) Some(RegInit(NativeShaderExecutionCapabilities.defaultQuota.U(32.W))) else None
     io.shaderInstructionLimit.foreach(_ := shaderQuota.get)
     val shaderQuotaIdle = WireDefault(false.B)
     io.commandReadsIdle := host.io.commandReadsIdle
-    io.graphicsDrained := host.io.drained && io.binDrained.getOrElse(true.B) && io.tessellationDrained.getOrElse(true.B) && binCompletionDrained
+    io.graphicsDrained := host.io.drained && io.binDrained.getOrElse(true.B) && io.tessellationDrained.getOrElse(
+      true.B
+    ) && binCompletionDrained
     io.performance := host.io.performance
     val unified = if (unifiedCommandMmio) {
-      Some(Module(new GpuCommandMmio(
-        gpuConfig, commandIdWidth, gpuConfig.commandQueueDepth,
-        shaderComputeUnits = sharedShader.map(_.numComputeUnits).getOrElse(1),
-        shaderKernargBanks = sharedShader.map(_.fragmentBanks).getOrElse(2),
-        protectVmState = protectVmState,nativeCompletionInfo=nativeCompletionInfo,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,computeTextureAvailable=computeTextureAvailable,atomicCounterAvailable=atomicCounterAvailable,
-        jointTessellationCompletion=jointTessellationHost)))
+      Some(
+        Module(
+          new GpuCommandMmio(
+            gpuConfig,
+            commandIdWidth,
+            gpuConfig.commandQueueDepth,
+            shaderComputeUnits = sharedShader.map(_.numComputeUnits).getOrElse(1),
+            shaderKernargBanks = sharedShader.map(_.fragmentBanks).getOrElse(2),
+            protectVmState = protectVmState,
+            nativeCompletionInfo = nativeCompletionInfo,
+            imageAvailable = imageAvailable,
+            storageAvailable = storageAvailable,
+            computeUniformAvailable = computeUniformAvailable,
+            computeTextureAvailable = computeTextureAvailable,
+            atomicCounterAvailable = atomicCounterAvailable,
+            jointTessellationCompletion = jointTessellationHost
+          )
+        )
+      )
     } else None
 
     // Command distribution lives here, next to the graphics engine: a render
@@ -318,17 +409,32 @@ class GpuHostAxi(
     host.io.renderCompletion.ready := false.B
     unified.foreach { bridge =>
       if (externalBinnedRender) {
-        val port=Module(new TileBinHostCommandPort(gpuConfig,commandIdWidth,nativeCompletionInfo,visibilityQueries,transformFeedback,primitiveQueries,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable,atomicCounterAvailable,tessellationAvailable=tessellationHost,
-          jointTessellationAvailable=jointTessellationHost))
+        val port = Module(
+          new TileBinHostCommandPort(
+            gpuConfig,
+            commandIdWidth,
+            nativeCompletionInfo,
+            visibilityQueries,
+            transformFeedback,
+            primitiveQueries,
+            imageAvailable,
+            storageAvailable,
+            computeUniformAvailable,
+            computeTextureAvailable,
+            atomicCounterAvailable,
+            tessellationAvailable = tessellationHost,
+            jointTessellationAvailable = jointTessellationHost
+          )
+        )
         port.io.command <> bridge.io.command
         io.binSubmit.get <> port.io.submit
         port.io.renderCompletion <> io.binCompletion.get
-        if(tessellationHost){
+        if (tessellationHost) {
           io.tessellationSubmit.get <> port.io.tessellationSubmit.get
           port.io.tessellationCompletion.get <> io.tessellationCompletion.get
-          if(nativeCompletionInfo)port.io.tessellationCompletionDetails.get:=io.tessellationCompletionDetails.get
+          if (nativeCompletionInfo) port.io.tessellationCompletionDetails.get := io.tessellationCompletionDetails.get
         }
-        if(jointTessellationHost) {
+        if (jointTessellationHost) {
           io.jointTessellationSubmit.get <> port.io.jointTessellationSubmit.get
           port.io.jointTessellationCompletion.get <> io.jointTessellationCompletion.get
         }
@@ -336,33 +442,38 @@ class GpuHostAxi(
         io.gpuCommand.get <> port.io.otherCommand
         port.io.otherCompletion <> io.gpuCompletion.get
         bridge.io.completion <> port.io.completion
-        if(nativeCompletionInfo){port.io.renderCompletionDetails.get:=io.binCompletionDetails.get
-          bridge.io.completionDetails.get:=port.io.completionDetails.get}
-        port.io.dependencyIdle:=io.graphicsDependencyIdle.get && host.io.drained
-        port.io.renderIdle:=io.binDrained.get && io.tessellationDrained.getOrElse(true.B)
-        if(visibilityQueries){
+        if (nativeCompletionInfo) {
+          port.io.renderCompletionDetails.get := io.binCompletionDetails.get
+          bridge.io.completionDetails.get := port.io.completionDetails.get
+        }
+        port.io.dependencyIdle := io.graphicsDependencyIdle.get && host.io.drained
+        port.io.renderIdle := io.binDrained.get && io.tessellationDrained.getOrElse(true.B)
+        if (visibilityQueries) {
           io.queryCommand.get <> port.io.queryCommand.get
           port.io.queryReply.get <> io.queryReply.get
-          io.renderQueryContext.get:=port.io.renderQueryContext.get
+          io.renderQueryContext.get := port.io.renderQueryContext.get
         }
-        if(transformFeedback){
-          io.feedbackCommand.get<>port.io.feedbackCommand.get;port.io.feedbackReply.get<>io.feedbackReply.get
-          port.io.feedbackSatp.get:=bridge.io.vectorSatp;io.renderFeedbackScope.get:=port.io.renderFeedbackScope.get
+        if (transformFeedback) {
+          io.feedbackCommand.get <> port.io.feedbackCommand.get; port.io.feedbackReply.get <> io.feedbackReply.get
+          port.io.feedbackSatp.get := bridge.io.vectorSatp;
+          io.renderFeedbackScope.get := port.io.renderFeedbackScope.get
         }
-        if(primitiveQueries){
-          io.primitiveQueryCommand.get<>port.io.primitiveQueryCommand.get
-          port.io.primitiveQueryReply.get<>io.primitiveQueryReply.get
+        if (primitiveQueries) {
+          io.primitiveQueryCommand.get <> port.io.primitiveQueryCommand.get
+          port.io.primitiveQueryReply.get <> io.primitiveQueryReply.get
         }
-        port.io.resetActive:=bridge.io.resetActive
-        io.binCancel.get:=port.io.cancel
-        host.io.externalRenderBusy.get:=port.io.renderPending
-        binCompletionDrained:=port.io.drained
+        port.io.resetActive := bridge.io.resetActive
+        io.binCancel.get := port.io.cancel
+        host.io.externalRenderBusy.get := port.io.renderPending
+        binCompletionDrained := port.io.drained
       } else {
         val renderOpcode = if (persistentAttachments) GpuCommandOpcode.tileRender else GpuCommandOpcode.render
         val isRender = bridge.io.command.bits.opcode === renderOpcode
         val dependencyReady = io.graphicsDependencyIdle.getOrElse(true.B)
-        val nonRenderAllowed = if (persistentAttachments)
-          bridge.io.command.bits.opcode === GpuCommandOpcode.kernel || host.io.drained else true.B
+        val nonRenderAllowed =
+          if (persistentAttachments)
+            bridge.io.command.bits.opcode === GpuCommandOpcode.kernel || host.io.drained
+          else true.B
         host.io.renderCommand.valid := bridge.io.command.valid && isRender && dependencyReady
         host.io.renderCommand.bits.descriptorId :=
           bridge.io.command.bits.commandId
@@ -370,16 +481,21 @@ class GpuHostAxi(
           bridge.io.command.bits.sourceAddress
         host.io.renderCommand.bits.bytes := bridge.io.command.bits.bytes
         if (persistentAttachments) {
-          host.io.renderCommand.bits.limit.get := Cat(bridge.io.command.bits.pattern(0),
-            bridge.io.command.bits.destinationAddress)
+          host.io.renderCommand.bits.limit.get := Cat(
+            bridge.io.command.bits.pattern(0),
+            bridge.io.command.bits.destinationAddress
+          )
           host.io.renderCommand.bits.envelopeValid.get := bridge.io.command.bits.pattern(31, 1) === 0.U &&
             !bridge.io.command.bits.waitForDma && !bridge.io.command.bits.waitForEvent &&
             !bridge.io.command.bits.signalEvent
         }
         io.gpuCommand.get.valid := bridge.io.command.valid && !isRender && nonRenderAllowed
         io.gpuCommand.get.bits := bridge.io.command.bits
-        bridge.io.command.ready := Mux(isRender,
-          host.io.renderCommand.ready && dependencyReady, io.gpuCommand.get.ready && nonRenderAllowed)
+        bridge.io.command.ready := Mux(
+          isRender,
+          host.io.renderCommand.ready && dependencyReady,
+          io.gpuCommand.get.ready && nonRenderAllowed
+        )
 
         // One unified completion slot: the local render completion or the
         // system's command completion.
@@ -391,8 +507,7 @@ class GpuHostAxi(
         renderResult.success := host.io.renderCompletion.bits.success
         renderResult.bytesProcessed :=
           host.io.renderCompletion.bits.bytesProcessed
-        val completionArb = Module(new RRArbiter(
-          new GpuCommandResult(commandIdWidth), 2))
+        val completionArb = Module(new RRArbiter(new GpuCommandResult(commandIdWidth), 2))
         completionArb.io.in(0).valid := host.io.renderCompletion.valid
         completionArb.io.in(0).bits := renderResult
         host.io.renderCompletion.ready := completionArb.io.in(0).ready
@@ -404,13 +519,15 @@ class GpuHostAxi(
       }
       io.commandResetActive.get := bridge.io.resetActive
       bridge.io.resetDone := io.commandResetDone.get
-      bridge.io.vmContextIdle.foreach(_ := io.vmContextIdle.get && host.io.drained && io.binDrained.getOrElse(true.B) && io.tessellationDrained.getOrElse(true.B) && binCompletionDrained)
+      bridge.io.vmContextIdle.foreach(
+        _ := io.vmContextIdle.get && host.io.drained && io.binDrained.getOrElse(true.B) && io.tessellationDrained
+          .getOrElse(true.B) && binCompletionDrained
+      )
       if (shaderExecutionLimits) shaderQuotaIdle := bridge.io.vmStateWriteAllowed.get
     }
     io.vectorSatp := unified.map(_.io.vectorSatp).getOrElse(0.U)
     io.instructionSatp := unified.map(_.io.instructionSatp).getOrElse(0.U)
-    io.tlbFlush := unified.map(_.io.tlbFlush).getOrElse(
-      0.U.asTypeOf(io.tlbFlush))
+    io.tlbFlush := unified.map(_.io.tlbFlush).getOrElse(0.U.asTypeOf(io.tlbFlush))
     host.io.instructionSatp := io.instructionSatp
     host.io.instructionTlbFlush := io.tlbFlush
     host.io.vectorSatp := io.vectorSatp
@@ -478,17 +595,17 @@ class GpuHostAxi(
     // ahead of the public register-read mux. Preserve the 33rd carry bit so
     // high-address increments cannot alias the low MMIO map.
     def validTransfer(address: UInt, length: UInt, size: UInt, burst: UInt): Bool = {
-      val end = address(11,0) +& Mux(burst===1.U, (length+&1.U)<<2, 4.U)
-      size===2.U && burst<=1.U && end<=4096.U && (burst=/=0.U || length<16.U)
+      val end = address(11, 0) +& Mux(burst === 1.U, (length +& 1.U) << 2, 4.U)
+      size === 2.U && burst <= 1.U && end <= 4096.U && (burst =/= 0.U || length < 16.U)
     }
-    val beatAddrWide=beatAddress
-    val beatAddr=beatAddress(31,0)
-    val transferOk=transferValid
+    val beatAddrWide = beatAddress
+    val beatAddr = beatAddress(31, 0)
+    val transferOk = transferValid
     def advanceBeatAddress(): Unit = {
-      when(burstReg===1.U) {
+      when(burstReg === 1.U) {
         // Retain the previous eight-bit beat counter's wrap behavior even
         // for a malformed write stream extending beyond its declared length.
-        beatAddress := Mux(beat.andR, Cat(0.U(1.W),addrReg), beatAddress+4.U)
+        beatAddress := Mux(beat.andR, Cat(0.U(1.W), addrReg), beatAddress + 4.U)
       }
     }
     val lastBeat = beat === lenReg
@@ -501,70 +618,134 @@ class GpuHostAxi(
     // expose the read-only discovery pointer at 0x68 and GBC1 at 0x160..0x17c;
     // 0x15c remains unmapped, and legacy profiles retain their original map.
     val mappedEnd = GpuCommandMmioRegs.END.U
-    val targetBinDiscovery = if (externalBinnedRender) beatAddr===TileBinHostRegs.DISCOVERY.U else false.B
-    val targetBinCapabilities = if (externalBinnedRender)
-      beatAddr>=TileBinHostRegs.CAPABILITIES.U && beatAddr<TileBinHostRegs.END.U else false.B
-    val targetNativeDetails=if(nativeCompletionInfo)beatAddr>=NativeBinnedCompletionInfo.base.U && beatAddr<NativeBinnedCompletionInfo.end.U else false.B
-    val targetJointDetails = if (jointTessellationHost)
-      beatAddr >= TessellationJointHostProtocol.completionTailBase.U &&
+    val targetBinDiscovery = if (externalBinnedRender) beatAddr === TileBinHostRegs.DISCOVERY.U else false.B
+    val targetBinCapabilities =
+      if (externalBinnedRender)
+        beatAddr >= TileBinHostRegs.CAPABILITIES.U && beatAddr < TileBinHostRegs.END.U
+      else false.B
+    val targetNativeDetails =
+      if (nativeCompletionInfo)
+        beatAddr >= NativeBinnedCompletionInfo.base.U && beatAddr < NativeBinnedCompletionInfo.end.U
+      else false.B
+    val targetJointDetails =
+      if (jointTessellationHost)
+        beatAddr >= TessellationJointHostProtocol.completionTailBase.U &&
         beatAddr < TessellationJointHostProtocol.completionTailEnd.U
       else false.B
-    val targetNativeInput=if(nativeVertexInput)beatAddr>=NativeVertexInputCapabilities.base.U && beatAddr<NativeVertexInputCapabilities.end.U else false.B
-    val targetFragmentInput=if(nativeVertexInput)beatAddr>=NativeFragmentInputCapabilities.base.U && beatAddr<NativeFragmentInputCapabilities.end.U else false.B
-    val targetRaster=if(nativeVertexInput)beatAddr>=NativeRasterCapabilities.base.U && beatAddr<NativeRasterCapabilities.end.U else false.B
-    val targetTexturePolicy=if(nativeVertexInput)beatAddr>=opengpu.graphics.NativeTextureCapabilities.base.U && beatAddr<opengpu.graphics.NativeTextureCapabilities.end.U else false.B
-    val targetTextureFormats=if(nativeVertexInput)beatAddr>=opengpu.graphics.NativeTextureFormatCapabilities.base.U && beatAddr<opengpu.graphics.NativeTextureFormatCapabilities.end.U else false.B
-    val targetTextureOperations=if(nativeVertexInput)beatAddr>=opengpu.graphics.NativeTextureOperationCapabilities.base.U && beatAddr<opengpu.graphics.NativeTextureOperationCapabilities.end.U else false.B
-    val targetVisibilityQueries=if(visibilityQueries)beatAddr>=opengpu.graphics.NativeVisibilityQueryCapabilities.base.U &&
-      beatAddr<opengpu.graphics.NativeVisibilityQueryCapabilities.end.U else false.B
-    val targetFeedback=if(transformFeedback)beatAddr>=opengpu.graphics.NativeTransformFeedbackCapabilities.base.U &&
-      beatAddr<opengpu.graphics.NativeTransformFeedbackCapabilities.end.U else false.B
-    val targetPrimitiveQuery=if(primitiveQueries)beatAddr>=opengpu.graphics.NativePrimitiveQueryCapabilities.base.U &&
-      beatAddr<opengpu.graphics.NativePrimitiveQueryCapabilities.end.U else false.B
-    val targetShaderCaps = if (shaderExecutionLimits) beatAddr >= NativeShaderExecutionCapabilities.base.U &&
-      beatAddr < NativeShaderExecutionCapabilities.quotaRegister.U else false.B
-    val targetShaderQuota = if (shaderExecutionLimits) beatAddr === NativeShaderExecutionCapabilities.quotaRegister.U else false.B
+    val targetNativeInput =
+      if (nativeVertexInput)
+        beatAddr >= NativeVertexInputCapabilities.base.U && beatAddr < NativeVertexInputCapabilities.end.U
+      else false.B
+    val targetFragmentInput =
+      if (nativeVertexInput)
+        beatAddr >= NativeFragmentInputCapabilities.base.U && beatAddr < NativeFragmentInputCapabilities.end.U
+      else false.B
+    val targetRaster =
+      if (nativeVertexInput) beatAddr >= NativeRasterCapabilities.base.U && beatAddr < NativeRasterCapabilities.end.U
+      else false.B
+    val targetTexturePolicy =
+      if (nativeVertexInput)
+        beatAddr >= opengpu.graphics.NativeTextureCapabilities.base.U && beatAddr < opengpu.graphics.NativeTextureCapabilities.end.U
+      else false.B
+    val targetTextureFormats =
+      if (nativeVertexInput)
+        beatAddr >= opengpu.graphics.NativeTextureFormatCapabilities.base.U && beatAddr < opengpu.graphics.NativeTextureFormatCapabilities.end.U
+      else false.B
+    val targetTextureOperations =
+      if (nativeVertexInput)
+        beatAddr >= opengpu.graphics.NativeTextureOperationCapabilities.base.U && beatAddr < opengpu.graphics.NativeTextureOperationCapabilities.end.U
+      else false.B
+    val targetVisibilityQueries =
+      if (visibilityQueries)
+        beatAddr >= opengpu.graphics.NativeVisibilityQueryCapabilities.base.U &&
+        beatAddr < opengpu.graphics.NativeVisibilityQueryCapabilities.end.U
+      else false.B
+    val targetFeedback =
+      if (transformFeedback)
+        beatAddr >= opengpu.graphics.NativeTransformFeedbackCapabilities.base.U &&
+        beatAddr < opengpu.graphics.NativeTransformFeedbackCapabilities.end.U
+      else false.B
+    val targetPrimitiveQuery =
+      if (primitiveQueries)
+        beatAddr >= opengpu.graphics.NativePrimitiveQueryCapabilities.base.U &&
+        beatAddr < opengpu.graphics.NativePrimitiveQueryCapabilities.end.U
+      else false.B
+    val targetShaderCaps =
+      if (shaderExecutionLimits)
+        beatAddr >= NativeShaderExecutionCapabilities.base.U &&
+        beatAddr < NativeShaderExecutionCapabilities.quotaRegister.U
+      else false.B
+    val targetShaderQuota =
+      if (shaderExecutionLimits) beatAddr === NativeShaderExecutionCapabilities.quotaRegister.U else false.B
     val targetShaderExecution = targetShaderCaps || targetShaderQuota
-    val targetIndirectCompute = if(enableIndirectCompute)
-      beatAddr >= opengpu.command.ComputeIndirectCapabilities.base.U &&
-        beatAddr < opengpu.command.ComputeIndirectCapabilities.end.U else false.B
-    val targetComputeResources = if(computeResources.nonEmpty)
-      beatAddr >= ComputeResourceCapabilities.base.U && beatAddr < ComputeResourceCapabilities.end.U else false.B
-    val targetUniformResources = if(nativeUniformResources)
-      beatAddr >= opengpu.graphics.NativeUniformCapabilities.base.U && beatAddr < opengpu.graphics.NativeUniformCapabilities.end.U else false.B
-    val targetBlendResources = if(nativeVertexInput)
-      beatAddr >= opengpu.graphics.NativeDrawBufferBlendCapabilities.base.U &&
-        beatAddr < opengpu.graphics.NativeDrawBufferBlendCapabilities.end.U else false.B
-    val targetAdvancedBlend = if(nativeAdvancedDraws)
-      beatAddr >= opengpu.graphics.NativeAdvancedBlendCapabilities.base.U &&
-        beatAddr < opengpu.graphics.NativeAdvancedBlendCapabilities.end.U else false.B
-    val targetNativePreflight = if(nativeDescriptorPreflight)
-      beatAddr >= opengpu.graphics.NativeDescriptorPreflightCapabilities.base.U &&
-        beatAddr < opengpu.graphics.NativeDescriptorPreflightCapabilities.end.U else false.B
-    val targetNativeGeometry = if(nativeGeometryTransport)
-      beatAddr >= opengpu.graphics.NativeGeometryTransportCapabilities.base.U &&
-        beatAddr < opengpu.graphics.NativeGeometryTransportCapabilities.end.U else false.B
-    val targetNativeSample = if(nativeSampleTransport)
-      beatAddr >= opengpu.graphics.NativeSampleTransportCapabilities.base.U &&
-        beatAddr < opengpu.graphics.NativeSampleTransportCapabilities.end.U else false.B
-    val targetJointProfile = if (jointTessellationProfile.nonEmpty)
-      beatAddr >= TessellationJointHostProtocol.profileBase.U &&
-        beatAddr < TessellationJointHostProtocol.profileEnd.U else false.B
-    val targetImages = if(imageAvailable)
-      beatAddr >= opengpu.graphics.ShaderImageCommandMmioRegs.base.U &&
-        beatAddr < opengpu.graphics.ShaderImageCommandMmioRegs.end.U else false.B
-    val targetStorage = if(storageAvailable)
-      beatAddr >= opengpu.graphics.StorageCommandMmioRegs.base.U &&
-        beatAddr < opengpu.graphics.StorageCommandMmioRegs.end.U else false.B
-    val targetComputeUniform = if(computeUniformAvailable)
-      beatAddr >= opengpu.graphics.ComputeUniformCommandMmioRegs.base.U &&
-        beatAddr < opengpu.graphics.ComputeUniformCommandMmioRegs.end.U else false.B
-    val targetComputeTexture = if(computeTextureAvailable)
-      beatAddr >= opengpu.graphics.ComputeTextureCommandMmioRegs.base.U &&
-        beatAddr < opengpu.graphics.ComputeTextureCommandMmioRegs.end.U else false.B
-    val targetAtomicCounter = if(atomicCounterAvailable)
-      beatAddr >= opengpu.graphics.AtomicCounterCommandMmioRegs.base.U &&
-        beatAddr < opengpu.graphics.AtomicCounterCommandMmioRegs.end.U else false.B
+    val targetIndirectCompute =
+      if (enableIndirectCompute)
+        beatAddr >= opengpu.command.ComputeIndirectCapabilities.base.U &&
+        beatAddr < opengpu.command.ComputeIndirectCapabilities.end.U
+      else false.B
+    val targetComputeResources =
+      if (computeResources.nonEmpty)
+        beatAddr >= ComputeResourceCapabilities.base.U && beatAddr < ComputeResourceCapabilities.end.U
+      else false.B
+    val targetUniformResources =
+      if (nativeUniformResources)
+        beatAddr >= opengpu.graphics.NativeUniformCapabilities.base.U && beatAddr < opengpu.graphics.NativeUniformCapabilities.end.U
+      else false.B
+    val targetBlendResources =
+      if (nativeVertexInput)
+        beatAddr >= opengpu.graphics.NativeDrawBufferBlendCapabilities.base.U &&
+        beatAddr < opengpu.graphics.NativeDrawBufferBlendCapabilities.end.U
+      else false.B
+    val targetAdvancedBlend =
+      if (nativeAdvancedDraws)
+        beatAddr >= opengpu.graphics.NativeAdvancedBlendCapabilities.base.U &&
+        beatAddr < opengpu.graphics.NativeAdvancedBlendCapabilities.end.U
+      else false.B
+    val targetNativePreflight =
+      if (nativeDescriptorPreflight)
+        beatAddr >= opengpu.graphics.NativeDescriptorPreflightCapabilities.base.U &&
+        beatAddr < opengpu.graphics.NativeDescriptorPreflightCapabilities.end.U
+      else false.B
+    val targetNativeGeometry =
+      if (nativeGeometryTransport)
+        beatAddr >= opengpu.graphics.NativeGeometryTransportCapabilities.base.U &&
+        beatAddr < opengpu.graphics.NativeGeometryTransportCapabilities.end.U
+      else false.B
+    val targetNativeSample =
+      if (nativeSampleTransport)
+        beatAddr >= opengpu.graphics.NativeSampleTransportCapabilities.base.U &&
+        beatAddr < opengpu.graphics.NativeSampleTransportCapabilities.end.U
+      else false.B
+    val targetJointProfile =
+      if (jointTessellationProfile.nonEmpty)
+        beatAddr >= TessellationJointHostProtocol.profileBase.U &&
+        beatAddr < TessellationJointHostProtocol.profileEnd.U
+      else false.B
+    val targetImages =
+      if (imageAvailable)
+        beatAddr >= opengpu.graphics.ShaderImageCommandMmioRegs.base.U &&
+        beatAddr < opengpu.graphics.ShaderImageCommandMmioRegs.end.U
+      else false.B
+    val targetStorage =
+      if (storageAvailable)
+        beatAddr >= opengpu.graphics.StorageCommandMmioRegs.base.U &&
+        beatAddr < opengpu.graphics.StorageCommandMmioRegs.end.U
+      else false.B
+    val targetComputeUniform =
+      if (computeUniformAvailable)
+        beatAddr >= opengpu.graphics.ComputeUniformCommandMmioRegs.base.U &&
+        beatAddr < opengpu.graphics.ComputeUniformCommandMmioRegs.end.U
+      else false.B
+    val targetComputeTexture =
+      if (computeTextureAvailable)
+        beatAddr >= opengpu.graphics.ComputeTextureCommandMmioRegs.base.U &&
+        beatAddr < opengpu.graphics.ComputeTextureCommandMmioRegs.end.U
+      else false.B
+    val targetAtomicCounter =
+      if (atomicCounterAvailable)
+        beatAddr >= opengpu.graphics.AtomicCounterCommandMmioRegs.base.U &&
+        beatAddr < opengpu.graphics.AtomicCounterCommandMmioRegs.end.U
+      else false.B
     val beatOk = transferOk && !beatAddrWide(32) && (beatAddr & 0x3.U) === 0.U &&
       (beatAddr < mappedEnd || targetBinCapabilities || targetNativeDetails || targetJointDetails || targetNativeInput || targetFragmentInput || targetTexturePolicy || targetTextureFormats || targetRaster || targetVisibilityQueries || targetFeedback || targetPrimitiveQuery || targetShaderExecution || targetTextureOperations || targetIndirectCompute || targetComputeResources || targetUniformResources || targetBlendResources || targetAdvancedBlend || targetNativePreflight || targetNativeGeometry || targetNativeSample || targetJointProfile || targetImages || targetStorage || targetComputeUniform || targetComputeTexture || targetAtomicCounter)
 
@@ -574,8 +755,7 @@ class GpuHostAxi(
 
     // Multiplex the single-ported register file between the read and write
     // channel (mutually exclusive by construction).
-    val busRegValid = Mux(
-      readActive, !readHeld, Mux(writeBeat, io.s_axi_wvalid, false.B))
+    val busRegValid = Mux(readActive, !readHeld, Mux(writeBeat, io.s_axi_wvalid, false.B))
     val targetUnified =
       (beatAddr >= GpuCommandMmioRegs.COMMAND_ID.U &&
         beatAddr < RenderHostRegs.MSAA_CONFIG.U) ||
@@ -604,8 +784,8 @@ class GpuHostAxi(
       readActive := true.B
       addrReg := io.s_axi_araddr
       lenReg := io.s_axi_arlen
-      transferValid := validTransfer(io.s_axi_araddr,io.s_axi_arlen,io.s_axi_arsize,io.s_axi_arburst)
-      beatAddress := Cat(0.U(1.W),io.s_axi_araddr)
+      transferValid := validTransfer(io.s_axi_araddr, io.s_axi_arlen, io.s_axi_arsize, io.s_axi_arburst)
+      beatAddress := Cat(0.U(1.W), io.s_axi_araddr)
       burstReg := io.s_axi_arburst
       beat := 0.U
     }
@@ -615,77 +795,124 @@ class GpuHostAxi(
     io.s_axi_rresp := Mux(beatOk, 0.U, 2.U)
     val rdata = WireDefault(0.U(32.W))
     when(readActive) {
-      rdata := unified.map { bridge =>
-        Mux(targetUnified, bridge.io.reg.resp.bits.data, reg.resp.bits.data)
-      }.getOrElse(reg.resp.bits.data)
+      rdata := unified
+        .map { bridge =>
+          Mux(targetUnified, bridge.io.reg.resp.bits.data, reg.resp.bits.data)
+        }
+        .getOrElse(reg.resp.bits.data)
       if (externalBinnedRender) {
-        when(targetBinDiscovery) { rdata:=TileBinHostRegs.CAPABILITIES.U }
-          .elsewhen(targetBinCapabilities) { rdata:=io.binCapabilityWords.get(((beatAddr-TileBinHostRegs.CAPABILITIES.U)>>2)(2,0)) }
+        when(targetBinDiscovery) { rdata := TileBinHostRegs.CAPABILITIES.U }
+          .elsewhen(targetBinCapabilities) {
+            rdata := io.binCapabilityWords.get(((beatAddr - TileBinHostRegs.CAPABILITIES.U) >> 2)(2, 0))
+          }
       }
-      if(nativeVertexInput)when(targetNativeInput){
-        rdata:=VecInit(nativeVertexWords.map(_.U(32.W)))(((beatAddr-NativeVertexInputCapabilities.base.U)>>2)(1,0))
+      if (nativeVertexInput) when(targetNativeInput) {
+        rdata := VecInit(nativeVertexWords.map(_.U(32.W)))(
+          ((beatAddr - NativeVertexInputCapabilities.base.U) >> 2)(1, 0)
+        )
       }
-      if(nativeVertexInput)when(targetTexturePolicy){
-        rdata:=VecInit(opengpu.graphics.NativeTextureCapabilities.words.map(_.U(32.W)))(((beatAddr-opengpu.graphics.NativeTextureCapabilities.base.U)>>2)(2,0))
+      if (nativeVertexInput) when(targetTexturePolicy) {
+        rdata := VecInit(opengpu.graphics.NativeTextureCapabilities.words.map(_.U(32.W)))(
+          ((beatAddr - opengpu.graphics.NativeTextureCapabilities.base.U) >> 2)(2, 0)
+        )
       }
-      if(nativeVertexInput)when(targetTextureFormats){
-        rdata:=VecInit(opengpu.graphics.NativeTextureFormatCapabilities.words.map(_.U(32.W)))(((beatAddr-opengpu.graphics.NativeTextureFormatCapabilities.base.U)>>2)(2,0))
+      if (nativeVertexInput) when(targetTextureFormats) {
+        rdata := VecInit(opengpu.graphics.NativeTextureFormatCapabilities.words.map(_.U(32.W)))(
+          ((beatAddr - opengpu.graphics.NativeTextureFormatCapabilities.base.U) >> 2)(2, 0)
+        )
       }
-      if(nativeVertexInput)when(targetTextureOperations){
-        rdata:=VecInit(opengpu.graphics.NativeTextureOperationCapabilities.words.map(_.U(32.W)))(((beatAddr-opengpu.graphics.NativeTextureOperationCapabilities.base.U)>>2)(3,0))
+      if (nativeVertexInput) when(targetTextureOperations) {
+        rdata := VecInit(opengpu.graphics.NativeTextureOperationCapabilities.words.map(_.U(32.W)))(
+          ((beatAddr - opengpu.graphics.NativeTextureOperationCapabilities.base.U) >> 2)(3, 0)
+        )
       }
-      if(nativeVertexInput)when(targetFragmentInput){
-        rdata:=VecInit(NativeFragmentInputCapabilities.words(config.maxSampleCount).map(_.U(32.W)))(((beatAddr-NativeFragmentInputCapabilities.base.U)>>2)(1,0))
+      if (nativeVertexInput) when(targetFragmentInput) {
+        rdata := VecInit(NativeFragmentInputCapabilities.words(config.maxSampleCount).map(_.U(32.W)))(
+          ((beatAddr - NativeFragmentInputCapabilities.base.U) >> 2)(1, 0)
+        )
       }
-      if(nativeVertexInput)when(targetRaster){
-        rdata:=VecInit(NativeRasterCapabilities.words(config.maxSampleCount).map(_.U(32.W)))(((beatAddr-NativeRasterCapabilities.base.U)>>2)(2,0))
+      if (nativeVertexInput) when(targetRaster) {
+        rdata := VecInit(NativeRasterCapabilities.words(config.maxSampleCount).map(_.U(32.W)))(
+          ((beatAddr - NativeRasterCapabilities.base.U) >> 2)(2, 0)
+        )
       }
-      if(visibilityQueries)when(targetVisibilityQueries){
-        rdata:=VecInit(opengpu.graphics.NativeVisibilityQueryCapabilities.words.map(_.U(32.W)))(
-          ((beatAddr-opengpu.graphics.NativeVisibilityQueryCapabilities.base.U)>>2)(2,0))
+      if (visibilityQueries) when(targetVisibilityQueries) {
+        rdata := VecInit(opengpu.graphics.NativeVisibilityQueryCapabilities.words.map(_.U(32.W)))(
+          ((beatAddr - opengpu.graphics.NativeVisibilityQueryCapabilities.base.U) >> 2)(2, 0)
+        )
       }
-      if(transformFeedback)when(targetFeedback){
-        rdata:=VecInit(opengpu.graphics.NativeTransformFeedbackCapabilities.words(transformFeedbackSourceWords).map(_.U(32.W)))(
-          ((beatAddr-opengpu.graphics.NativeTransformFeedbackCapabilities.base.U)>>2)(2,0))
+      if (transformFeedback) when(targetFeedback) {
+        rdata := VecInit(
+          opengpu.graphics.NativeTransformFeedbackCapabilities.words(transformFeedbackSourceWords).map(_.U(32.W))
+        )(((beatAddr - opengpu.graphics.NativeTransformFeedbackCapabilities.base.U) >> 2)(2, 0))
       }
-      if(primitiveQueries)when(targetPrimitiveQuery){
-        rdata:=VecInit(opengpu.graphics.NativePrimitiveQueryCapabilities.words.map(_.U(32.W)))(
-          ((beatAddr-opengpu.graphics.NativePrimitiveQueryCapabilities.base.U)>>2)(2,0))
+      if (primitiveQueries) when(targetPrimitiveQuery) {
+        rdata := VecInit(opengpu.graphics.NativePrimitiveQueryCapabilities.words.map(_.U(32.W)))(
+          ((beatAddr - opengpu.graphics.NativePrimitiveQueryCapabilities.base.U) >> 2)(2, 0)
+        )
       }
       if (shaderExecutionLimits) {
         when(targetShaderCaps) {
           rdata := VecInit(NativeShaderExecutionCapabilities.words.map(_.U(32.W)))(
-            ((beatAddr - NativeShaderExecutionCapabilities.base.U) >> 2)(2, 0))
+            ((beatAddr - NativeShaderExecutionCapabilities.base.U) >> 2)(2, 0)
+          )
         }
         when(targetShaderQuota) { rdata := shaderQuota.get }
       }
-      if(enableIndirectCompute)when(targetIndirectCompute) {
+      if (enableIndirectCompute) when(targetIndirectCompute) {
         rdata := VecInit(opengpu.command.ComputeIndirectCapabilities.words(computeConfig).map(_.U(32.W)))(
-          ((beatAddr-opengpu.command.ComputeIndirectCapabilities.base.U)>>2)(2,0))
+          ((beatAddr - opengpu.command.ComputeIndirectCapabilities.base.U) >> 2)(2, 0)
+        )
       }
-      if(computeResources.nonEmpty)when(targetComputeResources) {
-        rdata := VecInit(ComputeResourceCapabilities.words(computeResources.get,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable,atomicCounterAvailable,imageAtomicAvailable,storageAtomicAvailable,tessellationDiscovery,tessellationDiscovery && transformFeedback,nativeAdvancedDraws,nativeDescriptorPreflight,nativeProtectedSources,nativeGeometryTransport,nativeSampleTransport,imageFloatExchangeAvailable,jointTessellationAvailable=jointTessellationProfile.nonEmpty).map(_.U(32.W)))(
-          ((beatAddr-ComputeResourceCapabilities.base.U)>>2)(3,0))
+      if (computeResources.nonEmpty) when(targetComputeResources) {
+        rdata := VecInit(
+          ComputeResourceCapabilities
+            .words(
+              computeResources.get,
+              imageAvailable,
+              storageAvailable,
+              computeUniformAvailable,
+              computeTextureAvailable,
+              atomicCounterAvailable,
+              imageAtomicAvailable,
+              storageAtomicAvailable,
+              tessellationDiscovery,
+              tessellationDiscovery && transformFeedback,
+              nativeAdvancedDraws,
+              nativeDescriptorPreflight,
+              nativeProtectedSources,
+              nativeGeometryTransport,
+              nativeSampleTransport,
+              imageFloatExchangeAvailable,
+              jointTessellationAvailable = jointTessellationProfile.nonEmpty
+            )
+            .map(_.U(32.W))
+        )(((beatAddr - ComputeResourceCapabilities.base.U) >> 2)(3, 0))
       }
-      if(nativeVertexInput)when(targetBlendResources) {
+      if (nativeVertexInput) when(targetBlendResources) {
         rdata := VecInit(opengpu.graphics.NativeDrawBufferBlendCapabilities.words.map(_.U(32.W)))(
-          ((beatAddr-opengpu.graphics.NativeDrawBufferBlendCapabilities.base.U)>>2)(2,0))
+          ((beatAddr - opengpu.graphics.NativeDrawBufferBlendCapabilities.base.U) >> 2)(2, 0)
+        )
       }
-      if(nativeAdvancedDraws)when(targetAdvancedBlend) {
+      if (nativeAdvancedDraws) when(targetAdvancedBlend) {
         rdata := VecInit(opengpu.graphics.NativeAdvancedBlendCapabilities.words.map(_.U(32.W)))(
-          ((beatAddr-opengpu.graphics.NativeAdvancedBlendCapabilities.base.U)>>2)(2,0))
+          ((beatAddr - opengpu.graphics.NativeAdvancedBlendCapabilities.base.U) >> 2)(2, 0)
+        )
       }
-      if(nativeDescriptorPreflight)when(targetNativePreflight) {
+      if (nativeDescriptorPreflight) when(targetNativePreflight) {
         rdata := VecInit(opengpu.graphics.NativeDescriptorPreflightCapabilities.words.map(_.U(32.W)))(
-          ((beatAddr-opengpu.graphics.NativeDescriptorPreflightCapabilities.base.U)>>2)(2,0))
+          ((beatAddr - opengpu.graphics.NativeDescriptorPreflightCapabilities.base.U) >> 2)(2, 0)
+        )
       }
-      if(nativeGeometryTransport)when(targetNativeGeometry) {
+      if (nativeGeometryTransport) when(targetNativeGeometry) {
         rdata := VecInit(opengpu.graphics.NativeGeometryTransportCapabilities.words.map(_.U(32.W)))(
-          ((beatAddr-opengpu.graphics.NativeGeometryTransportCapabilities.base.U)>>2)(2,0))
+          ((beatAddr - opengpu.graphics.NativeGeometryTransportCapabilities.base.U) >> 2)(2, 0)
+        )
       }
-      if(nativeSampleTransport)when(targetNativeSample) {
+      if (nativeSampleTransport) when(targetNativeSample) {
         rdata := VecInit(opengpu.graphics.NativeSampleTransportCapabilities.words.map(_.U(32.W)))(
-          ((beatAddr-opengpu.graphics.NativeSampleTransportCapabilities.base.U)>>2)(2,0))
+          ((beatAddr - opengpu.graphics.NativeSampleTransportCapabilities.base.U) >> 2)(2, 0)
+        )
       }
       jointTessellationProfile.foreach { profile =>
         when(targetJointProfile) {
@@ -693,9 +920,10 @@ class GpuHostAxi(
           rdata := VecInit(profile.words.map(_.U(32.W)))(word)
         }
       }
-      if(nativeUniformResources)when(targetUniformResources) {
+      if (nativeUniformResources) when(targetUniformResources) {
         rdata := VecInit(opengpu.graphics.NativeUniformCapabilities.words.map(_.U(32.W)))(
-          ((beatAddr-opengpu.graphics.NativeUniformCapabilities.base.U)>>2)(3,0))
+          ((beatAddr - opengpu.graphics.NativeUniformCapabilities.base.U) >> 2)(3, 0)
+        )
       }
       when(rBeatFire) {
         when(lastBeat) {
@@ -726,8 +954,8 @@ class GpuHostAxi(
       writeActive := true.B
       addrReg := io.s_axi_awaddr
       lenReg := io.s_axi_awlen
-      transferValid := validTransfer(io.s_axi_awaddr,io.s_axi_awlen,io.s_axi_awsize,io.s_axi_awburst)
-      beatAddress := Cat(0.U(1.W),io.s_axi_awaddr)
+      transferValid := validTransfer(io.s_axi_awaddr, io.s_axi_awlen, io.s_axi_awsize, io.s_axi_awburst)
+      beatAddress := Cat(0.U(1.W), io.s_axi_awaddr)
       burstReg := io.s_axi_awburst
       beat := 0.U
       bPending := false.B
@@ -742,10 +970,11 @@ class GpuHostAxi(
       when(wBeatFire && beatOk && targetShaderQuota && shaderQuotaWriteOk) { shaderQuota.get := merged }
     }
     when(wBeatFire) {
-      val normalRegisterOk = unified.map(bridge =>
-        Mux(targetUnified, bridge.io.reg.resp.bits.ok, reg.resp.bits.ok))
+      val normalRegisterOk = unified
+        .map(bridge => Mux(targetUnified, bridge.io.reg.resp.bits.ok, reg.resp.bits.ok))
         .getOrElse(reg.resp.bits.ok)
-      val legacyRegisterOk = !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback && !targetPrimitiveQuery && !targetTextureOperations && !targetIndirectCompute && !targetComputeResources && !targetUniformResources && !targetBlendResources && !targetAdvancedBlend && !targetNativePreflight && !targetNativeGeometry && !targetNativeSample && normalRegisterOk
+      val legacyRegisterOk =
+        !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback && !targetPrimitiveQuery && !targetTextureOperations && !targetIndirectCompute && !targetComputeResources && !targetUniformResources && !targetBlendResources && !targetAdvancedBlend && !targetNativePreflight && !targetNativeGeometry && !targetNativeSample && normalRegisterOk
       val registerOk = Mux(targetShaderExecution, targetShaderQuota && shaderQuotaWriteOk, legacyRegisterOk)
       when(!beatOk || !registerOk) { writeError := true.B }
       when(io.s_axi_wlast) {

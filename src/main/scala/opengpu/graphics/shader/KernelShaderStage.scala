@@ -21,36 +21,45 @@ import opengpu.system.{SharedCuGraphicsPort, SharedCuShaderConfig}
 
 /** The core-backed shader unit (Phase D connectivity).
   *
-  * Commercial-GPU-aligned shading runs a fragment/vertex shader as a kernel on
-  * the compute unit's SIMT warps.  This module is the graphics-side driver: it
-  * consumes a draw's shader descriptor (entry PC + kernarg buffer + grid/local
-  * sizes), assembles a `KernelLaunch` via `KernelEmit`, and hands it to a
-  * `GpuComputeUnit`.  The shader program, kernarg buffer and output buffer all
-  * live in the line-based memory exposed on `memoryRequest/memoryResponse`; the
-  * `completion` port reports draw-done once the kernel retires, and `trap`
-  * surfaces a kernel fault to the owner.
+  * Commercial-GPU-aligned shading runs a fragment/vertex shader as a kernel on the compute unit's SIMT warps. This
+  * module is the graphics-side driver: it consumes a draw's shader descriptor (entry PC + kernarg buffer + grid/local
+  * sizes), assembles a `KernelLaunch` via `KernelEmit`, and hands it to a `GpuComputeUnit`. The shader program, kernarg
+  * buffer and output buffer all live in the line-based memory exposed on `memoryRequest/memoryResponse`; the
+  * `completion` port reports draw-done once the kernel retires, and `trap` surfaces a kernel fault to the owner.
   *
-  * This replaces the fixed-function `ShaderFragStage`: the shader is a compiled
-  * RV32 program run on the core, so the same RISC-V toolchain and core machinery
-  * (fetch/decode/issue/RF/ALU/FPU/commit) are reused instead of a private
+  * This replaces the fixed-function `ShaderFragStage`: the shader is a compiled RV32 program run on the core, so the
+  * same RISC-V toolchain and core machinery (fetch/decode/issue/RF/ALU/FPU/commit) are reused instead of a private
   * shader core.
   */
 class KernelShaderStage(
-  config: GpuConfig = GpuConfig(),
-  enableScalarFpu: Boolean = true,
-  sharedShader: Option[SharedCuShaderConfig] = None,
-  helperInvocations: Boolean = false,
-  nativeResources: Boolean = false, nativeUniforms: Boolean = false,
-  imageStage: Option[Int] = None
+    config: GpuConfig = GpuConfig(),
+    enableScalarFpu: Boolean = true,
+    sharedShader: Option[SharedCuShaderConfig] = None,
+    helperInvocations: Boolean = false,
+    nativeResources: Boolean = false,
+    nativeUniforms: Boolean = false,
+    imageStage: Option[Int] = None
 ) extends Module {
   require(imageStage.isEmpty || sharedShader.nonEmpty, "graphics image tasks require a shared CU")
-  require(imageStage.forall(stage => Set(GraphicsStage.vertex, GraphicsStage.fragment,
-    GraphicsStage.geometry, GraphicsStage.tessControl, GraphicsStage.tessEvaluation).contains(stage)),
-    "graphics image tasks require a graphics shader stage")
+  require(
+    imageStage.forall(stage =>
+      Set(
+        GraphicsStage.vertex,
+        GraphicsStage.fragment,
+        GraphicsStage.geometry,
+        GraphicsStage.tessControl,
+        GraphicsStage.tessEvaluation
+      ).contains(stage)
+    ),
+    "graphics image tasks require a graphics shader stage"
+  )
   val io = IO(new Bundle {
     val shared = sharedShader.map { pool =>
-      Flipped(new SharedCuGraphicsPort(config, pool.taskIdWidth, pool.numComputeUnits, imageAvailable=imageStage.nonEmpty))
+      Flipped(
+        new SharedCuGraphicsPort(config, pool.taskIdWidth, pool.numComputeUnits, imageAvailable = imageStage.nonEmpty)
+      )
     }
+
     /** Validated publication held stable with the offered graphics launch. */
     val imageTask = imageStage.map(_ => Input(new ShaderImageTask))
     val instructionSatp = Input(UInt(32.W))
@@ -58,7 +67,8 @@ class KernelShaderStage(
     val vectorSatp = Input(UInt(32.W))
     val vectorTlbFlush = Flipped(Valid(new opengpu.core.memory.VectorTlbFlush(config)))
     val launch = new Bundle {
-      val invocations=if(helperInvocations)Some(Input(new opengpu.core.memory.KernelInvocationPolicy(config)))else None
+      val invocations =
+        if (helperInvocations) Some(Input(new opengpu.core.memory.KernelInvocationPolicy(config))) else None
       val valid = Input(Bool())
       val ready = Output(Bool())
       val kernelPc = Input(UInt(config.xLen.W))
@@ -79,6 +89,7 @@ class KernelShaderStage(
     val l1InvalidateDone = Decoupled(new CacheLineInvalidate(config))
     val globalAtomicRequest = Decoupled(new SharedAtomicRequest(config))
     val globalAtomicResponse = Flipped(Decoupled(new SharedAtomicResponse(config)))
+
     /** tex.sample sideband (issued instruction out, commit request in). */
     val texSample = Decoupled(new ScalarIssuedInstruction(config))
     val texWriteback = Flipped(Decoupled(new ScalarCommitRequest(config)))
@@ -93,14 +104,21 @@ class KernelShaderStage(
     // reflect the local backend/RF even without the optional execution quota.
     // Vector-only FP remains available when the scalar backend is disabled.
     // GPU_CAP_COMPUTE_SCALAR_FPU advertises the scalar backend when enabled.
-    val cu = Module(new GpuComputeUnit(
-      config, enableFpuBackend = enableScalarFpu, finishOnTrap = true,
-      nativeExecutionProfile = true,nativeResourcesAvailable=nativeResources,nativeUniformsAvailable=nativeUniforms))
+    val cu = Module(
+      new GpuComputeUnit(
+        config,
+        enableFpuBackend = enableScalarFpu,
+        finishOnTrap = true,
+        nativeExecutionProfile = true,
+        nativeResourcesAvailable = nativeResources,
+        nativeUniformsAvailable = nativeUniforms
+      )
+    )
 
     io.launch.ready := cu.io.kernel.ready
     cu.io.kernel.valid := io.launch.valid
     cu.io.kernel.bits := emit.io.kernel
-    if(helperInvocations)cu.io.kernel.bits.invocations:=io.launch.invocations.get
+    if (helperInvocations) cu.io.kernel.bits.invocations := io.launch.invocations.get
 
     emit.io.kernelPc := io.launch.kernelPc
     emit.io.kernargAddress := io.launch.kernargAddress
@@ -158,7 +176,7 @@ class KernelShaderStage(
     shared.launch.valid := io.launch.valid && !busy
     shared.launch.bits.commandId := 0.U
     shared.launch.bits.launch := emit.io.kernel
-    if(helperInvocations)shared.launch.bits.launch.invocations:=io.launch.invocations.get
+    if (helperInvocations) shared.launch.bits.launch.invocations := io.launch.invocations.get
     io.launch.ready := shared.launch.ready && !busy
     emit.io.kernelPc := io.launch.kernelPc
     emit.io.kernargAddress := io.launch.kernargAddress
@@ -180,25 +198,27 @@ class KernelShaderStage(
     io.trap.bits := shared.trap.bits.event
     shared.trap.ready := io.trap.ready
     when(shared.completion.valid) {
-      assert(shared.completion.bits.commandId === 0.U,
-        "single-task shader adapter received another task's completion")
+      assert(shared.completion.bits.commandId === 0.U, "single-task shader adapter received another task's completion")
     }
     when(shared.trap.valid) {
-      assert(shared.trap.bits.taskId === 0.U,
-        "single-task shader adapter received another task's trap")
+      assert(shared.trap.bits.taskId === 0.U, "single-task shader adapter received another task's trap")
     }
 
     // The router retains one CU owner until this task and its texture traffic
     // drain. Select by that ownership rather than arbitrating request valids:
     // an idle peer must not add a valid-to-ready path through the sampler.
     val owners = (0 until count).map(shared.owned(_))
-    io.texSample.valid := (0 until count).map { cu =>
-      owners(cu) && shared.texture(cu).scalar.valid
-    }.reduce(_ || _)
+    io.texSample.valid := (0 until count)
+      .map { cu =>
+        owners(cu) && shared.texture(cu).scalar.valid
+      }
+      .reduce(_ || _)
     io.texSample.bits := Mux1H(owners, shared.texture.map(_.scalar.bits))
-    io.vectorTexSample.valid := (0 until count).map { cu =>
-      owners(cu) && shared.texture(cu).vector.valid
-    }.reduce(_ || _)
+    io.vectorTexSample.valid := (0 until count)
+      .map { cu =>
+        owners(cu) && shared.texture(cu).vector.valid
+      }
+      .reduce(_ || _)
     io.vectorTexSample.bits := Mux1H(owners, shared.texture.map(_.vector.bits))
     for (cu <- 0 until count) {
       shared.texture(cu).scalar.ready := io.texSample.ready && owners(cu)
@@ -208,14 +228,17 @@ class KernelShaderStage(
       shared.texture(cu).vectorWriteback.valid := io.vectorTexWriteback.valid && shared.owned(cu)
       shared.texture(cu).vectorWriteback.bits := io.vectorTexWriteback.bits
     }
-    io.texWriteback.ready := (0 until count).map { cu =>
-      shared.owned(cu) && shared.texture(cu).scalarWriteback.ready
-    }.reduce(_ || _)
-    io.vectorTexWriteback.ready := (0 until count).map { cu =>
-      shared.owned(cu) && shared.texture(cu).vectorWriteback.ready
-    }.reduce(_ || _)
-    assert(PopCount(shared.owned) <= 1.U,
-      "single-task shader adapter cannot own several graphics CUs")
+    io.texWriteback.ready := (0 until count)
+      .map { cu =>
+        shared.owned(cu) && shared.texture(cu).scalarWriteback.ready
+      }
+      .reduce(_ || _)
+    io.vectorTexWriteback.ready := (0 until count)
+      .map { cu =>
+        shared.owned(cu) && shared.texture(cu).vectorWriteback.ready
+      }
+      .reduce(_ || _)
+    assert(PopCount(shared.owned) <= 1.U, "single-task shader adapter cannot own several graphics CUs")
 
     shared.invalidate <> io.l1Invalidate
     io.l1InvalidateDone <> shared.invalidateDone

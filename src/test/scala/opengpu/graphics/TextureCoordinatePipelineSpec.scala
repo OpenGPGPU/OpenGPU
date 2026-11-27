@@ -13,10 +13,15 @@ class TextureCoordinatePipelineSpec extends AnyFlatSpec {
       dut.io.in.valid.poke(false.B); dut.io.out.ready.poke(false.B)
       dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
-      val cases = Seq((0x6000L,0x6000L,true,0), (0x8000L,0x4000L,true,1),
-        (0x4000L,0x8000L,true,2), (0x8000L,0x8000L,true,3),
-        (0x10000L,0x10000L,true,3), (0x10000L,0x10000L,false,0))
-      for ((u,v,clamp,index) <- cases) {
+      val cases = Seq(
+        (0x6000L, 0x6000L, true, 0),
+        (0x8000L, 0x4000L, true, 1),
+        (0x4000L, 0x8000L, true, 2),
+        (0x8000L, 0x8000L, true, 3),
+        (0x10000L, 0x10000L, true, 3),
+        (0x10000L, 0x10000L, false, 0)
+      )
+      for ((u, v, clamp, index) <- cases) {
         dut.io.in.bits.u.poke(u.U); dut.io.in.bits.v.poke(v.U)
         dut.io.in.bits.texWidth.poke(2.U); dut.io.in.bits.texHeight.poke(2.U)
         dut.io.in.bits.base.poke(0x1000.U); dut.io.in.bits.clamp.poke(clamp.B)
@@ -32,7 +37,7 @@ class TextureCoordinatePipelineSpec extends AnyFlatSpec {
         dut.clock.step(3); dut.io.out.valid.expect(true.B)
         assert(dut.io.out.bits.peek().litValue == held, "nearest metadata changed while stalled")
         for (tap <- 0 until 4) {
-          dut.io.out.bits.sample.addresses(tap).expect((0x1000 + index*4).U)
+          dut.io.out.bits.sample.addresses(tap).expect((0x1000 + index * 4).U)
           dut.io.out.bits.sample.weights(tap).expect((if (tap == 0) 65536 else 0).U)
         }
         dut.io.out.ready.poke(true.B); dut.clock.step(); dut.io.out.ready.poke(false.B)
@@ -43,75 +48,83 @@ class TextureCoordinatePipelineSpec extends AnyFlatSpec {
   it should "match exact base-level addressing and weights through arbitrary stalls" in {
     case class Request(lane: Int, u: Long, v: Long, base: Long, w: Int, h: Int, clamp: Boolean)
     val rng = new Random(7319)
-    val edge = Seq(0L,1L,0x7fL,0x80L,0xffL,0x100L,0x3fffL,0x4000L,0x8000L,
-      0xffffL,0x10000L,0x10001L,0x7fffffffL,0x80000000L,0xfffffffeL,0xffffffffL)
+    val edge = Seq(0L, 1L, 0x7fL, 0x80L, 0xffL, 0x100L, 0x3fffL, 0x4000L, 0x8000L, 0xffffL, 0x10000L, 0x10001L,
+      0x7fffffffL, 0x80000000L, 0xfffffffeL, 0xffffffffL)
     val directed = Seq(
-      Request(0,0x8000L,0x8000L,0x1000,3,5,false),
-      Request(1,0L,0L,0x2000,7,9,false),
-      Request(2,0xffffffffL,0xfffffffeL,0x3000,16383,16382,true),
-      Request(3,0xffffffffL,0xfffffffeL,0x4000,16383,16382,false),
-      Request(4,98303L,98304L,0x5000,1,1,true),
-      Request(5,98304L,98305L,0x6000,3,5,true))
+      Request(0, 0x8000L, 0x8000L, 0x1000, 3, 5, false),
+      Request(1, 0L, 0L, 0x2000, 7, 9, false),
+      Request(2, 0xffffffffL, 0xfffffffeL, 0x3000, 16383, 16382, true),
+      Request(3, 0xffffffffL, 0xfffffffeL, 0x4000, 16383, 16382, false),
+      Request(4, 98303L, 98304L, 0x5000, 1, 1, true),
+      Request(5, 98304L, 98305L, 0x6000, 3, 5, true)
+    )
     val cases = directed ++ (0 until 1200).map { n =>
       val clamp = n % 3 != 0
-      val w = Seq(1,2,3,7,17,255,256,4095,8192,16383)(n % 10)
-      val h = Seq(16383,8192,4096,511,33,9,5,3,2,1)((n / 10) % 10)
-      Request(n % 16, if (n < 256) edge(n % 16) else rng.nextLong() & 0xffffffffL,
+      val w = Seq(1, 2, 3, 7, 17, 255, 256, 4095, 8192, 16383)(n % 10)
+      val h = Seq(16383, 8192, 4096, 511, 33, 9, 5, 3, 2, 1)((n / 10) % 10)
+      Request(
+        n % 16,
+        if (n < 256) edge(n % 16) else rng.nextLong() & 0xffffffffL,
         if (n < 256) edge(n / 16) else rng.nextLong() & 0xffffffffL,
-        if (n % 7 == 0) 0xfffffff0L else rng.nextLong() & 0xfffffffcL,w,h,clamp)
+        if (n % 7 == 0) 0xfffffff0L else rng.nextLong() & 0xfffffffcL,
+        w,
+        h,
+        clamp
+      )
     }
-    def expected(r: Request): (Seq[Long],Seq[Int]) = {
-      def axis(c: Long, n: Int): (Int,Int,Int) = {
+    def expected(r: Request): (Seq[Long], Seq[Int]) = {
+      def axis(c: Long, n: Int): (Int, Int, Int) = {
         val biased = (BigInt(c) * n >> 8) - 128
         val period = BigInt(n) * 256
-        val bounded = if (r.clamp) biased.max(BigInt(0)).min(period - 1)
+        val bounded =
+          if (r.clamp) biased.max(BigInt(0)).min(period - 1)
           else ((biased % period) + period) % period
         val first = (bounded >> 8).toInt
         (first, if (r.clamp) (first + 1).min(n - 1) else (first + 1) % n, (bounded & 255).toInt)
       }
-      val (x0,x1,fx)=axis(r.u,r.w);val (y0,y1,fy)=axis(r.v,r.h)
-      val addresses = Seq((x0,y0),(x1,y0),(x0,y1),(x1,y1)).map {
-        case (x,y) => (r.base + (y.toLong * r.w + x) * 4) & 0xffffffffL
+      val (x0, x1, fx) = axis(r.u, r.w); val (y0, y1, fy) = axis(r.v, r.h)
+      val addresses = Seq((x0, y0), (x1, y0), (x0, y1), (x1, y1)).map { case (x, y) =>
+        (r.base + (y.toLong * r.w + x) * 4) & 0xffffffffL
       }
-      (addresses,Seq((256-fx)*(256-fy),fx*(256-fy),(256-fx)*fy,fx*fy))
+      (addresses, Seq((256 - fx) * (256 - fy), fx * (256 - fy), (256 - fx) * fy, fx * fy))
     }
     simulate(new TextureCoordinatePipeline(4)) { dut =>
-      dut.io.in.valid.poke(false.B);dut.io.out.ready.poke(false.B)
+      dut.io.in.valid.poke(false.B); dut.io.out.ready.poke(false.B)
       dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
-      dut.reset.poke(true.B);dut.clock.step();dut.reset.poke(false.B)
-      val pending=mutable.Queue.empty[Request]
-      var sent=0;var received=0;var cycle=0
-      var held:Option[BigInt]=None
-      while(received < cases.size && cycle < 20000) {
-        val send=sent<cases.size && (cycle%17<13)
+      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+      val pending = mutable.Queue.empty[Request]
+      var sent = 0; var received = 0; var cycle = 0
+      var held: Option[BigInt] = None
+      while (received < cases.size && cycle < 20000) {
+        val send = sent < cases.size && (cycle % 17 < 13)
         dut.io.in.valid.poke(send.B)
-        if(sent<cases.size) {
-          val r=cases(sent)
-          dut.io.in.bits.lane.poke(r.lane.U);dut.io.in.bits.u.poke(r.u.U);dut.io.in.bits.v.poke(r.v.U)
-          dut.io.in.bits.base.poke(r.base.U);dut.io.in.bits.texWidth.poke(r.w.U)
-          dut.io.in.bits.texHeight.poke(r.h.U);dut.io.in.bits.clamp.poke(r.clamp.B)
+        if (sent < cases.size) {
+          val r = cases(sent)
+          dut.io.in.bits.lane.poke(r.lane.U); dut.io.in.bits.u.poke(r.u.U); dut.io.in.bits.v.poke(r.v.U)
+          dut.io.in.bits.base.poke(r.base.U); dut.io.in.bits.texWidth.poke(r.w.U)
+          dut.io.in.bits.texHeight.poke(r.h.U); dut.io.in.bits.clamp.poke(r.clamp.B)
         }
-        val ready=cycle%31<18 && cycle%7!=3
+        val ready = cycle % 31 < 18 && cycle % 7 != 3
         dut.io.out.ready.poke(ready.B)
-        if(dut.io.out.valid.peek().litToBoolean) {
-          val snapshot=dut.io.out.bits.peek().litValue
-          held.foreach(x=>assert(snapshot==x,"prepared metadata changed under backpressure"))
-          if(ready) {
-            val r=pending.dequeue();val (addresses,weights)=expected(r)
+        if (dut.io.out.valid.peek().litToBoolean) {
+          val snapshot = dut.io.out.bits.peek().litValue
+          held.foreach(x => assert(snapshot == x, "prepared metadata changed under backpressure"))
+          if (ready) {
+            val r = pending.dequeue(); val (addresses, weights) = expected(r)
             dut.io.out.bits.lane.expect(r.lane.U)
-            for(i<-0 until 4) {
+            for (i <- 0 until 4) {
               dut.io.out.bits.sample.addresses(i).expect(addresses(i).U)
               dut.io.out.bits.sample.weights(i).expect(weights(i).U)
             }
-            assert(weights.sum==65536);received+=1;held=None
-          } else held=Some(snapshot)
-        } else assert(held.isEmpty,"prepared valid dropped under backpressure")
-        if(send && dut.io.in.ready.peek().litToBoolean) {pending.enqueue(cases(sent));sent+=1}
-        dut.clock.step();cycle+=1
+            assert(weights.sum == 65536); received += 1; held = None
+          } else held = Some(snapshot)
+        } else assert(held.isEmpty, "prepared valid dropped under backpressure")
+        if (send && dut.io.in.ready.peek().litToBoolean) { pending.enqueue(cases(sent)); sent += 1 }
+        dut.clock.step(); cycle += 1
       }
-      assert(received==cases.size && pending.isEmpty)
-      dut.io.in.valid.poke(false.B);dut.io.out.ready.poke(true.B);dut.clock.step(3)
-      dut.io.busy.expect(false.B);dut.io.out.valid.expect(false.B)
+      assert(received == cases.size && pending.isEmpty)
+      dut.io.in.valid.poke(false.B); dut.io.out.ready.poke(true.B); dut.clock.step(3)
+      dut.io.busy.expect(false.B); dut.io.out.valid.expect(false.B)
       // Every elastic stage must retain one-request/cycle service once full.
       var streamed = 0
       for (tick <- 0 until 518) {
@@ -142,12 +155,12 @@ class TextureCoordinatePipelineSpec extends AnyFlatSpec {
       dut.io.busy.expect(false.B); dut.io.out.valid.expect(false.B)
       info(s"COORDINATE_STREAM_RESULTS=$streamed latency=6 bubbles=0")
       // Reset must discard metadata in every occupied stage.
-      dut.io.out.ready.poke(false.B);dut.io.in.valid.poke(true.B);dut.clock.step(6)
+      dut.io.out.ready.poke(false.B); dut.io.in.valid.poke(true.B); dut.clock.step(6)
       dut.io.out.valid.expect(true.B)
       dut.io.busy.expect(true.B)
-      dut.reset.poke(true.B);dut.clock.step();dut.reset.poke(false.B)
-      dut.io.in.valid.poke(false.B);dut.io.out.ready.poke(true.B);dut.clock.step(6)
-      dut.io.busy.expect(false.B);dut.io.out.valid.expect(false.B)
+      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+      dut.io.in.valid.poke(false.B); dut.io.out.ready.poke(true.B); dut.clock.step(6)
+      dut.io.busy.expect(false.B); dut.io.out.valid.expect(false.B)
       println(s"TEXTURE_COORDINATE_CASES=$received cycles=$cycle")
     }
   }

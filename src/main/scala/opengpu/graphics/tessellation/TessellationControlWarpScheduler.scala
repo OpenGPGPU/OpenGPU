@@ -5,12 +5,11 @@ import opengpu.graphics._
 import chisel3._
 import chisel3.util._
 
-/** Own a patch context and serialize each warp's access and barrier events.
-  * Warp and invocation mappings must stay stable during the patch. Accepted
-  * results and resumes must be consumed before the corresponding warp can
-  * issue again; close also waits for all of them to drain.
+/** Own a patch context and serialize each warp's access and barrier events. Warp and invocation mappings must stay
+  * stable during the patch. Accepted results and resumes must be consumed before the corresponding warp can issue
+  * again; close also waits for all of them to drain.
   */
-class TessellationControlWarpScheduler(warps: Int, lanes: Int,zeroOnBegin:Boolean=false) extends Module {
+class TessellationControlWarpScheduler(warps: Int, lanes: Int, zeroOnBegin: Boolean = false) extends Module {
   require(warps >= 2 && isPow2(warps) && lanes >= 1 && lanes <= 32)
   val io = IO(new Bundle {
     val begin = Flipped(Decoupled(new TessellationPatchContextTask)); val opened = Decoupled(UInt(2.W))
@@ -48,27 +47,31 @@ class TessellationControlWarpScheduler(warps: Int, lanes: Int,zeroOnBegin:Boolea
   io.accessResult <> access.io.result; io.resume <> barrier.io.resume
   for (w <- 0 until warps) {
     when(io.access.fire && a === w.U) {
-      owned(w) := true.B; invocations(w) := (io.access.bits.mask.pad(64) << io.access.bits.base)(31,0)
+      owned(w) := true.B; invocations(w) := (io.access.bits.mask.pad(64) << io.access.bits.base)(31, 0)
     }
     when(io.park.fire && p === w.U) {
-      owned(w) := true.B; invocations(w) := (io.park.bits.lanes.pad(64) << io.park.bits.base)(31,0)
+      owned(w) := true.B; invocations(w) := (io.park.bits.lanes.pad(64) << io.park.bits.base)(31, 0)
     }
-    when((io.accessResult.fire && io.accessResult.bits.warp === w.U) ||
-      (io.resume.fire && io.resume.bits.warp === w.U)) { owned(w) := false.B }
+    when(
+      (io.accessResult.fire && io.accessResult.bits.warp === w.U) ||
+        (io.resume.fire && io.resume.bits.warp === w.U)
+    ) { owned(w) := false.B }
   }
   context.io.access <> access.io.access
   access.io.reply.valid := context.io.reply.valid && context.io.reply.bits.source === 1.U
   access.io.reply.bits := context.io.reply.bits
-  io.reply.valid := context.io.reply.valid && context.io.reply.bits.source =/= 1.U; io.reply.bits := context.io.reply.bits
+  io.reply.valid := context.io.reply.valid && context.io.reply.bits.source =/= 1.U;
+  io.reply.bits := context.io.reply.bits
   context.io.reply.ready := Mux(context.io.reply.bits.source === 1.U, access.io.reply.ready, io.reply.ready)
   context.io.arrive <> barrier.io.arrive; barrier.io.release <> context.io.release
   private val heldInvocations = (0 until warps).map(w => Mux(owned(w), invocations(w), 0.U(32.W))).reduce(_ | _)
   // An access mask can be predicated, so it cannot identify all live lanes of
   // its warp. Hold finishes globally until that instruction has retired.
-  private val incomingPark = (io.park.bits.lanes.pad(64) << io.park.bits.base)(31,0)
+  private val incomingPark = (io.park.bits.lanes.pad(64) << io.park.bits.base)(31, 0)
   private val finishMask = UIntToOH(io.finish.bits, 32)
-  private val finishAllowed = !access.io.busy && !(io.access.valid && accessAllowed) && !(heldInvocations & finishMask).orR &&
-    !(io.park.valid && (incomingPark & finishMask).orR)
+  private val finishAllowed =
+    !access.io.busy && !(io.access.valid && accessAllowed) && !(heldInvocations & finishMask).orR &&
+      !(io.park.valid && (incomingPark & finishMask).orR)
   context.io.finish.valid := io.finish.valid && finishAllowed; context.io.finish.bits := io.finish.bits
   io.finish.ready := finishAllowed && context.io.finish.ready
   io.control <> context.io.controlResult

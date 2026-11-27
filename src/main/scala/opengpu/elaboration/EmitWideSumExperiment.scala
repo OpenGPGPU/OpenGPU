@@ -3,8 +3,7 @@ package opengpu.elaboration
 import chisel3._
 import opengpu.util.CarrySavePrefixSum
 
-/** Equal registered endpoints for the rasterizer's three-term sum experiment.
-  * This fixture is not wired into the GPU.
+/** Equal registered endpoints for the rasterizer's three-term sum experiment. This fixture is not wired into the GPU.
   */
 class WideSumTiming(usePrefix: Boolean, width: Int = 64) extends Module {
   val io = IO(new Bundle {
@@ -22,8 +21,10 @@ class WideSumTiming(usePrefix: Boolean, width: Int = 64) extends Module {
 
 object EmitWideSumExperiment {
   def main(args: Array[String]): Unit = {
-    require(args.length == 2 && Set("native", "prefix")(args(0)),
-      "usage: EmitWideSumExperiment <native|prefix> <target-dir>")
+    require(
+      args.length == 2 && Set("native", "prefix")(args(0)),
+      "usage: EmitWideSumExperiment <native|prefix> <target-dir>"
+    )
     EmitRtl.emit(new WideSumTiming(args(0) == "prefix"), args(1))
   }
 }

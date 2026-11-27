@@ -2,32 +2,26 @@ package opengpu.core.frontend.decode
 
 import chisel3._
 import chisel3.util._
-import chisel3.util.experimental.decode.{
-  BoolDecodeField,
-  DecodeField,
-  DecodePattern,
-  DecodeTable
-}
+import chisel3.util.experimental.decode.{BoolDecodeField, DecodeField, DecodePattern, DecodeTable}
 
 private case class FpuPattern(
-  name: String,
-  encoding: String,
-  unit: Int,
-  readsRs1: Boolean = false,
-  readsRs2: Boolean = false,
-  readsRs3: Boolean = false,
-  writesFp: Boolean = false,
-  writesInteger: Boolean = false,
-  memoryRead: Boolean = false,
-  memoryWrite: Boolean = false,
-  setsFlags: Boolean = false,
-  usesRoundingMode: Boolean = false
+    name: String,
+    encoding: String,
+    unit: Int,
+    readsRs1: Boolean = false,
+    readsRs2: Boolean = false,
+    readsRs3: Boolean = false,
+    writesFp: Boolean = false,
+    writesInteger: Boolean = false,
+    memoryRead: Boolean = false,
+    memoryWrite: Boolean = false,
+    setsFlags: Boolean = false,
+    usesRoundingMode: Boolean = false
 ) extends DecodePattern {
   override def bitPat: BitPat = BitPat("b" + encoding)
 }
 
-private abstract class FpuBoolField(override val name: String)
-    extends BoolDecodeField[FpuPattern] {
+private abstract class FpuBoolField(override val name: String) extends BoolDecodeField[FpuPattern] {
   override def default: BitPat = n
   protected def value(pattern: FpuPattern): Boolean
   override def genTable(pattern: FpuPattern): BitPat = if (value(pattern)) y else n
@@ -78,10 +72,8 @@ private object FpuDecodeTable {
   private val fmaOpcodes = Seq("1000011", "1000111", "1001011", "1001111")
 
   private val memoryPatterns = Seq(
-    FpuPattern("flw", "?????????????????010?????0000111", 1,
-      writesFp = true, memoryRead = true),
-    FpuPattern("fsw", "?????????????????010?????0100111", 1,
-      readsRs2 = true, memoryWrite = true)
+    FpuPattern("flw", "?????????????????010?????0000111", 1, writesFp = true, memoryRead = true),
+    FpuPattern("fsw", "?????????????????010?????0100111", 1, readsRs2 = true, memoryWrite = true)
   )
 
   private val fmaPatterns = for {
@@ -93,17 +85,17 @@ private object FpuDecodeTable {
     readsRs1 = true,
     readsRs2 = true,
     readsRs3 = true,
-      writesFp = true,
-      setsFlags = true,
-      usesRoundingMode = true
+    writesFp = true,
+    setsFlags = true,
+    usesRoundingMode = true
   )
 
   private def binary(
-    name: String,
-    funct5: String,
-    unit: Int = 1,
-    setsFlags: Boolean = true,
-    usesRoundingMode: Boolean = true
+      name: String,
+      funct5: String,
+      unit: Int = 1,
+      setsFlags: Boolean = true,
+      usesRoundingMode: Boolean = true
   ): Seq[FpuPattern] = Seq(
     FpuPattern(
       s"${name}_s",
@@ -118,15 +110,15 @@ private object FpuDecodeTable {
   )
 
   private def exactRm(
-    name: String,
-    funct5: String,
-    rm: String,
-    unit: Int = 1,
-    readsRs2: Boolean = true,
-    writesFp: Boolean = true,
-    writesInteger: Boolean = false,
-    setsFlags: Boolean = false,
-    rs2: String = "?????"
+      name: String,
+      funct5: String,
+      rm: String,
+      unit: Int = 1,
+      readsRs2: Boolean = true,
+      writesFp: Boolean = true,
+      writesInteger: Boolean = false,
+      setsFlags: Boolean = false,
+      rs2: String = "?????"
   ): Seq[FpuPattern] = Seq(
     FpuPattern(
       s"${name}_s_$rm",
@@ -141,14 +133,14 @@ private object FpuDecodeTable {
   )
 
   private def unaryRs2(
-    name: String,
-    funct5: String,
-    rs2: String,
-    unit: Int,
-    writesFp: Boolean,
-    writesInteger: Boolean,
-    usesRoundingMode: Boolean,
-    setsFlags: Boolean
+      name: String,
+      funct5: String,
+      rs2: String,
+      unit: Int,
+      writesFp: Boolean,
+      writesInteger: Boolean,
+      usesRoundingMode: Boolean,
+      setsFlags: Boolean
   ): Seq[FpuPattern] = Seq(
     FpuPattern(
       s"${name}_s_$rs2",
@@ -169,37 +161,73 @@ private object FpuDecodeTable {
       binary("fdiv", "00011", unit = 3)
 
   private val exactFunctionPatterns =
-    exactRm("fsgnj",  "00100", "000", setsFlags = false) ++
+    exactRm("fsgnj", "00100", "000", setsFlags = false) ++
       exactRm("fsgnjn", "00100", "001", setsFlags = false) ++
       exactRm("fsgnjx", "00100", "010", setsFlags = false) ++
-      exactRm("fmin",   "00101", "000", setsFlags = true) ++
-      exactRm("fmax",   "00101", "001", setsFlags = true) ++
-      exactRm("fle",    "10100", "000", writesFp = false,
-        writesInteger = true, setsFlags = true) ++
-      exactRm("flt",    "10100", "001", writesFp = false,
-        writesInteger = true, setsFlags = true) ++
-      exactRm("feq",    "10100", "010", writesFp = false,
-        writesInteger = true, setsFlags = true)
+      exactRm("fmin", "00101", "000", setsFlags = true) ++
+      exactRm("fmax", "00101", "001", setsFlags = true) ++
+      exactRm("fle", "10100", "000", writesFp = false, writesInteger = true, setsFlags = true) ++
+      exactRm("flt", "10100", "001", writesFp = false, writesInteger = true, setsFlags = true) ++
+      exactRm("feq", "10100", "010", writesFp = false, writesInteger = true, setsFlags = true)
 
   private val unaryPatterns =
-    unaryRs2("fcvt_w", "11000", "00000", 5, writesFp = false,
-        writesInteger = true, usesRoundingMode = true, setsFlags = true) ++
-      unaryRs2("fcvt_wu", "11000", "00001", 5, writesFp = false,
-        writesInteger = true, usesRoundingMode = true, setsFlags = true) ++
-      unaryRs2("fcvt_from_w", "11010", "00000", 5, writesFp = true,
-        writesInteger = false, usesRoundingMode = true, setsFlags = true) ++
-      unaryRs2("fcvt_from_wu", "11010", "00001", 5, writesFp = true,
-        writesInteger = false, usesRoundingMode = true, setsFlags = true) ++
-      unaryRs2("fsqrt", "01011", "00000", 4, writesFp = true,
-        writesInteger = false, usesRoundingMode = true, setsFlags = true)
+    unaryRs2(
+      "fcvt_w",
+      "11000",
+      "00000",
+      5,
+      writesFp = false,
+      writesInteger = true,
+      usesRoundingMode = true,
+      setsFlags = true
+    ) ++
+      unaryRs2(
+        "fcvt_wu",
+        "11000",
+        "00001",
+        5,
+        writesFp = false,
+        writesInteger = true,
+        usesRoundingMode = true,
+        setsFlags = true
+      ) ++
+      unaryRs2(
+        "fcvt_from_w",
+        "11010",
+        "00000",
+        5,
+        writesFp = true,
+        writesInteger = false,
+        usesRoundingMode = true,
+        setsFlags = true
+      ) ++
+      unaryRs2(
+        "fcvt_from_wu",
+        "11010",
+        "00001",
+        5,
+        writesFp = true,
+        writesInteger = false,
+        usesRoundingMode = true,
+        setsFlags = true
+      ) ++
+      unaryRs2(
+        "fsqrt",
+        "01011",
+        "00000",
+        4,
+        writesFp = true,
+        writesInteger = false,
+        usesRoundingMode = true,
+        setsFlags = true
+      )
 
   private val moveAndClassPatterns =
-    Seq(FpuPattern("fmv_to_x_s", s"11100${format}00000?????000?????1010011", 1,
-      readsRs1 = true, writesInteger = true)) ++
-      exactRm("fclass", "11100", "001", readsRs2 = false,
-        writesFp = false, writesInteger = true, rs2 = "00000") ++
-      Seq(FpuPattern("fmv_from_x_s", s"11110${format}00000?????000?????1010011", 1,
-        readsRs1 = true, writesFp = true))
+    Seq(
+      FpuPattern("fmv_to_x_s", s"11100${format}00000?????000?????1010011", 1, readsRs1 = true, writesInteger = true)
+    ) ++
+      exactRm("fclass", "11100", "001", readsRs2 = false, writesFp = false, writesInteger = true, rs2 = "00000") ++
+      Seq(FpuPattern("fmv_from_x_s", s"11110${format}00000?????000?????1010011", 1, readsRs1 = true, writesFp = true))
 
   private val arithmeticPatterns =
     roundedBinaryPatterns ++ exactFunctionPatterns ++ unaryPatterns ++

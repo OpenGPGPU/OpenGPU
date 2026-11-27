@@ -96,17 +96,13 @@ private class VectorIntegerPartial(config: GpuConfig) extends Bundle {
 
 /** RVV integer ALU for the fixed SEW=32, LMUL=1 GPU profile.
   *
-  * The unit implements the precise funct6 encodings accepted by VectorDecoder,
-  * including integer reductions, vrgather, slide cross-lane selection, vid.v
-  * and vcompress.vm's rank-then-select packing.
-  * Inactive or masked-off lanes preserve oldVd, except vmerge: a clear mask
-  * lane in the body takes vs2, and only lanes outside VL keep oldVd.
-  * vmand/vmor/vmxor and their negated forms combine the packed mask bits in
-  * element zero. `vmv.s.x` writes the scalar into element 0 and leaves every
-  * other element unchanged. `vmv.x.s` copies element 0 into `scalarData` and
-  * does not write the vector register; an inactive element 0 produces zero.
-  * Results are held under output backpressure and the unit
-  * sustains one operation per cycle when unstalled.
+  * The unit implements the precise funct6 encodings accepted by VectorDecoder, including integer reductions, vrgather,
+  * slide cross-lane selection, vid.v and vcompress.vm's rank-then-select packing. Inactive or masked-off lanes preserve
+  * oldVd, except vmerge: a clear mask lane in the body takes vs2, and only lanes outside VL keep oldVd.
+  * vmand/vmor/vmxor and their negated forms combine the packed mask bits in element zero. `vmv.s.x` writes the scalar
+  * into element 0 and leaves every other element unchanged. `vmv.x.s` copies element 0 into `scalarData` and does not
+  * write the vector register; an inactive element 0 produces zero. Results are held under output backpressure and the
+  * unit sustains one operation per cycle when unstalled.
   */
 class VectorIntegerAlu(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {
@@ -180,44 +176,48 @@ class VectorIntegerAlu(config: GpuConfig = GpuConfig()) extends Module {
     val basicResult = Mux(
       partialBits.reduction,
       lhs,
-      MuxLookup(partialBits.funct6, 0.U(32.W))(Seq(
-        "h00".U -> partialBits.add(lane),
-        "h02".U -> partialBits.sub(lane),
-        "h03".U -> (0.U - partialBits.sub(lane)),
-        "h04".U -> Mux(partialBits.less(lane), lhs, rhs),
-        "h05".U -> Mux(partialBits.lessSigned(lane), lhs, rhs),
-        "h06".U -> Mux(partialBits.greater(lane), lhs, rhs),
-        "h07".U -> Mux(partialBits.greaterSigned(lane), lhs, rhs),
-        "h09".U -> (lhs & rhs),
-        "h0a".U -> (lhs | rhs),
-        "h0b".U -> (lhs ^ rhs),
-        "h0c".U -> Mux(partialBits.quad, quadDx, lhs),
-        "h0d".U -> quadDy,
-        "h0e".U -> lhs,
-        "h0f".U -> lhs,
-        // vid.v and viota.m: the input stage put the index or the rank in lhs.
-        "h14".U -> lhs,
-        // vmerge/vmv: the input stage already selected vs1, the scalar, or
-        // the immediate against vs2. Body lanes use that value.
-        "h17".U -> lhs,
-        // vmv.s.x places the scalar in lhs and enables only element 0.
-        "h10".U -> lhs,
-        // vsext/vzext vf2/vf4/vf8 use vs1=7/6, 5/4, and 3/2.
-        "h12".U -> MuxLookup(partialBits.immediate, 0.U(32.W))(Seq(
-          7.U -> Cat(Fill(16, lhs(15)), lhs(15, 0)),
-          6.U -> Cat(0.U(16.W), lhs(15, 0)),
-          5.U -> Cat(Fill(24, lhs(7)), lhs(7, 0)),
-          4.U -> Cat(0.U(24.W), lhs(7, 0)),
-          3.U -> Cat(Fill(28, lhs(3)), lhs(3, 0)),
-          2.U -> Cat(0.U(28.W), lhs(3, 0))
-        )),
-        // Widening add/subtract/multiply operate on sign-extended 16-bit halves.
-        "h30".U -> partialBits.widening(lane),
-        "h31".U -> partialBits.widening(lane),
-        "h32".U -> partialBits.widening(lane),
-        "h33".U -> partialBits.widening(lane),
-        "h34".U -> partialBits.widening(lane)
-      ))
+      MuxLookup(partialBits.funct6, 0.U(32.W))(
+        Seq(
+          "h00".U -> partialBits.add(lane),
+          "h02".U -> partialBits.sub(lane),
+          "h03".U -> (0.U - partialBits.sub(lane)),
+          "h04".U -> Mux(partialBits.less(lane), lhs, rhs),
+          "h05".U -> Mux(partialBits.lessSigned(lane), lhs, rhs),
+          "h06".U -> Mux(partialBits.greater(lane), lhs, rhs),
+          "h07".U -> Mux(partialBits.greaterSigned(lane), lhs, rhs),
+          "h09".U -> (lhs & rhs),
+          "h0a".U -> (lhs | rhs),
+          "h0b".U -> (lhs ^ rhs),
+          "h0c".U -> Mux(partialBits.quad, quadDx, lhs),
+          "h0d".U -> quadDy,
+          "h0e".U -> lhs,
+          "h0f".U -> lhs,
+          // vid.v and viota.m: the input stage put the index or the rank in lhs.
+          "h14".U -> lhs,
+          // vmerge/vmv: the input stage already selected vs1, the scalar, or
+          // the immediate against vs2. Body lanes use that value.
+          "h17".U -> lhs,
+          // vmv.s.x places the scalar in lhs and enables only element 0.
+          "h10".U -> lhs,
+          // vsext/vzext vf2/vf4/vf8 use vs1=7/6, 5/4, and 3/2.
+          "h12".U -> MuxLookup(partialBits.immediate, 0.U(32.W))(
+            Seq(
+              7.U -> Cat(Fill(16, lhs(15)), lhs(15, 0)),
+              6.U -> Cat(0.U(16.W), lhs(15, 0)),
+              5.U -> Cat(Fill(24, lhs(7)), lhs(7, 0)),
+              4.U -> Cat(0.U(24.W), lhs(7, 0)),
+              3.U -> Cat(Fill(28, lhs(3)), lhs(3, 0)),
+              2.U -> Cat(0.U(28.W), lhs(3, 0))
+            )
+          ),
+          // Widening add/subtract/multiply operate on sign-extended 16-bit halves.
+          "h30".U -> partialBits.widening(lane),
+          "h31".U -> partialBits.widening(lane),
+          "h32".U -> partialBits.widening(lane),
+          "h33".U -> partialBits.widening(lane),
+          "h34".U -> partialBits.widening(lane)
+        )
+      )
     )
     val saturatingResult = Mux(
       partialBits.funct6 === "h20".U || partialBits.funct6 === "h21".U,
@@ -225,16 +225,18 @@ class VectorIntegerAlu(config: GpuConfig = GpuConfig()) extends Module {
       partialBits.sub(lane)
     )
 
-    val predicate = MuxLookup(partialBits.funct6, false.B)(Seq(
-      "h18".U -> partialBits.equal(lane),
-      "h19".U -> !partialBits.equal(lane),
-      "h1a".U -> partialBits.less(lane),
-      "h1b".U -> partialBits.lessSigned(lane),
-      "h1c".U -> (partialBits.less(lane) || partialBits.equal(lane)),
-      "h1d".U -> (partialBits.lessSigned(lane) || partialBits.equal(lane)),
-      "h1e".U -> partialBits.greater(lane),
-      "h1f".U -> partialBits.greaterSigned(lane)
-    ))
+    val predicate = MuxLookup(partialBits.funct6, false.B)(
+      Seq(
+        "h18".U -> partialBits.equal(lane),
+        "h19".U -> !partialBits.equal(lane),
+        "h1a".U -> partialBits.less(lane),
+        "h1b".U -> partialBits.lessSigned(lane),
+        "h1c".U -> (partialBits.less(lane) || partialBits.equal(lane)),
+        "h1d".U -> (partialBits.lessSigned(lane) || partialBits.equal(lane)),
+        "h1e".U -> partialBits.greater(lane),
+        "h1f".U -> partialBits.greaterSigned(lane)
+      )
+    )
 
     val clip = partialBits.funct6 === "h2e".U ||
       partialBits.funct6 === "h2f".U
@@ -246,12 +248,13 @@ class VectorIntegerAlu(config: GpuConfig = GpuConfig()) extends Module {
     val signedRounding = signedClip || partialBits.funct6 === "h2b".U
     val rounded = Cat(signedRounding && shifted(63), shifted) +
       partialBits.fixedRound(lane)
-    val clipOverflow = Mux(signedClip,
+    val clipOverflow = Mux(
+      signedClip,
       rounded.asSInt > ((BigInt(1) << 31) - 1).S(65.W) ||
         rounded.asSInt < (-(BigInt(1) << 31)).S(65.W),
-      rounded(64, 32).orR)
-    val clipLimit = Mux(signedClip,
-      Mux(rounded(64), signedMin, signedMax), Fill(32, 1.U))
+      rounded(64, 32).orR
+    )
+    val clipLimit = Mux(signedClip, Mux(rounded(64), signedMin, signedMax), Fill(32, 1.U))
 
     basicCandidates(lane) := basicResult
     saturatingCandidates(lane) := Mux(clip, rounded(31, 0), saturatingResult)
@@ -387,14 +390,17 @@ class VectorIntegerAlu(config: GpuConfig = GpuConfig()) extends Module {
         val widenMulU = (lhs16u * rhs16u)(31, 0)
         val widenMulSU = (lhs16se * rhs16u.asSInt).asUInt
         partialBits.widening(lane) := MuxLookup(
-          inputBits.funct6, 0.U(32.W)
-        )(Seq(
-          "h30".U -> widenAdd,
-          "h31".U -> widenSub,
-          "h32".U -> widenMulS,
-          "h33".U -> widenMulU,
-          "h34".U -> widenMulSU
-        ))
+          inputBits.funct6,
+          0.U(32.W)
+        )(
+          Seq(
+            "h30".U -> widenAdd,
+            "h31".U -> widenSub,
+            "h32".U -> widenMulS,
+            "h33".U -> widenMulU,
+            "h34".U -> widenMulSU
+          )
+        )
         val signedAddOverflow =
           !lhs(31) && !rhs(31) && addResult(31)
         val signedAddUnderflow =
@@ -417,13 +423,11 @@ class VectorIntegerAlu(config: GpuConfig = GpuConfig()) extends Module {
         val signedScaling = inputBits.funct6 === "h2b".U
         // Single-width scaling shares the rounding datapath, with no odd
         // source dependency and only five significant shift-amount bits.
-        val wide = Mux(scaling, Cat(Fill(32, signedScaling && lhs(31)), lhs),
-          Cat(inputBits.vs2Odd(lane), lhs))
+        val wide = Mux(scaling, Cat(Fill(32, signedScaling && lhs(31)), lhs), Cat(inputBits.vs2Odd(lane), lhs))
         val narrowAmount = Mux(scaling, Cat(0.U(1.W), shiftAmount), rhs(5, 0))
         val signedNarrow = signedScaling || inputBits.funct6 === "h2d".U ||
           inputBits.funct6 === "h2f".U
-        val fixedShift = Mux(signedNarrow,
-          (wide.asSInt >> narrowAmount).asUInt, wide >> narrowAmount)
+        val fixedShift = Mux(signedNarrow, (wide.asSInt >> narrowAmount).asUInt, wide >> narrowAmount)
         // The guard bit and lower discarded bits implement vxrm for any
         // shift, including zero (which must never round).
         val discardedMask = ~(Fill(64, 1.U) << narrowAmount)(63, 0)
@@ -433,48 +437,57 @@ class VectorIntegerAlu(config: GpuConfig = GpuConfig()) extends Module {
         val sticky = (wide & stickyMask).orR
         val discarded = (wide & discardedMask).orR
         partialBits.fixedShift(lane) := fixedShift
-        partialBits.fixedRound(lane) := MuxLookup(inputBits.vxrm, false.B)(Seq(
-          0.U -> guard,
-          1.U -> (guard && (sticky || fixedShift(0))),
-          2.U -> false.B,
-          3.U -> (!fixedShift(0) && discarded)
-        ))
-        partialBits.shift(lane) := MuxLookup(inputBits.funct6, 0.U(32.W))(Seq(
-          "h25".U -> (lhs << shiftAmount)(31, 0),
-          "h28".U -> (lhs >> shiftAmount),
-          "h29".U -> (lhs.asSInt >> shiftAmount).asUInt,
-          // vnsrl/vnsra narrow the 64-bit pair {vs2+1, vs2} to its low word.
-          "h2c".U -> fixedShift(31, 0),
-          "h2d".U -> fixedShift(31, 0)
-        ))
+        partialBits.fixedRound(lane) := MuxLookup(inputBits.vxrm, false.B)(
+          Seq(
+            0.U -> guard,
+            1.U -> (guard && (sticky || fixedShift(0))),
+            2.U -> false.B,
+            3.U -> (!fixedShift(0) && discarded)
+          )
+        )
+        partialBits.shift(lane) := MuxLookup(inputBits.funct6, 0.U(32.W))(
+          Seq(
+            "h25".U -> (lhs << shiftAmount)(31, 0),
+            "h28".U -> (lhs >> shiftAmount),
+            "h29".U -> (lhs.asSInt >> shiftAmount).asUInt,
+            // vnsrl/vnsra narrow the 64-bit pair {vs2+1, vs2} to its low word.
+            "h2c".U -> fixedShift(31, 0),
+            "h2d".U -> fixedShift(31, 0)
+          )
+        )
         partialBits.less(lane) := less
         partialBits.lessSigned(lane) := lessSigned
         partialBits.greater(lane) := greater
         partialBits.greaterSigned(lane) := greaterSigned
         partialBits.equal(lane) := equal
         partialBits.saturated(lane) := MuxLookup(
-          inputBits.funct6, false.B
-        )(Seq(
-          "h20".U -> unsignedAdd(32),
-          "h21".U -> (signedAddOverflow || signedAddUnderflow),
-          "h22".U -> less,
-          "h23".U -> (signedSubOverflow || signedSubUnderflow)
-        ))
+          inputBits.funct6,
+          false.B
+        )(
+          Seq(
+            "h20".U -> unsignedAdd(32),
+            "h21".U -> (signedAddOverflow || signedAddUnderflow),
+            "h22".U -> less,
+            "h23".U -> (signedSubOverflow || signedSubUnderflow)
+          )
+        )
         partialBits.saturationLimit(lane) :=
-          MuxLookup(inputBits.funct6, 0.U(32.W))(Seq(
-            "h20".U -> Fill(32, 1.U),
-            "h21".U -> Mux(
-              lhs(31),
-              (BigInt(1) << 31).U(32.W),
-              ((BigInt(1) << 31) - 1).U(32.W)
-            ),
-            "h22".U -> 0.U,
-            "h23".U -> Mux(
-              lhs(31),
-              (BigInt(1) << 31).U(32.W),
-              ((BigInt(1) << 31) - 1).U(32.W)
+          MuxLookup(inputBits.funct6, 0.U(32.W))(
+            Seq(
+              "h20".U -> Fill(32, 1.U),
+              "h21".U -> Mux(
+                lhs(31),
+                (BigInt(1) << 31).U(32.W),
+                ((BigInt(1) << 31) - 1).U(32.W)
+              ),
+              "h22".U -> 0.U,
+              "h23".U -> Mux(
+                lhs(31),
+                (BigInt(1) << 31).U(32.W),
+                ((BigInt(1) << 31) - 1).U(32.W)
+              )
             )
-          ))
+          )
       }
     }
   }
@@ -520,13 +533,16 @@ class VectorIntegerAlu(config: GpuConfig = GpuConfig()) extends Module {
           inputBits.rhs(lane),
           slide1DownNext
         )
-        val crossLane = MuxCase(inputBits.lhs(lane), Seq(
-          (inputBits.funct6 === "h0c".U && !inputBits.quad) -> gathered,
-          (inputBits.funct6 === "h0e".U && slide1) -> slide1Up,
-          (inputBits.funct6 === "h0e".U) -> slideUp,
-          (inputBits.funct6 === "h0f".U && slide1) -> slide1Down,
-          (inputBits.funct6 === "h0f".U) -> slideDown
-        ))
+        val crossLane = MuxCase(
+          inputBits.lhs(lane),
+          Seq(
+            (inputBits.funct6 === "h0c".U && !inputBits.quad) -> gathered,
+            (inputBits.funct6 === "h0e".U && slide1) -> slide1Up,
+            (inputBits.funct6 === "h0e".U) -> slideUp,
+            (inputBits.funct6 === "h0f".U && slide1) -> slide1Down,
+            (inputBits.funct6 === "h0f".U) -> slideDown
+          )
+        )
         preparedBits.lhs(lane) := crossLane
       }
     }
@@ -536,27 +552,31 @@ class VectorIntegerAlu(config: GpuConfig = GpuConfig()) extends Module {
     reductionPairValid := preparedValid
     when(preparedValid) {
       reductionPairBits := preparedBits
-      def combineReduction(left: UInt, right: UInt): UInt = MuxLookup(
-        preparedBits.funct6, left)(Seq(
-          "h00".U -> (left + right), "h01".U -> (left & right),
-          "h02".U -> (left | right), "h03".U -> (left ^ right),
+      def combineReduction(left: UInt, right: UInt): UInt = MuxLookup(preparedBits.funct6, left)(
+        Seq(
+          "h00".U -> (left + right),
+          "h01".U -> (left & right),
+          "h02".U -> (left | right),
+          "h03".U -> (left ^ right),
           "h04".U -> Mux(left < right, left, right),
           "h05".U -> Mux(left.asSInt < right.asSInt, left, right),
           "h06".U -> Mux(left > right, left, right),
           "h07".U -> Mux(left.asSInt > right.asSInt, left, right)
-        ))
-      val reductionIdentity = MuxLookup(preparedBits.funct6, 0.U(32.W))(Seq(
-        "h01".U -> Fill(32, 1.U), "h04".U -> Fill(32, 1.U),
-        "h05".U -> ((BigInt(1) << 31) - 1).U(32.W),
-        "h07".U -> (BigInt(1) << 31).U(32.W)
-      ))
+        )
+      )
+      val reductionIdentity = MuxLookup(preparedBits.funct6, 0.U(32.W))(
+        Seq(
+          "h01".U -> Fill(32, 1.U),
+          "h04".U -> Fill(32, 1.U),
+          "h05".U -> ((BigInt(1) << 31) - 1).U(32.W),
+          "h07".U -> (BigInt(1) << 31).U(32.W)
+        )
+      )
       for (pair <- 0 until (config.lanes + 1) / 2) {
         val firstLane = pair * 2
-        val left = Mux(preparedBits.sourceEnabled(firstLane),
-          preparedBits.vs2(firstLane), reductionIdentity)
+        val left = Mux(preparedBits.sourceEnabled(firstLane), preparedBits.vs2(firstLane), reductionIdentity)
         val right = if (firstLane + 1 < config.lanes) {
-          Mux(preparedBits.sourceEnabled(firstLane + 1),
-            preparedBits.vs2(firstLane + 1), reductionIdentity)
+          Mux(preparedBits.sourceEnabled(firstLane + 1), preparedBits.vs2(firstLane + 1), reductionIdentity)
         } else {
           reductionIdentity
         }
@@ -569,21 +589,30 @@ class VectorIntegerAlu(config: GpuConfig = GpuConfig()) extends Module {
     reductionFoldValid := reductionPairValid
     when(reductionPairValid) {
       reductionFoldBits := reductionPairBits
-      def combineReduction(left: UInt, right: UInt): UInt = MuxLookup(
-        reductionPairBits.funct6, left)(Seq(
-          "h00".U -> (left + right), "h01".U -> (left & right),
-          "h02".U -> (left | right), "h03".U -> (left ^ right),
+      def combineReduction(left: UInt, right: UInt): UInt = MuxLookup(reductionPairBits.funct6, left)(
+        Seq(
+          "h00".U -> (left + right),
+          "h01".U -> (left & right),
+          "h02".U -> (left | right),
+          "h03".U -> (left ^ right),
           "h04".U -> Mux(left < right, left, right),
           "h05".U -> Mux(left.asSInt < right.asSInt, left, right),
           "h06".U -> Mux(left > right, left, right),
           "h07".U -> Mux(left.asSInt > right.asSInt, left, right)
-        ))
+        )
+      )
       def reductionTree(values: Seq[UInt]): UInt = values match {
         case Seq(value) => value
-        case _ => reductionTree(values.grouped(2).map {
-          case Seq(left, right) => combineReduction(left, right)
-          case Seq(left) => left
-        }.toSeq)
+        case _          =>
+          reductionTree(
+            values
+              .grouped(2)
+              .map {
+                case Seq(left, right) => combineReduction(left, right)
+                case Seq(left)        => left
+              }
+              .toSeq
+          )
       }
       reductionFolded := reductionTree(reductionPairs)
     }
@@ -593,15 +622,18 @@ class VectorIntegerAlu(config: GpuConfig = GpuConfig()) extends Module {
     reducedValid := reductionFoldValid
     when(reductionFoldValid) {
       reducedBits := reductionFoldBits
-      def combineReduction(left: UInt, right: UInt): UInt = MuxLookup(
-        reductionFoldBits.funct6, left)(Seq(
-          "h00".U -> (left + right), "h01".U -> (left & right),
-          "h02".U -> (left | right), "h03".U -> (left ^ right),
+      def combineReduction(left: UInt, right: UInt): UInt = MuxLookup(reductionFoldBits.funct6, left)(
+        Seq(
+          "h00".U -> (left + right),
+          "h01".U -> (left & right),
+          "h02".U -> (left | right),
+          "h03".U -> (left ^ right),
           "h04".U -> Mux(left < right, left, right),
           "h05".U -> Mux(left.asSInt < right.asSInt, left, right),
           "h06".U -> Mux(left > right, left, right),
           "h07".U -> Mux(left.asSInt > right.asSInt, left, right)
-        ))
+        )
+      )
       reducedBits.lhs(0) := Mux(
         reductionFoldBits.reduction,
         combineReduction(reductionFoldBits.vs1(0), reductionFolded),
@@ -656,16 +688,18 @@ class VectorIntegerAlu(config: GpuConfig = GpuConfig()) extends Module {
       val vs2Mask = io.in.bits.vs2(0)(config.lanes - 1, 0)
       val vs1Mask = io.in.bits.vs1(0)(config.lanes - 1, 0)
       // vs2 is the left operand. A trailing n in the mnemonic negates vs1.
-      val logical = MuxLookup(io.in.bits.funct6, 0.U(config.lanes.W))(Seq(
-        "h18".U -> (vs2Mask & ~vs1Mask), // vmandn
-        "h19".U -> (vs2Mask & vs1Mask),  // vmand
-        "h1a".U -> (vs2Mask | vs1Mask),  // vmor
-        "h1b".U -> (vs2Mask ^ vs1Mask),  // vmxor
-        "h1c".U -> (vs2Mask | ~vs1Mask), // vmorn
-        "h1d".U -> ~(vs2Mask & vs1Mask), // vmnand
-        "h1e".U -> ~(vs2Mask | vs1Mask), // vmnor
-        "h1f".U -> ~(vs2Mask ^ vs1Mask)  // vmxnor
-      ))
+      val logical = MuxLookup(io.in.bits.funct6, 0.U(config.lanes.W))(
+        Seq(
+          "h18".U -> (vs2Mask & ~vs1Mask), // vmandn
+          "h19".U -> (vs2Mask & vs1Mask), // vmand
+          "h1a".U -> (vs2Mask | vs1Mask), // vmor
+          "h1b".U -> (vs2Mask ^ vs1Mask), // vmxor
+          "h1c".U -> (vs2Mask | ~vs1Mask), // vmorn
+          "h1d".U -> ~(vs2Mask & vs1Mask), // vmnand
+          "h1e".U -> ~(vs2Mask | vs1Mask), // vmnor
+          "h1f".U -> ~(vs2Mask ^ vs1Mask) // vmxnor
+        )
+      )
       val oldMask = io.in.bits.oldVd(0)(config.lanes - 1, 0)
       inputBits.quad := io.in.bits.quad
       inputBits.reduction := inputIsReduction
@@ -690,11 +724,11 @@ class VectorIntegerAlu(config: GpuConfig = GpuConfig()) extends Module {
       // last selected element keep the old destination.
       val compressMask = io.in.bits.vs1(0)(config.lanes - 1, 0) &
         io.in.bits.activeMask
-      def prefixPopCount(mask: UInt): Seq[UInt] = (0 until config.lanes).map {
-        index =>
-          val below = if (index == 0) 0.U(config.lanes.W)
-                      else mask(index - 1, 0)
-          PopCount(below)
+      def prefixPopCount(mask: UInt): Seq[UInt] = (0 until config.lanes).map { index =>
+        val below =
+          if (index == 0) 0.U(config.lanes.W)
+          else mask(index - 1, 0)
+        PopCount(below)
       }
       val compressRank = prefixPopCount(compressMask)
       // viota.m counts the set bits of vs2's mask below each element, and
@@ -716,9 +750,7 @@ class VectorIntegerAlu(config: GpuConfig = GpuConfig()) extends Module {
           )
         }
         // Keep the lowest matching source lane.
-        candidates.reduce((best, next) =>
-          Mux(best === config.lanes.U, next, best)
-        )
+        candidates.reduce((best, next) => Mux(best === config.lanes.U, next, best))
       }
       val compressEnabled = Cat(
         (0 until config.lanes).reverse.map { destination =>
@@ -761,9 +793,7 @@ class VectorIntegerAlu(config: GpuConfig = GpuConfig()) extends Module {
         val compressedSource = MuxLookup(
           compressSource(lane),
           0.U(config.xLen.W)
-        )((0 until config.lanes).map(source =>
-          source.U -> io.in.bits.vs2(source)
-        ))
+        )((0 until config.lanes).map(source => source.U -> io.in.bits.vs2(source)))
         inputBits.lhs(lane) := Mux(
           isCompress,
           Mux(

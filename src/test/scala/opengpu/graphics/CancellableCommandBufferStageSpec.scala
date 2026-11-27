@@ -46,7 +46,8 @@ class CancellableCommandBufferStageSpec extends AnyFlatSpec {
       }
       if (dut.io.draw.valid.peek().litToBoolean && dut.io.draw.ready.peek().litToBoolean) {
         if (vert) dut.io.draw.bits.asInstanceOf[VertexDrawCommand].clipDepth.expect(false.B)
-        val value = if (vert) dut.io.draw.bits.asInstanceOf[VertexDrawCommand].vertBufferBase.peek().litValue
+        val value =
+          if (vert) dut.io.draw.bits.asInstanceOf[VertexDrawCommand].vertBufferBase.peek().litValue
           else dut.io.draw.bits.asInstanceOf[SceneTriangle].clip(0).x.peek().litValue
         draws += value.toLong
       }
@@ -82,8 +83,7 @@ class CancellableCommandBufferStageSpec extends AnyFlatSpec {
     }
 
     it should s"freeze the command base and count until both records retire with vert=$vert" in {
-      simulate(new CommandBufferStage(GraphicsConfig(drawFifoDepth = 2), vert,
-        cancellable = true)) { dut =>
+      simulate(new CommandBufferStage(GraphicsConfig(drawFifoDepth = 2), vert, cancellable = true)) { dut =>
         val d = new Driver(dut, vert)
         dut.io.draw.ready.poke(true.B)
         d.start(0x4000, 2)
@@ -118,8 +118,7 @@ class CancellableCommandBufferStageSpec extends AnyFlatSpec {
     }
 
     it should s"discard queued records, drain an accepted read and reuse the binding with vert=$vert" in {
-      simulate(new CommandBufferStage(GraphicsConfig(drawFifoDepth = 2), vert,
-        cancellable = true)) { dut =>
+      simulate(new CommandBufferStage(GraphicsConfig(drawFifoDepth = 2), vert, cancellable = true)) { dut =>
         val d = new Driver(dut, vert)
         d.start(0x6000, 5)
         // Two complete records are queued, and a read of the next record is

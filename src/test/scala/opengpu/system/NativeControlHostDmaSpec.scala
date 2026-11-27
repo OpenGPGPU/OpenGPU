@@ -10,20 +10,31 @@ import scala.collection.mutable
 
 class NativeControlHostDmaSpec extends AnyFlatSpec {
   private def zero(data: Data): Unit = data match {
-    case r: Record => r.elements.values.foreach(zero)
-    case v: Vec[_] => v.foreach(zero)
+    case r: Record                                                     => r.elements.values.foreach(zero)
+    case v: Vec[_]                                                     => v.foreach(zero)
     case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
     case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
     case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
-    case _ => ()
+    case _                                                             => ()
   }
   it should "retain native ownership, all legacy DMA engines and independent scanout" in {
     val gpu = GpuConfig()
-    simulate(new GpuHostAxi(gpuConfig = gpu, unifiedCommandMmio = true,
-      protectVmState = true, externalBinnedRender = true, nativeCompletionInfo = true,
-      nativeVertexInput = true, visibilityQueries = true, transformFeedback = true,
-      primitiveQueries = true, shaderExecutionLimits = true, enableIndirectCompute = true,
-      computeResources = Some(ComputeResourceProfile(gpu, 4, 32)))) { d =>
+    simulate(
+      new GpuHostAxi(
+        gpuConfig = gpu,
+        unifiedCommandMmio = true,
+        protectVmState = true,
+        externalBinnedRender = true,
+        nativeCompletionInfo = true,
+        nativeVertexInput = true,
+        visibilityQueries = true,
+        transformFeedback = true,
+        primitiveQueries = true,
+        shaderExecutionLimits = true,
+        enableIndirectCompute = true,
+        computeResources = Some(ComputeResourceProfile(gpu, 4, 32))
+      )
+    ) { d =>
       zero(d.io)
       d.io.s_axi_aresetn.poke(false.B); d.clock.step(3)
       d.io.s_axi_aresetn.poke(true.B); d.clock.step()
@@ -109,8 +120,7 @@ class NativeControlHostDmaSpec extends AnyFlatSpec {
       def exactMemory(): Unit = {
         assert(memory.keySet == expected.keySet, "DMA wrote outside every guarded allocation")
         for ((a, value) <- expected)
-          assert(memory(a) == value,
-            s"DMA byte ${a.toString(16)} actual=${memory(a)} expected=$value")
+          assert(memory(a) == value, s"DMA byte ${a.toString(16)} actual=${memory(a)} expected=$value")
       }
       def dma(): Unit = {
         case class Reply(id: BigInt, data: BigInt, due: Int)
@@ -159,8 +169,10 @@ class NativeControlHostDmaSpec extends AnyFlatSpec {
       write(R.STRIDED_WIDTH, 20); write(R.STRIDED_HEIGHT, 3)
       write(R.STRIDED_SRC_STRIDE, 40); write(R.STRIDED_DST_STRIDE, 48)
       write(R.STRIDED_START, 1); dma()
-      assert(transactions == beforeInvalid && (read(R.STATUS) & 4) != 0,
-        "unaligned strided descriptor must fail without issuing memory traffic")
+      assert(
+        transactions == beforeInvalid && (read(R.STATUS) & 4) != 0,
+        "unaligned strided descriptor must fail without issuing memory traffic"
+      )
       exactMemory(); write(R.STATUS, 4)
       write(R.STRIDED_SRC_BASE, 0x4000); write(R.STRIDED_DST_BASE, 0x5000)
       write(R.STRIDED_WIDTH, 64); write(R.STRIDED_HEIGHT, 3)
@@ -179,9 +191,11 @@ class NativeControlHostDmaSpec extends AnyFlatSpec {
       write(R.SCANOUT_CONTROL, 1); write(R.IRQ, 5)
       assert((read(R.IRQ) & 4) == 0)
       idleLegacy()
-      info(s"NATIVE_CONTROL_DMA CUs=4 lanes=16 warps=8 heldNativeSubmit=true " +
-        s"busyDMARejected=true completionPinsVM=true fillCopyStrided=true transactions=$transactions " +
-        "invalidStridedRejected=true delayedRealReplies=true exactGuards=true scanoutVblank=true inertLegacyStart=true")
+      info(
+        s"NATIVE_CONTROL_DMA CUs=4 lanes=16 warps=8 heldNativeSubmit=true " +
+          s"busyDMARejected=true completionPinsVM=true fillCopyStrided=true transactions=$transactions " +
+          "invalidStridedRejected=true delayedRealReplies=true exactGuards=true scanoutVblank=true inertLegacyStart=true"
+      )
     }
   }
 }

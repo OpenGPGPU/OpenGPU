@@ -23,10 +23,17 @@ class FragmentShaderAbiSpec extends AnyFlatSpec {
   it should "preserve legacy nonzero words and enforce the multisample control contract" in {
     // Expected emit decisions for ABI 0 and ABI 1, independent of the decoder.
     val cases = Seq(
-      (0L, false, false), (1L, true, true), (2L, true, false),
-      (3L, true, true), (4L, true, false), (5L, true, false),
-      (7L, true, false), (0x80000000L, true, false),
-      (0x80000001L, true, false), (0xffffffffL, true, false))
+      (0L, false, false),
+      (1L, true, true),
+      (2L, true, false),
+      (3L, true, true),
+      (4L, true, false),
+      (5L, true, false),
+      (7L, true, false),
+      (0x80000000L, true, false),
+      (0x80000001L, true, false),
+      (0xffffffffL, true, false)
+    )
     simulate(new FragmentShaderAbiHarness) { dut =>
       for (mode <- Seq(0, 1, 2); (word, legacyEmit, msaaEmit) <- cases) {
         dut.io.sampleMode.poke(mode.U)

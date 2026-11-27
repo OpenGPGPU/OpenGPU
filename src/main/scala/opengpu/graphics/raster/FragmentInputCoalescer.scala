@@ -25,13 +25,12 @@ class FragmentInputWrite extends Bundle {
   val mask = UInt(64.W)
 }
 
-/** Four consecutive quads transposed into field-major writes. The final two
-  * rows initialize shader depth/control after the color output arrays. Partial
-  * groups touch only captured lanes; a row crossing a64-byte line uses two
-  * masked requests. Cancellation drops buffered work, while the enclosing
-  * stage retains ownership of every write it already accepted.
+/** Four consecutive quads transposed into field-major writes. The final two rows initialize shader depth/control after
+  * the color output arrays. Partial groups touch only captured lanes; a row crossing a64-byte line uses two masked
+  * requests. Cancellation drops buffered work, while the enclosing stage retains ownership of every write it already
+  * accepted.
   */
-class FragmentInputCoalescer(capacity: Int, maxInputWords: Int, useSramBlackBoxes: Boolean=false) extends Module {
+class FragmentInputCoalescer(capacity: Int, maxInputWords: Int, useSramBlackBoxes: Boolean = false) extends Module {
   require(capacity >= 4 && capacity <= 255 && capacity % 4 == 0)
   require(maxInputWords >= 6 && maxInputWords <= 77)
   private val depth = 1 << log2Ceil(maxInputWords + 2)
@@ -44,7 +43,7 @@ class FragmentInputCoalescer(capacity: Int, maxInputWords: Int, useSramBlackBoxe
     val busy = Output(Bool())
     val done = Output(Bool())
   })
-  private object State extends ChiselEnum { val idle,read,capture,first,second,done=Value }
+  private object State extends ChiselEnum { val idle, read, capture, first, second, done = Value }
   private val phase = RegInit(State.idle)
   private val command = Reg(new FragmentInputFlush)
   private val row = Reg(UInt(7.W))
@@ -53,75 +52,78 @@ class FragmentInputCoalescer(capacity: Int, maxInputWords: Int, useSramBlackBoxe
   private val offset = Reg(UInt(6.W))
   private val firstBytes = Reg(UInt(7.W))
   private val secondBytes = Reg(UInt(7.W))
-  private val banks = Seq.fill(4)(Module(new L2SramArray(depth,128,useSramBlackBoxes)))
-  io.store.ready := phase===State.idle && !io.cancel
-  io.flush.ready := phase===State.idle && !io.store.valid && !io.cancel
-  io.busy := phase=/=State.idle
-  io.done := phase===State.done && !io.cancel
-  io.out.valid := (phase===State.first || phase===State.second) && !io.cancel
-  io.out.bits.address := Mux(phase===State.second,address+64.U,address)
-  io.out.bits.data := Mux(phase===State.second,word>>(firstBytes<<3),word<<(offset<<3))
-  private def mask(bytes: UInt): UInt = (~0.U(64.W))>>(64.U(7.W)-bytes)
-  io.out.bits.mask := Mux(phase===State.second,mask(secondBytes),mask(firstBytes)<<offset)
+  private val banks = Seq.fill(4)(Module(new L2SramArray(depth, 128, useSramBlackBoxes)))
+  io.store.ready := phase === State.idle && !io.cancel
+  io.flush.ready := phase === State.idle && !io.store.valid && !io.cancel
+  io.busy := phase =/= State.idle
+  io.done := phase === State.done && !io.cancel
+  io.out.valid := (phase === State.first || phase === State.second) && !io.cancel
+  io.out.bits.address := Mux(phase === State.second, address + 64.U, address)
+  io.out.bits.data := Mux(phase === State.second, word >> (firstBytes << 3), word << (offset << 3))
+  private def mask(bytes: UInt): UInt = (~0.U(64.W)) >> (64.U(7.W) - bytes)
+  io.out.bits.mask := Mux(phase === State.second, mask(secondBytes), mask(firstBytes) << offset)
   // The current word remains registered through every held/split offer. Only
   // its final handshake can read the next field for the following capture.
-  private val readNext=io.out.fire && (phase===State.second || secondBytes===0.U) &&
-    row=/=command.inputWords+1.U && !io.cancel
-  private val readIssue=phase===State.read || readNext
-  private val readRow=Mux(readNext,row+1.U,row)
-  private val storeWords=VecInit((0 until 4).map(i=>io.store.bits.data(128*i+127,128*i)))
-  for ((bank,index)<-banks.zipWithIndex) {
+  private val readNext = io.out.fire && (phase === State.second || secondBytes === 0.U) &&
+    row =/= command.inputWords + 1.U && !io.cancel
+  private val readIssue = phase === State.read || readNext
+  private val readRow = Mux(readNext, row + 1.U, row)
+  private val storeWords = VecInit((0 until 4).map(i => io.store.bits.data(128 * i + 127, 128 * i)))
+  for ((bank, index) <- banks.zipWithIndex) {
     // Skewing bank=(quad+field)%4 permits both four fields of one quad
     // and one field of four quads to use each existing bank exactly once.
-    val slot=(index.U(2.W)-io.store.bits.quad)(1,0)
+    val slot = (index.U(2.W) - io.store.bits.quad)(1, 0)
     bank.io.writeEnable := io.store.fire && io.store.bits.mask(slot)
-    bank.io.writeAddress := Cat(io.store.bits.field(6,2),slot)
+    bank.io.writeAddress := Cat(io.store.bits.field(6, 2), slot)
     bank.io.writeData := storeWords(slot)
     bank.io.readEnable := readIssue && !io.cancel
     bank.io.readAddress := readRow
   }
   when(io.store.fire) {
-    assert(io.store.bits.field(1,0)===0.U && io.store.bits.mask.orR,
-      "fragment field group must be aligned and nonempty")
-    for(i<-0 until 4)when(io.store.bits.mask(i)){
-      assert(io.store.bits.field+i.U<(maxInputWords+2).U,
-        "fragment field group exceeded its physical rows")
+    assert(
+      io.store.bits.field(1, 0) === 0.U && io.store.bits.mask.orR,
+      "fragment field group must be aligned and nonempty"
+    )
+    for (i <- 0 until 4) when(io.store.bits.mask(i)) {
+      assert(io.store.bits.field + i.U < (maxInputWords + 2).U, "fragment field group exceeded its physical rows")
     }
   }
   when(io.flush.fire) {
-    assert(io.flush.bits.quads>=1.U && io.flush.bits.quads<=math.min(4,capacity/4).U)
-    assert(io.flush.bits.inputWords>=6.U && io.flush.bits.inputWords<=maxInputWords.U)
-    assert(io.flush.bits.colorWords<=16.U && io.flush.bits.colorWords(1,0)===0.U)
-    assert(io.flush.bits.base(3,0)===0.U)
-    command:=io.flush.bits
+    assert(io.flush.bits.quads >= 1.U && io.flush.bits.quads <= math.min(4, capacity / 4).U)
+    assert(io.flush.bits.inputWords >= 6.U && io.flush.bits.inputWords <= maxInputWords.U)
+    assert(io.flush.bits.colorWords <= 16.U && io.flush.bits.colorWords(1, 0) === 0.U)
+    assert(io.flush.bits.base(3, 0) === 0.U)
+    command := io.flush.bits
     // All legal groups begin on a quad boundary. Retain this alignment in
     // the datapath so its line shifters select128-bit quad words.
-    command.base:=Cat(io.flush.bits.base(31,4),0.U(4.W))
-    row:=0.U;phase:=State.read
+    command.base := Cat(io.flush.bits.base(31, 4), 0.U(4.W))
+    row := 0.U; phase := State.read
   }
   private def advance(): Unit = {
-    when(row===command.inputWords+1.U) { phase:=State.done }
-      .otherwise { row:=row+1.U;phase:=State.capture }
+    when(row === command.inputWords + 1.U) { phase := State.done }
+      .otherwise { row := row + 1.U; phase := State.capture }
   }
   when(readIssue) {
-    val targetField = readRow+&Mux(readRow>=command.inputWords,command.colorWords,0.U)
-    val target = command.base+&(targetField*stride.U)
-    val bytes = command.quads<<4
-    val head = Mux(bytes>64.U-target(5,0),64.U-target(5,0),bytes)
-    assert((target>>32)===0.U && target+&bytes<=(BigInt(1)<<32).U,
-      "fragment input flush must remain in the validated32-bit span")
-    address:=Cat(target(31,6),0.U(6.W));offset:=target(5,0)
-    firstBytes:=head;secondBytes:=bytes-head;phase:=State.capture
+    val targetField = readRow +& Mux(readRow >= command.inputWords, command.colorWords, 0.U)
+    val target = command.base +& (targetField * stride.U)
+    val bytes = command.quads << 4
+    val head = Mux(bytes > 64.U - target(5, 0), 64.U - target(5, 0), bytes)
+    assert(
+      (target >> 32) === 0.U && target +& bytes <= (BigInt(1) << 32).U,
+      "fragment input flush must remain in the validated32-bit span"
+    )
+    address := Cat(target(31, 6), 0.U(6.W)); offset := target(5, 0)
+    firstBytes := head; secondBytes := bytes - head; phase := State.capture
   }
-  private val readWords=VecInit(banks.map(_.io.readData))
-  when(phase===State.capture) {
-    word:=VecInit((0 until 4).map(q=>readWords((row(1,0)+q.U(2.W))(1,0)))).asUInt
-    phase:=State.first
+  private val readWords = VecInit(banks.map(_.io.readData))
+  when(phase === State.capture) {
+    word := VecInit((0 until 4).map(q => readWords((row(1, 0) + q.U(2.W))(1, 0)))).asUInt
+    phase := State.first
   }
   when(io.out.fire) {
-    when(phase===State.first && secondBytes=/=0.U) { phase:=State.second }
+    when(phase === State.first && secondBytes =/= 0.U) { phase := State.second }
       .otherwise { advance() }
   }
-  when(phase===State.done) { phase:=State.idle }
-  when(io.cancel) { phase:=State.idle }
+  when(phase === State.done) { phase := State.idle }
+  when(io.cancel) { phase := State.idle }
 }

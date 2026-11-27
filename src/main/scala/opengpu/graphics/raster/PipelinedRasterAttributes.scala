@@ -20,11 +20,9 @@ class RasterAttributeResult(config: GraphicsConfig, lanes: Int) extends Bundle {
   val divideByZero = Bool()
 }
 
-/** Actual legacy scalar/quad attribute path. Faster color/gradient channels
-  * have sufficient independent output capacity to align with the depth
-  * channel without reducing the one-beat/cycle steady-state rate. One shared
-  * gradient pair serves all four quad lanes. Captured metadata owns sample
-  * mode, coverage and edges until ordered output retirement.
+/** Actual legacy scalar/quad attribute path. Faster color/gradient channels have sufficient independent output capacity
+  * to align with the depth channel without reducing the one-beat/cycle steady-state rate. One shared gradient pair
+  * serves all four quad lanes. Captured metadata owns sample mode, coverage and edges until ordered output retirement.
   */
 class PipelinedRasterAttributes(config: GraphicsConfig, lanes: Int = 1) extends Module {
   require(Set(1, 4)(lanes) && config.subPixelBits >= 2)
@@ -36,8 +34,15 @@ class PipelinedRasterAttributes(config: GraphicsConfig, lanes: Int = 1) extends 
   private val attributes = (0 until lanes).map { lane =>
     (0 until 5).map { channel =>
       val color = channel < 4
-      val dot = Module(new PipelinedSignedDotDivider(config.edgeWidth, if (color) 9 else 32,
-        config.edgeWidth + (if (color) 8 else 32), config.edgeWidth, if (color) 8 else 32))
+      val dot = Module(
+        new PipelinedSignedDotDivider(
+          config.edgeWidth,
+          if (color) 9 else 32,
+          config.edgeWidth + (if (color) 8 else 32),
+          config.edgeWidth,
+          if (color) 8 else 32
+        )
+      )
       val pixel = io.in.bits.pixels(lane)
       dot.io.in.bits.coefficients := VecInit(Seq(pixel.e0, pixel.e1, pixel.e2))
       dot.io.in.bits.denominator := pixel.area
@@ -65,10 +70,15 @@ class PipelinedRasterAttributes(config: GraphicsConfig, lanes: Int = 1) extends 
   private val arithmetic = attributes.flatten ++ gradients
   private val maxLatency = arithmetic.map(_.latency).max
   val latency: Int = maxLatency + 2
-  private val metadata = Module(new Queue(new Bundle {
-    val pixels = Vec(lanes, new RasterPixel(config))
-    val sampleMode = UInt(2.W)
-  }, maxLatency + 4))
+  private val metadata = Module(
+    new Queue(
+      new Bundle {
+        val pixels = Vec(lanes, new RasterPixel(config))
+        val sampleMode = UInt(2.W)
+      },
+      maxLatency + 4
+    )
+  )
   private val arithmeticReady = VecInit(arithmetic.map(_.io.in.ready)).asUInt.andR
   io.in.ready := arithmeticReady && metadata.io.enq.ready
   arithmetic.foreach(_.io.in.valid := io.in.fire)

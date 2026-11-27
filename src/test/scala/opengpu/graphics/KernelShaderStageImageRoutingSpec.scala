@@ -9,17 +9,22 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 class KernelShaderStageImageRoutingSpec extends AnyFlatSpec {
   private def zero(d: Data): Unit = d match {
-    case r: Record => r.elements.values.foreach(zero)
-    case v: Vec[_] => v.foreach(zero)
+    case r: Record                                                     => r.elements.values.foreach(zero)
+    case v: Vec[_]                                                     => v.foreach(zero)
     case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
     case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
     case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
-    case _ => ()
+    case _                                                             => ()
   }
 
   it should "forward a stable publication with the producer's trusted stage" in {
-    simulate(new KernelShaderStage(GpuConfig(lanes = 4, warps = 2),
-      sharedShader = Some(SharedCuShaderConfig(1)), imageStage = Some(GraphicsStage.fragment))) { d =>
+    simulate(
+      new KernelShaderStage(
+        GpuConfig(lanes = 4, warps = 2),
+        sharedShader = Some(SharedCuShaderConfig(1)),
+        imageStage = Some(GraphicsStage.fragment)
+      )
+    ) { d =>
       zero(d.io)
       d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
       val task = d.io.imageTask.get

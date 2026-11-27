@@ -8,42 +8,39 @@ import opengpu.core.backend.issue.ScalarIssuedInstruction
 import opengpu.core.backend.writeback.ScalarCommitRequest
 
 object TexSampleUnit {
-  /** First active lane plus one, retaining the terminal lane for an empty mask.
-    * Encoding a shifted mask avoids a carry chain after priority selection.
+
+  /** First active lane plus one, retaining the terminal lane for an empty mask. Encoding a shifted mask avoids a carry
+    * chain after priority selection.
     */
   private[graphics] def laneAfterFirst(mask: UInt): UInt =
     PriorityEncoder(Cat(mask, 0.U(1.W)))
 }
 
-/** Execute-side backend for the `tex.sample rd, rs1, rs2` custom instruction
-  * (opengpu graphics ISA extension, custom-0 space).
+/** Execute-side backend for the `tex.sample rd, rs1, rs2` custom instruction (opengpu graphics ISA extension, custom-0
+  * space).
   *
-  * The core decodes the instruction and dispatches it through the system
-  * path with the operand values already read (`rs1Data` = u, `rs2Data` = v,
-  * both unsigned Q16.16).  This unit drives the fixed-function sampler
-  * ([[TextureUnit]]) and returns the packed RGBA8888 texel word through the
-  * scalar commit path (writeRd, rd from the instruction, nextPc = pc + 4),
-  * so the scoreboard's rd reservation is released by the ordinary commit.
+  * The core decodes the instruction and dispatches it through the system path with the operand values already read
+  * (`rs1Data` = u, `rs2Data` = v, both unsigned Q16.16). This unit drives the fixed-function sampler ([[TextureUnit]])
+  * and returns the packed RGBA8888 texel word through the scalar commit path (writeRd, rd from the instruction, nextPc =
+  * pc + 4), so the scoreboard's rd reservation is released by the ordinary commit.
   *
-  * The scalar instruction is warp-uniform. `vtex.sample` supplies one Q16.16
-  * coordinate pair per vector lane; this unit serializes the active lanes
-  * through the one physical sampler and preserves inactive destination lanes.
-  * A fixed single-texel mip is sampled once for all active vector lanes.
+  * The scalar instruction is warp-uniform. `vtex.sample` supplies one Q16.16 coordinate pair per vector lane; this unit
+  * serializes the active lanes through the one physical sampler and preserves inactive destination lanes. A fixed
+  * single-texel mip is sampled once for all active vector lanes.
   */
 class TexSampleUnit(
-  config: GpuConfig = GpuConfig(),
-  gfxConfig: GraphicsConfig = GraphicsConfig(),
-  coordinatePolicyInput: Boolean = false,
-  nearestInput: Boolean = false,
-  axisWrapInput: Boolean = false
+    config: GpuConfig = GpuConfig(),
+    gfxConfig: GraphicsConfig = GraphicsConfig(),
+    coordinatePolicyInput: Boolean = false,
+    nearestInput: Boolean = false,
+    axisWrapInput: Boolean = false
 ) extends Module {
   def this(config: GpuConfig, gfxConfig: GraphicsConfig, coordinatePolicyInput: Boolean, nearestInput: Boolean) =
     this(config, gfxConfig, coordinatePolicyInput, nearestInput, false)
   def this(config: GpuConfig, gfxConfig: GraphicsConfig) = this(config, gfxConfig, false, false)
   def this(config: GpuConfig, gfxConfig: GraphicsConfig, coordinatePolicyInput: Boolean) =
     this(config, gfxConfig, coordinatePolicyInput, false)
-  require(config.lanes < 4 || config.lanes % 4 == 0,
-    "texture vectors must contain complete derivative quads")
+  require(config.lanes < 4 || config.lanes % 4 == 0, "texture vectors must contain complete derivative quads")
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ScalarIssuedInstruction(config)))
     val commit = Decoupled(new ScalarCommitRequest(config))
@@ -57,13 +54,16 @@ class TexSampleUnit(
     val wrapVFlip = if (axisWrapInput) Some(Input(Bool())) else None
     val nearest = if (nearestInput) Some(Input(Bool())) else None
     val coordinatePolicy = if (coordinatePolicyInput) Some(Input(new TextureCoordinatePolicy)) else None
-    /** Meaningful with scalar/vector commit.valid. Owners must handle faults
-      * before normal completion; faulted instructions suppress destination writes.
+
+    /** Meaningful with scalar/vector commit.valid. Owners must handle faults before normal completion; faulted
+      * instructions suppress destination writes.
       */
     val coordinateFault = if (coordinatePolicyInput) Some(Output(Bool())) else None
     val texMaxLevel = Input(UInt(4.W))
+
     /** Signed integer bias applied after gradient LOD selection. */
     val lodBias = Input(SInt(5.W))
+
     /** Inclusive lower clamp; texMaxLevel is the inclusive upper clamp. */
     val minLevel = Input(UInt(4.W))
     val mem = new Bundle {
@@ -72,8 +72,17 @@ class TexSampleUnit(
     }
   })
 
-  private val sampler = Module(new TextureUnit(gfxConfig, wordCacheEntries = 8, allowPrepared = true, overlapPrepared = true,
-    coordinatePolicyInput = coordinatePolicyInput, nearestInput = nearestInput, axisWrapInput = axisWrapInput))
+  private val sampler = Module(
+    new TextureUnit(
+      gfxConfig,
+      wordCacheEntries = 8,
+      allowPrepared = true,
+      overlapPrepared = true,
+      coordinatePolicyInput = coordinatePolicyInput,
+      nearestInput = nearestInput,
+      axisWrapInput = axisWrapInput
+    )
+  )
 
   // Reuse is limited to one instruction. A later operation may observe
   // changed texture memory, format, binding, or address translation.
@@ -120,7 +129,9 @@ class TexSampleUnit(
   private val requestLane = RegInit(0.U(log2Ceil(config.lanes + 1).W))
   private val requestIndex = requestLane(laneWidth - 1, 0)
   private val preparedRequestActive = requestLane < config.lanes.U && executionMaskReg(requestIndex)
-  private val coordinatePipeline = Module(new TextureCoordinatePipeline(laneWidth, coordinatePolicyInput, nearestInput, axisWrapInput))
+  private val coordinatePipeline = Module(
+    new TextureCoordinatePipeline(laneWidth, coordinatePolicyInput, nearestInput, axisWrapInput)
+  )
   private val preparedModeReg = RegInit(false.B)
   private val firstSampleReg = RegInit(true.B)
   private val prepareLane = RegInit(0.U(log2Ceil(config.lanes + 1).W))
@@ -156,8 +167,9 @@ class TexSampleUnit(
   private val texWidthReg = RegInit(0.U(14.W))
   private val texHeightReg = RegInit(0.U(14.W))
 
-  /** One nearest mip per quad. UV differences remain Q16.16; multiplying by
-    * the base extent converts them to texels-per-pixel in Q16.16. */
+  /** One nearest mip per quad. UV differences remain Q16.16; multiplying by the base extent converts them to
+    * texels-per-pixel in Q16.16.
+    */
   private def absDiff(a: UInt, b: UInt): UInt = {
     if (coordinatePolicyInput) {
       // Flipping the sign bit orders S16.16 monotonically without narrowing
@@ -217,9 +229,11 @@ class TexSampleUnit(
   // Scalar sampling adds no automatic level and retains its accepted bias.
   private val lodSumWidth = if (coordinatePolicyInput) 7 else 6
   private val biasedMip = automaticMip.pad(lodSumWidth).asSInt + lodBiasReg.pad(lodSumWidth)
-  private val clampedMip = Mux(biasedMip < minLevelReg.pad(lodSumWidth).asSInt,
-    minLevelReg, Mux(biasedMip > maxLevelReg.pad(lodSumWidth).asSInt,
-      maxLevelReg, biasedMip.asUInt(3, 0)))
+  private val clampedMip = Mux(
+    biasedMip < minLevelReg.pad(lodSumWidth).asSInt,
+    minLevelReg,
+    Mux(biasedMip > maxLevelReg.pad(lodSumWidth).asSInt, maxLevelReg, biasedMip.asUInt(3, 0))
+  )
   // The sampler consumes an 8-bit trilinear weight.  Normalise rho into
   // [1,2), then look up frac(log2(rho)) from the top eight fractional bits.
   // This is a 256-entry constant mux (not a divider or iterative logarithm),
@@ -228,11 +242,9 @@ class TexSampleUnit(
   // saturated LOD.
   private val rhoNormal = rhoNormalReg
   private val log2FracLut = VecInit(Seq.tabulate(256) { i =>
-    math.floor(math.log(1.0 + i.toDouble / 256.0) / math.log(2.0) * 256.0)
-      .toInt.U(8.W)
+    math.floor(math.log(1.0 + i.toDouble / 256.0) / math.log(2.0) * 256.0).toInt.U(8.W)
   })
-  private val automaticFrac = Mux(rhoNormal > (1 << 16).U,
-    log2FracLut(rhoNormal(15, 8)), 0.U)
+  private val automaticFrac = Mux(rhoNormal > (1 << 16).U, log2FracLut(rhoNormal(15, 8)), 0.U)
   private val lodIsClamped = lodIsClampedReg
   private val clampedFrac = Mux(lodIsClamped, 0.U, automaticFrac)
 
@@ -283,15 +295,18 @@ class TexSampleUnit(
   // the ordinary idle path. Lane width and final-lane tests follow config.
   private val vectorLaneActive = executionMaskReg(laneReg)
   private val nextLane = (laneReg + 1.U)(laneWidth - 1, 0)
-  private val sameMip = if (config.lanes <= 4) true.B else
-    laneReg(1, 0) =/= 3.U || minLevelReg === maxLevelReg
+  private val sameMip =
+    if (config.lanes <= 4) true.B
+    else
+      laneReg(1, 0) =/= 3.U || minLevelReg === maxLevelReg
   private val canChain = vectorModeReg && !broadcastTexelReg &&
     laneReg =/= (config.lanes - 1).U && executionMaskReg(nextLane) && sameMip
   private val retiringSample = sampler.io.result.valid
-  private val requestedLane = Mux(preparedModeReg, requestIndex,
-    Mux(retiringSample, nextLane, laneReg))
-  when(state === sSample && preparedModeReg && requestLane < config.lanes.U &&
-    (!executionMaskReg(requestIndex) || sampler.io.sample.fire)) {
+  private val requestedLane = Mux(preparedModeReg, requestIndex, Mux(retiringSample, nextLane, laneReg))
+  when(
+    state === sSample && preparedModeReg && requestLane < config.lanes.U &&
+      (!executionMaskReg(requestIndex) || sampler.io.sample.fire)
+  ) {
     requestLane := requestLane + 1.U
   }
   private val usePrepared = preparedModeReg && !firstSampleReg
@@ -308,9 +323,8 @@ class TexSampleUnit(
   }
 
   sampler.io.sample.valid := state === sSample &&
-    Mux(preparedModeReg, preparedRequestActive,
-      Mux(retiringSample, canChain, !vectorModeReg || vectorLaneActive)) &&
-      (!usePrepared || coordinatePipeline.io.out.valid)
+    Mux(preparedModeReg, preparedRequestActive, Mux(retiringSample, canChain, !vectorModeReg || vectorLaneActive)) &&
+    (!usePrepared || coordinatePipeline.io.out.valid)
   sampler.io.sample.bits.u :=
     Mux(vectorModeReg, uVectorReg(requestedLane), uReg)
   sampler.io.sample.bits.v :=
@@ -349,14 +363,15 @@ class TexSampleUnit(
     }.otherwise {
       laneReg := laneReg + 1.U
       if (config.lanes > 4) {
-        val nextQuadActive = MuxLookup(laneReg >> 2, false.B)(
-          (0 until config.lanes / 4 - 1).map { q =>
-            q.U -> executionMaskReg((q + 2) * 4 - 1, (q + 1) * 4).orR
-          })
+        val nextQuadActive = MuxLookup(laneReg >> 2, false.B)((0 until config.lanes / 4 - 1).map { q =>
+          q.U -> executionMaskReg((q + 2) * 4 - 1, (q + 1) * 4).orR
+        })
         // A fixed clamp already selects the mip for every quad. The
         // accepted controls remain latched even if the caller changes them.
-        when(laneReg(1, 0) === 3.U && nextQuadActive &&
-          minLevelReg =/= maxLevelReg) { state := sGrad }
+        when(
+          laneReg(1, 0) === 3.U && nextQuadActive &&
+            minLevelReg =/= maxLevelReg
+        ) { state := sGrad }
       }
     }
   }
@@ -424,8 +439,7 @@ class TexSampleUnit(
         texBaseReg := io.texBase
         texFormatReg := io.texFormat
         wrapClampReg := io.wrapClamp
-        laneReg := Mux(oneTexel,
-          PriorityEncoder(io.vectorIn.bits.executionMask), 0.U)
+        laneReg := Mux(oneTexel, PriorityEncoder(io.vectorIn.bits.executionMask), 0.U)
         preferVector := false.B
         when(io.minLevel === io.texMaxLevel) {
           // Every derivative and bias clamps to this exact level. Fractional
@@ -454,9 +468,11 @@ class TexSampleUnit(
         uReg := io.in.bits.rs1Data
         vReg := io.in.bits.rs2Data
         val scalarBiased = io.lodBias
-        mipLevelReg := Mux(scalarBiased < io.minLevel.zext,
-          io.minLevel, Mux(scalarBiased > io.texMaxLevel.zext,
-            io.texMaxLevel, scalarBiased.asUInt(3, 0)))
+        mipLevelReg := Mux(
+          scalarBiased < io.minLevel.zext,
+          io.minLevel,
+          Mux(scalarBiased > io.texMaxLevel.zext, io.texMaxLevel, scalarBiased.asUInt(3, 0))
+        )
         // Scalar tex.sample has no derivatives, hence it is an exact selected
         // level sample even when a positive LOD bias chooses a higher mip.
         mipFracReg := 0.U
@@ -470,15 +486,13 @@ class TexSampleUnit(
     }
     is(sMaxPair) {
       for (i <- 0 until 4) {
-        diffPairReg(i) := Mux(diffReg(2 * i) >= diffReg(2 * i + 1),
-          diffReg(2 * i), diffReg(2 * i + 1))
+        diffPairReg(i) := Mux(diffReg(2 * i) >= diffReg(2 * i + 1), diffReg(2 * i), diffReg(2 * i + 1))
       }
       state := sMax
     }
     is(sMax) {
       for (i <- 0 until 2) {
-        diffAxisReg(i) := Mux(diffPairReg(2 * i) >= diffPairReg(2 * i + 1),
-          diffPairReg(2 * i), diffPairReg(2 * i + 1))
+        diffAxisReg(i) := Mux(diffPairReg(2 * i) >= diffPairReg(2 * i + 1), diffPairReg(2 * i), diffPairReg(2 * i + 1))
       }
       state := sMul
     }
@@ -535,8 +549,10 @@ class TexSampleUnit(
       }
     }
     is(sCommit) {
-      when((vectorModeReg && io.vectorCommit.fire) ||
-        (!vectorModeReg && io.commit.fire)) {
+      when(
+        (vectorModeReg && io.vectorCommit.fire) ||
+          (!vectorModeReg && io.commit.fire)
+      ) {
         state := sIdle
       }
     }

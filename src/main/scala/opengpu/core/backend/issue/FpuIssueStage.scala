@@ -3,12 +3,7 @@ package opengpu.core.backend.issue
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
-import opengpu.core.backend.register.{
-  FpuRegisterFile,
-  FpuRegisterRead,
-  FpuRegisterWrite,
-  ScalarRegisterRead
-}
+import opengpu.core.backend.register.{FpuRegisterFile, FpuRegisterRead, FpuRegisterWrite, ScalarRegisterRead}
 import opengpu.core.backend.scoreboard.{FpuRelease, FpuReservation, FpuScoreboard}
 import opengpu.core.frontend.decode.FpuDecodeResponse
 

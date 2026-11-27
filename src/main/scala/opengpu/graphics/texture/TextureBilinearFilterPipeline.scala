@@ -14,19 +14,18 @@ private[graphics] class TexturePairOutput(pairs: Int, tagWidth: Int) extends Bun
   val tag = UInt(tagWidth.W)
 }
 
-/** A named elastic boundary keeps its emitted definition independent of the
-  * arithmetic queues. It bypasses while empty and closes admission while full.
+/** A named elastic boundary keeps its emitted definition independent of the arithmetic queues. It bypasses while empty
+  * and closes admission while full.
   */
-private[graphics] class TextureBilinearAxisRows extends Queue[TexturePairOutput](
-  new TexturePairOutput(2, 65), 2, pipe = false, flow = true) {
+private[graphics] class TextureBilinearAxisRows
+    extends Queue[TexturePairOutput](new TexturePairOutput(2, 65), 2, pipe = false, flow = true) {
   override def desiredName: String = "TextureBilinearAxisRows"
 }
 
-/** One axis of the native FP32 filter tree. Every arithmetic and metadata
-  * queue advances the same ordered rows. Credits cover the FMA's complete
-  * round trip, so the three arithmetic phases can each accept one row/cycle.
-  * Endpoint/equal-bit bypasses preserve the serial filter's exact semantics.
-  * Cancellation belongs to the outer epoch owner; accepted arithmetic drains.
+/** One axis of the native FP32 filter tree. Every arithmetic and metadata queue advances the same ordered rows. Credits
+  * cover the FMA's complete round trip, so the three arithmetic phases can each accept one row/cycle.
+  * Endpoint/equal-bit bypasses preserve the serial filter's exact semantics. Cancellation belongs to the outer epoch
+  * owner; accepted arithmetic drains.
   */
 private[graphics] class TexturePairPipeline(pairs: Int, tagWidth: Int) extends Module {
   val io = IO(new Bundle {
@@ -42,8 +41,14 @@ private[graphics] class TexturePairPipeline(pairs: Int, tagWidth: Int) extends M
   private val productRows = Module(new Queue(new TexturePairInput(pairs, tagWidth), entries))
   private val sumRows = Module(new Queue(new TexturePairInput(pairs, tagWidth), entries))
 
-  private def operation(lane: Fp32FmaLane, op: Fp32Operation.Type,
-                        a: UInt, b: UInt, c: UInt, subtract: Boolean = false): Unit = {
+  private def operation(
+      lane: Fp32FmaLane,
+      op: Fp32Operation.Type,
+      a: UInt,
+      b: UInt,
+      c: UInt,
+      subtract: Boolean = false
+  ): Unit = {
     lane.io.in.bits := 0.U.asTypeOf(new Fp32Request(1))
     lane.io.in.bits.operation := op
     lane.io.in.bits.operandA := a
@@ -65,8 +70,13 @@ private[graphics] class TexturePairPipeline(pairs: Int, tagWidth: Int) extends M
   productRows.io.enq.valid := inverseValid && products.map(_.io.in.ready).reduce(_ && _)
   productRows.io.enq.bits := inverseRows.io.deq.bits
   for ((lane, i) <- products.zipWithIndex) {
-    operation(lane, Fp32Operation.mul, inverseRows.io.deq.bits.values(2 * (i / 4))(i % 4),
-      inverse.io.out.bits.result, 0.U)
+    operation(
+      lane,
+      Fp32Operation.mul,
+      inverseRows.io.deq.bits.values(2 * (i / 4))(i % 4),
+      inverse.io.out.bits.result,
+      0.U
+    )
     lane.io.in.valid := inverseValid && productReady
   }
 
@@ -77,8 +87,13 @@ private[graphics] class TexturePairPipeline(pairs: Int, tagWidth: Int) extends M
   sumRows.io.enq.valid := productsValid && sums.map(_.io.in.ready).reduce(_ && _)
   sumRows.io.enq.bits := productRows.io.deq.bits
   for ((lane, i) <- sums.zipWithIndex) {
-    operation(lane, Fp32Operation.fmadd, productRows.io.deq.bits.weight,
-      productRows.io.deq.bits.values(2 * (i / 4) + 1)(i % 4), products(i).io.out.bits.result)
+    operation(
+      lane,
+      Fp32Operation.fmadd,
+      productRows.io.deq.bits.weight,
+      productRows.io.deq.bits.values(2 * (i / 4) + 1)(i % 4),
+      products(i).io.out.bits.result
+    )
     lane.io.in.valid := productsValid && sumReady
   }
 
@@ -91,18 +106,19 @@ private[graphics] class TexturePairPipeline(pairs: Int, tagWidth: Int) extends M
     val row = sumRows.io.deq.bits
     val a = row.values(2 * p)(c)
     val b = row.values(2 * p + 1)(c)
-    io.out.bits.values(p)(c) := Mux(row.weight(30, 0) === 0.U || a === b, a,
-      Mux(row.weight === "h3f800000".U, b, sums(4 * p + c).io.out.bits.result))
+    io.out.bits.values(p)(c) := Mux(
+      row.weight(30, 0) === 0.U || a === b,
+      a,
+      Mux(row.weight === "h3f800000".U, b, sums(4 * p + c).io.out.bits.result)
+    )
   }
 }
 
-/** Two-axis FP32 filtering with the same separately rounded inverse/product
-  * and fused sum as TextureLinearFilterUnit. It accepts four decoded FP32
-  * texels and unquantized FP32 weights, with axis zero varying fastest.
+/** Two-axis FP32 filtering with the same separately rounded inverse/product and fused sum as TextureLinearFilterUnit.
+  * It accepts four decoded FP32 texels and unquantized FP32 weights, with axis zero varying fastest.
   *
-  * Global cancellation closes admission until every accepted row, including
-  * the immutable public result, retires. Hidden rows receive sticky epoch
-  * cancellation, while invalid-weight faults keep priority. No FMA is flushed.
+  * Global cancellation closes admission until every accepted row, including the immutable public result, retires.
+  * Hidden rows receive sticky epoch cancellation, while invalid-weight faults keep priority. No FMA is flushed.
   */
 class TextureBilinearFilterPipeline(entries: Int = 128) extends Module {
   require(entries >= 1)
@@ -121,8 +137,9 @@ class TextureBilinearFilterPipeline(entries: Int = 128) extends Module {
   when(io.cancel && io.busy) { draining := true.B }
   when(!io.busy) { draining := false.B }
 
-  private val invalid = io.in.bits.axes =/= 2.U || io.in.bits.weights.map(w =>
-    (w(31) && w(30, 0).orR) || w(30, 0) > "h3f800000".U).reduce(_ || _)
+  private val invalid = io.in.bits.axes =/= 2.U || io.in.bits.weights
+    .map(w => (w(31) && w(30, 0).orR) || w(30, 0) > "h3f800000".U)
+    .reduce(_ || _)
   x.io.in.valid := io.in.valid && !io.cancel && !draining && count < entries.U
   io.in.ready := x.io.in.ready && !io.cancel && !draining && count < entries.U
   x.io.in.bits.values := io.in.bits.values
@@ -142,10 +159,16 @@ class TextureBilinearFilterPipeline(entries: Int = 128) extends Module {
   public.io.enq.valid := y.io.out.valid
   y.io.out.ready := public.io.enq.ready
   public.io.enq.bits.tag := y.io.out.bits.tag(31, 0)
-  public.io.enq.bits.status := Mux(y.io.out.bits.tag(32), TextureImageFetchStatus.format.U,
-    Mux(draining || io.cancel, TextureImageResourceStatus.cancelled.U, 0.U))
-  public.io.enq.bits.rgba := Mux(public.io.enq.bits.status === 0.U, y.io.out.bits.values(0),
-    0.U.asTypeOf(public.io.enq.bits.rgba))
+  public.io.enq.bits.status := Mux(
+    y.io.out.bits.tag(32),
+    TextureImageFetchStatus.format.U,
+    Mux(draining || io.cancel, TextureImageResourceStatus.cancelled.U, 0.U)
+  )
+  public.io.enq.bits.rgba := Mux(
+    public.io.enq.bits.status === 0.U,
+    y.io.out.bits.values(0),
+    0.U.asTypeOf(public.io.enq.bits.rgba)
+  )
   io.out <> public.io.deq
   switch(Cat(io.in.fire, io.out.fire)) {
     is("b10".U) { count := count + 1.U }

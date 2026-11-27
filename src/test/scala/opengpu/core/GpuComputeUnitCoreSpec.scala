@@ -61,8 +61,7 @@ class GpuComputeUnitCoreSpec extends AnyFlatSpec {
     dut.io.l1InvalidateDone.ready.poke(true.B)
     dut.io.globalAtomicRequest.ready.poke(true.B)
     dut.io.globalAtomicResponse.valid.poke(false.B)
-    dut.io.globalAtomicResponse.bits.poke(
-      0.U.asTypeOf(dut.io.globalAtomicResponse.bits))
+    dut.io.globalAtomicResponse.bits.poke(0.U.asTypeOf(dut.io.globalAtomicResponse.bits))
   }
 
   it should "advance fetch from a committed scalar branch" in {
@@ -222,7 +221,8 @@ class GpuComputeUnitCoreSpec extends AnyFlatSpec {
         if (dut.io.committedVectorWriteback.valid.peek().litToBoolean) {
           dut.io.committedVectorWriteback.bits.vd.expect(3.U)
           for (lane <- 0 until config.lanes) {
-            dut.io.committedVectorWriteback.bits.data(lane)
+            dut.io.committedVectorWriteback.bits
+              .data(lane)
               .expect((0x23 + lane).U)
           }
           sawVectorWrite = true
@@ -268,9 +268,8 @@ class GpuComputeUnitCoreSpec extends AnyFlatSpec {
       dut.io.vectorMemoryRequest.ready.poke(true.B)
       dut.clock.step()
 
-      val lineData = (0 until config.lanes).foldLeft(BigInt(0)) {
-        case (value, lane) =>
-          value | (BigInt(0x100 + lane) << ((lane * 4) * 8))
+      val lineData = (0 until config.lanes).foldLeft(BigInt(0)) { case (value, lane) =>
+        value | (BigInt(0x100 + lane) << ((lane * 4) * 8))
       }
       dut.io.vectorMemoryResponse.valid.poke(true.B)
       dut.io.vectorMemoryResponse.bits.readData.poke(lineData.U)
@@ -283,7 +282,8 @@ class GpuComputeUnitCoreSpec extends AnyFlatSpec {
         if (dut.io.committedVectorWriteback.valid.peek().litToBoolean) {
           dut.io.committedVectorWriteback.bits.vd.expect(4.U)
           for (lane <- 0 until config.lanes) {
-            dut.io.committedVectorWriteback.bits.data(lane)
+            dut.io.committedVectorWriteback.bits
+              .data(lane)
               .expect((0x100 + lane).U)
           }
           sawVectorWrite = true
@@ -477,16 +477,17 @@ class GpuComputeUnitCoreSpec extends AnyFlatSpec {
       dut.io.fetchRequest.ready.poke(true.B); dut.clock.step()
       dut.io.fetchRequest.ready.poke(false.B)
       dut.io.fetchResponse.valid.poke(true.B)
-      dut.io.fetchResponse.bits.instruction.poke(
-        "b000000000000_00000_010_00100_0000111".U) // flw f4, 0(x0)
+      dut.io.fetchResponse.bits.instruction.poke("b000000000000_00000_010_00100_0000111".U) // flw f4, 0(x0)
       while (!dut.io.fetchResponse.ready.peek().litToBoolean) {
         dut.clock.step()
       }
       dut.clock.step(); dut.io.fetchResponse.valid.poke(false.B)
 
       cycles = 0
-      while (!dut.io.vectorPageTableRequest.valid.peek().litToBoolean &&
-          cycles < 24) {
+      while (
+        !dut.io.vectorPageTableRequest.valid.peek().litToBoolean &&
+        cycles < 24
+      ) {
         dut.clock.step(); cycles += 1
       }
       assert(dut.io.vectorPageTableRequest.valid.peek().litToBoolean)
@@ -496,8 +497,10 @@ class GpuComputeUnitCoreSpec extends AnyFlatSpec {
       dut.clock.step(); dut.io.vectorPageTableResponse.valid.poke(false.B)
 
       cycles = 0
-      while (!dut.io.vectorMemoryRequest.valid.peek().litToBoolean &&
-          cycles < 24) {
+      while (
+        !dut.io.vectorMemoryRequest.valid.peek().litToBoolean &&
+        cycles < 24
+      ) {
         dut.clock.step(); cycles += 1
       }
       assert(dut.io.vectorMemoryRequest.valid.peek().litToBoolean)

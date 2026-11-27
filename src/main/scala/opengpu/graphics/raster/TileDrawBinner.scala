@@ -5,11 +5,10 @@ import chisel3.util._
 
 /** Bounded, ordered draw replay in 16x16 tile order.
   *
-  * A chunk holds up to eight command records. One byte per tile records which
-  * draws can reach it; replay uses the lowest set bit to preserve submission
-  * order. The command reader stalls while a chunk is binned and replayed,
-  * then fills the next chunk. Tile visibility between chunks is maintained
-  * by the attachment store's acknowledged flush at `passEnd`.
+  * A chunk holds up to eight command records. One byte per tile records which draws can reach it; replay uses the
+  * lowest set bit to preserve submission order. The command reader stalls while a chunk is binned and replayed, then
+  * fills the next chunk. Tile visibility between chunks is maintained by the attachment store's acknowledged flush at
+  * `passEnd`.
   */
 class TileDrawBinner(config: GraphicsConfig) extends Module {
   require(config.tileBinning && config.tileSize == 16)
@@ -20,6 +19,7 @@ class TileDrawBinner(config: GraphicsConfig) extends Module {
   private val tileIndexWidth = log2Ceil(tileCount).max(1)
   private val useBinaryBounds = tileColumns + tileRows > 16
   val io = IO(new Bundle {
+
     /** Active mode. Zero uses the elaborated maximum. Sampled at `start`. */
     val screenW = Input(UInt(16.W))
     val screenH = Input(UInt(16.W))
@@ -27,17 +27,33 @@ class TileDrawBinner(config: GraphicsConfig) extends Module {
     val drawIn = Flipped(Decoupled(new SceneTriangle(config)))
     val inputDone = Input(Bool())
     val drawOut = Decoupled(new SceneTriangle(config))
+
     /** Shader, expander, and OM have finished the previous draw. */
     val renderDrained = Input(Bool())
+
     /** The final tile's dirty words have been acknowledged. */
     val passDone = Input(Bool())
     val passEnd = Output(Bool())
     val done = Output(Bool())
   })
 
-  private val Seq(idle, collect, boundsStart, boundsX, boundsY, boundsSearch,
-    binStart, binScan, loadTile, captureTile, send, waitDraw,
-    nextTile, finishChunk, complete) = Enum(15)
+  private val Seq(
+    idle,
+    collect,
+    boundsStart,
+    boundsX,
+    boundsY,
+    boundsSearch,
+    binStart,
+    binScan,
+    loadTile,
+    captureTile,
+    send,
+    waitDraw,
+    nextTile,
+    finishChunk,
+    complete
+  ) = Enum(15)
   private val state = RegInit(idle)
   private val draws = Reg(Vec(capacity, new SceneTriangle(config)))
   private val tileMasks = SyncReadMem(tileCount, UInt(capacity.W))
@@ -74,17 +90,14 @@ class TileDrawBinner(config: GraphicsConfig) extends Module {
 
   private val findingBounds = state === boundsStart || state === boundsX ||
     state === boundsY || state === boundsSearch
-  private val selected = draws(Mux(findingBounds, boundsIndex,
-    Mux(state === binScan, scanIndex, emitIndex)))
+  private val selected = draws(Mux(findingBounds, boundsIndex, Mux(state === binScan, scanIndex, emitIndex)))
   private val readMask = tileMasks.read(tileIndex, state === loadTile)
   private val nextTileX = tileX +& 16.U
   private val nextTileY = tileY +& 16.U
   private val searchMid = ((searchLo +& searchHi) >> 1)(searchWidth - 1, 0)
   private val probeOrigin = (searchMid << 4).pad(16)(15, 0)
-  private val probeX = Mux(state === boundsSearch && !searchPhase(1),
-    probeOrigin, tileX)
-  private val probeY = Mux(state === boundsSearch && searchPhase(1),
-    probeOrigin, tileY)
+  private val probeX = Mux(state === boundsSearch && !searchPhase(1), probeOrigin, tileX)
+  private val probeY = Mux(state === boundsSearch && searchPhase(1), probeOrigin, tileY)
   private val probeNextX = probeX +& 16.U
   private val probeNextY = probeY +& 16.U
   private val tileMaxX = Mux(nextTileX >= screenW, screenW, nextTileX(15, 0))
@@ -100,18 +113,14 @@ class TileDrawBinner(config: GraphicsConfig) extends Module {
     val x1 = Mux(d.scissorEnable, d.scissorMaxX, screenW)
     val y1 = Mux(d.scissorEnable, d.scissorMaxY, screenH)
     i.U < count && x0 < tileMaxX && y0 < tileMaxY &&
-      x1 > tileX && y1 > tileY && x0 < x1 && y0 < y1 &&
-      tileX >= boundMinX(i) && tileX <= boundMaxX(i) &&
-      tileY >= boundMinY(i) && tileY <= boundMaxY(i)
+    x1 > tileX && y1 > tileY && x0 < x1 && y0 < y1 &&
+    tileX >= boundMinX(i) && tileX <= boundMaxX(i) &&
+    tileY >= boundMinY(i) && tileY <= boundMaxY(i)
   }).asUInt
-  private val originalMinX = Mux(selected.scissorEnable,
-    selected.scissorMinX, 0.U(16.W))
-  private val originalMinY = Mux(selected.scissorEnable,
-    selected.scissorMinY, 0.U(16.W))
-  private val originalMaxX = Mux(selected.scissorEnable,
-    selected.scissorMaxX, screenW)
-  private val originalMaxY = Mux(selected.scissorEnable,
-    selected.scissorMaxY, screenH)
+  private val originalMinX = Mux(selected.scissorEnable, selected.scissorMinX, 0.U(16.W))
+  private val originalMinY = Mux(selected.scissorEnable, selected.scissorMinY, 0.U(16.W))
+  private val originalMaxX = Mux(selected.scissorEnable, selected.scissorMaxX, screenW)
+  private val originalMaxY = Mux(selected.scissorEnable, selected.scissorMaxY, screenH)
   private val minX = Mux(originalMinX > tileX, originalMinX, tileX)
   private val minY = Mux(originalMinY > tileY, originalMinY, tileY)
   private val maxX = Mux(originalMaxX < tileMaxX, originalMaxX, tileMaxX)
@@ -131,11 +140,9 @@ class TileDrawBinner(config: GraphicsConfig) extends Module {
       val position = if (xAxis) v.x else v.y
       val dimension = (if (xAxis) screenW else screenH).zext.asSInt
       val numerator = (position +& v.w) * dimension
-      (numerator < ((v.w * lo.zext) << 1),
-        numerator > ((v.w * hi.zext) << 1))
+      (numerator < ((v.w * lo.zext) << 1), numerator > ((v.w * hi.zext) << 1))
     }
-    (comparisons.map(_._1).reduce(_ && _),
-      comparisons.map(_._2).reduce(_ && _))
+    (comparisons.map(_._1).reduce(_ && _), comparisons.map(_._2).reduce(_ && _))
   }
   private val positiveW = selected.clip.map(_.w > 0.S).reduce(_ && _)
   private val (leftX, rightX) = axisSides(true, loX, hiX)
@@ -144,11 +151,9 @@ class TileDrawBinner(config: GraphicsConfig) extends Module {
     (leftX || rightX || leftY || rightY)
   private val axisHitX = !(leftX || rightX)
   private val axisHitY = !(leftY || rightY)
-  private val nextMinX = Mux(axisHitX && scanMinX === "hffff".U,
-    tileX, scanMinX)
+  private val nextMinX = Mux(axisHitX && scanMinX === "hffff".U, tileX, scanMinX)
   private val nextMaxX = Mux(axisHitX, tileX, scanMaxX)
-  private val nextMinY = Mux(axisHitY && scanMinY === "hffff".U,
-    tileY, scanMinY)
+  private val nextMinY = Mux(axisHitY && scanMinY === "hffff".U, tileY, scanMinY)
   private val nextMaxY = Mux(axisHitY, tileY, scanMaxY)
   private val searchLeft = Mux(searchPhase(1), leftY, leftX)
   private val searchRight = Mux(searchPhase(1), rightY, rightX)

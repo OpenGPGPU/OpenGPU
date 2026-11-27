@@ -26,13 +26,16 @@ class VectorSimtBranchExecuteStageSpec extends AnyFlatSpec {
         for (op <- Seq(0, 1, 4, 5, 6, 7); round <- 0 until 20) {
           val values = Vector.tabulate(lanes) { lane =>
             val directed = Vector(0L, 1L, 0x7fffffffL, 0x80000000L, 0xffffffffL)
-            val a = if (round < 5) directed((lane + round) % directed.size)
+            val a =
+              if (round < 5) directed((lane + round) % directed.size)
               else random.nextInt().toLong & 0xffffffffL
-            val b = if (round < 5) directed((lane * 2 + round) % directed.size)
+            val b =
+              if (round < 5) directed((lane * 2 + round) % directed.size)
               else random.nextInt().toLong & 0xffffffffL
             (a, b)
           }
-          val active = if (round == 0) (BigInt(1) << lanes) - 1
+          val active =
+            if (round == 0) (BigInt(1) << lanes) - 1
             else BigInt(lanes, random)
           val taken = values.zipWithIndex.foldLeft(BigInt(0)) { case (mask, ((a, b), lane)) =>
             val selected = op match {
@@ -80,8 +83,10 @@ class VectorSimtBranchExecuteStageSpec extends AnyFlatSpec {
           }
           d.io.out.valid.expect(false.B); packets += 1
         }
-        info(s"VECTOR_SIMT_PREDICATES lanes=$lanes packets=$packets ops=6 signedUnsigned32=true " +
-          "BImmediate13=true pcWrap=true ignoresRVVPredicate=true heldResult=true scopedClear=true")
+        info(
+          s"VECTOR_SIMT_PREDICATES lanes=$lanes packets=$packets ops=6 signedUnsigned32=true " +
+            "BImmediate13=true pcWrap=true ignoresRVVPredicate=true heldResult=true scopedClear=true"
+        )
       }
     }
   }

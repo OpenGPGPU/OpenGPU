@@ -15,23 +15,38 @@ import scala.collection.mutable
 
 private class SharedProductSramModels extends BlackBox with HasBlackBoxInline {
   val io = IO(new Bundle { val present = Output(Bool()) })
-  setInline("SharedProductSramModels.sv",
+  setInline(
+    "SharedProductSramModels.sv",
     "module SharedProductSramModels(output present); assign present=1'b1; endmodule\n" +
-      Seq(32, 64).map(w => Files.readString(Paths.get(
-        s"depends/asap7_sram_0p0/generated/verilog/srambank_64x4x${w}_6t122.v"))).mkString("\n"))
+      Seq(32, 64)
+        .map(w => Files.readString(Paths.get(s"depends/asap7_sram_0p0/generated/verilog/srambank_64x4x${w}_6t122.v")))
+        .mkString("\n")
+  )
 }
 
 /** The real four-CU product system, its unified command path and shared L2. */
 private[core] class SharedProductHarness extends Module {
   private val c = GpuConfig()
-  require(c.lanes == 16 && c.warps == 8 && c.simtStackDepth == 8 &&
-    c.sharedMemoryBytes == 16384 && c.sharedMemoryBanks == 16 &&
-    c.sharedMemoryBase == 0x10000000L && c.enableFpu && c.enableVector)
-  val system = Module(new GpuSystem(c, numComputeUnits = 4, commandIdWidth = 4,
-    transactionsPerCu = 16, useBlackBoxes = true, enableFpuBackend = true,
-    enableUnifiedCommands = true, enableIndirectCompute = true,
-    nativeExecutionProfile = true, storageAvailable = true,
-    computeUniformAvailable = true))
+  require(
+    c.lanes == 16 && c.warps == 8 && c.simtStackDepth == 8 &&
+      c.sharedMemoryBytes == 16384 && c.sharedMemoryBanks == 16 &&
+      c.sharedMemoryBase == 0x10000000L && c.enableFpu && c.enableVector
+  )
+  val system = Module(
+    new GpuSystem(
+      c,
+      numComputeUnits = 4,
+      commandIdWidth = 4,
+      transactionsPerCu = 16,
+      useBlackBoxes = true,
+      enableFpuBackend = true,
+      enableUnifiedCommands = true,
+      enableIndirectCompute = true,
+      nativeExecutionProfile = true,
+      storageAvailable = true,
+      computeUniformAvailable = true
+    )
+  )
   val io = IO(new Bundle {
     val gpu = chiselTypeOf(system.io)
     val modelsPresent = Output(Bool())
@@ -44,22 +59,26 @@ private[core] class SharedProductHarness extends Module {
 @DoNotDiscover
 class SharedProductFourCuQualification extends AnyFlatSpec {
   private def zero(d: Data): Unit = d match {
-    case r: Record => r.elements.values.foreach(zero)
-    case v: Vec[_] => v.foreach(zero)
+    case r: Record                                                     => r.elements.values.foreach(zero)
+    case v: Vec[_]                                                     => v.foreach(zero)
     case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
     case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
     case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
-    case _ => ()
+    case _                                                             => ()
   }
   private val mask32 = (BigInt(1) << 32) - 1
   private def expected(seed: BigInt, group: Int, local: Int): BigInt =
     (0 until 32).map(r => seed + (group << 16) + (local ^ 16) + r * 128).sum & mask32
 
   it should "run both shared programs on four product CUs through unified commands" in {
-    require(sys.props.get("opengpu.sharedProductFourCuQualification").contains("1"),
-      "explicit local qualification only")
-    val programs = GalliumSharedArtifacts.load(Paths.get(sys.props("opengpu.galliumSharedArtifacts")),
-      sys.props("opengpu.galliumSharedArtifactSha256"))
+    require(
+      sys.props.get("opengpu.sharedProductFourCuQualification").contains("1"),
+      "explicit local qualification only"
+    )
+    val programs = GalliumSharedArtifacts.load(
+      Paths.get(sys.props("opengpu.galliumSharedArtifacts")),
+      sys.props("opengpu.galliumSharedArtifactSha256")
+    )
     simulate(new SharedProductHarness) { top =>
       val d = top.io.gpu
       zero(top.io)
@@ -100,9 +119,11 @@ class SharedProductFourCuQualification extends AnyFlatSpec {
       var nextLevel = root + 4096
       val levels = mutable.Map.empty[BigInt, BigInt]
       def mapPage(virtual: BigInt, physical: BigInt, flags: Int): Unit = {
-        val level = levels.getOrElseUpdate((virtual >> 22) << 22, {
-          val a = nextLevel; nextLevel += 4096; blank(a, 4096); a
-        })
+        val level = levels.getOrElseUpdate(
+          (virtual >> 22) << 22, {
+            val a = nextLevel; nextLevel += 4096; blank(a, 4096); a
+          }
+        )
         put(root + (virtual >> 22) * 4, ((level >> 12) << 10) | 1)
         put(level + ((virtual >> 12) & 1023) * 4, ((physical >> 12) << 10) | flags)
       }
@@ -110,9 +131,22 @@ class SharedProductFourCuQualification extends AnyFlatSpec {
         blank(u.code, 4096); u.words.zipWithIndex.foreach { case (w, i) => put(u.code + 4 * i, w) }
         Seq(2, 1, 1).zipWithIndex.foreach { case (n, i) => put(u.kernarg + 4 * i, BigInt(n)) }
         blank(u.table, 256)
-        Seq[(Int, BigInt)](0 -> StorageDescriptorLayout.magic, 1 -> 64, 2 -> 1,
-          3 -> u.context, 4 -> 7, 5 -> u.context, 6 -> 0, 7 -> 1, 8 -> 1, 9 -> 1,
-          10 -> u.output, 11 -> (u.output + 1024), 13 -> u.output, 14 -> (u.output + 4096))
+        Seq[(Int, BigInt)](
+          0 -> StorageDescriptorLayout.magic,
+          1 -> 64,
+          2 -> 1,
+          3 -> u.context,
+          4 -> 7,
+          5 -> u.context,
+          6 -> 0,
+          7 -> 1,
+          8 -> 1,
+          9 -> 1,
+          10 -> u.output,
+          11 -> (u.output + 1024),
+          13 -> u.output,
+          14 -> (u.output + 4096)
+        )
           .foreach { case (i, v) => put(u.table + 4 * i, v) }
         remember(u.output - 64, 4160)
         mapPage(u.code, u.code, 0x4b)
@@ -133,8 +167,7 @@ class SharedProductFourCuQualification extends AnyFlatSpec {
       d.instructionTlbFlush.valid.poke(false.B); d.vectorTlbFlush.valid.poke(false.B)
       d.invalidateInstructionCache.poke(false.B)
 
-      case class Reply(id: BigInt, address: BigInt, value: BigInt, due: Int,
-                       write: Option[(BigInt, BigInt, BigInt)])
+      case class Reply(id: BigInt, address: BigInt, value: BigInt, due: Int, write: Option[(BigInt, BigInt, BigInt)])
       val pending = mutable.ArrayBuffer.empty[Reply]
       var offered = Option.empty[Reply]
       val outstanding = mutable.Set.empty[BigInt]
@@ -208,8 +241,10 @@ class SharedProductFourCuQualification extends AnyFlatSpec {
               if (wr) {
                 q.cachePolicy.expect(CachePolicy.uncached)
                 val m = q.byteMask.peek().litValue; val first = m.lowestSetBit; val at = a + first
-                assert(first >= 0 && (first & 3) == 0 && m == (BigInt(15) << first) &&
-                  expectedAll.contains(at) && !written(at))
+                assert(
+                  first >= 0 && (first & 3) == 0 && m == (BigInt(15) << first) &&
+                    expectedAll.contains(at) && !written(at)
+                )
                 assert(((q.writeData.peek().litValue >> (8 * first)) & mask32) == expectedAll(at))
                 written += at
                 pending += Reply(id, a, BigInt(0), cycles + 17, Some((a, q.writeData.peek().litValue, m)))
@@ -252,11 +287,15 @@ class SharedProductFourCuQualification extends AnyFlatSpec {
       until("four commands dispatched")(d.busyComputeUnits.peek().litValue == 15)
       until("four completions")(completions.size == 4)
       assert(completions.values.forall(identity), "a product command failed")
-      until("lower drain")(pending.isEmpty && outstanding.isEmpty &&
-        d.vmContextIdle.peek().litToBoolean)
+      until("lower drain")(
+        pending.isEmpty && outstanding.isEmpty &&
+          d.vmContextIdle.peek().litToBoolean
+      )
       assert(allFourActive > 0, "the four product CUs never held warps together")
-      assert(units.forall(u => u.peakWarps == 8 && u.warpStarts == 16 && u.maxBarrierWaiting > 0),
-        "a product CU did not run both shared groups")
+      assert(
+        units.forall(u => u.peakWarps == 8 && u.warpStarts == 16 && u.maxBarrierWaiting > 0),
+        "a product CU did not run both shared groups"
+      )
       assert(acknowledged == expectedAll.keySet && written == expectedAll.keySet)
       assert(sawStorageLease, "no command ever held a storage lease")
       assert(descriptorTables == units.map(_.table).toSet)
@@ -269,23 +308,32 @@ class SharedProductFourCuQualification extends AnyFlatSpec {
       expectedAll.foreach { case (a, v) => for (i <- 0 until 4) golden(a + i) = ((v >> (8 * i)) & 255).toInt }
       assert(memory.toMap == golden.toMap, "product shared output or guard words differ")
       assert(d.busyComputeUnits.peek().litValue == 0)
-      info(s"SHARED_PRODUCT_FOUR_CU PASS cus=4 groups=8 nativeWarpStarts=64 outputWords=${acknowledged.size} " +
-        s"unifiedCommands=true sharedL2=true banks=${GpuConfig().l2Banks} allActiveCycles=$allFourActive " +
-        s"completions=${completions.keys.toSeq.sorted.mkString(",")} cycles=$cycles H7Complete=false")
+      info(
+        s"SHARED_PRODUCT_FOUR_CU PASS cus=4 groups=8 nativeWarpStarts=64 outputWords=${acknowledged.size} " +
+          s"unifiedCommands=true sharedL2=true banks=${GpuConfig().l2Banks} allActiveCycles=$allFourActive " +
+          s"completions=${completions.keys.toSeq.sorted.mkString(",")} cycles=$cycles H7Complete=false"
+      )
     }
   }
 }
 
 object QualifySharedProductFourCu {
   def main(args: Array[String]): Unit = {
-    require(sys.props.get("opengpu.sharedProductFourCuQualification").contains("1"),
-      "explicit local qualification only")
-    require(args.length == 6 && args(0) == "--artifacts" && args(2) == "--manifest-sha256" && args(4) == "--reports",
-      "usage: --artifacts DIRECTORY --manifest-sha256 SHA256 --reports DIRECTORY")
+    require(
+      sys.props.get("opengpu.sharedProductFourCuQualification").contains("1"),
+      "explicit local qualification only"
+    )
+    require(
+      args.length == 6 && args(0) == "--artifacts" && args(2) == "--manifest-sha256" && args(4) == "--reports",
+      "usage: --artifacts DIRECTORY --manifest-sha256 SHA256 --reports DIRECTORY"
+    )
     GalliumSharedArtifacts.load(Paths.get(args(1)), args(3)) // before elaboration/cache lookup
     sys.props("opengpu.galliumSharedArtifacts") = args(1)
     sys.props("opengpu.galliumSharedArtifactSha256") = args(3)
-    require(org.scalatest.tools.Runner.run(Array("-s", classOf[SharedProductFourCuQualification].getName,
-      "-oD", "-u", args(5))), "shared product four-CU qualification failed")
+    require(
+      org.scalatest.tools.Runner
+        .run(Array("-s", classOf[SharedProductFourCuQualification].getName, "-oD", "-u", args(5))),
+      "shared product four-CU qualification failed"
+    )
   }
 }

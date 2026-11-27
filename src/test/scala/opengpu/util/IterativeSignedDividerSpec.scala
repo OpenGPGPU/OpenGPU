@@ -8,9 +8,11 @@ import org.scalatest.flatspec.AnyFlatSpec
 object EmitIterativeSignedDivider {
   def main(args: Array[String]): Unit = {
     require(args.length == 1)
-    ChiselStage.emitSystemVerilogFile(new IterativeSignedDivider(68, 34, 32),
+    ChiselStage.emitSystemVerilogFile(
+      new IterativeSignedDivider(68, 34, 32),
       Array("--target-dir", args(0)),
-      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
+      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays")
+    )
   }
 }
 
@@ -30,22 +32,28 @@ class IterativeSignedDividerSpec extends AnyFlatSpec {
         val random = new scala.util.Random(0xd171 + n)
         def limits(w: Int): Seq[BigInt] =
           Seq[BigInt](-(BigInt(1) << (w - 1)), -1, 0, 1, (BigInt(1) << (w - 1)) - 1)
-            .map(signed(_, w)).distinct
+            .map(signed(_, w))
+            .distinct
         val cases = if (n <= 4) {
-          for (a <- -(1 << (n - 1)) until (1 << (n - 1));
-               b <- -(1 << (d - 1)) until (1 << (d - 1))) yield (BigInt(a), BigInt(b))
+          for (
+            a <- -(1 << (n - 1)) until (1 << (n - 1));
+            b <- -(1 << (d - 1)) until (1 << (d - 1))
+          ) yield (BigInt(a), BigInt(b))
         } else {
           (for (a <- limits(n); b <- limits(d)) yield (a, b)) ++
             Seq.fill(160)((signed(BigInt(n, random), n), signed(BigInt(d, random), d)))
         }
-        val bounded = if (q == n) Seq.empty else Seq.fill(160) {
-          val denominator = signed(BigInt(d, random), d) match {
-            case value if value == 0 => BigInt(1)
-            case value => value
-          }
-          val magnitude = BigInt(q, random) * denominator.abs + BigInt(d, random) % denominator.abs
-          (if (random.nextBoolean()) magnitude else -magnitude, denominator)
-        }
+        val bounded =
+          if (q == n) Seq.empty
+          else
+            Seq.fill(160) {
+              val denominator = signed(BigInt(d, random), d) match {
+                case value if value == 0 => BigInt(1)
+                case value               => value
+              }
+              val magnitude = BigInt(q, random) * denominator.abs + BigInt(d, random) % denominator.abs
+              (if (random.nextBoolean()) magnitude else -magnitude, denominator)
+            }
         val allCases = cases ++ bounded
         val expected = collection.mutable.Queue.empty[(BigInt, Boolean, Boolean)]
         var offered = 0; var retired = 0; var cycles = 0
@@ -59,9 +67,11 @@ class IterativeSignedDividerSpec extends AnyFlatSpec {
             dut.io.in.bits.denominator.poke(allCases(offered)._2.S)
           }
           if (dut.io.out.valid.peek().litToBoolean) {
-            val result = (dut.io.out.bits.quotient.peek().litValue,
+            val result = (
+              dut.io.out.bits.quotient.peek().litValue,
               dut.io.out.bits.divideByZero.peek().litToBoolean,
-              dut.io.out.bits.magnitudeOverflow.peek().litToBoolean)
+              dut.io.out.bits.magnitudeOverflow.peek().litToBoolean
+            )
             assert(expected.nonEmpty && result == expected.front)
             heldOutput.foreach(previous => assert(result == previous))
             heldOutput = if (consume) None else Some(result)
@@ -116,8 +126,9 @@ class IterativeSignedDividerSpec extends AnyFlatSpec {
     simulate(new IterativeSignedDivider(68, 34, 32)) { dut =>
       dut.io.in.valid.poke(false.B); dut.io.out.ready.poke(true.B)
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
-      for ((a, b) <- Seq((BigInt(0), BigInt(-17)), (BigInt(2147483648L), BigInt(1)),
-        (BigInt(-4294967295L), BigInt(-1)))) {
+      for (
+        (a, b) <- Seq((BigInt(0), BigInt(-17)), (BigInt(2147483648L), BigInt(1)), (BigInt(-4294967295L), BigInt(-1)))
+      ) {
         dut.io.in.valid.poke(true.B); dut.io.in.ready.expect(true.B)
         dut.io.in.bits.numerator.poke(a.S); dut.io.in.bits.denominator.poke(b.S)
         dut.clock.step(); dut.io.in.valid.poke(false.B)

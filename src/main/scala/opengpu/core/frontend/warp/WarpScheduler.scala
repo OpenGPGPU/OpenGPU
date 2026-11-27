@@ -6,14 +6,12 @@ import opengpu.config.GpuConfig
 
 /** Round-robin scheduler and single source of truth for warp frontend state.
   *
-  * A successful issue blocks that warp, preventing multiple unresolved
-  * frontend transactions for the same warp. `resume` clears the block and
-  * updates the PC; `finish` releases the hardware warp for a future launch.
+  * A successful issue blocks that warp, preventing multiple unresolved frontend transactions for the same warp.
+  * `resume` clears the block and updates the PC; `finish` releases the hardware warp for a future launch.
   *
-  * Launches name their target slot explicitly (`WarpLaunch.warpId`): the
-  * dispatcher initializes that slot's registers while other warps may still
-  * finish and free lower slots, so the scheduler must not re-derive the slot
-  * at launch time. `launch.ready` backpressures unless the named slot is free.
+  * Launches name their target slot explicitly (`WarpLaunch.warpId`): the dispatcher initializes that slot's registers
+  * while other warps may still finish and free lower slots, so the scheduler must not re-derive the slot at launch
+  * time. `launch.ready` backpressures unless the named slot is free.
   */
 class WarpScheduler(config: GpuConfig = GpuConfig(), resumeToIssue: Boolean = true) extends Module {
   val io = IO(new Bundle {
@@ -65,8 +63,8 @@ class WarpScheduler(config: GpuConfig = GpuConfig(), resumeToIssue: Boolean = tr
   private val resumedBlocked = if (config.warps == 1) blocked(0) else blocked(io.resume.bits.warpId)
   private val forwardResume = if (resumeToIssue) {
     !eligible.orR && io.resume.valid && validWarpId(io.resume.bits.warpId) &&
-      resumedActive && resumedBlocked && !io.launch.valid && !io.finish.valid &&
-      !(issueValid && issueBits.warpId === io.resume.bits.warpId)
+    resumedActive && resumedBlocked && !io.launch.valid && !io.finish.valid &&
+    !(issueValid && issueBits.warpId === io.resume.bits.warpId)
   } else false.B
   private val selectedWarp = Mux(forwardResume, io.resume.bits.warpId, roundRobinWarp)
   private val storedPc = if (config.warps == 1) pcs(0) else pcs(selectedWarp)

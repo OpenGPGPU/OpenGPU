@@ -7,14 +7,22 @@ import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse, ShaderP
 import opengpu.graphics._
 
 object TessellationJointThreeDomainJobImage {
-  private def domainTransactions(engines: Int, writeCredits: Int, pagedCapacity: Int,
-      tessellationUniforms: Boolean): Int =
+  private def domainTransactions(
+      engines: Int,
+      writeCredits: Int,
+      pagedCapacity: Int,
+      tessellationUniforms: Boolean
+  ): Int =
     TessellationInputMemoryFabric.transactions(
-      TessellationSystemIsolineImagePipeline.memoryTransactions(engines, writeCredits, pagedCapacity,
-        tessellationUniforms))
+      TessellationSystemIsolineImagePipeline.memoryTransactions(
+        engines,
+        writeCredits,
+        pagedCapacity,
+        tessellationUniforms
+      )
+    )
 
-  def transactions(engines: Int, writeCredits: Int, pagedCapacity: Int,
-      tessellationUniforms: Boolean = false): Int = {
+  def transactions(engines: Int, writeCredits: Int, pagedCapacity: Int, tessellationUniforms: Boolean = false): Int = {
     val ids = domainTransactions(engines, writeCredits, pagedCapacity, tessellationUniforms)
     TessellationThreeDomainMemoryFabric.transactions(ids, ids, ids)
   }
@@ -24,9 +32,8 @@ object TessellationJointThreeDomainJobImage {
       3 * (math.max(2, engines + 1) + 1)
 }
 
-/** Execute one protected GNQ request across the three domain parents and one
-  * physical image bank. The submitter retains the authorized descriptor graph,
-  * translations and allocations through the held completion and physical drain.
+/** Execute one protected GNQ request across the three domain parents and one physical image bank. The submitter retains
+  * the authorized descriptor graph, translations and allocations through the held completion and physical drain.
   */
 class TessellationJointThreeDomainJobImage(
     config: GpuConfig,
@@ -67,13 +74,23 @@ class TessellationJointThreeDomainJobImage(
     val submit = Flipped(Decoupled(new TessellationJointJobRequest(idWidth)))
     val completion = Decoupled(new TessellationJointNativeCompletion(idWidth))
     val out = Vec(engines, Decoupled(new TypedTilePixelQuadCompletion))
-    val shared = Flipped(new SharedCuGraphicsPort(config, idWidth, cus, geometryAvailable = true,
-      tessellationAvailable = true, imageAvailable = fragmentImageAvailable,
-      evaluationPatchAvailable = evaluationPatchAvailable, tessellationInfoAvailable = tessellationInfoAvailable))
+    val shared = Flipped(
+      new SharedCuGraphicsPort(
+        config,
+        idWidth,
+        cus,
+        geometryAvailable = true,
+        tessellationAvailable = true,
+        imageAvailable = fragmentImageAvailable,
+        evaluationPatchAvailable = evaluationPatchAvailable,
+        tessellationInfoAvailable = tessellationInfoAvailable
+      )
+    )
     val payload = payloadConfig.map(p => Vec(engines + 1, new FragmentPayloadPort(config, p)))
     val poolPayload = payloadConfig.map(p => Output(Valid(new ShaderPayloadBinding(config, p))))
-    val payloadPins = payloadConfig.map(p => Output(Vec(TessellationJointThreeDomainJobImage.payloadPins(engines),
-      Valid(new ShaderPayloadPin(p)))))
+    val payloadPins = payloadConfig.map(p =>
+      Output(Vec(TessellationJointThreeDomainJobImage.payloadPins(engines), Valid(new ShaderPayloadPin(p))))
+    )
     val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, slots))
     val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, slots)))
     val feedback = Option.when(transformFeedback)(new TransformFeedbackPipelineIO(config))
@@ -85,35 +102,117 @@ class TessellationJointThreeDomainJobImage(
     val drained = Output(Bool())
   })
 
-  private val isoline = Module(new TessellationSystemIsolineJointVertexImage(config, vertex, fragment, shared, graphics,
-    viewport, engines, pageBytes, writeCredits, tileSlots, pagedCapacity, storage, useSramBlackBoxes, payload,
-    payloadOwner, transformFeedback, externalImages = true, fragmentImageAvailable = fragmentImageAvailable,
-    sampleShading = sampleShading, tessellationUniforms = tessellationUniforms,
-    evaluationPatchAvailable = evaluationPatchAvailable, tessellationInfoAvailable = tessellationInfoAvailable,
-    primitiveIdInput = primitiveIdInput, enabled = enabled))
-  private val triangle = Module(new TessellationSystemTriangleJointVertexImage(config, vertex, fragment, shared, graphics,
-    viewport, engines, pageBytes, writeCredits, tileSlots, pagedCapacity, storage, useSramBlackBoxes, payload,
-    payloadOwner, transformFeedback, externalImages = true, fragmentImageAvailable = fragmentImageAvailable,
-    sampleShading = sampleShading, tessellationUniforms = tessellationUniforms,
-    evaluationPatchAvailable = evaluationPatchAvailable, tessellationInfoAvailable = tessellationInfoAvailable,
-    primitiveIdInput = primitiveIdInput, enabled = enabled))
-  private val quad = Module(new TessellationSystemQuadJointVertexImage(config, vertex, fragment, shared, graphics,
-    viewport, engines, pageBytes, writeCredits, tileSlots, pagedCapacity, storage, useSramBlackBoxes, payload,
-    payloadOwner, transformFeedback, externalImages = true, fragmentImageAvailable = fragmentImageAvailable,
-    sampleShading = sampleShading, tessellationUniforms = tessellationUniforms,
-    evaluationPatchAvailable = evaluationPatchAvailable, tessellationInfoAvailable = tessellationInfoAvailable,
-    primitiveIdInput = primitiveIdInput, enabled = enabled))
+  private val isoline = Module(
+    new TessellationSystemIsolineJointVertexImage(
+      config,
+      vertex,
+      fragment,
+      shared,
+      graphics,
+      viewport,
+      engines,
+      pageBytes,
+      writeCredits,
+      tileSlots,
+      pagedCapacity,
+      storage,
+      useSramBlackBoxes,
+      payload,
+      payloadOwner,
+      transformFeedback,
+      externalImages = true,
+      fragmentImageAvailable = fragmentImageAvailable,
+      sampleShading = sampleShading,
+      tessellationUniforms = tessellationUniforms,
+      evaluationPatchAvailable = evaluationPatchAvailable,
+      tessellationInfoAvailable = tessellationInfoAvailable,
+      primitiveIdInput = primitiveIdInput,
+      enabled = enabled
+    )
+  )
+  private val triangle = Module(
+    new TessellationSystemTriangleJointVertexImage(
+      config,
+      vertex,
+      fragment,
+      shared,
+      graphics,
+      viewport,
+      engines,
+      pageBytes,
+      writeCredits,
+      tileSlots,
+      pagedCapacity,
+      storage,
+      useSramBlackBoxes,
+      payload,
+      payloadOwner,
+      transformFeedback,
+      externalImages = true,
+      fragmentImageAvailable = fragmentImageAvailable,
+      sampleShading = sampleShading,
+      tessellationUniforms = tessellationUniforms,
+      evaluationPatchAvailable = evaluationPatchAvailable,
+      tessellationInfoAvailable = tessellationInfoAvailable,
+      primitiveIdInput = primitiveIdInput,
+      enabled = enabled
+    )
+  )
+  private val quad = Module(
+    new TessellationSystemQuadJointVertexImage(
+      config,
+      vertex,
+      fragment,
+      shared,
+      graphics,
+      viewport,
+      engines,
+      pageBytes,
+      writeCredits,
+      tileSlots,
+      pagedCapacity,
+      storage,
+      useSramBlackBoxes,
+      payload,
+      payloadOwner,
+      transformFeedback,
+      externalImages = true,
+      fragmentImageAvailable = fragmentImageAvailable,
+      sampleShading = sampleShading,
+      tessellationUniforms = tessellationUniforms,
+      evaluationPatchAvailable = evaluationPatchAvailable,
+      tessellationInfoAvailable = tessellationInfoAvailable,
+      primitiveIdInput = primitiveIdInput,
+      enabled = enabled
+    )
+  )
   require(Seq(isoline.memoryTransactions, triangle.memoryTransactions, quad.memoryTransactions).forall(_ == ids))
   private val domains = Seq(isoline.io, triangle.io, quad.io)
 
   private val imageOwner = Module(new TessellationImageBankOwner)
-  private val imageMux = Module(new TessellationImageBankMux(config, vertex, shared, engines, payload,
-    fragmentImageAvailable))
-  private val images = Seq.tabulate(engines)(engine => Module(new TypedReplayTileImagePipeline(
-    config, vertex, fragment, shared, graphics, storage, engine = engine,
-    useSramBlackBoxes = useSramBlackBoxes, payload = payload, payloadOwner = payloadOwner + engine,
-    fragmentImageAvailable = fragmentImageAvailable, sampleShading = sampleShading, primitiveIdInput = primitiveIdInput,
-    allowEmptyStates = true)))
+  private val imageMux = Module(
+    new TessellationImageBankMux(config, vertex, shared, engines, payload, fragmentImageAvailable)
+  )
+  private val images = Seq.tabulate(engines)(engine =>
+    Module(
+      new TypedReplayTileImagePipeline(
+        config,
+        vertex,
+        fragment,
+        shared,
+        graphics,
+        storage,
+        engine = engine,
+        useSramBlackBoxes = useSramBlackBoxes,
+        payload = payload,
+        payloadOwner = payloadOwner + engine,
+        fragmentImageAvailable = fragmentImageAvailable,
+        sampleShading = sampleShading,
+        primitiveIdInput = primitiveIdInput,
+        allowEmptyStates = true
+      )
+    )
+  )
   for ((port, index) <- domains.zipWithIndex) imageMux.io.clients(index) <> port.images.get
   for (index <- images.indices) imageMux.io.bank(index) <> images(index).io
   imageMux.io.active := imageOwner.io.active
@@ -132,9 +231,21 @@ class TessellationJointThreeDomainJobImage(
   io.memoryRequest <> memory.io.memoryRequest
   memory.io.memoryResponse <> io.memoryResponse
 
-  private val shaders = Module(new SharedShaderTaskRouter(config, cus, 3, idWidth, tasks, payload,
-    geometryAvailable = true, tessellationAvailable = true, imageAvailable = fragmentImageAvailable,
-    evaluationPatchAvailable = evaluationPatchAvailable, tessellationInfoAvailable = tessellationInfoAvailable))
+  private val shaders = Module(
+    new SharedShaderTaskRouter(
+      config,
+      cus,
+      3,
+      idWidth,
+      tasks,
+      payload,
+      geometryAvailable = true,
+      tessellationAvailable = true,
+      imageAvailable = fragmentImageAvailable,
+      evaluationPatchAvailable = evaluationPatchAvailable,
+      tessellationInfoAvailable = tessellationInfoAvailable
+    )
+  )
   io.shared <> shaders.io.pool
 
   private object Phase extends ChiselEnum {
@@ -314,7 +425,8 @@ class TessellationJointThreeDomainJobImage(
     io.out(engine) <> samples.io.out
   }
   for (phaseIndex <- 0 until 6)
-    io.fragmentEvents.phaseWorkers(phaseIndex) := images.map(_.io.fragmentEvents.phaseWorkers(phaseIndex)).reduce(_ +& _)
+    io.fragmentEvents
+      .phaseWorkers(phaseIndex) := images.map(_.io.fragmentEvents.phaseWorkers(phaseIndex)).reduce(_ +& _)
   io.fragmentEvents.stagingOutstanding := images.map(_.io.fragmentEvents.stagingOutstanding).reduce(_ +& _)
   io.fragmentEvents.stagingBlocked := images.map(_.io.fragmentEvents.stagingBlocked).reduce(_ || _)
   io.fragmentEvents.outputBlocked := images.map(_.io.fragmentEvents.outputBlocked).reduce(_ || _)

@@ -5,14 +5,15 @@ import chisel3.util._
 import opengpu.config.{CachePolicy, GpuConfig}
 import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse}
 
-class BankedTextureFillRequest(cachePolicyInput: Boolean=false) extends Bundle {
+class BankedTextureFillRequest(cachePolicyInput: Boolean = false) extends Bundle {
   val identity = new GraphicsWorkIdentity
   val textureKey = UInt(64.W)
+
   /** Successfully translated, read-permission-admitted physical line. */
   val address = UInt(32.W)
   val rowParity = Bool()
   val tag = UInt(32.W)
-  val noCache = if(cachePolicyInput) Some(Bool()) else None
+  val noCache = if (cachePolicyInput) Some(Bool()) else None
 }
 class BankedTextureFillResult(forwardData: Boolean = false, readCountOutput: Boolean = false) extends Bundle {
   val identity = new GraphicsWorkIdentity
@@ -24,22 +25,28 @@ class BankedTextureFillResult(forwardData: Boolean = false, readCountOutput: Boo
   val fault = Bool()
   val cancelled = Bool()
   val invalidated = Bool()
+
   /** Optional refill forwarding avoids cache-set conflict/retry livelock. */
-  val data = if(forwardData) Some(UInt(512.W)) else None
+  val data = if (forwardData) Some(UInt(512.W)) else None
+
   /** True only for the waiter which caused an accepted physical line read. */
-  val physicalRead = if(readCountOutput) Some(Bool()) else None
+  val physicalRead = if (readCountOutput) Some(Bool()) else None
 }
 
-/** Bounded physical line-fill ownership for the banked texture store.
-  * Each distinct physical/context/view/parity key owns one memory ID until its
-  * read, refill acknowledgement and all waiting completions have drained.
-  * Permission admission is required for EVERY waiter before joining; this
-  * block does not replace translation. A failed fill never becomes zero data.
-  * Global cancellation drains irrevocable offers and blocks a new epoch until
-  * every completion is consumed. Shared task integration must scope that drain.
+/** Bounded physical line-fill ownership for the banked texture store. Each distinct physical/context/view/parity key
+  * owns one memory ID until its read, refill acknowledgement and all waiting completions have drained. Permission
+  * admission is required for EVERY waiter before joining; this block does not replace translation. A failed fill never
+  * becomes zero data. Global cancellation drains irrevocable offers and blocks a new epoch until every completion is
+  * consumed. Shared task integration must scope that drain.
   */
-class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, waiters: Int = 32,
-    forwardData: Boolean = false, cachePolicyInput: Boolean = false, readCountOutput: Boolean = false) extends Module {
+class BankedTextureFillOwner(
+    config: GpuConfig = GpuConfig(),
+    fills: Int = 16,
+    waiters: Int = 32,
+    forwardData: Boolean = false,
+    cachePolicyInput: Boolean = false,
+    readCountOutput: Boolean = false
+) extends Module {
   require(!cachePolicyInput || forwardData, "uncached fills require returned data forwarding")
   require(config.xLen == 32 && isPow2(fills) && fills >= 2 && fills <= 32)
   require(isPow2(waiters) && waiters >= fills && waiters <= 128)
@@ -74,8 +81,8 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
   private val alive = RegInit(VecInit(Seq.fill(waiters)(false.B)))
   private val waiterSlot = Reg(Vec(waiters, UInt(fillBits.W)))
   private val waiterTag = Reg(Vec(waiters, UInt(32.W)))
-  private val firstWaiter = if(readCountOutput) Some(Reg(Vec(waiters, Bool()))) else None
-  private val readIssued = if(readCountOutput) Some(Reg(Vec(fills, Bool()))) else None
+  private val firstWaiter = if (readCountOutput) Some(Reg(Vec(waiters, Bool()))) else None
+  private val readIssued = if (readCountOutput) Some(Reg(Vec(fills, Bool()))) else None
   private val draining = RegInit(false.B)
   private val outputValid = RegInit(false.B)
   private val output = Reg(new BankedTextureFillResult(forwardData, readCountOutput))
@@ -90,17 +97,19 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
     // which return only an installation acknowledgement cannot forward a line
     // that another refill may already have evicted. Uncached reads and failed
     // fills must always start a fresh transaction after completion.
-    val joinable = if(forwardData) states(s) =/= State.free &&
-      (states(s) =/= State.done || (installed(s) && !failed(s)))
+    val joinable =
+      if (forwardData)
+        states(s) =/= State.free &&
+        (states(s) =/= State.done || (installed(s) && !failed(s)))
       else states(s) =/= State.free && states(s) =/= State.done
-    if(cachePolicyInput) {
-    joinable && !stopped(s) && !noFill(s) &&
+    if (cachePolicyInput) {
+      joinable && !stopped(s) && !noFill(s) &&
       keys(s).identity.asUInt === io.in.bits.identity.asUInt &&
       keys(s).textureKey === io.in.bits.textureKey &&
       keys(s).address === io.in.bits.address && keys(s).rowParity === io.in.bits.rowParity &&
       keys(s).noCache.get === io.in.bits.noCache.get
     } else {
-    joinable && !stopped(s) && !noFill(s) &&
+      joinable && !stopped(s) && !noFill(s) &&
       keys(s).identity.asUInt === io.in.bits.identity.asUInt &&
       keys(s).textureKey === io.in.bits.textureKey &&
       keys(s).address === io.in.bits.address && keys(s).rowParity === io.in.bits.rowParity
@@ -135,7 +144,7 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
   // stop unoffered reads, but never withdraw or change an offered transaction.
   private val memoryOffers = Module(new Queue(new ComputeMemoryRequest(config, 64, fills), 1))
   private val memoryArbiter = Module(new RRArbiter(UInt(fillBits.W), fills))
-  for(s <- 0 until fills) {
+  for (s <- 0 until fills) {
     memoryArbiter.io.in(s).valid := states(s) === State.queued && !stopped(s) && !noFill(s) &&
       !io.cancel && !io.invalidate && !draining
     memoryArbiter.io.in(s).bits := s.U
@@ -165,8 +174,12 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
   when(io.memoryResponse.fire) {
     failed(responseSlot) := io.memoryResponse.bits.fault
     data(responseSlot) := io.memoryResponse.bits.readData
-    if(cachePolicyInput) {
-      states(responseSlot) := Mux(io.memoryResponse.bits.fault || keys(responseSlot).noCache.get, State.done, State.returned)
+    if (cachePolicyInput) {
+      states(responseSlot) := Mux(
+        io.memoryResponse.bits.fault || keys(responseSlot).noCache.get,
+        State.done,
+        State.returned
+      )
     } else {
       states(responseSlot) := Mux(io.memoryResponse.bits.fault, State.done, State.returned)
     }
@@ -179,7 +192,7 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
   private val refillSlot = Reg(UInt(fillBits.W))
   private val refill = Reg(new BankedTextureRefill)
   private val refillArbiter = Module(new RRArbiter(UInt(fillBits.W), fills))
-  for(s <- 0 until fills) {
+  for (s <- 0 until fills) {
     refillArbiter.io.in(s).valid := states(s) === State.returned && !stopped(s) && !noFill(s) &&
       !io.cancel && !io.invalidate
     refillArbiter.io.in(s).bits := s.U
@@ -203,22 +216,28 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
   io.refillDone.ready := refillPending
   when(io.refillDone.fire) {
     val done = io.refillDone.bits
-    assert(done.identity.asUInt === refill.identity.asUInt && done.textureKey === refill.textureKey &&
-      done.address === refill.address && done.rowParity === refill.rowParity,
-      "texture refill acknowledgement lost its owner")
+    assert(
+      done.identity.asUInt === refill.identity.asUInt && done.textureKey === refill.textureKey &&
+        done.address === refill.address && done.rowParity === refill.rowParity,
+      "texture refill acknowledgement lost its owner"
+    )
     failed(refillSlot) := done.fault
-    installed(refillSlot) := done.installed && !stopped(refillSlot) && !noFill(refillSlot) && !io.cancel && !io.invalidate
+    installed(refillSlot) := done.installed && !stopped(refillSlot) && !noFill(
+      refillSlot
+    ) && !io.cancel && !io.invalidate
     invalidated(refillSlot) := done.invalidated || noFill(refillSlot) || io.invalidate
     states(refillSlot) := State.done
     refillPending := false.B
   }
 
-  for(s <- 0 until fills) {
+  for (s <- 0 until fills) {
     when(states(s) =/= State.free) {
       when(io.cancel) { stopped(s) := true.B; noFill(s) := true.B }
       when(io.invalidate) { noFill(s) := true.B; invalidated(s) := true.B }
-      when((states(s) === State.queued || states(s) === State.returned) &&
-        (stopped(s) || noFill(s) || io.cancel || io.invalidate)) {
+      when(
+        (states(s) === State.queued || states(s) === State.returned) &&
+          (stopped(s) || noFill(s) || io.cancel || io.invalidate)
+      ) {
         states(s) := State.done
         installed(s) := false.B
       }
@@ -230,7 +249,7 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
     }
   }
   private val completionArbiter = Module(new RRArbiter(UInt(waiterBits.W), waiters))
-  for(w <- 0 until waiters) {
+  for (w <- 0 until waiters) {
     completionArbiter.io.in(w).valid := alive(w) && states(waiterSlot(w)) === State.done
     completionArbiter.io.in(w).bits := w.U
   }
@@ -252,7 +271,9 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
     output.cancelled := stopped(slot) || io.cancel
     output.invalidated := invalidated(slot) || noFill(slot) || io.invalidate
     output.installed := installed(slot) && !stopped(slot) && !noFill(slot) && !io.cancel && !io.invalidate
-    output.data.foreach(_ := Mux(failed(slot) || stopped(slot) || noFill(slot) || io.cancel || io.invalidate, 0.U, data(slot)))
+    output.data.foreach(
+      _ := Mux(failed(slot) || stopped(slot) || noFill(slot) || io.cancel || io.invalidate, 0.U, data(slot))
+    )
   }
   io.occupiedFills := PopCount(states.map(_ =/= State.free))
   io.waitingConsumers := PopCount(alive)

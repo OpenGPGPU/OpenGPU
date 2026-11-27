@@ -11,13 +11,13 @@ class IntegerExecuteStageSpec extends AnyFlatSpec {
   behavior of "IntegerExecuteStage"
 
   private def drive(
-    dut: IntegerExecuteStage,
-    aluOp: UInt,
-    rs1: Long,
-    rs2: Long,
-    immediate: Long,
-    useImmediate: Boolean,
-    usePc: Boolean
+      dut: IntegerExecuteStage,
+      aluOp: UInt,
+      rs1: Long,
+      rs2: Long,
+      immediate: Long,
+      useImmediate: Boolean,
+      usePc: Boolean
   ): Unit = {
     dut.io.in.valid.poke(true.B)
     dut.io.in.bits.decode.instruction.poke(0.U)

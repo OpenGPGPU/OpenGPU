@@ -16,12 +16,10 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
   private def addrOf(base: Int, x: Int, y: Int): Int =
     base + (y * stride) + x * 4
 
-  /** Multi-outstanding byte-array memory model: requests are captured on the
-    * cycle they fire (the parallel output merger issues requests while
-    * fragments are still being submitted) and their address-tagged responses
-    * are presented on a later cycle, so several reads may be in flight at
-    * once - exactly what a shared memory hierarchy produces.  Write
-    * acknowledgements carry write=true and data=0.
+  /** Multi-outstanding byte-array memory model: requests are captured on the cycle they fire (the parallel output
+    * merger issues requests while fragments are still being submitted) and their address-tagged responses are presented
+    * on a later cycle, so several reads may be in flight at once - exactly what a shared memory hierarchy produces.
+    * Write acknowledgements carry write=true and data=0.
     */
   private class OooModel(val mem: Array[Int]) {
     // `pending` responses are presentable this cycle; `inflight` captures
@@ -60,18 +58,18 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
     }
   }
 
-  /** One serviced cycle: promote last cycle's captured responses to
-    * presentable, capture a fired request (it becomes presentable NEXT
-    * cycle - a memory system always has at least one cycle of read latency,
-    * and the OM's entries only wait in sWaitDepth from the cycle after their
-    * request fired), present a pending response, advance the clock.
+  /** One serviced cycle: promote last cycle's captured responses to presentable, capture a fired request (it becomes
+    * presentable NEXT cycle - a memory system always has at least one cycle of read latency, and the OM's entries only
+    * wait in sWaitDepth from the cycle after their request fired), present a pending response, advance the clock.
     */
   private def tick(dut: OutputMerger, model: OooModel): Boolean = {
     dut.io.mem.req.ready.poke(true.B)
     while (model.inflight.nonEmpty) model.pending.enqueue(model.inflight.dequeue())
     var fired = false
-    if (dut.io.mem.req.valid.peek().litToBoolean &&
-      dut.io.mem.req.ready.peek().litToBoolean) {
+    if (
+      dut.io.mem.req.valid.peek().litToBoolean &&
+      dut.io.mem.req.ready.peek().litToBoolean
+    ) {
       val addr = dut.io.mem.req.bits.addr.peek().litValue.toInt
       val write = dut.io.mem.req.bits.write.peek().litToBoolean
       val data = dut.io.mem.req.bits.data.peek().litValue.toInt
@@ -85,8 +83,8 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
     fired
   }
 
-  /** Serves the OM until the memory port has been idle with no pending
-    * responses for a few cycles (all in-flight entries drained).
+  /** Serves the OM until the memory port has been idle with no pending responses for a few cycles (all in-flight
+    * entries drained).
     */
   private def drain(dut: OutputMerger, model: OooModel, guard: Int = 400): Unit = {
     var idle = 0
@@ -100,8 +98,13 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
     dut.io.mem.resp.valid.poke(false.B)
   }
 
-  private def pokeConfig(dut: OutputMerger, depthTestEnable: Boolean,
-    depthFunc: Int, depthWrite: Boolean, blend: Boolean): Unit = {
+  private def pokeConfig(
+      dut: OutputMerger,
+      depthTestEnable: Boolean,
+      depthFunc: Int,
+      depthWrite: Boolean,
+      blend: Boolean
+  ): Unit = {
     dut.io.colorFormat.poke(0.U)
     dut.io.colorBase.poke(colorBase.U)
     dut.io.depthBase.poke(depthBase.U)
@@ -130,17 +133,24 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
     dut.io.mem.resp.bits.data.poke(0.U)
   }
 
-  private def pokeBlendCfg(dut: OutputMerger, present: Boolean,
-    srcFactor: Int, dstFactor: Int, equation: Int): Unit = {
+  private def pokeBlendCfg(dut: OutputMerger, present: Boolean, srcFactor: Int, dstFactor: Int, equation: Int): Unit = {
     dut.io.blendCfgEnable.poke(present.B)
     dut.io.blendSrcFactor.poke(srcFactor.U)
     dut.io.blendDstFactor.poke(dstFactor.U)
     dut.io.blendEquation.poke(equation.U)
   }
 
-  private def pokeStencil(dut: OutputMerger, enable: Boolean, func: Int,
-    ref: Int, readMask: Int, writeMask: Int, failOp: Int, zFailOp: Int,
-    zPassOp: Int): Unit = {
+  private def pokeStencil(
+      dut: OutputMerger,
+      enable: Boolean,
+      func: Int,
+      ref: Int,
+      readMask: Int,
+      writeMask: Int,
+      failOp: Int,
+      zFailOp: Int,
+      zPassOp: Int
+  ): Unit = {
     dut.io.stencilTestEnable.poke(enable.B)
     dut.io.stencilFunc.poke(func.U)
     dut.io.stencilRef.poke(ref.U)
@@ -179,10 +189,18 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
     case _ => (stored - 1) & 0xff
   }
 
-  /** One depth-tested fragment against a seeded D24S8 word; returns
-    * (colour word written, depth word written). */
-  private def stencilOnce(dut: OutputMerger, model: OooModel, mem: Array[Int],
-    x: Int, y: Int, color: Int, fragDepth: Int, storedWord: Int): (Int, Int) = {
+  /** One depth-tested fragment against a seeded D24S8 word; returns (colour word written, depth word written).
+    */
+  private def stencilOnce(
+      dut: OutputMerger,
+      model: OooModel,
+      mem: Array[Int],
+      x: Int,
+      y: Int,
+      color: Int,
+      fragDepth: Int,
+      storedWord: Int
+  ): (Int, Int) = {
     val cAddr = addrOf(colorBase, x, y)
     val dAddr = addrOf(depthBase, x, y)
     mem(cAddr) = 0xdeadbeef
@@ -195,49 +213,51 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
     (mem(cAddr), mem(dAddr))
   }
 
-  /** GL-style blend reference on RGBA8888 words
-    * (R = bits 31:24 ... A = bits 7:0). */
+  /** GL-style blend reference on RGBA8888 words (R = bits 31:24 ... A = bits 7:0).
+    */
   private def blendRef(src: Int, dst: Int, sf: Int, df: Int, eq: Int, constant: Int = 0): Int = {
     def ch(w: Int, hi: Int) = (w >> hi) & 0xff
     def mul255(c: Int, m: Int) = (c * m + 127) / 255
     def inv(x: Int) = 255 - x
     def fm(f: Int, sc: Int, sa: Int, dc: Int, da: Int, cc: Int, ca: Int, alpha: Boolean): Int = f match {
-      case 0 => 0
-      case 1 => 255
-      case 2 => sc
-      case 3 => inv(sc)
-      case 4 => sa
-      case 5 => inv(sa)
-      case 6 => dc
-      case 7 => inv(dc)
-      case 8 => da
-      case 9 => inv(da)
+      case 0  => 0
+      case 1  => 255
+      case 2  => sc
+      case 3  => inv(sc)
+      case 4  => sa
+      case 5  => inv(sa)
+      case 6  => dc
+      case 7  => inv(dc)
+      case 8  => da
+      case 9  => inv(da)
       case 10 => if (alpha) 255 else math.min(sa, inv(da))
       case 11 => cc
       case 12 => inv(cc)
       case 13 => ca
       case 14 => inv(ca)
-      case _ => 0
+      case _  => 0
     }
     val sa = ch(src, 0)
     val da = ch(dst, 0)
-    (0 to 3).map { i =>
-      val hi = 24 - 8 * i
-      val sc = ch(src, hi)
-      val dc = ch(dst, hi)
-      val cc = ch(constant, hi)
-      val ca = ch(constant, 0)
-      val s = mul255(sc, fm(sf, sc, sa, dc, da, cc, ca, i == 3))
-      val d = mul255(dc, fm(df, sc, sa, dc, da, cc, ca, i == 3))
-      eq match {
-        case 0 => math.min(255, s + d)
-        case 1 => math.max(0, s - d)
-        case 2 => math.max(0, d - s)
-        case 3 => math.min(sc, dc)
-        case 4 => math.max(sc, dc)
-        case _ => math.min(255, s + d)
+    (0 to 3)
+      .map { i =>
+        val hi = 24 - 8 * i
+        val sc = ch(src, hi)
+        val dc = ch(dst, hi)
+        val cc = ch(constant, hi)
+        val ca = ch(constant, 0)
+        val s = mul255(sc, fm(sf, sc, sa, dc, da, cc, ca, i == 3))
+        val d = mul255(dc, fm(df, sc, sa, dc, da, cc, ca, i == 3))
+        eq match {
+          case 0 => math.min(255, s + d)
+          case 1 => math.max(0, s - d)
+          case 2 => math.max(0, d - s)
+          case 3 => math.min(sc, dc)
+          case 4 => math.max(sc, dc)
+          case _ => math.min(255, s + d)
+        }
       }
-    }.foldLeft(0)((acc, v) => (acc << 8) | v)
+      .foldLeft(0)((acc, v) => (acc << 8) | v)
   }
 
   private def pokeFrag(dut: OutputMerger, x: Int, y: Int, color: Int, depth: Int): Unit = {
@@ -372,8 +392,10 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
       tick(dut, model)
       dut.io.fragIn.valid.poke(false.B)
       drain(dut, model)
-      assert(mem(addrOf(depthBase, 2, 1)) == 0xab000020,
-        f"depth write was 0x${mem(addrOf(depthBase, 2, 1))}%08x, expected 0xab000020")
+      assert(
+        mem(addrOf(depthBase, 2, 1)) == 0xab000020,
+        f"depth write was 0x${mem(addrOf(depthBase, 2, 1))}%08x, expected 0xab000020"
+      )
     }
   }
 
@@ -386,30 +408,30 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
 
       // Far fragment first, then near fragment.
       dut.io.fragIn.valid.poke(true.B)
-      pokeFrag(dut, 1, 1, 0xAA000000, 0x00000050)
+      pokeFrag(dut, 1, 1, 0xaa000000, 0x00000050)
       tick(dut, model)
       dut.io.fragIn.valid.poke(false.B)
       drain(dut, model)
       dut.io.fragIn.valid.poke(true.B)
-      pokeFrag(dut, 1, 1, 0x00BB0000, 0x00000010)
+      pokeFrag(dut, 1, 1, 0x00bb0000, 0x00000010)
       tick(dut, model)
       dut.io.fragIn.valid.poke(false.B)
       drain(dut, model)
       val color = mem(addrOf(colorBase, 1, 1))
-      assert(color == 0x00BB0000, s"nearer fragment should win, got 0x${color.toHexString}")
+      assert(color == 0x00bb0000, s"nearer fragment should win, got 0x${color.toHexString}")
 
       // Near fragment first, then far fragment — far must be rejected.
       dut.io.fragIn.valid.poke(true.B)
-      pokeFrag(dut, 2, 2, 0x0000CC00, 0x00000008)
+      pokeFrag(dut, 2, 2, 0x0000cc00, 0x00000008)
       tick(dut, model)
       dut.io.fragIn.valid.poke(false.B)
       drain(dut, model)
       dut.io.fragIn.valid.poke(true.B)
-      pokeFrag(dut, 2, 2, 0x000000DD, 0x00000060)
+      pokeFrag(dut, 2, 2, 0x000000dd, 0x00000060)
       tick(dut, model)
       dut.io.fragIn.valid.poke(false.B)
       drain(dut, model)
-      assert(mem(addrOf(colorBase, 2, 2)) == 0x0000CC00)
+      assert(mem(addrOf(colorBase, 2, 2)) == 0x0000cc00)
     }
   }
 
@@ -449,10 +471,11 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
       tick(dut, model)
       dut.io.fragIn.valid.poke(false.B)
       drain(dut, model)
-      assert(mem(addr) == 0x80007fff,
-        f"source-over blend was ${mem(addr)}%08x, expected 80007fff")
-      assert(mem(addrOf(depthBase, 1, 1)) == 0x10,
-        "a blended passing fragment must retain ordinary depth-write behaviour")
+      assert(mem(addr) == 0x80007fff, f"source-over blend was ${mem(addr)}%08x, expected 80007fff")
+      assert(
+        mem(addrOf(depthBase, 1, 1)) == 0x10,
+        "a blended passing fragment must retain ordinary depth-write behaviour"
+      )
     }
   }
 
@@ -469,17 +492,17 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
       def over(src: Int, dst: Int, alpha: Int): Int =
         (src * alpha + dst * (255 - alpha) + 127) / 255
       def source(x: Int, y: Int): Int =
-        pack(x * 41 + y * 7, x * 13 + y * 39, x * 29 + y * 11,
-          Seq(0, 64, 128, 255)((x + y) % 4))
+        pack(x * 41 + y * 7, x * 13 + y * 39, x * 29 + y * 11, Seq(0, 64, 128, 255)((x + y) % 4))
       def destination(x: Int, y: Int): Int =
-        pack(255 - x * 23 - y * 9, x * 17 + y * 21,
-          240 - x * 19 - y * 13, Seq(0, 85, 170, 255)((x + 2 * y) % 4))
+        pack(255 - x * 23 - y * 9, x * 17 + y * 21, 240 - x * 19 - y * 13, Seq(0, 85, 170, 255)((x + 2 * y) % 4))
       def expectedBlend(src: Int, dst: Int): Int = {
         val a = channel(src, 0)
-        pack(over(channel(src, 24), channel(dst, 24), a),
+        pack(
+          over(channel(src, 24), channel(dst, 24), a),
           over(channel(src, 16), channel(dst, 16), a),
           over(channel(src, 8), channel(dst, 8), a),
-          a + (channel(dst, 0) * (255 - a) + 127) / 255)
+          a + (channel(dst, 0) * (255 - a) + 127) / 255
+        )
       }
 
       for (y <- 0 until H; x <- 0 until W) {
@@ -503,10 +526,14 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
         val expectedDepth = if (passes) 0x20 else 0x10
         val actualColor = mem(addrOf(colorBase, x, y))
         val actualDepth = mem(addrOf(depthBase, x, y))
-        assert(actualColor == expectedColor,
-          f"blend image ($x,$y): got 0x$actualColor%08x expected 0x$expectedColor%08x")
-        assert(actualDepth == expectedDepth,
-          f"blend depth ($x,$y): got 0x$actualDepth%08x expected 0x$expectedDepth%08x")
+        assert(
+          actualColor == expectedColor,
+          f"blend image ($x,$y): got 0x$actualColor%08x expected 0x$expectedColor%08x"
+        )
+        assert(
+          actualDepth == expectedDepth,
+          f"blend depth ($x,$y): got 0x$actualDepth%08x expected 0x$expectedDepth%08x"
+        )
       }
     }
   }
@@ -523,21 +550,22 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
       val model = new OooModel(mem)
 
       dut.io.fragIn.valid.poke(true.B)
-      pokeFrag(dut, 1, 1, 0xAA000000, 0x00000010) // passes against the clear value
+      pokeFrag(dut, 1, 1, 0xaa000000, 0x00000010) // passes against the clear value
       tick(dut, model)
       dut.io.fragIn.valid.poke(false.B)
       drain(dut, model)
       // Nearer fragment: must read back the stored 0x10, not the ack's 0.
       dut.io.fragIn.valid.poke(true.B)
-      pokeFrag(dut, 1, 1, 0x00BB0000, 0x00000008)
+      pokeFrag(dut, 1, 1, 0x00bb0000, 0x00000008)
       tick(dut, model)
       dut.io.fragIn.valid.poke(false.B)
       drain(dut, model)
       val color = mem(addrOf(colorBase, 1, 1))
-      assert(color == 0x00BB0000,
-        s"nearer fragment must pass the depth test despite overtaking write acks, got 0x${color.toHexString}")
-      assert(mem(addrOf(depthBase, 1, 1)) == 0x00000008,
-        "depth buffer must hold the winning fragment's depth")
+      assert(
+        color == 0x00bb0000,
+        s"nearer fragment must pass the depth test despite overtaking write acks, got 0x${color.toHexString}"
+      )
+      assert(mem(addrOf(depthBase, 1, 1)) == 0x00000008, "depth buffer must hold the winning fragment's depth")
     }
   }
 
@@ -562,19 +590,21 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
       for ((x, y, c, d) <- frags) {
         dut.io.fragIn.valid.poke(true.B)
         pokeFrag(dut, x, y, c, d)
-        dut.io.fragIn.ready.expect(true.B,
-          s"distinct pixels (x=$x) must not stall the in-flight table")
+        dut.io.fragIn.ready.expect(true.B, s"distinct pixels (x=$x) must not stall the in-flight table")
         tick(dut, model)
       }
       dut.io.fragIn.valid.poke(false.B)
       drain(dut, model)
-      assert(model.sawConcurrentReads,
-        "expected several depth reads outstanding at once")
+      assert(model.sawConcurrentReads, "expected several depth reads outstanding at once")
       for ((x, y, c, d) <- frags) {
-        assert(mem(addrOf(colorBase, x, y)) == c,
-          f"pixel ($x,$y) colour was 0x${mem(addrOf(colorBase, x, y))}%08x, expected 0x$c%08x")
-        assert(mem(addrOf(depthBase, x, y)) == d,
-          f"pixel ($x,$y) depth was 0x${mem(addrOf(depthBase, x, y))}%08x, expected 0x$d%08x")
+        assert(
+          mem(addrOf(colorBase, x, y)) == c,
+          f"pixel ($x,$y) colour was 0x${mem(addrOf(colorBase, x, y))}%08x, expected 0x$c%08x"
+        )
+        assert(
+          mem(addrOf(depthBase, x, y)) == d,
+          f"pixel ($x,$y) depth was 0x${mem(addrOf(depthBase, x, y))}%08x, expected 0x$d%08x"
+        )
       }
     }
   }
@@ -591,7 +621,7 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
       val model = new OooModel(mem)
 
       val depths = Seq(0x00000080, 0x00000060, 0x00000040, 0x00000020)
-      val colors = Seq(0xAA000000, 0x00BB0000, 0x0000CC00, 0x000000DD)
+      val colors = Seq(0xaa000000, 0x00bb0000, 0x0000cc00, 0x000000dd)
       // First fragment accepted; the second same-pixel one must stall until
       // the first's writes are accepted and the pixel frees.
       dut.io.fragIn.valid.poke(true.B)
@@ -614,10 +644,11 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
       dut.io.fragIn.valid.poke(false.B)
       drain(dut, model)
       assert(accepted == depths.length, s"same-pixel fragments did not all accept: $accepted")
-      assert(mem(addrOf(colorBase, 1, 1)) == (colors(3).toLong & 0xffffffffL).toInt,
-        f"nearest fragment must win, got 0x${mem(addrOf(colorBase, 1, 1))}%08x")
-      assert(mem(addrOf(depthBase, 1, 1)) == depths(3),
-        "depth buffer must hold the nearest fragment's depth")
+      assert(
+        mem(addrOf(colorBase, 1, 1)) == (colors(3).toLong & 0xffffffffL).toInt,
+        f"nearest fragment must win, got 0x${mem(addrOf(colorBase, 1, 1))}%08x"
+      )
+      assert(mem(addrOf(depthBase, 1, 1)) == depths(3), "depth buffer must hold the nearest fragment's depth")
     }
   }
 
@@ -643,19 +674,24 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
       tick(dut, model)
       dut.io.fragIn.valid.poke(false.B)
       drain(dut, model)
-      assert(mem(dstA) == 0x80007fff,
-        f"blend A was 0x${mem(dstA)}%08x, expected 0x80007fff")
-      assert(mem(dstB) == 0x807f00ff,
-        f"blend B was 0x${mem(dstB)}%08x, expected 0x807f00ff")
+      assert(mem(dstA) == 0x80007fff, f"blend A was 0x${mem(dstA)}%08x, expected 0x80007fff")
+      assert(mem(dstB) == 0x807f00ff, f"blend B was 0x${mem(dstB)}%08x, expected 0x807f00ff")
       assert(mem(addrOf(depthBase, 0, 0)) == 0x10)
       assert(mem(addrOf(depthBase, 3, 3)) == 0x11)
     }
   }
 
-  /** One blended RMW: seed the destination, submit the fragment, return the
-    * written colour word. */
-  private def blendOnce(dut: OutputMerger, model: OooModel, mem: Array[Int],
-    x: Int, y: Int, src: Int, dst: Int): Int = {
+  /** One blended RMW: seed the destination, submit the fragment, return the written colour word.
+    */
+  private def blendOnce(
+      dut: OutputMerger,
+      model: OooModel,
+      mem: Array[Int],
+      x: Int,
+      y: Int,
+      src: Int,
+      dst: Int
+  ): Int = {
     val addr = addrOf(colorBase, x % W, y % H)
     mem(addr) = dst
     dut.io.fragIn.valid.poke(true.B)
@@ -686,47 +722,49 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
   }
 
   it should "blend with constant factors and retain each accepted constant" in {
-    simulate(new OutputMerger(GraphicsConfig(omInflight = omInflight, omLocality = omLocality),
-      constantBlend = true)) { dut =>
-      val mem = Array.fill(1 << 15)(0x00ffffff)
-      newDut(dut)
-      pokeConfig(dut, false, 0, false, false)
-      val model = new OooModel(mem)
-      val src = 0x40c08020
-      val dst = 0x8040c0ff
-      val constant = 0x80402080
-      dut.io.blendConstant.get.poke((constant.toLong & 0xffffffffL).U)
-      pokeBlendCfg(dut, true, 11, 0, 0)
-      assert(blendOnce(dut, model, mem, 0, 0, src, dst) == 0x20301010)
-      var n = 0
-      for (constantFactor <- 11 to 14;
-           other <- Seq(0, 1, 3, 5, 7, 9, 10, 11, 12, 13, 14);
-           (sf, df) <- Seq((constantFactor, other), (other, constantFactor));
-           eq <- 0 to 4) {
-        pokeBlendCfg(dut, true, sf, df, eq)
-        val got = blendOnce(dut, model, mem, n % W, (n / W) % H, src, dst)
-        val expected = blendRef(src, dst, sf, df, eq, constant)
-        assert(got == expected, f"sf=$sf df=$df eq=$eq got 0x$got%08x expected 0x$expected%08x")
-        n += 1
-      }
+    simulate(new OutputMerger(GraphicsConfig(omInflight = omInflight, omLocality = omLocality), constantBlend = true)) {
+      dut =>
+        val mem = Array.fill(1 << 15)(0x00ffffff)
+        newDut(dut)
+        pokeConfig(dut, false, 0, false, false)
+        val model = new OooModel(mem)
+        val src = 0x40c08020
+        val dst = 0x8040c0ff
+        val constant = 0x80402080
+        dut.io.blendConstant.get.poke((constant.toLong & 0xffffffffL).U)
+        pokeBlendCfg(dut, true, 11, 0, 0)
+        assert(blendOnce(dut, model, mem, 0, 0, src, dst) == 0x20301010)
+        var n = 0
+        for (
+          constantFactor <- 11 to 14;
+          other <- Seq(0, 1, 3, 5, 7, 9, 10, 11, 12, 13, 14);
+          (sf, df) <- Seq((constantFactor, other), (other, constantFactor));
+          eq <- 0 to 4
+        ) {
+          pokeBlendCfg(dut, true, sf, df, eq)
+          val got = blendOnce(dut, model, mem, n % W, (n / W) % H, src, dst)
+          val expected = blendRef(src, dst, sf, df, eq, constant)
+          assert(got == expected, f"sf=$sf df=$df eq=$eq got 0x$got%08x expected 0x$expected%08x")
+          n += 1
+        }
 
-      val constant2 = 0x20c0e040
-      val a = addrOf(colorBase, 0, 0)
-      val b = addrOf(colorBase, 1, 0)
-      mem(a) = dst; mem(b) = dst
-      pokeBlendCfg(dut, true, 11, 0, 0)
-      dut.io.fragIn.valid.poke(true.B)
-      dut.io.blendConstant.get.poke((constant.toLong & 0xffffffffL).U)
-      pokeFrag(dut, 0, 0, src, 0)
-      dut.io.fragIn.ready.expect(true.B); tick(dut, model)
-      dut.io.blendConstant.get.poke((constant2.toLong & 0xffffffffL).U)
-      pokeFrag(dut, 1, 0, src, 0)
-      dut.io.fragIn.ready.expect(true.B); tick(dut, model)
-      dut.io.fragIn.valid.poke(false.B)
-      dut.io.blendConstant.get.poke(0.U)
-      drain(dut, model)
-      assert(mem(a) == blendRef(src, dst, 11, 0, 0, constant))
-      assert(mem(b) == blendRef(src, dst, 11, 0, 0, constant2))
+        val constant2 = 0x20c0e040
+        val a = addrOf(colorBase, 0, 0)
+        val b = addrOf(colorBase, 1, 0)
+        mem(a) = dst; mem(b) = dst
+        pokeBlendCfg(dut, true, 11, 0, 0)
+        dut.io.fragIn.valid.poke(true.B)
+        dut.io.blendConstant.get.poke((constant.toLong & 0xffffffffL).U)
+        pokeFrag(dut, 0, 0, src, 0)
+        dut.io.fragIn.ready.expect(true.B); tick(dut, model)
+        dut.io.blendConstant.get.poke((constant2.toLong & 0xffffffffL).U)
+        pokeFrag(dut, 1, 0, src, 0)
+        dut.io.fragIn.ready.expect(true.B); tick(dut, model)
+        dut.io.fragIn.valid.poke(false.B)
+        dut.io.blendConstant.get.poke(0.U)
+        drain(dut, model)
+        assert(mem(a) == blendRef(src, dst, 11, 0, 0, constant))
+        assert(mem(b) == blendRef(src, dst, 11, 0, 0, constant2))
     }
   }
 
@@ -750,8 +788,11 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
             f"sf=$sf df=$df eq=$eq: got 0x$got%08x expected 0x$expected%08x"
         n += 1
       }
-      assert(mismatches.isEmpty, s"${mismatches.size} factor/equation " +
-        s"mismatches:\n${mismatches.take(8).mkString("\n")}")
+      assert(
+        mismatches.isEmpty,
+        s"${mismatches.size} factor/equation " +
+          s"mismatches:\n${mismatches.take(8).mkString("\n")}"
+      )
     }
   }
 
@@ -765,8 +806,7 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
       // on this destination would have produced 0x80007fff.
       pokeBlendCfg(dut, true, 1, 0, 0)
       val got = blendOnce(dut, model, mem, 1, 1, 0xff000080, 0x0000ffff)
-      assert(got == 0xff000080,
-        f"blend config must override source-over, got 0x$got%08x")
+      assert(got == 0xff000080, f"blend config must override source-over, got 0x$got%08x")
     }
   }
 
@@ -777,16 +817,33 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
       // Depth ALWAYS so the depth test never gates the stencil sweep.
       pokeConfig(dut, true, 6, true, false)
       val model = new OooModel(mem)
-      val pairs = Seq((0x00, 0xff), (0xff, 0x00), (0x80, 0x80), (0x7f, 0x80),
-        (0x80, 0x7f), (0xff, 0xff), (0x00, 0x00), (0x01, 0x02))
+      val pairs = Seq(
+        (0x00, 0xff),
+        (0xff, 0x00),
+        (0x80, 0x80),
+        (0x7f, 0x80),
+        (0x80, 0x7f),
+        (0xff, 0xff),
+        (0x00, 0x00),
+        (0x01, 0x02)
+      )
       var n = 0
       var bad = List.empty[String]
       for (func <- 0 to 7; (ref, stored) <- pairs) {
-        pokeStencil(dut, true, func, ref, 0xff, 0xff,
-          failOp = 1, zFailOp = 1, zPassOp = 2) // fail/zfail ZERO, zpass REPLACE
+        pokeStencil(
+          dut,
+          true,
+          func,
+          ref,
+          0xff,
+          0xff,
+          failOp = 1,
+          zFailOp = 1,
+          zPassOp = 2
+        ) // fail/zfail ZERO, zpass REPLACE
         val expectPass = stencilFuncPass(func, ref, stored, 0xff)
-        val (colour, depth) = stencilOnce(dut, model, mem,
-          n % W, (n / W) % H, 0x11223344, 0x30, (stored << 24) | 0x00ffff)
+        val (colour, depth) =
+          stencilOnce(dut, model, mem, n % W, (n / W) % H, 0x11223344, 0x30, (stored << 24) | 0x00ffff)
         if (expectPass) {
           if (colour != 0x11223344)
             bad = bad :+ s"func=$func ref=$ref stored=$stored: colour skipped on pass"
@@ -820,8 +877,8 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
       for ((op, stored) <- cases) {
         val mask = 0xff
         pokeStencil(dut, true, 6, ref, 0xff, mask, 1, 1, op)
-        val (colour, depth) = stencilOnce(dut, model, mem,
-          n % W, (n / W) % H, 0x00ff00ff, 0x40, (stored << 24) | 0x11ffff)
+        val (colour, depth) =
+          stencilOnce(dut, model, mem, n % W, (n / W) % H, 0x00ff00ff, 0x40, (stored << 24) | 0x11ffff)
         val expectedByte = stencilRefOp(op, stored, ref)
         if (colour != 0x00ff00ff)
           bad = bad :+ f"op=$op stored=$stored: colour 0x$colour%08x"
@@ -833,10 +890,8 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
       // changes (0xcd & 0x0f) | (0xab & 0xf0) = 0xad; the D24 takes the
       // fragment depth because depth write is enabled.
       pokeStencil(dut, true, 6, 0xcd, 0xff, 0x0f, 1, 1, 2) // zpass REPLACE
-      val (_, depthMasked) = stencilOnce(dut, model, mem, 0, 0, 0xff,
-        0x50, 0xab123456)
-      assert(depthMasked == 0xad000050,
-        f"masked stencil write was 0x$depthMasked%08x, expected 0xad000050")
+      val (_, depthMasked) = stencilOnce(dut, model, mem, 0, 0, 0xff, 0x50, 0xab123456)
+      assert(depthMasked == 0xad000050, f"masked stencil write was 0x$depthMasked%08x, expected 0xad000050")
       assert(bad.isEmpty, s"${bad.size} stencil-op mismatches:\n${bad.take(8).mkString("\n")}")
     }
   }
@@ -849,18 +904,14 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
       val model = new OooModel(mem)
       // Depth fail: fragDepth 0x30 is not < stored 0x20; zfail INVERT.
       pokeStencil(dut, true, 6, 0, 0xff, 0xff, 1, 5, 2)
-      val (colourFail, depthFail) = stencilOnce(dut, model, mem, 0, 0,
-        0x12345678, 0x30, 0x3c000020)
+      val (colourFail, depthFail) = stencilOnce(dut, model, mem, 0, 0, 0x12345678, 0x30, 0x3c000020)
       assert(colourFail == 0xdeadbeef, "a depth fail must not write colour")
-      assert(depthFail == ((0xc3 << 24) | 0x20),
-        f"zfail INVERT gave 0x$depthFail%08x")
+      assert(depthFail == ((0xc3 << 24) | 0x20), f"zfail INVERT gave 0x$depthFail%08x")
       // Stencil fail: func NOTEQUAL with ref == stored; fail INCR.
       pokeStencil(dut, true, 5, 0x55, 0xff, 0xff, 3, 5, 2)
-      val (colourSkip, depthSkip) = stencilOnce(dut, model, mem, 1, 1,
-        0x12345678, 0x05, 0x55000020)
+      val (colourSkip, depthSkip) = stencilOnce(dut, model, mem, 1, 1, 0x12345678, 0x05, 0x55000020)
       assert(colourSkip == 0xdeadbeef, "a stencil fail must not write colour")
-      assert(depthSkip == ((0x56 << 24) | 0x20),
-        f"stencil fail kept stored depth but applied INCR: 0x$depthSkip%08x")
+      assert(depthSkip == ((0x56 << 24) | 0x20), f"stencil fail kept stored depth but applied INCR: 0x$depthSkip%08x")
     }
   }
 
@@ -871,11 +922,12 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
       pokeConfig(dut, true, 6, depthWrite = false, false)
       val model = new OooModel(mem)
       pokeStencil(dut, true, 6, 0x77, 0xff, 0xff, 1, 1, 2) // zpass REPLACE
-      val (colour, depth) = stencilOnce(dut, model, mem, 2, 2,
-        0x00c0ffee, 0x99, 0x12000040)
+      val (colour, depth) = stencilOnce(dut, model, mem, 2, 2, 0x00c0ffee, 0x99, 0x12000040)
       assert(colour == 0x00c0ffee, "the fragment still passes and writes colour")
-      assert(depth == ((0x77 << 24) | 0x40),
-        f"stencil update must force the depth-word write with the stored D24: 0x$depth%08x")
+      assert(
+        depth == ((0x77 << 24) | 0x40),
+        f"stencil update must force the depth-word write with the stored D24: 0x$depth%08x"
+      )
     }
   }
 
@@ -888,15 +940,12 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
       val model = new OooModel(mem)
       // Stencil pass (EQUAL to the stored byte): zpass REPLACE + colour.
       pokeStencil(dut, true, 4, 0xa5, 0xff, 0xff, 1, 1, 2)
-      val (colourPass, depthPass) = stencilOnce(dut, model, mem, 3, 0,
-        0x0badf00d, 0x77, 0xa5000060)
+      val (colourPass, depthPass) = stencilOnce(dut, model, mem, 3, 0, 0x0badf00d, 0x77, 0xa5000060)
       assert(colourPass == 0x0badf00d, "stencil pass with depth test disabled writes colour")
-      assert(depthPass == ((0xa5 << 24) | 0x77),
-        f"implicit depth pass must write the fragment depth: 0x$depthPass%08x")
+      assert(depthPass == ((0xa5 << 24) | 0x77), f"implicit depth pass must write the fragment depth: 0x$depthPass%08x")
       // Stencil fail: fail op ZERO and no colour.
       pokeStencil(dut, true, 5, 0xa5, 0xff, 0xff, 1, 1, 2)
-      val (colourFail, depthFail) = stencilOnce(dut, model, mem, 3, 1,
-        0x0badf00d, 0x77, 0xa5000060)
+      val (colourFail, depthFail) = stencilOnce(dut, model, mem, 3, 1, 0x0badf00d, 0x77, 0xa5000060)
       assert(colourFail == 0xdeadbeef, "stencil fail with depth test disabled skips colour")
       assert(depthFail == 0x00000060, f"fail ZERO cleared the byte: 0x$depthFail%08x")
     }
@@ -990,5 +1039,4 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
 class OutputMergerSpec extends OutputMergerChecks()
 class LocalityOutputMergerSpec extends OutputMergerChecks(omLocality = true)
 
-class WideCapacityLocalityOutputMergerSpec
-    extends OutputMergerChecks(omLocality = true, omInflight = 64)
+class WideCapacityLocalityOutputMergerSpec extends OutputMergerChecks(omLocality = true, omInflight = 64)

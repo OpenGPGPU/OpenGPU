@@ -11,8 +11,8 @@ class VectorRegisterFileSpec extends AnyFlatSpec {
   behavior of "VectorRegisterFile"
 
   private def runBankIsolationTest(
-    dut: VectorRegisterFile,
-    config: GpuConfig
+      dut: VectorRegisterFile,
+      config: GpuConfig
   ): Unit = {
     dut.io.read.warpId.poke(0.U)
     dut.io.read.vs1.poke(0.U)
@@ -74,9 +74,7 @@ class VectorRegisterFileSpec extends AnyFlatSpec {
       dut.io.write.valid.poke(false.B)
       dut.clock.step()
 
-      val lanes = Seq(
-        BigInt("3f800000", 16), BigInt("40800000", 16),
-        BigInt("c0800000", 16), BigInt("41a00000", 16))
+      val lanes = Seq(BigInt("3f800000", 16), BigInt("40800000", 16), BigInt("c0800000", 16), BigInt("41a00000", 16))
       dut.io.write.valid.poke(true.B)
       dut.io.write.bits.warpId.poke(0.U)
       dut.io.write.bits.vd.poke(6.U)
@@ -143,15 +141,16 @@ class VectorRegisterFileSpec extends AnyFlatSpec {
         new VectorRegisterFile(GpuConfig(lanes = 4, warps = 2), useBlackBox = true),
         Array("--target-dir", target.toString)
       )
-      val rtl = Files.list(Path.of(target.toString))
+      val rtl = Files
+        .list(Path.of(target.toString))
         .filter(_.toString.endsWith(".sv"))
         .map(Files.readString(_))
         .toArray
         .mkString("\n")
       val instanceCount = "srambank_64x4x64_6t122".r
-        .findAllMatchIn(rtl).length
-      assert(instanceCount > 0,
-        "expected ASAP7 SRAM macro instances in physical vector RF RTL")
+        .findAllMatchIn(rtl)
+        .length
+      assert(instanceCount > 0, "expected ASAP7 SRAM macro instances in physical vector RF RTL")
     } finally {
       // Leave the emitted RTL in place for manual inspection on failure.
     }

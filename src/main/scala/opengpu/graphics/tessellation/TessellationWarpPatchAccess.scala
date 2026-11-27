@@ -7,22 +7,24 @@ import chisel3.util._
 
 class TessellationWarpPatchRequest(warps: Int, lanes: Int) extends Bundle {
   val warp = UInt(log2Ceil(warps).W)
+
   /** Lane i belongs to invocation base+i. */
   val base = UInt(5.W); val mask = UInt(lanes.W)
   val access = Vec(lanes, new TessellationPatchAccess)
 }
 class TessellationWarpPatchResult(warps: Int, lanes: Int) extends Bundle {
   val warp = UInt(log2Ceil(warps).W)
+
   /** Lanes whose replies were accepted, including a failed lane. */
   val retired = UInt(lanes.W)
   val data = Vec(lanes, UInt(32.W))
+
   /** 0 success, 1 invalid mask or access/reply fault, 2 cancellation. */
   val status = UInt(2.W)
 }
 
-/** Serialize one warp instruction against an owned patch context. Lanes
-  * execute in increasing order; earlier writes remain visible after a later
-  * failure or cancellation. An offered access and its reply must drain.
+/** Serialize one warp instruction against an owned patch context. Lanes execute in increasing order; earlier writes
+  * remain visible after a later failure or cancellation. An offered access and its reply must drain.
   */
 class TessellationWarpPatchAccess(warps: Int, lanes: Int) extends Module {
   require(warps >= 2 && isPow2(warps) && lanes >= 1 && lanes <= 32)
@@ -32,6 +34,7 @@ class TessellationWarpPatchAccess(warps: Int, lanes: Int) extends Module {
     val reply = Flipped(Decoupled(new TessellationContextReply))
     val result = Decoupled(new TessellationWarpPatchResult(warps, lanes))
     val cancel = Input(Bool())
+
     /** The patch context has accepted a terminal result and cannot accept offers. */
     val terminal = Input(Bool()); val busy = Output(Bool())
   })

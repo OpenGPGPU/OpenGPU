@@ -20,8 +20,10 @@ class RasterTopLeftProofHarness extends Module {
 object EmitRasterTopLeftProof {
   def main(args: Array[String]): Unit = {
     require(args.length == 1)
-    ChiselStage.emitSystemVerilogFile(new RasterTopLeftProofHarness,
+    ChiselStage.emitSystemVerilogFile(
+      new RasterTopLeftProofHarness,
       Array("--target-dir", args(0)),
-      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
+      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays")
+    )
   }
 }

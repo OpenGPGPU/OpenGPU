@@ -21,10 +21,9 @@ private class Fp32DivSetup(tagWidth: Int) extends Bundle {
 
 /** Iterative FP32 divide lane with RISC-V rounding and exception flags.
   *
-  * The normalized 24-bit significands are divided with one radix-2 quotient
-  * bit per cycle. 27 iterations produce a 28-bit fixed-point quotient (one
-  * integer bit plus 27 fraction bits), then the result is rounded with guard,
-  * round, and sticky bits. Normal and subnormal results are both supported.
+  * The normalized 24-bit significands are divided with one radix-2 quotient bit per cycle. 27 iterations produce a
+  * 28-bit fixed-point quotient (one integer bit plus 27 fraction bits), then the result is rounded with guard, round,
+  * and sticky bits. Normal and subnormal results are both supported.
   */
 class Fp32DivLane(tagWidth: Int = 16) extends Module {
   require(tagWidth > 0)
@@ -99,12 +98,12 @@ class Fp32DivLane(tagWidth: Int = 16) extends Module {
     out.bZero := bZero
     out.aSig := Mux(
       aExp === 0.U,
-      (Cat(aMant,0.U(1.W)) << aNormShift)(23,0),
+      (Cat(aMant, 0.U(1.W)) << aNormShift)(23, 0),
       Cat(1.U, aMant)
     )
     out.bSig := Mux(
       bExp === 0.U,
-      (Cat(bMant,0.U(1.W)) << bNormShift)(23,0),
+      (Cat(bMant, 0.U(1.W)) << bNormShift)(23, 0),
       Cat(1.U, bMant)
     )
     out.aExpVal := Mux(
@@ -148,8 +147,10 @@ class Fp32DivLane(tagWidth: Int = 16) extends Module {
   )
 
   when(canStart) {
-    when(normBits.invalid || normBits.divideByZero || normBits.aInf ||
-      normBits.bInf || normBits.aZero || normBits.bZero) {
+    when(
+      normBits.invalid || normBits.divideByZero || normBits.aInf ||
+        normBits.bInf || normBits.aZero || normBits.bZero
+    ) {
       outputValid := true.B
       outputBits.result := Mux(
         normBits.invalid,
@@ -194,12 +195,12 @@ class Fp32DivLane(tagWidth: Int = 16) extends Module {
   private val nextQ = Cat(qFull(25, 0), subtracts)
 
   private def roundUp(
-    candidate: UInt,
-    guard: Bool,
-    roundBit: Bool,
-    sticky: Bool,
-    sign: Bool,
-    roundingMode: UInt
+      candidate: UInt,
+      guard: Bool,
+      roundBit: Bool,
+      sticky: Bool,
+      sign: Bool,
+      roundingMode: UInt
   ): Bool = {
     val inexact = guard || roundBit || sticky
     MuxCase(
@@ -228,9 +229,8 @@ class Fp32DivLane(tagWidth: Int = 16) extends Module {
   private val normalRoundBit = normalizedQ(2)
   private val normalSticky =
     normalizedQ(1) || normalizedQ(0) || postRemainder.orR
-  private val normalRounded = normalMantissa +& roundUp(
-    normalMantissa, normalGuard, normalRoundBit, normalSticky,
-    postSign, postRound)
+  private val normalRounded =
+    normalMantissa +& roundUp(normalMantissa, normalGuard, normalRoundBit, normalSticky, postSign, postRound)
   private val normalCarry = normalRounded(24)
   private val normalExp = postExp + Mux(normalCarry, 1.S, 0.S)
   private val normalInexact =
@@ -256,23 +256,28 @@ class Fp32DivLane(tagWidth: Int = 16) extends Module {
   )
   // Bits below guard and round, including the entire quotient for shifts
   // beyond its width. Do not discard the two low quotient bits at underflow.
-  private val stickyCount=Mux(underflowShift>30.U,28.U,Mux(underflowShift>=2.U,underflowShift-2.U,0.U))
-  private val stickyMask=((1.U(29.W)<<stickyCount)-1.U)(27,0)
-  private val underflowSticky=(normalizedQ & stickyMask).orR || postRemainder.orR
+  private val stickyCount = Mux(underflowShift > 30.U, 28.U, Mux(underflowShift >= 2.U, underflowShift - 2.U, 0.U))
+  private val stickyMask = ((1.U(29.W) << stickyCount) - 1.U)(27, 0)
+  private val underflowSticky = (normalizedQ & stickyMask).orR || postRemainder.orR
   private val underflowRounded = underflowCandidate +& roundUp(
-    underflowCandidate, underflowGuard, underflowRoundBit,
-    underflowSticky, postSign, postRound)
+    underflowCandidate,
+    underflowGuard,
+    underflowRoundBit,
+    underflowSticky,
+    postSign,
+    postRound
+  )
   private val underflowCarry = underflowRounded(23)
   private val underflowInexact =
     underflowGuard || underflowRoundBit || underflowSticky
 
-  private val overflowToInfinity=postRound===0.U || postRound===4.U ||
-    (postRound===2.U && postSign) || (postRound===3.U && !postSign)
+  private val overflowToInfinity = postRound === 0.U || postRound === 4.U ||
+    (postRound === 2.U && postSign) || (postRound === 3.U && !postSign)
   private val finiteResult = Wire(UInt(32.W))
   private val finiteFlags = Wire(UInt(5.W))
   finiteResult := Mux(
     postExp <= 0.S,
-    Mux(underflowCarry,Cat(postSign,1.U(8.W),0.U(23.W)),Cat(postSign,0.U(8.W),underflowRounded(22,0))),
+    Mux(underflowCarry, Cat(postSign, 1.U(8.W), 0.U(23.W)), Cat(postSign, 0.U(8.W), underflowRounded(22, 0))),
     Mux(
       !normalOverflow,
       Cat(
@@ -280,12 +285,12 @@ class Fp32DivLane(tagWidth: Int = 16) extends Module {
         normalExp(7, 0),
         Mux(normalCarry, 0.U(23.W), normalRounded(22, 0))
       ),
-      Cat(postSign,Mux(overflowToInfinity,"h7f800000".U(31.W),"h7f7fffff".U(31.W)))
+      Cat(postSign, Mux(overflowToInfinity, "h7f800000".U(31.W), "h7f7fffff".U(31.W)))
     )
   )
   finiteFlags := Mux(
     postExp <= 0.S,
-    Cat(0.U(3.W),underflowInexact && !underflowCarry,underflowInexact),
+    Cat(0.U(3.W), underflowInexact && !underflowCarry, underflowInexact),
     Mux(
       !normalOverflow,
       Mux(normalInexact, 1.U, 0.U),
@@ -324,7 +329,6 @@ class Fp32DivLane(tagWidth: Int = 16) extends Module {
   }
 
   when(io.in.valid) {
-    assert(io.in.bits.operation === Fp32Operation.div,
-      "Fp32DivLane received a non-divide operation")
+    assert(io.in.bits.operation === Fp32Operation.div, "Fp32DivLane received a non-divide operation")
   }
 }

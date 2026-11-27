@@ -7,13 +7,20 @@ import opengpu.graphics.{GpuCommandMmioRegs, GraphicsConfig, RenderHostRegs}
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
-/** Memory-path benchmark. CUs remain idle; full desktop promotion still needs
-  * the complete VS/FS/FPU model and native pixel/scanout qualification. */
+/** Memory-path benchmark. CUs remain idle; full desktop promotion still needs the complete VS/FS/FPU model and native
+  * pixel/scanout qualification.
+  */
 class GpuFillThroughputSpec extends AnyFlatSpec with GpuHostTestSupport {
   it should "fill guarded ranges over 512-bit AXI under translation and delayed acknowledgements" in {
     val config = GpuConfig(lanes = 4, warps = 2, l2Sets = 256, l2Ways = 4)
-    simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = 16, screenHeight = 16),
-      config, numComputeUnits = 4, memoryAxiDataBytes = 64)) { dut =>
+    simulate(
+      new GpuHostSystemAxi(
+        GraphicsConfig(screenWidth = 16, screenHeight = 16),
+        config,
+        numComputeUnits = 4,
+        memoryAxiDataBytes = 64
+      )
+    ) { dut =>
       initialize(dut)
       val memory = Array.fill[Byte](2 * 1024 * 1024)(0xa5.toByte)
       def putWord(address: Int, word: Int): Unit =
@@ -46,9 +53,14 @@ class GpuFillThroughputSpec extends AnyFlatSpec with GpuHostTestSupport {
         axiWrite(dut, GpuCommandMmioRegs.SUBMIT, 1)
         var cycles = 0
         var lines = 0
-        serviceMemoryMaster(dut, readLine, writeAckDelay = delay,
-          readResponseDelay = 1, maxCycles = 80000,
-          onCycle = () => cycles += 1) { (address, data, mask) =>
+        serviceMemoryMaster(
+          dut,
+          readLine,
+          writeAckDelay = delay,
+          readResponseDelay = 1,
+          maxCycles = 80000,
+          onCycle = () => cycles += 1
+        ) { (address, data, mask) =>
           assert(address >= physical && address + 64 <= physical + bytes)
           assert(mask == (BigInt(1) << 64) - 1)
           for (b <- 0 until 64) memory(address.toInt + b) = (data >> (8 * b)).toByte
@@ -64,7 +76,9 @@ class GpuFillThroughputSpec extends AnyFlatSpec with GpuHostTestSupport {
           assert(memory(physical - 64 + b) == 0xa5.toByte)
           assert(memory(physical + bytes + b) == 0xa5.toByte)
         }
-        println(s"FILL_MEMORY_METRICS slots=${GpuSystem.fillTransactions} vm=$vm ack_delay=$delay bytes=$bytes lines=$lines cycles=$cycles")
+        println(
+          s"FILL_MEMORY_METRICS slots=${GpuSystem.fillTransactions} vm=$vm ack_delay=$delay bytes=$bytes lines=$lines cycles=$cycles"
+        )
         // With 512-bit memory each line needs one W beat. Require at least
         // half that rate for prompt B replies and a quarter for delayed B,
         // allowing a fixed startup/page-walk margin. The two-slot design

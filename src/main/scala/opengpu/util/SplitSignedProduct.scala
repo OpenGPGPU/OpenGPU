@@ -30,8 +30,8 @@ object SplitSignedProduct {
     parts
   }
 
-  /** Resolve the exact low2W sum with two carry-save layers and a prefix sum.
-    * For split outputs this is the full signed product, including odd widths.
+  /** Resolve the exact low2W sum with two carry-save layers and a prefix sum. For split outputs this is the full signed
+    * product, including odd widths.
     */
   def join(parts: SignedProductParts): SInt = {
     val width = 2 * parts.operandWidth

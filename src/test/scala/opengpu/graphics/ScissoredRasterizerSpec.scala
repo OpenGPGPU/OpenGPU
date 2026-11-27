@@ -10,8 +10,7 @@ class ScissoredRasterizerSpec extends AnyFlatSpec {
   behavior of "bounded scissor walks on a product viewport"
   private val width = GraphicsTestResolution.width
   private val height = GraphicsTestResolution.height
-  private val positions = Seq(Seq((0, 0)), Seq((-1, -1), (1, 1)),
-    Seq((-1, -1), (1, -1), (-1, 1), (1, 1)))
+  private val positions = Seq(Seq((0, 0)), Seq((-1, -1), (1, 1)), Seq((-1, -1), (1, -1), (-1, 1), (1, 1)))
   private case class Rect(x0: Int, y0: Int, x1: Int, y1: Int) {
     def contains(x: Int, y: Int): Boolean = x >= x0 && x < x1 && y >= y0 && y < y1
   }
@@ -25,18 +24,29 @@ class ScissoredRasterizerSpec extends AnyFlatSpec {
         dut.io.sampleMode.poke(mode.U)
         def masks(rect: Rect, x: Int, y: Int): Int = {
           if (!rect.contains(x, y) || x >= width || y >= height) 0
-          else positions(mode).zipWithIndex.foldLeft(0) { case (mask, ((dx, dy), s)) =>
-            val px = 4 * x + dx; val py = 4 * y + dy
-            // The diagonal owns equality; left and bottom do not.
-            if (px > 0 && py > 0 && width.toLong * height * 4 - height.toLong * px - width.toLong * py >= 0)
-              mask | (1 << s) else mask
-          }
+          else
+            positions(mode).zipWithIndex.foldLeft(0) { case (mask, ((dx, dy), s)) =>
+              val px = 4 * x + dx; val py = 4 * y + dy
+              // The diagonal owns equality; left and bottom do not.
+              if (px > 0 && py > 0 && width.toLong * height * 4 - height.toLong * px - width.toLong * py >= 0)
+                mask | (1 << s)
+              else mask
+            }
         }
-        val rects = Seq(Rect(101, 51, 108, 58), Rect(109, 61, 116, 68), Rect(0, 0, 1, 1),
-          Rect(0, 0, 0, 8), Rect(8, 5, 3, 7), Rect(width + 20, 0, width + 30, 8), Rect(4, 8, 12, 8))
+        val rects = Seq(
+          Rect(101, 51, 108, 58),
+          Rect(109, 61, 116, 68),
+          Rect(0, 0, 1, 1),
+          Rect(0, 0, 0, 8),
+          Rect(8, 5, 3, 7),
+          Rect(width + 20, 0, width + 30, 8),
+          Rect(4, 8, 12, 8)
+        )
         for (rect <- rects) {
-          val expected = (for (y <- rect.y0 until rect.y1; x <- rect.x0 until rect.x1
-            if masks(rect, x, y) != 0) yield (x, y) -> masks(rect, x, y)).toMap
+          val expected = (for (
+            y <- rect.y0 until rect.y1; x <- rect.x0 until rect.x1
+            if masks(rect, x, y) != 0
+          ) yield (x, y) -> masks(rect, x, y)).toMap
           val origins = expected.keys.map { case (x, y) => (x & ~1, y & ~1) }.toSet
           val seen = mutable.Map.empty[(Int, Int), Int]
           val seenQuads = mutable.Set.empty[(Int, Int)]
@@ -82,21 +92,36 @@ class ScissoredRasterizerSpec extends AnyFlatSpec {
                 for (k <- 0 until 4) {
                   val p = lanes(k)
                   p.x.expect((x + (k & 1)).S); p.y.expect((y + (k >> 1)).S)
-                  sample(x + (k & 1), y + (k >> 1), p.e0.peek().litValue, p.e1.peek().litValue,
-                    p.e2.peek().litValue, p.coverageMask.peek().litValue.toInt, p.covered.peek().litToBoolean)
+                  sample(
+                    x + (k & 1),
+                    y + (k >> 1),
+                    p.e0.peek().litValue,
+                    p.e1.peek().litValue,
+                    p.e2.peek().litValue,
+                    p.coverageMask.peek().litValue.toInt,
+                    p.covered.peek().litToBoolean
+                  )
                 }
               } else {
                 val p = dut.io.pixel.bits
-                sample(p.x.peek().litValue.toInt, p.y.peek().litValue.toInt, p.e0.peek().litValue,
-                  p.e1.peek().litValue, p.e2.peek().litValue, p.coverageMask.peek().litValue.toInt,
-                  p.covered.peek().litToBoolean)
+                sample(
+                  p.x.peek().litValue.toInt,
+                  p.y.peek().litValue.toInt,
+                  p.e0.peek().litValue,
+                  p.e1.peek().litValue,
+                  p.e2.peek().litValue,
+                  p.coverageMask.peek().litValue.toInt,
+                  p.covered.peek().litToBoolean
+                )
               }
             }
             dut.clock.step(); cycle += 1
           }
           assert(cycle < 120, s"scissor walk exceeded its tile-sized bound for $rect")
           assert(seen.toMap == expected && (!quad || seenQuads.toSet == origins))
-          info(s"quad=$quad tile=$tile mode=$mode rect=$rect coveredPixels=${seen.size} quads=${seenQuads.size} cycles=$cycle")
+          info(
+            s"quad=$quad tile=$tile mode=$mode rect=$rect coveredPixels=${seen.size} quads=${seenQuads.size} cycles=$cycle"
+          )
         }
       }
     }

@@ -8,8 +8,8 @@ class TileDrawBinnerSpec extends AnyFlatSpec {
   behavior of "TileDrawBinner"
 
   it should "walk only the programmed mode on a larger elaborated screen" in {
-    val cfg = GraphicsConfig(screenWidth = 32, screenHeight = 16,
-      tileSize = 16, tileAttachments = true, tileBinning = true)
+    val cfg =
+      GraphicsConfig(screenWidth = 32, screenHeight = 16, tileSize = 16, tileAttachments = true, tileBinning = true)
     simulate(new TileDrawBinner(cfg)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step()
@@ -43,21 +43,22 @@ class TileDrawBinnerSpec extends AnyFlatSpec {
         if (!sent && dut.io.drawIn.ready.peek().litToBoolean) sent = true
         if (sent) dut.io.inputDone.poke(true.B)
         if (dut.io.drawOut.valid.peek().litToBoolean)
-          seen += ((dut.io.drawOut.bits.scissorMinX.peek().litValue.toInt,
-            dut.io.drawOut.bits.scissorMinY.peek().litValue.toInt))
+          seen += ((
+            dut.io.drawOut.bits.scissorMinX.peek().litValue.toInt,
+            dut.io.drawOut.bits.scissorMinY.peek().litValue.toInt
+          ))
         dut.clock.step()
         cycles += 1
       }
       assert(cycles < 400, s"binner did not finish, seen=$seen")
       assert(seen.contains((0, 0)), s"missing the origin tile: $seen")
-      assert(seen.forall { case (x, y) => x < 16 && y < 16 },
-        s"walked tiles outside the programmed 16x16 mode: $seen")
+      assert(seen.forall { case (x, y) => x < 16 && y < 16 }, s"walked tiles outside the programmed 16x16 mode: $seen")
     }
   }
 
   it should "retain all desktop triangle tiles at 640x480" in {
-    val cfg = GraphicsConfig(screenWidth = 640, screenHeight = 480,
-      tileSize = 16, tileAttachments = true, tileBinning = true)
+    val cfg =
+      GraphicsConfig(screenWidth = 640, screenHeight = 480, tileSize = 16, tileAttachments = true, tileBinning = true)
     def ndc(pixel: Int, extent: Int): Int =
       (((pixel.toLong * 2 - extent) << 16) / extent).toInt
     simulate(new TileDrawBinner(cfg)) { dut =>
@@ -88,8 +89,10 @@ class TileDrawBinnerSpec extends AnyFlatSpec {
         if (!sent && dut.io.drawIn.ready.peek().litToBoolean) sent = true
         if (sent) dut.io.inputDone.poke(true.B)
         if (dut.io.drawOut.valid.peek().litToBoolean)
-          seen += ((dut.io.drawOut.bits.scissorMinX.peek().litValue.toInt,
-            dut.io.drawOut.bits.scissorMinY.peek().litValue.toInt))
+          seen += ((
+            dut.io.drawOut.bits.scissorMinX.peek().litValue.toInt,
+            dut.io.drawOut.bits.scissorMinY.peek().litValue.toInt
+          ))
         dut.clock.step()
         cycles += 1
       }
@@ -98,14 +101,13 @@ class TileDrawBinnerSpec extends AnyFlatSpec {
         y <- 48 until 464 by 16
         x <- 16 until 336 by 16
       } yield (x, y)
-      assert(expected.forall(seen.contains),
-        s"missing desktop tiles: ${expected.filterNot(seen.contains)}")
+      assert(expected.forall(seen.contains), s"missing desktop tiles: ${expected.filterNot(seen.contains)}")
     }
   }
 
   it should "replay ordered draws per tile and intersect their scissors" in {
-    val cfg = GraphicsConfig(screenWidth = 30, screenHeight = 16,
-      tileSize = 16, tileAttachments = true, tileBinning = true)
+    val cfg =
+      GraphicsConfig(screenWidth = 30, screenHeight = 16, tileSize = 16, tileAttachments = true, tileBinning = true)
     simulate(new TileDrawBinner(cfg)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step()
@@ -139,9 +141,11 @@ class TileDrawBinnerSpec extends AnyFlatSpec {
           dut.io.inputDone.poke(true.B)
         }
         if (dut.io.drawOut.valid.peek().litToBoolean) {
-          seen += ((dut.io.drawOut.bits.shaderPc.peek().litValue.toInt,
+          seen += ((
+            dut.io.drawOut.bits.shaderPc.peek().litValue.toInt,
             dut.io.drawOut.bits.scissorMinX.peek().litValue.toInt,
-            dut.io.drawOut.bits.scissorMaxX.peek().litValue.toInt))
+            dut.io.drawOut.bits.scissorMaxX.peek().litValue.toInt
+          ))
           dut.io.drawOut.bits.scissorEnable.expect(true.B)
         }
         if (dut.io.passEnd.peek().litToBoolean) passEnds += 1
@@ -149,15 +153,14 @@ class TileDrawBinnerSpec extends AnyFlatSpec {
         cycles += 1
       }
       assert(cycles < 100, "tile draw replay did not finish")
-      assert(seen.toSeq == Seq((1, 0, 16), (2, 8, 16),
-        (1, 16, 30), (2, 16, 24)))
+      assert(seen.toSeq == Seq((1, 0, 16), (2, 8, 16), (1, 16, 30), (2, 16, 24)))
       assert(passEnds == 1)
     }
   }
 
   it should "flush between bounded chunks without losing later commands" in {
-    val cfg = GraphicsConfig(screenWidth = 16, screenHeight = 16,
-      tileSize = 16, tileAttachments = true, tileBinning = true)
+    val cfg =
+      GraphicsConfig(screenWidth = 16, screenHeight = 16, tileSize = 16, tileAttachments = true, tileBinning = true)
     simulate(new TileDrawBinner(cfg)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step()
@@ -193,8 +196,8 @@ class TileDrawBinnerSpec extends AnyFlatSpec {
   }
 
   it should "skip tiles outside conservative clip-space triangle bounds" in {
-    val cfg = GraphicsConfig(screenWidth = 32, screenHeight = 16,
-      tileSize = 16, tileAttachments = true, tileBinning = true)
+    val cfg =
+      GraphicsConfig(screenWidth = 32, screenHeight = 16, tileSize = 16, tileAttachments = true, tileBinning = true)
     simulate(new TileDrawBinner(cfg)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step()
@@ -225,8 +228,10 @@ class TileDrawBinnerSpec extends AnyFlatSpec {
         if (sent < 2 && dut.io.drawIn.ready.peek().litToBoolean) sent += 1
         if (sent == 2) dut.io.inputDone.poke(true.B)
         if (dut.io.drawOut.valid.peek().litToBoolean)
-          seen += ((dut.io.drawOut.bits.shaderPc.peek().litValue.toInt,
-            dut.io.drawOut.bits.scissorMinX.peek().litValue.toInt))
+          seen += ((
+            dut.io.drawOut.bits.shaderPc.peek().litValue.toInt,
+            dut.io.drawOut.bits.scissorMinX.peek().litValue.toInt
+          ))
         dut.clock.step()
         cycles += 1
       }
@@ -236,8 +241,8 @@ class TileDrawBinnerSpec extends AnyFlatSpec {
   }
 
   it should "replay sparse tile masks in submission order" in {
-    val cfg = GraphicsConfig(screenWidth = 32, screenHeight = 16,
-      tileSize = 16, tileAttachments = true, tileBinning = true)
+    val cfg =
+      GraphicsConfig(screenWidth = 32, screenHeight = 16, tileSize = 16, tileAttachments = true, tileBinning = true)
     simulate(new TileDrawBinner(cfg)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step()
@@ -267,20 +272,21 @@ class TileDrawBinnerSpec extends AnyFlatSpec {
         if (sent < 5 && dut.io.drawIn.ready.peek().litToBoolean) sent += 1
         if (sent == 5) dut.io.inputDone.poke(true.B)
         if (dut.io.drawOut.valid.peek().litToBoolean)
-          seen += ((dut.io.drawOut.bits.scissorMinX.peek().litValue.toInt,
-            dut.io.drawOut.bits.shaderPc.peek().litValue.toInt))
+          seen += ((
+            dut.io.drawOut.bits.scissorMinX.peek().litValue.toInt,
+            dut.io.drawOut.bits.shaderPc.peek().litValue.toInt
+          ))
         dut.clock.step()
         cycles += 1
       }
       assert(cycles < 150)
-      assert(seen.toSeq == Seq((0, 1), (0, 3), (0, 5),
-        (16, 2), (16, 4), (16, 5)))
+      assert(seen.toSeq == Seq((0, 1), (0, 3), (0, 5), (16, 2), (16, 4), (16, 5)))
     }
   }
 
   it should "skip per-draw geometry scans for tiles outside every scissor" in {
-    val cfg = GraphicsConfig(screenWidth = 64, screenHeight = 64,
-      tileSize = 16, tileAttachments = true, tileBinning = true)
+    val cfg =
+      GraphicsConfig(screenWidth = 64, screenHeight = 64, tileSize = 16, tileAttachments = true, tileBinning = true)
     simulate(new TileDrawBinner(cfg)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step()
@@ -319,8 +325,8 @@ class TileDrawBinnerSpec extends AnyFlatSpec {
   }
 
   it should "prefilter unscissored triangles by their conservative tile ranges" in {
-    val cfg = GraphicsConfig(screenWidth = 64, screenHeight = 64,
-      tileSize = 16, tileAttachments = true, tileBinning = true)
+    val cfg =
+      GraphicsConfig(screenWidth = 64, screenHeight = 64, tileSize = 16, tileAttachments = true, tileBinning = true)
     simulate(new TileDrawBinner(cfg)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step()
@@ -354,9 +360,11 @@ class TileDrawBinnerSpec extends AnyFlatSpec {
         if (sent < 8 && dut.io.drawIn.ready.peek().litToBoolean) sent += 1
         if (sent == 8) dut.io.inputDone.poke(true.B)
         if (dut.io.drawOut.valid.peek().litToBoolean)
-          seen += ((dut.io.drawOut.bits.shaderPc.peek().litValue.toInt,
+          seen += ((
+            dut.io.drawOut.bits.shaderPc.peek().litValue.toInt,
             dut.io.drawOut.bits.scissorMinX.peek().litValue.toInt,
-            dut.io.drawOut.bits.scissorMinY.peek().litValue.toInt))
+            dut.io.drawOut.bits.scissorMinY.peek().litValue.toInt
+          ))
         dut.clock.step()
         cycles += 1
       }
@@ -366,8 +374,8 @@ class TileDrawBinnerSpec extends AnyFlatSpec {
   }
 
   it should "omit an unscissored triangle entirely outside the target" in {
-    val cfg = GraphicsConfig(screenWidth = 32, screenHeight = 16,
-      tileSize = 16, tileAttachments = true, tileBinning = true)
+    val cfg =
+      GraphicsConfig(screenWidth = 32, screenHeight = 16, tileSize = 16, tileAttachments = true, tileBinning = true)
     simulate(new TileDrawBinner(cfg)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step()
@@ -402,8 +410,8 @@ class TileDrawBinnerSpec extends AnyFlatSpec {
   }
 
   it should "use bounded searches for sparse geometry on a wider grid" in {
-    val cfg = GraphicsConfig(screenWidth = 256, screenHeight = 64,
-      tileSize = 16, tileAttachments = true, tileBinning = true)
+    val cfg =
+      GraphicsConfig(screenWidth = 256, screenHeight = 64, tileSize = 16, tileAttachments = true, tileBinning = true)
     simulate(new TileDrawBinner(cfg)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step()
@@ -441,21 +449,33 @@ class TileDrawBinnerSpec extends AnyFlatSpec {
         if (sent < 8 && dut.io.drawIn.ready.peek().litToBoolean) sent += 1
         if (sent == 8) dut.io.inputDone.poke(true.B)
         if (dut.io.drawOut.valid.peek().litToBoolean)
-          seen += ((dut.io.drawOut.bits.shaderPc.peek().litValue.toInt,
+          seen += ((
+            dut.io.drawOut.bits.shaderPc.peek().litValue.toInt,
             dut.io.drawOut.bits.scissorMinX.peek().litValue.toInt,
-            dut.io.drawOut.bits.scissorMinY.peek().litValue.toInt))
+            dut.io.drawOut.bits.scissorMinY.peek().litValue.toInt
+          ))
         dut.clock.step()
         cycles += 1
       }
-      assert(seen.toSeq == Seq((1, 0, 0), (3, 0, 0), (5, 0, 0), (7, 0, 0),
-        (2, 128, 32), (4, 128, 32), (6, 128, 32), (8, 128, 32)))
+      assert(
+        seen.toSeq == Seq(
+          (1, 0, 0),
+          (3, 0, 0),
+          (5, 0, 0),
+          (7, 0, 0),
+          (2, 128, 32),
+          (4, 128, 32),
+          (6, 128, 32),
+          (8, 128, 32)
+        )
+      )
       assert(cycles < 500, s"wide-grid bounds search took $cycles cycles")
     }
   }
 
   it should "discard triangles beyond either side of a wide target" in {
-    val cfg = GraphicsConfig(screenWidth = 256, screenHeight = 64,
-      tileSize = 16, tileAttachments = true, tileBinning = true)
+    val cfg =
+      GraphicsConfig(screenWidth = 256, screenHeight = 64, tileSize = 16, tileAttachments = true, tileBinning = true)
     simulate(new TileDrawBinner(cfg)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step()

@@ -16,12 +16,10 @@ class SharedAtomicExecuteStageSpec extends AnyFlatSpec {
       dut.io.in.valid.poke(false.B)
       dut.io.atomicRequest.ready.poke(true.B)
       dut.io.atomicResponse.valid.poke(false.B)
-      dut.io.atomicResponse.bits.poke(
-        0.U.asTypeOf(dut.io.atomicResponse.bits))
+      dut.io.atomicResponse.bits.poke(0.U.asTypeOf(dut.io.atomicResponse.bits))
       dut.io.globalAtomicRequest.ready.poke(true.B)
       dut.io.globalAtomicResponse.valid.poke(false.B)
-      dut.io.globalAtomicResponse.bits.poke(
-        0.U.asTypeOf(dut.io.globalAtomicResponse.bits))
+      dut.io.globalAtomicResponse.bits.poke(0.U.asTypeOf(dut.io.globalAtomicResponse.bits))
       dut.io.out.ready.poke(true.B)
       dut.io.unimplemented.ready.poke(false.B)
       dut.io.fault.ready.poke(true.B)
@@ -117,39 +115,39 @@ class SharedAtomicExecuteStageSpec extends AnyFlatSpec {
   }
 
   it should "retain the original virtual AMO address and page-fault cause through held traps and healthy reuse" in {
-    val config=GpuConfig(lanes=4,warps=2)
-    simulate(new SharedAtomicExecuteStage(config)){d=>
-      d.io.in.valid.poke(false.B);d.io.in.bits.poke(0.U.asTypeOf(d.io.in.bits))
-      d.io.atomicRequest.ready.poke(true.B);d.io.atomicResponse.valid.poke(false.B)
+    val config = GpuConfig(lanes = 4, warps = 2)
+    simulate(new SharedAtomicExecuteStage(config)) { d =>
+      d.io.in.valid.poke(false.B); d.io.in.bits.poke(0.U.asTypeOf(d.io.in.bits))
+      d.io.atomicRequest.ready.poke(true.B); d.io.atomicResponse.valid.poke(false.B)
       d.io.atomicResponse.bits.poke(0.U.asTypeOf(d.io.atomicResponse.bits))
-      d.io.globalAtomicRequest.ready.poke(true.B);d.io.globalAtomicResponse.valid.poke(false.B)
+      d.io.globalAtomicRequest.ready.poke(true.B); d.io.globalAtomicResponse.valid.poke(false.B)
       d.io.globalAtomicResponse.bits.poke(0.U.asTypeOf(d.io.globalAtomicResponse.bits))
-      d.io.out.ready.poke(false.B);d.io.fault.ready.poke(false.B);d.io.unimplemented.ready.poke(false.B)
-      d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
-      def issue(address: BigInt): Unit={
-        d.io.in.ready.expect(true.B);d.io.in.valid.poke(true.B)
-        d.io.in.bits.rs1Data.poke(address.U);d.io.in.bits.rs2Data.poke(3.U)
-        d.io.in.bits.decode.pc.poke(0x444.U);d.io.in.bits.decode.warpId.poke(1.U)
-        d.io.in.bits.decode.activeMask.poke(15.U);d.io.in.bits.decode.decoded.rd.poke(7.U)
-        d.io.in.bits.decode.decoded.writeRd.poke(true.B);d.io.in.bits.decode.decoded.atomicOp.poke(AtomicMemoryOp.add)
-        d.clock.step();d.io.in.valid.poke(false.B);d.io.globalAtomicRequest.valid.expect(true.B);d.clock.step()
+      d.io.out.ready.poke(false.B); d.io.fault.ready.poke(false.B); d.io.unimplemented.ready.poke(false.B)
+      d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
+      def issue(address: BigInt): Unit = {
+        d.io.in.ready.expect(true.B); d.io.in.valid.poke(true.B)
+        d.io.in.bits.rs1Data.poke(address.U); d.io.in.bits.rs2Data.poke(3.U)
+        d.io.in.bits.decode.pc.poke(0x444.U); d.io.in.bits.decode.warpId.poke(1.U)
+        d.io.in.bits.decode.activeMask.poke(15.U); d.io.in.bits.decode.decoded.rd.poke(7.U)
+        d.io.in.bits.decode.decoded.writeRd.poke(true.B); d.io.in.bits.decode.decoded.atomicOp.poke(AtomicMemoryOp.add)
+        d.clock.step(); d.io.in.valid.poke(false.B); d.io.globalAtomicRequest.valid.expect(true.B); d.clock.step()
       }
-      issue(BigInt("81234004",16))
-      d.io.globalAtomicResponse.valid.poke(true.B);d.io.globalAtomicResponse.bits.warpId.poke(1.U)
-      d.io.globalAtomicResponse.bits.fault.poke(true.B);d.io.globalAtomicResponse.bits.pageFault.poke(true.B)
-      d.clock.step();d.io.globalAtomicResponse.valid.poke(false.B)
-      d.io.out.valid.expect(false.B);d.io.fault.valid.expect(true.B)
-      d.io.fault.bits.address.expect("h81234004".U);d.io.fault.bits.pc.expect(0x444.U)
-      d.io.fault.bits.pageFault.expect(true.B);d.io.fault.bits.misaligned.expect(false.B)
-      d.io.fault.bits.isStore.expect(true.B);d.io.fault.bits.rd.expect(7.U)
-      val held=d.io.fault.bits.peek().litValue
-      for(_<-0 until 4){d.clock.step();assert(d.io.fault.bits.peek().litValue==held)}
-      d.io.fault.ready.poke(true.B);d.clock.step();d.io.fault.ready.poke(false.B)
+      issue(BigInt("81234004", 16))
+      d.io.globalAtomicResponse.valid.poke(true.B); d.io.globalAtomicResponse.bits.warpId.poke(1.U)
+      d.io.globalAtomicResponse.bits.fault.poke(true.B); d.io.globalAtomicResponse.bits.pageFault.poke(true.B)
+      d.clock.step(); d.io.globalAtomicResponse.valid.poke(false.B)
+      d.io.out.valid.expect(false.B); d.io.fault.valid.expect(true.B)
+      d.io.fault.bits.address.expect("h81234004".U); d.io.fault.bits.pc.expect(0x444.U)
+      d.io.fault.bits.pageFault.expect(true.B); d.io.fault.bits.misaligned.expect(false.B)
+      d.io.fault.bits.isStore.expect(true.B); d.io.fault.bits.rd.expect(7.U)
+      val held = d.io.fault.bits.peek().litValue
+      for (_ <- 0 until 4) { d.clock.step(); assert(d.io.fault.bits.peek().litValue == held) }
+      d.io.fault.ready.poke(true.B); d.clock.step(); d.io.fault.ready.poke(false.B)
       issue(0x4004)
-      d.io.globalAtomicResponse.bits.fault.poke(false.B);d.io.globalAtomicResponse.bits.pageFault.poke(false.B)
-      d.io.globalAtomicResponse.bits.oldValue.poke(12.U);d.io.globalAtomicResponse.valid.poke(true.B)
-      d.clock.step();d.io.globalAtomicResponse.valid.poke(false.B)
-      d.io.fault.valid.expect(false.B);d.io.out.valid.expect(true.B);d.io.out.bits.data.expect(12.U)
+      d.io.globalAtomicResponse.bits.fault.poke(false.B); d.io.globalAtomicResponse.bits.pageFault.poke(false.B)
+      d.io.globalAtomicResponse.bits.oldValue.poke(12.U); d.io.globalAtomicResponse.valid.poke(true.B)
+      d.clock.step(); d.io.globalAtomicResponse.valid.poke(false.B)
+      d.io.fault.valid.expect(false.B); d.io.out.valid.expect(true.B); d.io.out.bits.data.expect(12.U)
     }
   }
 }

@@ -3,7 +3,8 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 
-class QuadTexUVRequest(config: GraphicsConfig, biasedClamp: Boolean = false, mirroredRepeat: Boolean = false) extends Bundle {
+class QuadTexUVRequest(config: GraphicsConfig, biasedClamp: Boolean = false, mirroredRepeat: Boolean = false)
+    extends Bundle {
   val fragment = new FragmentQuad(config)
   val depths = Vec(4, Vec(config.maxSampleCount, UInt(30.W)))
   val inverseW = Vec(3, SInt(32.W))
@@ -21,12 +22,12 @@ class QuadTexUVResult(config: GraphicsConfig) extends Bundle {
   val divideByZero = Vec(4, Bool())
 }
 
-/** Four exact perspective streams with one shared, ordered metadata store.
-  * Every helper lane is interpolated, including uncovered lanes used by
-  * derivatives. Input and output handshakes are atomic across all four lanes;
-  * live draw attributes cannot replace a queued fragment or its sample depths.
+/** Four exact perspective streams with one shared, ordered metadata store. Every helper lane is interpolated, including
+  * uncovered lanes used by derivatives. Input and output handshakes are atomic across all four lanes; live draw
+  * attributes cannot replace a queued fragment or its sample depths.
   */
-class PipelinedQuadTexUV(config: GraphicsConfig, biasedClamp: Boolean = false, mirroredRepeat: Boolean = false) extends Module {
+class PipelinedQuadTexUV(config: GraphicsConfig, biasedClamp: Boolean = false, mirroredRepeat: Boolean = false)
+    extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new QuadTexUVRequest(config, biasedClamp, mirroredRepeat)))
     val out = Decoupled(new QuadTexUVResult(config))
@@ -35,14 +36,19 @@ class PipelinedQuadTexUV(config: GraphicsConfig, biasedClamp: Boolean = false, m
   private val lanes = Seq.fill(4)(Module(new PipelinedTexUVInterpolator(config)))
   val latency: Int = lanes.head.latency
   private val capacity = latency + 2
-  private val metadata = Module(new Queue(new Bundle {
-    val fragment = new FragmentQuad(config)
-    val depths = Vec(4, Vec(config.maxSampleCount, UInt(30.W)))
-    val clampBiasedU = if (biasedClamp) Some(Bool()) else None
-    val clampBiasedV = if (biasedClamp) Some(Bool()) else None
-    val mirrorU = if (mirroredRepeat) Some(Bool()) else None
-    val mirrorV = if (mirroredRepeat) Some(Bool()) else None
-  }, capacity))
+  private val metadata = Module(
+    new Queue(
+      new Bundle {
+        val fragment = new FragmentQuad(config)
+        val depths = Vec(4, Vec(config.maxSampleCount, UInt(30.W)))
+        val clampBiasedU = if (biasedClamp) Some(Bool()) else None
+        val clampBiasedV = if (biasedClamp) Some(Bool()) else None
+        val mirrorU = if (mirroredRepeat) Some(Bool()) else None
+        val mirrorV = if (mirroredRepeat) Some(Bool()) else None
+      },
+      capacity
+    )
+  )
   private val laneReady = VecInit(lanes.map(_.io.in.ready)).asUInt.andR
   io.in.ready := metadata.io.enq.ready && laneReady
   metadata.io.enq.valid := io.in.valid && laneReady
@@ -74,10 +80,16 @@ class PipelinedQuadTexUV(config: GraphicsConfig, biasedClamp: Boolean = false, m
       // weights are nonnegative, so the offset commutes with interpolation.
       // Values below the offset clamp to zero; the rest subtract the offset.
       def unbias(value: UInt): UInt = Mux(value(31), Cat(0.U(1.W), value(30, 0)), 0.U(32.W))
-      io.out.bits.coordinates(k).u := Mux(metadata.io.deq.bits.clampBiasedU.get,
-        unbias(lane.io.out.bits.coordinates.u), lane.io.out.bits.coordinates.u)
-      io.out.bits.coordinates(k).v := Mux(metadata.io.deq.bits.clampBiasedV.get,
-        unbias(lane.io.out.bits.coordinates.v), lane.io.out.bits.coordinates.v)
+      io.out.bits.coordinates(k).u := Mux(
+        metadata.io.deq.bits.clampBiasedU.get,
+        unbias(lane.io.out.bits.coordinates.u),
+        lane.io.out.bits.coordinates.u
+      )
+      io.out.bits.coordinates(k).v := Mux(
+        metadata.io.deq.bits.clampBiasedV.get,
+        unbias(lane.io.out.bits.coordinates.v),
+        lane.io.out.bits.coordinates.v
+      )
     }
     if (mirroredRepeat) {
       // The 2^31 input bias is an even number of Q16.16 periods. Reflect

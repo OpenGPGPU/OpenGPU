@@ -2,9 +2,8 @@ package opengpu.util
 
 import chisel3._
 
-/** Exact partial products for a signed32 by signed32 multiply. Low halves
-  * are unsigned; high halves are signed. No carry propagation follows the
-  * individual multipliers, allowing a register boundary before assembly.
+/** Exact partial products for a signed32 by signed32 multiply. Low halves are unsigned; high halves are signed. No
+  * carry propagation follows the individual multipliers, allowing a register boundary before assembly.
   */
 class SignedProduct32Parts extends Bundle {
   val low = UInt(32.W)
@@ -28,9 +27,8 @@ object SignedProduct32 {
     parts
   }
 
-  /** Two carry-save reductions and one prefix propagation give the exact
-    * low64 sum for arbitrary partials. For split's signed32 inputs this is
-    * the full signed product, since their product fits in signed64.
+  /** Two carry-save reductions and one prefix propagation give the exact low64 sum for arbitrary partials. For split's
+    * signed32 inputs this is the full signed product, since their product fits in signed64.
     */
   def join(parts: SignedProduct32Parts): SInt = {
     def shifted(x: SInt, bits: Int): UInt = (x.pad(64) << bits)(63, 0)

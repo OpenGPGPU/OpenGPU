@@ -11,8 +11,7 @@ class FpuFastMappedRequest(config: GpuConfig, tagWidth: Int) extends Bundle {
 }
 
 /** Maps RV32F fast arithmetic encodings onto fpnew_fma operand conventions. */
-class FpuFastMapper(config: GpuConfig = GpuConfig(), tagWidth: Int = 16)
-    extends Module {
+class FpuFastMapper(config: GpuConfig = GpuConfig(), tagWidth: Int = 16) extends Module {
   val io = IO(new Bundle {
     val in = Input(new FpuDecodeResponse(config))
     val rs1Data = Input(UInt(32.W))
@@ -74,11 +73,13 @@ class FpuFastMapper(config: GpuConfig = GpuConfig(), tagWidth: Int = 16)
   )
   // The exact unit numbers predicates as 0 ==, 1 <, 2 <=. RISC-V funct3 is
   // 0 <= (fle), 1 < (flt), 2 == (feq).
-  private val compareFunction = MuxLookup(io.in.instruction(14, 12), 0.U)(Seq(
-    0.U -> 2.U,
-    1.U -> 1.U,
-    2.U -> 0.U
-  ))
+  private val compareFunction = MuxLookup(io.in.instruction(14, 12), 0.U)(
+    Seq(
+      0.U -> 2.U,
+      1.U -> 1.U,
+      2.U -> 0.U
+    )
+  )
   io.out.request.exactFunction := Mux(
     isFpToInt || isIntToFp,
     io.in.instruction(24, 20)(0),
@@ -90,8 +91,7 @@ class FpuFastMapper(config: GpuConfig = GpuConfig(), tagWidth: Int = 16)
     io.out.request.operandA := io.rs1Data
     io.out.request.operandB := io.rs2Data
     io.out.request.operandC := io.rs3Data
-    io.out.request.operation := Mux(isFnmsub || isFnmadd,
-      Fp32Operation.fnmsub, Fp32Operation.fmadd)
+    io.out.request.operation := Mux(isFnmsub || isFnmadd, Fp32Operation.fnmsub, Fp32Operation.fmadd)
     io.out.request.operationModifier := isFmsub || isFnmadd
   }.elsewhen(isAdd || isSub) {
     // fpnew_fma implements ADD as 1.0 * operandB + operandC.
@@ -111,16 +111,28 @@ class FpuFastMapper(config: GpuConfig = GpuConfig(), tagWidth: Int = 16)
     io.out.request.operandA := io.rs1Data
     io.out.request.operation := Fp32Operation.sqrt
   }.elsewhen(isExact) {
-    io.out.request.operandA := Mux(
-      isFmvFromX || isIntToFp, io.scalarRs1Data, io.rs1Data)
+    io.out.request.operandA := Mux(isFmvFromX || isIntToFp, io.scalarRs1Data, io.rs1Data)
     io.out.request.operandB := io.rs2Data
-    io.out.request.operation := Mux(isSgnj, Fp32Operation.sgnj,
-      Mux(isMinMax, Fp32Operation.minmax,
-        Mux(isCompare, Fp32Operation.compare,
-          Mux(isClass, Fp32Operation.classify,
-            Mux(isFmvFromX, Fp32Operation.fmvFromX,
-              Mux(isFpToInt, Fp32Operation.fpToInt,
-                Mux(isIntToFp, Fp32Operation.intToFp,
-                  Fp32Operation.fmvX)))))))
+    io.out.request.operation := Mux(
+      isSgnj,
+      Fp32Operation.sgnj,
+      Mux(
+        isMinMax,
+        Fp32Operation.minmax,
+        Mux(
+          isCompare,
+          Fp32Operation.compare,
+          Mux(
+            isClass,
+            Fp32Operation.classify,
+            Mux(
+              isFmvFromX,
+              Fp32Operation.fmvFromX,
+              Mux(isFpToInt, Fp32Operation.fpToInt, Mux(isIntToFp, Fp32Operation.intToFp, Fp32Operation.fmvX))
+            )
+          )
+        )
+      )
+    )
   }
 }

@@ -65,8 +65,13 @@ class GpuCommandMmioSpec extends AnyFlatSpec {
 
   for ((lanes, warps, banks, cus) <- Seq((4, 2, 2, 1), (4, 2, 2, 2), (4, 2, 8, 4), (16, 8, 8, 4))) {
     it should s"report immutable shader resources lanes=$lanes warps=$warps banks=$banks CUs=$cus" in {
-      simulate(new GpuCommandMmio(GpuConfig(lanes = lanes, warps = warps),
-        shaderComputeUnits = cus, shaderKernargBanks = banks)) { dut =>
+      simulate(
+        new GpuCommandMmio(
+          GpuConfig(lanes = lanes, warps = warps),
+          shaderComputeUnits = cus,
+          shaderKernargBanks = banks
+        )
+      ) { dut =>
         dut.io.reg.req.valid.poke(false.B)
         dut.io.reg.resp.ready.poke(true.B)
         dut.io.command.ready.poke(false.B)
@@ -108,8 +113,7 @@ class GpuCommandMmioSpec extends AnyFlatSpec {
   }
 
   it should "snapshot commands and retain completions until software pops them" in {
-    simulate(new GpuCommandMmio(
-      GpuConfig(lanes = 4, warps = 2), queueDepth = 2)) { dut =>
+    simulate(new GpuCommandMmio(GpuConfig(lanes = 4, warps = 2), queueDepth = 2)) { dut =>
       dut.io.reg.req.valid.poke(false.B)
       dut.io.reg.resp.ready.poke(true.B)
       dut.io.command.ready.poke(false.B)
@@ -118,8 +122,7 @@ class GpuCommandMmioSpec extends AnyFlatSpec {
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
 
       write(dut, GpuCommandMmioRegs.COMMAND_ID, 0x2a)
-      write(dut, GpuCommandMmioRegs.OPCODE,
-        GpuCommandOpcode.stridedCopy.litValue)
+      write(dut, GpuCommandMmioRegs.OPCODE, GpuCommandOpcode.stridedCopy.litValue)
       write(dut, GpuCommandMmioRegs.SOURCE, 0x1000)
       write(dut, GpuCommandMmioRegs.DESTINATION, 0x4000)
       write(dut, GpuCommandMmioRegs.WIDTH, 128)
@@ -133,8 +136,7 @@ class GpuCommandMmioSpec extends AnyFlatSpec {
       write(dut, GpuCommandMmioRegs.SAMPLE_MODE, 2)
       write(dut, GpuCommandMmioRegs.SUBMIT, 1)
 
-      assert(read(dut, GpuCommandMmioRegs.SAMPLE_MODE) == 2L,
-        "the resolve sample mode must round-trip")
+      assert(read(dut, GpuCommandMmioRegs.SAMPLE_MODE) == 2L, "the resolve sample mode must round-trip")
       dut.io.command.valid.expect(true.B)
       dut.io.command.bits.commandId.expect(0x2a.U)
       dut.io.command.bits.opcode.expect(GpuCommandOpcode.stridedCopy)
@@ -192,8 +194,7 @@ class GpuCommandMmioSpec extends AnyFlatSpec {
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
 
       // A full flush sets no scope bit.
-      write(dut, GpuCommandMmioRegs.TLB_FLUSH,
-        GpuCommandMmioRegs.TLB_FLUSH_FULL)
+      write(dut, GpuCommandMmioRegs.TLB_FLUSH, GpuCommandMmioRegs.TLB_FLUSH_FULL)
       dut.io.tlbFlush.valid.expect(true.B)
       dut.io.tlbFlush.bits.asidValid.expect(false.B)
       dut.io.tlbFlush.bits.virtualPageNumberValid.expect(false.B)
@@ -202,8 +203,10 @@ class GpuCommandMmioSpec extends AnyFlatSpec {
 
       // ASID-scoped flush carries the 9-bit ASID.
       val asid = 0x155
-      val asidField = BigInt(GpuCommandMmioRegs.TLB_FLUSH_ASID |
-        (asid << GpuCommandMmioRegs.TLB_FLUSH_ASID_SHIFT))
+      val asidField = BigInt(
+        GpuCommandMmioRegs.TLB_FLUSH_ASID |
+          (asid << GpuCommandMmioRegs.TLB_FLUSH_ASID_SHIFT)
+      )
       write(dut, GpuCommandMmioRegs.TLB_FLUSH, asidField)
       dut.io.tlbFlush.valid.expect(true.B)
       dut.io.tlbFlush.bits.asidValid.expect(true.B)
@@ -228,8 +231,7 @@ class GpuCommandMmioSpec extends AnyFlatSpec {
       dut.io.tlbFlush.bits.asidValid.expect(true.B)
       dut.io.tlbFlush.bits.virtualPageNumberValid.expect(true.B)
       dut.clock.step()
-      write(dut, GpuCommandMmioRegs.TLB_FLUSH,
-        GpuCommandMmioRegs.TLB_FLUSH_FULL | GpuCommandMmioRegs.TLB_FLUSH_ASID)
+      write(dut, GpuCommandMmioRegs.TLB_FLUSH, GpuCommandMmioRegs.TLB_FLUSH_FULL | GpuCommandMmioRegs.TLB_FLUSH_ASID)
       dut.io.tlbFlush.valid.expect(true.B)
       dut.io.tlbFlush.bits.asidValid.expect(false.B)
       dut.io.tlbFlush.bits.virtualPageNumberValid.expect(false.B)
@@ -259,8 +261,7 @@ class GpuCommandMmioSpec extends AnyFlatSpec {
   }
 
   it should "retain the visible completion while a second result is backpressured" in {
-    simulate(new GpuCommandMmio(
-      GpuConfig(lanes = 4, warps = 2), queueDepth = 2)) { dut =>
+    simulate(new GpuCommandMmio(GpuConfig(lanes = 4, warps = 2), queueDepth = 2)) { dut =>
       dut.io.reg.req.valid.poke(false.B)
       dut.io.reg.resp.ready.poke(true.B)
       dut.io.command.ready.poke(false.B)
@@ -309,8 +310,7 @@ class GpuCommandMmioSpec extends AnyFlatSpec {
   }
 
   it should "drain staged commands, reject submissions and drop completions during reset" in {
-    simulate(new GpuCommandMmio(
-      GpuConfig(lanes = 4, warps = 2), queueDepth = 2)) { dut =>
+    simulate(new GpuCommandMmio(GpuConfig(lanes = 4, warps = 2), queueDepth = 2)) { dut =>
       dut.io.reg.req.valid.poke(false.B)
       dut.io.reg.resp.ready.poke(true.B)
       dut.io.command.ready.poke(false.B)

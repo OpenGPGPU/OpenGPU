@@ -15,8 +15,8 @@ class ComputeTextureTask extends Bundle {
   val identity = new GraphicsWorkIdentity
 }
 
-/** Correlate the selected texture fault with the first failed line reply.
-  * The texture owner drains both slots and selects its first observed failure.
+/** Correlate the selected texture fault with the first failed line reply. The texture owner drains both slots and
+  * selects its first observed failure.
   */
 class ComputeTextureFaultCause extends Module {
   val io = IO(new Bundle {
@@ -40,9 +40,8 @@ class ComputeTextureFaultCause extends Module {
     io.selectedAddress(31, 6) === firstFaultLine && firstFaultPage
 }
 
-/** Task-owned native texture execution with captured Sv32 translation.
-  * The enclosing CU must reject legacy instructions, retain publication and VM
-  * ownership until completion, route faults, and drain accepted traffic.
+/** Task-owned native texture execution with captured Sv32 translation. The enclosing CU must reject legacy
+  * instructions, retain publication and VM ownership until completion, route faults, and drain accepted traffic.
   */
 class ComputeTextureCuService(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {
@@ -67,8 +66,8 @@ class ComputeTextureCuService(config: GpuConfig = GpuConfig()) extends Module {
   })
   private val task = RegInit(0.U.asTypeOf(new ComputeTextureTask))
   private val satp = RegInit(0.U(32.W))
-  private val execute = Module(new NativeShaderTextureUnit(config, stage=2))
-  private val translation = Module(new TranslatedLineClient(config, 2, preserveCachePolicy=true))
+  private val execute = Module(new NativeShaderTextureUnit(config, stage = 2))
+  private val translation = Module(new TranslatedLineClient(config, 2, preserveCachePolicy = true))
   private val cause = Module(new ComputeTextureFaultCause)
   when(io.kernelStart) {
     assert(!execute.io.busy && !translation.io.walkActive, "compute texture owner changed before drain")
@@ -85,7 +84,10 @@ class ComputeTextureCuService(config: GpuConfig = GpuConfig()) extends Module {
   execute.io.vectorIn.valid := io.vectorIn.valid && !io.kernelStart && task.enabled
   execute.io.vectorIn.bits := io.vectorIn.bits
   io.vectorIn.ready := execute.io.vectorIn.ready && !io.kernelStart && task.enabled
-  io.vectorFaultWritesVd := RegEnable(!opengpu.graphics.ShaderTextureSampleOpcode.vectorParameters(io.vectorIn.bits.issued.decode.instruction),io.vectorIn.fire)
+  io.vectorFaultWritesVd := RegEnable(
+    !opengpu.graphics.ShaderTextureSampleOpcode.vectorParameters(io.vectorIn.bits.issued.decode.instruction),
+    io.vectorIn.fire
+  )
   io.commit <> execute.io.commit; io.vectorCommit <> execute.io.vectorCommit
   execute.io.resources := task.resources; execute.io.identity := task.identity
   execute.io.texFormat := 0.U; execute.io.texBase := 0.U
@@ -112,7 +114,7 @@ class ComputeTextureCuService(config: GpuConfig = GpuConfig()) extends Module {
   translation.io.flush.valid := io.kernelStart || io.flush.valid
   translation.io.flush.bits := Mux(io.kernelStart, 0.U.asTypeOf(io.flush.bits), io.flush.bits)
   private val arbiter = Module(new RRArbiter(new ComputeMemoryRequest(config, 64, 4), 2))
-  private val offers = Module(new Queue(new ComputeMemoryRequest(config, 64, 4), 2, pipe=true))
+  private val offers = Module(new Queue(new ComputeMemoryRequest(config, 64, 4), 2, pipe = true))
   arbiter.io.in(0).valid := translation.io.memReq.valid
   arbiter.io.in(0).bits := translation.io.memReq.bits
   translation.io.memReq.ready := arbiter.io.in(0).ready

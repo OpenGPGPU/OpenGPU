@@ -7,8 +7,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 class L2MergeResponseGuardSpec extends AnyFlatSpec {
   it should "keep a duplicate reply visible and retain its entry through a concurrent new merge" in {
-    simulate(new L2MshrTable(GpuConfig(lanes = 4), entries = 4,
-      maxOutstanding = 17)) { d =>
+    simulate(new L2MshrTable(GpuConfig(lanes = 4), entries = 4, maxOutstanding = 17)) { d =>
       d.io.request.valid.poke(false.B)
       d.io.request.bits.lineAddress.poke(0x1000.U)
       d.io.request.bits.transactionId.poke(0.U)

@@ -11,6 +11,7 @@ class RegisterReservation(config: GpuConfig) extends Bundle {
   val rd = UInt(5.W)
   val useRs1 = Bool()
   val useRs2 = Bool()
+
   /** Word CAS reads its original destination as the comparison operand. */
   val readCompare = Bool()
   val writeRd = Bool()
@@ -23,9 +24,8 @@ class RegisterRelease(config: GpuConfig) extends Bundle {
 
 /** Per-warp scalar dependency scoreboard.
   *
-  * `reserve.ready` is the hazard result and `reserve.fire` atomically marks
-  * the destination busy. A same-cycle release is visible to the query, while
-  * a simultaneous reservation of that register wins in the next state.
+  * `reserve.ready` is the hazard result and `reserve.fire` atomically marks the destination busy. A same-cycle release
+  * is visible to the query, while a simultaneous reservation of that register wins in the next state.
   */
 class RegisterScoreboard(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {
@@ -94,11 +94,10 @@ class RegisterScoreboard(config: GpuConfig = GpuConfig()) extends Module {
   }
 }
 
-/** Busy-state storage for a scoreboard whose dependency query is pipelined by
-  * its caller.
+/** Busy-state storage for a scoreboard whose dependency query is pipelined by its caller.
   *
-  * `reserve` is already known to be hazard-free. Release is applied first and
-  * a simultaneous reservation wins, matching [[RegisterScoreboard]].
+  * `reserve` is already known to be hazard-free. Release is applied first and a simultaneous reservation wins, matching
+  * [[RegisterScoreboard]].
   */
 class RegisterScoreboardState(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {

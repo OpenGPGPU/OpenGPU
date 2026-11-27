@@ -19,9 +19,8 @@ class TessellationTriangleCompletion extends Bundle {
   val status = UInt(3.W); val discarded = Bool()
 }
 
-/** Assemble triangle-domain rings into points or consistently wound triangles.
-  * Two bounded ring banks retain only the adjacent rings currently being joined.
-  * Coordinates are unsigned Q0.24 barycentrics. Outputs are provisional until
+/** Assemble triangle-domain rings into points or consistently wound triangles. Two bounded ring banks retain only the
+  * adjacent rings currently being joined. Coordinates are unsigned Q0.24 barycentrics. Outputs are provisional until
   * completion, and a held primitive remains owned through cancellation.
   */
 class TessellationTriangleGenerator extends Module {
@@ -32,8 +31,8 @@ class TessellationTriangleGenerator extends Module {
     val cancel = Input(Bool()); val busy = Output(Bool())
   })
   private object State extends ChiselEnum {
-    val idle, prepareOffer, prepareWait, boundaryStart, boundaryRun, interiorStart,
-      interiorRun, stripStart, stripRun, central, interiorDrain, complete = Value
+    val idle, prepareOffer, prepareWait, boundaryStart, boundaryRun, interiorStart, interiorRun, stripStart, stripRun,
+        central, interiorDrain, complete = Value
   }
   private val state = RegInit(State.idle)
   private val task = Reg(new TessellationTriangleTask)
@@ -54,10 +53,13 @@ class TessellationTriangleGenerator extends Module {
   private val edgeMap = VecInit(Seq(2.U(2.W), 0.U(2.W), 1.U(2.W)))
   private val nextSide = Mux(side === 2.U, 0.U, side + 1.U)
   private val outerSideCount = outerCounts(side)
-  private val outerPoint = Mux(outerFeed === outerSideCount, banks(outerBank)(nextSide)(0),
-    banks(outerBank)(side)(outerFeed(5, 0)))
-  private val innerPoint = Mux(innerCount === 0.U, banks(!outerBank)(0)(0),
-    Mux(innerFeed === innerCount, banks(!outerBank)(nextSide)(0), banks(!outerBank)(side)(innerFeed(5, 0))))
+  private val outerPoint =
+    Mux(outerFeed === outerSideCount, banks(outerBank)(nextSide)(0), banks(outerBank)(side)(outerFeed(5, 0)))
+  private val innerPoint = Mux(
+    innerCount === 0.U,
+    banks(!outerBank)(0)(0),
+    Mux(innerFeed === innerCount, banks(!outerBank)(nextSide)(0), banks(!outerBank)(side)(innerFeed(5, 0)))
+  )
 
   levels.io.in.valid := state === State.prepareOffer
   levels.io.in.bits.domain := TessellationDomain.triangles.U; levels.io.in.bits.spacing := task.spacing
@@ -74,8 +76,11 @@ class TessellationTriangleGenerator extends Module {
   interior.io.begin.bits.outer := task.outer; interior.io.begin.bits.inner := task.inner
   interior.io.cancel := (state === State.interiorRun || state === State.stripStart || state === State.stripRun ||
     state === State.central || state === State.interiorDrain) && stop
-  interior.io.out.ready := Mux(state === State.interiorDrain, true.B,
-    state === State.interiorRun && Mux(task.pointMode, io.out.ready, true.B))
+  interior.io.out.ready := Mux(
+    state === State.interiorDrain,
+    true.B,
+    state === State.interiorRun && Mux(task.pointMode, io.out.ready, true.B)
+  )
   interior.io.completion.ready := state === State.interiorRun || state === State.interiorDrain
   strip.io.begin.valid := state === State.stripStart && !stop
   strip.io.begin.bits.taskId := task.taskId; strip.io.begin.bits.outerSegments := outerSideCount
@@ -95,14 +100,16 @@ class TessellationTriangleGenerator extends Module {
   point.v := Mux(state === State.boundaryRun, boundary.io.out.bits.v, interior.io.out.bits.v)
   point.w := Mux(state === State.boundaryRun, boundary.io.out.bits.w, interior.io.out.bits.w)
   private val centralBank = Mux(sawInterior, !outerBank, outerBank)
-  private val a = banks(centralBank)(0)(0); private val b = banks(centralBank)(1)(0); private val c = banks(centralBank)(2)(0)
+  private val a = banks(centralBank)(0)(0); private val b = banks(centralBank)(1)(0);
+  private val c = banks(centralBank)(2)(0)
   private val output = Wire(new TessellationTrianglePrimitive); output := 0.U.asTypeOf(output)
   output.taskId := task.taskId; output.sequence := result.emitted
   when(state === State.stripRun) { output.vertices := strip.io.out.bits.vertices }
     .elsewhen(state === State.central) {
       output.vertices(0) := a; output.vertices(1) := Mux(task.clockwise, c, b)
       output.vertices(2) := Mux(task.clockwise, b, c)
-    }.otherwise { output.point := true.B; output.vertices := VecInit(Seq.fill(3)(point)) }
+    }
+    .otherwise { output.point := true.B; output.vertices := VecInit(Seq.fill(3)(point)) }
   io.out.bits := output
   io.out.valid := (state === State.stripRun && strip.io.out.valid) || state === State.central ||
     (task.pointMode && ((state === State.boundaryRun && boundary.io.out.valid) ||
@@ -148,8 +155,10 @@ class TessellationTriangleGenerator extends Module {
     val s = Mux(interior.io.out.bits.side === 3.U, 0.U, interior.io.out.bits.side)
     val p = banks(!outerBank)(s)(interior.io.out.bits.index(5, 0))
     p.u := interior.io.out.bits.u; p.v := interior.io.out.bits.v; p.w := interior.io.out.bits.w
-    when(interior.io.out.bits.side === 3.U ||
-      (interior.io.out.bits.side === 2.U && interior.io.out.bits.index +& 1.U === interior.io.out.bits.segments)) {
+    when(
+      interior.io.out.bits.side === 3.U ||
+        (interior.io.out.bits.side === 2.U && interior.io.out.bits.index +& 1.U === interior.io.out.bits.segments)
+    ) {
       sawInterior := true.B; innerCount := interior.io.out.bits.segments; side := 0.U
       state := State.stripStart
     }

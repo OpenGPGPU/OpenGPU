@@ -12,10 +12,22 @@ class NativeRgba8TextureClusterSpec extends AnyFlatSpec {
   private case class Expected(q: Query, status: Int, color: Vector[BigInt])
   private class Driver(val d: NativeRgba8TextureCluster) {
     zero(d.io); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
-    val memory = new Memory(d.io.memoryRequest.bits, d.io.memoryResponse.bits, d.io.memoryRequest.valid,
-      d.io.memoryRequest.ready, d.io.memoryResponse.valid, d.io.memoryResponse.ready)
-    val walks = new Memory(d.io.pageWalk.bits, d.io.pageWalkResponse.bits, d.io.pageWalk.valid,
-      d.io.pageWalk.ready, d.io.pageWalkResponse.valid, d.io.pageWalkResponse.ready) { override val bytes = memory.bytes }
+    val memory = new Memory(
+      d.io.memoryRequest.bits,
+      d.io.memoryResponse.bits,
+      d.io.memoryRequest.valid,
+      d.io.memoryRequest.ready,
+      d.io.memoryResponse.valid,
+      d.io.memoryResponse.ready
+    )
+    val walks = new Memory(
+      d.io.pageWalk.bits,
+      d.io.pageWalkResponse.bits,
+      d.io.pageWalk.valid,
+      d.io.pageWalk.ready,
+      d.io.pageWalkResponse.valid,
+      d.io.pageWalkResponse.ready
+    ) { override val bytes = memory.bytes }
     val pending = Vector.fill(4)(mutable.Queue.empty[Expected])
     val statuses = Vector.fill(4)(mutable.ArrayBuffer.empty[Int])
     val ready = Array.fill(4)(true)
@@ -50,7 +62,9 @@ class NativeRgba8TextureClusterSpec extends AnyFlatSpec {
       Expected(q, status, Vector.tabulate(4)(n => bits(((word >> (n * 8)) & 255).toInt.toFloat / 255.0f)))
     }
     def tick(offer: Option[(Int, Query, Int)] = None): Boolean = {
-      for (c <- 0 until 4) { d.io.client(c).request.valid.poke(false.B); d.io.client(c).response.ready.poke(ready(c).B) }
+      for (c <- 0 until 4) {
+        d.io.client(c).request.valid.poke(false.B); d.io.client(c).response.ready.poke(ready(c).B)
+      }
       offer.foreach { case (c, q, _) => poke(c, q); d.io.client(c).request.valid.poke(true.B) }
       memory.drive(); walks.drive()
       for (c <- 0 until 4) {
@@ -71,18 +85,30 @@ class NativeRgba8TextureClusterSpec extends AnyFlatSpec {
       if (fire) { val (c, q, status) = offer.get; pending(c).enqueue(expected(c, q, status)) }
       memory.capture(); walks.capture(); d.clock.step(); cycle += 1; fire
     }
-    def until(p: => Boolean): Unit = { var n = 0; while (!p && n < 10000) { tick(); n += 1 }; assert(p, s"cluster stalled cycle=$cycle pending=${pending.map(_.size)}") }
+    def until(p: => Boolean): Unit = {
+      var n = 0; while (!p && n < 10000) { tick(); n += 1 };
+      assert(p, s"cluster stalled cycle=$cycle pending=${pending.map(_.size)}")
+    }
     def submit(c: Int, q: Query = Query(), status: Int = 0): Unit = {
-      var fire = false; var n = 0; while (!fire && n < 10000) { fire = tick(Some((c, q, status))); n += 1 }; assert(fire)
+      var fire = false; var n = 0; while (!fire && n < 10000) { fire = tick(Some((c, q, status))); n += 1 };
+      assert(fire)
     }
     def cancel(c: Int, q: Query = Query()): Unit = {
       val port = d.io.client(c).cancelGroup
-      port.valid.poke(true.B); identity(port.bits.identity); port.bits.identity.generation.poke(q.generation.U); port.bits.tag.poke(q.tag.U)
+      port.valid.poke(true.B); identity(port.bits.identity); port.bits.identity.generation.poke(q.generation.U);
+      port.bits.tag.poke(q.tag.U)
     }
     def drain(): Unit = {
       until(!d.io.busy.peek().litToBoolean)
-      assert(pending.forall(_.isEmpty) && memory.pending.isEmpty && memory.reply.isEmpty && walks.pending.isEmpty && walks.reply.isEmpty)
-      assert(reportedReads == memory.seen.size, s"router dropped/doubled a read charge: $reportedReads != ${memory.seen.size}")
+      assert(
+        pending.forall(
+          _.isEmpty
+        ) && memory.pending.isEmpty && memory.reply.isEmpty && walks.pending.isEmpty && walks.reply.isEmpty
+      )
+      assert(
+        reportedReads == memory.seen.size,
+        s"router dropped/doubled a read charge: $reportedReads != ${memory.seen.size}"
+      )
       tick(); tick()
     }
   }
@@ -97,7 +123,9 @@ class NativeRgba8TextureClusterSpec extends AnyFlatSpec {
       assert(t.memory.seen.size == reads)
       t.ready(0) = true; t.drain()
       assert(t.statuses(0).size == 1 && t.walks.seen.isEmpty)
-      info("NATIVE_CLUSTER_ROUTING clients4=true repeatedIdenticalTags=true distinctColors=true sharedPhysicalReads2=true heldClientIndependent=true hotClients24=true exactReadCharges=true")
+      info(
+        "NATIVE_CLUSTER_ROUTING clients4=true repeatedIdenticalTags=true distinctColors=true sharedPhysicalReads2=true heldClientIndependent=true hotClients24=true exactReadCharges=true"
+      )
     }
   }
   it should "cancel only one client's matching original tag including queued admission" in {
@@ -154,7 +182,8 @@ class NativeRgba8TextureClusterSpec extends AnyFlatSpec {
       t.ready.indices.foreach(c => t.ready(c) = false)
       for (c <- 0 until 4) t.submit(c, Query(base = 0x401000))
       t.vm(0x81)
-      d.io.flush.valid.poke(true.B); d.io.flush.bits.virtualPageNumberValid.poke(true.B); d.io.flush.bits.virtualPageNumber.poke(0x401.U)
+      d.io.flush.valid.poke(true.B); d.io.flush.bits.virtualPageNumberValid.poke(true.B);
+      d.io.flush.bits.virtualPageNumber.poke(0x401.U)
       t.tick(); d.io.flush.bits.virtualPageNumber.poke(0x402.U); t.tick(); d.io.flush.valid.poke(false.B)
       t.until(d.io.client.forall(_.response.valid.peek().litToBoolean))
       for (c <- 0 until 4) t.ready(c) = true
@@ -163,7 +192,9 @@ class NativeRgba8TextureClusterSpec extends AnyFlatSpec {
       t.drain()
       assert(t.memory.seen.drop(before).forall(r => r.address >= 0x201000 && r.address < 0x202000))
       assert(t.walks.seen.exists(r => r.address >= 0x81000 && r.address < 0x82000))
-      info("NATIVE_CLUSTER_EPOCH clients4=true realSv32Roots2=true coordinateAndQueuedEpochPinned=true scopedFlushesAggregated=true publicLeaseDrain=true newBackingObserved=true")
+      info(
+        "NATIVE_CLUSTER_EPOCH clients4=true realSv32Roots2=true coordinateAndQueuedEpochPinned=true scopedFlushesAggregated=true publicLeaseDrain=true newBackingObserved=true"
+      )
     }
   }
   it should "retain a primary data fault and its read charge when a leased client cancels a held memory offer" in {

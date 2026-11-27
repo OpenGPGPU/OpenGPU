@@ -20,11 +20,9 @@ class SharedL2CacheSpec extends AnyFlatSpec {
     dut.io.atomicRequest.indices.foreach { cu =>
       dut.io.invalidate(cu).ready.poke(true.B)
       dut.io.invalidateDone(cu).valid.poke(false.B)
-      dut.io.invalidateDone(cu).bits.poke(
-        0.U.asTypeOf(dut.io.invalidateDone(cu).bits))
+      dut.io.invalidateDone(cu).bits.poke(0.U.asTypeOf(dut.io.invalidateDone(cu).bits))
       dut.io.atomicRequest(cu).valid.poke(false.B)
-      dut.io.atomicRequest(cu).bits.poke(
-        0.U.asTypeOf(dut.io.atomicRequest(cu).bits))
+      dut.io.atomicRequest(cu).bits.poke(0.U.asTypeOf(dut.io.atomicRequest(cu).bits))
       dut.io.atomicResponse(cu).ready.poke(true.B)
     }
     dut.io.hostInvalidate.valid.poke(false.B)
@@ -44,8 +42,10 @@ class SharedL2CacheSpec extends AnyFlatSpec {
     dut.clock.step()
     dut.io.hostInvalidate.valid.poke(false.B)
     cycles = 0
-    while (!dut.io.hostInvalidateDone.valid.peek().litToBoolean &&
-           cycles < 20) {
+    while (
+      !dut.io.hostInvalidateDone.valid.peek().litToBoolean &&
+      cycles < 20
+    ) {
       dut.clock.step(); cycles += 1
     }
     dut.io.hostInvalidateDone.valid.expect(true.B)
@@ -62,14 +62,16 @@ class SharedL2CacheSpec extends AnyFlatSpec {
     dut.io.hostInvalidate.valid.poke(true.B)
   }
 
-  /** An external L1 service: accept each exact probe once, then delay its ACK.
-    * No lower-memory transaction is permitted during a resident-only scan.
-    * The cycle bound is based on this fixture's sixteen resident slots, not
-    * on the requested byte length (which may span all four GiB).
+  /** An external L1 service: accept each exact probe once, then delay its ACK. No lower-memory transaction is permitted
+    * during a resident-only scan. The cycle bound is based on this fixture's sixteen resident slots, not on the
+    * requested byte length (which may span all four GiB).
     */
   private def finishRange(
-    dut: SharedL2Cache, start: BigInt, end: BigInt,
-    expectedProbes: Set[(Int, BigInt)], bound: Int = 256
+      dut: SharedL2Cache,
+      start: BigInt,
+      end: BigInt,
+      expectedProbes: Set[(Int, BigInt)],
+      bound: Int = 256
   ): Int = {
     var pending = Map.empty[Int, (BigInt, Int)]
     var held = Map.empty[Int, BigInt]
@@ -119,14 +121,14 @@ class SharedL2CacheSpec extends AnyFlatSpec {
   }
 
   private def requestLine(
-    dut: SharedL2Cache,
-    address: BigInt,
-    id: Int,
-    isWrite: Boolean = false,
-    data: BigInt = 0,
-    mask: BigInt = 0,
-    cacheClient: Boolean = true,
-    cachePolicy: BigInt = 0
+      dut: SharedL2Cache,
+      address: BigInt,
+      id: Int,
+      isWrite: Boolean = false,
+      data: BigInt = 0,
+      mask: BigInt = 0,
+      cacheClient: Boolean = true,
+      cachePolicy: BigInt = 0
   ): Unit = {
     dut.io.request.bits.address.poke(address.U)
     dut.io.request.bits.transactionId.poke(id.U)
@@ -141,8 +143,7 @@ class SharedL2CacheSpec extends AnyFlatSpec {
     while (!dut.io.request.ready.peek().litToBoolean && waitCycles < 20) {
       dut.clock.step(); waitCycles += 1
     }
-    assert(dut.io.request.ready.peek().litToBoolean,
-      f"L2 did not accept address 0x$address%x")
+    assert(dut.io.request.ready.peek().litToBoolean, f"L2 did not accept address 0x$address%x")
     dut.io.request.valid.poke(true.B)
     dut.clock.step()
     dut.io.request.valid.poke(false.B)
@@ -201,16 +202,23 @@ class SharedL2CacheSpec extends AnyFlatSpec {
   }
 
   it should "invalidate every L1 holder for external stores whose IDs alias a CU" in {
-    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2,
-      maxOutstanding = 16, numComputeUnits = 2, transactionsPerCu = 4)) { dut =>
+    simulate(
+      new SharedL2Cache(
+        GpuConfig(lanes = 4),
+        sets = 8,
+        ways = 2,
+        maxOutstanding = 16,
+        numComputeUnits = 2,
+        transactionsPerCu = 4
+      )
+    ) { dut =>
       initialize(dut)
       requestLine(dut, 0x4000, 0)
       completeLower(dut, 0x115395d3L, 0)
       dut.clock.step()
       // External ID 8 / 4 = 2 aliases CU0 if UIntToOH truncates to one bit.
       // An external writer owns no L1, so it must exclude no directory holder.
-      requestLine(dut, 0x4000, 8, isWrite = true,
-        data = 0x2791c543L, mask = 15, cacheClient = false)
+      requestLine(dut, 0x4000, 8, isWrite = true, data = 0x2791c543L, mask = 15, cacheClient = false)
       waitInvalidation(dut, 0)
       dut.io.invalidate(0).bits.lineAddress.expect(0x4000.U)
       dut.io.memoryRequest.valid.expect(false.B)
@@ -323,8 +331,7 @@ class SharedL2CacheSpec extends AnyFlatSpec {
       completeLower(dut, 0x11223344L, 0)
       dut.clock.step()
 
-      requestLine(dut, 0x8000, 1, isWrite = true,
-        data = 0x0000aa00L, mask = 0x2)
+      requestLine(dut, 0x8000, 1, isWrite = true, data = 0x0000aa00L, mask = 0x2)
       completeLower(dut, 0, 1)
       dut.io.performance.storesAccepted.expect(1.U)
       dut.clock.step()
@@ -356,8 +363,7 @@ class SharedL2CacheSpec extends AnyFlatSpec {
   it should "invalidate another CU sharer before accepting a write" in {
     // Exercise the single-bank owner path used by the bounded integrated PPA
     // top as well as the coherence handshake itself.
-    simulate(new SharedL2Cache(
-      GpuConfig(lanes = 4), sets = 8, ways = 2, banks = 1)) { dut =>
+    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2, banks = 1)) { dut =>
       initialize(dut)
       // CU0 local transaction 0 fills the line and becomes a sharer.
       requestLine(dut, 0xc000, 0)
@@ -405,8 +411,7 @@ class SharedL2CacheSpec extends AnyFlatSpec {
   }
 
   it should "invalidate cached aliases before an uncached AMO reads authoritative lower memory" in {
-    simulate(new SharedL2Cache(GpuConfig(), sets = 8, ways = 2,
-      maxOutstanding = 16, numComputeUnits = 4)) { dut =>
+    simulate(new SharedL2Cache(GpuConfig(), sets = 8, ways = 2, maxOutstanding = 16, numComputeUnits = 4)) { dut =>
       initialize(dut)
       val address = BigInt(0x1000)
       val stale = (BigInt(10) << 32) | 99
@@ -496,8 +501,7 @@ class SharedL2CacheSpec extends AnyFlatSpec {
   }
 
   it should "preserve unrelated cached ways across an uncached AMO miss" in {
-    simulate(new SharedL2Cache(GpuConfig(), sets = 8, ways = 2,
-      maxOutstanding = 16, numComputeUnits = 4)) { dut =>
+    simulate(new SharedL2Cache(GpuConfig(), sets = 8, ways = 2, maxOutstanding = 16, numComputeUnits = 4)) { dut =>
       initialize(dut)
       for ((address, id, value) <- Seq((0x0000, 0, 11), (0x0200, 4, 22))) {
         requestLine(dut, address, id)
@@ -605,46 +609,51 @@ class SharedL2CacheSpec extends AnyFlatSpec {
     }
   }
 
-  for (storeEntries <- Seq(2,4)) {
-  it should s"refill an AMO miss and update the addressed word offset with $storeEntries store entries" in {
-    simulate(new SharedL2Cache(GpuConfig(lanes = 4,l2StoreEntries=storeEntries), sets = 8, ways = 2,
-      maxOutstanding=if (storeEntries==2) 8 else 16)) { dut =>
-      initialize(dut)
-      dut.io.atomicRequest(0).valid.poke(true.B)
-      dut.io.atomicRequest(0).bits.warpId.poke(0.U)
-      dut.io.atomicRequest(0).bits.address.poke(0x2004.U)
-      dut.io.atomicRequest(0).bits.operand.poke(3.U)
-      dut.io.atomicRequest(0).bits.operation.poke(AtomicMemoryOp.add)
-      dut.clock.step(); dut.io.atomicRequest(0).valid.poke(false.B)
-      dut.clock.step()
-      dut.io.memoryRequest.valid.expect(true.B)
-      dut.io.memoryRequest.bits.isWrite.expect(false.B)
-      dut.io.memoryRequest.bits.address.expect(0x2000.U)
-      dut.clock.step()
-      dut.io.memoryResponse.valid.poke(true.B)
-      dut.io.memoryResponse.bits.readData.poke((BigInt(5) << 32).U)
-      dut.io.memoryResponse.bits.fault.poke(false.B)
-      dut.clock.step(); dut.io.memoryResponse.valid.poke(false.B)
-      // The refill word is registered before entering the AMO ALU stage.
-      dut.clock.step()
-      dut.clock.step()
-      waitMemoryRequest(dut)
-      dut.io.memoryRequest.bits.isWrite.expect(true.B)
-      dut.io.memoryRequest.bits.byteMask.expect(0xf0.U)
-      dut.io.memoryRequest.bits.writeData.expect((BigInt(8) << 32).U)
-      dut.clock.step()
-      dut.io.memoryResponse.valid.poke(true.B)
-      dut.io.memoryResponse.bits.fault.poke(false.B)
-      dut.clock.step(); dut.io.memoryResponse.valid.poke(false.B)
-      waitAtomicResponse(dut, 0)
-      dut.io.atomicResponse(0).bits.oldValue.expect(5.U)
+  for (storeEntries <- Seq(2, 4)) {
+    it should s"refill an AMO miss and update the addressed word offset with $storeEntries store entries" in {
+      simulate(
+        new SharedL2Cache(
+          GpuConfig(lanes = 4, l2StoreEntries = storeEntries),
+          sets = 8,
+          ways = 2,
+          maxOutstanding = if (storeEntries == 2) 8 else 16
+        )
+      ) { dut =>
+        initialize(dut)
+        dut.io.atomicRequest(0).valid.poke(true.B)
+        dut.io.atomicRequest(0).bits.warpId.poke(0.U)
+        dut.io.atomicRequest(0).bits.address.poke(0x2004.U)
+        dut.io.atomicRequest(0).bits.operand.poke(3.U)
+        dut.io.atomicRequest(0).bits.operation.poke(AtomicMemoryOp.add)
+        dut.clock.step(); dut.io.atomicRequest(0).valid.poke(false.B)
+        dut.clock.step()
+        dut.io.memoryRequest.valid.expect(true.B)
+        dut.io.memoryRequest.bits.isWrite.expect(false.B)
+        dut.io.memoryRequest.bits.address.expect(0x2000.U)
+        dut.clock.step()
+        dut.io.memoryResponse.valid.poke(true.B)
+        dut.io.memoryResponse.bits.readData.poke((BigInt(5) << 32).U)
+        dut.io.memoryResponse.bits.fault.poke(false.B)
+        dut.clock.step(); dut.io.memoryResponse.valid.poke(false.B)
+        // The refill word is registered before entering the AMO ALU stage.
+        dut.clock.step()
+        dut.clock.step()
+        waitMemoryRequest(dut)
+        dut.io.memoryRequest.bits.isWrite.expect(true.B)
+        dut.io.memoryRequest.bits.byteMask.expect(0xf0.U)
+        dut.io.memoryRequest.bits.writeData.expect((BigInt(8) << 32).U)
+        dut.clock.step()
+        dut.io.memoryResponse.valid.poke(true.B)
+        dut.io.memoryResponse.bits.fault.poke(false.B)
+        dut.clock.step(); dut.io.memoryResponse.valid.poke(false.B)
+        waitAtomicResponse(dut, 0)
+        dut.io.atomicResponse(0).bits.oldValue.expect(5.U)
+      }
     }
-  }
   }
 
   it should "serve a hit in one slice while another slice waits for memory" in {
-    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2,
-      banks = 2)) { dut =>
+    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2, banks = 2)) { dut =>
       initialize(dut)
       requestLine(dut, 0x0000, 0)
       completeLower(dut, 0x11, 0)
@@ -667,8 +676,7 @@ class SharedL2CacheSpec extends AnyFlatSpec {
   }
 
   it should "issue misses from different slices and route out-of-order responses" in {
-    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2,
-      banks = 2)) { dut =>
+    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2, banks = 2)) { dut =>
       initialize(dut)
 
       requestLine(dut, 0x0000, 2)
@@ -704,8 +712,7 @@ class SharedL2CacheSpec extends AnyFlatSpec {
   }
 
   it should "merge loads to an outstanding line into one lower request" in {
-    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2,
-      banks = 2)) { dut =>
+    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2, banks = 2)) { dut =>
       initialize(dut)
       requestLine(dut, 0x3000, 1)
       waitMemoryRequest(dut)
@@ -735,8 +742,7 @@ class SharedL2CacheSpec extends AnyFlatSpec {
   }
 
   it should "track every CU whose load merged into an MSHR" in {
-    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2,
-      banks = 2)) { dut =>
+    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2, banks = 2)) { dut =>
       initialize(dut)
       requestLine(dut, 0x5000, 0) // CU0
       waitMemoryRequest(dut)
@@ -762,8 +768,7 @@ class SharedL2CacheSpec extends AnyFlatSpec {
   }
 
   it should "issue different-line misses concurrently within one slice" in {
-    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2,
-      banks = 2, requestQueueDepth = 2)) { dut =>
+    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2, banks = 2, requestQueueDepth = 2)) { dut =>
       initialize(dut)
       requestLine(dut, 0x6000, 0)
       waitMemoryRequest(dut)
@@ -820,8 +825,7 @@ class SharedL2CacheSpec extends AnyFlatSpec {
   }
 
   it should "hold a miss that conflicts with an outstanding victim slot" in {
-    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 1,
-      banks = 2, requestQueueDepth = 2)) { dut =>
+    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 1, banks = 2, requestQueueDepth = 2)) { dut =>
       initialize(dut)
       requestLine(dut, 0x7000, 0)
       waitMemoryRequest(dut)
@@ -853,8 +857,7 @@ class SharedL2CacheSpec extends AnyFlatSpec {
   }
 
   it should "rotate to another way for concurrent misses in one set" in {
-    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2,
-      banks = 2, requestQueueDepth = 2)) { dut =>
+    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2, banks = 2, requestQueueDepth = 2)) { dut =>
       initialize(dut)
       requestLine(dut, 0x7400, 0)
       waitMemoryRequest(dut)
@@ -872,8 +875,7 @@ class SharedL2CacheSpec extends AnyFlatSpec {
   }
 
   it should "issue different-line stores concurrently within one slice" in {
-    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2,
-      banks = 2)) { dut =>
+    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2, banks = 2)) { dut =>
       initialize(dut)
       dut.io.memoryRequest.ready.poke(false.B)
       requestLine(dut, 0x1000, 1, isWrite = true, data = 0x11, mask = 1)
@@ -886,7 +888,8 @@ class SharedL2CacheSpec extends AnyFlatSpec {
         if (dut.io.memoryRequest.valid.peek().litToBoolean) {
           lower :+= (
             dut.io.memoryRequest.bits.address.peek().litValue,
-            dut.io.memoryRequest.bits.transactionId.peek().litValue)
+            dut.io.memoryRequest.bits.transactionId.peek().litValue
+          )
         }
         dut.clock.step(); cycles += 1
       }
@@ -906,8 +909,7 @@ class SharedL2CacheSpec extends AnyFlatSpec {
       val held = dut.io.response.bits.peek().litValue
       for (_ <- 0 until 3) {
         dut.io.response.valid.expect(true.B)
-        assert(dut.io.response.bits.peek().litValue == held,
-          "stalled store response changed")
+        assert(dut.io.response.bits.peek().litValue == held, "stalled store response changed")
         dut.clock.step()
       }
       dut.io.response.ready.poke(true.B)
@@ -925,58 +927,68 @@ class SharedL2CacheSpec extends AnyFlatSpec {
   }
 
   it should "refill a coherent line after disjoint masked stores acknowledge in reverse order" in {
-    simulate(new SharedL2Cache(GpuConfig(lanes=4,l2StoreEntries=4),sets=8,ways=2,banks=1,
-      maxOutstanding=16)) { dut=>
+    simulate(
+      new SharedL2Cache(GpuConfig(lanes = 4, l2StoreEntries = 4), sets = 8, ways = 2, banks = 1, maxOutstanding = 16)
+    ) { dut =>
       initialize(dut)
-      requestLine(dut,0x4000,8,cacheClient=false)
-      completeLower(dut,0,8); dut.clock.step()
+      requestLine(dut, 0x4000, 8, cacheClient = false)
+      completeLower(dut, 0, 8); dut.clock.step()
       dut.io.response.ready.poke(false.B)
-      requestLine(dut,0x4000,0,isWrite=true,data=0x11223344L,mask=15,cacheClient=false,cachePolicy=2)
+      requestLine(dut, 0x4000, 0, isWrite = true, data = 0x11223344L, mask = 15, cacheClient = false, cachePolicy = 2)
       waitMemoryRequest(dut)
-      val first=dut.io.memoryRequest.bits.transactionId.peek().litValue
+      val first = dut.io.memoryRequest.bits.transactionId.peek().litValue
       dut.clock.step()
-      val upper=BigInt(0x55667788L)<<256
-      requestLine(dut,0x4000,1,isWrite=true,data=upper,mask=BigInt(15)<<32,cacheClient=false,cachePolicy=2)
+      val upper = BigInt(0x55667788L) << 256
+      requestLine(
+        dut,
+        0x4000,
+        1,
+        isWrite = true,
+        data = upper,
+        mask = BigInt(15) << 32,
+        cacheClient = false,
+        cachePolicy = 2
+      )
       waitMemoryRequest(dut)
-      val second=dut.io.memoryRequest.bits.transactionId.peek().litValue
-      assert(first!=second); dut.clock.step()
-      requestLine(dut,0x4000,2,cacheClient=false)
+      val second = dut.io.memoryRequest.bits.transactionId.peek().litValue
+      assert(first != second); dut.clock.step()
+      requestLine(dut, 0x4000, 2, cacheClient = false)
       dut.clock.step(3); dut.io.response.valid.expect(false.B)
-      for (id <- Seq(second,first)) {
+      for (id <- Seq(second, first)) {
         dut.io.memoryResponse.bits.transactionId.poke(id.U)
         dut.io.memoryResponse.bits.fault.poke(false.B)
         dut.io.memoryResponse.valid.poke(true.B)
         dut.io.memoryResponse.ready.expect(true.B)
         dut.clock.step(); dut.io.memoryResponse.valid.poke(false.B)
       }
-      val seen=scala.collection.mutable.Set.empty[Int]
+      val seen = scala.collection.mutable.Set.empty[Int]
       dut.io.response.ready.poke(true.B)
-      var refill=Option.empty[BigInt]
-      var cycles=0
-      while (seen.size<3 && cycles<30) {
+      var refill = Option.empty[BigInt]
+      var cycles = 0
+      while (seen.size < 3 && cycles < 30) {
         dut.io.memoryResponse.valid.poke(refill.nonEmpty.B)
-        refill.foreach { id=>
+        refill.foreach { id =>
           dut.io.memoryResponse.bits.transactionId.poke(id.U)
-          dut.io.memoryResponse.bits.readData.poke((upper|BigInt(0x11223344L)).U)
+          dut.io.memoryResponse.bits.readData.poke((upper | BigInt(0x11223344L)).U)
           dut.io.memoryResponse.bits.fault.poke(false.B)
         }
-        val returning=refill.nonEmpty && dut.io.memoryResponse.ready.peek().litToBoolean
-        val issued=if (dut.io.memoryRequest.valid.peek().litToBoolean) {
-          assert(seen==Set(0,1),"a cached read passed an unconsumed older store completion")
+        val returning = refill.nonEmpty && dut.io.memoryResponse.ready.peek().litToBoolean
+        val issued = if (dut.io.memoryRequest.valid.peek().litToBoolean) {
+          assert(seen == Set(0, 1), "a cached read passed an unconsumed older store completion")
           dut.io.memoryRequest.bits.isWrite.expect(false.B)
           dut.io.memoryRequest.bits.address.expect(0x4000.U)
           Some(dut.io.memoryRequest.bits.transactionId.peek().litValue)
         } else None
         if (dut.io.response.valid.peek().litToBoolean) {
-          val id=dut.io.response.bits.transactionId.peek().litValue.toInt
+          val id = dut.io.response.bits.transactionId.peek().litValue.toInt
           assert(seen.add(id)); dut.io.response.bits.fault.expect(false.B)
-          if (id==2) dut.io.response.bits.readData.expect((upper|BigInt(0x11223344L)).U)
+          if (id == 2) dut.io.response.bits.readData.expect((upper | BigInt(0x11223344L)).U)
         }
-        dut.clock.step(); cycles+=1
-        if (returning) refill=None
-        if (issued.nonEmpty) { assert(refill.isEmpty); refill=issued }
+        dut.clock.step(); cycles += 1
+        if (returning) refill = None
+        if (issued.nonEmpty) { assert(refill.isEmpty); refill = issued }
       }
-      assert(seen==Set(0,1,2))
+      assert(seen == Set(0, 1, 2))
       dut.io.drained.expect(true.B)
     }
   }
@@ -985,8 +997,7 @@ class SharedL2CacheSpec extends AnyFlatSpec {
     it should s"overlap an independent read with an unacknowledged store under cache policy $policy" in {
       simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2)) { dut =>
         initialize(dut)
-        requestLine(dut, 0x1000, 1, isWrite = true, data = 0x55, mask = 15,
-          cacheClient = false)
+        requestLine(dut, 0x1000, 1, isWrite = true, data = 0x55, mask = 15, cacheClient = false)
         waitMemoryRequest(dut)
         val storeId = dut.io.memoryRequest.bits.transactionId.peek().litValue
         dut.clock.step()
@@ -1044,8 +1055,7 @@ class SharedL2CacheSpec extends AnyFlatSpec {
       requestLine(dut, resident, 0)
       completeLower(dut, 0x55, 0)
       dut.clock.step()
-      requestLine(dut, collision, 4, isWrite = true, data = 0x66, mask = 1,
-        cacheClient = false, cachePolicy = 2)
+      requestLine(dut, collision, 4, isWrite = true, data = 0x66, mask = 1, cacheClient = false, cachePolicy = 2)
       waitMemoryRequest(dut)
       dut.io.invalidate(0).valid.expect(false.B)
       completeLower(dut, 0, 4)
@@ -1061,8 +1071,7 @@ class SharedL2CacheSpec extends AnyFlatSpec {
 
       // An actual uncached write hit must invalidate the cached CU copy before
       // the lower write is issued, despite bypassing cache allocation itself.
-      requestLine(dut, resident, 5, isWrite = true, data = 0x77, mask = 1,
-        cacheClient = false, cachePolicy = 2)
+      requestLine(dut, resident, 5, isWrite = true, data = 0x77, mask = 1, cacheClient = false, cachePolicy = 2)
       waitInvalidation(dut, 0)
       dut.io.invalidate(0).bits.lineAddress.expect(resident.U)
       dut.clock.step()
@@ -1080,51 +1089,57 @@ class SharedL2CacheSpec extends AnyFlatSpec {
     }
   }
 
-  for (storeEntries <- Seq(2,4)) {
-  it should s"refill and track a cached reader behind an outstanding uncached read with $storeEntries store entries" in {
-    simulate(new SharedL2Cache(GpuConfig(lanes = 4,l2StoreEntries=storeEntries), sets = 8, ways = 2, banks = 1,
-      maxOutstanding=if (storeEntries==2) 8 else 16)) { dut =>
-      initialize(dut)
-      requestLine(dut, 0x4000, 0, cacheClient = false, cachePolicy = 2)
-      waitMemoryRequest(dut)
-      val uncachedId = dut.io.memoryRequest.bits.transactionId.peek().litValue
-      dut.clock.step()
-      requestLine(dut, 0x4000, 4) // CU1 must allocate its own coherent refill.
-      waitMemoryRequest(dut)
-      val cachedId = dut.io.memoryRequest.bits.transactionId.peek().litValue
-      assert(cachedId != uncachedId)
-      dut.clock.step()
-      // The cached miss may now pass the independent uncached read. Return
-      // its newer snapshot first, then the older non-allocating snapshot.
-      dut.io.memoryResponse.valid.poke(true.B)
-      dut.io.memoryResponse.bits.transactionId.poke(cachedId.U)
-      dut.io.memoryResponse.bits.readData.poke(0x22.U)
-      dut.clock.step()
-      dut.io.memoryResponse.valid.poke(false.B)
-      waitResponse(dut)
-      dut.io.response.bits.transactionId.expect(4.U)
-      dut.io.response.bits.readData.expect(0x22.U)
-      dut.clock.step()
-      dut.io.memoryResponse.valid.poke(true.B)
-      dut.io.memoryResponse.bits.transactionId.poke(uncachedId.U)
-      dut.io.memoryResponse.bits.readData.poke(0x11.U)
-      dut.clock.step()
-      dut.io.memoryResponse.valid.poke(false.B)
-      waitResponse(dut)
-      dut.io.response.bits.transactionId.expect(0.U)
-      dut.io.response.bits.readData.expect(0x11.U)
-      dut.clock.step()
-      dut.io.performance.loadMisses.expect(1.U)
-      dut.io.performance.mshrMerges.expect(0.U)
+  for (storeEntries <- Seq(2, 4)) {
+    it should s"refill and track a cached reader behind an outstanding uncached read with $storeEntries store entries" in {
+      simulate(
+        new SharedL2Cache(
+          GpuConfig(lanes = 4, l2StoreEntries = storeEntries),
+          sets = 8,
+          ways = 2,
+          banks = 1,
+          maxOutstanding = if (storeEntries == 2) 8 else 16
+        )
+      ) { dut =>
+        initialize(dut)
+        requestLine(dut, 0x4000, 0, cacheClient = false, cachePolicy = 2)
+        waitMemoryRequest(dut)
+        val uncachedId = dut.io.memoryRequest.bits.transactionId.peek().litValue
+        dut.clock.step()
+        requestLine(dut, 0x4000, 4) // CU1 must allocate its own coherent refill.
+        waitMemoryRequest(dut)
+        val cachedId = dut.io.memoryRequest.bits.transactionId.peek().litValue
+        assert(cachedId != uncachedId)
+        dut.clock.step()
+        // The cached miss may now pass the independent uncached read. Return
+        // its newer snapshot first, then the older non-allocating snapshot.
+        dut.io.memoryResponse.valid.poke(true.B)
+        dut.io.memoryResponse.bits.transactionId.poke(cachedId.U)
+        dut.io.memoryResponse.bits.readData.poke(0x22.U)
+        dut.clock.step()
+        dut.io.memoryResponse.valid.poke(false.B)
+        waitResponse(dut)
+        dut.io.response.bits.transactionId.expect(4.U)
+        dut.io.response.bits.readData.expect(0x22.U)
+        dut.clock.step()
+        dut.io.memoryResponse.valid.poke(true.B)
+        dut.io.memoryResponse.bits.transactionId.poke(uncachedId.U)
+        dut.io.memoryResponse.bits.readData.poke(0x11.U)
+        dut.clock.step()
+        dut.io.memoryResponse.valid.poke(false.B)
+        waitResponse(dut)
+        dut.io.response.bits.transactionId.expect(0.U)
+        dut.io.response.bits.readData.expect(0x11.U)
+        dut.clock.step()
+        dut.io.performance.loadMisses.expect(1.U)
+        dut.io.performance.mshrMerges.expect(0.U)
 
-      requestLine(dut, 0x4000, 1, isWrite = true, data = 0x33, mask = 1)
-      waitInvalidation(dut, 1)
-      dut.io.invalidate(1).bits.lineAddress.expect(0x4000.U)
-      dut.io.invalidate(0).valid.expect(false.B)
+        requestLine(dut, 0x4000, 1, isWrite = true, data = 0x33, mask = 1)
+        waitInvalidation(dut, 1)
+        dut.io.invalidate(1).bits.lineAddress.expect(0x4000.U)
+        dut.io.invalidate(0).valid.expect(false.B)
+      }
     }
   }
-  }
-
 
   it should "overlap a different-line store with an unreturned uncached read in one bank" in {
     simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2, banks = 1)) { dut =>
@@ -1197,7 +1212,6 @@ class SharedL2CacheSpec extends AnyFlatSpec {
       dut.io.response.bits.transactionId.expect(4.U)
     }
   }
-
 
   for (fence <- Seq("host invalidate", "atomic")) {
     it should s"defer a $fence fence until the pending uncached reply is consumed" in {
@@ -1272,8 +1286,10 @@ class SharedL2CacheSpec extends AnyFlatSpec {
       // flight: the replacement would erase that newly recorded L1 holder.
       requestLine(dut, 0, 1)
       for (_ <- 0 until 8) {
-        assert(!dut.io.response.valid.peek().litToBoolean,
-          "evicted tag hit while its directory way was reserved by a replacement")
+        assert(
+          !dut.io.response.valid.peek().litToBoolean,
+          "evicted tag hit while its directory way was reserved by a replacement"
+        )
         dut.clock.step()
       }
       dut.io.memoryResponse.valid.poke(true.B)
@@ -1294,7 +1310,6 @@ class SharedL2CacheSpec extends AnyFlatSpec {
       dut.io.response.bits.readData.expect(0x33.U)
     }
   }
-
 
   it should "scan only resident physical tags for a large range and the full address space" in {
     simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2)) { d =>
@@ -1333,8 +1348,7 @@ class SharedL2CacheSpec extends AnyFlatSpec {
       offerRange(d, start, end)
       d.io.hostInvalidate.ready.expect(true.B)
       d.clock.step(); d.io.hostInvalidate.valid.poke(false.B)
-      val cycles = finishRange(d, start, end,
-        Set((0, shared), (1, shared), (1, sameSetOtherWay), (0, otherSet)))
+      val cycles = finishRange(d, start, end, Set((0, shared), (1, shared), (1, sameSetOtherWay), (0, otherSet)))
       assert(cycles < 256, "128 MiB invalidation traversed addresses instead of resident slots")
       val owned = d.io.hostInvalidateDone.bits.peek().litValue
       for (_ <- 0 until 6) {
@@ -1360,8 +1374,7 @@ class SharedL2CacheSpec extends AnyFlatSpec {
       offerRange(d, 0, BigInt(1) << 32)
       d.io.hostInvalidate.ready.expect(true.B)
       d.clock.step(); d.io.hostInvalidate.valid.poke(false.B)
-      val fullCycles = finishRange(d, 0, BigInt(1) << 32,
-        Set((1, below), (0, beyond), (1, last)))
+      val fullCycles = finishRange(d, 0, BigInt(1) << 32, Set((1, below), (0, beyond), (1, last)))
       assert(fullCycles < 256, "full-space invalidation must remain cache-size bounded")
       d.io.hostInvalidateDone.ready.poke(true.B); d.clock.step()
       cold(last, 0, 0x99, client = false)
@@ -1391,8 +1404,10 @@ class SharedL2CacheSpec extends AnyFlatSpec {
         val secondMiss = start + 0x100 // The other XOR bank.
         val secondValue = BigInt("5566778811223344", 16)
         val expectedReplies = if (kind == "merged refill") Set(0, 4, 1) else Set(writerId)
-        val expectedProbes = if (kind == "merged refill")
-          Set((0, start), (1, start), (0, secondMiss)) else Set.empty[(Int, BigInt)]
+        val expectedProbes =
+          if (kind == "merged refill")
+            Set((0, start), (1, start), (0, secondMiss))
+          else Set.empty[(Int, BigInt)]
         if (kind == "atomic") {
           d.io.atomicRequest(0).bits.address.poke((start + 4).U)
           d.io.atomicRequest(0).bits.operand.poke(3.U)
@@ -1403,9 +1418,16 @@ class SharedL2CacheSpec extends AnyFlatSpec {
           d.clock.step(); d.io.atomicRequest(0).valid.poke(false.B)
           d.io.atomicResponse(0).ready.poke(false.B)
         } else {
-          requestLine(d, start, writerId, isWrite = isStore, data = 0x55, mask = 15,
+          requestLine(
+            d,
+            start,
+            writerId,
+            isWrite = isStore,
+            data = 0x55,
+            mask = 15,
             cacheClient = kind == "merged refill",
-            cachePolicy = if (kind == "uncached read") 2 else 0)
+            cachePolicy = if (kind == "uncached read") 2 else 0
+          )
           if (kind == "merged refill") {
             requestLine(d, start, 4)
             requestLine(d, secondMiss, 1)
@@ -1483,8 +1505,10 @@ class SharedL2CacheSpec extends AnyFlatSpec {
           val issue = if (d.io.memoryRequest.valid.peek().litToBoolean) {
             val address = d.io.memoryRequest.bits.address.peek().litValue
             val write = d.io.memoryRequest.bits.isWrite.peek().litToBoolean
-            assert(address == start || (kind == "merged refill" && address == secondMiss),
-              s"new traffic crossed the range claim: $kind $address")
+            assert(
+              address == start || (kind == "merged refill" && address == secondMiss),
+              s"new traffic crossed the range claim: $kind $address"
+            )
             if (kind == "atomic" && write) {
               d.io.memoryRequest.bits.byteMask.expect(0xf0.U)
               d.io.memoryRequest.bits.writeData.expect(BigInt("0000001400000000", 16).U)
@@ -1496,7 +1520,8 @@ class SharedL2CacheSpec extends AnyFlatSpec {
             lowerData += id -> (if (address == secondMiss) secondValue else value)
             Some((id, write, cycles + 4))
           } else None
-          val upper = if (kind == "atomic") d.io.atomicResponse(0).valid.peek().litToBoolean
+          val upper =
+            if (kind == "atomic") d.io.atomicResponse(0).valid.peek().litToBoolean
             else d.io.response.valid.peek().litToBoolean
           if (upper && heldCycles < 6) heldCycles += 1
           val consume = heldCycles >= 6
@@ -1509,9 +1534,12 @@ class SharedL2CacheSpec extends AnyFlatSpec {
               0
             } else {
               d.io.response.bits.fault.expect(false.B)
-              if (!isStore) d.io.response.bits.readData.expect(
-                (if (kind == "merged refill" && d.io.response.bits.transactionId.peek().litValue == 1)
-                  secondValue else value).U)
+              if (!isStore)
+                d.io.response.bits.readData.expect(
+                  (if (kind == "merged refill" && d.io.response.bits.transactionId.peek().litValue == 1)
+                     secondValue
+                   else value).U
+                )
               d.io.response.bits.transactionId.peek().litValue.toInt
             }
             assert(!replies.contains(id)); replies += id; replyOrder :+= id
@@ -1534,8 +1562,10 @@ class SharedL2CacheSpec extends AnyFlatSpec {
           assert(seenLower == List((start, false), (secondMiss, false)))
           assert(issuedIds.size == 2 && issuedIds.distinct.size == 2)
           assert(returnedIds == issuedIds.reverse, "lower responses were not actually returned out of order")
-          assert(replyOrder.head == 1 && replyOrder.tail.toSet == Set(0, 4),
-            "other-bank response must retire before the late merged refill")
+          assert(
+            replyOrder.head == 1 && replyOrder.tail.toSet == Set(0, 4),
+            "other-bank response must retire before the late merged refill"
+          )
           d.io.performance.mshrMerges.expect(1.U)
         } else if (kind == "atomic") assert(seenLower == List((start, false), (start, true)))
         else assert(seenLower == List((start, isStore)))
@@ -1634,47 +1664,49 @@ class SharedL2CacheSpec extends AnyFlatSpec {
     }
   }
 
-  for(uncached <- Seq(false,true)) {
+  for (uncached <- Seq(false, true)) {
     it should s"preserve CAS comparison and lower write ownership through held results uncached=$uncached" in {
-      simulate(new SharedL2Cache(GpuConfig(),sets=8,ways=2,maxOutstanding=8,numComputeUnits=2)) { d =>
-        initialize(d);d.io.atomicResponse(0).ready.poke(false.B)
-        var current=BigInt("80000001",16)
-        for(compare <- Seq(BigInt(1),current,BigInt(0),BigInt(7))) {
-          val before=current;val replacement=BigInt(7)
-          val q=d.io.atomicRequest(0)
-          q.bits.address.poke(0x3004.U);q.bits.warpId.poke(1.U)
-          q.bits.operand.poke(replacement.U);q.bits.compareValue.poke(compare.U)
+      simulate(new SharedL2Cache(GpuConfig(), sets = 8, ways = 2, maxOutstanding = 8, numComputeUnits = 2)) { d =>
+        initialize(d); d.io.atomicResponse(0).ready.poke(false.B)
+        var current = BigInt("80000001", 16)
+        for (compare <- Seq(BigInt(1), current, BigInt(0), BigInt(7))) {
+          val before = current; val replacement = BigInt(7)
+          val q = d.io.atomicRequest(0)
+          q.bits.address.poke(0x3004.U); q.bits.warpId.poke(1.U)
+          q.bits.operand.poke(replacement.U); q.bits.compareValue.poke(compare.U)
           q.bits.operation.poke(AtomicMemoryOp.compareSwap)
-          q.bits.cachePolicy.poke((if(uncached)CachePolicy.uncached else CachePolicy.cached))
-          q.valid.poke(true.B);q.ready.expect(true.B);d.clock.step();q.valid.poke(false.B)
+          q.bits.cachePolicy.poke((if (uncached) CachePolicy.uncached else CachePolicy.cached))
+          q.valid.poke(true.B); q.ready.expect(true.B); d.clock.step(); q.valid.poke(false.B)
           // The first cached request misses; subsequent cached requests use
           // the exact prior atomic publication. Uncached requests always read.
-          var cycles=0
-          while(!d.io.memoryRequest.valid.peek().litToBoolean && cycles<20){d.clock.step();cycles+=1}
+          var cycles = 0
+          while (!d.io.memoryRequest.valid.peek().litToBoolean && cycles < 20) { d.clock.step(); cycles += 1 }
           d.io.memoryRequest.valid.expect(true.B)
-          if(!d.io.memoryRequest.bits.isWrite.peek().litToBoolean) {
+          if (!d.io.memoryRequest.bits.isWrite.peek().litToBoolean) {
             d.io.memoryRequest.bits.address.expect(0x3000.U)
-            val id=d.io.memoryRequest.bits.transactionId.peek().litValue;d.clock.step()
-            d.io.memoryResponse.bits.readData.poke(((before<<32)|BigInt("11223344",16)).U)
-            d.io.memoryResponse.bits.transactionId.poke(id.U);d.io.memoryResponse.bits.fault.poke(false.B)
-            d.io.memoryResponse.valid.poke(true.B);d.clock.step();d.io.memoryResponse.valid.poke(false.B)
+            val id = d.io.memoryRequest.bits.transactionId.peek().litValue; d.clock.step()
+            d.io.memoryResponse.bits.readData.poke(((before << 32) | BigInt("11223344", 16)).U)
+            d.io.memoryResponse.bits.transactionId.poke(id.U); d.io.memoryResponse.bits.fault.poke(false.B)
+            d.io.memoryResponse.valid.poke(true.B); d.clock.step(); d.io.memoryResponse.valid.poke(false.B)
             waitMemoryRequest(d)
           }
-          val expected=if(before==compare)replacement else before
-          d.io.memoryRequest.bits.isWrite.expect(true.B);d.io.memoryRequest.bits.byteMask.expect(0xf0.U)
-          d.io.memoryRequest.bits.writeData.expect((expected<<32).U)
-          val id=d.io.memoryRequest.bits.transactionId.peek().litValue;d.clock.step()
-          for(_<-0 until 7){d.io.atomicResponse(0).valid.expect(false.B);d.clock.step()}
-          d.io.memoryResponse.bits.transactionId.poke(id.U);d.io.memoryResponse.bits.fault.poke(false.B)
-          d.io.memoryResponse.valid.poke(true.B);d.clock.step();d.io.memoryResponse.valid.poke(false.B)
-          cycles=0
-          while(!d.io.atomicResponse(0).valid.peek().litToBoolean && cycles<20){d.clock.step();cycles+=1}
-          d.io.atomicResponse(0).valid.expect(true.B);d.io.atomicResponse(0).bits.oldValue.expect(before.U)
+          val expected = if (before == compare) replacement else before
+          d.io.memoryRequest.bits.isWrite.expect(true.B); d.io.memoryRequest.bits.byteMask.expect(0xf0.U)
+          d.io.memoryRequest.bits.writeData.expect((expected << 32).U)
+          val id = d.io.memoryRequest.bits.transactionId.peek().litValue; d.clock.step()
+          for (_ <- 0 until 7) { d.io.atomicResponse(0).valid.expect(false.B); d.clock.step() }
+          d.io.memoryResponse.bits.transactionId.poke(id.U); d.io.memoryResponse.bits.fault.poke(false.B)
+          d.io.memoryResponse.valid.poke(true.B); d.clock.step(); d.io.memoryResponse.valid.poke(false.B)
+          cycles = 0
+          while (!d.io.atomicResponse(0).valid.peek().litToBoolean && cycles < 20) { d.clock.step(); cycles += 1 }
+          d.io.atomicResponse(0).valid.expect(true.B); d.io.atomicResponse(0).bits.oldValue.expect(before.U)
           d.io.atomicResponse(0).bits.fault.expect(false.B)
-          val held=d.io.atomicResponse(0).bits.peek().litValue
-          for(_<-0 until 5){assert(d.io.atomicResponse(0).bits.peek().litValue==held);q.ready.expect(false.B);d.clock.step()}
-          d.io.atomicResponse(0).ready.poke(true.B);d.clock.step();d.io.atomicResponse(0).ready.poke(false.B)
-          current=expected
+          val held = d.io.atomicResponse(0).bits.peek().litValue
+          for (_ <- 0 until 5) {
+            assert(d.io.atomicResponse(0).bits.peek().litValue == held); q.ready.expect(false.B); d.clock.step()
+          }
+          d.io.atomicResponse(0).ready.poke(true.B); d.clock.step(); d.io.atomicResponse(0).ready.poke(false.B)
+          current = expected
         }
       }
     }

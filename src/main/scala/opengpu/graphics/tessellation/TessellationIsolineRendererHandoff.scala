@@ -10,18 +10,19 @@ class IsolineRendererTask(p: VertexShaderStageConfig) extends Bundle {
   val identity = new GraphicsWorkIdentity
   val firstSequence = UInt(64.W); val firstPrimitiveId = UInt(32.W)
   val instanceId = UInt(32.W); val baseInstance = UInt(32.W)
-  val outputComponents = UInt(7.W); val varyingSlots = UInt(5.W); val flatMask = UInt((4*p.varyings).W)
-  val componentSources = Vec(4 + 4*p.varyings, Valid(UInt(6.W)))
+  val outputComponents = UInt(7.W); val varyingSlots = UInt(5.W); val flatMask = UInt((4 * p.varyings).W)
+  val componentSources = Vec(4 + 4 * p.varyings, Valid(UInt(6.W)))
   val pointSizeSource = Valid(UInt(6.W))
 }
 class IsolineRendererCompletion extends Bundle {
   val taskId = UInt(32.W); val generated = UInt(16.W); val evaluated = UInt(16.W); val published = UInt(16.W)
+
   /** 0 success/discard, 1 invalid level, 2 evaluation fault, 3 mapping/ID fault, 4 cancellation. */
   val status = UInt(3.W); val discarded = Bool(); val evaluationFault = UInt(2.W)
 }
 
-/** Drive one isoline patch through generation, evaluation and primitive mapping.
-  * Published primitives remain provisional until completion succeeds.
+/** Drive one isoline patch through generation, evaluation and primitive mapping. Published primitives remain
+  * provisional until completion succeeds.
   */
 class TessellationIsolineRendererHandoff(p: VertexShaderStageConfig = VertexShaderStageConfig()) extends Module {
   val io = IO(new Bundle {

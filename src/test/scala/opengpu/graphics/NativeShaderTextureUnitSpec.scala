@@ -9,46 +9,73 @@ abstract class NativeShaderTextureFixture extends AnyFlatSpec {
   import WindowRecordTest._
   import NativeTextureFetchTestData._
   protected class Driver(val d: NativeShaderTextureUnit) {
-    private val lanes=d.io.vectorIn.bits.issued.vs1Data.length
-    private val allMask=(BigInt(1)<<lanes)-1
-    zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
-    val memory=new Memory(d.io.memoryRequest.bits,d.io.memoryResponse.bits,d.io.memoryRequest.valid,d.io.memoryRequest.ready,
-      d.io.memoryResponse.valid,d.io.memoryResponse.ready)
-    memory.beforeRequest=r=>assert(!r.write && r.tag<2 && r.address%64==0 && r.mask==(BigInt(1)<<64)-1)
-    def tick(): Unit={memory.drive();memory.capture();d.clock.step()}
-    def until(p: =>Boolean,limit: Int=15000): Unit={var n=0;while(!p && n<limit){tick();n+=1};assert(p,s"native texture timeout reads=${memory.seen.takeRight(8)}")}
-    def context(): Unit={d.io.resources.version.poke(1.U);d.io.resources.address.poke(root.U);identity(d.io.identity)}
-    def put(a: BigInt,v: BigInt): Unit=memory.putWord(a,v)
-    def byte(a: BigInt,v: Int): Unit={memory.bytes(a)=v}
-    def scalarRequest(c: Int,unit: BigInt=0,pointer: BigInt=packet): Unit={
-      context();zero(d.io.in.bits);val q=d.io.in.bits;q.decode.instruction.poke(scalar(c).U)
-      q.decode.warpId.poke(1.U);q.decode.pc.poke(0x200.U);q.decode.activeMask.poke(allMask.U)
-      q.rs1Data.poke(pointer.U);q.rs2Data.poke(unit.U);d.io.in.valid.poke(true.B)
-      until(d.io.in.ready.peek().litToBoolean);tick();d.io.in.valid.poke(false.B);zero(q);zero(d.io.resources);zero(d.io.identity)
+    private val lanes = d.io.vectorIn.bits.issued.vs1Data.length
+    private val allMask = (BigInt(1) << lanes) - 1
+    zero(d.io); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
+    val memory = new Memory(
+      d.io.memoryRequest.bits,
+      d.io.memoryResponse.bits,
+      d.io.memoryRequest.valid,
+      d.io.memoryRequest.ready,
+      d.io.memoryResponse.valid,
+      d.io.memoryResponse.ready
+    )
+    memory.beforeRequest = r => assert(!r.write && r.tag < 2 && r.address % 64 == 0 && r.mask == (BigInt(1) << 64) - 1)
+    def tick(): Unit = { memory.drive(); memory.capture(); d.clock.step() }
+    def until(p: => Boolean, limit: Int = 15000): Unit = {
+      var n = 0; while (!p && n < limit) { tick(); n += 1 };
+      assert(p, s"native texture timeout reads=${memory.seen.takeRight(8)}")
     }
-    def vectorRequest(c: Int,mask: BigInt=5,units: Seq[Int]=Seq(0,1,2,3),pointers: Seq[BigInt]=(0 until 4).map(i=>packet+i*64)): Unit={
-      context();zero(d.io.vectorIn.bits);val q=d.io.vectorIn.bits;q.issued.decode.instruction.poke(vector(c,masked=true).U)
-      q.issued.decode.warpId.poke(1.U);q.issued.decode.pc.poke(0x204.U);q.issued.decode.activeMask.poke(allMask.U);q.executionMask.poke(mask.U)
-      for(i<-0 until lanes){q.issued.vs1Data(i).poke(pointers(i).U);q.issued.vs2Data(i).poke(units(i).U);q.issued.oldVdData(i).poke((0xabc00000L+i).U)}
-      d.io.vectorIn.valid.poke(true.B);until(d.io.vectorIn.ready.peek().litToBoolean);tick();d.io.vectorIn.valid.poke(false.B)
-      zero(q);zero(d.io.resources);zero(d.io.identity)
+    def context(): Unit = {
+      d.io.resources.version.poke(1.U); d.io.resources.address.poke(root.U); identity(d.io.identity)
     }
-    def scalarResult(value: BigInt=0,fault: Boolean=false,address: BigInt=0): Unit={
-      until(d.io.commit.valid.peek().litToBoolean);d.io.commit.bits.rd.expect(10.U);d.io.commit.bits.warpId.expect(1.U)
-      d.io.commit.bits.nextPc.expect(0x204.U);d.io.commit.bits.activeMask.expect(allMask.U);d.io.commit.bits.writeRd.expect((!fault).B)
-      d.io.commit.bits.data.expect(value.U);d.io.responseFault.expect(fault.B)
-      if(fault)d.io.faultAddress.expect(address.U)
-      assert(memory.pending.isEmpty && memory.reply.isEmpty);val held=d.io.commit.bits.peek().litValue
-      d.io.cancel.poke(true.B);for(_<-0 until 3){tick();assert(d.io.commit.bits.peek().litValue==held)}
-      d.io.commit.ready.poke(true.B);tick();d.io.commit.ready.poke(false.B);d.io.cancel.poke(false.B);d.io.busy.expect(false.B)
+    def put(a: BigInt, v: BigInt): Unit = memory.putWord(a, v)
+    def byte(a: BigInt, v: Int): Unit = { memory.bytes(a) = v }
+    def scalarRequest(c: Int, unit: BigInt = 0, pointer: BigInt = packet): Unit = {
+      context(); zero(d.io.in.bits); val q = d.io.in.bits; q.decode.instruction.poke(scalar(c).U)
+      q.decode.warpId.poke(1.U); q.decode.pc.poke(0x200.U); q.decode.activeMask.poke(allMask.U)
+      q.rs1Data.poke(pointer.U); q.rs2Data.poke(unit.U); d.io.in.valid.poke(true.B)
+      until(d.io.in.ready.peek().litToBoolean); tick(); d.io.in.valid.poke(false.B); zero(q); zero(d.io.resources);
+      zero(d.io.identity)
     }
-    def vectorResult(values: Seq[BigInt],fault: Boolean=false): Unit={
-      until(d.io.vectorCommit.valid.peek().litToBoolean);val q=d.io.vectorCommit.bits
-      q.writeback.warpId.expect(1.U);q.writeback.vd.expect(10.U);q.pc.expect(0x204.U);q.warpActiveMask.expect(allMask.U);q.writesVd.expect((!fault).B)
-      q.writeback.data.zip(values).foreach{case(a,b)=>a.expect(b.U)};d.io.responseFault.expect(fault.B)
-      assert(memory.pending.isEmpty && memory.reply.isEmpty);val held=q.peek().litValue
-      for(_<-0 until 3){tick();assert(q.peek().litValue==held)}
-      d.io.vectorCommit.ready.poke(true.B);tick();d.io.vectorCommit.ready.poke(false.B);d.io.busy.expect(false.B)
+    def vectorRequest(
+        c: Int,
+        mask: BigInt = 5,
+        units: Seq[Int] = Seq(0, 1, 2, 3),
+        pointers: Seq[BigInt] = (0 until 4).map(i => packet + i * 64)
+    ): Unit = {
+      context(); zero(d.io.vectorIn.bits); val q = d.io.vectorIn.bits;
+      q.issued.decode.instruction.poke(vector(c, masked = true).U)
+      q.issued.decode.warpId.poke(1.U); q.issued.decode.pc.poke(0x204.U); q.issued.decode.activeMask.poke(allMask.U);
+      q.executionMask.poke(mask.U)
+      for (i <- 0 until lanes) {
+        q.issued.vs1Data(i).poke(pointers(i).U); q.issued.vs2Data(i).poke(units(i).U);
+        q.issued.oldVdData(i).poke((0xabc00000L + i).U)
+      }
+      d.io.vectorIn.valid.poke(true.B); until(d.io.vectorIn.ready.peek().litToBoolean); tick();
+      d.io.vectorIn.valid.poke(false.B)
+      zero(q); zero(d.io.resources); zero(d.io.identity)
+    }
+    def scalarResult(value: BigInt = 0, fault: Boolean = false, address: BigInt = 0): Unit = {
+      until(d.io.commit.valid.peek().litToBoolean); d.io.commit.bits.rd.expect(10.U);
+      d.io.commit.bits.warpId.expect(1.U)
+      d.io.commit.bits.nextPc.expect(0x204.U); d.io.commit.bits.activeMask.expect(allMask.U);
+      d.io.commit.bits.writeRd.expect((!fault).B)
+      d.io.commit.bits.data.expect(value.U); d.io.responseFault.expect(fault.B)
+      if (fault) d.io.faultAddress.expect(address.U)
+      assert(memory.pending.isEmpty && memory.reply.isEmpty); val held = d.io.commit.bits.peek().litValue
+      d.io.cancel.poke(true.B); for (_ <- 0 until 3) { tick(); assert(d.io.commit.bits.peek().litValue == held) }
+      d.io.commit.ready.poke(true.B); tick(); d.io.commit.ready.poke(false.B); d.io.cancel.poke(false.B);
+      d.io.busy.expect(false.B)
+    }
+    def vectorResult(values: Seq[BigInt], fault: Boolean = false): Unit = {
+      until(d.io.vectorCommit.valid.peek().litToBoolean); val q = d.io.vectorCommit.bits
+      q.writeback.warpId.expect(1.U); q.writeback.vd.expect(10.U); q.pc.expect(0x204.U);
+      q.warpActiveMask.expect(allMask.U); q.writesVd.expect((!fault).B)
+      q.writeback.data.zip(values).foreach { case (a, b) => a.expect(b.U) }; d.io.responseFault.expect(fault.B)
+      assert(memory.pending.isEmpty && memory.reply.isEmpty); val held = q.peek().litValue
+      for (_ <- 0 until 3) { tick(); assert(q.peek().litValue == held) }
+      d.io.vectorCommit.ready.poke(true.B); tick(); d.io.vectorCommit.ready.poke(false.B); d.io.busy.expect(false.B)
     }
   }
 }
@@ -57,173 +84,297 @@ class NativeShaderTextureUnitSpec extends NativeShaderTextureFixture {
   import WindowRecordTest._
   import NativeTextureFetchTestData._
   it should "fetch sixteen compute-stage texture bindings and reject graphics-stage records" in {
-    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage=2)){d=>
-      val t=new Driver(d);roots(t.put,stage=2)
-      val values=(0 until 16).map(u=>install(t.put,t.byte,u,3,stage=2,raw=BigInt(0xff102030L)+u*0x10101))
+    simulate(new NativeShaderTextureUnit(GpuConfig(lanes = 4, warps = 2), stage = 2)) { d =>
+      val t = new Driver(d); roots(t.put, stage = 2)
+      val values =
+        (0 until 16).map(u => install(t.put, t.byte, u, 3, stage = 2, raw = BigInt(0xff102030L) + u * 0x10101))
       coordinates(t.put)
-      for(u<-0 until 16){t.scalarRequest(u%4,u);t.scalarResult(values(u).expected(u%4))}
-      t.put(root+6*4,1);d.io.invalidate.poke(true.B);t.tick();d.io.invalidate.poke(false.B)
-      val before=t.memory.seen.size;t.scalarRequest(0,0);t.scalarResult(fault=true)
-      assert(t.memory.seen.drop(before).forall(r=>r.address==root || r.address==root+64))
-      roots(t.put,stage=2);d.io.invalidate.poke(true.B);t.tick();d.io.invalidate.poke(false.B)
-      t.scalarRequest(0,15);t.scalarResult(values(15).expected(0))
+      for (u <- 0 until 16) { t.scalarRequest(u % 4, u); t.scalarResult(values(u).expected(u % 4)) }
+      t.put(root + 6 * 4, 1); d.io.invalidate.poke(true.B); t.tick(); d.io.invalidate.poke(false.B)
+      val before = t.memory.seen.size; t.scalarRequest(0, 0); t.scalarResult(fault = true)
+      assert(t.memory.seen.drop(before).forall(r => r.address == root || r.address == root + 64))
+      roots(t.put, stage = 2); d.io.invalidate.poke(true.B); t.tick(); d.io.invalidate.poke(false.B)
+      t.scalarRequest(0, 15); t.scalarResult(values(15).expected(0))
     }
   }
-  for(stage<-0 to 1)
-  it should s"fetch all 32 resident bindings at the exclusive address limit stage=$stage" in {
-    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage)){d=>val t=new Driver(d);roots(t.put,stage)
-      val values=(0 until 32).map(u=>install(t.put,t.byte,u,3,stage=stage,raw=BigInt(0xff102030L)+u*0x10101))
-      coordinates(t.put)
-      boundaryBindingTable(t.put,a=>t.memory.word(a))
-      for(u<-0 until 32){t.scalarRequest(u%4,u);t.scalarResult(values(u).expected(u%4))}
-      assert((0 until 32).forall(u=>t.memory.seen.exists(_.address==boundaryBindings+u*64)))
-      for(unit<-Seq(BigInt(32),BigInt("ffffffff",16))){
-        val before=t.memory.seen.size;t.scalarRequest(0,unit);t.scalarResult(fault=true)
-        assert(t.memory.seen.drop(before).map(_.address).toSet==Set(root,root+64),"bad unit escaped root admission")
-        t.scalarRequest(0,31);t.scalarResult(values(31).expected(0))
+  for (stage <- 0 to 1)
+    it should s"fetch all 32 resident bindings at the exclusive address limit stage=$stage" in {
+      simulate(new NativeShaderTextureUnit(GpuConfig(lanes = 4, warps = 2), stage)) { d =>
+        val t = new Driver(d); roots(t.put, stage)
+        val values =
+          (0 until 32).map(u => install(t.put, t.byte, u, 3, stage = stage, raw = BigInt(0xff102030L) + u * 0x10101))
+        coordinates(t.put)
+        boundaryBindingTable(t.put, a => t.memory.word(a))
+        for (u <- 0 until 32) { t.scalarRequest(u % 4, u); t.scalarResult(values(u).expected(u % 4)) }
+        assert((0 until 32).forall(u => t.memory.seen.exists(_.address == boundaryBindings + u * 64)))
+        for (unit <- Seq(BigInt(32), BigInt("ffffffff", 16))) {
+          val before = t.memory.seen.size; t.scalarRequest(0, unit); t.scalarResult(fault = true)
+          assert(
+            t.memory.seen.drop(before).map(_.address).toSet == Set(root, root + 64),
+            "bad unit escaped root admission"
+          )
+          t.scalarRequest(0, 31); t.scalarResult(values(31).expected(0))
+        }
       }
     }
-  }
   it should "retain inactive swizzled lanes and suppress all writes on constant-map coordinate or data faults" in {
-    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d);roots(t.put)
-      val views=(0 until 4).map(u=>install(t.put,t.byte,u,if(u%2==0)35 else 63))
-      for(u<-0 until 4){coordinates(t.put,address=packet+u*64);t.put(images+u*128+23*4,1)
-        for(c<-0 until 4)t.put(images+u*128+(24+c)*4,if(c%2==0)5 else 4)}
-      t.vectorRequest(0,mask=5);t.vectorResult(Seq(BigInt(0x3f800000L),BigInt(0xabc00001L),BigInt(0x3f800000L),BigInt(0xabc00003L)))
-      coordinates(t.put,address=packet+2*64,x=0xffffffffL);t.vectorRequest(0,mask=5)
-      t.vectorResult(Seq.fill(4)(BigInt(0)),fault=true)
-      coordinates(t.put,address=packet+2*64);t.memory.faultAt=Set(views(2).address& ~BigInt(63))
-      t.vectorRequest(0,mask=5);t.vectorResult(Seq.fill(4)(BigInt(0)),fault=true)
-      t.memory.faultAt=Set.empty;t.vectorRequest(1,mask=15);t.vectorResult(Seq.fill(4)(BigInt(0)))
-      info("NATIVE_IMAGE_SWIZZLE_VECTOR inactiveOldVd=true lateLaneCoordinateFaultAtomic=true constantMapDataFaultAtomic=true healthyReuse=true")
+    simulate(new NativeShaderTextureUnit(GpuConfig(lanes = 4, warps = 2))) { d =>
+      val t = new Driver(d); roots(t.put)
+      val views = (0 until 4).map(u => install(t.put, t.byte, u, if (u % 2 == 0) 35 else 63))
+      for (u <- 0 until 4) {
+        coordinates(t.put, address = packet + u * 64); t.put(images + u * 128 + 23 * 4, 1)
+        for (c <- 0 until 4) t.put(images + u * 128 + (24 + c) * 4, if (c % 2 == 0) 5 else 4)
+      }
+      t.vectorRequest(0, mask = 5);
+      t.vectorResult(Seq(BigInt(0x3f800000L), BigInt(0xabc00001L), BigInt(0x3f800000L), BigInt(0xabc00003L)))
+      coordinates(t.put, address = packet + 2 * 64, x = 0xffffffffL); t.vectorRequest(0, mask = 5)
+      t.vectorResult(Seq.fill(4)(BigInt(0)), fault = true)
+      coordinates(t.put, address = packet + 2 * 64); t.memory.faultAt = Set(views(2).address & ~BigInt(63))
+      t.vectorRequest(0, mask = 5); t.vectorResult(Seq.fill(4)(BigInt(0)), fault = true)
+      t.memory.faultAt = Set.empty; t.vectorRequest(1, mask = 15); t.vectorResult(Seq.fill(4)(BigInt(0)))
+      info(
+        "NATIVE_IMAGE_SWIZZLE_VECTOR inactiveOldVd=true lateLaneCoordinateFaultAtomic=true constantMapDataFaultAtomic=true healthyReuse=true"
+      )
     }
   }
   it should "retain inactive vector lanes and suppress every destination lane on a later active lane fault" in {
-    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d);roots(t.put)
-      val values=(0 until 4).map(i=>install(t.put,t.byte,i,if(i%2==0)35 else 10,raw=BigInt(i+1)<<96|BigInt(0xfedcba98L+i)))
-      for(i<-0 until 4)coordinates(t.put,address=packet+i*64)
-      t.vectorRequest(0);t.vectorResult(Seq(values(0).expected(0),BigInt(0xabc00001L),values(2).expected(0),BigInt(0xabc00003L)))
-      t.vectorRequest(3,mask=15);t.vectorResult(values.map(_.expected(3)))
-      coordinates(t.put,address=packet+2*64,x=0xffffffffL)
-      t.vectorRequest(0);t.vectorResult(Seq.fill(4)(BigInt(0)),fault=true)
-      coordinates(t.put,address=packet+2*64);t.vectorRequest(0,mask=0);val before=t.memory.seen.size
-      t.vectorResult((0 until 4).map(i=>BigInt(0xabc00000L+i)));assert(t.memory.seen.size==before)
-      t.vectorRequest(1,mask=15);t.vectorResult(values.map(_.expected(1)))
-      info("NATIVE_TYPED_TEXTURE_VECTOR inactiveOldVd=true maskedPerLaneBindings=true allComponents=true laterLaneFaultNoPartialWrite=true zeroMaskNoReads=true healthyReuse=true")
+    simulate(new NativeShaderTextureUnit(GpuConfig(lanes = 4, warps = 2))) { d =>
+      val t = new Driver(d); roots(t.put)
+      val values = (0 until 4).map(i =>
+        install(t.put, t.byte, i, if (i % 2 == 0) 35 else 10, raw = BigInt(i + 1) << 96 | BigInt(0xfedcba98L + i))
+      )
+      for (i <- 0 until 4) coordinates(t.put, address = packet + i * 64)
+      t.vectorRequest(0);
+      t.vectorResult(Seq(values(0).expected(0), BigInt(0xabc00001L), values(2).expected(0), BigInt(0xabc00003L)))
+      t.vectorRequest(3, mask = 15); t.vectorResult(values.map(_.expected(3)))
+      coordinates(t.put, address = packet + 2 * 64, x = 0xffffffffL)
+      t.vectorRequest(0); t.vectorResult(Seq.fill(4)(BigInt(0)), fault = true)
+      coordinates(t.put, address = packet + 2 * 64); t.vectorRequest(0, mask = 0); val before = t.memory.seen.size
+      t.vectorResult((0 until 4).map(i => BigInt(0xabc00000L + i))); assert(t.memory.seen.size == before)
+      t.vectorRequest(1, mask = 15); t.vectorResult(values.map(_.expected(1)))
+      info(
+        "NATIVE_TYPED_TEXTURE_VECTOR inactiveOldVd=true maskedPerLaneBindings=true allComponents=true laterLaneFaultNoPartialWrite=true zeroMaskNoReads=true healthyReuse=true"
+      )
     }
   }
   it should "reject root stage binding identity malformed packets and full width indices before unsafe reads" in {
-    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d);roots(t.put);val v=install(t.put,t.byte,0);coordinates(t.put)
-      t.scalarRequest(0,32);t.scalarResult(fault=true);t.scalarRequest(0,0xffffffffL);t.scalarResult(fault=true)
-      roots(t.put,stage=1);t.scalarRequest(0);t.scalarResult(fault=true);roots(t.put)
-      for((a,value)<-Seq((bindings+12,BigInt(9)),(packet+12,BigInt(9)),(packet+48,BigInt(1)),(packet+40,BigInt(8)),(packet+44,BigInt(0x10000000)))){
-        install(t.put,t.byte,0);coordinates(t.put);t.put(a,value);t.scalarRequest(0);t.scalarResult(fault=true)}
-      coordinates(t.put);t.scalarRequest(0,pointer=packet+1);t.scalarResult(fault=true)
-      t.scalarRequest(0);t.scalarResult(v.expected(0))
-      info("NATIVE_TYPED_TEXTURE_ADMISSION stageIdentity=true bindingIdentity=true packetIdentityAndReserved=true full32BitUnitAndLevel=true fullFaceBeforeNarrowing=true misalignmentBeforeRead=true healthyReuse=true")
+    simulate(new NativeShaderTextureUnit(GpuConfig(lanes = 4, warps = 2))) { d =>
+      val t = new Driver(d); roots(t.put); val v = install(t.put, t.byte, 0); coordinates(t.put)
+      t.scalarRequest(0, 32); t.scalarResult(fault = true); t.scalarRequest(0, 0xffffffffL);
+      t.scalarResult(fault = true)
+      roots(t.put, stage = 1); t.scalarRequest(0); t.scalarResult(fault = true); roots(t.put)
+      for (
+        (a, value) <- Seq(
+          (bindings + 12, BigInt(9)),
+          (packet + 12, BigInt(9)),
+          (packet + 48, BigInt(1)),
+          (packet + 40, BigInt(8)),
+          (packet + 44, BigInt(0x10000000))
+        )
+      ) {
+        install(t.put, t.byte, 0); coordinates(t.put); t.put(a, value); t.scalarRequest(0); t.scalarResult(fault = true)
+      }
+      coordinates(t.put); t.scalarRequest(0, pointer = packet + 1); t.scalarResult(fault = true)
+      t.scalarRequest(0); t.scalarResult(v.expected(0))
+      info(
+        "NATIVE_TYPED_TEXTURE_ADMISSION stageIdentity=true bindingIdentity=true packetIdentityAndReserved=true full32BitUnitAndLevel=true fullFaceBeforeNarrowing=true misalignmentBeforeRead=true healthyReuse=true"
+      )
     }
   }
   it should "retain mapped read offers through cancellation cuts and preserve primary faults before healthy reuse" in {
-    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d);roots(t.put)
-      val v=install(t.put,t.byte,0,35);coordinates(t.put);t.memory.delay=11
-      for(cut<-0 until 240){
-        d.io.invalidate.poke(true.B);t.tick();d.io.invalidate.poke(false.B);t.scalarRequest(0)
-        for(_<-0 until cut if !d.io.commit.valid.peek().litToBoolean)t.tick()
-        val held=d.io.commit.valid.peek().litToBoolean;d.io.cancel.poke(true.B)
-        t.scalarResult(if(held)v.expected(0)else BigInt(0),fault= !held)
-        t.scalarRequest(1);t.scalarResult(v.expected(1))
+    simulate(new NativeShaderTextureUnit(GpuConfig(lanes = 4, warps = 2))) { d =>
+      val t = new Driver(d); roots(t.put)
+      val v = install(t.put, t.byte, 0, 35); coordinates(t.put); t.memory.delay = 11
+      for (cut <- 0 until 240) {
+        d.io.invalidate.poke(true.B); t.tick(); d.io.invalidate.poke(false.B); t.scalarRequest(0)
+        for (_ <- 0 until cut if !d.io.commit.valid.peek().litToBoolean) t.tick()
+        val held = d.io.commit.valid.peek().litToBoolean; d.io.cancel.poke(true.B)
+        t.scalarResult(if (held) v.expected(0) else BigInt(0), fault = !held)
+        t.scalarRequest(1); t.scalarResult(v.expected(1))
       }
-      t.memory.holdRequests=true;t.scalarRequest(0);t.until(d.io.memoryRequest.valid.peek().litToBoolean);t.tick()
-      val offered=d.io.memoryRequest.bits.peek().litValue;d.io.cancel.poke(true.B)
-      for(_<-0 until 9){t.tick();d.io.memoryRequest.valid.expect(true.B);assert(d.io.memoryRequest.bits.peek().litValue==offered)}
-      t.memory.holdRequests=false;t.scalarResult(fault=true)
-      t.memory.faultAt=Set(root);val before=t.memory.seen.size;t.scalarRequest(0)
-      t.until(t.memory.seen.drop(before).exists(_.address==root) && t.memory.pending.isEmpty && t.memory.reply.isEmpty)
-      d.io.cancel.poke(true.B);t.scalarResult(fault=true,address=root);t.memory.faultAt=Set.empty
-      t.scalarRequest(2);t.scalarResult(v.expected(2))
-      info("NATIVE_TYPED_TEXTURE_CANCEL cuts240=true mappedOfferHeld9=true primaryRootFaultBeforeCancel=true noLeaseAbandonment=true exactHealthyReuse=true immutableRetirement=true")
+      t.memory.holdRequests = true; t.scalarRequest(0); t.until(d.io.memoryRequest.valid.peek().litToBoolean); t.tick()
+      val offered = d.io.memoryRequest.bits.peek().litValue; d.io.cancel.poke(true.B)
+      for (_ <- 0 until 9) {
+        t.tick(); d.io.memoryRequest.valid.expect(true.B); assert(d.io.memoryRequest.bits.peek().litValue == offered)
+      }
+      t.memory.holdRequests = false; t.scalarResult(fault = true)
+      t.memory.faultAt = Set(root); val before = t.memory.seen.size; t.scalarRequest(0)
+      t.until(
+        t.memory.seen.drop(before).exists(_.address == root) && t.memory.pending.isEmpty && t.memory.reply.isEmpty
+      )
+      d.io.cancel.poke(true.B); t.scalarResult(fault = true, address = root); t.memory.faultAt = Set.empty
+      t.scalarRequest(2); t.scalarResult(v.expected(2))
+      info(
+        "NATIVE_TYPED_TEXTURE_CANCEL cuts240=true mappedOfferHeld9=true primaryRootFaultBeforeCancel=true noLeaseAbandonment=true exactHealthyReuse=true immutableRetirement=true"
+      )
     }
   }
 
   it should "drain compressed decode across post-data cancellation and preserve vector fault atomicity" in {
-    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d);roots(t.put)
-      val views=(0 until 4).map(u=>install(t.put,t.byte,u,54+u*3,raw=BigInt("8091a2b3c4d5e6f70123456789abcdef",16)+u))
-      for(u<-0 until 4)coordinates(t.put,address=packet+u*64)
-      t.vectorRequest(0,mask=5);t.vectorResult(Seq(views(0).expected(0),BigInt(0xabc00001L),views(2).expected(0),BigInt(0xabc00003L)))
-      coordinates(t.put,address=packet+2*64,x=7);t.vectorRequest(0,mask=5);t.vectorResult(Seq.fill(4)(BigInt(0)),fault=true)
-      coordinates(t.put,address=packet+2*64);t.vectorRequest(3,mask=15);t.vectorResult(views.map(_.expected(3)))
-      val v=views(3);var cancelled=0;var held=0
-      for(offset<-0 until 40){val before=t.memory.seen.size;t.scalarRequest(0,3,packet+3*64)
-        val line=v.address& ~BigInt(63)
-        t.until(t.memory.seen.drop(before).exists(_.address==line+64) && t.memory.pending.isEmpty && t.memory.reply.isEmpty)
-        for(_<-0 until offset if !d.io.commit.valid.peek().litToBoolean)t.tick()
-        val wasHeld=d.io.commit.valid.peek().litToBoolean;d.io.cancel.poke(true.B)
-        if(wasHeld){t.scalarResult(v.expected(0));held+=1}else{t.scalarResult(fault=true);cancelled+=1}
+    simulate(new NativeShaderTextureUnit(GpuConfig(lanes = 4, warps = 2))) { d =>
+      val t = new Driver(d); roots(t.put)
+      val views = (0 until 4).map(u =>
+        install(t.put, t.byte, u, 54 + u * 3, raw = BigInt("8091a2b3c4d5e6f70123456789abcdef", 16) + u)
+      )
+      for (u <- 0 until 4) coordinates(t.put, address = packet + u * 64)
+      t.vectorRequest(0, mask = 5);
+      t.vectorResult(Seq(views(0).expected(0), BigInt(0xabc00001L), views(2).expected(0), BigInt(0xabc00003L)))
+      coordinates(t.put, address = packet + 2 * 64, x = 7); t.vectorRequest(0, mask = 5);
+      t.vectorResult(Seq.fill(4)(BigInt(0)), fault = true)
+      coordinates(t.put, address = packet + 2 * 64); t.vectorRequest(3, mask = 15);
+      t.vectorResult(views.map(_.expected(3)))
+      val v = views(3); var cancelled = 0; var held = 0
+      for (offset <- 0 until 40) {
+        val before = t.memory.seen.size; t.scalarRequest(0, 3, packet + 3 * 64)
+        val line = v.address & ~BigInt(63)
+        t.until(
+          t.memory.seen
+            .drop(before)
+            .exists(_.address == line + 64) && t.memory.pending.isEmpty && t.memory.reply.isEmpty
+        )
+        for (_ <- 0 until offset if !d.io.commit.valid.peek().litToBoolean) t.tick()
+        val wasHeld = d.io.commit.valid.peek().litToBoolean; d.io.cancel.poke(true.B)
+        if (wasHeld) { t.scalarResult(v.expected(0)); held += 1 }
+        else { t.scalarResult(fault = true); cancelled += 1 }
       }
-      assert(cancelled>0 && held>0)
-      t.scalarRequest(0,3,packet+3*64);t.scalarResult(v.expected(0))
-      info(s"NATIVE_COMPRESSED_DRAIN offsets40=true cancelled=$cancelled held=$held dataThenDecodeCancel=true inactiveLanes=true laterLaneFaultNoPartialWrite=true healthyReuse=true")
+      assert(cancelled > 0 && held > 0)
+      t.scalarRequest(0, 3, packet + 3 * 64); t.scalarResult(v.expected(0))
+      info(
+        s"NATIVE_COMPRESSED_DRAIN offsets40=true cancelled=$cancelled held=$held dataThenDecodeCancel=true inactiveLanes=true laterLaneFaultNoPartialWrite=true healthyReuse=true"
+      )
     }
   }
   it should "validate compressed NPOT mip chains before selected block reads and reject later layout disagreement" in {
-    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d);roots(t.put);install(t.put,t.byte,0,59)
-      val bytes=16;val allocation=BigInt(0x20000);val id=defaultIdentity
-      t.put(images+10*4,2);t.put(images+20*4,levels+384);t.put(samplers+7*4,2)
-      val raws=(0 to 2).map(n=>BigInt("3f807fc0a55a33c0fedcba9876543210",16)+n*0x101)
-      for(level<-0 to 2){val w=7>>level;val h=math.max(1,5>>level);val columns=(w+3)/4;val rows=(h+3)/4
-        val row=columns*bytes+5;val data=allocation+60+level*512
-        words(t.put,levels+level*128,Seq[BigInt](BigInt("47584c01",16),128,1)++id++
-          Seq[BigInt](level,0,level,allocation,allocation+4096,0,data,w,h,1,1,row,0,0,0,0,0,1,bytes),32)
-        for(y<-0 until rows;x<-0 until columns;n<-0 until bytes)t.byte(data+y*row+x*bytes+n,((raws(level)>>(8*n))&255).toInt)
+    simulate(new NativeShaderTextureUnit(GpuConfig(lanes = 4, warps = 2))) { d =>
+      val t = new Driver(d); roots(t.put); install(t.put, t.byte, 0, 59)
+      val bytes = 16; val allocation = BigInt(0x20000); val id = defaultIdentity
+      t.put(images + 10 * 4, 2); t.put(images + 20 * 4, levels + 384); t.put(samplers + 7 * 4, 2)
+      val raws = (0 to 2).map(n => BigInt("3f807fc0a55a33c0fedcba9876543210", 16) + n * 0x101)
+      for (level <- 0 to 2) {
+        val w = 7 >> level; val h = math.max(1, 5 >> level); val columns = (w + 3) / 4; val rows = (h + 3) / 4
+        val row = columns * bytes + 5; val data = allocation + 60 + level * 512
+        words(
+          t.put,
+          levels + level * 128,
+          Seq[BigInt](BigInt("47584c01", 16), 128, 1) ++ id ++
+            Seq[BigInt](
+              level,
+              0,
+              level,
+              allocation,
+              allocation + 4096,
+              0,
+              data,
+              w,
+              h,
+              1,
+              1,
+              row,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              bytes
+            ),
+          32
+        )
+        for (y <- 0 until rows; x <- 0 until columns; n <- 0 until bytes)
+          t.byte(data + y * row + x * bytes + n, ((raws(level) >> (8 * n)) & 255).toInt)
       }
-      for(level<-0 to 2;c<-0 until 4){val x=(7>>level)-1;val y=math.max(1,5>>level)-1
-        coordinates(t.put,level=level,x=x,y=y);t.scalarRequest(c)
-        t.scalarResult(CompressedImageReference.decode(59,raws(level),x&3,y&3)(c))}
-      d.io.invalidate.poke(true.B);t.tick();d.io.invalidate.poke(false.B);t.put(levels+256+24*4,8);coordinates(t.put,level=0)
-      val before=t.memory.seen.size;t.scalarRequest(0);t.scalarResult(fault=true)
-      assert(!t.memory.seen.drop(before).exists(r=>r.address>=allocation && r.address<allocation+4096))
-      info("NATIVE_COMPRESSED_MIPS NPOT7x5=true levels3=true selectedCoordinates=true laterByteMismatchBeforeData=true samplerDerivedCompleteness=true")
+      for (level <- 0 to 2; c <- 0 until 4) {
+        val x = (7 >> level) - 1; val y = math.max(1, 5 >> level) - 1
+        coordinates(t.put, level = level, x = x, y = y); t.scalarRequest(c)
+        t.scalarResult(CompressedImageReference.decode(59, raws(level), x & 3, y & 3)(c))
+      }
+      d.io.invalidate.poke(true.B); t.tick(); d.io.invalidate.poke(false.B); t.put(levels + 256 + 24 * 4, 8);
+      coordinates(t.put, level = 0)
+      val before = t.memory.seen.size; t.scalarRequest(0); t.scalarResult(fault = true)
+      assert(!t.memory.seen.drop(before).exists(r => r.address >= allocation && r.address < allocation + 4096))
+      info(
+        "NATIVE_COMPRESSED_MIPS NPOT7x5=true levels3=true selectedCoordinates=true laterByteMismatchBeforeData=true samplerDerivedCompleteness=true"
+      )
     }
   }
   it should "select explicit mip texels and validate the sampler required chain before reading any data" in {
-    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d);roots(t.put);install(t.put,t.byte,0,35)
-      val bytes=16;val allocation=BigInt(0x20000);val id=defaultIdentity
-      t.put(images+10*4,1);t.put(images+11*4,4);t.put(images+12*4,4);t.put(images+20*4,levels+256)
-      t.put(samplers+7*4,2)
-      val raws=Seq(BigInt("3f8000003f4000003f0000003e800000",16),BigInt("400000003fc000003f8000003f000000",16))
-      for(level<-0 to 1){val size=4>>level;val row=size*bytes+5;val data=allocation+60+level*512
-        words(t.put,levels+level*128,Seq[BigInt](BigInt("47584c01",16),128,1)++id++
-          Seq[BigInt](level,0,level,allocation,allocation+4096,0,data,size,size,1,1,row,0,0,0,0,0,0,bytes),32)
-        val address=data+bytes+row;for(n<-0 until bytes)t.byte(address+n,((raws(level)>>(8*n))&255).toInt)
+    simulate(new NativeShaderTextureUnit(GpuConfig(lanes = 4, warps = 2))) { d =>
+      val t = new Driver(d); roots(t.put); install(t.put, t.byte, 0, 35)
+      val bytes = 16; val allocation = BigInt(0x20000); val id = defaultIdentity
+      t.put(images + 10 * 4, 1); t.put(images + 11 * 4, 4); t.put(images + 12 * 4, 4);
+      t.put(images + 20 * 4, levels + 256)
+      t.put(samplers + 7 * 4, 2)
+      val raws = Seq(BigInt("3f8000003f4000003f0000003e800000", 16), BigInt("400000003fc000003f8000003f000000", 16))
+      for (level <- 0 to 1) {
+        val size = 4 >> level; val row = size * bytes + 5; val data = allocation + 60 + level * 512
+        words(
+          t.put,
+          levels + level * 128,
+          Seq[BigInt](BigInt("47584c01", 16), 128, 1) ++ id ++
+            Seq[BigInt](
+              level,
+              0,
+              level,
+              allocation,
+              allocation + 4096,
+              0,
+              data,
+              size,
+              size,
+              1,
+              1,
+              row,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              bytes
+            ),
+          32
+        )
+        val address = data + bytes + row;
+        for (n <- 0 until bytes) t.byte(address + n, ((raws(level) >> (8 * n)) & 255).toInt)
       }
-      for(level<-0 to 1;c<-0 until 4){coordinates(t.put,level=level);t.scalarRequest(c)
-        t.scalarResult((raws(level)>>(32*c))&0xffffffffL)}
-      d.io.invalidate.poke(true.B);t.tick();d.io.invalidate.poke(false.B)
-      t.put(levels+128+13*4,1);coordinates(t.put,level=0);val before=t.memory.seen.size
-      t.scalarRequest(0);t.scalarResult(fault=true)
-      assert(!t.memory.seen.drop(before).exists(r=>r.address>=allocation && r.address<allocation+4096))
-      info("NATIVE_TYPED_TEXTURE_MIPS selectedLevels0And1=true exactComponents8=true samplerDerivedChain=true laterMismatchBeforeData=true fullLevelTransport=true")
+      for (level <- 0 to 1; c <- 0 until 4) {
+        coordinates(t.put, level = level); t.scalarRequest(c)
+        t.scalarResult((raws(level) >> (32 * c)) & 0xffffffffL)
+      }
+      d.io.invalidate.poke(true.B); t.tick(); d.io.invalidate.poke(false.B)
+      t.put(levels + 128 + 13 * 4, 1); coordinates(t.put, level = 0); val before = t.memory.seen.size
+      t.scalarRequest(0); t.scalarResult(fault = true)
+      assert(!t.memory.seen.drop(before).exists(r => r.address >= allocation && r.address < allocation + 4096))
+      info(
+        "NATIVE_TYPED_TEXTURE_MIPS selectedLevels0And1=true exactComponents8=true samplerDerivedChain=true laterMismatchBeforeData=true fullLevelTransport=true"
+      )
     }
   }
 
-  for(lanes<-Seq(1))
-  it should s"preserve explicit fetch vector width and high masked lanes for lanes=$lanes" in {
-    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=lanes,warps=2))){d=>val t=new Driver(d);roots(t.put)
-      val views=(0 until lanes).map(u=>install(t.put,t.byte,u,10,raw=BigInt(128+u)))
-      val pointers=(0 until lanes).map(u=>packet+u*64)
-      for(a<-pointers)coordinates(t.put,address=a)
-      val all=(BigInt(1)<<lanes)-1;val mask=BigInt("a5a5a5a5",16)&all
-      t.vectorRequest(0,mask,(0 until lanes),pointers)
-      t.vectorResult((0 until lanes).map(u=>if(mask.testBit(u))views(u).expected(0)else BigInt(0xabc00000L+u)))
-      t.vectorRequest(3,all,(0 until lanes),pointers);t.vectorResult(views.map(_.expected(3)))
-      t.scalarRequest(0,lanes-1,pointers.last);t.scalarResult(views.last.expected(0))
-      val compressed=(0 until lanes).map(u=>install(t.put,t.byte,u,54+u%10,raw=BigInt("fedcba98765432100123456789abcdef",16)+u))
-      d.io.invalidate.poke(true.B);t.tick();d.io.invalidate.poke(false.B)
-      t.vectorRequest(0,mask,(0 until lanes),pointers)
-      t.vectorResult((0 until lanes).map(u=>if(mask.testBit(u))compressed(u).expected(0)else BigInt(0xabc00000L+u)))
-      t.vectorRequest(3,all,(0 until lanes),pointers);t.vectorResult(compressed.map(_.expected(3)))
-      info(s"NATIVE_TYPED_TEXTURE_WIDTH lanes=$lanes explicitFetchNoDerivatives=true highMaskBits=true allLaneBindings=true inactiveOldVd=true scalarLastBinding=true twoCredits=true")
+  for (lanes <- Seq(1))
+    it should s"preserve explicit fetch vector width and high masked lanes for lanes=$lanes" in {
+      simulate(new NativeShaderTextureUnit(GpuConfig(lanes = lanes, warps = 2))) { d =>
+        val t = new Driver(d); roots(t.put)
+        val views = (0 until lanes).map(u => install(t.put, t.byte, u, 10, raw = BigInt(128 + u)))
+        val pointers = (0 until lanes).map(u => packet + u * 64)
+        for (a <- pointers) coordinates(t.put, address = a)
+        val all = (BigInt(1) << lanes) - 1; val mask = BigInt("a5a5a5a5", 16) & all
+        t.vectorRequest(0, mask, (0 until lanes), pointers)
+        t.vectorResult((0 until lanes).map(u => if (mask.testBit(u)) views(u).expected(0) else BigInt(0xabc00000L + u)))
+        t.vectorRequest(3, all, (0 until lanes), pointers); t.vectorResult(views.map(_.expected(3)))
+        t.scalarRequest(0, lanes - 1, pointers.last); t.scalarResult(views.last.expected(0))
+        val compressed = (0 until lanes)
+          .map(u => install(t.put, t.byte, u, 54 + u % 10, raw = BigInt("fedcba98765432100123456789abcdef", 16) + u))
+        d.io.invalidate.poke(true.B); t.tick(); d.io.invalidate.poke(false.B)
+        t.vectorRequest(0, mask, (0 until lanes), pointers)
+        t.vectorResult(
+          (0 until lanes).map(u => if (mask.testBit(u)) compressed(u).expected(0) else BigInt(0xabc00000L + u))
+        )
+        t.vectorRequest(3, all, (0 until lanes), pointers); t.vectorResult(compressed.map(_.expected(3)))
+        info(
+          s"NATIVE_TYPED_TEXTURE_WIDTH lanes=$lanes explicitFetchNoDerivatives=true highMaskBits=true allLaneBindings=true inactiveOldVd=true scalarLastBinding=true twoCredits=true"
+        )
+      }
     }
-  }
 
 }

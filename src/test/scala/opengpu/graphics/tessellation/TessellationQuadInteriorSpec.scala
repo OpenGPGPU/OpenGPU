@@ -20,11 +20,13 @@ class TessellationQuadInteriorSpec extends AnyFlatSpec {
     val c = math.max(low, math.min(high, f)).toFloat
     val ceil = math.ceil(c.toDouble).toInt
     val rounded = if (spacing == 1) (ceil + 1) & ~1 else if (spacing == 2) ceil | 1 else ceil
-    val n = if (promote) { if (spacing == 2) 3 else 2 } else rounded
+    val n = if (promote) { if (spacing == 2) 3 else 2 }
+    else rounded
     val bits = java.lang.Float.floatToRawIntBits(c)
     val fixed = BigInt((bits & 0x7fffff) | 0x800000) << (((bits >>> 23) & 255) - 127)
     (0 to n).map { i =>
-      if (i == 0) BigInt(0) else if (i == n) one
+      if (i == 0) BigInt(0)
+      else if (i == n) one
       else if (spacing == 0) roundEven(BigInt(i) * one, n)
       else roundEven((fixed + (BigInt(2 * i - n) << 23)) * one, fixed << 1)
     }.toVector
@@ -67,7 +69,8 @@ class TessellationQuadInteriorSpec extends AnyFlatSpec {
         (Vector.fill(4)(2.0f), Vector(3.125f, 4.25f), 0),
         (Vector.fill(4)(2.0f), Vector(3.125f, 4.25f), 1),
         (Vector.fill(4)(2.0f), Vector(3.125f, 4.25f), 2),
-        (Vector.fill(4)(64.0f), Vector(64.0f, 64.0f), 0))
+        (Vector.fill(4)(64.0f), Vector(64.0f, 64.0f), 0)
+      )
       for ((outer, inner, spacing) <- cases) {
         begin(outer, inner, spacing)
         val want = expected(outer, inner, spacing)
@@ -93,7 +96,8 @@ class TessellationQuadInteriorSpec extends AnyFlatSpec {
       begin(Vector(1.0f, 0.0f, 1.0f, 1.0f), Vector(2.0f, 2.0f), 0); finish(0, 0, discarded = true)
       begin(Vector.fill(4)(1.0f), Vector(1.0f, 1.0f), 3); finish(1, 0)
       begin(Vector.fill(4)(2.0f), Vector(2.0f, 2.0f), 0)
-      waitFor(d.io.out.valid.peek().litToBoolean); d.io.out.ready.poke(true.B); d.clock.step(); d.io.out.ready.poke(false.B)
+      waitFor(d.io.out.valid.peek().litToBoolean); d.io.out.ready.poke(true.B); d.clock.step();
+      d.io.out.ready.poke(false.B)
       finish(0, 1)
     }
   }

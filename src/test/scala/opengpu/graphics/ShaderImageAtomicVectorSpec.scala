@@ -19,7 +19,8 @@ class ShaderImageAtomicVectorSpec extends AnyFlatSpec {
       }
       def issue(function: Int, subop: Int, rd: Int, lhs: Seq[Int], rhs: Seq[Int], effect: Int = 15): Unit = {
         d.io.in.ready.expect(true.B); val q = d.io.in.bits; WindowRecordTest.zero(q)
-        val instruction = (BigInt(function) << 26) | (BigInt(1) << 25) | (BigInt(subop) << 12) | (BigInt(rd) << 7) | 0x2b
+        val instruction =
+          (BigInt(function) << 26) | (BigInt(1) << 25) | (BigInt(subop) << 12) | (BigInt(rd) << 7) | 0x2b
         q.issued.decode.instruction.poke(instruction.U); q.issued.decode.warpId.poke(1.U)
         q.issued.decode.pc.poke(0x200.U); q.issued.decode.activeMask.poke(15.U)
         q.executionMask.poke(15.U); q.sideEffectMask.poke(effect.U)
@@ -42,8 +43,10 @@ class ShaderImageAtomicVectorSpec extends AnyFlatSpec {
         d.io.atomicRequest.get.ready.poke(true.B); d.clock.step(); d.io.atomicRequest.get.ready.poke(false.B)
         val r = d.io.atomicResponse.get.bits; WindowRecordTest.zero(r)
         r.tag.poke(lane.U); r.unitIndex.poke(lane.U); r.value.poke((900 + lane).U)
-        if (fault) { r.status.poke(ShaderImageAccessStatus.memory.U); r.faultAddressValid.poke(true.B)
-          r.faultAddress.poke(0x4560.U); r.pageFault.poke(true.B) }
+        if (fault) {
+          r.status.poke(ShaderImageAccessStatus.memory.U); r.faultAddressValid.poke(true.B)
+          r.faultAddress.poke(0x4560.U); r.pageFault.poke(true.B)
+        }
         d.io.atomicResponse.get.valid.poke(true.B); d.io.atomicResponse.get.ready.expect(true.B)
         d.clock.step(); d.io.atomicResponse.get.valid.poke(false.B)
       }

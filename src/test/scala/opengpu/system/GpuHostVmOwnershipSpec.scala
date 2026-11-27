@@ -14,8 +14,9 @@ class GpuHostVmOwnershipSpec extends AnyFlatSpec with GpuHostTestSupport {
   for (buffered <- Seq(false, true)) {
     it should s"retain VM state through stalled graphics, compute and software retirement (buffered=$buffered)" in {
       val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-      simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = 4, screenHeight = 4),
-        gpu, bufferCommandReads = buffered)) { dut =>
+      simulate(
+        new GpuHostSystemAxi(GraphicsConfig(screenWidth = 4, screenHeight = 4), gpu, bufferCommandReads = buffered)
+      ) { dut =>
         initialize(dut)
         assert((axiRead(dut, RenderHostRegs.CAPABILITIES) & (1L << GpuCapabilities.ProtectedVmState)) != 0)
         val words = mutable.Map.empty[BigInt, BigInt]
@@ -23,7 +24,8 @@ class GpuHostVmOwnershipSpec extends AnyFlatSpec with GpuHostTestSupport {
         def readLine(a: BigInt): BigInt = {
           reads += a
           val base = a & ~BigInt(63)
-          (0 until 16).map(i => words.getOrElse(base + i * 4, BigInt(0)) << (i * 32))
+          (0 until 16)
+            .map(i => words.getOrElse(base + i * 4, BigInt(0)) << (i * 32))
             .foldLeft(BigInt(0))(_ | _)
         }
         def noWrites(a: BigInt, data: BigInt, mask: BigInt): Unit =
@@ -48,10 +50,14 @@ class GpuHostVmOwnershipSpec extends AnyFlatSpec with GpuHostTestSupport {
           dut.io.m_axi_arvalid.expect(true.B)
         }
         def rejectMutations(expected: Long): Unit = {
-          for (reg <- Seq(GpuCommandMmioRegs.VECTOR_SATP, GpuCommandMmioRegs.INSTRUCTION_SATP,
-              GpuCommandMmioRegs.TLB_FLUSH)) {
-            axiWrite(dut, reg, if (reg == GpuCommandMmioRegs.TLB_FLUSH) 1 else 0x80000400,
-              expectedResponse = 2)
+          for (
+            reg <- Seq(
+              GpuCommandMmioRegs.VECTOR_SATP,
+              GpuCommandMmioRegs.INSTRUCTION_SATP,
+              GpuCommandMmioRegs.TLB_FLUSH
+            )
+          ) {
+            axiWrite(dut, reg, if (reg == GpuCommandMmioRegs.TLB_FLUSH) 1 else 0x80000400, expectedResponse = 2)
           }
           assert(axiRead(dut, GpuCommandMmioRegs.VECTOR_SATP) == expected)
           assert(axiRead(dut, GpuCommandMmioRegs.INSTRUCTION_SATP) == expected)

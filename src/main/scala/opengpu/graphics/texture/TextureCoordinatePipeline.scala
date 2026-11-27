@@ -9,8 +9,12 @@ class TexturePreparedSample extends Bundle {
   val weights = Vec(4, UInt(17.W))
 }
 
-class TextureCoordinateRequest(laneWidth: Int, coordinatePolicyInput: Boolean, nearestInput: Boolean = false,
-                               axisWrapInput: Boolean = false) extends Bundle {
+class TextureCoordinateRequest(
+    laneWidth: Int,
+    coordinatePolicyInput: Boolean,
+    nearestInput: Boolean = false,
+    axisWrapInput: Boolean = false
+) extends Bundle {
   def this(laneWidth: Int, coordinatePolicyInput: Boolean, nearestInput: Boolean) =
     this(laneWidth, coordinatePolicyInput, nearestInput, false)
   def this(laneWidth: Int) = this(laneWidth, false, false)
@@ -34,18 +38,22 @@ class TextureCoordinateResult(laneWidth: Int, coordinatePolicyInput: Boolean) ex
   val coordinateFault = if (coordinatePolicyInput) Some(Bool()) else None
 }
 
-/** Six elastic stages preserve the sampler's arithmetic register cuts while
-  * decoding later vector lanes during the current lane's fetch/filter work.
-  * This unit issues no memory requests and keeps no cross-instruction state.
+/** Six elastic stages preserve the sampler's arithmetic register cuts while decoding later vector lanes during the
+  * current lane's fetch/filter work. This unit issues no memory requests and keeps no cross-instruction state.
   */
-class TextureCoordinatePipeline(laneWidth: Int, coordinatePolicyInput: Boolean, nearestInput: Boolean = false,
-                                axisWrapInput: Boolean = false) extends Module {
+class TextureCoordinatePipeline(
+    laneWidth: Int,
+    coordinatePolicyInput: Boolean,
+    nearestInput: Boolean = false,
+    axisWrapInput: Boolean = false
+) extends Module {
   def this(laneWidth: Int, coordinatePolicyInput: Boolean, nearestInput: Boolean) =
     this(laneWidth, coordinatePolicyInput, nearestInput, false)
   def this(laneWidth: Int) = this(laneWidth, false, false)
   def this(laneWidth: Int, coordinatePolicyInput: Boolean) = this(laneWidth, coordinatePolicyInput, false)
   val io = IO(new Bundle {
-    val in = Flipped(Decoupled(new TextureCoordinateRequest(laneWidth, coordinatePolicyInput, nearestInput, axisWrapInput)))
+    val in =
+      Flipped(Decoupled(new TextureCoordinateRequest(laneWidth, coordinatePolicyInput, nearestInput, axisWrapInput)))
     val out = Decoupled(new TextureCoordinateResult(laneWidth, coordinatePolicyInput))
     val busy = Output(Bool())
   })
@@ -118,7 +126,11 @@ class TextureCoordinatePipeline(laneWidth: Int, coordinatePolicyInput: Boolean, 
   biased.ready := range.ready
   range.bits.texture := biased.bits.texture
   range.bits.x := TextureCoordinates.range(biased.bits.x, biased.bits.texture.texWidth, biased.bits.texture.clamp)
-  range.bits.y := TextureCoordinates.range(biased.bits.y, biased.bits.texture.texHeight, biased.bits.texture.clampV.getOrElse(biased.bits.texture.clamp))
+  range.bits.y := TextureCoordinates.range(
+    biased.bits.y,
+    biased.bits.texture.texHeight,
+    biased.bits.texture.clampV.getOrElse(biased.bits.texture.clamp)
+  )
   private val ranged = Queue(range, 1, pipe = true, flow = false)
 
   private val index = Wire(Decoupled(new Indexed))
@@ -128,8 +140,13 @@ class TextureCoordinatePipeline(laneWidth: Int, coordinatePolicyInput: Boolean, 
   index.bits.lane := ranged.bits.texture.lane
   index.bits.base := ranged.bits.texture.base
   index.bits.texWidth := ranged.bits.texture.texWidth
-  private val xIndices = TextureCoordinates.indices(ranged.bits.x, ranged.bits.texture.texWidth, ranged.bits.texture.clamp)
-  private val yIndices = TextureCoordinates.indices(ranged.bits.y, ranged.bits.texture.texHeight, ranged.bits.texture.clampV.getOrElse(ranged.bits.texture.clamp))
+  private val xIndices =
+    TextureCoordinates.indices(ranged.bits.x, ranged.bits.texture.texWidth, ranged.bits.texture.clamp)
+  private val yIndices = TextureCoordinates.indices(
+    ranged.bits.y,
+    ranged.bits.texture.texHeight,
+    ranged.bits.texture.clampV.getOrElse(ranged.bits.texture.clamp)
+  )
   index.bits.x := VecInit(xIndices)
   index.bits.y := VecInit(yIndices)
   private val fx = ranged.bits.x(7, 0)

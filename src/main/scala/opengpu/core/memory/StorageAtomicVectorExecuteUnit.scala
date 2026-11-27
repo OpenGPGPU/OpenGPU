@@ -5,9 +5,9 @@ import chisel3.util._
 import opengpu.config.GpuConfig
 import opengpu.core.backend.{VectorCommitRequest, VectorTextureRequest}
 
-/** Experimental CUSTOM-1 storage atomics. Parameter capture supplies the
-  * per-lane replacement and comparison words. Atomic instructions use vs1 as
-  * binding and vs2 as byte offset. They are not enabled in the CU decoder. */
+/** Experimental CUSTOM-1 storage atomics. Parameter capture supplies the per-lane replacement and comparison words.
+  * Atomic instructions use vs1 as binding and vs2 as byte offset. They are not enabled in the CU decoder.
+  */
 object StorageAtomicVectorOpcode {
   private def function(i: UInt, n: Int): Bool = i(6, 0) === "h2b".U && i(31, 26) === n.U
   def parameters(i: UInt): Bool = function(i, 24) && i(14, 12) === 0.U && i(11, 7) === 0.U
@@ -20,9 +20,8 @@ class StorageAtomicVectorRequest(config: GpuConfig) extends VectorTextureRequest
   val sideEffectMask = UInt(config.lanes.W)
 }
 
-/** Executes lanes through one checked storage atomic at a time. Successful
-  * prior lanes may have modified memory if a later lane faults; no vector-wide
-  * atomicity is implied. Results publish only when the instruction succeeds.
+/** Executes lanes through one checked storage atomic at a time. Successful prior lanes may have modified memory if a
+  * later lane faults; no vector-wide atomicity is implied. Results publish only when the instruction succeeds.
   */
 class StorageAtomicVectorExecuteUnit(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {
@@ -96,8 +95,10 @@ class StorageAtomicVectorExecuteUnit(config: GpuConfig = GpuConfig()) extends Mo
     valid.foreach(_ := 0.U)
   }
   when(io.warpStart.valid) {
-    assert(state === State.idle || warp =/= io.warpStart.bits,
-      "storage atomic warp slot reused before instruction drain")
+    assert(
+      state === State.idle || warp =/= io.warpStart.bits,
+      "storage atomic warp slot reused before instruction drain"
+    )
     valid(io.warpStart.bits) := 0.U
   }
   when(state =/= State.idle && state =/= State.commit && io.cancel && status === 0.U) {
@@ -114,22 +115,27 @@ class StorageAtomicVectorExecuteUnit(config: GpuConfig = GpuConfig()) extends Mo
         val selected = Mux(StorageAtomicVectorOpcode.atomic(d.instruction), execution & q.sideEffectMask, execution)
         mask := selected; remaining := selected
         indices := q.issued.vs1Data; offsets := q.issued.vs2Data; data := q.issued.oldVdData
-        status := Mux(!io.enabled, StorageAtomicStatus.invalid.U,
-          Mux(io.cancel, StorageAtomicStatus.cancelled.U, 0.U))
+        status := Mux(!io.enabled, StorageAtomicStatus.invalid.U, Mux(io.cancel, StorageAtomicStatus.cancelled.U, 0.U))
         faultValid := false.B; faultAddress := 0.U; pageFault := false.B; owned := false.B
         state := State.check
       }
     }
     is(State.check) {
       when(stopped) { state := State.commit }
-        .elsewhen(!StorageAtomicVectorOpcode.legal(instruction)) { status := StorageAtomicStatus.invalid.U; state := State.commit }
+        .elsewhen(!StorageAtomicVectorOpcode.legal(instruction)) {
+          status := StorageAtomicStatus.invalid.U; state := State.commit
+        }
         .elsewhen(isParams) {
-          for (l <- 0 until config.lanes) { when(mask(l)) { values(warp)(l) := indices(l); comparisons(warp)(l) := offsets(l) } }
+          for (l <- 0 until config.lanes) {
+            when(mask(l)) { values(warp)(l) := indices(l); comparisons(warp)(l) := offsets(l) }
+          }
           valid(warp) := valid(warp) | mask
           state := State.commit
-        }.elsewhen(isAtomic && (mask & ~valid(warp)).orR) {
+        }
+        .elsewhen(isAtomic && (mask & ~valid(warp)).orR) {
           status := StorageAtomicStatus.invalid.U; state := State.commit
-        }.otherwise { state := State.next }
+        }
+        .otherwise { state := State.next }
     }
     is(State.next) {
       when(stopped || !remaining.orR) { state := State.commit }

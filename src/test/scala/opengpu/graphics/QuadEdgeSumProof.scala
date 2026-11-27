@@ -9,8 +9,7 @@ class QuadEdgeSumProofHarness extends Module {
     val terms = Input(Vec(3, SInt(64.W)))
     val equivalent = Output(Bool())
   })
-  val original = FixedPointMath.add(
-    FixedPointMath.add(io.terms(0), io.terms(1)), io.terms(2))
+  val original = FixedPointMath.add(FixedPointMath.add(io.terms(0), io.terms(1)), io.terms(2))
   val candidate = FixedPointMath.sum3(io.terms(0), io.terms(1), io.terms(2))
   io.equivalent := original === candidate
 }
@@ -18,8 +17,10 @@ class QuadEdgeSumProofHarness extends Module {
 object EmitQuadEdgeSumProof {
   def main(args: Array[String]): Unit = {
     require(args.length == 1)
-    ChiselStage.emitSystemVerilogFile(new QuadEdgeSumProofHarness,
+    ChiselStage.emitSystemVerilogFile(
+      new QuadEdgeSumProofHarness,
       Array("--target-dir", args(0)),
-      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
+      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays")
+    )
   }
 }

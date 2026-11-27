@@ -7,9 +7,8 @@ import opengpu.core.frontend.decode.ExecutionType
 
 /** Mutually-exclusive scalar execution dispatch.
   *
-  * Trap routing has final priority over decoded execution controls. Integer M
-  * operations are split before the base integer path so unsupported operations
-  * cannot reach `IntegerExecuteStage`.
+  * Trap routing has final priority over decoded execution controls. Integer M operations are split before the base
+  * integer path so unsupported operations cannot reach `IntegerExecuteStage`.
   */
 class ScalarExecutionDispatch(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {

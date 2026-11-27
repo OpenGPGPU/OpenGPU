@@ -12,7 +12,7 @@ class TessellationQuadPatchCuEvaluationSpec extends AnyFlatSpec {
     case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
     case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
     case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
-    case _ => ()
+    case _                                                             => ()
   }
   it should "retain the controlled patch across CU evaluation, faults and cancellation" in {
     simulate(new TessellationQuadPatchCuEvaluation(GpuConfig(lanes = 4, warps = 2), 4, 2)) { d =>
@@ -35,14 +35,16 @@ class TessellationQuadPatchCuEvaluationSpec extends AnyFlatSpec {
       }
       def start(id: Int, component: Int): Unit = {
         t.patch.context.taskId.poke(id.U); t.patchInputs(0).component.poke(component.U)
-        d.io.task.valid.poke(true.B); until("task")(d.io.task.ready.peek().litToBoolean); d.clock.step(); d.io.task.valid.poke(false.B)
+        d.io.task.valid.poke(true.B); until("task")(d.io.task.ready.peek().litToBoolean); d.clock.step();
+        d.io.task.valid.poke(false.B)
         d.io.opened.ready.poke(true.B); until("open")(d.io.opened.valid.peek().litToBoolean)
         d.io.opened.bits.expect(0.U); d.clock.step(); d.io.opened.ready.poke(false.B)
         d.io.sealInput.valid.poke(true.B); until("seal")(d.io.sealInput.ready.peek().litToBoolean)
         d.clock.step(); d.io.sealInput.valid.poke(false.B)
-        for (i <- 0 until 6) write(i, BigInt("3f800000",16), level = true)
+        for (i <- 0 until 6) write(i, BigInt("3f800000", 16), level = true)
         write(0, 0x4321, level = false)
-        d.io.finish.bits.poke(0.U); d.io.finish.valid.poke(true.B); until("finish")(d.io.finish.ready.peek().litToBoolean)
+        d.io.finish.bits.poke(0.U); d.io.finish.valid.poke(true.B);
+        until("finish")(d.io.finish.ready.peek().litToBoolean)
         d.clock.step(); d.io.finish.valid.poke(false.B); d.io.control.ready.poke(true.B)
         until("control")(d.io.control.valid.peek().litToBoolean); d.io.control.bits.status.expect(0.U)
         d.clock.step(); d.io.control.ready.poke(false.B)
@@ -58,7 +60,8 @@ class TessellationQuadPatchCuEvaluationSpec extends AnyFlatSpec {
       }
       def launch(): Unit = {
         until("launch")(d.io.launch.valid.peek().litToBoolean); d.io.launch.bits.commandId.expect(7.U)
-        d.io.geometryTask.bits.inputComponents.expect(4.U); d.io.geometryTask.bits.vertices(0).components(3).expect(0x4321.U)
+        d.io.geometryTask.bits.inputComponents.expect(4.U);
+        d.io.geometryTask.bits.vertices(0).components(3).expect(0x4321.U)
         d.io.launch.ready.poke(true.B); d.clock.step(); d.io.launch.ready.poke(false.B)
         d.io.owner.poke(1.U); d.io.taskIds(0).poke(7.U)
       }
@@ -68,12 +71,14 @@ class TessellationQuadPatchCuEvaluationSpec extends AnyFlatSpec {
           e.valid.poke(true.B); until("event")(e.ready.peek().litToBoolean); d.clock.step(); e.valid.poke(false.B)
         }
         val c = d.io.kernelCompletion; c.bits.commandId.poke(7.U); c.bits.success.poke(success.B)
-        c.valid.poke(true.B); until("cu completion")(c.ready.peek().litToBoolean); d.clock.step(); c.valid.poke(false.B); d.io.owner.poke(0.U)
+        c.valid.poke(true.B); until("cu completion")(c.ready.peek().litToBoolean); d.clock.step();
+        c.valid.poke(false.B); d.io.owner.poke(0.U)
       }
       def finish(status: Int, published: Int): Unit = {
         until("completion")(d.io.completion.valid.peek().litToBoolean)
         d.io.completion.bits.status.expect(status.U); d.io.completion.bits.published.expect(published.U)
-        d.io.completion.ready.poke(true.B); d.clock.step(); d.io.completion.ready.poke(false.B); d.io.busy.expect(false.B)
+        d.io.completion.ready.poke(true.B); d.clock.step(); d.io.completion.ready.poke(false.B);
+        d.io.busy.expect(false.B)
       }
       start(31, 0)
       for (primitive <- 0 until 2) {

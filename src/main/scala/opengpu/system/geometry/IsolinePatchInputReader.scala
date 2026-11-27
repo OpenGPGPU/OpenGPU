@@ -17,9 +17,11 @@ class IsolinePatchInputReader(config: GpuConfig, idWidth: Int) extends Module {
   val io = IO(new Bundle {
     val request = Flipped(Decoupled(new IsolineEvaluationRequest))
     val count = Input(UInt(6.W)); val selections = Input(Vec(61, new IsolinePatchInputSelection))
-    val commandId = Input(UInt(idWidth.W)); val kernel = Input(new KernelLaunch(config)); val outputComponents = Input(UInt(7.W))
+    val commandId = Input(UInt(idWidth.W)); val kernel = Input(new KernelLaunch(config));
+    val outputComponents = Input(UInt(7.W))
     val inspect = Decoupled(new TessellationPatchAccess); val reply = Flipped(Decoupled(new TessellationContextReply))
-    val task = Decoupled(new IsolineGeometryCuTask(config, idWidth)); val result = Flipped(Decoupled(new IsolineEvaluationResponse))
+    val task = Decoupled(new IsolineGeometryCuTask(config, idWidth));
+    val result = Flipped(Decoupled(new IsolineEvaluationResponse))
     val response = Decoupled(new IsolineEvaluationResponse); val cancel = Input(Bool()); val busy = Output(Bool())
   })
   private val idle :: inspect :: reply :: offer :: result :: failure :: Nil = Enum(6)

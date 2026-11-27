@@ -5,14 +5,13 @@ import chisel3.util._
 import opengpu.config.GpuConfig
 import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse, TranslatedLineClient, VectorTlbFlush}
 
-/** Append a query data ID and walker in the existing native fabric's spare
-  * namespace. Renderer IDs and the enclosing AXI ID width stay unchanged.
-  * The query engine owns one transaction with private tag0; its captured root
-  * is independent of an idle host's current VM root. Coalesce deferred/scoped
-  * flushes into a full idle flush, including every root change.
+/** Append a query data ID and walker in the existing native fabric's spare namespace. Renderer IDs and the enclosing
+  * AXI ID width stay unchanged. The query engine owns one transaction with private tag0; its captured root is
+  * independent of an idle host's current VM root. Coalesce deferred/scoped flushes into a full idle flush, including
+  * every root change.
   */
-class NativeVisibilityQueryMemoryFabric(config: GpuConfig = GpuConfig(),
-    transactions: Int = 64, queryBase: Int = 38) extends Module {
+class NativeVisibilityQueryMemoryFabric(config: GpuConfig = GpuConfig(), transactions: Int = 64, queryBase: Int = 38)
+    extends Module {
   require(isPow2(transactions) && queryBase > 0 && queryBase + 2 <= transactions)
   private val idBits = log2Ceil(transactions)
   val io = IO(new Bundle {
@@ -72,9 +71,17 @@ class NativeVisibilityQueryMemoryFabric(config: GpuConfig = GpuConfig(),
   private val renderReplies = Module(new Queue(new ComputeMemoryResponse(64, transactions), 1))
   renderReplies.io.enq.valid := io.memoryResponse.valid && renderReply
   renderReplies.io.enq.bits := io.memoryResponse.bits; io.renderResponse <> renderReplies.io.deq
-  io.memoryResponse.ready := MuxCase(false.B, Seq(dataReply -> query.io.memResp.ready,
-    walkReply -> query.io.pageWalkResp.ready, renderReply -> renderReplies.io.enq.ready))
-  when(io.memoryResponse.valid) { assert(dataReply || walkReply || renderReply, "query fabric received an unreserved response ID") }
+  io.memoryResponse.ready := MuxCase(
+    false.B,
+    Seq(
+      dataReply -> query.io.memResp.ready,
+      walkReply -> query.io.pageWalkResp.ready,
+      renderReply -> renderReplies.io.enq.ready
+    )
+  )
+  when(io.memoryResponse.valid) {
+    assert(dataReply || walkReply || renderReply, "query fabric received an unreserved response ID")
+  }
 
   private val renderLive = RegInit(0.U(log2Ceil(transactions + 1).W))
   when(io.renderRequest.fire =/= io.renderResponse.fire) {

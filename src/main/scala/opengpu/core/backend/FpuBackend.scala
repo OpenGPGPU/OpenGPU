@@ -3,11 +3,7 @@ package opengpu.core.backend
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
-import opengpu.core.backend.issue.{
-  FpuIssueStage,
-  FpuIssuedInstruction,
-  FpuMemoryUnit
-}
+import opengpu.core.backend.issue.{FpuIssueStage, FpuIssuedInstruction, FpuMemoryUnit}
 import opengpu.core.backend.register.{
   FpuExternalReserve,
   FpuRegisterRead,
@@ -27,11 +23,7 @@ import opengpu.core.execute.fpu.{
   FpuFastMapper
 }
 import opengpu.core.frontend.decode.FpuDecodeResponse
-import opengpu.core.memory.{
-  ScalarMemoryFault,
-  VectorCacheLineRequest,
-  VectorCacheLineResponse
-}
+import opengpu.core.memory.{ScalarMemoryFault, VectorCacheLineRequest, VectorCacheLineResponse}
 
 class FpuFlags(config: GpuConfig) extends Bundle {
   val warpId = UInt(config.warpIdWidth.W)
@@ -45,12 +37,15 @@ private class FpuMappedEntry(config: GpuConfig, tagWidth: Int) extends Bundle {
   val decode = new FpuIssuedInstruction(config)
 }
 
-/** Scalar FP32 backend. FMA, divide, square root, sign/min-max/compare/
-  * classify/move, and conversions retire here; FP memory is a separate unit. */
+/** Scalar FP32 backend. FMA, divide, square root, sign/min-max/compare/ classify/move, and conversions retire here; FP
+  * memory is a separate unit.
+  */
 class FpuBackend(config: GpuConfig = GpuConfig(), tagWidth: Int = 16, helperInvocations: Boolean = false)
     extends Module {
   val io = IO(new Bundle {
-    val invocations = if(helperInvocations)Some(Input(Vec(config.warps,new opengpu.core.memory.WarpInvocationPolicy(config))))else None
+    val invocations =
+      if (helperInvocations) Some(Input(Vec(config.warps, new opengpu.core.memory.WarpInvocationPolicy(config))))
+      else None
     val in = Flipped(Decoupled(new FpuDecodeResponse(config)))
     val redirect = Decoupled(new SimtPath(config))
     val committedWriteback = Valid(new FpuRegisterWrite(config))
@@ -82,17 +77,12 @@ class FpuBackend(config: GpuConfig = GpuConfig(), tagWidth: Int = 16, helperInvo
   private val exact = Module(new Fp32ExactUnit(tagWidth))
   private val div = Module(new Fp32DivLane(tagWidth))
   private val sqrt = Module(new Fp32SqrtLane(tagWidth))
-  private val memory = Module(new FpuMemoryUnit(config,helperInvocations=helperInvocations))
-  private val fmaMetadata = Module(
-    new Queue(new FpuIssuedInstruction(config), 8))
-  private val exactMetadata = Module(
-    new Queue(new FpuIssuedInstruction(config), 8))
-  private val divMetadata = Module(
-    new Queue(new FpuIssuedInstruction(config), 2))
-  private val sqrtMetadata = Module(
-    new Queue(new FpuIssuedInstruction(config), 2))
-  private val mappedQueue = Module(
-    new Queue(new FpuMappedEntry(config, tagWidth), 2))
+  private val memory = Module(new FpuMemoryUnit(config, helperInvocations = helperInvocations))
+  private val fmaMetadata = Module(new Queue(new FpuIssuedInstruction(config), 8))
+  private val exactMetadata = Module(new Queue(new FpuIssuedInstruction(config), 8))
+  private val divMetadata = Module(new Queue(new FpuIssuedInstruction(config), 2))
+  private val sqrtMetadata = Module(new Queue(new FpuIssuedInstruction(config), 2))
+  private val mappedQueue = Module(new Queue(new FpuMappedEntry(config, tagWidth), 2))
 
   private val externalBusy =
     RegInit(VecInit(Seq.fill(config.warps)(0.U(32.W))))
@@ -121,8 +111,8 @@ class FpuBackend(config: GpuConfig = GpuConfig(), tagWidth: Int = 16, helperInvo
   issue.io.scalarRs1Data := io.scalarRs1Data
   issue.io.fvfRead := io.fvfRead
   io.fvfData := issue.io.fvfData
-  io.fpuBusyByWarp := VecInit(issue.io.busyByWarp.zipWithIndex.map {
-    case (busy, warp) => busy | externalBusy(warp)
+  io.fpuBusyByWarp := VecInit(issue.io.busyByWarp.zipWithIndex.map { case (busy, warp) =>
+    busy | externalBusy(warp)
   })
 
   private val fast = mapper.io.out.supported
@@ -230,7 +220,7 @@ class FpuBackend(config: GpuConfig = GpuConfig(), tagWidth: Int = 16, helperInvo
   fma.io.flush := io.flush
   div.io.flush := io.flush
   sqrt.io.flush := io.flush
-  if(helperInvocations)memory.io.invocations.get:=io.invocations.get
+  if (helperInvocations) memory.io.invocations.get := io.invocations.get
   io.memoryRequest <> memory.io.cacheRequest
   memory.io.cacheResponse <> io.memoryResponse
   io.memoryFault <> memory.io.fault
@@ -272,8 +262,7 @@ class FpuBackend(config: GpuConfig = GpuConfig(), tagWidth: Int = 16, helperInvo
       Mux(
         selectedFma,
         fmaMetadata.io.deq.bits.decode,
-        Mux(selectedDiv, divMetadata.io.deq.bits.decode,
-          sqrtMetadata.io.deq.bits.decode)
+        Mux(selectedDiv, divMetadata.io.deq.bits.decode, sqrtMetadata.io.deq.bits.decode)
       )
     )
   )
@@ -384,8 +373,7 @@ class FpuBackend(config: GpuConfig = GpuConfig(), tagWidth: Int = 16, helperInvo
   io.wawHazard := issue.io.wawHazard
 
   when(resultValid && !selectedMemory) {
-    val expectedTag = Cat(
-      result.warpId, result.instruction(11, 7))
+    val expectedTag = Cat(result.warpId, result.instruction(11, 7))
     when(selectedExact) {
       assert(exact.io.out.bits.tag === expectedTag)
     }.elsewhen(selectedFma) {

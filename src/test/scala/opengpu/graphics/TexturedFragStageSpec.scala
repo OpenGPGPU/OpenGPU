@@ -6,120 +6,126 @@ import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
 class TexturedFragStageSpec extends AnyFlatSpec {
-  for (normalized <- Seq(false,true)) {
-  it should s"preserve fragment payload under backpressure with normalized modulation=$normalized" in {
-    val gfx = GraphicsConfig(screenWidth = 16, screenHeight = 16)
-    simulate(new TexturedFragStage(gfx,normalizedModulation=normalized)) { dut =>
-      dut.io.fragIn.valid.poke(false.B)
-      dut.io.fragIn.bits.poke(0.U.asTypeOf(dut.io.fragIn.bits))
-      dut.io.out.ready.poke(false.B)
-      dut.io.e0.poke(1.S); dut.io.e1.poke(0.S); dut.io.e2.poke(0.S)
-      dut.io.invW0.poke(65536.S); dut.io.invW1.poke(65536.S)
-      dut.io.invW2.poke(65536.S)
-      dut.io.uv0.u.poke(0.U); dut.io.uv0.v.poke(32768.U)
-      dut.io.uv1.poke(0.U.asTypeOf(dut.io.uv1))
-      dut.io.uv2.poke(0.U.asTypeOf(dut.io.uv2))
-      for (lane <- 0 until 4) {
-        dut.io.quadE0(lane).poke(0.S)
-        dut.io.quadE1(lane).poke(0.S)
-        dut.io.quadE2(lane).poke(0.S)
-      }
-      dut.io.texFormat.poke(PixelFormat.native.U)
-      dut.io.texBase.poke(0x2000.U); dut.io.texWidth.poke(4.U)
-      dut.io.texHeight.poke(1.U); dut.io.wrapClamp.poke(false.B); dut.io.texNearest.poke(false.B)
-      dut.io.wrapVFlip.poke(false.B)
-      dut.io.texMaxLevel.poke(0.U)
-      dut.io.mem.req.ready.poke(false.B)
-      dut.io.mem.resp.valid.poke(false.B)
-      dut.io.mem.resp.bits.poke(0.U.asTypeOf(dut.io.mem.resp.bits))
-      for (sample <- 0 until gfx.maxSampleCount) {
-        dut.io.fragDepths(sample).poke(0.U)
-      }
-      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+  for (normalized <- Seq(false, true)) {
+    it should s"preserve fragment payload under backpressure with normalized modulation=$normalized" in {
+      val gfx = GraphicsConfig(screenWidth = 16, screenHeight = 16)
+      simulate(new TexturedFragStage(gfx, normalizedModulation = normalized)) { dut =>
+        dut.io.fragIn.valid.poke(false.B)
+        dut.io.fragIn.bits.poke(0.U.asTypeOf(dut.io.fragIn.bits))
+        dut.io.out.ready.poke(false.B)
+        dut.io.e0.poke(1.S); dut.io.e1.poke(0.S); dut.io.e2.poke(0.S)
+        dut.io.invW0.poke(65536.S); dut.io.invW1.poke(65536.S)
+        dut.io.invW2.poke(65536.S)
+        dut.io.uv0.u.poke(0.U); dut.io.uv0.v.poke(32768.U)
+        dut.io.uv1.poke(0.U.asTypeOf(dut.io.uv1))
+        dut.io.uv2.poke(0.U.asTypeOf(dut.io.uv2))
+        for (lane <- 0 until 4) {
+          dut.io.quadE0(lane).poke(0.S)
+          dut.io.quadE1(lane).poke(0.S)
+          dut.io.quadE2(lane).poke(0.S)
+        }
+        dut.io.texFormat.poke(PixelFormat.native.U)
+        dut.io.texBase.poke(0x2000.U); dut.io.texWidth.poke(4.U)
+        dut.io.texHeight.poke(1.U); dut.io.wrapClamp.poke(false.B); dut.io.texNearest.poke(false.B)
+        dut.io.wrapVFlip.poke(false.B)
+        dut.io.texMaxLevel.poke(0.U)
+        dut.io.mem.req.ready.poke(false.B)
+        dut.io.mem.resp.valid.poke(false.B)
+        dut.io.mem.resp.bits.poke(0.U.asTypeOf(dut.io.mem.resp.bits))
+        for (sample <- 0 until gfx.maxSampleCount) {
+          dut.io.fragDepths(sample).poke(0.U)
+        }
+        dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
 
-      def texel(index: Int): BigInt =
-        (BigInt(40 + index * 20) << 24) |
-          (BigInt(80 + index * 10) << 16) |
-          (BigInt(120 + index * 5) << 8) | (if (normalized) 80+index*20 else 255)
+        def texel(index: Int): BigInt =
+          (BigInt(40 + index * 20) << 24) |
+            (BigInt(80 + index * 10) << 16) |
+            (BigInt(120 + index * 5) << 8) | (if (normalized) 80 + index * 20 else 255)
 
-      val replies = mutable.Queue.empty[(Int, BigInt)]
-      var sent = 0
-      var received = 0
-      var cycle = 0
-      val count = 7
-      while (received < count && cycle < 500) {
-        dut.io.fragIn.valid.poke((sent < count).B)
-        if (sent < count) {
-          dut.io.fragIn.bits.x.poke((10 + sent).S)
-          dut.io.fragIn.bits.y.poke((20 + sent).S)
-          dut.io.fragIn.bits.depth.poke((100 + sent).S)
-          dut.io.fragIn.bits.covered.poke(true.B)
-          dut.io.fragIn.bits.coverageMask.poke(1.U)
-          dut.io.fragIn.bits.alpha.poke((200 + sent).U)
-          dut.io.fragIn.bits.color.r.poke(255.U)
-          dut.io.fragIn.bits.color.g.poke(255.U)
-          dut.io.fragIn.bits.color.b.poke(255.U)
-          // The last fragment averages a high unsigned UV with two zeros.
-          // 0x8002e000 /3 =0x2aaba000, whose repeat fraction0xa000 is exactly
-          // texel2's centre in this four-texel texture. A signed cast instead
-          // samples between texels0/1 and changes the observed colour.
-          dut.io.e1.poke((if (sent == 6) 1 else 0).S)
-          dut.io.e2.poke((if (sent == 6) 1 else 0).S)
-          val u = if (sent == 6) BigInt("8002e000", 16)
-            else BigInt(((sent % 4) * 65536 + 32768) / 4)
-          dut.io.uv0.u.poke(u.U)
-          for (sample <- 0 until gfx.maxSampleCount) {
-            dut.io.fragDepths(sample).poke((100 + sent + sample).U)
+        val replies = mutable.Queue.empty[(Int, BigInt)]
+        var sent = 0
+        var received = 0
+        var cycle = 0
+        val count = 7
+        while (received < count && cycle < 500) {
+          dut.io.fragIn.valid.poke((sent < count).B)
+          if (sent < count) {
+            dut.io.fragIn.bits.x.poke((10 + sent).S)
+            dut.io.fragIn.bits.y.poke((20 + sent).S)
+            dut.io.fragIn.bits.depth.poke((100 + sent).S)
+            dut.io.fragIn.bits.covered.poke(true.B)
+            dut.io.fragIn.bits.coverageMask.poke(1.U)
+            dut.io.fragIn.bits.alpha.poke((200 + sent).U)
+            dut.io.fragIn.bits.color.r.poke(255.U)
+            dut.io.fragIn.bits.color.g.poke(255.U)
+            dut.io.fragIn.bits.color.b.poke(255.U)
+            // The last fragment averages a high unsigned UV with two zeros.
+            // 0x8002e000 /3 =0x2aaba000, whose repeat fraction0xa000 is exactly
+            // texel2's centre in this four-texel texture. A signed cast instead
+            // samples between texels0/1 and changes the observed colour.
+            dut.io.e1.poke((if (sent == 6) 1 else 0).S)
+            dut.io.e2.poke((if (sent == 6) 1 else 0).S)
+            val u =
+              if (sent == 6) BigInt("8002e000", 16)
+              else BigInt(((sent % 4) * 65536 + 32768) / 4)
+            dut.io.uv0.u.poke(u.U)
+            for (sample <- 0 until gfx.maxSampleCount) {
+              dut.io.fragDepths(sample).poke((100 + sent + sample).U)
+            }
           }
-        }
-        dut.io.out.ready.poke((cycle >= 30 && cycle % 7 != 0).B)
-        dut.io.mem.req.ready.poke((cycle % 5 != 1).B)
-        val response = replies.headOption.filter(_._1 <= cycle)
-        dut.io.mem.resp.valid.poke(response.nonEmpty.B)
-        response.foreach { case (_, address) =>
-          dut.io.mem.resp.bits.addr.poke(address.U)
-          dut.io.mem.resp.bits.data.poke(texel(((address - 0x2000) / 4).toInt).U)
-          dut.io.mem.resp.bits.write.poke(false.B)
-        }
-        if (dut.io.out.valid.peek().litToBoolean) {
-          dut.io.out.bits.x.expect((10 + received).S)
-          dut.io.out.bits.y.expect((20 + received).S)
-          dut.io.out.bits.depth.expect((100 + received).S)
-          dut.io.out.bits.coverageMask.expect(1.U)
-          val color = texel(received % 4)
-          val alpha=if (normalized) ((200+received)*(color.toInt&255)+127)/255 else 200+received
-          dut.io.out.bits.alpha.expect(alpha.U)
-          dut.io.out.bits.color.r.expect((if (normalized) ((color >> 24) & 255) else (((color >> 24) & 255) * 255 >> 8)).U)
-          dut.io.out.bits.color.g.expect((if (normalized) ((color >> 16) & 255) else (((color >> 16) & 255) * 255 >> 8)).U)
-          dut.io.out.bits.color.b.expect((if (normalized) ((color >> 8) & 255) else (((color >> 8) & 255) * 255 >> 8)).U)
-          for (sample <- 0 until gfx.maxSampleCount) {
-            dut.io.outDepths(sample).expect((100 + received + sample).U)
+          dut.io.out.ready.poke((cycle >= 30 && cycle % 7 != 0).B)
+          dut.io.mem.req.ready.poke((cycle % 5 != 1).B)
+          val response = replies.headOption.filter(_._1 <= cycle)
+          dut.io.mem.resp.valid.poke(response.nonEmpty.B)
+          response.foreach { case (_, address) =>
+            dut.io.mem.resp.bits.addr.poke(address.U)
+            dut.io.mem.resp.bits.data.poke(texel(((address - 0x2000) / 4).toInt).U)
+            dut.io.mem.resp.bits.write.poke(false.B)
           }
+          if (dut.io.out.valid.peek().litToBoolean) {
+            dut.io.out.bits.x.expect((10 + received).S)
+            dut.io.out.bits.y.expect((20 + received).S)
+            dut.io.out.bits.depth.expect((100 + received).S)
+            dut.io.out.bits.coverageMask.expect(1.U)
+            val color = texel(received % 4)
+            val alpha = if (normalized) ((200 + received) * (color.toInt & 255) + 127) / 255 else 200 + received
+            dut.io.out.bits.alpha.expect(alpha.U)
+            dut.io.out.bits.color.r
+              .expect((if (normalized) ((color >> 24) & 255) else (((color >> 24) & 255) * 255 >> 8)).U)
+            dut.io.out.bits.color.g
+              .expect((if (normalized) ((color >> 16) & 255) else (((color >> 16) & 255) * 255 >> 8)).U)
+            dut.io.out.bits.color.b
+              .expect((if (normalized) ((color >> 8) & 255) else (((color >> 8) & 255) * 255 >> 8)).U)
+            for (sample <- 0 until gfx.maxSampleCount) {
+              dut.io.outDepths(sample).expect((100 + received + sample).U)
+            }
+          }
+          val acceptInput = dut.io.fragIn.valid.peek().litToBoolean &&
+            dut.io.fragIn.ready.peek().litToBoolean
+          val acceptOutput = dut.io.out.valid.peek().litToBoolean &&
+            dut.io.out.ready.peek().litToBoolean
+          if (response.nonEmpty && dut.io.mem.resp.ready.peek().litToBoolean) {
+            replies.dequeue()
+          }
+          if (
+            dut.io.mem.req.valid.peek().litToBoolean &&
+            dut.io.mem.req.ready.peek().litToBoolean
+          ) {
+            replies.enqueue((cycle + 2, dut.io.mem.req.bits.addr.peek().litValue))
+          }
+          dut.clock.step()
+          if (acceptInput) sent += 1
+          if (acceptOutput) received += 1
+          cycle += 1
         }
-        val acceptInput = dut.io.fragIn.valid.peek().litToBoolean &&
-          dut.io.fragIn.ready.peek().litToBoolean
-        val acceptOutput = dut.io.out.valid.peek().litToBoolean &&
-          dut.io.out.ready.peek().litToBoolean
-        if (response.nonEmpty && dut.io.mem.resp.ready.peek().litToBoolean) {
-          replies.dequeue()
-        }
-        if (dut.io.mem.req.valid.peek().litToBoolean &&
-            dut.io.mem.req.ready.peek().litToBoolean) {
-          replies.enqueue((cycle + 2, dut.io.mem.req.bits.addr.peek().litValue))
-        }
-        dut.clock.step()
-        if (acceptInput) sent += 1
-        if (acceptOutput) received += 1
-        cycle += 1
+        assert(sent == count && received == count && replies.isEmpty)
+        dut.io.fragIn.valid.poke(false.B)
+        dut.io.mem.resp.valid.poke(false.B)
+        dut.io.out.ready.poke(true.B)
+        dut.clock.step(3)
+        dut.io.drained.expect(true.B)
+        dut.io.out.valid.expect(false.B)
       }
-      assert(sent == count && received == count && replies.isEmpty)
-      dut.io.fragIn.valid.poke(false.B)
-      dut.io.mem.resp.valid.poke(false.B)
-      dut.io.out.ready.poke(true.B)
-      dut.clock.step(3)
-      dut.io.drained.expect(true.B)
-      dut.io.out.valid.expect(false.B)
     }
-  }
   }
 }

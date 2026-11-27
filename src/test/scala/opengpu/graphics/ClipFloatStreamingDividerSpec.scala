@@ -7,15 +7,15 @@ import scala.collection.mutable
 import scala.util.Random
 
 class ClipFloatStreamingDividerSpec extends AnyFlatSpec {
-  private case class Value(negative: Boolean = false, exponent: Int = 0,
-      significand: BigInt = 0, special: Int = 0)
+  private case class Value(negative: Boolean = false, exponent: Int = 0, significand: BigInt = 0, special: Int = 0)
   private case class Request(a: Value, b: Value, operation: Int = ClipFloatOperation.divide)
   private case class Expected(value: Value, flags: Int = 0, error: Int = 0)
   private val one = Value(significand = 0x800000)
   private val latency = ClipFloatStreamingDivider.latency
 
   private def legal(v: Value): Boolean = v.special match {
-    case 0 => v.exponent >= -512 && v.exponent <= 511 &&
+    case 0 =>
+      v.exponent >= -512 && v.exponent <= 511 &&
       (if (v.significand == 0) v.exponent == 0 else v.significand.testBit(23))
     case 1 => v.exponent == 0 && v.significand == 0
     case 2 => v.exponent == 0 && v.significand > 0 && v.significand < 0x800000
@@ -23,7 +23,7 @@ class ClipFloatStreamingDividerSpec extends AnyFlatSpec {
   }
   private def round(n: BigInt, d: BigInt): (BigInt, Boolean) = {
     val (q, r) = n /% d
-    (q + (if (2*r > d || (2*r == d && q.testBit(0))) 1 else 0), r != 0)
+    (q + (if (2 * r > d || (2 * r == d && q.testBit(0))) 1 else 0), r != 0)
   }
   // Exact rational oracle: neither the RTL bit recurrence nor its packer is used.
   private def reference(r: Request): Expected = {
@@ -43,8 +43,7 @@ class ClipFloatStreamingDividerSpec extends AnyFlatSpec {
     var exponent = n.bitLength - d.bitLength
     if (if (exponent >= 0) n < (d << exponent) else (n << -exponent) < d) exponent -= 1
     val scale = 23 - exponent
-    val (q, inexact) = round(if (scale >= 0) n << scale else n,
-      if (scale >= 0) d else d << -scale)
+    val (q, inexact) = round(if (scale >= 0) n << scale else n, if (scale >= 0) d else d << -scale)
     val carry = q.bitLength > 24
     exponent += (if (carry) 1 else 0)
     val flags = if (inexact) 1 else 0
@@ -69,8 +68,7 @@ class ClipFloatStreamingDividerSpec extends AnyFlatSpec {
     poke(d.io.in.bits.a, request.a); poke(d.io.in.bits.b, request.b)
     d.io.in.bits.operation.poke(request.operation.U); d.io.in.bits.tag.poke(tag.U)
   }
-  private def check(d: ClipFloatStreamingDivider, request: Request, tag: Int,
-      cancelled: Boolean = false): Unit = {
+  private def check(d: ClipFloatStreamingDivider, request: Request, tag: Int, cancelled: Boolean = false): Unit = {
     val e = reference(request); val r = d.io.out.bits
     withClue(s"tag=$tag request=$request: ") {
       r.tag.expect(tag.U); r.cancelled.expect(cancelled.B)
@@ -86,8 +84,7 @@ class ClipFloatStreamingDividerSpec extends AnyFlatSpec {
     input(d, Request(one, one), 0)
     d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
   }
-  private def run(d: ClipFloatStreamingDivider, requests: Seq[Request], dense: Boolean,
-      reset: Boolean = true): Unit = {
+  private def run(d: ClipFloatStreamingDivider, requests: Seq[Request], dense: Boolean, reset: Boolean = true): Unit = {
     if (reset) initialize(d)
     val random = new Random(917)
     val pending = mutable.Queue.empty[(Int, Int)]
@@ -104,7 +101,7 @@ class ClipFloatStreamingDividerSpec extends AnyFlatSpec {
       if (outputValid && ready) {
         assert(pending.nonEmpty, s"unexpected output at cycle $cycle")
         val (tag, accepted) = pending.dequeue()
-        if (dense) assert(cycle - accepted == latency, s"latency ${cycle-accepted} != $latency")
+        if (dense) assert(cycle - accepted == latency, s"latency ${cycle - accepted} != $latency")
         check(d, requests(tag), tag); received += 1
       }
       if (dense) d.io.in.ready.expect(true.B)
@@ -120,8 +117,10 @@ class ClipFloatStreamingDividerSpec extends AnyFlatSpec {
   it should "accept and retire a dense full-quad component stream at one operation per cycle" in {
     simulate(new ClipFloatStreamingDivider(tagWidth = 16)) { d =>
       val requests = (0 until 512).map { i =>
-        Request(Value((i&1) != 0, (i%301)-150, 0x800000 + (i*2971 & 0x7fffff)),
-          Value((i&2) != 0, (i%127)-63, 0x800000 + (i*7919 & 0x7fffff)))
+        Request(
+          Value((i & 1) != 0, (i % 301) - 150, 0x800000 + (i * 2971 & 0x7fffff)),
+          Value((i & 2) != 0, (i % 127) - 63, 0x800000 + (i * 7919 & 0x7fffff))
+        )
       }
       run(d, requests, dense = true)
       info(s"STREAMING_DIVIDE requests=${requests.size} initiationInterval=1 latency=$latency exactRationalRNE=true")
@@ -136,8 +135,7 @@ class ClipFloatStreamingDividerSpec extends AnyFlatSpec {
         b <- Seq(0x800000, 0x800001, 0xc00000, 0xffffff)
       } yield Request(Value(exponent = e, significand = a), Value(significand = b))
       val requests = boundaries ++ (0 until 1024).map { _ =>
-        def value = Value(random.nextBoolean(), random.nextInt(1024)-512,
-          0x800000 | random.nextInt(0x800000))
+        def value = Value(random.nextBoolean(), random.nextInt(1024) - 512, 0x800000 | random.nextInt(0x800000))
         Request(value, value)
       }
       run(d, requests, dense = false)
@@ -147,20 +145,34 @@ class ClipFloatStreamingDividerSpec extends AnyFlatSpec {
     simulate(new ClipFloatStreamingDivider(tagWidth = 16)) { d =>
       val values = for {
         sign <- Seq(false, true)
-        v <- Seq(Value(), one, Value(significand = 0xc00000),
-          Value(special = 1), Value(significand = 1, special = 2),
-          Value(significand = 0x400000, special = 2))
+        v <- Seq(
+          Value(),
+          one,
+          Value(significand = 0xc00000),
+          Value(special = 1),
+          Value(significand = 1, special = 2),
+          Value(significand = 0x400000, special = 2)
+        )
       } yield v.copy(negative = sign)
-      val malformed = Seq(Value(exponent = 512, significand = 0x800000),
-        Value(exponent = -513, significand = 0x800000), Value(exponent = 1),
-        Value(significand = 0x7fffff), Value(significand = 1, special = 1),
-        Value(exponent = 1, special = 1), Value(special = 2),
-        Value(significand = 0x800001, special = 2), Value(special = 3))
+      val malformed = Seq(
+        Value(exponent = 512, significand = 0x800000),
+        Value(exponent = -513, significand = 0x800000),
+        Value(exponent = 1),
+        Value(significand = 0x7fffff),
+        Value(significand = 1, special = 1),
+        Value(exponent = 1, special = 1),
+        Value(special = 2),
+        Value(significand = 0x800001, special = 2),
+        Value(special = 3)
+      )
       val requests = (for (a <- values; b <- values) yield Request(a, b)) ++
         malformed.flatMap(v => Seq(Request(v, one), Request(one, v))) ++
         Seq(0, 1, 2, 4, 5, 6, 7).map(op => Request(one, one, op)) ++
-        Seq(Request(one.copy(exponent = 511), one.copy(exponent = -512)),
-          Request(one.copy(exponent = -512), one.copy(exponent = 511)), Request(one, one))
+        Seq(
+          Request(one.copy(exponent = 511), one.copy(exponent = -512)),
+          Request(one.copy(exponent = -512), one.copy(exponent = 511)),
+          Request(one, one)
+        )
       run(d, requests, dense = true)
     }
   }

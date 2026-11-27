@@ -12,87 +12,105 @@ import opengpu.core.memory.{
   SharedAtomicResponse
 }
 
-/** Path: legacy immediate rendering. `RenderCore` instantiates this for the
-  * legacy host and `TileBinRenderPipeline` instantiates it per tile engine.
-  * See README.md in this package for the external-path map.
+/** Path: legacy immediate rendering. `RenderCore` instantiates this for the legacy host and `TileBinRenderPipeline`
+  * instantiates it per tile engine. See README.md in this package for the external-path map.
   */
 
 /** Top-of-pipeline renderer.
   *
-  * Chains PreparedGeometryStage (perspective divide + viewport) -> RasterShader
-  * (rasterize + interpolate) -> OutputMerger (depth test + write) for one
-  * triangle at a time, writing the depth-tested result through the shared
-  * memory port into the software-allocated colour/depth buffers.  Draw calls
-  * are driven by `draw`; `done` pulses once the triangle has been fully
-  * rasterized and the last read-modify-write has retired.
+  * Chains PreparedGeometryStage (perspective divide + viewport) -> RasterShader (rasterize + interpolate) ->
+  * OutputMerger (depth test + write) for one triangle at a time, writing the depth-tested result through the shared
+  * memory port into the software-allocated colour/depth buffers. Draw calls are driven by `draw`; `done` pulses once
+  * the triangle has been fully rasterized and the last read-modify-write has retired.
   *
-  * `fragCore` selects the shading backend inserted between the raster/interp
-  * stage and the OM.  With `fragCore = false` the interpolated colour passes
-  * straight to the OM (the fixed-function path).  With `fragCore = true` the
-  * fragment is shaded by a compiled RV32 kernel launched on the compute unit's
-  * SIMT warps via `KernelFragStage`, reading the draw's shader descriptor
-  * (`draw.shaderPc`/`draw.shaderKernarg`); the kernel's program, kernarg and
-  * output live in the line-based memory behind the exposed
-  * `kernelMemReq/Resp` and `kernelWordMemReq/Resp` ports.
+  * `fragCore` selects the shading backend inserted between the raster/interp stage and the OM. With `fragCore = false`
+  * the interpolated colour passes straight to the OM (the fixed-function path). With `fragCore = true` the fragment is
+  * shaded by a compiled RV32 kernel launched on the compute unit's SIMT warps via `KernelFragStage`, reading the draw's
+  * shader descriptor (`draw.shaderPc`/`draw.shaderKernarg`); the kernel's program, kernarg and output live in the
+  * line-based memory behind the exposed `kernelMemReq/Resp` and `kernelWordMemReq/Resp` ports.
   *
-  * Clipping runs through `NearClipStage` before the viewport transform: a
-  * positive-w guard plus the six clip-space planes
-  * (`-w <= x,y,z <= w`), returning a fan when a triangle crosses a plane.
+  * Clipping runs through `NearClipStage` before the viewport transform: a positive-w guard plus the six clip-space
+  * planes (`-w <= x,y,z <= w`), returning a fan when a triangle crosses a plane.
   */
 class RenderPipeline(
-  config: GraphicsConfig = GraphicsConfig(),
-  gpuConfig: GpuConfig = GpuConfig(),
-  fragCore: Boolean = false,
-  vertCore: Boolean = false,
-  graphicsScalarFpu: Boolean = true,
-  sharedShader: Option[SharedCuShaderConfig] = None,
-  persistentAttachments: Boolean = false,
-  tileStoreCredits: Int = 1,
-  useTileSramBlackBoxes: Boolean = false,
-  normalizedTextureModulation: Boolean = false,
-  doubleBufferedAttachments: Boolean = false,
-  coalesceAttachments: Boolean = true,
-  bankedAttachments: Boolean = false,
-  payloadOwnerBase: Int = 0,
-  constantBlend: Boolean = false,
-  biasedClamp: Boolean = false,
-  mirroredRepeat: Boolean = false
+    config: GraphicsConfig = GraphicsConfig(),
+    gpuConfig: GpuConfig = GpuConfig(),
+    fragCore: Boolean = false,
+    vertCore: Boolean = false,
+    graphicsScalarFpu: Boolean = true,
+    sharedShader: Option[SharedCuShaderConfig] = None,
+    persistentAttachments: Boolean = false,
+    tileStoreCredits: Int = 1,
+    useTileSramBlackBoxes: Boolean = false,
+    normalizedTextureModulation: Boolean = false,
+    doubleBufferedAttachments: Boolean = false,
+    coalesceAttachments: Boolean = true,
+    bankedAttachments: Boolean = false,
+    payloadOwnerBase: Int = 0,
+    constantBlend: Boolean = false,
+    biasedClamp: Boolean = false,
+    mirroredRepeat: Boolean = false
 ) extends Module {
-  require(!constantBlend || (fragCore && vertCore && !config.tileBinning && !persistentAttachments),
-    "constant blending requires the private legacy vertex renderer")
-  require(!biasedClamp || (fragCore && vertCore && !config.tileBinning && !persistentAttachments && sharedShader.isEmpty),
-    "biased clamp requires the private legacy vertex renderer")
-  require(!mirroredRepeat || (fragCore && vertCore && !config.tileBinning && !persistentAttachments && sharedShader.isEmpty),
-    "mirrored repeat requires the private legacy vertex renderer")
-  private val shaderPayload=sharedShader.flatMap(_.shaderPayload)
-  require(shaderPayload.isEmpty || (fragCore && !vertCore && persistentAttachments && bankedAttachments),
-    "local renderer payloads require native persistent programmable fragments")
-  shaderPayload.foreach(p=>require(payloadOwnerBase>=0 && payloadOwnerBase+sharedShader.get.fragmentWorkers<=p.owners))
+  require(
+    !constantBlend || (fragCore && vertCore && !config.tileBinning && !persistentAttachments),
+    "constant blending requires the private legacy vertex renderer"
+  )
+  require(
+    !biasedClamp || (fragCore && vertCore && !config.tileBinning && !persistentAttachments && sharedShader.isEmpty),
+    "biased clamp requires the private legacy vertex renderer"
+  )
+  require(
+    !mirroredRepeat || (fragCore && vertCore && !config.tileBinning && !persistentAttachments && sharedShader.isEmpty),
+    "mirrored repeat requires the private legacy vertex renderer"
+  )
+  private val shaderPayload = sharedShader.flatMap(_.shaderPayload)
+  require(
+    shaderPayload.isEmpty || (fragCore && !vertCore && persistentAttachments && bankedAttachments),
+    "local renderer payloads require native persistent programmable fragments"
+  )
+  shaderPayload.foreach(p =>
+    require(payloadOwnerBase >= 0 && payloadOwnerBase + sharedShader.get.fragmentWorkers <= p.owners)
+  )
   require(!doubleBufferedAttachments || persistentAttachments)
-  require(!bankedAttachments || (persistentAttachments && !vertCore),
-    "banked renderer ingress requires externally scheduled persistent passes")
-  require(sharedShader.isEmpty || fragCore,
-    "shared shader execution requires programmable fragment graphics")
-  require(!(fragCore || vertCore) || (gpuConfig.lanes >= 4 && gpuConfig.lanes % 4 == 0),
-    "programmable graphics requires complete derivative quads within each warp")
-  require(!persistentAttachments || (config.tileAttachments && !config.tileBinning && !vertCore),
-    "explicit tile passes currently accept externally scheduled triangle records")
+  require(
+    !bankedAttachments || (persistentAttachments && !vertCore),
+    "banked renderer ingress requires externally scheduled persistent passes"
+  )
+  require(sharedShader.isEmpty || fragCore, "shared shader execution requires programmable fragment graphics")
+  require(
+    !(fragCore || vertCore) || (gpuConfig.lanes >= 4 && gpuConfig.lanes % 4 == 0),
+    "programmable graphics requires complete derivative quads within each warp"
+  )
+  require(
+    !persistentAttachments || (config.tileAttachments && !config.tileBinning && !vertCore),
+    "explicit tile passes currently accept externally scheduled triangle records"
+  )
   // The shared staging router restores producer-local IDs on responses.
   private val kernelWordOutstanding = SharedCuShaderConfig.kernelWordTransactions(sharedShader)
   val io = IO(new Bundle {
-    val payload=shaderPayload.map(p=>new ShaderPayloadRendererPort(gpuConfig,p,
-      sharedShader.get.fragmentWorkers,sharedShader.get.rendererPayloadPins))
+    val payload = shaderPayload.map(p =>
+      new ShaderPayloadRendererPort(
+        gpuConfig,
+        p,
+        sharedShader.get.fragmentWorkers,
+        sharedShader.get.rendererPayloadPins
+      )
+    )
     val tilePass = if (persistentAttachments) Some(new TileRenderPassPort) else None
     val tileEvents = if (persistentAttachments) Some(Output(new TileAttachmentEvents)) else None
     val tileCompletionBytes = if (doubleBufferedAttachments) Some(Output(new TileAttachmentByteCounts)) else None
     val tileAcceptedSamples = if (bankedAttachments) Some(Output(UInt(3.W))) else None
     val tileCommittedSamples = if (bankedAttachments) Some(Output(UInt(3.W))) else None
-    val tileMemoryRequest = if (doubleBufferedAttachments) Some(Vec(2,Decoupled(
-      new ComputeMemoryRequest(gpuConfig,64,tileStoreCredits+1)))) else None
-    val tileMemoryResponse = if (doubleBufferedAttachments) Some(Vec(2,Flipped(Decoupled(
-      new ComputeMemoryResponse(64,tileStoreCredits+1))))) else None
-    val shared = sharedShader.map(pool => Flipped(new SharedCuGraphicsPort(
-      gpuConfig, pool.taskIdWidth, pool.numComputeUnits)))
+    val tileMemoryRequest =
+      if (doubleBufferedAttachments)
+        Some(Vec(2, Decoupled(new ComputeMemoryRequest(gpuConfig, 64, tileStoreCredits + 1))))
+      else None
+    val tileMemoryResponse =
+      if (doubleBufferedAttachments)
+        Some(Vec(2, Flipped(Decoupled(new ComputeMemoryResponse(64, tileStoreCredits + 1)))))
+      else None
+    val shared =
+      sharedShader.map(pool => Flipped(new SharedCuGraphicsPort(gpuConfig, pool.taskIdWidth, pool.numComputeUnits)))
     val draw = Flipped(Decoupled(if (vertCore) new VertexDrawCommand(config) else new SceneTriangle(config)))
     val mem = new Bundle {
       val req = Decoupled(new OmMemoryRequest)
@@ -131,11 +149,14 @@ class RenderPipeline(
     val stencilZFailOp = Input(UInt(3.W))
     val stencilZPassOp = Input(UInt(3.W))
     val cullMode = Input(UInt(2.W))
+
     /** bits[1:0] sample mode: 0 = 1x, 1 = 2x, 2 = 4x. */
     val sampleMode = Input(UInt(2.W))
+
     /** Active mode. Zero uses the elaborated maximum. */
     val screenW = Input(UInt(16.W))
     val screenH = Input(UInt(16.W))
+
     /** Texture sampling (fixed-function path; ignored with fragCore). */
     val texEnable = Input(Bool())
     val texFormat = Input(UInt(PixelFormat.width.W))
@@ -162,19 +183,48 @@ class RenderPipeline(
   // draw scissor with it. Row-major rasterization already visits that tile
   // in the required order; a second tile-to-tile walker has no work to do.
   // Attachment ownership/storage still uses the original engine config.
-  private val rasterConfig = if (persistentAttachments)
-    config.copy(tileSize = 0, tileAttachments = false, tileBinning = false) else config
-  private val shader = Module(new RasterShader(rasterConfig,
-    quadMode = fragCore || vertCore || bankedAttachments, pixelCenterInput = true))
+  private val rasterConfig =
+    if (persistentAttachments)
+      config.copy(tileSize = 0, tileAttachments = false, tileBinning = false)
+    else config
+  private val shader = Module(
+    new RasterShader(rasterConfig, quadMode = fragCore || vertCore || bankedAttachments, pixelCenterInput = true)
+  )
   private val om = Module(new OutputMerger(config, constantBlend = constantBlend))
-  private val bufferedStore = if (doubleBufferedAttachments) Some(Module(new DoubleBufferedTileAttachmentStore(
-    gpuConfig,config.maxSampleCount,config.screenWidth,config.screenHeight,useTileSramBlackBoxes,tileStoreCredits,
-    externalArbitration=true,coalesceTransfers=coalesceAttachments,bankedSamples=bankedAttachments))) else None
-  private val persistentStore: Option[PersistentTileAttachmentStoreIO] = if (persistentAttachments && !doubleBufferedAttachments)
-    Some(Module(new PersistentTileAttachmentStore(config.maxSampleCount,
-      config.screenWidth, config.screenHeight, useTileSramBlackBoxes, tileStoreCredits,bankedSamples=bankedAttachments)).io)
+  private val bufferedStore =
+    if (doubleBufferedAttachments)
+      Some(
+        Module(
+          new DoubleBufferedTileAttachmentStore(
+            gpuConfig,
+            config.maxSampleCount,
+            config.screenWidth,
+            config.screenHeight,
+            useTileSramBlackBoxes,
+            tileStoreCredits,
+            externalArbitration = true,
+            coalesceTransfers = coalesceAttachments,
+            bankedSamples = bankedAttachments
+          )
+        )
+      )
+    else None
+  private val persistentStore: Option[PersistentTileAttachmentStoreIO] =
+    if (persistentAttachments && !doubleBufferedAttachments)
+      Some(
+        Module(
+          new PersistentTileAttachmentStore(
+            config.maxSampleCount,
+            config.screenWidth,
+            config.screenHeight,
+            useTileSramBlackBoxes,
+            tileStoreCredits,
+            bankedSamples = bankedAttachments
+          )
+        ).io
+      )
     else bufferedStore.map(_.io)
-  bufferedStore.foreach { store=>
+  bufferedStore.foreach { store =>
     io.tileMemoryRequest.get <> store.io.slotMemoryRequest.get
     store.io.slotMemoryResponse.get <> io.tileMemoryResponse.get
     store.io.memoryRequest.ready := false.B
@@ -185,22 +235,32 @@ class RenderPipeline(
   persistentStore.foreach(_.pass <> io.tilePass.get)
   private val fragmentExecutionFault = WireDefault(false.B)
   persistentStore.foreach(_.executionFault := fragmentExecutionFault)
-  if(bankedAttachments) {
-    io.tileAcceptedSamples.get:=persistentStore.get.acceptedSamples.get
-    io.tileCommittedSamples.get:=persistentStore.get.committedSamples.get
-    persistentStore.get.quadCompletion.get.ready:=true.B
+  if (bankedAttachments) {
+    io.tileAcceptedSamples.get := persistentStore.get.acceptedSamples.get
+    io.tileCommittedSamples.get := persistentStore.get.committedSamples.get
+    persistentStore.get.quadCompletion.get.ready := true.B
   }
-  private val passAcceptingDraws = persistentStore.map(store =>
-    store.pass.active && bufferedStore.map(_.io.acceptingDraws).getOrElse(store.pass.end.ready) &&
-      !io.tilePass.get.end.valid && !io.tilePass.get.cancel).getOrElse(true.B)
+  private val passAcceptingDraws = persistentStore
+    .map(store =>
+      store.pass.active && bufferedStore.map(_.io.acceptingDraws).getOrElse(store.pass.end.ready) &&
+        !io.tilePass.get.end.valid && !io.tilePass.get.cancel
+    )
+    .getOrElse(true.B)
   private val passDescriptor = persistentStore.map(_.pass.descriptor)
-  private val renderScreenW = if (persistentAttachments)
-    RegEnable(io.screenW, io.tilePass.get.begin.fire) else io.screenW
-  private val renderScreenH = if (persistentAttachments)
-    RegEnable(io.screenH, io.tilePass.get.begin.fire) else io.screenH
-  private val tileStoreOpt = if (config.tileAttachments && !persistentAttachments)
-    Some(Module(new TileAttachmentStore(config.maxSampleCount))) else None
-  private val tilePermit = persistentStore.map(_.permit)
+  private val renderScreenW =
+    if (persistentAttachments)
+      RegEnable(io.screenW, io.tilePass.get.begin.fire)
+    else io.screenW
+  private val renderScreenH =
+    if (persistentAttachments)
+      RegEnable(io.screenH, io.tilePass.get.begin.fire)
+    else io.screenH
+  private val tileStoreOpt =
+    if (config.tileAttachments && !persistentAttachments)
+      Some(Module(new TileAttachmentStore(config.maxSampleCount)))
+    else None
+  private val tilePermit = persistentStore
+    .map(_.permit)
     .getOrElse(tileStoreOpt.map(_.io.permit).getOrElse(true.B))
   private val tileDrained = tileStoreOpt.map(_.io.drained).getOrElse(true.B)
   private val drawTileGate = passAcceptingDraws && (if (config.tileBinning) true.B else tileDrained)
@@ -208,44 +268,45 @@ class RenderPipeline(
   private val fragmentDrained = Wire(Bool())
   private val quadUvDrained = WireDefault(true.B)
   private val textured =
-    Module(new TexturedFragStage(config,
-      normalizedModulation = normalizedTextureModulation))
+    Module(new TexturedFragStage(config, normalizedModulation = normalizedTextureModulation))
   private val expander = Module(new SampleExpander(config.maxSampleCount))
-  private val bankedWide=if(bankedAttachments) Some(Module(new TileSampleQuadExpander(config.maxSampleCount))) else None
-  bankedWide.foreach { wide=>
-    val store=persistentStore.get
-    wide.io.in.valid:=false.B
-    wide.io.in.bits:=0.U.asTypeOf(wide.io.in.bits)
-    wide.io.in.bits.sampleMode:=om.io.sampleMode
-    wide.io.in.bits.originX:=store.pass.descriptor.originX
-    wide.io.in.bits.originY:=store.pass.descriptor.originY
-    val controls=wide.io.in.bits.state
-    controls.depthTestEnable:=om.io.depthTestEnable
-    controls.depthFunc:=om.io.depthFunc
-    controls.depthWriteEnable:=om.io.depthWriteEnable
-    controls.stencilTestEnable:=om.io.stencilTestEnable
-    controls.stencilFunc:=om.io.stencilFunc
-    controls.stencilRef:=om.io.stencilRef
-    controls.stencilReadMask:=om.io.stencilReadMask
-    controls.stencilWriteMask:=om.io.stencilWriteMask
-    controls.stencilFailOp:=om.io.stencilFailOp
-    controls.stencilZFailOp:=om.io.stencilZFailOp
-    controls.stencilZPassOp:=om.io.stencilZPassOp
-    controls.blendEnable:=om.io.blendEnable
-    controls.blendCfgEnable:=om.io.blendCfgEnable
-    controls.blendSrcFactor:=om.io.blendSrcFactor
-    controls.blendDstFactor:=om.io.blendDstFactor
-    controls.blendEquation:=om.io.blendEquation
-    controls.colorMask:=15.U
-    val aborted=RegInit(false.B)
-    when(io.tilePass.get.begin.fire){aborted:=false.B}
-      .elsewhen(store.localAborted.get){aborted:=true.B}
-    val dropping=aborted || store.localAborted.get
-    store.quad.get.valid:=wide.io.out.valid && !dropping
-    store.quad.get.bits:=wide.io.out.bits
-    wide.io.out.ready:=store.quad.get.ready || dropping
+  private val bankedWide =
+    if (bankedAttachments) Some(Module(new TileSampleQuadExpander(config.maxSampleCount))) else None
+  bankedWide.foreach { wide =>
+    val store = persistentStore.get
+    wide.io.in.valid := false.B
+    wide.io.in.bits := 0.U.asTypeOf(wide.io.in.bits)
+    wide.io.in.bits.sampleMode := om.io.sampleMode
+    wide.io.in.bits.originX := store.pass.descriptor.originX
+    wide.io.in.bits.originY := store.pass.descriptor.originY
+    val controls = wide.io.in.bits.state
+    controls.depthTestEnable := om.io.depthTestEnable
+    controls.depthFunc := om.io.depthFunc
+    controls.depthWriteEnable := om.io.depthWriteEnable
+    controls.stencilTestEnable := om.io.stencilTestEnable
+    controls.stencilFunc := om.io.stencilFunc
+    controls.stencilRef := om.io.stencilRef
+    controls.stencilReadMask := om.io.stencilReadMask
+    controls.stencilWriteMask := om.io.stencilWriteMask
+    controls.stencilFailOp := om.io.stencilFailOp
+    controls.stencilZFailOp := om.io.stencilZFailOp
+    controls.stencilZPassOp := om.io.stencilZPassOp
+    controls.blendEnable := om.io.blendEnable
+    controls.blendCfgEnable := om.io.blendCfgEnable
+    controls.blendSrcFactor := om.io.blendSrcFactor
+    controls.blendDstFactor := om.io.blendDstFactor
+    controls.blendEquation := om.io.blendEquation
+    controls.colorMask := 15.U
+    val aborted = RegInit(false.B)
+    when(io.tilePass.get.begin.fire) { aborted := false.B }
+      .elsewhen(store.localAborted.get) { aborted := true.B }
+    val dropping = aborted || store.localAborted.get
+    store.quad.get.valid := wide.io.out.valid && !dropping
+    store.quad.get.bits := wide.io.out.bits
+    wide.io.out.ready := store.quad.get.ready || dropping
   }
-  private val bankedLocalDrained=bankedWide.map(w=>w.io.drained && persistentStore.get.localDrained.get).getOrElse(true.B)
+  private val bankedLocalDrained =
+    bankedWide.map(w => w.io.drained && persistentStore.get.localDrained.get).getOrElse(true.B)
 
   // Triangle source: when vertCore=true, triangles come from KernelVertStage;
   // otherwise they come from io.draw directly.
@@ -261,10 +322,14 @@ class RenderPipeline(
     Some(cmd)
   } else None
 
-  private val kernelVertOpt = if (vertCore) Some(Module(new KernelVertStage(gpuConfig, config,
-    standaloneKernel = false, constantBlend = constantBlend))) else None
-  private val vertBinnerOpt = if (config.tileBinning && vertCore)
-    Some(Module(new TileDrawBinner(config))) else None
+  private val kernelVertOpt =
+    if (vertCore)
+      Some(Module(new KernelVertStage(gpuConfig, config, standaloneKernel = false, constantBlend = constantBlend)))
+    else None
+  private val vertBinnerOpt =
+    if (config.tileBinning && vertCore)
+      Some(Module(new TileDrawBinner(config)))
+    else None
 
   if (vertCore) {
     val kernelVert = kernelVertOpt.get
@@ -330,8 +395,7 @@ class RenderPipeline(
     kernelVert.io.kernelVectorTexSample.bits := 0.U.asTypeOf(kernelVert.io.kernelVectorTexSample.bits)
     kernelVert.io.kernelVectorTexWriteback.ready := true.B
     when(io.draw.fire) {
-      assert(kernelVert.io.done,
-        "vertex draw accepted while KernelVertStage still owns the prior draw")
+      assert(kernelVert.io.done, "vertex draw accepted while KernelVertStage still owns the prior draw")
     }
     vertBinnerOpt match {
       case Some(binner) =>
@@ -392,57 +456,41 @@ class RenderPipeline(
   private val drawHoldValid = RegInit(false.B)
   private val drawState = RegInit(0.U.asTypeOf(new DrawRenderState))
 
-  /** Resolve the draw's fixed-function state from a command record, falling
-    * back to the global host registers where the record does not override.
-    * Both fixed-function and vertex-core records mix in `HasDrawState`, so the
-    * field-by-field copy lives here once. */
+  /** Resolve the draw's fixed-function state from a command record, falling back to the global host registers where the
+    * record does not override. Both fixed-function and vertex-core records mix in `HasDrawState`, so the field-by-field
+    * copy lives here once.
+    */
   private def resolveDrawState(src: HasDrawState): Unit = {
-    drawState.depthTestEnable := Mux(src.stateOverride,
-      src.depthTestEnable, io.depthTestEnable)
+    drawState.depthTestEnable := Mux(src.stateOverride, src.depthTestEnable, io.depthTestEnable)
     drawState.depthFunc := Mux(src.stateOverride, src.depthFunc, io.depthFunc)
-    drawState.depthWriteEnable := Mux(src.stateOverride,
-      src.depthWriteEnable, io.depthWriteEnable)
+    drawState.depthWriteEnable := Mux(src.stateOverride, src.depthWriteEnable, io.depthWriteEnable)
     // Blending currently has no global host register: it is opt-in per draw so
     // legacy command streams remain bit-identical.
     drawState.blendEnable := src.stateOverride && src.blendEnable
-    drawState.blendCfgEnable := Mux(src.stateOverride,
-      src.blendCfgEnable, io.blendCfgEnable)
-    drawState.blendSrcFactor := Mux(src.stateOverride,
-      src.blendSrcFactor, io.blendSrcFactor)
-    drawState.blendDstFactor := Mux(src.stateOverride,
-      src.blendDstFactor, io.blendDstFactor)
-    drawState.blendEquation := Mux(src.stateOverride,
-      src.blendEquation, io.blendEquation)
+    drawState.blendCfgEnable := Mux(src.stateOverride, src.blendCfgEnable, io.blendCfgEnable)
+    drawState.blendSrcFactor := Mux(src.stateOverride, src.blendSrcFactor, io.blendSrcFactor)
+    drawState.blendDstFactor := Mux(src.stateOverride, src.blendDstFactor, io.blendDstFactor)
+    drawState.blendEquation := Mux(src.stateOverride, src.blendEquation, io.blendEquation)
     drawState.blendConstant := (if (constantBlend) Mux(src.stateOverride, src.blendConstant, 0.U) else 0.U)
-    drawState.stencilTestEnable := Mux(src.stateOverride,
-      src.stencilTestEnable, io.stencilTestEnable)
-    drawState.stencilFunc := Mux(src.stateOverride,
-      src.stencilFunc, io.stencilFunc)
-    drawState.stencilRef := Mux(src.stateOverride,
-      src.stencilRef, io.stencilRef)
-    drawState.stencilReadMask := Mux(src.stateOverride,
-      src.stencilReadMask, io.stencilReadMask)
-    drawState.stencilWriteMask := Mux(src.stateOverride,
-      src.stencilWriteMask, io.stencilWriteMask)
-    drawState.stencilFailOp := Mux(src.stateOverride,
-      src.stencilFailOp, io.stencilFailOp)
-    drawState.stencilZFailOp := Mux(src.stateOverride,
-      src.stencilZFailOp, io.stencilZFailOp)
-    drawState.stencilZPassOp := Mux(src.stateOverride,
-      src.stencilZPassOp, io.stencilZPassOp)
+    drawState.stencilTestEnable := Mux(src.stateOverride, src.stencilTestEnable, io.stencilTestEnable)
+    drawState.stencilFunc := Mux(src.stateOverride, src.stencilFunc, io.stencilFunc)
+    drawState.stencilRef := Mux(src.stateOverride, src.stencilRef, io.stencilRef)
+    drawState.stencilReadMask := Mux(src.stateOverride, src.stencilReadMask, io.stencilReadMask)
+    drawState.stencilWriteMask := Mux(src.stateOverride, src.stencilWriteMask, io.stencilWriteMask)
+    drawState.stencilFailOp := Mux(src.stateOverride, src.stencilFailOp, io.stencilFailOp)
+    drawState.stencilZFailOp := Mux(src.stateOverride, src.stencilZFailOp, io.stencilZFailOp)
+    drawState.stencilZPassOp := Mux(src.stateOverride, src.stencilZPassOp, io.stencilZPassOp)
     drawState.cullMode := Mux(src.stateOverride, src.cullMode, io.cullMode)
     drawState.texEnable := Mux(src.stateOverride, src.texEnable, io.texEnable)
     drawState.texFormat := io.texFormat
     drawState.texBase := io.texBase
     drawState.texWidth := io.texWidth
     drawState.texHeight := io.texHeight
-    drawState.texWrapClamp := Mux(src.stateOverride,
-      src.texWrapClamp, io.texWrapClamp)
+    drawState.texWrapClamp := Mux(src.stateOverride, src.texWrapClamp, io.texWrapClamp)
     drawState.texWrapVFlip := src.stateOverride && src.texWrapVFlip
     drawState.texNearest := src.stateOverride && src.texNearest
     drawState.pixelCenter := src.stateOverride && src.pixelCenter
-    drawState.texMaxLevel := Mux(src.stateOverride,
-      src.texMaxLevel, io.texMaxLevel)
+    drawState.texMaxLevel := Mux(src.stateOverride, src.texMaxLevel, io.texMaxLevel)
     drawState.texLodBias := Mux(src.stateOverride, src.texLodBias, 0.S)
     drawState.texMinLevel := Mux(src.stateOverride, src.texMinLevel, 0.U)
   }
@@ -504,10 +552,16 @@ class RenderPipeline(
     geo.io.color(i) := clippedVertices(i).color
   }
   private val viewportEnabled = vertDrawCmd.map(c => c.stateOverride && c.viewportEnable).getOrElse(false.B)
-  geo.io.screenW := Mux(viewportEnabled, vertDrawCmd.map(_.viewportWidth).getOrElse(0.U),
-    ScreenLimit(renderScreenW, config.screenWidth))
-  geo.io.screenH := Mux(viewportEnabled, vertDrawCmd.map(_.viewportHeight).getOrElse(0.U),
-    ScreenLimit(renderScreenH, config.screenHeight))
+  geo.io.screenW := Mux(
+    viewportEnabled,
+    vertDrawCmd.map(_.viewportWidth).getOrElse(0.U),
+    ScreenLimit(renderScreenW, config.screenWidth)
+  )
+  geo.io.screenH := Mux(
+    viewportEnabled,
+    vertDrawCmd.map(_.viewportHeight).getOrElse(0.U),
+    ScreenLimit(renderScreenH, config.screenHeight)
+  )
   geo.io.viewportX := Mux(viewportEnabled, vertDrawCmd.map(_.viewportX).getOrElse(0.S), 0.S)
   geo.io.viewportY := Mux(viewportEnabled, vertDrawCmd.map(_.viewportY).getOrElse(0.S), 0.S)
   geo.io.viewportFlipY := viewportEnabled && vertDrawCmd.map(_.viewportFlipY).getOrElse(false.B)
@@ -544,8 +598,8 @@ class RenderPipeline(
   for (i <- 0 until 3) {
     shader.io.colors(i) := clippedVertices(i).color
     shader.io.alphas(i) := clippedVertices(i).alpha
-    shader.io.depths(i) := clipDepth.map(stage =>
-      Mux(clipDepthMode, stage.io.depth(i).pad(32).asSInt, clippedVertices(i).depth))
+    shader.io.depths(i) := clipDepth
+      .map(stage => Mux(clipDepthMode, stage.io.depth(i).pad(32).asSInt, clippedVertices(i).depth))
       .getOrElse(clippedVertices(i).depth)
   }
   shader.io.cullMode := drawState.cullMode
@@ -560,19 +614,35 @@ class RenderPipeline(
     // Intersect the draw scissor with this tile. Work outside the resident
     // tile must never block the attachment port waiting for a different owner.
     shader.io.scissorEnable := true.B
-    shader.io.scissorMinX := Mux(drawHold.scissorEnable && drawHold.scissorMinX > pass.originX,
-      drawHold.scissorMinX, pass.originX)
-    shader.io.scissorMinY := Mux(drawHold.scissorEnable && drawHold.scissorMinY > pass.originY,
-      drawHold.scissorMinY, pass.originY)
-    shader.io.scissorMaxX := Mux(drawHold.scissorEnable && drawHold.scissorMaxX < pass.originX +& pass.tileWidth,
-      drawHold.scissorMaxX, pass.originX + pass.tileWidth)
-    shader.io.scissorMaxY := Mux(drawHold.scissorEnable && drawHold.scissorMaxY < pass.originY +& pass.tileHeight,
-      drawHold.scissorMaxY, pass.originY + pass.tileHeight)
-    when(shader.io.draw.fire && shader.io.scissorMinX < shader.io.scissorMaxX &&
-        shader.io.scissorMinY < shader.io.scissorMaxY) {
-      assert(shader.io.scissorMinX(15, 4) === (shader.io.scissorMaxX - 1.U)(15, 4) &&
-        shader.io.scissorMinY(15, 4) === (shader.io.scissorMaxY - 1.U)(15, 4),
-        "resident raster scissor must stay in one admitted16x16 block")
+    shader.io.scissorMinX := Mux(
+      drawHold.scissorEnable && drawHold.scissorMinX > pass.originX,
+      drawHold.scissorMinX,
+      pass.originX
+    )
+    shader.io.scissorMinY := Mux(
+      drawHold.scissorEnable && drawHold.scissorMinY > pass.originY,
+      drawHold.scissorMinY,
+      pass.originY
+    )
+    shader.io.scissorMaxX := Mux(
+      drawHold.scissorEnable && drawHold.scissorMaxX < pass.originX +& pass.tileWidth,
+      drawHold.scissorMaxX,
+      pass.originX + pass.tileWidth
+    )
+    shader.io.scissorMaxY := Mux(
+      drawHold.scissorEnable && drawHold.scissorMaxY < pass.originY +& pass.tileHeight,
+      drawHold.scissorMaxY,
+      pass.originY + pass.tileHeight
+    )
+    when(
+      shader.io.draw.fire && shader.io.scissorMinX < shader.io.scissorMaxX &&
+        shader.io.scissorMinY < shader.io.scissorMaxY
+    ) {
+      assert(
+        shader.io.scissorMinX(15, 4) === (shader.io.scissorMaxX - 1.U)(15, 4) &&
+          shader.io.scissorMinY(15, 4) === (shader.io.scissorMaxY - 1.U)(15, 4),
+        "resident raster scissor must stay in one admitted16x16 block"
+      )
     }
   }
   shader.io.screenW := renderScreenW
@@ -627,26 +697,28 @@ class RenderPipeline(
       store.io.omDrained := om.io.drained
       store.io.finish := fragmentDrained &&
         (if (config.tileBinning && vertCore) vertBinnerOpt.get.io.passEnd
-         else if (config.tileBinning) io.tilePassEnd.get else true.B)
+         else if (config.tileBinning) io.tilePassEnd.get
+         else true.B)
       store.io.wordIndex := om.io.tileWordIndex
       store.io.depthPlane := om.io.tileDepthPlane
       store.io.om.req <> om.io.mem.req
       om.io.mem.resp <> store.io.om.resp
       io.mem <> store.io.mem
-    case None => persistentStore match {
-      case Some(store) =>
-        store.fragmentX := expander.io.out.bits.x
-        store.fragmentY := expander.io.out.bits.y
-        store.producerDrained := upstreamDone
-        store.omDrained := om.io.drained
-        store.wordIndex := om.io.tileWordIndex
-        store.depthPlane := om.io.tileDepthPlane
-        store.om.req <> om.io.mem.req
-        om.io.mem.resp <> store.om.resp
-        io.mem <> store.mem
-        io.tileEvents.get := store.events
-      case None => io.mem <> om.io.mem
-    }
+    case None =>
+      persistentStore match {
+        case Some(store) =>
+          store.fragmentX := expander.io.out.bits.x
+          store.fragmentY := expander.io.out.bits.y
+          store.producerDrained := upstreamDone
+          store.omDrained := om.io.drained
+          store.wordIndex := om.io.tileWordIndex
+          store.depthPlane := om.io.tileDepthPlane
+          store.om.req <> om.io.mem.req
+          om.io.mem.resp <> store.om.resp
+          io.mem <> store.mem
+          io.tileEvents.get := store.events
+        case None => io.mem <> om.io.mem
+      }
   }
   io.done := upstreamDone && tileDrained
   io.drawDrained.foreach(_ := fragmentDrained)
@@ -654,42 +726,70 @@ class RenderPipeline(
   io.performance.omStall := expander.io.out.valid &&
     !(om.io.fragIn.ready && tilePermit)
   io.performance.omConflict := om.io.addressConflict
-  if(bankedAttachments)io.performance.omStall:=bankedWide.get.io.out.valid && !bankedWide.get.io.out.ready
+  if (bankedAttachments) io.performance.omStall := bankedWide.get.io.out.valid && !bankedWide.get.io.out.ready
   io.performance.rasterStall := (if (fragCore || vertCore || bankedAttachments)
-    shader.io.quad.valid && !shader.io.quad.ready
-    else shader.io.pixel.valid && !shader.io.pixel.ready)
-  io.performance.stagingReadBytes := Mux(io.kernelWordMemReq.fire &&
-    !io.kernelWordMemReq.bits.isWrite, 1.U(8.W) << io.kernelWordMemReq.bits.sizeLog2, 0.U)
-  io.performance.stagingWriteBytes := Mux(io.kernelWordMemReq.fire &&
-    io.kernelWordMemReq.bits.isWrite, 1.U(8.W) << io.kernelWordMemReq.bits.sizeLog2, 0.U)
+                                   shader.io.quad.valid && !shader.io.quad.ready
+                                 else shader.io.pixel.valid && !shader.io.pixel.ready)
+  io.performance.stagingReadBytes := Mux(
+    io.kernelWordMemReq.fire &&
+      !io.kernelWordMemReq.bits.isWrite,
+    1.U(8.W) << io.kernelWordMemReq.bits.sizeLog2,
+    0.U
+  )
+  io.performance.stagingWriteBytes := Mux(
+    io.kernelWordMemReq.fire &&
+      io.kernelWordMemReq.bits.isWrite,
+    1.U(8.W) << io.kernelWordMemReq.bits.sizeLog2,
+    0.U
+  )
 
   if (fragCore || vertCore) {
     val parallelFrag = sharedShader.filter(_.parallelFragments).map { pool =>
-      Module(new ParallelKernelFragStage(gpuConfig, config, pool, graphicsScalarFpu,quadExports=bankedAttachments,payloadOwnerBase=payloadOwnerBase))
+      Module(
+        new ParallelKernelFragStage(
+          gpuConfig,
+          config,
+          pool,
+          graphicsScalarFpu,
+          quadExports = bankedAttachments,
+          payloadOwnerBase = payloadOwnerBase
+        )
+      )
     }
-    val kernelFrag: KernelFragStageIO = parallelFrag.map(_.io)
-      .getOrElse(Module(new KernelFragStage(gpuConfig, config,quadExports=bankedAttachments)).io)
+    val kernelFrag: KernelFragStageIO = parallelFrag
+      .map(_.io)
+      .getOrElse(Module(new KernelFragStage(gpuConfig, config, quadExports = bankedAttachments)).io)
     io.performance.fragment := kernelFrag.performance
-    val payloadCanceled=if(shaderPayload.nonEmpty)io.tilePass.get.cancel else false.B
+    val payloadCanceled = if (shaderPayload.nonEmpty) io.tilePass.get.cancel else false.B
     fragmentExecutionFault := kernelFrag.executionFault && !payloadCanceled
-    shaderPayload.foreach { _=>
-      val workers=parallelFrag.get
-      workers.payloadContext.get:=io.vectorSatp
-      workers.payloadCancel.get:=payloadCanceled
-      for(w <- 0 until sharedShader.get.fragmentWorkers)io.payload.get.producer(w)<>workers.payloadProducers.get(w)
+    shaderPayload.foreach { _ =>
+      val workers = parallelFrag.get
+      workers.payloadContext.get := io.vectorSatp
+      workers.payloadCancel.get := payloadCanceled
+      for (w <- 0 until sharedShader.get.fragmentWorkers) io.payload.get.producer(w) <> workers.payloadProducers.get(w)
     }
-    val kernelShader = Module(new KernelShaderStage(gpuConfig, graphicsScalarFpu, sharedShader,helperInvocations=true))
+    val kernelShader = Module(
+      new KernelShaderStage(gpuConfig, graphicsScalarFpu, sharedShader, helperInvocations = true)
+    )
     if (parallelFrag.nonEmpty) {
       val pool = sharedShader.get
-      val router = Module(new SharedShaderTaskRouter(gpuConfig, pool.numComputeUnits,
-        pool.fragmentWorkers + 1, pool.taskIdWidth,shaderPayload=shaderPayload))
+      val router = Module(
+        new SharedShaderTaskRouter(
+          gpuConfig,
+          pool.numComputeUnits,
+          pool.fragmentWorkers + 1,
+          pool.taskIdWidth,
+          shaderPayload = shaderPayload
+        )
+      )
       router.io.pool <> io.shared.get
-      shaderPayload.foreach { _=>
-        router.io.clientPayload.get(0).valid:=false.B
-        router.io.clientPayload.get(0).bits:=0.U.asTypeOf(router.io.clientPayload.get(0).bits)
-        for(w <- 0 until pool.fragmentWorkers)router.io.clientPayload.get(w+1):=parallelFrag.get.payloadTasks.get(w)
-        io.payload.get.task:=router.io.poolPayload.get
-        io.payload.get.pinsOut:=router.io.payloadPins.get
+      shaderPayload.foreach { _ =>
+        router.io.clientPayload.get(0).valid := false.B
+        router.io.clientPayload.get(0).bits := 0.U.asTypeOf(router.io.clientPayload.get(0).bits)
+        for (w <- 0 until pool.fragmentWorkers)
+          router.io.clientPayload.get(w + 1) := parallelFrag.get.payloadTasks.get(w)
+        io.payload.get.task := router.io.poolPayload.get
+        io.payload.get.pinsOut := router.io.payloadPins.get
       }
       router.io.clients(0) <> kernelShader.io.shared.get
       for (worker <- 0 until pool.fragmentWorkers)
@@ -716,25 +816,51 @@ class RenderPipeline(
     val selectVertLaunch = vertLaunchValid
 
     kernelShader.io.launch.valid := vertLaunchValid || fragLaunchValid
-    kernelShader.io.launch.invocations.get:=Mux(selectVertLaunch,0.U.asTypeOf(kernelFrag.kernelLaunch.invocations),kernelFrag.kernelLaunch.invocations)
-    kernelShader.io.launch.kernelPc := Mux(selectVertLaunch,
+    kernelShader.io.launch.invocations.get := Mux(
+      selectVertLaunch,
+      0.U.asTypeOf(kernelFrag.kernelLaunch.invocations),
+      kernelFrag.kernelLaunch.invocations
+    )
+    kernelShader.io.launch.kernelPc := Mux(
+      selectVertLaunch,
       kernelVert.map(_.io.kernelLaunch.kernelPc).getOrElse(0.U),
-      kernelFrag.kernelLaunch.kernelPc)
-    kernelShader.io.launch.kernargAddress := Mux(selectVertLaunch,
+      kernelFrag.kernelLaunch.kernelPc
+    )
+    kernelShader.io.launch.kernargAddress := Mux(
+      selectVertLaunch,
       kernelVert.map(_.io.kernelLaunch.kernargAddress).getOrElse(0.U),
-      kernelFrag.kernelLaunch.kernargAddress)
-    kernelShader.io.launch.gridX := Mux(selectVertLaunch,
-      kernelVert.map(_.io.kernelLaunch.gridX).getOrElse(1.U), kernelFrag.kernelLaunch.gridX)
-    kernelShader.io.launch.gridY := Mux(selectVertLaunch,
-      kernelVert.map(_.io.kernelLaunch.gridY).getOrElse(1.U), kernelFrag.kernelLaunch.gridY)
-    kernelShader.io.launch.gridZ := Mux(selectVertLaunch,
-      kernelVert.map(_.io.kernelLaunch.gridZ).getOrElse(1.U), kernelFrag.kernelLaunch.gridZ)
-    kernelShader.io.launch.localX := Mux(selectVertLaunch,
-      kernelVert.map(_.io.kernelLaunch.localX).getOrElse(1.U), kernelFrag.kernelLaunch.localX)
-    kernelShader.io.launch.localY := Mux(selectVertLaunch,
-      kernelVert.map(_.io.kernelLaunch.localY).getOrElse(1.U), kernelFrag.kernelLaunch.localY)
-    kernelShader.io.launch.localZ := Mux(selectVertLaunch,
-      kernelVert.map(_.io.kernelLaunch.localZ).getOrElse(1.U), kernelFrag.kernelLaunch.localZ)
+      kernelFrag.kernelLaunch.kernargAddress
+    )
+    kernelShader.io.launch.gridX := Mux(
+      selectVertLaunch,
+      kernelVert.map(_.io.kernelLaunch.gridX).getOrElse(1.U),
+      kernelFrag.kernelLaunch.gridX
+    )
+    kernelShader.io.launch.gridY := Mux(
+      selectVertLaunch,
+      kernelVert.map(_.io.kernelLaunch.gridY).getOrElse(1.U),
+      kernelFrag.kernelLaunch.gridY
+    )
+    kernelShader.io.launch.gridZ := Mux(
+      selectVertLaunch,
+      kernelVert.map(_.io.kernelLaunch.gridZ).getOrElse(1.U),
+      kernelFrag.kernelLaunch.gridZ
+    )
+    kernelShader.io.launch.localX := Mux(
+      selectVertLaunch,
+      kernelVert.map(_.io.kernelLaunch.localX).getOrElse(1.U),
+      kernelFrag.kernelLaunch.localX
+    )
+    kernelShader.io.launch.localY := Mux(
+      selectVertLaunch,
+      kernelVert.map(_.io.kernelLaunch.localY).getOrElse(1.U),
+      kernelFrag.kernelLaunch.localY
+    )
+    kernelShader.io.launch.localZ := Mux(
+      selectVertLaunch,
+      kernelVert.map(_.io.kernelLaunch.localZ).getOrElse(1.U),
+      kernelFrag.kernelLaunch.localZ
+    )
     kernelFrag.kernelLaunch.ready := kernelShader.io.launch.ready && !selectVertLaunch
     kernelVert.foreach(_.io.kernelLaunch.ready := kernelShader.io.launch.ready && selectVertLaunch)
     when(kernelShader.io.launch.valid && kernelShader.io.launch.ready) {
@@ -747,9 +873,11 @@ class RenderPipeline(
       vert.io.kernelCompletion.valid := kernelShader.io.completion.valid && kernelOwnerVert
       vert.io.kernelCompletion.bits := kernelShader.io.completion.bits
     }
-    kernelShader.io.completion.ready := Mux(kernelOwnerVert,
+    kernelShader.io.completion.ready := Mux(
+      kernelOwnerVert,
       kernelVert.map(_.io.kernelCompletion.ready).getOrElse(false.B),
-      kernelFrag.kernelCompletion.ready)
+      kernelFrag.kernelCompletion.ready
+    )
     when(kernelShader.io.completion.fire) { kernelOwnerVert := false.B }
 
     kernelFrag.kernelTrap.valid := kernelShader.io.trap.valid && !kernelOwnerVert
@@ -758,8 +886,11 @@ class RenderPipeline(
       vert.io.kernelTrap.valid := kernelShader.io.trap.valid && kernelOwnerVert
       vert.io.kernelTrap.bits := kernelShader.io.trap.bits
     }
-    kernelShader.io.trap.ready := Mux(kernelOwnerVert,
-      kernelVert.map(_.io.kernelTrap.ready).getOrElse(false.B), kernelFrag.kernelTrap.ready)
+    kernelShader.io.trap.ready := Mux(
+      kernelOwnerVert,
+      kernelVert.map(_.io.kernelTrap.ready).getOrElse(false.B),
+      kernelFrag.kernelTrap.ready
+    )
     kernelFrag.kernelSimtBranch.valid := false.B
     kernelFrag.kernelSimtBranch.bits := 0.U.asTypeOf(kernelFrag.kernelSimtBranch.bits)
     kernelShader.io.simtBranch.valid := false.B
@@ -782,8 +913,7 @@ class RenderPipeline(
       val selectStaging = staging.valid
       kernelShader.io.l1Invalidate.valid :=
         (staging.valid || io.kernelL1Invalidate.valid) && invalidateOwners.io.enq.ready
-      kernelShader.io.l1Invalidate.bits := Mux(selectStaging,
-        staging.bits, io.kernelL1Invalidate.bits)
+      kernelShader.io.l1Invalidate.bits := Mux(selectStaging, staging.bits, io.kernelL1Invalidate.bits)
       staging.ready := kernelShader.io.l1Invalidate.ready && invalidateOwners.io.enq.ready
       io.kernelL1Invalidate.ready := !selectStaging &&
         kernelShader.io.l1Invalidate.ready && invalidateOwners.io.enq.ready
@@ -869,7 +999,8 @@ class RenderPipeline(
     // state is carried by the context FIFO and the dual staging slots, and
     // the ordered drawRetire handshake retires contexts in submission order.
     io.draw.ready := (if (config.tileBinning && vertCore)
-      vertBinnerOpt.get.io.drawIn.ready else triSource.ready) &&
+                        vertBinnerOpt.get.io.drawIn.ready
+                      else triSource.ready) &&
       kernelFrag.fragIn.ready &&
       ctxFifo.io.enq.ready && drawTileGate &&
       kernelVert.map(_.io.done).getOrElse(true.B)
@@ -930,9 +1061,9 @@ class RenderPipeline(
     val kfDepth24 = kernelFrag.out.bits.depth(23, 0).asUInt
     // ABI 1 bit 1 selects the shader-written depth word (replicated over the
     // samples); otherwise each sample takes its rasterizer-derived depth.
-    val kfDepths = VecInit(Seq.tabulate(config.maxSampleCount)(s =>
-      Mux(kernelFrag.depthOverride, kfDepth24,
-        kernelFrag.outDepths(s))))
+    val kfDepths = VecInit(
+      Seq.tabulate(config.maxSampleCount)(s => Mux(kernelFrag.depthOverride, kfDepth24, kernelFrag.outDepths(s)))
+    )
     expander.io.in.valid := kernelFrag.out.valid
     expander.io.in.bits.x := kernelFrag.out.bits.x(15, 0).asUInt
     expander.io.in.bits.y := kernelFrag.out.bits.y(15, 0).asUInt
@@ -940,7 +1071,8 @@ class RenderPipeline(
       kernelFrag.out.bits.color.r,
       kernelFrag.out.bits.color.g,
       kernelFrag.out.bits.color.b,
-      kernelFrag.out.bits.alpha)
+      kernelFrag.out.bits.alpha
+    )
     expander.io.in.bits.coverageMask := kernelFrag.out.bits.coverageMask
     expander.io.in.bits.depths := kfDepths
     kernelFrag.out.ready := expander.io.in.ready
@@ -953,29 +1085,36 @@ class RenderPipeline(
     om.io.fragIn.bits.sampleIndex := expander.io.out.bits.sampleIndex
     expander.io.out.ready := om.io.fragIn.ready && tilePermit
     textured.io.out.ready := om.io.fragIn.ready
-    if(bankedAttachments) {
-      val wide=bankedWide.get
-      wide.io.in.valid:=kernelFrag.quadOut.get.valid
-      wide.io.in.bits.pixels:=kernelFrag.quadOut.get.bits
-      kernelFrag.quadOut.get.ready:=wide.io.in.ready
-      kernelFrag.out.ready:=false.B
-      expander.io.in.valid:=false.B
-      om.io.fragIn.valid:=false.B
+    if (bankedAttachments) {
+      val wide = bankedWide.get
+      wide.io.in.valid := kernelFrag.quadOut.get.valid
+      wide.io.in.bits.pixels := kernelFrag.quadOut.get.bits
+      kernelFrag.quadOut.get.ready := wide.io.in.ready
+      kernelFrag.out.ready := false.B
+      expander.io.in.valid := false.B
+      om.io.fragIn.valid := false.B
     }
 
     // Share the CU-scaled staging range with vertex traffic, restoring
     // producer/local ownership on return.
     val stagingRouterDrained = WireDefault(true.B)
     if (sharedShader.exists(_.fragmentStagingTransactions > 2)) {
-      val stagingRouter = Module(new FragmentStagingArbiter(gpuConfig, 2,
-        slots = SharedCuShaderConfig.stagingTransactions(sharedShader),
-        localOutstanding = sharedShader.get.fragmentStagingTransactions, flowRequests = true))
+      val stagingRouter = Module(
+        new FragmentStagingArbiter(
+          gpuConfig,
+          2,
+          slots = SharedCuShaderConfig.stagingTransactions(sharedShader),
+          localOutstanding = sharedShader.get.fragmentStagingTransactions,
+          flowRequests = true
+        )
+      )
       stagingRouter.io.clients(0).request.valid := kernelFrag.wordMemReq.valid
       stagingRouter.io.clients(0).request.bits := kernelFrag.wordMemReq.bits
       kernelFrag.wordMemReq.ready := stagingRouter.io.clients(0).request.ready
       kernelFrag.wordMemResp <> stagingRouter.io.clients(0).response
       stagingRouter.io.clients(1).request.valid := kernelVert.map(_.io.wordMemReq.valid).getOrElse(false.B)
-      stagingRouter.io.clients(1).request.bits := kernelVert.map(_.io.wordMemReq.bits)
+      stagingRouter.io.clients(1).request.bits := kernelVert
+        .map(_.io.wordMemReq.bits)
         .getOrElse(0.U.asTypeOf(stagingRouter.io.clients(1).request.bits))
       stagingRouter.io.clients(1).response.ready := kernelVert.map(_.io.wordMemResp.ready).getOrElse(true.B)
       kernelVert.foreach { vert =>
@@ -993,18 +1132,19 @@ class RenderPipeline(
     } else {
       // Pack both staging bridges into translated IDs [0,4): frag owns [0,2),
       // vert owns [2,4). DMA fill/blit/strided keep physical IDs [4,8).
-      val wordArb = Module(new RRArbiter(
-        new ComputeMemoryRequest(gpuConfig, 64, kernelWordOutstanding), 2))
+      val wordArb = Module(new RRArbiter(new ComputeMemoryRequest(gpuConfig, 64, kernelWordOutstanding), 2))
       wordArb.io.in(0).valid := kernelFrag.wordMemReq.valid
       wordArb.io.in(0).bits := kernelFrag.wordMemReq.bits
-      wordArb.io.in(0).bits.transactionId := Cat(0.U(1.W),
-        kernelFrag.wordMemReq.bits.transactionId(0))
+      wordArb.io.in(0).bits.transactionId := Cat(0.U(1.W), kernelFrag.wordMemReq.bits.transactionId(0))
       kernelFrag.wordMemReq.ready := wordArb.io.in(0).ready
       wordArb.io.in(1).valid := kernelVert.map(_.io.wordMemReq.valid).getOrElse(false.B)
-      wordArb.io.in(1).bits := kernelVert.map(_.io.wordMemReq.bits)
+      wordArb.io.in(1).bits := kernelVert
+        .map(_.io.wordMemReq.bits)
         .getOrElse(0.U.asTypeOf(wordArb.io.in(1).bits))
-      wordArb.io.in(1).bits.transactionId := Cat(1.U(1.W),
-        kernelVert.map(_.io.wordMemReq.bits.transactionId(0)).getOrElse(0.U(1.W)))
+      wordArb.io.in(1).bits.transactionId := Cat(
+        1.U(1.W),
+        kernelVert.map(_.io.wordMemReq.bits.transactionId(0)).getOrElse(0.U(1.W))
+      )
       kernelVert.foreach { vert =>
         vert.io.wordMemReq.ready := wordArb.io.in(1).ready
         vert.io.wordMemResp.valid := io.kernelWordMemResp.valid &&
@@ -1019,13 +1159,14 @@ class RenderPipeline(
       kernelFrag.wordMemResp.bits := io.kernelWordMemResp.bits
       kernelFrag.wordMemResp.bits.transactionId :=
         io.kernelWordMemResp.bits.transactionId(0)
-      io.kernelWordMemResp.ready := Mux(io.kernelWordMemResp.bits.transactionId(1),
+      io.kernelWordMemResp.ready := Mux(
+        io.kernelWordMemResp.bits.transactionId(1),
         kernelVert.map(_.io.wordMemResp.ready).getOrElse(false.B),
-        kernelFrag.wordMemResp.ready)
+        kernelFrag.wordMemResp.ready
+      )
     }
     textured.io.fragIn.valid := false.B // texture path only on fixed-func branch
-    textured.io.fragDepths := 0.U.asTypeOf(
-      Vec(config.maxSampleCount, UInt(30.W)))
+    textured.io.fragDepths := 0.U.asTypeOf(Vec(config.maxSampleCount, UInt(30.W)))
 
     // The programmable fragment shader samples through the translated texture
     // client, so its texture unit's word port carries the texture VA.  The
@@ -1086,7 +1227,7 @@ class RenderPipeline(
     upstreamDone := fragmentDrained && kernelVert.map(_.io.done).getOrElse(true.B) &&
       vertBinnerOpt.map(_.io.done).getOrElse(true.B)
   } else {
-    val bankedDrained=WireDefault(true.B)
+    val bankedDrained = WireDefault(true.B)
     shader.io.draw.valid := drawHoldValid && !clipTriangleActive && clipper.io.done && geometryReady &&
       clipEmitIndex < clipper.io.outValid
     om.io.colorFormat := drawState.colorFormat
@@ -1129,25 +1270,30 @@ class RenderPipeline(
     // The sample expander is the per-pixel/per-sample boundary: it visits the
     // set coverage bits and presents each as its own OM fragment.  In 1x mode
     // the mask is a single bit, so this is one input and one output.
-    val fragX = Mux(drawState.texEnable,
-      textured.io.out.bits.x, shader.io.pixel.bits.x)(15, 0).asUInt
-    val fragY = Mux(drawState.texEnable,
-      textured.io.out.bits.y, shader.io.pixel.bits.y)(15, 0).asUInt
-    val fragColor = Mux(drawState.texEnable,
-      packColor(textured.io.out.bits.color.r, textured.io.out.bits.color.g,
-        textured.io.out.bits.color.b, textured.io.out.bits.alpha),
-      Cat(shader.io.pixel.bits.color.r, shader.io.pixel.bits.color.g,
-        shader.io.pixel.bits.color.b, shader.io.pixel.bits.alpha))
+    val fragX = Mux(drawState.texEnable, textured.io.out.bits.x, shader.io.pixel.bits.x)(15, 0).asUInt
+    val fragY = Mux(drawState.texEnable, textured.io.out.bits.y, shader.io.pixel.bits.y)(15, 0).asUInt
+    val fragColor = Mux(
+      drawState.texEnable,
+      packColor(
+        textured.io.out.bits.color.r,
+        textured.io.out.bits.color.g,
+        textured.io.out.bits.color.b,
+        textured.io.out.bits.alpha
+      ),
+      Cat(
+        shader.io.pixel.bits.color.r,
+        shader.io.pixel.bits.color.g,
+        shader.io.pixel.bits.color.b,
+        shader.io.pixel.bits.alpha
+      )
+    )
     // Per-sample depths: the interpolator derives one affine depth per MSAA
     // sample from the triangle's depth gradient; texturing preserves them.
     textured.io.fragDepths := shader.io.depthSamples
-    val fragDepths = Mux(drawState.texEnable,
-      textured.io.outDepths, shader.io.depthSamples)
-    val fragCoverage = Mux(drawState.texEnable,
-      textured.io.out.bits.coverageMask, shader.io.pixel.bits.coverageMask)
+    val fragDepths = Mux(drawState.texEnable, textured.io.outDepths, shader.io.depthSamples)
+    val fragCoverage = Mux(drawState.texEnable, textured.io.out.bits.coverageMask, shader.io.pixel.bits.coverageMask)
 
-    expander.io.in.valid := Mux(drawState.texEnable, textured.io.out.valid,
-      shader.io.pixel.valid)
+    expander.io.in.valid := Mux(drawState.texEnable, textured.io.out.valid, shader.io.pixel.valid)
     expander.io.in.bits.x := fragX
     expander.io.in.bits.y := fragY
     expander.io.in.bits.color := fragColor
@@ -1162,53 +1308,56 @@ class RenderPipeline(
     om.io.fragIn.bits.sampleIndex := expander.io.out.bits.sampleIndex
     expander.io.out.ready := om.io.fragIn.ready && tilePermit
     textured.io.out.ready := expander.io.in.ready
-    shader.io.pixel.ready := Mux(drawState.texEnable, textured.io.fragIn.ready,
-      expander.io.in.ready)
+    shader.io.pixel.ready := Mux(drawState.texEnable, textured.io.fragIn.ready, expander.io.in.ready)
     shader.io.quad.ready := false.B // scalar mode: quad port is tied off
 
-    if(bankedAttachments) {
-      val wide=bankedWide.get
-      val serial=Module(new FragmentQuadSerializer(rasterConfig))
-      val store=persistentStore.get
-      serial.io.in.valid:=shader.io.quad.valid && drawState.texEnable
-      serial.io.in.bits.quad:=shader.io.quad.bits
-      serial.io.in.bits.depths:=shader.io.quadDepths
-      textured.io.fragIn.valid:=serial.io.out.valid && drawState.texEnable
-      textured.io.fragIn.bits:=serial.io.out.bits
-      textured.io.fragDepths:=serial.io.depths
-      textured.io.e0:=serial.io.out.bits.e0
-      textured.io.e1:=serial.io.out.bits.e1
-      textured.io.e2:=serial.io.out.bits.e2
-      serial.io.out.ready:=textured.io.fragIn.ready && drawState.texEnable
+    if (bankedAttachments) {
+      val wide = bankedWide.get
+      val serial = Module(new FragmentQuadSerializer(rasterConfig))
+      val store = persistentStore.get
+      serial.io.in.valid := shader.io.quad.valid && drawState.texEnable
+      serial.io.in.bits.quad := shader.io.quad.bits
+      serial.io.in.bits.depths := shader.io.quadDepths
+      textured.io.fragIn.valid := serial.io.out.valid && drawState.texEnable
+      textured.io.fragIn.bits := serial.io.out.bits
+      textured.io.fragDepths := serial.io.depths
+      textured.io.e0 := serial.io.out.bits.e0
+      textured.io.e1 := serial.io.out.bits.e1
+      textured.io.e2 := serial.io.out.bits.e2
+      serial.io.out.ready := textured.io.fragIn.ready && drawState.texEnable
 
-      wide.io.in.valid:=Mux(drawState.texEnable,textured.io.out.valid,shader.io.quad.valid)
-      for(p <- 0 until 4) {
-        val pixel=wide.io.in.bits.pixels(p)
-        val raster=shader.io.quad.bits.lanes(p)
-        pixel.x:=raster.x(15,0).asUInt
-        pixel.y:=raster.y(15,0).asUInt
-        pixel.color:=Cat(raster.color.r,raster.color.g,raster.color.b,raster.alpha)
-        pixel.coverageMask:=Mux(raster.covered,raster.coverageMask,0.U)
-        pixel.depths:=shader.io.quadDepths(p)
+      wide.io.in.valid := Mux(drawState.texEnable, textured.io.out.valid, shader.io.quad.valid)
+      for (p <- 0 until 4) {
+        val pixel = wide.io.in.bits.pixels(p)
+        val raster = shader.io.quad.bits.lanes(p)
+        pixel.x := raster.x(15, 0).asUInt
+        pixel.y := raster.y(15, 0).asUInt
+        pixel.color := Cat(raster.color.r, raster.color.g, raster.color.b, raster.alpha)
+        pixel.coverageMask := Mux(raster.covered, raster.coverageMask, 0.U)
+        pixel.depths := shader.io.quadDepths(p)
         when(drawState.texEnable) {
-          pixel:=0.U.asTypeOf(pixel)
-          if(p==0) {
-            pixel.x:=textured.io.out.bits.x(15,0).asUInt
-            pixel.y:=textured.io.out.bits.y(15,0).asUInt
-            pixel.color:=Cat(textured.io.out.bits.color.r,textured.io.out.bits.color.g,
-              textured.io.out.bits.color.b,textured.io.out.bits.alpha)
-            pixel.coverageMask:=textured.io.out.bits.coverageMask
-            pixel.depths:=textured.io.outDepths
+          pixel := 0.U.asTypeOf(pixel)
+          if (p == 0) {
+            pixel.x := textured.io.out.bits.x(15, 0).asUInt
+            pixel.y := textured.io.out.bits.y(15, 0).asUInt
+            pixel.color := Cat(
+              textured.io.out.bits.color.r,
+              textured.io.out.bits.color.g,
+              textured.io.out.bits.color.b,
+              textured.io.out.bits.alpha
+            )
+            pixel.coverageMask := textured.io.out.bits.coverageMask
+            pixel.depths := textured.io.outDepths
           }
         }
       }
-      textured.io.out.ready:=wide.io.in.ready && drawState.texEnable
-      shader.io.quad.ready:=Mux(drawState.texEnable,serial.io.in.ready,wide.io.in.ready)
-      shader.io.pixel.ready:=false.B
-      expander.io.in.valid:=false.B
-      om.io.fragIn.valid:=false.B
-      io.performance.omStall:=wide.io.out.valid && !wide.io.out.ready
-      bankedDrained:=wide.io.drained && serial.io.drained && store.localDrained.get
+      textured.io.out.ready := wide.io.in.ready && drawState.texEnable
+      shader.io.quad.ready := Mux(drawState.texEnable, serial.io.in.ready, wide.io.in.ready)
+      shader.io.pixel.ready := false.B
+      expander.io.in.valid := false.B
+      om.io.fragIn.valid := false.B
+      io.performance.omStall := wide.io.out.valid && !wide.io.out.ready
+      bankedDrained := wide.io.drained && serial.io.drained && store.localDrained.get
     }
 
     io.kernelMemReq.valid := false.B

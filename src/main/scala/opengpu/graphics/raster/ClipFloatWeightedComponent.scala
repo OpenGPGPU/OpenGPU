@@ -13,6 +13,7 @@ class ClipFloatWeightedComponentRequest(tagWidth: Int) extends Bundle {
 class ClipFloatWeightedComponentResponse(tagWidth: Int) extends Bundle {
   val value = new ClipFloat
   val fp32 = UInt(32.W)
+
   /** Flags accumulate in scalar evaluation order, stopping at the first error. */
   val arithmeticStatus = UInt(5.W)
   val packingStatus = UInt(5.W)
@@ -36,15 +37,12 @@ private class ClipFloatComponentContext(tagWidth: Int) extends Bundle {
   val tag = UInt(tagWidth.W)
 }
 
-/** One independently rounded weighted component per cycle:
-  * ((w0*v0 + w1*v1) + w2*v2) / denominator.
-  * Three spatial multipliers, two adders and a divider overlap all six scalar
-  * operations, preserving the serial interpolator's rounding and error order.
-  * This block consumes prepared weights; primitive/quad setup remains outside.
+/** One independently rounded weighted component per cycle: ((w0*v0 + w1*v1) + w2*v2) / denominator. Three spatial
+  * multipliers, two adders and a divider overlap all six scalar operations, preserving the serial interpolator's
+  * rounding and error order. This block consumes prepared weights; primitive/quad setup remains outside.
   *
-  * Cancellation blocks admission until every accepted component drains. The
-  * internal arithmetic keeps running even while cancel is held. Already offered
-  * responses remain immutable; all other accepted components are cancelled.
+  * Cancellation blocks admission until every accepted component drains. The internal arithmetic keeps running even
+  * while cancel is held. Already offered responses remain immutable; all other accepted components are cancelled.
   */
 class ClipFloatWeightedComponent(tagWidth: Int = 8) extends Module {
   require(tagWidth > 0)

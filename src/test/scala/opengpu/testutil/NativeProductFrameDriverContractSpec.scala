@@ -1,7 +1,11 @@
 package opengpu.testutil
 
 import opengpu.graphics.NativeFourEngineDefaultHostAxiSpec
-import opengpu.system.{NativeSparseFrameSmokeQualification,NativeProductFrame720Qualification,QualifyNativeProductFrames}
+import opengpu.system.{
+  NativeSparseFrameSmokeQualification,
+  NativeProductFrame720Qualification,
+  QualifyNativeProductFrames
+}
 import org.scalatest.flatspec.AnyFlatSpec
 
 class NativeProductFrameDriverContractSpec extends AnyFlatSpec {
@@ -42,8 +46,13 @@ class NativeProductFrameDriverContractSpec extends AnyFlatSpec {
     intercept[IllegalArgumentException] {
       QualifyNativeProductFrames.productMode(Array("--smoke", "--reports", "out"), Some("1"), Some("1"))
     }
-    for (args <- Seq(Array.empty[String], Array("--unknown", "--reports", "out"),
-      Array("--product", "--reports", "out", "-z", "4x")))
+    for (
+      args <- Seq(
+        Array.empty[String],
+        Array("--unknown", "--reports", "out"),
+        Array("--product", "--reports", "out", "-z", "4x")
+      )
+    )
       intercept[IllegalArgumentException] {
         QualifyNativeProductFrames.productMode(args, Some("1"), Some("1"))
       }

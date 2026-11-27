@@ -16,16 +16,26 @@ class NativeRgba8TextureColdWindowSpec extends AnyFlatSpec {
     zero(d.io); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
     val bytes = mutable.Map.empty[BigInt, Int]
     val data = Vector.tabulate(2) { n =>
-      new Memory(d.io.memoryRequest(n).bits, d.io.memoryResponse(n).bits,
-        d.io.memoryRequest(n).valid, d.io.memoryRequest(n).ready,
-        d.io.memoryResponse(n).valid, d.io.memoryResponse(n).ready) {
+      new Memory(
+        d.io.memoryRequest(n).bits,
+        d.io.memoryResponse(n).bits,
+        d.io.memoryRequest(n).valid,
+        d.io.memoryRequest(n).ready,
+        d.io.memoryResponse(n).valid,
+        d.io.memoryResponse(n).ready
+      ) {
         override val bytes = Driver.this.bytes
       }
     }
     val walks = Vector.tabulate(2) { n =>
-      new Memory(d.io.pageWalk(n).bits, d.io.pageWalkResponse(n).bits,
-        d.io.pageWalk(n).valid, d.io.pageWalk(n).ready,
-        d.io.pageWalkResponse(n).valid, d.io.pageWalkResponse(n).ready) {
+      new Memory(
+        d.io.pageWalk(n).bits,
+        d.io.pageWalkResponse(n).bits,
+        d.io.pageWalk(n).valid,
+        d.io.pageWalk(n).ready,
+        d.io.pageWalkResponse(n).valid,
+        d.io.pageWalkResponse(n).ready
+      ) {
         override val bytes = Driver.this.bytes
       }
     }
@@ -79,14 +89,14 @@ class NativeRgba8TextureColdWindowSpec extends AnyFlatSpec {
           if (e.status == 0) {
             b.uniqueTaps.expect(4.U)
             b.rgba.zip(e.rgba).foreach { case (actual, want) => actual.expect(want.U) }
-          }
-          else b.rgba.foreach(_.expect(0.U))
+          } else b.rgba.foreach(_.expect(0.U))
           if (e.status == 3) { b.faultAddressValid.expect(true.B); b.faultAddress.expect(e.q.va.U) }
           readCharges += b.dataReadLines.peek().litValue.toInt
           statuses(c) += e.status
         }
       }
-      val accepted = (0 until 3).filter(c => offers(c).nonEmpty && d.io.client(c).request.ready.peek().litToBoolean).toSet
+      val accepted =
+        (0 until 3).filter(c => offers(c).nonEmpty && d.io.client(c).request.ready.peek().litToBoolean).toSet
       for (c <- accepted) {
         val (q, status) = offers(c).get; val raw = data.head.word(q.pa)
         val rgba = Vector.tabulate(4)(n => bits(((raw >> (n * 8)) & 255).toInt.toFloat / 255f))
@@ -104,7 +114,10 @@ class NativeRgba8TextureColdWindowSpec extends AnyFlatSpec {
     def until(condition: => Boolean): Unit = {
       var n = 0
       while (!condition && n < 30000) { tick(); n += 1 }
-      assert(condition, s"cold window stalled cycle=$cycle pending=${pending.map(_.size)} data=${data.map(active)} walks=${walks.map(active)}")
+      assert(
+        condition,
+        s"cold window stalled cycle=$cycle pending=${pending.map(_.size)} data=${data.map(active)} walks=${walks.map(active)}"
+      )
     }
     def pair(a: Seq[Query], b: Seq[Query]): Unit = {
       val qs = Vector(a, b); val next = Array(0, 0)
@@ -135,9 +148,12 @@ class NativeRgba8TextureColdWindowSpec extends AnyFlatSpec {
       val t = new Driver(d)
       def queries(epoch: Int, count: Int): Vector[Vector[Query]] = Vector.tabulate(2) { c =>
         Vector.tabulate(count) { i =>
-          Query(BigInt(0x400000 + c * 0x400000 + i * 4096),
+          Query(
+            BigInt(0x400000 + c * 0x400000 + i * 4096),
             BigInt(0x1000000 + epoch * 0x400000 + c * 0x100000 + i * 4096),
-            BigInt(0xf0000000L) + (epoch << 20) + (c << 16) + i, 13 + epoch)
+            BigInt(0xf0000000L) + (epoch << 20) + (c << 16) + i,
+            13 + epoch
+          )
         }
       }
       val old = queries(0, 64); val fresh = queries(1, 64)
@@ -154,8 +170,8 @@ class NativeRgba8TextureColdWindowSpec extends AnyFlatSpec {
       for (c <- 0 until 2) {
         assert(t.data(c).seen.exists(_.address == old(c).head.pa))
         t.data(c).faultAt = Set(old(c).head.pa)
-        val revised = t.pending(c).dequeueAll(_ => true).zipWithIndex.map {
-          case (e, i) => e.copy(status = if (i == 0) 3 else 4)
+        val revised = t.pending(c).dequeueAll(_ => true).zipWithIndex.map { case (e, i) =>
+          e.copy(status = if (i == 0) 3 else 4)
         }
         t.pending(c).enqueueAll(revised)
       }
@@ -172,10 +188,13 @@ class NativeRgba8TextureColdWindowSpec extends AnyFlatSpec {
       t.vm(0x81); d.io.invalidate.poke(true.B); t.tick(); d.io.invalidate.poke(false.B)
       t.ready(0) = false; t.ready(1) = false
       t.pair(fresh(0), fresh(1))
-      t.until((t.data ++ t.walks).forall(t.active(_) == 0) &&
-        (0 until 2).forall(c => t.data(c).seen.size == beforeHealthyReads(c) + 128))
+      t.until(
+        (t.data ++ t.walks).forall(t.active(_) == 0) &&
+          (0 until 2).forall(c => t.data(c).seen.size == beforeHealthyReads(c) + 128)
+      )
       for (_ <- 0 until 200) t.tick()
-      val more = Vector.tabulate(2)(c => Vector.tabulate(56)(i => fresh(c).last.copy(tag = BigInt(0xe0000000L) + (c << 16) + i)))
+      val more =
+        Vector.tabulate(2)(c => Vector.tabulate(56)(i => fresh(c).last.copy(tag = BigInt(0xe0000000L) + (c << 16) + i)))
       t.pair(more(0), more(1))
       for (_ <- 0 until 200) t.tick()
       assert(t.pending(0).size == 120 && t.pending(1).size == 120)
@@ -210,7 +229,9 @@ class NativeRgba8TextureColdWindowSpec extends AnyFlatSpec {
       t.offers(2) = None; t.drain()
       for (c <- 0 until 2) assert(t.statuses(c).drop(64).toVector == Vector.fill(120)(0))
       assert(t.statuses(2).toVector == Vector.fill(9)(0))
-      info(s"NATIVE_SHARED_COLD_WINDOW pairs=2 rowsPerPair=128 hotPublicRowsPerPair=120 peerReservedRowsPerPair=4 maxDataIDsPerPair=16 maxPTWPerPair=4 taps=4 coldOwners=128 primaryMemoryFaults=2 cancelledOwners=126 healthyHotReplies=240 healthyPeerReplies=9 roots=2 heldPublicRootPin=true preciseReadCharges=${t.readCharges} sameVirtualChangedPhysical=true")
+      info(
+        s"NATIVE_SHARED_COLD_WINDOW pairs=2 rowsPerPair=128 hotPublicRowsPerPair=120 peerReservedRowsPerPair=4 maxDataIDsPerPair=16 maxPTWPerPair=4 taps=4 coldOwners=128 primaryMemoryFaults=2 cancelledOwners=126 healthyHotReplies=240 healthyPeerReplies=9 roots=2 heldPublicRootPin=true preciseReadCharges=${t.readCharges} sameVirtualChangedPhysical=true"
+      )
     }
   }
 }

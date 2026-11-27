@@ -9,8 +9,10 @@ import chisel3.util._
 class TessellationQuadBoundaryVertex extends Bundle {
   val taskId = UInt(32.W)
   val sequence = UInt(8.W)
+
   /** GLES outer-level index for the edge beginning at this vertex. */
   val outerEdge = UInt(2.W)
+
   /** Unsigned Q0.24 coordinates, including 1.0 as 1 << 24. */
   val u = UInt(25.W)
   val v = UInt(25.W)
@@ -22,16 +24,17 @@ class TessellationQuadBoundaryTask extends Bundle {
 }
 class TessellationQuadBoundaryCompletion extends Bundle {
   val taskId = UInt(32.W)
+
   /** Can equal 256 at four maximum-level edges. */
   val emitted = UInt(9.W)
+
   /** 0 success or discarded patch, 1 invalid input, 4 cancelled. */
   val status = UInt(3.W)
   val discarded = Bool()
 }
 
-/** Stream the independently subdivided outer boundary of a quad patch.
-  * Corners occur once: each edge offers its starting vertex and excludes its
-  * ending vertex. This is a building block, not a quad primitive generator.
+/** Stream the independently subdivided outer boundary of a quad patch. Corners occur once: each edge offers its
+  * starting vertex and excludes its ending vertex. This is a building block, not a quad primitive generator.
   */
 class TessellationQuadBoundary extends Module {
   val io = IO(new Bundle {
@@ -116,7 +119,8 @@ class TessellationQuadBoundary extends Module {
         edgeIndex := 0.U
         when(edgeNumber === 3.U) { state := State.complete }
           .otherwise { edgeNumber := edgeNumber + 1.U; state := State.edgeOffer }
-      }.otherwise { edgeIndex := edgeIndex + 1.U; state := State.edgeOffer }
+      }
+      .otherwise { edgeIndex := edgeIndex + 1.U; state := State.edgeOffer }
   }
   when(io.completion.fire) { state := State.idle }
 }

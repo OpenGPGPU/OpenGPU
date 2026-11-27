@@ -15,9 +15,8 @@ class PageTableMemoryResponse extends Bundle {
 
 /** Two-level Sv32 page-table walker for the vector data TLB.
   *
-  * Accessed/dirty bits must already be set; hardware PTE updates are not yet
-  * attempted. Sv32 permits wider physical addresses, while this RV32 core
-  * intentionally keeps a 32-bit physical address and uses PTE PPN[19:0].
+  * Accessed/dirty bits must already be set; hardware PTE updates are not yet attempted. Sv32 permits wider physical
+  * addresses, while this RV32 core intentionally keeps a 32-bit physical address and uses PTE PPN[19:0].
   */
 class Sv32PageTableWalker(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {
@@ -73,10 +72,11 @@ class Sv32PageTableWalker(config: GpuConfig = GpuConfig()) extends Module {
   private val pteLeaf = pteReadable || pteExecutable
   // This implementation exposes only 32 physical address bits. Reject an
   // unsupported high PPN instead of silently aliasing its low 20 bits.
-  private val invalidEncoding = !pteValid || (!pteReadable && pteWritable) || pte(31,30).orR
+  private val invalidEncoding = !pteValid || (!pteReadable && pteWritable) || pte(31, 30).orR
   private val ptePpn = pte(29, 10)
-  /** Sv32 reserves PTE bits [9:8]; this profile carries the page's cache
-    * policy there (see CachePolicy). */
+
+  /** Sv32 reserves PTE bits [9:8]; this profile carries the page's cache policy there (see CachePolicy).
+    */
   private val pteCachePolicy = pte(9, 8)
   private val misalignedSuperpage = level === 1.U && ptePpn(9, 0) =/= 0.U
   private val permissionFault =

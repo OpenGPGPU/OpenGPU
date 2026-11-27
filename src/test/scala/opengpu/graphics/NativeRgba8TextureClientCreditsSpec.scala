@@ -12,10 +12,22 @@ class NativeRgba8TextureClientCreditsSpec extends AnyFlatSpec {
   private case class Expected(q: Query, status: Int, color: Vector[BigInt])
   private class Driver(val d: NativeRgba8TextureCluster) {
     zero(d.io); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
-    val memory = new Memory(d.io.memoryRequest.bits, d.io.memoryResponse.bits, d.io.memoryRequest.valid,
-      d.io.memoryRequest.ready, d.io.memoryResponse.valid, d.io.memoryResponse.ready)
-    val walks = new Memory(d.io.pageWalk.bits, d.io.pageWalkResponse.bits, d.io.pageWalk.valid,
-      d.io.pageWalk.ready, d.io.pageWalkResponse.valid, d.io.pageWalkResponse.ready) { override val bytes = memory.bytes }
+    val memory = new Memory(
+      d.io.memoryRequest.bits,
+      d.io.memoryResponse.bits,
+      d.io.memoryRequest.valid,
+      d.io.memoryRequest.ready,
+      d.io.memoryResponse.valid,
+      d.io.memoryResponse.ready
+    )
+    val walks = new Memory(
+      d.io.pageWalk.bits,
+      d.io.pageWalkResponse.bits,
+      d.io.pageWalk.valid,
+      d.io.pageWalk.ready,
+      d.io.pageWalkResponse.valid,
+      d.io.pageWalkResponse.ready
+    ) { override val bytes = memory.bytes }
     val pending = Vector.fill(4)(mutable.Queue.empty[Expected])
     val statuses = Vector.fill(4)(mutable.ArrayBuffer.empty[Int])
     val ready = Array.fill(4)(true)
@@ -50,7 +62,9 @@ class NativeRgba8TextureClientCreditsSpec extends AnyFlatSpec {
       Expected(q, status, Vector.tabulate(4)(n => bits(((word >> (n * 8)) & 255).toInt.toFloat / 255.0f)))
     }
     def tick(offer: Option[(Int, Query, Int)] = None): Boolean = {
-      for (c <- 0 until 4) { d.io.client(c).request.valid.poke(false.B); d.io.client(c).response.ready.poke(ready(c).B) }
+      for (c <- 0 until 4) {
+        d.io.client(c).request.valid.poke(false.B); d.io.client(c).response.ready.poke(ready(c).B)
+      }
       offer.foreach { case (c, q, _) => poke(c, q); d.io.client(c).request.valid.poke(true.B) }
       memory.drive(); walks.drive()
       for (c <- 0 until 4) {
@@ -71,89 +85,105 @@ class NativeRgba8TextureClientCreditsSpec extends AnyFlatSpec {
       if (fire) { val (c, q, status) = offer.get; pending(c).enqueue(expected(c, q, status)) }
       memory.capture(); walks.capture(); d.clock.step(); cycle += 1; fire
     }
-    def until(p: => Boolean): Unit = { var n = 0; while (!p && n < 10000) { tick(); n += 1 }; assert(p, s"cluster stalled cycle=$cycle pending=${pending.map(_.size)}") }
+    def until(p: => Boolean): Unit = {
+      var n = 0; while (!p && n < 10000) { tick(); n += 1 };
+      assert(p, s"cluster stalled cycle=$cycle pending=${pending.map(_.size)}")
+    }
     def submit(c: Int, q: Query = Query(), status: Int = 0): Unit = {
-      var fire = false; var n = 0; while (!fire && n < 10000) { fire = tick(Some((c, q, status))); n += 1 }; assert(fire)
+      var fire = false; var n = 0; while (!fire && n < 10000) { fire = tick(Some((c, q, status))); n += 1 };
+      assert(fire)
     }
     def cancel(c: Int, q: Query = Query()): Unit = {
       val port = d.io.client(c).cancelGroup
-      port.valid.poke(true.B); identity(port.bits.identity); port.bits.identity.generation.poke(q.generation.U); port.bits.tag.poke(q.tag.U)
+      port.valid.poke(true.B); identity(port.bits.identity); port.bits.identity.generation.poke(q.generation.U);
+      port.bits.tag.poke(q.tag.U)
     }
     def drain(): Unit = {
       until(!d.io.busy.peek().litToBoolean)
-      assert(pending.forall(_.isEmpty) && memory.pending.isEmpty && memory.reply.isEmpty && walks.pending.isEmpty && walks.reply.isEmpty)
-      assert(reportedReads == memory.seen.size, s"router dropped/doubled a read charge: $reportedReads != ${memory.seen.size}")
+      assert(
+        pending.forall(
+          _.isEmpty
+        ) && memory.pending.isEmpty && memory.reply.isEmpty && walks.pending.isEmpty && walks.reply.isEmpty
+      )
+      assert(
+        reportedReads == memory.seen.size,
+        s"router dropped/doubled a read charge: $reportedReads != ${memory.seen.size}"
+      )
       tick(); tick()
     }
   }
   it should "retain four leases per client and let hot clients reuse rows while another public queue is held" in {
-    simulate(new NativeRgba8TextureCluster(maxOutstandingPerClient=4)){d=>
-      val t=new Driver(d);t.ready.indices.foreach(c=>t.ready(c)=false)
-      for(round<-0 until 4;c<-0 until 4)assert(t.tick(Some((c,Query(),0))),"router inserted a bubble in a sixteen-group admission burst")
+    simulate(new NativeRgba8TextureCluster(maxOutstandingPerClient = 4)) { d =>
+      val t = new Driver(d); t.ready.indices.foreach(c => t.ready(c) = false)
+      for (round <- 0 until 4; c <- 0 until 4)
+        assert(t.tick(Some((c, Query(), 0))), "router inserted a bubble in a sixteen-group admission burst")
       t.until(d.io.client.forall(_.response.valid.peek().litToBoolean))
-      for(_<-0 until 12;c<-0 until 4)assert(!t.tick(Some((c,Query(),0))),"a full client reused an unretired lease")
-      val reads=t.memory.seen.size
-      for(c<-1 until 4)t.ready(c)=true
-      t.until((1 until 4).forall(c=>t.statuses(c).size==4))
-      for(round<-0 until 20;c<-1 until 4)t.submit(c,Query(tag=BigInt(0xffff0000L)+round))
-      t.until((1 until 4).forall(c=>t.statuses(c).size==24))
-      assert(t.memory.seen.size==reads && t.statuses(0).isEmpty)
-      t.ready(0)=true;t.drain();assert(t.statuses(0).size==4)
-      info("NATIVE_CLIENT_CREDITS leasesPerClient=4 totalLeases16=true admissionBurst16II1=true repeatedTags=true heldQueueIndependent=true hotReuses60=true exactReadCharges=true")
+      for (_ <- 0 until 12; c <- 0 until 4)
+        assert(!t.tick(Some((c, Query(), 0))), "a full client reused an unretired lease")
+      val reads = t.memory.seen.size
+      for (c <- 1 until 4) t.ready(c) = true
+      t.until((1 until 4).forall(c => t.statuses(c).size == 4))
+      for (round <- 0 until 20; c <- 1 until 4) t.submit(c, Query(tag = BigInt(0xffff0000L) + round))
+      t.until((1 until 4).forall(c => t.statuses(c).size == 24))
+      assert(t.memory.seen.size == reads && t.statuses(0).isEmpty)
+      t.ready(0) = true; t.drain(); assert(t.statuses(0).size == 4)
+      info(
+        "NATIVE_CLIENT_CREDITS leasesPerClient=4 totalLeases16=true admissionBurst16II1=true repeatedTags=true heldQueueIndependent=true hotReuses60=true exactReadCharges=true"
+      )
     }
   }
   it should "cancel every matching caller lease while retaining other clients and generations" in {
-    simulate(new NativeRgba8TextureCluster(maxOutstandingPerClient=4)){d=>
-      val t=new Driver(d);t.memory.holdResponses=true
-      for(n<-0 until 4)t.submit(0,Query(),status=4)
-      for(n<-0 until 4)t.submit(1,Query())
-      t.cancel(0);t.tick();d.io.client(0).cancelGroup.valid.poke(false.B)
-      t.memory.holdResponses=false;t.drain()
-      assert(t.statuses(0).toVector==Vector.fill(4)(4) && t.statuses(1).toVector==Vector.fill(4)(0))
-      for(n<-0 until 4)t.submit(0,Query(generation=14))
-      t.drain();assert(t.statuses(0).takeRight(4).forall(_==0))
+    simulate(new NativeRgba8TextureCluster(maxOutstandingPerClient = 4)) { d =>
+      val t = new Driver(d); t.memory.holdResponses = true
+      for (n <- 0 until 4) t.submit(0, Query(), status = 4)
+      for (n <- 0 until 4) t.submit(1, Query())
+      t.cancel(0); t.tick(); d.io.client(0).cancelGroup.valid.poke(false.B)
+      t.memory.holdResponses = false; t.drain()
+      assert(t.statuses(0).toVector == Vector.fill(4)(4) && t.statuses(1).toVector == Vector.fill(4)(0))
+      for (n <- 0 until 4) t.submit(0, Query(generation = 14))
+      t.drain(); assert(t.statuses(0).takeRight(4).forall(_ == 0))
     }
   }
   it should "hold VM and publication fences through every queued public response" in {
-    simulate(new NativeRgba8TextureCluster(maxOutstandingPerClient=4)){d=>
-      val t=new Driver(d);t.vm(0x80);t.mapping(0x80,0x401000,0x101000);t.mapping(0x81,0x401000,0x201000)
-      t.backing(0x101000);t.backing(0x201000,0x313131)
-      t.ready.indices.foreach(c=>t.ready(c)=false)
-      for(n<-0 until 4;c<-0 until 4)t.submit(c,Query(base=0x401000))
+    simulate(new NativeRgba8TextureCluster(maxOutstandingPerClient = 4)) { d =>
+      val t = new Driver(d); t.vm(0x80); t.mapping(0x80, 0x401000, 0x101000); t.mapping(0x81, 0x401000, 0x201000)
+      t.backing(0x101000); t.backing(0x201000, 0x313131)
+      t.ready.indices.foreach(c => t.ready(c) = false)
+      for (n <- 0 until 4; c <- 0 until 4) t.submit(c, Query(base = 0x401000))
       t.until(d.io.client.forall(_.response.valid.peek().litToBoolean))
-      t.vm(0x81);d.io.client(2).invalidate.poke(true.B);t.tick();d.io.client(2).invalidate.poke(false.B)
-      for(c<-0 until 3)t.ready(c)=true
-      t.until((0 until 3).forall(c=>t.statuses(c).size==4))
-      for(_<-0 until 12)assert(!t.tick(Some((0,Query(base=0x401000),0))))
-      t.ready(3)=true;t.drain();val before=t.memory.seen.size
-      for(n<-0 until 4;c<-0 until 4)t.submit(c,Query(base=0x401000))
-      t.drain();assert(t.memory.seen.drop(before).forall(r=>r.address>=0x201000 && r.address<0x202000))
+      t.vm(0x81); d.io.client(2).invalidate.poke(true.B); t.tick(); d.io.client(2).invalidate.poke(false.B)
+      for (c <- 0 until 3) t.ready(c) = true
+      t.until((0 until 3).forall(c => t.statuses(c).size == 4))
+      for (_ <- 0 until 12) assert(!t.tick(Some((0, Query(base = 0x401000), 0))))
+      t.ready(3) = true; t.drain(); val before = t.memory.seen.size
+      for (n <- 0 until 4; c <- 0 until 4) t.submit(c, Query(base = 0x401000))
+      t.drain(); assert(t.memory.seen.drop(before).forall(r => r.address >= 0x201000 && r.address < 0x202000))
     }
   }
   it should "retain primary faults through selective cancellation of several accepted rows" in {
-    simulate(new NativeRgba8TextureCluster(maxOutstandingPerClient=4)){d=>
-      val t=new Driver(d);t.memory.holdRequests=true;t.memory.faultAt=Set(BigInt(0x1000))
-      for(n<-0 until 4)t.submit(0,Query(tag=if(n==0)BigInt(0xdeadbeefL)else BigInt(n)),status=3)
+    simulate(new NativeRgba8TextureCluster(maxOutstandingPerClient = 4)) { d =>
+      val t = new Driver(d); t.memory.holdRequests = true; t.memory.faultAt = Set(BigInt(0x1000))
+      for (n <- 0 until 4) t.submit(0, Query(tag = if (n == 0) BigInt(0xdeadbeefL) else BigInt(n)), status = 3)
       t.until(d.io.memoryRequest.valid.peek().litToBoolean)
-      t.cancel(0);t.tick();d.io.client(0).cancelGroup.valid.poke(false.B)
-      t.memory.holdRequests=false;t.drain();assert(t.statuses(0).forall(_==3))
-      t.memory.faultAt=Set.empty;t.submit(0);t.drain();assert(t.statuses(0).last==0)
+      t.cancel(0); t.tick(); d.io.client(0).cancelGroup.valid.poke(false.B)
+      t.memory.holdRequests = false; t.drain(); assert(t.statuses(0).forall(_ == 3))
+      t.memory.faultAt = Set.empty; t.submit(0); t.drain(); assert(t.statuses(0).last == 0)
     }
   }
   it should "retain global cancellation through every numeric queued and public lease" in {
-    simulate(new NativeRgba8TextureCluster(maxOutstandingPerClient=4)){d=>
-      val t=new Driver(d);t.memory.holdResponses=true
-      t.ready.indices.foreach(c=>t.ready(c)=false)
-      for(n<-0 until 4;c<-0 until 4)t.submit(c,status=4)
-      d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
-      t.memory.holdResponses=false
+    simulate(new NativeRgba8TextureCluster(maxOutstandingPerClient = 4)) { d =>
+      val t = new Driver(d); t.memory.holdResponses = true
+      t.ready.indices.foreach(c => t.ready(c) = false)
+      for (n <- 0 until 4; c <- 0 until 4) t.submit(c, status = 4)
+      d.io.cancel.poke(true.B); t.tick(); d.io.cancel.poke(false.B)
+      t.memory.holdResponses = false
       t.until(d.io.client.forall(_.response.valid.peek().litToBoolean))
-      t.ready(3)=true;t.until(t.statuses(3).size==4)
-      for(_<-0 until 12)assert(!t.tick(Some((3,Query(generation=14),0))))
-      for(c<-0 until 3)t.ready(c)=true
-      t.drain();assert(t.statuses.forall(_.toVector==Vector.fill(4)(4)))
-      for(c<-0 until 4)t.submit(c,Query(generation=14))
-      t.drain();assert(t.statuses.forall(_.last==0))
+      t.ready(3) = true; t.until(t.statuses(3).size == 4)
+      for (_ <- 0 until 12) assert(!t.tick(Some((3, Query(generation = 14), 0))))
+      for (c <- 0 until 3) t.ready(c) = true
+      t.drain(); assert(t.statuses.forall(_.toVector == Vector.fill(4)(4)))
+      for (c <- 0 until 4) t.submit(c, Query(generation = 14))
+      t.drain(); assert(t.statuses.forall(_.last == 0))
     }
   }
 

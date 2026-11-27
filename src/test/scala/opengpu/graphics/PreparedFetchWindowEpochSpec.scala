@@ -7,9 +7,8 @@ import scala.collection.mutable
 
 class PreparedFetchWindowEpochSpec extends AnyFlatSpec {
   private val formats = Seq(0, 1, 2, 3, 4, 7)
-  private val weights = Seq(
-    Seq(65536, 0, 0, 0), Seq.fill(4)(16384),
-    Seq(32768, 16384, 8192, 8192), Seq(0, 0, 32768, 32768))
+  private val weights =
+    Seq(Seq(65536, 0, 0, 0), Seq.fill(4)(16384), Seq(32768, 16384, 8192, 8192), Seq(0, 0, 32768, 32768))
   private def raw(tap: Int, epoch: Int): BigInt =
     BigInt("10203040", 16) + BigInt("11111111", 16) * tap + epoch * 0x07050301L
   private def decode(word: BigInt, format: Int): BigInt = {
@@ -24,18 +23,18 @@ class PreparedFetchWindowEpochSpec extends AnyFlatSpec {
     channels.foldLeft(BigInt(0))((result, channel) => (result << 8) | channel)
   }
   private def expected(sample: Int): BigInt = {
-    val taps = (0 until 4).map(tap => decode(raw(tap, if (sample < 16) 0 else 1),
-      formats(sample % formats.size)))
+    val taps = (0 until 4).map(tap => decode(raw(tap, if (sample < 16) 0 else 1), formats(sample % formats.size)))
     (0 until 4).foldLeft(BigInt(0)) { (result, channel) =>
-      val value = taps.zip(weights(sample % weights.size))
-        .map { case (word, weight) => ((word >> (24 - 8 * channel)) & 255) * weight }.sum >> 16
+      val value = taps
+        .zip(weights(sample % weights.size))
+        .map { case (word, weight) => ((word >> (24 - 8 * channel)) & 255) * weight }
+        .sum >> 16
       (result << 8) | value
     }
   }
 
   private def exercise(stallOutput: Boolean, pulseOnly: Boolean = false): Unit = {
-    simulate(new TextureUnit(wordCacheEntries = 8, allowPrepared = true,
-      overlapPrepared = true)) { d =>
+    simulate(new TextureUnit(wordCacheEntries = 8, allowPrepared = true, overlapPrepared = true)) { d =>
       d.io.texBase.poke(0x3000.U); d.io.texWidth.poke(16.U); d.io.texHeight.poke(16.U)
       d.io.texFormat.poke(0.U); d.io.wrapMode.poke(true.B); d.io.texMaxLevel.poke(0.U)
       d.io.invalidateCache.get.poke(false.B); d.io.sample.valid.poke(false.B)
@@ -68,7 +67,9 @@ class PreparedFetchWindowEpochSpec extends AnyFlatSpec {
         d.io.result.ready.poke(ready.B)
         d.io.mem.req.ready.poke((cycle % 7 != 1).B)
         if (presenting.isEmpty) {
-          pending.indices.filter(i => pending(i)._2 <= cycle).lastOption
+          pending.indices
+            .filter(i => pending(i)._2 <= cycle)
+            .lastOption
             .foreach(i => presenting = Some(pending(i)))
         }
         d.io.mem.resp.valid.poke(presenting.nonEmpty.B)
@@ -111,7 +112,7 @@ class PreparedFetchWindowEpochSpec extends AnyFlatSpec {
         val warmed = accepted.take(16).filter(_ > warmAt)
         assert(warmAt >= 0 && warmed.size >= 10)
         warmed.sliding(2).foreach { pair =>
-        assert(pair(1) - pair(0) == 1, "warmed prepared window retained a lookup bubble")
+          assert(pair(1) - pair(0) == 1, "warmed prepared window retained a lookup bubble")
         }
       }
       d.io.sample.valid.poke(false.B); d.io.prepared.get.valid.poke(false.B)

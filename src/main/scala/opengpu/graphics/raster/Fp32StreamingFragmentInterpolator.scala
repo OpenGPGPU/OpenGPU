@@ -3,19 +3,21 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 
-/** Four independently owned raw quads prepare weights/depth/sample state while
-  * one four-lane component bank evaluates their attributes. Credits cover the
-  * entire raw-input to completion lifetime, including held output offers.
-  * Preparation may finish out of order; prepared transfer and retirement stay
-  * in submission order. Cancellation stops fresh admission and drains every
-  * reserved preparation result through the component owner. This is the wired
-  * interpolation generation: `Fp32PrimitiveRasterStage` instantiates it and
-  * it contains `Fp32PreparedQuadInterpolator`, while `Fp32FragmentInterpolator`
-  * is the preparation/reference generation. See README.md in this package.
+/** Four independently owned raw quads prepare weights/depth/sample state while one four-lane component bank evaluates
+  * their attributes. Credits cover the entire raw-input to completion lifetime, including held output offers.
+  * Preparation may finish out of order; prepared transfer and retirement stay in submission order. Cancellation stops
+  * fresh admission and drains every reserved preparation result through the component owner. This is the wired
+  * interpolation generation: `Fp32PrimitiveRasterStage` instantiates it and it contains `Fp32PreparedQuadInterpolator`,
+  * while `Fp32FragmentInterpolator` is the preparation/reference generation. See README.md in this package.
   */
-class Fp32StreamingFragmentInterpolator(p: VertexShaderStageConfig = VertexShaderStageConfig(),
-    g: GraphicsConfig = GraphicsConfig(), contexts: Int = 4, reuseSetup: Boolean = true,
-    finiteZeroShortcut: Boolean = true, powerTwoMultiplyShortcut: Boolean = true) extends Module {
+class Fp32StreamingFragmentInterpolator(
+    p: VertexShaderStageConfig = VertexShaderStageConfig(),
+    g: GraphicsConfig = GraphicsConfig(),
+    contexts: Int = 4,
+    reuseSetup: Boolean = true,
+    finiteZeroShortcut: Boolean = true,
+    powerTwoMultiplyShortcut: Boolean = true
+) extends Module {
   require(contexts >= 2 && contexts <= 8 && isPow2(contexts))
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new FragmentInterpolationRequest(p, g)))
@@ -24,9 +26,17 @@ class Fp32StreamingFragmentInterpolator(p: VertexShaderStageConfig = VertexShade
     val cancel = Input(Bool())
     val busy = Output(Bool())
   })
-  private val preparation = Seq.fill(contexts)(Module(new Fp32FragmentPreparation(p, g,
-    reuseSetup = reuseSetup, finiteZeroShortcut = finiteZeroShortcut,
-    powerTwoMultiplyShortcut = powerTwoMultiplyShortcut)))
+  private val preparation = Seq.fill(contexts)(
+    Module(
+      new Fp32FragmentPreparation(
+        p,
+        g,
+        reuseSetup = reuseSetup,
+        finiteZeroShortcut = finiteZeroShortcut,
+        powerTwoMultiplyShortcut = powerTwoMultiplyShortcut
+      )
+    )
+  )
   private val components = Module(new Fp32PreparedQuadInterpolator(p, g, contexts, reservedInputs = true))
   private val allocate = RegInit(0.U(log2Ceil(contexts).W))
   private val transfer = RegInit(0.U(log2Ceil(contexts).W))
@@ -58,8 +68,10 @@ class Fp32StreamingFragmentInterpolator(p: VertexShaderStageConfig = VertexShade
   when(!io.busy) { cancelling := false.B }
   when(io.cancel && io.busy) { cancelling := true.B }
   when(!io.busy) {
-    assert(!components.io.busy && !VecInit(preparation.map(_.io.busy)).asUInt.orR,
-      "fragment owner released credit before preparation/component drain")
+    assert(
+      !components.io.busy && !VecInit(preparation.map(_.io.busy)).asUInt.orR,
+      "fragment owner released credit before preparation/component drain"
+    )
   }
   when(io.completion.fire) { assert(owned =/= 0.U, "fragment completion has no raw-input owner") }
 }

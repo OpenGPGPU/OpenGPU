@@ -10,11 +10,11 @@ private[graphics] class NativeTextureWindowTicket(clientBits: Int) extends Bundl
   val callerTag = UInt(32.W)
 }
 
-/** Prefetch order metadata before completion and SRAM-port arbitration. The
-  * numeric service normally has many cycles to fill this registered boundary.
+/** Prefetch order metadata before completion and SRAM-port arbitration. The numeric service normally has many cycles to
+  * fill this registered boundary.
   */
-private[graphics] class NativeTextureWindowOrderHeads(rowBits: Int) extends Queue[UInt](
-  UInt(rowBits.W), 2, pipe = true, flow = false) {
+private[graphics] class NativeTextureWindowOrderHeads(rowBits: Int)
+    extends Queue[UInt](UInt(rowBits.W), 2, pipe = true, flow = false) {
   override def desiredName: String = "NativeTextureWindowOrderHeads"
 }
 
@@ -35,15 +35,18 @@ private[graphics] class NativeTextureWindowPayload extends Bundle {
   }
 }
 
-/** Logical response ownership shared across clients, with a fixed row bank per
-  * physical cluster. Reservations protect other clients from a held hot-client
-  * reply; otherwise spare rows are borrowed. Each pair allocates one row/cycle,
-  * so two pairs can admit two requests/cycle. Numeric services retain their
-  * existing cache, fill, data-ID, PTW and sample-owner capacities.
+/** Logical response ownership shared across clients, with a fixed row bank per physical cluster. Reservations protect
+  * other clients from a held hot-client reply; otherwise spare rows are borrowed. Each pair allocates one row/cycle, so
+  * two pairs can admit two requests/cycle. Numeric services retain their existing cache, fill, data-ID, PTW and
+  * sample-owner capacities.
   */
-class NativeRgba8TextureSharedWindow(clients: Int = 3, destinations: Int = 2,
-    rowsPerDestination: Int = 128, reservedPerClient: Int = 4,
-    useBlackBoxes: Boolean = false) extends Module {
+class NativeRgba8TextureSharedWindow(
+    clients: Int = 3,
+    destinations: Int = 2,
+    rowsPerDestination: Int = 128,
+    reservedPerClient: Int = 4,
+    useBlackBoxes: Boolean = false
+) extends Module {
   require(clients >= 1 && clients <= 16 && destinations >= 1 && destinations <= 8)
   require(isPow2(rowsPerDestination) && rowsPerDestination >= 4 && rowsPerDestination <= 128)
   require(reservedPerClient > 0 && reservedPerClient * clients <= rowsPerDestination)
@@ -93,30 +96,40 @@ class NativeRgba8TextureSharedWindow(clients: Int = 3, destinations: Int = 2,
   private val readResults = Wire(Vec(destinations * 2, Valid(new Published)))
   private val readClients = Wire(Vec(destinations * 2, UInt(clientBits.W)))
   private val requests = Seq.fill(destinations)(Module(new Queue(new NativeTextureWindowTicket(clientBits), 2)))
-  private val allocation = Seq.fill(destinations)(Module(new RRArbiter(new NativeTextureWindowTicket(clientBits), clients)))
+  private val allocation =
+    Seq.fill(destinations)(Module(new RRArbiter(new NativeTextureWindowTicket(clientBits), clients)))
   private val granted = Wire(Vec(destinations, Vec(clients, Bool())))
   private val selectedRow = Wire(Vec(destinations, UInt(rowBits.W)))
   private val retiredRow = Wire(Vec(clients, UInt(rowBits.W)))
   private val target = VecInit((0 until clients).map(c => Mux(offerLocked(c), offerTarget(c), io.target(c))))
   io.offered := offerLocked
   io.busy := leased.asUInt.orR || requests.map(_.io.deq.valid).reduce(_ || _)
-  private def sum(xs: Seq[UInt]): UInt = if (xs.isEmpty) 0.U else if (xs.size == 1) xs.head else
+  private def sum(xs: Seq[UInt]): UInt = if (xs.isEmpty) 0.U
+  else if (xs.size == 1) xs.head
+  else
     sum(xs.grouped(2).map(p => if (p.size == 2) p.head +& p(1) else p.head).toSeq)
-  private def matches(r: Int): Bool = VecInit((0 until clients).map(c =>
-    owner(r) === c.U && io.client(c).cancelGroup.valid &&
-      io.client(c).cancelGroup.bits.identity.asUInt === identities(r).asUInt &&
-      io.client(c).cancelGroup.bits.tag === tags(r))).asUInt.orR
-  private def ticketCancelled(q: NativeTextureWindowTicket): Bool = VecInit((0 until clients).map(c =>
-    q.client === c.U && io.client(c).cancelGroup.valid &&
-      io.client(c).cancelGroup.bits.identity.asUInt === q.request.lookup.table.identity.asUInt &&
-      io.client(c).cancelGroup.bits.tag === q.callerTag)).asUInt.orR
+  private def matches(r: Int): Bool = VecInit(
+    (0 until clients).map(c =>
+      owner(r) === c.U && io.client(c).cancelGroup.valid &&
+        io.client(c).cancelGroup.bits.identity.asUInt === identities(r).asUInt &&
+        io.client(c).cancelGroup.bits.tag === tags(r)
+    )
+  ).asUInt.orR
+  private def ticketCancelled(q: NativeTextureWindowTicket): Bool = VecInit(
+    (0 until clients).map(c =>
+      q.client === c.U && io.client(c).cancelGroup.valid &&
+        io.client(c).cancelGroup.bits.identity.asUInt === q.request.lookup.table.identity.asUInt &&
+        io.client(c).cancelGroup.bits.tag === q.callerTag
+    )
+  ).asUInt.orR
 
   for (n <- 0 until destinations) {
     val writeReady = Wire(Vec(2, Bool()))
     for (bank <- 0 until 2) {
       val index = n * 2 + bank
-      val memory = Module(new L2SramArray(rowsPerDestination / 2,
-        (new NativeTextureWindowPayload).getWidth, useBlackBoxes))
+      val memory = Module(
+        new L2SramArray(rowsPerDestination / 2, (new NativeTextureWindowPayload).getWidth, useBlackBoxes)
+      )
       val reader = Module(new RRArbiter(UInt(rowBits.W), clients))
       for (c <- 0 until clients) {
         val selected = (reads(c).bits / rowsPerDestination.U) === n.U && reads(c).bits(0) === bank.U
@@ -208,8 +221,10 @@ class NativeRgba8TextureSharedWindow(clients: Int = 3, destinations: Int = 2,
       clientCount(c) := Mux(client.request.fire, clientCount(c) + 1.U, clientCount(c) - 1.U)
     }
     assert(clientCount(c) <= rowsPerDestination.U)
-    assert(clientCount(c) === q.io.count +& headQueue.io.count +& out.io.count +& publicationPending(c).asUInt,
-      "shared window order, SRAM read and public ownership diverged")
+    assert(
+      clientCount(c) === q.io.count +& headQueue.io.count +& out.io.count +& publicationPending(c).asUInt,
+      "shared window order, SRAM read and public ownership diverged"
+    )
     assert((out.io.count +& publicationPending(c).asUInt) <= 2.U)
     assert(clientCount(c) === PopCount(VecInit((0 until entries).map(r => leased(r) && owner(r) === c.U))))
   }
@@ -221,8 +236,11 @@ class NativeRgba8TextureSharedWindow(clients: Int = 3, destinations: Int = 2,
     val selectedLocal = (PriorityEncoder(rotated) + nextRow(n))(localRowBits - 1, 0)
     selectedRow(n) := base.U + selectedLocal
     for (c <- 0 until clients) {
-      val reserveOthers = sum((0 until clients).filter(_ != c).map(k =>
-        Mux(pairCount(n)(k) < reservedPerClient.U, reservedPerClient.U - pairCount(n)(k), 0.U)))
+      val reserveOthers = sum(
+        (0 until clients)
+          .filter(_ != c)
+          .map(k => Mux(pairCount(n)(k) < reservedPerClient.U, reservedPerClient.U - pairCount(n)(k), 0.U))
+      )
       val credit = freeCount(n) > reserveOthers && clientCount(c) < rowsPerDestination.U && order(c).io.enq.ready
       val cancelOffer = io.cancel && offerLocked(c)
       val eligible = target(c) === n.U && credit && ((io.allow && !io.cancel) || cancelOffer)
@@ -248,8 +266,9 @@ class NativeRgba8TextureSharedWindow(clients: Int = 3, destinations: Int = 2,
       synthetic(r) := io.cancel
       nextRow(n) := selectedLocal + 1.U
     }
-    val released = PopCount(VecInit((0 until clients).map(c =>
-      io.client(c).response.fire && (retiredRow(c) / rowsPerDestination.U) === n.U)))
+    val released = PopCount(
+      VecInit((0 until clients).map(c => io.client(c).response.fire && (retiredRow(c) / rowsPerDestination.U) === n.U))
+    )
     when(arb.io.out.fire || released =/= 0.U) { freeCount(n) := freeCount(n) + released - arb.io.out.fire.asUInt }
     assert(freeCount(n) <= rowsPerDestination.U)
     assert(freeCount(n) +& sum(pairCount(n).toSeq) === rowsPerDestination.U)
@@ -289,8 +308,14 @@ class NativeRgba8TextureSharedWindow(clients: Int = 3, destinations: Int = 2,
     when(child.cancelGroup.valid) { assert(identities(cancelRow).asUInt === cancelIdentity.asUInt) }
     val r = child.response.bits.tag(rowBits - 1, 0)
     payloadWrites(n).capture(child.response.bits)
-    val scoped = VecInit((0 until clients).map(c => owner(r) === c.U && io.client(c).cancelGroup.valid &&
-      io.client(c).cancelGroup.bits.tag === tags(r) && io.client(c).cancelGroup.bits.identity.asUInt === identities(r).asUInt)).asUInt.orR
+    val scoped = VecInit(
+      (0 until clients).map(c =>
+        owner(r) === c.U && io.client(c).cancelGroup.valid &&
+          io.client(c).cancelGroup.bits.tag === tags(r) && io.client(c).cancelGroup.bits.identity.asUInt === identities(
+            r
+          ).asUInt
+      )
+    ).asUInt.orR
     when((io.cancel || cancelled(r) || scoped) && child.response.bits.status === 0.U) {
       payloadWrites(n).status := TextureImageResourceStatus.cancelled.U
       payloadWrites(n).rgba := 0.U.asTypeOf(payloadWrites(n).rgba); payloadWrites(n).fallback := false.B

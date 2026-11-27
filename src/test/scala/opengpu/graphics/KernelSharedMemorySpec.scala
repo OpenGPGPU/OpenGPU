@@ -9,11 +9,9 @@ import opengpu.dispatch.{KernelCompletion, KernelLaunch}
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
-/** Composes the compute unit (the SIMT-kernel shader) and the word->line bridge
-  * as the two clients that share one line-based physical memory, exposing both
-  * clients' memory ports.  The harness backs those ports with a shared memory
-  * model, proving the word-level graphics stages and the kernel operate on the
-  * same address space / line format.
+/** Composes the compute unit (the SIMT-kernel shader) and the word->line bridge as the two clients that share one
+  * line-based physical memory, exposing both clients' memory ports. The harness backs those ports with a shared memory
+  * model, proving the word-level graphics stages and the kernel operate on the same address space / line format.
   */
 class KernelSharedCompute(config: GpuConfig) extends Module {
   val io = IO(new Bundle {
@@ -72,8 +70,8 @@ class KernelSharedCompute(config: GpuConfig) extends Module {
 class KernelSharedMemorySpec extends AnyFlatSpec {
   behavior of "GpuComputeUnit + OmWordToLinePort"
 
-  private val lw = BigInt("0000a483", 16)   // lw x9, 0(x1): read a varying
-  private val sw = BigInt("0090a223", 16)   // sw x9, 4(x1): write an output word
+  private val lw = BigInt("0000a483", 16) // lw x9, 0(x1): read a varying
+  private val sw = BigInt("0090a223", 16) // sw x9, 4(x1): write an output word
   private val cease = BigInt("30500073", 16)
 
   // Shared physical line memory model, keyed by line address.  Both the kernel
@@ -143,7 +141,7 @@ class KernelSharedMemorySpec extends AnyFlatSpec {
             mem.applyWrite(lineAddr, wd, bm)
             BigInt(0)
           } else mem.readLine(lineAddr)
-        dut.clock.step()  // word + mem request fire; slot commits
+        dut.clock.step() // word + mem request fire; slot commits
         dut.io.word.valid.poke(false.B)
         // Present the response this cycle; the bridge routes it to wordOut.
         dut.io.bridgeMemResponse.valid.poke(true.B)
@@ -151,8 +149,10 @@ class KernelSharedMemorySpec extends AnyFlatSpec {
         dut.io.bridgeMemResponse.bits.readData.poke(respData.U)
         dut.io.bridgeMemResponse.bits.fault.poke(false.B)
         assert(dut.io.wordOut.valid.peek().litToBoolean, "no word out")
-        val out = if (write) BigInt(0) else
-          dut.io.wordOut.bits.data.peek().litValue
+        val out =
+          if (write) BigInt(0)
+          else
+            dut.io.wordOut.bits.data.peek().litValue
         dut.clock.step()
         dut.io.bridgeMemResponse.valid.poke(false.B)
         out
@@ -208,8 +208,10 @@ class KernelSharedMemorySpec extends AnyFlatSpec {
 
       // Read the output word the kernel wrote, through the word->line bridge.
       val out = issueWord(write = false, addr = 0x8004L, data = 0)
-      assert(out == BigInt("cafe0001", 16),
-        s"kernel output word must equal the loaded varying, got 0x${out.toString(16)}")
+      assert(
+        out == BigInt("cafe0001", 16),
+        s"kernel output word must equal the loaded varying, got 0x${out.toString(16)}"
+      )
     }
   }
 }

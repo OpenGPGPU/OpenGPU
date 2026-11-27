@@ -4,7 +4,7 @@ import opengpu.graphics.tessellation._
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
-import opengpu.core.memory.{CacheLineInvalidate,ComputeMemoryRequest,ComputeMemoryResponse}
+import opengpu.core.memory.{CacheLineInvalidate, ComputeMemoryRequest, ComputeMemoryResponse}
 import opengpu.graphics._
 
 class TessellationCuTriangleSystemTask(config: GpuConfig, idWidth: Int) extends Bundle {
@@ -13,94 +13,151 @@ class TessellationCuTriangleSystemTask(config: GpuConfig, idWidth: Int) extends 
   val uniforms = new TessellationUniformTaskResources
 }
 
-/** Own one tagged control patch and its evaluation invocations on the shared
-  * CU pool. The surrounding router reserves the command tag and forwards the
-  * texture, trap and invalidation services through completion. */
-class TessellationCuTriangleSystemClient(config: GpuConfig, idWidth: Int, numComputeUnits: Int, tessellationUniforms: Boolean=false,evaluationPatchAvailable:Boolean=false,tessellationInfoAvailable:Boolean=false) extends Module {
+/** Own one tagged control patch and its evaluation invocations on the shared CU pool. The surrounding router reserves
+  * the command tag and forwards the texture, trap and invalidation services through completion.
+  */
+class TessellationCuTriangleSystemClient(
+    config: GpuConfig,
+    idWidth: Int,
+    numComputeUnits: Int,
+    tessellationUniforms: Boolean = false,
+    evaluationPatchAvailable: Boolean = false,
+    tessellationInfoAvailable: Boolean = false
+) extends Module {
   // Preserve the previous full JVM constructor with the language service disabled.
-  def this(config: GpuConfig,idWidth: Int,numComputeUnits: Int,tessellationUniforms: Boolean,evaluationPatchAvailable:Boolean) =
-    this(config,idWidth,numComputeUnits,tessellationUniforms,evaluationPatchAvailable,false)
+  def this(
+      config: GpuConfig,
+      idWidth: Int,
+      numComputeUnits: Int,
+      tessellationUniforms: Boolean,
+      evaluationPatchAvailable: Boolean
+  ) =
+    this(config, idWidth, numComputeUnits, tessellationUniforms, evaluationPatchAvailable, false)
 
   require(numComputeUnits > 0)
   val io = IO(new Bundle {
-    val inputPatchBinding=if(tessellationInfoAvailable)Some(Input(Valid(new TessellationInputPatchBinding)))else None
+    val inputPatchBinding =
+      if (tessellationInfoAvailable) Some(Input(Valid(new TessellationInputPatchBinding))) else None
     val task = Flipped(Decoupled(new TessellationCuTriangleSystemTask(config, idWidth)))
     val opened = Decoupled(UInt(2.W)); val load = Flipped(Decoupled(new TessellationPatchAccess))
     val seal = Flipped(Decoupled(Bool())); val inspect = Flipped(Decoupled(new TessellationPatchAccess))
     val reply = Decoupled(new TessellationContextReply)
-    val out = Decoupled(new EvaluatedTrianglePrimitive); val completion = Decoupled(new TessellationCuTriangleCompletion)
+    val out = Decoupled(new EvaluatedTrianglePrimitive);
+    val completion = Decoupled(new TessellationCuTriangleCompletion)
     val cancel = Input(Bool()); val busy = Output(Bool())
-    val shared = Flipped(new SharedCuGraphicsPort(config, idWidth, numComputeUnits, geometryAvailable = true, tessellationAvailable = true,evaluationPatchAvailable=evaluationPatchAvailable,tessellationInfoAvailable=tessellationInfoAvailable))
+    val shared = Flipped(
+      new SharedCuGraphicsPort(
+        config,
+        idWidth,
+        numComputeUnits,
+        geometryAvailable = true,
+        tessellationAvailable = true,
+        evaluationPatchAvailable = evaluationPatchAvailable,
+        tessellationInfoAvailable = tessellationInfoAvailable
+      )
+    )
     val texture = Vec(numComputeUnits, new SharedCuTexturePort(config))
-    val uniformMemoryRequest=if(tessellationUniforms)Some(Decoupled(new ComputeMemoryRequest(config,64,2)))else None
-    val uniformMemoryResponse=if(tessellationUniforms)Some(Flipped(Decoupled(new ComputeMemoryResponse(64,2))))else None
+    val uniformMemoryRequest =
+      if (tessellationUniforms) Some(Decoupled(new ComputeMemoryRequest(config, 64, 2))) else None
+    val uniformMemoryResponse =
+      if (tessellationUniforms) Some(Flipped(Decoupled(new ComputeMemoryResponse(64, 2)))) else None
     val trap = Decoupled(new TaggedGraphicsTrap(config, idWidth, numComputeUnits))
-    val invalidate = Flipped(Decoupled(new CacheLineInvalidate(config))); val invalidateDone = Decoupled(new CacheLineInvalidate(config))
+    val invalidate = Flipped(Decoupled(new CacheLineInvalidate(config)));
+    val invalidateDone = Decoupled(new CacheLineInvalidate(config))
   })
-  private val client = Module(new TessellationCuTriangleSharedEvaluator(config, idWidth, numComputeUnits,evaluationPatchAvailable,tessellationInfoAvailable))
+  private val client = Module(
+    new TessellationCuTriangleSharedEvaluator(
+      config,
+      idWidth,
+      numComputeUnits,
+      evaluationPatchAvailable,
+      tessellationInfoAvailable
+    )
+  )
   private val tag = Reg(UInt(idWidth.W)); private val native = Reg(Bool()); private val uniform = Reg(Bool())
-  private val scope=Reg(new TessellationUniformTaskResources)
-  private val service=if(tessellationUniforms)Some(Module(new TessellationUniformCuService(config,idWidth,numComputeUnits)))else None
-  private val serviceBusy=service.map(_.io.busy).getOrElse(false.B)
-  private val serviceFault=RegInit(false.B)
-  private val cancelled=RegInit(false.B)
-  when(client.io.busy && io.cancel){cancelled:=true.B}
-  private val rejected=RegInit(false.B)
-  private val rejectedResult=Reg(chiselTypeOf(io.completion.bits))
-  private val oldScopeLegal=if(tessellationUniforms)TessellationUniformTaskResources.legal(io.task.bits.uniforms) && !io.task.bits.uniformResources
-    else io.task.bits.uniforms.asUInt===0.U
-  private val dynamicLegal=if(evaluationPatchAvailable)io.task.bits.patch.patchInputCount===0.U &&
-    io.task.bits.patch.patchInputs.asUInt===0.U else true.B
-  private val scopeLegal=oldScopeLegal && dynamicLegal &&
-    (if(tessellationInfoAvailable)TessellationInputPatchBinding.legal(io.inputPatchBinding.get,io.task.bits.patch.control.patch.context.taskId)else true.B)
+  private val scope = Reg(new TessellationUniformTaskResources)
+  private val service =
+    if (tessellationUniforms) Some(Module(new TessellationUniformCuService(config, idWidth, numComputeUnits))) else None
+  private val serviceBusy = service.map(_.io.busy).getOrElse(false.B)
+  private val serviceFault = RegInit(false.B)
+  private val cancelled = RegInit(false.B)
+  when(client.io.busy && io.cancel) { cancelled := true.B }
+  private val rejected = RegInit(false.B)
+  private val rejectedResult = Reg(chiselTypeOf(io.completion.bits))
+  private val oldScopeLegal =
+    if (tessellationUniforms)
+      TessellationUniformTaskResources.legal(io.task.bits.uniforms) && !io.task.bits.uniformResources
+    else io.task.bits.uniforms.asUInt === 0.U
+  private val dynamicLegal =
+    if (evaluationPatchAvailable)
+      io.task.bits.patch.patchInputCount === 0.U &&
+      io.task.bits.patch.patchInputs.asUInt === 0.U
+    else true.B
+  private val scopeLegal = oldScopeLegal && dynamicLegal &&
+    (if (tessellationInfoAvailable)
+       TessellationInputPatchBinding.legal(io.inputPatchBinding.get, io.task.bits.patch.control.patch.context.taskId)
+     else true.B)
   client.io.task.valid := io.task.valid && scopeLegal && !rejected && !serviceBusy
   client.io.task.bits := io.task.bits.patch
-  if(tessellationInfoAvailable)client.io.inputPatchBinding.get:=io.inputPatchBinding.get
-  io.task.ready := !rejected && !serviceBusy && Mux(scopeLegal,client.io.task.ready,!client.io.busy && !io.cancel)
-  when(io.task.fire){scope:=io.task.bits.uniforms;serviceFault:=false.B;cancelled:=false.B
-    when(!scopeLegal){rejected:=true.B;rejectedResult:=0.U.asTypeOf(rejectedResult)
-      rejectedResult.taskId:=io.task.bits.patch.control.patch.context.taskId;rejectedResult.status:=1.U}}
-  when(io.task.fire) { tag := io.task.bits.patch.commandId; native := io.task.bits.nativeResources; uniform := io.task.bits.uniformResources }
+  if (tessellationInfoAvailable) client.io.inputPatchBinding.get := io.inputPatchBinding.get
+  io.task.ready := !rejected && !serviceBusy && Mux(scopeLegal, client.io.task.ready, !client.io.busy && !io.cancel)
+  when(io.task.fire) {
+    scope := io.task.bits.uniforms; serviceFault := false.B; cancelled := false.B
+    when(!scopeLegal) {
+      rejected := true.B; rejectedResult := 0.U.asTypeOf(rejectedResult)
+      rejectedResult.taskId := io.task.bits.patch.control.patch.context.taskId; rejectedResult.status := 1.U
+    }
+  }
+  when(io.task.fire) {
+    tag := io.task.bits.patch.commandId; native := io.task.bits.nativeResources;
+    uniform := io.task.bits.uniformResources
+  }
   io.opened <> client.io.opened; client.io.load <> io.load; client.io.seal <> io.seal
   client.io.inspect <> io.inspect; io.reply <> client.io.reply; io.out <> client.io.out
-  io.completion.valid:=rejected || (client.io.completion.valid && !serviceBusy)
-  io.completion.bits:=Mux(rejected,rejectedResult,client.io.completion.bits)
-  when(!rejected && serviceFault && (client.io.completion.bits.status===0.U || client.io.completion.bits.status===4.U)){
-    io.completion.bits.status:=2.U
+  io.completion.valid := rejected || (client.io.completion.valid && !serviceBusy)
+  io.completion.bits := Mux(rejected, rejectedResult, client.io.completion.bits)
+  when(
+    !rejected && serviceFault && (client.io.completion.bits.status === 0.U || client.io.completion.bits.status === 4.U)
+  ) {
+    io.completion.bits.status := 2.U
   }
-  client.io.completion.ready:=io.completion.ready && !rejected && !serviceBusy
-  when(io.completion.fire && rejected){rejected:=false.B}
+  client.io.completion.ready := io.completion.ready && !rejected && !serviceBusy
+  when(io.completion.fire && rejected) { rejected := false.B }
   client.io.cancel := io.cancel || cancelled || serviceFault || service.map(_.io.fault).getOrElse(false.B)
   io.busy := client.io.busy || rejected || serviceBusy
   private val controlLive = RegInit(false.B)
   private val controlOffer = client.io.controlKernel.valid
   io.shared.launch.valid := Mux(controlOffer, client.io.controlKernel.valid, client.io.launch.valid) && !serviceBusy
   io.shared.launch.bits := client.io.launch.bits
-  when(controlOffer) { io.shared.launch.bits := 0.U.asTypeOf(io.shared.launch.bits)
-    io.shared.launch.bits.commandId := tag; io.shared.launch.bits.launch := client.io.controlKernel.bits }
+  when(controlOffer) {
+    io.shared.launch.bits := 0.U.asTypeOf(io.shared.launch.bits)
+    io.shared.launch.bits.commandId := tag; io.shared.launch.bits.launch := client.io.controlKernel.bits
+  }
   client.io.controlKernel.ready := io.shared.launch.ready && controlOffer && !serviceBusy
   client.io.launch.ready := io.shared.launch.ready && !controlOffer && !serviceBusy
   io.shared.tessellationBases.get.valid := controlOffer
   io.shared.tessellationBases.get.bits := client.io.bases
-  if(evaluationPatchAvailable){
-    io.shared.evaluationPatch.get<>client.io.evaluationPatch.get
-    io.shared.evaluationPatchBinding.get:=client.io.evaluationPatchBinding.get
-    when(controlOffer){io.shared.evaluationPatchBinding.get.valid:=false.B}
+  if (evaluationPatchAvailable) {
+    io.shared.evaluationPatch.get <> client.io.evaluationPatch.get
+    io.shared.evaluationPatchBinding.get := client.io.evaluationPatchBinding.get
+    when(controlOffer) { io.shared.evaluationPatchBinding.get.valid := false.B }
   }
   io.shared.geometryTask.get := client.io.geometryTask
   when(controlOffer) { io.shared.geometryTask.get.valid := false.B }
   when(client.io.controlKernel.fire) { controlLive := true.B }
-  private val retired=RegInit(false.B)
-  when(io.shared.launch.fire){retired:=false.B}
-  private val completion=Wire(Decoupled(chiselTypeOf(io.shared.completion.bits)))
-  if(tessellationUniforms){
-    val q=Module(new Queue(chiselTypeOf(io.shared.completion.bits),1))
-    q.io.enq<>io.shared.completion
-    completion.valid:=q.io.deq.valid && !serviceBusy;completion.bits:=q.io.deq.bits
-    q.io.deq.ready:=completion.ready && !serviceBusy
-  }else completion<>io.shared.completion
-  when(io.shared.completion.fire){retired:=true.B
-    when(!io.shared.completion.bits.success && !io.cancel && !cancelled){serviceFault:=tessellationUniforms.B}}
+  private val retired = RegInit(false.B)
+  when(io.shared.launch.fire) { retired := false.B }
+  private val completion = Wire(Decoupled(chiselTypeOf(io.shared.completion.bits)))
+  if (tessellationUniforms) {
+    val q = Module(new Queue(chiselTypeOf(io.shared.completion.bits), 1))
+    q.io.enq <> io.shared.completion
+    completion.valid := q.io.deq.valid && !serviceBusy; completion.bits := q.io.deq.bits
+    q.io.deq.ready := completion.ready && !serviceBusy
+  } else completion <> io.shared.completion
+  when(io.shared.completion.fire) {
+    retired := true.B
+    when(!io.shared.completion.bits.success && !io.cancel && !cancelled) { serviceFault := tessellationUniforms.B }
+  }
   private val controlCompletion = controlLive && completion.bits.commandId === tag
   client.io.controlCompletion.valid := completion.valid && controlCompletion
   client.io.controlCompletion.bits.success := completion.bits.success
@@ -111,23 +168,25 @@ class TessellationCuTriangleSystemClient(config: GpuConfig, idWidth: Int, numCom
   client.io.event <> io.shared.geometryEvent.get
   client.io.owner := io.shared.owned; client.io.taskIds := io.shared.taskIds
   io.shared.geometryCancel.get := client.io.cancelCu
-  if(tessellationInfoAvailable){
-    val binding=Reg(new TessellationInputPatchBinding)
-    when(io.task.fire){binding:=io.inputPatchBinding.get.bits}
-    io.shared.tessellationTask.get:=client.io.tessellationTask.get
-    when(controlOffer){
-      io.shared.tessellationTask.get.valid:=true.B
-      io.shared.tessellationTask.get.bits.version:=binding.version
-      io.shared.tessellationTask.get.bits.stage:=4.U
-      io.shared.tessellationTask.get.bits.taskId:=binding.taskId
-      io.shared.tessellationTask.get.bits.inputPatchPrimitiveId:=binding.inputPatchPrimitiveId
+  if (tessellationInfoAvailable) {
+    val binding = Reg(new TessellationInputPatchBinding)
+    when(io.task.fire) { binding := io.inputPatchBinding.get.bits }
+    io.shared.tessellationTask.get := client.io.tessellationTask.get
+    when(controlOffer) {
+      io.shared.tessellationTask.get.valid := true.B
+      io.shared.tessellationTask.get.bits.version := binding.version
+      io.shared.tessellationTask.get.bits.stage := 4.U
+      io.shared.tessellationTask.get.bits.taskId := binding.taskId
+      io.shared.tessellationTask.get.bits.inputPatchPrimitiveId := binding.inputPatchPrimitiveId
     }
-    for(i<-0 until numComputeUnits){
-      val controlOwner=controlLive && io.shared.owned(i) && io.shared.taskIds(i)===tag
-      io.shared.tessellationInfoCancel.get(i):=Mux(controlOwner,client.io.controlCancel,client.io.cancelCu(i))
+    for (i <- 0 until numComputeUnits) {
+      val controlOwner = controlLive && io.shared.owned(i) && io.shared.taskIds(i) === tag
+      io.shared.tessellationInfoCancel.get(i) := Mux(controlOwner, client.io.controlCancel, client.io.cancelCu(i))
     }
   }
-  private val selected = VecInit((0 until numComputeUnits).map(i => controlLive && io.shared.owned(i) && io.shared.taskIds(i) === tag))
+  private val selected = VecInit(
+    (0 until numComputeUnits).map(i => controlLive && io.shared.owned(i) && io.shared.taskIds(i) === tag)
+  )
   assert(PopCount(selected) <= 1.U, "patch control tag must identify at most one CU")
   private val ports = io.shared.tessellation.get
   client.io.access.valid := (0 until numComputeUnits).map(i => selected(i) && ports(i).request.valid).reduce(_ || _)
@@ -136,32 +195,40 @@ class TessellationCuTriangleSystemClient(config: GpuConfig, idWidth: Int, numCom
   client.io.park.bits := Mux1H(selected, ports.map(_.park.bits))
   client.io.finish.valid := (0 until numComputeUnits).map(i => selected(i) && ports(i).finish.valid).reduce(_ || _)
   client.io.finish.bits := Mux1H(selected, ports.map(_.finish.bits))
-  client.io.accessResult.ready := (0 until numComputeUnits).map(i => selected(i) && ports(i).result.ready).reduce(_ || _)
+  client.io.accessResult.ready := (0 until numComputeUnits)
+    .map(i => selected(i) && ports(i).result.ready)
+    .reduce(_ || _)
   client.io.resume.ready := (0 until numComputeUnits).map(i => selected(i) && ports(i).resume.ready).reduce(_ || _)
   for (i <- 0 until numComputeUnits) {
     ports(i).request.ready := selected(i) && client.io.access.ready
     ports(i).park.ready := selected(i) && client.io.park.ready
     ports(i).finish.ready := selected(i) && client.io.finish.ready
-    ports(i).result.valid := selected(i) && client.io.accessResult.valid; ports(i).result.bits := client.io.accessResult.bits
+    ports(i).result.valid := selected(i) && client.io.accessResult.valid;
+    ports(i).result.bits := client.io.accessResult.bits
     ports(i).resume.valid := selected(i) && client.io.resume.valid; ports(i).resume.bits := client.io.resume.bits
-    ports(i).cancel := selected(i) && client.io.controlCancel; ports(i).terminal := selected(i) && client.io.controlTerminal
+    ports(i).cancel := selected(i) && client.io.controlCancel;
+    ports(i).terminal := selected(i) && client.io.controlTerminal
   }
-  private val launchUniform=if(tessellationUniforms)Mux(controlOffer,
-    scope.control.resources.version===3.U,scope.evaluation.resources.version===3.U)else uniform
+  private val launchUniform =
+    if (tessellationUniforms)
+      Mux(controlOffer, scope.control.resources.version === 3.U, scope.evaluation.resources.version === 3.U)
+    else uniform
   io.shared.nativeResources := native || (tessellationUniforms.B && launchUniform)
   io.shared.uniformResources := launchUniform
   service match {
-    case None=>io.texture<>io.shared.texture
-    case Some(u)=>
-      u.io.texture<>io.shared.texture;u.io.scope:=scope;u.io.commandId:=tag;u.io.control:=controlLive
-      u.io.owned:=io.shared.owned;u.io.taskIds:=io.shared.taskIds;u.io.active:=client.io.busy
-      u.io.retired:=retired;u.io.cancel:=io.cancel || cancelled || serviceFault || u.io.fault
-      io.uniformMemoryRequest.get<>u.io.memoryRequest;u.io.memoryResponse<>io.uniformMemoryResponse.get
-      when(u.io.fault){serviceFault:=true.B}
+    case None    => io.texture <> io.shared.texture
+    case Some(u) =>
+      u.io.texture <> io.shared.texture; u.io.scope := scope; u.io.commandId := tag; u.io.control := controlLive
+      u.io.owned := io.shared.owned; u.io.taskIds := io.shared.taskIds; u.io.active := client.io.busy
+      u.io.retired := retired; u.io.cancel := io.cancel || cancelled || serviceFault || u.io.fault
+      io.uniformMemoryRequest.get <> u.io.memoryRequest; u.io.memoryResponse <> io.uniformMemoryResponse.get
+      when(u.io.fault) { serviceFault := true.B }
       // No unsupported sampler is exposed by this uniform-only provider.
-      for(p<-io.texture){p.scalar.valid:=false.B;p.scalar.bits:=0.U.asTypeOf(p.scalar.bits)
-        p.vector.valid:=false.B;p.vector.bits:=0.U.asTypeOf(p.vector.bits)
-        p.scalarWriteback.ready:=false.B;p.vectorWriteback.ready:=false.B}
+      for (p <- io.texture) {
+        p.scalar.valid := false.B; p.scalar.bits := 0.U.asTypeOf(p.scalar.bits)
+        p.vector.valid := false.B; p.vector.bits := 0.U.asTypeOf(p.vector.bits)
+        p.scalarWriteback.ready := false.B; p.vectorWriteback.ready := false.B
+      }
   }
   io.trap <> io.shared.trap
   io.shared.invalidate <> io.invalidate; io.invalidateDone <> io.shared.invalidateDone
@@ -169,5 +236,5 @@ class TessellationCuTriangleSystemClient(config: GpuConfig, idWidth: Int, numCom
   // checked-service drain. Clear only on its external retirement; otherwise
   // these latches hold client.cancel high and block the next task that would
   // have cleared them. Last assignment also retires any old same-cycle fault.
-  when(io.completion.fire){cancelled:=false.B;serviceFault:=false.B}
+  when(io.completion.fire) { cancelled := false.B; serviceFault := false.B }
 }

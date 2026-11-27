@@ -12,16 +12,17 @@ class KernelShaderTextureOwnershipSpec extends AnyFlatSpec {
   private def fill(data: Data, random: scala.util.Random): Unit = data match {
     case r: Record => r.elements.values.foreach(fill(_, random))
     case v: Vec[_] => v.foreach(fill(_, random))
-    case b: Bool => b.poke(random.nextBoolean().B)
-    case u: UInt => u.poke(BigInt(u.getWidth, random).U)
-    case s: SInt => s.poke((BigInt(s.getWidth, random) - (BigInt(1) << (s.getWidth - 1))).S)
-    case _ => ()
+    case b: Bool   => b.poke(random.nextBoolean().B)
+    case u: UInt   => u.poke(BigInt(u.getWidth, random).U)
+    case s: SInt   => s.poke((BigInt(s.getWidth, random) - (BigInt(1) << (s.getWidth - 1))).S)
+    case _         => ()
   }
 
   for (count <- Seq(1, 2, 4)) {
     it should s"retain requests and returns through stalls and owner reuse across $count CUs" in {
-      simulate(new KernelShaderStage(GpuConfig(lanes = 4, warps = 2),
-        sharedShader = Some(SharedCuShaderConfig(count)))) { d =>
+      simulate(
+        new KernelShaderStage(GpuConfig(lanes = 4, warps = 2), sharedShader = Some(SharedCuShaderConfig(count)))
+      ) { d =>
         val pool = d.io.shared.get
         val random = new scala.util.Random(0x6f776e + count)
         d.io.instructionSatp.poke(0.U); d.io.vectorSatp.poke(0.U)
@@ -55,8 +56,17 @@ class KernelShaderTextureOwnershipSpec extends AnyFlatSpec {
         }
         d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
 
-        def check(owner: Int, scalar: Boolean, vector: Boolean, sr: Boolean, vr: Boolean,
-                  sw: Boolean, vw: Boolean, swr: Boolean, vwr: Boolean): Unit = {
+        def check(
+            owner: Int,
+            scalar: Boolean,
+            vector: Boolean,
+            sr: Boolean,
+            vr: Boolean,
+            sw: Boolean,
+            vw: Boolean,
+            swr: Boolean,
+            vwr: Boolean
+        ): Unit = {
           d.io.texSample.valid.expect((owner >= 0 && scalar).B)
           d.io.vectorTexSample.valid.expect((owner >= 0 && vector).B)
           d.io.texWriteback.ready.expect((owner >= 0 && swr).B)
@@ -124,7 +134,9 @@ class KernelShaderTextureOwnershipSpec extends AnyFlatSpec {
           d.io.launch.ready.expect(true.B)
         }
         assert(simultaneousTransfers >= 48 * count)
-        info(s"OWNED_TEXTURE cus=$count ownerLifetimes=${2 * count} simultaneousFourWayTransfers=$simultaneousTransfers noAddedLatency=true")
+        info(
+          s"OWNED_TEXTURE cus=$count ownerLifetimes=${2 * count} simultaneousFourWayTransfers=$simultaneousTransfers noAddedLatency=true"
+        )
       }
     }
   }

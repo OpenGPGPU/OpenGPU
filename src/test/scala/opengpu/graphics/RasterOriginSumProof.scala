@@ -20,17 +20,21 @@ class RasterOriginSumProofHarness(productWidth: Int = 59) extends Module {
 object EmitRasterOriginSumProof {
   def main(args: Array[String]): Unit = {
     require(args.length == 1)
-    ChiselStage.emitSystemVerilogFile(new RasterOriginSumProofHarness,
+    ChiselStage.emitSystemVerilogFile(
+      new RasterOriginSumProofHarness,
       Array("--target-dir", args(0)),
-      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
+      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays")
+    )
   }
 }
 
 object EmitRasterAreaSumProof {
   def main(args: Array[String]): Unit = {
     require(args.length == 1)
-    ChiselStage.emitSystemVerilogFile(new RasterOriginSumProofHarness(67),
+    ChiselStage.emitSystemVerilogFile(
+      new RasterOriginSumProofHarness(67),
       Array("--target-dir", args(0)),
-      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
+      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays")
+    )
   }
 }

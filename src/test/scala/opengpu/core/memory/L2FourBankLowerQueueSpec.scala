@@ -7,8 +7,17 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 class L2FourBankLowerQueueSpec extends AnyFlatSpec {
   it should "retain four bank owners through a stalled lower offer and reordered replies" in {
-    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2,
-      banks = 4, maxOutstanding = 32, numComputeUnits = 4, transactionsPerCu = 4)) { d =>
+    simulate(
+      new SharedL2Cache(
+        GpuConfig(lanes = 4),
+        sets = 8,
+        ways = 2,
+        banks = 4,
+        maxOutstanding = 32,
+        numComputeUnits = 4,
+        transactionsPerCu = 4
+      )
+    ) { d =>
       d.io.request.valid.poke(false.B); d.io.request.bits.poke(0.U.asTypeOf(d.io.request.bits))
       d.io.response.ready.poke(false.B)
       d.io.memoryRequest.ready.poke(true.B)
@@ -16,8 +25,10 @@ class L2FourBankLowerQueueSpec extends AnyFlatSpec {
       d.io.clearPerformanceCounters.poke(false.B)
       for (cu <- 0 until 4) {
         d.io.invalidate(cu).ready.poke(true.B)
-        d.io.invalidateDone(cu).valid.poke(false.B); d.io.invalidateDone(cu).bits.poke(0.U.asTypeOf(d.io.invalidateDone(cu).bits))
-        d.io.atomicRequest(cu).valid.poke(false.B); d.io.atomicRequest(cu).bits.poke(0.U.asTypeOf(d.io.atomicRequest(cu).bits))
+        d.io.invalidateDone(cu).valid.poke(false.B);
+        d.io.invalidateDone(cu).bits.poke(0.U.asTypeOf(d.io.invalidateDone(cu).bits))
+        d.io.atomicRequest(cu).valid.poke(false.B);
+        d.io.atomicRequest(cu).bits.poke(0.U.asTypeOf(d.io.atomicRequest(cu).bits))
         d.io.atomicResponse(cu).ready.poke(true.B)
       }
       d.io.hostInvalidate.valid.poke(false.B); d.io.hostInvalidate.bits.poke(0.U.asTypeOf(d.io.hostInvalidate.bits))
@@ -85,8 +96,10 @@ class L2FourBankLowerQueueSpec extends AnyFlatSpec {
         seen += id -> d.io.response.bits.readData.peek().litValue
         d.clock.step()
       }
-      assert(seen == addresses.indices.map(i => BigInt(i * 4) -> BigInt(addresses(i))).toMap,
-        s"cross-bank response routing mismatch $seen")
+      assert(
+        seen == addresses.indices.map(i => BigInt(i * 4) -> BigInt(addresses(i))).toMap,
+        s"cross-bank response routing mismatch $seen"
+      )
       until("cache drain")(d.io.drained.peek().litToBoolean)
     }
   }

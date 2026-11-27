@@ -14,19 +14,22 @@ class Rgba8Fp32TextureRequest extends Bundle {
   val axisWeights = Vec(2, UInt(32.W))
 }
 
-/** Virtual RGBA8 taps to native FP32 bilinear results. Coordinate/resource
-  * bounds are checked upstream. Every active tap is translated before data
-  * access, including subnormal-weight contributions. No FP32 weight is
-  * quantized: unit-sum Q16 values below describe admission masks only.
+/** Virtual RGBA8 taps to native FP32 bilinear results. Coordinate/resource bounds are checked upstream. Every active
+  * tap is translated before data access, including subnormal-weight contributions. No FP32 weight is quantized:
+  * unit-sum Q16 values below describe admission masks only.
   *
-  * Ownership extends through decode, filtering and the public result, pinning
-  * the VM epoch and preserving scoped cancellation after the child retires.
-  * faultSource is 1 for translation, 2 for data, 3 for invalid axis weights.
-  * Raw child mode has no weighted-sum normalizer; four byte decoders precede
-  * the native hierarchical FP32 filter. The whole pipeline drains on cancel.
+  * Ownership extends through decode, filtering and the public result, pinning the VM epoch and preserving scoped
+  * cancellation after the child retires. faultSource is 1 for translation, 2 for data, 3 for invalid axis weights. Raw
+  * child mode has no weighted-sum normalizer; four byte decoders precede the native hierarchical FP32 filter. The whole
+  * pipeline drains on cancel.
   */
-class TranslatedRgba8Fp32TextureService(config: GpuConfig = GpuConfig(),
-    dataBytes: Int = 8192, entries: Int = 128, useBlackBoxes: Boolean = false, readCountOutput: Boolean = false) extends Module {
+class TranslatedRgba8Fp32TextureService(
+    config: GpuConfig = GpuConfig(),
+    dataBytes: Int = 8192,
+    entries: Int = 128,
+    useBlackBoxes: Boolean = false,
+    readCountOutput: Boolean = false
+) extends Module {
   require(config.xLen == 32 && isPow2(entries) && entries >= 16 && entries <= 256)
   private val indexBits = log2Ceil(entries)
   val io = IO(new Bundle {
@@ -45,8 +48,15 @@ class TranslatedRgba8Fp32TextureService(config: GpuConfig = GpuConfig(),
     val occupiedFills = Output(UInt(5.W))
     val joined = Output(Bool())
   })
-  private val backend = Module(new TranslatedBankedRgba8TextureService(config, dataBytes,
-    useBlackBoxes = useBlackBoxes, rawTapOutput = true, readCountOutput = readCountOutput))
+  private val backend = Module(
+    new TranslatedBankedRgba8TextureService(
+      config,
+      dataBytes,
+      useBlackBoxes = useBlackBoxes,
+      rawTapOutput = true,
+      readCountOutput = readCountOutput
+    )
+  )
   private val decode = Seq.fill(4)(Module(new Rgba8WeightedToFp32(indexBits)))
   private val filter = Module(new TextureBilinearFilterPipeline())
   private val requests = Reg(Vec(entries, new Rgba8Fp32TextureRequest))
@@ -60,7 +70,9 @@ class TranslatedRgba8Fp32TextureService(config: GpuConfig = GpuConfig(),
   private val count = RegInit(0.U(log2Ceil(entries + 1).W))
   private val pending = Module(new Queue(UInt(indexBits.W), 16))
   private val owners = Module(new Queue(UInt(indexBits.W), 32))
-  private val outputs = Module(new Queue(new TranslatedBankedRgba8Result(readCountOutput = readCountOutput), 1, pipe = true))
+  private val outputs = Module(
+    new Queue(new TranslatedBankedRgba8Result(readCountOutput = readCountOutput), 1, pipe = true)
+  )
   private val draining = RegInit(false.B)
   private val pinnedSatp = RegInit(0.U(32.W))
   private val vmChanged = io.satp =/= pinnedSatp
@@ -97,8 +109,7 @@ class TranslatedRgba8Fp32TextureService(config: GpuConfig = GpuConfig(),
   pending.io.enq.bits := tail
   when(io.in.fire) {
     assert(!alive(tail), "native FP32 texture slot reused before final ownership transfer")
-    val bad = io.in.bits.axisWeights.map(w =>
-      (w(31) && w(30, 0).orR) || w(30, 0) > "h3f800000".U).reduce(_ || _)
+    val bad = io.in.bits.axisWeights.map(w => (w(31) && w(30, 0).orR) || w(30, 0) > "h3f800000".U).reduce(_ || _)
     requests(tail) := io.in.bits; alive(tail) := true.B; completed(tail) := false.B
     badWeights(tail) := bad
     cancelled(tail) := io.cancelGroup.valid &&
@@ -139,8 +150,9 @@ class TranslatedRgba8Fp32TextureService(config: GpuConfig = GpuConfig(),
   for ((lane, t) <- decode.zipWithIndex) {
     lane.io.in.valid := backend.io.out.valid && owners.io.deq.valid && decodeReady
     lane.io.in.bits.tag := owners.io.deq.bits; lane.io.in.bits.cancelled := false.B
-    for (c <- 0 until 4) lane.io.in.bits.numerators(c) :=
-      Cat(backend.io.out.bits.rawTaps.get(t)(8 * c + 7, 8 * c), 0.U(16.W))
+    for (c <- 0 until 4)
+      lane.io.in.bits.numerators(c) :=
+        Cat(backend.io.out.bits.rawTaps.get(t)(8 * c + 7, 8 * c), 0.U(16.W))
   }
   when(backend.io.out.fire) {
     val e = owners.io.deq.bits; val b = backend.io.out.bits
@@ -178,8 +190,9 @@ class TranslatedRgba8Fp32TextureService(config: GpuConfig = GpuConfig(),
   outputs.io.enq.bits.cancelled := rowStopped
   outputs.io.enq.bits.hit := results(head).hit && !results(head).fault && !rowStopped
   outputs.io.enq.bits.missingTaps := Mux(rowStopped, 0.U, results(head).missingTaps)
-  for (c <- 0 until 4) outputs.io.enq.bits.values(c) :=
-    Mux(outputs.io.enq.bits.hit, results(head).values(c), 0.U)
+  for (c <- 0 until 4)
+    outputs.io.enq.bits.values(c) :=
+      Mux(outputs.io.enq.bits.hit, results(head).values(c), 0.U)
   when(outputs.io.enq.fire) { alive(head) := false.B; head := head + 1.U }
   when(io.in.fire =/= io.out.fire) { count := Mux(io.in.fire, count + 1.U, count - 1.U) }
   assert(count <= entries.U)

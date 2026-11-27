@@ -21,41 +21,39 @@ class FillCompletion(val descriptorIdWidth: Int) extends Bundle {
 
 /** Full-cache-line fill engine with multiple writes in flight.
   *
-  * `transactionIdBase` offsets the engine's transaction IDs on a shared line
-  * port so several clients can hold transactions simultaneously without ID
-  * aliasing; the owner routes responses back by subtracting the base.
+  * `transactionIdBase` offsets the engine's transaction IDs on a shared line port so several clients can hold
+  * transactions simultaneously without ID aliasing; the owner routes responses back by subtracting the base.
   */
 class FillEngine(
-  config: GpuConfig = GpuConfig(),
-  descriptorIdWidth: Int = 8,
-  lineBytes: Int = 64,
-  maxOutstanding: Int = 2,
-  descriptorQueueDepth: Int = 4,
-  lineSlots: Int = 2,
-  transactionIdBase: Int = 0
+    config: GpuConfig = GpuConfig(),
+    descriptorIdWidth: Int = 8,
+    lineBytes: Int = 64,
+    maxOutstanding: Int = 2,
+    descriptorQueueDepth: Int = 4,
+    lineSlots: Int = 2,
+    transactionIdBase: Int = 0
 ) extends Module {
   require(lineBytes == 64 && isPow2(lineBytes))
   require(lineSlots > 0 && isPow2(lineSlots))
   require(maxOutstanding >= lineSlots)
   require(descriptorQueueDepth > 0)
-  require(transactionIdBase >= 0 && transactionIdBase + lineSlots <= maxOutstanding,
-    "transaction ID range must fit the port's outstanding space")
+  require(
+    transactionIdBase >= 0 && transactionIdBase + lineSlots <= maxOutstanding,
+    "transaction ID range must fit the port's outstanding space"
+  )
   private val offsetWidth = log2Ceil(lineBytes)
 
   val io = IO(new Bundle {
-    val descriptor = Flipped(Decoupled(
-      new FillDescriptor(config, descriptorIdWidth)))
+    val descriptor = Flipped(Decoupled(new FillDescriptor(config, descriptorIdWidth)))
     val completion = Decoupled(new FillCompletion(descriptorIdWidth))
-    val memoryRequest = Decoupled(new ComputeMemoryRequest(
-      config, lineBytes, maxOutstanding))
-    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(
-      lineBytes, maxOutstanding)))
+    val memoryRequest = Decoupled(new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
+    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(lineBytes, maxOutstanding)))
     val busy = Output(Bool())
   })
 
-  private val descriptors = Module(new Queue(
-    new FillDescriptor(config, descriptorIdWidth), descriptorQueueDepth,
-    pipe = true, flow = true))
+  private val descriptors = Module(
+    new Queue(new FillDescriptor(config, descriptorIdWidth), descriptorQueueDepth, pipe = true, flow = true)
+  )
   descriptors.io.enq <> io.descriptor
 
   private val active = RegInit(false.B)
@@ -69,16 +67,15 @@ class FillEngine(
   private val resultStatus = RegInit(CopyStatus.success)
   private val pending = RegInit(VecInit(Seq.fill(lineSlots)(false.B)))
 
-  private val destinationEnd = Cat(0.U(1.W),
-    descriptors.io.deq.bits.destinationAddress) + descriptors.io.deq.bits.bytes
+  private val destinationEnd = Cat(0.U(1.W), descriptors.io.deq.bits.destinationAddress) + descriptors.io.deq.bits.bytes
   private val aligned =
     descriptors.io.deq.bits.destinationAddress(offsetWidth - 1, 0) === 0.U
   private val lengthValid = descriptors.io.deq.bits.bytes.orR &&
     descriptors.io.deq.bits.bytes(offsetWidth - 1, 0) === 0.U
   private val overflow = destinationEnd(config.xLen)
   private val descriptorValid = aligned && lengthValid && !overflow
-  private val descriptorError = Mux(!aligned, CopyStatus.invalidAlignment,
-    Mux(!lengthValid, CopyStatus.invalidLength, CopyStatus.addressOverflow))
+  private val descriptorError =
+    Mux(!aligned, CopyStatus.invalidAlignment, Mux(!lengthValid, CopyStatus.invalidLength, CopyStatus.addressOverflow))
 
   descriptors.io.deq.ready := !active && !completionValid
   when(descriptors.io.deq.fire) {
@@ -121,8 +118,7 @@ class FillEngine(
   private val responseExpected = responseInRange && pending(responseSlot)
   io.memoryResponse.ready := active && responseExpected
   when(io.memoryResponse.valid) {
-    assert(active && responseExpected,
-      "fill response must identify an outstanding write slot")
+    assert(active && responseExpected, "fill response must identify an outstanding write slot")
   }
   when(io.memoryResponse.fire) {
     pending(responseSlot) := false.B

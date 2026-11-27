@@ -8,10 +8,18 @@ import org.scalatest.flatspec.AnyFlatSpec
 class ImageAtomicAvailabilityDecodeSpec extends AnyFlatSpec {
   for (images <- Seq(false, true); atomics <- Seq(false, true)) {
     it should s"gate atomic encodings and preserve quad decoding images=$images atomics=$atomics" in {
-      simulate(new FullInstructionDecoder(GpuConfig(), imageAvailable = images,
-          imageAtomicAvailable = atomics, textureAvailable = true)) { d =>
-        for (enabled <- Seq(false, true); vm <- 0 to 1; operation <- 0 to 7;
-            rd <- Seq(0, 7); vs1 <- Seq(0, 3); vs2 <- Seq(0, 7)) {
+      simulate(
+        new FullInstructionDecoder(
+          GpuConfig(),
+          imageAvailable = images,
+          imageAtomicAvailable = atomics,
+          textureAvailable = true
+        )
+      ) { d =>
+        for (
+          enabled <- Seq(false, true); vm <- 0 to 1; operation <- 0 to 7;
+          rd <- Seq(0, 7); vs1 <- Seq(0, 3); vs2 <- Seq(0, 7)
+        ) {
           d.io.imageEnabled.foreach(_.poke(enabled.B))
           val instruction = (BigInt(23) << 26) | (BigInt(vm) << 25) | (BigInt(vs2) << 20) |
             (BigInt(vs1) << 15) | (BigInt(operation) << 12) | (BigInt(rd) << 7) | 0x2b

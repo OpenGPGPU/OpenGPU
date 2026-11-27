@@ -4,8 +4,9 @@ import chisel3._
 import chisel3.util._
 import opengpu.config.{CachePolicy, GpuConfig}
 
-/** A task-owned storage atomic request. The publisher retains the table,
-  * backing allocation and address space until accepted traffic drains. */
+/** A task-owned storage atomic request. The publisher retains the table, backing allocation and address space until
+  * accepted traffic drains.
+  */
 class StorageAtomicRequest(config: GpuConfig) extends Bundle {
   val table = new StorageDescriptorTable
   val bindingIndex = UInt(32.W)
@@ -35,9 +36,9 @@ class StorageAtomicResult extends Bundle {
   val pageFault = Bool()
 }
 
-/** Resolve one immutable storage view and issue an acknowledged 32-bit
-  * atomic through the caller's translation and shared L2 serialization path.
-  * Held offers and accepted traffic drain before a stable result is retired. */
+/** Resolve one immutable storage view and issue an acknowledged 32-bit atomic through the caller's translation and
+  * shared L2 serialization path. Held offers and accepted traffic drain before a stable result is retired.
+  */
 class CheckedStorageAtomic(config: GpuConfig = GpuConfig()) extends Module {
   require(config.xLen == 32)
   val io = IO(new Bundle {
@@ -50,7 +51,9 @@ class CheckedStorageAtomic(config: GpuConfig = GpuConfig()) extends Module {
     val cancel = Input(Bool())
     val busy = Output(Bool())
   })
-  private object State extends ChiselEnum { val idle, validate, descriptorOffer, descriptorWait, checkView, atomicOffer, atomicWait, complete = Value }
+  private object State extends ChiselEnum {
+    val idle, validate, descriptorOffer, descriptorWait, checkView, atomicOffer, atomicWait, complete = Value
+  }
   private val state = RegInit(State.idle)
   private val request = Reg(new StorageAtomicRequest(config))
   private val view = Reg(new StorageWordView)
@@ -68,13 +71,13 @@ class CheckedStorageAtomic(config: GpuConfig = GpuConfig()) extends Module {
   private val address = view.base.pad(33) + request.offset.pad(33)
   private val end = address + 4.U
   private val addressSpace = (BigInt(1) << 32).U(33.W)
-  private val line = Cat(address(31,6), 0.U(6.W))
+  private val line = Cat(address(31, 6), 0.U(6.W))
   private val legalView = view.bound && view.readable && view.writable &&
-    view.base(7,0) === 0.U && view.limit > view.base && view.limit <= addressSpace &&
+    view.base(7, 0) === 0.U && view.limit > view.base && view.limit <= addressSpace &&
     view.limit - view.base <= (BigInt(128) * 1024 * 1024).U(33.W) &&
-    view.allocationBase(5,0) === 0.U && view.allocationLimit(5,0) === 0.U &&
+    view.allocationBase(5, 0) === 0.U && view.allocationLimit(5, 0) === 0.U &&
     view.allocationLimit <= addressSpace && view.base >= view.allocationBase && view.limit <= view.allocationLimit
-  private val legalAddress = request.offset(1,0) === 0.U && address < addressSpace && end <= view.limit &&
+  private val legalAddress = request.offset(1, 0) === 0.U && address < addressSpace && end <= view.limit &&
     line >= view.allocationBase && line.pad(33) + 64.U <= view.allocationLimit
 
   io.in.ready := state === State.idle && !io.cancel
@@ -84,7 +87,7 @@ class CheckedStorageAtomic(config: GpuConfig = GpuConfig()) extends Module {
   io.atomicRequest.valid := state === State.atomicOffer
   io.atomicRequest.bits := 0.U.asTypeOf(io.atomicRequest.bits)
   io.atomicRequest.bits.warpId := request.warpId
-  io.atomicRequest.bits.address := address(31,0)
+  io.atomicRequest.bits.address := address(31, 0)
   io.atomicRequest.bits.operation := request.operation
   io.atomicRequest.bits.operand := request.operand
   io.atomicRequest.bits.compareValue := request.compareValue
@@ -102,7 +105,8 @@ class CheckedStorageAtomic(config: GpuConfig = GpuConfig()) extends Module {
       when(io.cancel || cancelled) { result.status := StorageAtomicStatus.cancelled.U; state := State.complete }
         .elsewhen(request.bindingIndex >= 4.U || request.operation > AtomicMemoryOp.compareSwap) {
           result.status := StorageAtomicStatus.invalid.U; state := State.complete
-        }.otherwise { state := State.descriptorOffer }
+        }
+        .otherwise { state := State.descriptorOffer }
     }
     is(State.descriptorOffer) {
       when(io.cancel || cancelled) { result.status := StorageAtomicStatus.cancelled.U; state := State.complete }
@@ -116,7 +120,8 @@ class CheckedStorageAtomic(config: GpuConfig = GpuConfig()) extends Module {
             result.faultAddressValid := descriptor.io.out.bits.faultAddressValid
             result.faultAddress := descriptor.io.out.bits.faultAddress
             state := State.complete
-          }.otherwise { view := descriptor.io.out.bits.view; state := State.checkView }
+          }
+          .otherwise { view := descriptor.io.out.bits.view; state := State.checkView }
       }
     }
     is(State.checkView) {
@@ -131,8 +136,9 @@ class CheckedStorageAtomic(config: GpuConfig = GpuConfig()) extends Module {
         when(io.cancel || cancelled) { result.status := StorageAtomicStatus.cancelled.U }
           .elsewhen(io.atomicResponse.bits.fault) {
             result.status := StorageAtomicStatus.memoryFault.U; result.faultAddressValid := true.B
-            result.faultAddress := address(31,0); result.pageFault := io.atomicResponse.bits.pageFault
-          }.otherwise {
+            result.faultAddress := address(31, 0); result.pageFault := io.atomicResponse.bits.pageFault
+          }
+          .otherwise {
             result.status := StorageAtomicStatus.ok.U
             result.value := io.atomicResponse.bits.oldValue
           }

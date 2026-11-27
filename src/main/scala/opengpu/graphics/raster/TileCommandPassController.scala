@@ -3,10 +3,9 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 
-/** Immutable command-list binding for one resident tile pass. The command
-  * allocation is a virtual byte range in the owner's command-memory domain.
-  * Attachment bindings come from passDescriptor; config supplies draw defaults
-  * and the viewport. This is an experimental hardware submission interface.
+/** Immutable command-list binding for one resident tile pass. The command allocation is a virtual byte range in the
+  * owner's command-memory domain. Attachment bindings come from passDescriptor; config supplies draw defaults and the
+  * viewport. This is an experimental hardware submission interface.
   */
 class TileCommandJob extends Bundle {
   val version = UInt(8.W)
@@ -15,19 +14,20 @@ class TileCommandJob extends Bundle {
   val commandLimit = UInt(33.W)
 }
 
-/** Own the command parser and tile pass through a single tagged completion.
-  * Internal pass retirement cannot release the job while a command read is
-  * still offered/in flight. Results are latched before external publication,
-  * so late cancellation cannot change a backpressured completion.
+/** Own the command parser and tile pass through a single tagged completion. Internal pass retirement cannot release the
+  * job while a command read is still offered/in flight. Results are latched before external publication, so late
+  * cancellation cannot change a backpressured completion.
   */
 class TileCommandPassController extends Module {
   val io = IO(new Bundle {
     val job = Flipped(Decoupled(new TileCommandJob))
     val completion = Decoupled(new TileRenderPassCompletion)
     val cancel = Input(Bool())
+
     /** Pulse on an accepted command-memory response with a fault. */
     val commandFault = Input(Bool())
     val attachmentFault = Input(Bool())
+
     /** Pulse on an accepted texture response with a fault. */
     val textureFault = Input(Bool())
     val shaderFault = Input(Bool())
@@ -56,18 +56,35 @@ class TileCommandPassController extends Module {
   private val active = state =/= idle && state =/= result
   // clearDone incorporates the owner's cancellation input. Register its
   // failure before feeding cancellation back, avoiding a combinational loop.
-  private val invalidClear = RegNext(io.pass.clearDone.fire && !io.pass.clearDone.bits && !draining &&
-    !(io.cancel || io.attachmentFault || io.commandFault || io.textureFault || io.shaderFault), false.B)
+  private val invalidClear = RegNext(
+    io.pass.clearDone.fire && !io.pass.clearDone.bits && !draining &&
+      !(io.cancel || io.attachmentFault || io.commandFault || io.textureFault || io.shaderFault),
+    false.B
+  )
   private val invalid = io.invalidCommand || invalidClear
-  private val abortNow = io.cancel || io.attachmentFault || io.commandFault || io.textureFault || io.shaderFault || invalid
-  private val effectiveStatus = Mux(io.attachmentFault || abortStatus === TilePassStatus.memoryFault.U,
-    TilePassStatus.memoryFault.U, Mux(io.commandFault, TilePassStatus.commandFault.U,
-    Mux(io.textureFault && abortStatus =/= TilePassStatus.commandFault.U, TilePassStatus.textureFault.U,
-    Mux(io.shaderFault && abortStatus =/= TilePassStatus.commandFault.U && abortStatus =/= TilePassStatus.textureFault.U,
-      TilePassStatus.executionFault.U,
-      Mux(invalid && abortStatus === TilePassStatus.success.U, TilePassStatus.invalidDescriptor.U,
-      Mux(io.cancel && abortStatus === TilePassStatus.success.U,
-        TilePassStatus.cancelled.U, abortStatus))))))
+  private val abortNow =
+    io.cancel || io.attachmentFault || io.commandFault || io.textureFault || io.shaderFault || invalid
+  private val effectiveStatus = Mux(
+    io.attachmentFault || abortStatus === TilePassStatus.memoryFault.U,
+    TilePassStatus.memoryFault.U,
+    Mux(
+      io.commandFault,
+      TilePassStatus.commandFault.U,
+      Mux(
+        io.textureFault && abortStatus =/= TilePassStatus.commandFault.U,
+        TilePassStatus.textureFault.U,
+        Mux(
+          io.shaderFault && abortStatus =/= TilePassStatus.commandFault.U && abortStatus =/= TilePassStatus.textureFault.U,
+          TilePassStatus.executionFault.U,
+          Mux(
+            invalid && abortStatus === TilePassStatus.success.U,
+            TilePassStatus.invalidDescriptor.U,
+            Mux(io.cancel && abortStatus === TilePassStatus.success.U, TilePassStatus.cancelled.U, abortStatus)
+          )
+        )
+      )
+    )
+  )
 
   io.job.ready := state === idle && io.commandsDrained && io.renderDrained
   io.busy := state =/= idle
@@ -130,8 +147,10 @@ class TileCommandPassController extends Module {
     when(!passIssued) { finish(effectiveStatus) }
   }
   when(io.pass.completion.fire) {
-    assert(io.pass.completion.bits.identity.asUInt === snapshot.passDescriptor.identity.asUInt,
-      "tile command completion must retain the submitted pass identity")
+    assert(
+      io.pass.completion.bits.identity.asUInt === snapshot.passDescriptor.identity.asUInt,
+      "tile command completion must retain the submitted pass identity"
+    )
     // Preserve precise pass errors. A controller-originated failure replaces
     // a cancellation/success result from the attachment owner.
     val ownerStatus = io.pass.completion.bits.status

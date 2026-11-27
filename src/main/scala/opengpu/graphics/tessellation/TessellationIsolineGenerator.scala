@@ -12,6 +12,7 @@ class TessellationIsolineTask extends Bundle {
   val pointMode = Bool()
 }
 class TessellationIsolineVertex extends Bundle {
+
   /** Unsigned Q0.24 tessellation coordinates, including 1.0 as 1<<24. */
   val u = UInt(25.W); val v = UInt(25.W)
 }
@@ -21,14 +22,14 @@ class TessellationIsolinePrimitive extends Bundle {
 }
 class TessellationIsolineCompletion extends Bundle {
   val taskId = UInt(32.W); val emitted = UInt(16.W)
+
   /** 0 success or discarded patch, 1 invalid input, 4 cancellation. */
   val status = UInt(3.W); val discarded = Bool()
 }
 
-/** Generate isoline-domain points or ordered line segments for one patch.
-  * Edge coordinates are generated serially and every offered primitive is
-  * retained through backpressure and cancellation. The consumer must run the
-  * evaluation shader for each vertex before treating output as geometry.
+/** Generate isoline-domain points or ordered line segments for one patch. Edge coordinates are generated serially and
+  * every offered primitive is retained through backpressure and cancellation. The consumer must run the evaluation
+  * shader for each vertex before treating output as geometry.
   */
 class TessellationIsolineGenerator extends Module {
   val io = IO(new Bundle {
@@ -38,8 +39,8 @@ class TessellationIsolineGenerator extends Module {
     val cancel = Input(Bool()); val busy = Output(Bool())
   })
   private object State extends ChiselEnum {
-    val idle, prepareOffer, prepareWait, verticalOffer, verticalWait,
-      horizontalOffer, horizontalWait, emit, complete = Value
+    val idle, prepareOffer, prepareWait, verticalOffer, verticalWait, horizontalOffer, horizontalWait, emit, complete =
+      Value
   }
   private val state = RegInit(State.idle)
   private val task = Reg(new TessellationIsolineTask)
@@ -101,7 +102,8 @@ class TessellationIsolineGenerator extends Module {
       .elsewhen(state === State.verticalWait) {
         vertical := edge.io.out.bits.coordinate; previous := 0.U
         index := Mux(task.pointMode, 0.U, 1.U); state := State.horizontalOffer
-      }.otherwise { current := edge.io.out.bits.coordinate; state := State.emit }
+      }
+      .otherwise { current := edge.io.out.bits.coordinate; state := State.emit }
   }
   when(io.out.fire) {
     result.emitted := result.emitted + 1.U
@@ -109,7 +111,8 @@ class TessellationIsolineGenerator extends Module {
       .elsewhen(index === prepared.outer(1).segments) {
         when(line + 1.U === prepared.outer(0).segments) { state := State.complete }
           .otherwise { line := line + 1.U; state := State.verticalOffer }
-      }.otherwise { previous := current; index := index + 1.U; state := State.horizontalOffer }
+      }
+      .otherwise { previous := current; index := index + 1.U; state := State.horizontalOffer }
   }
   when(io.completion.fire) { state := State.idle }
 }

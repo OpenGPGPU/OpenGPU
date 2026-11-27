@@ -62,9 +62,8 @@ private class VectorFpuCandidate(config: GpuConfig) extends Bundle {
 
 /** Lane-local RVV FP32 exact operations for the fixed SEW=32 profile.
   *
-  * Supports sign injection, min/max, and comparisons over FVV operands.
-  * Arithmetic (add/mul/fma) is intentionally absent until a vector FMA
-  * datapath is connected.
+  * Supports sign injection, min/max, and comparisons over FVV operands. Arithmetic (add/mul/fma) is intentionally
+  * absent until a vector FMA datapath is connected.
   */
 class VectorFpuAlu(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {
@@ -108,11 +107,13 @@ class VectorFpuAlu(config: GpuConfig = GpuConfig()) extends Module {
     val lhsNegative = lhs(31)
     val rhsNegative = rhs(31)
 
-    val signData = MuxLookup(candidateBits.funct6, lhs)(Seq(
-      "h08".U -> Cat(rhsNegative, lhs(30, 0)),
-      "h09".U -> Cat(~rhsNegative, lhs(30, 0)),
-      "h0a".U -> Cat(lhsNegative ^ rhsNegative, lhs(30, 0))
-    ))
+    val signData = MuxLookup(candidateBits.funct6, lhs)(
+      Seq(
+        "h08".U -> Cat(rhsNegative, lhs(30, 0)),
+        "h09".U -> Cat(~rhsNegative, lhs(30, 0)),
+        "h0a".U -> Cat(lhsNegative ^ rhsNegative, lhs(30, 0))
+      )
+    )
     val minMaxData = Mux(
       unordered,
       "h7fc00000".U,
@@ -122,14 +123,16 @@ class VectorFpuAlu(config: GpuConfig = GpuConfig()) extends Module {
         Mux(lhsGreater, lhs, rhs)
       )
     )
-    val comparison = MuxLookup(candidateBits.funct6, false.B)(Seq(
-      "h18".U -> equal,
-      "h19".U -> (lhsLess || equal),
-      "h1b".U -> lhsLess,
-      "h1c".U -> !equal,
-      "h1d".U -> lhsGreater,
-      "h1f".U -> (lhsGreater || equal)
-    )) && !unordered
+    val comparison = MuxLookup(candidateBits.funct6, false.B)(
+      Seq(
+        "h18".U -> equal,
+        "h19".U -> (lhsLess || equal),
+        "h1b".U -> lhsLess,
+        "h1c".U -> !equal,
+        "h1d".U -> lhsGreater,
+        "h1f".U -> (lhsGreater || equal)
+      )
+    ) && !unordered
 
     val exactData = Mux(
       isMinMax,

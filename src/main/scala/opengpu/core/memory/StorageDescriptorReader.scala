@@ -5,9 +5,8 @@ import chisel3.util._
 import opengpu.config.{CachePolicy, GpuConfig}
 import opengpu.graphics.{GraphicsWorkIdentity, NativeTypedGraphicsLayout}
 
-/** A task-owned table of up to four 64-byte storage binding records. The
-  * publisher pins the table, referenced allocations and VM context until the
-  * task and all accepted memory traffic have drained.
+/** A task-owned table of up to four 64-byte storage binding records. The publisher pins the table, referenced
+  * allocations and VM context until the task and all accepted memory traffic have drained.
   */
 class StorageDescriptorTable extends Bundle {
   val version = UInt(2.W)
@@ -26,13 +25,24 @@ object StorageDescriptorLayout {
   val magic = BigInt("47534201", 16)
   val words = 16
   val bytes = 64
-  val fieldWords = Seq("CONTEXT" -> 3, "PASS" -> 4, "GENERATION" -> 5,
-    "BINDING" -> 6, "BOUND" -> 7, "READABLE" -> 8, "WRITABLE" -> 9,
-    "BASE" -> 10, "LIMIT" -> 11, "ALLOCATION_BASE" -> 13, "ALLOCATION_LIMIT" -> 14)
+  val fieldWords = Seq(
+    "CONTEXT" -> 3,
+    "PASS" -> 4,
+    "GENERATION" -> 5,
+    "BINDING" -> 6,
+    "BOUND" -> 7,
+    "READABLE" -> 8,
+    "WRITABLE" -> 9,
+    "BASE" -> 10,
+    "LIMIT" -> 11,
+    "ALLOCATION_BASE" -> 13,
+    "ALLOCATION_LIMIT" -> 14
+  )
   private val offsets = fieldWords.toMap
   def fields(record: StorageDescriptorRecord): Seq[NativeTypedGraphicsLayout.Field] = {
     import NativeTypedGraphicsLayout.Field
-    Seq(Field("identity.context", offsets("CONTEXT"), record.identity.context),
+    Seq(
+      Field("identity.context", offsets("CONTEXT"), record.identity.context),
       Field("identity.pass", offsets("PASS"), record.identity.pass),
       Field("identity.generation", offsets("GENERATION"), record.identity.generation),
       Field("bindingIndex", offsets("BINDING"), record.bindingIndex),
@@ -42,7 +52,8 @@ object StorageDescriptorLayout {
       Field("view.base", offsets("BASE"), record.view.base),
       Field("view.limit", offsets("LIMIT"), record.view.limit),
       Field("view.allocationBase", offsets("ALLOCATION_BASE"), record.view.allocationBase),
-      Field("view.allocationLimit", offsets("ALLOCATION_LIMIT"), record.view.allocationLimit))
+      Field("view.allocationLimit", offsets("ALLOCATION_LIMIT"), record.view.allocationLimit)
+    )
   }
 }
 
@@ -70,9 +81,8 @@ object StorageDescriptorStatus {
   val identity = 5
 }
 
-/** Reads one immutable GPU-resident storage record. Once offered, a line
-  * request remains stable and drains before cancellation or error is reported.
-  * The returned view still requires per-access bounds and permission checks.
+/** Reads one immutable GPU-resident storage record. Once offered, a line request remains stable and drains before
+  * cancellation or error is reported. The returned view still requires per-access bounds and permission checks.
   */
 class StorageDescriptorReader(config: GpuConfig = GpuConfig()) extends Module {
   require(config.xLen == 32)
@@ -93,9 +103,14 @@ class StorageDescriptorReader(config: GpuConfig = GpuConfig()) extends Module {
   private val cancelled = RegInit(false.B)
   private val fields = StorageDescriptorLayout.fields(snapshot)
   NativeTypedGraphicsLayout.check(snapshot, fields, StorageDescriptorLayout.words)
-  private val malformed = NativeTypedGraphicsLayout.receive(fields, StorageDescriptorLayout.words,
-    StorageDescriptorLayout.magic, 0.U, io.memoryResponse.bits.readData,
-    io.memoryResponse.fire && !io.memoryResponse.bits.fault && !cancelled && !io.cancel)
+  private val malformed = NativeTypedGraphicsLayout.receive(
+    fields,
+    StorageDescriptorLayout.words,
+    StorageDescriptorLayout.magic,
+    0.U,
+    io.memoryResponse.bits.readData,
+    io.memoryResponse.fire && !io.memoryResponse.bits.fault && !cancelled && !io.cancel
+  )
   private val begin = request.table.base.pad(64) + (request.bindingIndex.pad(64) << 6)
   private val end = begin + StorageDescriptorLayout.bytes.U
   private val addressSpace = (BigInt(1) << 32).U(64.W)
@@ -155,9 +170,12 @@ class StorageDescriptorReader(config: GpuConfig = GpuConfig()) extends Module {
     }
     is(State.verify) {
       when(io.cancel || cancelled) { result.status := StorageDescriptorStatus.cancelled.U }
-        .elsewhen(snapshot.identity.asUInt =/= table.identity.asUInt || snapshot.bindingIndex =/= request.bindingIndex) {
+        .elsewhen(
+          snapshot.identity.asUInt =/= table.identity.asUInt || snapshot.bindingIndex =/= request.bindingIndex
+        ) {
           result.status := StorageDescriptorStatus.identity.U
-        }.otherwise { result.view := snapshot.view; result.status := StorageDescriptorStatus.ok.U }
+        }
+        .otherwise { result.view := snapshot.view; result.status := StorageDescriptorStatus.ok.U }
       state := State.complete
     }
     is(State.complete) { when(io.out.fire) { state := State.idle } }

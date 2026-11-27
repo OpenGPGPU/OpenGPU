@@ -9,7 +9,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 /** Exercises the ready/valid composition used by the three-domain host. */
 private class TessellationFeedbackPayloadAdmissionHarness extends Module {
-  private val p = ShaderPayloadConfig(capacityBytes=256,maxPayloadBytes=256,owners=2,ports=4)
+  private val p = ShaderPayloadConfig(capacityBytes = 256, maxPayloadBytes = 256, owners = 2, ports = 4)
   val io = IO(new Bundle {
     val submit = Flipped(Vec(3, Decoupled(new TileJobDescriptorRequest(4))))
     val selected = Input(UInt(2.W)); val childReady = Input(Vec(3, Bool()))
@@ -46,12 +46,12 @@ private class TessellationFeedbackPayloadAdmissionHarness extends Module {
 
 class TessellationFeedbackPayloadAdmissionSpec extends AnyFlatSpec {
   private def zero(d: Data): Unit = d match {
-    case r: Record => r.elements.values.foreach(zero)
-    case v: Vec[_] => v.foreach(zero)
+    case r: Record                                                     => r.elements.values.foreach(zero)
+    case v: Vec[_]                                                     => v.foreach(zero)
     case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
     case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
     case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
-    case _ => ()
+    case _                                                             => ()
   }
   it should "acquire and retire each domain without a ready-valid cycle" in {
     simulate(new TessellationFeedbackPayloadAdmissionHarness) { d =>

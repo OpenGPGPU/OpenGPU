@@ -6,17 +6,16 @@ import opengpu.config.{CachePolicy, GpuConfig}
 
 /** Read-only line reuse within one explicitly bounded texture job.
   *
-  * Words sharing a pending line join its fill. Other lines can miss in
-  * parallel, and a line stays pinned until its accepted word replies have
-  * been copied into the output queue. Invalidation revokes reuse, including
-  * pending fills, but never stops reads needed to drain an admitted shader.
-  * A new miss enters translation on the same edge as word acceptance.
+  * Words sharing a pending line join its fill. Other lines can miss in parallel, and a line stays pinned until its
+  * accepted word replies have been copied into the output queue. Invalidation revokes reuse, including pending fills,
+  * but never stops reads needed to drain an admitted shader. A new miss enters translation on the same edge as word
+  * acceptance.
   */
 class BufferedTextureWordPort(
-  config: GpuConfig = GpuConfig(),
-  maxOutstanding: Int = 4,
-  cacheLines: Int = 4,
-  uncached: Boolean = false
+    config: GpuConfig = GpuConfig(),
+    maxOutstanding: Int = 4,
+    cacheLines: Int = 4,
+    uncached: Boolean = false
 ) extends Module {
   require(maxOutstanding > 0)
   require(cacheLines > 0 && isPow2(cacheLines) && cacheLines <= maxOutstanding)
@@ -32,7 +31,7 @@ class BufferedTextureWordPort(
     if (values.length == 1) values(0) else values(index)
   private val lineTag = Reg(Vec(cacheLines, UInt(26.W)))
   private val lineData = Reg(Vec(cacheLines, UInt(512.W)))
-  private val lineFault=Reg(Vec(cacheLines,Bool()))
+  private val lineFault = Reg(Vec(cacheLines, Bool()))
   private val pending = RegInit(VecInit(Seq.fill(cacheLines)(false.B)))
   private val ready = RegInit(VecInit(Seq.fill(cacheLines)(false.B)))
   // A pending fill may serve its original waiters after invalidation, but it
@@ -43,20 +42,31 @@ class BufferedTextureWordPort(
   private val wordAddress = Reg(Vec(maxOutstanding, UInt(32.W)))
   private val wordLine = Reg(Vec(maxOutstanding, UInt(lineIndexWidth.W)))
 
-  private val matches = VecInit((0 until cacheLines).map(i =>
-    reusable(i) && !io.invalidate && lineTag(i) === p.in.bits.addr(31, 6)))
+  private val matches = VecInit(
+    (0 until cacheLines).map(i => reusable(i) && !io.invalidate && lineTag(i) === p.in.bits.addr(31, 6))
+  )
   private val matched = matches.asUInt.orR
   private val matchedLine = PriorityEncoder(matches)
-  private val available = VecInit((0 until cacheLines).map(i =>
-    !pending(i) && !VecInit((0 until maxOutstanding).map(w =>
-      wordValid(w) && wordLine(w) === i.U)).asUInt.orR))
-  private val empty = VecInit((0 until cacheLines).map(i =>
-    available(i) && !reusable(i)))
-  private val rotatedAvailable = VecInit((0 until cacheLines).map(i =>
-    at(available, if (cacheLines == 1) 0.U else
-      (replacement + i.U)(lineIndexWidth - 1, 0))))
-  private val rotatedChoice = if (cacheLines == 1) 0.U else
-    (replacement + PriorityEncoder(rotatedAvailable))(lineIndexWidth - 1, 0)
+  private val available = VecInit(
+    (0 until cacheLines).map(i =>
+      !pending(i) && !VecInit((0 until maxOutstanding).map(w => wordValid(w) && wordLine(w) === i.U)).asUInt.orR
+    )
+  )
+  private val empty = VecInit((0 until cacheLines).map(i => available(i) && !reusable(i)))
+  private val rotatedAvailable = VecInit(
+    (0 until cacheLines).map(i =>
+      at(
+        available,
+        if (cacheLines == 1) 0.U
+        else
+          (replacement + i.U)(lineIndexWidth - 1, 0)
+      )
+    )
+  )
+  private val rotatedChoice =
+    if (cacheLines == 1) 0.U
+    else
+      (replacement + PriorityEncoder(rotatedAvailable))(lineIndexWidth - 1, 0)
   private val victim = Mux(empty.asUInt.orR, PriorityEncoder(empty), rotatedChoice)
   private val selectedLine = Mux(matched, matchedLine, victim)
   private val freeWords = ~wordValid.asUInt
@@ -68,8 +78,7 @@ class BufferedTextureWordPort(
   p.memoryRequest.bits := 0.U.asTypeOf(p.memoryRequest.bits)
   p.memoryRequest.bits.address := Cat(p.in.bits.addr(31, 6), 0.U(6.W))
   p.memoryRequest.bits.sizeLog2 := 6.U
-  p.memoryRequest.bits.cachePolicy := Mux(uncached.B, CachePolicy.uncached,
-    CachePolicy.cached)
+  p.memoryRequest.bits.cachePolicy := Mux(uncached.B, CachePolicy.uncached, CachePolicy.cached)
   p.memoryRequest.bits.transactionId := victim
   p.in.ready := hasWord && (matched || (canMiss && p.memoryRequest.ready))
 
@@ -84,8 +93,9 @@ class BufferedTextureWordPort(
       at(pending, victim) := true.B
       at(ready, victim) := false.B
       at(reusable, victim) := !io.invalidate
-      replacement := (if (cacheLines == 1) 0.U else
-        (victim + 1.U)(lineIndexWidth - 1, 0))
+      replacement := (if (cacheLines == 1) 0.U
+                      else
+                        (victim + 1.U)(lineIndexWidth - 1, 0))
     }
   }
 
@@ -94,15 +104,13 @@ class BufferedTextureWordPort(
   private val responseLine = responseId(lineIndexWidth - 1, 0)
   p.memoryResponse.ready := responseInRange && at(pending, responseLine)
   when(p.memoryResponse.valid) {
-    assert(responseInRange && at(pending, responseLine),
-      "texture fill response must identify a pending line")
+    assert(responseInRange && at(pending, responseLine), "texture fill response must identify a pending line")
   }
   when(p.memoryResponse.fire) {
-    at(lineFault,responseLine):=p.memoryResponse.bits.fault
+    at(lineFault, responseLine) := p.memoryResponse.bits.fault
     at(pending, responseLine) := false.B
     at(ready, responseLine) := true.B
-    at(lineData, responseLine) := Mux(p.memoryResponse.bits.fault, 0.U,
-      p.memoryResponse.bits.readData)
+    at(lineData, responseLine) := Mux(p.memoryResponse.bits.fault, 0.U, p.memoryResponse.bits.readData)
     when(p.memoryResponse.bits.fault) { at(reusable, responseLine) := false.B }
   }
   when(io.invalidate) { reusable.foreach(_ := false.B) }
@@ -116,8 +124,8 @@ class BufferedTextureWordPort(
   }
   // Refill a consumed reply on the same edge, sustaining one word per cycle.
   private class WordReply extends Bundle {
-    val response=new OmMemoryResponse
-    val fault=Bool()
+    val response = new OmMemoryResponse
+    val fault = Bool()
   }
   private val output = Module(new Queue(new WordReply, 1, pipe = true, flow = true))
   private val replyingWord = replies.io.out.bits
@@ -125,13 +133,13 @@ class BufferedTextureWordPort(
   private val replyingAddress = at(wordAddress, replyingWord)
   output.io.enq.bits.response.addr := replyingAddress
   output.io.enq.bits.response.write := false.B
-  output.io.enq.bits.fault:=at(lineFault,at(wordLine,replyingWord))
+  output.io.enq.bits.fault := at(lineFault, at(wordLine, replyingWord))
   output.io.enq.bits.response.data :=
     (at(lineData, at(wordLine, replyingWord)) >> (replyingAddress(5, 2) << 5))(31, 0)
   replies.io.out.ready := output.io.enq.ready
   when(replies.io.out.fire) { at(wordValid, replyingWord) := false.B }
-  p.out.valid:=output.io.deq.valid
-  p.out.bits:=output.io.deq.bits.response
-  p.responseFault:=p.out.valid && output.io.deq.bits.fault
-  output.io.deq.ready:=p.out.ready
+  p.out.valid := output.io.deq.valid
+  p.out.bits := output.io.deq.bits.response
+  p.responseFault := p.out.valid && output.io.deq.bits.fault
+  output.io.deq.ready := p.out.ready
 }

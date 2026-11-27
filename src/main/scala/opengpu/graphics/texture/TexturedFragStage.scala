@@ -4,23 +4,22 @@ import chisel3._
 import chisel3.util._
 import opengpu.util.RegisteredQueue2
 
-/** Exact round-to-nearest UNORM8 multiplication. The correction implements
-  * (a*b+127)/255 over the entire 8-bit product domain without a divider.
+/** Exact round-to-nearest UNORM8 multiplication. The correction implements (a*b+127)/255 over the entire 8-bit product
+  * domain without a divider.
   */
 private[graphics] object Unorm8Product {
-  def apply(a: UInt,b: UInt): UInt = {
+  def apply(a: UInt, b: UInt): UInt = {
     require(a.getWidth == 8 && b.getWidth == 8)
-    val rounded = (a*b) +& 128.U(16.W)
+    val rounded = (a * b) +& 128.U(16.W)
     val corrected = rounded +& (rounded >> 8)
-    corrected(15,8)
+    corrected(15, 8)
   }
 }
 
 /** Per-vertex texture coordinates, unsigned Q16.16 over the unit square.
   *
-  * Coordinates larger than one unit reach the sampler's wrap/clamp machinery;
-  * there is deliberately no sign -- negative UVs are not defined (authors wrap
-  * instead), which keeps the interpolation and addressing unsigned throughout.
+  * Coordinates larger than one unit reach the sampler's wrap/clamp machinery; there is deliberately no sign -- negative
+  * UVs are not defined (authors wrap instead), which keeps the interpolation and addressing unsigned throughout.
   */
 class TexUV extends Bundle {
   val u = UInt(32.W)
@@ -29,11 +28,9 @@ class TexUV extends Bundle {
 
 /** Perspective-correct UV interpolation across a covered pixel.
   *
-  * Same plane-equation arithmetic as [[PerspectiveInterpolator]] applied to
-  * the two texture channels:
-  *   uv_px = (Σ eᵢ·(1/wᵢ)·uvᵢ) / (Σ eᵢ·(1/wᵢ))
-  * Division matches that module's divider semantics (documented divisor >
-  * 0 for front-facing triangles).
+  * Same plane-equation arithmetic as [[PerspectiveInterpolator]] applied to the two texture channels: uv_px = (Σ
+  * eᵢ·(1/wᵢ)·uvᵢ) / (Σ eᵢ·(1/wᵢ)) Division matches that module's divider semantics (documented divisor > 0 for
+  * front-facing triangles).
   */
 class TexUVInterpolator(gfxConfig: GraphicsConfig) extends Module {
   val io = IO(new Bundle {
@@ -77,40 +74,44 @@ private[graphics] class LegacyTexturePayload(config: GraphicsConfig) extends Bun
   val maxLevel = UInt(4.W)
 }
 
-/** Wires the fixed-function sampler ([[TextureUnit]]) into the fragment
-  * stream: per-fragment perspective-correct UVs, one bilinear sample, colour
-  * MODULATE (fragment x texel, truncated shift back to 8 bits) and straight
-  * pass-through of position and depth.
+/** Wires the fixed-function sampler ([[TextureUnit]]) into the fragment stream: per-fragment perspective-correct UVs,
+  * one bilinear sample, colour MODULATE (fragment x texel, truncated shift back to 8 bits) and straight pass-through of
+  * position and depth.
   *
-  * Exact UV arithmetic is pipelined at II1. Captured fragment, per-sample
-  * depths and texture descriptor remain owned until ordered output retirement.
-  * The sampler retains its existing service rate; queued arithmetic overlaps
-  * that service and output backpressure never substitutes live descriptor pins.
+  * Exact UV arithmetic is pipelined at II1. Captured fragment, per-sample depths and texture descriptor remain owned
+  * until ordered output retirement. The sampler retains its existing service rate; queued arithmetic overlaps that
+  * service and output backpressure never substitutes live descriptor pins.
   */
 
 class TexturedFragStage(
-  gfxConfig: GraphicsConfig = GraphicsConfig(),
-  quadUv: Boolean = false,
-  normalizedModulation: Boolean = false
+    gfxConfig: GraphicsConfig = GraphicsConfig(),
+    quadUv: Boolean = false,
+    normalizedModulation: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
     val fragIn = Flipped(Decoupled(new RasterFragment(gfxConfig)))
-    /** Per-sample depths of the fragment on `fragIn`, latched with it and
-      * re-presented on `outDepths` while `out` holds the same fragment. */
+
+    /** Per-sample depths of the fragment on `fragIn`, latched with it and re-presented on `outDepths` while `out` holds
+      * the same fragment.
+      */
     val fragDepths = Input(Vec(gfxConfig.maxSampleCount, UInt(30.W)))
-    /** Rasterizer edge values for THIS fragment (from pixel.bits before the
-      * handoff) so UVs interpolate perspective-correctly. */
+
+    /** Rasterizer edge values for THIS fragment (from pixel.bits before the handoff) so UVs interpolate
+      * perspective-correctly.
+      */
     val e0 = Input(SInt(gfxConfig.edgeWidth.W))
     val e1 = Input(SInt(gfxConfig.edgeWidth.W))
     val e2 = Input(SInt(gfxConfig.edgeWidth.W))
-    /** Per-lane edge values of the whole quad being presented on the
-      * core-backed path (lane 0=TL, 1=TR, 2=BL, 3=BR). */
+
+    /** Per-lane edge values of the whole quad being presented on the core-backed path (lane 0=TL, 1=TR, 2=BL, 3=BR).
+      */
     val quadE0 = Input(Vec(4, SInt(gfxConfig.edgeWidth.W)))
     val quadE1 = Input(Vec(4, SInt(gfxConfig.edgeWidth.W)))
     val quadE2 = Input(Vec(4, SInt(gfxConfig.edgeWidth.W)))
     val invW0 = Input(SInt(32.W))
     val invW1 = Input(SInt(32.W))
     val invW2 = Input(SInt(32.W))
+
     /** Per-vertex UVs from the draw record. */
     val uv0 = Input(new TexUV)
     val uv1 = Input(new TexUV)
@@ -125,14 +126,18 @@ class TexturedFragStage(
     val texNearest = Input(Bool())
     val texMaxLevel = Input(UInt(4.W))
 
-    /** Current fragment's perspective-correct coordinates. The core-backed
-      * path reuses this interpolation while bypassing the fixed sampler. */
+    /** Current fragment's perspective-correct coordinates. The core-backed path reuses this interpolation while
+      * bypassing the fixed sampler.
+      */
     val interpolatedUv = Output(new TexUV)
-    /** Per-lane perspective-correct coordinates of the whole quad; generated
-      * only with `quadUv` (the core-backed path), tied to zero otherwise. */
+
+    /** Per-lane perspective-correct coordinates of the whole quad; generated only with `quadUv` (the core-backed path),
+      * tied to zero otherwise.
+      */
     val interpolatedUvQuad = Output(Vec(4, new TexUV))
 
     val out = Decoupled(new RasterFragment(gfxConfig))
+
     /** Per-sample depths latched off `fragDepths` with the fragment on `out`. */
     val outDepths = Output(Vec(gfxConfig.maxSampleCount, UInt(30.W)))
     val drained = Output(Bool())
@@ -237,7 +242,7 @@ class TexturedFragStage(
     assert(samples.io.deq.valid, "a texture result must retain its captured fragment owner")
   }
   private def modulate(fc: UInt, tc: UInt): UInt =
-    if (normalizedModulation) Unorm8Product(fc,tc) else (fc * tc)(15,8)
+    if (normalizedModulation) Unorm8Product(fc, tc) else (fc * tc)(15, 8)
   private val fragment = results.io.deq.bits.payload.fragment
   private val texel = results.io.deq.bits.texel
   io.out.valid := results.io.deq.valid

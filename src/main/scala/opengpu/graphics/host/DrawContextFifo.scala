@@ -22,12 +22,9 @@ class DrawContext extends Bundle with HasResolvedDrawState {
   val sampleMode = UInt(2.W)
 }
 
-/**
-  * Small draw-context FIFO with independently visible producer (tail) and
-  * retirement (head) contexts.  `tail` is the most recently admitted draw;
-  * it remains stable until the next enqueue, which is exactly what a batch
-  * snapshot needs.  `head` remains stable through the output merger's final
-  * read/modify/write and is removed only by `retire`.
+/** Small draw-context FIFO with independently visible producer (tail) and retirement (head) contexts. `tail` is the
+  * most recently admitted draw; it remains stable until the next enqueue, which is exactly what a batch snapshot needs.
+  * `head` remains stable through the output merger's final read/modify/write and is removed only by `retire`.
   */
 class DrawContextFifo(depth: Int = 2) extends Module {
   require(depth >= 2, "draw-context FIFO needs at least two entries")

@@ -19,8 +19,7 @@ class L2StoreTransactionTableSpec extends AnyFlatSpec {
     dut.io.queryAddress.poke(0.U)
   }
 
-  private def allocate(dut: L2StoreTransactionTable, address: BigInt,
-                       id: Int): Unit = {
+  private def allocate(dut: L2StoreTransactionTable, address: BigInt, id: Int): Unit = {
     dut.io.allocate.bits.address.poke(address.U)
     dut.io.allocate.bits.transactionId.poke(id.U)
     dut.io.allocate.bits.isWrite.poke(true.B)
@@ -37,8 +36,7 @@ class L2StoreTransactionTableSpec extends AnyFlatSpec {
     id
   }
 
-  private def acknowledge(dut: L2StoreTransactionTable, id: BigInt,
-                          fault: Boolean = false): Unit = {
+  private def acknowledge(dut: L2StoreTransactionTable, id: BigInt, fault: Boolean = false): Unit = {
     dut.io.lowerResponse.bits.transactionId.poke(id.U)
     dut.io.lowerResponse.bits.fault.poke(fault.B)
     dut.io.lowerResponse.valid.poke(true.B)
@@ -47,8 +45,7 @@ class L2StoreTransactionTableSpec extends AnyFlatSpec {
   }
 
   it should "restore original IDs after out-of-order write acknowledgements" in {
-    simulate(new L2StoreTransactionTable(
-      GpuConfig(lanes = 4), entries = 2)) { dut =>
+    simulate(new L2StoreTransactionTable(GpuConfig(lanes = 4), entries = 2)) { dut =>
       initialize(dut)
       allocate(dut, 0x1000, 1)
       val first = lowerRequest(dut)
@@ -72,8 +69,7 @@ class L2StoreTransactionTableSpec extends AnyFlatSpec {
   }
 
   it should "serialize stores targeting the same cache line" in {
-    simulate(new L2StoreTransactionTable(
-      GpuConfig(lanes = 4), entries = 2)) { dut =>
+    simulate(new L2StoreTransactionTable(GpuConfig(lanes = 4), entries = 2)) { dut =>
       initialize(dut)
       allocate(dut, 0x2000, 2)
       lowerRequest(dut)
@@ -87,8 +83,7 @@ class L2StoreTransactionTableSpec extends AnyFlatSpec {
   }
 
   it should "accept independent stores in consecutive cycles" in {
-    simulate(new L2StoreTransactionTable(
-      GpuConfig(lanes = 4), entries = 2)) { dut =>
+    simulate(new L2StoreTransactionTable(GpuConfig(lanes = 4), entries = 2)) { dut =>
       initialize(dut)
       dut.io.lowerRequest.ready.poke(false.B)
 
@@ -112,24 +107,24 @@ class L2StoreTransactionTableSpec extends AnyFlatSpec {
   }
 
   it should "overlap disjoint masked words while retaining byte ordering and whole-line read hazards" in {
-    simulate(new L2StoreTransactionTable(GpuConfig(lanes=4),entries=4)) { dut=>
+    simulate(new L2StoreTransactionTable(GpuConfig(lanes = 4), entries = 4)) { dut =>
       initialize(dut)
       dut.io.allocate.bits.sizeLog2.poke(6.U)
       dut.io.allocate.bits.byteMask.poke(0xf.U)
-      allocate(dut,0x1000,0)
+      allocate(dut, 0x1000, 0)
       // Also check the allocation staging register before the first entry
       // is installed: its disjoint bytes must not cause a false conflict.
       dut.io.allocate.bits.address.poke(0x1000.U); dut.io.allocate.bits.byteMask.poke(0xf0.U)
       dut.io.allocate.ready.expect(true.B)
-      val first=lowerRequest(dut)
-      allocate(dut,0x1000,1); val second=lowerRequest(dut)
-      assert(first!=second)
+      val first = lowerRequest(dut)
+      allocate(dut, 0x1000, 1); val second = lowerRequest(dut)
+      assert(first != second)
       dut.io.queryAddress.poke(0x103c.U); dut.io.queryConflict.expect(true.B)
       dut.io.allocate.bits.byteMask.poke(8.U); dut.io.allocate.ready.expect(false.B)
       dut.io.allocate.bits.byteMask.poke(0x100.U); dut.io.allocate.ready.expect(true.B)
       dut.io.allocate.bits.sizeLog2.poke(2.U); dut.io.allocate.ready.expect(false.B)
-      acknowledge(dut,second)
-      acknowledge(dut,first,fault=true)
+      acknowledge(dut, second)
+      acknowledge(dut, first, fault = true)
       dut.io.response.valid.expect(true.B); dut.io.response.bits.transactionId.expect(1.U)
       dut.io.response.bits.fault.expect(false.B)
       dut.io.response.ready.poke(true.B); dut.clock.step()
@@ -162,45 +157,50 @@ class L2StoreTransactionTableSpec extends AnyFlatSpec {
 
   for (entries <- Seq(8, 16)) {
     it should s"keep all $entries store IDs outside the load namespace under full occupancy" in {
-      simulate(new L2StoreTransactionTable(GpuConfig(lanes=4,l2StoreEntries=entries),
-        entries=entries,maxOutstanding=4096)) { dut=>
+      simulate(
+        new L2StoreTransactionTable(
+          GpuConfig(lanes = 4, l2StoreEntries = entries),
+          entries = entries,
+          maxOutstanding = 4096
+        )
+      ) { dut =>
         initialize(dut)
         dut.io.lowerRequest.ready.poke(false.B)
         dut.io.allocate.bits.sizeLog2.poke(6.U)
         dut.io.queryAddress.poke(0x403c.U)
-        val bytes=64/entries
-        def mask(i: Int): BigInt=((BigInt(1)<<bytes)-1)<<(i*bytes)
-        def data(i: Int): BigInt=BigInt(0x100+i)<<(i*bytes*8)
-        def original(i: Int): Int=2048+i*17
-        for(i<-0 until entries) {
+        val bytes = 64 / entries
+        def mask(i: Int): BigInt = ((BigInt(1) << bytes) - 1) << (i * bytes)
+        def data(i: Int): BigInt = BigInt(0x100 + i) << (i * bytes * 8)
+        def original(i: Int): Int = 2048 + i * 17
+        for (i <- 0 until entries) {
           dut.io.allocate.bits.byteMask.poke(mask(i).U)
           dut.io.allocate.bits.writeData.poke(data(i).U)
-          allocate(dut,0x4000,original(i))
+          allocate(dut, 0x4000, original(i))
         }
         dut.clock.step()
         dut.io.allocate.ready.expect(false.B)
         dut.io.queryConflict.expect(true.B)
         // The first offered request must survive lower backpressure while all
         // slots remain occupied by disjoint fields of the same physical line.
-        for(_<-0 until 3) {
+        for (_ <- 0 until 3) {
           dut.io.lowerRequest.valid.expect(true.B)
           dut.io.lowerRequest.bits.transactionId.expect(4.U)
           dut.io.lowerRequest.bits.byteMask.expect(mask(0).U)
           dut.clock.step()
         }
         dut.io.lowerRequest.ready.poke(true.B)
-        for(i<-0 until entries) {
+        for (i <- 0 until entries) {
           dut.io.lowerRequest.valid.expect(true.B)
-          dut.io.lowerRequest.bits.transactionId.expect((4+i).U)
+          dut.io.lowerRequest.bits.transactionId.expect((4 + i).U)
           dut.io.lowerRequest.bits.address.expect(0x4000.U)
           dut.io.lowerRequest.bits.byteMask.expect(mask(i).U)
           dut.io.lowerRequest.bits.writeData.expect(data(i).U)
           dut.clock.step()
         }
         dut.io.lowerRequest.valid.expect(false.B)
-        for(i<-(0 until entries).reverse)
-          acknowledge(dut,4+i,fault=i%3==1)
-        for(_<-0 until 3) {
+        for (i <- (0 until entries).reverse)
+          acknowledge(dut, 4 + i, fault = i % 3 == 1)
+        for (_ <- 0 until 3) {
           dut.io.response.valid.expect(true.B)
           dut.io.response.bits.transactionId.expect(original(entries - 1).U)
           dut.io.response.bits.fault.expect(((entries - 1) % 3 == 1).B)
@@ -208,10 +208,10 @@ class L2StoreTransactionTableSpec extends AnyFlatSpec {
           dut.clock.step()
         }
         dut.io.response.ready.poke(true.B)
-        for(i<-Seq(entries - 1) ++ (0 until entries - 1)) {
+        for (i <- Seq(entries - 1) ++ (0 until entries - 1)) {
           dut.io.response.valid.expect(true.B)
           dut.io.response.bits.transactionId.expect(original(i).U)
-          dut.io.response.bits.fault.expect((i%3==1).B)
+          dut.io.response.bits.fault.expect((i % 3 == 1).B)
           dut.clock.step()
         }
         dut.io.active.expect(false.B)
@@ -219,9 +219,9 @@ class L2StoreTransactionTableSpec extends AnyFlatSpec {
         // Reuse the first physical entry with a fresh maximum-width caller ID.
         dut.io.allocate.bits.byteMask.poke(mask(0).U)
         dut.io.allocate.bits.writeData.poke(data(0).U)
-        allocate(dut,0x4000,4095)
-        assert(lowerRequest(dut)==4)
-        acknowledge(dut,4)
+        allocate(dut, 0x4000, 4095)
+        assert(lowerRequest(dut) == 4)
+        acknowledge(dut, 4)
         dut.io.response.valid.expect(true.B)
         dut.io.response.bits.transactionId.expect(4095.U)
         dut.io.response.bits.fault.expect(false.B)

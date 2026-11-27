@@ -4,13 +4,12 @@ import chisel3._
 import chisel3.util._
 import opengpu.core.memory.L2SramArray
 
-/** One synchronous single-port word service over characterized 256x32 banks.
-  * Bank = high word-index bits, row = low eight bits. This H1 service issues
-  * one operation/cycle; H3 will provide independent pixel-bank request ports.
-  * The behavioral path has the same read latency and write priority.
+/** One synchronous single-port word service over characterized 256x32 banks. Bank = high word-index bits, row = low
+  * eight bits. This H1 service issues one operation/cycle; H3 will provide independent pixel-bank request ports. The
+  * behavioral path has the same read latency and write priority.
   */
 class TileAttachmentSramIO(words: Int) extends Bundle {
-  private val addressBits=log2Ceil(words)
+  private val addressBits = log2Ceil(words)
   val readEnable = Input(Bool())
   val readAddress = Input(UInt(addressBits.W))
   val readData = Output(UInt(32.W))
@@ -36,6 +35,6 @@ class TileAttachmentSram(words: Int, useBlackBoxes: Boolean = false) extends Mod
     memory.io.writeData := io.writeData
   }
   io.readData := (if (banks == 1) memories.head.io.readData
-    else VecInit(memories.map(_.io.readData))(heldBank))
+                  else VecInit(memories.map(_.io.readData))(heldBank))
   assert(!(io.readEnable && io.writeEnable), "tile service must serialize single-port SRAM operations")
 }

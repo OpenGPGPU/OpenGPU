@@ -7,8 +7,9 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-/** Exercise the staging port directly: acknowledgements publish writes, read
-  * replies reorder, both request/output ports stall, and banks are reused. */
+/** Exercise the staging port directly: acknowledgements publish writes, read replies reorder, both request/output ports
+  * stall, and banks are reused.
+  */
 class KernelFragOutputUsageSpec extends AnyFlatSpec {
   behavior of "KernelFragStage output bypass"
   for ((lanes, warps, transactions) <- Seq((4, 2, 2), (8, 2, 2), (16, 7, 4), (16, 8, 8))) {
@@ -16,12 +17,12 @@ class KernelFragOutputUsageSpec extends AnyFlatSpec {
       val cap = lanes * warps
       simulate(new KernelFragStage(GpuConfig(lanes = lanes, warps = warps), GraphicsConfig(), transactions)) { dut =>
         def zeroInputs(d: Data): Unit = d match {
-          case r: Record => r.elements.values.foreach(zeroInputs)
-          case v: Vec[_] => v.foreach(zeroInputs)
+          case r: Record                                                     => r.elements.values.foreach(zeroInputs)
+          case v: Vec[_]                                                     => v.foreach(zeroInputs)
           case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
           case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
           case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
-          case _ => ()
+          case _                                                             => ()
         }
         zeroInputs(dut.io)
         dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
@@ -37,18 +38,24 @@ class KernelFragOutputUsageSpec extends AnyFlatSpec {
         val mem = mutable.LongMap[BigInt]()
         def put(addr: Long, data: BigInt): Unit = {
           val base = addr & ~63L; val shift = (addr & 63).toInt * 8
-          mem(base) = (mem.getOrElse(base, BigInt(0)) & ~(BigInt("ffffffff",16) << shift)) | ((data & BigInt("ffffffff",16)) << shift)
+          mem(base) = (mem.getOrElse(base, BigInt(0)) & ~(BigInt("ffffffff", 16) << shift)) | ((data & BigInt(
+            "ffffffff",
+            16
+          )) << shift)
         }
-        def word(addr: Long): BigInt = (mem.getOrElse(addr & ~63L, BigInt(0)) >> ((addr & 63).toInt * 8)) & BigInt("ffffffff",16)
+        def word(addr: Long): BigInt =
+          (mem.getOrElse(addr & ~63L, BigInt(0)) >> ((addr & 63).toInt * 8)) & BigInt("ffffffff", 16)
         case class Pending(id: Int, addr: Long, write: Boolean, data: BigInt, mask: BigInt, due: Int, fault: Boolean)
         case class Case(outputSkip: Int, abi1: Boolean, count: Int, phase: String, inputSkip: Int)
         val masks = for (depth <- Seq(0, 1, 5); control <- Seq(0, 2, 10)) yield depth | control
-        val cases = if (sys.props.contains("opengpu.outputUsageNegative"))
-          Seq(Case(0, true, cap, "none", 15), Case(15, true, cap, "none", 15))
-        else (for (out <- masks; abi <- Seq(false, true); count <- Seq(cap, 4, cap-4).distinct)
-          yield Case(out, abi, count, "none", if ((out + (if (abi) 1 else 0)) % 2 == 0) 15 else 0)) ++
-          (for (out <- masks; phase <- Seq("write", "read", "kernel"))
-            yield Case(out, (out & 1) != 0, cap, phase, 15))
+        val cases =
+          if (sys.props.contains("opengpu.outputUsageNegative"))
+            Seq(Case(0, true, cap, "none", 15), Case(15, true, cap, "none", 15))
+          else
+            (for (out <- masks; abi <- Seq(false, true); count <- Seq(cap, 4, cap - 4).distinct)
+              yield Case(out, abi, count, "none", if ((out + (if (abi) 1 else 0)) % 2 == 0) 15 else 0)) ++
+              (for (out <- masks; phase <- Seq("write", "read", "kernel"))
+                yield Case(out, (out & 1) != 0, cap, phase, 15))
         for (c <- cases) {
           val skip = c.inputSkip; val count = c.count; val faultPhase = c.phase
           val outputSkip = c.outputSkip; val abi1 = c.abi1
@@ -56,9 +63,10 @@ class KernelFragOutputUsageSpec extends AnyFlatSpec {
           val controlNoWrite = (outputSkip & 2) != 0
           val depthNoInit = (outputSkip & 5) == 5
           val controlNoInit = (outputSkip & 10) == 10
-          def sentinel(bank: Int, slice: Int, i: Int): BigInt = BigInt(0x5a000000L + bank*0x100000 + slice*0x10000 + i)
+          def sentinel(bank: Int, slice: Int, i: Int): BigInt =
+            BigInt(0x5a000000L + bank * 0x100000 + slice * 0x10000 + i)
           for (bank <- 0 until 2; slice <- 0 until 10; i <- 0 until cap)
-            put(0x8000L + bank*0x2000 + slice*4L*cap + i*4, sentinel(bank,slice,i))
+            put(0x8000L + bank * 0x2000 + slice * 4L * cap + i * 4, sentinel(bank, slice, i))
           dut.io.inputSkip.poke(skip.U)
           dut.io.outputSkip.poke(outputSkip.U)
           dut.io.abi1.poke(abi1.B)
@@ -78,7 +86,7 @@ class KernelFragOutputUsageSpec extends AnyFlatSpec {
               p.x.poke((i + 1).S); p.y.poke((-i - 1).S)
               p.depth.poke((100 + i).S); p.covered.poke((i != count - 1).B)
               for (sample <- 0 until GraphicsConfig().maxSampleCount)
-                dut.io.fragDepths(k)(sample).poke((10000 + i*4 + sample).U)
+                dut.io.fragDepths(k)(sample).poke((10000 + i * 4 + sample).U)
               p.coverageMask.poke(1.U); p.color.r.poke((i & 255).U)
               p.color.g.poke(2.U); p.color.b.poke(3.U); p.alpha.poke(255.U)
               dut.io.fragUv(k).u.poke((1000 + i).U); dut.io.fragUv(k).v.poke((2000 + i).U)
@@ -112,7 +120,12 @@ class KernelFragOutputUsageSpec extends AnyFlatSpec {
             val reqFire = dut.io.wordMemReq.valid.peek().litToBoolean && dut.io.wordMemReq.ready.peek().litToBoolean
             if (dut.io.wordMemReq.valid.peek().litToBoolean) {
               val b = dut.io.wordMemReq.bits
-              val payload = (b.address.peek().litValue, b.writeData.peek().litValue, b.byteMask.peek().litValue, b.transactionId.peek().litValue)
+              val payload = (
+                b.address.peek().litValue,
+                b.writeData.peek().litValue,
+                b.byteMask.peek().litValue,
+                b.transactionId.peek().litValue
+              )
               stable.foreach(v => assert(v == payload, "request changed while stalled"))
               stable = if (reqFire) None else Some(payload)
             } else assert(stable.isEmpty, "stalled request disappeared")
@@ -122,41 +135,57 @@ class KernelFragOutputUsageSpec extends AnyFlatSpec {
               launchBase = dut.io.kernelLaunch.kernargAddress.peek().litValue.toLong
               dut.io.kernelLaunch.localX.expect(count.U)
               for (i <- 0 until count) {
-                val bank = ((launchBase-0x8000)/0x2000).toInt
-                val expectedInput = Seq(BigInt(i+1), BigInt((-i-1).toLong & 0xffffffffL),
-                  BigInt(100+i), BigInt((i.toLong&255)<<24 | 0x0203ffL), BigInt(1000+i), BigInt(2000+i))
+                val bank = ((launchBase - 0x8000) / 0x2000).toInt
+                val expectedInput = Seq(
+                  BigInt(i + 1),
+                  BigInt((-i - 1).toLong & 0xffffffffL),
+                  BigInt(100 + i),
+                  BigInt((i.toLong & 255) << 24 | 0x0203ffL),
+                  BigInt(1000 + i),
+                  BigInt(2000 + i)
+                )
                 for (slice <- 0 until 6) {
-                  val expectedWord = if ((skip & (1<<slice)) != 0) sentinel(bank,slice,i) else expectedInput(slice)
-                  assert(word(launchBase + slice*4L*cap + i*4) == expectedWord, s"skip=$skip slice=$slice lane=$i snapshot/input mismatch")
+                  val expectedWord = if ((skip & (1 << slice)) != 0) sentinel(bank, slice, i) else expectedInput(slice)
+                  assert(
+                    word(launchBase + slice * 4L * cap + i * 4) == expectedWord,
+                    s"skip=$skip slice=$slice lane=$i snapshot/input mismatch"
+                  )
                 }
-                assert(word(launchBase + 28L*cap + 4L*i) ==
-                  (if (depthNoInit) sentinel(bank,7,i) else BigInt(100+i)), "depth initialization/omission mismatch")
-                assert(word(launchBase + 32L*cap + 4L*i) ==
-                  (if (controlNoInit) sentinel(bank,8,i) else BigInt(if (i==count-1) 0 else 1)), "control initialization/omission mismatch")
-                put(launchBase + 24L*cap + 4L*i, BigInt("aabbccff",16) + (BigInt(i) << 24))
+                assert(
+                  word(launchBase + 28L * cap + 4L * i) ==
+                    (if (depthNoInit) sentinel(bank, 7, i) else BigInt(100 + i)),
+                  "depth initialization/omission mismatch"
+                )
+                assert(
+                  word(launchBase + 32L * cap + 4L * i) ==
+                    (if (controlNoInit) sentinel(bank, 8, i) else BigInt(if (i == count - 1) 0 else 1)),
+                  "control initialization/omission mismatch"
+                )
+                put(launchBase + 24L * cap + 4L * i, BigInt("aabbccff", 16) + (BigInt(i) << 24))
                 // Partial shader writes require the other lanes' defaults.
-                if (!depthNoWrite && i % 2 == 0) put(launchBase + 28L*cap + 4L*i, 300+i)
+                if (!depthNoWrite && i % 2 == 0) put(launchBase + 28L * cap + 4L * i, 300 + i)
                 if (!controlNoWrite && i % 2 == 0)
-                  put(launchBase + 32L*cap + 4L*i, if (i % 7 == 0) 0 else 3)
+                  put(launchBase + 32L * cap + 4L * i, if (i % 7 == 0) 0 else 3)
               }
               launched = true
             }
-            if (dut.io.kernelCompletion.valid.peek().litToBoolean && dut.io.kernelCompletion.ready.peek().litToBoolean) completed = true
+            if (dut.io.kernelCompletion.valid.peek().litToBoolean && dut.io.kernelCompletion.ready.peek().litToBoolean)
+              completed = true
             if (dut.io.out.valid.peek().litToBoolean) {
               assert(pending.isEmpty && !reqFire, "fragment escaped before read drain")
               assert(faultPhase == "none", "faulted staging emitted a fragment")
               if (dut.io.out.ready.peek().litToBoolean) {
                 val i = expected(outputs)
-                dut.io.out.bits.x.expect((i+1).S)
-                dut.io.out.bits.y.expect((-i-1).S)
-                dut.io.out.bits.depth.expect((if (!depthNoWrite && i % 2 == 0) 300+i else 100+i).S)
-                dut.io.out.bits.color.r.expect(((0xaa+i)&255).U)
+                dut.io.out.bits.x.expect((i + 1).S)
+                dut.io.out.bits.y.expect((-i - 1).S)
+                dut.io.out.bits.depth.expect((if (!depthNoWrite && i % 2 == 0) 300 + i else 100 + i).S)
+                dut.io.out.bits.color.r.expect(((0xaa + i) & 255).U)
                 dut.io.out.bits.color.g.expect(0xbb.U)
                 dut.io.out.bits.color.b.expect(0xcc.U)
                 dut.io.out.bits.alpha.expect(0xff.U)
                 dut.io.depthOverride.expect((!abi1 || (!controlNoWrite && i % 2 == 0)).B)
                 for (sample <- 0 until GraphicsConfig().maxSampleCount)
-                  dut.io.outDepths(sample).expect((10000 + i*4 + sample).U)
+                  dut.io.outDepths(sample).expect((10000 + i * 4 + sample).U)
                 outputs += 1
               }
             }
@@ -169,8 +198,8 @@ class KernelFragOutputUsageSpec extends AnyFlatSpec {
             reply.foreach { j =>
               val p = pending.remove(j); if (j > 0) reordered = true
               if (p.write && !p.fault) for (b <- 0 until 64 if p.mask.testBit(b)) {
-                val shift = b*8; val old = mem.getOrElse(p.addr, BigInt(0))
-                mem(p.addr) = (old & ~(BigInt(255) << shift)) | (((p.data >> shift)&255) << shift)
+                val shift = b * 8; val old = mem.getOrElse(p.addr, BigInt(0))
+                mem(p.addr) = (old & ~(BigInt(255) << shift)) | (((p.data >> shift) & 255) << shift)
               }
             }
             if (reqFire) {
@@ -181,8 +210,8 @@ class KernelFragOutputUsageSpec extends AnyFlatSpec {
                 val addr = b.address.peek().litValue.toLong
                 val bankBase = if (addr >= 0xa000L) 0xa000L else 0x8000L
                 for (byte <- 0 until 64 if b.byteMask.peek().litValue.testBit(byte)) {
-                  val slice = ((addr+byte-bankBase)/(4*cap)).toInt
-                  assert(slice >= 6 || (skip & (1<<slice)) == 0, "wrote an omitted input byte")
+                  val slice = ((addr + byte - bankBase) / (4 * cap)).toInt
+                  assert(slice >= 6 || (skip & (1 << slice)) == 0, "wrote an omitted input byte")
                   assert(slice != 7 || !depthNoInit, "wrote omitted depth initialization")
                   assert(slice != 8 || !controlNoInit, "wrote omitted control initialization")
                 }
@@ -190,8 +219,15 @@ class KernelFragOutputUsageSpec extends AnyFlatSpec {
               readSeen ||= !wr
               val fault = !injected && ((faultPhase == "write" && wr) || (faultPhase == "read" && !wr))
               injected ||= fault
-              pending += Pending(id, b.address.peek().litValue.toLong, wr, b.writeData.peek().litValue,
-                b.byteMask.peek().litValue, cycle + (if (seq % 2 == 0) 35 * transactions else 4), fault)
+              pending += Pending(
+                id,
+                b.address.peek().litValue.toLong,
+                wr,
+                b.writeData.peek().litValue,
+                b.byteMask.peek().litValue,
+                cycle + (if (seq % 2 == 0) 35 * transactions else 4),
+                fault
+              )
               seq += 1; maxPending = math.max(maxPending, pending.size)
             }
             dut.clock.step(); cycle += 1
@@ -201,18 +237,26 @@ class KernelFragOutputUsageSpec extends AnyFlatSpec {
           val singleLine = cap == 8 && skip == 15 && outputSkip == 15
           assert(maxPending >= (if (singleLine) 1 else 2) && maxPending <= transactions)
           if (!singleLine) assert(reordered, "did not reorder staging IDs")
-          if (count == cap) assert(maxPending == (if (singleLine) 1 else transactions), "did not fill every usable credit")
+          if (count == cap)
+            assert(maxPending == (if (singleLine) 1 else transactions), "did not fill every usable credit")
           assert(launched == (faultPhase != "write"))
           assert(readSeen == (faultPhase != "write"))
-          for (bank <- 0 until 2; slice <- 0 until 10; i <- 0 until cap
-              if (slice < 6 && (skip & (1<<slice)) != 0) || slice == 9 ||
-                (slice == 7 && depthNoInit) || (slice == 8 && controlNoInit))
-            assert(word(0x8000L+bank*0x2000+slice*4L*cap+i*4)==sentinel(bank,slice,i), "omitted input/uniform changed")
+          for (
+            bank <- 0 until 2; slice <- 0 until 10; i <- 0 until cap
+            if (slice < 6 && (skip & (1 << slice)) != 0) || slice == 9 ||
+              (slice == 7 && depthNoInit) || (slice == 8 && controlNoInit)
+          )
+            assert(
+              word(0x8000L + bank * 0x2000 + slice * 4L * cap + i * 4) == sentinel(bank, slice, i),
+              "omitted input/uniform changed"
+            )
           dut.io.wordMemResp.valid.poke(false.B)
           dut.io.kernelCompletion.valid.poke(false.B)
           dut.clock.step(2)
           dut.io.drained.expect(true.B)
-          println(s"OUTPUT_STAGING outputSkip=$outputSkip abi1=$abi1 cap=$cap count=$count fault=$faultPhase credits=$transactions cycles=$cycle maxPending=$maxPending")
+          println(
+            s"OUTPUT_STAGING outputSkip=$outputSkip abi1=$abi1 cap=$cap count=$count fault=$faultPhase credits=$transactions cycles=$cycle maxPending=$maxPending"
+          )
         }
       }
     }
