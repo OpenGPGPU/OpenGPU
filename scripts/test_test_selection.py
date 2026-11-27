@@ -83,6 +83,9 @@ assert "opengpu.graphics.NativeFourEngineDefaultHostAxiSpec" in local_only
 geometry_ci_suites = {
     "opengpu.graphics.TessellationGeometryRawBridgeSpec",
     "opengpu.system.TessellationGeometryPipelineControlSpec",
+    "opengpu.system.TessellationJointGeometryNativeControllerSpec",
+    "opengpu.system.TessellationGeometryVertexRangeControlSpec",
+    "opengpu.system.TessellationGeometryVertexTypedRangeTagSpec",
     "opengpu.graphics.TessellationGeometryClientTransportSpec",
     "opengpu.graphics.TessellationGeometryVertexTupleSpec",
     "opengpu.system.TessellationJointGeometryJobCaptureReaderSpec",
@@ -198,6 +201,9 @@ for name in ("IsolineGeometryCuRendererSpec", "IsolineGeometryCuClipSpec", "Isol
         assert assigned[suite] == "system-core"
 assert assigned["opengpu.system.GeometryPrimitivePipelineSpec"] == "system-core"
 assert assigned["opengpu.system.TessellationGeometryPipelineControlSpec"] == "system-core"
+assert assigned["opengpu.system.TessellationJointGeometryNativeControllerSpec"] == "system-core"
+assert assigned["opengpu.system.TessellationGeometryVertexRangeControlSpec"] == "system-core"
+assert assigned["opengpu.system.TessellationGeometryVertexTypedRangeTagSpec"] == "system-core"
 assert assigned["opengpu.system.NativeGeometryPrimitivePipelineSpec"] == "system-core"
 assert assigned["opengpu.system.NativeGeometrySharedCuSpec"] == "system-core"
 assert assigned["opengpu.system.NativeGeometryVertexPipelineSpec"] == "system-core"
