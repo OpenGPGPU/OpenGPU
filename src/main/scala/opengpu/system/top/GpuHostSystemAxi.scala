@@ -17,6 +17,7 @@ import opengpu.graphics.{
   NativeBinnedCompletionInfo,
   NativeRgba8TextureRendererPorts,
   NativeRgba8TexturePool,
+  TessellationJointGeometryHostProtocol,
   TessellationJointHostProtocol
 }
 
@@ -136,13 +137,24 @@ class GpuHostSystemAxi(
     tessellationSampleShading: Boolean = false,
     imageFloatExchangeAvailable: Boolean = false,
     tessellationUniforms: Boolean = false,
-    jointTessellationNative: Boolean = false
+    jointTessellationNative: Boolean = false,
+    jointTessellationGeometryNative: Boolean = false
 ) extends RawModule {
+  require(
+    !(jointTessellationNative && jointTessellationGeometryNative),
+    "joint geometry and legacy joint tessellation modes are mutually exclusive"
+  )
+  require(
+    !jointTessellationGeometryNative ||
+      (tessellationNative && tessellationUniforms && nativeProtectedSources),
+    "joint geometry requires the protected native source and checked tessellation uniform routes"
+  )
   require(
     !jointTessellationNative || (tessellationNative && tessellationUniforms && nativeProtectedSources),
     "joint tessellation requires the protected native source and checked tessellation uniform routes"
   )
-  private val legacyTessellationNative = tessellationNative && !jointTessellationNative
+  private val legacyTessellationNative =
+    tessellationNative && !jointTessellationNative && !jointTessellationGeometryNative
   require(
     !tessellationUniforms || tessellationNative,
     "checked tessellation uniforms require the native three-domain owner"
@@ -207,6 +219,17 @@ class GpuHostSystemAxi(
       nativeFeedback
     )
   }
+  private val jointTessellationGeometryProfile =
+    nativeBinnedGraphics.filter(_ => jointTessellationGeometryNative).flatMap { n =>
+      TessellationJointGeometryHostProtocol.profileFor(
+        graphicsConfig,
+        gpuConfig,
+        numComputeUnits,
+        n,
+        enableFpuBackend && gpuConfig.enableFpu,
+        tessellationSampleShading
+      )
+    }
   require(
     !tessellationNative || nativeBinnedGraphics.nonEmpty,
     "internal tessellation host integration requires native binned graphics"
@@ -346,7 +369,14 @@ class GpuHostSystemAxi(
     else baseGraphicsHostTransactions
   private val tessellationTransactions = nativeBinnedGraphics
     .map { n =>
-      if (jointTessellationNative)
+      if (jointTessellationGeometryNative)
+        TessellationJointThreeDomainGeometryJobImage.transactions(
+          n.engines,
+          n.writeCredits,
+          n.pagedCapacity,
+          tessellationUniforms
+        )
+      else if (jointTessellationNative)
         TessellationJointThreeDomainJobImage.transactions(
           n.engines,
           n.writeCredits,
@@ -364,7 +394,8 @@ class GpuHostSystemAxi(
     .getOrElse(1)
   private val tessellationPayloadPins = nativeBinnedGraphics
     .map { n =>
-      if (jointTessellationNative) TessellationJointThreeDomainJobImage.payloadPins(n.engines)
+      if (jointTessellationGeometryNative) TessellationJointThreeDomainGeometryJobImage.payloadPins(n.engines)
+      else if (jointTessellationNative) TessellationJointThreeDomainJobImage.payloadPins(n.engines)
       else TessellationNativeThreeDomainJobImage.payloadPins(n.engines)
     }
     .getOrElse(0)
@@ -522,8 +553,10 @@ class GpuHostSystemAxi(
         imageAtomicAvailable = imageAtomicAvailable,
         storageAtomicAvailable = storageAtomicAvailable,
         tessellationDiscovery = legacyTessellationNative && version >= 2,
-        jointTessellationHost = jointTessellationNative,
+        jointTessellationHost = jointTessellationNative || jointTessellationGeometryNative,
         jointTessellationProfile = jointTessellationProfile,
+        jointTessellationGeometryHost = jointTessellationGeometryNative,
+        jointTessellationGeometryProfile = jointTessellationGeometryProfile,
         nativeDescriptorPreflight = nativeBinnedGraphics.exists(_.descriptorPreflight),
         nativeProtectedSources = nativeProtectedSources,
         nativeGeometryTransport = nativeGeometryTransport,
@@ -576,8 +609,8 @@ class GpuHostSystemAxi(
         graphicsImageAvailable = nativeFragmentImages,
         imageAtomicAvailable = imageAtomicAvailable,
         storageAtomicAvailable = storageAtomicAvailable,
-        evaluationPatchAvailable = jointTessellationNative,
-        tessellationInfoAvailable = jointTessellationNative
+        evaluationPatchAvailable = jointTessellationNative || jointTessellationGeometryNative,
+        tessellationInfoAvailable = jointTessellationNative || jointTessellationGeometryNative
       )
     )
     if (nativeExecutionLimits) system.io.graphicsInstructionLimit.get := host.io.shaderInstructionLimit.get
@@ -680,9 +713,35 @@ class GpuHostSystemAxi(
         )
       )
     }
+    val jointGeometryTessellation = Option.when(jointTessellationGeometryNative) {
+      val n = nativeBinnedGraphics.get
+      Module(
+        new TessellationJointThreeDomainGeometryJobImage(
+          gpuConfig,
+          n.vertex,
+          n.fragment,
+          sharedShader.get,
+          n.renderGraphics(graphicsConfig),
+          engines = n.engines,
+          pageBytes = n.pageBytes,
+          writeCredits = n.writeCredits,
+          tileSlots = n.tileSlots,
+          pagedCapacity = n.pagedCapacity,
+          storage = n.storage,
+          useSramBlackBoxes = useBlackBoxes,
+          payload = localPayload,
+          fragmentImageAvailable = tessellationFragmentImages,
+          sampleShading = tessellationSampleShading,
+          tessellationUniforms = tessellationUniforms,
+          primitiveIdInput = true,
+          enabled = true
+        )
+      )
+    }
     val tessellationPorts = tessellation
       .map[TessellationHostPhysicalPorts](_.io)
       .orElse(jointTessellation.map(_.io))
+      .orElse(jointGeometryTessellation.map(_.io))
     val tessellationMemory =
       if (tessellationNative)
         Some(
@@ -702,8 +761,8 @@ class GpuHostSystemAxi(
               imageAvailable = nativeFragmentImages,
               legacyGeometry = nativeBinnedGraphics.exists(_.nativeGeometry),
               tessellationImageAvailable = tessellationFragmentImages,
-              evaluationPatchAvailable = jointTessellationNative,
-              tessellationInfoAvailable = jointTessellationNative
+              evaluationPatchAvailable = jointTessellationNative || jointTessellationGeometryNative,
+              tessellationInfoAvailable = jointTessellationNative || jointTessellationGeometryNative
             )
           )
         )
@@ -744,10 +803,11 @@ class GpuHostSystemAxi(
     val feedbackControl =
       if (nativeFeedback) Some(Module(new opengpu.graphics.NativeTransformFeedbackControl(gpuConfig))) else None
     val feedbackTransfer =
-      if (tessellationNative && nativeFeedback) Some(Module(new opengpu.graphics.TransformFeedbackOwnerTransfer()))
+      if (tessellationNative && nativeFeedback && !jointTessellationGeometryNative)
+        Some(Module(new opengpu.graphics.TransformFeedbackOwnerTransfer()))
       else None
     val feedbackAdmission =
-      if (tessellationNative && nativeFeedback)
+      if (tessellationNative && nativeFeedback && !jointTessellationGeometryNative)
         Some(Module(new TessellationFeedbackAdmission(commandIdWidth, jointTessellationNative)))
       else None
     feedbackControl.foreach { f =>
@@ -768,6 +828,11 @@ class GpuHostSystemAxi(
       memory.io.tessellationRequest <> t.memoryRequest; t.memoryResponse <> memory.io.tessellationResponse
       t.satp := host.io.vectorSatp; t.flush := host.io.tlbFlush; t.cancel := host.io.tessellationCancel.get
       t.out.foreach(_.ready := true.B)
+    }
+    jointGeometryTessellation.foreach { t =>
+      t.io.geometryInvalidate.valid := false.B
+      t.io.geometryInvalidate.bits := 0.U.asTypeOf(t.io.geometryInvalidate.bits)
+      t.io.geometryInvalidateDone.ready := true.B
     }
     def connectPhysicalGraphics(
         request: DecoupledIO[ComputeMemoryRequest],
@@ -1332,9 +1397,20 @@ class GpuHostSystemAxi(
           }
           path.io.completion.ready := !failed && completion.ready && routeReady && payloadRetired
         }
+
+        jointGeometryTessellation.foreach { path =>
+          val next = Wire(Decoupled(new TessellationJointGeometryJobRequest(commandIdWidth)))
+          next <> host.io.jointTessellationGeometrySubmit.get
+          dispatchTessellation(next, path.io.submit, path.io.completion.valid)
+          val completion = host.io.jointTessellationGeometryCompletion.get
+          completion.valid := path.io.completion.valid && routeReady && payloadRetired
+          completion.bits := path.io.completion.bits
+          path.io.completion.ready := completion.ready && routeReady && payloadRetired
+        }
       } else renderer.io.submit <> host.io.binSubmit.get
       renderer.io.cancel := host.io.binCancel.get
-      if (nativeFeedback && !tessellationNative) attachFeedback(renderer.io.feedback.get)
+      if (nativeFeedback && (!tessellationNative || jointTessellationGeometryNative))
+        attachFeedback(renderer.io.feedback.get)
       for (e <- 0 until n.engines) {
         renderer.io.out(e).ready := true.B; renderer.io.primitiveDone(e).ready := true.B;
         renderer.io.tileDone(e).ready := true.B
@@ -1370,22 +1446,29 @@ class GpuHostSystemAxi(
         if (visibilityQueries || primitiveQueries) Some(Module(new TessellationQueryAdmissionFence)) else None
       queryFence.foreach { f =>
         f.io.accepted := host.io.binSubmit.get.fire || host.io.tessellationSubmit.map(_.fire).getOrElse(false.B) ||
-          host.io.jointTessellationSubmit.map(_.fire).getOrElse(false.B)
+          host.io.jointTessellationSubmit.map(_.fire).getOrElse(false.B) ||
+          host.io.jointTessellationGeometrySubmit.map(_.fire).getOrElse(false.B)
         f.io.context := host.io.renderQueryContext.orElse(host.io.renderFeedbackScope.map(_.context)).get
         f.io.root := host.io.vectorSatp; f.io.renderIdle := renderIdle
         f.io.admissionBusy := feedbackAdmission.map(_.io.busy).getOrElse(false.B)
-        val tessCompletion = host.io.tessellationCompletion
         f.io.legacyFault.valid := completion.fire && completion.bits.status =/= 0.U
         f.io.legacyFault.bits := completion.bits.status
+        val geometryCompletion = host.io.jointTessellationGeometryCompletion
         val jointCompletion = host.io.jointTessellationCompletion
-        f.io.tessFault.valid := jointCompletion
-          .map(c => c.fire && c.bits.status =/= 0.U)
-          .orElse(tessCompletion.map(c => c.fire && c.bits.status =/= 0.U))
-          .getOrElse(false.B)
-        f.io.tessFault.bits := jointCompletion
-          .map(_.bits.status)
-          .orElse(tessCompletion.map(_.bits.status))
-          .getOrElse(0.U)
+        val tessCompletion = host.io.tessellationCompletion
+        val geometryFault = geometryCompletion.map(c => c.fire && c.bits.base.status =/= 0.U).getOrElse(false.B)
+        val jointFault = jointCompletion.map(c => c.fire && c.bits.status =/= 0.U).getOrElse(false.B)
+        val tessFault = tessCompletion.map(c => c.fire && c.bits.status =/= 0.U).getOrElse(false.B)
+        f.io.tessFault.valid := geometryFault || jointFault || tessFault
+        f.io.tessFault.bits := Mux(
+          geometryFault,
+          geometryCompletion.map(_.bits.base.status).getOrElse(0.U),
+          Mux(
+            jointFault,
+            jointCompletion.map(_.bits.status).getOrElse(0.U),
+            tessCompletion.map(_.bits.status).getOrElse(0.U)
+          )
+        )
       }
       queries.foreach { q =>
         val context = queryFence.get.io.scopeContext; val root = queryFence.get.io.scopeRoot

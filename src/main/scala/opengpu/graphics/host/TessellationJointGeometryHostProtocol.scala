@@ -3,6 +3,7 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 import opengpu.command.{GpuCommand, GpuCommandOpcode}
+import opengpu.config.GpuConfig
 import opengpu.system.{TessellationJointGeometryJobRequest, TessellationJointGeometryNativeCompletion}
 import scala.util.Try
 
@@ -174,6 +175,31 @@ object TessellationJointGeometryHostProtocol {
     singleDomainTotalPins = 37
   )
   val profileWords = targetProfile.words
+
+  def profileFor(
+      graphics: GraphicsConfig,
+      gpu: GpuConfig,
+      computeUnits: Int,
+      native: NativeBinnedGraphicsConfig,
+      scalarFpu: Boolean,
+      sampleInputs: Boolean
+  ): Option[Profile] =
+    Option.when(
+      computeUnits == targetProfile.computeUnits && gpu.lanes == targetProfile.lanes &&
+        gpu.warps == targetProfile.warps && gpu.sharedMemoryBase == 0x10000000L &&
+        gpu.sharedMemoryBytes == 16384 && graphics.maxSampleCount == 4 &&
+        native.engines == targetProfile.engines && native.vertex.input.attributes == 16 &&
+        native.vertex.input.bindings == 16 && native.vertex.varyings == 16 &&
+        native.fragment.varyings == 16 && native.fragment.colors == 4 &&
+        native.payload.exists(q =>
+          q.capacityBytes == targetProfile.payloadBytes.longValue &&
+            q.maxPayloadBytes == targetProfile.maxPayloadBytes.longValue &&
+            q.owners == targetProfile.payloadOwners && q.ports == targetProfile.payloadPorts
+        ) &&
+        !native.storage.nativeAdvancedDraws && !sampleInputs && scalarFpu
+    ) {
+      targetProfile
+    }
 
   private def unsigned(value: BigInt, bits: Int, name: String): Unit =
     require(value >= 0 && value.bitLength <= bits, s"$name is out of range")

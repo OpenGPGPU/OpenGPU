@@ -7,6 +7,7 @@ import opengpu.graphics.{
   GpuCommandMmioRegs,
   NativeVertexInputCapabilities,
   RenderHostRegs,
+  TessellationJointGeometryHostProtocol,
   TessellationJointHostProtocol
 }
 import opengpu.testutil.GpuSim._
@@ -43,7 +44,12 @@ class TessellationHostAxiCommandSpec extends AnyFlatSpec {
     d.io.s_axi_araddr.poke(address.U); d.io.s_axi_arvalid.poke(true.B)
     until(d)(d.io.s_axi_arready.peek().litToBoolean); d.clock.step(); d.io.s_axi_arvalid.poke(false.B)
     until(d)(d.io.s_axi_rvalid.peek().litToBoolean); val value = d.io.s_axi_rdata.peek().litValue
-    d.io.s_axi_rresp.expect(response.U); d.io.s_axi_rready.poke(true.B); d.clock.step();
+    val actualResponse = d.io.s_axi_rresp.peek().litValue
+    assert(
+      actualResponse == response.toInt,
+      s"AXI read 0x${address.toHexString} response=$actualResponse expected=$response"
+    )
+    d.io.s_axi_rready.poke(true.B); d.clock.step();
     d.io.s_axi_rready.poke(false.B); value
   }
   it should "route a tessellation job through protected host AXI and pin VM state through completion" in {
@@ -292,6 +298,154 @@ class TessellationHostAxiCommandSpec extends AnyFlatSpec {
       assert(read(d, 0x188) == 0 && read(d, 0x18c) == 99)
       assert(read(d, r.COMPLETION_BYTES_LO) == 0 && read(d, r.COMPLETION_BYTES_HI) == 0)
       assert(read(d, 0x540) == 0 && read(d, 0x54c) == 0)
+      write(d, r.COMPLETION_POP, 1)
+    }
+  }
+  it should "expose read-only GJP2 and hold the complete GNZ3 window through POP and reset" in {
+    val gpu = GpuConfig(lanes = 16, warps = 8)
+    val profile = TessellationJointGeometryHostProtocol.targetProfile
+    simulate(
+      new GpuHostAxi(
+        gpuConfig = gpu,
+        version = 2,
+        unifiedCommandMmio = true,
+        protectVmState = true,
+        externalBinnedRender = true,
+        nativeCompletionInfo = true,
+        nativeVertexInput = true,
+        jointTessellationHost = true,
+        jointTessellationGeometryHost = true,
+        transformFeedback = true,
+        nativeUniformResources = true,
+        shaderExecutionLimits = true,
+        nativeDescriptorPreflight = true,
+        nativeProtectedSources = true,
+        jointTessellationGeometryProfile = Some(profile),
+        computeResources = Some(ComputeResourceProfile(gpu, 2, 32))
+      )
+    ) { d =>
+      zero(d.io)
+      d.io.s_axi_aresetn.poke(false.B); d.clock.step(3)
+      d.io.s_axi_aresetn.poke(true.B); d.clock.step()
+      d.io.s_axi_awsize.poke(2.U); d.io.s_axi_awburst.poke(1.U)
+      d.io.s_axi_arsize.poke(2.U); d.io.s_axi_arburst.poke(1.U)
+      d.io.vmContextIdle.get.poke(true.B); d.io.graphicsDependencyIdle.get.poke(true.B)
+      d.io.binDrained.get.poke(true.B); d.io.tessellationDrained.get.poke(true.B)
+      d.io.gpuCommand.get.ready.poke(true.B)
+      val r = GpuCommandMmioRegs
+      val flags = read(d, ComputeResourceCapabilities.base + 8)
+      assert((flags & ComputeResourceCapabilities.jointTessellationGeometry) != 0)
+      assert((flags & ComputeResourceCapabilities.jointTessellation) == 0)
+      assert(
+        (flags & (ComputeResourceCapabilities.tessellationCommands | ComputeResourceCapabilities.tessellationFeedback)) == 0
+      )
+      for ((word, index) <- TessellationJointGeometryHostProtocol.profileWords.zipWithIndex)
+        assert(read(d, TessellationJointGeometryHostProtocol.profileBase + 4 * index) == word)
+      write(d, TessellationJointGeometryHostProtocol.profileBase, 0, response = 2)
+      assert(
+        read(d, TessellationJointGeometryHostProtocol.profileBase) == TessellationJointGeometryHostProtocol.profileMagic
+      )
+      assert(read(d, TessellationJointGeometryHostProtocol.profileEnd, response = 2) == 0)
+      write(d, RenderHostRegs.IRQ, 1)
+      write(d, r.COMMAND_ID, 61); write(d, r.OPCODE, 15)
+      write(d, r.SOURCE, 0x4000); write(d, r.DESTINATION, 0x8000)
+      write(d, r.PATTERN, 0x474a0200); write(d, r.BYTES, 512)
+      write(d, r.WIDTH, 0x10000); write(d, r.HEIGHT, 7)
+      write(d, r.SOURCE_STRIDE, 8); write(d, r.DESTINATION_STRIDE, 9)
+      write(d, r.FLAGS, 0); write(d, r.SUBMIT, 1)
+      val submit = d.io.jointTessellationGeometrySubmit.get
+      until(d)(submit.valid.peek().litToBoolean)
+      d.io.jointTessellationSubmit.get.valid.expect(false.B)
+      submit.bits.commandId.expect(61.U); submit.bits.domain.expect(0.U)
+      submit.bits.view.base.expect(0x4000.U); submit.bits.view.limit.expect(0x4200.U)
+      submit.bits.owner.base.expect(0x8000.U); submit.bits.owner.limit.expect(0x10000.U)
+      submit.ready.poke(true.B); d.clock.step(); submit.ready.poke(false.B)
+      d.io.tessellationDrained.get.poke(false.B)
+      write(d, r.VECTOR_SATP, 0, response = 2)
+      val identity = TessellationJointGeometryHostProtocol.Identity(7, 8, 9)
+      val completion = TessellationJointGeometryHostProtocol.Completion(
+        status = 0,
+        faultStage = 0,
+        clearOnly = false,
+        geometryReportValid = true,
+        faultAddress = 0,
+        identity = identity,
+        capturedEntries = 19,
+        retiredRanges = 18,
+        retiredPatches = BigInt("200000011", 16),
+        published = BigInt("300000012", 16),
+        storedBytes = BigInt("400000013", 16),
+        resolvedBytes = BigInt("500000014", 16),
+        actualGsPublished = BigInt("123456789abcdef", 16),
+        received = 15,
+        dropped = 4,
+        admitted = 11,
+        geometryTasks = 10,
+        nextGsSequenceExclusive = 122,
+        nextGsSequence = 122,
+        nextBinSequence = 11
+      )
+      val expected = TessellationJointGeometryHostProtocol.pack(completion)
+      val reply = d.io.jointTessellationGeometryCompletion.get
+      reply.bits.base.commandId.poke(61.U); reply.bits.base.identity.context.poke(7.U)
+      reply.bits.base.identity.pass.poke(8.U); reply.bits.base.identity.generation.poke(9.U)
+      reply.bits.base.status.poke(0.U); reply.bits.base.readBytes.poke(123.U)
+      reply.bits.base.capturedEntries.poke(19.U); reply.bits.base.retiredRanges.poke(18.U)
+      reply.bits.base.retiredPatches.poke("h200000011".U); reply.bits.base.published.poke("h300000012".U)
+      reply.bits.base.storedBytes.poke("h400000013".U); reply.bits.base.resolvedBytes.poke("h500000014".U)
+      reply.bits.geometryReportValid.poke(true.B); reply.bits.actualGsPublished.poke("h123456789abcdef".U)
+      reply.bits.received.poke(15.U); reply.bits.dropped.poke(4.U); reply.bits.admitted.poke(11.U)
+      reply.bits.geometryTasks.poke(10.U); reply.bits.nextGsSequenceExclusive.poke(122.U)
+      reply.bits.nextGsSequence.poke(122.U); reply.bits.nextBinSequence.poke(11.U)
+      reply.valid.poke(true.B); until(d)(reply.ready.peek().litToBoolean)
+      d.clock.step(); reply.valid.poke(false.B); d.io.tessellationDrained.get.poke(true.B)
+      until(d)(d.io.m_irq.peek().litToBoolean)
+      for ((word, index) <- expected.zipWithIndex)
+        assert(read(d, TessellationJointGeometryHostProtocol.completionAddress(index)) == word)
+      for (
+        address <-
+          TessellationJointGeometryHostProtocol.completionGeometryBase until TessellationJointGeometryHostProtocol.completionTailEnd by 4
+      ) {
+        val index = (address - TessellationJointGeometryHostProtocol.completionGeometryBase) / 4 + 16
+        val wanted = if (index < expected.size) expected(index) else BigInt(0)
+        assert(read(d, address) == wanted)
+      }
+      assert(read(d, TessellationJointGeometryHostProtocol.completionTailEnd, response = 2) == 0)
+      write(d, TessellationJointGeometryHostProtocol.completionGeometryBase, 0, response = 2)
+      assert(read(d, TessellationJointGeometryHostProtocol.completionGeometryBase) == expected(16))
+      write(d, r.COMPLETION_POP, 1)
+      for (index <- expected.indices)
+        assert(read(d, TessellationJointGeometryHostProtocol.completionAddress(index)) == 0)
+      write(d, r.SUBMIT, 1); until(d)(submit.valid.peek().litToBoolean)
+      submit.ready.poke(true.B); d.clock.step(); submit.ready.poke(false.B)
+      reply.valid.poke(true.B); until(d)(reply.ready.peek().litToBoolean)
+      d.clock.step(); reply.valid.poke(false.B)
+      assert(read(d, TessellationJointGeometryHostProtocol.completionGeometryBase) == expected(16))
+      write(d, r.RESET, 1)
+      for (index <- expected.indices)
+        assert(read(d, TessellationJointGeometryHostProtocol.completionAddress(index)) == 0)
+      d.io.commandResetDone.get.poke(true.B); d.clock.step(); d.io.commandResetDone.get.poke(false.B)
+      write(d, r.SOURCE, 0x4000); write(d, r.DESTINATION, 0x8000)
+      write(d, r.PATTERN, 0x474a0100); write(d, r.BYTES, 256)
+      write(d, r.WIDTH, 0); write(d, r.HEIGHT, 7)
+      write(d, r.SOURCE_STRIDE, 8); write(d, r.DESTINATION_STRIDE, 9)
+      write(d, r.FLAGS, 24); write(d, r.SUBMIT, 1)
+      val oldSubmit = d.io.jointTessellationSubmit.get
+      until(d)(oldSubmit.valid.peek().litToBoolean)
+      submit.valid.expect(false.B); oldSubmit.ready.poke(true.B)
+      d.clock.step(); oldSubmit.ready.poke(false.B)
+      val oldReply = d.io.jointTessellationCompletion.get
+      oldReply.bits.commandId.poke(61.U); oldReply.bits.identity.context.poke(7.U)
+      oldReply.bits.identity.pass.poke(8.U); oldReply.bits.identity.generation.poke(9.U)
+      oldReply.bits.status.poke(0.U); oldReply.valid.poke(true.B)
+      until(d)(oldReply.ready.peek().litToBoolean); d.clock.step(); oldReply.valid.poke(false.B)
+      until(d)(d.io.m_irq.peek().litToBoolean)
+      assert(read(d, 0x180) == 0x474e5a02)
+      for (
+        address <-
+          TessellationJointGeometryHostProtocol.completionGeometryBase until TessellationJointGeometryHostProtocol.completionTailEnd by 4
+      )
+        assert(read(d, address) == 0)
       write(d, r.COMPLETION_POP, 1)
     }
   }
