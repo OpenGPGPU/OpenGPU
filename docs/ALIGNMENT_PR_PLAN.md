@@ -193,11 +193,12 @@
    双 CU 4×4 harness、65-view handoff 和独立 runtime/frame oracle；真实 Mesa、
    Bundle shape 与 retained Verilator 两例实际 CU/frame replay 已通过，含单 reset、
    双 CU committed writeback、compute blocker、四 MRT 图像/padding/guard 和完整
-   drain。当前下一 PR 先把 GNQ7/8/9/GGA1/GNG1 metadata 接入独立 native range
-   controller/typed-range adapters，保留 tag-zero capture、directory lease、独立
-   cursor 和 65-bit exclusive endpoint；joint image parent、protected host/driver
-   和完整 P39/P40 联合验收仍在其后。TF 与 ABI10 provider/admission 是独立后续
-   接线，不阻塞基础 ABI5/7，但完整 P17 关闭前仍须完成。
+   drain。当前增量把独立 native range controller/typed-range adapter 的
+   65-bit exclusive endpoint 从实际 GS 贯通到三域 geometry task completion 与
+   frame result；`2^64` 合法，高位错误和耗尽后的 successor 均拒绝。默认构造器
+   保持旧行为，仅 native geometry 路径启用。joint image parent、protected
+   host/driver、public discovery/submission、TF、ABI10 与完整 P39/P40 联合验收
+   仍在其后，本增量不增加闭环计数。
 2. **P39/P40 剩余联合验收**：五阶段 owner 可用后，完成三域原 shader、完整
    资源/配置、双 owner/无关 owner、fault/cancel/drain/retirement 和健康复用。
    已有 P16 uniform 工厂与 P40 endpoint 结果可以复用，但不能替代联合门槛。
@@ -243,7 +244,7 @@ GPU 的正式交付入口是受保护的 [`main`](https://github.com/OpenGPGPU/O
 
 | 仓库 / 分支 | 用途与交付方式 |
 |---|---|
-| GPU `main` | 已通过受保护 CI 并合入的正式源码，最近基线为 #963（merge `bcf88f1ba`）；无 TF 原五阶段 harness 的真实 Mesa 与 retained Verilator 两例实际 CU/frame replay 已通过。P15/P16/P17/P39/P40 部分源码与限定资格已合入，完整目标验收待完成。 |
+| GPU `main` | 已通过受保护 CI 并合入的正式源码，最近基线为 #967（`c96ea46e239403f30fbcff46d81b181fb74cacac`）；无 TF 原五阶段 harness 的真实 Mesa 与 retained Verilator 两例实际 CU/frame replay 已通过。P15/P16/P17/P39/P40 部分源码与限定资格已合入，完整目标验收待完成。 |
 | GPU #828 已合入 | 联合 BUILD 与 GNQ/GVM 元数据捕获；准确 head1dba3adbd/merge346d96cfd，正常CI八job成功，临时交付树/分支已清理；完整P16仍待验收 |
 | GPU #829 已合入 | [PR #829](https://github.com/OpenGPGPU/OpenGPU/pull/829) 整合 linked TCS 间接输出存储和同一原四阶段/52引用到 joint BUILD 的源码与独立检查；已通过受保护 CI 并 rebase 合入正式 main |
 | GPU `codex/native-sample-dut-bridge` | 保留 P02/P03 的原开发源码，按本清单分批交付；不另外开放并行 PR |

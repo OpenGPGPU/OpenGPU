@@ -849,6 +849,43 @@ VS-to-GS-to-clip/bin route, full stage resource routing, production submission a
 native/API qualification remain required.
 
 
+## Tessellation native GS sequence endpoint
+
+The opt-in `exclusiveGsSequence` sideband carries a 65-bit next GS sequence from
+`NativeGeometryPrimitivePipeline` through the tessellation control, primitive,
+viewport and patch-dispatch stages. All three native geometry bin/image parents
+preserve it in both the actual geometry task completion and the final frame
+result; the legacy low-64-bit `nextGsSequence` remains available. The endpoint
+`2^64` is legal, a high-bit value with the same low 64 bits is rejected, and a
+patch cannot launch a successor after reaching that endpoint.
+
+Default constructors keep `exclusiveGsSequence=false` and their previous
+low-64-bit behavior. Only the native geometry bin/image path enables the sideband.
+This does not connect a joint image parent, protected host/driver, public
+discovery/submission, transform feedback or ABI10. Focused boundary and
+three-domain elaboration checks use `GraphicsTestResolution` and do not render
+above 640×480; actual protected three-domain CU/frame and product acceptance
+remain pending.
+
+The focused JDK21 run passes 21 tests across seven suites, including the native
+`2^64` boundary, control/patch rejection and exhausted-successor cases, all three
+parent elaborations, transport and tuple checks. The selector tests pass 177
+cases, CI assignment passes, and shell/diff checks are clean. Reproduce with:
+
+```sh
+export JAVA_HOME=/opt/homebrew/opt/openjdk@21
+export JAVA_OPTS='-Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8'
+export JVM_OPTS="$JAVA_OPTS"
+bash scripts/scala_autofix.sh origin/main
+sbt -batch 'Test / compile'
+sbt -batch 'testOnly opengpu.system.NativeGeometryPrimitivePipelineSpec opengpu.system.TessellationGeometryPipelineControlSpec opengpu.system.TessellationGeometryPatchDispatchSpec opengpu.system.TessellationGeometryParentElaborationSpec opengpu.graphics.TessellationGeometryClientTransportSpec opengpu.graphics.TessellationGeometryVertexTupleSpec opengpu.graphics.TessellationGeometryRawBridgeSpec'
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_changed_test_suites.py
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/test_test_selection.py
+bash -n scripts/ci_shard_tests.sh
+git diff --check
+```
+
+
 ## Native vertex-to-geometry source component
 
 `NativeGeometryVertexPipeline` connects the actual vertex shader stage to raw
