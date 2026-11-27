@@ -298,7 +298,7 @@
     "words": 4,
     "gcr1PresenceBit": 23,
     "requiredOwnerMask": "0x7f",
-    "targetFlags": "0x387f",
+    "targetFlags": "0x38ff",
     "flags": [
       {
         "name": "OWNED_VERTEX_SOURCE",
@@ -338,7 +338,7 @@
       {
         "name": "SCALAR_FPU",
         "bit": 7,
-        "required": false
+        "required": true
       },
       {
         "name": "ADVANCED_BLEND",
