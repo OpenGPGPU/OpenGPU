@@ -72,14 +72,15 @@ then deliver the existing parent's explicit end barrier on success, empty,
 error and cancellation paths; whole-frame retirement separately requires the
 real global memory drain.
 
-The native outer owner must still provide a checked mapping from the GNQ array
-index to the original draw ordinal. Neither render tokens nor a GVS record can
-authorize that mapping. The future frame owner also needs independently trusted
-draw-invocation/instance/range boundaries for continuation and new-draw resets;
-a reused draw-catalog index or raw token cannot identify a new invocation.
-Actual three-domain parent composition, native routing,
-protected provenance, actual CU results and complete product qualification
-remain pending. Scala regression must remain disabled.
+The native outer owner provides a checked mapping from the GNQ array index to the
+original draw ordinal. Neither render tokens nor a GVS record can authorize that
+mapping. The frame owner retains independently trusted draw-invocation/instance/
+range boundaries for continuation and new-draw resets; a reused draw-catalog
+index or raw token cannot identify a new invocation. Three-domain GNQ4/5/6
+parent composition, native routing, input-patch identity and bounded protected
+replay are now merged. GNQ7/8/9 geometry range/parent/protected-host integration,
+actual five-stage CU/frame acceptance and complete product qualification remain
+pending. Scala regression must remain disabled.
 
 ## Validation
 
@@ -93,5 +94,6 @@ also retain default behavior and opt-in continuation checks.
 
 [Fresh-source results, negative controls and reproduction](P39_CAPTURE_RANGE_SOURCE_DELIVERY.md)
 record the current delivery checks. Original input-patch language identity,
-exclusive cursors across separate joint ranges, actual parent composition,
-original shaders and protected/product qualification remain later stages.
+exclusive cursors and GNQ4/5/6 parent composition are now merged; GNQ7/8/9
+geometry joint variants, actual five-stage CU/frame acceptance and protected/
+product qualification remain later stages.

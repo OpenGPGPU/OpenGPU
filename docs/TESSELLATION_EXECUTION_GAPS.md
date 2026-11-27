@@ -1,21 +1,22 @@
 # Tessellation execution work packages
 
-Two independent production gaps require P39 and P40 in the alignment PR plan.
-Neither is covered by the P15 checked-uniform implementation, P16 private
-program/resource admission or P17 Mesa lowering. Both remain incomplete and
-unqualified. Preserve the existing work-package IDs and acceptance conditions.
-The bounded original-draw slice, publisher/context and GPU range-generator
-results are recorded in [the source contract](VERTEX_DRAW_SLICES.md); they do
-not close the original-shader or protected whole-pipeline requirements below.
+P39 and P40 remain incomplete in the alignment PR plan. The legacy raw-input
+image path is still useful for diagnostics, but main now also contains an owned
+original-VS typed parent, input-patch language identity, dynamic TES read service
+and bounded GNQ4/5/6 protected replay. The remaining gap is the GNQ7/8/9 geometry
+joint controller/parent/protected-host chain and its full-resource, multi-owner,
+fault/cancel and product acceptance. Preserve the existing work-package IDs and
+acceptance conditions.
 
 ## P39: execute the original vertex shader before patch publication
 
-The existing `TessellationSystemIsolineInputImage` task contains a raw
+The legacy `TessellationSystemIsolineInputImage` task contains a raw
 `VertexInputView` and stride. It sends those words through
-`TessellationPatchInputDma` and seals the patch after DMA success. Triangle and
-quad input paths use the same approach. No original VS is launched by this
-source path. A CPU-generated patch can diagnose downstream stages but cannot
-qualify the VS→TCS/TES graphics chain.
+`TessellationPatchInputDma` and seals the patch after DMA success; no original VS
+is launched by that path. The merged owned typed parent instead uses the actual
+`VertexShaderStage`/shared-CU interfaces and has bounded GNQ4/5/6 protected
+three-domain replay. A CPU-generated patch can diagnose downstream stages but
+cannot qualify the full VS→TCS/TES graphics chain.
 
 The production bridge must use the actual `VertexShaderStage` draw, shared CU,
 payload and memory interfaces. Its raw `ShadedVertexRecord` position/varying
@@ -48,15 +49,13 @@ dependency for their joint tessellation/graphics acceptance.
 
 ## P40: dynamically read the complete owned patch from TES
 
-`IsolinePatchInputReader` currently selects at most 61 patch words before each
-evaluation. `IsolineGeometryCuExecutor` places them after three tessellation
-coordinate words in geometry input vertex 0. Triangle and quad evaluators
-reuse this transport. It cannot implement general dynamically indexed
-`gl_in[]` or the complete per-patch input contract. Raising 61 to 64 leaves
-the coordinate collision and full-patch indexing unresolved.
-
-Provide a TES task-owned, checked, read-only patch service and the corresponding
-ISA/compiler/validator contract. Keep coordinates independently accessible.
+The legacy `IsolinePatchInputReader` selects at most 61 patch words before each
+evaluation, and `IsolineGeometryCuExecutor` places them after three tessellation
+coordinate words in geometry input vertex 0. That transport cannot implement
+general dynamically indexed `gl_in[]`; raising 61 to 64 leaves the coordinate
+collision unresolved. Main now has a separate TES task-owned, checked,
+read-only dynamic patch service and matching ISA/compiler/validator path, with
+bounded protected endpoint replay. Keep coordinates independently accessible.
 The executing evaluation owns its patch and resource identity through accepted
 requests, replies, writeback, actual CU completion and cancellation drain. It
 cannot inherit TCS write/barrier permissions or unrelated GS emission/ID/layer

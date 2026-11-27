@@ -127,9 +127,10 @@ sampled RSS is not an absolute peak.
 `externalImages=true` and the external CU pool exclude actual CU/image-bank
 instances. This is structural lowering, without a rendered frame, shader,
 full factory, native/protected submission, mapped timing or FPS result. The
-language-ID service, original GNT/GVS/GND capture/range connection and actual
-three-domain original-VS→TCS/TES execution remain later stages. P39/P40 and
-the product target remain open. All 160 affected-suite selector checks and the
+language-ID service, original GNT/GVS/GND capture/range connection and bounded
+three-domain GNQ4/5/6 original-VS→TCS/TES protected replay are now merged.
+GNQ7/8/9 geometry joint integration, full resource/configuration and product
+qualification remain open. All 160 affected-suite selector checks and the
 integration/large-PR catalog checks pass. Ended models, classes, caches,
 mutants and logs are removed after consumer checks.
 
