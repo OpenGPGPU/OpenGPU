@@ -21,7 +21,8 @@ final case class NativeAlignmentHostConfig(
     tessellationSampleShading: Boolean = false,
     imageFloatExchange: Boolean = false,
     tessellationUniforms: Boolean = false,
-    jointTessellationNative: Boolean = false
+    jointTessellationNative: Boolean = false,
+    jointTessellationGeometryNative: Boolean = false
 ) {
   require(
     computeUnits > 0 && transactionsPerCu >= 16,
@@ -67,9 +68,30 @@ final case class NativeAlignmentHostConfig(
     )
     .flatten
   require(
+    !(jointTessellationNative && jointTessellationGeometryNative),
+    "joint geometry and legacy joint tessellation modes are mutually exclusive"
+  )
+  require(
     !jointTessellationNative ||
       (nativeProtectedSources && tessellationUniforms && jointTessellationProfile.nonEmpty),
     "joint tessellation requires the verified protected two-CU profile and checked uniforms"
+  )
+  private val jointTessellationGeometryProfile = Option
+    .when(jointTessellationGeometryNative)(
+      TessellationJointGeometryHostProtocol.profileFor(
+        graphics,
+        execution,
+        computeUnits,
+        native,
+        execution.enableFpu,
+        tessellationSampleShading
+      )
+    )
+    .flatten
+  require(
+    !jointTessellationGeometryNative ||
+      (nativeProtectedSources && tessellationUniforms && jointTessellationGeometryProfile.nonEmpty),
+    "joint geometry requires the exact protected GJP2 profile and checked uniforms"
   )
 
   private def block(base: Int, words: Seq[BigInt]): Vector[(Int, BigInt)] =
@@ -90,15 +112,16 @@ final case class NativeAlignmentHostConfig(
         atomicCounterAvailable = true,
         imageAtomicAvailable = true,
         storageAtomicAvailable = true,
-        tessellationAvailable = !jointTessellationNative,
-        tessellationFeedbackAvailable = !jointTessellationNative,
+        tessellationAvailable = !jointTessellationNative && !jointTessellationGeometryNative,
+        tessellationFeedbackAvailable = !jointTessellationNative && !jointTessellationGeometryNative,
         nativeAdvancedBlendAvailable = native.storage.nativeAdvancedDraws,
         nativeDescriptorPreflightAvailable = native.descriptorPreflight,
         nativeProtectedSourcesAvailable = nativeProtectedSources,
         nativeGeometryTransportAvailable = nativeGeometryTransport,
         nativeSampleTransportAvailable = nativeSampleTransport,
         imageFloatExchangeAvailable = imageFloatExchange,
-        jointTessellationAvailable = jointTessellationNative
+        jointTessellationAvailable = jointTessellationNative,
+        jointTessellationGeometryAvailable = jointTessellationGeometryNative
       )
     ) ++
       block(0x160, NativeBinnedGraphicsCapabilities.words(native, computeUnits, graphics)) ++
@@ -125,14 +148,18 @@ final case class NativeAlignmentHostConfig(
       (if (nativeSampleTransport)
          block(NativeSampleTransportCapabilities.base, NativeSampleTransportCapabilities.words)
        else Vector.empty) ++
-      jointTessellationProfile.toVector.flatMap(p => block(TessellationJointHostProtocol.profileBase, p.words))
+      jointTessellationProfile.toVector.flatMap(p => block(TessellationJointHostProtocol.profileBase, p.words)) ++
+      jointTessellationGeometryProfile.toVector.flatMap(p =>
+        block(TessellationJointGeometryHostProtocol.profileBase, p.words)
+      )
   private val discoveryWords =
     72 + (if (native.storage.nativeAdvancedDraws) 8
           else 0) + (if (native.descriptorPreflight) 8
                      else 0) + (if (nativeProtectedSources) 8 else 0) + (if (nativeGeometryTransport) 8
                                                                          else
                                                                            0) + (if (nativeSampleTransport) 8 else 0) +
-      jointTessellationProfile.size * TessellationJointHostProtocol.profileWordCount
+      jointTessellationProfile.size * TessellationJointHostProtocol.profileWordCount +
+      jointTessellationGeometryProfile.size * TessellationJointGeometryHostProtocol.profileWordCount
   require(
     requiredDiscovery.size == discoveryWords &&
       requiredDiscovery.map(_._1).distinct.size == discoveryWords,
@@ -201,5 +228,6 @@ class NativeAlignmentHostSystemAxi(
       tessellationFragmentImages = profile.tessellationFragmentImages,
       tessellationSampleShading = profile.tessellationSampleShading,
       tessellationUniforms = profile.tessellationUniforms,
-      jointTessellationNative = profile.jointTessellationNative
+      jointTessellationNative = profile.jointTessellationNative,
+      jointTessellationGeometryNative = profile.jointTessellationGeometryNative
     )

@@ -20,6 +20,7 @@ import opengpu.graphics.{
   OmMemoryResponse,
   RenderHost,
   RenderHostRegs,
+  TessellationJointGeometryHostProtocol,
   TessellationJointHostProtocol,
   TileBinHostCommandPort,
   TileBinHostRegs,
@@ -96,7 +97,9 @@ class GpuHostAxi(
     nativeSampleTransport: Boolean = false,
     imageFloatExchangeAvailable: Boolean = false,
     jointTessellationHost: Boolean = false,
-    jointTessellationProfile: Option[TessellationJointHostProtocol.Profile] = None
+    jointTessellationProfile: Option[TessellationJointHostProtocol.Profile] = None,
+    jointTessellationGeometryHost: Boolean = false,
+    jointTessellationGeometryProfile: Option[TessellationJointGeometryHostProtocol.Profile] = None
 ) extends Module {
   require(
     jointTessellationProfile.isEmpty || (jointTessellationHost && nativeProtectedSources &&
@@ -143,6 +146,16 @@ class GpuHostAxi(
   require(
     !jointTessellationHost || (externalBinnedRender && nativeCompletionInfo && gpuConfig.xLen == 32),
     "joint tessellation requires the protected binned command port and completion details"
+  )
+  require(
+    !jointTessellationGeometryHost || (externalBinnedRender && nativeCompletionInfo && gpuConfig.xLen == 32),
+    "joint geometry requires the protected binned command port and completion details"
+  )
+  require(
+    jointTessellationGeometryProfile.isEmpty ||
+      (jointTessellationGeometryHost && nativeProtectedSources &&
+        jointTessellationGeometryProfile.get.words == TessellationJointGeometryHostProtocol.profileWords),
+    "joint geometry discovery requires the exact protected GJP2 profile"
   )
   require(
     !tessellationDiscovery || (tessellationHost && nativeCompletionInfo && computeResources.nonEmpty && version >= 2),
@@ -292,8 +305,15 @@ class GpuHostAxi(
       Option.when(jointTessellationHost)(Decoupled(new TessellationJointJobRequest(commandIdWidth)))
     val jointTessellationCompletion =
       Option.when(jointTessellationHost)(Flipped(Decoupled(new TessellationJointNativeCompletion(commandIdWidth))))
-    val tessellationDrained = Option.when(tessellationHost || jointTessellationHost)(Input(Bool()))
-    val tessellationCancel = Option.when(tessellationHost || jointTessellationHost)(Output(Bool()))
+    val jointTessellationGeometrySubmit =
+      Option.when(jointTessellationGeometryHost)(Decoupled(new TessellationJointGeometryJobRequest(commandIdWidth)))
+    val jointTessellationGeometryCompletion = Option.when(jointTessellationGeometryHost)(
+      Flipped(Decoupled(new TessellationJointGeometryNativeCompletion(commandIdWidth)))
+    )
+    val tessellationDrained =
+      Option.when(tessellationHost || jointTessellationHost || jointTessellationGeometryHost)(Input(Bool()))
+    val tessellationCancel =
+      Option.when(tessellationHost || jointTessellationHost || jointTessellationGeometryHost)(Output(Bool()))
     val queryCommand = if (visibilityQueries) Some(Decoupled(new opengpu.graphics.VisibilityQueryCommand)) else None
     val queryReply =
       if (visibilityQueries) Some(Flipped(Decoupled(new opengpu.graphics.VisibilityQueryReply))) else None
@@ -394,7 +414,8 @@ class GpuHostAxi(
             computeUniformAvailable = computeUniformAvailable,
             computeTextureAvailable = computeTextureAvailable,
             atomicCounterAvailable = atomicCounterAvailable,
-            jointTessellationCompletion = jointTessellationHost
+            jointTessellationCompletion = jointTessellationHost,
+            jointTessellationGeometryCompletion = jointTessellationGeometryHost
           )
         )
       )
@@ -423,7 +444,8 @@ class GpuHostAxi(
             computeTextureAvailable,
             atomicCounterAvailable,
             tessellationAvailable = tessellationHost,
-            jointTessellationAvailable = jointTessellationHost
+            jointTessellationAvailable = jointTessellationHost,
+            jointTessellationGeometryAvailable = jointTessellationGeometryHost
           )
         )
         port.io.command <> bridge.io.command
@@ -437,6 +459,10 @@ class GpuHostAxi(
         if (jointTessellationHost) {
           io.jointTessellationSubmit.get <> port.io.jointTessellationSubmit.get
           port.io.jointTessellationCompletion.get <> io.jointTessellationCompletion.get
+        }
+        if (jointTessellationGeometryHost) {
+          io.jointTessellationGeometrySubmit.get <> port.io.jointTessellationGeometrySubmit.get
+          port.io.jointTessellationGeometryCompletion.get <> io.jointTessellationGeometryCompletion.get
         }
         io.tessellationCancel.foreach(_ := port.io.cancel)
         io.gpuCommand.get <> port.io.otherCommand
@@ -628,9 +654,11 @@ class GpuHostAxi(
         beatAddr >= NativeBinnedCompletionInfo.base.U && beatAddr < NativeBinnedCompletionInfo.end.U
       else false.B
     val targetJointDetails =
-      if (jointTessellationHost)
+      if (jointTessellationHost || jointTessellationGeometryHost)
         beatAddr >= TessellationJointHostProtocol.completionTailBase.U &&
-        beatAddr < TessellationJointHostProtocol.completionTailEnd.U
+        beatAddr < (if (jointTessellationGeometryHost)
+                      TessellationJointGeometryHostProtocol.completionTailEnd
+                    else TessellationJointHostProtocol.completionTailEnd).U
       else false.B
     val targetNativeInput =
       if (nativeVertexInput)
@@ -721,6 +749,11 @@ class GpuHostAxi(
         beatAddr >= TessellationJointHostProtocol.profileBase.U &&
         beatAddr < TessellationJointHostProtocol.profileEnd.U
       else false.B
+    val targetJointGeometryProfile =
+      if (jointTessellationGeometryProfile.nonEmpty)
+        beatAddr >= TessellationJointGeometryHostProtocol.profileBase.U &&
+        beatAddr < TessellationJointGeometryHostProtocol.profileEnd.U
+      else false.B
     val targetImages =
       if (imageAvailable)
         beatAddr >= opengpu.graphics.ShaderImageCommandMmioRegs.base.U &&
@@ -747,7 +780,7 @@ class GpuHostAxi(
         beatAddr < opengpu.graphics.AtomicCounterCommandMmioRegs.end.U
       else false.B
     val beatOk = transferOk && !beatAddrWide(32) && (beatAddr & 0x3.U) === 0.U &&
-      (beatAddr < mappedEnd || targetBinCapabilities || targetNativeDetails || targetJointDetails || targetNativeInput || targetFragmentInput || targetTexturePolicy || targetTextureFormats || targetRaster || targetVisibilityQueries || targetFeedback || targetPrimitiveQuery || targetShaderExecution || targetTextureOperations || targetIndirectCompute || targetComputeResources || targetUniformResources || targetBlendResources || targetAdvancedBlend || targetNativePreflight || targetNativeGeometry || targetNativeSample || targetJointProfile || targetImages || targetStorage || targetComputeUniform || targetComputeTexture || targetAtomicCounter)
+      (beatAddr < mappedEnd || targetBinCapabilities || targetNativeDetails || targetJointDetails || targetNativeInput || targetFragmentInput || targetTexturePolicy || targetTextureFormats || targetRaster || targetVisibilityQueries || targetFeedback || targetPrimitiveQuery || targetShaderExecution || targetTextureOperations || targetIndirectCompute || targetComputeResources || targetUniformResources || targetBlendResources || targetAdvancedBlend || targetNativePreflight || targetNativeGeometry || targetNativeSample || targetJointProfile || targetJointGeometryProfile || targetImages || targetStorage || targetComputeUniform || targetComputeTexture || targetAtomicCounter)
 
     val writeBeat = writeActive && !bPending
     val wBeatFire = writeBeat && io.s_axi_wvalid && io.s_axi_wready
@@ -762,7 +795,7 @@ class GpuHostAxi(
         beatAddr === GpuCommandMmioRegs.RESET.U ||
         (beatAddr >= GpuCommandMmioRegs.SAMPLE_MODE.U &&
           beatAddr < GpuCommandMmioRegs.END.U) || targetNativeDetails || targetJointDetails || targetImages || targetStorage || targetComputeUniform || targetComputeTexture || targetAtomicCounter
-    reg.req.valid := busRegValid && beatOk && !targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback && !targetShaderExecution && !targetPrimitiveQuery && !targetTextureOperations && !targetIndirectCompute && !targetComputeResources && !targetUniformResources && !targetBlendResources && !targetAdvancedBlend && !targetNativePreflight && !targetNativeGeometry && !targetNativeSample && !targetJointProfile
+    reg.req.valid := busRegValid && beatOk && !targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback && !targetShaderExecution && !targetPrimitiveQuery && !targetTextureOperations && !targetIndirectCompute && !targetComputeResources && !targetUniformResources && !targetBlendResources && !targetAdvancedBlend && !targetNativePreflight && !targetNativeGeometry && !targetNativeSample && !targetJointProfile && !targetJointGeometryProfile
     reg.req.bits.isWrite := writeActive
     reg.req.bits.addr := beatAddr(9, 0)
     reg.req.bits.data := io.s_axi_wdata
@@ -884,7 +917,8 @@ class GpuHostAxi(
               nativeGeometryTransport,
               nativeSampleTransport,
               imageFloatExchangeAvailable,
-              jointTessellationAvailable = jointTessellationProfile.nonEmpty
+              jointTessellationAvailable = jointTessellationProfile.nonEmpty,
+              jointTessellationGeometryAvailable = jointTessellationGeometryHost
             )
             .map(_.U(32.W))
         )(((beatAddr - ComputeResourceCapabilities.base.U) >> 2)(3, 0))
@@ -917,6 +951,12 @@ class GpuHostAxi(
       jointTessellationProfile.foreach { profile =>
         when(targetJointProfile) {
           val word = ((beatAddr - TessellationJointHostProtocol.profileBase.U) >> 2)(1, 0)
+          rdata := VecInit(profile.words.map(_.U(32.W)))(word)
+        }
+      }
+      jointTessellationGeometryProfile.foreach { profile =>
+        when(targetJointGeometryProfile) {
+          val word = ((beatAddr - TessellationJointGeometryHostProtocol.profileBase.U) >> 2)(1, 0)
           rdata := VecInit(profile.words.map(_.U(32.W)))(word)
         }
       }
