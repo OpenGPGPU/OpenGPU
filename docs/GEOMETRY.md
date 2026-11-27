@@ -27,8 +27,9 @@ GNZ3 retains the old status/fault/identity/base counters and adds 158-bit
 `geometryTasks`, 65-bit `nextGsSequenceExclusive`, 64-bit `nextGsSequence` and
 33-bit `nextBinSequence`. The decoder rejects nonzero unused high bits,
 identity/status mismatches, invalid report tails, fault/status inconsistencies,
-`received != admitted + dropped`, and a low64 GS sequence mismatch. An exclusive
-GS sequence of `2^64` with low64 zero is valid.
+`received != admitted + dropped`, and a low64 GS sequence mismatch. Status zero
+requires `geometryReportValid=true`, even when every geometry word is zero. An
+exclusive GS sequence of `2^64` with low64 zero is valid.
 
 The exact GJP2 words are `474a5002 008038ff 08100207 8ce58b2c`. Bits0..6 retain
 the GJP1 required owner mask `0x7f`; bit7 is required scalar FP; bits11..13 require the

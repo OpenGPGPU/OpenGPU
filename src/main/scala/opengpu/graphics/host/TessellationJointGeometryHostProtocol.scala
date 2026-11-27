@@ -297,6 +297,7 @@ object TessellationJointGeometryHostProtocol {
       )
     }
     if (completion.status == 0) {
+      require(completion.geometryReportValid, "success lacks a valid geometry report")
       require(completion.faultStage == 0 && completion.faultAddress == 0, "success retains a fault")
     }
     if (completion.faultStage == 0) {

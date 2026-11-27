@@ -46,7 +46,8 @@ class JointGeometryAbi(unittest.TestCase):
                           completion['geometryBase'], completion['geometryEnd'],
                           completion['reservedBase'], completion['reservedWords'],
                           completion['end']),
-                         ('0x180', '0x540', '0x560', '0x5d8', '0x5d8', 4, '0x5e8'))
+                          ('0x180', '0x540', '0x560', '0x5d8', '0x5d8', 4, '0x5e8'))
+        self.assertIn('status zero requires geometryReportValid true', completion['rules'])
         self.assertEqual(geometry_abi.profile_words(profile),
                          [0x474a5002, 0x8038ff, 0x08100207, 0x8ce58b2c])
         flags = {item['name']: item for item in profile['flags']}
