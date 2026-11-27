@@ -4,6 +4,7 @@ import chisel3._
 import circt.stage.ChiselStage
 import opengpu.config.GpuConfig
 import opengpu.graphics._
+import opengpu.testutil.GraphicsTestResolution
 import org.scalatest.flatspec.AnyFlatSpec
 
 class TessellationGeometryParentElaborationSpec extends AnyFlatSpec {
@@ -11,7 +12,10 @@ class TessellationGeometryParentElaborationSpec extends AnyFlatSpec {
   private val p = VertexShaderStageConfig(varyings = 4)
   private val f = FragmentShaderConfig(varyings = 4, colors = 4)
   private val shared = SharedCuShaderConfig(2)
-  private val g = GraphicsConfig(screenWidth = 64, screenHeight = 64)
+  private val g = GraphicsConfig(
+    screenWidth = math.min(64, GraphicsTestResolution.width),
+    screenHeight = math.min(64, GraphicsTestResolution.height)
+  )
 
   it should "elaborate every native GS image and vertex-input parent without transform feedback" in {
     val designs = Seq[() => RawModule](
@@ -74,6 +78,10 @@ class TessellationGeometryParentElaborationSpec extends AnyFlatSpec {
     for (design <- designs) {
       val chirrtl = ChiselStage.emitCHIRRTL(design())
       assert(chirrtl.contains("TessellationGeometryRawBridge"))
+      assert(chirrtl.contains("TessellationGeometryPatchDispatch"))
+      assert(chirrtl.contains("TessellationGeometryBinPassCore"))
+      assert("""nextGsSequenceExclusive\s*:\s*UInt<65>""".r.findFirstIn(chirrtl).isDefined)
+      assert("""nextSequenceExclusive\s*:\s*UInt<65>""".r.findFirstIn(chirrtl).isDefined)
       assert(!chirrtl.contains("GeometryTransformFeedbackStage"))
     }
   }

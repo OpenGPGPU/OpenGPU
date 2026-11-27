@@ -236,4 +236,55 @@ class NativeGeometryPrimitivePipelineSpec extends AnyFlatSpec {
       submit(); launch(0, 0); uniform(0); assert(lastWrite); physicalCompletion(true); finish(0, 1, 0)
     }
   }
+  it should "retain the legal 2^64 exclusive endpoint and discard output after exhaustion" in {
+    def run(extraOutput: Boolean): Unit = simulate(
+      new NativeGeometryPrimitivePipeline(config, p, 4, 1, rawOutputs = true, exclusiveGsSequence = true)
+    ) { d =>
+      zero(d.io); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
+      val shared = d.io.shared; shared.invalidate.ready.poke(true.B)
+      def until(f: => Boolean): Unit = {
+        var n = 0; while (!f && n < 400) { d.clock.step(); n += 1 }; assert(f, "exclusive native GS peer stalled")
+      }
+      zero(d.io.task.bits); val t = d.io.task.bits; val q = t.input.primitive; val g = t.input.program
+      t.commandId.poke(4.U); t.firstSequence.poke(((BigInt(1) << 64) - 1).U); t.input.taskId.poke(19.U)
+      ids(q.identity); ids(g.identity); q.primitiveId.poke(27.U); q.topology.poke(0.U); q.kind.poke(0.U)
+      q.vertexCount.poke(1.U); q.varyingSlots.poke(0.U); ids(q.vertices(0).identity)
+      q.vertices(0).instanceId.poke(0.U); q.vertices(0).baseInstance.poke(0.U)
+      g.inputVertices.poke(1.U); g.invocations.poke((if (extraOutput) 2 else 1).U); g.outputTopology.poke(0.U)
+      g.maxVertices.poke(2.U); g.inputComponents.poke(0.U); g.outputComponents.poke(0.U); g.builtinOutputMask.poke(0.U)
+      g.vertexVaryingSlots.poke(0.U); g.fragmentVaryingSlots.poke(0.U); g.programVersion.poke(1.U)
+      g.pc.poke(0x900004.U); g.code.base.poke(0x900000.U); g.code.limit.poke(0x900800.U)
+      g.code.allocationBase.poke(0x900000.U); g.code.allocationLimit.poke(0x900800.U)
+      d.io.task.valid.poke(true.B); d.io.task.ready.expect(true.B); d.clock.step(); d.io.task.valid.poke(false.B)
+      zero(d.io.task.bits)
+      until(shared.launch.valid.peek().litToBoolean)
+      shared.geometryTask.get.valid.expect(true.B); shared.launch.bits.commandId.expect(4.U)
+      shared.launch.ready.poke(true.B); d.clock.step(); shared.launch.ready.poke(false.B)
+      shared.owned.poke(1.U); shared.taskIds(0).poke(4.U)
+      def emit(): Unit = {
+        val e = shared.geometryEvent.get(0); zero(e.bits); e.bits.operation.poke(0.U); e.valid.poke(true.B)
+        until(e.ready.peek().litToBoolean); d.clock.step(); e.valid.poke(false.B)
+      }
+      emit(); until(d.io.primitive.valid.peek().litToBoolean)
+      d.io.primitive.bits.primitive.sequence.expect(((BigInt(1) << 64) - 1).U)
+      d.io.primitive.ready.poke(true.B); d.clock.step(); d.io.primitive.ready.poke(false.B)
+      if (extraOutput) {
+        emit()
+        for (_ <- 0 until 20) { d.io.primitive.valid.expect(false.B); d.clock.step() }
+      }
+      shared.completion.bits.commandId.poke(4.U); shared.completion.bits.success.poke(true.B)
+      shared.completion.valid.poke(true.B); until(shared.completion.ready.peek().litToBoolean)
+      d.clock.step(); shared.completion.valid.poke(false.B); shared.owned.poke(0.U)
+      until(d.io.completion.valid.peek().litToBoolean)
+      d.io.completion.bits.status.expect((if (extraOutput) 3 else 0).U)
+      d.io.completion.bits.completedInvocations.expect((if (extraOutput) 0 else 1).U)
+      d.io.completion.bits.producedPrimitives.expect(1.U)
+      d.io.completion.bits.nextSequence.expect(0.U); d.io.nextSequenceExclusive.get.expect((BigInt(1) << 64).U)
+      val held = d.io.completion.bits.peek().litValue
+      for (_ <- 0 until 3) { d.clock.step(); assert(d.io.completion.bits.peek().litValue == held) }
+      d.io.completion.ready.poke(true.B); d.clock.step(); d.io.completion.ready.poke(false.B)
+      d.io.task.ready.expect(true.B); d.io.busy.expect(false.B)
+    }
+    run(extraOutput = false); run(extraOutput = true)
+  }
 }

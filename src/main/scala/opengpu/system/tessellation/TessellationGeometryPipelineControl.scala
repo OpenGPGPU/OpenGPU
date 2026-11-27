@@ -14,6 +14,7 @@ class TessellationGeometryPipelineResult(commandIdWidth: Int) extends Bundle {
   val tesTaskId = UInt(32.W); val tesSequence = UInt(16.W); val tesLanguagePatchId = UInt(32.W)
   val gsTaskId = UInt(32.W); val gsInputPrimitiveId = UInt(32.W)
   val inputSequence = UInt(64.W); val firstOutputSequence = UInt(64.W)
+  val nextGsSequenceExclusive = UInt(65.W)
 
   /** 0 success, 1 invalid, 2 GS worker fault, 3 protocol, 4 cancelled. */
   val status = UInt(3.W)
@@ -86,6 +87,7 @@ class TessellationGeometryPipelineControl(
     result.tesLanguagePatchId := b.tesLanguagePatchId
     result.gsTaskId := b.gsTaskId; result.gsInputPrimitiveId := b.gsInputPrimitiveId
     result.inputSequence := b.inputSequence; result.firstOutputSequence := b.firstOutputSequence
+    result.nextGsSequenceExclusive := b.firstOutputSequence.pad(65)
     if (exclusiveGsSequence) exclusiveResult.get := b.firstOutputSequence
     cancelled := io.cancel; protocolFault := false.B; phase := Phase.raw
   }
@@ -122,15 +124,15 @@ class TessellationGeometryPipelineControl(
   when(io.geometryCompletion.fire) {
     result.geometryValid := true.B; result.geometry := io.geometryCompletion.bits
     if (exclusiveGsSequence) {
-      exclusiveResult.get := io.geometryNextSequenceExclusive.get
-      when(
-        io.geometryNextSequenceExclusive.get(63, 0) =/= io.geometryCompletion.bits.nextSequence ||
-          io.geometryNextSequenceExclusive.get < result.firstOutputSequence ||
-          (io.geometryNextSequenceExclusive.get - result.firstOutputSequence)
-            .pad(65) =/= io.geometryCompletion.bits.producedPrimitives.pad(65)
-      ) {
-        protocolFault := true.B
-      }
+      val reported = io.geometryNextSequenceExclusive.get
+      val legal = reported <= (BigInt(1) << 64).U && reported >= result.firstOutputSequence &&
+        reported(63, 0) === io.geometryCompletion.bits.nextSequence &&
+        (reported - result.firstOutputSequence).pad(65) === io.geometryCompletion.bits.producedPrimitives.pad(65)
+      when(legal) { exclusiveResult.get := reported }
+      result.nextGsSequenceExclusive := Mux(legal, reported, exclusiveResult.get)
+      when(!legal) { protocolFault := true.B }
+    } else {
+      result.nextGsSequenceExclusive := io.geometryCompletion.bits.nextSequence.pad(65)
     }
     when(
       io.geometryCompletion.bits.taskId =/= result.gsTaskId ||
