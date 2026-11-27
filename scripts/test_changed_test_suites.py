@@ -87,6 +87,23 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertTrue(expected <= selected, selected)
                 self.assertNotIn("opengpu.system.TessellationGeometryParentElaborationSpec", selected)
 
+    def test_geometry_shared_owner_selects_composed_and_physical_resource_checks(self):
+        selected = set(changed_suites(REPO_ROOT, [
+            "src/main/scala/opengpu/system/tessellation/TessellationJointThreeDomainGeometryJobImage.scala",
+        ]))
+        self.assertTrue({
+            "opengpu.system.TessellationJointThreeDomainGeometrySpec",
+            "opengpu.system.TessellationJointGeometryParentSpec",
+            "opengpu.system.TessellationJointGeometryNativeControllerSpec",
+            "opengpu.system.TessellationImageBankOwnerSpec",
+            "opengpu.system.TessellationImageBankMuxSpec",
+            "opengpu.system.TessellationThreeDomainMemoryFabricSpec",
+            "opengpu.system.TessellationThreeDomainPayloadOwnerSpec",
+            "opengpu.system.TessellationThreeDomainSampleMuxSpec",
+        } <= selected, selected)
+        self.assertNotIn("opengpu.system.TessellationJointEmptyFrameSpec", selected)
+        self.assertNotIn("opengpu.graphics.TypedReplayEmptyStateSpec", selected)
+
     def test_record_fault_priority_runs_for_each_actual_production_owner(self):
         for name in ("WindowPrimitiveRecords", "WindowPrimitiveBinProducer", "WindowPrimitiveBinReplayPass"):
             with self.subTest(name=name):

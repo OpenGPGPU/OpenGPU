@@ -643,6 +643,7 @@ def changed_suites(root, changed, *, test_index=None):
     } | {f"src/main/scala/opengpu/system/tessellation/TessellationSystem{d}JointVertexImage.scala"
          for d in ("Isoline", "Triangle", "Quad")}):
         affected.add("src/test/scala/opengpu/system/TessellationJointNativeControllerSpec.scala")
+        affected.add("src/test/scala/opengpu/system/TessellationJointThreeDomainElaborationSpec.scala")
     if changed & {
         "src/main/scala/opengpu/graphics/raster/TypedReplayTileImagePipeline.scala",
         "src/main/scala/opengpu/graphics/raster/TypedTileImagePipeline.scala",
@@ -866,6 +867,18 @@ def changed_suites(root, changed, *, test_index=None):
             "src/test/scala/opengpu/system/TessellationJointGeometryNativeControllerSpec.scala",
             "src/test/scala/opengpu/system/TessellationGeometryVertexTypedRangeTagSpec.scala",
             "src/test/scala/opengpu/system/TessellationInputMemoryFabricSpec.scala",
+            "src/test/scala/opengpu/graphics/TypedReplayEmptyStateSpec.scala",
+        })
+    if "src/main/scala/opengpu/system/tessellation/TessellationJointThreeDomainGeometryJobImage.scala" in changed:
+        affected.update({
+            "src/test/scala/opengpu/system/TessellationJointThreeDomainGeometrySpec.scala",
+            "src/test/scala/opengpu/system/TessellationJointGeometryParentSpec.scala",
+            "src/test/scala/opengpu/system/TessellationJointGeometryNativeControllerSpec.scala",
+            "src/test/scala/opengpu/system/TessellationJointEmptyFrameSpec.scala",
+            "src/test/scala/opengpu/system/TessellationImageBankSpec.scala",
+            "src/test/scala/opengpu/system/TessellationThreeDomainMemoryFabricSpec.scala",
+            "src/test/scala/opengpu/system/TessellationThreeDomainPayloadOwnerSpec.scala",
+            "src/test/scala/opengpu/system/TessellationThreeDomainSampleMuxSpec.scala",
             "src/test/scala/opengpu/graphics/TypedReplayEmptyStateSpec.scala",
         })
     geometry_image_sources = {

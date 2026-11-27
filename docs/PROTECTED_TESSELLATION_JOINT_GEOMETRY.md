@@ -35,13 +35,27 @@ direct typed-isoline `full5`/`pointcoord` two-CU retained Verilator replay. Thos
 results are separate from this BUILD/prepare contract: they do not connect the
 GNQ7/8/9 protected host, driver submission or public discovery route.
 
-The three thin `TessellationSystem*JointGeometryVertexImage` parents now connect
+The three thin `TessellationSystem*JointGeometryVertexImage` parents connect
 the GNQ7/8/9 controller, typed range and native-geometry image internally, with
-default-closed admission and real invalidation peer ports. Their default-closed
-3/3, focused component/elaboration 29/29 and GNQ7 isoline clear-only two-frame
-checks passed; see [joint parent results](TESSELLATION_JOINT_NATIVE_PARENT.md#thin-gnq789-geometry-parents).
-They do not instantiate a shared image-bank/mux outer owner or enable the
-protected host, driver, public submission, TF or ABI10.
+default-closed admission and real invalidation peer ports.
+`TessellationJointThreeDomainGeometryJobImage` now composes them over one shared
+geometry image bank/owner/mux, three-domain memory/payload fabrics, a
+three-client shader router and sample mux. Its physical images enable geometry
+input and empty states; each domain's native-geometry memory/payload capacity is
+computed independently and required to match. Invalidation is retained-domain
+only, and the bank owner retires after outer completion fire plus complete
+physical drain.
+
+The new composition spec passed 3/3, existing bank/memory/payload/sample/parent
+and elaboration checks passed, `TypedReplayEmptyStateSpec` passed 3/3, and one DUT
+completed GNQ7→GNQ8→GNQ9 4×4 clear-only without reset. The run used independent
+image/padding/directory/guard oracles, a delayed physical write fault with
+cancellation, held outer completion, held invalidate/done and healthy reuse.
+The existing geometry controller does not propagate the image fault address, so
+that negative case checks status 3/stage 6 rather than the address. See
+[joint parent results](TESSELLATION_JOINT_NATIVE_PARENT.md#shared-gnq789-geometry-owner).
+This does not enable the protected host, driver, public submission, TF or ABI10,
+and does not claim original-shader CU/frame execution or product acceptance.
 
 ## Validation
 
@@ -74,6 +88,8 @@ product limits described above.
 ## Reproduction
 
 ```sh
+sbt -batch 'testOnly opengpu.system.TessellationJointThreeDomainGeometrySpec'
+sbt -batch 'testOnly opengpu.system.TessellationJointEmptyFrameSpec -- -z "GNQ7 GNQ8 GNQ9"'
 python3 -B scripts/generate_protected_tessellation_joint_geometry_abi.py --check
 python3 -B scripts/test_protected_tessellation_joint_abi.py
 python3 -B scripts/test_protected_tessellation_joint.py --sanitize --negative-controls

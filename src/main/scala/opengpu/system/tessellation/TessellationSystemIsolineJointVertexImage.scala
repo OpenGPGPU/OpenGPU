@@ -110,7 +110,8 @@ class TessellationSystemIsolineJointVertexImage(
       tessellationUniforms,
       evaluationPatchAvailable,
       tessellationInfoAvailable,
-      primitiveIdInput,
+      primitiveIdInput = primitiveIdInput,
+      nativeGeometryAvailable = false,
       allowEmptyStates = true
     )
   )

@@ -110,7 +110,8 @@ class TessellationSystemTriangleJointVertexImage(
       tessellationUniforms,
       evaluationPatchAvailable,
       tessellationInfoAvailable,
-      primitiveIdInput,
+      primitiveIdInput = primitiveIdInput,
+      nativeGeometryAvailable = false,
       allowEmptyStates = true
     )
   )
