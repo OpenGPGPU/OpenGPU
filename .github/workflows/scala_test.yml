@@ -15,9 +15,115 @@ permissions:
   actions: read
 
 jobs:
+  style:
+    name: Scala source autofix
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      changed: ${{ steps.fix.outputs.changed }}
+      can_push: ${{ steps.select.outputs.can_push }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+        persist-credentials: false
+        fetch-depth: 0
+    - name: Select changed Scala and sbt files
+      id: select
+      env:
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: |
+        files=$(git diff -M100% --name-only --diff-filter=AMT "$BASE_SHA" HEAD -- '*.scala' '*.sbt')
+        if [ -n "$files" ]; then
+          echo 'has_files=true' >> "$GITHUB_OUTPUT"
+        fi
+        # The patch is against the tested merge tree. Write it back only when
+        # the PR head has that same tree.
+        if git diff --quiet "$HEAD_SHA" HEAD; then
+          echo 'can_push=true' >> "$GITHUB_OUTPUT"
+        fi
+    - uses: actions/setup-java@v4
+      if: steps.select.outputs.has_files == 'true'
+      with:
+        java-version: '11'
+        distribution: temurin
+        cache: sbt
+    - uses: sbt/setup-sbt@v1
+      if: steps.select.outputs.has_files == 'true'
+    - name: Apply Scalafix and Scalafmt
+      id: fix
+      env:
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HAS_FILES: ${{ steps.select.outputs.has_files }}
+      run: |
+        if [ "$HAS_FILES" = true ]; then
+          bash scripts/scala_autofix.sh "$BASE_SHA"
+        fi
+        patch="$RUNNER_TEMP/scala-autofix.patch"
+        git diff --no-ext-diff --binary HEAD -- '*.scala' '*.sbt' > "$patch"
+        if [ -s "$patch" ]; then
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
+          printf 'Scala fixes are available in the **scala-autofix** artifact. Apply with `git apply scala-autofix.patch`.\n' >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo 'changed=false' >> "$GITHUB_OUTPUT"
+        fi
+    - uses: actions/upload-artifact@v4
+      if: steps.fix.outputs.changed == 'true'
+      with:
+        name: scala-autofix
+        path: ${{ runner.temp }}/scala-autofix.patch
+        if-no-files-found: error
+        retention-days: 3
+
+  autofix:
+    name: Commit Scala autofixes
+    needs: [style]
+    if: >-
+      needs.style.outputs.changed == 'true' &&
+      needs.style.outputs.can_push == 'true' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref != 'main' &&
+      github.event.pull_request.head.ref != 'master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        persist-credentials: false
+    - uses: actions/download-artifact@v4
+      with:
+        name: scala-autofix
+        path: ${{ runner.temp }}
+    - name: Push fixes to the current PR branch
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      run: |
+        current=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" \
+          --jq 'select(.state == "open" and .base.ref == "main") | "\(.head.ref):\(.head.sha)"')
+        if [ "$current" != "$HEAD_REF:$HEAD_SHA" ]; then
+          echo 'The PR changed while the fixes were being prepared.'
+          exit 0
+        fi
+        git apply --index --include='*.scala' --include='*.sbt' "$RUNNER_TEMP/scala-autofix.patch"
+        git -c user.name='github-actions[bot]' \
+          -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+          commit -m 'Apply Scalafix and Scalafmt'
+        gh auth setup-git
+        git push --force-with-lease="refs/heads/$HEAD_REF:$HEAD_SHA" origin "HEAD:refs/heads/$HEAD_REF"
+        printf 'Pushed Scala fixes to the PR branch. GitHub may require approval to run CI for the bot commit.\n' >> "$GITHUB_STEP_SUMMARY"
+
   checks:
+    needs: [style]
     # Drafts need the same bounded feedback; readiness is enforced by ci-ok.
-    if: github.event.pull_request.base.ref == 'main' && github.event.pull_request.state == 'open'
+    if: needs.style.outputs.changed == 'false' && github.event.pull_request.base.ref == 'main' && github.event.pull_request.state == 'open'
     runs-on: ubuntu-latest
     # Budget host checks plus a fresh compile of every main and test source.
     timeout-minutes: 25
