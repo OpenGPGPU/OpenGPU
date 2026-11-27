@@ -208,20 +208,30 @@ substitutes for those paths. The mandatory two-CU 640×480/60-FPS target remains
 unchanged.
 
 The three thin GNQ7/8/9 joint-geometry parents are default-closed and retain the
-65-bit exclusive GS endpoint from actual task/frame completion. They expose real
-geometry invalidation peers, include the extra geometry-uniform memory client,
-and do not instantiate an outer image-bank/mux owner or any TF path. Default
-closed parent checks passed 3/3, focused controller/range/image/elaboration
-checks passed 29/29, and the GNQ7 isoline clear-only composition passed two
-4×4 frames without reset through real readers, images, memory and drain. The
-[scope and reproduction](TESSELLATION_JOINT_NATIVE_PARENT.md#thin-gnq789-geometry-parents)
-do not claim actual CU/frame, protected three-domain submission or product
-acceptance.
+65-bit exclusive GS endpoint from actual task/frame completion. The new
+`TessellationJointThreeDomainGeometryJobImage` composes them with one shared
+geometry physical image bank/owner/mux, three-domain memory/payload, a
+three-client shader router and sample mux. It computes each domain's
+native-geometry memory/payload capacity independently, requires equal capacity,
+routes invalidation only to the retained owner and retires the bank only after
+outer completion fire plus complete physical drain.
+
+The composition spec passed 3/3; existing bank/memory/payload/sample/parent and
+elaboration checks and `TypedReplayEmptyStateSpec` 3/3 passed. One DUT completed
+GNQ7→GNQ8→GNQ9 4×4 clear-only without reset with independent oracles, delayed
+write fault/cancellation, held completion, held invalidate/done and healthy
+reuse. The existing geometry controller does not propagate the image fault
+address, so that negative case checks status/stage only. The
+[scope and reproduction](TESSELLATION_JOINT_NATIVE_PARENT.md#shared-gnq789-geometry-owner)
+do not claim original-shader CU/frame execution, protected three-domain
+submission, TF/ABI10 or product acceptance.
 
 Reproduce the source/component stage with JDK 21 and Scala 2.13:
 
 ```sh
 sbt 'testOnly opengpu.graphics.TessellationGeometryRawBridgeSpec opengpu.system.TessellationGeometryPipelineControlSpec opengpu.graphics.TessellationGeometryClientTransportSpec opengpu.graphics.TessellationGeometryVertexTupleSpec opengpu.system.TessellationJointGeometryJobCaptureReaderSpec opengpu.system.TessellationJointGeometryAttachmentReaderSpec opengpu.graphics.WindowPrimitiveRecordFaultPrioritySpec opengpu.graphics.TessellationVertexShaderRouterSpec opengpu.testutil.GpuSimInlineVerificationSpec opengpu.system.TessellationJointGeometryParentSpec opengpu.system.TessellationJointGeometryNativeControllerSpec opengpu.system.TessellationGeometryVertexTypedRangeTagSpec opengpu.system.TessellationGeometryParentElaborationSpec'
+sbt -batch 'testOnly opengpu.system.TessellationJointThreeDomainGeometrySpec'
+sbt -batch 'testOnly opengpu.system.TessellationJointEmptyFrameSpec -- -z "GNQ7 GNQ8 GNQ9"'
 python3 -B scripts/test_changed_test_suites.py
 python3 -B scripts/test_test_selection.py
 git diff --check

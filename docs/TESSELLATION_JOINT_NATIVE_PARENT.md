@@ -56,11 +56,77 @@ ID capacity. The 65-bit `nextGsSequenceExclusive` is preserved, and all three
 image pipelines clear it when a new frame starts so zero-work reuse cannot
 report a previous frame's endpoint.
 
-These are thin parents only: they do not add a shared three-domain image
-bank/mux outer owner and do not connect protected host/driver, public discovery
-or submission, transform feedback, ABI10, actual CUs or product acceptance.
+The standalone thin parents do not instantiate a shared three-domain image
+bank/mux outer owner. `TessellationJointThreeDomainGeometryJobImage` below adds
+that composition without enabling protected host/driver, public discovery or
+submission, transform feedback, ABI10, actual CUs or product acceptance.
 
-### Focused result and reproduction
+## Shared GNQ7/8/9 geometry owner
+
+`TessellationJointThreeDomainGeometryJobImage` is disabled by default and
+combines the three #973 geometry parents with `externalImages=true` and the same
+`enabled` setting. They share one physical `TypedReplayTileImagePipeline` bank,
+`TessellationImageBankOwner`/`Mux`, `TessellationThreeDomainMemoryFabric`, a
+three-client `SharedShaderTaskRouter`, `TessellationThreeDomainPayloadOwner` and
+per-engine `TessellationThreeDomainSampleMux`. Each physical image has
+`geometryInput=true`, the configured sample-shading and primitive-ID inputs,
+and `allowEmptyStates=true`.
+
+The companion computes every domain's render IDs with
+`nativeGeometryAvailable=true`, including the extra geometry-uniform client,
+and every domain's native-geometry payload pins before composing the physical
+fabric. Elaboration requires all three memory and payload capacities to match.
+It never calls the ordinary three-domain capacity formula.
+
+The outer FSM follows the ordinary request/selected/result, held-completion and
+retirement pattern with `TessellationJointGeometryNativeCompletion` and no
+feedback path. Geometry invalidation is routed only to the retained owner
+domain. Accepted invalidate/done handshakes participate in physical drain. The
+bank owner retires only after outer completion fire and complete image, domain,
+memory, shader, payload and invalidation drain; a completion consumed while an
+invalidation is still held keeps the owner and blocks submit until that drain
+finishes. The 65-bit exclusive endpoint and directory lease remain in the
+selected parent.
+
+JDK21 `Test / compile` passed. The new composition spec passed 3/3, covering
+native-geometry capacity, CHIRRTL module/port structure and all three
+default-closed status-6/zero-traffic/held-report/reuse cases. Existing bank/mux,
+three-domain memory, payload, sample, geometry-parent and ordinary/new
+three-domain elaboration checks passed. `TypedReplayEmptyStateSpec` passed 3/3.
+The real GNQ7→GNQ8→GNQ9 4×4 clear-only test passed on one DUT without reset:
+GNQ7 and GNQ9 matched independent image/padding/directory/guard oracles, GNQ8
+held a physical write response and cancelled with status 3/stage 6 before healthy
+GNQ9 reuse, and GNQ7 held invalidate/done across outer completion without early
+bank retirement. The existing geometry controller does not copy the image fault
+address into the final report, so the delayed-fault check asserts status/stage,
+not that address. Python changed-suite selection passed 179 checks; integration
+and large-catalog selection checks also passed.
+
+```sh
+export JAVA_HOME=/opt/homebrew/opt/openjdk@21
+export JAVA_OPTS='-Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8'
+export JVM_OPTS="$JAVA_OPTS"
+bash scripts/scala_autofix.sh origin/main
+sbt -batch 'Test / compile'
+sbt -batch 'testOnly opengpu.system.TessellationJointThreeDomainGeometrySpec'
+sbt -batch 'testOnly opengpu.system.TessellationImageBankOwnerSpec opengpu.system.TessellationImageBankMuxSpec opengpu.system.TessellationThreeDomainMemoryFabricSpec opengpu.system.TessellationThreeDomainPayloadOwnerSpec opengpu.system.TessellationThreeDomainSampleMuxSpec opengpu.system.TessellationJointThreeDomainElaborationSpec opengpu.system.TessellationGeometryParentElaborationSpec opengpu.system.TessellationJointGeometryParentSpec'
+sbt -batch -Dopengpu.testSramRoot=/Users/duckdonald/workspace/gpu/depends/asap7_sram_0p0/generated/verilog 'testOnly opengpu.graphics.TypedReplayEmptyStateSpec'
+sbt -batch 'testOnly opengpu.system.TessellationJointEmptyFrameSpec -- -z "GNQ7 GNQ8 GNQ9"'
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_changed_test_suites.py
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_test_selection.py
+bash -n scripts/ci_shard_tests.sh
+git diff --check
+```
+
+The three ordinary joint parents also use named `primitiveIdInput` and
+`nativeGeometryAvailable=false` arguments, correcting the #973 positional bind
+that otherwise enabled native geometry when primitive-ID input was requested.
+Protected three-domain submission, original shader execution on physical CUs,
+TF/ABI10 and the 2-CU 640×480/60-FPS product gate remain pending.
+
+## Thin-parent focused results
+
+### Focused thin-parent result and reproduction
 
 JDK 21 compilation passed. The three default-closed parent simulations passed
 3/3: status 6, zero metadata/shared/memory traffic and stable held reports. The
@@ -72,9 +138,9 @@ The GNQ7 isoline clear-only composition passed two consecutive 4x4 frames
 without reset through the real reader, four image banks, physical memory and
 drain. Each frame read 2,560 metadata bytes plus one directory line, reported
 4,352 stored and 1,088 resolved bytes, and matched the independent image,
-padding, directory and guard oracle without a CU launch. Triangle and quad
-clear-only parent execution, original shader execution on actual CUs, protected
-three-domain submission and the 2-CU 640x480/60-FPS gate remain pending.
+padding, directory and guard oracle without a CU launch. Standalone triangle and
+quad clear-only parent execution, original shader execution on actual CUs,
+protected three-domain submission and the 2-CU 640x480/60-FPS gate remain pending.
 
 ```sh
 export JAVA_HOME=/opt/homebrew/opt/openjdk@21
@@ -94,7 +160,7 @@ git diff --check
 The selector suite passed 178 checks; both integration/catalog selection checks
 passed. Routine frames use `GraphicsTestResolution` and remain below 640x480.
 
-## Shared three-domain parent
+## Ordinary shared three-domain parent
 
 `TessellationJointThreeDomainJobImage` routes an admitted GNQ by its explicit
 domain to the corresponding original-vertex parent. The three parents share

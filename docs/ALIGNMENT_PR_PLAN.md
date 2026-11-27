@@ -79,16 +79,18 @@
   两帧分别耗时 7,790,226 和 7,805,005 服务周期，按 1 GHz 计算均满足该场景的 60 FPS 周期预算。
   全容量联合覆盖与 2 CU 640×480 60 FPS 的产品验收仍待完成。
    [结果与复现](PROTECTED_TESSELLATION_JOINT_BUILD.md#full-viewport-protected-quad-replay)。
-- P39/P40 新增三个默认关闭的 thin GNQ7/8/9 joint-geometry parent，分别连接
-  native controller、geometry typed range、原 VS/image 与 input memory fabric；
-  frame/range retirement 只取实际 completion，directory lease 保留到 physical
-  drain，真实 geometry invalidate peer 暴露，65-bit exclusive endpoint 贯通。
-  默认关闭三域 3/3、聚焦 controller/range/image/elaboration 29/29、GNQ7 isoline
-  clear-only 连续两帧 4×4 真实 reader/image/memory/drain 与 Python selector
-  178 项通过。尚未实现共享 image-bank/mux outer owner，未接 protected
-  host/driver/public discovery/submission/TF/ABI10，也未执行三域实际 CU/frame
-  或产品验收；不增加 15/40 闭环计数。
-  [结果、限制与复现](TESSELLATION_JOINT_NATIVE_PARENT.md#thin-gnq789-geometry-parents)。
+- P39/P40 的三个默认关闭 thin GNQ7/8/9 joint-geometry parent 已由 #973 合入；
+   本增量新增 `TessellationJointThreeDomainGeometryJobImage`，用 externalImages
+   组合三域，共享 geometry physical image bank/owner/mux、三域 memory/payload、
+   三客户端 shader router 与 sample mux。容量按各域 nativeGeometryAvailable=true
+   公式计算并要求一致；invalidate/done 只走 retained owner 并计入完整 drain，
+   bank owner 在 outer completion.fire 且完整 physical drain 后退休。新 spec 3/3、
+   现有 bank/memory/payload/sample/parent/elaboration、empty-state 3/3 与同一 DUT
+   无 reset 的 GNQ7→8→9 4×4 clear-only 三笔均通过；含独立 oracle、延迟写故障/取消、
+   held completion/invalidate/done 与健康复用。普通 parent 的 #973 位置参数误绑
+   已用命名参数修正。尚未接 protected host/driver/public discovery/submission/TF/
+   ABI10，也未执行三域原 shader 的实际 CU/frame 或产品验收；不增加 15/40 闭环计数。
+   [结果、限制与复现](TESSELLATION_JOINT_NATIVE_PARENT.md#shared-gnq789-geometry-owner)。
 - P16 原 draw catalog/invocation range 捕获、内部语言程序 v3、程序快照
   权限边界与 FS8/9 私有程序验证的六个逻辑提交已通过 #825 合入。
   [交付范围、结果与限制](P16_INVOCATION_SOURCE_DELIVERY.md)：准确交付源完整 host
@@ -207,11 +209,12 @@
    65-bit exclusive endpoint 从实际 GS 贯通到三域 geometry task completion 与
    frame result；`2^64` 合法，高位错误和耗尽后的 successor 均拒绝。默认构造器
     保持旧行为，仅 native geometry 路径启用。本增量新增三域默认关闭的 thin
-    joint geometry parent，完整映射实际 frame/range completion、owner-local
-    drain、tag-zero metadata/source handoff 与真实 invalidation peer，并将额外
-    geometry-uniform client 计入 render/memory ID 容量。共享 image-bank/mux
-    outer owner、protected host/driver、public discovery/submission、TF、ABI10
-    与完整 P39/P40 联合验收仍待完成，本增量不增加闭环计数。
+    joint geometry parent 与共享 image-bank/mux outer owner，完整映射实际
+    frame/range completion、owner-local drain、tag-zero metadata/source handoff、
+    retained-domain invalidation 与额外 geometry-uniform 容量；三笔 4×4 clear-only
+    已通过真实 reader/image/memory/drain。protected host/driver、public
+    discovery/submission、TF、ABI10 与完整 P39/P40 联合验收仍待完成，本增量
+    不增加闭环计数。
 2. **P39/P40 剩余联合验收**：五阶段 owner 可用后，完成三域原 shader、完整
    资源/配置、双 owner/无关 owner、fault/cancel/drain/retirement 和健康复用。
    已有 P16 uniform 工厂与 P40 endpoint 结果可以复用，但不能替代联合门槛。
@@ -257,7 +260,7 @@ GPU 的正式交付入口是受保护的 [`main`](https://github.com/OpenGPGPU/O
 
 | 仓库 / 分支 | 用途与交付方式 |
 |---|---|
-| GPU `main` | 已通过受保护 CI 并合入的正式源码，最近基线为 #972（`06edc16ba2aac6549ed54bdf90d09709e9cf7fdf`）；无 TF 原五阶段 harness 的真实 Mesa 与 retained Verilator 两例实际 CU/frame replay 已通过。P15/P16/P17/P39/P40 部分源码与限定资格已合入，完整目标验收待完成。 |
+| GPU `main` | 已通过受保护 CI 并合入的正式源码，最近基线为 #973（`25c2ccc5db0d62b74d5eb53e0111adbfe9ce1711`）；无 TF 原五阶段 harness 的真实 Mesa 与 retained Verilator 两例实际 CU/frame replay 已通过，thin GNQ7/8/9 geometry parent 已合入。P15/P16/P17/P39/P40 部分源码与限定资格已合入，完整目标验收待完成。 |
 | GPU #828 已合入 | 联合 BUILD 与 GNQ/GVM 元数据捕获；准确 head1dba3adbd/merge346d96cfd，正常CI八job成功，临时交付树/分支已清理；完整P16仍待验收 |
 | GPU #829 已合入 | [PR #829](https://github.com/OpenGPGPU/OpenGPU/pull/829) 整合 linked TCS 间接输出存储和同一原四阶段/52引用到 joint BUILD 的源码与独立检查；已通过受保护 CI 并 rebase 合入正式 main |
 | GPU `codex/native-sample-dut-bridge` | 保留 P02/P03 的原开发源码，按本清单分批交付；不另外开放并行 PR |
