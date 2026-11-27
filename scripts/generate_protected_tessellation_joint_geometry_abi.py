@@ -31,7 +31,8 @@ EXPECTED_HOST_SUBMISSION = {
 EXPECTED_COMPLETION = {
     'magic': '0x474e5a03', 'words': 46, 'byteOrder': 'little-endian',
     'prefixBase': '0x180', 'prefixWords': 16, 'legacyTailBase': '0x540',
-    'geometryBase': '0x560', 'geometryWords': 30, 'end': '0x5e8',
+    'geometryBase': '0x560', 'geometryWords': 30, 'geometryEnd': '0x5d8',
+    'reservedBase': '0x5d8', 'reservedWords': 4, 'end': '0x5e8',
     'packedFields': [
         {'name': 'STATUS', 'word': 1, 'shift': 0, 'bits': 3},
         {'name': 'FAULT_STAGE', 'word': 1, 'shift': 3, 'bits': 3},
@@ -68,6 +69,7 @@ EXPECTED_COMPLETION = {
         'faultStage zero forces faultAddress zero; nonzero faultStage requires nonzero status',
         'identity and status must match the unified completion',
         '2^64 is a legal nextGsSequenceExclusive value',
+        '0x5d8..0x5e7 is readable zero padding outside the 46 GNZ3 words',
     ],
 }
 
@@ -270,6 +272,9 @@ def generate():
         define('COMPLETION_LEGACY_TAIL_BASE', completion['legacyTailBase']),
         define('COMPLETION_GEOMETRY_BASE', completion['geometryBase']),
         define('COMPLETION_GEOMETRY_WORDS', completion['geometryWords']),
+        define('COMPLETION_GEOMETRY_END', completion['geometryEnd']),
+        define('COMPLETION_RESERVED_BASE', completion['reservedBase']),
+        define('COMPLETION_RESERVED_WORDS', completion['reservedWords']),
         define('COMPLETION_END', completion['end']),
     ]
     for field in completion['packedFields']:

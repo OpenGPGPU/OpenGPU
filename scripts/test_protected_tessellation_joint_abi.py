@@ -43,8 +43,10 @@ class JointGeometryAbi(unittest.TestCase):
         self.assertEqual(host['ownerLimitMaximum'], '0x100000000')
         self.assertEqual((completion['magic'], completion['words']), ('0x474e5a03', 46))
         self.assertEqual((completion['prefixBase'], completion['legacyTailBase'],
-                          completion['geometryBase'], completion['end']),
-                         ('0x180', '0x540', '0x560', '0x5e8'))
+                          completion['geometryBase'], completion['geometryEnd'],
+                          completion['reservedBase'], completion['reservedWords'],
+                          completion['end']),
+                         ('0x180', '0x540', '0x560', '0x5d8', '0x5d8', 4, '0x5e8'))
         self.assertEqual(geometry_abi.profile_words(profile),
                          [0x474a5002, 0x803dff, 0x08100207, 0x8ce58b2c])
         header = geometry_abi.OUTPUT.read_text()
@@ -73,6 +75,7 @@ class JointGeometryAbi(unittest.TestCase):
             lambda s: s['hostSubmission']['rejectedFlags'].pop(),
             lambda s: s['completion'].update(words=45),
             lambda s: s['completion'].update(geometryBase='0x55c'),
+            lambda s: s['completion'].update(reservedWords=3),
             lambda s: s['completion']['fields'][-3].update(bits=64),
             lambda s: s['completion']['rules'].pop(),
             lambda s: s['profile'].update(magic='0x474a5001'),

@@ -819,6 +819,16 @@ def changed_suites(root, changed, *, test_index=None):
             f"src/main/scala/opengpu/system/tessellation/TessellationCu{domain}{kind}.scala" in changed
             for domain in ("Isoline", "Triangle", "Quad") for kind in ("SystemClient", "SharedEvaluator")):
         affected.add("src/test/scala/opengpu/system/TessellationViewportPublicationEndpointSpec.scala")
+    geometry_host_abi_paths = {
+        "src/main/scala/opengpu/graphics/host/TessellationJointGeometryHostProtocol.scala",
+        "src/test/scala/opengpu/graphics/TessellationJointGeometryHostProtocolSpec.scala",
+        "docs/abi/protected-tessellation-joint-geometry-v1.json",
+        "driver/opengpu_protected_tessellation_joint_geometry_abi.h",
+        "scripts/generate_protected_tessellation_joint_geometry_abi.py",
+        "scripts/test_protected_tessellation_joint_abi.py",
+    }
+    if changed & geometry_host_abi_paths:
+        affected.add("src/test/scala/opengpu/graphics/TessellationJointGeometryHostProtocolSpec.scala")
     geometry_control_sources = {
         "src/main/scala/opengpu/system/tessellation/TessellationGeometryPipelineControl.scala",
         "src/main/scala/opengpu/system/tessellation/TessellationGeometryPrimitivePipeline.scala",

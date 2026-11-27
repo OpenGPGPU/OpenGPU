@@ -6,6 +6,67 @@ passes and replay. Each subsection below is one bounded contract; the
 capability rows stay in `MOBILE_GPU_CAPABILITY_MATRIX.md` (E32-01) and
 `GLES32_HARDWARE_GAPS.md`.
 
+## Private geometry host ABI codec
+
+`TessellationJointGeometryHostProtocol` is an independent little-endian codec
+for the protected GNQ7/8/9 host boundary. It does not change GNQ4/5/6, GJP1,
+GNZ2 or any production execution route.
+
+| Contract | Private geometry value |
+|---|---|
+| Command | opcode 15, tag `0x474a0200`, exact 512-byte root, 4096-byte source/allocation alignment |
+| Owner | 33-bit exclusive limit, nonempty and at most 4 GiB; `0x100000000` is legal |
+| Rejected command flags | DMA/event waits, event signal, raster discard and feedback capture |
+| Completion | GNZ3 magic `0x474e5a03`, 46 little-endian words |
+| Legacy completion prefix | words 0–11 at `0x180–0x1ac`; words 12–15 at `0x540–0x54c` |
+| Geometry completion tail | words 16–45 at `0x560–0x5d4`; `0x5d8–0x5e7` reads as zero padding; `0x5e8` is rejected |
+| Internal profile probe | GJP2 magic `0x474a5002`, four words at `0x600–0x60c`, GCR1 presence bit 23 |
+
+GNZ3 retains the old status/fault/identity/base counters and adds 158-bit
+`actualGsPublished`, 161-bit `received`/`dropped`, 97-bit `admitted`, 64-bit
+`geometryTasks`, 65-bit `nextGsSequenceExclusive`, 64-bit `nextGsSequence` and
+33-bit `nextBinSequence`. The decoder rejects nonzero unused high bits,
+identity/status mismatches, invalid report tails, fault/status inconsistencies,
+`received != admitted + dropped`, and a low64 GS sequence mismatch. An exclusive
+GS sequence of `2^64` with low64 zero is valid.
+
+The exact GJP2 words are `474a5002 00803dff 08100207 8ce58b2c`. They select two
+CUs, 16 lanes, eight warps, four engines, the seven-domain mask, a 524288-byte
+payload pool with 69632-byte maximum reservation, five owners, twelve ports,
+34 image-producer pins and 37 single-domain total pins. The provider is
+`two-cu-vga60-owner-v3-five-stage`. The capacity word stores payload bytes as
+log2 and maximum payload bytes in 4 KiB units. Parsing accepts only this exact
+internal read-only profile.
+
+JDK21 production/test compilation passed. The new protocol spec passed 9/9;
+the new spec plus `TessellationHostAxiCommandSpec`,
+`TileBinHostCommandPortSpec`, `TessellationHostCommandPortSpec` and
+`TessellationJointJobAbiSpec` passed 19/19. Generator `--check`, the 10-test
+Python ABI suite, 181 changed-suite selector tests, both selection catalogs,
+`bash -n` and `git diff --check` passed.
+
+```sh
+export JAVA_HOME=/opt/homebrew/opt/openjdk@21
+export JAVA_OPTS='-Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8'
+export JVM_OPTS="$JAVA_OPTS"
+bash scripts/scala_autofix.sh origin/main
+sbt -batch -Dopengpu.productQualification=0 -Dopengpu.simJobs=2 \
+  'set Test / parallelExecution := false' 'Test / compile' \
+  'testOnly opengpu.graphics.TessellationJointGeometryHostProtocolSpec opengpu.system.TessellationHostAxiCommandSpec opengpu.graphics.TileBinHostCommandPortSpec opengpu.graphics.tessellation.TessellationHostCommandPortSpec opengpu.system.TessellationJointJobAbiSpec'
+python3 -B scripts/generate_protected_tessellation_joint_geometry_abi.py --check
+python3 -B scripts/test_protected_tessellation_joint_abi.py
+python3 -B scripts/test_changed_test_suites.py
+python3 -B scripts/test_test_selection.py
+bash -n scripts/scala_autofix.sh scripts/select_tests.sh scripts/ci_shard_tests.sh scripts/test_scripts.sh
+git diff --check
+```
+
+This is a schema/codec delivery only. It does not wire `TileBinHostCommandPort`,
+`GpuCommandMmio`, `GpuHostAxi`, `GpuHostSystemAxi`, driver C execution,
+scheduler/IRQ, DRM/userspace/public ioctl, TF or ABI10. GJP2 is not a driver
+feature, `GET_PARAM` or public discovery record. No CU/frame execution, fault
+drain, product FPS, physical timing or P39/P40 acceptance is claimed.
+
 ## Geometry metadata in bin records
 
 Window-primitive bin records retain the existing payload offsets and record
