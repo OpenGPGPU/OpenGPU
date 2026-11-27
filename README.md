@@ -97,10 +97,15 @@ use `sbt 'scalafixAll --syntactic' scalafmtAll scalafmtSbt`.
 
 The Scala CI `lint-fix` job runs both tools and directly commits and pushes any
 fixes to the PR branch when it belongs to this repository and matches the tested
-merge tree. Approve the follow-up run on the PR to check the new bot commit.
-The job also uploads a `scala-autofix` patch. For a fork or a branch that needs
-updating, apply it with `git apply scala-autofix.patch` after updating your
-branch, or run the command above and push the fixes.
+merge tree. The GitHub App push automatically starts Scala CI on the new PR
+head. Configure the app's client ID in the `OPENGPU_LINT_APP_CLIENT_ID`
+repository variable and its private key in the `OPENGPU_LINT_APP_PRIVATE_KEY`
+Actions secret. Install the app on this repository with Contents read and
+write permission.
+
+The job also uploads a `scala-autofix` patch. For a fork, a branch that needs
+updating, or a repository without the app configured, apply the patch with
+`git apply scala-autofix.patch` or run the command above and push the fixes.
 
 The tests use `opengpu.testutil.GpuSim`, which caches compiled Verilator models
 under `target/chiselsim`. The first run spends most of its time compiling RTL;
