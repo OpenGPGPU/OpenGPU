@@ -30,6 +30,25 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 selected = changed_suites(REPO_ROOT, [f"src/main/scala/opengpu/{path}.scala"])
                 self.assertIn("opengpu.system.TessellationGeometryPipelineControlSpec", selected)
 
+    def test_geometry_range_sources_select_controller_cursor_and_adapter_checks(self):
+        paths = [
+            "system/tessellation/TessellationJointGeometryJobLayout",
+            "system/tessellation/TessellationJointGeometryRangeCaptureController",
+            "system/tessellation/TessellationJointGeometryNativeController",
+            "system/tessellation/TessellationGeometryVertexRangeControl",
+        ]
+        paths += [f"system/tessellation/TessellationSystem{domain}GeometryVertexTypedRange"
+                  for domain in ("Isoline", "Triangle", "Quad")]
+        expected = {
+            "opengpu.system.TessellationJointGeometryNativeControllerSpec",
+            "opengpu.system.TessellationGeometryVertexRangeControlSpec",
+            "opengpu.system.TessellationGeometryVertexTypedRangeTagSpec",
+        }
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertTrue(expected <= set(changed_suites(
+                    REPO_ROOT, [f"src/main/scala/opengpu/{path}.scala"])))
+
     def test_geometry_image_sources_select_transport_and_tuple_checks(self):
         paths = ["system/tessellation/TessellationGeometryBinPass",
                  "system/tessellation/TessellationGeometryImageBinSource",
