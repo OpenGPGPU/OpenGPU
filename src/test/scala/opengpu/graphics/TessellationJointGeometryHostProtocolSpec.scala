@@ -3,10 +3,7 @@ package opengpu.graphics
 import chisel3._
 import opengpu.command.GpuCommand
 import opengpu.config.GpuConfig
-import opengpu.system.{
-  TessellationJointGeometryJobRequest,
-  TessellationJointGeometryNativeCompletion
-}
+import opengpu.system.{TessellationJointGeometryJobRequest, TessellationJointGeometryNativeCompletion}
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
@@ -113,8 +110,10 @@ class TessellationJointGeometryHostProtocolSpec extends AnyFlatSpec {
     assert(TessellationJointHostProtocol.completionWords == 16)
     assert(TessellationJointHostProtocol.profileBase == 0x550)
     assert(TessellationJointHostProtocol.profileMagic == BigInt("474a5001", 16))
-    assert((0 until 16).map(protocol.completionAddress) ==
-      (0 until 16).map(TessellationJointHostProtocol.completionAddress))
+    assert(
+      (0 until 16).map(protocol.completionAddress) ==
+        (0 until 16).map(TessellationJointHostProtocol.completionAddress)
+    )
     assert(protocol.completionAddress(16) == 0x560)
     assert(protocol.completionAddress(45) == 0x5d4)
     assert(protocol.completionGeometryEnd == 0x5d8)
@@ -135,14 +134,16 @@ class TessellationJointGeometryHostProtocolSpec extends AnyFlatSpec {
       assert(decoded.ownerLimit == 0x4000)
       assert(decoded.identity == identity)
     }
-    val end = protocol.decode(
-      commandWords(
-        pattern = protocol.commandTag | (2 << 1) | 1,
-        sourceAddress = BigInt("fffff000", 16),
-        destinationAddress = 0,
-        widthBytes = 0
+    val end = protocol
+      .decode(
+        commandWords(
+          pattern = protocol.commandTag | (2 << 1) | 1,
+          sourceAddress = BigInt("fffff000", 16),
+          destinationAddress = 0,
+          widthBytes = 0
+        )
       )
-    ).get
+      .get
     assert(end.sourceAddress + protocol.rootAllocationBytes == BigInt(1) << 32)
     assert(end.ownerLimit == BigInt(1) << 32)
   }
@@ -213,9 +214,15 @@ class TessellationJointGeometryHostProtocolSpec extends AnyFlatSpec {
     assert((words(36) & ~BigInt("7fffffff", 16)) == 0)
     assert((words(41) & ~BigInt("7fffffff", 16)) == 0)
     assert((words(45) & ~BigInt("7fffffff", 16)) == 0)
-    assert(words.slice(39, 42).zipWithIndex.map { case (word, index) =>
-      word << (32 * index)
-    }.reduce(_ | _) == BigInt(1) << 64)
+    assert(
+      words
+        .slice(39, 42)
+        .zipWithIndex
+        .map { case (word, index) =>
+          word << (32 * index)
+        }
+        .reduce(_ | _) == BigInt(1) << 64
+    )
     assert(words(42) == 0 && words(43) == 0)
     val max161 = (BigInt(1) << 161) - 1
     val max65 = (BigInt(1) << 65) - 1
@@ -271,8 +278,14 @@ class TessellationJointGeometryHostProtocolSpec extends AnyFlatSpec {
       protocol.pack(report.copy(status = 0, faultStage = 1, faultAddress = 1))
     }
     intercept[IllegalArgumentException] {
-      protocol.pack(report.copy(status = 3, faultStage = 1, faultAddress = 0,
-        nextGsSequenceExclusive = report.nextGsSequenceExclusive + 1))
+      protocol.pack(
+        report.copy(
+          status = 3,
+          faultStage = 1,
+          faultAddress = 0,
+          nextGsSequenceExclusive = report.nextGsSequenceExclusive + 1
+        )
+      )
     }
   }
 
@@ -314,13 +327,24 @@ class TessellationJointGeometryHostProtocolSpec extends AnyFlatSpec {
     assert(protocol.profileBase == 0x600 && protocol.profileEnd == 0x610)
     assert(protocol.profileWordCount == 4)
     assert(protocol.profileGcr1PresenceBit == 23)
+    assert(protocol.profileRequiredOwnerMask == 0x7f)
+    assert(protocol.profileTargetFlags == 0x387f)
+    assert((protocol.profileFeatureFlags & 0x7f) == 0x7f)
+    assert(protocol.profileScalarFpu == 1 << 7)
+    assert((protocol.profileFeatureFlags & (protocol.profileAdvancedBlend | protocol.profileSampleInputs)) == 0)
+    assert((protocol.profileFeatureFlags & protocol.profileFeedback) == 0)
+    val geometryFlags = protocol.profileGeometryRoute | protocol.profileGeometryUniforms |
+      protocol.profileSharedThreeDomainOwner
+    assert((protocol.profileFeatureFlags & geometryFlags) == geometryFlags)
     assert(protocol.profileProvider == "two-cu-vga60-owner-v3-five-stage")
-    assert(protocol.profileWords == Vector(
-      BigInt("474a5002", 16),
-      BigInt("00803dff", 16),
-      BigInt("08100207", 16),
-      BigInt("8ce58b2c", 16)
-    ))
+    assert(
+      protocol.profileWords == Vector(
+        BigInt("474a5002", 16),
+        BigInt("0080387f", 16),
+        BigInt("08100207", 16),
+        BigInt("8ce58b2c", 16)
+      )
+    )
     val parsed = protocol.parseProfile(protocol.profileWords).get
     assert(parsed == protocol.targetProfile)
     assert(parsed.computeUnits == 2 && parsed.lanes == 16 && parsed.warps == 8)
@@ -330,7 +354,14 @@ class TessellationJointGeometryHostProtocolSpec extends AnyFlatSpec {
     assert((0 until 4).map(protocol.profileAddress) == Seq(0x600, 0x604, 0x608, 0x60c))
     assert(protocol.parseProfile(protocol.profileWords.dropRight(1)).isFailure)
     assert(protocol.parseProfile(protocol.profileWords.updated(0, protocol.profileMagic - 1)).isFailure)
-    assert(protocol.parseProfile(protocol.profileWords.updated(1, protocol.profileWords(1) & ~BigInt(1 << 23))).isFailure)
+    assert(
+      protocol.parseProfile(protocol.profileWords.updated(1, protocol.profileWords(1) & ~BigInt(1 << 23))).isFailure
+    )
+    assert(
+      protocol
+        .parseProfile(protocol.profileWords.updated(1, protocol.profileWords(1) | protocol.profileFeedback))
+        .isFailure
+    )
     assert(protocol.parseProfile(protocol.profileWords.updated(2, protocol.profileWords(2) ^ 1)).isFailure)
     assert(protocol.parseProfile(protocol.profileWords.updated(3, protocol.profileWords(3) ^ 1)).isFailure)
   }

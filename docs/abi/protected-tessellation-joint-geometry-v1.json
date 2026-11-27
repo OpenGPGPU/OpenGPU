@@ -297,6 +297,8 @@
     "end": "0x610",
     "words": 4,
     "gcr1PresenceBit": 23,
+    "requiredOwnerMask": "0x7f",
+    "targetFlags": "0x387f",
     "flags": [
       {
         "name": "OWNED_VERTEX_SOURCE",
@@ -324,37 +326,37 @@
         "required": true
       },
       {
-        "name": "GEOMETRY_ROUTE",
+        "name": "JOINT_DIRECTORY_ROUTE",
         "bit": 5,
         "required": true
       },
       {
-        "name": "JOINT_DIRECTORY_ROUTE",
+        "name": "WHOLE_OWNER_RETIREMENT",
         "bit": 6,
         "required": true
       },
       {
-        "name": "WHOLE_OWNER_RETIREMENT",
-        "bit": 7,
-        "required": true
-      },
-      {
         "name": "SCALAR_FPU",
-        "bit": 8,
-        "required": true
+        "bit": 7,
+        "required": false
       },
       {
         "name": "ADVANCED_BLEND",
-        "bit": 9,
+        "bit": 8,
         "required": false
       },
       {
         "name": "SAMPLE_INPUTS",
-        "bit": 10,
-        "required": true
+        "bit": 9,
+        "required": false
       },
       {
-        "name": "GEOMETRY_PIXEL_MASK",
+        "name": "FEEDBACK",
+        "bit": 10,
+        "required": false
+      },
+      {
+        "name": "GEOMETRY_ROUTE",
         "bit": 11,
         "required": true
       },
@@ -364,7 +366,7 @@
         "required": true
       },
       {
-        "name": "GEOMETRY_TRANSFORM_FEEDBACK",
+        "name": "SHARED_THREE_DOMAIN_OWNER",
         "bit": 13,
         "required": true
       }
@@ -433,6 +435,8 @@
     "provider": "two-cu-vga60-owner-v3-five-stage",
     "rules": [
       "GCR1 bit23 is the only presence contract",
+      "bits0..6 are the required owner mask 0x7f",
+      "feedback bit10 must be zero",
       "the four words are an internal read-only probe",
       "no driver feature, GET_PARAM or public discovery is defined"
     ]

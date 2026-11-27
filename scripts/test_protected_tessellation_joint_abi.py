@@ -48,13 +48,40 @@ class JointGeometryAbi(unittest.TestCase):
                           completion['end']),
                          ('0x180', '0x540', '0x560', '0x5d8', '0x5d8', 4, '0x5e8'))
         self.assertEqual(geometry_abi.profile_words(profile),
-                         [0x474a5002, 0x803dff, 0x08100207, 0x8ce58b2c])
+                         [0x474a5002, 0x80387f, 0x08100207, 0x8ce58b2c])
+        flags = {item['name']: item for item in profile['flags']}
+        self.assertEqual(set(flags), {
+            'OWNED_VERTEX_SOURCE', 'PATCH_ZERO_INITIALIZED', 'OWNED_PATCH_READS',
+            'OWNED_TESSELLATION_INFO', 'GEOMETRY_INPUTS', 'JOINT_DIRECTORY_ROUTE',
+            'WHOLE_OWNER_RETIREMENT', 'SCALAR_FPU', 'ADVANCED_BLEND', 'SAMPLE_INPUTS',
+            'FEEDBACK', 'GEOMETRY_ROUTE', 'GEOMETRY_UNIFORMS', 'SHARED_THREE_DOMAIN_OWNER',
+        })
+        self.assertEqual(profile['requiredOwnerMask'], '0x7f')
+        self.assertEqual(profile['targetFlags'], '0x387f')
+        self.assertTrue(all(flags[name]['required'] for name in (
+            'OWNED_VERTEX_SOURCE', 'PATCH_ZERO_INITIALIZED', 'OWNED_PATCH_READS',
+            'OWNED_TESSELLATION_INFO', 'GEOMETRY_INPUTS', 'JOINT_DIRECTORY_ROUTE',
+            'WHOLE_OWNER_RETIREMENT')))
+        self.assertEqual((flags['SCALAR_FPU']['bit'], flags['SCALAR_FPU']['required']), (7, False))
+        self.assertEqual((flags['ADVANCED_BLEND']['bit'], flags['ADVANCED_BLEND']['required']), (8, False))
+        self.assertEqual((flags['SAMPLE_INPUTS']['bit'], flags['SAMPLE_INPUTS']['required']), (9, False))
+        self.assertEqual((flags['FEEDBACK']['bit'], flags['FEEDBACK']['required']), (10, False))
+        self.assertEqual((flags['GEOMETRY_ROUTE']['bit'], flags['GEOMETRY_ROUTE']['required']), (11, True))
+        self.assertEqual((flags['GEOMETRY_UNIFORMS']['bit'], flags['GEOMETRY_UNIFORMS']['required']), (12, True))
+        self.assertEqual((flags['SHARED_THREE_DOMAIN_OWNER']['bit'],
+                          flags['SHARED_THREE_DOMAIN_OWNER']['required']), (13, True))
+        self.assertIn('feedback bit10 must be zero', profile['rules'])
         header = geometry_abi.OUTPUT.read_text()
         self.assertIn('#define OPENGPU_JOINT_GEOMETRY_HOST_COMMAND_TAG 0x474a0200u', header)
         self.assertIn('#define OPENGPU_JOINT_GEOMETRY_COMPLETION_WORDS 0x2eu', header)
         self.assertIn('#define OPENGPU_JOINT_GEOMETRY_COMPLETION_GEOMETRY_BASE 0x560u', header)
         self.assertIn('#define OPENGPU_JOINT_GEOMETRY_PROFILE_CAPACITY_WORD 0x8ce58b2cu', header)
         self.assertIn('#define OPENGPU_JOINT_GEOMETRY_PROFILE_GCR1_PRESENCE_BIT 0x17u', header)
+        self.assertIn('#define OPENGPU_JOINT_GEOMETRY_PROFILE_REQUIRED_OWNER_MASK 0x7fu', header)
+        self.assertIn('#define OPENGPU_JOINT_GEOMETRY_PROFILE_TARGET_FLAGS 0x387fu', header)
+        self.assertIn('#define OPENGPU_JOINT_GEOMETRY_PROFILE_FLAGS 0x80387fu', header)
+        self.assertIn('#define OPENGPU_JOINT_GEOMETRY_PROFILE_FLAG_FEEDBACK_REQUIRED 0x0u', header)
+        self.assertNotIn('TRANSFORM_FEEDBACK', header)
 
     def test_changed_schema_fails_closed(self):
         original = json.loads(geometry_abi.SCHEMA.read_text())
@@ -80,6 +107,11 @@ class JointGeometryAbi(unittest.TestCase):
             lambda s: s['completion']['rules'].pop(),
             lambda s: s['profile'].update(magic='0x474a5001'),
             lambda s: s['profile'].update(gcr1PresenceBit=22),
+            lambda s: s['profile'].update(requiredOwnerMask='0x3f'),
+            lambda s: s['profile'].update(targetFlags='0x387e'),
+            lambda s: next(f for f in s['profile']['flags'] if f['name'] == 'FEEDBACK').update(required=True),
+            lambda s: next(f for f in s['profile']['flags']
+                           if f['name'] == 'SHARED_THREE_DOMAIN_OWNER').update(required=False),
             lambda s: s['profile']['capacities'].update(payloadBytes=262144),
             lambda s: s['profile']['capacityEncoding'][-1].update(shift=26),
             lambda s: s['profile'].update(provider='two-cu-vga60-owner-v2'),

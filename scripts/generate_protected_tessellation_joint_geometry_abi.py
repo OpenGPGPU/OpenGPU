@@ -75,22 +75,22 @@ EXPECTED_COMPLETION = {
 
 EXPECTED_PROFILE = {
     'magic': '0x474a5002', 'base': '0x600', 'end': '0x610', 'words': 4,
-    'gcr1PresenceBit': 23,
+    'gcr1PresenceBit': 23, 'requiredOwnerMask': '0x7f', 'targetFlags': '0x387f',
     'flags': [
         {'name': 'OWNED_VERTEX_SOURCE', 'bit': 0, 'required': True},
         {'name': 'PATCH_ZERO_INITIALIZED', 'bit': 1, 'required': True},
         {'name': 'OWNED_PATCH_READS', 'bit': 2, 'required': True},
         {'name': 'OWNED_TESSELLATION_INFO', 'bit': 3, 'required': True},
         {'name': 'GEOMETRY_INPUTS', 'bit': 4, 'required': True},
-        {'name': 'GEOMETRY_ROUTE', 'bit': 5, 'required': True},
-        {'name': 'JOINT_DIRECTORY_ROUTE', 'bit': 6, 'required': True},
-        {'name': 'WHOLE_OWNER_RETIREMENT', 'bit': 7, 'required': True},
-        {'name': 'SCALAR_FPU', 'bit': 8, 'required': True},
-        {'name': 'ADVANCED_BLEND', 'bit': 9, 'required': False},
-        {'name': 'SAMPLE_INPUTS', 'bit': 10, 'required': True},
-        {'name': 'GEOMETRY_PIXEL_MASK', 'bit': 11, 'required': True},
+        {'name': 'JOINT_DIRECTORY_ROUTE', 'bit': 5, 'required': True},
+        {'name': 'WHOLE_OWNER_RETIREMENT', 'bit': 6, 'required': True},
+        {'name': 'SCALAR_FPU', 'bit': 7, 'required': False},
+        {'name': 'ADVANCED_BLEND', 'bit': 8, 'required': False},
+        {'name': 'SAMPLE_INPUTS', 'bit': 9, 'required': False},
+        {'name': 'FEEDBACK', 'bit': 10, 'required': False},
+        {'name': 'GEOMETRY_ROUTE', 'bit': 11, 'required': True},
         {'name': 'GEOMETRY_UNIFORMS', 'bit': 12, 'required': True},
-        {'name': 'GEOMETRY_TRANSFORM_FEEDBACK', 'bit': 13, 'required': True},
+        {'name': 'SHARED_THREE_DOMAIN_OWNER', 'bit': 13, 'required': True},
     ],
     'shape': {'domainsMask': 7, 'computeUnits': 2, 'lanes': 16, 'warps': 8},
     'capacities': {'engines': 4, 'payloadOwners': 5, 'payloadPorts': 12,
@@ -110,6 +110,8 @@ EXPECTED_PROFILE = {
     'provider': 'two-cu-vga60-owner-v3-five-stage',
     'rules': [
         'GCR1 bit23 is the only presence contract',
+        'bits0..6 are the required owner mask 0x7f',
+        'feedback bit10 must be zero',
         'the four words are an internal read-only probe',
         'no driver feature, GET_PARAM or public discovery is defined',
     ],
@@ -126,6 +128,10 @@ def profile_words(profile):
     capacities = profile['capacities']
     shape = profile['shape']
     flags = sum(1 << item['bit'] for item in profile['flags'] if item['required'])
+    if flags & int(profile['requiredOwnerMask'], 16) != int(profile['requiredOwnerMask'], 16):
+        raise ValueError('wrong joint geometry required owner mask')
+    if flags != int(profile['targetFlags'], 16):
+        raise ValueError('wrong joint geometry target flags')
     flags |= 1 << profile['gcr1PresenceBit']
     shape_word = ((shape['warps'] << 24) | (shape['lanes'] << 16) |
                   (shape['computeUnits'] << 8) | shape['domainsMask'])
@@ -194,7 +200,7 @@ def generate():
         raise ValueError('changed joint geometry completion')
     if profile != EXPECTED_PROFILE:
         raise ValueError('changed joint geometry profile')
-    if profile_words(profile) != [0x474a5002, 0x803dff, 0x08100207, 0x8ce58b2c]:
+    if profile_words(profile) != [0x474a5002, 0x80387f, 0x08100207, 0x8ce58b2c]:
         raise ValueError('wrong joint geometry profile words')
 
     out = [
@@ -299,6 +305,8 @@ def generate():
         define('PROFILE_END', profile['end']),
         define('PROFILE_WORDS', profile['words']),
         define('PROFILE_GCR1_PRESENCE_BIT', profile['gcr1PresenceBit']),
+        define('PROFILE_REQUIRED_OWNER_MASK', profile['requiredOwnerMask']),
+        define('PROFILE_TARGET_FLAGS', profile['targetFlags']),
         define('PROFILE_FLAGS', words[1]),
         define('PROFILE_SHAPE_WORD', words[2]),
         define('PROFILE_CAPACITY_WORD', words[3]),
