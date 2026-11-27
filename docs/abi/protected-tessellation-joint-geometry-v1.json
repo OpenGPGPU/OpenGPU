@@ -1,6 +1,6 @@
 {
   "name": "Protected five-stage geometry joint BUILD",
-  "status": "Versioned native BUILD/prepare contract for GNQ7/8/9 v3 and GGA1/GNG1; discovery, submission and transform feedback remain unavailable.",
+  "status": "Versioned native BUILD/prepare and private host codec contract for GNQ7/8/9 v3 and GGA1/GNG1; driver execution, discovery and transform feedback remain unavailable.",
   "root": {
     "bytes": 512,
     "version": 3,
@@ -90,6 +90,348 @@
         "bits": 64
       }
     }
+  },
+  "hostSubmission": {
+    "commandTag": "0x474a0200",
+    "opcode": 15,
+    "rootBytes": 512,
+    "rootAllocationBytes": 4096,
+    "sourceAlignmentBytes": 4096,
+    "domainCount": 3,
+    "ownerLimitBits": 33,
+    "ownerLimitMaximum": "0x100000000",
+    "pattern": {
+      "tagShift": 3,
+      "tagBits": 29,
+      "domainShift": 1,
+      "domainBits": 2,
+      "ownerLimitHighShift": 0
+    },
+    "registers": {
+      "sourceBase": "SOURCE",
+      "ownerBase": "DESTINATION",
+      "ownerLimitLow": "WIDTH",
+      "bytes": "BYTES",
+      "context": "HEIGHT",
+      "pass": "SOURCE_STRIDE",
+      "generation": "DEST_STRIDE"
+    },
+    "rejectedFlags": [
+      "waitForDma",
+      "waitForEvent",
+      "signalEvent",
+      "rasterDiscard",
+      "feedbackCapture"
+    ],
+    "rules": [
+      "opcode, tag and domain are exact; domain 3 is rejected",
+      "source is 4096-byte aligned and its 4096-byte allocation may end at 4 GiB",
+      "owner exclusive limit is greater than base and at most 4 GiB",
+      "all rejected flags are zero"
+    ],
+    "byteOrder": "little-endian"
+  },
+  "completion": {
+    "magic": "0x474e5a03",
+    "words": 46,
+    "byteOrder": "little-endian",
+    "prefixBase": "0x180",
+    "prefixWords": 16,
+    "legacyTailBase": "0x540",
+    "geometryBase": "0x560",
+    "geometryWords": 30,
+    "end": "0x5e8",
+    "packedFields": [
+      {
+        "name": "STATUS",
+        "word": 1,
+        "shift": 0,
+        "bits": 3
+      },
+      {
+        "name": "FAULT_STAGE",
+        "word": 1,
+        "shift": 3,
+        "bits": 3
+      },
+      {
+        "name": "CLEAR_ONLY",
+        "word": 1,
+        "shift": 6,
+        "bits": 1
+      },
+      {
+        "name": "GEOMETRY_REPORT_VALID",
+        "word": 1,
+        "shift": 7,
+        "bits": 1
+      }
+    ],
+    "fields": [
+      {
+        "name": "MAGIC",
+        "word": 0,
+        "bits": 32
+      },
+      {
+        "name": "FAULT_ADDRESS",
+        "word": 2,
+        "bits": 32
+      },
+      {
+        "name": "CONTEXT",
+        "word": 3,
+        "bits": 32
+      },
+      {
+        "name": "PASS",
+        "word": 4,
+        "bits": 32
+      },
+      {
+        "name": "GENERATION",
+        "word": 5,
+        "bits": 32
+      },
+      {
+        "name": "CAPTURED_ENTRIES",
+        "word": 6,
+        "bits": 32
+      },
+      {
+        "name": "RETIRED_RANGES",
+        "word": 7,
+        "bits": 32
+      },
+      {
+        "name": "RETIRED_PATCHES",
+        "word": 8,
+        "bits": 64,
+        "words": 2
+      },
+      {
+        "name": "PUBLISHED",
+        "word": 10,
+        "bits": 64,
+        "words": 2
+      },
+      {
+        "name": "STORED_BYTES",
+        "word": 12,
+        "bits": 64,
+        "words": 2
+      },
+      {
+        "name": "RESOLVED_BYTES",
+        "word": 14,
+        "bits": 64,
+        "words": 2
+      },
+      {
+        "name": "ACTUAL_GS_PUBLISHED",
+        "word": 16,
+        "bits": 158,
+        "words": 5
+      },
+      {
+        "name": "RECEIVED",
+        "word": 21,
+        "bits": 161,
+        "words": 6
+      },
+      {
+        "name": "DROPPED",
+        "word": 27,
+        "bits": 161,
+        "words": 6
+      },
+      {
+        "name": "ADMITTED",
+        "word": 33,
+        "bits": 97,
+        "words": 4
+      },
+      {
+        "name": "GEOMETRY_TASKS",
+        "word": 37,
+        "bits": 64,
+        "words": 2
+      },
+      {
+        "name": "NEXT_GS_SEQUENCE_EXCLUSIVE",
+        "word": 39,
+        "bits": 65,
+        "words": 3
+      },
+      {
+        "name": "NEXT_GS_SEQUENCE",
+        "word": 42,
+        "bits": 64,
+        "words": 2
+      },
+      {
+        "name": "NEXT_BIN_SEQUENCE",
+        "word": 44,
+        "bits": 33,
+        "words": 2
+      }
+    ],
+    "rules": [
+      "all unused high bits are zero",
+      "nextGsSequence equals the low 64 bits of nextGsSequenceExclusive",
+      "received equals admitted plus dropped without truncation",
+      "geometryReportValid false forces words16..45 to zero",
+      "status zero requires faultStage and faultAddress zero",
+      "faultStage zero forces faultAddress zero; nonzero faultStage requires nonzero status",
+      "identity and status must match the unified completion",
+      "2^64 is a legal nextGsSequenceExclusive value"
+    ]
+  },
+  "profile": {
+    "magic": "0x474a5002",
+    "base": "0x600",
+    "end": "0x610",
+    "words": 4,
+    "gcr1PresenceBit": 23,
+    "flags": [
+      {
+        "name": "OWNED_VERTEX_SOURCE",
+        "bit": 0,
+        "required": true
+      },
+      {
+        "name": "PATCH_ZERO_INITIALIZED",
+        "bit": 1,
+        "required": true
+      },
+      {
+        "name": "OWNED_PATCH_READS",
+        "bit": 2,
+        "required": true
+      },
+      {
+        "name": "OWNED_TESSELLATION_INFO",
+        "bit": 3,
+        "required": true
+      },
+      {
+        "name": "GEOMETRY_INPUTS",
+        "bit": 4,
+        "required": true
+      },
+      {
+        "name": "GEOMETRY_ROUTE",
+        "bit": 5,
+        "required": true
+      },
+      {
+        "name": "JOINT_DIRECTORY_ROUTE",
+        "bit": 6,
+        "required": true
+      },
+      {
+        "name": "WHOLE_OWNER_RETIREMENT",
+        "bit": 7,
+        "required": true
+      },
+      {
+        "name": "SCALAR_FPU",
+        "bit": 8,
+        "required": true
+      },
+      {
+        "name": "ADVANCED_BLEND",
+        "bit": 9,
+        "required": false
+      },
+      {
+        "name": "SAMPLE_INPUTS",
+        "bit": 10,
+        "required": true
+      },
+      {
+        "name": "GEOMETRY_PIXEL_MASK",
+        "bit": 11,
+        "required": true
+      },
+      {
+        "name": "GEOMETRY_UNIFORMS",
+        "bit": 12,
+        "required": true
+      },
+      {
+        "name": "GEOMETRY_TRANSFORM_FEEDBACK",
+        "bit": 13,
+        "required": true
+      }
+    ],
+    "shape": {
+      "domainsMask": 7,
+      "computeUnits": 2,
+      "lanes": 16,
+      "warps": 8
+    },
+    "capacities": {
+      "engines": 4,
+      "payloadOwners": 5,
+      "payloadPorts": 12,
+      "imageProducerPins": 34,
+      "singleDomainTotalPins": 37,
+      "payloadBytes": 524288,
+      "maxPayloadBytes": 69632
+    },
+    "capacityEncoding": [
+      {
+        "name": "ENGINES",
+        "source": "engines",
+        "shift": 0,
+        "bits": 3
+      },
+      {
+        "name": "PAYLOAD_OWNERS",
+        "source": "payloadOwners",
+        "shift": 3,
+        "bits": 3
+      },
+      {
+        "name": "PAYLOAD_PORTS",
+        "source": "payloadPorts",
+        "shift": 6,
+        "bits": 4
+      },
+      {
+        "name": "IMAGE_PRODUCER_PINS",
+        "source": "imageProducerPins",
+        "shift": 10,
+        "bits": 6
+      },
+      {
+        "name": "SINGLE_DOMAIN_TOTAL_PINS",
+        "source": "singleDomainTotalPins",
+        "shift": 16,
+        "bits": 6
+      },
+      {
+        "name": "PAYLOAD_BYTES",
+        "source": "payloadBytes",
+        "shift": 22,
+        "bits": 5,
+        "encoding": "log2"
+      },
+      {
+        "name": "MAX_PAYLOAD_BYTES",
+        "source": "maxPayloadBytes",
+        "shift": 27,
+        "bits": 5,
+        "encoding": "4KiB"
+      }
+    ],
+    "provider": "two-cu-vga60-owner-v3-five-stage",
+    "rules": [
+      "GCR1 bit23 is the only presence contract",
+      "the four words are an internal read-only probe",
+      "no driver feature, GET_PARAM or public discovery is defined"
+    ]
   },
   "source_rules": [
     "all raw addresses zero; typed original views only",

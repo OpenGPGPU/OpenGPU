@@ -8,6 +8,136 @@ SCHEMA = ROOT / 'docs/abi/protected-tessellation-joint-geometry-v1.json'
 OUTPUT = ROOT / 'driver/opengpu_protected_tessellation_joint_geometry_abi.h'
 PREFIX = 'OPENGPU_JOINT_GEOMETRY_'
 
+EXPECTED_HOST_SUBMISSION = {
+    'commandTag': '0x474a0200', 'opcode': 15, 'rootBytes': 512,
+    'rootAllocationBytes': 4096, 'sourceAlignmentBytes': 4096, 'domainCount': 3,
+    'ownerLimitBits': 33, 'ownerLimitMaximum': '0x100000000',
+    'pattern': {'tagShift': 3, 'tagBits': 29, 'domainShift': 1, 'domainBits': 2,
+                'ownerLimitHighShift': 0},
+    'registers': {'sourceBase': 'SOURCE', 'ownerBase': 'DESTINATION',
+                  'ownerLimitLow': 'WIDTH', 'bytes': 'BYTES', 'context': 'HEIGHT',
+                  'pass': 'SOURCE_STRIDE', 'generation': 'DEST_STRIDE'},
+    'rejectedFlags': ['waitForDma', 'waitForEvent', 'signalEvent', 'rasterDiscard',
+                      'feedbackCapture'],
+    'rules': [
+        'opcode, tag and domain are exact; domain 3 is rejected',
+        'source is 4096-byte aligned and its 4096-byte allocation may end at 4 GiB',
+        'owner exclusive limit is greater than base and at most 4 GiB',
+        'all rejected flags are zero',
+    ],
+    'byteOrder': 'little-endian',
+}
+
+EXPECTED_COMPLETION = {
+    'magic': '0x474e5a03', 'words': 46, 'byteOrder': 'little-endian',
+    'prefixBase': '0x180', 'prefixWords': 16, 'legacyTailBase': '0x540',
+    'geometryBase': '0x560', 'geometryWords': 30, 'end': '0x5e8',
+    'packedFields': [
+        {'name': 'STATUS', 'word': 1, 'shift': 0, 'bits': 3},
+        {'name': 'FAULT_STAGE', 'word': 1, 'shift': 3, 'bits': 3},
+        {'name': 'CLEAR_ONLY', 'word': 1, 'shift': 6, 'bits': 1},
+        {'name': 'GEOMETRY_REPORT_VALID', 'word': 1, 'shift': 7, 'bits': 1},
+    ],
+    'fields': [
+        {'name': 'MAGIC', 'word': 0, 'bits': 32},
+        {'name': 'FAULT_ADDRESS', 'word': 2, 'bits': 32},
+        {'name': 'CONTEXT', 'word': 3, 'bits': 32},
+        {'name': 'PASS', 'word': 4, 'bits': 32},
+        {'name': 'GENERATION', 'word': 5, 'bits': 32},
+        {'name': 'CAPTURED_ENTRIES', 'word': 6, 'bits': 32},
+        {'name': 'RETIRED_RANGES', 'word': 7, 'bits': 32},
+        {'name': 'RETIRED_PATCHES', 'word': 8, 'bits': 64, 'words': 2},
+        {'name': 'PUBLISHED', 'word': 10, 'bits': 64, 'words': 2},
+        {'name': 'STORED_BYTES', 'word': 12, 'bits': 64, 'words': 2},
+        {'name': 'RESOLVED_BYTES', 'word': 14, 'bits': 64, 'words': 2},
+        {'name': 'ACTUAL_GS_PUBLISHED', 'word': 16, 'bits': 158, 'words': 5},
+        {'name': 'RECEIVED', 'word': 21, 'bits': 161, 'words': 6},
+        {'name': 'DROPPED', 'word': 27, 'bits': 161, 'words': 6},
+        {'name': 'ADMITTED', 'word': 33, 'bits': 97, 'words': 4},
+        {'name': 'GEOMETRY_TASKS', 'word': 37, 'bits': 64, 'words': 2},
+        {'name': 'NEXT_GS_SEQUENCE_EXCLUSIVE', 'word': 39, 'bits': 65, 'words': 3},
+        {'name': 'NEXT_GS_SEQUENCE', 'word': 42, 'bits': 64, 'words': 2},
+        {'name': 'NEXT_BIN_SEQUENCE', 'word': 44, 'bits': 33, 'words': 2},
+    ],
+    'rules': [
+        'all unused high bits are zero',
+        'nextGsSequence equals the low 64 bits of nextGsSequenceExclusive',
+        'received equals admitted plus dropped without truncation',
+        'geometryReportValid false forces words16..45 to zero',
+        'status zero requires faultStage and faultAddress zero',
+        'faultStage zero forces faultAddress zero; nonzero faultStage requires nonzero status',
+        'identity and status must match the unified completion',
+        '2^64 is a legal nextGsSequenceExclusive value',
+    ],
+}
+
+EXPECTED_PROFILE = {
+    'magic': '0x474a5002', 'base': '0x600', 'end': '0x610', 'words': 4,
+    'gcr1PresenceBit': 23,
+    'flags': [
+        {'name': 'OWNED_VERTEX_SOURCE', 'bit': 0, 'required': True},
+        {'name': 'PATCH_ZERO_INITIALIZED', 'bit': 1, 'required': True},
+        {'name': 'OWNED_PATCH_READS', 'bit': 2, 'required': True},
+        {'name': 'OWNED_TESSELLATION_INFO', 'bit': 3, 'required': True},
+        {'name': 'GEOMETRY_INPUTS', 'bit': 4, 'required': True},
+        {'name': 'GEOMETRY_ROUTE', 'bit': 5, 'required': True},
+        {'name': 'JOINT_DIRECTORY_ROUTE', 'bit': 6, 'required': True},
+        {'name': 'WHOLE_OWNER_RETIREMENT', 'bit': 7, 'required': True},
+        {'name': 'SCALAR_FPU', 'bit': 8, 'required': True},
+        {'name': 'ADVANCED_BLEND', 'bit': 9, 'required': False},
+        {'name': 'SAMPLE_INPUTS', 'bit': 10, 'required': True},
+        {'name': 'GEOMETRY_PIXEL_MASK', 'bit': 11, 'required': True},
+        {'name': 'GEOMETRY_UNIFORMS', 'bit': 12, 'required': True},
+        {'name': 'GEOMETRY_TRANSFORM_FEEDBACK', 'bit': 13, 'required': True},
+    ],
+    'shape': {'domainsMask': 7, 'computeUnits': 2, 'lanes': 16, 'warps': 8},
+    'capacities': {'engines': 4, 'payloadOwners': 5, 'payloadPorts': 12,
+                   'imageProducerPins': 34, 'singleDomainTotalPins': 37,
+                   'payloadBytes': 524288, 'maxPayloadBytes': 69632},
+    'capacityEncoding': [
+        {'name': 'ENGINES', 'source': 'engines', 'shift': 0, 'bits': 3},
+        {'name': 'PAYLOAD_OWNERS', 'source': 'payloadOwners', 'shift': 3, 'bits': 3},
+        {'name': 'PAYLOAD_PORTS', 'source': 'payloadPorts', 'shift': 6, 'bits': 4},
+        {'name': 'IMAGE_PRODUCER_PINS', 'source': 'imageProducerPins', 'shift': 10, 'bits': 6},
+        {'name': 'SINGLE_DOMAIN_TOTAL_PINS', 'source': 'singleDomainTotalPins', 'shift': 16, 'bits': 6},
+        {'name': 'PAYLOAD_BYTES', 'source': 'payloadBytes', 'shift': 22, 'bits': 5,
+         'encoding': 'log2'},
+        {'name': 'MAX_PAYLOAD_BYTES', 'source': 'maxPayloadBytes', 'shift': 27, 'bits': 5,
+         'encoding': '4KiB'},
+    ],
+    'provider': 'two-cu-vga60-owner-v3-five-stage',
+    'rules': [
+        'GCR1 bit23 is the only presence contract',
+        'the four words are an internal read-only probe',
+        'no driver feature, GET_PARAM or public discovery is defined',
+    ],
+}
+
+
+def define(name, value):
+    text = value if isinstance(value, str) else hex(value)
+    suffix = 'ULL' if int(text, 0) > 0xffffffff else 'u'
+    return f'#define {PREFIX}{name} {text}{suffix}'
+
+
+def profile_words(profile):
+    capacities = profile['capacities']
+    shape = profile['shape']
+    flags = sum(1 << item['bit'] for item in profile['flags'] if item['required'])
+    flags |= 1 << profile['gcr1PresenceBit']
+    shape_word = ((shape['warps'] << 24) | (shape['lanes'] << 16) |
+                  (shape['computeUnits'] << 8) | shape['domainsMask'])
+    capacity_word = 0
+    for item in profile['capacityEncoding']:
+        value = capacities[item['source']]
+        if item.get('encoding') == 'log2':
+            value = value.bit_length() - 1
+        elif item.get('encoding') == '4KiB':
+            value //= 4096
+        capacity_word |= value << item['shift']
+    return [int(profile['magic'], 16), flags, shape_word, capacity_word]
+
+
 
 def generate():
     s = json.loads((ROOT/'docs/abi/protected-tessellation-joint-geometry-v1.json').read_text())
@@ -55,6 +185,15 @@ def generate():
         'linked fragment shaders use GS-aware ABI5 or ABI7 only',
     ]:
         raise ValueError('changed joint geometry source rules')
+    host, completion, profile = s['hostSubmission'], s['completion'], s['profile']
+    if host != EXPECTED_HOST_SUBMISSION:
+        raise ValueError('changed joint geometry host submission')
+    if completion != EXPECTED_COMPLETION:
+        raise ValueError('changed joint geometry completion')
+    if profile != EXPECTED_PROFILE:
+        raise ValueError('changed joint geometry profile')
+    if profile_words(profile) != [0x474a5002, 0x803dff, 0x08100207, 0x8ce58b2c]:
+        raise ValueError('wrong joint geometry profile words')
 
     out = [
         '/* Generated by scripts/generate_protected_tessellation_joint_geometry_abi.py. */',
@@ -107,6 +246,73 @@ def generate():
         f'#define {PREFIX}ENTRY_EVALUATION_COMPONENTS_BITS {entry["evaluation_components"]["bits"]}u',
         f'#define {PREFIX}ENTRY_EVALUATION_COMPONENTS_COUNT {entry["evaluation_components"]["count"]}u',
     ]
+    out += [
+        define('HOST_COMMAND_TAG', host['commandTag']),
+        define('HOST_OPCODE', host['opcode']),
+        define('HOST_ROOT_BYTES', host['rootBytes']),
+        define('HOST_ROOT_ALLOCATION_BYTES', host['rootAllocationBytes']),
+        define('HOST_SOURCE_ALIGNMENT_BYTES', host['sourceAlignmentBytes']),
+        define('HOST_DOMAIN_COUNT', host['domainCount']),
+        define('HOST_OWNER_LIMIT_BITS', host['ownerLimitBits']),
+        define('HOST_OWNER_LIMIT_MAXIMUM', host['ownerLimitMaximum']),
+        define('HOST_PATTERN_TAG_SHIFT', host['pattern']['tagShift']),
+        define('HOST_PATTERN_TAG_BITS', host['pattern']['tagBits']),
+        define('HOST_PATTERN_DOMAIN_SHIFT', host['pattern']['domainShift']),
+        define('HOST_PATTERN_DOMAIN_BITS', host['pattern']['domainBits']),
+        define('HOST_PATTERN_OWNER_LIMIT_HIGH_SHIFT', host['pattern']['ownerLimitHighShift']),
+    ]
+    out += [define('HOST_REJECT_' + flag.upper(), 1) for flag in host['rejectedFlags']]
+    out += [
+        define('COMPLETION_MAGIC', completion['magic']),
+        define('COMPLETION_WORDS', completion['words']),
+        define('COMPLETION_PREFIX_BASE', completion['prefixBase']),
+        define('COMPLETION_PREFIX_WORDS', completion['prefixWords']),
+        define('COMPLETION_LEGACY_TAIL_BASE', completion['legacyTailBase']),
+        define('COMPLETION_GEOMETRY_BASE', completion['geometryBase']),
+        define('COMPLETION_GEOMETRY_WORDS', completion['geometryWords']),
+        define('COMPLETION_END', completion['end']),
+    ]
+    for field in completion['packedFields']:
+        name = field['name']
+        out += [
+            define(f'COMPLETION_{name}_WORD', field['word']),
+            define(f'COMPLETION_{name}_SHIFT', field['shift']),
+            define(f'COMPLETION_{name}_BITS', field['bits']),
+        ]
+    for field in completion['fields']:
+        name = field['name']
+        out += [
+            define(f'COMPLETION_{name}_WORD', field['word']),
+            define(f'COMPLETION_{name}_BITS', field['bits']),
+        ]
+        if 'words' in field:
+            out.append(define(f'COMPLETION_{name}_WORDS', field['words']))
+    words = profile_words(profile)
+    out += [
+        define('PROFILE_MAGIC', profile['magic']),
+        define('PROFILE_BASE', profile['base']),
+        define('PROFILE_END', profile['end']),
+        define('PROFILE_WORDS', profile['words']),
+        define('PROFILE_GCR1_PRESENCE_BIT', profile['gcr1PresenceBit']),
+        define('PROFILE_FLAGS', words[1]),
+        define('PROFILE_SHAPE_WORD', words[2]),
+        define('PROFILE_CAPACITY_WORD', words[3]),
+        f'#define {PREFIX}PROFILE_PROVIDER "{profile["provider"]}"',
+    ]
+    for flag in profile['flags']:
+        out += [
+            define(f'PROFILE_FLAG_{flag["name"]}_BIT', flag['bit']),
+            define(f'PROFILE_FLAG_{flag["name"]}_REQUIRED', int(flag['required'])),
+        ]
+    for name, value in profile['shape'].items():
+        out.append(define('PROFILE_SHAPE_' + name.upper(), value))
+    for name, value in profile['capacities'].items():
+        out.append(define('PROFILE_' + name.upper(), value))
+    for field in profile['capacityEncoding']:
+        out += [
+            define(f'PROFILE_CAPACITY_{field["name"]}_SHIFT', field['shift']),
+            define(f'PROFILE_CAPACITY_{field["name"]}_BITS', field['bits']),
+        ]
     return '\n'.join(out + ['#endif', ''])
 
 
