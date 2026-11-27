@@ -18,8 +18,7 @@ class FillEngineSpec extends AnyFlatSpec {
     dut.io.memoryResponse.bits.poke(0.U.asTypeOf(dut.io.memoryResponse.bits))
   }
 
-  private def submit(dut: FillEngine, id: Int, address: BigInt,
-                     bytes: Int, pattern: BigInt): Unit = {
+  private def submit(dut: FillEngine, id: Int, address: BigInt, bytes: Int, pattern: BigInt): Unit = {
     dut.io.descriptor.bits.descriptorId.poke(id.U)
     dut.io.descriptor.bits.destinationAddress.poke(address.U)
     dut.io.descriptor.bits.bytes.poke(bytes.U)
@@ -29,8 +28,7 @@ class FillEngineSpec extends AnyFlatSpec {
     dut.clock.step(); dut.io.descriptor.valid.poke(false.B)
   }
 
-  private def respond(dut: FillEngine, id: BigInt,
-                      fault: Boolean = false): Unit = {
+  private def respond(dut: FillEngine, id: BigInt, fault: Boolean = false): Unit = {
     dut.io.memoryResponse.bits.transactionId.poke(id.U)
     dut.io.memoryResponse.bits.fault.poke(fault.B)
     dut.io.memoryResponse.valid.poke(true.B)
@@ -82,12 +80,15 @@ class FillEngineSpec extends AnyFlatSpec {
   }
 
   it should "map a narrow slot index into a wider shared transaction range" in {
-    simulate(new FillEngine(
-      GpuConfig(lanes = 4),
-      descriptorIdWidth = 4,
-      maxOutstanding = 8,
-      lineSlots = 2,
-      transactionIdBase = 4)) { dut =>
+    simulate(
+      new FillEngine(
+        GpuConfig(lanes = 4),
+        descriptorIdWidth = 4,
+        maxOutstanding = 8,
+        lineSlots = 2,
+        transactionIdBase = 4
+      )
+    ) { dut =>
       initialize(dut)
       submit(dut, 5, 0x5800, 64, 0x12345678L)
 
@@ -116,8 +117,15 @@ class FillEngineSpec extends AnyFlatSpec {
 
   for (slots <- Seq(8, 16)) {
     it should s"drain $slots outstanding slots after an out-of-order fault and reuse them" in {
-      simulate(new FillEngine(GpuConfig(lanes = 4), descriptorIdWidth = 4,
-        maxOutstanding = 2 * slots, lineSlots = slots, transactionIdBase = slots)) { dut =>
+      simulate(
+        new FillEngine(
+          GpuConfig(lanes = 4),
+          descriptorIdWidth = 4,
+          maxOutstanding = 2 * slots,
+          lineSlots = slots,
+          transactionIdBase = slots
+        )
+      ) { dut =>
         initialize(dut)
         submit(dut, 6, 0x8000, (slots + 2) * 64, 0x12345678L)
         val ids = (0 until slots).map { line =>

@@ -3,9 +3,8 @@ package opengpu.util
 import chisel3._
 import chisel3.util._
 
-/** Two entries with the same non-flowing, non-pipelined admission contract
-  * as Queue(entries=2, pipe=false, flow=false). The head is a register,
-  * removing a wide pointer-selected read mux before downstream arithmetic.
+/** Two entries with the same non-flowing, non-pipelined admission contract as Queue(entries=2, pipe=false, flow=false).
+  * The head is a register, removing a wide pointer-selected read mux before downstream arithmetic.
   */
 class RegisteredQueue2[T <: Data](gen: T) extends Module {
   val io = IO(new Bundle {

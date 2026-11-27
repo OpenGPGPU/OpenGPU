@@ -5,9 +5,8 @@ import opengpu.graphics._
 import chisel3._
 import chisel3.util._
 
-/** A warp parks its participating lanes at one control-shader barrier.
-  * Lane i owns invocation base+i. Masks from simultaneously parked warps must
-  * be disjoint and fit within the patch's 32 invocation limit.
+/** A warp parks its participating lanes at one control-shader barrier. Lane i owns invocation base+i. Masks from
+  * simultaneously parked warps must be disjoint and fit within the patch's 32 invocation limit.
   */
 class TessellationWarpPark(warps: Int, laneCount: Int) extends Bundle {
   val warp = UInt(log2Ceil(warps).W)
@@ -19,15 +18,15 @@ class TessellationWarpResume(warps: Int) extends Bundle {
   val warp = UInt(log2Ceil(warps).W)
   val barrierId = UInt(32.W)
   val epoch = UInt(32.W)
+
   /** 0 released, 1 invalid mask/overlap, 2 canceled. */
   val status = UInt(2.W)
 }
 
-/** Converts independently parked SIMT warps into per-invocation barrier
-  * handshakes. All parked warps can make progress concurrently, so a patch
-  * larger than one warp does not require one CU execution slot per invocation.
-  * The enclosing scheduler must stop issuing work when cancel is asserted and
-  * must propagate an accepted terminal result to retire parked warps.
+/** Converts independently parked SIMT warps into per-invocation barrier handshakes. All parked warps can make progress
+  * concurrently, so a patch larger than one warp does not require one CU execution slot per invocation. The enclosing
+  * scheduler must stop issuing work when cancel is asserted and must propagate an accepted terminal result to retire
+  * parked warps.
   */
 class TessellationWarpBarrier(warps: Int, lanes: Int) extends Module {
   require(warps >= 2 && isPow2(warps) && lanes >= 1 && lanes <= 32)
@@ -37,6 +36,7 @@ class TessellationWarpBarrier(warps: Int, lanes: Int) extends Module {
     val release = Flipped(Decoupled(new TessellationBarrierRelease))
     val resume = Decoupled(new TessellationWarpResume(warps))
     val cancel = Input(Bool())
+
     /** The context has accepted a terminal result and cannot accept arrivals. */
     val terminal = Input(Bool())
     val busy = Output(Bool())
@@ -79,7 +79,8 @@ class TessellationWarpBarrier(warps: Int, lanes: Int) extends Module {
   private val eligible = VecInit((0 until warps).map(i => valid(i) && !done(i) && pending(i).orR))
   private val nextWarp = PriorityEncoder(eligible.asUInt)
   when(!sendValid && !aborting && !io.cancel && !io.terminal && eligible.asUInt.orR) {
-    sendValid := true.B; sendWarp := nextWarp; sendInvocation := PriorityEncoder(pending(nextWarp)); sendId := id(nextWarp)
+    sendValid := true.B; sendWarp := nextWarp; sendInvocation := PriorityEncoder(pending(nextWarp));
+    sendId := id(nextWarp)
   }
   io.arrive.valid := sendValid
   io.arrive.bits.invocation := sendInvocation; io.arrive.bits.barrierId := sendId
@@ -90,7 +91,9 @@ class TessellationWarpBarrier(warps: Int, lanes: Int) extends Module {
   when(io.terminal) { sendValid := false.B }
 
   private val releaseBit = UIntToOH(io.release.bits.invocation, 32)
-  private val matches = VecInit((0 until warps).map(i => valid(i) && !done(i) && !pending(i).orR && (remaining(i) & releaseBit).orR))
+  private val matches = VecInit(
+    (0 until warps).map(i => valid(i) && !done(i) && !pending(i).orR && (remaining(i) & releaseBit).orR)
+  )
   private val releaseWarp = PriorityEncoder(matches.asUInt)
   io.release.ready := aborting || io.cancel || io.terminal || matches.asUInt.orR
   when(io.release.fire && !aborting && !io.cancel && !io.terminal && matches.asUInt.orR) {
@@ -105,7 +108,11 @@ class TessellationWarpBarrier(warps: Int, lanes: Int) extends Module {
 
   // Complete cancellation only after an already offered arrival is consumed.
   for (i <- 0 until warps) {
-    when((aborting || io.cancel || io.terminal) && valid(i) && !(resumeValid && resumeBits.warp === i.U) && (!sendValid || io.terminal)) {
+    when(
+      (aborting || io.cancel || io.terminal) && valid(
+        i
+      ) && !(resumeValid && resumeBits.warp === i.U) && (!sendValid || io.terminal)
+    ) {
       done(i) := true.B; status(i) := 2.U
     }
   }

@@ -11,19 +11,34 @@ import scala.collection.mutable
 /** Reproduce runtime pointer arithmetic with the full FPU-enabled CU configuration. */
 class RuntimeVectorAddressSpec extends AnyFlatSpec with GpuHostTestSupport {
   it should "preserve runtime staging address arithmetic across seven FPU-enabled warps" in {
-    simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = 16, screenHeight = 16,
-      omInflight = 64, omLocality = true, fragmentBatchLimit = 112), GpuConfig(),
-      numComputeUnits = 4, fragCore = true, vertCore = true, enableFpuBackend = true,
-      sharedGraphics = true, parallelGraphics = true, coalesceFramebufferWrites = true,
-      bufferCommandReads = true, memoryAxiDataBytes = 64)) { dut =>
+    simulate(
+      new GpuHostSystemAxi(
+        GraphicsConfig(
+          screenWidth = 16,
+          screenHeight = 16,
+          omInflight = 64,
+          omLocality = true,
+          fragmentBatchLimit = 112
+        ),
+        GpuConfig(),
+        numComputeUnits = 4,
+        fragCore = true,
+        vertCore = true,
+        enableFpuBackend = true,
+        sharedGraphics = true,
+        parallelGraphics = true,
+        coalesceFramebufferWrites = true,
+        bufferCommandReads = true,
+        memoryAxiDataBytes = 64
+      )
+    ) { dut =>
       initialize(dut)
       val words = mutable.LongMap.empty[BigInt]
       def store(address: Long, value: Long): Unit = words(address) = BigInt(value & 0xffffffffL)
       // Same VLMAX and slice-three address sequence used by the fade shader.
-      val program = Seq(0x00249f13L, 0x00900f93L, 0x03ef8fb3L, 0x01f08fb3L,
-        0x00241293L, 0x005082b3L, 0x01007357L, 0x00300313L,
-        0x03e30333L, 0x00628333L, 0x02036087L, 0x000fa483L,
-        0x00600393L, 0x03e383b3L, 0x007283b3L, 0x0203e0a7L, 0x30500073L)
+      val program = Seq(0x00249f13L, 0x00900f93L, 0x03ef8fb3L, 0x01f08fb3L, 0x00241293L, 0x005082b3L, 0x01007357L,
+        0x00300313L, 0x03e30333L, 0x00628333L, 0x02036087L, 0x000fa483L, 0x00600393L, 0x03e383b3L, 0x007283b3L,
+        0x0203e0a7L, 0x30500073L)
       val capacity = GpuConfig().lanes * GpuConfig().warps
       val stride = capacity * 4
       val items = (GpuConfig().warps - 1) * GpuConfig().lanes
@@ -58,8 +73,13 @@ class RuntimeVectorAddressSpec extends AnyFlatSpec with GpuHostTestSupport {
       axiWrite(dut, GpuCommandMmioRegs.OPCODE, GpuCommandOpcode.kernel.litValue.toInt)
       axiWrite(dut, GpuCommandMmioRegs.KERNEL_PC, 0x4000)
       axiWrite(dut, GpuCommandMmioRegs.KERNARG, 0x20008000)
-      Seq(GpuCommandMmioRegs.GRID_X, GpuCommandMmioRegs.GRID_Y, GpuCommandMmioRegs.GRID_Z,
-        GpuCommandMmioRegs.LOCAL_Y, GpuCommandMmioRegs.LOCAL_Z)
+      Seq(
+        GpuCommandMmioRegs.GRID_X,
+        GpuCommandMmioRegs.GRID_Y,
+        GpuCommandMmioRegs.GRID_Z,
+        GpuCommandMmioRegs.LOCAL_Y,
+        GpuCommandMmioRegs.LOCAL_Z
+      )
         .foreach(axiWrite(dut, _, 1))
       axiWrite(dut, GpuCommandMmioRegs.LOCAL_X, items)
       axiWrite(dut, GpuCommandMmioRegs.SUBMIT, 1)
@@ -69,8 +89,10 @@ class RuntimeVectorAddressSpec extends AnyFlatSpec with GpuHostTestSupport {
       val completion = axiRead(dut, GpuCommandMmioRegs.COMPLETION)
       assert((completion & 255) == 11 && completion.testBit(15), s"completion=$completion")
       for (i <- 0 until items)
-        assert(words.getOrElse(0x8000L + 6 * stride + i * 4, BigInt(0)) == 0x13570000L + i,
-          s"runtime address/load/store failed at item $i")
+        assert(
+          words.getOrElse(0x8000L + 6 * stride + i * 4, BigInt(0)) == 0x13570000L + i,
+          s"runtime address/load/store failed at item $i"
+        )
     }
   }
 }

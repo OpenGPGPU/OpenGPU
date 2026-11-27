@@ -5,8 +5,7 @@ import chisel3.util._
 import opengpu.config.GpuConfig
 import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse}
 
-class StridedCopyDescriptor(config: GpuConfig, val descriptorIdWidth: Int)
-    extends Bundle {
+class StridedCopyDescriptor(config: GpuConfig, val descriptorIdWidth: Int) extends Bundle {
   val descriptorId = UInt(descriptorIdWidth.W)
   val sourceAddress = UInt(config.xLen.W)
   val destinationAddress = UInt(config.xLen.W)
@@ -25,17 +24,16 @@ class StridedCopyCompletion(val descriptorIdWidth: Int) extends Bundle {
 
 /** Two-dimensional cache-line copy sequencer.
   *
-  * Rows execute in order through the non-blocking CopyEngine. This preserves
-  * precise row-level fault semantics while each row retains two-line memory
-  * parallelism and out-of-order response support.
+  * Rows execute in order through the non-blocking CopyEngine. This preserves precise row-level fault semantics while
+  * each row retains two-line memory parallelism and out-of-order response support.
   */
 class StridedCopyEngine(
-  config: GpuConfig = GpuConfig(),
-  descriptorIdWidth: Int = 8,
-  lineBytes: Int = 64,
-  maxOutstanding: Int = 4,
-  descriptorQueueDepth: Int = 4,
-  transactionIdBase: Int = 0
+    config: GpuConfig = GpuConfig(),
+    descriptorIdWidth: Int = 8,
+    lineBytes: Int = 64,
+    maxOutstanding: Int = 4,
+    descriptorQueueDepth: Int = 4,
+    transactionIdBase: Int = 0
 ) extends Module {
   require(lineBytes == 64 && isPow2(lineBytes))
   require(maxOutstanding >= 4)
@@ -43,24 +41,28 @@ class StridedCopyEngine(
   private val offsetWidth = log2Ceil(lineBytes)
 
   val io = IO(new Bundle {
-    val descriptor = Flipped(Decoupled(
-      new StridedCopyDescriptor(config, descriptorIdWidth)))
+    val descriptor = Flipped(Decoupled(new StridedCopyDescriptor(config, descriptorIdWidth)))
     val completion = Decoupled(new StridedCopyCompletion(descriptorIdWidth))
-    val memoryRequest = Decoupled(new ComputeMemoryRequest(
-      config, lineBytes, maxOutstanding))
-    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(
-      lineBytes, maxOutstanding)))
+    val memoryRequest = Decoupled(new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
+    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(lineBytes, maxOutstanding)))
     val busy = Output(Bool())
   })
 
-  private val descriptors = Module(new Queue(
-    new StridedCopyDescriptor(config, descriptorIdWidth),
-    descriptorQueueDepth, pipe = true, flow = true))
+  private val descriptors = Module(
+    new Queue(new StridedCopyDescriptor(config, descriptorIdWidth), descriptorQueueDepth, pipe = true, flow = true)
+  )
   descriptors.io.enq <> io.descriptor
-  private val rowCopy = Module(new CopyEngine(
-    config, descriptorIdWidth, lineBytes, maxOutstanding,
-    descriptorQueueDepth = 1, lineSlots = 2,
-    transactionIdBase = transactionIdBase))
+  private val rowCopy = Module(
+    new CopyEngine(
+      config,
+      descriptorIdWidth,
+      lineBytes,
+      maxOutstanding,
+      descriptorQueueDepth = 1,
+      lineSlots = 2,
+      transactionIdBase = transactionIdBase
+    )
+  )
   io.memoryRequest <> rowCopy.io.memoryRequest
   rowCopy.io.memoryResponse <> io.memoryResponse
 
@@ -156,9 +158,15 @@ class StridedCopyEngine(
   private val overlap = srcBaseWide < holdDestinationEndLine &&
     dstBaseWide < holdSourceEndLine
   private val descriptorValid = holdAligned && holdDimensionsValid && !overflow && !overlap
-  private val descriptorError = Mux(!holdAligned, CopyStatus.invalidAlignment,
-    Mux(!holdDimensionsValid, CopyStatus.invalidLength,
-      Mux(overflow, CopyStatus.addressOverflow, CopyStatus.overlapUnsupported)))
+  private val descriptorError = Mux(
+    !holdAligned,
+    CopyStatus.invalidAlignment,
+    Mux(
+      !holdDimensionsValid,
+      CopyStatus.invalidLength,
+      Mux(overflow, CopyStatus.addressOverflow, CopyStatus.overlapUnsupported)
+    )
+  )
 
   descriptors.io.deq.ready := !active && !completionValid && decodeStage === 0.U
   dontTouch(holdSrcStrideLineA)

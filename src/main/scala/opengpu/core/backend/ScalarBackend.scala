@@ -7,15 +7,8 @@ import opengpu.core.backend.issue._
 import opengpu.core.backend.register.ScalarRegisterWrite
 import opengpu.core.backend.scoreboard.RegisterReservation
 import opengpu.core.backend.writeback._
-import opengpu.core.execute.control.{
-  ScalarBranchExecuteStage,
-  SimtPath
-}
-import opengpu.core.execute.integer.{
-  DivideExecuteStage,
-  IntegerExecuteStage,
-  MultiplyExecuteStage
-}
+import opengpu.core.execute.control.{ScalarBranchExecuteStage, SimtPath}
+import opengpu.core.execute.integer.{DivideExecuteStage, IntegerExecuteStage, MultiplyExecuteStage}
 import opengpu.core.execute.memory.SharedAtomicExecuteStage
 import opengpu.core.frontend.decode.ScalarDecodeResponse
 import opengpu.core.memory.{
@@ -29,17 +22,19 @@ import opengpu.core.memory.{
 
 /** Implemented scalar issue/execute/commit pipeline.
   *
-  * RV32I ALU and scalar branch/jump paths are complete. Other classes remain
-  * explicit decoupled outputs, so they backpressure safely until their
-  * execution units are connected.
+  * RV32I ALU and scalar branch/jump paths are complete. Other classes remain explicit decoupled outputs, so they
+  * backpressure safely until their execution units are connected.
   */
 class ScalarBackend(
-  config: GpuConfig = GpuConfig(),
-  useBlackBoxes: Boolean = false, helperInvocations: Boolean = false,
-  resourceFaultAddress: Boolean = false
+    config: GpuConfig = GpuConfig(),
+    useBlackBoxes: Boolean = false,
+    helperInvocations: Boolean = false,
+    resourceFaultAddress: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
-    val invocations = if(helperInvocations)Some(Input(Vec(config.warps,new opengpu.core.memory.WarpInvocationPolicy(config))))else None
+    val invocations =
+      if (helperInvocations) Some(Input(Vec(config.warps, new opengpu.core.memory.WarpInvocationPolicy(config))))
+      else None
     val in = Flipped(Decoupled(new ScalarDecodeResponse(config)))
     val initialize = Flipped(Decoupled(new ScalarRegisterWrite(config)))
     val redirect = Decoupled(new SimtPath(config))
@@ -59,11 +54,13 @@ class ScalarBackend(
 
     val memory = Decoupled(new ScalarIssuedInstruction(config))
     val system = Decoupled(new ScalarIssuedInstruction(config))
-    /** External sampler result committed through the pipeline's own commit
-      * path (the unit builds the full ScalarCommitRequest, incl. nextPc). */
+
+    /** External sampler result committed through the pipeline's own commit path (the unit builds the full
+      * ScalarCommitRequest, incl. nextPc).
+      */
     val texCommit = Flipped(Decoupled(new ScalarCommitRequest(config)))
-    val texFaultAddress = if(resourceFaultAddress) Some(Input(UInt(config.xLen.W))) else None
-    val texPageFault = if(resourceFaultAddress) Some(Input(Bool())) else None
+    val texFaultAddress = if (resourceFaultAddress) Some(Input(UInt(config.xLen.W))) else None
+    val texPageFault = if (resourceFaultAddress) Some(Input(Bool())) else None
     val trap = Decoupled(new ScalarIssuedInstruction(config))
 
     val rawHazard = Output(Bool())
@@ -76,9 +73,11 @@ class ScalarBackend(
   private val multiply = Module(new MultiplyExecuteStage(config))
   private val divide = Module(new DivideExecuteStage(config))
   private val branch = Module(new ScalarBranchExecuteStage(config))
-  private val memoryUnit = Module(new ScalarMemoryUnit(config,helperInvocations=helperInvocations))
-  private val atomic = Module(new SharedAtomicExecuteStage(config,helperInvocations=helperInvocations))
-  if(helperInvocations){memoryUnit.io.invocations.get:=io.invocations.get;atomic.io.invocations.get:=io.invocations.get}
+  private val memoryUnit = Module(new ScalarMemoryUnit(config, helperInvocations = helperInvocations))
+  private val atomic = Module(new SharedAtomicExecuteStage(config, helperInvocations = helperInvocations))
+  if (helperInvocations) {
+    memoryUnit.io.invocations.get := io.invocations.get; atomic.io.invocations.get := io.invocations.get
+  }
   private val integerAdapter = Module(new IntegerCommitAdapter(config))
   private val multiplyAdapter = Module(new IntegerCommitAdapter(config))
   private val divideAdapter = Module(new IntegerCommitAdapter(config))
@@ -122,8 +121,7 @@ class ScalarBackend(
   atomic.io.globalAtomicResponse <> io.globalAtomicResponse
   io.cacheRequest <> memoryUnit.io.cacheRequest
   memoryUnit.io.cacheResponse <> io.cacheResponse
-  private val memoryFaultArbiter = Module(new RRArbiter(
-    new ScalarMemoryFault(config), 3))
+  private val memoryFaultArbiter = Module(new RRArbiter(new ScalarMemoryFault(config), 3))
   memoryFaultArbiter.io.in(0) <> memoryUnit.io.fault
   memoryFaultArbiter.io.in(1) <> atomic.io.fault
   io.memoryFault <> memoryFaultArbiter.io.out
@@ -142,7 +140,7 @@ class ScalarBackend(
   commitArbiter.io.in(6).bits := io.texCommit.bits
   // Task routing can depend on the trap tag. Register texture faults before
   // arbitration so that a completion cannot feed its own owner selection.
-  private val textureFaultQueue = Module(new Queue(new ScalarMemoryFault(config), 1, pipe=false, flow=false))
+  private val textureFaultQueue = Module(new Queue(new ScalarMemoryFault(config), 1, pipe = false, flow = false))
   memoryFaultArbiter.io.in(2) <> textureFaultQueue.io.deq
   private val textureFailure = textureFaultQueue.io.enq
   textureFailure.valid := io.texCommit.valid && textureFault
@@ -150,12 +148,12 @@ class ScalarBackend(
   textureFailure.bits.warpId := io.texCommit.bits.warpId
   textureFailure.bits.pc := io.texCommit.bits.nextPc - 4.U
   textureFailure.bits.activeMask := io.texCommit.bits.activeMask
-  if(resourceFaultAddress) textureFailure.bits.address := io.texFaultAddress.get
-  if(resourceFaultAddress) textureFailure.bits.pageFault := io.texPageFault.get
+  if (resourceFaultAddress) textureFailure.bits.address := io.texFaultAddress.get
+  if (resourceFaultAddress) textureFailure.bits.pageFault := io.texPageFault.get
   textureFailure.bits.rd := io.texCommit.bits.rd
   // Cancel the reserved destination without writing a fabricated texel.
   textureFailure.bits.writeRd := true.B
-  io.texCommit.ready := Mux(textureFault,textureFailure.ready,commitArbiter.io.in(6).ready)
+  io.texCommit.ready := Mux(textureFault, textureFailure.ready, commitArbiter.io.in(6).ready)
   commit.io.in <> commitArbiter.io.out
 
   io.redirect <> commit.io.redirect
@@ -178,13 +176,13 @@ class ScalarBackend(
   // a register result. Release its reservation without a fabricated write.
   // Rejected-system and memory-fault acknowledgements share the CU trap
   // arbiter, so their destination cancellations are mutually exclusive.
-  private val rejectedCsr=io.system.fire && io.system.bits.decode.decoded.csr &&
-    io.system.bits.decode.decoded.rd=/=0.U
-  private val failedMemory=io.memoryFault.fire && io.memoryFault.bits.writeRd
-  assert(!(rejectedCsr && failedMemory),"CSR and memory fault cancellations require serialized trap ownership")
+  private val rejectedCsr = io.system.fire && io.system.bits.decode.decoded.csr &&
+    io.system.bits.decode.decoded.rd =/= 0.U
+  private val failedMemory = io.memoryFault.fire && io.memoryFault.bits.writeRd
+  assert(!(rejectedCsr && failedMemory), "CSR and memory fault cancellations require serialized trap ownership")
   issue.io.cancel.valid := rejectedCsr || failedMemory
-  issue.io.cancel.bits.warpId := Mux(rejectedCsr,io.system.bits.decode.warpId,io.memoryFault.bits.warpId)
-  issue.io.cancel.bits.rd := Mux(rejectedCsr,io.system.bits.decode.decoded.rd,io.memoryFault.bits.rd)
+  issue.io.cancel.bits.warpId := Mux(rejectedCsr, io.system.bits.decode.warpId, io.memoryFault.bits.warpId)
+  issue.io.cancel.bits.rd := Mux(rejectedCsr, io.system.bits.decode.decoded.rd, io.memoryFault.bits.rd)
   io.committedWriteback.valid := commit.io.writeback.fire
   io.committedWriteback.bits := commit.io.writeback.bits
   io.appliedWriteback.valid :=

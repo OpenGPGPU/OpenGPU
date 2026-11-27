@@ -5,17 +5,23 @@ import chisel3.util._
 import opengpu.config.GpuConfig
 import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse, VectorTlbFlush}
 
-/** Bounded per-client leases across CU pairs. Each accepted request owns its
-  * placement, caller identity/tag and retirement row until the public reply
-  * fires. Pair-local completion is collected independently; a per-client ring
+/** Bounded per-client leases across CU pairs. Each accepted request owns its placement, caller identity/tag and
+  * retirement row until the public reply fires. Pair-local completion is collected independently; a per-client ring
   * preserves submission order without blocking other clients or CU pairs.
   */
-class NativeRgba8TextureCreditPool(config: GpuConfig = GpuConfig(), numComputeUnits: Int = 4,
-    clients: Int = 4, p: TextureImageAddressConfig = TextureImageAddressConfig(),
-    useBlackBoxes: Boolean = false, maxOutstandingPerClient: Int = 4) extends Module {
+class NativeRgba8TextureCreditPool(
+    config: GpuConfig = GpuConfig(),
+    numComputeUnits: Int = 4,
+    clients: Int = 4,
+    p: TextureImageAddressConfig = TextureImageAddressConfig(),
+    useBlackBoxes: Boolean = false,
+    maxOutstandingPerClient: Int = 4
+) extends Module {
   require(numComputeUnits >= 1 && numComputeUnits <= 16 && clients >= 1 && clients <= 16)
-  require(isPow2(maxOutstandingPerClient) && maxOutstandingPerClient >= 2 &&
-    maxOutstandingPerClient <= 32 && clients * maxOutstandingPerClient <= 128)
+  require(
+    isPow2(maxOutstandingPerClient) && maxOutstandingPerClient >= 2 &&
+      maxOutstandingPerClient <= 32 && clients * maxOutstandingPerClient <= 128
+  )
   val clusters: Int = (numComputeUnits + 1) / 2
   private val entries = clients * maxOutstandingPerClient
   private val rowBits = math.max(1, log2Ceil(entries))
@@ -31,8 +37,9 @@ class NativeRgba8TextureCreditPool(config: GpuConfig = GpuConfig(), numComputeUn
     val satp = Input(UInt(32.W)); val flush = Flipped(Valid(new VectorTlbFlush(config)))
     val invalidate = Input(Bool()); val cancel = Input(Bool()); val busy = Output(Bool())
   })
-  private val service = Seq.fill(clusters)(Module(new NativeRgba8TextureCluster(
-    config, clients, p, useBlackBoxes, maxOutstandingPerClient)))
+  private val service = Seq.fill(clusters)(
+    Module(new NativeRgba8TextureCluster(config, clients, p, useBlackBoxes, maxOutstandingPerClient))
+  )
   private val leased = RegInit(VecInit(Seq.fill(entries)(false.B)))
   private val sent = RegInit(VecInit(Seq.fill(entries)(false.B)))
   private val completed = RegInit(VecInit(Seq.fill(entries)(false.B)))
@@ -64,7 +71,7 @@ class NativeRgba8TextureCreditPool(config: GpuConfig = GpuConfig(), numComputeUn
   private def matches(row: Int): Bool = {
     val c = row / maxOutstandingPerClient
     io.client(c).cancelGroup.valid && io.client(c).cancelGroup.bits.tag === tags(row) &&
-      io.client(c).cancelGroup.bits.identity.asUInt === identities(row).asUInt
+    io.client(c).cancelGroup.bits.identity.asUInt === identities(row).asUInt
   }
   private def matching(row: UInt, c: Int): Bool = VecInit((0 until maxOutstandingPerClient).map { n =>
     val r = c * maxOutstandingPerClient + n
@@ -87,7 +94,7 @@ class NativeRgba8TextureCreditPool(config: GpuConfig = GpuConfig(), numComputeUn
     val q = requests(c)
     val row = ((c * maxOutstandingPerClient).U + tail(c)).pad(rowBits)
     val retiring = ((c * maxOutstandingPerClient).U + head(c)).pad(rowBits)
-    val affinity = if(clusters == 1) 0.U else PriorityEncoder(io.cuMask(c)) >> 1
+    val affinity = if (clusters == 1) 0.U else PriorityEncoder(io.cuMask(c)) >> 1
     val target = Mux(offerLocked(c), offerDestination(c), affinity)
     val credit = count(c) < maxOutstandingPerClient.U
     when(client.request.valid && !offerLocked(c)) {
@@ -127,8 +134,10 @@ class NativeRgba8TextureCreditPool(config: GpuConfig = GpuConfig(), numComputeUn
     when(client.request.fire =/= client.response.fire) {
       count(c) := Mux(client.request.fire, count(c) + 1.U, count(c) - 1.U)
     }
-    assert(count(c) === PopCount(leased.slice(c * maxOutstandingPerClient, (c + 1) * maxOutstandingPerClient)),
-      "pool ring occupancy and row leases diverged")
+    assert(
+      count(c) === PopCount(leased.slice(c * maxOutstandingPerClient, (c + 1) * maxOutstandingPerClient)),
+      "pool ring occupancy and row leases diverged"
+    )
     val queuedRow = q.io.deq.bits.tag(rowBits - 1, 0)
     val readies = Wire(Vec(clusters, Bool()))
     for ((s, n) <- service.zipWithIndex) {
@@ -160,8 +169,10 @@ class NativeRgba8TextureCreditPool(config: GpuConfig = GpuConfig(), numComputeUn
       val replying = port.response.bits.tag(rowBits - 1, 0)
       port.response.ready := true.B
       when(port.response.fire) {
-        assert(port.response.bits.tag < entries.U && replying >= (c * maxOutstandingPerClient).U &&
-          replying < ((c + 1) * maxOutstandingPerClient).U)
+        assert(
+          port.response.bits.tag < entries.U && replying >= (c * maxOutstandingPerClient).U &&
+            replying < ((c + 1) * maxOutstandingPerClient).U
+        )
         assert(leased(replying) && sent(replying) && !completed(replying) && destination(replying) === n.U)
         assert(port.response.bits.identity.asUInt === identities(replying).asUInt)
         completed(replying) := true.B

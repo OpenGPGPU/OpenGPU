@@ -16,7 +16,7 @@ class VectorExecutionDispatch(config: GpuConfig = GpuConfig(), instructionSimt: 
     val configuration = Decoupled(new VectorIssuedInstruction(config))
     val memory = Decoupled(new VectorIssuedInstruction(config))
     val texture = Decoupled(new VectorIssuedInstruction(config))
-    val branch = if(instructionSimt) Some(Decoupled(new VectorIssuedInstruction(config))) else None
+    val branch = if (instructionSimt) Some(Decoupled(new VectorIssuedInstruction(config))) else None
     val unimplemented = Decoupled(new VectorIssuedInstruction(config))
   })
 
@@ -49,11 +49,11 @@ class VectorExecutionDispatch(config: GpuConfig = GpuConfig(), instructionSimt: 
   io.memory.bits := io.in.bits
   io.texture.bits := io.in.bits
   io.unimplemented.bits := io.in.bits
-  if(instructionSimt) {
+  if (instructionSimt) {
     io.branch.get.valid := io.in.valid && toBranch
     io.branch.get.bits := io.in.bits
   }
-  private val branchReady = if(instructionSimt) io.branch.get.ready else false.B
+  private val branchReady = if (instructionSimt) io.branch.get.ready else false.B
 
   io.in.ready := Mux(
     toAlu,
@@ -73,7 +73,7 @@ class VectorExecutionDispatch(config: GpuConfig = GpuConfig(), instructionSimt: 
             Mux(
               toMemory,
               io.memory.ready,
-              Mux(toTexture, io.texture.ready, Mux(toBranch,branchReady,io.unimplemented.ready))
+              Mux(toTexture, io.texture.ready, Mux(toBranch, branchReady, io.unimplemented.ready))
             )
           )
         )

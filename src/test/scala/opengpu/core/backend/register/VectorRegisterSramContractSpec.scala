@@ -9,13 +9,14 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 private class VectorRegisterSramResources extends BlackBox with HasBlackBoxInline {
   val io = IO(new Bundle { val present = Output(Bool()) })
-  setInline("VectorRegisterSramResources.sv",
+  setInline(
+    "VectorRegisterSramResources.sv",
     "module VectorRegisterSramResources(output present); assign present=1'b1; endmodule\n" +
-      Files.readString(Paths.get("depends/asap7_sram_0p0/generated/verilog/srambank_64x4x64_6t122.v")))
+      Files.readString(Paths.get("depends/asap7_sram_0p0/generated/verilog/srambank_64x4x64_6t122.v"))
+  )
 }
 
-private class MacroVectorRegisterManager(config: GpuConfig)
-    extends VectorRegisterManager(config, useBlackBox = true) {
+private class MacroVectorRegisterManager(config: GpuConfig) extends VectorRegisterManager(config, useBlackBox = true) {
   val macroModelPresent = IO(Output(Bool()))
   private val resources = Module(new VectorRegisterSramResources)
   macroModelPresent := resources.io.present

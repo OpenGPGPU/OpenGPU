@@ -9,8 +9,7 @@ class BankedSharedMemoryBoundsSpec extends AnyFlatSpec {
   behavior of "CU shared-memory allocation bounds"
 
   private def check(base: Long, scenario: String): Unit = {
-    val c = GpuConfig(lanes = 2, warps = 2, sharedMemoryBytes = 256,
-      sharedMemoryBanks = 4, sharedMemoryBase = base)
+    val c = GpuConfig(lanes = 2, warps = 2, sharedMemoryBytes = 256, sharedMemoryBanks = 4, sharedMemoryBase = base)
     simulate(new SharedMemoryStorageComparison(c)) { d =>
       d.io.in.valid.poke(false.B); d.io.in.bits.poke(0.U.asTypeOf(d.io.in.bits))
       d.io.atomicIn.valid.poke(false.B); d.io.atomicIn.bits.poke(0.U.asTypeOf(d.io.atomicIn.bits))
@@ -19,14 +18,20 @@ class BankedSharedMemoryBoundsSpec extends AnyFlatSpec {
       d.io.resourcesPresent.expect(true.B)
       def until(condition: => Boolean): Unit = {
         var n = 0
-        while(!condition && n < 50) { d.clock.step(); n += 1 }
+        while (!condition && n < 50) { d.clock.step(); n += 1 }
         assert(condition, "bounded shared-memory access did not finish")
       }
-      def vector(store: Boolean, addresses: Seq[Long], values: Seq[Long], mask: Int,
-        faults: Int, expected: Seq[Long]): Unit = {
+      def vector(
+          store: Boolean,
+          addresses: Seq[Long],
+          values: Seq[Long],
+          mask: Int,
+          faults: Int,
+          expected: Seq[Long]
+      ): Unit = {
         d.io.in.bits.isStore.poke(store.B); d.io.in.bits.elementSize.poke(2.U)
         d.io.in.bits.laneMask.poke(mask.U); d.io.in.bits.warpId.poke(1.U)
-        for(lane <- 0 until 2) {
+        for (lane <- 0 until 2) {
           d.io.in.bits.addresses(lane).poke(addresses(lane).U)
           d.io.in.bits.writeData(lane).poke(values(lane).U)
         }
@@ -34,7 +39,7 @@ class BankedSharedMemoryBoundsSpec extends AnyFlatSpec {
         d.clock.step(); d.io.in.valid.poke(false.B)
         until(d.io.out.valid.peek().litToBoolean)
         d.io.out.bits.faultMask.expect(faults.U)
-        for(lane <- 0 until 2) d.io.out.bits.readData(lane).expect(expected(lane).U)
+        for (lane <- 0 until 2) d.io.out.bits.readData(lane).expect(expected(lane).U)
         d.io.out.ready.poke(true.B); d.clock.step(); d.io.out.ready.poke(false.B)
       }
       def atomic(address: Long, fault: Boolean, old: Long = 0L): Unit = {
@@ -44,7 +49,7 @@ class BankedSharedMemoryBoundsSpec extends AnyFlatSpec {
         d.clock.step(); d.io.atomicIn.valid.poke(false.B)
         until(d.io.atomicOut.valid.peek().litToBoolean)
         d.io.atomicOut.bits.fault.expect(fault.B); d.io.atomicOut.bits.warpId.expect(1.U)
-        if(!fault) d.io.atomicOut.bits.oldValue.expect(old.U)
+        if (!fault) d.io.atomicOut.bits.oldValue.expect(old.U)
         d.clock.step(3); d.io.atomicOut.bits.fault.expect(fault.B)
         d.io.atomicOut.ready.poke(true.B); d.clock.step(); d.io.atomicOut.ready.poke(false.B)
       }
@@ -53,11 +58,9 @@ class BankedSharedMemoryBoundsSpec extends AnyFlatSpec {
       vector(true, edges, values, 3, 0, Seq(0L, 0L))
       scenario match {
         case "vector" =>
-          vector(true, Seq(base - 1, base + 128), Seq(0xdeadbeefL, 0xaabbccddL),
-            3, 1, Seq(0L, 0L))
+          vector(true, Seq(base - 1, base + 128), Seq(0xdeadbeefL, 0xaabbccddL), 3, 1, Seq(0L, 0L))
           vector(false, edges, Seq(0L, 0L), 3, 0, values)
-          vector(false, Seq(base + 128, base + 128), Seq(0L, 0L), 3, 0,
-            Seq(0xaabbccddL, 0xaabbccddL))
+          vector(false, Seq(base + 128, base + 128), Seq(0L, 0L), 3, 0, Seq(0xaabbccddL, 0xaabbccddL))
         case "atomic" =>
           atomic(0xfffffffcL, fault = true)
           vector(false, edges, Seq(0L, 0L), 3, 0, values)

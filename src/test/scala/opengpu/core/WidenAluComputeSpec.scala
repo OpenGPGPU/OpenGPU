@@ -22,8 +22,7 @@ class WidenAluComputeSpec extends AnyFlatSpec {
       dut.io.invalidateInstructionCache.poke(false.B)
       dut.io.instructionSatp.poke(0.U)
       dut.io.instructionTlbFlush.valid.poke(false.B)
-      dut.io.instructionTlbFlush.bits.poke(
-        0.U.asTypeOf(dut.io.instructionTlbFlush.bits))
+      dut.io.instructionTlbFlush.bits.poke(0.U.asTypeOf(dut.io.instructionTlbFlush.bits))
       dut.io.vectorSatp.poke(0.U)
       dut.io.vectorTlbFlush.valid.poke(false.B)
       dut.io.vectorTlbFlush.bits.poke(0.U.asTypeOf(dut.io.vectorTlbFlush.bits))
@@ -38,15 +37,13 @@ class WidenAluComputeSpec extends AnyFlatSpec {
       dut.io.l1InvalidateDone.ready.poke(true.B)
       dut.io.globalAtomicRequest.ready.poke(true.B)
       dut.io.globalAtomicResponse.valid.poke(false.B)
-      dut.io.globalAtomicResponse.bits.poke(
-        0.U.asTypeOf(dut.io.globalAtomicResponse.bits))
+      dut.io.globalAtomicResponse.bits.poke(0.U.asTypeOf(dut.io.globalAtomicResponse.bits))
       dut.io.texSample.ready.poke(true.B)
       dut.io.texWriteback.valid.poke(false.B)
       dut.io.texWriteback.bits.poke(0.U.asTypeOf(dut.io.texWriteback.bits))
       dut.io.vectorTexSample.ready.poke(true.B)
       dut.io.vectorTexWriteback.valid.poke(false.B)
-      dut.io.vectorTexWriteback.bits.poke(
-        0.U.asTypeOf(dut.io.vectorTexWriteback.bits))
+      dut.io.vectorTexWriteback.bits.poke(0.U.asTypeOf(dut.io.vectorTexWriteback.bits))
 
       dut.io.kernel.valid.poke(true.B)
       dut.io.kernel.bits.kernelPc.poke(0x1000.U)
@@ -58,14 +55,23 @@ class WidenAluComputeSpec extends AnyFlatSpec {
       dut.clock.step(); dut.io.kernel.valid.poke(false.B)
 
       val words = Seq(
-        BigInt("c100f057", 16), BigInt("0200e107", 16), BigInt("00408293", 16),
-        BigInt("0202e187", 16), BigInt("c2218257", 16), BigInt("c62182d7", 16),
-        BigInt("ca218357", 16), BigInt("00808293", 16), BigInt("0202e227", 16),
-        BigInt("00c08293", 16), BigInt("0202e2a7", 16), BigInt("01008293", 16),
-        BigInt("0202e327", 16), BigInt("30500073", 16)
+        BigInt("c100f057", 16),
+        BigInt("0200e107", 16),
+        BigInt("00408293", 16),
+        BigInt("0202e187", 16),
+        BigInt("c2218257", 16),
+        BigInt("c62182d7", 16),
+        BigInt("ca218357", 16),
+        BigInt("00808293", 16),
+        BigInt("0202e227", 16),
+        BigInt("00c08293", 16),
+        BigInt("0202e2a7", 16),
+        BigInt("01008293", 16),
+        BigInt("0202e327", 16),
+        BigInt("30500073", 16)
       )
-      val programLine = words.zipWithIndex.foldLeft(BigInt(0)) {
-        case (acc, (word, index)) => acc | (word << (index * 32))
+      val programLine = words.zipWithIndex.foldLeft(BigInt(0)) { case (acc, (word, index)) =>
+        acc | (word << (index * 32))
       }
       val memory = scala.collection.mutable.Map[Long, Long](
         0x8000L -> 3L,
@@ -74,9 +80,10 @@ class WidenAluComputeSpec extends AnyFlatSpec {
       def lineFor(addr: Long): BigInt = {
         val base = addr & ~63L
         if (base == 0x1000L) programLine
-        else (0 until 16).foldLeft(BigInt(0)) { (acc, i) =>
-          acc | (BigInt(memory.getOrElse(base + i * 4, 0L) & 0xffffffffL) << (i * 32))
-        }
+        else
+          (0 until 16).foldLeft(BigInt(0)) { (acc, i) =>
+            acc | (BigInt(memory.getOrElse(base + i * 4, 0L) & 0xffffffffL) << (i * 32))
+          }
       }
       def applyWrite(addr: Long, data: BigInt, mask: BigInt): Unit = {
         val base = addr & ~63L
@@ -125,8 +132,10 @@ class WidenAluComputeSpec extends AnyFlatSpec {
         dut.clock.step()
         guard += 1
       }
-      assert(dut.io.completion.valid.peek().litToBoolean,
-        f"did not retire in $guard cycles, lastAddr=0x$lastAddr%x writes=$writes traps=$traps mem=$memory")
+      assert(
+        dut.io.completion.valid.peek().litToBoolean,
+        f"did not retire in $guard cycles, lastAddr=0x$lastAddr%x writes=$writes traps=$traps mem=$memory"
+      )
       dut.io.completion.bits.success.expect(true.B)
       assert(memory.getOrElse(0x8008L, -1L) == 8L, s"add $memory")
       assert((memory.getOrElse(0x800cL, -1L) & 0xffffffffL) == 0xfffffffeL, s"sub $memory")

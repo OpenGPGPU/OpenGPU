@@ -23,9 +23,24 @@ class StorageDescriptorReaderSpec extends AnyFlatSpec {
       }
       def record(index: Int, identity: Int = 7, badPadding: Boolean = false): BigInt = {
         val words = Array.fill[BigInt](16)(0)
-        for ((i, value) <- Seq[(Int, BigInt)](0 -> StorageDescriptorLayout.magic, 1 -> 64, 2 -> 1,
-          3 -> identity, 4 -> 11, 5 -> 13, 6 -> index, 7 -> 1, 8 -> 1, 9 -> 1,
-          10 -> 0x1000, 11 -> 0x2000, 13 -> 0x1000, 14 -> 0x2000)) words(i) = value
+        for (
+          (i, value) <- Seq[(Int, BigInt)](
+            0 -> StorageDescriptorLayout.magic,
+            1 -> 64,
+            2 -> 1,
+            3 -> identity,
+            4 -> 11,
+            5 -> 13,
+            6 -> index,
+            7 -> 1,
+            8 -> 1,
+            9 -> 1,
+            10 -> 0x1000,
+            11 -> 0x2000,
+            13 -> 0x1000,
+            14 -> 0x2000
+          )
+        ) words(i) = value
         if (badPadding) words(7) = 2
         words.zipWithIndex.map { case (word, i) => word << (32 * i) }.sum
       }

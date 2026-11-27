@@ -22,10 +22,10 @@ class RasterSetupSumSpec extends AnyFlatSpec {
       simulate(new RasterSetupSumHarness(width)) { dut =>
         val random = new scala.util.Random(0x51ca + width)
         def signed(bits: Int): BigInt = BigInt(bits, random) - (BigInt(1) << (bits - 1))
-        def extremes(bits: Int): Seq[BigInt] = Seq(
-          -(BigInt(1) << (bits - 1)), -1, 0, 1, (BigInt(1) << (bits - 1)) - 1)
-        val boundary = for (a <- extremes(width); b <- extremes(width); c <- extremes(66))
-          yield (a, b, c)
+        def extremes(bits: Int): Seq[BigInt] = Seq(-(BigInt(1) << (bits - 1)), -1, 0, 1, (BigInt(1) << (bits - 1)) - 1)
+        val boundary =
+          for (a <- extremes(width); b <- extremes(width); c <- extremes(66))
+            yield (a, b, c)
         val cases = boundary ++ Seq.fill(512)((signed(width), signed(width), signed(66)))
         val modulus = BigInt(1) << 64
         for ((a, b, c) <- cases) {

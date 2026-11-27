@@ -8,10 +8,9 @@ private class TileTransferRequest extends Bundle {
   val resolve = Bool()
 }
 
-/** Decouple local store preparation from external write acknowledgements.
-  * Local write acknowledgements mean credit ownership was transferred here;
-  * the pass owner must additionally wait for drained before completing.
-  * Actual read and write responses share the external port and may reorder.
+/** Decouple local store preparation from external write acknowledgements. Local write acknowledgements mean credit
+  * ownership was transferred here; the pass owner must additionally wait for drained before completing. Actual read and
+  * write responses share the external port and may reorder.
   */
 class TileAttachmentTransfer(credits: Int = 8) extends Module {
   val io = IO(new Bundle {
@@ -22,8 +21,9 @@ class TileAttachmentTransfer(credits: Int = 8) extends Module {
       val req = Flipped(Decoupled(new OmMemoryRequest))
       val resp = Decoupled(new OmMemoryResponse)
       val responseFault = Output(Bool())
-      /** Permit same-edge private write-ack replacement from an independent
-        * consumer-ready signal. Read/refill backpressure must not drive this.
+
+      /** Permit same-edge private write-ack replacement from an independent consumer-ready signal. Read/refill
+        * backpressure must not drive this.
         */
       val ackReplaceReady = Input(Bool())
     }
@@ -59,12 +59,12 @@ class TileAttachmentTransfer(credits: Int = 8) extends Module {
   private val stopAdmission = aborting || abortNow
   private val ackAvailable = !localAckValid || io.local.ackReplaceReady
   when(io.local.ackReplaceReady) {
-    assert(io.local.resp.ready,"ack replacement requires an actually ready consumer")
+    assert(io.local.resp.ready, "ack replacement requires an actually ready consumer")
   }
   // The historical one-credit word port has one total external owner. Wider
   // windows retain the independent read credit needed for resolve progress.
-  private val writeAllowed = if(credits==1) !readLive else true.B
-  private val readAllowed = if(credits==1) writes.io.drained && !requestBuffer.io.deq.valid else true.B
+  private val writeAllowed = if (credits == 1) !readLive else true.B
+  private val readAllowed = if (credits == 1) writes.io.drained && !requestBuffer.io.deq.valid else true.B
   writes.io.begin := io.begin
   writes.io.abort := stopAdmission
   writes.io.responseFault := io.mem.responseFault
@@ -85,16 +85,25 @@ class TileAttachmentTransfer(credits: Int = 8) extends Module {
     !readLive && ackAvailable && !stopAdmission && readAllowed
   arbiter.io.in(0).bits.memory := io.local.req.bits
   arbiter.io.in(0).bits.resolve := false.B
-  io.local.req.ready := ackAvailable && Mux(stopAdmission, true.B,
-    Mux(io.local.req.bits.write, writes.io.enqueue.ready && writeAllowed,
-      arbiter.io.in(0).ready && !readLive && readAllowed))
+  io.local.req.ready := ackAvailable && Mux(
+    stopAdmission,
+    true.B,
+    Mux(
+      io.local.req.bits.write,
+      writes.io.enqueue.ready && writeAllowed,
+      arbiter.io.in(0).ready && !readLive && readAllowed
+    )
+  )
 
   private val readResponse = io.mem.resp.valid && !io.mem.resp.bits.write && readLive
   io.local.resp.valid := localAckValid || readResponse
   io.local.resp.bits := Mux(localAckValid, localAck, io.mem.resp.bits)
   io.local.responseFault := !localAckValid && readResponse && io.mem.responseFault
-  io.mem.resp.ready := Mux(io.mem.resp.bits.write, writes.io.response.ready,
-    readLive && !localAckValid && io.local.resp.ready)
+  io.mem.resp.ready := Mux(
+    io.mem.resp.bits.write,
+    writes.io.response.ready,
+    readLive && !localAckValid && io.local.resp.ready
+  )
   when(io.local.resp.fire && localAckValid) { localAckValid := false.B }
   when(io.local.req.fire) {
     when(io.local.req.bits.write || stopAdmission) {
@@ -110,8 +119,7 @@ class TileAttachmentTransfer(credits: Int = 8) extends Module {
     }
   }
   when(io.mem.resp.fire && !io.mem.resp.bits.write) {
-    assert(readLive && io.mem.resp.bits.addr === readAddress,
-      "attachment read response must retain its pass owner")
+    assert(readLive && io.mem.resp.bits.addr === readAddress, "attachment read response must retain its pass owner")
     readLive := false.B
   }
   when(io.begin) {

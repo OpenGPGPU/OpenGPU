@@ -9,9 +9,9 @@ class SimtBranchResolverSpec extends AnyFlatSpec {
   behavior of "SimtBranchResolver"
 
   private def drive(
-    dut: SimtBranchResolver,
-    activeMask: Int,
-    takenMask: Int
+      dut: SimtBranchResolver,
+      activeMask: Int,
+      takenMask: Int
   ): Unit = {
     dut.io.in.valid.poke(true.B)
     dut.io.in.bits.warpId.poke(1.U)

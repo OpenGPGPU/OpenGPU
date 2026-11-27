@@ -1,14 +1,22 @@
 package opengpu.testutil
 
-/** Accepted AXI transfers only. Bus bytes count occupied full-width data beats;
-  * enabled write bytes count WSTRB bits. Neither is a DRAM timing/power model.
-  * The stimulus calls these methods from handshakes it already observes.
+/** Accepted AXI transfers only. Bus bytes count occupied full-width data beats; enabled write bytes count WSTRB bits.
+  * Neither is a DRAM timing/power model. The stimulus calls these methods from handshakes it already observes.
   */
 final class AxiTrafficCounters {
-  case class Snapshot(readBursts: Long, scheduledReadBeats: Long, readBeats: Long,
-    completedReadBursts: Long, readBusBytes: Long, writeBursts: Long,
-    writeBeats: Long, completedWriteDataBursts: Long, writeBusBytes: Long,
-    enabledWriteBytes: Long, writeReplies: Long)
+  case class Snapshot(
+      readBursts: Long,
+      scheduledReadBeats: Long,
+      readBeats: Long,
+      completedReadBursts: Long,
+      readBusBytes: Long,
+      writeBursts: Long,
+      writeBeats: Long,
+      completedWriteDataBursts: Long,
+      writeBusBytes: Long,
+      enabledWriteBytes: Long,
+      writeReplies: Long
+  )
   private var readBursts = 0L
   private var scheduledReadBeats = 0L
   private var readBeats = 0L
@@ -40,13 +48,27 @@ final class AxiTrafficCounters {
     if (last) completedWriteDataBursts += 1
   }
   def writeReply(): Unit = { writeReplies += 1 }
-  def snapshot: Snapshot = Snapshot(readBursts, scheduledReadBeats, readBeats,
-    completedReadBursts, readBusBytes, writeBursts, writeBeats,
-    completedWriteDataBursts, writeBusBytes, enabledWriteBytes, writeReplies)
+  def snapshot: Snapshot = Snapshot(
+    readBursts,
+    scheduledReadBeats,
+    readBeats,
+    completedReadBursts,
+    readBusBytes,
+    writeBursts,
+    writeBeats,
+    completedWriteDataBursts,
+    writeBusBytes,
+    enabledWriteBytes,
+    writeReplies
+  )
   def assertDrained(): Unit = {
-    assert(scheduledReadBeats == readBeats && readBursts == completedReadBursts,
-      s"read traffic is not drained: $snapshot")
-    assert(writeBursts == completedWriteDataBursts && writeBursts == writeReplies,
-      s"write traffic is not drained: $snapshot")
+    assert(
+      scheduledReadBeats == readBeats && readBursts == completedReadBursts,
+      s"read traffic is not drained: $snapshot"
+    )
+    assert(
+      writeBursts == completedWriteDataBursts && writeBursts == writeReplies,
+      s"write traffic is not drained: $snapshot"
+    )
   }
 }

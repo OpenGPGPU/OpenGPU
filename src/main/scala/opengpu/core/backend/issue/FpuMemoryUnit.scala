@@ -4,11 +4,7 @@ import chisel3._
 import chisel3.util._
 import opengpu.config.{CachePolicy, GpuConfig}
 import opengpu.core.frontend.decode.FpuDecodeResponse
-import opengpu.core.memory.{
-  ScalarMemoryFault,
-  VectorCacheLineRequest,
-  VectorCacheLineResponse
-}
+import opengpu.core.memory.{ScalarMemoryFault, VectorCacheLineRequest, VectorCacheLineResponse}
 
 class FpuMemoryCommit(config: GpuConfig) extends Bundle {
   val decode = new FpuDecodeResponse(config)
@@ -18,18 +14,20 @@ class FpuMemoryCommit(config: GpuConfig) extends Bundle {
 
 /** Scalar FP32 load/store unit for flw/fsw through the shared cache port. */
 class FpuMemoryUnit(
-  config: GpuConfig = GpuConfig(),
-  lineBytes: Int = 64, helperInvocations: Boolean = false
+    config: GpuConfig = GpuConfig(),
+    lineBytes: Int = 64,
+    helperInvocations: Boolean = false
 ) extends Module {
   private val offsetWidth = log2Ceil(lineBytes)
   private val lineWidth = lineBytes * 8
 
   val io = IO(new Bundle {
-    val invocations=if(helperInvocations)Some(Input(Vec(config.warps,new opengpu.core.memory.WarpInvocationPolicy(config))))else None
+    val invocations =
+      if (helperInvocations) Some(Input(Vec(config.warps, new opengpu.core.memory.WarpInvocationPolicy(config))))
+      else None
     val in = Flipped(Decoupled(new FpuIssuedInstruction(config)))
     val cacheRequest = Decoupled(new VectorCacheLineRequest(config, lineBytes))
-    val cacheResponse = Flipped(Decoupled(
-      new VectorCacheLineResponse(lineBytes)))
+    val cacheResponse = Flipped(Decoupled(new VectorCacheLineResponse(lineBytes)))
     val commit = Decoupled(new FpuMemoryCommit(config))
     val fault = Decoupled(new ScalarMemoryFault(config))
   })
@@ -96,16 +94,23 @@ class FpuMemoryUnit(
     )
     val effectiveAddress = io.in.bits.scalarRs1Data + immediate
     address := effectiveAddress
-    response:=0.U.asTypeOf(response)
-    suppressed:=(if(helperInvocations)io.in.bits.decode.decoded.memoryWrite &&
-      !opengpu.core.memory.HelperInvocationPolicy.store(config,opengpu.core.memory.HelperInvocationPolicy.select(io.invocations.get,io.in.bits.decode.warpId),io.in.bits.decode.activeMask,effectiveAddress,4.U)
-      else false.B)
+    response := 0.U.asTypeOf(response)
+    suppressed := (if (helperInvocations)
+                     io.in.bits.decode.decoded.memoryWrite &&
+                     !opengpu.core.memory.HelperInvocationPolicy.store(
+                       config,
+                       opengpu.core.memory.HelperInvocationPolicy.select(io.invocations.get, io.in.bits.decode.warpId),
+                       io.in.bits.decode.activeMask,
+                       effectiveAddress,
+                       4.U
+                     )
+                   else false.B)
     misaligned := effectiveAddress(1, 0).orR
     requestValid := false.B
     state := State.request
   }
   when(state === State.request) {
-    when(suppressed){state:=State.commit}
+    when(suppressed) { state := State.commit }
       .elsewhen(misaligned) { state := State.fault }
       .elsewhen(!requestValid) {
         requestValid := true.B

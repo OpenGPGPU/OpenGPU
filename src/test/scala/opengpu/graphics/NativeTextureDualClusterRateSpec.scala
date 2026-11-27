@@ -25,8 +25,9 @@ private[graphics] class NativeTextureDualClusterHarness extends Module {
     val replyReads = Output(Vec(2, UInt(3.W)))
     val busy = Output(Bool())
   })
-  private val pool = Module(new NativeRgba8TexturePool(config, numComputeUnits = 4,
-    clients = 3, sharedOutstandingRows = 128))
+  private val pool = Module(
+    new NativeRgba8TexturePool(config, numComputeUnits = 4, clients = 3, sharedOutstandingRows = 128)
+  )
   for (c <- 0 until 2) {
     val endpoint = Module(new NativeShaderTextureUnit(config, stage = c, groupedTexture = true))
     // The public native interface omits only the internal grouped service port.
@@ -67,28 +68,49 @@ class NativeTextureDualClusterRateSpec extends AnyFlatSpec {
       val sharedBytes = mutable.Map.empty[BigInt, Int]
       val metadata = (0 until 2).map { c =>
         val p = d.io.native(c)
-        new Memory(p.memoryRequest.bits, p.memoryResponse.bits, p.memoryRequest.valid,
-          p.memoryRequest.ready, p.memoryResponse.valid, p.memoryResponse.ready) {
+        new Memory(
+          p.memoryRequest.bits,
+          p.memoryResponse.bits,
+          p.memoryRequest.valid,
+          p.memoryRequest.ready,
+          p.memoryResponse.valid,
+          p.memoryResponse.ready
+        ) {
           override val bytes = sharedBytes
         }
       }
       val data = (0 until 2).map { c =>
-        new Memory(d.io.dataRequest(c).bits, d.io.dataResponse(c).bits, d.io.dataRequest(c).valid,
-          d.io.dataRequest(c).ready, d.io.dataResponse(c).valid, d.io.dataResponse(c).ready) {
+        new Memory(
+          d.io.dataRequest(c).bits,
+          d.io.dataResponse(c).bits,
+          d.io.dataRequest(c).valid,
+          d.io.dataRequest(c).ready,
+          d.io.dataResponse(c).valid,
+          d.io.dataResponse(c).ready
+        ) {
           override val bytes = sharedBytes
         }
       }
       val walks = (0 until 2).map { c =>
-        new Memory(d.io.pageWalk(c).bits, d.io.pageWalkResponse(c).bits, d.io.pageWalk(c).valid,
-          d.io.pageWalk(c).ready, d.io.pageWalkResponse(c).valid, d.io.pageWalkResponse(c).ready) {
+        new Memory(
+          d.io.pageWalk(c).bits,
+          d.io.pageWalkResponse(c).bits,
+          d.io.pageWalk(c).valid,
+          d.io.pageWalk(c).ready,
+          d.io.pageWalkResponse(c).valid,
+          d.io.pageWalkResponse(c).ready
+        ) {
           override val bytes = sharedBytes
         }
       }
       val memories = metadata ++ data ++ walks
-      val raw = Seq(Seq[BigInt](0x11233444L, 0x55667788L, 0x9aaabbcdL, 0xddeeff01L),
-        Seq[BigInt](0xfdeccab1L, 0x98764321L, 0x7654432aL, 0x10203040L))
-      val expected = raw.map(xs => TextureFilterReference.filter(
-        xs.map(x => ImageFormatReference.decode("RGBA8", x)), Seq(fp(0.5f), fp(0.5f)), 2))
+      val raw = Seq(
+        Seq[BigInt](0x11233444L, 0x55667788L, 0x9aaabbcdL, 0xddeeff01L),
+        Seq[BigInt](0xfdeccab1L, 0x98764321L, 0x7654432aL, 0x10203040L)
+      )
+      val expected = raw.map(xs =>
+        TextureFilterReference.filter(xs.map(x => ImageFormatReference.decode("RGBA8", x)), Seq(fp(0.5f), fp(0.5f)), 2)
+      )
       val admitted = Seq.fill(2)(mutable.ArrayBuffer.empty[(Int, BigInt)])
       val replied = Seq.fill(2)(mutable.ArrayBuffer.empty[(Int, BigInt)])
       val retired = Seq.fill(2)(mutable.ArrayBuffer.empty[Int])
@@ -117,8 +139,7 @@ class NativeTextureDualClusterRateSpec extends AnyFlatSpec {
         while (!condition && n < 60000) { tick(); n += 1 }
         assert(condition, s"dual native endpoint stalled at cycle $cycle")
       }
-      def issueBoth(warp: Int, parameter: Boolean, field: Int,
-          left: BigInt = 0, right: BigInt = 1): Unit = {
+      def issueBoth(warp: Int, parameter: Boolean, field: Int, left: BigInt = 0, right: BigInt = 1): Unit = {
         for (c <- 0 until 2) {
           val p = d.io.native(c); val q = p.vectorIn.bits
           p.resources.version.poke(1.U); p.resources.address.poke((root + c * 0x40000).U)
@@ -153,8 +174,7 @@ class NativeTextureDualClusterRateSpec extends AnyFlatSpec {
       for (c <- 0 until 2) {
         val m = metadata(c); val offset = BigInt(c * 0x40000)
         roots(m.putWord, stage = c, offset = offset)
-        install(m.putWord, (a, b) => m.bytes(a) = b, 0, stage = c, offset = offset,
-          swizzle = Seq(0, 1, 2, 3))
+        install(m.putWord, (a, b) => m.bytes(a) = b, 0, stage = c, offset = offset, swizzle = Seq(0, 1, 2, 3))
         m.putWord(levels + offset + 12 * 4, 0x20000 + offset)
         m.putWord(levels + offset + 17 * 4, 8)
         m.putWord(samplers + offset + 7 * 4, 1); m.putWord(samplers + offset + 8 * 4, 1)
@@ -163,8 +183,7 @@ class NativeTextureDualClusterRateSpec extends AnyFlatSpec {
       }
       tick(); d.io.native.foreach(_.clearParameters.poke(false.B))
       for (warp <- 0 until 8; pair <- 0 until 8) {
-        issueBoth(warp, true, pair,
-          if (pair == 0) fp(0.5f) else BigInt(0), if (pair == 0) fp(0.5f) else BigInt(0))
+        issueBoth(warp, true, pair, if (pair == 0) fp(0.5f) else BigInt(0), if (pair == 0) fp(0.5f) else BigInt(0))
         retireSetup(parameter = true)
       }
       issueBoth(0, false, 0); retireSetup(parameter = false)
@@ -196,7 +215,9 @@ class NativeTextureDualClusterRateSpec extends AnyFlatSpec {
       assert((overlapStart to overlapEnd).forall(t => acceptanceByCycle.getOrElse(t, 0) == 2))
       assert((overlapStart + replyLatency to overlapEnd + replyLatency).forall(t => replyByCycle.getOrElse(t, 0) == 2))
       d.io.busy.expect(false.B)
-      info(s"NATIVE_DUAL_CLUSTER_RATE CUs=4 clients=3 activeClients=2 clusters=2 lanes=16 warps=8 instructions=64 samples=1024 taps=4 steadyCycles=$cycles steadySamples=${cycles * 2} aggregateSamplesPerCycle=2 replyLatency=$replyLatency exactLaneResults=1024 totalCycles=${cycle - start} warmDescriptorReads=0 warmDataReads=0 publicOrder=true")
+      info(
+        s"NATIVE_DUAL_CLUSTER_RATE CUs=4 clients=3 activeClients=2 clusters=2 lanes=16 warps=8 instructions=64 samples=1024 taps=4 steadyCycles=$cycles steadySamples=${cycles * 2} aggregateSamplesPerCycle=2 replyLatency=$replyLatency exactLaneResults=1024 totalCycles=${cycle - start} warmDescriptorReads=0 warmDataReads=0 publicOrder=true"
+      )
     }
   }
 }

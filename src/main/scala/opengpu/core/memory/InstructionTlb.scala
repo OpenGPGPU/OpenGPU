@@ -7,12 +7,10 @@ import opengpu.core.frontend.{InstructionFetchRequest, InstructionFetchResponse}
 
 /** Fully-associative instruction TLB with one page-walk miss slot.
   *
-  * Cached translations and Bare requests may continue to reach the ICache
-  * while a different virtual page is being walked.  A completed walk is held
-  * in a replay register, so downstream backpressure cannot lose the request.
+  * Cached translations and Bare requests may continue to reach the ICache while a different virtual page is being
+  * walked. A completed walk is held in a replay register, so downstream backpressure cannot lose the request.
   */
-class InstructionTlb(config: GpuConfig = GpuConfig(), entries: Int = 16)
-    extends Module {
+class InstructionTlb(config: GpuConfig = GpuConfig(), entries: Int = 16) extends Module {
   require(entries > 0)
   private val vpnWidth = config.xLen - 12
   private val entryWidth = math.max(1, log2Ceil(entries))
@@ -40,7 +38,7 @@ class InstructionTlb(config: GpuConfig = GpuConfig(), entries: Int = 16)
   private val inputVpn = io.in.bits.pc(config.xLen - 1, 12)
   private val hitByEntry = VecInit((0 until entries).map { entry =>
     valid(entry) && vpn(entry) === inputVpn &&
-      (global(entry) || entryAsid(entry) === io.asid)
+    (global(entry) || entryAsid(entry) === io.asid)
   })
   private val inputHit = hitByEntry.asUInt.orR
   private val inputPpn = Mux1H(hitByEntry, ppn)
@@ -70,11 +68,14 @@ class InstructionTlb(config: GpuConfig = GpuConfig(), entries: Int = 16)
 
   private val faultSlotAvailable = !faultValid ||
     (io.out.ready && faultValid)
-  io.in.ready := !io.flush.valid && MuxCase(false.B, Seq(
-    inputCanForward -> (!replayValid && io.physicalRequest.ready),
-    inputFault -> faultSlotAvailable,
-    inputMiss -> !missValid
-  ))
+  io.in.ready := !io.flush.valid && MuxCase(
+    false.B,
+    Seq(
+      inputCanForward -> (!replayValid && io.physicalRequest.ready),
+      inputFault -> faultSlotAvailable,
+      inputMiss -> !missValid
+    )
+  )
 
   io.out.valid := faultValid || io.physicalResponse.valid
   io.out.bits := Mux(faultValid, fault, io.physicalResponse.bits)
@@ -112,8 +113,10 @@ class InstructionTlb(config: GpuConfig = GpuConfig(), entries: Int = 16)
   when(io.pageWalkResponse.fire) {
     missValid := false.B
     missWalkIssued := false.B
-    when(io.pageWalkResponse.bits.fault || io.pageWalkResponse.bits.accessFault ||
-      !io.pageWalkResponse.bits.executable) {
+    when(
+      io.pageWalkResponse.bits.fault || io.pageWalkResponse.bits.accessFault ||
+        !io.pageWalkResponse.bits.executable
+    ) {
       faultValid := true.B
       fault.warpId := missRequest.warpId
       fault.instruction := 0.U
@@ -127,12 +130,10 @@ class InstructionTlb(config: GpuConfig = GpuConfig(), entries: Int = 16)
       executable(replacement) := io.pageWalkResponse.bits.executable
       entryAsid(replacement) := missAsid
       global(replacement) := io.pageWalkResponse.bits.global
-      replacement := Mux(replacement === (entries - 1).U,
-        0.U, replacement + 1.U)
+      replacement := Mux(replacement === (entries - 1).U, 0.U, replacement + 1.U)
       replayValid := true.B
       replayRequest.warpId := missRequest.warpId
-      replayRequest.pc := Cat(io.pageWalkResponse.bits.physicalPageNumber,
-        missRequest.pc(11, 0))
+      replayRequest.pc := Cat(io.pageWalkResponse.bits.physicalPageNumber, missRequest.pc(11, 0))
     }
   }
 
@@ -141,8 +142,7 @@ class InstructionTlb(config: GpuConfig = GpuConfig(), entries: Int = 16)
   }
 
   when(io.flush.valid) {
-    assert(!missValid && !replayValid && !faultValid,
-      "ITLB flush requires no pending translation")
+    assert(!missValid && !replayValid && !faultValid, "ITLB flush requires no pending translation")
     for (entry <- 0 until entries) {
       val vpnMatches = !io.flush.bits.virtualPageNumberValid ||
         vpn(entry) === io.flush.bits.virtualPageNumber

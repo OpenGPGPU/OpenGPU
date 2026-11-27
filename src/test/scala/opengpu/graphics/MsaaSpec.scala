@@ -11,8 +11,14 @@ class MsaaSpec extends AnyFlatSpec {
     if (front) v > 0L || (v == 0L && tl) else v < 0L || (v == 0L && tl)
 
   /** Software mirror of the fixed-position sample test. */
-  private def reference(edges: Seq[Long], qdx: Seq[Long], qdy: Seq[Long],
-                        front: Boolean, tl: Seq[Boolean], mode: Int): Int =
+  private def reference(
+      edges: Seq[Long],
+      qdx: Seq[Long],
+      qdy: Seq[Long],
+      front: Boolean,
+      tl: Seq[Boolean],
+      mode: Int
+  ): Int =
     Msaa.positions(mode).zipWithIndex.foldLeft(0) { case (acc, ((x, y), idx)) =>
       val covered = (0 until 3).forall { e =>
         edgeInside(edges(e) + x * qdx(e) + y * qdy(e), front, tl(e))
@@ -39,9 +45,11 @@ class MsaaSpec extends AnyFlatSpec {
           dut.io.sampleMode.poke(mode.U)
           dut.clock.step()
           val expected = reference(edges, qdx, qdy, front, tl, mode)
-          assert(dut.io.mask.peek().litValue.toInt == expected,
+          assert(
+            dut.io.mask.peek().litValue.toInt == expected,
             s"mode $mode edges=$edges front=$front: got " +
-              f"${dut.io.mask.peek().litValue.toInt}%x expected $expected%x")
+              f"${dut.io.mask.peek().litValue.toInt}%x expected $expected%x"
+          )
         }
       }
     }
@@ -61,8 +69,7 @@ class MsaaSpec extends AnyFlatSpec {
         dut.io.topLeft.zipWithIndex.foreach { case (e, i) => e.poke(tl(i).B) }
         dut.io.sampleMode.poke(0.U)
         dut.clock.step()
-        val centre = (0 until 3).forall(i =>
-          edgeInside(Seq(5L, -5L, 0L)(i), front, tl(i)))
+        val centre = (0 until 3).forall(i => edgeInside(Seq(5L, -5L, 0L)(i), front, tl(i)))
         assert(dut.io.mask.peek().litValue.toInt == (if (centre) 1 else 0))
       }
     }
@@ -136,8 +143,7 @@ class SampleExpanderSpec extends AnyFlatSpec {
   it should "expand every 2x coverage mask in ascending sample order" in {
     simulate(new SampleExpander(2)) { dut =>
       resetDut(dut)
-      for ((mask, expected) <- Seq(
-        0x3 -> Seq(0, 1), 0x2 -> Seq(1), 0x1 -> Seq(0), 0x0 -> Seq.empty)) {
+      for ((mask, expected) <- Seq(0x3 -> Seq(0, 1), 0x2 -> Seq(1), 0x1 -> Seq(0), 0x0 -> Seq.empty)) {
         present(dut, mask)
         dut.clock.step() // accept
         dut.io.in.valid.poke(false.B)
@@ -224,10 +230,14 @@ class DepthGradientSpec extends AnyFlatSpec {
         dut.io.d1.poke(d(1).S)
         dut.io.d2.poke(d(2).S)
         dut.clock.step()
-        assert(dut.io.quarterDx.peek().litValue.toLong == gradRef(planeA, d, area),
-          s"quarterDx planeA=$planeA d=$d area=$area")
-        assert(dut.io.quarterDy.peek().litValue.toLong == gradRef(planeB, d, area),
-          s"quarterDy planeB=$planeB d=$d area=$area")
+        assert(
+          dut.io.quarterDx.peek().litValue.toLong == gradRef(planeA, d, area),
+          s"quarterDx planeA=$planeA d=$d area=$area"
+        )
+        assert(
+          dut.io.quarterDy.peek().litValue.toLong == gradRef(planeB, d, area),
+          s"quarterDy planeB=$planeB d=$d area=$area"
+        )
       }
     }
   }
@@ -259,8 +269,10 @@ class SampleDepthSpec extends AnyFlatSpec {
       dut.clock.step()
       val expected = sampleRef(centre, qdx, qdy, mode)
       for (i <- 0 until 4) {
-        assert(dut.io.depths(i).peek().litValue.toLong == expected(i),
-          s"mode $mode sample $i centre=$centre qdx=$qdx qdy=$qdy")
+        assert(
+          dut.io.depths(i).peek().litValue.toLong == expected(i),
+          s"mode $mode sample $i centre=$centre qdx=$qdx qdy=$qdy"
+        )
       }
     }
   }

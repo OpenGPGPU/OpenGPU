@@ -4,9 +4,8 @@ import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
 
-/** Broadcast an explicit graphics staging invalidation to the shared CUs,
-  * while preserving each CU's ordinary L2 coherence channel. Acknowledgements
-  * follow the accepted request order and return to their original owner.
+/** Broadcast an explicit graphics staging invalidation to the shared CUs, while preserving each CU's ordinary L2
+  * coherence channel. Acknowledgements follow the accepted request order and return to their original owner.
   */
 class SharedCuCacheInvalidation(config: GpuConfig, numComputeUnits: Int) extends Module {
   require(numComputeUnits > 0)
@@ -56,8 +55,10 @@ class SharedCuCacheInvalidation(config: GpuConfig, numComputeUnits: Int) extends
     owners.io.deq.ready := io.cuDone(cu).fire
     when(io.cuDone(cu).fire && graphicsAck) {
       assert(!send(cu), "graphics invalidation acknowledged before request acceptance")
-      assert(io.cuDone(cu).bits.lineAddress === address.lineAddress,
-        "shared CU acknowledged the wrong graphics staging line")
+      assert(
+        io.cuDone(cu).bits.lineAddress === address.lineAddress,
+        "shared CU acknowledged the wrong graphics staging line"
+      )
       waiting(cu) := false.B
     }
   }

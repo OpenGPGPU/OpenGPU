@@ -4,19 +4,27 @@ import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
 import opengpu.core.backend.VectorCommitRequest
-import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse, SharedAtomicRequest, SharedAtomicResponse, TranslatedLineClient, VectorMemoryFault, VectorTlbFlush}
+import opengpu.core.memory.{
+  ComputeMemoryRequest,
+  ComputeMemoryResponse,
+  SharedAtomicRequest,
+  SharedAtomicResponse,
+  TranslatedLineClient,
+  VectorMemoryFault,
+  VectorTlbFlush
+}
 
 class ShaderImageTask extends Bundle {
   val enabled = Bool()
+
   /** Trusted stage of the accepted task, held for its entire lifetime. */
   val stage = UInt(GraphicsStage.width.W)
   val table = new TextureImageLevelTable
 }
 
-/** Task-captured image execution and Sv32 transport beside the ordinary CU.
-  * External IDs 0..3 retain the CU's owners; 4/5 carry image descriptor/data
-  * traffic and 6 carries the image page walker. No image request enters a
-  * private data cache. The enclosing task still owns cross-client coherence.
+/** Task-captured image execution and Sv32 transport beside the ordinary CU. External IDs 0..3 retain the CU's owners;
+  * 4/5 carry image descriptor/data traffic and 6 carries the image page walker. No image request enters a private data
+  * cache. The enclosing task still owns cross-client coherence.
   */
 class ShaderImageCuService(config: GpuConfig = GpuConfig(), atomicAvailable: Boolean = false) extends Module {
   val io = IO(new Bundle {
@@ -49,14 +57,20 @@ class ShaderImageCuService(config: GpuConfig = GpuConfig(), atomicAvailable: Boo
   private val translation = Module(new TranslatedLineClient(config, 2, preserveCachePolicy = true))
   private val imagePageFault = RegInit(false.B)
   when(io.kernelStart) {
-    assert(!image.io.busy && !atomic.map(_.io.busy).getOrElse(false.B), "image task changed before its instruction retired")
+    assert(
+      !image.io.busy && !atomic.map(_.io.busy).getOrElse(false.B),
+      "image task changed before its instruction retired"
+    )
     task := io.task; satp := io.satp
   }
   io.enabled := task.enabled; io.busy := image.io.busy || atomic.map(_.io.busy).getOrElse(false.B)
   // Keep this invariant inside the service. A bound assertion on the CU
   // must not reach through a Verilator hierarchical-block boundary.
   when(io.kernelCompletion) {
-    assert(!image.io.busy && !atomic.map(_.io.busy).getOrElse(false.B), "kernel completion escaped image instruction ownership")
+    assert(
+      !image.io.busy && !atomic.map(_.io.busy).getOrElse(false.B),
+      "kernel completion escaped image instruction ownership"
+    )
   }
   image.io.in <> io.in; io.commit <> image.io.commit
   image.io.table := task.table; image.io.enabled := task.enabled
@@ -92,8 +106,11 @@ class ShaderImageCuService(config: GpuConfig = GpuConfig(), atomicAvailable: Boo
   io.fault.bits.writeVd := ShaderImageOpcode.load(instruction) || ShaderImageOpcode.component(instruction) ||
     ShaderImageOpcode.size(instruction) || isAtomic
   io.fault.bits.isStore := ShaderImageOpcode.store(instruction) || isAtomic
-  io.fault.bits.pageFault := Mux(isAtomic, image.io.atomicPageFault.getOrElse(false.B),
-    image.io.status === ShaderImageAccessStatus.memory.U && imagePageFault)
+  io.fault.bits.pageFault := Mux(
+    isAtomic,
+    image.io.atomicPageFault.getOrElse(false.B),
+    image.io.status === ShaderImageAccessStatus.memory.U && imagePageFault
+  )
   io.fault.bits.addresses := VecInit(Seq.fill(config.lanes)(image.io.faultAddress))
 
   private val arbiter = Module(new RRArbiter(new ComputeMemoryRequest(config, 64, 8), if (atomicAvailable) 4 else 3))
@@ -142,11 +159,15 @@ class ShaderImageCuService(config: GpuConfig = GpuConfig(), atomicAvailable: Boo
     when(service.io.memoryResponse.fire) { atomicSlotBusy.get := false.B }
     when(io.memoryResponse.valid && atomicReply) { assert(atomicSlotBusy.get, "image atomic reply without an owner") }
   }
-  io.memoryResponse.ready := MuxCase(false.B, Seq(
-    coreReply -> io.coreResponse.ready,
-    imageReply -> translation.io.memResp.ready,
-    walkReply -> translation.io.pageWalkResp.ready,
-    atomicReply -> atomic.map(_.io.memoryResponse.ready).getOrElse(false.B)))
+  io.memoryResponse.ready := MuxCase(
+    false.B,
+    Seq(
+      coreReply -> io.coreResponse.ready,
+      imageReply -> translation.io.memResp.ready,
+      walkReply -> translation.io.pageWalkResp.ready,
+      atomicReply -> atomic.map(_.io.memoryResponse.ready).getOrElse(false.B)
+    )
+  )
   when(io.memoryResponse.valid) {
     assert(coreReply || imageReply || walkReply || atomicReply, "response outside CU/image/page-walk namespaces")
   }

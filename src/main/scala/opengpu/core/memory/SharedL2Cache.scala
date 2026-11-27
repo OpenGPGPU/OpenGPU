@@ -13,27 +13,25 @@ class L2PerformanceCounters extends Bundle {
   val storeBlockedCycles = UInt(64.W)
 }
 
-/** Shared L2 cache at the point where all compute-unit traffic has
-  * already been assigned a globally unique transaction ID.
+/** Shared L2 cache at the point where all compute-unit traffic has already been assigned a globally unique transaction
+  * ID.
   *
-  * Cacheable load misses use a four-entry non-blocking MSHR engine. Same-line
-  * requests merge, independent lines may refill out of order, and each MSHR
-  * reserves its physical victim slot. Stores remain write-through and AMOs
-  * remain serialized; both wait for load MSHRs to retire so a stale refill
-  * cannot overwrite a newer write. Tag and data arrays use synchronous reads
-  * so emitted RTL can map to SRAM macros.
+  * Cacheable load misses use a four-entry non-blocking MSHR engine. Same-line requests merge, independent lines may
+  * refill out of order, and each MSHR reserves its physical victim slot. Stores remain write-through and AMOs remain
+  * serialized; both wait for load MSHRs to retire so a stale refill cannot overwrite a newer write. Tag and data arrays
+  * use synchronous reads so emitted RTL can map to SRAM macros.
   */
-class SharedL2Slice( 
-  config: GpuConfig = GpuConfig(),
-  sets: Int = 128,
-  ways: Int = 4,
-  lineBytes: Int = 64,
-  maxOutstanding: Int = 8,
-  numComputeUnits: Int = 2,
-  transactionsPerCu: Int = 4,
-  useSramBlackBoxes: Boolean = false,
-  bankIndex: Int = 0,
-  bankCount: Int = 1
+class SharedL2Slice(
+    config: GpuConfig = GpuConfig(),
+    sets: Int = 128,
+    ways: Int = 4,
+    lineBytes: Int = 64,
+    maxOutstanding: Int = 8,
+    numComputeUnits: Int = 2,
+    transactionsPerCu: Int = 4,
+    useSramBlackBoxes: Boolean = false,
+    bankIndex: Int = 0,
+    bankCount: Int = 1
 ) extends Module {
   require(isPow2(sets) && sets > 1)
   require(isPow2(ways) && ways > 0)
@@ -43,10 +41,9 @@ class SharedL2Slice(
   require(isPow2(bankCount) && bankIndex >= 0 && bankIndex < bankCount)
   require(maxOutstanding >= numComputeUnits * transactionsPerCu)
   private val storeEntries = config.l2StoreEntries
-  private val blockingLowerId = 4+storeEntries
-  private val uncachedLowerId = blockingLowerId+1
-  require(maxOutstanding > blockingLowerId,
-    "four load MSHRs, configured stores, and one blocking AMO ID are required")
+  private val blockingLowerId = 4 + storeEntries
+  private val uncachedLowerId = blockingLowerId + 1
+  require(maxOutstanding > blockingLowerId, "four load MSHRs, configured stores, and one blocking AMO ID are required")
 
   private val offsetWidth = log2Ceil(lineBytes)
   private val indexWidth = log2Ceil(sets)
@@ -55,47 +52,37 @@ class SharedL2Slice(
   private val lineWidth = lineBytes * 8
 
   val io = IO(new Bundle {
-    val request = Flipped(Decoupled(
-      new ComputeMemoryRequest(config, lineBytes, maxOutstanding)))
-    val response = Decoupled(
-      new ComputeMemoryResponse(lineBytes, maxOutstanding))
-    val memoryRequest = Decoupled(
-      new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
-    val memoryResponse = Flipped(Decoupled(
-      new ComputeMemoryResponse(lineBytes, maxOutstanding)))
-    val invalidate = Vec(numComputeUnits,
-      Decoupled(new CacheLineInvalidate(config)))
-    val invalidateDone = Vec(numComputeUnits,
-      Flipped(Decoupled(new CacheLineInvalidate(config))))
-    val atomicRequest = Vec(numComputeUnits,
-      Flipped(Decoupled(new SharedAtomicRequest(config))))
-    val atomicResponse = Vec(numComputeUnits,
-      Decoupled(new SharedAtomicResponse(config)))
+    val request = Flipped(Decoupled(new ComputeMemoryRequest(config, lineBytes, maxOutstanding)))
+    val response = Decoupled(new ComputeMemoryResponse(lineBytes, maxOutstanding))
+    val memoryRequest = Decoupled(new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
+    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(lineBytes, maxOutstanding)))
+    val invalidate = Vec(numComputeUnits, Decoupled(new CacheLineInvalidate(config)))
+    val invalidateDone = Vec(numComputeUnits, Flipped(Decoupled(new CacheLineInvalidate(config))))
+    val atomicRequest = Vec(numComputeUnits, Flipped(Decoupled(new SharedAtomicRequest(config))))
+    val atomicResponse = Vec(numComputeUnits, Decoupled(new SharedAtomicResponse(config)))
     val clearPerformanceCounters = Input(Bool())
     val performance = Output(new L2PerformanceCounters)
-    /** Host-driven line invalidate: drop a resident line and snoop its L1
-      * holders.  It carries no data and issues no lower-memory traffic, so the
-      * driver can make CPU-written memory visible to later GPU reads without a
-      * full cache flush. */
+
+    /** Host-driven line invalidate: drop a resident line and snoop its L1 holders. It carries no data and issues no
+      * lower-memory traffic, so the driver can make CPU-written memory visible to later GPU reads without a full cache
+      * flush.
+      */
     val hostInvalidate = Flipped(Decoupled(new L2HostInvalidate(config)))
     val hostInvalidateDone = Decoupled(new L2HostInvalidate(config))
-    /** No unfinished transaction in this slice: FSM idle, no miss in flight,
-      * no store pending or awaiting acknowledgement, no client response
-      * awaiting consumption.
+
+    /** No unfinished transaction in this slice: FSM idle, no miss in flight, no store pending or awaiting
+      * acknowledgement, no client response awaiting consumption.
       */
     val drained = Output(Bool())
   })
 
   private object State extends ChiselEnum {
-    val idle, lookup, missAllocate, invalidate, storeAllocate, lower, respond, atomicRead,
-      atomicExtract, atomicExecute, atomicWrite, atomicRespond, hostRespond,
-      rangeRead, rangeCheck, rangeRespond = Value
+    val idle, lookup, missAllocate, invalidate, storeAllocate, lower, respond, atomicRead, atomicExtract, atomicExecute,
+        atomicWrite, atomicRespond, hostRespond, rangeRead, rangeCheck, rangeRespond = Value
   }
   private val state = RegInit(State.idle)
-  private val request = Reg(new ComputeMemoryRequest(
-    config, lineBytes, maxOutstanding))
-  private val response = Reg(new ComputeMemoryResponse(
-    lineBytes, maxOutstanding))
+  private val request = Reg(new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
+  private val response = Reg(new ComputeMemoryResponse(lineBytes, maxOutstanding))
   private val responseWaiters = RegInit(0.U(maxOutstanding.W))
   private val waiterSharers = RegInit(0.U(numComputeUnits.W))
   private val lookupHit = RegInit(false.B)
@@ -161,10 +148,8 @@ class SharedL2Slice(
   private val sharerUpdateCommit = fillWriteCommit && fillWriteSharerUpdate
   private val fillCommitBubble = RegNext(fillWriteCommit, false.B)
 
-  private val tags = Seq.fill(ways)(Module(
-    new L2SramArray(sets, tagWidth, useSramBlackBoxes)))
-  private val data = Seq.fill(ways)(Module(
-    new L2SramArray(sets, lineWidth, useSramBlackBoxes)))
+  private val tags = Seq.fill(ways)(Module(new L2SramArray(sets, tagWidth, useSramBlackBoxes)))
+  private val data = Seq.fill(ways)(Module(new L2SramArray(sets, lineWidth, useSramBlackBoxes)))
   // Pack one valid bit per set into a bitmap per way.  The Vec[Bool]
   // representation elaborates into one scalar state element and dynamic
   // enable chain per set; a packed bitmap keeps the same indexed semantics
@@ -183,23 +168,38 @@ class SharedL2Slice(
   // Sharer contents need no reset writes: every consumer first proves the
   // corresponding line valid, and valid bits reset to zero.
   private val sharers = Seq.fill(ways)(Mem(sets, UInt(numComputeUnits.W)))
-  private val missEngine = Module(new L2MissEngine(
-    config, entries = 4, maxOutstanding = maxOutstanding,
-    numComputeUnits = numComputeUnits, lineBytes = lineBytes,
-    sets = sets, ways = ways))
-  private val storeTable = Module(new L2StoreTransactionTable(
-    config, entries = storeEntries, lineBytes = lineBytes,
-    maxOutstanding = maxOutstanding, lowerIdBase = 4))
-  private val uncachedRead = if (maxOutstanding > uncachedLowerId)
-    Some(Module(new L2UncachedRead(config, maxOutstanding, lowerId = uncachedLowerId))) else None
+  private val missEngine = Module(
+    new L2MissEngine(
+      config,
+      entries = 4,
+      maxOutstanding = maxOutstanding,
+      numComputeUnits = numComputeUnits,
+      lineBytes = lineBytes,
+      sets = sets,
+      ways = ways
+    )
+  )
+  private val storeTable = Module(
+    new L2StoreTransactionTable(
+      config,
+      entries = storeEntries,
+      lineBytes = lineBytes,
+      maxOutstanding = maxOutstanding,
+      lowerIdBase = 4
+    )
+  )
+  private val uncachedRead =
+    if (maxOutstanding > uncachedLowerId)
+      Some(Module(new L2UncachedRead(config, maxOutstanding, lowerId = uncachedLowerId)))
+    else None
   private val uncachedIdle = uncachedRead.map(r => !r.io.active).getOrElse(true.B)
   private val loadHitCounter = Module(new CarrySaveEventCounter())
   private val loadMissCounter = Module(new CarrySaveEventCounter())
   private val mshrMergeCounter = Module(new CarrySaveEventCounter())
   private val storeAcceptedCounter = Module(new CarrySaveEventCounter())
   private val storeBlockedCounter = Module(new CarrySaveEventCounter())
-  private val performanceCounters = Seq(loadHitCounter, loadMissCounter,
-    mshrMergeCounter, storeAcceptedCounter, storeBlockedCounter)
+  private val performanceCounters =
+    Seq(loadHitCounter, loadMissCounter, mshrMergeCounter, storeAcceptedCounter, storeBlockedCounter)
   performanceCounters.foreach(_.io.clear := io.clearPerformanceCounters)
   io.performance.loadHits := loadHitCounter.io.value
   io.performance.loadMisses := loadMissCounter.io.value
@@ -207,8 +207,7 @@ class SharedL2Slice(
   io.performance.storesAccepted := storeAcceptedCounter.io.value
   io.performance.storeBlockedCycles := storeBlockedCounter.io.value
 
-  private val atomicArbiter = Module(new RRArbiter(
-    new SharedAtomicRequest(config), numComputeUnits))
+  private val atomicArbiter = Module(new RRArbiter(new SharedAtomicRequest(config), numComputeUnits))
   for (cu <- 0 until numComputeUnits) {
     atomicArbiter.io.in(cu) <> io.atomicRequest(cu)
   }
@@ -224,8 +223,8 @@ class SharedL2Slice(
     !storeTable.io.active && uncachedIdle && !missResponsePresented
   // Host invalidate traffic is low priority: it only enters the lookup path
   // when no normal request or atomic is waiting.
-  private val rangeWellFormed = !io.hostInvalidate.bits.lineAddress(offsetWidth-1,0).orR &&
-    !io.hostInvalidate.bits.endExclusive(offsetWidth-1,0).orR &&
+  private val rangeWellFormed = !io.hostInvalidate.bits.lineAddress(offsetWidth - 1, 0).orR &&
+    !io.hostInvalidate.bits.endExclusive(offsetWidth - 1, 0).orR &&
     io.hostInvalidate.bits.endExclusive > io.hostInvalidate.bits.lineAddress &&
     io.hostInvalidate.bits.endExclusive <= (BigInt(1) << config.xLen).U
   private val acceptHostInv = state === State.idle && !loadMissesActive &&
@@ -237,15 +236,19 @@ class SharedL2Slice(
   when(io.hostInvalidate.valid && io.hostInvalidate.bits.isRange) {
     assert(rangeWellFormed, "host range must carry aligned full-width physical bounds")
   }
-  private val lookupAddress = Mux(acceptHostInv,
+  private val lookupAddress = Mux(
+    acceptHostInv,
     io.hostInvalidate.bits.lineAddress,
-    Mux(acceptAtomic,
-      atomicArbiter.io.out.bits.address, io.request.bits.address))
+    Mux(acceptAtomic, atomicArbiter.io.out.bits.address, io.request.bits.address)
+  )
   private val incomingTagForFilter = io.request.bits.address(config.xLen - 1, offsetWidth + indexWidth)
   private val incomingSetForFilter = io.request.bits.address(offsetWidth + indexWidth - 1, offsetWidth)
-  private val possibleDirectoryHit = (0 until ways).map(way =>
-    valid(way)(incomingSetForFilter) &&
-      directoryFingerprints(way)(incomingSetForFilter) === fingerprint(incomingTagForFilter)).reduce(_ || _)
+  private val possibleDirectoryHit = (0 until ways)
+    .map(way =>
+      valid(way)(incomingSetForFilter) &&
+        directoryFingerprints(way)(incomingSetForFilter) === fingerprint(incomingTagForFilter)
+    )
+    .reduce(_ || _)
   private val incomingFullLine = io.request.bits.sizeLog2 === offsetWidth.U &&
     io.request.bits.address(offsetWidth - 1, 0) === 0.U
   private val bypassLookup = !incomingFullLine ||
@@ -263,8 +266,7 @@ class SharedL2Slice(
   private val retiringVictim = state === State.missAllocate &&
     missEngine.io.allocation.valid && !missEngine.io.allocation.bits.merged
   private val validAfterRetirement = VecInit((0 until ways).map { way =>
-    Mux(retiringVictim && lookupVictimWay === way.U,
-      valid(way).bitSet(requestIndex, false.B), valid(way))
+    Mux(retiringVictim && lookupVictimWay === way.U, valid(way).bitSet(requestIndex, false.B), valid(way))
   })
   for (way <- 0 until ways) {
     when(retiringVictim && lookupVictimWay === way.U) {
@@ -307,65 +309,63 @@ class SharedL2Slice(
     !valid(way)(requestIndex)
   })
   private val hasInvalid = invalidByWay.asUInt.orR
-  private val victimWay = Mux(
-    hasInvalid, PriorityEncoder(invalidByWay), nextVictim(requestIndex))
+  private val victimWay = Mux(hasInvalid, PriorityEncoder(invalidByWay), nextVictim(requestIndex))
   private def followingWay(way: UInt): UInt =
     if (ways == 1) 0.U else (way + 1.U)(wayWidth - 1, 0)
 
   private val requesterCu =
     request.transactionId / transactionsPerCu.U
   private val requesterOH = UIntToOH(requesterCu, numComputeUnits)
-  private val hitSharers = Mux1H(hitByWay,
-    VecInit(sharers.map(_(requestIndex))))
+  private val hitSharers = Mux1H(hitByWay, VecInit(sharers.map(_(requestIndex))))
   // Only a private-cache writer can exclude its own L1 from the probes.
   // Host/DMA IDs are outside the CU range; UIntToOH truncation can alias
   // those IDs to a real CU (e.g. staging ID 34 / 4 aliases CU0 in a 5-client
   // directory), silently leaving that CU's old copy valid.
   private val otherSharers = hitSharers & ~Mux(request.cacheClient, requesterOH, 0.U)
-  private val victimSharers = Mux1H(UIntToOH(victimWay, ways),
-    VecInit(sharers.map(_(requestIndex))))
+  private val victimSharers = Mux1H(UIntToOH(victimWay, ways), VecInit(sharers.map(_(requestIndex))))
   private val victimTag = Mux1H(UIntToOH(victimWay, ways), tagRead)
-  private val victimValid = Mux1H(UIntToOH(victimWay, ways),
-    VecInit(valid.map(_(requestIndex))))
-  private val victimAddress = Cat(
-    victimTag, requestIndex, 0.U(offsetWidth.W))
-  private val selectedMissWay = Mux(missVictimRotated,
-    missVictimWay, victimWay)
-  private val selectedMissSharers = Mux1H(UIntToOH(selectedMissWay, ways),
-    VecInit(sharers.map(_(requestIndex))))
+  private val victimValid = Mux1H(UIntToOH(victimWay, ways), VecInit(valid.map(_(requestIndex))))
+  private val victimAddress = Cat(victimTag, requestIndex, 0.U(offsetWidth.W))
+  private val selectedMissWay = Mux(missVictimRotated, missVictimWay, victimWay)
+  private val selectedMissSharers = Mux1H(UIntToOH(selectedMissWay, ways), VecInit(sharers.map(_(requestIndex))))
   private val selectedMissTag = Mux1H(UIntToOH(selectedMissWay, ways), tagRead)
-  private val selectedMissValid = Mux1H(UIntToOH(selectedMissWay, ways),
-    VecInit(valid.map(_(requestIndex))))
-  private val selectedMissAddress = Cat(
-    selectedMissTag, requestIndex, 0.U(offsetWidth.W))
-  private val activeLine = Cat(
-    request.address(config.xLen - 1, offsetWidth), 0.U(offsetWidth.W))
+  private val selectedMissValid = Mux1H(UIntToOH(selectedMissWay, ways), VecInit(valid.map(_(requestIndex))))
+  private val selectedMissAddress = Cat(selectedMissTag, requestIndex, 0.U(offsetWidth.W))
+  private val activeLine = Cat(request.address(config.xLen - 1, offsetWidth), 0.U(offsetWidth.W))
 
-  private val atomicLineAddress = Cat(
-    atomicRequest.address(config.xLen - 1, offsetWidth), 0.U(offsetWidth.W))
+  private val atomicLineAddress = Cat(atomicRequest.address(config.xLen - 1, offsetWidth), 0.U(offsetWidth.W))
   private val atomicCacheable = CachePolicy.isCacheable(atomicRequest.cachePolicy)
   private val atomicWordShift = Cat(atomicRequest.address(offsetWidth - 1, 2), 0.U(5.W))
   private val atomicReadWord = (atomicLineData >> atomicWordShift)(31, 0)
   private val atomicResult = MuxLookup(
     atomicRequest.operation,
     atomicRequest.operand
-  )(Seq(
-    AtomicMemoryOp.compareSwap -> Mux(atomicOldValue === atomicRequest.compareValue,
-      atomicRequest.operand, atomicOldValue),
-    AtomicMemoryOp.swap -> atomicRequest.operand,
-    AtomicMemoryOp.add -> (atomicOldValue + atomicRequest.operand),
-    AtomicMemoryOp.xor -> (atomicOldValue ^ atomicRequest.operand),
-    AtomicMemoryOp.or -> (atomicOldValue | atomicRequest.operand),
-    AtomicMemoryOp.and -> (atomicOldValue & atomicRequest.operand),
-    AtomicMemoryOp.min -> Mux(atomicOldValue.asSInt < atomicRequest.operand.asSInt,
-      atomicOldValue, atomicRequest.operand),
-    AtomicMemoryOp.max -> Mux(atomicOldValue.asSInt > atomicRequest.operand.asSInt,
-      atomicOldValue, atomicRequest.operand),
-    AtomicMemoryOp.minu -> Mux(atomicOldValue < atomicRequest.operand,
-      atomicOldValue, atomicRequest.operand),
-    AtomicMemoryOp.maxu -> Mux(atomicOldValue > atomicRequest.operand,
-      atomicOldValue, atomicRequest.operand)
-  ))
+  )(
+    Seq(
+      AtomicMemoryOp.compareSwap -> Mux(
+        atomicOldValue === atomicRequest.compareValue,
+        atomicRequest.operand,
+        atomicOldValue
+      ),
+      AtomicMemoryOp.swap -> atomicRequest.operand,
+      AtomicMemoryOp.add -> (atomicOldValue + atomicRequest.operand),
+      AtomicMemoryOp.xor -> (atomicOldValue ^ atomicRequest.operand),
+      AtomicMemoryOp.or -> (atomicOldValue | atomicRequest.operand),
+      AtomicMemoryOp.and -> (atomicOldValue & atomicRequest.operand),
+      AtomicMemoryOp.min -> Mux(
+        atomicOldValue.asSInt < atomicRequest.operand.asSInt,
+        atomicOldValue,
+        atomicRequest.operand
+      ),
+      AtomicMemoryOp.max -> Mux(
+        atomicOldValue.asSInt > atomicRequest.operand.asSInt,
+        atomicOldValue,
+        atomicRequest.operand
+      ),
+      AtomicMemoryOp.minu -> Mux(atomicOldValue < atomicRequest.operand, atomicOldValue, atomicRequest.operand),
+      AtomicMemoryOp.maxu -> Mux(atomicOldValue > atomicRequest.operand, atomicOldValue, atomicRequest.operand)
+    )
+  )
   private val atomicWordMask = ("hf".U(lineBytes.W) << atomicRequest.address(offsetWidth - 1, 0))
   private val atomicWriteData = atomicNewValue <<
     (atomicRequest.address(offsetWidth - 1, 0) << 3)
@@ -377,8 +377,7 @@ class SharedL2Slice(
   for (byte <- 0 until lineBytes) {
     val relative = byte.U - atomicByteOffset
     val replace = byte.U >= atomicByteOffset && byte.U < atomicByteEnd
-    atomicMergedBytes(byte) := Mux(replace,
-      (atomicNewValue >> (relative << 3))(7, 0), atomicOldBytes(byte))
+    atomicMergedBytes(byte) := Mux(replace, (atomicNewValue >> (relative << 3))(7, 0), atomicOldBytes(byte))
   }
   private val atomicMergedLine = atomicMergedBytes.asUInt
 
@@ -389,8 +388,7 @@ class SharedL2Slice(
     mergedBytes(byte) := Mux(request.byteMask(byte), writeBytes(byte), oldBytes(byte))
   }
 
-  private val incomingLine = Cat(
-    io.request.bits.address(config.xLen - 1, offsetWidth), 0.U(offsetWidth.W))
+  private val incomingLine = Cat(io.request.bits.address(config.xLen - 1, offsetWidth), 0.U(offsetWidth.W))
   private val mergeLoad = state === State.lower && !request.isWrite &&
     request.sizeLog2 === offsetWidth.U && !io.request.bits.isWrite &&
     io.request.bits.sizeLog2 === offsetWidth.U && incomingLine === activeLine &&
@@ -398,28 +396,29 @@ class SharedL2Slice(
     !responseWaiters(io.request.bits.transactionId)
   private val incomingRequesterCu =
     io.request.bits.transactionId / transactionsPerCu.U
-  private val incomingRequesterOH = UIntToOH(
-    incomingRequesterCu, numComputeUnits)
+  private val incomingRequesterOH = UIntToOH(incomingRequesterCu, numComputeUnits)
   storeTable.io.queryAddress := io.request.bits.address
   private val incomingUncachedRead = !io.request.bits.isWrite &&
     (!incomingFullLine || !CachePolicy.isCacheable(io.request.bits.cachePolicy))
-  private val uncachedAdmission = uncachedRead.map { slot =>
-    slot.io.queryAddress := io.request.bits.address
-    (!incomingUncachedRead || slot.io.allocate.ready) &&
+  private val uncachedAdmission = uncachedRead
+    .map { slot =>
+      slot.io.queryAddress := io.request.bits.address
+      (!incomingUncachedRead || slot.io.allocate.ready) &&
       (!io.request.bits.isWrite || !slot.io.queryConflict)
-  }.getOrElse(true.B)
+    }
+    .getOrElse(true.B)
   io.request.ready := (state === State.idle && !atomicArbiter.io.out.valid &&
     uncachedAdmission && !missResponsePresented &&
     (!io.request.bits.isWrite || !loadMissesActive) &&
     (!storeTable.io.queryConflict || io.request.bits.isWrite)) ||
     mergeLoad
-  private val regularResponse = Wire(Decoupled(
-    new ComputeMemoryResponse(lineBytes, maxOutstanding)))
+  private val regularResponse = Wire(Decoupled(new ComputeMemoryResponse(lineBytes, maxOutstanding)))
   regularResponse.valid := state === State.respond
   regularResponse.bits := response
   regularResponse.bits.transactionId := L2PriorityEncoder(responseWaiters)
-  private val responseArbiter = Module(new RRArbiter(
-    new ComputeMemoryResponse(lineBytes, maxOutstanding), if (uncachedRead.isDefined) 4 else 3))
+  private val responseArbiter = Module(
+    new RRArbiter(new ComputeMemoryResponse(lineBytes, maxOutstanding), if (uncachedRead.isDefined) 4 else 3)
+  )
   responseArbiter.io.in(0) <> regularResponse
   responseArbiter.io.in(1).valid := missEngine.io.response.valid
   responseArbiter.io.in(1).bits.readData := missEngine.io.response.bits.readData
@@ -442,8 +441,7 @@ class SharedL2Slice(
     !storeTable.io.active && uncachedIdle && !fillWriteValid && !hostInvMode &&
     !rangeActive && !fillCommitBubble && !io.hostInvalidate.valid
 
-  private val blockingMemoryRequest = Wire(Decoupled(
-    new ComputeMemoryRequest(config, lineBytes, maxOutstanding)))
+  private val blockingMemoryRequest = Wire(Decoupled(new ComputeMemoryRequest(config, lineBytes, maxOutstanding)))
   blockingMemoryRequest.valid := (state === State.lower ||
     state === State.atomicRead || state === State.atomicWrite) && !lowerIssued
   blockingMemoryRequest.bits := request
@@ -466,8 +464,9 @@ class SharedL2Slice(
     blockingMemoryRequest.bits.cacheClient := false.B
     blockingMemoryRequest.bits.cacheResident := false.B
   }
-  private val memoryRequestArbiter = Module(new RRArbiter(
-    new ComputeMemoryRequest(config, lineBytes, maxOutstanding), if (uncachedRead.isDefined) 4 else 3))
+  private val memoryRequestArbiter = Module(
+    new RRArbiter(new ComputeMemoryRequest(config, lineBytes, maxOutstanding), if (uncachedRead.isDefined) 4 else 3)
+  )
   memoryRequestArbiter.io.in(0) <> blockingMemoryRequest
   memoryRequestArbiter.io.in(1) <> storeTable.io.lowerRequest
   memoryRequestArbiter.io.in(2) <> missEngine.io.lowerRequest
@@ -483,8 +482,8 @@ class SharedL2Slice(
   storeTable.io.lowerResponse.valid :=
     io.memoryResponse.valid && responseIsStore
   storeTable.io.lowerResponse.bits := io.memoryResponse.bits
-  private val responseIsUncached = uncachedRead.map(_ =>
-    io.memoryResponse.bits.transactionId === uncachedLowerId.U).getOrElse(false.B)
+  private val responseIsUncached =
+    uncachedRead.map(_ => io.memoryResponse.bits.transactionId === uncachedLowerId.U).getOrElse(false.B)
   uncachedRead.foreach { slot =>
     slot.io.lowerResponse.valid := io.memoryResponse.valid && responseIsUncached
     slot.io.lowerResponse.bits := io.memoryResponse.bits
@@ -494,16 +493,23 @@ class SharedL2Slice(
   private val uncachedResponseReady = uncachedRead.map(_.io.lowerResponse.ready).getOrElse(false.B)
   private val blockingMemoryResponseReady = state === State.lower ||
     state === State.atomicRead || state === State.atomicWrite
-  io.memoryResponse.ready := Mux(responseIsMiss,
-    missEngine.io.lowerResponse.ready, Mux(responseIsStore,
-      storeTable.io.lowerResponse.ready, Mux(responseIsUncached,
-        uncachedResponseReady, blockingMemoryResponseReady)))
+  io.memoryResponse.ready := Mux(
+    responseIsMiss,
+    missEngine.io.lowerResponse.ready,
+    Mux(
+      responseIsStore,
+      storeTable.io.lowerResponse.ready,
+      Mux(responseIsUncached, uncachedResponseReady, blockingMemoryResponseReady)
+    )
+  )
   private val blockingMemoryResponseFire = io.memoryResponse.fire &&
     !responseIsMiss && !responseIsStore && !responseIsUncached
   when(io.memoryResponse.valid) {
-    assert(responseIsMiss || responseIsStore || responseIsUncached ||
-      io.memoryResponse.bits.transactionId === blockingLowerId.U,
-      "L2 slice response must identify a load, store, or blocking transaction")
+    assert(
+      responseIsMiss || responseIsStore || responseIsUncached ||
+        io.memoryResponse.bits.transactionId === blockingLowerId.U,
+      "L2 slice response must identify a load, store, or blocking transaction"
+    )
   }
   storeTable.io.allocate.valid := state === State.storeAllocate
   storeTable.io.allocate.bits := request
@@ -540,8 +546,10 @@ class SharedL2Slice(
       invalidateTargets(cu) && invalidateSent(cu) && !invalidateAcked(cu)
     invalidateAckFire(cu) := io.invalidateDone(cu).fire
     when(io.invalidateDone(cu).fire) {
-      assert(io.invalidateDone(cu).bits.lineAddress === invalidateAddress,
-        "L1 invalidation acknowledgement must match the active L2 line")
+      assert(
+        io.invalidateDone(cu).bits.lineAddress === invalidateAddress,
+        "L1 invalidation acknowledgement must match the active L2 line"
+      )
     }
     io.atomicResponse(cu).valid := state === State.atomicRespond &&
       atomicOwner === cu.U
@@ -555,22 +563,22 @@ class SharedL2Slice(
     when(state === State.idle) {
       missVictimRotated := false.B
       request := io.request.bits
-      responseWaiters := UIntToOH(
-        io.request.bits.transactionId, maxOutstanding)
-      waiterSharers := Mux(
-        io.request.bits.cacheClient, incomingRequesterOH, 0.U)
+      responseWaiters := UIntToOH(io.request.bits.transactionId, maxOutstanding)
+      waiterSharers := Mux(io.request.bits.cacheClient, incomingRequesterOH, 0.U)
       atomicMode := false.B
       hostInvMode := false.B
       when(bypassLookup) {
         lookupHit := false.B
-        state := Mux(io.request.bits.isWrite, State.storeAllocate,
-          if (uncachedRead.isDefined) State.idle else State.lower)
+        state := Mux(
+          io.request.bits.isWrite,
+          State.storeAllocate,
+          if (uncachedRead.isDefined) State.idle else State.lower
+        )
       }.otherwise {
         state := State.lookup
       }
     }.otherwise {
-      responseWaiters := responseWaiters | UIntToOH(
-        io.request.bits.transactionId, maxOutstanding)
+      responseWaiters := responseWaiters | UIntToOH(io.request.bits.transactionId, maxOutstanding)
       when(io.request.bits.cacheClient) {
         waiterSharers := waiterSharers | incomingRequesterOH
       }
@@ -585,8 +593,7 @@ class SharedL2Slice(
     // Reuse the normal lookup address/index machinery without admitting this
     // request to the normal response path.
     request.address := atomicArbiter.io.out.bits.address
-    request.transactionId := Cat(atomicArbiter.io.chosen,
-      0.U(math.max(1, log2Ceil(transactionsPerCu)).W))
+    request.transactionId := Cat(atomicArbiter.io.chosen, 0.U(math.max(1, log2Ceil(transactionsPerCu)).W))
     request.sizeLog2 := offsetWidth.U
     request.isWrite := false.B
     request.cacheClient := false.B
@@ -648,8 +655,10 @@ class SharedL2Slice(
       val reconstructedBank = rangeLine(offsetWidth + indexWidth + bits - 1, offsetWidth + indexWidth) ^
         rangeLine(offsetWidth + bits - 1, offsetWidth)
       when(rangeValid) {
-        assert(reconstructedBank === bankIndex.U,
-          "range scan must reconstruct a physical address in its owning XOR bank")
+        assert(
+          reconstructedBank === bankIndex.U,
+          "range scan must reconstruct a physical address in its owning XOR bank"
+        )
       }
     }
     when(rangeValid && rangeLine >= hostInvAddress && rangeLine.pad(config.xLen + 1) < rangeEnd) {
@@ -824,8 +833,7 @@ class SharedL2Slice(
         }.otherwise {
           for (way <- 0 until ways) {
             when(lookupHitWay === way.U) {
-              sharers(way)(requestIndex) := Mux(
-                request.cacheClient && request.cacheResident, requesterOH, 0.U)
+              sharers(way)(requestIndex) := Mux(request.cacheClient && request.cacheResident, requesterOH, 0.U)
             }
           }
         }
@@ -835,9 +843,11 @@ class SharedL2Slice(
           invalidateForMiss := false.B
           state := State.idle
         }.otherwise {
-          state := Mux(atomicMode,
+          state := Mux(
+            atomicMode,
             Mux(invalidateForReplacement || !atomicCacheable, State.atomicRead, State.atomicExtract),
-            State.storeAllocate)
+            State.storeAllocate
+          )
         }
       }
     }
@@ -870,8 +880,7 @@ class SharedL2Slice(
     when(state === State.atomicRead) {
       atomicFault := io.memoryResponse.bits.fault
       atomicLineData := io.memoryResponse.bits.readData
-      state := Mux(io.memoryResponse.bits.fault,
-        State.atomicRespond, State.atomicExtract)
+      state := Mux(io.memoryResponse.bits.fault, State.atomicRespond, State.atomicExtract)
     }.elsewhen(state === State.atomicWrite) {
       atomicFault := io.memoryResponse.bits.fault
       when(!io.memoryResponse.bits.fault && atomicCacheable) {
@@ -902,8 +911,10 @@ class SharedL2Slice(
     }.otherwise {
       response := io.memoryResponse.bits
       response.transactionId := request.transactionId
-      when(!io.memoryResponse.bits.fault && cacheableRead &&
-          !request.isWrite) {
+      when(
+        !io.memoryResponse.bits.fault && cacheableRead &&
+          !request.isWrite
+      ) {
         for (way <- 0 until ways) {
           when(lookupVictimWay === way.U) {
             tags(way).io.writeEnable := true.B
@@ -917,15 +928,16 @@ class SharedL2Slice(
           }
         }
         nextVictim(requestIndex) := followingWay(lookupVictimWay)
-      }.elsewhen(!io.memoryResponse.bits.fault && cacheable &&
-          request.isWrite && lookupHit) {
+      }.elsewhen(
+        !io.memoryResponse.bits.fault && cacheable &&
+          request.isWrite && lookupHit
+      ) {
         for (way <- 0 until ways) {
           when(lookupHitWay === way.U) {
             data(way).io.writeEnable := true.B
             data(way).io.writeAddress := requestIndex
             data(way).io.writeData := mergedBytes.asUInt
-            sharers(way)(requestIndex) := Mux(
-              request.cacheClient && request.cacheResident, requesterOH, 0.U)
+            sharers(way)(requestIndex) := Mux(request.cacheClient && request.cacheResident, requesterOH, 0.U)
           }
         }
         nextVictim(requestIndex) := followingWay(lookupHitWay)
@@ -962,8 +974,7 @@ class SharedL2Slice(
     fillWriteValid := true.B
     fillWriteSet := missEngine.io.fill.bits.victimSet
     fillWriteWay := missEngine.io.fill.bits.victimWay
-    fillWriteTag := missEngine.io.fill.bits.lineAddress(
-      config.xLen - 1, offsetWidth + indexWidth)
+    fillWriteTag := missEngine.io.fill.bits.lineAddress(config.xLen - 1, offsetWidth + indexWidth)
     fillWriteData := missEngine.io.fill.bits.readData
     fillWriteSharers := missEngine.io.fill.bits.sharers
     fillWriteSharerUpdate := missEngine.io.fill.bits.sharerUpdate
@@ -1004,25 +1015,23 @@ class SharedL2Slice(
 
 /** Address-interleaved collection of independent L2 slices.
   *
-  * Hits and coherence work in different slices proceed independently. The
-  * lower-memory adapter allocates global transaction IDs and restores each
-  * slice's original MSHR/blocking ID on an out-of-order response.
+  * Hits and coherence work in different slices proceed independently. The lower-memory adapter allocates global
+  * transaction IDs and restores each slice's original MSHR/blocking ID on an out-of-order response.
   *
-  * L2 shared by GPU clients, independent of the host CPU's L2.
-  * Invalidation and atomic channels provide GPU-internal coherence only.
-  * The memoryRequest/memoryResponse port connects to the lower memory hierarchy.
+  * L2 shared by GPU clients, independent of the host CPU's L2. Invalidation and atomic channels provide GPU-internal
+  * coherence only. The memoryRequest/memoryResponse port connects to the lower memory hierarchy.
   */
 class SharedL2Cache(
-  config: GpuConfig = GpuConfig(),
-  sets: Int = 128,
-  ways: Int = 4,
-  lineBytes: Int = 64,
-  maxOutstanding: Int = 8,
-  numComputeUnits: Int = 2,
-  transactionsPerCu: Int = 4,
-  banks: Int = 2,
-  requestQueueDepth: Int = 2,
-  useSramBlackBoxes: Boolean = false
+    config: GpuConfig = GpuConfig(),
+    sets: Int = 128,
+    ways: Int = 4,
+    lineBytes: Int = 64,
+    maxOutstanding: Int = 8,
+    numComputeUnits: Int = 2,
+    transactionsPerCu: Int = 4,
+    banks: Int = 2,
+    requestQueueDepth: Int = 2,
+    useSramBlackBoxes: Boolean = false
 ) extends Module {
   require(isPow2(banks) && banks > 0)
   require(sets % banks == 0)
@@ -1034,38 +1043,42 @@ class SharedL2Cache(
   private val bankBit = offsetWidth + log2Ceil(setsPerBank)
 
   val io = IO(new Bundle {
-    val request = Flipped(Decoupled(
-      new ComputeMemoryRequest(config, lineBytes, maxOutstanding)))
-    val response = Decoupled(
-      new ComputeMemoryResponse(lineBytes, maxOutstanding))
-    val memoryRequest = Decoupled(
-      new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
-    val memoryResponse = Flipped(Decoupled(
-      new ComputeMemoryResponse(lineBytes, maxOutstanding)))
-    val invalidate = Vec(numComputeUnits,
-      Decoupled(new CacheLineInvalidate(config)))
-    val invalidateDone = Vec(numComputeUnits,
-      Flipped(Decoupled(new CacheLineInvalidate(config))))
-    val atomicRequest = Vec(numComputeUnits,
-      Flipped(Decoupled(new SharedAtomicRequest(config))))
-    val atomicResponse = Vec(numComputeUnits,
-      Decoupled(new SharedAtomicResponse(config)))
+    val request = Flipped(Decoupled(new ComputeMemoryRequest(config, lineBytes, maxOutstanding)))
+    val response = Decoupled(new ComputeMemoryResponse(lineBytes, maxOutstanding))
+    val memoryRequest = Decoupled(new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
+    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(lineBytes, maxOutstanding)))
+    val invalidate = Vec(numComputeUnits, Decoupled(new CacheLineInvalidate(config)))
+    val invalidateDone = Vec(numComputeUnits, Flipped(Decoupled(new CacheLineInvalidate(config))))
+    val atomicRequest = Vec(numComputeUnits, Flipped(Decoupled(new SharedAtomicRequest(config))))
+    val atomicResponse = Vec(numComputeUnits, Decoupled(new SharedAtomicResponse(config)))
     val clearPerformanceCounters = Input(Bool())
     val performance = Output(new L2PerformanceCounters)
     val hostInvalidate = Flipped(Decoupled(new L2HostInvalidate(config)))
     val hostInvalidateDone = Decoupled(new L2HostInvalidate(config))
-    /** No accepted transaction is unfinished: the request queues are empty,
-      * the FSM is idle, every load miss has returned, every store has been
-      * lowered and acknowledged, and no client response awaits consumption.
-      * A completion that fires while `drained` is true therefore implies the
-      * store drain reached the lower memory.
+
+    /** No accepted transaction is unfinished: the request queues are empty, the FSM is idle, every load miss has
+      * returned, every store has been lowered and acknowledged, and no client response awaits consumption. A completion
+      * that fires while `drained` is true therefore implies the store drain reached the lower memory.
       */
     val drained = Output(Bool())
   })
 
-  private val slices = Seq.tabulate(banks)(bank => Module(new SharedL2Slice(
-    config, setsPerBank, ways, lineBytes, maxOutstanding,
-    numComputeUnits, transactionsPerCu, useSramBlackBoxes, bank, banks)))
+  private val slices = Seq.tabulate(banks)(bank =>
+    Module(
+      new SharedL2Slice(
+        config,
+        setsPerBank,
+        ways,
+        lineBytes,
+        maxOutstanding,
+        numComputeUnits,
+        transactionsPerCu,
+        useSramBlackBoxes,
+        bank,
+        banks
+      )
+    )
+  )
   slices.foreach(_.io.clearPerformanceCounters := io.clearPerformanceCounters)
   io.performance.loadHits := slices.map(_.io.performance.loadHits).reduce(_ +& _)
   io.performance.loadMisses := slices.map(_.io.performance.loadMisses).reduce(_ +& _)
@@ -1074,14 +1087,15 @@ class SharedL2Cache(
     slices.map(_.io.performance.storesAccepted).reduce(_ +& _)
   io.performance.storeBlockedCycles :=
     slices.map(_.io.performance.storeBlockedCycles).reduce(_ +& _)
-  /** XOR interleaving keeps the slice's existing index/tag decomposition while
-    * spreading adjacent cache lines across banks. Using only the upper set
-    * bits made every short sequential DMA burst target one blocking slice.
+
+  /** XOR interleaving keeps the slice's existing index/tag decomposition while spreading adjacent cache lines across
+    * banks. Using only the upper set bits made every short sequential DMA burst target one blocking slice.
     */
   private def selectBank(address: UInt): UInt =
     if (banks == 1) 0.U
-    else address(bankBit + bankWidth - 1, bankBit) ^
-      address(offsetWidth + bankWidth - 1, offsetWidth)
+    else
+      address(bankBit + bankWidth - 1, bankBit) ^
+        address(offsetWidth + bankWidth - 1, offsetWidth)
 
   // Capture the host range before waiting for quiescence. Stop *new* ingress
   // on the same edge, but let all already accepted queues/transactions retire.
@@ -1096,8 +1110,8 @@ class SharedL2Cache(
   private val hostInvalidateBusy = RegInit(false.B)
   private val hostInvalidateOwner = Reg(UInt(bankWidth.W))
   private val anyAtomicWaiting = VecInit(io.atomicRequest.map(_.valid)).asUInt.orR
-  private val rangeWellFormed = !io.hostInvalidate.bits.lineAddress(offsetWidth-1,0).orR &&
-    !io.hostInvalidate.bits.endExclusive(offsetWidth-1,0).orR &&
+  private val rangeWellFormed = !io.hostInvalidate.bits.lineAddress(offsetWidth - 1, 0).orR &&
+    !io.hostInvalidate.bits.endExclusive(offsetWidth - 1, 0).orR &&
     io.hostInvalidate.bits.endExclusive > io.hostInvalidate.bits.lineAddress &&
     io.hostInvalidate.bits.endExclusive <= (BigInt(1) << config.xLen).U
   private val rangeMayClaim = rangeState === RangeState.idle &&
@@ -1130,9 +1144,16 @@ class SharedL2Cache(
   }
 
   private val requestBank = selectBank(io.request.bits.address)
-  private val requestQueues = Seq.fill(banks)(Module(new Queue(
-    new ComputeMemoryRequest(config, lineBytes, maxOutstanding),
-    requestQueueDepth, pipe = true, flow = true)))
+  private val requestQueues = Seq.fill(banks)(
+    Module(
+      new Queue(
+        new ComputeMemoryRequest(config, lineBytes, maxOutstanding),
+        requestQueueDepth,
+        pipe = true,
+        flow = true
+      )
+    )
+  )
   for (bank <- 0 until banks) {
     requestQueues(bank).io.enq.valid :=
       io.request.valid && !blockIngress && requestBank === bank.U
@@ -1142,8 +1163,7 @@ class SharedL2Cache(
   io.request.ready :=
     !blockIngress && VecInit(requestQueues.map(_.io.enq.ready))(requestBank)
 
-  private val responseArbiter = Module(new RRArbiter(
-    new ComputeMemoryResponse(lineBytes, maxOutstanding), banks))
+  private val responseArbiter = Module(new RRArbiter(new ComputeMemoryResponse(lineBytes, maxOutstanding), banks))
   for (bank <- 0 until banks) {
     responseArbiter.io.in(bank) <> slices(bank).io.response
   }
@@ -1156,21 +1176,25 @@ class SharedL2Cache(
     VecInit(slices.map(_.io.hostInvalidate.ready))(hostInvalidateBank)
   for (bank <- 0 until banks) {
     slices(bank).io.hostInvalidate.valid :=
-      Mux(rangeState === RangeState.send, rangeBank === bank.U,
+      Mux(
+        rangeState === RangeState.send,
+        rangeBank === bank.U,
         io.hostInvalidate.valid && !io.hostInvalidate.bits.isRange &&
           rangeState === RangeState.idle && !hostInvalidateBusy &&
-          hostInvalidateBank === bank.U)
-    slices(bank).io.hostInvalidate.bits := Mux(rangeState === RangeState.send,
-      rangeRequest, io.hostInvalidate.bits)
+          hostInvalidateBank === bank.U
+      )
+    slices(bank).io.hostInvalidate.bits := Mux(rangeState === RangeState.send, rangeRequest, io.hostInvalidate.bits)
     slices(bank).io.hostInvalidateDone.ready :=
       (rangeState === RangeState.waiting && rangeBank === bank.U) ||
-      (hostInvalidateBusy && hostInvalidateOwner === bank.U && io.hostInvalidateDone.ready)
+        (hostInvalidateBusy && hostInvalidateOwner === bank.U && io.hostInvalidateDone.ready)
     when(rangeState === RangeState.send && slices(bank).io.hostInvalidate.fire) {
       rangeState := RangeState.waiting
     }
     when(rangeState === RangeState.waiting && slices(bank).io.hostInvalidateDone.fire) {
-      assert(slices(bank).io.hostInvalidateDone.bits.asUInt === rangeRequest.asUInt,
-        "range bank must acknowledge the exact owned bounds")
+      assert(
+        slices(bank).io.hostInvalidateDone.bits.asUInt === rangeRequest.asUInt,
+        "range bank must acknowledge the exact owned bounds"
+      )
       when(rangeBank === (banks - 1).U) {
         rangeState := RangeState.respond
         yieldRequest := io.request.valid
@@ -1181,21 +1205,21 @@ class SharedL2Cache(
       }
     }
   }
-  io.hostInvalidate.ready := Mux(io.hostInvalidate.bits.isRange,
+  io.hostInvalidate.ready := Mux(
+    io.hostInvalidate.bits.isRange,
     rangeMayClaim && rangeWellFormed,
-    rangeState === RangeState.idle && !hostInvalidateBusy && hostInvalidateSliceReady)
+    rangeState === RangeState.idle && !hostInvalidateBusy && hostInvalidateSliceReady
+  )
   when(io.hostInvalidate.fire && !io.hostInvalidate.bits.isRange) {
     hostInvalidateBusy := true.B
     hostInvalidateOwner := hostInvalidateBank
   }
   private val lineDoneValid = hostInvalidateBusy &&
     (if (banks == 1) slices.head.io.hostInvalidateDone.valid
-     else VecInit(
-       slices.map(_.io.hostInvalidateDone.valid))(hostInvalidateOwner))
+     else VecInit(slices.map(_.io.hostInvalidateDone.valid))(hostInvalidateOwner))
   private val lineDoneBits =
     (if (banks == 1) slices.head.io.hostInvalidateDone.bits
-     else VecInit(
-       slices.map(_.io.hostInvalidateDone.bits))(hostInvalidateOwner))
+     else VecInit(slices.map(_.io.hostInvalidateDone.bits))(hostInvalidateOwner))
   io.hostInvalidateDone.valid := rangeState === RangeState.respond || lineDoneValid
   io.hostInvalidateDone.bits := Mux(rangeState === RangeState.respond, rangeRequest, lineDoneBits)
   when(io.hostInvalidateDone.fire) {
@@ -1218,8 +1242,7 @@ class SharedL2Cache(
     io.atomicRequest(cu).ready :=
       !blockIngress && VecInit(slices.map(_.io.atomicRequest(cu).ready))(atomicBank)
 
-    val atomicResponseArbiter = Module(new RRArbiter(
-      new SharedAtomicResponse(config), banks))
+    val atomicResponseArbiter = Module(new RRArbiter(new SharedAtomicResponse(config), banks))
     for (bank <- 0 until banks) {
       atomicResponseArbiter.io.in(bank) <> slices(bank).io.atomicResponse(cu)
     }
@@ -1229,8 +1252,7 @@ class SharedL2Cache(
   // One outstanding invalidation per L1 is sufficient because each private
   // DCache itself accepts a new probe only after acknowledging the previous.
   for (cu <- 0 until numComputeUnits) {
-    val invalidateArbiter = Module(new RRArbiter(
-      new CacheLineInvalidate(config), banks))
+    val invalidateArbiter = Module(new RRArbiter(new CacheLineInvalidate(config), banks))
     val invalidateBusy = RegInit(false.B)
     val invalidateOwner = Reg(UInt(bankWidth.W))
     probeChannelsDrained(cu) := !invalidateBusy
@@ -1253,26 +1275,26 @@ class SharedL2Cache(
       invalidateOwner := invalidateArbiter.io.chosen
     }
     io.invalidateDone(cu).ready := invalidateBusy && (if (banks == 1) {
-      slices.head.io.invalidateDone(cu).ready
-    } else {
-      VecInit(slices.map(_.io.invalidateDone(cu).ready))(invalidateOwner)
-    })
+                                                        slices.head.io.invalidateDone(cu).ready
+                                                      } else {
+                                                        VecInit(slices.map(_.io.invalidateDone(cu).ready))(
+                                                          invalidateOwner
+                                                        )
+                                                      })
     when(io.invalidateDone(cu).fire) { invalidateBusy := false.B }
   }
 
   // Allocate lower-port IDs independently of CU transaction IDs. This avoids
   // collisions with internal AMO refill/write traffic and permits responses
   // from different slices to return out of order.
-  private val memoryArbiter = Module(new RRArbiter(
-    new ComputeMemoryRequest(config, lineBytes, maxOutstanding), banks))
+  private val memoryArbiter = Module(new RRArbiter(new ComputeMemoryRequest(config, lineBytes, maxOutstanding), banks))
   // Keep the outstanding-ID flags as one bitmap instead of independent
   // scalar enables. Capacity and lowest-free-ID selection are unchanged.
   private val lowerValid = RegInit(0.U(maxOutstanding.W))
   // Validity is tracked separately. Capture routing metadata by index
   // without expanding every inactive row into scalar register enables.
   private val lowerOwner = Mem(maxOutstanding, UInt(bankWidth.W))
-  private val lowerOriginalId = Mem(maxOutstanding,
-    UInt(math.max(1, log2Ceil(maxOutstanding)).W))
+  private val lowerOriginalId = Mem(maxOutstanding, UInt(math.max(1, log2Ceil(maxOutstanding)).W))
   private val freeLower = ~lowerValid
   private val hasFreeLower = freeLower.orR
   // Keep the exact lowest-free-ID policy, including the all-zero fallback,
@@ -1281,9 +1303,9 @@ class SharedL2Cache(
   // Register the lower response before the large ID-directory lookup and
   // per-bank ready selection. Two entries preserve a response per clock when
   // the destination accepts them; no downstream ready path reaches the port.
-  private val lowerResponseQueue = Module(new Queue(
-    new ComputeMemoryResponse(lineBytes, maxOutstanding), 2,
-    pipe = false, flow = false))
+  private val lowerResponseQueue = Module(
+    new Queue(new ComputeMemoryResponse(lineBytes, maxOutstanding), 2, pipe = false, flow = false)
+  )
   lowerResponseQueue.io.enq <> io.memoryResponse
   private val responseId = lowerResponseQueue.io.deq.bits.transactionId
   private val responseInRange = responseId < maxOutstanding.U
@@ -1304,9 +1326,9 @@ class SharedL2Cache(
   // Reserve the lower ID when a request enters the one-entry output queue.
   // A lower response can free a smaller ID while the output is stalled;
   // selecting the ID directly at the output would then change a held offer.
-  private val lowerRequestQueue = Module(new Queue(
-    new ComputeMemoryRequest(config, lineBytes, maxOutstanding), 1,
-    pipe = true, flow = true))
+  private val lowerRequestQueue = Module(
+    new Queue(new ComputeMemoryRequest(config, lineBytes, maxOutstanding), 1, pipe = true, flow = true)
+  )
   lowerRequestQueue.io.enq.valid := memoryArbiter.io.out.valid && hasFreeLower
   lowerRequestQueue.io.enq.bits := memoryArbiter.io.out.bits
   lowerRequestQueue.io.enq.bits.transactionId := allocatedLowerId
@@ -1314,18 +1336,17 @@ class SharedL2Cache(
   io.memoryRequest <> lowerRequestQueue.io.deq
   when(lowerRequestQueue.io.enq.fire) {
     lowerOwner.write(allocatedLowerId, memoryArbiter.io.chosen)
-    lowerOriginalId.write(allocatedLowerId,
-      memoryArbiter.io.out.bits.transactionId)
+    lowerOriginalId.write(allocatedLowerId, memoryArbiter.io.out.bits.transactionId)
   }
   lowerResponseQueue.io.deq.ready := responseValid && (if (banks == 1) {
-    slices.head.io.memoryResponse.ready
-  } else {
-    VecInit(slices.map(_.io.memoryResponse.ready))(responseOwner)
-  })
-  private val newlyAllocatedLower = Mux(lowerRequestQueue.io.enq.fire,
-    UIntToOH(allocatedLowerId, maxOutstanding), 0.U(maxOutstanding.W))
-  private val retiredLower = Mux(lowerResponseQueue.io.deq.fire,
-    UIntToOH(responseId, maxOutstanding), 0.U(maxOutstanding.W))
+                                                         slices.head.io.memoryResponse.ready
+                                                       } else {
+                                                         VecInit(slices.map(_.io.memoryResponse.ready))(responseOwner)
+                                                       })
+  private val newlyAllocatedLower =
+    Mux(lowerRequestQueue.io.enq.fire, UIntToOH(allocatedLowerId, maxOutstanding), 0.U(maxOutstanding.W))
+  private val retiredLower =
+    Mux(lowerResponseQueue.io.deq.fire, UIntToOH(responseId, maxOutstanding), 0.U(maxOutstanding.W))
   when(lowerRequestQueue.io.enq.fire || lowerResponseQueue.io.deq.fire) {
     // Retirement retains the original later-assignment priority, including
     // the same-ID case. Normally allocation uses an old-state free ID, so
@@ -1341,8 +1362,10 @@ class SharedL2Cache(
     !io.response.valid && !VecInit(io.atomicResponse.map(_.valid)).asUInt.orR &&
     probeChannelsDrained.asUInt.andR && !hostInvalidateBusy
   when(io.memoryResponse.valid) {
-    assert(io.memoryResponse.bits.transactionId < maxOutstanding.U &&
-      lowerValid(io.memoryResponse.bits.transactionId),
-      "L2 lower response must reference an outstanding transaction")
+    assert(
+      io.memoryResponse.bits.transactionId < maxOutstanding.U &&
+        lowerValid(io.memoryResponse.bits.transactionId),
+      "L2 lower response must reference an outstanding transaction"
+    )
   }
 }

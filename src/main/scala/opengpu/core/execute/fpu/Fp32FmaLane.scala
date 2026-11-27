@@ -2,14 +2,13 @@ package opengpu.core.execute.fpu
 
 import chisel3._
 import chisel3.util._
-import chisel3.experimental.hierarchy.{instantiable,public}
+import chisel3.experimental.hierarchy.{instantiable, public}
 import yunsuan.fpu.FloatFMA
 
 /** Elastic GPU wrapper around YunSuan's five-cycle FP32 FMA pipeline.
   *
-  * YunSuan accepts one operation per cycle but has no downstream backpressure.
-  * Credits cover both the in-flight pipeline slots and the result queue,
-  * so accepting a request always reserves storage for its eventual result.
+  * YunSuan accepts one operation per cycle but has no downstream backpressure. Credits cover both the in-flight
+  * pipeline slots and the result queue, so accepting a request always reserves storage for its eventual result.
   */
 @instantiable
 class Fp32FmaLane(tagWidth: Int = 16, pipeRegs: Int = 5, resultEntries: Int = 5) extends Module {
@@ -106,8 +105,10 @@ class Fp32FmaLane(tagWidth: Int = 16, pipeRegs: Int = 5, resultEntries: Int = 5)
   responseQueue.io.enq.bits.result := resultData
   responseQueue.io.enq.bits.status := resultStatus
   responseQueue.io.enq.bits.tag := resultTag
-  assert(!responseQueue.io.enq.valid || responseQueue.io.enq.ready,
-    "reserved YunSuan FMA result queue entry was unavailable")
+  assert(
+    !responseQueue.io.enq.valid || responseQueue.io.enq.ready,
+    "reserved YunSuan FMA result queue entry was unavailable"
+  )
 
   responseQueue.io.deq.ready := outCaptureReady
   io.out.valid := outValid
@@ -132,7 +133,6 @@ class Fp32FmaLane(tagWidth: Int = 16, pipeRegs: Int = 5, resultEntries: Int = 5)
   io.busy := outstanding =/= 0.U
 
   when(io.in.valid) {
-    assert(isFmadd || isFnmsub || isAdd || isMul,
-      "Fp32FmaLane received an operation outside FMADD/FNMSUB/ADD/MUL")
+    assert(isFmadd || isFnmsub || isAdd || isMul, "Fp32FmaLane received an operation outside FMADD/FNMSUB/ADD/MUL")
   }
 }

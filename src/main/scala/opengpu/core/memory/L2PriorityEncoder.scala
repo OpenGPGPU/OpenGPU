@@ -13,9 +13,7 @@ private[memory] object L2PriorityEncoder {
       val low = bits(lowWidth - 1, 0)
       val high = bits(width - 1, lowWidth)
       val chooseLow = low.orR
-      Cat(!chooseLow, Mux(chooseLow,
-        apply(low).pad(indexWidth - 1),
-        apply(high).pad(indexWidth - 1)))
+      Cat(!chooseLow, Mux(chooseLow, apply(low).pad(indexWidth - 1), apply(high).pad(indexWidth - 1)))
     }
   }
 }

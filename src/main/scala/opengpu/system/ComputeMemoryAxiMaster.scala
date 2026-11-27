@@ -5,22 +5,20 @@ import chisel3.util._
 import opengpu.config.GpuConfig
 import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse}
 
-/** Converts the cache hierarchy's private lower-memory protocol into an AXI4
-  * master port. The private protocol never crosses the product boundary.
+/** Converts the cache hierarchy's private lower-memory protocol into an AXI4 master port. The private protocol never
+  * crosses the product boundary.
   *
-  * Independent read and write engines overlap transactions in both directions. A
-  * 64-byte cache line is emitted as an INCR burst when the AXI data bus is
-  * narrower than a cache line; four-byte page-table accesses use AXI narrow
-  * transfers and are shifted to/from the addressed byte lane.
-  * Up to four tagged read bursts overlap, with per-ID beat/fault reassembly.
-  * Write bursts continue while earlier B replies are outstanding; IDs and
-  * request credits remain reserved through acknowledged response retirement.
+  * Independent read and write engines overlap transactions in both directions. A 64-byte cache line is emitted as an
+  * INCR burst when the AXI data bus is narrower than a cache line; four-byte page-table accesses use AXI narrow
+  * transfers and are shifted to/from the addressed byte lane. Up to four tagged read bursts overlap, with per-ID
+  * beat/fault reassembly. Write bursts continue while earlier B replies are outstanding; IDs and request credits remain
+  * reserved through acknowledged response retirement.
   */
 class ComputeMemoryAxiMaster(
-  config: GpuConfig = GpuConfig(),
-  lineBytes: Int = 64,
-  maxOutstanding: Int = 4,
-  axiDataBytes: Int = 8
+    config: GpuConfig = GpuConfig(),
+    lineBytes: Int = 64,
+    maxOutstanding: Int = 4,
+    axiDataBytes: Int = 8
 ) extends Module {
   require(lineBytes == 64, "current cache hierarchy uses 64-byte lines")
   require(maxOutstanding > 0)
@@ -34,10 +32,8 @@ class ComputeMemoryAxiMaster(
   private val laneOffsetWidth = log2Ceil(axiDataBytes)
 
   val io = IO(new Bundle {
-    val request = Flipped(Decoupled(
-      new ComputeMemoryRequest(config, lineBytes, maxOutstanding)))
-    val response = Decoupled(
-      new ComputeMemoryResponse(lineBytes, maxOutstanding))
+    val request = Flipped(Decoupled(new ComputeMemoryRequest(config, lineBytes, maxOutstanding)))
+    val response = Decoupled(new ComputeMemoryResponse(lineBytes, maxOutstanding))
 
     val m_axi_awid = Output(UInt(idWidth.W))
     val m_axi_awaddr = Output(UInt(config.xLen.W))
@@ -116,18 +112,18 @@ class ComputeMemoryAxiMaster(
   private val outstanding = RegInit(0.U(log2Ceil(maxOutstanding + 1).W))
   // A pending second store must not hold the shared L2 arbiter in front of a
   // read while the first store waits for B. Each direction gets its own queue.
-  private val readRequests = Module(new Queue(
-    new ComputeMemoryRequest(config, lineBytes, maxOutstanding), 2, flow = true))
-  private val writeRequests = Module(new Queue(
-    new ComputeMemoryRequest(config, lineBytes, maxOutstanding), 2, flow = true))
+  private val readRequests = Module(
+    new Queue(new ComputeMemoryRequest(config, lineBytes, maxOutstanding), 2, flow = true)
+  )
+  private val writeRequests = Module(
+    new Queue(new ComputeMemoryRequest(config, lineBytes, maxOutstanding), 2, flow = true)
+  )
   readRequests.io.enq.valid := io.request.valid && !io.request.bits.isWrite && outstanding < maxOutstanding.U
   writeRequests.io.enq.valid := io.request.valid && io.request.bits.isWrite && outstanding < maxOutstanding.U
   readRequests.io.enq.bits := io.request.bits
   writeRequests.io.enq.bits := io.request.bits
-  private val responseArb = Module(new RRArbiter(
-    new ComputeMemoryResponse(lineBytes, maxOutstanding), 2))
-  private val responses = Module(new Queue(
-    new ComputeMemoryResponse(lineBytes, maxOutstanding), 2, pipe = true))
+  private val responseArb = Module(new RRArbiter(new ComputeMemoryResponse(lineBytes, maxOutstanding), 2))
+  private val responses = Module(new Queue(new ComputeMemoryResponse(lineBytes, maxOutstanding), 2, pipe = true))
   responses.io.enq <> responseArb.io.out
   io.response <> responses.io.deq
 
@@ -146,19 +142,28 @@ class ComputeMemoryAxiMaster(
     outstanding := Mux(io.request.fire, outstanding + 1.U, outstanding - 1.U)
   }
   when(io.request.fire) {
-    assert(io.request.bits.transactionId < maxOutstanding.U,
-      "lower-memory transaction ID must be in the advertised range")
-    assert(io.request.bits.sizeLog2 === 2.U || io.request.bits.sizeLog2 === 6.U,
-      "lower memory supports four-byte words and full cache lines")
+    assert(
+      io.request.bits.transactionId < maxOutstanding.U,
+      "lower-memory transaction ID must be in the advertised range"
+    )
+    assert(
+      io.request.bits.sizeLog2 === 2.U || io.request.bits.sizeLog2 === 6.U,
+      "lower memory supports four-byte words and full cache lines"
+    )
     when(io.request.bits.sizeLog2 === 6.U) {
-      assert(io.request.bits.address(5, 0) === 0.U,
-        "cache-line AXI bursts must be naturally aligned")
+      assert(io.request.bits.address(5, 0) === 0.U, "cache-line AXI bursts must be naturally aligned")
     }
   }
   when(readRequests.io.deq.fire) {
-    assert(!(0 until readSlots).map(i => readValid(i) &&
-      readIds(i) === readRequests.io.deq.bits.transactionId).reduce(_ || _),
-      "AXI read ID cannot be reused before its burst completes")
+    assert(
+      !(0 until readSlots)
+        .map(i =>
+          readValid(i) &&
+            readIds(i) === readRequests.io.deq.bits.transactionId
+        )
+        .reduce(_ || _),
+      "AXI read ID cannot be reused before its burst completes"
+    )
     readRequest := readRequests.io.deq.bits
     readActive := true.B
     readAddressSlot := allocateReadSlot
@@ -174,12 +179,16 @@ class ComputeMemoryAxiMaster(
   io.m_axi_awprot := 0.U
   io.m_axi_awqos := 0.U
   io.m_axi_awvalid := writeActive && !writeAddressSent
-  io.m_axi_wdata := Mux(lineTransfer(writeRequest),
+  io.m_axi_wdata := Mux(
+    lineTransfer(writeRequest),
     (writeRequest.writeData >> writeShift)(axiDataWidth - 1, 0),
-    (writeRequest.writeData(axiDataWidth - 1, 0) << (laneOffset(writeRequest) << 3))(axiDataWidth - 1, 0))
-  io.m_axi_wstrb := Mux(lineTransfer(writeRequest),
+    (writeRequest.writeData(axiDataWidth - 1, 0) << (laneOffset(writeRequest) << 3))(axiDataWidth - 1, 0)
+  )
+  io.m_axi_wstrb := Mux(
+    lineTransfer(writeRequest),
     (writeRequest.byteMask >> (writeBeat << log2Ceil(axiDataBytes)))(axiDataBytes - 1, 0),
-    (writeRequest.byteMask(axiDataBytes - 1, 0) << laneOffset(writeRequest))(axiDataBytes - 1, 0))
+    (writeRequest.byteMask(axiDataBytes - 1, 0) << laneOffset(writeRequest))(axiDataBytes - 1, 0)
+  )
   io.m_axi_wlast := writeLast
   io.m_axi_wvalid := writeActive && !writeDataSent
   when(io.m_axi_awvalid && io.m_axi_awready) { writeAddressSent := true.B }
@@ -195,8 +204,10 @@ class ComputeMemoryAxiMaster(
   // Loading the next queued burst wins over the old burst's final handshakes.
   // With one-beat lines, AW/W can therefore issue on consecutive cycles.
   when(writeRequests.io.deq.fire) {
-    assert(!writeBit(pendingWrites, writeRequests.io.deq.bits.transactionId),
-      "AXI write ID cannot be reused before its acknowledgement")
+    assert(
+      !writeBit(pendingWrites, writeRequests.io.deq.bits.transactionId),
+      "AXI write ID cannot be reused before its acknowledgement"
+    )
     writeRequest := writeRequests.io.deq.bits
     writeActive := true.B
     writeAddressSent := false.B
@@ -212,19 +223,20 @@ class ComputeMemoryAxiMaster(
   responseArb.io.in(1).bits.fault := io.m_axi_bresp(1)
   io.m_axi_bready := writeResponseExpected && responseArb.io.in(1).ready
   when(io.m_axi_bvalid && io.m_axi_bready) {
-    assert(writeResponseExpected,
-      "AXI write response ID must identify an issued and completed burst")
+    assert(writeResponseExpected, "AXI write response ID must identify an issued and completed burst")
   }
   when(io.m_axi_bvalid) {
-    assert(writeResponseExpected,
-      "AXI write acknowledgement must follow both address and final data handshakes")
+    assert(writeResponseExpected, "AXI write acknowledgement must follow both address and final data handshakes")
   }
-  private val allocatedWrite = Mux(writeRequests.io.deq.fire,
-    UIntToOH(writeRequests.io.deq.bits.transactionId, maxOutstanding), 0.U(maxOutstanding.W))
-  private val finishedWrite = Mux(writeFinished,
-    UIntToOH(writeRequest.transactionId, maxOutstanding), 0.U(maxOutstanding.W))
-  private val acknowledgedWrite = Mux(io.m_axi_bvalid && io.m_axi_bready,
-    UIntToOH(io.m_axi_bid, maxOutstanding), 0.U(maxOutstanding.W))
+  private val allocatedWrite = Mux(
+    writeRequests.io.deq.fire,
+    UIntToOH(writeRequests.io.deq.bits.transactionId, maxOutstanding),
+    0.U(maxOutstanding.W)
+  )
+  private val finishedWrite =
+    Mux(writeFinished, UIntToOH(writeRequest.transactionId, maxOutstanding), 0.U(maxOutstanding.W))
+  private val acknowledgedWrite =
+    Mux(io.m_axi_bvalid && io.m_axi_bready, UIntToOH(io.m_axi_bid, maxOutstanding), 0.U(maxOutstanding.W))
   pendingWrites := (pendingWrites & ~acknowledgedWrite) | allocatedWrite
   completedWrites := (completedWrites & ~acknowledgedWrite) | finishedWrite
 
@@ -244,36 +256,29 @@ class ComputeMemoryAxiMaster(
   // A next address may replace the accepted one on this edge.
   when(readRequests.io.deq.fire) { readActive := true.B }
 
-  private val readTagMatches = VecInit((0 until readSlots).map(i =>
-    readValid(i) && readIds(i) === io.m_axi_rid))
-  private val readMatches = VecInit((0 until readSlots).map(i =>
-    readTagMatches(i) && readIssued(i)))
+  private val readTagMatches = VecInit((0 until readSlots).map(i => readValid(i) && readIds(i) === io.m_axi_rid))
+  private val readMatches = VecInit((0 until readSlots).map(i => readTagMatches(i) && readIssued(i)))
   private val readResponseExpected = readMatches.asUInt.orR
   private val responseBeat = Mux1H(readMatches, readBeats)
   private val responseBurst = Mux1H(readMatches, readBursts)
   private val responseOffset = Mux1H(readMatches, readOffsets)
   private val responseResult = Mux1H(readMatches, readResults)
   private val responseFault = Mux1H(readMatches, readFaults)
-  private val readLast = responseBeat === Mux(responseBurst,
-    (lineBytes / axiDataBytes - 1).U, 0.U)
+  private val readLast = responseBeat === Mux(responseBurst, (lineBytes / axiDataBytes - 1).U, 0.U)
   private val readShift = responseBeat << log2Ceil(axiDataWidth)
-  private val nextReadResult = Mux(responseBurst,
-    responseResult | (io.m_axi_rdata << readShift),
-    io.m_axi_rdata >> (responseOffset << 3))
+  private val nextReadResult =
+    Mux(responseBurst, responseResult | (io.m_axi_rdata << readShift), io.m_axi_rdata >> (responseOffset << 3))
   responseArb.io.in(0).valid := readResponseExpected && io.m_axi_rvalid && readLast
   responseArb.io.in(0).bits.transactionId := io.m_axi_rid
   responseArb.io.in(0).bits.readData := nextReadResult
   responseArb.io.in(0).bits.fault := responseFault || io.m_axi_rresp(1) || (io.m_axi_rlast =/= readLast)
   io.m_axi_rready := readResponseExpected && (!readLast || responseArb.io.in(0).ready)
   when(io.m_axi_rvalid) {
-    assert(PopCount(readTagMatches) === 1.U,
-      "AXI read response ID must identify one reserved read context")
+    assert(PopCount(readTagMatches) === 1.U, "AXI read response ID must identify one reserved read context")
   }
   when(io.m_axi_rvalid && io.m_axi_rready) {
-    assert(PopCount(readMatches) === 1.U,
-      "AXI read response must follow its address handshake")
-    assert(io.m_axi_rlast === readLast,
-      "AXI RLAST must match the programmed burst length")
+    assert(PopCount(readMatches) === 1.U, "AXI read response must follow its address handshake")
+    assert(io.m_axi_rlast === readLast, "AXI RLAST must match the programmed burst length")
   }
   for (i <- 0 until readSlots) {
     when(readRequests.io.deq.fire && allocateReadSlot === i.U) {

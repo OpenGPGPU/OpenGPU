@@ -27,9 +27,9 @@ class RegisterScoreboardSpec extends AnyFlatSpec {
   }
 
   private def reserveDestination(
-    dut: RegisterScoreboard,
-    warp: Int,
-    rd: Int
+      dut: RegisterScoreboard,
+      warp: Int,
+      rd: Int
   ): Unit = {
     dut.io.reserve.valid.poke(true.B)
     dut.io.reserve.bits.warpId.poke(warp.U)

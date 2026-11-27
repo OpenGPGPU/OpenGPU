@@ -5,15 +5,17 @@ import chisel3.util._
 import opengpu.config.{CachePolicy, GpuConfig}
 
 class VectorLowerMemoryRequest(
-  config: GpuConfig,
-  val lineBytes: Int = 64
+    config: GpuConfig,
+    val lineBytes: Int = 64
 ) extends Bundle {
   val lineAddress = UInt(config.xLen.W)
   val writeData = UInt((lineBytes * 8).W)
   val byteMask = UInt(lineBytes.W)
   val isWrite = Bool()
+
   /** Indicates that this request's line is resident in this private cache. */
   val cacheResident = Bool()
+
   /** Per-page cache policy resolved by the TLB. */
   val cachePolicy = UInt(CachePolicy.width.W)
 }
@@ -23,6 +25,7 @@ class CacheLineInvalidate(config: GpuConfig) extends Bundle {
 }
 
 object CacheLineInvalidate {
+
   /** Unaligned sentinel reserved for invalidating the entire private L1. */
   def allLinesAddress(config: GpuConfig): UInt =
     Fill(config.xLen, 1.U(1.W))
@@ -35,16 +38,15 @@ class VectorLowerMemoryResponse(val lineBytes: Int = 64) extends Bundle {
 
 /** Blocking set-associative vector data cache.
   *
-  * Loads allocate on a miss. Stores are write-through and update an existing
-  * cached line only after the lower-level write acknowledgment succeeds.
-  * Keeping one request outstanding gives precise fault and backpressure
-  * semantics while the later MSHR implementation is still absent.
+  * Loads allocate on a miss. Stores are write-through and update an existing cached line only after the lower-level
+  * write acknowledgment succeeds. Keeping one request outstanding gives precise fault and backpressure semantics while
+  * the later MSHR implementation is still absent.
   */
 class VectorDataCache(
-  config: GpuConfig = GpuConfig(),
-  sets: Int = 64,
-  ways: Int = 2,
-  lineBytes: Int = 64
+    config: GpuConfig = GpuConfig(),
+    sets: Int = 64,
+    ways: Int = 2,
+    lineBytes: Int = 64
 ) extends Module {
   require(isPow2(sets), "DCache set count must be a power of two")
   require(isPow2(ways), "DCache way count must be a power of two")
@@ -77,6 +79,7 @@ class VectorDataCache(
     RegInit(VecInit(Seq.fill(sets)(0.U(wayWidth.W))))
   private val request = Reg(new VectorCacheLineRequest(config, lineBytes))
   private val output = Reg(new VectorCacheLineResponse(lineBytes))
+
   /** An uncached page bypasses this private cache as well as the shared L2. */
   private val requestCacheable = CachePolicy.isCacheable(request.cachePolicy)
 
@@ -210,8 +213,10 @@ class VectorDataCache(
   when(io.invalidate.fire) {
     invalidatePending := true.B
     invalidateAddress := io.invalidate.bits.lineAddress
-    when(state === State.lower &&
-      (invalidateAll || io.invalidate.bits.lineAddress === request.lineAddress)) {
+    when(
+      state === State.lower &&
+        (invalidateAll || io.invalidate.bits.lineAddress === request.lineAddress)
+    ) {
       requestInvalidated := true.B
     }
     for (way <- 0 until ways) {

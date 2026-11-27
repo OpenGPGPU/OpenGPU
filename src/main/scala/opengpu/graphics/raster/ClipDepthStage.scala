@@ -6,9 +6,8 @@ import opengpu.util.IterativeSignedDivider
 
 /** Converts clipped Q16.16 Z/W to D24 window depths in a bounded range.
   *
-  * One divider services the three vertices in order. The input triangle is
-  * snapshotted at start; results and done remain stable until the next start.
-  * The near clipper supplies positive W. Clamp a possible one-unit clipping
+  * One divider services the three vertices in order. The input triangle is snapshotted at start; results and done
+  * remain stable until the next start. The near clipper supplies positive W. Clamp a possible one-unit clipping
   * rounding error to the homogeneous near/far planes before division.
   */
 class ClipDepthStage extends Module {
@@ -59,8 +58,10 @@ class ClipDepthStage extends Module {
   }.elsewhen(state === offer && divider.io.in.fire) {
     state := waitResult
   }.elsewhen(state === waitResult && divider.io.out.fire) {
-    assert(!divider.io.out.bits.divideByZero && !divider.io.out.bits.magnitudeOverflow,
-      "clipped depth division must fit D24")
+    assert(
+      !divider.io.out.bits.divideByZero && !divider.io.out.bits.magnitudeOverflow,
+      "clipped depth division must fit D24"
+    )
     assert(!divider.io.out.bits.quotient(24), "clipped depth exceeds D24")
     result(index) := divider.io.out.bits.quotient(23, 0).asUInt
     when(index === 2.U) {

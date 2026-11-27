@@ -6,7 +6,9 @@ import opengpu.graphics.TextureImageAddressUnit
 object EmitTextureImageAddress {
   def main(args: Array[String]): Unit = {
     require(args.length <= 1, "usage: EmitTextureImageAddress [target-dir]")
-    EmitRtl.emit(new TextureImageAddressUnit(),
-      args.headOption.getOrElse("generated/mobile-h4/texture-image-address-rtl"))
+    EmitRtl.emit(
+      new TextureImageAddressUnit(),
+      args.headOption.getOrElse("generated/mobile-h4/texture-image-address-rtl")
+    )
   }
 }

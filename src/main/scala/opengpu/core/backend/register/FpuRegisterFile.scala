@@ -25,8 +25,8 @@ class FpuExternalReserve(config: GpuConfig) extends Bundle {
 
 /** Per-warp scalar floating-point register file.
   *
-  * Unlike the integer RF, f0 is an ordinary writable register. Three
-  * combinational read ports are required by fused multiply-add instructions.
+  * Unlike the integer RF, f0 is an ordinary writable register. Three combinational read ports are required by fused
+  * multiply-add instructions.
   */
 class FpuRegisterFile(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {
@@ -40,8 +40,7 @@ class FpuRegisterFile(config: GpuConfig = GpuConfig()) extends Module {
     val write = Flipped(Valid(new FpuRegisterWrite(config)))
   })
 
-  private val registers = RegInit(VecInit(Seq.fill(config.warps)(
-    VecInit(Seq.fill(32)(0.U(32.W))))))
+  private val registers = RegInit(VecInit(Seq.fill(config.warps)(VecInit(Seq.fill(32)(0.U(32.W))))))
   private val readWarpValid = io.read.warpId < config.warps.U
   private val fvfReadWarpValid = io.fvfRead.warpId < config.warps.U
   private val writeEnabled = io.write.valid && io.write.bits.warpId < config.warps.U
@@ -58,9 +57,9 @@ class FpuRegisterFile(config: GpuConfig = GpuConfig()) extends Module {
       })
     }
   private def readWithBypass(
-    warpId: UInt,
-    warpValid: Bool,
-    index: UInt
+      warpId: UInt,
+      warpValid: Bool,
+      index: UInt
   ): UInt = {
     val registerData = Mux(warpValid, stored(warpId, index), 0.U)
     Mux(
@@ -71,14 +70,10 @@ class FpuRegisterFile(config: GpuConfig = GpuConfig()) extends Module {
     )
   }
 
-  io.rs1Data := readWithBypass(
-    io.read.warpId, readWarpValid, io.read.rs1)
-  io.rs2Data := readWithBypass(
-    io.read.warpId, readWarpValid, io.read.rs2)
-  io.rs3Data := readWithBypass(
-    io.read.warpId, readWarpValid, io.read.rs3)
-  io.fvfData := readWithBypass(
-    io.fvfRead.warpId, fvfReadWarpValid, io.fvfRead.rs1)
+  io.rs1Data := readWithBypass(io.read.warpId, readWarpValid, io.read.rs1)
+  io.rs2Data := readWithBypass(io.read.warpId, readWarpValid, io.read.rs2)
+  io.rs3Data := readWithBypass(io.read.warpId, readWarpValid, io.read.rs3)
+  io.fvfData := readWithBypass(io.fvfRead.warpId, fvfReadWarpValid, io.fvfRead.rs1)
 
   when(writeEnabled) {
     registers(io.write.bits.warpId)(io.write.bits.rd) := io.write.bits.data

@@ -53,53 +53,55 @@ class VectorSimtBranchIssueSpec extends AnyFlatSpec {
       (BigInt((n >> 1) & 15) << 8) | (BigInt((n >> 11) & 1) << 7) | 0x5b
   }
   it should "fetch actual vector operands for all six encoded branches without RVV mask or scalar aliases" in {
-    simulate(new VectorSimtBranchIssueHarness(GpuConfig(lanes=4, warps=2))) { d =>
+    simulate(new VectorSimtBranchIssueHarness(GpuConfig(lanes = 4, warps = 2))) { d =>
       d.io.instruction.valid.poke(false.B); d.io.instruction.bits.poke(0.U)
       d.io.initialize.valid.poke(false.B)
       d.io.initialize.bits.poke(0.U.asTypeOf(d.io.initialize.bits))
       d.io.out.ready.poke(false.B)
       d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
-      val a = Seq(BigInt(0),BigInt("ffffffff",16),BigInt("80000000",16),BigInt(7))
-      val b = Seq(BigInt(0),BigInt(1),BigInt("7fffffff",16),BigInt(3))
-      for ((values,reg) <- Seq((Seq.fill(4)(BigInt(0)),0),(a,1),(b,2))) {
+      val a = Seq(BigInt(0), BigInt("ffffffff", 16), BigInt("80000000", 16), BigInt(7))
+      val b = Seq(BigInt(0), BigInt(1), BigInt("7fffffff", 16), BigInt(3))
+      for ((values, reg) <- Seq((Seq.fill(4)(BigInt(0)), 0), (a, 1), (b, 2))) {
         d.io.initialize.valid.poke(true.B)
         d.io.initialize.bits.warpId.poke(0.U); d.io.initialize.bits.vd.poke(reg.U)
         for (i <- 0 until 4) d.io.initialize.bits.data(i).poke(values(i).U)
         d.clock.step(); d.io.initialize.valid.poke(false.B)
       }
-      for (op <- Seq(0,1,4,5,6,7); offset <- Seq(-64,4,32)) {
-        d.io.instruction.bits.poke(encoding(op,offset).U)
+      for (op <- Seq(0, 1, 4, 5, 6, 7); offset <- Seq(-64, 4, 32)) {
+        d.io.instruction.bits.poke(encoding(op, offset).U)
         d.io.instruction.valid.poke(true.B)
-        var n=0
-        while (!d.io.instruction.ready.peek().litToBoolean && n<40) { d.clock.step(); n+=1 }
-        assert(n<40); d.io.legal.expect(true.B); d.io.unit.expect(VectorUnit.branch); d.io.unmasked.expect(true.B)
+        var n = 0
+        while (!d.io.instruction.ready.peek().litToBoolean && n < 40) { d.clock.step(); n += 1 }
+        assert(n < 40); d.io.legal.expect(true.B); d.io.unit.expect(VectorUnit.branch); d.io.unmasked.expect(true.B)
         d.clock.step(); d.io.instruction.valid.poke(false.B)
-        n=0
-        while (!d.io.out.valid.peek().litToBoolean && n<40) { d.clock.step(); n+=1 }
-        assert(n<40)
-        val taken=a.zip(b).zipWithIndex.foldLeft(0) { case(mask,((x,y),i)) =>
-          val yes=op match {
-            case 0 => x==y; case 1 => x!=y
-            case 4 => x.toInt<y.toInt; case 5 => x.toInt>=y.toInt
-            case 6 => x<y; case 7 => x>=y
+        n = 0
+        while (!d.io.out.valid.peek().litToBoolean && n < 40) { d.clock.step(); n += 1 }
+        assert(n < 40)
+        val taken = a.zip(b).zipWithIndex.foldLeft(0) { case (mask, ((x, y), i)) =>
+          val yes = op match {
+            case 0 => x == y; case 1            => x != y
+            case 4 => x.toInt < y.toInt; case 5 => x.toInt >= y.toInt
+            case 6 => x < y; case 7             => x >= y
           }
-          if(yes) mask | (1<<i) else mask
+          if (yes) mask | (1 << i) else mask
         }
         for (_ <- 0 until 4) {
           d.io.out.bits.takenMask.expect(taken.U)
           d.io.out.bits.activeMask.expect(15.U)
-          d.io.out.bits.targetPc.expect((0x1000+offset).U)
+          d.io.out.bits.targetPc.expect((0x1000 + offset).U)
           d.clock.step()
         }
         d.io.out.ready.poke(true.B); d.clock.step(); d.io.out.ready.poke(false.B)
       }
-      info("SIMT_VECTOR_ISSUE encodedBranches=18 actualVectorRF=true v0Zero=true bit25Immediate=true scalarAliasesIgnored=true heldOutput=true")
+      info(
+        "SIMT_VECTOR_ISSUE encodedBranches=18 actualVectorRF=true v0Zero=true bit25Immediate=true scalarAliasesIgnored=true heldOutput=true"
+      )
     }
   }
   it should "reject vector branches when vector execution is disabled" in {
-    simulate(new FullInstructionDecoder(GpuConfig(enableVector=false))) { d =>
-      for(op <- Seq(0,1,4,5,6,7)) {
-        d.io.instruction.poke(encoding(op,32).U)
+    simulate(new FullInstructionDecoder(GpuConfig(enableVector = false))) { d =>
+      for (op <- Seq(0, 1, 4, 5, 6, 7)) {
+        d.io.instruction.poke(encoding(op, 32).U)
         d.io.decoded.legal.expect(false.B)
         d.io.decoded.illegalInstruction.expect(true.B)
       }

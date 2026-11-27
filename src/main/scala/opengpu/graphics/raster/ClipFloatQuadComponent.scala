@@ -16,13 +16,12 @@ class ClipFloatQuadComponentResponse(tagWidth: Int) extends Bundle {
   val cancelled = Bool()
 }
 
-/** Four spatial component pipelines: twelve multipliers, eight adders and four
-  * dividers. A new varying row for all four pixels can enter every cycle; all
-  * sixty-four rows issue in sixty-four cycles. Prepared weights/denominators
-  * and context ownership come from the enclosing quad scheduler.
+/** Four spatial component pipelines: twelve multipliers, eight adders and four dividers. A new varying row for all four
+  * pixels can enter every cycle; all sixty-four rows issue in sixty-four cycles. Prepared weights/denominators and
+  * context ownership come from the enclosing quad scheduler.
   *
-  * Fork/join is atomic across lanes. Cancellation stops new rows and drains
-  * accepted rows even while held high, preserving an already offered response.
+  * Fork/join is atomic across lanes. Cancellation stops new rows and drains accepted rows even while held high,
+  * preserving an already offered response.
   */
 class ClipFloatQuadComponent(tagWidth: Int = 8) extends Module {
   require(tagWidth > 0)

@@ -36,7 +36,8 @@ class SingleCuKernelController(config: GpuConfig = GpuConfig(), gridSlices: Bool
   io.launch <> initialize.io.launch
 
   private val finishInRange = io.finish.bits < config.warps.U
-  private val finishResident = if (config.warps == 1) running(0)
+  private val finishResident =
+    if (config.warps == 1) running(0)
     else running(io.finish.bits)
   private val matchingFinish = io.finish.valid && finishInRange &&
     finishResident
@@ -68,10 +69,8 @@ class SingleCuKernelController(config: GpuConfig = GpuConfig(), gridSlices: Bool
   }
 
   when(io.finish.valid) {
-    assert(matchingFinish,
-      "completion must identify a resident dispatched warp")
-    assert(dispatch.io.warpCompletion.ready,
-      "resident warp completion must always be accepted")
+    assert(matchingFinish, "completion must identify a resident dispatched warp")
+    assert(dispatch.io.warpCompletion.ready, "resident warp completion must always be accepted")
   }
   io.residentWarps := running
   io.workgroupDispatchComplete := dispatchComplete

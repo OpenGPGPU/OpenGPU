@@ -9,11 +9,11 @@ class SimtStackSpec extends AnyFlatSpec {
   behavior of "SimtStack"
 
   private def driveEntry(
-    dut: SimtStack,
-    pc: Int,
-    activeMask: Int,
-    originalMask: Int,
-    divergent: Boolean
+      dut: SimtStack,
+      pc: Int,
+      activeMask: Int,
+      originalMask: Int,
+      divergent: Boolean
   ): Unit = {
     dut.io.push.bits.pc.poke(pc.U)
     dut.io.push.bits.activeMask.poke(activeMask.U)

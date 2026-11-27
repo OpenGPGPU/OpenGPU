@@ -2,9 +2,8 @@ package opengpu.elaboration
 
 /** Central registry for elaboration entry points.
   *
-  * `Emit*` objects keep their `main` methods for direct `runMain` use.
-  * This registry gives one discoverable name list and a dispatch helper for
-  * scripts/tools without changing emission behavior.
+  * `Emit*` objects keep their `main` methods for direct `runMain` use. This registry gives one discoverable name list
+  * and a dispatch helper for scripts/tools without changing emission behavior.
   */
 object EmitRegistry {
   final case class Entry(name: String, run: Array[String] => Unit, description: String = "")
@@ -107,9 +106,8 @@ object EmitRegistry {
     e("EmitWideAdderExperiment", EmitWideAdderExperiment.main),
     e("EmitWideSumExperiment", EmitWideSumExperiment.main),
     e("EmitWindowPrimitiveRecordReadCache", EmitWindowPrimitiveRecordReadCache.main),
-    e("EmitWorkgroupBarrierEpoch", EmitWorkgroupBarrierEpoch.main),
+    e("EmitWorkgroupBarrierEpoch", EmitWorkgroupBarrierEpoch.main)
   )
-
 
   lazy val byName: Map[String, Entry] = entries.map(e => e.name -> e).toMap
 
@@ -121,7 +119,7 @@ object EmitRegistry {
     val name = args.head
     byName.get(name) match {
       case Some(e) => e.run(args.tail)
-      case None =>
+      case None    =>
         System.err.println(s"Unknown emit target: $name")
         System.err.println("Use --list to show registered targets.")
         sys.exit(2)

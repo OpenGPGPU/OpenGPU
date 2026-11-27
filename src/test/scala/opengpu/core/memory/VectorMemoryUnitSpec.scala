@@ -42,7 +42,8 @@ class VectorMemoryUnitSpec extends AnyFlatSpec {
       dut.io.memoryRequest.valid.expect(true.B)
       dut.io.memoryRequest.bits.laneMask.expect("b0101".U)
       for (lane <- 0 until config.lanes) {
-        dut.io.memoryRequest.bits.addresses(lane)
+        dut.io.memoryRequest.bits
+          .addresses(lane)
           .expect((0x200 + lane * 2).U)
       }
       dut.io.memoryRequest.ready.poke(true.B)
@@ -54,7 +55,8 @@ class VectorMemoryUnitSpec extends AnyFlatSpec {
       dut.io.memoryResponse.bits.faultMask.poke("b1000".U)
       dut.io.memoryResponse.bits.pageFault.poke(false.B)
       for (lane <- 0 until config.lanes) {
-        dut.io.memoryResponse.bits.readData(lane)
+        dut.io.memoryResponse.bits
+          .readData(lane)
           .poke((0xab0000 + lane * 0x10001).U)
       }
       dut.clock.step()
@@ -103,7 +105,8 @@ class VectorMemoryUnitSpec extends AnyFlatSpec {
       dut.clock.step()
       dut.io.in.valid.poke(false.B)
       for (lane <- 0 until config.lanes) {
-        dut.io.memoryRequest.bits.addresses(lane)
+        dut.io.memoryRequest.bits
+          .addresses(lane)
           .expect((0x400 + lane * 4).U)
         dut.io.memoryRequest.bits.writeData(lane).expect((0x40 + lane).U)
       }
@@ -160,7 +163,8 @@ class VectorMemoryUnitSpec extends AnyFlatSpec {
 
       dut.io.memoryRequest.valid.expect(true.B)
       for (lane <- 0 until config.lanes) {
-        dut.io.memoryRequest.bits.addresses(lane)
+        dut.io.memoryRequest.bits
+          .addresses(lane)
           .expect((0x230 - lane * 0x10).U)
       }
     }
@@ -200,7 +204,8 @@ class VectorMemoryUnitSpec extends AnyFlatSpec {
 
       dut.io.memoryRequest.valid.expect(true.B)
       for (lane <- 0 until config.lanes)
-        dut.io.memoryRequest.bits.addresses(lane)
+        dut.io.memoryRequest.bits
+          .addresses(lane)
           .expect((0x100 + indices(lane)).U)
     }
   }

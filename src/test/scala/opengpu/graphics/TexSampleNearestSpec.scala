@@ -27,7 +27,7 @@ class TexSampleNearestSpec extends AnyFlatSpec {
       }
       dut.io.mem.req.ready.poke(true.B); dut.io.mem.resp.valid.poke(false.B)
       dut.io.mem.resp.bits.poke(0.U.asTypeOf(dut.io.mem.resp.bits))
-      for (mask <- Seq(1,15)) {
+      for (mask <- Seq(1, 15)) {
         val pending = mutable.Queue.empty[Long]
         dut.io.vectorCommit.ready.poke(false.B)
         dut.io.vectorIn.bits.executionMask.poke(mask.U)

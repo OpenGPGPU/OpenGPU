@@ -9,31 +9,84 @@ import opengpu.core.frontend.warp.WarpLaunch
 
 /** Warp scheduling, in-order instruction fetch, and unified decode.
   *
-  * The fetch port permits one outstanding request. It can retire the current
-  * response and launch the next warp request in the same cycle, so a
-  * one-cycle-latency instruction memory can sustain one instruction per cycle.
-  * Request metadata is retained until the response enters `DecodePipe`.
+  * The fetch port permits one outstanding request. It can retire the current response and launch the next warp request
+  * in the same cycle, so a one-cycle-latency instruction memory can sustain one instruction per cycle. Request metadata
+  * is retained until the response enters `DecodePipe`.
   */
-class GpuFrontend(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean = true,
-  instructionSimt: Boolean = false, textureAvailable: Boolean = true,
-  taskTextureAvailability: Boolean = false, nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false, evaluationPatchAvailable: Boolean = false, tessellationInfoAvailable: Boolean = false) extends Module {
+class GpuFrontend(
+    config: GpuConfig = GpuConfig(),
+    scalarFpuAvailable: Boolean = true,
+    instructionSimt: Boolean = false,
+    textureAvailable: Boolean = true,
+    taskTextureAvailability: Boolean = false,
+    nativeResourcesAvailable: Boolean = true,
+    nativeUniformsAvailable: Boolean = false,
+    imageAvailable: Boolean = false,
+    storageAvailable: Boolean = false,
+    computeUniformAvailable: Boolean = false,
+    geometryAvailable: Boolean = false,
+    computeTextureAvailable: Boolean = false,
+    atomicCounterAvailable: Boolean = false,
+    tessellationAvailable: Boolean = false,
+    imageAtomicAvailable: Boolean = false,
+    storageAtomicAvailable: Boolean = false,
+    evaluationPatchAvailable: Boolean = false,
+    tessellationInfoAvailable: Boolean = false
+) extends Module {
   // Preserve the previous full JVM constructor for frozen default-off callers.
-  def this(config: GpuConfig, scalarFpuAvailable: Boolean, instructionSimt: Boolean, textureAvailable: Boolean, taskTextureAvailability: Boolean, nativeResourcesAvailable: Boolean, nativeUniformsAvailable: Boolean, imageAvailable: Boolean, storageAvailable: Boolean, computeUniformAvailable: Boolean, geometryAvailable: Boolean, computeTextureAvailable: Boolean, atomicCounterAvailable: Boolean, tessellationAvailable: Boolean, imageAtomicAvailable: Boolean, storageAtomicAvailable: Boolean, evaluationPatchAvailable: Boolean) =
-    this(config, scalarFpuAvailable, instructionSimt, textureAvailable, taskTextureAvailability, nativeResourcesAvailable, nativeUniformsAvailable, imageAvailable, storageAvailable, computeUniformAvailable, geometryAvailable, computeTextureAvailable, atomicCounterAvailable, tessellationAvailable, imageAtomicAvailable, storageAtomicAvailable, evaluationPatchAvailable, false)
+  def this(
+      config: GpuConfig,
+      scalarFpuAvailable: Boolean,
+      instructionSimt: Boolean,
+      textureAvailable: Boolean,
+      taskTextureAvailability: Boolean,
+      nativeResourcesAvailable: Boolean,
+      nativeUniformsAvailable: Boolean,
+      imageAvailable: Boolean,
+      storageAvailable: Boolean,
+      computeUniformAvailable: Boolean,
+      geometryAvailable: Boolean,
+      computeTextureAvailable: Boolean,
+      atomicCounterAvailable: Boolean,
+      tessellationAvailable: Boolean,
+      imageAtomicAvailable: Boolean,
+      storageAtomicAvailable: Boolean,
+      evaluationPatchAvailable: Boolean
+  ) =
+    this(
+      config,
+      scalarFpuAvailable,
+      instructionSimt,
+      textureAvailable,
+      taskTextureAvailability,
+      nativeResourcesAvailable,
+      nativeUniformsAvailable,
+      imageAvailable,
+      storageAvailable,
+      computeUniformAvailable,
+      geometryAvailable,
+      computeTextureAvailable,
+      atomicCounterAvailable,
+      tessellationAvailable,
+      imageAtomicAvailable,
+      storageAtomicAvailable,
+      evaluationPatchAvailable,
+      false
+    )
 
   val io = IO(new Bundle {
-    val imageEnabled = if(imageAvailable) Some(Input(Bool())) else None
-    val storageEnabled = if(storageAvailable) Some(Input(Bool())) else None
-  val computeUniformEnabled = if(computeUniformAvailable) Some(Input(Bool())) else None
-    val geometryEnabled = if(geometryAvailable) Some(Input(Bool())) else None
-    val tessellationEnabled = if(tessellationAvailable) Some(Input(Bool())) else None
-    val evaluationPatchEnabled = if(evaluationPatchAvailable) Some(Input(Bool())) else None
-    val tessellationInfoEnabled = if(tessellationInfoAvailable) Some(Input(Bool())) else None
-    val computeTextureEnabled = if(computeTextureAvailable) Some(Input(Bool())) else None
-    val atomicCounterEnabled = if(atomicCounterAvailable) Some(Input(Bool())) else None
-    val textureEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
-    val nativeResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
-    val uniformResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
+    val imageEnabled = if (imageAvailable) Some(Input(Bool())) else None
+    val storageEnabled = if (storageAvailable) Some(Input(Bool())) else None
+    val computeUniformEnabled = if (computeUniformAvailable) Some(Input(Bool())) else None
+    val geometryEnabled = if (geometryAvailable) Some(Input(Bool())) else None
+    val tessellationEnabled = if (tessellationAvailable) Some(Input(Bool())) else None
+    val evaluationPatchEnabled = if (evaluationPatchAvailable) Some(Input(Bool())) else None
+    val tessellationInfoEnabled = if (tessellationInfoAvailable) Some(Input(Bool())) else None
+    val computeTextureEnabled = if (computeTextureAvailable) Some(Input(Bool())) else None
+    val atomicCounterEnabled = if (atomicCounterAvailable) Some(Input(Bool())) else None
+    val textureEnabled = if (taskTextureAvailability) Some(Input(Bool())) else None
+    val nativeResourcesEnabled = if (taskTextureAvailability) Some(Input(Bool())) else None
+    val uniformResourcesEnabled = if (taskTextureAvailability) Some(Input(Bool())) else None
     val launch = Flipped(Decoupled(new WarpLaunch(config)))
     val fetchRequest = Decoupled(new InstructionFetchRequest(config))
     val fetchResponse = Flipped(Decoupled(new InstructionFetchResponse(config)))
@@ -43,9 +96,9 @@ class GpuFrontend(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean =
     val vectorOut = Decoupled(new VectorDecodeResponse(config))
 
     val branch = Flipped(Decoupled(new SimtBranchRequest(config)))
-    val instructionBranch = if(instructionSimt) Some(Flipped(Decoupled(new SimtBranchRequest(config)))) else None
-    val sync = if(instructionSimt) Some(Flipped(Decoupled(new SimtSyncRequest(config)))) else None
-    val fault = if(instructionSimt) Some(Decoupled(new opengpu.core.trap.CoreTrapEvent(config))) else None
+    val instructionBranch = if (instructionSimt) Some(Flipped(Decoupled(new SimtBranchRequest(config)))) else None
+    val sync = if (instructionSimt) Some(Flipped(Decoupled(new SimtSyncRequest(config)))) else None
+    val fault = if (instructionSimt) Some(Decoupled(new opengpu.core.trap.CoreTrapEvent(config))) else None
     val scalarRedirect = Flipped(Decoupled(new SimtPath(config)))
     val restore = Flipped(Decoupled(UInt(config.warpIdWidth.W)))
     val restoreEmpty = Output(Bool())
@@ -55,32 +108,51 @@ class GpuFrontend(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean =
     val blocked = Output(UInt(config.warps.W))
   })
 
-  private val control = Module(new SimtFrontendControl(config,instructionSimt))
-  private val decode = Module(new DecodePipe(config, scalarFpuAvailable, textureAvailable, taskTextureAvailability,nativeResourcesAvailable,nativeUniformsAvailable,imageAvailable,storageAvailable,computeUniformAvailable,geometryAvailable,computeTextureAvailable,atomicCounterAvailable,tessellationAvailable,imageAtomicAvailable,storageAtomicAvailable,evaluationPatchAvailable,tessellationInfoAvailable))
-  if(imageAvailable) { decode.io.imageEnabled.get := io.imageEnabled.get }
-  if(storageAvailable) { decode.io.storageEnabled.get := io.storageEnabled.get }
-  if(computeUniformAvailable) { decode.io.computeUniformEnabled.get := io.computeUniformEnabled.get }
-  if(geometryAvailable) { decode.io.geometryEnabled.get := io.geometryEnabled.get }
-  if(tessellationAvailable) { decode.io.tessellationEnabled.get := io.tessellationEnabled.get }
-  if(evaluationPatchAvailable) { decode.io.evaluationPatchEnabled.get := io.evaluationPatchEnabled.get }
-  if(tessellationInfoAvailable) { decode.io.tessellationInfoEnabled.get := io.tessellationInfoEnabled.get }
-  if(computeTextureAvailable) { decode.io.computeTextureEnabled.get := io.computeTextureEnabled.get }
-  if(atomicCounterAvailable) { decode.io.atomicCounterEnabled.get := io.atomicCounterEnabled.get }
-  if(taskTextureAvailability) { decode.io.textureEnabled.get := io.textureEnabled.get }
-  if(taskTextureAvailability) { decode.io.nativeResourcesEnabled.get := io.nativeResourcesEnabled.get }
-  if(taskTextureAvailability) { decode.io.uniformResourcesEnabled.get := io.uniformResourcesEnabled.get }
+  private val control = Module(new SimtFrontendControl(config, instructionSimt))
+  private val decode = Module(
+    new DecodePipe(
+      config,
+      scalarFpuAvailable,
+      textureAvailable,
+      taskTextureAvailability,
+      nativeResourcesAvailable,
+      nativeUniformsAvailable,
+      imageAvailable,
+      storageAvailable,
+      computeUniformAvailable,
+      geometryAvailable,
+      computeTextureAvailable,
+      atomicCounterAvailable,
+      tessellationAvailable,
+      imageAtomicAvailable,
+      storageAtomicAvailable,
+      evaluationPatchAvailable,
+      tessellationInfoAvailable
+    )
+  )
+  if (imageAvailable) { decode.io.imageEnabled.get := io.imageEnabled.get }
+  if (storageAvailable) { decode.io.storageEnabled.get := io.storageEnabled.get }
+  if (computeUniformAvailable) { decode.io.computeUniformEnabled.get := io.computeUniformEnabled.get }
+  if (geometryAvailable) { decode.io.geometryEnabled.get := io.geometryEnabled.get }
+  if (tessellationAvailable) { decode.io.tessellationEnabled.get := io.tessellationEnabled.get }
+  if (evaluationPatchAvailable) { decode.io.evaluationPatchEnabled.get := io.evaluationPatchEnabled.get }
+  if (tessellationInfoAvailable) { decode.io.tessellationInfoEnabled.get := io.tessellationInfoEnabled.get }
+  if (computeTextureAvailable) { decode.io.computeTextureEnabled.get := io.computeTextureEnabled.get }
+  if (atomicCounterAvailable) { decode.io.atomicCounterEnabled.get := io.atomicCounterEnabled.get }
+  if (taskTextureAvailability) { decode.io.textureEnabled.get := io.textureEnabled.get }
+  if (taskTextureAvailability) { decode.io.nativeResourcesEnabled.get := io.nativeResourcesEnabled.get }
+  if (taskTextureAvailability) { decode.io.uniformResourcesEnabled.get := io.uniformResourcesEnabled.get }
 
   control.io.launch <> io.launch
   control.io.branch <> io.branch
-  if(instructionSimt) {
+  if (instructionSimt) {
     control.io.instructionBranch.get <> io.instructionBranch.get
     control.io.sync.get <> io.sync.get
     io.fault.get <> control.io.fault.get
   }
   control.io.scalarRedirect <> io.scalarRedirect
   control.io.restore <> io.restore
-  io.restoreEmpty := Mux(io.restore.bits < config.warps.U,
-    control.io.stackCounts(io.restore.bits) === 0.U, true.B)
+  io.restoreEmpty := Mux(io.restore.bits < config.warps.U, control.io.stackCounts(io.restore.bits) === 0.U, true.B)
   io.overflow <> control.io.overflow
   control.io.finish <> io.finish
   io.active := control.io.active
@@ -88,10 +160,15 @@ class GpuFrontend(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean =
 
   private val fetchPending =
     RegInit(VecInit(Seq.fill(config.warps)(false.B)))
-  private val fetchMetadata = Reg(Vec(config.warps, new Bundle {
-    val pc = UInt(config.xLen.W)
-    val activeMask = UInt(config.lanes.W)
-  }))
+  private val fetchMetadata = Reg(
+    Vec(
+      config.warps,
+      new Bundle {
+        val pc = UInt(config.xLen.W)
+        val activeMask = UInt(config.lanes.W)
+      }
+    )
+  )
   private val responseWarpValid = io.fetchResponse.bits.warpId < config.warps.U
   private val selectedResponsePending = if (config.warps == 1) {
     fetchPending(0)
@@ -111,9 +188,9 @@ class GpuFrontend(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean =
   decode.io.in.bits.warpId := io.fetchResponse.bits.warpId
   decode.io.in.bits.activeMask := selectedMetadata.activeMask
   decode.io.in.bits.instructionAccessFault :=
-    io.fetchResponse.bits.accessFault || io.fetchResponse.bits.pageFault || io.fetchResponse.bits.executionFault=/=0.U
+    io.fetchResponse.bits.accessFault || io.fetchResponse.bits.pageFault || io.fetchResponse.bits.executionFault =/= 0.U
   decode.io.in.bits.instructionPageFault := io.fetchResponse.bits.pageFault
-  decode.io.in.bits.executionFault:=io.fetchResponse.bits.executionFault
+  decode.io.in.bits.executionFault := io.fetchResponse.bits.executionFault
   io.fetchResponse.ready :=
     selectedResponsePending && responseWarpValid && decode.io.in.ready
 

@@ -2,8 +2,8 @@ package opengpu.graphics
 
 import chisel3._
 
-/** Worker-cycle events: idle/collect, staging, launch/invalidate, run, read,
-  * and emit/release. Each configured worker contributes to exactly one phase.
+/** Worker-cycle events: idle/collect, staging, launch/invalidate, run, read, and emit/release. Each configured worker
+  * contributes to exactly one phase.
   */
 class FragmentPerformanceEvents extends Bundle {
   val phaseWorkers = Vec(6, UInt(8.W))

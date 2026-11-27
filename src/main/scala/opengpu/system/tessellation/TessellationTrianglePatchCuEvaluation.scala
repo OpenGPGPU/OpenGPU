@@ -14,8 +14,8 @@ class TessellationTrianglePatchCuTask(config: GpuConfig, idWidth: Int) extends B
   val patchInputCount = UInt(6.W); val patchInputs = Vec(61, new IsolinePatchInputSelection)
 }
 
-/** Retain a controlled triangle patch while selected outputs are read and its
-  * evaluation vertices execute on the reserved shared-CU command identity.
+/** Retain a controlled triangle patch while selected outputs are read and its evaluation vertices execute on the
+  * reserved shared-CU command identity.
   */
 class TessellationTrianglePatchCuEvaluation(config: GpuConfig, idWidth: Int, numComputeUnits: Int) extends Module {
   val io = IO(new Bundle {
@@ -23,14 +23,17 @@ class TessellationTrianglePatchCuEvaluation(config: GpuConfig, idWidth: Int, num
     val opened = Decoupled(UInt(2.W)); val load = Flipped(Decoupled(new TessellationPatchAccess))
     val sealInput = Flipped(Decoupled(Bool())); val access = Flipped(Decoupled(new TessellationInvocationAccess))
     val arrive = Flipped(Decoupled(new TessellationBarrierArrival)); val finish = Flipped(Decoupled(UInt(5.W)))
-    val releaseBarrier = Decoupled(new TessellationBarrierRelease); val control = Decoupled(new TessellationBarrierResult)
+    val releaseBarrier = Decoupled(new TessellationBarrierRelease);
+    val control = Decoupled(new TessellationBarrierResult)
     val inspect = Flipped(Decoupled(new TessellationPatchAccess)); val reply = Decoupled(new TessellationContextReply)
-    val launch = Decoupled(new TaggedKernelLaunch(config, idWidth)); val geometryTask = Output(Valid(new GeometryInvocationLaunch))
+    val launch = Decoupled(new TaggedKernelLaunch(config, idWidth));
+    val geometryTask = Output(Valid(new GeometryInvocationLaunch))
     val kernelCompletion = Flipped(Decoupled(new TaggedKernelCompletion(idWidth)))
     val event = Flipped(Vec(numComputeUnits, Decoupled(new GeometryOutputCommand)))
     val owner = Input(UInt(numComputeUnits.W)); val taskIds = Input(Vec(numComputeUnits, UInt(idWidth.W)))
     val cancelCu = Output(Vec(numComputeUnits, Bool()))
-    val out = Decoupled(new EvaluatedTrianglePrimitive); val completion = Decoupled(new TessellationTrianglePatchEvaluationCompletion)
+    val out = Decoupled(new EvaluatedTrianglePrimitive);
+    val completion = Decoupled(new TessellationTrianglePatchEvaluationCompletion)
     val cancel = Input(Bool()); val busy = Output(Bool())
   })
   private val patch = Module(new TessellationTrianglePatchEvaluation)
@@ -50,14 +53,19 @@ class TessellationTrianglePatchCuEvaluation(config: GpuConfig, idWidth: Int, num
   // Lock a stalled inspection offer and route its one reply to its owner.
   private val locked = RegInit(false.B); private val lockedInternal = Reg(Bool())
   private val preferInternal = RegInit(true.B); private val internalReply = RegInit(false.B)
-  private val chooseInternal = Mux(locked, lockedInternal, evaluator.io.inspect.valid && (!io.inspect.valid || preferInternal))
+  private val chooseInternal =
+    Mux(locked, lockedInternal, evaluator.io.inspect.valid && (!io.inspect.valid || preferInternal))
   patch.io.inspect.valid := Mux(chooseInternal, evaluator.io.inspect.valid, io.inspect.valid)
   patch.io.inspect.bits := Mux(chooseInternal, evaluator.io.inspect.bits, io.inspect.bits)
   evaluator.io.inspect.ready := chooseInternal && patch.io.inspect.ready
   io.inspect.ready := !chooseInternal && patch.io.inspect.ready
-  when(patch.io.inspect.valid && !patch.io.inspect.ready && !locked) { locked := true.B; lockedInternal := chooseInternal }
-  when(patch.io.inspect.fire) { locked := false.B; preferInternal := !chooseInternal
-    when(chooseInternal) { internalReply := true.B } }
+  when(patch.io.inspect.valid && !patch.io.inspect.ready && !locked) {
+    locked := true.B; lockedInternal := chooseInternal
+  }
+  when(patch.io.inspect.fire) {
+    locked := false.B; preferInternal := !chooseInternal
+    when(chooseInternal) { internalReply := true.B }
+  }
   evaluator.io.reply.valid := patch.io.reply.valid && internalReply; evaluator.io.reply.bits := patch.io.reply.bits
   io.reply.valid := patch.io.reply.valid && !internalReply; io.reply.bits := patch.io.reply.bits
   patch.io.reply.ready := Mux(internalReply, evaluator.io.reply.ready, io.reply.ready)

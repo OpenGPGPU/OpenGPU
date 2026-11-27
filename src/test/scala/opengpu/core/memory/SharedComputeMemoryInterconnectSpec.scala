@@ -50,11 +50,9 @@ class SharedComputeMemoryInterconnectSpec extends AnyFlatSpec {
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
       dut.io.memoryRequest.ready.poke(true.B)
       dut.io.memoryResponse.valid.poke(false.B)
-      dut.io.memoryResponse.bits.poke(
-        0.U.asTypeOf(dut.io.memoryResponse.bits))
+      dut.io.memoryResponse.bits.poke(0.U.asTypeOf(dut.io.memoryResponse.bits))
       dut.io.cuRequest(0).valid.poke(true.B)
-      dut.io.cuRequest(0).bits.poke(
-        0.U.asTypeOf(dut.io.cuRequest(0).bits))
+      dut.io.cuRequest(0).bits.poke(0.U.asTypeOf(dut.io.cuRequest(0).bits))
       dut.io.cuRequest(0).bits.address.poke(0x5000.U)
       dut.io.cuRequest(0).bits.transactionId.poke(3.U)
       dut.io.cuResponse(0).ready.poke(true.B)

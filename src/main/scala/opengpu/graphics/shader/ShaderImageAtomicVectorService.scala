@@ -4,11 +4,16 @@ import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
 import opengpu.core.backend.VectorCommitRequest
-import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse, SharedAtomicRequest, SharedAtomicResponse, VectorTlbFlush}
+import opengpu.core.memory.{
+  ComputeMemoryRequest,
+  ComputeMemoryResponse,
+  SharedAtomicRequest,
+  SharedAtomicResponse,
+  VectorTlbFlush
+}
 
-/** Internal composition; the parent retains both descriptor and VM leases,
-  * translates regular image traffic, and translates/arbitrates the atomic port.
-  * It must route cancellation to both owners and drain them before task reuse.
+/** Internal composition; the parent retains both descriptor and VM leases, translates regular image traffic, and
+  * translates/arbitrates the atomic port. It must route cancellation to both owners and drain them before task reuse.
   */
 class ShaderImageAtomicVectorService(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {

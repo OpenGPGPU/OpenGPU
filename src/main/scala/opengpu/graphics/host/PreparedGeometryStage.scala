@@ -4,12 +4,10 @@ import chisel3._
 import chisel3.util._
 import opengpu.util.{BlockPrefixAdder, IterativeSignedDivider, SignedProductParts, SplitSignedProduct}
 
-/** Exact viewport preparation with bounded arithmetic between registers.
-  * Accept start while idle, snapshot the complete triangle and viewport, and
-  * retain done/results until the next admission. All w inputs must be nonzero.
-  * Nine dividers run in parallel; positive power-of-two w with nonnegative
-  * coordinate numerators uses an exact shift shortcut. Neither path rounds
-  * or approximates the GeometryStage formula.
+/** Exact viewport preparation with bounded arithmetic between registers. Accept start while idle, snapshot the complete
+  * triangle and viewport, and retain done/results until the next admission. All w inputs must be nonzero. Nine dividers
+  * run in parallel; positive power-of-two w with nonnegative coordinate numerators uses an exact shift shortcut.
+  * Neither path rounds or approximates the GeometryStage formula.
   */
 class PreparedGeometryStage(config: GraphicsConfig) extends Module {
   require(config.subPixelBits >= 0)
@@ -43,8 +41,7 @@ class PreparedGeometryStage(config: GraphicsConfig) extends Module {
   private val shortcut = Reg(Bool())
   private val result = Reg(Vec(3, new ScreenVertex(config)))
 
-  private val coordinateDividers = Seq.fill(6)(Module(
-    new IterativeSignedDivider(numeratorWidth, 34)))
+  private val coordinateDividers = Seq.fill(6)(Module(new IterativeSignedDivider(numeratorWidth, 34)))
   private val reciprocalDividers = Seq.fill(3)(Module(new IterativeSignedDivider(34, 34)))
   private val dividers = coordinateDividers ++ reciprocalDividers
   private val allReady = dividers.map(_.io.in.ready).reduce(_ && _)
@@ -72,9 +69,9 @@ class PreparedGeometryStage(config: GraphicsConfig) extends Module {
     adder.io.carryIn := subtract
     adder.io.sum(32, 0).asSInt
   }
-  private val inputSums = (0 until 3).flatMap { i => Seq(
-    coordinateSum(io.clip(i).x, io.clip(i).w),
-    coordinateSum(io.clip(i).w, io.clip(i).y, io.viewportFlipY)) }
+  private val inputSums = (0 until 3).flatMap { i =>
+    Seq(coordinateSum(io.clip(i).x, io.clip(i).w), coordinateSum(io.clip(i).w, io.clip(i).y, io.viewportFlipY))
+  }
   private val splitProducts = (0 until 6).map { k =>
     SplitSignedProduct.split(sums(k).pad(34), dimensions(k % 2).pad(34).asSInt)
   }
@@ -82,9 +79,11 @@ class PreparedGeometryStage(config: GraphicsConfig) extends Module {
   private val coordinates = (0 until 6).map { k =>
     val shift = logarithms(k / 2) +& 1.U
     val fast = (numerators(k).asUInt >> shift)
-      .pad(config.edgeWidth)(config.edgeWidth - 1, 0).asSInt
+      .pad(config.edgeWidth)(config.edgeWidth - 1, 0)
+      .asSInt
     val divided = coordinateDividers(k).io.out.bits.quotient
-      .pad(config.edgeWidth)(config.edgeWidth - 1, 0).asSInt
+      .pad(config.edgeWidth)(config.edgeWidth - 1, 0)
+      .asSInt
     val mapped = Mux(shortcut, fast, divided)
     val offset = (origins(k % 2).pad(config.edgeWidth) << config.subPixelBits).asUInt
     val adder = Module(new BlockPrefixAdder(config.edgeWidth))
@@ -113,10 +112,12 @@ class PreparedGeometryStage(config: GraphicsConfig) extends Module {
       parts(k) := splitProducts(k)
     }
     for (i <- 0 until 3) logarithms(i) := PriorityEncoder(w(i).asUInt)
-    shortcut := (0 until 3).map { i =>
-      w(i) > 0.S && PopCount(w(i).asUInt) === 1.U &&
+    shortcut := (0 until 3)
+      .map { i =>
+        w(i) > 0.S && PopCount(w(i).asUInt) === 1.U &&
         sums(i * 2) >= 0.S && sums(i * 2 + 1) >= 0.S
-    }.reduce(_ && _)
+      }
+      .reduce(_ && _)
     state := assemble
   }.elsewhen(state === assemble) {
     for (k <- 0 until 6) {

@@ -11,27 +11,29 @@ import org.scalatest.DoNotDiscover
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-/** Opt-in product-path fault qualification: one shared command's store fails,
-  * its peers still complete and the product accepts a fresh command. */
+/** Opt-in product-path fault qualification: one shared command's store fails, its peers still complete and the product
+  * accepts a fresh command.
+  */
 @DoNotDiscover
 class SharedProductFaultQualification extends AnyFlatSpec {
   private def zero(d: Data): Unit = d match {
-    case r: Record => r.elements.values.foreach(zero)
-    case v: Vec[_] => v.foreach(zero)
+    case r: Record                                                     => r.elements.values.foreach(zero)
+    case v: Vec[_]                                                     => v.foreach(zero)
     case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
     case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
     case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
-    case _ => ()
+    case _                                                             => ()
   }
   private val mask32 = (BigInt(1) << 32) - 1
   private def expected(seed: BigInt, group: Int, local: Int): BigInt =
     (0 until 32).map(r => seed + (group << 16) + (local ^ 16) + r * 128).sum & mask32
 
   it should "fail one product shared command, keep its peers exact and relaunch" in {
-    require(sys.props.get("opengpu.sharedProductFaultQualification").contains("1"),
-      "explicit local qualification only")
-    val programs = GalliumSharedArtifacts.load(Paths.get(sys.props("opengpu.galliumSharedArtifacts")),
-      sys.props("opengpu.galliumSharedArtifactSha256"))
+    require(sys.props.get("opengpu.sharedProductFaultQualification").contains("1"), "explicit local qualification only")
+    val programs = GalliumSharedArtifacts.load(
+      Paths.get(sys.props("opengpu.galliumSharedArtifacts")),
+      sys.props("opengpu.galliumSharedArtifactSha256")
+    )
     simulate(new SharedProductHarness) { top =>
       val d = top.io.gpu
       zero(top.io)
@@ -72,9 +74,11 @@ class SharedProductFaultQualification extends AnyFlatSpec {
       var nextLevel = root + 4096
       val levels = mutable.Map.empty[BigInt, BigInt]
       def mapPage(virtual: BigInt, physical: BigInt, flags: Int): Unit = {
-        val level = levels.getOrElseUpdate((virtual >> 22) << 22, {
-          val a = nextLevel; nextLevel += 4096; blank(a, 4096); a
-        })
+        val level = levels.getOrElseUpdate(
+          (virtual >> 22) << 22, {
+            val a = nextLevel; nextLevel += 4096; blank(a, 4096); a
+          }
+        )
         put(root + (virtual >> 22) * 4, ((level >> 12) << 10) | 1)
         put(level + ((virtual >> 12) & 1023) * 4, ((physical >> 12) << 10) | flags)
       }
@@ -82,9 +86,22 @@ class SharedProductFaultQualification extends AnyFlatSpec {
         blank(u.code, 4096); u.words.zipWithIndex.foreach { case (w, i) => put(u.code + 4 * i, w) }
         Seq(2, 1, 1).zipWithIndex.foreach { case (n, i) => put(u.kernarg + 4 * i, BigInt(n)) }
         blank(u.table, 256)
-        Seq[(Int, BigInt)](0 -> StorageDescriptorLayout.magic, 1 -> 64, 2 -> 1,
-          3 -> u.context, 4 -> 7, 5 -> u.context, 6 -> 0, 7 -> 1, 8 -> 1, 9 -> 1,
-          10 -> u.output, 11 -> (u.output + 1024), 13 -> u.output, 14 -> (u.output + 4096))
+        Seq[(Int, BigInt)](
+          0 -> StorageDescriptorLayout.magic,
+          1 -> 64,
+          2 -> 1,
+          3 -> u.context,
+          4 -> 7,
+          5 -> u.context,
+          6 -> 0,
+          7 -> 1,
+          8 -> 1,
+          9 -> 1,
+          10 -> u.output,
+          11 -> (u.output + 1024),
+          13 -> u.output,
+          14 -> (u.output + 4096)
+        )
           .foreach { case (i, v) => put(u.table + 4 * i, v) }
         remember(u.output - 64, 4160)
         mapPage(u.code, u.code, 0x4b)
@@ -106,8 +123,14 @@ class SharedProductFaultQualification extends AnyFlatSpec {
       d.instructionTlbFlush.valid.poke(false.B); d.vectorTlbFlush.valid.poke(false.B)
       d.invalidateInstructionCache.poke(false.B)
 
-      case class Reply(id: BigInt, address: BigInt, value: BigInt, due: Int,
-                       write: Option[(BigInt, BigInt, BigInt)], fault: Boolean = false)
+      case class Reply(
+          id: BigInt,
+          address: BigInt,
+          value: BigInt,
+          due: Int,
+          write: Option[(BigInt, BigInt, BigInt)],
+          fault: Boolean = false
+      )
       val pending = mutable.ArrayBuffer.empty[Reply]
       var offered = Option.empty[Reply]
       val outstanding = mutable.Set.empty[BigInt]
@@ -197,12 +220,13 @@ class SharedProductFaultQualification extends AnyFlatSpec {
           if (r.fault) {
             assert(faultedId.contains(r.id) && phase == 1 && r.write.isDefined)
             faultsDelivered += 1
-          } else r.write.foreach { case (a, v, m) =>
-            val first = m.lowestSetBit; val at = a + first
-            assert(written(at) && !acknowledged(at))
-            acknowledged += at
-            for (i <- 0 until 64 if m.testBit(i)) memory(a + i) = ((v >> (8 * i)) & 255).toInt
-          }
+          } else
+            r.write.foreach { case (a, v, m) =>
+              val first = m.lowestSetBit; val at = a + first
+              assert(written(at) && !acknowledged(at))
+              acknowledged += at
+              for (i <- 0 until 64 if m.testBit(i)) memory(a + i) = ((v >> (8 * i)) & 255).toInt
+            }
           offered = None
         }
         d.memoryRequest.ready.poke((cycles % 7 != 0).B)
@@ -222,8 +246,10 @@ class SharedProductFaultQualification extends AnyFlatSpec {
               if (wr) {
                 q.cachePolicy.expect(CachePolicy.uncached)
                 val m = q.byteMask.peek().litValue; val first = m.lowestSetBit; val at = a + first
-                assert(first >= 0 && (first & 3) == 0 && m == (BigInt(15) << first) &&
-                  expectedAll.contains(at) && (phase == 2 || !written(at)))
+                assert(
+                  first >= 0 && (first & 3) == 0 && m == (BigInt(15) << first) &&
+                    expectedAll.contains(at) && (phase == 2 || !written(at))
+                )
                 assert(((q.writeData.peek().litValue >> (8 * first)) & mask32) == expectedAll(at))
                 written += at
                 if (phase == 2) recoveryRequests += 1
@@ -231,11 +257,16 @@ class SharedProductFaultQualification extends AnyFlatSpec {
                   a < units(2).output + 4096 && faultedId.isEmpty
                 if (inject) {
                   faultedId = Some(id); faultAddress = Some(at)
-                  pending += Reply(id, a, BigInt(0), cycles + 17,
-                    Some((a, q.writeData.peek().litValue, m)), fault = true)
+                  pending += Reply(
+                    id,
+                    a,
+                    BigInt(0),
+                    cycles + 17,
+                    Some((a, q.writeData.peek().litValue, m)),
+                    fault = true
+                  )
                 } else {
-                  pending += Reply(id, a, BigInt(0), cycles + 17,
-                    Some((a, q.writeData.peek().litValue, m)))
+                  pending += Reply(id, a, BigInt(0), cycles + 17, Some((a, q.writeData.peek().litValue, m)))
                 }
               } else {
                 readPages += (a & ~BigInt(4095))
@@ -280,28 +311,43 @@ class SharedProductFaultQualification extends AnyFlatSpec {
       until("four completions")(completions.size == 4)
       assert(faultsDelivered == 1 && trapsAccepted == 1 && trapCu.isDefined)
       assert(trapCause(trapCu.get).contains(BigInt(7)), "the product store fault did not raise cause 7")
-      assert(faultAddress.isDefined && trapTval(trapCu.get).contains(faultAddress.get),
-        "the product trap did not report the faulted store address")
-      assert(trapLaneMask(trapCu.get).exists(_.bitCount == 1),
-        "the product store fault did not identify exactly one lane")
-      assert(completions(0) && completions(1) && !completions(2) && completions(3),
-        "product completions did not attribute the failure to command 2")
+      assert(
+        faultAddress.isDefined && trapTval(trapCu.get).contains(faultAddress.get),
+        "the product trap did not report the faulted store address"
+      )
+      assert(
+        trapLaneMask(trapCu.get).exists(_.bitCount == 1),
+        "the product store fault did not identify exactly one lane"
+      )
+      assert(
+        completions(0) && completions(1) && !completions(2) && completions(3),
+        "product completions did not attribute the failure to command 2"
+      )
       assert(faultKeys(faultAddress.get) && !acknowledged(faultAddress.get))
       units.foreach { u =>
-        if (u.index == 2) assert((acknowledged intersect faultKeys).size < faultKeys.size,
-          "the faulted product command completed its whole output")
+        if (u.index == 2)
+          assert(
+            (acknowledged intersect faultKeys).size < faultKeys.size,
+            "the faulted product command completed its whole output"
+          )
         else assert(u.expectedWords.keySet.subsetOf(acknowledged))
       }
-      assert(units.count(u => u.warpStarts == 16 && u.peakWarps == 8 && u.maxBarrierWaiting > 0) >= 3,
-        "the healthy product commands did not run both shared groups")
+      assert(
+        units.count(u => u.warpStarts == 16 && u.peakWarps == 8 && u.maxBarrierWaiting > 0) >= 3,
+        "the healthy product commands did not run both shared groups"
+      )
       assert(trapCu.exists(i => units(i).warpStarts > 0))
-      until("lower drain")(pending.isEmpty && outstanding.isEmpty &&
-        d.vmContextIdle.peek().litToBoolean)
+      until("lower drain")(
+        pending.isEmpty && outstanding.isEmpty &&
+          d.vmContextIdle.peek().litToBoolean
+      )
       assert(allFourActive > 0, "the four product CUs never held warps together")
       assert(descriptorTables == units.map(_.table).toSet)
       assert(sawStorageLease, "no product command ever held a storage lease")
       val golden = mutable.Map.empty[BigInt, Int] ++ frozen
-      acknowledged.foreach { a => val v = expectedAll(a); for (i <- 0 until 4) golden(a + i) = ((v >> (8 * i)) & 255).toInt }
+      acknowledged.foreach { a =>
+        val v = expectedAll(a); for (i <- 0 until 4) golden(a + i) = ((v >> (8 * i)) & 255).toInt
+      }
       assert(memory.toMap == golden.toMap, "the faulted product run wrote an unexpected word")
 
       // The product must accept a fresh command after the failed one retired.
@@ -312,10 +358,11 @@ class SharedProductFaultQualification extends AnyFlatSpec {
       until("recovery completion")(completions.contains(5))
       assert(completions(5), "the relaunched product command failed")
       assert(trapsAccepted == 1, "the relaunch raised another trap")
-      assert(recoveryRequests == faultKeys.size,
-        "the relaunched command did not issue one store per output word")
-      assert(written.toSet == faultKeys && acknowledged == faultKeys,
-        "the relaunched command did not cover exactly its own outputs")
+      assert(recoveryRequests == faultKeys.size, "the relaunched command did not issue one store per output word")
+      assert(
+        written.toSet == faultKeys && acknowledged == faultKeys,
+        "the relaunched command did not cover exactly its own outputs"
+      )
       val golden2 = mutable.Map.empty[BigInt, Int] ++ frozen
       expectedAll.foreach { case (a, v) => for (i <- 0 until 4) golden2(a + i) = ((v >> (8 * i)) & 255).toInt }
       assert(memory.toMap == golden2.toMap, "the relaunched command did not produce the exact output")
@@ -323,28 +370,36 @@ class SharedProductFaultQualification extends AnyFlatSpec {
       // exact per-word output (both groups) rather than a warp-start count.
       val recovered = units.indices.filter(i => units(i).warpStarts > startsBefore(i))
       assert(recovered.nonEmpty, "no product CU carried the relaunched command")
-      until("final drain")(pending.isEmpty && outstanding.isEmpty &&
-        d.vmContextIdle.peek().litToBoolean)
+      until("final drain")(
+        pending.isEmpty && outstanding.isEmpty &&
+          d.vmContextIdle.peek().litToBoolean
+      )
       assert(d.busyComputeUnits.peek().litValue == 0)
-      info(s"SHARED_PRODUCT_FAULT PASS cus=4 faultCommand=2 trapCu=${trapCu.get} " +
-        s"faultsDelivered=$faultsDelivered faultAddress=0x${faultAddress.get.toString(16)} " +
-        s"trapsAccepted=$trapsAccepted recoveryRequests=$recoveryRequests " +
-        s"recoveredWarpStarts=${recovered.map(i => units(i).warpStarts - startsBefore(i)).mkString(",")} " +
-        s"healthyOutputs=768 recoveredOutputs=256 allActiveCycles=$allFourActive cycles=$cycles H7Complete=false")
+      info(
+        s"SHARED_PRODUCT_FAULT PASS cus=4 faultCommand=2 trapCu=${trapCu.get} " +
+          s"faultsDelivered=$faultsDelivered faultAddress=0x${faultAddress.get.toString(16)} " +
+          s"trapsAccepted=$trapsAccepted recoveryRequests=$recoveryRequests " +
+          s"recoveredWarpStarts=${recovered.map(i => units(i).warpStarts - startsBefore(i)).mkString(",")} " +
+          s"healthyOutputs=768 recoveredOutputs=256 allActiveCycles=$allFourActive cycles=$cycles H7Complete=false"
+      )
     }
   }
 }
 
 object QualifySharedProductFault {
   def main(args: Array[String]): Unit = {
-    require(sys.props.get("opengpu.sharedProductFaultQualification").contains("1"),
-      "explicit local qualification only")
-    require(args.length == 6 && args(0) == "--artifacts" && args(2) == "--manifest-sha256" && args(4) == "--reports",
-      "usage: --artifacts DIRECTORY --manifest-sha256 SHA256 --reports DIRECTORY")
+    require(sys.props.get("opengpu.sharedProductFaultQualification").contains("1"), "explicit local qualification only")
+    require(
+      args.length == 6 && args(0) == "--artifacts" && args(2) == "--manifest-sha256" && args(4) == "--reports",
+      "usage: --artifacts DIRECTORY --manifest-sha256 SHA256 --reports DIRECTORY"
+    )
     GalliumSharedArtifacts.load(Paths.get(args(1)), args(3)) // before elaboration/cache lookup
     sys.props("opengpu.galliumSharedArtifacts") = args(1)
     sys.props("opengpu.galliumSharedArtifactSha256") = args(3)
-    require(org.scalatest.tools.Runner.run(Array("-s", classOf[SharedProductFaultQualification].getName,
-      "-oD", "-u", args(5))), "shared product fault qualification failed")
+    require(
+      org.scalatest.tools.Runner
+        .run(Array("-s", classOf[SharedProductFaultQualification].getName, "-oD", "-u", args(5))),
+      "shared product fault qualification failed"
+    )
   }
 }

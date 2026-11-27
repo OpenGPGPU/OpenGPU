@@ -27,13 +27,13 @@ class ComputeMemoryAxiMasterSpec extends AnyFlatSpec {
   }
 
   private def submit(
-    dut: ComputeMemoryAxiMaster,
-    address: BigInt,
-    data: BigInt,
-    mask: BigInt,
-    write: Boolean,
-    sizeLog2: Int,
-    id: Int
+      dut: ComputeMemoryAxiMaster,
+      address: BigInt,
+      data: BigInt,
+      mask: BigInt,
+      write: Boolean,
+      sizeLog2: Int,
+      id: Int
   ): Unit = {
     dut.io.request.bits.address.poke(address.U)
     dut.io.request.bits.writeData.poke(data.U)
@@ -50,8 +50,7 @@ class ComputeMemoryAxiMasterSpec extends AnyFlatSpec {
   }
 
   it should "convert a cache-line read into an AXI INCR burst" in {
-    simulate(new ComputeMemoryAxiMaster(
-      GpuConfig(), maxOutstanding = 16, axiDataBytes = 8)) { dut =>
+    simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 16, axiDataBytes = 8)) { dut =>
       initialize(dut)
       submit(dut, 0x4000, 0, 0, write = false, sizeLog2 = 6, id = 9)
 
@@ -90,11 +89,9 @@ class ComputeMemoryAxiMasterSpec extends AnyFlatSpec {
   }
 
   it should "place a narrow word in the addressed AXI byte lanes" in {
-    simulate(new ComputeMemoryAxiMaster(
-      GpuConfig(), maxOutstanding = 8, axiDataBytes = 8)) { dut =>
+    simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 8, axiDataBytes = 8)) { dut =>
       initialize(dut)
-      submit(dut, 0x1004, 0xaabbccddL, 0xf, write = true,
-        sizeLog2 = 2, id = 5)
+      submit(dut, 0x1004, 0xaabbccddL, 0xf, write = true, sizeLog2 = 2, id = 5)
 
       dut.io.m_axi_awvalid.expect(true.B)
       dut.io.m_axi_awaddr.expect(0x1004.U)
@@ -129,8 +126,7 @@ class ComputeMemoryAxiMasterSpec extends AnyFlatSpec {
   }
 
   it should "extract a narrow read and hold its response under backpressure" in {
-    simulate(new ComputeMemoryAxiMaster(
-      GpuConfig(), maxOutstanding = 4, axiDataBytes = 8)) { dut =>
+    simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 4, axiDataBytes = 8)) { dut =>
       initialize(dut)
       submit(dut, 0x2004, 0, 0, write = false, sizeLog2 = 2, id = 2)
       dut.io.m_axi_arready.poke(true.B)
@@ -160,8 +156,7 @@ class ComputeMemoryAxiMasterSpec extends AnyFlatSpec {
   }
   for (bytes <- Seq(4, 16, 32, 64)) {
     it should s"preserve narrow-word lanes and acknowledgements on ${bytes * 8}-bit AXI" in {
-      simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 8,
-        axiDataBytes = bytes)) { dut =>
+      simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 8, axiDataBytes = bytes)) { dut =>
         initialize(dut)
         val address = 0x1000 + bytes - 4
         val shift = (bytes - 4) * 8
@@ -210,19 +205,24 @@ class ComputeMemoryAxiMasterSpec extends AnyFlatSpec {
 
   for (bytes <- Seq(8, 32, 64)) {
     it should s"overlap read and write bursts and arbitrate simultaneous replies on ${bytes * 8}-bit AXI" in {
-      simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 4,
-        axiDataBytes = bytes)) { dut =>
+      simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 4, axiDataBytes = bytes)) { dut =>
         initialize(dut)
         val line = (BigInt(1) << 511) | BigInt("123456789abcdef", 16)
         val mask = (BigInt(1) << 64) - 1
         for (writeFirst <- Seq(true, false)) {
           val firstId = if (writeFirst) 1 else 2
-          submit(dut, if (writeFirst) 0x1000 else 0x2000, line, mask,
-            write = writeFirst, sizeLog2 = 6, id = firstId)
+          submit(dut, if (writeFirst) 0x1000 else 0x2000, line, mask, write = writeFirst, sizeLog2 = 6, id = firstId)
           // Neither AR nor AW/W is ready: accepting the opposite direction
           // must not alter the already presented address/data.
-          submit(dut, if (writeFirst) 0x2000 else 0x1000, line, mask,
-            write = !writeFirst, sizeLog2 = 6, id = (if (writeFirst) 2 else 1))
+          submit(
+            dut,
+            if (writeFirst) 0x2000 else 0x1000,
+            line,
+            mask,
+            write = !writeFirst,
+            sizeLog2 = 6,
+            id = (if (writeFirst) 2 else 1)
+          )
           dut.io.m_axi_awvalid.expect(true.B)
           dut.io.m_axi_arvalid.expect(true.B)
           dut.io.m_axi_awid.expect(1.U)
@@ -292,8 +292,7 @@ class ComputeMemoryAxiMasterSpec extends AnyFlatSpec {
   }
 
   it should "retain the advertised outstanding credit until a queued reply is consumed" in {
-    simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 1,
-      axiDataBytes = 64)) { dut =>
+    simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 1, axiDataBytes = 64)) { dut =>
       initialize(dut)
       submit(dut, 0x1000, 0, 0, write = false, sizeLog2 = 6, id = 0)
       dut.io.request.bits.isWrite.poke(true.B)
@@ -311,8 +310,7 @@ class ComputeMemoryAxiMasterSpec extends AnyFlatSpec {
   }
 
   it should "queue pending requests by direction and count active, queued and completed transactions" in {
-    simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 4,
-      axiDataBytes = 64)) { dut =>
+    simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 4, axiDataBytes = 64)) { dut =>
       initialize(dut)
       // One stalled AR plus two queued reads must leave admission available
       // for a write, rather than obstruct the opposite direction.
@@ -347,8 +345,7 @@ class ComputeMemoryAxiMasterSpec extends AnyFlatSpec {
   }
 
   it should "issue consecutive writes before B replies and retire out-of-order IDs under backpressure" in {
-    simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 4,
-      axiDataBytes = 64)) { dut =>
+    simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 4, axiDataBytes = 64)) { dut =>
       initialize(dut)
       dut.io.m_axi_awready.poke(true.B)
       dut.io.m_axi_wready.poke(true.B)
@@ -359,8 +356,7 @@ class ComputeMemoryAxiMasterSpec extends AnyFlatSpec {
         dut.io.m_axi_wvalid.expect(true.B)
         dut.io.m_axi_wdata.expect((0x100 + id - 1).U)
         dut.io.m_axi_wlast.expect(true.B)
-        submit(dut, 0x1000 + id * 64, 0x100 + id, 15,
-          write = true, sizeLog2 = 6, id = id)
+        submit(dut, 0x1000 + id * 64, 0x100 + id, 15, write = true, sizeLog2 = 6, id = id)
       }
       dut.io.m_axi_awid.expect(3.U)
       dut.io.m_axi_wdata.expect(0x103.U)
@@ -401,8 +397,7 @@ class ComputeMemoryAxiMasterSpec extends AnyFlatSpec {
   }
 
   it should "retire an older B response while a newer burst is stalled and then transferring" in {
-    simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 8,
-      axiDataBytes = 8)) { dut =>
+    simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 8, axiDataBytes = 8)) { dut =>
       initialize(dut)
       dut.io.m_axi_awready.poke(true.B)
       dut.io.m_axi_wready.poke(true.B)
@@ -411,8 +406,7 @@ class ComputeMemoryAxiMasterSpec extends AnyFlatSpec {
       dut.io.m_axi_awready.poke(false.B)
       dut.io.m_axi_wready.poke(false.B)
       val line = (0 until 8).foldLeft(BigInt(0))((d, i) => d | (BigInt(100 + i) << (64 * i)))
-      submit(dut, 0x2000, line, (BigInt(1) << 64) - 1,
-        write = true, sizeLog2 = 6, id = 6)
+      submit(dut, 0x2000, line, (BigInt(1) << 64) - 1, write = true, sizeLog2 = 6, id = 6)
       dut.io.m_axi_bid.poke(5.U)
       dut.io.m_axi_bresp.poke(2.U)
       dut.io.m_axi_bvalid.poke(true.B)
@@ -448,10 +442,8 @@ class ComputeMemoryAxiMasterSpec extends AnyFlatSpec {
     }
   }
 
-
   it should "issue four consecutive read addresses and retire out-of-order data under backpressure" in {
-    simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 4,
-      axiDataBytes = 64)) { dut =>
+    simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 4, axiDataBytes = 64)) { dut =>
       initialize(dut)
       dut.io.m_axi_arready.poke(true.B)
       val addresses = scala.collection.mutable.ArrayBuffer.empty[(Int, Int)]
@@ -512,8 +504,7 @@ class ComputeMemoryAxiMasterSpec extends AnyFlatSpec {
   }
 
   it should "reassemble interleaved eight-beat read IDs with independent sticky faults" in {
-    simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 4,
-      axiDataBytes = 8)) { dut =>
+    simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 4, axiDataBytes = 8)) { dut =>
       initialize(dut)
       dut.io.m_axi_arready.poke(true.B)
       submit(dut, 0x1000, 0, 0, write = false, sizeLog2 = 6, id = 0)
@@ -544,10 +535,8 @@ class ComputeMemoryAxiMasterSpec extends AnyFlatSpec {
     }
   }
 
-
   it should "restore distinct narrow-read lanes when responses return in reverse order" in {
-    simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 4,
-      axiDataBytes = 64)) { dut =>
+    simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 4, axiDataBytes = 64)) { dut =>
       initialize(dut)
       dut.io.m_axi_arready.poke(true.B)
       submit(dut, 0x1004, 0, 0, write = false, sizeLog2 = 2, id = 0)

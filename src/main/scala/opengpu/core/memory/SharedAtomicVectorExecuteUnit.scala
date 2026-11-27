@@ -5,16 +5,15 @@ import chisel3.util._
 import opengpu.config.GpuConfig
 import opengpu.core.backend.{VectorCommitRequest, VectorTextureRequest}
 
-/** Checked CUSTOM-1 local atomics. Parameters capture replacement/compare per
-  * warp and lane; operations add per-lane byte offsets to a scalar shared base.
-  * An rs2 field of zero means a literal zero offset (not vector register v0).
+/** Checked CUSTOM-1 local atomics. Parameters capture replacement/compare per warp and lane; operations add per-lane
+  * byte offsets to a scalar shared base. An rs2 field of zero means a literal zero offset (not vector register v0).
   * Scalar RV32A encodings and their once-per-warp semantics are unchanged.
   */
 object SharedAtomicVectorOpcode {
-  private def function(i: UInt, n: Int): Bool = i(6,0) === "h2b".U && i(31,26) === n.U
-  def parameters(i: UInt): Bool = function(i,30) && i(14,12) === 0.U && i(11,7) === 0.U
-  def atomic(i: UInt): Bool = (function(i,31) || (function(i,32) && i(14,12) < 2.U))
-  def operation(i: UInt): UInt = Mux(function(i,32), 8.U + i(14,12), i(14,12))
+  private def function(i: UInt, n: Int): Bool = i(6, 0) === "h2b".U && i(31, 26) === n.U
+  def parameters(i: UInt): Bool = function(i, 30) && i(14, 12) === 0.U && i(11, 7) === 0.U
+  def atomic(i: UInt): Bool = (function(i, 31) || (function(i, 32) && i(14, 12) < 2.U))
+  def operation(i: UInt): UInt = Mux(function(i, 32), 8.U + i(14, 12), i(14, 12))
   def legal(i: UInt): Bool = parameters(i) || atomic(i)
   def terminated(busy: Bool, finished: Bool, finishedWarp: UInt, owner: UInt): Bool =
     busy && finished && finishedWarp === owner
@@ -24,13 +23,14 @@ class SharedAtomicVectorRequest(config: GpuConfig) extends VectorTextureRequest(
   val sideEffectMask = UInt(config.lanes.W)
 }
 
-/** One irrevocable SRAM request at a time. Earlier lanes are not rolled back
-  * on a later fault, but a failed instruction publishes no vector result.
-  * The existing vector issue/scoreboard owns the warp until this commit.
+/** One irrevocable SRAM request at a time. Earlier lanes are not rolled back on a later fault, but a failed instruction
+  * publishes no vector result. The existing vector issue/scoreboard owns the warp until this commit.
   */
 class SharedAtomicVectorExecuteUnit(config: GpuConfig = GpuConfig()) extends Module {
-  require(BigInt(config.sharedMemoryBase) >= 0 &&
-    BigInt(config.sharedMemoryBase) + config.sharedMemoryBytes <= (BigInt(1) << 32))
+  require(
+    BigInt(config.sharedMemoryBase) >= 0 &&
+      BigInt(config.sharedMemoryBase) + config.sharedMemoryBytes <= (BigInt(1) << 32)
+  )
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new SharedAtomicVectorRequest(config)))
     val commit = Decoupled(new VectorCommitRequest(config))
@@ -67,7 +67,7 @@ class SharedAtomicVectorExecuteUnit(config: GpuConfig = GpuConfig()) extends Mod
   io.busy := state =/= State.idle
   io.request.valid := state === State.offer
   io.request.bits.warpId := warp
-  io.request.bits.address := addresses(lane)(31,0)
+  io.request.bits.address := addresses(lane)(31, 0)
   io.request.bits.operand := values(warp)(lane)
   io.request.bits.compareValue := comparisons(warp)(lane)
   io.request.bits.operation := SharedAtomicVectorOpcode.operation(instruction)
@@ -76,7 +76,7 @@ class SharedAtomicVectorExecuteUnit(config: GpuConfig = GpuConfig()) extends Mod
   io.commit.valid := state === State.commit
   io.commit.bits := 0.U.asTypeOf(io.commit.bits)
   io.commit.bits.writeback.warpId := warp
-  io.commit.bits.writeback.vd := Mux(isAtomic, instruction(11,7), 0.U)
+  io.commit.bits.writeback.vd := Mux(isAtomic, instruction(11, 7), 0.U)
   io.commit.bits.writeback.data := Mux(failed, 0.U.asTypeOf(data), data)
   io.commit.bits.writesVd := !failed && isAtomic
   io.commit.bits.writesScalar := !failed && isParams
@@ -88,14 +88,16 @@ class SharedAtomicVectorExecuteUnit(config: GpuConfig = GpuConfig()) extends Mod
   io.fault.bits.pc := pc
   io.fault.bits.warpActiveMask := active
   io.fault.bits.faultMask := faultMask
-  io.fault.bits.vd := instruction(11,7)
+  io.fault.bits.vd := instruction(11, 7)
   io.fault.bits.writeVd := isAtomic
   io.fault.bits.isStore := isAtomic
-  io.fault.bits.addresses := VecInit(addresses.map(_(31,0)))
+  io.fault.bits.addresses := VecInit(addresses.map(_(31, 0)))
 
   when(io.warpStart.valid) {
-    assert(state === State.idle || warp =/= io.warpStart.bits,
-      "shared atomic warp slot reused before instruction drain")
+    assert(
+      state === State.idle || warp =/= io.warpStart.bits,
+      "shared atomic warp slot reused before instruction drain"
+    )
     valid(io.warpStart.bits) := 0.U
   }
   when(state =/= State.idle && state =/= State.commit && io.cancel) { failed := true.B }
@@ -108,9 +110,12 @@ class SharedAtomicVectorExecuteUnit(config: GpuConfig = GpuConfig()) extends Mod
         val execution = q.executionMask & d.activeMask
         val selected = Mux(SharedAtomicVectorOpcode.atomic(d.instruction), execution & q.sideEffectMask, execution)
         mask := selected; remaining := selected; faultMask := selected
-        for(l <- 0 until config.lanes) {
-          addresses(l) := Mux(SharedAtomicVectorOpcode.parameters(d.instruction),
-            q.issued.vs1Data(l), q.issued.scalarRs1Data +& Mux(d.instruction(24,20) === 0.U, 0.U, q.issued.vs2Data(l)))
+        for (l <- 0 until config.lanes) {
+          addresses(l) := Mux(
+            SharedAtomicVectorOpcode.parameters(d.instruction),
+            q.issued.vs1Data(l),
+            q.issued.scalarRs1Data +& Mux(d.instruction(24, 20) === 0.U, 0.U, q.issued.vs2Data(l))
+          )
         }
         second := q.issued.vs2Data; data := q.issued.oldVdData
         failed := io.cancel; owned := false.B
@@ -121,13 +126,16 @@ class SharedAtomicVectorExecuteUnit(config: GpuConfig = GpuConfig()) extends Mod
       when(stopped) { state := State.commit }
         .elsewhen(!SharedAtomicVectorOpcode.legal(instruction)) { failed := true.B; state := State.commit }
         .elsewhen(isParams) {
-          for(l <- 0 until config.lanes) { when(mask(l)) {
-            values(warp)(l) := addresses(l)(31,0)
-            comparisons(warp)(l) := second(l)
-          } }
+          for (l <- 0 until config.lanes) {
+            when(mask(l)) {
+              values(warp)(l) := addresses(l)(31, 0)
+              comparisons(warp)(l) := second(l)
+            }
+          }
           valid(warp) := valid(warp) | mask
           state := State.commit
-        }.elsewhen((mask & ~valid(warp)).orR) { failed := true.B; state := State.commit }
+        }
+        .elsewhen((mask & ~valid(warp)).orR) { failed := true.B; state := State.commit }
         .otherwise { state := State.next }
     }
     is(State.next) {
@@ -136,8 +144,10 @@ class SharedAtomicVectorExecuteUnit(config: GpuConfig = GpuConfig()) extends Mod
           val selected = PriorityEncoder(remaining)
           val address = addresses(selected)
           lane := selected
-          when(address(1,0).orR || address < config.sharedMemoryBase.U ||
-              (address +& 4.U) > (BigInt(config.sharedMemoryBase) + config.sharedMemoryBytes).U(33.W)) {
+          when(
+            address(1, 0).orR || address < config.sharedMemoryBase.U ||
+              (address +& 4.U) > (BigInt(config.sharedMemoryBase) + config.sharedMemoryBytes).U(33.W)
+          ) {
             failed := true.B; faultMask := UIntToOH(selected, config.lanes); state := State.commit
           }.otherwise { state := State.offer }
         }

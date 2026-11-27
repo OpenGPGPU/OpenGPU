@@ -17,7 +17,8 @@ object EmitWarpResumePpa {
       ChiselStage.emitSystemVerilogFile(
         new WarpScheduler(config, resumeToIssue = forward),
         Array("--target-dir", target.toString),
-        Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
+        Array("--lowering-options=disallowLocalVariables,disallowPackedArrays")
+      )
     }
   }
 }

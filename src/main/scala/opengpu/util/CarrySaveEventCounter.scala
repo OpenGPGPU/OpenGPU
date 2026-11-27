@@ -4,15 +4,13 @@ import chisel3._
 
 /** Exact 64-bit event counter with carry-save state.
   *
-  * A plain `counter + 1.U` commonly becomes a 64-bit ripple chain in the
-  * open-source ASAP7 flow. Keeping the count as `sum + carry` makes the
-  * every-cycle feedback update bitwise; the carry-propagate addition exists
-  * only on the observation output. A registered observer may still need the
-  * optional prefix adder to bound its observation path. The architectural value and one-event-per-cycle throughput
-  * remain unchanged.
+  * A plain `counter + 1.U` commonly becomes a 64-bit ripple chain in the open-source ASAP7 flow. Keeping the count as
+  * `sum + carry` makes the every-cycle feedback update bitwise; the carry-propagate addition exists only on the
+  * observation output. A registered observer may still need the optional prefix adder to bound its observation path.
+  * The architectural value and one-event-per-cycle throughput remain unchanged.
   */
 class CarrySaveEventCounter(
-  width: Int = 64
+    width: Int = 64
 ) extends Module {
   require(width > 0)
 
@@ -30,16 +28,15 @@ class CarrySaveEventCounter(
 
 /** Exact wide accumulator with carry-save state.
   *
-  * Same rationale as [[CarrySaveEventCounter]], but accepts an arbitrary
-  * addend each cycle (use 0.U when idle). `sum + carry` is unchanged when the
-  * addend is zero, so observation stays bit-exact.
+  * Same rationale as [[CarrySaveEventCounter]], but accepts an arbitrary addend each cycle (use 0.U when idle).
+  * `sum + carry` is unchanged when the addend is zero, so observation stays bit-exact.
   */
 class CarrySaveAccumulator(
-  width: Int = 64,
-  prefixValue: Boolean = false,
-  initialValue: BigInt = 0,
-  registeredObservation: Boolean = false,
-  compareValue: Boolean = false
+    width: Int = 64,
+    prefixValue: Boolean = false,
+    initialValue: BigInt = 0,
+    registeredObservation: Boolean = false,
+    compareValue: Boolean = false
 ) extends Module {
   require(width > 0)
   require(initialValue >= 0 && initialValue < (BigInt(1) << width))
@@ -48,10 +45,11 @@ class CarrySaveAccumulator(
     val clear = Input(Bool())
     val addend = Input(UInt(width.W))
     val value = Output(UInt(width.W))
-    val comparisonValue = if(compareValue)Some(Input(UInt(width.W)))else None
-    val matches = if(compareValue)Some(Output(Bool()))else None
+    val comparisonValue = if (compareValue) Some(Input(UInt(width.W))) else None
+    val matches = if (compareValue) Some(Output(Bool())) else None
+
     /** Exact observation delayed by two clocks; clear retains priority. */
-    val registeredValue = if(registeredObservation)Some(Output(UInt(width.W)))else None
+    val registeredValue = if (registeredObservation) Some(Output(UInt(width.W))) else None
   })
 
   private val sum = RegInit(initialValue.U(width.W))
@@ -69,37 +67,37 @@ class CarrySaveAccumulator(
     carry := nextCarry
   }
 
-  if(compareValue){
-    val comparison=Module(new CarrySaveEquality(width))
-    comparison.io.a:=sum;comparison.io.b:=carry;comparison.io.expected:=io.comparisonValue.get
-    io.matches.get:=comparison.io.matches
+  if (compareValue) {
+    val comparison = Module(new CarrySaveEquality(width))
+    comparison.io.a := sum; comparison.io.b := carry; comparison.io.expected := io.comparisonValue.get
+    io.matches.get := comparison.io.matches
   }
 
-  if(registeredObservation){
+  if (registeredObservation) {
     // Capture independent short additions before combining their carries.
     // Wide completion fields must not rebuild a full-width carry chain.
-    val chunkBits=32
-    val sizes=(0 until width by chunkBits).map(lo=>math.min(chunkBits,width-lo))
-    val parts=sizes.zipWithIndex.map{case(bits,i)=>
-      val lo=i*chunkBits;val initial=(initialValue>>lo)&((BigInt(1)<<bits)-1)
-      val part=RegInit(initial.U((bits+1).W))
-      when(io.clear){part:=initial.U}.otherwise{part:=sum(lo+bits-1,lo)+&carry(lo+bits-1,lo)}
+    val chunkBits = 32
+    val sizes = (0 until width by chunkBits).map(lo => math.min(chunkBits, width - lo))
+    val parts = sizes.zipWithIndex.map { case (bits, i) =>
+      val lo = i * chunkBits; val initial = (initialValue >> lo) & ((BigInt(1) << bits) - 1)
+      val part = RegInit(initial.U((bits + 1).W))
+      when(io.clear) { part := initial.U }.otherwise { part := sum(lo + bits - 1, lo) +& carry(lo + bits - 1, lo) }
       part
     }
-    var carryIn: Bool=false.B
-    val completed=parts.zip(sizes).map{case(part,bits)=>
-      val incoming=carryIn
-      carryIn=part(bits) || (part(bits-1,0).andR && incoming)
-      (part(bits-1,0)+incoming.asUInt)(bits-1,0)
+    var carryIn: Bool = false.B
+    val completed = parts.zip(sizes).map { case (part, bits) =>
+      val incoming = carryIn
+      carryIn = part(bits) || (part(bits - 1, 0).andR && incoming)
+      (part(bits - 1, 0) + incoming.asUInt)(bits - 1, 0)
     }
-    val observed=RegInit(initialValue.U(width.W))
-    when(io.clear){observed:=initialValue.U}.otherwise{observed:=chisel3.util.Cat(completed.reverse)}
-    io.registeredValue.get:=observed
+    val observed = RegInit(initialValue.U(width.W))
+    when(io.clear) { observed := initialValue.U }.otherwise { observed := chisel3.util.Cat(completed.reverse) }
+    io.registeredValue.get := observed
   }
 
   if (prefixValue) {
     val finish = Module(new BlockPrefixAdder(width))
     finish.io.a := sum; finish.io.b := carry; finish.io.carryIn := false.B
-    io.value := finish.io.sum(width-1,0)
+    io.value := finish.io.sum(width - 1, 0)
   } else io.value := (sum +& carry)(width - 1, 0)
 }

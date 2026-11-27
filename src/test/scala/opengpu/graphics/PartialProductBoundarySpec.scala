@@ -33,45 +33,50 @@ class PartialProductBoundarySpec extends AnyFlatSpec {
         (8192, 8192, BigInt(0), BigInt(0), false),
         (3, 5, BigInt(0x8000), BigInt(0x8000), false),
         (16383, 8193, mask32, mask32, false),
-        (7, 9, BigInt(0), BigInt(0), false))
-      for ((w,h,u,v,clamp) <- cases) {
+        (7, 9, BigInt(0), BigInt(0), false)
+      )
+      for ((w, h, u, v, clamp) <- cases) {
         d.io.texWidth.poke(w.U); d.io.texHeight.poke(h.U); d.io.wrapMode.poke(clamp.B)
         d.io.sample.bits.u.poke(u.U); d.io.sample.bits.v.poke(v.U)
         d.io.sample.valid.poke(true.B)
         var wait = 0
         while (!d.io.sample.ready.peek().litToBoolean && wait < 100) { d.clock.step(); wait += 1 }
         assert(wait < 100); d.clock.step(); d.io.sample.valid.poke(false.B)
-        val x = axis(u,w,clamp); val y = axis(v,h,clamp)
+        val x = axis(u, w, clamp); val y = axis(v, h, clamp)
         def indices(c: BigInt, n: Int): Seq[BigInt] = {
-          val first = if (clamp) (c >> 8).min(BigInt(n-1)) else c >> 8
-          Seq(first, if (clamp) (first+1).min(BigInt(n-1)) else (first+1) % n)
+          val first = if (clamp) (c >> 8).min(BigInt(n - 1)) else c >> 8
+          Seq(first, if (clamp) (first + 1).min(BigInt(n - 1)) else (first + 1) % n)
         }
-        val xs=indices(x,w);val ys=indices(y,h)
-        val addresses=for (j <- 0 until 2; i <- 0 until 2) yield (BigInt(0x3000)+(ys(j)*w+xs(i))*4)&mask32
-        val fx=x&255;val fy=y&255
-        val weights=Seq((256-fx)*(256-fy),fx*(256-fy),(256-fx)*fy,fx*fy)
-        val expected=(0 until 4).foldLeft(BigInt(0)){(acc,c)=>
-          val channel=addresses.zip(weights).map{case(a,weight)=>((raw(a)>>(24-c*8))&255)*weight}.sum>>16
-          (acc<<8)|channel
+        val xs = indices(x, w); val ys = indices(y, h)
+        val addresses = for (j <- 0 until 2; i <- 0 until 2) yield (BigInt(0x3000) + (ys(j) * w + xs(i)) * 4) & mask32
+        val fx = x & 255; val fy = y & 255
+        val weights = Seq((256 - fx) * (256 - fy), fx * (256 - fy), (256 - fx) * fy, fx * fy)
+        val expected = (0 until 4).foldLeft(BigInt(0)) { (acc, c) =>
+          val channel =
+            addresses.zip(weights).map { case (a, weight) => ((raw(a) >> (24 - c * 8)) & 255) * weight }.sum >> 16
+          (acc << 8) | channel
         }
-        val pending=mutable.Queue.empty[BigInt]; val seen=mutable.Set.empty[BigInt]
-        var cycles=0
+        val pending = mutable.Queue.empty[BigInt]; val seen = mutable.Set.empty[BigInt]
+        var cycles = 0
         while (!d.io.result.valid.peek().litToBoolean && cycles < 200) {
           d.io.mem.resp.valid.poke(pending.nonEmpty.B)
           pending.headOption.foreach { a =>
             d.io.mem.resp.bits.addr.poke(a.U); d.io.mem.resp.bits.data.poke(raw(a).U)
           }
-          val take=pending.nonEmpty && d.io.mem.resp.ready.peek().litToBoolean
-          val request=if(d.io.mem.req.valid.peek().litToBoolean)Some(d.io.mem.req.bits.addr.peek().litValue)else None
-          request.foreach(a=>assert(addresses.contains(a),s"wrong texel address $a for extent $w x $h, expected $addresses"))
+          val take = pending.nonEmpty && d.io.mem.resp.ready.peek().litToBoolean
+          val request =
+            if (d.io.mem.req.valid.peek().litToBoolean) Some(d.io.mem.req.bits.addr.peek().litValue) else None
+          request.foreach(a =>
+            assert(addresses.contains(a), s"wrong texel address $a for extent $w x $h, expected $addresses")
+          )
           d.clock.step()
-          if(take)pending.dequeue()
-          request.foreach(a=>{seen+=a;pending.enqueue(a)})
-          cycles+=1
+          if (take) pending.dequeue()
+          request.foreach(a => { seen += a; pending.enqueue(a) })
+          cycles += 1
         }
-        assert(cycles<200);assert(seen.toSet==addresses.toSet)
+        assert(cycles < 200); assert(seen.toSet == addresses.toSet)
         d.io.mem.resp.valid.poke(false.B)
-        d.io.result.bits.expect(expected.U);d.clock.step()
+        d.io.result.bits.expect(expected.U); d.clock.step()
       }
     }
   }

@@ -16,14 +16,41 @@ class ShaderImageAtomicVectorServiceSpec extends AnyFlatSpec {
       val fmt = TextureImageFormat.id("R32UI"); val control = (fmt << 6) | (1 << 5) | (1 << 3)
       val task = d.io.task; task.enabled.poke(true.B); task.stage.poke(GraphicsStage.compute.U)
       task.table.version.poke(1.U); task.table.base.poke(0x8000.U); task.table.limit.poke(0x8400.U)
-      task.table.identity.context.poke(7.U); task.table.identity.pass.poke(11.U); task.table.identity.generation.poke(13.U)
+      task.table.identity.context.poke(7.U); task.table.identity.pass.poke(11.U);
+      task.table.identity.generation.poke(13.U)
       d.io.kernelStart.poke(true.B); d.clock.step(); d.io.kernelStart.poke(false.B)
       task.enabled.poke(false.B); task.stage.poke(GraphicsStage.vertex.U); task.table.base.poke(0xdead0000L.U)
       val words = Array.fill[BigInt](64)(0)
-      for ((i, v) <- Seq[(Int, BigInt)](0 -> BigInt("47495501", 16), 1 -> 256, 2 -> 1,
-        3 -> 7, 4 -> 11, 5 -> 13, 6 -> 0, 7 -> 1, 8 -> 1, 9 -> 4, 10 -> 1, 11 -> 1,
-        12 -> fmt, 13 -> fmt, 14 -> 1, 17 -> 15, 18 -> 1, 22 -> 0x1000, 23 -> 0x1400,
-        25 -> 0x1040, 26 -> 4, 27 -> 1, 28 -> 1, 29 -> 1, 30 -> 64, 37 -> 4)) words(i) = v
+      for (
+        (i, v) <- Seq[(Int, BigInt)](
+          0 -> BigInt("47495501", 16),
+          1 -> 256,
+          2 -> 1,
+          3 -> 7,
+          4 -> 11,
+          5 -> 13,
+          6 -> 0,
+          7 -> 1,
+          8 -> 1,
+          9 -> 4,
+          10 -> 1,
+          11 -> 1,
+          12 -> fmt,
+          13 -> fmt,
+          14 -> 1,
+          17 -> 15,
+          18 -> 1,
+          22 -> 0x1000,
+          23 -> 0x1400,
+          25 -> 0x1040,
+          26 -> 4,
+          27 -> 1,
+          28 -> 1,
+          29 -> 1,
+          30 -> 64,
+          37 -> 4
+        )
+      ) words(i) = v
       def issue(function: Int, subop: Int, rd: Int, lhs: Seq[Int], rhs: Seq[Int], effect: Int = 15): Unit = {
         d.io.in.ready.expect(true.B); val q = d.io.in.bits; WindowRecordTest.zero(q)
         val insn = (BigInt(function) << 26) | (BigInt(1) << 25) | (BigInt(subop) << 12) | (BigInt(rd) << 7) | 0x2b
@@ -56,10 +83,16 @@ class ShaderImageAtomicVectorServiceSpec extends AnyFlatSpec {
           d.io.descriptorMemoryRequest.ready.poke((cycle % 3 != 0).B)
           val reply = replies.headOption.filter(_.due <= cycle)
           d.io.descriptorMemoryResponse.valid.poke(reply.nonEmpty.B)
-          reply.foreach(r => { d.io.descriptorMemoryResponse.bits.transactionId.poke(0.U)
-            d.io.descriptorMemoryResponse.bits.readData.poke(r.data.U) })
+          reply.foreach(r => {
+            d.io.descriptorMemoryResponse.bits.transactionId.poke(0.U)
+            d.io.descriptorMemoryResponse.bits.readData.poke(r.data.U)
+          })
           if (reply.nonEmpty && d.io.descriptorMemoryResponse.ready.peek().litToBoolean) replies.dequeue()
-          if (d.io.descriptorMemoryRequest.valid.peek().litToBoolean && d.io.descriptorMemoryRequest.ready.peek().litToBoolean) {
+          if (
+            d.io.descriptorMemoryRequest.valid.peek().litToBoolean && d.io.descriptorMemoryRequest.ready
+              .peek()
+              .litToBoolean
+          ) {
             val q = d.io.descriptorMemoryRequest.bits; q.transactionId.expect(0.U)
             q.address.expect((0x8000 + 64 * lines).U)
             val payload = words.slice(lines * 16, lines * 16 + 16).zipWithIndex.map { case (v, i) => v << (32 * i) }.sum
@@ -72,7 +105,8 @@ class ShaderImageAtomicVectorServiceSpec extends AnyFlatSpec {
           if (d.io.atomicRequest.valid.peek().litToBoolean && d.io.atomicRequest.ready.peek().litToBoolean) {
             assert(atomicDue < 0); val lane = if (atomicCount % 2 == 0) 1 else 3
             d.io.atomicRequest.bits.address.expect((0x1040 + 4 * lane).U)
-            d.io.atomicRequest.bits.operand.expect((10 + lane).U); d.io.atomicRequest.bits.operation.expect(AtomicMemoryOp.add)
+            d.io.atomicRequest.bits.operand.expect((10 + lane).U);
+            d.io.atomicRequest.bits.operation.expect(AtomicMemoryOp.add)
             d.io.atomicSatp.expect(0.U); atomicValue = 100 + lane; atomicFault = faultLast && lane == 3
             atomicCount += 1; atomicDue = cycle + 5
           }
@@ -85,11 +119,16 @@ class ShaderImageAtomicVectorServiceSpec extends AnyFlatSpec {
         }
         d.io.commit.valid.expect(true.B); assert(replies.isEmpty && atomicDue < 0)
         d.io.cancel.poke(false.B)
-        val expected = if (faultLast) ShaderImageAccessStatus.memory else if (cancelFirst) ShaderImageAccessStatus.cancelled else ShaderImageAccessStatus.ok
+        val expected =
+          if (faultLast) ShaderImageAccessStatus.memory
+          else if (cancelFirst) ShaderImageAccessStatus.cancelled
+          else ShaderImageAccessStatus.ok
         d.io.status.expect(expected.U)
         d.io.commit.bits.writesVd.expect((!faultLast && !cancelFirst).B)
-        if (faultLast) { d.io.faultAddressValid.expect(true.B); d.io.faultAddress.expect(0x104c.U); d.io.atomicPageFault.expect(true.B) }
-        else if (!cancelFirst) for ((v, x) <- d.io.commit.bits.writeback.data.zip(Seq(700, 101, 702, 103))) v.expect(x.U)
+        if (faultLast) {
+          d.io.faultAddressValid.expect(true.B); d.io.faultAddress.expect(0x104c.U); d.io.atomicPageFault.expect(true.B)
+        } else if (!cancelFirst)
+          for ((v, x) <- d.io.commit.bits.writeback.data.zip(Seq(700, 101, 702, 103))) v.expect(x.U)
         val saved = d.io.commit.bits.peek().litValue; d.clock.step(3); assert(d.io.commit.bits.peek().litValue == saved)
         d.io.commit.ready.poke(true.B); d.clock.step(); d.io.commit.ready.poke(false.B)
       }

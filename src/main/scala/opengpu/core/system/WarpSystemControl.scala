@@ -9,9 +9,8 @@ import opengpu.core.vector.VectorCsrWrite
 
 /** Executes warp-lifecycle system instructions.
   *
-  * The frontend permits only one unresolved instruction per warp, so accepting
-  * cease here also proves that all older instructions from that warp have
-  * completed. No separate pipeline-drain counter is required.
+  * The frontend permits only one unresolved instruction per warp, so accepting cease here also proves that all older
+  * instructions from that warp have completed. No separate pipeline-drain counter is required.
   */
 class WarpSystemControl(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {
@@ -21,9 +20,10 @@ class WarpSystemControl(config: GpuConfig = GpuConfig()) extends Module {
     val restoreEmpty = Input(Bool())
     val resume = Decoupled(new SimtPath(config))
     val barrier = Decoupled(new SimtPath(config))
-    /** tex.sample: full issued instruction (rs1Data=u, rs2Data=v, decode.rd).
-      * Executed externally; its result returns directly to the scalar
-      * backend's commit path. */
+
+    /** tex.sample: full issued instruction (rs1Data=u, rs2Data=v, decode.rd). Executed externally; its result returns
+      * directly to the scalar backend's commit path.
+      */
     val texSample = Decoupled(new ScalarIssuedInstruction(config))
     val unsupported = Decoupled(new ScalarIssuedInstruction(config))
     val vxrmWrite = Valid(new VectorCsrWrite(config))

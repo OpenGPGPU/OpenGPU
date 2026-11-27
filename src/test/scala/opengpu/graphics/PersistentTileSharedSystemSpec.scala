@@ -11,11 +11,10 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-/** Compose existing RTL against real system CUs, shared L2 and Sv32 clients.
-  * This is a validation harness, not a new host submission ABI. Context/TLB
-  * changes are made only at drained boundaries by the test owner.
+/** Compose existing RTL against real system CUs, shared L2 and Sv32 clients. This is a validation harness, not a new
+  * host submission ABI. Context/TLB changes are made only at drained boundaries by the test owner.
   */
-private class PersistentTileSharedSystemHarness(cfg: GpuConfig, count: Int,banked: Boolean=false) extends Module {
+private class PersistentTileSharedSystemHarness(cfg: GpuConfig, count: Int, banked: Boolean = false) extends Module {
   private val pool = SharedCuShaderConfig(count, parallelFragments = true)
   private val stagingSlots = SharedCuShaderConfig.kernelWordTransactions(Some(pool))
   private val words = 16
@@ -42,23 +41,46 @@ private class PersistentTileSharedSystemHarness(cfg: GpuConfig, count: Int,banke
     val shaderFault = Output(Bool())
     val commandFault = Output(Bool())
     val idle = Output(Bool())
-    val committedSamples=Output(UInt(3.W))
+    val committedSamples = Output(UInt(3.W))
   })
-  val core = Module(new RenderCore(GraphicsConfig(screenWidth = 16, screenHeight = 16,
-    tileSize = 16, tileAttachments = true, fragmentBatchLimit = math.max(8, cfg.lanes)), cfg, fragCore = true,
-    sharedShader = Some(pool), persistentAttachments = true, tileStoreCredits = 8,bankedAttachments=banked))
-  io.committedSamples:=core.io.tileCommittedSamples.getOrElse(0.U)
-  val system = Module(new GpuSystem(cfg, numComputeUnits = count,
-    enableFpuBackend = true, graphicsHostTransactions = hostSlots,
-    instructionCacheSets = 4, instructionCacheWays = 1,
-    vectorCacheSets = 4, vectorCacheWays = 1, enableGraphicsKernels = true))
+  val core = Module(
+    new RenderCore(
+      GraphicsConfig(
+        screenWidth = 16,
+        screenHeight = 16,
+        tileSize = 16,
+        tileAttachments = true,
+        fragmentBatchLimit = math.max(8, cfg.lanes)
+      ),
+      cfg,
+      fragCore = true,
+      sharedShader = Some(pool),
+      persistentAttachments = true,
+      tileStoreCredits = 8,
+      bankedAttachments = banked
+    )
+  )
+  io.committedSamples := core.io.tileCommittedSamples.getOrElse(0.U)
+  val system = Module(
+    new GpuSystem(
+      cfg,
+      numComputeUnits = count,
+      enableFpuBackend = true,
+      graphicsHostTransactions = hostSlots,
+      instructionCacheSets = 4,
+      instructionCacheWays = 1,
+      vectorCacheSets = 4,
+      vectorCacheWays = 1,
+      enableGraphicsKernels = true
+    )
+  )
   def tieInputs(d: Data): Unit = d match {
-    case r: Record => r.elements.values.foreach(tieInputs)
-    case v: Vec[_] => v.foreach(tieInputs)
+    case r: Record                                                     => r.elements.values.foreach(tieInputs)
+    case v: Vec[_]                                                     => v.foreach(tieInputs)
     case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b := false.B
     case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s := 0.S
     case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u := 0.U
-    case _ => ()
+    case _                                                             => ()
   }
   tieInputs(core.io); tieInputs(system.io)
   core.io.tileJob.get <> io.job
@@ -111,15 +133,33 @@ private class PersistentTileSharedSystemHarness(cfg: GpuConfig, count: Int,banke
   val requestBuffer = Module(new Queue(new ComputeMemoryRequest(cfg, 64, hostSlots), 1))
   requestBuffer.io.enq <> arbiter.io.out
   system.io.graphicsHostRequest <> requestBuffer.io.deq
-  val requests = Seq(staging.io.memReq, cb.io.memReq, fb.io.memReq, tex.io.memReq,
-    staging.io.pageWalk, cb.io.pageWalk, fb.io.pageWalk, tex.io.pageWalk)
-  val responses = Seq(staging.io.memResp, cb.io.memResp, fb.io.memResp, tex.io.memResp,
-    staging.io.pageWalkResp, cb.io.pageWalkResp, fb.io.pageWalkResp, tex.io.pageWalkResp)
+  val requests = Seq(
+    staging.io.memReq,
+    cb.io.memReq,
+    fb.io.memReq,
+    tex.io.memReq,
+    staging.io.pageWalk,
+    cb.io.pageWalk,
+    fb.io.pageWalk,
+    tex.io.pageWalk
+  )
+  val responses = Seq(
+    staging.io.memResp,
+    cb.io.memResp,
+    fb.io.memResp,
+    tex.io.memResp,
+    staging.io.pageWalkResp,
+    cb.io.pageWalkResp,
+    fb.io.pageWalkResp,
+    tex.io.pageWalkResp
+  )
   val bases = Seq(0, cbBase, fbBase, texBase, walkBase, walkBase + 1, walkBase + 2, walkBase + 3)
   val sizes = Seq(stagingSlots, words, words, words, 1, 1, 1, 1)
   val lower = system.io.graphicsHostResponse
-  val selected = (0 until 8).map(i => lower.bits.transactionId >= bases(i).U &&
-    lower.bits.transactionId < (bases(i) + sizes(i)).U)
+  val selected = (0 until 8).map(i =>
+    lower.bits.transactionId >= bases(i).U &&
+      lower.bits.transactionId < (bases(i) + sizes(i)).U
+  )
   for (i <- 0 until 8) {
     val port = arbiter.io.in(i)
     port.valid := requests(i).valid; port.bits := requests(i).bits
@@ -140,22 +180,24 @@ private class PersistentTileSharedSystemHarness(cfg: GpuConfig, count: Int,banke
 class PersistentTileSharedSystemSpec extends AnyFlatSpec {
   import TilePassTestData._
   behavior of "persistent jobs on the system CU pool"
-  private val banked=sys.props.get("opengpu.bankedRenderer").contains("true")
+  private val banked = sys.props.get("opengpu.bankedRenderer").contains("true")
 
-  for ((count, translated, lanes, warps) <- Seq((2, false, 4, 2), (2, true, 4, 2),
-      (4, true, 4, 2), (4, true, 16, 8))) {
+  for ((count, translated, lanes, warps) <- Seq((2, false, 4, 2), (2, true, 4, 2), (4, true, 4, 2), (4, true, 16, 8))) {
     it should s"execute shaders with $count shared CUs ($lanes lanes/$warps warps, Sv32=$translated), mixed compute and fault recovery" in {
-      if (lanes == 16) assume(Runtime.getRuntime.maxMemory() >= 4L * 1024 * 1024 * 1024,
-        "The four-CU 16-lane/eight-warp elaboration needs a larger JVM heap; run sbt -J-Xmx8G 'testOnly opengpu.graphics.PersistentTileSharedSystemSpec'.")
+      if (lanes == 16)
+        assume(
+          Runtime.getRuntime.maxMemory() >= 4L * 1024 * 1024 * 1024,
+          "The four-CU 16-lane/eight-warp elaboration needs a larger JVM heap; run sbt -J-Xmx8G 'testOnly opengpu.graphics.PersistentTileSharedSystemSpec'."
+        )
       val cfg = GpuConfig(lanes = lanes, warps = warps, l2Sets = 8, l2Ways = 2)
-      simulate(new PersistentTileSharedSystemHarness(cfg, count,banked)) { dut =>
+      simulate(new PersistentTileSharedSystemHarness(cfg, count, banked)) { dut =>
         def zeroInputs(d: Data): Unit = d match {
-          case r: Record => r.elements.values.foreach(zeroInputs)
-          case v: Vec[_] => v.foreach(zeroInputs)
+          case r: Record                                                     => r.elements.values.foreach(zeroInputs)
+          case v: Vec[_]                                                     => v.foreach(zeroInputs)
           case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
           case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
           case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
-          case _ => ()
+          case _                                                             => ()
         }
         zeroInputs(dut.io)
         dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
@@ -164,7 +206,8 @@ class PersistentTileSharedSystemSpec extends AnyFlatSpec {
         def word(a: Long): Long = memory.getOrElse(a, 0)
         def put(a: Long, v: Long): Unit = memory(a) = v & 0xffffffffL
         def putVirtual(a: Long, v: Long): Unit = put(a + physicalOffset, v)
-        def line(a: Long): BigInt = (0 until 16).map(i => BigInt(word(a + 4 * i)) << (32 * i)).foldLeft(BigInt(0))(_ | _)
+        def line(a: Long): BigInt =
+          (0 until 16).map(i => BigInt(word(a + 4 * i)) << (32 * i)).foldLeft(BigInt(0))(_ | _)
         def write(a: Long, value: BigInt, mask: BigInt): Unit = {
           for (w <- 0 until 16) {
             var v = word(a + 4 * w)
@@ -195,20 +238,20 @@ class PersistentTileSharedSystemSpec extends AnyFlatSpec {
         var replyData = BigInt(0)
         val rng = new scala.util.Random(20261018)
         var cycle = 0
-        var nativeSamples=0L
-        var nativeQuadCycles=0
+        var nativeSamples = 0L
+        var nativeQuadCycles = 0
         var peakOwned = 0
         var sawTrap = false
         var computeDone = false
         var delayedComputeRequests = 0
         var sawMixed = false
-        val ownershipTrace = mutable.ArrayBuffer.empty[(Int,BigInt,BigInt)]
+        val ownershipTrace = mutable.ArrayBuffer.empty[(Int, BigInt, BigInt)]
         var commandFaults = 0
         var walks = 0
         def tick(): Unit = {
-          val n=dut.io.committedSamples.peek().litValue.toInt
-          nativeSamples+=n
-          if(n==4)nativeQuadCycles+=1
+          val n = dut.io.committedSamples.peek().litValue.toInt
+          nativeSamples += n
+          if (n == 4) nativeQuadCycles += 1
           dut.io.memoryRequest.ready.poke((cycle % 5 != 0).B)
           if (reply.isEmpty) pending.indices.filter(i => pending(i).due <= cycle).lastOption.foreach { i =>
             reply = Some(pending.remove(i)); replyData = line(reply.get.addr)
@@ -224,10 +267,14 @@ class PersistentTileSharedSystemSpec extends AnyFlatSpec {
             val r = dut.io.memoryRequest.bits; val id = r.transactionId.peek().litValue
             val address = r.address.peek().litValue.toLong
             val isWalk = address >= 0x300000 && address < 0x304000
-            assert(isWalk || (address >= physicalOffset && address < physicalOffset + 0x80000),
-              f"request escaped the active physical context: 0x$address%x")
-            assert(!pending.exists(_.id == id) && !reply.exists(r => r.id == id && !responseFire),
-              "reused a live system transaction ID")
+            assert(
+              isWalk || (address >= physicalOffset && address < physicalOffset + 0x80000),
+              f"request escaped the active physical context: 0x$address%x"
+            )
+            assert(
+              !pending.exists(_.id == id) && !reply.exists(r => r.id == id && !responseFire),
+              "reused a live system transaction ID"
+            )
             // A three-instruction compute task can fit wholly between two
             // fragment waves (the bare two-CU profile does exactly that).
             // Delay its independent payload line to exercise a CU awaiting
@@ -235,9 +282,14 @@ class PersistentTileSharedSystemSpec extends AnyFlatSpec {
             // IDs remain serviceable; keep the mixed-occupancy assertion.
             val computeDelay = if (address == physicalOffset + 0xe000L) 512 else 0
             if (computeDelay != 0) delayedComputeRequests += 1
-            pending += Pending(id, address, r.writeData.peek().litValue,
-              r.byteMask.peek().litValue, r.isWrite.peek().litToBoolean,
-              cycle + 4 + rng.nextInt(17) + computeDelay)
+            pending += Pending(
+              id,
+              address,
+              r.writeData.peek().litValue,
+              r.byteMask.peek().litValue,
+              r.isWrite.peek().litToBoolean,
+              cycle + 4 + rng.nextInt(17) + computeDelay
+            )
             if (isWalk) walks += 1
           }
           if (dut.io.computeCompletion.valid.peek().litToBoolean) {
@@ -248,8 +300,8 @@ class PersistentTileSharedSystemSpec extends AnyFlatSpec {
           peakOwned = math.max(peakOwned, dut.io.owned.peek().litValue.bitCount)
           val owned = dut.io.owned.peek().litValue
           val busy = dut.io.busyCUs.peek().litValue
-          if (ownershipTrace.lastOption.forall(t=>t._2!=owned || t._3!=busy))
-            ownershipTrace += ((cycle,owned,busy))
+          if (ownershipTrace.lastOption.forall(t => t._2 != owned || t._3 != busy))
+            ownershipTrace += ((cycle, owned, busy))
           sawMixed ||= owned != 0 && (busy & (((BigInt(1) << count) - 1) ^ owned)) != 0
           if (dut.io.commandFault.peek().litToBoolean) commandFaults += 1
           sawTrap ||= dut.io.shaderFault.peek().litToBoolean
@@ -258,14 +310,16 @@ class PersistentTileSharedSystemSpec extends AnyFlatSpec {
             reply = None
           }
           dut.clock.step(); cycle += 1
-          if (cycle % 10000 == 0) println(s"PERSISTENT_SYSTEM cycle=$cycle owned=${dut.io.owned.peek().litValue} pending=${pending.size}")
+          if (cycle % 10000 == 0)
+            println(s"PERSISTENT_SYSTEM cycle=$cycle owned=${dut.io.owned.peek().litValue} pending=${pending.size}")
         }
         def waitFor(p: => Boolean): Unit = {
           val start = cycle
           while (!p && cycle - start < 200000) tick()
           assert(p, s"system timeout at $cycle, pending=${pending.size}, owned=${dut.io.owned.peek().litValue}")
         }
-        val scenarios = if (translated) Seq("healthy", "shader", "command", "overwrite")
+        val scenarios =
+          if (translated) Seq("healthy", "shader", "command", "overwrite")
           else Seq("healthy", "shader", "overwrite")
         for ((scenario, run) <- scenarios.zipWithIndex) {
           val fault = scenario == "shader" || scenario == "command"
@@ -283,11 +337,19 @@ class PersistentTileSharedSystemSpec extends AnyFlatSpec {
           }
           program.zipWithIndex.foreach { case (v, i) => putVirtual(0x1000 + 4 * i, v) }
           putVirtual(0x2000, 0xffffffffL)
-          Seq(addi(5, 0, 0x123), 0x0050a023L, 0x30500073L).zipWithIndex.foreach {
-            case (v, i) => putVirtual(0x3000 + 4 * i, v)
+          Seq(addi(5, 0, 0x123), 0x0050a023L, 0x30500073L).zipWithIndex.foreach { case (v, i) =>
+            putVirtual(0x3000 + 4 * i, v)
           }
-          val p = Pass(width = 8, height = 8, originX = 0, originY = 0, tileLog2 = 3,
-            context = 70 + run, id = run, generation = 20 + run)
+          val p = Pass(
+            width = 8,
+            height = 8,
+            originX = 0,
+            originY = 0,
+            tileLog2 = 3,
+            context = 70 + run,
+            id = run,
+            generation = 20 + run
+          )
           val base = 0x4000L
           val records = if (fault) 6 else 2
           for (record <- 0 until records) {
@@ -302,7 +364,8 @@ class PersistentTileSharedSystemSpec extends AnyFlatSpec {
             words(25) = 0x60000; words(34) = 0x2000
             words.zipWithIndex.foreach { case (v, i) => putVirtual(base + record * 160 + 4 * i, v) }
           }
-          for (depth <- Seq(false, true); y <- 0 until 8; x <- 0 until 8) putVirtual(p.address(x,y,0,depth),0xdeadbeefL)
+          for (depth <- Seq(false, true); y <- 0 until 8; x <- 0 until 8)
+            putVirtual(p.address(x, y, 0, depth), 0xdeadbeefL)
           dut.io.job.bits.poke(0.U.asTypeOf(new TileCommandJob))
           dut.io.job.bits.version.poke(1.U); pokeDescriptor(dut.io.job.bits.passDescriptor, p)
           val c = dut.io.job.bits.config
@@ -333,9 +396,9 @@ class PersistentTileSharedSystemSpec extends AnyFlatSpec {
           }
           waitFor(dut.io.completion.valid.peek().litToBoolean)
           val status = scenario match {
-            case "shader" => TilePassStatus.executionFault
+            case "shader"  => TilePassStatus.executionFault
             case "command" => TilePassStatus.commandFault
-            case _ => TilePassStatus.success
+            case _         => TilePassStatus.success
           }
           dut.io.completion.bits.status.expect(status.U)
           dut.io.completion.bits.identity.context.expect(p.context.U)
@@ -343,30 +406,42 @@ class PersistentTileSharedSystemSpec extends AnyFlatSpec {
           dut.io.completion.bits.identity.generation.expect(p.generation.U)
           for (depth <- Seq(false, true); y <- 0 until 8; x <- 0 until 8) {
             val covered = x > 0 && y > 0
-            val expected = if (fault) 0xdeadbeefL else if (depth) {
-              if (covered) (p.depthClear & 0xff000000L) | 16L else p.depthClear
-            } else if (covered) {
-              val red = if (scenario == "overwrite") 20L else 200L + run
-              (red << 24) | 0x00283cffL
-            } else p.colorClear
-            val actual = word(p.address(x,y,0,depth) + physicalOffset)
+            val expected =
+              if (fault) 0xdeadbeefL
+              else if (depth) {
+                if (covered) (p.depthClear & 0xff000000L) | 16L else p.depthClear
+              } else if (covered) {
+                val red = if (scenario == "overwrite") 20L else 200L + run
+                (red << 24) | 0x00283cffL
+              } else p.colorClear
+            val actual = word(p.address(x, y, 0, depth) + physicalOffset)
             assert(actual == expected, s"run=$run depth=$depth ($x,$y): ${actual.toHexString}")
           }
           val result = dut.io.completion.bits.peek().litValue
-          for (_ <- 0 until 5) { tick(); assert(dut.io.completion.bits.peek().litValue == result); dut.io.job.ready.expect(false.B) }
+          for (_ <- 0 until 5) {
+            tick(); assert(dut.io.completion.bits.peek().litValue == result); dut.io.job.ready.expect(false.B)
+          }
           dut.io.completion.ready.poke(true.B); tick(); dut.io.completion.ready.poke(false.B)
           waitFor(dut.io.idle.peek().litToBoolean && pending.isEmpty && reply.isEmpty)
         }
         assert(peakOwned == count, s"only $peakOwned of $count CUs owned by graphics")
-        if(banked)assert(nativeQuadCycles>0,"shared-CU shader results never reached four-sample SRAM commits")
+        if (banked) assert(nativeQuadCycles > 0, "shared-CU shader results never reached four-sample SRAM commits")
         assert(sawTrap, "illegal shader did not report its failure")
         assert(computeDone, "compute did not complete")
         assert(delayedComputeRequests > 0, "compute payload stall was not exercised")
-        assert(sawMixed, s"graphics and compute never occupied separate CUs simultaneously; ownership transitions=${ownershipTrace.mkString(",")}")
+        assert(
+          sawMixed,
+          s"graphics and compute never occupied separate CUs simultaneously; ownership transitions=${ownershipTrace.mkString(",")}"
+        )
         assert(word(0xe000 + (if (translated) 0x400000L else 0L)) == 0x123)
         assert(if (translated) commandFaults == 1 && walks > 0 else commandFaults == 0 && walks == 0)
-        info(s"shared system cycles=$cycle peak graphics CUs=$peakOwned; mixed CU occupancy, trap, walks=$walks, command faults=$commandFaults")
-        if(banked)info(s"SHARED_BANKED cus=$count lanes=$lanes warps=$warps translated=$translated samples=$nativeSamples fourSampleCycles=$nativeQuadCycles")
+        info(
+          s"shared system cycles=$cycle peak graphics CUs=$peakOwned; mixed CU occupancy, trap, walks=$walks, command faults=$commandFaults"
+        )
+        if (banked)
+          info(
+            s"SHARED_BANKED cus=$count lanes=$lanes warps=$warps translated=$translated samples=$nativeSamples fourSampleCycles=$nativeQuadCycles"
+          )
       }
     }
   }

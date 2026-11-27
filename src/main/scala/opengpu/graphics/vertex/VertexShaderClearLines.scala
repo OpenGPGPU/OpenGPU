@@ -4,12 +4,10 @@ import chisel3._
 import chisel3.util.{Cat, Fill}
 import opengpu.util.{BlockPrefixAdder, CarrySavePrefixSum}
 
-/** Clear-line endpoints for an admitted, 64-byte-aligned scratch allocation.
-  * endBytes is nonzero and base+endBytes must fit the exclusive 33-bit bound.
-  * Admission retains those checks in VertexShaderStage before any access.
-  * Reduce the base, relative end and last-line correction together before a
-  * single carry-propagate finish. Neither base nor correction traverses two
-  * serial carry chains.
+/** Clear-line endpoints for an admitted, 64-byte-aligned scratch allocation. endBytes is nonzero and base+endBytes must
+  * fit the exclusive 33-bit bound. Admission retains those checks in VertexShaderStage before any access. Reduce the
+  * base, relative end and last-line correction together before a single carry-propagate finish. Neither base nor
+  * correction traverses two serial carry chains.
   */
 class VertexShaderClearLines extends Module {
   val io = IO(new Bundle {

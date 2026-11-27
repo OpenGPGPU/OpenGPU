@@ -5,16 +5,13 @@ import chisel3.util._
 
 /** Perspective-correct barycentric interpolation.
   *
-  * Screen-space linear interpolation of a varying is wrong after a projective
-  * transform.  The correct interpolant weights each vertex's attribute by its
-  * 1/w (produced by GeometryStage) and renormalises by the sum of the 1/w
-  * terms:
+  * Screen-space linear interpolation of a varying is wrong after a projective transform. The correct interpolant
+  * weights each vertex's attribute by its 1/w (produced by GeometryStage) and renormalises by the sum of the 1/w terms:
   *
-  *   attr_px = (E0*a0*1/w0 + E1*a1*1/w1 + E2*a2*1/w2) / (E0*1/w0 + E1*1/w1 + E2*1/w2)
+  * attr_px = (E0*a0*1/w0 + E1*a1*1/w1 + E2*a2*1/w2) / (E0*1/w0 + E1*1/w1 + E2*1/w2)
   *
-  * where E_k are the rasterizer's (unnormalised) barycentric edge values and
-  * the /area factor cancels.  This is exactly the operation a per-fragment
-  * shader consumes on the SIMT lanes for M5.
+  * where E_k are the rasterizer's (unnormalised) barycentric edge values and the /area factor cancels. This is exactly
+  * the operation a per-fragment shader consumes on the SIMT lanes for M5.
   */
 class PerspectiveInterpolator(config: GraphicsConfig) extends Module {
   val io = IO(new Bundle {

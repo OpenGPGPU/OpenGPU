@@ -6,9 +6,8 @@ import opengpu.config.GpuConfig
 
 /** Resolves a lane-wise SIMT branch into the path executed now and stack work.
   *
-  * When both directions contain active lanes, the taken path executes first.
-  * The fallthrough path and reconvergence state are returned as explicit stack
-  * entries; the stack controller pushes reconvergence before alternate so the
+  * When both directions contain active lanes, the taken path executes first. The fallthrough path and reconvergence
+  * state are returned as explicit stack entries; the stack controller pushes reconvergence before alternate so the
   * alternate path is popped first.
   */
 class SimtBranchResolver(config: GpuConfig = GpuConfig()) extends Module {

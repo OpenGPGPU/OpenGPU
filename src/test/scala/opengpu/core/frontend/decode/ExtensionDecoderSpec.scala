@@ -181,11 +181,9 @@ class ExtensionDecoderSpec extends AnyFlatSpec {
       dut.io.decoded.writesVd.expect(true.B)
       dut.io.instruction.poke("h5c2021d7".U) // masked: reserved
       dut.io.decoded.valid.expect(false.B)
-      dut.io.instruction.poke(
-        (BigInt("5e2021d7", 16) & ~(BigInt(31) << 7) | (BigInt(2) << 7)).U)
+      dut.io.instruction.poke((BigInt("5e2021d7", 16) & ~(BigInt(31) << 7) | (BigInt(2) << 7)).U)
       dut.io.decoded.valid.expect(false.B) // vd == vs2
-      dut.io.instruction.poke(
-        (BigInt("5e2021d7", 16) & ~(BigInt(31) << 7)).U)
+      dut.io.instruction.poke((BigInt("5e2021d7", 16) & ~(BigInt(31) << 7)).U)
       dut.io.decoded.valid.expect(false.B) // vd == mask
 
       // vredsum.vs is a vector reduction routed through the integer ALU.
@@ -196,12 +194,15 @@ class ExtensionDecoderSpec extends AnyFlatSpec {
       // Single-width multiply-accumulate. Both operand forms are admitted and
       // both keep vs1/vs2 as vector sources; the destination is an operand too,
       // which the unit reads from the old vd.
-      for (funct6 <- Seq(0x29, 0x2b, 0x2d, 0x2f); form <- Seq(2, 6);
-           vm <- Seq(0, 1)) {
+      for (
+        funct6 <- Seq(0x29, 0x2b, 0x2d, 0x2f); form <- Seq(2, 6);
+        vm <- Seq(0, 1)
+      ) {
         dut.io.instruction.poke(
           ((BigInt(funct6) << 26) | (BigInt(vm) << 25) | (BigInt(2) << 20) |
             (BigInt(3) << 15) | (BigInt(form) << 12) | (BigInt(7) << 7) |
-            0x57).U)
+            0x57).U
+        )
         dut.io.decoded.recognized.expect(true.B)
         dut.io.decoded.valid.expect(true.B)
         dut.io.decoded.unit.expect(VectorUnit.multiply)
@@ -216,7 +217,8 @@ class ExtensionDecoderSpec extends AnyFlatSpec {
         dut.io.instruction.poke(
           ((BigInt(funct6) << 26) | (BigInt(vm) << 25) | (BigInt(2) << 20) |
             (BigInt(3) << 15) | (BigInt(3) << 12) | (BigInt(7) << 7) |
-            0x57).U)
+            0x57).U
+        )
         dut.io.decoded.recognized.expect(true.B)
         dut.io.decoded.valid.expect(true.B)
         dut.io.decoded.unit.expect(VectorUnit.alu)
@@ -226,7 +228,8 @@ class ExtensionDecoderSpec extends AnyFlatSpec {
       dut.io.instruction.poke(
         ((BigInt(0x28) << 26) | (BigInt(1) << 25) | (BigInt(2) << 20) |
           (BigInt(3) << 15) | (BigInt(2) << 12) | (BigInt(7) << 7) |
-          0x57).U)
+          0x57).U
+      )
       dut.io.decoded.recognized.expect(true.B)
       dut.io.decoded.valid.expect(false.B)
 
@@ -236,7 +239,8 @@ class ExtensionDecoderSpec extends AnyFlatSpec {
         dut.io.instruction.poke(
           ((BigInt(funct6) << 26) | (BigInt(vm) << 25) | (BigInt(2) << 20) |
             (BigInt(4) << 15) | (BigInt(1) << 12) | (BigInt(3) << 7) |
-            0x57).U)
+            0x57).U
+        )
         dut.io.decoded.recognized.expect(true.B)
         dut.io.decoded.valid.expect(true.B)
         dut.io.decoded.unit.expect(VectorUnit.floatingPoint)
@@ -250,7 +254,8 @@ class ExtensionDecoderSpec extends AnyFlatSpec {
         dut.io.instruction.poke(
           ((BigInt(funct6) << 26) | (BigInt(vm) << 25) | (BigInt(2) << 20) |
             (BigInt(4) << 15) | (BigInt(6) << 12) | (BigInt(3) << 7) |
-            0x57).U)
+            0x57).U
+        )
         dut.io.decoded.valid.expect(false.B)
       }
       // vfredmin.vs is funct6 001010, which this core spends on vfsgnjx.vv.
@@ -324,8 +329,10 @@ class ExtensionDecoderSpec extends AnyFlatSpec {
         dut.io.decoded.readsVs2.expect(true.B)
         dut.io.decoded.writesVd.expect(true.B)
         // A fractional-width source cannot overlap the destination.
-        dut.io.instruction.poke(((instruction & ~(BigInt(31) << 7)) |
-          (BigInt(4) << 7)).U)
+        dut.io.instruction.poke(
+          ((instruction & ~(BigInt(31) << 7)) |
+            (BigInt(4) << 7)).U
+        )
         dut.io.decoded.valid.expect(false.B)
         dut.io.instruction.poke((instruction & ~(BigInt(31) << 7)).U)
         dut.io.decoded.valid.expect((vm == 1).B)
@@ -375,8 +382,10 @@ class ExtensionDecoderSpec extends AnyFlatSpec {
 
   it should "decode single-width scaling shifts without source-pair restrictions" in {
     simulate(new VectorDecoder) { dut =>
-      for (funct6 <- Seq(0x2a, 0x2b); form <- Seq(0, 3, 4);
-           vm <- Seq(0, 1); vd <- Seq(3, 31)) {
+      for (
+        funct6 <- Seq(0x2a, 0x2b); form <- Seq(0, 3, 4);
+        vm <- Seq(0, 1); vd <- Seq(3, 31)
+      ) {
         // Odd v31 is legal, and vd may overlap either input register.
         val instruction = (BigInt(funct6) << 26) | (BigInt(vm) << 25) |
           (BigInt(31) << 20) | (BigInt(3) << 15) |
@@ -397,8 +406,7 @@ class ExtensionDecoderSpec extends AnyFlatSpec {
 
   it should "decode narrowing shifts and clips in wv, wx, and wi forms" in {
     simulate(new VectorDecoder) { dut =>
-      def narrowing(vd: Int, vs2: Int, operand: Int, form: Int,
-                    funct6: Int): BigInt =
+      def narrowing(vd: Int, vs2: Int, operand: Int, form: Int, funct6: Int): BigInt =
         (BigInt(funct6) << 26) | (BigInt(1) << 25) |
           (BigInt(vs2) << 20) | (BigInt(operand) << 15) |
           (BigInt(form) << 12) | (BigInt(vd) << 7) | 0x57
@@ -414,8 +422,7 @@ class ExtensionDecoderSpec extends AnyFlatSpec {
         dut.io.decoded.readsScalar.expect((form == 4).B)
         dut.io.decoded.writesVd.expect(true.B)
 
-        dut.io.instruction.poke(
-          (narrowing(6, 4, 1, form, funct6) & ~(BigInt(1) << 25)).U)
+        dut.io.instruction.poke((narrowing(6, 4, 1, form, funct6) & ~(BigInt(1) << 25)).U)
         dut.io.decoded.valid.expect(true.B)
         dut.io.decoded.vm.expect(false.B)
         dut.io.decoded.readsVs2Pair.expect(true.B)

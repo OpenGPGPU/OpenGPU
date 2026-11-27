@@ -17,14 +17,14 @@ class Fp32FmaLaneSpec extends AnyFlatSpec {
   }
 
   private def send(
-    dut: Fp32FmaLane,
-    operation: Fp32Operation.Type,
-    modifier: Boolean,
-    a: BigInt,
-    b: BigInt,
-    c: BigInt,
-    tag: Int,
-    roundingMode: Int = 0
+      dut: Fp32FmaLane,
+      operation: Fp32Operation.Type,
+      modifier: Boolean,
+      a: BigInt,
+      b: BigInt,
+      c: BigInt,
+      tag: Int,
+      roundingMode: Int = 0
   ): Unit = {
     dut.io.in.bits.operandA.poke(a.U)
     dut.io.in.bits.operandB.poke(b.U)
@@ -40,9 +40,9 @@ class Fp32FmaLaneSpec extends AnyFlatSpec {
   }
 
   private def expect(
-    dut: Fp32FmaLane,
-    result: BigInt,
-    tag: Int
+      dut: Fp32FmaLane,
+      result: BigInt,
+      tag: Int
   ): Unit = {
     var cycles = 0
     while (!dut.io.out.valid.peek().litToBoolean && cycles < 16) {
@@ -59,9 +59,9 @@ class Fp32FmaLaneSpec extends AnyFlatSpec {
   }
 
   private def expectResult(
-    dut: Fp32FmaLane,
-    result: BigInt,
-    tag: Int
+      dut: Fp32FmaLane,
+      result: BigInt,
+      tag: Int
   ): Unit = {
     var cycles = 0
     while (!dut.io.out.valid.peek().litToBoolean && cycles < 32) {
@@ -237,9 +237,7 @@ class Fp32FmaLaneSpec extends AnyFlatSpec {
   it should "discard every in-flight result on flush" in {
     simulate(new Fp32FmaLane()) { dut =>
       initialize(dut)
-      send(dut, Fp32Operation.fmadd, false,
-        BigInt("3fc00000", 16), BigInt("40000000", 16),
-        BigInt("3f000000", 16), 9)
+      send(dut, Fp32Operation.fmadd, false, BigInt("3fc00000", 16), BigInt("40000000", 16), BigInt("3f000000", 16), 9)
       dut.io.flush.poke(true.B)
       dut.clock.step()
       dut.io.flush.poke(false.B)
@@ -247,13 +245,11 @@ class Fp32FmaLaneSpec extends AnyFlatSpec {
       dut.io.out.valid.expect(false.B)
       dut.io.busy.expect(false.B)
       // A held public reply must also be discarded, even with ready low.
-      send(dut, Fp32Operation.mul, false,
-        BigInt("3f000000", 16), BigInt("3f000000", 16), 0, 10)
+      send(dut, Fp32Operation.mul, false, BigInt("3f000000", 16), BigInt("3f000000", 16), 0, 10)
       dut.clock.step(12); dut.io.out.valid.expect(true.B)
       dut.io.flush.poke(true.B); dut.clock.step(); dut.io.flush.poke(false.B)
       dut.clock.step(12); dut.io.out.valid.expect(false.B); dut.io.busy.expect(false.B)
-      send(dut, Fp32Operation.mul, false,
-        BigInt("3f000000", 16), BigInt("3f000000", 16), 0, 11)
+      send(dut, Fp32Operation.mul, false, BigInt("3f000000", 16), BigInt("3f000000", 16), 0, 11)
       expect(dut, BigInt("3e800000", 16), 11)
     }
   }
@@ -261,8 +257,7 @@ class Fp32FmaLaneSpec extends AnyFlatSpec {
   it should "report NV for zero times infinity" in {
     simulate(new Fp32FmaLane()) { dut =>
       initialize(dut)
-      send(dut, Fp32Operation.mul, false, 0,
-        BigInt("7f800000", 16), 0, 9)
+      send(dut, Fp32Operation.mul, false, 0, BigInt("7f800000", 16), 0, 9)
       var cycles = 0
       while (!dut.io.out.valid.peek().litToBoolean && cycles < 16) {
         dut.clock.step()
@@ -322,8 +317,7 @@ class Fp32FmaLaneSpec extends AnyFlatSpec {
   it should "retain a subnormal multiplier contribution with an oppositely signed addend" in {
     simulate(new Fp32FmaLane()) { dut =>
       initialize(dut)
-      send(dut, Fp32Operation.fmadd, false, BigInt(1),
-        BigInt("ee1dbef6", 16), BigInt("1b9f5fea", 16), 7)
+      send(dut, Fp32Operation.fmadd, false, BigInt(1), BigInt("ee1dbef6", 16), BigInt("1b9f5fea", 16), 7)
       dut.io.in.bits.operandA.poke(0.U)
       dut.io.in.bits.operandB.poke("h3f000000".U)
       dut.io.in.bits.operandC.poke(0.U)
@@ -335,14 +329,19 @@ class Fp32FmaLaneSpec extends AnyFlatSpec {
     simulate(new Fp32FmaLane(16, resultEntries = 16)) { dut =>
       initialize(dut)
       val rng = new scala.util.Random(0x524f554e)
-      val directed = Vector.fill(32)(Vector(
-        Vector[BigInt](1, 0xee1dbef6L, 0x1b9f5feaL),
-        Vector[BigInt](0x3f000000L, 0x3f000000L, 0))).flatten
-      val infinities = Vector.fill(16)(Vector(
-        Vector[BigInt](0x3f000000L, 0xff800000L, 0),
-        Vector[BigInt](0x3f000000L, 0x7f800000L, 0),
-        Vector[BigInt](0xff800000L, 0x3f000000L, 0),
-        Vector[BigInt](0x7f800000L, 0x3f000000L, 0))).flatten
+      val directed = Vector
+        .fill(32)(Vector(Vector[BigInt](1, 0xee1dbef6L, 0x1b9f5feaL), Vector[BigInt](0x3f000000L, 0x3f000000L, 0)))
+        .flatten
+      val infinities = Vector
+        .fill(16)(
+          Vector(
+            Vector[BigInt](0x3f000000L, 0xff800000L, 0),
+            Vector[BigInt](0x3f000000L, 0x7f800000L, 0),
+            Vector[BigInt](0xff800000L, 0x3f000000L, 0),
+            Vector[BigInt](0x7f800000L, 0x3f000000L, 0)
+          )
+        )
+        .flatten
       val rows = directed ++ infinities ++ Vector.fill(2048)(Vector.fill(3)(BigInt(rng.nextLong() & 0xffffffffL)))
       def value(v: BigInt): Float = java.lang.Float.intBitsToFloat(v.toInt)
       val expected = rows.map { r =>
@@ -365,23 +364,26 @@ class Fp32FmaLaneSpec extends AnyFlatSpec {
         if (dut.io.out.valid.peek().litToBoolean) {
           dut.io.out.bits.tag.expect(retired.U)
           val observed = dut.io.out.bits.result.peek().litValue
-          assert(observed == expected(retired),
-            s"row=$retired operands=${rows(retired).map(_.toString(16))} observed=${observed.toString(16)} expected=${expected(retired).toString(16)}")
+          assert(
+            observed == expected(retired),
+            s"row=$retired operands=${rows(retired).map(_.toString(16))} observed=${observed.toString(16)} expected=${expected(retired).toString(16)}"
+          )
           if (ready) retired += 1
         }
         if (valid && dut.io.in.ready.peek().litToBoolean) sent += 1
         dut.clock.step(); cycle += 1
       }
       assert(retired == rows.size); dut.io.in.valid.poke(false.B); dut.io.busy.expect(false.B)
-      info(s"FMA_ROUNDING_ROWS total=${rows.size} alternatingSubtractMetadata=true invalidInputsPoisoned=true arbitraryFP32=true backpressure=true")
+      info(
+        s"FMA_ROUNDING_ROWS total=${rows.size} alternatingSubtractMetadata=true invalidInputsPoisoned=true arbitraryFP32=true backpressure=true"
+      )
     }
   }
 
   it should "report NV for zero times infinity under RUP" in {
     simulate(new Fp32FmaLane()) { dut =>
       initialize(dut)
-      send(dut, Fp32Operation.mul, false, 0,
-        BigInt("7f800000", 16), 0, 9, roundingMode = 3)
+      send(dut, Fp32Operation.mul, false, 0, BigInt("7f800000", 16), 0, 9, roundingMode = 3)
       var cycles = 0
       while (!dut.io.out.valid.peek().litToBoolean && cycles < 16) {
         dut.clock.step()

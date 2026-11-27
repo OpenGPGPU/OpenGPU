@@ -24,14 +24,13 @@ private class ClipFloatFmaFormation(tagWidth: Int) extends Bundle {
   val towardZero = Bool()
 }
 
-/** Streaming extended-exponent add/subtract/multiply and internal addTowardZero.
-  * The existing pipelined FP32 FMA operates on normalized significands; owned
-  * metadata retains the extended exponent, user tag and cancellation state.
-  * Sixteen reserved result slots cover the arithmetic and response latency so
-  * dense traffic can sustain one operation per cycle. Division is rejected.
+/** Streaming extended-exponent add/subtract/multiply and internal addTowardZero. The existing pipelined FP32 FMA
+  * operates on normalized significands; owned metadata retains the extended exponent, user tag and cancellation state.
+  * Sixteen reserved result slots cover the arithmetic and response latency so dense traffic can sustain one operation
+  * per cycle. Division is rejected.
   *
-  * Accepted work is never flushed on cancellation. It drains with computed
-  * results and cancelled=true; an already offered response remains immutable.
+  * Accepted work is never flushed on cancellation. It drains with computed results and cancelled=true; an already
+  * offered response remains immutable.
   */
 class ClipFloatStreamingAddMul(tagWidth: Int = 8) extends Module {
   require(tagWidth > 0)
@@ -74,24 +73,32 @@ class ClipFloatStreamingAddMul(tagWidth: Int = 8) extends Module {
   private val bZero = b.special === 0.U && !b.significand.orR
   private val multiply = request.operation === ClipFloatOperation.multiply.U
   private val towardZero = request.operation === ClipFloatOperation.addTowardZero.U
-  private val common = Mux(aZero, b.exponent,
-    Mux(bZero, a.exponent, Mux(a.exponent > b.exponent, a.exponent, b.exponent)))
+  private val common =
+    Mux(aZero, b.exponent, Mux(bZero, a.exponent, Mux(a.exponent > b.exponent, a.exponent, b.exponent)))
   private def aligned(v: ClipFloat): UInt = {
     val gap = (common - v.exponent).asUInt
     val exponent = 127.U(13.W) - gap
     // Preserve the far operand's sign/sticky direction for directed rounding.
-    val tiny = Mux(towardZero, Cat(v.negative, 100.U(8.W), 0.U(23.W)),
-      Cat(v.negative, 0.U(31.W)))
-    Mux(v.special =/= 0.U, ClipFloat.coreBits(v),
-      Mux(!v.significand.orR, Cat(v.negative, 0.U(31.W)),
-        Mux(gap > 26.U, tiny, Cat(v.negative, exponent(7, 0), v.significand(22, 0)))))
+    val tiny = Mux(towardZero, Cat(v.negative, 100.U(8.W), 0.U(23.W)), Cat(v.negative, 0.U(31.W)))
+    Mux(
+      v.special =/= 0.U,
+      ClipFloat.coreBits(v),
+      Mux(
+        !v.significand.orR,
+        Cat(v.negative, 0.U(31.W)),
+        Mux(gap > 26.U, tiny, Cat(v.negative, exponent(7, 0), v.significand(22, 0)))
+      )
+    )
   }
   prepare.request.operation := Mux(multiply, Fp32Operation.mul, Fp32Operation.add)
   prepare.request.roundingMode := Mux(towardZero, 1.U, 0.U)
   prepare.request.operandA := ClipFloat.coreBits(a)
   prepare.request.operandB := Mux(multiply, ClipFloat.coreBits(b), aligned(a))
-  prepare.request.operandC := Mux(multiply, 0.U,
-    aligned(b) ^ Mux(request.operation === ClipFloatOperation.subtract.U, "h80000000".U, 0.U))
+  prepare.request.operandC := Mux(
+    multiply,
+    0.U,
+    aligned(b) ^ Mux(request.operation === ClipFloatOperation.subtract.U, "h80000000".U, 0.U)
+  )
   prepare.metadata.tag := request.tag
   prepare.metadata.baseExponent := Mux(multiply, a.exponent.pad(14) + b.exponent.pad(14), common.pad(14))
   prepare.metadata.alignmentLost := !multiply && a.special === 0.U && b.special === 0.U &&
@@ -117,8 +124,10 @@ class ClipFloatStreamingAddMul(tagWidth: Int = 8) extends Module {
     metadataLive(readSlot) := false.B
   }
   when(core.io.in.fire) {
-    assert(!metadataLive(writeSlot) || (core.io.out.fire && readSlot === writeSlot),
-      "streaming clip FMA overwrote live metadata")
+    assert(
+      !metadataLive(writeSlot) || (core.io.out.fire && readSlot === writeSlot),
+      "streaming clip FMA overwrote live metadata"
+    )
     metadata(writeSlot) := prepared.metadata
     metadata(writeSlot).cancelled := prepared.metadata.cancelled || io.cancel
     metadataLive(writeSlot) := true.B

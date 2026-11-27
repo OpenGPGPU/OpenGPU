@@ -3,11 +3,7 @@ package opengpu.core.backend
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
-import opengpu.core.backend.issue.{
-  VectorExecutionDispatch,
-  VectorIssueStage,
-  VectorIssuedInstruction
-}
+import opengpu.core.backend.issue.{VectorExecutionDispatch, VectorIssueStage, VectorIssuedInstruction}
 import opengpu.core.backend.register.{
   FpuRegisterRead,
   FpuExternalReserve,
@@ -65,13 +61,17 @@ class VectorTextureRequest(config: GpuConfig) extends Bundle {
 
 /** Connected RVV backend with per-warp configuration and writeback. */
 class VectorBackend(
-  config: GpuConfig = GpuConfig(),
-  useBlackBox: Boolean = false, helperInvocations: Boolean = false,
-  instructionSimt: Boolean = false, imageAvailable: Boolean = false
+    config: GpuConfig = GpuConfig(),
+    useBlackBox: Boolean = false,
+    helperInvocations: Boolean = false,
+    instructionSimt: Boolean = false,
+    imageAvailable: Boolean = false
 ) extends Module {
   private val vectorWidth = config.lanes * config.xLen
   val io = IO(new Bundle {
-    val invocations = if(helperInvocations)Some(Input(Vec(config.warps,new opengpu.core.memory.WarpInvocationPolicy(config))))else None
+    val invocations =
+      if (helperInvocations) Some(Input(Vec(config.warps, new opengpu.core.memory.WarpInvocationPolicy(config))))
+      else None
     val in = Flipped(Decoupled(new VectorDecodeResponse(config)))
     val scalarRead = Output(new ScalarRegisterRead(config))
     val scalarRs1Data = Input(UInt(config.xLen.W))
@@ -95,17 +95,18 @@ class VectorBackend(
     val committedVectorWriteback = Valid(new VectorRegisterWrite(config))
     val committedVectorFlags = Valid(new FpuFlags(config))
     val unimplemented = Decoupled(new VectorIssuedInstruction(config))
-    val simtBranch = if(instructionSimt) Some(Decoupled(new opengpu.core.execute.control.SimtBranchRequest(config))) else None
-    val simtClear = if(instructionSimt) Some(Flipped(Valid(UInt(config.warpIdWidth.W)))) else None
+    val simtBranch =
+      if (instructionSimt) Some(Decoupled(new opengpu.core.execute.control.SimtBranchRequest(config))) else None
+    val simtClear = if (instructionSimt) Some(Flipped(Valid(UInt(config.warpIdWidth.W)))) else None
     val texSample = Decoupled(new VectorTextureRequest(config))
     val texCommit = Flipped(Decoupled(new VectorCommitRequest(config)))
-    val imageFault = if(imageAvailable) Some(Flipped(Valid(new VectorMemoryFault(config)))) else None
+    val imageFault = if (imageAvailable) Some(Flipped(Valid(new VectorMemoryFault(config)))) else None
     val rawHazard = Output(Bool())
     val wawHazard = Output(Bool())
   })
 
   private val issue = Module(new VectorIssueStage(config, useBlackBox))
-  private val dispatch = Module(new VectorExecutionDispatch(config,instructionSimt))
+  private val dispatch = Module(new VectorExecutionDispatch(config, instructionSimt))
   private val integerAlu = Module(new VectorIntegerAlu(config))
   private val multiplyAlu = Module(new VectorMultiplyAlu(config))
   private val divideAlu = Module(new VectorDivideAlu(config))
@@ -117,7 +118,7 @@ class VectorBackend(
   private val reduceAlu = Module(new VectorFReduceAlu(config))
   private val divAlu = Module(new VectorFdivAlu(config))
   private val configuration = Module(new VectorConfigurationUnit(config))
-  private val memory = Module(new VectorMemoryUnit(config,helperInvocations=helperInvocations))
+  private val memory = Module(new VectorMemoryUnit(config, helperInvocations = helperInvocations))
   private val writebackArbiter =
     Module(new RRArbiter(new VectorCommitRequest(config), 12))
   private val completionQueue =
@@ -143,7 +144,7 @@ class VectorBackend(
 
   issue.io.in <> io.in
   dispatch.io.in <> issue.io.out
-  if(instructionSimt) {
+  if (instructionSimt) {
     val branch = Module(new opengpu.core.execute.control.VectorSimtBranchExecuteStage(config))
     branch.io.in <> dispatch.io.branch.get
     branch.io.clear := io.simtClear.get
@@ -155,7 +156,7 @@ class VectorBackend(
   io.scalarFpRead := issue.io.scalarFpRead
   issue.io.scalarFpData := io.scalarFpData
   issue.io.scalarFpBusy := io.scalarFpBusy
-  if(helperInvocations)memory.io.invocations.get:=io.invocations.get
+  if (helperInvocations) memory.io.invocations.get := io.invocations.get
   io.memoryRequest <> memory.io.memoryRequest
   memory.io.memoryResponse <> io.memoryResponse
 
@@ -288,22 +289,25 @@ class VectorBackend(
       (dispatch.io.fpu.bits.decode.decoded.funct6 >= "h28".U &&
         dispatch.io.fpu.bits.decode.decoded.funct6 <= "h2f".U)
   private val fpuIsExact = MuxLookup(
-    dispatch.io.fpu.bits.decode.decoded.funct6, false.B
-  )(Seq(
-    "h04".U -> true.B,
-    "h06".U -> true.B,
-    "h08".U -> true.B,
-    "h09".U -> true.B,
-    "h0a".U -> true.B,
-    "h10".U -> true.B,
-    "h17".U -> true.B,
-    "h18".U -> true.B,
-    "h19".U -> true.B,
-    "h1b".U -> true.B,
-    "h1c".U -> true.B,
-    "h1d".U -> true.B,
-    "h1f".U -> true.B
-  ))
+    dispatch.io.fpu.bits.decode.decoded.funct6,
+    false.B
+  )(
+    Seq(
+      "h04".U -> true.B,
+      "h06".U -> true.B,
+      "h08".U -> true.B,
+      "h09".U -> true.B,
+      "h0a".U -> true.B,
+      "h10".U -> true.B,
+      "h17".U -> true.B,
+      "h18".U -> true.B,
+      "h19".U -> true.B,
+      "h1b".U -> true.B,
+      "h1c".U -> true.B,
+      "h1d".U -> true.B,
+      "h1f".U -> true.B
+    )
+  )
   private val fpuIsDiv =
     dispatch.io.fpu.bits.decode.decoded.funct6 === "h20".U ||
       dispatch.io.fpu.bits.decode.decoded.funct6 === "h21".U
@@ -378,23 +382,23 @@ class VectorBackend(
       Mux(
         fpuIsReduce,
         reduceAlu.io.in.ready,
-      Mux(
-        fpuIsSqrt,
-        fsqrtAlu.io.in.ready,
         Mux(
-          fpuIsRecip || fpuIsRsqrt,
-          estimateAlu.io.in.ready,
+          fpuIsSqrt,
+          fsqrtAlu.io.in.ready,
           Mux(
-            fpuIsCvt || fpuIsClassify,
-            cvtAlu.io.in.ready,
+            fpuIsRecip || fpuIsRsqrt,
+            estimateAlu.io.in.ready,
             Mux(
-              fpuIsExact,
-              fpuAlu.io.in.ready && fpuFloatReady,
-              divAlu.io.in.ready
+              fpuIsCvt || fpuIsClassify,
+              cvtAlu.io.in.ready,
+              Mux(
+                fpuIsExact,
+                fpuAlu.io.in.ready && fpuFloatReady,
+                divAlu.io.in.ready
+              )
             )
           )
         )
-      )
       )
     )
   )
@@ -911,14 +915,14 @@ class VectorBackend(
   // Parameter writes acknowledge through the ordinary scalar x0 completion.
   // They must not write/release v0 or be mistaken for a failed sample.
   private val textureParameterAck = io.texCommit.bits.writesScalar &&
-    io.texCommit.bits.writeback.vd===0.U && io.texCommit.bits.scalarData===0.U &&
+    io.texCommit.bits.writeback.vd === 0.U && io.texCommit.bits.scalarData === 0.U &&
     !io.texCommit.bits.writesFloat && !io.texCommit.bits.writesFlags && !io.texCommit.bits.saturated
   private val textureFault = !io.texCommit.bits.writesVd && !textureParameterAck
   writebackArbiter.io.in(10).valid := io.texCommit.valid && !textureFault
   writebackArbiter.io.in(10).bits := io.texCommit.bits
   // The registered boundary also retains the failed instruction while shared
   // task/warp trap routing stalls; normal texture writeback keeps its latency.
-  private val textureFaultQueue = Module(new Queue(new VectorMemoryFault(config), 1, pipe=false, flow=false))
+  private val textureFaultQueue = Module(new Queue(new VectorMemoryFault(config), 1, pipe = false, flow = false))
   memoryFaultArbiter.io.in(1) <> textureFaultQueue.io.deq
   private val textureFailure = textureFaultQueue.io.enq
   textureFailure.valid := io.texCommit.valid && textureFault
@@ -929,7 +933,7 @@ class VectorBackend(
   textureFailure.bits.faultMask := io.texCommit.bits.warpActiveMask
   textureFailure.bits.vd := io.texCommit.bits.writeback.vd
   textureFailure.bits.writeVd := true.B
-  if(imageAvailable) {
+  if (imageAvailable) {
     when(io.imageFault.get.valid) {
       assert(textureFault && io.texCommit.valid, "image fault metadata lost its commit owner")
       textureFailure.bits.writeVd := io.imageFault.get.bits.writeVd
@@ -939,7 +943,7 @@ class VectorBackend(
       textureFailure.bits.addresses := io.imageFault.get.bits.addresses
     }
   }
-  io.texCommit.ready := Mux(textureFault,textureFailure.ready,writebackArbiter.io.in(10).ready)
+  io.texCommit.ready := Mux(textureFault, textureFailure.ready, writebackArbiter.io.in(10).ready)
 
   writebackArbiter.io.in(11).valid := reduceAlu.io.out.valid
   reduceAlu.io.out.ready := writebackArbiter.io.in(11).ready
@@ -966,11 +970,12 @@ class VectorBackend(
     io.initialize.bits.warpId < config.warps.U
   private val initializeWarpIdle =
     if (config.warps == 1) inflight(0) === 0.U
-    else Mux(
-      initializeWarpValid,
-      inflight(io.initialize.bits.warpId) === 0.U,
-      false.B
-    )
+    else
+      Mux(
+        initializeWarpValid,
+        inflight(io.initialize.bits.warpId) === 0.U,
+        false.B
+      )
   io.initialize.ready :=
     !commitValid &&
       initializeWarpValid && initializeWarpIdle

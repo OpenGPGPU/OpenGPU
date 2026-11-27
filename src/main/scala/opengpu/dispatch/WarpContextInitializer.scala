@@ -8,16 +8,13 @@ import opengpu.core.frontend.warp.WarpLaunch
 
 /** Initializes the minimal kernel ABI before making a warp runnable.
   *
-  * Scalar ABI:
-  *   x1=kernarg, x2..x4=group xyz, x5..x7=local-size xyz,
-  *   x8=local-linear-base, x9=physical CU thread capacity (lanes * warps).
-  * Vector v1 contains local-linear IDs. v0 remains reserved for RVV masks.
+  * Scalar ABI: x1=kernarg, x2..x4=group xyz, x5..x7=local-size xyz, x8=local-linear-base, x9=physical CU thread
+  * capacity (lanes * warps). Vector v1 contains local-linear IDs. v0 remains reserved for RVV masks.
   *
-  * This module owns the frontend launch port. It snapshots the lowest free
-  * hardware slot before initialization and names that slot in the launch
-  * command; dispatch serialization guarantees no competing launch can consume
-  * the slot, and the scheduler honors the named slot even when a concurrent
-  * finish frees a lower slot during the initialization window.
+  * This module owns the frontend launch port. It snapshots the lowest free hardware slot before initialization and
+  * names that slot in the launch command; dispatch serialization guarantees no competing launch can consume the slot,
+  * and the scheduler honors the named slot even when a concurrent finish frees a lower slot during the initialization
+  * window.
   */
 class WarpContextInitializer(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {

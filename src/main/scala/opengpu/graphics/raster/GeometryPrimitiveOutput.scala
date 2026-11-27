@@ -3,8 +3,8 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 
-/** Map clip position followed by varying components to linked geometry output
-  * slots. Invalid entries leave the corresponding downstream word zero.
+/** Map clip position followed by varying components to linked geometry output slots. Invalid entries leave the
+  * corresponding downstream word zero.
   */
 class GeometryPrimitiveOutputRequest(p: VertexShaderStageConfig) extends Bundle {
   val geometry = new GeometryOutputPrimitive
@@ -14,8 +14,8 @@ class GeometryPrimitiveOutputRequest(p: VertexShaderStageConfig) extends Bundle 
   val outputComponents = UInt(7.W)
   val builtinOutputMask = UInt(2.W)
   val varyingSlots = UInt(5.W)
-  val flatMask = UInt((4*p.varyings).W)
-  val componentSources = Vec(4 + 4*p.varyings, Valid(UInt(7.W)))
+  val flatMask = UInt((4 * p.varyings).W)
+  val componentSources = Vec(4 + 4 * p.varyings, Valid(UInt(7.W)))
 }
 class GeometryMappedPrimitive(p: VertexShaderStageConfig) extends Bundle {
   val primitive = new AssembledPrimitive(p)
@@ -28,11 +28,11 @@ class GeometryPrimitiveOutputFault extends Bundle {
   val inputPrimitiveId = UInt(32.W)
 }
 
-/** Serial output mapping for a single primitive. The producer keeps geometry
-  * output, its source metadata and link layout together until accepted.
+/** Serial output mapping for a single primitive. The producer keeps geometry output, its source metadata and link
+  * layout together until accepted.
   */
-class GeometryPrimitiveOutput(p: VertexShaderStageConfig = VertexShaderStageConfig(),
-    flatShading:Boolean=true) extends Module {
+class GeometryPrimitiveOutput(p: VertexShaderStageConfig = VertexShaderStageConfig(), flatShading: Boolean = true)
+    extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new GeometryPrimitiveOutputRequest(p)))
     val out = Decoupled(new GeometryMappedPrimitive(p))
@@ -45,13 +45,15 @@ class GeometryPrimitiveOutput(p: VertexShaderStageConfig = VertexShaderStageConf
   private val vertex = RegInit(0.U(2.W))
   private val component = RegInit(0.U(7.W))
   private val varying = component >= 4.U
-  private val flatIndex = (component - 4.U)(5,0)
+  private val flatIndex = (component - 4.U)(5, 0)
   private val flat = varying && request.flatMask(flatIndex)
-  private val sourceVertex = if(flatShading)
-    PrimitiveFlatShading.vertex(vertex,request.geometry.vertexCount-1.U,flat) else vertex
+  private val sourceVertex =
+    if (flatShading)
+      PrimitiveFlatShading.vertex(vertex, request.geometry.vertexCount - 1.U, flat)
+    else vertex
   private val mapping = request.componentSources(component)
   private val mappingValid = !mapping.valid || (mapping.bits < request.outputComponents && mapping.bits < 64.U)
-  private val value = Mux(mapping.valid, request.geometry.vertices(sourceVertex).components(mapping.bits(5,0)), 0.U)
+  private val value = Mux(mapping.valid, request.geometry.vertices(sourceVertex).components(mapping.bits(5, 0)), 0.U)
   private val countValid = io.in.bits.geometry.vertexCount >= 1.U && io.in.bits.geometry.vertexCount <= 3.U
   private val validInput = countValid && io.in.bits.geometry.taskId === io.in.bits.taskId &&
     io.in.bits.geometry.primitiveId === io.in.bits.source.primitiveId && io.in.bits.varyingSlots <= p.varyings.U &&
@@ -71,8 +73,9 @@ class GeometryPrimitiveOutput(p: VertexShaderStageConfig = VertexShaderStageConf
     output.primitive.instanceId := source.instanceId; output.primitive.baseInstance := source.baseInstance
     output.primitive.vertexCount := g.vertexCount; output.primitive.provokingVertex := provoking
     output.primitive.kind := g.vertexCount - 1.U
-    output.primitive.topology := MuxLookup(g.vertexCount, PrimitiveTopology.points.U)(Seq(
-      2.U -> PrimitiveTopology.lines.U, 3.U -> PrimitiveTopology.triangles.U))
+    output.primitive.topology := MuxLookup(g.vertexCount, PrimitiveTopology.points.U)(
+      Seq(2.U -> PrimitiveTopology.lines.U, 3.U -> PrimitiveTopology.triangles.U)
+    )
     output.primitive.varyingSlots := io.in.bits.varyingSlots; output.primitive.flatMask := io.in.bits.flatMask
     for (v <- 0 until 3) {
       output.primitive.vertices(v).identity := source.identity
@@ -84,10 +87,10 @@ class GeometryPrimitiveOutput(p: VertexShaderStageConfig = VertexShaderStageConf
   when(state === copy) {
     when(!mappingValid) { state := fault }
       .otherwise {
-        when(component < 4.U) { output.primitive.vertices(vertex).position(component(1,0)) := value }
+        when(component < 4.U) { output.primitive.vertices(vertex).position(component(1, 0)) := value }
           .otherwise {
             for (v <- 0 until p.varyings; c <- 0 until 4) {
-              when(component === (4 + 4*v+c).U) { output.primitive.vertices(vertex).varyings(v)(c) := value }
+              when(component === (4 + 4 * v + c).U) { output.primitive.vertices(vertex).varyings(v)(c) := value }
             }
           }
         when(component +& 1.U === (4.U +& (request.varyingSlots << 2))) {

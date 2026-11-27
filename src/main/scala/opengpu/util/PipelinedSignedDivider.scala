@@ -13,20 +13,18 @@ private class DivisionPipelineState(n: Int, d: Int, q: Int, processed: Int) exte
   val overflow = Bool()
 }
 
-/** Full signed restoring division with one quotient bit per registered stage.
-  * Accepts one request per cycle with a continuously ready consumer. Groups of
-  * stages advance independently, retaining every packet under backpressure.
-  * The low quotientWidth bits wrap exactly after truncation toward zero, even
-  * when magnitudeOverflow is true; unlike the bounded iterative divider, an
-  * oversized quotient is not replaced with zero. Zero divisors return zero
-  * with divideByZero, and reset clears all packet ownership. The default widths
-  * cover legacy signed64 edge * signed32 inverse-W * unsigned32 UV arithmetic.
+/** Full signed restoring division with one quotient bit per registered stage. Accepts one request per cycle with a
+  * continuously ready consumer. Groups of stages advance independently, retaining every packet under backpressure. The
+  * low quotientWidth bits wrap exactly after truncation toward zero, even when magnitudeOverflow is true; unlike the
+  * bounded iterative divider, an oversized quotient is not replaced with zero. Zero divisors return zero with
+  * divideByZero, and reset clears all packet ownership. The default widths cover legacy signed64 edge * signed32
+  * inverse-W * unsigned32 UV arithmetic.
   */
 class PipelinedSignedDivider(
-  numeratorWidth: Int = 129,
-  denominatorWidth: Int = 96,
-  quotientWidth: Int = 32,
-  stagesPerGroup: Int = 8
+    numeratorWidth: Int = 129,
+    denominatorWidth: Int = 96,
+    quotientWidth: Int = 32,
+    stagesPerGroup: Int = 8
 ) extends Module {
   require(numeratorWidth > 0 && denominatorWidth > 0 && denominatorWidth <= numeratorWidth)
   require(quotientWidth > 0 && quotientWidth <= numeratorWidth && stagesPerGroup > 0)

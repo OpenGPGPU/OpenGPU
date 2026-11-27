@@ -5,12 +5,17 @@ import chisel3.util._
 import opengpu.config.GpuConfig
 import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse, VectorTlbFlush}
 
-/** One shared logical response window directly above the physical numeric
-  * services. Avoid duplicating a large public-result bank in a second router.
+/** One shared logical response window directly above the physical numeric services. Avoid duplicating a large
+  * public-result bank in a second router.
   */
-class NativeRgba8TextureSharedPool(config: GpuConfig = GpuConfig(), numComputeUnits: Int = 4,
-    clients: Int = 3, p: TextureImageAddressConfig = TextureImageAddressConfig(),
-    useBlackBoxes: Boolean = false, rowsPerCluster: Int = 128) extends Module {
+class NativeRgba8TextureSharedPool(
+    config: GpuConfig = GpuConfig(),
+    numComputeUnits: Int = 4,
+    clients: Int = 3,
+    p: TextureImageAddressConfig = TextureImageAddressConfig(),
+    useBlackBoxes: Boolean = false,
+    rowsPerCluster: Int = 128
+) extends Module {
   require(numComputeUnits >= 1 && numComputeUnits <= 16)
   val clusters: Int = (numComputeUnits + 1) / 2
   val io = IO(new Bundle {
@@ -23,10 +28,12 @@ class NativeRgba8TextureSharedPool(config: GpuConfig = GpuConfig(), numComputeUn
     val satp = Input(UInt(32.W)); val flush = Flipped(Valid(new VectorTlbFlush(config)))
     val invalidate = Input(Bool()); val cancel = Input(Bool()); val busy = Output(Bool())
   })
-  private val window = Module(new NativeRgba8TextureSharedWindow(clients, clusters, rowsPerCluster,
-    useBlackBoxes = useBlackBoxes))
-  private val service = Seq.fill(clusters)(Module(new NativeRgba8TextureService(
-    config, p, useBlackBoxes = useBlackBoxes, admissionCancelInput = true)))
+  private val window = Module(
+    new NativeRgba8TextureSharedWindow(clients, clusters, rowsPerCluster, useBlackBoxes = useBlackBoxes)
+  )
+  private val service = Seq.fill(clusters)(
+    Module(new NativeRgba8TextureService(config, p, useBlackBoxes = useBlackBoxes, admissionCancelInput = true))
+  )
   private val pinnedSatp = RegInit(0.U(32.W)); private val draining = RegInit(false.B)
   private val pendingInvalidate = RegInit(false.B); private val pendingFlush = RegInit(false.B)
   private val applyInvalidate = RegInit(false.B); private val applyFlush = RegInit(false.B)

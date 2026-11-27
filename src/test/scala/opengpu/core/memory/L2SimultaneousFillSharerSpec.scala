@@ -7,8 +7,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 class L2SimultaneousFillSharerSpec extends AnyFlatSpec {
   it should "publish a reader merged on the first fill handshake before responding" in {
-    simulate(new L2MshrTable(GpuConfig(lanes = 4), entries = 4,
-      maxOutstanding = 8, numComputeUnits = 4)) { d =>
+    simulate(new L2MshrTable(GpuConfig(lanes = 4), entries = 4, maxOutstanding = 8, numComputeUnits = 4)) { d =>
       d.io.request.valid.poke(false.B)
       d.io.request.bits.poke(0.U.asTypeOf(d.io.request.bits))
       d.io.request.bits.lineAddress.poke(0x1000.U)

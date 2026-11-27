@@ -252,9 +252,9 @@ class VectorDataCacheSpec extends AnyFlatSpec {
       dut.reset.poke(false.B)
 
       def send(
-        isStore: Boolean,
-        writeData: BigInt = 0,
-        byteMask: Int = 0xffff
+          isStore: Boolean,
+          writeData: BigInt = 0,
+          byteMask: Int = 0xffff
       ): Unit = {
         dut.io.in.valid.poke(true.B)
         dut.io.in.bits.warpId.poke(0.U)
@@ -336,65 +336,63 @@ class VectorDataCacheSpec extends AnyFlatSpec {
 
   it should "retain two conflicting tags and replace only one way" in {
     val config = GpuConfig(lanes = 2, warps = 1)
-    simulate(new VectorDataCache(config, sets = 2, ways = 2, lineBytes = 16)) {
-      dut =>
-        dut.reset.poke(true.B)
-        dut.io.in.valid.poke(false.B)
-        dut.io.out.ready.poke(true.B)
-        dut.io.lowerRequest.ready.poke(true.B)
-        dut.io.lowerResponse.valid.poke(false.B)
-        dut.io.invalidate.valid.poke(false.B)
-        dut.io.invalidateDone.ready.poke(true.B)
+    simulate(new VectorDataCache(config, sets = 2, ways = 2, lineBytes = 16)) { dut =>
+      dut.reset.poke(true.B)
+      dut.io.in.valid.poke(false.B)
+      dut.io.out.ready.poke(true.B)
+      dut.io.lowerRequest.ready.poke(true.B)
+      dut.io.lowerResponse.valid.poke(false.B)
+      dut.io.invalidate.valid.poke(false.B)
+      dut.io.invalidateDone.ready.poke(true.B)
+      dut.clock.step()
+      dut.reset.poke(false.B)
+
+      def startLoad(address: Int): Unit = {
+        dut.io.in.valid.poke(true.B)
+        dut.io.in.bits.warpId.poke(0.U)
+        dut.io.in.bits.lineAddress.poke(address.U)
+        dut.io.in.bits.writeData.poke(0.U)
+        dut.io.in.bits.byteMask.poke("hffff".U)
+        dut.io.in.bits.isStore.poke(false.B)
+        dut.io.in.ready.expect(true.B)
         dut.clock.step()
-        dut.reset.poke(false.B)
-
-        def startLoad(address: Int): Unit = {
-          dut.io.in.valid.poke(true.B)
-          dut.io.in.bits.warpId.poke(0.U)
-          dut.io.in.bits.lineAddress.poke(address.U)
-          dut.io.in.bits.writeData.poke(0.U)
-          dut.io.in.bits.byteMask.poke("hffff".U)
-          dut.io.in.bits.isStore.poke(false.B)
-          dut.io.in.ready.expect(true.B)
-          dut.clock.step()
-          dut.io.in.valid.poke(false.B)
-          dut.clock.step()
-        }
-
-        def refill(address: Int, value: Int): Unit = {
-          startLoad(address)
-          dut.io.lowerRequest.valid.expect(true.B)
-          dut.clock.step()
-          dut.io.lowerResponse.valid.poke(true.B)
-          dut.io.lowerResponse.bits.readData.poke(value.U)
-          dut.io.lowerResponse.bits.fault.poke(false.B)
-          dut.clock.step()
-          dut.io.lowerResponse.valid.poke(false.B)
-          dut.io.out.bits.readData.expect(value.U)
-          dut.clock.step()
-        }
-
-        def expectHit(address: Int, value: Int): Unit = {
-          startLoad(address)
-          dut.io.out.valid.expect(true.B)
-          dut.io.out.bits.readData.expect(value.U)
-          dut.io.lowerRequest.valid.expect(false.B)
-          dut.clock.step()
-        }
-
-        // With two sets and 16-byte lines, these tags all map to set zero.
-        refill(0x00, 0x11)
-        refill(0x20, 0x22)
-        expectHit(0x00, 0x11)
-        expectHit(0x20, 0x22)
-
-        refill(0x40, 0x33)
-        expectHit(0x20, 0x22)
-        startLoad(0x00)
-        dut.io.lowerRequest.valid.expect(true.B)
+        dut.io.in.valid.poke(false.B)
+        dut.clock.step()
       }
-  }
 
+      def refill(address: Int, value: Int): Unit = {
+        startLoad(address)
+        dut.io.lowerRequest.valid.expect(true.B)
+        dut.clock.step()
+        dut.io.lowerResponse.valid.poke(true.B)
+        dut.io.lowerResponse.bits.readData.poke(value.U)
+        dut.io.lowerResponse.bits.fault.poke(false.B)
+        dut.clock.step()
+        dut.io.lowerResponse.valid.poke(false.B)
+        dut.io.out.bits.readData.expect(value.U)
+        dut.clock.step()
+      }
+
+      def expectHit(address: Int, value: Int): Unit = {
+        startLoad(address)
+        dut.io.out.valid.expect(true.B)
+        dut.io.out.bits.readData.expect(value.U)
+        dut.io.lowerRequest.valid.expect(false.B)
+        dut.clock.step()
+      }
+
+      // With two sets and 16-byte lines, these tags all map to set zero.
+      refill(0x00, 0x11)
+      refill(0x20, 0x22)
+      expectHit(0x00, 0x11)
+      expectHit(0x20, 0x22)
+
+      refill(0x40, 0x33)
+      expectHit(0x20, 0x22)
+      startLoad(0x00)
+      dut.io.lowerRequest.valid.expect(true.B)
+    }
+  }
 
   it should "acknowledge an L2 probe only after invalidating the matching line" in {
     val config = GpuConfig(lanes = 2, warps = 1)

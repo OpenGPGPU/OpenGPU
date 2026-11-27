@@ -17,7 +17,7 @@ class ParallelFragmentQuadSchedulerSpec extends AnyFlatSpec {
       val capacity = if (limit == 0) lanes * warps else limit
       val quadsPerBatch = capacity / 4
       val gfx = GraphicsConfig(screenWidth = 256, screenHeight = 16, fragmentBatchLimit = limit)
-      simulate(new ParallelFragmentScheduler(config, gfx, count,quadExports=true)) { dut =>
+      simulate(new ParallelFragmentScheduler(config, gfx, count, quadExports = true)) { dut =>
         val front = dut.io.front
         front.fragIn.valid.poke(false.B)
         front.fragIn.bits.poke(0.U.asTypeOf(front.fragIn.bits))
@@ -52,8 +52,12 @@ class ParallelFragmentQuadSchedulerSpec extends AnyFlatSpec {
         }
         dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
         case class Sample(x: Int, covered: Boolean)
-        case class Worker(input: mutable.ArrayBuffer[Sample], output: mutable.Queue[Vector[Sample]],
-          var started: Boolean = false, var delay: Int = 0)
+        case class Worker(
+            input: mutable.ArrayBuffer[Sample],
+            output: mutable.Queue[Vector[Sample]],
+            var started: Boolean = false,
+            var delay: Int = 0
+        )
         val models = Array.fill(count)(Worker(mutable.ArrayBuffer.empty, mutable.Queue.empty))
         val expected = mutable.ArrayBuffer.empty[Int]
         val observed = mutable.ArrayBuffer.empty[Int]
@@ -79,16 +83,18 @@ class ParallelFragmentQuadSchedulerSpec extends AnyFlatSpec {
             port.drawRetire.valid.poke((model.started && model.delay == 0 && model.output.isEmpty).B)
             port.drained.poke((!model.started && model.input.isEmpty).B)
             model.output.headOption.foreach { packet =>
-              for(p <- 0 until 4) {
-                val sample=packet(p);val out=port.quadOut.get.bits(p)
-                out.x.poke(sample.x.U);out.y.poke((sample.x+100).U);out.color.poke((sample.x*37L).U)
-                out.coverageMask.poke((if(sample.covered)13 else 0).U)
-                for(s <- 0 until 4)out.depths(s).poke((sample.x*10+s).U)
+              for (p <- 0 until 4) {
+                val sample = packet(p); val out = port.quadOut.get.bits(p)
+                out.x.poke(sample.x.U); out.y.poke((sample.x + 100).U); out.color.poke((sample.x * 37L).U)
+                out.coverageMask.poke((if (sample.covered) 13 else 0).U)
+                for (s <- 0 until 4) out.depths(s).poke((sample.x * 10 + s).U)
               }
             }
           }
-          if (count > 1 && models(0).started && models(0).delay > 0 &&
-              models.drop(1).exists(m => m.started && m.delay == 0)) outOfOrderReady = true
+          if (
+            count > 1 && models(0).started && models(0).delay > 0 &&
+            models.drop(1).exists(m => m.started && m.delay == 0)
+          ) outOfOrderReady = true
           val accepted = front.fragIn.valid.peek().litToBoolean && front.fragIn.ready.peek().litToBoolean
           if (accepted) {
             for (lane <- 0 until 4 if front.fragIn.bits.lanes(lane).covered.peek().litToBoolean)
@@ -103,8 +109,10 @@ class ParallelFragmentQuadSchedulerSpec extends AnyFlatSpec {
                 // Helpers must be delivered intact; worker output may omit them.
                 port.fragIn.bits.lanes(lane).x.expect(front.fragIn.bits.lanes(lane).x.peek())
                 port.fragUv(lane).u.expect(front.fragUv(lane).u.peek())
-                Sample(port.fragIn.bits.lanes(lane).x.peek().litValue.toInt,
-                  port.fragIn.bits.lanes(lane).covered.peek().litToBoolean)
+                Sample(
+                  port.fragIn.bits.lanes(lane).x.peek().litValue.toInt,
+                  port.fragIn.bits.lanes(lane).covered.peek().litToBoolean
+                )
               }
               if (stride == 0) assert(i == 0, "zero-stride binding escaped worker zero")
               Some(samples)
@@ -112,22 +120,24 @@ class ParallelFragmentQuadSchedulerSpec extends AnyFlatSpec {
           }
           assert(inputs.count(_.nonEmpty) == (if (accepted) 1 else 0))
           front.out.valid.expect(false.B)
-          val out=front.quadOut.get
-          if(out.valid.peek().litToBoolean) {
-            val value=out.bits.peek().litValue
-            stalled.foreach(old=>assert(old==value,"stalled shader quad lost its worker owner"))
-            for(p <- 0 until 4) {
-              val pixel=out.bits(p);val x=pixel.x.peek().litValue.toInt
-              pixel.y.expect((x+100).U);pixel.color.expect((x*37L).U)
-              for(s <- 0 until 4)pixel.depths(s).expect((x*10+s).U)
-              if(out.ready.peek().litToBoolean && pixel.coverageMask.peek().litValue!=0)observed+=x
+          val out = front.quadOut.get
+          if (out.valid.peek().litToBoolean) {
+            val value = out.bits.peek().litValue
+            stalled.foreach(old => assert(old == value, "stalled shader quad lost its worker owner"))
+            for (p <- 0 until 4) {
+              val pixel = out.bits(p); val x = pixel.x.peek().litValue.toInt
+              pixel.y.expect((x + 100).U); pixel.color.expect((x * 37L).U)
+              for (s <- 0 until 4) pixel.depths(s).expect((x * 10 + s).U)
+              if (out.ready.peek().litToBoolean && pixel.coverageMask.peek().litValue != 0) observed += x
             }
-            stalled=if(out.ready.peek().litToBoolean)None else Some(value)
-          }else assert(stalled.isEmpty,"stalled shader quad disappeared")
+            stalled = if (out.ready.peek().litToBoolean) None else Some(value)
+          } else assert(stalled.isEmpty, "stalled shader quad disappeared")
           if (front.drawRetire.valid.peek().litToBoolean && front.drawRetire.ready.peek().litToBoolean)
             retireCount += 1
-          val outputFires = dut.io.workers.map(p => p.quadOut.get.valid.peek().litToBoolean && p.quadOut.get.ready.peek().litToBoolean)
-          val retireFires = dut.io.workers.map(p => p.drawRetire.valid.peek().litToBoolean && p.drawRetire.ready.peek().litToBoolean)
+          val outputFires =
+            dut.io.workers.map(p => p.quadOut.get.valid.peek().litToBoolean && p.quadOut.get.ready.peek().litToBoolean)
+          val retireFires =
+            dut.io.workers.map(p => p.drawRetire.valid.peek().litToBoolean && p.drawRetire.ready.peek().litToBoolean)
           dut.clock.step(); cycles += 1
           for (i <- 0 until count) {
             val model = models(i)

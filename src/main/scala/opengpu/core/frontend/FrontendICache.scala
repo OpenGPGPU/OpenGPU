@@ -10,15 +10,14 @@ import opengpu.core.memory.{InstructionCache, InstructionLineRequest, Instructio
 
 /** GpuFrontend fetch port wired to a FlashSim-sized instruction cache.
   *
-  * Lower-level refill stays at the DUT boundary so the harness can model IMEM
-  * without pulling in the interconnect.
+  * Lower-level refill stays at the DUT boundary so the harness can model IMEM without pulling in the interconnect.
   */
 class FrontendICache(
-  config: GpuConfig,
-  sets: Int,
-  ways: Int,
-  lineBytes: Int,
-  missEntries: Int
+    config: GpuConfig,
+    sets: Int,
+    ways: Int,
+    lineBytes: Int,
+    missEntries: Int
 ) extends Module {
   val io = IO(new Bundle {
     val launch = Flipped(Decoupled(new WarpLaunch(config)))
@@ -35,14 +34,12 @@ class FrontendICache(
     val blocked = Output(UInt(config.warps.W))
     val lowerRequest =
       Decoupled(new InstructionLineRequest(config, lineBytes, missEntries))
-    val lowerResponse = Flipped(
-      Decoupled(new InstructionLineResponse(lineBytes, missEntries)))
+    val lowerResponse = Flipped(Decoupled(new InstructionLineResponse(lineBytes, missEntries)))
     val invalidate = Input(Bool())
   })
 
   private val frontend = Module(new GpuFrontend(config))
-  private val icache = Module(
-    new InstructionCache(config, sets, ways, lineBytes, missEntries))
+  private val icache = Module(new InstructionCache(config, sets, ways, lineBytes, missEntries))
 
   frontend.io.launch <> io.launch
   icache.io.fetch <> frontend.io.fetchRequest

@@ -21,9 +21,11 @@ class RasterExtremaProofHarness extends Module {
 object EmitRasterExtremaProof {
   def main(args: Array[String]): Unit = {
     require(args.length == 1)
-    ChiselStage.emitSystemVerilogFile(new RasterExtremaProofHarness,
+    ChiselStage.emitSystemVerilogFile(
+      new RasterExtremaProofHarness,
       Array("--target-dir", args(0)),
-      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
+      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays")
+    )
   }
 }
 

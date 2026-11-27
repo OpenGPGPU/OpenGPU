@@ -10,8 +10,8 @@ object VisibilityQueryAction {
   val poll = 2.U(2.W); val result = 3.U(2.W)
 }
 
-/** Internal command contract; API object names and allocation leases stay with
-  * the command producer. A cookie distinguishes reuses of one GPU record.
+/** Internal command contract; API object names and allocation leases stay with the command producer. A cookie
+  * distinguishes reuses of one GPU record.
   */
 class VisibilityQueryCommand extends Bundle {
   val action = UInt(2.W)
@@ -22,8 +22,9 @@ class VisibilityQueryCommand extends Bundle {
 class VisibilityQueryReply extends Bundle {
   val tag = UInt(32.W); val context = UInt(32.W); val cookie = UInt(32.W)
   val address = UInt(32.W)
-  /** 0 success,1 encoding/bounds,2 record identity,3 memory/renderer fault,
-    * 4 reset cancellation,5 active/target mismatch,6 active-context capacity.
+
+  /** 0 success,1 encoding/bounds,2 record identity,3 memory/renderer fault, 4 reset cancellation,5 active/target
+    * mismatch,6 active-context capacity.
     */
   val status = UInt(3.W); val available = Bool(); val value = Bool()
 }
@@ -42,20 +43,17 @@ object VisibilityQueryRecord {
 
 /** Boolean occlusion queries with GPU-memory result lifetime.
   *
-  * The caller orders begin/end against complete render drain and does not
-  * dispatch following draws until the begin reply. Sample events are accepted
-  * independently of command/result backpressure. Exact visibility also serves
-  * the conservative target. End writes one complete result line and releases
-  * its active slot only after acknowledgement; unread completed records consume
-  * no active slots. The memory owner uses memorySatp, not a changing host root.
+  * The caller orders begin/end against complete render drain and does not dispatch following draws until the begin
+  * reply. Sample events are accepted independently of command/result backpressure. Exact visibility also serves the
+  * conservative target. End writes one complete result line and releases its active slot only after acknowledgement;
+  * unread completed records consume no active slots. The memory owner uses memorySatp, not a changing host root.
   *
-  * Reset stops command admission, preserves irrevocable memory offers and
-  * clears active contexts only after rendering and this memory command drain.
-  * Its reset event invalidates unfinished query objects, like aborted jobs;
-  * software must reinitialize their cookies before reuse.
+  * Reset stops command admission, preserves irrevocable memory offers and clears active contexts only after rendering
+  * and this memory command drain. Its reset event invalidates unfinished query objects, like aborted jobs; software
+  * must reinitialize their cookies before reuse.
   */
-class NativeVisibilityQueryEngine(config: GpuConfig = GpuConfig(), contexts: Int = 8,
-    producers: Int = 2) extends Module {
+class NativeVisibilityQueryEngine(config: GpuConfig = GpuConfig(), contexts: Int = 8, producers: Int = 2)
+    extends Module {
   require(config.xLen == 32 && contexts > 0 && contexts <= 16)
   require(producers > 0 && producers <= 4)
   private val indexBits = math.max(1, log2Ceil(contexts))
@@ -92,10 +90,18 @@ class NativeVisibilityQueryEngine(config: GpuConfig = GpuConfig(), contexts: Int
   io.memorySatp := root; io.activeContexts := PopCount(live)
   io.busy := phase =/= State.idle || replies.io.deq.valid || resetPending
 
-  private val selected = VecInit((0 until contexts).map(i => live(i) &&
-    active(i).context === io.command.bits.context && active(i).root === io.satp))
-  private val alias = VecInit((0 until contexts).map(i => live(i) &&
-    active(i).address === io.command.bits.address && active(i).root === io.satp))
+  private val selected = VecInit(
+    (0 until contexts).map(i =>
+      live(i) &&
+        active(i).context === io.command.bits.context && active(i).root === io.satp
+    )
+  )
+  private val alias = VecInit(
+    (0 until contexts).map(i =>
+      live(i) &&
+        active(i).address === io.command.bits.address && active(i).root === io.satp
+    )
+  )
   private val hasActive = selected.asUInt.orR
   private val selectedSlot = if (contexts == 1) 0.U(indexBits.W) else PriorityEncoder(selected.asUInt)
   private val free = VecInit(live.map(v => !v))
@@ -131,7 +137,8 @@ class NativeVisibilityQueryEngine(config: GpuConfig = GpuConfig(), contexts: Int
             slot := freeSlot; write := true.B; payload := record(false.B, false.B, 0.U)
             phase := State.issue
           }
-      }.elsewhen(q.action === VisibilityQueryAction.end) {
+      }
+      .elsewhen(q.action === VisibilityQueryAction.end) {
         val a = active(selectedSlot)
         when(!hasActive || a.address =/= q.address || a.cookie =/= q.cookie || a.conservative =/= q.conservative) {
           response.status := 5.U
@@ -141,7 +148,8 @@ class NativeVisibilityQueryEngine(config: GpuConfig = GpuConfig(), contexts: Int
           response.available := true.B; response.value := a.seen && a.fault === 0.U
           response.status := a.fault; phase := State.issue
         }
-      }.otherwise {
+      }
+      .otherwise {
         when(alias.asUInt.orR) { response.status := 5.U }
           .otherwise { write := false.B; phase := State.issue }
       }
@@ -181,8 +189,11 @@ class NativeVisibilityQueryEngine(config: GpuConfig = GpuConfig(), contexts: Int
         words(4)(31, 5).orR || words(5) > 1.U || (!available && words(5).orR) ||
         (fault =/= 0.U && words(5).orR) || words.slice(7, 16).map(_.orR).reduce(_ || _)
       val badIdentity = words(2) =/= command.context || words(3) =/= command.cookie || words(6) =/= root
-      response.status := Mux(badEncoding, 1.U, Mux(badIdentity, 2.U,
-        Mux(command.action === VisibilityQueryAction.result && available, fault, 0.U)))
+      response.status := Mux(
+        badEncoding,
+        1.U,
+        Mux(badIdentity, 2.U, Mux(command.action === VisibilityQueryAction.result && available, fault, 0.U))
+      )
       response.available := available && !badEncoding && !badIdentity
       response.value := command.action === VisibilityQueryAction.result && available && !badEncoding &&
         !badIdentity && fault === 0.U && words(5)(0)
@@ -191,22 +202,34 @@ class NativeVisibilityQueryEngine(config: GpuConfig = GpuConfig(), contexts: Int
   }
 
   for (i <- 0 until contexts) {
-    val hits = io.samples.map(e => e.valid && live(i) && e.bits.context === active(i).context && e.bits.root === active(i).root)
-    when(hits.zip(io.samples).map { case (hit, e) => hit && e.bits.status === 0.U && e.bits.passingSamples.orR }.reduce(_ || _)) {
+    val hits =
+      io.samples.map(e => e.valid && live(i) && e.bits.context === active(i).context && e.bits.root === active(i).root)
+    when(
+      hits
+        .zip(io.samples)
+        .map { case (hit, e) => hit && e.bits.status === 0.U && e.bits.passingSamples.orR }
+        .reduce(_ || _)
+    ) {
       active(i).seen := true.B
     }
-    val failures = io.samples.zip(hits).map { case (e, hit) => (hit && e.bits.status =/= 0.U && e.bits.status =/= 4.U) -> 3.U(3.W) }
+    val failures =
+      io.samples.zip(hits).map { case (e, hit) => (hit && e.bits.status =/= 0.U && e.bits.status =/= 4.U) -> 3.U(3.W) }
     val jobFailed = io.jobFault.valid && live(i) && io.jobFault.bits.context === active(i).context &&
       io.jobFault.bits.root === active(i).root && io.jobFault.bits.status =/= 0.U && io.jobFault.bits.status =/= 4.U
-    val cancelled = io.cancel || hits.zip(io.samples).map { case (hit, e) => hit && e.bits.status === 4.U }.reduce(_ || _) ||
-      (io.jobFault.valid && live(i) && io.jobFault.bits.context === active(i).context &&
-        io.jobFault.bits.root === active(i).root && io.jobFault.bits.status === 4.U)
+    val cancelled =
+      io.cancel || hits.zip(io.samples).map { case (hit, e) => hit && e.bits.status === 4.U }.reduce(_ || _) ||
+        (io.jobFault.valid && live(i) && io.jobFault.bits.context === active(i).context &&
+          io.jobFault.bits.root === active(i).root && io.jobFault.bits.status === 4.U)
     when(live(i) && cancelled && active(i).fault === 0.U) { active(i).fault := 4.U }
-    when(live(i) && (active(i).fault === 0.U || active(i).fault === 4.U) &&
-      (jobFailed || failures.map(_._1).reduce(_ || _))) { active(i).fault := 3.U }
+    when(
+      live(i) && (active(i).fault === 0.U || active(i).fault === 4.U) &&
+        (jobFailed || failures.map(_._1).reduce(_ || _))
+    ) { active(i).fault := 3.U }
     for (j <- 0 until i) {
-      assert(!(live(i) && live(j) && active(i).root === active(j).root && active(i).context === active(j).context),
-        "duplicate active visibility-query context")
+      assert(
+        !(live(i) && live(j) && active(i).root === active(j).root && active(i).context === active(j).context),
+        "duplicate active visibility-query context"
+      )
     }
   }
   when(io.cancel) {

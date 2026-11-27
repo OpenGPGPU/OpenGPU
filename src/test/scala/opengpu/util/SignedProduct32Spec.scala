@@ -37,18 +37,22 @@ class SignedProduct32FullProofHarness extends Module {
 object EmitSignedProduct32JoinProof {
   def main(args: Array[String]): Unit = {
     require(args.length == 1)
-    ChiselStage.emitSystemVerilogFile(new SignedProduct32JoinProofHarness,
+    ChiselStage.emitSystemVerilogFile(
+      new SignedProduct32JoinProofHarness,
       Array("--target-dir", args(0)),
-      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
+      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays")
+    )
   }
 }
 
 object EmitSignedProduct32FullProof {
   def main(args: Array[String]): Unit = {
     require(args.length == 1)
-    ChiselStage.emitSystemVerilogFile(new SignedProduct32FullProofHarness,
+    ChiselStage.emitSystemVerilogFile(
+      new SignedProduct32FullProofHarness,
       Array("--target-dir", args(0)),
-      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
+      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays")
+    )
   }
 }
 

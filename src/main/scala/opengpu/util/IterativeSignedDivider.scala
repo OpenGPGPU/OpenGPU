@@ -14,18 +14,16 @@ class SignedDivisionResult(width: Int) extends Bundle {
   val magnitudeOverflow = Bool()
 }
 
-/** Exact signed division, truncated toward zero, with one quotient bit/cycle.
-  * The default quotient has numeratorWidth bits, including modular min/-1
-  * overflow. A smaller quotient width requires its unsigned magnitude to fit;
-  * otherwise zero is returned with magnitudeOverflow asserted. This bounds
-  * iteration count without discarding a possible high remainder.
-  * Zero divisors return zero with divideByZero asserted. Output ownership is
-  * retained under stalls; reset cancels both iteration and pending output.
+/** Exact signed division, truncated toward zero, with one quotient bit/cycle. The default quotient has numeratorWidth
+  * bits, including modular min/-1 overflow. A smaller quotient width requires its unsigned magnitude to fit; otherwise
+  * zero is returned with magnitudeOverflow asserted. This bounds iteration count without discarding a possible high
+  * remainder. Zero divisors return zero with divideByZero asserted. Output ownership is retained under stalls; reset
+  * cancels both iteration and pending output.
   */
 class IterativeSignedDivider(
-  numeratorWidth: Int,
-  denominatorWidth: Int,
-  quotientWidth: Int = 0
+    numeratorWidth: Int,
+    denominatorWidth: Int,
+    quotientWidth: Int = 0
 ) extends Module {
   require(numeratorWidth > 0 && denominatorWidth > 0 && denominatorWidth <= numeratorWidth)
   private val qWidth = if (quotientWidth == 0) numeratorWidth else quotientWidth
@@ -69,16 +67,19 @@ class IterativeSignedDivider(
   private val numeratorMagnitude = Mux(numerator(numeratorWidth - 1), negatedNumerator, numerator)
   private val denominatorMagnitude =
     Mux(denominator(denominatorWidth - 1), negate(denominator), denominator)
-  private val highNumerator = if (qWidth == numeratorWidth) 0.U(1.W)
+  private val highNumerator =
+    if (qWidth == numeratorWidth) 0.U(1.W)
     else Reg(UInt((numeratorWidth - qWidth).W))
-  private val magnitudeOverflow = if (qWidth == numeratorWidth) false.B else {
-    val width = math.max(highNumerator.getWidth, denominatorWidth)
-    val compare = Module(new BlockPrefixAdder(width))
-    compare.io.a := highNumerator.pad(width)
-    compare.io.b := ~divisor.pad(width)
-    compare.io.carryIn := true.B
-    compare.io.sum(width)
-  }
+  private val magnitudeOverflow =
+    if (qWidth == numeratorWidth) false.B
+    else {
+      val width = math.max(highNumerator.getWidth, denominatorWidth)
+      val compare = Module(new BlockPrefixAdder(width))
+      compare.io.a := highNumerator.pad(width)
+      compare.io.b := ~divisor.pad(width)
+      compare.io.carryIn := true.B
+      compare.io.sum(width)
+    }
 
   when(io.in.fire) {
     for (i <- 0 until zeroGroups.length) {
@@ -137,7 +138,8 @@ class IterativeSignedDivider(
   private val subtracts = subtraction.io.sum(denominatorWidth + 1)
   private val nextRemainder =
     Mux(subtracts, subtraction.io.sum(denominatorWidth - 1, 0), shifted(denominatorWidth - 1, 0))
-  private val nextQuotient = if (qWidth == 1) subtracts.asUInt
+  private val nextQuotient =
+    if (qWidth == 1) subtracts.asUInt
     else Cat(quotient(qWidth - 2, 0), subtracts)
   private val correctedQuotient = Mux(negative, negate(quotient), quotient)
 

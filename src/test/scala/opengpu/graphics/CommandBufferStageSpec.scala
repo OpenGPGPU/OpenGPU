@@ -11,12 +11,12 @@ class CommandBufferStageSpec extends AnyFlatSpec {
 
   // Encode a SceneTriangle plus shader descriptor into a 32-word record.
   private def encode(
-    tri: Seq[((Int, Int, Int, Int), (Int, Int, Int), Int)],
-    shaderPc: Int,
-    shaderKernarg: Int,
-    state: Int = 0,
-    sampler: Int = 0,
-    kernargBankStride: Int = 0
+      tri: Seq[((Int, Int, Int, Int), (Int, Int, Int), Int)],
+      shaderPc: Int,
+      shaderKernarg: Int,
+      state: Int = 0,
+      sampler: Int = 0,
+      kernargBankStride: Int = 0
   ): Seq[Int] = {
     val w = Seq.newBuilder[Int]
     for (i <- 0 until 3) {
@@ -51,9 +51,14 @@ class CommandBufferStageSpec extends AnyFlatSpec {
     val state0 = 1 | 2 | (3 << 4) | (1 << 7) | (2 << 8) |
       (1 << 10) | (1 << 11) | (2 << 12)
     val sampler0 = 0x1f | (1 << 5) | (1 << 6) | (1 << 7) | (1 << 8)
-    val words0 = encode(record0, shaderPc = 0x9000,
-      shaderKernarg = 0x20000, state = state0, sampler = sampler0,
-      kernargBankStride = 0x140)
+    val words0 = encode(
+      record0,
+      shaderPc = 0x9000,
+      shaderKernarg = 0x20000,
+      state = state0,
+      sampler = sampler0,
+      kernargBankStride = 0x140
+    )
     val words1 = encode(record1, shaderPc = 0x9100, shaderKernarg = 0x21000)
     val mem = Array.fill(1 << 15)(0)
     (words0 ++ words1).zipWithIndex.foreach { case (w, i) => mem(base / 4 + i) = w }
@@ -67,8 +72,7 @@ class CommandBufferStageSpec extends AnyFlatSpec {
       dut.io.mem.req.ready.poke(true.B)
       dut.io.mem.resp.valid.poke(false.B)
 
-      val decoded = collection.mutable.Buffer.empty[
-        (Seq[Int], Seq[(Int, Int, Int)], Seq[Int], Int, Int, Int, Int, Int)]
+      val decoded = collection.mutable.Buffer.empty[(Seq[Int], Seq[(Int, Int, Int)], Seq[Int], Int, Int, Int, Int, Int)]
       var lastReadValid = false
       var lastReadData = 0L
       var lastReadAddr = 0
@@ -97,8 +101,23 @@ class CommandBufferStageSpec extends AnyFlatSpec {
         if (dut.io.draw.valid.peek().litToBoolean) {
           val d = dut.io.draw.bits.asInstanceOf[SceneTriangle]
           decoded += ((
-            (0 until 3).map(i => Seq(d.clip(i).x.peek().litValue.toInt, d.clip(i).y.peek().litValue.toInt, d.clip(i).z.peek().litValue.toInt, d.clip(i).w.peek().litValue.toInt)).flatten,
-            (0 until 3).map(i => (d.color(i).r.peek().litValue.toInt, d.color(i).g.peek().litValue.toInt, d.color(i).b.peek().litValue.toInt)),
+            (0 until 3)
+              .map(i =>
+                Seq(
+                  d.clip(i).x.peek().litValue.toInt,
+                  d.clip(i).y.peek().litValue.toInt,
+                  d.clip(i).z.peek().litValue.toInt,
+                  d.clip(i).w.peek().litValue.toInt
+                )
+              )
+              .flatten,
+            (0 until 3).map(i =>
+              (
+                d.color(i).r.peek().litValue.toInt,
+                d.color(i).g.peek().litValue.toInt,
+                d.color(i).b.peek().litValue.toInt
+              )
+            ),
             (0 until 3).map(i => d.depth(i).peek().litValue.toInt),
             d.shaderPc.peek().litValue.toInt,
             d.shaderKernarg.peek().litValue.toInt,
@@ -155,13 +174,13 @@ class CommandBufferStageSpec extends AnyFlatSpec {
       Seq(
         ((q(-1), q(-1), 0, q(1)), (r, g, b), depth),
         ((q(1), q(-1), 0, q(1)), (r, g, b), depth),
-        ((q(-1), q(1), 0, q(1)), (r, g, b), depth))
+        ((q(-1), q(1), 0, q(1)), (r, g, b), depth)
+      )
 
     val base = 0x6000
     val fifoDepth = 4
     val records = (0 to fifoDepth).map { i =>
-      encode(tri(0x10 + i, 40 * i, 255 - 40 * i, 20 * i),
-        0x1000 + i * 0x100, 0x2000 + i * 0x100)
+      encode(tri(0x10 + i, 40 * i, 255 - 40 * i, 20 * i), 0x1000 + i * 0x100, 0x2000 + i * 0x100)
     }
     val mem = Array.fill(1 << 15)(0)
     records.flatten.zipWithIndex.foreach { case (w, i) => mem(base / 4 + i) = w }
@@ -209,12 +228,12 @@ class CommandBufferStageSpec extends AnyFlatSpec {
         guard += 1
       }
 
-      assert(reads.size == fifoDepth * 40,
-        s"expected $fifoDepth records prefetched, got ${reads.size / 40} records")
-      assert(!reads.exists(_ >= base + fifoDepth * 40 * 4),
-        "a stalled consumer must prevent fetching beyond FIFO capacity")
-      assert(dut.io.draw.valid.peek().litToBoolean,
-        "the FIFO must hold a draw under consumer backpressure")
+      assert(reads.size == fifoDepth * 40, s"expected $fifoDepth records prefetched, got ${reads.size / 40} records")
+      assert(
+        !reads.exists(_ >= base + fifoDepth * 40 * 4),
+        "a stalled consumer must prevent fetching beyond FIFO capacity"
+      )
+      assert(dut.io.draw.valid.peek().litToBoolean, "the FIFO must hold a draw under consumer backpressure")
 
       // Release the consumer and drain every record in order.
       var decodedPcs = collection.mutable.ArrayBuffer.empty[Long]
@@ -243,8 +262,10 @@ class CommandBufferStageSpec extends AnyFlatSpec {
       }
 
       assert(guard < 1000, "FIFO-backed command parser did not drain")
-      assert(decodedPcs.toSeq == (0 to fifoDepth).map(i => 0x1000L + i * 0x100L),
-        s"draws must remain ordered, got $decodedPcs")
+      assert(
+        decodedPcs.toSeq == (0 to fifoDepth).map(i => 0x1000L + i * 0x100L),
+        s"draws must remain ordered, got $decodedPcs"
+      )
     }
   }
 
@@ -278,8 +299,7 @@ class CommandBufferStageSpec extends AnyFlatSpec {
       vertKernarg,
       vertKernargBankStride,
       vertAttrFormat
-    ) ++ Seq(0xfff90003L.toInt, 0x00230045, 0x00e12345, 0x00123456,
-      0x80402080L.toInt) ++ Seq.fill(12)(0) ++ Seq(
+    ) ++ Seq(0xfff90003L.toInt, 0x00230045, 0x00e12345, 0x00123456, 0x80402080L.toInt) ++ Seq.fill(12)(0) ++ Seq(
       fragShaderPc,
       fragKernarg
     ) ++ Seq.fill(6)(0) ++ Seq(
@@ -292,106 +312,115 @@ class CommandBufferStageSpec extends AnyFlatSpec {
     record.zipWithIndex.foreach { case (w, i) => mem(base / 4 + i) = w }
 
     for (constantBlend <- Seq(false, true); biasedClamp <- Seq(false, true); mirroredRepeat <- Seq(false, true)) {
-    simulate(new CommandBufferStage(GraphicsConfig(), vertCore = true,
-      constantBlend = constantBlend, biasedClamp = biasedClamp, mirroredRepeat = mirroredRepeat)) { dut =>
-      dut.reset.poke(true.B)
-      dut.clock.step()
-      dut.reset.poke(false.B)
-      dut.io.base.poke(base.U)
-      dut.io.count.poke(1.U)
-      dut.io.mem.req.ready.poke(true.B)
-      dut.io.mem.resp.valid.poke(false.B)
-
-      var decoded: Option[(Int, Int, Int, Int, Int, Int, Int, Int, Int, Int)] = None
-      var lastReadValid = false
-      var lastReadData = 0L
-      var lastReadAddr = 0
-      var guard = 0
-      dut.io.start.poke(true.B)
-      dut.clock.step()
-      dut.io.start.poke(false.B)
-      while (guard < 400 && decoded.isEmpty) {
-        dut.io.mem.req.ready.poke(true.B)
-        if (lastReadValid) {
-          dut.io.mem.resp.valid.poke(true.B)
-          dut.io.mem.resp.bits.data.poke(lastReadData.U)
-          dut.io.mem.resp.bits.addr.poke(lastReadAddr.U)
-          lastReadValid = false
-        } else {
-          dut.io.mem.resp.valid.poke(false.B)
-          dut.io.mem.resp.bits.data.poke(0.U)
-        }
-        if (dut.io.mem.req.valid.peek().litToBoolean) {
-          val addr = dut.io.mem.req.bits.addr.peek().litValue.toInt
-          lastReadValid = true
-          lastReadData = mem(addr / 4) & 0xffffffffL
-          lastReadAddr = addr
-        }
-        if (dut.io.draw.valid.peek().litToBoolean) {
-          val d = dut.io.draw.bits.asInstanceOf[VertexDrawCommand]
-          d.clipDepth.expect(true.B)
-          d.texNearest.expect(true.B)
-          d.pixelCenter.expect(true.B)
-          d.texWrapVFlip.expect(true.B)
-          d.clampBiasedU.expect(biasedClamp.B)
-          d.clampBiasedV.expect(biasedClamp.B)
-          d.mirrorU.expect(mirroredRepeat.B)
-          d.mirrorV.expect(mirroredRepeat.B)
-          d.viewportEnable.expect(true.B)
-          d.viewportFlipY.expect(true.B)
-          d.viewportX.expect(3.S)
-          d.viewportY.expect((-7).S)
-          d.viewportWidth.expect(69.U)
-          d.viewportHeight.expect(35.U)
-          d.depthRangeEnable.expect(true.B)
-          d.depthNear.expect("he12345".U)
-          d.depthFar.expect("h123456".U)
-          d.blendConstant.expect((if (constantBlend) 0x80402080L else 0L).U)
-          d.fragInputSkip.expect(0x15.U)
-          d.fragOutputSkip.expect(0xa.U)
-          decoded = Some((
-            d.vertBufferBase.peek().litValue.toInt,
-            d.vertCount.peek().litValue.toInt,
-            d.vertStride.peek().litValue.toInt,
-            d.vertShaderPc.peek().litValue.toInt,
-            d.vertKernarg.peek().litValue.toInt,
-            d.vertKernargBankStride.peek().litValue.toInt,
-            d.fragShaderPc.peek().litValue.toInt,
-            d.fragKernarg.peek().litValue.toInt,
-            d.fragKernargBankStride.peek().litValue.toInt,
-            (if (d.stateOverride.peek().litToBoolean) 1 else 0) |
-              (if (d.depthTestEnable.peek().litToBoolean) 2 else 0) |
-              (d.depthFunc.peek().litValue.toInt << 4) |
-              (if (d.depthWriteEnable.peek().litToBoolean) 1 << 7 else 0) |
-              (d.cullMode.peek().litValue.toInt << 8) |
-              (if (d.texEnable.peek().litToBoolean) 1 << 10 else 0) |
-              (if (d.texWrapClamp.peek().litToBoolean) 1 << 11 else 0) |
-              (d.texMaxLevel.peek().litValue.toInt << 12) |
-              (if (d.blendEnable.peek().litToBoolean) 1 << 16 else 0)
-          ))
-          dut.io.draw.ready.poke(true.B)
-        } else {
-          dut.io.draw.ready.poke(true.B)
-        }
+      simulate(
+        new CommandBufferStage(
+          GraphicsConfig(),
+          vertCore = true,
+          constantBlend = constantBlend,
+          biasedClamp = biasedClamp,
+          mirroredRepeat = mirroredRepeat
+        )
+      ) { dut =>
+        dut.reset.poke(true.B)
         dut.clock.step()
-        if (dut.io.done.peek().litToBoolean) guard = 9999
-        guard += 1
-      }
+        dut.reset.poke(false.B)
+        dut.io.base.poke(base.U)
+        dut.io.count.poke(1.U)
+        dut.io.mem.req.ready.poke(true.B)
+        dut.io.mem.resp.valid.poke(false.B)
 
-      assert(decoded.isDefined, "vertCore draw did not decode")
-      val (vb, vc, vs, vpc, vk, vkbs, fpc, fk, fkbs, st) = decoded.get
-      assert(vb == vertBufferBase, s"vertBufferBase: expected $vertBufferBase, got $vb")
-      assert(vc == vertCount, s"vertCount: expected $vertCount, got $vc")
-      assert(vs == vertStride, s"vertStride: expected $vertStride, got $vs")
-      assert(vpc == vertShaderPc, s"vertShaderPc: expected $vertShaderPc, got $vpc")
-      assert(vk == vertKernarg, s"vertKernarg: expected $vertKernarg, got $vk")
-      assert(vkbs == vertKernargBankStride, s"vertKernargBankStride: expected $vertKernargBankStride, got $vkbs")
-      assert(fpc == fragShaderPc, s"fragShaderPc: expected $fragShaderPc, got $fpc")
-      assert(fk == fragKernarg, s"fragKernarg: expected $fragKernarg, got $fk")
-      assert(fkbs == fragKernargBankStride, s"fragKernargBankStride: expected $fragKernargBankStride, got $fkbs")
-      assert(st == basicState, s"state: expected $basicState, got $st")
-      assert(dut.io.done.peek().litToBoolean)
-    }
+        var decoded: Option[(Int, Int, Int, Int, Int, Int, Int, Int, Int, Int)] = None
+        var lastReadValid = false
+        var lastReadData = 0L
+        var lastReadAddr = 0
+        var guard = 0
+        dut.io.start.poke(true.B)
+        dut.clock.step()
+        dut.io.start.poke(false.B)
+        while (guard < 400 && decoded.isEmpty) {
+          dut.io.mem.req.ready.poke(true.B)
+          if (lastReadValid) {
+            dut.io.mem.resp.valid.poke(true.B)
+            dut.io.mem.resp.bits.data.poke(lastReadData.U)
+            dut.io.mem.resp.bits.addr.poke(lastReadAddr.U)
+            lastReadValid = false
+          } else {
+            dut.io.mem.resp.valid.poke(false.B)
+            dut.io.mem.resp.bits.data.poke(0.U)
+          }
+          if (dut.io.mem.req.valid.peek().litToBoolean) {
+            val addr = dut.io.mem.req.bits.addr.peek().litValue.toInt
+            lastReadValid = true
+            lastReadData = mem(addr / 4) & 0xffffffffL
+            lastReadAddr = addr
+          }
+          if (dut.io.draw.valid.peek().litToBoolean) {
+            val d = dut.io.draw.bits.asInstanceOf[VertexDrawCommand]
+            d.clipDepth.expect(true.B)
+            d.texNearest.expect(true.B)
+            d.pixelCenter.expect(true.B)
+            d.texWrapVFlip.expect(true.B)
+            d.clampBiasedU.expect(biasedClamp.B)
+            d.clampBiasedV.expect(biasedClamp.B)
+            d.mirrorU.expect(mirroredRepeat.B)
+            d.mirrorV.expect(mirroredRepeat.B)
+            d.viewportEnable.expect(true.B)
+            d.viewportFlipY.expect(true.B)
+            d.viewportX.expect(3.S)
+            d.viewportY.expect((-7).S)
+            d.viewportWidth.expect(69.U)
+            d.viewportHeight.expect(35.U)
+            d.depthRangeEnable.expect(true.B)
+            d.depthNear.expect("he12345".U)
+            d.depthFar.expect("h123456".U)
+            d.blendConstant.expect((if (constantBlend) 0x80402080L else 0L).U)
+            d.fragInputSkip.expect(0x15.U)
+            d.fragOutputSkip.expect(0xa.U)
+            decoded = Some(
+              (
+                d.vertBufferBase.peek().litValue.toInt,
+                d.vertCount.peek().litValue.toInt,
+                d.vertStride.peek().litValue.toInt,
+                d.vertShaderPc.peek().litValue.toInt,
+                d.vertKernarg.peek().litValue.toInt,
+                d.vertKernargBankStride.peek().litValue.toInt,
+                d.fragShaderPc.peek().litValue.toInt,
+                d.fragKernarg.peek().litValue.toInt,
+                d.fragKernargBankStride.peek().litValue.toInt,
+                (if (d.stateOverride.peek().litToBoolean) 1 else 0) |
+                  (if (d.depthTestEnable.peek().litToBoolean) 2 else 0) |
+                  (d.depthFunc.peek().litValue.toInt << 4) |
+                  (if (d.depthWriteEnable.peek().litToBoolean) 1 << 7 else 0) |
+                  (d.cullMode.peek().litValue.toInt << 8) |
+                  (if (d.texEnable.peek().litToBoolean) 1 << 10 else 0) |
+                  (if (d.texWrapClamp.peek().litToBoolean) 1 << 11 else 0) |
+                  (d.texMaxLevel.peek().litValue.toInt << 12) |
+                  (if (d.blendEnable.peek().litToBoolean) 1 << 16 else 0)
+              )
+            )
+            dut.io.draw.ready.poke(true.B)
+          } else {
+            dut.io.draw.ready.poke(true.B)
+          }
+          dut.clock.step()
+          if (dut.io.done.peek().litToBoolean) guard = 9999
+          guard += 1
+        }
+
+        assert(decoded.isDefined, "vertCore draw did not decode")
+        val (vb, vc, vs, vpc, vk, vkbs, fpc, fk, fkbs, st) = decoded.get
+        assert(vb == vertBufferBase, s"vertBufferBase: expected $vertBufferBase, got $vb")
+        assert(vc == vertCount, s"vertCount: expected $vertCount, got $vc")
+        assert(vs == vertStride, s"vertStride: expected $vertStride, got $vs")
+        assert(vpc == vertShaderPc, s"vertShaderPc: expected $vertShaderPc, got $vpc")
+        assert(vk == vertKernarg, s"vertKernarg: expected $vertKernarg, got $vk")
+        assert(vkbs == vertKernargBankStride, s"vertKernargBankStride: expected $vertKernargBankStride, got $vkbs")
+        assert(fpc == fragShaderPc, s"fragShaderPc: expected $fragShaderPc, got $fpc")
+        assert(fk == fragKernarg, s"fragKernarg: expected $fragKernarg, got $fk")
+        assert(fkbs == fragKernargBankStride, s"fragKernargBankStride: expected $fragKernargBankStride, got $fkbs")
+        assert(st == basicState, s"state: expected $basicState, got $st")
+        assert(dut.io.done.peek().litToBoolean)
+      }
     }
   }
 }

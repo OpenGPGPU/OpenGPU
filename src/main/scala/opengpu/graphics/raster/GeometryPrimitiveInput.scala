@@ -3,8 +3,8 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 
-/** Component indices 0..3 address clip position; subsequent indices address
-  * the four components of each varying. The link supplies only active inputs.
+/** Component indices 0..3 address clip position; subsequent indices address the four components of each varying. The
+  * link supplies only active inputs.
   */
 class GeometryPrimitiveInputRequest(p: VertexShaderStageConfig) extends Bundle {
   val primitive = new AssembledPrimitive(p)
@@ -22,9 +22,8 @@ class GeometryPrimitiveInputFault extends Bundle {
   val primitiveId = UInt(32.W)
 }
 
-/** Serializes an assembled point/line/triangle into the linked geometry input
-  * layout. The caller must retain primitive order and drain any offered task
-  * before releasing or aborting the enclosing draw.
+/** Serializes an assembled point/line/triangle into the linked geometry input layout. The caller must retain primitive
+  * order and drain any offered task before releasing or aborting the enclosing draw.
   */
 class GeometryPrimitiveInput(p: VertexShaderStageConfig = VertexShaderStageConfig()) extends Module {
   val io = IO(new Bundle {
@@ -39,14 +38,16 @@ class GeometryPrimitiveInput(p: VertexShaderStageConfig = VertexShaderStageConfi
   private val vertex = RegInit(0.U(2.W))
   private val component = RegInit(0.U(6.W))
   private val source = request.componentSources(component)
-  private val fields = Wire(Vec(4 + 4*p.varyings, UInt(32.W)))
+  private val fields = Wire(Vec(4 + 4 * p.varyings, UInt(32.W)))
   for (i <- 0 until 4) fields(i) := request.primitive.vertices(vertex).position(i)
-  for (i <- 0 until 4*p.varyings) fields(4+i) := request.primitive.vertices(vertex).varyings(i/4)(i%4)
+  for (i <- 0 until 4 * p.varyings) fields(4 + i) := request.primitive.vertices(vertex).varyings(i / 4)(i % 4)
   private val sourceValid = source < (4.U + (request.primitive.varyingSlots << 2)) && source < fields.length.U
-  private val countValid = (io.in.bits.primitive.kind === AssembledPrimitiveKind.point.U && io.in.bits.primitive.vertexCount === 1.U) ||
-    (io.in.bits.primitive.kind === AssembledPrimitiveKind.line.U && io.in.bits.primitive.vertexCount === 2.U) ||
-    (io.in.bits.primitive.kind === AssembledPrimitiveKind.triangle.U && io.in.bits.primitive.vertexCount === 3.U)
-  private val inputValid = countValid && io.in.bits.primitive.varyingSlots <= p.varyings.U && io.in.bits.inputComponents <= 64.U
+  private val countValid =
+    (io.in.bits.primitive.kind === AssembledPrimitiveKind.point.U && io.in.bits.primitive.vertexCount === 1.U) ||
+      (io.in.bits.primitive.kind === AssembledPrimitiveKind.line.U && io.in.bits.primitive.vertexCount === 2.U) ||
+      (io.in.bits.primitive.kind === AssembledPrimitiveKind.triangle.U && io.in.bits.primitive.vertexCount === 3.U)
+  private val inputValid =
+    countValid && io.in.bits.primitive.varyingSlots <= p.varyings.U && io.in.bits.inputComponents <= 64.U
   io.in.ready := state === idle
   io.task.valid := state === offer; io.task.bits := task
   io.fault.valid := state === fault; io.fault.bits.taskId := request.taskId
@@ -56,7 +57,8 @@ class GeometryPrimitiveInput(p: VertexShaderStageConfig = VertexShaderStageConfi
     task.taskId := io.in.bits.taskId; task.primitiveId := io.in.bits.primitive.primitiveId
     task.inputVertices := io.in.bits.primitive.vertexCount; task.inputComponents := io.in.bits.inputComponents
     task.invocations := io.in.bits.invocations; task.topology := io.in.bits.outputTopology
-    task.maxVertices := io.in.bits.maxVertices; task.outputComponents := io.in.bits.outputComponents; task.builtinOutputMask := io.in.bits.builtinOutputMask
+    task.maxVertices := io.in.bits.maxVertices; task.outputComponents := io.in.bits.outputComponents;
+    task.builtinOutputMask := io.in.bits.builtinOutputMask
     vertex := 0.U; component := 0.U
     state := Mux(!inputValid, fault, Mux(io.in.bits.inputComponents === 0.U, offer, copy))
   }

@@ -30,12 +30,21 @@ class ImageAtomicDiscoveryAxiSpec extends AnyFlatSpec {
     val gpu = GpuConfig(lanes = 2, warps = 1)
     val profile = ComputeResourceProfile(gpu, 1, 8)
     intercept[IllegalArgumentException] {
-      ComputeResourceCapabilities.words(profile,imageAvailable=true,imageFloatExchangeAvailable=true)
+      ComputeResourceCapabilities.words(profile, imageAvailable = true, imageFloatExchangeAvailable = true)
     }
-    for ((enabled,floating) <- Seq(false->false,true->false,true->true)) {
-      simulate(new GpuHostAxi(gpuConfig = gpu, version = 2, unifiedCommandMmio = true,
-        protectVmState = true, computeResources = Some(profile), imageAvailable = true,
-        imageAtomicAvailable = enabled,imageFloatExchangeAvailable=floating)) { dut =>
+    for ((enabled, floating) <- Seq(false -> false, true -> false, true -> true)) {
+      simulate(
+        new GpuHostAxi(
+          gpuConfig = gpu,
+          version = 2,
+          unifiedCommandMmio = true,
+          protectVmState = true,
+          computeResources = Some(profile),
+          imageAvailable = true,
+          imageAtomicAvailable = enabled,
+          imageFloatExchangeAvailable = floating
+        )
+      ) { dut =>
         dut.io.gpuCommand.get.ready.poke(false.B)
         dut.io.gpuCompletion.get.valid.poke(false.B)
         dut.io.gpuCompletion.get.bits.poke(0.U.asTypeOf(dut.io.gpuCompletion.get.bits))

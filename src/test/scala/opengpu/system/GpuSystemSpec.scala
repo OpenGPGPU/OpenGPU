@@ -35,74 +35,70 @@ class GpuSystemSpec extends AnyFlatSpec {
     dut.io.command.bits.poke(0.U.asTypeOf(dut.io.command.bits))
     dut.io.commandCompletion.ready.poke(true.B)
     dut.io.copyDescriptor.valid.poke(false.B)
-    dut.io.copyDescriptor.bits.poke(
-      0.U.asTypeOf(dut.io.copyDescriptor.bits))
+    dut.io.copyDescriptor.bits.poke(0.U.asTypeOf(dut.io.copyDescriptor.bits))
     dut.io.copyCompletion.ready.poke(true.B)
     dut.io.fillDescriptor.valid.poke(false.B)
-    dut.io.fillDescriptor.bits.poke(
-      0.U.asTypeOf(dut.io.fillDescriptor.bits))
+    dut.io.fillDescriptor.bits.poke(0.U.asTypeOf(dut.io.fillDescriptor.bits))
     dut.io.fillCompletion.ready.poke(true.B)
     dut.io.stridedCopyDescriptor.valid.poke(false.B)
-    dut.io.stridedCopyDescriptor.bits.poke(
-      0.U.asTypeOf(dut.io.stridedCopyDescriptor.bits))
+    dut.io.stridedCopyDescriptor.bits.poke(0.U.asTypeOf(dut.io.stridedCopyDescriptor.bits))
     dut.io.stridedCopyCompletion.ready.poke(true.B)
     dut.io.gpuCommand.valid.poke(false.B)
     dut.io.gpuCommand.bits.poke(0.U.asTypeOf(dut.io.gpuCommand.bits))
     dut.io.gpuCompletion.ready.poke(true.B)
     dut.io.graphicsHostRequest.valid.poke(false.B)
-    dut.io.graphicsHostRequest.bits.poke(
-      0.U.asTypeOf(dut.io.graphicsHostRequest.bits))
+    dut.io.graphicsHostRequest.bits.poke(0.U.asTypeOf(dut.io.graphicsHostRequest.bits))
     dut.io.graphicsHostResponse.ready.poke(true.B)
     dut.io.graphicsShaderRequest.valid.poke(false.B)
-    dut.io.graphicsShaderRequest.bits.poke(
-      0.U.asTypeOf(dut.io.graphicsShaderRequest.bits))
+    dut.io.graphicsShaderRequest.bits.poke(0.U.asTypeOf(dut.io.graphicsShaderRequest.bits))
     dut.io.graphicsShaderResponse.ready.poke(true.B)
     dut.io.graphicsShaderL1Invalidate.ready.poke(true.B)
     dut.io.graphicsShaderL1InvalidateDone.valid.poke(false.B)
-    dut.io.graphicsShaderL1InvalidateDone.bits.poke(
-      0.U.asTypeOf(dut.io.graphicsShaderL1InvalidateDone.bits))
+    dut.io.graphicsShaderL1InvalidateDone.bits.poke(0.U.asTypeOf(dut.io.graphicsShaderL1InvalidateDone.bits))
     dut.io.graphicsShaderAtomicRequest.valid.poke(false.B)
-    dut.io.graphicsShaderAtomicRequest.bits.poke(
-      0.U.asTypeOf(dut.io.graphicsShaderAtomicRequest.bits))
+    dut.io.graphicsShaderAtomicRequest.bits.poke(0.U.asTypeOf(dut.io.graphicsShaderAtomicRequest.bits))
     dut.io.graphicsShaderAtomicResponse.ready.poke(true.B)
     dut.io.memoryRequest.ready.poke(true.B)
     dut.io.memoryResponse.valid.poke(false.B)
-    dut.io.memoryResponse.bits.poke(
-      0.U.asTypeOf(dut.io.memoryResponse.bits))
+    dut.io.memoryResponse.bits.poke(0.U.asTypeOf(dut.io.memoryResponse.bits))
     dut.io.clearPerformanceCounters.poke(false.B)
     dut.io.invalidateInstructionCache.poke(false.B)
     dut.io.instructionSatp.poke(0.U)
     dut.io.instructionTlbFlush.valid.poke(false.B)
-    dut.io.instructionTlbFlush.bits.poke(
-      0.U.asTypeOf(dut.io.instructionTlbFlush.bits))
+    dut.io.instructionTlbFlush.bits.poke(0.U.asTypeOf(dut.io.instructionTlbFlush.bits))
     dut.io.vectorSatp.poke(0.U)
     dut.io.vectorTlbFlush.valid.poke(false.B)
-    dut.io.vectorTlbFlush.bits.poke(
-      0.U.asTypeOf(dut.io.vectorTlbFlush.bits))
+    dut.io.vectorTlbFlush.bits.poke(0.U.asTypeOf(dut.io.vectorTlbFlush.bits))
     (0 until numComputeUnits).foreach { cu =>
       dut.io.fpu(cu).ready.poke(false.B)
       dut.io.vector(cu).ready.poke(false.B)
       dut.io.scalarMemory(cu).ready.poke(false.B)
       dut.io.trap(cu).ready.poke(false.B)
       dut.io.simtBranch(cu).valid.poke(false.B)
-      dut.io.simtBranch(cu).bits.poke(
-        0.U.asTypeOf(dut.io.simtBranch(cu).bits))
+      dut.io.simtBranch(cu).bits.poke(0.U.asTypeOf(dut.io.simtBranch(cu).bits))
     }
   }
 
-  private def sharedCuExecution(count: Int, fault: Boolean,
-                                lanes: Int = 4, warps: Int = 2): Unit = {
+  private def sharedCuExecution(count: Int, fault: Boolean, lanes: Int = 4, warps: Int = 2): Unit = {
     val config = GpuConfig(lanes = lanes, warps = warps, l2Sets = 8, l2Ways = 2)
-    simulate(new GpuSystem(config, numComputeUnits = count,
-      enableGraphicsKernels = true, instructionCacheSets = 4,
-      instructionCacheWays = 1, vectorCacheSets = 4, vectorCacheWays = 1)) { dut =>
+    simulate(
+      new GpuSystem(
+        config,
+        numComputeUnits = count,
+        enableGraphicsKernels = true,
+        instructionCacheSets = 4,
+        instructionCacheWays = 1,
+        vectorCacheSets = 4,
+        vectorCacheWays = 1
+      )
+    ) { dut =>
       initialize(dut, count)
       val graphics = dut.io.graphicsKernels.get
       val memory = scala.collection.mutable.Map.empty[BigInt, BigInt]
       def putWord(address: BigInt, word: BigInt): Unit =
         for (i <- 0 until 4) memory(address + i) = (word >> (8 * i)) & 255
-      def word(address: BigInt): BigInt = (0 until 4).foldLeft(BigInt(0)) {
-        (v, i) => v | (memory.getOrElse(address + i, BigInt(0)) << (8 * i))
+      def word(address: BigInt): BigInt = (0 until 4).foldLeft(BigInt(0)) { (v, i) =>
+        v | (memory.getOrElse(address + i, BigInt(0)) << (8 * i))
       }
       def program(base: Int, words: Seq[BigInt]): Unit =
         words.zipWithIndex.foreach { case (v, i) => putWord(base + 4 * i, v) }
@@ -110,8 +106,12 @@ class GpuSystemSpec extends AnyFlatSpec {
       val tex = (BigInt(1) << 25) | (BigInt(5) << 20) |
         (BigInt(5) << 15) | (BigInt(6) << 7) | 0x0b
       program(0x1000, Seq(BigInt("12300293", 16), BigInt("0050a023", 16), cease))
-      program(0x2000, if (fault) Seq(BigInt("ffffffff", 16)) else
-        Seq(BigInt("00000293", 16), tex, BigInt("0060a023", 16), cease))
+      program(
+        0x2000,
+        if (fault) Seq(BigInt("ffffffff", 16))
+        else
+          Seq(BigInt("00000293", 16), tex, BigInt("0060a023", 16), cease)
+      )
       for (d <- 0 until 3) {
         graphics.launch.bits.launch.gridSize(d).poke(1.U)
         graphics.launch.bits.launch.localSize(d).poke(1.U)
@@ -151,21 +151,27 @@ class GpuSystemSpec extends AnyFlatSpec {
           dut.io.memoryResponse.bits.fault.poke(false.B)
         }
         val responseAccepted = replies.nonEmpty && dut.io.memoryResponse.ready.peek().litToBoolean
-        val request = if (dut.io.memoryRequest.valid.peek().litToBoolean &&
-            dut.io.memoryRequest.ready.peek().litToBoolean) {
-          val address = dut.io.memoryRequest.bits.address.peek().litValue
-          val id = dut.io.memoryRequest.bits.transactionId.peek().litValue
-          val writing = dut.io.memoryRequest.bits.isWrite.peek().litToBoolean
-          if (writing) {
-            val mask = dut.io.memoryRequest.bits.byteMask.peek().litValue
-            val data = dut.io.memoryRequest.bits.writeData.peek().litValue
-            for (i <- 0 until 64 if mask.testBit(i)) memory(address + i) = (data >> (8 * i)) & 255
-          }
-          val data = if (writing) BigInt(0) else (0 until 64).foldLeft(BigInt(0)) {
-            (v, i) => v | (memory.getOrElse(address + i, BigInt(0)) << (8 * i))
-          }
-          Some(id -> data)
-        } else None
+        val request =
+          if (
+            dut.io.memoryRequest.valid.peek().litToBoolean &&
+            dut.io.memoryRequest.ready.peek().litToBoolean
+          ) {
+            val address = dut.io.memoryRequest.bits.address.peek().litValue
+            val id = dut.io.memoryRequest.bits.transactionId.peek().litValue
+            val writing = dut.io.memoryRequest.bits.isWrite.peek().litToBoolean
+            if (writing) {
+              val mask = dut.io.memoryRequest.bits.byteMask.peek().litValue
+              val data = dut.io.memoryRequest.bits.writeData.peek().litValue
+              for (i <- 0 until 64 if mask.testBit(i)) memory(address + i) = (data >> (8 * i)) & 255
+            }
+            val data =
+              if (writing) BigInt(0)
+              else
+                (0 until 64).foldLeft(BigInt(0)) { (v, i) =>
+                  v | (memory.getOrElse(address + i, BigInt(0)) << (8 * i))
+                }
+            Some(id -> data)
+          } else None
 
         for (cu <- 0 until count) {
           val port = graphics.texture(cu)
@@ -188,10 +194,14 @@ class GpuSystemSpec extends AnyFlatSpec {
             port.scalar.bits.rs1Data.expect(0.U)
             port.scalar.bits.rs2Data.expect(0.U)
             samplerCalls += 1
-            Some(TexReply(port.scalar.bits.decode.warpId.peek().litValue,
-              port.scalar.bits.decode.pc.peek().litValue,
-              port.scalar.bits.decode.activeMask.peek().litValue,
-              (port.scalar.bits.decode.instruction.peek().litValue >> 7) & 31))
+            Some(
+              TexReply(
+                port.scalar.bits.decode.warpId.peek().litValue,
+                port.scalar.bits.decode.pc.peek().litValue,
+                port.scalar.bits.decode.activeMask.peek().litValue,
+                (port.scalar.bits.decode.instruction.peek().litValue >> 7) & 31
+              )
+            )
           } else None
           if (finished) texReplies(cu) = None
           newReply.foreach(r => texReplies(cu) = Some(r))
@@ -239,8 +249,10 @@ class GpuSystemSpec extends AnyFlatSpec {
         graphicsSubmitted = false; graphicsDone = false
         graphicsId = 8; graphicsSuccess = true
         while (!graphicsDone && cycles < 3500) step()
-        assert(graphicsDone && word(0xa000) == 0x123,
-          "shared CU did not execute a fresh graphics task after fault retirement")
+        assert(
+          graphicsDone && word(0xa000) == 0x123,
+          "shared CU did not execute a fresh graphics task after fault retirement"
+        )
       } else {
         assert(!sawFault && samplerCalls == 1)
         assert(word(0x8000) == color, "texture writeback was not stored by the graphics shader")
@@ -272,9 +284,18 @@ class GpuSystemSpec extends AnyFlatSpec {
 
   it should "drain shared graphics cache acknowledgements before completing reset" in {
     val config = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-    simulate(new GpuSystem(config, numComputeUnits = 2, enableGraphicsKernels = true,
-      enableUnifiedCommands = true, instructionCacheSets = 4,
-      instructionCacheWays = 1, vectorCacheSets = 4, vectorCacheWays = 1)) { dut =>
+    simulate(
+      new GpuSystem(
+        config,
+        numComputeUnits = 2,
+        enableGraphicsKernels = true,
+        enableUnifiedCommands = true,
+        instructionCacheSets = 4,
+        instructionCacheWays = 1,
+        vectorCacheSets = 4,
+        vectorCacheWays = 1
+      )
+    ) { dut =>
       initialize(dut, 2)
       val graphics = dut.io.graphicsKernels.get
       graphics.invalidateDone.ready.poke(false.B)
@@ -400,8 +421,10 @@ class GpuSystemSpec extends AnyFlatSpec {
       dut.io.memoryResponse.valid.poke(false.B)
 
       cycles = 0
-      while (!dut.io.graphicsHostResponse.valid.peek().litToBoolean &&
-          cycles < 30) {
+      while (
+        !dut.io.graphicsHostResponse.valid.peek().litToBoolean &&
+        cycles < 30
+      ) {
         dut.clock.step(); cycles += 1
       }
       dut.io.graphicsHostResponse.valid.expect(true.B)
@@ -430,8 +453,7 @@ class GpuSystemSpec extends AnyFlatSpec {
       val address = 0x5800
       val line = BigInt("cafebabedeadbeef", 16)
 
-      dut.io.graphicsShaderRequest.bits.poke(
-        0.U.asTypeOf(dut.io.graphicsShaderRequest.bits))
+      dut.io.graphicsShaderRequest.bits.poke(0.U.asTypeOf(dut.io.graphicsShaderRequest.bits))
       dut.io.graphicsShaderRequest.bits.address.poke(address.U)
       dut.io.graphicsShaderRequest.bits.sizeLog2.poke(6.U)
       dut.io.graphicsShaderRequest.bits.cacheClient.poke(true.B)
@@ -456,8 +478,10 @@ class GpuSystemSpec extends AnyFlatSpec {
       dut.io.memoryResponse.valid.poke(false.B)
 
       cycles = 0
-      while (!dut.io.graphicsShaderResponse.valid.peek().litToBoolean &&
-          cycles < 40) {
+      while (
+        !dut.io.graphicsShaderResponse.valid.peek().litToBoolean &&
+        cycles < 40
+      ) {
         dut.clock.step(); cycles += 1
       }
       dut.io.graphicsShaderResponse.valid.expect(true.B)
@@ -467,8 +491,7 @@ class GpuSystemSpec extends AnyFlatSpec {
 
       // A foreign graphics word/line client writing the cached line must
       // invalidate the graphics shader's private copy before reaching memory.
-      dut.io.graphicsHostRequest.bits.poke(
-        0.U.asTypeOf(dut.io.graphicsHostRequest.bits))
+      dut.io.graphicsHostRequest.bits.poke(0.U.asTypeOf(dut.io.graphicsHostRequest.bits))
       dut.io.graphicsHostRequest.bits.address.poke(address.U)
       dut.io.graphicsHostRequest.bits.writeData.poke("h11223344".U)
       dut.io.graphicsHostRequest.bits.byteMask.poke(0xf.U)
@@ -482,8 +505,10 @@ class GpuSystemSpec extends AnyFlatSpec {
       dut.io.graphicsHostRequest.valid.poke(false.B)
 
       cycles = 0
-      while (!dut.io.graphicsShaderL1Invalidate.valid.peek().litToBoolean &&
-          cycles < 40) {
+      while (
+        !dut.io.graphicsShaderL1Invalidate.valid.peek().litToBoolean &&
+        cycles < 40
+      ) {
         dut.io.memoryRequest.valid.expect(false.B)
         dut.clock.step(); cycles += 1
       }
@@ -551,8 +576,10 @@ class GpuSystemSpec extends AnyFlatSpec {
       dut.io.memoryResponse.valid.poke(false.B)
 
       cycles = 0
-      while (!dut.io.graphicsShaderAtomicResponse.valid.peek().litToBoolean &&
-          cycles < 40) {
+      while (
+        !dut.io.graphicsShaderAtomicResponse.valid.peek().litToBoolean &&
+        cycles < 40
+      ) {
         dut.clock.step(); cycles += 1
       }
       dut.io.graphicsShaderAtomicResponse.valid.expect(true.B)
@@ -568,7 +595,8 @@ class GpuSystemSpec extends AnyFlatSpec {
       initialize(dut, 2)
       val rows = Seq(
         (BigInt(0x1000), BigInt(0x4000), BigInt("1111222233334444", 16)),
-        (BigInt(0x1100), BigInt(0x4180), BigInt("aaaabbbbccccdddd", 16)))
+        (BigInt(0x1100), BigInt(0x4180), BigInt("aaaabbbbccccdddd", 16))
+      )
       dut.io.stridedCopyDescriptor.bits.descriptorId.poke(11.U)
       dut.io.stridedCopyDescriptor.bits.sourceAddress.poke(0x1000.U)
       dut.io.stridedCopyDescriptor.bits.destinationAddress.poke(0x4000.U)
@@ -615,8 +643,10 @@ class GpuSystemSpec extends AnyFlatSpec {
       }
 
       var cycles = 0
-      while (!dut.io.stridedCopyCompletion.valid.peek().litToBoolean &&
-          cycles < 30) {
+      while (
+        !dut.io.stridedCopyCompletion.valid.peek().litToBoolean &&
+        cycles < 30
+      ) {
         dut.clock.step(); cycles += 1
       }
       dut.io.stridedCopyCompletion.valid.expect(true.B)
@@ -686,7 +716,8 @@ class GpuSystemSpec extends AnyFlatSpec {
       initialize(dut, 2)
       val sourceLines = Map[BigInt, BigInt](
         BigInt(0x1000) -> BigInt("1111222233334444", 16),
-        BigInt(0x1040) -> BigInt("aaaabbbbccccdddd", 16))
+        BigInt(0x1040) -> BigInt("aaaabbbbccccdddd", 16)
+      )
       dut.io.copyDescriptor.bits.descriptorId.poke(9.U)
       dut.io.copyDescriptor.bits.sourceAddress.poke(0x1000.U)
       dut.io.copyDescriptor.bits.destinationAddress.poke(0x2000.U)
@@ -701,7 +732,8 @@ class GpuSystemSpec extends AnyFlatSpec {
           dut.io.memoryRequest.bits.isWrite.expect(false.B)
           reads :+= (
             dut.io.memoryRequest.bits.address.peek().litValue,
-            dut.io.memoryRequest.bits.transactionId.peek().litValue)
+            dut.io.memoryRequest.bits.transactionId.peek().litValue
+          )
         }
         dut.clock.step(); cycles += 1
       }
@@ -729,7 +761,8 @@ class GpuSystemSpec extends AnyFlatSpec {
           writes :+= (
             dut.io.memoryRequest.bits.address.peek().litValue,
             dut.io.memoryRequest.bits.writeData.peek().litValue,
-            dut.io.memoryRequest.bits.transactionId.peek().litValue)
+            dut.io.memoryRequest.bits.transactionId.peek().litValue
+          )
         }
         dut.clock.step()
         cycles += 1
@@ -762,8 +795,7 @@ class GpuSystemSpec extends AnyFlatSpec {
 
   it should "execute a fill through the unified command interface" in {
     val config = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-    simulate(new GpuSystem(config, numComputeUnits = 2,
-      enableUnifiedCommands = true)) { dut =>
+    simulate(new GpuSystem(config, numComputeUnits = 2, enableUnifiedCommands = true)) { dut =>
       initialize(dut, 2)
       val pattern = BigInt("13579bdf", 16)
       val line = BigInt(List.fill(16)("13579bdf").mkString, 16)
@@ -817,8 +849,7 @@ class GpuSystemSpec extends AnyFlatSpec {
 
   it should "wait for graphics retirement even when the shared L2 is empty" in {
     val config = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-    simulate(new GpuSystem(config, numComputeUnits = 1,
-      enableUnifiedCommands = true)) { dut =>
+    simulate(new GpuSystem(config, numComputeUnits = 1, enableUnifiedCommands = true)) { dut =>
       initialize(dut, 1)
       dut.io.graphicsDrained.poke(false.B)
       dut.io.commandResetActive.poke(true.B)
@@ -841,8 +872,7 @@ class GpuSystemSpec extends AnyFlatSpec {
 
   it should "drain in-flight unified work and reset the command path on request" in {
     val config = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-    simulate(new GpuSystem(config, numComputeUnits = 2,
-      enableUnifiedCommands = true)) { dut =>
+    simulate(new GpuSystem(config, numComputeUnits = 2, enableUnifiedCommands = true)) { dut =>
       initialize(dut, 2)
       dut.io.graphicsDrained.poke(true.B)
       dut.io.commandResetActive.poke(false.B)
@@ -933,15 +963,14 @@ class GpuSystemSpec extends AnyFlatSpec {
 
   it should "resolve a 4x pixel through the shared L2 and unified command path" in {
     val config = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-    simulate(new GpuSystem(config, numComputeUnits = 2,
-      enableUnifiedCommands = true)) { dut =>
+    simulate(new GpuSystem(config, numComputeUnits = 2, enableUnifiedCommands = true)) { dut =>
       initialize(dut, 2)
       val srcBase = 0x1000L
       val dstBase = 0x2000L
-      val samples = Seq(BigInt(0), BigInt("ffffffff", 16),
-        BigInt("ff00ff00", 16), BigInt("00ff00ff", 16))
+      val samples = Seq(BigInt(0), BigInt("ffffffff", 16), BigInt("ff00ff00", 16), BigInt("00ff00ff", 16))
       val srcLine = samples.zipWithIndex
-        .map { case (w, i) => w << (32 * i) }.reduce(_ | _)
+        .map { case (w, i) => w << (32 * i) }
+        .reduce(_ | _)
       val lower = scala.collection.mutable.LongMap[BigInt]()
       lower(srcBase) = srcLine
       var dstWritten: Option[BigInt] = None
@@ -978,9 +1007,11 @@ class GpuSystemSpec extends AnyFlatSpec {
           dut.io.memoryResponse.bits.fault.poke(false.B)
           if (dut.io.memoryResponse.ready.peek().litToBoolean) pending = None
         }
-        if (dut.io.memoryRequest.valid.peek().litToBoolean &&
-            dut.io.memoryRequest.ready.peek().litToBoolean &&
-            pending.isEmpty) {
+        if (
+          dut.io.memoryRequest.valid.peek().litToBoolean &&
+          dut.io.memoryRequest.ready.peek().litToBoolean &&
+          pending.isEmpty
+        ) {
           val addr = dut.io.memoryRequest.bits.address.peek().litValue.toLong
           val id = dut.io.memoryRequest.bits.transactionId.peek().litValue
           val write = dut.io.memoryRequest.bits.isWrite.peek().litToBoolean
@@ -998,29 +1029,27 @@ class GpuSystemSpec extends AnyFlatSpec {
         if (dut.io.gpuCompletion.valid.peek().litToBoolean) {
           completionId = dut.io.gpuCompletion.bits.commandId.peek().litValue
           completionOpcode = dut.io.gpuCompletion.bits.opcode.peek().litValue
-          completionSuccess =
-            dut.io.gpuCompletion.bits.success.peek().litToBoolean
-          completionBytes =
-            dut.io.gpuCompletion.bits.bytesProcessed.peek().litValue
+          completionSuccess = dut.io.gpuCompletion.bits.success.peek().litToBoolean
+          completionBytes = dut.io.gpuCompletion.bits.bytesProcessed.peek().litValue
           complete = true
         }
         dut.clock.step(); guard += 1
       }
       assert(complete, "resolve did not complete through the unified path")
       assert(completionId == 7, s"completion id was $completionId")
-      assert(completionOpcode == GpuCommandOpcode.resolve.litValue,
-        s"completion opcode was $completionOpcode")
+      assert(completionOpcode == GpuCommandOpcode.resolve.litValue, s"completion opcode was $completionOpcode")
       assert(completionSuccess, "resolve completion must report success")
       assert(completionBytes == 4, s"resolved bytes was $completionBytes")
-      assert(dstWritten.contains(BigInt(0x80808080L)),
-        s"resolved pixel must be 0x80808080, got ${dstWritten.map(_.toString(16))}")
+      assert(
+        dstWritten.contains(BigInt(0x80808080L)),
+        s"resolved pixel must be 0x80808080, got ${dstWritten.map(_.toString(16))}"
+      )
     }
   }
 
   it should "resolve a multi-row 4x region through the shared L2" in {
     val config = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-    simulate(new GpuSystem(config, numComputeUnits = 2,
-      enableUnifiedCommands = true)) { dut =>
+    simulate(new GpuSystem(config, numComputeUnits = 2, enableUnifiedCommands = true)) { dut =>
       initialize(dut, 2)
       val srcBase = 0x1000L
       val dstBase = 0x2000L
@@ -1028,8 +1057,7 @@ class GpuSystemSpec extends AnyFlatSpec {
       val dstStride = 64L
       val width = 4
       val height = 2
-      val samples = Seq(BigInt(0), BigInt("ffffffff", 16),
-        BigInt("ff00ff00", 16), BigInt("00ff00ff", 16))
+      val samples = Seq(BigInt(0), BigInt("ffffffff", 16), BigInt("ff00ff00", 16), BigInt("00ff00ff", 16))
       val words = scala.collection.mutable.LongMap[BigInt]()
       for (y <- 0 until height; x <- 0 until width; s <- 0 until 4)
         words(srcBase + y * srcStride + (x * 4 + s) * 4L) = samples(s)
@@ -1078,9 +1106,11 @@ class GpuSystemSpec extends AnyFlatSpec {
           dut.io.memoryResponse.bits.fault.poke(false.B)
           if (dut.io.memoryResponse.ready.peek().litToBoolean) pending = None
         }
-        if (dut.io.memoryRequest.valid.peek().litToBoolean &&
-            dut.io.memoryRequest.ready.peek().litToBoolean &&
-            pending.isEmpty) {
+        if (
+          dut.io.memoryRequest.valid.peek().litToBoolean &&
+          dut.io.memoryRequest.ready.peek().litToBoolean &&
+          pending.isEmpty
+        ) {
           val addr = dut.io.memoryRequest.bits.address.peek().litValue.toLong
           val id = dut.io.memoryRequest.bits.transactionId.peek().litValue
           val write = dut.io.memoryRequest.bits.isWrite.peek().litToBoolean
@@ -1096,8 +1126,7 @@ class GpuSystemSpec extends AnyFlatSpec {
       assert(complete, "multi-row resolve did not complete")
       for (y <- 0 until height; x <- 0 until width) {
         val got = words.getOrElse(dstBase + y * dstStride + x * 4L, BigInt(0))
-        assert(got == BigInt(0x80808080L),
-          s"dst($x,$y)=0x${got.toString(16)} expected 0x80808080")
+        assert(got == BigInt(0x80808080L), s"dst($x,$y)=0x${got.toString(16)} expected 0x80808080")
       }
     }
   }

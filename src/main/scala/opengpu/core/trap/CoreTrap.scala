@@ -47,10 +47,23 @@ class CoreTrapArbiter(config: GpuConfig = GpuConfig()) extends Module {
   scalarEvent.warpId := io.scalar.bits.decode.warpId
   scalarEvent.pc := io.scalar.bits.decode.pc
   scalarEvent.activeMask := io.scalar.bits.decode.activeMask
-  scalarEvent.cause := Mux(io.scalar.bits.decode.executionFault===ShaderExecutionFault.instructionLimit.U,TrapCause.shaderInstructionLimit.U,
-    Mux(io.scalar.bits.decode.executionFault===ShaderExecutionFault.interrupted.U,TrapCause.shaderInterrupted.U,
-      Mux(io.scalar.bits.decode.instructionPageFault,TrapCause.instructionPageFault.U,
-        Mux(io.scalar.bits.decode.instructionAccessFault,TrapCause.instructionAccessFault.U,TrapCause.illegalInstruction.U))))
+  scalarEvent.cause := Mux(
+    io.scalar.bits.decode.executionFault === ShaderExecutionFault.instructionLimit.U,
+    TrapCause.shaderInstructionLimit.U,
+    Mux(
+      io.scalar.bits.decode.executionFault === ShaderExecutionFault.interrupted.U,
+      TrapCause.shaderInterrupted.U,
+      Mux(
+        io.scalar.bits.decode.instructionPageFault,
+        TrapCause.instructionPageFault.U,
+        Mux(
+          io.scalar.bits.decode.instructionAccessFault,
+          TrapCause.instructionAccessFault.U,
+          TrapCause.illegalInstruction.U
+        )
+      )
+    )
+  )
   scalarEvent.tval := Mux(
     io.scalar.bits.decode.instructionAccessFault,
     io.scalar.bits.decode.pc,
@@ -101,17 +114,11 @@ class CoreTrapArbiter(config: GpuConfig = GpuConfig()) extends Module {
   fpuMemoryEvent.activeMask := io.fpuMemory.bits.activeMask
   fpuMemoryEvent.cause := Mux(
     io.fpuMemory.bits.misaligned,
-    Mux(io.fpuMemory.bits.isStore,
-      TrapCause.storeAddressMisaligned.U,
-      TrapCause.loadAddressMisaligned.U),
+    Mux(io.fpuMemory.bits.isStore, TrapCause.storeAddressMisaligned.U, TrapCause.loadAddressMisaligned.U),
     Mux(
       io.fpuMemory.bits.pageFault,
-      Mux(io.fpuMemory.bits.isStore,
-        TrapCause.storePageFault.U,
-        TrapCause.loadPageFault.U),
-      Mux(io.fpuMemory.bits.isStore,
-        TrapCause.storeAccessFault.U,
-        TrapCause.loadAccessFault.U)
+      Mux(io.fpuMemory.bits.isStore, TrapCause.storePageFault.U, TrapCause.loadPageFault.U),
+      Mux(io.fpuMemory.bits.isStore, TrapCause.storeAccessFault.U, TrapCause.loadAccessFault.U)
     )
   )
   fpuMemoryEvent.tval := io.fpuMemory.bits.address

@@ -33,9 +33,11 @@ class RegisteredQueue2EquivalenceHarness(width: Int) extends Module {
 object EmitRegisteredQueue2Proof {
   def main(args: Array[String]): Unit = {
     require(args.length == 1)
-    ChiselStage.emitSystemVerilogFile(new RegisteredQueue2EquivalenceHarness(8),
+    ChiselStage.emitSystemVerilogFile(
+      new RegisteredQueue2EquivalenceHarness(8),
       Array("--target-dir", args(0)),
-      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
+      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays")
+    )
   }
 }
 
@@ -50,7 +52,8 @@ class RegisteredQueue2Spec extends AnyFlatSpec {
         val expected = collection.mutable.Queue.empty[BigInt]
         var accepted = 0; var retired = 0
         for (cycle <- 0 until 5000) {
-          val (offer, consume) = if (cycle < 8) (true, false)
+          val (offer, consume) =
+            if (cycle < 8) (true, false)
             else if (cycle < 1040) (true, true)
             else if (cycle < 1050) (false, true)
             else (random.nextBoolean(), random.nextInt(7) < 3)

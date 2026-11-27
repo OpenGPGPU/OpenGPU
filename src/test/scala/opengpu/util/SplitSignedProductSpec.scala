@@ -28,9 +28,11 @@ class SplitSignedProductJoinProofHarness extends Module {
 object EmitSplitSignedProductJoinProof {
   def main(args: Array[String]): Unit = {
     require(args.length == 1)
-    ChiselStage.emitSystemVerilogFile(new SplitSignedProductJoinProofHarness,
+    ChiselStage.emitSystemVerilogFile(
+      new SplitSignedProductJoinProofHarness,
       Array("--target-dir", args(0)),
-      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
+      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays")
+    )
   }
 }
 
@@ -40,14 +42,14 @@ class SplitSignedProductSpec extends AnyFlatSpec {
     it should s"preserve full products across signed half boundaries at width$width" in {
       simulate(new SplitSignedProductHarness(width)) { dut =>
         val random = new scala.util.Random(0x5f17 + width)
-        def halves(bits: Int): Seq[BigInt] = Seq[BigInt](0, 1,
-          (BigInt(1) << (bits - 1)) - 1, BigInt(1) << (bits - 1),
-          (BigInt(1) << bits) - 1).distinct
+        def halves(bits: Int): Seq[BigInt] =
+          Seq[BigInt](0, 1, (BigInt(1) << (bits - 1)) - 1, BigInt(1) << (bits - 1), (BigInt(1) << bits) - 1).distinct
         def signed(raw: BigInt): BigInt =
           if (raw.testBit(width - 1)) raw - (BigInt(1) << width) else raw
         val half = width / 2
-        val words = for (hi <- halves(width - half); lo <- halves(half))
-          yield signed((hi << half) | lo)
+        val words =
+          for (hi <- halves(width - half); lo <- halves(half))
+            yield signed((hi << half) | lo)
         val cases = (for (a <- words; b <- words) yield (a, b)) ++
           Seq.fill(1024)((signed(BigInt(width, random)), signed(BigInt(width, random))))
         for ((a, b) <- cases) {

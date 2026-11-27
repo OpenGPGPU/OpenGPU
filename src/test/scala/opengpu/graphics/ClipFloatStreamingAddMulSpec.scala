@@ -7,15 +7,15 @@ import scala.collection.mutable
 import scala.util.Random
 
 class ClipFloatStreamingAddMulSpec extends AnyFlatSpec {
-  private case class Value(negative: Boolean = false, exponent: Int = 0,
-      significand: BigInt = 0, special: Int = 0)
+  private case class Value(negative: Boolean = false, exponent: Int = 0, significand: BigInt = 0, special: Int = 0)
   private case class Request(a: Value, b: Value, operation: Int = ClipFloatOperation.add)
   private case class Expected(value: Value, flags: Int = 0, error: Int = 0)
   private val one = Value(significand = 0x800000)
   private val latency = 11
 
   private def legal(v: Value): Boolean = v.special match {
-    case 0 => v.exponent >= -512 && v.exponent <= 511 &&
+    case 0 =>
+      v.exponent >= -512 && v.exponent <= 511 &&
       (if (v.significand == 0) v.exponent == 0 else v.significand.testBit(23))
     case 1 => v.exponent == 0 && v.significand == 0
     case 2 => v.exponent == 0 && v.significand > 0 && v.significand < 0x800000
@@ -23,7 +23,7 @@ class ClipFloatStreamingAddMulSpec extends AnyFlatSpec {
   }
   private def round(n: BigInt, d: BigInt): (BigInt, Boolean) = {
     val (q, r) = n /% d
-    (q + (if (2*r > d || (2*r == d && q.testBit(0))) 1 else 0), r != 0)
+    (q + (if (2 * r > d || (2 * r == d && q.testBit(0))) 1 else 0), r != 0)
   }
   // Exact rational oracle independent of the FMA implementation and packer.
   private def reference(r: Request): Expected = {
@@ -36,31 +36,38 @@ class ClipFloatStreamingAddMulSpec extends AnyFlatSpec {
       return Expected(Value(), error = 1)
     val nan = Value(significand = 0x400000, special = 2)
     val aNaN = a.special == 2; val bNaN = b.special == 2
-    if (aNaN || bNaN) return Expected(nan,
-      if ((aNaN && !a.significand.testBit(22)) || (bNaN && !b.significand.testBit(22))) 16 else 0)
+    if (aNaN || bNaN)
+      return Expected(nan, if ((aNaN && !a.significand.testBit(22)) || (bNaN && !b.significand.testBit(22))) 16 else 0)
     val aInf = a.special == 1; val bInf = b.special == 1
-    if (multiply && ((aInf && b.special == 0 && b.significand == 0) ||
-        (bInf && a.special == 0 && a.significand == 0))) return Expected(nan, 16)
+    if (
+      multiply && ((aInf && b.special == 0 && b.significand == 0) ||
+        (bInf && a.special == 0 && a.significand == 0))
+    ) return Expected(nan, 16)
     if (!multiply && aInf && bInf && a.negative != bSign) return Expected(nan, 16)
-    if (aInf || bInf) return Expected(Value(
-      if (multiply) a.negative ^ b.negative else if (aInf) a.negative else bSign, special = 1))
+    if (aInf || bInf)
+      return Expected(Value(if (multiply) a.negative ^ b.negative else if (aInf) a.negative else bSign, special = 1))
     def ratio(v: Value): (BigInt, BigInt) = {
       val e = v.exponent - 23
       val n = if (v.negative) -v.significand else v.significand
       if (e >= 0) (n << e, BigInt(1)) else (n, BigInt(1) << -e)
     }
     val (an, ad) = ratio(a); val (bn, bd) = ratio(b)
-    val numerator = if (multiply) an*bn else an*bd + (if (subtract) -bn*ad else bn*ad)
-    val denominator = ad*bd
-    if (numerator == 0) return Expected(Value(if (multiply) a.negative ^ b.negative
-      else a.significand == 0 && b.significand == 0 && a.negative && bSign))
+    val numerator = if (multiply) an * bn else an * bd + (if (subtract) -bn * ad else bn * ad)
+    val denominator = ad * bd
+    if (numerator == 0)
+      return Expected(
+        Value(
+          if (multiply) a.negative ^ b.negative
+          else a.significand == 0 && b.significand == 0 && a.negative && bSign
+        )
+      )
     val n = numerator.abs; val d = denominator
     var exponent = n.bitLength - d.bitLength
     if (if (exponent >= 0) n < (d << exponent) else (n << -exponent) < d) exponent -= 1
     val scale = 23 - exponent
     val scaledN = if (scale >= 0) n << scale else n
     val scaledD = if (scale >= 0) d else d << -scale
-    val (q, inexact) = if (towardZero) (scaledN/scaledD, scaledN%scaledD != 0) else round(scaledN, scaledD)
+    val (q, inexact) = if (towardZero) (scaledN / scaledD, scaledN % scaledD != 0) else round(scaledN, scaledD)
     val carry = q.bitLength > 24
     exponent += (if (carry) 1 else 0)
     val flags = if (inexact) 1 else 0
@@ -75,7 +82,8 @@ class ClipFloatStreamingAddMulSpec extends AnyFlatSpec {
     if (v.exponent >= -126)
       return (sign | (BigInt(v.exponent + 127) << 23) | (v.significand & 0x7fffff), 0)
     val denominator = BigInt(1) << (-126 - v.exponent)
-    val (q, inexact) = if (towardZero) (v.significand/denominator, v.significand%denominator != 0)
+    val (q, inexact) =
+      if (towardZero) (v.significand / denominator, v.significand % denominator != 0)
       else round(v.significand, denominator)
     (sign | q, (if (inexact) 1 else 0) | (if (inexact && q < 0x800000) 2 else 0))
   }
@@ -87,8 +95,7 @@ class ClipFloatStreamingAddMulSpec extends AnyFlatSpec {
     poke(d.io.in.bits.a, request.a); poke(d.io.in.bits.b, request.b)
     d.io.in.bits.operation.poke(request.operation.U); d.io.in.bits.tag.poke(tag.U)
   }
-  private def check(d: ClipFloatStreamingAddMul, request: Request, tag: Int,
-      cancelled: Boolean = false): Unit = {
+  private def check(d: ClipFloatStreamingAddMul, request: Request, tag: Int, cancelled: Boolean = false): Unit = {
     val e = reference(request); val r = d.io.out.bits
     withClue(s"tag=$tag request=$request: ") {
       r.tag.expect(tag.U); r.cancelled.expect(cancelled.B)
@@ -104,8 +111,7 @@ class ClipFloatStreamingAddMulSpec extends AnyFlatSpec {
     input(d, Request(one, one), 0)
     d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
   }
-  private def run(d: ClipFloatStreamingAddMul, requests: Seq[Request], dense: Boolean,
-      reset: Boolean = true): Unit = {
+  private def run(d: ClipFloatStreamingAddMul, requests: Seq[Request], dense: Boolean, reset: Boolean = true): Unit = {
     if (reset) initialize(d)
     val random = new Random(917)
     val pending = mutable.Queue.empty[(Int, Int)]
@@ -122,7 +128,7 @@ class ClipFloatStreamingAddMulSpec extends AnyFlatSpec {
       if (outputValid && ready) {
         assert(pending.nonEmpty, s"unexpected output at cycle $cycle")
         val (tag, accepted) = pending.dequeue()
-        if (dense) assert(cycle - accepted == latency, s"latency ${cycle-accepted} != $latency")
+        if (dense) assert(cycle - accepted == latency, s"latency ${cycle - accepted} != $latency")
         check(d, requests(tag), tag); received += 1
       }
       if (dense) d.io.in.ready.expect(true.B)
@@ -138,8 +144,11 @@ class ClipFloatStreamingAddMulSpec extends AnyFlatSpec {
   it should "accept and retire a dense arithmetic stream at one operation per cycle" in {
     simulate(new ClipFloatStreamingAddMul(tagWidth = 16)) { d =>
       val requests = (0 until 512).map { i =>
-        Request(Value((i&1) != 0, (i%301)-150, 0x800000 + (i*2971 & 0x7fffff)),
-          Value((i&2) != 0, (i%127)-63, 0x800000 + (i*7919 & 0x7fffff)), Seq(0, 1, 2, 4)(i%4))
+        Request(
+          Value((i & 1) != 0, (i % 301) - 150, 0x800000 + (i * 2971 & 0x7fffff)),
+          Value((i & 2) != 0, (i % 127) - 63, 0x800000 + (i * 7919 & 0x7fffff)),
+          Seq(0, 1, 2, 4)(i % 4)
+        )
       }
       run(d, requests, dense = true)
       info(s"STREAMING_ADD_MUL requests=${requests.size} initiationInterval=1 latency=$latency exactRationalRNE=true")
@@ -152,11 +161,10 @@ class ClipFloatStreamingAddMulSpec extends AnyFlatSpec {
         e <- Seq(-512, -151, -150, -149, -127, -126, 0, 127, 128, 511)
         a <- Seq(0x800000, 0x800001, 0x800003, 0xbfffff, 0xffffff)
         b <- Seq(0x800000, 0x800001, 0xc00000, 0xffffff)
-      op <- Seq(0, 1, 2, 4)
+        op <- Seq(0, 1, 2, 4)
       } yield Request(Value(exponent = e, significand = a), Value(significand = b), op)
       val requests = boundaries ++ (0 until 1024).map { _ =>
-        def value = Value(random.nextBoolean(), random.nextInt(1024)-512,
-          0x800000 | random.nextInt(0x800000))
+        def value = Value(random.nextBoolean(), random.nextInt(1024) - 512, 0x800000 | random.nextInt(0x800000))
         Request(value, value, Seq(0, 1, 2, 4)(random.nextInt(4)))
       }
       run(d, requests, dense = false)
@@ -166,20 +174,34 @@ class ClipFloatStreamingAddMulSpec extends AnyFlatSpec {
     simulate(new ClipFloatStreamingAddMul(tagWidth = 16)) { d =>
       val values = for {
         sign <- Seq(false, true)
-        v <- Seq(Value(), one, Value(significand = 0xc00000),
-          Value(special = 1), Value(significand = 1, special = 2),
-          Value(significand = 0x400000, special = 2))
+        v <- Seq(
+          Value(),
+          one,
+          Value(significand = 0xc00000),
+          Value(special = 1),
+          Value(significand = 1, special = 2),
+          Value(significand = 0x400000, special = 2)
+        )
       } yield v.copy(negative = sign)
-      val malformed = Seq(Value(exponent = 512, significand = 0x800000),
-        Value(exponent = -513, significand = 0x800000), Value(exponent = 1),
-        Value(significand = 0x7fffff), Value(significand = 1, special = 1),
-        Value(exponent = 1, special = 1), Value(special = 2),
-        Value(significand = 0x800001, special = 2), Value(special = 3))
+      val malformed = Seq(
+        Value(exponent = 512, significand = 0x800000),
+        Value(exponent = -513, significand = 0x800000),
+        Value(exponent = 1),
+        Value(significand = 0x7fffff),
+        Value(significand = 1, special = 1),
+        Value(exponent = 1, special = 1),
+        Value(special = 2),
+        Value(significand = 0x800001, special = 2),
+        Value(special = 3)
+      )
       val requests = (for (a <- values; b <- values; op <- Seq(0, 1, 2, 4)) yield Request(a, b, op)) ++
         malformed.flatMap(v => Seq(Request(v, one), Request(one, v))) ++
         Seq(3, 5, 6, 7).map(op => Request(one, one, op)) ++
-        Seq(Request(one.copy(exponent = 511), one.copy(exponent = 511), 2),
-          Request(one.copy(exponent = -512), one.copy(exponent = -512), 2), Request(one, one))
+        Seq(
+          Request(one.copy(exponent = 511), one.copy(exponent = 511), 2),
+          Request(one.copy(exponent = -512), one.copy(exponent = -512), 2),
+          Request(one, one)
+        )
       run(d, requests, dense = true)
     }
   }

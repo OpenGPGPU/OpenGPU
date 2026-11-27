@@ -8,18 +8,26 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 class GpuComputeUnitInstructionPageFaultSpec extends AnyFlatSpec {
   private def zero(data: Data): Unit = data match {
-    case r: Record => r.elements.values.foreach(zero)
-    case v: Vec[_] => v.foreach(zero)
+    case r: Record                                                     => r.elements.values.foreach(zero)
+    case v: Vec[_]                                                     => v.foreach(zero)
     case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
     case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
     case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
-    case _ => ()
+    case _                                                             => ()
   }
 
   it should "trap precise instruction page and page-table access faults on a real CU" in {
     val config = GpuConfig(lanes = 4, warps = 2)
-    simulate(new GpuComputeUnit(config, instructionCacheSets = 4, instructionCacheWays = 1,
-      vectorCacheSets = 4, vectorCacheWays = 1, finishOnTrap = true)) { dut =>
+    simulate(
+      new GpuComputeUnit(
+        config,
+        instructionCacheSets = 4,
+        instructionCacheWays = 1,
+        vectorCacheSets = 4,
+        vectorCacheWays = 1,
+        finishOnTrap = true
+      )
+    ) { dut =>
       zero(dut.io); dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
       dut.io.instructionSatp.poke("h80000100".U)
       dut.io.memoryRequest.ready.poke(true.B); dut.io.l1InvalidateDone.ready.poke(true.B)

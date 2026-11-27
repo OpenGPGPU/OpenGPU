@@ -10,12 +10,12 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 class VertexFragmentImageAdmissionSpec extends AnyFlatSpec {
   private def zero(d: Data): Unit = d match {
-    case r: Record => r.elements.values.foreach(zero)
-    case v: Vec[_] => v.foreach(zero)
+    case r: Record                                                     => r.elements.values.foreach(zero)
+    case v: Vec[_]                                                     => v.foreach(zero)
     case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
     case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
     case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
-    case _ => ()
+    case _                                                             => ()
   }
   private val config = GpuConfig(lanes = 4, warps = 2)
   private val p = VertexShaderStageConfig(VertexInputFetchConfig(1, 1), 1)
@@ -24,8 +24,9 @@ class VertexFragmentImageAdmissionSpec extends AnyFlatSpec {
   private val g = GraphicsConfig(screenWidth = 8, screenHeight = 8)
 
   it should "reject mismatched image identity and early-depth promises before starting a draw" in {
-    simulate(new VertexFragmentPipeline(config, p, f, shared, g, preparedGeometry = true,
-      fragmentImageAvailable = true)) { d =>
+    simulate(
+      new VertexFragmentPipeline(config, p, f, shared, g, preparedGeometry = true, fragmentImageAvailable = true)
+    ) { d =>
       zero(d.io); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
       val draw = d.io.draw.bits
       draw.version.poke(1.U); draw.vertex.raster.version.poke(1.U)
@@ -60,7 +61,6 @@ class VertexFragmentImageAdmissionSpec extends AnyFlatSpec {
   }
 
   it should "elaborate the non-prepared vertex path with image routing disabled for its client" in {
-    ChiselStage.emitCHIRRTL(new VertexFragmentPipeline(config, p, f, shared, g,
-      fragmentImageAvailable = true))
+    ChiselStage.emitCHIRRTL(new VertexFragmentPipeline(config, p, f, shared, g, fragmentImageAvailable = true))
   }
 }

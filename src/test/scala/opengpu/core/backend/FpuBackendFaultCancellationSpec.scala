@@ -9,11 +9,11 @@ import scala.collection.mutable
 
 class FpuBackendFaultCancellationSpec extends AnyFlatSpec {
   private def zero(data: Data): Unit = data match {
-    case r: Record => r.elements.values.foreach(zero)
-    case v: Vec[_] => v.foreach(zero)
+    case r: Record                                                     => r.elements.values.foreach(zero)
+    case v: Vec[_]                                                     => v.foreach(zero)
     case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
     case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
-    case _ => ()
+    case _                                                             => ()
   }
   for (rd <- Seq(0, 10)) {
     it should s"cancel faulting f$rd while a peer FP register commits and preserve real register writes" in {
@@ -42,7 +42,8 @@ class FpuBackendFaultCancellationSpec extends AnyFlatSpec {
         def issue(warp: Int, target: Int, load: Boolean, value: Int): Unit = {
           val q = d.io.in.bits; q.poke(0.U.asTypeOf(q))
           q.warpId.poke(warp.U); q.pc.poke((if (load) 0x1000 else 0x2000).U); q.activeMask.poke(1.U)
-          val instruction = if (load) BigInt((1 << 15) | (2 << 12) | (target << 7) | 7)
+          val instruction =
+            if (load) BigInt((1 << 15) | (2 << 12) | (target << 7) | 7)
             else (BigInt(0x78) << 25) | (BigInt(1) << 15) | (BigInt(target) << 7) | 0x53
           q.instruction.poke(instruction.U); q.decoded.writesFp.poke(true.B)
           q.decoded.memoryRead.poke(load.B); d.io.scalarRs1Data.poke(value.U)
@@ -74,7 +75,9 @@ class FpuBackendFaultCancellationSpec extends AnyFlatSpec {
         until(writes.size == 2 && redirects == 2)
         assert(writes.toSeq == Seq((1, 12, BigInt(0x33)), (0, rd, BigInt(7))))
         d.io.fpuBusyByWarp(0).expect(0.U); d.io.fpuBusyByWarp(1).expect(0.U)
-        info(s"FP_CANCEL_PEER rd=$rd heldFault=true reserveUntilAck=true simultaneousPeerCommit=true noFabricatedWrite=true healthyReuse=true")
+        info(
+          s"FP_CANCEL_PEER rd=$rd heldFault=true reserveUntilAck=true simultaneousPeerCommit=true noFabricatedWrite=true healthyReuse=true"
+        )
       }
     }
   }

@@ -9,19 +9,26 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 class GpuComputeUnitCoreImageCounterAtomicSpec extends AnyFlatSpec {
   private def zero(data: Data): Unit = data match {
-    case r: Record => r.elements.values.foreach(zero)
-    case v: Vec[_] => v.foreach(zero)
+    case r: Record                                                     => r.elements.values.foreach(zero)
+    case v: Vec[_]                                                     => v.foreach(zero)
     case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
     case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
     case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
-    case _ => ()
+    case _                                                             => ()
   }
 
   for ((translated, deniedOwner) <- Seq((false, -1), (true, -1), (true, 1), (true, 0))) {
     it should s"preserve simultaneous image and counter atomic owners translated=$translated deniedOwner=$deniedOwner" in {
-      simulate(new GpuComputeUnitCore(GpuConfig(lanes = 4, warps = 2), vectorCacheSets = 4,
-        vectorCacheWays = 1, imageAvailable = true, imageAtomicAvailable = true,
-        atomicCounterAvailable = true)) { d =>
+      simulate(
+        new GpuComputeUnitCore(
+          GpuConfig(lanes = 4, warps = 2),
+          vectorCacheSets = 4,
+          vectorCacheWays = 1,
+          imageAvailable = true,
+          imageAtomicAvailable = true,
+          atomicCounterAvailable = true
+        )
+      ) { d =>
         zero(d.io); d.reset.poke(true.B); d.clock.step(2); d.reset.poke(false.B)
         val inputs = Seq(d.io.counterAtomicRequest.get, d.io.imageAtomicRequest.get)
         val outputs = Seq(d.io.counterAtomicResponse.get, d.io.imageAtomicResponse.get)
@@ -52,8 +59,16 @@ class GpuComputeUnitCoreImageCounterAtomicSpec extends AnyFlatSpec {
           for (i <- 0 until 2 if inputs(i).valid.peek().litToBoolean && inputs(i).ready.peek().litToBoolean) {
             assert(!accepted(i)); accepted(i) = true
           }
-          if (d.io.vectorPageTableResponse.valid.peek().litToBoolean && d.io.vectorPageTableResponse.ready.peek().litToBoolean) walkReply = None
-          if (d.io.vectorPageTableRequest.valid.peek().litToBoolean && d.io.vectorPageTableRequest.ready.peek().litToBoolean) {
+          if (
+            d.io.vectorPageTableResponse.valid.peek().litToBoolean && d.io.vectorPageTableResponse.ready
+              .peek()
+              .litToBoolean
+          ) walkReply = None
+          if (
+            d.io.vectorPageTableRequest.valid.peek().litToBoolean && d.io.vectorPageTableRequest.ready
+              .peek()
+              .litToBoolean
+          ) {
             assert(walkReply.isEmpty)
             val address = d.io.vectorPageTableRequest.bits.address.peek().litValue
             assert(Set[BigInt](0x90000, 0xa0000)(address)); walks += address
@@ -61,12 +76,18 @@ class GpuComputeUnitCoreImageCounterAtomicSpec extends AnyFlatSpec {
             val flags = if (owner == deniedOwner) 0xc9 else 0xc7
             walkReply = Some((((if (address == 0x90000) BigInt(0x400) else BigInt(0x800)) << 10) | flags, cycle + 2))
           }
-          if (d.io.globalAtomicResponse.valid.peek().litToBoolean && d.io.globalAtomicResponse.ready.peek().litToBoolean) atomicReply = None
-          if (d.io.globalAtomicRequest.valid.peek().litToBoolean && d.io.globalAtomicRequest.ready.peek().litToBoolean) {
+          if (
+            d.io.globalAtomicResponse.valid.peek().litToBoolean && d.io.globalAtomicResponse.ready.peek().litToBoolean
+          ) atomicReply = None
+          if (
+            d.io.globalAtomicRequest.valid.peek().litToBoolean && d.io.globalAtomicRequest.ready.peek().litToBoolean
+          ) {
             assert(atomicReply.isEmpty)
             val q = d.io.globalAtomicRequest.bits; val owner = q.warpId.peek().litValue.toInt
             assert(owner == 0 || owner == 1); assert(!offered(owner)); offered += owner
-            q.address.expect((if (translated) { if (owner == 0) 0x40201c else 0x802048 } else { if (owner == 0) 0x201c else 0x2048 }).U)
+            q.address.expect((if (translated) {
+                                if (owner == 0) 0x40201c else 0x802048
+                              } else { if (owner == 0) 0x201c else 0x2048 }).U)
             q.operand.expect((owner + 1).U); q.operation.expect(AtomicMemoryOp.add)
             atomicReply = Some((owner, cycle + 4))
           }

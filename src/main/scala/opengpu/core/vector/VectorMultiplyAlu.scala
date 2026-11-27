@@ -61,9 +61,11 @@ private class VectorRoundingStage(config: GpuConfig) extends Bundle {
 }
 
 private object VectorMultiplyAdd {
+
   /** vmadd 0x29 and vnmsub 0x2b multiply by the old destination. */
   def isMultiplyAdd(funct6: UInt): Bool =
     funct6 === "h29".U || funct6 === "h2b".U
+
   /** vmacc 0x2d and vnmsac 0x2f add into the destination. */
   def isMultiplyAcc(funct6: UInt): Bool =
     funct6 === "h2d".U || funct6 === "h2f".U
@@ -72,15 +74,12 @@ private object VectorMultiplyAdd {
 
 /** Lane-parallel RVV integer multiplier for the fixed SEW=32 profile.
   *
-  * Implements vmul, vmulh, vmulhu, and vmulhsu in vv and vx forms, plus the
-  * single-width multiply-accumulate family: vmacc/vnmsac add the low product
-  * to the destination and vmadd/vnmsub add it to vs2, in both cases with the
-  * destination as the third operand. Only the low half of the product is
-  * architecturally visible, so a signed and an unsigned product agree there
-  * and the accumulate needs no rounding or saturation path. Each lane
-  * contains a four-stage elastic radix-4 Booth datapath. Once full, the unit
-  * accepts one complete vector operation per cycle and preserves inactive
-  * destination elements.
+  * Implements vmul, vmulh, vmulhu, and vmulhsu in vv and vx forms, plus the single-width multiply-accumulate family:
+  * vmacc/vnmsac add the low product to the destination and vmadd/vnmsub add it to vs2, in both cases with the
+  * destination as the third operand. Only the low half of the product is architecturally visible, so a signed and an
+  * unsigned product agree there and the accumulate needs no rounding or saturation path. Each lane contains a
+  * four-stage elastic radix-4 Booth datapath. Once full, the unit accepts one complete vector operation per cycle and
+  * preserves inactive destination elements.
   */
 class VectorMultiplyAlu(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {
@@ -116,14 +115,16 @@ class VectorMultiplyAlu(config: GpuConfig = GpuConfig()) extends Module {
     val boothBits = Cat(Fill(2, rhs(32)), rhs, 0.U(1.W))
     (0 until 17).map { index =>
       val code = boothBits(2 * index + 2, 2 * index)
-      val multiple = MuxLookup(code, 0.S(68.W))(Seq(
-        "b001".U -> lhsWide,
-        "b010".U -> lhsWide,
-        "b011".U -> (lhsWide << 1).asSInt,
-        "b100".U -> (-(lhsWide << 1)).asSInt,
-        "b101".U -> (-lhsWide).asSInt,
-        "b110".U -> (-lhsWide).asSInt
-      ))
+      val multiple = MuxLookup(code, 0.S(68.W))(
+        Seq(
+          "b001".U -> lhsWide,
+          "b010".U -> lhsWide,
+          "b011".U -> (lhsWide << 1).asSInt,
+          "b100".U -> (-(lhsWide << 1)).asSInt,
+          "b101".U -> (-lhsWide).asSInt,
+          "b110".U -> (-lhsWide).asSInt
+        )
+      )
       (multiple.asUInt << (2 * index))(67, 0)
     }
   }
@@ -224,22 +225,19 @@ class VectorMultiplyAlu(config: GpuConfig = GpuConfig()) extends Module {
   private val preparedIncrement = Wire(Vec(config.lanes, Bool()))
   private val preparedSaturation = Wire(Vec(config.lanes, Bool()))
   for (lane <- 0 until config.lanes) {
-    val highSum = Mux(
-      productBits.lowSum(lane)(productSplit),
-      productBits.highSum1(lane),
-      productBits.highSum0(lane))
-    val product = Cat(
-      highSum(67 - productSplit, 0),
-      productBits.lowSum(lane)(productSplit - 1, 0))
+    val highSum = Mux(productBits.lowSum(lane)(productSplit), productBits.highSum1(lane), productBits.highSum0(lane))
+    val product = Cat(highSum(67 - productSplit, 0), productBits.lowSum(lane)(productSplit - 1, 0))
     preparedIncrement(lane) := MuxLookup(
       productBits.metadata.vxrm,
       false.B
-    )(Seq(
-      "b00".U -> product(30),
-      "b01".U -> (product(30) && (product(29, 0).orR || product(31))),
-      "b10".U -> false.B,
-      "b11".U -> (!product(31) && product(30, 0).orR)
-    ))
+    )(
+      Seq(
+        "b00".U -> product(30),
+        "b01".U -> (product(30) && (product(29, 0).orR || product(31))),
+        "b10".U -> false.B,
+        "b11".U -> (!product(31) && product(30, 0).orR)
+      )
+    )
     preparedFractional(lane) := (product.asSInt >> 31).asUInt
     preparedSaturation(lane) :=
       productBits.metadata.saturating &&
@@ -279,10 +277,8 @@ class VectorMultiplyAlu(config: GpuConfig = GpuConfig()) extends Module {
         // the architectural result wraps modulo 2^32.
         val wideAddend = Cat(0.U(1.W), roundingBits.metadata.addend(lane))
         val wideProduct = Cat(0.U(1.W), roundingBits.multiplyResult(lane))
-        val accumulated = (Mux(
-          roundingBits.metadata.subtract,
-          wideAddend - wideProduct,
-          wideAddend +& wideProduct))(config.xLen - 1, 0)
+        val accumulated =
+          (Mux(roundingBits.metadata.subtract, wideAddend - wideProduct, wideAddend +& wideProduct))(config.xLen - 1, 0)
         outputBits.data(lane) := Mux(
           roundingBits.metadata.enabled(lane),
           Mux(roundingBits.metadata.accumulate, accumulated, selected),

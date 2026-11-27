@@ -14,7 +14,8 @@ private[graphics] object TypedWordPhase {
       val high = if (bit + 1 < value.getWidth) value(bit + 1) else false.B
       Seq(low === high, low && !high, !low && high)
     }
-    def combine(xs: Seq[Seq[Bool]]): Seq[Bool] = if (xs.size == 1) xs.head else {
+    def combine(xs: Seq[Seq[Bool]]): Seq[Bool] = if (xs.size == 1) xs.head
+    else {
       val (left, right) = xs.splitAt(xs.size / 2)
       val a = combine(left); val b = combine(right)
       (0 until 3).map { residue =>

@@ -8,8 +8,8 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-/** Test-only composition of the service with the existing shared owner and
-  * translator. The physical atomic responder is still a test model, not L2.
+/** Test-only composition of the service with the existing shared owner and translator. The physical atomic responder is
+  * still a test model, not L2.
   */
 class ImageAtomicTranslationHarness(config: GpuConfig) extends Module {
   val io = IO(new Bundle {
@@ -55,18 +55,46 @@ class ShaderImageAtomicTranslationSpec extends AnyFlatSpec {
         val fmt = TextureImageFormat.id("R32UI")
         val task = d.io.task; task.enabled.poke(true.B); task.stage.poke(GraphicsStage.compute.U)
         task.table.version.poke(1.U); task.table.base.poke(0x8000.U); task.table.limit.poke(0x8400.U)
-        task.table.identity.context.poke(7.U); task.table.identity.pass.poke(11.U); task.table.identity.generation.poke(13.U)
-        d.io.satp.poke(BigInt("80000090", 16).U); d.io.kernelStart.poke(true.B); d.clock.step(); d.io.kernelStart.poke(false.B)
+        task.table.identity.context.poke(7.U); task.table.identity.pass.poke(11.U);
+        task.table.identity.generation.poke(13.U)
+        d.io.satp.poke(BigInt("80000090", 16).U); d.io.kernelStart.poke(true.B); d.clock.step();
+        d.io.kernelStart.poke(false.B)
         task.enabled.poke(false.B); d.io.satp.poke(0.U)
         val q = d.io.in.bits; q.tag.poke(44.U); q.unitIndex.poke(0.U); q.shaderTarget.poke(0.U)
         q.colorType.poke(1.U); q.hasFormatQualifier.poke(true.B); q.shaderFormat.poke(fmt.U)
         q.warpId.poke(1.U); q.operation.poke(ShaderImageAtomicOperation.add.U); q.operand.poke(3.U)
         d.io.in.valid.poke(true.B); d.io.in.ready.expect(true.B); d.clock.step(); d.io.in.valid.poke(false.B)
         val words = Array.fill[BigInt](64)(0)
-        for ((i, v) <- Seq[(Int, BigInt)](0 -> BigInt("47495501", 16), 1 -> 256, 2 -> 1,
-          3 -> 7, 4 -> 11, 5 -> 13, 6 -> 0, 7 -> 1, 8 -> 1, 9 -> 4, 10 -> 1, 11 -> 1,
-          12 -> fmt, 13 -> fmt, 14 -> 1, 17 -> 15, 18 -> 1, 22 -> 0x1000, 23 -> 0x1400,
-          25 -> 0x1048, 26 -> 1, 27 -> 1, 28 -> 1, 29 -> 1, 30 -> 64, 37 -> 4)) words(i) = v
+        for (
+          (i, v) <- Seq[(Int, BigInt)](
+            0 -> BigInt("47495501", 16),
+            1 -> 256,
+            2 -> 1,
+            3 -> 7,
+            4 -> 11,
+            5 -> 13,
+            6 -> 0,
+            7 -> 1,
+            8 -> 1,
+            9 -> 4,
+            10 -> 1,
+            11 -> 1,
+            12 -> fmt,
+            13 -> fmt,
+            14 -> 1,
+            17 -> 15,
+            18 -> 1,
+            22 -> 0x1000,
+            23 -> 0x1400,
+            25 -> 0x1048,
+            26 -> 1,
+            27 -> 1,
+            28 -> 1,
+            29 -> 1,
+            30 -> 64,
+            37 -> 4
+          )
+        ) words(i) = v
         case class Reply(id: BigInt, data: BigInt, due: Int)
         val replies = mutable.Queue.empty[Reply]
         var cycle = 0; var descriptorLines = 0; var otherArmed = false; var otherSent = false; var otherDone = false
@@ -76,14 +104,19 @@ class ShaderImageAtomicTranslationSpec extends AnyFlatSpec {
           d.io.descriptorRequest.ready.poke((cycle % 3 != 0).B)
           val reply = replies.headOption.filter(_.due <= cycle)
           d.io.descriptorResponse.valid.poke(reply.nonEmpty.B)
-          reply.foreach { r => d.io.descriptorResponse.bits.transactionId.poke(r.id.U)
-            d.io.descriptorResponse.bits.readData.poke(r.data.U) }
+          reply.foreach { r =>
+            d.io.descriptorResponse.bits.transactionId.poke(r.id.U)
+            d.io.descriptorResponse.bits.readData.poke(r.data.U)
+          }
           if (reply.nonEmpty && d.io.descriptorResponse.ready.peek().litToBoolean) replies.dequeue()
           if (d.io.descriptorRequest.valid.peek().litToBoolean && d.io.descriptorRequest.ready.peek().litToBoolean) {
-            val m = d.io.descriptorRequest.bits; val id = m.transactionId.peek().litValue; val a = m.address.peek().litValue
+            val m = d.io.descriptorRequest.bits; val id = m.transactionId.peek().litValue;
+            val a = m.address.peek().litValue
             val data = if (id == 1) { assert(a == 0x90000); (BigInt(0x400) << 10) | 0xc3 }
-            else { assert(id == 0 && a == 0x408000 + descriptorLines * 64); val n = descriptorLines; descriptorLines += 1
-              words.slice(n * 16, n * 16 + 16).zipWithIndex.map { case (v, i) => v << (32 * i) }.sum }
+            else {
+              assert(id == 0 && a == 0x408000 + descriptorLines * 64); val n = descriptorLines; descriptorLines += 1
+              words.slice(n * 16, n * 16 + 16).zipWithIndex.map { case (v, i) => v << (32 * i) }.sum
+            }
             replies.enqueue(Reply(id, data, cycle + 3))
           }
           if (d.io.imageOffer.peek().litToBoolean) otherArmed = true
@@ -107,8 +140,9 @@ class ShaderImageAtomicTranslationSpec extends AnyFlatSpec {
           d.io.physical.ready.poke((cycle % 4 != 0).B)
           if (d.io.physical.valid.peek().litToBoolean && d.io.physical.ready.peek().litToBoolean) {
             assert(physicalDue < 0); val warp = d.io.physical.bits.warpId.peek().litValue.toInt
-            if (warp == 1) { d.io.physical.bits.address.expect(0x501048.U); d.io.physical.bits.operand.expect(3.U); physicalImage += 1 }
-            else { assert(warp == 0); d.io.physical.bits.address.expect(0x3000.U); physicalOther += 1 }
+            if (warp == 1) {
+              d.io.physical.bits.address.expect(0x501048.U); d.io.physical.bits.operand.expect(3.U); physicalImage += 1
+            } else { assert(warp == 0); d.io.physical.bits.address.expect(0x3000.U); physicalOther += 1 }
             responseWarp = warp; physicalDue = cycle + 5
           }
           val response = physicalDue >= 0 && cycle >= physicalDue
@@ -121,7 +155,10 @@ class ShaderImageAtomicTranslationSpec extends AnyFlatSpec {
         d.io.out.bits.status.expect((if (deny) ShaderImageAccessStatus.memory else ShaderImageAccessStatus.ok).U)
         if (deny) { d.io.out.bits.pageFault.expect(true.B); d.io.out.bits.faultAddress.expect(0x1048.U) }
         else d.io.out.bits.value.expect(41.U)
-        assert(descriptorLines == 4 && imageWalks == 1 && otherDone && physicalOther == 1 && physicalImage == (if (deny) 0 else 1))
+        assert(
+          descriptorLines == 4 && imageWalks == 1 && otherDone && physicalOther == 1 && physicalImage == (if (deny) 0
+                                                                                                          else 1)
+        )
         assert(replies.isEmpty && walkDue < 0 && physicalDue < 0)
       }
     }

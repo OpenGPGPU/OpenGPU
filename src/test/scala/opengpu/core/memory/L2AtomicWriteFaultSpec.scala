@@ -20,11 +20,9 @@ class L2AtomicWriteFaultSpec extends AnyFlatSpec {
     dut.io.atomicRequest.indices.foreach { cu =>
       dut.io.invalidate(cu).ready.poke(true.B)
       dut.io.invalidateDone(cu).valid.poke(false.B)
-      dut.io.invalidateDone(cu).bits.poke(
-        0.U.asTypeOf(dut.io.invalidateDone(cu).bits))
+      dut.io.invalidateDone(cu).bits.poke(0.U.asTypeOf(dut.io.invalidateDone(cu).bits))
       dut.io.atomicRequest(cu).valid.poke(false.B)
-      dut.io.atomicRequest(cu).bits.poke(
-        0.U.asTypeOf(dut.io.atomicRequest(cu).bits))
+      dut.io.atomicRequest(cu).bits.poke(0.U.asTypeOf(dut.io.atomicRequest(cu).bits))
       dut.io.atomicResponse(cu).ready.poke(true.B)
     }
     dut.io.hostInvalidate.valid.poke(false.B)
@@ -42,8 +40,10 @@ class L2AtomicWriteFaultSpec extends AnyFlatSpec {
     dut.clock.step()
     dut.io.hostInvalidate.valid.poke(false.B)
     cycles = 0
-    while (!dut.io.hostInvalidateDone.valid.peek().litToBoolean &&
-           cycles < 20) {
+    while (
+      !dut.io.hostInvalidateDone.valid.peek().litToBoolean &&
+      cycles < 20
+    ) {
       dut.clock.step(); cycles += 1
     }
     dut.io.hostInvalidateDone.valid.expect(true.B)
@@ -52,14 +52,14 @@ class L2AtomicWriteFaultSpec extends AnyFlatSpec {
   }
 
   private def requestLine(
-    dut: SharedL2Cache,
-    address: BigInt,
-    id: Int,
-    isWrite: Boolean = false,
-    data: BigInt = 0,
-    mask: BigInt = 0,
-    cacheClient: Boolean = true,
-    cachePolicy: BigInt = 0
+      dut: SharedL2Cache,
+      address: BigInt,
+      id: Int,
+      isWrite: Boolean = false,
+      data: BigInt = 0,
+      mask: BigInt = 0,
+      cacheClient: Boolean = true,
+      cachePolicy: BigInt = 0
   ): Unit = {
     dut.io.request.bits.address.poke(address.U)
     dut.io.request.bits.transactionId.poke(id.U)
@@ -74,8 +74,7 @@ class L2AtomicWriteFaultSpec extends AnyFlatSpec {
     while (!dut.io.request.ready.peek().litToBoolean && waitCycles < 20) {
       dut.clock.step(); waitCycles += 1
     }
-    assert(dut.io.request.ready.peek().litToBoolean,
-      f"L2 did not accept address 0x$address%x")
+    assert(dut.io.request.ready.peek().litToBoolean, f"L2 did not accept address 0x$address%x")
     dut.io.request.valid.poke(true.B)
     dut.clock.step()
     dut.io.request.valid.poke(false.B)
@@ -134,8 +133,9 @@ class L2AtomicWriteFaultSpec extends AnyFlatSpec {
   }
 
   it should "refetch a cached atomic line after a failed lower write" in {
-    simulate(new SharedL2Cache(GpuConfig(lanes = 4, warps = 2), sets = 4, ways = 2,
-      numComputeUnits = 1, maxOutstanding = 8)) { d =>
+    simulate(
+      new SharedL2Cache(GpuConfig(lanes = 4, warps = 2), sets = 4, ways = 2, numComputeUnits = 1, maxOutstanding = 8)
+    ) { d =>
       initialize(d)
       requestLine(d, 0x1000, 0, cacheClient = false); completeLower(d, 10, 0); d.clock.step()
       requestLine(d, 0x1100, 2, cacheClient = false); completeLower(d, 99, 2); d.clock.step()
@@ -171,10 +171,17 @@ class L2AtomicWriteFaultSpec extends AnyFlatSpec {
     }
   }
 
-
   it should "drain shared L1 aliases before an atomic write error and refetch" in {
-    simulate(new SharedL2Cache(GpuConfig(lanes = 4, warps = 2), sets = 4, ways = 2,
-      numComputeUnits = 2, transactionsPerCu = 4, maxOutstanding = 8)) { d =>
+    simulate(
+      new SharedL2Cache(
+        GpuConfig(lanes = 4, warps = 2),
+        sets = 4,
+        ways = 2,
+        numComputeUnits = 2,
+        transactionsPerCu = 4,
+        maxOutstanding = 8
+      )
+    ) { d =>
       initialize(d)
       requestLine(d, 0x1000, 0); completeLower(d, 10, 0); d.clock.step()
       requestLine(d, 0x1000, 4); waitResponse(d); d.io.response.bits.readData.expect(10.U); d.clock.step()
@@ -208,17 +215,21 @@ class L2AtomicWriteFaultSpec extends AnyFlatSpec {
     }
   }
 
-
   it should "apply signed and unsigned min max to the correct cached word" in {
-    simulate(new SharedL2Cache(GpuConfig(lanes = 4, warps = 2), sets = 4, ways = 1,
-      numComputeUnits = 1, maxOutstanding = 8)) { d =>
+    simulate(
+      new SharedL2Cache(GpuConfig(lanes = 4, warps = 2), sets = 4, ways = 1, numComputeUnits = 1, maxOutstanding = 8)
+    ) { d =>
       initialize(d)
       val operand = BigInt("ffffffff", 16)
       val wordMask = BigInt("ffffffff", 16) << 64
       val guard = (BigInt(1) << 512) / 255 * 0x5a
       val before = (guard & ~wordMask) | (BigInt(10) << 64)
-      val operations = Seq(AtomicMemoryOp.min -> operand, AtomicMemoryOp.max -> BigInt(10),
-        AtomicMemoryOp.minu -> BigInt(10), AtomicMemoryOp.maxu -> operand)
+      val operations = Seq(
+        AtomicMemoryOp.min -> operand,
+        AtomicMemoryOp.max -> BigInt(10),
+        AtomicMemoryOp.minu -> BigInt(10),
+        AtomicMemoryOp.maxu -> operand
+      )
       for (((op, expected), index) <- operations.zipWithIndex) {
         val address = 0x1008 + index * 64
         val q = d.io.atomicRequest(0)
@@ -250,8 +261,9 @@ class L2AtomicWriteFaultSpec extends AnyFlatSpec {
   }
 
   it should "retain cached atomic updates at every word including the final four bytes" in {
-    simulate(new SharedL2Cache(GpuConfig(lanes = 4, warps = 2), sets = 4, ways = 1,
-      numComputeUnits = 1, maxOutstanding = 8)) { d =>
+    simulate(
+      new SharedL2Cache(GpuConfig(lanes = 4, warps = 2), sets = 4, ways = 1, numComputeUnits = 1, maxOutstanding = 8)
+    ) { d =>
       initialize(d)
       val initial = (0 until 16).map(i => BigInt(100 + 17 * i) << (32 * i)).sum
       var expected = initial

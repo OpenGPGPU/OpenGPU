@@ -4,39 +4,33 @@ import chisel3._
 import chisel3.util._
 import opengpu.config.{CachePolicy, GpuConfig}
 
-/** Arbitrates independent CU memory ports onto one physical port. A global
-  * transaction ID encodes both CU ownership and the CU-local transaction ID,
-  * allowing responses to return out of order without a routing table.
+/** Arbitrates independent CU memory ports onto one physical port. A global transaction ID encodes both CU ownership and
+  * the CU-local transaction ID, allowing responses to return out of order without a routing table.
   */
 class SharedComputeMemoryInterconnect(
-  config: GpuConfig = GpuConfig(),
-  numComputeUnits: Int = 2,
-  lineBytes: Int = 64,
-  transactionsPerCu: Int = 4
+    config: GpuConfig = GpuConfig(),
+    numComputeUnits: Int = 2,
+    lineBytes: Int = 64,
+    transactionsPerCu: Int = 4
 ) extends Module {
   require(numComputeUnits > 0)
   require(transactionsPerCu > 0)
-  require(isPow2(transactionsPerCu),
-    "CU-local transaction count must be a power of two")
+  require(isPow2(transactionsPerCu), "CU-local transaction count must be a power of two")
   private val totalTransactions = numComputeUnits * transactionsPerCu
   private val localIdWidth = math.max(1, log2Ceil(transactionsPerCu))
   private val cuIdWidth = math.max(1, log2Ceil(numComputeUnits))
 
   val io = IO(new Bundle {
-    val cuRequest = Vec(numComputeUnits,
-      Flipped(Decoupled(new ComputeMemoryRequest(
-        config, lineBytes, transactionsPerCu))))
-    val cuResponse = Vec(numComputeUnits,
-      Decoupled(new ComputeMemoryResponse(lineBytes, transactionsPerCu)))
-    val memoryRequest = Decoupled(new ComputeMemoryRequest(
-      config, lineBytes, totalTransactions))
-    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(
-      lineBytes, totalTransactions)))
+    val cuRequest =
+      Vec(numComputeUnits, Flipped(Decoupled(new ComputeMemoryRequest(config, lineBytes, transactionsPerCu))))
+    val cuResponse = Vec(numComputeUnits, Decoupled(new ComputeMemoryResponse(lineBytes, transactionsPerCu)))
+    val memoryRequest = Decoupled(new ComputeMemoryRequest(config, lineBytes, totalTransactions))
+    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(lineBytes, totalTransactions)))
   })
 
-  private val arbiter = Module(new RRArbiter(
-    new ComputeMemoryRequest(config, lineBytes, transactionsPerCu),
-    numComputeUnits))
+  private val arbiter = Module(
+    new RRArbiter(new ComputeMemoryRequest(config, lineBytes, transactionsPerCu), numComputeUnits)
+  )
   for (cu <- 0 until numComputeUnits) {
     arbiter.io.in(cu) <> io.cuRequest(cu)
   }
@@ -74,13 +68,12 @@ class SharedComputeMemoryInterconnect(
     io.cuResponse(cu).bits.transactionId := responseLocalId(localIdWidth - 1, 0)
   }
   io.memoryResponse.ready := responseInRange && (if (numComputeUnits == 1) {
-    io.cuResponse.head.ready
-  } else {
-    io.cuResponse(responseCu).ready
-  })
+                                                   io.cuResponse.head.ready
+                                                 } else {
+                                                   io.cuResponse(responseCu).ready
+                                                 })
 
   when(io.memoryResponse.valid) {
-    assert(responseInRange,
-      "shared-memory response transaction ID must identify a compute unit")
+    assert(responseInRange, "shared-memory response transaction ID must identify a compute unit")
   }
 }

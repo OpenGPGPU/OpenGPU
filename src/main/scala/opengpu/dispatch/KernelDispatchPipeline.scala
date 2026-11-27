@@ -6,10 +6,9 @@ import opengpu.config.GpuConfig
 
 /** Single-queue, single-CU dispatch hierarchy.
   *
-  * The hierarchy intentionally allows one logical warp in flight. Besides
-  * being sufficient for the first end-to-end kernel path, this means a warp
-  * completion can never be attributed to the wrong workgroup. Concurrency is
-  * added later with explicit tags rather than completion-order assumptions.
+  * The hierarchy intentionally allows one logical warp in flight. Besides being sufficient for the first end-to-end
+  * kernel path, this means a warp completion can never be attributed to the wrong workgroup. Concurrency is added later
+  * with explicit tags rather than completion-order assumptions.
   */
 class KernelDispatchPipeline(config: GpuConfig = GpuConfig(), gridSlices: Boolean = false) extends Module {
   val io = IO(new Bundle {

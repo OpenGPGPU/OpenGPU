@@ -7,15 +7,13 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 import scala.collection.mutable
 
-/** Verifies that a command-driven draw can be rendered through a single shared
-  * L2 that arbitrates all four graphics line clients onto one off-chip memory
-  * port.
+/** Verifies that a command-driven draw can be rendered through a single shared L2 that arbitrates all four graphics
+  * line clients onto one off-chip memory port.
   *
-  * `RenderCoreL2` wraps `RenderCore` (command-buffer, framebuffer, shader
-  * kernel, and kernarg word clients) behind one `SharedL2Cache`.  This spec
-  * drives the same lane-aware batched fragment shader used in `RenderCoreSpec`
-  * and checks that the shaded colour and depth reach the single shared
-  * off-chip memory through the L2, rather than a per-client model.
+  * `RenderCoreL2` wraps `RenderCore` (command-buffer, framebuffer, shader kernel, and kernarg word clients) behind one
+  * `SharedL2Cache`. This spec drives the same lane-aware batched fragment shader used in `RenderCoreSpec` and checks
+  * that the shaded colour and depth reach the single shared off-chip memory through the L2, rather than a per-client
+  * model.
   */
 class RenderCoreL2Spec extends AnyFlatSpec {
   behavior of "RenderCoreL2"
@@ -23,9 +21,9 @@ class RenderCoreL2Spec extends AnyFlatSpec {
   private def q(v: Double): Int = (v * (1 << 16)).toInt
 
   private def encode(
-    tri: Seq[((Int, Int, Int, Int), (Int, Int, Int), Int)],
-    shaderPc: Int,
-    kernarg: Int
+      tri: Seq[((Int, Int, Int, Int), (Int, Int, Int), Int)],
+      shaderPc: Int,
+      kernarg: Int
   ): Seq[Int] = {
     val w = Seq.newBuilder[Int]
     for (i <- 0 until 3) {
@@ -47,7 +45,8 @@ class RenderCoreL2Spec extends AnyFlatSpec {
     def word(a: Long): Long = words.getOrElse(a, 0) & 0xffffffffL
     def wwrite(a: Long, d: Int): Unit = words(a) = d & 0xffffffff
     def lineRead(a: Long): BigInt =
-      (0 until 16).map(i => BigInt(word(a + i * 4)) << (i * 32))
+      (0 until 16)
+        .map(i => BigInt(word(a + i * 4)) << (i * 32))
         .foldLeft(BigInt(0))(_ | _)
     def lineWrite(a: Long, wd: BigInt, bm: BigInt): Unit = {
       for (wi <- 0 until 16) {
@@ -101,9 +100,8 @@ class RenderCoreL2Spec extends AnyFlatSpec {
     def vse32(rs1: Int, vs3: Int): Int =
       (1 << 25) | (0x6 << 12) | (vs3 << 7) | (rs1 << 15) | 0x27
     val cease = 0x30500073
-    val program = Seq(
-      slli(5, 8, 2), add(5, 1, 5), vsetivli(4), addi(6, 5, 96),
-      vle32(6, 2), addi(6, 5, 192), vse32(6, 2), cease)
+    val program =
+      Seq(slli(5, 8, 2), add(5, 1, 5), vsetivli(4), addi(6, 5, 96), vle32(6, 2), addi(6, 5, 192), vse32(6, 2), cease)
     program.zipWithIndex.foreach { case (w, i) => m.wwrite(shaderPc + i * 4, w) }
     for (i <- 0 until (16 * 16)) m.wwrite(depthBase + i * 4, 0x00ffffff) // stencil 0, depth far
     // Record the kernarg base so the shader descriptor points at the same
@@ -147,8 +145,7 @@ class RenderCoreL2Spec extends AnyFlatSpec {
       // writes acknowledged, no response awaiting consumption), so the
       // framebuffer is complete in the off-chip memory the moment done is
       // observed - no quiet-cycle fence required.
-      case class LowerResponse(id: BigInt, addr: Long, data: BigInt,
-        write: Boolean, mask: BigInt, due: Int)
+      case class LowerResponse(id: BigInt, addr: Long, data: BigInt, write: Boolean, mask: BigInt, due: Int)
       val respQ = mutable.Queue.empty[LowerResponse]
       var guard = 0
       var doneSeen = false
@@ -160,8 +157,7 @@ class RenderCoreL2Spec extends AnyFlatSpec {
         if (respQ.nonEmpty) {
           val r = respQ.head
           if (r.write) {
-            assert(!dut.io.done.peek().litToBoolean,
-              "DONE must wait for lower-memory write acknowledgements")
+            assert(!dut.io.done.peek().litToBoolean, "DONE must wait for lower-memory write acknowledgements")
             if (r.due > guard) delayedWriteCycles += 1
           }
           if (r.due <= guard) {
@@ -175,8 +171,10 @@ class RenderCoreL2Spec extends AnyFlatSpec {
             }
           }
         }
-        if (dut.io.memoryRequest.valid.peek().litToBoolean &&
-            dut.io.memoryRequest.ready.peek().litToBoolean) {
+        if (
+          dut.io.memoryRequest.valid.peek().litToBoolean &&
+          dut.io.memoryRequest.ready.peek().litToBoolean
+        ) {
           val a = dut.io.memoryRequest.bits.address.peek().litValue.toLong
           val id = dut.io.memoryRequest.bits.transactionId.peek().litValue
           val write = dut.io.memoryRequest.bits.isWrite.peek().litToBoolean
@@ -206,18 +204,20 @@ class RenderCoreL2Spec extends AnyFlatSpec {
       // black pixel or a stale depth word here means the depth RMW through
       // the L2 read a stale line.
       for (y <- 0 until 16; x <- 0 until 16 if x >= 1 && y >= 1 && x + y <= 16) {
-        assert(rgb(x, y) == (255, 0, 0),
-          s"covered pixel ($x,$y) rejected or mis-shaded, got ${rgb(x, y)}")
-        assert(m.word(depthBase + (y * 16 + x) * 4) == 0x10,
-          s"covered depth ($x,$y) got 0x${m.word(depthBase + (y * 16 + x) * 4).toHexString}")
+        assert(rgb(x, y) == (255, 0, 0), s"covered pixel ($x,$y) rejected or mis-shaded, got ${rgb(x, y)}")
+        assert(
+          m.word(depthBase + (y * 16 + x) * 4) == 0x10,
+          s"covered depth ($x,$y) got 0x${m.word(depthBase + (y * 16 + x) * 4).toHexString}"
+        )
       }
       // The OM wrote the fragment depth through the same L2.
-      assert(m.word(depthBase + (5 * 16 + 5) * 4) == 0x10,
-        s"core-shaded depth (5,5) got 0x${m.word(depthBase + (5 * 16 + 5) * 4).toHexString}")
+      assert(
+        m.word(depthBase + (5 * 16 + 5) * 4) == 0x10,
+        s"core-shaded depth (5,5) got 0x${m.word(depthBase + (5 * 16 + 5) * 4).toHexString}"
+      )
       // The shader kernel ran on the compute unit through the L2 and produced
       // the per-fragment output colour in the kernarg output region.
-      assert(m.word(kernarg + 192 + 2 * 4) == 0xff0000ffL,
-        s"kernarg output word should be the shaded colour")
+      assert(m.word(kernarg + 192 + 2 * 4) == 0xff0000ffL, s"kernarg output word should be the shaded colour")
     }
   }
 
@@ -230,7 +230,7 @@ class RenderCoreL2Spec extends AnyFlatSpec {
       val colorBase = 0x8000
       val depthBase = 0x9000
       val cmdBase = 0x4000
-      val texBase = 0xA000
+      val texBase = 0xa000
       val texelCentre = q(0.5 / 16.0)
       val farCentre = q(1.0 + 0.5 / 16.0)
 
@@ -273,8 +273,7 @@ class RenderCoreL2Spec extends AnyFlatSpec {
       for (y <- 0 until 16; x <- 0 until 16; s <- 0 until samples) {
         val passStencil = (x + y + s) % 3 != 0
         val stencil = if (passStencil) 0x5a else 0
-        m.wwrite(depthBase + sampleOffset(x, y, s),
-          if (sampleMode == 2) (stencil << 24) | 0x40 else 0x00ffffff)
+        m.wwrite(depthBase + sampleOffset(x, y, s), if (sampleMode == 2) (stencil << 24) | 0x40 else 0x00ffffff)
         if (sampleMode == 2)
           m.wwrite(colorBase + sampleOffset(x, y, s), destination(x, y))
       }
@@ -322,15 +321,20 @@ class RenderCoreL2Spec extends AnyFlatSpec {
         while (!doneSeen && guard < 400000) {
           dut.io.memoryRequest.ready.poke(true.B)
           val hadPending = respQ.nonEmpty
-          if (dut.io.memoryRequest.valid.peek().litToBoolean &&
-              dut.io.memoryRequest.ready.peek().litToBoolean) {
+          if (
+            dut.io.memoryRequest.valid.peek().litToBoolean &&
+            dut.io.memoryRequest.ready.peek().litToBoolean
+          ) {
             val a = dut.io.memoryRequest.bits.address.peek().litValue.toLong
             val id = dut.io.memoryRequest.bits.transactionId.peek().litValue
             val isWrite = dut.io.memoryRequest.bits.isWrite.peek().litToBoolean
             val data =
               if (isWrite) {
-                m.lineWrite(a, dut.io.memoryRequest.bits.writeData.peek().litValue,
-                  dut.io.memoryRequest.bits.byteMask.peek().litValue)
+                m.lineWrite(
+                  a,
+                  dut.io.memoryRequest.bits.writeData.peek().litValue,
+                  dut.io.memoryRequest.bits.byteMask.peek().litValue
+                )
                 BigInt(0)
               } else m.lineRead(a)
             respQ.enqueue((id, data))
@@ -357,8 +361,10 @@ class RenderCoreL2Spec extends AnyFlatSpec {
         var largestChannelDifference = 0
         // Texture sampling uses the pixel-centre UV for every covered sample.
         // Coverage itself uses the quarter-pixel sample position.
-        for (y <- 0 until 16; x <- 0 until 16;
-             ((sx, sy), s) <- Msaa.positions(sampleMode).zipWithIndex) {
+        for (
+          y <- 0 until 16; x <- 0 until 16;
+          ((sx, sy), s) <- Msaa.positions(sampleMode).zipWithIndex
+        ) {
           val inside = 4 * x + sx > 0 && 4 * y + sy > 0 &&
             4 * (x + y) + sx + sy <= 64
           val passStencil = (x + y + s) % 3 != 0
@@ -366,7 +372,7 @@ class RenderCoreL2Spec extends AnyFlatSpec {
           if (sampleMode == 2 && inside) {
             val covered = Msaa.positions(sampleMode).count { case (px, py) =>
               4 * x + px > 0 && 4 * y + py > 0 &&
-                4 * (x + y) + px + py <= 64
+              4 * (x + y) + px + py <= 64
             }
             if (covered < samples) {
               partialSamples += 1
@@ -390,13 +396,18 @@ class RenderCoreL2Spec extends AnyFlatSpec {
           }
           val src = Seq(24, 16, 8).map(shift => channel(t, shift) * 255 >>> 8)
           val expectedColor = if (sampleMode == 0) {
-            if (inside) (src(0).toLong << 24) | (src(1).toLong << 16) |
-              (src(2).toLong << 8) | 0xffL else 0L
+            if (inside)
+              (src(0).toLong << 24) | (src(1).toLong << 16) |
+                (src(2).toLong << 8) | 0xffL
+            else 0L
           } else if (inside && passStencil) {
             val dst = destination(x, y)
             val mixed = Seq(24, 16, 8).zipWithIndex.map { case (shift, i) =>
-              math.min(255, scale(src(i), src(i)) +
-                scale(channel(dst, shift), 255 - src(i)))
+              math.min(
+                255,
+                scale(src(i), src(i)) +
+                  scale(channel(dst, shift), 255 - src(i))
+              )
             }
             (mixed(0).toLong << 24) | (mixed(1).toLong << 16) |
               (mixed(2).toLong << 8) | 0xffL
@@ -407,18 +418,26 @@ class RenderCoreL2Spec extends AnyFlatSpec {
           else ((if (passStencil) 0x5aL else 0L) << 24) | 0x40L
           val actualColor = m.word(colorBase + sampleOffset(x, y, s))
           val actualDepth = m.word(depthBase + sampleOffset(x, y, s))
-          assert(actualColor == expectedColor,
-            f"mode $sampleMode sample $s color ($x,$y): got 0x$actualColor%08x expected 0x$expectedColor%08x")
-          assert(actualDepth == expectedDepth,
-            f"mode $sampleMode sample $s depth ($x,$y): got 0x$actualDepth%08x expected 0x$expectedDepth%08x")
+          assert(
+            actualColor == expectedColor,
+            f"mode $sampleMode sample $s color ($x,$y): got 0x$actualColor%08x expected 0x$expectedColor%08x"
+          )
+          assert(
+            actualDepth == expectedDepth,
+            f"mode $sampleMode sample $s depth ($x,$y): got 0x$actualDepth%08x expected 0x$expectedDepth%08x"
+          )
         }
         if (sampleMode == 2) {
-          assert(partialSamples > 0 && differingSamples > 0,
-            "edge-texture scene must expose a per-sample colour difference")
-          println(s"EDGE_TEXTURE_4X partial_samples=$partialSamples " +
-            s"differing_samples=$differingSamples " +
-            s"channel_difference_sum=$edgeChannelDifference " +
-            s"max_channel_difference=$largestChannelDifference")
+          assert(
+            partialSamples > 0 && differingSamples > 0,
+            "edge-texture scene must expose a per-sample colour difference"
+          )
+          println(
+            s"EDGE_TEXTURE_4X partial_samples=$partialSamples " +
+              s"differing_samples=$differingSamples " +
+              s"channel_difference_sum=$edgeChannelDifference " +
+              s"max_channel_difference=$largestChannelDifference"
+          )
         }
       }
     }

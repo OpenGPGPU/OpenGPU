@@ -10,8 +10,9 @@ import opengpu.core.vector.{VectorIntegerAlu, VectorIntegerRequest, VectorIntege
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
-/** Real decode + integer datapath; register/scalar peers supply only the
-  * emitted address microsequence. No shader, CU, patch RAM or Mesa peer. */
+/** Real decode + integer datapath; register/scalar peers supply only the emitted address microsequence. No shader, CU,
+  * patch RAM or Mesa peer.
+  */
 private class TessellationMappedAddressHarness extends Module {
   val p = GpuConfig(lanes = 16, warps = 8)
   val io = IO(new Bundle {
@@ -39,38 +40,44 @@ private class TessellationMappedAddressHarness extends Module {
 class TessellationMappedAddressSpec extends AnyFlatSpec {
   behavior of "actual mapped TES address instructions"
   it should "multiply actual component strides and reject full-width indices before wrap" in {
-    val directory = sys.props.getOrElse("opengpu.mappedAddressPrograms",
-      throw new IllegalArgumentException("export real helper words with test_tessellation_mapped_address.py --dump"))
+    val directory = sys.props.getOrElse(
+      "opengpu.mappedAddressPrograms",
+      throw new IllegalArgumentException("export real helper words with test_tessellation_mapped_address.py --dump")
+    )
     val mask32 = (BigInt(1) << 32) - 1
-    val indices = Seq[BigInt](0, 1, 2, 30, 31, mask32, BigInt("80000000",16), BigInt("20000000",16)) ++ (8 until 16).map(BigInt(_))
+    val indices =
+      Seq[BigInt](0, 1, 2, 30, 31, mask32, BigInt("80000000", 16), BigInt("20000000", 16)) ++ (8 until 16).map(
+        BigInt(_)
+      )
     simulate(new TessellationMappedAddressHarness) { dut =>
       dut.io.request.valid.poke(false.B); dut.io.result.ready.poke(false.B)
       dut.io.instruction.poke(0.U)
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
-      val cases=(1 to 4).map(w=>(s"width$w",w,31,43,0))++Seq(("store-patch",3,2,3,1),("store-vertex",3,2,33,2))
-      for ((name,width,limit,base,vertex) <- cases) {
+      val cases =
+        (1 to 4).map(w => (s"width$w", w, 31, 43, 0)) ++ Seq(("store-patch", 3, 2, 3, 1), ("store-vertex", 3, 2, 33, 2))
+      for ((name, width, limit, base, vertex) <- cases) {
         val bytes = Files.readAllBytes(Paths.get(directory, s"$name.words"))
         assert(bytes.nonEmpty && bytes.length <= 2048 && bytes.length % 4 == 0)
         val words = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-        val vr = Array.fill(32,16)(BigInt(0)); val xs = Array.fill(32)(BigInt(0))
+        val vr = Array.fill(32, 16)(BigInt(0)); val xs = Array.fill(32)(BigInt(0))
         vr(20) = indices.toArray; vr(21) = indices.toArray
-        vr(28) = Array.tabulate(16)(i => BigInt(0x5a000000L+i))
-        vr(22) = Array.tabulate(16)(i => BigInt(0x6b000000L+i))
+        vr(28) = Array.tabulate(16)(i => BigInt(0x5a000000L + i))
+        vr(22) = Array.tabulate(16)(i => BigInt(0x6b000000L + i))
         var predicate = BigInt(0)
         while (words.hasRemaining) {
           val word = words.getInt().toLong & 0xffffffffL
-          val opcode = word & 127; val rd = ((word >> 7)&31).toInt
-          val rs1 = ((word >> 15)&31).toInt; val rs2 = ((word >> 20)&31).toInt
+          val opcode = word & 127; val rd = ((word >> 7) & 31).toInt
+          val rs1 = ((word >> 15) & 31).toInt; val rs2 = ((word >> 20) & 31).toInt
           if (opcode == 0x37) {
             assert(rd == 10); xs(rd) = BigInt(word & 0xfffff000L)
           } else if (opcode == 0x13) {
-            assert(rd == 10 && ((word >> 12)&7) == 0 && (rs1 == 0 || rs1 == 10))
+            assert(rd == 10 && ((word >> 12) & 7) == 0 && (rs1 == 0 || rs1 == 10))
             val immediate = (word.toInt >> 20).toLong
             xs(rd) = (xs(rs1) + immediate) & mask32
           } else {
             assert(opcode == 0x57)
             dut.io.instruction.poke(word.U); dut.io.legal.expect(true.B)
-            val q=dut.io.request.bits
+            val q = dut.io.request.bits
             q.warpId.poke(0.U); q.pc.poke(0.U); q.warpActiveMask.poke(65535.U)
             q.vd.poke(0.U); q.activeMask.poke(65535.U); q.predicateMask.poke(predicate.U)
             q.vl.poke(16.U); q.scalar.poke(xs(rs1).U); q.immediate.poke(0.U)
@@ -81,26 +88,36 @@ class TessellationMappedAddressSpec extends AnyFlatSpec {
               q.vs2Odd(lane).poke(0.U); q.oldVd(lane).poke(vr(rd)(lane).U)
             }
             dut.io.request.valid.poke(true.B)
-            var cycles=0
-            while(!dut.io.request.ready.peek().litToBoolean && cycles<20){dut.clock.step();cycles+=1}
-            assert(cycles<20);dut.clock.step();dut.io.request.valid.poke(false.B)
-            cycles=0
-            while(!dut.io.result.valid.peek().litToBoolean && cycles<20){dut.clock.step();cycles+=1}
-            assert(cycles<20)
-            if(dut.io.result.bits.writesMask.peek().litToBoolean)predicate=dut.io.result.bits.mask.peek().litValue
-            else for(lane <- 0 until 16)vr(rd)(lane)=dut.io.result.bits.data(lane).peek().litValue
-            dut.io.result.ready.poke(true.B);dut.clock.step();dut.io.result.ready.poke(false.B)
+            var cycles = 0
+            while (!dut.io.request.ready.peek().litToBoolean && cycles < 20) { dut.clock.step(); cycles += 1 }
+            assert(cycles < 20); dut.clock.step(); dut.io.request.valid.poke(false.B)
+            cycles = 0
+            while (!dut.io.result.valid.peek().litToBoolean && cycles < 20) { dut.clock.step(); cycles += 1 }
+            assert(cycles < 20)
+            if (dut.io.result.bits.writesMask.peek().litToBoolean) predicate = dut.io.result.bits.mask.peek().litValue
+            else for (lane <- 0 until 16) vr(rd)(lane) = dut.io.result.bits.data(lane).peek().litValue
+            dut.io.result.ready.poke(true.B); dut.clock.step(); dut.io.result.ready.poke(false.B)
           }
         }
         // Literal independent arithmetic, not another instruction interpreter.
-        for(lane <- 0 until 16){
-          val expected=if(indices(lane)<limit)base+indices(lane)*width*8 else BigInt("80000001",16)
-          assert(vr(29)(lane)==expected,s"name=$name width=$width index=${indices(lane)} actual=${vr(29)(lane)} expected=$expected")
-          assert(vr(20)(lane)==indices(lane),"ADDR source clobbered")
-          assert(vr(21)(lane)==indices(lane),"vertex ADDR source clobbered")
-          val expectedVertex=if(vertex==0)BigInt(0x5a000000L+lane) else if(vertex==1)BigInt(0) else if(indices(lane)<31)indices(lane)+1 else BigInt("80000001",16)
-          assert(vr(28)(lane)==expectedVertex,s"vertex base/wrap: index=${indices(lane)} actual=${vr(28)(lane)} expected=$expectedVertex")
-          assert(vr(22)(lane)==BigInt(0x6b000000L+lane),"pending value clobbered")
+        for (lane <- 0 until 16) {
+          val expected = if (indices(lane) < limit) base + indices(lane) * width * 8 else BigInt("80000001", 16)
+          assert(
+            vr(29)(lane) == expected,
+            s"name=$name width=$width index=${indices(lane)} actual=${vr(29)(lane)} expected=$expected"
+          )
+          assert(vr(20)(lane) == indices(lane), "ADDR source clobbered")
+          assert(vr(21)(lane) == indices(lane), "vertex ADDR source clobbered")
+          val expectedVertex =
+            if (vertex == 0) BigInt(0x5a000000L + lane)
+            else if (vertex == 1) BigInt(0)
+            else if (indices(lane) < 31) indices(lane) + 1
+            else BigInt("80000001", 16)
+          assert(
+            vr(28)(lane) == expectedVertex,
+            s"vertex base/wrap: index=${indices(lane)} actual=${vr(28)(lane)} expected=$expectedVertex"
+          )
+          assert(vr(22)(lane) == BigInt(0x6b000000L + lane), "pending value clobbered")
         }
       }
     }

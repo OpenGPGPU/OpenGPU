@@ -40,13 +40,14 @@ class TessellationQuadEvaluationPipelineSpec extends AnyFlatSpec {
           if (responseFire && mode == 2 && !failed) failed = true
           val nextPending = if (requestValid && requestReady) {
             val q = d.io.request.bits
-            val task=q.taskId.peek().litValue; val seq=q.sequence.peek().litValue; val vertex=q.vertex.peek().litValue
+            val task = q.taskId.peek().litValue; val seq = q.sequence.peek().litValue;
+            val vertex = q.vertex.peek().litValue
             coords += ((seq, vertex, q.tessCoord(0).peek().litValue, q.tessCoord(1).peek().litValue))
             Some((task, seq, vertex))
           } else None
           if (d.io.out.valid.peek().litToBoolean && outputReady) {
-            val q=d.io.out.bits; q.taskId.expect(55.U); q.point.expect(points.B)
-            val seq=q.sequence.peek().litValue
+            val q = d.io.out.bits; q.taskId.expect(55.U); q.point.expect(points.B)
+            val seq = q.sequence.peek().litValue
             for (v <- 0 until (if (points) 1 else 3); i <- Seq(0, 63))
               q.vertices(v)(i).expect((seq * 1000 + v * 100 + i).U)
             published += 1
@@ -61,29 +62,39 @@ class TessellationQuadEvaluationPipelineSpec extends AnyFlatSpec {
         d.io.completion.bits.status.expect((if (mode == 1) 4 else if (mode == 2) 2 else 0).U)
         if (mode == 2) d.io.completion.bits.evaluationFault.expect(2.U)
         if (mode == 0) {
-          val count = if (level == 0x3f800000L) { if (points) 4 else 2 } else { if (points) 9 else 8 }
+          val count = if (level == 0x3f800000L) { if (points) 4 else 2 }
+          else { if (points) 9 else 8 }
           d.io.completion.bits.generated.expect(count.U); assert(published == count)
-          val zero=BigInt(0); val one=BigInt("3f800000",16)
+          val zero = BigInt(0); val one = BigInt("3f800000", 16)
           if (level == 0x3f800000L) {
-            val expected = if (points) Vector((zero,zero),(one,zero),(one,one),(zero,one)).zipWithIndex.map {
-              case ((u,v),i) => (BigInt(i),BigInt(0),u,v)
-            } else Vector((BigInt(0),BigInt(0),zero,zero),(BigInt(0),BigInt(1),one,zero),(BigInt(0),BigInt(2),one,one),
-              (BigInt(1),BigInt(0),zero,zero),(BigInt(1),BigInt(1),one,one),(BigInt(1),BigInt(2),zero,one))
+            val expected = if (points) Vector((zero, zero), (one, zero), (one, one), (zero, one)).zipWithIndex.map {
+              case ((u, v), i) => (BigInt(i), BigInt(0), u, v)
+            }
+            else
+              Vector(
+                (BigInt(0), BigInt(0), zero, zero),
+                (BigInt(0), BigInt(1), one, zero),
+                (BigInt(0), BigInt(2), one, one),
+                (BigInt(1), BigInt(0), zero, zero),
+                (BigInt(1), BigInt(1), one, one),
+                (BigInt(1), BigInt(2), zero, one)
+              )
             assert(coords.toVector == expected)
           } else if (points) {
             assert(coords.size == 9 && coords.forall(_._2 == 0))
-            assert(coords.map(c => (c._3,c._4)).distinct.size == 9)
+            assert(coords.map(c => (c._3, c._4)).distinct.size == 9)
           } else {
             val scale = BigInt(1) << 24
-            def fixed(bits: BigInt): BigInt = BigInt((java.lang.Float.intBitsToFloat(bits.toInt).toDouble * scale.toDouble).toLong)
+            def fixed(bits: BigInt): BigInt =
+              BigInt((java.lang.Float.intBitsToFloat(bits.toInt).toDouble * scale.toDouble).toLong)
             val triangles = coords.grouped(3).map(_.map(c => (fixed(c._3), fixed(c._4))).toVector).toVector
-            def cross(a: (BigInt,BigInt), b: (BigInt,BigInt), c: (BigInt,BigInt)): BigInt =
-              (b._1-a._1)*(c._2-a._2) - (b._2-a._2)*(c._1-a._1)
-            val areas = triangles.map(t => cross(t(0),t(1),t(2)))
+            def cross(a: (BigInt, BigInt), b: (BigInt, BigInt), c: (BigInt, BigInt)): BigInt =
+              (b._1 - a._1) * (c._2 - a._2) - (b._2 - a._2) * (c._1 - a._1)
+            val areas = triangles.map(t => cross(t(0), t(1), t(2)))
             assert(triangles.size == 8 && areas.forall(_ > 0) && areas.sum == 2 * scale * scale)
           }
         }
-        val held=d.io.completion.bits.peek().litValue; d.clock.step(3)
+        val held = d.io.completion.bits.peek().litValue; d.clock.step(3)
         d.io.completion.valid.expect(true.B); assert(d.io.completion.bits.peek().litValue == held)
         d.io.completion.ready.poke(true.B); d.clock.step(); d.io.completion.ready.poke(false.B)
         d.io.cancel.poke(false.B); d.io.busy.expect(false.B)

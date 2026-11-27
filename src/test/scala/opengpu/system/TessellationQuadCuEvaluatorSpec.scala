@@ -8,12 +8,12 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 class TessellationQuadCuEvaluatorSpec extends AnyFlatSpec {
   private def zero(data: Data): Unit = data match {
-    case r: Record => r.elements.values.foreach(zero)
-    case v: Vec[_] => v.foreach(zero)
+    case r: Record                                                     => r.elements.values.foreach(zero)
+    case v: Vec[_]                                                     => v.foreach(zero)
     case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
     case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
     case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
-    case _ => ()
+    case _                                                             => ()
   }
   it should "preserve all quad vertex tags through patch reads, CU work and cancellation" in {
     simulate(new TessellationQuadCuEvaluator(GpuConfig(lanes = 4, warps = 2), 4, 2)) { d =>
@@ -26,14 +26,17 @@ class TessellationQuadCuEvaluatorSpec extends AnyFlatSpec {
         d.io.outputComponents.poke(2.U); val q = d.io.request.bits
         q.taskId.poke(19.U); q.sequence.poke(8191.U); q.vertex.poke(vertex.U)
         q.tessCoord(0).poke("h3f000000".U); q.tessCoord(1).poke("h3e800000".U); q.tessCoord(2).poke(0.U)
-        d.io.request.valid.poke(true.B); d.io.request.ready.expect(true.B); d.clock.step(); d.io.request.valid.poke(false.B)
+        d.io.request.valid.poke(true.B); d.io.request.ready.expect(true.B); d.clock.step();
+        d.io.request.valid.poke(false.B)
       }
       def read(value: Int, status: Int = 0): Unit = {
         until("inspect")(d.io.inspect.valid.peek().litToBoolean)
         val held = d.io.inspect.bits.peek().litValue; d.clock.step(2); assert(d.io.inspect.bits.peek().litValue == held)
         d.io.inspect.ready.poke(true.B); d.clock.step(); d.io.inspect.ready.poke(false.B)
-        d.io.reply.bits.source.poke(2.U); d.io.reply.bits.result.status.poke(status.U); d.io.reply.bits.result.data.poke(value.U)
-        d.io.reply.valid.poke(true.B); until("reply")(d.io.reply.ready.peek().litToBoolean); d.clock.step(); d.io.reply.valid.poke(false.B)
+        d.io.reply.bits.source.poke(2.U); d.io.reply.bits.result.status.poke(status.U);
+        d.io.reply.bits.result.data.poke(value.U)
+        d.io.reply.valid.poke(true.B); until("reply")(d.io.reply.ready.peek().litToBoolean); d.clock.step();
+        d.io.reply.valid.poke(false.B)
       }
       def launch(count: Int): Unit = {
         until("launch")(d.io.launch.valid.peek().litToBoolean); d.io.launch.bits.commandId.expect(7.U)
@@ -50,14 +53,16 @@ class TessellationQuadCuEvaluatorSpec extends AnyFlatSpec {
       }
       def finish(success: Boolean): Unit = {
         val c = d.io.kernelCompletion; c.bits.commandId.poke(7.U); c.bits.success.poke(success.B)
-        c.valid.poke(true.B); until("completion")(c.ready.peek().litToBoolean); d.clock.step(); c.valid.poke(false.B); d.io.owner.poke(0.U)
+        c.valid.poke(true.B); until("completion")(c.ready.peek().litToBoolean); d.clock.step(); c.valid.poke(false.B);
+        d.io.owner.poke(0.U)
       }
       def response(vertex: Int, failed: Boolean): Unit = {
         until("response")(d.io.response.valid.peek().litToBoolean); val r = d.io.response.bits
         r.taskId.expect(19.U); r.sequence.expect(8191.U); r.vertex.expect(vertex.U); r.failed.expect(failed.B)
         if (!failed) { r.components(0).expect(123.U); r.components(1).expect(456.U) }
         val held = r.peek().litValue; d.clock.step(3); assert(r.peek().litValue == held)
-        d.io.request.ready.expect(false.B); d.io.response.ready.poke(true.B); d.clock.step(); d.io.response.ready.poke(false.B)
+        d.io.request.ready.expect(false.B); d.io.response.ready.poke(true.B); d.clock.step();
+        d.io.response.ready.poke(false.B)
       }
       for (v <- 0 to 2) {
         request(v, if (v == 2) 1 else 0)

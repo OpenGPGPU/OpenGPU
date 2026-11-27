@@ -19,13 +19,13 @@ class EvaluatedTrianglePrimitive extends Bundle {
 }
 class TriangleEvaluationFault extends Bundle {
   val taskId = UInt(32.W); val sequence = UInt(14.W)
+
   /** 1 response tag mismatch, 2 executor failure. */
   val status = UInt(2.W)
 }
 
-/** Own one generated primitive while an external evaluator processes it.
-  * Each accepted request must receive exactly one response, even during
-  * enclosing cancellation. Outputs and faults remain held until accepted.
+/** Own one generated primitive while an external evaluator processes it. Each accepted request must receive exactly one
+  * response, even during enclosing cancellation. Outputs and faults remain held until accepted.
   */
 class TessellationTriangleEvaluation extends Module {
   val io = IO(new Bundle {
@@ -64,8 +64,10 @@ class TessellationTriangleEvaluation extends Module {
   }
   when(io.request.fire) { state := response }
   when(io.response.fire) {
-    when(io.response.bits.taskId =/= primitive.taskId || io.response.bits.sequence =/= primitive.sequence ||
-      io.response.bits.vertex =/= vertex) { faultStatus := 1.U; state := fault }
+    when(
+      io.response.bits.taskId =/= primitive.taskId || io.response.bits.sequence =/= primitive.sequence ||
+        io.response.bits.vertex =/= vertex
+    ) { faultStatus := 1.U; state := fault }
       .elsewhen(io.response.bits.failed) { faultStatus := 2.U; state := fault }
       .otherwise {
         result.vertices(vertex) := io.response.bits.components

@@ -37,22 +37,33 @@ class NativeVisibilityQueryEngineSpec extends AnyFlatSpec {
         d.io.memoryResponse.bits.readData.poke(value.U); d.io.memoryResponse.bits.fault.poke(fault.B)
       }
       val req = d.io.memoryRequest
-      held.foreach(bits => assert(req.valid.peek().litToBoolean && req.bits.peek().litValue == bits,
-        "query memory offer changed under backpressure"))
-      held = if (req.valid.peek().litToBoolean && !req.ready.peek().litToBoolean) Some(req.bits.peek().litValue) else None
+      held.foreach(bits =>
+        assert(
+          req.valid.peek().litToBoolean && req.bits.peek().litValue == bits,
+          "query memory offer changed under backpressure"
+        )
+      )
+      held =
+        if (req.valid.peek().litToBoolean && !req.ready.peek().litToBoolean) Some(req.bits.peek().litValue) else None
       if (offered.nonEmpty && d.io.memoryResponse.ready.peek().litToBoolean) {
         val (r, _, fault) = offered.get
-        if (r.write && !fault) for (i <- 0 until 64 if r.mask.testBit(i))
-          bytes(location(r.root, r.address + i)) = ((r.data >> (8 * i)) & 255).toInt
+        if (r.write && !fault)
+          for (i <- 0 until 64 if r.mask.testBit(i))
+            bytes(location(r.root, r.address + i)) = ((r.data >> (8 * i)) & 255).toInt
         offered = None
       }
       if (req.valid.peek().litToBoolean && req.ready.peek().litToBoolean) {
         assert(pending.isEmpty && offered.isEmpty)
         req.bits.transactionId.expect(0.U); req.bits.sizeLog2.expect(6.U)
         req.bits.byteMask.expect(((BigInt(1) << 64) - 1).U)
-        val r = Request(d.io.memorySatp.peek().litValue, req.bits.address.peek().litValue,
-          req.bits.isWrite.peek().litToBoolean, req.bits.writeData.peek().litValue,
-          req.bits.byteMask.peek().litValue, cycle + 4)
+        val r = Request(
+          d.io.memorySatp.peek().litValue,
+          req.bits.address.peek().litValue,
+          req.bits.isWrite.peek().litToBoolean,
+          req.bits.writeData.peek().litValue,
+          req.bits.byteMask.peek().litValue,
+          cycle + 4
+        )
         assert(r.address % 64 == 0); pending = Some(r); seen += r
       }
       d.clock.step(); cycle += 1
@@ -62,15 +73,27 @@ class NativeVisibilityQueryEngineSpec extends AnyFlatSpec {
       while (!condition && n < 2000) { tick(); n += 1 }
       assert(condition, s"query stalled cycle=$cycle pending=$pending offered=$offered")
     }
-    def prepare(action: Int, address: BigInt = 0x2000, context: Int = 7, cookie: Int = 1,
-        conservative: Boolean = false, limit: Option[BigInt] = None): Unit = {
+    def prepare(
+        action: Int,
+        address: BigInt = 0x2000,
+        context: Int = 7,
+        cookie: Int = 1,
+        conservative: Boolean = false,
+        limit: Option[BigInt] = None
+    ): Unit = {
       val q = d.io.command.bits; zero(q); tag += 1
       q.action.poke(action.U); q.address.poke(address.U); q.limit.poke(limit.getOrElse(address + 64).U)
       q.context.poke(context.U); q.cookie.poke(cookie.U); q.conservative.poke(conservative.B); q.tag.poke(tag.U)
       d.io.command.valid.poke(true.B)
     }
-    def command(action: Int, address: BigInt = 0x2000, context: Int = 7, cookie: Int = 1,
-        conservative: Boolean = false, limit: Option[BigInt] = None): Unit = {
+    def command(
+        action: Int,
+        address: BigInt = 0x2000,
+        context: Int = 7,
+        cookie: Int = 1,
+        conservative: Boolean = false,
+        limit: Option[BigInt] = None
+    ): Unit = {
       prepare(action, address, context, cookie, conservative, limit)
       until(d.io.command.ready.peek().litToBoolean); tick(); d.io.command.valid.poke(false.B)
     }
@@ -91,8 +114,14 @@ class NativeVisibilityQueryEngineSpec extends AnyFlatSpec {
     def begin(address: BigInt = 0x2000, context: Int = 7, cookie: Int = 1, conservative: Boolean = false): Unit = {
       command(0, address, context, cookie, conservative); reply()
     }
-    def end(address: BigInt = 0x2000, context: Int = 7, cookie: Int = 1, conservative: Boolean = false,
-        value: Boolean = false, status: Int = 0): Unit = {
+    def end(
+        address: BigInt = 0x2000,
+        context: Int = 7,
+        cookie: Int = 1,
+        conservative: Boolean = false,
+        value: Boolean = false,
+        status: Int = 0
+    ): Unit = {
       command(1, address, context, cookie, conservative); reply(status, available = true, value = value)
     }
   }
@@ -159,8 +188,13 @@ class NativeVisibilityQueryEngineSpec extends AnyFlatSpec {
   it should "check record bounds identity reserved fields and result encoding" in {
     simulate(new NativeVisibilityQueryEngine(contexts = 2)) { d =>
       val t = new Driver(d)
-      for ((address, limit) <- Seq((BigInt(0x2004), BigInt(0x2044)),
-        (BigInt(0xffffffc0L), (BigInt(1) << 32) - 1), (BigInt(0x2000), (BigInt(1) << 32) + 64))) {
+      for (
+        (address, limit) <- Seq(
+          (BigInt(0x2004), BigInt(0x2044)),
+          (BigInt(0xffffffc0L), (BigInt(1) << 32) - 1),
+          (BigInt(0x2000), (BigInt(1) << 32) + 64)
+        )
+      ) {
         t.command(0, address, limit = Some(limit)); t.reply(1)
       }
       assert(t.seen.isEmpty)
@@ -168,8 +202,17 @@ class NativeVisibilityQueryEngineSpec extends AnyFlatSpec {
       t.command(3, 0xffffffc0L); t.reply(available = true)
       t.begin(); t.sample(); t.end(value = true)
       val original = (0 until 16).map(i => t.word(0x2000, i))
-      for ((index, value, status) <- Seq((0, BigInt(0), 1), (2, BigInt(8), 2), (3, BigInt(2), 2),
-        (6, BigInt(1), 2), (4, BigInt(33), 1), (5, BigInt(2), 1), (15, BigInt(1), 1))) {
+      for (
+        (index, value, status) <- Seq(
+          (0, BigInt(0), 1),
+          (2, BigInt(8), 2),
+          (3, BigInt(2), 2),
+          (6, BigInt(1), 2),
+          (4, BigInt(33), 1),
+          (5, BigInt(2), 1),
+          (15, BigInt(1), 1)
+        )
+      ) {
         t.put(0x2000, index, value); t.command(3); t.reply(status); t.put(0x2000, index, original(index))
       }
       t.put(0x2000, 4, 13); t.put(0x2000, 5, 0)
@@ -237,7 +280,9 @@ class NativeVisibilityQueryEngineSpec extends AnyFlatSpec {
         t.command(3, address = 0x2000 + i * 64, context = 7 + i, cookie = i + 1)
         t.reply(available = true, value = i == 0 || i == 7)
       }
-      info("NATIVE_VISIBILITY_DEFAULT_CONTEXTS activeContexts=8 capacityRejected9=true producers=2 simultaneousSampleEvents=true isolatedResults8=true unreadResultsRetainNoActiveSlots=true")
+      info(
+        "NATIVE_VISIBILITY_DEFAULT_CONTEXTS activeContexts=8 capacityRejected9=true producers=2 simultaneousSampleEvents=true isolatedResults8=true unreadResultsRetainNoActiveSlots=true"
+      )
     }
   }
 }

@@ -8,9 +8,9 @@ class Fp32EstimateLaneSpec extends AnyFlatSpec {
   behavior of "Fp32EstimateLane"
 
   private def run(
-    operation: Fp32Operation.Type,
-    a: BigInt,
-    roundingMode: Int = 0
+      operation: Fp32Operation.Type,
+      a: BigInt,
+      roundingMode: Int = 0
   ): (BigInt, BigInt) = {
     var result = BigInt(0)
     var flags = BigInt(0)

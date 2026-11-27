@@ -3,8 +3,7 @@ package opengpu.testutil
 import java.nio.file.{Files, Paths}
 import svsim.{Backend, CommonCompilationSettings, Workspace}
 
-private[testutil] final case class FlashSimCompilationSettings(jobs: Int, shards: Int)
-    extends Backend.Settings {
+private[testutil] final case class FlashSimCompilationSettings(jobs: Int, shards: Int) extends Backend.Settings {
   require(jobs > 0 && shards >= 0, "FlashSim requires positive build jobs and a nonnegative shard count")
 }
 
@@ -16,11 +15,11 @@ private[testutil] final class FlashSimBackend extends Backend {
   override val assertionFailed = "^FlashSim assertion .*$".r
 
   override def generateParameters(
-    outputBinaryName: String,
-    topModuleName: String,
-    additionalHeaderPaths: Seq[String],
-    commonSettings: CommonCompilationSettings,
-    backendSpecificSettings: CompilationSettings
+      outputBinaryName: String,
+      topModuleName: String,
+      additionalHeaderPaths: Seq[String],
+      commonSettings: CommonCompilationSettings,
+      backendSpecificSettings: CompilationSettings
   ): Backend.Parameters = {
     require(topModuleName == Workspace.testbenchModuleName, "FlashSim requires the standard svsim testbench")
     require(commonSettings.linkLibraryPaths.isEmpty, "FlashSim cannot link simulator DPI libraries")
@@ -36,8 +35,16 @@ private[testutil] final class FlashSimBackend extends Backend {
     Backend.Parameters(
       python,
       Backend.Parameters.Invocation(
-        Seq("-B", script.toString, "--output", outputBinaryName, "--jobs", backendSpecificSettings.jobs.toString,
-          "--shards", backendSpecificSettings.shards.toString) ++ defines,
+        Seq(
+          "-B",
+          script.toString,
+          "--output",
+          outputBinaryName,
+          "--jobs",
+          backendSpecificSettings.jobs.toString,
+          "--shards",
+          backendSpecificSettings.shards.toString
+        ) ++ defines,
         Seq.empty
       ),
       Backend.Parameters.Invocation(Seq.empty, Seq.empty)

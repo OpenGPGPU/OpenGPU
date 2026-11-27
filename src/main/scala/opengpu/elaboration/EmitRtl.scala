@@ -8,7 +8,6 @@ object EmitRtl {
   val defaultFirtoolOptions: Array[String] =
     Array("--lowering-options=disallowLocalVariables,disallowPackedArrays")
 
-  def emit(gen: => RawModule, targetDir: String,
-           firtoolOptions: Array[String] = defaultFirtoolOptions): Unit =
+  def emit(gen: => RawModule, targetDir: String, firtoolOptions: Array[String] = defaultFirtoolOptions): Unit =
     ChiselStage.emitSystemVerilogFile(gen, Array("--target-dir", targetDir), firtoolOptions)
 }

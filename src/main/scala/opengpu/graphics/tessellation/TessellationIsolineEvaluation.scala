@@ -19,14 +19,14 @@ class EvaluatedIsolinePrimitive extends Bundle {
 }
 class IsolineEvaluationFault extends Bundle {
   val taskId = UInt(32.W); val sequence = UInt(16.W)
+
   /** 1: response tag mismatch; 2: shader execution failed. */
   val status = UInt(2.W)
 }
 
-/** Own a generated point or line while an external evaluation executor runs.
-  * Requests are strictly serial, and each accepted request must receive one
-  * response, including after an enclosing cancellation. The enclosing owner
-  * drains this module before releasing patch storage or shader resources.
+/** Own a generated point or line while an external evaluation executor runs. Requests are strictly serial, and each
+  * accepted request must receive one response, including after an enclosing cancellation. The enclosing owner drains
+  * this module before releasing patch storage or shader resources.
   */
 class TessellationIsolineEvaluation extends Module {
   val io = IO(new Bundle {
@@ -59,7 +59,8 @@ class TessellationIsolineEvaluation extends Module {
   io.response.ready := state === response
   io.out.valid := state === output; io.out.bits := result
   io.fault.valid := state === fault
-  io.fault.bits.taskId := primitive.taskId; io.fault.bits.sequence := primitive.sequence; io.fault.bits.status := faultStatus
+  io.fault.bits.taskId := primitive.taskId; io.fault.bits.sequence := primitive.sequence;
+  io.fault.bits.status := faultStatus
   when(io.in.fire) {
     primitive := io.in.bits; result := 0.U.asTypeOf(result)
     result.taskId := io.in.bits.taskId; result.sequence := io.in.bits.sequence; result.point := io.in.bits.point
@@ -67,7 +68,9 @@ class TessellationIsolineEvaluation extends Module {
   }
   when(io.request.fire) { state := response }
   when(io.response.fire) {
-    when(io.response.bits.taskId =/= primitive.taskId || io.response.bits.sequence =/= primitive.sequence || io.response.bits.vertex =/= vertex) {
+    when(
+      io.response.bits.taskId =/= primitive.taskId || io.response.bits.sequence =/= primitive.sequence || io.response.bits.vertex =/= vertex
+    ) {
       faultStatus := 1.U; state := fault
     }.elsewhen(io.response.bits.failed) { faultStatus := 2.U; state := fault }
       .otherwise {

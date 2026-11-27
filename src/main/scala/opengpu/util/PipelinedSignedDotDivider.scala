@@ -9,18 +9,17 @@ class SignedDotDivisionRequest(coefficientWidth: Int, attributeWidth: Int, denom
   val denominator = SInt(denominatorWidth.W)
 }
 
-/** Three exact signed products, a deliberately modular sum, a constant left
-  * shift and exact signed division. Truncate the sum BEFORE shifting, matching
-  * legacy affine/gradient expressions rather than an unbounded mathematical
-  * dot product. Every arithmetic boundary is registered and ordered.
+/** Three exact signed products, a deliberately modular sum, a constant left shift and exact signed division. Truncate
+  * the sum BEFORE shifting, matching legacy affine/gradient expressions rather than an unbounded mathematical dot
+  * product. Every arithmetic boundary is registered and ordered.
   */
 class PipelinedSignedDotDivider(
-  coefficientWidth: Int,
-  attributeWidth: Int,
-  sumWidth: Int,
-  denominatorWidth: Int,
-  quotientWidth: Int,
-  shift: Int = 0
+    coefficientWidth: Int,
+    attributeWidth: Int,
+    sumWidth: Int,
+    denominatorWidth: Int,
+    quotientWidth: Int,
+    shift: Int = 0
 ) extends Module {
   require(sumWidth > 0 && sumWidth <= coefficientWidth + attributeWidth && shift >= 0)
   private val numeratorWidth = sumWidth + shift

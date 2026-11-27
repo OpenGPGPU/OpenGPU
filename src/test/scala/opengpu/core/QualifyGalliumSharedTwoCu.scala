@@ -13,29 +13,55 @@ import scala.collection.mutable
 
 private class GalliumSharedTwoCuSramModels extends BlackBox with HasBlackBoxInline {
   val io = IO(new Bundle { val present = Output(Bool()) })
-  setInline("GalliumSharedTwoCuSramModels.sv",
+  setInline(
+    "GalliumSharedTwoCuSramModels.sv",
     "module GalliumSharedTwoCuSramModels(output present); assign present=1'b1; endmodule\n" +
-      Seq(32, 64).map(w => Files.readString(Paths.get(
-        s"depends/asap7_sram_0p0/generated/verilog/srambank_64x4x${w}_6t122.v"))).mkString("\n"))
+      Seq(32, 64)
+        .map(w => Files.readString(Paths.get(s"depends/asap7_sram_0p0/generated/verilog/srambank_64x4x${w}_6t122.v")))
+        .mkString("\n")
+  )
 }
 
 /** Two stock native CUs sharing one real L2, interconnect and lower port. */
 private class GalliumSharedTwoCuHarness extends Module {
   private val c = GpuConfig()
-  require(c.lanes == 16 && c.warps == 8 && c.simtStackDepth == 8 &&
-    c.sharedMemoryBytes == 16384 && c.sharedMemoryBanks == 16 &&
-    c.sharedMemoryBase == 0x10000000L && c.enableFpu && c.enableVector)
-  val cu = Seq.fill(2)(Module(new GpuComputeUnit(c, useBlackBoxes = true,
-    enableFpuBackend = true, finishOnTrap = true, textureAvailable = false,
-    taskTextureAvailability = true, nativeResourcesAvailable = false,
-    storageAvailable = true, computeUniformAvailable = true,
-    nativeExecutionProfile = true)))
-  val interconnect = Module(new SharedComputeMemoryInterconnect(c,
-    numComputeUnits = 2, lineBytes = 64, transactionsPerCu = 16))
-  val l2 = Module(new SharedL2Cache(c, sets = c.l2Sets, ways = c.l2Ways,
-    banks = c.l2Banks, requestQueueDepth = c.l2RequestQueueDepth,
-    maxOutstanding = 32, numComputeUnits = 2, transactionsPerCu = 16,
-    useSramBlackBoxes = true))
+  require(
+    c.lanes == 16 && c.warps == 8 && c.simtStackDepth == 8 &&
+      c.sharedMemoryBytes == 16384 && c.sharedMemoryBanks == 16 &&
+      c.sharedMemoryBase == 0x10000000L && c.enableFpu && c.enableVector
+  )
+  val cu = Seq.fill(2)(
+    Module(
+      new GpuComputeUnit(
+        c,
+        useBlackBoxes = true,
+        enableFpuBackend = true,
+        finishOnTrap = true,
+        textureAvailable = false,
+        taskTextureAvailability = true,
+        nativeResourcesAvailable = false,
+        storageAvailable = true,
+        computeUniformAvailable = true,
+        nativeExecutionProfile = true
+      )
+    )
+  )
+  val interconnect = Module(
+    new SharedComputeMemoryInterconnect(c, numComputeUnits = 2, lineBytes = 64, transactionsPerCu = 16)
+  )
+  val l2 = Module(
+    new SharedL2Cache(
+      c,
+      sets = c.l2Sets,
+      ways = c.l2Ways,
+      banks = c.l2Banks,
+      requestQueueDepth = c.l2RequestQueueDepth,
+      maxOutstanding = 32,
+      numComputeUnits = 2,
+      transactionsPerCu = 16,
+      useSramBlackBoxes = true
+    )
+  )
   val io = IO(new Bundle {
     // The compute mirrors expose per-CU request/response activity, but the
     // interconnect/L2, not these unused input fields, drive the CU.
@@ -89,22 +115,23 @@ private class GalliumSharedTwoCuHarness extends Module {
 @DoNotDiscover
 class GalliumSharedTwoCuQualification extends AnyFlatSpec {
   private def zero(d: Data): Unit = d match {
-    case r: Record => r.elements.values.foreach(zero)
-    case v: Vec[_] => v.foreach(zero)
+    case r: Record                                                     => r.elements.values.foreach(zero)
+    case v: Vec[_]                                                     => v.foreach(zero)
     case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
     case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
     case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
-    case _ => ()
+    case _                                                             => ()
   }
   private val mask32 = (BigInt(1) << 32) - 1
   private def expected(seed: BigInt, group: Int, local: Int): BigInt =
     (0 until 32).map(r => seed + (group << 16) + (local ^ 16) + r * 128).sum & mask32
 
   it should "run two independent shared programs through one shared L2" in {
-    require(sys.props.get("opengpu.galliumSharedTwoCuQualification").contains("1"),
-      "explicit local qualification only")
-    val programs = GalliumSharedArtifacts.load(Paths.get(sys.props("opengpu.galliumSharedArtifacts")),
-      sys.props("opengpu.galliumSharedArtifactSha256"))
+    require(sys.props.get("opengpu.galliumSharedTwoCuQualification").contains("1"), "explicit local qualification only")
+    val programs = GalliumSharedArtifacts.load(
+      Paths.get(sys.props("opengpu.galliumSharedArtifacts")),
+      sys.props("opengpu.galliumSharedArtifactSha256")
+    )
     simulate(new GalliumSharedTwoCuHarness) { top =>
       val ds = (0 until 2).map(i => top.io.compute(i))
       zero(top.io); top.reset.poke(true.B); top.clock.step(2); top.reset.poke(false.B)
@@ -135,10 +162,12 @@ class GalliumSharedTwoCuQualification extends AnyFlatSpec {
         val pageTables = mutable.Set.empty[BigInt]
         private val levels = mutable.Map.empty[(BigInt, BigInt), BigInt]
         def map(root: BigInt, virtual: BigInt, physical: BigInt, flags: Int): Unit = {
-          val level = levels.getOrElseUpdate((root, virtual >> 22), {
-            val a = root + 4096 * (1 + levels.keys.count(_._1 == root))
-            blank(a, 4096); pageTables += a; a
-          })
+          val level = levels.getOrElseUpdate(
+            (root, virtual >> 22), {
+              val a = root + 4096 * (1 + levels.keys.count(_._1 == root))
+              blank(a, 4096); pageTables += a; a
+            }
+          )
           put(root + (virtual >> 22) * 4, ((level >> 12) << 10) | 1)
           put(level + ((virtual >> 12) & 1023) * 4, ((physical >> 12) << 10) | flags)
         }
@@ -147,9 +176,22 @@ class GalliumSharedTwoCuQualification extends AnyFlatSpec {
           blank(codeP, 4096); words.zipWithIndex.foreach { case (w, i) => put(codeP + 4 * i, w) }
           Seq(2, 1, 1).zipWithIndex.foreach { case (n, i) => put(kernargP + 4 * i, BigInt(n)) }
           blank(tableP, 256)
-          Seq[(Int, BigInt)](0 -> StorageDescriptorLayout.magic, 1 -> 64, 2 -> 1,
-            3 -> context, 4 -> 7, 5 -> context, 6 -> 0, 7 -> 1, 8 -> 1, 9 -> 1,
-            10 -> outputV, 11 -> (outputV + 1024), 13 -> outputV, 14 -> (outputV + 4096))
+          Seq[(Int, BigInt)](
+            0 -> StorageDescriptorLayout.magic,
+            1 -> 64,
+            2 -> 1,
+            3 -> context,
+            4 -> 7,
+            5 -> context,
+            6 -> 0,
+            7 -> 1,
+            8 -> 1,
+            9 -> 1,
+            10 -> outputV,
+            11 -> (outputV + 1024),
+            13 -> outputV,
+            14 -> (outputV + 4096)
+          )
             .foreach { case (i, v) => put(tableP + 4 * i, v) }
           remember(outputP - 64, 4160)
           map(iRoot, pc, codeP, 0x4b); map(vRoot, kernargV, kernargP, 0x43)
@@ -170,11 +212,11 @@ class GalliumSharedTwoCuQualification extends AnyFlatSpec {
       val frozen = memory.toMap
       val expectedAll = units.flatMap(_.expectedWords).toMap
       require(expectedAll.size == 512, "two CU outputs must be physically disjoint")
-      val knownPages = (units.flatMap(u => Seq(u.codeP, u.kernargP, u.tableP, u.outputP))
+      val knownPages = (units
+        .flatMap(u => Seq(u.codeP, u.kernargP, u.tableP, u.outputP))
         .map(p => p & ~BigInt(4095)) ++ units.flatMap(_.pageTables)).toSet
 
-      case class Reply(id: BigInt, address: BigInt, value: BigInt, due: Int,
-                       write: Option[(BigInt, BigInt, BigInt)])
+      case class Reply(id: BigInt, address: BigInt, value: BigInt, due: Int, write: Option[(BigInt, BigInt, BigInt)])
       val pending = mutable.ArrayBuffer.empty[Reply]
       var offered = Option.empty[Reply]
       val outstanding = mutable.Set.empty[BigInt]
@@ -187,8 +229,7 @@ class GalliumSharedTwoCuQualification extends AnyFlatSpec {
       var bothActiveCycles = 0
 
       def tick(): Unit = {
-        assert(totalCycles < GalliumSharedArtifacts.cycleBudget,
-          s"two-CU bounded cycles $totalCycles")
+        assert(totalCycles < GalliumSharedArtifacts.cycleBudget, s"two-CU bounded cycles $totalCycles")
         for (i <- 0 until 2) {
           val d = ds(i); val u = units(i)
           if (u.admission) {
@@ -244,8 +285,10 @@ class GalliumSharedTwoCuQualification extends AnyFlatSpec {
               if (wr) {
                 q.cachePolicy.expect(CachePolicy.uncached)
                 val m = q.byteMask.peek().litValue; val first = m.lowestSetBit; val at = a + first
-                assert(first >= 0 && (first & 3) == 0 && m == (BigInt(15) << first) &&
-                  expectedAll.contains(at) && !written(at))
+                assert(
+                  first >= 0 && (first & 3) == 0 && m == (BigInt(15) << first) &&
+                    expectedAll.contains(at) && !written(at)
+                )
                 assert(((q.writeData.peek().litValue >> (8 * first)) & mask32) == expectedAll(at))
                 written += at
               } else {
@@ -255,9 +298,13 @@ class GalliumSharedTwoCuQualification extends AnyFlatSpec {
                 }
               }
             }
-            pending += Reply(id, a, if (wr) BigInt(0) else read(a, if (size == 2) 4 else 64),
+            pending += Reply(
+              id,
+              a,
+              if (wr) BigInt(0) else read(a, if (size == 2) 4 else 64),
               totalCycles + (if (wr) 17 else 3),
-              if (wr) Some((a, q.writeData.peek().litValue, q.byteMask.peek().litValue)) else None)
+              if (wr) Some((a, q.writeData.peek().litValue, q.byteMask.peek().litValue)) else None
+            )
           } else { heldRequest = Some(bits) }
         } else assert(heldRequest.isEmpty, "held lower request withdrawn")
         top.clock.step(); totalCycles += 1
@@ -297,20 +344,27 @@ class GalliumSharedTwoCuQualification extends AnyFlatSpec {
           units(i).admission = true
         }
       }
-      until("completion")(ds(0).completion.valid.peek().litToBoolean &&
-        ds(1).completion.valid.peek().litToBoolean)
+      until("completion")(
+        ds(0).completion.valid.peek().litToBoolean &&
+          ds(1).completion.valid.peek().litToBoolean
+      )
       for (i <- 0 until 2) {
         ds(i).completion.bits.success.expect(true.B)
         top.io.cuBusy(i).expect(false.B)
-        assert(units(i).peakWarps == 8 && units(i).warpStarts == 16 &&
-          units(i).maxBarrierWaiting > 0)
+        assert(
+          units(i).peakWarps == 8 && units(i).warpStarts == 16 &&
+            units(i).maxBarrierWaiting > 0
+        )
       }
       top.io.drained.expect(true.B)
       assert(bothActiveCycles > 0, "the two CUs never held warps simultaneously")
-      assert((0 until 2).forall(i =>
-        top.io.cuRequests(i).peek().litValue > 0 && top.io.cuResponses(i).peek().litValue > 0))
-      assert(top.io.simultaneousRequests.peek().litValue > 0,
-        "the two CUs never offered memory requests in the same cycle")
+      assert(
+        (0 until 2).forall(i => top.io.cuRequests(i).peek().litValue > 0 && top.io.cuResponses(i).peek().litValue > 0)
+      )
+      assert(
+        top.io.simultaneousRequests.peek().litValue > 0,
+        "the two CUs never offered memory requests in the same cycle"
+      )
       assert(written.toSet == expectedAll.keySet && acknowledged.toSet == expectedAll.keySet)
       assert(descriptorAddresses == units.map(_.tableP).toSet)
       units.foreach { u =>
@@ -349,26 +403,32 @@ class GalliumSharedTwoCuQualification extends AnyFlatSpec {
         top.io.drained.expect(true.B)
       }
       assert(memory.toMap == golden.toMap)
-      info(s"GALLIUM_SHARED_TWO_CU PASS cus=2 groups=4 nativeWarpStarts=32 outputWords=${written.size} " +
-        s"sharedL2=true banks=${GpuConfig().l2Banks} interconnect=true bothActiveCycles=$bothActiveCycles " +
-        s"simultaneousRequests=${top.io.simultaneousRequests.peek().litValue} " +
-        s"cuRequests=${(0 until 2).map(i => top.io.cuRequests(i).peek().litValue).mkString(",")} " +
-        s"cuResponses=${(0 until 2).map(i => top.io.cuResponses(i).peek().litValue).mkString(",")} " +
-        s"heldCompletion=13 quietTail=16 cycles=$totalCycles H7Complete=false")
+      info(
+        s"GALLIUM_SHARED_TWO_CU PASS cus=2 groups=4 nativeWarpStarts=32 outputWords=${written.size} " +
+          s"sharedL2=true banks=${GpuConfig().l2Banks} interconnect=true bothActiveCycles=$bothActiveCycles " +
+          s"simultaneousRequests=${top.io.simultaneousRequests.peek().litValue} " +
+          s"cuRequests=${(0 until 2).map(i => top.io.cuRequests(i).peek().litValue).mkString(",")} " +
+          s"cuResponses=${(0 until 2).map(i => top.io.cuResponses(i).peek().litValue).mkString(",")} " +
+          s"heldCompletion=13 quietTail=16 cycles=$totalCycles H7Complete=false"
+      )
     }
   }
 }
 
 object QualifyGalliumSharedTwoCu {
   def main(args: Array[String]): Unit = {
-    require(sys.props.get("opengpu.galliumSharedTwoCuQualification").contains("1"),
-      "explicit local qualification only")
-    require(args.length == 6 && args(0) == "--artifacts" && args(2) == "--manifest-sha256" && args(4) == "--reports",
-      "usage: --artifacts DIRECTORY --manifest-sha256 SHA256 --reports DIRECTORY")
+    require(sys.props.get("opengpu.galliumSharedTwoCuQualification").contains("1"), "explicit local qualification only")
+    require(
+      args.length == 6 && args(0) == "--artifacts" && args(2) == "--manifest-sha256" && args(4) == "--reports",
+      "usage: --artifacts DIRECTORY --manifest-sha256 SHA256 --reports DIRECTORY"
+    )
     GalliumSharedArtifacts.load(Paths.get(args(1)), args(3)) // before elaboration/cache lookup
     sys.props("opengpu.galliumSharedArtifacts") = args(1)
     sys.props("opengpu.galliumSharedArtifactSha256") = args(3)
-    require(org.scalatest.tools.Runner.run(Array("-s", classOf[GalliumSharedTwoCuQualification].getName,
-      "-oD", "-u", args(5))), "Gallium shared two-CU qualification failed")
+    require(
+      org.scalatest.tools.Runner
+        .run(Array("-s", classOf[GalliumSharedTwoCuQualification].getName, "-oD", "-u", args(5))),
+      "Gallium shared two-CU qualification failed"
+    )
   }
 }

@@ -5,9 +5,8 @@ import chisel3.util._
 import opengpu.config.GpuConfig
 import opengpu.core.frontend.simt.SimtStackEntry
 
-/** Reserve every required stack entry before any write. Insufficient capacity
-  * produces one owned overflow instead of waiting for a path that cannot run.
-  * Clear cancels only the named warp's pending control-flow work.
+/** Reserve every required stack entry before any write. Insufficient capacity produces one owned overflow instead of
+  * waiting for a path that cannot run. Clear cancels only the named warp's pending control-flow work.
   */
 class SimtBranchStackSequencer(config: GpuConfig = GpuConfig()) extends Module {
   private val freeWidth = math.max(1, log2Ceil(config.simtStackDepth + 1))

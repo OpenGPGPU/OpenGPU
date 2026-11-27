@@ -19,22 +19,38 @@ object TessellationJointHostProtocol {
   val profileWordCount = 4
   val profileEnd = profileBase + profileWordCount * 4
 
-  final case class Profile(engines: Int, scalarFpu: Boolean, advancedBlend: Boolean,
-      sampleInputs: Boolean, feedback: Boolean) {
+  final case class Profile(
+      engines: Int,
+      scalarFpu: Boolean,
+      advancedBlend: Boolean,
+      sampleInputs: Boolean,
+      feedback: Boolean
+  ) {
     require(engines >= 1 && engines <= 4)
-    def words: Seq[BigInt] = Seq(profileMagic,
+    def words: Seq[BigInt] = Seq(
+      profileMagic,
       0x7f | (if (scalarFpu) 1 << 7 else 0) | (if (advancedBlend) 1 << 8 else 0) |
         (if (sampleInputs) 1 << 9 else 0) | (if (feedback) 1 << 10 else 0),
-      (8 << 24) | (16 << 16) | (2 << 8) | 7, engines)
+      (8 << 24) | (16 << 16) | (2 << 8) | 7,
+      engines
+    )
   }
 
-  def profileFor(graphics: GraphicsConfig, gpu: GpuConfig, computeUnits: Int,
-      native: NativeBinnedGraphicsConfig, scalarFpu: Boolean, sampleInputs: Boolean,
-      feedback: Boolean): Option[Profile] =
-    Option.when(computeUnits == 2 && gpu.lanes == 16 && gpu.warps == 8 &&
-      gpu.sharedMemoryBase == 0x10000000L && gpu.sharedMemoryBytes == 16384 &&
-      native.vertex.input.attributes == 16 && native.vertex.input.bindings == 16 &&
-      native.vertex.varyings == 16 && graphics.maxSampleCount == 4) {
+  def profileFor(
+      graphics: GraphicsConfig,
+      gpu: GpuConfig,
+      computeUnits: Int,
+      native: NativeBinnedGraphicsConfig,
+      scalarFpu: Boolean,
+      sampleInputs: Boolean,
+      feedback: Boolean
+  ): Option[Profile] =
+    Option.when(
+      computeUnits == 2 && gpu.lanes == 16 && gpu.warps == 8 &&
+        gpu.sharedMemoryBase == 0x10000000L && gpu.sharedMemoryBytes == 16384 &&
+        native.vertex.input.attributes == 16 && native.vertex.input.bindings == 16 &&
+        native.vertex.varyings == 16 && graphics.maxSampleCount == 4
+    ) {
       Profile(native.engines, scalarFpu, native.storage.nativeAdvancedDraws, sampleInputs, feedback)
     }
 
@@ -62,12 +78,24 @@ object TessellationJointHostProtocol {
     request.identity.generation := command.destinationStride
   }
 
-  def completionDetails(report: TessellationJointNativeCompletion): Vec[UInt] = VecInit(Seq(
-    completionMagic.U(32.W), Cat(0.U(25.W), report.clearOnly, report.faultStage, report.status),
-    report.faultAddress, report.identity.context, report.identity.pass, report.identity.generation,
-    report.capturedEntries, report.retiredRanges,
-    report.retiredPatches(31, 0), report.retiredPatches(63, 32),
-    report.published(31, 0), report.published(63, 32),
-    report.storedBytes(31, 0), report.storedBytes(63, 32),
-    report.resolvedBytes(31, 0), report.resolvedBytes(63, 32)))
+  def completionDetails(report: TessellationJointNativeCompletion): Vec[UInt] = VecInit(
+    Seq(
+      completionMagic.U(32.W),
+      Cat(0.U(25.W), report.clearOnly, report.faultStage, report.status),
+      report.faultAddress,
+      report.identity.context,
+      report.identity.pass,
+      report.identity.generation,
+      report.capturedEntries,
+      report.retiredRanges,
+      report.retiredPatches(31, 0),
+      report.retiredPatches(63, 32),
+      report.published(31, 0),
+      report.published(63, 32),
+      report.storedBytes(31, 0),
+      report.storedBytes(63, 32),
+      report.resolvedBytes(31, 0),
+      report.resolvedBytes(63, 32)
+    )
+  )
 }

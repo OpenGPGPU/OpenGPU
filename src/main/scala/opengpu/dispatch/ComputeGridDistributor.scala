@@ -4,24 +4,53 @@ import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
 
-/** Expand compute grids into private tagged workgroup tasks. Graphics arbitration,
-  * physical completion credits and payload ownership remain in the shared arbiter.
+/** Expand compute grids into private tagged workgroup tasks. Graphics arbitration, physical completion credits and
+  * payload ownership remain in the shared arbiter.
   *
-  * Parent rows remain reserved through public completion acceptance. Child tags
-  * remain reserved through real child completion acceptance. After a child fault,
-  * no new groups are offered; an already offered group is still owned and drains.
+  * Parent rows remain reserved through public completion acceptance. Child tags remain reserved through real child
+  * completion acceptance. After a child fault, no new groups are offered; an already offered group is still owned and
+  * drains.
   */
 class ComputeGridDistributor(
-  config: GpuConfig = GpuConfig(), numComputeUnits: Int = 4, commandIdWidth: Int = 8, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false
+    config: GpuConfig = GpuConfig(),
+    numComputeUnits: Int = 4,
+    commandIdWidth: Int = 8,
+    imageAvailable: Boolean = false,
+    storageAvailable: Boolean = false,
+    computeUniformAvailable: Boolean = false,
+    computeTextureAvailable: Boolean = false,
+    atomicCounterAvailable: Boolean = false
 ) extends Module {
   require(numComputeUnits > 0 && commandIdWidth > 0)
   val slots = BigInt(numComputeUnits).min(BigInt(1) << commandIdWidth).toInt
   private val slotWidth = math.max(1, log2Ceil(slots))
   private val countWidth = math.max(1, log2Ceil(slots + 1))
   val io = IO(new Bundle {
-    val launch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable, atomicCounterAvailable)))
+    val launch = Flipped(
+      Decoupled(
+        new TaggedKernelLaunch(
+          config,
+          commandIdWidth,
+          imageAvailable,
+          storageAvailable,
+          computeUniformAvailable,
+          computeTextureAvailable,
+          atomicCounterAvailable
+        )
+      )
+    )
     val completion = Decoupled(new TaggedKernelCompletion(commandIdWidth))
-    val childLaunch = Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable, atomicCounterAvailable))
+    val childLaunch = Decoupled(
+      new TaggedKernelLaunch(
+        config,
+        commandIdWidth,
+        imageAvailable,
+        storageAvailable,
+        computeUniformAvailable,
+        computeTextureAvailable,
+        atomicCounterAvailable
+      )
+    )
     val childGroup = Output(new KernelGridSlice)
     val childCompletion = Flipped(Decoupled(new TaggedKernelCompletion(commandIdWidth)))
     val childParentIds = Output(Vec(slots, UInt(commandIdWidth.W)))
@@ -29,7 +58,20 @@ class ComputeGridDistributor(
 
   private val live = RegInit(VecInit(Seq.fill(slots)(false.B)))
   private val queued = RegInit(VecInit(Seq.fill(slots)(false.B)))
-  private val parent = Reg(Vec(slots, new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable, atomicCounterAvailable)))
+  private val parent = Reg(
+    Vec(
+      slots,
+      new TaggedKernelLaunch(
+        config,
+        commandIdWidth,
+        imageAvailable,
+        storageAvailable,
+        computeUniformAvailable,
+        computeTextureAvailable,
+        atomicCounterAvailable
+      )
+    )
+  )
   private val group = Reg(Vec(slots, Vec(3, UInt(32.W))))
   private val limit = Reg(Vec(slots, Vec(3, UInt(32.W))))
   private val last = Reg(Vec(slots, Vec(3, Bool())))
@@ -40,7 +82,17 @@ class ComputeGridDistributor(
   private val childParent = Reg(Vec(slots, UInt(slotWidth.W)))
 
   private val offerValid = RegInit(false.B)
-  private val offer = Reg(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable, atomicCounterAvailable))
+  private val offer = Reg(
+    new TaggedKernelLaunch(
+      config,
+      commandIdWidth,
+      imageAvailable,
+      storageAvailable,
+      computeUniformAvailable,
+      computeTextureAvailable,
+      atomicCounterAvailable
+    )
+  )
   private val offerGroup = Reg(Vec(3, UInt(32.W)))
   private val offerParent = Reg(UInt(slotWidth.W))
   io.childLaunch.valid := offerValid
@@ -71,8 +123,9 @@ class ComputeGridDistributor(
 
   private val freeParent = ~live.asUInt
   private val newRow = if (slots == 1) 0.U else PriorityEncoder(freeParent)
-  private val duplicate = VecInit((0 until slots).map(i =>
-    live(i) && parent(i).commandId === io.launch.bits.commandId)).asUInt.orR
+  private val duplicate = VecInit(
+    (0 until slots).map(i => live(i) && parent(i).commandId === io.launch.bits.commandId)
+  ).asUInt.orR
   io.launch.ready := freeParent.orR && !duplicate
   when(io.launch.fire) {
     live(newRow) := true.B

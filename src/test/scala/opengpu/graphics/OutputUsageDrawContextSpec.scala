@@ -11,8 +11,8 @@ class OutputUsageDrawContextSpec extends AnyFlatSpec {
     // These are simulator drives, deliberately using poke rather than Chisel
     // connection syntax (:=).  The latter only builds hardware during module
     // elaboration and does not drive a DUT in a test.
-    dut.io.enq.bits.fragInputSkip.poke((tag*17).U)
-    dut.io.enq.bits.fragOutputSkip.poke((tag*5).U)
+    dut.io.enq.bits.fragInputSkip.poke((tag * 17).U)
+    dut.io.enq.bits.fragOutputSkip.poke((tag * 5).U)
     dut.io.enq.bits.shaderPc.poke((0x1000 + tag).U)
     dut.io.enq.bits.kernargBase.poke((0x2000 + tag).U)
     dut.io.enq.bits.kernargBankStride.poke((0x3000 + tag).U)
@@ -43,7 +43,8 @@ class OutputUsageDrawContextSpec extends AnyFlatSpec {
       dut.io.enq.valid.poke(false.B)
       dut.io.headValid.expect(true.B)
       dut.io.tailValid.expect(true.B)
-      dut.io.head.fragInputSkip.expect(17.U); dut.io.head.fragOutputSkip.expect(5.U); dut.io.head.shaderPc.expect(0x1001.U)
+      dut.io.head.fragInputSkip.expect(17.U); dut.io.head.fragOutputSkip.expect(5.U);
+      dut.io.head.shaderPc.expect(0x1001.U)
       dut.io.head.kernargBase.expect(0x2001.U)
       dut.io.head.texBase.expect(0x4001.U)
       dut.io.head.colorBase.expect(0x8001.U)
@@ -62,13 +63,17 @@ class OutputUsageDrawContextSpec extends AnyFlatSpec {
       driveContext(dut, 2); dut.clock.step()
       dut.io.enq.valid.poke(false.B)
       dut.io.enq.ready.expect(false.B)
-      dut.io.head.fragInputSkip.expect(17.U); dut.io.head.fragOutputSkip.expect(5.U); dut.io.head.shaderPc.expect(0x1001.U)
-      dut.io.tail.fragInputSkip.expect(34.U); dut.io.tail.fragOutputSkip.expect(10.U); dut.io.tail.shaderPc.expect(0x1002.U)
+      dut.io.head.fragInputSkip.expect(17.U); dut.io.head.fragOutputSkip.expect(5.U);
+      dut.io.head.shaderPc.expect(0x1001.U)
+      dut.io.tail.fragInputSkip.expect(34.U); dut.io.tail.fragOutputSkip.expect(10.U);
+      dut.io.tail.shaderPc.expect(0x1002.U)
       dut.io.retire.poke(true.B); dut.clock.step()
       dut.io.retire.poke(false.B)
       dut.io.headValid.expect(true.B)
-      dut.io.head.fragInputSkip.expect(34.U); dut.io.head.fragOutputSkip.expect(10.U); dut.io.head.shaderPc.expect(0x1002.U)
-      dut.io.tail.fragInputSkip.expect(34.U); dut.io.tail.fragOutputSkip.expect(10.U); dut.io.tail.shaderPc.expect(0x1002.U)
+      dut.io.head.fragInputSkip.expect(34.U); dut.io.head.fragOutputSkip.expect(10.U);
+      dut.io.head.shaderPc.expect(0x1002.U)
+      dut.io.tail.fragInputSkip.expect(34.U); dut.io.tail.fragOutputSkip.expect(10.U);
+      dut.io.tail.shaderPc.expect(0x1002.U)
     }
   }
 
@@ -82,10 +87,13 @@ class OutputUsageDrawContextSpec extends AnyFlatSpec {
       dut.io.enq.ready.expect(true.B)
       dut.clock.step()
       dut.io.enq.valid.poke(false.B); dut.io.retire.poke(false.B)
-      dut.io.head.fragInputSkip.expect(34.U); dut.io.head.fragOutputSkip.expect(10.U); dut.io.head.shaderPc.expect(0x1002.U)
-      dut.io.tail.fragInputSkip.expect(51.U); dut.io.tail.fragOutputSkip.expect(15.U); dut.io.tail.shaderPc.expect(0x1003.U)
+      dut.io.head.fragInputSkip.expect(34.U); dut.io.head.fragOutputSkip.expect(10.U);
+      dut.io.head.shaderPc.expect(0x1002.U)
+      dut.io.tail.fragInputSkip.expect(51.U); dut.io.tail.fragOutputSkip.expect(15.U);
+      dut.io.tail.shaderPc.expect(0x1003.U)
       dut.io.retire.poke(true.B); dut.clock.step(); dut.io.retire.poke(false.B)
-      dut.io.head.fragInputSkip.expect(51.U); dut.io.head.fragOutputSkip.expect(15.U); dut.io.head.shaderPc.expect(0x1003.U)
+      dut.io.head.fragInputSkip.expect(51.U); dut.io.head.fragOutputSkip.expect(15.U);
+      dut.io.head.shaderPc.expect(0x1003.U)
     }
   }
 }

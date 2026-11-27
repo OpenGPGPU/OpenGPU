@@ -10,9 +10,11 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 private class VectorBackendSramResources extends BlackBox with HasBlackBoxInline {
   val io = IO(new Bundle { val present = Output(Bool()) })
-  setInline("VectorBackendSramResources.sv",
+  setInline(
+    "VectorBackendSramResources.sv",
     "module VectorBackendSramResources(output present); assign present=1'b1; endmodule\n" +
-      Files.readString(Paths.get("depends/asap7_sram_0p0/generated/verilog/srambank_64x4x64_6t122.v")))
+      Files.readString(Paths.get("depends/asap7_sram_0p0/generated/verilog/srambank_64x4x64_6t122.v"))
+  )
 }
 
 private class MacroVectorBackend(config: GpuConfig) extends VectorBackend(config, useBlackBox = true) {

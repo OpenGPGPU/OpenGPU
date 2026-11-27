@@ -7,8 +7,9 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-/** Exercise the staging port directly: acknowledgements publish writes, read
-  * replies reorder, both request/output ports stall, and banks are reused. */
+/** Exercise the staging port directly: acknowledgements publish writes, read replies reorder, both request/output ports
+  * stall, and banks are reused.
+  */
 class KernelFragConcurrentStagingSpec extends AnyFlatSpec {
   behavior of "KernelFragStage concurrent staging"
   for ((lanes, warps, transactions) <- Seq((4, 1, 2), (4, 2, 2), (4, 3, 2), (8, 2, 2), (16, 7, 4), (16, 8, 8))) {
@@ -16,12 +17,12 @@ class KernelFragConcurrentStagingSpec extends AnyFlatSpec {
       val cap = lanes * warps
       simulate(new KernelFragStage(GpuConfig(lanes = lanes, warps = warps), GraphicsConfig(), transactions)) { dut =>
         def zeroInputs(d: Data): Unit = d match {
-          case r: Record => r.elements.values.foreach(zeroInputs)
-          case v: Vec[_] => v.foreach(zeroInputs)
+          case r: Record                                                     => r.elements.values.foreach(zeroInputs)
+          case v: Vec[_]                                                     => v.foreach(zeroInputs)
           case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
           case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
           case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
-          case _ => ()
+          case _                                                             => ()
         }
         zeroInputs(dut.io)
         dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
@@ -37,11 +38,24 @@ class KernelFragConcurrentStagingSpec extends AnyFlatSpec {
         val mem = mutable.LongMap[BigInt]()
         def put(addr: Long, data: BigInt): Unit = {
           val base = addr & ~63L; val shift = (addr & 63).toInt * 8
-          mem(base) = (mem.getOrElse(base, BigInt(0)) & ~(BigInt("ffffffff",16) << shift)) | ((data & BigInt("ffffffff",16)) << shift)
+          mem(base) = (mem.getOrElse(base, BigInt(0)) & ~(BigInt("ffffffff", 16) << shift)) | ((data & BigInt(
+            "ffffffff",
+            16
+          )) << shift)
         }
-        def word(addr: Long): BigInt = (mem.getOrElse(addr & ~63L, BigInt(0)) >> ((addr & 63).toInt * 8)) & BigInt("ffffffff",16)
+        def word(addr: Long): BigInt =
+          (mem.getOrElse(addr & ~63L, BigInt(0)) >> ((addr & 63).toInt * 8)) & BigInt("ffffffff", 16)
         case class Pending(id: Int, addr: Long, write: Boolean, data: BigInt, mask: BigInt, due: Int, fault: Boolean)
-        for ((count, faultPhase) <- Seq((cap, "none"), (4, "none"), (math.max(4, cap - 4), "none"), (cap, "write"), (cap, "read"), (4, "none"))) {
+        for (
+          (count, faultPhase) <- Seq(
+            (cap, "none"),
+            (4, "none"),
+            (math.max(4, cap - 4), "none"),
+            (cap, "write"),
+            (cap, "read"),
+            (4, "none")
+          )
+        ) {
           val pending = mutable.ArrayBuffer.empty[Pending]
           var cycle = 0; var seq = 0; var launched = false; var completed = false
           var injected = false; var maxPending = 0; var reordered = false
@@ -88,7 +102,12 @@ class KernelFragConcurrentStagingSpec extends AnyFlatSpec {
             val reqFire = dut.io.wordMemReq.valid.peek().litToBoolean && dut.io.wordMemReq.ready.peek().litToBoolean
             if (dut.io.wordMemReq.valid.peek().litToBoolean) {
               val b = dut.io.wordMemReq.bits
-              val payload = (b.address.peek().litValue, b.writeData.peek().litValue, b.byteMask.peek().litValue, b.transactionId.peek().litValue)
+              val payload = (
+                b.address.peek().litValue,
+                b.writeData.peek().litValue,
+                b.byteMask.peek().litValue,
+                b.transactionId.peek().litValue
+              )
               stable.foreach(v => assert(v == payload, "request changed while stalled"))
               stable = if (reqFire) None else Some(payload)
             } else assert(stable.isEmpty, "stalled request disappeared")
@@ -98,25 +117,26 @@ class KernelFragConcurrentStagingSpec extends AnyFlatSpec {
               launchBase = dut.io.kernelLaunch.kernargAddress.peek().litValue.toLong
               dut.io.kernelLaunch.localX.expect(count.U)
               for (i <- 0 until count) {
-                assert(word(launchBase + 4L*i) == i+1)
-                assert(word(launchBase + 4L*cap + 4L*i) == BigInt((-i-1).toLong & 0xffffffffL))
-                assert(word(launchBase + 16L*cap + 4L*i) == 1000+i)
-                put(launchBase + 24L*cap + 4L*i, BigInt("aabbccff",16) + (BigInt(i) << 24))
-                put(launchBase + 28L*cap + 4L*i, 300+i)
-                put(launchBase + 32L*cap + 4L*i, if (i % 7 == 0) 0 else 3)
+                assert(word(launchBase + 4L * i) == i + 1)
+                assert(word(launchBase + 4L * cap + 4L * i) == BigInt((-i - 1).toLong & 0xffffffffL))
+                assert(word(launchBase + 16L * cap + 4L * i) == 1000 + i)
+                put(launchBase + 24L * cap + 4L * i, BigInt("aabbccff", 16) + (BigInt(i) << 24))
+                put(launchBase + 28L * cap + 4L * i, 300 + i)
+                put(launchBase + 32L * cap + 4L * i, if (i % 7 == 0) 0 else 3)
               }
               launched = true
             }
-            if (dut.io.kernelCompletion.valid.peek().litToBoolean && dut.io.kernelCompletion.ready.peek().litToBoolean) completed = true
+            if (dut.io.kernelCompletion.valid.peek().litToBoolean && dut.io.kernelCompletion.ready.peek().litToBoolean)
+              completed = true
             if (dut.io.out.valid.peek().litToBoolean) {
               assert(pending.isEmpty && !reqFire, "fragment escaped before read drain")
               assert(faultPhase == "none", "faulted staging emitted a fragment")
               if (dut.io.out.ready.peek().litToBoolean) {
                 val i = expected(outputs)
-                dut.io.out.bits.x.expect((i+1).S)
-                dut.io.out.bits.y.expect((-i-1).S)
-                dut.io.out.bits.depth.expect((300+i).S)
-                dut.io.out.bits.color.r.expect(((0xaa+i)&255).U)
+                dut.io.out.bits.x.expect((i + 1).S)
+                dut.io.out.bits.y.expect((-i - 1).S)
+                dut.io.out.bits.depth.expect((300 + i).S)
+                dut.io.out.bits.color.r.expect(((0xaa + i) & 255).U)
                 dut.io.out.bits.color.g.expect(0xbb.U)
                 dut.io.out.bits.color.b.expect(0xcc.U)
                 dut.io.out.bits.alpha.expect(0xff.U)
@@ -133,8 +153,8 @@ class KernelFragConcurrentStagingSpec extends AnyFlatSpec {
             reply.foreach { j =>
               val p = pending.remove(j); if (j > 0) reordered = true
               if (p.write && !p.fault) for (b <- 0 until 64 if p.mask.testBit(b)) {
-                val shift = b*8; val old = mem.getOrElse(p.addr, BigInt(0))
-                mem(p.addr) = (old & ~(BigInt(255) << shift)) | (((p.data >> shift)&255) << shift)
+                val shift = b * 8; val old = mem.getOrElse(p.addr, BigInt(0))
+                mem(p.addr) = (old & ~(BigInt(255) << shift)) | (((p.data >> shift) & 255) << shift)
               }
             }
             if (reqFire) {
@@ -144,8 +164,15 @@ class KernelFragConcurrentStagingSpec extends AnyFlatSpec {
               readSeen ||= !wr
               val fault = !injected && ((faultPhase == "write" && wr) || (faultPhase == "read" && !wr))
               injected ||= fault
-              pending += Pending(id, b.address.peek().litValue.toLong, wr, b.writeData.peek().litValue,
-                b.byteMask.peek().litValue, cycle + (if (seq % 2 == 0) 35 * transactions else 4), fault)
+              pending += Pending(
+                id,
+                b.address.peek().litValue.toLong,
+                wr,
+                b.writeData.peek().litValue,
+                b.byteMask.peek().litValue,
+                cycle + (if (seq % 2 == 0) 35 * transactions else 4),
+                fault
+              )
               seq += 1; maxPending = math.max(maxPending, pending.size)
             }
             dut.clock.step(); cycle += 1
@@ -163,7 +190,9 @@ class KernelFragConcurrentStagingSpec extends AnyFlatSpec {
           dut.io.kernelCompletion.valid.poke(false.B)
           dut.clock.step(2)
           dut.io.drained.expect(true.B)
-          println(s"STAGING cap=$cap count=$count fault=$faultPhase credits=$transactions cycles=$cycle maxPending=$maxPending")
+          println(
+            s"STAGING cap=$cap count=$count fault=$faultPhase credits=$transactions cycles=$cycle maxPending=$maxPending"
+          )
         }
       }
     }

@@ -12,20 +12,24 @@ class NativeRgba8TextureResult extends Bundle {
   val status = UInt(3.W); val faultSource = UInt(3.W)
   val faultAddressValid = Bool(); val faultAddress = UInt(32.W)
   val uniqueTaps = UInt(3.W); val dataReadLines = UInt(3.W)
+
   /** Healthy request to execute with the general native sampler. */
   val fallback = Bool()
 }
 
-/** Selected native coordinates through complete checked translation and FP32
-  * RGBA8 sampling. The caller retains native binding/sampler admission, mip
-  * interpolation, shadow/general-format fallback and final swizzle ownership.
-  * Invalidation closes admission and flushes only after accepted work retires;
-  * it does not turn a live numeric request into a cancellation. VM changes
-  * likewise wait for the full outer epoch, including coordinate planning.
+/** Selected native coordinates through complete checked translation and FP32 RGBA8 sampling. The caller retains native
+  * binding/sampler admission, mip interpolation, shadow/general-format fallback and final swizzle ownership.
+  * Invalidation closes admission and flushes only after accepted work retires; it does not turn a live numeric request
+  * into a cancellation. VM changes likewise wait for the full outer epoch, including coordinate planning.
   */
-class NativeRgba8TextureService(config: GpuConfig = GpuConfig(),
-    p: TextureImageAddressConfig = TextureImageAddressConfig(), dataBytes: Int = 8192,
-    entries: Int = 128, useBlackBoxes: Boolean = false, admissionCancelInput: Boolean = false) extends Module {
+class NativeRgba8TextureService(
+    config: GpuConfig = GpuConfig(),
+    p: TextureImageAddressConfig = TextureImageAddressConfig(),
+    dataBytes: Int = 8192,
+    entries: Int = 128,
+    useBlackBoxes: Boolean = false,
+    admissionCancelInput: Boolean = false
+) extends Module {
   require(isPow2(entries) && entries >= 64 && entries <= 256)
   private val indexBits = log2Ceil(entries)
   val io = IO(new Bundle {
@@ -40,12 +44,13 @@ class NativeRgba8TextureService(config: GpuConfig = GpuConfig(),
     val cancelGroup = Flipped(Valid(new BankedTextureGroupCancel))
     // Internal cluster handoff; cancelled queued requests are poisoned on the
     // admission edge even when the ordinary scoped-cancel path is registered.
-    val cancelOnAdmission = if(admissionCancelInput) Some(Input(Bool())) else None
+    val cancelOnAdmission = if (admissionCancelInput) Some(Input(Bool())) else None
     val busy = Output(Bool()); val occupiedFills = Output(UInt(5.W)); val joined = Output(Bool())
   })
   private val planner = Module(new TextureRgba8GroupPlanner(p))
-  private val sampler = Module(new TranslatedRgba8Fp32TextureService(config, dataBytes,
-    entries, useBlackBoxes, readCountOutput = true))
+  private val sampler = Module(
+    new TranslatedRgba8Fp32TextureService(config, dataBytes, entries, useBlackBoxes, readCountOutput = true)
+  )
   private val results = Reg(Vec(entries, new NativeRgba8TextureResult))
   private val alive = RegInit(VecInit(Seq.fill(entries)(false.B)))
   private val completed = RegInit(VecInit(Seq.fill(entries)(false.B)))
@@ -95,8 +100,7 @@ class NativeRgba8TextureService(config: GpuConfig = GpuConfig(),
   io.memoryRequest <> sampler.io.memoryRequest; sampler.io.memoryResponse <> io.memoryResponse
   io.pageWalk <> sampler.io.pageWalk; sampler.io.pageWalkResponse <> io.pageWalkResponse
   io.occupiedFills := sampler.io.occupiedFills; io.joined := sampler.io.joined
-  val epochReady = Mux(count === 0.U, !planner.io.busy && !sampler.io.busy,
-    io.satp === pinnedSatp)
+  val epochReady = Mux(count === 0.U, !planner.io.busy && !sampler.io.busy, io.satp === pinnedSatp)
   val allow = !stop && !maintenance && epochReady && count < entries.U
   io.in.ready := allow && planner.io.in.ready
   planner.io.in.valid := io.in.valid && allow
@@ -126,8 +130,11 @@ class NativeRgba8TextureService(config: GpuConfig = GpuConfig(),
     assert(plan.tag < entries.U && alive(plannedOwner) && !completed(plannedOwner))
     results(plannedOwner).uniqueTaps := plan.uniqueTaps
     when(!forward) {
-      results(plannedOwner).status := Mux(plan.status =/= 0.U, plan.status,
-        Mux(planStopped, TextureImageResourceStatus.cancelled.U, 0.U))
+      results(plannedOwner).status := Mux(
+        plan.status =/= 0.U,
+        plan.status,
+        Mux(planStopped, TextureImageResourceStatus.cancelled.U, 0.U)
+      )
       results(plannedOwner).faultSource := plan.faultSource
       results(plannedOwner).fallback := plan.fallback && !planStopped
       completed(plannedOwner) := true.B
@@ -141,8 +148,11 @@ class NativeRgba8TextureService(config: GpuConfig = GpuConfig(),
     assert(alive(sampledOwner) && !completed(sampledOwner))
     assert(sample.tag === results(sampledOwner).tag && sample.identity.asUInt === results(sampledOwner).identity.asUInt)
     val bad = sample.fault; val halted = sample.cancelled || stop || cancelled(sampledOwner) || scoped(sampledOwner)
-    results(sampledOwner).status := Mux(bad, Mux(sample.faultSource === 3.U, TextureImageFetchStatus.format.U, TextureImageResourceStatus.memory.U),
-      Mux(halted, TextureImageResourceStatus.cancelled.U, 0.U))
+    results(sampledOwner).status := Mux(
+      bad,
+      Mux(sample.faultSource === 3.U, TextureImageFetchStatus.format.U, TextureImageResourceStatus.memory.U),
+      Mux(halted, TextureImageResourceStatus.cancelled.U, 0.U)
+    )
     results(sampledOwner).faultSource := Mux(bad, Mux(sample.faultSource === 3.U, 3.U, 2.U), 0.U)
     results(sampledOwner).faultAddressValid := bad && sample.faultSource =/= 3.U
     results(sampledOwner).faultAddress := Mux(bad, sample.faultAddress, 0.U)

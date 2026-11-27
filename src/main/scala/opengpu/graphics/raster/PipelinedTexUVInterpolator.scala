@@ -16,10 +16,9 @@ class TexUVInterpolationResult(payloadWidth: Int) extends Bundle {
   val divideByZero = Bool()
 }
 
-/** Streaming version of the legacy perspective interpolation expression.
-  * Preserve signed edge/inverse-W products, the original modular denominator
-  * and numerator sums, unsigned32 UVs and signed quotient truncation/wrap.
-  * Ordered queues carry captured metadata across each arithmetic pipeline.
+/** Streaming version of the legacy perspective interpolation expression. Preserve signed edge/inverse-W products, the
+  * original modular denominator and numerator sums, unsigned32 UVs and signed quotient truncation/wrap. Ordered queues
+  * carry captured metadata across each arithmetic pipeline.
   */
 class PipelinedTexUVInterpolator(config: GraphicsConfig, payloadWidth: Int = 1) extends Module {
   require(payloadWidth > 0)
@@ -30,10 +29,15 @@ class PipelinedTexUVInterpolator(config: GraphicsConfig, payloadWidth: Int = 1) 
     val out = Decoupled(new TexUVInterpolationResult(payloadWidth))
   })
   private val weights = Seq.fill(3)(Module(new PipelinedSignedProduct(config.edgeWidth, 32)))
-  private val first = Module(new Queue(new Bundle {
-    val coordinates = Vec(3, new TexUV)
-    val payload = UInt(payloadWidth.W)
-  }, entries = weights.head.latency + 2))
+  private val first = Module(
+    new Queue(
+      new Bundle {
+        val coordinates = Vec(3, new TexUV)
+        val payload = UInt(payloadWidth.W)
+      },
+      entries = weights.head.latency + 2
+    )
+  )
   io.in.ready := weights.head.io.in.ready && first.io.enq.ready
   first.io.enq.valid := io.in.valid && weights.head.io.in.ready
   first.io.enq.bits.coordinates := io.in.bits.coordinates
@@ -46,10 +50,15 @@ class PipelinedTexUVInterpolator(config: GraphicsConfig, payloadWidth: Int = 1) 
     assert(m.io.out.valid === weights.head.io.out.valid)
   }
   private val products = Seq.fill(6)(Module(new PipelinedSignedProduct(weightWidth, 33)))
-  private val denominator = Module(new Queue(new Bundle {
-    val value = SInt(weightWidth.W)
-    val payload = UInt(payloadWidth.W)
-  }, entries = products.head.latency + 2))
+  private val denominator = Module(
+    new Queue(
+      new Bundle {
+        val value = SInt(weightWidth.W)
+        val payload = UInt(payloadWidth.W)
+      },
+      entries = products.head.latency + 2
+    )
+  )
   private val denominatorSum = Module(new CarrySavePrefixSum(weightWidth))
   denominatorSum.io.terms := VecInit(weights.map(_.io.out.bits.asUInt))
   private val weightPresent = weights.head.io.out.valid && first.io.deq.valid

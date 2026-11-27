@@ -48,14 +48,18 @@ class SharedCuCacheInvalidationSpec extends AnyFlatSpec {
               val req = dut.io.cuRequest(cu).valid.peek().litToBoolean &&
                 dut.io.cuRequest(cu).ready.peek().litToBoolean
               val next = if (req) Some(dut.io.cuRequest(cu).bits.lineAddress.peek().litValue) else None
-              if (dut.io.l2Done(cu).valid.peek().litToBoolean &&
-                  dut.io.l2Done(cu).ready.peek().litToBoolean) {
+              if (
+                dut.io.l2Done(cu).valid.peek().litToBoolean &&
+                dut.io.l2Done(cu).ready.peek().litToBoolean
+              ) {
                 dut.io.l2Done(cu).bits.lineAddress.expect(l2Address.U)
                 assert(!acknowledged(cu), "L2 invalidation acknowledged twice")
                 acknowledged(cu) = true
               }
-              if (dut.io.l2Request(cu).valid.peek().litToBoolean &&
-                  dut.io.l2Request(cu).ready.peek().litToBoolean) pendingL2(cu) = false
+              if (
+                dut.io.l2Request(cu).valid.peek().litToBoolean &&
+                dut.io.l2Request(cu).ready.peek().litToBoolean
+              ) pendingL2(cu) = false
               if (ack) queues(cu).dequeue()
               next.foreach { address => queues(cu).enqueue(address); observed(cu) += address }
             }

@@ -32,15 +32,14 @@ class Asap7Sram1Rw256x64 extends BlackBox {
 
 /** Synchronous single-port L2 array.
   *
-  * The physical implementation uses the smallest characterized ASAP7 SRAM
-  * (256 words). Narrow tag arrays occupy one 32-bit macro; wider arrays are
-  * striped over 64-bit macros sharing control and address. The behavioral
-  * model deliberately gives writes priority, matching the supplied macro.
+  * The physical implementation uses the smallest characterized ASAP7 SRAM (256 words). Narrow tag arrays occupy one
+  * 32-bit macro; wider arrays are striped over 64-bit macros sharing control and address. The behavioral model
+  * deliberately gives writes priority, matching the supplied macro.
   */
 class L2SramArray(
-  depth: Int,
-  width: Int,
-  useBlackBox: Boolean = false
+    depth: Int,
+    width: Int,
+    useBlackBox: Boolean = false
 ) extends Module {
   require(depth > 1 && isPow2(depth) && depth <= 256)
   require(width > 0 && width <= 512)
@@ -59,8 +58,7 @@ class L2SramArray(
     val physicalWidth = if (width <= 32) 32 else 64
     val macroCount = (width + physicalWidth - 1) / physicalWidth
     val paddedWidth = macroCount * physicalWidth
-    val selectedAddress = Mux(
-      io.writeEnable, io.writeAddress, io.readAddress).pad(8)
+    val selectedAddress = Mux(io.writeEnable, io.writeAddress, io.readAddress).pad(8)
     val paddedWriteData = io.writeData.pad(paddedWidth)
     val readChunks = Wire(Vec(macroCount, UInt(physicalWidth.W)))
 
@@ -88,8 +86,7 @@ class L2SramArray(
     io.readData := readChunks.asUInt(width - 1, 0)
   } else {
     val memory = SyncReadMem(depth, UInt(width.W))
-    io.readData := memory.read(
-      io.readAddress, io.readEnable && !io.writeEnable)
+    io.readData := memory.read(io.readAddress, io.readEnable && !io.writeEnable)
     when(io.writeEnable) {
       memory.write(io.writeAddress, io.writeData)
     }

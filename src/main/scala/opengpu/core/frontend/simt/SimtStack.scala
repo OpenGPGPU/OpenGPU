@@ -6,16 +6,17 @@ import opengpu.config.GpuConfig
 
 /** Saved SIMT control-flow state.
   *
-  * `activeMask` is the path restored by this entry. `originalMask` records the
-  * complete pre-divergence warp mask for reconvergence checks.
+  * `activeMask` is the path restored by this entry. `originalMask` records the complete pre-divergence warp mask for
+  * reconvergence checks.
   */
 class SimtStackEntry(config: GpuConfig) extends Bundle {
   val pc = UInt(config.xLen.W)
   val activeMask = UInt(config.lanes.W)
   val originalMask = UInt(config.lanes.W)
   val divergent = Bool()
-  /** Instruction scopes and their alternate paths retain the same join PC.
-    * Legacy externally supplied paths keep structured=false and preserve pc.
+
+  /** Instruction scopes and their alternate paths retain the same join PC. Legacy externally supplied paths keep
+    * structured=false and preserve pc.
     */
   val structured = Bool()
   val joinPc = UInt(config.xLen.W)
@@ -23,10 +24,9 @@ class SimtStackEntry(config: GpuConfig) extends Bundle {
 
 /** Small per-warp LIFO for divergent control flow.
   *
-  * Unlike the original OpenGPU implementation, a successful pop always
-  * removes exactly one entry. A full stack can accept a push when its current
-  * top is popped in the same cycle, replacing that entry without a bubble.
-  * `clear` supports recycling a hardware warp without resetting the core.
+  * Unlike the original OpenGPU implementation, a successful pop always removes exactly one entry. A full stack can
+  * accept a push when its current top is popped in the same cycle, replacing that entry without a bubble. `clear`
+  * supports recycling a hardware warp without resetting the core.
   */
 class SimtStack(config: GpuConfig = GpuConfig()) extends Module {
   private val depth = config.simtStackDepth

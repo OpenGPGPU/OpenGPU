@@ -17,19 +17,18 @@ private class ClipFloatDivideToken(tagWidth: Int) extends Bundle {
 }
 
 object ClipFloatStreamingDivider {
+
   /** Number of advancing clock edges from input acceptance to output offer. */
   val latency = 29
 }
 
-/** Extended-exponent RNE division with one request per cycle, including special
-  * and malformed inputs. Twenty-four spatial radix-2 steps produce the 23
-  * retained fraction bits, guard bit and exact remainder for sticky rounding.
-  * This is a pixel arithmetic building block; it does not replace the scalar
-  * ClipFloatArithmetic interface or establish an integrated renderer rate.
+/** Extended-exponent RNE division with one request per cycle, including special and malformed inputs. Twenty-four
+  * spatial radix-2 steps produce the 23 retained fraction bits, guard bit and exact remainder for sticky rounding. This
+  * is a pixel arithmetic building block; it does not replace the scalar ClipFloatArithmetic interface or establish an
+  * integrated renderer rate.
   *
-  * Backpressure freezes the entire pipeline. Cancellation blocks admission and
-  * marks accepted internal tokens, which still drain in order with their
-  * computed values. An already offered response is immutable even on cancel.
+  * Backpressure freezes the entire pipeline. Cancellation blocks admission and marks accepted internal tokens, which
+  * still drain in order with their computed values. An already offered response is immutable even on cancel.
   */
 class ClipFloatStreamingDivider(tagWidth: Int = 8) extends Module {
   require(tagWidth > 0)

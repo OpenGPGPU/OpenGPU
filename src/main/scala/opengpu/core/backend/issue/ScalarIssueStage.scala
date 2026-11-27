@@ -3,11 +3,7 @@ package opengpu.core.backend.issue
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
-import opengpu.core.backend.register.{
-  ScalarIssueOperands,
-  ScalarRegisterMacroManager,
-  ScalarRegisterWrite
-}
+import opengpu.core.backend.register.{ScalarIssueOperands, ScalarRegisterMacroManager, ScalarRegisterWrite}
 import opengpu.core.backend.scoreboard.RegisterRelease
 import opengpu.core.frontend.decode._
 
@@ -20,13 +16,12 @@ class ScalarIssuedInstruction(config: GpuConfig) extends Bundle {
 
 /** Couples decoded scalar metadata to RF/scoreboard operand issue.
   *
-  * Metadata and the register reservation are accepted atomically. The FIFO is
-  * consumed only with the corresponding operand response, so dependency stalls
-  * and downstream backpressure cannot change instruction association.
+  * Metadata and the register reservation are accepted atomically. The FIFO is consumed only with the corresponding
+  * operand response, so dependency stalls and downstream backpressure cannot change instruction association.
   */
 class ScalarIssueStage(
-  config: GpuConfig = GpuConfig(),
-  useBlackBoxes: Boolean = false
+    config: GpuConfig = GpuConfig(),
+    useBlackBoxes: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ScalarDecodeResponse(config)))

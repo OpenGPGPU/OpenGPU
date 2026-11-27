@@ -3,11 +3,10 @@ package opengpu.util
 import chisel3._
 import chisel3.util._
 
-/** Exact unsigned addition with a prefix tree between short carry groups.
-  * Native wide additions can map to long ripple chains in the physical flow.
-  * Each group uses a bounded local addition; parallel generate/propagate
-  * prefixes determine the incoming carry without a group-to-group ripple.
-  * This is combinational and returns the full width+1 result.
+/** Exact unsigned addition with a prefix tree between short carry groups. Native wide additions can map to long ripple
+  * chains in the physical flow. Each group uses a bounded local addition; parallel generate/propagate prefixes
+  * determine the incoming carry without a group-to-group ripple. This is combinational and returns the full width+1
+  * result.
   */
 class BlockPrefixAdder(width: Int = 64, groupBits: Int = 4) extends Module {
   require(width > 0 && groupBits > 0)
@@ -33,10 +32,8 @@ class BlockPrefixAdder(width: Int = 64, groupBits: Int = 4) extends Module {
     val distance = 1 << stage
     val g = generate
     val p = propagate
-    generate = (0 until groups).map(i =>
-      if (i < distance) g(i) else g(i) || (p(i) && g(i - distance)))
-    propagate = (0 until groups).map(i =>
-      if (i < distance) p(i) else p(i) && p(i - distance))
+    generate = (0 until groups).map(i => if (i < distance) g(i) else g(i) || (p(i) && g(i - distance)))
+    propagate = (0 until groups).map(i => if (i < distance) p(i) else p(i) && p(i - distance))
   }
   private val carries = (0 until groups).map { i =>
     if (i == 0) io.carryIn else generate(i - 1) || (propagate(i - 1) && io.carryIn)

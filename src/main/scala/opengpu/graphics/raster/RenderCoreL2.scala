@@ -3,53 +3,39 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
-import opengpu.core.memory.{
-  ComputeMemoryRequest,
-  ComputeMemoryResponse,
-  L2PerformanceCounters,
-  SharedL2Cache
-}
+import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse, L2PerformanceCounters, SharedL2Cache}
 
 /** Top-level renderer with one shared off-chip memory port.
   *
-  * Composes `RenderCore` with a `SharedL2Cache` so that the command-buffer,
-  * framebuffer, and the core-backed shader kernel (program fetch / kernarg /
-  * output write) all arbitrate onto ONE physical memory port.  This is the
-  * integrated-SoC morphology: the graphics fixed-function stages and the SIMT
-  * shader kernel are separate engines that share a GPU-internal coherent L2,
-  * separate from the CPU L2. The CPU and GPU share DRAM through the SoC fabric;
-  * GPU-internal coherence does not extend to CPU caches, and the
-  * host driver treats the command ring, render targets, and kernarg regions as
-  * ordinary software-allocated memory in that shared region.
+  * Composes `RenderCore` with a `SharedL2Cache` so that the command-buffer, framebuffer, and the core-backed shader
+  * kernel (program fetch / kernarg / output write) all arbitrate onto ONE physical memory port. This is the
+  * integrated-SoC morphology: the graphics fixed-function stages and the SIMT shader kernel are separate engines that
+  * share a GPU-internal coherent L2, separate from the CPU L2. The CPU and GPU share DRAM through the SoC fabric;
+  * GPU-internal coherence does not extend to CPU caches, and the host driver treats the command ring, render targets,
+  * and kernarg regions as ordinary software-allocated memory in that shared region.
   *
-  * Four line-level clients are multiplexed onto the L2's single request port,
-  * each owning a disjoint slice of the L2 transaction-ID space (so the L2's
-  * per-requester sharer tracking and response-waiter vector never alias):
-  *   index 0  command-buffer word bridge      txns [0,          n)
-  *   index 1  framebuffer word bridge         txns [n,         2n)
-  *   index 2  shader compute-unit line port   txns [2n,        3n)
-  *   index 3  kernarg word->line bridge       txns [3n,        4n)
-  * where `n = perClientOutstanding`.  Only the compute-unit data traffic is a
-  * cache client (`cacheClient`); the word bridges bypass L1 coherence and the
-  * L2 invalidates the shader unit's L1 before accepting an external write to a
-  * line it shares.  The L2's per-CU invalidate/atomic ports are therefore
-  * connected to the shader unit's coherency ports.
+  * Four line-level clients are multiplexed onto the L2's single request port, each owning a disjoint slice of the L2
+  * transaction-ID space (so the L2's per-requester sharer tracking and response-waiter vector never alias): index 0
+  * command-buffer word bridge txns [0, n) index 1 framebuffer word bridge txns [n, 2n) index 2 shader compute-unit line
+  * port txns [2n, 3n) index 3 kernarg word->line bridge txns [3n, 4n) where `n = perClientOutstanding`. Only the
+  * compute-unit data traffic is a cache client (`cacheClient`); the word bridges bypass L1 coherence and the L2
+  * invalidates the shader unit's L1 before accepting an external write to a line it shares. The L2's per-CU
+  * invalidate/atomic ports are therefore connected to the shader unit's coherency ports.
   *
-  * Exposes the original `RenderCore` control knobs plus a single
-  * `memoryRequest`/`memoryResponse` line port to the off-chip hierarchy and the
-  * L2 performance counters.
+  * Exposes the original `RenderCore` control knobs plus a single `memoryRequest`/`memoryResponse` line port to the
+  * off-chip hierarchy and the L2 performance counters.
   */
 class RenderCoreL2(
-  gfxConfig: GraphicsConfig = GraphicsConfig(),
-  gpuConfig: GpuConfig = GpuConfig(),
-  fragCore: Boolean = false,
-  vertCore: Boolean = false,
-  lineBytes: Int = 64,
-  sets: Int = 8,
-  ways: Int = 2,
-  banks: Int = 2,
-  requestQueueDepth: Int = 2,
-  useSramBlackBoxes: Boolean = false
+    gfxConfig: GraphicsConfig = GraphicsConfig(),
+    gpuConfig: GpuConfig = GpuConfig(),
+    fragCore: Boolean = false,
+    vertCore: Boolean = false,
+    lineBytes: Int = 64,
+    sets: Int = 8,
+    ways: Int = 2,
+    banks: Int = 2,
+    requestQueueDepth: Int = 2,
+    useSramBlackBoxes: Boolean = false
 ) extends Module {
   require(lineBytes == 64, "current cache hierarchy uses 64-byte lines")
   // The kernel word port multiplexes vertex and fragment bridges, each with
@@ -90,8 +76,10 @@ class RenderCoreL2(
     val stencilZFailOp = Input(UInt(3.W))
     val stencilZPassOp = Input(UInt(3.W))
     val cullMode = Input(UInt(2.W))
+
     /** bits[1:0] sample mode: 0 = 1x, 1 = 2x, 2 = 4x. */
     val sampleMode = Input(UInt(2.W))
+
     /** Texture sampling config forwarded to the core's fragment stage. */
     val texEnable = Input(Bool())
     val texFormat = Input(UInt(PixelFormat.width.W))
@@ -101,10 +89,8 @@ class RenderCoreL2(
     val texWrapClamp = Input(Bool())
     val texMaxLevel = Input(UInt(4.W))
     val done = Output(Bool())
-    val memoryRequest = Decoupled(
-      new ComputeMemoryRequest(gpuConfig, lineBytes, totalOutstanding))
-    val memoryResponse = Flipped(Decoupled(
-      new ComputeMemoryResponse(lineBytes, totalOutstanding)))
+    val memoryRequest = Decoupled(new ComputeMemoryRequest(gpuConfig, lineBytes, totalOutstanding))
+    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(lineBytes, totalOutstanding)))
     val clearPerformanceCounters = Input(Bool())
     val performance = Output(new L2PerformanceCounters)
   })
@@ -115,11 +101,20 @@ class RenderCoreL2(
   core.io.instructionTlbFlush := 0.U.asTypeOf(core.io.instructionTlbFlush)
   core.io.vectorSatp := 0.U
   core.io.vectorTlbFlush := 0.U.asTypeOf(core.io.vectorTlbFlush)
-  private val l2 = Module(new SharedL2Cache(
-    gpuConfig, sets, ways, lineBytes, maxOutstanding = totalOutstanding,
-    numComputeUnits = cuSlots, transactionsPerCu = perClientOutstanding,
-    banks = banks, requestQueueDepth = requestQueueDepth,
-    useSramBlackBoxes = useSramBlackBoxes))
+  private val l2 = Module(
+    new SharedL2Cache(
+      gpuConfig,
+      sets,
+      ways,
+      lineBytes,
+      maxOutstanding = totalOutstanding,
+      numComputeUnits = cuSlots,
+      transactionsPerCu = perClientOutstanding,
+      banks = banks,
+      requestQueueDepth = requestQueueDepth,
+      useSramBlackBoxes = useSramBlackBoxes
+    )
+  )
 
   core.io.cmdBase := io.cmdBase
   core.io.cmdCount := io.cmdCount
@@ -165,12 +160,9 @@ class RenderCoreL2(
   // Command-buffer reads bypass the shared L2: the driver memcpy's draw
   // records into coherent DMA that can reuse physical pages still tagged in
   // the cache.
-  private val cbBridge = Module(new OmWordToLinePort(
-    gpuConfig, lineBytes, perClientOutstanding, uncached = true))
-  private val fbBridge = Module(new OmWordToLinePort(
-    gpuConfig, lineBytes, perClientOutstanding))
-  private val texBridge = Module(new OmWordToLinePort(
-    gpuConfig, lineBytes, perClientOutstanding))
+  private val cbBridge = Module(new OmWordToLinePort(gpuConfig, lineBytes, perClientOutstanding, uncached = true))
+  private val fbBridge = Module(new OmWordToLinePort(gpuConfig, lineBytes, perClientOutstanding))
+  private val texBridge = Module(new OmWordToLinePort(gpuConfig, lineBytes, perClientOutstanding))
   cbBridge.io.in <> core.io.cbMem.req
   core.io.cbMem.resp <> cbBridge.io.out
   fbBridge.io.in <> core.io.fbMem.req
@@ -178,17 +170,17 @@ class RenderCoreL2(
   texBridge.io.in <> core.io.texMem.req
   core.io.texMem.resp <> texBridge.io.out
 
-  private val l2RequestArbiter = Module(new RRArbiter(
-    new ComputeMemoryRequest(gpuConfig, lineBytes, totalOutstanding),
-    numClients))
+  private val l2RequestArbiter = Module(
+    new RRArbiter(new ComputeMemoryRequest(gpuConfig, lineBytes, totalOutstanding), numClients)
+  )
 
   // Present each client's request with its transaction ID offset into the L2's
   // global space.  Chisel's `:=` connects matching fields and zero-extends the
   // narrower per-client transaction ID before the base is applied.
   private def tieRequest(
-    mux: Int,
-    client: DecoupledIO[ComputeMemoryRequest],
-    base: Int
+      mux: Int,
+      client: DecoupledIO[ComputeMemoryRequest],
+      base: Int
   ): Unit = {
     l2RequestArbiter.io.in(mux).valid := client.valid
     l2RequestArbiter.io.in(mux).bits := client.bits
@@ -219,8 +211,8 @@ class RenderCoreL2(
     })
 
   private def tieResponse[T <: Data](
-    from: DecoupledIO[ComputeMemoryResponse],
-    base: Int
+      from: DecoupledIO[ComputeMemoryResponse],
+      base: Int
   ): Unit = {
     from.valid := l2.io.response.valid && respFor(base / perClientOutstanding)
     from.bits.readData := l2.io.response.bits.readData
@@ -234,18 +226,20 @@ class RenderCoreL2(
   tieResponse(core.io.kernelWordMemResp, 3 * perClientOutstanding)
   tieResponse(texBridge.io.memoryResponse, 4 * perClientOutstanding)
   when(l2.io.response.valid) {
-    assert(PopCount(VecInit(respFor)) === 1.U,
-      "L2 response must belong to exactly one graphics client")
+    assert(PopCount(VecInit(respFor)) === 1.U, "L2 response must belong to exactly one graphics client")
   }
-  l2.io.response.ready := MuxCase(false.B, (0 until numClients).map { i =>
-    respFor(i) -> (i match {
-      case 0 => core.io.kernelMemResp.ready
-      case 1 => cbBridge.io.memoryResponse.ready
-      case 2 => fbBridge.io.memoryResponse.ready
-      case 3 => core.io.kernelWordMemResp.ready
-      case _ => texBridge.io.memoryResponse.ready
-    })
-  })
+  l2.io.response.ready := MuxCase(
+    false.B,
+    (0 until numClients).map { i =>
+      respFor(i) -> (i match {
+        case 0 => core.io.kernelMemResp.ready
+        case 1 => cbBridge.io.memoryResponse.ready
+        case 2 => fbBridge.io.memoryResponse.ready
+        case 3 => core.io.kernelWordMemResp.ready
+        case _ => texBridge.io.memoryResponse.ready
+      })
+    }
+  )
 
   // Coherence: the shader compute unit (requester slot 0) is the only private
   // L1-cache client.  The L2 invalidates its line before a word-bridge client

@@ -16,8 +16,13 @@ class PipelinedSignedDividerSpec extends AnyFlatSpec {
         dut.io.in.valid.poke(false.B); dut.io.in.bits.numerator.poke(0.S); dut.io.in.bits.denominator.poke((-1).S)
         dut.io.out.ready.poke(true.B); dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
         val random = new scala.util.Random(0xd1f131 + n)
-        def limits(w: Int): Seq[BigInt] = Seq(-(BigInt(1) << (w - 1)), BigInt(-1), BigInt(0),
-          BigInt(1), (BigInt(1) << (w - 1)) - 1).map(signed(_, w)).distinct
+        def limits(w: Int): Seq[BigInt] = Seq(
+          -(BigInt(1) << (w - 1)),
+          BigInt(-1),
+          BigInt(0),
+          BigInt(1),
+          (BigInt(1) << (w - 1)) - 1
+        ).map(signed(_, w)).distinct
         val boundaries = if (n <= 5) {
           for (a <- -(1 << (n - 1)) until (1 << (n - 1)); b <- -(1 << (d - 1)) until (1 << (d - 1)))
             yield (BigInt(a), BigInt(b))
@@ -32,13 +37,20 @@ class PipelinedSignedDividerSpec extends AnyFlatSpec {
           val consume = cycle < warmEnd || cycle % 13 < 7
           dut.io.out.ready.poke(consume.B); dut.io.in.valid.poke((offered < cases.size).B)
           if (offered < cases.size) {
-            dut.io.in.bits.numerator.poke(cases(offered)._1.S(n.W)); dut.io.in.bits.denominator.poke(cases(offered)._2.S(d.W))
+            dut.io.in.bits.numerator.poke(cases(offered)._1.S(n.W));
+            dut.io.in.bits.denominator.poke(cases(offered)._2.S(d.W))
           }
           if (dut.io.out.valid.peek().litToBoolean) {
             assert(expected.nonEmpty)
-            val result = (dut.io.out.bits.quotient.peek().litValue, dut.io.out.bits.divideByZero.peek().litToBoolean,
-              dut.io.out.bits.magnitudeOverflow.peek().litToBoolean)
-            assert(result == expected.front, s"division mismatch $n/$d/$q cycle=$cycle observed=$result expected=${expected.front}")
+            val result = (
+              dut.io.out.bits.quotient.peek().litValue,
+              dut.io.out.bits.divideByZero.peek().litToBoolean,
+              dut.io.out.bits.magnitudeOverflow.peek().litToBoolean
+            )
+            assert(
+              result == expected.front,
+              s"division mismatch $n/$d/$q cycle=$cycle observed=$result expected=${expected.front}"
+            )
             val bits = dut.io.out.bits.peek().litValue; held.foreach(old => assert(old == bits))
             held = if (consume) None else Some(bits)
             if (consume) { expected.dequeue(); retired += 1; outputs += cycle }
@@ -53,11 +65,14 @@ class PipelinedSignedDividerSpec extends AnyFlatSpec {
         assert(offered == cases.size && retired == cases.size && expected.isEmpty)
         assert(accepts.take(128) == (0 until 128))
         assert(outputs.take(128) == (n + 2 until n + 2 + 128))
-        info(s"PIPELINED_SIGNED_DIVIDE n=$n d=$d q=$q group=$group checked=$retired inputII1=true outputII1=true lowBitsWrap=true stallsStable=true latency=${n+2}")
+        info(
+          s"PIPELINED_SIGNED_DIVIDE n=$n d=$d q=$q group=$group checked=$retired inputII1=true outputII1=true lowBitsWrap=true stallsStable=true latency=${n + 2}"
+        )
         // Reset a full pipeline with a blocked public result, then check that
         // none of its old packets leak into a fresh stream.
         dut.io.out.ready.poke(false.B)
-        dut.io.in.valid.poke(true.B); dut.io.in.bits.numerator.poke((-1).S(n.W)); dut.io.in.bits.denominator.poke((-1).S(d.W))
+        dut.io.in.valid.poke(true.B); dut.io.in.bits.numerator.poke((-1).S(n.W));
+        dut.io.in.bits.denominator.poke((-1).S(d.W))
         dut.clock.step(n + 4); dut.io.out.valid.expect(true.B)
         val old = dut.io.out.bits.peek().litValue
         for (_ <- 0 until 9) { assert(dut.io.out.bits.peek().litValue == old); dut.clock.step() }

@@ -50,9 +50,18 @@ class NativeFrameMemoryCodecSpec extends AnyFlatSpec {
       if (wide) buffer.putLong(offset, value) else buffer.putInt(offset, value.toInt)
       bytes
     }
-    for (bad <- Vector(good.take(15), good.dropRight(1), good ++ Array[Byte](0),
-      changed(8, 0xffffffffL, false), changed(40, 0x1800), changed(36, 1, false),
-      changed(64, 0x1001), changed(64 + 4104, 0x1000))) {
+    for (
+      bad <- Vector(
+        good.take(15),
+        good.dropRight(1),
+        good ++ Array[Byte](0),
+        changed(8, 0xffffffffL, false),
+        changed(40, 0x1800),
+        changed(36, 1, false),
+        changed(64, 0x1001),
+        changed(64 + 4104, 0x1000)
+      )
+    ) {
       intercept[IllegalArgumentException] { NativeFrameMemoryCodec.decode(bad) }
     }
   }

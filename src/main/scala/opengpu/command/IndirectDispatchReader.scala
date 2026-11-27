@@ -18,12 +18,10 @@ class IndirectDispatchResult extends Bundle {
   val empty = Bool()
 }
 
-/** Capture the three uint32 DispatchComputeIndirect arguments from one or
-  * two translated, coherent cache-line reads. Only the requested twelve-byte
-  * span is interpreted; the view and its exclusive allocation end are checked
-  * at33 bits before any request is offered. One physical reply owner persists
-  * through cancel: an already offered request cannot be withdrawn or its ID
-  * reused before the real reply drains. No second line is issued after cancel.
+/** Capture the three uint32 DispatchComputeIndirect arguments from one or two translated, coherent cache-line reads.
+  * Only the requested twelve-byte span is interpreted; the view and its exclusive allocation end are checked at33 bits
+  * before any request is offered. One physical reply owner persists through cancel: an already offered request cannot
+  * be withdrawn or its ID reused before the real reply drains. No second line is issued after cancel.
   */
 class IndirectDispatchReader(config: GpuConfig = GpuConfig()) extends Module {
   require(config.xLen == 32)
@@ -58,15 +56,15 @@ class IndirectDispatchReader(config: GpuConfig = GpuConfig()) extends Module {
   private val offsetEnd = view.offset +& 12.U(32.W)
   private val requestedStart = view.allocationBase +& view.offset
   private val requestedEnd = requestedStart +& 12.U
-  private val validView = view.offset(1,0) === 0.U && requestedStart(1,0) === 0.U &&
+  private val validView = view.offset(1, 0) === 0.U && requestedStart(1, 0) === 0.U &&
     allocationEnd <= (BigInt(1) << 32).U && offsetEnd <= view.allocationBytes &&
     requestedEnd <= (BigInt(1) << 32).U
   private val words = io.memoryResponse.bits.readData.asTypeOf(Vec(16, UInt(32.W)))
   private val readGroups = Wire(Vec(3, UInt(32.W)))
-  for(k <- 0 until 3) {
-    val index = start(5,2) +& k.U(4.W)
+  for (k <- 0 until 3) {
+    val index = start(5, 2) +& k.U(4.W)
     val inThisLine = Mux(secondLine, index >= 16.U, index < 16.U)
-    readGroups(k) := Mux(inThisLine, words(index(3,0)), result.groups(k))
+    readGroups(k) := Mux(inThisLine, words(index(3, 0)), result.groups(k))
   }
   switch(state) {
     is(idle) {
@@ -81,9 +79,10 @@ class IndirectDispatchReader(config: GpuConfig = GpuConfig()) extends Module {
         .elsewhen(!validView) {
           result.status := GpuCommandResultStatus.indirectBounds
           state := complete
-        }.otherwise {
-          start := requestedStart(31,0)
-          lineAddress := Cat(requestedStart(31,6), 0.U(6.W))
+        }
+        .otherwise {
+          start := requestedStart(31, 0)
+          lineAddress := Cat(requestedStart(31, 6), 0.U(6.W))
           state := offer
         }
     }
@@ -94,9 +93,10 @@ class IndirectDispatchReader(config: GpuConfig = GpuConfig()) extends Module {
           .elsewhen(io.memoryResponse.bits.fault) {
             result.status := GpuCommandResultStatus.indirectReadFailed
             state := complete
-          }.otherwise {
+          }
+          .otherwise {
             result.groups := readGroups
-            when(!secondLine && start(5,2) >= 14.U) {
+            when(!secondLine && start(5, 2) >= 14.U) {
               secondLine := true.B
               lineAddress := lineAddress + 64.U
               state := offer
@@ -112,7 +112,9 @@ class IndirectDispatchReader(config: GpuConfig = GpuConfig()) extends Module {
     is(complete) { when(io.out.fire || io.cancel || canceled) { state := idle } }
   }
   when(io.memoryResponse.fire) {
-    assert(io.memoryResponse.bits.transactionId === 0.U,
-      "indirect argument replies must retain their sole physical owner")
+    assert(
+      io.memoryResponse.bits.transactionId === 0.U,
+      "indirect argument replies must retain their sole physical owner"
+    )
   }
 }

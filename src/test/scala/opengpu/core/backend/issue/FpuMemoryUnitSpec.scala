@@ -16,16 +16,14 @@ class FpuMemoryUnitSpec extends AnyFlatSpec {
       dut.io.in.valid.poke(false.B)
       dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
       dut.io.cacheResponse.valid.poke(false.B)
-      dut.io.cacheResponse.bits.poke(
-        0.U.asTypeOf(dut.io.cacheResponse.bits))
+      dut.io.cacheResponse.bits.poke(0.U.asTypeOf(dut.io.cacheResponse.bits))
       dut.io.commit.ready.poke(true.B)
       dut.io.fault.ready.poke(true.B)
       dut.io.cacheRequest.ready.poke(true.B)
 
       dut.io.in.bits.scalarRs1Data.poke("h1000".U)
       dut.io.in.bits.rs2Data.poke(0.U)
-      dut.io.in.bits.decode.instruction.poke(
-        "b000000000000_00001_010_00100_0000111".U)
+      dut.io.in.bits.decode.instruction.poke("b000000000000_00001_010_00100_0000111".U)
       dut.io.in.bits.decode.pc.poke("h200".U)
       dut.io.in.bits.decode.activeMask.poke("hf".U)
       dut.io.in.bits.decode.decoded.memoryRead.poke(true.B)
@@ -42,8 +40,7 @@ class FpuMemoryUnitSpec extends AnyFlatSpec {
       dut.clock.step()
 
       dut.io.cacheResponse.valid.poke(true.B)
-      dut.io.cacheResponse.bits.readData.poke(
-        (BigInt("deadbeef", 16) << 0).U)
+      dut.io.cacheResponse.bits.readData.poke((BigInt("deadbeef", 16) << 0).U)
       dut.io.cacheResponse.bits.fault.poke(false.B)
       dut.clock.step()
       dut.io.cacheResponse.valid.poke(false.B)
@@ -63,8 +60,7 @@ class FpuMemoryUnitSpec extends AnyFlatSpec {
       dut.io.in.valid.poke(false.B)
       dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
       dut.io.cacheResponse.valid.poke(false.B)
-      dut.io.cacheResponse.bits.poke(
-        0.U.asTypeOf(dut.io.cacheResponse.bits))
+      dut.io.cacheResponse.bits.poke(0.U.asTypeOf(dut.io.cacheResponse.bits))
       dut.io.commit.ready.poke(true.B)
       dut.io.fault.ready.poke(true.B)
       dut.io.cacheRequest.ready.poke(true.B)
@@ -73,8 +69,7 @@ class FpuMemoryUnitSpec extends AnyFlatSpec {
       dut.io.in.bits.rs2Data.poke("hcafebabe".U)
       // S-type: imm[11:5] in 31:25, the source f-register in 24:20, imm[4:0]
       // in 11:7. Here the offset is zero and the source is f2.
-      dut.io.in.bits.decode.instruction.poke(
-        "b0000000_00010_00001_010_00000_0100111".U)
+      dut.io.in.bits.decode.instruction.poke("b0000000_00010_00001_010_00000_0100111".U)
       dut.io.in.bits.decode.decoded.memoryWrite.poke(true.B)
       dut.io.in.valid.poke(true.B)
       dut.io.in.ready.expect(true.B)
@@ -86,8 +81,7 @@ class FpuMemoryUnitSpec extends AnyFlatSpec {
       dut.io.cacheRequest.bits.lineAddress.expect("h1000".U)
       dut.io.cacheRequest.bits.isStore.expect(true.B)
       dut.io.cacheRequest.bits.byteMask.expect(BigInt("f0", 16).U)
-      dut.io.cacheRequest.bits.writeData.expect(
-        (BigInt("cafebabe", 16) << 32).U)
+      dut.io.cacheRequest.bits.writeData.expect((BigInt("cafebabe", 16) << 32).U)
       dut.clock.step()
 
       dut.io.cacheResponse.valid.poke(true.B)
@@ -112,11 +106,10 @@ class FpuMemoryUnitSpec extends AnyFlatSpec {
     val cases = Seq(
       (0x000, "b0000000_00010_00001_010_00000_0100111", 0x1000, "hf0"),
       (0x010, "b0000000_00010_00001_010_10000_0100111", 0x1000, "hf00000"),
-      (0x7f0, "b0111111_00010_00001_010_10000_0100111", 0x17c0,
-        "hf0000000000000"),
+      (0x7f0, "b0111111_00010_00001_010_10000_0100111", 0x17c0, "hf0000000000000"),
       (0xffc, "b1111111_00010_00001_010_11100_0100111", 0x1000, "hf"),
-      (0xfe0, "b1111111_00010_00001_010_00000_0100111", 0x0fc0,
-        "hf000000000"))
+      (0xfe0, "b1111111_00010_00001_010_00000_0100111", 0x0fc0, "hf000000000")
+    )
     for ((offset, encoded, line, mask) <- cases) {
       simulate(new FpuMemoryUnit(GpuConfig(warps = 2))) { dut =>
         dut.reset.poke(true.B)
@@ -125,8 +118,7 @@ class FpuMemoryUnitSpec extends AnyFlatSpec {
         dut.io.in.valid.poke(false.B)
         dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
         dut.io.cacheResponse.valid.poke(false.B)
-        dut.io.cacheResponse.bits.poke(
-          0.U.asTypeOf(dut.io.cacheResponse.bits))
+        dut.io.cacheResponse.bits.poke(0.U.asTypeOf(dut.io.cacheResponse.bits))
         dut.io.commit.ready.poke(true.B)
         dut.io.fault.ready.poke(true.B)
         dut.io.cacheRequest.ready.poke(true.B)
@@ -157,15 +149,13 @@ class FpuMemoryUnitSpec extends AnyFlatSpec {
       dut.io.in.valid.poke(false.B)
       dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
       dut.io.cacheResponse.valid.poke(false.B)
-      dut.io.cacheResponse.bits.poke(
-        0.U.asTypeOf(dut.io.cacheResponse.bits))
+      dut.io.cacheResponse.bits.poke(0.U.asTypeOf(dut.io.cacheResponse.bits))
       dut.io.commit.ready.poke(true.B)
       dut.io.fault.ready.poke(true.B)
       dut.io.cacheRequest.ready.poke(true.B)
 
       dut.io.in.bits.scalarRs1Data.poke("h1002".U)
-      dut.io.in.bits.decode.instruction.poke(
-        "b000000000000_00001_010_00100_0000111".U)
+      dut.io.in.bits.decode.instruction.poke("b000000000000_00001_010_00100_0000111".U)
       dut.io.in.bits.decode.decoded.memoryRead.poke(true.B)
       dut.io.in.valid.poke(true.B)
       dut.clock.step()

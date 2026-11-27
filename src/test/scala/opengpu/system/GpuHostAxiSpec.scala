@@ -2,7 +2,14 @@ package opengpu.system
 
 import chisel3._
 import opengpu.config.{ComputeResourceProfile, GpuConfig}
-import opengpu.graphics.{AtomicCounterCommandMmioRegs, ComputeTextureCommandMmioRegs, GpuCapabilities, GpuCommandMmioRegs, GraphicsConfig, RenderHostRegs}
+import opengpu.graphics.{
+  AtomicCounterCommandMmioRegs,
+  ComputeTextureCommandMmioRegs,
+  GpuCapabilities,
+  GpuCommandMmioRegs,
+  GraphicsConfig,
+  RenderHostRegs
+}
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
@@ -10,11 +17,9 @@ import scala.collection.mutable
 
 /** Verifies the AXI4 host-control interface (`GpuHostAxi`).
   *
-  * This is the port ARTI auto-bridges: the spec drives the standard AXI4
-  * write/read channels (single-beat and INCR bursts), checks the register
-  * returns SLVERR for unaligned/out-of-map addresses, and confirms a full
-  * submission can be programmed through the bus and that the completion
-  * interrupt fires once the renderer drains.
+  * This is the port ARTI auto-bridges: the spec drives the standard AXI4 write/read channels (single-beat and INCR
+  * bursts), checks the register returns SLVERR for unaligned/out-of-map addresses, and confirms a full submission can
+  * be programmed through the bus and that the completion interrupt fires once the renderer drains.
   */
 class GpuHostAxiSpec extends AnyFlatSpec {
   behavior of "GpuHostAxi"
@@ -22,9 +27,17 @@ class GpuHostAxiSpec extends AnyFlatSpec {
   it should "publish independent counter and texture state through host AXI" in {
     val gpu = GpuConfig(lanes = 4, warps = 2)
     val profile = ComputeResourceProfile(gpu, 2, 32)
-    simulate(new GpuHostAxi(gpuConfig = gpu, version = 2, unifiedCommandMmio = true,
-      protectVmState = true, computeResources = Some(profile), computeTextureAvailable = true,
-      atomicCounterAvailable = true)) { dut =>
+    simulate(
+      new GpuHostAxi(
+        gpuConfig = gpu,
+        version = 2,
+        unifiedCommandMmio = true,
+        protectVmState = true,
+        computeResources = Some(profile),
+        computeTextureAvailable = true,
+        atomicCounterAvailable = true
+      )
+    ) { dut =>
       dut.io.gpuCommand.get.ready.poke(false.B)
       dut.io.gpuCompletion.get.valid.poke(false.B)
       dut.io.gpuCompletion.get.bits.poke(0.U.asTypeOf(dut.io.gpuCompletion.get.bits))
@@ -56,8 +69,16 @@ class GpuHostAxiSpec extends AnyFlatSpec {
   it should "publish compute texture state through the host AXI command port" in {
     val gpu = GpuConfig(lanes = 4, warps = 2)
     val profile = ComputeResourceProfile(gpu, 2, 32)
-    simulate(new GpuHostAxi(gpuConfig = gpu, version = 2, unifiedCommandMmio = true,
-      protectVmState = true, computeResources = Some(profile), computeTextureAvailable = true)) { dut =>
+    simulate(
+      new GpuHostAxi(
+        gpuConfig = gpu,
+        version = 2,
+        unifiedCommandMmio = true,
+        protectVmState = true,
+        computeResources = Some(profile),
+        computeTextureAvailable = true
+      )
+    ) { dut =>
       dut.io.gpuCommand.get.ready.poke(false.B)
       dut.io.gpuCompletion.get.valid.poke(false.B)
       dut.io.gpuCompletion.get.bits.poke(0.U.asTypeOf(dut.io.gpuCompletion.get.bits))
@@ -88,7 +109,7 @@ class GpuHostAxiSpec extends AnyFlatSpec {
   }
 
   private def encode(
-    tri: Seq[((Int, Int, Int, Int), (Int, Int, Int), Int)]
+      tri: Seq[((Int, Int, Int, Int), (Int, Int, Int), Int)]
   ): Seq[Int] = {
     val w = Seq.newBuilder[Int]
     for (i <- 0 until 3) { w += tri(i)._1._1; w += tri(i)._1._2; w += tri(i)._1._3; w += tri(i)._1._4 }
@@ -117,12 +138,18 @@ class GpuHostAxiSpec extends AnyFlatSpec {
     var awDone = false; var wDone = false; var bDone = false
     var guard = 0
     while (!bDone && guard < 64) {
-      if (!awDone && dut.io.s_axi_awvalid.peek().litToBoolean &&
-          dut.io.s_axi_awready.peek().litToBoolean) awDone = true
-      if (!wDone && dut.io.s_axi_wvalid.peek().litToBoolean &&
-          dut.io.s_axi_wready.peek().litToBoolean) wDone = true
-      if (dut.io.s_axi_bvalid.peek().litToBoolean &&
-          dut.io.s_axi_bready.peek().litToBoolean) bDone = true
+      if (
+        !awDone && dut.io.s_axi_awvalid.peek().litToBoolean &&
+        dut.io.s_axi_awready.peek().litToBoolean
+      ) awDone = true
+      if (
+        !wDone && dut.io.s_axi_wvalid.peek().litToBoolean &&
+        dut.io.s_axi_wready.peek().litToBoolean
+      ) wDone = true
+      if (
+        dut.io.s_axi_bvalid.peek().litToBoolean &&
+        dut.io.s_axi_bready.peek().litToBoolean
+      ) bDone = true
       dut.clock.step()
       if (awDone) dut.io.s_axi_awvalid.poke(false.B)
       if (wDone) dut.io.s_axi_wvalid.poke(false.B)
@@ -150,10 +177,14 @@ class GpuHostAxiSpec extends AnyFlatSpec {
     var data = BigInt(0); var resp = BigInt(0)
     var guard = 0
     while (!rDone && guard < 64) {
-      if (!arDone && dut.io.s_axi_arvalid.peek().litToBoolean &&
-          dut.io.s_axi_arready.peek().litToBoolean) arDone = true
-      if (dut.io.s_axi_rvalid.peek().litToBoolean &&
-          dut.io.s_axi_rready.peek().litToBoolean) {
+      if (
+        !arDone && dut.io.s_axi_arvalid.peek().litToBoolean &&
+        dut.io.s_axi_arready.peek().litToBoolean
+      ) arDone = true
+      if (
+        dut.io.s_axi_rvalid.peek().litToBoolean &&
+        dut.io.s_axi_rready.peek().litToBoolean
+      ) {
         data = dut.io.s_axi_rdata.peek().litValue
         resp = dut.io.s_axi_rresp.peek().litValue
         rDone = true
@@ -192,14 +223,20 @@ class GpuHostAxiSpec extends AnyFlatSpec {
       dut.io.s_axi_wdata.poke(words(idx).U)
       dut.io.s_axi_wstrb.poke(0xf.U)
       dut.io.s_axi_wlast.poke((idx == len).B)
-      if (!awDone && dut.io.s_axi_awvalid.peek().litToBoolean &&
-          dut.io.s_axi_awready.peek().litToBoolean) awDone = true
-      if (dut.io.s_axi_wvalid.peek().litToBoolean &&
-          dut.io.s_axi_wready.peek().litToBoolean) {
+      if (
+        !awDone && dut.io.s_axi_awvalid.peek().litToBoolean &&
+        dut.io.s_axi_awready.peek().litToBoolean
+      ) awDone = true
+      if (
+        dut.io.s_axi_wvalid.peek().litToBoolean &&
+        dut.io.s_axi_wready.peek().litToBoolean
+      ) {
         if (idx != len) idx += 1
       }
-      if (dut.io.s_axi_bvalid.peek().litToBoolean &&
-          dut.io.s_axi_bready.peek().litToBoolean) bDone = true
+      if (
+        dut.io.s_axi_bvalid.peek().litToBoolean &&
+        dut.io.s_axi_bready.peek().litToBoolean
+      ) bDone = true
       dut.clock.step()
       if (awDone) dut.io.s_axi_awvalid.poke(false.B)
       if (bDone) dut.io.s_axi_bready.poke(false.B)
@@ -220,12 +257,13 @@ class GpuHostAxiSpec extends AnyFlatSpec {
       dut.io.s_axi_aresetn.poke(true.B)
       dut.clock.step()
 
-      assert(axiRead(dut, RenderHostRegs.ID) == 0x47550001L,
-        "device ID must read back through AXI4")
+      assert(axiRead(dut, RenderHostRegs.ID) == 0x47550001L, "device ID must read back through AXI4")
       val expectedCapabilities = 0x2a00b8L |
         ((gpu.warps * gpu.lanes).toLong << GpuCapabilities.FragmentBatchShift)
-      assert(axiRead(dut, RenderHostRegs.CAPABILITIES) == expectedCapabilities,
-        "fixed-function builds must advertise the DMA engines, persistent depth and MSAA but not fragment-core execution")
+      assert(
+        axiRead(dut, RenderHostRegs.CAPABILITIES) == expectedCapabilities,
+        "fixed-function builds must advertise the DMA engines, persistent depth and MSAA but not fragment-core execution"
+      )
 
       // Unaligned read -> SLVERR.
       axiRead(dut, 0x11)
@@ -241,19 +279,27 @@ class GpuHostAxiSpec extends AnyFlatSpec {
 
       // MSAA_CONFIG is routed to RenderHost at 0x134.
       axiWrite(dut, RenderHostRegs.MSAA_CONFIG, 2)
-      assert(axiRead(dut, RenderHostRegs.MSAA_CONFIG) == 2L,
-        "MSAA_CONFIG must round-trip through the AXI4 register path")
+      assert(
+        axiRead(dut, RenderHostRegs.MSAA_CONFIG) == 2L,
+        "MSAA_CONFIG must round-trip through the AXI4 register path"
+      )
 
       // The stencil/blend registers round-trip through the AXI4 register path.
       axiWrite(dut, RenderHostRegs.STENCIL_CONFIG, 0x1055)
-      assert(axiRead(dut, RenderHostRegs.STENCIL_CONFIG) == 0x1055L,
-        "STENCIL_CONFIG must round-trip through the AXI4 register path")
+      assert(
+        axiRead(dut, RenderHostRegs.STENCIL_CONFIG) == 0x1055L,
+        "STENCIL_CONFIG must round-trip through the AXI4 register path"
+      )
       axiWrite(dut, RenderHostRegs.STENCIL_REF_MASKS, 0x00ff5aa5)
-      assert(axiRead(dut, RenderHostRegs.STENCIL_REF_MASKS) == 0x00ff5aa5L,
-        "STENCIL_REF_MASKS must round-trip through the AXI4 register path")
+      assert(
+        axiRead(dut, RenderHostRegs.STENCIL_REF_MASKS) == 0x00ff5aa5L,
+        "STENCIL_REF_MASKS must round-trip through the AXI4 register path"
+      )
       axiWrite(dut, RenderHostRegs.BLEND_CONFIG, 0x2111)
-      assert(axiRead(dut, RenderHostRegs.BLEND_CONFIG) == 0x2111L,
-        "BLEND_CONFIG must round-trip through the AXI4 register path")
+      assert(
+        axiRead(dut, RenderHostRegs.BLEND_CONFIG) == 0x2111L,
+        "BLEND_CONFIG must round-trip through the AXI4 register path"
+      )
 
       // Program and read back a few registers via single-beat AXis.
       axiWrite(dut, RenderHostRegs.CMD_BASE, 0x4000)
@@ -279,8 +325,7 @@ class GpuHostAxiSpec extends AnyFlatSpec {
   }
 
   it should "route the unified reset register over AXI and raise the completion IRQ" in {
-    simulate(new GpuHostAxi(deviceId = 0x4755, version = 0x0001,
-      unifiedCommandMmio = true)) { dut =>
+    simulate(new GpuHostAxi(deviceId = 0x4755, version = 0x0001, unifiedCommandMmio = true)) { dut =>
       dut.io.s_axi_aresetn.poke(false.B)
       dut.clock.step()
       dut.io.s_axi_aresetn.poke(true.B)
@@ -288,8 +333,10 @@ class GpuHostAxiSpec extends AnyFlatSpec {
       dut.io.commandResetDone.get.poke(false.B)
 
       // Unified builds advertise the safe reset capability (bit 18).
-      assert((axiRead(dut, RenderHostRegs.CAPABILITIES) & (1 << 18)) != 0,
-        "unified builds must advertise GPU_CAP_UNIFIED_RESET")
+      assert(
+        (axiRead(dut, RenderHostRegs.CAPABILITIES) & (1 << 18)) != 0,
+        "unified builds must advertise GPU_CAP_UNIFIED_RESET"
+      )
 
       // RESET lives at 0x138, inside the extended map but outside RenderHost.
       axiWrite(dut, RenderHostRegs.IRQ, 1)
@@ -335,8 +382,7 @@ class GpuHostAxiSpec extends AnyFlatSpec {
       dut.io.s_axi_aresetn.poke(true.B)
       dut.clock.step()
 
-      assert((axiRead(dut, RenderHostRegs.CAPABILITIES) & (1 << 3)) != 0L,
-        "CAPABILITIES must report the clear engine")
+      assert((axiRead(dut, RenderHostRegs.CAPABILITIES) & (1 << 3)) != 0L, "CAPABILITIES must report the clear engine")
 
       val base = 0x9000L
       val bytes = 128 // two 64-byte lines
@@ -362,8 +408,10 @@ class GpuHostAxiSpec extends AnyFlatSpec {
       val expectedLines = bytes / 64
       var fires = 0
       var guard = 0
-      while ((fires < expectedLines || ackQ.nonEmpty || ackPending.nonEmpty) &&
-        guard < 2000) {
+      while (
+        (fires < expectedLines || ackQ.nonEmpty || ackPending.nonEmpty) &&
+        guard < 2000
+      ) {
         dut.io.kernelWordMemReq.ready.poke(true.B)
         // Responses are presented for ONE cycle only; re-presenting a stale
         // acknowledgement across the STATUS read's clock step would feed the
@@ -373,8 +421,10 @@ class GpuHostAxiSpec extends AnyFlatSpec {
         // so a response is presented no earlier than one cycle after its
         // request fired (the fill only expects it from that cycle on).
         while (ackPending.nonEmpty) ackQ.enqueue(ackPending.dequeue())
-        if (dut.io.kernelWordMemReq.valid.peek().litToBoolean &&
-            dut.io.kernelWordMemReq.ready.peek().litToBoolean) {
+        if (
+          dut.io.kernelWordMemReq.valid.peek().litToBoolean &&
+          dut.io.kernelWordMemReq.ready.peek().litToBoolean
+        ) {
           val a = dut.io.kernelWordMemReq.bits.address.peek().litValue.toLong
           val wd = dut.io.kernelWordMemReq.bits.writeData.peek().litValue
           val bm = dut.io.kernelWordMemReq.bits.byteMask.peek().litValue
@@ -396,18 +446,21 @@ class GpuHostAxiSpec extends AnyFlatSpec {
         dut.io.kernelWordMemReq.ready.poke(false.B)
         guard += 1
       }
-      assert(fires == expectedLines && ackQ.isEmpty && ackPending.isEmpty,
-        s"hardware clear did not drain: fires=$fires acks=${ackQ.size}")
+      assert(
+        fires == expectedLines && ackQ.isEmpty && ackPending.isEmpty,
+        s"hardware clear did not drain: fires=$fires acks=${ackQ.size}"
+      )
       dut.io.kernelWordMemReq.ready.poke(false.B)
       // Let the fill engine retire its completion entry (busy falls one
       // cycle after the last acknowledgement is consumed).
       dut.clock.step(2)
-      assert((axiRead(dut, RenderHostRegs.STATUS) & (1 << 3)) == 0L,
-        "STATUS must report the clear engine idle after completion")
+      assert(
+        (axiRead(dut, RenderHostRegs.STATUS) & (1 << 3)) == 0L,
+        "STATUS must report the clear engine idle after completion"
+      )
 
       for (w <- 0 until (bytes / 4).toInt)
-        assert(m.word(base + w * 4L) == 0x12345678L,
-          f"clear left word $w as 0x${m.word(base + w * 4L)}%08x")
+        assert(m.word(base + w * 4L) == 0x12345678L, f"clear left word $w as 0x${m.word(base + w * 4L)}%08x")
       // Nothing outside the range may be touched.
       assert(m.word(base - 4L) == 0xdeadbeefL, "clear under-ran the range")
       assert(m.word(base + bytes) == 0xdeadbeefL, "clear over-ran the range")

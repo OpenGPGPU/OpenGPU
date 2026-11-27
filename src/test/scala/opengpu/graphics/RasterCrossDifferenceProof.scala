@@ -18,8 +18,10 @@ class RasterCrossDifferenceProofHarness extends Module {
 object EmitRasterCrossDifferenceProof {
   def main(args: Array[String]): Unit = {
     require(args.length == 1)
-    ChiselStage.emitSystemVerilogFile(new RasterCrossDifferenceProofHarness,
+    ChiselStage.emitSystemVerilogFile(
+      new RasterCrossDifferenceProofHarness,
       Array("--target-dir", args(0)),
-      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
+      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays")
+    )
   }
 }

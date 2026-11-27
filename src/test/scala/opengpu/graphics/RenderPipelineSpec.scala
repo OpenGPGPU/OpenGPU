@@ -13,9 +13,14 @@ class RenderPipelineSpec extends AnyFlatSpec {
   private def q(v: Double): Int = (v * (1 << 16)).toInt
 
   it should "elaborate one shared CU for the vertex and fragment paths" in {
-    simulate(new RenderPipeline(
-      GraphicsConfig(screenWidth = 16, screenHeight = 16),
-      GpuConfig(lanes = 4, warps = 2), fragCore = true, vertCore = true)) { dut =>
+    simulate(
+      new RenderPipeline(
+        GraphicsConfig(screenWidth = 16, screenHeight = 16),
+        GpuConfig(lanes = 4, warps = 2),
+        fragCore = true,
+        vertCore = true
+      )
+    ) { dut =>
       dut.io.sampleMode.poke(0.U)
       dut.reset.poke(true.B)
       dut.clock.step()
@@ -142,15 +147,19 @@ class RenderPipelineSpec extends AnyFlatSpec {
         }
       }
       for (index <- px.indices) {
-        assert(px(index) == reference(index),
+        assert(
+          px(index) == reference(index),
           s"RGB image mismatch at (${(index / 3) % 16},${index / 48}) channel ${index % 3}: " +
-            s"got ${px(index)} expected ${reference(index)}")
+            s"got ${px(index)} expected ${reference(index)}"
+        )
       }
       for (y <- 0 until 16; x <- 0 until 16) {
         val expectedDepth = if (x > 0 && y > 0 && x + y <= 16) 0x10 else 0x00ffffff
         val actualDepth = mem(depthBase / 4 + y * 16 + x)
-        assert(actualDepth == expectedDepth,
-          f"depth image mismatch at ($x,$y): got 0x$actualDepth%08x expected 0x$expectedDepth%08x")
+        assert(
+          actualDepth == expectedDepth,
+          f"depth image mismatch at ($x,$y): got 0x$actualDepth%08x expected 0x$expectedDepth%08x"
+        )
       }
       val out = new StringBuilder
       out.append("P6\n16 16\n255\n")
@@ -298,12 +307,9 @@ class RenderPipelineSpec extends AnyFlatSpec {
       }
       assert(cycles < 4000, "side-clipped fan did not drain")
       def pixel(x: Int, y: Int): Int = mem(colorBase / 4 + y * 16 + x)
-      assert(pixel(14, 2) == 0xff0000ff,
-        f"first fan region was not rendered: 0x${pixel(14, 2)}%08x")
-      assert(pixel(2, 10) == 0xff0000ff,
-        f"second fan region was not rendered: 0x${pixel(2, 10)}%08x")
-      assert(pixel(14, 12) == 0,
-        f"pixel outside the clipped polygon changed: 0x${pixel(14, 12)}%08x")
+      assert(pixel(14, 2) == 0xff0000ff, f"first fan region was not rendered: 0x${pixel(14, 2)}%08x")
+      assert(pixel(2, 10) == 0xff0000ff, f"second fan region was not rendered: 0x${pixel(2, 10)}%08x")
+      assert(pixel(14, 12) == 0, f"pixel outside the clipped polygon changed: 0x${pixel(14, 12)}%08x")
     }
   }
 
@@ -406,8 +412,7 @@ class RenderPipelineSpec extends AnyFlatSpec {
     val expected = Seq(centre - 96, centre + 32, centre - 32, centre + 96)
     for (s <- 0 until 4) {
       val got = depthWord(mode2, 2, 5, 5, s)
-      assert(got == expected(s),
-        s"sample $s of pixel (5,5): got $got expected ${expected(s)}")
+      assert(got == expected(s), s"sample $s of pixel (5,5): got $got expected ${expected(s)}")
     }
     // The four samples are an affine function of the sample offset: the
     // parallelogram identity holds and the mean is the interpolated centre.
@@ -421,8 +426,7 @@ class RenderPipelineSpec extends AnyFlatSpec {
     val expected1 = Seq(centre - 96, centre + 96)
     for (s <- 0 until 2) {
       val got = depthWord(mode1, 1, 5, 5, s)
-      assert(got == expected1(s),
-        s"2x sample $s of pixel (5,5): got $got expected ${expected1(s)}")
+      assert(got == expected1(s), s"2x sample $s of pixel (5,5): got $got expected ${expected1(s)}")
     }
     val d1 = (0 until 2).map(s => depthWord(mode1, 1, 5, 5, s))
     assert(d1(0) + d1(1) == 2 * centre, s"2x sample depths not affine: $d1")
@@ -498,10 +502,20 @@ class RenderPipelineSpec extends AnyFlatSpec {
         (1 << 25) | (vs2 << 20) | ((imm & 0x1f) << 15) | (3 << 12) | (vd << 7) | 0x57
       val cease = 0x30500073
       val program = Seq(
-        slli(5, 8, 2), add(5, 1, 5), vsetivli(4), addi(6, 5, 96),
-        vle32(6, 2), addi(6, 5, 192), vse32(6, 2),
-        addi(6, 5, 64), vle32(6, 3), vaddVi(3, 3, 1),
-        addi(6, 5, 224), vse32(6, 3), cease)
+        slli(5, 8, 2),
+        add(5, 1, 5),
+        vsetivli(4),
+        addi(6, 5, 96),
+        vle32(6, 2),
+        addi(6, 5, 192),
+        vse32(6, 2),
+        addi(6, 5, 64),
+        vle32(6, 3),
+        vaddVi(3, 3, 1),
+        addi(6, 5, 224),
+        vse32(6, 3),
+        cease
+      )
       program.zipWithIndex.foreach { case (w, i) => wwrite(shaderPc + i * 4, w) }
       // The whole multisample depth image is seeded "far" so an uncovered
       // sample is distinguishable from a rendered one.
@@ -603,8 +617,12 @@ class RenderPipelineSpec extends AnyFlatSpec {
             val a = dut.io.kernelMemReq.bits.address.peek().litValue.toLong
             val id = dut.io.kernelMemReq.bits.transactionId.peek().litValue
             if (dut.io.kernelMemReq.bits.isWrite.peek().litToBoolean) {
-              lineWrite(a, dut.io.kernelMemReq.bits.writeData.peek().litValue,
-                dut.io.kernelMemReq.bits.byteMask.peek().litValue); kuQ.enqueue((id, BigInt(0)))
+              lineWrite(
+                a,
+                dut.io.kernelMemReq.bits.writeData.peek().litValue,
+                dut.io.kernelMemReq.bits.byteMask.peek().litValue
+              );
+              kuQ.enqueue((id, BigInt(0)))
             } else kuQ.enqueue((id, lineRead(a)))
           }
 
@@ -619,8 +637,12 @@ class RenderPipelineSpec extends AnyFlatSpec {
             val a = dut.io.kernelWordMemReq.bits.address.peek().litValue.toLong
             val id = dut.io.kernelWordMemReq.bits.transactionId.peek().litValue
             if (dut.io.kernelWordMemReq.bits.isWrite.peek().litToBoolean) {
-              lineWrite(a, dut.io.kernelWordMemReq.bits.writeData.peek().litValue,
-                dut.io.kernelWordMemReq.bits.byteMask.peek().litValue); wuQ.enqueue((id, BigInt(0)))
+              lineWrite(
+                a,
+                dut.io.kernelWordMemReq.bits.writeData.peek().litValue,
+                dut.io.kernelWordMemReq.bits.byteMask.peek().litValue
+              );
+              wuQ.enqueue((id, BigInt(0)))
             } else wuQ.enqueue((id, lineRead(a)))
           }
 
@@ -637,16 +659,16 @@ class RenderPipelineSpec extends AnyFlatSpec {
     // `16 << sampleMode` words.
     def sampleOffset(x: Int, y: Int, s: Int, mode: Int): Long =
       (y * (16 << mode) + (x << mode) + s) * 4L
-    def colorWord(m: scala.collection.mutable.LongMap[Int], mode: Int,
-      x: Int, y: Int, s: Int): Long =
+    def colorWord(m: scala.collection.mutable.LongMap[Int], mode: Int, x: Int, y: Int, s: Int): Long =
       m.getOrElse(colorBase + sampleOffset(x, y, s, mode), 0) & 0xffffffffL
-    def depthWord(m: scala.collection.mutable.LongMap[Int], mode: Int,
-      x: Int, y: Int, s: Int): Int =
+    def depthWord(m: scala.collection.mutable.LongMap[Int], mode: Int, x: Int, y: Int, s: Int): Int =
       m.getOrElse(depthBase + sampleOffset(x, y, s, mode), 0)
 
     def checkReferenceImage(m: scala.collection.mutable.LongMap[Int], mode: Int): Unit = {
-      for (y <- 0 until 16; x <- 0 until 16;
-           ((sx, sy), sample) <- Msaa.positions(mode).zipWithIndex) {
+      for (
+        y <- 0 until 16; x <- 0 until 16;
+        ((sx, sy), sample) <- Msaa.positions(mode).zipWithIndex
+      ) {
         // Screen vertices are (0,0), (16,0), (0,16). Express quarter-pixel
         // sample positions as integers and apply the independent top-left
         // rule: x=0 and y=0 are excluded; x+y=16 is included.
@@ -656,10 +678,14 @@ class RenderPipelineSpec extends AnyFlatSpec {
         val expectedDepth = if (coveredSample) {
           if (mode == 0) vertexDepth + 1 else vertexDepth
         } else 0x00ffffff
-        assert(colorWord(m, mode, x, y, sample) == expectedColor,
-          f"mode $mode sample $sample colour ($x,$y): got 0x${colorWord(m, mode, x, y, sample)}%08x expected 0x$expectedColor%08x")
-        assert(depthWord(m, mode, x, y, sample) == expectedDepth,
-          f"mode $mode sample $sample depth ($x,$y): got 0x${depthWord(m, mode, x, y, sample)}%08x expected 0x$expectedDepth%08x")
+        assert(
+          colorWord(m, mode, x, y, sample) == expectedColor,
+          f"mode $mode sample $sample colour ($x,$y): got 0x${colorWord(m, mode, x, y, sample)}%08x expected 0x$expectedColor%08x"
+        )
+        assert(
+          depthWord(m, mode, x, y, sample) == expectedDepth,
+          f"mode $mode sample $sample depth ($x,$y): got 0x${depthWord(m, mode, x, y, sample)}%08x expected 0x$expectedDepth%08x"
+        )
       }
     }
 
@@ -674,10 +700,14 @@ class RenderPipelineSpec extends AnyFlatSpec {
     val mode0 = soak(0)
     checkReferenceImage(mode0, 0)
     for ((x, y) <- covered) {
-      assert(colorWord(mode0, 0, x, y, 0) == 0xff0000ffL,
-        s"sampleMode 0 colour ($x,$y): got 0x${colorWord(mode0, 0, x, y, 0).toHexString}")
-      assert(depthWord(mode0, 0, x, y, 0) == vertexDepth + 1,
-        s"sampleMode 0 depth ($x,$y): got ${depthWord(mode0, 0, x, y, 0)}")
+      assert(
+        colorWord(mode0, 0, x, y, 0) == 0xff0000ffL,
+        s"sampleMode 0 colour ($x,$y): got 0x${colorWord(mode0, 0, x, y, 0).toHexString}"
+      )
+      assert(
+        depthWord(mode0, 0, x, y, 0) == vertexDepth + 1,
+        s"sampleMode 0 depth ($x,$y): got ${depthWord(mode0, 0, x, y, 0)}"
+      )
     }
 
     // Modes 1 and 2 fan the one shader colour out to every covered sample at
@@ -691,22 +721,30 @@ class RenderPipelineSpec extends AnyFlatSpec {
       val m = soak(mode)
       checkReferenceImage(m, mode)
       for ((x, y) <- covered; s <- positions.indices) {
-        assert(colorWord(m, mode, x, y, s) == 0xff0000ffL,
+        assert(
+          colorWord(m, mode, x, y, s) == 0xff0000ffL,
           s"sampleMode $mode colour sample $s of ($x,$y): " +
-            s"got 0x${colorWord(m, mode, x, y, s).toHexString}")
-        assert(depthWord(m, mode, x, y, s) == vertexDepth,
+            s"got 0x${colorWord(m, mode, x, y, s).toHexString}"
+        )
+        assert(
+          depthWord(m, mode, x, y, s) == vertexDepth,
           s"sampleMode $mode depth sample $s of ($x,$y): " +
-            s"got ${depthWord(m, mode, x, y, s)} expected $vertexDepth")
+            s"got ${depthWord(m, mode, x, y, s)} expected $vertexDepth"
+        )
       }
       // A pixel outside the triangle renders no sample at all: every sample
       // keeps its seeded far depth and the colour buffer stays zero.
       for (s <- positions.indices) {
-        assert(depthWord(m, mode, 13, 13, s) == 0x00ffffff,
+        assert(
+          depthWord(m, mode, 13, 13, s) == 0x00ffffff,
           s"uncovered sample $s must keep its seeded depth, got " +
-            s"${depthWord(m, mode, 13, 13, s)}")
-        assert(colorWord(m, mode, 13, 13, s) == 0L,
+            s"${depthWord(m, mode, 13, 13, s)}"
+        )
+        assert(
+          colorWord(m, mode, 13, 13, s) == 0L,
           s"uncovered sample $s must stay black, got " +
-            s"0x${colorWord(m, mode, 13, 13, s).toHexString}")
+            s"0x${colorWord(m, mode, 13, 13, s).toHexString}"
+        )
       }
     }
   }

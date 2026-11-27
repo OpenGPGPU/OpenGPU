@@ -23,13 +23,28 @@ class StorageResourceAccessSpec extends AnyFlatSpec {
       }
       def record(i: Int): BigInt = {
         val words = Array.fill[BigInt](16)(0); val base = 0x10000 + i * 0x1000
-        for ((n, value) <- Seq[(Int, BigInt)](0 -> StorageDescriptorLayout.magic, 1 -> 64, 2 -> 1,
-          3 -> 7, 4 -> 11, 5 -> 13, 6 -> i, 7 -> 1, 8 -> 1, 9 -> 1,
-          10 -> base, 11 -> (base + 0x100), 13 -> base, 14 -> (base + 0x100))) words(n) = value
+        for (
+          (n, value) <- Seq[(Int, BigInt)](
+            0 -> StorageDescriptorLayout.magic,
+            1 -> 64,
+            2 -> 1,
+            3 -> 7,
+            4 -> 11,
+            5 -> 13,
+            6 -> i,
+            7 -> 1,
+            8 -> 1,
+            9 -> 1,
+            10 -> base,
+            11 -> (base + 0x100),
+            13 -> base,
+            14 -> (base + 0x100)
+          )
+        ) words(n) = value
         words.zipWithIndex.map { case (v, n) => v << (n * 32) }.sum
       }
       def submit(i: Int, off: Int, write: Boolean): Unit = {
-        q.bindingIndex.poke(i.U); q.offset.poke(off.U); q.write.poke(write.B); q.tag.poke((20+i).U)
+        q.bindingIndex.poke(i.U); q.offset.poke(off.U); q.write.poke(write.B); q.tag.poke((20 + i).U)
         d.io.in.valid.poke(true.B); d.io.in.ready.expect(true.B); d.clock.step(); d.io.in.valid.poke(false.B)
       }
       def memory(address: Int, id: Int, contents: BigInt, write: Boolean): Unit = {
@@ -49,14 +64,14 @@ class StorageResourceAccessSpec extends AnyFlatSpec {
       }
       def result(i: Int, source: Int, status: Int): Unit = {
         until("result")(d.io.out.valid.peek().litToBoolean)
-        d.io.out.bits.tag.expect((20+i).U); d.io.out.bits.bindingIndex.expect(i.U)
+        d.io.out.bits.tag.expect((20 + i).U); d.io.out.bits.bindingIndex.expect(i.U)
         d.io.out.bits.source.expect(source.U); d.io.out.bits.status.expect(status.U)
       }
       def retire(): Unit = { d.io.out.ready.poke(true.B); d.clock.step(); d.io.out.ready.poke(false.B) }
       for (i <- 0 until 4) {
         submit(i, 12, i % 2 == 1)
-        memory(0x4000+i*64, 0, record(i), write = false)
-        memory(0x10000+i*0x1000, 1, BigInt("cafe0000", 16) << 96, write = i % 2 == 1)
+        memory(0x4000 + i * 64, 0, record(i), write = false)
+        memory(0x10000 + i * 0x1000, 1, BigInt("cafe0000", 16) << 96, write = i % 2 == 1)
         result(i, 2, StorageWordStatus.ok)
         if (i % 2 == 0) d.io.out.bits.data.expect("hcafe0000".U)
         val held = d.io.out.bits.peek().litValue; d.clock.step(2); assert(d.io.out.bits.peek().litValue == held)
@@ -80,19 +95,38 @@ class StorageResourceAccessSpec extends AnyFlatSpec {
       q.bindingIndex.poke(0.U); q.offset.poke(0.U); q.write.poke(true.B)
       q.data.poke(0x1234.U); q.byteMask.poke(15.U); q.tag.poke(31.U)
       val words = Array.fill[BigInt](16)(0)
-      for ((n, value) <- Seq[(Int, BigInt)](0 -> StorageDescriptorLayout.magic, 1 -> 64, 2 -> 1,
-        3 -> 7, 4 -> 11, 5 -> 13, 6 -> 0, 7 -> 1, 8 -> 1, 9 -> 1,
-        10 -> 0x10000, 11 -> 0x10100, 13 -> 0x10000, 14 -> 0x10100)) words(n) = value
+      for (
+        (n, value) <- Seq[(Int, BigInt)](
+          0 -> StorageDescriptorLayout.magic,
+          1 -> 64,
+          2 -> 1,
+          3 -> 7,
+          4 -> 11,
+          5 -> 13,
+          6 -> 0,
+          7 -> 1,
+          8 -> 1,
+          9 -> 1,
+          10 -> 0x10000,
+          11 -> 0x10100,
+          13 -> 0x10000,
+          14 -> 0x10100
+        )
+      ) words(n) = value
       val record = words.zipWithIndex.map { case (v, n) => v << (n * 32) }.sum
       def until(label: String)(f: => Boolean): Unit = {
         var n = 0; while (!f && n < 50) { d.clock.step(); n += 1 }; assert(f, s"$label did not arrive")
       }
-      def submit(): Unit = { d.io.in.valid.poke(true.B); d.io.in.ready.expect(true.B); d.clock.step(); d.io.in.valid.poke(false.B) }
+      def submit(): Unit = {
+        d.io.in.valid.poke(true.B); d.io.in.ready.expect(true.B); d.clock.step(); d.io.in.valid.poke(false.B)
+      }
       def offer(id: Int): Unit = {
         until("offer")(d.io.memoryRequest.valid.peek().litToBoolean)
         d.io.memoryRequest.bits.transactionId.expect(id.U)
       }
-      def accept(): Unit = { d.io.memoryRequest.ready.poke(true.B); d.clock.step(); d.io.memoryRequest.ready.poke(false.B) }
+      def accept(): Unit = {
+        d.io.memoryRequest.ready.poke(true.B); d.clock.step(); d.io.memoryRequest.ready.poke(false.B)
+      }
       def reply(id: Int, data: BigInt, fault: Boolean): Unit = {
         d.io.memoryResponse.bits.transactionId.poke(id.U); d.io.memoryResponse.bits.readData.poke(data.U)
         d.io.memoryResponse.bits.fault.poke(fault.B); d.io.memoryResponse.valid.poke(true.B)
@@ -145,10 +179,26 @@ class StorageResourceAccessSpec extends AnyFlatSpec {
       }
       def record(base: BigInt, limit: BigInt, writable: Boolean): BigInt = {
         val words = Array.fill[BigInt](16)(0)
-        for ((i, value) <- Seq[(Int, BigInt)](0 -> StorageDescriptorLayout.magic, 1 -> 64, 2 -> 1,
-          3 -> 7, 4 -> 11, 5 -> 13, 6 -> 3, 7 -> 1, 8 -> 1, 9 -> (if (writable) 1 else 0),
-          10 -> base, 11 -> (limit & 0xffffffffL), 12 -> (limit >> 32),
-          13 -> base, 14 -> (limit & 0xffffffffL), 15 -> (limit >> 32))) words(i) = value
+        for (
+          (i, value) <- Seq[(Int, BigInt)](
+            0 -> StorageDescriptorLayout.magic,
+            1 -> 64,
+            2 -> 1,
+            3 -> 7,
+            4 -> 11,
+            5 -> 13,
+            6 -> 3,
+            7 -> 1,
+            8 -> 1,
+            9 -> (if (writable) 1 else 0),
+            10 -> base,
+            11 -> (limit & 0xffffffffL),
+            12 -> (limit >> 32),
+            13 -> base,
+            14 -> (limit & 0xffffffffL),
+            15 -> (limit >> 32)
+          )
+        ) words(i) = value
         words.zipWithIndex.map { case (value, i) => value << (32 * i) }.sum
       }
       def submit(offset: BigInt, write: Boolean, tag: Int): Unit = {

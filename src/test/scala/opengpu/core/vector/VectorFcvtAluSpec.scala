@@ -9,8 +9,8 @@ class VectorFcvtAluSpec extends AnyFlatSpec {
   behavior of "VectorFcvtAlu"
 
   private def run(
-    config: GpuConfig,
-    request: VectorFpuRequest => Unit
+      config: GpuConfig,
+      request: VectorFpuRequest => Unit
   ): (Vector[BigInt], BigInt) = {
     var data = Vector.fill(config.lanes)(BigInt(0))
     var flags = BigInt(0)
@@ -41,11 +41,11 @@ class VectorFcvtAluSpec extends AnyFlatSpec {
   }
 
   private def configure(
-    bits: VectorFpuRequest,
-    config: GpuConfig,
-    vs1Field: Int,
-    vs2: Seq[String],
-    funct6: Int = 0x12
+      bits: VectorFpuRequest,
+      config: GpuConfig,
+      vs1Field: Int,
+      vs2: Seq[String],
+      funct6: Int = 0x12
   ): Unit = {
     bits.warpId.poke(0.U)
     bits.vd.poke(3.U)
@@ -62,9 +62,12 @@ class VectorFcvtAluSpec extends AnyFlatSpec {
 
   it should "convert FP to unsigned integers" in {
     val config = GpuConfig(lanes = 2)
-    val (data, flags) = run(config, { bits =>
-      configure(bits, config, 0, Seq("h3f800000", "h40000000"))
-    })
+    val (data, flags) = run(
+      config,
+      { bits =>
+        configure(bits, config, 0, Seq("h3f800000", "h40000000"))
+      }
+    )
     assert(data(0) == 1)
     assert(data(1) == 2)
     assert(flags == 0)
@@ -72,9 +75,12 @@ class VectorFcvtAluSpec extends AnyFlatSpec {
 
   it should "convert FP to signed integers" in {
     val config = GpuConfig(lanes = 2)
-    val (data, flags) = run(config, { bits =>
-      configure(bits, config, 1, Seq("h3f800000", "hbf800000"))
-    })
+    val (data, flags) = run(
+      config,
+      { bits =>
+        configure(bits, config, 1, Seq("h3f800000", "hbf800000"))
+      }
+    )
     assert(data(0) == 1)
     assert(data(1) == BigInt("ffffffff", 16))
     assert(flags == 0)
@@ -82,9 +88,12 @@ class VectorFcvtAluSpec extends AnyFlatSpec {
 
   it should "apply RTZ to the rtz float-to-integer forms" in {
     val config = GpuConfig(lanes = 2)
-    val (data, flags) = run(config, { bits =>
-      configure(bits, config, 7, Seq("h3fc00000", "h40200000"))
-    })
+    val (data, flags) = run(
+      config,
+      { bits =>
+        configure(bits, config, 7, Seq("h3fc00000", "h40200000"))
+      }
+    )
     assert(data(0) == 1) // 1.5 truncates to 1
     assert(data(1) == 2) // 2.5 truncates to 2
     assert((flags & BigInt("1", 16)) != 0)
@@ -92,9 +101,12 @@ class VectorFcvtAluSpec extends AnyFlatSpec {
 
   it should "saturate and raise NV for negative unsigned conversions" in {
     val config = GpuConfig(lanes = 2)
-    val (data, flags) = run(config, { bits =>
-      configure(bits, config, 6, Seq("hbf800000", "h3fc00000"))
-    })
+    val (data, flags) = run(
+      config,
+      { bits =>
+        configure(bits, config, 6, Seq("hbf800000", "h3fc00000"))
+      }
+    )
     assert(data(0) == 0)
     assert(data(1) == 1)
     assert((flags & BigInt("11", 16)) == BigInt("11", 16))
@@ -102,9 +114,12 @@ class VectorFcvtAluSpec extends AnyFlatSpec {
 
   it should "convert unsigned integers to FP32" in {
     val config = GpuConfig(lanes = 2)
-    val (data, flags) = run(config, { bits =>
-      configure(bits, config, 2, Seq("h00000005", "h80000001"))
-    })
+    val (data, flags) = run(
+      config,
+      { bits =>
+        configure(bits, config, 2, Seq("h00000005", "h80000001"))
+      }
+    )
     assert(data(0) == BigInt("40a00000", 16))
     assert(data(1) == BigInt("4f000000", 16))
     assert((flags & BigInt("1", 16)) != 0)
@@ -112,9 +127,12 @@ class VectorFcvtAluSpec extends AnyFlatSpec {
 
   it should "convert signed integers to FP32" in {
     val config = GpuConfig(lanes = 2)
-    val (data, flags) = run(config, { bits =>
-      configure(bits, config, 3, Seq("hfffffffb", "h80000000"))
-    })
+    val (data, flags) = run(
+      config,
+      { bits =>
+        configure(bits, config, 3, Seq("hfffffffb", "h80000000"))
+      }
+    )
     assert(data(0) == BigInt("c0a00000", 16))
     assert(data(1) == BigInt("cf000000", 16))
     assert(flags == 0)
@@ -122,9 +140,12 @@ class VectorFcvtAluSpec extends AnyFlatSpec {
 
   it should "convert fragment pixel coordinates without a 2^23 bias" in {
     val config = GpuConfig(lanes = 2)
-    val (data, flags) = run(config, { bits =>
-      configure(bits, config, 3, Seq("h0000002c", "h000001cc"))
-    })
+    val (data, flags) = run(
+      config,
+      { bits =>
+        configure(bits, config, 3, Seq("h0000002c", "h000001cc"))
+      }
+    )
     assert(data(0) == BigInt("42300000", 16)) // 44.0
     assert(data(1) == BigInt("43e60000", 16)) // 460.0
     assert(flags == 0)
@@ -132,17 +153,23 @@ class VectorFcvtAluSpec extends AnyFlatSpec {
 
   it should "apply RTZ to the rtz integer-to-FP forms" in {
     val config = GpuConfig(lanes = 2)
-    val (unsigned, _) = run(config, { bits =>
-      configure(bits, config, 4, Seq("hffffffff", "h7fffffff"))
-    })
+    val (unsigned, _) = run(
+      config,
+      { bits =>
+        configure(bits, config, 4, Seq("hffffffff", "h7fffffff"))
+      }
+    )
     // RTZ drops the bits below the mantissa; the dynamic rounding mode would
     // round 2^32-1 and 2^31-1 up to the next float instead.
     assert(unsigned(0) == BigInt("4f7fffff", 16))
     assert(unsigned(1) == BigInt("4effffff", 16))
 
-    val (signed, flags) = run(config, { bits =>
-      configure(bits, config, 5, Seq("h80000001", "hfffffffa"))
-    })
+    val (signed, flags) = run(
+      config,
+      { bits =>
+        configure(bits, config, 5, Seq("h80000001", "hfffffffa"))
+      }
+    )
     assert(signed(0) == BigInt("ceffffff", 16)) // -(2^31+1)
     assert(signed(1) == BigInt("c0c00000", 16)) // -6 is exact
     assert((flags & BigInt("1", 16)) != 0)
@@ -150,20 +177,23 @@ class VectorFcvtAluSpec extends AnyFlatSpec {
 
   it should "classify FP values into the RVV vfclass bitmask" in {
     val config = GpuConfig(lanes = 4)
-    val (data, flags) = run(config, { bits =>
-      configure(
-        bits,
-        config,
-        16,
-        Seq(
-          "h80000000", // -0.0 -> bit 3
-          "h00000000", // +0.0 -> bit 4
-          "h3f800000", // 1.0 -> bit 6
-          "h7f800000"  // +inf -> bit 7
-        ),
-        funct6 = 0x13
-      )
-    })
+    val (data, flags) = run(
+      config,
+      { bits =>
+        configure(
+          bits,
+          config,
+          16,
+          Seq(
+            "h80000000", // -0.0 -> bit 3
+            "h00000000", // +0.0 -> bit 4
+            "h3f800000", // 1.0 -> bit 6
+            "h7f800000" // +inf -> bit 7
+          ),
+          funct6 = 0x13
+        )
+      }
+    )
     assert(data(0) == BigInt("8", 16))
     assert(data(1) == BigInt("10", 16))
     assert(data(2) == BigInt("40", 16))
@@ -173,15 +203,18 @@ class VectorFcvtAluSpec extends AnyFlatSpec {
 
   it should "classify quiet and signaling NaNs" in {
     val config = GpuConfig(lanes = 2)
-    val (data, flags) = run(config, { bits =>
-      configure(
-        bits,
-        config,
-        16,
-        Seq("h7fc00000", "h7f800001"),
-        funct6 = 0x13
-      )
-    })
+    val (data, flags) = run(
+      config,
+      { bits =>
+        configure(
+          bits,
+          config,
+          16,
+          Seq("h7fc00000", "h7f800001"),
+          funct6 = 0x13
+        )
+      }
+    )
     assert(data(0) == BigInt("200", 16))
     assert(data(1) == BigInt("100", 16))
     assert(flags == 0)
@@ -189,21 +222,27 @@ class VectorFcvtAluSpec extends AnyFlatSpec {
 
   it should "honor the routed dynamic rounding mode" in {
     val config = GpuConfig(lanes = 2)
-    val (data, _) = run(config, { bits =>
-      configure(bits, config, 1, Seq("h3fc00000", "hbfc00000"))
-      bits.roundingMode.poke("b011".U) // RUP
-    })
+    val (data, _) = run(
+      config,
+      { bits =>
+        configure(bits, config, 1, Seq("h3fc00000", "hbfc00000"))
+        bits.roundingMode.poke("b011".U) // RUP
+      }
+    )
     assert(data(0) == 2) // 1.5 rounds up
     assert(data(1) == BigInt("ffffffff", 16)) // -1.5 rounds toward +inf
   }
 
   it should "preserve masked-off lanes and skip their flags" in {
     val config = GpuConfig(lanes = 2)
-    val (data, flags) = run(config, { bits =>
-      configure(bits, config, 1, Seq("h3fc00000", "h7fc00000"))
-      bits.activeMask.poke("b01".U)
-      bits.oldVd(1).poke("h22222222".U)
-    })
+    val (data, flags) = run(
+      config,
+      { bits =>
+        configure(bits, config, 1, Seq("h3fc00000", "h7fc00000"))
+        bits.activeMask.poke("b01".U)
+        bits.oldVd(1).poke("h22222222".U)
+      }
+    )
     assert(data(0) == 2)
     assert(data(1) == BigInt("22222222", 16))
     assert((flags & BigInt("1", 16)) != 0)

@@ -6,8 +6,8 @@ import opengpu.config.GpuConfig
 import opengpu.dispatch.{KernelLaunch, TaggedKernelCompletion, TaggedKernelLaunch}
 import opengpu.graphics._
 
-/** A serial geometry client of a shared CU pool. The caller reserves commandId
-  * exclusively until completion and routes other clients' traffic separately.
+/** A serial geometry client of a shared CU pool. The caller reserves commandId exclusively until completion and routes
+  * other clients' traffic separately.
   */
 class GeometrySharedTask(config: GpuConfig, commandIdWidth: Int) extends Bundle {
   val geometry = new GeometryInvocationTask
@@ -55,7 +55,7 @@ class GeometrySharedCuScheduler(config: GpuConfig, commandIdWidth: Int, numCompu
   assert(PopCount(selected) <= 1.U, "geometry command tag must identify at most one CU")
   controller.io.command.valid := (0 until numComputeUnits).map(i => selected(i) && io.event(i).valid).reduce(_ || _)
   controller.io.command.bits := Mux1H(selected, io.event.map(_.bits))
-  for(i <- 0 until numComputeUnits) {
+  for (i <- 0 until numComputeUnits) {
     io.event(i).ready := selected(i) && controller.io.command.ready
     io.cancelCu(i) := selected(i) && (io.cancel || controller.io.abort)
   }

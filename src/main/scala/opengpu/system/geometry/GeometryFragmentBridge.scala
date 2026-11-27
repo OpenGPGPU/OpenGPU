@@ -4,16 +4,15 @@ import chisel3._
 import chisel3.util._
 import opengpu.graphics._
 
-/** Connect one geometry raster task to the fragment stage's quad and EOF inputs.
-  * The enclosing draw owner starts the bridge with the fragment work identity
-  * and retains the raster report until it has consumed both report and EOF.
+/** Connect one geometry raster task to the fragment stage's quad and EOF inputs. The enclosing draw owner starts the
+  * bridge with the fragment work identity and retains the raster report until it has consumed both report and EOF.
   */
 class GeometryFragmentBridge(p: VertexShaderStageConfig, g: GraphicsConfig) extends Module {
   val io = IO(new Bundle {
     val start = Flipped(Decoupled(new GraphicsWorkIdentity))
-    val in = Flipped(Decoupled(new GeometryRasterizedQuad(p,g)))
+    val in = Flipped(Decoupled(new GeometryRasterizedQuad(p, g)))
     val rasterCompletion = Flipped(Decoupled(new GeometryPrimitiveRasterResult))
-    val out = Decoupled(new Fp32RasterizedQuad(p,g))
+    val out = Decoupled(new Fp32RasterizedQuad(p, g))
     val layer = Output(Valid(UInt(32.W)))
     val inputEnd = Decoupled(new FragmentInputCompletion)
     val report = Decoupled(new GeometryPrimitiveRasterResult)
@@ -49,8 +48,11 @@ class GeometryFragmentBridge(p: VertexShaderStageConfig, g: GraphicsConfig) exte
     result := io.rasterCompletion.bits
     end.identity := identity
     end.quads := count
-    end.status := Mux(io.rasterCompletion.bits.status =/= 0.U, io.rasterCompletion.bits.status,
-      Mux(io.rasterCompletion.bits.outputQuads =/= count, 6.U, 0.U))
+    end.status := Mux(
+      io.rasterCompletion.bits.status =/= 0.U,
+      io.rasterCompletion.bits.status,
+      Mux(io.rasterCompletion.bits.outputQuads =/= count, 6.U, 0.U)
+    )
   }
   io.inputEnd.valid := completionHeld && !endSent
   io.inputEnd.bits := end

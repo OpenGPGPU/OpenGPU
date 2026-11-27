@@ -46,10 +46,9 @@ class VectorFlagsWrite(config: GpuConfig) extends Bundle {
 
 /** Per-warp RVV configuration state for the fixed GPU vector profile.
   *
-  * The implemented profile is SEW=32, LMUL=1, tail-undisturbed and
-  * mask-undisturbed, with VLMAX equal to the hardware lane count. Unsupported
-  * vtype values set vill and vl=0 rather than silently selecting a different
-  * datapath. Configuration results use an elastic one-entry output.
+  * The implemented profile is SEW=32, LMUL=1, tail-undisturbed and mask-undisturbed, with VLMAX equal to the hardware
+  * lane count. Unsupported vtype values set vill and vl=0 rather than silently selecting a different datapath.
+  * Configuration results use an elastic one-entry output.
   */
 class VectorConfigurationUnit(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {
@@ -81,8 +80,7 @@ class VectorConfigurationUnit(config: GpuConfig = GpuConfig()) extends Module {
   // narrow PPA/test configurations elaborate without width warnings.
   private def readWarp[T <: Data](entries: Vec[T], warp: UInt): T =
     if (config.warps == 1) entries(0) else entries(warp)
-  private def writeWarp[T <: Data](entries: Vec[T], warp: UInt,
-                                   value: T): Unit =
+  private def writeWarp[T <: Data](entries: Vec[T], warp: UInt, value: T): Unit =
     if (config.warps == 1) entries(0) := value else entries(warp) := value
 
   private val outputValid = RegInit(false.B)
@@ -171,8 +169,7 @@ class VectorConfigurationUnit(config: GpuConfig = GpuConfig()) extends Module {
   when(io.shaderCsrWrite.valid) {
     // The shader ABI admits only an immediate write to vxrm.
     assert(io.shaderCsrWrite.bits.address === "h00a".U)
-    writeWarp(vxrm, io.shaderCsrWrite.bits.warpId,
-      io.shaderCsrWrite.bits.data(1, 0))
+    writeWarp(vxrm, io.shaderCsrWrite.bits.warpId, io.shaderCsrWrite.bits.data(1, 0))
   }
   when(io.clearWarp.valid) {
     // GpuComputeUnitCore drives clearWarp from the launch fire, so this is the per
@@ -185,14 +182,16 @@ class VectorConfigurationUnit(config: GpuConfig = GpuConfig()) extends Module {
   }
 
   when(io.flagsWrite.valid) {
-    writeWarp(fflags, io.flagsWrite.bits.warpId,
-      readWarp(fflags, io.flagsWrite.bits.warpId) | io.flagsWrite.bits.flags)
+    writeWarp(fflags, io.flagsWrite.bits.warpId, readWarp(fflags, io.flagsWrite.bits.warpId) | io.flagsWrite.bits.flags)
   }
 
   when(io.scalarFlagsWrite.valid) {
-    writeWarp(fflags, io.scalarFlagsWrite.bits.warpId,
+    writeWarp(
+      fflags,
+      io.scalarFlagsWrite.bits.warpId,
       readWarp(fflags, io.scalarFlagsWrite.bits.warpId) |
-        io.scalarFlagsWrite.bits.flags)
+        io.scalarFlagsWrite.bits.flags
+    )
   }
 
   when(outputReady) {

@@ -17,9 +17,8 @@ class ComputeUniformTask extends Bundle {
   val privateLimit = UInt(33.W)
 }
 
-/** Captures the compute task and translation root before executing checked
-  * uniform instructions. The parent retains publication and VM ownership until
-  * all offered/accepted memory and the public completion have drained.
+/** Captures the compute task and translation root before executing checked uniform instructions. The parent retains
+  * publication and VM ownership until all offered/accepted memory and the public completion have drained.
   */
 class ComputeUniformCuService(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {
@@ -50,13 +49,11 @@ class ComputeUniformCuService(config: GpuConfig = GpuConfig()) extends Module {
   private val translation = Module(new TranslatedLineClient(config, 1, preserveCachePolicy = true))
   private val translationPageFault = RegInit(false.B)
   when(io.kernelStart) {
-    assert(!execute.io.busy && !translation.io.walkActive,
-      "compute uniform owner changed before prior task drained")
+    assert(!execute.io.busy && !translation.io.walkActive, "compute uniform owner changed before prior task drained")
     task := io.task; satp := io.satp
   }
   when(io.kernelCompletion) {
-    assert(!execute.io.busy && !translation.io.walkActive,
-      "compute completion escaped uniform ownership")
+    assert(!execute.io.busy && !translation.io.walkActive, "compute completion escaped uniform ownership")
   }
   io.enabled := task.enabled
   io.busy := execute.io.busy || translation.io.walkActive

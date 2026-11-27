@@ -11,27 +11,29 @@ import org.scalatest.DoNotDiscover
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-/** Opt-in product-path queueing qualification: two waves of shared commands
-  * reuse the four CUs and write disjoint output pages exactly. */
+/** Opt-in product-path queueing qualification: two waves of shared commands reuse the four CUs and write disjoint
+  * output pages exactly.
+  */
 @DoNotDiscover
 class SharedProductQueueQualification extends AnyFlatSpec {
   private def zero(d: Data): Unit = d match {
-    case r: Record => r.elements.values.foreach(zero)
-    case v: Vec[_] => v.foreach(zero)
+    case r: Record                                                     => r.elements.values.foreach(zero)
+    case v: Vec[_]                                                     => v.foreach(zero)
     case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
     case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
     case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
-    case _ => ()
+    case _                                                             => ()
   }
   private val mask32 = (BigInt(1) << 32) - 1
   private def expected(seed: BigInt, group: Int, local: Int): BigInt =
     (0 until 32).map(r => seed + (group << 16) + (local ^ 16) + r * 128).sum & mask32
 
   it should "queue two waves of shared commands on the four product CUs" in {
-    require(sys.props.get("opengpu.sharedProductQueueQualification").contains("1"),
-      "explicit local qualification only")
-    val programs = GalliumSharedArtifacts.load(Paths.get(sys.props("opengpu.galliumSharedArtifacts")),
-      sys.props("opengpu.galliumSharedArtifactSha256"))
+    require(sys.props.get("opengpu.sharedProductQueueQualification").contains("1"), "explicit local qualification only")
+    val programs = GalliumSharedArtifacts.load(
+      Paths.get(sys.props("opengpu.galliumSharedArtifacts")),
+      sys.props("opengpu.galliumSharedArtifactSha256")
+    )
     simulate(new SharedProductHarness) { top =>
       val d = top.io.gpu
       zero(top.io)
@@ -69,9 +71,11 @@ class SharedProductQueueQualification extends AnyFlatSpec {
       var nextLevel = root + 4096
       val levels = mutable.Map.empty[BigInt, BigInt]
       def mapPage(virtual: BigInt, physical: BigInt, flags: Int): Unit = {
-        val level = levels.getOrElseUpdate((virtual >> 22) << 22, {
-          val a = nextLevel; nextLevel += 4096; blank(a, 4096); a
-        })
+        val level = levels.getOrElseUpdate(
+          (virtual >> 22) << 22, {
+            val a = nextLevel; nextLevel += 4096; blank(a, 4096); a
+          }
+        )
         put(root + (virtual >> 22) * 4, ((level >> 12) << 10) | 1)
         put(level + ((virtual >> 12) & 1023) * 4, ((physical >> 12) << 10) | flags)
       }
@@ -84,9 +88,22 @@ class SharedProductQueueQualification extends AnyFlatSpec {
       }
       jobs.foreach { j =>
         blank(j.table, 256)
-        Seq[(Int, BigInt)](0 -> StorageDescriptorLayout.magic, 1 -> 64, 2 -> 1,
-          3 -> j.context, 4 -> 7, 5 -> j.context, 6 -> 0, 7 -> 1, 8 -> 1, 9 -> 1,
-          10 -> j.output, 11 -> (j.output + 1024), 13 -> j.output, 14 -> (j.output + 4096))
+        Seq[(Int, BigInt)](
+          0 -> StorageDescriptorLayout.magic,
+          1 -> 64,
+          2 -> 1,
+          3 -> j.context,
+          4 -> 7,
+          5 -> j.context,
+          6 -> 0,
+          7 -> 1,
+          8 -> 1,
+          9 -> 1,
+          10 -> j.output,
+          11 -> (j.output + 1024),
+          13 -> j.output,
+          14 -> (j.output + 4096)
+        )
           .foreach { case (i, v) => put(j.table + 4 * i, v) }
         remember(j.output - 64, 4160)
         mapPage(j.table, j.table, 0x43)
@@ -105,8 +122,7 @@ class SharedProductQueueQualification extends AnyFlatSpec {
       d.instructionTlbFlush.valid.poke(false.B); d.vectorTlbFlush.valid.poke(false.B)
       d.invalidateInstructionCache.poke(false.B)
 
-      case class Reply(id: BigInt, address: BigInt, value: BigInt, due: Int,
-                       write: Option[(BigInt, BigInt, BigInt)])
+      case class Reply(id: BigInt, address: BigInt, value: BigInt, due: Int, write: Option[(BigInt, BigInt, BigInt)])
       val pending = mutable.ArrayBuffer.empty[Reply]
       var offered = Option.empty[Reply]
       val outstanding = mutable.Set.empty[BigInt]
@@ -177,8 +193,10 @@ class SharedProductQueueQualification extends AnyFlatSpec {
               if (wr) {
                 q.cachePolicy.expect(CachePolicy.uncached)
                 val m = q.byteMask.peek().litValue; val first = m.lowestSetBit; val at = a + first
-                assert(first >= 0 && (first & 3) == 0 && m == (BigInt(15) << first) &&
-                  expectedAll.contains(at) && !written(at))
+                assert(
+                  first >= 0 && (first & 3) == 0 && m == (BigInt(15) << first) &&
+                    expectedAll.contains(at) && !written(at)
+                )
                 assert(((q.writeData.peek().litValue >> (8 * first)) & mask32) == expectedAll(at))
                 written += at
                 pending += Reply(id, a, BigInt(0), cycles + 17, Some((a, q.writeData.peek().litValue, m)))
@@ -220,8 +238,10 @@ class SharedProductQueueQualification extends AnyFlatSpec {
       zero(d.gpuCommand.bits)
       until("eight completions")(completions.size == 8)
       assert(completions.values.forall(identity), "a queued product command failed")
-      until("lower drain")(pending.isEmpty && outstanding.isEmpty &&
-        d.vmContextIdle.peek().litToBoolean)
+      until("lower drain")(
+        pending.isEmpty && outstanding.isEmpty &&
+          d.vmContextIdle.peek().litToBoolean
+      )
       assert(busyWaves > 0, "the four product CUs never ran four commands together")
       assert(sawLease, "no queued command ever held a storage lease")
       assert(acknowledged == expectedAll.keySet && written == expectedAll.keySet)
@@ -235,22 +255,28 @@ class SharedProductQueueQualification extends AnyFlatSpec {
       assert(memory.toMap == golden.toMap, "queued shared output or guard words differ")
       assert(cuWarpCycles.forall(_ > 0), "a product CU never held warps")
       assert(d.busyComputeUnits.peek().litValue == 0)
-      info(s"SHARED_PRODUCT_QUEUE PASS commands=8 waves=2 cus=4 outputWords=${acknowledged.size} " +
-        s"allFourCycles=$busyWaves activeWarpCycles=${cuWarpCycles.mkString(",")} cycles=$cycles H7Complete=false")
+      info(
+        s"SHARED_PRODUCT_QUEUE PASS commands=8 waves=2 cus=4 outputWords=${acknowledged.size} " +
+          s"allFourCycles=$busyWaves activeWarpCycles=${cuWarpCycles.mkString(",")} cycles=$cycles H7Complete=false"
+      )
     }
   }
 }
 
 object QualifySharedProductQueue {
   def main(args: Array[String]): Unit = {
-    require(sys.props.get("opengpu.sharedProductQueueQualification").contains("1"),
-      "explicit local qualification only")
-    require(args.length == 6 && args(0) == "--artifacts" && args(2) == "--manifest-sha256" && args(4) == "--reports",
-      "usage: --artifacts DIRECTORY --manifest-sha256 SHA256 --reports DIRECTORY")
+    require(sys.props.get("opengpu.sharedProductQueueQualification").contains("1"), "explicit local qualification only")
+    require(
+      args.length == 6 && args(0) == "--artifacts" && args(2) == "--manifest-sha256" && args(4) == "--reports",
+      "usage: --artifacts DIRECTORY --manifest-sha256 SHA256 --reports DIRECTORY"
+    )
     GalliumSharedArtifacts.load(Paths.get(args(1)), args(3)) // before elaboration/cache lookup
     sys.props("opengpu.galliumSharedArtifacts") = args(1)
     sys.props("opengpu.galliumSharedArtifactSha256") = args(3)
-    require(org.scalatest.tools.Runner.run(Array("-s", classOf[SharedProductQueueQualification].getName,
-      "-oD", "-u", args(5))), "shared product queue qualification failed")
+    require(
+      org.scalatest.tools.Runner
+        .run(Array("-s", classOf[SharedProductQueueQualification].getName, "-oD", "-u", args(5))),
+      "shared product queue qualification failed"
+    )
   }
 }

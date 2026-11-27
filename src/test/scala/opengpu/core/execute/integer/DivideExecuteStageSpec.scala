@@ -10,10 +10,10 @@ class DivideExecuteStageSpec extends AnyFlatSpec {
   behavior of "DivideExecuteStage"
 
   private def drive(
-    dut: DivideExecuteStage,
-    funct3: Int,
-    lhs: Long,
-    rhs: Long
+      dut: DivideExecuteStage,
+      funct3: Int,
+      lhs: Long,
+      rhs: Long
   ): Unit = {
     dut.io.in.valid.poke(true.B)
     dut.io.in.bits.decode.instruction

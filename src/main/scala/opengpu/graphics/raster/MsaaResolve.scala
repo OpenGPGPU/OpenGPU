@@ -5,28 +5,24 @@ import chisel3.util._
 
 /** Streaming MSAA resolve backend.
   *
-  * Averages the `1 << sampleMode` interleaved RGBA8888 colour samples of every
-  * logical pixel into one packed word in a separate single-sample destination
-  * buffer.  This is the hardware form of the validated resolve described in
-  * [[docs/MSAA_DESIGN.md]]: both programmed strides are honoured, so the source
-  * and destination may carry physical row padding, and each channel is rounded
-  * half-up as `(sum + samples/2) / samples`.
+  * Averages the `1 << sampleMode` interleaved RGBA8888 colour samples of every logical pixel into one packed word in a
+  * separate single-sample destination buffer. This is the hardware form of the validated resolve described in
+  * [[docs/MSAA_DESIGN.md]]: both programmed strides are honoured, so the source and destination may carry physical row
+  * padding, and each channel is rounded half-up as `(sum + samples/2) / samples`.
   *
-  * The engine issues exactly one word request at a time, so it needs no
-  * transaction tagging: read responses are consumed while accumulating and the
-  * write is acknowledged before the next pixel.  Range admission is *not* this
-  * block's responsibility; a typed driver operation must validate the
-  * source/destination buffers before starting it.
+  * The engine issues exactly one word request at a time, so it needs no transaction tagging: read responses are
+  * consumed while accumulating and the write is acknowledged before the next pixel. Range admission is *not* this
+  * block's responsibility; a typed driver operation must validate the source/destination buffers before starting it.
   *
-  * `srcStride`/`dstStride` are physical row strides in bytes and are used
-  * verbatim.  `width`/`height` are the logical extent; a zero extent completes
-  * without touching memory.
+  * `srcStride`/`dstStride` are physical row strides in bytes and are used verbatim. `width`/`height` are the logical
+  * extent; a zero extent completes without touching memory.
   */
 class MsaaResolveEngine(maxSampleCount: Int = 4) extends Module {
   require(Set(1, 2, 4)(maxSampleCount))
   override def desiredName: String = "MsaaResolveEngine"
 
   val io = IO(new Bundle {
+
     /** One-cycle pulse; ignored unless the engine is idle. */
     val start = Input(Bool())
     val srcBase = Input(UInt(32.W))
@@ -76,12 +72,14 @@ class MsaaResolveEngine(maxSampleCount: Int = 4) extends Module {
 
   // samples is always 1/2/4 (1 << mode for mode 0..2; mode 3 aliases 4x).
   private def sampleAddr(sx: UInt, ss: UInt): UInt = {
-    val sampleIndex = MuxLookup(mode, (sx << 2) + ss)(Seq(
-      0.U -> (sx + ss),
-      1.U -> ((sx << 1) + ss),
-      2.U -> ((sx << 2) + ss),
-      3.U -> ((sx << 2) + ss)
-    ))
+    val sampleIndex = MuxLookup(mode, (sx << 2) + ss)(
+      Seq(
+        0.U -> (sx + ss),
+        1.U -> ((sx << 1) + ss),
+        2.U -> ((sx << 2) + ss),
+        3.U -> ((sx << 2) + ss)
+      )
+    )
     srcRowBase + (sampleIndex << 2)
   }
   private def destAddr(sx: UInt): UInt =
@@ -94,12 +92,14 @@ class MsaaResolveEngine(maxSampleCount: Int = 4) extends Module {
     val round = roundByMode(mode)
     val channels = (0 until 4).map { c =>
       val summed = nextAcc(c, data) +& round
-      val averaged = MuxLookup(mode, summed >> 2)(Seq(
-        0.U -> summed,
-        1.U -> (summed >> 1),
-        2.U -> (summed >> 2),
-        3.U -> (summed >> 2)
-      ))
+      val averaged = MuxLookup(mode, summed >> 2)(
+        Seq(
+          0.U -> summed,
+          1.U -> (summed >> 1),
+          2.U -> (summed >> 2),
+          3.U -> (summed >> 2)
+        )
+      )
       averaged(7, 0)
     }
     Cat(channels(3), channels(2), channels(1), channels(0))
@@ -128,8 +128,7 @@ class MsaaResolveEngine(maxSampleCount: Int = 4) extends Module {
         acc := VecInit(Seq.fill(4)(0.U(32.W)))
         srcRowBase := io.srcBase
         dstRowBase := io.dstBase
-        state := Mux(io.imgWidth === 0.U || io.imgHeight === 0.U,
-          sDone, sPrep)
+        state := Mux(io.imgWidth === 0.U || io.imgHeight === 0.U, sDone, sPrep)
       }
     }
 

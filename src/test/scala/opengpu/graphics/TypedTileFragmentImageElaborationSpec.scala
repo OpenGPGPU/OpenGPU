@@ -10,12 +10,12 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 class TypedTileFragmentImageElaborationSpec extends AnyFlatSpec {
   private def zero(d: Data): Unit = d match {
-    case r: Record => r.elements.values.foreach(zero)
-    case v: Vec[_] => v.foreach(zero)
+    case r: Record                                                     => r.elements.values.foreach(zero)
+    case v: Vec[_]                                                     => v.foreach(zero)
     case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
     case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
     case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
-    case _ => ()
+    case _                                                             => ()
   }
   it should "elaborate image-enabled tile and image owners for prepared and vertex draws" in {
     val config = GpuConfig(lanes = 4, warps = 2)
@@ -24,20 +24,29 @@ class TypedTileFragmentImageElaborationSpec extends AnyFlatSpec {
     val shared = SharedCuShaderConfig(1)
     val g = GraphicsConfig(screenWidth = 8, screenHeight = 8)
     for (prepared <- Seq(false, true)) {
-      val tile = ChiselStage.emitCHIRRTL(new TypedTileRenderPipeline(config, p, f, shared, g,
-        preparedGeometry = prepared, fragmentImageAvailable = true))
+      val tile = ChiselStage.emitCHIRRTL(
+        new TypedTileRenderPipeline(config, p, f, shared, g, preparedGeometry = prepared, fragmentImageAvailable = true)
+      )
       assert(tile.contains("fragmentImageTask"))
-      val image = ChiselStage.emitCHIRRTL(new TypedTileImagePipeline(config, p, f, shared, g,
-        preparedGeometry = prepared, fragmentImageAvailable = true))
+      val image = ChiselStage.emitCHIRRTL(
+        new TypedTileImagePipeline(config, p, f, shared, g, preparedGeometry = prepared, fragmentImageAvailable = true)
+      )
       assert(image.contains("fragmentImageTask"))
     }
   }
 
   it should "lower an image-enabled prepared tile through FIRRTL" in {
-    val rtl = ChiselStage.emitSystemVerilog(new TypedTileImagePipeline(
-      GpuConfig(lanes = 4, warps = 2), VertexShaderStageConfig(VertexInputFetchConfig(2, 2), 1),
-      FragmentShaderConfig(1, 4), SharedCuShaderConfig(1), GraphicsConfig(screenWidth = 8, screenHeight = 8),
-      preparedGeometry = true, fragmentImageAvailable = true))
+    val rtl = ChiselStage.emitSystemVerilog(
+      new TypedTileImagePipeline(
+        GpuConfig(lanes = 4, warps = 2),
+        VertexShaderStageConfig(VertexInputFetchConfig(2, 2), 1),
+        FragmentShaderConfig(1, 4),
+        SharedCuShaderConfig(1),
+        GraphicsConfig(screenWidth = 8, screenHeight = 8),
+        preparedGeometry = true,
+        fragmentImageAvailable = true
+      )
+    )
     assert(rtl.contains("fragmentImageTask"))
   }
 
@@ -46,8 +55,17 @@ class TypedTileFragmentImageElaborationSpec extends AnyFlatSpec {
     val p = VertexShaderStageConfig(VertexInputFetchConfig(2, 2), 1)
     val f = FragmentShaderConfig(1, 4)
     val g = GraphicsConfig(screenWidth = 4, screenHeight = 4)
-    simulate(new TypedTileRenderPipeline(config, p, f, SharedCuShaderConfig(1), g,
-      preparedGeometry = true, fragmentImageAvailable = true)) { d =>
+    simulate(
+      new TypedTileRenderPipeline(
+        config,
+        p,
+        f,
+        SharedCuShaderConfig(1),
+        g,
+        preparedGeometry = true,
+        fragmentImageAvailable = true
+      )
+    ) { d =>
       def bind(): Unit = {
         zero(d.io); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
         val begin = d.io.begin.bits

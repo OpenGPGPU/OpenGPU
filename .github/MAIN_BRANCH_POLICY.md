@@ -24,6 +24,13 @@ bounded catalog as smoke coverage. A code PR must finish a nonzero ScalaTest run
 the Actions summary records its suites and test count. This does not establish
 integration coverage for the changed component.
 
+A bulk Scala formatting change can use the bounded catalog when Scalafmt
+reproduces every changed Scala source outside the sbt build definition byte for
+byte from the PR base. Additions, deletions, mode changes, and source edits that
+differ from the replay use normal affected-suite selection. The replay keeps
+the base formatter version and rewrite rules. Full main and test compilation,
+host checks, and affected suites for the other files in the PR remain required.
+
 Draft PRs receive test feedback, but `ci-ok` rejects them until ready. New commits
 cancel superseded runs; `ci-ok` rejects stale heads, drafts, changed base
 branches and failed/canceled/skipped checks. Closing or merging a PR does not

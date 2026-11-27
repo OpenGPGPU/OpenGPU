@@ -128,8 +128,13 @@ class NativeFrameMemorySpec extends AnyFlatSpec {
     val image = populated()
     val p = image.planes.head
     val resolve = image.planes.find(_.resolve).get
-    val locations = Seq(p.address(31, 31, 3) + 3, resolve.address(31, 31),
-      p.base + 32L * p.samples * p.bytesPerSample, p.allocationBase, p.allocationLimit - 1)
+    val locations = Seq(
+      p.address(31, 31, 3) + 3,
+      resolve.address(31, 31),
+      p.base + 32L * p.samples * p.bytesPerSample,
+      p.allocationBase,
+      p.allocationLimit - 1
+    )
     for (address <- locations) {
       val before = image.memory.readByte(address)
       image.memory.writeByte(address, before ^ 1)

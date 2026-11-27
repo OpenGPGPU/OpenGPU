@@ -11,12 +11,12 @@ class TileCommandPassControllerSpec extends AnyFlatSpec {
 
   private def zero(dut: TileCommandPassController): Unit = {
     def zeroInputs(d: Data): Unit = d match {
-      case r: Record => r.elements.values.foreach(zeroInputs)
-      case v: Vec[_] => v.foreach(zeroInputs)
+      case r: Record                                                     => r.elements.values.foreach(zeroInputs)
+      case v: Vec[_]                                                     => v.foreach(zeroInputs)
       case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
       case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
       case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
-      case _ => ()
+      case _                                                             => ()
     }
     zeroInputs(dut.io)
     dut.io.commandsDrained.poke(true.B); dut.io.renderDrained.poke(true.B)
@@ -71,14 +71,17 @@ class TileCommandPassControllerSpec extends AnyFlatSpec {
     dut.io.job.ready.expect(true.B); dut.io.busy.expect(false.B)
   }
 
-  for ((fault, status, ownerStatus) <- Seq(
-    ("cancel", TilePassStatus.cancelled, TilePassStatus.cancelled),
-    ("command", TilePassStatus.commandFault, TilePassStatus.cancelled),
-    ("shader", TilePassStatus.executionFault, TilePassStatus.cancelled),
-    ("texture", TilePassStatus.textureFault, TilePassStatus.cancelled),
-    ("attachment", TilePassStatus.memoryFault, TilePassStatus.cancelled),
-    ("invalid", TilePassStatus.invalidDescriptor, TilePassStatus.cancelled),
-    ("command", TilePassStatus.memoryFault, TilePassStatus.memoryFault))) {
+  for (
+    (fault, status, ownerStatus) <- Seq(
+      ("cancel", TilePassStatus.cancelled, TilePassStatus.cancelled),
+      ("command", TilePassStatus.commandFault, TilePassStatus.cancelled),
+      ("shader", TilePassStatus.executionFault, TilePassStatus.cancelled),
+      ("texture", TilePassStatus.textureFault, TilePassStatus.cancelled),
+      ("attachment", TilePassStatus.memoryFault, TilePassStatus.cancelled),
+      ("invalid", TilePassStatus.invalidDescriptor, TilePassStatus.cancelled),
+      ("command", TilePassStatus.memoryFault, TilePassStatus.memoryFault)
+    )
+  ) {
     it should s"retain a $fault failure with owner status $ownerStatus through both drains" in {
       simulate(new TileCommandPassController) { dut =>
         initialize(dut)
@@ -142,13 +145,19 @@ class TileCommandPassControllerSpec extends AnyFlatSpec {
 
   it should "check the complete typed stride including the exact four-GiB boundary" in {
     simulate(new TileCommandPassController) { d =>
-      for ((version, base, count, limit, valid) <- Seq(
-          (1,0x4000L,2,0x4140L,true), (2,0x4000L,2,0x4148L,true),
-          (2,0x4000L,2,0x4147L,false), (2,0xffffff5cL,1,1L<<32,true),
-          (2,0xffffff60L,1,1L<<32,false), (3,0x4000L,0,0x4000L,false),
-          (2,0xfffffffCL,65535,1L<<32,false))) {
+      for (
+        (version, base, count, limit, valid) <- Seq(
+          (1, 0x4000L, 2, 0x4140L, true),
+          (2, 0x4000L, 2, 0x4148L, true),
+          (2, 0x4000L, 2, 0x4147L, false),
+          (2, 0xffffff5cL, 1, 1L << 32, true),
+          (2, 0xffffff60L, 1, 1L << 32, false),
+          (3, 0x4000L, 0, 0x4000L, false),
+          (2, 0xfffffffcL, 65535, 1L << 32, false)
+        )
+      ) {
         zero(d); d.io.job.bits.version.poke(version.U)
-        pokeDescriptor(d.io.job.bits.passDescriptor, Pass(context=91))
+        pokeDescriptor(d.io.job.bits.passDescriptor, Pass(context = 91))
         d.io.job.bits.config.cmdBase.poke(base.U); d.io.job.bits.config.cmdCount.poke(count.U)
         d.io.job.bits.commandLimit.poke(limit.U); d.io.job.valid.poke(true.B)
         d.clock.step(); d.io.job.valid.poke(false.B); d.clock.step(4)

@@ -92,7 +92,9 @@ class NativeTextureResponseBankSpec extends AnyFlatSpec {
           until(!d.io.busy.peek().litToBoolean)
           client.response.valid.expect(false.B)
         }
-        info(s"NATIVE_SHARED_BANK_CONFIG destinations=$destinations equalLocalRows=true simultaneousReplies=true orderedTagsAndValues=true exactIdentityAndMetadata=true heldReplyImmutable=true reuse=true")
+        info(
+          s"NATIVE_SHARED_BANK_CONFIG destinations=$destinations equalLocalRows=true simultaneousReplies=true orderedTagsAndValues=true exactIdentityAndMetadata=true heldReplyImmutable=true reuse=true"
+        )
       }
     }
   }

@@ -23,17 +23,37 @@ class TessellationJointDomainIO(
 ) extends Bundle {
   val submit = Flipped(Decoupled(new TessellationJointJobRequest(sharedConfig.taskIdWidth)))
   val completion = Decoupled(new TessellationJointNativeCompletion(sharedConfig.taskIdWidth))
-  val images = Option.when(externalImages)(Flipped(Vec(engines,
-    new TypedReplayTileImagePipelineIO(config, vertex, sharedConfig, payloadConfig,
-      fragmentImageAvailable = fragmentImageAvailable))))
+  val images = Option.when(externalImages)(
+    Flipped(
+      Vec(
+        engines,
+        new TypedReplayTileImagePipelineIO(
+          config,
+          vertex,
+          sharedConfig,
+          payloadConfig,
+          fragmentImageAvailable = fragmentImageAvailable
+        )
+      )
+    )
+  )
   val primitiveDone = Vec(engines, Decoupled(new TypedReplayPrimitiveCompletion))
   val out = Vec(engines, Decoupled(new TypedTilePixelQuadCompletion))
   val tileDone = Vec(engines, Decoupled(new TypedVertexBinImageTileCompletion))
   val inspect = Flipped(Decoupled(new TessellationPatchAccess))
   val reply = Decoupled(new TessellationContextReply)
-  val shared = Flipped(new SharedCuGraphicsPort(config, sharedConfig.taskIdWidth, sharedConfig.numComputeUnits,
-    geometryAvailable = true, tessellationAvailable = true, imageAvailable = fragmentImageAvailable,
-    evaluationPatchAvailable = evaluationPatchAvailable, tessellationInfoAvailable = tessellationInfoAvailable))
+  val shared = Flipped(
+    new SharedCuGraphicsPort(
+      config,
+      sharedConfig.taskIdWidth,
+      sharedConfig.numComputeUnits,
+      geometryAvailable = true,
+      tessellationAvailable = true,
+      imageAvailable = fragmentImageAvailable,
+      evaluationPatchAvailable = evaluationPatchAvailable,
+      tessellationInfoAvailable = tessellationInfoAvailable
+    )
+  )
   val payload = payloadConfig.map(p => Vec(engines + 1, new FragmentPayloadPort(config, p)))
   val poolPayload = payloadConfig.map(p => Output(Valid(new ShaderPayloadBinding(config, p))))
   val payloadPins = payloadConfig.map(p => Output(Vec(payloadPinCount, Valid(new ShaderPayloadPin(p)))))

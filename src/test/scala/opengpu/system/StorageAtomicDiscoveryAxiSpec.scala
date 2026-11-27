@@ -30,9 +30,17 @@ class StorageAtomicDiscoveryAxiSpec extends AnyFlatSpec {
     val gpu = GpuConfig(lanes = 2, warps = 1)
     val profile = ComputeResourceProfile(gpu, 1, 8)
     for (enabled <- Seq(false, true)) {
-      simulate(new GpuHostAxi(gpuConfig = gpu, version = 2, unifiedCommandMmio = true,
-        protectVmState = true, computeResources = Some(profile), storageAvailable = true,
-        storageAtomicAvailable = enabled)) { dut =>
+      simulate(
+        new GpuHostAxi(
+          gpuConfig = gpu,
+          version = 2,
+          unifiedCommandMmio = true,
+          protectVmState = true,
+          computeResources = Some(profile),
+          storageAvailable = true,
+          storageAtomicAvailable = enabled
+        )
+      ) { dut =>
         dut.io.gpuCommand.get.ready.poke(false.B)
         dut.io.gpuCompletion.get.valid.poke(false.B)
         dut.io.gpuCompletion.get.bits.poke(0.U.asTypeOf(dut.io.gpuCompletion.get.bits))

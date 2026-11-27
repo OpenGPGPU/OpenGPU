@@ -20,8 +20,12 @@ class TileBinHostQueryCommandPortSpec extends AnyFlatSpec {
     c.widthBytes.poke(0x12345678L.U); c.height.poke(0x9abcdef0L.U)
     d.io.command.valid.poke(true.B)
   }
-  private def engineReply(d: TileBinHostCommandPort, status: Int = 0, available: Boolean = true,
-      value: Boolean = true): Unit = {
+  private def engineReply(
+      d: TileBinHostCommandPort,
+      status: Int = 0,
+      available: Boolean = true,
+      value: Boolean = true
+  ): Unit = {
     val p = d.io.queryReply.get; zero(p.bits)
     p.bits.tag.poke(50.U); p.bits.context.poke(0x12345678L.U)
     p.bits.cookie.poke(0x9abcdef0L.U); p.bits.address.poke(0xffffffc0L.U)
@@ -106,8 +110,10 @@ class TileBinHostQueryCommandPortSpec extends AnyFlatSpec {
         d.io.renderCompletion.valid.poke(live(0).B)
         d.io.otherCompletion.valid.poke(live(1).B); d.io.queryReply.get.valid.poke(live(2).B)
         d.io.completion.ready.poke((cycle >= 8).B)
-        val fires = Seq(d.io.renderCompletion.ready, d.io.otherCompletion.ready, d.io.queryReply.get.ready)
-          .zipWithIndex.collect { case (ready, index) if live(index) && ready.peek().litToBoolean => index }
+        val fires =
+          Seq(d.io.renderCompletion.ready, d.io.otherCompletion.ready, d.io.queryReply.get.ready).zipWithIndex.collect {
+            case (ready, index) if live(index) && ready.peek().litToBoolean => index
+          }
         if (d.io.completion.valid.peek().litToBoolean) {
           val bits = d.io.completion.bits.peek().litValue
           previous.foreach(x => assert(x == bits, "held query/native completion changed"))

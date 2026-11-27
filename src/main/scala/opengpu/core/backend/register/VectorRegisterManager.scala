@@ -3,10 +3,7 @@ package opengpu.core.backend.register
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
-import opengpu.core.backend.scoreboard.{
-  VectorRegisterReservation,
-  VectorRegisterScoreboard
-}
+import opengpu.core.backend.scoreboard.{VectorRegisterReservation, VectorRegisterScoreboard}
 
 class VectorIssueOperands(config: GpuConfig) extends Bundle {
   val request = new VectorRegisterReservation(config)
@@ -19,8 +16,8 @@ class VectorIssueOperands(config: GpuConfig) extends Bundle {
 
 /** Elastic vector RF/scoreboard issue boundary with a synchronous SRAM response stage. */
 class VectorRegisterManager(
-  config: GpuConfig = GpuConfig(),
-  useBlackBox: Boolean = false
+    config: GpuConfig = GpuConfig(),
+    useBlackBox: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
     val request = Flipped(Decoupled(new VectorRegisterReservation(config)))

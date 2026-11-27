@@ -92,8 +92,10 @@ class TextureRouteEquivalenceSpec extends AnyFlatSpec {
             // RRArbiter's default lastGrant is uninitialized. A sole initial
             // requester aligns both arbiters before comparing simultaneous
             // traffic; this read also counts toward the full-capacity test.
-            c.request.valid.poke((sent(w) < readsPerWorker && sent(w) - received(w) < 4 &&
-              (cycles > 0 || w == 0)).B)
+            c.request.valid.poke(
+              (sent(w) < readsPerWorker && sent(w) - received(w) < 4 &&
+                (cycles > 0 || w == 0)).B
+            )
             c.request.bits.addr.poke(address(w, sent(w)).U)
             c.response.ready.poke((full && cycles % (w + 3) != 0).B)
           }
@@ -108,8 +110,10 @@ class TextureRouteEquivalenceSpec extends AnyFlatSpec {
           for (w <- 0 until workers) {
             val c = d.io.clients(w)
             if (c.request.valid.peek().litToBoolean) {
-              assert(c.request.ready.peek().litToBoolean == d.io.boundedRequestReady(w).peek().litToBoolean,
-                s"ready mismatch cycle=$cycles worker=$w sent=${sent.toSeq} received=${received.toSeq} pending=${owners.size}")
+              assert(
+                c.request.ready.peek().litToBoolean == d.io.boundedRequestReady(w).peek().litToBoolean,
+                s"ready mismatch cycle=$cycles worker=$w sent=${sent.toSeq} received=${received.toSeq} pending=${owners.size}"
+              )
             }
             if (c.request.valid.peek().litToBoolean && c.request.ready.peek().litToBoolean) {
               val a = address(w, sent(w))

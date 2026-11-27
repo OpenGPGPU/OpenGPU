@@ -20,8 +20,10 @@ class RasterWideAddProofHarness extends Module {
 object EmitRasterWideAddProof {
   def main(args: Array[String]): Unit = {
     require(args.length == 1)
-    ChiselStage.emitSystemVerilogFile(new RasterWideAddProofHarness,
+    ChiselStage.emitSystemVerilogFile(
+      new RasterWideAddProofHarness,
       Array("--target-dir", args(0)),
-      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
+      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays")
+    )
   }
 }

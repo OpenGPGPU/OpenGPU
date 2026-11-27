@@ -1,7 +1,7 @@
 package opengpu.testutil
 
-/** Routine frame workloads stay at VGA or below. Full product-resolution
-  * execution is explicit and never enabled by the regular CI workflows.
+/** Routine frame workloads stay at VGA or below. Full product-resolution execution is explicit and never enabled by the
+  * regular CI workflows.
   */
 object GraphicsTestResolution {
   private val requested = sys.props.get("opengpu.productQualification")

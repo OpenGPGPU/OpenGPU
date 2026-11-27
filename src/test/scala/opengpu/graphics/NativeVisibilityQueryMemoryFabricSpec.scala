@@ -11,8 +11,14 @@ class NativeVisibilityQueryMemoryFabricSpec extends AnyFlatSpec {
   private class Driver(val d: NativeVisibilityQueryMemoryFabric) {
     zero(d.io); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
     d.io.renderResponse.ready.poke(true.B)
-    val memory = new Memory(d.io.memoryRequest.bits, d.io.memoryResponse.bits,
-      d.io.memoryRequest.valid, d.io.memoryRequest.ready, d.io.memoryResponse.valid, d.io.memoryResponse.ready)
+    val memory = new Memory(
+      d.io.memoryRequest.bits,
+      d.io.memoryResponse.bits,
+      d.io.memoryRequest.valid,
+      d.io.memoryRequest.ready,
+      d.io.memoryResponse.valid,
+      d.io.memoryResponse.ready
+    )
     val renderReplies = mutable.ArrayBuffer.empty[Int]
     val queryPolicies = mutable.ArrayBuffer.empty[BigInt]
     var held = Option.empty[BigInt]
@@ -27,8 +33,10 @@ class NativeVisibilityQueryMemoryFabricSpec extends AnyFlatSpec {
       if (q.valid.peek().litToBoolean) q.bits.transactionId.expect(0.U)
       if (d.io.renderResponse.valid.peek().litToBoolean && d.io.renderResponse.ready.peek().litToBoolean)
         renderReplies += d.io.renderResponse.bits.transactionId.peek().litValue.toInt
-      if (d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.ready.peek().litToBoolean &&
-          d.io.memoryRequest.bits.transactionId.peek().litValue == 38)
+      if (
+        d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.ready.peek().litToBoolean &&
+        d.io.memoryRequest.bits.transactionId.peek().litValue == 38
+      )
         queryPolicies += d.io.memoryRequest.bits.cachePolicy.peek().litValue
       memory.capture(); d.clock.step(); accepted
     }
@@ -105,7 +113,9 @@ class NativeVisibilityQueryMemoryFabricSpec extends AnyFlatSpec {
       t.until(d.io.drained.peek().litToBoolean)
       assert(t.queryPolicies.nonEmpty && t.queryPolicies.forall(_ == 2), "query records lost their PTE uncached policy")
       assert(t.memory.seen.count(_.tag == 39) == walks, "warm record access unnecessarily walked again")
-      info("NATIVE_VISIBILITY_FABRIC queryDataID=38 queryWalkID=39 totalNamespace=64 oldIDsUnchanged=true heldFaultPinsRoot=true readOnlyWriteRejected=true sameASIDNewRootFullFlush=true oldPhysicalDataUnchanged=true coherentStoreReadback=true")
+      info(
+        "NATIVE_VISIBILITY_FABRIC queryDataID=38 queryWalkID=39 totalNamespace=64 oldIDsUnchanged=true heldFaultPinsRoot=true readOnlyWriteRejected=true sameASIDNewRootFullFlush=true oldPhysicalDataUnchanged=true coherentStoreReadback=true"
+      )
     }
   }
 }

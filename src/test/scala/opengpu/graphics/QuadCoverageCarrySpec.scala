@@ -15,8 +15,8 @@ class QuadCoverageCarrySpec extends AnyFlatSpec {
         val low = value & (modulus - 1)
         if (low.testBit(63)) low - modulus else low
       }
-      val limits = Seq(-modulus / 2, -modulus / 2 + 1, BigInt(-1), BigInt(0),
-        BigInt(1), modulus / 2 - 2, modulus / 2 - 1)
+      val limits =
+        Seq(-modulus / 2, -modulus / 2 + 1, BigInt(-1), BigInt(0), BigInt(1), modulus / 2 - 2, modulus / 2 - 1)
       val boundary = for (a <- limits; b <- limits; c <- limits) yield Seq(a, b, c)
       val cases = boundary ++ Seq.fill(512)(Seq.fill(3)(signed(BigInt(64, random))))
       for ((terms, index) <- cases.zipWithIndex) {
@@ -31,15 +31,19 @@ class QuadCoverageCarrySpec extends AnyFlatSpec {
         for (front <- Seq(false, true)) {
           dut.io.front.poke(front.B)
           for (lane <- 0 until 4) {
-            val expected = (0 until 3).map(e => signed(
-              base(e) + (if ((lane & 1) != 0) dx(e) else BigInt(0)) +
-                (if ((lane & 2) != 0) dy(e) else BigInt(0))))
+            val expected = (0 until 3).map(e =>
+              signed(
+                base(e) + (if ((lane & 1) != 0) dx(e) else BigInt(0)) +
+                  (if ((lane & 2) != 0) dy(e) else BigInt(0))
+              )
+            )
             dut.io.e0(lane).expect(expected(0).S)
             dut.io.e1(lane).expect(expected(1).S)
             dut.io.e2(lane).expect(expected(2).S)
             val inside = (0 until 3).forall(e =>
               (if (front) expected(e) > 0 else expected(e) < 0) ||
-                (expected(e) == 0 && topLeft(e)))
+                (expected(e) == 0 && topLeft(e))
+            )
             dut.io.inside(lane).expect(inside.B)
           }
         }

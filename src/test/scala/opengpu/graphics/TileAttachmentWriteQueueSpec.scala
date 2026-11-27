@@ -24,8 +24,11 @@ class TileAttachmentWriteQueueSpec extends AnyFlatSpec {
     dut.reset.poke(false.B)
     def tick(): Unit = {
       if (dut.io.request.valid.peek().litToBoolean && dut.io.request.ready.peek().litToBoolean) {
-        issued += ((dut.io.request.bits.address.peek().litValue.toLong,
-          dut.io.request.bits.data.peek().litValue.toLong, dut.io.request.bits.resolve.peek().litToBoolean))
+        issued += ((
+          dut.io.request.bits.address.peek().litValue.toLong,
+          dut.io.request.bits.data.peek().litValue.toLong,
+          dut.io.request.bits.resolve.peek().litToBoolean
+        ))
         issueCycles += cycle
       }
       dut.clock.step()
@@ -75,8 +78,11 @@ class TileAttachmentWriteQueueSpec extends AnyFlatSpec {
         for (_ <- 0 until 5) { d.tick(); assert(dut.io.request.bits.peek().litValue == request) }
         dut.io.request.ready.poke(true.B)
         d.waitFor(d.issued.size == credits)
-        if (credits > 1) assert(d.issueCycles.sliding(2).forall(pair => pair(1) - pair(0) == 1),
-          "resident transfer credits must sustain one ready-port request per cycle")
+        if (credits > 1)
+          assert(
+            d.issueCycles.sliding(2).forall(pair => pair(1) - pair(0) == 1),
+            "resident transfer credits must sustain one ready-port request per cycle"
+          )
         dut.io.request.ready.poke(false.B)
         assert(d.issued.map(_._1).toSet == (0 until credits).map(i => 0x1000L + i * 4).toSet)
         for ((address, data, resolve) <- d.issued) {
@@ -174,48 +180,50 @@ class TileAttachmentWriteQueueSpec extends AnyFlatSpec {
   }
 
   it should "issue a continuous stream in enqueue order while acknowledgement slots are recycled out of order" in {
-    for(credits <- Seq(1,3,8))simulate(new TileAttachmentWriteQueue(credits)) { dut=>
-      val d=new Driver(dut);d.begin()
-      val count=128;var accepted=0
-      val pending=mutable.ArrayBuffer.empty[(Long,Int)]
-      val acknowledged=mutable.ArrayBuffer.empty[Int]
-      var returning=Option.empty[Long]
-      var held=Option.empty[BigInt]
-      while((accepted<count || d.issued.size<count || pending.nonEmpty || returning.nonEmpty) && d.cycle<10000) {
-        dut.io.enqueue.valid.poke((accepted<count).B)
-        val address=0x4000L+accepted*4L
+    for (credits <- Seq(1, 3, 8)) simulate(new TileAttachmentWriteQueue(credits)) { dut =>
+      val d = new Driver(dut); d.begin()
+      val count = 128; var accepted = 0
+      val pending = mutable.ArrayBuffer.empty[(Long, Int)]
+      val acknowledged = mutable.ArrayBuffer.empty[Int]
+      var returning = Option.empty[Long]
+      var held = Option.empty[BigInt]
+      while ((accepted < count || d.issued.size < count || pending.nonEmpty || returning.nonEmpty) && d.cycle < 10000) {
+        dut.io.enqueue.valid.poke((accepted < count).B)
+        val address = 0x4000L + accepted * 4L
         dut.io.enqueue.bits.address.poke(address.U)
-        dut.io.enqueue.bits.data.poke((address^0x87654321L).U)
-        dut.io.enqueue.bits.resolve.poke(((accepted&1)!=0).B)
-        dut.io.request.ready.poke((d.cycle%3!=1).B)
-        held.foreach { old=>dut.io.request.valid.expect(true.B);assert(dut.io.request.bits.peek().litValue==old) }
-        held=if(dut.io.request.valid.peek().litToBoolean && !dut.io.request.ready.peek().litToBoolean)
-          Some(dut.io.request.bits.peek().litValue)else None
-        if(returning.isEmpty) {
-          val index=pending.lastIndexWhere(_._2<=d.cycle)
-          if(index>=0)returning=Some(pending.remove(index)._1)
+        dut.io.enqueue.bits.data.poke((address ^ 0x87654321L).U)
+        dut.io.enqueue.bits.resolve.poke(((accepted & 1) != 0).B)
+        dut.io.request.ready.poke((d.cycle % 3 != 1).B)
+        held.foreach { old => dut.io.request.valid.expect(true.B); assert(dut.io.request.bits.peek().litValue == old) }
+        held =
+          if (dut.io.request.valid.peek().litToBoolean && !dut.io.request.ready.peek().litToBoolean)
+            Some(dut.io.request.bits.peek().litValue)
+          else None
+        if (returning.isEmpty) {
+          val index = pending.lastIndexWhere(_._2 <= d.cycle)
+          if (index >= 0) returning = Some(pending.remove(index)._1)
         }
         dut.io.response.valid.poke(returning.nonEmpty.B)
         dut.io.response.bits.write.poke(true.B)
-        returning.foreach(a=>dut.io.response.bits.addr.poke(a.U))
-        val input=dut.io.enqueue.valid.peek().litToBoolean && dut.io.enqueue.ready.peek().litToBoolean
-        val request=dut.io.request.valid.peek().litToBoolean && dut.io.request.ready.peek().litToBoolean
-        val response=returning.nonEmpty && dut.io.response.ready.peek().litToBoolean
-        if(request) {
-          val index=d.issued.size;val expected=0x4000L+index*4L
+        returning.foreach(a => dut.io.response.bits.addr.poke(a.U))
+        val input = dut.io.enqueue.valid.peek().litToBoolean && dut.io.enqueue.ready.peek().litToBoolean
+        val request = dut.io.request.valid.peek().litToBoolean && dut.io.request.ready.peek().litToBoolean
+        val response = returning.nonEmpty && dut.io.response.ready.peek().litToBoolean
+        if (request) {
+          val index = d.issued.size; val expected = 0x4000L + index * 4L
           dut.io.request.bits.address.expect(expected.U)
-          dut.io.request.bits.data.expect((expected^0x87654321L).U)
-          dut.io.request.bits.resolve.expect(((index&1)!=0).B)
-          pending+=((expected,d.cycle+1+(index%5)*3))
+          dut.io.request.bits.data.expect((expected ^ 0x87654321L).U)
+          dut.io.request.bits.resolve.expect(((index & 1) != 0).B)
+          pending += ((expected, d.cycle + 1 + (index % 5) * 3))
         }
-        if(response) { acknowledged+=((returning.get-0x4000L)/4).toInt;returning=None }
+        if (response) { acknowledged += ((returning.get - 0x4000L) / 4).toInt; returning = None }
         d.tick()
-        if(input)accepted+=1
+        if (input) accepted += 1
       }
-      dut.io.enqueue.valid.poke(false.B);dut.io.response.valid.poke(false.B)
-      assert(accepted==count && d.issued.size==count && acknowledged.size==count)
-      assert(d.issued.map(_._1).toVector==Vector.tabulate(count)(i=>0x4000L+i*4L))
-      if(credits==8)assert(acknowledged.sliding(2).exists(x=>x.size==2 && x(1)<x(0)))
+      dut.io.enqueue.valid.poke(false.B); dut.io.response.valid.poke(false.B)
+      assert(accepted == count && d.issued.size == count && acknowledged.size == count)
+      assert(d.issued.map(_._1).toVector == Vector.tabulate(count)(i => 0x4000L + i * 4L))
+      if (credits == 8) assert(acknowledged.sliding(2).exists(x => x.size == 2 && x(1) < x(0)))
       dut.io.drained.expect(true.B)
     }
   }

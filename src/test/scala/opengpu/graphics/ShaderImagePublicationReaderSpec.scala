@@ -7,18 +7,23 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 class ShaderImagePublicationReaderSpec extends AnyFlatSpec {
   private def zero(d: Data): Unit = d match {
-    case r: Record => r.elements.values.foreach(zero)
-    case v: Vec[_] => v.foreach(zero)
+    case r: Record                                                     => r.elements.values.foreach(zero)
+    case v: Vec[_]                                                     => v.foreach(zero)
     case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
     case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
     case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
-    case _ => ()
+    case _                                                             => ()
   }
   it should "publish only complete, owned and canonical fragment image roots" in {
     simulate(new ShaderImagePublicationReader) { d =>
       zero(d.io); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
-      def record(context: Int = 7, stage: Int = 1, base: BigInt = 0x2000,
-          limit: BigInt = 0x2400, padding: BigInt = 0): BigInt = {
+      def record(
+          context: Int = 7,
+          stage: Int = 1,
+          base: BigInt = 0x2000,
+          limit: BigInt = 0x2400,
+          padding: BigInt = 0
+      ): BigInt = {
         val words = Array.fill[BigInt](16)(0)
         words(0) = ShaderImagePublicationLayout.magic; words(1) = 64; words(2) = 1
         words(3) = context; words(4) = 11; words(5) = 13; words(6) = stage
@@ -37,7 +42,10 @@ class ShaderImagePublicationReaderSpec extends AnyFlatSpec {
         until(d.io.memoryRequest.valid.peek().litToBoolean)
         d.io.memoryRequest.bits.address.expect("h1000".U)
         val held = d.io.memoryRequest.bits.peek().litValue
-        for (_ <- 0 until 3) { d.io.memoryRequest.valid.expect(true.B); assert(d.io.memoryRequest.bits.peek().litValue == held); d.clock.step() }
+        for (_ <- 0 until 3) {
+          d.io.memoryRequest.valid.expect(true.B); assert(d.io.memoryRequest.bits.peek().litValue == held);
+          d.clock.step()
+        }
         if (cancel) {
           d.io.cancel.poke(true.B)
           d.clock.step(2); d.io.memoryRequest.valid.expect(true.B)

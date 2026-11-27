@@ -6,11 +6,11 @@ import chisel3.experimental.hierarchy.{Instantiate, instantiable, public}
 import opengpu.config.{CachePolicy, GpuConfig}
 
 class L2MshrRequest(
-  config: GpuConfig,
-  val maxOutstanding: Int,
-  val numComputeUnits: Int,
-  val sets: Int,
-  val ways: Int
+    config: GpuConfig,
+    val maxOutstanding: Int,
+    val numComputeUnits: Int,
+    val sets: Int,
+    val ways: Int
 ) extends Bundle {
   val lineAddress = UInt(config.xLen.W)
   val transactionId = UInt(math.max(1, log2Ceil(maxOutstanding)).W)
@@ -26,8 +26,8 @@ class L2MshrAllocation(val entries: Int) extends Bundle {
 }
 
 class L2MshrRefill(
-  val entries: Int,
-  val lineBytes: Int
+    val entries: Int,
+    val lineBytes: Int
 ) extends Bundle {
   val entryId = UInt(math.max(1, log2Ceil(entries)).W)
   val readData = UInt((lineBytes * 8).W)
@@ -35,9 +35,9 @@ class L2MshrRefill(
 }
 
 class L2MshrResponse(
-  config: GpuConfig,
-  val maxOutstanding: Int,
-  val lineBytes: Int
+    config: GpuConfig,
+    val maxOutstanding: Int,
+    val lineBytes: Int
 ) extends Bundle {
   val lineAddress = UInt(config.xLen.W)
   val transactionId = UInt(math.max(1, log2Ceil(maxOutstanding)).W)
@@ -46,16 +46,17 @@ class L2MshrResponse(
 }
 
 class L2MshrFill(
-  config: GpuConfig,
-  val entries: Int,
-  val numComputeUnits: Int,
-  val lineBytes: Int,
-  val sets: Int,
-  val ways: Int
+    config: GpuConfig,
+    val entries: Int,
+    val numComputeUnits: Int,
+    val lineBytes: Int,
+    val sets: Int,
+    val ways: Int
 ) extends Bundle {
   val entryId = UInt(math.max(1, log2Ceil(entries)).W)
   val lineAddress = UInt(config.xLen.W)
   val sharers = UInt(numComputeUnits.W)
+
   /** Directory-only update for a reader merged after the first fill. */
   val sharerUpdate = Bool()
   val readData = UInt((lineBytes * 8).W)
@@ -66,20 +67,19 @@ class L2MshrFill(
 
 /** Multi-entry load-miss status table.
   *
-  * Different lines allocate independent entries. Requests to an existing line
-  * merge their transaction and CU ownership. Refills may arrive out of order;
-  * each refill is first exposed to the cache fill pipeline, then all merged
-  * requesters receive the same data/fault response.
+  * Different lines allocate independent entries. Requests to an existing line merge their transaction and CU ownership.
+  * Refills may arrive out of order; each refill is first exposed to the cache fill pipeline, then all merged requesters
+  * receive the same data/fault response.
   */
 @instantiable
 class L2MshrTable(
-  config: GpuConfig = GpuConfig(),
-  entries: Int = 4,
-  maxOutstanding: Int = 8,
-  numComputeUnits: Int = 2,
-  lineBytes: Int = 64,
-  sets: Int = 64,
-  ways: Int = 4
+    config: GpuConfig = GpuConfig(),
+    entries: Int = 4,
+    maxOutstanding: Int = 8,
+    numComputeUnits: Int = 2,
+    lineBytes: Int = 64,
+    sets: Int = 64,
+    ways: Int = 4
 ) extends Module {
   require(entries > 0 && isPow2(entries))
   require(maxOutstanding > 0)
@@ -89,14 +89,11 @@ class L2MshrTable(
   private val entryWidth = math.max(1, log2Ceil(entries))
 
   @public val io = IO(new Bundle {
-    val request = Flipped(Decoupled(new L2MshrRequest(
-      config, maxOutstanding, numComputeUnits, sets, ways)))
+    val request = Flipped(Decoupled(new L2MshrRequest(config, maxOutstanding, numComputeUnits, sets, ways)))
     val allocation = Decoupled(new L2MshrAllocation(entries))
     val refill = Flipped(Decoupled(new L2MshrRefill(entries, lineBytes)))
-    val fill = Decoupled(new L2MshrFill(
-      config, entries, numComputeUnits, lineBytes, sets, ways))
-    val response = Decoupled(new L2MshrResponse(
-      config, maxOutstanding, lineBytes))
+    val fill = Decoupled(new L2MshrFill(config, entries, numComputeUnits, lineBytes, sets, ways))
+    val response = Decoupled(new L2MshrResponse(config, maxOutstanding, lineBytes))
     val validEntries = Output(UInt(entries.W))
   })
 
@@ -112,10 +109,8 @@ class L2MshrTable(
   private val sharers = RegInit(VecInit(Seq.fill(entries)(0.U(numComputeUnits.W))))
   private val refillData = Reg(Vec(entries, UInt((lineBytes * 8).W)))
   private val refillFault = Reg(Vec(entries, Bool()))
-  private val victimSet = Reg(Vec(entries,
-    UInt(math.max(1, log2Ceil(sets)).W)))
-  private val victimWay = Reg(Vec(entries,
-    UInt(math.max(1, log2Ceil(ways)).W)))
+  private val victimSet = Reg(Vec(entries, UInt(math.max(1, log2Ceil(sets)).W)))
+  private val victimWay = Reg(Vec(entries, UInt(math.max(1, log2Ceil(ways)).W)))
 
   private val lineMatch = VecInit((0 until entries).map { entry =>
     valid(entry) && lineAddress(entry) === io.request.bits.lineAddress
@@ -133,7 +128,7 @@ class L2MshrTable(
   }).asUInt.orR
   private val victimConflict = VecInit((0 until entries).map { entry =>
     valid(entry) && victimSet(entry) === io.request.bits.victimSet &&
-      victimWay(entry) === io.request.bits.victimWay
+    victimWay(entry) === io.request.bits.victimWay
   }).asUInt.orR
   private val responseCandidates = VecInit((0 until entries).map { entry =>
     valid(entry) && refilled(entry) && fillSent(entry) && waiterPresent(entry)
@@ -141,8 +136,7 @@ class L2MshrTable(
   private val responseHeld = RegInit(false.B)
   private val heldResponseEntry = Reg(UInt(entryWidth.W))
   private val heldResponseTransaction = Reg(UInt(math.max(1, log2Ceil(maxOutstanding)).W))
-  private val responseEntry = Mux(responseHeld, heldResponseEntry,
-    PriorityEncoder(responseCandidates))
+  private val responseEntry = Mux(responseHeld, heldResponseEntry, PriorityEncoder(responseCandidates))
 
   // The lookup result is registered before any entry array is updated.  The
   // original single-cycle path ran valid/line matching and priority selection
@@ -150,8 +144,7 @@ class L2MshrTable(
   // already a two-cycle handshake, so this boundary preserves its maximum
   // acceptance rate while removing that long feedback path.
   private val allocationValid = RegInit(false.B)
-  private val allocationRequest = Reg(new L2MshrRequest(
-    config, maxOutstanding, numComputeUnits, sets, ways))
+  private val allocationRequest = Reg(new L2MshrRequest(config, maxOutstanding, numComputeUnits, sets, ways))
   private val allocationEntry = Reg(UInt(entryWidth.W))
   private val allocationMerged = Reg(Bool())
   io.request.ready := !allocationValid &&
@@ -172,14 +165,16 @@ class L2MshrTable(
       fillSent(allocationEntry) := false.B
       fillInstalled(allocationEntry) := false.B
       lineAddress(allocationEntry) := allocationRequest.lineAddress
-      sharers(allocationEntry) := Mux(allocationRequest.trackSharer,
-        UIntToOH(allocationRequest.requester, numComputeUnits), 0.U)
+      sharers(allocationEntry) := Mux(
+        allocationRequest.trackSharer,
+        UIntToOH(allocationRequest.requester, numComputeUnits),
+        0.U
+      )
       victimSet(allocationEntry) := allocationRequest.victimSet
       victimWay(allocationEntry) := allocationRequest.victimWay
     }.otherwise {
       when(allocationRequest.trackSharer) {
-        sharers(allocationEntry) := sharers(allocationEntry) | UIntToOH(
-          allocationRequest.requester, numComputeUnits)
+        sharers(allocationEntry) := sharers(allocationEntry) | UIntToOH(allocationRequest.requester, numComputeUnits)
       }
     }
     allocationValid := false.B
@@ -187,12 +182,10 @@ class L2MshrTable(
   // Keep each full-width bitmap's feedback local to its entry. Reading a
   // dynamically selected bitmap before writing it back creates a wide
   // entry-to-entry mux even though only one entry can change on this edge.
-  private val allocationWaiter = UIntToOH(
-    allocationRequest.transactionId, maxOutstanding)
+  private val allocationWaiter = UIntToOH(allocationRequest.transactionId, maxOutstanding)
   for (entry <- 0 until entries) {
     when(io.allocation.fire && allocationEntry === entry.U) {
-      waiters(entry) := Mux(allocationMerged,
-        waiters(entry) | allocationWaiter, allocationWaiter)
+      waiters(entry) := Mux(allocationMerged, waiters(entry) | allocationWaiter, allocationWaiter)
       waiterPresent(entry) := allocationWaiter.orR ||
         (allocationMerged && waiterPresent(entry))
     }
@@ -229,17 +222,17 @@ class L2MshrTable(
   // the new reader; the cache combines this update with any later hit readers.
   private val addedSharer = allocationRequest.trackSharer &&
     !(sharers(allocationEntry) & UIntToOH(allocationRequest.requester, numComputeUnits)).orR
-  when(io.allocation.fire && allocationMerged && addedSharer &&
-    (fillSent(allocationEntry) || (io.fill.fire && fillEntry === allocationEntry))) {
+  when(
+    io.allocation.fire && allocationMerged && addedSharer &&
+      (fillSent(allocationEntry) || (io.fill.fire && fillEntry === allocationEntry))
+  ) {
     fillSent(allocationEntry) := false.B
   }
 
   // Encode each registered waiter set before entry selection. This keeps
   // response-candidate selection off the wide encoder data path.
-  private val responseTransactions = VecInit(waiters.map(word =>
-    L2PriorityEncoder(word)))
-  private val responseTransaction = Mux(responseHeld, heldResponseTransaction,
-    responseTransactions(responseEntry))
+  private val responseTransactions = VecInit(waiters.map(word => L2PriorityEncoder(word)))
+  private val responseTransaction = Mux(responseHeld, heldResponseTransaction, responseTransactions(responseEntry))
   // A newly captured merge owns this entry even if its last old waiter fires
   // on the same edge. Retain the entry for the registered allocation update.
   private val capturedMergeTargetsResponse = io.request.fire && hasMatch &&
@@ -262,8 +255,7 @@ class L2MshrTable(
   when(io.response.fire) {
     val simultaneousMerge = io.allocation.fire && allocationMerged &&
       allocationEntry === responseEntry
-    val mergedWaiter = Mux(simultaneousMerge,
-      UIntToOH(allocationRequest.transactionId, maxOutstanding), 0.U)
+    val mergedWaiter = Mux(simultaneousMerge, UIntToOH(allocationRequest.transactionId, maxOutstanding), 0.U)
     responseHeld := false.B
     for (entry <- 0 until entries) {
       when(responseEntry === entry.U) {
@@ -287,47 +279,40 @@ class L2MshrTable(
   io.validEntries := valid.asUInt
 
   when(io.refill.valid) {
-    assert(refillEntryValid,
-      "L2 MSHR refill must identify a valid, unfilled entry")
+    assert(refillEntryValid, "L2 MSHR refill must identify a valid, unfilled entry")
   }
 }
 
-/** Refill-side execution engine around [[L2MshrTable]]. It allocates one
-  * lower request for each newly allocated entry, suppresses lower traffic for
-  * merged requests, and routes out-of-order lower responses by MSHR entry ID.
+/** Refill-side execution engine around [[L2MshrTable]]. It allocates one lower request for each newly allocated entry,
+  * suppresses lower traffic for merged requests, and routes out-of-order lower responses by MSHR entry ID.
   */
 class L2MissEngine(
-  config: GpuConfig = GpuConfig(),
-  entries: Int = 4,
-  maxOutstanding: Int = 8,
-  numComputeUnits: Int = 2,
-  lineBytes: Int = 64,
-  sets: Int = 64,
-  ways: Int = 4
+    config: GpuConfig = GpuConfig(),
+    entries: Int = 4,
+    maxOutstanding: Int = 8,
+    numComputeUnits: Int = 2,
+    lineBytes: Int = 64,
+    sets: Int = 64,
+    ways: Int = 4
 ) extends Module {
-  require(entries <= maxOutstanding,
-    "MSHR entry IDs must fit in the lower transaction-ID namespace")
+  require(entries <= maxOutstanding, "MSHR entry IDs must fit in the lower transaction-ID namespace")
   private val entryWidth = math.max(1, log2Ceil(entries))
   val io = IO(new Bundle {
-    val miss = Flipped(Decoupled(new L2MshrRequest(
-      config, maxOutstanding, numComputeUnits, sets, ways)))
-    val lowerRequest = Decoupled(new ComputeMemoryRequest(
-      config, lineBytes, maxOutstanding))
+    val miss = Flipped(Decoupled(new L2MshrRequest(config, maxOutstanding, numComputeUnits, sets, ways)))
+    val lowerRequest = Decoupled(new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
     val allocation = Valid(new L2MshrAllocation(entries))
     val authorize = Flipped(Valid(UInt(entryWidth.W)))
-    val lowerResponse = Flipped(Decoupled(new ComputeMemoryResponse(
-      lineBytes, maxOutstanding)))
-    val fill = Decoupled(new L2MshrFill(
-      config, entries, numComputeUnits, lineBytes, sets, ways))
-    val response = Decoupled(new L2MshrResponse(
-      config, maxOutstanding, lineBytes))
+    val lowerResponse = Flipped(Decoupled(new ComputeMemoryResponse(lineBytes, maxOutstanding)))
+    val fill = Decoupled(new L2MshrFill(config, entries, numComputeUnits, lineBytes, sets, ways))
+    val response = Decoupled(new L2MshrResponse(config, maxOutstanding, lineBytes))
     val validEntries = Output(UInt(entries.W))
   })
 
   // Reuse elaboration definitions across banks; every instance retains its
   // complete waiter namespace, storage, handshakes and response ownership.
-  private val table = Instantiate(new L2MshrTable(
-    config, entries, maxOutstanding, numComputeUnits, lineBytes, sets, ways))
+  private val table = Instantiate(
+    new L2MshrTable(config, entries, maxOutstanding, numComputeUnits, lineBytes, sets, ways)
+  )
   private val heldLineAddress = Reg(UInt(config.xLen.W))
   private val lowerPending = RegInit(VecInit(Seq.fill(entries)(false.B)))
   private val lowerLineAddress = Reg(Vec(entries, UInt(config.xLen.W)))
@@ -351,8 +336,10 @@ class L2MissEngine(
     val allocationCommitsThisEntry = table.io.allocation.fire &&
       !table.io.allocation.bits.merged &&
       table.io.allocation.bits.entryId === io.authorize.bits
-    assert(table.io.validEntries(io.authorize.bits) || allocationCommitsThisEntry,
-      "only an allocated L2 MSHR may be authorized")
+    assert(
+      table.io.validEntries(io.authorize.bits) || allocationCommitsThisEntry,
+      "only an allocated L2 MSHR may be authorized"
+    )
     lowerPending(io.authorize.bits) := true.B
   }
 
@@ -380,8 +367,7 @@ class L2MissEngine(
   table.io.refill.bits.fault := io.lowerResponse.bits.fault
   io.lowerResponse.ready := responseInRange && table.io.refill.ready
   when(io.lowerResponse.valid) {
-    assert(responseInRange,
-      "L2 miss-engine response must identify an MSHR entry")
+    assert(responseInRange, "L2 miss-engine response must identify an MSHR entry")
   }
 
   io.fill <> table.io.fill

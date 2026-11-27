@@ -1,6 +1,11 @@
 package opengpu.graphics
 
-import opengpu.elaboration.{EmitShaderImageAbi,EmitTextureImageBindingAbi,EmitTextureImageFormatAbi,EmitTextureImageLevelAbi}
+import opengpu.elaboration.{
+  EmitShaderImageAbi,
+  EmitTextureImageBindingAbi,
+  EmitTextureImageFormatAbi,
+  EmitTextureImageLevelAbi
+}
 import org.scalatest.flatspec.AnyFlatSpec
 
 class ShaderImageAbiSpec extends AnyFlatSpec {

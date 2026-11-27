@@ -14,25 +14,36 @@ class NativeAlignmentHostProfileSpec extends AnyFlatSpec {
     assert(p.transactionsPerCu == 16 && p.axiDataBytes == 32)
     assert(p.execution.l2Sets * p.execution.l2Ways * 64 == 131072)
     assert(p.native.engines == 4 && p.native.pagedCapacity == 65536)
-    assert(p.native.renderTargetExtent.contains((2048,2048)))
+    assert(p.native.renderTargetExtent.contains((2048, 2048)))
     assert(p.native.vertex.input.attributes == 16 && p.native.vertex.input.bindings == 16)
     assert(p.native.vertex.varyings == 16 && p.native.fragment.colors == 4)
     assert(p.native.payload.get.capacityBytes == 524288 && p.native.transformFeedback)
     val words = p.requiredDiscovery.toMap
     assert(p.requiredDiscovery.size == 72 && words.size == 72)
     assert(words(0x368) == 0x7fff && words(0x36c) == 2)
-    val floating=p.copy(imageFloatExchange=true)
-    assert(floating.requiredDiscovery.toMap.apply(0x368)==(words(0x368)|ComputeResourceCapabilities.imageFloatExchange))
-    assert(floating.requiredDiscovery.filterNot(_._1==0x368)==p.requiredDiscovery.filterNot(_._1==0x368))
-    assert(floating.execution==p.execution && floating.native==p.native && floating.computeUnits==2)
-    assert(words(0x160) == BigInt("474e4303",16) && words(0x174) == BigInt("08000800",16))
-    for ((base, magic, count) <- Seq((0x340,"47434901",8),(0x240,"47515601",8),
-        (0x260,"47464301",8),(0x280,"47515001",8),(0x3a0,"47554301",16))) {
-      assert(words(base) == BigInt(magic,16) && words(base+4) == count)
-      assert((0 until count).forall(n => words.contains(base+4*n)))
+    val floating = p.copy(imageFloatExchange = true)
+    assert(
+      floating.requiredDiscovery.toMap.apply(0x368) == (words(0x368) | ComputeResourceCapabilities.imageFloatExchange)
+    )
+    assert(floating.requiredDiscovery.filterNot(_._1 == 0x368) == p.requiredDiscovery.filterNot(_._1 == 0x368))
+    assert(floating.execution == p.execution && floating.native == p.native && floating.computeUnits == 2)
+    assert(words(0x160) == BigInt("474e4303", 16) && words(0x174) == BigInt("08000800", 16))
+    for (
+      (base, magic, count) <- Seq(
+        (0x340, "47434901", 8),
+        (0x240, "47515601", 8),
+        (0x260, "47464301", 8),
+        (0x280, "47515001", 8),
+        (0x3a0, "47554301", 16)
+      )
+    ) {
+      assert(words(base) == BigInt(magic, 16) && words(base + 4) == count)
+      assert((0 until count).forall(n => words.contains(base + 4 * n)))
     }
-    assert(!NativeAlignmentHostProfile.nativeGeometryDraw && !NativeAlignmentHostProfile.nativeAdvancedBlend
-      && !NativeAlignmentHostProfile.nativePatchShaderImages)
+    assert(
+      !NativeAlignmentHostProfile.nativeGeometryDraw && !NativeAlignmentHostProfile.nativeAdvancedBlend
+        && !NativeAlignmentHostProfile.nativePatchShaderImages
+    )
   }
 
   it should "reject missing resource transaction capacity, feedback and translated image ownership" in {
@@ -44,22 +55,43 @@ class NativeAlignmentHostProfileSpec extends AnyFlatSpec {
   }
 
   it should "elaborate the complete feature connections together in a bounded host" in {
-    val gpu = GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
-    val g = GraphicsConfig(screenWidth=math.min(4,GraphicsTestResolution.width),
-      screenHeight=math.min(4,GraphicsTestResolution.height))
-    val p = VertexShaderStageConfig(VertexInputFetchConfig(2,2),2)
-    val f = FragmentShaderConfig(2,4)
-    val n = NativeBinnedGraphicsConfig(p,f,engines=1,pageBytes=128,writeCredits=2,
-      tileSlots=1,pagedCapacity=8,transformFeedback=true,
-      payload=Some(ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=1024,owners=2,ports=4)))
-    val profile = NativeAlignmentHostConfig(g,gpu,computeUnits=2,native=n,imageFloatExchange=true)
+    val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
+    val g = GraphicsConfig(
+      screenWidth = math.min(4, GraphicsTestResolution.width),
+      screenHeight = math.min(4, GraphicsTestResolution.height)
+    )
+    val p = VertexShaderStageConfig(VertexInputFetchConfig(2, 2), 2)
+    val f = FragmentShaderConfig(2, 4)
+    val n = NativeBinnedGraphicsConfig(
+      p,
+      f,
+      engines = 1,
+      pageBytes = 128,
+      writeCredits = 2,
+      tileSlots = 1,
+      pagedCapacity = 8,
+      transformFeedback = true,
+      payload = Some(ShaderPayloadConfig(capacityBytes = 4096, maxPayloadBytes = 1024, owners = 2, ports = 4))
+    )
+    val profile = NativeAlignmentHostConfig(g, gpu, computeUnits = 2, native = n, imageFloatExchange = true)
     val circuit = circt.stage.ChiselStage.elaborate(new NativeAlignmentHostSystemAxi(profile))
-    val required = Set("TessellationNativeQuadJobImage", "TessellationNativeThreeDomainJobImage",
+    val required = Set(
+      "TessellationNativeQuadJobImage",
+      "TessellationNativeThreeDomainJobImage",
       "TessellationHostShaderRouter",
-      "NativeVisibilityQueryEngine", "NativePrimitiveQueryEngine", "TransformFeedbackOwnerTransfer",
-      "TypedFragmentImageStateReader", "ShaderImageCuService", "ShaderImageAtomicCuService", "StorageVectorCuService",
-      "StorageAtomicVectorCuService", "ComputeUniformCuService", "ComputeTextureCuService",
-      "AtomicCounterVectorCuService", "IndirectDispatchReader")
+      "NativeVisibilityQueryEngine",
+      "NativePrimitiveQueryEngine",
+      "TransformFeedbackOwnerTransfer",
+      "TypedFragmentImageStateReader",
+      "ShaderImageCuService",
+      "ShaderImageAtomicCuService",
+      "StorageVectorCuService",
+      "StorageAtomicVectorCuService",
+      "ComputeUniformCuService",
+      "ComputeTextureCuService",
+      "AtomicCounterVectorCuService",
+      "IndirectDispatchReader"
+    )
     val found = circuit.lazilySerialize.iterator.foldLeft(Set.empty[String]) { (seen, part) =>
       seen ++ required.filter(part.contains)
     }

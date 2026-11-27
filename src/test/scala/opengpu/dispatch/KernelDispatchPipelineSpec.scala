@@ -29,8 +29,7 @@ class KernelDispatchPipelineSpec extends AnyFlatSpec {
       dut.clock.step(); dut.io.launch.valid.poke(false.B)
 
       Seq(0, 1).foreach { groupX =>
-        Seq((0, 0xf, false), (4, 0x1, true)).foreach {
-          case (base, mask, last) =>
+        Seq((0, 0xf, false), (4, 0x1, true)).foreach { case (base, mask, last) =>
           var waited = 0
           while (!dut.io.warp.valid.peek().litToBoolean && waited < 8) {
             dut.clock.step(); waited += 1

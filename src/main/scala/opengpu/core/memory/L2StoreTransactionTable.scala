@@ -6,18 +6,17 @@ import opengpu.config.GpuConfig
 
 /** Non-blocking write-through transaction table for one L2 slice.
   *
-  * Lower IDs are the entry index plus lowerIdBase. The original requester ID
-  * is restored only after the write acknowledgement, allowing lower responses
-  * to return out of order. Overlapping bytes in an active cache line remain
-  * ordered. Aligned masked line writes with disjoint byte masks commute and
-  * can occupy independent entries. Read hazards still cover the whole line.
+  * Lower IDs are the entry index plus lowerIdBase. The original requester ID is restored only after the write
+  * acknowledgement, allowing lower responses to return out of order. Overlapping bytes in an active cache line remain
+  * ordered. Aligned masked line writes with disjoint byte masks commute and can occupy independent entries. Read
+  * hazards still cover the whole line.
   */
 class L2StoreTransactionTable(
-  config: GpuConfig = GpuConfig(),
-  entries: Int = 2,
-  lineBytes: Int = 64,
-  maxOutstanding: Int = 8,
-  lowerIdBase: Int = 4
+    config: GpuConfig = GpuConfig(),
+    entries: Int = 2,
+    lineBytes: Int = 64,
+    maxOutstanding: Int = 8,
+    lowerIdBase: Int = 4
 ) extends Module {
   require(entries > 0 && isPow2(entries))
   require(lineBytes > 0 && isPow2(lineBytes))
@@ -26,15 +25,12 @@ class L2StoreTransactionTable(
   private val offsetWidth = log2Ceil(lineBytes)
 
   val io = IO(new Bundle {
-    val allocate = Flipped(Decoupled(
-      new ComputeMemoryRequest(config, lineBytes, maxOutstanding)))
-    val lowerRequest = Decoupled(
-      new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
-    val lowerResponse = Flipped(Decoupled(
-      new ComputeMemoryResponse(lineBytes, maxOutstanding)))
-    val response = Decoupled(
-      new ComputeMemoryResponse(lineBytes, maxOutstanding))
+    val allocate = Flipped(Decoupled(new ComputeMemoryRequest(config, lineBytes, maxOutstanding)))
+    val lowerRequest = Decoupled(new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
+    val lowerResponse = Flipped(Decoupled(new ComputeMemoryResponse(lineBytes, maxOutstanding)))
+    val response = Decoupled(new ComputeMemoryResponse(lineBytes, maxOutstanding))
     val active = Output(Bool())
+
     /** A read may overlap stores to other lines, but not this queried line. */
     val queryAddress = Input(UInt(config.xLen.W))
     val queryConflict = Output(Bool())
@@ -47,8 +43,7 @@ class L2StoreTransactionTable(
     val respond = 3.U(2.W)
   }
   private val state = RegInit(VecInit(Seq.fill(entries)(EntryState.free)))
-  private val requests = Reg(Vec(entries,
-    new ComputeMemoryRequest(config, lineBytes, maxOutstanding)))
+  private val requests = Reg(Vec(entries, new ComputeMemoryRequest(config, lineBytes, maxOutstanding)))
   private val faults = Reg(Vec(entries, Bool()))
 
   // Break the wide allocate-data path before the dynamically selected entry
@@ -56,27 +51,27 @@ class L2StoreTransactionTable(
   // the same cycle, so it adds latency but does not reduce peak throughput.
   private val allocationPending = RegInit(false.B)
   private val pendingEntry = Reg(UInt(log2Ceil(entries).W))
-  private val pendingRequest = Reg(
-    new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
+  private val pendingRequest = Reg(new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
 
-  private val incomingLine = io.allocate.bits.address(
-    config.xLen - 1, offsetWidth)
+  private val incomingLine = io.allocate.bits.address(config.xLen - 1, offsetWidth)
   private def overlaps(other: ComputeMemoryRequest): Bool = {
     val aligned = io.allocate.bits.sizeLog2 === offsetWidth.U &&
-      io.allocate.bits.address(offsetWidth-1,0) === 0.U &&
-      other.sizeLog2 === offsetWidth.U && other.address(offsetWidth-1,0) === 0.U
+      io.allocate.bits.address(offsetWidth - 1, 0) === 0.U &&
+      other.sizeLog2 === offsetWidth.U && other.address(offsetWidth - 1, 0) === 0.U
     !aligned || (other.byteMask & io.allocate.bits.byteMask).orR
   }
   private val lineConflict = VecInit((0 until entries).map { entry =>
     state(entry) =/= EntryState.free &&
-      requests(entry).address(config.xLen - 1, offsetWidth) === incomingLine && overlaps(requests(entry))
+    requests(entry).address(config.xLen - 1, offsetWidth) === incomingLine && overlaps(requests(entry))
   }).asUInt.orR || (allocationPending &&
     pendingRequest.address(config.xLen - 1, offsetWidth) === incomingLine && overlaps(pendingRequest))
   private val queryLine = io.queryAddress(config.xLen - 1, offsetWidth)
-  io.queryConflict := (0 until entries).map { entry =>
-    state(entry) =/= EntryState.free &&
+  io.queryConflict := (0 until entries)
+    .map { entry =>
+      state(entry) =/= EntryState.free &&
       requests(entry).address(config.xLen - 1, offsetWidth) === queryLine
-  }.reduce(_ || _) || (allocationPending &&
+    }
+    .reduce(_ || _) || (allocationPending &&
     pendingRequest.address(config.xLen - 1, offsetWidth) === queryLine)
   private val reservedEntries = UIntToOH(pendingEntry, entries) &
     Fill(entries, allocationPending)
@@ -88,8 +83,7 @@ class L2StoreTransactionTable(
   io.allocate.ready := hasFree && !lineConflict
   allocationPending := io.allocate.fire
   when(io.allocate.fire) {
-    assert(io.allocate.bits.isWrite,
-      "L2 store table accepts only write requests")
+    assert(io.allocate.bits.isWrite, "L2 store table accepts only write requests")
     pendingEntry := allocateEntry
     pendingRequest := io.allocate.bits
   }
@@ -107,9 +101,11 @@ class L2StoreTransactionTable(
   // must produce 8 rather than wrapping to the load-MSHR namespace at zero.
   io.lowerRequest.bits.transactionId := issueEntry +& lowerIdBase.U
   when(io.lowerRequest.fire) {
-    assert(io.lowerRequest.bits.transactionId >= lowerIdBase.U &&
-      io.lowerRequest.bits.transactionId < (lowerIdBase + entries).U,
-      "L2 store requests must retain their reserved lower-ID namespace")
+    assert(
+      io.lowerRequest.bits.transactionId >= lowerIdBase.U &&
+        io.lowerRequest.bits.transactionId < (lowerIdBase + entries).U,
+      "L2 store requests must retain their reserved lower-ID namespace"
+    )
     state(issueEntry) := EntryState.waitAck
   }
 
@@ -121,8 +117,7 @@ class L2StoreTransactionTable(
     state(ackEntry) === EntryState.waitAck
   io.lowerResponse.ready := ackExpected
   when(io.lowerResponse.valid) {
-    assert(ackExpected,
-      "L2 store acknowledgement must identify an issued store entry")
+    assert(ackExpected, "L2 store acknowledgement must identify an issued store entry")
   }
   when(io.lowerResponse.fire) {
     faults(ackEntry) := io.lowerResponse.bits.fault
@@ -135,8 +130,7 @@ class L2StoreTransactionTable(
   // has already been offered to a stalled consumer.
   private val responseHeld = RegInit(false.B)
   private val heldResponseEntry = Reg(UInt(math.max(1, log2Ceil(entries)).W))
-  private val responseEntry = Mux(responseHeld, heldResponseEntry,
-    PriorityEncoder(responseEntries))
+  private val responseEntry = Mux(responseHeld, heldResponseEntry, PriorityEncoder(responseEntries))
   io.response.valid := hasResponse
   io.response.bits.transactionId := requests(responseEntry).transactionId
   io.response.bits.readData := 0.U
